@@ -574,7 +574,7 @@ tasks:
     owner: platform
     parallel_group: m1-b
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "validateSpec telegram и email (G0, connector-interface §4) блокирует шаблон с pii≠none; в M2 то же правило — G2-TG-01"
@@ -590,8 +590,8 @@ tasks:
     owner: agents
     parallel_group: m1-b
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: orchestrator  # готово: импорт через схему+синтетику, abort T1 при смене политики, PATCH org settings; осталось: HTTP-эндпоинты импорта, platform.imports, прогон import_table
     acceptance:
       - "Тест: реальные значения импортированной таблицы ни разу не попадают в запросы T1"
       - "xlsx: библиотека MIT/Apache без исполнения формул; распакованный размер ≤ 100 МБ, ≤ 1 млн ячеек, внешние связи игнорируются (L3-37)"
@@ -619,8 +619,8 @@ tasks:
     owner: qa
     parallel_group: m1-c
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: orchestrator  # готово: исполнитель задач, runWorkflows/advanceTime, объяснения QA; осталось: G1-RENDER-01, подсказки seed от QA, замер ≥80% на живых моделях (ключи)
     acceptance: ["Eval: ≥80% брифов проходят G0+G1 без человека (live, лучшая модель)"]
 
   - id: M1-10
