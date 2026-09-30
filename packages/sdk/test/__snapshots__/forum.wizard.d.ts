@@ -275,25 +275,25 @@ declare module "@wizard/sdk" {
         /** ID платежа ЮKassa */ provider_payment_id: string;
         /** Вид */ kind: "payment" | "refund";
         /** Сумма */ amount: number;
-        /** Статус */ status: "pending" | "succeeded" | "canceled";
+        /** Статус */ status: "pending" | "succeeded" | "canceled" | "needs_review";
       };
       insert: {
         ticket: Id<"ticket">;
         provider_payment_id: string;
         kind: "payment" | "refund";
         amount: number;
-        status: "pending" | "succeeded" | "canceled";
+        status: "pending" | "succeeded" | "canceled" | "needs_review";
       };
       clientDoc: {
         ticket: Id<"ticket">;
         provider_payment_id: string;
         kind: "payment" | "refund";
         amount: number;
-        status: "pending" | "succeeded" | "canceled";
+        status: "pending" | "succeeded" | "canceled" | "needs_review";
       };
       where:
-        | { status: "pending" | "succeeded" | "canceled"; created_at?: never; id?: never; provider_payment_id?: never; ticket?: never }
-        | { status: "pending" | "succeeded" | "canceled"; created_at: string | Range<string>; id?: never; provider_payment_id?: never; ticket?: never }
+        | { status: "pending" | "succeeded" | "canceled" | "needs_review"; created_at?: never; id?: never; provider_payment_id?: never; ticket?: never }
+        | { status: "pending" | "succeeded" | "canceled" | "needs_review"; created_at: string | Range<string>; id?: never; provider_payment_id?: never; ticket?: never }
         | { id: Id<"payment">; status?: never; created_at?: never; provider_payment_id?: never; ticket?: never }
         | { created_at: string | Range<string>; status?: never; id?: never; provider_payment_id?: never; ticket?: never }
         | { provider_payment_id: string | Range<string>; status?: never; created_at?: never; id?: never; ticket?: never }

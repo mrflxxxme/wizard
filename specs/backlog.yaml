@@ -326,7 +326,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Сборка форума (forum.json + specs/runtime/examples) → раскладка .data/artifacts/<id>/<rev>/…; manifest.json содержит specHash и bundleKey"
@@ -342,7 +342,7 @@ tasks:
     owner: qa
     parallel_group: m0-w1
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "specToOps(forum.json) + applyOps на emptySpec → спека, эквивалентная forum.json (deep-equal без порядка)"
@@ -451,7 +451,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "validateSpec каждого коннектора на forum.json и bakery.json → без ошибок; отрицательные фикстуры по каждому правилу config_schema"
