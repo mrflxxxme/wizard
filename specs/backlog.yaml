@@ -357,7 +357,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w2
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "tsc (tsconfig.system) на examples/bakery против generateTypes(bakery.json) проходит"
