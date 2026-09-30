@@ -17,7 +17,7 @@ export interface ConnectorDefinition<Config, Actions extends Record<string, Acti
   validateSpec?(config: Config, spec: AppSpec): SpecIssue[];    // ссылки на сущности/поля/статусы; G0
   actions: Actions;                                // вызываемые из action-функций и шагов воркфлоу
   webhooks?: WebhookDef<Config>[];
-  routes?: RouteDef<Config>[];                      // собственные эндпоинты runtime (/api/pay, /api/qr/*)
+  routes?: RouteDef<Config>[];                      // собственные эндпоинты runtime (/api/pay, /_wizard/qr/*)
   testMode(env: "draft" | "prod", config: Config, secrets: SecretReader): "test" | "live";
   piiFields: readonly string[];                    // пути во входах/выходах, маскируемые в логах
 }
@@ -39,7 +39,7 @@ export interface ConnectorCtx {
   users: { contact(userId: string, kind: "email" | "phone" | "telegram_chat"): Promise<string | null> };
   db: SystemDb;                                    // системный доступ к схеме системы (как ctx.systemDb)
   log: ConnectorLogger;
-  fetch: typeof fetch;                             // через egress-прокси в M2; allowlist из описания коннектора
+  fetch: typeof fetch;                             // через egress-прокси в M2; allowlist из описания коннектора; M1: адрес после резолва ∉ RFC1918/loopback/link-local
 }
 
 export interface WebhookDef<Config> {
@@ -57,8 +57,10 @@ export interface WebhookDef<Config> {
 - **Идемпотентность.** MUST: каждый вызов действия с `effect: true` имеет `idempotencyKey`: явный из кода или `<functionRunId|jobId:stepIndex>:<actionName>:<n>`. Результат хранится в `_w_connector_calls` 7 дней; повтор с тем же ключом возвращает сохранённый результат без внешнего вызова. Тест: двойной вызов с одним ключом → один запрос к моку провайдера.
 - **Повторы.** Повторяются только ошибки с `retryable: true`: сеть, таймаут, 5xx, 429 (с учётом Retry-After/retry_after). Экспонента `baseMs · 4^n`, ±20% джиттер, не дольше лимита вызывающего (30 с для action; для воркфлоу — через `_w_jobs`). Тест: мок, отвечающий 503, 503, 200, даёт успех с 3 запросами.
 - **Тестовый режим.** MUST: `env=draft` всегда `mode=test`. В test-режиме внешние эффекты уходят в песочницу провайдера (ЮKassa — тестовый магазин) или в dev-приёмник `.data/outbox/<system>/<connector>.jsonl` (email, Telegram без тестового бота). В prod `mode=test` допускается только для ЮKassa с явным `config.testMode: true` и баннером «Тестовые платежи» в системе.
-- **Логи без ПДн.** Запись лога: `{ts, system, env, integration, connector, action, mode, status, errorCode?, durationMs, idempotencyKey}`. MUST NOT: значения входов/выходов, пути `piiFields`, тексты сообщений, адреса. Тест: e2e с ПДн-маркерами (как в `runtime.yaml#logging`).
-- **Вебхуки.** MUST: `verify` до разбора тела; тело ≤ 256 КиБ; обработка идемпотентна по id события провайдера; ответ ≤ 5 с (тяжёлое — в `_w_jobs`). Вебхук меняет данные системы только через `ctx.db` с `role='__system'` и порождает события инвалидации и воркфлоу, как обычная запись.
+- **Логи без ПДн.** Логгер коннектора — allowlist полей: `{ts, system, env, integration, connector, action, mode, status, errorCode?, providerStatus?, providerCode?, durationMs, idempotencyKey}`; свободный текст не логируется. MUST NOT: значения входов/выходов, пути `piiFields`, тексты сообщений, адреса, тела ответов провайдера (ошибка → только `{status, code}`), URL с query. Сегмент `<hookToken>` в путях вебхуков и `/bot<token>/` в URL Telegram маскируются. Тест: e2e с ПДн-маркерами и тестовым секретом + grep логов всех процессов (как в `runtime.yaml#logging`).
+- **Вебхуки.** MUST: `verify` до разбора тела; тело ≤ 256 КиБ; обработка идемпотентна по id события провайдера; ответ ≤ 5 с (тяжёлое — в `_w_jobs`). Вебхук меняет данные системы только через `ctx.db` под системным доступом (M0–M1 — `wizard.role='__system'`, M2 — роль `sys_<key>_<env>_system`, `../security/isolation.yaml#db_access`) и порождает события инвалидации и воркфлоу, как обычная запись. IP источника (для allowlist провайдера) — только из последнего хопа доверенного ingress (`deploy.yaml`), `X-Forwarded-For` от недоверенных адресов игнорируется.
+- **Маршруты.** `routes` подчиняются CSRF runtime (`../security/abuse.yaml#domain.tenant_separation`): любой не-GET требует `Origin` = хост системы и `X-Wizard-Request: 1`, иначе 403. Исключение — только `/_wizard/hooks/*`.
+- **M0.** `packages/connectors` экспортирует `configSchema`, `validateSpec` и `secrets` всех четырёх коннекторов (G0 на эталонных спеках). Действия, вебхуки и маршруты коннекторов M1/M2 в M0 — test-mode-заглушки (outbox). `POST /api/pay/:integration` в M0 возвращает `{confirmationUrl: '/_wizard/pay-mock?binding=<b>&id=<id>'}`; эта страница (только draft) обрабатывается как `payment.succeeded`.
 
 ## 3. Ошибки
 

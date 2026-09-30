@@ -10,6 +10,7 @@ stack:
   frontend: { ui: "react 19.x", build_platform: "vite 7.x", build_generated: "esbuild (programmatic)", styling: "CSS variables (design tokens) + CSS modules; no Tailwind in generated apps" }
   tests: { unit: "vitest 3.x", e2e: "@playwright/test (chromium at /opt/pw-browsers)" }
   lint_format: "biome 2.x"
+  dev_exec: "tsx (MIT) для запуска apps в M0–M1; пакеты экспортируют src/*.ts без сборки; vite — для platform-web и ui-kit/demo"
   isolation:
     M0_M1: "node:vm + worker_threads с таймаутом и отсутствием сети — ТОЛЬКО локально/draft, флаг WIZARD_UNSAFE_LOCAL_EXEC=1"
     M2_plus: "workerd внутри gVisor (runsc) в отдельном пуле узлов; egress-proxy с allowlist"
@@ -46,33 +47,43 @@ monorepo:
       path: packages/connectors
       purpose: "ЮKassa, Telegram, email, QR; единый интерфейс Connector"
       spec: specs/connectors/
-      depends_on: [sdk]
+      depends_on: [sdk, pii, appspec]
+    - id: build
+      path: packages/build
+      purpose: "Сборка системы esbuild (ui + functions), плагин wz-id и wz-map.json, tsconfig.system, раскладка артефактов (interfaces.build_system)"
+      spec: specs/runtime/sdk.md
+      depends_on: [appspec]
     - id: gates
       path: packages/gates
-      purpose: "Гейты G0–G2: валидаторы спеки, typecheck/build кода, сценарии приёмки, матрица прав, антифрод"
+      purpose: "Гейты G0–G2: валидаторы спеки, typecheck кода, сборка через packages/build, сценарии приёмки, генератор seed, матрица прав, антифрод. G1 обращается к runtime только через RuntimeHandle (interfaces.runtime_handle)"
       spec: specs/quality/gates.yaml
-      depends_on: [appspec, sdk]
+      depends_on: [appspec, sdk, connectors, pii, ui-kit, build]
     - id: agents
       path: packages/agents
-      purpose: "Оркестратор, строитель, QA: промпты, инструменты (tool definitions из zod), бюджеты"
+      purpose: "Оркестратор, строитель, QA: промпты, инструменты (tool definitions из zod), бюджеты. Sub-path exports @wizard/agents/{core,orchestrator,builder,qa}"
       spec: specs/agents/
-      depends_on: [appspec, llm, gates]
+      depends_on: [appspec, llm, gates, pii]
+    - id: e2e
+      path: packages/e2e
+      purpose: "@wizard/e2e: Playwright-сценарии против запущенных apps (только HTTP), фикстуры demo"
+      spec: specs/ui/platform-screens.yaml
+      depends_on: []
   apps:
     - id: platform-api
       path: apps/platform-api
       purpose: "API платформы: аккаунты, организации, системы, ревизии, прогоны, кредиты, публикация, SSE событий"
       spec: specs/platform/api.yaml
-      depends_on: [appspec, agents, llm]
+      depends_on: [appspec, agents, llm, gates, build, runtime]   # runtime — только createRuntimeApp (interfaces.runtime_handle) для превью M0 и G1
     - id: worker
       path: apps/worker
       purpose: "DBOS-воркфлоу: интервью, сборка, гейты, публикация, миграции, автоудаление ПДн"
       spec: specs/platform/workflows.yaml
-      depends_on: [agents, gates, appspec]
+      depends_on: [agents, gates, appspec, llm, build, runtime]
     - id: runtime
       path: apps/runtime
       purpose: "Хостинг созданных систем: data API по AppSpec, вызов функций, вход конечных пользователей, статика бандлов, PWA"
       spec: specs/runtime/runtime.yaml
-      depends_on: [appspec, sdk, connectors]
+      depends_on: [appspec, sdk, connectors, pii, ui-kit]
     - id: platform-web
       path: apps/platform-web
       purpose: "UI платформы: чат, вопросы-кнопки, карточка, превью (iframe), отчёт гейтов, «Стиль», настройки"
@@ -80,30 +91,40 @@ monorepo:
       depends_on: [ui-kit]
   tools:
     - { id: eval, path: tools/eval, purpose: "Eval-стенд моделей и харнесса на брифах" }
-    - { id: specs-validate, path: tools/specs, purpose: "Проверка целостности specs/" }
+    - { id: specs-validate, path: tools/specs, purpose: "Проверка целостности specs/ (validate.mjs) и срезы спек по якорю и вехе (slice.mjs, M0-19)" }
+    - { id: fixtures, path: tools/fixtures, purpose: "Фикстуры LLM: demo/ (золотые, gen-golden.mjs, M0-21), eval/, unit/" }
 
 data_stores:
   platform_db: "Postgres, схема 'platform' (аккаунты, орг., системы, ревизии, прогоны, ledger) + схема 'dbos'"
   apps_db: "Postgres (M0 — тот же инстанс), схема на систему: app_<schemaKey>_<env>, schemaKey — 12 символов [a-z0-9] (systems.schema_key), env ∈ {draft, prod}. В хостах <system> — это slug системы"
   artifacts: "Файловое хранилище (M0 — локальная папка .data/artifacts; M2 — S3-совместимое хранилище Cloud.ru): исходники кода ревизий, бандлы"
   secrets: "M0 — .env; M2 — KMS/OpenBao в РФ. Секреты коннекторов в систему попадают только как ссылки"
+  db_roles: "wizard_platform — владелец схемы platform; мигратор систем (M0 — wizard_owner) не владеет platform и не superuser; wizard_runtime — только DML в app_* через GRANT из toDDL; M2 — мигратор на систему sys_owner_<key>_<env> и системная роль sys_<key>_<env>_system (L3-01, L3-20)"
 
 environments:
   local: "Всё на одной машине: Postgres 16 локально, fixture-LLM по умолчанию, реальные ключи через .env"
   cloud: "M2: Cloud.ru Evolution — Managed PG, Managed K8s (gVisor-пул), S3, KMS"
   domains:
-    platform: "<codename>.ru (M2, E-DOMAIN)"
-    systems: "*.<systems-domain> (отдельный от платформы домен); локально: http://<system>--<env>.localhost:4100"
+    platform: "<финальное-имя>.ru — покупается к неделе 12 вместе с именем (product.yaml#decisions.D22_domains, E-NAME)"
+    systems: "*.<systems-domain> — нейтральный домен, отдельный от платформы, покупается на неделе 0 (D22_domains); локально: http://<system>--<env>.localhost:4100"
 
-interfaces:                   # межпакетные контракты — менять только через CHANGELOG
-  appspec_ops: "packages/appspec: applyOps(spec, ops[], expectedVersion) -> {spec, version} | OpsError[] (см. specs/appspec/ops.yaml)"
-  migration_plan: "packages/appspec: planMigration(prevSpec, nextSpec) -> MigrationPlan {steps[], additiveOnly:boolean}"
-  ddl: "packages/appspec: toDDL(plan, schemaName) -> string[] (SQL), toRLS(spec, schemaName) -> string[]"
-  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}"
-  gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx) -> GateReport {passed, checks[]}"
+interfaces:                   # межпакетные контракты — менять только через CHANGELOG; публичный API пакета = его src/index.ts
+  appspec_ops: "packages/appspec: applyOps(spec, ops[], expectedVersion, {currentVersion=0, env, idempotencyKey, store: IdempotencyStore, author: 'user'|'agent'|'system', runId}) -> {ok: true, spec, version, revision: Revision} | {ok: false, errors: OpsError[]}; revision вызывающий MUST сохранить (specs/appspec/ops.yaml#apply)"
+  migration_plan: "packages/appspec: planMigration(prevSpec|null, nextSpec, {env: 'draft'|'prod'}) -> MigrationPlan {env, steps[], additiveOnly, destructive[], errors: OpsError[], next}"
+  ddl: "packages/appspec: toDDL(plan, schemaName, {runtimeRole?, lockTimeout?}) -> string[] — первый оператор SET LOCAL lock_timeout, включает toRLS(plan.next) и GRANT для runtimeRole; бросает Error, если plan.errors не пуст (невалидная спека или DESTRUCTIVE_IN_PROD); исполнять одной транзакцией. toRLS(spec, schemaName, opts) -> string[]. Литералы — только quoteLiteral/literal(value, fieldType), идентификаторы — quoteIdent (M0-29)"
+  types: "packages/appspec: generateTypes(spec) -> string (d.ts); @wizard/sdk/codegen только реэкспортирует"
+  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}; t1Restricted ≠ false → T0 (policy_region_restricted)"
+  usage_sink: "packages/llm: UsageSink {write(UsageRecord)}; по умолчанию JsonlUsageSink(.data/usage.jsonl); platform-api подставляет DbUsageSink(platform.llm_calls)"
+  gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx: GateContext) -> GateReport (specs/quality/gates.yaml#report); generateSeed(spec, key) (specs/agents/qa.yaml#seed)"
+  gate_context: "packages/gates: GateContext {spec, prevSpec: AppSpec|null, specVersion, files: ReadonlyMap<path, string> (ui/**, functions/**), env: 'draft'|'prod', systemKey, db: postgres.Sql (роль мигратора, только теневые/эфемерные схемы), runtime?: RuntimeHandle (G1), checks?: Check[] (G1, от QA), milestone: 'M0'|… (по умолчанию env WIZARD_MILESTONE), now?: Date, signal?: AbortSignal}"
+  build_system: "packages/build: buildSystem({spec, files, env, platformOrigin?}) -> {ok, errors: Check[], client: Map<path, Uint8Array>, serverFunctions: string (ESM), wzMap, manifest}; writeArtifact(root, systemId, revision, result) по runtime.yaml#system_loading.artifact_layout. Единственная сборка: её вызывают G0-BUILD-01 и шаг gate_G0"
+  runtime_handle: "apps/runtime: createRuntimeApp({db, registry: SystemRegistry, clock?, connectors?: 'outbox'|'live'}) -> {fetch(req): Promise<Response>, loadSystem({systemKey, env, spec, artifactDir}), outbox(): OutboxMessage[]}; SystemRegistry {resolve(slug, env)}: FileRegistry(.data/artifacts/registry.json) — M0-09, DbRegistry(platform.deployments) — M0-26"
+  data_access: "apps/runtime/src/data/access.ts: DataAccess — единая точка data API и ctx.db/ctx.systemDb (M0-09 публикует интерфейс первым, M0-23 строит поверх)"
+  agent_host: "packages/agents: BuildHost {route (llm_call), runGates(level, ctx), qa: {generate, explain}, store: {getSpec(): {spec, version}, applyOps(ops, expectedVersion, idemKey), writeFile(path, content), readFile(path), listFiles(prefix?), commitFiles()}, emit(type, payload) (workflows.yaml#events), runStep<T>(name, fn): Promise<T>, signal}. runBuild(host, {card, cap, mode}) реализует builder.yaml#loop целиком; каждый LLM-вызов и гейт идёт через host.runStep (M0 — identity, M1 — DBOS.runStep). workflows.yaml#build описывает только имена шагов и события, не дублирует цикл"
+  connectors: "packages/connectors: Connector {id, configSchema, validateSpec(spec), secrets, actions?, webhooks?} (specs/connectors/connector-interface.md); в M0 действия M1/M2 — test-mode заглушки (M0-28)"
   events: "platform-api SSE /runs/:id/events — события прогона (specs/platform/workflows.yaml#events)"
   runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /api/events (SSE), /api/pay/:integration, /api/telegram/:integration/link, /api/admin/invite, /_wizard/* (служебное: spec, qr, hooks, bridge.js) — полный список в specs/runtime/runtime.yaml"
-  preview_bridge: "runtime /_wizard/bridge.js ↔ platform-web postMessage (specs/ui/platform-screens.yaml#preview_contract); esbuild-плагин проставляет data-wz-id и пишет wz-map.json"
+  preview_bridge: "runtime /_wizard/bridge.js ↔ platform-web postMessage (specs/ui/platform-screens.yaml#preview_contract); data-wz-id и wz-map.json проставляет packages/build (build_system), runtime их только раздаёт"
 
 infra_and_libs:               # добавлено по итогам сверки спек
   iac: "OpenTofu (M2)"

@@ -126,6 +126,35 @@ export function validateSchema(schema, data, root = schema, path = "", errors = 
   return errors;
 }
 
+// ---------------- Anchors: "specs/<file>#a.b" (YAML key path), "#/json/pointer" (JSON) ----------------
+export const SLICE_SUFFIX = /\s+\(slice --milestone M\d\)$/;
+/** Splits a backlog specs entry into {path, anchor}; the "(slice --milestone Mx)" suffix is a reading hint. */
+export function parseSpecRef(entry) {
+  const clean = String(entry).replace(SLICE_SUFFIX, "");
+  const i = clean.indexOf("#");
+  return i < 0 ? { path: clean, anchor: null } : { path: clean.slice(0, i), anchor: clean.slice(i + 1) };
+}
+
+/** Resolves an anchor inside a parsed document; returns true when it exists. Lists are searched by id/name/key. */
+export function resolveAnchor(doc, anchor) {
+  if (anchor.startsWith("/")) {
+    try { resolveRef(doc, `#${anchor}`); return true; } catch { return false; }
+  }
+  let node = doc;
+  for (const seg of anchor.split(".")) {
+    if (Array.isArray(node)) node = node.find((x) => x && typeof x === "object" && [x.id, x.name, x.key].includes(seg));
+    else if (node && typeof node === "object" && seg in node) node = node[seg];
+    else return false;
+    if (node === undefined) return false;
+  }
+  return true;
+}
+
+// Files every agent reads anyway (AGENTS.md step 2) — their anchors may appear in acceptance without being listed in specs.
+const ALWAYS_READ = new Set(["specs/product.yaml", "specs/architecture.yaml", "AGENTS.md"]);
+const TASK_STATUS = new Set(["todo", "in_progress", "done"]);
+const TASK_OWNERS = new Set(["platform", "frontend", "agents", "qa", "docs", "founder"]);
+
 function collectRefs(node, out = []) {
   if (Array.isArray(node)) node.forEach((n) => collectRefs(n, out));
   else if (node && typeof node === "object") for (const [k, v] of Object.entries(node)) (k === "$ref" && typeof v === "string" ? out.push(v) : collectRefs(v, out));
@@ -186,20 +215,47 @@ export function runChecks(root) {
     const byId = new Map();
     for (const t of tasks) {
       const id = t?.id ?? "<без id>";
-      for (const k of ["id", "title", "milestone", "deps", "specs", "acceptance"]) if (t?.[k] === undefined) E(`backlog ${id}: нет поля ${k}`);
+      for (const k of ["id", "title", "milestone", "deps", "specs", "acceptance", "owner", "parallel_group", "estimate_days", "status"]) if (t?.[k] === undefined) E(`backlog ${id}: нет поля ${k}`);
+      if (t?.status !== undefined && !TASK_STATUS.has(t.status)) E(`backlog ${id}: status ${t.status} не из [${[...TASK_STATUS].join(", ")}]`);
+      if (t?.owner !== undefined && !TASK_OWNERS.has(t.owner)) E(`backlog ${id}: owner ${t.owner} не из [${[...TASK_OWNERS].join(", ")}]`);
+      if (t?.estimate_days !== undefined && !(typeof t.estimate_days === "number" && t.estimate_days > 0)) E(`backlog ${id}: estimate_days должно быть числом > 0`);
+      if (t?.status === "in_progress" && !t.claimed_by) E(`backlog ${id}: status in_progress без claimed_by`);
+      if (t?.status === "todo" && t.claimed_by) E(`backlog ${id}: status todo, но claimed_by = ${t.claimed_by}`);
       if (typeof t?.id === "string" && !/^M\d-\d{2}$/.test(t.id)) E(`backlog ${id}: id не по формату M<n>-<nn>`);
       if (byId.has(id)) E(`backlog: дубликат id ${id}`);
       else byId.set(id, t);
       if (msOrder.size && !msOrder.has(t?.milestone)) E(`backlog ${id}: неизвестная веха ${t?.milestone}`);
       if (!Array.isArray(t?.acceptance) || t.acceptance.length === 0) E(`backlog ${id}: пустой acceptance`);
+      const specFiles = new Set();
       for (const s of Array.isArray(t?.specs) ? t.specs : []) {
-        if (!pathExists(s)) missingSpecs.set(s, [...(missingSpecs.get(s) ?? []), id]);
+        const { path: sp, anchor } = parseSpecRef(s);
+        specFiles.add(sp.replace(/\/$/, ""));
+        if (!pathExists(sp)) { missingSpecs.set(sp, [...(missingSpecs.get(sp) ?? []), id]); continue; }
+        if (anchor === null) continue;
+        const doc = docs[sp];
+        if (doc !== undefined) { if (!resolveAnchor(doc, anchor)) E(`backlog ${id}: якорь не найден: ${s}`); }
+        else if (sp.endsWith(".md")) {
+          const text = readFileSync(join(root, sp), "utf8").toLowerCase();
+          if (!text.includes(anchor.toLowerCase())) W(`backlog ${id}: якорь в markdown не найден: ${s}`);
+        }
+      }
+      // L1-39: every "<file>#anchor" mentioned in acceptance must be readable from the task's specs.
+      for (const a of Array.isArray(t?.acceptance) ? t.acceptance : []) {
+        for (const m of String(a).matchAll(/([A-Za-z0-9_./-]+\.(?:ya?ml|json|md))#[A-Za-z0-9_/.-]/g)) {
+          const file = m[1].replace(/^\.?\//, "");
+          const norm = file.startsWith("specs/") || file === "AGENTS.md" ? file : null;
+          const listed = [...specFiles].some((f) => f === file || f.endsWith(`/${file}`) || (f.endsWith("/") && file.startsWith(f)));
+          const always = [...ALWAYS_READ].some((f) => f === norm || f.endsWith(`/${file}`) || f === file);
+          if (!listed && !always) E(`backlog ${id}: acceptance ссылается на ${m[0]}…, но ${file} нет в specs задачи`);
+        }
       }
     }
     for (const t of tasks) {
       for (const d of Array.isArray(t?.deps) ? t.deps : []) {
         const dep = byId.get(d);
         if (!dep) { E(`backlog ${t.id}: зависимость ${d} не существует`); continue; }
+        if ((t.status === "in_progress" || t.status === "done") && dep.status !== "done")
+          E(`backlog ${t.id} (${t.status}): зависимость ${d} не done (${dep.status})`);
         if (msOrder.has(dep.milestone) && msOrder.has(t.milestone) && msOrder.get(dep.milestone) > msOrder.get(t.milestone))
           E(`backlog ${t.id} (${t.milestone}) зависит от более поздней вехи: ${d} (${dep.milestone})`);
       }
@@ -220,6 +276,27 @@ export function runChecks(root) {
   }
   for (const [p, ids] of [...missingSpecs].sort()) W(`backlog: спека ещё не написана: ${p} (задачи: ${ids.join(", ")})`);
 
+  // 3b. Waves of a milestone plan (milestones.yaml#milestones.<id>.plan.waves) must match backlog parallel_group.
+  if (Array.isArray(milestones) && Array.isArray(tasks)) {
+    const byId = new Map(tasks.map((t) => [t?.id, t]));
+    for (const m of milestones) {
+      const waves = m?.plan?.waves;
+      if (!Array.isArray(waves)) continue;
+      const seen = new Set();
+      for (const w of waves) {
+        for (const tid of w?.tasks ?? []) {
+          const t = byId.get(tid);
+          if (!t) { E(`milestones ${m.id}.plan: задача ${tid} не существует`); continue; }
+          if (seen.has(tid)) E(`milestones ${m.id}.plan: задача ${tid} в двух волнах`);
+          seen.add(tid);
+          if (t.milestone !== m.id) E(`milestones ${m.id}.plan: ${tid} относится к ${t.milestone}`);
+          if (t.parallel_group !== w.group) E(`milestones ${m.id}.plan: ${tid} в волне ${w.group}, а в backlog parallel_group = ${t.parallel_group}`);
+        }
+      }
+      for (const t of tasks) if (t?.milestone === m.id && !seen.has(t.id)) E(`milestones ${m.id}.plan: задача ${t.id} не входит ни в одну волну`);
+    }
+  }
+
   // 4. Architecture
   const arch = docs["specs/architecture.yaml"];
   if (!arch?.monorepo) E("specs/architecture.yaml: нет monorepo");
@@ -230,6 +307,17 @@ export function runChecks(root) {
       if (u.spec && !pathExists(u.spec)) W(`architecture ${u.id}: спека не найдена: ${u.spec}`);
       for (const d of u.depends_on ?? []) if (!ids.has(d)) E(`architecture ${u.id}: depends_on неизвестного пакета ${d}`);
     }
+    const deps = new Map(units.map((u) => [u.id, u.depends_on ?? []]));
+    const state = new Map();
+    const dfs = (id, path) => {
+      state.set(id, 1);
+      for (const d of deps.get(id) ?? []) {
+        if (state.get(d) === 1) E(`architecture: цикл depends_on ${[...path.slice(path.indexOf(d)), d].join(" → ")}`);
+        else if (!state.get(d) && deps.has(d)) dfs(d, [...path, d]);
+      }
+      state.set(id, 2);
+    };
+    for (const id of deps.keys()) if (!state.get(id)) dfs(id, [id]);
   }
 
   // 5. AppSpec schema + examples

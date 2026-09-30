@@ -85,12 +85,13 @@ function getDefaultCtx(): SdkContextValue {
 }
 
 export function SdkProvider(props: SdkProviderProps): ReactNode {
-  const { client: given, baseUrl, fetch, realtime, consent, reconnectDelayMs, clock } = props;
-  const client = useMemo(
-    () => given ?? new SdkClient({ baseUrl, fetch, realtime, consent, reconnectDelayMs, clock }),
-    [given, baseUrl, fetch, realtime, consent, reconnectDelayMs, clock],
+  const { client: given, baseUrl, fetch, realtime, consent, reconnectDelayMs } = props;
+  // Client options are read once per provider (one SSE connection per tab); pass `client` to swap it.
+  const [own] = useState(() =>
+    given ? undefined : new SdkClient({ baseUrl, fetch, realtime, consent, reconnectDelayMs }),
   );
-  useEffect(() => (given ? undefined : () => client.close()), [client, given]);
+  const client = given ?? (own as SdkClient);
+  useEffect(() => () => own?.close(), [own]);
   const value = useMemo<SdkContextValue>(
     () => ({
       client,

@@ -111,10 +111,13 @@ export function ClientCases() {
   // @ts-expect-error args are required ("skip" disables the query)
   useQuery("ticketAvailability");
   const [register] = useMutation("registerTicket");
+  const tt = "a" as Id<"ticket_type">;
+  const withPlainString = { ticketTypeId: tt, streamId: "b", holderName: "Анна", holderEmail: "a@b.c" };
   // @ts-expect-error plain string instead of Id<"stream">
-  void register({ ticketTypeId: "a" as Id<"ticket_type">, streamId: "b", holderName: "Анна", holderEmail: "a@b.c" });
+  void register(withPlainString);
+  const valid = { ticketTypeId: tt, streamId, holderName: "Анна", holderEmail: "a@b.c" };
   // @ts-expect-error consent is the literal `true`
-  void register({ ticketTypeId: "a" as Id<"ticket_type">, streamId, holderName: "А", holderEmail: "e" }, { consent: false });
+  void register(valid, { consent: false });
   // @ts-expect-error queries are not mutations
   useMutation("partnerQuota");
   // @ts-expect-error unknown entity

@@ -2,7 +2,8 @@
 // Only `import type` from ./schema.js here: schema.ts imports this module at runtime.
 import { err, type OpsError } from "./errors.js";
 import { isReservedName, SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
-import type { AppSpec, Entity, Field, FieldType } from "./schema.js";
+import type { AppSpec, Entity, Field, FieldType, PermissionOp } from "./schema.js";
+import { literalProblem } from "./sql.js";
 
 export interface ValidateOptions {
   /**
@@ -15,6 +16,12 @@ export interface ValidateOptions {
 export const USER_REF_RE = /^\$user\.([a-z][a-z0-9_]{0,39})$/;
 /** Attributes of the implicit system entity users that `$user.<attr>` may reference (ops.yaml#semantic_rules). */
 export const USER_ATTRS = ["id", "role", "phone", "email", "telegram_id", "display_name"] as const;
+/**
+ * `$user.<attr>` allowed in rowFilter (L3-20): attributes the end user cannot change himself — id, role and the
+ * login identifiers verified by OTP/Telegram. display_name (and any future self-editable attribute) would let a
+ * user impersonate another one's rows.
+ */
+export const ROW_FILTER_USER_ATTRS = ["id", "role", "phone", "email", "telegram_id"] as const;
 const NUMERIC_TYPES: ReadonlySet<FieldType> = new Set(["int", "decimal", "money"]);
 const LENGTH_TYPES: ReadonlySet<FieldType> = new Set(["string", "text", "email", "phone", "url"]);
 const TEMPORAL_TYPES: ReadonlySet<FieldType> = new Set(["date", "datetime"]);
@@ -104,6 +111,21 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
   }
 }
 
+/** Values that reach SQL (default, min, max) MUST encode with sqlLiteral for the field type (L3-01). */
+function checkSqlValues(field: Field, path: PropertyKey[], out: OpsError[], defaultOk: boolean): void {
+  const noDefault = ["ref", "file", "qr_token"].includes(field.type);
+  if (defaultOk && !noDefault && field.default !== undefined) {
+    const p = literalProblem(field.default, field.type);
+    if (p) out.push(err("SCHEMA_INVALID", [...path, "default"], `Значение по умолчанию: ${p}`));
+  }
+  if (!NUMERIC_TYPES.has(field.type)) return;
+  for (const k of ["min", "max"] as const) {
+    if (field[k] === undefined) continue;
+    const p = literalProblem(field[k], field.type);
+    if (p) out.push(err("SCHEMA_INVALID", [...path, k], `Свойство ${k}: ${p}`));
+  }
+}
+
 function checkField(field: Field, fp: PropertyKey[], entityNames: readonly string[], out: OpsError[]): void {
   if (field.pii === "special" || field.pii === "biometric") {
     out.push(
@@ -180,7 +202,9 @@ function checkField(field: Field, fp: PropertyKey[], entityNames: readonly strin
       }),
     );
   }
+  const before = out.length;
   checkDefault(field, fp, out);
+  checkSqlValues(field, fp, out, out.length === before);
 }
 
 function fieldType(entity: Entity, name: string): FieldType | "uuid" | "timestamptz" | undefined {
@@ -292,11 +316,11 @@ function checkRowFilter(
     }
     if (typeof value === "string" && value.startsWith("$")) {
       const attr = USER_REF_RE.exec(value)?.[1];
-      if (!attr || !(USER_ATTRS as readonly string[]).includes(attr)) {
+      if (!attr || !(ROW_FILTER_USER_ATTRS as readonly string[]).includes(attr)) {
         out.push(
           err("INVALID_ROW_FILTER", kp, `Недопустимая ссылка «${value}»`, {
-            allowed: USER_ATTRS.map((a) => `$user.${a}`),
-            hint: "Используйте $user.id или $user.<атрибут пользователя>",
+            allowed: ROW_FILTER_USER_ATTRS.map((a) => `$user.${a}`),
+            hint: "Используйте $user.id или атрибут, который пользователь не меняет сам (телефон, email, Telegram)",
           }),
         );
       }
@@ -314,6 +338,9 @@ function checkRowFilter(
       }
     } else if (field?.type === "int" && !Number.isInteger(value)) {
       out.push(err("INVALID_ROW_FILTER", kp, "Значение фильтра должно быть целым числом"));
+    } else {
+      const p = literalProblem(value, t);
+      if (p) out.push(err("INVALID_ROW_FILTER", kp, `Значение фильтра: ${p}`));
     }
   }
 }
@@ -451,7 +478,29 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
       if (p.rowFilter) checkRowFilter(p.rowFilter, entity, pp, out);
     }
     const hasFilter = p.rowFilter !== undefined && Object.keys(p.rowFilter).length > 0;
-    if (publicRoles.has(p.role) && !hasFilter && (p.ops.includes("update") || p.ops.includes("delete"))) {
+    if (p.rowFilterOps !== undefined) {
+      if (!hasFilter)
+        out.push(
+          err("INVALID_ROW_FILTER", [...pp, "rowFilterOps"], "rowFilterOps задан без rowFilter", {
+            hint: "Добавьте rowFilter или уберите rowFilterOps",
+          }),
+        );
+      p.rowFilterOps.forEach((op, j) => {
+        if (!p.ops.includes(op))
+          out.push(
+            err("INVALID_ROW_FILTER", [...pp, "rowFilterOps", j], `Операция «${op}» не разрешена этой роли`, {
+              allowed: p.ops,
+              hint: "rowFilterOps — подмножество ops",
+            }),
+          );
+      });
+    }
+    // An op is row-restricted when the permission has a rowFilter and rowFilterOps (default: all ops) lists it.
+    const filtered = (op: PermissionOp) => hasFilter && (p.rowFilterOps ?? p.ops).includes(op);
+    if (
+      publicRoles.has(p.role) &&
+      ["update", "delete"].some((op) => p.ops.includes(op as PermissionOp) && !filtered(op as PermissionOp))
+    ) {
       out.push(
         err(
           "INVALID_ROW_FILTER",

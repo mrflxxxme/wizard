@@ -45,6 +45,8 @@ export interface CallOptionsHost {
   user: CurrentUser;
   /** "api" = POST /api/fn/:name: only public functions and allowed roles. "internal" = scheduler/workflows. */
   via?: "api" | "internal";
+  /** `_consent` from the request body (security/compliance.yaml#consent); the host validates its content. */
+  consent?: { policyVersion: string; textHash: string };
 }
 
 export interface CallResult {
@@ -299,6 +301,9 @@ export function createFunctionHost(o: FunctionHostOptions): FunctionHost {
         if (!functionAllowsRole(o.spec, name, user.role)) {
           throw new WizardError(user.id === null ? "UNAUTHENTICATED" : "FORBIDDEN");
         }
+        // Functions collecting personal data need `_consent` from non-admin callers.
+        const collectsPii = (meta as { collectsPii?: boolean }).collectsPii === true;
+        if (collectsPii && !user.isAdmin && !opts.consent) throw new WizardError("CONSENT_REQUIRED");
       }
       return invoke(name, args, user);
     },

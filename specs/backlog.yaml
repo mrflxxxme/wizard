@@ -1,7 +1,12 @@
-# Граф задач. Агенты берут задачу, у которой все deps закрыты. Одна группа parallel_group
-# может выполняться одновременно разными агентами (изолированные пакеты/файлы).
-# Поля: id, title, milestone, deps, specs, owner (роль агента), parallel_group, estimate_days, acceptance
-# owner: platform (backend/инфра), frontend, agents (LLM-харнесс), qa (тесты/гейты), docs
+# Граф задач — единственный исполняемый план. Агент берёт задачу со status: todo, у которой все deps в status: done
+# (порядок захвата и слияния — AGENTS.md «Порядок работы»). Задачи одной parallel_group правят разные каталоги.
+# Поля: id, title, milestone, deps, specs, owner, parallel_group, estimate_days, status, claimed_by, acceptance.
+#   specs: путь к файлу или файл#якорь (якорь = путь ключей YAML через точку; проверяет validate.mjs);
+#          «файл (slice --milestone M0)» — читать срез `node tools/specs/slice.mjs <файл> --milestone M0` (M0-19).
+#   owner: platform (backend/инфра), frontend, agents (LLM-харнесс), qa (тесты/гейты), docs, founder (действие основателя;
+#          агент такую задачу не берёт, а готовит материалы и сверяет её acceptance).
+#   status: todo | in_progress | done. claimed_by: id сессии агента (обязателен при in_progress).
+# Волны и критический путь M0 — milestones.yaml#milestones (M0.plan). Происхождение правок — docs/reviews/spec-audit/.
 tasks:
   # ---------------- M0: первый прототип ----------------
   - id: M0-01
@@ -10,12 +15,15 @@ tasks:
     deps: []
     specs: [specs/architecture.yaml, AGENTS.md]
     owner: platform
-    parallel_group: m0-a
+    parallel_group: m0-w0
     estimate_days: 0.5
+    status: done
+    claimed_by: null
     acceptance:
       - "`pnpm i && pnpm -r build && pnpm lint && pnpm test` проходят на пустых пакетах-заглушках"
       - "GitHub Actions workflow .github/workflows/ci.yml выполняет lint, typecheck, test, specs-validate"
       - "Скрипт `pnpm db:up` поднимает локальный Postgres 16 (pg_ctl в .data/pg, порт 5433) без Docker; `pnpm db:down` останавливает"
+      # dev.mjs, пакет e2e и e2e-джоб CI доделывает M0-27 (L2-08)
 
   - id: M0-02
     title: "packages/appspec: zod-схема, 1:1 с appspec.schema.json; семантические правила; зарезервированные имена"
@@ -23,8 +31,10 @@ tasks:
     deps: [M0-01]
     specs: [specs/appspec/appspec.schema.json, specs/appspec/ops.yaml]
     owner: platform
-    parallel_group: m0-b
+    parallel_group: m0-w0
     estimate_days: 1
+    status: done
+    claimed_by: appspec-agent
     acceptance:
       - "Тест: JSON Schema и zod принимают/отклоняют одинаково на 40+ фикстурах (valid/invalid) в packages/appspec/test/fixtures"
       - "Все semantic_rules из ops.yaml покрыты тестами с ожидаемым кодом ошибки"
@@ -35,8 +45,10 @@ tasks:
     deps: [M0-02]
     specs: [specs/appspec/ops.yaml]
     owner: platform
-    parallel_group: m0-c
+    parallel_group: m0-w0
     estimate_days: 1
+    status: done
+    claimed_by: appspec-agent
     acceptance:
       - "Каждая операция из ops.yaml имеет тест успеха и тест ошибки"
       - "Ошибки содержат path (JSON Pointer), code, message на русском и allowed там, где применимо"
@@ -47,12 +59,15 @@ tasks:
     deps: [M0-03]
     specs: [specs/appspec/ops.yaml]
     owner: platform
-    parallel_group: m0-d
+    parallel_group: m0-w0
     estimate_days: 1.5
+    status: done
+    claimed_by: appspec-agent
     acceptance:
       - "Интеграционный тест: спека «форум» (specs/appspec/examples/forum.json) → DDL+RLS применяются к схеме app_test_draft; вторая ревизия с добавленным полем применяется как аддитивная"
       - "Destructive-шаг при env=prod даёт DESTRUCTIVE_IN_PROD"
       - "RLS-тест: роль без read не видит строк даже при прямом SELECT с установленным контекстом"
+      # усиление литералов и ролей миграций — M0-29 (L3-01)
 
   - id: M0-05
     title: "packages/pii: детекторы (телефон РФ, email, карта Луна, паспорт РФ, СНИЛС, ИНН, ФИО по словарю имён), scrub с одноразовыми заглушками"
@@ -60,199 +75,855 @@ tasks:
     deps: [M0-01]
     specs: [specs/security/data-boundary.yaml]
     owner: platform
-    parallel_group: m0-b
+    parallel_group: m0-w0
     estimate_days: 1
+    status: in_progress
+    claimed_by: pii-agent
     acceptance:
       - "Recall ≥ 0.95 на наборе packages/pii/test/corpus.ru.jsonl (≥200 строк, генерируется синтетически), precision ≥ 0.9"
-      - "scrub() не возвращает никакой таблицы соответствия; заглушки вида [ТЕЛЕФОН], [EMAIL], [ФИО]"
+      - "Корпус содержит ≥ 50 жёстких негативов (номера заказов, даты, цены, ИНН юрлиц) — они не детектируются как ПДн"
+      - "Словарь ФИО встроен и синтетичен: ≥ 300 имён и ≥ 300 фамилий, без загрузки из сети"
+      - "scrub() не возвращает никакой таблицы соответствия; заглушки вида [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1] (data-boundary.yaml#scrub.placeholders)"
 
   - id: M0-06
     title: "packages/llm: провайдеры openai-compatible (Cloud.ru, Z.ai, Yandex), fixture-провайдер, роутер T0/T1 по callType и политике, учёт usage"
     milestone: M0
     deps: [M0-05]
-    specs: [specs/security/data-boundary.yaml, specs/agents/models.yaml]
+    specs: [specs/security/data-boundary.yaml, specs/agents/models.yaml, "specs/quality/eval.yaml#fixtures", "specs/architecture.yaml#interfaces"]
     owner: agents
-    parallel_group: m0-c
+    parallel_group: m0-w1
     estimate_days: 1.5
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Тест: callType из pii_forbidden_for_T1.always и import_mapping без containsPiiHint=false никогда не маршрутизируются в T1; при orgPolicy.ruOnly=true или региональном ограничении провайдера всё идёт в T0"
+      - "Тест: callType из pii_forbidden_for_T1.always и import_mapping без containsPiiHint=false никогда не маршрутизируются в T1; при orgPolicy.ruOnly=true всё идёт в T0"
+      - "Тест: orgPolicy.t1Restricted ≠ false (в том числе поле отсутствует) → T0 с routeReason=policy_region_restricted (fail-safe; L3-02)"
       - "Тест: перед отправкой в T1 сообщения проходят pii.scrub; найденные ПДн логируются только счётчиком категорий"
-      - "Fixture-провайдер воспроизводит записанные ответы по хешу запроса (tools/fixtures/*.jsonl); режим записи WIZARD_LLM_MODE=record"
-      - "thinking/reasoning выключен для вызовов с tools; structured output не используется"
+      - "Fixture-провайдер: suite=demo — по (callType, порядковый номер), suite=eval|unit — по sha256 канонического запроса (eval.yaml#fixtures); FIXTURE_MISS без сети; режим record дописывает tools/fixtures/<suite>/<name>.jsonl"
+      - "record отказывает, если бриф не из tools/eval/briefs или demo; T0-запросы пишутся в фикстуру после scrub (L3-07)"
+      - "Тест на локальном HTTP-сервере-заглушке: тело запроса с tools не содержит включённого thinking и response_format"
+      - "UsageSink (architecture.yaml#interfaces.usage_sink), по умолчанию .data/usage.jsonl"
+      - "Уровень сборки по умолчанию задаётся одним параметром реестра моделей (T1|T0) по правилу product.yaml#decisions.D2_w0_fallback; тест роутера на оба значения"
 
   - id: M0-07
     title: "packages/sdk: определение query/mutation/action, типизированный ctx.db, клиентские хуки useQuery/useMutation/useUser"
     milestone: M0
     deps: [M0-02]
-    specs: [specs/runtime/sdk.md]
+    specs: [specs/runtime/sdk.md, specs/appspec/appspec.schema.json]
     owner: platform
-    parallel_group: m0-c
+    parallel_group: m0-w0
     estimate_days: 1
+    status: in_progress
+    claimed_by: sdk-agent
     acceptance:
-      - "Пример functions/*.ts из specs/runtime/examples типизируется tsc против сгенерированных из спеки типов (generateTypes(spec))"
-      - "Клиентские хуки работают против мок-сервера в тесте (vitest + msw или локальный hono)"
+      - "tsc --noEmit с tsconfig.system на specs/runtime/examples/functions против generateTypes(forum.json) проходит; ctx.db.ticket.list({where:{status:'paid'}}) без индекса — ошибка tsc (test-d)"
+      - "packages/sdk/src/sdk.d.ts соответствует sdk.md §5; contract.test-d.ts покрывает каждый экспорт"
+      - "@wizard/sdk/codegen реэкспортирует generateTypes из @wizard/appspec; снапшот для forum.json"
+      - "Клиентские хуки против локального hono-мока: загрузка, ошибка с code, перезапрос по SSE invalidate"
 
   - id: M0-08
-    title: "packages/ui-kit: дизайн-токены + 8 компонентов ядра + AppShell"
+    title: "packages/ui-kit: основа — токены (themeToTokens/applyTokens), a11y-примитивы Button/Badge/Field, AppShell, DataSource + createMemoryDataSource, экспорт типов пропсов ВСЕХ компонентов M0 (реализации — заглушки для M0-25)"
     milestone: M0
-    deps: [M0-07]
-    specs: [specs/ui/ui-kit.yaml]
+    deps: [M0-02]
+    specs: ["specs/ui/ui-kit.yaml#scope", "specs/ui/ui-kit.yaml#tokens", "specs/ui/ui-kit.yaml#a11y", "specs/ui/ui-kit.yaml#responsive", "specs/ui/ui-kit.yaml#data_binding", "specs/ui/ui-kit.yaml#states", "specs/ui/ui-kit.yaml#components.AppShell"]
     owner: frontend
-    parallel_group: m0-d
-    estimate_days: 2
+    parallel_group: m0-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Каждый компонент из ui-kit.yaml экспортирован, имеет пропсы по спеке и сторис-страницу packages/ui-kit/demo (vite)"
-      - "Токены меняются через CSS-переменные без пересборки; тёмная тема"
-      - "Playwright-скриншот демо-страницы на 1280 и 390 px без горизонтального скролла"
+      - "ui-kit.yaml#tokens.acceptance (vitest контраста 16³, детерминизм themeToTokens, Playwright applyTokens < 50 мс, dark)"
+      - "packages/ui-kit/src/index.ts экспортирует все компоненты scope.M0 с типами пропсов по спеке; tsc проходит"
+      - "demo собирается из demo/stories/*.tsx (glob), одна история на компонент"
 
   - id: M0-09
-    title: "apps/runtime: data API по спеке (CRUD, фильтры, пагинация) с проверкой прав + RLS, dev-вход по ролям, раздача бандлов, функции (unsafe-local)"
+    title: "apps/runtime (ядро): хост-маршрутизация, FileRegistry, загрузка LoadedSystem, data API (CRUD, фильтры, пагинация) с правами + контекст RLS, dev-login, /_wizard/health, /_wizard/spec (RoleSpec); createRuntimeApp"
     milestone: M0
     deps: [M0-04, M0-07]
-    specs: [specs/runtime/runtime.yaml]
+    specs: ["specs/runtime/runtime.yaml#routing", "specs/runtime/runtime.yaml#system_loading", "specs/runtime/runtime.yaml#postgres", "specs/runtime/runtime.yaml#data_api", "specs/runtime/runtime.yaml#permissions", "specs/runtime/runtime.yaml#auth.dev_login_M0", "specs/runtime/runtime.yaml#service_endpoints", "specs/architecture.yaml#interfaces", specs/runtime/sdk.md, specs/appspec/ops.yaml, specs/platform/deploy.yaml]
     owner: platform
-    parallel_group: m0-e
-    estimate_days: 2
+    parallel_group: m0-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Тест прав: для спеки «форум» матрица role×entity×op даёт ожидаемые 200/403 (генерируется из permissions)"
-      - "Функция из examples вызывается через /api/fn/:name; бесконечный цикл прерывается за ≤5 с (unsafe-local), лимиты по видам — specs/runtime/sdk.md; сеть недоступна"
-      - "Сервер отдаёт собранный бандл системы на http://<system>--draft.localhost:4100"
-      - "/_wizard/bridge.js реализует preview_contract (set-role, apply-theme-tokens); esbuild-плагин проставляет data-wz-id и пишет wz-map.json; /_wizard/spec отдаёт метаданные для роли"
+      - "Матрица role×entity×op для форума (генерируется из permissions) даёт ожидаемые 200/201/403/404 через createRuntimeApp().fetch"
+      - "RLS: прямой SELECT под wizard_runtime с контекстом роли без read → 0 строк"
+      - "Две системы на разных *.localhost-хостах не видят данных друг друга"
+      - "Модуль apps/runtime/src/data/access.ts (DataAccess) экспортирован; маршруты /api/fn, /api/events, /_wizard/qr, статика смонтированы из src/routes/{fn,events,qr,static}.ts (заглушки 501) — их реализуют M0-23 и M0-24"
+      - "Host ∉ {localhost, 127.0.0.1, [::1], *.localhost} (с портом) → 421; при WIZARD_UNSAFE_LOCAL_EXEC=1 или dev-входе запрос с X-Forwarded-*, Forwarded или CF-* → 403 (L3-10)"
+      - "Старт с WIZARD_DEV_LOGIN=1 отказывает при NODE_ENV=production, KUBERNETES_SERVICE_HOST или привязке не к loopback; next/returnTo — только путь ^/(?![/\\\\]) (L3-11)"
+      - "Все не-GET, кроме /_wizard/hooks/*, требуют Origin = хост системы и X-Wizard-Request, включая /_wizard/qr/*; CORS-заголовки не отдаются (L3-14)"
 
   - id: M0-10
-    title: "packages/gates: G0 (схема+семантика, аддитивность, tsc typecheck сгенерированного кода, esbuild build, запрет импортов кроме @wizard/sdk и @wizard/ui-kit, запрет eval/Function/import())"
+    title: "packages/gates: G0 (схема+семантика, аддитивность, tsc typecheck сгенерированного кода, сборка через packages/build, запрет импортов кроме @wizard/sdk и @wizard/ui-kit, запрет eval/Function/import())"
     milestone: M0
-    deps: [M0-04, M0-07]
-    specs: [specs/quality/gates.yaml]
+    deps: [M0-04, M0-07, M0-08, M0-20, M0-28]
+    specs: ["specs/quality/gates.yaml#report", "specs/quality/gates.yaml#G0", "specs/agents/builder.yaml#code_conventions", specs/runtime/sdk.md, "specs/architecture.yaml#interfaces.gate_context", specs/security/isolation.yaml, specs/connectors/connector-interface.md]
     owner: qa
-    parallel_group: m0-e
-    estimate_days: 1.5
+    parallel_group: m0-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Каждая проверка G0 имеет положительную и отрицательную фикстуру; отчёт {passed, checks[{id, status, message_ru, file?, line?}]}"
-      - "Время G0 на спеке «форум» ≤ 20 с на 4 vCPU"
+      - "Каждая blocker-проверка G0 имеет положительную и отрицательную фикстуру в packages/gates/test/fixtures/<checkId>/; warning-проверки — since: M1"
+      - "runGates('G0') на форуме (forum.json + specs/runtime/examples) → passed; отчёт = GateReport (gates.yaml#report)"
+      - "Время G0 на форуме записывается в отчёт; тест падает при > 60 с (цель ≤ 20 с — мягкая)"
+      - "G0-IMP выполняется до любого tsc/esbuild: при провале сборка не запускается (L3-13)"
+      - "G0-SEC-01: блок на computed member с нелитеральным ключом у document/navigator/location/window/Reflect/Object.getOwnPropertyDescriptor и на parent, top, opener, postMessage, window.name в ui/** (L3-14, L3-16)"
 
   - id: M0-11
-    title: "packages/gates: G1-базовый — permission-чеки и сценарии приёмки (scenario DSL) против runtime"
+    title: "packages/gates: G1-базовый — permission-чеки и сценарии приёмки (scenario DSL) против runtime; generateSeed"
     milestone: M0
-    deps: [M0-09, M0-10]
-    specs: [specs/quality/gates.yaml]
+    deps: [M0-09, M0-10, M0-23, M0-29]
+    specs: ["specs/quality/gates.yaml#G1", "specs/quality/gates.yaml#scenario_dsl", "specs/agents/qa.yaml#seed", "specs/agents/qa.yaml#checks.permission_auto", "specs/architecture.yaml#interfaces", specs/runtime/runtime.yaml]
     owner: qa
-    parallel_group: m0-f
-    estimate_days: 1.5
+    parallel_group: m0-w3
+    estimate_days: 2
+    status: todo
+    claimed_by: null
     acceptance:
-      - "acceptance типа permission и scenario из спеки «форум» исполняются и дают корректный отчёт; намеренно сломанная спека проваливает ровно ожидаемые проверки"
+      - "gates.generateSeed(spec, key) детерминирован и проходит DLP (qa.yaml#seed)"
+      - "На форуме: AC1–AC4, AC7 → pass; AC5, AC6 → skip (milestone); G1-AC-COVER pass"
+      - "Намеренно сломанная спека (участнику открыт read ticket без rowFilter) проваливает ровно PC-participant-ticket-row и SC-AC… из списка ожиданий теста"
+      - "После набора тестов count(schemas like 'app_%_g1_%') = 0"
 
   - id: M0-12
     title: "packages/agents: оркестратор (анализ задачи, развилки ≤7 с вариантами и рекомендацией, карточка системы, оценка кредитов)"
     milestone: M0
-    deps: [M0-06, M0-03]
-    specs: [specs/agents/orchestrator.yaml, specs/agents/models.yaml]
+    deps: [M0-06, M0-21]
+    specs: [specs/agents/orchestrator.yaml, "specs/agents/models.yaml#call_policy", "specs/architecture.yaml#interfaces", specs/security/data-boundary.yaml]
     owner: agents
-    parallel_group: m0-d
-    estimate_days: 1.5
+    parallel_group: m0-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
     acceptance:
-      - "В fixture-режиме бриф «форум» даёт 3–7 вопросов, у каждого 2–4 варианта и ровно один recommended"
-      - "Карточка системы валидна по схеме SystemCard (specs/agents/orchestrator.yaml#system_card) и содержит оценку и потолок кредитов"
+      - "Fixture demo/forum: бриф → 3–7 вопросов, у каждого 2–4 варианта и ровно один recommended; forkId ∈ fork_taxonomy"
+      - "Карточка валидна по SystemCard (orchestrator.yaml#system_card); credits.expected ∈ [12, 35]; табличный тест state_machine"
+      - "packages/agents/src/core (tool-loop, zod→JSON Schema, события) экспортирован как @wizard/agents/core"
 
   - id: M0-13
     title: "packages/agents: строитель (инструменты submit_plan, apply_ops, write_file, read_file, list_files, run_gate, get_ui_kit_docs, get_sdk_docs, ask_orchestrator; цикл исправления; бюджеты; эскалация после 5 ошибок подряд)"
     milestone: M0
-    deps: [M0-12, M0-10]
-    specs: [specs/agents/builder.yaml, specs/agents/models.yaml]
+    deps: [M0-10, M0-12, M0-21]
+    specs: [specs/agents/builder.yaml, "specs/agents/models.yaml#call_policy", "specs/platform/workflows.yaml#events", "specs/architecture.yaml#interfaces.agent_host", specs/appspec/ops.yaml, specs/runtime/sdk.md, specs/ui/ui-kit.yaml, specs/quality/gates.yaml]
     owner: agents
-    parallel_group: m0-f
-    estimate_days: 2.5
+    parallel_group: m0-w3
+    estimate_days: 3
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Fixture-прогон «форум» и «кондитерская» доходит до G0=passed без вмешательства"
-      - "Бюджет: прогон останавливается на потолке кредитов с событием budget_exceeded"
+      - "runBuild(host) на demo/forum и demo/bakery доходит до G0=passed без вмешательства (G1/QA в host — фейки)"
+      - "cap=1 → budget_exceeded до превышения; 5 провалов typecheck подряд → needs_input с кнопками builder.yaml#escalation, 6-го LLM-вызова нет"
       - "Инструменты — zod-схемы; ошибки инструментов возвращаются модели структурно (как OpsError)"
+      - "read_file('spec.json') отдаёт compliance.operatorName/operatorContact/operatorInn/consentText/retentionWaiver.reason как [ОПЕРАТОР]/[СКРЫТО] (L3-06)"
+      - "Экспорт @wizard/agents/builder (sub-path), общий index.ts не правится (L2-19)"
 
   - id: M0-14
     title: "packages/agents: QA-агент — из acceptance карточки генерирует checks (permission/scenario) и объясняет провалы строителю"
     milestone: M0
     deps: [M0-11, M0-12]
-    specs: [specs/agents/qa.yaml]
+    specs: [specs/agents/qa.yaml, "specs/quality/gates.yaml#scenario_dsl"]
     owner: agents
-    parallel_group: m0-g
+    parallel_group: m0-w4
     estimate_days: 1
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Для карточки «форум» генерирует ≥6 проверок, все исполнимы G1"
+      - "На золотой ревизии форума: ≥1 SC-проверка на каждый AC scenario/constraint с milestone ≤ M0 (AC1–AC4), все pass в G1; PC-проверки из permission AC (AC7) — pass"
+      - "Фикстура с открытым delete у участника → Explanation {category: permission_too_broad, fix.kind: ops}"
+      - "Повторный G1 без изменения AC не вызывает LLM (кеш determinism)"
+      - "Экспорт @wizard/agents/qa (sub-path)"
 
   - id: M0-15
-    title: "apps/platform-api: системы, ревизии, прогоны (in-process очередь), SSE событий, сборка бандла, раздача превью"
+    title: "apps/platform-api: миграции M0-таблиц, API M0, in-process очередь с runStep, SSE событий, блокировка; агенты — через agent_host (в тестах фейки)"
     milestone: M0
-    deps: [M0-13, M0-09]
-    specs: [specs/platform/api.yaml, specs/platform/workflows.yaml, specs/platform/db.yaml]
+    deps: [M0-03, M0-20]
+    specs: ["specs/platform/api.yaml (slice --milestone M0)", "specs/platform/workflows.yaml#execution", "specs/platform/workflows.yaml#run_lifecycle", "specs/platform/workflows.yaml#system_stage", "specs/platform/workflows.yaml#events", "specs/platform/db.yaml (slice --milestone M0)", "specs/architecture.yaml#interfaces", specs/platform/deploy.yaml]
     owner: platform
-    parallel_group: m0-g
-    estimate_days: 2
+    parallel_group: m0-w1
+    estimate_days: 3
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Контрактный тест API против specs/platform/api.yaml (все маршруты M0)"
-      - "События прогона соответствуют specs/platform/workflows.yaml#events и доходят до клиента по SSE"
+      - "Контрактный тест (ajv по components.schemas + свой сопоставитель путей) на все операции x-milestone=M0"
+      - "Колонки M0-таблиц после migrate совпадают с db.yaml (тест парсит YAML)"
+      - "Прогон с фейковым builder эмитит события, валидные по workflows.yaml#events, и они доходят по SSE; рестарт → WORKER_RESTARTED"
+      - "Host вне loopback-списка → 421; X-Forwarded-*/Forwarded/CF-* в dev-режиме → 403 (L3-10)"
 
   - id: M0-16
-    title: "apps/platform-web: чат, вопросы-кнопки, карточка системы, журнал сборки, гейты, превью в iframe с переключением ролей, панель «Стиль»"
+    title: "apps/platform-web: чат, вопросы-кнопки, карточка системы, журнал сборки, гейты, превью в iframe с переключением ролей, панель «Стиль» (на мок-API)"
     milestone: M0
-    deps: [M0-08, M0-15]
-    specs: [specs/ui/platform-screens.yaml, specs/ui/ui-kit.yaml]
+    deps: [M0-08]
+    specs: ["specs/ui/platform-screens.yaml (slice --milestone M0)", "specs/ui/ui-kit.yaml#tokens", "specs/platform/api.yaml (slice --milestone M0)", "specs/platform/workflows.yaml#events", specs/agents/orchestrator.yaml]
     owner: frontend
-    parallel_group: m0-h
-    estimate_days: 2.5
+    parallel_group: m0-w1
+    estimate_days: 3.5
+    status: todo
+    claimed_by: null
     acceptance:
-      - "Экраны 1–6 из docs/wizard-concept-v3.html реализованы в объёме M0 по specs/ui/platform-screens.yaml (визуальное сходство — не требование, структура — да)"
-      - "Изменение токена в «Стиле» мгновенно отражается в превью без нового прогона"
+      - "Экраны S1–S6: все test_ids из platform-screens.yaml присутствуют; Playwright против мок-API (msw или hono) и записанной ленты событий"
+      - "Изменение токена в «Стиле» отражается в превью-заглушке через postMessage apply-theme-tokens без перезагрузки iframe"
+      - "Мост: сообщения с чужим origin/source отбрасываются; payload из превью валидируется zod, error.message ≤ 300 и рендерится только как текст (L3-16)"
 
   - id: M0-17
-    title: "Демо-фикстуры и e2e: записать fixture-прогоны «форум» и «кондитерская»; Playwright e2e от промпта до превью"
+    title: "Демо и e2e: Playwright от промпта до превью и QR-входа на золотых фикстурах форума"
     milestone: M0
-    deps: [M0-16]
-    specs: [specs/quality/eval.yaml]
+    deps: [M0-16, M0-26, M0-27]
+    specs: [specs/quality/eval.yaml, specs/ui/platform-screens.yaml, specs/appspec/examples/forum.json]
     owner: qa
-    parallel_group: m0-i
-    estimate_days: 1
+    parallel_group: m0-w6
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
     acceptance:
-      - "`pnpm e2e` проходит на чистой машине без сетевого доступа к LLM"
-      - "README раздел «Запуск прототипа» с 3 командами"
+      - "`pnpm e2e` (fixture demo/forum) без сети к LLM: S1 → «Остальное по рекомендации» → «Строить» → G0 и G1 passed → превью → смена акцента → участник регистрируется с согласием → QrTicket → волонтёр сканирует: ok, повтор: duplicate"
+      - "README: раздел «Запуск прототипа» с 3 командами"
+      # e2e «кондитерской» (S9) — M1, неблокирующий (L2-26)
 
   - id: M0-18
-    title: "Интеграция eval-стенда tools/eval с настоящим харнессом (оркестратор+строитель+G0) в live-режиме"
+    title: "Интеграция eval-стенда tools/eval с настоящим харнессом (оркестратор+строитель+G0); fixture в CI, live — вручную"
     milestone: M0
     deps: [M0-13]
-    specs: [specs/quality/eval.yaml]
+    specs: [specs/quality/eval.yaml, specs/appspec/appspec.schema.json]
     owner: qa
-    parallel_group: m0-g
+    parallel_group: m0-w3
     estimate_days: 1
+    status: todo
+    claimed_by: null
     acceptance:
-      - "`node tools/eval/run.mjs --harness --models glm-5.1,glm-5.3` выдаёт таблицу: доля G0=passed, токены, ₽, время (при наличии ключей)"
+      - "CI: `node tools/eval/run.mjs --harness --llm-mode=fixture --briefs=ev-01-forum-registration` выдаёт таблицу {g0_pass, g0g1_pass, tokens, ₽, мин}"
+      - "Live (после E-ACCESS, вручную): отчёт tools/eval/results/<дата>-harness.md закоммичен; ≥1 из 12 брифов G0=passed"
+      - "Брифы переименованы cg-* → gd-* (eval.yaml#briefs.format); ≥ 4 из 12 брифов — горизонтальные, вне двух полигонов (L4-28)"
+      - "tools/eval валидирует AppSpec по specs/appspec/appspec.schema.json, своей схемы нет (L1-52)"
+      - "≥ 4 брифа содержат канарейки (ФИО латиницей, @handle, телефон не РФ); метрика pii_leaks считает их вхождения в T1-payload, порог 0 (L3-04)"
+
+  - id: M0-19
+    title: "tools/specs/slice.mjs (срезы спек по якорю и вехе) + .gitattributes (merge=union для CHANGELOG)"
+    milestone: M0
+    deps: []
+    specs: [specs/README.md, AGENTS.md, specs/backlog.yaml]
+    owner: docs
+    parallel_group: m0-w0
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "`node tools/specs/slice.mjs <file>[#a.b] [--milestone M0]` печатает поддерево; для api.yaml оставляет операции x-milestone ≤ M0 и транзитивно нужные components.schemas; для db.yaml/ui-kit.yaml/platform-screens.yaml — элементы с milestone ≤ M0"
+      - "`node tools/specs/slice.mjs --task M0-15` печатает объединение specs задачи; объём ≤ 50% полного текста файлов"
+      - "validate.mjs проверяет, что якоря в backlog.specs существуют (сделано в аудите 2026-09-30; тест на битый якорь)"
+      - "В корне .gitattributes со строкой `specs/CHANGELOG.md merge=union`"
+
+  - id: M0-20
+    title: "packages/build: esbuild-сборка системы (ui + functions), плагин wz-id, wz-map.json, tsconfig.system, writeArtifact"
+    milestone: M0
+    deps: [M0-02]
+    specs: ["specs/architecture.yaml#interfaces.build_system", specs/runtime/sdk.md, "specs/ui/ui-kit.yaml#wz_id", "specs/runtime/runtime.yaml#system_loading", "specs/runtime/runtime.yaml#static", specs/security/isolation.yaml]
+    owner: platform
+    parallel_group: m0-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Сборка форума (forum.json + specs/runtime/examples) → раскладка .data/artifacts/<id>/<rev>/…; manifest.json содержит specHash и bundleKey"
+      - "wzId стабилен: повторная сборка того же исходника даёт идентичный wz-map.json; правка другого файла не меняет wzId в этом"
+      - "env=prod: в бандле нет wz-map.json и bridge.js; сборка без сети"
+      - "Сборка в копии ревизии (absWorkingDir); onResolve отклоняет пути вне ui/** и functions/** и пакеты кроме @wizard/sdk, @wizard/ui-kit; loaders только ts/tsx; define/env не пробрасываются. Escape-тест `import k from '../../../.env?raw'` → ошибка (L3-13)"
+
+  - id: M0-21
+    title: "Золотые фикстуры demo/forum: tools/fixtures/gen-golden.mjs, specToOps, golden/forum.yaml (Analysis, ответы, карточка, план, сценарии QA)"
+    milestone: M0
+    deps: [M0-03]
+    specs: ["specs/quality/eval.yaml#fixtures", "specs/agents/orchestrator.yaml#schemas", "specs/agents/orchestrator.yaml#system_card", "specs/agents/builder.yaml#tools", "specs/agents/qa.yaml#checks", specs/appspec/ops.yaml]
+    owner: qa
+    parallel_group: m0-w1
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "specToOps(forum.json) + applyOps на emptySpec → спека, эквивалентная forum.json (deep-equal без порядка)"
+      - "gen-golden forum детерминирован (два запуска — байт-в-байт); фикстуры проходят pii.detect = 0 и поиск секретов = 0"
+      - "Порядок callType в demo/forum.jsonl: interview, interview, card, plan, build_ops×N, build_code×M, qa_generate"
+
+  - id: M0-22
+    title: "Пример «кондитерская»: specs/runtime/examples/bakery/{functions,ui} (calcPrice, freeSlots, placeOrder, 4 страницы) + golden/bakery.yaml + demo/bakery.jsonl"
+    milestone: M0
+    deps: [M0-07, M0-08, M0-21]
+    specs: [specs/appspec/examples/bakery.json, specs/runtime/sdk.md, "specs/ui/platform-screens.yaml#screens.S9"]
+    owner: frontend
+    parallel_group: m0-w2
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "tsc (tsconfig.system) на examples/bakery против generateTypes(bakery.json) проходит"
+      - "gen-golden bakery детерминирован"
+
+  - id: M0-23
+    title: "apps/runtime: функции — изолированный исполнитель (WIZARD_UNSAFE_LOCAL_EXEC), ctx.db/systemDb поверх DataAccess, лимиты, SERIALIZABLE с повторами, scheduler → _w_jobs (без исполнения), /api/fn"
+    milestone: M0
+    deps: [M0-09, M0-20]
+    specs: ["specs/runtime/runtime.yaml#functions", specs/runtime/sdk.md, "specs/architecture.yaml#interfaces.runtime_handle", specs/security/isolation.yaml]
+    owner: platform
+    parallel_group: m0-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Функции из specs/runtime/examples вызываются через /api/fn; fetch недоступен; бесконечный цикл прерывается ≤ 5 с"
+      - "20 параллельных registerTicket при capacity=5 → ровно 5 билетов"
+      - "query через ctx.db от participant не видит чужих билетов, через ctx.systemDb — видит; 4001 чтение → LIMIT_EXCEEDED"
+      - "Исполнитель — дочерний процесс Node 22 с --permission и --allow-fs-read только на каталог бандла, без child_process и worker; функции хоста в vm-контекст не передаются. Escape-тест this.constructor.constructor('return process')() → process недоступен (L3-12)"
+
+  - id: M0-24
+    title: "apps/runtime: превью — статика бандлов, /_wizard/bridge.js (preview_contract), SSE /api/events (in-process), QR online (/_wizard/qr/check, выдача qr_token), CONSENT_REQUIRED минимально"
+    milestone: M0
+    deps: [M0-09, M0-20, M0-28]
+    specs: ["specs/runtime/runtime.yaml#static", "specs/runtime/runtime.yaml#realtime", "specs/ui/platform-screens.yaml#preview_contract", "specs/connectors/qr.yaml#token", "specs/connectors/qr.yaml#endpoints", "specs/connectors/qr.yaml#checkin_algorithm", specs/connectors/connector-interface.md]
+    owner: platform
+    parallel_group: m0-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Бандл форума отдаётся на http://<slug>--draft.localhost:4100; bridge.js: set-role, apply-theme-tokens, чужой origin игнорируется"
+      - "Создание билета: организатор получает invalidate с id, другой участник — без id, посетитель — ничего"
+      - "AC4 форума через HTTP: второй check того же payload → duplicate; 20 параллельных check → ровно один ok"
+      - "qr_token генерирует только runtime (формат qr.yaml#token); значение в теле create → 422 FIELD_READONLY (L3-30)"
+
+  - id: M0-25
+    title: "packages/ui-kit: компоненты M0 — Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport; sdkDataSource; демо"
+    milestone: M0
+    deps: [M0-07, M0-08]
+    specs: ["specs/ui/ui-kit.yaml#components (slice --milestone M0)", "specs/ui/ui-kit.yaml#states", "specs/ui/ui-kit.yaml#wz_id", specs/runtime/sdk.md]
+    owner: frontend
+    parallel_group: m0-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Каждый компонент — acceptance из своего раздела ui-kit.yaml (Playwright на демо «форум»/«кондитерская» через createMemoryDataSource)"
+      - "Скриншоты 1280 и 390 px, light/dark, scrollWidth ≤ innerWidth"
+      - "tsc на specs/runtime/examples/ui против типов ui-kit и generateTypes(forum.json) проходит"
+
+  - id: M0-26
+    title: "Интеграция: platform-api ← orchestrator/builder/QA/gates/build/runtime (agent_host, DbRegistry, migrate_draft, seed_draft, bundle_and_reload); золотые прогоны форума и кондитерской"
+    milestone: M0
+    deps: [M0-12, M0-13, M0-14, M0-15, M0-23, M0-24, M0-29]
+    specs: ["specs/platform/workflows.yaml#workflows.interview_turn", "specs/platform/workflows.yaml#workflows.build", "specs/platform/workflows.yaml#events", "specs/architecture.yaml#interfaces"]
+    owner: platform
+    parallel_group: m0-w5
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Fixture demo/forum через API: POST /systems → answers → approve → run_finished succeeded; G0 и G1 passed; каждое событие валидно по workflows.yaml#events (ajv)"
+      - "После прогона draft-схема содержит seed и dev-пользователей; /_wizard/health отдаёт revision = preview_revision"
+      - "demo/bakery доходит до G0=passed; журнал usage: ни одной T1-записи с callType из pii_forbidden_for_T1.always"
+      - "Миграции draft исполняет роль мигратора, которая не владеет схемой platform и не superuser (architecture.yaml#data_stores.db_roles)"
+
+  - id: M0-27
+    title: "e2e и dev-оркестрация: пакет packages/e2e (@wizard/e2e, Playwright), scripts/dev.mjs (db:up, tsx apps, vite, ожидание health), dev-скрипты apps, CI-джоб e2e, CI-проверки SQL и лицензий"
+    milestone: M0
+    deps: [M0-01]
+    specs: [AGENTS.md, "specs/architecture.yaml#stack", specs/milestones.yaml]
+    owner: platform
+    parallel_group: m0-w0
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "`pnpm dev` поднимает заглушки platform-api :4000, runtime :4100, platform-web :5173 и ждёт их health; Ctrl-C гасит всё"
+      - "`pnpm e2e` запускает smoke-тест Playwright (chromium из PLAYWRIGHT_BROWSERS_PATH или установленный в CI)"
+      - "CI: отдельный джоб e2e с `playwright install --with-deps chromium`; артефакты — отчёт и скриншоты только fixture-прогонов"
+      - "CI-проверка кода (не спек): `SET ` без LOCAL, set_config(…, false), pg_advisory_lock без _xact_, LISTEN — ошибка (L3-21)"
+      - "CI-проверка: строки FSL-1.1 и копирайт Convex Inc. в исходниках (кроме npm-пакета convex) — ошибка (L3-40)"
+
+  - id: M0-28
+    title: "packages/connectors (ядро M0): configSchema, validateSpec и secrets всех четырёх коннекторов; QR — подпись и проверка токена; действия M1/M2 — test-mode заглушки, /api/pay в M0 — mock-оплата"
+    milestone: M0
+    deps: [M0-02]
+    specs: [specs/connectors/connector-interface.md, specs/connectors/qr.yaml, specs/connectors/yookassa.yaml, specs/connectors/email.yaml, specs/connectors/telegram.yaml, specs/milestones.yaml]
+    owner: platform
+    parallel_group: m0-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "validateSpec каждого коннектора на forum.json и bakery.json → без ошибок; отрицательные фикстуры по каждому правилу config_schema"
+      - "QR: sign/verify по qr.yaml#token; подделанная подпись → bad_signature; ротация kid"
+      - "mock-оплата M0: подтверждение переводит запись в paidStatus так же, как payment.succeeded (L1-23)"
+
+  - id: M0-29
+    title: "packages/appspec (усиление после M0-04): типизированные литералы в DDL/RLS, fuzz-тест, ограничения $user.<attr> и полей compliance от агента, роль мигратора"
+    milestone: M0
+    deps: [M0-04]
+    specs: [specs/appspec/ops.yaml, specs/appspec/appspec.schema.json, "specs/architecture.yaml#data_stores"]
+    owner: platform
+    parallel_group: m0-w0
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "toDDL/toRLS не интерполируют значения: литералы только через literal(value, fieldType) (число — Number.isFinite; строка — '→'', без \\0 и E-строк; bool/date — проверка формата), идентификаторы — только quoteIdent (L3-01)"
+      - "Property/fuzz-тест: значения `'); DROP SCHEMA platform; --`, `$$`, `\\\\` в default, min/max и rowFilter не меняют число SQL-выражений; на реальном Postgres схема platform цела"
+      - "Интеграционный тест: миграцию выполняет роль без прав на схему platform и без superuser; попытка DDL в platform → ошибка прав"
+      - "$user.<attr> в rowFilter — только id, role и атрибуты из readonlyFields users у всех не-isAdmin ролей; иначе INVALID_ROW_FILTER (display_name запрещён) (L3-20)"
+      - "set_compliance с author='agent': разрешены только consentTemplateId и policyPage; operator*, retentionWaiver, свободный consentText → OWNER_ONLY_FIELD (L3-06)"
+
+  - id: M0-30
+    title: "Применить итог eval недели 0 по правилу F2: уровень сборки по умолчанию (T1 или T0) и тексты UI"
+    milestone: M0
+    deps: [M0-06, M0-16]
+    specs: [specs/product.yaml, specs/agents/models.yaml, specs/quality/eval.yaml, specs/ui/platform-screens.yaml]
+    owner: qa
+    parallel_group: m0-w2
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Отчёт tools/eval/results/week0.md: доля валидных AppSpec с первой попытки и скор GLM-5.3 против лучшей T0-модели на одних брифах"
+      - "Параметр уровня сборки по умолчанию выставлен по D2_w0_fallback (разрыв < 10 п. п. → T0); запись в CHANGELOG без эскалации"
+      - "При T0 по умолчанию S1/S3 показывают «Сборка: модели в РФ» (тест platform-web)"
 
   # ---------------- M1: альфа ----------------
-  - { id: M1-01, title: "DBOS Transact: перенос прогонов в durable-воркфлоу (apps/worker), события в таблицу run_events", milestone: M1, deps: [M0-15], specs: [specs/platform/workflows.yaml, specs/platform/db.yaml], owner: platform, parallel_group: m1-a, estimate_days: 2, acceptance: ["kill -9 воркера посреди сборки → прогон продолжается с последнего шага"] }
-  - { id: M1-02, title: "Аккаунты (email OTP для платформы), организации, роли owner/editor/viewer, приглашения, блокировка сборки на систему", milestone: M1, deps: [M0-15], specs: [specs/platform/api.yaml, specs/platform/db.yaml, specs/platform/billing.yaml], owner: platform, parallel_group: m1-a, estimate_days: 2, acceptance: ["Публикует только owner; вторая сборка встаёт в очередь с событием lock_waiting"] }
-  - { id: M1-03, title: "Кредиты: ledger, оценка и потолок в карточке, списание по факту, Free 100/30д + 25/мес", milestone: M1, deps: [M1-02], specs: [specs/platform/billing.yaml], owner: platform, parallel_group: m1-b, estimate_days: 1.5, acceptance: ["Сумма ledger = сумма usage × курс; превышение потолка останавливает прогон"] }
-  - { id: M1-04, title: "Draft/prod: публикация с аддитивной миграцией, откат ревизии, diff ревизий на человеческом языке", milestone: M1, deps: [M0-15], specs: [specs/platform/workflows.yaml, specs/appspec/ops.yaml, specs/platform/db.yaml], owner: platform, parallel_group: m1-a, estimate_days: 2, acceptance: ["e2e: prod с данными → новая ревизия с полем → публикация → откат; данные целы"] }
-  - { id: M1-05, title: "Вход конечных пользователей: phone OTP (dev-sender), email OTP, Telegram Login", milestone: M1, deps: [M0-09], specs: [specs/runtime/runtime.yaml], owner: platform, parallel_group: m1-b, estimate_days: 1.5, acceptance: ["Три метода входа работают в e2e c dev-отправителем"] }
-  - { id: M1-06, title: "Коннекторы email и Telegram (уведомления без ПДн по умолчанию)", milestone: M1, deps: [M0-09], specs: [specs/connectors/email.yaml, specs/connectors/telegram.yaml], owner: platform, parallel_group: m1-b, estimate_days: 1.5, acceptance: ["G2-правило: текст Telegram-шаблона без полей pii≠none"] }
-  - { id: M1-07, title: "Граница данных полностью: импорт таблиц через схему+синтетику, журнал маршрутизации, переключатель «только РФ»", milestone: M1, deps: [M0-06], specs: [specs/security/data-boundary.yaml], owner: agents, parallel_group: m1-b, estimate_days: 2, acceptance: ["Тест: реальные значения импортированной таблицы ни разу не попадают в запросы T1"] }
-  - { id: M1-08, title: "Вкладка «Код» (только чтение) и понятный diff в UI", milestone: M1, deps: [M1-04], specs: [specs/ui/platform-screens.yaml, specs/platform/api.yaml], owner: frontend, parallel_group: m1-c, estimate_days: 1, acceptance: ["Diff ревизии отображается списком человеческих изменений"] }
-  - { id: M1-09, title: "G1 полный: генерация сценариев QA-агентом, seed-данные, отчёт с объяснениями", milestone: M1, deps: [M0-14], specs: [specs/quality/gates.yaml], owner: qa, parallel_group: m1-c, estimate_days: 1.5, acceptance: ["Eval: ≥80% брифов проходят G0+G1 без человека (live, лучшая модель)"] }
-  - { id: M1-10, title: "Eval-стенд в CI (fixture) + ночной live-прогон при наличии ключей", milestone: M1, deps: [M0-18], specs: [specs/quality/eval.yaml], owner: qa, parallel_group: m1-c, estimate_days: 1, acceptance: ["Регрессия доли G0/G1 >5 п.п. роняет CI"] }
+  - id: M1-01
+    title: "DBOS Transact: перенос прогонов в durable-воркфлоу (apps/worker), события в таблицу run_events"
+    milestone: M1
+    deps: [M0-15]
+    specs: [specs/platform/workflows.yaml, specs/platform/db.yaml, specs/platform/deploy.yaml]
+    owner: platform
+    parallel_group: m1-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "kill -9 воркера посреди сборки → прогон продолжается с последнего шага"
+      - "Секрет пишется в хранилище в HTTP-обработчике, в воркфлоу — только secret://name; выходы LLM-шагов в dbos.* — ссылки, не содержимое; очистка dbos.* завершённых воркфлоу через 30 дней (L3-09)"
+      - "Логгер — allowlist полей: ошибки PG → {sqlstate, constraint}, ошибки провайдеров → {status, code}; канареечный e2e + grep по логам всех процессов = 0 находок (L3-08)"
+
+  - id: M1-02
+    title: "Аккаунты (email OTP для платформы), организации, роли owner/editor/viewer, приглашения, блокировка сборки на систему, регион организации"
+    milestone: M1
+    deps: [M0-15]
+    specs: [specs/platform/api.yaml, specs/platform/db.yaml, specs/platform/billing.yaml, specs/security/data-boundary.yaml]
+    owner: platform
+    parallel_group: m1-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Публикует только owner; вторая сборка встаёт в очередь с событием lock_waiting"
+      - "orgs.region_code и orgs.t1_restricted: префикс ИНН 90–95 или регион при регистрации из списка ограничений → t1_restricted=true; регион неизвестен и IP входа из ограниченного региона → true (fail-safe). Список регионов — E-LEGAL (L3-02)"
+      - "Контрактный тест IDOR: id чужой организации (system/run/file/revision/events) → 404; cookie __Host-wizard_session без Domain (L3-17)"
+
+  - id: M1-03
+    title: "Кредиты: ledger, оценка и потолок в карточке, списание по факту, Free 100/30д + 25/мес"
+    milestone: M1
+    deps: [M1-02]
+    specs: [specs/platform/billing.yaml, specs/product.yaml]
+    owner: platform
+    parallel_group: m1-b
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Сумма ledger = сумма usage × курс; превышение потолка останавливает прогон"
+      - "Толкования D10 (product.yaml#decisions.D10_interpretations) покрыты тестами: 25 кредитов с 31-го дня без накопления; докупка живёт 365 дней; кредиты тарифа сгорают в конце периода"
+
+  - id: M1-04
+    title: "Draft/prod: публикация с аддитивной миграцией, откат ревизии, diff ревизий на человеческом языке, копия prod в draft с маскированием ПДн"
+    milestone: M1
+    deps: [M0-15]
+    specs: [specs/platform/workflows.yaml, specs/appspec/ops.yaml, specs/platform/db.yaml]
+    owner: platform
+    parallel_group: m1-a
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: prod с данными → новая ревизия с полем → публикация → откат; данные целы"
+      - "draft_snapshot: копия prod в draft, значения полей pii≠none заменены faker-ru; ни одно значение ПДн из prod в draft не попадает (тест, L4-11)"
+
+  - id: M1-05
+    title: "Вход конечных пользователей: email OTP, Telegram Login; phone OTP (dev-sender) — только на тарифах Старт/Бизнес"
+    milestone: M1
+    deps: [M0-09, M1-02]
+    specs: [specs/runtime/runtime.yaml, specs/connectors/telegram.yaml, specs/platform/billing.yaml]
+    owner: platform
+    parallel_group: m1-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Три метода входа работают в e2e c dev-отправителем; на Free phone_otp недоступен — G0/публикация сообщают об этом, умолчание Free — email и Telegram (F4)"
+      - "phone_otp: только +7 9xx; глобальные лимиты на номер по всем системам (5/ч, 10/сут); суточный бюджет SMS на org → OTP_BUDGET_EXCEEDED; code_hash = HMAC(pepper, code) (L3-25)"
+      - "Telegram OIDC: state в __Host-wz_oidc (10 мин) и nonce обязательны; redirect_uri фиксирован; next — только путь (L3-26)"
+      - "На https принимается только cookie __Host-wz_sess (имя по WIZARD_PUBLIC_SCHEME, не по запросу); дубли → 401 (L3-14)"
+
+  - id: M1-06
+    title: "Коннекторы email и Telegram (уведомления без ПДн по умолчанию)"
+    milestone: M1
+    deps: [M0-09, M0-28]
+    specs: [specs/connectors/email.yaml, specs/connectors/telegram.yaml, specs/connectors/connector-interface.md, specs/runtime/runtime.yaml]
+    owner: platform
+    parallel_group: m1-b
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "validateSpec telegram и email (G0, connector-interface §4) блокирует шаблон с pii≠none; в M2 то же правило — G2-TG-01"
+      - "В заголовках письма CR/LF/NUL вырезаются, RFC 2047; from.name ≤ 60 без @ и <>; SMTP-хост после резолва ∉ RFC1918/loopback/link-local (L3-29, L3-24)"
+      - "slug системы ∉ зарезервированных (www, mail, smtp, mx, mta-sts, autodiscover, autoconfig, api, admin, status, static, cdn, abuse, security, wizard); приглашения ≤ 20/сут на систему, Free — 5 (L3-29)"
+
+  - id: M1-07
+    title: "Граница данных полностью: импорт таблиц через схему+синтетику, журнал маршрутизации, переключатель «только РФ»"
+    milestone: M1
+    deps: [M0-06]
+    specs: [specs/security/data-boundary.yaml, specs/agents/models.yaml]
+    owner: agents
+    parallel_group: m1-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Тест: реальные значения импортированной таблицы ни разу не попадают в запросы T1"
+      - "ruOnly при включении инвалидирует кэш политики и отменяет T1-вызовы в полёте; model_switched пишется только во внутренний журнал (L3-42)"
+      - "Детекторы phone_intl, social_handle, ogrnip, car_plate_ru, person_name_latin; recall на отложенном корпусе (≥ 300 строк, хранится в РФ, не в репозитории) — порог data-boundary.yaml (L3-05)"
+      # если по F2 сборка идёт на T0, диспетчер может перенести задачу после M2 (перенос между вехами — не эскалация)
+
+  - id: M1-08
+    title: "Вкладка «Код» (только чтение) и понятный diff в UI"
+    milestone: M1
+    deps: [M1-04]
+    specs: [specs/ui/platform-screens.yaml, specs/platform/api.yaml]
+    owner: frontend
+    parallel_group: m1-c
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance: ["Diff ревизии отображается списком человеческих изменений"]
+
+  - id: M1-09
+    title: "G1 полный: генерация сценариев QA-агентом, seed-данные, отчёт с объяснениями"
+    milestone: M1
+    deps: [M0-14]
+    specs: [specs/quality/gates.yaml, specs/agents/qa.yaml]
+    owner: qa
+    parallel_group: m1-c
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance: ["Eval: ≥80% брифов проходят G0+G1 без человека (live, лучшая модель)"]
+
+  - id: M1-10
+    title: "Eval-стенд в CI (fixture) + ночной live-прогон при наличии ключей в пределах бюджета F6"
+    milestone: M1
+    deps: [M0-18]
+    specs: [specs/quality/eval.yaml, specs/product.yaml]
+    owner: qa
+    parallel_group: m1-c
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Регрессия доли G0/G1 >5 п.п. роняет CI"
+      - "Ночью — 5 брифов на модели по умолчанию; полный прогон — по метке PR при смене промпта или модели и перед вехой; расход считается и прогон не стартует сверх 30 000 ₽/мес (D20_eval_budget)"
+
+  - id: M1-11
+    title: "platform-web: S10 (команда и приглашения, «только РФ», ревизии и откат) и M1-части S1, S3, S4, S6 (карточка «Публикация»), S7; экраны входа и принятия приглашения"
+    milestone: M1
+    deps: [M0-16, M1-02, M1-04, M1-07]
+    specs: ["specs/ui/platform-screens.yaml#screens.S10", "specs/ui/platform-screens.yaml#screens.S6", specs/ui/platform-screens.yaml, specs/platform/api.yaml]
+    owner: frontend
+    parallel_group: m1-c
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Acceptance S10 и S6 из platform-screens.yaml (M1) в Playwright против API"
+      - "Вход по email OTP с двумя согласиями и принятие приглашения — e2e"
+      - "CSP платформы: default-src 'self'; frame-src только домен систем; текст от LLM рендерится только как текст или санированный markdown (L3-17)"
+
+  - id: M1-12
+    title: "platform-web: экран сопоставления колонок при импорте таблицы"
+    milestone: M1
+    deps: [M1-07, M1-11]
+    specs: [specs/security/data-boundary.yaml, specs/ui/platform-screens.yaml, specs/platform/api.yaml]
+    owner: frontend
+    parallel_group: m1-d
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance: ["Playwright: загрузка xlsx/csv → предложенное сопоставление → правка колонки → импорт; в UI нет значений из T1-ответа, только схема"]
 
   # ---------------- M2: закрытая бета ----------------
-  - { id: M2-01, title: "Изоляция кода: workerd внутри gVisor, egress-прокси, лимиты CPU/памяти, escape-тесты", milestone: M2, deps: [M1-01], specs: [specs/security/isolation.yaml], owner: platform, parallel_group: m2-a, estimate_days: 4, acceptance: ["Набор escape-тестов (fs, сеть, процессы, чужой тенант) падает внутри песочницы"] }
-  - { id: M2-02, title: "Коннектор ЮKassa (магазин клиента, предоплата/полная, вебхуки, возвраты, чеки)", milestone: M2, deps: [M1-06], specs: [specs/connectors/yookassa.yaml], owner: platform, parallel_group: m2-a, estimate_days: 2.5, acceptance: ["Тест на тестовом магазине: оплата → статус заказа → возврат"] }
-  - { id: M2-03, title: "QR: выдача токенов, PWA-сканер с офлайн-режимом и синхронизацией, защита от повторного входа", milestone: M2, deps: [M0-08, M1-05], specs: [specs/connectors/qr.yaml, specs/ui/ui-kit.yaml], owner: frontend, parallel_group: m2-a, estimate_days: 3, acceptance: ["e2e: офлайн 100 сканов → онлайн → синхронизация без дублей; повтор QR отклоняется", "PWA manifest + service worker в runtime для всех систем"] }
-  - { id: M2-04, title: "G2: матрица прав полностью, секреты, ПДн-категории, антифрод-правила и фикстуры", milestone: M2, deps: [M1-09], specs: [specs/quality/gates.yaml, specs/security/abuse.yaml], owner: qa, parallel_group: m2-b, estimate_days: 2.5, acceptance: ["100% антифрод-фикстур блокируются; 0 ложных блокировок на 12 брифах eval"] }
-  - { id: M2-05, title: "Пакет 152-ФЗ в системах: страница политики, согласие в формах, автоудаление по retention (DBOS cron)", milestone: M2, deps: [M1-04], specs: [specs/security/compliance.yaml, specs/platform/workflows.yaml, specs/runtime/runtime.yaml], owner: platform, parallel_group: m2-b, estimate_days: 2, acceptance: ["Записи старше retention удаляются/обезличиваются кроном; журнал удаления"] }
-  - { id: M2-06, title: "Развёртывание в Cloud.ru: IaC, отдельный домен систем, TLS wildcard, Managed PG, S3, KMS, мониторинг, PITR", milestone: M2, deps: [M2-01], specs: [specs/platform/deploy.yaml], owner: platform, parallel_group: m2-c, estimate_days: 4, acceptance: ["Staging и prod разворачиваются одной командой; restore из PITR проверен"] }
-  - { id: M2-07, title: "Биллинг подписок через ЮKassa (рекуррентные), привязка карты = идентификация перед prod", milestone: M2, deps: [M1-03, M2-02], specs: [specs/platform/billing.yaml], owner: platform, parallel_group: m2-c, estimate_days: 2, acceptance: ["Prod-публикация невозможна без привязанной карты РФ"] }
-  - { id: M2-08, title: "«Пожаловаться» и снятие публикации ≤24 ч (админ-консоль модерации)", milestone: M2, deps: [M2-06], specs: [specs/security/abuse.yaml], owner: platform, parallel_group: m2-c, estimate_days: 1, acceptance: ["Жалоба → тикет → снятие → уведомление владельцу"] }
-  - { id: M2-09, title: "Онбординг дизайн-партнёров, наблюдаемость прогонов, ревью основателя перед prod (флаг)", milestone: M2, deps: [M2-06], specs: [specs/platform/api.yaml, specs/security/abuse.yaml], owner: platform, parallel_group: m2-d, estimate_days: 1, acceptance: ["Флаг requireFounderReview блокирует prod до одобрения"] }
+  - id: M2-01
+    title: "Изоляция кода: workerd внутри gVisor, egress-прокси, лимиты CPU/памяти, escape-тесты"
+    milestone: M2
+    deps: [M1-01]
+    specs: [specs/security/isolation.yaml]
+    owner: platform
+    parallel_group: m2-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Набор escape-тестов (fs, сеть, процессы, чужой тенант) падает внутри песочницы"
+      - "RPC к runtime — по токену-возможности запроса {systemId, env, requestId, exp}; украденный токен после exp → 403; Free-пул ≤ 10 систем на под; SharedArrayBuffer выключен (L3-23)"
+      - "Прокси: только CONNECT :443 (SMTP — 465/587 на хосты smtp-интеграции), SNI = CONNECT-хост (L3-24)"
+      - "Системный доступ — отдельная роль sys_<key>_<env>_system, GUC __system удалён из политик (L3-20)"
 
-  - { id: M2-10, title: "Выгрузка данных системы (CSV по сущностям, с учётом прав владельца) — отличие independence", milestone: M2, deps: [M1-04], specs: [specs/platform/api.yaml, specs/runtime/runtime.yaml], owner: platform, parallel_group: m2-d, estimate_days: 1, acceptance: ["Выгрузка всех сущностей prod в ZIP с CSV; ПДн выгружает только owner; событие в журнале"] }
+  - id: M2-02
+    title: "Коннектор ЮKassa (магазин клиента, предоплата/полная, вебхуки, возвраты, чеки)"
+    milestone: M2
+    deps: [M1-06]
+    specs: [specs/connectors/yookassa.yaml]
+    owner: platform
+    parallel_group: m2-a
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Тест на тестовом магазине: оплата → статус заказа → возврат"
+      - "payment.succeeded: сумма, валюта и metadata.recordId сверяются с записью; сумма ≠ текущей → needs_review, не paidStatus (L3-28)"
+
+  - id: M2-03
+    title: "QR: офлайн-сканер и синхронизация (PWA), защита от повторного входа"
+    milestone: M2
+    deps: [M0-24, M0-25, M1-05]
+    specs: [specs/connectors/qr.yaml, specs/ui/ui-kit.yaml, specs/runtime/runtime.yaml]
+    owner: frontend
+    parallel_group: m2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: офлайн 100 сканов → онлайн → синхронизация без дублей; повтор QR отклоняется"
+      - "PWA manifest + service worker в runtime для всех систем"
+      - "qr_token скрыт от всех ролей, кроме владельца строки и isAdmin, и не попадает в выгрузку; scannerRoles не public и не саморегистрируемые (G0) (L3-30)"
+
+  - id: M2-04
+    title: "G2: матрица прав полностью, секреты, ПДн-категории, антифрод-правила и фикстуры"
+    milestone: M2
+    deps: [M1-09]
+    specs: [specs/quality/gates.yaml, specs/security/abuse.yaml, specs/runtime/sdk.md]
+    owner: qa
+    parallel_group: m2-b
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "100% антифрод-фикстур блокируются; 0 ложных блокировок на 12 брифах eval"
+      - "allow-фикстуры содержат тексты макетов 1–10 («Напоминания в Telegram», «предоплата через ЮKassa», «срок действия билета», аллергены, «ул. Тараса Шевченко») — 0 блокировок (L4-01, L3-31)"
+      - "systemDb в функции с public-ролью без function.systemDbReason — блокер G2; runtime вырезает из ответа /api/fn поля pii≠none, невидимые роли (тест) (L3-22)"
+      - "compliance.operatorName проверяется по словарю брендов; user-to-user сущность с text-полем → warning и founder_review (L3-32)"
+
+  - id: M2-05
+    title: "Пакет 152-ФЗ в системах: страница политики, согласие в формах и при входе, отзыв согласия, автоудаление по retention (DBOS cron), удаление системы"
+    milestone: M2
+    deps: [M1-04, M1-05]
+    specs: [specs/security/compliance.yaml, specs/platform/workflows.yaml, specs/runtime/runtime.yaml, specs/platform/db.yaml, specs/ui/ui-kit.yaml]
+    owner: platform
+    parallel_group: m2-b
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Записи старше retention удаляются/обезличиваются кроном; журнал удаления"
+      - "Первый вход (OTP/Telegram) требует _consent и пишет _w_consents с entity='users'; отзыв через /_wizard/privacy → блокировка и anonymize ≤ 30 дней, запись в deletion_log (L3-33)"
+      - "Публикация в prod требует operatorName, operatorContact, operatorAddress; operatorInn проверяется по контрольной сумме; тексты согласия — только шаблоны юриста (L3-34, E-LEGAL)"
+      - "delete_system: через 30 дней после deleted_at — DROP app_<key>_{draft,prod}, удаление artifacts, messages, imports; запись в deletion_log (L3-36)"
+
+  - id: M2-06
+    title: "Развёртывание в Cloud.ru: IaC, нейтральный домен систем (F8), TLS wildcard, Managed PG, S3, KMS, мониторинг, PITR"
+    milestone: M2
+    deps: [M2-01]
+    specs: [specs/platform/deploy.yaml, specs/security/abuse.yaml, specs/runtime/runtime.yaml]
+    owner: platform
+    parallel_group: m2-c
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Staging и prod разворачиваются одной командой; restore из PITR проверен"
+      - "Домен систем подан в PSL (private section); HSTS includeSubDomains; preload (L3-14)"
+      - "/_wizard/internal/* слушается только на внутреннем порту, на публичном ingress — 404; health на публичных хостах — только {status} (L3-19)"
+      - "IP клиента — из последнего хопа доверенного ingress (CIDR в конфиге); XFF от недоверенного источника игнорируется; лимиты IPv6 по /64 (L3-27)"
+      - "Превью в облаке — только /_wizard/preview-login?t= с HMAC {systemId, env=draft, role, revision, platformUserId, exp ≤ 15 мин, nonce}; nonce одноразовый (L3-11)"
+      - "Деплой staging/prod — self-hosted runner в Cloud.ru, в GitHub только короткоживущие токены; SBOM (CycloneDX) и license-check дерева зависимостей в CI (L3-38)"
+      - "Интеграционный тест через PgBouncer: две транзакции разных систем на одном серверном соединении не видят GUC и роль друг друга (L3-21)"
+
+  - id: M2-07
+    title: "Биллинг подписок через ЮKassa (рекуррентные), привязка карты = идентификация перед prod"
+    milestone: M2
+    deps: [M1-03, M2-02]
+    specs: [specs/platform/billing.yaml]
+    owner: platform
+    parallel_group: m2-c
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Prod-публикация невозможна без привязанной карты РФ"
+      - "≤ 3 попыток привязки на org в сутки и ≤ 10 на IP; одна карта — ≤ 3 org; 3-DS обязателен (L3-28). Достаточность привязки как идентификации — E-LEGAL"
+
+  - id: M2-08
+    title: "«Пожаловаться» и снятие публикации ≤24 ч (админ-консоль модерации)"
+    milestone: M2
+    deps: [M2-06]
+    specs: [specs/security/abuse.yaml, specs/security/compliance.yaml]
+    owner: platform
+    parallel_group: m2-c
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Жалоба → тикет → снятие → уведомление владельцу"
+      - "Доступ staff к данным системы — только по тикету, TTL 24 ч, запись в staff_audit_log, уведомление owner (кроме фишинга) (L3-43)"
+      - "Вход в админ-консоль — только staff с MFA (D21_beta_moderation)"
+
+  - id: M2-09
+    title: "Онбординг дизайн-партнёров, наблюдаемость прогонов, ревью основателя перед prod (флаг)"
+    milestone: M2
+    deps: [M2-06, M2-13]
+    specs: [specs/platform/api.yaml, specs/security/abuse.yaml]
+    owner: platform
+    parallel_group: m2-d
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Флаг requireFounderReview блокирует prod до одобрения"
+      - "Приглашение партнёра невозможно, пока M2-13 не done (флаг beta_real_users_allowed)"
+
+  - id: M2-10
+    title: "Выгрузка данных системы (CSV по сущностям + spec.json, с учётом прав владельца) — отличие independence"
+    milestone: M2
+    deps: [M1-04]
+    specs: [specs/platform/api.yaml, specs/runtime/runtime.yaml, specs/platform/workflows.yaml]
+    owner: platform
+    parallel_group: m2-d
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Выгрузка всех сущностей prod в ZIP с CSV и spec.json (кода нет — non_goals); ПДн выгружает только owner; событие в журнале (L4-08)"
+      - "Ячейки, начинающиеся с = + - @ \\t \\r, экранируются префиксом '; ZIP — по одноразовой ссылке ≤ 15 мин (L3-37)"
+
+  - id: M2-11
+    title: "platform-web: тариф и баланс, журнал списаний, «Докупить», «Привязать карту», выгрузка, блок «Персональные данные» в S10 (оператор, ИНН, адрес, согласие, журнал удалений)"
+    milestone: M2
+    deps: [M1-11, M2-05, M2-07, M2-10]
+    specs: [specs/ui/platform-screens.yaml, specs/platform/api.yaml, specs/platform/billing.yaml, specs/security/compliance.yaml]
+    owner: frontend
+    parallel_group: m2-d
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Playwright: привязка карты (тестовый магазин) → публикация в prod разблокирована; докупка 990 ₽ → +60 кредитов в балансе"
+      - "Блокер OPERATOR_NAME_REQUIRED в S6 ведёт в блок «Персональные данные»; журнал удалений виден owner (L4-09)"
+      - "Кнопка выгрузки в S10 скачивает ZIP из M2-10 (L4-08, L4-10)"
+
+  - id: M2-12
+    title: "Eval: добор брифов до 30 (≥ 10 горизонтальных), брифы партнёров — в хранилище в РФ"
+    milestone: M2
+    deps: [M1-10]
+    specs: [specs/quality/eval.yaml]
+    owner: qa
+    parallel_group: m2-b
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "tools/eval/briefs: 30 брифов, ≥ 10 вне двух полигонов (L4-28); в репозитории только синтетические пересказы, оригиналы партнёров — в S3 eval в РФ (L3-07)"
+      - "Отчёт eval: p80 времени сборки и время до первого превью записаны (L4-27)"
+
+  - id: M2-13
+    title: "Комплаенс-готовность беты до первого реального пользователя (действия основателя, E-LEGAL)"
+    milestone: M2
+    deps: []
+    specs: [specs/escalation.yaml, specs/security/compliance.yaml, specs/milestones.yaml]
+    owner: founder
+    parallel_group: m2-a
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Уведомление РКН по ст. 22 подано; позиция юриста по статусу провайдера хостинга (149-ФЗ ст. 10.2-1) и ОРИ исполнена"
+      - "Поручения на обработку с Cloud.ru и Yandex подписаны; письменное подтверждение Z.ai (zero retention, no training, РФ допустима) получено или T1 отключён"
+      - "Позиция юриста по ст. 12 и ст. 18 ч. 5 для T1 (Сингапур, 265-ФЗ) получена до первого live-вызова T1 с данными не-основателя (L3-03)"
+      - "docs/security: модель угроз, акт уровня защищённости, перечень допущенных лиц, runbook pd-incident 24/72 ч (агент готовит черновики)"
+
+  - id: M2-14
+    title: "Файлы в системах: POST /api/files, хранение в S3 РФ, раздача, компонент FileField, retention"
+    milestone: M2
+    deps: [M2-01, M2-05]
+    specs: [specs/runtime/runtime.yaml, specs/appspec/appspec.schema.json, specs/ui/ui-kit.yaml, specs/quality/gates.yaml]
+    owner: platform
+    parallel_group: m2-d
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "≤ 10 МБ; MIME по сигнатуре только jpeg/png/webp/pdf, SVG и HTML → 415; раздача с Content-Disposition: attachment, CSP sandbox, nosniff, по подписанной ссылке с правами поля (L3-18)"
+      - "Поле file по умолчанию pii: basic, удаляется по retention и anonymize; G2-AF-03 срабатывает на label «скан/фото паспорта»"
+      - "Логотип платформы — только png/webp, растеризация на сервере"
+      - "До закрытия задачи G0 отклоняет поле типа file (L4-12)"
 
   # ---------------- M3: вторая волна ----------------
-  - { id: M3-01, title: "«Укажи и измени»: выбор элемента в превью → id компонента → правка строителем только этого файла", milestone: M3, deps: [M2-09], specs: [specs/ui/platform-screens.yaml, specs/agents/builder.yaml, specs/ui/ui-kit.yaml, specs/runtime/runtime.yaml], owner: frontend, parallel_group: m3-a, estimate_days: 4, acceptance: ["Правка меняет только файл выбранного компонента (тест diff)"] }
-  - { id: M3-02, title: "ИИ-действия extract/generate на T0, лимиты, учёт кредитов", milestone: M3, deps: [M2-09], specs: [specs/agents/models.yaml, specs/appspec/appspec.schema.json], owner: agents, parallel_group: m3-a, estimate_days: 4, acceptance: ["Действия никогда не маршрутизируются в T1; лимит соблюдается"] }
+  - id: M3-01
+    title: "«Укажи и измени»: выбор элемента в превью → wzId → правка строителем только этого файла"
+    milestone: M3
+    deps: [M2-09]
+    specs: [specs/ui/platform-screens.yaml, specs/agents/builder.yaml, specs/ui/ui-kit.yaml, specs/runtime/runtime.yaml, specs/platform/api.yaml]
+    owner: frontend
+    parallel_group: m3-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Правка меняет только файл выбранного компонента (тест diff)"
+      - "element-selected валидируется zod: file ∈ файлов ревизии и ^ui/; подделка из кода системы с чужим file отклоняется (L3-16)"
+
+  - id: M3-02
+    title: "ИИ-действия extract/generate на T0 в runtime (кнопки и воркфлоу, backfill), лимиты, учёт кредитов"
+    milestone: M3
+    deps: [M2-09]
+    specs: [specs/agents/models.yaml, specs/appspec/appspec.schema.json, specs/runtime/runtime.yaml, specs/platform/billing.yaml, specs/ui/ui-kit.yaml, specs/platform/workflows.yaml, specs/security/data-boundary.yaml]
+    owner: agents
+    parallel_group: m3-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Действия никогда не маршрутизируются в T1; месячный лимит системы соблюдается"
+      - "e2e: кнопка → поле заполнено, пометка «заполнено ИИ»; backfill старых записей по флагу change-карточки (L4-07)"
+      - "Вход от public-роли: ≤ 10/ч на IP; вывод generate не исполняется как HTML; мультимодальные вызовы — только T0 (L3-41)"
+
+  - id: M3-03
+    title: "Доводка по обратной связи партнёров беты (резерв)"
+    milestone: M3
+    deps: [M2-09]
+    specs: [specs/milestones.yaml, specs/product.yaml]
+    owner: platform
+    parallel_group: m3-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance: ["Все P0/P1-замечания партнёров из docs/beta/feedback.md закрыты или перенесены с записью в CHANGELOG (L4-30)"]
 
   # ---------------- M4: запуск ----------------
-  - { id: M4-01, title: "Финальное имя, домены, лендинг, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов", milestone: M4, deps: [M3-01, M3-02], specs: [specs/product.yaml], owner: platform, parallel_group: m4-a, estimate_days: 5, acceptance: ["Нагрузочный отчёт в docs/"] }
+  - id: M4-01
+    title: "Лендинг под финальным именем, самостоятельная регистрация, нагрузочный тест 200 одновременных прогонов"
+    milestone: M4
+    deps: [M3-01, M3-02, M3-03]
+    specs: [specs/product.yaml]
+    owner: platform
+    parallel_group: m4-a
+    estimate_days: 5
+    status: todo
+    claimed_by: null
+    acceptance: ["Нагрузочный отчёт в docs/", "Самостоятельная регистрация на домене платформы (куплен к неделе 12, F8) — e2e"]

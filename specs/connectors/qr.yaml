@@ -13,10 +13,11 @@ config_schema:
   checkin: "{entity, refField} — сущность отметок; refField — ref на носитель, MUST unique (G0)"
   displayFields: "поля носителя для экрана сканера; MUST pii=none (G2); ref показываются подписью связанной записи"
   offline: "bool — разрешить офлайн-пакет (M2)"
-  scannerRoles: "роли, которым доступны checkin/package/sync; MUST иметь create на checkin.entity"
+  scannerRoles: "роли, которым доступны checkin/package/sync; MUST иметь create на checkin.entity; MUST NOT быть access=public или саморегистрируемой ролью (G0, validateSpec)"
 
 token:
-  value: "Поле qr_token хранит подписанный payload целиком; генерирует runtime при insert. QrTicket (ui-kit) рендерит значение поля как есть"
+  value: "Поле qr_token хранит подписанный payload целиком; генерирует qr-коннектор при insert (хук runtime), всегда на сервере: значение qr_token в теле create/update → 422 FIELD_READONLY. QrTicket (ui-kit) рендерит значение поля как есть"
+  visibility: "qr_token неявно входит в hiddenFields всех ролей, кроме владельца строки (rowFilter по ownerField носителя) и isAdmin; в CSV-выгрузку и экспорт не попадает (клонирование билетов персоналом и партнёрами)"
   payload: "WZ1.<kid>.<rand>.<sig>: rand — 128 бит CSPRNG, base32 без паддинга (26 символов); sig = base64url(HMAC-SHA256(key[kid], 'WZ1|' + systemId + '|' + env + '|' + rand))[0:16] (96 бит)"
   qr_image: "QR ECC M, payload ≤ 64 символа (≈ 50); SVG рисует ui-kit, PNG для письма — коннектор"
   rotation:
@@ -24,10 +25,11 @@ token:
     - "Плановая ротация: все qr_token переподписываются новым kid пакетной задачей (_w_jobs), QrTicket обновится по SSE"
     - "Утечка ключа: старый ключ отзывается сразу, без периода совместимости"
   revoke: "revoke({entity,id}) и переход записи в статус canceled/refunded → новый rand и qr_token; хеш старого — в списке отозванных"
-  test: "Изменённый символ payload → invalid; payload другой системы или env → invalid; после ротации старый kid работает 30 дней"
+  test: "Изменённый символ payload → invalid; payload другой системы или env → invalid; после ротации старый kid работает 30 дней; create с qr_token в теле → 422 FIELD_READONLY; роль персонала без владения строкой не видит qr_token в data API и выгрузке"
 
 endpoints:                                   # служебные маршруты runtime (ui-kit QrScanner ходит сюда); ответы без ПДн
   note: "Параметр ?integration=<name> обязателен, только если в системе больше одной qr-интеграции. Показ билета отдельного эндпоинта не требует: владелец читает qr_token через data API"
+  csrf: "POST check и sync — под CSRF runtime (Origin = хост системы и X-Wizard-Request: 1, иначе 403; ../security/abuse.yaml#domain.tenant_separation)"
   check: "POST /_wizard/qr/check {payload, checkpoint?, deviceId} → {status: 'ok'|'duplicate'|'invalid', reason?: 'not_found'|'bad_signature'|'revoked'|'not_valid_status', ticketTitle?, details?, scannedAt, firstScannedAt?, firstCheckpoint?}"
   manifest: "GET /_wizard/qr/manifest?since=<cursor> (M2) → {manifestId, cursor, generatedAt, expiresAt, entries[], checkedIn[], revoked[]}"
   sync: "POST /_wizard/qr/sync {deviceId, events[≤500]} (M2) → {results[], accepted, duplicate, unknown, cursor}"

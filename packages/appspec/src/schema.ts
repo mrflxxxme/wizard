@@ -160,6 +160,7 @@ export const permissionSchema = z.strictObject({
   rowFilter: rowFilterSchema.optional(),
   hiddenFields: z.array(identSchema).optional(),
   readonlyFields: z.array(identSchema).optional(),
+  rowFilterOps: uniqueItems(z.enum(PERMISSION_OPS)).optional(),
 });
 
 export const TRIGGER_TYPES = [
@@ -213,13 +214,17 @@ export const integrationSchema = z.strictObject({
   secretRefs: z.array(z.string().regex(SECRET_REF_RE)).optional(),
 });
 
+/** FQDN without IP, port or wildcard (L3-24). */
+export const EGRESS_HOST_RE = /^(?!\d+\.)[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
 export const functionSchema = z.strictObject({
   name: z.string().regex(/^[a-z][A-Za-z0-9]{0,59}$/),
   kind: z.enum(["query", "mutation", "action"]),
   file: z.string().regex(/^functions\/[A-Za-z0-9_/-]+\.ts$/),
   public: z.boolean().optional(),
   roles: z.array(identSchema).optional(),
-  egress: z.array(z.string()).optional(),
+  egress: z.array(z.string().regex(EGRESS_HOST_RE)).optional(),
+  collectsPii: z.boolean().optional(),
 });
 
 export const pageSchema = z.strictObject({
@@ -235,9 +240,40 @@ export const aiActionSchema = z.strictObject({
   kind: z.enum(["extract", "generate"]),
   input: anyObject,
   output: anyObject,
-  monthlyLimit: jsonInt().min(1).optional(),
+  monthlyLimit: jsonInt().min(1),
   tier: z.literal("T0").optional(),
 });
+
+/** Keys of a scenario step (quality/gates.yaml#scenario_dsl.Step): one action, plus `consent` for create/callFn. */
+export const SCENARIO_STEP_KEYS = [
+  "as",
+  "create",
+  "read",
+  "update",
+  "delete",
+  "callFn",
+  "simulate",
+  "runWorkflows",
+  "advanceTime",
+  "expect",
+  "consent",
+] as const;
+const STEP_KEY_SET: ReadonlySet<string> = new Set(SCENARIO_STEP_KEYS);
+
+export const scenarioStepSchema = anyObject
+  .refine((o) => Object.keys(o).length >= 1 && Object.keys(o).length <= 2, {
+    message: "Шаг сценария — ровно одно действие (и consent для create/callFn)",
+  })
+  .refine((o) => Object.keys(o).every((k) => STEP_KEY_SET.has(k)), {
+    message: `Допустимые ключи шага: ${SCENARIO_STEP_KEYS.join(", ")}`,
+  })
+  .refine((o) => !("consent" in o) || o.consent === true, { message: "consent может быть только true" })
+  .refine((o) => !("consent" in o) || "create" in o || "callFn" in o, {
+    message: "consent допустим только в шаге create или callFn",
+  })
+  .refine((o) => Object.keys(o).length < 2 || "consent" in o, {
+    message: "Шаг сценария — ровно одно действие",
+  });
 
 export const acceptanceSchema = z.strictObject({
   id: z.string().regex(/^AC[0-9]{1,3}$/),
@@ -248,18 +284,20 @@ export const acceptanceSchema = z.strictObject({
     entity: identSchema.optional(),
     op: z.enum(PERMISSION_OPS).optional(),
     expect: z.enum(["allow", "deny"]).optional(),
-    steps: z.array(anyObject).optional(),
-    actors: z.record(z.string(), z.looseObject({ role: identSchema })).optional(),
+    steps: z.array(scenarioStepSchema).min(1).max(40).optional(),
+    actors: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.looseObject({ role: identSchema })).optional(),
     seed: z.enum(["default", "none"]).optional(),
     milestone: z.enum(["M0", "M1", "M2", "M3", "M4"]).optional(),
   }),
 });
 
 export const complianceSchema = z.strictObject({
+  consentTemplateId: identSchema.optional(),
   consentText: z.string().optional(),
   policyPage: z.string().optional(),
   operatorName: z.string().optional(),
   operatorContact: z.string().optional(),
+  operatorAddress: cpString(0, 300).optional(),
   operatorInn: z
     .string()
     .regex(/^[0-9]{10}([0-9]{2})?$/)

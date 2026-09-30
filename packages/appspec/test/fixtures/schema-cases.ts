@@ -15,7 +15,22 @@ export function baseSpec(): Json {
   return structuredClone(forum);
 }
 
-const mutations: [string, boolean, (s: Json) => unknown][] = [
+type Mutation = [string, boolean, (s: Json) => unknown];
+
+/** A scenario acceptance check with the given steps (quality/gates.yaml#scenario_dsl). */
+function stepCase(name: string, valid: boolean, steps: unknown[]): Mutation[] {
+  return [
+    [
+      name,
+      valid,
+      (s) => {
+        s.acceptance[0].check = { type: "scenario", actors: { a: { role: "member" } }, steps };
+      },
+    ],
+  ];
+}
+
+const mutations: Mutation[] = [
   ["forum as is", true, (s) => s],
   [
     "minimal spec",
@@ -898,8 +913,119 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
         actors: { a: { role: "member", note: 1 } },
         seed: "none",
         milestone: "M1",
-        steps: [{ call: "x" }],
+        steps: [
+          { as: "a" },
+          { callFn: { name: "x", args: {} }, consent: true },
+          { expect: { status: "ok" } },
+        ],
       };
+    },
+  ],
+  ...stepCase("step unknown key", false, [{ call: "x" }]),
+  ...stepCase("step empty object", false, [{}]),
+  ...stepCase("step two actions", false, [{ as: "a", read: { entity: "topic" } }]),
+  ...stepCase("step consent with create", true, [{ create: { entity: "topic", data: {} }, consent: true }]),
+  ...stepCase("step consent with read", false, [{ read: { entity: "topic" }, consent: true }]),
+  ...stepCase("step consent alone", false, [{ consent: true }]),
+  ...stepCase("step consent false", false, [{ callFn: { name: "x" }, consent: false }]),
+  ...stepCase("step three keys", false, [{ callFn: { name: "x" }, consent: true, expect: {} }]),
+  ...stepCase("steps empty", false, []),
+  ...stepCase(
+    "steps 40",
+    true,
+    Array.from({ length: 40 }, () => ({ runWorkflows: {} })),
+  ),
+  ...stepCase(
+    "steps 41",
+    false,
+    Array.from({ length: 41 }, () => ({ runWorkflows: {} })),
+  ),
+  ...stepCase("actors inside steps (L1-01)", false, [{ actors: { a: { role: "member" } } }, { as: "a" }]),
+  [
+    "actor alias uppercase",
+    false,
+    (s) => {
+      s.acceptance[0].check = { type: "scenario", actors: { Anna: { role: "member" } } };
+    },
+  ],
+  [
+    "permission rowFilterOps ok",
+    true,
+    (s) => {
+      s.permissions[3].rowFilterOps = ["update"];
+    },
+  ],
+  [
+    "permission rowFilterOps unknown op",
+    false,
+    (s) => {
+      s.permissions[3].rowFilterOps = ["export"];
+    },
+  ],
+  [
+    "permission rowFilterOps duplicate",
+    false,
+    (s) => {
+      s.permissions[3].rowFilterOps = ["read", "read"];
+    },
+  ],
+  [
+    "function collectsPii",
+    true,
+    (s) => {
+      s.functions[0].collectsPii = true;
+    },
+  ],
+  [
+    "function collectsPii string",
+    false,
+    (s) => {
+      s.functions[0].collectsPii = "yes";
+    },
+  ],
+  [
+    "function egress fqdn",
+    true,
+    (s) => {
+      s.functions[0].egress = ["api.example.ru", "xn--80ak6aa92e.xn--p1ai"];
+    },
+  ],
+  ...["10.0.0.1", "*.example.ru", "example.ru:8080", "localhost", "Example.ru", "http://example.ru"].map(
+    (host): Mutation => [
+      `function egress ${host}`,
+      false,
+      (s) => {
+        s.functions[0].egress = [host];
+      },
+    ],
+  ),
+  [
+    "compliance consentTemplateId and operatorAddress",
+    true,
+    (s) => {
+      s.compliance.consentTemplateId = "event_registration";
+      s.compliance.operatorAddress = "г. Москва, ул. Тверская, д. 1";
+    },
+  ],
+  [
+    "compliance consentTemplateId not ident",
+    false,
+    (s) => {
+      s.compliance.consentTemplateId = "Event Registration";
+    },
+  ],
+  [
+    "compliance operatorAddress 301",
+    false,
+    (s) => {
+      s.compliance.operatorAddress = "а".repeat(301);
+    },
+  ],
+  [
+    "aiAction without monthlyLimit",
+    false,
+    (s) => {
+      s.aiActions = [{ name: "summary", kind: "generate", input: {}, output: {} }];
     },
   ],
   [

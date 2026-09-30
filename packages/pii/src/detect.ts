@@ -34,12 +34,22 @@ function resolve(candidates: Finding[]): Finding[] {
   const sorted = [...candidates].sort(
     (a, b) => PRIORITY[a.kind] - PRIORITY[b.kind] || b.end - b.start - (a.end - a.start) || a.start - b.start,
   );
+  // Accepted spans are kept sorted by start and never overlap, so only the neighbours need checking.
   const taken: Finding[] = [];
   for (const f of sorted) {
-    if (taken.some((t) => f.start < t.end && t.start < f.end)) continue;
-    taken.push(f);
+    let lo = 0;
+    let hi = taken.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((taken[mid] as Finding).start < f.start) lo = mid + 1;
+      else hi = mid;
+    }
+    const prev = taken[lo - 1];
+    const next = taken[lo];
+    if ((prev && prev.end > f.start) || (next && next.start < f.end)) continue;
+    taken.splice(lo, 0, f);
   }
-  return taken.sort((a, b) => a.start - b.start);
+  return taken;
 }
 
 export function detect(text: string, options: DetectOptions = {}): Finding[] {

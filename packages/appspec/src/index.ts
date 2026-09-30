@@ -9,7 +9,6 @@ export {
   type MigrationStep,
   type PlanOptions,
   planMigration,
-  quoteIdent,
   quoteLiteral,
   type StepKind,
   SYSTEM_ROLE,
@@ -32,10 +31,21 @@ export {
   OP_NAMES,
   type Op,
   type OpName,
+  OWNER_ONLY_COMPLIANCE_FIELDS,
   opSchema,
   type Revision,
 } from "./ops.js";
 export { isReservedName, RESERVED_NAMES, SQL_KEYWORDS, SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
 export * from "./schema.js";
-export type { ValidateOptions } from "./semantic.js";
+export { ROW_FILTER_USER_ATTRS, type ValidateOptions } from "./semantic.js";
+export {
+  dollarQuote,
+  type LiteralType,
+  literalProblem,
+  MAX_IDENT_BYTES,
+  quoteIdent,
+  SqlValueError,
+  sqlLiteral,
+  textLiteral,
+} from "./sql.js";
 export { generateTypes } from "./types-gen.js";

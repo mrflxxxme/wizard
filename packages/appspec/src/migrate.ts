@@ -18,6 +18,19 @@ import {
   validateSpec,
 } from "./schema.js";
 import { SYSTEM_FIELD_TYPES, USER_REF_RE } from "./semantic.js";
+import {
+  dollarQuote,
+  FORMAT_RE,
+  type LiteralType,
+  quoteIdent,
+  SqlValueError,
+  sqlLiteral,
+  textLiteral,
+} from "./sql.js";
+
+export { quoteIdent } from "./sql.js";
+/** @deprecated use sqlLiteral(value, type) or textLiteral(value) from ./sql.js. */
+export const quoteLiteral = textLiteral;
 
 type Base<K extends string, D extends boolean> = { kind: K; destructive: D };
 
@@ -68,7 +81,7 @@ export interface MigrationPlan {
 
 /** Context role for platform-side access (ctx.systemDb, workflows, retention). */
 export const SYSTEM_ROLE = "__system";
-const SYSTEM_ROLE_COND = `current_setting('wizard.role', true) = '${SYSTEM_ROLE}'`;
+const SYSTEM_ROLE_COND = `current_setting('wizard.role', true) = ${textLiteral(SYSTEM_ROLE)}`;
 
 /**
  * Tables created in every system schema by create_schema (runtime.yaml#postgres.system_tables).
@@ -187,15 +200,6 @@ const PHASE: Record<StepKind, number> = {
 
 const SQL_NAME_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 
-export function quoteIdent(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`;
-}
-
-export function quoteLiteral(value: string): string {
-  if (value.includes("\0")) throw new Error("NUL byte in SQL literal");
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
 function fnv1a(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -209,6 +213,16 @@ function fnv1a(s: string): string {
 function pgName(...parts: string[]): string {
   const base = parts.join("_");
   return base.length <= 63 ? base : `${base.slice(0, 54)}_${fnv1a(base)}`;
+}
+
+/**
+ * Name of a schema-wide object derived from a table and its columns (indexes, unique constraints). Index names
+ * share one namespace per schema and idents may contain `_`, so parts are joined with `$` (not allowed in
+ * idents): `ix_ticket$type_x` and `ix_ticket_type$x` stay distinct (with `_` both were `ix_ticket_type_x`,
+ * and CREATE INDEX IF NOT EXISTS silently skipped the second one).
+ */
+function relName(prefix: string, table: string, ...columns: string[]): string {
+  return pgName(`${prefix}_${[table, ...columns].join("$")}`);
 }
 
 function assertSqlName(name: string, what: string): void {
@@ -249,12 +263,6 @@ export const DEFAULT_MAX_LENGTH: Partial<Record<FieldType, number>> = {
   url: 2048,
 };
 
-const FORMAT_RE: Partial<Record<FieldType, string>> = {
-  email: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
-  phone: "^\\+[1-9][0-9]{6,14}$",
-  url: "^https?://[^\\s]+$",
-};
-
 type CheckKind = "len" | "fmt" | "enum" | "min" | "max";
 interface CheckDef {
   name: string;
@@ -272,18 +280,18 @@ function checksFor(field: Field): CheckDef[] {
     out.push({
       name: `ck_${field.name}_len`,
       kind: "len",
-      expr: `char_length(${col}) <= ${len}`,
+      expr: `char_length(${col}) <= ${sqlLiteral(len, "int")}`,
       limit: len,
     });
   }
   const fmt = FORMAT_RE[field.type];
-  if (fmt) out.push({ name: `ck_${field.name}_fmt`, kind: "fmt", expr: `${col} ~ ${quoteLiteral(fmt)}` });
+  if (fmt) out.push({ name: `ck_${field.name}_fmt`, kind: "fmt", expr: `${col} ~ ${textLiteral(fmt)}` });
   if (field.type === "enum" && field.enum) {
     const values = field.enum.map((o) => o.value);
     out.push({
       name: `ck_${field.name}_enum`,
       kind: "enum",
-      expr: `${col} IN (${values.map(quoteLiteral).join(", ")})`,
+      expr: `${col} IN (${values.map((v) => sqlLiteral(v, "enum")).join(", ")})`,
       values,
     });
   }
@@ -292,14 +300,14 @@ function checksFor(field: Field): CheckDef[] {
       out.push({
         name: `ck_${field.name}_min`,
         kind: "min",
-        expr: `${col} >= ${field.min}`,
+        expr: `${col} >= ${sqlLiteral(field.min, field.type)}`,
         limit: field.min,
       });
     if (field.max !== undefined)
       out.push({
         name: `ck_${field.name}_max`,
         kind: "max",
-        expr: `${col} <= ${field.max}`,
+        expr: `${col} <= ${sqlLiteral(field.max, field.type)}`,
         limit: field.max,
       });
   }
@@ -315,14 +323,11 @@ function fkTarget(field: Field): string | undefined {
   return field.type === "ref" && field.ref ? field.ref.entity : undefined;
 }
 
+/** DEFAULT expression; throws SqlValueError when the default does not match the field type (validator rejects it first). */
 function sqlDefault(field: Field): string | undefined {
   const d = field.default;
   if (d === undefined || ["ref", "file", "qr_token"].includes(field.type)) return undefined;
-  if (field.type === "json") return `${quoteLiteral(JSON.stringify(d))}::jsonb`;
-  if (typeof d === "number" && Number.isFinite(d)) return String(d);
-  if (typeof d === "boolean") return d ? "TRUE" : "FALSE";
-  if (typeof d === "string") return `${quoteLiteral(d)}::${sqlType(field.type)}`;
-  return undefined;
+  return sqlLiteral(d, field.type);
 }
 
 function columnSql(table: string, field: Field, notNull: boolean): string {
@@ -335,7 +340,7 @@ function columnSql(table: string, field: Field, notNull: boolean): string {
   return parts.join(" ");
 }
 
-const uniqueName = (table: string, field: string) => pgName("uq", table, field);
+const uniqueName = (table: string, field: string) => relName("uq", table, field);
 const fkName = (table: string, field: string) => pgName("fk", table, field);
 
 interface IndexDef {
@@ -352,10 +357,10 @@ function indexesFor(entity: Entity): Map<string, IndexDef> {
     ...(entity.ownerField !== undefined ? [entity.ownerField] : []),
     "created_at",
   ];
-  for (const f of implicit) out.set(pgName("ix", entity.name, f), { name: "", fields: [f], unique: false });
+  for (const f of implicit) out.set(relName("ix", entity.name, f), { name: "", fields: [f], unique: false });
   for (const idx of entity.indexes ?? []) {
     const unique = idx.unique === true;
-    out.set(pgName(unique ? "ux" : "ix", entity.name, ...idx.fields), {
+    out.set(relName(unique ? "ux" : "ix", entity.name, ...idx.fields), {
       name: "",
       fields: idx.fields,
       unique,
@@ -569,7 +574,24 @@ export function describeStep(s: MigrationStep): string {
 export interface DdlOptions {
   /** DB role used by the runtime; receives USAGE on the schema and DML on its tables. */
   runtimeRole?: string;
+  /**
+   * Per-system migration role (ops.yaml#migrations.roles; isolation.yaml M2: sys_owner_<key>_<env>). The schema is
+   * created `AUTHORIZATION <role>`, then `SET LOCAL ROLE <role>` makes every following statement run with the
+   * rights of this schema's owner only (no access to platform or other systems). The executing role MUST be a
+   * member of it. Without it the statements run as the connecting role (M0-M1: wizard_owner).
+   */
+  migrationRole?: string;
+  /** lock_timeout for the transaction, e.g. "3s", "500ms". Default "3s". */
   lockTimeout?: string;
+}
+
+const LOCK_TIMEOUT_RE = /^[1-9][0-9]{0,5}(ms|s|min)$/;
+
+/** Session settings every generated script starts with: literals are encoded for standard_conforming_strings=on. */
+function preamble(opts: DdlOptions): string[] {
+  const lock = opts.lockTimeout ?? "3s";
+  if (!LOCK_TIMEOUT_RE.test(lock)) throw new SqlValueError(`invalid lock_timeout: ${lock}`);
+  return [`SET LOCAL lock_timeout = ${textLiteral(lock)}`, "SET LOCAL standard_conforming_strings = on"];
 }
 
 /**
@@ -577,6 +599,9 @@ export interface DdlOptions {
  * (the first statement is `SET LOCAL lock_timeout`). Includes toRLS(plan.next) for the set_rls step.
  * Throws when the plan has errors (invalid spec or DESTRUCTIVE_IN_PROD).
  */
+/** Number of preamble statements toRLS starts with (toDDL emits them once, at the top). */
+const PREAMBLE_LENGTH = 2;
+
 export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions = {}): string[] {
   assertSqlName(schemaName, "schema name");
   if (plan.errors.length) {
@@ -586,13 +611,21 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
   const s = quoteIdent(schemaName);
   const t = (table: string) => `${s}.${quoteIdent(table)}`;
   const touch = `${s}.${quoteIdent("wz_touch_updated_at")}`;
-  const out: string[] = [`SET LOCAL lock_timeout = ${quoteLiteral(opts.lockTimeout ?? "3s")}`];
+  const out: string[] = preamble(opts);
+  const owner = opts.migrationRole;
+  if (owner !== undefined) {
+    assertSqlName(owner, "migration role");
+    // Created by the connecting role (needs CREATE on the database), owned by the per-system role.
+    if (plan.steps.some((x) => x.kind === "create_schema"))
+      out.push(`CREATE SCHEMA IF NOT EXISTS ${s} AUTHORIZATION ${quoteIdent(owner)}`);
+    out.push(`SET LOCAL ROLE ${quoteIdent(owner)}`);
+  }
   for (const step of plan.steps) {
     switch (step.kind) {
       case "create_schema":
-        out.push(`CREATE SCHEMA IF NOT EXISTS ${s}`);
+        if (owner === undefined) out.push(`CREATE SCHEMA IF NOT EXISTS ${s}`);
         out.push(
-          `CREATE OR REPLACE FUNCTION ${touch}() RETURNS trigger LANGUAGE plpgsql AS $wz$ BEGIN NEW.updated_at := now(); RETURN NEW; END $wz$`,
+          `CREATE OR REPLACE FUNCTION ${touch}() RETURNS trigger LANGUAGE plpgsql AS ${dollarQuote(" BEGIN NEW.updated_at := now(); RETURN NEW; END ")}`,
         );
         for (const [name, cols] of Object.entries(SYSTEM_TABLES)) {
           out.push(`CREATE TABLE IF NOT EXISTS ${t(name)} (\n  ${cols.join(",\n  ")}\n)`);
@@ -683,7 +716,7 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         out.push(`DROP TABLE IF EXISTS ${t(step.entity)}`);
         break;
       case "set_rls":
-        out.push(...toRLS(plan.next, schemaName, opts));
+        out.push(...toRLS(plan.next, schemaName, opts).slice(PREAMBLE_LENGTH));
         break;
     }
   }
@@ -700,19 +733,20 @@ const POLICY_CMD: Record<PermissionOp, string> = {
   delete: "DELETE",
 };
 
-function columnType(entity: Entity, name: string): string | undefined {
+/** Spec-level type of a column (system columns: uuid/timestamptz). */
+function columnType(entity: Entity, name: string): LiteralType | undefined {
   if ((SYSTEM_FIELDS as readonly string[]).includes(name))
     return SYSTEM_FIELD_TYPES[name as keyof typeof SYSTEM_FIELD_TYPES];
-  const f = entity.fields.find((x) => x.name === name);
-  return f ? sqlType(f.type) : undefined;
+  return entity.fields.find((x) => x.name === name)?.type;
 }
 
-/** SQL predicate for a rowFilter entry; `$user.<attr>` reads current_setting('wizard.user_<attr>', true). */
+const sqlColumnType = (t: LiteralType): string => (t === "uuid" || t === "timestamptz" ? t : sqlType(t));
+
 /** SQL reading `$user.<attr>` from the transaction context (runtime.yaml#postgres.context). */
 function userAttrSql(attr: string): string {
   if (attr === "id") return "nullif(current_setting('wizard.user_id', true), '')";
   if (attr === "role") return "nullif(current_setting('wizard.role', true), '')";
-  return `(nullif(current_setting('wizard.user_attrs', true), '')::jsonb ->> ${quoteLiteral(attr)})`;
+  return `(nullif(current_setting('wizard.user_attrs', true), '')::jsonb ->> ${textLiteral(attr)})`;
 }
 
 /**
@@ -723,14 +757,9 @@ function filterPredicate(entity: Entity, key: string, value: string | number | b
   const type = columnType(entity, key);
   if (!type) throw new Error(`rowFilter: unknown field ${entity.name}.${key}`);
   const col = quoteIdent(key);
-  if (typeof value === "string") {
-    const m = USER_REF_RE.exec(value);
-    if (m) return `${col} = (select ${userAttrSql(m[1] as string)}::${type})`;
-    return `${col} = ${quoteLiteral(value)}::${type}`;
-  }
-  if (typeof value === "boolean") return `${col} = ${value ? "TRUE" : "FALSE"}`;
-  if (!Number.isFinite(value)) throw new Error("rowFilter: non-finite number");
-  return `${col} = ${value}`;
+  const m = typeof value === "string" ? USER_REF_RE.exec(value) : null;
+  if (m) return `${col} = (select ${userAttrSql(m[1] as string)}::${sqlColumnType(type)})`;
+  return `${col} = ${sqlLiteral(value, type)}`;
 }
 
 /**
@@ -741,14 +770,15 @@ function filterPredicate(entity: Entity, key: string, value: string | number | b
 export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}): string[] {
   assertSqlName(schemaName, "schema name");
   const s = quoteIdent(schemaName);
-  const out: string[] = [];
+  const out: string[] = preamble(opts);
   const tables = [...Object.keys(SYSTEM_TABLES), ...spec.entities.map((e) => e.name)];
   for (const table of tables) {
     out.push(`ALTER TABLE ${s}.${quoteIdent(table)} ENABLE ROW LEVEL SECURITY`);
     out.push(`ALTER TABLE ${s}.${quoteIdent(table)} FORCE ROW LEVEL SECURITY`);
   }
+  const schemaLit = textLiteral(schemaName);
   out.push(
-    `DO $wz$ DECLARE p record; BEGIN FOR p IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = ${quoteLiteral(schemaName)} AND policyname LIKE 'wz\\_%' LOOP EXECUTE format('DROP POLICY %I ON %I.%I', p.policyname, ${quoteLiteral(schemaName)}, p.tablename); END LOOP; END $wz$`,
+    `DO ${dollarQuote(` DECLARE p record; BEGIN FOR p IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = ${schemaLit} AND policyname LIKE ${textLiteral("wz\\_%")} LOOP EXECUTE format(${textLiteral("DROP POLICY %I ON %I.%I")}, p.policyname, ${schemaLit}, p.tablename); END LOOP; END `)}`,
   );
   // ctx.systemDb and workflows run as role '__system' (runtime.yaml#postgres.context). A separate permissive
   // policy is equivalent to OR-ing it into every (role, op) policy, and also covers tables without permissions.
@@ -761,10 +791,15 @@ export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}):
   for (const p of spec.permissions) {
     const entity = entities.get(p.entity);
     if (!entity) continue;
-    const conds = [`current_setting('wizard.role', true) = ${quoteLiteral(p.role)}`];
-    for (const [k, v] of Object.entries(p.rowFilter ?? {})) conds.push(filterPredicate(entity, k, v));
-    const cond = conds.join(" AND ");
+    const roleCond = `current_setting('wizard.role', true) = ${textLiteral(p.role)}`;
+    const filtered = [
+      roleCond,
+      ...Object.entries(p.rowFilter ?? {}).map(([k, v]) => filterPredicate(entity, k, v)),
+    ].join(" AND ");
+    // rowFilterOps (default: all ops of the permission) — ops the rowFilter applies to; others get the role only.
+    const filterOps = new Set<PermissionOp>(p.rowFilterOps ?? p.ops);
     for (const op of p.ops) {
+      const cond = filterOps.has(op) ? filtered : roleCond;
       const name = quoteIdent(pgName("wz", p.role, op));
       const head = `CREATE POLICY ${name} ON ${s}.${quoteIdent(entity.name)} AS PERMISSIVE FOR ${POLICY_CMD[op]} TO PUBLIC`;
       if (op === "create") out.push(`${head} WITH CHECK (${cond})`);

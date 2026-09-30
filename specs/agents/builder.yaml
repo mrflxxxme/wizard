@@ -1,5 +1,6 @@
 # Строитель: карточка → операции AppSpec + код UI/функций → G0/G1 → исправления. Нормативно для packages/agents/src/builder.
 # Приёмы контекста — по мотивам Chef (Apache-2.0, chef-agent/ChatContextManager.ts), переписаны под AI SDK 7 UIMessage.parts.
+# Заимствованные фрагменты Chef/bolt.diy сохраняют заголовки; Apache-2.0 NOTICE и MIT © StackBlitz — в THIRD_PARTY_NOTICES.md (AGENTS.md).
 # Модели — specs/agents/models.yaml (callTypes plan, build_ops, build_code, fix).
 version: 1
 
@@ -8,8 +9,8 @@ inputs:
   spec: "текущая AppSpec + version (для новой системы — минимальная: app, одна роль admin)"
   files: "дерево файлов ревизии: {path, bytes, sha256}[] (ui/**.tsx, functions/**.ts)"
   history: "последние 5 ревизий: {version, author, humanDiff}[]"
-  mode: "build | change | point_and_edit"
-  target: "только point_and_edit: {componentId, file, route, instruction}"
+  mode: "create | change | fix | point_edit — значения runs.mode (platform/workflows.yaml#workflows.build.modes). fix: фазы plan и ops пропускаются, старт с фазы fix по последним GateReport. point_edit — M3, см. point_and_edit"
+  target: "только point_edit: {wzId, componentName, file, line, route, instruction ≤ 500} (ui/ui-kit.yaml#wz_id)"
 
 # ---------------------------------------------------------------- Инструменты (zod → JSON Schema, models.yaml#call_policy)
 tools:
@@ -18,8 +19,8 @@ tools:
     output: "{ok: true, version, humanDiff: string[]} | {ok: false, errors: OpsError[]}"
     rules:
       - "MUST: ошибки возвращаются модели как результат инструмента (не исключение), с path/code/allowed/hint"
-      - "MUST NOT (mode=build|change): set_acceptance со списком, где удалён или ослаблен AC из карточки; такие батчи → ACCEPTANCE_LOCKED"
-      - "MUST NOT: ops, ослабляющие права ролей ниже карточки ради прохождения гейта (G2 это ловит; в build — ошибка PERMISSION_WIDENING, если роль получает op, которого нет в card.roles[].can)"
+      - "MUST NOT (mode=create|change): set_acceptance со списком, где удалён или ослаблен AC из карточки; такие батчи → ACCEPTANCE_LOCKED"
+      - "MUST NOT: ops, ослабляющие права ролей ниже карточки ради прохождения гейта (G2 это ловит; в create — ошибка PERMISSION_WIDENING, если роль получает op, которого нет в card.roles[].can)"
   write_file:
     input: "{path: string, content: string}"
     rules:
@@ -30,7 +31,7 @@ tools:
     output: "{ok, bytes, warnings: string[]}"
   read_file:
     input: "{path}"
-    virtual_paths: { "spec.json": "полная AppSpec (только чтение)", "sdk.d.ts": "сгенерированные типы generateTypes(spec)", "card.json": "карточка" }
+    virtual_paths: { "spec.json": "AppSpec (только чтение); compliance.operatorName/operatorContact/operatorInn/consentText/retentionWaiver.reason заменены на [ОПЕРАТОР]/[СКРЫТО]", "_generated/wizard.d.ts": "сгенерированные типы generateTypes(spec) (runtime/sdk.md §4)", "card.json": "карточка" }
     output: "{content} | {error: NOT_FOUND}"
   list_files:
     input: "{prefix?: 'ui/'|'functions/'}"
@@ -40,29 +41,30 @@ tools:
     output: "сжатый GateReport: {passed, failed: {id, message_ru, file?, line?, path?, fixHint?}[] ≤ 20, explanations?: Explanation[] (qa.yaml, для G1)}"
     rules:
       - "MUST: G1 запускается только если G0 последней ревизии passed; иначе GATE_PRECONDITION"
-      - "Полный отчёт сохраняется в прогоне; модели — только упавшие проверки"
+      - "Полный GateReport сохраняется в platform.gate_reports (db.yaml) + событие gate_result (workflows.yaml#events); модели — только упавшие проверки"
   get_ui_kit_docs:
     input: "{components?: string[]}"
-    output: "пропсы, примеры и правила компонентов из specs/ui/ui-kit.yaml (без аргумента — оглавление ≤ 1.5k токенов)"
+    output: "пропсы, примеры и правила компонентов из specs/ui/ui-kit.yaml (без аргумента — оглавление ≤ 1.5k токенов); фрагменты режет tools/specs/slice.mjs при сборке packages/agents/assets (второй копии документации нет)"
   get_sdk_docs:
     input: "{topic?: 'query'|'mutation'|'action'|'db'|'hooks'|'connectors'|'errors'|'limits'}"
-    output: "фрагмент specs/runtime/sdk.md"
+    output: "фрагмент specs/runtime/sdk.md (тот же механизм нарезки, что у get_ui_kit_docs)"
   ask_orchestrator:
     input: "{question: string, options?: string[2..4]}"
     output: "{answer: string, source: 'card'|'defaults'|'user'}"
     rules:
       - "Оркестратор отвечает сам из карточки и defaults; к пользователю — только если ответ меняет данные/права/деньги (вопрос-кнопки, не больше 2 за прогон)"
-      - "В point_and_edit — единственный путь к изменению спеки (оркестратор превращает запрос в small_edit)"
+      - "В point_edit — единственный путь к изменению спеки (оркестратор превращает запрос в small_edit)"
 
 # ---------------------------------------------------------------- Цикл
 loop:
+  owner: "runBuild(host, {card, cap, mode}) в packages/agents реализует цикл целиком (architecture.yaml#interfaces.agent_host); каждый LLM-вызов и гейт идёт через host.runStep (M0 — identity, M1 — DBOS-step). platform/workflows.yaml#build описывает только имена шагов и события"
   phases:
     - id: plan
       callType: plan
       do: "Один вызов с инструментом submit_plan {steps: {id: P<n>, kind: ops|code, title, targets: string[], acRefs: AC[]}[] ≤ 20}. План показывается в журнале сборки"
     - id: ops
       callType: build_ops
-      do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance(consentText)"
+      do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance({consentTemplateId, policyPage}). operator*, retentionWaiver и свободный consentText агенту недоступны (OWNER_ONLY_FIELD, appspec/ops.yaml)"
       done_when: "Все ops-шаги плана выполнены и G0-SPEC-01/02 проходят"
     - id: code
       callType: build_code
@@ -73,18 +75,22 @@ loop:
       callType: fix
       do: "Упавшие проверки + объяснения QA подаются новым user-сообщением «Отчёт проверок»; модель исправляет через apply_ops/write_file и снова заканчивает ход"
   termination:
-    success: "G0 и G1 passed на последней ревизии → событие run_finished {version, humanDiff, creditsUsed}"
+    success: "G0 и G1 passed на последней ревизии → событие run_finished {status: succeeded, resultRevision, creditsUsed, summary_ru} (humanDiff — в ops_applied.summary_ru)"
     stop: "бюджет исчерпан | эскалация без ответа 24 ч | CANCEL"
   step: "Шаг = один вызов LLM (со всеми его tool calls ≤ 8). Счётчик шагов общий на все фазы"
   idempotency: "Каждый шаг — DBOS-step (M1+); повтор после рестарта не повторяет применённые ops (idempotencyKey = runId:step:i)"
-  events: "MUST эмитить run_started, plan_ready, ops_applied, file_written, gate_started, gate_finished, budget_warning, budget_exceeded, needs_user, model_switched, run_finished, run_failed; точные имена и payload — specs/platform/workflows.yaml#events (приоритет у него)"
+  events: >
+    MUST эмитить только типы specs/platform/workflows.yaml#events (источник имён и payload): run_started, step_started/step_finished
+    (step = plan, ops, code, verify, fix), ops_applied, file_written, gate_started, gate_result, budget_update, budget_exceeded,
+    needs_input, input_received, run_finished, run_failed, plan_ready {steps: [{id, kind, title}] ≤ 20} (после submit_plan),
+    model_switched {fromModel, toModel, reason: fallback_circuit_open|fallback_error} — пишется в run_events, но в SSE пользователя не отдаётся (models.yaml#fallback_rules)
 
 budgets:
   credits_cap: "card.cap.credits. Перед каждым вызовом: spent + upper_bound(call) > cap → не вызывать, событие budget_exceeded. upper_bound = оценка входных токенов × input + max_tokens × output"
-  warn_at: "80% cap → событие budget_warning (UI показывает прогресс)"
+  warn_at: "used ≥ 0.8·cap: UI показывает предупреждение по budget_update (отдельного события нет)"
   max_steps: 64
   max_wall_clock_min: 45
-  on_budget_exceeded: "Ревизия сохраняется как draft с последним состоянием; needs_user с кнопками [«Добавить N кредитов и продолжить» (N = ceil(0.5·cap)), «Остановить, оставить как есть»]"
+  on_budget_exceeded: "Ревизия сохраняется как draft с последним состоянием; budget_exceeded, затем needs_input kind=decision decisionId=budget с вариантами raise_cap_<N> (N — platform/workflows.yaml#run_lifecycle.budget.check) и stop («Остановить, оставить как есть»)"
   test: "Fixture-прогон с cap=1 → остановка с budget_exceeded до превышения; ledger ≤ cap (backlog M0-13)"
 
 escalation:
@@ -92,15 +98,17 @@ escalation:
     counts: "run_gate/итоговый гейт с passed=false; tool error с тем же (code, path), что в предыдущем шаге; 3 одинаковых вызова инструмента подряд (детектор зацикливания)"
     resets: "гейт passed ИЛИ число упавших блокирующих проверок уменьшилось относительно предыдущего прогона гейта"
     threshold: 5
+  gate_iterations: "≤ 3 итерации fix на уровень гейта; исчерпание — тот же порог эскалации"
   action: >
-    На 5-й подряд: toolChoice=none, модель пишет короткое объяснение для пользователя (что не получается, по-русски, ≤ 400 символов),
-    прогон переходит в needs_user с кнопками.
+    На 5-й подряд (или при исчерпании итераций): toolChoice=none, модель пишет короткое объяснение для пользователя (что не получается, по-русски, ≤ 400 символов),
+    прогон переходит в needs_input kind=decision decisionId=escalation, options = buttons (статусы и события — platform/workflows.yaml).
+  outcomes: "без ответа 24 ч → run_failed INPUT_TIMEOUT; rollback → run_finished {status: cancelled}; повторный порог после retry → run_failed CONSECUTIVE_ERRORS (или GATES_FAILED при исчерпании итераций) без новой эскалации"
   buttons:
     - { id: retry,     label: "Попробовать ещё раз",                   effect: "счётчик сброшен, +8 шагов, тот же cap" }
     - { id: simplify,  label: "Упростить: убрать то, что не получается", effect: "строитель удаляет упавшую функцию/экран и связанные AC (единственный случай, когда AC можно убрать; пользователь видит список)" }
-    - { id: rollback,  label: "Вернуть последнюю рабочую версию",       effect: "откат к последней ревизии с G0 passed; прогон завершён" }
-    - { id: rephrase,  label: "Объяснить по-другому",                   effect: "свободный текст пользователя → новое user-сообщение, счётчик сброшен" }
-  test: "Фейковая модель, 5 раз ломающая typecheck → needs_user с 4 кнопками; 6-го вызова LLM нет"
+    - { id: rollback,  label: "Вернуть последнюю рабочую версию",       effect: "откат к последней ревизии с G0 passed; run_finished {status: cancelled}" }
+    - { id: rephrase,  label: "Объяснить по-другому",                   freeText: true, effect: "свободный текст пользователя (provideRunInput.text) → новое user-сообщение, счётчик сброшен" }
+  test: "Фейковая модель, 5 раз ломающая typecheck → needs_input kind=decision decisionId=escalation с 4 вариантами; 6-го вызова LLM нет"
 
 # ---------------------------------------------------------------- Контекст
 context:
@@ -109,7 +117,7 @@ context:
     - "2. system session: карточка (сжатая) + дайджест спеки + дерево файлов (пути и размеры)"
     - "3. relevant files (user-сообщение, обновляется только при свёртке)"
     - "4. свёрнутая история + последние ходы полностью"
-  spec_digest: "Компактный текст: сущности (поля: имя:тип[!req][pii]), роли, права (роль: сущность ops [rowFilter]), страницы, функции, AC. Без compliance.operatorName и consentText. Полная спека — read_file('spec.json')"
+  spec_digest: "Компактный текст: сущности (поля: имя:тип[!req][pii]), роли, права (роль: сущность ops [rowFilter]), страницы, функции, AC. Без compliance.operatorName/operatorContact/operatorInn, consentText и retentionWaiver.reason. Спека — read_file('spec.json') (с теми же полями, замаскированными)"
   collapse:
     unit: "символы (не токены)"
     max_chars: 65536
@@ -128,15 +136,15 @@ context:
   relevant_files:
     max_files: 16
     max_total_bytes: 8192
-    selection: "LRU по последнему касанию (write/read) + файлы, упомянутые в упавших проверках (приоритет) + target в point_and_edit"
+    selection: "LRU по последнему касанию (write/read) + файлы, упомянутые в упавших проверках (приоритет) + target.file в point_edit"
     overflow: "Файл, не влезающий в бюджет, подаётся outline: экспорт, сигнатуры, число строк; полный текст — через read_file"
   models_without_cache: "max_chars = min_chars = 8192"
   test: "Юнит-тест как у Chef: последовательность из 40 ходов даёт ≤ 3 сдвигов границы свёртки; префикс сообщений 1–2 байтово неизменен между ходами"
 
 # ---------------------------------------------------------------- «Укажи и измени» (M3)
 point_and_edit:
-  input: "target {componentId: '<file>#<Component>', file, route, instruction ≤ 500}"
-  component_ids: "Сборщик превью проставляет data-wz-id=\"<file>#<Component>\" на корневой элемент каждого экспортируемого компонента в ui/** (esbuild-плагин); клик в превью отдаёт componentId"
+  mode: point_edit
+  input: "target {wzId, componentName, file, line, route, instruction ≤ 500}; формат wzId и его разметка в превью — ui/ui-kit.yaml#wz_id (источник)"
   rules:
     - "MUST: write_file разрешён только для target.file; попытка записать другой путь → TARGET_ONLY"
     - "MUST: apply_ops недоступен; нужна правка данных/прав → ask_orchestrator (станет small_edit с карточкой)"
@@ -147,18 +155,18 @@ point_and_edit:
 # ---------------------------------------------------------------- Правила кода сгенерированных систем
 code_conventions:
   imports:
-    - "MUST: только '@wizard/sdk', '@wizard/ui-kit' (и их подпути из их package exports), относительные импорты внутри ui/** или внутри functions/**, типы из 'sdk.d.ts'"
-    - "MUST NOT: ui/** импортирует functions/** напрямую — только через api-ссылки SDK (useQuery(api.fnName))"
-  forbidden: "eval, new Function, import(), require, fetch, XMLHttpRequest, WebSocket, EventSource, navigator.sendBeacon, dangerouslySetInnerHTML, innerHTML/outerHTML, document.write, document.cookie, localStorage/sessionStorage для полей с pii≠none, window.open на внешние URL, <form action=…>, <script>, <iframe> — G0-SEC-01/G2-AF-05"
+    - "MUST: только '@wizard/sdk', '@wizard/ui-kit' (и их подпути из их package exports), относительные импорты внутри ui/** или внутри functions/**; типы — только import type {…} from '@wizard/sdk' (module augmentation _generated/wizard.d.ts, runtime/sdk.md §4)"
+    - "MUST NOT: ui/** импортирует functions/** напрямую — ui/** вызывает функции по строковому имени: useQuery('fnName', args), useMutation('fnName') (runtime/sdk.md §3)"
+  forbidden: "Единый список — quality/gates.yaml#G0.forbidden_api (G0-SEC-01, G2-AF-05)"
   functions:
     - "query/mutation/action из @wizard/sdk; валидаторы аргументов (v.*) всегда, return-валидаторы — нет"
-    - "Чтение списков — withIndex по индексу из спеки или paginate/take(≤100); полная выборка без индекса запрещена (G0-IDX-01)"
+    - "ctx.db/systemDb.<e>.list/first/count/paginate: where — префикс объявленного или неявного индекса (IndexWhere<E>, ловит G0-TS-01); list без where — limit ≤100, с where — ≤1000; paginate.numItems ≤200 (G0-IDX-01)"
     - "action не трогает ctx.db, только ctx.runQuery/runMutation; внешние вызовы — только ctx.connectors.*"
     - "Права не проверяются вручную вместо спеки: runtime применяет их сам; функция может только сужать"
     - "Ошибки — ctx.error(CODE, data); тексты для пользователя на русском"
   ui:
-    - "Компоненты ui-kit вместо своей вёрстки; цвета/отступы/радиусы — только токены (var(--wz-*)), без хардкода цветов"
-    - "Одна страница = один файл ui/pages/<Name>.tsx с default export; общие компоненты — ui/components/**"
+    - "Компоненты ui-kit вместо своей вёрстки; цвета/отступы/радиусы — только токены (var(--w-*), ui/ui-kit.yaml#tokens), без хардкода цветов"
+    - "Страница = page.file (^ui/…\\.tsx$, рекомендуемо ui/pages/) с default export; общие компоненты — ui/components/**"
     - "Все строки интерфейса — на русском; даты/деньги — форматтеры ui-kit (ru-RU, ₽)"
     - "Доступность: у каждого поля ввода подпись (Field label), у изображений alt, у кнопок-иконок aria-label, фокус видим, порядок табуляции естественный, цвет не единственный носитель смысла"
     - "Адаптивность: без фиксированных ширин > 360 px; таблицы ui-kit сами превращаются в карточки на мобильном"
@@ -170,18 +178,36 @@ code_conventions:
 human_diff:
   source: "Детерминированно, без LLM: из ops ревизии + списка изменённых файлов"
   op_templates:
+    set_app: "Изменены название или описание системы"
+    set_theme: "Изменён стиль"
     add_entity: "Добавлены данные «{label}» ({n} полей)"
+    update_entity: "Изменены настройки данных «{label}»"
+    remove_entity: "Удалены данные «{label}» ⚠"
     add_field: "В «{entity.label}» добавлено поле «{label}»"
     update_field: "В «{entity.label}» изменено поле «{label}»: {что}"
     remove_field: "Из «{entity.label}» удалено поле «{label}» ⚠"
+    add_role: "Добавлена роль «{label}»"
+    update_role: "Изменена роль «{label}»"
+    remove_role: "Удалена роль «{label}» ⚠"
     set_permission: "«{role.label}» теперь может: {ops по-русски} — «{entity.label}»{, только свои}"
+    remove_permission: "«{role.label}» больше не имеет доступа к «{entity.label}»"
     add_workflow: "Новая автоматизация: {label}"
+    update_workflow: "Изменена автоматизация: {label}"
+    remove_workflow: "Удалена автоматизация: {label}"
     add_integration: "Подключено: {connector по-русски}"
+    update_integration: "Изменены настройки подключения: {connector по-русски}"
+    remove_integration: "Отключено: {connector по-русски}"
+    add_function: "Добавлена серверная логика"
+    remove_function: "Удалена серверная логика"
     add_page: "Новый экран «{title}»"
-    set_theme: "Изменён стиль"
-    other: "Изменено: {op} {name}"
-  files: "ui/pages/X.tsx → «Изменён экран «{page.title}»»; ui/components/** → «Изменён элемент интерфейса «{Component}»»; functions/** → «Изменена логика «{function.name}»»"
+    update_page: "Изменён экран «{title}»"
+    remove_page: "Удалён экран «{title}»"
+    add_ai_action: "Новое ИИ-действие «{label}»"
+    set_acceptance: "Обновлены критерии приёмки ({n})"
+    set_compliance: "Обновлены настройки персональных данных"
+    unknown: "Изменены настройки системы"
+  files: "page.file → «Изменён экран «{page.title}»»; прочие ui/** → «Изменён элемент интерфейса «{Component}»»; function.file → «Изменена логика экрана или автоматизации»; прочие functions/** → «Изменена вспомогательная логика»"
   rules:
     - "Группировать по сущности/экрану; ≤ 20 строк, дальше «и ещё N изменений»"
     - "Необратимые изменения (remove_*, DESTRUCTIVE) — первыми и с ⚠"
-    - "Тест: снапшот humanDiff для ревизии «форум v1→v2» (добавлено поле)"
+    - "Тест: снапшот humanDiff для ревизии «форум v1→v2» (добавлено поле); у каждого op из appspec/ops.yaml#ops есть шаблон (сверка ключей)"

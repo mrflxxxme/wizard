@@ -1,52 +1,65 @@
 # Изоляция сгенерированного серверного кода (функции query/mutation/action). Решение product.yaml#decisions.D5_isolation, аудит 04 T4.
-# UI-код систем исполняется в браузере конечного пользователя на отдельном домене систем — здесь не рассматривается.
+# UI-код систем исполняется в браузере конечного пользователя на отдельном домене систем — здесь только сборка UI на хосте (static_checks_G0.build)
+# и раздача пользовательских файлов (user_files); веб-безопасность домена систем — abuse.yaml#domain.
 version: 1
 
 threat_model:
-  attacker: "Пользователь платформы (или модель под prompt injection), который получает произвольный код в functions/*.ts своей системы"
+  attacker: "Пользователь платформы (или модель под prompt injection), который получает произвольный код в functions/*.ts и ui/**/*.tsx своей системы"
   assets: ["данные других систем и тенантов", "секреты коннекторов", "БД и секреты платформы", "узлы кластера и сеть Cloud.ru", "репутация доменов"]
   non_goal: "Защита системы от её собственного владельца (он и так управляет своими данными)"
 
 layers:                            # defense in depth, все слои обязательны начиная с M2
   - { id: L1, name: "Статика в G0", milestone: M0 }
-  - { id: L2, name: "Изолят (node:vm в M0–M1, workerd в M2+)", milestone: M0 }
+  - { id: L2, name: "Изолят (node:vm в отдельном процессе в M0–M1, workerd в M2+)", milestone: M0 }
   - { id: L3, name: "gVisor-под в отдельном пуле узлов", milestone: M2 }
   - { id: L4, name: "Сеть: default-deny, egress только через прокси с allowlist; секреты у хоста", milestone: M2 }
   - { id: L5, name: "БД только через RPC runtime с ролью системы + RLS", milestone: M0 }
 
 static_checks_G0:                  # packages/gates, M0-10; каждая — с позитивной и негативной фикстурой
-  - "Импорты только @wizard/sdk и @wizard/ui-kit (в functions — только @wizard/sdk); относительные — только внутри functions/ и ui/"
-  - "Запрещены: eval, new Function, Function(...), import() динамический, require, process, globalThis/global/self-доступ к небезопасным свойствам, __proto__/constructor.constructor, with, WebAssembly, SharedArrayBuffer, Atomics, fetch/XMLHttpRequest/WebSocket (сеть только ctx.connectors/ctx.http)"
-  - "Запрещены строковые обращения к запрещённым идентификаторам через вычисляемые свойства (obj['ev'+'al']) — любой computed member access к globalThis отклоняется"
-  - "AST-проверка через TypeScript compiler API после tsc typecheck; бандл esbuild с platform=neutral, external только SDK"
-  - "Размер исходника функции ≤ 200 КБ, бандла системы ≤ 5 МБ"
+  list: "Канонический список запрещённых API и лимитов — quality/gates.yaml#G0.forbidden_api (G0-IMP-01, G0-SEC-01). Этот файл задаёт минимум, который MUST в него входить"
+  required:
+    - "Импорты только @wizard/sdk и @wizard/ui-kit (в functions — только @wizard/sdk); относительные — только внутри functions/ и ui/; без query-суффиксов (?raw, ?url) и import attributes"
+    - "Запрещены: eval, new Function, Function(...), import() динамический, require, process, globalThis/global/self-доступ к небезопасным свойствам, __proto__/constructor.constructor, with, WebAssembly, SharedArrayBuffer, Atomics, fetch/XMLHttpRequest/WebSocket (сеть только ctx.connectors/ctx.http), console.* в functions (только ctx.log.*)"
+    - "Computed member access с нелитеральным ключом (obj['ev'+'al'], document[k]) на globalThis, window, self, document, navigator, location, Reflect и через Object.getOwnPropertyDescriptor — блок (закрывает document['coo'+'kie'])"
+    - "Размер исходника функции ≤ 200 КБ, бандла системы ≤ 5 МБ"
+  build:                           # сборка кода атакующего на хосте
+    - "MUST: AST-проверки G0-IMP-01 и G0-SEC-01 выполняются на исходниках ДО любого запуска tsc и esbuild; провал → сборка не запускается"
+    - "MUST: tsc typecheck и esbuild работают в каталоге-копии ревизии (absWorkingDir = временный каталог только с ui/** и functions/**), без доступа к репозиторию и .env хоста"
+    - "MUST: плагин esbuild onResolve отклоняет пути вне ui/** и functions/** копии и любые пакеты, кроме @wizard/sdk и @wizard/ui-kit; loaders — только ts/tsx; define и переменные окружения в бандл не пробрасываются; бандл функций — platform=neutral, external только SDK"
+    - "M2: сборка — в sandbox-пуле без секретов (как исполнение функций)"
 
 M0_M1:
   name: unsafe-local
   enable: "ТОЛЬКО при WIZARD_UNSAFE_LOCAL_EXEC=1. Без флага runtime отвечает на /api/fn/* 503 FUNCTIONS_DISABLED"
   guards:
     - "MUST: процесс runtime отказывается стартовать с флагом, если NODE_ENV=production, или адрес привязки ≠ 127.0.0.1/::1, или задан KUBERNETES_SERVICE_HOST (тест на каждое условие)"
+    - "MUST: те же стартовые гарды — для WIZARD_DEV_LOGIN=1 (вход без токена, runtime.yaml#auth.dev_login_M0) и WIZARD_AUTH_MODE=dev в platform-api"
+    - "MUST (защита от DNS rebinding и туннелей): platform-api и runtime отвечают 421, если Host ∉ {localhost, 127.0.0.1, [::1], *.localhost} (с портом); при WIZARD_UNSAFE_LOCAL_EXEC=1 или WIZARD_AUTH_MODE=dev запрос с заголовками X-Forwarded-*, Forwarded или CF-* → 403 (признак туннеля); детали — deploy.yaml#local. Тест на каждый случай"
     - "MUST NOT: включать на публичных хостах, в staging и prod; CI использует флаг только в job e2e"
   mechanism:
-    - "Функция исполняется в worker_threads Worker (resourceLimits: maxOldGenerationSizeMb 128, maxYoungGenerationSizeMb 32, stackSizeMb 4) с env: {} и без argv"
-    - "Внутри воркера — node:vm контекст (codeGeneration: {strings: false, wasm: false}, microtaskMode: 'afterEvaluate'); в контексте нет require, process, fetch, Buffer, setTimeout сверх SDK-обёрток"
-    - "ctx.db, ctx.runQuery и т. п. — прокси через MessagePort к основному потоку runtime, который выполняет запрос с ролью системы (db_access)"
-    - "Таймаут: 5 с (M0-09) на вызов, затем worker.terminate(); сеть недоступна (нет API)"
-  honesty: "node:vm — НЕ граница безопасности (документация Node). Режим предназначен только для собственного кода в разработке"
+    - "Исполнитель функций — отдельный дочерний процесс Node 22 (пул, перезапуск после таймаута или падения) с --permission и --allow-fs-read=<каталог бандла>, без --allow-child-process и --allow-worker, с --max-old-space-size=128 и --stack-size по runtime.yaml; env: {}, без argv"
+    - "Внутри процесса — node:vm контекст (codeGeneration: {strings: false, wasm: false}, microtaskMode: 'afterEvaluate'); в контексте нет require, process, fetch, Buffer, setTimeout сверх SDK-обёрток"
+    - "В vm-контекст передаются только значения, созданные внутри контекста (structured clone через IPC/MessagePort); функции и объекты хоста не передаются (цепочка constructor.constructor недоступна)"
+    - "ctx.db, ctx.runQuery и т. п. — сообщения по IPC к основному процессу runtime, который выполняет запрос с ролью системы (db_access)"
+    - "Лимиты — runtime.yaml#functions: время → процесс завершается, 504 TIMEOUT; память и чтения → 422 LIMIT_EXCEEDED; сеть недоступна (нет API)"
+  honesty: "node:vm — НЕ граница безопасности (документация Node); граница в M0–M1 — модель прав процесса Node, и та не рассчитана на враждебный код. Режим предназначен только для собственного кода в разработке"
 
 M2:
   name: workerd-in-gvisor
   runtime:
-    - "workerd (Apache-2.0) — один процесс на группу тенантов; каждая система — отдельный Worker с отдельным изолятом; compatibility_date фиксирована в репо"
+    - "workerd (Apache-2.0) — один процесс на группу систем одного пула; каждая система — отдельный Worker с отдельным изолятом; compatibility_date фиксирована в репо. workerd — не hardened sandbox: побег из V8 считается возможным, поэтому под не содержит ничего ценнее данных своих систем на время запроса"
     - "Биндинги вместо сети: RUNTIME_RPC (service binding на runtime), CONNECTORS (service binding на egress-proxy); globalOutbound = none"
-    - "Лимиты на вызов: CPU 1000 мс (query/mutation), wall 30 с (action), память изолята 128 МБ; превышение → 503 FUNCTION_LIMIT; значения — runtime.yaml"
+    - "RPC к runtime авторизуется токеном-возможностью, который runtime выпускает на каждый входящий запрос: {systemId, env, requestId, exp ≤ wall-лимит вызова}, HMAC ключом runtime. Постоянных секретов систем и платформы в поде нет"
+    - "Spectre: performance.now и Date огрублены (≥ 1 мс, без роста в пределах вызова), SharedArrayBuffer и shared WebAssembly.Memory выключены compatibility flags; обновление workerd/V8 и ротация подов — ≤ 72 ч после публикации CVE V8"
+    - "Лимиты на вызов: CPU 1000 мс (query/mutation), wall 30 с (action), память изолята 128 МБ; время → 504 TIMEOUT, память и чтения → 422 LIMIT_EXCEEDED; значения — runtime.yaml"
   pods:
     - "runtimeClassName: gvisor (runsc, platform=systrap), пул узлов sandbox с taint; runAsNonRoot, readOnlyRootFilesystem, drop ALL capabilities, seccompProfile RuntimeDefault, automountServiceAccountToken=false, без hostPath/hostNetwork"
-    - "Группировка: Free — общие поды до 50 систем на под; платные — до 10 систем на под; Бизнес SHOULD — выделенный под на организацию. Free и платные — в разных пулах узлов"
+    - "Группировка (жёсткие лимиты): Free — ≤ 10 систем на под; платные — ≤ 10 систем на под; Бизнес SHOULD — выделенный под на организацию. Free и платные — в разных пулах узлов; превышение лимита — отказ планировщика, а не уплотнение"
     - "Под перезапускается при OOM/падении; код систем загружается из S3 по sha256 бандла, проверка хэша перед загрузкой"
   network:
     - "NetworkPolicy: sandbox-поды → только runtime-rpc:443 и egress-proxy:3128; ingress — только от runtime; DNS запрещён (адреса через env)"
-    - "Egress-proxy (отдельный deployment в пуле platform): allowlist = хосты из function.egress спеки ∩ глобальный список разрешённых (api.yookassa.ru, api.telegram.org, SMTP-провайдер, ...) — connectors/*.yaml; запрет RFC1918, link-local (169.254.0.0/16), metadata, loopback, адресов кластера — проверка ПОСЛЕ резолва (защита от DNS rebinding)"
+    - "Egress-proxy (отдельный deployment в пуле platform): allowlist = хосты из function.egress спеки (формат — appspec.schema.json#/$defs/function.egress: только DNS-имена, без IP, wildcard и порта) ∩ глобальный список разрешённых (api.yookassa.ru, api.telegram.org, SMTP-провайдер, ...) — connectors/*.yaml; запрет RFC1918, link-local (169.254.0.0/16), metadata, loopback, адресов кластера — проверка ПОСЛЕ резолва (защита от DNS rebinding)"
+    - "Proxy: только CONNECT на порт 443 (SMTP — 465/587 и только на хосты smtp-интеграций системы); SNI в TLS ClientHello MUST совпадать с CONNECT-хостом; лимит размера тела и времени соединения; в логах proxy — хост, статус и размер, без path и query (в пути api.telegram.org/bot<token>/ — токен)"
     - "Секреты коннекторов подставляет proxy/runtime на стороне хоста по secret://name; код системы значения не видит"
   gvisor_open_question: "Поддержка RuntimeClass gVisor в Cloud.ru Managed K8s — deploy.yaml#cloud.kubernetes.open_question (W0-CLOUDRU-GVISOR)"
 
@@ -54,22 +67,36 @@ db_access:                          # L5, с M0
   - "Код систем не имеет строки подключения. Все операции — RPC к runtime (ctx.db.*), который исполняет их в транзакции под ролью sys_<key>_<env>"
   - "M0–M1: одна роль wizard_runtime без BYPASSRLS (runtime.yaml#postgres.roles); изоляция схем — построитель запросов runtime + RLS"
   - "M2: на каждую систему и env — роль sys_<systemId>_<env> (NOLOGIN) с USAGE и DML только на app_<systemId>_<env>; wizard_runtime — член всех таких ролей с NOINHERIT и в транзакции делает SET LOCAL ROLE sys_<systemId>_<env>. Нет доступа к platform, dbos, pii_vault, чужим схемам (escape-тест other_schema_via_rpc на уровне БД). Таймауты — runtime.yaml#postgres"
+  - "M2: системный доступ (вебхуки коннекторов, воркфлоу, ctx.systemDb) — отдельная роль sys_<systemId>_<env>_system с политиками USING (true), а не GUC; условие wizard.role='__system' удаляется из RLS-политик. M0–M1 — GUC wizard.role='__system' допустим (одна роль)"
   - "Контекст пользователя: set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции (ops.yaml#migrations.rls); RLS включён на всех таблицах"
+  - "MUST (PgBouncer transaction mode): lint-правило в CI (grep/biome по packages/** и apps/**) запрещает SET без LOCAL, set_config(…, false), SET ROLE без LOCAL, pg_advisory_lock (только _xact_-варианты), LISTEN/NOTIFY через пул и временные таблицы; statement_timeout и lock_timeout — только SET LOCAL (M0). Интеграционный тест через PgBouncer: две транзакции разных систем на одном серверном соединении не видят GUC и роль друг друга (M2)"
   - "Имя схемы выводится runtime из аутентифицированного systemId, никогда из аргументов функции"
+
+user_files:                         # поле type=file и логотип; эндпоинт — runtime.yaml (после M2-01), логотип — api.yaml
+  upload: "POST /api/files (runtime, M2): ≤ 10 МБ; право — create/update на сущность с этим полем; тип определяется по сигнатуре (magic bytes), не по имени и Content-Type; allowlist: image/jpeg, image/png, image/webp, application/pdf. SVG, HTML, XML, JS и архивы запрещены → 415"
+  storage: "S3 в РФ, ключ — случайный id; значение поля — ссылка на объект, не URL"
+  serve: "Раздача только по подписанной ссылке (TTL ≤ 15 мин) после проверки права read на строку; заголовки Content-Disposition: attachment, Content-Security-Policy: sandbox, X-Content-Type-Options: nosniff, Content-Type из allowlist"
+  pii: "Поле file по умолчанию pii: basic (скан, фото человека) — попадает под retention, anonymize (файл удаляется) и согласие (compliance.yaml#system_package). Признаки сканов документов в label — G2-AF-03 (abuse.yaml#patterns.gov_ids.file_fields)"
+  logo: "theme.logoFile: только PNG и WebP (≤ 1 МБ, проверка сигнатуры), растеризация и перекодирование на сервере; SVG не принимается"
+  test: "Загрузка HTML/SVG с подменённым Content-Type → 415; раздача PDF — attachment + CSP sandbox; ссылка чужой строки → 404"
 
 limits:
   per_system_rate: "M2: ≤ 50 вызовов функций/с на систему (token bucket в runtime), превышение → 429"
-  logs: "console.* из функций → логи runtime с меткой system_id, через pii-redaction, ≤ 10 КБ на вызов"
+  logs: "ctx.log.* из функций → логи runtime с меткой system_id, через pii-redaction, ≤ 10 КБ на вызов (console.* запрещён — sdk.md)"
 
 escape_tests:                       # packages/gates/test/escape/*.ts; M2-01 acceptance: ВСЕ падают внутри песочницы
-  M0: [fs_read_etc_passwd, require_child_process, dynamic_import, eval_string, function_constructor, fetch_external, infinite_loop_timeout, memory_bomb, read_process_env, other_schema_via_rpc]
+  M0: [fs_read_etc_passwd, require_child_process, dynamic_import, eval_string, function_constructor, fetch_external, infinite_loop_timeout, memory_bomb, read_process_env, other_schema_via_rpc, vm_constructor_escape, import_env_raw, build_path_escape]
+  M0_notes:
+    vm_constructor_escape: "this.constructor.constructor('return process')() → нет process"
+    import_env_raw: "import k from '../../../.env?raw' → G0 блок, сборка не запускается"
+    build_path_escape: "импорт абсолютного пути или файла вне ui/**, functions/** → onResolve отклоняет"
   M2_additional:
     - "read /proc/self/environ, /proc/1/root, /var/run/secrets/kubernetes.io"
     - "connect к 169.254.169.254 (metadata), к адресу K8s API, к pod CIDR, к runtime другой группы"
     - "DNS-rebinding: allowlisted-хост резолвится в 10.0.0.0/8 → прокси отклоняет"
-    - "egress к хосту вне allowlist через прокси → 403"
+    - "egress к хосту вне allowlist через прокси → 403; CONNECT на порт ≠ 443 → 403; SNI ≠ CONNECT-хост → разрыв"
     - "fork/exec, ptrace, mount, raw socket — syscall отклоняется gVisor"
-    - "вызов RPC с чужим systemId / подделанным токеном → 403"
+    - "вызов RPC с чужим systemId / подделанным токеном → 403; украденный токен чужого запроса после exp → 403"
     - "SQL-инъекция через аргументы ctx.db (имена полей/операторы) → отклонено построителем"
     - "таймер высокой точности / SharedArrayBuffer (Spectre-гаджет) недоступны"
     - "prototype pollution биндингов (Object.prototype в изоляте) не влияет на хост и соседние Worker"

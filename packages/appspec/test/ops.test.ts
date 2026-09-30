@@ -415,6 +415,7 @@ const opCases: Record<string, OpCase> = {
             kind: "generate",
             input: { entity: "task" },
             output: { field: "title" },
+            monthlyLimit: 50,
             tier: "T0",
           },
         },
@@ -425,7 +426,13 @@ const opCases: Record<string, OpCase> = {
       ops: [
         {
           op: "add_ai_action",
-          aiAction: { name: "summary", kind: "generate", input: { entity: "project" }, output: {} },
+          aiAction: {
+            name: "summary",
+            kind: "generate",
+            input: { entity: "project" },
+            output: {},
+            monthlyLimit: 50,
+          },
         },
       ],
       code: "UNKNOWN_ENTITY",
@@ -455,24 +462,13 @@ const opCases: Record<string, OpCase> = {
     },
   },
   set_compliance: {
+    // Default author is the agent: only consentTemplateId and policyPage (owner fields: see "set_compliance by author").
     success: {
-      ops: [
-        {
-          op: "set_compliance",
-          operatorName: "ООО «Ромашка»",
-          operatorContact: "dpo@romashka.ru",
-          operatorInn: "7707083893",
-          retentionWaiver: { reason: "Данные нужны до конца сезона" },
-          policyPage: "/privacy",
-        },
-      ],
+      ops: [{ op: "set_compliance", consentTemplateId: "event_registration", policyPage: "/privacy" }],
       check: (s) =>
         expect(s.compliance).toEqual({
           consentText: "Согласен",
-          operatorName: "ООО «Ромашка»",
-          operatorContact: "dpo@romashka.ru",
-          operatorInn: "7707083893",
-          retentionWaiver: { reason: "Данные нужны до конца сезона" },
+          consentTemplateId: "event_registration",
           policyPage: "/privacy",
         }),
     },
@@ -500,6 +496,61 @@ describe("every op has a success and an error test", () => {
       expect(e.map((x) => `${x.code} ${x.path}`)).toContain(`${c.failure.code} ${c.failure.path}`);
       for (const x of e) expect(x.message_ru).toMatch(/[а-яё]/i);
     });
+  });
+});
+
+describe("set_compliance by author (L3-06)", () => {
+  const owner = {
+    op: "set_compliance",
+    consentText: "Согласен на обработку",
+    operatorName: "ООО «Ромашка»",
+    operatorContact: "dpo@romashka.ru",
+    operatorInn: "7707083893",
+    operatorAddress: "г. Москва, ул. Тверская, д. 1",
+    retentionWaiver: { reason: "Данные нужны до конца сезона" },
+    policyPage: "/privacy",
+  };
+
+  test("the owner (user) and the platform (system) may set every field", () => {
+    for (const author of ["user", "system"] as const) {
+      const s = ok(applyOps(miniSpec(), [owner], 0, { author }));
+      const { op: _, ...expected } = owner;
+      expect(s.compliance).toEqual(expected);
+    }
+  });
+
+  test("the agent gets OWNER_ONLY_FIELD for operator data, free consent text and the retention waiver", () => {
+    for (const r of [applyOps(miniSpec(), [owner], 0, { author: "agent" }), run([owner])]) {
+      expect(errs(r).map((e) => `${e.code} ${e.path}`)).toEqual([
+        "OWNER_ONLY_FIELD /ops/0/consentText",
+        "OWNER_ONLY_FIELD /ops/0/operatorName",
+        "OWNER_ONLY_FIELD /ops/0/operatorContact",
+        "OWNER_ONLY_FIELD /ops/0/operatorInn",
+        "OWNER_ONLY_FIELD /ops/0/operatorAddress",
+        "OWNER_ONLY_FIELD /ops/0/retentionWaiver",
+      ]);
+    }
+  });
+});
+
+describe("set_permission with rowFilterOps", () => {
+  test("upserts rowFilterOps; rowFilterOps ⊄ ops is rejected atomically", () => {
+    const perm = {
+      op: "set_permission",
+      role: "worker",
+      entity: "task",
+      ops: ["read", "update"],
+      rowFilter: { owner: "$user.id" },
+      rowFilterOps: ["update"],
+    };
+    const s = ok(run([perm]));
+    expect(s.permissions.find((p) => p.role === "worker" && p.entity === "task")?.rowFilterOps).toEqual([
+      "update",
+    ]);
+    const bad = errs(run([{ ...perm, rowFilterOps: ["delete"] }]));
+    expect(bad.map((e) => `${e.code} ${e.path}`)).toEqual([
+      "INVALID_ROW_FILTER /permissions/1/rowFilterOps/0",
+    ]);
   });
 });
 

@@ -21,7 +21,7 @@ config_schema:                               # integration.config
     canceledStatus: "статус после payment.canceled"
     refundedStatus: "статус после полного возврата"
     statusField: "по умолчанию status"
-    paymentEntity: "{name, refField} — сущность журнала платежей с полями provider_payment_id, kind, amount, status"
+    paymentEntity: "{name, refField} — сущность журнала платежей с полями provider_payment_id, kind, amount, status (pending | succeeded | canceled | needs_review)"
     description: "до 128 символов, подстановки {{field}} только с pii=none (G2)"
     returnRoute: "маршрут страницы возврата, :id → id записи"
     receipt: "{customerEmailField?, customerPhoneField?, paymentSubject: commodity|service, paymentMode: full_prepayment|full_payment, vatCode: 1..6|11|12, settlePrepaymentOf?: <bindingId>}"
@@ -46,8 +46,9 @@ runtime_endpoint:                            # маршрут коннектор
     - "1. Прочитать запись от имени вызывающего (права read и rowFilter), иначе 404"
     - "2. status == payableStatus, иначе 409 NOT_PAYABLE «Заказ нельзя оплатить в текущем статусе»"
     - "3. Сумма = amountField записи; 0 → 409 NOTHING_TO_PAY"
-    - "4. Есть незавершённый платёж той же привязки моложе 30 мин → вернуть его confirmationUrl"
+    - "4. Есть незавершённый платёж той же привязки моложе 30 мин И его amount равен текущей сумме записи → вернуть его confirmationUrl; сумма изменилась → старый не переиспользуется (истечёт у ЮKassa), создаётся новый"
     - "5. create_payment; записать paymentEntity {kind:'payment', status:'pending', amount, provider_payment_id}; ответ {confirmationUrl}"
+  m0_stub: "M0: маршрут возвращает {confirmationUrl: '/_wizard/pay-mock?binding=<b>&id=<id>'} без обращения к ЮKassa; страница (только draft) обрабатывается как payment.succeeded (connector-interface.md §2 «M0»)"
   receipt: "customer.email/phone берутся из полей записи на сервере; items — одна позиция: description, quantity '1', amount, vat_code, payment_mode, payment_subject"
 
 actions:                                     # ctx.connectors.<name> в action-функциях
@@ -58,10 +59,10 @@ webhooks:
   path: "/_wizard/hooks/yookassa/<integration>/<hookToken> — URL показывается пользователю в настройках интеграции; он вставляет его в личном кабинете ЮKassa (Интеграция → HTTP-уведомления)"
   events: [payment.succeeded, payment.canceled, payment.waiting_for_capture, refund.succeeded]
   verification:
-    - "ЮKassa не подписывает уведомления. MUST: (1) IP источника ∈ allowlist 185.71.76.0/27, 185.71.77.0/27, 77.75.153.0/25, 77.75.156.11, 77.75.156.35, 77.75.154.128/25, 2a02:5180::/32 (список — в конфиге коннектора, обновляемый); (2) MUST: статус объекта перепроверяется GET /payments/{id} или /refunds/{id} с ключами магазина, решение принимается только по ответу API"
+    - "ЮKassa не подписывает уведомления. MUST: (1) IP источника (только из последнего хопа доверенного ingress, X-Forwarded-For от недоверенных адресов игнорируется — deploy.yaml) ∈ allowlist 185.71.76.0/27, 185.71.77.0/27, 77.75.153.0/25, 77.75.156.11, 77.75.156.35, 77.75.154.128/25, 2a02:5180::/32 (список — в конфиге коннектора, обновляемый); (2) MUST: статус объекта перепроверяется GET /payments/{id} или /refunds/{id} с ключами магазина, решение принимается только по ответу API"
     - "metadata.system/env/binding должны совпасть с интеграцией, иначе 200 и игнор (чужой магазин)"
   handling:
-    payment.succeeded: "paymentEntity.status=succeeded; запись → paidStatus; если receipt.settlePrepaymentOf — create_receipt на зачёт предоплаты"
+    payment.succeeded: "Сверка по ответу GET: amount.value и amount.currency = paymentEntity.amount и RUB, metadata.recordId = записи paymentEntity, amount = текущему amountField записи. Совпало → paymentEntity.status=succeeded; запись → paidStatus; если receipt.settlePrepaymentOf — create_receipt на зачёт предоплаты. Не совпало → paymentEntity.status=needs_review, запись НЕ переходит в paidStatus, событие владельцу «Оплата требует проверки»"
     payment.canceled: "paymentEntity.status=canceled; запись → canceledStatus, если она всё ещё payableStatus"
     payment.waiting_for_capture: "не ожидается (capture:true); логировать и отменить платёж"
     refund.succeeded: "paymentEntity {kind:'refund', status:'succeeded'}; при полном возврате → refundedStatus"
@@ -95,3 +96,5 @@ acceptance:
   - "Поддельное уведомление с чужого IP → 401; с верного IP, но GET показывает pending → статус не меняется"
   - "Повтор уведомления payment.succeeded не создаёт второй строки платежа"
   - "Сумма из тела запроса клиента игнорируется: изменить сумму через /api/pay нельзя"
+  - "Сумма записи изменилась, пока платёж был pending: /api/pay создаёт новый платёж; payment.succeeded по старому → needs_review, запись не paid"
+  - "Уведомление с поддельным X-Forwarded-For из allowlist, пришедшее не через доверенный ingress → 401"

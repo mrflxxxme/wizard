@@ -3,7 +3,7 @@ version: 1
 
 credit:
   rub_cost_rate: 5                 # 1 кредит ≈ 5 ₽ себестоимости LLM (с НДС агента, по прайсу agents/models.yaml)
-  unit: "милликредит (1 кредит = 1000) во всех расчётах и в БД; в UI — кредиты с одним знаком после запятой"
+  unit: "милликредит (1 кредит = 1000) во всех расчётах и в БД; в API — кредиты числом с точностью 0.001 (= милликредит, без округления); округление до 0.1 — только при показе в UI (L1-16)"
   from_cost: "credits_milli = ceil(cost_rub × 1000 / rub_cost_rate) для каждой строки llm_calls с billable=true"
   typical: { build_create: "≈20 кредитов (потолок из карточки)", change: "3–6 кредитов", interview_turn: "0.1–1 кредит" }
   test: "M1-03: для любого завершённого прогона sum(charge по run_id) = min(cap, sum(llm_calls.credits_milli по run_id, billable)) с точностью до 1 милликредита"
@@ -13,24 +13,34 @@ plans:
     price_rub_month: 0
     grants: { welcome: { credits: 100, expires_after_days: 30 }, monthly: { credits: 25, from_day: 30, expires: "в момент следующего месячного гранта (не копятся)" } }
     limits: { prod_systems: 1, draft_systems: 3, members: 3 }
+    login_methods: [email_otp, telegram]      # F4: вход по телефону (SMS) в созданных системах — только на платных тарифах
     prod_requires: "привязанная карта РФ (D9, card_binding)"
+    inactive_drafts: "F5 (утверждено по рекомендации, основатель может пересмотреть): черновик Free без активности 60 дней (systems.last_activity_at) → уведомление за 7 дней, затем удаляется ТОЛЬКО схема draft с тестовыми данными; спека, код, ревизии и prod сохраняются (workflows.yaml#retention_cron)"
   start:
     price_rub_month: 1990
     grants: { monthly: { credits: 50, expires: "конец периода подписки" } }
     limits: { prod_systems: 2, draft_systems: 10, members: 10 }
+    login_methods: [email_otp, telegram, phone_otp]
   business:
     price_rub_month: 6990
     grants: { monthly: { credits: 230, expires: "конец периода подписки" } }
     limits: { prod_systems: 5, draft_systems: 30, members: 30 }
+    login_methods: [email_otp, telegram, phone_otp]
   topup:
     price_rub: 990
     credits: 60
     expires_after_days: 365
     available_on: [free, start, business]
+  sms:     # F4, L4-06, L3-25
+    who_pays: "SMS для входа по телефону оплачивает платформа в пределах тарифа start/business; кредиты не списываются"
+    daily_budget_per_org: { start: 100, business: 300 }   # защитный лимит от SMS-pumping (решение агента, основатель может пересмотреть); превышение → OTP_BUDGET_EXCEEDED (runtime.yaml#auth.anti_abuse) и уведомление владельцу
+    downgrade: "При переходе на free phone_otp отключается у всех систем org со следующего запроса (registry.features.phoneOtp=false); уже вошедшие пользователи сохраняют сессии; на странице входа остаются email и Telegram"
+    enforcement: "Источник истины — runtime: метод phone_otp доступен только при features.phoneOtp=true (db.yaml#views.deployments, runtime.yaml#auth.methods_M1.phone_otp). Оркестратор на Free не предлагает вход по телефону по умолчанию"
   interpretation:
-    - "«N систем» тарифа = одновременно опубликованные в prod системы; черновики ограничены draft_systems (решение агента, записать в CHANGELOG)"
+    - "Утверждено основателем пакетом (F5, по рекомендации L4 Q4; может пересмотреть): пункты ниже, плюс plans.free.inactive_drafts"
+    - "«N систем» тарифа = одновременно опубликованные в prod системы; черновики ограничены draft_systems"
     - "«до N пользователей» = участники организации (memberships). Конечные пользователи созданных систем не ограничиваются тарифом"
-    - "Лимит members у Free (3) и draft_systems — решение агента, не из D10; менять через CHANGELOG"
+    - "Лимит members у Free (3) и draft_systems — толкование D10 (F5); менять через CHANGELOG"
   enforcement:
     - "Превышение лимита → 402 PLAN_LIMIT с details {limit, current, plan}; проверка в транзакции создания (createSystem, createInvite, publish)"
     - "Даунгрейд: лишние prod-системы остаются live 14 дней, уведомления владельцу за 7 и 1 день, затем снимаются с публикации (данные не удаляются)"
@@ -79,7 +89,12 @@ card_binding:
     - "Вебхук payment.waiting_for_capture → GET /v3/payments/{id}; проверить payment_method.saved=true и payment_method.card.issuer_country = 'RU'"
     - "RU → payment_methods (last4, card_type, issuer_country), затем cancel платежа (деньги не списываются)"
     - "Не RU → cancel, payment_methods не создаётся, пользователю: «Нужна карта российского банка» (code CARD_NOT_RU)"
-  test: "M2-07: публикация без payment_methods (revoked_at is null) → 403 CARD_BINDING_REQUIRED; тестовый магазин с картой issuer_country≠RU → привязка отклонена"
+  anti_carding:   # L3-28
+    - "MUST: ≤ 3 попыток привязки на org в сутки и ≤ 10 на IP клиента (deploy.yaml#cloud.client_ip); превышение → 429 RATE_LIMITED"
+    - "MUST: одна карта (first6 + last4 + срок) — не более чем в 3 org; четвёртая → CARD_BINDING_REJECTED без раскрытия причины"
+    - "MUST: 3-DS обязателен (confirmation redirect); привязка без 3-DS не принимается"
+    - "Достаточность привязки как идентификации по ПП 2011 — E-LEGAL"
+  test: "M2-07: публикация без payment_methods (revoked_at is null) → 403 CARD_BINDING_REQUIRED; тестовый магазин с картой issuer_country≠RU → привязка отклонена; 4-я попытка привязки за сутки → 429"
 
 recurring:
   milestone: M2

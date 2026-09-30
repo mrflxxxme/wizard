@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   "BATCH_TOO_LARGE",
   "LIMIT_EXCEEDED",
   "INVALID_ROW_FILTER",
+  "OWNER_ONLY_FIELD",
 ] as const;
 
 export type OpsErrorCode = (typeof ERROR_CODES)[number];

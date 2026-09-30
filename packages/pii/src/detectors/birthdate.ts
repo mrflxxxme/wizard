@@ -4,20 +4,26 @@ import { contextAround, finding } from "../util.js";
 
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
-const NUMERIC_RE = /(?<![\d.\/-])(\d{1,2})([.\/-])(\d{1,2})\2(\d{4}|\d{2})(?![\d]|[.\/-]\d)(?:[ \xa0]?(?:г\.|года))?/gu;
+// Optional "г." / "года" after the year, but not the "г.р." context marker.
+const YEAR_SUFFIX = String.raw`(?:(?![ \xa0]*г\.?[ \xa0]?р\.?(?!\p{L}))[ \xa0]*(?:г\.|года|г(?!\p{L})))?`;
+const NUMERIC_RE = new RegExp(
+  String.raw`(?<![\d.\/-])(\d{1,2})([.\/-])(\d{1,2})\2(\d{4}|\d{2})(?![\d]|[.\/-]\d)${YEAR_SUFFIX}`,
+  "gu",
+);
 const ISO_RE = /(?<![\d.\/-])(\d{4})-(\d{2})-(\d{2})(?![\d])/gu;
 const WORDS_RE = new RegExp(
-  `(?<![\\d\\p{L}])(\\d{1,2})[ \\xa0]+(${MONTHS.join("|")})[ \\xa0]+(\\d{4})(?:[ \\xa0]*(?:г\\.|года|г(?!\\p{L})))?`,
+  String.raw`(?<![\d\p{L}])(\d{1,2})[ \xa0]+(${MONTHS.join("|")})[ \xa0]+(\d{4})${YEAR_SUFFIX}`,
   "giu",
 );
 
 export const BIRTH_CTX =
   /родил|рожден|рождён|(?<!\p{L})(?:д\.?\s?р\.?|г\.\s?р\.?|др|д\/р|dob)(?!\p{L})|birth|день рожд|дата рожд/iu;
 
+/** A real calendar date between 1900 and today (a birthdate cannot be in the future). */
 function valid(d: number, m: number, y: number): boolean {
-  if (y < 1900 || y > new Date().getFullYear()) return false;
-  if (m < 1 || m > 12 || d < 1) return false;
-  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (y < 1900 || m < 1 || m > 12 || d < 1) return false;
+  if (d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return false;
+  return Date.UTC(y, m - 1, d) <= Date.now();
 }
 
 function fullYear(y: string): number {

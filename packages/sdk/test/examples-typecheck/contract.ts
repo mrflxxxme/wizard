@@ -35,7 +35,14 @@ import {
 import { expectTypeOf } from "vitest";
 
 expectTypeOf<EntityName>().toEqualTypeOf<
-  "stream" | "ticket_type" | "ticket" | "speaker_application" | "partner_quota" | "session" | "checkin" | "payment"
+  | "stream"
+  | "ticket_type"
+  | "ticket"
+  | "speaker_application"
+  | "partner_quota"
+  | "session"
+  | "checkin"
+  | "payment"
 >();
 expectTypeOf<RoleName>().toEqualTypeOf<
   "organizer" | "moderator" | "speaker" | "partner" | "participant" | "volunteer" | "visitor"
@@ -58,7 +65,9 @@ expectTypeOf<Doc<"ticket_type">["active"]>().toEqualTypeOf<boolean | null>();
 expectTypeOf<Doc<"ticket">["id"]>().toEqualTypeOf<Id<"ticket">>();
 expectTypeOf<Doc<"ticket">["created_by"]>().toEqualTypeOf<Id<"users"> | null>();
 expectTypeOf<Insert<"ticket_type">>().toHaveProperty("active");
-expectTypeOf<{ name: string; kind: "vip"; price: number; capacity: number }>().toExtend<Insert<"ticket_type">>();
+expectTypeOf<{ name: string; kind: "vip"; price: number; capacity: number }>().toExtend<
+  Insert<"ticket_type">
+>();
 expectTypeOf<{ used: number }>().toExtend<Patch<"partner_quota">>();
 expectTypeOf<ClientDoc<"ticket">["holder_name"]>().toEqualTypeOf<string | undefined>();
 expectTypeOf<ClientDoc<"ticket">["status"]>().toEqualTypeOf<Doc<"ticket">["status"]>();
@@ -103,9 +112,14 @@ expectTypeOf<Infer<typeof nested>>().toEqualTypeOf<
 export const paged = query({
   args: { page: v.pagination() },
   handler: async (ctx, { page }) => {
-    const res = await ctx.db.session.paginate({ where: { stream: "x" as Id<"stream"> }, order: "desc" }, page);
+    const res = await ctx.db.session.paginate(
+      { where: { stream: "x" as Id<"stream"> }, order: "desc" },
+      page,
+    );
     expectTypeOf(res).toEqualTypeOf<Page<Doc<"session">>>();
-    expectTypeOf(await ctx.systemDb.partner_quota.getBy("promo_code", "ALFA10")).toEqualTypeOf<Doc<"partner_quota"> | null>();
+    expectTypeOf(
+      await ctx.systemDb.partner_quota.getBy("promo_code", "ALFA10"),
+    ).toEqualTypeOf<Doc<"partner_quota"> | null>();
     expectTypeOf(ctx.user.role).toEqualTypeOf<RoleName | "__system">();
     return res.items.length;
   },
@@ -134,7 +148,10 @@ export function ClientContract() {
   const [run, state] = useMutation("registerTicket");
   expectTypeOf(run).returns.resolves.toEqualTypeOf<{ ticketId: Id<"ticket">; needsPayment: boolean }>();
   expectTypeOf(state.pending).toEqualTypeOf<boolean>();
-  const list = useEntityList("ticket", { filter: { status: { in: ["paid", "issued"] } }, sort: ["-created_at", "amount"] });
+  const list = useEntityList("ticket", {
+    filter: { status: { in: ["paid", "issued"] } },
+    sort: ["-created_at", "amount"],
+  });
   expectTypeOf(list.items).toEqualTypeOf<ClientDoc<"ticket">[]>();
   const one = useEntity("stream", "any-string-id");
   expectTypeOf(one.data).toEqualTypeOf<ClientDoc<"stream"> | null | undefined>();

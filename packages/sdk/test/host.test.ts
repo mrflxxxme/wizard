@@ -22,7 +22,8 @@ beforeAll(async () => {
 const NOW = "2026-10-01T09:00:00.000Z";
 
 async function setup(opts: { capacity?: number } = {}) {
-  const host = createTestHost(forum, { functions, now: NOW });
+  // validate: false — forum.json may be ahead of @wizard/appspec's schema during spec audits.
+  const host = createTestHost(forum, { functions, now: NOW, validate: false });
   const org = host.createUser("organizer");
   const [s1] = await host.seed("stream", [{ name: "e-com", capacity: opts.capacity ?? 2 }]);
   const [std, partnerType] = await host.seed("ticket_type", [
@@ -33,11 +34,11 @@ async function setup(opts: { capacity?: number } = {}) {
 }
 
 function register(host: TestHost, user: Parameters<TestHost["call"]>[2], args: Record<string, unknown>) {
-  return host.call(
-    "registerTicket",
-    { holderName: "Анна Тестова", holderEmail: "guest@example.test", ...args },
-    user,
-  ) as Promise<{ ticketId: string; needsPayment: boolean }>;
+  const a = { holderName: "Анна Тестова", holderEmail: "guest@example.test", ...args };
+  return host.call("registerTicket", a, user, { consent: true }) as Promise<{
+    ticketId: string;
+    needsPayment: boolean;
+  }>;
 }
 
 async function codeOf(p: Promise<unknown>): Promise<string> {
@@ -57,7 +58,9 @@ describe("registerTicket (examples)", () => {
     const a = await register(host, anna as never, { ticketTypeId: std, streamId: s1 });
     expect(a.needsPayment).toBe(true);
     await register(host, boris as never, { ticketTypeId: std, streamId: s1 });
-    expect(await codeOf(register(host, vera as never, { ticketTypeId: std, streamId: s1 }))).toBe("STREAM_FULL");
+    expect(await codeOf(register(host, vera as never, { ticketTypeId: std, streamId: s1 }))).toBe(
+      "STREAM_FULL",
+    );
     const rows = host.rows("ticket");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ status: "pending_payment", amount: 9900, holder_user: anna?.id });
@@ -67,7 +70,9 @@ describe("registerTicket (examples)", () => {
   test("20 parallel registrations with capacity 5 create exactly 5 tickets (sdk.md §2.2)", async () => {
     const { host, s1, std } = await setup({ capacity: 5 });
     const users = Array.from({ length: 20 }, () => host.createUser("participant"));
-    const codes = await Promise.all(users.map((u) => codeOf(register(host, u, { ticketTypeId: std, streamId: s1 }))));
+    const codes = await Promise.all(
+      users.map((u) => codeOf(register(host, u, { ticketTypeId: std, streamId: s1 }))),
+    );
     expect(codes.filter((c) => c === "OK")).toHaveLength(5);
     expect(codes.filter((c) => c === "STREAM_FULL")).toHaveLength(15);
     expect(host.rows("ticket")).toHaveLength(5);
@@ -94,13 +99,36 @@ describe("registerTicket (examples)", () => {
     expect(host.rows("ticket")[0]).toMatchObject({ status: "issued", amount: 0 });
     expect(host.rows("partner_quota")[0]?.used).toBe(1);
     const boris = host.createUser("participant");
-    expect(await codeOf(register(host, boris, { ticketTypeId: std, streamId: s1, promoCode: "ALFA10" }))).toBe(
-      "QUOTA_EXHAUSTED",
-    );
+    expect(
+      await codeOf(register(host, boris, { ticketTypeId: std, streamId: s1, promoCode: "ALFA10" })),
+    ).toBe("QUOTA_EXHAUSTED");
     expect(await codeOf(register(host, boris, { ticketTypeId: std, streamId: s1, promoCode: "NOPE" }))).toBe(
       "PROMO_INVALID",
     );
-    expect(await codeOf(register(host, boris, { ticketTypeId: partnerType, streamId: s1 }))).toBe("PROMO_REQUIRED");
+    expect(await codeOf(register(host, boris, { ticketTypeId: partnerType, streamId: s1 }))).toBe(
+      "PROMO_REQUIRED",
+    );
+  });
+
+  test("collectsPii: participant needs _consent (compliance.yaml#consent)", async () => {
+    const { host, s1, std } = await setup();
+    const anna = host.createUser("participant");
+    const a = {
+      ticketTypeId: std,
+      streamId: s1,
+      holderName: "Анна Тестова",
+      holderEmail: "guest@example.test",
+    };
+    const expected = (forum.functions?.find((f) => f.name === "registerTicket") as { collectsPii?: boolean })
+      ?.collectsPii
+      ? "CONSENT_REQUIRED"
+      : "OK";
+    expect(await codeOf(host.call("registerTicket", a, anna))).toBe(expected);
+  });
+
+  test("createTestHost validates the spec by default", () => {
+    const broken = { ...forum, permissions: [{ role: "ghost", entity: "stream", ops: ["read"] }] };
+    expect(() => createTestHost(broken)).toThrow(/invalid spec/);
   });
 
   test("roles and args are checked before the handler runs", async () => {
@@ -112,10 +140,16 @@ describe("registerTicket (examples)", () => {
     const err = await register(host, anna, { ...args, holderEmail: "nope", streamId: "x" }).catch((e) => e);
     expect(err).toBeInstanceOf(WizardError);
     expect(err.code).toBe("VALIDATION_FAILED");
-    expect(err.details.fields.map((f: { field: string }) => f.field).sort()).toEqual(["holderEmail", "streamId"]);
+    expect(err.details.fields.map((f: { field: string }) => f.field).sort()).toEqual([
+      "holderEmail",
+      "streamId",
+    ]);
     const missing = "00000fff-0000-4000-8000-000000000000";
     expect(await codeOf(register(host, anna, { ...args, streamId: missing }))).toBe("NOT_FOUND");
-    expect(toErrorResponse(err)).toMatchObject({ status: 422, body: { error: { code: "VALIDATION_FAILED" } } });
+    expect(toErrorResponse(err)).toMatchObject({
+      status: 422,
+      body: { error: { code: "VALIDATION_FAILED" } },
+    });
   });
 });
 
@@ -130,7 +164,10 @@ describe("partnerQuota / ticketAvailability (examples)", () => {
     ]);
     const mine = (await host.call("partnerQuota", {}, pa)) as { promoCode: string; left: number }[];
     expect(mine).toEqual([expect.objectContaining({ promoCode: "ALFA10", left: 10, company: "Альфа" })]);
-    const all = (await host.callRaw("partnerQuota", {}, org)) as { result: { left: number }[]; deps: string[] };
+    const all = (await host.callRaw("partnerQuota", {}, org)) as {
+      result: { left: number }[];
+      deps: string[];
+    };
     expect(all.result.map((q) => q.left)).toEqual([10, 7]);
     expect(all.deps).toEqual(["partner_quota"]);
     expect(await codeOf(host.call("partnerQuota", {}, host.createUser("participant")))).toBe("FORBIDDEN");
@@ -180,7 +217,9 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
       all: await systemDb.ticket?.count(),
     }));
     expect(seen).toEqual({ own: [annaTicket], other: null, all: 2 });
-    expect(await codeOf(host.run(host.anonymous("visitor"), async (db) => db.ticket?.list()))).toBe("FORBIDDEN");
+    expect(await codeOf(host.run(host.anonymous("visitor"), async (db) => db.ticket?.list()))).toBe(
+      "FORBIDDEN",
+    );
   });
 
   test("hiddenFields are absent from documents and cannot be used", async () => {
@@ -200,7 +239,11 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
     const other = host.createUser("speaker");
     const app = { full_name: "Спикер Один", email: "s1@example.test", topic: "Ценники", abstract: "Кейс" };
     const id = await host.run(sp, async (db) => db.speaker_application?.insert(app));
-    expect(host.rows("speaker_application")[0]).toMatchObject({ speaker_user: sp.id, status: "new", created_by: sp.id });
+    expect(host.rows("speaker_application")[0]).toMatchObject({
+      speaker_user: sp.id,
+      status: "new",
+      created_by: sp.id,
+    });
     const ins = (u: typeof sp, doc: Record<string, unknown>) =>
       codeOf(host.run(u, async (db) => db.speaker_application?.insert(doc)));
     expect(await ins(sp, { ...app, speaker_user: other.id })).toBe("FORBIDDEN");
@@ -214,12 +257,16 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
       one: await db.speaker_application?.get(id as string),
     }));
     expect(view).toEqual({ n: 0, one: null });
-    expect(await codeOf(host.run(other, async (db) => db.speaker_application?.patch(id as string, { topic: "x" })))).toBe(
-      "NOT_FOUND",
-    );
+    expect(
+      await codeOf(
+        host.run(other, async (db) => db.speaker_application?.patch(id as string, { topic: "x" })),
+      ),
+    ).toBe("NOT_FOUND");
     const mod = host.createUser("moderator");
     expect(
-      await codeOf(host.run(mod, async (db) => db.speaker_application?.patch(id as string, { phone: "+79990000000" }))),
+      await codeOf(
+        host.run(mod, async (db) => db.speaker_application?.patch(id as string, { phone: "+79990000000" })),
+      ),
     ).toBe("FIELD_HIDDEN");
     await host.run(mod, async (db) => db.speaker_application?.patch(id as string, { status: "approved" }));
     expect(host.rows("speaker_application")[0]).toMatchObject({ status: "approved", updated_at: NOW });
@@ -237,13 +284,17 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
     const s1 = host.createUser("speaker");
     const s2 = host.createUser("speaker");
     const app = { full_name: "Спикер", email: "s@example.test", topic: "Тема", abstract: "Текст" };
-    const id = (await host.run(s1, async (db) => db.speaker_application?.insert({ ...app, speaker_user: s1.id }))) as string;
+    const id = (await host.run(s1, async (db) =>
+      db.speaker_application?.insert({ ...app, speaker_user: s1.id }),
+    )) as string;
     expect(await host.run(s2, async (db) => db.speaker_application?.count())).toBe(1);
-    expect(await codeOf(host.run(s2, async (db) => db.speaker_application?.patch(id, { topic: "x" })))).toBe("NOT_FOUND");
-    await host.run(s1, async (db) => db.speaker_application?.patch(id, { topic: "Новая" }));
-    expect(await codeOf(host.run(s1, async (db) => db.speaker_application?.patch(id, { speaker_user: s2.id })))).toBe(
-      "FORBIDDEN",
+    expect(await codeOf(host.run(s2, async (db) => db.speaker_application?.patch(id, { topic: "x" })))).toBe(
+      "NOT_FOUND",
     );
+    await host.run(s1, async (db) => db.speaker_application?.patch(id, { topic: "Новая" }));
+    expect(
+      await codeOf(host.run(s1, async (db) => db.speaker_application?.patch(id, { speaker_user: s2.id }))),
+    ).toBe("FORBIDDEN");
   });
 
   test("unique, ref and restrict are enforced", async () => {
@@ -252,11 +303,13 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
     const quota = { partner_user: pa.id, company: "Альфа", promo_code: "ALFA10", ticket_type: std, total: 1 };
     await host.seed("partner_quota", [quota]);
     expect(await codeOf(host.seed("partner_quota", [quota]))).toBe("CONFLICT");
-    expect(await codeOf(host.seed("partner_quota", [{ ...quota, promo_code: "X", partner_user: "nobody" }]))).toBe(
-      "VALIDATION_FAILED",
-    );
+    expect(
+      await codeOf(host.seed("partner_quota", [{ ...quota, promo_code: "X", partner_user: "nobody" }])),
+    ).toBe("VALIDATION_FAILED");
     await register(host, host.createUser("participant"), { ticketTypeId: std, streamId: s1 });
-    expect(await codeOf(host.run(host.createUser("organizer"), async (db) => db.stream?.delete(s1)))).toBe("CONFLICT");
+    expect(await codeOf(host.run(host.createUser("organizer"), async (db) => db.stream?.delete(s1)))).toBe(
+      "CONFLICT",
+    );
   });
 });
 
@@ -268,7 +321,10 @@ describe("executor semantics", () => {
 
   test("limits: list size, writes in queries, reads, writes, ctx.error code format", async () => {
     const fns = {
-      bigList: query({ args: {}, handler: async (ctx) => (ctx.db as never as Db).stream.list({ limit: 101 }) }),
+      bigList: query({
+        args: {},
+        handler: async (ctx) => (ctx.db as never as Db).stream.list({ limit: 101 }),
+      }),
       writeInQuery: query({
         args: {},
         handler: async (ctx) => (ctx.db as never as Db).stream.insert({ name: "x", capacity: 1 }),
@@ -283,7 +339,8 @@ describe("executor semantics", () => {
       manyWrites: mutation({
         args: { n: v.int() },
         handler: async (ctx, { n }) => {
-          for (let i = 0; i < n; i++) await (ctx.db as never as Db).stream.insert({ name: `s${i}`, capacity: 1 });
+          for (let i = 0; i < n; i++)
+            await (ctx.db as never as Db).stream.insert({ name: `s${i}`, capacity: 1 });
         },
       }),
       badCode: mutation({ args: {}, handler: async (ctx) => Promise.reject(ctx.error("lower")) }),
@@ -292,12 +349,16 @@ describe("executor semantics", () => {
         handler: async (ctx) => Promise.reject(ctx.error("STREAM_FULL", { message: "Мест нет" })),
       }),
     };
-    const host = createTestHost(
-      spec(Object.entries(fns).map(([name, f]) => ({ name, kind: f.kind }))),
-      { functions: fns, limits: { maxReads: 450 } },
-    );
+    const host = createTestHost(spec(Object.entries(fns).map(([name, f]) => ({ name, kind: f.kind }))), {
+      functions: fns,
+      limits: { maxReads: 450 },
+      validate: false,
+    });
     const org = host.createUser("organizer");
-    await host.seed("stream", Array.from({ length: 100 }, (_, i) => ({ name: `s${i}`, capacity: 1 })));
+    await host.seed(
+      "stream",
+      Array.from({ length: 100 }, (_, i) => ({ name: `s${i}`, capacity: 1 })),
+    );
     expect(await codeOf(host.call("bigList", {}, org))).toBe("LIMIT_EXCEEDED");
     expect(await codeOf(host.call("writeInQuery", {}, org))).toBe("FORBIDDEN");
     expect(await codeOf(host.call("manyReads", {}, org))).toBe("LIMIT_EXCEEDED");
@@ -337,7 +398,7 @@ describe("executor semantics", () => {
         { name: "plan", kind: "mutation" },
         { name: "work", kind: "mutation" },
       ]),
-      { functions: fns, now: NOW },
+      { functions: fns, now: NOW, validate: false },
     );
     const org = host.createUser("organizer");
     await codeOf(host.call("plan", { fail: true }, org));
@@ -393,4 +454,9 @@ type Db = Record<
     list(o?: { limit?: number }): Promise<unknown[]>;
     insert(d: Record<string, unknown>): Promise<string>;
   }
-> & { stream: { list(o?: { limit?: number }): Promise<unknown[]>; insert(d: Record<string, unknown>): Promise<string> } };
+> & {
+  stream: {
+    list(o?: { limit?: number }): Promise<unknown[]>;
+    insert(d: Record<string, unknown>): Promise<string>;
+  };
+};

@@ -286,7 +286,7 @@ describe("toDDL", () => {
     expect(create).toContain(`CHECK ("f_enum" IN ('a'))`);
     for (const t of ["email", "phone", "url"])
       expect(create).toMatch(new RegExp(`"ck_f_${t}_fmt" CHECK \\("f_${t}" ~ '`));
-    expect(create).toMatch(/"f_qr_token" text CONSTRAINT "uq_all_types_f_qr_token" UNIQUE/);
+    expect(create).toMatch(/"f_qr_token" text CONSTRAINT "uq_all_types\$f_qr_token" UNIQUE/);
     const all = toDDL(planMigration(null, spec), S).join("\n");
     expect(all).toContain(`FOREIGN KEY ("f_ref") REFERENCES "${S}"."comment" ("id") ON DELETE SET NULL`);
   });
@@ -319,7 +319,7 @@ describe("toDDL", () => {
       ["comment", "created_at"],
     ]) {
       expect(ddl).toContain(
-        `CREATE INDEX IF NOT EXISTS "ix_${table}_${col}" ON "${S}"."${table}" ("${col}")`,
+        `CREATE INDEX IF NOT EXISTS "ix_${table}$${col}" ON "${S}"."${table}" ("${col}")`,
       );
     }
     const plan = planMigration(miniSpec(), spec);
@@ -397,7 +397,7 @@ describe("toRLS", () => {
       title: "$user.email",
     };
     const sql = toRLS(spec, S).join("\n");
-    expect(sql).toContain(`"state" = 'todo'::text`);
+    expect(sql).toContain(`"state" = 'todo'`);
     expect(sql).toContain(`"points" = 5`);
     expect(sql).toContain(
       `"title" = (select (nullif(current_setting('wizard.user_attrs', true), '')::jsonb ->> 'email')::text)`,

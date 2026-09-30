@@ -66,7 +66,7 @@ export interface TestHostOptions {
   /** Override connector clients per integration name (defaults record calls and succeed). */
   connectors?: Readonly<Record<string, unknown>>;
   limits?: Partial<Limits>;
-  /** Validate the spec with @wizard/appspec validateSpec (default true). */
+  /** Validate the spec with @wizard/appspec validateSpec (default true; false when the spec is newer than appspec). */
   validate?: boolean;
   log?: FunctionHostOptions["log"];
 }
@@ -86,10 +86,19 @@ export interface TestHost {
   createUser(role: string, record?: Readonly<Record<string, unknown>>): CurrentUser & { id: Id<"users"> };
   /** Public-role (anonymous) user. */
   anonymous(role: string): CurrentUser;
-  /** POST /api/fn/:name semantics (public + roles). Returns `result`; throws WizardError. */
-  call(name: string, args: unknown, user: CurrentUser): Promise<unknown>;
+  /**
+   * POST /api/fn/:name semantics (public, roles, collectsPii consent). Returns `result`; throws WizardError.
+   * `consent: true` stands for a valid `_consent` body field.
+   */
+  call(name: string, args: unknown, user: CurrentUser, opts?: { consent?: boolean }): Promise<unknown>;
   /** Like `call` but returns `{result, deps}` and allows `via: "internal"`. */
-  callRaw(name: string, args: unknown, user: CurrentUser, via?: "api" | "internal"): Promise<CallResult>;
+  callRaw(
+    name: string,
+    args: unknown,
+    user: CurrentUser,
+    via?: "api" | "internal",
+    opts?: { consent?: boolean },
+  ): Promise<CallResult>;
   /** Runs code in one write transaction with `db` acting as `user` (data API semantics) and `systemDb`. */
   run<T>(user: CurrentUser, fn: (db: LooseDb, systemDb: LooseDb) => Promise<T>): Promise<T>;
   /** Inserts rows as `__system`; returns ids. */
@@ -107,6 +116,8 @@ export interface TestHost {
   readonly events: InvalidateEvent[];
   readonly connectorCalls: ConnectorCall[];
 }
+
+const TEST_CONSENT = { policyVersion: "test", textHash: "test" };
 
 const CONNECTOR_METHODS: Record<string, Record<string, (input: unknown) => unknown>> = {
   telegram: { sendToUser: () => ({ delivered: true }) },
@@ -200,11 +211,11 @@ export function createTestHost(specInput: AppSpec | unknown, opts: TestHostOptio
       const r = roleOf(role);
       return { id: null, role: role as CurrentUser["role"], attrs: {}, isAdmin: r.isAdmin === true };
     },
-    async call(name, args, user) {
-      return (await functions.call(name, args, { user, via: "api" })).result;
+    async call(name, args, user, o) {
+      return (await host.callRaw(name, args, user, "api", o)).result;
     },
-    callRaw(name, args, user, via = "api") {
-      return functions.call(name, args, { user, via });
+    callRaw(name, args, user, via = "api", o = {}) {
+      return functions.call(name, args, { user, via, ...(o.consent ? { consent: TEST_CONSENT } : {}) });
     },
     run(user, fn) {
       return tx.run("write", user, async (t) => {

@@ -93,7 +93,7 @@ pii_forbidden_for_T1:
 routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?}}) (architecture.yaml#interfaces.llm_call) — детерминированно, policy-as-code
   - "1. dlp = pii.detect(все текстовые части messages, включая результаты инструментов)"
   - "2. Если orgPolicy.ruOnly → T0 (reason=policy_ru_only)"
-  - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Значение неизвестно или политика не загружена → считается true (fail-safe T0)"
+  - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Регион неизвестен или политика не загружена → считается true (fail-safe T0, security/data-boundary.yaml#region_restriction)"
   - "3. Если callType ∈ pii_forbidden_for_T1.always или сработало conditional → T0 (reason=callType_forbidden_T1)"
   - "3a. Если containsPiiHint=true для любого callType → T0 (reason=pii_hint): вызывающий знает, что в payload реальные записи"
   - "4. Если dlp содержит strong-виды security/data-boundary.yaml#detectors или special_context/biometric_context → T0 (reason=pii_high_risk)"
@@ -123,8 +123,8 @@ fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
   - "MUST NOT: автоматический фолбэк T0 → T1. Если все T0 недоступны — вызов падает с LLM_UNAVAILABLE; поведение прогона (повторы шага, статус, run_failed) — specs/platform/workflows.yaml#run_lifecycle"
   - "MAY: при переходе T1 → T0 отправить исходные (незаскрабленные) сообщения — T0 допускает любые данные"
-  - "MUST: смена модели посреди прогона строителя логируется событием model_switched {fromModelId, toModelId, reason} — только во внутренний журнал (llm_calls.fallback_from, логи), в SSE пользователя модель и tier не отдаются; история инструментов переносится без reasoning_content"
-  - "Пользователю — только обобщённо («Часть шагов выполнена на моделях в РФ»), текст и место — ui/platform-screens.yaml"
+  - "MUST: смена модели посреди прогона строителя логируется событием model_switched {fromModel, toModel, reason} (workflows.yaml#events) и llm_calls.fallback_from; в SSE пользователя модель и tier не отдаются; история инструментов переносится без reasoning_content"
+  - "Если факт фолбэка показывается пользователю — только обобщённо («Часть шагов выполнена на моделях в РФ»), без модели и tier; показывать ли и где — ui/platform-screens.yaml"
   - "SHOULD: фолбэк на другое семейство модели внутри одного прогона не сбрасывает кэш-историю (контекст пересобирается по builder.yaml#context)"
 
 # ---------------------------------------------------------------- Политика вызова (AI SDK 7)
@@ -200,5 +200,5 @@ usage_record:          # одна запись на HTTP-попытку = стр
     - { name: mode,               type: "live|fixture|record" }
     - { name: requestHash,        type: string, note: "ключ фикстуры (eval.yaml#fixtures)" }
     - { name: createdAt,          type: timestamptz }
-  storage: "platform.llm_calls с M0 через UsageSink (architecture.yaml#interfaces); JSONL-приёмник — только tools/eval и юнит-тесты без БД. Содержимое промптов и ответов не хранится (security/data-boundary.yaml#routing.storage_of_content: отладочные транскрипты выключены по умолчанию)"
+  storage: "platform.llm_calls с M0 через UsageSink (architecture.yaml#interfaces.usage_sink: в platform-api/worker — DbUsageSink; JsonlUsageSink(.data/usage.jsonl) — только вне платформы: tools/eval, юнит-тесты без БД). Содержимое промптов и ответов не хранится (security/data-boundary.yaml#routing.storage_of_content: отладочные транскрипты выключены по умолчанию)"
   test: "Журнал вызовов e2e-прогона: ни одна запись с tier=T1 не имеет callType из pii_forbidden_for_T1.always; для каждой T1-записи scrubbed=true"

@@ -17,14 +17,14 @@ export interface ResyncMessage {
 }
 export type RealtimeMessage = InvalidateMessage | ResyncMessage;
 
-/** `_consent` body field (security/compliance.yaml#consent, ui-kit.yaml ConsentMeta). */
+/**
+ * `_consent` body field, canonical format of security/compliance.yaml#consent: both values come from
+ * RoleSpec.compliance (GET /_wizard/spec); time and ip_hmac are set by the server.
+ */
 export interface ConsentPayload {
-  version: string;
+  policyVersion: string;
   textHash: string;
-  policyRoute: string;
-  acceptedAt: string;
 }
-export type ConsentInfo = Omit<ConsentPayload, "acceptedAt">;
 
 export interface SdkClientOptions {
   /** Origin + prefix of the runtime; default "" (same origin). */
@@ -33,10 +33,9 @@ export interface SdkClientOptions {
   /** Open GET /api/events while something is subscribed (default true). */
   realtime?: boolean;
   /** Consent metadata; default: derived from GET /_wizard/spec (RoleSpec.compliance). */
-  consent?: ConsentInfo | (() => Promise<ConsentInfo>);
+  consent?: ConsentPayload | (() => Promise<ConsentPayload>);
   /** First reconnect delay; doubles up to 10 s. */
   reconnectDelayMs?: number;
-  clock?: () => Date;
 }
 
 export interface ListParams {
@@ -156,9 +155,8 @@ export class SdkClient {
   private readonly fetchImpl: FetchLike;
   private readonly realtime: boolean;
   private readonly reconnectDelayMs: number;
-  private readonly clock: () => Date;
   private readonly consentOpt: SdkClientOptions["consent"];
-  private consentCache: Promise<ConsentInfo> | undefined;
+  private consentCache: Promise<ConsentPayload> | undefined;
 
   private readonly listeners = new Set<(m: RealtimeMessage) => void>();
   private sse: AbortController | undefined;
@@ -177,7 +175,6 @@ export class SdkClient {
     this.fetchImpl = o.fetch ? f : (input, init) => f.call(globalThis, input, init);
     this.realtime = o.realtime ?? true;
     this.reconnectDelayMs = o.reconnectDelayMs ?? 500;
-    this.clock = o.clock ?? (() => new Date());
     this.consentOpt = o.consent;
   }
 
@@ -229,20 +226,24 @@ export class SdkClient {
 
   // ---------- consent ----------
 
-  private consentInfo(): Promise<ConsentInfo> {
+  private consentInfo(): Promise<ConsentPayload> {
     if (this.consentOpt) {
       return typeof this.consentOpt === "function" ? this.consentOpt() : Promise.resolve(this.consentOpt);
     }
     this.consentCache ??= this.request<{
-      specHash?: string;
-      compliance?: { consentText?: string; policyPage?: string; policyVersion?: string };
+      compliance?: { policyVersion?: unknown; consentTextHash?: unknown; consentText?: unknown };
     }>("GET", "/_wizard/spec").then(async (spec) => {
-      const text = spec?.compliance?.consentText ?? "";
-      return {
-        version: spec?.compliance?.policyVersion ?? spec?.specHash ?? "1",
-        textHash: await sha256Hex(text),
-        policyRoute: spec?.compliance?.policyPage ?? "",
-      };
+      const c = spec?.compliance;
+      const textHash =
+        typeof c?.consentTextHash === "string"
+          ? c.consentTextHash
+          : typeof c?.consentText === "string"
+            ? await sha256Hex(c.consentText)
+            : undefined;
+      if (typeof c?.policyVersion !== "string" || textHash === undefined) {
+        throw new WizardError("CONSENT_REQUIRED", { message: ERROR_MESSAGES.CONSENT_REQUIRED });
+      }
+      return { policyVersion: c.policyVersion, textHash };
     });
     this.consentCache.catch(() => {
       this.consentCache = undefined;
@@ -255,8 +256,7 @@ export class SdkClient {
     opts?: CallOptions,
   ): Promise<Record<string, unknown>> {
     if (opts?.consent !== true) return body;
-    const info = await this.consentInfo();
-    const _consent: ConsentPayload = { ...info, acceptedAt: this.clock().toISOString() };
+    const _consent: ConsentPayload = { ...(await this.consentInfo()) };
     return { ...body, _consent };
   }
 
@@ -457,6 +457,8 @@ export class SdkClient {
         }
       });
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      // Some fetch implementations ignore the signal once the body streams: cancel explicitly.
+      ac.signal.addEventListener("abort", () => void reader.cancel().catch(() => {}), { once: true });
       for (;;) {
         const { value, done } = await reader.read();
         if (done) return;

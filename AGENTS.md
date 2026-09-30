@@ -4,26 +4,27 @@
 Wizard — российская альтернатива VibeCraft: пользователь описывает систему в чате, агенты собирают её, проверяют гейтами и публикуют. Источник истины для реализации — `specs/`. Контекст решений — `docs/concept.md`.
 
 ## Порядок работы над задачей
-1. Возьми задачу из `specs/backlog.yaml`, у которой закрыты все `deps`.
-2. Прочитай `specs/product.yaml`, `specs/architecture.yaml` и файлы из поля `specs` задачи. Остальное не читай без необходимости, чтобы экономить токены.
-3. Реализуй в пределах своего пакета или приложения. Чужие пакеты меняй только через их публичные интерфейсы (`architecture.yaml#interfaces`).
-4. Критерии `acceptance` превращай в автотесты. Задача закрыта, когда они зелёные в CI.
-5. Перед коммитом: `pnpm lint && pnpm -r typecheck && pnpm test && node tools/specs/validate.mjs`.
-6. Коммит: `<task-id>: <что сделано>`, например `M0-03: applyOps с атомарностью и идемпотентностью`.
+1. Возьми задачу из `specs/backlog.yaml` со `status: todo`, у которой все `deps` в `status: done` и `owner` не `founder`. Захвати её: `status: in_progress`, `claimed_by: <id сессии>` — отдельным маленьким PR в main (меняешь только свою задачу). Если PR захвата не смержился (задачу уже взяли) — бери другую.
+2. Прочитай `specs/product.yaml#decisions`, `#non_goals`, `specs/architecture.yaml#stack`, `#monorepo`, `#interfaces` и файлы из поля `specs` задачи; якорь `файл#a.b` — читай только это поддерево, пометка `(slice --milestone M0)` — срез через `node tools/specs/slice.mjs` (после M0-19). Остальное не читай без необходимости, чтобы экономить токены.
+3. Реализуй в пределах своего пакета или приложения. Чужие пакеты меняй только через их публичные интерфейсы (`architecture.yaml#interfaces`). Публичный API пакета — его `src/index.ts` с однострочными JSDoc: следующие задачи читают только его, не исходники.
+4. Критерии `acceptance` превращай в автотесты. Задача закрыта, когда они зелёные в CI; в том же PR поставь `status: done`.
+5. Перед PR: `pnpm lint && pnpm typecheck && pnpm test && node tools/specs/validate.mjs`.
+6. Ветка `task/<id>`, коммит `<id>: <что сделано>` (например `M0-03: applyOps с атомарностью и идемпотентностью`), PR в main с auto-merge. Мерж при зелёном CI — не эскалация; метка `founder-review` и исключения — `specs/escalation.yaml#merge_policy`. Прямой push и force-push в main запрещены.
+7. Конфликт в `pnpm-lock.yaml`: взять версию main, выполнить `pnpm install`, закоммитить. `specs/CHANGELOG.md` — только дописывать в конец.
 
 ## Жёсткие правила (MUST / MUST NOT)
-- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR. Шрифты — также OFL-1.1; devDependencies — также MPL-2.0.
-- MUST NOT: использовать модели Anthropic, OpenAI, Google или xAI в продукте. Ключи провайдеров в коде не хранятся. `.env` не коммитится.
+- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR. Шрифты — также OFL-1.1; devDependencies — также MPL-2.0. Инфраструктура вне бандла (не модифицируется и не распространяется, например Grafana, Loki, OpenBao, OpenTofu) — также AGPL/MPL. Данные (словари, списки брендов, GeoIP) — CC0/CC-BY/MIT с атрибуцией. Всё это фиксируется в `THIRD_PARTY_NOTICES.md`.
+- MUST NOT: использовать API и сервисы Anthropic, OpenAI, Google или xAI в продукте. Открытые веса этих вендоров с инференсом в РФ (например, `openai/gpt-oss-120b` в Cloud.ru FM) допустимы (`product.yaml#decisions.D18_western_models`). Ключи провайдеров в коде не хранятся. `.env` не коммитится.
 - MUST NOT: отправлять к T1 (Z.ai) вызовы из `pii_forbidden_for_T1` и любые данные с ПДн. Всё, что идёт к T1, проходит через `packages/pii` scrub.
 - MUST NOT: копировать код из `get-convex/convex-backend` (лицензия FSL). Повторять стиль API можно.
-- MUST: заимствования из Chef (Apache-2.0) и bolt.diy (MIT) сохраняют заголовки и попадают в `THIRD_PARTY_NOTICES.md`.
+- MUST: заимствования из Chef (Apache-2.0, сохранить NOTICE) и bolt.diy (MIT © StackBlitz) сохраняют заголовки и попадают в `THIRD_PARTY_NOTICES.md`, даже если фрагмент переписан по мотивам. CI проверяет отсутствие кода с FSL-1.1 (M0-27).
 - MUST: весь пользовательский текст — на русском. Код, идентификаторы и комментарии — на английском.
 - MUST: секреты коннекторов в AppSpec и коде систем передаются только как `secret://name`.
-- MUST: SQL всегда с полностью квалифицированными именами. Контекст пользователя задаётся только через `set_config(..., true)` в транзакции.
+- MUST: SQL всегда с полностью квалифицированными именами. Контекст пользователя задаётся только через `set_config(..., true)` в транзакции. Запрещены `SET` без `LOCAL`, `set_config(..., false)`, `pg_advisory_lock` (только `_xact_`), `LISTEN` (PgBouncer, transaction mode; проверка CI — M0-27). Значения в SQL — только через параметры или `quoteLiteral`/`literal`, идентификаторы — `quoteIdent`.
 - MUST NOT: выполнять сгенерированный код вне песочницы. В M0–M1 допустим только `WIZARD_UNSAFE_LOCAL_EXEC=1` локально.
 
 ## Эскалация
-Основателя не спрашивать ни о чём, кроме случаев из `specs/escalation.yaml`. Решения, принятые самостоятельно, коротко записывай в `specs/CHANGELOG.md`.
+Основателя не спрашивать ни о чём, кроме случаев из `specs/escalation.yaml`. Решения, принятые самостоятельно, коротко записывай в `specs/CHANGELOG.md`. Решения основателя F1–F8 уже записаны в `product.yaml#decisions` (D17–D22, D2_w0_fallback, D10_interpretations) — не спрашивать повторно.
 
 ## Экономия токенов
 - Читай только нужные спеки и файлы, большие файлы — точечно.

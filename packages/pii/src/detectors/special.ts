@@ -14,9 +14,21 @@ const SUBJECT_KINDS: ReadonlySet<Kind> = new Set<Kind>(["person_name", "phone_ru
 const WINDOW = 100;
 
 export function detectSpecialContext(text: string, base: readonly Finding[]): Finding[] {
+  // `base` is sorted by start and non-overlapping, so subjects are sorted by both start and end.
   const subjects = base.filter((f) => SUBJECT_KINDS.has(f.kind));
   if (subjects.length === 0) return [];
-  const near = (s: number, e: number) => subjects.some((f) => f.start - e <= WINDOW && s - f.end <= WINDOW);
+  const near = (s: number, e: number): boolean => {
+    // First subject whose end is ≥ s − WINDOW; it or the next one decides.
+    let lo = 0;
+    let hi = subjects.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((subjects[mid] as Finding).end < s - WINDOW) lo = mid + 1;
+      else hi = mid;
+    }
+    const f = subjects[lo];
+    return f !== undefined && f.start - e <= WINDOW;
+  };
   const out: Finding[] = [];
   for (const m of text.matchAll(SPECIAL_RE)) {
     const e = m.index + m[0].length;

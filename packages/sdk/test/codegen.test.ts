@@ -32,7 +32,9 @@ describe("generateTypes (sdk.md §4)", () => {
 
   test("field mapping: optional → T | null in doc, optional/default in insert, hidden → optional in clientDoc", () => {
     const t = entityBlock(out, "ticket");
-    expect(t).toContain('/** Статус */ status: "pending_payment" | "paid" | "issued" | "canceled" | "refunded";');
+    expect(t).toContain(
+      '/** Статус */ status: "pending_payment" | "paid" | "issued" | "canceled" | "refunded";',
+    );
     expect(t).toContain("/** Телефон */ holder_phone: string | null;");
     expect(t).toContain('/** Поток */ stream: Id<"stream">;');
     expect(t).toContain('/** Владелец */ holder_user: Id<"users">;');

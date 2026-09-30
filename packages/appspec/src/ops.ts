@@ -114,10 +114,12 @@ const opSchemas = [
   z.strictObject({ op: z.literal("set_acceptance"), acceptance: z.array(acceptanceSchema) }),
   z.strictObject({
     op: z.literal("set_compliance"),
+    consentTemplateId: complianceSchema.shape.consentTemplateId,
     consentText: complianceSchema.shape.consentText,
     operatorName: complianceSchema.shape.operatorName,
     operatorContact: complianceSchema.shape.operatorContact,
     operatorInn: complianceSchema.shape.operatorInn,
+    operatorAddress: complianceSchema.shape.operatorAddress,
     retentionWaiver: complianceSchema.shape.retentionWaiver,
     policyPage: complianceSchema.shape.policyPage,
   }),
@@ -134,6 +136,19 @@ export const DESTRUCTIVE_OPS: ReadonlySet<OpName> = new Set<OpName>([
   "remove_field",
   "remove_role",
 ]);
+
+/**
+ * set_compliance fields only the owner (author user/system) may set (ops.yaml#ops.set_compliance, L3-06):
+ * the agent may only pick a lawyer's consent template and the policy page.
+ */
+export const OWNER_ONLY_COMPLIANCE_FIELDS = [
+  "consentText",
+  "operatorName",
+  "operatorContact",
+  "operatorInn",
+  "operatorAddress",
+  "retentionWaiver",
+] as const;
 
 export interface Revision {
   version: number;
@@ -537,6 +552,20 @@ export function applyOps(
         }),
       );
       return;
+    }
+    if (r.data.op === "set_compliance" && (opts.author ?? "agent") === "agent") {
+      const data = r.data as Record<string, unknown>;
+      const forbidden = OWNER_ONLY_COMPLIANCE_FIELDS.filter((k) => data[k] !== undefined);
+      if (forbidden.length) {
+        for (const k of forbidden)
+          errors.push(
+            err("OWNER_ONLY_FIELD", ["ops", i, k], "Это поле заполняет только владелец системы", {
+              allowed: ["consentTemplateId", "policyPage"],
+              hint: "Выберите шаблон согласия (consentTemplateId); данные оператора владелец вводит сам",
+            }),
+          );
+        return;
+      }
     }
     parsed.push(r.data);
   });

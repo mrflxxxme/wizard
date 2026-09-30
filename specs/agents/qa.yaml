@@ -19,6 +19,7 @@ checks:
     selection: "G1: проверки, на которые ссылаются AC type=permission, + все проверки роли access=public. G2: полная матрица (gates.yaml#G2-PERM-*)"
     test: "Для спеки «форум» число PC-проверок = |roles| × |entities| × 4 + доп. row/hidden/ro; сломанная permission даёт ровно ожидаемые провалы"
   from_acceptance:
+    milestone: "AC с check.milestone позже ctx.milestone (нет поля = M0) не генерируются: G1 ставит им status=skip (gates.yaml#G1)"
     permission: "AC {type: permission, role, entity, op, expect} → PC-проверка 1:1 (без LLM). id: SC-<AC id>"
     scenario:
       how: "callType=qa_generate, инструмент submit_checks {checks: Scenario[]} (DSL — gates.yaml#scenario_dsl)"
@@ -26,17 +27,18 @@ checks:
       validate:
         - "zod(Scenario) + статическое разрешение: сущности, поля, функции, роли, переменные ($x) существуют и определены до использования"
         - "Каждый сценарий содержит ≥1 expect; сценарий не может менять спеку"
+        - "actors — поле сценария, не шаг; шаги create/callFn, пишущие поля pii≠none от роли без isAdmin, несут consent: true (gates.yaml#scenario_dsl)"
         - "Невалидный → 1 повтор с ошибками; снова невалидный → проверка status=error, category=check_invalid (строитель её не чинит, AC помечается «не удалось проверить автоматически»)"
     constraint:
       how: "Как scenario, но обязательна негативная ветка: действие, нарушающее ограничение (лимит, уникальность, статус), ожидает ошибку"
-      examples: ["лимит мест: create N+1 → expect error LIMIT_REACHED|VALIDATION", "уникальность: второй create с тем же значением → expect status 409"]
+      examples: ["лимит мест через функцию: callFn N+1 → expect {error: '<код ctx.error>'} (напр. SOLD_OUT)", "нарушение required/maxLength/enum: create → expect {status: invalid}", "уникальность: второй create с тем же значением → expect {status: conflict}"]
   determinism: "Сгенерированные сценарии кешируются по (specVersion, AC id, sha256(текст AC)); повторный G1 без изменений AC не вызывает LLM"
   output: "Check {id, acId?, kind: permission|scenario|constraint, level: G1|G2, scenario?: Scenario, expect?}"
-  test: "Карточка «форум» → ≥ 6 проверок, все исполнимы G1 без status=error (backlog M0-14)"
+  test: "Спека «форум» → ≥ 1 SC-проверка на каждый AC type=scenario|constraint с milestone ≤ M0, все исполнимы без status=error и pass на золотой ревизии (backlog M0-14)"
 
 # ---------------------------------------------------------------- Seed-данные
 seed:
-  generator: "Детерминированный (код), PRNG с seed = sha256(systemId + specVersion); LLM не генерирует людей"
+  generator: "Детерминированный (код): gates.generateSeed(spec, key) в packages/gates — владелец генератора; QA его только вызывает и даёт MAY-подсказки ниже. key = sha256(systemId + specVersion) для G1, sha256(systemKey) для черновой схемы (platform/workflows.yaml#build). LLM не генерирует людей"
   rules:
     - "MUST: только синтетика. ФИО — из встроенного синтетического словаря с пометкой; телефоны +7 999 000-XX-XX; email user<N>@example.test; адреса «ул. Тестовая, д. N»; карты/паспорта не генерируются вовсе"
     - "MUST: DLP-проверка seed перед загрузкой: значения вне генератора, похожие на ПДн → отказ SEED_PII"

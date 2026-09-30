@@ -20,7 +20,6 @@ export {
 } from "./client/react.js";
 export {
   buildListQuery,
-  type ConsentInfo,
   type ConsentPayload,
   type FetchLike,
   type ListParams,

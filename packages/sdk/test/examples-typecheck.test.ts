@@ -11,9 +11,13 @@ const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 function runTsc(dir: string): { code: number; output: string } {
   try {
-    const output = execFileSync(process.execPath, [tsc, "-p", join(dir, "tsconfig.json"), "--pretty", "false"], {
-      encoding: "utf8",
-    });
+    const output = execFileSync(
+      process.execPath,
+      [tsc, "-p", join(dir, "tsconfig.json"), "--pretty", "false"],
+      {
+        encoding: "utf8",
+      },
+    );
     return { code: 0, output };
   } catch (e) {
     const err = e as { status?: number; stdout?: string; stderr?: string };
@@ -43,7 +47,13 @@ describe("examples typecheck", () => {
     const stripped = lines.map((l) => (l.trim().startsWith("// @ts-expect-error") ? "//" : l)).join("\n");
     writeFileSync(join(neg, "negative-stripped.ts"), stripped.replace(/^\/\/ Negative.*$/m, ""));
     const tsconfig = JSON.parse(readFileSync(join(neg, "tsconfig.json"), "utf8")) as { include: string[] };
-    tsconfig.include = ["functions", "ui", "_generated", "negative-stripped.ts", tsconfig.include[3] as string];
+    tsconfig.include = [
+      "functions",
+      "ui",
+      "_generated",
+      "negative-stripped.ts",
+      tsconfig.include[3] as string,
+    ];
     tsconfig.include[4] = tsconfig.include[4]?.replace("*.ts", "ui-kit.d.ts") as string;
     writeFileSync(join(neg, "tsconfig.json"), JSON.stringify(tsconfig));
     const r = runTsc(neg);

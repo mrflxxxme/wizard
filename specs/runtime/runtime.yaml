@@ -7,40 +7,43 @@ routing:
   host_pattern: "<system>--<env>.<systemsDomain>"       # env ∈ {draft, prod}
   prod_alias: "<system>.<systemsDomain>"                 # канонический prod-адрес (D9); <system>--prod.* → 301 на него
   local: "http://<system>--<env>.localhost:4100"         # *.localhost резолвится в 127.0.0.1 без настройки DNS
-  system_slug: "^[a-z][a-z0-9-]{1,30}[a-z0-9]$, без '--'; уникален глобально, выдаёт platform-api"
+  system_slug: "^[a-z][a-z0-9-]{1,30}[a-z0-9]$, без '--'; уникален глобально, выдаёт platform-api; MUST NOT ∈ reserved (www, mail, smtp, mx, mta-sts, autodiscover, autoconfig, api, admin, status, static, cdn, abuse, security, wizard) — L3-29"
   rules:
     - "MUST: неизвестный host или не опубликованный env → 404 со страницей «Система не найдена»"
-    - "MUST: запросы без Host или с доменом платформы → 421"
-    - "Пути: /api/* (API системы), /_wizard/* (служебное), /assets/*, /sw.js, /manifest.webmanifest, остальное (включая /login) → index.html (SPA)"
+    - "MUST: registry.suspended = true → 451 со страницей «Система временно недоступна по жалобе» (security/abuse.yaml#takedown; L1-32) на всех путях, кроме /_wizard/health"
+    - "MUST: запросы без Host или с доменом платформы → 421. Локально (WIZARD_AUTH_MODE=dev или WIZARD_UNSAFE_LOCAL_EXEC=1): Host вне *.localhost/localhost/127.0.0.1/[::1] → 421, заголовки X-Forwarded-*, Forwarded, CF-* → 403 (platform/deploy.yaml#local.host_guard, L3-10)"
+    - "Пути: /api/* (API системы), /_wizard/* (служебное), /assets/*, /sw.js, /manifest.webmanifest; /login и compliance.policyPage рендерит runtime-шаблон (AppShell.Login и страница политики — ui-kit), pages[].route MUST NOT совпадать с ними (G0-SPEC-02, L1-48); остальное → index.html (SPA)"
+    - "MUST: /_wizard/internal/* слушается только на внутреннем порту (4101; в облаке — ClusterIP), на публичном порту и ingress → 404 (L3-19)"
   test: "Две системы в одном процессе на разных хостах не видят данных друг друга (e2e на *.localhost)"
 
 system_loading:
-  registry: "platform.deployments {systemId, slug, env, revision, specHash, bundleKey, publishedAt} — читается runtime'ом (read-only роль)"
-  artifact_layout: ".data/artifacts/<systemId>/<revision>/{spec.json, manifest.json, client/index.html, client/assets/*, server/functions.mjs}"
+  registry: "platform.deployments {systemId, slug, env, revision, specHash, bundleKey, publishedAt, suspended, features: {phoneOtp}} — читается runtime'ом (read-only роль; platform/db.yaml#views.deployments). M0 до появления таблиц — FileRegistry .data/artifacts/registry.json той же формы"
+  artifact_layout: ".data/artifacts/<systemId>/<revision>/{spec.json, manifest.json, client/index.html, client/assets/*, server/functions.mjs, wz-map.json (только draft; ui/ui-kit.yaml#wz_id)}"
   rules:
     - "MUST: при запросе runtime держит в памяти LoadedSystem {spec, compiled permissions, functions bundle, connectors} с LRU на 200 систем"
-    - "MUST: смена ревизии — через POST /_wizard/internal/reload {systemId, env} с заголовком X-Wizard-Internal-Token (секрет из .env/KMS) или опрос registry раз в 10 с; переключение атомарно, запросы в полёте дорабатывают на старой ревизии"
+    - "MUST: смена ревизии — через POST /_wizard/internal/reload {systemId, env} (внутренний порт) с заголовком X-Wizard-Internal-Token = WIZARD_INTERNAL_TOKEN (сравнение за постоянное время) или опрос registry раз в 10 с; переключение атомарно, запросы в полёте дорабатывают на старой ревизии"
     - "MUST: bundleKey и specHash сверяются с manifest.json; расхождение → 503 и лог system_load_failed"
   test: "Публикация ревизии N+1 во время 50 rps не даёт ни одного 5xx (нагрузочный тест M1)"
 
 postgres:
   schema: "app_<systemId>_<env>, systemId — 12 символов [a-z0-9]; все имена в SQL полностью квалифицированы (AGENTS.md)"
   roles:
-    owner: "wizard_owner — владелец таблиц, выполняет только миграции (toDDL/toRLS)"
+    owner: "wizard_owner — владелец таблиц схем app_*, выполняет только миграции (toDDL/toRLS); НЕ владелец схемы platform и не superuser (L3-01, platform/deploy.yaml#local.postgres.roles)"
     runtime: "wizard_runtime — без BYPASSRLS и без владения таблицами, поэтому RLS действует всегда"
   system_tables:                             # создаются в схеме системы при create_schema; префикс _w_ зарезервирован
-    users: "системная сущность (ops.yaml#semantic_rules): id uuid pk, role text, display_name text, phone text, email text, telegram_id bigint, telegram_chat_id bigint, email_bounced_at, invited_by uuid, created_at, blocked_at — pii-поля шифруются на уровне колонки в M2"
+    users: "системная сущность (ops.yaml#semantic_rules): id uuid pk, role text, display_name text, phone text, email text, telegram_id bigint, telegram_chat_id bigint, email_bounced_at, invited_by uuid, created_at, last_login_at, blocked_at — pii-поля шифруются на уровне колонки в M2. Retention (M2, L3-33): без входа 3 года → anonymize (контакты → NULL, display_name → «Пользователь»), счётчик в _w_audit"
     _w_sessions: "token_hash bytea pk (sha256), user_id, created_at, last_seen_at, expires_at"
-    _w_otp: "id, channel, destination_hash, code_hash, attempts, expires_at"
+    _w_otp: "id, channel, destination_hash, code_hash = HMAC-SHA256(pepper, code) (pepper — из секретов окружения, не в БД; L3-25), attempts, expires_at"
+    _w_preview_nonces: "M2: nonce pk, expires_at (TTL 15 мин) — одноразовость токена превью (auth.preview_login_M2, L3-11)"
     _w_jobs: "outbox/планировщик: id, kind(function|workflow_step|retention), payload jsonb, run_at, attempts, locked_until, idempotency_key unique"
     _w_connector_calls: "idempotency_key pk, integration, action, status, result jsonb (без ПДн), created_at"
     _w_qr_events: "client_event_id pk, device_id, integration, result, clock_skew bool, received_at (qr.yaml#offline)"
     _w_qr_devices: "device_id pk, user_id, last_sync_at, pending int"
     _w_telegram_links: "token_hash pk, user_id, expires_at (telegram.yaml#chat_linking)"
-    _w_consents: "схема и срок хранения — ../security/compliance.yaml#consent; источник — поле _consent тела create или POST /api/fn (sdk.md §3); retention сущностей его не удаляет"
+    _w_consents: "M2 (журнал): схема и срок хранения — ../security/compliance.yaml#consent; источник — поле _consent тела create/update, POST /api/fn или входа нового пользователя (entity='users'); время и ip_hmac ставит сервер; retention сущностей его не удаляет"
     _w_audit: "id, at, actor_user_id, role, entity, record_id, op, fields text[] (имена, не значения)"
   context: "Каждая транзакция: set_config('wizard.user_id', $1, true), set_config('wizard.role', $2, true), set_config('wizard.user_attrs', $3::text, true) (JSON полей users без контактов); ctx.systemDb и воркфлоу — role='__system'"
-  rls_policy_shape: "USING (current_setting('wizard.role', true) = '__system' OR (current_setting('wizard.role', true) = '<role>' AND <rowFilter как колонка = (select current_setting(...))>)) для каждой (role, op) из permissions"
+  rls_policy_shape: "USING (current_setting('wizard.role', true) = '__system' OR (current_setting('wizard.role', true) = '<role>' AND <rowFilter как колонка = (select current_setting(...))>)) для каждой (role, op) из permissions. M2: системный доступ — отдельная роль БД на систему вместо GUC '__system' (security/isolation.yaml#db_access, L3-20)"
   statement_timeout: "1s для data API и query/mutation; lock_timeout 500ms"
 
 data_api:                                    # CRUD по AppSpec; все ответы — JSON, тексты ошибок на русском
@@ -61,7 +64,8 @@ data_api:                                    # CRUD по AppSpec; все отв�
     - "MUST: тело ≤ 1 МиБ; неизвестные поля → 422 UNKNOWN_FIELD; системные поля → 422 FIELD_READONLY"
     - "MUST: required, min/max, maxLength, enum, email/phone/url формат, ref существует и видим роли — иначе 422 VALIDATION_FAILED с fields[]"
     - "MUST: unique-нарушение → 409 CONFLICT с полем"
-    - "MUST: qr_token-поля генерирует runtime (128 бит, base32) при insert, если не заданы"
+    - "MUST: qr_token-поля генерирует qr-коннектор при insert в формате ../connectors/qr.yaml#token.payload (L1-20); значение qr_token в теле create/update → 422 FIELD_READONLY (L3-30); поле qr_token у сущности без qr-интеграции — ошибка G0 (connector validateSpec)"
+    - "MUST (согласие, M0; L1-03): create/update строки сущности с полем pii≠none ролью без isAdmin требует в теле _consent: {policyVersion, textHash}, совпадающие с RoleSpec.compliance (policyVersion, consentTextHash); иначе 422 CONSENT_REQUIRED. _consent не является полем сущности. Журнал _w_consents — M2"
     - "MUST: каждая запись пишет строку в _w_audit (без значений) и событие инвалидации после коммита"
   error_shape: "{error: {code, message, details?: {fields?: [{field, code, message}], allowed?: []}, requestId}}"
   error_codes:
@@ -74,7 +78,11 @@ data_api:                                    # CRUD по AppSpec; все отв�
     FIELD_READONLY: { http: 422, message: "Поле нельзя изменить" }
     CONFLICT: { http: 409, message: "Такое значение уже есть" }
     CONSENT_REQUIRED: { http: 422, message: "Нужно согласие на обработку персональных данных" }
+    LOGIN_METHOD_UNAVAILABLE: { http: 403, message: "Этот способ входа недоступен" }
+    UNSUPPORTED_MEDIA_TYPE: { http: 415, message: "Такой тип файла загрузить нельзя" }
+    AI_CREDITS_EXHAUSTED: { http: 402, message: "ИИ-действие временно недоступно" }
     RATE_LIMITED: { http: 429, message: "Слишком много запросов, попробуйте позже" }
+    OTP_BUDGET_EXCEEDED: { http: 429, message: "Не удалось отправить код, попробуйте позже или войдите другим способом" }
     PAYLOAD_TOO_LARGE: { http: 413, message: "Слишком большой запрос" }
     TIMEOUT: { http: 504, message: "Операция выполнялась слишком долго" }
     LIMIT_EXCEEDED: { http: 422, message: "Превышен лимит операции" }
@@ -94,7 +102,7 @@ permissions:                                 # первый рубеж — по�
   test: "Матрица role×entity×op из permissions форума: ожидаемые 200/403/404 (M0-09); RLS-тест прямым SELECT под wizard_runtime с контекстом роли без read → 0 строк"
 
 functions:
-  endpoint: "POST /api/fn/:name {args, _consent?} → 200 {result, deps: string[]} | ошибка; только function.public = true"
+  endpoint: "POST /api/fn/:name {args, _consent?: {policyVersion, textHash}} → 200 {result, deps: string[]} | ошибка; только function.public = true. Для функций с function.collectsPii = true (appspec) вызов ролью без isAdmin без валидного _consent → 422 CONSENT_REQUIRED (L1-03)"
   roles: "MUST: роль вызывающего ∈ function.roles; roles не задан → только роли с isAdmin; публичная роль — только если указана явно"
   args: "Валидация v-валидаторами до запуска → 422 VALIDATION_FAILED"
   app_errors: "ctx.error(code, {message}) → 400 {error: {code, message, details}}; message по умолчанию «Операция отклонена»"
@@ -107,22 +115,25 @@ functions:
 payments_endpoint: "POST /api/pay/:integration {binding, id} → 200 {confirmationUrl}; см. ../connectors/yookassa.yaml#runtime_endpoint"
 
 auth:
-  session_cookie: "wz_sess (локально, http) / __Host-wz_sess (https): 32 байта случайные, в БД только sha256; HttpOnly; SameSite=Lax; Secure на https; Path=/; без Domain (cookie своя у каждого хоста системы); срок 30 дней скользящий"
-  csrf: "MUST: POST/PATCH/DELETE в /api/* требуют заголовок X-Wizard-Request: 1 и Origin = хост системы, иначе 403"
-  dev_login_M0: "GET /_wizard/dev-login?role=<role>&next=<path> — только env=draft и WIZARD_DEV_LOGIN=1; создаёт (или берёт) пользователя dev-<role>, ставит cookie, 302 на next или /; в prod → 404. GET /_wizard/dev-logout"
-  login_page: "Клиентский маршрут /login?role=&next= (AppShell.Login, ../ui/ui-kit.yaml) — зарезервирован, pages[].route MUST NOT быть /login; методы — loginMethods роли или объединение методов login-ролей"
+  session_cookie: "Имя выбирается по конфигурации WIZARD_PUBLIC_SCHEME, не по запросу (L3-14): http (локально) — wz_sess, https — только __Host-wz_sess; при https cookie wz_sess игнорируется, дубли __Host-wz_sess в запросе → 401. 32 байта случайные, в БД только sha256; HttpOnly; SameSite=Lax; Secure на https; Path=/; без Domain (cookie своя у каждого хоста системы); срок 30 дней скользящий. M2, draft-хост в iframe превью (L3-15): отдельная cookie __Host-wz_prev; Secure; SameSite=None; Partitioned — только на *--draft; prod-ответ MUST NOT содержать SameSite=None (тест)"
+  csrf: "MUST: все не-GET/HEAD запросы (/api/*, /_wizard/qr/*, /api/auth/*), кроме /_wizard/hooks/*, требуют заголовок X-Wizard-Request: 1 и Origin = хост системы, иначе 403 (L1-28, L3-14). CORS-заголовки runtime не отдаёт никогда"
+  redirects: "MUST: параметры next/returnTo везде (dev-login, preview-login, /login, OAuth callback) принимают только путь по ^/(?![/\\\\]); иное → игнор и / (L3-11, L3-26)"
+  dev_login_M0: "GET /_wizard/dev-login?role=<role>&next=<path> — только env=draft и WIZARD_DEV_LOGIN=1; создаёт (или берёт) пользователя dev-<role>, ставит cookie, 302 на next или /; в prod → 404. GET /_wizard/dev-logout. Старт процесса с WIZARD_DEV_LOGIN=1 MUST падать при NODE_ENV=production, наличии KUBERNETES_SERVICE_HOST или привязке ≠ loopback (L3-11); в облаке dev-login не существует"
+  preview_login_M2: "GET /_wizard/preview-login?t=<token>&next=<path> — только draft-хост; token = HMAC(WIZARD_PREVIEW_SECRET) над {systemId, env: draft, role, revision, platformUserId, exp ≤ 15 мин, nonce}; nonce одноразовый (_w_preview_nonces), повтор → 404; ставит __Host-wz_prev (platform/api.yaml#getPreviewUrl)"
+  login_page: "Маршрут /login?role=&next= рендерит runtime-шаблон с AppShell.Login (../ui/ui-kit.yaml) — зарезервирован, pages[].route MUST NOT быть /login; методы — loginMethods роли или объединение методов login-ролей, пересечённые с доступными по тарифу (phone_otp — только при registry.features.phoneOtp)"
+  consent_at_login: "M2 (L3-33): при первом входе нового пользователя (OTP verify, Telegram callback) тело/состояние входа MUST содержать _consent {policyVersion, textHash} (AppShell.Login показывает ConsentCheckbox и ссылку на политику), иначе 422 CONSENT_REQUIRED; запись _w_consents с entity='users'. Отзыв: страница /_wizard/privacy (для вошедшего) → POST /api/auth/consent/revoke → блокировка и anonymize строк пользователя за ≤ 30 дней, запись в журнал удаления"
   methods_M1:
-    phone_otp: "POST /api/auth/otp/start {channel: 'phone', destination} → {challengeId}; 6 цифр, TTL 5 мин, 5 попыток, повтор через 60 с; отправка через SMS-провайдера РФ (выбор — E-ACCESS), локально dev-sender в .data/outbox"
+    phone_otp: "Только при registry.features.phoneOtp = true (платные тарифы start/business — F4, platform/billing.yaml#plans; иначе 403 LOGIN_METHOD_UNAVAILABLE и метода нет на /login). POST /api/auth/otp/start {channel: 'phone', destination} → {challengeId}; только номера +7 9xx; 6 цифр, TTL 5 мин, 5 попыток, повтор через 60 с; отправка через SMS-провайдера РФ (выбор — E-ACCESS), локально dev-sender в .data/outbox"
     email_otp: "Тот же поток с channel 'email', отправка коннектором email платформы"
-    verify: "POST /api/auth/otp/verify {challengeId, code} → Set-Cookie, {user}"
-    telegram: "GET /api/auth/telegram/start → OIDC Authorization Code + PKCE (S256) на https://oauth.telegram.org/auth, client_id = id бота системы; /api/auth/telegram/callback меняет code на id_token (https://oauth.telegram.org/token), проверяет подпись по JWKS https://oauth.telegram.org/.well-known/jwks.json, iss, aud, exp; scope 'openid' (+ 'phone' если роли нужен телефон)"
+    verify: "POST /api/auth/otp/verify {challengeId, code, _consent?} → Set-Cookie, {user}"
+    telegram: "GET /api/auth/telegram/start → OIDC Authorization Code + PKCE (S256) на https://oauth.telegram.org/auth, client_id = id бота системы; state (128 бит, в cookie __Host-wz_oidc, 10 мин) и nonce обязательны; redirect_uri строго https://<host>/api/auth/telegram/callback (L3-26); callback меняет code на id_token (https://oauth.telegram.org/token), проверяет state, nonce, подпись по JWKS https://oauth.telegram.org/.well-known/jwks.json, iss, aud, exp; scope 'openid telegram:bot_access' (связывает чат, connectors/telegram.yaml#chat_linking) + 'phone', если роли нужен телефон (L1-36)"
     me_logout: "GET /api/auth/me → {user} | 401; POST /api/auth/logout"
   role_assignment:
-    - "MUST: новый пользователь получает роль одним из способов: (а) самостоятельная регистрация (/login?role=R) — только в роль, безопасную для саморегистрации; (б) приглашение от пользователя роли с isAdmin (POST /api/admin/invite {role, phone|email}); (в) владелец системы с платформы получает первую isAdmin-роль при публикации"
-    - "MUST: роль безопасна для саморегистрации, если access=login, isAdmin=false и в каждой её permission (1) ops ⊆ {read} или задан rowFilter и (2) read сущности с видимыми полями pii≠none идёт с rowFilter. Форум: participant, speaker, partner; кондитерская: customer. Выводится из спеки до появления явного поля role.selfSignup"
+    - "MUST: новый пользователь получает роль одним из способов: (а) самостоятельная регистрация (/login?role=R) — только в роль с role.selfSignup = true (appspec.schema.json; L1-31), иначе 403; (б) приглашение от пользователя роли с isAdmin (POST /api/admin/invite {role, phone|email}; ≤ 20 приглашений в сутки на систему, Free — 5; L3-29); (в) владелец системы с платформы получает первую isAdmin-роль при публикации"
+    - "Правило безопасности selfSignup (access=login, isAdmin=false, ops ⊆ {read} или rowFilter, ПДн — только с rowFilter) проверяет G0 (quality/gates.yaml G0-SPEC-05), runtime его не выводит"
     - "Один пользователь — одна роль в системе (MVP)"
-  anti_abuse: "OTP: ≤ 5 кодов в час на адрес, ≤ 20 в час на IP; неверный код не раскрывает, существует ли пользователь"
-  test: "e2e: три метода входа с dev-отправителем (M1-05); dev-login недоступен в prod; cookie одной системы не принимается другой"
+  anti_abuse: "M1 (L3-25): OTP ≤ 5 кодов в час на адрес и ≤ 20 в час на IP (IP — platform/deploy.yaml#cloud.client_ip; IPv6 — по /64); глобальные лимиты на destination по всем системам: 5/ч, 10/сут; SMS-бюджет org в сутки — platform/billing.yaml#sms.daily_budget_per_org, превышение → 429 OTP_BUDGET_EXCEEDED и уведомление владельцу; после 3 запросов с IP — капча (своя или российская); алерт при росте SMS > 3× медианы; неверный код не раскрывает, существует ли пользователь"
+  test: "e2e: три метода входа с dev-отправителем (M1-05); phone_otp на Free-org → метода нет, прямой вызов 403; dev-login недоступен в prod и не стартует без loopback; cookie одной системы не принимается другой; next=//evil.example → редирект на /"
 
 realtime:
   endpoint: "GET /api/events → text/event-stream"
@@ -137,7 +148,7 @@ realtime:
 workflows:                                   # исполнение workflows из AppSpec
   triggers:
     on_create_update_status: "запись в _w_jobs в той же транзакции, что и изменение; on_status срабатывает при переходе field в equals"
-    schedule_cron: "cron в часовом поясе Europe/Moscow (до появления app.timezone)"
+    schedule_cron: "cron в app.timezone (по умолчанию Europe/Moscow)"
     schedule_relative: "задание на <record.field + offsetMinutes>; пересчитывается при изменении поля; прошедшее время → не запускать"
     webhook_manual: "POST /api/workflows/:name/run — только isAdmin (manual); webhook — через коннектор"
   step_params:
@@ -145,39 +156,64 @@ workflows:                                   # исполнение workflows и
     - "if: {<field>: [значения]} — шаг пропускается, если запись не подходит"
     - "notify: {integration, to: '$record.<ref на users>', template | text, attachQr?}"
     - "function: {name, args}; connector: {integration, action, input}; update/create: {entity?, set: {...}}; wait: {minutes}"
-  execution: "M0: поллер _w_jobs (FOR UPDATE SKIP LOCKED) в процессе runtime; at-least-once; ключ идемпотентности шага = <jobId>:<stepIndex>; 5 попыток с экспонентой 1 с…16 мин; M1: перенос на DBOS (D6) без смены семантики"
-  retention: "Ежесуточно 03:00 МСК: для сущностей с retention строки старше anchorField + deleteAfterDays удаляются или обезличиваются (pii-поля → NULL); счётчик в _w_audit"
+  execution: "M0: ctx.scheduler и триггеры только пишут в _w_jobs (outbox), поллер не запускается (G1 проверяет факт постановки задания; решение агента, L2-07). M1: поллер _w_jobs (FOR UPDATE SKIP LOCKED) в процессе runtime; at-least-once; ключ идемпотентности шага = <jobId>:<stepIndex>; 5 попыток с экспонентой 1 с…16 мин; затем перенос на DBOS (D6) без смены семантики"
+  retention: "M1+: ежесуточно 03:00 МСК: для сущностей с retention строки старше anchorField + deleteAfterDays удаляются или обезличиваются (pii-поля → NULL, файлы полей file удаляются); счётчик в _w_audit"
   test: "Сценарий AC6 форума: запись с event_starts_at = now-31d после прогона retention имеет pii-поля NULL"
 
 static:
-  bundle: "client/index.html (Cache-Control: no-cache), client/assets/* с хешем в имени (max-age=31536000, immutable)"
+  bundle: "client/index.html (Cache-Control: no-cache), client/assets/* с хешем в имени (max-age=31536000, immutable); assets/logo.(png|webp) ревизии (platform/api.yaml#uploadAsset) — как статика бандла"
   pwa:
+    since: M1
     manifest: "GET /manifest.webmanifest из app.name, theme.accent, иконки из theme.logoFile или монограммы; lang ru, display standalone, start_url /"
-    service_worker: "GET /sw.js: M0 — только кэш оболочки; M2 — precache оболочки и страниц сканера, офлайн-пакет QR в IndexedDB (../connectors/qr.yaml#offline)"
+    service_worker: "GET /sw.js: M1 — только кэш оболочки; M2 — precache оболочки и страниц сканера, офлайн-пакет QR в IndexedDB (../connectors/qr.yaml#offline)"
   test: "Lighthouse PWA installable на draft-хосте (M2)"
 
+files:              # поле type=file (L3-18, L4-12); до M2 поле file блокирует G0 (quality/gates.yaml)
+  milestone: M2
+  upload: "POST /api/files (multipart, ≤ 10 МБ) → {fileId}; право — create/update на сущность с этим полем; тип — по сигнатуре (magic bytes), allowlist image/jpeg, image/png, image/webp, application/pdf; SVG, HTML, XML, JS, архивы → 415 (../security/isolation.yaml#user_files)"
+  storage: "бакет system-files в РФ (SSE-KMS), ключ — случайный id; значение поля — fileId, не URL"
+  serve: "GET /api/files/:fileId → 302 на подписанную ссылку TTL ≤ 15 мин после проверки права read на строку (hiddenFields и rowFilter роли); раздача с Content-Disposition: attachment, CSP: sandbox, X-Content-Type-Options: nosniff"
+  pii_and_retention: "поле file по умолчанию pii: basic: попадает под согласие, retention и anonymize (файл удаляется), экспорт — только имя файла"
+  test: "HTML/SVG с подменённым Content-Type → 415; PDF отдаётся attachment + CSP sandbox; ссылка на файл чужой строки → 404"
+
+ai_actions:         # M3 (L4-07); модели и лимиты — ../agents/models.yaml#runtime_ai_*, оплата — ../platform/billing.yaml#run_charging.runtime_ai
+  milestone: M3
+  call: "POST /api/ai/:action {entity, id} → runtime вызывает platform-api по внутреннему RPC (WIZARD_INTERNAL_TOKEN, callType runtime_ai_extract | runtime_ai_generate, только T0); результат пишется в поля записи от имени __system, мета записи _aiFilled: string[]"
+  triggers: "кнопка (SDK useAiAction, sdk.md §3) и шаг воркфлоу ai_extract / ai_generate; разовый backfill старых записей — по флагу из change-карточки (прогон на платформе, ≤ aiAction.monthlyLimit)"
+  limits: "aiAction.monthlyLimit на систему; вход от public-роли — ≤ 10/ч на IP (L3-41); исчерпание кредитов org → 402 AI_CREDITS_EXHAUSTED; вывод generate — только текст, не HTML"
+  test: "кнопка → поле заполнено, RecordCard показывает «заполнено ИИ»; 11-й вызов public-роли за час → 429"
+
 service_endpoints:
-  health: "GET /_wizard/health → 200 {status:'ok', version, db:'ok'|'fail', systemsLoaded} на любом хосте runtime; на хосте системы добавляет {system, env, revision}"
+  health: "GET /_wizard/health: на публичных хостах → 200 {status: 'ok'} (L3-19); на внутреннем порту 4101 → {status, version, db: 'ok'|'fail', systemsLoaded} и на хосте системы {system, env, revision} (smoke publish)"
+  internal: "POST /_wizard/internal/reload — только внутренний порт (routing.rules)"
+  dev: "GET /_wizard/dev-login, /_wizard/dev-logout (auth.dev_login_M0); M2 — GET /_wizard/preview-login (auth.preview_login_M2)"
+  bridge: "GET /_wizard/bridge.js — только draft (../ui/platform-screens.yaml#preview_contract)"
+  fonts: "GET /_wizard/fonts/* — шрифты theme.font (../ui/ui-kit.yaml#tokens.fonts)"
+  privacy: "M2: GET /_wizard/privacy (права субъекта для вошедшего), POST /_wizard/pd-requests (запрос субъекта ПДн, ../security/compliance.yaml)"
+  api_extra: "POST /api/telegram/:integration/link (../connectors/telegram.yaml), POST /api/workflows/:name/run (workflows.triggers.webhook_manual), POST /api/admin/invite (auth.role_assignment), M2: /api/files, M3: /api/ai/:action"
   hooks: "POST /_wizard/hooks/:connector/:integration/:hookToken — вебхуки коннекторов (hookToken — 32 случайных символа на интеграцию)"
   role_spec: "GET /_wizard/spec → RoleSpec текущей роли (../ui/ui-kit.yaml#data_binding.role_spec): без hiddenFields, только свои permissions и pages, theme, compliance; ETag = specHash+role"
   qr: "/_wizard/qr/check, /_wizard/qr/manifest, /_wizard/qr/sync — ../connectors/qr.yaml#endpoints"
 
-rate_limits:                                 # по сессии, для анонимов — по IP; ответ 429 + Retry-After
+rate_limits:                                 # since: M1 (L2-28); по сессии, для анонимов — по IP (platform/deploy.yaml#cloud.client_ip, IPv6 — /64); ответ 429 + Retry-After
   data_api: "300 запросов/мин на сессию, 60/мин анонимно"
   functions: "120 вызовов/мин на сессию, 30/мин анонимно"
   events: "3 SSE-соединения на сессию"
   test: "Нагрузка сверх лимита даёт 429 с Retry-After, остальные системы не деградируют"
 
 security_headers:
+  M0: "только X-Content-Type-Options: nosniff и frame-ancestors (draft — origin платформы, prod — 'none'); полный CSP ниже — since: M1 (L2-28)"
   csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors <origin платформы> (draft) | 'none' (prod)"
   rules:
     - "MUST: никаких сторонних origin в CSP; шрифты и иконки — из бандла ui-kit. Переходы на ЮKassa и Telegram — навигацией, CSP их не ограничивает"
     - "X-Content-Type-Options: nosniff; Referrer-Policy: strict-origin-when-cross-origin; Permissions-Policy: camera=(self), geolocation=()"
+    - "MUST: CORS-заголовки (Access-Control-Allow-*) не отдаются никогда (L3-14)"
   test: "Бандл с <script src='https://evil.example'> не исполняет его (e2e, ошибка CSP в консоли)"
 
 logging:
   format: "JSON-строки: {ts, level, requestId, system, env, revision, route, entity?, fn?, status, durationMs, role, userIdHash?}"
   rules:
     - "MUST NOT: тела запросов и ответов, значения полей, значения фильтров (только имена), телефоны, email, OTP, токены, cookie, id_token"
-    - "userIdHash = первые 12 символов HMAC-SHA256(user_id) с ключом окружения"
+    - "MUST (L3-08): route — без query-строки; ошибки PG → {sqlstate, constraint} без detail/where; сегмент hookToken в пути маскируется; ответы коннекторов и провайдеров — только {status, code}"
+    - "userIdHash (since: M1) = первые 12 символов HMAC-SHA256(user_id) с ключом окружения"
   test: "e2e форума с засеянными уникальными ПДн-маркерами: grep по логам runtime не находит ни одного маркера"

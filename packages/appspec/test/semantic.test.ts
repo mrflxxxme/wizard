@@ -290,6 +290,94 @@ const cases: Case[] = [
     "INVALID_ROW_FILTER",
     "/permissions/1/rowFilter/state",
   ],
+  [
+    "rowFilter $user.display_name (user-editable, L3-20)",
+    (s) => {
+      (s.permissions[1] as { rowFilter?: unknown }).rowFilter = { title: "$user.display_name" };
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/1/rowFilter/title",
+  ],
+  [
+    "rowFilter literal with NUL (L3-01)",
+    (s) => {
+      (s.permissions[1] as { rowFilter?: unknown }).rowFilter = { title: "a\u0000b" };
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/1/rowFilter/title",
+  ],
+  [
+    "rowFilter ref literal is not a uuid",
+    (s) => {
+      (s.permissions[1] as { rowFilter?: unknown }).rowFilter = { owner: "'); drop schema platform; --" };
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/1/rowFilter/owner",
+  ],
+  [
+    "rowFilterOps without rowFilter",
+    (s) => {
+      Object.assign(s.permissions[2] as object, { rowFilterOps: ["read"] });
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/2/rowFilterOps",
+  ],
+  [
+    "rowFilterOps not a subset of ops",
+    (s) => {
+      Object.assign(s.permissions[1] as object, { rowFilterOps: ["update", "delete"] });
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/1/rowFilterOps/1",
+  ],
+  [
+    "public update not covered by rowFilterOps",
+    (s) => {
+      Object.assign(s.permissions[0] as object, {
+        ops: ["read", "update"],
+        rowFilter: { state: "todo" },
+        rowFilterOps: ["read"],
+      });
+    },
+    "INVALID_ROW_FILTER",
+    "/permissions/0/ops",
+  ],
+  // SQL values (L3-01): whatever passes validation encodes with sqlLiteral
+  [
+    "int min is fractional",
+    (s) => {
+      const f = s.entities[0]?.fields[3];
+      if (f) f.min = 0.5;
+    },
+    "SCHEMA_INVALID",
+    "/entities/0/fields/3/min",
+  ],
+  [
+    "string default with NUL",
+    (s) => {
+      const f = s.entities[0]?.fields[0];
+      if (f) f.default = "x\u0000'; drop table x; --";
+    },
+    "SCHEMA_INVALID",
+    "/entities/0/fields/0/default",
+  ],
+  [
+    "date default is not a date",
+    (s) => {
+      s.entities[1]?.fields.push({ name: "due", label: "Срок", type: "date", default: "2026-02-30" });
+    },
+    "SCHEMA_INVALID",
+    "/entities/1/fields/2/default",
+  ],
+  [
+    "email default does not match the format",
+    (s) => {
+      const f = s.entities[0]?.fields[4];
+      if (f) f.default = "not-an-email";
+    },
+    "SCHEMA_INVALID",
+    "/entities/0/fields/4/default",
+  ],
   // 5. public roles
   [
     "two public roles",
@@ -540,6 +628,25 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     const [e] = errorsOf(spec);
     expect(e).toMatchObject({ code: "INVALID_ROW_FILTER", path: "/permissions/1/rowFilter/title" });
     expect(e?.allowed).toContain("$user.telegram_id");
+  });
+
+  test("rowFilterOps: a valid subset passes; public update filtered via rowFilterOps passes", () => {
+    const spec = miniSpec();
+    Object.assign(spec.permissions[1] as object, { rowFilterOps: ["update"] });
+    Object.assign(spec.permissions[0] as object, {
+      ops: ["read", "update"],
+      rowFilter: { state: "todo" },
+      rowFilterOps: ["update"],
+    });
+    expect(errorsOf(spec)).toEqual([]);
+  });
+
+  test("hostile but well-formed string values are valid (they are escaped, not rejected)", () => {
+    const spec = miniSpec();
+    const f = spec.entities[0]?.fields[0];
+    if (f) f.default = `'); DROP SCHEMA platform; -- $$ $wz$ \\ E'x' /* ʼ＇ */`;
+    (spec.permissions[1] as { rowFilter?: unknown }).rowFilter = { owner: "$user.id", title: `a'b"c;--` };
+    expect(errorsOf(spec)).toEqual([]);
   });
 
   test("public role may update with a rowFilter", () => {

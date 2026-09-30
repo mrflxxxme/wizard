@@ -1,4 +1,4 @@
-# Коннектор email. Нормативно для backlog M1-06. Также используется runtime для email OTP (runtime.yaml#auth).
+# Коннектор email. Нормативно для backlog M1-06. Также используется runtime для email OTP (runtime.yaml#auth) — метод входа на всех тарифах, включая Free (решение F4).
 id: email
 milestone: M1
 principle: "Только транзакционные письма (билет, подтверждение, статус заявки). Рассылки и реклама — нет (38-ФЗ о рекламе требует согласия; вне MVP)."
@@ -8,9 +8,11 @@ secrets:
 
 config_schema:
   provider: "platform | smtp. platform — SMTP-аккаунт Wizard у российского провайдера (выбор и ключи — E-ACCESS), отправитель noreply@<systemsDomain> с SPF/DKIM/DMARC; smtp — свой ящик клиента"
-  host: "smtp: хост; порт 465 (TLS) или 587 (STARTTLS); без TLS — CONFIG_INVALID"
+  host: "smtp: DNS-имя хоста (не IP); адрес после резолва MUST NOT быть RFC1918, loopback, link-local, CGNAT или адресом кластера — проверка при каждом подключении, иначе CONFIG_INVALID (защита от SSRF; M2 — через egress-proxy, ../security/isolation.yaml#M2.network)"
+  port: "465 или 587; другие — CONFIG_INVALID"
+  secure: "bool: true — TLS с начала соединения (порт 465), false — STARTTLS обязателен (порт 587); без TLS — CONFIG_INVALID"
   user: "smtp: логин"
-  from: "{name ≤ 60, address} — для platform address всегда noreply@<systemsDomain>, name — app.name"
+  from: "{name ≤ 60 символов без @, <, >, CR/LF, address} — для platform address всегда noreply@<systemsDomain>, name — app.name (после той же очистки); домен систем: SPF, DKIM, DMARC p=reject"
   replyTo: "email организатора (необязательно)"
   templates: "{<id>: {subject ≤ 120, body ≤ 10000}}; подстановки {{field}}, {{ref.field}}, {{link}} (ссылка на страницу записи)"
   validation: "G0: шаблоны, на которые ссылаются workflows/код, существуют; G2: subject не ссылается на поля pii≠none; body — только на pii-поля записи, чей ownerField = получатель"
@@ -24,6 +26,7 @@ actions:
       - "MUST: HTML-экранирование подставленных значений; текстовая и HTML-версии (шаблон ui-kit, без внешних картинок и трекинга)"
       - "attachQrOf → PNG QR из qr-коннектора как inline-вложение (cid), только если получатель — владелец записи"
       - "Заголовки: Auto-Submitted: auto-generated; Message-ID на домене отправителя"
+      - "MUST: в значениях заголовков (subject с подстановками, from.name, replyTo) CR, LF и NUL вырезаются; не-ASCII — кодирование RFC 2047; replyTo — один валидный адрес"
     output: "{messageId}"
   notify_step: "Шаг воркфлоу notify с integration=email → sendTemplate"
 
@@ -45,3 +48,5 @@ acceptance:
   - "G2: subject «Билет для {{holder_name}}» блокирует публикацию"
   - "Письмо с билетом форума в draft оказывается в .data/outbox с QR-вложением, в логах нет адреса"
   - "Повтор шага воркфлоу с тем же ключом не отправляет письмо второй раз"
+  - "Подстановка «x\\r\\nBcc: a@b.ru» в subject → одно поле Subject без переноса, заголовка Bcc нет"
+  - "provider=smtp с host, резолвящимся в 10.0.0.5 или 127.0.0.1 → CONFIG_INVALID, соединение не открывается"

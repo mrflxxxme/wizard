@@ -13,22 +13,45 @@ const OBFUSCATED_RE = new RegExp(
   String.raw`(?<![\p{L}\p{N}._-])[A-Za-z0-9][A-Za-z0-9._-]{0,63}${AT}[A-Za-z0-9][A-Za-z0-9-]{0,62}(?:${DOT}[A-Za-z0-9-]{1,63})*${DOT}([A-Za-z]{2,10})(?![\p{L}\p{N}])`,
   "giu",
 );
-const OBFUSCATION_HINT = /собак|собачк|(?<![A-Za-z])at(?![A-Za-z])/iu;
+const OBFUSCATION_HINT = /собак|собачк|(?<![A-Za-z])at(?![A-Za-z])/giu;
+const AT_SIGN = /@/g;
+
+/**
+ * Merged [from, to) windows around every match of `hint`. A window starts at a line break or whitespace-free
+ * boundary no closer than `before` characters, so a regex run inside it sees the same left context as in `text`.
+ */
+function windows(text: string, hint: RegExp, before: number, after: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const m of text.matchAll(hint)) {
+    let from = Math.max(0, m.index - before);
+    // Do not start inside a token: move left to the previous whitespace (or text start).
+    while (from > 0 && !/\s/.test(text[from - 1] ?? "")) from--;
+    const to = Math.min(text.length, m.index + after);
+    const last = out[out.length - 1];
+    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+    else out.push([from, to]);
+  }
+  return out;
+}
 const COMMON_TLD = new Set(
   "ru su com net org info biz pro io me co dev app online site tech xyz ua by kz uz am ge de uk eu us cloud mail email".split(" "),
 );
 
 export function detectEmails(text: string): Finding[] {
   const out: Finding[] = [];
-  for (const m of text.matchAll(EMAIL_RE)) {
-    if (FILE_EXT.test(m[1] ?? "")) continue;
-    out.push(finding("email", m.index, m.index + m[0].length, "high"));
+  // Regexes run only on windows around "@" / obfuscation hints: most text has neither.
+  for (const [from, to] of windows(text, AT_SIGN, 70, 280)) {
+    for (const m of text.slice(from, to).matchAll(EMAIL_RE)) {
+      if (FILE_EXT.test(m[1] ?? "")) continue;
+      out.push(finding("email", from + m.index, from + m.index + m[0].length, "high"));
+    }
   }
-  if (!OBFUSCATION_HINT.test(text)) return out;
-  for (const m of text.matchAll(OBFUSCATED_RE)) {
-    if (m[0].includes("@")) continue;
-    if (!COMMON_TLD.has((m[1] ?? "").toLowerCase())) continue;
-    out.push(finding("email", m.index, m.index + m[0].length, "medium"));
+  for (const [from, to] of windows(text, OBFUSCATION_HINT, 70, 160)) {
+    for (const m of text.slice(from, to).matchAll(OBFUSCATED_RE)) {
+      if (m[0].includes("@")) continue;
+      if (!COMMON_TLD.has((m[1] ?? "").toLowerCase())) continue;
+      out.push(finding("email", from + m.index, from + m.index + m[0].length, "medium"));
+    }
   }
   return out;
 }

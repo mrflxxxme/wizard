@@ -156,9 +156,9 @@
   "roles": [
     {"name": "organizer", "label": "Организатор", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"]},
     {"name": "moderator", "label": "Модератор", "access": "login", "loginMethods": ["email_otp", "telegram"]},
-    {"name": "speaker", "label": "Спикер", "access": "login", "loginMethods": ["email_otp", "telegram"]},
+    {"name": "speaker", "label": "Спикер", "access": "login", "loginMethods": ["email_otp", "telegram"], "selfSignup": true},
     {"name": "partner", "label": "Партнёр", "access": "login", "loginMethods": ["email_otp"]},
-    {"name": "participant", "label": "Участник", "access": "login", "loginMethods": ["phone_otp", "email_otp", "telegram"]},
+    {"name": "participant", "label": "Участник", "access": "login", "loginMethods": ["phone_otp", "email_otp", "telegram"], "selfSignup": true},
     {"name": "volunteer", "label": "Волонтёр на входе", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
     {"name": "visitor", "label": "Посетитель", "access": "public"}
   ],
@@ -169,7 +169,7 @@
     {"role": "organizer", "entity": "speaker_application", "ops": ["read", "update", "delete"]},
     {"role": "organizer", "entity": "partner_quota", "ops": ["read", "create", "update", "delete"], "readonlyFields": ["used"]},
     {"role": "organizer", "entity": "session", "ops": ["read", "create", "update", "delete"]},
-    {"role": "organizer", "entity": "checkin", "ops": ["read"]},
+    {"role": "organizer", "entity": "checkin", "ops": ["read", "create"]},
     {"role": "organizer", "entity": "payment", "ops": ["read"]},
     {"role": "moderator", "entity": "stream", "ops": ["read"]},
     {"role": "moderator", "entity": "session", "ops": ["read", "create", "update"]},
@@ -298,7 +298,7 @@
       "roles": ["visitor", "participant", "speaker", "partner", "moderator", "volunteer", "organizer"]
     },
     {"name": "partnerQuota", "kind": "query", "file": "functions/partnerQuota.ts", "public": true, "roles": ["partner", "organizer"]},
-    {"name": "registerTicket", "kind": "mutation", "file": "functions/registerTicket.ts", "public": true, "roles": ["participant"]},
+    {"name": "registerTicket", "kind": "mutation", "file": "functions/registerTicket.ts", "public": true, "roles": ["participant"], "collectsPii": true},
     {"name": "sendReminder", "kind": "action", "file": "functions/sendReminder.ts", "public": false}
   ],
   "pages": [
@@ -313,17 +313,17 @@
       "text": "Билет нельзя купить сверх лимита потока",
       "check": {
         "type": "scenario",
+        "actors": {"org": {"role": "organizer"}, "anna": {"role": "participant"}, "boris": {"role": "participant"}, "vera": {"role": "participant"}},
         "steps": [
-          {"actors": {"org": {"role": "organizer"}, "anna": {"role": "participant"}, "boris": {"role": "participant"}, "vera": {"role": "participant"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
           {"as": "anna"},
-          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Анна Тестова", "holderEmail": "guest@example.test"}}},
+          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Анна Тестова", "holderEmail": "guest@example.test"}}, "consent": true},
           {"as": "boris"},
-          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Борис Тестов", "holderEmail": "guest@example.test"}}},
+          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Борис Тестов", "holderEmail": "guest@example.test"}}, "consent": true},
           {"as": "vera"},
-          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Вера Тестова", "holderEmail": "guest@example.test"}}},
+          {"callFn": {"name": "registerTicket", "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Вера Тестова", "holderEmail": "guest@example.test"}}, "consent": true},
           {"expect": {"error": "STREAM_FULL"}}
         ]
       }
@@ -333,8 +333,8 @@
       "text": "Партнёр видит только свою квоту",
       "check": {
         "type": "scenario",
+        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "pb": {"role": "partner"}},
         "steps": [
-          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "pb": {"role": "partner"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -353,11 +353,12 @@
       "text": "Спикер не видит чужие заявки",
       "check": {
         "type": "scenario",
+        "actors": {"s1": {"role": "speaker"}, "s2": {"role": "speaker"}},
         "steps": [
-          {"actors": {"s1": {"role": "speaker"}, "s2": {"role": "speaker"}}},
           {"as": "s1"},
           {
-            "create": {"entity": "speaker_application", "data": {"full_name": "Спикер Один", "email": "s1@example.test", "topic": "Электронные ценники", "abstract": "Кейс сети"}, "save": "a1"}
+            "create": {"entity": "speaker_application", "data": {"full_name": "Спикер Один", "email": "s1@example.test", "topic": "Электронные ценники", "abstract": "Кейс сети"}, "save": "a1"},
+            "consent": true
           },
           {"as": "s2"},
           {"read": {"entity": "speaker_application"}},
@@ -372,8 +373,8 @@
       "text": "Повторный вход по одному QR отклоняется",
       "check": {
         "type": "scenario",
+        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}},
         "steps": [
-          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -384,7 +385,8 @@
               "name": "registerTicket",
               "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Анна Тестова", "holderEmail": "guest@example.test", "promoCode": "ALFA10"},
               "save": "t1"
-            }
+            },
+            "consent": true
           },
           {"expect": {"status": "ok", "fields": {"needsPayment": false}}},
           {"as": "vol"},
@@ -400,8 +402,9 @@
       "text": "Сканер работает без сети и синхронизирует (M2)",
       "check": {
         "type": "scenario",
+        "milestone": "M2",
+        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}},
         "steps": [
-          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -412,7 +415,8 @@
               "name": "registerTicket",
               "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Анна Тестова", "holderEmail": "guest@example.test", "promoCode": "ALFA10"},
               "save": "t1"
-            }
+            },
+            "consent": true
           },
           {"expect": {"status": "ok", "fields": {"needsPayment": false}}},
           {"as": "vol"},
@@ -430,9 +434,10 @@
       "text": "ПДн участников удаляются через 30 дней после форума",
       "check": {
         "type": "constraint",
+        "milestone": "M1",
         "entity": "ticket",
+        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}},
         "steps": [
-          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -443,7 +448,8 @@
               "name": "registerTicket",
               "args": {"ticketTypeId": "$std.id", "streamId": "$s1.id", "holderName": "Анна Тестова", "holderEmail": "guest@example.test", "promoCode": "ALFA10"},
               "save": "t1"
-            }
+            },
+            "consent": true
           },
           {"expect": {"status": "ok", "fields": {"needsPayment": false}}},
           {"advanceTime": {"minutes": 90720}},
@@ -460,6 +466,7 @@
     "consentText": "Я соглашаюсь на обработку моих персональных данных (ФИО, телефон, email) для регистрации на форум. Данные удаляются через 30 дней после форума.",
     "policyPage": "/privacy",
     "operatorName": "ООО «Северный ритейл»",
-    "operatorContact": "privacy@north-retail.example"
+    "operatorContact": "privacy@north-retail.example",
+    "operatorAddress": "г. Санкт-Петербург, Невский пр., д. 1, оф. 1"
   }
 }

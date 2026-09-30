@@ -9,7 +9,8 @@ conventions:
   - "MUST: мягкое удаление только там, где есть deleted_at; остальное — физически"
   - "MUST NOT: хранить содержимое LLM-промптов/ответов в llm_calls; значения секретов нигде в platform"
   - "MUST: миграции только вперёд; каждая миграция транзакционна, SET LOCAL lock_timeout = '3s'"
-  - "Тест M0-15: после migrate на пустой БД information_schema совпадает с этим файлом (генерируется скриптом tools/specs)"
+  - "Тест M0-15: после migrate на пустой БД колонки таблиц с milestone M0 в information_schema совпадают с этим файлом (тест сам парсит db.yaml; L2-24). Объекты вне схемы platform (pii_vault, debug_transcripts — data-boundary.yaml, M1+, по умолчанию выключены) в тест не входят"
+  - "Роли БД: wizard — владелец схемы platform (миграции platform-api); wizard_owner — миграции схем app_* и НЕ владелец platform, не superuser; wizard_runtime — runtime (deploy.yaml#local.postgres.roles, L3-01)"
 
 seed_M0:
   - "users: dev@wizard.local (id 00000000-0000-0000-0000-0000000000aa)"
@@ -22,8 +23,10 @@ tables:
       id: "uuid pk"
       email: "text not null check (email = lower(email))"
       name: "text"
-      is_staff: "boolean not null default false"          # M2
+      is_staff: "boolean not null default false"          # M2; в бете staff = учётная запись основателя (F7)
       totp_secret_ref: "text"                             # M2, secret://; значение в OpenBao
+      mfa_enrolled_at: "timestamptz"                      # M2; is_staff без MFA не получает доступ к /admin/* (api.yaml#info.x-auth.M2, F7)
+      deleted_at: "timestamptz"                           # M2, DELETE /me: email → anonymized-<id>, name → null, сессии отозваны (L3-36)
       pd_consent_at: "timestamptz"                        # M1, compliance.yaml#platform
       offer_accepted_at: "timestamptz"
       offer_version: "text"
@@ -34,7 +37,7 @@ tables:
     columns:
       id: "uuid pk"
       email: "text not null"
-      code_hash: "text not null"                          # sha256(code + pepper)
+      code_hash: "text not null"                          # HMAC-SHA256(pepper, code); pepper — WIZARD_SECRETS_KEY-производный, не в БД (L3-25)
       attempts: "smallint not null default 0 check (attempts <= 5)"
       expires_at: "timestamptz not null"
       consumed_at: "timestamptz"
@@ -63,6 +66,8 @@ tables:
       require_founder_review: "boolean not null default true"   # M2-09; в бете true
       passport_collection_allowed: "boolean not null default false"  # M2, abuse.yaml#patterns.gov_ids
       suspended_at: "timestamptz"                         # M2, abuse
+      region_code: "text check (region_code ~ '^[0-9]{2}$')"   # M1: код субъекта РФ (ИНН, регион при регистрации, офлайн-GeoIP в РФ); L3-02
+      t1_restricted: "boolean not null default false"      # M1: true → все вызовы org только T0 (route_reason policy_region_restricted); регион неизвестен и IP из регионов с ограничением Z.ai → true (fail-safe); список регионов — E-LEGAL
 
   memberships:
     milestone: M0
@@ -107,6 +112,8 @@ tables:
       schema_hwm_revision: "integer"                       # M1: ревизия, чья схема фактически применена в prod (high-water mark)
       shard_id: "text"                                     # M2: platform.shards; M0–M1 null = локальный инстанс
       suspended_at: "timestamptz"                          # M2, снятие публикации
+      draft_data_purged_at: "timestamptz"                  # M2: схема draft Free-черновика удалена по неактивности (F5, workflows.yaml#retention_cron)
+      last_activity_at: "timestamptz not null default now()"   # сообщение, прогон, стиль или вход владельца в систему; основа для F5
       created_by: "uuid not null references platform.users"
       updated_at: "timestamptz not null default now()"
       deleted_at: "timestamptz"
@@ -126,6 +133,10 @@ tables:
       run_id: "uuid"
       author_user_id: "uuid references platform.users"
     indexes: ["unique (system_id, seq)"]
+    payload_shapes:
+      notice: "{type: 'pii', categories: string[]} — уведомление о ПДн (agents/orchestrator.yaml#pii_notice)"
+      text_user_M3: "{target?: {wzId, componentName?, file, line?}} — «Укажи и измени» (api.yaml#postMessage)"
+    retention: "text у role=user и kind=text — scrub (packages/pii) через 180 дней после systems.last_activity_at; при удалении системы — физически (workflows.yaml#delete_system); L3-09"
 
   revisions:
     milestone: M0
@@ -168,8 +179,8 @@ tables:
       id: "uuid pk"
       org_id: "uuid not null references platform.orgs"
       system_id: "uuid references platform.systems"         # null для nightly_eval
-      kind: "text not null check (kind in ('interview_turn','build','publish','rollback','import_table','retention','nightly_eval'))"
-      mode: "text check (mode in ('create','change','fix'))"
+      kind: "text not null check (kind in ('interview_turn','build','publish','rollback','import_table','retention','nightly_eval','export'))"
+      mode: "text check (mode in ('create','change','fix','point_edit'))"      # point_edit — M3
       status: "text not null default 'queued' check (status in ('queued','waiting_lock','running','needs_input','succeeded','failed','cancelled'))"
       current_step: "text"
       input: "jsonb not null default '{}'"                  # параметры запуска (без секретов)
@@ -202,6 +213,21 @@ tables:
     invariants: ["seq выдаётся без пропусков в транзакции шага; событие пишется ДО публикации в SSE-шину (источник истины — таблица)"]
     retention: "180 дней (retention_cron, M2)"
 
+  gate_reports:
+    milestone: M0
+    purpose: "Полный GateReport (quality/gates.yaml#report) каждого запуска гейта; событие gate_result несёт только сжатую выжимку (L1-11)"
+    columns:
+      run_id: "uuid not null references platform.runs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      revision: "integer not null"
+      level: "text not null check (level in ('G0','G1','G2'))"
+      passed: "boolean not null"
+      report: "jsonb not null"                                # GateReport целиком, без значений ПДн (evidence — gates.yaml)
+    primary_key: [run_id, level, revision]
+    indexes: ["(system_id, level, revision desc)"]
+    reads: "GET /systems/:id/gates/latest: для каждого level строка с max(revision) по system_id"
+    retention: "180 дней, кроме последней строки на (system_id, level) (retention_cron, M2)"
+
   llm_calls:
     milestone: M0
     purpose: "Журнал маршрутизации и учёта = models.yaml#usage_record (одна строка на HTTP-попытку; models.yaml называет её llm_usage — имя таблицы здесь). НИКОГДА не содержит текст запросов и ответов"
@@ -212,14 +238,14 @@ tables:
       run_id: "uuid references platform.runs"
       step: "text"
       call_type: "text not null"                            # models.yaml#call_types
-      agent_role: "text"                                    # orchestrator | builder | qa | runtime | support
+      agent_role: "text"                                    # orchestrator | builder | qa | importer | auditor | runtime | support (models.yaml#routes)
       tier: "text not null check (tier in ('T0','T1'))"
       provider: "text not null"                             # cloudru | yandex | zai | fixture
       model_id: "text not null"                             # id из models.yaml#models
       attempt: "smallint not null default 1"
       status: "text not null check (status in ('ok','error','timeout','circuit_open','aborted'))"
       error_code: "text"
-      route_reason: "text not null check (route_reason in ('policy_ru_only','callType_forbidden_T1','pii_high_risk','pii_detected_interview','default_T1','default_T0','fallback_circuit_open','fallback_error'))"
+      route_reason: "text not null check (route_reason in ('policy_ru_only','policy_region_restricted','callType_forbidden_T1','pii_high_risk','pii_detected_interview','pii_hint','default_T1','default_T0','fallback_circuit_open','fallback_error'))"
       fallback_from: "text"
       policy_version: "text not null"
       scrubbed: "boolean not null"                          # true для всех T1
@@ -315,6 +341,24 @@ tables:
       expires_at: "timestamptz not null"
       created_by: "uuid not null references platform.users"
 
+  exports:
+    milestone: M2
+    purpose: "Выгрузка данных системы (workflows.yaml#export_data, M2-10) и журнал выгрузок"
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      run_id: "uuid references platform.runs"
+      status: "text not null check (status in ('running','ready','failed','expired'))"
+      storage_key: "text"                                    # ZIP в хранилище артефактов
+      size: "bigint"
+      download_token_hash: "text"                            # одноразовая ссылка, TTL 15 мин
+      download_token_expires_at: "timestamptz"
+      downloads: "integer not null default 0"
+      expires_at: "timestamptz not null"                     # created_at + 24 ч, затем архив удаляется
+      created_by: "uuid not null references platform.users"
+    indexes: ["(system_id, created_at desc)"]
+
   shards:
     milestone: M2
     columns:
@@ -405,7 +449,7 @@ tables:
       system_id: "uuid not null"
       env: "text not null"
       entity: "text not null"
-      mode: "text not null check (mode in ('delete','anonymize','subject_request'))"
+      mode: "text not null check (mode in ('delete','anonymize','subject_request','draft_purged','system_deleted','user_deleted'))"
       cutoff: "timestamptz"
       rows_affected: "integer not null"
       run_id: "uuid"
@@ -433,10 +477,15 @@ tables:
     primary_key: [org_id, brand_id]
 
 views:
+  credit_buckets:
+    milestone: M1
+    purpose: "Остаток по корзинам кредитов (billing.yaml#ledger): (org_id, bucket, bucket_expires_at) → sum(amount_milli) из credit_ledger с учётом распределения charge по корзинам (note)"
   deployments:
     milestone: M0
     purpose: "Реестр для runtime (runtime.yaml#system_loading.registry), только чтение ролью runtime"
     definition: >
       draft: systems с preview_revision is not null → {system_id: schema_key, slug, env: 'draft', revision: preview_revision,
-      spec_hash: sha256(revisions.spec), bundle_key, published_at: revisions.created_at};
-      prod (M1+): publications со status = 'live' → то же с env = 'prod', published_at = live_at; системы с suspended_at исключаются
+      spec_hash: sha256(revisions.spec), bundle_key, published_at: revisions.created_at, suspended, features};
+      prod (M1+): publications со status = 'live' или 'suspended' → то же с env = 'prod', published_at = live_at.
+      suspended = systems.suspended_at is not null or publications.status = 'suspended' (runtime отдаёт 451, L1-32; abuse.yaml#takedown).
+      features = {phoneOtp: orgs.plan in ('start','business')} — вход по телефону только на платных тарифах (F4, billing.yaml#plans)

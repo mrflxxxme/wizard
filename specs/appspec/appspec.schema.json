@@ -189,7 +189,8 @@
         "phone",
         "url",
         "qr_token"
-      ]
+      ],
+      "description": "file — только ключ хранилища; загрузка, раздача и классификация — с M2-01 (runtime.yaml, L3-18)"
     },
     "pii": {
       "enum": [
@@ -469,7 +470,7 @@
             ]
           },
           "uniqueItems": true,
-          "description": "к каким ops применяется rowFilter (по умолчанию — ко всем ops разрешения)"
+          "description": "к каким ops применяется rowFilter (по умолчанию — ко всем ops разрешения); MUST ⊆ ops и только вместе с непустым rowFilter (INVALID_ROW_FILTER)"
         }
       },
       "description": "Запрещено всё, что не разрешено явно (deny by default)"
@@ -630,9 +631,15 @@
         "egress": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^(?!\\d+\\.)[a-z0-9-]+(\\.[a-z0-9-]+)+$"
           },
-          "description": "M2: хосты для egress-прокси; в M0–M1 сеть запрещена"
+          "description": "M2: хосты (FQDN, без IP, порта и wildcard) для egress-прокси; в M0–M1 сеть запрещена"
+        },
+        "collectsPii": {
+          "type": "boolean",
+          "default": false,
+          "description": "функция записывает ПДн (поля pii≠none): вызов ролью без isAdmin требует _consent в теле (runtime/sdk.md, security/compliance.yaml#consent)"
         }
       }
     },
@@ -655,7 +662,8 @@
         },
         "file": {
           "type": "string",
-          "pattern": "^ui/[A-Za-z0-9_/-]+\\.tsx$"
+          "pattern": "^ui/[A-Za-z0-9_/-]+\\.tsx$",
+          "description": "файл страницы (runtime/sdk.md §1); рекомендуемо ui/pages/<Name>.tsx, общие части — ui/components/**"
         },
         "roles": {
           "type": "array",
@@ -677,7 +685,8 @@
         "name",
         "kind",
         "input",
-        "output"
+        "output",
+        "monthlyLimit"
       ],
       "properties": {
         "name": {
@@ -699,7 +708,8 @@
         },
         "monthlyLimit": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "description": "месячный лимит запусков на систему; строитель по умолчанию ставит 50"
         },
         "tier": {
           "const": "T0"
@@ -757,9 +767,57 @@
             },
             "steps": {
               "type": "array",
-              "description": "scenario: последовательность вызовов data API/функций с ожиданиями (specs/quality/gates.yaml#scenario_dsl)",
+              "minItems": 1,
+              "maxItems": 40,
+              "description": "scenario: последовательность вызовов data API/функций с ожиданиями (specs/quality/gates.yaml#scenario_dsl). Шаг — ровно один ключ-действие; consent: true — только рядом с create или callFn",
               "items": {
-                "type": "object"
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 2,
+                "propertyNames": {
+                  "enum": [
+                    "as",
+                    "create",
+                    "read",
+                    "update",
+                    "delete",
+                    "callFn",
+                    "simulate",
+                    "runWorkflows",
+                    "advanceTime",
+                    "expect",
+                    "consent"
+                  ]
+                },
+                "properties": {
+                  "consent": {
+                    "const": true
+                  }
+                },
+                "dependentSchemas": {
+                  "consent": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "create"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "callFn"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "if": {
+                  "minProperties": 2
+                },
+                "then": {
+                  "required": [
+                    "consent"
+                  ]
+                }
               }
             },
             "actors": {
@@ -775,6 +833,9 @@
                     "$ref": "#/$defs/ident"
                   }
                 }
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]*$"
               }
             },
             "seed": {
@@ -802,8 +863,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "consentTemplateId": {
+          "$ref": "#/$defs/ident",
+          "description": "шаблон текста согласия юриста (security/compliance.yaml); единственный способ задать согласие от имени агента (ops.yaml#set_compliance)"
+        },
         "consentText": {
-          "type": "string"
+          "type": "string",
+          "description": "текст согласия; задаёт владелец или платформа из consentTemplateId, агент — нет (OWNER_ONLY_FIELD)"
         },
         "policyPage": {
           "type": "string",
@@ -816,6 +882,11 @@
         "operatorContact": {
           "type": "string",
           "description": "email оператора для запросов субъектов ПДн; обязателен до prod (G2)"
+        },
+        "operatorAddress": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "адрес оператора для политики обработки ПДн; обязателен до prod вместе с operatorName и operatorContact (L3-34)"
         },
         "operatorInn": {
           "type": "string",

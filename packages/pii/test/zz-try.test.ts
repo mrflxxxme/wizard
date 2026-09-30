@@ -1,19 +1,23 @@
+import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { detect, scrub } from "../src/index.js";
-const samples = [
-  "Позвоните мне: +7 (916) 123-45-67 или 8 916 123 45 67, email ivan.petrov@mail.ru",
-  "Иванов Иван Иванович, паспорт 45 06 123456, СНИЛС 112-233-445 95",
-  "Анна Смирнова живёт по адресу г. Москва, ул. Ленина, д. 5, кв. 12",
-  "Карта 4276 3800 1234 5678, ИНН 500100732259",
-  "дата рождения: 12.03.1985, родилась 5 мая 1990 г.",
-  "Вера в успех. Роман Толстого. Форум в Казани. Заказ №81234567890. Цена 8 950 000 руб.",
-  "Надежда Петровна сказала, что у Сергея диагноз диабет",
-  "Встреча во Владимире 12.03.2025 в 18:00, ivan собака mail.ru",
-  "Петров И. И. и А. С. Пушкин, Ivan Petrov, ФИО: Кузнецов",
-];
-test("try", () => {
-  for (const s of samples) {
-    console.log(s, "\n  ", detect(s, { includeNonPii: true }).map((f) => `${f.kind}:${f.confidence}:«${s.slice(f.start, f.end)}»`).join(" | "));
-    console.log("  →", scrub(s).text);
+import { detectNames } from "../src/detectors/names.js";
+test("perf", () => {
+  const lines = readFileSync("packages/pii/test/corpus.ru.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).text);
+  let big = "";
+  while (big.length < 1_000_000) big += `${lines.join("\n")}\n`;
+  detectNames(big.slice(0, 5000));
+  const res: Record<string, RegExp> = {
+    cap: /(?<!\p{L})\p{Lu}\p{L}*(?:-\p{L}+)*/gu,
+    after: /(?<![\p{L}])([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?|[A-Z][a-z]+)[ \xa0]+([А-ЯЁA-Z])\.(?:[ \xa0]?([А-ЯЁA-Z])\.)?/gu,
+    before: /(?<![\p{L}])([А-ЯЁA-Z])\.[ \xa0]?(?:([А-ЯЁA-Z])\.[ \xa0]?)?([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?|[A-Z][a-z]+)(?![\p{L}])/gu,
+  };
+  for (const [n, r] of Object.entries(res)) {
+    const t0 = performance.now();
+    let c = 0;
+    for (const _ of big.matchAll(r)) c++;
+    console.log(n, Math.round(performance.now() - t0), c);
   }
+  const t0 = performance.now();
+  detectNames(big);
+  console.log("names", Math.round(performance.now() - t0));
 });
