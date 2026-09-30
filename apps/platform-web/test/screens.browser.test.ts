@@ -157,6 +157,15 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
     await expect.poll(() => h.mock.previewRole).toBe("moderator");
     await expect.poll(() => frame.getByTestId("stub-route").textContent()).toBe("/moderation");
     expect(await page.getByTestId("role-switch-moderator").getAttribute("aria-pressed")).toBe("true");
+
+    // run_finished re-reads the system, whose previewRevision now equals the G0 revision already shown: that is
+    // not growth, so after the 1 s reload debounce the same iframe is still mounted (FU-3).
+    await page.getByTestId("gate-report").waitFor();
+    const logins = h.mock.previewLogins;
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(frame.isDetached()).toBe(false);
+    expect(h.mock.previewLogins).toBe(logins);
+    expect(await frame.getByTestId("stub-route").textContent()).toBe("/moderation");
   });
 
   test("S4: preview width switch changes the iframe width without reload", async () => {
@@ -186,14 +195,39 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
     });
     const before = await frame.getByTestId("stub-cta").evaluate((b) => getComputedStyle(b).backgroundColor);
     expect(before).not.toBe("rgb(10, 125, 62)");
-    const t0 = Date.now();
+    // Latency is measured inside the browser (click event → the preview repaints the accent) on the shared
+    // performance.timeOrigin clock, so Playwright's actionability checks and IPC on a loaded CI do not count.
+    await page.evaluate(() => {
+      const w = window as unknown as { clickAt?: number };
+      document.addEventListener(
+        "click",
+        (e) => {
+          if ((e.target as Element).closest('[data-testid="style-accent-0a7d3e"]'))
+            w.clickAt ??= performance.timeOrigin + e.timeStamp;
+        },
+        true,
+      );
+    });
+    await frame.evaluate(() => {
+      const w = window as unknown as { appliedAt?: number };
+      const cta = document.querySelector('[data-testid="stub-cta"]') as Element;
+      new MutationObserver(() => {
+        if (getComputedStyle(cta).backgroundColor === "rgb(10, 125, 62)")
+          w.appliedAt ??= performance.timeOrigin + performance.now();
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    });
     await page.getByTestId("style-accent-0a7d3e").click();
     await expect
-      .poll(() => frame.getByTestId("stub-cta").evaluate((b) => getComputedStyle(b).backgroundColor), {
-        interval: 10,
-      })
+      .poll(() => frame.getByTestId("stub-cta").evaluate((b) => getComputedStyle(b).backgroundColor))
       .toBe("rgb(10, 125, 62)");
-    expect(Date.now() - t0).toBeLessThan(300);
+    const clickAt = await page.evaluate(
+      () => (window as unknown as { clickAt?: number }).clickAt ?? Number.NaN,
+    );
+    const appliedAt = await frame.evaluate(
+      () => (window as unknown as { appliedAt?: number }).appliedAt ?? Number.NaN,
+    );
+    expect(appliedAt - clickAt).toBeGreaterThanOrEqual(0);
+    expect(appliedAt - clickAt).toBeLessThan(300);
     expect(await frame.evaluate(() => (window as unknown as { marker: number }).marker)).toBe(7);
     await expect.poll(() => page.getByTestId("style-status").textContent()).toBe("Сохранено");
     expect(navigations).toBe(0);

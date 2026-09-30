@@ -12,13 +12,21 @@ const lines = readFileSync(CORPUS_PATH, "utf8")
   .join("\n");
 const text = (n: number) => lines.repeat(Math.ceil(n / lines.length)).slice(0, n);
 
-/** Best of `runs`: robust to other test files running in parallel workers. */
+/**
+ * Best of `runs` of the time scrub spends on the CPU, in ms. Each run is min(wall, process CPU): wall clock grows
+ * when parallel test workers or Chromium preempt this process, process CPU grows with concurrent GC helper threads,
+ * and scrub's own single-thread CPU time is ≤ both. So the budget is checked against the work itself, not against
+ * the load of the machine (FU-3), and a real regression of scrub still exceeds it.
+ */
 function best(fn: () => void, runs: number): number {
   const ts: number[] = [];
   for (let i = 0; i < runs; i++) {
+    const c0 = process.cpuUsage();
     const t0 = performance.now();
     fn();
-    ts.push(performance.now() - t0);
+    const wall = performance.now() - t0;
+    const cpu = process.cpuUsage(c0);
+    ts.push(Math.min(wall, (cpu.user + cpu.system) / 1000));
   }
   return Math.min(...ts);
 }

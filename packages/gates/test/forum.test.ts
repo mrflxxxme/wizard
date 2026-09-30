@@ -1,13 +1,18 @@
 // backlog M0-10: runGates('G0') on the forum (forum.json + specs/runtime/examples) passes; the report is a
 // GateReport (gates.yaml#report, api.yaml#/components/schemas/GateReport); G0 time is recorded and ≤ 60 s.
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 // @ts-expect-error — plain ESM module without types
 import { validateSchema } from "../../../tools/specs/validate.mjs";
 import { G0_CHECKS, G0_TIME_BUDGET_MS, type GateReport, runGates } from "../src/index.js";
-import { connect, forumCtx, loadYaml, REPO_ROOT } from "./helpers.js";
+import { forumCtx as baseCtx, connect, loadYaml, REPO_ROOT, uniqueKey } from "./helpers.js";
 
 const db = connect();
+// Own systemKey prefix: other files run G0 on the same database at the same time, so the shadow-schema
+// leak check below counts only this file's schemas (FU-3).
+const KEY_PREFIX = `gf${randomBytes(3).toString("hex")}`;
+const forumCtx: typeof baseCtx = (d, over = {}) => baseCtx(d, { systemKey: uniqueKey(KEY_PREFIX), ...over });
 afterAll(() => db.end());
 
 const apiSpec = (await loadYaml(join(REPO_ROOT, "specs/platform/api.yaml"))) as {
@@ -77,7 +82,8 @@ describe("G0 on the forum", () => {
   });
 
   test("shadow schemas never survive a run", async () => {
-    const rows = await db`select nspname from pg_namespace where nspname like 'app_g0_%_shadow'`;
+    const rows =
+      await db`select nspname from pg_namespace where nspname like ${`app\\_${KEY_PREFIX}\\_%\\_shadow`}`;
     expect(rows.length).toBe(0);
   });
 });

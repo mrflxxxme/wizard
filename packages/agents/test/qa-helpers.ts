@@ -17,13 +17,18 @@ export interface G1Harness {
   db: postgres.Sql;
   rt: RuntimeApp;
   role: string;
+  /** systemKey prefix of this harness: other files (and other checkouts) run G1 on the same database at once. */
+  keyPrefix: string;
   ctx(spec: AppSpec, files: ReadonlyMap<string, string>, over?: Partial<GateContext>): GateContext;
+  /** Ephemeral G1 schemas (app_%_g1_%) of this harness's system keys still present (gates.yaml#G1.cleanup). */
+  leftoverSchemas(): Promise<number>;
   close(): Promise<void>;
 }
 
 export async function g1Harness(): Promise<G1Harness> {
   const db = connect();
   const role = `wz_qa_rt_${randomBytes(4).toString("hex")}`;
+  const keyPrefix = `m014${randomBytes(3).toString("hex")}`;
   await db.unsafe(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
   const qrKeyring = serializeQrKeyring(newQrKeyring());
   const root = mkdtempSync(join(tmpdir(), "wz-qa-test-"));
@@ -49,19 +54,21 @@ export async function g1Harness(): Promise<G1Harness> {
     db,
     rt,
     role,
+    keyPrefix,
     ctx: (spec, files, over = {}) => ({
       spec,
       prevSpec: null,
       specVersion: 1,
       files,
       env: "draft",
-      systemKey: uniqueKey("m014"),
+      systemKey: uniqueKey(keyPrefix),
       db,
       milestone: "M0",
       runtime: rt,
       runtimeRole: role,
       ...over,
     }),
+    leftoverSchemas: () => g1SchemaCount(db, keyPrefix),
     async close() {
       await closeExecutors();
       await db.unsafe(`DROP OWNED BY ${role}`).catch(() => {});
@@ -97,8 +104,8 @@ export function demoRouter(name: "forum" | "bakery") {
   return { route, calls, sink };
 }
 
-/** Ephemeral G1 schemas of this suite's system keys (prefix m014 / m013) still present. */
-export async function g1SchemaCount(db: postgres.Sql, prefix = "m014"): Promise<number> {
+/** Ephemeral G1 schemas (app_%_g1_%) whose systemKey starts with prefix. */
+export async function g1SchemaCount(db: postgres.Sql, prefix: string): Promise<number> {
   const rows =
     await db`select count(*)::int as n from pg_namespace where nspname like ${`app\\_${prefix}\\_%\\_g1\\_%`}`;
   return Number(rows[0]?.n ?? 0);

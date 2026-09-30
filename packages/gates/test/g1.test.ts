@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 // @ts-expect-error — plain ESM module without types
 import { validateSchema } from "../../../tools/specs/validate.mjs";
 import { type GateReport, g1Checks, type QaCheck, runG1, runGates } from "../src/index.js";
-import { type G1Harness, g1Harness, g1SchemaCount, loadBakery } from "./g1-helpers.js";
+import { type G1Harness, g1Harness, loadBakery } from "./g1-helpers.js";
 import { loadForum, loadYaml, REPO_ROOT } from "./helpers.js";
 
 const apiSpec = (await loadYaml(join(REPO_ROOT, "specs/platform/api.yaml"))) as {
@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   // gates.yaml#G1.cleanup: no ephemeral schema survives the suite.
-  expect(await g1SchemaCount(h.db)).toBe(0);
+  expect(await h.leftoverSchemas()).toBe(0);
   await h.close();
 });
 
@@ -93,7 +93,8 @@ describe("G1 on the forum", () => {
   test("AC1–AC4, AC7 pass; AC5, AC6 skip (milestone); G1-AC-COVER pass; the gate passes", async () => {
     report = await runGates("G1", h.ctx({ specVersion: 3 }));
     const s = status(report);
-    for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC7"]) expect(s[id], id).toBe("pass");
+    for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC7"])
+      expect(s[id], `${id} ${detail(report)}`).toBe("pass");
     expect(s["SC-AC5"]).toBe("skip");
     expect(s["SC-AC6"]).toBe("skip");
     expect(s["G1-AC-COVER"]).toBe("pass");
@@ -222,7 +223,7 @@ describe("G1 on the bakery", () => {
     const r = await runGates("G1", h.ctx({ spec: b.spec, files: b.files }));
     const s = status(r);
     for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC5", "SC-AC6"])
-      expect(s[id], id).toBe("pass");
+      expect(s[id], `${id} ${detail(r)}`).toBe("pass");
     expect(s["SC-AC7"]).toBe("skip");
     expect(s["G1-AC-COVER"]).toBe("pass");
     expect(failing(r), detail(r)).toEqual([]);
