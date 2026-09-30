@@ -6,15 +6,19 @@
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
-    "./orchestrator": "./src/orchestrator/index.ts"
+    "./orchestrator": "./src/orchestrator/index.ts",
+    "./builder": "./src/builder/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "assets": "node scripts/gen-builder-assets.mjs"
   },
   "dependencies": {
     "@wizard/appspec": "workspace:*",
+    "@wizard/gates": "workspace:*",
     "@wizard/llm": "workspace:*",
     "@wizard/pii": "workspace:*",
+    "postgres": "^3.4.9",
     "zod": "^4.6.5"
   }
 }
