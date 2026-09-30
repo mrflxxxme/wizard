@@ -145,7 +145,7 @@ tasks:
     owner: platform
     parallel_group: m0-w1
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Матрица role×entity×op для форума (генерируется из permissions) даёт ожидаемые 200/201/403/404 через createRuntimeApp().fetch"
