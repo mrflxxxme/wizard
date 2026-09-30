@@ -1,6 +1,6 @@
 // Builder host contract (architecture.yaml#interfaces.agent_host) and runBuild params/outcome (agents/builder.yaml).
 import type { ApplyOpsResult, AppSpec } from "@wizard/appspec";
-import type { Check, GateReport } from "@wizard/gates";
+import type { GateReport, QaCheck } from "@wizard/gates";
 import type { RouteInput, RouteOutput } from "@wizard/llm";
 import type { SystemCard } from "../orchestrator/schemas.js";
 
@@ -55,7 +55,7 @@ export interface QaExplainInput {
 }
 /** QA agent (M0-14, agents/qa.yaml): checks for G1 and explanations of failures for the builder. */
 export interface BuilderQa {
-  generate(input: QaGenerateInput): Promise<Check[]>;
+  generate(input: QaGenerateInput): Promise<QaCheck[]>;
   explain(input: QaExplainInput): Promise<unknown[]>;
 }
 
@@ -70,7 +70,7 @@ export interface BuildHost {
    * Runs a gate on the current revision (the host commits staged files, builds the GateContext, stores the
    * full report and emits gate_started/gate_result — workflows.yaml#build.step_rules).
    */
-  runGates(level: BuilderGateLevel, overrides?: { checks?: Check[] }): Promise<GateReport>;
+  runGates(level: BuilderGateLevel, overrides?: { checks?: QaCheck[] }): Promise<GateReport>;
   qa: BuilderQa;
   store: BuildStore;
   /** RunEvent emitter (workflows.yaml#events). */

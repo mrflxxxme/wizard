@@ -19,7 +19,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
   bundles_never_contain_env: "MUST (L3-13): .env, .data/** и любые файлы вне ui/** и functions/** ревизии не попадают в бандлы систем: сборка идёт в каталоге-копии ревизии, резолвер отклоняет пути вне ui/**, functions/** и импорты кроме @wizard/sdk, @wizard/ui-kit; loaders только ts/tsx; define/process.env не пробрасываются (security/isolation.yaml#static_checks_G0). Тест: import k from '../../../.env?raw' → G0 blocker, в dist нет ни одной строки из .env"
   env_vars:   # канонический список (L1-18); .env.example синхронизируется с ним
     db: [WIZARD_DB_URL]
-    llm: [WIZARD_LLM_MODE, CLOUDRU_BASE_URL, CLOUDRU_API_KEY, YANDEX_BASE_URL, YANDEX_API_KEY, YANDEX_FOLDER_ID, ZAI_BASE_URL, ZAI_API_KEY, WIZARD_FIXTURE_LENIENT, WIZARD_FIXTURE]
+    llm: [WIZARD_LLM_MODE, CLOUDRU_BASE_URL, CLOUDRU_API_KEY, YANDEX_BASE_URL, YANDEX_API_KEY, YANDEX_FOLDER_ID, ZAI_BASE_URL, ZAI_API_KEY, WIZARD_FIXTURE_LENIENT, WIZARD_FIXTURE, WIZARD_BUILD_DEFAULT_TIER]
     auth_and_exec: [WIZARD_AUTH_MODE, WIZARD_DEV_LOGIN, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_PUBLIC_SCHEME]
     platform: [WIZARD_PLATFORM_ORIGIN, WIZARD_SYSTEMS_DOMAIN, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, WIZARD_MILESTONE, WIZARD_DEV_SMTP]
     M1: [WIZARD_TELEGRAM_BOT_TOKEN, WIZARD_TELEGRAM_WEBHOOK_SECRET]   # общий бот уведомлений платформы (connectors/telegram.yaml#bot)

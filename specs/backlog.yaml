@@ -181,7 +181,7 @@ tasks:
     owner: qa
     parallel_group: m0-w3
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "gates.generateSeed(spec, key) детерминирован и проходит DLP (qa.yaml#seed)"
@@ -484,8 +484,8 @@ tasks:
     owner: qa
     parallel_group: m0-w2
     estimate_days: 0.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: orchestrator  # механизм готов; ждёт ключей Cloud.ru/Z.ai для живого eval (E-ACCESS)
     acceptance:
       - "Отчёт tools/eval/results/week0.md: доля валидных AppSpec с первой попытки и скор GLM-5.3 против лучшей T0-модели на одних брифах"
       - "Параметр уровня сборки по умолчанию выставлен по D2_w0_fallback (разрыв < 10 п. п. → T0); запись в CHANGELOG без эскалации"

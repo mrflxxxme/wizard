@@ -2,7 +2,7 @@
 // budgets (#budgets), escalation (#escalation); events — platform/workflows.yaml#events.
 import { createHash } from "node:crypto";
 import { type AppSpec, generateTypes } from "@wizard/appspec";
-import { type Check, checkFile, type GateReport } from "@wizard/gates";
+import { type Check, checkFile, type GateReport, type QaCheck } from "@wizard/gates";
 import { type CallType, LlmError, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { callTool, runToolLoop, type ToolLoopResult } from "../core/index.js";
 import { raiseStep, upperBoundCredits } from "./budget.js";
@@ -116,7 +116,7 @@ class Builder implements ToolEnv {
   #dirty = true;
   #lastG0: GateReport | null = null;
   #lastReports = new Map<BuilderGateLevel, GateReport>();
-  #qaChecks: Check[] | null = null;
+  #qaChecks: QaCheck[] | null = null;
   #pending = new Map<string, { action: "create" | "update"; sha256: string; size: number }>();
   #opsIndex = 0;
   #acUnlocked = false;
@@ -498,7 +498,7 @@ class Builder implements ToolEnv {
   async #gate(level: BuilderGateLevel): Promise<GateReport> {
     await this.#flushFiles();
     if (level === "G0" && !this.#dirty && this.#lastG0) return this.#lastG0;
-    let checks: Check[] | undefined;
+    let checks: QaCheck[] | undefined;
     if (level === "G1") {
       if (this.#qaChecks === null) {
         const { spec, version } = await this.#host.store.getSpec();
