@@ -1,6 +1,7 @@
 // Gate contracts: specs/quality/gates.yaml#report, specs/architecture.yaml#interfaces.gate_context.
 import type { AppSpec } from "@wizard/appspec";
 import type postgres from "postgres";
+import type { QaCheck } from "./g1/types.js";
 
 export type GateLevel = "G0" | "G1" | "G2";
 export type Milestone = "M0" | "M1" | "M2" | "M3" | "M4";
@@ -40,8 +41,22 @@ export interface GateReport {
   explanations?: unknown[];
 }
 
-/** Handle to a running runtime (G1, M0-11); opaque here. */
-export type RuntimeHandle = unknown;
+/**
+ * Handle to a running runtime (architecture.yaml#interfaces.runtime_handle): apps/runtime createRuntimeApp(...)
+ * satisfies it structurally; gates never imports apps/runtime.
+ */
+export interface RuntimeHandle {
+  fetch(req: Request): Promise<Response>;
+  loadSystem(input: {
+    systemKey: string;
+    env: "draft" | "prod";
+    spec: AppSpec;
+    artifactDir?: string | null;
+    slug?: string;
+  }): Promise<unknown>;
+  outbox(): readonly { integration: string; action: string; userId?: string | null; payload: unknown }[];
+  readonly env?: { systemsDomain?: string; publicScheme?: string; unsafeLocalExec?: boolean };
+}
 
 export interface GateContext {
   spec: AppSpec;
@@ -53,8 +68,12 @@ export interface GateContext {
   systemKey: string;
   /** Migrator role; G0 uses it only for the shadow schema inside a rolled-back transaction. */
   db: postgres.Sql;
+  /** G1: runtime in test mode (connectors: 'outbox'); without it G1 reports error. */
   runtime?: RuntimeHandle;
-  checks?: Check[];
+  /** G1: DB role the runtime switches to (receives grants on the ephemeral schema). Default wizard_runtime. */
+  runtimeRole?: string;
+  /** G1: checks from QA (qa.yaml#checks.output); merged over the ones G1 derives from the spec (same id → QA wins). */
+  checks?: QaCheck[];
   /** Default: env WIZARD_MILESTONE, else M0. */
   milestone?: Milestone | string;
   now?: Date;

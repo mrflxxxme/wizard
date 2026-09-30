@@ -23,7 +23,7 @@ export function checkMigrationPlan(prev: AppSpec | null, next: AppSpec, env: "dr
   return out;
 }
 
-const SYSTEM_KEY_RE = /^[a-z][a-z0-9_]{0,40}$/;
+const SYSTEM_KEY_RE = /^[a-z0-9][a-z0-9_]{0,40}$/;
 const ROLLBACK = Symbol("rollback");
 
 export function shadowSchema(systemKey: string): string {

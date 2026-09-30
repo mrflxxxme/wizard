@@ -22,6 +22,8 @@ export const USER_ATTRS = ["id", "role", "phone", "email", "telegram_id", "displ
  * user impersonate another one's rows.
  */
 export const ROW_FILTER_USER_ATTRS = ["id", "role", "phone", "email", "telegram_id"] as const;
+/** Postgres INDEX_MAX_KEYS (error 54011 beyond it). */
+export const MAX_INDEX_FIELDS = 32;
 const NUMERIC_TYPES: ReadonlySet<FieldType> = new Set(["int", "decimal", "money"]);
 const LENGTH_TYPES: ReadonlySet<FieldType> = new Set(["string", "text", "email", "phone", "url"]);
 const TEMPORAL_TYPES: ReadonlySet<FieldType> = new Set(["date", "datetime"]);
@@ -230,6 +232,16 @@ function checkEntity(entity: Entity, i: number, spec: AppSpec, opts: ValidateOpt
   });
   const names = allFieldNames(entity);
   (entity.indexes ?? []).forEach((idx, k) => {
+    if (idx.fields.length > MAX_INDEX_FIELDS) {
+      out.push(
+        err(
+          "LIMIT_EXCEEDED",
+          [...ep, "indexes", k, "fields"],
+          `В индексе «${entity.name}» ${idx.fields.length} полей — база данных допускает не больше ${MAX_INDEX_FIELDS}`,
+          { hint: `Оставьте в индексе до ${MAX_INDEX_FIELDS} полей: достаточно тех, по которым идёт отбор` },
+        ),
+      );
+    }
     idx.fields.forEach((f, m) => {
       if (!names.includes(f)) {
         out.push(

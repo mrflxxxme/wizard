@@ -66,12 +66,14 @@ describe("G0 on the forum", () => {
     expect(r.passed).toBe(true);
   }, 120_000);
 
-  test("G1/G2 are not wired yet: error report, not passed", async () => {
-    for (const level of ["G1", "G2"] as const) {
-      const r = await runGates(level, forumCtx(db));
-      expect(r).toMatchObject({ level, passed: false, summary: { error: 1 } });
-      expect(validateSchema(apiSpec.components.schemas.GateReport, r, apiSpec)).toEqual([]);
-    }
+  test("G2 is not wired yet and G1 without a runtime cannot check: error report, not passed", async () => {
+    const g2 = await runGates("G2", forumCtx(db));
+    expect(g2).toMatchObject({ level: "G2", passed: false, summary: { error: 1 } });
+    expect(validateSchema(apiSpec.components.schemas.GateReport, g2, apiSpec)).toEqual([]);
+    const g1 = await runGates("G1", forumCtx(db));
+    expect(g1).toMatchObject({ level: "G1", passed: false });
+    expect(g1.summary.error).toBeGreaterThan(1);
+    expect(validateSchema(apiSpec.components.schemas.GateReport, g1, apiSpec)).toEqual([]);
   });
 
   test("shadow schemas never survive a run", async () => {

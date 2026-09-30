@@ -231,6 +231,9 @@ importers:
       '@wizard/connectors':
         specifier: workspace:*
         version: link:../connectors
+      '@wizard/pii':
+        specifier: workspace:*
+        version: link:../pii
       '@wizard/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -246,6 +249,10 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+    devDependencies:
+      '@wizard/runtime':
+        specifier: workspace:*
+        version: link:../../apps/runtime
 
   packages/llm:
     dependencies:

@@ -39,7 +39,7 @@ export {
 } from "./ops.js";
 export { isReservedName, RESERVED_NAMES, SQL_KEYWORDS, SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
 export * from "./schema.js";
-export { ROW_FILTER_USER_ATTRS, type ValidateOptions } from "./semantic.js";
+export { MAX_INDEX_FIELDS, ROW_FILTER_USER_ATTRS, type ValidateOptions } from "./semantic.js";
 export {
   dollarQuote,
   type LiteralType,

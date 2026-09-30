@@ -96,7 +96,10 @@ export function checkOrphans(
     }));
 }
 
-function definer(src: SourceInfo, node: ts.Node | null): { kind: string; call: ts.CallExpression } | null {
+export function definer(
+  src: SourceInfo,
+  node: ts.Node | null,
+): { kind: string; call: ts.CallExpression } | null {
   if (!node) return null;
   let e: ts.Node = node;
   if (ts.isIdentifier(e)) {
@@ -119,7 +122,10 @@ function isValidatorCall(src: SourceInfo, e: ts.Expression): boolean {
   return ts.isIdentifier(cur) && src.sdkImports.get(cur.text) === "v";
 }
 
-function propOf(obj: ts.ObjectLiteralExpression, name: string): ts.ObjectLiteralElementLike | undefined {
+export function propOf(
+  obj: ts.ObjectLiteralExpression,
+  name: string,
+): ts.ObjectLiteralElementLike | undefined {
   return (
     obj.properties.find((p) => p.name && ts.isIdentifier(p.name) && p.name.text === name) ??
     obj.properties.find((p) => p.name && ts.isStringLiteral(p.name) && p.name.text === name)

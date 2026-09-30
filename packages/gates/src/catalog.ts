@@ -38,7 +38,25 @@ export const G0_CHECKS: readonly CheckDef[] = [
   { id: "G0-DATA-01", severity: "warning", since: "M1", title_ru: "В интерфейсе нет выдуманных данных" },
 ];
 
-export const CHECK_BY_ID: ReadonlyMap<string, CheckDef> = new Map(G0_CHECKS.map((c) => [c.id, c]));
+export const G1_TIME_BUDGET_MS = 120_000;
+
+// gates.yaml#G1.checks. PC- and SC- entries of a report carry the severity of G1-PERM / G1-AC.
+export const G1_CHECKS: readonly CheckDef[] = [
+  { id: "G1-PERM", severity: "blocker", title_ru: "Права ролей работают так, как описано" },
+  { id: "G1-AC", severity: "blocker", title_ru: "Сценарии приёмки выполняются" },
+  { id: "G1-AC-COVER", severity: "blocker", title_ru: "Каждый критерий приёмки проверяется автоматически" },
+  { id: "G1-FN-01", severity: "warning", title_ru: "Публичные запросы отвечают без ошибок сервера" },
+  {
+    id: "G1-RENDER-01",
+    severity: "blocker",
+    since: "M1",
+    title_ru: "Страницы открываются для своих ролей без ошибок",
+  },
+];
+
+export const CHECK_BY_ID: ReadonlyMap<string, CheckDef> = new Map(
+  [...G0_CHECKS, ...G1_CHECKS].map((c) => [c.id, c]),
+);
 
 const ORDER: readonly string[] = ["M0", "M1", "M2", "M3", "M4"];
 

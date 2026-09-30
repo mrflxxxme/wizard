@@ -22,11 +22,6 @@ const QUERY = (handlerBody, args = "{}") =>
   `import { query, v } from "@wizard/sdk";\n\nexport default query({\n  args: ${args},\n  handler: async (ctx) => {\n${handlerBody}\n  },\n});\n`;
 
 const fileField = { name: "photo", label: "Фото", type: "file" };
-const manyInts = Array.from({ length: 33 }, (_, i) => ({
-  name: `c${i}`,
-  label: `Колонка ${i}`,
-  type: "int",
-}));
 
 /** @type {Record<string, Record<string, object>>} */
 const CASES = {
@@ -53,6 +48,27 @@ const CASES = {
       description: "привязка yookassa ссылается на несуществующее поле",
       spec: [{ op: "set", path: "/integrations/0/config/bindings/0/amountField", value: "no_such_field" }],
       match: "CONFIG_INVALID",
+    },
+    "fail-index-fields": {
+      description: "индекс из 33 полей: Postgres допускает не больше 32 (54011)",
+      spec: [
+        {
+          op: "push",
+          path: "/entities",
+          value: {
+            name: "wide",
+            label: "Широкая",
+            fields: Array.from({ length: 33 }, (_, i) => ({
+              name: `c${i}`,
+              label: `Колонка ${i}`,
+              type: "int",
+            })),
+            indexes: [{ fields: Array.from({ length: 33 }, (_, i) => `c${i}`) }],
+          },
+        },
+        { op: "push", path: "/permissions", value: { role: "organizer", entity: "wide", ops: ["read"] } },
+      ],
+      match: "LIMIT_EXCEEDED",
     },
   },
   "G0-SPEC-03": {
@@ -175,21 +191,10 @@ const CASES = {
   "G0-MIG-02": {
     pass: { description: "DDL+RLS форума применяются к теневой схеме", prevSpec: "forum" },
     fail: {
-      description: "индекс из 33 колонок: схема принимает, Postgres — нет (лимит 32)",
-      spec: [
-        {
-          op: "push",
-          path: "/entities",
-          value: {
-            name: "wide",
-            label: "Широкая",
-            fields: manyInts,
-            indexes: [{ fields: manyInts.map((f) => f.name) }],
-          },
-        },
-        { op: "push", path: "/permissions", value: { role: "organizer", entity: "wide", ops: ["read"] } },
-      ],
-      match: "54011",
+      // appspec rejects every spec-level cause it knows (e.g. > 32 index fields); the DB side can still fail.
+      description: "у роли мигратора нет права CREATE в базе: DDL не применяется (42501)",
+      dbRole: "no_create",
+      match: "42501",
     },
   },
   "G0-IDX-01": {
