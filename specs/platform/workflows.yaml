@@ -73,7 +73,7 @@ workflows:
     steps:
       - { name: load_context, kind: tx, does: "история чата (свёртка по бюджету — agents/orchestrator.yaml), текущая спека draft, pending_questions" }
       - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; алгоритм и инструменты — agents/orchestrator.yaml (вопросы, карточка, ответ, классификация правки style_only | small_edit | big_change)" }
-      - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output" }
+      - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output. Уведомление о ПДн (agents/orchestrator.yaml#pii_notice) — messages {role: system, kind: notice, payload: {type: 'pii', categories}} + chat_output {kind: notice, messageId}" }
       - { name: route_change, kind: tx, does: "style_only → сообщение со ссылкой на «Стиль», без прогона; small_edit/big_change → мини-карточка/карточка kind=change ждёт approve (D7: авто-старта нет)" }
     budget: "cap на ход — 2 кредита; превышение → run_failed BUDGET_STOPPED без needs_input"
 
@@ -110,7 +110,7 @@ workflows:
     trigger: "POST /systems/:id/publish (только owner, D11)"
     preconditions:
       - "revision ≤ draft_revision и revisions.g0_passed = true"
-      - "M1: operatorName задан, если в спеке есть поле pii ≠ none (compliance.yaml#system_package.operator)"
+      - "M1: operatorName и operatorContact заданы, если в спеке есть поле pii ≠ none (compliance.yaml#system_package.operator; иначе OPERATOR_NAME_REQUIRED / OPERATOR_CONTACT_REQUIRED)"
       - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review"
     steps:
       - { name: acquire_lock, kind: tx }
@@ -119,7 +119,7 @@ workflows:
       - { name: gate_G2, kind: gate, milestone: M2, does: "runGates('G2') включая антифрод (security/abuse.yaml)" }
       - { name: apply_migration, kind: tx, does: "toDDL+toRLS в схеме app_<key>_prod одной транзакцией, SET LOCAL lock_timeout='3s'; до 3 повторов с паузой 5/15/45 с при lock_timeout; status=applying" }
       - { name: switch, kind: tx, does: "одной транзакцией: новая publication live, прежняя superseded, systems.prod_revision, systems.schema_hwm_revision = max(hwm, revision); после коммита POST /_wizard/internal/reload {systemId: schema_key, env: prod} (runtime.yaml)" }
-      - { name: smoke, kind: step, does: "GET prod-URL → 200 и /_wizard/health отдаёт revision; провал → автоматический rollback prod на prev_publication (без DDL) и run_failed" }
+      - { name: smoke, kind: step, does: "GET prod-URL → 200 и /_wizard/health (внутренний порт, runtime.yaml#service_endpoints) отдаёт revision; провал → автоматический rollback prod на prev_publication (без DDL) и run_failed SMOKE_FAILED" }
       - { name: report, kind: tx }
     invariant: "Если упали после apply_migration до switch — схема расширена аддитивно, старый бандл продолжает работать (тест M1-04)"
 

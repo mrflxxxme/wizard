@@ -79,15 +79,21 @@ detectors:                         # packages/pii/src/detectors/*.ts; чисты
         или фамилии (ов|ев|ёв|ин|ын|ский|цкий|ова|ева|ина|ская|цкая + окончания) расширяют спан; «Фамилия И. О.» / «И. О. Фамилия» — имя.
         Неоднозначные имена-слова (Вера, Надежда, Любовь, Роман, Лев, Мир, Слава, Май) — только вместе с фамилией/отчеством.
       M1_option: "Если recall на корпусе < порога — Python-сайдкар Natasha (MIT) через localhost RPC; добавление Python — через CHANGELOG"
+    person_name_latin:
+      category: basic
+      rule: "ФИО латиницей и транслитом: токены с заглавной буквы из транслита словаря person_name (ГОСТ 7.79-2000 Б, ИКАО, распространённые варианты: Ivan, Yevgeniya, Aleksandr/Alexander) + те же правила расширения спана; «Surname I.» / «I. Surname»"
     special_context:
       category: special
       rule: "стемы (диагноз|болезн|заболеван|инвалид|беремен|вич|онколог|психиатр|наркол|вероисповед|религи|партийн|национальност|судим|сексуальн) в окне 100 символов от находки person_name/phone/email/passport_ru. Описание поля без субъекта («спросить про аллергии») — не находка"
     biometric_context:
       category: biometric
       rule: "стемы (биометр|отпечат|распознаван лиц|образец голоса|скан лица|фото лица для прохода) рядом с субъектом (как special_context)"
+  piiKind_map: { phone_ru: phone, phone_intl: phone, email: email, person_name: fio, person_name_latin: fio, passport_ru: passport, inn_person: inn, snils: snils, card: card, account_ru: other, ogrnip: other, birthdate: birthdate, address: address, social_handle: other, car_plate_ru: other }   # kind → appspec.schema.json#/$defs/piiKind (импорт piiKindGuess, карточка системы)
   quality:
     corpus: "packages/pii/test/corpus.ru.jsonl — ≥ 200 строк, генерируется скриптом (синтетика + валидные контрольные суммы), с разметкой спанов; + ≥ 100 строк «ловушек» без ПДн (код, CSS, ИНН-10, даты событий, города)"
+    holdout: "M1: отложенный корпус ≥ 300 строк из реальных формулировок (не синтетика авторов детекторов), размечен вручную; хранится в РФ (S3 eval), НЕ в репозитории; recall на нём — критерий M1 (пороги thresholds.M0)"
     thresholds: { M0: "recall ≥ 0.95, precision ≥ 0.90 (M0-05)", M2: "recall ≥ 0.98 для strong-видов, ≥ 0.95 для остальных" }
+    independent_check: "Метрика утечек в eval (quality/eval.yaml#metrics.pii_leaks) MUST NOT считаться тем же детектором, что делает scrub: (а) канарейки в ≥ 4 брифах eval (ФИО нерусского происхождения, латиница, @handle, телефон не РФ) — вхождения в T1-payload, порог 0; (б) находки независимого детектора (Natasha-сайдкар, M1) в T1-payload"
     perf: "scrub 20 КБ текста ≤ 20 мс на 1 vCPU (бенчмарк vitest bench)"
 
 scrub:

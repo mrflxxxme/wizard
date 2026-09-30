@@ -57,7 +57,7 @@ function createScrubber(): Scrubber {
   const placeholder = (f: Finding, raw: string): string | null => {
     const stem = KIND_INFO[f.kind].placeholder;
     if (!stem) return null;
-    const key = `${f.kind}\u0000${valueKey(f.kind, raw)}`;
+    const key = `${f.kind}:${valueKey(f.kind, raw)}`;
     let n = seen.get(key);
     if (n === undefined) {
       n = (next.get(f.kind) ?? 0) + 1;
