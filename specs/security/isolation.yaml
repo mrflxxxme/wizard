@@ -1,0 +1,76 @@
+# Изоляция сгенерированного серверного кода (функции query/mutation/action). Решение product.yaml#D5, аудит 04 T4.
+# UI-код систем исполняется в браузере конечного пользователя на отдельном домене систем — здесь не рассматривается.
+version: 1
+
+threat_model:
+  attacker: "Пользователь платформы (или модель под prompt injection), который получает произвольный код в functions/*.ts своей системы"
+  assets: ["данные других систем и тенантов", "секреты коннекторов", "БД и секреты платформы", "узлы кластера и сеть Cloud.ru", "репутация доменов"]
+  non_goal: "Защита системы от её собственного владельца (он и так управляет своими данными)"
+
+layers:                            # defense in depth, все слои обязательны начиная с M2
+  - { id: L1, name: "Статика в G0", milestone: M0 }
+  - { id: L2, name: "Изолят (node:vm в M0–M1, workerd в M2+)", milestone: M0 }
+  - { id: L3, name: "gVisor-под в отдельном пуле узлов", milestone: M2 }
+  - { id: L4, name: "Сеть: default-deny, egress только через прокси с allowlist; секреты у хоста", milestone: M2 }
+  - { id: L5, name: "БД только через RPC runtime с ролью системы + RLS", milestone: M0 }
+
+static_checks_G0:                  # packages/gates, M0-10; каждая — с позитивной и негативной фикстурой
+  - "Импорты только @wizard/sdk и @wizard/ui-kit (в functions — только @wizard/sdk); относительные — только внутри functions/ и ui/"
+  - "Запрещены: eval, new Function, Function(...), import() динамический, require, process, globalThis/global/self-доступ к небезопасным свойствам, __proto__/constructor.constructor, with, WebAssembly, SharedArrayBuffer, Atomics, fetch/XMLHttpRequest/WebSocket (сеть только ctx.connectors/ctx.http)"
+  - "Запрещены строковые обращения к запрещённым идентификаторам через вычисляемые свойства (obj['ev'+'al']) — любой computed member access к globalThis отклоняется"
+  - "AST-проверка через TypeScript compiler API после tsc typecheck; бандл esbuild с platform=neutral, external только SDK"
+  - "Размер исходника функции ≤ 200 КБ, бандла системы ≤ 5 МБ"
+
+M0_M1:
+  name: unsafe-local
+  enable: "ТОЛЬКО при WIZARD_UNSAFE_LOCAL_EXEC=1. Без флага runtime отвечает на /api/fn/* 503 FUNCTIONS_DISABLED"
+  guards:
+    - "MUST: процесс runtime отказывается стартовать с флагом, если NODE_ENV=production, или адрес привязки ≠ 127.0.0.1/::1, или задан KUBERNETES_SERVICE_HOST (тест на каждое условие)"
+    - "MUST NOT: включать на публичных хостах, в staging и prod; CI использует флаг только в job e2e"
+  mechanism:
+    - "Функция исполняется в worker_threads Worker (resourceLimits: maxOldGenerationSizeMb 128, maxYoungGenerationSizeMb 32, stackSizeMb 4) с env: {} и без argv"
+    - "Внутри воркера — node:vm контекст (codeGeneration: {strings: false, wasm: false}, microtaskMode: 'afterEvaluate'); в контексте нет require, process, fetch, Buffer, setTimeout сверх SDK-обёрток"
+    - "ctx.db, ctx.runQuery и т. п. — прокси через MessagePort к основному потоку runtime, который выполняет запрос с ролью системы (db_access)"
+    - "Таймаут: 5 с (M0-09) на вызов, затем worker.terminate(); сеть недоступна (нет API)"
+  honesty: "node:vm — НЕ граница безопасности (документация Node). Режим предназначен только для собственного кода в разработке"
+
+M2:
+  name: workerd-in-gvisor
+  runtime:
+    - "workerd (Apache-2.0) — один процесс на группу тенантов; каждая система — отдельный Worker с отдельным изолятом; compatibility_date фиксирована в репо"
+    - "Биндинги вместо сети: RUNTIME_RPC (service binding на runtime), CONNECTORS (service binding на egress-proxy); globalOutbound = none"
+    - "Лимиты на вызов: CPU 1000 мс (query/mutation), wall 30 с (action), память изолята 128 МБ; превышение → 503 FUNCTION_LIMIT; значения — runtime.yaml"
+  pods:
+    - "runtimeClassName: gvisor (runsc, platform=systrap), пул узлов sandbox с taint; runAsNonRoot, readOnlyRootFilesystem, drop ALL capabilities, seccompProfile RuntimeDefault, automountServiceAccountToken=false, без hostPath/hostNetwork"
+    - "Группировка: Free — общие поды до 50 систем на под; платные — до 10 систем на под; Бизнес SHOULD — выделенный под на организацию. Free и платные — в разных пулах узлов"
+    - "Под перезапускается при OOM/падении; код систем загружается из S3 по sha256 бандла, проверка хэша перед загрузкой"
+  network:
+    - "NetworkPolicy: sandbox-поды → только runtime-rpc:443 и egress-proxy:3128; ingress — только от runtime; DNS запрещён (адреса через env)"
+    - "Egress-proxy (отдельный deployment в пуле platform): allowlist = хосты из function.egress спеки ∩ глобальный список разрешённых (api.yookassa.ru, api.telegram.org, SMTP-провайдер, ...) — connectors/*.yaml; запрет RFC1918, link-local (169.254.0.0/16), metadata, loopback, адресов кластера — проверка ПОСЛЕ резолва (защита от DNS rebinding)"
+    - "Секреты коннекторов подставляет proxy/runtime на стороне хоста по secret://name; код системы значения не видит"
+  gvisor_open_question: "Поддержка RuntimeClass gVisor в Cloud.ru Managed K8s — deploy.yaml#cloud.kubernetes.open_question (W0-CLOUDRU-GVISOR)"
+
+db_access:                          # L5, с M0
+  - "Код систем не имеет строки подключения. Все операции — RPC к runtime (ctx.db.*), который исполняет их в транзакции под ролью sys_<key>_<env>"
+  - "Роль sys_<key>_<env>: USAGE и DML только на схеме app_<key>_<env>; NOINHERIT; нет доступа к platform, dbos, pii_vault, чужим схемам; statement_timeout 5s"
+  - "Контекст пользователя: set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции (ops.yaml#rls); RLS включён на всех таблицах"
+  - "Имя схемы выводится runtime из аутентифицированного systemId, никогда из аргументов функции"
+
+limits:
+  per_system_rate: "M2: ≤ 50 вызовов функций/с на систему (token bucket в runtime), превышение → 429"
+  logs: "console.* из функций → логи runtime с меткой system_id, через pii-redaction, ≤ 10 КБ на вызов"
+
+escape_tests:                       # packages/gates/test/escape/*.ts; M2-01 acceptance: ВСЕ падают внутри песочницы
+  M0: [fs_read_etc_passwd, require_child_process, dynamic_import, eval_string, function_constructor, fetch_external, infinite_loop_timeout, memory_bomb, read_process_env, other_schema_via_rpc]
+  M2_additional:
+    - "read /proc/self/environ, /proc/1/root, /var/run/secrets/kubernetes.io"
+    - "connect к 169.254.169.254 (metadata), к адресу K8s API, к pod CIDR, к runtime другой группы"
+    - "DNS-rebinding: allowlisted-хост резолвится в 10.0.0.0/8 → прокси отклоняет"
+    - "egress к хосту вне allowlist через прокси → 403"
+    - "fork/exec, ptrace, mount, raw socket — syscall отклоняется gVisor"
+    - "вызов RPC с чужим systemId / подделанным токеном → 403"
+    - "SQL-инъекция через аргументы ctx.db (имена полей/операторы) → отклонено построителем"
+    - "таймер высокой точности / SharedArrayBuffer (Spectre-гаджет) недоступны"
+    - "prototype pollution биндингов (Object.prototype в изоляте) не влияет на хост и соседние Worker"
+    - "исчерпание памяти/CPU одной системой не мешает соседу по поду (латентность соседа p95 < 2× базовой)"
+  review: "M2 exit: внешний или независимый security review изоляции (отчёт в docs/security/), найденные high/critical закрыты"

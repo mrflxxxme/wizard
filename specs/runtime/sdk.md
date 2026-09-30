@@ -75,7 +75,7 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 - `useMutation(name)` → `[run, { pending, error }]`; `run` для mutation и action. `run` отклоняется с `WizardError`.
 - `useEntityList(entity, { filter, sort, page, limit })` → `GET /api/data/:entity` (`runtime.yaml#data_api`); `filter` — по видимым полям, `sort` — `"field"` или `"-field"`, `limit ≤ 100`. Перезапрос при инвалидации `entity`.
 - `useEntity(entity, id)`, `useEntityMutation(entity)` → `{ create, update, remove }`.
-- `useUser()` → `{ user, isLoading, logout }`; `user = { id, role, displayName, isAdmin } | null`.
+- `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, returnTo })` ведёт на страницу входа runtime (`runtime.yaml#auth`).
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
 - Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK. После переподключения SDK перезапрашивает все активные запросы.
@@ -165,7 +165,7 @@ declare module "@wizard/sdk" {
     datetime(): Validator<string>;
     email(): Validator<string>;
     phone(): Validator<string>;
-    id<E extends EntityName>(entity: E): Validator<Id<E>>;
+    id<E extends EntityName | "users">(entity: E): Validator<Id<E>>;
     literal<const T extends string | number | boolean>(value: T): Validator<T>;
     enum<const T extends readonly [string, ...string[]]>(...values: T): Validator<T[number]>;
     array<T>(item: Validator<T>, o?: { max?: number }): Validator<T[]>;
@@ -281,7 +281,10 @@ declare module "@wizard/sdk" {
     remove(id: Id<E> | string): Promise<void>;
   };
   export interface ClientUser { id: Id<"users">; role: RoleName; displayName: string; isAdmin: boolean }
-  export function useUser(): { user: ClientUser | null; isLoading: boolean; logout(): Promise<void> };
+  export function useUser(): {
+    user: ClientUser | null; isLoading: boolean;
+    login(o?: { role?: RoleName; returnTo?: string }): void; logout(): Promise<void>;
+  };
   export function usePayment<I extends keyof App["payments"] & string>(integration: I):
     { pay(binding: App["payments"][I], id: string): Promise<void>; pending: boolean; error: WizardError | undefined };
   export function useParams<T extends Record<string, string> = Record<string, string>>(): T;

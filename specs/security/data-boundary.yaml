@@ -1,0 +1,158 @@
+# Граница данных (ПДн). Нормативно для packages/pii и packages/llm (router). Решения: product.yaml#D2, D3.
+# Выбор конкретных моделей и цен — specs/agents/models.yaml; здесь — КУДА можно слать данные и в каком виде.
+version: 1
+
+principles:
+  - "T0 — модели, развёрнутые в РФ (Cloud.ru FM «внутренние», Yandex AI Studio с отключённым логированием): любые данные"
+  - "T1 — Z.ai GLM-5.3 (Сингапур): только данные без ПДн после scrub. Токенизированные ПДн = ПДн → на T1 запрещены (D3)"
+  - "Deny by default: неизвестный callType, ошибка детектора, неизвестный класс → T0"
+  - "Сборка по природе ПДн не требует; ПДн в сборку попадают случайно (бриф). Рантайм-данные систем, импорт значений, поддержка — всегда T0"
+
+categories:                        # совпадает с appspec.schema.json#/$defs/pii
+  none: "нет ПДн"
+  basic: "обычные ПДн: ФИО, телефон, email, адрес, дата рождения, идентификаторы"
+  special: "специальные (ст. 10 152-ФЗ: здоровье, религия, политика, нацпринадлежность, судимость, интимная жизнь) — запрещены в MVP (G2)"
+  biometric: "биометрические (ст. 11) — запрещены в MVP (G2)"
+
+detectors:                         # packages/pii/src/detectors/*.ts; чистый TypeScript, без сети
+  interface:
+    detect: "detect(text: string) -> Finding[] {kind, category, start, end, confidence: 'high'|'medium'}"
+    scrub: "scrub(text: string) -> {text: string, counts: Partial<Record<Kind, number>>, maxCategory, strongIds: boolean} — БЕЗ таблицы соответствия"
+    scrubJson: "scrubJson(value) — обход всех строк JSON (tool results, спека, отчёты) тем же scrub"
+  kinds:
+    phone_ru:
+      category: basic
+      rule: "+7 или 8, затем 10 цифр с разделителями (пробел, -, (, )); ИЛИ 10 цифр, начинающихся с 9, при контексте (тел|телефон|моб|whatsapp|звонить) в окне 30 символов. Не внутри более длинной цифровой последовательности"
+    email:
+      category: basic
+      rule: "local@domain.tld (RFC 5322 lite, tld ≥ 2 букв, кириллические домены .рф); SHOULD: обфускации «ivan собака mail.ru», «ivan at mail dot ru»"
+    card:
+      category: basic
+      strong: true
+      rule: "13–19 цифр (группы через пробел/-), проходит Луна, префикс IIN ∈ {2200–2204 Мир, 4 Visa, 51–55 и 2221–2720 MC, 62 UnionPay, 35 JCB}"
+    passport_ru:
+      category: basic
+      strong: true
+      rule: "формат «dd dd dddddd» / «dddd dddddd» / «серия dddd № dddddd» — всегда; 10 цифр подряд — только при контексте (паспорт|серия|выдан|номер паспорта) и если это не валидный ИНН-10"
+    snils:
+      category: basic
+      strong: true
+      rule: "ddd-ddd-ddd dd или 11 цифр при контексте «снилс»; контрольная сумма: s = Σ d_i×(10−i), i=1..9; s<100 → s; s∈{100,101} → 00; s>101 → s mod 101 (100 → 00). Номера ≤ 001-001-998 контрольную сумму не проверяют"
+    inn_person:
+      category: basic
+      strong: true
+      rule: "12 цифр; контрольные цифры 11 и 12 по весам [7,2,4,10,3,5,9,4,6,8] и [3,7,2,4,10,3,5,9,4,6,8], (Σ mod 11) mod 10"
+    inn_org:
+      category: none
+      rule: "10 цифр с контролем по весам [2,4,10,3,5,9,4,6,8] — ИНН юрлица, НЕ ПДн, не заменяется (нужен для спеки: реквизиты)"
+    account_ru:
+      category: basic
+      strong: true
+      rule: "20 цифр с префиксом 40817, 40820, 423 (счета физлиц)"
+    birthdate:
+      category: basic
+      rule: "дата (dd.mm.yyyy, d месяца yyyy) при контексте (родил|дата рождения|д\\.р\\.|др) в окне 30 символов"
+    address:
+      category: basic
+      rule: "≥ 2 маркера в окне 60 символов из: г.|город, ул.|улица, пр-т|проспект, пер.|переулок, ш.|шоссе, наб., б-р|бульвар, пл.|площадь, мкр, д.|дом, корп.|к., стр., кв.|квартира, оф., индекс [1-6]\\d{5}; за маркером — слово с заглавной или число. Один город («форум в Казани») — НЕ ПДн"
+    person_name:
+      category: basic
+      rule: >
+        Словарь имён packages/pii/data/names.ru.txt (≥ 1500 мужских и женских имён + уменьшительные, генерируется скриптом
+        из источника с лицензией MIT/CC0) + нормализация падежных окончаний (а|у|ом|ем|е|ой|ы|и|ю|я).
+        Токен с заглавной буквы из словаря → имя; соседние токены с заглавной и суффиксом отчества (вич|вна|ична|инична + окончания)
+        или фамилии (ов|ев|ёв|ин|ын|ский|цкий|ова|ева|ина|ская|цкая + окончания) расширяют спан; «Фамилия И. О.» / «И. О. Фамилия» — имя.
+        Неоднозначные имена-слова (Вера, Надежда, Любовь, Роман, Лев, Мир, Слава, Май) — только вместе с фамилией/отчеством.
+      M1_option: "Если recall на корпусе < порога — Python-сайдкар Natasha (MIT) через localhost RPC; добавление Python — через CHANGELOG"
+    special_context:
+      category: special
+      rule: "стемы (диагноз|болезн|заболеван|инвалид|беремен|вич|онколог|психиатр|наркол|вероисповед|религи|партийн|национальност|судим|сексуальн) в окне 100 символов от находки person_name/phone/email/passport_ru. Описание поля без субъекта («спросить про аллергии») — не находка"
+    biometric_context:
+      category: biometric
+      rule: "стемы (биометр|отпечат|распознаван лиц|образец голоса|скан лица|фото лица для прохода) рядом с субъектом (как special_context)"
+  quality:
+    corpus: "packages/pii/test/corpus.ru.jsonl — ≥ 200 строк, генерируется скриптом (синтетика + валидные контрольные суммы), с разметкой спанов; + ≥ 100 строк «ловушек» без ПДн (код, CSS, ИНН-10, даты событий, города)"
+    thresholds: { M0: "recall ≥ 0.95, precision ≥ 0.90 (M0-05)", M2: "recall ≥ 0.98 для strong-видов, ≥ 0.95 для остальных" }
+    perf: "scrub 20 КБ текста ≤ 20 мс на 1 vCPU (бенчмарк vitest bench)"
+
+scrub:
+  placeholders: { phone_ru: "[ТЕЛЕФОН_n]", email: "[EMAIL_n]", card: "[КАРТА_n]", passport_ru: "[ПАСПОРТ_n]", snils: "[СНИЛС_n]", inn_person: "[ИНН_n]", account_ru: "[СЧЁТ_n]", birthdate: "[ДАТА_РОЖДЕНИЯ_n]", address: "[АДРЕС_n]", person_name: "[ФИО_n]" }
+  semantics:
+    - "MUST: одноразовые плейсхолдеры; n — порядковый номер отличающегося значения внутри ОДНОГО вызова scrub (чтобы модель различала людей). Соответствие живёт только в локальной переменной и не возвращается, не логируется, не сохраняется (M0-05)"
+    - "MUST NOT: обратная подстановка в ответы T1 — ответы T1 (спека, код) используются как есть"
+    - "MUST: плейсхолдер склонению не подлежит; формат ^\\[[А-ЯЁ_]+_\\d+\\]$"
+    - "SHOULD: G0 выдаёт предупреждение, если в спеке/коде системы встречается строка формата плейсхолдера (модель скопировала заглушку в интерфейс)"
+    - "special_context/biometric_context не заменяются частично — весь вызов уходит на T0 (routing.forced_t0)"
+
+tokenization:                      # обратимо, ТОЛЬКО в РФ
+  milestone: M1
+  purpose: "Стабильные токены для T0-логов, отладки и поддержки; НЕ для T1"
+  scheme: "token = tok_<kind>_<base32(HMAC-SHA256(k_org, value))[0:16]>; значение шифруется AES-256-GCM (DEK на организацию, KEK в OpenBao transit / Cloud.ru KMS)"
+  storage: "Отдельная схема pii_vault, отдельная роль БД и ключи (ПП 1154: таблица соответствия хранится отдельно); TTL 30 дней; каждое чтение — в staff_audit_log"
+  fpe: "FF1 (NIST SP 800-38G) — только если нужен валидный формат в фикстурах; FF3 не использовать"
+  guard: "MUST: router отклоняет T1-вызов, если в payload найден шаблон tok_[a-z_]+_[A-Z2-7]{16} (тест)"
+
+call_types:                        # policy-as-code: packages/llm/src/policy.ts, версия policy_version пишется в llm_calls
+  interview:           { allowed: [T0, T1], t1_requires: scrub, note: "сырой ввод пользователя; предпочтительный tier — models.yaml" }
+  card:                { allowed: [T0, T1], t1_requires: scrub }
+  plan:                { allowed: [T0, T1], t1_requires: scrub }
+  build_ops:           { allowed: [T0, T1], t1_requires: scrub }
+  build_code:          { allowed: [T0, T1], t1_requires: scrub }
+  fix:                 { allowed: [T0, T1], t1_requires: scrub }
+  qa_generate:         { allowed: [T0, T1], t1_requires: scrub, note: "seed только синтетический" }
+  qa_explain:          { allowed: [T0, T1], t1_requires: scrub }
+  audit:               { allowed: [T0, T1], t1_requires: scrub, note: "G4, после MVP; модель другого семейства" }
+  import_mapping:      { allowed: [T0, T1], t1_requires: "SyntheticPayload (import.payload); реальные значения → только T0" }
+  runtime_ai_extract:  { allowed: [T0] }
+  runtime_ai_generate: { allowed: [T0] }
+  support:             { allowed: [T0] }
+  pii_forbidden_for_T1: ["import_mapping(real values)", runtime_ai_extract, runtime_ai_generate, support]
+
+routing:
+  algorithm:                       # порядок проверок; первая сработавшая определяет tier
+    - "callType не из call_types → T0, route_reason=unknown_call_type"
+    - "orgPolicy.ruOnly → T0, ru_only"
+    - "T1 ∉ allowed (или import_mapping без SyntheticPayload) → T0, forbidden_for_t1"
+    - "containsPiiHint=true (вызывающий знает, что в payload реальные записи) → T0, pii_forced_t0"
+    - "detect по всем сообщениям и результатам инструментов: strong-вид, special или biometric → T0, pii_forced_t0"
+    - "предпочтительный tier callType из models.yaml; если T1 — scrubJson всех сообщений и tool results, затем отправка; route_reason=policy"
+  fallback: "T1 ответил 5xx/таймаут/403/ошибку региона → 1 повтор, затем этот вызов на T0 (fallback_unavailable). ≥ 5 ошибок T1 за 60 с → circuit breaker: T1 выключен на 5 мин для всех. Пользователь не предупреждается (решение для беты; записать в CHANGELOG)"
+  model_registry:
+    - "MUST: T0 допускает только модели с флагом inRussia=true в agents/models.yaml (внутренние модели Cloud.ru, Yandex AI Studio). «Внешние» модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash, партнёрские Claude/GPT/Gemini) MUST NOT быть T0"
+    - "MUST NOT: провайдеры Anthropic, OpenAI, Google, xAI в реестре в любом виде (тест-линтер реестра)"
+    - "MUST: каждый запрос к Yandex AI Studio несёт заголовок x-data-logging-enabled: false (тест на мок-сервере)"
+    - "MUST: у каждой записи T1 — дата последней проверки условий провайдера (termsCheckedAt); старше 90 дней → предупреждение в CI"
+  storage_of_content: "Содержимое промптов и ответов НЕ хранится (ни в llm_calls, ни в логах). Fixture-запись (WIZARD_LLM_MODE=record) разрешена только для брифов eval-стенда без ПДн"
+
+audit:
+  table: platform.llm_calls
+  fields: "call_type, tier, provider, model, route_reason, policy_version, pii_categories_count (только счётчики по kind), scrubbed, токены, стоимость"
+  rule: "MUST NOT: текст, фрагменты, хэши отдельных значений ПДн. CHECK (tier = 'T0' or scrubbed) на уровне БД"
+  report: "Еженедельная выборка: доля T1-вызовов с pii_categories_count ≠ {} (ожидаемо: только плейсхолдеры), доля pii_forced_t0 и fallback_unavailable — в Grafana"
+
+ru_only:
+  milestone: M1
+  setting: "orgs.ru_only (PATCH /orgs/:id/settings, только owner)"
+  effect: "Все вызовы организации → T0 со следующего LLM-шага (router читает политику на каждый вызов, не кэширует дольше 10 с)"
+  ui: "Бейдж «Только российский контур» в шапке; при включении — предупреждение, что сборка может быть медленнее/дороже (цифры из eval)"
+  test: "Включение ruOnly посреди fixture-прогона → все последующие llm_calls.tier = T0"
+
+import:
+  milestone: M1
+  payload: >
+    SyntheticPayload — брендированный тип, создаётся ТОЛЬКО функцией packages/pii/import#buildMappingPayload(sheet):
+    {sheets: [{name*, columns: [{header*, inferredType, pattern, checksumValidShare, nullShare, distinctRatio, avgLength,
+    piiKindGuess}], syntheticRows: ≤ 5}]}. * — после scrub; заголовок/имя листа с находкой → col_<n>/sheet_<n>.
+    Числовые колонки — только округлённые min/max; свободный текст — «free_text, средняя длина N».
+  synthetic: "Синтетические строки генерируются локально по профилю (@faker-js/faker, MIT, локаль ru) — ни одно реальное значение не копируется"
+  values: "Реальные значения читаются только процессом импорта и пишутся в app_<key>_draft без LLM; исходный файл — в S3 imports (SSE-KMS), TTL 7 дней"
+  test: "M1-07: xlsx с 50 канареечными значениями (уникальные ФИО/телефоны/email) → мок T1 фиксирует все запросы; ни одна канарейка не встречается; в app-схеме все 50 строк"
+
+tests:                             # MUST в CI (M0-06, M1-07, milestones M0 exit)
+  - "Матрица роутера: каждый callType × ruOnly{true,false} × payload{без ПДн, basic, strong, special} × containsPiiHint → ожидаемый tier и route_reason (таблица-фикстура packages/llm/test/routing.matrix.json)"
+  - "Канарейки e2e: fixture-прогон «форум», бриф с ФИО, телефоном, email, паспортом, СНИЛС; мок-провайдер T1 записывает payload; assert: 0 вхождений канареек, 0 совпадений detect() кроме плейсхолдеров; вызовы со strong-видами ушли на T0"
+  - "llm_calls после прогона: нет колонок с текстом; pii_categories_count заполнен; для всех tier=T1 scrubbed=true"
+  - "Токены tok_* в T1-payload → ошибка до отправки"
+  - "runtime_ai_*, support: при любых входах tier=T0 (M3-02 повторно)"
+  - "Детекторы: корпус с порогами из detectors.quality; отдельные тесты контрольных сумм СНИЛС/ИНН/Луна (валидные и с одной изменённой цифрой)"
+  - "Логгер: сообщение с телефоном → в логе плейсхолдер (deploy.yaml#observability)"
