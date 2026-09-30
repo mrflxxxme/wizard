@@ -89,23 +89,29 @@ export function applyPatch(doc, patch) {
   return doc;
 }
 
-/** Replaces whole string values matching a rule; {n} numbers distinct matched values per rule in order of appearance. */
+/**
+ * Replaces whole string values matching a rule ({pattern?, key?, with}: value regex and/or property-name regex);
+ * {n} numbers distinct matched values per rule in order of appearance.
+ */
 function synthesizer(rules) {
   const compiled = (rules ?? []).map((r) => ({
-    re: new RegExp(r.pattern, "u"),
+    re: r.pattern === undefined ? null : new RegExp(r.pattern, "u"),
+    key: r.key === undefined ? null : new RegExp(r.key, "u"),
     with: r.with,
     seen: new Map(),
   }));
-  const walk = (v) => {
+  const walk = (v, key) => {
     if (typeof v === "string") {
-      const r = compiled.find((c) => c.re.test(v));
+      const r = compiled.find(
+        (c) => (!c.re || c.re.test(v)) && (!c.key || (key !== undefined && c.key.test(key))),
+      );
       if (!r) return v;
       if (!r.seen.has(v)) r.seen.set(v, r.with.replaceAll("{n}", String(r.seen.size + 1)));
       return r.seen.get(v);
     }
-    if (Array.isArray(v)) return v.map(walk);
+    if (Array.isArray(v)) return v.map((x) => walk(x));
     if (v && typeof v === "object")
-      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, k)]));
     return v;
   };
   return walk;

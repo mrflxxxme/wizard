@@ -1,0 +1,187 @@
+# Золотой сценарий «кондитерская»: источник для node tools/fixtures/gen-golden.mjs bakery → tools/fixtures/demo/bakery.jsonl.
+# Формат файла и что выводится из спеки автоматически — docs/reviews/impl-notes/M0-21.md (решения по bakery — M0-22.md).
+# Здесь только смысловые части ответов моделей; структура (сущности, роли, экраны, ops, код, сценарии) берётся из spec и code_root.
+# MUST: без ПДн (тест: pii.detect по фикстуре = 0 вне tools/eval/pii-allowlist.txt).
+version: 1
+name: bakery
+spec: specs/appspec/examples/bakery.json
+code_root: specs/runtime/examples/bakery   # write_file берёт functions/** и ui/** отсюда (пути = пути в спеке)
+recordedAt: "2026-09-30T00:00:00.000Z"
+
+brief: >-
+  У нас небольшая кондитерская «Сахар», печём торты на заказ. Хотим, чтобы покупатель сам собирал торт на сайте:
+  выбирал вес, одну начинку и любой декор (ягоды, надпись, фигурки) и сразу видел итоговую цену. Цену должен
+  считать сервер, а не браузер. Заказ принимаем к конкретной дате, но в день успеваем сделать ограниченное
+  число тортов: если день занят полностью, заказать на него нельзя. При оформлении покупатель вносит
+  предоплату 50% картой через ЮKassa, остаток доплачивает, когда торт готов. Забрать можно самому или
+  заказать доставку по адресу. Кондитер видит заказы по дням и двигает их по статусам «в работе» и «готов»,
+  но цену и сумму заказа менять не может. Покупателю приходит сообщение в Telegram, когда предоплата прошла
+  и когда торт готов. Каталог изделий, опций и загрузку по дням ведёт владелец. Имя, телефон и адрес
+  покупателя храним только для выполнения заказа, через 90 дней обезличиваем.
+
+# ---------------------------------------------------------------- interview #1: submit_analysis
+# entities выводятся из spec: {name, label, keyFields: первые ≤ 8 полей, containsPii}
+analysis:
+  goals:
+    - "Принимать заказы тортов через конфигуратор с ценой, которую считает сервер"
+    - "Ограничивать заказы по загрузке производства на каждый день"
+    - "Брать предоплату 50% через ЮKassa и доплату при выдаче"
+    - "Вести заказы по статусам и сообщать покупателю о готовности"
+  segment: made_to_order
+  skeleton: [catalog, application, process, payment, fulfillment]
+  roles:
+    - { name: owner,    label: "Владелец",   access: login,  isStaff: true,  evidence: "Каталог изделий, опций и загрузку по дням ведёт владелец" }
+    - { name: staff,    label: "Кондитер",   access: login,  isStaff: true,  evidence: "Кондитер видит заказы по дням и двигает их по статусам" }
+    - { name: customer, label: "Покупатель", access: login,  isStaff: false, evidence: "покупатель сам собирал торт на сайте" }
+    - { name: visitor,  label: "Посетитель", access: public, isStaff: false, evidence: "сразу видел итоговую цену" }
+  integrations: [yookassa, telegram]
+  constraints:
+    - "Цену считает сервер"
+    - "Вес и начинка — ровно по одной, декор — любое число"
+    - "В день — ограниченное число тортов, на полностью занятый день заказ не принимается"
+    - "Предоплата 50%, остаток — при готовности"
+    - "Кондитер не меняет цену и сумму заказа"
+    - "Данные покупателя обезличиваются через 90 дней"
+  resolved:
+    - { forkId: F-GD-CATALOG,  optionId: items_with_options, evidence: "выбирал вес, одну начинку и любой декор" }
+    - { forkId: F-GD-CAPACITY, optionId: daily_capacity,     evidence: "в день успеваем сделать ограниченное число тортов" }
+    - { forkId: F-PAYMENT,     optionId: yookassa_prepay,    evidence: "предоплату 50% картой через ЮKassa, остаток доплачивает" }
+    - { forkId: F-GD-PREPAY,   optionId: fixed_percent,      evidence: "предоплату 50%" }
+    - { forkId: F-GD-DELIVERY, optionId: both,               evidence: "Забрать можно самому или заказать доставку" }
+    - { forkId: F-NOTIFY,      optionId: telegram,           evidence: "Покупателю приходит сообщение в Telegram" }
+    - { forkId: F-ACCESS,      optionId: login_required,     evidence: "Покупателю приходит сообщение ... когда торт готов" }
+  unknowns: [F-LOGIN, F-STAFF, F-VISIBILITY, F-STATUSES]
+  outOfScope: []
+  complexity: medium
+
+# ---------------------------------------------------------------- interview #2: ask_questions
+questions:
+  - id: q1
+    forkId: F-LOGIN
+    text: "Как покупателям и кондитерам входить в систему?"
+    whyItMatters: "Вход через Telegram быстрее и сразу подключает уведомления, но нужен свой бот; вход по почте работает сразу."
+    options:
+      - { id: email,             label: "По коду на почту",            recommended: false }
+      - { id: email_or_telegram, label: "По почте или через Telegram", description: "Telegram уже нужен для сообщений о заказе", recommended: true }
+    allowCustom: true
+  - id: q2
+    forkId: F-STAFF
+    text: "Кто из вашей команды работает в системе?"
+    whyItMatters: "Каждой роли достаются только нужные ей данные: кондитер не видит почту покупателя и не меняет суммы."
+    options:
+      - { id: single_admin,  label: "Только владелец",            recommended: false }
+      - { id: admin_manager, label: "Владелец и кондитеры",       recommended: true }
+      - { id: admin_manager_moderator, label: "Владелец, администратор и кондитеры", recommended: false }
+    allowCustom: true
+  - id: q3
+    forkId: F-VISIBILITY
+    text: "Какие заказы видит кондитер?"
+    whyItMatters: "В небольшой кондитерской проще, когда все кондитеры видят все заказы на день; иначе заказы нужно назначать."
+    options:
+      - { id: all_see_all,   label: "Все заказы",                recommended: true }
+      - { id: assigned_only, label: "Только назначенные ему",    recommended: false }
+    allowCustom: true
+  - id: q4
+    forkId: F-STATUSES
+    text: "Как вести заказы в работе?"
+    whyItMatters: "Доска со статусами показывает загрузку по дням; простой список короче, но этапы в нём хуже видны."
+    options:
+      - { id: simple_3,       label: "Список: новый → в работе → готов", recommended: false }
+      - { id: pipeline_board, label: "Доска по статусам и дням",         recommended: true }
+    allowCustom: true
+
+# Ответы пользователя (не LLM): два выбраны явно, остальные — кнопкой «Остальное — по рекомендациям».
+answers:
+  - { questionId: q1, forkId: F-LOGIN,      optionId: email_or_telegram, byRecommendation: false }
+  - { questionId: q2, forkId: F-STAFF,      optionId: admin_manager,     byRecommendation: false }
+  - { questionId: q3, forkId: F-VISIBILITY, optionId: all_see_all,       byRecommendation: true }
+  - { questionId: q4, forkId: F-STATUSES,   optionId: pipeline_board,    byRecommendation: true }
+
+# ---------------------------------------------------------------- card: submit_card (без estimate/cap/cardVersion)
+# roles/data/screens/integrations/automations/pii.categories/pii.fields выводятся из spec; здесь — тексты.
+card:
+  title: "Кондитерская «Сахар»"
+  summary: >-
+    Торты на заказ: конфигуратор с ценой от сервера, заказ к дате с учётом загрузки производства, предоплата 50%
+    через ЮKassa и доплата при готовности, доска заказов для кондитеров и сообщения покупателю в Telegram.
+  segment: made_to_order
+  roles:
+    owner:    { description: "Владелец кондитерской: ведёт каталог и загрузку, видит все заказы и платежи", can: ["Вести изделия, опции и цены", "Открывать и закрывать производственные дни", "Видеть все заказы и платежи", "Менять статусы заказов"] }
+    staff:    { description: "Кондитер: готовит заказы по дням", can: ["Видеть заказы по дням", "Переводить заказ в работу и в готовые"] }
+    customer: { description: "Покупатель: собирает торт и оплачивает заказ", can: ["Собирать торт и видеть цену", "Оформлять заказ с предоплатой", "Видеть свои заказы и доплачивать остаток"] }
+    visitor:  { description: "Любой посетитель сайта без входа", can: ["Смотреть изделия и считать цену"] }
+  specVsCode:
+    spec:
+      - "Данные: изделия, опции, производственные дни, заказы, платежи"
+      - "Кто что видит: покупатель — только свои заказы, кондитер не видит почту покупателя и не меняет суммы"
+      - "Статусы заказа: ожидает предоплаты → предоплачен → в работе → готов → выдан"
+      - "Автоматизации: сообщения о предоплате и готовности"
+      - "Подключения: ЮKassa (предоплата и доплата), Telegram"
+      - "Персональные данные покупателя обезличиваются через 90 дней"
+    code:
+      - "Экраны: конфигуратор торта, мои заказы, доска производства, каталог"
+      - "Расчёт цены на сервере по выбранным опциям"
+      - "Свободные дни с учётом загрузки производства"
+      - "Оформление заказа с проверкой загрузки дня и суммой предоплаты"
+  screens:                           # purpose по route
+    "/": "Сборка торта, цена и оформление заказа"
+    "/orders": "Мои заказы, статусы и доплата"
+    "/production": "Доска заказов по дням и статусам"
+    "/catalog": "Изделия, опции и цены"
+  integrations:                      # по имени интеграции
+    yookassa: { purpose: "Предоплата 50% и доплата картой", userActionRequired: "подключить магазин ЮKassa" }
+    telegram: { purpose: "Вход и сообщения покупателю о заказе", userActionRequired: "создать бота в Telegram и указать его токен" }
+  automations:                       # по имени воркфлоу; name = label воркфлоу
+    order_prepaid: { when: "Предоплата по заказу прошла", then: "Покупатель получает в Telegram номер заказа и дату готовности" }
+    order_ready:   { when: "Кондитер отметил заказ готовым", then: "Покупатель получает в Telegram сообщение о готовности и сумму доплаты" }
+  pii:
+    retention:                       # humanText по сущности; сроки — из spec
+      cake_order: "Имя, телефон, почта и адрес покупателя обезличиваются через 90 дней"
+    summary: >-
+      Храним имя, телефон, почту и адрес покупателя для выполнения заказа. Их видит владелец; кондитер видит
+      имя, телефон и адрес, но не почту.
+  assumptions:
+    - "Вход — по коду на почту или через Telegram (выбрано)"
+    - "В системе работают владелец и кондитеры (выбрано)"
+    - "Кондитеры видят все заказы (по рекомендации)"
+    - "Заказы ведутся на доске по статусам и дням (по рекомендации)"
+    - "Данные оператора персональных данных и текст согласия владелец заполняет в настройках"
+  outOfScope: []
+
+# Критерии приёмки карточки = spec.acceptance после сборки (builder.yaml: set_acceptance из карточки 1:1; steps генерирует QA).
+# check.role задан у каждого AC: у каждой роли с входом ≥ 1 AC (orchestrator.yaml#algorithm.S5_card.validate).
+acceptance:
+  - { id: AC1, text: "Цена считается сервером: 2,5 кг, вишня–шоколад, ягоды и надпись = 6 050 ₽",     check: { type: scenario,   role: visitor,  entity: product_option } }
+  - { id: AC2, text: "Нельзя оформить заказ на день, где производство загружено полностью",          check: { type: scenario,   role: customer, entity: cake_order } }
+  - { id: AC3, text: "Предоплата — 50% стоимости, остаток — доплата при выдаче",                     check: { type: scenario,   role: customer, entity: cake_order } }
+  - { id: AC4, text: "Покупатель видит только свои заказы",                                         check: { type: scenario,   role: customer, entity: cake_order } }
+  - { id: AC5, text: "Посетитель без входа не видит заказы",                                        check: { type: permission, role: visitor,  entity: cake_order, op: read, expect: deny } }
+  - { id: AC6, text: "Кондитер не может изменить сумму заказа, но видит его в работе",              check: { type: scenario,   role: staff,    entity: cake_order } }
+  - { id: AC7, text: "ПДн покупателя обезличиваются через 90 дней",                                 check: { type: constraint, role: owner,    entity: cake_order, milestone: M1 } }
+
+# ---------------------------------------------------------------- plan: submit_plan
+plan:
+  - { id: P1, kind: ops,  title: "Роли и данные: изделия, опции, производственные дни, заказы, платежи", targets: [roles, entities], acRefs: [] }
+  - { id: P2, kind: ops,  title: "Права: кто что видит и меняет", targets: [permissions], acRefs: [AC4, AC5, AC6] }
+  - { id: P3, kind: ops,  title: "Автоматизации и подключения: ЮKassa, Telegram", targets: [workflows, integrations], acRefs: [AC3, AC7] }
+  - { id: P4, kind: ops,  title: "Объявления функций и экранов, критерии приёмки, страница политики", targets: [functions, pages, acceptance, compliance], acRefs: [] }
+  - { id: P5, kind: code, title: "Серверная логика: цена, свободные дни, оформление заказа", targets: ["functions/"], acRefs: [AC1, AC2, AC3] }
+  - { id: P6, kind: code, title: "Экраны: конфигуратор, мои заказы, производство, каталог", targets: ["ui/"], acRefs: [AC4, AC6] }
+
+# ---------------------------------------------------------------- build_ops / build_code
+build:
+  # Спека, которую собирает строитель = spec + spec_patch (пусто: почты нет, ЮKassa и Telegram — через secret://),
+  # acceptance ← карточка, compliance без полей владельца (OWNER_ONLY_FIELD).
+  spec_patch: []
+  files_per_step: 5                  # functions/** одним шагом, ui/** другим; run_gate G0 — в последнем шаге с записью
+  ops_done_text: "Спека собрана: {roles} роли, {entities} видов данных, {permissions} правил доступа, {workflows} автоматизации, {integrations} подключения."
+  code_done_text: "Код записан: {functions} файлов серверной логики и {ui} файлов интерфейса. G0 пройден."
+
+# ---------------------------------------------------------------- qa_generate: submit_checks
+# Сценарии для AC type=scenario|constraint с milestone ≤ M0 берутся из spec.acceptance[].check (actors, steps);
+# значения, похожие на ПДн, заменяются синтетикой (телефон +70… pii.detect не считает номером: код 0 не бывает).
+qa:
+  milestone: M0
+  replace:                           # pattern — по целому строковому значению, key — по имени поля; {n} — номер значения
+    - { key: '^customerName$',         with: "Покупатель {n}" }
+    - { pattern: '^\+7\d{10}$',       with: "+7000000000{n}" }

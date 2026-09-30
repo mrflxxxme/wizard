@@ -33,20 +33,10 @@ type Line = {
   recordedAt: string;
 };
 
-const fixturePath = join(root, "tools/fixtures/demo/forum.jsonl");
-const goldenPath = join(root, "tools/fixtures/golden/forum.yaml");
-const fixtureText = readFileSync(fixturePath, "utf8");
-const lines: Line[] = fixtureText
-  .trimEnd()
-  .split("\n")
-  .map((l) => JSON.parse(l));
-const g = buildGolden("forum", { root });
 const [orchestrator, models] = loadYaml(
   join(root, "specs/agents/orchestrator.yaml"),
   join(root, "specs/agents/models.yaml"),
 );
-const calls = (callType: string) => lines.filter((l) => l.callType === callType);
-const toolArgs = (callType: string, i = 0) => (calls(callType)[i]?.response.toolCalls[0]?.args ?? {}) as any;
 const allowlist = new Set(
   readFileSync(join(root, "tools/eval/pii-allowlist.txt"), "utf8")
     .split("\n")
@@ -88,16 +78,29 @@ function secretFindings(text: string): string[] {
   return out;
 }
 
-describe("gen-golden forum", () => {
+/** Golden demo transcripts (specs/quality/eval.yaml#fixtures.golden): M0-21 forum, M0-22 bakery. */
+describe.each(["forum", "bakery"])("golden %s", (name) => {
+const fixturePath = join(root, "tools/fixtures/demo", `${name}.jsonl`);
+const goldenPath = join(root, "tools/fixtures/golden", `${name}.yaml`);
+const fixtureText = readFileSync(fixturePath, "utf8");
+const lines: Line[] = fixtureText
+  .trimEnd()
+  .split("\n")
+  .map((l) => JSON.parse(l));
+const g = buildGolden(name, { root });
+const calls = (callType: string) => lines.filter((l) => l.callType === callType);
+const toolArgs = (callType: string, i = 0) => (calls(callType)[i]?.response.toolCalls[0]?.args ?? {}) as any;
+
+describe("gen-golden", () => {
   it("детерминирован: два запуска байт-в-байт и совпадают с закоммиченной фикстурой", () => {
-    const a = genGolden("forum", `--out=${join(tmp, "a.jsonl")}`);
-    const b = genGolden("forum", `--out=${join(tmp, "b.jsonl")}`);
+    const a = genGolden(name, `--out=${join(tmp, `${name}-a.jsonl`)}`);
+    const b = genGolden(name, `--out=${join(tmp, `${name}-b.jsonl`)}`);
     expect(a.status, a.stderr).toBe(0);
     expect(b.status, b.stderr).toBe(0);
-    const ta = readFileSync(join(tmp, "a.jsonl"), "utf8");
-    expect(readFileSync(join(tmp, "b.jsonl"), "utf8")).toBe(ta);
+    const ta = readFileSync(join(tmp, `${name}-a.jsonl`), "utf8");
+    expect(readFileSync(join(tmp, `${name}-b.jsonl`), "utf8")).toBe(ta);
     expect(ta).toBe(fixtureText);
-    expect(genGolden("forum", "--check").status).toBe(0);
+    expect(genGolden(name, "--check").status).toBe(0);
   });
 
   it("порядок callType: interview, interview, card, plan, build_ops×N, build_code×M, qa_generate", () => {
@@ -162,24 +165,6 @@ describe("gen-golden forum", () => {
     expect(calls("build_ops")[0]?.request.tools.map((t) => t.name)).toEqual(TOOLSETS.build);
   });
 
-  it("canonical key: uuid → <uuid:N>, даты → <date>, пробелы в конце строк, runId", () => {
-    const line = (content: string) => ({
-      callType: "fix",
-      modelId: "glm-5.3",
-      request: {
-        messages: [{ role: "user", content }],
-        tools: [],
-        params: { temperature: 0.1, max_tokens: 10 },
-      },
-    });
-    const u1 = "0b7e4c1a-1111-4a2b-8c3d-000000000001";
-    const u2 = "0b7e4c1a-2222-4a2b-8c3d-000000000002";
-    const a = line(`run r-1 ${u1} ${u2} ${u1} 2026-09-30T10:00:00Z  \nok`);
-    const b = line(`run r-2 ${u2.toUpperCase()} ${u1} ${u2} 2027-01-01\nok`);
-    expect(canonicalRequest(a, { runId: "r-1" })).toBe(canonicalRequest(b, { runId: "r-2" }));
-    expect(canonicalRequest(a, { runId: "r-1" })).toContain("<runId> <uuid:1> <uuid:2> <uuid:1> <date>\\nok");
-    expect(fixtureKey(a)).not.toBe(fixtureKey(line("other")));
-  });
 });
 
 describe("оркестратор: Analysis, вопросы, карточка", () => {
@@ -336,5 +321,27 @@ describe("QA: submit_checks", () => {
         if (save) vars.add(save);
       }
     }
+  });
+});
+});
+
+describe("fixture key", () => {
+  it("canonical key: uuid → <uuid:N>, даты → <date>, пробелы в конце строк, runId", () => {
+    const line = (content: string) => ({
+      callType: "fix",
+      modelId: "glm-5.3",
+      request: {
+        messages: [{ role: "user", content }],
+        tools: [],
+        params: { temperature: 0.1, max_tokens: 10 },
+      },
+    });
+    const u1 = "0b7e4c1a-1111-4a2b-8c3d-000000000001";
+    const u2 = "0b7e4c1a-2222-4a2b-8c3d-000000000002";
+    const a = line(`run r-1 ${u1} ${u2} ${u1} 2026-09-30T10:00:00Z  \nok`);
+    const b = line(`run r-2 ${u2.toUpperCase()} ${u1} ${u2} 2027-01-01\nok`);
+    expect(canonicalRequest(a, { runId: "r-1" })).toBe(canonicalRequest(b, { runId: "r-2" }));
+    expect(canonicalRequest(a, { runId: "r-1" })).toContain("<runId> <uuid:1> <uuid:2> <uuid:1> <date>\\nok");
+    expect(fixtureKey(a)).not.toBe(fixtureKey(line("other")));
   });
 });

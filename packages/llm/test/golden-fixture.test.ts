@@ -1,4 +1,4 @@
-// FU-1: packages/llm reads the M0-21 golden fixture byte-compatibly and its canonical key matches the reference
+// FU-1: packages/llm reads the golden fixtures (M0-21 forum, M0-22 bakery) byte-compatibly and its canonical key matches the reference
 // implementation tools/fixtures/lib/format.mjs (contract: docs/reviews/impl-notes/M0-21.md).
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
@@ -32,9 +32,17 @@ const ref = (await import(
   new URL("../../../tools/fixtures/lib/format.mjs", import.meta.url).href
 )) as RefFormat;
 
-const RAW = readFileSync(new URL("../../../tools/fixtures/demo/forum.jsonl", import.meta.url), "utf8");
-const RAW_LINES = RAW.split("\n").filter((l) => l !== "");
-const GOLDEN = RAW_LINES.map((l) => JSON.parse(l) as FixtureLine);
+const load = (name: string) => {
+  const raw = readFileSync(new URL(`../../../tools/fixtures/demo/${name}.jsonl`, import.meta.url), "utf8");
+  const rawLines = raw.split("\n").filter((l) => l !== "");
+  return { rawLines, golden: rawLines.map((l) => JSON.parse(l) as FixtureLine) };
+};
+/** Golden demo fixtures: M0-21 forum (12 calls), M0-22 bakery (10 calls). */
+const SUITES = [
+  { name: "forum", count: 12, ...load("forum") },
+  { name: "bakery", count: 10, ...load("bakery") },
+];
+const GOLDEN = SUITES.flatMap((suite) => suite.golden);
 
 const OPEN = { ruOnly: false, t1Restricted: false };
 const ctx = {
@@ -48,80 +56,86 @@ const failingFetch: typeof fetch = () => {
   throw new Error("network must not be used in fixture mode");
 };
 
-describe("golden fixture tools/fixtures/demo/forum.jsonl (M0-21)", () => {
-  test("file format: 12 lines, v=1, keys in contract order, lossless JSON round trip", () => {
-    expect(GOLDEN).toHaveLength(12);
-    GOLDEN.forEach((line, i) => {
-      expect(JSON.stringify(line)).toBe(RAW_LINES[i]);
-      expect(Object.keys(line)).toEqual([
-        "v",
-        "key",
-        "callType",
-        "modelId",
-        "request",
-        "response",
-        "usage",
-        "latencyMs",
-        "recordedAt",
-      ]);
-      expect(line.v).toBe(1);
-      expect(line.key).toMatch(/^[0-9a-f]{64}$/);
-      expect(line.response.finishReason).toBe(line.response.toolCalls.length > 0 ? "tool-calls" : "stop");
+describe.each(SUITES)(
+  "golden fixture tools/fixtures/demo/$name (jsonl)",
+  ({ name, count, rawLines, golden }) => {
+    test("file format: all lines, v=1, keys in contract order, lossless JSON round trip", () => {
+      expect(golden).toHaveLength(count);
+      golden.forEach((line, i) => {
+        expect(JSON.stringify(line)).toBe(rawLines[i]);
+        expect(Object.keys(line)).toEqual([
+          "v",
+          "key",
+          "callType",
+          "modelId",
+          "request",
+          "response",
+          "usage",
+          "latencyMs",
+          "recordedAt",
+        ]);
+        expect(line.v).toBe(1);
+        expect(line.key).toMatch(/^[0-9a-f]{64}$/);
+        expect(line.response.finishReason).toBe(line.response.toolCalls.length > 0 ? "tool-calls" : "stop");
+      });
     });
-  });
 
-  test("route() replays all 12 calls in fixture mode with WIZARD_FIXTURE=demo/forum", async () => {
-    const sink = new MemoryUsageSink();
-    const router = createRouter({ env: { WIZARD_FIXTURE: "demo/forum" }, sink, fetch: failingFetch });
-    expect(router.mode).toBe("fixture");
-    for (const line of GOLDEN) {
+    test("route() replays all calls in fixture mode with WIZARD_FIXTURE=demo/<name>", async () => {
+      const sink = new MemoryUsageSink();
+      const router = createRouter({ env: { WIZARD_FIXTURE: `demo/${name}` }, sink, fetch: failingFetch });
+      expect(router.mode).toBe("fixture");
+      for (const line of golden) {
+        const out = await router.route({
+          callType: line.callType,
+          messages: line.request.messages,
+          tools: offered(line),
+          orgPolicy: OPEN,
+          ctx,
+        });
+        expect(JSON.stringify(out.result)).toBe(JSON.stringify(line.response));
+        expect(out.usage).toEqual({
+          inputTokens: line.usage.promptTokens,
+          cachedTokens: line.usage.cachedPromptTokens,
+          outputTokens: line.usage.completionTokens,
+        });
+      }
+      expect(sink.records).toHaveLength(count);
+      expect(sink.records.map((r) => r.callType)).toEqual(golden.map((l) => l.callType));
+      expect(sink.records.every((r) => r.status === "ok" && r.latencyMs > 0)).toBe(true);
+      // All lines are consumed: one more call of any callType is a miss.
+      const first = golden[0] as FixtureLine;
+      await expect(
+        router.route({
+          callType: "interview",
+          messages: first.request.messages,
+          tools: offered(first),
+          orgPolicy: OPEN,
+          ctx,
+        }),
+      ).rejects.toMatchObject({ code: "FIXTURE_MISS" });
+    });
+
+    test("demo lookup: a recorded tool call that is not offered now is a miss; extra offered tools are fine", async () => {
+      const router = createRouter({ env: { WIZARD_FIXTURE: `demo/${name}` }, sink: new MemoryUsageSink() });
+      const first = golden[0] as FixtureLine;
+      const extra: LlmTool[] = [
+        ...offered(first),
+        { name: "ask_questions", description: "", parameters: {} },
+      ];
       const out = await router.route({
-        callType: line.callType,
-        messages: line.request.messages,
-        tools: offered(line),
-        orgPolicy: OPEN,
-        ctx,
-      });
-      expect(JSON.stringify(out.result)).toBe(JSON.stringify(line.response));
-      expect(out.usage).toEqual({
-        inputTokens: line.usage.promptTokens,
-        cachedTokens: line.usage.cachedPromptTokens,
-        outputTokens: line.usage.completionTokens,
-      });
-    }
-    expect(sink.records).toHaveLength(12);
-    expect(sink.records.map((r) => r.callType)).toEqual(GOLDEN.map((l) => l.callType));
-    expect(sink.records.every((r) => r.status === "ok" && r.latencyMs > 0)).toBe(true);
-    // All 12 lines are consumed: the 13th call of any callType is a miss.
-    const first = GOLDEN[0] as FixtureLine;
-    await expect(
-      router.route({
         callType: "interview",
-        messages: first.request.messages,
-        tools: offered(first),
+        messages: [],
+        tools: extra,
         orgPolicy: OPEN,
         ctx,
-      }),
-    ).rejects.toMatchObject({ code: "FIXTURE_MISS" });
-  });
-
-  test("demo lookup: a recorded tool call that is not offered now is a miss; extra offered tools are fine", async () => {
-    const router = createRouter({ env: { WIZARD_FIXTURE: "demo/forum" }, sink: new MemoryUsageSink() });
-    const first = GOLDEN[0] as FixtureLine;
-    const extra: LlmTool[] = [...offered(first), { name: "ask_questions", description: "", parameters: {} }];
-    const out = await router.route({
-      callType: "interview",
-      messages: [],
-      tools: extra,
-      orgPolicy: OPEN,
-      ctx,
+      });
+      expect(out.result.toolCalls.map((c) => c.name)).toEqual(["submit_analysis"]);
+      await expect(
+        router.route({ callType: "interview", messages: [], tools: [], orgPolicy: OPEN, ctx }),
+      ).rejects.toMatchObject({ code: "FIXTURE_MISS" });
     });
-    expect(out.result.toolCalls.map((c) => c.name)).toEqual(["submit_analysis"]);
-    await expect(
-      router.route({ callType: "interview", messages: [], tools: [], orgPolicy: OPEN, ctx }),
-    ).rejects.toMatchObject({ code: "FIXTURE_MISS" });
-  });
-});
+  },
+);
 
 describe("canonical key = reference tools/fixtures/lib/format.mjs (eval|unit suites)", () => {
   const toRef = (input: CanonicalInput): RefLine => ({
