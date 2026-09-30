@@ -16,6 +16,9 @@ import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import type { PublishOptions } from "../publish/prod.js";
+import { draftSnapshot } from "../publish/snapshot.js";
+import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
 import { insertMessage } from "../services/messages.js";
 import {
   applyOpsRevision,
@@ -63,7 +66,12 @@ export const INTERVIEW_CAP_MILLI = 2000;
 
 type Run = Selectable<RunsTable>;
 type Result =
-  | { status: "succeeded" | "cancelled"; summary_ru: string }
+  | {
+      status: "succeeded" | "cancelled";
+      summary_ru: string;
+      resultRevision?: number | null;
+      prodUrl?: string | null;
+    }
   | { status: "failed"; code: string; message_ru: string; retryable: boolean };
 
 export interface EngineDeps {
@@ -76,6 +84,8 @@ export interface EngineDeps {
   /** Router factory (tests); default createRouter with DbUsageSink. */
   createRouter?: (opts: RouterOptions) => Router;
   log?: (msg: string, err?: unknown) => void;
+  /** publish/rollback: smoke check, DB roles, lock retry pauses (M1-04). */
+  publish?: PublishOptions;
 }
 
 interface Waiter {
@@ -86,7 +96,7 @@ interface Waiter {
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build";
+  kind: "interview_turn" | "build" | "publish" | "rollback";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -264,6 +274,7 @@ export class RunEngine {
       }
       if (run.kind === "interview_turn") result = await this.#interview(run, ac);
       else if (run.kind === "build") result = await this.#build(run, ac);
+      else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(run, ac);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
       if (!(e instanceof RunFailure || e instanceof RunCancelled || e instanceof LlmError))
@@ -338,7 +349,14 @@ export class RunEngine {
         : undefined;
       await appendEvent(t, run.id, "lock_waiting", {
         holderRunId: holder,
-        holderName: holderRun?.kind === "build" ? "Сборка" : "Другой прогон",
+        holderName:
+          holderRun?.kind === "build"
+            ? "Сборка"
+            : holderRun?.kind === "publish"
+              ? "Публикация"
+              : holderRun?.kind === "rollback"
+                ? "Откат"
+                : "Другой прогон",
         position: list.indexOf(run.id) + 1,
       });
     });
@@ -406,9 +424,13 @@ export class RunEngine {
     if (!run || TERMINAL_STATUSES.has(run.status)) return null;
     const sys = run.system_id ? await lockSystem(t, run.system_id) : null;
     const isBuild = run.kind === "build";
-    const resultRevision =
-      isBuild && sys && run.base_revision !== null && sys.draft_revision > run.base_revision
+    const isFlow = run.kind === "publish" || run.kind === "rollback";
+    const resultRevision = isBuild
+      ? sys && run.base_revision !== null && sys.draft_revision > run.base_revision
         ? sys.draft_revision
+        : null
+      : r.status === "succeeded"
+        ? (r.resultRevision ?? null)
         : null;
     await t.trx
       .updateTable("platform.runs")
@@ -438,6 +460,8 @@ export class RunEngine {
           .where("id", "=", sys.id)
           .execute();
       }
+    }
+    if (sys && (isBuild || isFlow)) {
       await insertMessage(t, {
         systemId: sys.id,
         role: "assistant",
@@ -460,7 +484,7 @@ export class RunEngine {
         resultRevision,
         creditsUsed: Number(run.credits_used_milli) / 1000,
         summary_ru: r.summary_ru,
-        prodUrl: null,
+        prodUrl: r.status === "succeeded" ? (r.prodUrl ?? null) : null,
       });
     }
     return released.length > 0 ? (released[0]?.system_id ?? null) : null;
@@ -1035,6 +1059,7 @@ export class RunEngine {
       runGates: (level, overrides) =>
         base.runStep(`gate_${level}`, () => this.#gate(run, ac, level, commitFiles, filesAt, overrides)),
     };
+    if (run.mode === "change") await this.#draftSnapshot(run, ac);
     const input = run.input as { card?: Record<string, unknown> };
     const out = await this.#d.executors.build(host, {
       card: input.card ?? {},
@@ -1045,6 +1070,72 @@ export class RunEngine {
     if (out?.status === "cancelled")
       return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
     return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+  }
+
+  /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */
+  async #draftSnapshot(run: Run, ac: AbortController): Promise<void> {
+    const sys = await this.#db
+      .selectFrom("platform.systems")
+      .selectAll()
+      .where("id", "=", run.system_id as string)
+      .executeTakeFirstOrThrow();
+    if (sys.prod_revision === null) return;
+    const live = await this.#db
+      .selectFrom("platform.publications")
+      .select("id")
+      .where("system_id", "=", sys.id)
+      .where("status", "=", "live")
+      .executeTakeFirst();
+    if (!live) return;
+    const versions = [sys.prod_revision, sys.schema_hwm_revision, sys.preview_revision].filter(
+      (v): v is number => v !== null && v > 0,
+    );
+    const specs: AppSpec[] = [];
+    for (const v of versions) specs.push(await loadSpec(this.#db, sys, v));
+    await this.#step(run, ac, "draft_snapshot", "Копирую данные prod в черновик, ПДн заменяю", () =>
+      draftSnapshot(this.#d.pg, {
+        systemKey: sys.schema_key,
+        specs,
+        marker: live.id,
+        ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      }),
+    );
+  }
+
+  /** publish / rollback runs (workflows.yaml#workflows.publish, #rollback): steps live in ../publish/workflows.ts. */
+  async #flow(run: Run, ac: AbortController): Promise<Result> {
+    const systemId = run.system_id as string;
+    const filesAt = async (): Promise<Map<string, string>> => {
+      const s = await this.#db
+        .selectFrom("platform.systems")
+        .select("draft_revision")
+        .where("id", "=", systemId)
+        .executeTakeFirstOrThrow();
+      const m = await loadManifest(this.#db, this.#d.blobs, systemId, s.draft_revision);
+      const out = new Map<string, string>();
+      for (const [p, sha] of Object.entries(m))
+        if (p.startsWith("ui/") || p.startsWith("functions/"))
+          out.set(p, (await this.#d.blobs.get(sha)).toString("utf8"));
+      return out;
+    };
+    const host: FlowHost = {
+      run,
+      db: this.#db,
+      pg: this.#d.pg,
+      blobs: this.#d.blobs,
+      config: this.#d.config,
+      gates: this.#d.executors.gates,
+      signal: ac.signal,
+      options: this.#d.publish ?? {},
+      tx: (fn) => this.#tx(fn),
+      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      draftG0: () =>
+        this.#step(run, ac, "gate_G0", "Проверяю черновик (G0)", () =>
+          this.#gate(run, ac, "G0", async () => null, filesAt, undefined),
+        ),
+    };
+    const out: FlowResult = run.kind === "publish" ? await runPublish(host) : await runRollback(host);
+    return { status: "succeeded", ...out };
   }
 
   async #gate(

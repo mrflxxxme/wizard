@@ -131,7 +131,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       return { system, run };
     });
     d.engine.enqueue(out.run);
-    return c.json({ system: toSystem(out.system), run: toRun(out.run, 0) }, 201);
+    return c.json({ system: toSystem(out.system, d.config.runtimePort), run: toRun(out.run, 0) }, 201);
   });
 
   // listSystems
@@ -188,7 +188,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       .orderBy("created_at", "desc")
       .executeTakeFirst();
     return c.json({
-      system: toSystem(s),
+      system: toSystem(s, d.config.runtimePort),
       card: s.card ?? null,
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),

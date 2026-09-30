@@ -238,9 +238,18 @@ importers:
       '@playwright/test':
         specifier: 1.56.1
         version: 1.56.1
+      '@wizard/platform-api':
+        specifier: workspace:*
+        version: link:../../apps/platform-api
+      '@wizard/runtime':
+        specifier: workspace:*
+        version: link:../../apps/runtime
       jsqr:
         specifier: ^1.4.0
         version: 1.4.0
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
 
   packages/gates:
     dependencies:

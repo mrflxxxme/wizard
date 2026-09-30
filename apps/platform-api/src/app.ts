@@ -9,7 +9,9 @@ import { type AppEnv, devAuth } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
+import type { PublishOptions } from "./publish/prod.js";
 import { orgRoutes } from "./routes/orgs.js";
+import { publishRoutes } from "./routes/publish.js";
 import { runRoutes } from "./routes/runs.js";
 import { systemRoutes } from "./routes/systems.js";
 import { EventBus } from "./runs/events.js";
@@ -29,6 +31,8 @@ export interface PlatformApiOptions {
   /** Fail runs left non-terminal by a previous process (default true). */
   recover?: boolean;
   pingMs?: number;
+  /** publish/rollback (M1-04): smoke check of the prod host, DB roles, lock retry pauses. */
+  publish?: PublishOptions;
   log?: (msg: string, err?: unknown) => void;
 }
 
@@ -59,6 +63,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     config,
     executors,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    ...(opts.publish ? { publish: opts.publish } : {}),
     log,
   });
   if (opts.recover !== false) await engine.recover();
@@ -85,6 +90,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.use("*", devAuth(handle.db));
   api.use("*", idempotency(new IdempotencyCache()));
   api.route("/", systemRoutes(deps));
+  api.route("/", publishRoutes(deps));
   api.route("/", orgRoutes(deps));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);

@@ -16,6 +16,22 @@ export {
   seed,
 } from "./db/index.js";
 export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
+export {
+  applyProdMigration,
+  httpSmoke,
+  type ProdSmoke,
+  type PublishOptions,
+  prodUrl,
+  type SmokeInput,
+  type SmokeResult,
+} from "./publish/prod.js";
+export {
+  draftSnapshot,
+  SNAPSHOT_LIMIT,
+  type SnapshotInput,
+  type SnapshotResult,
+} from "./publish/snapshot.js";
+export { specPublishBlockers } from "./routes/publish.js";
 export { EVENT_TYPES, type EventType, INTERNAL_EVENTS, type RunEvent } from "./runs/events.js";
 export { gateResultPayload, recordGateReport } from "./runs/gates.js";
 export { RunEngine } from "./runs/queue.js";

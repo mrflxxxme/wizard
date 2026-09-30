@@ -155,7 +155,7 @@ export interface ApplyOpsArgs {
   systemId: string;
   ops: readonly unknown[];
   expectedVersion: number;
-  kind: "ops" | "style";
+  kind: "ops" | "style" | "compliance";
   author: "user" | "agent" | "system";
   authorUserId?: string | null;
   runId?: string | null;
@@ -288,6 +288,27 @@ export function contentTypeOf(path: string): string {
   if (path.endsWith(".png")) return "image/png";
   if (path.endsWith(".webp")) return "image/webp";
   return "application/octet-stream";
+}
+
+/** workflows.yaml#workflows.rollback.draft: new revision kind=revert with spec and files of toVersion, ops=[]. */
+export async function revertRevision(
+  t: TxCtx,
+  a: { systemId: string; toVersion: number; runId?: string | null; authorUserId?: string | null },
+): Promise<number> {
+  const system = await lockSystem(t, a.systemId);
+  const target = await loadRevision(t.trx, a.systemId, a.toVersion);
+  if (!target) throw new Error(`revision ${a.toVersion} not found`);
+  return insertRevision(t, {
+    system,
+    kind: "revert",
+    author: "user",
+    authorUserId: a.authorUserId ?? null,
+    runId: a.runId ?? null,
+    spec: target.spec,
+    ops: [],
+    manifestSha: target.files_manifest_sha,
+    summaryRu: `Возврат к ревизии ${a.toVersion}`,
+  });
 }
 
 /** Revision file paths: relative, no '..', no NUL, no backslash (api.yaml getFile x-path-wildcard). */

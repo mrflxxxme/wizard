@@ -194,6 +194,23 @@ export interface LocksTable {
   lease_until: Ts;
 }
 
+export interface PublicationsTable {
+  id: Generated<string>;
+  system_id: string;
+  env: Generated<string>;
+  revision: number;
+  schema_revision: number;
+  prev_publication_id: string | null;
+  migration_plan: Json;
+  bundle_key: string;
+  status: string;
+  run_id: string | null;
+  created_by: string;
+  live_at: TsNull;
+  suspended_reason: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -207,4 +224,5 @@ export interface DB {
   "platform.gate_reports": GateReportsTable;
   "platform.llm_calls": LlmCallsTable;
   "platform.locks": LocksTable;
+  "platform.publications": PublicationsTable;
 }
