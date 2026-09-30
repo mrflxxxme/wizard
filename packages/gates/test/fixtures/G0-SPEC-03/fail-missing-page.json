@@ -1,0 +1,9 @@
+{
+  "check": "G0-SPEC-03",
+  "expect": "fail",
+  "description": "файла страницы нет",
+  "files": {
+    "ui/Scanner.tsx": null
+  },
+  "match": "ui/Scanner.tsx"
+}

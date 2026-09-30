@@ -1,0 +1,9 @@
+{
+  "check": "G0-IDX-01",
+  "expect": "fail",
+  "description": "paginate с numItems 500",
+  "files": {
+    "functions/ticketAvailability.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return ctx.db.session.paginate({}, { cursor: null, numItems: 500 });\n  },\n});\n"
+  },
+  "match": "не больше 200"
+}

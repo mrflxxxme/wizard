@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "functions импортирует node:fs",
+  "files": {
+    "functions/lib/evil.ts": "import { readFileSync } from \"node:fs\";\n\nexport const x = readFileSync;\n"
+  },
+  "match": "node:fs"
+}

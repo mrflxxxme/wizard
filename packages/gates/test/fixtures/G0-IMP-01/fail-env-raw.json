@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "escape import_env_raw: import k from '../../../.env?raw'",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\nimport k from \"../../../.env?raw\";\n\nexport default function Evil() {\n  void k;\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "?raw"
+}

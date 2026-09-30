@@ -1,0 +1,9 @@
+{
+  "check": "G0-TS-01",
+  "expect": "fail",
+  "description": "обращение к несуществующему полю сущности",
+  "files": {
+    "functions/partnerQuota.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    const q = await ctx.db.partner_quota.list({ limit: 10 });\n    return q.map((x) => x.no_such_field);\n  },\n});\n"
+  },
+  "match": "TS2339"
+}

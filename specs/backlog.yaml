@@ -164,7 +164,7 @@ tasks:
     owner: qa
     parallel_group: m0-w1
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждая blocker-проверка G0 имеет положительную и отрицательную фикстуру в packages/gates/test/fixtures/<checkId>/; warning-проверки — since: M1"
@@ -181,7 +181,7 @@ tasks:
     owner: qa
     parallel_group: m0-w3
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "gates.generateSeed(spec, key) детерминирован и проходит DLP (qa.yaml#seed)"
@@ -212,7 +212,7 @@ tasks:
     owner: agents
     parallel_group: m0-w3
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "runBuild(host) на demo/forum и demo/bakery доходит до G0=passed без вмешательства (G1/QA в host — фейки)"
@@ -263,7 +263,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w1
     estimate_days: 3.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Экраны S1–S6: все test_ids из platform-screens.yaml присутствуют; Playwright против мок-API (msw или hono) и записанной ленты событий"
@@ -357,7 +357,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w2
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "tsc (tsconfig.system) на examples/bakery против generateTypes(bakery.json) проходит"
@@ -484,8 +484,8 @@ tasks:
     owner: qa
     parallel_group: m0-w2
     estimate_days: 0.5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: orchestrator  # механизм готов; ждёт ключей Cloud.ru/Z.ai для живого eval (E-ACCESS)
     acceptance:
       - "Отчёт tools/eval/results/week0.md: доля валидных AppSpec с первой попытки и скор GLM-5.3 против лучшей T0-модели на одних брифах"
       - "Параметр уровня сборки по умолчанию выставлен по D2_w0_fallback (разрыв < 10 п. п. → T0); запись в CHANGELOG без эскалации"

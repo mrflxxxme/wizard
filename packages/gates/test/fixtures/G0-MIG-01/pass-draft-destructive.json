@@ -1,0 +1,12 @@
+{
+  "check": "G0-MIG-01",
+  "expect": "pass",
+  "description": "draft: удаление поля допустимо",
+  "prevSpec": "forum",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/entities/0/fields/2"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "check": "G0-IDX-01",
+  "expect": "fail",
+  "description": "list с where и limit 5000",
+  "files": {
+    "functions/ticketAvailability.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return ctx.db.ticket_type.list({ where: { active: true }, limit: 5000 });\n  },\n});\n"
+  },
+  "match": "не больше 1000"
+}

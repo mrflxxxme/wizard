@@ -19,6 +19,9 @@ export {
 export { assertNoTokens, type Dlp, decideTier, isCallType, type PolicyDecision } from "./policy.js";
 export { transformBody } from "./providers.js";
 export {
+  BUILD_TIER_ENV,
+  buildDefaultTierFromEnv,
+  buildModelLabel,
   createRegistry,
   DEFAULT_BUILD_TIER,
   getModel,
@@ -32,6 +35,7 @@ export {
   type Registry,
   ROUTES,
   type RouteDef,
+  RU_BUILD_LABEL,
 } from "./registry.js";
 export { createRouter, type FixtureOptions, type Router, type RouterOptions, route } from "./router.js";
 export {

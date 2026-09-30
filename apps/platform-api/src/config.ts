@@ -1,5 +1,6 @@
 // Env names: specs/platform/deploy.yaml#local.env_vars (canonical list, no new names).
 import { join, resolve } from "node:path";
+import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
 import { DEFAULT_DB_URL } from "./db/index.js";
 
 export interface Config {
@@ -14,6 +15,8 @@ export interface Config {
   artifactsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
   runtimePort: number;
+  /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
+  buildDefaultTier: Tier;
 }
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -30,5 +33,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,
     ...over,
+    buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
   };
 }

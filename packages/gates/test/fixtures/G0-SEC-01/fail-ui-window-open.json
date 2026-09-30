@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: ui-window-open",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Evil() {\n  window.open(\"https://evil.example\");\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "window.open"
+}

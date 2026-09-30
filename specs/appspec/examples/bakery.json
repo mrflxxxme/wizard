@@ -14,7 +14,7 @@
       "fields": [
         {"name": "name", "label": "Название", "type": "string", "required": true, "maxLength": 120},
         {"name": "description", "label": "Описание", "type": "text"},
-        {"name": "photo", "label": "Фото", "type": "file"},
+        {"name": "photo", "label": "Фото", "type": "file", "pii": "none"},
         {"name": "active", "label": "В продаже", "type": "bool", "default": true}
       ],
       "indexes": [{"fields": ["active"]}]

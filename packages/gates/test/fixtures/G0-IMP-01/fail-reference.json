@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "/// <reference path> на файл хоста",
+  "files": {
+    "functions/lib/evil.ts": "/// <reference path=\"../../../.env\" />\nexport const y = 1;\n"
+  },
+  "match": "reference"
+}

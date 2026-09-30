@@ -1,0 +1,19 @@
+{
+  "check": "G0-SPEC-02",
+  "expect": "fail",
+  "description": "право ссылается на несуществующую роль",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/permissions",
+      "value": {
+        "role": "ghost",
+        "entity": "stream",
+        "ops": [
+          "read"
+        ]
+      }
+    }
+  ],
+  "match": "UNKNOWN_ROLE"
+}

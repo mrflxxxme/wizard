@@ -1,0 +1,14 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: fn-size",
+  "files": {
+    "functions/lib/evil.ts": {
+      "prefix": "export const big = \"",
+      "repeat": "x",
+      "count": 209920,
+      "suffix": "\";\n"
+    }
+  },
+  "match": "200 КБ"
+}

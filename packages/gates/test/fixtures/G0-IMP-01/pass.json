@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "pass",
+  "description": "только @wizard/sdk, @wizard/ui-kit и относительные импорты внутри своей области",
+  "files": {
+    "ui/components/Hint.tsx": "import { useState } from \"@wizard/sdk\";\n\nexport function Hint() {\n  const [n] = useState(1);\n  return <p>Подсказка {n}</p>;\n}\n",
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\nimport { Hint } from \"./components/Hint\";\nexport { Hint };\n\nexport default function Evil() {\n\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  }
+}

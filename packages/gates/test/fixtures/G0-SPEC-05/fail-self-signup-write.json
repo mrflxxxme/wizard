@@ -1,0 +1,16 @@
+{
+  "check": "G0-SPEC-05",
+  "expect": "fail",
+  "description": "selfSignup-роль может менять чужие записи (update без rowFilter)",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/permissions/20/ops",
+      "value": [
+        "read",
+        "update"
+      ]
+    }
+  ],
+  "match": "SELF_SIGNUP_UNSAFE"
+}

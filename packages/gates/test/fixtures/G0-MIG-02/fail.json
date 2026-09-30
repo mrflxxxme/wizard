@@ -1,0 +1,7 @@
+{
+  "check": "G0-MIG-02",
+  "expect": "fail",
+  "description": "у роли мигратора нет права CREATE в базе: DDL не применяется (42501)",
+  "dbRole": "no_create",
+  "match": "42501"
+}

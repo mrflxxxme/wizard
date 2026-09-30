@@ -1,0 +1,12 @@
+{
+  "check": "G0-SPEC-05",
+  "expect": "fail",
+  "description": "selfSignup-роль читает ПДн без rowFilter",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/permissions/21/rowFilter"
+    }
+  ],
+  "match": "SELF_SIGNUP_UNSAFE"
+}

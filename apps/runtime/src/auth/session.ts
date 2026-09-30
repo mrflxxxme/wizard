@@ -26,13 +26,30 @@ export function cookieValues(header: string | null | undefined, name: string): s
 
 export type SessionToken = { kind: "none" } | { kind: "invalid" } | { kind: "token"; token: string };
 
-/** Session token of a request: duplicated cookies are invalid (→ 401). */
-export function readSessionToken(cookieHeader: string | null | undefined, env: RuntimeEnv): SessionToken {
-  const values = cookieValues(cookieHeader, sessionCookieName(env));
+/** Preview cookie of a draft host framed by the platform (L3-15): the iframe is cross-site, Lax cookies do not go. */
+export function previewCookieName(env: RuntimeEnv): string {
+  return env.publicScheme === "https" ? "__Host-wz_prev" : "wz_prev";
+}
+
+function tokenOf(values: string[]): SessionToken {
   if (values.length === 0) return { kind: "none" };
   if (values.length > 1) return { kind: "invalid" };
   const token = values[0] as string;
   return /^[A-Za-z0-9_-]{43}$/.test(token) ? { kind: "token", token } : { kind: "none" };
+}
+
+/**
+ * Session token of a request: duplicated cookies are invalid (→ 401). The preview cookie is read only on draft
+ * hosts and only when there is no session cookie (runtime.yaml#auth.session_cookie).
+ */
+export function readSessionToken(
+  cookieHeader: string | null | undefined,
+  env: RuntimeEnv,
+  opts: { draft?: boolean } = {},
+): SessionToken {
+  const t = tokenOf(cookieValues(cookieHeader, sessionCookieName(env)));
+  if (t.kind !== "none" || !opts.draft) return t;
+  return tokenOf(cookieValues(cookieHeader, previewCookieName(env)));
 }
 
 export function sessionCookie(env: RuntimeEnv, token: string, maxAgeMs = SESSION_TTL_MS): string {
@@ -49,6 +66,28 @@ export function sessionCookie(env: RuntimeEnv, token: string, maxAgeMs = SESSION
 
 export function clearSessionCookie(env: RuntimeEnv): string {
   return sessionCookie(env, "", 0);
+}
+
+/** wz_prev / __Host-wz_prev: Secure; SameSite=None; Partitioned — draft hosts only, never prod. */
+export function previewCookie(env: RuntimeEnv, token: string, maxAgeMs = SESSION_TTL_MS): string {
+  return [
+    `${previewCookieName(env)}=${token}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=None",
+    "Partitioned",
+    `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
+  ].join("; ");
+}
+
+/** Set-Cookie values of a login: the session cookie, plus the preview cookie on a draft host. */
+export function loginCookies(env: RuntimeEnv, token: string, draft: boolean): string[] {
+  return draft ? [sessionCookie(env, token), previewCookie(env, token)] : [sessionCookie(env, token)];
+}
+
+export function logoutCookies(env: RuntimeEnv, draft: boolean): string[] {
+  return draft ? [clearSessionCookie(env), previewCookie(env, "", 0)] : [clearSessionCookie(env)];
 }
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest();
@@ -113,7 +152,7 @@ export async function resolveSubject(
   cookieHeader: string | null | undefined,
   env: RuntimeEnv,
 ): Promise<{ subject: Subject; token: string | null }> {
-  const t = readSessionToken(cookieHeader, env);
+  const t = readSessionToken(cookieHeader, env, { draft: sys.entry.env === "draft" });
   if (t.kind === "invalid") throw new WizardError("UNAUTHENTICATED");
   if (t.kind === "token") {
     const user = await sessionUser(sys, t.token);

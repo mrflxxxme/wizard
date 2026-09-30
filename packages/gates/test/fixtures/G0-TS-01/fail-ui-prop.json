@@ -1,0 +1,9 @@
+{
+  "check": "G0-TS-01",
+  "expect": "fail",
+  "description": "неизвестный проп компонента ui-kit",
+  "files": {
+    "ui/Scanner.tsx": "import { AppShell, QrScanner } from \"@wizard/ui-kit\";\n\nexport default function Scanner() {\n  return (\n    <AppShell title=\"Сканер\" bogus={1}>\n      <QrScanner integration=\"qr\" />\n    </AppShell>\n  );\n}\n"
+  },
+  "match": "ui/Scanner.tsx"
+}

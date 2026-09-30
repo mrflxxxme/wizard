@@ -468,9 +468,17 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     }
   }
 
-  function checkConsent(subject: Subject, e: Entity, consent: unknown): void {
+  /** Consent on create of a PII entity, or on update that writes a PII field (runtime.yaml#data_api). */
+  function checkConsent(
+    subject: Subject,
+    e: Entity,
+    consent: unknown,
+    written?: Record<string, unknown>,
+  ): void {
     if (subject.role === SYSTEM_ROLE || subject.isAdmin) return;
-    if (!e.fields.some((f) => f.pii !== undefined && f.pii !== "none")) return;
+    const pii = e.fields.filter((f) => f.pii !== undefined && f.pii !== "none");
+    if (pii.length === 0) return;
+    if (written && !pii.some((f) => Object.hasOwn(written, f.name))) return;
     if (!consentMatches(compliance, consent)) throw new WizardError("CONSENT_REQUIRED");
   }
 
@@ -571,7 +579,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     checkUpdateConstraint(p, fields);
     checkValues(e, fields, "update");
     if (consent.check)
-      checkConsent(who === "system" ? SYSTEM_SUBJECT : t.subject, e, consent.value ?? bodyConsent);
+      checkConsent(who === "system" ? SYSTEM_SUBJECT : t.subject, e, consent.value ?? bodyConsent, fields);
     if (!UUID_RE.test(id)) throw new WizardError("NOT_FOUND");
     const c = p.rowConstraint("update");
     if (c === false) throw new WizardError("NOT_FOUND");

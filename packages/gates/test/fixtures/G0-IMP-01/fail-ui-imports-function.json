@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "ui импортирует functions/** напрямую",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\nimport fn from \"../functions/partnerQuota\";\nvoid fn;\n\nexport default function Evil() {\n\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "напрямую"
+}

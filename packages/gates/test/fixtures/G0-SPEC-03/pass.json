@@ -1,0 +1,8 @@
+{
+  "check": "G0-SPEC-03",
+  "expect": "pass",
+  "description": "страница экспортирует компонент через const + export default",
+  "files": {
+    "ui/Scanner.tsx": "import { AppShell, QrScanner } from \"@wizard/ui-kit\";\n\nconst Scanner = () => (\n  <AppShell title=\"Сканер билетов\">\n    <QrScanner integration=\"qr\" />\n  </AppShell>\n);\n\nexport default Scanner;\n"
+  }
+}
