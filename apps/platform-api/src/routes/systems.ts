@@ -99,6 +99,15 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     if (!user.orgs.has(orgId)) throw new ApiError("FORBIDDEN", "Нет доступа к организации");
     checkOrgAccess(user, orgId, "editor", "Организация");
     const out = await tx(async (t) => {
+      // billing.yaml#plans: draft_systems limit, checked under the org credits lock (serializes parallel creates).
+      await d.billing.lock(t.trx, orgId);
+      const drafts = await t.trx
+        .selectFrom("platform.systems")
+        .select((eb) => eb.fn.countAll<string>().as("n"))
+        .where("org_id", "=", orgId)
+        .where("deleted_at", "is", null)
+        .executeTakeFirstOrThrow();
+      await d.billing.assertLimit(t.trx, orgId, "draft_systems", Number(drafts.n));
       let slug = makeSlug(b.prompt);
       for (let i = 0; i < 5; i++) {
         const taken = await t.trx
@@ -121,13 +130,17 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         })
         .returningAll()
         .executeTakeFirstOrThrow();
-      const run = await insertRun(t, {
-        orgId,
-        systemId: system.id,
-        kind: "interview_turn",
-        input: { trigger: "create", ...(b.templateId ? { templateId: b.templateId } : {}) },
-        startedBy: user.id,
-      });
+      const run = await insertRun(
+        t,
+        {
+          orgId,
+          systemId: system.id,
+          kind: "interview_turn",
+          input: { trigger: "create", ...(b.templateId ? { templateId: b.templateId } : {}) },
+          startedBy: user.id,
+        },
+        d.billing,
+      );
       await insertMessage(t, {
         systemId: system.id,
         role: "user",
@@ -225,13 +238,17 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         .set({ last_activity_at: new Date(), updated_at: new Date() })
         .where("id", "=", s.id)
         .execute();
-      const run = await insertRun(t, {
-        orgId: s.org_id,
-        systemId: s.id,
-        kind: "interview_turn",
-        input: { trigger: "message" },
-        startedBy: user.id,
-      });
+      const run = await insertRun(
+        t,
+        {
+          orgId: s.org_id,
+          systemId: s.id,
+          kind: "interview_turn",
+          input: { trigger: "message" },
+          startedBy: user.id,
+        },
+        d.billing,
+      );
       const message = await insertMessage(t, {
         systemId: s.id,
         role: "user",
@@ -310,13 +327,17 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         }
       }
       if (answers.length === 0) throw invalid("Нет ни одного ответа");
-      const run = await insertRun(t, {
-        orgId: s.org_id,
-        systemId: s.id,
-        kind: "interview_turn",
-        input: { trigger: "answers", answers },
-        startedBy: user.id,
-      });
+      const run = await insertRun(
+        t,
+        {
+          orgId: s.org_id,
+          systemId: s.id,
+          kind: "interview_turn",
+          input: { trigger: "answers", answers },
+          startedBy: user.id,
+        },
+        d.billing,
+      );
       await insertMessage(t, {
         systemId: s.id,
         role: "user",
@@ -375,17 +396,21 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         })
         .where("id", "=", s.id)
         .execute();
-      return insertRun(t, {
-        orgId: s.org_id,
-        systemId: s.id,
-        kind: "build",
-        mode: card.kind === "change" ? "change" : "create",
-        input: { card },
-        cardVersion: s.card_version,
-        estimateMilli: Math.round(expected * 1000),
-        capMilli: cap * 1000,
-        startedBy: user.id,
-      });
+      return insertRun(
+        t,
+        {
+          orgId: s.org_id,
+          systemId: s.id,
+          kind: "build",
+          mode: card.kind === "change" ? "change" : "create",
+          input: { card },
+          cardVersion: s.card_version,
+          estimateMilli: Math.round(expected * 1000),
+          capMilli: cap * 1000,
+          startedBy: user.id,
+        },
+        d.billing,
+      );
     });
     d.engine.enqueue(run);
     return c.json({ run: toRun(run, 0) }, 202);
@@ -422,16 +447,20 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         })
         .where("id", "=", s.id)
         .execute();
-      return insertRun(t, {
-        orgId: s.org_id,
-        systemId: s.id,
-        kind: "build",
-        mode: "fix",
-        input: { card },
-        cardVersion: s.card_approved_version,
-        capMilli: cap * 1000,
-        startedBy: user.id,
-      });
+      return insertRun(
+        t,
+        {
+          orgId: s.org_id,
+          systemId: s.id,
+          kind: "build",
+          mode: "fix",
+          input: { card },
+          cardVersion: s.card_approved_version,
+          capMilli: cap * 1000,
+          startedBy: user.id,
+        },
+        d.billing,
+      );
     });
     d.engine.enqueue(run);
     return c.json({ run: toRun(run, 0) }, 202);

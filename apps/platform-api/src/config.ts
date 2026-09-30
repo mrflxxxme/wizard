@@ -1,7 +1,7 @@
 // Env names: specs/platform/deploy.yaml#local.env_vars (canonical list, no new names).
 import { join, resolve } from "node:path";
 import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
-import { DEFAULT_DB_URL } from "./db/index.js";
+import { DEFAULT_DB_URL, DEFAULT_ORG_ID } from "./db/index.js";
 
 export interface Config {
   dbUrl: string;
@@ -30,6 +30,11 @@ export interface Config {
   runtimePort: number;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
   buildDefaultTier: Tier;
+  /**
+   * Orgs without plan limits whose missing credits are auto-granted in the ledger (M1-03). Default: the M0 local
+   * org in dev auth mode (the dev stand and e2e), otherwise none.
+   */
+  billingExemptOrgs: string[];
 }
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -56,6 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     runtimePort: 4100,
     ...over,
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
+    billingExemptOrgs:
+      over.billingExemptOrgs ?? ((over.authMode ?? env.WIZARD_AUTH_MODE) === "dev" ? [DEFAULT_ORG_ID] : []),
   };
 }
 
@@ -89,6 +96,8 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
         `в режиме разработки (${what}) слушать можно только 127.0.0.1 (HOST=${bindHost})`,
       );
   }
+  if (c.nodeEnv === "production" && c.billingExemptOrgs.length > 0)
+    throw new StartupError("организации без учёта кредитов запрещены при NODE_ENV=production");
   if (c.nodeEnv === "production" && c.secretsKey.length < 32)
     throw new StartupError("WIZARD_SECRETS_KEY обязателен при NODE_ENV=production");
 }

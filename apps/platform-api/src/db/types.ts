@@ -228,6 +228,23 @@ export interface InvitesTable {
   created_at: TsDef;
 }
 
+/** M1-03, billing.yaml#ledger: append-only (UPDATE/DELETE are refused by a trigger). */
+export interface CreditLedgerTable {
+  id: ColumnType<string, never, never>;
+  org_id: string;
+  kind: "grant" | "charge" | "hold" | "release" | "expire" | "refund" | "adjustment";
+  amount_milli: Big;
+  bucket: "free_welcome" | "free_monthly" | "plan_monthly" | "topup" | "adjustment" | null;
+  bucket_expires_at: TsNull;
+  run_id: string | null;
+  system_id: string | null;
+  payment_id: string | null;
+  idempotency_key: string;
+  note_ru: string | null;
+  created_by: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -244,4 +261,5 @@ export interface DB {
   "platform.auth_otps": AuthOtpsTable;
   "platform.sessions": SessionsTable;
   "platform.invites": InvitesTable;
+  "platform.credit_ledger": CreditLedgerTable;
 }
