@@ -26,12 +26,21 @@ export default defineConfig({
   webServer: {
     command: `node ${JSON.stringify(join(root, "scripts", "dev.mjs"))}`,
     cwd: root,
-    // platform-web answers last in dev.mjs order; api and runtime are polled by the specs themselves.
-    url: "http://127.0.0.1:5173/",
+    // Vite starts before platform-api listens: wait for the API through the platform-web proxy (both up);
+    // runtime is polled by the specs themselves.
+    url: "http://127.0.0.1:5173/api/v1/systems",
     reuseExistingServer: !ci,
     timeout: 120_000,
     stdout: "pipe",
     gracefulShutdown: { signal: "SIGINT", timeout: 10_000 },
-    env: { WIZARD_LLM_MODE: "fixture" },
+    // Local-only switches from .env.example: dev-login in the draft preview and functions in unsafe-local mode
+    // (runtime.yaml#auth.dev_login_M0, #functions.M0_M1); dev.mjs binds every service to 127.0.0.1.
+    env: {
+      WIZARD_LLM_MODE: "fixture",
+      WIZARD_FIXTURE: "demo/forum",
+      WIZARD_AUTH_MODE: "dev",
+      WIZARD_DEV_LOGIN: "1",
+      WIZARD_UNSAFE_LOCAL_EXEC: "1",
+    },
   },
 });

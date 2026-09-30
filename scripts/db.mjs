@@ -52,6 +52,19 @@ if (cmd === "up") {
       "-w",
       "start",
     ]);
+  ensureDb();
+  console.log(`Postgres is up: postgres://wizard@localhost:${port}/wizard`);
+} else if (cmd === "roles") {
+  // For a Postgres that is already running (CI service, shared local server): database and roles only.
+  ensureDb();
+} else if (cmd === "down") {
+  run("pg_ctl", ["-D", dataDir, "-m", "fast", "stop"]);
+} else {
+  console.error("usage: node scripts/db.mjs up|roles|down");
+  process.exit(2);
+}
+
+function ensureDb() {
   try {
     execFileSync(pgBin("createdb"), ["-h", "localhost", "-p", port, "-U", "wizard", "wizard"], {
       stdio: "ignore",
@@ -76,10 +89,4 @@ if (cmd === "up") {
       stdio: "ignore",
     },
   );
-  console.log(`Postgres is up: postgres://wizard@localhost:${port}/wizard`);
-} else if (cmd === "down") {
-  run("pg_ctl", ["-D", dataDir, "-m", "fast", "stop"]);
-} else {
-  console.error("usage: node scripts/db.mjs up|down");
-  process.exit(2);
 }

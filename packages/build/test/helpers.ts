@@ -49,6 +49,8 @@ export function uiKitStub(): string {
         (n) =>
           `export const ${n} = (p: P) => <div data-wz-component="${n}" data-wz-id={p.wzId ?? "demo:${n}:0"}>{p.children as never}</div>;`,
       ),
+    // The client entry template mounts WzProvider (ui-kit.yaml#data_binding.provider).
+    "export const WzProvider = (p: P) => p.children as never;",
     "",
   ].join("\n");
   writeFileSync(join(dir, "index.tsx"), body);
