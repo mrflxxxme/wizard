@@ -167,7 +167,9 @@
           ]
         },
         "logoFile": {
-          "type": "string"
+          "type": "string",
+          "pattern": "\\.(png|webp)$",
+          "description": "ключ файла логотипа в хранилище; только PNG или WebP (SVG запрещён, растеризация на сервере — L3-18)"
         }
       }
     },
@@ -396,7 +398,8 @@
               "telegram"
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "description": "phone_otp допустим схемой; доступность по тарифу (F4: только платные тарифы) проверяют billing и runtime, не AppSpec"
         },
         "isAdmin": {
           "type": "boolean",

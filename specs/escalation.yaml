@@ -15,7 +15,7 @@ merge_policy:                  # product.yaml#decisions.D17_agent_merge (F1)
 
 escalations:
   - id: E-ACCESS
-    when: "Нужен ключ/аккаунт/доступ: Cloud.ru (FM, PG, K8s, S3, KMS, Artifact Registry, DNS API), Z.ai API, Yandex AI Studio, ЮKassa (тестовый и боевой магазин), Telegram BotFather, SMS-провайдер РФ, почтовый провайдер (SMTP), регистратор доменов, GitHub-секреты и окружения"
+    when: "Нужен ключ/аккаунт/доступ: Cloud.ru (FM, PG, K8s, S3, KMS, Artifact Registry, DNS API), Z.ai API, Yandex AI Studio, ЮKassa (тестовый и боевой магазин), Telegram BotFather (общий бот уведомлений платформы), SMS-провайдер РФ, почтовый провайдер (SMTP), регистратор доменов, GitHub-секреты и окружения"
     ask: "Какие ключи и куда положить (только через защищённый канал: GitHub Secrets / локальный .env, никогда в чат-историю, если есть альтернатива)"
     blocking: "Только live-режим и деплой; разработка продолжается на fixture/моках"
   - id: E-MONEY
@@ -56,7 +56,7 @@ calendar:                      # действия основателя: когд
   - { what: "GitHub: админ-права, окружения staging/prod с ручным одобрением", when: "к неделе 8", for: "M1-10, M2-06", via: E-ACCESS }
   - { what: "SMS-провайдер РФ: договор и ключ; регистрация имени отправителя (1–2 недели)", when: "ключ — к M1-05 live; имя — к неделе 13", for: "M1-05 (платные тарифы, D19)", via: [E-ACCESS, E-MONEY] }
   - { what: "SMTP-провайдер РФ; SPF, DKIM, DMARC на домене систем", when: "к M1-06 live", for: "M1-06, вход по почте", via: E-ACCESS }
-  - { what: "Тестовый бот Telegram (@BotFather)", when: "к M1-06", for: "M1-06", via: E-ACCESS }
+  - { what: "Токен общего бота уведомлений платформы (@BotFather) — секрет платформы; тестовый бот для e2e", when: "до начала M1-06", for: "M1-06 (уведомления Telegram по умолчанию)", via: E-ACCESS }
   - { what: "Магазин ЮKassa платформы и одобрение автоплатежей", when: "подать к неделе 8; боевой — к M2-07", for: "M2-07", via: [E-ACCESS, E-LEGAL] }
   - { what: "Тестовый магазин ЮKassa", when: "к неделе 10", for: "M2-02", via: E-ACCESS }
   - { what: "Финальное имя и домен платформы", when: "неделя 12", for: "M4-01", via: [E-NAME, E-MONEY] }

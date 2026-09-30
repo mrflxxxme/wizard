@@ -249,10 +249,25 @@ const runtimeRole = `wz_rt_inj_${suffix}`;
 const canary = `wz_canary_${suffix}`;
 const schemas: string[] = [];
 
-async function snapshot(): Promise<{ schemas: string[]; roles: string[] }> {
-  const s = await sql`select nspname from pg_namespace order by 1`;
-  const r = await sql`select rolname from pg_roles order by 1`;
-  return { schemas: s.map((x) => x.nspname as string), roles: r.map((x) => x.rolname as string) };
+/**
+ * Everything the per-system migration role owns. After `SET LOCAL ROLE <owner>` every statement (including any
+ * injected one) runs as that role, so this is exactly what a migration can create. The database is shared with
+ * other test runs, so global snapshots of schemas/roles are not stable; ownership is.
+ */
+async function ownedByMigrationRole(): Promise<string[]> {
+  const rows = await sql`
+    select 'schema ' || n.nspname as o from pg_namespace n where n.nspowner = ${owner}::regrole
+    union all
+    select 'rel ' || n.nspname || '.' || c.relname || ' ' || c.relkind::text from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where c.relowner = ${owner}::regrole and c.relkind in ('r', 'p', 'v', 'm', 'f')
+    union all
+    select 'fn ' || n.nspname || '.' || p.proname from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace where p.proowner = ${owner}::regrole
+    union all
+    select 'role ' || r.rolname from pg_auth_members m join pg_roles r on r.oid = m.member
+      where m.roleid = ${owner}::regrole and r.rolname <> current_user`;
+  return rows.map((r) => r.o as string).sort();
 }
 
 beforeAll(async () => {
@@ -293,16 +308,18 @@ describe("hostile values on real Postgres", () => {
       const spec = hostileSpec(h);
       const schema = `app_inj_${suffix}_${round}_draft`;
       schemas.push(schema);
-      const before = await snapshot();
       const statements = toDDL(planMigration(null, spec), schema, { runtimeRole, migrationRole: owner });
       await sql.begin(async (tx) => {
         // Adversarial session: backslash escapes on. The preamble MUST switch them off again.
         await tx.unsafe("SET LOCAL standard_conforming_strings = off").simple();
         for (const s of statements) await tx.unsafe(s).simple();
       });
-      const after = await snapshot();
-      expect(after.roles).toEqual(before.roles);
-      expect([...after.schemas].sort()).toEqual([...before.schemas, schema].sort());
+      const expectedOwned = schemas.flatMap((sch) => [
+        `schema ${sch}`,
+        `fn ${sch}.wz_touch_updated_at`,
+        ...[...Object.keys(SYSTEM_TABLES), "note"].map((tbl) => `rel ${sch}.${tbl} r`),
+      ]);
+      expect(await ownedByMigrationRole()).toEqual(expectedOwned.sort());
 
       const tables = await sql`
         select c.relname, pg_get_userbyid(c.relowner) as owner from pg_class c

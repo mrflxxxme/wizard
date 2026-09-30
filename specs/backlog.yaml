@@ -515,7 +515,7 @@ tasks:
     claimed_by: null
     acceptance:
       - "Публикует только owner; вторая сборка встаёт в очередь с событием lock_waiting"
-      - "orgs.region_code и orgs.t1_restricted: префикс ИНН 90–95 или регион при регистрации из списка ограничений → t1_restricted=true; регион неизвестен и IP входа из ограниченного региона → true (fail-safe). Список регионов — E-LEGAL (L3-02)"
+      - "orgs.region_code и orgs.t1_restricted: префикс ИНН 90–95 или регион при регистрации из списка ограничений → t1_restricted=true; регион неизвестен → true (T0) до определения (fail-safe). Список регионов — E-LEGAL (L3-02)"
       - "Контрактный тест IDOR: id чужой организации (system/run/file/revision/events) → 404; cookie __Host-wizard_session без Domain (L3-17)"
 
   - id: M1-03
@@ -557,13 +557,13 @@ tasks:
     status: todo
     claimed_by: null
     acceptance:
-      - "Три метода входа работают в e2e c dev-отправителем; на Free phone_otp недоступен — G0/публикация сообщают об этом, умолчание Free — email и Telegram (F4)"
+      - "Три метода входа работают в e2e c dev-отправителем; на Free phone_otp недоступен: проверка тарифа при публикации (billing/runtime), не в схеме AppSpec; умолчание Free — email и Telegram (F4)"
       - "phone_otp: только +7 9xx; глобальные лимиты на номер по всем системам (5/ч, 10/сут); суточный бюджет SMS на org → OTP_BUDGET_EXCEEDED; code_hash = HMAC(pepper, code) (L3-25)"
       - "Telegram OIDC: state в __Host-wz_oidc (10 мин) и nonce обязательны; redirect_uri фиксирован; next — только путь (L3-26)"
       - "На https принимается только cookie __Host-wz_sess (имя по WIZARD_PUBLIC_SCHEME, не по запросу); дубли → 401 (L3-14)"
 
   - id: M1-06
-    title: "Коннекторы email и Telegram (уведомления без ПДн по умолчанию)"
+    title: "Коннекторы email и Telegram (уведомления без ПДн по умолчанию; Telegram — общий бот уведомлений платформы)"
     milestone: M1
     deps: [M0-09, M0-28]
     specs: [specs/connectors/email.yaml, specs/connectors/telegram.yaml, specs/connectors/connector-interface.md, specs/runtime/runtime.yaml]
@@ -574,6 +574,7 @@ tasks:
     claimed_by: null
     acceptance:
       - "validateSpec telegram и email (G0, connector-interface §4) блокирует шаблон с pii≠none; в M2 то же правило — G2-TG-01"
+      - "Уведомления Telegram по умолчанию идут через общий бот платформы (токен — секрет платформы, не системы); свой бот клиента нужен только для входа через Telegram (L4-13)"
       - "В заголовках письма CR/LF/NUL вырезаются, RFC 2047; from.name ≤ 60 без @ и <>; SMTP-хост после резолва ∉ RFC1918/loopback/link-local (L3-29, L3-24)"
       - "slug системы ∉ зарезервированных (www, mail, smtp, mx, mta-sts, autodiscover, autoconfig, api, admin, status, static, cdn, abuse, security, wizard); приглашения ≤ 20/сут на систему, Free — 5 (L3-29)"
 
@@ -646,6 +647,7 @@ tasks:
       - "Acceptance S10 и S6 из platform-screens.yaml (M1) в Playwright против API"
       - "Вход по email OTP с двумя согласиями и принятие приглашения — e2e"
       - "CSP платформы: default-src 'self'; frame-src только домен систем; текст от LLM рендерится только как текст или санированный markdown (L3-17)"
+      - "Если часть шагов прогона ушла на T0 по фолбэку, «Ход сборки» показывает общую строку «Часть шагов выполнена на моделях в РФ» без названий моделей (models.yaml, L4-20)"
 
   - id: M1-12
     title: "platform-web: экран сопоставления колонок при импорте таблицы"
@@ -798,7 +800,7 @@ tasks:
     claimed_by: null
     acceptance:
       - "Флаг requireFounderReview блокирует prod до одобрения"
-      - "Приглашение партнёра невозможно, пока M2-13 не done (флаг beta_real_users_allowed)"
+      - "Приглашение партнёра невозможно, пока M2-13 (beta_readiness) не done — флаг beta_readiness"
 
   - id: M2-10
     title: "Выгрузка данных системы (CSV по сущностям + spec.json, с учётом прав владельца) — отличие independence"
@@ -844,7 +846,7 @@ tasks:
       - "Отчёт eval: p80 времени сборки и время до первого превью записаны (L4-27)"
 
   - id: M2-13
-    title: "Комплаенс-готовность беты до первого реального пользователя (действия основателя, E-LEGAL)"
+    title: "beta_readiness: комплаенс-готовность беты до первого реального пользователя (действия основателя, E-LEGAL)"
     milestone: M2
     deps: []
     specs: [specs/escalation.yaml, specs/security/compliance.yaml, specs/milestones.yaml]
@@ -872,7 +874,7 @@ tasks:
     acceptance:
       - "≤ 10 МБ; MIME по сигнатуре только jpeg/png/webp/pdf, SVG и HTML → 415; раздача с Content-Disposition: attachment, CSP sandbox, nosniff, по подписанной ссылке с правами поля (L3-18)"
       - "Поле file по умолчанию pii: basic, удаляется по retention и anonymize; G2-AF-03 срабатывает на label «скан/фото паспорта»"
-      - "Логотип платформы — только png/webp, растеризация на сервере"
+      - "Логотип системы — только PNG/WebP (SVG запрещён), растеризация на сервере"
       - "До закрытия задачи G0 отклоняет поле типа file (L4-12)"
 
   # ---------------- M3: вторая волна ----------------

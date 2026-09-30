@@ -35,7 +35,7 @@ plans:
     who_pays: "SMS для входа по телефону оплачивает платформа в пределах тарифа start/business; кредиты не списываются"
     daily_budget_per_org: { start: 100, business: 300 }   # защитный лимит от SMS-pumping (решение агента, основатель может пересмотреть); превышение → OTP_BUDGET_EXCEEDED (runtime.yaml#auth.anti_abuse) и уведомление владельцу
     downgrade: "При переходе на free phone_otp отключается у всех систем org со следующего запроса (registry.features.phoneOtp=false); уже вошедшие пользователи сохраняют сессии; на странице входа остаются email и Telegram"
-    enforcement: "Источник истины — runtime: метод phone_otp доступен только при features.phoneOtp=true (db.yaml#views.deployments, runtime.yaml#auth.methods_M1.phone_otp). Оркестратор на Free не предлагает вход по телефону по умолчанию"
+    enforcement: "Публикация Free-системы с phone_otp в loginMethods → блокер PHONE_LOGIN_PLAN_REQUIRED (workflows.yaml#workflows.publish, api.yaml publishBlockers). В prod runtime отказывает в phone_otp при features.phoneOtp=false с русским сообщением (runtime.yaml#auth.methods_M1.phone_otp); draft-превью показывает метод с пометкой о тарифе. Эталонные примеры и оркестратор по умолчанию используют email_otp + telegram"
   interpretation:
     - "Утверждено основателем пакетом (F5, по рекомендации L4 Q4; может пересмотреть): пункты ниже, плюс plans.free.inactive_drafts"
     - "«N систем» тарифа = одновременно опубликованные в prod системы; черновики ограничены draft_systems"

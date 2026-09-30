@@ -108,8 +108,8 @@
   ],
   "roles": [
     {"name": "owner", "label": "Владелец", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"]},
-    {"name": "staff", "label": "Кондитер", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
-    {"name": "customer", "label": "Покупатель", "access": "login", "loginMethods": ["phone_otp", "telegram"], "selfSignup": true},
+    {"name": "staff", "label": "Кондитер", "access": "login", "loginMethods": ["email_otp", "telegram"]},
+    {"name": "customer", "label": "Покупатель", "access": "login", "loginMethods": ["email_otp", "telegram"], "selfSignup": true},
     {"name": "visitor", "label": "Посетитель", "access": "public"}
   ],
   "permissions": [
@@ -202,7 +202,7 @@
     {
       "name": "telegram",
       "connector": "telegram",
-      "config": {"botUsername": "sahar_cakes_bot", "allowPii": false},
+      "config": {"botUsername": "sahar_cakes_bot"},
       "secretRefs": ["secret://telegram_bot_token", "secret://telegram_webhook_secret"]
     }
   ],

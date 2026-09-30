@@ -8,9 +8,9 @@ path: packages/ui-kit
 tasks: [M0-08, M2-03, M3-01]
 
 scope:
-  M0: [tokens, a11y, responsive, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field]
-  M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "RecordForm: запись согласия в журнал (specs/security/compliance.yaml)", "AppShell: ссылка «Пожаловаться»"]
-  M3: ["data-wz-id → wz-map.json для «укажи и измени»", "RecordCard: пометка «заполнено ИИ»"]
+  M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
+  M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "FileField (поле type=file, runtime.yaml#files)", "AppShell.Login: согласие при первом входе; ссылка «Пожаловаться»", "CabinetLayout: раздел «Мои данные»"]
+  M3: ["использование wz-map.json в «Укажи и измени» (data-wz-id и плагин — M0, см. wz_id; L1-58)", "RecordCard: пометка «заполнено ИИ»"]
   core_8_for_M0_08: [Catalog, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, CabinetLayout, StatsReport]  # + AppShell, примитивы Button/Badge/Field, QrScanner(online)
 
 rules:
@@ -98,7 +98,7 @@ responsive:
 wz_id:
   attribute: "data-wz-id — стабильный идентификатор места использования компонента в исходнике системы"
   format: "<fileKey>:<ordinal>, где fileKey = первые 8 hex sha256(путь файла, напр. ui/pages/landing.tsx), ordinal = порядковый номер JSX-элемента ui-kit в файле (обход AST в порядке исходника)"
-  injection: "MUST: esbuild-плагин сборки систем (apps/runtime build) добавляет проп wzId каждому JSX-элементу, импортированному из @wizard/ui-kit, и пишет wz-map.json {wzId: {file, line, componentName}} рядом с draft-бандлом. Ручной проп wzId от строителя запрещён (G0)."
+  injection: "MUST: esbuild-плагин сборщика систем (владелец и сигнатура — architecture.yaml#interfaces, сборка бандла; не apps/runtime — runtime только раздаёт, L1-38) добавляет проп wzId каждому JSX-элементу, импортированному из @wizard/ui-kit, и пишет wz-map.json {wzId: {file, line, componentName}} рядом с draft-бандлом (runtime.yaml#system_loading.artifact_layout). Ручной проп wzId от строителя запрещён (G0). Тот же сборщик MUST соблюдать ограничения резолвера и loaders из runtime/sdk.md §1.1 (.env и файлы хоста в бандл не попадают, L3-13)."
   stability: "MUST: сборка одного и того же исходника даёт одинаковые wzId; правка другого файла не меняет wzId в этом файле"
   in_lists: "Элементы из .map() разделяют один wzId (правка относится к месту в коде, не к строке данных); у экземпляров добавляется data-wz-index"
   fallback: "Без плагина (demo, тесты) wzId = \"demo:<Name>:<n>\""
@@ -116,22 +116,22 @@ data_binding:
     useRecord: "useEntity(entity, id)"
     useCreate/useUpdate/useRemove: "useEntityMutation(entity).create/update/remove"
     useFn: "useQuery(name, args | 'skip')"
-    user: "useUser() → {user: {id, role, displayName, isAdmin} | null, isLoading, logout}"
-    errors: "WizardError {code, message, details} → WzError"
-    missing_in_sdk: "вход (login по методу) и передача согласия в create — см. AppShell.Login и RecordForm.consent; до появления в sdk.md ui-kit вызывает /api/auth/* и передаёт согласие по контракту runtime.yaml"
+    user: "useUser() → {user: {id, role, displayName, isAdmin} | null, isLoading, login, logout}"
+    errors: "WizardError {code, message, details} → WzError; details.fields (runtime.yaml#data_api.error_shape) → WzError.fields"
+    consent: "useCreate/useUpdate opts {consent?: true} → useEntityMutation(entity).create(doc, {consent: true}); формат тела _consent — security/compliance.yaml#system_package.consent (L1-03)"
+    auth_calls: "Формы входа AppShell.Login вызывают /api/auth/* (runtime.yaml#auth) напрямую, как и SDK: заголовок X-Wizard-Request: 1, credentials: 'same-origin' (L1-28)"
   DataSource_interface: |
     interface DataSource {
       useList<T>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
       useRecord<T>(entity: string, id: string): AsyncResult<T>;
-      useCreate(entity: string): Mutation<[values: Record<string, unknown>, opts?: { consent?: ConsentMeta }], Rec>;
-      useUpdate(entity: string): Mutation<[id: string, patch: Record<string, unknown>], Rec>;
+      useCreate(entity: string): Mutation<[values: Record<string, unknown>, opts?: { consent?: true }], Rec>;
+      useUpdate(entity: string): Mutation<[id: string, patch: Record<string, unknown>, opts?: { consent?: true }], Rec>;
       useRemove(entity: string): Mutation<[id: string], void>;
       useFn<T>(name: string, args?: unknown): AsyncResult<T>;   // query-функции (StatsReport, calcPrice)
     }
     type ListQuery = { filter?: Record<string, unknown>; sort?: { field: string; dir: 'asc' | 'desc' }; page?: number; pageSize?: number; search?: string };
     type AsyncResult<T> = { data?: T; isLoading: boolean; error?: WzError; refetch(): void };
-    type WzError = { code: string; message: string; path?: string; status?: number };  // message — ru
-    type ConsentMeta = { textHash: string; policyRoute: string; acceptedAt: string };
+    type WzError = { code: string; message: string; status: number; fields?: { field: string; code: string; message: string }[]; requestId?: string };  // message — ru; форма — runtime.yaml#data_api.error_shape (L1-29)
   testing: "@wizard/ui-kit/testing экспортирует createMemoryDataSource(spec, fixtures) — та же семантика прав (ops, hiddenFields, readonlyFields, rowFilter по $user.id) для demo и тестов"
   can: "can(op: 'read'|'create'|'update'|'delete', entity, field?) — хелпер из RoleSpec; скрывает недоступные действия. Сервер остаётся источником истины (403 → error state)."
 
@@ -161,7 +161,8 @@ components:
       - "lg: боковая навигация слева; sm/md: верхняя панель + кнопка «Меню» → drawer (фокус-ловушка, Esc)"
       - "Активный пункт по location.pathname (aria-current=page); маршруты с параметрами (/:id) в nav не попадают"
       - "Меню пользователя: displayName (телефон маскирован +7 ••• ••• 45 10), роль (label), «Выйти». Гость и есть роли access=login → кнопка «Войти»"
-      - "Вход: маршрут /login рендерит AppShell.Login — методы = объединение loginMethods ролей с access=login: phone_otp (телефон → код), email_otp, telegram (виджет Telegram Login). Запросы — /api/auth/* (runtime.yaml), после успеха — refetch useUser()"
+      - "Вход: маршрут /login рендерит AppShell.Login (runtime-шаблон) — методы = RoleSpec.loginMethods (объединение loginMethods ролей с access=login, уже отфильтрованное по тарифу): phone_otp (телефон → код; в draft Free-org — с пометкой «Вход по телефону доступен на тарифах Старт и Бизнес», F4), email_otp, telegram — OIDC-редирект на GET /api/auth/telegram/start (runtime.yaml#auth.methods_M1.telegram), без виджета Telegram Login. Запросы — /api/auth/* (data_binding.sdk_mapping.auth_calls), после успеха — refetch useUser()"
+      - "M2 (security/compliance.yaml#system_package.consent.login): при первом входе нового пользователя — ConsentCheckbox и ссылка на политику; без отметки вход не отправляется"
       - "Подвал: ссылка «Политика обработки персональных данных» → compliance.policyPage, если в спеке есть поле pii≠none; M2: ссылка «Пожаловаться» на форму жалоб платформы"
       - "Страница, недоступная роли: гость → /login?next=…, авторизованный → «Нет доступа»"
     test_ids: [wz-appshell, wz-appshell-nav, wz-appshell-menu-toggle, wz-appshell-user, wz-appshell-login, wz-appshell-logout, wz-login-method-<method>, wz-appshell-policy-link]
@@ -235,26 +236,25 @@ components:
       date|datetime: "input type=date / datetime-local"
       enum: "≤5 значений → radiogroup, иначе select"
       ref: "select с поиском по записям целевой сущности (useList, search), подпись — первое string-поле"
-      file: "input file → загрузка через sdk; превью имени"
+      file: "M2: FileField (POST /api/files, runtime.yaml#files); до M2 поле file в спеке блокирует G0 — RecordForm его не рендерит"
       json: "не рендерится в формах (только код)"
       email|phone|url: "input type=email/tel/url; phone — маска +7 (___) ___-__-__, хранение E.164"
       qr_token: "никогда не редактируется"
     behaviour:
-      - "Валидация на клиенте (required, min/max, maxLength, форматы email/phone/url) до отправки; ошибки сервера {path} маппятся на поле, остальные — в role=alert над кнопкой"
+      - "Валидация на клиенте (required, min/max, maxLength, форматы email/phone/url) до отправки; ошибки сервера details.fields[].field (WzError.fields) маппятся на поле, остальные — в role=alert над кнопкой"
       - "Кнопка отправки: loading во время мутации, двойная отправка невозможна"
       - "edit: грузит запись useRecord; readonlyFields — disabled с пояснением «Только просмотр»"
     consent:
-      when: "mode=create и среди отправляемых полей (включая hidden) есть поле с pii≠none"
+      when: "среди отправляемых полей (включая hidden) есть поле с pii≠none и роль без isAdmin (create и update)"
       rules:
-        - "MUST: отдельный чекбокс, не связанный с другими согласиями (оферта, рассылки), НЕ отмечен по умолчанию, не отмечается программно"
-        - "MUST: текст = compliance.consentText (или шаблон из specs/security/compliance.yaml) и ссылка «политикой обработки персональных данных» → compliance.policyPage (target=_blank rel=noopener)"
+        - "MUST: RecordForm рендерит ConsentCheckbox (testId recordform) перед кнопкой отправки; правила чекбокса — компонент ConsentCheckbox"
         - "MUST: без отметки отправка не выполняется: ошибка «Нужно согласие на обработку персональных данных» у чекбокса (aria-invalid)"
-        - "MUST: create передаёт opts.consent = {textHash: sha256(текст согласия), policyRoute, acceptedAt}; хранение — runtime/compliance (M2)"
-    test_ids: [wz-recordform, wz-field-<name>, wz-recordform-consent, wz-recordform-policy-link, wz-recordform-submit, wz-recordform-error]
+        - "MUST: create/update вызываются с opts {consent: true}; тело _consent формирует SDK (security/compliance.yaml#system_package.consent), журнал — runtime (M2)"
+    test_ids: [wz-recordform, wz-field-<name>, wz-consent--recordform, wz-recordform-submit, wz-recordform-error]
     acceptance:
-      - "Playwright (demo «форум», сущность registrations с phone pii=basic): чекбокс согласия виден и не отмечен; submit без него → ошибка и 0 вызовов create; с ним → create с consent.textHash"
+      - "Playwright (demo «форум», сущность registrations с phone pii=basic): wz-consent виден и не отмечен; submit без него → ошибка и 0 вызовов create; с ним → create с opts.consent = true"
       - "Сущность без pii-полей → чекбокса нет"
-      - "Сервер вернул {path:'/email', message} → ошибка под полем email"
+      - "Сервер вернул {error: {code: VALIDATION_FAILED, details: {fields: [{field: 'email', code, message}]}}} → ошибка под полем email"
 
   - name: DataTable
     milestone: M0
@@ -366,7 +366,7 @@ components:
       - "Результат занимает экран ≥ 1.2 с: ok — «Проходите» + детали (тип билета, зона); duplicate — «Уже прошёл» + время первой отметки; invalid — «Билет недействителен»; queued — «Принято офлайн». Иконка + текст + vibrate([80]) + role=alert"
       - "Повторное считывание того же кода в течение 3 с игнорируется (дребезг)"
       - "Счётчики за смену: Прошли / Повторных / Отклонено"
-      - "M2 офлайн: при наличии сети скачивает манифест билетов чекпоинта (id + хеш токена) в IndexedDB; без сети сверяет подпись/хеш локально, отметки кладёт в очередь; при online — отправляет очередь пачками, сервер решает дубли (первая отметка выигрывает), статусы в UI обновляются"
+      - "M2 офлайн: при наличии сети скачивает манифест билетов чекпоинта (qr.yaml#offline.package: h, id, d, s) в IndexedDB; без сети подпись НЕ проверяет (ключа на устройстве нет), сверяет только h = sha256(rand) с манифестом (connectors/qr.yaml#offline.scan), отметки кладёт в очередь; при online — отправляет очередь пачками (с X-Wizard-Request: 1), сервер решает дубли (первая отметка выигрывает), статусы в UI обновляются"
       - "Строка состояния: «● Нет сети · N билетов в памяти · M отметок ждут синхронизации»"
     test_ids: [wz-qrscanner, wz-qrscanner-video, wz-qrscanner-result, wz-qrscanner-status, wz-qrscanner-manual, wz-qrscanner-counters]
     acceptance:
@@ -384,7 +384,7 @@ components:
     behaviour:
       - "Для роли с access=login; гость → вход. Разделы — вкладки (lg: слева, sm: сверху), активный в URL (#section)"
       - "Типовые разделы собирает строитель: «Мои билеты/заказы» (DataTable/QrTicket с rowFilter по ownerField), «Профиль» (RecordForm edit)"
-      - "MUST (M2): раздел «Мои данные»: ссылка на политику, отзыв согласия и запрос удаления данных (механика — specs/security/compliance.yaml)"
+      - "MUST (M2): раздел «Мои данные»: ссылка на политику, ссылка на /_wizard/privacy (отзыв согласия и запрос удаления; механика — specs/security/compliance.yaml#system_package.consent.withdrawal)"
     test_ids: [wz-cabinet, wz-cabinet-tab-<id>, wz-cabinet-mydata]
     acceptance: ["Playwright (demo «форум»): участник видит только свой билет (rowFilter), вкладки переключаются клавиатурой"]
 
@@ -406,6 +406,36 @@ components:
       - "Агрегаты считаются на сервере (query-функция), не на клиенте по всем строкам"
     test_ids: [wz-stats, wz-stats-kpi-<id>, wz-stats-bar]
     acceptance: ["vitest+DOM: 4 KPI и 3 бара из фикстуры; money 4100000 → «4,1 млн ₽»"]
+
+  - name: ConsentCheckbox
+    milestone: M0
+    props: |
+      interface ConsentCheckboxProps extends WzBase {
+        checked: boolean;
+        onChange(checked: boolean): void;
+        error?: string;                        // по умолчанию «Нужно согласие на обработку персональных данных»
+      }
+    behaviour:
+      - "Канонический компонент согласия (security/compliance.yaml#system_package.consent.ui; L1-03). Текст — RoleSpec.compliance.consentText, ссылка «политикой обработки персональных данных» → compliance.policyPage (target=_blank rel=noopener)"
+      - "MUST: отдельный чекбокс, не связанный с другими согласиями (оферта, рассылки), НЕ отмечен по умолчанию, не отмечается программно (checked меняется только пользовательским событием)"
+      - "Используется RecordForm, AppShell.Login (M2) и собственными формами строителя, которые вызывают create/update сущности с ПДн или функцию с collectsPii (G2 проверяет его наличие статически)"
+    test_ids: [wz-consent, wz-consent-policy-link]
+    acceptance: ["vitest+DOM: по умолчанию не отмечен; клик вызывает onChange(true); текст и ссылка берутся из RoleSpec; error → aria-invalid и aria-describedby"]
+
+  - name: FileField
+    milestone: M2
+    props: |
+      interface FileFieldProps extends WzBase {
+        name: string; label: string; value: string | null;   // fileId
+        onChange(fileId: string | null): void;
+        accept?: ('image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf')[];
+        required?: boolean; error?: string;
+      }
+    behaviour:
+      - "Загрузка — POST /api/files (runtime.yaml#files) с X-Wizard-Request: 1; ≤ 10 МБ; только типы из accept (по умолчанию все из allowlist runtime); 415 → «Такой тип файла загрузить нельзя»"
+      - "Показывает имя и размер файла; превью не рендерит (файлы раздаются как attachment)"
+    test_ids: [wz-filefield-<name>]
+    acceptance: ["Playwright (M2): PDF загружается и сохраняется в записи; SVG → ошибка у поля"]
 
   - name: Button
     milestone: M0

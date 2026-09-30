@@ -111,7 +111,8 @@ workflows:
     preconditions:
       - "revision ≤ draft_revision и revisions.g0_passed = true"
       - "M1: operatorName и operatorContact заданы, если в спеке есть поле pii ≠ none (compliance.yaml#system_package.operator; иначе OPERATOR_NAME_REQUIRED / OPERATOR_CONTACT_REQUIRED)"
-      - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review"
+      - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review; с M2 — compliance.operatorAddress (OPERATOR_ADDRESS_REQUIRED)"
+      - "F4: phone_otp в loginMethods какой-либо роли у org с plan=free → PHONE_LOGIN_PLAN_REQUIRED («Вход по телефону доступен на тарифах Старт и Бизнес»); billing.yaml#plans.*.login_methods"
     steps:
       - { name: acquire_lock, kind: tx }
       - { name: plan_migration, kind: tx, does: "planMigration(spec(schema_hwm_revision) или пустая, spec(revision)); publications status=planned" }

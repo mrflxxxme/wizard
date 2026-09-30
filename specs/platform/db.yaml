@@ -67,7 +67,7 @@ tables:
       passport_collection_allowed: "boolean not null default false"  # M2, abuse.yaml#patterns.gov_ids
       suspended_at: "timestamptz"                         # M2, abuse
       region_code: "text check (region_code ~ '^[0-9]{2}$')"   # M1: код субъекта РФ (ИНН, регион при регистрации, офлайн-GeoIP в РФ); L3-02
-      t1_restricted: "boolean not null default false"      # M1: true → все вызовы org только T0 (route_reason policy_region_restricted); регион неизвестен и IP из регионов с ограничением Z.ai → true (fail-safe); список регионов — E-LEGAL
+      t1_restricted: "boolean not null default false"      # M1: true → все вызовы org только T0 (route_reason policy_region_restricted); region_code is null (регион неизвестен) → тоже только T0 (fail-safe); IP входа из регионов с ограничением Z.ai → true; список регионов — E-LEGAL
 
   memberships:
     milestone: M0
@@ -449,7 +449,7 @@ tables:
       system_id: "uuid not null"
       env: "text not null"
       entity: "text not null"
-      mode: "text not null check (mode in ('delete','anonymize','subject_request','draft_purged','system_deleted','user_deleted'))"
+      mode: "text not null check (mode in ('delete','anonymize','subject_request','draft_purged','system_deleted','user_deleted','consent_revoked'))"
       cutoff: "timestamptz"
       rows_affected: "integer not null"
       run_id: "uuid"
@@ -488,4 +488,4 @@ views:
       spec_hash: sha256(revisions.spec), bundle_key, published_at: revisions.created_at, suspended, features};
       prod (M1+): publications со status = 'live' или 'suspended' → то же с env = 'prod', published_at = live_at.
       suspended = systems.suspended_at is not null or publications.status = 'suspended' (runtime отдаёт 451, L1-32; abuse.yaml#takedown).
-      features = {phoneOtp: orgs.plan in ('start','business')} — вход по телефону только на платных тарифах (F4, billing.yaml#plans)
+      features = {phoneOtp: orgs.plan in ('start','business')} — вход по телефону в prod только на платных тарифах (F4, billing.yaml#plans; в draft метод виден с пометкой — runtime.yaml#auth.methods_M1.phone_otp)

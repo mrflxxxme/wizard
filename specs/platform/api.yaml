@@ -60,7 +60,7 @@ paths:
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
                   activeRunId: {type: [string, 'null'], format: uuid}
-                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
         '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/messages:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -233,7 +233,7 @@ paths:
       summary: Данные оператора ПДн (op set_compliance, без кредитов); security/compliance.yaml. Экран — S10 «Персональные данные»
       requestBody:
         required: true
-        content: {application/json: {schema: {type: object, required: [expectedVersion, operatorName, operatorContact], additionalProperties: false, properties: {expectedVersion: {type: integer}, operatorName: {type: string, minLength: 3, maxLength: 300}, operatorContact: {type: string, format: email}, operatorInn: {type: string, pattern: '^[0-9]{10}([0-9]{2})?$'}, policyPage: {type: string, pattern: '^/[a-z0-9/-]*$', description: 'Маршрут страницы политики (по умолчанию /privacy)'}, consentText: {type: string, maxLength: 4000}}}}}
+        content: {application/json: {schema: {type: object, required: [expectedVersion, operatorName, operatorContact], additionalProperties: false, properties: {expectedVersion: {type: integer}, operatorName: {type: string, minLength: 3, maxLength: 300}, operatorContact: {type: string, format: email}, operatorAddress: {type: string, maxLength: 300, description: 'M2: адрес оператора для политики (обязателен до prod с M2 — compliance.yaml#system_package.operator)'}, operatorInn: {type: string, pattern: '^[0-9]{10}([0-9]{2})?$'}, policyPage: {type: string, pattern: '^/[a-z0-9/-]*$', description: 'Маршрут страницы политики (по умолчанию /privacy)'}, consentText: {type: string, maxLength: 4000}}}}}
       responses: {'200': {description: Ревизия создана, content: {application/json: {schema: {type: object, properties: {revision: {$ref: '#/components/schemas/RevisionSummary'}}}}}}, '412': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
   /systems/{id}/preview-url:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -331,7 +331,7 @@ paths:
       x-roles: [owner]
       summary: 'Журнал автоудаления и обезличивания ПДн (db.yaml#deletion_log; compliance.yaml#system_package.retention.deletion_log). Только счётчики'
       parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/cursor'}]
-      responses: {'200': {description: Записи журнала, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [env, entity, mode, rowsAffected, createdAt], properties: {env: {enum: [draft, prod]}, entity: {type: string}, mode: {enum: [delete, anonymize, subject_request, draft_purged, system_deleted, user_deleted]}, cutoff: {type: [string, 'null'], format: date-time}, rowsAffected: {type: integer}, createdAt: {type: string, format: date-time}}}}, nextCursor: {type: [string, 'null']}}}}}}}
+      responses: {'200': {description: Записи журнала, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [env, entity, mode, rowsAffected, createdAt], properties: {env: {enum: [draft, prod]}, entity: {type: string}, mode: {enum: [delete, anonymize, subject_request, draft_purged, system_deleted, user_deleted, consent_revoked]}, cutoff: {type: [string, 'null'], format: date-time}, rowsAffected: {type: integer}, createdAt: {type: string, format: date-time}}}}, nextCursor: {type: [string, 'null']}}}}}}}
   /systems/{id}/data/{entity}:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: entity, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}}]
     get:
@@ -604,6 +604,8 @@ components:
             LAST_OWNER: 422
             OPERATOR_NAME_REQUIRED: 422
             OPERATOR_CONTACT_REQUIRED: 422
+            OPERATOR_ADDRESS_REQUIRED: 422
+            PHONE_LOGIN_PLAN_REQUIRED: 422
             CARD_NOT_RU: 422
             SYSTEM_SUSPENDED: 422
             GATES_FAILED: 422

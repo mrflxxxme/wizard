@@ -81,7 +81,10 @@ export const themeSchema = z.strictObject({
   radius: z.literal([0, 4, 8, 12, 16]).optional(),
   density: z.enum(["compact", "regular"]).optional(),
   mode: z.enum(["light", "dark", "auto"]).optional(),
-  logoFile: z.string().optional(),
+  logoFile: z
+    .string()
+    .regex(/\.(png|webp)$/)
+    .optional(),
 });
 
 export const fieldTypeSchema = z.enum(FIELD_TYPES);

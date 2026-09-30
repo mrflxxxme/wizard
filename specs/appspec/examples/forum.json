@@ -158,8 +158,8 @@
     {"name": "moderator", "label": "Модератор", "access": "login", "loginMethods": ["email_otp", "telegram"]},
     {"name": "speaker", "label": "Спикер", "access": "login", "loginMethods": ["email_otp", "telegram"], "selfSignup": true},
     {"name": "partner", "label": "Партнёр", "access": "login", "loginMethods": ["email_otp"]},
-    {"name": "participant", "label": "Участник", "access": "login", "loginMethods": ["phone_otp", "email_otp", "telegram"], "selfSignup": true},
-    {"name": "volunteer", "label": "Волонтёр на входе", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
+    {"name": "participant", "label": "Участник", "access": "login", "loginMethods": ["email_otp", "telegram"], "selfSignup": true},
+    {"name": "volunteer", "label": "Волонтёр на входе", "access": "login", "loginMethods": ["email_otp", "telegram"]},
     {"name": "visitor", "label": "Посетитель", "access": "public"}
   ],
   "permissions": [
@@ -254,7 +254,7 @@
     {
       "name": "telegram",
       "connector": "telegram",
-      "config": {"botUsername": "north_retail_forum_bot", "allowPii": false},
+      "config": {"botUsername": "north_retail_forum_bot"},
       "secretRefs": ["secret://telegram_bot_token", "secret://telegram_webhook_secret"]
     },
     {
