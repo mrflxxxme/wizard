@@ -16,6 +16,8 @@ import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import { ImportStore } from "../imports/storage.js";
+import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
 import type { PublishOptions } from "../publish/prod.js";
 import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
@@ -34,6 +36,8 @@ import { appendEvent, type EventBus, type EventType, type TxCtx, withTx } from "
 import { recordGateReport } from "./gates.js";
 import {
   type BuildHost,
+  type BuildOutcome,
+  type BuildParams,
   type GateContext,
   type GateLevel,
   type GateReport,
@@ -96,7 +100,7 @@ interface Waiter {
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build" | "publish" | "rollback";
+  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -116,7 +120,13 @@ export async function insertRun(t: TxCtx, r: NewRun): Promise<Run> {
       input: json(r.input ?? {}),
       card_version: r.cardVersion ?? null,
       credits_estimate_milli: r.estimateMilli ?? null,
-      credits_cap_milli: r.capMilli ?? (r.kind === "interview_turn" ? INTERVIEW_CAP_MILLI : null),
+      credits_cap_milli:
+        r.capMilli ??
+        (r.kind === "interview_turn"
+          ? INTERVIEW_CAP_MILLI
+          : r.kind === "import_table"
+            ? IMPORT_CAP_MILLI
+            : null),
       started_by: r.startedBy,
     })
     .returningAll()
@@ -157,6 +167,7 @@ export class RunEngine {
   readonly #waiters = new Map<string, Waiter>();
   readonly #lockWaiters = new Map<string, string[]>();
   readonly #circuit = new CircuitBreaker();
+  #imports: ImportStore | undefined;
   #closed = false;
 
   constructor(deps: EngineDeps) {
@@ -275,6 +286,7 @@ export class RunEngine {
       if (run.kind === "interview_turn") result = await this.#interview(run, ac);
       else if (run.kind === "build") result = await this.#build(run, ac);
       else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(run, ac);
+      else if (run.kind === "import_table") result = await this.#importTable(run, ac);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
       if (!(e instanceof RunFailure || e instanceof RunCancelled || e instanceof LlmError))
@@ -965,6 +977,20 @@ export class RunEngine {
   }
 
   async #build(run: Run, ac: AbortController): Promise<Result> {
+    if (run.mode === "change") await this.#draftSnapshot(run, ac);
+    const input = run.input as { card?: Record<string, unknown> };
+    const out = await this.#runBuilder(run, ac, {
+      card: input.card ?? {},
+      cap: Number(run.credits_cap_milli ?? 0) / 1000,
+      mode: (run.mode ?? "create") as "create" | "change" | "fix",
+    });
+    if (out?.status === "cancelled")
+      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
+    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+  }
+
+  /** The build executor over this run's durable BuildHost (build runs; import_table schema_ops). */
+  async #runBuilder(run: Run, ac: AbortController, params: BuildParams): Promise<BuildOutcome | undefined> {
     const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
     const base = this.#stepHost(run, ac, needsInput);
     const systemId = run.system_id as string;
@@ -1059,17 +1085,37 @@ export class RunEngine {
       runGates: (level, overrides) =>
         base.runStep(`gate_${level}`, () => this.#gate(run, ac, level, commitFiles, filesAt, overrides)),
     };
-    if (run.mode === "change") await this.#draftSnapshot(run, ac);
-    const input = run.input as { card?: Record<string, unknown> };
-    const out = await this.#d.executors.build(host, {
-      card: input.card ?? {},
-      cap: Number(run.credits_cap_milli ?? 0) / 1000,
-      mode: (run.mode ?? "create") as "create" | "change" | "fix",
-    });
+    const out = await this.#d.executors.build(host, params);
     await commitFiles();
-    if (out?.status === "cancelled")
-      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
-    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+    return out;
+  }
+
+  /** import_table (workflows.yaml#workflows.import_table): steps live in ../imports/workflow.ts. */
+  async #importTable(run: Run, ac: AbortController): Promise<Result> {
+    const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
+    const base = this.#stepHost(run, ac, needsInput);
+    this.#imports ??= new ImportStore(this.#d.config.importsDir, this.#d.config.secretsKey);
+    const out = await runImportTable({
+      run: {
+        id: run.id,
+        orgId: run.org_id,
+        systemId: run.system_id as string,
+        input: run.input as unknown as ImportRunInput,
+      },
+      db: this.#db,
+      pg: this.#d.pg,
+      store: this.#imports,
+      ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      route: base.route,
+      needsInput,
+      buildChange: async (card, cap) => {
+        const r = await this.#runBuilder(run, ac, { card, cap, mode: "change" });
+        if (r?.status === "cancelled") throw new RunCancelled(r.summary_ru ?? "Импорт остановлен");
+        return r ?? {};
+      },
+    });
+    return { status: "succeeded", summary_ru: out.summary_ru, resultRevision: out.resultRevision };
   }
 
   /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */

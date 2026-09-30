@@ -4,6 +4,7 @@ import postgres from "postgres";
 import * as m0001 from "../../migrations/0001_m0.js";
 import * as m0002 from "../../migrations/0002_m1_accounts.js";
 import * as m0003 from "../../migrations/0003_m1_publications.js";
+import * as m0004 from "../../migrations/0004_m1_imports.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -35,6 +36,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0001_m0": m0001,
   "0002_m1_accounts": m0002,
   "0003_m1_publications": m0003,
+  "0004_m1_imports": m0004,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

@@ -19,7 +19,7 @@ export const LOAD_BATCH = 1000;
 const MAX_PARAMS = 60_000;
 
 /** Field types a table cell can be loaded into (ref/file/json/qr_token are not importable). */
-const IMPORTABLE = new Set([
+export const IMPORTABLE: ReadonlySet<string> = new Set([
   "string",
   "text",
   "int",

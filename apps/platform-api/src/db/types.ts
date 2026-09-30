@@ -245,6 +245,19 @@ export interface PublicationsTable {
   created_at: TsDef;
 }
 
+export interface ImportsTable {
+  id: Generated<string>;
+  system_id: string;
+  source_sha: string;
+  profile: Json | null;
+  mapping: Json | null;
+  status: string;
+  rows_imported: number | null;
+  expires_at: Ts;
+  created_by: string;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -262,4 +275,5 @@ export interface DB {
   "platform.auth_otps": AuthOtpsTable;
   "platform.sessions": SessionsTable;
   "platform.invites": InvitesTable;
+  "platform.imports": ImportsTable;
 }

@@ -142,6 +142,34 @@ const ROLE_CTX =
   /(?:(?<!\p{L})(?:(?:фин|ген|тех|зам|арт|коммерческ\p{L}*[ \xa0]+|исполнительн\p{L}*[ \xa0]+)?директор|менеджер|помощни[кц]|ассистент|бухгалтер|главбух|руководител|начальни|заместител|координатор|администратор|секретар|юрист|инженер|разработчи|программист|дизайнер|аналитик|специалист|консультант|куратор|организатор|владел|основател|сооснователь|сотрудни|коллег|партн[её]р|представител|закупщи|снабжен|кладовщи|продав|кассир|курьер|водител|спикер|докладчи|тренер|преподавател|врач|клиент|заказчи|подрядчи|собственни|президент|председател|участни|кандидат|соискател|рекрутер|получател|отправител|ответственн|контактн\p{L}*[ \xa0]+лиц|контакт)\p{L}*|(?<!\p{L})(?:зовут|звать|имя|гост(?:ь|я|ю|ем|и|ей))|(?<![\p{L}-])(?:ceo|cto|cfo|coo|cmo|cio|founder|co-founder|cofounder|manager|director|assistant|accountant|engineer|developer|designer|analyst|consultant|coordinator|officer|lead|head|owner|contact|speaker|chairman|president|secretary|recruiter|supervisor|vp|named|name is|dear|mr|mrs|ms|dr|prof))\.?(?:[ \xa0]*[:—–-])?[ \xa0]+$/iu;
 const ALL_CAPS = /^[\p{Lu}-]+$/u;
 
+// M1-07: lone surname in the genitive (or feminine nominative) after a head word — sheet names and headers like
+// «Клиенты Рахимова», «Заказы Ивановой». -ова/-ева by shape; -ина/-ына, -овой/-евой and -ского/-ской by dictionary only.
+const LONE_GEN_OV = /^(\p{L}{3,}?)(?:ов|ев)а$/u;
+const LONE_GEN_DICT = /^\p{L}{2,}(?:(?:ов|ев|ин|ын)(?:а|ой)|(?:ск|цк)(?:ого|ой))$/u;
+const LONE_HEAD_BEFORE = /(?<!\p{L})(\p{Script=Cyrillic}{2,})[ \xa0\t_]{1,3}$/u;
+// Genitives of cities and common nouns/adjectives that decline like a surname in -ова/-ева.
+const LONE_STOP = new Set(
+  (
+    "ростова саратова кирова пскова тамбова азова серпухова дмитрова реутова чехова " +
+    "острова покрова основа корова подкова обнова готова здорова сурова дешева дерева посева нагрева прогрева " +
+    "разогрева перегрева обогрева припева напева норова"
+  ).split(" "),
+);
+const surnameBase = (key: string): string =>
+  key.replace(/(?:ск|цк)(?:ого|ой)$/, (m) => `${m.slice(0, 2)}ий`).replace(/(?:а|ой)$/, "");
+
+function loneGenitiveSurname(w: string): boolean {
+  if (!CYR.test(w) || w.includes("-")) return false;
+  const key = nameKey(w);
+  const { names, surnames, strongSurnames } = nameDict();
+  if (names.has(key) || LONE_STOP.has(key)) return false;
+  // Weak dictionary surnames are common words (Королева, Мороза).
+  if (surnames.has(key) && !strongSurnames.has(key)) return false;
+  if (LONE_GEN_DICT.test(key) && (strongSurnames.has(key) || strongSurnames.has(surnameBase(key))))
+    return true;
+  return LONE_GEN_OV.test(key) && !NOUN_LIKE_CYR.test(key);
+}
+
 interface Tok {
   s: number;
   e: number;
@@ -340,6 +368,22 @@ export function detectNames(text: string): Finding[] {
       ) {
         spans.push({ s: tok.s, e: tok.e + ia[0].length, c: "high", l: LAT.test(sur) });
       }
+    }
+    // M1-07: «Клиенты Рахимова», «Заказы Ивановой» (not «Проспект Сахарова», «из Ростова», «Премия Кандинского»).
+    {
+      const w = capitalized(tok.t);
+      const before = beforeTok(i);
+      const head = LONE_HEAD_BEFORE.exec(before)?.[1];
+      if (
+        w &&
+        head &&
+        loneGenitiveSurname(w) &&
+        !PLACE_ORG_STEM.test(nameKey(head)) &&
+        !STREET_BEFORE.test(before) &&
+        !NAMED_AFTER_BEFORE.test(before) &&
+        !LOCATION_PREP.test(before)
+      )
+        spans.push({ s: tok.s, e: tok.e, c: "medium", l: false });
     }
     // Dictionary first name as the anchor; otherwise a strong dictionary surname.
     const key = nameKey(tok.t);
