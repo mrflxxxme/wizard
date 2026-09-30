@@ -35,9 +35,9 @@ function expected(name: string, t: TableDef) {
 }
 
 const m0 = Object.entries(dbYaml.tables).filter(([, t]) => t.milestone === "M0");
-// M1 tables created so far (M1-02 accounts); the column check covers them as well.
-const M1_ACCOUNTS = ["auth_otps", "sessions", "invites"];
-const checked = [...m0, ...Object.entries(dbYaml.tables).filter(([n]) => M1_ACCOUNTS.includes(n))];
+// M1 tables created so far (M1-02 accounts, M1-04 publications); the column check covers them as well.
+const M1_TABLES = ["auth_otps", "sessions", "invites", "publications"];
+const checked = [...m0, ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n))];
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
 let h: DbHandle;
@@ -73,7 +73,7 @@ describe("migrations vs db.yaml", () => {
     });
   }
 
-  test("every M0 and M1-02 table exists; no tables outside db.yaml (besides the migrator's own)", async () => {
+  test("every M0 and M1-02/M1-04 table exists; no tables outside db.yaml (besides the migrator's own)", async () => {
     const rows = await h.pg<{ table_name: string }[]>`
       select table_name from information_schema.tables where table_schema = 'platform' and table_type = 'BASE TABLE'`;
     const names = rows.map((r) => r.table_name).filter((n) => !n.startsWith("kysely_"));

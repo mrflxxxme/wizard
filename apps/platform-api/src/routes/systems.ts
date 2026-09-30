@@ -8,6 +8,7 @@ import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
+import { publishBlockers } from "../publish/blockers.js";
 import { withTx } from "../runs/events.js";
 import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
@@ -139,7 +140,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       return { system, run };
     });
     d.engine.enqueue(out.run);
-    return c.json({ system: toSystem(out.system), run: toRun(out.run, 0) }, 201);
+    return c.json({ system: toSystem(out.system, d.config.runtimePort), run: toRun(out.run, 0) }, 201);
   });
 
   // listSystems
@@ -196,12 +197,12 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       .orderBy("created_at", "desc")
       .executeTakeFirst();
     return c.json({
-      system: toSystem(s),
+      system: toSystem(s, d.config.runtimePort),
       card: s.card ?? null,
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),
       activeRunId: active?.id ?? null,
-      publishBlockers: [],
+      publishBlockers: await publishBlockers(d.db, c.get("user"), s),
     });
   });
 

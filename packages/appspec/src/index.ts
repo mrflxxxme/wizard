@@ -1,5 +1,7 @@
 export const PACKAGE = "@wizard/appspec";
 
+/** diffSpecs(prev|null, next) → human changes {kind, text_ru, destructive?} for getRevisionDiff (M1-04). */
+export { diffSpecs, type SpecChange, type SpecChangeKind } from "./diff.js";
 export { ERROR_CODES, type OpsError, type OpsErrorCode, pointer } from "./errors.js";
 /** Index model for `where`/`getBy` (sdk.md §2.4): usable indexes, unique fields, where → index resolution. */
 export { entityIndexes, isRangeValue, resolveIndex, SYSTEM_FIELD_NAMES, uniqueFields } from "./indexes.js";
