@@ -197,12 +197,12 @@ events:
     ops_applied:     { required: [revision, opsCount, summary_ru], properties: { revision: integer, opsCount: integer, opTypes: "string[]", summary_ru: "string[] — человеческий diff" } }
     file_written:    { required: [path, action], properties: { path: string, action: "create|update|delete", sha256: string, size: integer, revision: "integer|null" } }
     gate_started:    { required: [level], properties: { level: "G0|G1|G2", revision: integer } }
-    gate_result:     { required: [level, passed], properties: { level: string, passed: boolean, durationMs: integer, failedChecks: "[{id, message_ru, file?, line?}] (≤20)", totalChecks: integer } }
+    gate_result:     { required: [level, passed], properties: { level: string, passed: boolean, revision: integer, durationMs: integer, failedChecks: "[{id, message_ru, file?, line?}] (≤20)", totalChecks: integer } }
     budget_update:   { required: [used, cap], properties: { used: number, cap: number, estimate: number } }
     budget_exceeded: { required: [used, cap], properties: { used: number, cap: number, nextStep: string } }
     lock_waiting:    { required: [holderRunId], properties: { holderRunId: string, holderName: string, position: integer } }
-    needs_input:     { required: [inputId, kind, prompt_ru], properties: { inputId: string, kind: "secret|decision", prompt_ru: string, options: "[{id, label, recommended?}] для decision", secretName: "string для secret (secret://name)", expiresAt: string } }
-    input_received:  { required: [inputId], properties: { inputId: string, choice: "string|null (для secret — всегда null)" } }
+    needs_input:     { required: [inputId, kind, prompt_ru], properties: { inputId: string, kind: "secret|decision", decisionId: "budget|escalation|import_confirm|… — для decision", prompt_ru: string, options: "[{id, label, recommended?, freeText?: bool}] для decision и secret (у secret, например, {id: test, label: «Тестовый режим»}); freeText=true → ответ POST /runs/:id/input {choice, text}", secretName: "string для secret (secret://name)", expiresAt: string } }
+    input_received:  { required: [inputId], properties: { inputId: string, choice: "string|null (для secret — всегда null; текст freeText в событие не попадает)" } }
     run_finished:    { required: [status], properties: { status: "succeeded|cancelled", resultRevision: "integer|null", creditsUsed: number, summary_ru: string, prodUrl: "string|null" } }
     run_failed:      { required: [code, message_ru], properties: { code: "run_lifecycle.failure_codes", message_ru: string, retryable: boolean, lastGoodRevision: "integer|null" } }
   budget_update_rate: "не чаще 1 раза в 2 с и после каждого LLM-шага"

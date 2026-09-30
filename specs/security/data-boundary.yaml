@@ -190,10 +190,12 @@ import:
   test: "M1-07: xlsx с 50 канареечными значениями (уникальные ФИО/телефоны/email) → мок T1 фиксирует все запросы; ни одна канарейка не встречается; в app-схеме все 50 строк"
 
 tests:                             # MUST в CI (M0-06, M1-07, milestones M0 exit)
-  - "Матрица роутера: каждый callType × ruOnly{true,false} × payload{без ПДн, basic, strong, special} × containsPiiHint{undefined,false,true} → ожидаемый tier и route_reason из models.yaml (таблица-фикстура packages/llm/test/routing.matrix.json)"
-  - "Канарейки e2e: fixture-прогон «форум», бриф с ФИО, телефоном, email, паспортом, СНИЛС; мок-провайдер T1 записывает payload; assert: 0 вхождений канареек, 0 совпадений detect() кроме плейсхолдеров; вызовы со strong-видами ушли на T0"
+  - "Матрица роутера: каждый callType × ruOnly{true,false} × t1Restricted{true,false} × payload{без ПДн, basic, strong, special} × containsPiiHint{undefined,false,true} → ожидаемый tier и route_reason из models.yaml (таблица-фикстура packages/llm/test/routing.matrix.json)"
+  - "Регион: org с region_code=91, с region_code=NULL и с region_code=77, но входом с IP из restricted_regions (мок GeoIP) → все вызовы tier=T0, route_reason=policy_region_restricted; org с region_code=77 без таких входов → tier по умолчанию"
+  - "Включение ruOnly во время T1-вызова в полёте (мок с задержкой) → вызов отменён, повтор ушёл на T0"
+  - "Канарейки e2e: fixture-прогон «форум», бриф с ФИО (в т. ч. латиницей и неславянским), телефоном РФ и не РФ, email, @handle, паспортом, СНИЛС; мок-провайдер T1 записывает payload; assert: 0 вхождений канареек, 0 совпадений detect() кроме плейсхолдеров; вызовы со strong-видами ушли на T0"
   - "llm_calls после прогона: нет колонок с текстом; pii_categories_count заполнен; для всех tier=T1 scrubbed=true"
   - "Токены tok_* в T1-payload → ошибка до отправки"
   - "runtime_ai_*, support: при любых входах tier=T0 (M3-02 повторно)"
   - "Детекторы: корпус с порогами из detectors.quality; отдельные тесты контрольных сумм СНИЛС/ИНН/Луна (валидные и с одной изменённой цифрой)"
-  - "Логгер: сообщение с телефоном → в логе плейсхолдер (deploy.yaml#cloud.observability)"
+  - "Логгер: allowlist полей, свободный текст не логируется; канареечный e2e + grep логов всех процессов (platform-api, runtime, воркер, egress-proxy) — 0 вхождений канареек (deploy.yaml#cloud.observability)"
