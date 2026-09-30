@@ -263,7 +263,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w1
     estimate_days: 3.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Экраны S1–S6: все test_ids из platform-screens.yaml присутствуют; Playwright против мок-API (msw или hono) и записанной ленты событий"
