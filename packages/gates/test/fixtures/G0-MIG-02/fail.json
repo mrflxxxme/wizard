@@ -1,0 +1,233 @@
+{
+  "check": "G0-MIG-02",
+  "expect": "fail",
+  "description": "индекс из 33 колонок: схема принимает, Postgres — нет (лимит 32)",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities",
+      "value": {
+        "name": "wide",
+        "label": "Широкая",
+        "fields": [
+          {
+            "name": "c0",
+            "label": "Колонка 0",
+            "type": "int"
+          },
+          {
+            "name": "c1",
+            "label": "Колонка 1",
+            "type": "int"
+          },
+          {
+            "name": "c2",
+            "label": "Колонка 2",
+            "type": "int"
+          },
+          {
+            "name": "c3",
+            "label": "Колонка 3",
+            "type": "int"
+          },
+          {
+            "name": "c4",
+            "label": "Колонка 4",
+            "type": "int"
+          },
+          {
+            "name": "c5",
+            "label": "Колонка 5",
+            "type": "int"
+          },
+          {
+            "name": "c6",
+            "label": "Колонка 6",
+            "type": "int"
+          },
+          {
+            "name": "c7",
+            "label": "Колонка 7",
+            "type": "int"
+          },
+          {
+            "name": "c8",
+            "label": "Колонка 8",
+            "type": "int"
+          },
+          {
+            "name": "c9",
+            "label": "Колонка 9",
+            "type": "int"
+          },
+          {
+            "name": "c10",
+            "label": "Колонка 10",
+            "type": "int"
+          },
+          {
+            "name": "c11",
+            "label": "Колонка 11",
+            "type": "int"
+          },
+          {
+            "name": "c12",
+            "label": "Колонка 12",
+            "type": "int"
+          },
+          {
+            "name": "c13",
+            "label": "Колонка 13",
+            "type": "int"
+          },
+          {
+            "name": "c14",
+            "label": "Колонка 14",
+            "type": "int"
+          },
+          {
+            "name": "c15",
+            "label": "Колонка 15",
+            "type": "int"
+          },
+          {
+            "name": "c16",
+            "label": "Колонка 16",
+            "type": "int"
+          },
+          {
+            "name": "c17",
+            "label": "Колонка 17",
+            "type": "int"
+          },
+          {
+            "name": "c18",
+            "label": "Колонка 18",
+            "type": "int"
+          },
+          {
+            "name": "c19",
+            "label": "Колонка 19",
+            "type": "int"
+          },
+          {
+            "name": "c20",
+            "label": "Колонка 20",
+            "type": "int"
+          },
+          {
+            "name": "c21",
+            "label": "Колонка 21",
+            "type": "int"
+          },
+          {
+            "name": "c22",
+            "label": "Колонка 22",
+            "type": "int"
+          },
+          {
+            "name": "c23",
+            "label": "Колонка 23",
+            "type": "int"
+          },
+          {
+            "name": "c24",
+            "label": "Колонка 24",
+            "type": "int"
+          },
+          {
+            "name": "c25",
+            "label": "Колонка 25",
+            "type": "int"
+          },
+          {
+            "name": "c26",
+            "label": "Колонка 26",
+            "type": "int"
+          },
+          {
+            "name": "c27",
+            "label": "Колонка 27",
+            "type": "int"
+          },
+          {
+            "name": "c28",
+            "label": "Колонка 28",
+            "type": "int"
+          },
+          {
+            "name": "c29",
+            "label": "Колонка 29",
+            "type": "int"
+          },
+          {
+            "name": "c30",
+            "label": "Колонка 30",
+            "type": "int"
+          },
+          {
+            "name": "c31",
+            "label": "Колонка 31",
+            "type": "int"
+          },
+          {
+            "name": "c32",
+            "label": "Колонка 32",
+            "type": "int"
+          }
+        ],
+        "indexes": [
+          {
+            "fields": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c4",
+              "c5",
+              "c6",
+              "c7",
+              "c8",
+              "c9",
+              "c10",
+              "c11",
+              "c12",
+              "c13",
+              "c14",
+              "c15",
+              "c16",
+              "c17",
+              "c18",
+              "c19",
+              "c20",
+              "c21",
+              "c22",
+              "c23",
+              "c24",
+              "c25",
+              "c26",
+              "c27",
+              "c28",
+              "c29",
+              "c30",
+              "c31",
+              "c32"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "op": "push",
+      "path": "/permissions",
+      "value": {
+        "role": "organizer",
+        "entity": "wide",
+        "ops": [
+          "read"
+        ]
+      }
+    }
+  ],
+  "match": "54011"
+}

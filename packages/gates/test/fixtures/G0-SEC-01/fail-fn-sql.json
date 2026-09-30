@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: fn-sql",
+  "files": {
+    "functions/lib/evil.ts": "import type { QueryCtx } from \"@wizard/sdk\";\n\nexport async function evil(ctx: QueryCtx) {\n  await ctx.db.stream.list({ where: \"SELECT * FROM platform.users\" as never });\n  return ctx.now;\n}\n"
+  },
+  "match": "SQL"
+}

@@ -1,0 +1,5 @@
+{
+  "check": "G0-BUILD-01",
+  "expect": "pass",
+  "description": "форум собирается через @wizard/build"
+}

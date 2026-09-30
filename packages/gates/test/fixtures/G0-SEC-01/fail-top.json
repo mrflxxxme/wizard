@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: top",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Evil() {\n  void top;\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "top"
+}

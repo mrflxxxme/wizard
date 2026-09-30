@@ -1,0 +1,13 @@
+{
+  "check": "G0-SPEC-02",
+  "expect": "fail",
+  "description": "привязка yookassa ссылается на несуществующее поле",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/integrations/0/config/bindings/0/amountField",
+      "value": "no_such_field"
+    }
+  ],
+  "match": "CONFIG_INVALID"
+}

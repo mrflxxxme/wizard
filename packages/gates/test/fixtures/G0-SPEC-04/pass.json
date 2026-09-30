@@ -1,0 +1,9 @@
+{
+  "check": "G0-SPEC-04",
+  "expect": "pass",
+  "description": "общий компонент импортируется страницей",
+  "files": {
+    "ui/components/Hint.tsx": "export function Hint() {\n  return <p>Подсказка</p>;\n}\n",
+    "ui/Scanner.tsx": "import { AppShell, QrScanner } from \"@wizard/ui-kit\";\nimport { Hint } from \"./components/Hint\";\n\nexport default function Scanner() {\n  return (\n    <AppShell title=\"Сканер билетов\">\n      <Hint />\n      <QrScanner integration=\"qr\" />\n    </AppShell>\n  );\n}\n"
+  }
+}

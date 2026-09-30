@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: document-computed",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Evil() {\n  const k = \"coo\" + \"kie\";\n  void document[k as \"title\"];\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "document[…]"
+}

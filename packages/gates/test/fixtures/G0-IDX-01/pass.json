@@ -1,0 +1,8 @@
+{
+  "check": "G0-IDX-01",
+  "expect": "pass",
+  "description": "list с where по индексу и limit 1000; paginate по 200",
+  "files": {
+    "functions/ticketAvailability.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    const a = await ctx.db.ticket_type.list({ where: { active: true }, limit: 1000 });\n    const b = await ctx.db.session.paginate({ where: { stream: a[0]?.id as never } }, { cursor: null, numItems: 200 });\n    return a.length + b.items.length;\n  },\n});\n"
+  }
+}

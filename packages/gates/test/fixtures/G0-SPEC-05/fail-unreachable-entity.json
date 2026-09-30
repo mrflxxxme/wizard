@@ -1,0 +1,23 @@
+{
+  "check": "G0-SPEC-05",
+  "expect": "fail",
+  "description": "сущность без прав у всех ролей",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities",
+      "value": {
+        "name": "note",
+        "label": "Заметка",
+        "fields": [
+          {
+            "name": "text",
+            "label": "Текст",
+            "type": "text"
+          }
+        ]
+      }
+    }
+  ],
+  "match": "недоступна"
+}

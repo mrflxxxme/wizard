@@ -1,0 +1,5 @@
+{
+  "check": "G0-SPEC-01",
+  "expect": "pass",
+  "description": "forum.json проходит ajv и zod"
+}

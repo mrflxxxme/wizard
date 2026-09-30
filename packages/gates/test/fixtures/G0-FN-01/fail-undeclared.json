@@ -1,0 +1,9 @@
+{
+  "check": "G0-FN-01",
+  "expect": "fail",
+  "description": "функция в коде, которой нет в спеке",
+  "files": {
+    "functions/extra.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return 1;\n  },\n});\n"
+  },
+  "match": "нет в описании"
+}

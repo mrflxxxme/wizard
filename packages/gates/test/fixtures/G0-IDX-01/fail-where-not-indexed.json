@@ -1,0 +1,9 @@
+{
+  "check": "G0-IDX-01",
+  "expect": "fail",
+  "description": "where по полю без индекса (ловит tsc через IndexWhere)",
+  "files": {
+    "functions/partnerQuota.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return ctx.db.partner_quota.list({ where: { company: \"x\" }, limit: 10 });\n  },\n});\n"
+  },
+  "match": "where"
+}

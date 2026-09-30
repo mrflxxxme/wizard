@@ -1,0 +1,5 @@
+{
+  "check": "G0-TS-01",
+  "expect": "pass",
+  "description": "примеры форума компилируются против sdk.d.ts, ui-kit и generateTypes(forum)"
+}

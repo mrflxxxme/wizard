@@ -1,0 +1,9 @@
+{
+  "check": "G0-IDX-01",
+  "expect": "fail",
+  "description": "list без where с limit 500",
+  "files": {
+    "functions/partnerQuota.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return ctx.db.partner_quota.list({ limit: 500 });\n  },\n});\n"
+  },
+  "match": "не больше 100"
+}

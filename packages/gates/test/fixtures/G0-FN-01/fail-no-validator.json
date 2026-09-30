@@ -1,0 +1,9 @@
+{
+  "check": "G0-FN-01",
+  "expect": "fail",
+  "description": "аргумент без валидатора v.*",
+  "files": {
+    "functions/partnerQuota.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: { company: { type: \"string\" } as never },\n  handler: async (_ctx, args) => {\n    return args;\n  },\n});\n"
+  },
+  "match": "без валидатора"
+}

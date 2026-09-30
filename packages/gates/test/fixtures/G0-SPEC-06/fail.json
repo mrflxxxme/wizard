@@ -1,0 +1,17 @@
+{
+  "check": "G0-SPEC-06",
+  "expect": "fail",
+  "description": "поле file в заявке спикера, которую спикер создаёт сам",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/3/fields",
+      "value": {
+        "name": "photo",
+        "label": "Фото",
+        "type": "file"
+      }
+    }
+  ],
+  "match": "FILE_FIELD_UNSUPPORTED"
+}

@@ -1,0 +1,13 @@
+{
+  "check": "G0-SPEC-05",
+  "expect": "fail",
+  "description": "страница на маршруте compliance.policyPage",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/pages/3/route",
+      "value": "/privacy"
+    }
+  ],
+  "match": "RESERVED_NAME"
+}

@@ -1,0 +1,13 @@
+{
+  "check": "G0-FN-01",
+  "expect": "fail",
+  "description": "в спеке mutation, в коде query",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/1/kind",
+      "value": "mutation"
+    }
+  ],
+  "match": "mutation"
+}

@@ -1,0 +1,9 @@
+{
+  "check": "G0-FN-01",
+  "expect": "fail",
+  "description": "default export — обычная функция",
+  "files": {
+    "functions/partnerQuota.ts": "export default async function partnerQuota() {\n  return [];\n}\n"
+  },
+  "match": "не экспортирует"
+}

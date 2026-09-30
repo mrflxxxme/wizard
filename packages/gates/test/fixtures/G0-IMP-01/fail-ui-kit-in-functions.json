@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "functions импортирует @wizard/ui-kit",
+  "files": {
+    "functions/lib/evil.ts": "import { Button } from \"@wizard/ui-kit\";\n\nexport const x = Button;\n"
+  },
+  "match": "@wizard/ui-kit"
+}

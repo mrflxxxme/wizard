@@ -1,0 +1,13 @@
+{
+  "check": "G0-SPEC-01",
+  "expect": "fail",
+  "description": "лишнее свойство верхнего уровня",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/extra",
+      "value": true
+    }
+  ],
+  "match": "extra"
+}

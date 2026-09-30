@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: process",
+  "files": {
+    "functions/lib/evil.ts": "import type { QueryCtx } from \"@wizard/sdk\";\n\nexport async function evil(ctx: QueryCtx) {\n  void process.env;\n  return ctx.now;\n}\n"
+  },
+  "match": "process"
+}
