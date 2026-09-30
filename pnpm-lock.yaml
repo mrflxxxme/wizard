@@ -44,7 +44,17 @@ importers:
         specifier: ^3.4.9
         version: 3.4.9
 
-  packages/connectors: {}
+  packages/connectors:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../appspec
+      '@wizard/pii':
+        specifier: workspace:*
+        version: link:../pii
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/gates: {}
 
