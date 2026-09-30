@@ -502,8 +502,13 @@ class Builder implements ToolEnv {
     if (level === "G1") {
       if (this.#qaChecks === null) {
         const { spec, version } = await this.#host.store.getSpec();
+        const files = new Map<string, string>();
+        for (const p of await this.#host.store.listFiles("functions/")) {
+          const src = await this.#host.store.readFile(p);
+          if (src !== null) files.set(p, src);
+        }
         this.#qaChecks = await this.#host.runStep("qa_generate", () =>
-          this.#host.qa.generate({ card: this.#card, spec, specVersion: version }),
+          this.#host.qa.generate({ card: this.#card, spec, specVersion: version, files }),
         );
       }
       checks = this.#qaChecks;

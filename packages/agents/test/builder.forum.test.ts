@@ -1,9 +1,12 @@
 // Acceptance M0-13: runBuild on demo/forum (golden fixture, offline) and demo/bakery (scripted from the example)
-// reaches G0=passed without intervention; G1/QA in the host are fakes.
-import { type AppSpec, applyOps } from "@wizard/appspec";
+// reaches G0=passed without intervention. Forum runs end to end with the real QA agent (M0-14, its golden
+// qa_generate line) and the real G1 on apps/runtime; bakery keeps the G1/QA fakes.
+import { type AppSpec, applyOps, OWNER_ONLY_COMPLIANCE_FIELDS } from "@wizard/appspec";
+import { runGates } from "@wizard/gates";
 import { createRouter, MemoryUsageSink } from "@wizard/llm";
 import { afterAll, describe, expect, test } from "vitest";
 import { type BuildOutcome, createMemoryHost, executeBuild, type MemoryHost } from "../src/builder/index.js";
+import { createQaAgent } from "../src/qa/index.js";
 import {
   cardFor,
   connect,
@@ -20,6 +23,7 @@ import {
   unordered,
 } from "./builder-helpers.js";
 import { fixtureLines, scriptedRoute } from "./helpers.js";
+import { demoRouter, g1Harness, g1SchemaCount } from "./qa-helpers.js";
 
 const db = connect();
 afterAll(() => db.end());
@@ -28,19 +32,42 @@ describe("forum: golden fixture replay", async () => {
   const g = await golden("forum");
   const sink = new MemoryUsageSink();
   const router = createRouter({ mode: "fixture", fixture: { suite: "demo", name: "forum" }, sink, env: {} });
+  const h = await g1Harness();
+  afterAll(async () => {
+    expect(await g1SchemaCount(h.db, "m013")).toBe(0);
+    await h.close();
+  });
+  // QA has its own router over the same fixture: its credits stay out of the builder ledger checked below (M0-26
+  // routes QA through the host).
+  const qaRoute = demoRouter("forum");
+  const qa = createQaAgent({ route: qaRoute.route });
   let qaCalls = 0;
+  const explained: unknown[] = [];
+  // The owner/platform fill compliance (operator, consentText from the template — author=system) before G1;
+  // without consentText no consent can be given and every pii write gets 422 CONSENT_REQUIRED.
+  const c = (g.buildSpec.compliance ?? {}) as Record<string, unknown>;
+  const owner = Object.fromEntries(OWNER_ONLY_COMPLIANCE_FIELDS.filter((k) => k in c).map((k) => [k, c[k]]));
   const mem: MemoryHost = createMemoryHost({
     spec: startSpec(g.spec),
     route: router,
-    db,
+    db: h.db,
+    runtime: h.rt,
+    runtimeRole: h.role,
     systemKey: uniqueKey(),
-    gates: { G1: g1Stub },
+    gates: {
+      G1: (ctx) =>
+        runGates("G1", { ...ctx, spec: { ...ctx.spec, compliance: { ...ctx.spec.compliance, ...owner } } }),
+    },
     qa: {
-      generate: async () => {
+      generate: async (input) => {
         qaCalls += 1;
-        return [];
+        return qa.generate(input);
       },
-      explain: async () => [],
+      explain: async (input) => {
+        const e = await qa.explain(input);
+        explained.push(...e);
+        return e;
+      },
     },
   });
   const cap = 41;
@@ -52,7 +79,21 @@ describe("forum: golden fixture replay", async () => {
     const g0 = mem.events.filter((e) => e.type === "gate_result" && e.payload.level === "G0");
     expect(g0.length).toBe(1);
     expect(g0[0]?.payload.passed).toBe(true);
+    const g1 = mem.events.filter((e) => e.type === "gate_result" && e.payload.level === "G1");
+    expect(
+      g1.map((e) => e.payload.passed),
+      JSON.stringify(g1.map((e) => e.payload.failedChecks)),
+    ).toEqual([true]);
+    expect(g1[0]?.payload.totalChecks).toBeGreaterThan(10);
     expect(qaCalls).toBe(1);
+    expect(qaRoute.calls).toEqual(["qa_generate"]);
+    expect(explained).toEqual([]);
+    const checks = qa.lastChecks();
+    for (const ac of ["AC1", "AC2", "AC3", "AC4", "AC7", "AC8"])
+      expect(
+        checks.some((c) => c.acId === ac && c.level === "G1"),
+        ac,
+      ).toBe(true);
   }, 180_000);
 
   test("final spec equals the golden spec", () => {

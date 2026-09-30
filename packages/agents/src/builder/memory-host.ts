@@ -1,7 +1,7 @@
 // In-memory BuildHost (tests, eval harness): AppSpec revisions via applyOps, a staged file tree, gates through
 // @wizard/gates runGates, events collected in order. platform-api provides the durable host (M0-26).
 import { type AppSpec, applyOps, LruIdempotencyStore } from "@wizard/appspec";
-import { type GateContext, type GateReport, runGates } from "@wizard/gates";
+import { type GateContext, type GateReport, type RuntimeHandle, runGates } from "@wizard/gates";
 import type { OrgPolicy, RouteInput, RouteOutput } from "@wizard/llm";
 import type postgres from "postgres";
 import { runBuild } from "./builder.js";
@@ -49,6 +49,9 @@ export interface MemoryHostOptions {
   db?: postgres.Sql;
   systemKey?: string;
   milestone?: string;
+  /** G1 on a real runtime (apps/runtime createRuntimeApp in test mode) and the DB role it switches to. */
+  runtime?: RuntimeHandle;
+  runtimeRole?: string;
   /** Per-level gate override (e.g. a G1 stub until M0-11). */
   gates?: Partial<Record<BuilderGateLevel, GateFn>>;
   qa?: BuilderQa;
@@ -134,6 +137,8 @@ export function createMemoryHost(o: MemoryHostOptions): MemoryHost {
         systemKey: o.systemKey ?? "memory",
         db: o.db as postgres.Sql,
         milestone: o.milestone ?? "M0",
+        ...(o.runtime ? { runtime: o.runtime } : {}),
+        ...(o.runtimeRole ? { runtimeRole: o.runtimeRole } : {}),
         ...(overrides?.checks ? { checks: overrides.checks } : {}),
         ...(o.signal ? { signal: o.signal } : {}),
       };
