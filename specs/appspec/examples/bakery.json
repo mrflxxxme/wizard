@@ -35,13 +35,13 @@
     {
       "name": "production_slot", "label": "Производственный день",
       "fields": [
-        { "name": "day", "label": "Дата", "type": "date", "required": true, "unique": true },
+        { "name": "slot_date", "label": "Дата", "type": "date", "required": true, "unique": true },
         { "name": "capacity", "label": "Тортов в день", "type": "int", "required": true, "min": 0, "max": 200 },
         { "name": "closed", "label": "Выходной", "type": "bool", "default": false }
       ]
     },
     {
-      "name": "order", "label": "Заказ",
+      "name": "cake_order", "label": "Заказ",
       "fields": [
         { "name": "number", "label": "Номер", "type": "int", "required": true, "unique": true },
         { "name": "customer_user", "label": "Покупатель", "type": "ref", "required": true, "ref": { "entity": "users" } },
@@ -62,7 +62,7 @@
           { "value": "pending_payment", "label": "Ожидает предоплаты" }, { "value": "prepaid", "label": "Предоплачен" },
           { "value": "in_production", "label": "В работе" }, { "value": "ready", "label": "Готов к выдаче" },
           { "value": "completed", "label": "Выдан" }, { "value": "canceled", "label": "Отменён" }, { "value": "refunded", "label": "Возвращён" } ] },
-        { "name": "comment", "label": "Комментарий", "type": "text", "maxLength": 1000 }
+        { "name": "note", "label": "Комментарий", "type": "text", "maxLength": 1000 }
       ],
       "indexes": [ { "fields": ["slot", "status"] }, { "fields": ["status", "created_at"] } ],
       "ownerField": "customer_user",
@@ -71,7 +71,7 @@
     {
       "name": "payment", "label": "Платёж",
       "fields": [
-        { "name": "order", "label": "Заказ", "type": "ref", "required": true, "ref": { "entity": "order" } },
+        { "name": "cake_order", "label": "Заказ", "type": "ref", "required": true, "ref": { "entity": "cake_order" } },
         { "name": "provider_payment_id", "label": "ID платежа ЮKassa", "type": "string", "required": true, "unique": true, "maxLength": 64 },
         { "name": "kind", "label": "Вид", "type": "enum", "required": true, "enum": [
           { "value": "payment", "label": "Оплата" }, { "value": "refund", "label": "Возврат" } ] },
@@ -91,19 +91,19 @@
     { "role": "owner", "entity": "product", "ops": ["read", "create", "update", "delete"] },
     { "role": "owner", "entity": "product_option", "ops": ["read", "create", "update", "delete"] },
     { "role": "owner", "entity": "production_slot", "ops": ["read", "create", "update", "delete"] },
-    { "role": "owner", "entity": "order", "ops": ["read", "update"], "readonlyFields": ["customer_user", "total", "prepay_amount", "remaining_amount", "number"] },
+    { "role": "owner", "entity": "cake_order", "ops": ["read", "update"], "readonlyFields": ["customer_user", "total", "prepay_amount", "remaining_amount", "number"] },
     { "role": "owner", "entity": "payment", "ops": ["read"] },
 
     { "role": "staff", "entity": "product", "ops": ["read"] },
     { "role": "staff", "entity": "product_option", "ops": ["read"] },
     { "role": "staff", "entity": "production_slot", "ops": ["read", "update"] },
-    { "role": "staff", "entity": "order", "ops": ["read", "update"], "hiddenFields": ["customer_email"],
+    { "role": "staff", "entity": "cake_order", "ops": ["read", "update"], "hiddenFields": ["customer_email"],
       "readonlyFields": ["customer_user", "product", "options", "slot", "customer_name", "customer_phone", "address", "total", "prepay_amount", "remaining_amount", "number", "fulfillment"] },
 
     { "role": "customer", "entity": "product", "ops": ["read"] },
     { "role": "customer", "entity": "product_option", "ops": ["read"] },
     { "role": "customer", "entity": "production_slot", "ops": ["read"] },
-    { "role": "customer", "entity": "order", "ops": ["read"], "rowFilter": { "customer_user": "$user.id" } },
+    { "role": "customer", "entity": "cake_order", "ops": ["read"], "rowFilter": { "customer_user": "$user.id" } },
 
     { "role": "visitor", "entity": "product", "ops": ["read"] },
     { "role": "visitor", "entity": "product_option", "ops": ["read"] },
@@ -112,13 +112,13 @@
   "workflows": [
     {
       "name": "order_prepaid", "label": "Подтверждение предоплаты",
-      "trigger": { "type": "on_status", "entity": "order", "field": "status", "equals": "prepaid" },
+      "trigger": { "type": "on_status", "entity": "cake_order", "field": "status", "equals": "prepaid" },
       "steps": [ { "type": "notify", "params": { "integration": "telegram", "to": "$record.customer_user",
-        "text": "Заказ №{{number}} принят в работу. Дата готовности: {{slot.day}}." } } ]
+        "text": "Заказ №{{number}} принят в работу. Дата готовности: {{slot.slot_date}}." } } ]
     },
     {
       "name": "order_ready", "label": "Заказ готов",
-      "trigger": { "type": "on_status", "entity": "order", "field": "status", "equals": "ready" },
+      "trigger": { "type": "on_status", "entity": "cake_order", "field": "status", "equals": "ready" },
       "steps": [ { "type": "notify", "params": { "integration": "telegram", "to": "$record.customer_user",
         "text": "Заказ №{{number}} готов к выдаче. Доплата {{remaining_amount}} ₽ — в личном кабинете." } } ]
     }
@@ -128,15 +128,15 @@
       "name": "yookassa", "connector": "yookassa",
       "config": {
         "bindings": [
-          { "id": "prepay", "entity": "order", "amountField": "prepay_amount",
+          { "id": "prepay", "entity": "cake_order", "amountField": "prepay_amount",
             "payableStatus": "pending_payment", "paidStatus": "prepaid", "canceledStatus": "canceled", "refundedStatus": "refunded",
-            "paymentEntity": { "name": "payment", "refField": "order" },
+            "paymentEntity": { "name": "payment", "refField": "cake_order" },
             "description": "Предоплата 50% по заказу №{{number}}", "returnRoute": "/orders",
             "receipt": { "customerEmailField": "customer_email", "customerPhoneField": "customer_phone",
               "paymentSubject": "commodity", "paymentMode": "full_prepayment", "vatCode": 1 } },
-          { "id": "final", "entity": "order", "amountField": "remaining_amount",
+          { "id": "final", "entity": "cake_order", "amountField": "remaining_amount",
             "payableStatus": "ready", "paidStatus": "completed", "canceledStatus": "ready", "refundedStatus": "refunded",
-            "paymentEntity": { "name": "payment", "refField": "order" },
+            "paymentEntity": { "name": "payment", "refField": "cake_order" },
             "description": "Доплата по заказу №{{number}}", "returnRoute": "/orders",
             "receipt": { "customerEmailField": "customer_email", "customerPhoneField": "customer_phone",
               "paymentSubject": "commodity", "paymentMode": "full_payment", "vatCode": 1, "settlePrepaymentOf": "prepay" } }
@@ -176,33 +176,33 @@
       ] } },
     { "id": "AC2", "text": "Нельзя оформить заказ на день, где производство загружено полностью",
       "check": { "type": "scenario", "steps": [
-        { "seed": { "production_slot": [ { "$alias": "sat", "day": "2026-10-11", "capacity": 1 } ] } },
+        { "seed": { "production_slot": [ { "$alias": "sat", "slot_date": "2026-10-11", "capacity": 1 } ] } },
         { "as": "customer#1", "call": "fn:placeOrder", "args": { "slotId": "$s.sat" }, "expect": { "ok": true } },
         { "as": "customer#2", "call": "fn:placeOrder", "args": { "slotId": "$s.sat" }, "expect": { "error": "SLOT_FULL" } }
       ] } },
     { "id": "AC3", "text": "Предоплата составляет 50% стоимости, остаток — доплата при выдаче",
       "check": { "type": "scenario", "steps": [
         { "as": "customer#1", "call": "fn:placeOrder", "args": {}, "expect": { "ok": true, "save": "o1" } },
-        { "as": "customer#1", "call": "data:get:order", "args": { "id": "$saved.o1.orderId" },
+        { "as": "customer#1", "call": "data:get:cake_order", "args": { "id": "$saved.o1.orderId" },
           "expect": { "item": { "total": 6050, "prepay_amount": 3025, "remaining_amount": 3025, "status": "pending_payment" } } }
       ] } },
     { "id": "AC4", "text": "Покупатель видит только свои заказы",
       "check": { "type": "scenario", "steps": [
         { "as": "customer#1", "call": "fn:placeOrder", "args": {}, "expect": { "ok": true } },
-        { "as": "customer#2", "call": "data:list:order", "expect": { "count": 0 } }
+        { "as": "customer#2", "call": "data:list:cake_order", "expect": { "count": 0 } }
       ] } },
     { "id": "AC5", "text": "Посетитель без входа не видит заказы",
-      "check": { "type": "permission", "role": "visitor", "entity": "order", "op": "read", "expect": "deny" } },
+      "check": { "type": "permission", "role": "visitor", "entity": "cake_order", "op": "read", "expect": "deny" } },
     { "id": "AC6", "text": "Кондитер не может изменить сумму заказа",
       "check": { "type": "scenario", "steps": [
         { "as": "customer#1", "call": "fn:placeOrder", "args": {}, "expect": { "ok": true, "save": "o1" } },
-        { "as": "staff", "call": "data:update:order", "args": { "id": "$saved.o1.orderId", "total": 100 }, "expect": { "error": "FIELD_READONLY" } }
+        { "as": "staff", "call": "data:update:cake_order", "args": { "id": "$saved.o1.orderId", "total": 100 }, "expect": { "error": "FIELD_READONLY" } }
       ] } },
     { "id": "AC7", "text": "ПДн покупателя обезличиваются через 90 дней",
-      "check": { "type": "constraint", "entity": "order", "steps": [
-        { "seed": { "order": [ { "$alias": "o1", "created_at": "$now-91d" } ] } },
+      "check": { "type": "constraint", "entity": "cake_order", "steps": [
+        { "seed": { "cake_order": [ { "$alias": "o1", "created_at": "$now-91d" } ] } },
         { "call": "system:runRetention" },
-        { "as": "owner", "call": "data:get:order", "args": { "id": "$s.o1" }, "expect": { "item": { "customer_name": null, "customer_phone": null, "address": null } } }
+        { "as": "owner", "call": "data:get:cake_order", "args": { "id": "$s.o1" }, "expect": { "item": { "customer_name": null, "customer_phone": null, "address": null } } }
       ] } }
   ],
   "compliance": {
