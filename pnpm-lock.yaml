@@ -107,12 +107,18 @@ importers:
       '@wizard/appspec':
         specifier: workspace:*
         version: link:../appspec
+      '@wizard/gates':
+        specifier: workspace:*
+        version: link:../gates
       '@wizard/llm':
         specifier: workspace:*
         version: link:../llm
       '@wizard/pii':
         specifier: workspace:*
         version: link:../pii
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       zod:
         specifier: ^4.6.5
         version: 4.6.5
