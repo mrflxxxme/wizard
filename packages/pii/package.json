@@ -4,11 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./import": "./src/import/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "gen:names": "node scripts/gen-names.ts",
     "gen:corpus": "node test/gen-corpus.ts"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "fflate": "^0.8.3"
   }
 }

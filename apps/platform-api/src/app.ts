@@ -9,6 +9,7 @@ import { type AppEnv, devAuth } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
+import { orgSettingsRoutes } from "./routes/org-settings.js";
 import { orgRoutes } from "./routes/orgs.js";
 import { runRoutes } from "./routes/runs.js";
 import { systemRoutes } from "./routes/systems.js";
@@ -86,6 +87,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.use("*", idempotency(new IdempotencyCache()));
   api.route("/", systemRoutes(deps));
   api.route("/", orgRoutes(deps));
+  api.route("/", orgSettingsRoutes(deps));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 
