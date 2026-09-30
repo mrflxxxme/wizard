@@ -5,7 +5,7 @@ import { query } from "@wizard/sdk";
 export default query({
   args: {},
   handler: async (ctx) => {
-    const quotas = await ctx.db.partner_quota.list({ limit: 200 });
+    const quotas = await ctx.db.partner_quota.list({ limit: 100 });
     return quotas.map((q) => ({
       id: q.id,
       company: q.company,

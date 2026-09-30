@@ -439,8 +439,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "enum option extra key (loose)",
-    true,
+    "enum option extra key (strict)",
+    false,
     (s) => {
       s.entities[0].fields[3].enum[0].color = "red";
     },
@@ -460,8 +460,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "ref extra key (loose)",
-    true,
+    "ref extra key (strict)",
+    false,
     (s) => {
       s.entities[1].fields[0].ref.note = "x";
     },
@@ -495,8 +495,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "index extra key (loose)",
-    true,
+    "index extra key (strict)",
+    false,
     (s) => {
       s.entities[0].indexes[0].method = "btree";
     },
@@ -530,8 +530,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "retention extra (loose)",
-    true,
+    "retention extra (strict)",
+    false,
     (s) => {
       s.entities[2].retention = { deleteAfterDays: 5, why: "x" };
     },
@@ -628,8 +628,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "workflow trigger extra (loose)",
-    true,
+    "workflow trigger extra (strict)",
+    false,
     (s) => {
       s.workflows[0].trigger.debounce = 5;
     },
@@ -813,8 +813,8 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     },
   ],
   [
-    "acceptance check extra (loose)",
-    true,
+    "acceptance check extra (strict)",
+    false,
     (s) => {
       s.acceptance[0].check.note = "x";
     },
@@ -838,6 +838,103 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
     true,
     (s) => {
       s.compliance = { consentText: "a", policyPage: "/privacy", operatorName: "ИП Иванов" };
+    },
+  ],
+  [
+    "field piiKind ok",
+    true,
+    (s) => {
+      s.entities[0].fields[1].piiKind = "free_text";
+    },
+  ],
+  [
+    "field piiKind unknown",
+    false,
+    (s) => {
+      s.entities[0].fields[1].piiKind = "dna";
+    },
+  ],
+  [
+    "compliance operatorInn 10 digits",
+    true,
+    (s) => {
+      s.compliance.operatorInn = "7707083893";
+    },
+  ],
+  [
+    "compliance operatorInn 11 digits",
+    false,
+    (s) => {
+      s.compliance.operatorInn = "77070838931";
+    },
+  ],
+  [
+    "compliance retentionWaiver ok",
+    true,
+    (s) => {
+      s.compliance.retentionWaiver = { reason: "Храним до конца мероприятия" };
+    },
+  ],
+  [
+    "compliance retentionWaiver short reason",
+    false,
+    (s) => {
+      s.compliance.retentionWaiver = { reason: "коротко" };
+    },
+  ],
+  [
+    "compliance retentionWaiver extra",
+    false,
+    (s) => {
+      s.compliance.retentionWaiver = { reason: "Достаточно длинная причина", until: 1 };
+    },
+  ],
+  [
+    "acceptance scenario actors/seed/milestone",
+    true,
+    (s) => {
+      s.acceptance[0].check = {
+        type: "scenario",
+        actors: { a: { role: "member", note: 1 } },
+        seed: "none",
+        milestone: "M1",
+        steps: [{ call: "x" }],
+      };
+    },
+  ],
+  [
+    "acceptance actor without role",
+    false,
+    (s) => {
+      s.acceptance[0].check = { type: "scenario", actors: { a: {} } };
+    },
+  ],
+  [
+    "acceptance milestone M9",
+    false,
+    (s) => {
+      s.acceptance[0].check.milestone = "M9";
+    },
+  ],
+  [
+    "acceptance steps item not object",
+    false,
+    (s) => {
+      s.acceptance[0].check = { type: "scenario", steps: ["call"] };
+    },
+  ],
+  [
+    "workflow step extra key",
+    false,
+    (s) => {
+      s.workflows[0].steps[0].retry = 3;
+    },
+  ],
+  [
+    "workflow trigger relative extra (loose)",
+    true,
+    (s) => {
+      s.workflows[0].trigger.relative = { field: "until", offsetMinutes: -60, note: "x" };
     },
   ],
   ["spec is array", false, () => []],

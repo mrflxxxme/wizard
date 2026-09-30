@@ -12,6 +12,7 @@ import {
   toDDL,
   toRLS,
 } from "../src/index.js";
+import forumFixture from "./fixtures/forum.json" with { type: "json" };
 import { forumSpec, miniSpec } from "./helpers.js";
 
 const S = "app_unit_draft";
@@ -203,7 +204,7 @@ describe("planMigration", () => {
     );
     expect(destructiveKinds(plan).sort()).toEqual(["drop_column", "drop_table"]);
     expect(plan.errors.map((e) => e.code)).toEqual(["DESTRUCTIVE_IN_PROD", "DESTRUCTIVE_IN_PROD"]);
-    expect(plan.errors[0]?.message).toMatch(/запрещён в prod/);
+    expect(plan.errors[0]?.message_ru).toMatch(/запрещён в prod/);
   });
 
   test("invalid next spec surfaces validation errors and blocks toDDL", () => {
@@ -352,7 +353,7 @@ describe("toRLS", () => {
 
 describe("generateTypes", () => {
   test("emits row/input interfaces that typecheck", () => {
-    const dts = generateTypes(forumSpec());
+    const dts = generateTypes(forumFixture as AppSpec);
     expect(dts).toContain("export interface Topic extends SystemFields");
     expect(dts).toContain(`status: "open" | "closed";`);
     expect(dts).toContain("topic: { row: Topic; input: TopicInput };");

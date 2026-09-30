@@ -102,7 +102,7 @@ interfaces:                   # межпакетные контракты — м
   llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}"
   gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx) -> GateReport {passed, checks[]}"
   events: "platform-api SSE /runs/:id/events — события прогона (specs/platform/workflows.yaml#events)"
-  runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /_wizard/* (служебное, в т.ч. /_wizard/spec — метаданные спеки для роли)"
+  runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /api/events (SSE), /api/pay/:integration, /api/telegram/:integration/link, /api/admin/invite, /_wizard/* (служебное: spec, qr, hooks, bridge.js) — полный список в specs/runtime/runtime.yaml"
   preview_bridge: "runtime /_wizard/bridge.js ↔ platform-web postMessage (specs/ui/platform-screens.yaml#preview_contract); esbuild-плагин проставляет data-wz-id и пишет wz-map.json"
 
 infra_and_libs:               # добавлено по итогам сверки спек

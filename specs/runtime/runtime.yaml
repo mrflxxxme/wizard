@@ -29,7 +29,7 @@ postgres:
     owner: "wizard_owner — владелец таблиц, выполняет только миграции (toDDL/toRLS)"
     runtime: "wizard_runtime — без BYPASSRLS и без владения таблицами, поэтому RLS действует всегда"
   system_tables:                             # создаются в схеме системы при create_schema; префикс _w_ зарезервирован
-    users: "id uuid pk, role text, display_name text, phone text, email text, telegram_id bigint, telegram_chat_id bigint, attrs jsonb default '{}', invited_by uuid, created_at, blocked_at — pii-поля шифруются на уровне колонки в M2"
+    users: "системная сущность (ops.yaml#semantic_rules): id uuid pk, role text, display_name text, phone text, email text, telegram_id bigint, telegram_chat_id bigint, email_bounced_at, invited_by uuid, created_at, blocked_at — pii-поля шифруются на уровне колонки в M2"
     _w_sessions: "token_hash bytea pk (sha256), user_id, created_at, last_seen_at, expires_at"
     _w_otp: "id, channel, destination_hash, code_hash, attempts, expires_at"
     _w_jobs: "outbox/планировщик: id, kind(function|workflow_step|retention), payload jsonb, run_at, attempts, locked_until, idempotency_key unique"
@@ -39,7 +39,7 @@ postgres:
     _w_telegram_links: "token_hash pk, user_id, expires_at (telegram.yaml#chat_linking)"
     _w_consents: "схема и срок хранения — ../security/compliance.yaml#consent; источник — поле _consent тела create или POST /api/fn (sdk.md §3); retention сущностей его не удаляет"
     _w_audit: "id, at, actor_user_id, role, entity, record_id, op, fields text[] (имена, не значения)"
-  context: "Каждая транзакция: set_config('wizard.user_id', $1, true), set_config('wizard.role', $2, true), set_config('wizard.user_attrs', $3::text, true); ctx.systemDb и воркфлоу — role='__system'"
+  context: "Каждая транзакция: set_config('wizard.user_id', $1, true), set_config('wizard.role', $2, true), set_config('wizard.user_attrs', $3::text, true) (JSON полей users без контактов); ctx.systemDb и воркфлоу — role='__system'"
   rls_policy_shape: "USING (current_setting('wizard.role', true) = '__system' OR (current_setting('wizard.role', true) = '<role>' AND <rowFilter как колонка = (select current_setting(...))>)) для каждой (role, op) из permissions"
   statement_timeout: "1s для data API и query/mutation; lock_timeout 500ms"
 
@@ -85,7 +85,7 @@ permissions:                                 # первый рубеж — по�
   algorithm:
     - "1. Пользователь: сессия → users; без сессии → публичная роль (если есть), иначе 401. Заблокированный → 401"
     - "2. Разрешение (role, entity): нет записи или op ∉ ops → 403 FORBIDDEN (list тоже 403, не пустой список)"
-    - "3. rowFilter: подставить $user.id и $user.<attr> (attr из users.attrs); отсутствующий attr или $user.id у публичной роли → условие FALSE. read/update/delete: AND к WHERE; строка вне фильтра → 404, не 403 (не раскрывать существование)"
+    - "3. rowFilter: подставить $user.id и $user.<attr> (поле системной сущности users, ops.yaml#semantic_rules); NULL-значение или $user.* у публичной роли → условие FALSE. read/update/delete: AND к WHERE; строка вне фильтра → 404, не 403 (не раскрывать существование)"
     - "4. create: поля из rowFilter принудительно равны значению фильтра; другое значение от клиента → 403"
     - "5. hiddenFields: удаляются из ответа; filter/sort по ним → 422 FIELD_HIDDEN; запись в них → 422 FIELD_HIDDEN"
     - "6. readonlyFields: присутствие в теле create/update → 422 FIELD_READONLY (при create берётся default)"
@@ -118,7 +118,8 @@ auth:
     telegram: "GET /api/auth/telegram/start → OIDC Authorization Code + PKCE (S256) на https://oauth.telegram.org/auth, client_id = id бота системы; /api/auth/telegram/callback меняет code на id_token (https://oauth.telegram.org/token), проверяет подпись по JWKS https://oauth.telegram.org/.well-known/jwks.json, iss, aud, exp; scope 'openid' (+ 'phone' если роли нужен телефон)"
     me_logout: "GET /api/auth/me → {user} | 401; POST /api/auth/logout"
   role_assignment:
-    - "MUST: новый пользователь получает роль только одним из способов: (а) самостоятельная регистрация в роль с access=login, isAdmin=false и явно заданными loginMethods; (б) приглашение от пользователя роли с isAdmin (POST /api/admin/invite {role, phone|email}); (в) владелец системы с платформы получает первую isAdmin-роль при публикации"
+    - "MUST: новый пользователь получает роль одним из способов: (а) самостоятельная регистрация (/login?role=R) — только в роль, безопасную для саморегистрации; (б) приглашение от пользователя роли с isAdmin (POST /api/admin/invite {role, phone|email}); (в) владелец системы с платформы получает первую isAdmin-роль при публикации"
+    - "MUST: роль безопасна для саморегистрации, если access=login, isAdmin=false и в каждой её permission (1) ops ⊆ {read} или задан rowFilter и (2) read сущности с видимыми полями pii≠none идёт с rowFilter. Форум: participant, speaker, partner; кондитерская: customer. Выводится из спеки до появления явного поля role.selfSignup"
     - "Один пользователь — одна роль в системе (MVP)"
   anti_abuse: "OTP: ≤ 5 кодов в час на адрес, ≤ 20 в час на IP; неверный код не раскрывает, существует ли пользователь"
   test: "e2e: три метода входа с dev-отправителем (M1-05); dev-login недоступен в prod; cookie одной системы не принимается другой"

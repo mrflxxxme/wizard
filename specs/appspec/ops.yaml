@@ -54,6 +54,8 @@ semantic_rules:                # проверяются после примен�
   - "Каждый integration.secretRefs объявлен, но значение секрета в спеке НЕ хранится"
   - "Лимиты: сущностей ≤60, полей на сущность ≤80, страниц ≤80, функций ≤200"
   - "Роль с access=login MUST иметь loginMethods (≥1); роль access=public MUST NOT иметь loginMethods"
+  - "selfSignup=true несовместим с isAdmin=true"
+  - "Имена сущностей, совпадающие с ключевыми словами SQL-стандарта (session, user, order, group, ...), допускаются только если reserved.ts явно их разрешает: DDL всегда квотирует идентификаторы, поэтому session разрешено; список в packages/appspec/src/reserved.ts — источник истины"
   - "Системная сущность users (id, role, phone?, email?, telegram_id?, display_name) существует неявно; имя users зарезервировано; $user.<attr> ссылается на её поля"
   - "Перед prod: compliance.operatorName и operatorContact заполнены, если есть поля pii≠none (проверяет G2)"
 
@@ -66,6 +68,8 @@ migrations:
     - "Системные колонки: id uuid pk default gen_random_uuid(), created_at timestamptz default now(), updated_at timestamptz, created_by uuid"
     - "Типы: string→text(check len), text→text, int→bigint, decimal→numeric(18,6), money→numeric(14,2), bool→boolean, date→date, datetime→timestamptz, enum→text + CHECK, ref→uuid + FK, file→text(storage key), json→jsonb, email/phone/url→text + CHECK, qr_token→text unique"
     - "Транзакционный DDL, SET LOCAL lock_timeout = '3s'"
+    - "Неявные индексы: на каждом ref-поле, на ownerField и на created_at; уникальный индекс на unique-полях"
+    - "Сущность с retention.mode=anonymize: её поля pii≠none в БД nullable, required проверяется data API"
   rls:
     - "RLS включается на каждой таблице; политики строятся из permissions; контекст — set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции"
     - "RLS — второй рубеж; первый — построитель запросов runtime (оба проверяются в G2)"

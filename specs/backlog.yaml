@@ -115,7 +115,7 @@ tasks:
     estimate_days: 2
     acceptance:
       - "Тест прав: для спеки «форум» матрица role×entity×op даёт ожидаемые 200/403 (генерируется из permissions)"
-      - "Функция из examples вызывается через /api/fn/:name, таймаут 5 с, сеть недоступна"
+      - "Функция из examples вызывается через /api/fn/:name; бесконечный цикл прерывается за ≤5 с (unsafe-local), лимиты по видам — specs/runtime/sdk.md; сеть недоступна"
       - "Сервер отдаёт собранный бандл системы на http://<system>--draft.localhost:4100"
       - "/_wizard/bridge.js реализует preview_contract (set-role, apply-theme-tokens); esbuild-плагин проставляет data-wz-id и пишет wz-map.json; /_wizard/spec отдаёт метаданные для роли"
 

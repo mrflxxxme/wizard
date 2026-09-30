@@ -389,9 +389,9 @@
           {"expect": {"status": "ok", "fields": {"needsPayment": false}}},
           {"as": "vol"},
           {"simulate": {"connector": "qr", "event": "checkin", "data": {"ticket": "$t1.ticketId", "gate": "Вход А"}}},
-          {"expect": {"fields": {"result": "ok"}}},
+          {"expect": {"fields": {"status": "ok"}}},
           {"simulate": {"connector": "qr", "event": "checkin", "data": {"ticket": "$t1.ticketId", "gate": "Вход Б"}}},
-          {"expect": {"fields": {"result": "duplicate"}}}
+          {"expect": {"fields": {"status": "duplicate"}}}
         ]
       }
     },

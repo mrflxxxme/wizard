@@ -148,7 +148,16 @@ const opCases: Record<string, OpCase> = {
   },
   add_role: {
     success: {
-      ops: [{ op: "add_role", name: "boss", label: "Руководитель", access: "login", isAdmin: true }],
+      ops: [
+        {
+          op: "add_role",
+          name: "boss",
+          label: "Руководитель",
+          access: "login",
+          loginMethods: ["phone_otp"],
+          isAdmin: true,
+        },
+      ],
       check: (s) => expect(s.roles.map((r) => r.name)).toContain("boss"),
     },
     failure: {
@@ -435,13 +444,30 @@ const opCases: Record<string, OpCase> = {
   },
   set_compliance: {
     success: {
-      ops: [{ op: "set_compliance", operatorName: "ООО «Ромашка»" }],
-      check: (s) => expect(s.compliance).toEqual({ consentText: "Согласен", operatorName: "ООО «Ромашка»" }),
+      ops: [
+        {
+          op: "set_compliance",
+          operatorName: "ООО «Ромашка»",
+          operatorContact: "dpo@romashka.ru",
+          operatorInn: "7707083893",
+          retentionWaiver: { reason: "Данные нужны до конца сезона" },
+          policyPage: "/privacy",
+        },
+      ],
+      check: (s) =>
+        expect(s.compliance).toEqual({
+          consentText: "Согласен",
+          operatorName: "ООО «Ромашка»",
+          operatorContact: "dpo@romashka.ru",
+          operatorInn: "7707083893",
+          retentionWaiver: { reason: "Данные нужны до конца сезона" },
+          policyPage: "/privacy",
+        }),
     },
     failure: {
-      ops: [{ op: "set_compliance", policyPage: "/privacy" }],
+      ops: [{ op: "set_compliance", operatorInn: "12345" }],
       code: "SCHEMA_INVALID",
-      path: "/ops/0/policyPage",
+      path: "/ops/0/operatorInn",
     },
   },
 };
@@ -460,7 +486,7 @@ describe("every op has a success and an error test", () => {
     test("error", () => {
       const e = errs(run(c.failure.ops));
       expect(e.map((x) => `${x.code} ${x.path}`)).toContain(`${c.failure.code} ${c.failure.path}`);
-      for (const x of e) expect(x.message).toMatch(/[а-яё]/i);
+      for (const x of e) expect(x.message_ru).toMatch(/[а-яё]/i);
     });
   });
 });
@@ -490,7 +516,7 @@ describe("applyOps batch semantics", () => {
         spec,
         [
           { op: "add_field", entity: "task", field },
-          { op: "add_role", name: "order", label: "Х", access: "login" },
+          { op: "add_role", name: "order", label: "Х", access: "login", loginMethods: ["email_otp"] },
         ],
         0,
       ),
@@ -522,7 +548,7 @@ describe("applyOps batch semantics", () => {
   test("first batch from emptySpec", () => {
     const r = applyOps(
       emptySpec("Пусто"),
-      [{ op: "add_role", name: "member", label: "Участник", access: "login" }],
+      [{ op: "add_role", name: "member", label: "Участник", access: "login", loginMethods: ["email_otp"] }],
       0,
     );
     expect(ok(r).roles).toHaveLength(1);

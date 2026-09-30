@@ -6,13 +6,15 @@ import type { AppSpec, Entity, Field, FieldType } from "./schema.js";
 
 export interface ValidateOptions {
   /**
-   * ops.yaml: entity with a pii=basic field MUST have retention or compliance.retentionWaiver — marked (M2).
-   * `compliance.retentionWaiver` is not in the M0 schema yet, so the rule is opt-in until M2.
+   * ops.yaml: entity with a pii=basic field MUST have retention or compliance.retentionWaiver — marked (M2),
+   * so the rule is opt-in until M2.
    */
   enforcePiiRetention?: boolean;
 }
 
 export const USER_REF_RE = /^\$user\.([a-z][a-z0-9_]{0,39})$/;
+/** Attributes of the implicit system entity users that `$user.<attr>` may reference (ops.yaml#semantic_rules). */
+export const USER_ATTRS = ["id", "role", "phone", "email", "telegram_id", "display_name"] as const;
 const NUMERIC_TYPES: ReadonlySet<FieldType> = new Set(["int", "decimal", "money"]);
 const LENGTH_TYPES: ReadonlySet<FieldType> = new Set(["string", "text", "email", "phone", "url"]);
 const TEMPORAL_TYPES: ReadonlySet<FieldType> = new Set(["date", "datetime"]);
@@ -253,10 +255,16 @@ function checkEntity(entity: Entity, i: number, spec: AppSpec, opts: ValidateOpt
       );
     }
   }
-  if (opts.enforcePiiRetention && !entity.retention && entity.fields.some((f) => f.pii === "basic")) {
+  const waived = spec.compliance?.retentionWaiver !== undefined;
+  if (
+    opts.enforcePiiRetention &&
+    !entity.retention &&
+    !waived &&
+    entity.fields.some((f) => f.pii === "basic")
+  ) {
     out.push(
       err("SCHEMA_INVALID", [...ep, "retention"], "Сущность с ПДн должна иметь срок хранения", {
-        hint: "Добавьте retention.deleteAfterDays",
+        hint: "Добавьте retention.deleteAfterDays или compliance.retentionWaiver с причиной",
       }),
     );
   }
@@ -283,10 +291,12 @@ function checkRowFilter(
       continue;
     }
     if (typeof value === "string" && value.startsWith("$")) {
-      if (!USER_REF_RE.test(value)) {
+      const attr = USER_REF_RE.exec(value)?.[1];
+      if (!attr || !(USER_ATTRS as readonly string[]).includes(attr)) {
         out.push(
           err("INVALID_ROW_FILTER", kp, `Недопустимая ссылка «${value}»`, {
-            hint: "Используйте $user.id или $user.<атрибут>",
+            allowed: USER_ATTRS.map((a) => `$user.${a}`),
+            hint: "Используйте $user.id или $user.<атрибут пользователя>",
           }),
         );
       }
@@ -380,6 +390,18 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
   let publicSeen = false;
   spec.roles.forEach((r, i) => {
     reserved(r.name, ["roles", i, "name"], "Имя роли", out);
+    if (r.access === "login" && !r.loginMethods?.length) {
+      out.push(
+        err("SCHEMA_INVALID", ["roles", i, "loginMethods"], "Для роли с входом укажите способы входа", {
+          allowed: ["phone_otp", "email_otp", "telegram"],
+        }),
+      );
+    }
+    if (r.access === "public" && r.loginMethods !== undefined) {
+      out.push(
+        err("SCHEMA_INVALID", ["roles", i, "loginMethods"], "Публичная роль не может иметь способов входа"),
+      );
+    }
     if (r.access === "public") {
       if (publicSeen) {
         out.push(

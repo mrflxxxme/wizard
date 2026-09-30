@@ -86,9 +86,23 @@ export const themeSchema = z.strictObject({
 
 export const fieldTypeSchema = z.enum(FIELD_TYPES);
 export const piiSchema = z.enum(PII_CATEGORIES);
+export const PII_KINDS = [
+  "fio",
+  "phone",
+  "email",
+  "address",
+  "birthdate",
+  "passport",
+  "snils",
+  "inn",
+  "card",
+  "free_text",
+  "other",
+] as const;
+export const piiKindSchema = z.enum(PII_KINDS);
 
-export const enumOptionSchema = z.looseObject({ value: identSchema, label: labelSchema });
-export const fieldRefSchema = z.looseObject({ entity: identSchema, onDelete: z.enum(ON_DELETE).optional() });
+export const enumOptionSchema = z.strictObject({ value: identSchema, label: labelSchema });
+export const fieldRefSchema = z.strictObject({ entity: identSchema, onDelete: z.enum(ON_DELETE).optional() });
 
 export const fieldSchema = z.strictObject({
   name: identSchema,
@@ -103,14 +117,15 @@ export const fieldSchema = z.strictObject({
   min: z.number().optional(),
   max: z.number().optional(),
   maxLength: jsonInt().min(1).max(100000).optional(),
+  piiKind: piiKindSchema.optional(),
 });
 
-export const indexSchema = z.looseObject({
+export const indexSchema = z.strictObject({
   fields: z.array(identSchema).min(1),
   unique: z.boolean().optional(),
 });
 
-export const retentionSchema = z.looseObject({
+export const retentionSchema = z.strictObject({
   deleteAfterDays: jsonInt().min(1).max(3650),
   anchorField: identSchema.optional(),
   mode: z.enum(["delete", "anonymize"]).optional(),
@@ -168,7 +183,7 @@ export const STEP_TYPES = [
 export const workflowSchema = z.strictObject({
   name: identSchema,
   label: labelSchema.optional(),
-  trigger: z.looseObject({
+  trigger: z.strictObject({
     type: z.enum(TRIGGER_TYPES),
     entity: identSchema.optional(),
     field: identSchema.optional(),
@@ -182,7 +197,7 @@ export const workflowSchema = z.strictObject({
       .optional(),
   }),
   steps: z
-    .array(z.looseObject({ type: z.enum(STEP_TYPES), params: anyObject.optional() }))
+    .array(z.strictObject({ type: z.enum(STEP_TYPES), params: anyObject.optional() }))
     .min(1)
     .max(20),
 });
@@ -226,13 +241,16 @@ export const aiActionSchema = z.strictObject({
 export const acceptanceSchema = z.strictObject({
   id: z.string().regex(/^AC[0-9]{1,3}$/),
   text: z.string(),
-  check: z.looseObject({
+  check: z.strictObject({
     type: z.enum(["permission", "scenario", "constraint"]),
     role: identSchema.optional(),
     entity: identSchema.optional(),
     op: z.enum(PERMISSION_OPS).optional(),
     expect: z.enum(["allow", "deny"]).optional(),
-    steps: z.array(z.unknown()).optional(),
+    steps: z.array(anyObject).optional(),
+    actors: z.record(z.string(), z.looseObject({ role: identSchema })).optional(),
+    seed: z.enum(["default", "none"]).optional(),
+    milestone: z.enum(["M0", "M1", "M2", "M3", "M4"]).optional(),
   }),
 });
 
@@ -240,6 +258,12 @@ export const complianceSchema = z.strictObject({
   consentText: z.string().optional(),
   policyPage: z.string().optional(),
   operatorName: z.string().optional(),
+  operatorContact: z.string().optional(),
+  operatorInn: z
+    .string()
+    .regex(/^[0-9]{10}([0-9]{2})?$/)
+    .optional(),
+  retentionWaiver: z.strictObject({ reason: cpString(10) }).optional(),
 });
 
 export const appSchema = z.strictObject({

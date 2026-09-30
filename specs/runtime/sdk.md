@@ -8,7 +8,7 @@
 
 ```
 functions/<name>.ts        одна функция на файл, `export default query|mutation|action({...})`
-ui/<Page>.tsx              страница: `export default function <Page>()`; ui/components/*.tsx — общие части
+ui/**/<Page>.tsx           страница по `page.file` (строитель кладёт в ui/pages/, builder.yaml): `export default function <Page>()`; ui/components/*.tsx — общие части
 _generated/wizard.d.ts     результат generateTypes(spec); только чтение для агента
 ```
 
@@ -28,7 +28,7 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 | `mutation` | `ctx.db`, `ctx.systemDb` (чтение+запись), `ctx.scheduler` | одна, `SERIALIZABLE` | ≤ 1 с, ≤ 4000 прочитанных, ≤ 500 записанных документов | нет |
 | `action` | только `ctx.runQuery/ctx.runMutation` | нет (каждый вызов — своя транзакция) | ≤ 30 с, ≤ 20 вызовов runQuery/runMutation | `ctx.connectors`, `ctx.http` (M2) |
 
-Общие лимиты: аргументы ≤ 1 МиБ, результат ≤ 4 МиБ (JSON), документ ≤ 1 МиБ, `list.limit` ≤ 1000, `paginate.numItems` ≤ 200.
+Общие лимиты: аргументы ≤ 1 МиБ, результат ≤ 4 МиБ (JSON), документ ≤ 1 МиБ, `list.limit` ≤ 1000 с `where` и ≤ 100 без него (G0-IDX-01), `paginate.numItems` ≤ 200.
 В режиме unsafe-local (M0–M1, `WIZARD_UNSAFE_LOCAL_EXEC=1`) жёсткий потолок любого вызова — 5 с (backlog M0-09).
 Превышение → ошибка `LIMIT_EXCEEDED` (время → `TIMEOUT`), транзакция откатывается.
 Тест: функции-фикстуры с бесконечным циклом, чтением 4001 документа и 501 записью дают ожидаемые коды.
@@ -52,7 +52,7 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 
 - `get(id)`, `getBy(uniqueField, value)` — точечное чтение.
 - `list({ where, order, limit })`, `first(...)`, `count({ where })`, `paginate({ where, order }, { cursor, numItems })`.
-- `where` — аналог `withIndex`: ключи MUST образовывать префикс объявленного индекса сущности (порядок полей индекса). Последний ключ префикса может быть диапазоном `{gt|gte|lt|lte}`. Фильтров по неиндексированным полям в SDK нет — это правило G0 проверяет через типы (`IndexWhere<E>`) и tsc.
+- `where` — аналог `withIndex` (G0-IDX-01 проверяет его через tsc): ключи MUST образовывать префикс объявленного индекса сущности (порядок полей индекса). Последний ключ префикса может быть диапазоном `{gt|gte|lt|lte}`. Фильтров по неиндексированным полям в SDK нет — это правило G0 проверяет через типы (`IndexWhere<E>`) и tsc.
 - Неявные индексы (создаёт `toDDL`, объявлять не нужно): `id`, `created_at`, каждое `unique`-поле, каждое `ref`-поле, `ownerField`.
 - Порядок: по полям индекса, затем `created_at`, затем `id`; `order: "asc" | "desc"` (по умолчанию `asc`). Без `where` — по `created_at`.
 - `insert(doc) → Id`, `patch(id, partial)`, `delete(id)`. Системные поля (`id, created_at, updated_at, created_by`) не пишутся. `created_by = ctx.user.id`.
@@ -61,7 +61,7 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 
 ### 2.5 Контекст и служебные API
 
-- `ctx.user: { id, role, attrs, isAdmin }`; для публичной роли `id = null`. `attrs` — атрибуты пользователя из `users.attrs` (задаёт админ системы), значения скалярные.
+- `ctx.user: { id, role, attrs, isAdmin }`; для публичной роли `id = null`. `attrs` — поля системной сущности `users`, кроме контактов (`phone`, `email`, `telegram_*` видит только хост): сейчас `display_name`.
 - `ctx.error(code, details?)` возвращает `WizardError`, использовать как `throw ctx.error(...)`. `code` — `^[A-Z][A-Z0-9_]{2,40}$`; `details.message` — текст для пользователя на русском, SHOULD присутствовать. Клиент получает `{ error: { code, message, details } }` с HTTP 400.
 - `ctx.scheduler.runAfter(delayMs, name, args)`, `runAt(isoOrDate, name, args)`, `cancel(jobId)`. Доставка at-least-once; вызываемая функция SHOULD быть идемпотентной.
 - `ctx.runQuery(name, args)`, `ctx.runMutation(name, args)` — только в action; исполняются с тем же `ctx.user`.

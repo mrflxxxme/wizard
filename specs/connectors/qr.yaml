@@ -30,7 +30,7 @@ endpoints:                                   # служебные маршрут
   note: "Параметр ?integration=<name> обязателен, только если в системе больше одной qr-интеграции. Показ билета отдельного эндпоинта не требует: владелец читает qr_token через data API"
   check: "POST /_wizard/qr/check {payload, checkpoint?, deviceId} → {status: 'ok'|'duplicate'|'invalid', reason?: 'not_found'|'bad_signature'|'revoked'|'not_valid_status', ticketTitle?, details?, scannedAt, firstScannedAt?, firstCheckpoint?}"
   manifest: "GET /_wizard/qr/manifest?since=<cursor> (M2) → {manifestId, cursor, generatedAt, expiresAt, entries[], checkedIn[], revoked[]}"
-  sync: "POST /_wizard/qr/sync {deviceId, events[≤500]} (M2) → {results[], cursor}"
+  sync: "POST /_wizard/qr/sync {deviceId, events[≤500]} (M2) → {results[], accepted, duplicate, unknown, cursor}"
 
 checkin_algorithm:
   - "1. Роль ∈ scannerRoles, иначе 403"

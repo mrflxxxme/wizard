@@ -23,8 +23,8 @@ export interface OpsError {
   code: OpsErrorCode;
   /** JSON Pointer (RFC 6901) into the spec, or into the batch (`/ops/<i>/...`) for per-op errors. */
   path: string;
-  /** Human-readable message in Russian. */
-  message: string;
+  /** Human-readable message in Russian (ops.yaml#apply.error_shape: message_ru). */
+  message_ru: string;
   /** Permitted values, when the error is "value not in a known set". */
   allowed?: string[];
   hint?: string;
@@ -43,7 +43,7 @@ export function err(
   message: string,
   extra: { allowed?: readonly string[]; hint?: string } = {},
 ): OpsError {
-  const e: OpsError = { code, path: typeof path === "string" ? path : pointer(path), message };
+  const e: OpsError = { code, path: typeof path === "string" ? path : pointer(path), message_ru: message };
   if (extra.allowed) e.allowed = [...extra.allowed];
   if (extra.hint) e.hint = extra.hint;
   return e;
@@ -172,7 +172,14 @@ export function fromZodIssues(
         );
         break;
       default:
-        out.push(err("SCHEMA_INVALID", path, issue.message));
+        // Custom checks carry Russian messages; anything else from zod gets a generic Russian text.
+        out.push(
+          err(
+            "SCHEMA_INVALID",
+            path,
+            /[а-яё]/i.test(issue.message) ? issue.message : "Некорректное значение",
+          ),
+        );
     }
   }
   return out;

@@ -457,7 +457,7 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     const errors = errorsOf(spec);
     expect(errors.map((e) => `${e.code} ${e.path}`)).toContain(`${code} ${path}`);
     for (const e of errors) {
-      expect(e.message).toMatch(/[а-яё]/i);
+      expect(e.message_ru).toMatch(/[а-яё]/i);
       expect(e.path === "" || e.path.startsWith("/")).toBe(true);
     }
   });
@@ -506,6 +506,24 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     expect(flagged({ botToken: "secret://smtp" })).toEqual([]);
   });
 
+  test("login roles need loginMethods, public roles must not have them", () => {
+    const spec = miniSpec();
+    delete spec.roles[1]?.loginMethods;
+    (spec.roles[0] as { loginMethods?: string[] }).loginMethods = ["telegram"];
+    expect(errorsOf(spec).map((e) => `${e.code} ${e.path}`)).toEqual([
+      "SCHEMA_INVALID /roles/0/loginMethods",
+      "SCHEMA_INVALID /roles/1/loginMethods",
+    ]);
+  });
+
+  test("$user.<attr> must be an attribute of the system entity users", () => {
+    const spec = miniSpec();
+    (spec.permissions[1] as { rowFilter?: unknown }).rowFilter = { title: "$user.salary" };
+    const [e] = errorsOf(spec);
+    expect(e).toMatchObject({ code: "INVALID_ROW_FILTER", path: "/permissions/1/rowFilter/title" });
+    expect(e?.allowed).toContain("$user.telegram_id");
+  });
+
   test("public role may update with a rowFilter", () => {
     const spec = miniSpec();
     Object.assign(spec.permissions[0] as object, { ops: ["read", "update"], rowFilter: { state: "todo" } });
@@ -519,6 +537,9 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     const spec = miniSpec();
     (spec.entities[0] as { retention?: unknown }).retention = { deleteAfterDays: 365 };
     expect(errorsOf(spec, { enforcePiiRetention: true })).toEqual([]);
+    const waived = miniSpec();
+    waived.compliance = { retentionWaiver: { reason: "Храним до отзыва согласия" } };
+    expect(errorsOf(waived, { enforcePiiRetention: true })).toEqual([]);
   });
 
   test("structural errors carry JSON Pointer paths and allowed values", () => {

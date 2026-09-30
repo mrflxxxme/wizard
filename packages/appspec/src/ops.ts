@@ -114,6 +114,10 @@ const opSchemas = [
     op: z.literal("set_compliance"),
     consentText: complianceSchema.shape.consentText,
     operatorName: complianceSchema.shape.operatorName,
+    operatorContact: complianceSchema.shape.operatorContact,
+    operatorInn: complianceSchema.shape.operatorInn,
+    retentionWaiver: complianceSchema.shape.retentionWaiver,
+    policyPage: complianceSchema.shape.policyPage,
   }),
 ] as const;
 
@@ -132,7 +136,9 @@ export const DESTRUCTIVE_OPS: ReadonlySet<OpName> = new Set<OpName>([
 export interface Revision {
   version: number;
   parentVersion: number;
-  author: "user" | "agent";
+  /** applyOps always produces "ops"; files/style/revert revisions are created by platform-api. */
+  kind: "ops" | "files" | "style" | "revert";
+  author: "user" | "agent" | "system";
   runId?: string;
   ops: Op[];
   createdAt: string;
@@ -190,7 +196,7 @@ export interface ApplyOpsOptions extends ValidateOptions {
   currentVersion?: number;
   idempotencyKey?: string;
   store?: IdempotencyStore;
-  author?: "user" | "agent";
+  author?: "user" | "agent" | "system";
   runId?: string;
 }
 
@@ -446,8 +452,9 @@ function applyOne(ctx: Ctx, op: Op): undefined {
       spec.acceptance = op.acceptance;
       return;
     case "set_compliance": {
+      const { op: _, ...patch } = op;
       spec.compliance = { ...(spec.compliance ?? {}) };
-      assignDefined(spec.compliance, { consentText: op.consentText, operatorName: op.operatorName });
+      assignDefined(spec.compliance, patch);
       return;
     }
     default: {
@@ -551,6 +558,7 @@ export function applyOps(
     revision: {
       version,
       parentVersion: currentVersion,
+      kind: "ops",
       author: opts.author ?? "agent",
       ...(opts.runId !== undefined ? { runId: opts.runId } : {}),
       ops: parsed,

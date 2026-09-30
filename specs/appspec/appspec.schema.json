@@ -39,6 +39,11 @@
         "template": {
           "type": "string",
           "description": "id шаблона, если сборка начата из шаблона"
+        },
+        "timezone": {
+          "type": "string",
+          "default": "Europe/Moscow",
+          "description": "IANA-таймзона для cron, относительных триггеров и retention"
         }
       }
     },
@@ -395,6 +400,11 @@
         "isAdmin": {
           "type": "boolean",
           "default": false
+        },
+        "selfSignup": {
+          "type": "boolean",
+          "default": false,
+          "description": "может ли пользователь сам зарегистрироваться в этой роли; несовместимо с isAdmin"
         }
       }
     },
