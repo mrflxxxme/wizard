@@ -164,7 +164,7 @@ tasks:
     owner: qa
     parallel_group: m0-w1
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждая blocker-проверка G0 имеет положительную и отрицательную фикстуру в packages/gates/test/fixtures/<checkId>/; warning-проверки — since: M1"
