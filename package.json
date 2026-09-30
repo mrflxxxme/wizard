@@ -14,6 +14,7 @@
     "test": "vitest run",
     "e2e": "pnpm --filter @wizard/e2e test",
     "dev": "node scripts/dev.mjs",
+    "check:code": "node scripts/check-code.mjs",
     "db:up": "node scripts/db.mjs up",
     "db:down": "node scripts/db.mjs down",
     "specs:validate": "node tools/specs/validate.mjs"
