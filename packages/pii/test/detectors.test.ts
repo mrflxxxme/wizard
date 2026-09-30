@@ -302,6 +302,48 @@ describe("person_name: non-Slavic and English/European names (FU-1)", () => {
   });
 });
 
+describe("person_name_latin: foreign names outside the dictionary in Russian text (FU-2)", () => {
+  test.each([
+    [
+      "Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram.",
+      "Hiroshi Tanaka-Weller",
+    ],
+    ["Квоты ведёт Oliver Brennan-Kowalski, пишите в чат", "Oliver Brennan-Kowalski"],
+    ["Ответственный — Mateus Okonkwo-Lindqvist, тел. уточнить", "Mateus Okonkwo-Lindqvist"],
+    ["Заказы принимает Sofia Marchetti-Lund по будням", "Sofia Marchetti-Lund"],
+    ["Hiroshi Tanaka-Weller согласует бюджет", "Hiroshi Tanaka-Weller"],
+    ["Контакт: Kenji Watanabe-Smith.", "Kenji Watanabe-Smith"],
+  ])("double-barrelled surname regardless of the preceding word: %s", (text, name) => {
+    expect(found(text)).toEqual([["person_name_latin", name]]);
+  });
+  test.each([
+    ["помощник финдиректора Hiroshi Tanaka ведёт заявки", "Hiroshi Tanaka"],
+    ["координатор Hiroshi Tanaka на связи", "Hiroshi Tanaka"],
+    ["Вопросы решает помощник Kenji Watanabe", "Kenji Watanabe"],
+    ["передать гендиректору Takeshi Nakamura", "Takeshi Nakamura"],
+    ["меня зовут Ayumi Sato", "Ayumi Sato"],
+  ])("pair after a role noun: %s", (text, name) => {
+    expect(found(text)).toEqual([["person_name_latin", name]]);
+  });
+  test.each([
+    "Visual Basic и Apple Music",
+    "Pull Request прошёл Code Review",
+    "Открыть в Visual Studio Code",
+    "Red Hat Enterprise Linux 9",
+    "Используем Apple Music и Google Play",
+    "менеджер Google Play отвечает",
+    "директор Tech Lab выступит",
+    "пьём Coca-Cola Zero",
+    "Diet Coca-Cola в магазине",
+    "купили Mercedes-Benz в кредит",
+    "Hiroshi Tanaka придёт позже",
+    "Уведомления о новых задачах — в Telegram.",
+    "Москва Сити и Нижний Новгород",
+  ])("hard negative: %s", (text) => {
+    expect(found(text).filter(([k]) => k === "person_name_latin")).toEqual([]);
+  });
+});
+
 describe("phone_intl", () => {
   test("+country code ≠ 7 with 8–15 digits", () => {
     expect(found("Минск: +375 29 123-45-67")).toEqual([["phone_intl", "+375 29 123-45-67"]]);

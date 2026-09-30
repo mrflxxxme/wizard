@@ -112,11 +112,11 @@ describe("fixture mode", async () => {
 
 describe("--dry-run: canaries and pii_leaks", async () => {
   const result = await runHarness(
-    opts({ dryRun: true, briefs: "ev-03-partner-quotas,hz-03-field-service,hz-04-client-crm" }),
+    opts({ dryRun: true, briefs: "ev-03-partner-quotas,hz-01-purchase-requests,hz-03-field-service,hz-04-client-crm" }),
   );
 
   test("canary briefs replay a stand-in with their canary sentences; scrub keeps them out of T1 payloads", () => {
-    for (const id of ["ev-03-partner-quotas", "hz-03-field-service"]) {
+    for (const id of ["ev-03-partner-quotas", "hz-01-purchase-requests", "hz-03-field-service"]) {
       const r = result.runs.find((x) => x.brief === id);
       expect(r?.errors, id).toEqual([]);
       expect(r?.g0g1_pass, id).toBe(true);

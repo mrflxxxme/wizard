@@ -105,6 +105,27 @@ const NOUN_LIKE_LAT = /(?:tion|sion|ment|ness|ship|ware|able|ible|ology|ics|ies)
 const TITLE_WORD = /^\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)*$/u;
 const ALL_CAPS = /^[\p{Lu}-]+$/u;
 
+// FU-2: foreign full names outside the dictionary inside Russian text ("помощник финдиректора Hiroshi Tanaka-Weller").
+const LAT_TITLE = /^[A-Z][a-z]+$/;
+const LAT_DOUBLE = /^[A-Z][a-z]{2,}-[A-Z][a-z]{2,}$/;
+// Cyrillic word right before a Latin pair that names a person's role (folded, optional compound prefix: финдиректора).
+const PERSON_CUE_CYR =
+  /^(?:фин|ген|тех|зам|коммерч|арт|исп|глав|вице-)?(?:директор|менеджер|помощни|ассистент|координатор|руководител|начальни|заместител|бухгалтер|главбух|секретар|сотрудни|специалист|инженер|юрист|клиент|заказчи|партнер|представител|консультант|администратор|оператор|куратор|аналитик|разработчик|дизайнер|закупщи|логист|кассир|продав|владел|основател|ведущ|спикер|докладчик|курьер|водител|тренер|преподавател|учител|врач|доктор|коллег|участни|переводчик|рекрутер|ответствен|господ|госпож|мистер|миссис|зовут)\p{L}*$/u;
+// Latin brand and product words that pair with another Title-case word ("Google Play", "Coca-Cola Zero").
+const LATIN_BRAND = new Set(
+  (
+    "google apple microsoft yandex telegram whatsapp viber amazon adobe samsung huawei xiaomi sber tinkoff ozon " +
+    "wildberries avito bitrix excel word office windows android iphone ipad mac chrome firefox safari linux ubuntu " +
+    "docker github gitlab jira confluence notion slack zoom skype figma tilda wordpress shopify stripe paypal visa " +
+    "mastercard netflix spotify youtube facebook instagram twitter tiktok yahoo oracle intel nvidia tesla toyota " +
+    "nissan bmw audi volkswagen porsche lada nike adidas puma ikea zara starbucks mcdonalds pepsi coca cola mercedes " +
+    "benz rolls royce harley davidson hewlett packard visual request review pull push merge commit release enterprise " +
+    "business premium cloud pay play music store market prime"
+  ).split(" "),
+);
+const PREV_WORD = /(\p{L}+)[ \xa0]*[:—–-]?[ \xa0]*$/u;
+const NEXT_WORD = /^[^\p{L}]*(\p{L}+)/u;
+
 interface Tok {
   s: number;
   e: number;
@@ -184,6 +205,14 @@ function pairable(raw: string, anchor: string, given: boolean): boolean {
     return true;
   }
   return LAT.test(w) && !NOUN_LIKE_LAT.test(key);
+}
+
+/** FU-2: can this Latin word be part of a person's name (not a stop, brand or product word)? */
+function latinNamePart(w: string): boolean {
+  return w.split("-").every((p) => {
+    const key = fold(p);
+    return !PAIR_STOP.has(key) && !LATIN_BRAND.has(key) && !NOUN_LIKE_LAT.test(key);
+  });
 }
 
 function isPatronymic(w: string): boolean {
@@ -327,6 +356,30 @@ export function detectNames(text: string): Finding[] {
     }
     spans.push({ s: startTok.s, e: (toks[e] as Tok).e, c: ext ? "high" : "medium", l: !CYR.test(w) });
     i = e;
+  }
+
+  // FU-2: a maximal run of 2–3 Title-case Latin words next to Cyrillic text. Accepted when the last word is a
+  // double-barrelled surname ("Hiroshi Tanaka-Weller"), or when a pair follows a role noun ("координатор Hiroshi Tanaka").
+  for (let i = 0; i < toks.length; i++) {
+    let j = i;
+    while (j + 1 < toks.length && adjacent(j, j + 1) && LAT.test((toks[j + 1] as Tok).t)) j++;
+    const run = toks.slice(i, j + 1);
+    const n = run.length;
+    const start = i;
+    i = j;
+    if (n < 2 || n > 3 || !LAT.test((run[0] as Tok).t)) continue;
+    const last = (run[n - 1] as Tok).t;
+    const double = LAT_DOUBLE.test(last);
+    if (!run.every((t, k) => (k === n - 1 && double) || LAT_TITLE.test(t.t))) continue;
+    if (!run.every((t) => latinNamePart(t.t))) continue;
+    const s = (run[0] as Tok).s;
+    const e = (run[n - 1] as Tok).e;
+    const prev = PREV_WORD.exec(beforeTok(start))?.[1];
+    const next = NEXT_WORD.exec(text.slice(e, e + 40))?.[1];
+    if (!(prev && CYR.test(prev)) && !(next && CYR.test(next))) continue;
+    if (STREET_BEFORE.test(beforeTok(start)) || NAMED_AFTER_BEFORE.test(beforeTok(start))) continue;
+    const cue = !!prev && CYR.test(prev) && PERSON_CUE_CYR.test(fold(prev));
+    if (double || (n === 2 && cue)) spans.push({ s, e, c: "high", l: true });
   }
 
   for (const m of text.matchAll(FIO_LABEL_RE)) {
