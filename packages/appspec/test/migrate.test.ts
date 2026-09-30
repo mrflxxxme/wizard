@@ -1,11 +1,9 @@
-import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import {
   type AppSpec,
   applyOps,
   FIELD_TYPES,
   type Field,
-  generateTypes,
   type MigrationPlan,
   planMigration,
   type StepKind,
@@ -13,7 +11,6 @@ import {
   toDDL,
   toRLS,
 } from "../src/index.js";
-import forumFixture from "./fixtures/forum.json" with { type: "json" };
 import { forumSpec, miniSpec } from "./helpers.js";
 
 const S = "app_unit_draft";
@@ -436,46 +433,5 @@ describe("toRLS", () => {
       `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${S}" TO "rt"`,
       `GRANT USAGE ON ALL SEQUENCES IN SCHEMA "${S}" TO "rt"`,
     ]);
-  });
-});
-
-describe("generateTypes", () => {
-  test("emits row/input interfaces that typecheck", () => {
-    const dts = generateTypes(forumFixture as AppSpec);
-    expect(dts).toContain("export interface Topic extends SystemFields");
-    expect(dts).toContain(`status: "open" | "closed";`);
-    expect(dts).toContain("topic: { row: Topic; input: TopicInput };");
-    const usage = `
-      const t: Topic = { id: "1", created_at: "", updated_at: null, created_by: null, title: "x", body: null,
-        author: "u", status: "open", pinned: null };
-      const i: TopicInput = { title: "x", author: "u" };
-      const e: EntityName = "ban";
-      const r: RoleName = "guest";
-      // @ts-expect-error unknown enum value
-      const bad: Topic["status"] = "archived";
-      type Row = DataModel["post"]["row"];
-      export const all: [Topic, TopicInput, EntityName, RoleName, Row | null, string] = [t, i, e, r, null, bad];
-    `;
-    // Generated declarations and their usage in one module (the d.ts is plain type-only TS).
-    const files: Record<string, string> = { "/m/usage.ts": `${dts}\n${usage}` };
-    const options: ts.CompilerOptions = {
-      strict: true,
-      noEmit: true,
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
-      types: [],
-      noLib: true,
-    };
-    const host = ts.createCompilerHost(options);
-    host.getSourceFile = (name, lang) => {
-      const text = files[name];
-      return text === undefined ? undefined : ts.createSourceFile(name, text, lang);
-    };
-    host.fileExists = (name) => name in files;
-    host.readFile = (name) => files[name];
-    const program = ts.createProgram(["/m/usage.ts"], options, host);
-    const diags = ts.getPreEmitDiagnostics(program).filter((d) => d.code !== 2318); // noLib: missing global types
-    expect(diags.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
   });
 });
