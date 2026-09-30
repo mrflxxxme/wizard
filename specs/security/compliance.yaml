@@ -1,0 +1,78 @@
+# 152-ФЗ, 243-ФЗ и документы. Не юридическое заключение: тексты для публикации — только после юриста (E-LEGAL).
+# Основа: docs/audit/03-legal-and-licenses.md (L1, L3), product.yaml#decisions.D10_pricing differentiators price_and_152fz.
+version: 1
+
+roles:
+  platform_users: "Wizard — оператор ПДн своих пользователей (владельцы и участники организаций)"
+  system_data: "Клиент (владелец системы) — оператор ПДн конечных пользователей; Wizard — обработчик по поручению (ст. 6 ч. 3), субобработчики — из subprocessors"
+
+system_package:                    # «Пакет 152-ФЗ» в каждой системе; M2-05 (часть — M1)
+  applies_when: "в спеке есть хотя бы одно поле pii ≠ none"
+  operator:
+    milestone: M1
+    rule: "MUST: compliance.operatorName (юрлицо/ИП/ФИО самозанятого) задан до публикации в prod; иначе publish → 422 OPERATOR_NAME_REQUIRED и publishBlockers содержит OPERATOR_NAME_REQUIRED"
+    source: "Заполняет owner (PUT /systems/:id/compliance) — агент MUST NOT выдумывать оператора"
+  policy_page:
+    milestone: M2
+    route: "compliance.policyPage, по умолчанию /privacy; генерирует runtime (не код агента), доступна роли public"
+    content: "шаблон apps/runtime/templates/privacy.ru.md (текст от юриста) + подстановки из спеки: operatorName; цели (app.description + сущности); перечень категорий ПДн по сущностям (label полей с pii ≠ none); действия; сроки хранения из retention; обработчик Wizard и субобработчики с pii=true (subprocessors); права субъекта и порядок отзыва согласия; дата и версия"
+    versioning: "версия = sha256 отрендеренного текста; хранится в журнале согласий"
+    status: "До текста юриста шаблон помечен DRAFT, а публикация prod в бете с реальными людьми ждёт M2 exit «Юридический пакет интегрирован»"
+    test: "Спека «форум» → GET /privacy содержит operatorName, все label полей с pii=basic и сроки retention; при смене retention версия меняется"
+  consent:
+    milestone: M2
+    ui: "Компонент ui-kit ConsentCheckbox: отдельный чекбокс, по умолчанию НЕ отмечен, ссылка на политику; НЕ объединяется с офертой/условиями продажи клиента (отдельный чекбокс, если они есть) — ст. 9 в ред. 156-ФЗ"
+    runtime: "Создание/изменение строки сущности с pii ≠ none ролью без isAdmin через data API требует _consent: {version}; без него → 422 CONSENT_REQUIRED. Запись в app_<key>_<env>._w_consents (префикс _w_ зарезервирован runtime.yaml#postgres.system_tables) {id, entity, row_id, policy_version, consent_text_hash, given_at, ip_hmac}"
+    text: "compliance.consentText или шаблон по умолчанию (от юриста); указывает оператора, цели, перечень данных, обработчика, срок, способ отзыва"
+    gates: "G2: каждая страница, вызывающая create/update по сущности с ПДн для не-admin роли, содержит ConsentCheckbox (статический анализ JSX); G1: сценарий «create без согласия → 422» генерируется автоматически"
+    retention: "Журнал согласий хранится срок хранения сущности + 3 года (срок исковой давности) — уточнить у юриста"
+  retention:
+    milestone: M2
+    rule: "ops.yaml#semantic_rules: сущность с pii=basic MUST иметь retention (или compliance.retentionWaiver — поля пока нет в appspec.schema.json, см. CHANGELOG). Строитель SHOULD предлагать срок по умолчанию: регистрация на событие — 30 дней после даты события (anchorField = дата события), заказ — 3 года (бухучёт), заявка без сделки — 1 год"
+    enforcement: "Удаление выполняет runtime (runtime.yaml#workflows.retention, ежесуточно, с M0); контроль и журнал — workflows.yaml#workflows.retention_cron (M2). mode delete или anonymize (ПДн-поля → NULL, остальное сохраняется для отчётов)"
+    deletion_log: "platform.deletion_log: system, entity, mode, cutoff, rows_affected — без значений; владелец видит журнал в настройках системы"
+  subject_requests:
+    milestone: M2
+    level: SHOULD
+    rule: "Админ-страница системы /_wizard/pd-requests: найти строки по email/телефону субъекта → выгрузить или удалить; ответ оператора — ≤ 10 рабочих дней (ст. 14, 20); удаление пишется в deletion_log mode=subject_request"
+  telegram_and_email: "Уведомления через Telegram по умолчанию без полей pii ≠ none (G2-TG-01): «Заявка №123» + ссылка"
+  forbidden: "pii ∈ {special, biometric} — PII_CATEGORY_FORBIDDEN в applyOps и блок в G2 (MVP)"
+  rkn_notice_draft:
+    milestone: M2
+    level: SHOULD
+    rule: "Сгенерировать черновик сведений для уведомления РКН (ст. 22) по спеке: цели, категории, субъекты, сроки, меры — клиент подаёт сам; с дисклеймером «не юридическая консультация»"
+
+platform:
+  documents:                       # docs/legal/*.md — заглушки DRAFT до юриста
+    - { id: offer, name: "Оферта (лицензия + хостинг, автоплатежи, запрещённый контент, права на спеку и код, экспорт данных)", status: "PENDING E-LEGAL" }
+    - { id: dpa, name: "ДПО — поручение обработки ПДн в системах клиентов: перечень ПДн и действий, конфиденциальность, ст. 18 ч. 5, 18.1, 19, инциденты, разрешение субобработчиков из списка", status: "PENDING E-LEGAL" }
+    - { id: privacy, name: "Политика обработки ПДн платформы (ст. 18.1)", status: "PENDING E-LEGAL" }
+    - { id: pd_consent, name: "Согласие на обработку ПДн — отдельный документ и отдельный чекбокс при регистрации (verifyOtp.pdConsent), не часть оферты", status: "PENDING E-LEGAL" }
+    - { id: ai_notice, name: "Уведомление по 243-ФЗ ст. 10 ч. 1 (с 01.03.2027): кому принадлежат права на результат (спека, код, тексты), условия доступа и хранения", status: "PENDING E-LEGAL" }
+  rules:
+    - "MUST: документы версионируются (offer_version); новая версия → повторное принятие при следующем входе"
+    - "MUST: ai_notice показывается в оферте и кратко — во вкладке «Код» и в отчёте сборки (текст от юриста; до него — заглушка)"
+    - "MUST NOT: публиковать тексты документов от имени компании без юриста (E-LEGAL) и выкладывать вне staging (E-EXTERNAL)"
+    - "MUST: уведомление РКН о начале обработки (ст. 22) подаёт основатель до приёма первых реальных пользователей беты (E-LEGAL); уведомление о трансграничной передаче (ст. 12) по Z.ai — только если юрист сочтёт нужным как страховку"
+  subprocessors:                   # машиночитаемый список; выводится в ДПО и политиках систем
+    - { name: "Cloud.ru (Облачные технологии)", location: RU, purpose: "хостинг: Managed PG, K8s, S3, KMS; T0-модели (внутренние)", pii: true }
+    - { name: "Yandex Cloud (Яндекс.Облако)", location: RU, purpose: "резерв T0 (AI Studio, x-data-logging-enabled: false), поиск", pii: true }
+    - { name: "Z.ai (JINGSHENG HENGXING, Сингапур)", location: SG, purpose: "T1 для сборки", pii: false, note: "получает только контекст сборки после scrub; ПДн не передаются (data-boundary.yaml)" }
+    - { name: "ЮKassa (ООО НКО «ЮМани»)", location: RU, purpose: "платежи платформы (подписки, докупка)", pii: true, note: "самостоятельный оператор платёжных данных" }
+    - { name: "Почтовый провайдер (РФ, выбрать; E-ACCESS)", location: RU, purpose: "OTP и уведомления", pii: true }
+    - { name: "Telegram", location: "за рубежом", purpose: "уведомления систем, если клиент подключил коннектор", pii: false, note: "без ПДн по умолчанию (G2)" }
+  localization:
+    - "MUST: все ПДн, логи, бэкапы, метрики, трейсы и ошибки — только в РФ (ст. 18 ч. 5; deploy.yaml#cloud.observability)"
+    - "MUST NOT: внешние SaaS для логов/ошибок/аналитики/поддержки (Sentry, Datadog, GA, Intercom и т. п.), CDN с TLS вне РФ"
+    - "MUST NOT: реальные ПДн в репозитории, фикстурах, eval-брифах и CI-артефактах (GitHub вне РФ)"
+  security_org:                    # ОРД, аудит 03 L2
+    - "Модель угроз, акт УЗ (платформа УЗ-4; runtime — УЗ-3 при > 100 тыс. субъектов), перечень допущенных лиц — docs/security/ (M2)"
+    - "MFA (TOTP) для staff; журнал действий staff — platform.staff_audit_log"
+    - "Инцидент (утечка, в т. ч. пропуск ПДн на T1): уведомление РКН ≤ 24 ч, результаты расследования ≤ 72 ч — runbook docs/runbooks/pd-incident.md; оповещение основателя сразу (E-LEGAL)"
+
+tests:
+  - "publish системы с pii-полем без operatorName → 422 OPERATOR_NAME_REQUIRED (M1)"
+  - "create через data API без _consent для сущности с ПДн ролью public → 422; с _consent → запись в _w_consents (M2)"
+  - "retention_cron удаляет ровно просроченные строки и пишет deletion_log (M2-05)"
+  - "Регистрация нового пользователя без pdConsent или acceptOffer → 422 CONSENT_REQUIRED; согласия хранятся раздельными полями"
+  - "Линтер CI: в .github, tools/eval/briefs и fixtures detect() не находит strong-видов ПДн"

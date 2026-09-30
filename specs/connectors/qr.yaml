@@ -1,0 +1,63 @@
+# Коннектор QR: выдача подписанных токенов, проверка на входе, офлайн-сканер. Нормативно для M0 (онлайн) и M2-03 (офлайн).
+# UI: компоненты QrTicket и QrScanner из ../ui/ui-kit.yaml работают поверх эндпоинтов этого файла.
+id: qr
+milestone: { online: M0, offline_scanner: M2 }
+
+secrets:
+  - { name: qr_signing_key, required: true, label: "Ключ подписи QR — генерирует платформа (32 байта), пользователь его не вводит" }
+
+config_schema:
+  entity: "сущность-носитель (ticket)"
+  tokenField: "поле типа qr_token этой сущности"
+  validStatuses: "значения status, при которых проход разрешён"
+  checkin: "{entity, refField} — сущность отметок; refField — ref на носитель, MUST unique (G0)"
+  displayFields: "поля носителя для экрана сканера; MUST pii=none (G2); ref показываются подписью связанной записи"
+  offline: "bool — разрешить офлайн-пакет (M2)"
+  scannerRoles: "роли, которым доступны checkin/package/sync; MUST иметь create на checkin.entity"
+
+token:
+  value: "Поле qr_token хранит подписанный payload целиком; генерирует runtime при insert. QrTicket (ui-kit) рендерит значение поля как есть"
+  payload: "WZ1.<kid>.<rand>.<sig>: rand — 128 бит CSPRNG, base32 без паддинга (26 символов); sig = base64url(HMAC-SHA256(key[kid], 'WZ1|' + systemId + '|' + env + '|' + rand))[0:16] (96 бит)"
+  qr_image: "QR ECC M, payload ≤ 64 символа (≈ 50); SVG рисует ui-kit, PNG для письма — коннектор"
+  rotation:
+    - "kid — номер версии ключа; новые payload подписываются активным ключом, проверка принимает активный и предыдущий ключ 30 дней (QR из писем продолжают работать)"
+    - "Плановая ротация: все qr_token переподписываются новым kid пакетной задачей (_w_jobs), QrTicket обновится по SSE"
+    - "Утечка ключа: старый ключ отзывается сразу, без периода совместимости"
+  revoke: "revoke({entity,id}) и переход записи в статус canceled/refunded → новый rand и qr_token; хеш старого — в списке отозванных"
+  test: "Изменённый символ payload → invalid; payload другой системы или env → invalid; после ротации старый kid работает 30 дней"
+
+endpoints:                                   # служебные маршруты runtime (ui-kit QrScanner ходит сюда); ответы без ПДн
+  note: "Параметр ?integration=<name> обязателен, только если в системе больше одной qr-интеграции. Показ билета отдельного эндпоинта не требует: владелец читает qr_token через data API"
+  check: "POST /_wizard/qr/check {payload, checkpoint?, deviceId} → {status: 'ok'|'duplicate'|'invalid', reason?: 'not_found'|'bad_signature'|'revoked'|'not_valid_status', ticketTitle?, details?, scannedAt, firstScannedAt?, firstCheckpoint?}"
+  manifest: "GET /_wizard/qr/manifest?since=<cursor> (M2) → {manifestId, cursor, generatedAt, expiresAt, entries[], checkedIn[], revoked[]}"
+  sync: "POST /_wizard/qr/sync {deviceId, events[≤500]} (M2) → {results[], cursor}"
+
+checkin_algorithm:
+  - "1. Роль ∈ scannerRoles, иначе 403"
+  - "2. Разобрать payload, проверить sig за постоянное время по kid; ошибка → invalid/bad_signature"
+  - "3. Найти запись по tokenField (systemDb); нет → invalid/not_found, отозван → invalid/revoked, status ∉ validStatuses → invalid/not_valid_status"
+  - "4. INSERT в checkin.entity {refField, scanned_at: now, device_id, gate: checkpoint, offline:false}; нарушение unique → duplicate с временем и входом первой отметки"
+  - "5. ticketTitle/details — значения displayFields (для ref — подпись связанной записи), например «VIP · поток „Технологии“»"
+checkin_test: "AC4 форума: второй checkin того же payload → duplicate; 20 параллельных checkin одного билета → ровно один ok"
+
+offline:                                     # M2, PWA волонтёра
+  package:
+    entries: "[{h: base64url(sha256(rand))[0:22], id, d: display-строка, s: status}] — сам токен, ключ и ПДн в пакет НЕ входят; подделать QR по пакету нельзя"
+    size: "≈ 100 байт на запись; 5 000 записей ≤ 600 КиБ; gzip"
+    storage: "IndexedDB устройства; expiresAt = конец события + 24 ч (или 72 ч от выдачи), после — стирается сервис-воркером"
+    delta: "онлайн — каждые 60 с по cursor: новые, изменённые статусы, checkedIn с других устройств, revoked"
+  scan: "Без сети: разобрать payload (подпись не проверяется — ключа на устройстве нет), h = sha256(rand), поиск в entries; h ∈ checkedIn или уже отмечен локально → «Повторный вход»; нет в entries → «Билет не найден»; иначе ok и событие в локальную очередь"
+  event: "{clientEventId: uuid v4, h, scannedAt (часы устройства), gate, localResult}"
+  sync_protocol:
+    - "Очередь отправляется при появлении сети и каждые 15 с, партиями ≤ 500, по порядку"
+    - "Сервер идемпотентен по clientEventId (хранит результаты 7 дней в _w_qr_events)"
+    - "Результат по событию: accepted | duplicate | unknown | revoked. duplicate — отметка уже есть (с другого устройства или онлайн); checkin.scanned_at = min(существующий, пришедший)"
+    - "Сервер пишет offline:true и receivedAt; расхождение часов > 10 мин — флаг clock_skew в _w_qr_events"
+    - "Ответ содержит cursor; клиент удаляет из очереди только подтверждённые события"
+  limits: "Два офлайн-устройства могут пропустить один билет дважды — это фиксируется при синхронизации как duplicate и показывается организатору в отчёте «Повторных»"
+  device: "deviceId — uuid в IndexedDB; _w_qr_devices {deviceId, userId, lastSyncAt, pending}; организатор видит устройства с несинхронизированными отметками"
+  test: "M2-03 и AC5 форума: офлайн 100 сканов на двух устройствах с 10 пересечениями → онлайн → 100−10 accepted, 10 duplicate, повторная отправка той же партии ничего не меняет"
+
+participant_offline: "QrTicket кэширует запись в IndexedDB после первого показа — билет открывается без сети (экран 8 концепции)"
+email_attachment: "PNG 600×600 из qr_token для email.sendTemplate attachQrOf — генерирует коннектор на хосте"
+logging: "MUST NOT: payload, qr_token, rand, h; логируются status, reason, checkpoint, deviceId-хеш"

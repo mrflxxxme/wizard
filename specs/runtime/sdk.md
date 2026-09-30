@@ -56,7 +56,7 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 - Неявные индексы (создаёт `toDDL`, объявлять не нужно): `id`, `created_at`, каждое `unique`-поле, каждое `ref`-поле, `ownerField`.
 - Порядок: по полям индекса, затем `created_at`, затем `id`; `order: "asc" | "desc"` (по умолчанию `asc`). Без `where` — по `created_at`.
 - `insert(doc) → Id`, `patch(id, partial)`, `delete(id)`. Системные поля (`id, created_at, updated_at, created_by`) не пишутся. `created_by = ctx.user.id`.
-- `ref` на пользователей — `Id<"users">`; `users` — системная сущность runtime (`runtime.yaml#postgres.system_tables`), в `ctx.db` недоступна, кроме `ctx.db.users.get(id) → { id, role, displayName }` для ролей с `isAdmin`.
+- `ref` на пользователей — `Id<"users">`; `users` — системная сущность runtime (`runtime.yaml#postgres.system_tables`), в `ctx.db` её нет: контакты пользователей видит только хост (коннекторы по `userId`). Ссылаться на неё можно полем `ref` с `entity: "users"`.
 - Тест: `ctx.db.ticket.list({ where: { status: "paid" } })` без индекса по `status` не проходит tsc; с индексом `[stream, status]` проходит только `{ stream, status? }`.
 
 ### 2.5 Контекст и служебные API
@@ -75,7 +75,8 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 - `useMutation(name)` → `[run, { pending, error }]`; `run` для mutation и action. `run` отклоняется с `WizardError`.
 - `useEntityList(entity, { filter, sort, page, limit })` → `GET /api/data/:entity` (`runtime.yaml#data_api`); `filter` — по видимым полям, `sort` — `"field"` или `"-field"`, `limit ≤ 100`. Перезапрос при инвалидации `entity`.
 - `useEntity(entity, id)`, `useEntityMutation(entity)` → `{ create, update, remove }`.
-- `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, returnTo })` ведёт на страницу входа runtime (`runtime.yaml#auth`).
+- Согласие на ПДн: `run(args, { consent: true })` и `create(doc, { consent: true })` — SDK добавляет в тело запроса `_consent` в формате `../security/compliance.yaml#consent` (версия политики и хеш текста согласия берёт из RoleSpec). Без него запись с ПДн ролью без `isAdmin` → 422 `CONSENT_REQUIRED`. Передавать `consent: true` можно только после явной отметки пользователем отдельного чекбокса.
+- `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, next })` ведёт на `/login` (`runtime.yaml#auth.login_page`).
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
 - Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK. После переподключения SDK перезапрашивает все активные запросы.
@@ -85,33 +86,31 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 
 `generateTypes(spec: AppSpec) → string` (экспорт `@wizard/sdk/codegen`, исполняется на платформе, не в системе).
 
-- MUST: результат — содержимое `_generated/wizard.d.ts`, которое дополняет `interface Register` модуля `@wizard/sdk` (module augmentation) полями `entities`, `roles`, `functions`, `connectors`, `payments`.
+- MUST: результат — содержимое `_generated/wizard.d.ts`, которое дополняет (module augmentation) интерфейсы `Entities`, `Roles`, `Functions`, `Connectors`, `Payments` модуля `@wizard/sdk`.
 - Отображение типов полей: `string|text|email|phone|url|file|qr_token → string`, `int|decimal → number` (точность `numeric(18,6)` проверяет runtime), `money → number` (рубли, ≤ 2 знаков после запятой), `bool → boolean`, `date → string` (`YYYY-MM-DD`), `datetime → string` (ISO 8601 UTC), `enum → union значений`, `ref → Id<"entity">`, `json → Json`.
-- `doc`: необязательное поле → `T | null`. `insert`: необязательные поля и поля с `default` — опциональны. `clientDoc`: поля, скрытые хотя бы для одной роли, — опциональны. `where`: объединение объектов-префиксов каждого индекса (включая неявные) и `{}`. `unique`: объединение имён unique-полей.
+- `doc`: необязательное поле → `T | null`. `insert`: необязательные поля и поля с `default` — опциональны. `clientDoc`: поля, скрытые хотя бы для одной роли, — опциональны. `where`: объединение объектов-префиксов каждого индекса, включая неявные (`{}` в объединение MUST NOT входить: иначе tsc пропустит любой `where`). `unique`: объединение имён unique-полей.
 - `functions`: `{ <name>: typeof import("../functions/<file без .ts>").default }`.
 - Тест: снапшот для `../appspec/examples/forum.json`; `tsc --noEmit` на `examples/` против сгенерированного файла проходит (backlog M0-07).
 
 Фрагмент результата для форума (нормативна форма, не порядок):
 
 ```ts
-import type { Id, Json } from "@wizard/sdk";
+import type { EmailConnector, Id, QrConnector, Range, TelegramConnector, YookassaConnector } from "@wizard/sdk";
 declare module "@wizard/sdk" {
-  interface Register {
-    roles: "organizer" | "moderator" | "speaker" | "partner" | "participant" | "volunteer" | "visitor";
-    entities: {
-      stream: {
-        doc: { name: string; capacity: number };
-        insert: { name: string; capacity: number };
-        clientDoc: { name: string; capacity: number };
-        where: {} | { name: string };
-        unique: never;
-      };
-      // ...
+  interface Roles { organizer: true; moderator: true; speaker: true; partner: true; participant: true; volunteer: true; visitor: true }
+  interface Entities {
+    stream: {
+      doc: { name: string; capacity: number; description: string | null };
+      insert: { name: string; capacity: number; description?: string | null };
+      clientDoc: { name: string; capacity: number; description: string | null };
+      where: { created_at: string | Range<string> };
+      unique: never;
     };
-    functions: { partnerQuota: typeof import("../functions/partnerQuota").default /* ... */ };
-    connectors: { telegram: TelegramConnector; email: EmailConnector; yookassa: YookassaConnector; qr: QrConnector };
-    payments: { yookassa: "ticket" };
+    // ...
   }
+  interface Functions { partnerQuota: typeof import("../functions/partnerQuota").default /* ... */ }
+  interface Connectors { yookassa: YookassaConnector; telegram: TelegramConnector; email: EmailConnector; qr: QrConnector }
+  interface Payments { yookassa: "ticket" }
 }
 ```
 
@@ -119,24 +118,21 @@ declare module "@wizard/sdk" {
 
 ```ts
 declare module "@wizard/sdk" {
-  // ---------- реестр, заполняемый generateTypes ----------
-  export interface Register {}
-  interface EntityShape { doc: object; insert: object; clientDoc: object; where: object; unique: string }
-  interface AppShape {
-    roles: string;
-    entities: Record<string, EntityShape>;
-    functions: Record<string, AnyFunction>;
-    connectors: Record<string, unknown>;
-    payments: Record<string, string>;
-  }
-  type App = Register extends AppShape ? Register : AppShape;
+  // ---------- реестр: generateTypes дополняет эти интерфейсы (module augmentation) ----------
+  // Раздельные интерфейсы, а не один Register: иначе типы функций и ctx ссылаются друг на друга по кругу.
+  export interface Entities {}     // <entity>: { doc; insert; clientDoc; where; unique }
+  export interface Roles {}        // <role>: true
+  export interface Functions {}    // <name>: typeof import("../functions/<file>").default
+  export interface Connectors {}   // <integration.name>: TelegramConnector | EmailConnector | ...
+  export interface Payments {}     // <integration.name>: union id привязок (bindings[].id)
 
   export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
   const idBrand: unique symbol;
   export type Id<E extends string> = string & { readonly [idBrand]: E };
-  export type EntityName = keyof App["entities"] & string;
-  export type RoleName = App["roles"];
-  type Ent<E extends EntityName> = App["entities"][E];
+  export type EntityName = keyof Entities & string;
+  export type RoleName = keyof Roles & string;
+  type Ent<E extends EntityName> = Entities[E] extends EntityShape ? Entities[E] : never;
+  interface EntityShape { doc: object; insert: object; clientDoc: object; where: object; unique: string }
   export type SystemFields<E extends string> = {
     id: Id<E>; created_at: string; updated_at: string | null; created_by: Id<"users"> | null;
   };
@@ -220,7 +216,7 @@ declare module "@wizard/sdk" {
   export interface MutationCtx extends BaseCtx { db: DbWriter; systemDb: DbWriter; scheduler: Scheduler }
   export interface ActionCtx extends BaseCtx {
     scheduler: Scheduler;
-    connectors: App["connectors"];
+    connectors: Connectors;
     http: { fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; text(): Promise<string>; json(): Promise<Json> }> };
     runQuery<N extends QueryName>(name: N, args: FnArgs<N>): Promise<FnResult<N>>;
     runMutation<N extends MutationName>(name: N, args: FnArgs<N>): Promise<FnResult<N>>;
@@ -229,19 +225,18 @@ declare module "@wizard/sdk" {
   // ---------- определения функций ----------
   export type FnKind = "query" | "mutation" | "action";
   export interface FunctionDef<K extends FnKind, A, R> { readonly kind: K; readonly args: ArgsShape; readonly __a?: A; readonly __r?: R }
-  type AnyFunction = FunctionDef<FnKind, any, any>;
   type Def<S extends ArgsShape, C, R> = { args: S; handler: (ctx: C, args: InferArgs<S>) => R | Promise<R> };
   export function query<S extends ArgsShape, R>(d: Def<S, QueryCtx, R>): FunctionDef<"query", InferArgs<S>, R>;
   export function mutation<S extends ArgsShape, R>(d: Def<S, MutationCtx, R>): FunctionDef<"mutation", InferArgs<S>, R>;
   export function action<S extends ArgsShape, R>(d: Def<S, ActionCtx, R>): FunctionDef<"action", InferArgs<S>, R>;
 
-  export type FunctionName = keyof App["functions"] & string;
-  type NamesOf<K extends FnKind> = { [N in FunctionName]: App["functions"][N] extends FunctionDef<K, any, any> ? N : never }[FunctionName];
+  export type FunctionName = keyof Functions & string;
+  type NamesOf<K extends FnKind> = { [N in FunctionName]: Functions[N] extends FunctionDef<K, any, any> ? N : never }[FunctionName];
   export type QueryName = NamesOf<"query">;
   export type MutationName = NamesOf<"mutation">;
   export type ActionName = NamesOf<"action">;
-  export type FnArgs<N extends FunctionName> = App["functions"][N] extends FunctionDef<FnKind, infer A, any> ? A : never;
-  export type FnResult<N extends FunctionName> = App["functions"][N] extends FunctionDef<FnKind, any, infer R> ? R : never;
+  export type FnArgs<N extends FunctionName> = Functions[N] extends FunctionDef<FnKind, infer A, any> ? A : never;
+  export type FnResult<N extends FunctionName> = Functions[N] extends FunctionDef<FnKind, any, infer R> ? R : never;
 
   // ---------- коннекторы (адреса получателей подставляет хост) ----------
   export interface TelegramConnector {
@@ -264,7 +259,8 @@ declare module "@wizard/sdk" {
   export interface QueryState<T> { data: T | undefined; error: WizardError | undefined; isLoading: boolean; refetch(): void }
   export function useQuery<N extends QueryName>(name: N, args: FnArgs<N> | "skip"): QueryState<FnResult<N>>;
   export function useMutation<N extends MutationName | ActionName>(name: N):
-    [(args: FnArgs<N>) => Promise<FnResult<N>>, { pending: boolean; error: WizardError | undefined }];
+    [(args: FnArgs<N>, opts?: CallOptions) => Promise<FnResult<N>>, { pending: boolean; error: WizardError | undefined }];
+  export interface CallOptions { consent?: true }   // SDK добавляет _consent (security/compliance.yaml#consent)
   export type FilterOps<T> = { eq?: T; ne?: T; lt?: T; lte?: T; gt?: T; gte?: T; in?: T[]; contains?: string };
   export type EntityFilter<E extends EntityName> = { [K in keyof ClientDoc<E>]?: ClientDoc<E>[K] | FilterOps<ClientDoc<E>[K]> };
   export type SortKey<E extends EntityName> = (keyof ClientDoc<E> & string) | `-${keyof ClientDoc<E> & string}`;
@@ -276,17 +272,17 @@ declare module "@wizard/sdk" {
   export function useEntityList<E extends EntityName>(entity: E, opts?: EntityListOptions<E>): EntityListState<E>;
   export function useEntity<E extends EntityName>(entity: E, id: Id<E> | string | undefined): QueryState<ClientDoc<E> | null>;
   export function useEntityMutation<E extends EntityName>(entity: E): {
-    create(doc: Insert<E>): Promise<ClientDoc<E>>;
+    create(doc: Insert<E>, opts?: CallOptions): Promise<ClientDoc<E>>;
     update(id: Id<E> | string, patch: Patch<E>): Promise<ClientDoc<E>>;
     remove(id: Id<E> | string): Promise<void>;
   };
   export interface ClientUser { id: Id<"users">; role: RoleName; displayName: string; isAdmin: boolean }
   export function useUser(): {
     user: ClientUser | null; isLoading: boolean;
-    login(o?: { role?: RoleName; returnTo?: string }): void; logout(): Promise<void>;
+    login(o?: { role?: RoleName; next?: string }): void; logout(): Promise<void>;
   };
-  export function usePayment<I extends keyof App["payments"] & string>(integration: I):
-    { pay(binding: App["payments"][I], id: string): Promise<void>; pending: boolean; error: WizardError | undefined };
+  export function usePayment<I extends keyof Payments & string>(integration: I):
+    { pay(binding: Payments[I], id: string): Promise<void>; pending: boolean; error: WizardError | undefined };
   export function useParams<T extends Record<string, string> = Record<string, string>>(): T;
   export function useNavigate(): (to: string) => void;
   export { useState, useEffect, useMemo, useCallback, useRef } from "react";

@@ -13,7 +13,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
     platform: "http://localhost:5173 (vite проксирует /api → :4000)"
     systems: "http://<slug>--<env>.localhost:4100, env ∈ {draft, prod}"
     note: "Chromium резолвит *.localhost в 127.0.0.1 сам; Node-клиенты в тестах MUST ходить на 127.0.0.1:4100 с заголовком Host"
-  artifacts: ".data/artifacts/<sha256[0:2]>/<sha256> — контент-адресуемые блобы (platform.files.storage_key)"
+  artifacts: "Исходники ревизий: .data/artifacts/blobs/<sha256[0:2]>/<sha256> (platform.files.storage_key). Собранные бандлы: .data/artifacts/<systemId>/<revision>/… (runtime.yaml#system_loading.artifact_layout; systemId = systems.schema_key)"
   secrets: ".env (не коммитится; .env.example — с пустыми значениями); M1 секреты коннекторов — .data/secrets.enc (AES-256-GCM, ключ WIZARD_SECRETS_KEY)"
   env_vars: [WIZARD_DB_URL, WIZARD_LLM_MODE, WIZARD_AUTH_MODE, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, CLOUDRU_FM_API_KEY, ZAI_API_KEY, YANDEX_AI_API_KEY]
   bind: "Все процессы слушают 127.0.0.1. MUST: при WIZARD_UNSAFE_LOCAL_EXEC=1 и адресе привязки ≠ loopback процесс runtime отказывается стартовать (isolation.yaml#M0_M1)"
@@ -49,7 +49,7 @@ cloud:                             # M2 (M2-06). Все ресурсы — в Р
       apps: "app-pg-01..N: схемы app_<key>_prod; ≤ 2000 схем на кластер (D4, аудит 04 T3); карта шардов — platform.shards"
       drafts: "draft-pg-01..: схемы app_<key>_draft; отдельно от prod; draft Free без активности 60 дней удаляется (уведомление за 7 дней)"
     pooling: "PgBouncer ≥ 1.21, transaction mode, max_prepared_statements > 0; контекст только set_config(..., true) внутри транзакции"
-    roles: "на каждую систему и env — роль sys_<key>_<env> с USAGE только на своей схеме (isolation.yaml#db_access)"
+    roles: "wizard_owner (миграции), wizard_runtime (runtime.yaml#postgres.roles); M2 — роли sys_<systemId>_<env> на систему (isolation.yaml#db_access)"
     week0_questions: ["wal_level=logical доступен?", "встроенный пулер?", "лимиты на число объектов/схем в кластере", "PITR-окно и время восстановления"]
     backup: "PITR провайдера + ежедневные снапшоты; pg_dump на тысячах схем НЕ использовать (аудит 04 T3)"
     restore_drill: "M2-06 acceptance: восстановление staging-кластера на момент T−1 ч в новый кластер, проверка контрольных строк; повтор ежемесячно (runbook docs/runbooks/pitr.md)"

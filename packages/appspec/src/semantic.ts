@@ -16,7 +16,10 @@ export const USER_REF_RE = /^\$user\.([a-z][a-z0-9_]{0,39})$/;
 const NUMERIC_TYPES: ReadonlySet<FieldType> = new Set(["int", "decimal", "money"]);
 const LENGTH_TYPES: ReadonlySet<FieldType> = new Set(["string", "text", "email", "phone", "url"]);
 const TEMPORAL_TYPES: ReadonlySet<FieldType> = new Set(["date", "datetime"]);
-const SECRET_KEY_RE = /(secret|token|password|passwd|api_?key|private_?key|credential)/i;
+// Config keys that hold a secret value: the key (case/separator-insensitive) ENDS with one of these words,
+// so `botToken`/`secret_key` are secrets while `tokenField`/`secretRefs` are not.
+const SECRET_KEY_RE = /(secret|token|password|passwd|apikey|privatekey|secretkey|signingkey|accesskey|credentials?)$/;
+const isSecretKey = (key: string) => SECRET_KEY_RE.test(key.toLowerCase().replace(/[_-]/g, ""));
 
 /** Type of a system column as seen by rowFilter/indexes/ownerField. */
 export const SYSTEM_FIELD_TYPES: Record<(typeof SYSTEM_FIELDS)[number], "uuid" | "timestamptz"> = {
@@ -74,7 +77,8 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
     case "ref":
     case "file":
     case "qr_token":
-      return bad(`Значение по умолчанию не поддерживается для типа «${field.type}»`);
+      bad(`Значение по умолчанию не поддерживается для типа «${field.type}»`);
+      return;
     case "int":
       if (typeof d !== "number" || !Number.isInteger(d))
         bad("Значение по умолчанию должно быть целым числом");
@@ -310,7 +314,9 @@ function checkSecrets(
   out: OpsError[],
 ): void {
   if (Array.isArray(value)) {
-    value.forEach((v, i) => checkSecrets(v, declared, [...path, i], out));
+    value.forEach((v, i) => {
+      checkSecrets(v, declared, [...path, i], out);
+    });
     return;
   }
   if (value === null || typeof value !== "object") return;
@@ -322,7 +328,7 @@ function checkSecrets(
           err("SCHEMA_INVALID", p, `Секрет «${v}» не объявлен в secretRefs`, { allowed: [...declared] }),
         );
       }
-    } else if (SECRET_KEY_RE.test(k) && (typeof v === "string" || typeof v === "number")) {
+    } else if (isSecretKey(k) && (typeof v === "string" || typeof v === "number")) {
       out.push(
         err("SCHEMA_INVALID", p, "Значение секрета нельзя хранить в спеке", {
           hint: "Передайте ссылку вида secret://name и объявите её в secretRefs",
@@ -358,7 +364,9 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
     "Сущность",
     out,
   );
-  spec.entities.forEach((e, i) => checkEntity(e, i, spec, opts, out));
+  spec.entities.forEach((e, i) => {
+    checkEntity(e, i, spec, opts, out);
+  });
 
   // Roles
   duplicates(
@@ -478,7 +486,7 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
     out,
   );
   (spec.functions ?? []).forEach((f, i) => {
-    (f.roles ?? []).forEach((r, j) => unknownRole(r, ["functions", i, "roles", j]));
+    for (const [j, r] of (f.roles ?? []).entries()) unknownRole(r, ["functions", i, "roles", j]);
   });
   duplicates(
     spec.pages,
@@ -488,7 +496,7 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
     out,
   );
   (spec.pages ?? []).forEach((p, i) => {
-    p.roles.forEach((r, j) => unknownRole(r, ["pages", i, "roles", j]));
+    for (const [j, r] of p.roles.entries()) unknownRole(r, ["pages", i, "roles", j]);
   });
 
   // AI actions & acceptance

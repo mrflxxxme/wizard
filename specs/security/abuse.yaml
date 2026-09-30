@@ -1,0 +1,85 @@
+# Антифрод и злоупотребления. Решение product.yaml#decisions.D15_abuse; M2-04 (G2), M2-08 (жалобы и снятие).
+version: 1
+
+domain:
+  rule: "Системы публикуются только на отдельном домене систем (deploy.yaml#cloud.domains), не на домене платформы"
+  rationale:
+    - "Фишинговая система не наследует доверие и репутацию домена платформы; блокировка домена систем провайдерами/браузерами не кладёт платформу"
+    - "Cookie и storage платформы недоступны коду систем (разные registrable domains, отдельная запись в Public Suffix List SHOULD к M4)"
+    - "Разные сертификаты и ingress — снятие систем не трогает платформу"
+
+identification:
+  rule: "Prod доступен только после привязки карты российского банка (billing.yaml#card_binding) — это же идентификация клиента провайдером хостинга (149-ФЗ, позиция юриста E-LEGAL)"
+  draft: "Draft-системы закрыты: доступ только по токену превью платформы (api.yaml#getPreviewUrl), индексация запрещена (X-Robots-Tag: noindex, nofollow)"
+  founder_review: "В бете orgs.require_founder_review=true: первая публикация каждой системы и каждая публикация с новыми формами сбора ПДн — после одобрения staff (M2-09)"
+
+patterns:                          # словари и шаблоны для проверок G2 (specs/quality/gates.yaml — id проверок и severity)
+  location: "packages/gates/data/*.json (генерируются из этого файла скриптом; правка — PR)"
+  normalize: "Перед сопоставлением: нижний регистр, ё→е, гомоглифы латиница↔кириллица (а/a, е/e, о/o, р/p, с/c, х/x, у/y, к/k, м/m, т/t, н/h, в/b), для брендов — удаление пробелов, дефисов, точек"
+  scope: "спека (app, entities, labels, enum, pages.title), исходники ui/ и functions/ (AST JSX/TS + строковые литералы), тексты шаблонов уведомлений"
+  card_collection:                 # G2-AF-01
+    names: '(номер|№)\s*карты|card.?number|\bpan\b|cvv2?|cvc2?|cvp|код безопасности|срок действия( карты)?|expiry|exp.?date|держатель карты|cardholder'
+    autocomplete: [cc-number, cc-csc, cc-exp, cc-exp-month, cc-exp-year, cc-name]
+    code: "маска/regex из 16 цифр группами по 4, реализация алгоритма Луна в коде системы"
+    allowed: "только confirmation_url коннектора yookassa (платёжная форма ЮKassa)"
+  credentials:                     # G2-AF-02
+    names: "пароль|password|passwd|pin|пин.?код|логин от|код из (смс|sms)|код подтверждения|одноразовый код|otp"
+    inputs: "input type=password; любые поля кода подтверждения вне /_wizard/login runtime"
+    relay: "поле из этого словаря → шаг notify/connector/ctx.connectors.* (пересылка кодов) — тоже блок"
+    rationale: "вход в системы — только phone/email OTP и Telegram через runtime (runtime.yaml#auth)"
+  gov_ids:                         # G2-AF-03
+    names: 'паспорт|серия( и)? номер|кем выдан|код подразделения|снилс|инн( физ)|водительск|вод\.? удостоверение|загранпаспорт'
+    policy: "MVP: блок без исключений (нет шифрования полей). После шифрования полей (data-boundary.yaml#tokenization, envelope) — override orgs.passport_collection_allowed, ставит staff после проверки легитимной цели (пропуск на режимный объект)"
+  brands:                          # G2-AF-04
+    file: "packages/gates/data/brands.ru.json — {id, names[], domains[], category}"
+    match: "точное совпадение после normalize ИЛИ расстояние Левенштейна ≤ 1 для имён длиной ≥ 5; в app.name, slug, description, title страниц, текстах UI, имени logoFile"
+    override: "platform.brand_allowlist (org подтвердила владение брендом документами, проверка staff)"
+    banks: [Сбербанк, Сбер, СберБанк Онлайн, ВТБ, Т-Банк, Тинькофф, Альфа-Банк, Газпромбанк, Россельхозбанк, Совкомбанк, Райффайзенбанк, Почта Банк, МКБ, Открытие, ЮMoney, ЮKassa, СБП, Мир, QIWI]
+    government: [Госуслуги, ЕСИА, ФНС, Налоговая, МВД, ГИБДД, Социальный фонд, СФР, Пенсионный фонд, ПФР, ЦБ РФ, Банк России, ФССП, Росреестр, Минцифры, МФЦ, Мос.ру]
+    marketplaces: [Ozon, Wildberries, Яндекс Маркет, Авито, Мегамаркет, AliExpress, Lamoda, Купер]
+    delivery: [СДЭК, Почта России, Boxberry, DPD, Яндекс Доставка, Деловые Линии, ПЭК, 5Post, Достависта]
+    telecom_social: [МТС, Билайн, МегаФон, Т2, Tele2, Ростелеком, ВКонтакте, VK, Одноклассники, Telegram, WhatsApp, Max]
+    platform: [Wizard, "<финальное имя платформы>"]
+  external_post:                   # G2-AF-05
+    code: "<form action=абсолютный URL>, fetch/XHR/sendBeacon/WebSocket к абсолютным URL, window.location/window.open/<a href> на внешний хост с параметрами из полей формы, <iframe>/<script src> на внешние хосты"
+    allowed: "относительные URL runtime; confirmation_url ЮKassa, выданный коннектором; ссылки без параметров из полей (например, на сайт клиента)"
+  p2p_payment:                     # G2-AF-06
+    text: "«переведите|перевод|оплата» в окне 60 символов от номера карты (Луна), счёта (20 цифр), телефона для СБП или криптоадреса"
+  crypto_codes:                    # G2-AF-07
+    code: "window.ethereum, eth_sendTransaction, eth_sign, personal_sign, approve(, setApprovalForAll(, permit(; строки ethers|web3|walletconnect|@solana"
+    names: "сид.?фраза|seed phrase|мнемоническ|приватный ключ|private key|recovery phrase|секретная фраза"
+  secrets:                         # G2-SECRET-01
+    regex: ["live_[A-Za-z0-9_-]{20,} (ЮKassa)", '\d{8,10}:[A-Za-z0-9_-]{35} (Telegram bot)', 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+ (JWT)', "-----BEGIN [A-Z ]*PRIVATE KEY-----"]
+    entropy: "строка ≥ 24 символов с энтропией Шеннона ≥ 4.0 бит/символ в окне 40 символов от key|token|secret|пароль|password"
+  pii_field_names:                 # G2-PII-02
+    names: "фио|фамилия|имя|отчество|телефон|моб|e-?mail|почта|адрес|дата рождения|день рождения|паспорт|снилс|инн|telegram|телеграм|whatsapp|контакт"
+  special_categories:              # G2-PII-03
+    names: "здоров|диагноз|болезн|заболеван|инвалид|беремен|аллерги|медицин|анализ(ы)? крови|вероисповед|религи|политич|партийн|национальност|раса|судим|интимн|сексуальн|биометр|отпечат"
+    note: "Аллергии/диета участников события — данные о здоровье: G2 блокирует; строитель предлагает формулировку «пожелания по питанию» без медицинских сведений"
+
+scoring:                           # G2-AF-08 (warning) — не блок, а флаг ручной модерации перед prod
+  signals: { new_org_lt_7d: 2, free_plan: 1, brand_fuzzy_match_distance_2: 3, obfuscated_strings: 3, "external_links_gt_5": 1, collects_phone_and_email_public: 1, urgent_words: 2, abuse_reports_prev: 4 }
+  urgent_words: "срочно|ваш аккаунт заблокирован|подтвердите данные|выигрыш|компенсаци|возврат средств|последнее предупреждение"
+  obfuscated_strings: "base64/hex/charCode-строки длиной > 200, собираемые в URL или HTML в рантайме"
+  threshold: 5
+  effect: "Сумма ≥ threshold → founder_reviews pending для этой ревизии (даже если orgs.require_founder_review=false); draft не блокируется"
+  fixtures: "packages/gates/test/antifraud/{block,allow,score}/*.json — ≥ 40 блокируемых, ≥ 20 легитимных из брифов eval. M2 exit: 100% block, 0 ложных блокировок на 12 брифах eval"
+
+rescan: "При обновлении patterns — ночной перескан live-ревизий; новое срабатывание → abuse_report category=auto_g2 (без автоматического снятия, кроме takedown.auto_suspend). Ложная блокировка в G2 → кнопка «Оспорить» → тикет staff category=auto_g2"
+
+report:                            # «Пожаловаться»
+  entry_points: ["Ссылка «Пожаловаться» в футере каждой prod-системы (вставляется runtime, код системы не может её убрать — G0 проверяет наличие слота AppShell)", "страница <platform-domain>/abuse", "abuse@<platform-domain>"]
+  endpoint: "POST /api/v1/abuse-reports (api.yaml#createAbuseReport); без входа; лимит 10/ч на IP; hCaptcha/капча — только российский сервис или своя (SHOULD, M4)"
+  storage: "platform.abuse_reports; sla_deadline = created_at + 24 ч"
+
+takedown:
+  sla: "≤ 24 ч от жалобы до решения (снятие или отклонение); очередь модерации сортирована по sla_deadline; алерт при < 2 ч (deploy.yaml#cloud.observability)"
+  flow:
+    - "new → triaged: staff открывает систему (доступ в staff_audit_log), фиксирует категорию"
+    - "triaged → takedown: publications.status=suspended, systems.suspended_at; runtime отдаёт 451 со страницей «Система временно недоступна по жалобе» (без раскрытия деталей); данные НЕ удаляются"
+    - "Уведомление владельцу (email owner) сразу при takedown: причина, как оспорить"
+    - "Повторное нарушение или явный фишинг → orgs.suspended_at: все системы организации снимаются, новые публикации запрещены (ORG_SUSPENDED)"
+    - "Апелляция владельца → staff; restore → publications live, событие в staff_audit_log"
+    - "Запросы госорганов (149-ФЗ) — отдельный регламент от юриста (E-LEGAL)"
+  auto_suspend: "Без решения staff автоматически НЕ снимать, кроме: ≥ 3 жалобы категории phishing от разных IP за 1 ч И live-ревизия проваливает текущий G2 → немедленное снятие с тикетом"
+  test: "M2-08: жалоба → тикет → takedown → prod-URL отдаёт 451 → письмо владельцу в dev-sender; restore → 200"

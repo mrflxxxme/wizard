@@ -1,0 +1,47 @@
+# Коннектор email. Нормативно для backlog M1-06. Также используется runtime для email OTP (runtime.yaml#auth).
+id: email
+milestone: M1
+principle: "Только транзакционные письма (билет, подтверждение, статус заявки). Рассылки и реклама — нет (38-ФЗ о рекламе требует согласия; вне MVP)."
+
+secrets:
+  - { name: smtp_password, required: false, label: "Пароль SMTP (только provider=smtp)" }
+
+config_schema:
+  provider: "platform | smtp. platform — SMTP-аккаунт Wizard у российского провайдера (выбор и ключи — E-ACCESS), отправитель noreply@<systemsDomain> с SPF/DKIM/DMARC; smtp — свой ящик клиента"
+  host: "smtp: хост; порт 465 (TLS) или 587 (STARTTLS); без TLS — CONFIG_INVALID"
+  user: "smtp: логин"
+  from: "{name ≤ 60, address} — для platform address всегда noreply@<systemsDomain>, name — app.name"
+  replyTo: "email организатора (необязательно)"
+  templates: "{<id>: {subject ≤ 120, body ≤ 10000}}; подстановки {{field}}, {{ref.field}}, {{link}} (ссылка на страницу записи)"
+  validation: "G0: шаблоны, на которые ссылаются workflows/код, существуют; G2: subject не ссылается на поля pii≠none; body — только на pii-поля записи, чей ownerField = получатель"
+
+actions:
+  sendTemplate:
+    input: "{userId, template, params, attachQrOf?: {entity, id}, idempotencyKey?}"
+    effect: true
+    rules:
+      - "MUST: адрес — users.email получателя на хосте; нет адреса → RECIPIENT_UNAVAILABLE"
+      - "MUST: HTML-экранирование подставленных значений; текстовая и HTML-версии (шаблон ui-kit, без внешних картинок и трекинга)"
+      - "attachQrOf → PNG QR из qr-коннектора как inline-вложение (cid), только если получатель — владелец записи"
+      - "Заголовки: Auto-Submitted: auto-generated; Message-ID на домене отправителя"
+    output: "{messageId}"
+  notify_step: "Шаг воркфлоу notify с integration=email → sendTemplate"
+
+limits: "≤ 300 писем в час на систему (Free — 100); превышение → RATE_LIMITED и событие для владельца"
+bounces: "platform: вебхук провайдера /_wizard/hooks/email/<integration>/<hookToken> (подпись по документации выбранного провайдера) → users.email_bounced_at; следующие письма → RECIPIENT_UNAVAILABLE"
+logging: "MUST NOT: адрес, тема с подстановками, тело; логируются template id и messageId"
+
+test_mode:
+  draft: "Письма пишутся в .data/outbox/<system>/email/*.eml (или локальный SMTP-приёмник dev-smtp на :1025, если WIZARD_DEV_SMTP=1); реальная отправка из draft запрещена"
+  mocks: "packages/connectors/test/mocks/smtp — in-memory SMTP-сервер для тестов"
+
+error_mapping:
+  "535 auth failed": AUTH_FAILED
+  "550/553 mailbox unavailable": RECIPIENT_UNAVAILABLE
+  "421/450/451 temporary": UPSTREAM_UNAVAILABLE
+  "connection/timeout": UPSTREAM_UNAVAILABLE
+
+acceptance:
+  - "G2: subject «Билет для {{holder_name}}» блокирует публикацию"
+  - "Письмо с билетом форума в draft оказывается в .data/outbox с QR-вложением, в логах нет адреса"
+  - "Повтор шага воркфлоу с тем же ключом не отправляет письмо второй раз"

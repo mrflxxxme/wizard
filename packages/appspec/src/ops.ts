@@ -212,11 +212,11 @@ function notFound(
   what: string,
   value: string,
   allowed: string[],
-) {
+): undefined {
   ctx.errors.push(err(code, ["ops", ctx.i, key], `${what} «${value}» не найдено`, { allowed }));
 }
 
-function duplicate(ctx: Ctx, path: PropertyKey[], what: string, value: string) {
+function duplicate(ctx: Ctx, path: PropertyKey[], what: string, value: string): undefined {
   ctx.errors.push(err("DUPLICATE_NAME", ["ops", ctx.i, ...path], `${what} «${value}» уже существует`));
 }
 
@@ -229,7 +229,7 @@ function assignDefined<T extends object>(target: T, patch: Record<string, unknow
   }
 }
 
-function applyOne(ctx: Ctx, op: Op): void {
+function applyOne(ctx: Ctx, op: Op): undefined {
   const { spec } = ctx;
   const entityNames = () => spec.entities.map((e) => e.name);
   const roleNames = () => spec.roles.map((r) => r.name);
@@ -349,7 +349,7 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "add_workflow": {
       if (spec.workflows?.some((w) => w.name === op.workflow.name))
         return duplicate(ctx, ["workflow", "name"], "Процесс", op.workflow.name);
-      (spec.workflows ??= []).push(op.workflow);
+      spec.workflows = [...(spec.workflows ?? []), op.workflow];
       return;
     }
     case "update_workflow":
@@ -371,7 +371,7 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "add_integration": {
       if (spec.integrations?.some((x) => x.name === op.integration.name))
         return duplicate(ctx, ["integration", "name"], "Интеграция", op.integration.name);
-      (spec.integrations ??= []).push(op.integration);
+      spec.integrations = [...(spec.integrations ?? []), op.integration];
       return;
     }
     case "update_integration":
@@ -395,7 +395,7 @@ function applyOne(ctx: Ctx, op: Op): void {
       if (spec.functions?.some((f) => f.name === op.name))
         return duplicate(ctx, ["name"], "Функция", op.name);
       const { op: _, ...fn } = op;
-      (spec.functions ??= []).push(fn);
+      spec.functions = [...(spec.functions ?? []), fn];
       return;
     }
     case "remove_function": {
@@ -416,7 +416,7 @@ function applyOne(ctx: Ctx, op: Op): void {
       if (spec.pages?.some((p) => p.route === op.route))
         return duplicate(ctx, ["route"], "Страница", op.route);
       const { op: _, ...page } = op;
-      (spec.pages ??= []).push(page);
+      spec.pages = [...(spec.pages ?? []), page];
       return;
     }
     case "update_page":
@@ -439,7 +439,7 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "add_ai_action": {
       if (spec.aiActions?.some((a) => a.name === op.aiAction.name))
         return duplicate(ctx, ["aiAction", "name"], "ИИ-действие", op.aiAction.name);
-      (spec.aiActions ??= []).push(op.aiAction);
+      spec.aiActions = [...(spec.aiActions ?? []), op.aiAction];
       return;
     }
     case "set_acceptance":

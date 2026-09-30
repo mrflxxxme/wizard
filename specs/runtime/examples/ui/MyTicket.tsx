@@ -3,14 +3,22 @@ import { AppShell, Badge, QrTicket } from "@wizard/ui-kit";
 
 export default function MyTicket() {
   const { id } = useParams<{ id: string }>();
-  const ticket = useEntity("ticket", id);
-  const t = ticket.data;
+  const { data: ticket, isLoading } = useEntity("ticket", id);
+  const valid = ticket?.status === "paid" || ticket?.status === "issued";
+
   return (
     <AppShell title="Мой билет">
-      {t && (t.status === "paid" || t.status === "issued") ? (
-        <QrTicket integration="qr" entity="ticket" id={t.id} title="Форум «Северный ритейл»" caption="Покажите QR на входе А · работает без интернета" />
+      {valid ? (
+        <QrTicket
+          entity="ticket"
+          id={id}
+          tokenField="qr_token"
+          title="Форум «Северный ритейл»"
+          subtitle="14 ноября · 09:30 · Казань"
+          hint="Покажите QR на входе А · работает без интернета"
+        />
       ) : (
-        <Badge tone="warning">{t ? "Билет ещё не оплачен" : "Загрузка…"}</Badge>
+        <Badge tone="warn">{isLoading ? "Загружаем билет…" : "Билет ещё не оплачен"}</Badge>
       )}
     </AppShell>
   );

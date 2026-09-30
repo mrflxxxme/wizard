@@ -1,4 +1,4 @@
-# Кредиты, тарифы, ledger, платежи. Источник цифр: product.yaml#D10 (приоритет выше этого файла).
+# Кредиты, тарифы, ledger, платежи. Источник цифр: product.yaml#decisions.D10_pricing (приоритет выше этого файла).
 version: 1
 
 credit:
@@ -56,12 +56,12 @@ ledger:
 run_charging:
   interview_turn: "без hold; после хода — charge по факту (cap хода 2 кредита). При available ≤ 0 → 402 INSUFFICIENT_CREDITS на POST messages/answers"
   build:
-    approve: "cap = card.credits.cap (пользователь может только понизить, не ниже estimate). Если available < cap: при available ≥ estimate cap := available, иначе 402 INSUFFICIENT_CREDITS {available, required: estimate}"
+    approve: "cap = card.cap.credits (формула — agents/orchestrator.yaml#estimation; пользователь может только понизить, не ниже ceil(estimate.credits.expected)). available < cap → 402 INSUFFICIENT_CREDITS {available, required: cap}; UI предлагает «Докупить» или понизить cap"
     start: "hold(−cap), idempotency hold:<runId>"
     finish: "одной транзакцией: release(+cap), charge(−min(used, cap)); перерасход сверх cap платформа берёт на себя"
     raise_cap: "needs_input budget → raise_cap_N: дополнительный hold(−N); отказ по available → вариант недоступен"
     refunds: "MUST: полный refund, если прогон завершён failed с code ∈ {INTERNAL, WORKER_RESTARTED, LLM_UNAVAILABLE, MIGRATION_FAILED} ИЛИ если ни одна ревизия прогона не прошла G0 (пользователь ничего не получил). Решение агента для беты, записать в CHANGELOG"
-  estimate_vs_actual: "Карточка показывает estimate и cap; отчёт прогона — фактическое used. SHOULD: медиана |used−estimate|/estimate ≤ 30% на eval-брифах (метрика в tools/eval)"
+  estimate_vs_actual: "Карточка показывает estimate.credits {min, expected, max} и cap; отчёт прогона — фактическое used. SHOULD: медиана |used − expected|/expected ≤ 30% на eval-брифах (калибровка — orchestrator.yaml#estimation.calibration)"
   style_and_compliance: "Панель «Стиль», setCompliance, rollback, publish — без LLM и без кредитов"
   runtime_ai: "M3: вызовы runtime_ai_* (только T0) списываются по факту: charge агрегируется по (system, час) с ключом ai:<systemId>:<yyyy-mm-ddThh>; лимит aiAction.monthlyLimit в вызовах на систему; при available ≤ 0 действие возвращает системе ошибку AI_CREDITS_EXHAUSTED, владельцу — уведомление"
   M0: "Ledger нет: runs.credits_used_milli считается из llm_calls; cap из карточки останавливает прогон (budget_exceeded)"

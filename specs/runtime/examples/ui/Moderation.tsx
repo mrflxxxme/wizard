@@ -1,50 +1,52 @@
-import { useEntityList, useEntityMutation, useState } from "@wizard/sdk";
+import { type ClientDoc, useState } from "@wizard/sdk";
 import { Button, CabinetLayout, DataTable, RecordCard } from "@wizard/ui-kit";
 
-type Status = "new" | "approved" | "rejected";
-const TABS: { value: Status; label: string }[] = [
-  { value: "new", label: "Новые" },
-  { value: "approved", label: "Одобренные" },
-  { value: "rejected", label: "Отклонённые" },
+type Application = ClientDoc<"speaker_application">;
+type Status = Application["status"];
+
+const SECTIONS: { id: Status; label: string }[] = [
+  { id: "new", label: "Новые" },
+  { id: "approved", label: "Одобренные" },
+  { id: "rejected", label: "Отклонённые" },
 ];
 
-// Телефон спикера скрыт от модератора правами (hiddenFields), поэтому его нет в колонках.
+// Телефон спикера скрыт от модератора правами (hiddenFields) — ни колонки, ни поля в карточке.
+// Решение модератора — патч статуса; письмо и Telegram отправляет воркфлоу speaker_approved.
 export default function Moderation() {
-  const [status, setStatus] = useState<Status>("new");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const list = useEntityList("speaker_application", { filter: { status }, sort: "-created_at", limit: 50 });
-  const { update } = useEntityMutation("speaker_application");
-  const selected = list.items.find((a) => a.id === selectedId);
 
-  const decide = async (id: string, next: Status) => {
-    await update(id, { status: next });
-    setSelectedId(null);
-  };
+  const table = (status: Status) => (
+    <DataTable
+      entity="speaker_application"
+      columns={["topic", "company", "stream", "created_at"]}
+      query={{ filter: { status } }}
+      defaultSort={{ field: "created_at", dir: "desc" }}
+      filters={["stream"]}
+      searchable
+      onRowClick={(row: Application) => setSelectedId(row.id)}
+      emptyText="Заявок нет"
+    />
+  );
 
   return (
-    <CabinetLayout title="Модерация заявок" tabs={TABS} activeTab={status} onTabChange={(t: Status) => setStatus(t)}>
-      <DataTable
-        entity="speaker_application"
-        rows={list.items}
-        columns={["topic", "company", "stream", "created_at"]}
-        loading={list.isLoading}
-        onRowClick={(row: { id: string }) => setSelectedId(row.id)}
-      />
-      {selected && (
+    <CabinetLayout
+      title="Модерация заявок"
+      sections={SECTIONS.map((s) => ({ id: s.id, label: s.label, content: table(s.id) }))}
+      defaultSection="new"
+    >
+      {selectedId && (
         <RecordCard
           entity="speaker_application"
-          record={selected}
-          fields={["full_name", "company", "topic", "abstract", "stream", "moderator_comment"]}
-          actions={
-            selected.status === "new" && (
-              <>
-                <Button onClick={() => void decide(selected.id, "approved")}>Одобрить</Button>
-                <Button variant="secondary" onClick={() => void decide(selected.id, "rejected")}>Отклонить</Button>
-              </>
-            )
-          }
+          id={selectedId}
+          fields={["full_name", "company", "topic", "abstract", "stream", "status", "moderator_comment"]}
+          title={(r: Application) => r.topic}
+          actions={[
+            { id: "approve", label: "Одобрить", tone: "primary", kind: "update", patch: { status: "approved" }, visible: (r: Application) => r.status === "new" },
+            { id: "reject", label: "Отклонить", tone: "danger", kind: "update", patch: { status: "rejected" }, confirm: "Отклонить заявку?", visible: (r: Application) => r.status === "new" },
+          ]}
         />
       )}
+      {selectedId && <Button variant="ghost" onClick={() => setSelectedId(null)}>Закрыть</Button>}
     </CabinetLayout>
   );
 }

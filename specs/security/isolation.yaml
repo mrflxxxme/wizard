@@ -1,4 +1,4 @@
-# Изоляция сгенерированного серверного кода (функции query/mutation/action). Решение product.yaml#D5, аудит 04 T4.
+# Изоляция сгенерированного серверного кода (функции query/mutation/action). Решение product.yaml#decisions.D5_isolation, аудит 04 T4.
 # UI-код систем исполняется в браузере конечного пользователя на отдельном домене систем — здесь не рассматривается.
 version: 1
 
@@ -52,8 +52,9 @@ M2:
 
 db_access:                          # L5, с M0
   - "Код систем не имеет строки подключения. Все операции — RPC к runtime (ctx.db.*), который исполняет их в транзакции под ролью sys_<key>_<env>"
-  - "Роль sys_<key>_<env>: USAGE и DML только на схеме app_<key>_<env>; NOINHERIT; нет доступа к platform, dbos, pii_vault, чужим схемам; statement_timeout 5s"
-  - "Контекст пользователя: set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции (ops.yaml#rls); RLS включён на всех таблицах"
+  - "M0–M1: одна роль wizard_runtime без BYPASSRLS (runtime.yaml#postgres.roles); изоляция схем — построитель запросов runtime + RLS"
+  - "M2: на каждую систему и env — роль sys_<systemId>_<env> (NOLOGIN) с USAGE и DML только на app_<systemId>_<env>; wizard_runtime — член всех таких ролей с NOINHERIT и в транзакции делает SET LOCAL ROLE sys_<systemId>_<env>. Нет доступа к platform, dbos, pii_vault, чужим схемам (escape-тест other_schema_via_rpc на уровне БД). Таймауты — runtime.yaml#postgres"
+  - "Контекст пользователя: set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции (ops.yaml#migrations.rls); RLS включён на всех таблицах"
   - "Имя схемы выводится runtime из аутентифицированного systemId, никогда из аргументов функции"
 
 limits:

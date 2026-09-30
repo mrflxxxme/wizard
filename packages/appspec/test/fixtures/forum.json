@@ -1,0 +1,142 @@
+{
+  "specVersion": "1",
+  "app": { "name": "Форум клуба", "description": "Темы, ответы и личные заметки участников", "locale": "ru" },
+  "theme": { "accent": "#3355FF", "font": "Onest", "radius": 8, "density": "regular", "mode": "auto" },
+  "entities": [
+    {
+      "name": "topic",
+      "label": "Тема",
+      "ownerField": "author",
+      "fields": [
+        { "name": "title", "label": "Заголовок", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "body", "label": "Текст", "type": "text" },
+        { "name": "author", "label": "Автор", "type": "ref", "ref": { "entity": "users" }, "required": true },
+        {
+          "name": "status",
+          "label": "Статус",
+          "type": "enum",
+          "required": true,
+          "default": "open",
+          "enum": [{ "value": "open", "label": "Открыта" }, { "value": "closed", "label": "Закрыта" }]
+        },
+        { "name": "pinned", "label": "Закреплена", "type": "bool", "default": false }
+      ],
+      "indexes": [{ "fields": ["status", "created_at"] }]
+    },
+    {
+      "name": "post",
+      "label": "Ответ",
+      "ownerField": "author",
+      "fields": [
+        {
+          "name": "topic",
+          "label": "Тема",
+          "type": "ref",
+          "ref": { "entity": "topic", "onDelete": "cascade" },
+          "required": true
+        },
+        { "name": "body", "label": "Текст", "type": "text", "required": true, "maxLength": 10000 },
+        { "name": "author", "label": "Автор", "type": "ref", "ref": { "entity": "users" }, "required": true }
+      ]
+    },
+    {
+      "name": "note",
+      "label": "Личная заметка",
+      "ownerField": "author",
+      "fields": [
+        { "name": "text", "label": "Текст", "type": "text", "required": true },
+        { "name": "author", "label": "Автор", "type": "ref", "ref": { "entity": "users" }, "required": true }
+      ]
+    },
+    {
+      "name": "ban",
+      "label": "Блокировка",
+      "fields": [
+        {
+          "name": "member",
+          "label": "Участник",
+          "type": "ref",
+          "ref": { "entity": "users" },
+          "required": true
+        },
+        { "name": "reason", "label": "Причина", "type": "string", "required": true },
+        { "name": "until", "label": "До", "type": "datetime" }
+      ]
+    }
+  ],
+  "roles": [
+    { "name": "guest", "label": "Гость", "access": "public" },
+    { "name": "member", "label": "Участник", "access": "login", "loginMethods": ["email_otp", "phone_otp"] },
+    {
+      "name": "moderator",
+      "label": "Модератор",
+      "access": "login",
+      "loginMethods": ["email_otp"],
+      "isAdmin": true
+    }
+  ],
+  "permissions": [
+    { "role": "guest", "entity": "topic", "ops": ["read"] },
+    { "role": "guest", "entity": "post", "ops": ["read"] },
+    { "role": "member", "entity": "topic", "ops": ["read", "create"] },
+    { "role": "member", "entity": "post", "ops": ["read", "create"], "readonlyFields": ["topic"] },
+    {
+      "role": "member",
+      "entity": "note",
+      "ops": ["read", "create", "update", "delete"],
+      "rowFilter": { "author": "$user.id" }
+    },
+    { "role": "moderator", "entity": "topic", "ops": ["read", "create", "update", "delete"] },
+    { "role": "moderator", "entity": "post", "ops": ["read", "update", "delete"] },
+    { "role": "moderator", "entity": "ban", "ops": ["read", "create", "update", "delete"] }
+  ],
+  "workflows": [
+    {
+      "name": "notify_on_reply",
+      "label": "Уведомить автора темы об ответе",
+      "trigger": { "type": "on_create", "entity": "post" },
+      "steps": [
+        { "type": "notify", "params": { "to": "topic.author", "template": "Новый ответ в вашей теме" } }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "topicStats",
+      "kind": "query",
+      "file": "functions/topicStats.ts",
+      "public": true,
+      "roles": ["moderator"]
+    }
+  ],
+  "pages": [
+    { "route": "/", "title": "Темы", "file": "ui/Topics.tsx", "roles": ["guest", "member", "moderator"] },
+    {
+      "route": "/topic/:id",
+      "title": "Тема",
+      "file": "ui/Topic.tsx",
+      "roles": ["guest", "member", "moderator"],
+      "nav": false
+    },
+    { "route": "/notes", "title": "Мои заметки", "file": "ui/Notes.tsx", "roles": ["member"] },
+    { "route": "/bans", "title": "Блокировки", "file": "ui/Bans.tsx", "roles": ["moderator"] }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "Гость читает темы",
+      "check": { "type": "permission", "role": "guest", "entity": "topic", "op": "read", "expect": "allow" }
+    },
+    {
+      "id": "AC2",
+      "text": "Гость не видит блокировки",
+      "check": { "type": "permission", "role": "guest", "entity": "ban", "op": "read", "expect": "deny" }
+    },
+    {
+      "id": "AC3",
+      "text": "Участник не видит чужие заметки",
+      "check": { "type": "permission", "role": "member", "entity": "note", "op": "read", "expect": "allow" }
+    }
+  ],
+  "compliance": { "consentText": "Я согласен на обработку персональных данных" }
+}

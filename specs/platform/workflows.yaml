@@ -26,7 +26,7 @@ system_stage:                     # platform.systems.stage
     - { from: card, to: card, on: "новое сообщение/ответ изменили карточку (card_version++)" }
     - { from: card, to: interview, on: "оркестратор задал новые вопросы" }
     - { from: card, to: building, on: "approveCard" }
-    - { from: ready, to: building, on: "approve change-карточки или авто-старт change/fix-прогона" }
+    - { from: ready, to: building, on: "approve мини-карточки правки или кнопка «Исправить» (build mode=fix)" }
     - { from: building, to: ready, on: "build завершился (succeeded) ИЛИ завершился неуспешно, но preview_revision не null" }
     - { from: building, to: failed, on: "build failed/cancelled и preview_revision = null" }
     - { from: failed, to: interview, on: "новое сообщение" }
@@ -64,15 +64,15 @@ workflows:
     trigger: "POST /systems, /systems/:id/messages, /systems/:id/answers"
     steps:
       - { name: load_context, kind: tx, does: "история чата (свёртка по бюджету — agents/orchestrator.yaml), текущая спека draft, pending_questions" }
-      - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; ответ — вызов одного из инструментов оркестратора: ask_questions | propose_card | answer | propose_change" }
+      - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; алгоритм и инструменты — agents/orchestrator.yaml (вопросы, карточка, ответ, классификация правки style_only | small_edit | big_change)" }
       - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output" }
-      - { name: maybe_start_change, kind: tx, does: "propose_change с оценкой ≤ auto_start_threshold (agents/orchestrator.yaml, по умолчанию 6 кредитов) и достаточным балансом → поставить build mode=change; иначе change-карточка ждёт approve" }
+      - { name: route_change, kind: tx, does: "style_only → сообщение со ссылкой на «Стиль», без прогона; small_edit/big_change → мини-карточка/карточка kind=change ждёт approve (D7: авто-старта нет)" }
     budget: "cap на ход — 2 кредита; превышение → run_failed BUDGET_STOPPED без needs_input"
 
   build:
     milestone: M0
     lock: true
-    trigger: "approveCard | авто-старт change | POST fix (mode=fix)"
+    trigger: "approveCard (mode create|change) | «Исправить» после failed (mode=fix; cap = max(3, ceil(0.25 × cap исходной карточки)), решение агента — CHANGELOG)"
     modes: { create: "полная сборка по карточке", change: "правка готовой системы", fix: "только цикл исправления по последним отчётам гейтов" }
     steps:
       - { name: acquire_lock, kind: tx }
@@ -80,7 +80,7 @@ workflows:
       - { name: plan, kind: llm, callType: plan, skip_in_modes: [fix], does: "план: список сущностей, страниц, функций, критериев приёмки (agents/builder.yaml)" }
       - { name: ops, kind: "loop(llm build_ops → tx applyOps)", does: "батчи ≤50 ops; каждый батч = ревизия; OpsError возвращаются модели структурно; событие ops_applied" }
       - { name: code, kind: "loop(llm build_code → tx commit_files)", does: "write_file копит изменения в рабочем дереве прогона; commit_files в конце каждого LLM-шага = ревизия kind=files; событие file_written на файл" }
-      - { name: gate_G0, kind: gate, does: "runGates('G0'); при passed — esbuild-бандл, revisions.bundle_manifest_sha, systems.preview_revision" }
+      - { name: gate_G0, kind: gate, does: "runGates('G0'); при passed — esbuild-бандл в раскладке runtime.yaml#system_loading.artifact_layout, revisions.bundle_key, systems.preview_revision, затем POST /_wizard/internal/reload {systemId: schema_key, env: draft}" }
       - { name: gate_G1, kind: gate, does: "runGates('G1') против runtime draft с seed-данными" }
       - { name: report, kind: tx, does: "messages kind=run_report, run_finished; M1: ledger charge по факту + release hold" }
     fix_loop:
@@ -98,7 +98,7 @@ workflows:
     trigger: "POST /systems/:id/publish (только owner, D11)"
     preconditions:
       - "revision ≤ draft_revision и revisions.g0_passed = true"
-      - "M1: operatorName задан, если в спеке есть поле pii ≠ none (compliance.yaml#operator)"
+      - "M1: operatorName задан, если в спеке есть поле pii ≠ none (compliance.yaml#system_package.operator)"
       - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review"
     steps:
       - { name: acquire_lock, kind: tx }
@@ -106,7 +106,7 @@ workflows:
       - { name: gate_G0_prod, kind: gate, does: "G0 с env=prod: additiveOnly обязателен, иначе DESTRUCTIVE_IN_PROD → run_failed" }
       - { name: gate_G2, kind: gate, milestone: M2, does: "runGates('G2') включая антифрод (security/abuse.yaml)" }
       - { name: apply_migration, kind: tx, does: "toDDL+toRLS в схеме app_<key>_prod одной транзакцией, SET LOCAL lock_timeout='3s'; до 3 повторов с паузой 5/15/45 с при lock_timeout; status=applying" }
-      - { name: switch, kind: tx, does: "одной транзакцией: новая publication live, прежняя superseded, systems.prod_revision, systems.schema_hwm_revision = max(hwm, revision)" }
+      - { name: switch, kind: tx, does: "одной транзакцией: новая publication live, прежняя superseded, systems.prod_revision, systems.schema_hwm_revision = max(hwm, revision); после коммита POST /_wizard/internal/reload {systemId: schema_key, env: prod} (runtime.yaml)" }
       - { name: smoke, kind: step, does: "GET prod-URL → 200 и /_wizard/health отдаёт revision; провал → автоматический rollback prod на prev_publication (без DDL) и run_failed" }
       - { name: report, kind: tx }
     invariant: "Если упали после apply_migration до switch — схема расширена аддитивно, старый бандл продолжает работать (тест M1-04)"
@@ -130,11 +130,18 @@ workflows:
 
   retention_cron:
     milestone: M2
-    schedule: "DBOS scheduled, ежедневно 03:17 MSK"
+    ownership: "Механика удаления/обезличивания строк — runtime.yaml#workflows.retention (ежесуточно 03:00 МСК, с M0 в поллере _w_jobs runtime). Этот воркфлоу — платформенная часть"
+    schedule: "DBOS scheduled, ежедневно 03:30 MSK (после runtime-прохода)"
     does:
-      - "Для каждой prod-системы и сущности с retention: удалить или обезличить (mode) строки, где anchorField < now() − deleteAfterDays, пачками по 1000 с паузой; запись в platform.deletion_log (счётчики)"
+      - "Перенос счётчиков retention из _w_audit prod-схем в platform.deletion_log (system, entity, mode, cutoff, rows_affected) — владелец видит журнал в настройках"
+      - "Контроль: prod-система с retention-сущностями без отметки прохода за 26 ч → алерт и повторный запуск runtime-задачи"
       - "Платформенная уборка: auth_otps > 24 ч, run_events > 180 дней, импорты после expires_at, abuse_reports.contact_email через 1 год после закрытия"
     test: "M2-05: фикстура со строками старше/младше порога → удалены ровно старые; deletion_log.rows_affected совпадает"
+
+  credits_cron:
+    milestone: M1
+    schedule: "DBOS scheduled, ежечасно"
+    does: "Гранты, сгорание корзин, уведомления о низком балансе — billing.yaml#credits_cron. Строку platform.runs не создаёт (служебный)"
 
   nightly_eval:
     milestone: M1
