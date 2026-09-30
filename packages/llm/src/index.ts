@@ -16,6 +16,28 @@ export {
   schemaHash,
   stableStringify,
 } from "./fixtures.js";
+/** import_mapping call over a SyntheticPayload only (data-boundary.yaml#import); mapping per api.yaml#ImportColumnMapping. */
+export {
+  IMPORT_MAPPING_TOOL,
+  type ImportColumnMapping,
+  type ImportEntityRef,
+  type ImportMappingInput,
+  type ImportMappingOutput,
+  importMappingMessages,
+  routeImportMapping,
+} from "./import-mapping.js";
+/** Org policy changes: PolicyBus/orgPolicyBus (in-process pub/sub), PolicyCache (TTL ≤ 10 s), forbidsT1. */
+export {
+  createPolicyCache,
+  forbidsT1,
+  orgPolicyBus,
+  POLICY_CACHE_TTL_MS,
+  PolicyBus,
+  type PolicyCache,
+  type PolicyCacheOptions,
+  type PolicyChange,
+  type PolicyListener,
+} from "./org-policy.js";
 export { assertNoTokens, type Dlp, decideTier, isCallType, type PolicyDecision } from "./policy.js";
 export { transformBody } from "./providers.js";
 export {
