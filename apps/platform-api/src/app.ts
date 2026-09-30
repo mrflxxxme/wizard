@@ -1,6 +1,7 @@
 import type { Router, RouterOptions } from "@wizard/llm";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { createAgentExecutors } from "./agents/executors.js";
 import { type Config, loadConfig } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -13,7 +14,6 @@ import { runRoutes } from "./routes/runs.js";
 import { systemRoutes } from "./routes/systems.js";
 import { EventBus } from "./runs/events.js";
 import { RunEngine } from "./runs/queue.js";
-import { stubExecutors } from "./runs/stub.js";
 import type { RunExecutors } from "./runs/types.js";
 import { BlobStore } from "./storage/blobs.js";
 
@@ -21,7 +21,8 @@ export interface PlatformApiOptions {
   config?: Partial<Config>;
   /** Existing connection; otherwise created from config.dbUrl and closed by close(). */
   db?: DbHandle;
-  executors?: RunExecutors;
+  /** Run executors, or a factory over the API's connection/config; default: the real agents (createAgentExecutors). */
+  executors?: RunExecutors | ((d: { pg: DbHandle["pg"]; config: Config }) => RunExecutors);
   createRouter?: (opts: RouterOptions) => Router;
   /** Run migrations + seed (default true). */
   migrate?: boolean;
@@ -46,13 +47,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const bus = new EventBus();
   const blobs = new BlobStore(config.artifactsDir);
   const log = opts.log ?? ((m: string, e?: unknown) => console.error(`[platform-api] ${m}`, e ?? ""));
+  const executors =
+    typeof opts.executors === "function"
+      ? opts.executors({ pg: handle.pg, config })
+      : (opts.executors ?? createAgentExecutors({ pg: handle.pg, config }));
   const engine = new RunEngine({
     db: handle.db,
     pg: handle.pg,
     bus,
     blobs,
     config,
-    executors: opts.executors ?? stubExecutors,
+    executors,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     log,
   });
@@ -91,6 +96,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     deps,
     async close() {
       await engine.close();
+      await executors.close?.();
       if (!opts.db) await handle.close();
     },
   };

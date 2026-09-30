@@ -45,6 +45,7 @@ function uiKitStub(files: Map<string, string>): string {
     }
   }
   names.delete("");
+  names.add("WzProvider"); // mounted by the client entry template
   const dir = join(import.meta.dirname, "..", ".generated", "ui-kit-stub-bakery");
   mkdirSync(dir, { recursive: true });
   const file = join(dir, "index.ts");

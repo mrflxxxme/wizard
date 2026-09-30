@@ -1,6 +1,6 @@
 // Name dictionary (data/names.ru.txt → names.data.ts) with case forms generated at load time.
 import { NAMES_DATA } from "./names.data.js";
-import { fold } from "./util.js";
+import { nameKey } from "./util.js";
 
 export interface NameInfo {
   /** Needs a surname or patronymic next to it (Вера, Роман, Лев…). */
@@ -18,7 +18,7 @@ export interface NameDict {
   strongSurnames: Set<string>;
 }
 
-const LATIN_FORM = /^[A-Za-z-]+$/;
+const LATIN_FORM = /^[\p{Script=Latin}'’-]+$/u;
 
 /** Case forms of a surname: masculine declension plus feminine -ова/-ева/-ина for possessive suffixes. */
 function surnameForms(s: string): string[] {
@@ -53,7 +53,7 @@ function build(): NameDict {
   const strongSurnames = new Set<string>();
   const weakSurnames = new Set<string>();
   const put = (form: string, info: NameInfo) => {
-    const key = fold(form);
+    const key = nameKey(form);
     const prev = names.get(key);
     // A form is ambiguous only if every lemma producing it is ambiguous (Яна vs genitive of Ян).
     if (prev) {
@@ -67,7 +67,7 @@ function build(): NameDict {
     const gender = flags.includes("m") ? "m" : flags.includes("f") ? "f" : "u";
     if (flags.includes("s")) {
       for (const f of surnameForms(form)) {
-        const key = fold(f);
+        const key = nameKey(f);
         surnames.add(key);
         (flags.includes("x") ? weakSurnames : strongSurnames).add(key);
       }

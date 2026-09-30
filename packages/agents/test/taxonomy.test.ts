@@ -94,6 +94,28 @@ describe("S3_select_forks", () => {
     expect([...scores].sort((x, y) => y - x)).toEqual(scores);
   });
 
+  test("bakery: the golden fixture asks exactly the selected forks (FU-2)", () => {
+    const lines = fixtureLines("bakery");
+    const a = analysisSchema.parse(lines[0]?.response.toolCalls[0]?.args);
+    const args = lines[1]?.response.toolCalls[0]?.args as { questions: { forkId: string }[] } | undefined;
+    const asked = args?.questions ?? [];
+    expect(asked.length).toBeGreaterThan(0);
+    const sel = selectForks(a);
+    expect(sel.asked.map((x) => x.forkId).sort()).toEqual(asked.map((q) => q.forkId).sort());
+    // «остаток — при готовности» is the rest of the payment, not stock.
+    expect(sel.decided.map((d) => d.forkId)).not.toContain("F-INVENTORY");
+    expect(sel.decided.find((d) => d.forkId === "F-VISIBILITY")).toMatchObject({ source: "default" });
+  });
+
+  test("F-INVENTORY applies to stock, not to the remainder of a payment", () => {
+    const inv = FORKS.find((f) => f.id === "F-INVENTORY");
+    const a = (constraints: string[]): Analysis => ({ ...forumAnalysis(), constraints });
+    expect(inv?.applies(a(["Предоплата 50%, остаток — при готовности"]))).toBe(false);
+    expect(inv?.applies(a(["Учитывать остатки товара"]))).toBe(true);
+    expect(inv?.applies(a(["Вести учёт остатков"]))).toBe(true);
+    expect(inv?.applies(a(["Товар на складе"]))).toBe(true);
+  });
+
   test("horizontal segment takes only horizontal forks; nothing to ask → 0 forks", () => {
     const a: Analysis = {
       goals: ["Вести список заявок"],

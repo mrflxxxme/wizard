@@ -126,6 +126,16 @@ function upsertStep(steps: StepRow[], id: string, patch: (s: StepRow) => StepRow
   return steps.map((s, j) => (j === i ? patch(s) : s));
 }
 
+/**
+ * The real builder reports phases (plan/ops/code/verify), the plan lists items of kind ops|code (builder.yaml#loop.phases):
+ * a phase event without its own row marks the plan items of that kind.
+ */
+function patchSteps(steps: StepRow[], id: string, patch: (s: StepRow) => StepRow, title = id): StepRow[] {
+  if (steps.some((s) => s.id === id)) return upsertStep(steps, id, patch, title);
+  if (!steps.some((s) => s.inPlan && s.kind === id)) return upsertStep(steps, id, patch, title);
+  return steps.map((s) => (s.inPlan && s.kind === id ? patch(s) : s));
+}
+
 function currentStepId(steps: StepRow[]): string | undefined {
   return [...steps].reverse().find((s) => s.status === "running")?.id;
 }
@@ -183,7 +193,17 @@ export function reduceRun(state: RunState, e: RunEvent): RunState {
       return {
         ...s,
         phase: "running",
-        steps: upsertStep(s.steps, id, (st) => ({ ...st, title: label, status: "running", attempt }), label),
+        steps: patchSteps(
+          s.steps,
+          id,
+          (st) => ({
+            ...st,
+            title: st.inPlan && st.id !== id ? st.title : label,
+            status: "running",
+            attempt,
+          }),
+          label,
+        ),
       };
     }
     case "step_finished": {
@@ -191,7 +211,7 @@ export function reduceRun(state: RunState, e: RunEvent): RunState {
       return {
         ...s,
         ruFallback: s.ruFallback || p.ruFallback === true,
-        steps: upsertStep(s.steps, id, (st) => ({ ...st, status: "done" })),
+        steps: patchSteps(s.steps, id, (st) => ({ ...st, status: "done" })),
       };
     }
     case "agent_message": {

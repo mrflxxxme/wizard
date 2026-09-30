@@ -2,13 +2,19 @@
 // adjacent patronymics/surnames; "Фамилия И. О." and "И. О. Фамилия"; values after «ФИО:».
 import { type NameInfo, nameDict } from "../dict.js";
 import type { Confidence, Finding } from "../types.js";
-import { finding, fold } from "../util.js";
+import { finding, nameKey } from "../util.js";
 
 const WORD_RE = /\p{L}+(?:-\p{L}+)*/gu;
 // Only capitalized words can be part of a name; adjacency is checked on the text between them.
-const CAP_WORD_RE = /(?<!\p{L})\p{Lu}\p{L}*(?:-\p{L}+)*/gu;
+// FU-2: "O'Neil", "D’Angelo" are one token.
+const CAP_WORD_RE = /(?<!\p{L})(?:\p{Lu}['’](?=\p{Lu}))?\p{Lu}\p{L}*(?:-\p{L}+)*/gu;
 const CYR = /^[\p{Script=Cyrillic}-]+$/u;
-const LAT = /^[A-Za-z-]+$/;
+const LAT = /^[\p{Script=Latin}'’-]+$/u;
+// FU-2: one capitalized part of a name, incl. "McGregor", "MacArthur", "O'Neil", "DeLuca".
+const NAME_PART = /^(?:Mc|Mac|Fitz|De|Di|Le|La|Du|Van|Von|\p{Lu}['’])?\p{Lu}\p{Ll}+$/u;
+// FU-2: lowercase particles of Latin names between two capitalized parts ("van der Berg", "da Silva", "al-Rashid").
+const PARTICLE_GAP =
+  /^[ \xa0]+(?:(?:van|von|der|den|de|del|della|degli|di|da|das|dos|do|du|la|le|ter|ten|bin|ibn|bint|abu|y|zu)[ \xa0]+){0,3}(?:(?:al|el|ad|ar|as|ash|at|an|az|ul|ud)-)?$/;
 
 const PATRONYMIC_CYR =
   /^[А-ЯЁ][а-яё]+(?:(?:ович|евич|ьич|ич)(?:а|у|ем|ом|е)?|(?:овн|евн|ичн|иничн)(?:а|ы|е|у|ой|ою))$/u;
@@ -102,7 +108,38 @@ const NOUN_LIKE_CYR =
 const VERB_LIKE_CYR = /(?:[иы]те|йте|ать|ять|ить|еть|уть|ться|тся|лся|лась|лись|ешь|ишь)$/u;
 const ADJ_LIKE_CYR = /(?:ый|ий|ой|ая|яя|ее|ей)$/u;
 const NOUN_LIKE_LAT = /(?:tion|sion|ment|ness|ship|ware|able|ible|ology|ics|ies)$/;
-const TITLE_WORD = /^\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)*$/u;
+const TITLE_WORD =
+  /^(?:Mc|Mac|Fitz|De|Di|Le|La|Du|Van|Von|\p{Lu}['’])?\p{Lu}\p{Ll}+(?:-(?:Mc|Mac|\p{Lu}['’])?\p{Lu}\p{Ll}+)*$/u;
+// FU-2: Latin brands, products, tech terms and places that are never a person's name, even after a role word.
+const TECH_STOP = new Set(
+  (
+    "google sheets docs drive maps gmail chrome android microsoft windows office excel powerpoint outlook teams skype " +
+    "visual studio basic react native vue angular svelte next nuxt node deno nest spring boot django flask rails " +
+    "python java javascript typescript kotlin golang php laravel symfony docker kubernetes linux ubuntu debian apple " +
+    "iphone ipad macbook mac ios macos safari firefox mozilla opera edge amazon aws web azure oracle sap salesforce " +
+    "hubspot notion slack jira confluence trello asana figma sketch adobe photoshop illustrator premiere acrobat zoom " +
+    "meet telegram whatsapp viber signal discord vkontakte yandex ozon wildberries avito sber sberbank tinkoff alfa " +
+    "bitrix amocrm tilda wix shopify wordpress woocommerce magento github gitlab bitbucket postgres postgresql mysql " +
+    "mongo mongodb redis kafka rabbitmq elastic grafana prometheus unity unreal engine blender autocad revit world " +
+    "york jersey angeles francisco hong kong vegas tesla spacex netflix spotify youtube tiktok instagram facebook " +
+    "twitter meta openai chatgpt claude gemini copilot power tableau looker data base machine learning deep source " +
+    "stack overflow smart digital global mobile desktop site landing page form forms table tables sheet note notes " +
+    "pay wallet card cards money marketplace delivery food taxi go travel booking air lines platinum gold silver " +
+    "black white red blue green yellow orange pink purple love life time coffee like good top first one happy fresh " +
+    "starter kit ultra sale black friday cyber monday christmas halloween valentine easter merry happy birthday " +
+    "welcome login logout sign dashboard settings profile account order orders cart checkout invoice payment report " +
+    "reports analytics export import upload download admin panel console terminal server client framework library " +
+    "module component widget plugin template theme bot bots chat messenger mail inbox calendar tasks task board " +
+    "kanban sprint scrum agile lean six sigma quality control assurance hello coca cola pepsi nike adidas puma " +
+    "samsung xiaomi huawei lenovo sony canon nikon toyota honda nissan mazda hyundai kia volkswagen audi bmw " +
+    "mercedes porsche ferrari lamborghini lexus volvo skoda renault peugeot citroen fiat jeep chevrolet cadillac " +
+    "starbucks mcdonalds burger ikea zara uniqlo lego disney marvel pixar warner universal paramount"
+  ).split(" "),
+);
+// FU-2: role, position or introduction right before a Title-case Latin pair makes it a person's name
+// («помощник финдиректора Hiroshi Tanaka-Weller», «меня зовут Kwame Mensah», «CEO Aiko Tanabe»).
+const ROLE_CTX =
+  /(?:(?<!\p{L})(?:(?:фин|ген|тех|зам|арт|коммерческ\p{L}*[ \xa0]+|исполнительн\p{L}*[ \xa0]+)?директор|менеджер|помощни[кц]|ассистент|бухгалтер|главбух|руководител|начальни|заместител|координатор|администратор|секретар|юрист|инженер|разработчи|программист|дизайнер|аналитик|специалист|консультант|куратор|организатор|владел|основател|сооснователь|сотрудни|коллег|партн[её]р|представител|закупщи|снабжен|кладовщи|продав|кассир|курьер|водител|спикер|докладчи|тренер|преподавател|врач|клиент|заказчи|подрядчи|собственни|президент|председател|участни|кандидат|соискател|рекрутер|получател|отправител|ответственн|контактн\p{L}*[ \xa0]+лиц|контакт)\p{L}*|(?<!\p{L})(?:зовут|звать|имя|гост(?:ь|я|ю|ем|и|ей))|(?<![\p{L}-])(?:ceo|cto|cfo|coo|cmo|cio|founder|co-founder|cofounder|manager|director|assistant|accountant|engineer|developer|designer|analyst|consultant|coordinator|officer|lead|head|owner|contact|speaker|chairman|president|secretary|recruiter|supervisor|vp|named|name is|dear|mr|mrs|ms|dr|prof))\.?(?:[ \xa0]*[:—–-])?[ \xa0]+$/iu;
 const ALL_CAPS = /^[\p{Lu}-]+$/u;
 
 interface Tok {
@@ -120,18 +157,20 @@ function titleCase(w: string): string {
 
 /** Capitalized ("Иван", "Анна-Мария") or all caps (ИВАНОВ) → title-cased token, else null. */
 function capitalized(w: string): string | null {
+  // FU-2: Korean given names spelled "Min-jun" (dictionary forms only).
+  if (/^\p{Lu}\p{Ll}+(?:-\p{Ll}+)+$/u.test(w) && nameDict().names.has(nameKey(w))) return w;
   const parts = w.split("-");
   for (const p of parts) {
     if (!/^\p{Lu}/u.test(p)) return null;
   }
-  if (parts.every((p) => p.length === 1 || /^\p{Lu}\p{Ll}+$/u.test(p))) return w;
+  if (parts.every((p) => p.length === 1 || NAME_PART.test(p))) return w;
   if (w.length >= 3 && /^[\p{Lu}-]+$/u.test(w)) return titleCase(w);
   return null;
 }
 
 function firstName(w: string): NameInfo | null {
   const { names } = nameDict();
-  const key = fold(w);
+  const key = nameKey(w);
   const hit = names.get(key);
   if (hit) return hit;
   if (!w.includes("-")) return null;
@@ -150,19 +189,36 @@ function firstName(w: string): NameInfo | null {
 }
 
 export function isSurname(w: string): boolean {
-  const key = fold(w);
+  const key = nameKey(w);
   if (NOT_SURNAME.has(key)) return false;
   if (CYR.test(w)) {
     if (nameDict().surnames.has(key)) return true;
     return w.split("-").every((p) => SURNAME_SUFFIX_CYR.test(p) && p.length >= 4);
   }
   if (!LAT.test(w)) return false;
-  return (w.length >= 4 && SURNAME_SUFFIX_LAT.test(w)) || nameDict().strongSurnames.has(key);
+  return (w.length >= 4 && SURNAME_SUFFIX_LAT.test(w)) || strongLatinSurname(key);
+}
+
+/** Strong dictionary surname; FU-2: also a hyphenated Latin one with a strong part ("Smith-Jones"). */
+function strongLatinSurname(key: string): boolean {
+  const { strongSurnames } = nameDict();
+  if (strongSurnames.has(key)) return true;
+  if (!key.includes("-") || !LAT.test(key)) return false;
+  const parts = key.split("-");
+  return parts.every((p) => p.length >= 2) && parts.some((p) => strongSurnames.has(p));
+}
+
+/** FU-2: Title-case Latin word that may be part of a person's name next to a role word (not a brand or tech term). */
+function latinNamePart(raw: string): boolean {
+  if (!TITLE_WORD.test(raw) || !LAT.test(raw)) return false;
+  const key = nameKey(raw);
+  if (NOUN_LIKE_LAT.test(key)) return false;
+  return key.split("-").every((p) => !PAIR_STOP.has(p) && !TECH_STOP.has(p));
 }
 
 /** Capitalized place or organisation word ("Маркет", "Центр"): a first name right before it names a brand. */
 function placeOrOrg(raw: string): boolean {
-  return CYR.test(raw) && PLACE_ORG_STEM.test(fold(raw));
+  return CYR.test(raw) && PLACE_ORG_STEM.test(nameKey(raw));
 }
 
 /**
@@ -175,7 +231,7 @@ function pairable(raw: string, anchor: string, given: boolean): boolean {
   } else if (!TITLE_WORD.test(raw)) return false;
   const w = capitalized(raw);
   if (!w || w.length < 3 || !sameScript(w, anchor)) return false;
-  const key = fold(w);
+  const key = nameKey(w);
   if (PAIR_STOP.has(key)) return false;
   if (CYR.test(w)) {
     if (ROLE_STEM.test(key) || PLACE_ORG_STEM.test(key)) return false;
@@ -183,7 +239,7 @@ function pairable(raw: string, anchor: string, given: boolean): boolean {
     if (given && ADJ_LIKE_CYR.test(key)) return false;
     return true;
   }
-  return LAT.test(w) && !NOUN_LIKE_LAT.test(key);
+  return LAT.test(w) && !NOUN_LIKE_LAT.test(key) && !TECH_STOP.has(key);
 }
 
 function isPatronymic(w: string): boolean {
@@ -210,13 +266,14 @@ export function detectNames(text: string): Finding[] {
     const y = toks[b];
     if (!x || !y) return false;
     const gap = y.s - x.e;
-    return gap >= 1 && gap <= 3 && /^[ \xa0\t]+$/.test(text.slice(x.e, y.s));
+    if (gap >= 1 && gap <= 3 && /^[ \xa0\t]+$/.test(text.slice(x.e, y.s))) return true;
+    return gap > 2 && gap <= 24 && LAT.test(x.t) && LAT.test(y.t) && PARTICLE_GAP.test(text.slice(x.e, y.s));
   };
   const cap = (i: number): string | null => {
     const t = toks[i];
     return t ? capitalized(t.t) : null;
   };
-  const { names, strongSurnames } = nameDict();
+  const { names, surnames } = nameDict();
   const spans: Span[] = [];
   const beforeTok = (k: number): string => {
     const t = toks[k] as Tok;
@@ -224,7 +281,8 @@ export function detectNames(text: string): Finding[] {
   };
   // FU-1: strong dictionary surname + an unknown name-like word ("Рахимов Джахонгир", "Smith Johnny").
   const surnamePair = (i: number, w: string): { span: Span; end: number } | null => {
-    if (!strongSurnames.has(fold(w))) return null;
+    if (CYR.test(w) ? !nameDict().strongSurnames.has(nameKey(w)) : !strongLatinSurname(nameKey(w)))
+      return null;
     const raw = (toks[i] as Tok).t;
     const givenOk = (j: number): boolean => {
       const t = toks[j];
@@ -258,6 +316,16 @@ export function detectNames(text: string): Finding[] {
       }
       continue;
     }
+    // FU-2: role or introduction + Title-case Latin pair (or triple).
+    if (adjacent(i, i + 1) && latinNamePart(tok.t) && latinNamePart((toks[i + 1] as Tok).t)) {
+      if (ROLE_CTX.test(beforeTok(i))) {
+        let e = i + 1;
+        if (adjacent(e, e + 1) && latinNamePart((toks[e + 1] as Tok).t)) e++;
+        spans.push({ s: tok.s, e: (toks[e] as Tok).e, c: "high", l: true });
+        i = e;
+        continue;
+      }
+    }
     // "Фамилия И. О."
     INITIALS_AFTER_RE.lastIndex = tok.e;
     const ia = INITIALS_AFTER_RE.exec(text);
@@ -274,9 +342,9 @@ export function detectNames(text: string): Finding[] {
       }
     }
     // Dictionary first name as the anchor; otherwise a strong dictionary surname.
-    const key = fold(tok.t);
+    const key = nameKey(tok.t);
     const nameLike = tok.t.includes("-") || names.has(key);
-    if (!nameLike && !strongSurnames.has(key)) continue;
+    if (!nameLike && !nameDict().strongSurnames.has(key)) continue;
     const w = capitalized(tok.t);
     if (!w) continue;
     const info = nameLike ? firstName(w) : null;
@@ -308,11 +376,22 @@ export function detectNames(text: string): Finding[] {
       s = i - 1;
       ext = true;
     }
+    // FU-2: Latin surname-first order with any dictionary surname ("Park Ji-hoon", "Tanaka Hiroshi").
+    const lat = !CYR.test(w);
+    if (!ext && !info.word && lat && l1 && adjacent(i - 1, i) && surnames.has(nameKey(l1))) {
+      s = i - 1;
+      ext = true;
+    }
     // FU-1: a first name that is not a common word + an unknown name-like word ("Джахонгир Турдыбек", "John Smithers").
     let pair = false;
     if (!ext && !info.word && adjacent(i, i + 1) && pairable((toks[i + 1] as Tok).t, tok.t, false)) {
       e = i + 1;
       ext = pair = true;
+    }
+    // FU-2: second part of a Latin double surname ("Gabriel García Márquez").
+    if (ext && lat && e > i) {
+      const r = cap(e + 1);
+      if (r && adjacent(e, e + 1) && LAT.test(r) && isSurname(r) && !firstName(r)) e++;
     }
     const startTok = toks[s] as Tok;
     const before = beforeTok(s);
@@ -321,7 +400,7 @@ export function detectNames(text: string): Finding[] {
       if (info.ambiguous || info.latin) continue;
       if (STREET_BEFORE.test(before)) continue;
       if (adjacent(i, i + 1) && placeOrOrg((toks[i + 1] as Tok).t)) continue; // "Мадина Маркет", "Тимур Центр"
-      if (LOCATION_NAMES.has(fold(w)) && LOCATION_PREP.test(before)) continue;
+      if (LOCATION_NAMES.has(nameKey(w)) && LOCATION_PREP.test(before)) continue;
     } else if (NAMED_AFTER_BEFORE.test(before)) {
       continue; // street or institution named after a person: covered by address, not a data subject
     }
@@ -334,7 +413,7 @@ export function detectNames(text: string): Finding[] {
     const base = m.index + m[0].length - group.length;
     let end = -1;
     for (const w of group.matchAll(WORD_RE)) {
-      if (FIELD_WORDS.has(fold(w[0]))) break;
+      if (FIELD_WORDS.has(nameKey(w[0]))) break;
       end = base + w.index + w[0].length;
     }
     if (end > base) spans.push({ s: base, e: end, c: "high", l: false });

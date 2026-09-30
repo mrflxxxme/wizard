@@ -3,11 +3,22 @@
 
 export const WEIGHTS = { roles: 0.2, entities: 0.3, features: 0.3, acceptance: 0.2 };
 
-export const norm = (s) => String(s ?? "").toLowerCase().replaceAll("ё", "е");
+export const norm = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е");
 
 export function parseExpectation(item) {
-  const [label, pat] = item.includes("::") ? item.split("::").map((x) => x.trim()) : [item.trim(), item.trim()];
-  return { label, patterns: pat.split("|").map((p) => norm(p.trim())).filter(Boolean) };
+  const [label, pat] = item.includes("::")
+    ? item.split("::").map((x) => x.trim())
+    : [item.trim(), item.trim()];
+  return {
+    label,
+    patterns: pat
+      .split("|")
+      .map((p) => norm(p.trim()))
+      .filter(Boolean),
+  };
 }
 
 function coverage(expected = [], haystacks) {
@@ -23,9 +34,19 @@ function coverage(expected = [], haystacks) {
 
 export function scoreSpec(spec, expected) {
   if (!spec) {
-    return { total: 0, roles: 0, entities: 0, features: 0, acceptance: 0, missing: { all: "нет валидной спеки" } };
+    return {
+      total: 0,
+      roles: 0,
+      entities: 0,
+      features: 0,
+      acceptance: 0,
+      missing: { all: "нет валидной спеки" },
+    };
   }
-  const roleTexts = (spec.roles ?? []).map((r) => norm(`${r.id} ${r.name} ${r.description ?? ""}`));
+  // AppSpec roles: {name, label}; the legacy draft shape {id, name, description} is still matched.
+  const roleTexts = (spec.roles ?? []).map((r) =>
+    norm(`${r.id ?? ""} ${r.name} ${r.label ?? ""} ${r.description ?? ""}`),
+  );
   const entityTexts = (spec.entities ?? []).map((e) => norm(`${e.name} ${e.label ?? ""}`));
   const whole = [norm(JSON.stringify(spec))];
   const accTexts = [norm(JSON.stringify([spec.acceptance ?? [], spec.workflows ?? []]))];
@@ -34,7 +55,11 @@ export function scoreSpec(spec, expected) {
   const e = coverage(expected.entities, entityTexts);
   const f = coverage(expected.must_have_features, whole);
   const a = coverage(expected.acceptance_criteria, accTexts);
-  const total = WEIGHTS.roles * r.value + WEIGHTS.entities * e.value + WEIGHTS.features * f.value + WEIGHTS.acceptance * a.value;
+  const total =
+    WEIGHTS.roles * r.value +
+    WEIGHTS.entities * e.value +
+    WEIGHTS.features * f.value +
+    WEIGHTS.acceptance * a.value;
   return {
     total: round(total),
     roles: round(r.value),

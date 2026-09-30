@@ -54,6 +54,35 @@ describe.each(["forum", "bakery"] as const)("recorded stream «%s»", (name) => 
 });
 
 describe("single events", () => {
+  test("builder phases (ops/code) mark the plan items of that kind; other phases get their own row", () => {
+    const s = run([
+      ev(1, "run_started", { kind: "build" }),
+      ev(2, "step_started", { step: "plan", label_ru: "Составляю план" }),
+      ev(3, "plan_ready", {
+        steps: [
+          { id: "P1", kind: "ops", title: "Данные" },
+          { id: "P2", kind: "code", title: "Экраны" },
+        ],
+      }),
+      ev(4, "step_finished", { step: "plan" }),
+      ev(5, "step_started", { step: "ops", label_ru: "Собираю модель данных" }),
+    ]);
+    expect(s.steps.map((x) => [x.id, x.title, x.status])).toEqual([
+      ["P1", "Данные", "running"],
+      ["P2", "Экраны", "queued"],
+      ["plan", "Составляю план", "done"],
+    ]);
+    const s2 = run(
+      [
+        ev(6, "step_finished", { step: "ops" }),
+        ev(7, "step_started", { step: "code", label_ru: "Пишу код" }),
+        ev(8, "step_finished", { step: "code" }),
+      ],
+      s,
+    );
+    expect(s2.steps.filter((x) => x.inPlan).map((x) => x.status)).toEqual(["done", "done"]);
+  });
+
   test("unknown type → ignored with console.warn", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const s0 = run([ev(1, "run_started", { kind: "build" })]);

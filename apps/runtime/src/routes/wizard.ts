@@ -32,7 +32,11 @@ function redirectWithCookies(location: string, cookies: string[]): Response {
 export function wizardRoutes(): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();
 
-  app.get("/health", (c) => c.json({ status: "ok" }));
+  // runtime.yaml#service_endpoints.health: on a system host also {system, env, revision} (smoke, preview reload).
+  app.get("/health", (c) => {
+    const { entry } = c.get("system");
+    return c.json({ status: "ok", system: entry.slug, env: entry.env, revision: entry.revision });
+  });
 
   app.get("/spec", async (c) => {
     const sys = c.get("system");

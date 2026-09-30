@@ -11,8 +11,12 @@ const r1 = (x) => Math.round(x * 10) / 10;
 export function mergeRuns(results) {
   const byKey = new Map();
   for (const res of results) {
-    if (!Array.isArray(res?.runs)) throw new Error("файл результатов без массива runs (ожидается вывод tools/eval/run.mjs)");
-    for (const run of res.runs) byKey.set(`${run.model}\u0000${run.brief}`, run);
+    if (!Array.isArray(res?.runs))
+      throw new Error("файл результатов без массива runs (ожидается вывод tools/eval/run.mjs)");
+    for (const run of res.runs) {
+      if (run.skipped) continue; // harness: brief without a fixture — not a result of the model
+      byKey.set(`${run.model}\u0000${run.brief}`, run);
+    }
   }
   return [...byKey.values()];
 }
@@ -43,7 +47,8 @@ export function decideWeek0(results, opts = {}) {
   const runs = mergeRuns(results);
   const t1Models = [...new Set(runs.filter((r) => r.tier === "T1").map((r) => r.model))];
   const t1 = opts.t1Model ?? (t1Models.includes(DEFAULT_T1_MODEL) ? DEFAULT_T1_MODEL : t1Models[0]);
-  if (!t1 || !runs.some((r) => r.model === t1)) throw new Error("в результатах нет прогонов T1-модели (GLM-5.3)");
+  if (!t1 || !runs.some((r) => r.model === t1))
+    throw new Error("в результатах нет прогонов T1-модели (GLM-5.3)");
   const t0Models = [...new Set(runs.filter((r) => r.tier === "T0").map((r) => r.model))].sort();
   if (!t0Models.length) throw new Error("в результатах нет прогонов T0-моделей");
 
@@ -96,10 +101,14 @@ export function renderWeek0Report(d, { generatedAt = new Date().toISOString() } 
   const L = [];
   L.push("# Eval недели 0: GLM-5.3 (T1) против лучшей T0-модели");
   L.push("");
-  L.push(`Сформирован: ${generatedAt}. Правило: product.yaml#decisions.D2_w0_fallback, agents/models.yaml#week0_decision.`);
+  L.push(
+    `Сформирован: ${generatedAt}. Правило: product.yaml#decisions.D2_w0_fallback, agents/models.yaml#week0_decision.`,
+  );
   if (d.dryRun) {
     L.push("");
-    L.push("> **DRY-RUN.** Хотя бы один файл результатов получен на заглушке (`--dry-run`). Решение не применять.");
+    L.push(
+      "> **DRY-RUN.** Хотя бы один файл результатов получен на заглушке (`--dry-run`). Решение не применять.",
+    );
   }
   L.push("");
   L.push(`Брифов (общих для всех моделей): ${d.briefs.length} — ${d.briefs.join(", ")}.`);
@@ -108,18 +117,27 @@ export function renderWeek0Report(d, { generatedAt = new Date().toISOString() } 
   L.push("|---|---|---|---|---|---|");
   for (const s of [d.t1, ...d.t0]) {
     const mark = s.model === d.bestT0.model ? " (лучшая T0)" : "";
-    L.push(`| ${s.model}${mark} | ${s.tier} | ${s.n} | ${pct(s.firstTryValid)} | ${pct(s.valid)} | ${s.score.toFixed(3)} |`);
+    L.push(
+      `| ${s.model}${mark} | ${s.tier} | ${s.n} | ${pct(s.firstTryValid)} | ${pct(s.valid)} | ${s.score.toFixed(3)} |`,
+    );
   }
   L.push("");
-  L.push(`Разрыв ${d.t1.model} − ${d.bestT0.model}: валидность с первой попытки **${d.gapValidPp} п. п.**, скор **${d.gapScorePp} п. п.** (порог ${d.threshold} п. п. по обоим).`);
+  L.push(
+    `Разрыв ${d.t1.model} − ${d.bestT0.model}: валидность с первой попытки **${d.gapValidPp} п. п.**, скор **${d.gapScorePp} п. п.** (порог ${d.threshold} п. п. по обоим).`,
+  );
   if (d.zaiTermsConfirmed !== null)
     L.push(`Условия Z.ai (E-LEGAL): ${d.zaiTermsConfirmed ? "подтверждены" : "не подтверждены"}.`);
   L.push("");
   L.push(`## Решение: сборка по умолчанию — ${d.tier === "T0" ? "T0 (модели в РФ)" : "T1 (GLM-5.3)"}`);
   L.push("");
   if (d.reasons.length) for (const r of d.reasons) L.push(`- ${r}`);
-  else L.push(`- ${d.t1.model} лучше ${d.bestT0.model} не меньше чем на ${d.threshold} п. п. по обоим показателям`);
+  else
+    L.push(
+      `- ${d.t1.model} лучше ${d.bestT0.model} не меньше чем на ${d.threshold} п. п. по обоим показателям`,
+    );
   L.push("");
-  L.push(`Параметр: \`WIZARD_BUILD_DEFAULT_TIER=${d.tier}\` (packages/llm createRegistry; agents/models.yaml#week0_decision.switch${d.tier === "T0" ? ", t1_default: false" : ""}).`);
+  L.push(
+    `Параметр: \`WIZARD_BUILD_DEFAULT_TIER=${d.tier}\` (packages/llm createRegistry; agents/models.yaml#week0_decision.switch${d.tier === "T0" ? ", t1_default: false" : ""}).`,
+  );
   return `${L.join("\n")}\n`;
 }

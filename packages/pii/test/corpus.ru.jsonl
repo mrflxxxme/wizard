@@ -532,3 +532,53 @@
 {"id":"t168","group":"trap","text":"Уважаемые Коллеги, Добро Пожаловать","spans":[]}
 {"id":"t169","group":"trap","text":"Салон Гузель Стиль работает до 20:00","spans":[]}
 {"id":"t170","group":"trap","text":"Мадина Маркет, Алмаз Холдинг, Банк Санкт-Петербург","spans":[]}
+{"id":"p341","group":"positive","text":"Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram @procure_desk_ht.","spans":[{"kind":"person_name_latin","start":51,"end":72},{"kind":"social_handle","start":106,"end":122}]}
+{"id":"p342","group":"positive","text":"Контакт: Bjarke Lindholm подключится к созвону","spans":[{"kind":"person_name_latin","start":9,"end":24}]}
+{"id":"p343","group":"positive","text":"Заказ оформил Kenji Ortega, доставка завтра","spans":[{"kind":"person_name_latin","start":14,"end":26}]}
+{"id":"p344","group":"positive","text":"Contact: Yuto Hosseini, pavel_smirnov@gmail.com","spans":[{"kind":"person_name_latin","start":9,"end":22},{"kind":"email","start":24,"end":47}]}
+{"id":"p345","group":"positive","text":"Автор отзыва — Gabriel García Márquez, просит связаться","spans":[{"kind":"person_name_latin","start":15,"end":37}]}
+{"id":"p346","group":"positive","text":"Wei Tanaka will call you back on +996674462547","spans":[{"kind":"person_name_latin","start":0,"end":10},{"kind":"phone_intl","start":33,"end":46}]}
+{"id":"p347","group":"positive","text":"Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram @procure_desk_ht.","spans":[{"kind":"person_name_latin","start":51,"end":72},{"kind":"social_handle","start":106,"end":122}]}
+{"id":"p348","group":"positive","text":"Директор Esi Owusu-Ansah подключится к созвону","spans":[{"kind":"person_name_latin","start":9,"end":24}]}
+{"id":"p349","group":"positive","text":"Заказ оформил Hiroshi Patel, доставка завтра","spans":[{"kind":"person_name_latin","start":14,"end":27}]}
+{"id":"p350","group":"positive","text":"Contact: Camila Hosseini, volkov.maria8@gmail.com","spans":[{"kind":"person_name_latin","start":9,"end":24},{"kind":"email","start":26,"end":49}]}
+{"id":"p351","group":"positive","text":"Автор отзыва — Sean O'Neil, просит связаться","spans":[{"kind":"person_name_latin","start":15,"end":26}]}
+{"id":"p352","group":"positive","text":"Camila Choi will call you back on +996247854226","spans":[{"kind":"person_name_latin","start":0,"end":11},{"kind":"phone_intl","start":34,"end":47}]}
+{"id":"p353","group":"positive","text":"Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram @procure_desk_ht.","spans":[{"kind":"person_name_latin","start":51,"end":72},{"kind":"social_handle","start":106,"end":122}]}
+{"id":"p354","group":"positive","text":"Координатор Sione Tupou подключится к созвону","spans":[{"kind":"person_name_latin","start":12,"end":23}]}
+{"id":"p355","group":"positive","text":"Заказ оформил Xiaoming Yamamoto, доставка завтра","spans":[{"kind":"person_name_latin","start":14,"end":31}]}
+{"id":"p356","group":"positive","text":"Contact: Haruka Ortega, olga91@rambler.ru","spans":[{"kind":"person_name_latin","start":9,"end":22},{"kind":"email","start":24,"end":41}]}
+{"id":"p357","group":"positive","text":"Автор отзыва — Kim Min-jun, просит связаться","spans":[{"kind":"person_name_latin","start":15,"end":26}]}
+{"id":"p358","group":"positive","text":"Yuto Yılmaz will call you back on +996322443882","spans":[{"kind":"person_name_latin","start":0,"end":11},{"kind":"phone_intl","start":34,"end":47}]}
+{"id":"p359","group":"positive","text":"Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram @procure_desk_ht.","spans":[{"kind":"person_name_latin","start":51,"end":72},{"kind":"social_handle","start":106,"end":122}]}
+{"id":"p360","group":"positive","text":"Помощник финдиректора Sione Tupou подключится к созвону","spans":[{"kind":"person_name_latin","start":22,"end":33}]}
+{"id":"p361","group":"positive","text":"Заказ оформил Seo-yeon Tanaka, доставка завтра","spans":[{"kind":"person_name_latin","start":14,"end":29}]}
+{"id":"p362","group":"positive","text":"Contact: Emre García, sergey.volkov@bk.ru","spans":[{"kind":"person_name_latin","start":9,"end":20},{"kind":"email","start":22,"end":41}]}
+{"id":"p363","group":"positive","text":"Автор отзыва — Omar al-Rashid, просит связаться","spans":[{"kind":"person_name_latin","start":15,"end":29}]}
+{"id":"p364","group":"positive","text":"Seo-yeon Zhang will call you back on +375 37 957-89-45","spans":[{"kind":"person_name_latin","start":0,"end":14},{"kind":"phone_intl","start":37,"end":54}]}
+{"id":"p365","group":"positive","text":"Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает в Telegram @procure_desk_ht.","spans":[{"kind":"person_name_latin","start":51,"end":72},{"kind":"social_handle","start":106,"end":122}]}
+{"id":"p366","group":"positive","text":"Директор Sione Tupou подключится к созвону","spans":[{"kind":"person_name_latin","start":9,"end":20}]}
+{"id":"p367","group":"positive","text":"Заказ оформил Xiaoming Zhang, доставка завтра","spans":[{"kind":"person_name_latin","start":14,"end":28}]}
+{"id":"p368","group":"positive","text":"Contact: Reza Choi, maria_kuznetsova@inbox.ru","spans":[{"kind":"person_name_latin","start":9,"end":18},{"kind":"email","start":20,"end":45}]}
+{"id":"p369","group":"positive","text":"Автор отзыва — Kim Min-jun, просит связаться","spans":[{"kind":"person_name_latin","start":15,"end":26}]}
+{"id":"p370","group":"positive","text":"Camila Haddad will call you back on +996 (350) 722634","spans":[{"kind":"person_name_latin","start":0,"end":13},{"kind":"phone_intl","start":36,"end":53}]}
+{"id":"t171","group":"trap","text":"Менеджер Google Sheets настроит выгрузку","spans":[]}
+{"id":"t172","group":"trap","text":"Разработчик React Native приложения нужен к пятнице","spans":[]}
+{"id":"t173","group":"trap","text":"Директор New York офиса прилетает завтра","spans":[]}
+{"id":"t174","group":"trap","text":"Ответственный — Visual Studio Code","spans":[]}
+{"id":"t175","group":"trap","text":"Контакт: Hello World","spans":[]}
+{"id":"t176","group":"trap","text":"Клиент Microsoft Teams не открывается","spans":[]}
+{"id":"t177","group":"trap","text":"Владелец MacBook Pro и iPhone","spans":[]}
+{"id":"t178","group":"trap","text":"Спикер Apple Music и Yandex Cloud","spans":[]}
+{"id":"t179","group":"trap","text":"CEO Tesla Motors выступил","spans":[]}
+{"id":"t180","group":"trap","text":"Hong Kong и Rio de Janeiro","spans":[]}
+{"id":"t181","group":"trap","text":"Suzuki Swift и Ping Pong","spans":[]}
+{"id":"t182","group":"trap","text":"Гостиница Radisson Blu рядом","spans":[]}
+{"id":"t183","group":"trap","text":"Координатор Black Friday акции","spans":[]}
+{"id":"t184","group":"trap","text":"Партнёр Coca Cola на форуме","spans":[]}
+{"id":"t185","group":"trap","text":"Консультант Salesforce Cloud поможет","spans":[]}
+{"id":"t186","group":"trap","text":"Contact Google Sheets support","spans":[]}
+{"id":"t187","group":"trap","text":"Manager Visual Studio Code extension","spans":[]}
+{"id":"t188","group":"trap","text":"Director New York Times","spans":[]}
+{"id":"t189","group":"trap","text":"Santiago de Chile и Buenos Aires","spans":[]}
+{"id":"t190","group":"trap","text":"Hello World на React Native и Visual Studio","spans":[]}

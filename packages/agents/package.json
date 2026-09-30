@@ -7,11 +7,13 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
     "./orchestrator": "./src/orchestrator/index.ts",
-    "./builder": "./src/builder/index.ts"
+    "./builder": "./src/builder/index.ts",
+    "./qa": "./src/qa/index.ts",
+    "./host": "./src/host/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "assets": "node scripts/gen-builder-assets.mjs"
+    "assets": "node scripts/gen-builder-assets.mjs && node scripts/gen-qa-assets.mjs"
   },
   "dependencies": {
     "@wizard/appspec": "workspace:*",
@@ -20,5 +22,9 @@
     "@wizard/pii": "workspace:*",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@wizard/connectors": "workspace:*",
+    "@wizard/runtime": "workspace:*"
   }
 }

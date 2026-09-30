@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { AppSpec } from "@wizard/appspec";
 import * as esbuild from "esbuild";
 import { canonicalJson, sha256Hex, specHash } from "./hash.js";
-import { ENTRY_NS, SDK, SDK_JSX, toPosix, wizardPlugin } from "./plugin.js";
+import { ENTRY_NS, SDK, SDK_JSX, toPosix, UI_KIT, wizardPlugin } from "./plugin.js";
 import type { BuildEnv, BuildInput, BuildManifest, BuildResult, Check, HostModules } from "./types.js";
 import { injectWzIds, type WzMap } from "./wz-id.js";
 
@@ -86,13 +86,14 @@ function clientEntry(spec: AppSpec): string {
   const lines = [
     `import { jsx } from ${JSON.stringify(SDK_JSX)};`,
     `import { SdkProvider, matchRoute, useEffect, useState } from ${JSON.stringify(SDK)};`,
+    `import { WzProvider } from ${JSON.stringify(UI_KIT)};`,
     `import { createRoot } from "react-dom/client";`,
     ...pages.map((p, i) => `import P${i} from ${JSON.stringify(`./${p.file}`)};`),
     `const pages = [${pages.map((p, i) => `[${JSON.stringify(p.route)}, P${i}]`).join(", ")}];`,
     "const routes = pages.map((p) => p[0]);",
     // Static segments win over params (same order as useParams in the SDK).
     'const ordered = [...pages].sort((a, b) => a[0].split(":").length - b[0].split(":").length);',
-    "function App() {",
+    "function App({ spec }) {",
     "  const [path, setPath] = useState(window.location.pathname);",
     "  useEffect(() => {",
     "    const on = () => setPath(window.location.pathname);",
@@ -101,9 +102,23 @@ function clientEntry(spec: AppSpec): string {
     "  }, []);",
     "  const hit = ordered.find((p) => matchRoute(p[0], path));",
     '  const page = hit ? jsx(hit[1], {}) : jsx("main", { "data-testid": "wz-not-found", children: "Страница не найдена" });',
-    "  return jsx(SdkProvider, { routes, children: page });",
+    "  return jsx(SdkProvider, { routes, children: jsx(WzProvider, { spec, children: page }) });",
     "}",
-    'createRoot(document.getElementById("root")).render(jsx(App, {}));',
+    // ui-kit.yaml#data_binding.provider: the template mounts WzProvider with the session RoleSpec;
+    // a role change reloads the page (login, set-role), so one read at start is enough.
+    'fetch("/_wizard/spec", { credentials: "same-origin", headers: { accept: "application/json" } })',
+    '  .then((r) => (r.ok ? r.json() : Promise.reject(new Error("/_wizard/spec " + r.status))))',
+    '  .then((spec) => createRoot(document.getElementById("root")).render(jsx(App, { spec: kitSpec(spec) })));',
+    // runtime RoleSpec {role: {name, label, access, isAdmin}, loginRoles} → ui-kit RoleSpec {role: name, roles}.
+    "function kitSpec(s) {",
+    '  const roles = (s.loginRoles ?? []).map((r) => ({ ...r, access: "login", isAdmin: false }));',
+    "  if (s.role) {",
+    "    const i = roles.findIndex((r) => r.name === s.role.name);",
+    "    if (i < 0) roles.push({ ...s.role });",
+    "    else roles[i] = { ...roles[i], isAdmin: s.role.isAdmin === true };",
+    "  }",
+    "  return { ...s, role: s.role ? s.role.name : null, roles };",
+    "}",
     "",
   ];
   return lines.join("\n");

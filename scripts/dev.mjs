@@ -140,11 +140,17 @@ process.on("SIGTERM", () => shutdown(0));
 // .env is optional; apps read the same variables (deploy.yaml#local.env_vars).
 const envFile = join(root, ".env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+// Offline demo out of the box: fixture mode replays the golden «форум» run unless told otherwise.
+if ((process.env.WIZARD_LLM_MODE ?? "fixture") === "fixture") process.env.WIZARD_FIXTURE ??= "demo/forum";
 
 if (!args.has("no-db")) {
   const pgPort = Number(process.env.WIZARD_PG_PORT ?? 5433);
   if (await portOpen(pgPort)) {
     log(`Postgres уже слушает :${pgPort}`);
+    // CI service or a shared server: the draft migrations still need wizard_owner/wizard_runtime.
+    const r = spawnSync(process.execPath, [join(root, "scripts/db.mjs"), "roles"], { stdio: "inherit" });
+    if (r.status !== 0)
+      log("не удалось создать роли wizard_owner/wizard_runtime — сборка превью может упасть");
   } else {
     const r = spawnSync(process.execPath, [join(root, "scripts/db.mjs"), "up"], { stdio: "inherit" });
     if (r.status !== 0) fail("не удалось поднять Postgres (pnpm db:up)");

@@ -40,6 +40,21 @@ describe("names dictionary (data/names.ru.txt)", () => {
     expect(names.get("john")?.word).toBe(false);
   });
 
+  test("FU-2 sizes: ≥ 300 names and ≥ 200 surnames beyond English/European; diacritics-insensitive lookups", () => {
+    const flagsOf = (l: string) => l.split("\t")[1] ?? "";
+    const both = (a: string, b: string) =>
+      entries.filter((l) => flagsOf(l).includes(a) && flagsOf(l).includes(b)).length;
+    expect(both("g", "l")).toBeGreaterThanOrEqual(300);
+    expect(both("g", "s")).toBeGreaterThanOrEqual(200);
+    const { names, strongSurnames } = nameDict();
+    for (const n of ["hiroshi", "xiaoming", "min-jun", "priya", "fatima", "mehmet", "joaquin"]) {
+      expect(names.get(n)?.word).toBe(false);
+    }
+    expect(names.get("sakura")?.word).toBe(true);
+    expect(strongSurnames.has("tanaka")).toBe(true);
+    expect(strongSurnames.has("suzuki")).toBe(false); // also a brand
+  });
+
   test("case forms", () => {
     expect(caseForms("Иван", "m")).toEqual(expect.arrayContaining(["Ивана", "Ивану", "Иваном", "Иване"]));
     expect(caseForms("Мария", "f")).toEqual(expect.arrayContaining(["Марии", "Марию", "Марией"]));

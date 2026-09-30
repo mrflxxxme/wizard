@@ -71,7 +71,10 @@ function describe(r: QrCheckResponse): Shown {
     return {
       ...base,
       title: ru.qrScanner.results.ok,
-      text: [r.ticketTitle, r.details].filter(Boolean).join(" · "),
+      // connectors' qr check returns details as a map of displayFields already joined into ticketTitle.
+      text: [r.ticketTitle, typeof r.details === "string" ? r.details : undefined]
+        .filter(Boolean)
+        .join(" · "),
     };
   if (r.status === "duplicate")
     return {

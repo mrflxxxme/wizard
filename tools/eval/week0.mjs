@@ -12,10 +12,12 @@ import { decideWeek0, renderWeek0Report, THRESHOLD_PP } from "./lib/week0.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flags = Object.fromEntries(
-  argv.filter((a) => a.startsWith("--")).map((a) => {
-    const [k, v] = a.slice(2).split("=");
-    return [k, v ?? true];
-  }),
+  argv
+    .filter((a) => a.startsWith("--"))
+    .map((a) => {
+      const [k, v] = a.slice(2).split("=");
+      return [k, v ?? true];
+    }),
 );
 const files = argv.filter((a) => !a.startsWith("--"));
 

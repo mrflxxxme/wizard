@@ -273,6 +273,11 @@ describe("contract (api.yaml, x-milestone M0)", () => {
       /^http:\/\/[a-z0-9-]+--draft\.localhost:4100\/_wizard\/dev-login\?role=participant&next=\/$/,
     );
     expect(prev.body.revision).toBe(done.resultRevision);
+    // Default role is the public one: no login, the draft session is dropped instead.
+    const pub = await call("GET", `/systems/${sid}/preview-url`);
+    expect(pub.body.url).toMatch(
+      /^http:\/\/[a-z0-9-]+--draft\.localhost:4100\/_wizard\/dev-logout\?next=\/$/,
+    );
 
     // Style and logo (no credits, author=user).
     const draft = (await call("GET", `/systems/${sid}`)).body.system.draftRevision;
