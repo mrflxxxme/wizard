@@ -1,0 +1,219 @@
+# Оркестратор: интервью → карточка системы → передача строителю. Нормативно для packages/agents/src/orchestrator.
+# Решения: product.yaml D7 (одна точка согласования — карточка), D10 (цена с потолком), D3 (ПДн).
+# Модели и уровни — specs/agents/models.yaml (callTypes interview, card).
+version: 1
+
+principles:
+  - "MUST: не больше 7 вопросов за всё интервью; у каждого 2–4 варианта и ровно один recommended"
+  - "MUST: не спрашивать то, что закрывают defaults или что явно сказано в брифе"
+  - "MUST: всё, что показывается пользователю, — на русском, без жаргона (не «сущность», а «данные»; не «RLS», а «кто что видит»)"
+  - "MUST: оценка и потолок кредитов считаются кодом по estimation, а не моделью"
+  - "MUST: не выдумывать реальные данные (каталоги, цены, имена) — в карточке только структура; примеры помечаются «пример»"
+  - "SHOULD: от брифа до карточки ≤ 3 вызовов LLM без учёта ответов пользователя"
+
+# ---------------------------------------------------------------- Алгоритм
+algorithm:
+  - id: S1_dlp
+    do: "pii.detect(brief). Если найдено хоть одно ПДн — отправить пользователю pii_notice и пометить сессию piiInBrief=true"
+  - id: S2_analyze
+    do: "Вызов callType=interview с инструментом submit_analysis → Analysis. При piiInBrief роутер сам отправит его на T0 (models.yaml#routing_algorithm шаг 5)"
+    validate: "zod(Analysis); ≤2 повторов с ошибкой валидации, затем событие run_failed(ORCH_INVALID_OUTPUT)"
+  - id: S3_select_forks
+    do: >
+      Детерминированно (код) по Analysis: кандидаты = развилки fork_taxonomy, у которых applies_when
+      выполнено и которые не закрыты Analysis.resolved[]. Каждому кандидату score = impact (данные 3, права 3,
+      деньги 3, ПДн 2, интеграции 2, UI 1) + (Analysis.unknowns содержит forkId ? 2 : 0).
+      Если default_if_unasked развилки покрывает случай с confidence=high и impact<3 — развилку не задавать.
+      Взять top-7 по score (стабильная сортировка по id при равенстве).
+    then: "Если выбрано 0 развилок → сразу S5_card"
+  - id: S4_ask
+    do: >
+      Вызов callType=interview с инструментом ask_questions: модель формулирует тексты вопросов и вариантов
+      для выбранных forkId (варианты берутся из taxonomy, модель может адаптировать формулировки и отбросить
+      неприменимые, но не добавлять новые смыслы). recommended выбирается по правилу развилки и Analysis.
+      Показ пользователю: все вопросы сразу, кнопки + «Свой вариант» + общая кнопка «Остальное — по рекомендации».
+    rest_by_recommendation: "Кнопка «Остальное — по рекомендации» применяет recommended ко всем неотвеченным вопросам (byRecommendation=true) и переводит в S5"
+    custom_answer: "Свободный ответ ≤500 символов; проходит DLP; сохраняется как {forkId, custom:text}"
+  - id: S5_card
+    do: "Вызов callType=card с инструментом submit_card → SystemCard (без estimate/cap). Код добавляет estimate и cap (estimation), валидирует и сохраняет cardVersion"
+    validate: "zod(SystemCard) + семантика: роли/сущности в acceptance существуют в карточке; ≥1 AC на каждую роль с access=login; id AC уникальны AC1..ACn"
+  - id: S6_approve
+    do: "Пользователь: «Собрать» (APPROVE) | правка текстом (CARD_EDIT) | «Отмена». Правка → повтор S5 с диффом пожеланий, не больше 5 версий карточки; дальше — предложить начать заново"
+    on_approve: "Проверить баланс ≥ cap (M1+). Передать строителю {card, cardVersion, cap}. Это единственная точка согласования (D7)"
+
+pii_notice:
+  when: "S1_dlp нашёл ПДн в брифе или в свободном ответе"
+  text_template: >
+    В описании есть персональные данные ({categories}). Для сборки они не нужны: мы обработаем ваш текст
+    в российском контуре, а во внешние модели передадим его без этих данных. Реальные данные клиентов лучше
+    вносить уже в готовую систему.
+  rules:
+    - "MUST: показывать категории словами (телефон, email, ФИО…), но не сами значения"
+    - "MUST: показать один раз за сессию; тест — бриф с телефоном даёт ровно одно событие pii_notice"
+    - "MUST NOT: переписывать найденные значения в Analysis, карточку и спеку (проверка: DLP по SystemCard = 0 находок)"
+
+# ---------------------------------------------------------------- Схемы вывода (zod в packages/agents/src/orchestrator/schemas.ts)
+schemas:
+  Analysis:
+    goals: "string[] 1..5 — что пользователь хочет получить, по-русски"
+    segment: "events | made_to_order | horizontal"
+    skeleton: "подмножество [catalog, application, process, payment, fulfillment] — какие звенья ядра нужны"
+    roles: "{name: ident, label, access: public|login, isStaff: bool, evidence: string}[] 1..8"
+    entities: "{name: ident, label, keyFields: string[] ≤8, containsPii: bool}[] 1..20"
+    integrations: "(yookassa|telegram|email|qr)[]"
+    constraints: "string[] — лимиты, квоты, сроки, правила из брифа"
+    resolved: "{forkId, optionId, evidence}[] — развилки, явно закрытые брифом"
+    unknowns: "forkId[] — что модель считает неясным"
+    outOfScope: "string[] — то, что не поддерживается (non_goals, чат-боты, свои домены…), с формулировкой для пользователя"
+    complexity: "small | medium | large"
+  Question:
+    id: "q1..q7"
+    forkId: "id из fork_taxonomy"
+    text: "≤140 символов, вопрос"
+    whyItMatters: "≤160 символов: что изменится в системе в зависимости от ответа"
+    options: "{id, label ≤60, description? ≤140, recommended: bool}[] 2..4, ровно один recommended=true"
+    allowCustom: "bool, по умолчанию true"
+  Answer: "{questionId, forkId, optionId? | custom?: string, byRecommendation: bool}"
+  tools:
+    - { name: submit_analysis, input: Analysis }
+    - { name: ask_questions,   input: "{questions: Question[] 1..7}" }
+    - { name: submit_card,     input: "SystemCard без estimate/cap/cardVersion" }
+
+system_card:          # схема SystemCard (backlog M0-12 ссылается на этот якорь)
+  cardVersion: "int ≥1"
+  title: "≤80, название системы"
+  summary: "≤400, что делает система, 2–3 предложения"
+  segment: "как в Analysis"
+  roles: "{name, label, access, loginMethods?: (phone_otp|email_otp|telegram)[], description ≤160, can: string[] ≤8 — человеческие права}[]"
+  data: "{name, label, fields: {label, kind: text|number|money|date|choice|link|file|contact|qr}[] ≤12, pii: none|basic}[] — «какие данные храним»"
+  specVsCode:
+    spec: "string[] — что гарантируется спекой: данные, права, статусы, автоматизации, интеграции, ПДн"
+    code: "string[] — что пишется кодом: экраны, расчёты, особая логика"
+  screens: "{route, title, roles: ident[], purpose ≤140}[] 1..30"
+  integrations: "{connector: yookassa|telegram|email|qr, purpose, userActionRequired?: string (напр. «подключить магазин ЮKassa»)}[]"
+  automations: "{name, when ≤120 (по-человечески), then ≤160}[]"
+  acceptance: "{id: AC<n>, text ≤200, check: {type: permission|scenario|constraint, role?, entity?, op?, expect?: allow|deny}}[] 3..20 — формат 1:1 с appspec acceptance (steps генерирует QA)"
+  pii:
+    categories: "(fio|phone|email|address|birthdate|other_basic)[]"
+    fields: "{entity, field, category}[]"
+    retention: "{entity, deleteAfterDays, anchorField?, mode: delete|anonymize, humanText}[] — для каждой сущности с ПДн"
+    consent: "bool — всегда true, если есть ПДн от public/login ролей"
+    summary: "≤300 — что храним, сколько, кто видит"
+  estimate: "{credits: {min, expected, max}, minutes: {min, max}} — заполняет код"
+  cap: "{credits: int} — заполняет код"
+  assumptions: "string[] — что решено по умолчанию или по рекомендации (пользователь видит)"
+  outOfScope: "string[]"
+  forkAnswers: "Answer[]"
+
+# ---------------------------------------------------------------- Оценка
+estimation:
+  inputs: "из SystemCard: E = |data|, F = Σ полей, S = |screens|, W = |automations|, I = |integrations|, R = |roles|, A = |acceptance|"
+  tokens_expected: "110_000 + 18_000·E + 1_000·F + 20_000·S + 12_000·W + 20_000·I + 5_000·R + 5_000·A"
+  price_blended: "Σ по callType сборки (plan, build_ops, build_code, fix, qa_*) доли × (0.8·input + 0.2·output) первой модели маршрута с учётом orgPolicy.ruOnly; доли по умолчанию build_code 0.55, fix 0.2, build_ops 0.1, qa 0.1, plan 0.05"
+  credits_expected: "ceil(tokens_expected × price_blended / 1e6 / rub_per_credit)"
+  credits_range: "min = ceil(0.6·expected), max = ceil(1.6·expected)"
+  cap: "max(10, ceil(1.5·expected)); не больше баланса организации (M1+) — иначе карточка в состоянии «не хватает кредитов» с кнопкой «Докупить»"
+  minutes: "min = ceil(tokens_expected / 60_000), max = ceil(tokens_expected / 25_000) [?] — калибруется"
+  calibration: "Коэффициенты хранятся в packages/agents/src/orchestrator/estimate.coefficients.json; eval nightly пересчитывает их регрессией по фактическим прогонам и публикует отчёт; замена коэффициентов — PR"
+  targets: "Средняя сборка ≈ 20 кредитов (concept §5). Тест: карточка «форум» из фикстуры → credits.expected ∈ [12, 35]"
+  accuracy_metric: "actual_credits / expected ∈ [0.6, 1.5] для ≥80% прогонов eval (specs/quality/eval.yaml)"
+
+# ---------------------------------------------------------------- Состояния
+state_machine:
+  states: [idle, analyzing, asking, carding, awaiting_approval, approved, building, needs_user, done, cancelled, failed]
+  initial: idle
+  transitions:
+    - { from: idle,              event: BRIEF_SUBMITTED,        to: analyzing }
+    - { from: analyzing,         event: ANALYSIS_DONE,          to: asking,            guard: "forks > 0" }
+    - { from: analyzing,         event: ANALYSIS_DONE,          to: carding,           guard: "forks = 0" }
+    - { from: asking,            event: ANSWER,                 to: asking,            guard: "остались неотвеченные" }
+    - { from: asking,            event: ANSWER,                 to: carding,           guard: "все отвечены" }
+    - { from: asking,            event: REST_BY_RECOMMENDATION, to: carding }
+    - { from: carding,           event: CARD_READY,             to: awaiting_approval }
+    - { from: awaiting_approval, event: CARD_EDIT,              to: carding,           guard: "cardVersion < 5" }
+    - { from: awaiting_approval, event: APPROVE,                to: approved,          guard: "баланс ≥ cap (M1+)" }
+    - { from: approved,          event: BUILD_STARTED,          to: building }
+    - { from: building,          event: BUILDER_NEEDS_USER,     to: needs_user,        note: "эскалация строителя (builder.yaml#escalation)" }
+    - { from: needs_user,        event: USER_CHOICE,            to: building }
+    - { from: building,          event: BUILD_DONE,             to: done }
+    - { from: done,              event: CHANGE_REQUESTED,       to: analyzing,         note: "режим правки, см. change_requests" }
+    - { from: "*",               event: CANCEL,                 to: cancelled }
+    - { from: "analyzing|carding", event: LLM_FAILED,           to: failed,            note: "после ретраев и фолбэков models.yaml" }
+  persistence: "Состояние и все события — в run_events (M1: DBOS). Повтор события с тем же idempotencyKey не меняет состояние"
+  test: "Табличный тест всех переходов; недопустимое событие → ошибка INVALID_TRANSITION без побочных эффектов"
+
+change_requests:       # правка уже собранной системы через чат
+  classify: "Код-классификатор + вызов interview: style_only | small_edit | big_change"
+  style_only: "Цвет, шрифт, скругления, тема → подсказка открыть «Стиль» (0 кредитов), без прогона"
+  small_edit: "≤2 вопроса, мини-карточка {что меняется, estimate, cap}; cap по умолчанию max(3, ceil(1.5·expected))"
+  big_change: "Полный алгоритм S2–S6 с текущей спекой как контекстом"
+  point_and_edit: "M3: запрос из превью с componentId идёт сразу в builder.yaml#point_and_edit с мини-карточкой"
+
+# ---------------------------------------------------------------- Промпт
+prompt_skeleton:       # порядок фиксирован; статичная часть — кэшируемый префикс (точка кэша на последнем статичном блоке)
+  static:
+    - { section: role,            content: "Ты — оркестратор Wizard: превращаешь описание задачи нетехнического владельца бизнеса в карточку системы. Кратко, по-русски, без жаргона" }
+    - { section: platform,        content: "Что умеет платформа: данные+права+статусы+автоматизации в спеке; экраны React на библиотеке ядра; коннекторы yookassa/telegram/email/qr; вход phone/email/telegram; PWA; 152-ФЗ встроен. Скелет Каталог→Заявка→Процесс→Оплата→Выдача" }
+    - { section: non_goals,       content: "product.yaml#non_goals человеческими словами — что честно отвечать «пока не умеем»" }
+    - { section: fork_taxonomy,   content: "id, суть, варианты, правило рекомендации (компактная выжимка fork_taxonomy)" }
+    - { section: defaults,        content: "defaults целиком" }
+    - { section: output_rules,    content: "Отвечай только вызовом инструмента. Ровно один recommended. whyItMatters — про последствия для бизнеса. Не выдумывай реальные данные. Не повторяй ПДн из брифа" }
+    - { section: acceptance_rules, content: "AC проверяемы машиной: права (роль×данные×действие) или сценарий с наблюдаемым результатом. Плохо: «удобный интерфейс». Хорошо: «Участник не видит чужие заявки»" }
+    - { section: example,         content: "1 компактный пример: бриф → Analysis → 3 вопроса → фрагмент карточки (синтетический, без ПДн)" }
+  dynamic:
+    - { section: org_context,     content: "orgPolicy.ruOnly, тариф, существующие системы (названия)" }
+    - { section: current_spec,    content: "дайджест текущей спеки (только для change_requests)" }
+    - { section: brief,           content: "бриф (на T1 — после scrub)" }
+    - { section: answers,         content: "ответы пользователя" }
+  size_budget: "static ≤ 6k токенов; dynamic ≤ 8k"
+
+# ---------------------------------------------------------------- Умолчания (не спрашивать)
+defaults:
+  - "Роль-администратор (isAdmin) всегда есть; это владелец системы"
+  - "Вход для ролей access=login — phone_otp; email_otp добавляется, если в брифе есть email-рассылки"
+  - "Уведомления — email; Telegram только если упомянут"
+  - "Согласие на обработку ПДн и страница политики — всегда при наличии ПДн"
+  - "Срок хранения ПДн: ивенты — 90 дней после даты события; заказы — 3 года (бухучёт) для заказов и 1 год для контактов без заказов [?: E-LEGAL]; прочее — 1 год"
+  - "Внешний вид — токены по умолчанию, пользователь меняет в «Стиле» бесплатно"
+  - "Адаптивность и PWA — всегда"
+  - "Пользователь видит только свои записи (rowFilter по владельцу), персонал — все"
+  - "Выгрузка CSV для таблиц персонала — всегда"
+  - "Оплата не подключается, если про деньги в брифе ничего нет"
+
+# ---------------------------------------------------------------- Таксономия развилок
+# rec — правило выбора recommended. applies_when — сигналы в Analysis.
+fork_taxonomy:
+  horizontal:
+    - { id: F-ACCESS,     impact: 3, applies_when: "есть внешние пользователи", q: "Как клиенты попадают в систему?", options: [public_form, login_required, staff_only], rec: "public_form, если нужна только подача заявки; иначе login_required" }
+    - { id: F-LOGIN,      impact: 2, applies_when: "есть роль access=login", q: "Как входить?", options: [phone, email, telegram, phone_or_email], rec: "phone" }
+    - { id: F-STAFF,      impact: 3, applies_when: "≥2 вида действий персонала", q: "Кто из сотрудников работает в системе?", options: [single_admin, admin_manager, admin_manager_moderator], rec: "минимальный набор, покрывающий действия из брифа" }
+    - { id: F-VISIBILITY, impact: 3, applies_when: "есть персонал кроме админа", q: "Кто из сотрудников видит какие записи?", options: [all_see_all, assigned_only, by_department], rec: "all_see_all при ≤5 сотрудниках" }
+    - { id: F-APPROVAL,   impact: 3, applies_when: "есть заявки", q: "Заявки подтверждаются?", options: [auto, manual, rule_based], rec: "auto, если нет упоминания проверки" }
+    - { id: F-STATUSES,   impact: 2, applies_when: "есть процесс", q: "Какой путь проходит заявка?", options: [simple_3, pipeline_board, custom], rec: "simple_3 (новая → в работе → готово)" }
+    - { id: F-PAYMENT,    impact: 3, applies_when: "есть цена/оплата", q: "Как принимать оплату?", options: [none, yookassa_full, yookassa_prepay, invoice_manual], rec: "yookassa_full; invoice_manual добавляется вариантом при B2B" }
+    - { id: F-NOTIFY,     impact: 2, applies_when: "есть смена статусов", q: "Как сообщать об изменениях?", options: [email, telegram, email_and_telegram, none], rec: "email" }
+    - { id: F-ASSIGN,     impact: 2, applies_when: "есть исполнители", q: "Как назначать исполнителя?", options: [manual, round_robin, self_pick], rec: "manual" }
+    - { id: F-BOOKING,    impact: 3, applies_when: "запись на время/услуги", q: "Как устроено время записи?", options: [fixed_slots, specialist_schedule, requests_only], rec: "fixed_slots" }
+    - { id: F-INVENTORY,  impact: 3, applies_when: "остатки/склад", q: "Нужно ли учитывать остатки?", options: [no, simple_stock, reserve_on_order], rec: "reserve_on_order, если есть оплата" }
+    - { id: F-REPORTS,    impact: 1, applies_when: "упомянуты отчёты", q: "Какие отчёты нужны?", options: [lists_export, summary_dashboard, both], rec: "both" }
+    - { id: F-IMPORT,     impact: 2, applies_when: "упомянута существующая таблица/база", q: "С чего начинаем данные?", options: [empty, import_table], rec: "empty; import_table — M1" }
+    - { id: F-RETENTION,  impact: 2, applies_when: "есть ПДн и срок неочевиден", q: "Сколько хранить данные людей?", options: [d90_after_event, y1, y3], rec: "по defaults" }
+  b2b_events:
+    - { id: F-EV-TICKETS,  impact: 3, applies_when: "segment=events", q: "Какие бывают билеты/участия?", options: [single_free, types_with_quotas, types_quotas_price_tiers], rec: "types_with_quotas, если упомянуты типы" }
+    - { id: F-EV-CHECKIN,  impact: 2, applies_when: "очное событие", q: "Как проверять вход?", options: [list_only, qr_online, qr_offline_scanner], rec: "qr_offline_scanner при >300 участниках" }
+    - { id: F-EV-PROGRAM,  impact: 2, applies_when: "секции/спикеры/расписание", q: "Нужна ли программа?", options: [none, schedule_only, schedule_with_signup], rec: "schedule_only" }
+    - { id: F-EV-SPEAKERS, impact: 2, applies_when: "спикеры/доклады", q: "Как отбирать доклады?", options: [manual_list, call_for_papers_moderation], rec: "call_for_papers_moderation, если упомянута подача" }
+    - { id: F-EV-STAY,     impact: 2, applies_when: "выезд/проживание", q: "Нужно ли расселение?", options: [none, room_assignment, room_requests], rec: "room_assignment" }
+    - { id: F-EV-ZONES,    impact: 2, applies_when: "VIP/лаунж/зоны", q: "Есть ли зоны с ограниченным доступом?", options: [none, zones_by_ticket_type], rec: "zones_by_ticket_type" }
+    - { id: F-EV-GROUPS,   impact: 2, applies_when: "команды/делегации/юрлица", q: "Регистрируются поодиночке или группами?", options: [individual, group_by_contact, company_quota], rec: "individual" }
+  made_to_order_goods:
+    - { id: F-GD-CATALOG,  impact: 3, applies_when: "segment=made_to_order", q: "Как устроен товар?", options: [fixed_items, items_with_options, calculator_formula], rec: "items_with_options" }
+    - { id: F-GD-PRICING,  impact: 3, applies_when: "есть B2B/опт", q: "Цены одинаковые для всех?", options: [single_price, per_client_pricelist, volume_discounts], rec: "per_client_pricelist, если упомянуты юрлица" }
+    - { id: F-GD-CAPACITY, impact: 3, applies_when: "изготовление к дате", q: "Как ограничивать заказы по срокам?", options: [no_limit, daily_capacity, preorder_batches], rec: "daily_capacity" }
+    - { id: F-GD-DELIVERY, impact: 2, applies_when: "выдача товара", q: "Как клиент получает заказ?", options: [pickup, delivery, both], rec: "pickup, если не упомянута доставка" }
+    - { id: F-GD-PREPAY,   impact: 2, applies_when: "F-PAYMENT≠none", q: "Сколько оплачивать заранее?", options: [full, fixed_percent, on_pickup], rec: "fixed_percent (50%)" }
+  rules:
+    - "MUST: каждая развилка задаётся не более одного раза за сессию"
+    - "MUST: варианты — из taxonomy; модель может переименовать для понятности и убрать неприменимые, оставив ≥2"
+    - "SHOULD: при segment=horizontal брать только horizontal-развилки"
+    - "Тест: fixture-бриф «форум» → 3–7 вопросов, все forkId из taxonomy, по одному recommended (backlog M0-12)"

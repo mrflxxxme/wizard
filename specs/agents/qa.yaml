@@ -1,0 +1,71 @@
+# QA-агент: критерии приёмки → исполнимые проверки, seed-данные, объяснение провалов строителю.
+# Нормативно для packages/agents/src/qa. Исполнение проверок — packages/gates (specs/quality/gates.yaml).
+version: 1
+
+inputs:
+  spec: "AppSpec ревизии (acceptance, roles, entities, permissions, functions, workflows, integrations)"
+  card: "SystemCard (тексты AC для объяснений)"
+  gate_report: "только для explain: упавшие проверки с фактическими ответами runtime"
+
+# ---------------------------------------------------------------- Генерация проверок
+checks:
+  permission_auto:
+    source: "Детерминированно (код, без LLM) из spec.permissions — deny by default"
+    generate:
+      - "Для каждой роли × сущности × op ∈ {read, create, update, delete}: expect = allow, если op ∈ permission.ops, иначе deny. id: PC-<role>-<entity>-<op>"
+      - "Для rowFilter: два пользователя одной роли; A не читает/не меняет строки B. id: PC-<role>-<entity>-row"
+      - "Для hiddenFields: ответ read не содержит поля. id: PC-<role>-<entity>-hidden"
+      - "Для readonlyFields: update поля → отказ. id: PC-<role>-<entity>-ro"
+    selection: "G1: проверки, на которые ссылаются AC type=permission, + все проверки роли access=public. G2: полная матрица (gates.yaml#G2-PERM-*)"
+    test: "Для спеки «форум» число PC-проверок = |roles| × |entities| × 4 + доп. row/hidden/ro; сломанная permission даёт ровно ожидаемые провалы"
+  from_acceptance:
+    permission: "AC {type: permission, role, entity, op, expect} → PC-проверка 1:1 (без LLM). id: SC-<AC id>"
+    scenario:
+      how: "callType=qa_generate, инструмент submit_checks {checks: Scenario[]} (DSL — gates.yaml#scenario_dsl)"
+      prompt_inputs: "текст AC, дайджест спеки (сущности, поля с типами и enum, роли, функции с args, воркфлоу), правила DSL, 2 эталонных сценария"
+      validate:
+        - "zod(Scenario) + статическое разрешение: сущности, поля, функции, роли, переменные ($x) существуют и определены до использования"
+        - "Каждый сценарий содержит ≥1 expect; сценарий не может менять спеку"
+        - "Невалидный → 1 повтор с ошибками; снова невалидный → проверка status=error, category=check_invalid (строитель её не чинит, AC помечается «не удалось проверить автоматически»)"
+    constraint:
+      how: "Как scenario, но обязательна негативная ветка: действие, нарушающее ограничение (лимит, уникальность, статус), ожидает ошибку"
+      examples: ["лимит мест: create N+1 → expect error LIMIT_REACHED|VALIDATION", "уникальность: второй create с тем же значением → expect status 409"]
+  determinism: "Сгенерированные сценарии кешируются по (specVersion, AC id, sha256(текст AC)); повторный G1 без изменений AC не вызывает LLM"
+  output: "Check {id, acId?, kind: permission|scenario|constraint, level: G1|G2, scenario?: Scenario, expect?}"
+  test: "Карточка «форум» → ≥ 6 проверок, все исполнимы G1 без status=error (backlog M0-14)"
+
+# ---------------------------------------------------------------- Seed-данные
+seed:
+  generator: "Детерминированный (код), PRNG с seed = sha256(systemId + specVersion); LLM не генерирует людей"
+  rules:
+    - "MUST: только синтетика. ФИО — из встроенного синтетического словаря с пометкой; телефоны +7 999 000-XX-XX; email user<N>@example.test; адреса «ул. Тестовая, д. N»; карты/паспорта не генерируются вовсе"
+    - "MUST: DLP-проверка seed перед загрузкой: значения вне генератора, похожие на ПДн → отказ SEED_PII"
+    - "Объёмы: на сущность 3–10 строк; на каждую роль access=login — 2 пользователя (для rowFilter); ссылки ref согласованы, enum покрыты"
+    - "Значения соблюдают required/unique/min/max/maxLength/enum; для money — кратно 100 ₽; даты — относительно $now"
+    - "MAY: qa_generate подсказывает правдоподобные НЕперсональные значения (названия товаров, секций) — только для полей pii=none, проходят DLP"
+  isolation: "Seed грузится в эфемерную схему app_<systemId>_g1_<runId>; схема удаляется после гейта"
+  test: "DLP по всем seed для 12 брифов eval → 0 находок вне словаря синтетики"
+
+# ---------------------------------------------------------------- Объяснение провалов
+explain:
+  step1_classify: "Код по фактам проверки (без LLM) определяет category, если однозначно"
+  step2_llm: "callType=qa_explain только для неоднозначных; инструмент submit_explanations"
+  Explanation:
+    checkId: string
+    acId: "string?"
+    category: "permission_too_broad | permission_too_narrow | missing_entity_or_field | wrong_status_flow | function_error | validation_mismatch | workflow_not_triggered | connector_mock_mismatch | seed_problem | check_invalid"
+    expected: "что ожидала проверка (≤ 200)"
+    actual: "что вернул runtime: статус, код ошибки, фрагмент полей без значений pii≠none (≤ 300)"
+    likelyCause: "≤ 300, по-русски"
+    fix: "{kind: ops|code|none, target: JSON Pointer спеки или путь файла, suggestion ≤ 300}"
+    owner: "builder | qa"
+  deterministic_rules:
+    - "expect deny, получено 200 → permission_too_broad, fix.kind=ops, target=/permissions[role,entity]"
+    - "expect allow, получено 403 → permission_too_narrow"
+    - "UNKNOWN_FIELD/UNKNOWN_ENTITY в ответе → missing_entity_or_field"
+    - "500/ctx.error в функции → function_error, target = functions/<file>.ts, приложить стек без значений"
+    - "check_invalid и seed_problem → owner=qa: QA перегенерирует проверку/seed, строитель не трогает"
+  guardrails:
+    - "MUST NOT: предлагать ослабление прав или удаление AC как fix; для конфликта AC↔права — owner=qa и эскалация через ask_orchestrator"
+    - "MUST: Explanation не содержит значений полей pii≠none (даже синтетических) — только имена полей"
+  test: "Фикстура с намеренно открытым delete для участника → Explanation {category: permission_too_broad, fix.kind: ops}"

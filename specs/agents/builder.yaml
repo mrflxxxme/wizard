@@ -1,0 +1,187 @@
+# Строитель: карточка → операции AppSpec + код UI/функций → G0/G1 → исправления. Нормативно для packages/agents/src/builder.
+# Приёмы контекста — по мотивам Chef (Apache-2.0, chef-agent/ChatContextManager.ts), переписаны под AI SDK 7 UIMessage.parts.
+# Модели — specs/agents/models.yaml (callTypes plan, build_ops, build_code, fix).
+version: 1
+
+inputs:
+  card: "SystemCard утверждённой версии (orchestrator.yaml#system_card) + cap"
+  spec: "текущая AppSpec + version (для новой системы — минимальная: app, одна роль admin)"
+  files: "дерево файлов ревизии: {path, bytes, sha256}[] (ui/**.tsx, functions/**.ts)"
+  history: "последние 5 ревизий: {version, author, humanDiff}[]"
+  mode: "build | change | point_and_edit"
+  target: "только point_and_edit: {componentId, file, route, instruction}"
+
+# ---------------------------------------------------------------- Инструменты (zod → JSON Schema, models.yaml#call_policy)
+tools:
+  apply_ops:
+    input: "{ops: Op[] 1..50 (specs/appspec/ops.yaml), expectedVersion: int, idempotencyKey?: string}"
+    output: "{ok: true, version, humanDiff: string[]} | {ok: false, errors: OpsError[]}"
+    rules:
+      - "MUST: ошибки возвращаются модели как результат инструмента (не исключение), с path/code/allowed/hint"
+      - "MUST NOT (mode=build|change): set_acceptance со списком, где удалён или ослаблен AC из карточки; такие батчи → ACCEPTANCE_LOCKED"
+      - "MUST NOT: ops, ослабляющие права ролей ниже карточки ради прохождения гейта (G2 это ловит; в build — ошибка PERMISSION_WIDENING, если роль получает op, которого нет в card.roles[].can)"
+  write_file:
+    input: "{path: string, content: string}"
+    rules:
+      - "MUST: path соответствует ^ui/[A-Za-z0-9_/-]+\\.tsx$ или ^functions/[A-Za-z0-9_/-]+\\.ts$; иначе PATH_FORBIDDEN"
+      - "MUST: content — полный файл (без заглушек «остальное без изменений»); ≤ 48 KB; пустой content → EMPTY_FILE"
+      - "MUST: быстрый статический прогон (G0-IMP-01, G0-SEC-01) сразу при записи; нарушение → файл не пишется, ошибка с line"
+      - "SHOULD: файл ≤ 400 строк; больше — разбить на компоненты"
+    output: "{ok, bytes, warnings: string[]}"
+  read_file:
+    input: "{path}"
+    virtual_paths: { "spec.json": "полная AppSpec (только чтение)", "sdk.d.ts": "сгенерированные типы generateTypes(spec)", "card.json": "карточка" }
+    output: "{content} | {error: NOT_FOUND}"
+  list_files:
+    input: "{prefix?: 'ui/'|'functions/'}"
+    output: "{files: {path, bytes}[]}"
+  run_gate:
+    input: "{level: 'G0'|'G1'}"
+    output: "сжатый GateReport: {passed, failed: {id, message_ru, file?, line?, path?, fixHint?}[] ≤ 20, explanations?: Explanation[] (qa.yaml, для G1)}"
+    rules:
+      - "MUST: G1 запускается только если G0 последней ревизии passed; иначе GATE_PRECONDITION"
+      - "Полный отчёт сохраняется в прогоне; модели — только упавшие проверки"
+  get_ui_kit_docs:
+    input: "{components?: string[]}"
+    output: "пропсы, примеры и правила компонентов из specs/ui/ui-kit.yaml (без аргумента — оглавление ≤ 1.5k токенов)"
+  get_sdk_docs:
+    input: "{topic?: 'query'|'mutation'|'action'|'db'|'hooks'|'connectors'|'errors'|'limits'}"
+    output: "фрагмент specs/runtime/sdk.md"
+  ask_orchestrator:
+    input: "{question: string, options?: string[2..4]}"
+    output: "{answer: string, source: 'card'|'defaults'|'user'}"
+    rules:
+      - "Оркестратор отвечает сам из карточки и defaults; к пользователю — только если ответ меняет данные/права/деньги (вопрос-кнопки, не больше 2 за прогон)"
+      - "В point_and_edit — единственный путь к изменению спеки (оркестратор превращает запрос в small_edit)"
+
+# ---------------------------------------------------------------- Цикл
+loop:
+  phases:
+    - id: plan
+      callType: plan
+      do: "Один вызов с инструментом submit_plan {steps: {id: P<n>, kind: ops|code, title, targets: string[], acRefs: AC[]}[] ≤ 20}. План показывается в журнале сборки"
+    - id: ops
+      callType: build_ops
+      do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance(consentText)"
+      done_when: "Все ops-шаги плана выполнены и G0-SPEC-01/02 проходят"
+    - id: code
+      callType: build_code
+      do: "write_file: сначала functions/**, затем ui/**. После каждых ≤ 6 записанных файлов SHOULD run_gate(G0)"
+    - id: verify
+      do: "Модель заканчивает ход без вызовов инструментов → харнесс сам запускает G0, затем (если passed) QA генерирует проверки (qa.yaml) и G1"
+    - id: fix
+      callType: fix
+      do: "Упавшие проверки + объяснения QA подаются новым user-сообщением «Отчёт проверок»; модель исправляет через apply_ops/write_file и снова заканчивает ход"
+  termination:
+    success: "G0 и G1 passed на последней ревизии → событие run_finished {version, humanDiff, creditsUsed}"
+    stop: "бюджет исчерпан | эскалация без ответа 24 ч | CANCEL"
+  step: "Шаг = один вызов LLM (со всеми его tool calls ≤ 8). Счётчик шагов общий на все фазы"
+  idempotency: "Каждый шаг — DBOS-step (M1+); повтор после рестарта не повторяет применённые ops (idempotencyKey = runId:step:i)"
+  events: "MUST эмитить run_started, plan_ready, ops_applied, file_written, gate_started, gate_finished, budget_warning, budget_exceeded, needs_user, model_switched, run_finished, run_failed; точные имена и payload — specs/platform/workflows.yaml#events (приоритет у него)"
+
+budgets:
+  credits_cap: "card.cap.credits. Перед каждым вызовом: spent + upper_bound(call) > cap → не вызывать, событие budget_exceeded. upper_bound = оценка входных токенов × input + max_tokens × output"
+  warn_at: "80% cap → событие budget_warning (UI показывает прогресс)"
+  max_steps: 64
+  max_wall_clock_min: 45
+  on_budget_exceeded: "Ревизия сохраняется как draft с последним состоянием; needs_user с кнопками [«Добавить N кредитов и продолжить» (N = ceil(0.5·cap)), «Остановить, оставить как есть»]"
+  test: "Fixture-прогон с cap=1 → остановка с budget_exceeded до превышения; ledger ≤ cap (backlog M0-13)"
+
+escalation:
+  consecutive_failures:
+    counts: "run_gate/итоговый гейт с passed=false; tool error с тем же (code, path), что в предыдущем шаге; 3 одинаковых вызова инструмента подряд (детектор зацикливания)"
+    resets: "гейт passed ИЛИ число упавших блокирующих проверок уменьшилось относительно предыдущего прогона гейта"
+    threshold: 5
+  action: >
+    На 5-й подряд: toolChoice=none, модель пишет короткое объяснение для пользователя (что не получается, по-русски, ≤ 400 символов),
+    прогон переходит в needs_user с кнопками.
+  buttons:
+    - { id: retry,     label: "Попробовать ещё раз",                   effect: "счётчик сброшен, +8 шагов, тот же cap" }
+    - { id: simplify,  label: "Упростить: убрать то, что не получается", effect: "строитель удаляет упавшую функцию/экран и связанные AC (единственный случай, когда AC можно убрать; пользователь видит список)" }
+    - { id: rollback,  label: "Вернуть последнюю рабочую версию",       effect: "откат к последней ревизии с G0 passed; прогон завершён" }
+    - { id: rephrase,  label: "Объяснить по-другому",                   effect: "свободный текст пользователя → новое user-сообщение, счётчик сброшен" }
+  test: "Фейковая модель, 5 раз ломающая typecheck → needs_user с 4 кнопками; 6-го вызова LLM нет"
+
+# ---------------------------------------------------------------- Контекст
+context:
+  layout:                        # порядок сообщений; 1–2 — кэшируемый префикс, точка кэша на последнем системном
+    - "1. system static: role + platform rules + code_conventions + SDK/ui-kit cheatsheet (≤ 12k токенов, одинаковый для всех прогонов)"
+    - "2. system session: карточка (сжатая) + дайджест спеки + дерево файлов (пути и размеры)"
+    - "3. relevant files (user-сообщение, обновляется только при свёртке)"
+    - "4. свёрнутая история + последние ходы полностью"
+  spec_digest: "Компактный текст: сущности (поля: имя:тип[!req][pii]), роли, права (роль: сущность ops [rowFilter]), страницы, функции, AC. Без compliance.operatorName и consentText. Полная спека — read_file('spec.json')"
+  collapse:
+    unit: "символы (не токены)"
+    max_chars: 65536
+    min_chars: 8192
+    rule: >
+      Если хвост истории превысил max_chars — граница свёртки сдвигается скачком так, чтобы полным остался хвост ≤ min_chars
+      (гистерезис: следующие ходы снова попадают в кэш промпта, пока хвост не дорастёт до max_chars).
+      Свёрнутые результаты инструментов заменяются однострочниками.
+    abbreviations:
+      apply_ops: "«apply_ops v{a}→v{b}: {n} операций ({первые 3 типа})» или «apply_ops: ошибка {code} в {path}»"
+      write_file: "«записан {path} ({KB} КБ)»"
+      read_file: "«прочитан {path}»"
+      run_gate: "«{level}: {passed|упало N: id1, id2…}»"
+      other: "«{tool}: ok|ошибка {code}»"
+    never_collapse: "последний отчёт гейта; последнее сообщение пользователя; submit_plan"
+  relevant_files:
+    max_files: 16
+    max_total_bytes: 8192
+    selection: "LRU по последнему касанию (write/read) + файлы, упомянутые в упавших проверках (приоритет) + target в point_and_edit"
+    overflow: "Файл, не влезающий в бюджет, подаётся outline: экспорт, сигнатуры, число строк; полный текст — через read_file"
+  models_without_cache: "max_chars = min_chars = 8192"
+  test: "Юнит-тест как у Chef: последовательность из 40 ходов даёт ≤ 3 сдвигов границы свёртки; префикс сообщений 1–2 байтово неизменен между ходами"
+
+# ---------------------------------------------------------------- «Укажи и измени» (M3)
+point_and_edit:
+  input: "target {componentId: '<file>#<Component>', file, route, instruction ≤ 500}"
+  component_ids: "Сборщик превью проставляет data-wz-id=\"<file>#<Component>\" на корневой элемент каждого экспортируемого компонента в ui/** (esbuild-плагин); клик в превью отдаёт componentId"
+  rules:
+    - "MUST: write_file разрешён только для target.file; попытка записать другой путь → TARGET_ONLY"
+    - "MUST: apply_ops недоступен; нужна правка данных/прав → ask_orchestrator (станет small_edit с карточкой)"
+    - "MUST: контекст — target.file полностью + его импорты outline + spec_digest"
+    - "Бюджет: max_steps 12, cap по умолчанию 3 кредита, G0 обязателен, G1 — только проверки страниц с этим файлом"
+  test: "M3 exit: правка по клику меняет ровно один файл (diff ревизии = {target.file})"
+
+# ---------------------------------------------------------------- Правила кода сгенерированных систем
+code_conventions:
+  imports:
+    - "MUST: только '@wizard/sdk', '@wizard/ui-kit' (и их подпути из их package exports), относительные импорты внутри ui/** или внутри functions/**, типы из 'sdk.d.ts'"
+    - "MUST NOT: ui/** импортирует functions/** напрямую — только через api-ссылки SDK (useQuery(api.fnName))"
+  forbidden: "eval, new Function, import(), require, fetch, XMLHttpRequest, WebSocket, EventSource, navigator.sendBeacon, dangerouslySetInnerHTML, innerHTML/outerHTML, document.write, document.cookie, localStorage/sessionStorage для полей с pii≠none, window.open на внешние URL, <form action=…>, <script>, <iframe> — G0-SEC-01/G2-AF-05"
+  functions:
+    - "query/mutation/action из @wizard/sdk; валидаторы аргументов (v.*) всегда, return-валидаторы — нет"
+    - "Чтение списков — withIndex по индексу из спеки или paginate/take(≤100); полная выборка без индекса запрещена (G0-IDX-01)"
+    - "action не трогает ctx.db, только ctx.runQuery/runMutation; внешние вызовы — только ctx.connectors.*"
+    - "Права не проверяются вручную вместо спеки: runtime применяет их сам; функция может только сужать"
+    - "Ошибки — ctx.error(CODE, data); тексты для пользователя на русском"
+  ui:
+    - "Компоненты ui-kit вместо своей вёрстки; цвета/отступы/радиусы — только токены (var(--wz-*)), без хардкода цветов"
+    - "Одна страница = один файл ui/pages/<Name>.tsx с default export; общие компоненты — ui/components/**"
+    - "Все строки интерфейса — на русском; даты/деньги — форматтеры ui-kit (ru-RU, ₽)"
+    - "Доступность: у каждого поля ввода подпись (Field label), у изображений alt, у кнопок-иконок aria-label, фокус видим, порядок табуляции естественный, цвет не единственный носитель смысла"
+    - "Адаптивность: без фиксированных ширин > 360 px; таблицы ui-kit сами превращаются в карточки на мобильном"
+    - "Состояния загрузки/пусто/ошибка — у каждого списка и формы"
+    - "Формы с полями pii≠none от public/login ролей — с компонентом согласия ui-kit (G2-PII-04)"
+    - "Не выдумывать данные: демо-значения только в пустых состояниях с пометкой «пример»"
+
+# ---------------------------------------------------------------- Понятный diff
+human_diff:
+  source: "Детерминированно, без LLM: из ops ревизии + списка изменённых файлов"
+  op_templates:
+    add_entity: "Добавлены данные «{label}» ({n} полей)"
+    add_field: "В «{entity.label}» добавлено поле «{label}»"
+    update_field: "В «{entity.label}» изменено поле «{label}»: {что}"
+    remove_field: "Из «{entity.label}» удалено поле «{label}» ⚠"
+    set_permission: "«{role.label}» теперь может: {ops по-русски} — «{entity.label}»{, только свои}"
+    add_workflow: "Новая автоматизация: {label}"
+    add_integration: "Подключено: {connector по-русски}"
+    add_page: "Новый экран «{title}»"
+    set_theme: "Изменён стиль"
+    other: "Изменено: {op} {name}"
+  files: "ui/pages/X.tsx → «Изменён экран «{page.title}»»; ui/components/** → «Изменён элемент интерфейса «{Component}»»; functions/** → «Изменена логика «{function.name}»»"
+  rules:
+    - "Группировать по сущности/экрану; ≤ 20 строк, дальше «и ещё N изменений»"
+    - "Необратимые изменения (remove_*, DESTRUCTIVE) — первыми и с ⚠"
+    - "Тест: снапшот humanDiff для ревизии «форум v1→v2» (добавлено поле)"

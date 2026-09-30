@@ -1,0 +1,438 @@
+# Схема БД платформы. Нормативно для apps/platform-api и apps/worker.
+# Нотация колонки: "<pg type> [not null] [default ...] [references ...] [check ...]". pk — первичный ключ.
+# Реализация: kysely-миграции в apps/platform-api/migrations (M0-15), имена SQL полностью квалифицированы (AGENTS.md).
+version: 1
+schema: platform                 # + схема dbos (создаёт DBOS в M1) + схемы app_<schema_key>_<env> (runtime)
+conventions:
+  - "MUST: все таблицы в схеме platform; id — uuid default gen_random_uuid(); created_at timestamptz not null default now()"
+  - "MUST: кредиты хранятся в милликредитах (bigint, 1 кредит = 1000); деньги — в копейках (bigint)"
+  - "MUST: мягкое удаление только там, где есть deleted_at; остальное — физически"
+  - "MUST NOT: хранить содержимое LLM-промптов/ответов в llm_calls; значения секретов нигде в platform"
+  - "MUST: миграции только вперёд; каждая миграция транзакционна, SET LOCAL lock_timeout = '3s'"
+  - "Тест M0-15: после migrate на пустой БД information_schema совпадает с этим файлом (генерируется скриптом tools/specs)"
+
+seed_M0:
+  - "users: dev@wizard.local (id 00000000-0000-0000-0000-0000000000aa)"
+  - "orgs: «Локальная организация» (id 00000000-0000-0000-0000-000000000001), plan=free; memberships: owner"
+
+tables:
+  users:
+    milestone: M0
+    columns:
+      id: "uuid pk"
+      email: "text not null check (email = lower(email))"
+      name: "text"
+      is_staff: "boolean not null default false"          # M2
+      totp_secret_ref: "text"                             # M2, secret://; значение в OpenBao
+      pd_consent_at: "timestamptz"                        # M1, compliance.yaml#platform
+      offer_accepted_at: "timestamptz"
+      offer_version: "text"
+      created_at: "timestamptz not null default now()"
+    indexes: ["unique (email)"]
+
+  auth_otps:
+    milestone: M1
+    columns:
+      id: "uuid pk"
+      email: "text not null"
+      code_hash: "text not null"                          # sha256(code + pepper)
+      attempts: "smallint not null default 0 check (attempts <= 5)"
+      expires_at: "timestamptz not null"
+      consumed_at: "timestamptz"
+      ip_hash: "text"
+      created_at: "timestamptz not null default now()"
+    indexes: ["(email, created_at desc)"]
+    retention: "удалять строки старше 24 ч (retention_cron)"
+
+  sessions:
+    milestone: M1
+    columns:
+      id: "uuid pk"
+      user_id: "uuid not null references platform.users on delete cascade"
+      token_hash: "text not null"                         # sha256; сырой токен только в cookie
+      csrf_hash: "text not null"
+      expires_at: "timestamptz not null"
+      revoked_at: "timestamptz"
+      created_at: "timestamptz not null default now()"
+    indexes: ["unique (token_hash)", "(user_id)"]
+
+  orgs:
+    milestone: M0
+    columns:
+      id: "uuid pk"
+      name: "text not null check (length(name) between 1 and 120)"
+      plan: "text not null default 'free' check (plan in ('free','start','business'))"
+      ru_only: "boolean not null default false"           # M1, data-boundary.yaml#ru_only
+      require_founder_review: "boolean not null default true"   # M2-09; в бете true
+      passport_collection_allowed: "boolean not null default false"  # M2, abuse.yaml#overrides
+      suspended_at: "timestamptz"                         # M2, abuse
+      created_at: "timestamptz not null default now()"
+
+  memberships:
+    milestone: M0
+    columns:
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      user_id: "uuid not null references platform.users on delete cascade"
+      role: "text not null check (role in ('owner','editor','viewer'))"
+      created_at: "timestamptz not null default now()"
+    primary_key: [org_id, user_id]
+    indexes: ["(user_id)"]
+    invariants: ["У организации ≥ 1 owner — проверка в транзакции изменения роли/удаления (LAST_OWNER)"]
+
+  invites:
+    milestone: M1
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      email: "text not null"
+      role: "text not null check (role in ('owner','editor','viewer'))"
+      token_hash: "text not null"
+      invited_by: "uuid not null references platform.users"
+      expires_at: "timestamptz not null"
+      accepted_at: "timestamptz"
+      revoked_at: "timestamptz"
+      created_at: "timestamptz not null default now()"
+    indexes: ["unique (token_hash)", "(org_id) where accepted_at is null and revoked_at is null"]
+
+  systems:
+    milestone: M0
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      slug: "text not null check (slug ~ '^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$')"   # поддомен
+      schema_key: "text not null check (schema_key ~ '^[a-z0-9]{12}$')"           # имя схемы app_<schema_key>_<env>
+      name: "text not null"
+      stage: "text not null default 'interview' check (stage in ('interview','card','building','ready','failed'))"
+      card: "jsonb"                                        # текущая SystemCard (agents/orchestrator.yaml)
+      card_version: "integer not null default 0"
+      card_approved_version: "integer"
+      pending_questions: "jsonb not null default '[]'"
+      draft_revision: "integer not null default 0"         # последняя закоммиченная ревизия
+      preview_revision: "integer"                          # последняя ревизия с G0=passed и бандлом
+      prod_revision: "integer"                             # M1: что отдаётся в prod
+      schema_hwm_revision: "integer"                       # M1: ревизия, чья схема фактически применена в prod (high-water mark)
+      shard_id: "text"                                     # M2: platform.shards; M0–M1 null = локальный инстанс
+      suspended_at: "timestamptz"                          # M2, снятие публикации
+      created_by: "uuid not null references platform.users"
+      created_at: "timestamptz not null default now()"
+      updated_at: "timestamptz not null default now()"
+      deleted_at: "timestamptz"
+    indexes: ["unique (slug)", "unique (schema_key)", "(org_id, created_at desc) where deleted_at is null"]
+
+  messages:
+    milestone: M0
+    purpose: "История чата системы. Хранит сырой ввод пользователя (в РФ); к T1 уходит только после scrub"
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      seq: "integer not null"
+      role: "text not null check (role in ('user','assistant','system'))"
+      kind: "text not null check (kind in ('text','questions','answers','card','run_report','notice'))"
+      text: "text"
+      payload: "jsonb"
+      run_id: "uuid"
+      author_user_id: "uuid references platform.users"
+      created_at: "timestamptz not null default now()"
+    indexes: ["unique (system_id, seq)"]
+
+  revisions:
+    milestone: M0
+    purpose: "Ревизия = батч ops ИЛИ набор файлов (ops.yaml#apply). История только вперёд; откат = новая ревизия kind=revert"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      version: "integer not null check (version >= 1)"
+      parent_version: "integer"
+      kind: "text not null check (kind in ('ops','files','style','revert','compliance'))"
+      author: "text not null check (author in ('user','agent','system'))"
+      author_user_id: "uuid references platform.users"
+      run_id: "uuid references platform.runs"
+      spec: "jsonb not null"                                # полный AppSpec после применения
+      ops: "jsonb not null default '[]'"                    # батч операций (≤50)
+      files_manifest_sha: "text not null"                  # sha256 blob-а JSON {path: sha256}, отсортированного по path
+      bundle_manifest_sha: "text"                          # после успешной сборки esbuild
+      g0_passed: "boolean"
+      idempotency_key: "text"
+      summary_ru: "text"
+      created_at: "timestamptz not null default now()"
+    primary_key: [system_id, version]
+    indexes: ["unique (system_id, idempotency_key) where idempotency_key is not null", "(run_id)"]
+    constraints: ["foreign key (system_id, parent_version) references platform.revisions (system_id, version)"]
+    invariants:
+      - "version = max(version)+1 выдаётся под SELECT ... FOR UPDATE по systems (CAS по expectedVersion = systems.draft_revision)"
+      - "Вставка ревизии и обновление systems.draft_revision — в одной транзакции"
+
+  files:
+    milestone: M0
+    purpose: "Индекс контент-адресуемых блобов (исходники, манифесты, бандлы). Содержимое — в artifacts (deploy.yaml#storage)"
+    columns:
+      sha256: "text pk check (sha256 ~ '^[0-9a-f]{64}$')"
+      size: "bigint not null check (size >= 0 and size <= 5242880)"
+      content_type: "text not null"
+      storage_key: "text not null"                         # M0: .data/artifacts/ab/cdef...; M2: s3://bucket/ab/cdef...
+      created_at: "timestamptz not null default now()"
+    invariants: ["Запись в хранилище раньше строки в files; sha256 проверяется при чтении (тест: подмена байта → ошибка INTEGRITY)"]
+
+  runs:
+    milestone: M0
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      system_id: "uuid references platform.systems"         # null для nightly_eval
+      kind: "text not null check (kind in ('interview_turn','build','publish','rollback','import_table','retention','nightly_eval'))"
+      mode: "text check (mode in ('create','change','fix'))"
+      status: "text not null default 'queued' check (status in ('queued','waiting_lock','running','needs_input','succeeded','failed','cancelled'))"
+      current_step: "text"
+      input: "jsonb not null default '{}'"                  # параметры запуска (без секретов)
+      pending_input: "jsonb"                                # {inputId, kind, ...} при needs_input
+      card_version: "integer"
+      credits_estimate_milli: "bigint"
+      credits_cap_milli: "bigint"
+      credits_used_milli: "bigint not null default 0"
+      base_revision: "integer"
+      result_revision: "integer"
+      failure_code: "text"
+      failure_message_ru: "text"
+      cancel_requested_at: "timestamptz"
+      started_by: "uuid references platform.users"
+      dbos_workflow_id: "text"                              # M1
+      heartbeat_at: "timestamptz"
+      created_at: "timestamptz not null default now()"
+      started_at: "timestamptz"
+      finished_at: "timestamptz"
+    indexes: ["(system_id, created_at desc)", "(status) where status in ('queued','waiting_lock','running','needs_input')", "unique (dbos_workflow_id)"]
+
+  run_events:
+    milestone: M0
+    columns:
+      run_id: "uuid not null references platform.runs on delete cascade"
+      seq: "integer not null check (seq >= 1)"
+      type: "text not null"                                 # workflows.yaml#events
+      payload: "jsonb not null"
+      ts: "timestamptz not null default now()"
+    primary_key: [run_id, seq]
+    invariants: ["seq выдаётся без пропусков в транзакции шага; событие пишется ДО публикации в SSE-шину (источник истины — таблица)"]
+    retention: "180 дней (retention_cron, M2)"
+
+  llm_calls:
+    milestone: M0
+    purpose: "Журнал маршрутизации и учёта (data-boundary.yaml#audit). НИКОГДА не содержит текст запросов и ответов"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      system_id: "uuid"
+      run_id: "uuid references platform.runs"
+      step: "text"
+      call_type: "text not null"                            # data-boundary.yaml#call_types
+      tier: "text not null check (tier in ('T0','T1'))"
+      provider: "text not null"                             # cloudru | yandex | zai | fixture
+      model: "text not null"
+      route_reason: "text not null check (route_reason in ('policy','ru_only','pii_forced_t0','forbidden_for_t1','fallback_unavailable','unknown_call_type','fixture'))"
+      policy_version: "text not null"
+      pii_categories_count: "jsonb not null default '{}'"   # {phone: 2, email: 1, ...}; только счётчики детекторов
+      scrubbed: "boolean not null"                          # true для всех T1
+      input_tokens: "integer not null default 0"
+      output_tokens: "integer not null default 0"
+      cached_tokens: "integer not null default 0"
+      cost_rub: "numeric(12,4) not null default 0"          # с НДС, по прайсу agents/models.yaml
+      credits_milli: "bigint not null default 0"
+      billable: "boolean not null default true"             # false: ошибка провайдера, fixture
+      status: "text not null check (status in ('ok','error','aborted'))"
+      error_code: "text"
+      latency_ms: "integer"
+      request_hash: "text"                                  # sha256 scrubbed-запроса (ключ fixture); не содержимое
+      created_at: "timestamptz not null default now()"
+    indexes: ["(run_id)", "(org_id, created_at)", "(tier, call_type, created_at)"]
+    checks: ["check (tier = 'T0' or scrubbed)"]
+
+  credit_ledger:
+    milestone: M1
+    purpose: "Append-only журнал кредитов (billing.yaml#ledger). UPDATE/DELETE запрещены триггером"
+    columns:
+      id: "bigint generated always as identity pk"
+      org_id: "uuid not null references platform.orgs"
+      kind: "text not null check (kind in ('grant','charge','hold','release','expire','refund','adjustment'))"
+      amount_milli: "bigint not null"                        # >0 grant/release/refund; <0 charge/hold/expire
+      bucket: "text check (bucket in ('free_welcome','free_monthly','plan_monthly','topup','adjustment'))"
+      bucket_expires_at: "timestamptz"
+      run_id: "uuid references platform.runs"
+      system_id: "uuid"
+      payment_id: "uuid"
+      idempotency_key: "text not null"                       # например charge:<runId>, grant:free_monthly:<org>:<yyyy-mm>
+      note_ru: "text"
+      created_by: "uuid"
+      created_at: "timestamptz not null default now()"
+    indexes: ["unique (org_id, idempotency_key)", "(org_id, created_at desc)", "(run_id)"]
+    invariants: ["Баланс = sum(amount_milli) по org; available = balance (holds уже отрицательные); available ≥ 0 проверяется под advisory lock org"]
+
+  locks:
+    milestone: M0
+    purpose: "Одна сборка на систему (D11). В M0 — та же таблица, очередь in-process"
+    columns:
+      system_id: "uuid pk references platform.systems on delete cascade"
+      run_id: "uuid not null references platform.runs"
+      holder_user_id: "uuid references platform.users"
+      acquired_at: "timestamptz not null default now()"
+      lease_until: "timestamptz not null"                    # продлевается heartbeat каждые 30 с, lease 2 мин
+    invariants: ["Захват: INSERT ... ON CONFLICT DO NOTHING либо UPDATE при lease_until < now() (перехват просроченной)"]
+
+  publications:
+    milestone: M1
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems"
+      env: "text not null default 'prod' check (env = 'prod')"   # draft не публикуется, он всегда = preview_revision
+      revision: "integer not null"
+      schema_revision: "integer not null"                    # hwm после применения
+      prev_publication_id: "uuid references platform.publications"
+      migration_plan: "jsonb not null"                       # MigrationPlan {steps[], additiveOnly} (architecture.yaml#interfaces.migration_plan)
+      bundle_manifest_sha: "text not null"
+      status: "text not null check (status in ('planned','applying','live','superseded','failed','suspended'))"
+      run_id: "uuid references platform.runs"
+      created_by: "uuid not null references platform.users"
+      created_at: "timestamptz not null default now()"
+      live_at: "timestamptz"
+      suspended_reason: "text"
+    indexes: ["unique (system_id) where status = 'live'", "(system_id, created_at desc)"]
+    constraints: ["foreign key (system_id, revision) references platform.revisions (system_id, version)"]
+
+  secrets_refs:
+    milestone: M1
+    purpose: "Метаданные секретов коннекторов (secret://name). Значение — только в бэкенде"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (name ~ '^[a-z0-9_]+$')"
+      backend: "text not null check (backend in ('local_encrypted','openbao'))"   # M1 local_encrypted (AES-256-GCM, ключ WIZARD_SECRETS_KEY); M2 openbao
+      backend_path: "text not null"
+      created_by: "uuid references platform.users"
+      created_at: "timestamptz not null default now()"
+      rotated_at: "timestamptz"
+    indexes: ["unique (system_id, env, name)"]
+
+  imports:
+    milestone: M1
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      source_sha: "text not null"                            # файл зашифрован, TTL 7 дней
+      profile: "jsonb"                                       # профили колонок БЕЗ значений (data-boundary.yaml#import)
+      mapping: "jsonb"
+      status: "text not null check (status in ('profiling','mapping','awaiting_confirm','importing','done','failed','expired'))"
+      rows_imported: "integer"
+      expires_at: "timestamptz not null"
+      created_by: "uuid not null references platform.users"
+      created_at: "timestamptz not null default now()"
+
+  shards:
+    milestone: M2
+    columns:
+      id: "text pk"                                          # app-pg-01, draft-pg-01
+      kind: "text not null check (kind in ('prod','draft'))"
+      dsn_secret_ref: "text not null"
+      capacity: "integer not null default 2000 check (capacity <= 2000)"
+      schema_count: "integer not null default 0"
+      accepting: "boolean not null default true"
+    invariants: ["Назначение шарда: accepting и schema_count < capacity*0.9, минимальный schema_count; инкремент под блокировкой строки"]
+
+  subscriptions:
+    milestone: M2
+    columns:
+      org_id: "uuid pk references platform.orgs"
+      plan: "text not null check (plan in ('start','business'))"
+      status: "text not null check (status in ('active','past_due','cancelled'))"
+      payment_method_id: "uuid references platform.payment_methods"
+      current_period_start: "timestamptz not null"
+      current_period_end: "timestamptz not null"
+      cancel_at_period_end: "boolean not null default false"
+      next_charge_at: "timestamptz"
+      failed_attempts: "smallint not null default 0"
+
+  payment_methods:
+    milestone: M2
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      provider: "text not null default 'yookassa'"
+      provider_method_id: "text not null"
+      card_last4: "text not null"
+      card_type: "text"
+      issuer_country: "text not null check (issuer_country ~ '^[A-Z]{2}$')"
+      bound_by: "uuid not null references platform.users"
+      bound_at: "timestamptz not null default now()"
+      revoked_at: "timestamptz"
+    indexes: ["unique (provider, provider_method_id)", "(org_id) where revoked_at is null"]
+
+  payments:
+    milestone: M2
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs"
+      kind: "text not null check (kind in ('card_binding','subscription','topup'))"
+      amount_kop: "bigint not null check (amount_kop > 0)"
+      status: "text not null check (status in ('pending','waiting_for_capture','succeeded','canceled','refunded'))"
+      provider_payment_id: "text"
+      idempotence_key: "text not null"
+      packs: "integer"
+      created_at: "timestamptz not null default now()"
+      settled_at: "timestamptz"
+    indexes: ["unique (provider_payment_id)", "unique (idempotence_key)"]
+
+  abuse_reports:
+    milestone: M2
+    columns:
+      id: "uuid pk"
+      system_id: "uuid references platform.systems"
+      publication_id: "uuid references platform.publications"
+      url: "text not null"
+      category: "text not null check (category in ('phishing','fraud','brand_impersonation','illegal_content','pd_violation','spam','other','auto_g2'))"
+      text: "text"
+      contact_email: "text"                                   # ПДн заявителя; удаляется через 1 год после закрытия
+      reporter_ip_hash: "text"                                # HMAC(ip, pepper)
+      status: "text not null default 'new' check (status in ('new','triaged','takedown','dismissed','restored'))"
+      sla_deadline: "timestamptz not null"                    # created_at + 24 ч
+      assignee: "uuid references platform.users"
+      resolution_note: "text"
+      created_at: "timestamptz not null default now()"
+      resolved_at: "timestamptz"
+    indexes: ["(status, sla_deadline)", "(system_id)"]
+
+  founder_reviews:
+    milestone: M2
+    columns:
+      system_id: "uuid not null references platform.systems"
+      revision: "integer not null"
+      status: "text not null check (status in ('pending','approved','rejected'))"
+      reviewer: "uuid references platform.users"
+      note: "text"
+      created_at: "timestamptz not null default now()"
+      decided_at: "timestamptz"
+    primary_key: [system_id, revision]
+
+  deletion_log:
+    milestone: M2
+    purpose: "Журнал автоудаления ПДн (compliance.yaml#retention). Только счётчики, без значений"
+    columns:
+      id: "bigint generated always as identity pk"
+      system_id: "uuid not null"
+      env: "text not null"
+      entity: "text not null"
+      mode: "text not null check (mode in ('delete','anonymize','subject_request'))"
+      cutoff: "timestamptz"
+      rows_affected: "integer not null"
+      run_id: "uuid"
+      created_at: "timestamptz not null default now()"
+    indexes: ["(system_id, created_at desc)"]
+    retention: "3 года"
+
+  staff_audit_log:
+    milestone: M2
+    purpose: "Действия staff (модерация, флаги, доступ к данным систем) — требование ОРД 152-ФЗ"
+    columns:
+      id: "bigint generated always as identity pk"
+      actor: "uuid not null references platform.users"
+      action: "text not null"
+      target: "text not null"
+      note: "text"
+      created_at: "timestamptz not null default now()"

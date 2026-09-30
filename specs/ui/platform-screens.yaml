@@ -1,0 +1,325 @@
+# apps/platform-web — экраны платформы. Нормативно. Макеты: docs/wizard-concept-v3.html, экраны 1–10
+# (структура и состав — MUST, визуальное сходство — нет). API: specs/platform/api.yaml (при расхождении
+# путей/полей выигрывает api.yaml), события: specs/platform/workflows.yaml#events.
+version: 1
+app: apps/platform-web
+tasks: [M0-16, M1-08, M3-01]
+
+stack:
+  - "React 19 + Vite 7, TypeScript strict. Роутер — свой минимальный на History API (≤ 10 маршрутов); сторонний роутер — только с обоснованием в PR"
+  - "Компоненты и токены — @wizard/ui-kit (Button, Badge, Field, themeToTokens) с темой платформы; CSS modules + --w-*"
+  - "Весь текст — русский, модуль src/i18n/ru.ts; data-testid по таблицам ниже"
+  - "Адаптивность: платформа MUST работать от 1024px; на < 1024px чат и превью — вкладки «Чат / Превью» (SHOULD 390px без горизонтального скролла)"
+
+regions:   # общая раскладка рабочего пространства (экраны 2–7)
+  rail: "узкая колонка слева: логотип W (→ /), «+» новая система, список систем (M1), настройки"
+  chat: "колонка 380–440px: шапка (имя системы · этап, пилюли статуса/блокировки), лента, подвал (поле ввода + кнопки этапа)"
+  main: "остальное: верхняя панель (пилюля DRAFT/PROD + адрес, вкладки Превью/Код/Данные, переключатель ролей) и содержимое"
+  aside: "правая панель 300px (только «Стиль»)"
+
+assumed_endpoints:   # нужны экранам, отсутствуют в списке задания — сверить с api.yaml
+  - "GET /systems → [{id, name, env: draft|prod|none, summary, updatedAt}]"
+  - "GET /systems/:id → {id, name, stage, activeRunId?, card?, prodRevision?, draftRevision, lock?: {holder, runId}}"
+  - "GET /systems/:id/messages → история чата [{id, author: user|orchestrator|builder|qa, displayText, pii?, createdAt, runId?}]"
+  - "GET /me → {user, org: {id, plan, credits, creditsExpireAt, ruOnly, buildModel}, role: owner|editor|viewer} (M0 — заглушка локального пользователя)"
+
+# ---------------- Прогоны и SSE ----------------
+sse:
+  endpoint: "GET /runs/:id/events (text/event-stream)"
+  envelope: "event: <type>; id: <seq>; data: {runId, seq, type, at, payload}"
+  client_rules:
+    - "MUST: EventSource с Last-Event-ID — после обрыва/перезагрузки события не теряются и не дублируются (дедуп по seq)"
+    - "MUST: при открытии /s/:id с activeRunId подписаться и воспроизвести события с seq=0 для восстановления ленты"
+    - "MUST: неизвестный type — игнор + console.warn (совместимость вперёд)"
+    - "MUST: состояние UI — чистый редьюсер reduceRun(state, event) в src/run/reducer.ts, покрыт vitest на записанных fixture-потоках"
+  events:   # payload — то, что UI использует; полная схема в workflows.yaml
+    run_started: { payload: "{kind: interview|build|edit|publish|rollback, actor:{name}}", ui: "лента: «Начал …»; блок «Ход сборки» очищается; при чужом actor — пилюля «<Имя> собирает», ввод заблокирован (M1)" }
+    step_started: { payload: "{stepId, label, parentStepId?}", ui: "строка шага со спиннером; предыдущий шаг того же родителя → ✓" }
+    agent_message: { payload: "{agent: orchestrator|builder|qa, text, kind?: info|fix|analysis}", ui: "пузырь с подписью агента (Оркестратор/Строитель/Проверка)" }
+    ops_applied: { payload: "{version, summary: string[]}", ui: "обновить сводку спеки/карточки; запланировать обновление превью" }
+    file_written: { payload: "{path, op: create|update|delete}", ui: "деталь текущего шага («UI: лендинг ✓»); инвалидировать кеш вкладки «Код»" }
+    gate_started: { payload: "{gate: G0|G1|G2}", ui: "строка гейта — «проверяется»" }
+    gate_result: { payload: "{gate, passed, summary, checks: [{id, status: passed|failed|warning|skipped, blocking, message}]}", ui: "строка гейта ✓/✗ + summary; G0 passed → обновить превью" }
+    budget_update: { payload: "{spentCredits, ceilingCredits}", ui: "«13 из ≤30 кредитов»; ≥ 80% — пилюля warn" }
+    lock_waiting: { payload: "{holder:{name}, position}", ui: "плашка «Сейчас собирает <имя>. Вы в очереди: N»; кнопки запуска disabled" }
+    needs_input: { payload: "{kind: questions|card|secret|budget, …}", ui: "questions → карточка вопроса (S2); card → карточка системы (S3); secret → форма ключа (S4); budget → решение о потолке" }
+    run_finished: { payload: "{status, durationMs, creditsSpent, revision}", ui: "итог «Собрал за N минут и M кредитов»; переход этапа (S6 после build, S7 после edit)" }
+    run_failed: { payload: "{code, message, retryable}", ui: "карточка ошибки (role=alert) с message; retryable → «Повторить» (POST /systems/:id/messages {text:'Повторить'} или retry из api.yaml)" }
+    budget_exceeded: { payload: "{spentCredits, ceilingCredits, suggestedCeiling}", ui: "«Достигнут потолок N кредитов»: «Поднять до M» / «Остановить»; прогон стоит до ответа" }
+
+stages:   # system.stage → экран рабочего пространства
+  interviewing: S2
+  awaiting_approval: S3
+  building: S4
+  ready: S6
+  editing: S7
+  failed: "S4 с карточкой ошибки"
+
+# ---------------- Контракт превью (iframe) ----------------
+preview_contract:
+  src: "GET /systems/:id/preview-url?env=draft → {url, origin, expiresAt}; iframe src=url; обновление ссылки до expiresAt"
+  iframe: "sandbox=\"allow-scripts allow-forms allow-same-origin allow-popups\" allow=\"camera\"; origin превью — домен систем (≠ домен платформы), см. architecture.yaml#environments.domains"
+  bridge: "Скрипт /_wizard/bridge.js подключается runtime только в draft-бандлы (specs/runtime/runtime.yaml); в prod отсутствует"
+  envelope: "{wz: 1, type, id?: string, payload}; ответы несут тот же id"
+  security:
+    - "MUST: postMessage с точным targetOrigin (никогда '*'); платформа принимает только event.origin === origin из preview-url и event.source === iframe.contentWindow"
+    - "MUST: мост принимает только origin платформы (WIZARD_PLATFORM_ORIGIN, вшит в draft-сборку); неизвестные type игнорируются"
+    - "MUST: через мост не передаются данные записей и ПДн — только роль, маршрут, токены стиля, метаданные компонентов"
+  to_preview:
+    set-role: { payload: "{role}", effect: "dev-вход runtime под роль (только draft), перезагрузка текущего маршрута; ответ role-changed {role}" }
+    apply-theme-tokens: { payload: "{tokens: Record<'--w-*', string>, mode: light|dark|auto}", effect: "applyTokens на <html> без перезагрузки и без сборки; ответ theme-applied; MUST < 100 мс" }
+    navigate: { payload: "{route}", effect: "клиентская навигация" }
+    select-mode: { payload: "{enabled: boolean}", effect: "M3: наведение обводит ближайший [data-wz-component] (оверлей, pointer-events none); клик в capture-фазе с preventDefault → element-selected; Esc → select-cancelled" }
+    highlight: { payload: "{wzId | null}", effect: "M3: подсветить выбранный элемент (все экземпляры с этим wzId)" }
+  from_preview:
+    ready: "{protocol: 1, route, role, specVersion} — после загрузки; платформа отвечает текущими apply-theme-tokens (несохранённые правки стиля) и set-role, если роль отличается"
+    route-changed: "{route} — платформа запоминает маршрут и восстанавливает его после перезагрузки превью"
+    element-selected: "{componentName, wzId, file, line, rect: {x,y,width,height}} — file/line из wz-map.json (specs/ui/ui-kit.yaml#wz_id)"
+    select-cancelled: "{}"
+    error: "{message} — ошибка рантайма превью; платформа показывает плашку «Превью не загрузилось» + «Обновить»"
+  reload_policy: "Перезагрузка превью (новый src с cache-bust) по gate_result{G0, passed} или ops_applied без активного прогона; debounce 1 с; маршрут и роль сохраняются; пока идёт сборка, незагруженные блоки показывают заглушку «ещё собирается» (её рендерит сгенерированный код/runtime)"
+  acceptance:
+    - "vitest: bridge отбрасывает сообщения с чужим origin; платформа — с чужим source"
+    - "Playwright: apply-theme-tokens меняет computed background кнопки превью, число навигаций iframe не меняется"
+    - "Playwright: set-role participant → organizer меняет пункты навигации превью"
+
+# ---------------- Уведомление о ПДн в чате ----------------
+pii_notice:
+  source: "Ответ POST /systems/:id/messages (и POST /systems) содержит displayText (ПДн маскированы: «+7 912 ••• 45 10») и pii: [{category, count}] — без самих значений"
+  rules:
+    - "MUST: пузырь пользователя показывает displayText; исходный текст после отправки в DOM и в состоянии клиента не хранится"
+    - "MUST: при pii.length > 0 под пузырём — плашка со щитом (role=note): «Нашёл в сообщении <категории в родительном/винительном: телефон, email, ФИО…>. Для сборки заменил заглушкой — к моделям за рубеж это не попадёт.» Если org.ruOnly — «Сборка идёт на моделях в РФ»"
+    - "MUST: то же для загрузки таблицы (M1-07): «Моделям отправлены только названия колонок и синтетические строки»"
+    - "Категории → слова: phone «телефон», email «email», person_name «ФИО», passport «паспорт», card «номер карты», snils «СНИЛС», inn «ИНН» (коды — specs/security/data-boundary.yaml)"
+  test_ids: [chat-pii-notice]
+  acceptance:
+    - "Playwright (fixture): промпт с «+7 912 345 45 10» → плашка содержит «телефон»; после reload в DOM нет строки «345 45 10» целиком"
+
+# ---------------- Экраны ----------------
+screens:
+  - id: S1
+    mockup: 1
+    name: "Старт"
+    route: "/"
+    milestone: M0
+    regions:
+      rail: "логотип, «+»"
+      topbar: "политика моделей: «Сборка: <buildModel>, ПДн удаляются до отправки · данные систем: только в РФ» + переключатель «только РФ» (M1, только owner; M0 — только чтение из .env); пилюля тарифа «Free · N кредитов до <дата>» (M1)"
+      hero: "заголовок «Какую систему соберём?», подзаголовок, textarea промпта, кнопки «Загрузить таблицу» (M1-07), «Шаблоны», «Начать →»"
+      templates: "чипы по типам задач: Мероприятие и регистрация · Заказы и предзаказы · Заявки и модерация · Внутренний инструмент · Кабинет клиента · Своя задача — клик подставляет заготовку промпта"
+      systems: "карточки систем: имя, пилюля prod/draft, краткое описание; карточка «Команда: N человек · пригласить» (M1)"
+    data: ["GET /me", "GET /systems", "POST /systems {prompt} → {systemId, runId, message}"]
+    states:
+      empty_prompt: "«Начать» disabled; Ctrl/Cmd+Enter отправляет"
+      submitting: "кнопка loading; после ответа → /s/:systemId"
+      no_systems: "блок систем скрыт"
+      error: "role=alert с message из API; текст промпта сохраняется"
+    test_ids: [start-prompt, start-submit, start-template-<id>, start-upload, start-policy, start-ru-only, start-credits, start-system-card]
+    acceptance:
+      - "Playwright (fixture): ввод брифа «форум» и «Начать» → URL /s/<id>, в ленте пузырь пользователя"
+      - "Клик по шаблону «Мероприятие и регистрация» заполняет textarea непустым текстом"
+      - "При пустом промпте кнопка disabled; @1024px без горизонтального скролла"
+
+  - id: S2
+    mockup: 2
+    name: "Интервью кнопками"
+    route: "/s/:systemId (stage=interviewing)"
+    milestone: M0
+    regions:
+      chat: "шапка «Новая система · понимание задачи»; пузыри; PII-плашка; сообщение оркестратора «Разложил задачу: N ролей, M сущностей… Осталось K развилок»; уже принятые ответы строками ✓; карточка вопроса"
+      question_card: "«Вопрос k из n» + пометка влияния («влияет на хранение ПДн»); текст вопроса; 2–4 варианта (radiogroup), ровно один с пилюлей «рекомендую» и выбран по умолчанию; поле «Свой вариант» (SHOULD); кнопки «Далее» и «Остальное — по рекомендациям»"
+      main: "«Как я понял задачу»: название; карточки Роли, Ядро (пилюли каталога/заявок/…), Специфика, Ограничения; «Развилки» — список со статусом (решено/выбираете сейчас/ожидает)"
+    data: ["SSE needs_input{kind:questions, questions[], understanding, answered, total}", "SSE agent_message", "POST /systems/:id/answers {runId, answers:[{questionId, optionId|text}], acceptRecommendedRest?: boolean}", "POST /systems/:id/messages {text}"]
+    states:
+      analyzing: "скелетон «Как я понял» + «Разбираю задачу…» до первого needs_input"
+      question: "карточка активна; Enter = «Далее»"
+      submitting: "кнопки loading; повторная отправка невозможна"
+      all_answered: "переход к S3 по needs_input{kind:card}"
+    test_ids: [chat-message, chat-pii-notice, question-card, question-option-<id>, question-recommended, question-next, question-accept-rest, understanding-panel, forks-list]
+    acceptance:
+      - "Playwright (fixture «форум»): 3–7 вопросов; в каждом ровно один question-recommended и он выбран по умолчанию"
+      - "«Остальное — по рекомендациям» отправляет один POST answers с acceptRecommendedRest=true и приводит к S3"
+      - "Правая панель обновляется после каждого ответа (статус развилки → решено)"
+
+  - id: S3
+    mockup: 3
+    name: "Карточка системы"
+    route: "/s/:systemId (stage=awaiting_approval)"
+    milestone: M0
+    regions:
+      chat: "сводка ответов «Ответы 5 из 5 …»; пояснение оркестратора про критерии приёмки; поле «Поправить словами…» (→ POST messages, новая ревизия карточки); M1: плашка присутствия «Редактор Анна смотрит карточку» (SHOULD)"
+      card: "«Карточка системы · ревизия N», название, пилюля «6 ролей · 8 сущностей · 9 экранов · 4 интеграции»; блоки «Спека · гарантии» (сущности, матрица прав, ПДн и срок удаления), «Код · гибкость» (экраны, функции), «Интеграции» (пилюля «ключ» у требующих секрет), «Критерии приёмки → проверки» (список ☑)"
+      footer: "«≈ E кредитов · T минут», «Потолок — C кредитов. Сборка: <модель> без ПДн · данные: модели в РФ»; кнопки «Изменить» (фокус в поле чата) и «Строить»"
+    data: ["SSE needs_input{kind:card, card: SystemCard (specs/agents/orchestrator.yaml#system_card)}", "POST /systems/:id/card/approve {cardRevision, ceilingCredits} → {runId}", "POST /systems/:id/messages"]
+    states:
+      ready: "«Строить» активна (M1: только owner/editor; viewer — disabled с подсказкой)"
+      stale: "пришла новая ревизия карточки — «Карточка обновлена» и подсветка изменённых блоков"
+      insufficient_credits: "M1: оценка > баланса → «Строить» disabled + «Пополнить»"
+      approving: "loading → S4"
+    test_ids: [card, card-revision, card-section-spec, card-section-code, card-section-integrations, card-acceptance-item, card-estimate, card-ceiling, card-edit, card-build]
+    acceptance:
+      - "Playwright (fixture «форум»): карточка содержит оценку и потолок кредитов, ≥ 6 критериев приёмки; «Строить» → POST approve с текущей cardRevision → этап S4"
+      - "Сообщение «добавь лист ожидания VIP» → карточка ревизии N+1 с плашкой «Карточка обновлена»"
+
+  - id: S4
+    mockup: 4
+    name: "Сборка и живое превью"
+    route: "/s/:systemId (stage=building)"
+    milestone: M0
+    regions:
+      chat_header: "«<Имя> · сборка»; M1: пилюля «<Имя> собирает»"
+      progress: "«Ход сборки» + «S из ≤C кредитов»; дерево шагов (✓ / спиннер / «в очереди»)"
+      gates: "строки G0/G1/G2: статус + summary («Критерии приёмки: 4 из 6»; G2 «после G1»)"
+      messages: "пузыри агентов, в т.ч. объяснения исправлений («Тест … упал … добавил фильтр, тест прошёл»)"
+      secret_request: "M2: needs_input{kind:secret} → «Нужны ключи ЮKassa»: «Вводятся в защищённую форму, агенты видят только ссылку на секрет»; «Ввести» (модальная форма, POST на эндпоинт секретов api.yaml) / «Тестовый режим» (POST answers {kind:secret, mode:test})"
+      main_topbar: "пилюля DRAFT + адрес <system>.draft.<systems-domain>; вкладки Превью / Код (M1-08) / Данные (M1, SHOULD); переключатель ролей из spec.roles (label)"
+      preview: "iframe по preview_contract"
+    data: ["GET /systems/:id", "GET /runs/:id/events (SSE)", "GET /systems/:id/preview-url", "GET /systems/:id/gates/latest (при перезагрузке страницы)"]
+    states:
+      running: "ввод в чат доступен: сообщения ставятся в очередь к следующему шагу (SHOULD) либо disabled с подсказкой"
+      preview_pending: "до первого G0 passed — заглушка «Превью появится после первой проверки»"
+      failed: "run_failed → карточка ошибки + «Повторить» при retryable"
+      budget_exceeded: "см. sse.events.budget_exceeded"
+      locked: "M1: lock_waiting / чужой прогон — кнопки запуска disabled"
+    test_ids: [build-progress, build-step, build-credits, gate-row-G0, gate-row-G1, gate-row-G2, agent-message, secret-request, preview-frame, preview-env, preview-tab-preview, preview-tab-code, preview-tab-data, role-switch-<role>, run-error, budget-exceeded]
+    acceptance:
+      - "Playwright (fixture «форум», M0 e2e): после «Строить» появляются шаги, G0 → passed, превью загружается; переключение ролей участник/организатор меняет содержимое превью"
+      - "Fixture с ceiling ниже расхода → карточка budget-exceeded, прогон не продолжается без ответа"
+      - "Обрыв SSE (route.abort на 1 с) → после переподключения нет дублей шагов (по seq)"
+      - "reduceRun (vitest) на записанном потоке событий даёт ожидаемый снимок состояния"
+
+  - id: S5
+    mockup: 5
+    name: "«Стиль» и «укажи и измени»"
+    route: "/s/:systemId?panel=style  (select-режим: &select=1, M3)"
+    milestone: M0   # панель «Стиль»; «укажи и измени» — M3 (M3-01)
+    regions:
+      aside_style: "«Стиль · меняется мгновенно, без кредитов»: Акцент (4 пресета + свой hex), Шрифт (enum theme.font), Скругления (0/4/8/12/16), Плотность (компактно/обычно), Логотип (загрузка), Тема (светлая/тёмная/авто); подсказка «Сложнее, чем токены? Кликните по элементу в превью или напишите в чат»"
+      topbar_select: "M3: пилюля DRAFT + «Режим «Укажи и измени» · кликните по элементу»; кнопка выхода (Esc)"
+      popover: "M3: у выбранного элемента — метка <componentName>; поповер «Изменить <componentName>»: textarea инструкции, оценка «≈ N кредита», «Применить»"
+    behaviour:
+      - "MUST: изменение токена → немедленно apply-theme-tokens в превью (themeToTokens из ui-kit), без прогона и кредитов"
+      - "MUST: сохранение — POST /systems/:id/style {theme, expectedVersion} с debounce 600 мс → новая ревизия (author user, op set_theme); 412 VERSION_CONFLICT → перечитать и повторить один раз"
+      - "Логотип: загрузка файла (≤ 1 МБ, png/svg/webp) → theme.logoFile; способ загрузки — api.yaml"
+      - "Во время прогона панель доступна; сохранение ставится после прогона (или сервер сливает set_theme — решает api.yaml)"
+      - "M3: включение select-mode → element-selected → highlight; «Применить» → POST /systems/:id/messages {text, target:{componentName, wzId, file}}; строитель правит ТОЛЬКО target.file (specs/agents/builder.yaml)"
+    data: ["POST /systems/:id/style", "GET /systems/:id/preview-url", "POST /systems/:id/messages (M3, с target)"]
+    states:
+      saving: "индикатор «Сохраняется…» → «Сохранено»"
+      save_error: "role=alert, токены в превью остаются, «Повторить»"
+      select_idle: "M3: курсор-прицел, обводка при наведении"
+      selected: "M3: поповер открыт, фокус в textarea"
+    test_ids: [style-panel, style-accent-<hex>, style-accent-custom, style-font, style-radius-<n>, style-density-<v>, style-logo, style-mode-<v>, style-status, select-toggle, select-popover, select-apply]
+    acceptance:
+      - "Playwright (M0-16): смена акцента меняет цвет кнопки в превью < 300 мс, без новых запросов /runs и без перезагрузки iframe; после reload страницы акцент сохранён"
+      - "Баланс кредитов до/после изменения стиля одинаков (M1)"
+      - "M3-01: клик по карточке билета → поповер «Изменить ItemCard» с file=ui/…; после применения diff ревизии затрагивает только этот файл"
+
+  - id: S6
+    mockup: 6
+    name: "Отчёт проверок и публикация"
+    route: "/s/:systemId (stage=ready)"
+    milestone: M0   # отчёт гейтов; публикация — M1 (M1-04), карта РФ — M2 (M2-07)
+    regions:
+      chat: "итог оркестратора «Собрал за N минут и M кредитов. Проверьте систему от лица разных ролей.»"
+      gate_report: "«Отчёт проверок»: G0/G1/G2 — ✓/✗ + summary; раздел «Не блокирует» — warnings (!); клик по строке раскрывает checks с message"
+      publish_card: "M1: «Публикация»: поле поддомена (slug) + суффикс домена систем; «Отдельный домен систем · хостинг в РФ · PITR · откат к любой ревизии»; статус карты «✓ Карта РФ привязана — идентификация пройдена» (M2)"
+      footer: "«Правки» (фокус в чат) · «Опубликовать» (M1)"
+      main: "превью с пилюлей «DRAFT · тестовые данные» и переключателем ролей"
+    data: ["GET /systems/:id/gates/latest", "POST /systems/:id/publish {revision, subdomain} (M1)", "GET /systems/:id/preview-url"]
+    rules:
+      - "MUST: «Опубликовать» disabled, если любой блокирующий check G0–G2 failed (D8), с подсказкой, какой гейт мешает"
+      - "MUST (M1): публикует только owner (D11): editor/viewer видят disabled + «Публикует владелец»; сервер отвечает 403 — UI это показывает"
+      - "MUST (M2): без привязанной карты РФ — «Привязать карту» вместо «Опубликовать» (D9)"
+      - "Публикация — прогон kind=publish: прогресс в ленте по SSE; успех → ссылка на prod-адрес и пилюля prod · ревизия N"
+    test_ids: [gate-report, gate-report-row-<gate>, gate-warning, publish-card, publish-subdomain, publish-card-status, publish-submit, chat-edit]
+    acceptance:
+      - "Playwright (fixture): после сборки видны 3 строки гейтов с passed, ≥ 1 warning в «Не блокирует»"
+      - "Fixture с проваленным G1 → publish-submit disabled и подсказка называет G1"
+      - "M1 e2e: owner публикует → адрес prod открывается; editor видит disabled (и 403 при прямом запросе)"
+
+  - id: S7
+    mockup: 7
+    name: "Доработка чатом и понятный diff"
+    route: "/s/:systemId (stage=editing)"
+    milestone: M1   # ИИ-действия в diff — M3
+    regions:
+      chat_header: "«<Имя> · prod · ревизия N»"
+      diff_card: "«Что изменится»: строки + (добавлено) / ~ (изменено) / − (удалено) человеческим языком; блок: Миграция (аддитивная/деструктивная + объём данных), Гейты (статус, +K проверок), Цена (кредиты правки; M3 — ИИ ≈ X кредита за запись, лимит/мес)"
+      footer: "«Отменить» (откат черновика к prod) · «Опубликовать ревизию N+1»"
+      main_topbar: "пилюля «DRAFT · РЕВИЗИЯ N+1 · копия prod, ПДн замаскированы»; сегменты Prod / Черновик / Изменения"
+    data: ["GET /systems/:id/revisions → [{version, author, createdAt, summary, humanDiff:[{kind:'+'|'~'|'-', text}], migration:{additiveOnly, steps}, env}]", "POST /systems/:id/messages", "POST /systems/:id/publish (M1)", "GET /systems/:id/preview-url?env=prod|draft"]
+    rules:
+      - "MUST: живые prod-данные не меняются до публикации; черновик показывает копию prod с маскированными ПДн (механика — workflows/data-boundary)"
+      - "MUST: деструктивная миграция в diff помечена bad и блокирует «Опубликовать» (DESTRUCTIVE_IN_PROD)"
+      - "Сегмент «Изменения» — список humanDiff с группировкой по сущностям/экранам (M1-08)"
+    test_ids: [diff-card, diff-line, diff-migration, diff-gates, diff-price, diff-cancel, diff-publish, env-segment-<prod|draft|changes>]
+    acceptance:
+      - "M1-08 Playwright: после сообщения «добавь поле тема в заявки» diff-line содержит «+» и «тема»; diff-migration — «аддитивная»"
+      - "M1-04 e2e: публикация ревизии N+1 → prod с данными цел; откат (S10) возвращает ревизию N"
+
+  - id: S8
+    mockup: 8
+    name: "Сканер волонтёра и билет участника (СГЕНЕРИРОВАННАЯ система)"
+    kind: generated_system
+    milestone: M2   # онлайн-сканер и билет — M0 в демо «форум»
+    components: [QrScanner, QrTicket, CabinetLayout, AppShell]
+    note: "Не экран platform-web: строится строителем из ui-kit (specs/ui/ui-kit.yaml); в platform-web виден только внутри превью"
+    acceptance:
+      - "M0-17 e2e: в превью «форум» участник создаёт регистрацию → видит QrTicket; волонтёр сканирует (fake camera) → ok, повтор → duplicate"
+      - "M2-03 e2e: офлайн-сценарий из ui-kit.yaml#QrScanner"
+
+  - id: S9
+    mockup: 9
+    name: "Конфигуратор и производство (СГЕНЕРИРОВАННАЯ система «кондитерская»)"
+    kind: generated_system
+    milestone: M0
+    components: [Catalog, ItemCard, RecordForm, StatusBoard, StatsReport, AppShell]
+    note: "Цена — query-функция calcPrice в коде системы; предоплата ЮKassa — M2 (specs/connectors/yookassa.yaml)"
+    acceptance:
+      - "M0-17 e2e (fixture «кондитерская»): выбор веса/начинки/декора меняет итог (из calcPrice); предзаказ создаётся; в StatusBoard роль «кондитер» переносит заказ в «В работе»"
+
+  - id: S10
+    mockup: 10
+    name: "Настройки системы"
+    route: "/s/:systemId/settings"
+    milestone: M1
+    regions:
+      header: "«<Имя> · настройки» + пилюля prod · ревизия N"
+      team: "список участников орг.: имя, роль (владелец — «публикует» / редактор / наблюдатель); плашка «Сборки идут по одной. Сейчас свободно|собирает <имя>»; «Пригласить» (email) — только owner"
+      models: "Сборка: <buildModel> · ПДн удаляются; Живые данные и ИИ-действия: модели в РФ; переключатель «Только российский контур» (owner; политика организации, D2)"
+      ai_actions: "M3: список aiActions: «Извлечь · <сущность>» и использование «31 / 50 в месяц»"
+      data_login: "Вход участников: методы из roles.loginMethods; Хранение ПДн: РФ · дата ближайшего удаления; Бэкапы: PITR, 7 дней (M2); «Выгрузить данные (CSV)» (M2, D-independence); «Код — чтение» → /s/:id/code"
+      revisions: "список ревизий: номер · summary · пилюля prod у текущей; «Откатить» у предыдущих (owner)"
+    data: ["GET|PATCH /systems/:id/settings", "GET|POST|PATCH|DELETE members (путь — api.yaml; роли орг. D11)", "GET /systems/:id/revisions", "POST /systems/:id/rollback {toRevision}", "GET /me"]
+    rules:
+      - "MUST: действия owner-only (публикация, откат, приглашения, «только РФ») для editor/viewer disabled с подсказкой; сервер — 403"
+      - "MUST: откат — подтверждение «Вернуть prod к ревизии N? Данные сохранятся; новые поля останутся в базе, но скроются» → прогон kind=rollback"
+      - "Выгрузка CSV — по сущности, только поля, видимые владельцу; файл формирует сервер"
+    test_ids: [settings-team, settings-member, settings-invite, settings-lock, settings-ru-only, settings-ai-usage, settings-login-methods, settings-retention, settings-export, settings-code, revision-row, revision-rollback]
+    acceptance:
+      - "M1-02 Playwright: viewer видит settings-invite и revision-rollback disabled"
+      - "M1-04 e2e: откат с S10 → пилюля «prod · ревизия N-1», данные на месте"
+      - "Переключатель «только РФ» → GET /me.org.ruOnly=true и плашка S1 меняет текст"
+
+  - id: S-code
+    mockup: "4 (вкладка «Код»)"
+    name: "Код — только чтение"
+    route: "/s/:systemId/code?rev=N&path=…"
+    milestone: M1
+    regions:
+      tree: "дерево файлов ревизии (ui/, functions/, spec.json)"
+      viewer: "просмотр с подсветкой синтаксиса (без редактирования, D14); переключатель «весь файл / изменения в ревизии»"
+    data: ["GET /systems/:id/files/*path?rev=N (листинг — для пути, оканчивающегося на /)"]
+    rules: ["MUST NOT: редактирование, копирование в буфер целого проекта, скачивание архива (non_goals: экспорт кода)"]
+    test_ids: [code-tree, code-file, code-viewer]
+    acceptance: ["M1-08 Playwright: открывается ui/…tsx, textarea/contenteditable отсутствуют"]
+
+e2e_m0:   # сквозной сценарий M0-17 (pnpm e2e, WIZARD_LLM_MODE=fixture)
+  - "S1: бриф «форум» → Начать"
+  - "S2: «Остальное — по рекомендациям»"
+  - "S3: «Строить»"
+  - "S4: G0 passed, превью загружено; роль «Участник»"
+  - "S5: смена акцента отражена в превью без перезагрузки"
+  - "Превью: регистрация участника с согласием → QrTicket виден"
+  - "S6: отчёт гейтов показан"

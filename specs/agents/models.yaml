@@ -1,0 +1,185 @@
+# Каталог моделей и маршрутизация LLM. Нормативно для packages/llm и packages/agents.
+# Источники: product.yaml#decisions.D2/D3/D10, docs/audit/01-llm-access-and-costs.md (цены),
+# docs/audit/04-tech-feasibility.md#t5 (политика AI SDK), docs/research/data-boundary-frontier.md (классы вызовов).
+# [?] — не подтверждено по первоисточнику; проверяется контрактным тестом eval-стенда до включения в live.
+version: 1
+
+providers:
+  cloudru:
+    tier: T0
+    base_url_env: CLOUDRU_BASE_URL          # по умолчанию https://foundation-models.api.cloud.ru/v1
+    api_key_env: CLOUDRU_API_KEY
+    rule: "MUST: только модели с placement=internal. Внешние модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash, Claude/GPT/Gemini) MUST NOT быть в каталоге"
+  yandex:
+    tier: T0
+    role: reserve
+    base_url_env: YANDEX_BASE_URL           # OpenAI-совместимый эндпоинт AI Studio, напр. https://llm.api.cloud.yandex.net/v1 [?]
+    api_key_env: YANDEX_API_KEY
+    folder_env: YANDEX_FOLDER_ID            # model = gpt://<folder>/<providerModel> [?]
+    required_headers: { x-data-logging-enabled: "false" }
+    rule: "MUST: заголовок x-data-logging-enabled: false в каждом запросе; тест проверяет его наличие на уровне HTTP-перехватчика"
+  zai:
+    tier: T1
+    base_url_env: ZAI_BASE_URL              # по умолчанию https://api.z.ai/api/paas/v4
+    api_key_env: ZAI_API_KEY
+    rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1"
+  moonshot:
+    tier: T1
+    base_url_env: MOONSHOT_BASE_URL
+    api_key_env: MOONSHOT_API_KEY
+    enabled: false
+    disabled_reason: "Kimi K3 обучается на контенте API; включать только после договора о запрете обучения (E-LEGAL)"
+  fixture:
+    tier: any
+    rule: "WIZARD_LLM_MODE=fixture: ответы из tools/fixtures/**/*.jsonl по ключу запроса (specs/quality/eval.yaml#fixtures). Маршрутизация и учёт выполняются так же, как в live"
+
+# Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot: $ × 95 ₽/$ [?] + 22% НДС налогового агента.
+# cached — цена кэшированного входа; если провайдер кэш-скидку не даёт, cached = input.
+models:
+  - { id: kimi-k2.6,        provider: cloudru, providerModel: "moonshotai/Kimi-K2.6",          tier: T0, placement: internal, context: 262000,  price: { input: 175.68, cached: 175.68, output: 725.9 },  enabled: true }
+  - { id: deepseek-v4-pro,  provider: cloudru, providerModel: "deepseek-ai/DeepSeek-V4-Pro",   tier: T0, placement: internal, context: 1000000, price: { input: 183,    cached: 183,    output: 732 },    enabled: true }
+  - { id: glm-5.1,          provider: cloudru, providerModel: "zai-org/GLM-5.1",               tier: T0, placement: internal, context: 202000,  price: { input: 198.86, cached: 198.86, output: 829.6 },  enabled: true }
+  - { id: qwen3-coder-next, provider: cloudru, providerModel: "Qwen/Qwen3-Coder-Next",         tier: T0, placement: internal, context: 262000,  price: { input: 122,    cached: 122,    output: 244 },    enabled: true }
+  - { id: gpt-oss-120b,     provider: cloudru, providerModel: "openai/gpt-oss-120b",           tier: T0, placement: internal, context: 131000,  price: { input: 15.86,  cached: 15.86,  output: 61 },     enabled: true, note: "[?] id модели" }
+  - { id: gigachat-3.5,     provider: cloudru, providerModel: "ai-sage/GigaChat3.5-432B-A28B", tier: T0, placement: internal, context: 262000,  price: { input: 96.22,  cached: 96.22,  output: 288.6 },  enabled: true, note: "[?] id модели" }
+  - { id: yandex-qwen3-235b,        provider: yandex, providerModel: "qwen3-235b-a22b-fp8/latest", tier: T0, placement: internal, context: 262000,  price: { input: 500, cached: 500, output: 500 }, enabled: true, note: "[?] точный URI" }
+  - { id: yandex-deepseek-v4-flash, provider: yandex, providerModel: "deepseek-v4-flash/latest",   tier: T0, placement: internal, context: 1000000, price: { input: 300, cached: 75,  output: 500 }, enabled: true, note: "[?] точный URI" }
+  - { id: glm-5.3,          provider: zai,      providerModel: "glm-5.3",                      tier: T1, placement: external, context: 200000, price: { input: 162, cached: 30, output: 510 }, enabled: true, note: "$1.4/$0.26/$4.4 [?] курс" }
+  - { id: kimi-k3,          provider: moonshot, providerModel: "kimi-k3",                      tier: T1, placement: external, context: 256000, price: { input: 348, cached: 34.8, output: 1739 }, enabled: false, note: "см. providers.moonshot.disabled_reason" }
+
+catalog_rules:
+  - "MUST: ids моделей — единственные имена в конфигурации, eval и логах (tools/eval использует те же id)"
+  - "MUST: модель с enabled=false не выбирается ни роутером, ни фолбэком (тест)"
+  - "MUST: T0 = только placement=internal (Cloud.ru внутренний контур) или провайдер yandex с заголовком без логирования"
+  - "SHOULD: цены проверять раз в месяц; изменение цены — правка этого файла + запись в CHANGELOG"
+
+# ---------------------------------------------------------------- Маршрутизация
+call_types:            # полный список; route() с иным callType → ошибка UNKNOWN_CALL_TYPE
+  - interview          # анализ брифа и вопросы (оркестратор)
+  - card               # карточка системы (оркестратор)
+  - plan               # план сборки (строитель)
+  - build_ops          # операции над AppSpec (строитель)
+  - build_code         # код UI и функций (строитель)
+  - fix                # исправление по отчёту гейта (строитель)
+  - qa_generate        # генерация проверок и seed-подсказок (QA)
+  - qa_explain         # объяснение провалов (QA)
+  - audit              # аудитор G4 (после MVP)
+  - import_mapping     # маппинг таблицы на сущности (M1)
+  - runtime_ai_extract # ИИ-действие «Извлечь/классифицировать» в системе (M3)
+  - runtime_ai_generate # ИИ-действие «Сгенерировать текст» в системе (M3)
+  - support            # поддержка/отладка на живых записях
+
+pii_forbidden_for_T1:
+  always: [runtime_ai_extract, runtime_ai_generate, support]
+  conditional:
+    - callType: import_mapping
+      rule: "T1 допустим ТОЛЬКО если вызывающий явно передал containsPiiHint=false (в запросе лишь заголовки, профили колонок и синтетические строки) И DLP по payload нашёл 0 ПДн. Иначе (hint отсутствует/true или DLP>0) → T0"
+  test: "Юнит-тест роутера: для каждого callType из always × все orgPolicy × все containsPiiHint → tier=T0; для import_mapping без hint=false → T0"
+
+routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy}) — детерминированно, policy-as-code
+  - "1. dlp = pii.detect(все текстовые части messages, включая результаты инструментов)"
+  - "2. Если orgPolicy.ruOnly → T0 (reason=policy_ru_only)"
+  - "3. Если callType ∈ pii_forbidden_for_T1.always или сработало conditional → T0 (reason=callType_forbidden_T1)"
+  - "4. Если dlp содержит категории высокого риска (passport, snils, card, special) → T0 (reason=pii_high_risk)"
+  - "5. Если callType=interview и dlp.count>0 → T0 (reason=pii_detected_interview): сырой бриф с ПДн не уходит наружу даже в заглушках"
+  - "6. Иначе tier = routes[callType].default_tier (reason=default_T1|default_T0)"
+  - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН], [EMAIL], [ФИО]… без таблицы соответствия); в журнал — только счётчики категорий"
+  - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled). Нет доступной → фолбэк по fallback_rules"
+  - "9. Неизвестная ситуация/исключение в политике → T0 (fail-safe)"
+unknown_class_default: T0
+
+routes:                # chain.T1 пробуется только если tier=T1 по алгоритму; chain.T0 — всегда запасной путь
+  interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 4000,  timeout_ms: 120000 }
+  card:                { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.2, max_tokens: 8000,  timeout_ms: 180000 }
+  plan:                { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.2, max_tokens: 4000,  timeout_ms: 180000 }
+  build_ops:           { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.1, max_tokens: 8000,  timeout_ms: 240000 }
+  build_code:          { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 16000, timeout_ms: 240000 }
+  fix:                 { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 12000, timeout_ms: 240000 }
+  qa_generate:         { role: qa,           default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 180000 }
+  qa_explain:          { role: qa,           default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6] },                                  temperature: 0.1, max_tokens: 2000,  timeout_ms: 90000 }
+  audit:               { role: auditor,      default_tier: T0, chain: { T0: [gigachat-3.5, gpt-oss-120b, kimi-k2.6] },                               temperature: 0.1, max_tokens: 8000,  timeout_ms: 240000, note: "G4 (после MVP): семейство модели MUST отличаться от семейства строителя в этом прогоне" }
+  import_mapping:      { role: importer,     default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1] },                                  temperature: 0.0, max_tokens: 4000,  timeout_ms: 120000 }
+  runtime_ai_extract:  { role: runtime,      default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, yandex-deepseek-v4-flash] },               temperature: 0.0, max_tokens: 1000,  timeout_ms: 30000, note: "[?] выбор первой модели подтвердить eval на русском извлечении" }
+  runtime_ai_generate: { role: runtime,      default_tier: T0, chain: { T0: [gigachat-3.5, kimi-k2.6, yandex-qwen3-235b] },                         temperature: 0.7, max_tokens: 2000,  timeout_ms: 30000 }
+  support:             { role: support,      default_tier: T0, chain: { T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },                                temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000 }
+
+fallback_rules:
+  - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
+  - "MUST NOT: автоматический фолбэк T0 → T1. Если все T0 недоступны — вызов падает с LLM_UNAVAILABLE; прогон переходит в паузу (DBOS-повтор через 5 мин, до 6 раз)"
+  - "MAY: при переходе T1 → T0 отправить исходные (незаскрабленные) сообщения — T0 допускает любые данные"
+  - "MUST: смена модели посреди прогона строителя логируется событием model_switched; история инструментов переносится без reasoning_content"
+  - "SHOULD: фолбэк на другое семейство модели внутри одного прогона не сбрасывает кэш-историю (контекст пересобирается по builder.yaml#context)"
+
+# ---------------------------------------------------------------- Политика вызова (AI SDK 7)
+call_policy:
+  client: "ai 7.x + @ai-sdk/openai-compatible; supportsStructuredOutputs: false; includeUsage: true"
+  thinking:
+    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → {thinking: {type: 'disabled'}}; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
+    - "MUST NOT: отправлять reasoning_content обратно в API (ломает DeepSeek/Kimi, аудит 04 T5)"
+    - "MAY: отдельный вызов без tools с thinking для рассуждений; его результат передаётся дальше как обычный текст"
+    - "Тест: контрактный тест провайдер×модель в eval (tools/eval --contract) — запрос с tools не содержит включённого thinking"
+  structured_output: "MUST NOT: response_format json_object/json_schema. Структурированный вывод — только вызовом инструмента с zod-схемой, серверная валидация, при ошибке — повтор с текстом ошибки (≤2 раза)"
+  tool_schemas: "MUST: tool definitions генерируются из zod 4 (z.toJSONSchema); одна схема — и для валидации, и для модели. Имена инструментов snake_case латиницей, описания на английском (экономия токенов), сообщения об ошибках — на русском для пользователя, структурно для модели"
+  tool_choice: "auto; 'required' только для вызовов, где единственный выход — инструмент (interview, card, plan, qa_generate)"
+  parallel_tool_calls: "≤8 вызовов в одном ходе; лишние отклоняются ошибкой TOO_MANY_TOOL_CALLS"
+  temperature_and_limits: "из routes[callType]; переопределение только в eval"
+  retries:
+    max_attempts: 3
+    backoff_ms: [1000, 4000, 16000]
+    jitter: "±20%"
+    retry_on: [HTTP_429, HTTP_5xx, TIMEOUT, NETWORK, EMPTY_RESPONSE]
+    no_retry_on: [HTTP_400, HTTP_401, HTTP_403, CONTEXT_TOO_LONG]
+    respect_retry_after: true
+    tool_parse_repair: "Невалидные аргументы инструмента не ретраятся на HTTP-уровне: модели возвращается ошибка валидации zod как результат инструмента"
+  timeouts: { first_token_ms: 60000, request_ms: "routes[callType].timeout_ms", run_wall_clock: "builder.yaml#budgets" }
+  circuit_breaker:
+    scope: "provider × model"
+    open_when: "5 подряд неуспешных вызовов ИЛИ ≥50% ошибок из последних 20 вызовов за 60 с"
+    open_ms: 60000
+    half_open: "1 пробный вызов; успех → closed, неуспех → open ещё на 2× (до 10 мин)"
+    state_store: "в памяти процесса (M0); в Postgres платформы (M1+), общий для воркеров"
+    test: "Фейковый провайдер с 5 ошибками → 6-й вызов уходит на следующую модель без сетевого запроса к первой"
+  context_too_long: "Перед вызовом оценить токены (символы/3.2); при превышении 85% context модели — builder.yaml#context сжимает; повтор не делать"
+
+# ---------------------------------------------------------------- Деньги и кредиты
+credits:
+  rub_per_credit: 5                       # product.yaml D10: 1 кредит ≈ 5 ₽ себестоимости LLM
+  cost_rub: "(promptTokens − cachedPromptTokens) × price.input/1e6 + cachedPromptTokens × price.cached/1e6 + completionTokens × price.output/1e6"
+  credits_per_call: "cost_rub / rub_per_credit, 4 знака после запятой"
+  settlement: "Списание в ledger по факту — сумма credits_per_call по прогону, округление вверх до 0.1 кредита (specs/platform/billing.yaml)"
+  fixture_mode: "Кредиты считаются по записанному usage фикстуры — бюджеты тестируются офлайн"
+  runtime_ai: "ИИ-действия списывают кредиты организации по факту, с месячным лимитом aiAction.monthlyLimit (вызовов); превышение → ошибка AI_LIMIT_REACHED без вызова модели"
+  test: "Сумма ledger прогона = Σ cost_rub/5 по записям usage (±0.1)"
+
+usage_record:          # одна запись на HTTP-попытку; payload (промпты/ответы) сюда НЕ пишется
+  fields:
+    - { name: id,                 type: uuid }
+    - { name: runId,              type: "uuid?" }
+    - { name: orgId,              type: uuid }
+    - { name: systemId,           type: "uuid?" }
+    - { name: callType,           type: string }
+    - { name: role,               type: string }
+    - { name: tier,               type: "T0|T1" }
+    - { name: provider,           type: string }
+    - { name: modelId,            type: string, note: "id из models" }
+    - { name: attempt,            type: int }
+    - { name: status,             type: "ok|error|timeout|circuit_open" }
+    - { name: errorCode,          type: "string?" }
+    - { name: routeReason,        type: "policy_ru_only|callType_forbidden_T1|pii_high_risk|pii_detected_interview|default_T1|default_T0|fallback_circuit_open|fallback_error" }
+    - { name: fallbackFrom,       type: "string?", note: "modelId, с которого ушли" }
+    - { name: policyVersion,      type: string, note: "хеш этого файла + версии packages/pii" }
+    - { name: scrubbed,           type: bool }
+    - { name: piiCounts,          type: "Record<category, int>", note: "только счётчики, без значений" }
+    - { name: promptTokens,       type: int }
+    - { name: cachedPromptTokens, type: int }
+    - { name: completionTokens,   type: int }
+    - { name: toolCalls,          type: int }
+    - { name: latencyMs,          type: int }
+    - { name: ttftMs,             type: "int?" }
+    - { name: costRub,            type: "decimal(12,4)" }
+    - { name: credits,            type: "decimal(12,4)" }
+    - { name: mode,               type: "live|fixture|record" }
+    - { name: requestHash,        type: string, note: "ключ фикстуры (eval.yaml#fixtures)" }
+    - { name: createdAt,          type: timestamptz }
+  storage: "M0 — .data/usage.jsonl; M1+ — таблица platform.llm_usage. Промпты хранятся отдельно, только отредактированными, 30 дней, в РФ (security/data-boundary.yaml)"
+  test: "Журнал вызовов e2e-прогона: ни одна запись с tier=T1 не имеет callType из pii_forbidden_for_T1.always; для каждой T1-записи scrubbed=true"
