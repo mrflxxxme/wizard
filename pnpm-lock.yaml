@@ -33,6 +33,9 @@ importers:
       '@wizard/appspec':
         specifier: workspace:*
         version: link:../../packages/appspec
+      '@wizard/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@wizard/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

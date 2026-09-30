@@ -90,8 +90,8 @@ export interface PgDataAccessOptions {
   /** runtime.yaml#postgres.statement_timeout */
   statementTimeout?: string;
   lockTimeout?: string;
-  /** qr_token generator (connectors/qr.yaml#token); default: 24 random bytes, base64url. */
-  qrToken?: (entity: string, field: string, id: string) => string;
+  /** qr_token generator (connectors/qr.yaml#token, wired by the runtime to the qr connector); undefined → 24 random bytes, base64url. */
+  qrToken?: (entity: string, field: string, id: string) => string | undefined | Promise<string | undefined>;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -541,7 +541,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     const id = randomUUID();
     for (const f of e.fields) {
       if (f.type === "qr_token")
-        fields[f.name] = o.qrToken?.(e.name, f.name, id) ?? randomBytes(24).toString("base64url");
+        fields[f.name] = (await o.qrToken?.(e.name, f.name, id)) ?? randomBytes(24).toString("base64url");
     }
     await ensure(t, who);
     await exec(

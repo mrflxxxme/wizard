@@ -5,7 +5,7 @@ import { type AppSpec, validateSpec } from "@wizard/appspec";
 import type postgres from "postgres";
 import { type ComplianceInfo, complianceInfo, sha256Hex } from "./compliance.js";
 import type { DataAccess, InvalidationBus } from "./data/access.js";
-import { createPgDataAccess } from "./data/pg.js";
+import { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
 import { schemaName } from "./migrate.js";
 import type { RegistryEntry, SystemEnv, SystemRegistry } from "./registry.js";
 
@@ -45,6 +45,8 @@ export interface SystemCacheOptions {
   statementTimeout?: string;
   capacity?: number;
   bus: (systemId: string, env: SystemEnv) => InvalidationBus;
+  /** qr_token issuer of a system (qr connector, M0-24); undefined → random tokens. */
+  qrToken?: (entry: RegistryEntry, spec: AppSpec) => PgDataAccessOptions["qrToken"];
 }
 
 const key = (slug: string, env: SystemEnv) => `${slug}--${env}`;
@@ -82,6 +84,7 @@ export class SystemCache {
         dbRole: this.o.dbRole,
         statementTimeout: this.o.statementTimeout,
         events: this.o.bus(entry.systemId, entry.env),
+        qrToken: this.o.qrToken?.(entry, spec),
       }),
     };
   }
