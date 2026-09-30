@@ -5,6 +5,7 @@ import {
   innPersonValid,
   isCardNumber,
   luhnValid,
+  ogrnipValid,
   snilsControl,
   snilsValid,
 } from "../src/index.js";
@@ -112,5 +113,14 @@ describe("INN", () => {
     expect(innOrgValid("0000000000")).toBe(false);
     expect(innPersonValid("000000000000")).toBe(false);
     expect(innOrgValid("77070838a3")).toBe(false);
+  });
+});
+
+describe("OGRNIP", () => {
+  test("valid, changed check digit, wrong first digit, wrong length", () => {
+    expect(ogrnipValid("304500116000157")).toBe(true);
+    expect(ogrnipValid(mutateDigit("304500116000157", 14))).toBe(false);
+    expect(ogrnipValid("504500116000157")).toBe(false);
+    expect(ogrnipValid("30450011600015")).toBe(false);
   });
 });

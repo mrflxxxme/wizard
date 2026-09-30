@@ -56,7 +56,6 @@ describe("email", () => {
   test("not assets, scoped packages or handles", () => {
     expect(kindsOf('<img src="icon@2x.png">')).toEqual([]);
     expect(kindsOf('import x from "@wizard/pii"')).toEqual([]);
-    expect(kindsOf("пишите в телеграм @ivan_petrov")).toEqual([]);
     expect(kindsOf("user@localhost")).toEqual([]);
   });
 });
@@ -197,11 +196,16 @@ describe("person_name", () => {
     expect(found("отв. И.И. Шевчук")).toEqual([["person_name", "И.И. Шевчук"]]);
     expect(kindsOf("В. Новгород и С. Петербург")).toEqual([]);
   });
-  test("Latin transliteration needs a surname", () => {
-    expect(found("Hi, I'm Ivan Petrov")).toEqual([["person_name", "Ivan Petrov"]]);
-    expect(found("Contact: Petrov Ivan")).toEqual([["person_name", "Petrov Ivan"]]);
-    expect(found("IVAN PETROV")).toEqual([["person_name", "IVAN PETROV"]]);
+  test("Latin transliteration (person_name_latin) needs a surname, patronymic or initial", () => {
+    expect(found("Hi, I'm Ivan Petrov")).toEqual([["person_name_latin", "Ivan Petrov"]]);
+    expect(found("Contact: Petrov Ivan")).toEqual([["person_name_latin", "Petrov Ivan"]]);
+    expect(found("IVAN PETROV")).toEqual([["person_name_latin", "IVAN PETROV"]]);
+    expect(found("Yevgeniya Sergeevna")).toEqual([["person_name_latin", "Yevgeniya Sergeevna"]]);
+    expect(found("Aleksandr Kuznetsov")).toEqual([["person_name_latin", "Aleksandr Kuznetsov"]]);
+    expect(found("I. Ivanov")).toEqual([["person_name_latin", "I. Ivanov"]]);
+    expect(found("Smirnova A.")).toEqual([["person_name_latin", "Smirnova A."]]);
     expect(kindsOf("Anna said hello")).toEqual([]);
+    expect(detect("Ivan Petrov")[0]?.piiKind).toBe("fio");
   });
   test("ambiguous word-names need a surname or patronymic", () => {
     expect(kindsOf("Вера в успех помогает")).toEqual([]);
@@ -224,6 +228,71 @@ describe("person_name", () => {
   });
   test("placeholders are not names", () => {
     expect(kindsOf("[ФИО_1] и [ТЕЛЕФОН_2], [EMAIL_3], [АДРЕС_1]")).toEqual([]);
+  });
+});
+
+describe("phone_intl", () => {
+  test("+country code ≠ 7 with 8–15 digits", () => {
+    expect(found("Минск: +375 29 123-45-67")).toEqual([["phone_intl", "+375 29 123-45-67"]]);
+    expect(found("+998901234567")).toEqual([["phone_intl", "+998901234567"]]);
+    expect(found("+380 (67) 1234567")).toEqual([["phone_intl", "+380 (67) 1234567"]]);
+    expect(found("+44 20 7946 0958")).toEqual([["phone_intl", "+44 20 7946 0958"]]);
+    expect(detect("+375 29 123-45-67")[0]?.piiKind).toBe("phone");
+  });
+  test("without + only CIS codes in phone context", () => {
+    expect(found("тел. 375 29 123 45 67")).toEqual([["phone_intl", "375 29 123 45 67"]]);
+    expect(kindsOf("Партия 375 29 123 45 67")).toEqual([]);
+  });
+  test("short numbers and money are not phones", () => {
+    expect(kindsOf("+100500 к карме")).toEqual([]);
+    expect(kindsOf("Рост выручки +12 345 678 руб.")).toEqual([]);
+  });
+});
+
+describe("social_handle", () => {
+  test("@handle and profile links", () => {
+    expect(found("пишите в телеграм @ivan_petrov")).toEqual([["social_handle", "@ivan_petrov"]]);
+    expect(found("t.me/ivan_petrov")).toEqual([["social_handle", "t.me/ivan_petrov"]]);
+    expect(found("https://vk.com/id123456.")).toEqual([["social_handle", "https://vk.com/id123456"]]);
+    expect(found("instagram.com/anna.smirnova")).toEqual([["social_handle", "instagram.com/anna.smirnova"]]);
+  });
+  test("not emails, npm scopes, decorators, CSS at-rules, short handles", () => {
+    expect(found("ivan_petrov@mail.ru")).toEqual([["email", "ivan_petrov@mail.ru"]]);
+    expect(kindsOf('import { x } from "@tanstack/react-query"')).toEqual([]);
+    expect(kindsOf("@Component({ selector: 'app' })")).toEqual([]);
+    expect(kindsOf("@media (max-width: 600px) {} @keyframes spin {}")).toEqual([]);
+    expect(kindsOf("@ivan")).toEqual([]);
+    expect(kindsOf("t.me/share")).toEqual([]);
+  });
+  test("the system's own service accounts are ignored", () => {
+    const text = "Бот записи: t.me/salon_booking_bot, администратор @salon_admin_masha";
+    expect(found(text).map(([k]) => k)).toEqual(["social_handle", "social_handle"]);
+    expect(found(text, { ignoreHandles: ["salon_booking_bot"] })).toEqual([["social_handle", "@salon_admin_masha"]]);
+  });
+});
+
+describe("ogrnip", () => {
+  test("15 digits, first 3/4, checksum mod 13", () => {
+    expect(found("ОГРНИП 304500116000157")).toEqual([["ogrnip", "304500116000157"]]);
+    expect(kindsOf("ОГРНИП 304500116000158")).toEqual([]);
+    expect(kindsOf("504500116000157")).toEqual([]);
+    expect(kindsOf("ОГРН 1027700132195")).toEqual([]);
+  });
+});
+
+describe("car_plate_ru", () => {
+  test("Cyrillic and Latin look-alike letters, with or without spaces", () => {
+    expect(found("Госномер А123ВС77")).toEqual([["car_plate_ru", "А123ВС77"]]);
+    expect(found("машина А 123 ВС 777")).toEqual([["car_plate_ru", "А 123 ВС 777"]]);
+    expect(found("пропуск на а123вс77")).toEqual([["car_plate_ru", "а123вс77"]]);
+    expect(found("номер K123MH199")).toEqual([["car_plate_ru", "K123MH199"]]);
+    expect(found("номер Е001КХ05")).toEqual([["car_plate_ru", "Е001КХ05"]]);
+  });
+  test("hex, identifiers, distances are not plates", () => {
+    expect(kindsOf("color: #A123BC77")).toEqual([]);
+    expect(kindsOf("id a123bc77")).toEqual([]);
+    expect(kindsOf("Ехать в 100 км 20 минут")).toEqual([]);
+    expect(kindsOf("А123ВС")).toEqual([]);
   });
 });
 

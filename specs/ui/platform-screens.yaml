@@ -336,6 +336,20 @@ screens:
     test_ids: [billing-plan, billing-balance, billing-ledger, billing-topup, billing-card, billing-card-status, billing-change-plan]
     acceptance: ["M2-07 e2e (тестовый магазин): привязка карты RU → billing-card-status «привязана»; карта не RU → сообщение CARD_NOT_RU; S6 publish-blocker CARD_BINDING_REQUIRED исчезает"]
 
+  - id: S-import
+    mockup: "—"
+    name: "Загрузка таблицы и сопоставление колонок"
+    route: "/s/:systemId/import/:importId"
+    milestone: M1   # задача M1-12 (бэкенд M1-07)
+    regions:
+      notice: "«Моделям за рубежом передаются только названия колонок и синтетические строки» (pii_notice.rules, data-boundary.yaml#import)"
+      table: "строка на колонку: название, тип (угадан), «ПДн» (none/basic, по piiKindGuess — пользователь подтверждает), куда: поле сущности / новое поле / пропустить"
+      footer: "«Загрузить N строк» (подтверждение) · «Отмена»"
+    data: ["POST /systems/:id/imports (multipart)", "GET /systems/:id/imports/:importId", "PUT /systems/:id/imports/:importId/mapping", "POST /runs/:id/input {inputId, choice: confirm | cancel}"]
+    rules: ["MUST: значения ячеек на экране не показываются (профиль без значений)", "MUST: колонка с piiKindGuess ≠ null по умолчанию размечена basic; снять разметку может только пользователь явно", "413 → «Файл слишком большой»"]
+    test_ids: [import-notice, import-row-<column>, import-pii-<column>, import-target-<column>, import-confirm, import-cancel]
+    acceptance: ["M1-12 Playwright (fixture): xlsx с колонкой «Телефон» → import-pii-Телефон = basic; confirm → run_finished, rows_imported = числу строк"]
+
   - id: S-code
     mockup: "4 (вкладка «Код»)"
     name: "Код — только чтение"
