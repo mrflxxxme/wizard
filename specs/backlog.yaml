@@ -93,7 +93,7 @@ tasks:
     owner: agents
     parallel_group: m0-w1
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Тест: callType из pii_forbidden_for_T1.always и import_mapping без containsPiiHint=false никогда не маршрутизируются в T1; при orgPolicy.ruOnly=true всё идёт в T0"
@@ -130,7 +130,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "ui-kit.yaml#tokens.acceptance (vitest контраста 16³, детерминизм themeToTokens, Playwright applyTokens < 50 мс, dark)"
@@ -145,7 +145,7 @@ tasks:
     owner: platform
     parallel_group: m0-w1
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Матрица role×entity×op для форума (генерируется из permissions) даёт ожидаемые 200/201/403/404 через createRuntimeApp().fetch"
@@ -197,7 +197,7 @@ tasks:
     owner: agents
     parallel_group: m0-w2
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Fixture demo/forum: бриф → 3–7 вопросов, у каждого 2–4 варианта и ровно один recommended; forkId ∈ fork_taxonomy"
@@ -245,7 +245,7 @@ tasks:
     owner: platform
     parallel_group: m0-w1
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Контрактный тест (ajv по components.schemas + свой сопоставитель путей) на все операции x-milestone=M0"
@@ -310,7 +310,7 @@ tasks:
     owner: docs
     parallel_group: m0-w0
     estimate_days: 0.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "`node tools/specs/slice.mjs <file>[#a.b] [--milestone M0]` печатает поддерево; для api.yaml оставляет операции x-milestone ≤ M0 и транзитивно нужные components.schemas; для db.yaml/ui-kit.yaml/platform-screens.yaml — элементы с milestone ≤ M0"
@@ -326,7 +326,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Сборка форума (forum.json + specs/runtime/examples) → раскладка .data/artifacts/<id>/<rev>/…; manifest.json содержит specHash и bundleKey"
@@ -342,7 +342,7 @@ tasks:
     owner: qa
     parallel_group: m0-w1
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "specToOps(forum.json) + applyOps на emptySpec → спека, эквивалентная forum.json (deep-equal без порядка)"
@@ -371,7 +371,7 @@ tasks:
     owner: platform
     parallel_group: m0-w2
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Функции из specs/runtime/examples вызываются через /api/fn; fetch недоступен; бесконечный цикл прерывается ≤ 5 с"
@@ -387,7 +387,7 @@ tasks:
     owner: platform
     parallel_group: m0-w2
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Бандл форума отдаётся на http://<slug>--draft.localhost:4100; bridge.js: set-role, apply-theme-tokens, чужой origin игнорируется"
@@ -403,7 +403,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w1
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждый компонент — acceptance из своего раздела ui-kit.yaml (Playwright на демо «форум»/«кондитерская» через createMemoryDataSource)"
@@ -434,7 +434,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "`pnpm dev` поднимает заглушки platform-api :4000, runtime :4100, platform-web :5173 и ждёт их health; Ctrl-C гасит всё"
@@ -451,7 +451,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "validateSpec каждого коннектора на forum.json и bakery.json → без ошибок; отрицательные фикстуры по каждому правилу config_schema"
@@ -466,7 +466,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "toDDL/toRLS не интерполируют значения: литералы только через sqlLiteral(value, fieldType) (ops.yaml#migrations.sql_values) (число — Number.isFinite; строка — '→'', без \\0 и E-строк; bool/date — проверка формата), идентификаторы — только quoteIdent (L3-01)"

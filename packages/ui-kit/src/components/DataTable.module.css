@@ -1,0 +1,164 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.control {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.controlLabel {
+  font-size: var(--w-font-size-sm);
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--w-density-control);
+  padding: 6px 10px;
+  border: 1px solid var(--w-muted);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+}
+
+/* Mobile first: rows are cards (label: value), no horizontal scroll. */
+.table {
+  display: block;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table thead {
+  display: none;
+}
+
+.table tbody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.table tr {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.table td {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.table td::before {
+  content: attr(data-label);
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  border-color: var(--w-muted);
+}
+
+.sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arrow {
+  color: var(--w-muted);
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.pageInfo {
+  color: var(--w-muted);
+}
+
+@media (min-width: 640px) {
+  .table {
+    display: table;
+    table-layout: fixed;
+    border: 1px solid var(--w-line);
+    border-radius: var(--w-radius);
+    background: var(--w-surface);
+  }
+
+  .table thead {
+    display: table-header-group;
+  }
+
+  .table tbody {
+    display: table-row-group;
+  }
+
+  .table tr {
+    display: table-row;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .table th,
+  .table td {
+    display: table-cell;
+    height: var(--w-density-row);
+    padding: 0 12px;
+    border-bottom: 1px solid var(--w-line);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .table th {
+    color: var(--w-ink);
+    font-size: var(--w-font-size-sm);
+  }
+
+  .table td::before {
+    content: none;
+  }
+
+  .clickable:hover {
+    background: var(--w-bg);
+  }
+}

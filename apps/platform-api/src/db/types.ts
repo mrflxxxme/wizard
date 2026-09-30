@@ -1,0 +1,210 @@
+// Kysely table types for the M0 tables of specs/platform/db.yaml. Keys are fully qualified (AGENTS.md).
+import type { ColumnType, Generated } from "kysely";
+
+type Ts = ColumnType<Date, Date | string, Date | string>;
+type TsDef = ColumnType<Date, Date | string | undefined, Date | string>;
+type TsNull = ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+/** jsonb: read as parsed JSON; written through `json()` (explicit cast). */
+type Json<T = unknown> = ColumnType<T, unknown, unknown>;
+/** bigint: postgres.js returns int8 as string. */
+type Big = ColumnType<string, number | string | bigint, number | string | bigint>;
+type BigNull = ColumnType<string | null, number | string | bigint | null, number | string | bigint | null>;
+
+export interface UsersTable {
+  id: Generated<string>;
+  email: string;
+  name: string | null;
+  is_staff: Generated<boolean>;
+  totp_secret_ref: string | null;
+  mfa_enrolled_at: TsNull;
+  deleted_at: TsNull;
+  pd_consent_at: TsNull;
+  offer_accepted_at: TsNull;
+  offer_version: string | null;
+  created_at: TsDef;
+}
+
+export interface OrgsTable {
+  id: Generated<string>;
+  name: string;
+  plan: Generated<string>;
+  ru_only: Generated<boolean>;
+  require_founder_review: Generated<boolean>;
+  passport_collection_allowed: Generated<boolean>;
+  suspended_at: TsNull;
+  region_code: string | null;
+  t1_restricted: Generated<boolean>;
+  created_at: TsDef;
+}
+
+export interface MembershipsTable {
+  org_id: string;
+  user_id: string;
+  role: "owner" | "editor" | "viewer";
+  created_at: TsDef;
+}
+
+export interface SystemsTable {
+  id: Generated<string>;
+  org_id: string;
+  slug: string;
+  schema_key: string;
+  name: string;
+  stage: Generated<string>;
+  card: Json<Record<string, unknown> | null>;
+  card_version: Generated<number>;
+  card_approved_version: number | null;
+  pending_questions: Json<unknown[]>;
+  draft_revision: Generated<number>;
+  preview_revision: number | null;
+  prod_revision: number | null;
+  schema_hwm_revision: number | null;
+  shard_id: string | null;
+  suspended_at: TsNull;
+  draft_data_purged_at: TsNull;
+  last_activity_at: TsDef;
+  created_by: string;
+  updated_at: TsDef;
+  deleted_at: TsNull;
+  created_at: TsDef;
+}
+
+export interface MessagesTable {
+  id: Generated<string>;
+  system_id: string;
+  seq: number;
+  role: string;
+  kind: string;
+  text: string | null;
+  payload: Json<Record<string, unknown> | null>;
+  run_id: string | null;
+  author_user_id: string | null;
+  created_at: TsDef;
+}
+
+export interface RevisionsTable {
+  system_id: string;
+  version: number;
+  parent_version: number | null;
+  kind: string;
+  author: string;
+  author_user_id: string | null;
+  run_id: string | null;
+  spec: Json<Record<string, unknown>>;
+  ops: Json<unknown[]>;
+  files_manifest_sha: string;
+  bundle_key: string | null;
+  g0_passed: boolean | null;
+  idempotency_key: string | null;
+  summary_ru: string | null;
+  created_at: TsDef;
+}
+
+export interface FilesTable {
+  sha256: string;
+  size: Big;
+  content_type: string;
+  storage_key: string;
+  created_at: TsDef;
+}
+
+export interface RunsTable {
+  id: Generated<string>;
+  org_id: string;
+  system_id: string | null;
+  kind: string;
+  mode: string | null;
+  status: Generated<string>;
+  current_step: string | null;
+  input: Json<Record<string, unknown>>;
+  pending_input: Json<Record<string, unknown> | null>;
+  card_version: number | null;
+  credits_estimate_milli: BigNull;
+  credits_cap_milli: BigNull;
+  credits_used_milli: ColumnType<string, number | string | undefined, number | string>;
+  base_revision: number | null;
+  result_revision: number | null;
+  failure_code: string | null;
+  failure_message_ru: string | null;
+  cancel_requested_at: TsNull;
+  started_by: string | null;
+  dbos_workflow_id: string | null;
+  heartbeat_at: TsNull;
+  started_at: TsNull;
+  finished_at: TsNull;
+  created_at: TsDef;
+}
+
+export interface RunEventsTable {
+  run_id: string;
+  seq: number;
+  type: string;
+  payload: Json<Record<string, unknown>>;
+  ts: TsDef;
+}
+
+export interface GateReportsTable {
+  run_id: string;
+  system_id: string;
+  revision: number;
+  level: string;
+  passed: boolean;
+  report: Json<Record<string, unknown>>;
+  created_at: TsDef;
+}
+
+export interface LlmCallsTable {
+  id: Generated<string>;
+  org_id: string;
+  system_id: string | null;
+  run_id: string | null;
+  step: string | null;
+  call_type: string;
+  agent_role: string | null;
+  tier: string;
+  provider: string;
+  model_id: string;
+  attempt: number;
+  status: string;
+  error_code: string | null;
+  route_reason: string;
+  fallback_from: string | null;
+  policy_version: string;
+  scrubbed: boolean;
+  pii_categories_count: Json<Record<string, number>>;
+  input_tokens: number;
+  cached_tokens: number;
+  output_tokens: number;
+  tool_calls: number;
+  latency_ms: number | null;
+  ttft_ms: number | null;
+  cost_rub: ColumnType<string, number | string, number | string>;
+  credits_milli: Big;
+  billable: boolean;
+  mode: string;
+  request_hash: string | null;
+  created_at: TsDef;
+}
+
+export interface LocksTable {
+  system_id: string;
+  run_id: string;
+  holder_user_id: string | null;
+  acquired_at: TsDef;
+  lease_until: Ts;
+}
+
+export interface DB {
+  "platform.users": UsersTable;
+  "platform.orgs": OrgsTable;
+  "platform.memberships": MembershipsTable;
+  "platform.systems": SystemsTable;
+  "platform.messages": MessagesTable;
+  "platform.revisions": RevisionsTable;
+  "platform.files": FilesTable;
+  "platform.runs": RunsTable;
+  "platform.run_events": RunEventsTable;
+  "platform.gate_reports": GateReportsTable;
+  "platform.llm_calls": LlmCallsTable;
+  "platform.locks": LocksTable;
+}

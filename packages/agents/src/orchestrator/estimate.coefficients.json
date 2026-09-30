@@ -1,0 +1,24 @@
+{
+  "tokens": {
+    "base": 110000,
+    "perEntity": 18000,
+    "perField": 1000,
+    "perScreen": 20000,
+    "perAutomation": 12000,
+    "perIntegration": 20000,
+    "perRole": 5000,
+    "perAcceptance": 5000
+  },
+  "shares": {
+    "build_code": 0.55,
+    "fix": 0.2,
+    "build_ops": 0.1,
+    "qa_generate": 0.05,
+    "qa_explain": 0.05,
+    "plan": 0.05
+  },
+  "blend": { "input": 0.8, "output": 0.2 },
+  "range": { "min": 0.6, "max": 1.6 },
+  "cap": { "factor": 1.5, "floor": 10, "changeFloor": 3 },
+  "minutes": { "fastTokensPerMinute": 60000, "slowTokensPerMinute": 25000 }
+}

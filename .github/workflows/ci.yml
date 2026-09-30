@@ -28,7 +28,43 @@ jobs:
       - run: pip install pyyaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm check:code
       - run: pnpm typecheck
       - run: pnpm test
       - run: node tools/specs/validate.mjs
         if: hashFiles('tools/specs/validate.mjs') != ''
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_LLM_MODE: fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      # Artifacts come only from fixture runs (WIZARD_LLM_MODE=fixture above), never from live LLM runs.
+      - uses: actions/upload-artifact@v4
+        if: always() && env.WIZARD_LLM_MODE == 'fixture'
+        with:
+          name: playwright-report
+          path: |
+            packages/e2e/playwright-report
+            packages/e2e/test-results
+          retention-days: 7

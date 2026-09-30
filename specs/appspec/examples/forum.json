@@ -147,7 +147,7 @@
           "label": "Статус",
           "type": "enum",
           "required": true,
-          "enum": [{"value": "pending", "label": "В обработке"}, {"value": "succeeded", "label": "Успешно"}, {"value": "canceled", "label": "Отменён"}]
+          "enum": [{"value": "pending", "label": "В обработке"}, {"value": "succeeded", "label": "Успешно"}, {"value": "canceled", "label": "Отменён"}, {"value": "needs_review", "label": "Требует проверки"}]
         }
       ],
       "indexes": [{"fields": ["status", "created_at"]}]

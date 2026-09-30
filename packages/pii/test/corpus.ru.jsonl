@@ -442,3 +442,93 @@
 {"id":"l022","group":"limits","text":"Табличка: Владимир, Красная площадь","spans":[]}
 {"id":"l023","group":"limits","text":"Иду в кафе «Вера» с Надеждой Рыбаковой","spans":[{"kind":"person_name","start":20,"end":38}]}
 {"id":"l024","group":"limits","text":"Тел. доб. 1234, факс не работает","spans":[]}
+{"id":"p281","group":"positive","text":"Клиент Гасанли Орхан оставил заявку, телефон 8(903)9379240","spans":[{"kind":"person_name","start":7,"end":20},{"kind":"phone_ru","start":45,"end":58}]}
+{"id":"p282","group":"positive","text":"Передайте Шерзоду Кадырову, что заказ готов","spans":[{"kind":"person_name","start":10,"end":26}]}
+{"id":"p283","group":"positive","text":"Contact: Hans Kowalski, anna.orlova@bk.ru","spans":[{"kind":"person_name_latin","start":9,"end":22},{"kind":"email","start":24,"end":41}]}
+{"id":"p284","group":"positive","text":"Hi, my name is Thomas Smith and I need a quote","spans":[{"kind":"person_name_latin","start":15,"end":27}]}
+{"id":"p285","group":"positive","text":"Участники: Сардаана Аммосова, Туяна Саргсян и Наргиз Гасанли","spans":[{"kind":"person_name","start":11,"end":28},{"kind":"person_name","start":30,"end":43},{"kind":"person_name","start":46,"end":60}]}
+{"id":"p286","group":"positive","text":"Dear Robert Thompson, your order has shipped","spans":[{"kind":"person_name_latin","start":5,"end":20}]}
+{"id":"p287","group":"positive","text":"Заказчик Рахимзода Гиви, ИНН 872771311022","spans":[{"kind":"person_name","start":9,"end":23},{"kind":"inn_person","start":29,"end":41}]}
+{"id":"p288","group":"positive","text":"Ответственный — Бекнур Турсунов, тел. +7 (925) 260-62-20","spans":[{"kind":"person_name","start":16,"end":31},{"kind":"phone_ru","start":38,"end":56}]}
+{"id":"p289","group":"positive","text":"Водитель Джахонгир Досмухамбет, пропуск на завтра","spans":[{"kind":"person_name","start":9,"end":30}]}
+{"id":"p290","group":"positive","text":"Speaker: David Ashworth (keynote)","spans":[{"kind":"person_name_latin","start":9,"end":23}]}
+{"id":"p291","group":"positive","text":"Carlos Garcia will call you back on +37427478725","spans":[{"kind":"person_name_latin","start":0,"end":13},{"kind":"phone_intl","start":36,"end":48}]}
+{"id":"p292","group":"positive","text":"Получатель: Ашот Цыденов, 328605, г. Москва, проспект Ленина, д. 27, корп. 2, кв. 41","spans":[{"kind":"person_name","start":12,"end":24},{"kind":"address","start":26,"end":84}]}
+{"id":"p293","group":"positive","text":"Клиент Орхан Сафин оставил заявку, телефон +79316467822","spans":[{"kind":"person_name","start":7,"end":18},{"kind":"phone_ru","start":43,"end":55}]}
+{"id":"p294","group":"positive","text":"Передайте Фарруху Цыденову, что заказ готов","spans":[{"kind":"person_name","start":10,"end":26}]}
+{"id":"p295","group":"positive","text":"Contact: Hans Martinez, elena.orlova@bk.ru","spans":[{"kind":"person_name_latin","start":9,"end":22},{"kind":"email","start":24,"end":42}]}
+{"id":"p296","group":"positive","text":"Hi, my name is Sarah Davis and I need a quote","spans":[{"kind":"person_name_latin","start":15,"end":26}]}
+{"id":"p297","group":"positive","text":"Участники: Алишер Цыденов, Наргиз Мамедли и Гиви Шарипзода","spans":[{"kind":"person_name","start":11,"end":25},{"kind":"person_name","start":27,"end":41},{"kind":"person_name","start":44,"end":58}]}
+{"id":"p298","group":"positive","text":"Dear Hans Williams, your order has shipped","spans":[{"kind":"person_name_latin","start":5,"end":18}]}
+{"id":"p299","group":"positive","text":"Заказчик Айгерим Аммосова, ИНН 910756196930","spans":[{"kind":"person_name","start":9,"end":25},{"kind":"inn_person","start":31,"end":43}]}
+{"id":"p300","group":"positive","text":"Ответственный — Нурбол Мамедли, тел. +7-905-982-52-06","spans":[{"kind":"person_name","start":16,"end":30},{"kind":"phone_ru","start":37,"end":53}]}
+{"id":"p301","group":"positive","text":"Водитель Эльчин Кенжебай, пропуск на завтра","spans":[{"kind":"person_name","start":9,"end":24}]}
+{"id":"p302","group":"positive","text":"Speaker: Daniel Whitfield (keynote)","spans":[{"kind":"person_name_latin","start":9,"end":25}]}
+{"id":"p303","group":"positive","text":"Daniel Kowalski will call you back on +380 (05) 0618775","spans":[{"kind":"person_name_latin","start":0,"end":15},{"kind":"phone_intl","start":38,"end":55}]}
+{"id":"p304","group":"positive","text":"Получатель: Улугбек Беридзе, 468395, г. Екатеринбург, бульвар Гагарина, д. 109, корп. 2, кв. 28","spans":[{"kind":"person_name","start":12,"end":27},{"kind":"address","start":29,"end":95}]}
+{"id":"p305","group":"positive","text":"Клиент Леван Шарипзода оставил заявку, телефон 8-946-548-05-70","spans":[{"kind":"person_name","start":7,"end":22},{"kind":"phone_ru","start":47,"end":62}]}
+{"id":"p306","group":"positive","text":"Передайте Эльчину Жумабаеву, что заказ готов","spans":[{"kind":"person_name","start":10,"end":27}]}
+{"id":"p307","group":"positive","text":"Contact: David Jansen, dmitry90@mail.ru","spans":[{"kind":"person_name_latin","start":9,"end":21},{"kind":"email","start":23,"end":39}]}
+{"id":"p308","group":"positive","text":"Hi, my name is Rachel Nowak and I need a quote","spans":[{"kind":"person_name_latin","start":15,"end":27}]}
+{"id":"p309","group":"positive","text":"Участники: Кетеван Юлдашева, Цыденов Баир и Рамиль Хабибуллин","spans":[{"kind":"person_name","start":11,"end":27},{"kind":"person_name","start":29,"end":41},{"kind":"person_name","start":44,"end":61}]}
+{"id":"p310","group":"positive","text":"Dear DANIEL NOWAK, your order has shipped","spans":[{"kind":"person_name_latin","start":5,"end":17}]}
+{"id":"p311","group":"positive","text":"Заказчик Улугбек Турсунов, ИНН 514773854712","spans":[{"kind":"person_name","start":9,"end":25},{"kind":"inn_person","start":31,"end":43}]}
+{"id":"p312","group":"positive","text":"Ответственный — Сайёд Аммосов, тел. +7 999 309-52-33","spans":[{"kind":"person_name","start":16,"end":29},{"kind":"phone_ru","start":36,"end":52}]}
+{"id":"p313","group":"positive","text":"Водитель Алишер Жумагул, пропуск на завтра","spans":[{"kind":"person_name","start":9,"end":23}]}
+{"id":"p314","group":"positive","text":"Speaker: Peter Pemberton (keynote)","spans":[{"kind":"person_name_latin","start":9,"end":24}]}
+{"id":"p315","group":"positive","text":"John Miller will call you back on +996 534 640-59-0","spans":[{"kind":"person_name_latin","start":0,"end":11},{"kind":"phone_intl","start":34,"end":51}]}
+{"id":"p316","group":"positive","text":"Получатель: Айгуль Шарипзода, г. Краснодар, пер. Тверская, д. 22, стр. 3, оф. 63","spans":[{"kind":"person_name","start":12,"end":28},{"kind":"address","start":30,"end":80}]}
+{"id":"p317","group":"positive","text":"Клиент Гасанли Нино оставил заявку, телефон 8(940)5023150","spans":[{"kind":"person_name","start":7,"end":19},{"kind":"phone_ru","start":44,"end":57}]}
+{"id":"p318","group":"positive","text":"Передайте Баиру Сафину, что заказ готов","spans":[{"kind":"person_name","start":10,"end":22}]}
+{"id":"p319","group":"positive","text":"Contact: David Taylor, i.orlova@gmail.com","spans":[{"kind":"person_name_latin","start":9,"end":21},{"kind":"email","start":23,"end":41}]}
+{"id":"p320","group":"positive","text":"Hi, my name is Jennifer Johnson and I need a quote","spans":[{"kind":"person_name_latin","start":15,"end":31}]}
+{"id":"p321","group":"positive","text":"Участники: Аммосов Джахонгир, Нурлан Беридзе и Нино Сафина","spans":[{"kind":"person_name","start":11,"end":28},{"kind":"person_name","start":30,"end":44},{"kind":"person_name","start":47,"end":58}]}
+{"id":"p322","group":"positive","text":"Dear Hans Mueller, your order has shipped","spans":[{"kind":"person_name_latin","start":5,"end":17}]}
+{"id":"p323","group":"positive","text":"Заказчик Айсен Мамедли, ИНН 056758788690","spans":[{"kind":"person_name","start":9,"end":22},{"kind":"inn_person","start":28,"end":40}]}
+{"id":"p324","group":"positive","text":"Ответственный — Сайёд Аммосов, тел. +7 940 296 99 04","spans":[{"kind":"person_name","start":16,"end":29},{"kind":"phone_ru","start":36,"end":52}]}
+{"id":"p325","group":"positive","text":"Водитель Бахтиёр Досмухамбет, пропуск на завтра","spans":[{"kind":"person_name","start":9,"end":28}]}
+{"id":"p326","group":"positive","text":"Speaker: Pierre Hargreaves (keynote)","spans":[{"kind":"person_name_latin","start":9,"end":26}]}
+{"id":"p327","group":"positive","text":"Jennifer Kowalski will call you back on +996 (597) 560292","spans":[{"kind":"person_name_latin","start":0,"end":17},{"kind":"phone_intl","start":40,"end":57}]}
+{"id":"p328","group":"positive","text":"Получатель: Мамедова Нино, пр-т Садовая, дом 125, квартира 56","spans":[{"kind":"person_name","start":12,"end":25},{"kind":"address","start":27,"end":61}]}
+{"id":"p329","group":"positive","text":"Клиент Леван Саргсян оставил заявку, телефон +7 965 532-40-63","spans":[{"kind":"person_name","start":7,"end":20},{"kind":"phone_ru","start":45,"end":61}]}
+{"id":"p330","group":"positive","text":"Передайте Эльчину Мкртчяну, что заказ готов","spans":[{"kind":"person_name","start":10,"end":26}]}
+{"id":"p331","group":"positive","text":"Contact: Rachel Thompson, popov.irina9@yandex.ru","spans":[{"kind":"person_name_latin","start":9,"end":24},{"kind":"email","start":26,"end":48}]}
+{"id":"p332","group":"positive","text":"Hi, my name is Giulia Mueller and I need a quote","spans":[{"kind":"person_name_latin","start":15,"end":29}]}
+{"id":"p333","group":"positive","text":"Участники: Галиев Бахтиёр, Кобахидзе Нино и Гасанли Кетеван","spans":[{"kind":"person_name","start":11,"end":25},{"kind":"person_name","start":27,"end":41},{"kind":"person_name","start":44,"end":59}]}
+{"id":"p334","group":"positive","text":"Dear Thomas Smith, your order has shipped","spans":[{"kind":"person_name_latin","start":5,"end":17}]}
+{"id":"p335","group":"positive","text":"Заказчик Наргиз Рахимзода, ИНН 277763126100","spans":[{"kind":"person_name","start":9,"end":25},{"kind":"inn_person","start":31,"end":43}]}
+{"id":"p336","group":"positive","text":"Ответственный — Азизбек Цыденов, тел. +7-950-062-87-30","spans":[{"kind":"person_name","start":16,"end":31},{"kind":"phone_ru","start":38,"end":54}]}
+{"id":"p337","group":"positive","text":"Водитель Алишер Досмухамбет, пропуск на завтра","spans":[{"kind":"person_name","start":9,"end":27}]}
+{"id":"p338","group":"positive","text":"Speaker: Kevin Ashworth (keynote)","spans":[{"kind":"person_name_latin","start":9,"end":23}]}
+{"id":"p339","group":"positive","text":"Laura Schmidt will call you back on +998 (28) 2244489","spans":[{"kind":"person_name_latin","start":0,"end":13},{"kind":"phone_intl","start":36,"end":53}]}
+{"id":"p340","group":"positive","text":"Получатель: Эргашев Ильдар, г. Владимир, улица Чкалова, д. 135, кв. 210","spans":[{"kind":"person_name","start":12,"end":26},{"kind":"address","start":28,"end":71}]}
+{"id":"t141","group":"trap","text":"Белый Дом объявил о переговорах","spans":[]}
+{"id":"t142","group":"trap","text":"Дед Мороз и Снегурочка придут в 18:00","spans":[]}
+{"id":"t143","group":"trap","text":"Серый Волк — герой сказки","spans":[]}
+{"id":"t144","group":"trap","text":"White House press briefing at noon","spans":[]}
+{"id":"t145","group":"trap","text":"Black Friday sale starts next week","spans":[]}
+{"id":"t146","group":"trap","text":"Open it in Visual Studio Code or Google Chrome","spans":[]}
+{"id":"t147","group":"trap","text":"Hello World example for Microsoft Teams","spans":[]}
+{"id":"t148","group":"trap","text":"The New York Times reported growth","spans":[]}
+{"id":"t149","group":"trap","text":"Jordan River and Austin Texas are on the map","spans":[]}
+{"id":"t150","group":"trap","text":"Лада Веста и Роза Хутор","spans":[]}
+{"id":"t151","group":"trap","text":"Мир Кино открылся после ремонта","spans":[]}
+{"id":"t152","group":"trap","text":"Проспект Сахарова перекрыт до вечера","spans":[]}
+{"id":"t153","group":"trap","text":"Площадь Королёва реконструируют","spans":[]}
+{"id":"t154","group":"trap","text":"Agent Smith is a movie character","spans":[]}
+{"id":"t155","group":"trap","text":"Morgan Stanley and Wells Fargo report earnings","spans":[]}
+{"id":"t156","group":"trap","text":"Grace Period ends on Friday","spans":[]}
+{"id":"t157","group":"trap","text":"Smith Street near Johnson Controls office","spans":[]}
+{"id":"t158","group":"trap","text":"Премия Кандинского вручена в Москве","spans":[]}
+{"id":"t159","group":"trap","text":"Встречаемся в кафе «Тимур Парк»","spans":[]}
+{"id":"t160","group":"trap","text":"На улице Мусы Джалиля ремонт","spans":[]}
+{"id":"t161","group":"trap","text":"Visual Basic и Apple Music","spans":[]}
+{"id":"t162","group":"trap","text":"Red Hat Enterprise Linux 9","spans":[]}
+{"id":"t163","group":"trap","text":"Pull Request прошёл Code Review","spans":[]}
+{"id":"t164","group":"trap","text":"Merry Christmas and Happy New Year","spans":[]}
+{"id":"t165","group":"trap","text":"Москва Сити и Нижний Новгород","spans":[]}
+{"id":"t166","group":"trap","text":"Ростов Великий, Сергиев Посад","spans":[]}
+{"id":"t167","group":"trap","text":"Али Экспресс доставит заказ","spans":[]}
+{"id":"t168","group":"trap","text":"Уважаемые Коллеги, Добро Пожаловать","spans":[]}
+{"id":"t169","group":"trap","text":"Салон Гузель Стиль работает до 20:00","spans":[]}
+{"id":"t170","group":"trap","text":"Мадина Маркет, Алмаз Холдинг, Банк Санкт-Петербург","spans":[]}

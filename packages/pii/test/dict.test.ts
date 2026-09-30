@@ -21,6 +21,25 @@ describe("names dictionary (data/names.ru.txt)", () => {
     expect(TXT).toMatch(/CC0-1\.0/);
   });
 
+  test("FU-1 sizes: ≥ 300 non-Slavic names, ≥ 200 non-Slavic surnames, ≥ 200 English/European names and surnames", () => {
+    const flagsOf = (l: string) => l.split("\t")[1] ?? "";
+    const both = (a: string, b: string) =>
+      entries.filter((l) => flagsOf(l).includes(a) && flagsOf(l).includes(b)).length;
+    expect(
+      entries.filter((l) => flagsOf(l).includes("o") && /[mf]/.test(flagsOf(l))).length,
+    ).toBeGreaterThanOrEqual(300);
+    expect(both("o", "s")).toBeGreaterThanOrEqual(200);
+    expect(both("w", "l")).toBeGreaterThanOrEqual(200);
+    expect(both("w", "s")).toBeGreaterThanOrEqual(200);
+    const { names, strongSurnames } = nameDict();
+    expect(names.get("джахонгир")).toBeDefined();
+    expect(strongSurnames.has("рахимовой")).toBe(true); // feminine case forms of -ов surnames
+    expect(strongSurnames.has("smith")).toBe(true);
+    expect(strongSurnames.has("мороз")).toBe(false); // also a common word
+    expect(names.get("mark")?.word).toBe(true);
+    expect(names.get("john")?.word).toBe(false);
+  });
+
   test("case forms", () => {
     expect(caseForms("Иван", "m")).toEqual(expect.arrayContaining(["Ивана", "Ивану", "Иваном", "Иване"]));
     expect(caseForms("Мария", "f")).toEqual(expect.arrayContaining(["Марии", "Марию", "Марией"]));

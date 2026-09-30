@@ -1,0 +1,131 @@
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--w-density-gap);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--w-font-size-lg);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--w-muted);
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--w-density-pad);
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.kpiLabel {
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+}
+
+.kpiValue {
+  margin: 0;
+  font-size: var(--w-font-size-xl);
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.kpiHint {
+  margin: 0;
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--w-density-pad);
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.barsTitle {
+  margin: 0;
+  font-size: var(--w-font-size);
+}
+
+.barList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label value"
+    "meter meter";
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.barLabel {
+  grid-area: label;
+  min-width: 0;
+}
+
+.barValue {
+  grid-area: value;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.meter {
+  grid-area: meter;
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  border-radius: var(--w-radius-sm);
+  background: var(--w-neutral-soft);
+}
+
+.fill {
+  display: block;
+  width: var(--w-bar);
+  height: 100%;
+  background: var(--w-accent);
+}
+
+@media (min-width: 960px) {
+  .kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .bar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+    grid-template-areas: "label meter value";
+  }
+}
