@@ -278,7 +278,7 @@ tasks:
     owner: qa
     parallel_group: m0-w6
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "`pnpm e2e` (fixture demo/forum) без сети к LLM: S1 → «Остальное по рекомендации» → «Строить» → G0 и G1 passed → превью → смена акцента → участник регистрируется с согласием → QrTicket → волонтёр сканирует: ok, повтор: duplicate"
