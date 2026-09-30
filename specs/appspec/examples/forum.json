@@ -1,0 +1,300 @@
+{
+  "specVersion": "1",
+  "app": {
+    "name": "Форум «Северный ритейл»",
+    "description": "Форум для ритейла на 600 участников, 3 потока: регистрация с разными билетами, модерация заявок спикеров, квоты партнёров, оплата, QR на входе и напоминания.",
+    "locale": "ru",
+    "template": "event_registration"
+  },
+  "theme": { "accent": "#C2410C", "font": "Onest", "radius": 12, "density": "regular", "mode": "auto" },
+  "entities": [
+    {
+      "name": "stream", "label": "Поток",
+      "fields": [
+        { "name": "name", "label": "Название", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "capacity", "label": "Вместимость", "type": "int", "required": true, "min": 1, "max": 10000 },
+        { "name": "description", "label": "Описание", "type": "text" }
+      ]
+    },
+    {
+      "name": "ticket_type", "label": "Тип билета",
+      "fields": [
+        { "name": "name", "label": "Название", "type": "string", "required": true, "maxLength": 80 },
+        { "name": "kind", "label": "Вид", "type": "enum", "required": true, "enum": [
+          { "value": "standard", "label": "Стандарт" }, { "value": "vip", "label": "VIP" }, { "value": "partner", "label": "Партнёрский" } ] },
+        { "name": "price", "label": "Цена", "type": "money", "required": true, "min": 0 },
+        { "name": "capacity", "label": "Всего билетов", "type": "int", "required": true, "min": 0 },
+        { "name": "description", "label": "Что входит", "type": "text" },
+        { "name": "active", "label": "В продаже", "type": "bool", "default": true }
+      ],
+      "indexes": [ { "fields": ["active"] } ]
+    },
+    {
+      "name": "ticket", "label": "Билет",
+      "fields": [
+        { "name": "ticket_type", "label": "Тип билета", "type": "ref", "required": true, "ref": { "entity": "ticket_type" } },
+        { "name": "stream", "label": "Поток", "type": "ref", "required": true, "ref": { "entity": "stream" } },
+        { "name": "holder_user", "label": "Владелец", "type": "ref", "required": true, "ref": { "entity": "users" } },
+        { "name": "holder_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic" },
+        { "name": "holder_email", "label": "Email", "type": "email", "required": true, "pii": "basic" },
+        { "name": "holder_phone", "label": "Телефон", "type": "phone", "pii": "basic" },
+        { "name": "company", "label": "Компания", "type": "string", "maxLength": 200 },
+        { "name": "status", "label": "Статус", "type": "enum", "required": true, "default": "pending_payment", "enum": [
+          { "value": "pending_payment", "label": "Ожидает оплаты" }, { "value": "paid", "label": "Оплачен" },
+          { "value": "issued", "label": "Выдан по квоте" }, { "value": "canceled", "label": "Отменён" },
+          { "value": "refunded", "label": "Возвращён" } ] },
+        { "name": "amount", "label": "Сумма", "type": "money", "required": true, "min": 0 },
+        { "name": "promo_code", "label": "Промокод", "type": "string", "maxLength": 40 },
+        { "name": "qr_token", "label": "QR-код", "type": "qr_token" },
+        { "name": "event_starts_at", "label": "Начало форума", "type": "datetime", "required": true }
+      ],
+      "indexes": [ { "fields": ["stream", "status", "created_at"] }, { "fields": ["ticket_type", "status", "created_at"] } ],
+      "ownerField": "holder_user",
+      "retention": { "deleteAfterDays": 30, "anchorField": "event_starts_at", "mode": "anonymize" }
+    },
+    {
+      "name": "speaker_application", "label": "Заявка спикера",
+      "fields": [
+        { "name": "speaker_user", "label": "Спикер", "type": "ref", "required": true, "ref": { "entity": "users" } },
+        { "name": "full_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic" },
+        { "name": "email", "label": "Email", "type": "email", "required": true, "pii": "basic" },
+        { "name": "phone", "label": "Телефон", "type": "phone", "pii": "basic" },
+        { "name": "company", "label": "Компания", "type": "string", "maxLength": 200 },
+        { "name": "topic", "label": "Тема", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "abstract", "label": "Описание доклада", "type": "text", "required": true, "maxLength": 5000 },
+        { "name": "stream", "label": "Поток", "type": "ref", "ref": { "entity": "stream", "onDelete": "set_null" } },
+        { "name": "status", "label": "Статус", "type": "enum", "required": true, "default": "new", "enum": [
+          { "value": "new", "label": "Новая" }, { "value": "approved", "label": "Одобрена" }, { "value": "rejected", "label": "Отклонена" } ] },
+        { "name": "moderator_comment", "label": "Комментарий модератора", "type": "text", "maxLength": 2000 }
+      ],
+      "indexes": [ { "fields": ["status", "created_at"] } ],
+      "ownerField": "speaker_user",
+      "retention": { "deleteAfterDays": 180, "mode": "anonymize" }
+    },
+    {
+      "name": "partner_quota", "label": "Квота партнёра",
+      "fields": [
+        { "name": "partner_user", "label": "Партнёр", "type": "ref", "required": true, "ref": { "entity": "users" } },
+        { "name": "company", "label": "Компания", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "promo_code", "label": "Промокод", "type": "string", "required": true, "unique": true, "maxLength": 40 },
+        { "name": "ticket_type", "label": "Тип билета", "type": "ref", "required": true, "ref": { "entity": "ticket_type" } },
+        { "name": "total", "label": "Всего мест", "type": "int", "required": true, "min": 0 },
+        { "name": "used", "label": "Использовано", "type": "int", "required": true, "default": 0, "min": 0 }
+      ],
+      "ownerField": "partner_user"
+    },
+    {
+      "name": "session", "label": "Сессия программы",
+      "fields": [
+        { "name": "title", "label": "Название", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "stream", "label": "Поток", "type": "ref", "required": true, "ref": { "entity": "stream" } },
+        { "name": "starts_at", "label": "Начало", "type": "datetime", "required": true },
+        { "name": "ends_at", "label": "Окончание", "type": "datetime", "required": true },
+        { "name": "room", "label": "Зал", "type": "string", "maxLength": 40 },
+        { "name": "speaker_application", "label": "Доклад", "type": "ref", "ref": { "entity": "speaker_application", "onDelete": "set_null" } }
+      ],
+      "indexes": [ { "fields": ["starts_at"] }, { "fields": ["stream", "starts_at"] } ]
+    },
+    {
+      "name": "checkin", "label": "Проход",
+      "fields": [
+        { "name": "ticket", "label": "Билет", "type": "ref", "required": true, "unique": true, "ref": { "entity": "ticket" } },
+        { "name": "scanned_at", "label": "Время прохода", "type": "datetime", "required": true },
+        { "name": "device_id", "label": "Устройство", "type": "string", "required": true, "maxLength": 64 },
+        { "name": "gate", "label": "Вход", "type": "string", "maxLength": 40 },
+        { "name": "offline", "label": "Отмечен без сети", "type": "bool", "default": false }
+      ],
+      "indexes": [ { "fields": ["scanned_at"] } ]
+    },
+    {
+      "name": "payment", "label": "Платёж",
+      "fields": [
+        { "name": "ticket", "label": "Билет", "type": "ref", "required": true, "ref": { "entity": "ticket" } },
+        { "name": "provider_payment_id", "label": "ID платежа ЮKassa", "type": "string", "required": true, "unique": true, "maxLength": 64 },
+        { "name": "kind", "label": "Вид", "type": "enum", "required": true, "enum": [
+          { "value": "payment", "label": "Оплата" }, { "value": "refund", "label": "Возврат" } ] },
+        { "name": "amount", "label": "Сумма", "type": "money", "required": true, "min": 0 },
+        { "name": "status", "label": "Статус", "type": "enum", "required": true, "enum": [
+          { "value": "pending", "label": "В обработке" }, { "value": "succeeded", "label": "Успешно" }, { "value": "canceled", "label": "Отменён" } ] }
+      ],
+      "indexes": [ { "fields": ["status", "created_at"] } ]
+    }
+  ],
+  "roles": [
+    { "name": "organizer", "label": "Организатор", "access": "login", "isAdmin": true },
+    { "name": "moderator", "label": "Модератор", "access": "login" },
+    { "name": "speaker", "label": "Спикер", "access": "login", "loginMethods": ["email_otp", "telegram"] },
+    { "name": "partner", "label": "Партнёр", "access": "login" },
+    { "name": "participant", "label": "Участник", "access": "login", "loginMethods": ["phone_otp", "email_otp", "telegram"] },
+    { "name": "volunteer", "label": "Волонтёр на входе", "access": "login" },
+    { "name": "visitor", "label": "Посетитель", "access": "public" }
+  ],
+  "permissions": [
+    { "role": "organizer", "entity": "stream", "ops": ["read", "create", "update", "delete"] },
+    { "role": "organizer", "entity": "ticket_type", "ops": ["read", "create", "update", "delete"] },
+    { "role": "organizer", "entity": "ticket", "ops": ["read", "update"], "readonlyFields": ["holder_user", "amount", "qr_token", "ticket_type", "stream"] },
+    { "role": "organizer", "entity": "speaker_application", "ops": ["read", "update", "delete"] },
+    { "role": "organizer", "entity": "partner_quota", "ops": ["read", "create", "update", "delete"], "readonlyFields": ["used"] },
+    { "role": "organizer", "entity": "session", "ops": ["read", "create", "update", "delete"] },
+    { "role": "organizer", "entity": "checkin", "ops": ["read"] },
+    { "role": "organizer", "entity": "payment", "ops": ["read"] },
+
+    { "role": "moderator", "entity": "stream", "ops": ["read"] },
+    { "role": "moderator", "entity": "session", "ops": ["read", "create", "update"] },
+    { "role": "moderator", "entity": "speaker_application", "ops": ["read", "update"], "hiddenFields": ["phone"],
+      "readonlyFields": ["speaker_user", "full_name", "email", "company", "topic", "abstract"] },
+
+    { "role": "speaker", "entity": "stream", "ops": ["read"] },
+    { "role": "speaker", "entity": "session", "ops": ["read"] },
+    { "role": "speaker", "entity": "speaker_application", "ops": ["read", "create", "update"],
+      "rowFilter": { "speaker_user": "$user.id" }, "readonlyFields": ["status", "moderator_comment"] },
+
+    { "role": "partner", "entity": "stream", "ops": ["read"] },
+    { "role": "partner", "entity": "ticket_type", "ops": ["read"] },
+    { "role": "partner", "entity": "session", "ops": ["read"] },
+    { "role": "partner", "entity": "partner_quota", "ops": ["read"], "rowFilter": { "partner_user": "$user.id" } },
+
+    { "role": "participant", "entity": "stream", "ops": ["read"] },
+    { "role": "participant", "entity": "ticket_type", "ops": ["read"] },
+    { "role": "participant", "entity": "session", "ops": ["read"] },
+    { "role": "participant", "entity": "ticket", "ops": ["read"], "rowFilter": { "holder_user": "$user.id" } },
+
+    { "role": "volunteer", "entity": "stream", "ops": ["read"] },
+    { "role": "volunteer", "entity": "ticket_type", "ops": ["read"] },
+    { "role": "volunteer", "entity": "ticket", "ops": ["read"], "hiddenFields": ["holder_name", "holder_email", "holder_phone", "company", "amount", "promo_code", "qr_token"] },
+    { "role": "volunteer", "entity": "checkin", "ops": ["read", "create"] },
+
+    { "role": "visitor", "entity": "stream", "ops": ["read"] },
+    { "role": "visitor", "entity": "ticket_type", "ops": ["read"] },
+    { "role": "visitor", "entity": "session", "ops": ["read"] }
+  ],
+  "workflows": [
+    {
+      "name": "ticket_reminder", "label": "Напоминание за 24 часа",
+      "trigger": { "type": "schedule", "entity": "ticket", "relative": { "field": "event_starts_at", "offsetMinutes": -1440 } },
+      "steps": [ { "type": "function", "params": { "name": "sendReminder", "if": { "status": ["paid", "issued"] },
+        "args": { "ticketId": "$record.id", "userId": "$record.holder_user", "startsAt": "$record.event_starts_at" } } } ]
+    },
+    {
+      "name": "ticket_paid_email", "label": "Письмо с билетом",
+      "trigger": { "type": "on_status", "entity": "ticket", "field": "status", "equals": "paid" },
+      "steps": [ { "type": "notify", "params": { "integration": "email", "to": "$record.holder_user", "template": "ticket_issued", "attachQr": true } } ]
+    },
+    {
+      "name": "speaker_approved", "label": "Спикер одобрен",
+      "trigger": { "type": "on_status", "entity": "speaker_application", "field": "status", "equals": "approved" },
+      "steps": [
+        { "type": "notify", "params": { "integration": "email", "to": "$record.speaker_user", "template": "speaker_approved" } },
+        { "type": "notify", "params": { "integration": "telegram", "to": "$record.speaker_user", "text": "Ваша заявка спикера одобрена. Подробности — в личном кабинете." } }
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "name": "yookassa", "connector": "yookassa",
+      "config": {
+        "bindings": [ {
+          "id": "ticket", "entity": "ticket", "amountField": "amount",
+          "payableStatus": "pending_payment", "paidStatus": "paid", "canceledStatus": "canceled", "refundedStatus": "refunded",
+          "paymentEntity": { "name": "payment", "refField": "ticket" },
+          "description": "Билет на форум «Северный ритейл»", "returnRoute": "/ticket/:id",
+          "receipt": { "customerEmailField": "holder_email", "paymentSubject": "service", "paymentMode": "full_payment", "vatCode": 1 }
+        } ],
+        "refundWindowDays": 7
+      },
+      "secretRefs": ["secret://yookassa_shop_id", "secret://yookassa_secret_key"]
+    },
+    {
+      "name": "telegram", "connector": "telegram",
+      "config": { "botUsername": "north_retail_forum_bot", "allowPii": false },
+      "secretRefs": ["secret://telegram_bot_token", "secret://telegram_webhook_secret"]
+    },
+    {
+      "name": "email", "connector": "email",
+      "config": {
+        "provider": "smtp", "host": "smtp.mail.ru", "port": 465, "secure": true, "user": "forum@north-retail.example",
+        "from": { "name": "Форум «Северный ритейл»", "address": "forum@north-retail.example" },
+        "templates": {
+          "ticket_issued": { "subject": "Ваш билет на форум «Северный ритейл»",
+            "body": "Оплата получена. QR-код билета — во вложении и в личном кабинете: {{link}}. Покажите его на входе." },
+          "speaker_approved": { "subject": "Заявка спикера одобрена",
+            "body": "Ваша заявка одобрена. Время и зал выступления появятся в кабинете: {{link}}." }
+        }
+      },
+      "secretRefs": ["secret://smtp_password"]
+    },
+    {
+      "name": "qr", "connector": "qr",
+      "config": {
+        "entity": "ticket", "tokenField": "qr_token", "validStatuses": ["paid", "issued"],
+        "checkin": { "entity": "checkin", "refField": "ticket" },
+        "displayFields": ["ticket_type", "stream"], "offline": true, "scannerRoles": ["volunteer", "organizer"]
+      },
+      "secretRefs": ["secret://qr_signing_key"]
+    }
+  ],
+  "functions": [
+    { "name": "ticketAvailability", "kind": "query", "file": "functions/ticketAvailability.ts", "public": true,
+      "roles": ["visitor", "participant", "speaker", "partner", "moderator", "volunteer", "organizer"] },
+    { "name": "partnerQuota", "kind": "query", "file": "functions/partnerQuota.ts", "public": true, "roles": ["partner", "organizer"] },
+    { "name": "registerTicket", "kind": "mutation", "file": "functions/registerTicket.ts", "public": true, "roles": ["participant"] },
+    { "name": "sendReminder", "kind": "action", "file": "functions/sendReminder.ts", "public": false }
+  ],
+  "pages": [
+    { "route": "/", "title": "Форум", "file": "ui/Landing.tsx",
+      "roles": ["visitor", "participant", "speaker", "partner", "moderator", "volunteer", "organizer"] },
+    { "route": "/moderation", "title": "Модерация заявок", "file": "ui/Moderation.tsx", "roles": ["moderator", "organizer"] },
+    { "route": "/ticket/:id", "title": "Мой билет", "file": "ui/MyTicket.tsx", "roles": ["participant"], "nav": false },
+    { "route": "/scanner", "title": "Сканер билетов", "file": "ui/Scanner.tsx", "roles": ["volunteer", "organizer"] }
+  ],
+  "acceptance": [
+    { "id": "AC1", "text": "Билет нельзя купить сверх лимита потока",
+      "check": { "type": "scenario", "steps": [
+        { "seed": { "stream": [ { "$alias": "s1", "name": "e-com", "capacity": 2 } ],
+                    "ticket_type": [ { "$alias": "std", "name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100 } ] } },
+        { "as": "participant#1", "call": "fn:registerTicket", "args": { "ticketTypeId": "$s.std", "streamId": "$s.s1", "holderName": "Тест Один", "holderEmail": "t1@example.test" }, "expect": { "ok": true } },
+        { "as": "participant#2", "call": "fn:registerTicket", "args": { "ticketTypeId": "$s.std", "streamId": "$s.s1", "holderName": "Тест Два", "holderEmail": "t2@example.test" }, "expect": { "ok": true } },
+        { "as": "participant#3", "call": "fn:registerTicket", "args": { "ticketTypeId": "$s.std", "streamId": "$s.s1", "holderName": "Тест Три", "holderEmail": "t3@example.test" }, "expect": { "error": "STREAM_FULL" } }
+      ] } },
+    { "id": "AC2", "text": "Партнёр видит только свою квоту",
+      "check": { "type": "scenario", "steps": [
+        { "seed": { "partner_quota": [
+          { "partner_user": "$u.partner#1", "company": "Альфа", "promo_code": "ALFA10", "ticket_type": "$s.std", "total": 10 },
+          { "partner_user": "$u.partner#2", "company": "Бета", "promo_code": "BETA10", "ticket_type": "$s.std", "total": 10 } ] } },
+        { "as": "partner#1", "call": "data:list:partner_quota", "expect": { "count": 1, "items": [ { "promo_code": "ALFA10" } ] } },
+        { "as": "partner#1", "call": "fn:partnerQuota", "args": {}, "expect": { "count": 1 } }
+      ] } },
+    { "id": "AC3", "text": "Спикер не видит чужие заявки",
+      "check": { "type": "scenario", "steps": [
+        { "as": "speaker#1", "call": "data:create:speaker_application", "args": { "full_name": "Спикер Один", "email": "s1@example.test", "topic": "Ценники", "abstract": "Кейс" }, "expect": { "ok": true, "save": "a1" } },
+        { "as": "speaker#2", "call": "data:list:speaker_application", "expect": { "count": 0 } },
+        { "as": "speaker#2", "call": "data:get:speaker_application", "args": { "id": "$saved.a1.id" }, "expect": { "status": 404 } }
+      ] } },
+    { "id": "AC4", "text": "Повторный вход по одному QR отклоняется",
+      "check": { "type": "scenario", "steps": [
+        { "seed": { "ticket": [ { "$alias": "t1", "status": "paid" } ] } },
+        { "as": "volunteer", "call": "qr:checkin", "args": { "ticket": "$s.t1" }, "expect": { "result": "ok" } },
+        { "as": "volunteer", "call": "qr:checkin", "args": { "ticket": "$s.t1" }, "expect": { "result": "duplicate" } }
+      ] } },
+    { "id": "AC5", "text": "Сканер работает без сети и синхронизирует",
+      "check": { "type": "scenario", "milestone": "M2", "steps": [
+        { "seed": { "ticket": [ { "$alias": "t1", "status": "paid" }, { "$alias": "t2", "status": "issued" } ] } },
+        { "as": "volunteer", "call": "qr:package", "expect": { "ok": true } },
+        { "as": "volunteer", "call": "qr:sync", "args": { "deviceId": "dev-a", "events": [ { "ticket": "$s.t1" }, { "ticket": "$s.t2" } ] }, "expect": { "accepted": 2 } },
+        { "as": "volunteer", "call": "qr:sync", "args": { "deviceId": "dev-b", "events": [ { "ticket": "$s.t1" } ] }, "expect": { "accepted": 0, "duplicate": 1 } }
+      ] } },
+    { "id": "AC6", "text": "ПДн участников удаляются через 30 дней после форума",
+      "check": { "type": "constraint", "entity": "ticket", "steps": [
+        { "seed": { "ticket": [ { "$alias": "t1", "status": "paid", "event_starts_at": "$now-31d" } ] } },
+        { "call": "system:runRetention" },
+        { "as": "organizer", "call": "data:get:ticket", "args": { "id": "$s.t1" }, "expect": { "item": { "holder_name": null, "holder_email": null, "holder_phone": null } } }
+      ] } },
+    { "id": "AC7", "text": "Посетитель без входа не видит билеты",
+      "check": { "type": "permission", "role": "visitor", "entity": "ticket", "op": "read", "expect": "deny" } }
+  ],
+  "compliance": {
+    "consentText": "Я соглашаюсь на обработку моих персональных данных (ФИО, телефон, email) для регистрации на форум. Данные удаляются через 30 дней после форума.",
+    "policyPage": "/privacy",
+    "operatorName": "ООО «Северный ритейл»"
+  }
+}

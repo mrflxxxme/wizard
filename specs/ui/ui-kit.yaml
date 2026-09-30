@@ -111,11 +111,14 @@ wz_id:
 data_binding:
   provider: "WzProvider {spec: RoleSpec, dataSource?: DataSource, user?} — корень приложения (ставит runtime-шаблон, не строитель). По умолчанию dataSource = sdkDataSource() поверх хуков @wizard/sdk."
   role_spec: "RoleSpec — проекция AppSpec для текущей роли, которую отдаёт runtime (/_wizard/spec): entities без hiddenFields, permissions только своей роли, pages с roles∋role, theme, compliance. Компоненты читают метаданные полей только отсюда."
-  sdk_hooks_required:   # что ui-kit ожидает от specs/runtime/sdk.md
-    - "useQuery(ref, args) → {data, isLoading, error, refetch}"
-    - "useMutation(ref) → {mutate(args): Promise<T>, isPending, error}"
-    - "useUser() → {user: {id, role, displayName} | null, login(method), logout()}"
-    - "data API клиент: list(entity, {filter, sort, page, pageSize, search}) → {items, total}; get(entity, id); create(entity, values, {consent?}); update(entity, id, patch); remove(entity, id)"
+  sdk_mapping:   # sdkDataSource() поверх specs/runtime/sdk.md §3 (имена оттуда нормативны)
+    useList: "useEntityList(entity, {filter, sort: dir==='desc' ? '-'+field : field, page, limit: pageSize ≤ 100}) → {items, total}; search → filter {<первое string-поле>: {contains}}"
+    useRecord: "useEntity(entity, id)"
+    useCreate/useUpdate/useRemove: "useEntityMutation(entity).create/update/remove"
+    useFn: "useQuery(name, args | 'skip')"
+    user: "useUser() → {user: {id, role, displayName, isAdmin} | null, isLoading, logout}"
+    errors: "WizardError {code, message, details} → WzError"
+    missing_in_sdk: "вход (login по методу) и передача согласия в create — см. AppShell.Login и RecordForm.consent; до появления в sdk.md ui-kit вызывает /api/auth/* и передаёт согласие по контракту runtime.yaml"
   DataSource_interface: |
     interface DataSource {
       useList<T>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
@@ -158,7 +161,7 @@ components:
       - "lg: боковая навигация слева; sm/md: верхняя панель + кнопка «Меню» → drawer (фокус-ловушка, Esc)"
       - "Активный пункт по location.pathname (aria-current=page); маршруты с параметрами (/:id) в nav не попадают"
       - "Меню пользователя: displayName (телефон маскирован +7 ••• ••• 45 10), роль (label), «Выйти». Гость и есть роли access=login → кнопка «Войти»"
-      - "Вход: маршрут /login рендерит AppShell.Login — методы = объединение loginMethods ролей с access=login: phone_otp (телефон → код), email_otp, telegram (виджет Telegram Login). Шаги и ошибки — через useUser().login; API — /api/auth/* (runtime.yaml)"
+      - "Вход: маршрут /login рендерит AppShell.Login — методы = объединение loginMethods ролей с access=login: phone_otp (телефон → код), email_otp, telegram (виджет Telegram Login). Запросы — /api/auth/* (runtime.yaml), после успеха — refetch useUser()"
       - "Подвал: ссылка «Политика обработки персональных данных» → compliance.policyPage, если в спеке есть поле pii≠none; M2: ссылка «Пожаловаться» на форму жалоб платформы"
       - "Страница, недоступная роли: гость → /login?next=…, авторизованный → «Нет доступа»"
     test_ids: [wz-appshell, wz-appshell-nav, wz-appshell-menu-toggle, wz-appshell-user, wz-appshell-login, wz-appshell-logout, wz-login-method-<method>, wz-appshell-policy-link]

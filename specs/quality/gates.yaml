@@ -1,0 +1,165 @@
+# Гейты качества G0–G2 (блокируют публикацию, product.yaml D8). G3/G4 — после MVP.
+# Нормативно для packages/gates: runGates(level, ctx) -> GateReport (architecture.yaml#interfaces.gates).
+# Паттерны антифрода, списки брендов и словари — specs/security/abuse.yaml#patterns (здесь только id проверок и правила).
+version: 1
+
+report:
+  GateReport:
+    level: "G0 | G1 | G2"
+    passed: "bool = нет ни одной проверки severity=blocker со status ∈ {fail, error}"
+    specVersion: int
+    startedAt: datetime
+    durationMs: int
+    checks: "Check[]"
+    summary: "{pass, fail, warn, skip, error}"
+  Check:
+    id: "id проверки из этого файла (для сгенерированных — PC-*/SC-* из qa.yaml)"
+    status: "pass | fail | warn | skip | error"
+    severity: "blocker | warning"
+    message_ru: "≤ 300, понятно владельцу бизнеса"
+    file: "string?"
+    line: "int?"
+    path: "JSON Pointer в спеке?"
+    acId: "string?"
+    evidence: "string? ≤ 500, без значений ПДн"
+    fixHint: "string? для строителя, на русском"
+  rules:
+    - "MUST: каждая проверка имеет положительную и отрицательную фикстуру в packages/gates/test/fixtures/<checkId>/ (backlog M0-10)"
+    - "MUST: gate идемпотентен и детерминирован на одной ревизии (кроме LLM-генерации сценариев, кешируемой qa.yaml#determinism)"
+    - "MUST: превышение time_budget → оставшиеся проверки status=error, severity сохраняется (гейт не пройден)"
+    - "error ≠ fail: error — сбой самой проверки; в UI показывается как «не удалось проверить»"
+    - "Пользователю показывается отчёт: список проверок человеческими словами, группы «Данные и права», «Код», «Сценарии», «Безопасность и ПДн»"
+  levels_for_publish: "draft-превью: G0; публикация в prod: G0+G1+G2 на той же ревизии (M2). До M2 публикации в prod нет"
+
+# ---------------------------------------------------------------- G0: статика (≤ 20 с на спеке «форум», 4 vCPU)
+G0:
+  time_budget_s: 20
+  runs_on: "каждая ревизия; write_file прогоняет G0-IMP-01 и G0-SEC-01 для одного файла"
+  checks:
+    - { id: G0-SPEC-01, severity: blocker, what: "AppSpec валидна по appspec.schema.json", how: "ajv + zod, оба должны принять" }
+    - { id: G0-SPEC-02, severity: blocker, what: "Семантические правила ops.yaml#semantic_rules", how: "packages/appspec validateSemantics" }
+    - { id: G0-SPEC-03, severity: blocker, what: "Каждый pages[].file и functions[].file существует; каждая страница — default export компонента", how: "дерево файлов + AST" }
+    - { id: G0-SPEC-04, severity: warning, what: "Нет файлов-сирот в ui/pages и functions/ (не упомянутых в спеке)", how: "дерево файлов" }
+    - { id: G0-SPEC-05, severity: blocker, what: "Каждая роль access=login имеет ≥1 loginMethods; каждая сущность достижима хотя бы одной ролью", how: "обход спеки" }
+    - { id: G0-MIG-01,  severity: blocker, what: "planMigration(prev, next) строится; для env=prod только аддитивные шаги (DESTRUCTIVE_IN_PROD)", how: "packages/appspec planMigration" }
+    - { id: G0-MIG-02,  severity: blocker, what: "DDL+RLS применяются к теневой схеме", how: "BEGIN; toDDL+toRLS в app_<id>_shadow; ROLLBACK" }
+    - { id: G0-IDX-01,  severity: blocker, what: "Каждый withIndex(name) ссылается на объявленный индекс; списки без индекса только с take(≤100)/paginate", how: "AST по functions/**" }
+    - { id: G0-FN-01,   severity: blocker, what: "Файл функции экспортирует объявленное имя нужного kind; у аргументов есть валидаторы v.*", how: "AST" }
+    - { id: G0-TS-01,   severity: blocker, what: "tsc --noEmit strict против generateTypes(spec), @wizard/sdk, @wizard/ui-kit", how: "TypeScript API в процессе, инкрементально" }
+    - { id: G0-LINT-01, severity: warning, what: "biome lint (набор правил packages/gates/biome.generated.json)", how: "biome API" }
+    - { id: G0-BUILD-01, severity: blocker, what: "esbuild собирает бандл UI и функций; размер UI ≤ 2 МБ (warning > 1 МБ)", how: "esbuild programmatic" }
+    - { id: G0-IMP-01,  severity: blocker, what: "Импорты только разрешённые (builder.yaml#code_conventions.imports)", how: "AST: ImportDeclaration/ExportFrom" }
+    - { id: G0-SEC-01,  severity: blocker, what: "Нет запрещённых API (builder.yaml#code_conventions.forbidden), включая обходы: globalThis['ev'+'al'], computed member на window/globalThis, строковые setTimeout", how: "AST + список идентификаторов" }
+    - { id: G0-A11Y-01, severity: warning, what: "img без alt, input без подписи, кнопка без текста/aria-label", how: "AST JSX" }
+    - { id: G0-I18N-01, severity: warning, what: "Текстовые JSX-литералы и label на русском (латиница допустима для брендов/аббревиатур ≤ 20% слов)", how: "эвристика по буквам" }
+    - { id: G0-PH-01,   severity: warning, what: "В коде нет заглушек scrub ([ТЕЛЕФОН], [EMAIL], [ФИО]…) — признак, что ПДн пользователя просились в код", how: "регулярка; fixHint: вынести в настройки системы" }
+
+# ---------------------------------------------------------------- G1: сценарии приёмки (≤ 120 с)
+G1:
+  time_budget_s: 120
+  precondition: "G0 passed на этой ревизии"
+  setup: "Эфемерная схема app_<systemId>_g1_<runId>: DDL+RLS, seed (qa.yaml#seed), runtime в тестовом режиме, коннекторы — моки с outbox"
+  checks:
+    - { id: G1-PERM,   severity: blocker, what: "PC-проверки, выбранные qa.yaml#checks.permission_auto.selection", how: "data API от лица синтетических пользователей" }
+    - { id: G1-AC,     severity: blocker, what: "SC-<AC id> для каждого AC типа permission/scenario/constraint", how: "исполнитель scenario_dsl" }
+    - { id: G1-AC-COVER, severity: blocker, what: "Каждый AC спеки имеет ≥1 исполнимую проверку (status ≠ error); AC без проверки — fail", how: "сопоставление acId" }
+    - { id: G1-FN-01,  severity: warning, what: "Каждая публичная query вызывается от разрешённой роли с минимальными валидными args без 5xx", how: "генерация args по валидаторам" }
+    - { id: G1-RENDER-01, severity: blocker, since: M1, what: "Каждая страница рендерится (react-dom/server) для каждой своей роли на seed без исключений", how: "SSR с мок-клиентом SDK" }
+  output_extra: "Для упавших — Explanation[] от QA (qa.yaml#explain) в поле explanations отчёта"
+  cleanup: "Схема удаляется в finally; утечка схем проверяется тестом (count schemas like 'app_%_g1_%' = 0 после набора тестов)"
+
+# ---------------------------------------------------------------- G2: безопасность, права, ПДн, антифрод (≤ 300 с)
+G2:
+  time_budget_s: 300
+  precondition: "G1 passed на этой ревизии"
+  checks:
+    # права
+    - { id: G2-PERM-01, severity: blocker, what: "Полная матрица роль×сущность×op через data API: 200/201 для allow, 403 для deny" }
+    - { id: G2-PERM-02, severity: blocker, what: "Та же матрица прямым SQL под RLS (set_config('wizard.user_id'/'wizard.role', …, true)) — второй рубеж" }
+    - { id: G2-PERM-03, severity: blocker, what: "rowFilter: пользователь A не читает/не меняет/не удаляет строки B ни через data API, ни через публичные функции" }
+    - { id: G2-PERM-04, severity: blocker, what: "hiddenFields отсутствуют в ответах data API и публичных функций (сканирование ответов всех G1-сценариев и G1-FN-01)" }
+    - { id: G2-PERM-05, severity: blocker, what: "Роль public: нет update/delete без rowFilter; публичные mutation/action имеют roles или явный public с rate limit" }
+    # секреты
+    - { id: G2-SECRET-01, severity: blocker, what: "Нет секретов в файлах и спеке: токены ЮKassa, Telegram-ботов, JWT, PEM, ключи API, пароли SMTP; high-entropy строки рядом со словами key|token|secret|пароль", patterns: "abuse.yaml#patterns.secrets" }
+    - { id: G2-SECRET-02, severity: blocker, what: "Все integrations[].secretRefs вида secret://name; для prod секреты заданы в хранилище (без чтения значения)" }
+    # ПДн
+    - { id: G2-PII-01, severity: blocker, what: "Нет полей pii ∈ {special, biometric} (PII_CATEGORY_FORBIDDEN)" }
+    - { id: G2-PII-02, severity: blocker, what: "Разметка ПДн полная: поля type email/phone и поля, чьи name/label совпадают со словарём ПДн (фио, фамилия, телефон, адрес, дата рождения, …), имеют pii ≠ none", patterns: "abuse.yaml#patterns.pii_field_names" }
+    - { id: G2-PII-03, severity: blocker, what: "Нет признаков спецкатегорий в name/label/enum (здоровье, диагноз, религия, судимость, национальность, биометрия)", patterns: "abuse.yaml#patterns.special_categories" }
+    - { id: G2-PII-04, severity: blocker, what: "Каждая форма (страница роли public/login), создающая запись с полями pii ≠ none, содержит компонент согласия ui-kit; compliance.consentText и страница политики есть" }
+    - { id: G2-PII-05, severity: blocker, what: "У каждой сущности с pii=basic задан retention (или retentionWaiver, M2)" }
+    - { id: G2-TG-01,  severity: blocker, what: "Telegram без ПДн: шаблоны connector-шагов telegram и аргументы ctx.connectors.telegram.* не ссылаются на поля pii ≠ none (статический taint по AST и шаблонам)" }
+    # антифрод (M2 exit: 100% антифрод-фикстур блокируются; 0 ложных блокировок на брифах eval)
+    - { id: G2-AF-01, severity: blocker, what: "Сбор данных карт вне коннектора ЮKassa: поля/лейблы/placeholder/autocomplete cc-number, cvc, срок действия, «номер карты»", patterns: "abuse.yaml#patterns.card_collection" }
+    - { id: G2-AF-02, severity: blocker, what: "Сбор учётных данных: input type=password, поля «пароль», «логин от …», «код из СМС от банка»; собственный вход систем — только OTP платформы", patterns: "abuse.yaml#patterns.credentials" }
+    - { id: G2-AF-03, severity: blocker, what: "Сбор паспорта/СНИЛС/ИНН физлица/водительского в MVP (нет шифрования полей)", patterns: "abuse.yaml#patterns.gov_ids" }
+    - { id: G2-AF-04, severity: blocker, what: "Имитация брендов: app.name, description, тексты UI, title страниц, logoFile содержат бренды из списка (банки, Госуслуги, маркетплейсы, операторы, госорганы) без подтверждённого права организации", patterns: "abuse.yaml#patterns.brands", override: "allowlist бренда на уровне организации после ручной проверки (abuse.yaml)" }
+    - { id: G2-AF-05, severity: blocker, what: "Отправка данных форм наружу: <form action>, ссылки/редиректы на внешние домены с параметрами из полей, egress функций вне allowlist", patterns: "abuse.yaml#patterns.external_post" }
+    - { id: G2-AF-06, severity: blocker, what: "Реквизиты для оплаты мимо ЮKassa: номера карт/счетов/телефонов «для перевода» в текстах UI", patterns: "abuse.yaml#patterns.p2p_payment" }
+    - { id: G2-AF-07, severity: blocker, what: "Сбор seed-фраз, приватных ключей, кодов подтверждения сторонних сервисов", patterns: "abuse.yaml#patterns.crypto_codes" }
+    - { id: G2-AF-08, severity: warning, what: "Совокупный риск-скор abuse.yaml#scoring ≥ порога → флаг на ручную модерацию перед prod (не блокирует draft)" }
+  antifraud_rules:
+    - "MUST: антифрод-проверки смотрят спеку, код и тексты (включая enum labels и строки в JSX), нормализуя регистр, ё/е, латиницу-двойники (a/а, o/о, c/с) и пробелы"
+    - "MUST: срабатывание в G2 → публикация заблокирована; сообщение пользователю нейтральное, без раскрытия правил; событие abuse_flag в журнал модерации"
+    - "Фикстуры: packages/gates/test/antifraud/{bad,good}/*.json — bad блокируются 100%, good (включая 12 брифов eval) — 0 блокировок"
+
+# ---------------------------------------------------------------- После MVP
+later:
+  G3: "Playwright от лица каждой роли по страницам + VLM по скриншотам; блокирует только критичное (форма не отправляется, страница пустая)"
+  G4: "Независимый аудитор (models.yaml#routes.audit, другое семейство); блокирует только критичное (утечка прав, ПДн)"
+
+# ---------------------------------------------------------------- DSL сценариев
+scenario_dsl:
+  purpose: "Формат acceptance.check.steps (appspec.schema.json) и сценариев QA. Исполнитель — packages/gates/src/scenario"
+  Scenario:
+    id: "SC-AC<n>[-<k>]"
+    acId: "AC<n>"
+    title: "≤ 140, по-русски"
+    actors: "{<alias>: {role: ident}} — синтетические пользователи; alias ^[a-z][a-z0-9_]*$"
+    seed: "default | none (по умолчанию default)"
+    steps: "Step[] 1..40"
+  Step:     # ровно один ключ-действие в шаге
+    as: "<alias> | {role: ident} — сменить текущего пользователя (anon — аноним)"
+    create: "{entity, data: {field: value}, save?: var}"
+    read: "{entity, id?: value, where?: {field: value}, save?: var} — без id возвращает список"
+    update: "{entity, id: value, data: {...}, save?: var}"
+    delete: "{entity, id: value}"
+    callFn: "{name, args: {...}, save?: var}"
+    simulate: "{connector: yookassa|telegram|email|qr, event: string, data: {...}} — событие мок-коннектора (напр. yookassa payment.succeeded по $order.id)"
+    runWorkflows: "{} — выполнить все поставленные воркфлоу до пустой очереди (детерминированно, время заморожено)"
+    advanceTime: "{minutes: int} — сдвинуть $now и выполнить schedule/relative-триггеры"
+    expect: "Expect — проверка результата ПРЕДЫДУЩЕГО действия"
+  Expect:
+    status: "ok | created | denied | not_found | invalid | conflict | limit | <HTTP-код>"
+    error: "код ошибки runtime/ctx.error (строка)"
+    fields: "{field: value} — подмножество; для списка — у каждого элемента"
+    absentFields: "[field] — полей нет в ответе"
+    count: "int | {gte?: int, lte?: int} — длина списка"
+    outbox: "{connector, count?: int, to?: <alias>, containsFields?: [field]} — сообщения мок-коннектора"
+  values:
+    - "Литералы JSON; переменные $<var>.<field> (сохранённые save), $<alias>.id, $now, $now+<минуты>m, $seed.<entity>[<i>].<field>"
+    - "Переменная должна быть определена ранее в сценарии (статическая проверка)"
+  semantics:
+    - "Каждый сценарий исполняется в своей транзакционной песочнице (SAVEPOINT) поверх общего seed; сценарии независимы и могут идти параллельно (≤ 4)"
+    - "Действие без последующего expect: ожидается status ∈ {ok, created}"
+    - "Первый провал expect останавливает сценарий; в Check.evidence — номер шага, ожидание и факт (без значений pii ≠ none)"
+    - "Шаг ≤ 5 с; сценарий ≤ 20 с"
+  example: |
+    id: SC-AC3
+    acId: AC3
+    title: "Нельзя купить билет сверх лимита"
+    actors: { org: { role: organizer }, anna: { role: participant }, boris: { role: participant } }
+    steps:
+      - as: org
+      - create: { entity: ticket_type, data: { name: "Стандарт", capacity: 1, price: 1000 }, save: tt }
+      - as: anna
+      - create: { entity: registration, data: { ticket_type: $tt.id }, save: r1 }
+      - expect: { status: created, fields: { status: pending_payment } }
+      - simulate: { connector: yookassa, event: payment.succeeded, data: { registration: $r1.id } }
+      - runWorkflows: {}
+      - as: boris
+      - create: { entity: registration, data: { ticket_type: $tt.id } }
+      - expect: { status: limit }
+      - as: anna
+      - read: { entity: ticket, where: { registration: $r1.id } }
+      - expect: { count: 1 }

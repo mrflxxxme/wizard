@@ -161,7 +161,7 @@ export function runChecks(root) {
   try { parsed = parseYamlFiles(yamlFiles); } catch (e) { return { errors: [e.message], warnings, stats, fatal: true }; }
   for (const f of yamlFiles) {
     const r = parsed[f];
-    if (!r || "error" in r) E(`${rel(f)}: YAML не разбирается: ${r?.error ?? "нет результата"}`);
+    if (!r || "error" in r) E(`${rel(f)}: YAML не разбирается: ${String(r?.error ?? "нет результата").replaceAll(`${root}/`, "")}`);
     else docs[rel(f)] = r.ok;
   }
   for (const f of jsonFiles) {
@@ -189,7 +189,7 @@ export function runChecks(root) {
       for (const k of ["id", "title", "milestone", "deps", "specs", "acceptance"]) if (t?.[k] === undefined) E(`backlog ${id}: нет поля ${k}`);
       if (typeof t?.id === "string" && !/^M\d-\d{2}$/.test(t.id)) E(`backlog ${id}: id не по формату M<n>-<nn>`);
       if (byId.has(id)) E(`backlog: дубликат id ${id}`);
-      byId.set(id, t);
+      else byId.set(id, t);
       if (msOrder.size && !msOrder.has(t?.milestone)) E(`backlog ${id}: неизвестная веха ${t?.milestone}`);
       if (!Array.isArray(t?.acceptance) || t.acceptance.length === 0) E(`backlog ${id}: пустой acceptance`);
       for (const s of Array.isArray(t?.specs) ? t.specs : []) {

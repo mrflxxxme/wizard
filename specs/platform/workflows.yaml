@@ -1,0 +1,167 @@
+# Прогоны: жизненный цикл, воркфлоу, события. Нормативно для apps/platform-api (M0) и apps/worker (M1+).
+# M0: in-process очередь внутри platform-api. M1: DBOS Transact (D6) с ТЕМИ ЖЕ границами шагов.
+version: 1
+
+execution:
+  M0:
+    engine: "in-process очередь (apps/platform-api/src/runs/queue.ts): FIFO, глобальная конкурентность WIZARD_RUN_CONCURRENCY (по умолчанию 2)"
+    step_api: "Воркфлоу пишутся через обёртку runStep(ctx, name, fn) и runTransaction(ctx, name, fn) с сигнатурами, совместимыми с DBOS.runStep / DBOS.runTransaction, чтобы M1-01 был заменой реализации, а не переписыванием"
+    restart: "MUST: при старте процесса все прогоны в status ∉ терминальных переводятся в failed с code WORKER_RESTARTED и событием run_failed (durability в M0 не обещана)"
+  M1:
+    engine: "@dbos-inc/dbos-sdk в apps/worker; platform-api только ставит воркфлоу в очередь (DBOS.startWorkflow с workflowID = runs.id) и читает run_events"
+    queues: { runs: "конкурентность WIZARD_RUN_CONCURRENCY (по умолчанию 8) на воркер", interview: "конкурентность 16; interview_turn одной системы — строго последовательно (ключ partition = system_id)" }
+    durability: "Тест M1-01: kill -9 воркера во время шага build_code → после рестарта прогон продолжается со следующего незавершённого шага; ни один завершённый LLM-шаг не вызывается повторно (счётчик llm_calls по run_id не растёт на повторы)"
+  step_rules:
+    - "MUST: каждый LLM-вызов — отдельный шаг; его результат (ответ модели и usage) мемоизируется (M1: DBOS step output; M0: в памяти)"
+    - "MUST: каждый батч applyOps и каждая фиксация файлов — отдельная транзакция, создающая ревизию; идемпотентность по idempotency_key = <runId>:<stepName>:<attempt>"
+    - "MUST: каждый запуск гейта — отдельный шаг; отчёт сохраняется в run_events (gate_result)"
+    - "MUST: перед каждым LLM-шагом проверка бюджета (budget) и cancel_requested_at"
+    - "MUST: события пишутся в platform.run_events в той же транзакции, что и эффект шага, затем публикуются в in-process шину SSE"
+    - "SHOULD: шаг идемпотентен; внешние эффекты (письма, ЮKassa) — только с ключом идемпотентности"
+
+system_stage:                     # platform.systems.stage
+  states: [interview, card, building, ready, failed]
+  transitions:
+    - { from: interview, to: card, on: "interview_turn выдал карточку" }
+    - { from: card, to: card, on: "новое сообщение/ответ изменили карточку (card_version++)" }
+    - { from: card, to: interview, on: "оркестратор задал новые вопросы" }
+    - { from: card, to: building, on: "approveCard" }
+    - { from: ready, to: building, on: "approve change-карточки или авто-старт change/fix-прогона" }
+    - { from: building, to: ready, on: "build завершился (succeeded) ИЛИ завершился неуспешно, но preview_revision не null" }
+    - { from: building, to: failed, on: "build failed/cancelled и preview_revision = null" }
+    - { from: failed, to: interview, on: "новое сообщение" }
+  test: "Юнит-тест таблицы переходов: любой переход вне списка бросает IllegalTransition"
+
+run_lifecycle:
+  statuses: [queued, waiting_lock, running, needs_input, succeeded, failed, cancelled]
+  terminal: [succeeded, failed, cancelled]
+  transitions:
+    - { from: queued, to: running, on: "взят исполнителем; для прогонов с lock — после захвата platform.locks" }
+    - { from: queued, to: waiting_lock, on: "lock занят (событие lock_waiting)" }
+    - { from: waiting_lock, to: running, on: "lock освобождён; порядок FIFO по created_at" }
+    - { from: running, to: needs_input, on: "needs_input (secret | decision | budget)" }
+    - { from: needs_input, to: running, on: "POST /runs/:id/input" }
+    - { from: needs_input, to: failed, on: "24 ч без ответа → INPUT_TIMEOUT" }
+    - { from: running, to: succeeded, on: "последний шаг выполнен" }
+    - { from: running, to: failed, on: "ошибка без восстановления" }
+    - { from: "*non-terminal", to: cancelled, on: "cancel; running — на границе шага, текущий LLM-вызов прерывается AbortSignal" }
+  locking:
+    needs_lock: [build, publish, rollback, import_table]
+    lease: "platform.locks.lease_until = now()+2 мин, heartbeat каждые 30 с; просроченный lock перехватывается"
+    release: "MUST: при любом терминальном статусе в той же транзакции"
+    style_during_lock: "POST /systems/:id/style при занятом lock → 409 SYSTEM_LOCKED (панель «Стиль» блокируется в UI)"
+  budget:
+    source: "runs.credits_cap_milli из карточки (M0 тоже; ledger — с M1, billing.yaml)"
+    check: "перед LLM-шагом: used + оценка шага (max_output_tokens × цена выхода) > cap → событие budget_exceeded, затем needs_input kind=decision id=budget с вариантами raise_cap_<N> (N = 25% от cap, округление вверх до целого кредита) и stop"
+    stop: "Выбор stop → run_finished status=cancelled; ревизии прогона остаются, preview_revision не меняется, если G0 не пройден"
+    test: "M0-13: fixture с искусственно низким cap → после budget_exceeded нет ни одной новой строки llm_calls до ответа"
+  failure_codes: [BUDGET_STOPPED, CONSECUTIVE_ERRORS, GATES_FAILED, LLM_UNAVAILABLE, INPUT_TIMEOUT, WORKER_RESTARTED, LOCK_TIMEOUT, MIGRATION_FAILED, INTERNAL]
+
+workflows:
+  interview_turn:
+    milestone: M0
+    lock: false
+    trigger: "POST /systems, /systems/:id/messages, /systems/:id/answers"
+    steps:
+      - { name: load_context, kind: tx, does: "история чата (свёртка по бюджету — agents/orchestrator.yaml), текущая спека draft, pending_questions" }
+      - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; ответ — вызов одного из инструментов оркестратора: ask_questions | propose_card | answer | propose_change" }
+      - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output" }
+      - { name: maybe_start_change, kind: tx, does: "propose_change с оценкой ≤ auto_start_threshold (agents/orchestrator.yaml, по умолчанию 6 кредитов) и достаточным балансом → поставить build mode=change; иначе change-карточка ждёт approve" }
+    budget: "cap на ход — 2 кредита; превышение → run_failed BUDGET_STOPPED без needs_input"
+
+  build:
+    milestone: M0
+    lock: true
+    trigger: "approveCard | авто-старт change | POST fix (mode=fix)"
+    modes: { create: "полная сборка по карточке", change: "правка готовой системы", fix: "только цикл исправления по последним отчётам гейтов" }
+    steps:
+      - { name: acquire_lock, kind: tx }
+      - { name: reserve_credits, kind: tx, milestone: M1, does: "ledger hold на cap (billing.yaml#run_charging); нехватка → run_failed INSUFFICIENT_CREDITS" }
+      - { name: plan, kind: llm, callType: plan, skip_in_modes: [fix], does: "план: список сущностей, страниц, функций, критериев приёмки (agents/builder.yaml)" }
+      - { name: ops, kind: "loop(llm build_ops → tx applyOps)", does: "батчи ≤50 ops; каждый батч = ревизия; OpsError возвращаются модели структурно; событие ops_applied" }
+      - { name: code, kind: "loop(llm build_code → tx commit_files)", does: "write_file копит изменения в рабочем дереве прогона; commit_files в конце каждого LLM-шага = ревизия kind=files; событие file_written на файл" }
+      - { name: gate_G0, kind: gate, does: "runGates('G0'); при passed — esbuild-бандл, revisions.bundle_manifest_sha, systems.preview_revision" }
+      - { name: gate_G1, kind: gate, does: "runGates('G1') против runtime draft с seed-данными" }
+      - { name: report, kind: tx, does: "messages kind=run_report, run_finished; M1: ledger charge по факту + release hold" }
+    fix_loop:
+      on: "gate_G0 или gate_G1 failed"
+      steps:
+        - { name: qa_explain, kind: llm, callType: qa_explain, does: "объяснение провалов для строителя (agents/qa.yaml)" }
+        - { name: fix, kind: "loop(llm fix → tx applyOps/commit_files)" }
+        - { name: regate, kind: gate, does: "повтор проваленного уровня и всех ниже" }
+      limits: "≤ 3 итерации на уровень гейта; 5 ошибок инструментов подряд → run_failed CONSECUTIVE_ERRORS (agents/builder.yaml); исчерпание итераций → run_failed GATES_FAILED с последними отчётами"
+    after_failure: "Ревизии остаются; preview_revision указывает на последнюю ревизию с G0=passed; пользователь может нажать «Исправить» (build mode=fix) или откатиться"
+
+  publish:
+    milestone: M1
+    lock: true
+    trigger: "POST /systems/:id/publish (только owner, D11)"
+    preconditions:
+      - "revision ≤ draft_revision и revisions.g0_passed = true"
+      - "M1: operatorName задан, если в спеке есть поле pii ≠ none (compliance.yaml#operator)"
+      - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review"
+    steps:
+      - { name: acquire_lock, kind: tx }
+      - { name: plan_migration, kind: tx, does: "planMigration(spec(schema_hwm_revision) или пустая, spec(revision)); publications status=planned" }
+      - { name: gate_G0_prod, kind: gate, does: "G0 с env=prod: additiveOnly обязателен, иначе DESTRUCTIVE_IN_PROD → run_failed" }
+      - { name: gate_G2, kind: gate, milestone: M2, does: "runGates('G2') включая антифрод (security/abuse.yaml)" }
+      - { name: apply_migration, kind: tx, does: "toDDL+toRLS в схеме app_<key>_prod одной транзакцией, SET LOCAL lock_timeout='3s'; до 3 повторов с паузой 5/15/45 с при lock_timeout; status=applying" }
+      - { name: switch, kind: tx, does: "одной транзакцией: новая publication live, прежняя superseded, systems.prod_revision, systems.schema_hwm_revision = max(hwm, revision)" }
+      - { name: smoke, kind: step, does: "GET prod-URL → 200 и /_wizard/health отдаёт revision; провал → автоматический rollback prod на prev_publication (без DDL) и run_failed" }
+      - { name: report, kind: tx }
+    invariant: "Если упали после apply_migration до switch — схема расширена аддитивно, старый бандл продолжает работать (тест M1-04)"
+
+  rollback:
+    milestone: M1
+    lock: true
+    draft: "Новая ревизия kind=revert: spec и files_manifest_sha = как у toRevision, ops=[]; затем gate_G0 → preview. Destructive-изменения схемы draft допустимы"
+    prod: "toRevision MUST быть ранее live в publications этой системы, иначе ROLLBACK_TARGET_INVALID. Без DDL: новая publication с migration_plan {steps: [], additiveOnly: true}, schema_revision = текущий hwm. Runtime работает по спеке toRevision поверх схемы-надмножества"
+    test: "M1-04 e2e: prod с данными → ревизия с новым полем → publish → rollback prod → строки и новая колонка на месте, старые экраны работают"
+
+  import_table:
+    milestone: M1
+    lock: true
+    steps:
+      - { name: profile, kind: step, does: "локально: парсинг, профиль колонок, DLP заголовков (data-boundary.yaml#import); значения в LLM не идут" }
+      - { name: map, kind: llm, callType: import_mapping, does: "только SyntheticPayload (заголовки после scrub, профили, ≤5 синтетических строк)" }
+      - { name: confirm, kind: needs_input, does: "decision: пользователь подтверждает маппинг и разметку ПДн" }
+      - { name: schema_ops, kind: "loop(llm build_ops → tx applyOps)", does: "если нужна новая сущность/поля" }
+      - { name: load_rows, kind: tx, does: "вставка значений в app_<key>_draft пачками по 1000 без участия LLM; исходник удаляется по TTL 7 дней" }
+
+  retention_cron:
+    milestone: M2
+    schedule: "DBOS scheduled, ежедневно 03:17 MSK"
+    does:
+      - "Для каждой prod-системы и сущности с retention: удалить или обезличить (mode) строки, где anchorField < now() − deleteAfterDays, пачками по 1000 с паузой; запись в platform.deletion_log (счётчики)"
+      - "Платформенная уборка: auth_otps > 24 ч, run_events > 180 дней, импорты после expires_at, abuse_reports.contact_email через 1 год после закрытия"
+    test: "M2-05: фикстура со строками старше/младше порога → удалены ровно старые; deletion_log.rows_affected совпадает"
+
+  nightly_eval:
+    milestone: M1
+    schedule: "DBOS scheduled, ежедневно 02:07 MSK, только если заданы ключи live"
+    does: "tools/eval/run.mjs --harness на брифах без ПДн; результат в artifacts eval/<date>.json; регрессия доли G0/G1 > 5 п.п. к медиане 7 дней → уведомление в CI-канал (M1-10)"
+
+events:
+  envelope: "RunEvent {runId, seq, type, ts, payload} (api.yaml#/components/schemas/RunEvent); seq с 1 без пропусков"
+  rules:
+    - "MUST: payload не содержит значений секретов и содержимого промптов; тексты для пользователя — на русском"
+    - "MUST: тест M0-15 валидирует каждое событие fixture-прогонов «форум» и «кондитерская» по схемам ниже (ajv)"
+    - "Терминальные: run_finished, run_failed — ровно одно на прогон, последнее"
+  types:
+    run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null" } }
+    step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer } }
+    step_finished:   { required: [step], properties: { step: string, durationMs: integer } }
+    agent_message:   { required: [agent, messageId, text], properties: { agent: "orchestrator|builder|qa", messageId: string, text: string, delta: "boolean — true: кусок стрима, склеивать по messageId" } }
+    chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal", messageId: string, cardVersion: integer } }
+    ops_applied:     { required: [revision, opsCount, summary_ru], properties: { revision: integer, opsCount: integer, opTypes: "string[]", summary_ru: "string[] — человеческий diff" } }
+    file_written:    { required: [path, action], properties: { path: string, action: "create|update|delete", sha256: string, size: integer, revision: "integer|null" } }
+    gate_started:    { required: [level], properties: { level: "G0|G1|G2", revision: integer } }
+    gate_result:     { required: [level, passed], properties: { level: string, passed: boolean, durationMs: integer, failedChecks: "[{id, message_ru, file?, line?}] (≤20)", totalChecks: integer } }
+    budget_update:   { required: [used, cap], properties: { used: number, cap: number, estimate: number } }
+    budget_exceeded: { required: [used, cap], properties: { used: number, cap: number, nextStep: string } }
+    lock_waiting:    { required: [holderRunId], properties: { holderRunId: string, holderName: string, position: integer } }
+    needs_input:     { required: [inputId, kind, prompt_ru], properties: { inputId: string, kind: "secret|decision", prompt_ru: string, options: "[{id, label, recommended?}] для decision", secretName: "string для secret (secret://name)", expiresAt: string } }
+    input_received:  { required: [inputId], properties: { inputId: string, choice: "string|null (для secret — всегда null)" } }
+    run_finished:    { required: [status], properties: { status: "succeeded|cancelled", resultRevision: "integer|null", creditsUsed: number, summary_ru: string, prodUrl: "string|null" } }
+    run_failed:      { required: [code, message_ru], properties: { code: "run_lifecycle.failure_codes", message_ru: string, retryable: boolean, lastGoodRevision: "integer|null" } }
+  budget_update_rate: "не чаще 1 раза в 2 с и после каждого LLM-шага"

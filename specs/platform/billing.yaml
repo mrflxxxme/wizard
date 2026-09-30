@@ -1,0 +1,101 @@
+# Кредиты, тарифы, ledger, платежи. Источник цифр: product.yaml#D10 (приоритет выше этого файла).
+version: 1
+
+credit:
+  rub_cost_rate: 5                 # 1 кредит ≈ 5 ₽ себестоимости LLM (с НДС агента, по прайсу agents/models.yaml)
+  unit: "милликредит (1 кредит = 1000) во всех расчётах и в БД; в UI — кредиты с одним знаком после запятой"
+  from_cost: "credits_milli = ceil(cost_rub × 1000 / rub_cost_rate) для каждой строки llm_calls с billable=true"
+  typical: { build_create: "≈20 кредитов (потолок из карточки)", change: "3–6 кредитов", interview_turn: "0.1–1 кредит" }
+  test: "M1-03: для любого завершённого прогона sum(charge по run_id) = min(cap, sum(llm_calls.credits_milli по run_id, billable)) с точностью до 1 милликредита"
+
+plans:
+  free:
+    price_rub_month: 0
+    grants: { welcome: { credits: 100, expires_after_days: 30 }, monthly: { credits: 25, from_day: 30, expires: "в момент следующего месячного гранта (не копятся)" } }
+    limits: { prod_systems: 1, draft_systems: 3, members: 3 }
+    prod_requires: "привязанная карта РФ (D9, card_binding)"
+  start:
+    price_rub_month: 1990
+    grants: { monthly: { credits: 50, expires: "конец периода подписки" } }
+    limits: { prod_systems: 2, draft_systems: 10, members: 10 }
+  business:
+    price_rub_month: 6990
+    grants: { monthly: { credits: 230, expires: "конец периода подписки" } }
+    limits: { prod_systems: 5, draft_systems: 30, members: 30 }
+  topup:
+    price_rub: 990
+    credits: 60
+    expires_after_days: 365
+    available_on: [free, start, business]
+  interpretation:
+    - "«N систем» тарифа = одновременно опубликованные в prod системы; черновики ограничены draft_systems (решение агента, записать в CHANGELOG)"
+    - "«до N пользователей» = участники организации (memberships). Конечные пользователи созданных систем не ограничиваются тарифом"
+    - "Лимит members у Free (3) и draft_systems — решение агента, не из D10; менять через CHANGELOG"
+  enforcement:
+    - "Превышение лимита → 402 PLAN_LIMIT с details {limit, current, plan}; проверка в транзакции создания (createSystem, createInvite, publish)"
+    - "Даунгрейд: лишние prod-системы остаются live 14 дней, уведомления владельцу за 7 и 1 день, затем снимаются с публикации (данные не удаляются)"
+
+ledger:
+  table: platform.credit_ledger
+  rules:
+    - "MUST: append-only; UPDATE/DELETE запрещены триггером (тест: попытка UPDATE → ошибка)"
+    - "MUST: каждая запись имеет idempotency_key, уникальный в пределах org; повтор операции не создаёт вторую запись"
+    - "MUST: изменения баланса org сериализуются pg_advisory_xact_lock(hashtext(org_id::text))"
+    - "MUST: available = sum(amount_milli) ≥ 0 после любой записи hold/charge; иначе операция отклоняется INSUFFICIENT_CREDITS"
+    - "Списание идёт из корзин с ближайшим bucket_expires_at (free_welcome/plan_monthly раньше topup); распределение по корзинам — в note, баланс корзин считается view platform.credit_buckets"
+    - "Истечение корзины → запись expire на остаток корзины (credits_cron)"
+  kinds:
+    grant: "+ начисление тарифа, приветственный, докупка"
+    hold: "− резерв на cap при старте прогона build/publish-free"
+    release: "+ снятие резерва (всегда = hold по модулю) при завершении прогона"
+    charge: "− фактическое списание"
+    refund: "+ возврат списания"
+    expire: "− сгорание корзины"
+    adjustment: "± ручная корректировка staff (M1: единственный способ начислить платный тариф/докупку до M2)"
+
+run_charging:
+  interview_turn: "без hold; после хода — charge по факту (cap хода 2 кредита). При available ≤ 0 → 402 INSUFFICIENT_CREDITS на POST messages/answers"
+  build:
+    approve: "cap = card.credits.cap (пользователь может только понизить, не ниже estimate). Если available < cap: при available ≥ estimate cap := available, иначе 402 INSUFFICIENT_CREDITS {available, required: estimate}"
+    start: "hold(−cap), idempotency hold:<runId>"
+    finish: "одной транзакцией: release(+cap), charge(−min(used, cap)); перерасход сверх cap платформа берёт на себя"
+    raise_cap: "needs_input budget → raise_cap_N: дополнительный hold(−N); отказ по available → вариант недоступен"
+    refunds: "MUST: полный refund, если прогон завершён failed с code ∈ {INTERNAL, WORKER_RESTARTED, LLM_UNAVAILABLE, MIGRATION_FAILED} ИЛИ если ни одна ревизия прогона не прошла G0 (пользователь ничего не получил). Решение агента для беты, записать в CHANGELOG"
+  estimate_vs_actual: "Карточка показывает estimate и cap; отчёт прогона — фактическое used. SHOULD: медиана |used−estimate|/estimate ≤ 30% на eval-брифах (метрика в tools/eval)"
+  style_and_compliance: "Панель «Стиль», setCompliance, rollback, publish — без LLM и без кредитов"
+  runtime_ai: "M3: вызовы runtime_ai_* (только T0) списываются по факту: charge агрегируется по (system, час) с ключом ai:<systemId>:<yyyy-mm-ddThh>; лимит aiAction.monthlyLimit в вызовах на систему; при available ≤ 0 действие возвращает системе ошибку AI_CREDITS_EXHAUSTED, владельцу — уведомление"
+  M0: "Ledger нет: runs.credits_used_milli считается из llm_calls; cap из карточки останавливает прогон (budget_exceeded)"
+
+credits_cron:
+  milestone: M1
+  schedule: "DBOS scheduled, ежечасно"
+  does: ["месячные гранты Free/тарифов по годовщине org/периода (idempotency grant:<bucket>:<org>:<period>)", "expire истёкших корзин", "уведомление владельцу при available < 10% месячного гранта"]
+
+card_binding:
+  milestone: M2
+  purpose: "Идентификация клиента перед prod (D9; 149-ФЗ ст. 10.2-1 / ПП 2011 — позиция юриста E-LEGAL) + способ оплаты"
+  flow:
+    - "POST /orgs/:id/billing/card-binding → платёж 1 ₽ в магазине ПЛАТФОРМЫ: capture=false, save_payment_method=true, confirmation redirect"
+    - "Вебхук payment.waiting_for_capture → GET /v3/payments/{id}; проверить payment_method.saved=true и payment_method.card.issuer_country = 'RU'"
+    - "RU → payment_methods (last4, card_type, issuer_country), затем cancel платежа (деньги не списываются)"
+    - "Не RU → cancel, payment_methods не создаётся, пользователю: «Нужна карта российского банка» (code CARD_NOT_RU)"
+  test: "M2-07: публикация без payment_methods (revoked_at is null) → 403 CARD_BINDING_REQUIRED; тестовый магазин с картой issuer_country≠RU → привязка отклонена"
+
+recurring:
+  milestone: M2
+  provider: "ЮKassa, магазин самой платформы (не путать с магазинами клиентов — connectors/yookassa.yaml; смешивать MUST NOT)"
+  first_payment: "платёж на цену тарифа с save_payment_method=true (или по уже привязанной карте)"
+  renewal: "за 24 ч до current_period_end — письмо-уведомление; в момент окончания — платёж по payment_method_id с Idempotence-Key renew:<org>:<period>"
+  retries: "3 попытки: день 0, +1, +3; затем status=past_due; через 7 дней past_due → plan=free (см. plans.enforcement)"
+  cancel: "DELETE subscription: автоплатёж выключается сразу, тариф действует до конца периода"
+  receipts: "54-ФЗ: объект receipt в каждом платеже («Чеки от ЮKassa»); email покупателя = email owner; vat_code из конфигурации WIZARD_RECEIPT_VAT_CODE (задаёт юрист/бухгалтер)"
+  webhook: "только после сверки GET /v3/payments/{id}; обработка идемпотентна по provider_payment_id; тест: двойная доставка succeeded → один grant"
+  topup: "payments kind=topup, succeeded → grant(+60×packs) bucket topup, idempotency topup:<paymentId>"
+
+tax_note:
+  status: "PENDING — E-LEGAL"
+  text: >
+    Аудит 03 (L4.1): при включении в реестр ПО передача прав освобождена от НДС, хостинг — нет. Поэтому цена тарифа
+    SHOULD раскладываться в чеке на две позиции: «право использования ПО Wizard» и «услуги хостинга систем».
+    Доли и ставки НДС (УСН/ОСН, 22%) определяет юрист/бухгалтер. До решения — одна позиция «Подписка Wizard»,
+    ставка из WIZARD_RECEIPT_VAT_CODE. Код MUST поддерживать 1..2 позиции чека без изменения схемы БД.

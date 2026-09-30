@@ -110,8 +110,8 @@ export function fromZodIssues(issues: readonly z.core.$ZodIssue[], base: readonl
         );
         break;
       case "invalid_union": {
-        const opts = (issue as { options?: unknown[] }).options;
-        if (issue.note === "No matching discriminator" && Array.isArray(opts)) {
+        const { note, options: opts } = issue as { note?: string; options?: unknown[] };
+        if (note === "No matching discriminator" && Array.isArray(opts)) {
           out.push(
             err("SCHEMA_INVALID", path, "Неизвестный тип операции", { allowed: opts.map((o) => String(o)) }),
           );
@@ -160,9 +160,12 @@ export function fromZodIssues(issues: readonly z.core.$ZodIssue[], base: readonl
       }
       case "invalid_format":
         out.push(
-          err("SCHEMA_INVALID", path, "Строка не соответствует формату", {
-            hint: issue.format === "regex" && issue.pattern ? `Шаблон: ${issue.pattern}` : undefined,
-          } as { hint?: string }),
+          err(
+            "SCHEMA_INVALID",
+            path,
+            "Строка не соответствует формату",
+            issue.format === "regex" && issue.pattern ? { hint: `Шаблон: ${issue.pattern}` } : {},
+          ),
         );
         break;
       default:

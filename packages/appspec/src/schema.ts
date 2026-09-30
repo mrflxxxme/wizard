@@ -2,6 +2,8 @@
 // keep strict/loose object modes, patterns, bounds and unicode length semantics in sync.
 // JSON Schema `default` annotations are NOT applied here (parsing never changes the spec).
 import { z } from "zod";
+import { fromZodIssues, type OpsError } from "./errors.js";
+import { semanticErrors, type ValidateOptions } from "./semantic.js";
 
 /** JSON Schema string lengths count code points, not UTF-16 units. */
 function cpString(min: number, max?: number) {
@@ -273,3 +275,13 @@ export type Page = z.infer<typeof pageSchema>;
 export type AiAction = z.infer<typeof aiActionSchema>;
 export type Acceptance = z.infer<typeof acceptanceSchema>;
 export type Compliance = z.infer<typeof complianceSchema>;
+
+export type ValidateResult = { ok: true; spec: AppSpec } | { ok: false; errors: OpsError[] };
+
+/** Structural check (zod, 1:1 with appspec.schema.json) followed by semantic rules (ops.yaml). */
+export function validateSpec(input: unknown, opts: ValidateOptions = {}): ValidateResult {
+  const parsed = appSpecSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, errors: fromZodIssues(parsed.error.issues) };
+  const errors = semanticErrors(parsed.data, opts);
+  return errors.length ? { ok: false, errors } : { ok: true, spec: parsed.data };
+}
