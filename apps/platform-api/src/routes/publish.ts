@@ -67,15 +67,28 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });
-    const run = await tx((t) =>
-      insertRun(t, {
+    const run = await tx(async (t) => {
+      // billing.yaml#plans: prod_systems counts other systems already in prod; republishing this one is free.
+      if (s.prod_revision === null) {
+        await d.billing.lock(t.trx, s.org_id);
+        const prod = await t.trx
+          .selectFrom("platform.systems")
+          .select((eb) => eb.fn.countAll<string>().as("n"))
+          .where("org_id", "=", s.org_id)
+          .where("deleted_at", "is", null)
+          .where("prod_revision", "is not", null)
+          .where("id", "!=", s.id)
+          .executeTakeFirstOrThrow();
+        await d.billing.assertLimit(t.trx, s.org_id, "prod_systems", Number(prod.n));
+      }
+      return insertRun(t, {
         orgId: s.org_id,
         systemId: s.id,
         kind: "publish",
         input: { revision: b.revision },
         startedBy: user.id,
-      }),
-    );
+      });
+    });
     d.engine.enqueue(run);
     return c.json({ run: toRun(run, 0) }, 202);
   });

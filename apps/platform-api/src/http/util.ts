@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type postgres from "postgres";
 import type { z } from "zod";
+import type { Billing } from "../billing/ledger.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/index.js";
 import { invalid } from "../errors.js";
@@ -15,6 +16,7 @@ export interface Deps {
   blobs: BlobStore;
   engine: RunEngine;
   config: Config;
+  billing: Billing;
 }
 
 function issues(e: z.ZodError) {

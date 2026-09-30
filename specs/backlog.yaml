@@ -530,7 +530,7 @@ tasks:
     owner: platform
     parallel_group: m1-b
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Сумма ledger = сумма usage × курс; превышение потолка останавливает прогон"
@@ -558,7 +558,7 @@ tasks:
     owner: platform
     parallel_group: m1-b
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Три метода входа работают в e2e c dev-отправителем; на Free phone_otp недоступен: проверка тарифа при публикации (billing/runtime), не в схеме AppSpec; умолчание Free — email и Telegram (F4)"

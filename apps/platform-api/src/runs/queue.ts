@@ -12,6 +12,7 @@ import {
 } from "@wizard/llm";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
+import type { Billing } from "../billing/ledger.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
@@ -81,6 +82,8 @@ export interface EngineDeps {
   blobs: BlobStore;
   config: Config;
   executors: RunExecutors;
+  /** Credits ledger (billing.yaml#run_charging). */
+  billing: Billing;
   /** Router factory (tests); default createRouter with DbUsageSink. */
   createRouter?: (opts: RouterOptions) => Router;
   log?: (msg: string, err?: unknown) => void;
@@ -105,8 +108,14 @@ export interface NewRun {
   startedBy: string;
 }
 
-export async function insertRun(t: TxCtx, r: NewRun): Promise<Run> {
-  return t.trx
+/**
+ * Inserts a run. With `billing`: an interview turn needs available > 0, a build holds its cap in the same
+ * transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
+ */
+export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
+  if (billing && r.kind === "interview_turn")
+    await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
+  const run = await t.trx
     .insertInto("platform.runs")
     .values({
       org_id: r.orgId,
@@ -121,6 +130,16 @@ export async function insertRun(t: TxCtx, r: NewRun): Promise<Run> {
     })
     .returningAll()
     .executeTakeFirstOrThrow();
+  if (billing && r.kind === "build" && run.credits_cap_milli !== null)
+    await billing.hold(t.trx, {
+      orgId: r.orgId,
+      runId: run.id,
+      systemId: r.systemId,
+      amountMilli: Number(run.credits_cap_milli),
+      key: `hold:${run.id}`,
+      note: "Резерв на сборку (потолок из карточки)",
+    });
+  return run;
 }
 
 function toResult(e: unknown, aborted: boolean): Result {
@@ -445,6 +464,12 @@ export class RunEngine {
       })
       .where("id", "=", runId)
       .execute();
+    // release(+hold), charge(−min(used, cap)), refund — billing.yaml#run_charging.
+    await this.#d.billing.settleRun(
+      t.trx,
+      run,
+      r.status === "failed" ? { status: r.status, code: r.code } : r,
+    );
     const released = await t.trx
       .deleteFrom("platform.locks")
       .where("run_id", "=", runId)
@@ -671,20 +696,47 @@ export class RunEngine {
           "Ход интервью превысил лимит кредитов. Переформулируйте запрос короче.",
         );
       const n = Math.ceil((0.25 * cap) / 1000);
+      // raise_cap_N holds N more credits; without them the option is not offered (billing.yaml#run_charging).
+      const billing = this.#d.billing;
+      const canRaise =
+        billing.isExempt(run.org_id) ||
+        (await billing.readBalance(this.#db, run.org_id)).available >= n * 1000;
       const ans = await needsInput({
         decisionId: "budget",
-        prompt_ru: `Лимит сборки (${cap / 1000} кр.) исчерпан. Увеличить лимит на ${n} кр. или остановить?`,
-        options: [
-          { id: `raise_cap_${n}`, label: `Увеличить на ${n} кр.`, recommended: true },
-          { id: "stop", label: "Остановить" },
-        ],
+        prompt_ru: canRaise
+          ? `Лимит сборки (${cap / 1000} кр.) исчерпан. Увеличить лимит на ${n} кр. или остановить?`
+          : `Лимит сборки (${cap / 1000} кр.) исчерпан, а свободных кредитов на увеличение (${n} кр.) нет. Сборку придётся остановить.`,
+        options: canRaise
+          ? [
+              { id: `raise_cap_${n}`, label: `Увеличить на ${n} кр.`, recommended: true },
+              { id: "stop", label: "Остановить" },
+            ]
+          : [{ id: "stop", label: "Остановить", recommended: true }],
       });
       if (ans.choice === "stop") throw new RunCancelled("Сборка остановлена по лимиту кредитов");
-      await this.#db
-        .updateTable("platform.runs")
-        .set({ credits_cap_milli: cap + n * 1000 })
-        .where("id", "=", run.id)
-        .execute();
+      const newCap = cap + n * 1000;
+      await this.#tx(async (t) => {
+        await t.trx.selectFrom("platform.runs").select("id").where("id", "=", run.id).forUpdate().execute();
+        await billing
+          .hold(t.trx, {
+            orgId: run.org_id,
+            runId: run.id,
+            systemId: run.system_id,
+            amountMilli: n * 1000,
+            key: `hold:${run.id}:cap:${newCap}`,
+            note: `Увеличение лимита сборки на ${n} кр.`,
+          })
+          .catch((e: unknown) => {
+            if (e instanceof ApiError && e.code === "INSUFFICIENT_CREDITS")
+              throw new RunCancelled("Сборка остановлена: не хватает кредитов на увеличение лимита");
+            throw e;
+          });
+        await t.trx
+          .updateTable("platform.runs")
+          .set({ credits_cap_milli: newCap })
+          .where("id", "=", run.id)
+          .execute();
+      });
     }
     const org = await this.#db
       .selectFrom("platform.orgs")

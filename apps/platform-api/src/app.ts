@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { createAgentExecutors } from "./agents/executors.js";
 import { type Mailer, OutboxMailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
+import { Billing } from "./billing/ledger.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -13,6 +14,7 @@ import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
+import { creditRoutes } from "./routes/credits.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
 import { publishRoutes } from "./routes/publish.js";
@@ -42,6 +44,10 @@ export interface PlatformApiOptions {
   mailer?: Mailer;
   /** Offline GeoIP of logins for the T1 region restriction (data-boundary.yaml#region_restriction.sources). */
   geoRegion?: GeoRegion;
+  /** Clock of the credits ledger (grants, expiry); tests move it forward. */
+  now?: () => Date;
+  /** credits_cron period (billing.yaml#credits_cron, hourly); 0 disables the in-process timer. */
+  creditsCronMs?: number;
 }
 
 export interface PlatformApi {
@@ -63,6 +69,10 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const bus = new EventBus();
   const blobs = new BlobStore(config.artifactsDir);
   const log = opts.log ?? ((m: string, e?: unknown) => console.error(`[platform-api] ${m}`, e ?? ""));
+  const billing = new Billing({
+    exemptOrgs: config.billingExemptOrgs,
+    ...(opts.now ? { now: opts.now } : {}),
+  });
   const executors =
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
@@ -74,12 +84,21 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     blobs,
     config,
     executors,
+    billing,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     ...(opts.publish ? { publish: opts.publish } : {}),
     log,
   });
   if (opts.recover !== false) await engine.recover();
-  const deps: Deps = { db: handle.db, pg: handle.pg, bus, blobs, engine, config };
+  const deps: Deps = { db: handle.db, pg: handle.pg, bus, blobs, engine, config, billing };
+  const cronMs = opts.creditsCronMs ?? 3600_000;
+  const cron =
+    cronMs > 0
+      ? setInterval(() => {
+          billing.sweep(handle.db).catch((e) => log("credits_cron failed", e));
+        }, cronMs)
+      : undefined;
+  cron?.unref();
 
   const app = new Hono();
   app.onError((err, c) => {
@@ -108,6 +127,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", publishRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
+  api.route("/", creditRoutes(deps));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 
@@ -117,6 +137,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     engine,
     deps,
     async close() {
+      if (cron) clearInterval(cron);
       await engine.close();
       await executors.close?.();
       if (!opts.db) await handle.close();
