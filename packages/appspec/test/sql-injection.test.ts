@@ -180,7 +180,86 @@ describe("sqlLiteral / quoteIdent (no database)", () => {
     expect(policy("wz_writer_update")).toContain(`"owner" = (select nullif(current_setting('wizard.user_id'`);
     expect(policy("wz_reader_read")).toContain(`"title" = '`);
   });
+
+  test("hostile default, min/max and rowFilter values do not change the number of SQL statements", () => {
+    const benign = hostileSpec(Array.from({ length: 12 }, (_, i) => `v${i}`));
+    const script = (s: AppSpec) => [
+      ...toDDL(planMigration(null, s), "app_x_draft"),
+      ...toRLS(s, "app_x_draft"),
+    ];
+    const expected = script(benign).length;
+    for (let round = 0; round < 25; round++) {
+      const statements = script(hostileSpec(hostileStrings(12, 500 + round, round === 0)));
+      expect(statements).toHaveLength(expected);
+      // The lexer sees exactly one statement per array element: no value can close a literal and add one.
+      for (const s of statements) expect(countStatements(s), s).toBe(1);
+      expect(countStatements(statements.join(";\n"))).toBe(expected);
+    }
+    // Non-numeric min/max/default of numeric fields never reach SQL: validation rejects them, toDDL refuses.
+    for (const bad of ["'); DROP SCHEMA platform; --", "$$", "\\"]) {
+      for (const key of ["min", "max", "default"] as const) {
+        const spec = structuredClone(benign);
+        const n = spec.entities[0]?.fields.find((f) => f.name === "n") as Record<string, unknown>;
+        n[key] = bad;
+        expect(validateSpec(spec).ok, `${key}=${bad}`).toBe(false);
+        expect(() => toDDL(planMigration(null, spec), "app_x_draft")).toThrow();
+      }
+    }
+  });
 });
+
+/**
+ * Number of top-level SQL statements (standard_conforming_strings = on): `;` outside '…' constants, "…" idents,
+ * $tag$…$tag$ bodies and comments separates statements.
+ */
+function countStatements(script: string): number {
+  let count = 0;
+  let current = "";
+  let i = 0;
+  const flush = () => {
+    if (current.trim()) count++;
+    current = "";
+  };
+  while (i < script.length) {
+    const c = script[i] as string;
+    const rest = script.slice(i);
+    const dollar = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(rest);
+    if (c === "'" || c === '"') {
+      let j = i + 1;
+      for (;;) {
+        const k = script.indexOf(c, j);
+        if (k < 0) throw new Error(`unterminated ${c} in ${script}`);
+        if (script[k + 1] === c) j = k + 2;
+        else {
+          j = k + 1;
+          break;
+        }
+      }
+      current += script.slice(i, j);
+      i = j;
+    } else if (dollar && !/[A-Za-z0-9_]/.test(script[i - 1] ?? "")) {
+      const end = script.indexOf(dollar[0], i + dollar[0].length);
+      if (end < 0) throw new Error(`unterminated ${dollar[0]} in ${script}`);
+      current += script.slice(i, end + dollar[0].length);
+      i = end + dollar[0].length;
+    } else if (rest.startsWith("--")) {
+      const end = script.indexOf("\n", i);
+      i = end < 0 ? script.length : end;
+    } else if (rest.startsWith("/*")) {
+      const end = script.indexOf("*/", i + 2);
+      if (end < 0) throw new Error(`unterminated comment in ${script}`);
+      i = end + 2;
+    } else if (c === ";") {
+      flush();
+      i++;
+    } else {
+      current += c;
+      i++;
+    }
+  }
+  flush();
+  return count;
+}
 
 /** Reader's rowFilter literal. A leading `$` marks a `$user.` reference, so literals never start with it. */
 const filterLiteral = (h: string[]) => `x${h[6 % h.length]}`;

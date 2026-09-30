@@ -1,6 +1,8 @@
 export const PACKAGE = "@wizard/appspec";
 
 export { ERROR_CODES, type OpsError, type OpsErrorCode, pointer } from "./errors.js";
+/** Index model for `where`/`getBy` (sdk.md §2.4): usable indexes, unique fields, where → index resolution. */
+export { entityIndexes, isRangeValue, resolveIndex, SYSTEM_FIELD_NAMES, uniqueFields } from "./indexes.js";
 export {
   type DdlOptions,
   DEFAULT_MAX_LENGTH,
@@ -48,4 +50,5 @@ export {
   sqlLiteral,
   textLiteral,
 } from "./sql.js";
-export { generateTypes } from "./types-gen.js";
+/** `_generated/wizard.d.ts` generator (sdk.md §4); @wizard/sdk/codegen re-exports it (L2-17). */
+export { type GenerateTypesOptions, generateTypes } from "./types-gen.js";
