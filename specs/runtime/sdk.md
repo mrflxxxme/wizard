@@ -95,7 +95,7 @@ tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#inter
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
 - M3 (в §5 добавляется в M3-02, не раньше): `useAiAction(action)` → `{ run(entity, id), pending, error }` — `POST /api/ai/:action` (`runtime.yaml#ai_actions`).
-- Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK. После переподключения SDK перезапрашивает все активные запросы.
+- Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK (fetch streaming с `X-Wizard-Request: 1`, не EventSource). После переподключения SDK перезапрашивает все активные запросы.
 - Тест (M0-07): хуки против локального hono-мока: загрузка, ошибка с `code`, перезапрос по SSE `invalidate`.
 
 ## 4. Генерация типов
@@ -213,7 +213,7 @@ declare module "@wizard/sdk" {
   }
   export interface ErrorDetails { message?: string; [k: string]: Json | undefined }
   export class WizardError extends Error {
-    readonly code: string; readonly details: ErrorDetails;
+    readonly code: string; readonly details: ErrorDetails; readonly status?: number;   // HTTP-статус ответа runtime (клиент)
     constructor(code: string, details?: ErrorDetails);
   }
   export interface Logger {
@@ -276,7 +276,7 @@ declare module "@wizard/sdk" {
   export function useQuery<N extends QueryName>(name: N, args: FnArgs<N> | "skip"): QueryState<FnResult<N>>;
   export function useMutation<N extends MutationName | ActionName>(name: N):
     [(args: FnArgs<N>, opts?: CallOptions) => Promise<FnResult<N>>, { pending: boolean; error: WizardError | undefined }];
-  export interface CallOptions { consent?: true }   // SDK добавляет _consent (security/compliance.yaml#consent)
+  export interface CallOptions { consent?: true }   // SDK добавляет _consent (security/compliance.yaml#system_package.consent)
   export type FilterOps<T> = { eq?: T; ne?: T; lt?: T; lte?: T; gt?: T; gte?: T; in?: T[]; contains?: string };
   export type EntityFilter<E extends EntityName> = { [K in keyof ClientDoc<E>]?: ClientDoc<E>[K] | FilterOps<ClientDoc<E>[K]> };
   export type SortKey<E extends EntityName> = (keyof ClientDoc<E> & string) | `-${keyof ClientDoc<E> & string}`;
@@ -289,7 +289,7 @@ declare module "@wizard/sdk" {
   export function useEntity<E extends EntityName>(entity: E, id: Id<E> | string | undefined): QueryState<ClientDoc<E> | null>;
   export function useEntityMutation<E extends EntityName>(entity: E): {
     create(doc: Insert<E>, opts?: CallOptions): Promise<ClientDoc<E>>;
-    update(id: Id<E> | string, patch: Patch<E>): Promise<ClientDoc<E>>;
+    update(id: Id<E> | string, patch: Patch<E>, opts?: CallOptions): Promise<ClientDoc<E>>;   // _consent нужен и при update строк с ПДн (runtime.yaml#data_api)
     remove(id: Id<E> | string): Promise<void>;
   };
   export interface ClientUser { id: Id<"users">; role: RoleName; displayName: string; isAdmin: boolean }

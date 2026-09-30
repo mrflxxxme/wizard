@@ -139,7 +139,7 @@ scenario_dsl:
     seed: "default | none (по умолчанию default)"
     steps: "Step[] 1..40"
   Step:     # ровно один ключ-действие в шаге; единственный допустимый второй ключ — consent у create/callFn
-    consent: "true — модификатор шага create/callFn: запрос несёт _consent (security/compliance.yaml#consent), как после отметки ConsentCheckbox. Нужен для записи полей pii≠none ролью без isAdmin, иначе 422 CONSENT_REQUIRED"
+    consent: "true — модификатор шага create/callFn: запрос несёт _consent (security/compliance.yaml#system_package.consent), как после отметки ConsentCheckbox. Нужен для записи полей pii≠none ролью без isAdmin, иначе 422 CONSENT_REQUIRED"
     as: "<alias> | {role: ident} — сменить текущего пользователя (anon — аноним)"
     create: "{entity, data: {field: value}, save?: var}"
     read: "{entity, id?: value, where?: {field: value}, save?: var} — без id возвращает список"

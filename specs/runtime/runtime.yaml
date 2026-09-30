@@ -40,7 +40,7 @@ postgres:
     _w_qr_events: "client_event_id pk, device_id, integration, result, clock_skew bool, received_at (qr.yaml#offline)"
     _w_qr_devices: "device_id pk, user_id, last_sync_at, pending int"
     _w_telegram_links: "token_hash pk, user_id, expires_at (telegram.yaml#chat_linking)"
-    _w_consents: "M2 (журнал): схема и срок хранения — ../security/compliance.yaml#consent; источник — поле _consent тела create/update, POST /api/fn или входа нового пользователя (entity='users'); время и ip_hmac ставит сервер; retention сущностей его не удаляет"
+    _w_consents: "M2 (журнал): схема и срок хранения — ../security/compliance.yaml#system_package.consent; источник — поле _consent тела create/update, POST /api/fn или входа нового пользователя (entity='users'); время и ip_hmac ставит сервер; retention сущностей его не удаляет"
     _w_audit: "id, at, actor_user_id, role, entity, record_id, op, fields text[] (имена, не значения)"
   context: "Каждая транзакция: set_config('wizard.user_id', $1, true), set_config('wizard.role', $2, true), set_config('wizard.user_attrs', $3::text, true) (JSON полей users без контактов); ctx.systemDb и воркфлоу — role='__system'"
   rls_policy_shape: "USING (current_setting('wizard.role', true) = '__system' OR (current_setting('wizard.role', true) = '<role>' AND <rowFilter как колонка = (select current_setting(...))>)) для каждой (role, op) из permissions. M2: системный доступ — отдельная роль БД на систему вместо GUC '__system' (security/isolation.yaml#db_access, L3-20)"
@@ -54,7 +54,7 @@ data_api:                                    # CRUD по AppSpec; все отв�
     - "PATCH  /api/data/:entity/:id      → 200 {item: Doc}"
     - "DELETE /api/data/:entity/:id      → 204"
   query_params:
-    filter: "filter[<field>]=<v> (eq) | filter[<field>][<op>]=<v>, op ∈ eq, ne, lt, lte, gt, gte, in (через запятую), contains (string/text, ILIKE с экранированием); только видимые поля роли"
+    filter: "filter[<field>]=<v> (eq) | filter[<field>][<op>]=<v>, op ∈ eq, ne, lt, lte, gt, gte, in (через запятую), contains (string/text, ILIKE с экранированием); filter[<field>]=null → IS NULL; только видимые поля роли"
     sort: "sort=-created_at,name — до 3 полей, только видимые; по умолчанию -created_at"
     page: "page ≥ 1, по умолчанию 1"
     limit: "1..100, по умолчанию 20; больше 100 → 422"
@@ -142,6 +142,7 @@ realtime:
     - "MUST: событие получает только сессия, чья роль имеет read на entity; id передаётся, только если у роли нет rowFilter на entity"
     - "MUST: никаких значений полей в событиях"
     - "Heartbeat-комментарий каждые 25 с; ≤ 3 соединений на сессию; после переподключения клиент перезапрашивает всё"
+    - "SDK открывает поток через fetch streaming (EventSource не умеет слать заголовки) с X-Wizard-Request: 1; endpoint принимает и запросы без него (GET), Origin проверяется, если присутствует (CHANGELOG M0-07)"
     - "Шина: M0 — in-process EventEmitter; M2 — межпроцессная pub/sub (выбор агента M2, запись в CHANGELOG)"
   test: "Создание билета одним участником: организатор получает invalidate с id, другой участник — без id, посетитель — ничего"
 

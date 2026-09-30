@@ -642,7 +642,7 @@
         "collectsPii": {
           "type": "boolean",
           "default": false,
-          "description": "функция записывает ПДн (поля pii≠none): вызов ролью без isAdmin требует _consent в теле (runtime/sdk.md, security/compliance.yaml#consent)"
+          "description": "функция записывает ПДн (поля pii≠none): вызов ролью без isAdmin требует _consent в теле (runtime/sdk.md, security/compliance.yaml#system_package.consent)"
         }
       }
     },

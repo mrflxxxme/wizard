@@ -33,6 +33,7 @@ algorithm:
       неприменимые, но не добавлять новые смыслы). recommended выбирается по правилу развилки и Analysis.
       Модель формулирует все вопросы одним вызовом; показ пользователю — по одному (степпер «Вопрос k из n», ui/platform-screens.yaml#S2):
       кнопки + «Свой вариант» + общая кнопка «Остальное — по рекомендациям».
+    persist: "persist_output пишет messages kind=questions, payload {questionIds, analysis: {title, roles, skeleton, constraints, forks: [{forkId, status}]}} — сводка Analysis без ПДн для панели «Как я понял задачу» (platform/api.yaml#Message, L4-26)"
     rest_by_recommendation: "Кнопка «Остальное — по рекомендациям» применяет recommended ко всем неотвеченным вопросам (byRecommendation=true) и переводит в S5"
     custom_answer: "Свободный ответ ≤500 символов; проходит DLP; сохраняется как {forkId, text}"
   - id: S5_card
@@ -175,7 +176,7 @@ prompt_skeleton:       # порядок фиксирован; статичная
 # ---------------------------------------------------------------- Умолчания (не спрашивать)
 defaults:
   - "Роль-администратор (isAdmin) всегда есть; это владелец системы"
-  - "Вход для ролей access=login — email_otp; telegram добавляется, если Telegram упомянут в брифе. phone_otp (SMS) — только на тарифах start и business (решение основателя F4); на free не предлагается ни в умолчаниях, ни в вариантах F-LOGIN"
+  - "Вход для ролей access=login — email_otp и telegram (как в эталонах appspec/examples; для входа через Telegram нужен свой бот — connectors/telegram.yaml#config_schema.loginEnabled). phone_otp (SMS) — только на тарифах start и business (решение основателя F4); на free не предлагается ни в умолчаниях, ни в вариантах F-LOGIN"
   - "Уведомления — email; Telegram только если упомянут"
   - "Согласие на обработку ПДн и страница политики — всегда при наличии ПДн"
   - "Срок хранения ПДн: ивенты — 30 дней после даты события (security/compliance.yaml — источник; уточняется E-LEGAL); заказы — 3 года (бухучёт) для заказов и 1 год для контактов без заказов [?: E-LEGAL]; прочее — 1 год"

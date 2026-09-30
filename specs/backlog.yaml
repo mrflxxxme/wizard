@@ -252,6 +252,8 @@ tasks:
       - "Колонки M0-таблиц после migrate совпадают с db.yaml (тест парсит YAML)"
       - "Прогон с фейковым builder эмитит события, валидные по workflows.yaml#events, и они доходят по SSE; рестарт → WORKER_RESTARTED"
       - "Host вне loopback-списка → 421; X-Forwarded-*/Forwarded/CF-* в dev-режиме → 403 (L3-10)"
+      - "gate_G0 пишет полный GateReport в platform.gate_reports; getLatestGates читает его (L1-11)"
+      - "IDOR: запрос к system/run чужой организации → 404 NOT_FOUND (не 403) для каждой операции с :id"
 
   - id: M0-16
     title: "apps/platform-web: чат, вопросы-кнопки, карточка системы, журнал сборки, гейты, превью в iframe с переключением ролей, панель «Стиль» (на мок-API)"
@@ -808,7 +810,7 @@ tasks:
     title: "Выгрузка данных системы (CSV по сущностям + spec.json, с учётом прав владельца) — отличие independence"
     milestone: M2
     deps: [M1-04]
-    specs: [specs/platform/api.yaml, specs/runtime/runtime.yaml, specs/platform/workflows.yaml]
+    specs: [specs/platform/api.yaml, specs/runtime/runtime.yaml, "specs/platform/workflows.yaml#workflows.export_data"]
     owner: platform
     parallel_group: m2-d
     estimate_days: 1
