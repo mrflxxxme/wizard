@@ -1,0 +1,6 @@
+{
+  "root": false,
+  "extends": "//",
+  "files": { "includes": ["**", "!test/.generated", "!test/fixtures/feeds", "!test/__snapshots__", "!dist"] },
+  "css": { "parser": { "cssModules": true } }
+}

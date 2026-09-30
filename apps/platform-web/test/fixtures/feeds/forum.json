@@ -1,0 +1,1590 @@
+{
+  "name": "forum",
+  "brief": "Организуем отраслевой форум «Северный ритейл» для сетевой розницы: один день, около 600 участников, три параллельных потока (e-com, логистика, магазины). Нужна регистрация с разными билетами: стандарт, VIP и партнёрские. У каждого типа свой лимит, у каждого потока своя вместимость, продавать сверх лимита нельзя. Стандарт и VIP оплачиваются онлайн картой, после оплаты участник получает на почту билет с QR-кодом. Партнёры получают квоту бесплатных билетов и раздают своим сотрудникам промокоды; партнёр должен видеть, сколько мест из его квоты уже занято, но не чужие квоты. Спикеры подают заявки с темой и описанием доклада, модератор одобряет или отклоняет, одобренным приходит письмо и сообщение в Telegram. На входе волонтёры сканируют QR с телефона, повторный проход по тому же билету не пускаем. За сутки до форума всем участникам напоминание. Программа по потокам и залам должна быть видна всем без входа.",
+  "system": {
+    "name": "Форум «Северный ритейл»",
+    "slug": "severnyi-riteil"
+  },
+  "theme": {
+    "accent": "#C2410C",
+    "font": "Onest",
+    "radius": 12,
+    "density": "regular",
+    "mode": "auto"
+  },
+  "roles": [
+    {
+      "name": "organizer",
+      "label": "Организатор",
+      "access": "login"
+    },
+    {
+      "name": "moderator",
+      "label": "Модератор",
+      "access": "login"
+    },
+    {
+      "name": "speaker",
+      "label": "Спикер",
+      "access": "login"
+    },
+    {
+      "name": "partner",
+      "label": "Партнёр",
+      "access": "login"
+    },
+    {
+      "name": "participant",
+      "label": "Участник",
+      "access": "login"
+    },
+    {
+      "name": "volunteer",
+      "label": "Волонтёр на входе",
+      "access": "login"
+    },
+    {
+      "name": "visitor",
+      "label": "Посетитель",
+      "access": "public"
+    }
+  ],
+  "pages": [
+    {
+      "route": "/",
+      "title": "Форум",
+      "roles": [
+        "visitor",
+        "participant",
+        "speaker",
+        "partner",
+        "moderator",
+        "volunteer",
+        "organizer"
+      ]
+    },
+    {
+      "route": "/moderation",
+      "title": "Модерация заявок",
+      "roles": [
+        "moderator",
+        "organizer"
+      ]
+    },
+    {
+      "route": "/ticket/:id",
+      "title": "Мой билет",
+      "roles": [
+        "participant"
+      ]
+    },
+    {
+      "route": "/scanner",
+      "title": "Сканер билетов",
+      "roles": [
+        "volunteer",
+        "organizer"
+      ]
+    }
+  ],
+  "interview": {
+    "text": "Разложил задачу: 7 ролей, 8 видов данных, 4 подключения. Осталось 5 развилок — ответьте кнопками.",
+    "analysis": {
+      "title": "Форум «Северный ритейл»",
+      "roles": [
+        "Организатор",
+        "Модератор",
+        "Спикер",
+        "Партнёр",
+        "Участник",
+        "Волонтёр на входе",
+        "Посетитель"
+      ],
+      "skeleton": [
+        "catalog",
+        "application",
+        "process",
+        "payment",
+        "fulfillment"
+      ],
+      "constraints": [
+        "Около 600 участников, три потока",
+        "Лимит билетов по типу и вместимость потока, продажа сверх лимита запрещена",
+        "Повторный проход по одному билету запрещён",
+        "Напоминание участникам за сутки до форума"
+      ],
+      "forks": [
+        {
+          "forkId": "F-EV-TICKETS",
+          "status": "resolved"
+        },
+        {
+          "forkId": "F-EV-PROGRAM",
+          "status": "resolved"
+        },
+        {
+          "forkId": "F-EV-SPEAKERS",
+          "status": "resolved"
+        },
+        {
+          "forkId": "F-NOTIFY",
+          "status": "resolved"
+        },
+        {
+          "forkId": "F-ACCESS",
+          "status": "resolved"
+        },
+        {
+          "forkId": "F-LOGIN",
+          "status": "asking"
+        },
+        {
+          "forkId": "F-EV-CHECKIN",
+          "status": "pending"
+        },
+        {
+          "forkId": "F-PAYMENT",
+          "status": "pending"
+        },
+        {
+          "forkId": "F-STAFF",
+          "status": "pending"
+        },
+        {
+          "forkId": "F-RETENTION",
+          "status": "pending"
+        }
+      ]
+    },
+    "questions": [
+      {
+        "id": "q1",
+        "forkId": "F-LOGIN",
+        "text": "Как участникам, спикерам и партнёрам входить в систему?",
+        "whyItMatters": "Вход через Telegram быстрее для людей, но для него нужен свой бот; вход по почте работает сразу.",
+        "options": [
+          {
+            "id": "email",
+            "label": "По коду на почту",
+            "recommended": false
+          },
+          {
+            "id": "email_or_telegram",
+            "label": "По почте или через Telegram",
+            "description": "Telegram уже используется для уведомлений спикерам",
+            "recommended": true
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q2",
+        "forkId": "F-EV-CHECKIN",
+        "text": "Как проверять билеты на входе?",
+        "whyItMatters": "При 600 гостях очередь на входе зависит от скорости проверки и от того, работает ли сканер без сети.",
+        "options": [
+          {
+            "id": "list_only",
+            "label": "По списку фамилий",
+            "recommended": false
+          },
+          {
+            "id": "qr_online",
+            "label": "QR-сканер с интернетом",
+            "recommended": false
+          },
+          {
+            "id": "qr_offline_scanner",
+            "label": "QR-сканер, работающий и без сети",
+            "recommended": true
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q3",
+        "forkId": "F-PAYMENT",
+        "text": "Как принимать оплату за билеты?",
+        "whyItMatters": "От способа оплаты зависит, когда билет считается выданным и нужно ли вручную сверять платежи.",
+        "options": [
+          {
+            "id": "yookassa_full",
+            "label": "Полная оплата картой онлайн",
+            "recommended": true
+          },
+          {
+            "id": "yookassa_prepay",
+            "label": "Предоплата онлайн, остальное на месте",
+            "recommended": false
+          },
+          {
+            "id": "invoice_manual",
+            "label": "Счёт для компаний, отметка оплаты вручную",
+            "recommended": false
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q4",
+        "forkId": "F-STAFF",
+        "text": "Кто из вашей команды работает в системе?",
+        "whyItMatters": "Каждой роли достаются только нужные ей данные: волонтёры на входе не видят контакты участников.",
+        "options": [
+          {
+            "id": "single_admin",
+            "label": "Только организатор",
+            "recommended": false
+          },
+          {
+            "id": "admin_manager",
+            "label": "Организатор и волонтёры на входе",
+            "recommended": false
+          },
+          {
+            "id": "admin_manager_moderator",
+            "label": "Организатор, модератор программы и волонтёры",
+            "recommended": true
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q5",
+        "forkId": "F-RETENTION",
+        "text": "Сколько хранить контакты участников после форума?",
+        "whyItMatters": "Чем короче срок, тем меньше риск по закону о персональных данных; после срока контакты обезличиваются.",
+        "options": [
+          {
+            "id": "d30_after_event",
+            "label": "30 дней после форума",
+            "recommended": true
+          },
+          {
+            "id": "y1",
+            "label": "1 год",
+            "recommended": false
+          },
+          {
+            "id": "y3",
+            "label": "3 года",
+            "recommended": false
+          }
+        ],
+        "allowCustom": true
+      }
+    ]
+  },
+  "card": {
+    "cardVersion": 1,
+    "kind": "create",
+    "title": "Форум «Северный ритейл»",
+    "summary": "Регистрация на форум на 600 участников в трёх потоках: билеты с лимитами и онлайн-оплатой, бесплатные билеты партнёров по промокодам, приём и модерация заявок спикеров, проход по QR и напоминания участникам.",
+    "segment": "events",
+    "roles": [
+      {
+        "name": "organizer",
+        "label": "Организатор",
+        "access": "login",
+        "loginMethods": [
+          "email_otp"
+        ],
+        "description": "Владелец форума: настраивает потоки, билеты и квоты, видит всех участников",
+        "can": [
+          "Настраивать потоки и типы билетов",
+          "Выдавать квоты партнёрам",
+          "Видеть всех участников и платежи",
+          "Модерировать заявки спикеров",
+          "Проверять билеты на входе"
+        ]
+      },
+      {
+        "name": "moderator",
+        "label": "Модератор",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ],
+        "description": "Отбирает доклады и составляет программу",
+        "can": [
+          "Одобрять и отклонять заявки спикеров",
+          "Составлять программу по залам"
+        ]
+      },
+      {
+        "name": "speaker",
+        "label": "Спикер",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ],
+        "description": "Подаёт заявку на доклад и следит за решением",
+        "can": [
+          "Подавать и править свои заявки",
+          "Видеть программу"
+        ]
+      },
+      {
+        "name": "partner",
+        "label": "Партнёр",
+        "access": "login",
+        "loginMethods": [
+          "email_otp"
+        ],
+        "description": "Компания-партнёр с квотой бесплатных билетов",
+        "can": [
+          "Видеть свою квоту и сколько мест занято"
+        ]
+      },
+      {
+        "name": "participant",
+        "label": "Участник",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ],
+        "description": "Покупает билет или получает его по промокоду партнёра",
+        "can": [
+          "Регистрироваться и оплачивать билет",
+          "Видеть свой билет с QR-кодом"
+        ]
+      },
+      {
+        "name": "volunteer",
+        "label": "Волонтёр на входе",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ],
+        "description": "Проверяет билеты на входе",
+        "can": [
+          "Сканировать QR и отмечать проход"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public",
+        "description": "Любой посетитель сайта без входа",
+        "can": [
+          "Видеть программу и типы билетов"
+        ]
+      }
+    ],
+    "data": [
+      {
+        "name": "stream",
+        "label": "Поток",
+        "fields": [
+          {
+            "label": "Название",
+            "kind": "text"
+          },
+          {
+            "label": "Вместимость",
+            "kind": "number"
+          },
+          {
+            "label": "Описание",
+            "kind": "text"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "ticket_type",
+        "label": "Тип билета",
+        "fields": [
+          {
+            "label": "Название",
+            "kind": "text"
+          },
+          {
+            "label": "Вид",
+            "kind": "choice"
+          },
+          {
+            "label": "Цена",
+            "kind": "money"
+          },
+          {
+            "label": "Всего билетов",
+            "kind": "number"
+          },
+          {
+            "label": "Что входит",
+            "kind": "text"
+          },
+          {
+            "label": "В продаже",
+            "kind": "choice"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "ticket",
+        "label": "Билет",
+        "fields": [
+          {
+            "label": "Тип билета",
+            "kind": "link"
+          },
+          {
+            "label": "Поток",
+            "kind": "link"
+          },
+          {
+            "label": "Владелец",
+            "kind": "link"
+          },
+          {
+            "label": "ФИО",
+            "kind": "text"
+          },
+          {
+            "label": "Email",
+            "kind": "contact"
+          },
+          {
+            "label": "Телефон",
+            "kind": "contact"
+          },
+          {
+            "label": "Компания",
+            "kind": "text"
+          },
+          {
+            "label": "Статус",
+            "kind": "choice"
+          },
+          {
+            "label": "Сумма",
+            "kind": "money"
+          },
+          {
+            "label": "Промокод",
+            "kind": "text"
+          },
+          {
+            "label": "QR-код",
+            "kind": "qr"
+          },
+          {
+            "label": "Начало форума",
+            "kind": "date"
+          }
+        ],
+        "pii": "basic"
+      },
+      {
+        "name": "speaker_application",
+        "label": "Заявка спикера",
+        "fields": [
+          {
+            "label": "Спикер",
+            "kind": "link"
+          },
+          {
+            "label": "ФИО",
+            "kind": "text"
+          },
+          {
+            "label": "Email",
+            "kind": "contact"
+          },
+          {
+            "label": "Телефон",
+            "kind": "contact"
+          },
+          {
+            "label": "Компания",
+            "kind": "text"
+          },
+          {
+            "label": "Тема",
+            "kind": "text"
+          },
+          {
+            "label": "Описание доклада",
+            "kind": "text"
+          },
+          {
+            "label": "Поток",
+            "kind": "link"
+          },
+          {
+            "label": "Статус",
+            "kind": "choice"
+          },
+          {
+            "label": "Комментарий модератора",
+            "kind": "text"
+          }
+        ],
+        "pii": "basic"
+      },
+      {
+        "name": "partner_quota",
+        "label": "Квота партнёра",
+        "fields": [
+          {
+            "label": "Партнёр",
+            "kind": "link"
+          },
+          {
+            "label": "Компания",
+            "kind": "text"
+          },
+          {
+            "label": "Промокод",
+            "kind": "text"
+          },
+          {
+            "label": "Тип билета",
+            "kind": "link"
+          },
+          {
+            "label": "Всего мест",
+            "kind": "number"
+          },
+          {
+            "label": "Использовано",
+            "kind": "number"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "session",
+        "label": "Сессия программы",
+        "fields": [
+          {
+            "label": "Название",
+            "kind": "text"
+          },
+          {
+            "label": "Поток",
+            "kind": "link"
+          },
+          {
+            "label": "Начало",
+            "kind": "date"
+          },
+          {
+            "label": "Окончание",
+            "kind": "date"
+          },
+          {
+            "label": "Зал",
+            "kind": "text"
+          },
+          {
+            "label": "Доклад",
+            "kind": "link"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "checkin",
+        "label": "Проход",
+        "fields": [
+          {
+            "label": "Билет",
+            "kind": "link"
+          },
+          {
+            "label": "Время прохода",
+            "kind": "date"
+          },
+          {
+            "label": "Устройство",
+            "kind": "text"
+          },
+          {
+            "label": "Вход",
+            "kind": "text"
+          },
+          {
+            "label": "Отмечен без сети",
+            "kind": "choice"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "payment",
+        "label": "Платёж",
+        "fields": [
+          {
+            "label": "Билет",
+            "kind": "link"
+          },
+          {
+            "label": "ID платежа ЮKassa",
+            "kind": "text"
+          },
+          {
+            "label": "Вид",
+            "kind": "choice"
+          },
+          {
+            "label": "Сумма",
+            "kind": "money"
+          },
+          {
+            "label": "Статус",
+            "kind": "choice"
+          }
+        ],
+        "pii": "none"
+      }
+    ],
+    "specVsCode": {
+      "spec": [
+        "Данные: потоки, типы билетов, билеты, заявки спикеров, квоты партнёров, программа, проходы, платежи",
+        "Кто что видит: участник — только свои билеты, партнёр — только свою квоту, спикер — только свои заявки",
+        "Статусы билета и заявки спикера",
+        "Автоматизации: письмо с билетом, напоминание за сутки, уведомление спикеру",
+        "Подключения: ЮKassa, почта, Telegram, QR",
+        "Персональные данные участников обезличиваются через 30 дней после форума"
+      ],
+      "code": [
+        "Экраны: главная с программой и регистрацией, модерация заявок, мой билет, сканер на входе",
+        "Проверка лимитов потока и типа билета при регистрации",
+        "Выдача билета по промокоду партнёра",
+        "Рассылка напоминаний"
+      ]
+    },
+    "screens": [
+      {
+        "route": "/",
+        "title": "Форум",
+        "roles": [
+          "visitor",
+          "participant",
+          "speaker",
+          "partner",
+          "moderator",
+          "volunteer",
+          "organizer"
+        ],
+        "purpose": "Программа, типы билетов и регистрация"
+      },
+      {
+        "route": "/moderation",
+        "title": "Модерация заявок",
+        "roles": [
+          "moderator",
+          "organizer"
+        ],
+        "purpose": "Одобрение и отклонение заявок спикеров"
+      },
+      {
+        "route": "/ticket/:id",
+        "title": "Мой билет",
+        "roles": [
+          "participant"
+        ],
+        "purpose": "QR-код и статус билета участника"
+      },
+      {
+        "route": "/scanner",
+        "title": "Сканер билетов",
+        "roles": [
+          "volunteer",
+          "organizer"
+        ],
+        "purpose": "Проверка билетов на входе по QR"
+      }
+    ],
+    "integrations": [
+      {
+        "connector": "yookassa",
+        "purpose": "Онлайн-оплата билетов картой",
+        "userActionRequired": "подключить магазин ЮKassa"
+      },
+      {
+        "connector": "telegram",
+        "purpose": "Вход и уведомления спикерам",
+        "userActionRequired": "создать бота в Telegram и указать его токен"
+      },
+      {
+        "connector": "email",
+        "purpose": "Письма с билетом и решением по заявке"
+      },
+      {
+        "connector": "qr",
+        "purpose": "QR-коды билетов и сканер на входе"
+      }
+    ],
+    "automations": [
+      {
+        "name": "Напоминание за 24 часа",
+        "when": "За сутки до начала форума",
+        "then": "Участникам с оплаченным или выданным билетом уходит напоминание"
+      },
+      {
+        "name": "Письмо с билетом",
+        "when": "Билет оплачен",
+        "then": "Участник получает письмо с QR-кодом билета"
+      },
+      {
+        "name": "Спикер одобрен",
+        "when": "Заявка спикера одобрена",
+        "then": "Спикер получает письмо и сообщение в Telegram"
+      }
+    ],
+    "acceptance": [
+      {
+        "id": "AC1",
+        "text": "Билет нельзя купить сверх лимита потока",
+        "check": {
+          "type": "scenario",
+          "role": "participant",
+          "entity": "ticket"
+        }
+      },
+      {
+        "id": "AC2",
+        "text": "Партнёр видит только свою квоту",
+        "check": {
+          "type": "scenario",
+          "role": "partner",
+          "entity": "partner_quota"
+        }
+      },
+      {
+        "id": "AC3",
+        "text": "Спикер не видит чужие заявки",
+        "check": {
+          "type": "scenario",
+          "role": "speaker",
+          "entity": "speaker_application"
+        }
+      },
+      {
+        "id": "AC4",
+        "text": "Повторный вход по одному QR отклоняется",
+        "check": {
+          "type": "scenario",
+          "role": "volunteer",
+          "entity": "checkin"
+        }
+      },
+      {
+        "id": "AC5",
+        "text": "Сканер работает без сети и синхронизирует (M2)",
+        "check": {
+          "type": "scenario",
+          "role": "volunteer",
+          "entity": "checkin",
+          "milestone": "M2"
+        }
+      },
+      {
+        "id": "AC6",
+        "text": "ПДн участников удаляются через 30 дней после форума",
+        "check": {
+          "type": "constraint",
+          "role": "organizer",
+          "entity": "ticket",
+          "milestone": "M1"
+        }
+      },
+      {
+        "id": "AC7",
+        "text": "Посетитель без входа не видит билеты",
+        "check": {
+          "type": "permission",
+          "role": "visitor",
+          "entity": "ticket",
+          "op": "read",
+          "expect": "deny"
+        }
+      },
+      {
+        "id": "AC8",
+        "text": "Модератор может одобрить или отклонить заявку спикера",
+        "check": {
+          "type": "permission",
+          "role": "moderator",
+          "entity": "speaker_application",
+          "op": "update",
+          "expect": "allow"
+        }
+      }
+    ],
+    "pii": {
+      "categories": [
+        "fio",
+        "email",
+        "phone"
+      ],
+      "fields": [
+        {
+          "entity": "ticket",
+          "field": "holder_name",
+          "category": "fio"
+        },
+        {
+          "entity": "ticket",
+          "field": "holder_email",
+          "category": "email"
+        },
+        {
+          "entity": "ticket",
+          "field": "holder_phone",
+          "category": "phone"
+        },
+        {
+          "entity": "speaker_application",
+          "field": "full_name",
+          "category": "fio"
+        },
+        {
+          "entity": "speaker_application",
+          "field": "email",
+          "category": "email"
+        },
+        {
+          "entity": "speaker_application",
+          "field": "phone",
+          "category": "phone"
+        }
+      ],
+      "retention": [
+        {
+          "entity": "ticket",
+          "deleteAfterDays": 30,
+          "anchorField": "event_starts_at",
+          "mode": "anonymize",
+          "humanText": "ФИО, почта и телефон участников обезличиваются через 30 дней после форума"
+        },
+        {
+          "entity": "speaker_application",
+          "deleteAfterDays": 180,
+          "mode": "anonymize",
+          "humanText": "Контакты спикеров обезличиваются через 180 дней после подачи заявки"
+        }
+      ],
+      "consent": true,
+      "summary": "Храним ФИО, почту и телефон участников и спикеров. Их видят организатор и модератор (телефон спикера модератору скрыт); волонтёры на входе контактов не видят."
+    },
+    "assumptions": [
+      "Вход — по коду на почту или через Telegram (выбрано)",
+      "Проверка на входе — QR-сканер, работающий без сети (выбрано)",
+      "Оплата — полностью онлайн через ЮKassa (по рекомендации)",
+      "Письма уходят с адреса платформы; свой почтовый ящик можно подключить позже",
+      "Данные оператора персональных данных и текст согласия владелец заполняет в настройках"
+    ],
+    "outOfScope": [],
+    "forkAnswers": [
+      {
+        "questionId": "q1",
+        "forkId": "F-LOGIN",
+        "optionId": "email_or_telegram",
+        "byRecommendation": false
+      },
+      {
+        "questionId": "q2",
+        "forkId": "F-EV-CHECKIN",
+        "optionId": "qr_offline_scanner",
+        "byRecommendation": false
+      },
+      {
+        "questionId": "q3",
+        "forkId": "F-PAYMENT",
+        "optionId": "yookassa_full",
+        "byRecommendation": true
+      },
+      {
+        "questionId": "q4",
+        "forkId": "F-STAFF",
+        "optionId": "admin_manager_moderator",
+        "byRecommendation": true
+      },
+      {
+        "questionId": "q5",
+        "forkId": "F-RETENTION",
+        "optionId": "d30_after_event",
+        "byRecommendation": true
+      }
+    ],
+    "estimate": {
+      "credits": {
+        "min": 12,
+        "expected": 20,
+        "max": 32
+      },
+      "minutes": {
+        "min": 6,
+        "max": 14
+      }
+    },
+    "cap": {
+      "credits": 30
+    }
+  },
+  "cardEdit": {
+    "text": "добавь лист ожидания VIP",
+    "acceptance": {
+      "id": "AC9",
+      "text": "Когда VIP-билеты закончились, участник встаёт в лист ожидания",
+      "check": {
+        "type": "scenario",
+        "role": "participant",
+        "entity": "ticket"
+      }
+    }
+  },
+  "build": [
+    {
+      "type": "run_started",
+      "payload": {
+        "kind": "build",
+        "mode": "create",
+        "baseRevision": 0,
+        "credits": {
+          "estimate": 20,
+          "cap": 30
+        }
+      }
+    },
+    {
+      "type": "plan_ready",
+      "payload": {
+        "steps": [
+          {
+            "id": "P1",
+            "kind": "ops",
+            "title": "Роли и данные: потоки, билеты, заявки, квоты, программа, проходы, платежи"
+          },
+          {
+            "id": "P2",
+            "kind": "ops",
+            "title": "Права: кто что видит и меняет"
+          },
+          {
+            "id": "P3",
+            "kind": "ops",
+            "title": "Автоматизации и подключения: ЮKassa, почта, Telegram, QR"
+          },
+          {
+            "id": "P4",
+            "kind": "ops",
+            "title": "Объявления функций и экранов, критерии приёмки, страница политики"
+          },
+          {
+            "id": "P5",
+            "kind": "code",
+            "title": "Серверная логика: лимиты, квоты партнёров, регистрация, напоминания"
+          },
+          {
+            "id": "P6",
+            "kind": "code",
+            "title": "Экраны: главная, модерация, мой билет, сканер"
+          }
+        ]
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P1",
+        "label_ru": "Роли и данные: потоки, билеты, заявки, квоты, программа, проходы, платежи",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 1,
+        "opsCount": 17,
+        "opTypes": [
+          "set_app",
+          "set_theme",
+          "add_role",
+          "add_entity"
+        ],
+        "summary_ru": [
+          "Спека: описание системы",
+          "Спека: оформление",
+          "Спека: +7 ролей",
+          "Спека: +8 видов данных"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 3.067,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P1",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P2",
+        "label_ru": "Права: кто что видит и меняет",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 2,
+        "opsCount": 29,
+        "opTypes": [
+          "set_permission"
+        ],
+        "summary_ru": [
+          "Спека: +29 правил доступа"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 6.134,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P2",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P3",
+        "label_ru": "Автоматизации и подключения: ЮKassa, почта, Telegram, QR",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 3,
+        "opsCount": 7,
+        "opTypes": [
+          "add_workflow",
+          "add_integration"
+        ],
+        "summary_ru": [
+          "Спека: +3 автоматизации",
+          "Спека: +4 подключения"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 9.201,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P3",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P4",
+        "label_ru": "Объявления функций и экранов, критерии приёмки, страница политики",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 4,
+        "opsCount": 10,
+        "opTypes": [
+          "add_function",
+          "add_page",
+          "set_acceptance",
+          "set_compliance"
+        ],
+        "summary_ru": [
+          "Спека: +4 функции",
+          "Спека: +4 экрана",
+          "Спека: критерии приёмки",
+          "Спека: страница политики"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 12.268,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P4",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P5",
+        "label_ru": "Серверная логика: лимиты, квоты партнёров, регистрация, напоминания",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/lib/occupancy.ts",
+        "action": "create",
+        "sha256": "f2187b6af2187b6af2187b6af2187b6af2187b6af2187b6af2187b6af2187b6a",
+        "size": 923,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/partnerQuota.ts",
+        "action": "create",
+        "sha256": "6133fc436133fc436133fc436133fc436133fc436133fc436133fc436133fc43",
+        "size": 553,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/registerTicket.ts",
+        "action": "create",
+        "sha256": "4f6d3f194f6d3f194f6d3f194f6d3f194f6d3f194f6d3f194f6d3f194f6d3f19",
+        "size": 2551,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/sendReminder.ts",
+        "action": "create",
+        "sha256": "0dcab60a0dcab60a0dcab60a0dcab60a0dcab60a0dcab60a0dcab60a0dcab60a",
+        "size": 1001,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/ticketAvailability.ts",
+        "action": "create",
+        "sha256": "ede0d9feede0d9feede0d9feede0d9feede0d9feede0d9feede0d9feede0d9fe",
+        "size": 599,
+        "revision": null
+      }
+    },
+    {
+      "type": "agent_message",
+      "payload": {
+        "agent": "builder",
+        "messageId": "msg-P5",
+        "text": "Готово: серверная логика: лимиты, квоты партнёров, регистрация, напоминания."
+      }
+    },
+    {
+      "type": "agent_message",
+      "payload": {
+        "agent": "qa",
+        "messageId": "msg-P5-fix",
+        "text": "Тест AC1 упал: третий участник смог купить билет в заполненный поток. Добавил проверку вместимости потока в registerTicket, тест прошёл."
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 15.335,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P5",
+        "durationMs": 40000,
+        "ruFallback": true
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P6",
+        "label_ru": "Экраны: главная, модерация, мой билет, сканер",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/Landing.tsx",
+        "action": "create",
+        "sha256": "b5a8fa5db5a8fa5db5a8fa5db5a8fa5db5a8fa5db5a8fa5db5a8fa5db5a8fa5d",
+        "size": 3686,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/Moderation.tsx",
+        "action": "create",
+        "sha256": "54d013c954d013c954d013c954d013c954d013c954d013c954d013c954d013c9",
+        "size": 2056,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/MyTicket.tsx",
+        "action": "create",
+        "sha256": "16e6586716e6586716e6586716e6586716e6586716e6586716e6586716e65867",
+        "size": 792,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/Scanner.tsx",
+        "action": "create",
+        "sha256": "44c1153f44c1153f44c1153f44c1153f44c1153f44c1153f44c1153f44c1153f",
+        "size": 336,
+        "revision": null
+      }
+    },
+    {
+      "type": "agent_message",
+      "payload": {
+        "agent": "builder",
+        "messageId": "msg-P6",
+        "text": "Готово: экраны: главная, модерация, мой билет, сканер."
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 18.402,
+        "cap": 30,
+        "estimate": 20
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P6",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G0",
+        "revision": 5
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G0",
+        "passed": true,
+        "revision": 5,
+        "durationMs": 2100,
+        "failedChecks": [],
+        "totalChecks": 14
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G1",
+        "revision": 5
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G1",
+        "passed": true,
+        "revision": 5,
+        "durationMs": 38000,
+        "failedChecks": [],
+        "totalChecks": 8
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G2",
+        "revision": 5
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G2",
+        "passed": true,
+        "revision": 5,
+        "durationMs": 12000,
+        "failedChecks": [],
+        "totalChecks": 3
+      }
+    },
+    {
+      "type": "run_finished",
+      "payload": {
+        "status": "succeeded",
+        "resultRevision": 5,
+        "creditsUsed": 18.4,
+        "summary_ru": "Собрал за 9 минут и 18,4 кредита. Проверьте систему от лица разных ролей.",
+        "prodUrl": null
+      }
+    }
+  ],
+  "gates": [
+    {
+      "level": "G0",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 2100,
+      "summary": {
+        "pass": 14,
+        "fail": 0,
+        "warn": 0,
+        "skip": 0,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G0-01",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 1 пройдена"
+        },
+        {
+          "id": "G0-02",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 2 пройдена"
+        },
+        {
+          "id": "G0-03",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 3 пройдена"
+        },
+        {
+          "id": "G0-04",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 4 пройдена"
+        },
+        {
+          "id": "G0-05",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 5 пройдена"
+        },
+        {
+          "id": "G0-06",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 6 пройдена"
+        },
+        {
+          "id": "G0-07",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 7 пройдена"
+        },
+        {
+          "id": "G0-08",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 8 пройдена"
+        },
+        {
+          "id": "G0-09",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 9 пройдена"
+        },
+        {
+          "id": "G0-10",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 10 пройдена"
+        },
+        {
+          "id": "G0-11",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 11 пройдена"
+        },
+        {
+          "id": "G0-12",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 12 пройдена"
+        },
+        {
+          "id": "G0-13",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 13 пройдена"
+        },
+        {
+          "id": "G0-14",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 14 пройдена"
+        }
+      ]
+    },
+    {
+      "level": "G1",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 38000,
+      "summary": {
+        "pass": 6,
+        "fail": 0,
+        "warn": 0,
+        "skip": 2,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G1-AC1",
+          "acId": "AC1",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Билет нельзя купить сверх лимита потока"
+        },
+        {
+          "id": "G1-AC2",
+          "acId": "AC2",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Партнёр видит только свою квоту"
+        },
+        {
+          "id": "G1-AC3",
+          "acId": "AC3",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Спикер не видит чужие заявки"
+        },
+        {
+          "id": "G1-AC4",
+          "acId": "AC4",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Повторный вход по одному QR отклоняется"
+        },
+        {
+          "id": "G1-AC5",
+          "acId": "AC5",
+          "status": "skip",
+          "severity": "blocker",
+          "message_ru": "Сканер работает без сети и синхронизирует (M2): проверка появится позже"
+        },
+        {
+          "id": "G1-AC6",
+          "acId": "AC6",
+          "status": "skip",
+          "severity": "blocker",
+          "message_ru": "ПДн участников удаляются через 30 дней после форума: проверка появится позже"
+        },
+        {
+          "id": "G1-AC7",
+          "acId": "AC7",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Посетитель без входа не видит билеты"
+        },
+        {
+          "id": "G1-AC8",
+          "acId": "AC8",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Модератор может одобрить или отклонить заявку спикера"
+        }
+      ]
+    },
+    {
+      "level": "G2",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 12000,
+      "summary": {
+        "pass": 2,
+        "fail": 0,
+        "warn": 1,
+        "skip": 0,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G2-A11Y-01",
+          "status": "pass",
+          "severity": "warning",
+          "message_ru": "Подписи у всех полей формы"
+        },
+        {
+          "id": "G2-PERF-01",
+          "status": "pass",
+          "severity": "warning",
+          "message_ru": "Главная загружается быстрее 2 секунд"
+        },
+        {
+          "id": "G2-A11Y-02",
+          "status": "warn",
+          "severity": "warning",
+          "message_ru": "Мелкий текст в подвале плохо читается на телефоне",
+          "file": "ui/Landing.tsx",
+          "line": 42
+        }
+      ]
+    }
+  ]
+}

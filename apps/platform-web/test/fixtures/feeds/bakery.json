@@ -1,0 +1,1022 @@
+{
+  "name": "bakery",
+  "brief": "Нужна система для кондитерской. Торты на заказ: конфигуратор с ценой, предзаказ с предоплатой 50% через ЮKassa, производство к дате по загрузке, самовывоз или доставка.",
+  "system": {
+    "name": "Кондитерская «Сахар»",
+    "slug": "konditerskaya-sahar"
+  },
+  "theme": {
+    "accent": "#9D174D",
+    "font": "Manrope",
+    "radius": 16,
+    "density": "regular",
+    "mode": "light"
+  },
+  "roles": [
+    {
+      "name": "owner",
+      "label": "Владелец",
+      "access": "login"
+    },
+    {
+      "name": "staff",
+      "label": "Кондитер",
+      "access": "login"
+    },
+    {
+      "name": "customer",
+      "label": "Покупатель",
+      "access": "login"
+    },
+    {
+      "name": "visitor",
+      "label": "Посетитель",
+      "access": "public"
+    }
+  ],
+  "pages": [
+    {
+      "route": "/",
+      "title": "Торт на заказ",
+      "roles": [
+        "visitor",
+        "customer",
+        "owner",
+        "staff"
+      ]
+    },
+    {
+      "route": "/orders",
+      "title": "Мои заказы",
+      "roles": [
+        "customer"
+      ]
+    },
+    {
+      "route": "/production",
+      "title": "Производство",
+      "roles": [
+        "owner",
+        "staff"
+      ]
+    },
+    {
+      "route": "/catalog",
+      "title": "Изделия и опции",
+      "roles": [
+        "owner"
+      ]
+    }
+  ],
+  "interview": {
+    "text": "Разложил задачу: 4 роли, 5 видов данных. Осталось 3 развилки.",
+    "analysis": {
+      "title": "Кондитерская «Сахар»",
+      "roles": [
+        "Владелец",
+        "Кондитер",
+        "Покупатель",
+        "Посетитель"
+      ],
+      "skeleton": [
+        "catalog",
+        "application",
+        "payment",
+        "fulfillment"
+      ],
+      "constraints": [
+        "Производство к дате по загрузке"
+      ],
+      "forks": [
+        {
+          "forkId": "F-PAYMENT",
+          "status": "asking"
+        },
+        {
+          "forkId": "F-LOGIN",
+          "status": "pending"
+        },
+        {
+          "forkId": "F-RETENTION",
+          "status": "pending"
+        }
+      ]
+    },
+    "questions": [
+      {
+        "id": "q1",
+        "forkId": "F-PAYMENT",
+        "text": "Как принимать оплату за торт?",
+        "whyItMatters": "От способа оплаты зависит, когда заказ уходит в производство.",
+        "options": [
+          {
+            "id": "yookassa_prepay",
+            "label": "Предоплата 50% онлайн",
+            "recommended": true
+          },
+          {
+            "id": "yookassa_full",
+            "label": "Полная оплата онлайн",
+            "recommended": false
+          },
+          {
+            "id": "on_pickup",
+            "label": "Оплата при получении",
+            "recommended": false
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q2",
+        "forkId": "F-LOGIN",
+        "text": "Как покупателям входить в систему?",
+        "whyItMatters": "Вход нужен, чтобы видеть свои заказы и получать уведомления.",
+        "options": [
+          {
+            "id": "email",
+            "label": "По коду на почту",
+            "recommended": false
+          },
+          {
+            "id": "telegram",
+            "label": "Через Telegram",
+            "recommended": true
+          }
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "q3",
+        "forkId": "F-RETENTION",
+        "text": "Сколько хранить контакты покупателей?",
+        "whyItMatters": "Чем короче срок, тем меньше риск по закону о персональных данных.",
+        "options": [
+          {
+            "id": "d90",
+            "label": "90 дней после заказа",
+            "recommended": true
+          },
+          {
+            "id": "y1",
+            "label": "1 год",
+            "recommended": false
+          }
+        ],
+        "allowCustom": true
+      }
+    ]
+  },
+  "card": {
+    "cardVersion": 1,
+    "kind": "create",
+    "title": "Кондитерская «Сахар»",
+    "summary": "Торты на заказ: конфигуратор с ценой, предзаказ с предоплатой 50% через ЮKassa, производство к дате по загрузке, самовывоз или доставка.",
+    "segment": "made_to_order",
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Владелец",
+        "access": "login",
+        "description": "Владелец",
+        "can": []
+      },
+      {
+        "name": "staff",
+        "label": "Кондитер",
+        "access": "login",
+        "description": "Кондитер",
+        "can": []
+      },
+      {
+        "name": "customer",
+        "label": "Покупатель",
+        "access": "login",
+        "description": "Покупатель",
+        "can": []
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public",
+        "description": "Посетитель",
+        "can": []
+      }
+    ],
+    "data": [
+      {
+        "name": "product",
+        "label": "Изделие",
+        "fields": [
+          {
+            "label": "Название",
+            "kind": "text"
+          },
+          {
+            "label": "Описание",
+            "kind": "text"
+          },
+          {
+            "label": "Фото",
+            "kind": "text"
+          },
+          {
+            "label": "В продаже",
+            "kind": "text"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "product_option",
+        "label": "Опция изделия",
+        "fields": [
+          {
+            "label": "Изделие",
+            "kind": "text"
+          },
+          {
+            "label": "Группа",
+            "kind": "text"
+          },
+          {
+            "label": "Название",
+            "kind": "text"
+          },
+          {
+            "label": "Цена или надбавка",
+            "kind": "text"
+          },
+          {
+            "label": "Вес, кг",
+            "kind": "text"
+          },
+          {
+            "label": "Порядок",
+            "kind": "text"
+          },
+          {
+            "label": "Доступна",
+            "kind": "text"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "production_slot",
+        "label": "Производственный день",
+        "fields": [
+          {
+            "label": "Дата",
+            "kind": "text"
+          },
+          {
+            "label": "Тортов в день",
+            "kind": "text"
+          },
+          {
+            "label": "Выходной",
+            "kind": "text"
+          }
+        ],
+        "pii": "none"
+      },
+      {
+        "name": "cake_order",
+        "label": "Заказ",
+        "fields": [
+          {
+            "label": "Номер",
+            "kind": "text"
+          },
+          {
+            "label": "Покупатель",
+            "kind": "text"
+          },
+          {
+            "label": "Изделие",
+            "kind": "text"
+          },
+          {
+            "label": "Выбранные опции",
+            "kind": "text"
+          },
+          {
+            "label": "Надпись на торте",
+            "kind": "text"
+          },
+          {
+            "label": "Дата готовности",
+            "kind": "text"
+          },
+          {
+            "label": "Получение",
+            "kind": "text"
+          },
+          {
+            "label": "Имя",
+            "kind": "text"
+          },
+          {
+            "label": "Телефон",
+            "kind": "text"
+          },
+          {
+            "label": "Email для чека",
+            "kind": "text"
+          },
+          {
+            "label": "Адрес доставки",
+            "kind": "text"
+          },
+          {
+            "label": "Стоимость",
+            "kind": "text"
+          }
+        ],
+        "pii": "basic"
+      },
+      {
+        "name": "payment",
+        "label": "Платёж",
+        "fields": [
+          {
+            "label": "Заказ",
+            "kind": "text"
+          },
+          {
+            "label": "ID платежа ЮKassa",
+            "kind": "text"
+          },
+          {
+            "label": "Вид",
+            "kind": "text"
+          },
+          {
+            "label": "Сумма",
+            "kind": "text"
+          },
+          {
+            "label": "Статус",
+            "kind": "text"
+          }
+        ],
+        "pii": "none"
+      }
+    ],
+    "specVsCode": {
+      "spec": [
+        "Данные: изделия, опции, заказы, слоты производства, платежи",
+        "Кто что видит: покупатель — только свои заказы"
+      ],
+      "code": [
+        "Экраны: конфигуратор торта, мои заказы, производство, каталог",
+        "Расчёт цены на сервере"
+      ]
+    },
+    "screens": [
+      {
+        "route": "/",
+        "title": "Торт на заказ",
+        "roles": [
+          "visitor",
+          "customer",
+          "owner",
+          "staff"
+        ],
+        "purpose": "Торт на заказ"
+      },
+      {
+        "route": "/orders",
+        "title": "Мои заказы",
+        "roles": [
+          "customer"
+        ],
+        "purpose": "Мои заказы"
+      },
+      {
+        "route": "/production",
+        "title": "Производство",
+        "roles": [
+          "owner",
+          "staff"
+        ],
+        "purpose": "Производство"
+      },
+      {
+        "route": "/catalog",
+        "title": "Изделия и опции",
+        "roles": [
+          "owner"
+        ],
+        "purpose": "Изделия и опции"
+      }
+    ],
+    "integrations": [
+      {
+        "connector": "yookassa",
+        "purpose": "yookassa",
+        "userActionRequired": "подключить магазин ЮKassa"
+      },
+      {
+        "connector": "telegram",
+        "purpose": "telegram"
+      }
+    ],
+    "automations": [],
+    "acceptance": [
+      {
+        "id": "AC1",
+        "text": "Цена считается сервером: 2,5 кг, вишня–шоколад, ягоды и надпись = 6 050 ₽",
+        "check": {
+          "type": "scenario"
+        }
+      },
+      {
+        "id": "AC2",
+        "text": "Нельзя оформить заказ на день, где производство загружено полностью",
+        "check": {
+          "type": "scenario"
+        }
+      },
+      {
+        "id": "AC3",
+        "text": "Предоплата — 50% стоимости, остаток — доплата при выдаче",
+        "check": {
+          "type": "scenario"
+        }
+      },
+      {
+        "id": "AC4",
+        "text": "Покупатель видит только свои заказы",
+        "check": {
+          "type": "scenario"
+        }
+      },
+      {
+        "id": "AC5",
+        "text": "Посетитель без входа не видит заказы",
+        "check": {
+          "type": "permission"
+        }
+      },
+      {
+        "id": "AC6",
+        "text": "Кондитер не может изменить сумму заказа, но видит его в работе",
+        "check": {
+          "type": "scenario"
+        }
+      },
+      {
+        "id": "AC7",
+        "text": "ПДн покупателя обезличиваются через 90 дней",
+        "check": {
+          "type": "constraint"
+        }
+      }
+    ],
+    "pii": {
+      "categories": [
+        "fio",
+        "phone"
+      ],
+      "fields": [],
+      "retention": [],
+      "consent": true,
+      "summary": "Храним имя и телефон покупателей для связи по заказу."
+    },
+    "assumptions": [
+      "Предоплата 50% через ЮKassa (по рекомендации)"
+    ],
+    "outOfScope": [],
+    "forkAnswers": [],
+    "estimate": {
+      "credits": {
+        "min": 10,
+        "expected": 16,
+        "max": 26
+      },
+      "minutes": {
+        "min": 6,
+        "max": 14
+      }
+    },
+    "cap": {
+      "credits": 24
+    }
+  },
+  "cardEdit": {
+    "text": "добавь доставку курьером",
+    "acceptance": {
+      "id": "AC8",
+      "text": "Покупатель выбирает доставку курьером и видит её цену",
+      "check": {
+        "type": "scenario"
+      }
+    }
+  },
+  "build": [
+    {
+      "type": "run_started",
+      "payload": {
+        "kind": "build",
+        "mode": "create",
+        "baseRevision": 0,
+        "credits": {
+          "estimate": 16,
+          "cap": 24
+        }
+      }
+    },
+    {
+      "type": "plan_ready",
+      "payload": {
+        "steps": [
+          {
+            "id": "P1",
+            "kind": "ops",
+            "title": "Роли и данные: изделия, опции, заказы, слоты, платежи"
+          },
+          {
+            "id": "P2",
+            "kind": "ops",
+            "title": "Права и подключения"
+          },
+          {
+            "id": "P3",
+            "kind": "ops",
+            "title": "Функции, экраны и критерии приёмки"
+          },
+          {
+            "id": "P4",
+            "kind": "code",
+            "title": "Экраны и расчёт цены"
+          }
+        ]
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P1",
+        "label_ru": "Роли и данные: изделия, опции, заказы, слоты, платежи",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 1,
+        "opsCount": 10,
+        "opTypes": [
+          "set_app",
+          "add_role",
+          "add_entity"
+        ],
+        "summary_ru": [
+          "Спека: описание системы",
+          "Спека: +4 роли",
+          "Спека: +5 видов данных"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 3.55,
+        "cap": 24,
+        "estimate": 16
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P1",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P2",
+        "label_ru": "Права и подключения",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 2,
+        "opsCount": 20,
+        "opTypes": [
+          "set_permission",
+          "add_workflow",
+          "add_integration"
+        ],
+        "summary_ru": [
+          "Спека: +16 правил доступа",
+          "Спека: +2 автоматизации",
+          "Спека: +2 подключения"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 7.1,
+        "cap": 24,
+        "estimate": 16
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P2",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P3",
+        "label_ru": "Функции, экраны и критерии приёмки",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "ops_applied",
+      "payload": {
+        "revision": 3,
+        "opsCount": 8,
+        "opTypes": [
+          "add_function",
+          "add_page",
+          "set_acceptance"
+        ],
+        "summary_ru": [
+          "Спека: +3 функции",
+          "Спека: +4 экрана",
+          "Спека: критерии приёмки"
+        ]
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 10.65,
+        "cap": 24,
+        "estimate": 16
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P3",
+        "durationMs": 40000
+      }
+    },
+    {
+      "type": "step_started",
+      "payload": {
+        "step": "P4",
+        "label_ru": "Экраны и расчёт цены",
+        "attempt": 1
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/calcPrice.ts",
+        "action": "create",
+        "sha256": "c61bf0adc61bf0adc61bf0adc61bf0adc61bf0adc61bf0adc61bf0adc61bf0ad",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/freeSlots.ts",
+        "action": "create",
+        "sha256": "4058a9584058a9584058a9584058a9584058a9584058a9584058a9584058a958",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "functions/placeOrder.ts",
+        "action": "create",
+        "sha256": "dc96afd2dc96afd2dc96afd2dc96afd2dc96afd2dc96afd2dc96afd2dc96afd2",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/Configurator.tsx",
+        "action": "create",
+        "sha256": "570c55db570c55db570c55db570c55db570c55db570c55db570c55db570c55db",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/MyOrders.tsx",
+        "action": "create",
+        "sha256": "d4b69dd7d4b69dd7d4b69dd7d4b69dd7d4b69dd7d4b69dd7d4b69dd7d4b69dd7",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/Production.tsx",
+        "action": "create",
+        "sha256": "b0d05c1fb0d05c1fb0d05c1fb0d05c1fb0d05c1fb0d05c1fb0d05c1fb0d05c1f",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "file_written",
+      "payload": {
+        "path": "ui/CatalogAdmin.tsx",
+        "action": "create",
+        "sha256": "cbafacdccbafacdccbafacdccbafacdccbafacdccbafacdccbafacdccbafacdc",
+        "size": 1200,
+        "revision": null
+      }
+    },
+    {
+      "type": "agent_message",
+      "payload": {
+        "agent": "builder",
+        "messageId": "msg-P4",
+        "text": "Готово: экраны и расчёт цены."
+      }
+    },
+    {
+      "type": "budget_update",
+      "payload": {
+        "used": 14.2,
+        "cap": 24,
+        "estimate": 16
+      }
+    },
+    {
+      "type": "step_finished",
+      "payload": {
+        "step": "P4",
+        "durationMs": 40000,
+        "ruFallback": true
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G0",
+        "revision": 4
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G0",
+        "passed": true,
+        "revision": 4,
+        "durationMs": 2100,
+        "failedChecks": [],
+        "totalChecks": 10
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G1",
+        "revision": 4
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G1",
+        "passed": true,
+        "revision": 4,
+        "durationMs": 38000,
+        "failedChecks": [],
+        "totalChecks": 7
+      }
+    },
+    {
+      "type": "gate_started",
+      "payload": {
+        "level": "G2",
+        "revision": 4
+      }
+    },
+    {
+      "type": "gate_result",
+      "payload": {
+        "level": "G2",
+        "passed": true,
+        "revision": 4,
+        "durationMs": 12000,
+        "failedChecks": [],
+        "totalChecks": 3
+      }
+    },
+    {
+      "type": "run_finished",
+      "payload": {
+        "status": "succeeded",
+        "resultRevision": 4,
+        "creditsUsed": 14.2,
+        "summary_ru": "Собрал за 9 минут и 14,2 кредита. Проверьте систему от лица разных ролей.",
+        "prodUrl": null
+      }
+    }
+  ],
+  "gates": [
+    {
+      "level": "G0",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 2100,
+      "summary": {
+        "pass": 10,
+        "fail": 0,
+        "warn": 0,
+        "skip": 0,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G0-01",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 1 пройдена"
+        },
+        {
+          "id": "G0-02",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 2 пройдена"
+        },
+        {
+          "id": "G0-03",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 3 пройдена"
+        },
+        {
+          "id": "G0-04",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 4 пройдена"
+        },
+        {
+          "id": "G0-05",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 5 пройдена"
+        },
+        {
+          "id": "G0-06",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 6 пройдена"
+        },
+        {
+          "id": "G0-07",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 7 пройдена"
+        },
+        {
+          "id": "G0-08",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 8 пройдена"
+        },
+        {
+          "id": "G0-09",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 9 пройдена"
+        },
+        {
+          "id": "G0-10",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Статическая проверка 10 пройдена"
+        }
+      ]
+    },
+    {
+      "level": "G1",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 38000,
+      "summary": {
+        "pass": 7,
+        "fail": 0,
+        "warn": 0,
+        "skip": 0,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G1-AC1",
+          "acId": "AC1",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Цена считается сервером: 2,5 кг, вишня–шоколад, ягоды и надпись = 6 050 ₽"
+        },
+        {
+          "id": "G1-AC2",
+          "acId": "AC2",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Нельзя оформить заказ на день, где производство загружено полностью"
+        },
+        {
+          "id": "G1-AC3",
+          "acId": "AC3",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Предоплата — 50% стоимости, остаток — доплата при выдаче"
+        },
+        {
+          "id": "G1-AC4",
+          "acId": "AC4",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Покупатель видит только свои заказы"
+        },
+        {
+          "id": "G1-AC5",
+          "acId": "AC5",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Посетитель без входа не видит заказы"
+        },
+        {
+          "id": "G1-AC6",
+          "acId": "AC6",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "Кондитер не может изменить сумму заказа, но видит его в работе"
+        },
+        {
+          "id": "G1-AC7",
+          "acId": "AC7",
+          "status": "pass",
+          "severity": "blocker",
+          "message_ru": "ПДн покупателя обезличиваются через 90 дней"
+        }
+      ]
+    },
+    {
+      "level": "G2",
+      "passed": true,
+      "specVersion": 1,
+      "startedAt": "2026-09-30T10:00:00.000Z",
+      "durationMs": 12000,
+      "summary": {
+        "pass": 3,
+        "fail": 0,
+        "warn": 0,
+        "skip": 0,
+        "error": 0
+      },
+      "checks": [
+        {
+          "id": "G2-A11Y-01",
+          "status": "pass",
+          "severity": "warning",
+          "message_ru": "Подписи у всех полей формы"
+        },
+        {
+          "id": "G2-PERF-01",
+          "status": "pass",
+          "severity": "warning",
+          "message_ru": "Главная загружается быстрее 2 секунд"
+        },
+        {
+          "id": "G2-A11Y-02",
+          "status": "pass",
+          "severity": "warning",
+          "message_ru": "Контраст текста достаточный"
+        }
+      ]
+    }
+  ]
+}

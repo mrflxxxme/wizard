@@ -1,0 +1,259 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`recorded stream «bakery» > final state snapshot 1`] = `
+{
+  "budgetExceeded": null,
+  "credits": {
+    "cap": 24,
+    "estimate": 16,
+    "used": 14.2,
+  },
+  "failure": null,
+  "finished": {
+    "creditsUsed": 14.2,
+    "prodUrl": null,
+    "resultRevision": 4,
+    "status": "succeeded",
+    "summary_ru": "Собрал за 9 минут и 14,2 кредита. Проверьте систему от лица разных ролей.",
+  },
+  "g0PassedRevision": 4,
+  "gates": {
+    "G0": {
+      "failedChecks": [],
+      "revision": 4,
+      "status": "passed",
+      "totalChecks": 10,
+    },
+    "G1": {
+      "failedChecks": [],
+      "revision": 4,
+      "status": "passed",
+      "totalChecks": 7,
+    },
+    "G2": {
+      "failedChecks": [],
+      "revision": 4,
+      "status": "passed",
+      "totalChecks": 3,
+    },
+  },
+  "input": null,
+  "kind": "build",
+  "lastSeq": 32,
+  "lock": null,
+  "messages": [
+    {
+      "agent": "builder",
+      "id": "msg-P4",
+      "text": "Готово: экраны и расчёт цены.",
+    },
+  ],
+  "mode": "create",
+  "phase": "finished",
+  "ruFallback": true,
+  "steps": [
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: описание системы",
+        "Спека: +4 роли",
+        "Спека: +5 видов данных",
+      ],
+      "id": "P1",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Роли и данные: изделия, опции, заказы, слоты, платежи",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: +16 правил доступа",
+        "Спека: +2 автоматизации",
+        "Спека: +2 подключения",
+      ],
+      "id": "P2",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Права и подключения",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: +3 функции",
+        "Спека: +4 экрана",
+        "Спека: критерии приёмки",
+      ],
+      "id": "P3",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Функции, экраны и критерии приёмки",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Логика: functions/calcPrice.ts",
+        "Логика: functions/freeSlots.ts",
+        "Логика: functions/placeOrder.ts",
+        "UI: ui/Configurator.tsx",
+        "UI: ui/MyOrders.tsx",
+        "UI: ui/Production.tsx",
+        "UI: ui/CatalogAdmin.tsx",
+      ],
+      "id": "P4",
+      "inPlan": true,
+      "kind": "code",
+      "status": "done",
+      "title": "Экраны и расчёт цены",
+    },
+  ],
+}
+`;
+
+exports[`recorded stream «forum» > final state snapshot 1`] = `
+{
+  "budgetExceeded": null,
+  "credits": {
+    "cap": 30,
+    "estimate": 20,
+    "used": 18.4,
+  },
+  "failure": null,
+  "finished": {
+    "creditsUsed": 18.4,
+    "prodUrl": null,
+    "resultRevision": 5,
+    "status": "succeeded",
+    "summary_ru": "Собрал за 9 минут и 18,4 кредита. Проверьте систему от лица разных ролей.",
+  },
+  "g0PassedRevision": 5,
+  "gates": {
+    "G0": {
+      "failedChecks": [],
+      "revision": 5,
+      "status": "passed",
+      "totalChecks": 14,
+    },
+    "G1": {
+      "failedChecks": [],
+      "revision": 5,
+      "status": "passed",
+      "totalChecks": 8,
+    },
+    "G2": {
+      "failedChecks": [],
+      "revision": 5,
+      "status": "passed",
+      "totalChecks": 3,
+    },
+  },
+  "input": null,
+  "kind": "build",
+  "lastSeq": 43,
+  "lock": null,
+  "messages": [
+    {
+      "agent": "builder",
+      "id": "msg-P5",
+      "text": "Готово: серверная логика: лимиты, квоты партнёров, регистрация, напоминания.",
+    },
+    {
+      "agent": "qa",
+      "id": "msg-P5-fix",
+      "text": "Тест AC1 упал: третий участник смог купить билет в заполненный поток. Добавил проверку вместимости потока в registerTicket, тест прошёл.",
+    },
+    {
+      "agent": "builder",
+      "id": "msg-P6",
+      "text": "Готово: экраны: главная, модерация, мой билет, сканер.",
+    },
+  ],
+  "mode": "create",
+  "phase": "finished",
+  "ruFallback": true,
+  "steps": [
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: описание системы",
+        "Спека: оформление",
+        "Спека: +7 ролей",
+        "Спека: +8 видов данных",
+      ],
+      "id": "P1",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Роли и данные: потоки, билеты, заявки, квоты, программа, проходы, платежи",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: +29 правил доступа",
+      ],
+      "id": "P2",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Права: кто что видит и меняет",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: +3 автоматизации",
+        "Спека: +4 подключения",
+      ],
+      "id": "P3",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Автоматизации и подключения: ЮKassa, почта, Telegram, QR",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Спека: +4 функции",
+        "Спека: +4 экрана",
+        "Спека: критерии приёмки",
+        "Спека: страница политики",
+      ],
+      "id": "P4",
+      "inPlan": true,
+      "kind": "ops",
+      "status": "done",
+      "title": "Объявления функций и экранов, критерии приёмки, страница политики",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "Логика: functions/lib/occupancy.ts",
+        "Логика: functions/partnerQuota.ts",
+        "Логика: functions/registerTicket.ts",
+        "Логика: functions/sendReminder.ts",
+        "Логика: functions/ticketAvailability.ts",
+      ],
+      "id": "P5",
+      "inPlan": true,
+      "kind": "code",
+      "status": "done",
+      "title": "Серверная логика: лимиты, квоты партнёров, регистрация, напоминания",
+    },
+    {
+      "attempt": 1,
+      "details": [
+        "UI: ui/Landing.tsx",
+        "UI: ui/Moderation.tsx",
+        "UI: ui/MyTicket.tsx",
+        "UI: ui/Scanner.tsx",
+      ],
+      "id": "P6",
+      "inPlan": true,
+      "kind": "code",
+      "status": "done",
+      "title": "Экраны: главная, модерация, мой билет, сканер",
+    },
+  ],
+}
+`;
