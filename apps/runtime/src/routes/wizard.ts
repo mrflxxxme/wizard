@@ -2,12 +2,12 @@
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import {
-  clearSessionCookie,
   createSession,
   deleteSession,
   devUser,
+  loginCookies,
+  logoutCookies,
   safeNext,
-  sessionCookie,
 } from "../auth/session.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
@@ -21,6 +21,12 @@ async function roleOrNull(c: RuntimeContext): Promise<string | null> {
     if (e instanceof WizardError && e.code === "UNAUTHENTICATED") return null;
     throw e;
   }
+}
+
+function redirectWithCookies(location: string, cookies: string[]): Response {
+  const headers = new Headers({ Location: location, "Cache-Control": "no-store" });
+  for (const v of cookies) headers.append("Set-Cookie", v);
+  return new Response(null, { status: 302, headers });
 }
 
 export function wizardRoutes(): Hono<RuntimeHonoEnv> {
@@ -47,11 +53,7 @@ export function wizardRoutes(): Hono<RuntimeHonoEnv> {
     if (!role) return notFoundPage();
     const userId = await devUser(sys, role.name);
     const token = await createSession(sys, userId);
-    return c.body(null, 302, {
-      Location: safeNext(c.req.query("next")),
-      "Set-Cookie": sessionCookie(env, token),
-      "Cache-Control": "no-store",
-    });
+    return redirectWithCookies(safeNext(c.req.query("next")), loginCookies(env, token, true));
   });
 
   app.get("/dev-logout", async (c) => {
@@ -60,11 +62,7 @@ export function wizardRoutes(): Hono<RuntimeHonoEnv> {
     if (sys.entry.env !== "draft" || !env.devLogin) return notFoundPage();
     const s = await sessionOf(c).catch(() => null);
     if (s?.token) await deleteSession(sys, s.token);
-    return c.body(null, 302, {
-      Location: safeNext(c.req.query("next")),
-      "Set-Cookie": clearSessionCookie(env),
-      "Cache-Control": "no-store",
-    });
+    return redirectWithCookies(safeNext(c.req.query("next")), logoutCookies(env, true));
   });
 
   // Internal endpoints listen on the internal port only (runtime.yaml#routing.rules, L3-19).
@@ -92,7 +90,10 @@ export function authRoutes(): Hono<RuntimeHonoEnv> {
   app.post("/logout", async (c) => {
     const s = await sessionOf(c).catch(() => null);
     if (s?.token) await deleteSession(c.get("system"), s.token);
-    return c.body(null, 204, { "Set-Cookie": clearSessionCookie(c.get("services").env) });
+    const headers = new Headers();
+    const draft = c.get("system").entry.env === "draft";
+    for (const v of logoutCookies(c.get("services").env, draft)) headers.append("Set-Cookie", v);
+    return new Response(null, { status: 204, headers });
   });
   return app;
 }
