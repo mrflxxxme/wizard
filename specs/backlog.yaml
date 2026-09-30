@@ -515,7 +515,7 @@ tasks:
     owner: platform
     parallel_group: m1-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Публикует только owner; вторая сборка встаёт в очередь с событием lock_waiting"

@@ -77,7 +77,8 @@ describe("host guard (dev mode)", () => {
       migrate: false,
     });
     try {
-      expect((await get({ host: "evil.example" }, off)).status).toBe(200);
+      // No guard: the request reaches authentication (session mode, no cookie → 401).
+      expect((await get({ host: "evil.example" }, off)).status).toBe(401);
       expect((await get({ host: "evil.example" }, on)).status).toBe(421);
     } finally {
       await off.dispose();

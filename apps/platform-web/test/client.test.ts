@@ -1,6 +1,6 @@
 // Typed API client (api.yaml M0) against the mock platform: Idempotency-Key per mutation, Error.message_ru.
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { ApiError, createApiClient } from "../src/api/client.js";
+import { ApiError, createApiClient, csrfToken } from "../src/api/client.js";
 import { loadFeed, MockPlatform } from "./mock/server.js";
 
 let mock: MockPlatform;
@@ -48,4 +48,11 @@ test("network failure → ApiError NETWORK in Russian", async () => {
 
 test("eventsUrl carries after", () => {
   expect(api.eventsUrl("r1", 5)).toBe(`${mock.apiTarget}/api/v1/runs/r1/events?after=5`);
+});
+
+test("csrfToken reads wizard_csrf / __Host-wizard_csrf for X-Wizard-CSRF (api.yaml#info.x-auth.M1)", () => {
+  expect(csrfToken("a=1; wizard_csrf=abc-_1; b=2")).toBe("abc-_1");
+  expect(csrfToken("__Host-wizard_csrf=xyz")).toBe("xyz");
+  expect(csrfToken("wizard_session=s")).toBeUndefined();
+  expect(csrfToken("")).toBeUndefined();
 });

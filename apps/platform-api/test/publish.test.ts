@@ -141,6 +141,16 @@ describe("publish → change → publish → rollback", () => {
     expect(blocked.body.code).toBe("OPERATOR_NAME_REQUIRED");
     const missing = await api.req("POST", `/systems/${systemId}/publish`, { body: { revision: 999 } });
     expect(missing.status).toBe(404);
+    const own = await api.req("GET", `/systems/${systemId}`);
+    expect(own.body.publishBlockers).toEqual(["OPERATOR_NAME_REQUIRED", "OPERATOR_CONTACT_REQUIRED"]);
+    const other = await api.req("GET", `/systems/${systemId}`, {
+      headers: { "x-wizard-dev-user": "editor@example.test" },
+    });
+    expect(other.body.publishBlockers).toEqual([
+      "NOT_OWNER",
+      "OPERATOR_NAME_REQUIRED",
+      "OPERATOR_CONTACT_REQUIRED",
+    ]);
   });
 
   test("setCompliance (owner) → revision kind=compliance → first publish creates app_<key>_prod", async () => {
@@ -178,6 +188,7 @@ describe("publish → change → publish → rollback", () => {
     expect(s.schema_hwm_revision).toBe(firstRev);
     const got = await api.req("GET", `/systems/${systemId}`);
     expect(got.body.system.prodUrl).toBe(fin?.payload.prodUrl);
+    expect(got.body.publishBlockers).toEqual([]);
     const tables = await api.deps.pg`
       select table_name from information_schema.tables where table_schema = ${`app_${key}_prod`}`;
     expect(tables.map((t) => t.table_name)).toEqual(expect.arrayContaining(["users", "stream", "ticket"]));

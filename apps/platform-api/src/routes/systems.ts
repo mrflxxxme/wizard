@@ -8,6 +8,7 @@ import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
+import { publishBlockers } from "../publish/blockers.js";
 import { withTx } from "../runs/events.js";
 import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
@@ -92,6 +93,9 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       }),
     );
     const user = c.get("user");
+    // M1: orgId is required for a member of several organizations (dev mode keeps the local org as default).
+    if (!b.orgId && user.orgs.size > 1 && d.config.authMode !== "dev")
+      throw invalid("Укажите организацию, в которой создать систему");
     const orgId = b.orgId ?? user.defaultOrgId;
     if (!user.orgs.has(orgId)) throw new ApiError("FORBIDDEN", "Нет доступа к организации");
     checkOrgAccess(user, orgId, "editor", "Организация");
@@ -198,7 +202,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),
       activeRunId: active?.id ?? null,
-      publishBlockers: [],
+      publishBlockers: await publishBlockers(d.db, c.get("user"), s),
     });
   });
 

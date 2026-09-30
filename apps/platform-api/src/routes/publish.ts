@@ -5,9 +5,10 @@ import { Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
 import type { SystemsTable } from "../db/types.js";
-import { ApiError, type ErrorCode, invalid, notFound } from "../errors.js";
+import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
+import { BLOCKER_RU, specPublishBlockers } from "../publish/blockers.js";
 import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
@@ -16,23 +17,6 @@ import { applyOpsRevision, loadManifest, loadRevision, loadSpec, lockSystem } fr
 import { toRevisionSummary, toRun } from "../services/serialize.js";
 
 type System = Selectable<SystemsTable>;
-
-/** Publish blockers that depend on the spec and the org (api.yaml publishBlockers, workflows.yaml publish). */
-export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
-  const out: ErrorCode[] = [];
-  const hasPii = spec.entities.some((e) => e.fields.some((f) => (f.pii ?? "none") !== "none"));
-  if (hasPii && !spec.compliance?.operatorName?.trim()) out.push("OPERATOR_NAME_REQUIRED");
-  if (hasPii && !spec.compliance?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
-  if (plan === "free" && spec.roles.some((r) => r.loginMethods?.includes("phone_otp")))
-    out.push("PHONE_LOGIN_PLAN_REQUIRED");
-  return out;
-}
-
-const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
-  OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
-  OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
-  PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
-};
 
 /** File lines of the human diff: changed paths of the revision manifests (kind=file). */
 function fileChanges(a: Record<string, string>, b: Record<string, string>): SpecChange[] {
@@ -50,6 +34,7 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   const tx = <T>(fn: Parameters<typeof withTx<T>>[2]) => withTx(d.db, d.bus, fn);
 
+  /** Owner-only operations answer NOT_OWNER to other members (api.yaml x-roles, D11). */
   async function loadSystem(user: AuthUser, id: string | undefined, min: OrgRole): Promise<System> {
     if (!isUuid(id)) throw notFound("Система");
     const s = await d.db
@@ -59,13 +44,9 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       .where("deleted_at", "is", null)
       .executeTakeFirst();
     if (!s) throw notFound("Система");
-    checkOrgAccess(user, s.org_id, min, "Система");
+    checkOrgAccess(user, s.org_id, min, "Система", min === "owner" ? "NOT_OWNER" : "FORBIDDEN");
     return s;
   }
-  const requireOwner = (user: AuthUser, s: System) => {
-    if (user.orgs.get(s.org_id) !== "owner")
-      throw new ApiError("NOT_OWNER", "Это может сделать только владелец организации");
-  };
   const orgPlan = async (orgId: string) =>
     (await d.db.selectFrom("platform.orgs").select("plan").where("id", "=", orgId).executeTakeFirstOrThrow())
       .plan;
@@ -73,8 +54,7 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
   // publish
   r.post("/systems/:id/publish", async (c) => {
     const user = c.get("user");
-    const s = await loadSystem(user, c.req.param("id"), "viewer");
-    requireOwner(user, s);
+    const s = await loadSystem(user, c.req.param("id"), "owner");
     const b = await jsonBody(
       c,
       z.strictObject({ revision: z.number().int().min(1), confirmDiff: z.literal(true).optional() }),
@@ -108,7 +88,7 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       c,
       z.strictObject({ env: z.enum(["draft", "prod"]), toRevision: z.number().int().min(1) }),
     );
-    if (b.env === "prod") requireOwner(user, s);
+    if (b.env === "prod") checkOrgAccess(user, s.org_id, "owner", "Система", "NOT_OWNER");
     const target = await loadRevision(d.db, s.id, b.toRevision);
     if (!target || b.toRevision > s.draft_revision)
       throw new ApiError("ROLLBACK_TARGET_INVALID", "Такой ревизии нет");
@@ -178,8 +158,7 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
   // setCompliance
   r.put("/systems/:id/compliance", async (c) => {
     const user = c.get("user");
-    const s0 = await loadSystem(user, c.req.param("id"), "viewer");
-    requireOwner(user, s0);
+    const s0 = await loadSystem(user, c.req.param("id"), "owner");
     const b = await jsonBody(
       c,
       z.strictObject({
