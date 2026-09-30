@@ -1,0 +1,85 @@
+# Коннектор Telegram. Нормативно для backlog M1-06 (уведомления) и M1-05 (вход через Telegram — runtime.yaml#auth).
+# Факты Bot API сверены с core.telegram.org/bots/api и /widgets/login 30.09.2026.
+id: telegram
+milestone: M1
+principle: >
+  По умолчанию — общий бот уведомлений платформы: подключение «из коробки», без @BotFather; сообщения подписаны именем системы.
+  Свой бот клиента (создан в @BotFather, Wizard хранит только ссылку на токен) — опция; обязателен только для входа через Telegram.
+  Сообщения без ПДн — без исключений (G2-TG-01 блокирует; опции allowPii нет, вернуть её можно только через E-DECISION).
+  Вход через Telegram — метод на всех тарифах, включая Free (решение F4).
+
+secrets:                                     # только при bot=own; для bot=platform секретов в системе нет
+  - { name: telegram_bot_token, required: false, label: "Токен бота из @BotFather (обязателен при bot=own — validateSpec)" }
+  - { name: telegram_webhook_secret, required: false, label: "Секрет вебхука (генерирует платформа, 32 символа A-Za-z0-9_-; при bot=own)" }
+
+config_schema:
+  bot: "platform | own; по умолчанию platform, а если задан botUsername — own. platform — общий бот уведомлений платформы (имя — E-NAME, токен — секрет платформы в хранилище deploy.yaml#secrets, E-ACCESS); own — бот клиента"
+  botUsername: "^[A-Za-z][A-Za-z0-9_]{4,31}$ без @ — для ссылок t.me; только при bot=own"
+  removed: "allowPii — удалён (L4-14); configSchema его не принимает"
+  loginEnabled: "bool — использовать бота для входа (OIDC), по умолчанию true, если какая-то роль имеет loginMethods telegram; MUST bot=own (у общего бота нет client_id системы), иначе CONFIG_INVALID «Для входа через Telegram нужен свой бот»"
+
+bots:
+  platform:
+    prefix: "Каждое сообщение начинается с «<app.name>: » (app.name без переводов строк, ≤ 60 символов), чтобы получатель видел, от какой системы уведомление"
+    linking: "linkToken адресует (system, env, userId) на стороне платформы; chat_id сохраняется в users.telegram_chat_id этой системы"
+    webhook: "Один вебхук платформы /_wizard/hooks/telegram/_platform/<hookToken> на runtime; маршрутизация по linkToken, для прочих апдейтов — автоответ «Этот бот присылает уведомления систем, которые вы подключили»"
+    unlink: "my_chat_member kicked у общего бота → telegram_chat_id = NULL во всех системах для этого chat_id (выход из всех уведомлений)"
+    limits: "общая очередь ≤ 25 сообщений/с на бота с честным разделением по системам; на систему ≤ 1 сообщение/с в среднем (Free — ≤ 500/сут), превышение → RATE_LIMITED и событие владельцу"
+  own:
+    note: "Бот клиента: вебхук, токен и лимиты — ниже; используется для уведомлений и входа"
+
+api:
+  base_url: "https://api.telegram.org/bot<token>/<method> — путь содержит токен: в логах runtime и egress-proxy MUST маскироваться (connector-interface.md, ../security/isolation.yaml#M2.network)"
+  methods:
+    getMe: "проверка токена при сохранении интеграции (bot=own)"
+    setWebhook: "{url, secret_token, allowed_updates:['message','my_chat_member']} — при публикации ревизии и смене токена (bot=own)"
+    deleteWebhook: "при удалении интеграции (bot=own)"
+    sendMessage: "{chat_id, text ≤ 4096 символов, parse_mode:'HTML', reply_markup:{inline_keyboard:[[{text,url}]]}, link_preview_options:{is_disabled:true}}"
+  errors: "Ответ {ok:false, error_code, description, parameters.retry_after?}"
+
+chat_linking:                                # как userId превращается в chat_id без ПДн в коде
+  deep_link: "https://t.me/<бот>?start=<linkToken> (<бот> — общий бот или botUsername); linkToken — 32 символа [A-Za-z0-9_-] (лимит start-параметра 64), одноразовый, TTL 24 ч, хранится хешем с user_id"
+  flow:
+    - "Компонент ui-kit «Напоминания в Telegram» вызывает POST /api/telegram/:integration/link → {url}"
+    - "Пользователь жмёт Start; вебхук получает '/start <linkToken>' → users.telegram_chat_id = message.chat.id; бот отвечает «Готово, уведомления подключены»"
+    - "Вход через Telegram (OIDC, scope openid telegram:bot_access; только bot=own) тоже связывает чат. Поток OIDC (state, nonce, строгий redirect_uri) и согласие при первом входе — runtime.yaml#auth.methods_M1.telegram, ../security/compliance.yaml#system_package.consent.login"
+    - "my_chat_member со статусом kicked → telegram_chat_id = NULL"
+
+actions:
+  sendToUser:
+    input: "{userId, text, buttons?: [{text, url}] ≤ 3, idempotencyKey?}"
+    effect: true
+    rules:
+      - "MUST: chat_id берётся из users.telegram_chat_id на хосте; нет — {delivered:false, reason:'not_linked'} без ошибки"
+      - "MUST: текст проверяется packages/pii detect; найдены ПДн → PII_BLOCKED (второй рубеж после G2-TG-01)"
+      - "Относительные url кнопок дополняются хостом системы; сторонние домены запрещены"
+      - "Экранирование HTML (<, >, &) в подставленных значениях"
+    output: "{delivered, reason?: 'not_linked'|'blocked'|'test_mode'}"
+  notify_step: "Шаг воркфлоу notify с integration=telegram: text-шаблон с {{field}}; G2-TG-01 (в M1 — validateSpec, G0) запрещает ссылки на поля pii≠none (M1-06)"
+
+webhooks:
+  path: "/_wizard/hooks/telegram/<integration>/<hookToken> (bot=own); общий бот — bots.platform.webhook"
+  verification: "MUST: заголовок X-Telegram-Bot-Api-Secret-Token == telegram_webhook_secret (для общего бота — секрет платформы), сравнение за постоянное время, иначе 401"
+  handling: "Только /start <token> и my_chat_member; остальные сообщения — автоответ «Этот бот отправляет уведомления системы <app.name>»; чат-бот и диалоги — non_goal"
+  idempotency: "по update_id"
+
+rate_limits: "bot=own: ≤ 1 сообщение/с в один чат и ≤ 25/с на бота — очередь в _w_jobs; 429 → ждать parameters.retry_after. bot=platform — bots.platform.limits"
+
+test_mode:
+  draft: "Сообщения пишутся в .data/outbox/<system>/telegram.jsonl (общий бот — всегда; свой бот — если в интеграции не задан тестовый бот); с тестовым ботом — реальная отправка только связанным чатам членов организации"
+  mocks: "packages/connectors/test/mocks/telegram — hono-мок sendMessage/setWebhook/getMe"
+
+error_mapping:
+  "400 Bad Request": INVALID_REQUEST
+  "401 Unauthorized": AUTH_FAILED
+  "403 Forbidden (bot was blocked by the user)": RECIPIENT_UNAVAILABLE
+  "429 Too Many Requests": RATE_LIMITED
+  "5xx / network": UPSTREAM_UNAVAILABLE
+
+acceptance:
+  - "G2: шаблон «Здравствуйте, {{holder_name}}» (pii=basic) блокирует публикацию; шаблон без ПДн проходит (M1-06)"
+  - "Интеграция без настроек (bot=platform) отправляет уведомление с префиксом «<app.name>: » в outbox; loginEnabled при bot=platform → CONFIG_INVALID"
+  - "Deep link: /start с верным токеном связывает чат, повтор токена не работает"
+  - "Вебхук без верного X-Telegram-Bot-Api-Secret-Token → 401, данные не меняются"
+  - "403 blocked → telegram_chat_id сброшен, следующий sendToUser → not_linked"
+  - "В логах runtime после sendMessage нет токена бота и /bot<token>/"

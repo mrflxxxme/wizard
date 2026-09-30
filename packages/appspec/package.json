@@ -1,0 +1,20 @@
+{
+  "name": "@wizard/appspec",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/appspec"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "postgres": "^3.4.9"
+  }
+}

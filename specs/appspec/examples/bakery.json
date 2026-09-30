@@ -1,0 +1,452 @@
+{
+  "specVersion": "1",
+  "app": {
+    "name": "Кондитерская «Сахар»",
+    "description": "Торты на заказ: конфигуратор с ценой, предзаказ с предоплатой 50% через ЮKassa, производство к дате по загрузке, самовывоз или доставка.",
+    "locale": "ru",
+    "template": "made_to_order"
+  },
+  "theme": {"accent": "#9D174D", "font": "Manrope", "radius": 16, "density": "regular", "mode": "light"},
+  "entities": [
+    {
+      "name": "product",
+      "label": "Изделие",
+      "fields": [
+        {"name": "name", "label": "Название", "type": "string", "required": true, "maxLength": 120},
+        {"name": "description", "label": "Описание", "type": "text"},
+        {"name": "photo", "label": "Фото", "type": "file"},
+        {"name": "active", "label": "В продаже", "type": "bool", "default": true}
+      ],
+      "indexes": [{"fields": ["active"]}]
+    },
+    {
+      "name": "product_option",
+      "label": "Опция изделия",
+      "fields": [
+        {"name": "product", "label": "Изделие", "type": "ref", "required": true, "ref": {"entity": "product", "onDelete": "cascade"}},
+        {
+          "name": "option_group",
+          "label": "Группа",
+          "type": "enum",
+          "required": true,
+          "enum": [{"value": "weight", "label": "Вес"}, {"value": "filling", "label": "Начинка"}, {"value": "decor", "label": "Декор"}]
+        },
+        {"name": "title", "label": "Название", "type": "string", "required": true, "maxLength": 80},
+        {"name": "price", "label": "Цена или надбавка", "type": "money", "required": true, "min": 0},
+        {"name": "weight_kg", "label": "Вес, кг", "type": "decimal", "min": 0},
+        {"name": "sort_order", "label": "Порядок", "type": "int", "default": 0},
+        {"name": "active", "label": "Доступна", "type": "bool", "default": true}
+      ],
+      "indexes": [{"fields": ["product", "option_group", "sort_order"]}]
+    },
+    {
+      "name": "production_slot",
+      "label": "Производственный день",
+      "fields": [
+        {"name": "slot_date", "label": "Дата", "type": "date", "required": true, "unique": true},
+        {"name": "capacity", "label": "Тортов в день", "type": "int", "required": true, "min": 0, "max": 200},
+        {"name": "closed", "label": "Выходной", "type": "bool", "default": false}
+      ]
+    },
+    {
+      "name": "cake_order",
+      "label": "Заказ",
+      "fields": [
+        {"name": "number", "label": "Номер", "type": "int", "required": true, "unique": true},
+        {"name": "customer_user", "label": "Покупатель", "type": "ref", "required": true, "ref": {"entity": "users"}},
+        {"name": "product", "label": "Изделие", "type": "ref", "required": true, "ref": {"entity": "product"}},
+        {"name": "options", "label": "Выбранные опции", "type": "json", "required": true},
+        {"name": "inscription", "label": "Надпись на торте", "type": "string", "maxLength": 60},
+        {"name": "slot", "label": "Дата готовности", "type": "ref", "required": true, "ref": {"entity": "production_slot"}},
+        {"name": "fulfillment", "label": "Получение", "type": "enum", "required": true, "enum": [{"value": "pickup", "label": "Самовывоз"}, {"value": "delivery", "label": "Доставка"}]},
+        {"name": "customer_name", "label": "Имя", "type": "string", "required": true, "maxLength": 120, "pii": "basic", "piiKind": "fio"},
+        {"name": "customer_phone", "label": "Телефон", "type": "phone", "required": true, "pii": "basic", "piiKind": "phone"},
+        {"name": "customer_email", "label": "Email для чека", "type": "email", "pii": "basic", "piiKind": "email"},
+        {"name": "address", "label": "Адрес доставки", "type": "string", "maxLength": 300, "pii": "basic", "piiKind": "address"},
+        {"name": "total", "label": "Стоимость", "type": "money", "required": true, "min": 0},
+        {"name": "prepay_amount", "label": "Предоплата", "type": "money", "required": true, "min": 0},
+        {"name": "remaining_amount", "label": "Доплата", "type": "money", "required": true, "min": 0},
+        {
+          "name": "status",
+          "label": "Статус",
+          "type": "enum",
+          "required": true,
+          "default": "pending_payment",
+          "enum": [
+            {"value": "pending_payment", "label": "Ожидает предоплаты"},
+            {"value": "prepaid", "label": "Предоплачен"},
+            {"value": "in_production", "label": "В работе"},
+            {"value": "ready", "label": "Готов к выдаче"},
+            {"value": "completed", "label": "Выдан"},
+            {"value": "canceled", "label": "Отменён"},
+            {"value": "refunded", "label": "Возвращён"}
+          ]
+        },
+        {"name": "note", "label": "Комментарий", "type": "text", "maxLength": 1000}
+      ],
+      "indexes": [{"fields": ["slot", "status"]}, {"fields": ["status", "created_at"]}],
+      "ownerField": "customer_user",
+      "retention": {"deleteAfterDays": 90, "mode": "anonymize"}
+    },
+    {
+      "name": "payment",
+      "label": "Платёж",
+      "fields": [
+        {"name": "cake_order", "label": "Заказ", "type": "ref", "required": true, "ref": {"entity": "cake_order"}},
+        {"name": "provider_payment_id", "label": "ID платежа ЮKassa", "type": "string", "required": true, "unique": true, "maxLength": 64},
+        {"name": "kind", "label": "Вид", "type": "enum", "required": true, "enum": [{"value": "payment", "label": "Оплата"}, {"value": "refund", "label": "Возврат"}]},
+        {"name": "amount", "label": "Сумма", "type": "money", "required": true, "min": 0},
+        {
+          "name": "status",
+          "label": "Статус",
+          "type": "enum",
+          "required": true,
+          "enum": [{"value": "pending", "label": "В обработке"}, {"value": "succeeded", "label": "Успешно"}, {"value": "canceled", "label": "Отменён"}]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {"name": "owner", "label": "Владелец", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"]},
+    {"name": "staff", "label": "Кондитер", "access": "login", "loginMethods": ["email_otp", "telegram"]},
+    {"name": "customer", "label": "Покупатель", "access": "login", "loginMethods": ["email_otp", "telegram"], "selfSignup": true},
+    {"name": "visitor", "label": "Посетитель", "access": "public"}
+  ],
+  "permissions": [
+    {"role": "owner", "entity": "product", "ops": ["read", "create", "update", "delete"]},
+    {"role": "owner", "entity": "product_option", "ops": ["read", "create", "update", "delete"]},
+    {"role": "owner", "entity": "production_slot", "ops": ["read", "create", "update", "delete"]},
+    {"role": "owner", "entity": "cake_order", "ops": ["read", "update"], "readonlyFields": ["customer_user", "total", "prepay_amount", "remaining_amount", "number"]},
+    {"role": "owner", "entity": "payment", "ops": ["read"]},
+    {"role": "staff", "entity": "product", "ops": ["read"]},
+    {"role": "staff", "entity": "product_option", "ops": ["read"]},
+    {"role": "staff", "entity": "production_slot", "ops": ["read", "update"]},
+    {
+      "role": "staff",
+      "entity": "cake_order",
+      "ops": ["read", "update"],
+      "hiddenFields": ["customer_email"],
+      "readonlyFields": ["customer_user", "product", "options", "slot", "customer_name", "customer_phone", "address", "total", "prepay_amount", "remaining_amount", "number", "fulfillment"]
+    },
+    {"role": "customer", "entity": "product", "ops": ["read"]},
+    {"role": "customer", "entity": "product_option", "ops": ["read"]},
+    {"role": "customer", "entity": "production_slot", "ops": ["read"]},
+    {"role": "customer", "entity": "cake_order", "ops": ["read"], "rowFilter": {"customer_user": "$user.id"}},
+    {"role": "visitor", "entity": "product", "ops": ["read"]},
+    {"role": "visitor", "entity": "product_option", "ops": ["read"]},
+    {"role": "visitor", "entity": "production_slot", "ops": ["read"]}
+  ],
+  "workflows": [
+    {
+      "name": "order_prepaid",
+      "label": "Подтверждение предоплаты",
+      "trigger": {"type": "on_status", "entity": "cake_order", "field": "status", "equals": "prepaid"},
+      "steps": [{"type": "notify", "params": {"integration": "telegram", "to": "$record.customer_user", "text": "Заказ №{{number}} принят в работу. Дата готовности: {{slot.slot_date}}."}}]
+    },
+    {
+      "name": "order_ready",
+      "label": "Заказ готов",
+      "trigger": {"type": "on_status", "entity": "cake_order", "field": "status", "equals": "ready"},
+      "steps": [
+        {
+          "type": "notify",
+          "params": {"integration": "telegram", "to": "$record.customer_user", "text": "Заказ №{{number}} готов к выдаче. Доплата {{remaining_amount}} ₽ — в личном кабинете."}
+        }
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "name": "yookassa",
+      "connector": "yookassa",
+      "config": {
+        "bindings": [
+          {
+            "id": "prepay",
+            "entity": "cake_order",
+            "amountField": "prepay_amount",
+            "payableStatus": "pending_payment",
+            "paidStatus": "prepaid",
+            "canceledStatus": "canceled",
+            "refundedStatus": "refunded",
+            "paymentEntity": {"name": "payment", "refField": "cake_order"},
+            "description": "Предоплата 50% по заказу №{{number}}",
+            "returnRoute": "/orders",
+            "receipt": {"customerEmailField": "customer_email", "customerPhoneField": "customer_phone", "paymentSubject": "commodity", "paymentMode": "full_prepayment", "vatCode": 1}
+          },
+          {
+            "id": "final",
+            "entity": "cake_order",
+            "amountField": "remaining_amount",
+            "payableStatus": "ready",
+            "paidStatus": "completed",
+            "canceledStatus": "ready",
+            "refundedStatus": "refunded",
+            "paymentEntity": {"name": "payment", "refField": "cake_order"},
+            "description": "Доплата по заказу №{{number}}",
+            "returnRoute": "/orders",
+            "receipt": {
+              "customerEmailField": "customer_email",
+              "customerPhoneField": "customer_phone",
+              "paymentSubject": "commodity",
+              "paymentMode": "full_payment",
+              "vatCode": 1,
+              "settlePrepaymentOf": "prepay"
+            }
+          }
+        ],
+        "refundWindowDays": 2
+      },
+      "secretRefs": ["secret://yookassa_shop_id", "secret://yookassa_secret_key"]
+    },
+    {
+      "name": "telegram",
+      "connector": "telegram",
+      "config": {"botUsername": "sahar_cakes_bot"},
+      "secretRefs": ["secret://telegram_bot_token", "secret://telegram_webhook_secret"]
+    }
+  ],
+  "functions": [
+    {"name": "calcPrice", "kind": "query", "file": "functions/calcPrice.ts", "public": true, "roles": ["visitor", "customer", "owner"]},
+    {"name": "freeSlots", "kind": "query", "file": "functions/freeSlots.ts", "public": true, "roles": ["visitor", "customer", "owner", "staff"]},
+    {"name": "placeOrder", "kind": "mutation", "file": "functions/placeOrder.ts", "public": true, "roles": ["customer"], "collectsPii": true}
+  ],
+  "pages": [
+    {"route": "/", "title": "Торт на заказ", "file": "ui/Configurator.tsx", "roles": ["visitor", "customer", "owner", "staff"]},
+    {"route": "/orders", "title": "Мои заказы", "file": "ui/MyOrders.tsx", "roles": ["customer"]},
+    {"route": "/production", "title": "Производство", "file": "ui/Production.tsx", "roles": ["owner", "staff"]},
+    {"route": "/catalog", "title": "Изделия и опции", "file": "ui/CatalogAdmin.tsx", "roles": ["owner"]}
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "Цена считается сервером: 2,5 кг, вишня–шоколад, ягоды и надпись = 6 050 ₽",
+      "check": {
+        "type": "scenario",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": {"role": "visitor"}},
+          {"callFn": {"name": "calcPrice", "args": {"productId": "$cake.id", "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"]}}},
+          {"expect": {"fields": {"total": 6050, "prepay": 3025}}}
+        ]
+      }
+    },
+    {
+      "id": "AC2",
+      "text": "Нельзя оформить заказ на день, где производство загружено полностью",
+      "check": {
+        "type": "scenario",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": "ira"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              }
+            },
+            "consent": true
+          },
+          {"as": "oleg"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              }
+            },
+            "consent": true
+          },
+          {"expect": {"error": "SLOT_FULL"}}
+        ]
+      }
+    },
+    {
+      "id": "AC3",
+      "text": "Предоплата — 50% стоимости, остаток — доплата при выдаче",
+      "check": {
+        "type": "scenario",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": "ira"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              },
+              "save": "o1"
+            },
+            "consent": true
+          },
+          {"read": {"entity": "cake_order", "id": "$o1.orderId"}},
+          {"expect": {"fields": {"total": 6050, "prepay_amount": 3025, "remaining_amount": 3025, "status": "pending_payment"}}}
+        ]
+      }
+    },
+    {
+      "id": "AC4",
+      "text": "Покупатель видит только свои заказы",
+      "check": {
+        "type": "scenario",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": "ira"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              }
+            },
+            "consent": true
+          },
+          {"as": "oleg"},
+          {"read": {"entity": "cake_order"}},
+          {"expect": {"count": 0}}
+        ]
+      }
+    },
+    {"id": "AC5", "text": "Посетитель без входа не видит заказы", "check": {"type": "permission", "role": "visitor", "entity": "cake_order", "op": "read", "expect": "deny"}},
+    {
+      "id": "AC6",
+      "text": "Кондитер не может изменить сумму заказа, но видит его в работе",
+      "check": {
+        "type": "scenario",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": "ira"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              },
+              "save": "o1"
+            },
+            "consent": true
+          },
+          {"as": "st"},
+          {"update": {"entity": "cake_order", "id": "$o1.orderId", "data": {"total": 100}}},
+          {"expect": {"status": "invalid", "error": "FIELD_READONLY"}},
+          {"read": {"entity": "cake_order", "id": "$o1.orderId"}},
+          {"expect": {"absentFields": ["customer_email"]}}
+        ]
+      }
+    },
+    {
+      "id": "AC7",
+      "text": "ПДн покупателя обезличиваются через 90 дней",
+      "check": {
+        "type": "constraint",
+        "milestone": "M1",
+        "entity": "cake_order",
+        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
+        "steps": [
+          {"as": "own"},
+          {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "filling", "title": "Вишня–шоколад", "price": 0}, "save": "cherry"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Ягоды", "price": 600}, "save": "berries"}},
+          {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "decor", "title": "Надпись", "price": 300}, "save": "txt"}},
+          {"create": {"entity": "production_slot", "data": {"slot_date": "2026-10-11", "capacity": 1}, "save": "sat"}},
+          {"as": "ira"},
+          {
+            "callFn": {
+              "name": "placeOrder",
+              "args": {
+                "productId": "$cake.id",
+                "optionIds": ["$w25.id", "$cherry.id", "$berries.id", "$txt.id"],
+                "slotId": "$sat.id",
+                "fulfillment": "pickup",
+                "customerName": "Ирина",
+                "customerPhone": "+79990000000",
+                "inscription": "С днём рождения"
+              },
+              "save": "o1"
+            },
+            "consent": true
+          },
+          {"advanceTime": {"minutes": 131040}},
+          {"runWorkflows": {}},
+          {"as": "own"},
+          {"read": {"entity": "cake_order", "id": "$o1.orderId"}},
+          {"expect": {"fields": {"customer_name": null, "customer_phone": null, "address": null}}}
+        ]
+      }
+    }
+  ],
+  "compliance": {
+    "consentText": "Я соглашаюсь на обработку имени, телефона и адреса для выполнения заказа. Данные обезличиваются через 90 дней.",
+    "policyPage": "/privacy",
+    "operatorName": "ИП Сахарова А. В.",
+    "operatorContact": "sahar.cakes@example.ru",
+    "operatorAddress": "г. Казань, ул. Баумана, д. 1"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.data/
+.env
+*.log
+tools/eval/results/
+test-results/
+playwright-report/
+.claude/worktrees/

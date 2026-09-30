@@ -1,0 +1,100 @@
+# Коннектор ЮKassa. Нормативно для backlog M2-02. Общие правила — connector-interface.md.
+# Факты API сверены с yookassa.ru/developers 30.09.2026 (interaction-format, webhooks, receipts/54fz).
+id: yookassa
+milestone: M2
+principle: >
+  Деньги идут напрямую в магазин ЮKassa клиента (оператора системы). Wizard не принимает, не хранит и не
+  перечисляет деньги конечных покупателей, не использует сплитование и автоплатежи. Рекуррентные платежи
+  в системах клиентов не нужны (save_payment_method не передаётся).
+
+secrets:
+  - { name: yookassa_shop_id, required: true, label: "shopId магазина" }
+  - { name: yookassa_secret_key, required: true, label: "Секретный ключ (test_… для тестового магазина)" }
+
+config_schema:                               # integration.config
+  bindings:                                  # 1..10 привязок «запись системы → платёж»
+    id: "ident, уникален в интеграции; клиент вызывает pay(bindingId, recordId)"
+    entity: "сущность с полем суммы и статуса"
+    amountField: "поле money; сумма берётся ТОЛЬКО из записи на сервере, клиент её не передаёт"
+    payableStatus: "значение статуса, при котором можно платить"
+    paidStatus: "статус после payment.succeeded"
+    canceledStatus: "статус после payment.canceled"
+    refundedStatus: "статус после полного возврата"
+    statusField: "по умолчанию status"
+    paymentEntity: "{name, refField} — сущность журнала платежей с полями provider_payment_id, kind, amount, status (pending | succeeded | canceled | needs_review)"
+    description: "до 128 символов, подстановки {{field}} только с pii=none (G2)"
+    returnRoute: "маршрут страницы возврата, :id → id записи"
+    receipt: "{customerEmailField?, customerPhoneField?, paymentSubject: commodity|service, paymentMode: full_prepayment|full_payment, vatCode: 1..6|11|12, settlePrepaymentOf?: <bindingId>}"
+  refundWindowDays: "0..365; возврат через refund() разрешён не позже N дней после оплаты"
+  testMode: "bool, только для prod: разрешить тестовый магазин (баннер «Тестовые платежи»)"
+  validation: "G0: поля и статусы существуют; amountField ∈ readonlyFields или роль-плательщик не имеет update на сущность; хотя бы одно из customerEmailField/customerPhoneField"
+
+api:
+  base_url: "https://api.yookassa.ru/v3"
+  auth: "HTTP Basic: shopId:secretKey"
+  idempotence: "Заголовок Idempotence-Key (≤ 64 символа, UUID v4) на каждый POST; ЮKassa хранит его 24 часа. Ключ = sha256(idempotencyKey коннектора) в UUID-форме"
+  http_500: "Результат неизвестен: MUST повторить с тем же Idempotence-Key или проверить объект GET-запросом"
+  calls:
+    create_payment: "POST /payments {amount:{value:'3025.00',currency:'RUB'}, capture:true, confirmation:{type:'redirect', return_url}, description, metadata:{system, env, binding, recordId}, receipt}"
+    get_payment: "GET /payments/{payment_id}"
+    create_refund: "POST /refunds {payment_id, amount:{value,currency}, description?, receipt?}"
+    create_receipt: "POST /receipts {type:'payment', payment_id, send:true, customer, items[payment_mode:'full_payment'], settlements:[{type:'prepayment', amount}]} — закрывающий чек зачёта предоплаты"
+
+runtime_endpoint:                            # маршрут коннектора в apps/runtime
+  path: "POST /api/pay/:integration {binding, id}"
+  algorithm:
+    - "1. Прочитать запись от имени вызывающего (права read и rowFilter), иначе 404"
+    - "2. status == payableStatus, иначе 409 NOT_PAYABLE «Заказ нельзя оплатить в текущем статусе»"
+    - "3. Сумма = amountField записи; 0 → 409 NOTHING_TO_PAY"
+    - "4. Есть незавершённый платёж той же привязки моложе 30 мин И его amount равен текущей сумме записи → вернуть его confirmationUrl; сумма изменилась → старый не переиспользуется (истечёт у ЮKassa), создаётся новый"
+    - "5. create_payment; записать paymentEntity {kind:'payment', status:'pending', amount, provider_payment_id}; ответ {confirmationUrl}"
+  m0_stub: "M0: маршрут возвращает {confirmationUrl: '/_wizard/pay-mock?binding=<b>&id=<id>'} без обращения к ЮKassa; страница (только draft) обрабатывается как payment.succeeded (connector-interface.md §2 «M0»)"
+  receipt: "customer.email/phone берутся из полей записи на сервере; items — одна позиция: description, quantity '1', amount, vat_code, payment_mode, payment_subject"
+
+actions:                                     # ctx.connectors.<name> в action-функциях
+  refund: { input: "{binding, id, amount?, reason?}", effect: true, rule: "только в пределах refundWindowDays; частичный возврат ≤ оплаченного; статус записи → refundedStatus после refund.succeeded при полном возврате" }
+  getPaymentStatus: { input: "{binding, id}", effect: false }
+
+webhooks:
+  path: "/_wizard/hooks/yookassa/<integration>/<hookToken> — URL показывается пользователю в настройках интеграции; он вставляет его в личном кабинете ЮKassa (Интеграция → HTTP-уведомления)"
+  events: [payment.succeeded, payment.canceled, payment.waiting_for_capture, refund.succeeded]
+  verification:
+    - "ЮKassa не подписывает уведомления. MUST: (1) IP источника (только из последнего хопа доверенного ingress, X-Forwarded-For от недоверенных адресов игнорируется — deploy.yaml) ∈ allowlist 185.71.76.0/27, 185.71.77.0/27, 77.75.153.0/25, 77.75.156.11, 77.75.156.35, 77.75.154.128/25, 2a02:5180::/32 (список — в конфиге коннектора, обновляемый); (2) MUST: статус объекта перепроверяется GET /payments/{id} или /refunds/{id} с ключами магазина, решение принимается только по ответу API"
+    - "metadata.system/env/binding должны совпасть с интеграцией, иначе 200 и игнор (чужой магазин)"
+  handling:
+    payment.succeeded: "Сверка по ответу GET: amount.value и amount.currency = paymentEntity.amount и RUB, metadata.recordId = записи paymentEntity, amount = текущему amountField записи. Совпало → paymentEntity.status=succeeded; запись → paidStatus; если receipt.settlePrepaymentOf — create_receipt на зачёт предоплаты. Не совпало → paymentEntity.status=needs_review, запись НЕ переходит в paidStatus, событие владельцу «Оплата требует проверки»"
+    payment.canceled: "paymentEntity.status=canceled; запись → canceledStatus, если она всё ещё payableStatus"
+    payment.waiting_for_capture: "не ожидается (capture:true); логировать и отменить платёж"
+    refund.succeeded: "paymentEntity {kind:'refund', status:'succeeded'}; при полном возврате → refundedStatus"
+  response: "Всегда 200 после успешной обработки; при сбое — 500, ЮKassa повторяет доставку до 24 часов"
+  idempotency: "ключ события = event + object.id; повтор не меняет данные"
+
+receipts_54fz:
+  mode: "«Чеки от ЮKassa» по умолчанию (ФФД 1.2) — подключает клиент в своём магазине"
+  payment_mode_values: "full_prepayment, full_payment (другие признаки «Чеки от ЮKassa» не поддерживают)"
+  vat_code_values: "1 без НДС, 2 0%, 3 10%, 4 20%, 5 10/110, 6 20/120, 11 22%, 12 22/122 (с 01.01.2026)"
+  prepayment_flow: "Предоплата 50%: первый чек с paymentMode из привязки prepay; при выдаче — оплата остатка привязкой final и закрывающий чек с settlements prepayment"
+  open_question: "E-LEGAL: корректный признак расчёта для частичной предоплаты (54-ФЗ предусматривает «частичную предоплату», «Чеки от ЮKassa» — нет). До ответа юриста — full_prepayment на сумму предоплаты"
+
+test_mode:
+  draft: "MUST: только тестовый магазин (секретный ключ начинается с test_); live-ключ в draft → CONFIG_INVALID «Для черновика нужен тестовый магазин»"
+  mocks: "packages/connectors/test/mocks/yookassa — hono-мок /v3/payments, /v3/refunds, /v3/receipts и генератор уведомлений"
+
+error_mapping:
+  "400 invalid_request": INVALID_REQUEST
+  "401 invalid_credentials": AUTH_FAILED
+  "403 forbidden": AUTH_FAILED
+  "404 not_found": NOT_FOUND
+  "429 too_many_requests": RATE_LIMITED
+  "500 internal_server_error": UPSTREAM_UNAVAILABLE
+  "network/timeout 30s": UPSTREAM_UNAVAILABLE
+
+pii: "customer.email/phone уходят в ЮKassa как необходимые для чека (оператор — клиент, ЮKassa — получатель по договору клиента); в логах и _w_connector_calls — маска"
+
+acceptance:
+  - "Тестовый магазин: оплата → статус записи paidStatus → refund → refundedStatus (M2-02, e2e)"
+  - "Поддельное уведомление с чужого IP → 401; с верного IP, но GET показывает pending → статус не меняется"
+  - "Повтор уведомления payment.succeeded не создаёт второй строки платежа"
+  - "Сумма из тела запроса клиента игнорируется: изменить сумму через /api/pay нельзя"
+  - "Сумма записи изменилась, пока платёж был pending: /api/pay создаёт новый платёж; payment.succeeded по старому → needs_review, запись не paid"
+  - "Уведомление с поддельным X-Forwarded-For из allowlist, пришедшее не через доверенный ingress → 401"

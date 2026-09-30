@@ -1,0 +1,92 @@
+# Развёртывание. M0–M1 — локально; M2 — Cloud.ru Evolution (D16), staging + prod.
+version: 1
+
+local:                             # M0 (M0-01, M0-15, M0-17)
+  postgres:
+    version: "16"
+    how: "pnpm db:up → initdb (если нет) в .data/pg, pg_ctl -D .data/pg -o '-p 5433 -k .data/pg' -l .data/pg/log start; без Docker"
+    database: "wizard (пароль из .env WIZARD_DB_URL); схемы platform, dbos (M1), app_<key>_<env>"
+    roles: "wizard — владелец схем platform и dbos (миграции platform-api); wizard_owner — создаёт и мигрирует только схемы app_*, НЕ владелец platform, без прав на неё, не superuser; wizard_runtime — runtime.yaml#postgres.roles. MUST: DDL из toDDL/toRLS исполняется только под wizard_owner (L3-01); тест: SQL-инъекция в литерале спеки не видит схему platform"
+    down: "pnpm db:down → pg_ctl stop -m fast"
+    reset: "pnpm db:reset → drop всех схем app_* и platform, повторные миграции (только локально; E-EXTERNAL не нужен)"
+  ports: { platform_api: 4000, platform_web: 5173, runtime: 4100, postgres: 5433 }
+  hosts:
+    platform: "http://localhost:5173 (vite проксирует /api → :4000)"
+    systems: "http://<slug>--<env>.localhost:4100, env ∈ {draft, prod}"
+    note: "Chromium резолвит *.localhost в 127.0.0.1 сам; Node-клиенты в тестах MUST ходить на 127.0.0.1:4100 с заголовком Host"
+  artifacts: "Исходники ревизий: .data/artifacts/blobs/<sha256[0:2]>/<sha256> (platform.files.storage_key). Собранные бандлы: .data/artifacts/<systemId>/<revision>/… (runtime.yaml#system_loading.artifact_layout; systemId = systems.schema_key)"
+  secrets: ".env (не коммитится; .env.example — с пустыми значениями); M0 секреты коннекторов — переменные WIZARD_SECRET_<SCHEMAKEY>_<NAME>; с M1 — .data/secrets.enc (AES-256-GCM, ключ WIZARD_SECRETS_KEY) через platform.secrets_refs"
+  bundles_never_contain_env: "MUST (L3-13): .env, .data/** и любые файлы вне ui/** и functions/** ревизии не попадают в бандлы систем: сборка идёт в каталоге-копии ревизии, резолвер отклоняет пути вне ui/**, functions/** и импорты кроме @wizard/sdk, @wizard/ui-kit; loaders только ts/tsx; define/process.env не пробрасываются (security/isolation.yaml#static_checks_G0). Тест: import k from '../../../.env?raw' → G0 blocker, в dist нет ни одной строки из .env"
+  env_vars:   # канонический список (L1-18); .env.example синхронизируется с ним
+    db: [WIZARD_DB_URL]
+    llm: [WIZARD_LLM_MODE, CLOUDRU_BASE_URL, CLOUDRU_API_KEY, YANDEX_BASE_URL, YANDEX_API_KEY, YANDEX_FOLDER_ID, ZAI_BASE_URL, ZAI_API_KEY, WIZARD_FIXTURE_LENIENT]
+    auth_and_exec: [WIZARD_AUTH_MODE, WIZARD_DEV_LOGIN, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_PUBLIC_SCHEME]
+    platform: [WIZARD_PLATFORM_ORIGIN, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, WIZARD_MILESTONE, WIZARD_DEV_SMTP]
+    M1: [WIZARD_TELEGRAM_BOT_TOKEN, WIZARD_TELEGRAM_WEBHOOK_SECRET]   # общий бот уведомлений платформы (connectors/telegram.yaml#bot)
+    M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES]
+    connector_secrets_M0: "WIZARD_SECRET_<SCHEMAKEY>_<NAME> (с M1 — secrets_refs)"
+    notes: "Ключи провайдеров — имена из agents/models.yaml#providers. WIZARD_INTERNAL_TOKEN — заголовок X-Wizard-Internal-Token (runtime.yaml#system_loading). WIZARD_PUBLIC_SCHEME (http|https) выбирает имя cookie runtime (runtime.yaml#auth.session_cookie)"
+  bind: "Все процессы слушают 127.0.0.1. MUST: при WIZARD_UNSAFE_LOCAL_EXEC=1 или WIZARD_DEV_LOGIN=1 и адресе привязки ≠ loopback процесс отказывается стартовать (isolation.yaml#M0_M1)"
+  host_guard:   # L3-10: DNS rebinding и туннели
+    - "MUST: platform-api и runtime отвечают 421, если Host ∉ {localhost, 127.0.0.1, [::1], *.localhost} (с портом или без), когда WIZARD_AUTH_MODE=dev или WIZARD_UNSAFE_LOCAL_EXEC=1"
+    - "MUST: в тех же режимах запросы с заголовками X-Forwarded-*, Forwarded или CF-* → 403 FORBIDDEN (признак туннеля ngrok/cloudflared)"
+    - "MUST: platform-api в режиме dev проверяет Origin у всех не-GET: только http://localhost:5173 (WIZARD_PLATFORM_ORIGIN), иначе 403"
+    - "Тест: по одному на Host=evil.example, X-Forwarded-For, Forwarded, CF-Connecting-IP, чужой Origin"
+  test: "M0 exit: на чистой машине `pnpm i && pnpm db:up && pnpm dev` → GET :4000/api/v1/systems 200, GET :4100/_wizard/health 200"
+
+cloud:                             # M2 (M2-06). Все ресурсы — в РФ (Cloud.ru Evolution, регион Москва)
+  environments:
+    staging: { purpose: "автодеплой из main; дизайн-партнёры не ходят; системы — *.<systems-domain-staging>", data: "только синтетика" }
+    prod: { purpose: "бета", deploy: "GitHub Actions environment prod с ручным одобрением (первый выкат — E-EXTERNAL)" }
+    isolation: "отдельные проекты Cloud.ru (K8s, PG, S3, KMS) для staging и prod; общих секретов нет"
+  domains:
+    platform: "<codename>.ru — UI и API платформы (E-NAME; покупка к неделе 12, F8)"
+    systems: "*.<systems-domain> — отдельный регистрируемый нейтральный домен (не поддомен платформы, не связан с финальным именем; покупка в неделю 0, F8), чтобы фишинг в системах не бил по репутации и cookie платформы (D9, abuse.yaml#domain); M2-06 разворачивается сразу на нём"
+    system_host: "<slug>.<systems-domain> (prod), <slug>--draft.<systems-domain> (draft, закрыт одноразовым токеном превью — runtime.yaml#auth.preview_login_M2)"
+    psl: "MUST (L3-14): заявка на включение <systems-domain> в Public Suffix List (private section) подаётся в M2-06, чтобы поддомены разных систем были разными site; до включения защита держится на __Host-cookie и CSRF runtime (runtime.yaml#auth). HSTS includeSubDomains; preload (abuse.yaml#domain)"
+    tls: "Wildcard-сертификаты отдельно для *.<systems-domain> и <platform-domain>: cert-manager + ACME DNS-01 (API DNS Cloud.ru или регистратора); автообновление за 30 дней; ключи не покидают кластер"
+    cookies: "Cookie платформы — __Host-wizard_session и __Host-wizard_csrf: Secure, Path=/, БЕЗ Domain (не уходят на поддомены платформы; L3-17), никогда не выставляются на домене систем; HSTS на обоих доменах"
+  client_ip: "MUST (L3-27): IP клиента = адрес последнего хопа доверенного ingress (CIDR из WIZARD_TRUSTED_PROXIES); X-Forwarded-For от недоверенного источника игнорируется. Лимиты по IPv6 считаются по /64. Тест: XFF от недоверенного адреса не меняет ключ лимита"
+  kubernetes:
+    service: "Cloud.ru Managed Kubernetes"
+    node_pools:
+      platform: "platform-api, worker (DBOS), runtime (data API, статика, RPC), egress-proxy, ingress; runc"
+      sandbox: "исполнение функций систем: workerd в подах с runtimeClassName: gvisor (runsc), taint sandbox=true:NoSchedule; отдельные пулы free и paid (isolation.yaml#M2)"
+    open_question:
+      id: W0-CLOUDRU-GVISOR
+      text: "Поддерживает ли Cloud.ru Managed K8s кастомный RuntimeClass (gVisor runsc) на пользовательском пуле узлов, и доступна ли вложенная виртуализация (для Firecracker)?"
+      owner: "основатель → поддержка Cloud.ru, неделя 0 (тикет в docs/week0/)"
+      fallback: "Если нет: самостоятельный кластер kubeadm на ВМ Cloud.ru для пула sandbox с containerd + runsc; остальное — в Managed K8s. Стоимость fallback: +3–5 дней, эскалация E-MONEY при расходе > порога"
+      blocking: "M2-01 и M2-06 — да; M0–M1 — нет"
+    policies: ["NetworkPolicy default-deny во всех namespace", "automountServiceAccountToken: false для sandbox", "PodSecurity restricted", "resource requests/limits на всех подах"]
+  postgres:
+    service: "Cloud.ru Managed PostgreSQL 16"
+    clusters:
+      platform: "platform + dbos; HA (2 узла), PITR 14 дней"
+      apps: "app-pg-01..N: схемы app_<key>_prod; ≤ 2000 схем на кластер (D4, аудит 04 T3); карта шардов — platform.shards"
+      drafts: "draft-pg-01..: схемы app_<key>_draft; отдельно от prod; у Free без активности 60 дней удаляется только схема draft с тестовыми данными, спека, код и ревизии сохраняются (F5, workflows.yaml#retention_cron; уведомление за 7 дней)"
+    pooling: "PgBouncer ≥ 1.21, transaction mode, max_prepared_statements > 0; контекст только set_config(..., true) внутри транзакции; запреты SET без LOCAL, session advisory lock, LISTEN — lint и тест в security/isolation.yaml#db_access (L3-21)"
+    roles: "wizard_owner (миграции), wizard_runtime (runtime.yaml#postgres.roles); M2 — роли sys_<systemId>_<env> на систему (isolation.yaml#db_access)"
+    week0_questions: ["wal_level=logical доступен?", "встроенный пулер?", "лимиты на число объектов/схем в кластере", "PITR-окно и время восстановления"]
+    backup: "PITR провайдера + ежедневные снапшоты; pg_dump на тысячах схем НЕ использовать (аудит 04 T3)"
+    restore_drill: "M2-06 acceptance: восстановление staging-кластера на момент T−1 ч в новый кластер, проверка контрольных строк; повтор ежемесячно (runbook docs/runbooks/pitr.md)"
+  object_storage:
+    service: "Cloud.ru Object Storage (S3-совместимое), SSE-KMS"
+    buckets: { artifacts: "блобы ревизий и бандлы (версионирование вкл.)", imports: "загруженные таблицы, lifecycle 7 дней", eval: "результаты eval", backups: "экспорт логов аудита" }
+  secrets:
+    ci: "Ключи prod/staging — в OpenBao в РФ; в GitHub нет долгоживущих ключей: деплой получает короткоживущий токен через OIDC на self-hosted раннере (L3-38). В образах и репозитории секретов нет (E-ACCESS)"
+    tenant: "Секреты коннекторов систем → OpenBao (MPL-2.0) в кластере prod, auto-unseal через Cloud.ru KMS; platform.secrets_refs хранит только путь"
+    platform_bot: "Токен и webhook-секрет общего Telegram-бота уведомлений платформы (connectors/telegram.yaml#bot) — секрет платформы в OpenBao (prod/staging раздельно), локально — .env; получение токена у @BotFather — E-ACCESS"
+    kms: "Cloud.ru KMS: KEK для OpenBao, SSE для S3, ключи HMAC для reversible tokenization (data-boundary.yaml#tokenization)"
+  observability:
+    rule: "MUST: логи, метрики, трейсы, ошибки — только в РФ, в собственном контуре или сервисах Cloud.ru. MUST NOT: Sentry SaaS, Datadog, New Relic, Grafana Cloud, Google Analytics, внешние CDN/прокси, терминирующие TLS вне РФ"
+    stack: "Prometheus + Grafana + Loki (self-hosted в кластере) или Cloud.ru Monitoring/Logging; ошибки — GlitchTip (MIT) self-hosted или только логи"
+    pii_in_logs: "MUST: логгер (pino) пишет только allowlist полей; свободный текст не логируется, а поля message/err проходят redaction packages/pii.scrub. Ошибки PG → {sqlstate, constraint} (без detail/where); ошибки провайдеров LLM → {status, code} (без тела); route — без query-строки; сегмент hookToken и /bot<token>/ маскируются; egress-прокси не логирует path/query (L3-08). Тела запросов не логируются. Тест: запрос с телефоном в теле → в логе [ТЕЛЕФОН_1] или ничего; канареечный e2e + grep по логам всех процессов"
+    retention: "логи 30 дней, метрики 90 дней, аудит staff 3 года"
+    alerts: ["run failed rate > 20% за 1 ч", "abuse_reports с sla_deadline < 2 ч", "PG шард schema_count > 90% capacity", "ошибки T1 > 10% → автоматический фолбэк на T0 (data-boundary.yaml)", "сертификат истекает < 14 дней"]
+  ci_cd:
+    ci: ".github/workflows/ci.yml: lint, typecheck, test, specs-validate, e2e (fixture); pnpm install --frozen-lockfile; SBOM (CycloneDX) и license-check всего дерева зависимостей (лицензии — AGENTS.md)"
+    supply_chain: "pnpm: onlyBuiltDependencies (allowlist скриптов установки), minimumReleaseAge: 1440 (L3-38)"
+    cd: ".github/workflows/deploy.yml на self-hosted раннере в Cloud.ru (не GitHub-hosted): сборка образов → Cloud.ru Artifact Registry → helm upgrade staging; prod — вручную с одобрением"
+    iac: "OpenTofu (MPL-2.0) + провайдер Cloud.ru в infra/; `pnpm infra:apply --env staging|prod` — одна команда (M2-06)"
+  runtime_limits: "Лимиты функций — specs/runtime/runtime.yaml и isolation.yaml#limits; здесь только квоты подов"

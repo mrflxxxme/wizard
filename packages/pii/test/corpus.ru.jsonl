@@ -1,0 +1,444 @@
+{"id":"p001","group":"positive","text":"Меня зовут Валентина, мой телефон 8 499 981 38 77.","spans":[{"kind":"person_name","start":11,"end":20},{"kind":"phone_ru","start":34,"end":49}]}
+{"id":"p002","group":"positive","text":"Для связи: +79165247844, почта e.popov@ya.ru","spans":[{"kind":"phone_ru","start":11,"end":23},{"kind":"email","start":31,"end":44}]}
+{"id":"p003","group":"positive","text":"Клиент Валентина Фёдорова оставил заявку, email: irina_popov@rambler.ru","spans":[{"kind":"person_name","start":7,"end":25},{"kind":"email","start":49,"end":71}]}
+{"id":"p004","group":"positive","text":"Паспорт 9299 № 028308 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":21}]}
+{"id":"p005","group":"positive","text":"серия 26 11 № 943047, выдан 2 декабря 2024 года","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p006","group":"positive","text":"Номер паспорта: 9218551934","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p007","group":"positive","text":"СНИЛС сотрудника: 850-626-290-04","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p008","group":"positive","text":"СНИЛС 50325413734, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p009","group":"positive","text":"ИНН 954073259224 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p010","group":"positive","text":"Самозанятый Покровский Дмитрий, ИНН 576189222109","spans":[{"kind":"person_name","start":12,"end":30},{"kind":"inn_person","start":36,"end":48}]}
+{"id":"p011","group":"positive","text":"Оплата картой 2201396986136188681, держатель ALEXEY VOLKOV","spans":[{"kind":"card","start":14,"end":33},{"kind":"person_name_latin","start":45,"end":58}]}
+{"id":"p012","group":"positive","text":"Карта для возврата: 5128 8347 4623 1719","spans":[{"kind":"card","start":20,"end":39}]}
+{"id":"p013","group":"positive","text":"Адрес доставки: г. Воронеж, наб. Чкалова, д. 49, кв. 138.","spans":[{"kind":"address","start":16,"end":56}]}
+{"id":"p014","group":"positive","text":"Живу по адресу ул. Пушкина, дом 109, квартира 37, домофон не работает","spans":[{"kind":"address","start":15,"end":48}]}
+{"id":"p015","group":"positive","text":"Дата рождения: 1961-10-20","spans":[{"kind":"birthdate","start":15,"end":25}]}
+{"id":"p016","group":"positive","text":"родился 1997-12-16 в Екатеринбурге","spans":[{"kind":"birthdate","start":8,"end":18}]}
+{"id":"p017","group":"positive","text":"Юлия Петровна, 8 апреля 1961 г.р.","spans":[{"kind":"person_name","start":0,"end":13},{"kind":"birthdate","start":15,"end":28}]}
+{"id":"p018","group":"positive","text":"Счёт для перевода зарплаты: 40817810437877305580","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p019","group":"positive","text":"Ответственный — Никитина П., тел. 79158295447","spans":[{"kind":"person_name","start":16,"end":27},{"kind":"phone_ru","start":34,"end":45}]}
+{"id":"p020","group":"positive","text":"Передайте Ольге Морозовой, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":25}]}
+{"id":"p021","group":"positive","text":"Со слов Анны Смирновой, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":22}]}
+{"id":"p022","group":"positive","text":"Пациент Черных Алина Ивановна, национальность уточнить у врача","spans":[{"kind":"person_name","start":8,"end":29},{"kind":"special_context","start":31,"end":45}]}
+{"id":"p023","group":"positive","text":"СОРОКИН АЛЕКСЕЙ ПЕТРОВИЧ сообщила, что у неё беременность","spans":[{"kind":"person_name","start":0,"end":24},{"kind":"special_context","start":45,"end":57}]}
+{"id":"p024","group":"positive","text":"Участники: Черных Мария Алексеевна, ТКАЧУК МИХАИЛ ЮРИЕВИЧ и Миша.","spans":[{"kind":"person_name","start":11,"end":34},{"kind":"person_name","start":36,"end":57},{"kind":"person_name","start":60,"end":64}]}
+{"id":"p025","group":"positive","text":"Пишите в WhatsApp (942) 182-28-51","spans":[{"kind":"phone_ru","start":18,"end":33}]}
+{"id":"p026","group":"positive","text":"моб. (913) 439-77-51, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":20}]}
+{"id":"p027","group":"positive","text":"Контакты: sergey собака mail.ru","spans":[{"kind":"email","start":10,"end":31}]}
+{"id":"p028","group":"positive","text":"ФИО: Петров Тимур Михаилович; дата рождения 21 марта 1961; адрес: 545370, г. Екатеринбург, улица Пушкина, д. 16, корп. 1, кв. 161","spans":[{"kind":"person_name","start":5,"end":28},{"kind":"birthdate","start":44,"end":57},{"kind":"address","start":66,"end":129}]}
+{"id":"p029","group":"positive","text":"Hi, I'm Alexey Volkov, reach me at olga77@rambler.ru","spans":[{"kind":"person_name_latin","start":8,"end":21},{"kind":"email","start":35,"end":52}]}
+{"id":"p030","group":"positive","text":"Телефон в Минске: +4950741255292, спросить Кирилл","spans":[{"kind":"phone_intl","start":18,"end":32},{"kind":"person_name","start":43,"end":49}]}
+{"id":"p031","group":"positive","text":"Пишите в Telegram @dmitry_kuznetsova37 или на i.orlova@bk.ru","spans":[{"kind":"social_handle","start":18,"end":38},{"kind":"email","start":46,"end":60}]}
+{"id":"p032","group":"positive","text":"Профиль: instagram.com/elena.petrov, тел. +7 957 209 78 24","spans":[{"kind":"social_handle","start":9,"end":35},{"kind":"phone_ru","start":42,"end":58}]}
+{"id":"p033","group":"positive","text":"ИП Алина Александровна Гончаренко, ОГРНИП 326260623334371","spans":[{"kind":"person_name","start":3,"end":33},{"kind":"ogrnip","start":42,"end":57}]}
+{"id":"p034","group":"positive","text":"Пропуск на машину е314ме25, водитель Валентина Андреевна","spans":[{"kind":"car_plate_ru","start":18,"end":26},{"kind":"person_name","start":37,"end":56}]}
+{"id":"p035","group":"positive","text":"Contact: Anna Kuznetsova, +1 (135) 1679706","spans":[{"kind":"person_name_latin","start":9,"end":24},{"kind":"phone_intl","start":26,"end":42}]}
+{"id":"p036","group":"positive","text":"Сотрудник Алина Андреевна сдал биометрию для прохода в офис","spans":[{"kind":"person_name","start":10,"end":25},{"kind":"biometric_context","start":31,"end":40}]}
+{"id":"p037","group":"positive","text":"Заявка от Тимур (+7 495 160 84 58), паспорт серия 4599 № 965887","spans":[{"kind":"person_name","start":10,"end":15},{"kind":"phone_ru","start":17,"end":33},{"kind":"passport_ru","start":50,"end":63}]}
+{"id":"p038","group":"positive","text":"Галина Новикова;+7 (495) 323-67-81;maria.popov@yandex.ru;улица Ленина, дом 122, квартира 29","spans":[{"kind":"person_name","start":0,"end":15},{"kind":"phone_ru","start":16,"end":34},{"kind":"email","start":35,"end":56},{"kind":"address","start":57,"end":91}]}
+{"id":"p039","group":"positive","text":"Мама — Миша, папа — Юрий.","spans":[{"kind":"person_name","start":7,"end":11},{"kind":"person_name","start":20,"end":24}]}
+{"id":"p040","group":"positive","text":"Карта 2202 8356 6250 1817, ИНН 534826487613, СНИЛС 780-432-958-17","spans":[{"kind":"card","start":6,"end":25},{"kind":"inn_person","start":31,"end":43},{"kind":"snils","start":51,"end":65}]}
+{"id":"p041","group":"positive","text":"Руководитель: Надежда Зайцева, тел. +7 (957) 133-15-90","spans":[{"kind":"person_name","start":14,"end":29},{"kind":"phone_ru","start":36,"end":54}]}
+{"id":"p042","group":"positive","text":"Встретить Роман Николаевич на вокзале","spans":[{"kind":"person_name","start":10,"end":26}]}
+{"id":"p043","group":"positive","text":"Е. А. Крылова просит перезвонить на +79187217943","spans":[{"kind":"person_name","start":0,"end":13},{"kind":"phone_ru","start":36,"end":48}]}
+{"id":"p044","group":"positive","text":"Получатель: Михаил Белов, пр-т Центральная, дом 80, квартира 9","spans":[{"kind":"person_name","start":12,"end":24},{"kind":"address","start":26,"end":62}]}
+{"id":"p045","group":"positive","text":"Бронь на имя Людмила Сергеевна Михайлова, заказ №51633, оплата 89308 руб.","spans":[{"kind":"person_name","start":13,"end":40}]}
+{"id":"p046","group":"positive","text":"Мой номер 8-953-316-11-81, а почта alexey_volkov@list.ru. Даша","spans":[{"kind":"phone_ru","start":10,"end":25},{"kind":"email","start":35,"end":56},{"kind":"person_name","start":58,"end":62}]}
+{"id":"p047","group":"positive","text":"Меня зовут Елена, мой телефон +7 959 630 28 46.","spans":[{"kind":"person_name","start":11,"end":16},{"kind":"phone_ru","start":30,"end":46}]}
+{"id":"p048","group":"positive","text":"Для связи: 8 (3452) 62-47-94, почта irina_volkov@bk.ru","spans":[{"kind":"phone_ru","start":11,"end":28},{"kind":"email","start":36,"end":54}]}
+{"id":"p049","group":"positive","text":"Клиент ВИШНЕВСКИЙ АЛЕКСЕЙ ЮРИЕВИЧ оставил заявку, email: i.smirnov@yandex.ru","spans":[{"kind":"person_name","start":7,"end":33},{"kind":"email","start":57,"end":76}]}
+{"id":"p050","group":"positive","text":"Паспорт 4599 081502 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":19}]}
+{"id":"p051","group":"positive","text":"серия 98 97 № 592033, выдан 12 декабря 2024 года","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p052","group":"positive","text":"Номер паспорта: 6497536062","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p053","group":"positive","text":"СНИЛС сотрудника: 332 580 004 38","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p054","group":"positive","text":"СНИЛС 81125391670, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p055","group":"positive","text":"ИНН 239676887515 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p056","group":"positive","text":"Самозанятый Марина Гончаренко, ИНН 057151721591","spans":[{"kind":"person_name","start":12,"end":29},{"kind":"inn_person","start":35,"end":47}]}
+{"id":"p057","group":"positive","text":"Оплата картой 5184-1234-2169-9239, держатель SERGEY SMIRNOV","spans":[{"kind":"card","start":14,"end":33},{"kind":"person_name_latin","start":45,"end":59}]}
+{"id":"p058","group":"positive","text":"Карта для возврата: 4516-2920-6500-1796","spans":[{"kind":"card","start":20,"end":39}]}
+{"id":"p059","group":"positive","text":"Адрес доставки: пер. Ленина, д. 11/3, кв. 66.","spans":[{"kind":"address","start":16,"end":44}]}
+{"id":"p060","group":"positive","text":"Живу по адресу 141462, г. Воронеж, наб. Гагарина, д. 94, корп. 4, кв. 62, домофон не работает","spans":[{"kind":"address","start":15,"end":72}]}
+{"id":"p061","group":"positive","text":"Дата рождения: 4 февраля 1988 г.","spans":[{"kind":"birthdate","start":15,"end":32}]}
+{"id":"p062","group":"positive","text":"Родилась 20.04.1963 в Екатеринбурге","spans":[{"kind":"birthdate","start":9,"end":19}]}
+{"id":"p063","group":"positive","text":"Сорокина Виктория Александровна, 1950-08-07 г.р.","spans":[{"kind":"person_name","start":0,"end":31},{"kind":"birthdate","start":33,"end":43}]}
+{"id":"p064","group":"positive","text":"Счёт для перевода зарплаты: 40817810993745408932","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p065","group":"positive","text":"Ответственный — Жукова К., тел. +7 495 720 18 62","spans":[{"kind":"person_name","start":16,"end":25},{"kind":"phone_ru","start":32,"end":48}]}
+{"id":"p066","group":"positive","text":"Передайте Дмитрию Новикову, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":26}]}
+{"id":"p067","group":"positive","text":"Со слов Ивана Петрова, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":21}]}
+{"id":"p068","group":"positive","text":"Пациент ЖУКОВ НИКОЛАЙ ПЕТРОВИЧ, национальность уточнить у врача","spans":[{"kind":"person_name","start":8,"end":30},{"kind":"special_context","start":32,"end":46}]}
+{"id":"p069","group":"positive","text":"Лебедева Алина Петровна сообщила, что у неё инвалидность","spans":[{"kind":"person_name","start":0,"end":23},{"kind":"special_context","start":44,"end":56}]}
+{"id":"p070","group":"positive","text":"Участники: ВОЛКОВА ИРИНА СЕРГЕЕВНА, Фёдор Сергеевич и Коля.","spans":[{"kind":"person_name","start":11,"end":34},{"kind":"person_name","start":36,"end":51},{"kind":"person_name","start":54,"end":58}]}
+{"id":"p071","group":"positive","text":"Пишите в WhatsApp (907) 609-32-20","spans":[{"kind":"phone_ru","start":18,"end":33}]}
+{"id":"p072","group":"positive","text":"моб. 9299861674, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":15}]}
+{"id":"p073","group":"positive","text":"Контакты: irina [at] mail [dot] ru","spans":[{"kind":"email","start":10,"end":34}]}
+{"id":"p074","group":"positive","text":"ФИО: Зайцев Юрий; дата рождения 22 апреля 1970; адрес: г. Санкт-Петербург, пр-т Садовая, д. 39, кв. 69","spans":[{"kind":"person_name","start":5,"end":16},{"kind":"birthdate","start":32,"end":46},{"kind":"address","start":55,"end":102}]}
+{"id":"p075","group":"positive","text":"Hi, I'm Alexey Volkov, reach me at олег@мойдом.рф","spans":[{"kind":"person_name_latin","start":8,"end":21},{"kind":"email","start":35,"end":49}]}
+{"id":"p076","group":"positive","text":"Телефон в Минске: +49 761 987-53-452, спросить Юля","spans":[{"kind":"phone_intl","start":18,"end":36},{"kind":"person_name","start":47,"end":50}]}
+{"id":"p077","group":"positive","text":"Пишите в Telegram @ivan_smirnov или на olga.smirnov@ya.ru","spans":[{"kind":"social_handle","start":18,"end":31},{"kind":"email","start":39,"end":57}]}
+{"id":"p078","group":"positive","text":"Профиль: t.me/ivan_ivanova, тел. 8(812)9435680","spans":[{"kind":"social_handle","start":9,"end":26},{"kind":"phone_ru","start":33,"end":46}]}
+{"id":"p079","group":"positive","text":"ИП Фёдоров Николай, ОГРНИП 431217206748510","spans":[{"kind":"person_name","start":3,"end":18},{"kind":"ogrnip","start":27,"end":42}]}
+{"id":"p080","group":"positive","text":"Пропуск на машину в159мк750, водитель Юлия Михаиловна Вишневская","spans":[{"kind":"car_plate_ru","start":18,"end":27},{"kind":"person_name","start":38,"end":64}]}
+{"id":"p081","group":"positive","text":"Contact: Elena Morozova, +49 103 655-89-712","spans":[{"kind":"person_name_latin","start":9,"end":23},{"kind":"phone_intl","start":25,"end":43}]}
+{"id":"p082","group":"positive","text":"Сотрудник Кузнецова Наталья сдал отпечатки пальцев для прохода в офис","spans":[{"kind":"person_name","start":10,"end":27},{"kind":"biometric_context","start":33,"end":50}]}
+{"id":"p083","group":"positive","text":"Заявка от Фёдор (+79430495062), паспорт серия 7510 № 634161","spans":[{"kind":"person_name","start":10,"end":15},{"kind":"phone_ru","start":17,"end":29},{"kind":"passport_ru","start":46,"end":59}]}
+{"id":"p084","group":"positive","text":"ШЕВЧУК ЕГОР АЛЕКСАНДРОВИЧ;8-992-128-43-01;pavel.popov@bk.ru;город Воронеж, проспект Лесная, д. 90","spans":[{"kind":"person_name","start":0,"end":25},{"kind":"phone_ru","start":26,"end":41},{"kind":"email","start":42,"end":59},{"kind":"address","start":60,"end":97}]}
+{"id":"p085","group":"positive","text":"Мама — Юля, папа — Сергей.","spans":[{"kind":"person_name","start":7,"end":10},{"kind":"person_name","start":19,"end":25}]}
+{"id":"p086","group":"positive","text":"Карта 2221 4812 8911 2857, ИНН 332314439505, СНИЛС 667 619 232 40","spans":[{"kind":"card","start":6,"end":25},{"kind":"inn_person","start":31,"end":43},{"kind":"snils","start":51,"end":65}]}
+{"id":"p087","group":"positive","text":"Руководитель: Любовь Владимировна, тел. 83435925155","spans":[{"kind":"person_name","start":14,"end":33},{"kind":"phone_ru","start":40,"end":51}]}
+{"id":"p088","group":"positive","text":"Встретить Надежда Михаиловна на вокзале","spans":[{"kind":"person_name","start":10,"end":28}]}
+{"id":"p089","group":"positive","text":"Ф.С. Попова просит перезвонить на 89719211739","spans":[{"kind":"person_name","start":0,"end":11},{"kind":"phone_ru","start":34,"end":45}]}
+{"id":"p090","group":"positive","text":"Получатель: Игорь Алексеевич Ткачук, бульвар Ленина, дом 46, квартира 21","spans":[{"kind":"person_name","start":12,"end":35},{"kind":"address","start":37,"end":72}]}
+{"id":"p091","group":"positive","text":"Бронь на имя Иванов Михаил Алексеевич, заказ №5677, оплата 221 945,80 руб.","spans":[{"kind":"person_name","start":13,"end":37}]}
+{"id":"p092","group":"positive","text":"Мой номер 89209797621, а почта alexey_ivanova@inbox.ru. Николай","spans":[{"kind":"phone_ru","start":10,"end":21},{"kind":"email","start":31,"end":54},{"kind":"person_name","start":56,"end":63}]}
+{"id":"p093","group":"positive","text":"Меня зовут Дарья, мой телефон 8-343-908-10-98.","spans":[{"kind":"person_name","start":11,"end":16},{"kind":"phone_ru","start":30,"end":45}]}
+{"id":"p094","group":"positive","text":"Для связи: +7 (967) 315-87-89, почта олег@почта.рф","spans":[{"kind":"phone_ru","start":11,"end":29},{"kind":"email","start":37,"end":50}]}
+{"id":"p095","group":"positive","text":"Клиент Тимур Тихомиров оставил заявку, email: alexey87@studio-art.ru","spans":[{"kind":"person_name","start":7,"end":22},{"kind":"email","start":46,"end":68}]}
+{"id":"p096","group":"positive","text":"Паспорт 38 99 484769 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":20}]}
+{"id":"p097","group":"positive","text":"серия 70 20 № 725539, выдан 17 ноября 2025 года","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p098","group":"positive","text":"Номер паспорта: 5997058470","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p099","group":"positive","text":"СНИЛС сотрудника: 121-441-527 05","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p100","group":"positive","text":"СНИЛС 42233654449, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p101","group":"positive","text":"ИНН 780836546064 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p102","group":"positive","text":"Самозанятый Олег Иванович Шевчук, ИНН 122719397001","spans":[{"kind":"person_name","start":12,"end":32},{"kind":"inn_person","start":38,"end":50}]}
+{"id":"p103","group":"positive","text":"Оплата картой 2204 7053 1795 8249 163, держатель DMITRY POPOV","spans":[{"kind":"card","start":14,"end":37},{"kind":"person_name_latin","start":49,"end":61}]}
+{"id":"p104","group":"positive","text":"Карта для возврата: 2204350361008443","spans":[{"kind":"card","start":20,"end":36}]}
+{"id":"p105","group":"positive","text":"Адрес доставки: проспект Садовая, д. 66/1, кв. 10.","spans":[{"kind":"address","start":16,"end":49}]}
+{"id":"p106","group":"positive","text":"Живу по адресу город Краснодар, ул. Гагарина, д. 120, домофон не работает","spans":[{"kind":"address","start":15,"end":52}]}
+{"id":"p107","group":"positive","text":"Дата рождения: 1989-02-19","spans":[{"kind":"birthdate","start":15,"end":25}]}
+{"id":"p108","group":"positive","text":"родился 1950-09-25 в Воронеже","spans":[{"kind":"birthdate","start":8,"end":18}]}
+{"id":"p109","group":"positive","text":"Михаил Иванович, 1980-04-10 г.р.","spans":[{"kind":"person_name","start":0,"end":15},{"kind":"birthdate","start":17,"end":27}]}
+{"id":"p110","group":"positive","text":"Счёт для перевода зарплаты: 42301810114045922358","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p111","group":"positive","text":"Ответственный — Е.Ю. Захарова, тел. +79126286021","spans":[{"kind":"person_name","start":16,"end":29},{"kind":"phone_ru","start":36,"end":48}]}
+{"id":"p112","group":"positive","text":"Передайте Елене Волковой, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":24}]}
+{"id":"p113","group":"positive","text":"Со слов Ивана Петрова, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":21}]}
+{"id":"p114","group":"positive","text":"Пациент Шевчук Дарья, аллергия уточнить у врача","spans":[{"kind":"person_name","start":8,"end":20},{"kind":"special_context","start":22,"end":30}]}
+{"id":"p115","group":"positive","text":"Павел Михаилович сообщила, что у неё национальность","spans":[{"kind":"person_name","start":0,"end":16},{"kind":"special_context","start":37,"end":51}]}
+{"id":"p116","group":"positive","text":"Участники: Татьяна Петровна Вишневская, БОНДАРЕНКО ВИКТОР АЛЕКСАНДРОВИЧ и Таня.","spans":[{"kind":"person_name","start":11,"end":38},{"kind":"person_name","start":40,"end":71},{"kind":"person_name","start":74,"end":78}]}
+{"id":"p117","group":"positive","text":"Пишите в WhatsApp 927 397-72-44","spans":[{"kind":"phone_ru","start":18,"end":31}]}
+{"id":"p118","group":"positive","text":"моб. 996 496-20-43, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":18}]}
+{"id":"p119","group":"positive","text":"Контакты: pavel(at)mail.ru","spans":[{"kind":"email","start":10,"end":26}]}
+{"id":"p120","group":"positive","text":"ФИО: Гончаренко Глеб; дата рождения 03/11/1991; адрес: город Санкт-Петербург, б-р Чкалова, д. 58","spans":[{"kind":"person_name","start":5,"end":20},{"kind":"birthdate","start":36,"end":46},{"kind":"address","start":55,"end":96}]}
+{"id":"p121","group":"positive","text":"Hi, I'm Olga Sokolova, reach me at alexey_kuznetsova@mail.ru","spans":[{"kind":"person_name_latin","start":8,"end":21},{"kind":"email","start":35,"end":60}]}
+{"id":"p122","group":"positive","text":"Телефон в Минске: +998968123255, спросить Глеб","spans":[{"kind":"phone_intl","start":18,"end":31},{"kind":"person_name","start":42,"end":46}]}
+{"id":"p123","group":"positive","text":"Пишите в Telegram @ivan_volkov или на petrov.alexey8@yandex.ru","spans":[{"kind":"social_handle","start":18,"end":30},{"kind":"email","start":38,"end":62}]}
+{"id":"p124","group":"positive","text":"Профиль: https://ok.ru/profile/799577215035, тел. 8 (946) 266-45-21","spans":[{"kind":"social_handle","start":9,"end":43},{"kind":"phone_ru","start":50,"end":67}]}
+{"id":"p125","group":"positive","text":"ИП Станислав Никитин, ОГРНИП 309264587784924","spans":[{"kind":"person_name","start":3,"end":20},{"kind":"ogrnip","start":29,"end":44}]}
+{"id":"p126","group":"positive","text":"Пропуск на машину е964ур777, водитель Ильин Тимур","spans":[{"kind":"car_plate_ru","start":18,"end":27},{"kind":"person_name","start":38,"end":49}]}
+{"id":"p127","group":"positive","text":"Contact: Ivan Petrov, +374 50 379-00-9","spans":[{"kind":"person_name_latin","start":9,"end":20},{"kind":"phone_intl","start":22,"end":38}]}
+{"id":"p128","group":"positive","text":"Сотрудник Бондаренко Екатерина Ивановна сдал образец голоса для прохода в офис","spans":[{"kind":"person_name","start":10,"end":39},{"kind":"biometric_context","start":45,"end":59}]}
+{"id":"p129","group":"positive","text":"Заявка от Николай (+74992137100), паспорт серия 1018 № 250851","spans":[{"kind":"person_name","start":10,"end":17},{"kind":"phone_ru","start":19,"end":31},{"kind":"passport_ru","start":48,"end":61}]}
+{"id":"p130","group":"positive","text":"Станислав Владимирович;8 (955) 270-68-32;popov.alexey6@ya.ru;544102, г. Краснодар, переулок Гагарина, д. 15, корп. 2, кв. 193","spans":[{"kind":"person_name","start":0,"end":22},{"kind":"phone_ru","start":23,"end":40},{"kind":"email","start":41,"end":60},{"kind":"address","start":61,"end":125}]}
+{"id":"p131","group":"positive","text":"Мама — Оля, папа — Павел.","spans":[{"kind":"person_name","start":7,"end":10},{"kind":"person_name","start":19,"end":24}]}
+{"id":"p132","group":"positive","text":"Карта 4425 3607 5490 0469, ИНН 680520766208, СНИЛС 546-761-088 17","spans":[{"kind":"card","start":6,"end":25},{"kind":"inn_person","start":31,"end":43},{"kind":"snils","start":51,"end":65}]}
+{"id":"p133","group":"positive","text":"Руководитель: Лев Сергеевич, тел. 79290588159","spans":[{"kind":"person_name","start":14,"end":27},{"kind":"phone_ru","start":34,"end":45}]}
+{"id":"p134","group":"positive","text":"Встретить Любовь Сорокина на вокзале","spans":[{"kind":"person_name","start":10,"end":25}]}
+{"id":"p135","group":"positive","text":"Г. М. Кузнецов просит перезвонить на +7-929-971-91-51","spans":[{"kind":"person_name","start":0,"end":14},{"kind":"phone_ru","start":37,"end":53}]}
+{"id":"p136","group":"positive","text":"Получатель: Лебедев Максим Сергеевич, город Владимир, пер. Ленина, д. 99","spans":[{"kind":"person_name","start":12,"end":36},{"kind":"address","start":38,"end":72}]}
+{"id":"p137","group":"positive","text":"Бронь на имя Зайцева Светлана, заказ №91650, оплата 9 049 199 руб.","spans":[{"kind":"person_name","start":13,"end":29}]}
+{"id":"p138","group":"positive","text":"Мой номер +7-953-450-01-33, а почта elena77@ya.ru. Ксения","spans":[{"kind":"phone_ru","start":10,"end":26},{"kind":"email","start":36,"end":49},{"kind":"person_name","start":51,"end":57}]}
+{"id":"p139","group":"positive","text":"Меня зовут Таня, мой телефон 8-992-310-10-14.","spans":[{"kind":"person_name","start":11,"end":15},{"kind":"phone_ru","start":29,"end":44}]}
+{"id":"p140","group":"positive","text":"Для связи: 8 (3452) 79-83-57, почта p.petrov@ya.ru","spans":[{"kind":"phone_ru","start":11,"end":28},{"kind":"email","start":36,"end":50}]}
+{"id":"p141","group":"positive","text":"Клиент Крылов Иван Сергеевич оставил заявку, email: elena_ivanova@bk.ru","spans":[{"kind":"person_name","start":7,"end":28},{"kind":"email","start":52,"end":71}]}
+{"id":"p142","group":"positive","text":"Паспорт 3200 353957 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":19}]}
+{"id":"p143","group":"positive","text":"серия 57 21 № 663310, выдан 24 июля 2026 года","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p144","group":"positive","text":"Номер паспорта: 6607812641","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p145","group":"positive","text":"СНИЛС сотрудника: 580-942-282 13","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p146","group":"positive","text":"СНИЛС 64964451541, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p147","group":"positive","text":"ИНН 814734333954 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p148","group":"positive","text":"Самозанятый СОКОЛОВА ВАЛЕНТИНА СЕРГЕЕВНА, ИНН 102100039745","spans":[{"kind":"person_name","start":12,"end":40},{"kind":"inn_person","start":46,"end":58}]}
+{"id":"p149","group":"positive","text":"Оплата картой 4628 6827 4383 3682, держатель MIKHAIL ZAITSEV","spans":[{"kind":"card","start":14,"end":33},{"kind":"person_name_latin","start":45,"end":60}]}
+{"id":"p150","group":"positive","text":"Карта для возврата: 2221 8855 2565 8327","spans":[{"kind":"card","start":20,"end":39}]}
+{"id":"p151","group":"positive","text":"Адрес доставки: Санкт-Петербург, переулок Центральная, д. 81.","spans":[{"kind":"address","start":16,"end":60}]}
+{"id":"p152","group":"positive","text":"Живу по адресу ш. Гагарина, дом 102, квартира 180, домофон не работает","spans":[{"kind":"address","start":15,"end":49}]}
+{"id":"p153","group":"positive","text":"Дата рождения: 2003-11-15","spans":[{"kind":"birthdate","start":15,"end":25}]}
+{"id":"p154","group":"positive","text":"родился 11.10.2001 в Туле","spans":[{"kind":"birthdate","start":8,"end":18}]}
+{"id":"p155","group":"positive","text":"СОКОЛОВА ВИКТОРИЯ ВЛАДИМИРОВНА, 5 марта 2003 г. г.р.","spans":[{"kind":"person_name","start":0,"end":30},{"kind":"birthdate","start":32,"end":47}]}
+{"id":"p156","group":"positive","text":"Счёт для перевода зарплаты: 40817810873401101460","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p157","group":"positive","text":"Ответственный — Соловьёва С. А., тел. +7 977 096 82 55","spans":[{"kind":"person_name","start":16,"end":31},{"kind":"phone_ru","start":38,"end":54}]}
+{"id":"p158","group":"positive","text":"Передайте Ольге Морозовой, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":25}]}
+{"id":"p159","group":"positive","text":"Со слов Ирины Козловой, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":22}]}
+{"id":"p160","group":"positive","text":"Пациент Кузнецова Виктория Владимировна, национальность уточнить у врача","spans":[{"kind":"person_name","start":8,"end":39},{"kind":"special_context","start":41,"end":55}]}
+{"id":"p161","group":"positive","text":"Екатерина Владимировна сообщила, что у неё судимость","spans":[{"kind":"person_name","start":0,"end":22},{"kind":"special_context","start":43,"end":52}]}
+{"id":"p162","group":"positive","text":"Участники: Ткачук Софья, Никитина Алина Андреевна и Глеб.","spans":[{"kind":"person_name","start":11,"end":23},{"kind":"person_name","start":25,"end":49},{"kind":"person_name","start":52,"end":56}]}
+{"id":"p163","group":"positive","text":"Пишите в WhatsApp 942 803-22-05","spans":[{"kind":"phone_ru","start":18,"end":31}]}
+{"id":"p164","group":"positive","text":"моб. 9365046929, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":15}]}
+{"id":"p165","group":"positive","text":"Контакты: alexey [at] yandex [dot] ru","spans":[{"kind":"email","start":10,"end":37}]}
+{"id":"p166","group":"positive","text":"ФИО: Петрова Дарья; дата рождения 18/10/1994; адрес: город Воронеж, пер. Центральная, д. 115","spans":[{"kind":"person_name","start":5,"end":18},{"kind":"birthdate","start":34,"end":44},{"kind":"address","start":53,"end":92}]}
+{"id":"p167","group":"positive","text":"Hi, I'm Maria Ivanova, reach me at alexey.popov@inbox.ru","spans":[{"kind":"person_name_latin","start":8,"end":21},{"kind":"email","start":35,"end":56}]}
+{"id":"p168","group":"positive","text":"Телефон в Минске: +49 (001) 70850151, спросить Михаил","spans":[{"kind":"phone_intl","start":18,"end":36},{"kind":"person_name","start":47,"end":53}]}
+{"id":"p169","group":"positive","text":"Пишите в Telegram @dmitrypopov67 или на anna.kuznetsova@studio-art.ru","spans":[{"kind":"social_handle","start":18,"end":32},{"kind":"email","start":40,"end":69}]}
+{"id":"p170","group":"positive","text":"Профиль: https://ok.ru/profile/754745992834, тел. 83833441868","spans":[{"kind":"social_handle","start":9,"end":43},{"kind":"phone_ru","start":50,"end":61}]}
+{"id":"p171","group":"positive","text":"ИП Ткачук Станислав, ОГРНИП 323997550391041","spans":[{"kind":"person_name","start":3,"end":19},{"kind":"ogrnip","start":28,"end":43}]}
+{"id":"p172","group":"positive","text":"Пропуск на машину Р 996 МВ 777, водитель ТКАЧУК МАРИНА ЮРИЕВНА","spans":[{"kind":"car_plate_ru","start":18,"end":30},{"kind":"person_name","start":41,"end":62}]}
+{"id":"p173","group":"positive","text":"Contact: Olga Sokolova, +375 38 014-60-50","spans":[{"kind":"person_name_latin","start":9,"end":22},{"kind":"phone_intl","start":24,"end":41}]}
+{"id":"p174","group":"positive","text":"Сотрудник Фёдор Сергеевич Козлов сдал скан лица для прохода в офис","spans":[{"kind":"person_name","start":10,"end":32},{"kind":"biometric_context","start":38,"end":47}]}
+{"id":"p175","group":"positive","text":"Заявка от Катя (8-992-362-94-24), паспорт серия 1405 № 583813","spans":[{"kind":"person_name","start":10,"end":14},{"kind":"phone_ru","start":16,"end":31},{"kind":"passport_ru","start":48,"end":61}]}
+{"id":"p176","group":"positive","text":"Николай Александрович Тихомиров;8 951 167 29 65;ivan87@ya.ru;ул. Тверская, д. 12/5, кв. 229","spans":[{"kind":"person_name","start":0,"end":31},{"kind":"phone_ru","start":32,"end":47},{"kind":"email","start":48,"end":60},{"kind":"address","start":61,"end":91}]}
+{"id":"p177","group":"positive","text":"Мама — Серёжа, папа — Андрей.","spans":[{"kind":"person_name","start":7,"end":13},{"kind":"person_name","start":22,"end":28}]}
+{"id":"p178","group":"positive","text":"Карта 5533739452225558, ИНН 067896228483, СНИЛС 364 964 577 37","spans":[{"kind":"card","start":6,"end":22},{"kind":"inn_person","start":28,"end":40},{"kind":"snils","start":48,"end":62}]}
+{"id":"p179","group":"positive","text":"Руководитель: Вера Петровна, тел. +7 919 167 74 44","spans":[{"kind":"person_name","start":14,"end":27},{"kind":"phone_ru","start":34,"end":50}]}
+{"id":"p180","group":"positive","text":"Встретить Вера Сергеевна на вокзале","spans":[{"kind":"person_name","start":10,"end":24}]}
+{"id":"p181","group":"positive","text":"Н. А. Никитина просит перезвонить на +7 (925) 510-10-22","spans":[{"kind":"person_name","start":0,"end":14},{"kind":"phone_ru","start":37,"end":55}]}
+{"id":"p182","group":"positive","text":"Получатель: Гончаренко Юрий, 281374, г. Воронеж, ул. Молодёжная, д. 94, корп. 1, кв. 111","spans":[{"kind":"person_name","start":12,"end":27},{"kind":"address","start":29,"end":88}]}
+{"id":"p183","group":"positive","text":"Бронь на имя Медведева Дарья, заказ №25046, оплата 8 570 377 641 руб.","spans":[{"kind":"person_name","start":13,"end":28}]}
+{"id":"p184","group":"positive","text":"Мой номер 79347860109, а почта anna_volkov@mail.ru. Катя","spans":[{"kind":"phone_ru","start":10,"end":21},{"kind":"email","start":31,"end":50},{"kind":"person_name","start":52,"end":56}]}
+{"id":"p185","group":"positive","text":"Меня зовут Ирина, мой телефон +7 978 949-94-22.","spans":[{"kind":"person_name","start":11,"end":16},{"kind":"phone_ru","start":30,"end":46}]}
+{"id":"p186","group":"positive","text":"Для связи: 8 906 203 84 31, почта dmitry.sokolova@inbox.ru","spans":[{"kind":"phone_ru","start":11,"end":26},{"kind":"email","start":34,"end":58}]}
+{"id":"p187","group":"positive","text":"Клиент Виктория Морозова оставил заявку, email: dmitry81@studio-art.ru","spans":[{"kind":"person_name","start":7,"end":24},{"kind":"email","start":48,"end":70}]}
+{"id":"p188","group":"positive","text":"Паспорт 1517 554181 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":19}]}
+{"id":"p189","group":"positive","text":"серия 53 97 № 563553, выдан 2024-01-11","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p190","group":"positive","text":"Номер паспорта: 5098941079","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p191","group":"positive","text":"СНИЛС сотрудника: 462 568 934 25","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p192","group":"positive","text":"СНИЛС 70353768292, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p193","group":"positive","text":"ИНН 595677895613 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p194","group":"positive","text":"Самозанятый Кирилл Покровский, ИНН 491462100137","spans":[{"kind":"person_name","start":12,"end":29},{"kind":"inn_person","start":35,"end":47}]}
+{"id":"p195","group":"positive","text":"Оплата картой 2221 0293 7182 2204, держатель ELENA MOROZOVA","spans":[{"kind":"card","start":14,"end":33},{"kind":"person_name_latin","start":45,"end":59}]}
+{"id":"p196","group":"positive","text":"Карта для возврата: 5388 7786 4651 4945","spans":[{"kind":"card","start":20,"end":39}]}
+{"id":"p197","group":"positive","text":"Адрес доставки: 647560, г. Санкт-Петербург, бульвар Садовая, д. 140, корп. 2, кв. 158.","spans":[{"kind":"address","start":16,"end":85}]}
+{"id":"p198","group":"positive","text":"Живу по адресу г. Самара, наб. Советская, д. 111, кв. 43, домофон не работает","spans":[{"kind":"address","start":15,"end":56}]}
+{"id":"p199","group":"positive","text":"Дата рождения: 10 декабря 1961","spans":[{"kind":"birthdate","start":15,"end":30}]}
+{"id":"p200","group":"positive","text":"родился 14 января 1990 в Казани","spans":[{"kind":"birthdate","start":8,"end":22}]}
+{"id":"p201","group":"positive","text":"Татьяна Черных, 04/04/1964 г.р.","spans":[{"kind":"person_name","start":0,"end":14},{"kind":"birthdate","start":16,"end":26}]}
+{"id":"p202","group":"positive","text":"Счёт для перевода зарплаты: 40817810890452512825","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p203","group":"positive","text":"Ответственный — Новиков М. И., тел. 8 863 633 89 95","spans":[{"kind":"person_name","start":16,"end":29},{"kind":"phone_ru","start":36,"end":51}]}
+{"id":"p204","group":"positive","text":"Передайте Марии Соколовой, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":25}]}
+{"id":"p205","group":"positive","text":"Со слов Андрея Лебедева, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":23}]}
+{"id":"p206","group":"positive","text":"Пациент Николай Андреевич Михайлов, онкологии уточнить у врача","spans":[{"kind":"person_name","start":8,"end":34},{"kind":"special_context","start":36,"end":45}]}
+{"id":"p207","group":"positive","text":"Тимур Никитин сообщила, что у неё заболевание","spans":[{"kind":"person_name","start":0,"end":13},{"kind":"special_context","start":34,"end":45}]}
+{"id":"p208","group":"positive","text":"Участники: Ксения Владимировна, Козлов Артём Александрович и Тимур.","spans":[{"kind":"person_name","start":11,"end":30},{"kind":"person_name","start":32,"end":58},{"kind":"person_name","start":61,"end":66}]}
+{"id":"p209","group":"positive","text":"Пишите в WhatsApp 9712407490","spans":[{"kind":"phone_ru","start":18,"end":28}]}
+{"id":"p210","group":"positive","text":"моб. (959) 096-13-34, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":20}]}
+{"id":"p211","group":"positive","text":"Контакты: ivan(at)bk.ru","spans":[{"kind":"email","start":10,"end":23}]}
+{"id":"p212","group":"positive","text":"ФИО: Новиков Андрей; дата рождения 21 февраля 2002 г.; адрес: г. Владимир, б-р Мира, д. 23, стр. 3, оф. 59","spans":[{"kind":"person_name","start":5,"end":19},{"kind":"birthdate","start":35,"end":53},{"kind":"address","start":62,"end":106}]}
+{"id":"p213","group":"positive","text":"Hi, I'm Olga Sokolova, reach me at i.orlova@gmail.com","spans":[{"kind":"person_name_latin","start":8,"end":21},{"kind":"email","start":35,"end":53}]}
+{"id":"p214","group":"positive","text":"Телефон в Минске: +996370413952, спросить Даша","spans":[{"kind":"phone_intl","start":18,"end":31},{"kind":"person_name","start":42,"end":46}]}
+{"id":"p215","group":"positive","text":"Пишите в Telegram @dmitrysokolova37 или на anna.orlova@list.ru","spans":[{"kind":"social_handle","start":18,"end":35},{"kind":"email","start":43,"end":62}]}
+{"id":"p216","group":"positive","text":"Профиль: instagram.com/dmitry.petrov, тел. 8(933)7800302","spans":[{"kind":"social_handle","start":9,"end":36},{"kind":"phone_ru","start":43,"end":56}]}
+{"id":"p217","group":"positive","text":"ИП Галина Соловьёва, ОГРНИП 319617373305805","spans":[{"kind":"person_name","start":3,"end":19},{"kind":"ogrnip","start":28,"end":43}]}
+{"id":"p218","group":"positive","text":"Пропуск на машину К 976 КТ 53, водитель Новикова Ольга Николаевна","spans":[{"kind":"car_plate_ru","start":18,"end":29},{"kind":"person_name","start":40,"end":65}]}
+{"id":"p219","group":"positive","text":"Contact: Dmitry Popov, +998 39 864-19-30","spans":[{"kind":"person_name_latin","start":9,"end":21},{"kind":"phone_intl","start":23,"end":40}]}
+{"id":"p220","group":"positive","text":"Сотрудник Артём Петров сдал скан лица для прохода в офис","spans":[{"kind":"person_name","start":10,"end":22},{"kind":"biometric_context","start":28,"end":37}]}
+{"id":"p221","group":"positive","text":"Заявка от Виктор (88120748425), паспорт серия 6297 № 584000","spans":[{"kind":"person_name","start":10,"end":16},{"kind":"phone_ru","start":18,"end":29},{"kind":"passport_ru","start":46,"end":59}]}
+{"id":"p222","group":"positive","text":"ТКАЧУК ЮЛИЯ АЛЕКСЕЕВНА;8 953 799 12 13;olga.smirnov@list.ru;Воронеж, ш. Лесная, д. 34","spans":[{"kind":"person_name","start":0,"end":22},{"kind":"phone_ru","start":23,"end":38},{"kind":"email","start":39,"end":59},{"kind":"address","start":60,"end":85}]}
+{"id":"p223","group":"positive","text":"Мама — Оля, папа — Егор.","spans":[{"kind":"person_name","start":7,"end":10},{"kind":"person_name","start":19,"end":23}]}
+{"id":"p224","group":"positive","text":"Карта 3532 8693 6464 8583, ИНН 608077066421, СНИЛС 520-415-171 27","spans":[{"kind":"card","start":6,"end":25},{"kind":"inn_person","start":31,"end":43},{"kind":"snils","start":51,"end":65}]}
+{"id":"p225","group":"positive","text":"Руководитель: Надежда Васильева, тел. 8 (996) 798-97-06","spans":[{"kind":"person_name","start":14,"end":31},{"kind":"phone_ru","start":38,"end":55}]}
+{"id":"p226","group":"positive","text":"Встретить Надежда Сергеевна на вокзале","spans":[{"kind":"person_name","start":10,"end":27}]}
+{"id":"p227","group":"positive","text":"Белов И. просит перезвонить на +7-914-577-55-18","spans":[{"kind":"person_name","start":0,"end":8},{"kind":"phone_ru","start":31,"end":47}]}
+{"id":"p228","group":"positive","text":"Получатель: ИВАНОВ ДМИТРИЙ ЮРИЕВИЧ, бульвар Чкалова, дом 52, квартира 6","spans":[{"kind":"person_name","start":12,"end":34},{"kind":"address","start":36,"end":71}]}
+{"id":"p229","group":"positive","text":"Бронь на имя БЕЛОВ МАКСИМ АНДРЕЕВИЧ, заказ №79761, оплата 1760 руб.","spans":[{"kind":"person_name","start":13,"end":35}]}
+{"id":"p230","group":"positive","text":"Мой номер 8 (996) 017-38-75, а почта ivan83@inbox.ru. Олег","spans":[{"kind":"phone_ru","start":10,"end":27},{"kind":"email","start":37,"end":52},{"kind":"person_name","start":54,"end":58}]}
+{"id":"p231","group":"positive","text":"Меня зовут Екатерина, мой телефон 8 (3452) 81-63-73.","spans":[{"kind":"person_name","start":11,"end":20},{"kind":"phone_ru","start":34,"end":51}]}
+{"id":"p232","group":"positive","text":"Для связи: 79178213299, почта ivanova.elena2@list.ru","spans":[{"kind":"phone_ru","start":11,"end":22},{"kind":"email","start":30,"end":52}]}
+{"id":"p233","group":"positive","text":"Клиент Максим Андреевич Белов оставил заявку, email: elena.orlova@ya.ru","spans":[{"kind":"person_name","start":7,"end":29},{"kind":"email","start":53,"end":71}]}
+{"id":"p234","group":"positive","text":"Паспорт 1399 № 734841 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":21}]}
+{"id":"p235","group":"positive","text":"серия 93 23 № 450647, выдан 14.04.2026","spans":[{"kind":"passport_ru","start":6,"end":20}]}
+{"id":"p236","group":"positive","text":"Номер паспорта: 5723440204","spans":[{"kind":"passport_ru","start":16,"end":26}]}
+{"id":"p237","group":"positive","text":"СНИЛС сотрудника: 953-259-343-33","spans":[{"kind":"snils","start":18,"end":32}]}
+{"id":"p238","group":"positive","text":"СНИЛС 95363217319, приложите копию","spans":[{"kind":"snils","start":6,"end":17}]}
+{"id":"p239","group":"positive","text":"ИНН 051251740580 (физлицо, самозанятый)","spans":[{"kind":"inn_person","start":4,"end":16}]}
+{"id":"p240","group":"positive","text":"Самозанятый Иванов Алексей Николаевич, ИНН 827846133465","spans":[{"kind":"person_name","start":12,"end":37},{"kind":"inn_person","start":43,"end":55}]}
+{"id":"p241","group":"positive","text":"Оплата картой 6235 1108 0961 5732 408, держатель MIKHAIL ZAITSEV","spans":[{"kind":"card","start":14,"end":37},{"kind":"person_name_latin","start":49,"end":64}]}
+{"id":"p242","group":"positive","text":"Карта для возврата: 4646 2189 2279 3","spans":[{"kind":"card","start":20,"end":36}]}
+{"id":"p243","group":"positive","text":"Адрес доставки: город Новосибирск, пр-т Мира, д. 26.","spans":[{"kind":"address","start":16,"end":51}]}
+{"id":"p244","group":"positive","text":"Живу по адресу Санкт-Петербург, пр-т Тверская, д. 150, домофон не работает","spans":[{"kind":"address","start":15,"end":53}]}
+{"id":"p245","group":"positive","text":"Дата рождения: 1997-08-13","spans":[{"kind":"birthdate","start":15,"end":25}]}
+{"id":"p246","group":"positive","text":"родился 3 сентября 1980 в Сочи","spans":[{"kind":"birthdate","start":8,"end":23}]}
+{"id":"p247","group":"positive","text":"Голубева Наталья, 17 апреля 1985 г.р.","spans":[{"kind":"person_name","start":0,"end":16},{"kind":"birthdate","start":18,"end":32}]}
+{"id":"p248","group":"positive","text":"Счёт для перевода зарплаты: 42301810491756799363","spans":[{"kind":"account_ru","start":28,"end":48}]}
+{"id":"p249","group":"positive","text":"Ответственный — Крылова И.П., тел. 8 (964) 876-02-78","spans":[{"kind":"person_name","start":16,"end":28},{"kind":"phone_ru","start":35,"end":52}]}
+{"id":"p250","group":"positive","text":"Передайте Елене Волковой, что встреча переносится","spans":[{"kind":"person_name","start":10,"end":24}]}
+{"id":"p251","group":"positive","text":"Со слов Марии Соколовой, заказ не пришёл","spans":[{"kind":"person_name","start":8,"end":23}]}
+{"id":"p252","group":"positive","text":"Пациент Гончаренко Юлия, онкологии уточнить у врача","spans":[{"kind":"person_name","start":8,"end":23},{"kind":"special_context","start":25,"end":34}]}
+{"id":"p253","group":"positive","text":"ФЁДОРОВА ПОЛИНА СЕРГЕЕВНА сообщила, что у неё онкологии","spans":[{"kind":"person_name","start":0,"end":25},{"kind":"special_context","start":46,"end":55}]}
+{"id":"p254","group":"positive","text":"Участники: Новиков Сергей Иванович, Бондаренко Кирилл и Лёша.","spans":[{"kind":"person_name","start":11,"end":34},{"kind":"person_name","start":36,"end":53},{"kind":"person_name","start":56,"end":60}]}
+{"id":"p255","group":"positive","text":"Пишите в WhatsApp 990 682-30-79","spans":[{"kind":"phone_ru","start":18,"end":31}]}
+{"id":"p256","group":"positive","text":"моб. 970 394-94-40, звонить после 18:00","spans":[{"kind":"phone_ru","start":5,"end":18}]}
+{"id":"p257","group":"positive","text":"Контакты: alexey at yandex dot ru","spans":[{"kind":"email","start":10,"end":33}]}
+{"id":"p258","group":"positive","text":"ФИО: Ксения Медведева; дата рождения 24/01/2000; адрес: г. Тверь, ул. Центральная, д. 135, стр. 3, оф. 296","spans":[{"kind":"person_name","start":5,"end":21},{"kind":"birthdate","start":37,"end":47},{"kind":"address","start":56,"end":106}]}
+{"id":"p259","group":"positive","text":"Hi, I'm Sergey Smirnov, reach me at maria94@mail.ru","spans":[{"kind":"person_name_latin","start":8,"end":22},{"kind":"email","start":36,"end":51}]}
+{"id":"p260","group":"positive","text":"Телефон в Минске: +996 (862) 702062, спросить Таня","spans":[{"kind":"phone_intl","start":18,"end":35},{"kind":"person_name","start":46,"end":50}]}
+{"id":"p261","group":"positive","text":"Пишите в Telegram @ivan_petrov или на a.orlova@mail.ru","spans":[{"kind":"social_handle","start":18,"end":30},{"kind":"email","start":38,"end":54}]}
+{"id":"p262","group":"positive","text":"Профиль: https://vk.com/id896589492, тел. +79981328342","spans":[{"kind":"social_handle","start":9,"end":35},{"kind":"phone_ru","start":42,"end":54}]}
+{"id":"p263","group":"positive","text":"ИП Голубева Софья, ОГРНИП 379988226870634","spans":[{"kind":"person_name","start":3,"end":17},{"kind":"ogrnip","start":26,"end":41}]}
+{"id":"p264","group":"positive","text":"Пропуск на машину Е 898 УЕ 182, водитель Юлия Ивановна Попова","spans":[{"kind":"car_plate_ru","start":18,"end":30},{"kind":"person_name","start":41,"end":61}]}
+{"id":"p265","group":"positive","text":"Contact: Natalia Orlova, +380158292949","spans":[{"kind":"person_name_latin","start":9,"end":23},{"kind":"phone_intl","start":25,"end":38}]}
+{"id":"p266","group":"positive","text":"Сотрудник Соколова Дарья сдал отпечатки пальцев для прохода в офис","spans":[{"kind":"person_name","start":10,"end":24},{"kind":"biometric_context","start":30,"end":47}]}
+{"id":"p267","group":"positive","text":"Заявка от Елена (79286626056), паспорт серия 6297 № 074212","spans":[{"kind":"person_name","start":10,"end":15},{"kind":"phone_ru","start":17,"end":28},{"kind":"passport_ru","start":45,"end":58}]}
+{"id":"p268","group":"positive","text":"ОРЛОВ СЕРГЕЙ ИВАНОВИЧ;8(942)8472925;d.kuznetsova@gmail.com;г. Санкт-Петербург, ш. Лесная, д. 79, кв. 270","spans":[{"kind":"person_name","start":0,"end":21},{"kind":"phone_ru","start":22,"end":35},{"kind":"email","start":36,"end":58},{"kind":"address","start":59,"end":104}]}
+{"id":"p269","group":"positive","text":"Мама — Маша, папа — Олег.","spans":[{"kind":"person_name","start":7,"end":11},{"kind":"person_name","start":20,"end":24}]}
+{"id":"p270","group":"positive","text":"Карта 2221-4707-5519-0802, ИНН 506202031542, СНИЛС 362-827-244-92","spans":[{"kind":"card","start":6,"end":25},{"kind":"inn_person","start":31,"end":43},{"kind":"snils","start":51,"end":65}]}
+{"id":"p271","group":"positive","text":"Руководитель: Любовь Ивановна, тел. 8 (3452) 43-66-05","spans":[{"kind":"person_name","start":14,"end":29},{"kind":"phone_ru","start":36,"end":53}]}
+{"id":"p272","group":"positive","text":"Встретить Надежда Михаиловна на вокзале","spans":[{"kind":"person_name","start":10,"end":28}]}
+{"id":"p273","group":"positive","text":"Фёдоров Ф. А. просит перезвонить на +79226099302","spans":[{"kind":"person_name","start":0,"end":13},{"kind":"phone_ru","start":36,"end":48}]}
+{"id":"p274","group":"positive","text":"Получатель: Соколов Артём Александрович, город Самара, б-р Советская, д. 113","spans":[{"kind":"person_name","start":12,"end":39},{"kind":"address","start":41,"end":76}]}
+{"id":"p275","group":"positive","text":"Бронь на имя Павел Алексеевич, заказ №86682, оплата 1 824 179 руб.","spans":[{"kind":"person_name","start":13,"end":29}]}
+{"id":"p276","group":"positive","text":"Мой номер 8 (8452) 11-89-92, а почта ivan.kuznetsova@list.ru. Павел","spans":[{"kind":"phone_ru","start":10,"end":27},{"kind":"email","start":37,"end":60},{"kind":"person_name","start":62,"end":67}]}
+{"id":"p277","group":"positive","text":"Меня зовут Станислав, мой телефон +7-980-252-80-56.","spans":[{"kind":"person_name","start":11,"end":20},{"kind":"phone_ru","start":34,"end":50}]}
+{"id":"p278","group":"positive","text":"Для связи: +7 966 663-10-60, почта smirnov.olga1@studio-art.ru","spans":[{"kind":"phone_ru","start":11,"end":27},{"kind":"email","start":35,"end":62}]}
+{"id":"p279","group":"positive","text":"Клиент Елена Покровская оставил заявку, email: sokolova.ivan6@gmail.com","spans":[{"kind":"person_name","start":7,"end":23},{"kind":"email","start":47,"end":71}]}
+{"id":"p280","group":"positive","text":"Паспорт 31 98 968855 выдан ОУФМС России по г. Москве","spans":[{"kind":"passport_ru","start":8,"end":20}]}
+{"id":"t001","group":"trap","text":"Заказ №71747972118 от 2024-08-13 оплачен","spans":[]}
+{"id":"t002","group":"trap","text":"Цена: 5 863 719 042 руб.","spans":[]}
+{"id":"t003","group":"trap","text":"Итого 7 687 507 764 ₽ за 8 шт.","spans":[]}
+{"id":"t004","group":"trap","text":"Мероприятие пройдёт 13 марта 2024 года в 18:00 в Екатеринбурге","spans":[]}
+{"id":"t005","group":"trap","text":"ИНН организации 4385482849, КПП 441251849, ОГРН 1348006855006","spans":[]}
+{"id":"t006","group":"trap","text":"ООО «Ромашка», ИНН 9862387280","spans":[]}
+{"id":"t007","group":"trap","text":"Номер отправления 421558785412","spans":[]}
+{"id":"t008","group":"trap","text":"Трек-номер 3164 5357 7849 0030","spans":[]}
+{"id":"t009","group":"trap","text":".btn { color: #946701; width: 152px; margin: 0 9px; }","spans":[]}
+{"id":"t010","group":"trap","text":"const total = items.reduce((a, b) => a + b.price, 0); // 1628","spans":[]}
+{"id":"t011","group":"trap","text":"import { detect } from \"@wizard/pii\";","spans":[]}
+{"id":"t012","group":"trap","text":"<img src=\"icon@2x.png\" alt=\"logo\" width=\"64\">","spans":[]}
+{"id":"t013","group":"trap","text":"Форум в Твери соберёт 4532 участников","spans":[]}
+{"id":"t014","group":"trap","text":"Встреча во Владимире, затем поезд в Москву","spans":[]}
+{"id":"t015","group":"trap","text":"Лев — царь зверей","spans":[]}
+{"id":"t016","group":"trap","text":"Версия 1.7.69, сборка 262367","spans":[]}
+{"id":"t017","group":"trap","text":"IP-адрес сервера 192.168.179.78","spans":[]}
+{"id":"t018","group":"trap","text":"UUID 95898775-0139-4701-a420-825344772624","spans":[]}
+{"id":"t019","group":"trap","text":"Время работы: с 9:00 до 18:00, пн–пт","spans":[]}
+{"id":"t020","group":"trap","text":"Р/с 40702810721159656076, БИК 044520601, к/с 30101810831256825873","spans":[]}
+{"id":"t021","group":"trap","text":"Счёт-фактура № 48783 от 10.05.2023","spans":[]}
+{"id":"t022","group":"trap","text":"Unix time 1739722718","spans":[]}
+{"id":"t023","group":"trap","text":"Проспект Мира и улица Ленина — центральные улицы города","spans":[]}
+{"id":"t024","group":"trap","text":"В 2007 г. Москва приняла форум","spans":[]}
+{"id":"t025","group":"trap","text":"Код подтверждения: 503744. Артикул 5480681790","spans":[]}
+{"id":"t026","group":"trap","text":"Скидка 9% до 17 февраля 2024 года","spans":[]}
+{"id":"t027","group":"trap","text":"Спросить у участников про аллергии и пожелания по питанию","spans":[]}
+{"id":"t028","group":"trap","text":"Поле «Диагноз» в форму не добавлять","spans":[]}
+{"id":"t029","group":"trap","text":"Телефон горячей линии указан на сайте","spans":[]}
+{"id":"t030","group":"trap","text":"Москва — Санкт-Петербург, 657 км, поезд № 773","spans":[]}
+{"id":"t031","group":"trap","text":"Население Самары — 1 335 241 человек","spans":[]}
+{"id":"t032","group":"trap","text":"Счёт № 2024 203311 на оплату","spans":[]}
+{"id":"t033","group":"trap","text":"Температура 36.4, давление 104/74","spans":[]}
+{"id":"t034","group":"trap","text":"Табличка: Москва, Красная площадь","spans":[]}
+{"id":"t035","group":"trap","text":"Нужна форма: ФИО, телефон, email, согласие на обработку","spans":[]}
+{"id":"t036","group":"trap","text":"Лот 5714 353215, партия 99","spans":[]}
+{"id":"t037","group":"trap","text":"Итоги 2022 года: выручка 84072 руб., рост 61%","spans":[]}
+{"id":"t038","group":"trap","text":"Список задач на 2024-08-05: созвон, ревью, релиз 4.9","spans":[]}
+{"id":"t039","group":"trap","text":"Сделать так, чтобы администратор видел все заявки, а менеджер — только свои","spans":[]}
+{"id":"t040","group":"trap","text":"Кабинет 358, этаж 20, корпус Б","spans":[]}
+{"id":"t041","group":"trap","text":"@media (max-width: 904px) { .card { display: none; } }","spans":[]}
+{"id":"t042","group":"trap","text":"@import url('https://fonts.googleapis.com/css2?family=Inter');","spans":[]}
+{"id":"t043","group":"trap","text":"@Component({ selector: 'app-root' }) export class AppComponent {}","spans":[]}
+{"id":"t044","group":"trap","text":"import { useQuery } from \"@tanstack/react-query\";","spans":[]}
+{"id":"t045","group":"trap","text":"ОГРН 1758981885736, ОКПО 01818060","spans":[]}
+{"id":"t046","group":"trap","text":"Номер партии 505239009566763","spans":[]}
+{"id":"t047","group":"trap","text":"color: #A241BC; border: 1px solid #311387","spans":[]}
+{"id":"t048","group":"trap","text":"id: 9672a490-bc91-4336","spans":[]}
+{"id":"t049","group":"trap","text":"Ехать в 921 км 36 минут","spans":[]}
+{"id":"t050","group":"trap","text":"Самолёт A320, рейс SU 6224, выход 23","spans":[]}
+{"id":"t051","group":"trap","text":"Рост выручки +55 833 639 руб.","spans":[]}
+{"id":"t052","group":"trap","text":"Ссылка на канал t.me/share, чат t.me/joinchat","spans":[]}
+{"id":"t053","group":"trap","text":"Заказ №89334834968 от 22.06.2023 оплачен","spans":[]}
+{"id":"t054","group":"trap","text":"Цена: 7 373 545 233 руб.","spans":[]}
+{"id":"t055","group":"trap","text":"Итого 7 669 099 ₽ за 24 шт.","spans":[]}
+{"id":"t056","group":"trap","text":"Мероприятие пройдёт 2026-02-17 в 18:00 в Екатеринбурге","spans":[]}
+{"id":"t057","group":"trap","text":"ИНН организации 8339355297, КПП 184874532, ОГРН 1418525518180","spans":[]}
+{"id":"t058","group":"trap","text":"ООО «Ромашка», ИНН 5764750211","spans":[]}
+{"id":"t059","group":"trap","text":"Номер отправления 307163677663","spans":[]}
+{"id":"t060","group":"trap","text":"Трек-номер 4766 9704 6019 2378","spans":[]}
+{"id":"t061","group":"trap","text":".btn { color: #683983; width: 1401px; margin: 0 9px; }","spans":[]}
+{"id":"t062","group":"trap","text":"const total = items.reduce((a, b) => a + b.price, 0); // 5183","spans":[]}
+{"id":"t063","group":"trap","text":"import { detect } from \"@wizard/pii\";","spans":[]}
+{"id":"t064","group":"trap","text":"<img src=\"icon@2x.png\" alt=\"logo\" width=\"116\">","spans":[]}
+{"id":"t065","group":"trap","text":"Форум в Туле соберёт 3766 участников","spans":[]}
+{"id":"t066","group":"trap","text":"Встреча во Владимире, затем поезд в Москву","spans":[]}
+{"id":"t067","group":"trap","text":"Надежда умирает последней","spans":[]}
+{"id":"t068","group":"trap","text":"Версия 4.15.27, сборка 634602","spans":[]}
+{"id":"t069","group":"trap","text":"IP-адрес сервера 192.168.26.106","spans":[]}
+{"id":"t070","group":"trap","text":"UUID 17976874-1703-4438-a226-149116791950","spans":[]}
+{"id":"t071","group":"trap","text":"Время работы: с 9:00 до 18:00, пн–пт","spans":[]}
+{"id":"t072","group":"trap","text":"Р/с 40702810074730459044, БИК 044523245, к/с 30101810529628318763","spans":[]}
+{"id":"t073","group":"trap","text":"Счёт-фактура № 58375 от 2026-05-21","spans":[]}
+{"id":"t074","group":"trap","text":"Unix time 1606427245","spans":[]}
+{"id":"t075","group":"trap","text":"Проспект Мира и улица Ленина — центральные улицы города","spans":[]}
+{"id":"t076","group":"trap","text":"В 2002 г. Москва приняла форум","spans":[]}
+{"id":"t077","group":"trap","text":"Код подтверждения: 701495. Артикул 5295184125","spans":[]}
+{"id":"t078","group":"trap","text":"Скидка 50% до 11.05.2023","spans":[]}
+{"id":"t079","group":"trap","text":"Спросить у участников про аллергии и пожелания по питанию","spans":[]}
+{"id":"t080","group":"trap","text":"Поле «Диагноз» в форму не добавлять","spans":[]}
+{"id":"t081","group":"trap","text":"Телефон горячей линии указан на сайте","spans":[]}
+{"id":"t082","group":"trap","text":"Москва — Санкт-Петербург, 605 км, поезд № 847","spans":[]}
+{"id":"t083","group":"trap","text":"Население Твери — 1 422 422 человек","spans":[]}
+{"id":"t084","group":"trap","text":"Счёт № 2025 712093 на оплату","spans":[]}
+{"id":"t085","group":"trap","text":"Температура 36.4, давление 129/76","spans":[]}
+{"id":"t086","group":"trap","text":"Табличка: Тверь, Красная площадь","spans":[]}
+{"id":"t087","group":"trap","text":"Нужна форма: ФИО, телефон, email, согласие на обработку","spans":[]}
+{"id":"t088","group":"trap","text":"Лот 2424 768916, партия 54","spans":[]}
+{"id":"t089","group":"trap","text":"Итоги 2024 года: выручка 12870 руб., рост 94%","spans":[]}
+{"id":"t090","group":"trap","text":"Список задач на 23 января 2024 года: созвон, ревью, релиз 9.4","spans":[]}
+{"id":"t091","group":"trap","text":"Сделать так, чтобы администратор видел все заявки, а менеджер — только свои","spans":[]}
+{"id":"t092","group":"trap","text":"Кабинет 996, этаж 7, корпус Б","spans":[]}
+{"id":"t093","group":"trap","text":"@media (max-width: 884px) { .card { display: none; } }","spans":[]}
+{"id":"t094","group":"trap","text":"@import url('https://fonts.googleapis.com/css2?family=Inter');","spans":[]}
+{"id":"t095","group":"trap","text":"@Component({ selector: 'app-root' }) export class AppComponent {}","spans":[]}
+{"id":"t096","group":"trap","text":"import { useQuery } from \"@tanstack/react-query\";","spans":[]}
+{"id":"t097","group":"trap","text":"ОГРН 1716058937679, ОКПО 56203555","spans":[]}
+{"id":"t098","group":"trap","text":"Номер партии 672684143757651","spans":[]}
+{"id":"t099","group":"trap","text":"color: #A439BC; border: 1px solid #499503","spans":[]}
+{"id":"t100","group":"trap","text":"id: 7343a701-bc06-4479","spans":[]}
+{"id":"t101","group":"trap","text":"Ехать в 237 км 41 минут","spans":[]}
+{"id":"t102","group":"trap","text":"Самолёт A320, рейс SU 1589, выход 19","spans":[]}
+{"id":"t103","group":"trap","text":"Рост выручки +93 140 575 руб.","spans":[]}
+{"id":"t104","group":"trap","text":"Ссылка на канал t.me/share, чат t.me/joinchat","spans":[]}
+{"id":"t105","group":"trap","text":"Заказ №73194302516 от 2025-03-06 оплачен","spans":[]}
+{"id":"t106","group":"trap","text":"Цена: 34987 руб.","spans":[]}
+{"id":"t107","group":"trap","text":"Итого 2 920 537 ₽ за 11 шт.","spans":[]}
+{"id":"t108","group":"trap","text":"Мероприятие пройдёт 21 февраля 2026 года в 18:00 в Самаре","spans":[]}
+{"id":"t109","group":"trap","text":"ИНН организации 1173407643, КПП 483359665, ОГРН 1716656693272","spans":[]}
+{"id":"t110","group":"trap","text":"ООО «Ромашка», ИНН 8787468150","spans":[]}
+{"id":"t111","group":"trap","text":"Номер отправления 965798093374","spans":[]}
+{"id":"t112","group":"trap","text":"Трек-номер 1357 3204 0367 7176","spans":[]}
+{"id":"t113","group":"trap","text":".btn { color: #052450; width: 759px; margin: 0 7px; }","spans":[]}
+{"id":"t114","group":"trap","text":"const total = items.reduce((a, b) => a + b.price, 0); // 2385","spans":[]}
+{"id":"t115","group":"trap","text":"import { detect } from \"@wizard/pii\";","spans":[]}
+{"id":"t116","group":"trap","text":"<img src=\"icon@2x.png\" alt=\"logo\" width=\"133\">","spans":[]}
+{"id":"t117","group":"trap","text":"Форум в Москве соберёт 4758 участников","spans":[]}
+{"id":"t118","group":"trap","text":"Встреча во Владимире, затем поезд в Москву","spans":[]}
+{"id":"t119","group":"trap","text":"Вера в успех помогает","spans":[]}
+{"id":"t120","group":"trap","text":"Версия 1.8.21, сборка 113464","spans":[]}
+{"id":"t121","group":"trap","text":"IP-адрес сервера 192.168.5.4","spans":[]}
+{"id":"t122","group":"trap","text":"UUID 55884449-0935-4423-a833-256580928970","spans":[]}
+{"id":"t123","group":"trap","text":"Время работы: с 9:00 до 18:00, пн–пт","spans":[]}
+{"id":"t124","group":"trap","text":"Р/с 40702810589067549768, БИК 044529535, к/с 30101810261886615065","spans":[]}
+{"id":"t125","group":"trap","text":"Счёт-фактура № 96950 от 21.09.2024","spans":[]}
+{"id":"t126","group":"trap","text":"Unix time 1682632102","spans":[]}
+{"id":"t127","group":"trap","text":"Проспект Мира и улица Ленина — центральные улицы города","spans":[]}
+{"id":"t128","group":"trap","text":"В 2002 г. Москва приняла форум","spans":[]}
+{"id":"t129","group":"trap","text":"Код подтверждения: 984904. Артикул 6718465970","spans":[]}
+{"id":"t130","group":"trap","text":"Скидка 36% до 2026-10-08","spans":[]}
+{"id":"t131","group":"trap","text":"Спросить у участников про аллергии и пожелания по питанию","spans":[]}
+{"id":"t132","group":"trap","text":"Поле «Диагноз» в форму не добавлять","spans":[]}
+{"id":"t133","group":"trap","text":"Телефон горячей линии указан на сайте","spans":[]}
+{"id":"t134","group":"trap","text":"Москва — Санкт-Петербург, 731 км, поезд № 7","spans":[]}
+{"id":"t135","group":"trap","text":"Население Твери — 1 323 579 человек","spans":[]}
+{"id":"t136","group":"trap","text":"Счёт № 2024 084413 на оплату","spans":[]}
+{"id":"t137","group":"trap","text":"Температура 36.3, давление 103/72","spans":[]}
+{"id":"t138","group":"trap","text":"Табличка: Тверь, Красная площадь","spans":[]}
+{"id":"t139","group":"trap","text":"Нужна форма: ФИО, телефон, email, согласие на обработку","spans":[]}
+{"id":"t140","group":"trap","text":"Лот 3683 044974, партия 52","spans":[]}
+{"id":"l001","group":"limits","text":"Позвоните Петрову до обеда","spans":[{"kind":"person_name","start":10,"end":17}]}
+{"id":"l002","group":"limits","text":"иван петров, 8 916 555-12-34","spans":[{"kind":"person_name","start":0,"end":11},{"kind":"phone_ru","start":13,"end":28}]}
+{"id":"l003","group":"limits","text":"Доставка: Москва, Тверская 12-5","spans":[{"kind":"address","start":10,"end":31}]}
+{"id":"l004","group":"limits","text":"Марина, привет! Скинь адрес","spans":[{"kind":"person_name","start":0,"end":6}]}
+{"id":"l005","group":"limits","text":"Контакт: Petrov Ivan, ANNA.SMIRNOVA@YANDEX.RU","spans":[{"kind":"person_name_latin","start":9,"end":20},{"kind":"email","start":22,"end":45}]}
+{"id":"l006","group":"limits","text":"Hi, I'm Ivan, write me","spans":[{"kind":"person_name_latin","start":8,"end":12}]}
+{"id":"l007","group":"limits","text":"Скинь в личку @petrov или +44 20 7946 0958","spans":[{"kind":"social_handle","start":14,"end":21},{"kind":"phone_intl","start":26,"end":42}]}
+{"id":"l008","group":"limits","text":"Госномер в 123 ак 77 на въезде","spans":[{"kind":"car_plate_ru","start":9,"end":20}]}
+{"id":"l009","group":"limits","text":"Заказчица Любовь Иванова, WhatsApp +7 916 123 45 67","spans":[{"kind":"person_name","start":10,"end":24},{"kind":"phone_ru","start":35,"end":51}]}
+{"id":"l010","group":"limits","text":"Рождён 3.4.1990 в Туле","spans":[{"kind":"birthdate","start":7,"end":15}]}
+{"id":"l011","group":"limits","text":"Павел Дуров основал Telegram","spans":[{"kind":"person_name","start":0,"end":11}]}
+{"id":"l012","group":"limits","text":"Счёт 40817810099910004312 закрыт","spans":[{"kind":"account_ru","start":5,"end":25}]}
+{"id":"l013","group":"limits","text":"Марина в Сочи открылась после ремонта","spans":[]}
+{"id":"l014","group":"limits","text":"Технический паспорт объекта 4506 123456","spans":[]}
+{"id":"l015","group":"limits","text":"Магазин «Людмила» работает до 22:00","spans":[]}
+{"id":"l016","group":"limits","text":"День рождения компании отмечаем 15.11.2099","spans":[]}
+{"id":"l017","group":"limits","text":"Родительское собрание 12.03.2025 в 18:00","spans":[]}
+{"id":"l018","group":"limits","text":"Роза ветров на карте и Слава России!","spans":[]}
+{"id":"l019","group":"limits","text":"Серия 4506, но номер не помню","spans":[]}
+{"id":"l020","group":"limits","text":"Итого: 4 276 380 012 345 678 руб.","spans":[]}
+{"id":"l021","group":"limits","text":"Лена, Обь и Енисей — крупные реки","spans":[]}
+{"id":"l022","group":"limits","text":"Табличка: Владимир, Красная площадь","spans":[]}
+{"id":"l023","group":"limits","text":"Иду в кафе «Вера» с Надеждой Рыбаковой","spans":[{"kind":"person_name","start":20,"end":38}]}
+{"id":"l024","group":"limits","text":"Тел. доб. 1234, факс не работает","spans":[]}

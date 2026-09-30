@@ -1,0 +1,807 @@
+# OpenAPI 3.1 платформы Wizard. Нормативно для apps/platform-api. Компактная запись (flow-style) намеренна.
+# Вехи операций — x-milestone (M0/M1/M2); права ролей организации — x-roles; авторизация — info.x-auth.
+openapi: 3.1.0
+info:
+  title: Wizard platform-api
+  version: 1.0.0
+  description: 'Нормативный контракт apps/platform-api (backlog M0-15, M1-02..M1-04, M1-07, M2-07..M2-09). Каждая операция помечена x-milestone; контрактный тест M0-15 покрывает все операции с x-milestone ≤ текущей вехи. Правила: все тела — JSON (кроме SSE и /files); все пользовательские тексты в ответах — на русском; идентификаторы — uuid; время — RFC 3339 UTC; кредиты в API — число с точностью 0.001 (= милликредит, billing.yaml#credit.unit), округление до 0.1 — только в UI. Тексты, пришедшие от LLM (сообщения агентов, карточка, message_ru гейтов), клиент MUST показывать только как текст или санированный markdown без raw HTML (L3-17). Обращение к объекту чужой организации (system, run, revision, file, events, export) → 404 NOT_FOUND, не 403 (контрактный IDOR-тест M0-15/M1-02). Мутирующие POST принимают заголовок Idempotency-Key (≤ 64 символа): повтор с тем же ключом и тем же телом в течение 24 ч MUST вернуть исходный ответ; с другим телом — 422 IDEMPOTENCY_MISMATCH. Авторизация по вехам — x-auth. Права ролей организации — x-roles (owner ⊃ editor ⊃ viewer, product.yaml#decisions.D11_team).
+
+    '
+  x-auth:
+    M0: 'Один локальный пользователь. Заголовок X-Wizard-Dev-User: <email>; если заголовка нет — пользователь по умолчанию dev@wizard.local. Организация одна, id из сида 00000000-0000-0000-0000-000000000001. Сервер MUST слушать только 127.0.0.1, если WIZARD_AUTH_MODE=dev. MUST (L3-10, deploy.yaml#local.host_guard): Host вне {localhost, 127.0.0.1, [::1], *.localhost} → 421 HOST_NOT_ALLOWED; заголовки X-Forwarded-*, Forwarded, CF-* → 403 FORBIDDEN; не-GET с Origin ≠ WIZARD_PLATFORM_ORIGIN → 403.'
+    M1: 'Email OTP → cookie __Host-wizard_session (локально по http — wizard_session; HttpOnly, Secure, Path=/, без Domain, SameSite=Lax, 30 дней скользящий срок; deploy.yaml#cloud.domains.cookies). Мутирующие запросы MUST содержать заголовок X-Wizard-CSRF, равный cookie __Host-wizard_csrf (double submit), и Origin платформы. Режим dev остаётся только при WIZARD_AUTH_MODE=dev и запрещён при NODE_ENV=production (тест: старт процесса падает).'
+    M2: '+ staff: users.is_staff=true, MFA (TOTP) обязательна: без users.mfa_enrolled_at или без TOTP-подтверждения за последние 12 ч /admin/* → 403 MFA_REQUIRED. В бете staff — учётная запись основателя (F7); все действия /admin/* пишутся в staff_audit_log.'
+servers: [{url: 'http://localhost:4000/api/v1', description: M0–M1 локально}]
+security: [{devUser: []}, {session: []}]
+paths:
+  /systems:
+    post:
+      operationId: createSystem
+      x-milestone: M0
+      x-roles: [editor]
+      summary: Создать систему из промпта; запускает прогон interview_turn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              additionalProperties: false
+              properties: {prompt: {type: string, minLength: 3, maxLength: 8000}, orgId: {type: string, format: uuid, description: 'M1+: обязателен, если пользователь состоит в нескольких организациях'}, templateId: {type: string}}
+      responses:
+        '201': {description: 'Система создана, первый ход интервью поставлен в очередь', content: {application/json: {schema: {type: object, required: [system, run], properties: {system: {$ref: '#/components/schemas/System'}, run: {$ref: '#/components/schemas/Run'}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '402': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    get:
+      operationId: listSystems
+      x-milestone: M0
+      x-roles: [viewer]
+      parameters: [{name: orgId, in: query, schema: {type: string, format: uuid}}, {$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/cursor'}]
+      responses: {'200': {description: 'Системы организации, новые сверху (не удалённые)', content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/System'}}, nextCursor: {type: [string, 'null']}}}}}}}
+  /systems/{id}:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystem
+      x-milestone: M0
+      x-roles: [viewer]
+      responses:
+        '200':
+          description: Система, текущая карточка и последние сообщения чата
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [system, messages]
+                properties:
+                  system: {$ref: '#/components/schemas/System'}
+                  card: {oneOf: [{$ref: '#/components/schemas/SystemCard'}, {type: 'null'}]}
+                  pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
+                  messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
+                  activeRunId: {type: [string, 'null'], format: uuid}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/messages:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: postMessage
+      x-milestone: M0
+      x-roles: [editor]
+      summary: Ход чата. Запускает interview_turn; исход хода — вопросы, карточка, ответ или change-прогон (workflows.yaml#workflows.interview_turn)
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: {type: string, minLength: 1, maxLength: 8000}
+                target:
+                  type: object
+                  x-milestone: M3
+                  description: '«Укажи и измени» (M3-01): элемент превью; формат wzId — ui/ui-kit.yaml#wz_id (L1-05). file MUST быть файлом draft-ревизии, иначе 422 VALIDATION_FAILED. Хранится в messages.payload.target'
+                  required: [wzId, file]
+                  additionalProperties: false
+                  properties: {wzId: {type: string, pattern: '^[0-9a-f]{8}:[0-9]+$'}, componentName: {type: string, maxLength: 60}, file: {type: string, pattern: '^ui/[A-Za-z0-9_/.-]+\.tsx$'}, line: {type: integer, minimum: 1}}
+      responses: {'202': {description: 'Принято. Уведомление о ПДн создаёт асинхронный interview_turn (приходит через SSE chat_output{kind: notice}), в этом ответе его нет', content: {application/json: {schema: {type: object, required: [message, run], properties: {message: {$ref: '#/components/schemas/Message'}, run: {$ref: '#/components/schemas/Run'}}}}}}, '402': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+    get:
+      operationId: listMessages
+      x-milestone: M0
+      x-roles: [viewer]
+      parameters: [{$ref: '#/components/parameters/limit'}, {name: beforeSeq, in: query, schema: {type: integer}}]
+      responses: {'200': {description: История чата, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Message'}}}}}}}}
+  /systems/{id}/answers:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: postAnswers
+      x-milestone: M0
+      x-roles: [editor]
+      summary: Ответы на вопросы-развилки; restByRecommendation=true принимает рекомендованный вариант для всех неотвеченных
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                answers: {type: array, items: {type: object, required: [questionId], additionalProperties: false, properties: {questionId: {type: string}, optionId: {type: string}, text: {type: string, maxLength: 500, description: 'Свой вариант; ровно одно из optionId/text. forkId и byRecommendation дописывает сервер из pending_questions (orchestrator.yaml#schemas.Answer)'}}}}
+                restByRecommendation: {type: boolean, default: false}
+      responses: {'202': {description: 'Ответы сохранены, запущен interview_turn', content: {application/json: {schema: {type: object, required: [run], properties: {run: {$ref: '#/components/schemas/Run'}}}}}}, '402': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/card/approve:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: approveCard
+      x-milestone: M0
+      x-roles: [editor]
+      summary: 'Единственная точка согласования (D7): карточка системы или мини-карточка правки. Запускает build (create или change)'
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [cardVersion], additionalProperties: false, properties: {cardVersion: {type: integer, minimum: 1}, capCredits: {type: integer, minimum: 1, description: Можно только понизить cap.credits карточки; не ниже ceil(estimate.credits.expected)}}}}
+      responses:
+        '202': {description: Сборка поставлена в очередь (status queued или waiting_lock), content: {application/json: {schema: {type: object, required: [run], properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '402': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /systems/{id}/fix:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: startFixBuild
+      x-milestone: M0
+      x-roles: [editor]
+      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger'
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {}}}}}
+      responses:
+        '202': {description: Прогон build mode=fix поставлен в очередь, content: {application/json: {schema: {type: object, required: [run], properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '402': {$ref: '#/components/responses/Error'}
+        '409': {description: 'SYSTEM_LOCKED или NO_GATE_FAILURE (последние отчёты гейтов пройдены — исправлять нечего)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/revisions:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listRevisions
+      x-milestone: M0
+      x-roles: [viewer]
+      parameters: [{$ref: '#/components/parameters/limit'}, {name: beforeVersion, in: query, schema: {type: integer}}]
+      responses: {'200': {description: 'Ревизии, новые сверху', content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/RevisionSummary'}}}}}}}}
+  /systems/{id}/revisions/{v}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {$ref: '#/components/parameters/version'}]
+    get:
+      operationId: getRevision
+      x-milestone: M0
+      x-roles: [viewer]
+      responses:
+        '200':
+          description: Спека, операции батча и список файлов ревизии
+          content:
+            application/json:
+              schema:
+                allOf:
+                - {$ref: '#/components/schemas/RevisionSummary'}
+                - type: object
+                  required: [spec, ops, files]
+                  properties:
+                    spec: {type: object, description: 'AppSpec, specs/appspec/appspec.schema.json'}
+                    ops: {type: array, items: {type: object}, description: specs/appspec/ops.yaml}
+                    files: {type: array, items: {type: object, required: [path, sha256, size], properties: {path: {type: string}, sha256: {type: string}, size: {type: integer}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/revisions/{v}/diff:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {$ref: '#/components/parameters/version'}]
+    get:
+      operationId: getRevisionDiff
+      x-milestone: M1
+      x-roles: [viewer]
+      summary: Понятный diff (M1-08) между from (по умолчанию parent) и v
+      parameters: [{name: from, in: query, schema: {type: integer}}]
+      responses:
+        '200':
+          description: Изменения на человеческом языке
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changes]
+                properties: {changes: {type: array, items: {type: object, required: [kind, text_ru], properties: {kind: {enum: [entity, field, role, permission, page, workflow, integration, function, theme, compliance, file]}, text_ru: {type: string}, destructive: {type: boolean}}}}}
+  /systems/{id}/files/{path}:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getFile
+      x-milestone: M0
+      x-roles: [viewer]
+      x-path-wildcard: 'path захватывает остаток URL со слешами (hono: /systems/:id/files/*). ''..'', абсолютные пути и NUL → 400'
+      summary: Исходник файла ревизии (вкладка «Код», только чтение, D14)
+      parameters: [{name: path, in: path, required: true, schema: {type: string}}, {name: rev, in: query, schema: {type: integer}, description: По умолчанию draftRevision}]
+      responses: {'200': {description: 'Содержимое; ETag = sha256. MUST (L3-17): текстовые файлы — Content-Type text/plain; charset=utf-8, остальные — application/octet-stream с Content-Disposition attachment; всегда X-Content-Type-Options nosniff и CSP sandbox', content: {text/plain: {schema: {type: string}}, application/octet-stream: {schema: {type: string, contentMediaType: application/octet-stream}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/style:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: setStyle
+      x-milestone: M0
+      x-roles: [editor]
+      summary: Панель «Стиль» — op set_theme без LLM и без кредитов (D13). Превью меняется без пересборки (CSS-переменные)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [expectedVersion, theme], additionalProperties: false, properties: {expectedVersion: {type: integer}, theme: {type: object, description: appspec.schema.json#/$defs/theme}}}}}}
+      responses:
+        '200': {description: Создана ревизия author=user, content: {application/json: {schema: {type: object, required: [revision], properties: {revision: {$ref: '#/components/schemas/RevisionSummary'}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '412': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /systems/{id}/assets:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: uploadAsset
+      x-milestone: M0
+      x-roles: [editor]
+      summary: 'Загрузка логотипа для панели «Стиль» (D13, L1-34, L4-26). Только PNG и WebP ≤ 1 МБ, тип определяется по сигнатуре файла (не по имени и Content-Type); SVG, HTML и прочее → 415 UNSUPPORTED_MEDIA_TYPE (security/isolation.yaml#user_files.logo, L3-18). Сервер перекодирует изображение (растеризация, ≤ 512×512, метаданные удаляются) и кладёт блоб в platform.files; новая ревизия kind=style содержит файл assets/logo.<ext> и theme.logoFile = этот путь (op set_theme, runtime раздаёт как статику бандла). Без кредитов'
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file, expectedVersion], properties: {file: {type: string, contentMediaType: application/octet-stream}, purpose: {const: logo}, expectedVersion: {type: integer}}}}}}
+      responses:
+        '201': {description: Создана ревизия kind=style с логотипом, content: {application/json: {schema: {type: object, required: [path, sha256, revision], properties: {path: {type: string, pattern: '^assets/logo\.(png|webp)$'}, sha256: {type: string}, width: {type: integer}, height: {type: integer}, revision: {$ref: '#/components/schemas/RevisionSummary'}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
+        '415': {$ref: '#/components/responses/Error'}
+  /systems/{id}/compliance:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    put:
+      operationId: setCompliance
+      x-milestone: M1
+      x-roles: [owner]
+      summary: Данные оператора ПДн (op set_compliance, без кредитов); security/compliance.yaml. Экран — S10 «Персональные данные»
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [expectedVersion, operatorName, operatorContact], additionalProperties: false, properties: {expectedVersion: {type: integer}, operatorName: {type: string, minLength: 3, maxLength: 300}, operatorContact: {type: string, format: email}, operatorAddress: {type: string, maxLength: 300, description: 'M2: адрес оператора для политики (обязателен до prod с M2 — compliance.yaml#system_package.operator)'}, operatorInn: {type: string, pattern: '^[0-9]{10}([0-9]{2})?$'}, policyPage: {type: string, pattern: '^/[a-z0-9/-]*$', description: 'Маршрут страницы политики (по умолчанию /privacy)'}, consentTemplateId: {type: string}, consentText: {type: string, maxLength: 4000, description: 'Свой текст согласия — только owner (compliance.yaml#system_package.consent.text)'}, retentionWaiver: {type: [object, 'null'], additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 10, maxLength: 500}}}}}}}
+      responses: {'200': {description: Ревизия создана, content: {application/json: {schema: {type: object, properties: {revision: {$ref: '#/components/schemas/RevisionSummary'}}}}}}, '412': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/preview-url:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getPreviewUrl
+      x-milestone: M0
+      x-roles: [viewer]
+      summary: URL превью draft для iframe с dev-входом под ролью системы
+      parameters: [{name: role, in: query, schema: {type: string}, description: Имя роли AppSpec; по умолчанию public-роль или первая}]
+      responses:
+        '200':
+          description: 'M0: http://<slug>--draft.localhost:4100/_wizard/dev-login?role=<role>&next=/ без токена (runtime.yaml#auth.dev_login_M0, WIZARD_DEV_LOGIN=1). M2 (облако): https://<slug>--draft.<systems-domain>/_wizard/preview-login?t=<token>&next=<path>, token = HMAC(WIZARD_PREVIEW_SECRET) над {systemId, env: draft, role, revision, platformUserId, exp ≤ 15 мин, nonce}, nonce одноразовый (runtime.yaml#auth.preview_login_M2); без него draft-хост отдаёт 404. next — только путь по ^/(?![/\\]) (L3-11)'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, revision, roles, expiresAt]
+                properties: {url: {type: string, format: uri}, revision: {type: integer}, roles: {type: array, items: {type: object, properties: {name: {type: string}, label: {type: string}}}}, expiresAt: {type: string, format: date-time}}
+        '409': {$ref: '#/components/responses/Error'}
+  /systems/{id}/gates/latest:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getLatestGates
+      x-milestone: M0
+      x-roles: [viewer]
+      responses:
+        '200':
+          description: 'Последние отчёты гейтов по draft: для каждого level — строка platform.gate_reports с max(revision) (db.yaml#gate_reports); форма GateReport — specs/quality/gates.yaml#report'
+          content: {application/json: {schema: {type: object, required: [revision, reports], properties: {revision: {type: integer}, runId: {type: string, format: uuid}, reports: {type: array, items: {$ref: '#/components/schemas/GateReport'}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/lock:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get: {operationId: getLock, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: Статус «кто меняет», content: {application/json: {schema: {$ref: '#/components/schemas/LockStatus'}}}}}}
+    delete: {operationId: forceReleaseLock, x-milestone: M1, x-roles: [owner], summary: Принудительно снять блокировку (отменяет держащий прогон), responses: {'204': {description: Снята}}}
+  /systems/{id}/publish:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: publish
+      x-milestone: M1
+      x-roles: [owner]
+      summary: Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
+      responses:
+        '202': {description: Прогон publish поставлен в очередь, content: {application/json: {schema: {type: object, properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '402': {description: 'PLAN_LIMIT (лимит prod-систем тарифа, billing.yaml#plans.enforcement)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /systems/{id}/rollback:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: rollback
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'env=draft: новая ревизия со спекой и файлами toRevision (editor достаточно; «Отменить» в S7). env=prod: переключение на ранее опубликованную ревизию без DDL — только owner, иначе 403 NOT_OWNER'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env, toRevision], additionalProperties: false, properties: {env: {enum: [draft, prod]}, toRevision: {type: integer}}}}}}
+      responses: {'202': {description: Прогон rollback, content: {application/json: {schema: {type: object, properties: {run: {$ref: '#/components/schemas/Run'}}}}}}, '403': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/publications:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get: {operationId: listPublications, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: История публикаций, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Publication'}}}}}}}}}
+  /systems/{id}/imports:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: createImport
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'Загрузка xlsx/csv ≤ 20 МБ. Значения обрабатываются только в РФ (data-boundary.yaml#import). MUST (L3-37): парсер xlsx — библиотека MIT/Apache без исполнения формул (берутся кешированные значения), распакованный размер ≤ 100 МБ и ≤ 1 млн ячеек (иначе 413), внешние связи и макросы игнорируются. Кнопка на S1 доступна только после создания системы (L1-54)'
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file], properties: {file: {type: string, contentMediaType: application/octet-stream}}}}}}
+      responses: {'202': {description: Прогон import_table (профиль → маппинг), content: {application/json: {schema: {type: object, properties: {importId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '413': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/imports/{importId}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: importId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getImport
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'Экран сопоставления колонок (M1-12): профиль колонок БЕЗ значений (data-boundary.yaml#import) и предложенный маппинг'
+      responses: {'200': {description: Импорт, content: {application/json: {schema: {type: object, required: [id, status], properties: {id: {type: string, format: uuid}, status: {enum: [profiling, mapping, awaiting_confirm, importing, done, failed, expired]}, runId: {type: [string, 'null'], format: uuid}, inputId: {type: [string, 'null'], description: 'needs_input для подтверждения (decisionId=import_confirm)'}, profile: {type: array, items: {type: object, properties: {column: {type: string}, typeGuess: {type: string}, piiKindGuess: {type: [string, 'null']}, nullShare: {type: number}, distinct: {type: integer}}}}, mapping: {type: array, items: {$ref: '#/components/schemas/ImportColumnMapping'}}, rowsImported: {type: [integer, 'null']}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/imports/{importId}/mapping:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: importId, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updateImportMapping
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'Правка маппинга до подтверждения (status=awaiting_confirm); подтверждение — POST /runs/:id/input {inputId, choice: confirm}'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [mapping], additionalProperties: false, properties: {mapping: {type: array, items: {$ref: '#/components/schemas/ImportColumnMapping'}}}}}}}
+      responses: {'200': {description: Маппинг сохранён}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/exports:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: createExport
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Выгрузка данных (M2-10, L4-08): прогон export → ZIP (CSV по сущностям + spec.json; кода нет — non_goals). workflows.yaml#export_data'
+      parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env], additionalProperties: false, properties: {env: {enum: [draft, prod]}}}}}}
+      responses: {'202': {description: Прогон поставлен в очередь, content: {application/json: {schema: {type: object, required: [exportId, run], properties: {exportId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '403': {$ref: '#/components/responses/Error'}}
+    get: {operationId: listExports, x-milestone: M2, x-roles: [owner], responses: {'200': {description: 'Журнал выгрузок, новые сверху', content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Export'}}}}}}}}}
+  /systems/{id}/exports/{exportId}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: exportId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getExport
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Статус выгрузки; при status=ready выдаёт одноразовую ссылку на ZIP (TTL 15 мин, L3-37); архив удаляется через 24 ч'
+      responses: {'200': {description: Выгрузка, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/Export'}, {type: object, properties: {downloadUrl: {type: [string, 'null'], format: uri}}}]}}}}, '404': {$ref: '#/components/responses/Error'}, '410': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/deletion-log:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listDeletionLog
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Журнал автоудаления и обезличивания ПДн (db.yaml#deletion_log; compliance.yaml#system_package.retention.deletion_log). Только счётчики'
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/cursor'}]
+      responses: {'200': {description: Записи журнала, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [env, entity, mode, rowsAffected, createdAt], properties: {env: {enum: [draft, prod]}, entity: {type: string}, mode: {enum: [delete, anonymize, subject_request, draft_purged, system_deleted, user_deleted, consent_revoked]}, cutoff: {type: [string, 'null'], format: date-time}, rowsAffected: {type: integer}, createdAt: {type: string, format: date-time}}}}, nextCursor: {type: [string, 'null']}}}}}}}
+  /systems/{id}/data/{entity}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: entity, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}}]
+    get:
+      operationId: getSystemData
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Вкладка «Данные» (S4/S10): проксирует runtime GET /api/data/:entity (runtime.yaml#data_api) под первой isAdmin-ролью системы; значения полей pii≠none маскируются (+7 ••• ••• 45 10, i•••@mail.ru). Только чтение, только owner (L1-34)'
+      parameters: [{name: env, in: query, schema: {enum: [draft, prod], default: draft}}, {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}, {$ref: '#/components/parameters/limit'}]
+      responses: {'200': {description: 'Страница записей — форма runtime data_api (items, page, limit, total, hasMore), ПДн маскированы', content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object}}, page: {type: integer}, limit: {type: integer}, total: {type: integer}, hasMore: {type: boolean}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /runs/{id}: {parameters: [{$ref: '#/components/parameters/runId'}], get: {operationId: getRun, x-milestone: M0, x-roles: [viewer], responses: {'200': {description: Прогон, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}, '404': {$ref: '#/components/responses/Error'}}}}
+  /runs/{id}/events:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    get:
+      operationId: streamRunEvents
+      x-milestone: M0
+      x-roles: [viewer]
+      summary: SSE событий прогона (workflows.yaml#events)
+      description: 'Формат кадра: `id: <seq>`, `event: <type>`, `data: <RunEvent JSON>`. Сначала сервер MUST отдать все события с seq > after (или > Last-Event-ID), затем живые, без пропусков и дублей; события с internal: true (workflows.yaml#events, например model_switched) в поток не попадают — их seq пропускается. Каждые 15 с — комментарий `: ping`. После терминального события (run_finished | run_failed) поток закрывается. Тест: переподключение с Last-Event-ID=N даёт ровно события N+1..; seq строго возрастает.
+
+        '
+      parameters: [{name: after, in: query, schema: {type: integer, minimum: 0, default: 0}}, {name: Last-Event-ID, in: header, schema: {type: string}}]
+      responses: {'200': {description: Поток, content: {text/event-stream: {schema: {type: string}}}}}
+  /runs/{id}/cancel:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    post:
+      operationId: cancelRun
+      x-milestone: M0
+      x-roles: [editor]
+      summary: Кооперативная отмена на ближайшей границе шага; текущий LLM-вызов прерывается AbortSignal
+      responses: {'202': {description: Отмена запрошена, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}, '409': {$ref: '#/components/responses/Error'}}
+  /runs/{id}/input:
+    parameters: [{$ref: '#/components/parameters/runId'}]
+    post:
+      operationId: provideRunInput
+      x-milestone: M0
+      x-roles: [editor]
+      summary: 'Ответ на needs_input. decision — M0; secret — M1: значение записывается в хранилище секретов в этом HTTP-обработчике, в воркфлоу (DBOS) уходит только secret://name; в БД платформы, DBOS и события значение не попадает (workflows.yaml#execution.M1.dbos_data, L3-09)'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [inputId], additionalProperties: false, properties: {inputId: {type: string}, choice: {type: string, description: 'id варианта (decision; для secret — например test «Тестовый режим»)'}, text: {type: string, maxLength: 2000, description: 'Свободный ответ для варианта с freeText=true (например, rephrase эскалации строителя); без choice с freeText → 422'}, secretValue: {type: string, maxLength: 4096, writeOnly: true, description: для kind=secret}}}}
+      responses: {'202': {description: Прогон продолжен, content: {application/json: {schema: {$ref: '#/components/schemas/Run'}}}}, '409': {$ref: '#/components/responses/Error'}}
+  /auth/otp/request:
+    post:
+      operationId: requestOtp
+      x-milestone: M1
+      security: []
+      summary: Всегда 204 (не раскрывает наличие аккаунта). Код 6 цифр, TTL 10 мин, ≤5 попыток; лимиты 5/ч на email, 20/ч на IP
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email], properties: {email: {type: string, format: email}}}}}}
+      responses: {'204': {description: Отправлено (если адрес валиден)}, '429': {$ref: '#/components/responses/Error'}}
+  /auth/otp/verify:
+    post:
+      operationId: verifyOtp
+      x-milestone: M1
+      security: []
+      summary: Вход; для нового пользователя MUST переданы оба согласия раздельно (compliance.yaml#platform)
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [email, code], properties: {email: {type: string, format: email}, code: {type: string, pattern: '^[0-9]{6}$'}, acceptOffer: {type: boolean}, pdConsent: {type: boolean, description: 'Отдельное согласие на обработку ПДн, не часть оферты'}}}}
+      responses: {'200': {description: 'Set-Cookie wizard_session, wizard_csrf', content: {application/json: {schema: {type: object, properties: {user: {$ref: '#/components/schemas/User'}}}}}}, '401': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /auth/logout: {post: {operationId: logout, x-milestone: M1, responses: {'204': {description: Сессия отозвана}}}}
+  /me:
+    get:
+      operationId: getMe
+      x-milestone: M1
+      responses:
+        '200':
+          description: Пользователь и членства
+          content: {application/json: {schema: {type: object, properties: {user: {$ref: '#/components/schemas/User'}, memberships: {type: array, items: {type: object, properties: {orgId: {type: string}, orgName: {type: string}, role: {$ref: '#/components/schemas/OrgRole'}}}}}}}}
+    delete:
+      operationId: deleteMe
+      x-milestone: M2
+      summary: 'Удаление аккаунта (права субъекта ПДн, L3-36): выход из всех org (последний owner → 422 LAST_OWNER, сначала передать владение), отзыв сессий, обезличивание users (email, name), запись deletion_log mode=user_deleted'
+      responses: {'204': {description: Аккаунт удалён}, '422': {$ref: '#/components/responses/Error'}}
+  /orgs:
+    get: {operationId: listOrgs, x-milestone: M1, responses: {'200': {description: Организации пользователя, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Org'}}}}}}}}}
+    post:
+      operationId: createOrg
+      x-milestone: M1
+      summary: Создатель становится owner; стартовый грант Free (billing.yaml#plans.free.grants)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, minLength: 1, maxLength: 120}}}}}}
+      responses: {'201': {description: Создана, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}}
+  /orgs/{orgId}:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get: {operationId: getOrg, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: Организация, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}}}
+    patch:
+      operationId: updateOrg
+      x-milestone: M1
+      x-roles: [owner]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {name: {type: string, maxLength: 120}}}}}}
+      responses: {'200': {description: Обновлена, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}}
+  /orgs/{orgId}/members:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get: {operationId: listMembers, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: Участники, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Member'}}}}}}}}}
+  /orgs/{orgId}/members/{userId}:
+    parameters: [{$ref: '#/components/parameters/orgId'}, {name: userId, in: path, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      operationId: updateMemberRole
+      x-milestone: M1
+      x-roles: [owner]
+      summary: Нельзя оставить организацию без owner → 422 LAST_OWNER
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [role], properties: {role: {$ref: '#/components/schemas/OrgRole'}}}}}}
+      responses: {'200': {description: Обновлено, content: {application/json: {schema: {$ref: '#/components/schemas/Member'}}}}, '422': {$ref: '#/components/responses/Error'}}
+    delete: {operationId: removeMember, x-milestone: M1, x-roles: [owner], responses: {'204': {description: Удалён}, '422': {$ref: '#/components/responses/Error'}}}
+  /orgs/{orgId}/invites:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get: {operationId: listInvites, x-milestone: M1, x-roles: [owner], responses: {'200': {description: Активные приглашения, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Invite'}}}}}}}}}
+    post:
+      operationId: createInvite
+      x-milestone: M1
+      x-roles: [owner]
+      summary: Письмо со ссылкой; TTL 7 дней; лимит участников тарифа → 402 PLAN_LIMIT
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email, role], properties: {email: {type: string, format: email}, role: {$ref: '#/components/schemas/OrgRole'}}}}}}
+      responses: {'201': {description: Создано, content: {application/json: {schema: {$ref: '#/components/schemas/Invite'}}}}, '402': {$ref: '#/components/responses/Error'}}
+  /orgs/{orgId}/invites/{inviteId}: {parameters: [{$ref: '#/components/parameters/orgId'}, {name: inviteId, in: path, required: true, schema: {type: string, format: uuid}}], delete: {operationId: revokeInvite, x-milestone: M1, x-roles: [owner], responses: {'204': {description: Отозвано}}}}
+  /invites/{token}/accept:
+    parameters: [{name: token, in: path, required: true, schema: {type: string, minLength: 32}}]
+    post: {operationId: acceptInvite, x-milestone: M1, summary: email сессии MUST совпадать с email приглашения, responses: {'200': {description: Членство создано, content: {application/json: {schema: {$ref: '#/components/schemas/Member'}}}}, '410': {$ref: '#/components/responses/Error'}}}
+  /orgs/{orgId}/settings:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get: {operationId: getOrgSettings, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: Настройки, content: {application/json: {schema: {$ref: '#/components/schemas/OrgSettings'}}}}}}
+    patch:
+      operationId: updateOrgSettings
+      x-milestone: M1
+      x-roles: [owner]
+      summary: ruOnly=true — все LLM-вызовы организации только T0 (D2); действует с первого следующего вызова
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OrgSettings'}}}}
+      responses: {'200': {description: Обновлено, content: {application/json: {schema: {$ref: '#/components/schemas/OrgSettings'}}}}}
+  /orgs/{orgId}/credits: {parameters: [{$ref: '#/components/parameters/orgId'}], get: {operationId: getCredits, x-milestone: M1, x-roles: [viewer], responses: {'200': {description: Баланс (billing.yaml#ledger), content: {application/json: {schema: {$ref: '#/components/schemas/CreditBalance'}}}}}}}
+  /orgs/{orgId}/credits/ledger:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get:
+      operationId: listLedger
+      x-milestone: M1
+      x-roles: [viewer]
+      parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/cursor'}]
+      responses: {'200': {description: 'Записи ledger, новые сверху', content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/LedgerEntry'}}, nextCursor: {type: [string, 'null']}}}}}}}
+  /orgs/{orgId}/billing:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get: {operationId: getBilling, x-milestone: M2, x-roles: [owner], responses: {'200': {description: 'Тариф, подписка, карта, лимиты', content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}}}
+  /orgs/{orgId}/billing/card-binding:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: startCardBinding
+      x-milestone: M2
+      x-roles: [owner]
+      summary: Привязка карты РФ через магазин платформы в ЮKassa (billing.yaml#card_binding)
+      responses: {'200': {description: Ссылка на подтверждение, content: {application/json: {schema: {type: object, required: [confirmationUrl], properties: {confirmationUrl: {type: string, format: uri}}}}}}}
+  /orgs/{orgId}/billing/subscription:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: changeSubscription
+      x-milestone: M2
+      x-roles: [owner]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [plan], properties: {plan: {enum: [start, business]}}}}}}
+      responses: {'200': {description: Подписка оформлена или confirmationUrl для первой оплаты, content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}, '409': {$ref: '#/components/responses/Error'}}
+    delete: {operationId: cancelSubscription, x-milestone: M2, x-roles: [owner], summary: Отмена в конце периода (автоплатёж выключается сразу), responses: {'200': {description: Отменено, content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}}}
+  /orgs/{orgId}/billing/topups:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: createTopup
+      x-milestone: M2
+      x-roles: [owner]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [packs], properties: {packs: {type: integer, minimum: 1, maximum: 20}}}}}}
+      responses: {'200': {description: Платёж создан, content: {application/json: {schema: {type: object, properties: {confirmationUrl: {type: [string, 'null']}, paymentId: {type: string}}}}}}}
+  /webhooks/yookassa:
+    post:
+      operationId: yookassaWebhook
+      x-milestone: M2
+      security: []
+      summary: Уведомления магазина ПЛАТФОРМЫ. Доверять только после GET /v3/payments/{id} к API ЮKassa и проверки IP из списка ЮKassa; идемпотентно по provider_payment_id
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {'200': {description: Принято}}
+  /abuse-reports:
+    post:
+      operationId: createAbuseReport
+      x-milestone: M2
+      security: []
+      summary: «Пожаловаться» (abuse.yaml#report). Без входа; лимит 10/ч на IP; ответ не раскрывает статус системы
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, category]
+              properties: {url: {type: string, format: uri, description: URL на домене систем}, category: {enum: [phishing, fraud, brand_impersonation, illegal_content, pd_violation, spam, other]}, text: {type: string, maxLength: 4000}, contactEmail: {type: string, format: email}}
+      responses: {'202': {description: Жалоба принята, content: {application/json: {schema: {type: object, properties: {reportId: {type: string}}}}}}, '429': {$ref: '#/components/responses/Error'}}
+  /admin/abuse-reports:
+    get:
+      operationId: adminListAbuseReports
+      x-milestone: M2
+      x-roles: [staff]
+      parameters: [{name: status, in: query, schema: {enum: [new, triaged, takedown, dismissed, restored]}}]
+      responses: {'200': {description: Очередь модерации по sla_deadline, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/AbuseReport'}}}}}}}}
+  /admin/abuse-reports/{reportId}/actions:
+    parameters: [{name: reportId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminAbuseAction
+      x-milestone: M2
+      x-roles: [staff]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action, note], properties: {action: {enum: [triage, takedown, dismiss, restore]}, note: {type: string, minLength: 3}}}}}}
+      responses: {'200': {description: 'Выполнено, владельцу отправлено уведомление', content: {application/json: {schema: {$ref: '#/components/schemas/AbuseReport'}}}}}
+  /admin/orgs/{orgId}/flags:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: adminSetOrgFlags
+      x-milestone: M2
+      x-roles: [staff]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}}}}}}
+      responses: {'200': {description: Обновлено}}
+  /admin/systems/{id}/founder-review:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: adminFounderReview
+      x-milestone: M2
+      x-roles: [staff]
+      summary: Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
+      responses: {'200': {description: Записано}}
+components:
+  securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
+  parameters:
+    systemId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    runId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    orgId: {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    version: {name: v, in: path, required: true, schema: {type: integer, minimum: 1}}
+    limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+    cursor: {name: cursor, in: query, schema: {type: string}}
+    idempotencyKey: {name: Idempotency-Key, in: header, schema: {type: string, maxLength: 64}}
+  responses: {Error: {description: Ошибка, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message_ru]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          x-http-status:
+            VALIDATION_FAILED: 400
+            UNAUTHORIZED: 401
+            OTP_INVALID: 401
+            INSUFFICIENT_CREDITS: 402
+            PLAN_LIMIT: 402
+            FORBIDDEN: 403
+            MFA_REQUIRED: 403
+            NOT_OWNER: 403
+            CARD_BINDING_REQUIRED: 403
+            FOUNDER_REVIEW_PENDING: 403
+            ORG_SUSPENDED: 403
+            NOT_FOUND: 404
+            SYSTEM_LOCKED: 409
+            NO_GATE_FAILURE: 409
+            RUN_NOT_CANCELLABLE: 409
+            RUN_NOT_WAITING_INPUT: 409
+            CARD_VERSION_STALE: 409
+            NO_CARD: 409
+            PREVIEW_NOT_READY: 409
+            INVITE_EXPIRED: 410
+            EXPORT_LINK_USED: 410
+            VERSION_CONFLICT: 412
+            PAYLOAD_TOO_LARGE: 413
+            UNSUPPORTED_MEDIA_TYPE: 415
+            HOST_NOT_ALLOWED: 421
+            OPS_INVALID: 422
+            IDEMPOTENCY_MISMATCH: 422
+            CONSENT_REQUIRED: 422
+            LAST_OWNER: 422
+            CARD_BINDING_REJECTED: 422
+            OPERATOR_NAME_REQUIRED: 422
+            OPERATOR_CONTACT_REQUIRED: 422
+            OPERATOR_ADDRESS_REQUIRED: 422
+            INN_INVALID: 422
+            PHONE_LOGIN_PLAN_REQUIRED: 422
+            CARD_NOT_RU: 422
+            SYSTEM_SUSPENDED: 422
+            GATES_FAILED: 422
+            DESTRUCTIVE_IN_PROD: 422
+            ROLLBACK_TARGET_INVALID: 422
+            RATE_LIMITED: 429
+            INTERNAL: 500
+            LLM_UNAVAILABLE: 503
+        message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
+        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
+    OrgRole: {enum: [owner, editor, viewer]}
+    SystemStage: {enum: [interview, card, building, ready, failed], description: workflows.yaml#system_stage}
+    System:
+      type: object
+      required: [id, orgId, slug, name, stage, draftRevision, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        orgId: {type: string, format: uuid}
+        slug: {type: string, pattern: '^[a-z][a-z0-9-]{1,30}[a-z0-9]$', description: Без '--'; runtime.yaml#routing.system_slug}
+        name: {type: string}
+        stage: {$ref: '#/components/schemas/SystemStage'}
+        draftRevision: {type: integer, minimum: 0}
+        previewRevision: {type: [integer, 'null'], description: Последняя ревизия с G0=passed и собранным бандлом}
+        prodRevision: {type: [integer, 'null']}
+        prodUrl: {type: [string, 'null'], format: uri}
+        suspended: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SystemCard:
+      type: object
+      description: 'Нормативная схема — specs/agents/orchestrator.yaml#system_card. Мини-карточка правки (orchestrator.yaml#change_requests.small_edit) — та же схема с kind=change: обязательны cardVersion, kind, summary («что меняется»), estimate, cap; остальные поля опциональны (L1-51). API гарантирует поля ниже'
+      required: [cardVersion, kind, estimate, cap]
+      additionalProperties: true
+      if: {properties: {kind: {const: change}}}
+      then: {required: [summary]}
+      properties:
+        cardVersion: {type: integer, minimum: 1}
+        kind: {enum: [create, change], description: добавляет platform-api}
+        title: {type: string, maxLength: 80}
+        summary: {type: string, maxLength: 400, description: 'для kind=change — «что меняется»'}
+        estimate: {type: object, properties: {credits: {type: object, properties: {min: {type: number}, expected: {type: number}, max: {type: number}}}, minutes: {type: object}}}
+        cap: {type: object, required: [credits], properties: {credits: {type: integer}}}
+    Question:
+      type: object
+      description: agents/orchestrator.yaml#schemas.Question (источник истины, L1-10)
+      required: [id, forkId, text, whyItMatters, options]
+      properties:
+        id: {type: string}
+        forkId: {type: string, description: id из orchestrator.yaml#fork_taxonomy}
+        text: {type: string, maxLength: 140}
+        whyItMatters: {type: string, maxLength: 160}
+        options: {type: array, minItems: 2, maxItems: 4, description: ровно один recommended=true, items: {type: object, required: [id, label, recommended], properties: {id: {type: string}, label: {type: string, maxLength: 60}, recommended: {type: boolean}, description: {type: string, maxLength: 140}}}}
+        allowCustom: {type: boolean, default: true, description: 'свой ответ ≤ 500 символов (postAnswers.answers[].text)'}
+    Message:
+      type: object
+      required: [id, seq, role, kind, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        seq: {type: integer}
+        role: {enum: [user, assistant, system]}
+        kind: {enum: [text, questions, answers, card, run_report, notice]}
+        text: {type: string}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}'}
+        runId: {type: [string, 'null'], format: uuid}
+        createdAt: {type: string, format: date-time}
+    RevisionSummary:
+      type: object
+      required: [version, author, createdAt]
+      properties:
+        version: {type: integer}
+        parentVersion: {type: [integer, 'null']}
+        author: {enum: [user, agent, system]}
+        authorUserId: {type: [string, 'null'], format: uuid}
+        runId: {type: [string, 'null'], format: uuid}
+        kind: {enum: [ops, files, style, revert, compliance]}
+        summary_ru: {type: string}
+        g0Passed: {type: [boolean, 'null']}
+        createdAt: {type: string, format: date-time}
+    Run:
+      type: object
+      required: [id, kind, status, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        systemId: {type: [string, 'null'], format: uuid, description: null только для nightly_eval (db.yaml#runs.system_id)}
+        kind: {enum: [interview_turn, build, publish, rollback, import_table, retention, nightly_eval, export]}
+        mode: {enum: [create, change, fix, point_edit], description: 'только для build; point_edit — M3'}
+        status: {enum: [queued, waiting_lock, running, needs_input, succeeded, failed, cancelled], description: workflows.yaml#run_lifecycle}
+        currentStep: {type: [string, 'null']}
+        credits: {type: object, properties: {estimate: {type: number}, cap: {type: number}, used: {type: number}}}
+        baseRevision: {type: [integer, 'null']}
+        resultRevision: {type: [integer, 'null']}
+        failure: {type: [object, 'null'], properties: {code: {type: string}, message_ru: {type: string}}}
+        lastEventSeq: {type: integer}
+        createdAt: {type: string, format: date-time}
+        startedAt: {type: [string, 'null'], format: date-time}
+        finishedAt: {type: [string, 'null'], format: date-time}
+    RunEvent:
+      type: object
+      required: [runId, seq, type, ts, payload]
+      description: Конверт; payload по type — workflows.yaml#events
+      properties: {runId: {type: string, format: uuid}, seq: {type: integer, minimum: 1}, type: {type: string}, ts: {type: string, format: date-time}, payload: {type: object}}
+    GateReport:
+      type: object
+      required: [level, passed, checks]
+      description: Нормативно — specs/quality/gates.yaml#report (копия для контрактного теста; при расхождении выигрывает gates.yaml)
+      properties:
+        level: {enum: [G0, G1, G2]}
+        passed: {type: boolean}
+        specVersion: {type: integer}
+        startedAt: {type: string, format: date-time}
+        durationMs: {type: integer}
+        summary: {type: object, properties: {pass: {type: integer}, fail: {type: integer}, warn: {type: integer}, skip: {type: integer}, error: {type: integer}}}
+        checks:
+          type: array
+          items:
+            type: object
+            required: [id, status, severity, message_ru]
+            properties: {id: {type: string}, status: {enum: [pass, fail, warn, skip, error]}, severity: {enum: [blocker, warning]}, message_ru: {type: string, maxLength: 300}, file: {type: string}, line: {type: integer}, path: {type: string}, acId: {type: string}, evidence: {type: string, maxLength: 500, description: без значений ПДн}, fixHint: {type: string}}
+        explanations: {type: array, items: {type: object}, description: 'только G1: Explanation[] (agents/qa.yaml#explain)'}
+    LockStatus:
+      type: object
+      required: [held]
+      properties: {held: {type: boolean}, runId: {type: [string, 'null']}, holder: {type: [object, 'null'], properties: {userId: {type: string}, name: {type: string}}}, since: {type: [string, 'null'], format: date-time}, queue: {type: array, items: {type: string, format: uuid}}}
+    Publication:
+      type: object
+      required: [id, env, revision, status, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        env: {const: prod}
+        revision: {type: integer}
+        schemaRevision: {type: integer}
+        status: {enum: [planned, applying, live, superseded, failed, suspended]}
+        migrationSteps: {type: integer}
+        createdAt: {type: string, format: date-time}
+    ImportColumnMapping:
+      type: object
+      required: [column, action]
+      additionalProperties: false
+      properties: {column: {type: string}, action: {enum: [map, skip, new_field]}, entity: {type: string}, field: {type: string}, pii: {enum: [none, basic], description: 'подтверждённая пользователем разметка ПДн'}}
+    Export:
+      type: object
+      required: [id, env, status, createdAt]
+      properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, status: {enum: [running, ready, failed, expired]}, size: {type: [integer, 'null']}, downloads: {type: integer}, expiresAt: {type: string, format: date-time}, createdBy: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}
+    User: {type: object, properties: {id: {type: string, format: uuid}, email: {type: string}, name: {type: [string, 'null']}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean, description: M2}}}
+    Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, start, business]}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}}}
+    Member: {type: object, properties: {userId: {type: string}, email: {type: string}, name: {type: [string, 'null']}, role: {$ref: '#/components/schemas/OrgRole'}, joinedAt: {type: string, format: date-time}}}
+    Invite: {type: object, properties: {id: {type: string}, email: {type: string}, role: {$ref: '#/components/schemas/OrgRole'}, expiresAt: {type: string, format: date-time}}}
+    OrgSettings: {type: object, additionalProperties: false, properties: {ruOnly: {type: boolean, default: false}, buildModelLabel: {type: string, readOnly: true, description: 'Фактическая модель сборки по умолчанию для org с учётом ruOnly, t1Restricted и решения F2 (agents/models.yaml), например «GLM-5.3» или «модели в РФ»; S1/S3/S10 показывают её, а не константу (L4-20)'}, t1Restricted: {type: boolean, readOnly: true, description: 'db.yaml#orgs.t1_restricted (L3-02); ставит платформа/staff'}}}
+    CreditBalance:
+      type: object
+      required: [balance, held, available]
+      properties:
+        balance: {type: number}
+        held: {type: number, description: Резервы активных прогонов}
+        available: {type: number}
+        buckets: {type: array, items: {type: object, properties: {source: {enum: [free_welcome, free_monthly, plan_monthly, topup, adjustment]}, remaining: {type: number}, expiresAt: {type: [string, 'null'], format: date-time}}}}
+    LedgerEntry:
+      type: object
+      required: [id, kind, amount, createdAt]
+      properties:
+        id: {type: string}
+        kind: {enum: [grant, charge, hold, release, expire, refund, adjustment]}
+        amount: {type: number, description: '+ начисление, − списание'}
+        source: {type: string}
+        runId: {type: [string, 'null']}
+        systemId: {type: [string, 'null']}
+        note_ru: {type: string}
+        createdAt: {type: string, format: date-time}
+    Billing:
+      type: object
+      properties:
+        plan: {enum: [free, start, business]}
+        status: {enum: [none, active, past_due, cancelled]}
+        periodEnd: {type: [string, 'null'], format: date-time}
+        cancelAtPeriodEnd: {type: boolean}
+        card: {type: [object, 'null'], properties: {last4: {type: string}, issuerCountry: {type: string}, boundAt: {type: string, format: date-time}}}
+        limits: {type: object, properties: {prodSystems: {type: integer}, members: {type: integer}, monthlyCredits: {type: number}}}
+    AbuseReport:
+      type: object
+      properties: {id: {type: string}, systemId: {type: [string, 'null']}, category: {type: string}, status: {enum: [new, triaged, takedown, dismissed, restored]}, slaDeadline: {type: string, format: date-time}, createdAt: {type: string, format: date-time}}

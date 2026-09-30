@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Гибкость — CRM студии</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Onest',system-ui,sans-serif;color:#1E1714;background:#FFFFFF}
+a{color:#A8472F}a:hover{color:#7E3320}
+.nav-i{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:15px;color:#3A302C}
+.kpi{border:1px solid #EEE7E2;border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:10px;font:600 14px 'Onest',sans-serif;border:1px solid transparent;cursor:pointer;box-sizing:border-box}
+.st{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #FFFFFF; box-sizing: border-box">
+  <nav aria-label="Разделы" style="width: 240px; flex-shrink: 0; background: #FBF6F3; border-right: 1px solid #F0E4DE; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px"><span style="width: 34px; height: 34px; border-radius: 9px; background: #A8472F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px">Г</span><div style="display: flex; flex-direction: column"><span style="font-weight: 700; font-size: 16px">Гибкость</span><span style="font-size: 12px; color: #6B5E58">crm.gibkost.ru</span></div></div>
+    <div class="nav-i" style="background: #F3E3DC; color: #7E3320; font-weight: 600">Сегодня</div>
+    <div class="nav-i">Расписание</div>
+    <div class="nav-i">Клиенты</div>
+    <div class="nav-i">Абонементы</div>
+    <div class="nav-i">Оплаты</div>
+    <div class="nav-i">Отчёты</div>
+    <div class="nav-i">Настройки</div>
+    <div style="flex-grow: 1"></div>
+    <button class="btn" style="background: #FFFFFF; border-color: #E6DDD8; color: #3A302C; justify-content: flex-start"><span style="width: 22px; height: 22px; border-radius: 6px; background: #2F46D8; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">W</span>Изменить систему</button>
+    <span style="font-size: 12px; color: #6B5E58; padding: 8px 8px 0">Администратор · Светлана</span>
+  </nav>
+
+  <main style="flex-grow: 1; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; min-width: 0">
+    <div style="display: flex; align-items: center; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 26px; font-weight: 700">Сегодня</span><span style="font-size: 15px; color: #6B5E58">Вторник, 7 октября</span></div>
+      <div style="flex-grow: 1"></div>
+      <button class="btn" style="background: #FFFFFF; border-color: #E6DDD8; color: #3A302C">Ссылка на запись</button>
+      <button class="btn" style="background: #A8472F; color: #FFFFFF">+ Запись</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+      <div class="kpi"><span style="font-size: 13px; color: #6B5E58">Занятий сегодня</span><span style="font-size: 28px; font-weight: 700">3</span></div>
+      <div class="kpi"><span style="font-size: 13px; color: #6B5E58">Записано</span><span style="font-size: 28px; font-weight: 700">22 из 28</span></div>
+      <div class="kpi"><span style="font-size: 13px; color: #6B5E58">Оплачено за день</span><span style="font-size: 28px; font-weight: 700">18 400 ₽</span></div>
+      <div class="kpi"><span style="font-size: 13px; color: #6B5E58">Отмены через Telegram</span><span style="font-size: 28px; font-weight: 700">2</span></div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; flex-grow: 1; min-height: 0">
+      <section aria-label="Занятия сегодня" style="border: 1px solid #EEE7E2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 16px; font-weight: 700">Занятия</span>
+        <sc-for list="{{classes}}" as="c" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 12px; background: {{c.bg}}">
+            <span style="font-size: 18px; font-weight: 700; width: 64px">{{c.time}}</span>
+            <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">{{c.title}}</span><span style="font-size: 13px; color: #6B5E58">{{c.coach}} · зал 1</span></div>
+            <div style="width: 160px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; color: #3A302C">{{c.fill}}</span><div style="height: 6px; background: #EFE3DD; border-radius: 3px"><div style="height: 6px; width: {{c.pct}}; background: #A8472F; border-radius: 3px"></div></div></div>
+            <span class="st" style="background: {{c.sbg}}; color: {{c.sfg}}">{{c.status}}</span>
+          </div>
+        </sc-for>
+      </section>
+      <section aria-label="Требуют внимания" style="border: 1px solid #EEE7E2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 16px; font-weight: 700">Требуют внимания</span>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; background: #FBF2EE"><span style="font-size: 14px; font-weight: 600">Абонемент заканчивается · 3</span><span style="font-size: 13px; color: #6B5E58">Дарья М., Софья Л., Алина Т. получили ссылку на продление</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; background: #FBF2EE"><span style="font-size: 14px; font-weight: 600">Не ходили 30 дней · 5</span><span style="font-size: 13px; color: #6B5E58">Можно отправить приглашение на открытый класс</span></div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; background: #FBF2EE"><span style="font-size: 14px; font-weight: 600">Ожидают оплаты в студии · 2</span><span style="font-size: 13px; color: #6B5E58">Разовые занятия на 19:00</span></div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var C = [
+      ['10:00', 'Мягкий фитнес', 'Ольга', 5, 8, 'прошло'],
+      ['19:00', 'Шпагат', 'Мария', 10, 10, 'мест нет'],
+      ['20:00', 'Растяжка вечер', 'Анна', 7, 10, 'идёт запись']
+    ];
+    return { classes: C.map(function (c) {
+      var past = c[5] === 'прошло';
+      return { time: c[0], title: c[1], coach: c[2], fill: 'записано ' + c[3] + ' из ' + c[4], pct: Math.round(c[3] / c[4] * 100) + '%',
+        status: c[5], bg: past ? '#FAF8F7' : '#FDF7F4', sbg: past ? '#EEEAE7' : (c[3] === c[4] ? '#F3E3DC' : '#E7F2EA'), sfg: past ? '#5E5550' : (c[3] === c[4] ? '#7E3320' : '#2C5B3C') };
+    }) };
+  }
+}
+</script>
+</body>
+</html>

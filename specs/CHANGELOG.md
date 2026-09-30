@@ -1,0 +1,99 @@
+# Журнал изменений спек
+
+Самостоятельные решения агентов и разрешённые противоречия. Формат: `дата · задача/автор · что решено · почему`.
+
+- 2026-09-30 · spine · Создан хребет спек (product, architecture, appspec schema/ops, milestones, backlog, escalation, AGENTS.md) по концепции v3.1.
+- 2026-09-30 · week0 · Z.ai запрещает регионы Крым, ДНР, Запорожье (и ряд стран): роутер MUST маршрутизировать тенантов из этих регионов только в T0. Добавить в data-boundary при аудите.
+- 2026-09-30 · week0 · Подтверждены id моделей Cloud.ru FM: zai-org/GLM-5.1, moonshotai/Kimi-K2.6, deepseek-ai/DeepSeek-V4-Pro, Qwen/Qwen3-Coder-Next, openai/gpt-oss-120b, ai-sage/GigaChat3.5-432B-A28B; Z.ai: https://api.z.ai/api/paas/v4/, модель glm-5.3.
+- 2026-09-30 · spine-sync · Сверка спек после параллельного написания разделов. В AppSpec добавлены piiKind, compliance.operatorContact/operatorInn/retentionWaiver, строгие вложенные объекты; ops: message_ru, kind ревизии, новые семантические правила (loginMethods, неявная сущность users, реквизиты оператора до prod); architecture: ctx в route(), preview_bridge, именование схем по schemaKey, раздел infra_and_libs; milestones: уточнения M0/M1; backlog: списки спек, мост превью и wz-map в M0-09, PWA в M2-03, новая задача M2-10 (выгрузка данных); AGENTS.md: лицензии OFL-1.1 (шрифты), MPL-2.0 (dev).
+- 2026-09-30 · platform-agent · Интерпретации D10 (E-DECISION при несогласии основателя): «2/5 систем» — одновременно в prod; «до 10/30 пользователей» — участники организации; Free — 3 участника и 3 черновика; 25 кредитов Free начисляются с 31-го дня, без переноса. Кредиты тарифа сгорают в конце периода, докупка живёт 365 дней; полный возврат кредитов при сбое платформы или отсутствии ревизии, прошедшей G0; потолок фикс-прогона = max(3, 25% исходного). Формулировки для оферты — через юриста (E-LEGAL).
+- 2026-09-30 · agents-agent · pii_forbidden_for_T1: always = runtime_ai_extract, runtime_ai_generate, support; import_mapping — в T1 только при containsPiiHint=false и чистом скане. Интервью с найденными ПДн — в T0. Паспорт/СНИЛС/карта в брифе форсируют T0 для всех вызовов. Недоступность T1 → молча T0.
+- 2026-09-30 · spine-sync · docs/research/data-boundary-frontier.md §5 (T1 opt-in) заменён решением D2 (T1 по умолчанию для сборки) — приоритет у product.yaml.
+- 2026-09-30 · spine-sync · acceptance.check дополнен полями actors, seed, milestone по gates.yaml#scenario_dsl.
+- 2026-09-30 · runtime-agent · ctx.db в функциях работает от имени вызывающего (права + RLS); ctx.systemDb — явный системный доступ, каждое использование перечисляется в G2. Мутации SERIALIZABLE до 3 повторов. Оплата декларативна: bindings ЮKassa в integration.config + POST /api/pay/:integration, сумма берётся только с сервера из записи. Получатели уведомлений — только userId. QR: подписанный токен WZ1.kid.rand.sig (HMAC), офлайн-манифест содержит только sha256-хеши; синхронизация идемпотентна по clientEventId, побеждает первый чек-ин. Вход через Telegram — OIDC (oauth.telegram.org, PKCE).
+- 2026-09-30 · spine-sync · Добавлены role.selfSignup, app.timezone (по умолчанию Europe/Moscow), неявные индексы и nullable-ПДн для anonymize в DDL; уточнено правило SQL-ключевых слов (идентификаторы всегда квотируются); M0-09: таймаут 5 с — это жёсткий предел unsafe-local.
+- 2026-09-30 · runtime-agent · E-LEGAL: чек 54-ФЗ на частичную предоплату — «Чеки от ЮKassa» поддерживают только full_prepayment/full_payment; до ответа юриста предоплата 50% пробивается как full_prepayment на внесённую сумму. E-ACCESS: провайдеры SMS (phone OTP) и SMTP платформы.
+- 2026-09-30 · M0-02 · zod-схема не подставляет default из JSON Schema; длины строк — в кодовых точках; integer — любое целое, как в JSON Schema.
+- 2026-09-30 · M0-02 · Коды для правил без своего кода: >1 public-роли и превышение maxItems → LIMIT_EXCEEDED; public update/delete без rowFilter → INVALID_ROW_FILTER; прочие нарушения формы (ownerField не на users, anchorField не дата, секрет в config, login без loginMethods, public с loginMethods, selfSignup+isAdmin, enum/ref/min/max/maxLength/default не по типу) → SCHEMA_INVALID.
+- 2026-09-30 · M0-02 · ownerField — ref на users или системное created_by; rowFilter может ссылаться на системные поля; $user.<attr> ∈ {id, role, phone, email, telegram_id, display_name}.
+- 2026-09-30 · M0-02 · Зарезервированы: системные поля и колонки PG, users/user/role/public, зарезервированные слова PostgreSQL 16, глаголы DML/DDL, префикс pg_. Незарезервированные в PG слова (session, date) разрешены.
+- 2026-09-30 · M0-02 · Правило «pii=basic → retention или retentionWaiver» включается флагом validateSpec(spec, {enforcePiiRetention:true}) — обязательно с M2 (G2-PII-05).
+- 2026-09-30 · M0-02 · Секрет в спеке: ключи config, оканчивающиеся на secret/token/password/apikey/privatekey/secretkey/signingkey/accesskey/credentials, должны быть secret://…, и каждый secret:// должен быть в secretRefs.
+- 2026-09-30 · M0-03 · applyOps(spec, ops, expectedVersion, {currentVersion=0, env, idempotencyKey, store, author, runId}) → {ok:true, spec, version, revision{kind:'ops'}} | {ok:false, errors}. DESTRUCTIVE_IN_PROD — для remove_entity/remove_field/remove_role; прочие remove_* в prod разрешены (данные не теряются). Идемпотентность кэширует только успешные результаты (LRU 1000; ключ префиксует вызывающий).
+- 2026-09-30 · M0-04 · enum = text + CHECK (без create_enum_type); сужение CHECK — destructive, расширение/смена default — аддитивны. Длины по умолчанию: string 255, email 254, phone 16 (E.164, нормализует runtime), url 2048. created_by = wizard.user_id; updated_at — триггер; длинные имена ограничений — усечение + fnv-хеш. RLS: permissive-политика на (role, op), rowFilter через WITH CHECK для create, отдельная политика wz__system. create_schema создаёт системные таблицы runtime.yaml#system_tables. toDDL(plan, schema, {runtimeRole?}) включает RLS и GRANT.
+- 2026-09-30 · spine-decision · Добавлен permission.rowFilterOps: rowFilter применяется только к перечисленным операциям (по умолчанию — ко всем). Решает «читать всё, править своё» одной ролью. Требует доработки packages/appspec (semantic + toRLS).
+
+## 2026-09-30 — исправления по мультилинзовому аудиту
+
+Отчёты и журналы исправлений — docs/reviews/spec-audit/README.md.
+
+Решения основателя:
+- F1 · PR агентов мержатся auto-merge при зелёном CI; исключения — escalation.yaml#merge_policy (метка founder-review).
+- F2 · Если на eval недели 0 GLM-5.3 (T1) не лучше лучшей T0-модели на ≥ 10 п. п., сборка по умолчанию идёт на моделях в РФ (models.yaml#week0_decision, product.yaml#decisions.D2_w0_fallback, задача M0-30).
+- F3 · Запрет касается API и сервисов Anthropic/OpenAI/Google/xAI; открытые веса с инференсом в РФ (gpt-oss-120b в Cloud.ru) допустимы; линтер реестра проверяет provider/placement (закрывает L3-39, L4-05).
+- F4 · Вход по телефону (SMS OTP) в созданных системах — только на тарифах Старт/Бизнес (registry.features.phoneOtp, PHONE_LOGIN_PLAN_REQUIRED); на Free — email и Telegram.
+- F5 · Принято по рекомендации, основатель может пересмотреть: интерпретации тарифов L4 (D10_interpretations); неактивный черновик Free через 60 дней теряет только draft-схему с тестовыми данными (deletion_log mode=draft_purged).
+- F6 · Принято по рекомендации, основатель может пересмотреть: live-eval — 5 брифов ночью + полный прогон по метке PR при смене промптов/моделей, потолок ≤ 30 000 ₽/мес (eval.yaml#live_cadence).
+- F7 · Принято по рекомендации, основатель может пересмотреть: модерация беты — основатель как staff-аккаунт с обязательной MFA (users.mfa_enrolled_at).
+- F8 · Принято по рекомендации, основатель может пересмотреть: нейтральный домен систем покупается в неделю 0 (E-ACCESS), домен платформы — к неделе 12.
+- Суточный бюджет SMS на org — 100 (Старт) / 300 (Бизнес): защитная мера агентов от SMS-pumping, основатель может пересмотреть.
+
+Хребет и план:
+- spine · AGENTS.md «Порядок работы» переписан под захват задач и PR; backlog += status/claimed_by, validate.mjs проверяет статусы, владельцев, якоря specs и acceptance, волны и циклы.
+- spine · Граф M0 по L2: M0-08/M0-09 разделены (+M0-23…M0-25), новые M0-19…M0-30, волны m0-w0…m0-w6, критический путь ≈ 12 агенто-дней.
+- spine · architecture#interfaces приведены к фактическому API packages/appspec; новые интерфейсы gate_context, runtime_handle, build_system, agent_host, usage_sink, data_access, connectors, types; depends_on дополнены (L1-37).
+- spine · Новые пакеты packages/build (единственный владелец сборки и wz-id) и packages/e2e; stack.dev_exec = tsx.
+- spine · M2 exit: «партнёры подключены»; комплаенс-готовность до первого реального пользователя (M2-13, owner founder, E-LEGAL). Новые M1-11, M1-12, M2-11, M2-12, M2-14 (файлы), M3-03.
+- spine · escalation: календарь действий основателя, E-ACCESS += SMS-провайдер, DNS API, Artifact Registry, общий Telegram-бот; E-DOMAIN упразднён (D22_domains + E-NAME); E-LEGAL.open_items по L3.
+
+AppSpec и гейты:
+- appspec · Шаг DSL — одно действие + модификатор `consent: true` рядом с create/callFn; `actors` — поле check; steps 1..40; статусы сценария сопоставлены с HTTP runtime (L1-01, L1-03, L1-41).
+- appspec · function.collectsPii, compliance.consentTemplateId/operatorAddress, aiAction.monthlyLimit обязателен (по умолчанию 50), egress — только FQDN, logoFile — только PNG/WebP, ops add_role/update_role принимают selfSignup (L1-31, L3-24, L3-34, L4-25).
+- appspec · Значения спеки в SQL — только через sqlLiteral/quoteIdent, standard_conforming_strings=on, fuzz-тест; мигратор M2 — sys_owner_<key>_<env>, каждый оператор отдельным вызовом extended protocol (L3-01, M0-29).
+- appspec · set_compliance от агента — только consentTemplateId и policyPage, остальное OWNER_ONLY_FIELD; $user.<attr> в rowFilter — только id, role, phone, email, telegram_id (L3-06, L3-20).
+- appspec · Эталоны: selfSignup у participant/speaker/customer, вход email_otp + telegram, без telegram.allowPii, milestone AC по L2-07; имена индексов `<prefix>_<table>$<col>…` без коллизий.
+- gates · Единый G0.forbidden_api (вкл. computed member, parent/top/opener/postMessage/window.name в ui/**); G0-IMP/G0-SEC до tsc/esbuild в копии ревизии; G0-BUILD-01 через packages/build (L1-30, L1-38, L3-13, L3-14, L3-16).
+- gates · Warning-проверки G0 — since: M1; G0 ≤ 60 с жёстко, 20 с — цель; G1 пропускает AC поздних вех (G1.milestone_rule) (L2-13, L2-27, L1-22).
+- gates · G0-SPEC-05: зарезервированы маршруты /login и policyPage (RESERVED_NAME) и правило безопасности selfSignup (SELF_SIGNUP_UNSAFE); G0-SPEC-06: до M2 поле file, которое пишет роль без isAdmin, блокируется (FILE_FIELD_UNSUPPORTED).
+- gates · G2-PII-06: operatorName и operatorContact, с M2 — operatorAddress, ИНН по контрольной сумме; G2-AF-04 — бренды только в сильном контексте с allowlist коннекторов; G2-AF-09 — сигнал ОРИ (warning).
+
+Агенты, модели, eval:
+- agents · События, режимы, бюджет и эскалации строителя — по workflows.yaml; point-and-edit target = wz_id {wzId, componentName, file, line, route, instruction}; конвенции кода — по sdk.md (L1-02, L1-04, L1-05).
+- agents · usage_record = platform.llm_calls с M0 (без содержимого промптов); кредиты = credits_milli, списание = min(cap, Σ billable) (L1-15, L1-16).
+- agents · Роутер: шаг 2a policy_region_restricted (fail-safe в T0), 3a pii_hint, strong-виды → pii_high_risk; orgs.region_code / t1_restricted (L3-02, L1-17, L1-47).
+- agents · Оркестратор: Answer {…, text?}, мини-карточка правки = SystemCard kind=change с summary, вопросы пишутся с payload.analysis, срок хранения регистраций 30 дней, умолчание входа — email_otp и telegram (L1-10, L1-51, L4-19, L4-26).
+- eval · pii_leaks — точные вхождения канареек в T1-payload (независимый детектор — диагностика M1); record только для брифов tools/eval/briefs и demo, T0 пишется после scrub (L3-04, L3-07).
+
+Безопасность и 152-ФЗ:
+- security · Детекторы phone_intl, social_handle, ogrnip (strong), car_plate_ru, person_name_latin; holdout-корпус в РФ; ruOnly — инвалидация кэша политики и отмена T1-вызовов в полёте (L3-05, L3-42).
+- security · Фолбэк T1→T0: пользователь видит только общую строку «Часть шагов выполнена на моделях в РФ» (models.yaml#fallback_rules, step_finished.ruFallback); model_switched — внутреннее событие (L4-20).
+- security · DBOS не хранит секреты и LLM-контент, dbos.* — 30 дней; сырые брифы в messages — scrub через 180 дней; воркфлоу delete_system (L3-09, L3-36).
+- security · Исполнитель функций M0–M1 — отдельный процесс Node с --permission; M2 — RPC по токену-возможности, ≤ 10 систем на под workerd, системный доступ через роль sys_*_system.
+- security · PSL в M2-06; CSRF на все не-GET (вкл. QR), cookie по WIZARD_PUBLIC_SCHEME, без CORS; зарезервированные slug; Host allowlist 421 и туннельные заголовки 403 локально (L3-10, L3-11, L3-14, L3-29).
+- security · Файлы (M2-14): allowlist по сигнатуре без SVG/HTML, attachment + CSP sandbox, pii basic по умолчанию (L3-18).
+- security · Согласие — канон `_consent {policyVersion, textHash}` с M0; согласие при первом входе и отзыв через /_wizard/privacy (M2), deletion_log mode=consent_revoked (L1-03, L3-33).
+- security · Оператор ПДн: operatorContact (M1), operatorAddress (M2); текст согласия — только шаблон юриста; субобработчики системы выводятся из интеграций; гейт beta_readiness (L3-34, L3-35).
+- connectors · Telegram: общий бот уведомлений по умолчанию, свой бот — только для входа, allowPii удалён; ЮKassa: сверка суммы и IP доверенного ingress, M0 pay-mock; email: защита заголовков и SSRF; QR: qr_token только на сервере (L3-26, L3-30, L4-13, L4-14).
+
+Платформа, runtime, UI:
+- platform · workflows#events — единственный источник имён событий: plan_ready добавлен, model_switched внутреннее; новая таблица platform.gate_reports (L1-02, L1-11).
+- platform · Сборка: POST /systems/:id/fix; шаги migrate_draft, seed_draft, bundle_and_reload; draft_snapshot (M1) заменяет ПДн синтетикой (L1-25, L2-04, L4-11).
+- platform · api: assets (логотип PNG/WebP, 415), exports (ZIP CSV + spec.json, одноразовая ссылка 15 мин), deletion-log, data/{entity}, imports mapping, DELETE /me; лимиты привязки карты (L1-34, L3-28, L3-37, L4-08).
+- platform · deploy: канонический список env-переменных (.env.example синхронизирован: DATABASE_URL → WIZARD_DB_URL), роли wizard / wizard_owner / wizard_runtime, логгер allowlist, доверенный ingress, self-hosted CD runner (L1-18, L3-01, L3-08, L3-27, L3-38).
+- runtime · M0: воркфлоу только пишут в _w_jobs; поллер и retention — с M1 (compliance.yaml выровнен); rate limits, полный CSP и PWA — с M1; #files (M2), #ai_actions (M3, AI_LIMIT_REACHED); внутренний эндпоинт — только порт 4101 (L2-07, L2-28, L3-19, L4-07).
+- ui · Новые экраны S-auth, S-invite, S-billing, S-import, блок «Персональные данные» в S10; S9 — в M1; ширина превью 390/768/1280 (L4-02, L4-09, L4-10, L4-27).
+
+Реализация M0 (агенты задач):
+- M0-05 · done: recall 0.990 / precision 0.992 на корпусе 444 строк; плейсхолдеры ^\[(?:[А-ЯЁ_]+|EMAIL)_\d+\]$ с общей нумерацией по основе; Finding.piiKind по detectors.piiKind_map; словарь имён составлен агентом (CC0-1.0).
+- M0-05 · Эвристики: паспорт без контекста — только правдоподобная серия без маркеров «№/заказ/счёт»; одиночное латинское имя — не находка; «ИНН организации» — не ПДн; известные ограничения — кандидаты в holdout M1.
+- M0-07 · done: @wizard/sdk/codegen держит свой генератор sdk.md §4, пока packages/appspec не перейдёт на него (follow-up L2-17 в M0-29).
+- M0-07 · sdk.md §5: WizardError.status, update(id, patch, opts?: CallOptions) — _consent и при update строк с ПДн; SSE через fetch streaming с X-Wizard-Request (runtime.yaml#realtime); filter[f]=null → IS NULL.
+- M0-07 · ctx.db: count() = 1 чтение; where/getBy по скрытому полю → FIELD_HIDDEN; неиндексированный where → VALIDATION_FAILED (NOT_INDEXED); каждый ctx.scheduler из action — своя транзакция.
+
+Сверка (reconciliation):
+- reconcile · deletion_log.mode += retention (users без входа 3 года); колонка deletion_log.created_at; architecture#db_roles: владелец platform — роль wizard (как deploy.yaml).
+- reconcile · Якоря compliance.yaml#consent → #system_package.consent; ссылки «файлы — M2-01» → M2-14; ops.yaml: operatorAddress — с M2 (источник compliance.yaml).
+- reconcile · Коды ошибок: runtime += AI_LIMIT_REACHED; api += CARD_BINDING_REJECTED, INN_INVALID; OWNER_ONLY_FIELD приходит в OPS_INVALID.details.
+- reconcile · backlog: M0-05, M0-07 — done; M0-15 += gate_reports и IDOR 404; M0-29 += перенос генератора типов; M2-10 ссылается на workflows#workflows.export_data.
+- reconcile · tools/specs/validate.mjs проверяет propertyNames, min/maxProperties, dependentSchemas/Required, if/then/else — схема шагов DSL проверяется полностью без ajv.
+- reconcile · Открыто для packages (в сверке не правилось): тесты packages/appspec читают DATABASE_URL — перейти на WIZARD_DB_URL.

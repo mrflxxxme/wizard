@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Wizard — уточняющие вопросы</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;family=Unbounded:wght@500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'Onest',system-ui,sans-serif;color:#16161A;background:#F6F4EF}
+a{color:#2F46D8}a:hover{color:#1F2FA0}
+.disp{font-family:'Unbounded','Onest',sans-serif;letter-spacing:-0.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:10px;font:600 15px 'Onest',sans-serif;text-decoration:none;border:1px solid transparent;cursor:pointer;box-sizing:border-box}
+.btn-primary{background:#2F46D8;color:#FFFFFF}.btn-primary:hover{background:#2437B8;color:#FFFFFF}
+.btn-ghost{background:#FFFFFF;color:#16161A;border-color:#DCD7CC}.btn-ghost:hover{color:#16161A;border-color:#B9B3A6}
+.btn-off{background:#E3DFD6;color:#5E5E66;cursor:default}
+.opt{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:10px 14px;border-radius:12px;border:1.5px solid #DCD7CC;background:#FFFFFF;font:500 15px 'Onest',sans-serif;color:#16161A;text-align:left;cursor:pointer;box-sizing:border-box}
+.rail-btn{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:#5E5E66;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #F6F4EF; box-sizing: border-box">
+  <nav aria-label="Навигация платформы" style="width: 72px; flex-shrink: 0; border-right: 1px solid #E3DFD6; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 10px; background: #FBFAF7">
+    <div class="disp" style="width: 40px; height: 40px; border-radius: 10px; background: #2F46D8; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; margin-bottom: 14px">W</div>
+    <button class="rail-btn" aria-label="Новый чат"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="rail-btn" aria-label="Мои системы"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+  </nav>
+
+  <section aria-label="Чат с оркестратором" style="width: 680px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #E3DFD6; background: #FBFAF7">
+    <header style="padding: 18px 28px; border-bottom: 1px solid #E3DFD6; display: flex; align-items: center; gap: 10px">
+      <span style="font-weight: 600; font-size: 16px">Новая система</span>
+      <span style="font-size: 13px; color: #5E5E66">· этап 1 из 3: понимание задачи</span>
+    </header>
+    <div style="flex-grow: 1; overflow: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 18px">
+      <div style="align-self: flex-end; max-width: 500px; background: #16161A; color: #FFFFFF; padding: 12px 16px; border-radius: 16px 16px 4px 16px; font-size: 15px; line-height: 1.5">Нужна CRM для студии растяжки: запись клиентов на занятия, абонементы, онлайн-оплата и напоминания в Telegram. Работают 3 тренера и администратор.</div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.55">
+        <span style="font-size: 13px; font-weight: 600; color: #2F46D8">Оркестратор</span>
+        <p style="margin: 0">Понял задачу. Разложил её так: <b>3 роли</b> (администратор, тренер, клиент), <b>5 сущностей</b>, публичная запись, оплата и напоминания. Осталось закрыть несколько развилок, которые могу решить только вы. Там, где вам всё равно, выбирайте рекомендуемый вариант.</p>
+      </div>
+
+      <sc-for list="{{answered}}" as="a" hint-placeholder-count="0">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 12px; font-size: 14px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F7A4D" stroke-width="2.5" stroke-linecap="round"><path d="M5 12l5 5 9-10"/></svg>
+          <span style="color: #5E5E66">{{a.short}}:</span><span style="font-weight: 600">{{a.answer}}</span>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{notDone}}" hint-placeholder-val="{{ true }}">
+        <div style="background: #FFFFFF; border: 1px solid #DCD7CC; border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 24px rgba(22,22,26,0.05)">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Вопрос {{num}} из 5</span>
+            <span style="font-size: 13px; color: #5E5E66">{{why}}</span>
+          </div>
+          <h2 style="margin: 0; font-size: 19px; font-weight: 600">{{question}}</h2>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+              <button class="opt" onClick="{{o.pick}}" style="border-color: {{o.border}}; background: {{o.bg}}">
+                <span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid {{o.border}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{o.dot}}"></span></span>
+                <span style="flex-grow: 1">{{o.label}}</span>
+                <sc-if value="{{o.rec}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; font-weight: 600; color: #2F46D8; background: #E6E9FB; padding: 3px 8px; border-radius: 999px">рекомендую</span></sc-if>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center">
+            <sc-if value="{{canNext}}" hint-placeholder-val="{{ false }}"><button class="btn btn-primary" onClick="{{next}}">Далее</button></sc-if>
+            <sc-if value="{{cannotNext}}" hint-placeholder-val="{{ true }}"><button class="btn btn-off" disabled>Далее</button></sc-if>
+            <button class="btn btn-ghost" onClick="{{skipAll}}">Остальное — по рекомендациям</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{done}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.55">
+          <span style="font-size: 13px; font-weight: 600; color: #2F46D8">Оркестратор</span>
+          <p style="margin: 0">Все развилки закрыты. Собрал карточку системы: проверьте, что я понял правильно, и запускайте сборку.</p>
+          <a class="btn btn-primary" href="SystemCard.dc.html" style="align-self: flex-start">Открыть карточку системы</a>
+        </div>
+      </sc-if>
+    </div>
+    <div style="padding: 16px 28px; border-top: 1px solid #E3DFD6">
+      <label for="reply" style="position: absolute; left: -9999px">Сообщение</label>
+      <input id="reply" placeholder="Или ответьте своими словами…" style="width: 100%; box-sizing: border-box; height: 48px; border: 1px solid #DCD7CC; border-radius: 12px; padding: 0 14px; font: 400 15px 'Onest',sans-serif; background: #FFFFFF">
+    </div>
+  </section>
+
+  <aside aria-label="Понимание задачи" style="flex-grow: 1; padding: 28px 36px; display: flex; flex-direction: column; gap: 20px; overflow: auto">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 600; color: #5E5E66; text-transform: uppercase; letter-spacing: 0.06em">Как я понял задачу</span>
+      <h2 class="disp" style="margin: 0; font-size: 26px; font-weight: 600">Студия растяжки: запись, абонементы, оплата</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Цель</span>
+        <span style="font-size: 15px; line-height: 1.5">Убрать запись в мессенджерах и тетради, не терять оплаты и продления абонементов, снизить неявки.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Роли</span>
+        <span style="font-size: 15px; line-height: 1.5">Администратор · Тренер (3) · Клиент (публичная запись)</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Сущности</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <span style="font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #F1EEE7">Клиенты</span>
+          <span style="font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #F1EEE7">Занятия</span>
+          <span style="font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #F1EEE7">Записи</span>
+          <span style="font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #F1EEE7">Абонементы</span>
+          <span style="font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #F1EEE7">Оплаты</span>
+        </div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Ограничения</span>
+        <span style="font-size: 15px; line-height: 1.5">Персональные данные клиентов — только в РФ (152-ФЗ). Один зал, до ~500 клиентов.</span>
+      </div>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13px; font-weight: 600; color: #5E5E66">Развилки, которые решаете вы</span>
+      <sc-for list="{{forks}}" as="f" hint-placeholder-count="5">
+        <div style="display: flex; align-items: center; gap: 12px; min-height: 32px; font-size: 15px">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: {{f.dot}}; flex-shrink: 0"></span>
+          <span style="width: 200px; color: #5E5E66">{{f.short}}</span>
+          <span style="font-weight: {{f.weight}}">{{f.status}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin: 0; font-size: 14px; color: #5E5E66; line-height: 1.5">Всё остальное (структура полей, статусы, отчёты, дизайн) я решу сам по умолчаниям для студий и покажу в карточке системы.</p>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var QUESTIONS = [
+  { short: 'Запись', why: 'влияет на роли и экраны', q: 'Как клиенты записываются на занятия?', options: [
+    { label: 'Сами онлайн по ссылке, администратор тоже может', rec: true },
+    { label: 'Только через администратора', rec: false },
+    { label: 'Только онлайн', rec: false } ] },
+  { short: 'Оплата', why: 'нужна интеграция', q: 'Как вы принимаете оплату?', options: [
+    { label: 'Онлайн через ЮKassa и наличными в студии', rec: true },
+    { label: 'Только в студии', rec: false },
+    { label: 'Только онлайн', rec: false } ] },
+  { short: 'Абонементы', why: 'меняет модель данных', q: 'Какие абонементы вы продаёте?', options: [
+    { label: 'На количество занятий (8, 12)', rec: true },
+    { label: 'Безлимит на срок', rec: false },
+    { label: 'Оба вида', rec: false } ] },
+  { short: 'Напоминания', why: 'канал уведомлений', q: 'Куда отправлять напоминания клиентам?', options: [
+    { label: 'В Telegram, если его нет — SMS', rec: true },
+    { label: 'Только в Telegram', rec: false },
+    { label: 'Только SMS', rec: false } ] },
+  { short: 'Доступ тренера', why: 'матрица прав', q: 'Что видит тренер?', options: [
+    { label: 'Только своё расписание и своих клиентов', rec: true },
+    { label: 'Всё расписание студии', rec: false },
+    { label: 'Всё, кроме оплат', rec: false } ] }
+];
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { step: 0, sel: null, answers: [] }; }
+  renderVals() {
+    var self = this;
+    var st = this.state;
+    var done = st.step >= QUESTIONS.length;
+    var cur = done ? QUESTIONS[0] : QUESTIONS[st.step];
+    var options = cur.options.map(function (o, i) {
+      var on = st.sel === i;
+      return { label: o.label, rec: o.rec, border: on ? '#2F46D8' : '#DCD7CC', bg: on ? '#F2F4FD' : '#FFFFFF', dot: on ? '#2F46D8' : 'transparent',
+        pick: function () { self.setState({ sel: i }); } };
+    });
+    var answered = st.answers.map(function (a, i) { return { short: QUESTIONS[i].short, answer: a }; });
+    var forks = QUESTIONS.map(function (q, i) {
+      var isDone = i < st.answers.length, isCur = i === st.step;
+      return { short: q.short, status: isDone ? st.answers[i] : (isCur ? 'выбираете сейчас' : 'ожидает'),
+        dot: isDone ? '#1F7A4D' : (isCur ? '#2F46D8' : '#CFC9BC'), weight: isDone ? '600' : '400' };
+    });
+    return {
+      answered: answered, forks: forks, options: options,
+      question: cur.q, why: cur.why, num: st.step + 1,
+      done: done, notDone: !done, canNext: st.sel !== null, cannotNext: st.sel === null,
+      next: function () {
+        if (st.sel === null) return;
+        var ans = st.answers.concat([cur.options[st.sel].label]);
+        self.setState({ answers: ans, step: st.step + 1, sel: null });
+      },
+      skipAll: function () {
+        var ans = st.answers.slice();
+        for (var i = ans.length; i < QUESTIONS.length; i++) {
+          var pick = (i === st.step && st.sel !== null) ? st.sel : 0;
+          ans.push(QUESTIONS[i].options[pick].label);
+        }
+        self.setState({ answers: ans, step: QUESTIONS.length, sel: null });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

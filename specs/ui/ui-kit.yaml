@@ -1,0 +1,476 @@
+# @wizard/ui-kit — библиотека компонентов ядра для СГЕНЕРИРОВАННЫХ систем. Нормативно.
+# Потребители: код систем (ui/*.tsx, пишет строитель), демо packages/ui-kit/demo, превью в platform-web.
+# Приоритет: product.yaml > architecture.yaml > этот файл. Контракт хуков @wizard/sdk — specs/runtime/sdk.md
+# (при расхождении имён хуков выигрывает sdk.md, ui-kit адаптирует слой data_binding).
+version: 1
+package: "@wizard/ui-kit"
+path: packages/ui-kit
+tasks: [M0-08, M0-25, M2-03, M2-14, M3-01]
+
+scope:
+  M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
+  M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "FileField (поле type=file, runtime.yaml#files)", "AppShell.Login: согласие при первом входе; ссылка «Пожаловаться»", "CabinetLayout: раздел «Мои данные»"]
+  M3: ["использование wz-map.json в «Укажи и измени» (data-wz-id и плагин packages/build — M0, см. wz_id; L1-58)", "RecordCard: пометка «заполнено ИИ»"]
+  core_8_for_M0_08: [Catalog, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, CabinetLayout, StatsReport]  # + AppShell, примитивы Button/Badge/Field, QrScanner(online)
+
+rules:
+  - "MUST: стили только через CSS modules + CSS-переменные --w-*. Никаких хардкод-цветов, размеров шрифта вне токенов, inline style (кроме установки --w-* переменных), Tailwind, CSS-in-JS."
+  - "MUST: каждый компонент на корневом DOM-элементе ставит data-wz-component=\"<Name>\" (PascalCase как в этом файле) и data-wz-id (см. wz_id). Под-части компонента своих data-wz-component не ставят."
+  - "MUST: каждый компонент ставит data-testid по таблице test_ids; при нескольких экземплярах на странице — суффикс из пропа testId (\"wz-datatable--orders\")."
+  - "MUST: весь видимый текст по умолчанию — на русском; все строки ядра в одном модуле src/i18n/ru.ts (без i18n-библиотек)."
+  - "MUST: числа, деньги, даты — Intl с локалью ru-RU; деньги в RUB (\"9 900 ₽\"), часовой пояс браузера; множественное число — Intl.PluralRules('ru')."
+  - "MUST: компоненты не обращаются к сети напрямую, только через data_binding; не читают localStorage для данных (кроме офлайн-очереди QrScanner/QrTicket в IndexedDB)."
+  - "MUST NOT: показывать поля из hiddenFields роли; не полагаться на это как на защиту — runtime вырезает hiddenFields на сервере (G2 проверяет)."
+  - "SHOULD: предложить G0-проверку «в *.module.css сгенерированного кода нет цветов вне var(--w-*)» в specs/quality/gates.yaml."
+
+# ---------------- Дизайн-токены ----------------
+tokens:
+  source: "AppSpec.theme {accent, font, radius, density, mode, logoFile}; отсутствующие поля → defaults"
+  api:
+    themeToTokens: "themeToTokens(theme: AppSpec['theme'] | undefined, scheme: 'light'|'dark'): Record<`--w-${string}`, string> — чистая функция, одна и та же в runtime-сборке и в platform-web (apply-theme-tokens)"
+    applyTokens: "applyTokens(root: HTMLElement, theme): void — ставит переменные light и dark, атрибут data-wz-mode; без перезагрузки"
+    css_output: "tokens.css: :root{…light…} [data-wz-mode=dark]{…dark…} @media (prefers-color-scheme: dark){[data-wz-mode=auto]{…dark…}}"
+  defaults: { accent: "#2F46D8", font: Onest, radius: 8, density: regular, mode: auto }
+  variables:
+    --w-accent: "theme.accent как есть — фон основных кнопок, активных элементов"
+    --w-accent-ink: "текст на --w-accent: из #FFFFFF и #111318 выбирается вариант с бо́льшим контрастом (всегда ≥4.5:1)"
+    --w-accent-text: "акцент для текста/ссылок на --w-bg и --w-surface: accent, затемнённый (light) или осветлённый (dark) шагами по L в OKLCH до контраста ≥4.5:1 с обоими фонами"
+    --w-accent-soft: "фон выделения: accent с альфой 0.12 (light) / 0.22 (dark) поверх surface"
+    --w-bg: { light: "#F6F6F4", dark: "#0F1115" }
+    --w-surface: { light: "#FFFFFF", dark: "#171A21" }
+    --w-ink: { light: "#16171B", dark: "#ECEEF3" }
+    --w-muted: { light: "#5A5E69", dark: "#A3A9B6" }
+    --w-line: { light: "#E1E2E6", dark: "#2A2F3A" }
+    --w-ok: { light: "#1E7A4C", dark: "#62CC93" }
+    --w-warn: { light: "#9A5205", dark: "#F0A657" }
+    --w-bad: { light: "#B3261E", dark: "#F08A80" }
+    --w-focus: "= --w-accent-text; кольцо фокуса 2px + offset 2px"
+    --w-radius: "theme.radius px (0|4|8|12|16)"
+    --w-radius-sm: "min(theme.radius, 6) px — бейджи, поля выбора"
+    --w-font: "\"<theme.font>\", system-ui, -apple-system, \"Segoe UI\", sans-serif"
+    --w-font-size: "16px (base), --w-font-size-sm 14px, --w-font-size-lg 20px, --w-font-size-xl 28px"
+    --w-density-pad: { compact: "8px 12px", regular: "12px 16px" }
+    --w-density-gap: { compact: "8px", regular: "16px" }
+    --w-density-control: { compact: "36px", regular: "44px", note: "визуальная высота контрола; хит-зона — см. a11y.touch_targets" }
+    --w-density-row: { compact: "40px", regular: "52px" }
+  fonts: "MUST: 5 шрифтов из theme.font отдаются runtime самостоятельно (woff2, /_wizard/fonts/, cyrillic+latin, font-display: swap); запросы к Google Fonts и чужим CDN из систем запрещены"
+  mode: "light|dark — принудительно; auto — по prefers-color-scheme; атрибут data-wz-mode на <html>"
+  acceptance:
+    - "vitest: для 4096 акцентов (сетка 16³ по RGB) и обеих схем contrast(--w-accent-ink, --w-accent) ≥ 4.5 и contrast(--w-accent-text, bg|surface) ≥ 4.5; ink/muted на bg/surface ≥ 4.5 (WCAG 2.x формула относительной яркости)"
+    - "vitest: themeToTokens детерминирована (снимок для defaults) и не зависит от DOM"
+    - "Playwright (demo): applyTokens с новым accent меняет getComputedStyle кнопки без reload (performance.navigation не меняется) за < 50 мс"
+    - "Playwright (demo): mode=auto + emulateMedia({colorScheme:'dark'}) → --w-bg = #0F1115"
+
+# ---------------- Доступность ----------------
+a11y:
+  - id: contrast
+    rule: "MUST: текст и значимые иконки ≥ 4.5:1, крупный текст (≥24px или ≥19px bold) и границы контролов ≥ 3:1 — обеспечивается токенами"
+    test: "Playwright: скрипт tests/a11y/contrast.ts обходит видимые текстовые узлы demo-страницы в light и dark и считает контраст по computed color/background"
+  - id: focus
+    rule: "MUST: у каждого интерактивного элемента видимый :focus-visible (outline 2px var(--w-focus), offset 2px); порядок Tab = порядок DOM; модалки/drawer ловят фокус и возвращают его по закрытию; Esc закрывает"
+    test: "Playwright: Tab по demo — у каждого фокусируемого элемента computed outline-width ≥ 2px"
+  - id: touch_targets
+    rule: "MUST: хит-зона интерактивных элементов ≥ 44×44 CSS px при ширине ≤ 1024px или (pointer: coarse), в любой плотности; исключение — ссылки внутри абзаца"
+    test: "Playwright @390px: boundingBox всех button, a[role=button], input, select, [role=tab|checkbox|radio] (или их label) ≥ 44×44"
+  - id: labels
+    rule: "MUST: у каждого поля видимый <label for>; ошибки — через aria-describedby + aria-invalid; обязательность — текстом «обязательно», а не только звёздочкой; иконки-кнопки с aria-label"
+    test: "Playwright: каждый input/select/textarea имеет доступное имя (locator.getAttribute + label lookup); нет полей только с placeholder"
+  - id: status_not_color_only
+    rule: "MUST: статусы (бейджи, результаты сканера, гейты) передаются текстом/иконкой, цвет — дополнительно"
+  - id: live_regions
+    rule: "MUST: загрузка — aria-busy=true на контейнере; результаты сохранения/ошибки — role=status (polite) или role=alert (ошибки, результат сканера)"
+  - id: motion
+    rule: "MUST: при prefers-reduced-motion анимации ≤ 0.01s"
+  - id: tooling
+    rule: "Проверки реализуются своими скриптами на Playwright (axe-core — MPL-2.0, вне разрешённых лицензий AGENTS.md)"
+
+# ---------------- Адаптивность ----------------
+responsive:
+  breakpoints: { sm: "< 640px", md: "640–959px", lg: "≥ 960px" }
+  rules:
+    - "MUST: минимальная поддерживаемая ширина 390px (SHOULD 360px); document.documentElement.scrollWidth ≤ window.innerWidth на всех страницах"
+    - "MUST: mobile-first CSS; таблицы на sm превращаются в карточки (DataTable), канбан — во вкладки (StatusBoard)"
+    - "MUST: изображения max-width:100%, длинные строки — overflow-wrap:anywhere; внутренние горизонтальные скроллы в компонентах запрещены; QR масштабируется по ширине"
+    - "MUST: безопасные зоны iOS (env(safe-area-inset-*)) в AppShell и QrScanner; PWA-манифест и service worker — ответственность runtime (specs/runtime/runtime.yaml)"
+  test: "Playwright: каждая страница demo на 390×844 и 1280×800 — scrollWidth ≤ innerWidth; скриншоты сохраняются артефактами CI"
+
+# ---------------- Точки для «укажи и измени» ----------------
+wz_id:
+  attribute: "data-wz-id — стабильный идентификатор места использования компонента в исходнике системы"
+  format: "<fileKey>:<ordinal>, где fileKey = первые 8 hex sha256(путь файла, напр. ui/pages/landing.tsx), ordinal = порядковый номер JSX-элемента ui-kit в файле (обход AST в порядке исходника)"
+  injection: "MUST: esbuild-плагин в packages/build (architecture.yaml#interfaces.build_system — единственный владелец сборки кода систем; не apps/runtime — runtime только раздаёт, L1-38) добавляет проп wzId каждому JSX-элементу, импортированному из @wizard/ui-kit, и пишет wz-map.json {wzId: {file, line, componentName}} рядом с draft-бандлом (runtime.yaml#system_loading.artifact_layout). Ручной проп wzId от строителя запрещён (G0). Тот же сборщик MUST соблюдать ограничения резолвера и loaders из runtime/sdk.md §1.1 (.env и файлы хоста в бандл не попадают, L3-13)."
+  stability: "MUST: сборка одного и того же исходника даёт одинаковые wzId; правка другого файла не меняет wzId в этом файле"
+  in_lists: "Элементы из .map() разделяют один wzId (правка относится к месту в коде, не к строке данных); у экземпляров добавляется data-wz-index"
+  fallback: "Без плагина (demo, тесты) wzId = \"demo:<Name>:<n>\""
+  prod: "MUST: prod-бандл содержит data-wz-* (нужны тестам), но не содержит wz-map.json и моста превью"
+  acceptance:
+    - "vitest (плагин): две сборки одного файла → одинаковые wz-map.json; вставка элемента в файл A не меняет wzId в файле B"
+    - "Playwright (demo): каждый [data-wz-component] имеет непустой data-wz-id; все имена ∈ списку components"
+
+# ---------------- Привязка к данным ----------------
+data_binding:
+  provider: "WzProvider {spec: RoleSpec, dataSource?: DataSource, user?} — корень приложения (ставит runtime-шаблон, не строитель). По умолчанию dataSource = sdkDataSource() поверх хуков @wizard/sdk."
+  role_spec: "RoleSpec — проекция AppSpec для текущей роли, которую отдаёт runtime (/_wizard/spec): entities без hiddenFields, permissions только своей роли, pages с roles∋role, theme, compliance. Компоненты читают метаданные полей только отсюда."
+  sdk_mapping:   # sdkDataSource() поверх specs/runtime/sdk.md §3 (имена оттуда нормативны)
+    useList: "useEntityList(entity, {filter, sort: dir==='desc' ? '-'+field : field, page, limit: pageSize ≤ 100}) → {items, total}; search → filter {<первое string-поле>: {contains}}"
+    useRecord: "useEntity(entity, id)"
+    useCreate/useUpdate/useRemove: "useEntityMutation(entity).create/update/remove"
+    useFn: "useQuery(name, args | 'skip')"
+    user: "useUser() → {user: {id, role, displayName, isAdmin} | null, isLoading, login, logout}"
+    errors: "WizardError {code, message, details} → WzError; details.fields (runtime.yaml#data_api.error_shape) → WzError.fields"
+    consent: "useCreate/useUpdate opts {consent?: true} → useEntityMutation(entity).create(doc, {consent: true}); формат тела _consent — security/compliance.yaml#system_package.consent (L1-03)"
+    auth_calls: "Формы входа AppShell.Login вызывают /api/auth/* (runtime.yaml#auth) напрямую, как и SDK: заголовок X-Wizard-Request: 1, credentials: 'same-origin' (L1-28)"
+  DataSource_interface: |
+    interface DataSource {
+      useList<T>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
+      useRecord<T>(entity: string, id: string): AsyncResult<T>;
+      useCreate(entity: string): Mutation<[values: Record<string, unknown>, opts?: { consent?: true }], Rec>;
+      useUpdate(entity: string): Mutation<[id: string, patch: Record<string, unknown>, opts?: { consent?: true }], Rec>;
+      useRemove(entity: string): Mutation<[id: string], void>;
+      useFn<T>(name: string, args?: unknown): AsyncResult<T>;   // query-функции (StatsReport, calcPrice)
+    }
+    type ListQuery = { filter?: Record<string, unknown>; sort?: { field: string; dir: 'asc' | 'desc' }; page?: number; pageSize?: number; search?: string };
+    type AsyncResult<T> = { data?: T; isLoading: boolean; error?: WzError; refetch(): void };
+    type WzError = { code: string; message: string; status: number; fields?: { field: string; code: string; message: string }[]; requestId?: string };  // message — ru; форма — runtime.yaml#data_api.error_shape (L1-29)
+  testing: "@wizard/ui-kit/testing экспортирует createMemoryDataSource(spec, fixtures) — та же семантика прав (ops, hiddenFields, readonlyFields, rowFilter по $user.id) для demo и тестов"
+  can: "can(op: 'read'|'create'|'update'|'delete', entity, field?) — хелпер из RoleSpec; скрывает недоступные действия. Сервер остаётся источником истины (403 → error state)."
+
+states:   # общие для всех компонентов с данными
+  loading: "скелетон той же высоты, aria-busy=true; показывается не раньше чем через 150 мс"
+  empty: "EmptyState: текст из пропа emptyText или по умолчанию («Пока пусто»), опциональная кнопка действия; data-testid=wz-empty"
+  error: "сообщение WzError.message + кнопка «Повторить» (refetch); 401 → «Войдите, чтобы продолжить» + вход; 403 → «Нет доступа»; data-testid=wz-error"
+  offline: "navigator.onLine=false → плашка «Нет сети, показаны сохранённые данные» (только если есть кеш)"
+
+# ---------------- Компоненты ----------------
+common_props: |
+  interface WzBase { wzId?: string; testId?: string; className?: string }
+
+components:
+  - name: AppShell
+    milestone: M0
+    props: |
+      interface AppShellProps extends WzBase {
+        nav?: NavItem[];                   // по умолчанию из RoleSpec.pages: nav !== false, roles ∋ текущая роль
+        title?: string;                    // по умолчанию spec.app.name
+        logoSrc?: string;                  // theme.logoFile
+        footer?: React.ReactNode;
+        children: React.ReactNode;
+      }
+      type NavItem = { route: string; title: string; icon?: string; badge?: number };
+    behaviour:
+      - "lg: боковая навигация слева; sm/md: верхняя панель + кнопка «Меню» → drawer (фокус-ловушка, Esc)"
+      - "Активный пункт по location.pathname (aria-current=page); маршруты с параметрами (/:id) в nav не попадают"
+      - "Меню пользователя: displayName (телефон маскирован +7 ••• ••• 45 10), роль (label), «Выйти». Гость и есть роли access=login → кнопка «Войти»"
+      - "Вход: маршрут /login рендерит AppShell.Login (runtime-шаблон) — методы = RoleSpec.loginMethods (объединение loginMethods ролей с access=login, уже отфильтрованное по тарифу): phone_otp (телефон → код; в draft Free-org — с пометкой «Вход по телефону доступен на тарифах Старт и Бизнес», F4), email_otp, telegram — OIDC-редирект на GET /api/auth/telegram/start (runtime.yaml#auth.methods_M1.telegram), без виджета Telegram Login. Запросы — /api/auth/* (data_binding.sdk_mapping.auth_calls), после успеха — refetch useUser()"
+      - "M2 (security/compliance.yaml#system_package.consent.login): при первом входе нового пользователя — ConsentCheckbox и ссылка на политику; без отметки вход не отправляется"
+      - "Подвал: ссылка «Политика обработки персональных данных» → compliance.policyPage, если в спеке есть поле pii≠none; M2: ссылка «Пожаловаться» на форму жалоб платформы"
+      - "Страница, недоступная роли: гость → /login?next=…, авторизованный → «Нет доступа»"
+    test_ids: [wz-appshell, wz-appshell-nav, wz-appshell-menu-toggle, wz-appshell-user, wz-appshell-login, wz-appshell-logout, wz-login-method-<method>, wz-appshell-policy-link]
+    acceptance:
+      - "Playwright (demo, спека «форум»): роль participant видит только страницы с roles∋participant; organizer — свои; пересечение проверяется по RoleSpec"
+      - "@390px навигация в drawer, открывается/закрывается клавиатурой"
+      - "phone_otp в demo (memory dev-sender) логинит и показывает роль в меню"
+
+  - name: Catalog
+    milestone: M0
+    props: |
+      interface CatalogProps<T = Rec> extends WzBase {
+        entity: string;
+        query?: Omit<ListQuery, 'page'>;
+        map: (item: T) => ItemCardData;          // как показать запись
+        optionGroups?: OptionGroup[];            // общие опции для всех карточек (вес, начинка)
+        onSelect: (item: T, selection: Selection) => void;
+        columns?: 1 | 2 | 3 | 'auto';            // auto: 1 (sm), 2 (md), 3 (lg)
+        emptyText?: string;
+      }
+      type Selection = Record<string, string[]>; // groupId → choiceIds
+    behaviour:
+      - "Грузит записи через DataSource.useList, рендерит сетку ItemCard; пагинация «Показать ещё» по 24"
+      - "Карточки с remaining=0 остаются в сетке в конце, с CTA disabled"
+    test_ids: [wz-catalog, wz-catalog-more]
+    acceptance: ["Playwright (demo «форум»): 3 типа билетов с ценой и остатком; тип с остатком 0 — CTA disabled и текст «Мест нет»"]
+
+  - name: ItemCard
+    milestone: M0
+    props: |
+      interface ItemCardData { id: string; title: string; description?: string; image?: string;
+        price?: number | null;       // рубли; null → priceText
+        priceText?: string;          // «по промокоду»
+        remaining?: number | null;   // остаток квоты/склада; null → не показывать
+        lowThreshold?: number;       // по умолчанию 20
+        badge?: { text: string; tone: BadgeTone } }
+      interface ItemCardProps extends WzBase, ItemCardData {
+        optionGroups?: OptionGroup[]; selection?: Selection; onSelectionChange?(s: Selection): void;
+        total?: number;              // итог от сервера (calcPrice); если не задан — price + Σ priceDelta только для отображения
+        ctaLabel?: string;           // «Выбрать»
+        onCta(): void; disabled?: boolean;
+      }
+      type OptionGroup = { id: string; label: string; kind: 'single' | 'multi'; required?: boolean;
+        choices: { id: string; label: string; priceDelta?: number; disabled?: boolean }[] };
+    behaviour:
+      - "Цена «9 900 ₽»; опции — radiogroup/checkbox-группы из чипов (role=radio/checkbox, ≥44px); priceDelta показывается «+600 ₽»"
+      - "remaining ≤ lowThreshold → Badge warn «Осталось N мест» (plural); 0 → Badge bad «Мест нет», CTA disabled"
+      - "MUST: итоговая цена заказа считается на сервере (функция системы); клиентская сумма — только подсказка"
+    test_ids: [wz-itemcard, wz-itemcard-price, wz-itemcard-remaining, wz-itemcard-option-<groupId>-<choiceId>, wz-itemcard-cta]
+    acceptance: ["vitest+DOM: remaining 18 → «Осталось 18 мест», 1 → «Осталось 1 место», 0 → disabled; опции single не допускают двух выбранных"]
+
+  - name: RecordForm
+    milestone: M0
+    props: |
+      interface RecordFormProps extends WzBase {
+        entity: string;
+        mode?: 'create' | 'edit';        // edit требует id
+        id?: string;
+        fields?: string[];               // порядок/подмножество; по умолчанию все видимые поля, кроме qr_token и readonlyFields роли
+        defaults?: Record<string, unknown>;
+        hidden?: Record<string, unknown>; // значения без контролов (например ref на выбранный билет)
+        submitLabel?: string;            // «Отправить» / «Сохранить»
+        onSuccess?(record: Rec): void;
+        onCancel?(): void;
+      }
+    field_mapping:
+      string: "input text, maxLength"
+      text: "textarea autosize"
+      int|decimal|money: "input inputmode=numeric/decimal; money с суффиксом ₽; min/max"
+      bool: "checkbox (switch-стиль допустим)"
+      date|datetime: "input type=date / datetime-local"
+      enum: "≤5 значений → radiogroup, иначе select"
+      ref: "select с поиском по записям целевой сущности (useList, search), подпись — первое string-поле"
+      file: "M2: FileField (POST /api/files, runtime.yaml#files); до M2 поле file в спеке блокирует G0 — RecordForm его не рендерит"
+      json: "не рендерится в формах (только код)"
+      email|phone|url: "input type=email/tel/url; phone — маска +7 (___) ___-__-__, хранение E.164"
+      qr_token: "никогда не редактируется"
+    behaviour:
+      - "Валидация на клиенте (required, min/max, maxLength, форматы email/phone/url) до отправки; ошибки сервера details.fields[].field (WzError.fields) маппятся на поле, остальные — в role=alert над кнопкой"
+      - "Кнопка отправки: loading во время мутации, двойная отправка невозможна"
+      - "edit: грузит запись useRecord; readonlyFields — disabled с пояснением «Только просмотр»"
+    consent:
+      when: "среди отправляемых полей (включая hidden) есть поле с pii≠none и роль без isAdmin (create и update)"
+      rules:
+        - "MUST: RecordForm рендерит ConsentCheckbox (testId recordform) перед кнопкой отправки; правила чекбокса — компонент ConsentCheckbox"
+        - "MUST: без отметки отправка не выполняется: ошибка «Нужно согласие на обработку персональных данных» у чекбокса (aria-invalid)"
+        - "MUST: create/update вызываются с opts {consent: true}; тело _consent формирует SDK (security/compliance.yaml#system_package.consent), журнал — runtime (M2)"
+    test_ids: [wz-recordform, wz-field-<name>, wz-consent--recordform, wz-recordform-submit, wz-recordform-error]
+    acceptance:
+      - "Playwright (demo «форум», сущность registrations с phone pii=basic): wz-consent виден и не отмечен; submit без него → ошибка и 0 вызовов create; с ним → create с opts.consent = true"
+      - "Сущность без pii-полей → чекбокса нет"
+      - "Сервер вернул {error: {code: VALIDATION_FAILED, details: {fields: [{field: 'email', code, message}]}}} → ошибка под полем email"
+
+  - name: DataTable
+    milestone: M0
+    props: |
+      interface DataTableProps<T = Rec> extends WzBase {
+        entity: string;
+        columns?: (string | ColumnDef<T>)[];   // по умолчанию первые 6 видимых полей
+        query?: ListQuery;                     // базовый фильтр
+        filters?: string[];                    // поля enum/bool/date/ref для панели фильтров
+        searchable?: boolean;                  // полнотекстовый поиск data API
+        defaultSort?: { field: string; dir: 'asc' | 'desc' };
+        pageSize?: 10 | 25 | 50;               // по умолчанию 25
+        onRowClick?(row: T): void;
+        rowActions?: RecordAction[];
+        emptyText?: string;
+      }
+      type ColumnDef<T> = { field: string; label?: string; render?(row: T): React.ReactNode; sortable?: boolean };
+    behaviour:
+      - "Сортировка, фильтры, поиск и пагинация — серверные (ListQuery); состояние в URL query (?sort=&page=&f.status=) для шаринга"
+      - "MUST: колонки = columns ∩ видимые поля RoleSpec; колонка скрытого поля не рендерится (dev-warning в консоль)"
+      - "enum → Badge с label; money/date — Intl; ref → подпись записи; pii-поля у ролей без update показываются как есть (маскирование — задача runtime)"
+      - "sm: строки → карточки (label: value), без горизонтального скролла; пагинация «Назад/Вперёд» + «стр. N из M»"
+      - "Заголовки сортируемых колонок — button с aria-sort"
+    test_ids: [wz-datatable, wz-datatable-row, wz-datatable-sort-<field>, wz-datatable-filter-<field>, wz-datatable-search, wz-datatable-page-next, wz-datatable-page-prev]
+    acceptance:
+      - "Playwright (memory DS, 60 записей): сортировка по дате меняет порядок; фильтр по enum оставляет только совпадающие; страница 3 при pageSize 25 содержит 10 строк"
+      - "Роль с hiddenFields [phone]: колонки phone нет в DOM, и в ответе useList ключа phone нет"
+      - "@390px — карточки, scrollWidth ≤ innerWidth"
+
+  - name: RecordCard
+    milestone: M0
+    props: |
+      interface RecordCardProps<T = Rec> extends WzBase {
+        entity: string; id: string;
+        fields?: string[];
+        title?: string | ((r: T) => string);
+        actions?: RecordAction[];
+        onDeleted?(): void;
+      }
+      type RecordAction = { id: string; label: string; tone?: 'primary' | 'default' | 'danger';
+        kind: 'update' | 'delete' | 'fn' | 'link';
+        patch?: Record<string, unknown>;      // kind=update, напр. {status:'approved'}
+        fn?: string; href?: string;           // kind=fn — mutation-функция; kind=link
+        confirm?: string;                     // текст подтверждения (обязателен для delete)
+        visible?(r: T): boolean };
+    behaviour:
+      - "Детали — список label: value (dl), видимые поля; ref — ссылка на запись; file — ссылка на скачивание"
+      - "Действия показываются, только если can(kind→op, entity) и visible(r); update-патч на readonly-поле → действие скрыто"
+      - "После действия — refetch и role=status «Сохранено»; ошибка → role=alert с message"
+      - "M3: поля, заполненные ИИ-действием (мета записи _aiFilled: string[]), помечаются Badge accent «заполнено ИИ»"
+    test_ids: [wz-recordcard, wz-recordcard-field-<name>, wz-recordcard-action-<id>]
+    acceptance: ["Playwright (demo «форум»): модератор видит «Одобрить» и после клика статус заявки = approved; спикер действия не видит"]
+
+  - name: StatusBoard
+    milestone: M0
+    props: |
+      interface StatusBoardProps<T = Rec> extends WzBase {
+        entity: string;
+        statusField: string;                  // поле type=enum
+        columns?: string[];                   // значения enum по порядку; по умолчанию все из enum
+        query?: ListQuery;
+        card: (r: T) => { title: string; subtitle?: string; meta?: string };
+        onCardClick?(r: T): void;
+        limitPerColumn?: number;              // по умолчанию 50, дальше «Ещё N»
+      }
+    behaviour:
+      - "Колонка: заголовок = enum.label + счётчик; карточки из useList(filter statusField=value)"
+      - "Drag-and-drop (pointer events, без библиотек) разрешён, только если can('update', entity, statusField) и поле не readonly; иначе карточки не перетаскиваются"
+      - "MUST: альтернатива перетаскиванию — меню карточки «Перенести в…» (клавиатура/скринридер)"
+      - "Смена статуса — оптимистично; при ошибке карточка возвращается и показывается role=alert"
+      - "sm: колонки → вкладки (role=tablist) со счётчиками"
+    test_ids: [wz-statusboard, wz-statusboard-column-<value>, wz-statusboard-card, wz-statusboard-move-<value>]
+    acceptance:
+      - "Playwright (demo «кондитерская»): перетаскивание заказа из «Предоплачен» в «В работе» → update status; роль без update — перетаскивание не начинается, меню «Перенести» отсутствует"
+      - "Ошибка 403 от DataSource → карточка вернулась в исходную колонку"
+
+  - name: QrTicket
+    milestone: M0
+    props: |
+      interface QrTicketProps extends WzBase {
+        entity: string; id: string;
+        tokenField: string;                   // поле type=qr_token
+        title: string; subtitle?: string;
+        meta?: { label: string; value: string }[];
+        hint?: string;                        // «Покажите QR на входе А»
+      }
+    behaviour:
+      - "MUST: рендерит значение tokenField как есть (подписанный токен выдаёт коннектор QR, specs/connectors/qr.yaml); ui-kit не генерирует и не подписывает токены"
+      - "QR — SVG, уровень коррекции M, тихая зона 4 модуля, ≥ 220px, всегда чёрный на белом независимо от темы; текст токена не показывается"
+      - "Кодировщик — своя реализация или MIT-библиотека (qrcode-generator), объяснить в PR"
+      - "M2: запись кешируется в IndexedDB — билет открывается без сети; подпись «работает без интернета»"
+      - "Кнопка «Добавить на главный экран» (beforeinstallprompt) если доступно"
+    test_ids: [wz-qrticket, wz-qrticket-code, wz-qrticket-meta]
+    acceptance: ["vitest: декодирование SVG (jsQR в тесте) возвращает исходный токен; Playwright: в dark-теме фон QR белый"]
+
+  - name: QrScanner
+    milestone: M0   # офлайн — M2 (M2-03)
+    props: |
+      interface QrScannerProps extends WzBase {
+        checkpoint: string;                   // «Вход А»
+        verifyFn?: string;                    // функция проверки; по умолчанию служебный /_wizard/qr/check (connectors/qr.yaml)
+        offline?: boolean;                    // M2: предзагрузка манифеста и очередь
+        onResult?(r: ScanResult): void;
+      }
+      type ScanResult = { status: 'ok' | 'duplicate' | 'invalid' | 'queued'; ticketTitle?: string;
+        details?: string; scannedAt: string; syncedAt?: string };
+    behaviour:
+      - "Камера: getUserMedia(facingMode environment); декодер BarcodeDetector, fallback jsQR (Apache-2.0); отказ в доступе → инструкция + ручной ввод кода"
+      - "Результат занимает экран ≥ 1.2 с: ok — «Проходите» + детали (тип билета, зона); duplicate — «Уже прошёл» + время первой отметки; invalid — «Билет недействителен»; queued — «Принято офлайн». Иконка + текст + vibrate([80]) + role=alert"
+      - "Повторное считывание того же кода в течение 3 с игнорируется (дребезг)"
+      - "Счётчики за смену: Прошли / Повторных / Отклонено"
+      - "M2 офлайн: при наличии сети скачивает манифест билетов чекпоинта (qr.yaml#offline.package: h, id, d, s) в IndexedDB; без сети подпись НЕ проверяет (ключа на устройстве нет), сверяет только h = sha256(rand) с манифестом (connectors/qr.yaml#offline.scan), отметки кладёт в очередь; при online — отправляет очередь пачками (с X-Wizard-Request: 1), сервер решает дубли (первая отметка выигрывает), статусы в UI обновляются"
+      - "Строка состояния: «● Нет сети · N билетов в памяти · M отметок ждут синхронизации»"
+    test_ids: [wz-qrscanner, wz-qrscanner-video, wz-qrscanner-result, wz-qrscanner-status, wz-qrscanner-manual, wz-qrscanner-counters]
+    acceptance:
+      - "Playwright (fake camera --use-file-for-fake-video-capture с QR): валидный → ok; тот же повторно → duplicate; мусорная строка → invalid"
+      - "M2-03: context.setOffline(true), 100 сканов → 100 в очереди; setOffline(false) → очередь пуста, на сервере 100 отметок без дублей; повтор → duplicate"
+
+  - name: CabinetLayout
+    milestone: M0
+    props: |
+      interface CabinetLayoutProps extends WzBase {
+        title?: string;                       // «Личный кабинет»
+        sections: { id: string; label: string; content: React.ReactNode; count?: number }[];
+        defaultSection?: string;
+      }
+    behaviour:
+      - "Для роли с access=login; гость → вход. Разделы — вкладки (lg: слева, sm: сверху), активный в URL (#section)"
+      - "Типовые разделы собирает строитель: «Мои билеты/заказы» (DataTable/QrTicket с rowFilter по ownerField), «Профиль» (RecordForm edit)"
+      - "MUST (M2): раздел «Мои данные»: ссылка на политику, ссылка на /_wizard/privacy (отзыв согласия и запрос удаления; механика — specs/security/compliance.yaml#system_package.consent.withdrawal)"
+    test_ids: [wz-cabinet, wz-cabinet-tab-<id>, wz-cabinet-mydata]
+    acceptance: ["Playwright (demo «форум»): участник видит только свой билет (rowFilter), вкладки переключаются клавиатурой"]
+
+  - name: StatsReport
+    milestone: M0
+    props: |
+      interface StatsReportProps extends WzBase {
+        title?: string; subtitle?: string;    // «Сводка», «до форума 45 дней»
+        fn?: string;                          // query-функция → StatsData; иначе data
+        data?: StatsData;
+      }
+      type StatsData = {
+        kpis: { id: string; label: string; value: number; total?: number; format?: 'int' | 'money' | 'percent'; hint?: string }[];
+        bars?: { title: string; items: { label: string; value: number; max: number }[] };
+      };
+    behaviour:
+      - "KPI-плитки: 2 колонки на sm, 4 на lg; value/total → «370 / 600»; money → «4,1 млн ₽» (Intl compact)"
+      - "Bar list: подпись, полоса (role=meter aria-valuenow/max) и числа «156/200» — числа видны всегда"
+      - "Агрегаты считаются на сервере (query-функция), не на клиенте по всем строкам"
+    test_ids: [wz-stats, wz-stats-kpi-<id>, wz-stats-bar]
+    acceptance: ["vitest+DOM: 4 KPI и 3 бара из фикстуры; money 4100000 → «4,1 млн ₽»"]
+
+  - name: ConsentCheckbox
+    milestone: M0
+    props: |
+      interface ConsentCheckboxProps extends WzBase {
+        checked: boolean;
+        onChange(checked: boolean): void;
+        error?: string;                        // по умолчанию «Нужно согласие на обработку персональных данных»
+      }
+    behaviour:
+      - "Канонический компонент согласия (security/compliance.yaml#system_package.consent.ui; L1-03). Текст — RoleSpec.compliance.consentText, ссылка «политикой обработки персональных данных» → compliance.policyPage (target=_blank rel=noopener)"
+      - "MUST: отдельный чекбокс, не связанный с другими согласиями (оферта, рассылки), НЕ отмечен по умолчанию, не отмечается программно (checked меняется только пользовательским событием)"
+      - "Используется RecordForm, AppShell.Login (M2) и собственными формами строителя, которые вызывают create/update сущности с ПДн или функцию с collectsPii (G2 проверяет его наличие статически)"
+    test_ids: [wz-consent, wz-consent-policy-link]
+    acceptance: ["vitest+DOM: по умолчанию не отмечен; клик вызывает onChange(true); текст и ссылка берутся из RoleSpec; error → aria-invalid и aria-describedby"]
+
+  - name: FileField
+    milestone: M2
+    props: |
+      interface FileFieldProps extends WzBase {
+        name: string; label: string; value: string | null;   // fileId
+        onChange(fileId: string | null): void;
+        accept?: ('image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf')[];
+        required?: boolean; error?: string;
+      }
+    behaviour:
+      - "Загрузка — POST /api/files (runtime.yaml#files) с X-Wizard-Request: 1; ≤ 10 МБ; только типы из accept (по умолчанию все из allowlist runtime); 415 → «Такой тип файла загрузить нельзя»"
+      - "Показывает имя и размер файла; превью не рендерит (файлы раздаются как attachment)"
+    test_ids: [wz-filefield-<name>]
+    acceptance: ["Playwright (M2): PDF загружается и сохраняется в записи; SVG → ошибка у поля"]
+
+  - name: Button
+    milestone: M0
+    props: |
+      interface ButtonProps extends WzBase, Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {
+        variant?: 'primary' | 'secondary' | 'ghost' | 'danger';   // по умолчанию secondary
+        size?: 'md' | 'sm';                                        // sm только на pointer:fine, хит-зона ≥44 сохраняется
+        loading?: boolean; icon?: React.ReactNode; href?: string;  // href → <a>
+      }
+    behaviour: ["loading → disabled + aria-busy + спиннер, ширина не прыгает", "primary: фон --w-accent, текст --w-accent-ink"]
+    test_ids: [wz-button]
+
+  - name: Badge
+    milestone: M0
+    props: |
+      type BadgeTone = 'neutral' | 'accent' | 'ok' | 'warn' | 'bad';
+      interface BadgeProps extends WzBase { tone?: BadgeTone; children: React.ReactNode }
+    behaviour: ["Текст обязателен (не только цвет); фон — soft-вариант тона, текст контрастен ≥4.5:1"]
+    test_ids: [wz-badge]
+
+  - name: Field
+    milestone: M0
+    props: |
+      interface FieldProps extends WzBase {
+        name: string; label: string; type: FieldType;           // FieldType из appspec
+        value: unknown; onChange(v: unknown): void;
+        required?: boolean; error?: string; hint?: string;
+        enumOptions?: { value: string; label: string }[];
+        min?: number; max?: number; maxLength?: number;
+        disabled?: boolean; readOnly?: boolean; autoComplete?: string;
+      }
+    behaviour: ["Используется RecordForm и строителем для своих форм; label, hint, error связаны aria-describedby; id = wz-<wzId>-<name>"]
+    test_ids: [wz-field-<name>]
+
+demo:
+  path: packages/ui-kit/demo
+  rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; переключатели роли, темы (все поля theme), ширины"
+  ci: "Playwright: скриншоты 1280 и 390 в light/dark; проверки a11y, responsive, wz_id"
