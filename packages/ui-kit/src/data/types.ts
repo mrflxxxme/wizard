@@ -43,11 +43,24 @@ export type UserResult = {
 
 /** ext: /api/auth/* calls of AppShell.Login (ui-kit.yaml#data_binding.sdk_mapping.auth_calls). */
 export interface AuthApi {
-  start(channel: "phone" | "email", destination: string): Promise<{ challengeId: string }>;
-  verify(challengeId: string, code: string): Promise<WzUser>;
+  /** `role` — /login?role= (selfSignup role of a new user, runtime.yaml#auth.role_assignment). */
+  start(
+    channel: "phone" | "email",
+    destination: string,
+    opts?: { role?: string },
+  ): Promise<{ challengeId: string }>;
+  /** `consent` — _consent of the first login (422 CONSENT_REQUIRED without it; compliance.yaml#consent.login). */
+  verify(challengeId: string, code: string, consent?: LoginConsent): Promise<WzUser>;
   /** OIDC redirect (telegram); memory sources may log in directly. */
-  redirect(method: Exclude<LoginMethod, "phone_otp" | "email_otp">, next?: string): void;
+  redirect(
+    method: Exclude<LoginMethod, "phone_otp" | "email_otp">,
+    next?: string,
+    opts?: { role?: string; consent?: LoginConsent },
+  ): void;
 }
+
+/** Body `_consent` of a login: values of RoleSpec.compliance. */
+export type LoginConsent = { policyVersion: string; textHash: string };
 
 export type QrCheckRequest = { payload: string; checkpoint?: string; deviceId: string };
 export type QrCheckResponse = {

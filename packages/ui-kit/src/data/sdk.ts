@@ -135,19 +135,32 @@ export function sdkDataSource(): DataSource {
       const client = useSdkClient();
       return useMemo(
         () => ({
-          start: (channel, destination) =>
-            client.request<{ challengeId: string }>("POST", "/api/auth/otp/start", { channel, destination }),
-          verify: async (challengeId, code) => {
+          start: (channel, destination, opts) =>
+            client.request<{ challengeId: string }>("POST", "/api/auth/otp/start", {
+              channel,
+              destination,
+              ...(opts?.role ? { role: opts.role } : {}),
+            }),
+          verify: async (challengeId, code, consent) => {
             const r = await client.request<{ user: WzUser }>("POST", "/api/auth/otp/verify", {
               challengeId,
               code,
+              ...(consent ? { _consent: consent } : {}),
             });
             await client.refreshUser();
             return r.user;
           },
-          redirect: (method, next) => {
-            const q = next ? `?next=${encodeURIComponent(next)}` : "";
-            if (typeof window !== "undefined") window.location.assign(`/api/auth/${method}/start${q}`);
+          redirect: (method, next, opts) => {
+            const q = new URLSearchParams();
+            if (next) q.set("next", next);
+            if (opts?.role) q.set("role", opts.role);
+            if (opts?.consent) {
+              q.set("pv", opts.consent.policyVersion);
+              q.set("th", opts.consent.textHash);
+            }
+            const qs = q.toString();
+            if (typeof window !== "undefined")
+              window.location.assign(`/api/auth/${method}/start${qs ? `?${qs}` : ""}`);
           },
         }),
         [client],

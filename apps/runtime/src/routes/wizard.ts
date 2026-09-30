@@ -43,7 +43,12 @@ export function wizardRoutes(): Hono<RuntimeHonoEnv> {
     const role = await roleOrNull(c);
     const etag = `"${sys.entry.specHash}:${role ?? ""}"`;
     if (c.req.header("if-none-match") === etag) return c.body(null, 304, { ETag: etag });
-    const body = buildRoleSpec(sys.spec, { role, compliance: sys.compliance, features: sys.entry.features });
+    const body = buildRoleSpec(sys.spec, {
+      role,
+      compliance: sys.compliance,
+      features: sys.entry.features,
+      env: sys.entry.env,
+    });
     return c.json(body, 200, { ETag: etag, "Cache-Control": "no-cache" });
   });
 
