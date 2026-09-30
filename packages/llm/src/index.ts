@@ -5,6 +5,7 @@ export { LlmError, type LlmErrorCode } from "./errors.js";
 export {
   briefHash,
   type CanonicalInput,
+  type CanonicalTool,
   canonicalRequest,
   type FixtureLine,
   type FixtureRequest,

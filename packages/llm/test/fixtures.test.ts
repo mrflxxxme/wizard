@@ -115,10 +115,13 @@ describe("canonical request (eval.yaml#fixtures.canonical_request)", () => {
 });
 
 describe("fixture provider", () => {
-  test("suite=demo: by (callType, ordinal), compares only tool names; usage-based credits; no network", async () => {
+  test("suite=demo: by (callType, ordinal), recorded tool calls must be offered; usage-based credits; no network", async () => {
     writeFixture("demo", "forum", [
       line("interview", "первый", ["ask"]),
-      line("plan", "план", []),
+      {
+        ...line("plan", "план", ["submit_plan"]),
+        response: { toolCalls: [{ id: "c1", name: "submit_plan", args: {} }], finishReason: "tool-calls" },
+      },
       line("interview", "второй", ["ask"]),
     ]);
     const sink = new MemoryUsageSink();
@@ -153,7 +156,7 @@ describe("fixture provider", () => {
       billable: true,
     });
     expect(r1.creditsMilli).toBeGreaterThan(0);
-    // tool name mismatch → miss
+    // the recorded answer calls submit_plan, which is not offered → miss
     await expect(
       router.route({
         callType: "plan",
