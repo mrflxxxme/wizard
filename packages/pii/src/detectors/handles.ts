@@ -17,7 +17,8 @@ const NOT_HANDLES = new Set(
   ).split(" "),
 );
 // Profile paths that are not people.
-const NOT_PROFILES = /^(?:share|joinchat|addstickers|addemoji|proxy|login|feed|search|im|settings|help|about|legal|terms)$/i;
+const NOT_PROFILES =
+  /^(?:share|joinchat|addstickers|addemoji|proxy|login|feed|search|im|settings|help|about|legal|terms)$/i;
 
 // Letters used on Russian plates (Cyrillic) and their Latin look-alikes.
 const PLATE_RE =

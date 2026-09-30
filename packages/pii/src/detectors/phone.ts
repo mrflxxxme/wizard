@@ -10,14 +10,18 @@ const PHONE_RE = new RegExp(`(?<![\\d\\p{L}+])(\\+[ \\u00a0]?7|8|7)((?:${SEP}{0,
 const BARE_MOBILE_RE = /(?<![\d\p{L}+])(?:\(9\d\d\)|9\d\d)[ \xa0-]?\d{3}[ \xa0-]?\d{2}[ \xa0-]?\d{2}(?!\d)/gu;
 
 // "+" and 8–15 digits in total (country code 1–3 digits), separators as for phone_ru.
-const INTL_PLUS_RE = new RegExp(`(?<![\\d\\p{L}+])\\+[ \\xa0]?[1-689]\\d?\\d?(?:${SEP}{0,3}\\d){5,13}(?!\\d)`, "gu");
+const INTL_PLUS_RE = new RegExp(
+  `(?<![\\d\\p{L}+])\\+[ \\xa0]?[1-689]\\d?\\d?(?:${SEP}{0,3}\\d){5,13}(?!\\d)`,
+  "gu",
+);
 // Without "+": CIS country codes only, and only in phone context.
 const INTL_BARE_RE = new RegExp(
   `(?<![\\d\\p{L}+])(?:375|380|998|996|992|993|994|995|374|373|371|372|370)(?:${SEP}{0,3}\\d){8,9}(?!\\d)`,
   "gu",
 );
 
-export const PHONE_CTX = /(?<!\p{L})(?:тел|моб|сот|whatsapp|ватсап|вотсап|вацап|viber|вайбер|telegram|телеграм|звон|позвон|phone|tel|mobile|номер)\p{L}*/iu;
+export const PHONE_CTX =
+  /(?<!\p{L})(?:тел|моб|сот|whatsapp|ватсап|вотсап|вацап|viber|вайбер|telegram|телеграм|звон|позвон|phone|tel|mobile|номер)\p{L}*/iu;
 const MONEY_AFTER = /^[ \xa0]*(?:руб|р\.|₽|тыс|млн|млрд|\$|€|usd|rub|eur)/iu;
 
 /** Normalizes a Russian phone number to E.164 (+7XXXXXXXXXX), or null. */

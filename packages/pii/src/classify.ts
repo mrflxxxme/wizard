@@ -28,7 +28,10 @@ const RULES: Array<[PiiKind, RegExp, RegExp?]> = [
     re(`${B}(?:e-?mail|email|эл\\.? ?почт|электронн\\p{L}* почт|почт[аыеуой]{0,2}${E}|мейл|имейл|емейл)`),
     re(`почт\\p{L}* росси|почтов\\p{L}* (?:индекс|отделени)`),
   ],
-  ["birthdate", re(`(?:дат\\p{L}* рожд|день рожд|${B}д\\.? ?р\\.${E}|birth|${B}dob${E}|data rozhd|${B}bday${E})`)],
+  [
+    "birthdate",
+    re(`(?:дат\\p{L}* рожд|день рожд|${B}д\\.? ?р\\.${E}|birth|${B}dob${E}|data rozhd|${B}bday${E})`),
+  ],
   [
     "fio",
     re(
@@ -46,15 +49,21 @@ const RULES: Array<[PiiKind, RegExp, RegExp?]> = [
   ],
   [
     "address",
-    re(`(?:адрес|${B}address|${B}addr${E}|${B}street|${B}улиц|${B}adres|место жительства|прописк|регистраци\\p{L}* по месту)`),
-    re(`(?:${B}ip|url|${B}web|сайт|ссылк|${B}mac|${B}ссылк)[ -]?(?:адрес|address)|адрес\\p{L}* (?:сайт|страниц|ссылк)|${B}url${E}`),
+    re(
+      `(?:адрес|${B}address|${B}addr${E}|${B}street|${B}улиц|${B}adres|место жительства|прописк|регистраци\\p{L}* по месту)`,
+    ),
+    re(
+      `(?:${B}ip|url|${B}web|сайт|ссылк|${B}mac|${B}ссылк)[ -]?(?:адрес|address)|адрес\\p{L}* (?:сайт|страниц|ссылк)|${B}url${E}`,
+    ),
   ],
   ["passport", re(`(?:паспорт|${B}passport|${B}pasport)`)],
   ["snils", re(`(?:снилс|${B}snils)`)],
   [
     "inn",
     re(`(?:${B}инн${E}|${B}inn${E})`),
-    re(`(?:организаци|юр\\p{L}*\\.? ?лиц|компани|${B}ооо${E}|поставщик|контрагент|${B}company|${B}org${E}|банк)`),
+    re(
+      `(?:организаци|юр\\p{L}*\\.? ?лиц|компани|${B}ооо${E}|поставщик|контрагент|${B}company|${B}org${E}|банк)`,
+    ),
   ],
   ["card", re(`(?:номер\\p{L}* карт|банковск\\p{L}* карт|card ?number|${B}cc ?(?:number|num)|${B}pan${E})`)],
   ["other", re(`(?:telegram|телеграм|${B}tg${E}|контакт|${B}contact|вконтакте|${B}vk${E}|соцсет|social)`)],
@@ -64,7 +73,11 @@ const RULES: Array<[PiiKind, RegExp, RegExp?]> = [
  * G2-PII-02: does a field look like personal data by its name/label (or declared type)?
  * Returns null when nothing matches. Special categories and biometrics win over basic (G2-PII-03).
  */
-export function classifyFieldName(name: string, label?: string | null, type?: string | null): FieldClassification | null {
+export function classifyFieldName(
+  name: string,
+  label?: string | null,
+  type?: string | null,
+): FieldClassification | null {
   const text = `${normalizeIdent(name ?? "")} ${(label ?? "").toLowerCase().replace(/ё/g, "е")}`;
   const special = detectSpecialTerms(text);
   if (special) return { pii: special, piiKind: "other" };

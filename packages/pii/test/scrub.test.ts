@@ -1,6 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { detect, isPlaceholder, KIND_INFO, PLACEHOLDER_RE, scrub, scrubJson, scrubMessages } from "../src/index.js";
+import {
+  detect,
+  isPlaceholder,
+  KIND_INFO,
+  PLACEHOLDER_RE,
+  scrub,
+  scrubJson,
+  scrubMessages,
+} from "../src/index.js";
 import { CORPUS_PATH, type CorpusLine } from "./gen-corpus.js";
 
 const BRIEF =
@@ -66,11 +74,37 @@ describe("scrub()", () => {
   });
 
   test("numbering: same value → same n, different values → different n, per call", () => {
-    const r = scrub("Звонить 8 916 123-45-67 или +79161234567, резерв +7 903 000-00-01. Маша и Даша, снова Маша.");
-    expect(r.text).toBe("Звонить [ТЕЛЕФОН_1] или [ТЕЛЕФОН_1], резерв [ТЕЛЕФОН_2]. [ФИО_1] и [ФИО_2], снова [ФИО_1].");
+    const r = scrub(
+      "Звонить 8 916 123-45-67 или +79161234567, резерв +7 903 000-00-01. Маша и Даша, снова Маша.",
+    );
+    expect(r.text).toBe(
+      "Звонить [ТЕЛЕФОН_1] или [ТЕЛЕФОН_1], резерв [ТЕЛЕФОН_2]. [ФИО_1] и [ФИО_2], снова [ФИО_1].",
+    );
     expect(r.counts).toEqual({ phone_ru: 3, person_name: 3 });
     // A fresh call starts numbering again: nothing is remembered between calls.
     expect(scrub("+7 903 000-00-01").text).toBe("[ТЕЛЕФОН_1]");
+  });
+
+  test("new kinds: shared ТЕЛЕФОН/ФИО numbering across Cyrillic/Latin and RU/international", () => {
+    const r = scrub(
+      "Иван Петров (Ivan Petrov): +7 916 123-45-67, +375 29 123-45-67, @ivan_petrov, ОГРНИП 304500116000157, авто А123ВС77",
+    );
+    expect(r.text).toBe(
+      "[ФИО_1] ([ФИО_2]): [ТЕЛЕФОН_1], [ТЕЛЕФОН_2], [КОНТАКТ_1], ОГРНИП [ОГРНИП_1], авто [ГОСНОМЕР_1]",
+    );
+    expect(r.counts).toEqual({
+      person_name: 1,
+      person_name_latin: 1,
+      phone_ru: 1,
+      phone_intl: 1,
+      social_handle: 1,
+      ogrnip: 1,
+      car_plate_ru: 1,
+    });
+    expect(r.strongIds).toBe(true); // OGRNIP is a strong identifier
+    expect(scrub("бот t.me/my_salon_bot", { ignoreHandles: ["my_salon_bot"] }).text).toBe(
+      "бот t.me/my_salon_bot",
+    );
   });
 
   test("special categories are counted, not replaced; maxCategory reflects them", () => {
@@ -134,7 +168,13 @@ describe("scrubJson() / scrubMessages()", () => {
       {
         role: "assistant",
         content: null,
-        tool_calls: [{ id: "call_1", type: "function", function: { name: "add_field", arguments: '{"label":"Анна Смирнова"}' } }],
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "add_field", arguments: '{"label":"Анна Смирнова"}' },
+          },
+        ],
       },
       { role: "tool", tool_call_id: "call_1", content: [{ type: "text", text: "Анна Смирнова: ok" }] },
     ];
@@ -144,9 +184,15 @@ describe("scrubJson() / scrubMessages()", () => {
     expect(r.messages[2]).toEqual({
       role: "assistant",
       content: null,
-      tool_calls: [{ id: "call_1", type: "function", function: { name: "add_field", arguments: '{"label":"[ФИО_1]"}' } }],
+      tool_calls: [
+        { id: "call_1", type: "function", function: { name: "add_field", arguments: '{"label":"[ФИО_1]"}' } },
+      ],
     });
-    expect(r.messages[3]).toEqual({ role: "tool", tool_call_id: "call_1", content: [{ type: "text", text: "[ФИО_1]: ok" }] });
+    expect(r.messages[3]).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: [{ type: "text", text: "[ФИО_1]: ok" }],
+    });
     expect(r.counts).toEqual({ person_name: 3, phone_ru: 1 });
     expect(messages[1]?.content).toContain("Анна Смирнова"); // input is not mutated
   });

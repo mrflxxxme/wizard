@@ -5,7 +5,8 @@ import { finding } from "../util.js";
 const EMAIL_RE =
   /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}][\p{L}\p{N}._%+-]{0,63}@(?:[\p{L}\p{N}][\p{L}\p{N}-]{0,62}\.)+(\p{L}{2,24})(?![\p{L}\p{N}-])/gu;
 // Asset names like icon@2x.png are not addresses.
-const FILE_EXT = /^(?:png|jpe?g|gif|svg|webp|avif|bmp|ico|css|scss|less|js|mjs|cjs|ts|tsx|jsx|json|map|woff2?|ttf|otf|mp[34]|webm|pdf|txt|md|html?|xml|ya?ml|zip)$/i;
+const FILE_EXT =
+  /^(?:png|jpe?g|gif|svg|webp|avif|bmp|ico|css|scss|less|js|mjs|cjs|ts|tsx|jsx|json|map|woff2?|ttf|otf|mp[34]|webm|pdf|txt|md|html?|xml|ya?ml|zip)$/i;
 
 const AT = String.raw`(?:[ \xa0]*[([{<]at[)\]}>][ \xa0]*|[ \xa0]+at[ \xa0]+|[ \xa0]*\(?собак[аи]\)?[ \xa0]*|[ \xa0]*\(?собачк[аи]\)?[ \xa0]*)`;
 const DOT = String.raw`(?:[ \xa0]*\.[ \xa0]*|[ \xa0]*[([{<]dot[)\]}>][ \xa0]*|[ \xa0]+dot[ \xa0]+|[ \xa0]+точка[ \xa0]+|[ \xa0]*\(точка\)[ \xa0]*)`;
@@ -34,7 +35,9 @@ function windows(text: string, hint: RegExp, before: number, after: number): Arr
   return out;
 }
 const COMMON_TLD = new Set(
-  "ru su com net org info biz pro io me co dev app online site tech xyz ua by kz uz am ge de uk eu us cloud mail email".split(" "),
+  "ru su com net org info biz pro io me co dev app online site tech xyz ua by kz uz am ge de uk eu us cloud mail email".split(
+    " ",
+  ),
 );
 
 export function detectEmails(text: string): Finding[] {

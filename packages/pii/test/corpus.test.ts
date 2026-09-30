@@ -38,11 +38,14 @@ function evaluate(lines: CorpusLine[]) {
       }
     }
   }
-  const total = Object.values(perKind).reduce((a, s) => ({ tp: a.tp + s.tp, fp: a.fp + s.fp, fn: a.fn + s.fn }), {
-    tp: 0,
-    fp: 0,
-    fn: 0,
-  });
+  const total = Object.values(perKind).reduce(
+    (a, s) => ({ tp: a.tp + s.tp, fp: a.fp + s.fp, fn: a.fn + s.fn }),
+    {
+      tp: 0,
+      fp: 0,
+      fn: 0,
+    },
+  );
   return { perKind, total, errors };
 }
 
@@ -64,10 +67,15 @@ describe("corpus.ru.jsonl (data-boundary.yaml#detectors.quality, M0-05)", () => 
     const { perKind, total, errors } = evaluate(corpus);
     const rows = Object.entries(perKind)
       .sort()
-      .map(([k, s]) => `${k.padEnd(18)} P=${ratio(s.tp, s.tp + s.fp).toFixed(3)} R=${ratio(s.tp, s.tp + s.fn).toFixed(3)} tp=${s.tp} fp=${s.fp} fn=${s.fn}`);
+      .map(
+        ([k, s]) =>
+          `${k.padEnd(18)} P=${ratio(s.tp, s.tp + s.fp).toFixed(3)} R=${ratio(s.tp, s.tp + s.fn).toFixed(3)} tp=${s.tp} fp=${s.fp} fn=${s.fn}`,
+      );
     const recall = ratio(total.tp, total.tp + total.fn);
     const precision = ratio(total.tp, total.tp + total.fp);
-    console.log([...rows, `TOTAL P=${precision.toFixed(3)} R=${recall.toFixed(3)}`, ...errors.slice(0, 40)].join("\n"));
+    console.log(
+      [...rows, `TOTAL P=${precision.toFixed(3)} R=${recall.toFixed(3)}`, ...errors.slice(0, 40)].join("\n"),
+    );
     expect(recall).toBeGreaterThanOrEqual(0.95);
     expect(precision).toBeGreaterThanOrEqual(0.9);
   });

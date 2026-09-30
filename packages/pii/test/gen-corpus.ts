@@ -40,12 +40,21 @@ function mulberry32(seed: number): Rng {
 
 // ------------------------------------------------------------------ vocabulary
 
-const MALE = "Иван Сергей Алексей Дмитрий Андрей Михаил Николай Павел Артём Максим Егор Кирилл Олег Игорь Юрий Виктор Тимур Глеб Фёдор Станислав".split(" ");
-const FEMALE = "Анна Мария Елена Ольга Татьяна Наталья Екатерина Ирина Светлана Юлия Дарья Ксения Полина Алина Марина Людмила Галина Виктория Софья Валентина".split(" ");
+const MALE =
+  "Иван Сергей Алексей Дмитрий Андрей Михаил Николай Павел Артём Максим Егор Кирилл Олег Игорь Юрий Виктор Тимур Глеб Фёдор Станислав".split(
+    " ",
+  );
+const FEMALE =
+  "Анна Мария Елена Ольга Татьяна Наталья Екатерина Ирина Светлана Юлия Дарья Ксения Полина Алина Марина Людмила Галина Виктория Софья Валентина".split(
+    " ",
+  );
 const DIMINUTIVE = "Саша Маша Даша Паша Катя Таня Оля Лёша Дима Женя Настя Серёжа Коля Юля Миша".split(" ");
 const AMBIGUOUS_F = "Вера Надежда Любовь".split(" ");
 const AMBIGUOUS_M = "Роман Лев".split(" ");
-const SURNAME_M = "Иванов Смирнов Кузнецов Попов Васильев Петров Соколов Михайлов Новиков Фёдоров Морозов Волков Лебедев Козлов Орлов Никитин Захаров Зайцев Соловьёв Сорокин Ильин Медведев Жуков Белов Крылов Голубев Шевчук Бондаренко Ким Черных Тихомиров Покровский Вишневский Гончаренко Ткачук".split(" ");
+const SURNAME_M =
+  "Иванов Смирнов Кузнецов Попов Васильев Петров Соколов Михайлов Новиков Фёдоров Морозов Волков Лебедев Козлов Орлов Никитин Захаров Зайцев Соловьёв Сорокин Ильин Медведев Жуков Белов Крылов Голубев Шевчук Бондаренко Ким Черных Тихомиров Покровский Вишневский Гончаренко Ткачук".split(
+    " ",
+  );
 const PATRONYMIC_BASE = "Иван Сергей Алексей Андрей Николай Александр Михаил Владимир Петр Юрий".split(" ");
 
 function femSurname(s: string): string {
@@ -84,12 +93,36 @@ const DATIVE_NAMES = [
   "Павлу Орлову",
   "Елене Волковой",
 ];
-const GENITIVE_NAMES = ["Ивана Петрова", "Анны Смирновой", "Сергея Кузнецова", "Марии Соколовой", "Андрея Лебедева", "Ирины Козловой"];
-const CITIES = "Москва Санкт-Петербург Казань Екатеринбург Новосибирск Самара Краснодар Тверь Владимир Воронеж".split(" ");
+const GENITIVE_NAMES = [
+  "Ивана Петрова",
+  "Анны Смирновой",
+  "Сергея Кузнецова",
+  "Марии Соколовой",
+  "Андрея Лебедева",
+  "Ирины Козловой",
+];
+const CITIES =
+  "Москва Санкт-Петербург Казань Екатеринбург Новосибирск Самара Краснодар Тверь Владимир Воронеж".split(" ");
 const CITY_PREP = "Москве Казани Самаре Твери Воронеже Сочи Перми Калуге Туле Екатеринбурге".split(" ");
-const STREETS = "Ленина Тверская Садовая Победы Гагарина Советская Пушкина Лесная Молодёжная Центральная Чкалова Мира Строителей".split(" ");
+const STREETS =
+  "Ленина Тверская Садовая Победы Гагарина Советская Пушкина Лесная Молодёжная Центральная Чкалова Мира Строителей".split(
+    " ",
+  );
 const STREET_TYPES = ["ул.", "улица", "пр-т", "проспект", "пер.", "переулок", "наб.", "б-р", "бульвар", "ш."];
-const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const MONTHS = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
 const TRANSLIT: Record<string, string> = {
   Иван: "ivan",
   Сергей: "sergey",
@@ -103,7 +136,17 @@ const TRANSLIT: Record<string, string> = {
   Ирина: "irina",
 };
 const LAST_TRANSLIT = ["petrov", "ivanova", "smirnov", "kuznetsova", "popov", "sokolova", "volkov", "orlova"];
-const DOMAINS = ["mail.ru", "yandex.ru", "gmail.com", "bk.ru", "inbox.ru", "list.ru", "rambler.ru", "ya.ru", "studio-art.ru"];
+const DOMAINS = [
+  "mail.ru",
+  "yandex.ru",
+  "gmail.com",
+  "bk.ru",
+  "inbox.ru",
+  "list.ru",
+  "rambler.ru",
+  "ya.ru",
+  "studio-art.ru",
+];
 
 // ------------------------------------------------------------------ checksums (independent of src/)
 
@@ -183,7 +226,13 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     const sur = female ? femSurname(pick(SURNAME_M)) : pick(SURNAME_M);
     const i = pick([...MALE, ...FEMALE])[0];
     const o = pick(PATRONYMIC_BASE)[0];
-    return pick([`${sur} ${i}. ${o}.`, `${i}. ${o}. ${sur}`, `${sur} ${i}.${o}.`, `${i}.${o}. ${sur}`, `${sur} ${i}.`]);
+    return pick([
+      `${sur} ${i}. ${o}.`,
+      `${i}. ${o}. ${sur}`,
+      `${sur} ${i}.${o}.`,
+      `${i}.${o}. ${sur}`,
+      `${sur} ${i}.`,
+    ]);
   };
   const firstOnly = (): string => pick([...MALE, ...FEMALE, ...DIMINUTIVE]);
 
@@ -211,12 +260,22 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
   };
   const phone10 = (): string => {
     const code = `9${digits(2)}`;
-    return pick([`${code} ${digits(3)}-${digits(2)}-${digits(2)}`, `(${code}) ${digits(3)}-${digits(2)}-${digits(2)}`, `${code}${digits(7)}`]);
+    return pick([
+      `${code} ${digits(3)}-${digits(2)}-${digits(2)}`,
+      `(${code}) ${digits(3)}-${digits(2)}-${digits(2)}`,
+      `${code}${digits(7)}`,
+    ]);
   };
   const email = (): string => {
     const first = pick(Object.values(TRANSLIT));
     const last = pick(LAST_TRANSLIT);
-    const local = pick([`${first}.${last}`, `${first}${int(70, 99)}`, `${first}_${last}`, `${first[0]}.${last}`, `${last}.${first}${int(1, 9)}`]);
+    const local = pick([
+      `${first}.${last}`,
+      `${first}${int(70, 99)}`,
+      `${first}_${last}`,
+      `${first[0]}.${last}`,
+      `${last}.${first}${int(1, 9)}`,
+    ]);
     if (rng() < 0.08) return `${pick(["иван", "мария", "олег"])}@${pick(["почта.рф", "мойдом.рф"])}`;
     return `${local}@${pick(DOMAINS)}`;
   };
@@ -224,11 +283,36 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     const first = pick(Object.values(TRANSLIT));
     const d = pick(["mail", "yandex", "gmail", "bk", "inbox"]);
     const tld = d === "gmail" ? "com" : "ru";
-    return pick([`${first} собака ${d}.${tld}`, `${first} at ${d} dot ${tld}`, `${first}(at)${d}.${tld}`, `${first} [at] ${d} [dot] ${tld}`]);
+    return pick([
+      `${first} собака ${d}.${tld}`,
+      `${first} at ${d} dot ${tld}`,
+      `${first}(at)${d}.${tld}`,
+      `${first} [at] ${d} [dot] ${tld}`,
+    ]);
   };
   const card = (): string => {
-    const prefix = pick(["2200", "2201", "2202", "2204", "4", "4", "51", "53", "55", "2221", "2500", "2720", "62", "35"]);
-    const len = prefix === "4" ? pick([16, 16, 13, 19]) : prefix === "62" || prefix.startsWith("220") ? pick([16, 16, 19]) : 16;
+    const prefix = pick([
+      "2200",
+      "2201",
+      "2202",
+      "2204",
+      "4",
+      "4",
+      "51",
+      "53",
+      "55",
+      "2221",
+      "2500",
+      "2720",
+      "62",
+      "35",
+    ]);
+    const len =
+      prefix === "4"
+        ? pick([16, 16, 13, 19])
+        : prefix === "62" || prefix.startsWith("220")
+          ? pick([16, 16, 19])
+          : 16;
     const body = prefix + digits(len - prefix.length - 1);
     const num = body + luhnCheckDigit(body);
     const groups = num.match(/.{1,4}/g) ?? [num];
@@ -244,7 +328,11 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     while (Number(body) <= 1001998) body = digits(9);
     const c = snilsCheck(body);
     return formatted
-      ? pick([`${body.slice(0, 3)}-${body.slice(3, 6)}-${body.slice(6)} ${c}`, `${body.slice(0, 3)}-${body.slice(3, 6)}-${body.slice(6)}-${c}`, `${body.slice(0, 3)} ${body.slice(3, 6)} ${body.slice(6)} ${c}`])
+      ? pick([
+          `${body.slice(0, 3)}-${body.slice(3, 6)}-${body.slice(6)} ${c}`,
+          `${body.slice(0, 3)}-${body.slice(3, 6)}-${body.slice(6)}-${c}`,
+          `${body.slice(0, 3)} ${body.slice(3, 6)} ${body.slice(6)} ${c}`,
+        ])
       : body + c;
   };
   const innPerson = (): string => {
@@ -262,7 +350,13 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     const y = int(1950, 2008);
     const m = int(1, 12);
     const d = int(1, 28);
-    return pick([`${pad(d)}.${pad(m)}.${y}`, `${d} ${MONTHS[m - 1]} ${y} г.`, `${y}-${pad(m)}-${pad(d)}`, `${pad(d)}/${pad(m)}/${y}`, `${d} ${MONTHS[m - 1]} ${y}`]);
+    return pick([
+      `${pad(d)}.${pad(m)}.${y}`,
+      `${d} ${MONTHS[m - 1]} ${y} г.`,
+      `${y}-${pad(m)}-${pad(d)}`,
+      `${pad(d)}/${pad(m)}/${y}`,
+      `${d} ${MONTHS[m - 1]} ${y}`,
+    ]);
   };
   const address = (): string => {
     const st = `${pick(STREET_TYPES)} ${pick(STREETS)}`;
@@ -292,13 +386,22 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     ] as const);
     const a = digits(n1);
     const b = digits(n2);
-    return pick([`+${cc} ${a} ${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}`, `+${cc} (${a}) ${b}`, `+${cc}${a}${b}`]);
+    return pick([
+      `+${cc} ${a} ${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}`,
+      `+${cc} (${a}) ${b}`,
+      `+${cc}${a}${b}`,
+    ]);
   };
   const handle = (): string =>
     `@${pick(Object.values(TRANSLIT))}${pick(["_", ".", ""]) === "." ? "_" : pick(["_", ""])}${pick(LAST_TRANSLIT)}${pick(["", String(int(1, 99))])}`;
   const profile = (): string => {
     const name = `${pick(Object.values(TRANSLIT))}_${pick(LAST_TRANSLIT)}`;
-    return pick([`t.me/${name}`, `https://vk.com/id${int(10000, 999999999)}`, `instagram.com/${name.replace("_", ".")}`, `https://ok.ru/profile/${digits(12)}`]);
+    return pick([
+      `t.me/${name}`,
+      `https://vk.com/id${int(10000, 999999999)}`,
+      `instagram.com/${name.replace("_", ".")}`,
+      `https://ok.ru/profile/${digits(12)}`,
+    ]);
   };
   const ogrnip = (): string => {
     const body = `${pick(["3", "4"])}${digits(13)}`;
@@ -309,15 +412,42 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     const l = () => PLATE_LETTERS[int(0, PLATE_LETTERS.length - 1)] ?? "А";
     const region = pick([String(int(10, 99)), String(int(102, 199)), "777", "799", "750", "05"]);
     const x = `${l()}${digits(3)}${l()}${l()}`;
-    return pick([`${x}${region}`, `${x} ${region}`, `${x.slice(0, 1)} ${x.slice(1, 4)} ${x.slice(4)} ${region}`, `${x.toLowerCase()}${region}`]);
+    return pick([
+      `${x}${region}`,
+      `${x} ${region}`,
+      `${x.slice(0, 1)} ${x.slice(1, 4)} ${x.slice(4)} ${region}`,
+      `${x.toLowerCase()}${region}`,
+    ]);
   };
   const special = (): string =>
-    pick(["диагноз", "инвалидность", "беременность", "судимость", "вероисповедание", "ВИЧ", "национальность", "онкологии", "аллергия", "заболевание"]);
+    pick([
+      "диагноз",
+      "инвалидность",
+      "беременность",
+      "судимость",
+      "вероисповедание",
+      "ВИЧ",
+      "национальность",
+      "онкологии",
+      "аллергия",
+      "заболевание",
+    ]);
   const biometric = (): string => pick(["отпечатки пальцев", "биометрию", "скан лица", "образец голоса"]);
 
   // ---- non-personal values for traps
-  const eventDate = (): string => pick([`${pad(int(1, 28))}.${pad(int(1, 12))}.${int(2023, 2026)}`, `${int(1, 28)} ${pick(MONTHS)} ${int(2024, 2026)} года`, `${int(2024, 2026)}-${pad(int(1, 12))}-${pad(int(1, 28))}`]);
-  const price = (): string => pick([`${int(1, 9)} ${digits(3)} ${digits(3)}`, `${int(1, 999)} ${digits(3)},${digits(2)}`, `${int(100, 99999)}`, `${int(1, 9)} ${digits(3)} ${digits(3)} ${digits(3)}`]);
+  const eventDate = (): string =>
+    pick([
+      `${pad(int(1, 28))}.${pad(int(1, 12))}.${int(2023, 2026)}`,
+      `${int(1, 28)} ${pick(MONTHS)} ${int(2024, 2026)} года`,
+      `${int(2024, 2026)}-${pad(int(1, 12))}-${pad(int(1, 28))}`,
+    ]);
+  const price = (): string =>
+    pick([
+      `${int(1, 9)} ${digits(3)} ${digits(3)}`,
+      `${int(1, 999)} ${digits(3)},${digits(2)}`,
+      `${int(100, 99999)}`,
+      `${int(1, 9)} ${digits(3)} ${digits(3)} ${digits(3)}`,
+    ]);
   const invalid = (len: number, bad: (d: string) => boolean): string => {
     let d = `${int(1, 9)}${digits(len - 1)}`;
     while (bad(d)) d = `${int(1, 9)}${digits(len - 1)}`;
@@ -334,7 +464,11 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["Клиент ", P("person_name", fullName()), " оставил заявку, email: ", P("email", email())],
     () => {
       const [r, y, n] = passportParts();
-      return ["Паспорт ", P("passport_ru", pick([`${r} ${y} ${n}`, `${r}${y} ${n}`, `${r}${y} № ${n}`])), " выдан ОУФМС России по г. Москве"];
+      return [
+        "Паспорт ",
+        P("passport_ru", pick([`${r} ${y} ${n}`, `${r}${y} ${n}`, `${r}${y} № ${n}`])),
+        " выдан ОУФМС России по г. Москве",
+      ];
     },
     () => {
       const [r, y, n] = passportParts();
@@ -349,7 +483,12 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["СНИЛС ", P("snils", snils(false)), ", приложите копию"],
     () => ["ИНН ", P("inn_person", innPerson()), " (физлицо, самозанятый)"],
     () => ["Самозанятый ", P("person_name", fullName()), ", ИНН ", P("inn_person", innPerson())],
-    () => ["Оплата картой ", P("card", card()), ", держатель ", P("person_name_latin", pick(LATIN_NAMES).toUpperCase())],
+    () => [
+      "Оплата картой ",
+      P("card", card()),
+      ", держатель ",
+      P("person_name_latin", pick(LATIN_NAMES).toUpperCase()),
+    ],
     () => ["Карта для возврата: ", P("card", card())],
     () => ["Адрес доставки: ", P("address", address()), "."],
     () => ["Живу по адресу ", P("address", address()), ", домофон не работает"],
@@ -360,13 +499,34 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["Ответственный — ", P("person_name", initialsName()), ", тел. ", P("phone_ru", phone())],
     () => ["Передайте ", P("person_name", pick(DATIVE_NAMES)), ", что встреча переносится"],
     () => ["Со слов ", P("person_name", pick(GENITIVE_NAMES)), ", заказ не пришёл"],
-    () => ["Пациент ", P("person_name", fullName()), ", ", P("special_context", special()), " уточнить у врача"],
+    () => [
+      "Пациент ",
+      P("person_name", fullName()),
+      ", ",
+      P("special_context", special()),
+      " уточнить у врача",
+    ],
     () => [P("person_name", fullName()), " сообщила, что у неё ", P("special_context", special())],
-    () => ["Участники: ", P("person_name", fullName()), ", ", P("person_name", fullName()), " и ", P("person_name", firstOnly()), "."],
+    () => [
+      "Участники: ",
+      P("person_name", fullName()),
+      ", ",
+      P("person_name", fullName()),
+      " и ",
+      P("person_name", firstOnly()),
+      ".",
+    ],
     () => ["Пишите в WhatsApp ", P("phone_ru", phone10())],
     () => ["моб. ", P("phone_ru", phone10()), ", звонить после 18:00"],
     () => ["Контакты: ", P("email", emailObfuscated())],
-    () => ["ФИО: ", P("person_name", fullName()), "; дата рождения ", P("birthdate", birthdate()), "; адрес: ", P("address", address())],
+    () => [
+      "ФИО: ",
+      P("person_name", fullName()),
+      "; дата рождения ",
+      P("birthdate", birthdate()),
+      "; адрес: ",
+      P("address", address()),
+    ],
     () => ["Hi, I'm ", P("person_name_latin", pick(LATIN_NAMES)), ", reach me at ", P("email", email())],
     () => ["Телефон в Минске: ", P("phone_intl", phoneIntl()), ", спросить ", P("person_name", firstOnly())],
     () => ["Пишите в Telegram ", P("social_handle", handle()), " или на ", P("email", email())],
@@ -374,20 +534,63 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["ИП ", P("person_name", fullName()), ", ОГРНИП ", P("ogrnip", ogrnip())],
     () => ["Пропуск на машину ", P("car_plate_ru", plate()), ", водитель ", P("person_name", fullName())],
     () => ["Contact: ", P("person_name_latin", pick(LATIN_NAMES)), ", ", P("phone_intl", phoneIntl())],
-    () => ["Сотрудник ", P("person_name", fullName()), " сдал ", P("biometric_context", biometric()), " для прохода в офис"],
+    () => [
+      "Сотрудник ",
+      P("person_name", fullName()),
+      " сдал ",
+      P("biometric_context", biometric()),
+      " для прохода в офис",
+    ],
     () => {
       const [r, y, n] = passportParts();
-      return ["Заявка от ", P("person_name", firstOnly()), " (", P("phone_ru", phone()), "), паспорт серия ", P("passport_ru", `${r}${y} № ${n}`)];
+      return [
+        "Заявка от ",
+        P("person_name", firstOnly()),
+        " (",
+        P("phone_ru", phone()),
+        "), паспорт серия ",
+        P("passport_ru", `${r}${y} № ${n}`),
+      ];
     },
-    () => [P("person_name", fullName()), ";", P("phone_ru", phone()), ";", P("email", email()), ";", P("address", address())],
+    () => [
+      P("person_name", fullName()),
+      ";",
+      P("phone_ru", phone()),
+      ";",
+      P("email", email()),
+      ";",
+      P("address", address()),
+    ],
     () => ["Мама — ", P("person_name", pick(DIMINUTIVE)), ", папа — ", P("person_name", pick(MALE)), "."],
-    () => ["Карта ", P("card", card()), ", ИНН ", P("inn_person", innPerson()), ", СНИЛС ", P("snils", snils())],
+    () => [
+      "Карта ",
+      P("card", card()),
+      ", ИНН ",
+      P("inn_person", innPerson()),
+      ", СНИЛС ",
+      P("snils", snils()),
+    ],
     () => ["Руководитель: ", P("person_name", ambiguousFull()), ", тел. ", P("phone_ru", phone())],
     () => ["Встретить ", P("person_name", ambiguousFull()), " на вокзале"],
     () => [P("person_name", initialsName()), " просит перезвонить на ", P("phone_ru", phone())],
     () => ["Получатель: ", P("person_name", fullName()), ", ", P("address", address())],
-    () => ["Бронь на имя ", P("person_name", fullName()), ", заказ №", String(int(1000, 99999)), ", оплата ", price(), " руб."],
-    () => ["Мой номер ", P("phone_ru", phone()), ", а почта ", P("email", email()), ". ", P("person_name", firstOnly())],
+    () => [
+      "Бронь на имя ",
+      P("person_name", fullName()),
+      ", заказ №",
+      String(int(1000, 99999)),
+      ", оплата ",
+      price(),
+      " руб.",
+    ],
+    () => [
+      "Мой номер ",
+      P("phone_ru", phone()),
+      ", а почта ",
+      P("email", email()),
+      ". ",
+      P("person_name", firstOnly()),
+    ],
   ];
 
   const traps: Array<() => Part[]> = [
@@ -405,7 +608,17 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => [`<img src="icon@2x.png" alt="logo" width="${int(16, 256)}">`],
     () => [`Форум в ${pick(CITY_PREP)} соберёт ${int(100, 5000)} участников`],
     () => ["Встреча во Владимире, затем поезд в Москву"],
-    () => [pick(["Роман «Война и мир» лежит на столе", "Вера в успех помогает", "Любовь к музыке у нас с детства", "Надежда умирает последней", "Лев — царь зверей", "Роза пахнет", "Мир, труд, май"])],
+    () => [
+      pick([
+        "Роман «Война и мир» лежит на столе",
+        "Вера в успех помогает",
+        "Любовь к музыке у нас с детства",
+        "Надежда умирает последней",
+        "Лев — царь зверей",
+        "Роза пахнет",
+        "Мир, труд, май",
+      ]),
+    ],
     () => [`Версия ${int(1, 9)}.${int(0, 20)}.${int(0, 99)}, сборка ${digits(6)}`],
     () => [`IP-адрес сервера 192.168.${int(0, 255)}.${int(1, 254)}`],
     () => [`UUID ${digits(8)}-${digits(4)}-4${digits(3)}-a${digits(3)}-${digits(12)}`],
@@ -421,7 +634,9 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["Поле «Диагноз» в форму не добавлять"],
     () => ["Телефон горячей линии указан на сайте"],
     () => [`Москва — Санкт-Петербург, ${int(600, 750)} км, поезд № ${int(1, 999)}`],
-    () => [`Население ${pick(["Казани", "Самары", "Твери"])} — ${int(1, 2)} ${digits(3)} ${digits(3)} человек`],
+    () => [
+      `Население ${pick(["Казани", "Самары", "Твери"])} — ${int(1, 2)} ${digits(3)} ${digits(3)} человек`,
+    ],
     () => [`Счёт № ${int(2020, 2026)} ${digits(6)} на оплату`],
     () => [`Температура 36.${int(0, 9)}, давление ${int(100, 140)}/${int(60, 90)}`],
     () => [`Табличка: ${pick(CITIES.filter((c) => c !== "Владимир"))}, Красная площадь`],
@@ -436,7 +651,9 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["@Component({ selector: 'app-root' }) export class AppComponent {}"],
     () => ['import { useQuery } from "@tanstack/react-query";'],
     () => [`ОГРН 1${digits(12)}, ОКПО ${digits(8)}`],
-    () => [`Номер партии ${invalid(15, (d) => /^[34]/.test(d) && BigInt(d.slice(0, 14)) % 13n % 10n === BigInt(d[14] ?? 0))}`],
+    () => [
+      `Номер партии ${invalid(15, (d) => /^[34]/.test(d) && (BigInt(d.slice(0, 14)) % 13n) % 10n === BigInt(d[14] ?? 0))}`,
+    ],
     () => [`color: #A${digits(3)}BC; border: 1px solid #${digits(6)}`],
     () => [`id: ${digits(4)}a${digits(3)}-bc${digits(2)}-4${digits(3)}`],
     () => [`Ехать в ${int(100, 999)} км ${int(10, 59)} минут`],
@@ -510,5 +727,7 @@ export const CORPUS_PATH = join(dirname(fileURLToPath(import.meta.url)), "corpus
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const lines = generateCorpus();
   writeFileSync(CORPUS_PATH, corpusJsonl(lines));
-  console.log(`corpus.ru.jsonl: ${lines.length} lines (${lines.filter((l) => l.group === "trap").length} traps)`);
+  console.log(
+    `corpus.ru.jsonl: ${lines.length} lines (${lines.filter((l) => l.group === "trap").length} traps)`,
+  );
 }

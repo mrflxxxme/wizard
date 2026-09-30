@@ -11,7 +11,7 @@ export {
   snilsControl,
   snilsValid,
 } from "./checksums.js";
-export { type FieldClassification, classifyFieldName } from "./classify.js";
+export { classifyFieldName, type FieldClassification } from "./classify.js";
 export { type DetectOptions, detect } from "./detect.js";
 export { normalizePhoneRu } from "./detectors/phone.js";
 export { detectSpecialTerms } from "./detectors/special.js";
@@ -34,8 +34,8 @@ export {
   type Kind,
   type KindInfo,
   maxCategory,
-  PLACEHOLDER_RE,
   type PiiKind,
+  PLACEHOLDER_RE,
   STRONG_KINDS,
   toPiiKind,
 } from "./types.js";

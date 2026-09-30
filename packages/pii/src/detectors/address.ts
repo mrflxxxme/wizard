@@ -44,7 +44,7 @@ const MARKER_RE = new RegExp(
   `(?<![\\p{L}\\d])(?:${MARKERS.map(([m], i) => `(?<m${i}>${m})`).join("|")})|(?<![\\d])(?<idx>[1-6]\\d{5})(?![\\d])`,
   "giu",
 );
-const NUMBER_VALUE = /^[ \xa0]*(?:№[ \xa0]*)?\d+(?:[\/-]\d+)?(?:-?[а-яёa-z](?![\p{L}]))?(?:-?(?:я|й|е|го))?/iu;
+const NUMBER_VALUE = /^[ \xa0]*(?:№[ \xa0]*)?\d+(?:[/-]\d+)?(?:-?[а-яёa-z](?![\p{L}]))?(?:-?(?:я|й|е|го))?/iu;
 const NAME_VALUE =
   /^[ \xa0]*(?:\d+-?(?:я|й|е|го)?[ \xa0]+)?(?:им\.[ \xa0]*)?[А-ЯЁA-Z][\p{L}-]*(?:[ \xa0]+(?:[А-ЯЁA-Z][\p{L}-]*|\d+(?:-?(?:я|й|е|го))?))*/u;
 const GAP_OK = /^[\s,;.]*(?:[А-ЯЁ][\p{L}-]*[\s,;.]*){0,2}$/u;
@@ -63,7 +63,10 @@ export function detectAddresses(text: string): Finding[] {
     if (groups.idx) {
       // Postal index: only as part of an address line (followed by a comma or preceded by «индекс»).
       const after = text.slice(markerEnd, markerEnd + 2);
-      if (/^[ \xa0]?,/.test(after) || /индекс\s*[:\-]?\s*$/iu.test(text.slice(Math.max(0, start - 12), start))) {
+      if (
+        /^[ \xa0]?,/.test(after) ||
+        /индекс\s*[:-]?\s*$/iu.test(text.slice(Math.max(0, start - 12), start))
+      ) {
         markers.push({ start, end: markerEnd });
       }
       continue;

@@ -2,7 +2,20 @@
 import type { Finding } from "../types.js";
 import { contextAround, finding } from "../util.js";
 
-const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const MONTHS = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
 
 // Optional "г." / "года" after the year, but not the "г.р." context marker.
 const YEAR_SUFFIX = String.raw`(?:(?![ \xa0]*г\.?[ \xa0]?р\.?(?!\p{L}))[ \xa0]*(?:г\.|года|г(?!\p{L})))?`;
@@ -10,7 +23,7 @@ const NUMERIC_RE = new RegExp(
   String.raw`(?<![\d.\/-])(\d{1,2})([.\/-])(\d{1,2})\2(\d{4}|\d{2})(?![\d]|[.\/-]\d)${YEAR_SUFFIX}`,
   "gu",
 );
-const ISO_RE = /(?<![\d.\/-])(\d{4})-(\d{2})-(\d{2})(?![\d])/gu;
+const ISO_RE = /(?<![\d./-])(\d{4})-(\d{2})-(\d{2})(?![\d])/gu;
 const WORDS_RE = new RegExp(
   String.raw`(?<![\d\p{L}])(\d{1,2})[ \xa0]+(${MONTHS.join("|")})[ \xa0]+(\d{4})${YEAR_SUFFIX}`,
   "giu",

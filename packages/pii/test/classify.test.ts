@@ -81,7 +81,7 @@ describe("detectSpecialTerms", () => {
   test("keywords alone, no subject needed", () => {
     expect(detectSpecialTerms("Анализы крови")).toBe("special");
     expect(detectSpecialTerms("Политические взгляды")).toBe("special");
-    expect(detectSpecialTerms("Скан лица для прохода")).toBe(null);
+    expect(detectSpecialTerms("Скан лица для прохода")).toBe("biometric");
     expect(detectSpecialTerms("распознавание лиц")).toBe("biometric");
     expect(detectSpecialTerms("Пожелания по питанию")).toBe(null);
     expect(detectSpecialTerms("Расписание занятий")).toBe(null);

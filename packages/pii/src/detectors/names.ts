@@ -10,7 +10,8 @@ const CAP_WORD_RE = /(?<!\p{L})\p{Lu}\p{L}*(?:-\p{L}+)*/gu;
 const CYR = /^[\p{Script=Cyrillic}-]+$/u;
 const LAT = /^[A-Za-z-]+$/;
 
-const PATRONYMIC_CYR = /^[А-ЯЁ][а-яё]+(?:(?:ович|евич|ьич|ич)(?:а|у|ем|ом|е)?|(?:овн|евн|ичн|иничн)(?:а|ы|е|у|ой|ою))$/u;
+const PATRONYMIC_CYR =
+  /^[А-ЯЁ][а-яё]+(?:(?:ович|евич|ьич|ич)(?:а|у|ем|ом|е)?|(?:овн|евн|ичн|иничн)(?:а|ы|е|у|ой|ою))$/u;
 const PATRONYMIC_LAT = /^[A-Z][a-z]+(?:ovich|evich|ovna|evna|ichna|yich)$/;
 export const SURNAME_SUFFIX_CYR =
   /^[А-ЯЁ][а-яё]+(?:(?:ов|ев|ёв|ин|ын)(?:а|у|ым|ом|е|ой|ы|ых|ыми)?|(?:ск|цк)(?:ий|ая|ой|ого|ому|им|ом|ую|ие|их)|енко|[уюч]к(?:а|у|ом|е)?|янц?|швили|дзе|[ыи]х|[ое]вич(?:а|у|ем|ом|е)?)$/u;
@@ -28,7 +29,16 @@ const NOT_SURNAME = new Set(
 const STREET_BEFORE =
   /(?:(?<!\p{L})(?:ул|пр|просп|пер|пл|наб|б-р|пр-т|пр-кт|ш|им|ст|м|г|пос|мкр|обл)\.?|улиц\p{L}*|проспект\p{L}*|переул\p{L}*|площад\p{L}*|бульвар\p{L}*|набережн\p{L}*|шоссе|имени|памятник\p{L}*|станци\p{L}*|метро|город\p{L}*|район\p{L}*|област\p{L}*|посел\p{L}*|посёл\p{L}*|сел\p{L}*|деревн\p{L}*|аэропорт\p{L}*|вокзал\p{L}*|театр\p{L}*|музе\p{L}*|школ\p{L}*|храм\p{L}*|собор\p{L}*|фестивал\p{L}*|форум\p{L}*|бренд\p{L}*|марк\p{L}*|компани\p{L}*|магазин\p{L}*|салон\p{L}*|кафе|ресторан\p{L}*|гостиниц\p{L}*|отел\p{L}*|студи\p{L}*|агентств\p{L}*|клиник\p{L}*|фирм\p{L}*|бар\p{L}*|кинотеатр\p{L}*|ооо|оао|зао|пао)[ \xa0]*[«"„]?[ \xa0]*$/iu;
 const LOCATION_PREP = /(?<!\p{L})(?:в|во|из|под|до|около|через)[ \xa0]+$/iu;
-const LOCATION_NAMES = new Set(["владимир", "владимира", "владимире", "владимиру", "владимиром", "лена", "лены", "лене"]);
+const LOCATION_NAMES = new Set([
+  "владимир",
+  "владимира",
+  "владимире",
+  "владимиру",
+  "владимиром",
+  "лена",
+  "лены",
+  "лене",
+]);
 
 const FIO_LABEL_RE =
   /(?<!\p{L})(?:ФИО|Ф\.[ \xa0]?И\.[ \xa0]?О\.|Фамилия(?:,[ \xa0]*имя(?:,[ \xa0]*отчество)?)?|ф\.и\.о\.|фио)[ \xa0]*[:\-—–]?[ \xa0]*((?:[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?(?:[ \xa0]+|$|(?=[,.;)]))){1,3})/gu;
@@ -36,7 +46,8 @@ const FIO_LABEL_RE =
 const INITIALS_AFTER_RE = /[ \xa0]+([А-ЯЁA-Z])\.(?:[ \xa0]?([А-ЯЁA-Z])\.)?/uy;
 const INITIALS_BEFORE_RE =
   /([А-ЯЁA-Z])\.[ \xa0]?(?:([А-ЯЁA-Z])\.[ \xa0]?)?([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?|[A-Z][a-z]+)(?![\p{L}])/uy;
-const NAMED_AFTER_BEFORE = /(?:(?<!\p{L})(?:ул|пр|просп|пер|пл|наб|им|ст)\.|улиц\p{L}*|проспект\p{L}*|имени)[ \xa0]*$/iu;
+const NAMED_AFTER_BEFORE =
+  /(?:(?<!\p{L})(?:ул|пр|просп|пер|пл|наб|им|ст)\.|улиц\p{L}*|проспект\p{L}*|имени)[ \xa0]*$/iu;
 
 // Column/field headers that follow «ФИО» in tables and forms.
 const FIELD_WORDS = new Set(
@@ -148,7 +159,13 @@ export function detectNames(text: string): Finding[] {
     const ia = INITIALS_AFTER_RE.exec(text);
     if (ia) {
       const sur = capitalized(tok.t);
-      if (sur && isSurname(sur) && !firstName(sur) && sameScript(sur, ia[1] ?? "") && (!ia[2] || sameScript(sur, ia[2]))) {
+      if (
+        sur &&
+        isSurname(sur) &&
+        !firstName(sur) &&
+        sameScript(sur, ia[1] ?? "") &&
+        (!ia[2] || sameScript(sur, ia[2]))
+      ) {
         spans.push({ s: tok.s, e: tok.e + ia[0].length, c: "high", l: LAT.test(sur) });
       }
     }

@@ -49,7 +49,12 @@ describe("email", () => {
     expect(found("a+tag@sub.example.co.uk")).toEqual([["email", "a+tag@sub.example.co.uk"]]);
   });
   test("obfuscations", () => {
-    for (const s of ["ivan собака mail.ru", "ivan at mail dot ru", "ivan(at)mail.ru", "ivan [at] mail [dot] ru"]) {
+    for (const s of [
+      "ivan собака mail.ru",
+      "ivan at mail dot ru",
+      "ivan(at)mail.ru",
+      "ivan [at] mail [dot] ru",
+    ]) {
       expect(found(`Контакт: ${s}`)).toEqual([["email", s]]);
     }
   });
@@ -159,12 +164,16 @@ describe("birthdate", () => {
 
 describe("address", () => {
   test("two or more markers with values", () => {
-    expect(found("Адрес: г. Москва, ул. Ленина, д. 5, кв. 12")).toEqual([["address", "г. Москва, ул. Ленина, д. 5, кв. 12"]]);
+    expect(found("Адрес: г. Москва, ул. Ленина, д. 5, кв. 12")).toEqual([
+      ["address", "г. Москва, ул. Ленина, д. 5, кв. 12"],
+    ]);
     expect(found("101000, г. Москва, пр-т Мира, д. 1, корп. 2")).toEqual([
       ["address", "101000, г. Москва, пр-т Мира, д. 1, корп. 2"],
     ]);
     expect(found("улица Садовая, дом 3")).toEqual([["address", "улица Садовая, дом 3"]]);
-    expect(found("Санкт-Петербург, наб. Фонтанки, д. 20, оф. 5")).toEqual([["address", "наб. Фонтанки, д. 20, оф. 5"]]);
+    expect(found("Санкт-Петербург, наб. Фонтанки, д. 20, оф. 5")).toEqual([
+      ["address", "наб. Фонтанки, д. 20, оф. 5"],
+    ]);
   });
   test("a single city or street is not an address", () => {
     expect(kindsOf("Форум в Казани")).toEqual([]);
@@ -267,7 +276,9 @@ describe("social_handle", () => {
   test("the system's own service accounts are ignored", () => {
     const text = "Бот записи: t.me/salon_booking_bot, администратор @salon_admin_masha";
     expect(found(text).map(([k]) => k)).toEqual(["social_handle", "social_handle"]);
-    expect(found(text, { ignoreHandles: ["salon_booking_bot"] })).toEqual([["social_handle", "@salon_admin_masha"]]);
+    expect(found(text, { ignoreHandles: ["salon_booking_bot"] })).toEqual([
+      ["social_handle", "@salon_admin_masha"],
+    ]);
   });
 });
 
@@ -302,7 +313,9 @@ describe("special / biometric context", () => {
       ["person_name", "Иванов Иван"],
       ["special_context", "диагноз"],
     ]);
-    expect(detect("Иванов Иван, судимость погашена").find((f) => f.kind === "special_context")?.category).toBe("special");
+    expect(
+      detect("Иванов Иван, судимость погашена").find((f) => f.kind === "special_context")?.category,
+    ).toBe("special");
     expect(found("Сотрудник +7 916 123-45-67 сдал отпечатки пальцев")).toEqual([
       ["phone_ru", "+7 916 123-45-67"],
       ["biometric_context", "отпечатки пальцев"],
@@ -323,14 +336,22 @@ describe("special / biometric context", () => {
 describe("detect()", () => {
   test("finding shape", () => {
     const [f] = detect("тел. +7 916 123-45-67");
-    expect(f).toEqual({ kind: "phone_ru", category: "basic", piiKind: "phone", start: 5, end: 21, confidence: "high" });
+    expect(f).toEqual({
+      kind: "phone_ru",
+      category: "basic",
+      piiKind: "phone",
+      start: 5,
+      end: 21,
+      confidence: "high",
+    });
   });
   test("empty and non-PII input", () => {
     expect(detect("")).toEqual([]);
     expect(detect("Система записи клиентов: администратор видит все заявки.")).toEqual([]);
   });
   test("findings never overlap and are sorted", () => {
-    const text = "Иванов Иван, +7 916 123-45-67, ivan@mail.ru, г. Москва, ул. Ленина, д. 5, паспорт 4506 123456";
+    const text =
+      "Иванов Иван, +7 916 123-45-67, ivan@mail.ru, г. Москва, ул. Ленина, д. 5, паспорт 4506 123456";
     const fs = detect(text);
     for (let i = 1; i < fs.length; i++) expect(fs[i]?.start).toBeGreaterThanOrEqual(fs[i - 1]?.end ?? 0);
     expect(fs.map((f) => f.kind)).toEqual(["person_name", "phone_ru", "email", "address", "passport_ru"]);

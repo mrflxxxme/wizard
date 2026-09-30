@@ -25,7 +25,8 @@ export function caseForms(lemma: string, gender: string): string[] {
   if (/а$/.test(l)) return add(stem1, ["а", "ы", "и", "е", "у", "ой", "ей", "ою"]);
   if (/ий$/.test(l)) return add(stem1, ["й", "я", "ю", "ем", "и", "е"]);
   if (/й$/.test(l)) return add(stem1, ["й", "я", "ю", "ем", "е"]);
-  if (/ь$/.test(l)) return gender === "f" ? add(stem1, ["ь", "и", "ью"]) : add(stem1, ["ь", "я", "ю", "ем", "е"]);
+  if (/ь$/.test(l))
+    return gender === "f" ? add(stem1, ["ь", "и", "ью"]) : add(stem1, ["ь", "я", "ю", "ем", "е"]);
   if (/о$/.test(l)) return gender === "m" ? add(stem1, ["о", "а", "у", "ом", "е"]) : [l];
   if (VOWELS.test(l) || gender === "f") return [l]; // indeclinable (Нелли, Алсу) or feminine consonant (Жасмин)
   return add(l, ["", "а", "у", "ом", "е", "ем", "ым"]);

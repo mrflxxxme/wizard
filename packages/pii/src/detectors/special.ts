@@ -53,7 +53,7 @@ export function detectSpecialContext(text: string, base: readonly Finding[]): Fi
 const TERM_SPECIAL_RE =
   /(?<![\p{L}])(?:здоровь|диагноз|болезн|заболеван|инвалид|беремен|аллерги|медицин|анализы?[ \xa0]+крови|вероисповед|религи|политич|партийн|национальност|рас(?:а|ы|е|у|ой|ов\p{L}*)(?!\p{L})|судим|интимн|сексуальн|health|diagnos|disease|disabilit|pregnan|allerg|medical|religio|politic(?!y)|ethnic|nationality|criminal|convict|sexual)/iu;
 const TERM_BIOMETRIC_RE =
-  /(?<![\p{L}])(?:биометр|отпечат|распознаван\p{L}*[ \xa0]+лиц|образ\p{L}*[ \xa0]+голос|biometr|fingerprint|face[ \xa0_-]?id|face[ \xa0_-]?scan|voice[ \xa0_-]?print)/iu;
+  /(?<![\p{L}])(?:биометр|отпечат|распознаван\p{L}*[ \xa0]+лиц|образ\p{L}*[ \xa0]+голос|скан\p{L}*[ \xa0]+лиц|фото[ \xa0]+лица|biometr|fingerprint|face[ \xa0_-]?id|face[ \xa0_-]?scan|voice[ \xa0_-]?print)/iu;
 
 /** Special category signalled by a field name/label/enum text alone, without a data subject (G2-PII-03). */
 export function detectSpecialTerms(text: string): "special" | "biometric" | null {

@@ -13,8 +13,7 @@ const OGRNIP_CTX = /огрнип|огрн|ogrnip/iu;
 const PASSPORT_CTX = /паспорт|серия|серии|выдан|passport|удостоверени\p{L}* личност/iu;
 
 // "серия 45 06 № 123456", "паспорт 4506 № 123456", "серия 4506 номер 123456".
-const SERIES_NUMBER_RE =
-  /(?<!\d)(\d{2}[ \xa0]?\d{2})[ \xa0]*(?:№|N|No\.?|номер)[ \xa0]*(\d{6})(?!\d)/gu;
+const SERIES_NUMBER_RE = /(?<!\d)(\d{2}[ \xa0]?\d{2})[ \xa0]*(?:№|N|No\.?|номер)[ \xa0]*(\d{6})(?!\d)/gu;
 
 interface Group {
   start: number;
@@ -72,7 +71,8 @@ function evaluate(text: string, groups: Group[], i: number, j: number): Finding 
   if (n === 10) {
     const passportCtx = contextBefore(text, start, PASSPORT_CTX, 40);
     if (single) {
-      if (innOrgValid(num)) return finding("inn_org", start, end, contextBefore(text, start, INN_CTX) ? "high" : "medium");
+      if (innOrgValid(num))
+        return finding("inn_org", start, end, contextBefore(text, start, INN_CTX) ? "high" : "medium");
       if (passportCtx && !num.startsWith("00")) return finding("passport_ru", start, end, "high");
       return null;
     }
@@ -111,7 +111,8 @@ export function detectNumericIds(text: string): Finding[] {
     const series = (m[1] ?? "").replace(/\D/g, "");
     if (series.startsWith("00")) continue;
     const ctx = contextBefore(text, m.index, PASSPORT_CTX, 40);
-    if (!ctx && (!plausibleSeries(series) || contextBefore(text, m.index, NON_PERSONAL_NUMBER_CTX, 25))) continue;
+    if (!ctx && (!plausibleSeries(series) || contextBefore(text, m.index, NON_PERSONAL_NUMBER_CTX, 25)))
+      continue;
     out.push(finding("passport_ru", m.index, m.index + m[0].length, ctx ? "high" : "medium"));
   }
   return out;

@@ -42,7 +42,9 @@ function valueKey(kind: Kind, raw: string): string {
     case "birthdate":
       return onlyDigits(raw) || fold(raw);
     default:
-      return fold(raw).replace(/[\s.,]+/g, " ").trim();
+      return fold(raw)
+        .replace(/[\s.,]+/g, " ")
+        .trim();
   }
 }
 
@@ -134,7 +136,10 @@ export function scrubJson<T>(value: T, options: DetectOptions = {}): ScrubJsonRe
 const MESSAGE_SKIP_KEYS: ReadonlySet<string> = new Set(["role", "type", "id", "tool_call_id", "tool_use_id"]);
 
 /** Scrubs a chat message array (OpenAI-compatible shape or any JSON) with one numbering across all messages. */
-export function scrubMessages<T>(messages: readonly T[], options: DetectOptions = {}): ScrubMessagesResult<T> {
+export function scrubMessages<T>(
+  messages: readonly T[],
+  options: DetectOptions = {},
+): ScrubMessagesResult<T> {
   const s = createScrubber(options);
   const out = messages.map((m) => walk(m, s, MESSAGE_SKIP_KEYS) as T);
   return { messages: out, ...s.summary() };
