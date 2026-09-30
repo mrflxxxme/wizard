@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { type AppSpec, planMigration, quoteIdent, SYSTEM_ROLE, SYSTEM_TABLES, toDDL } from "@wizard/appspec";
 import type postgres from "postgres";
-import type { RuntimeHandle } from "../types.js";
+import type { JobRunReport, RuntimeHandle } from "../types.js";
 import { syntheticEmail, syntheticName, syntheticPhone, uuidFor } from "./seed.js";
 import type { Seed } from "./types.js";
 
@@ -148,6 +148,12 @@ export class G1Env {
       }),
     );
     return this.login(id, role);
+  }
+
+  /** One job-runner pass at `now` (runWorkflows/advanceTime); null when the runtime has no runner. */
+  async runJobs(now: Date, since: Date): Promise<JobRunReport | null> {
+    if (!this.runtime.runJobs) return null;
+    return this.runtime.runJobs({ slug: this.slug, env: "draft", now, since });
   }
 
   anonymous(role = "anon"): Actor {

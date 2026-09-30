@@ -25,6 +25,7 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
+import { type RunJobsOptions, type RunJobsReport, runJobs } from "./jobs/runner.js";
 import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
 import { payRoutes, previewRoutes } from "./preview/routes.js";
 import type { SystemEnv, SystemRegistry } from "./registry.js";
@@ -64,6 +65,8 @@ export interface RuntimeApp {
   unloadSystem(input: { slug: string; env: SystemEnv }): boolean;
   /** Messages connectors would have sent (connectors: 'outbox'). */
   outbox(): OutboxMessage[];
+  /** One pass of the job runner (jobs/runner.ts) for a loaded system at `now` (G1 runWorkflows/advanceTime). */
+  runJobs(input: { slug: string; env: SystemEnv } & RunJobsOptions): Promise<RunJobsReport>;
   readonly env: RuntimeEnv;
   readonly systems: SystemCache;
 }
@@ -233,5 +236,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     loadSystem: async (input) => systems.pin(input),
     unloadSystem: (input) => systems.unpin(input.slug, input.env),
     outbox: () => [...outbox],
+    runJobs: async ({ slug, env: sysEnv, ...opts }) => {
+      const sys = await systems.resolve(slug, sysEnv);
+      if (!sys) throw new WizardError("NOT_FOUND", { message: "Система не найдена" });
+      return runJobs(sys, services, opts);
+    },
   };
 }
