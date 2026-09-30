@@ -24,7 +24,7 @@ brief: >-
 analysis:
   goals:
     - "Принимать заказы тортов через конфигуратор с ценой, которую считает сервер"
-    - "Ограничивать заказы по загрузке производства на каждый день"
+    - "Принимать заказы к дате с ограничением загрузки производства на каждый день"
     - "Брать предоплату 50% через ЮKassa и доплату при выдаче"
     - "Вести заказы по статусам и сообщать покупателю о готовности"
   segment: made_to_order
@@ -50,6 +50,7 @@ analysis:
     - { forkId: F-GD-DELIVERY, optionId: both,               evidence: "Забрать можно самому или заказать доставку" }
     - { forkId: F-NOTIFY,      optionId: telegram,           evidence: "Покупателю приходит сообщение в Telegram" }
     - { forkId: F-ACCESS,      optionId: login_required,     evidence: "Покупателю приходит сообщение ... когда торт готов" }
+    - { forkId: F-APPROVAL,    optionId: auto,               evidence: "если день занят полностью, заказать на него нельзя. При оформлении покупатель вносит предоплату" }
   unknowns: [F-LOGIN, F-STAFF, F-VISIBILITY, F-STATUSES]
   outOfScope: []
   complexity: medium
@@ -74,14 +75,6 @@ questions:
       - { id: admin_manager_moderator, label: "Владелец, администратор и кондитеры", recommended: false }
     allowCustom: true
   - id: q3
-    forkId: F-VISIBILITY
-    text: "Какие заказы видит кондитер?"
-    whyItMatters: "В небольшой кондитерской проще, когда все кондитеры видят все заказы на день; иначе заказы нужно назначать."
-    options:
-      - { id: all_see_all,   label: "Все заказы",                recommended: true }
-      - { id: assigned_only, label: "Только назначенные ему",    recommended: false }
-    allowCustom: true
-  - id: q4
     forkId: F-STATUSES
     text: "Как вести заказы в работе?"
     whyItMatters: "Доска со статусами показывает загрузку по дням; простой список короче, но этапы в нём хуже видны."
@@ -94,8 +87,7 @@ questions:
 answers:
   - { questionId: q1, forkId: F-LOGIN,      optionId: email_or_telegram, byRecommendation: false }
   - { questionId: q2, forkId: F-STAFF,      optionId: admin_manager,     byRecommendation: false }
-  - { questionId: q3, forkId: F-VISIBILITY, optionId: all_see_all,       byRecommendation: true }
-  - { questionId: q4, forkId: F-STATUSES,   optionId: pipeline_board,    byRecommendation: true }
+  - { questionId: q3, forkId: F-STATUSES,   optionId: pipeline_board,    byRecommendation: true }
 
 # ---------------------------------------------------------------- card: submit_card (без estimate/cap/cardVersion)
 # roles/data/screens/integrations/automations/pii.categories/pii.fields выводятся из spec; здесь — тексты.

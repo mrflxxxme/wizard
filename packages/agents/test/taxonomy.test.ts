@@ -94,6 +94,15 @@ describe("S3_select_forks", () => {
     expect([...scores].sort((x, y) => y - x)).toEqual(scores);
   });
 
+  test("F-INVENTORY: stock signals only, not the unpaid remainder «остаток» of a prepayment", () => {
+    const inv = FORKS.find((f) => f.id === "F-INVENTORY");
+    const withConstraint = (c: string): Analysis => ({ ...forumAnalysis(), constraints: [c] });
+    for (const c of ["Предоплата 50%, остаток — при готовности", "Оплата остатка при выдаче"])
+      expect(inv?.applies(withConstraint(c)), c).toBe(false);
+    for (const c of ["Учитывать остатки товара", "Контроль остатков", "Товар на складе", "Запас упаковки"])
+      expect(inv?.applies(withConstraint(c)), c).toBe(true);
+  });
+
   test("horizontal segment takes only horizontal forks; nothing to ask → 0 forks", () => {
     const a: Analysis = {
       goals: ["Вести список заявок"],

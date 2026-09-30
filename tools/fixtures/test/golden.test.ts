@@ -10,6 +10,7 @@ import {
   scenarioStepSchema,
   validateSpec,
 } from "../../../packages/appspec/src/index.ts";
+import { selectForks } from "../../../packages/agents/src/orchestrator/taxonomy.ts";
 import { detect } from "../../../packages/pii/src/index.ts";
 import { canonicalRequest, fixtureKey } from "../lib/format.mjs";
 import { buildGolden, loadYaml, TOOLSETS } from "../lib/golden.mjs";
@@ -206,6 +207,14 @@ describe("оркестратор: Analysis, вопросы, карточка", (
       if (ans.byRecommendation)
         expect(q.options.find((o: any) => o.id === ans.optionId).recommended).toBe(true);
     }
+  });
+
+  it("ask_questions задаёт ровно развилки S3_select_forks по этому Analysis, resolved применимы (M0-12)", () => {
+    const sel = selectForks(toolArgs("interview", 0));
+    const asked = toolArgs("interview", 1).questions.map((q: any) => q.forkId);
+    expect(unordered(asked)).toEqual(unordered(sel.asked.map((x) => x.forkId)));
+    const fromBrief = sel.decided.filter((d) => d.source === "brief").map((d) => d.forkId);
+    expect(unordered(fromBrief)).toEqual(unordered(toolArgs("interview", 0).resolved.map((r: any) => r.forkId)));
   });
 
   it("submit_card: семантика S5_card (роли в AC, AC на каждую роль с входом, id AC1..ACn, без phone_otp)", () => {

@@ -93,6 +93,21 @@ describe("fixture mode", async () => {
     expect(hardViolations(result)).toEqual([]);
   });
 
+  test("gd-01-cake-preorder reaches G0+G1 on demo/bakery (eval.yaml#thresholds.hard)", async () => {
+    const bakery = await runHarness(opts({ briefs: "gd-01-cake-preorder" }));
+    const r = bakery.runs.find((x) => x.brief === "gd-01-cake-preorder");
+    expect(r?.errors).toEqual([]);
+    expect(r).toMatchObject({ fixture: "demo/bakery", g0_pass: true, g0g1_pass: true, outcome: "succeeded" });
+    expect(r?.fixture_miss).toBe(false);
+    expect(r?.questions_asked).toBe(3);
+    expect(r?.gates.map((g) => [g.level, g.passed])).toEqual([
+      ["G0", true],
+      ["G1", true],
+    ]);
+    expect(r?.pii_leaks).toBe(0);
+    expect(hardViolations(bakery)).toEqual([]);
+  }, 180_000);
+
   test("results JSON is consumable by week0 (M0-30)", async () => {
     const file = await writeHarnessResult(result, join(tmp, "w0"));
     const parsed = JSON.parse(readFileSync(file, "utf8"));
@@ -149,10 +164,6 @@ describe("--dry-run: canaries and pii_leaks", async () => {
     expect(hardViolations(leak)).toEqual([expect.stringContaining("pii_leaks")]);
     expect(renderHarnessReport(leak)).toContain("Жёсткие пороги нарушены");
   });
-
-  // Blocked outside tools/eval: tools/fixtures/golden/bakery.yaml asks F-VISIBILITY, the orchestrator (M0-12) selects
-  // F-APPROVAL/F-INVENTORY instead → ask_questions is rejected and the retry is a FIXTURE_MISS (docs/reviews/impl-notes/M0-18.md).
-  test.todo("gd-01-cake-preorder reaches G0+G1 on demo/bakery");
 });
 
 describe("preflight and G1 inputs", () => {
