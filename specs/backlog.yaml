@@ -544,7 +544,7 @@ tasks:
     owner: platform
     parallel_group: m1-a
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: prod с данными → новая ревизия с полем → публикация → откат; данные целы"

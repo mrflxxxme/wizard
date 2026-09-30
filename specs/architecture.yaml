@@ -65,9 +65,9 @@ monorepo:
       depends_on: [appspec, llm, gates, pii]
     - id: e2e
       path: packages/e2e
-      purpose: "@wizard/e2e: Playwright-сценарии против запущенных apps (только HTTP), фикстуры demo"
+      purpose: "@wizard/e2e: Playwright-сценарии против запущенных apps (HTTP) и сквозные тесты публикации, поднимающие platform-api и runtime в процессе теста (M1-04), фикстуры demo"
       spec: specs/ui/platform-screens.yaml
-      depends_on: []
+      depends_on: []   # dev-зависимости для тестов: platform-api, runtime (M1-04); в граф пакетов не входят
   apps:
     - id: platform-api
       path: apps/platform-api
