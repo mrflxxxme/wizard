@@ -8,7 +8,7 @@ import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
-import { BLOCKER_RU, specPublishBlockers } from "../publish/blockers.js";
+import { BLOCKER_RU, prodSystemsCount, specPublishBlockers } from "../publish/blockers.js";
 import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
@@ -68,19 +68,13 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });
     const run = await tx(async (t) => {
-      // billing.yaml#plans: prod_systems counts other systems already in prod; republishing this one is free.
+      // billing.yaml#plans: prod_systems counts other systems in prod or being published (prodSystemsCount) under
+      // the org lock, so parallel first publications of two systems cannot both pass; republishing is free.
       if (s.prod_revision === null) {
         await d.billing.lock(t.trx, s.org_id);
-        const prod = await t.trx
-          .selectFrom("platform.systems")
-          .select((eb) => eb.fn.countAll<string>().as("n"))
-          .where("org_id", "=", s.org_id)
-          .where("deleted_at", "is", null)
-          .where("prod_revision", "is not", null)
-          .where("id", "!=", s.id)
-          .executeTakeFirstOrThrow();
-        await d.billing.assertLimit(t.trx, s.org_id, "prod_systems", Number(prod.n));
+        await d.billing.assertLimit(t.trx, s.org_id, "prod_systems", await prodSystemsCount(t.trx, s.org_id, s.id));
       }
+      // publish/rollback cost no credits (billing.yaml#run_charging.style_and_compliance): insertRun without billing.
       return insertRun(t, {
         orgId: s.org_id,
         systemId: s.id,

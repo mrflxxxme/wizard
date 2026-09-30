@@ -1,24 +1,10 @@
 // System slug (runtime.yaml#routing.system_slug) and schema_key (db.yaml#systems).
 import { randomBytes } from "node:crypto";
+import { RESERVED_SYSTEM_SLUGS } from "@wizard/runtime";
 
 export const SLUG_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
-export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
-  "www",
-  "mail",
-  "smtp",
-  "mx",
-  "mta-sts",
-  "autodiscover",
-  "autoconfig",
-  "api",
-  "admin",
-  "status",
-  "static",
-  "cdn",
-  "abuse",
-  "security",
-  "wizard",
-]);
+/** Shared with runtime routing (L3-29): one list for generated slugs and hosts the runtime refuses. */
+export const RESERVED_SLUGS: ReadonlySet<string> = RESERVED_SYSTEM_SLUGS;
 
 const TR: Record<string, string> = {
   а: "a",

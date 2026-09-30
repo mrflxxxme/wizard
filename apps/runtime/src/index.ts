@@ -55,6 +55,15 @@ export {
 } from "./registry.js";
 /** RoleSpec for GET /_wizard/spec. */
 export { buildRoleSpec, type RoleSpec } from "./rolespec.js";
+/** Reserved system slugs (L3-29): shared by runtime routing and platform-api slug generation. */
+export { isReservedSystemSlug, RESERVED_SYSTEM_SLUGS } from "@wizard/connectors";
+/** Own Telegram bots at publication: getMe + setWebhook (live) or recorded calls (outbox). */
+export {
+  publishTelegramBots,
+  type TelegramBotResult,
+  type TelegramPublishOptions,
+  type TelegramPublishSystem,
+} from "./telegram-publish.js";
 /** Node server on 127.0.0.1:4100. */
 export { type StartOptions, startRuntime } from "./server.js";
 export { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
