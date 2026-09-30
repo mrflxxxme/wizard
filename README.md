@@ -2,6 +2,7 @@
 
 Российская альтернатива Яндекс VibeCraft для нетехнических пользователей: система описывается в чате, агенты собирают её (данные, права, интерфейс, логику, интеграции), проверяют гейтами качества и публикуют в российском облаке. Более гибкая, с выбором моделей и без привязки к Яндексу.
 
+- **[Страница концепции v3.1 + макеты](https://claude.ai/artifact/15eJDC8h95675xwTHieTsv)** (исходник [docs/wizard-concept-v3.html](docs/wizard-concept-v3.html))
 - **[Концепция v3.1](docs/concept.md)** — актуальная версия после грилла-3
 - [Грилл-3](docs/reviews/grill-3.md) · [Грилл-2](docs/reviews/grill-2.md) · [ревью основателя v2](docs/reviews/2026-09-30-founder-review-v2.md)
 - Исследования раунда 2: [ниши](docs/research/niches-deep-dive.md) · [аудит VibeCraft](docs/research/vibecraft-audit.md) · [граница данных и фронтир-модели](docs/research/data-boundary-frontier.md)
