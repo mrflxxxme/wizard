@@ -80,15 +80,19 @@ workflows:
   build:
     milestone: M0
     lock: true
-    trigger: "approveCard (mode create|change) | «Исправить» после failed (mode=fix; cap = max(3, ceil(0.25 × cap исходной карточки)), решение агента — CHANGELOG)"
-    modes: { create: "полная сборка по карточке", change: "правка готовой системы", fix: "только цикл исправления по последним отчётам гейтов" }
+    trigger: "approveCard (mode create|change) | POST /systems/:id/fix после failed или непройденного гейта (mode=fix; cap = max(3, ceil(0.25 × cap исходной карточки)), решение агента — CHANGELOG) | M3: approve мини-карточки «Укажи и измени» (mode=point_edit)"
+    modes: { create: "полная сборка по карточке", change: "правка готовой системы", fix: "plan и ops пропускаются, старт с фазы fix по последним GateReport (platform.gate_reports)", point_edit: "M3: agents/builder.yaml#point_and_edit — правка только target.file" }
     steps:
       - { name: acquire_lock, kind: tx }
       - { name: reserve_credits, kind: tx, milestone: M1, does: "ledger hold на cap (billing.yaml#run_charging); нехватка → run_failed INSUFFICIENT_CREDITS" }
-      - { name: plan, kind: llm, callType: plan, skip_in_modes: [fix], does: "план: список сущностей, страниц, функций, критериев приёмки (agents/builder.yaml)" }
-      - { name: ops, kind: "loop(llm build_ops → tx applyOps)", does: "батчи ≤50 ops; каждый батч = ревизия; OpsError возвращаются модели структурно; событие ops_applied" }
+      - { name: draft_snapshot, kind: tx, milestone: M1, only_in_modes: [change], does: "только если prod_revision ≠ null и draft ещё не снят с этой prod-ревизии: копия строк app_<key>_prod → app_<key>_draft (≤ 1000 на сущность), значения полей pii≠none заменяются синтетикой faker-ru детерминированно по id; ПДн из prod в draft не попадают (L4-11). Тест M1-04: grep значений prod-ПДн в draft = 0" }
+      - { name: plan, kind: llm, callType: plan, skip_in_modes: [fix], does: "план: список сущностей, страниц, функций, критериев приёмки (agents/builder.yaml); событие plan_ready" }
+      - { name: ops, kind: "loop(llm build_ops → tx applyOps)", skip_in_modes: [fix], does: "батчи ≤50 ops; каждый батч = ревизия; OpsError возвращаются модели структурно; событие ops_applied" }
       - { name: code, kind: "loop(llm build_code → tx commit_files)", does: "write_file копит изменения в рабочем дереве прогона; commit_files в конце каждого LLM-шага = ревизия kind=files; событие file_written на файл" }
-      - { name: gate_G0, kind: gate, does: "runGates('G0'); при passed — esbuild-бандл в раскладке runtime.yaml#system_loading.artifact_layout, revisions.bundle_key, systems.preview_revision, затем POST /_wizard/internal/reload {systemId: schema_key, env: draft}" }
+      - { name: gate_G0, kind: gate, does: "runGates('G0') (сборка бандла — внутри G0-BUILD-01 через architecture.yaml#interfaces, отдельно не собирается)" }
+      - { name: migrate_draft, kind: tx, does: "при G0 passed: planMigration(spec(preview_revision) | null, spec, {env: 'draft'}) → toDDL + toRLS в app_<key>_draft под wizard_owner; destructive в draft допустим; при несовместимости типов — DROP SCHEMA … CASCADE и создание заново (M0)" }
+      - { name: seed_draft, kind: tx, does: "только при создании схемы: gates.generateSeed(spec, sha256(systemKey)) (qa.yaml#seed) + пользователи dev-<role> для каждой роли; повторно не сидировать (L2-04)" }
+      - { name: bundle_and_reload, kind: step, does: "бандл G0 в раскладке runtime.yaml#system_loading.artifact_layout, revisions.bundle_key, systems.preview_revision; затем POST /_wizard/internal/reload {systemId: schema_key, env: draft}" }
       - { name: gate_G1, kind: gate, does: "runGates('G1') против runtime draft с seed-данными" }
       - { name: report, kind: tx, does: "messages kind=run_report, run_finished; M1: ledger charge по факту + release hold" }
     fix_loop:
@@ -97,8 +101,8 @@ workflows:
         - { name: qa_explain, kind: llm, callType: qa_explain, does: "объяснение провалов для строителя (agents/qa.yaml)" }
         - { name: fix, kind: "loop(llm fix → tx applyOps/commit_files)" }
         - { name: regate, kind: gate, does: "повтор проваленного уровня и всех ниже" }
-      limits: "≤ 3 итерации на уровень гейта; 5 ошибок инструментов подряд → run_failed CONSECUTIVE_ERRORS (agents/builder.yaml); исчерпание итераций → run_failed GATES_FAILED с последними отчётами"
-    after_failure: "Ревизии остаются; preview_revision указывает на последнюю ревизию с G0=passed; пользователь может нажать «Исправить» (build mode=fix) или откатиться"
+      limits: "≤ 3 итерации на уровень гейта; 5 ошибок подряд считаются по agents/builder.yaml#escalation.consecutive_failures. Порог → needs_input kind=decision id=escalation, options = builder.yaml#escalation.buttons (rephrase — с freeText); без ответа 24 ч → run_failed INPUT_TIMEOUT; rollback → run_finished status=cancelled; повторный порог после retry → run_failed CONSECUTIVE_ERRORS (ошибки инструментов) или GATES_FAILED (исчерпаны итерации гейта, с последними отчётами)"
+    after_failure: "Ревизии остаются; preview_revision указывает на последнюю ревизию с G0=passed; пользователь может нажать «Исправить» (POST /systems/:id/fix, build mode=fix) или откатиться"
 
   publish:
     milestone: M1

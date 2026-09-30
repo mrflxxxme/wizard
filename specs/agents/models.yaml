@@ -161,7 +161,7 @@ call_policy:
 # ---------------------------------------------------------------- Деньги и кредиты
 credits:
   rub_per_credit: 5                       # product.yaml D10: 1 кредит ≈ 5 ₽ себестоимости LLM
-  cost_rub: "(promptTokens − cachedPromptTokens) × price.input/1e6 + cachedPromptTokens × price.cached/1e6 + completionTokens × price.output/1e6"
+  cost_rub: "(inputTokens − cachedTokens) × price.input/1e6 + cachedTokens × price.cached/1e6 + outputTokens × price.output/1e6"
   credits_per_call: "credits_milli = ceil(cost_rub × 1000 / rub_per_credit) на строку llm_calls (specs/platform/billing.yaml#credit.from_cost)"
   settlement: "charge = min(cap, Σ credits_milli по строкам прогона с billable=true); округление до 0.1 кредита — только при показе (specs/platform/billing.yaml)"
   fixture_mode: "Кредиты считаются по записанному usage фикстуры — бюджеты тестируются офлайн"
