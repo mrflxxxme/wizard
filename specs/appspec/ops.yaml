@@ -61,7 +61,7 @@ semantic_rules:                # проверяются после примен�
   - "Имена сущностей, совпадающие с ключевыми словами SQL-стандарта (session, user, order, group, ...), допускаются только если reserved.ts явно их разрешает: DDL всегда квотирует идентификаторы, поэтому session разрешено; список в packages/appspec/src/reserved.ts — источник истины"
   - "Системная сущность users (id, role, phone?, email?, telegram_id?, display_name) существует неявно; имя users зарезервировано; $user.<attr> ссылается на её поля"
   - "Перед prod: compliance.operatorName и operatorContact заполнены, если есть поля pii≠none (проверяет G2); с M2 — и operatorAddress (L3-34; security/compliance.yaml#system_package.operator)"
-  - "Поле type=file хранит только ключ хранилища; загрузка, раздача и классификация ПДн — с M2-01 (runtime.yaml, L3-18)"
+  - "Поле type=file хранит только ключ хранилища; загрузка, раздача и классификация ПДн — с M2-14 (runtime.yaml#files, L3-18); до M2 поле, которое пишет роль без isAdmin, блокирует G0-SPEC-06 (FILE_FIELD_UNSUPPORTED)"
 
 migrations:
   plan: "planMigration(prev, next) → steps[] из: create_schema, create_table, add_column, add_index, create_enum_type, alter_enum_add_value, add_fk, set_rls, drop_* (destructive), alter_column_type (destructive)"

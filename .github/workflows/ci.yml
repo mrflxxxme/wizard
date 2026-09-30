@@ -16,7 +16,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
       WIZARD_LLM_MODE: fixture
     steps:
       - uses: actions/checkout@v4

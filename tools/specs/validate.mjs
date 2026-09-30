@@ -56,7 +56,7 @@ export function parseYamlFiles(paths) {
 
 // ---------------- Minimal JSON Schema (draft 2020-12 subset) ----------------
 const ANNOTATIONS = new Set(["$schema", "$id", "$defs", "$comment", "title", "description", "default", "examples", "format", "deprecated", "readOnly", "writeOnly"]);
-const SUPPORTED = new Set(["$ref", "type", "enum", "const", "required", "properties", "additionalProperties", "items", "minItems", "maxItems", "uniqueItems", "pattern", "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "allOf", "anyOf", "oneOf", "not"]);
+const SUPPORTED = new Set(["$ref", "type", "enum", "const", "required", "properties", "additionalProperties", "items", "minItems", "maxItems", "uniqueItems", "pattern", "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "allOf", "anyOf", "oneOf", "not", "propertyNames", "minProperties", "maxProperties", "dependentSchemas", "dependentRequired", "if", "then", "else"]);
 
 const typeOf = (v) => (v === null ? "null" : Array.isArray(v) ? "array" : typeof v === "number" ? (Number.isInteger(v) ? "integer" : "number") : typeof v);
 const typeMatches = (t, v) => { const a = typeOf(v); return t === "number" ? a === "number" || a === "integer" : a === t; };
@@ -116,13 +116,27 @@ export function validateSchema(schema, data, root = schema, path = "", errors = 
       if (k in props) validateSchema(props[k], v, root, p, errors, unsupported);
       else if (schema.additionalProperties === false) errors.push({ path: ptr(p), message: `лишнее свойство "${k}" (additionalProperties: false)` });
       else if (schema.additionalProperties && typeof schema.additionalProperties === "object") validateSchema(schema.additionalProperties, v, root, p, errors, unsupported);
+      if (schema.propertyNames !== undefined) {
+        const before = errors.length;
+        validateSchema(schema.propertyNames, k, root, p, errors, unsupported);
+        if (errors.length > before) errors.splice(before, errors.length - before, { path: ptr(p), message: `имя свойства "${k}" не подходит под propertyNames` });
+      }
     }
+    const n = Object.keys(data).length;
+    if (schema.minProperties !== undefined && n < schema.minProperties) err(`свойств ${n} < minProperties ${schema.minProperties}`);
+    if (schema.maxProperties !== undefined && n > schema.maxProperties) err(`свойств ${n} > maxProperties ${schema.maxProperties}`);
+    for (const [k, req] of Object.entries(schema.dependentRequired ?? {})) if (k in data) for (const r of req) if (!(r in data)) err(`при "${k}" нужно свойство "${r}" (dependentRequired)`);
+    for (const [k, s] of Object.entries(schema.dependentSchemas ?? {})) if (k in data) validateSchema(s, data, root, path, errors, unsupported);
   }
   const sub = (s) => validateSchema(s, data, root, path, [], unsupported).length === 0;
   if (schema.allOf) for (const s of schema.allOf) validateSchema(s, data, root, path, errors, unsupported);
   if (schema.anyOf && !schema.anyOf.some(sub)) err("не подходит ни под одну схему anyOf");
   if (schema.oneOf && schema.oneOf.filter(sub).length !== 1) err("должно подходить ровно под одну схему oneOf");
   if (schema.not && sub(schema.not)) err("подходит под схему not");
+  if (schema.if !== undefined) {
+    const branch = sub(schema.if) ? schema.then : schema.else;
+    if (branch !== undefined) validateSchema(branch, data, root, path, errors, unsupported);
+  }
   return errors;
 }
 

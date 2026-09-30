@@ -619,9 +619,11 @@ components:
             IDEMPOTENCY_MISMATCH: 422
             CONSENT_REQUIRED: 422
             LAST_OWNER: 422
+            CARD_BINDING_REJECTED: 422
             OPERATOR_NAME_REQUIRED: 422
             OPERATOR_CONTACT_REQUIRED: 422
             OPERATOR_ADDRESS_REQUIRED: 422
+            INN_INVALID: 422
             PHONE_LOGIN_PLAN_REQUIRED: 422
             CARD_NOT_RU: 422
             SYSTEM_SUSPENDED: 422
@@ -632,7 +634,7 @@ components:
             INTERNAL: 500
             LLM_UNAVAILABLE: 503
         message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
-        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
+        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
     OrgRole: {enum: [owner, editor, viewer]}
     SystemStage: {enum: [interview, card, building, ready, failed], description: workflows.yaml#system_stage}
     System:

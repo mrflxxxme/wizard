@@ -99,7 +99,7 @@ data_stores:
   apps_db: "Postgres (M0 — тот же инстанс), схема на систему: app_<schemaKey>_<env>, schemaKey — 12 символов [a-z0-9] (systems.schema_key), env ∈ {draft, prod}. В хостах <system> — это slug системы"
   artifacts: "Файловое хранилище (M0 — локальная папка .data/artifacts; M2 — S3-совместимое хранилище Cloud.ru): исходники кода ревизий, бандлы"
   secrets: "M0 — .env; M2 — KMS/OpenBao в РФ. Секреты коннекторов в систему попадают только как ссылки"
-  db_roles: "wizard_platform — владелец схемы platform; мигратор систем (M0 — wizard_owner) не владеет platform и не superuser; wizard_runtime — только DML в app_* через GRANT из toDDL; M2 — мигратор на систему sys_owner_<key>_<env> и системная роль sys_<key>_<env>_system (L3-01, L3-20)"
+  db_roles: "wizard — владелец схем platform и dbos (platform/deploy.yaml#local.postgres); мигратор систем (M0 — wizard_owner) не владеет platform и не superuser; wizard_runtime — только DML в app_* через GRANT из toDDL; M2 — мигратор на систему sys_owner_<key>_<env> и системная роль sys_<key>_<env>_system (L3-01, L3-20)"
 
 environments:
   local: "Всё на одной машине: Postgres 16 локально, fixture-LLM по умолчанию, реальные ключи через .env"

@@ -23,7 +23,8 @@ import {
 import forumFixture from "./fixtures/forum.json" with { type: "json" };
 import { forumSpec } from "./helpers.js";
 
-const url = process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
+const url =
+  process.env.WIZARD_DB_URL ?? process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
 const sql = postgres(url, { max: 4, onnotice: () => {} });
 const suffix = randomBytes(4).toString("hex");
 const runtimeRole = `wz_rt_test_${suffix}`;

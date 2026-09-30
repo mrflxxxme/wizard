@@ -81,6 +81,7 @@ data_api:                                    # CRUD по AppSpec; все отв�
     LOGIN_METHOD_UNAVAILABLE: { http: 403, message: "Этот способ входа недоступен" }
     UNSUPPORTED_MEDIA_TYPE: { http: 415, message: "Такой тип файла загрузить нельзя" }
     AI_CREDITS_EXHAUSTED: { http: 402, message: "ИИ-действие временно недоступно" }
+    AI_LIMIT_REACHED: { http: 429, message: "Лимит ИИ-действий на этот месяц исчерпан" }   # M3, aiAction.monthlyLimit (agents/models.yaml)
     RATE_LIMITED: { http: 429, message: "Слишком много запросов, попробуйте позже" }
     OTP_BUDGET_EXCEEDED: { http: 429, message: "Не удалось отправить код, попробуйте позже или войдите другим способом" }
     PAYLOAD_TOO_LARGE: { http: 413, message: "Слишком большой запрос" }
@@ -169,7 +170,7 @@ static:
     service_worker: "GET /sw.js: M1 — только кэш оболочки; M2 — precache оболочки и страниц сканера, офлайн-пакет QR в IndexedDB (../connectors/qr.yaml#offline)"
   test: "Lighthouse PWA installable на draft-хосте (M2)"
 
-files:              # поле type=file (L3-18, L4-12); до M2 поле file блокирует G0 (quality/gates.yaml)
+files:              # поле type=file (L3-18, L4-12); до M2 поле file, которое пишет роль без isAdmin, блокирует G0-SPEC-06 (quality/gates.yaml)
   milestone: M2
   upload: "POST /api/files (multipart, ≤ 10 МБ) → {fileId}; право — create/update на сущность с этим полем; тип — по сигнатуре (magic bytes), allowlist image/jpeg, image/png, image/webp, application/pdf; SVG, HTML, XML, JS, архивы → 415 (../security/isolation.yaml#user_files)"
   storage: "бакет system-files в РФ (SSE-KMS), ключ — случайный id; значение поля — fileId, не URL"
@@ -181,7 +182,7 @@ ai_actions:         # M3 (L4-07); модели и лимиты — ../agents/mod
   milestone: M3
   call: "POST /api/ai/:action {entity, id} → runtime вызывает platform-api по внутреннему RPC (WIZARD_INTERNAL_TOKEN, callType runtime_ai_extract | runtime_ai_generate, только T0); результат пишется в поля записи от имени __system, мета записи _aiFilled: string[]"
   triggers: "кнопка (SDK useAiAction, sdk.md §3) и шаг воркфлоу ai_extract / ai_generate; разовый backfill старых записей — по флагу из change-карточки (прогон на платформе, ≤ aiAction.monthlyLimit)"
-  limits: "aiAction.monthlyLimit на систему; вход от public-роли — ≤ 10/ч на IP (L3-41); исчерпание кредитов org → 402 AI_CREDITS_EXHAUSTED; вывод generate — только текст, не HTML"
+  limits: "aiAction.monthlyLimit на систему (превышение → 429 AI_LIMIT_REACHED без вызова модели); вход от public-роли — ≤ 10/ч на IP (L3-41); исчерпание кредитов org → 402 AI_CREDITS_EXHAUSTED; вывод generate — только текст, не HTML"
   test: "кнопка → поле заполнено, RecordCard показывает «заполнено ИИ»; 11-й вызов public-роли за час → 429"
 
 service_endpoints:

@@ -241,7 +241,8 @@ function hostileSpec(h: string[]): AppSpec {
 // ------------------------------------------------------------------------------------------------
 // Real Postgres
 
-const url = process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
+const url =
+  process.env.WIZARD_DB_URL ?? process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
 const sql = postgres(url, { max: 2, onnotice: () => {} });
 const suffix = randomBytes(4).toString("hex");
 const owner = `wz_sys_owner_test_${suffix}`;

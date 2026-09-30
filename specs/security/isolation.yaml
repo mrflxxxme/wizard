@@ -71,8 +71,9 @@ db_access:                          # L5, с M0
   - "Контекст пользователя: set_config('wizard.user_id', ..., true) и set_config('wizard.role', ..., true) внутри транзакции (ops.yaml#migrations.rls); RLS включён на всех таблицах"
   - "MUST (PgBouncer transaction mode): lint-правило в CI (grep/biome по packages/** и apps/**) запрещает SET без LOCAL, set_config(…, false), SET ROLE без LOCAL, pg_advisory_lock (только _xact_-варианты), LISTEN/NOTIFY через пул и временные таблицы; statement_timeout и lock_timeout — только SET LOCAL (M0). Интеграционный тест через PgBouncer: две транзакции разных систем на одном серверном соединении не видят GUC и роль друг друга (M2)"
   - "Имя схемы выводится runtime из аутентифицированного systemId, никогда из аргументов функции"
+  - "Миграции (L3-01): M0–M1 — роль wizard_owner (не владелец platform, не superuser; platform/deploy.yaml#local.postgres); M2 — мигратор на систему sys_owner_<key>_<env> (ops.yaml#migrations: toDDL(plan, schema, {migrationRole})). Каждый оператор — отдельный вызов extended protocol, иначе внедрённый COMMIT сбросил бы SET LOCAL ROLE"
 
-user_files:                         # поле type=file и логотип; эндпоинт — runtime.yaml (после M2-01), логотип — api.yaml
+user_files:                         # поле type=file и логотип; эндпоинт — runtime.yaml (M2-14, после изоляции M2-01), логотип — api.yaml
   upload: "POST /api/files (runtime, M2): ≤ 10 МБ; право — create/update на сущность с этим полем; тип определяется по сигнатуре (magic bytes), не по имени и Content-Type; allowlist: image/jpeg, image/png, image/webp, application/pdf. SVG, HTML, XML, JS и архивы запрещены → 415"
   storage: "S3 в РФ, ключ — случайный id; значение поля — ссылка на объект, не URL"
   serve: "Раздача только по подписанной ссылке (TTL ≤ 15 мин) после проверки права read на строку; заголовки Content-Disposition: attachment, Content-Security-Policy: sandbox, X-Content-Type-Options: nosniff, Content-Type из allowlist"
