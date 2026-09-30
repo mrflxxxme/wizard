@@ -4,7 +4,7 @@ import type { Finding } from "../types.js";
 import { contextBefore, finding, NON_PERSONAL_NUMBER_CTX } from "../util.js";
 
 // A run of digit groups separated by one space/nbsp (or two) or a hyphen; not part of a word, decimal or longer number.
-const RUN_RE = /(?<![\dA-Za-z_]|\d[.,])\d+(?:(?:[  ]{1,2}|-)\d+)*(?![\dA-Za-z_]|[.,]\d)/gu;
+const RUN_RE = /(?<![\dA-Za-z_]|\d[.,])\d+(?:(?:[ \xa0]{1,2}|-)\d+)*(?![\dA-Za-z_]|[.,]\d)/gu;
 const GROUP_RE = /\d+/g;
 
 const SNILS_CTX = /снилс|snils|страхов\p{L}* номер/iu;
@@ -13,7 +13,7 @@ const PASSPORT_CTX = /паспорт|серия|серии|выдан|passport|�
 
 // "серия 45 06 № 123456", "паспорт 4506 № 123456", "серия 4506 номер 123456".
 const SERIES_NUMBER_RE =
-  /(?<!\d)(\d{2}[  ]?\d{2})[  ]*(?:№|N|No\.?|номер)[  ]*(\d{6})(?!\d)/gu;
+  /(?<!\d)(\d{2}[ \xa0]?\d{2})[ \xa0]*(?:№|N|No\.?|номер)[ \xa0]*(\d{6})(?!\d)/gu;
 
 interface Group {
   start: number;
@@ -106,7 +106,7 @@ export function detectNumericIds(text: string): Finding[] {
     const series = (m[1] ?? "").replace(/\D/g, "");
     if (series.startsWith("00")) continue;
     const ctx = contextBefore(text, m.index, PASSPORT_CTX, 40);
-    if (!ctx && !plausibleSeries(series)) continue;
+    if (!ctx && (!plausibleSeries(series) || contextBefore(text, m.index, NON_PERSONAL_NUMBER_CTX, 25))) continue;
     out.push(finding("passport_ru", m.index, m.index + m[0].length, ctx ? "high" : "medium"));
   }
   return out;
