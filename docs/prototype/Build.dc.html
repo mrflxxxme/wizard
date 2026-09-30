@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Wizard — сборка</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;family=Unbounded:wght@500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'Onest',system-ui,sans-serif;color:#16161A;background:#F6F4EF}
+a{color:#2F46D8}a:hover{color:#1F2FA0}
+.disp{font-family:'Unbounded','Onest',sans-serif;letter-spacing:-0.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:10px;font:600 14px 'Onest',sans-serif;text-decoration:none;border:1px solid transparent;cursor:pointer;box-sizing:border-box}
+.btn-primary{background:#2F46D8;color:#FFFFFF}.btn-primary:hover{background:#2437B8;color:#FFFFFF}
+.btn-ghost{background:#FFFFFF;color:#16161A;border-color:#DCD7CC}.btn-ghost:hover{color:#16161A;border-color:#B9B3A6}
+.ag{display:flex;align-items:center;gap:10px;font-size:14px;min-height:28px}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.seg{min-height:36px;padding:0 12px;border:0;background:transparent;font:500 13px 'Onest',sans-serif;border-radius:8px;cursor:pointer;color:#3A3A40}
+.nav-i{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:14px;color:#3A3A40}
+.rail-btn{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:#5E5E66;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #F6F4EF; box-sizing: border-box">
+  <nav aria-label="Навигация платформы" style="width: 72px; flex-shrink: 0; border-right: 1px solid #E3DFD6; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 10px; background: #FBFAF7">
+    <div class="disp" style="width: 40px; height: 40px; border-radius: 10px; background: #2F46D8; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; margin-bottom: 14px">W</div>
+  </nav>
+
+  <section aria-label="Чат и ход сборки" style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #E3DFD6; background: #FBFAF7">
+    <header style="padding: 18px 24px; border-bottom: 1px solid #E3DFD6; display: flex; align-items: center; gap: 10px">
+      <span style="font-weight: 600; font-size: 16px">Студия «Гибкость»</span>
+      <span style="font-size: 13px; color: #5E5E66">· этап 3 из 3: сборка</span>
+    </header>
+    <div style="flex-grow: 1; overflow: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px">
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: #5E5E66"><span>КОМАНДА АГЕНТОВ</span><span>96 из ≈180 кредитов</span></div>
+        <div class="ag"><span class="dot" style="background: #1F7A4D"></span><span style="width: 150px; font-weight: 600">Планировщик</span><span style="color: #5E5E66">спека: 5 сущностей, 7 экранов</span></div>
+        <div class="ag"><span class="dot" style="background: #1F7A4D"></span><span style="width: 150px; font-weight: 600">Данные и права</span><span style="color: #5E5E66">таблицы, RLS для 3 ролей</span></div>
+        <div class="ag"><span class="dot" style="background: #1F7A4D"></span><span style="width: 150px; font-weight: 600">Логика</span><span style="color: #5E5E66">3 автоматизации</span></div>
+        <div class="ag"><span class="dot" style="background: #2F46D8"></span><span style="width: 150px; font-weight: 600">Интерфейс</span><span style="color: #2437B8">экраны: 5 из 7</span></div>
+        <div class="ag"><span class="dot" style="background: #B25E09"></span><span style="width: 150px; font-weight: 600">Интеграции</span><span style="color: #7A4A06">ждёт ключ ЮKassa</span></div>
+        <div class="ag"><span class="dot" style="background: #2F46D8"></span><span style="width: 150px; font-weight: 600">Контроль качества</span><span style="color: #2437B8">сценарии: 14 из 18</span></div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">ГЕЙТЫ КАЧЕСТВА</span>
+        <div class="ag"><span class="dot" style="background: #1F7A4D"></span><span style="width: 44px; font-weight: 700">G0</span><span>Спека валидна, миграции безопасны</span></div>
+        <div class="ag"><span class="dot" style="background: #2F46D8"></span><span style="width: 44px; font-weight: 700">G1</span><span>Сценарии приёмки: 14 из 18 пройдено</span></div>
+        <div style="height: 6px; background: #EDEAE3; border-radius: 3px; margin-left: 63px"><div style="width: 78%; height: 6px; background: #2F46D8; border-radius: 3px"></div></div>
+        <div class="ag"><span class="dot" style="background: #CFC9BC"></span><span style="width: 44px; font-weight: 700">G2</span><span style="color: #5E5E66">Права, секреты, ПДн — после G1</span></div>
+      </div>
+
+      <div style="font-size: 14px; line-height: 1.55; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 600; color: #2F46D8">Оркестратор</span>
+        <span>Тест «тренер не видит оплаты» сначала упал: экран «Расписание» показывал сумму в карточке занятия. Строитель интерфейса убрал поле для роли «Тренер», тест прошёл со второй попытки.</span>
+      </div>
+
+      <div style="background: #FFF8EC; border: 1.5px solid #E8C48A; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 15px; font-weight: 600">Нужны ключи ЮKassa</span>
+        <span style="font-size: 14px; line-height: 1.5; color: #3A3A40">shopId и секретный ключ вводятся в защищённую форму. Агенты их не видят, в код попадает только ссылка на секрет.</span>
+        <div style="display: flex; gap: 8px">
+          <button class="btn btn-primary">Ввести ключи</button>
+          <button class="btn btn-ghost">Пока тестовый режим</button>
+        </div>
+      </div>
+    </div>
+    <div style="padding: 14px 24px; border-top: 1px solid #E3DFD6; display: flex; gap: 10px">
+      <label for="reply3" style="position: absolute; left: -9999px">Сообщение</label>
+      <input id="reply3" placeholder="Можно писать во время сборки…" style="flex-grow: 1; height: 44px; border: 1px solid #DCD7CC; border-radius: 12px; padding: 0 14px; font: 400 14px 'Onest',sans-serif; background: #FFFFFF">
+      <a class="btn btn-ghost" href="Ready.dc.html">Пропустить к итогу</a>
+    </div>
+  </section>
+
+  <main aria-label="Живое превью" style="flex-grow: 1; display: flex; flex-direction: column; padding: 16px 20px 20px; gap: 12px; min-width: 0">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <span style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #F3EAD9; color: #7A4A06">DRAFT</span>
+      <span style="font-size: 14px; color: #5E5E66">gibkost.draft.wizard.ru</span>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 13px; color: #5E5E66">Смотреть как</span>
+      <div role="group" aria-label="Роль в превью" style="display: flex; background: #EDEAE3; border-radius: 10px; padding: 3px">
+        <button class="seg" style="background: #FFFFFF; font-weight: 600">Администратор</button>
+        <button class="seg">Тренер</button>
+        <button class="seg">Клиент</button>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; display: flex; overflow: hidden; box-shadow: 0 12px 32px rgba(22,22,26,0.06)">
+      <div style="width: 200px; background: #FBF6F3; border-right: 1px solid #F0E4DE; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px"><span style="width: 28px; height: 28px; border-radius: 8px; background: #A8472F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">Г</span><span style="font-weight: 700; font-size: 15px">Гибкость</span></div>
+        <div class="nav-i" style="background: #F3E3DC; color: #7E3320; font-weight: 600">Расписание</div>
+        <div class="nav-i">Клиенты</div>
+        <div class="nav-i" style="color: #5E5E66">Абонементы<span style="margin-left: auto; width: 34px; height: 8px; border-radius: 4px; background: #EFE7E2"></span></div>
+        <div class="nav-i" style="color: #5E5E66">Оплаты<span style="margin-left: auto; width: 34px; height: 8px; border-radius: 4px; background: #EFE7E2"></span></div>
+        <div class="nav-i">Отчёты</div>
+      </div>
+      <div style="flex-grow: 1; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="font-size: 20px; font-weight: 700">Расписание</span>
+          <span style="font-size: 14px; color: #5E5E66">6–11 октября</span>
+          <div style="flex-grow: 1"></div>
+          <span style="font-size: 13px; padding: 8px 12px; border-radius: 8px; background: #A8472F; color: #FFFFFF; font-weight: 600">+ Занятие</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 44px repeat(6, minmax(0, 1fr)); gap: 0; flex-grow: 1; border-top: 1px solid #F1EEE7">
+          <div></div>
+          <sc-for list="{{days}}" as="d" hint-placeholder-count="6"><div style="font-size: 12px; font-weight: 600; color: #5E5E66; padding: 8px 6px; border-left: 1px solid #F1EEE7">{{d.label}}</div></sc-for>
+          <div style="display: flex; flex-direction: column">
+            <sc-for list="{{hours}}" as="h" hint-placeholder-count="12"><div style="height: 44px; font-size: 11px; color: #5E5E66; padding-top: 2px">{{h}}</div></sc-for>
+          </div>
+          <sc-for list="{{cols}}" as="c" hint-placeholder-count="6">
+            <div style="position: relative; border-left: 1px solid #F1EEE7; height: 528px">
+              <sc-for list="{{c.items}}" as="s" hint-placeholder-count="2">
+                <div style="position: absolute; left: 4px; right: 4px; top: {{s.top}}; height: {{s.h}}; background: {{s.bg}}; border-radius: 8px; padding: 6px 8px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 12px; font-weight: 700; color: #4A1D12">{{s.title}}</span>
+                  <span style="font-size: 11px; color: #6B3A2C">{{s.time}} · {{s.coach}}</span>
+                  <span style="font-size: 11px; font-weight: 600; color: #6B3A2C">{{s.fill}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var SESS = [
+  [0, 9, 'Растяжка утро', 'Анна', '8/10'], [0, 19, 'Шпагат', 'Мария', '10/10'],
+  [1, 10, 'Мягкий фитнес', 'Ольга', '5/8'], [1, 20, 'Растяжка вечер', 'Анна', '9/10'],
+  [2, 9, 'Растяжка утро', 'Анна', '6/10'], [2, 19, 'Шпагат', 'Мария', '7/10'],
+  [3, 18, 'Пилатес', 'Ольга', '8/8'], [4, 19, 'Растяжка вечер', 'Анна', '4/10'],
+  [5, 11, 'Открытый класс', 'Мария', '12/15']
+];
+class Component extends DCLogic {
+  renderVals() {
+    var names = ['Пн 6', 'Вт 7', 'Ср 8', 'Чт 9', 'Пт 10', 'Сб 11'];
+    var cols = names.map(function (n, di) {
+      return { items: SESS.filter(function (s) { return s[0] === di; }).map(function (s) {
+        var full = s[4].split('/')[0] === s[4].split('/')[1];
+        return { top: ((s[1] - 9) * 44 + 2) + 'px', h: '84px', title: s[2], coach: s[3], time: s[1] + ':00',
+          fill: full ? 'мест нет · ' + s[4] : 'записано ' + s[4], bg: full ? '#EBCFC5' : '#F6E7E2' };
+      }) };
+    });
+    var hours = []; for (var h = 9; h < 21; h++) hours.push(h + ':00');
+    return { days: names.map(function (n) { return { label: n }; }), cols: cols, hours: hours };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Wizard — система готова</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;family=Unbounded:wght@500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'Onest',system-ui,sans-serif;color:#16161A;background:#F6F4EF}
+a{color:#2F46D8}a:hover{color:#1F2FA0}
+.disp{font-family:'Unbounded','Onest',sans-serif;letter-spacing:-0.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:10px;font:600 14px 'Onest',sans-serif;text-decoration:none;border:1px solid transparent;cursor:pointer;box-sizing:border-box}
+.btn-primary{background:#2F46D8;color:#FFFFFF}.btn-primary:hover{background:#2437B8;color:#FFFFFF}
+.btn-ghost{background:#FFFFFF;color:#16161A;border-color:#DCD7CC}.btn-ghost:hover{color:#16161A;border-color:#B9B3A6}
+.g{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.45}
+.gk{width:30px;font-weight:700;flex-shrink:0}
+.seg{min-height:36px;padding:0 12px;border:0;background:transparent;font:500 13px 'Onest',sans-serif;border-radius:8px;cursor:pointer;color:#3A3A40}
+.nav-i{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:14px;color:#3A3A40}
+table.t{border-collapse:collapse;width:100%;font-size:14px}
+table.t th{text-align:left;font-size:12px;font-weight:600;color:#5E5E66;padding:10px 12px;border-bottom:1px solid #EEE7E2}
+table.t td{padding:11px 12px;border-bottom:1px solid #F5EFEB}
+.st{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #F6F4EF; box-sizing: border-box">
+  <nav aria-label="Навигация платформы" style="width: 72px; flex-shrink: 0; border-right: 1px solid #E3DFD6; display: flex; flex-direction: column; align-items: center; padding: 20px 0; background: #FBFAF7">
+    <div class="disp" style="width: 40px; height: 40px; border-radius: 10px; background: #2F46D8; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600">W</div>
+  </nav>
+
+  <section aria-label="Чат и отчёт аудита" style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #E3DFD6; background: #FBFAF7">
+    <header style="padding: 18px 24px; border-bottom: 1px solid #E3DFD6; display: flex; align-items: center; gap: 10px">
+      <span style="font-weight: 600; font-size: 16px">Студия «Гибкость»</span>
+      <span style="font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #DDF1E6; color: #155C39">готово</span>
+    </header>
+    <div style="flex-grow: 1; overflow: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px">
+      <div style="font-size: 15px; line-height: 1.55; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 600; color: #2F46D8">Оркестратор</span>
+        <span>Система собрана за 13 минут и 171 кредит. Все блокирующие проверки пройдены. Посмотрите превью от лица разных ролей, а затем публикуйте.</span>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">ОТЧЁТ АУДИТА</span>
+        <div class="g"><span class="gk" style="color: #1F7A4D">G0</span><span>Спека валидна; 5 таблиц, 0 разрушающих миграций</span></div>
+        <div class="g"><span class="gk" style="color: #1F7A4D">G1</span><span>18 из 18 сценариев приёмки пройдено (2 исправлены автоматически)</span></div>
+        <div class="g"><span class="gk" style="color: #1F7A4D">G2</span><span>Матрица прав: 3 роли × 5 сущностей × 4 операции = 60 проверок, утечек нет. Секретов в коде нет. ПДн размечены: 4 поля</span></div>
+        <div style="height: 1px; background: #EEEAE2"></div>
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">ЗАМЕЧАНИЯ (НЕ БЛОКИРУЮТ)</span>
+        <div class="g"><span class="gk" style="color: #B25E09">!</span><span>Нет сценария возврата денег за отменённое занятие</span></div>
+        <div class="g"><span class="gk" style="color: #B25E09">!</span><span>В отчёте по выручке нет фильтра по тренеру</span></div>
+        <div style="display: flex; gap: 8px"><button class="btn btn-ghost" style="min-height: 40px">Исправить оба</button><button class="btn btn-ghost" style="min-height: 40px">Оставить</button></div>
+      </div>
+      <div style="background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #5E5E66">ПУБЛИКАЦИЯ</span>
+        <label for="domain" style="font-size: 14px">Адрес системы</label>
+        <input id="domain" value="crm.gibkost.ru" style="height: 44px; border: 1px solid #DCD7CC; border-radius: 10px; padding: 0 12px; font: 500 15px 'Onest',sans-serif">
+        <span style="font-size: 13px; color: #5E5E66">Хостинг в РФ, ежедневные бэкапы, откат к любой ревизии.</span>
+      </div>
+    </div>
+    <div style="padding: 14px 24px; border-top: 1px solid #E3DFD6; display: flex; gap: 10px">
+      <a class="btn btn-ghost" href="Edit.dc.html">Попросить правки</a>
+      <a class="btn btn-primary" href="Edit.dc.html" style="flex-grow: 1">Опубликовать</a>
+    </div>
+  </section>
+
+  <main aria-label="Превью системы" style="flex-grow: 1; display: flex; flex-direction: column; padding: 16px 20px 20px; gap: 12px; min-width: 0">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <span style="font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #F3EAD9; color: #7A4A06">DRAFT</span>
+      <span style="font-size: 14px; color: #5E5E66">gibkost.draft.wizard.ru · данные тестовые</span>
+      <div style="flex-grow: 1"></div>
+      <div role="group" aria-label="Роль в превью" style="display: flex; background: #EDEAE3; border-radius: 10px; padding: 3px">
+        <button class="seg" style="background: #FFFFFF; font-weight: 600">Администратор</button>
+        <button class="seg">Тренер</button>
+        <button class="seg">Клиент</button>
+      </div>
+    </div>
+    <div style="flex-grow: 1; background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 14px; display: flex; overflow: hidden; box-shadow: 0 12px 32px rgba(22,22,26,0.06)">
+      <div style="width: 200px; background: #FBF6F3; border-right: 1px solid #F0E4DE; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px 14px"><span style="width: 28px; height: 28px; border-radius: 8px; background: #A8472F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">Г</span><span style="font-weight: 700; font-size: 15px">Гибкость</span></div>
+        <div class="nav-i">Расписание</div>
+        <div class="nav-i" style="background: #F3E3DC; color: #7E3320; font-weight: 600">Клиенты</div>
+        <div class="nav-i">Абонементы</div>
+        <div class="nav-i">Оплаты</div>
+        <div class="nav-i">Отчёты</div>
+      </div>
+      <div style="flex-grow: 1; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="font-size: 20px; font-weight: 700">Клиенты</span>
+          <span style="font-size: 14px; color: #5E5E66">124</span>
+          <div style="flex-grow: 1"></div>
+          <span style="font-size: 14px; border: 1px solid #E6DDD8; border-radius: 8px; padding: 8px 12px; color: #5E5E66; width: 220px">Поиск по имени или телефону</span>
+          <span style="font-size: 13px; padding: 8px 12px; border-radius: 8px; background: #A8472F; color: #FFFFFF; font-weight: 600">+ Клиент</span>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <span class="st" style="background: #F3E3DC; color: #7E3320; font-size: 13px; padding: 6px 12px">Все</span>
+          <span class="st" style="background: #F6F2EF; color: #3A3A40; font-size: 13px; padding: 6px 12px">Абонемент заканчивается</span>
+          <span class="st" style="background: #F6F2EF; color: #3A3A40; font-size: 13px; padding: 6px 12px">Не ходили 30 дней</span>
+        </div>
+        <table class="t">
+          <thead><tr><th scope="col">Клиент</th><th scope="col">Телефон</th><th scope="col">Абонемент</th><th scope="col">Осталось</th><th scope="col">Тренер</th><th scope="col">Последний визит</th></tr></thead>
+          <tbody>
+            <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+              <tr><td style="font-weight: 600">{{r.name}}</td><td style="color: #5E5E66">{{r.phone}}</td><td>{{r.plan}}</td><td><span class="st" style="background: {{r.bg}}; color: {{r.fg}}">{{r.left}}</span></td><td>{{r.coach}}</td><td style="color: #5E5E66">{{r.last}}</td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+var ROWS = [
+  ['Екатерина С.', '+7 9•• •••-12-40', '12 занятий', 7, 'Анна', 'вчера'],
+  ['Дарья М.', '+7 9•• •••-55-03', '8 занятий', 1, 'Мария', '3 окт'],
+  ['Ирина К.', '+7 9•• •••-31-77', '12 занятий', 10, 'Анна', 'сегодня'],
+  ['Полина В.', '+7 9•• •••-08-19', 'разовое', 0, 'Ольга', '28 сен'],
+  ['Алина Т.', '+7 9•• •••-64-21', '8 занятий', 4, 'Мария', '2 окт'],
+  ['Софья Л.', '+7 9•• •••-90-12', '12 занятий', 2, 'Анна', 'вчера'],
+  ['Мария Р.', '+7 9•• •••-47-88', '8 занятий', 6, 'Ольга', '1 окт'],
+  ['Юлия Н.', '+7 9•• •••-23-65', 'разовое', 0, 'Анна', '15 сен']
+];
+class Component extends DCLogic {
+  renderVals() {
+    return { rows: ROWS.map(function (r) {
+      var low = r[3] <= 2;
+      return { name: r[0], phone: r[1], plan: r[2], left: r[3] + ' зан.', coach: r[4], last: r[5],
+        bg: low ? '#FBE3D6' : '#EEF3EE', fg: low ? '#8A3413' : '#2C5B3C' };
+    }) };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-09-30T09:58:47Z"},
+  "title": "Wizard — прототип",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 900, "title": "1. Старт: промпт", "is_interactive": true},
+    "Interview.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 900, "title": "2. Анализ и вопросы-кнопки", "is_interactive": true},
+    "SystemCard.dc.html": {"x": 3040, "y": 0, "w": 1440, "h": 900, "title": "3. Карточка системы", "is_interactive": true},
+    "Build.dc.html": {"x": 4560, "y": 0, "w": 1440, "h": 900, "title": "4. Сборка: агенты + живое превью", "is_interactive": true},
+    "Ready.dc.html": {"x": 0, "y": 1400, "w": 1440, "h": 900, "title": "5. Готово: отчёт аудита и публикация", "is_interactive": true},
+    "Edit.dc.html": {"x": 1520, "y": 1400, "w": 1440, "h": 900, "title": "6. Доработка чатом: diff спеки", "is_interactive": true},
+    "App.dc.html": {"x": 3040, "y": 1400, "w": 1440, "h": 900, "title": "7. Созданная система у клиента (prod)"},
+    "Booking.dc.html": {"x": 4560, "y": 1400, "w": 390, "h": 844, "title": "8. Публичная запись (телефон)"}
+  },
+  "order": ["Main.dc.html", "Interview.dc.html", "SystemCard.dc.html", "Build.dc.html", "Ready.dc.html", "Edit.dc.html", "App.dc.html", "Booking.dc.html"],
+  "notes": {
+    "row1": {"x": 0, "y": -300, "text": "Платформа Wizard: от промпта до системы", "kind": "title1", "maxW": 6000},
+    "row2": {"x": 0, "y": 1110, "text": "Готовая система, доработки и то, что видят клиенты бизнеса", "kind": "title1", "maxW": 4950}
+  },
+  "designSystems": []
+}

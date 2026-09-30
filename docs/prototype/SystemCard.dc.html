@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Wizard — карточка системы</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&amp;family=Unbounded:wght@500;600&amp;display=swap">
+<style>
+body{margin:0;font-family:'Onest',system-ui,sans-serif;color:#16161A;background:#F6F4EF}
+a{color:#2F46D8}a:hover{color:#1F2FA0}
+.disp{font-family:'Unbounded','Onest',sans-serif;letter-spacing:-0.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:10px;font:600 15px 'Onest',sans-serif;text-decoration:none;border:1px solid transparent;cursor:pointer;box-sizing:border-box}
+.btn-primary{background:#2F46D8;color:#FFFFFF}.btn-primary:hover{background:#2437B8;color:#FFFFFF}
+.btn-ghost{background:#FFFFFF;color:#16161A;border-color:#DCD7CC}.btn-ghost:hover{color:#16161A;border-color:#B9B3A6}
+.sec{background:#FFFFFF;border:1px solid #E3DFD6;border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.sec-h{font-size:13px;font-weight:600;color:#5E5E66;text-transform:uppercase;letter-spacing:0.06em}
+.row{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.45}
+.pill{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap}
+table.m{border-collapse:collapse;font-size:13px;width:100%}
+table.m th{font-weight:600;color:#5E5E66;text-align:left;padding:6px 6px;border-bottom:1px solid #E3DFD6}
+table.m td{padding:7px 6px;border-bottom:1px solid #F1EEE7}
+.rail-btn{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:#5E5E66;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #F6F4EF; box-sizing: border-box">
+  <nav aria-label="Навигация платформы" style="width: 72px; flex-shrink: 0; border-right: 1px solid #E3DFD6; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 10px; background: #FBFAF7">
+    <div class="disp" style="width: 40px; height: 40px; border-radius: 10px; background: #2F46D8; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; margin-bottom: 14px">W</div>
+    <button class="rail-btn" aria-label="Новый чат"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  </nav>
+
+  <section aria-label="Чат с оркестратором" style="width: 420px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #E3DFD6; background: #FBFAF7">
+    <header style="padding: 18px 24px; border-bottom: 1px solid #E3DFD6; display: flex; align-items: center; gap: 10px">
+      <span style="font-weight: 600; font-size: 16px">Студия «Гибкость»</span>
+      <span style="font-size: 13px; color: #5E5E66">· этап 2 из 3: план</span>
+    </header>
+    <div style="flex-grow: 1; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; font-size: 15px; line-height: 1.55">
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #E3DFD6; border-radius: 12px; font-size: 14px">
+        <span style="color: #5E5E66">Ваши ответы: 5 из 5</span>
+        <span>Запись онлайн + администратор · ЮKassa и наличные · абонементы на 8 и 12 занятий · Telegram, резерв SMS · тренер видит только своё</span>
+      </div>
+      <span style="font-size: 13px; font-weight: 600; color: #2F46D8">Оркестратор</span>
+      <p style="margin: 0">Справа карточка системы. Это договорённость о том, <b>что</b> я строю. Критерии приёмки превратятся в автотесты, и система не будет опубликована, пока они не пройдут.</p>
+      <p style="margin: 0">Если что-то не так, напишите, например: «добавь заморозку абонемента» или «тренеру нужны телефоны клиентов».</p>
+    </div>
+    <div style="padding: 16px 24px; border-top: 1px solid #E3DFD6">
+      <label for="reply2" style="position: absolute; left: -9999px">Сообщение</label>
+      <input id="reply2" placeholder="Поправить карточку словами…" style="width: 100%; box-sizing: border-box; height: 48px; border: 1px solid #DCD7CC; border-radius: 12px; padding: 0 14px; font: 400 15px 'Onest',sans-serif; background: #FFFFFF">
+    </div>
+  </section>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+    <div style="flex-grow: 1; padding: 26px 32px 18px; display: flex; flex-direction: column; gap: 16px; overflow: auto">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 13px; font-weight: 600; color: #5E5E66; text-transform: uppercase; letter-spacing: 0.06em">Карточка системы · ревизия 1</span>
+          <h1 class="disp" style="margin: 0; font-size: 28px; font-weight: 600">Студия «Гибкость»: CRM и онлайн-запись</h1>
+        </div>
+        <span class="pill" style="background: #F1EEE7; color: #3A3A40; font-size: 13px; padding: 6px 12px">3 роли · 5 сущностей · 7 экранов · 3 интеграции</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+        <div class="sec">
+          <span class="sec-h">Роли и права</span>
+          <table class="m">
+            <thead><tr><th scope="col">Роль</th><th scope="col">Клиенты</th><th scope="col">Записи</th><th scope="col">Абонементы</th><th scope="col">Оплаты</th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight: 600">Администратор</td><td>всё</td><td>всё</td><td>всё</td><td>всё</td></tr>
+              <tr><td style="font-weight: 600">Тренер</td><td>свои, чтение</td><td>свои</td><td>чтение</td><td style="color: #5E5E66">нет доступа</td></tr>
+              <tr><td style="font-weight: 600">Клиент</td><td>только себя</td><td>свои</td><td>свои, чтение</td><td>свои</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="sec">
+          <span class="sec-h">Экраны</span>
+          <div class="row"><span style="flex-grow: 1">Расписание на неделю</span><span class="pill" style="background: #F1EEE7">админ, тренер</span></div>
+          <div class="row"><span style="flex-grow: 1">Клиенты и карточка клиента</span><span class="pill" style="background: #F1EEE7">админ, тренер</span></div>
+          <div class="row"><span style="flex-grow: 1">Абонементы и продления</span><span class="pill" style="background: #F1EEE7">админ</span></div>
+          <div class="row"><span style="flex-grow: 1">Оплаты и выручка</span><span class="pill" style="background: #F1EEE7">админ</span></div>
+          <div class="row"><span style="flex-grow: 1">Публичная запись с оплатой</span><span class="pill" style="background: #E6E9FB; color: #2437B8">клиент</span></div>
+          <div class="row"><span style="flex-grow: 1">Личный кабинет клиента</span><span class="pill" style="background: #E6E9FB; color: #2437B8">клиент</span></div>
+        </div>
+
+        <div class="sec">
+          <span class="sec-h">Интеграции</span>
+          <div class="row"><span style="font-weight: 600; width: 110px">ЮKassa</span><span style="flex-grow: 1">онлайн-оплата разовых занятий и абонементов</span><span class="pill" style="background: #F3EAD9; color: #7A4A06">нужен ключ</span></div>
+          <div class="row"><span style="font-weight: 600; width: 110px">Telegram</span><span style="flex-grow: 1">бот студии: напоминания и отмена записи</span><span class="pill" style="background: #DDF1E6; color: #155C39">создам сам</span></div>
+          <div class="row"><span style="font-weight: 600; width: 110px">SMS</span><span style="flex-grow: 1">резерв, если у клиента нет Telegram</span><span class="pill" style="background: #F3EAD9; color: #7A4A06">нужен аккаунт</span></div>
+        </div>
+
+        <div class="sec">
+          <span class="sec-h">Автоматизации</span>
+          <div class="row">Новая запись → уведомление тренеру</div>
+          <div class="row">За 24 ч и за 2 ч → напоминание клиенту с кнопкой «Не приду»</div>
+          <div class="row">Осталось 1 занятие → предложение продлить абонемент со ссылкой на оплату</div>
+        </div>
+
+        <div class="sec" style="grid-column: span 2">
+          <span class="sec-h">Критерии приёмки (станут автотестами)</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px">
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 1"><span>Клиент записывается по ссылке и оплачивает не более чем за 3 шага</span></div>
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 2"><span>Тренер не видит оплаты и клиентов других тренеров</span></div>
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 3"><span>При 0 оставшихся занятий запись по абонементу недоступна</span></div>
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 4"><span>Отмена позже чем за 6 ч списывает занятие</span></div>
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 5"><span>Напоминания уходят за 24 ч и за 2 ч, отмена из Telegram освобождает место</span></div>
+            <div class="row"><input type="checkbox" checked aria-label="Критерий 6"><span>Администратор видит выручку за день и месяц по способам оплаты</span></div>
+          </div>
+        </div>
+
+        <div class="sec" style="grid-column: span 2; flex-direction: row; align-items: center; gap: 14px">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2F46D8" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/></svg>
+          <span style="font-size: 14px; line-height: 1.5"><b>Персональные данные:</b> имя, телефон, email, Telegram ID клиентов. Хранятся в РФ, в черновике маскируются, в модели не передаются без необходимости.</span>
+        </div>
+      </div>
+    </div>
+
+    <footer style="padding: 16px 32px; border-top: 1px solid #E3DFD6; background: #FFFFFF; display: flex; align-items: center; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 15px; font-weight: 600">≈ 180 кредитов · 12–15 минут</span>
+        <span style="font-size: 13px; color: #5E5E66">После сборки останется ≈ 1 060 кредитов. Сверх оценки без вашего согласия не потрачу.</span>
+      </div>
+      <div style="flex-grow: 1"></div>
+      <a class="btn btn-ghost" href="Interview.dc.html">Изменить ответы</a>
+      <a class="btn btn-primary" href="Build.dc.html">Строить</a>
+    </footer>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
