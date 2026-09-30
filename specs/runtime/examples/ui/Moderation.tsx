@@ -28,25 +28,27 @@ export default function Moderation() {
     />
   );
 
+  const detail = selectedId && (
+    <>
+      <RecordCard
+        entity="speaker_application"
+        id={selectedId}
+        fields={["full_name", "company", "topic", "abstract", "stream", "status", "moderator_comment"]}
+        title={(r: Application) => r.topic}
+        actions={[
+          { id: "approve", label: "Одобрить", tone: "primary", kind: "update", patch: { status: "approved" }, visible: (r: Application) => r.status === "new" },
+          { id: "reject", label: "Отклонить", tone: "danger", kind: "update", patch: { status: "rejected" }, confirm: "Отклонить заявку?", visible: (r: Application) => r.status === "new" },
+        ]}
+      />
+      <Button variant="ghost" onClick={() => setSelectedId(null)}>Закрыть</Button>
+    </>
+  );
+
   return (
     <CabinetLayout
       title="Модерация заявок"
-      sections={SECTIONS.map((s) => ({ id: s.id, label: s.label, content: table(s.id) }))}
       defaultSection="new"
-    >
-      {selectedId && (
-        <RecordCard
-          entity="speaker_application"
-          id={selectedId}
-          fields={["full_name", "company", "topic", "abstract", "stream", "status", "moderator_comment"]}
-          title={(r: Application) => r.topic}
-          actions={[
-            { id: "approve", label: "Одобрить", tone: "primary", kind: "update", patch: { status: "approved" }, visible: (r: Application) => r.status === "new" },
-            { id: "reject", label: "Отклонить", tone: "danger", kind: "update", patch: { status: "rejected" }, confirm: "Отклонить заявку?", visible: (r: Application) => r.status === "new" },
-          ]}
-        />
-      )}
-      {selectedId && <Button variant="ghost" onClick={() => setSelectedId(null)}>Закрыть</Button>}
-    </CabinetLayout>
+      sections={SECTIONS.map((s) => ({ id: s.id, label: s.label, content: <>{table(s.id)}{detail}</> }))}
+    />
   );
 }

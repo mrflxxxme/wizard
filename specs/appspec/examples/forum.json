@@ -43,9 +43,9 @@
         {"name": "ticket_type", "label": "Тип билета", "type": "ref", "required": true, "ref": {"entity": "ticket_type"}},
         {"name": "stream", "label": "Поток", "type": "ref", "required": true, "ref": {"entity": "stream"}},
         {"name": "holder_user", "label": "Владелец", "type": "ref", "required": true, "ref": {"entity": "users"}},
-        {"name": "holder_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic"},
-        {"name": "holder_email", "label": "Email", "type": "email", "required": true, "pii": "basic"},
-        {"name": "holder_phone", "label": "Телефон", "type": "phone", "pii": "basic"},
+        {"name": "holder_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic", "piiKind": "fio"},
+        {"name": "holder_email", "label": "Email", "type": "email", "required": true, "pii": "basic", "piiKind": "email"},
+        {"name": "holder_phone", "label": "Телефон", "type": "phone", "pii": "basic", "piiKind": "phone"},
         {"name": "company", "label": "Компания", "type": "string", "maxLength": 200},
         {
           "name": "status",
@@ -75,9 +75,9 @@
       "label": "Заявка спикера",
       "fields": [
         {"name": "speaker_user", "label": "Спикер", "type": "ref", "required": true, "ref": {"entity": "users"}},
-        {"name": "full_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic"},
-        {"name": "email", "label": "Email", "type": "email", "required": true, "pii": "basic"},
-        {"name": "phone", "label": "Телефон", "type": "phone", "pii": "basic"},
+        {"name": "full_name", "label": "ФИО", "type": "string", "required": true, "maxLength": 200, "pii": "basic", "piiKind": "fio"},
+        {"name": "email", "label": "Email", "type": "email", "required": true, "pii": "basic", "piiKind": "email"},
+        {"name": "phone", "label": "Телефон", "type": "phone", "pii": "basic", "piiKind": "phone"},
         {"name": "company", "label": "Компания", "type": "string", "maxLength": 200},
         {"name": "topic", "label": "Тема", "type": "string", "required": true, "maxLength": 200},
         {"name": "abstract", "label": "Описание доклада", "type": "text", "required": true, "maxLength": 5000},
@@ -154,12 +154,12 @@
     }
   ],
   "roles": [
-    {"name": "organizer", "label": "Организатор", "access": "login", "isAdmin": true},
-    {"name": "moderator", "label": "Модератор", "access": "login"},
+    {"name": "organizer", "label": "Организатор", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"]},
+    {"name": "moderator", "label": "Модератор", "access": "login", "loginMethods": ["email_otp", "telegram"]},
     {"name": "speaker", "label": "Спикер", "access": "login", "loginMethods": ["email_otp", "telegram"]},
-    {"name": "partner", "label": "Партнёр", "access": "login"},
+    {"name": "partner", "label": "Партнёр", "access": "login", "loginMethods": ["email_otp"]},
     {"name": "participant", "label": "Участник", "access": "login", "loginMethods": ["phone_otp", "email_otp", "telegram"]},
-    {"name": "volunteer", "label": "Волонтёр на входе", "access": "login"},
+    {"name": "volunteer", "label": "Волонтёр на входе", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
     {"name": "visitor", "label": "Посетитель", "access": "public"}
   ],
   "permissions": [
@@ -313,8 +313,8 @@
       "text": "Билет нельзя купить сверх лимита потока",
       "check": {
         "type": "scenario",
-        "actors": {"org": {"role": "organizer"}, "anna": {"role": "participant"}, "boris": {"role": "participant"}, "vera": {"role": "participant"}},
         "steps": [
+          {"actors": {"org": {"role": "organizer"}, "anna": {"role": "participant"}, "boris": {"role": "participant"}, "vera": {"role": "participant"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -333,8 +333,8 @@
       "text": "Партнёр видит только свою квоту",
       "check": {
         "type": "scenario",
-        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "pb": {"role": "partner"}},
         "steps": [
+          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "pb": {"role": "partner"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -353,8 +353,8 @@
       "text": "Спикер не видит чужие заявки",
       "check": {
         "type": "scenario",
-        "actors": {"s1": {"role": "speaker"}, "s2": {"role": "speaker"}},
         "steps": [
+          {"actors": {"s1": {"role": "speaker"}, "s2": {"role": "speaker"}}},
           {"as": "s1"},
           {
             "create": {"entity": "speaker_application", "data": {"full_name": "Спикер Один", "email": "s1@example.test", "topic": "Электронные ценники", "abstract": "Кейс сети"}, "save": "a1"}
@@ -372,8 +372,8 @@
       "text": "Повторный вход по одному QR отклоняется",
       "check": {
         "type": "scenario",
-        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}},
         "steps": [
+          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -397,12 +397,11 @@
     },
     {
       "id": "AC5",
-      "text": "Сканер работает без сети и синхронизирует",
+      "text": "Сканер работает без сети и синхронизирует (M2)",
       "check": {
         "type": "scenario",
-        "milestone": "M2",
-        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}},
         "steps": [
+          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}, "vol": {"role": "volunteer"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -432,8 +431,8 @@
       "check": {
         "type": "constraint",
         "entity": "ticket",
-        "actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}},
         "steps": [
+          {"actors": {"org": {"role": "organizer"}, "pa": {"role": "partner"}, "anna": {"role": "participant"}}},
           {"as": "org"},
           {"create": {"entity": "stream", "data": {"name": "e-com", "capacity": 2}, "save": "s1"}},
           {"create": {"entity": "ticket_type", "data": {"name": "Стандарт", "kind": "standard", "price": 9900, "capacity": 100}, "save": "std"}},
@@ -460,6 +459,7 @@
   "compliance": {
     "consentText": "Я соглашаюсь на обработку моих персональных данных (ФИО, телефон, email) для регистрации на форум. Данные удаляются через 30 дней после форума.",
     "policyPage": "/privacy",
-    "operatorName": "ООО «Северный ритейл»"
+    "operatorName": "ООО «Северный ритейл»",
+    "operatorContact": "privacy@north-retail.example"
   }
 }

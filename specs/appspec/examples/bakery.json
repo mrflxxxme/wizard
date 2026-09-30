@@ -59,10 +59,10 @@
         {"name": "inscription", "label": "Надпись на торте", "type": "string", "maxLength": 60},
         {"name": "slot", "label": "Дата готовности", "type": "ref", "required": true, "ref": {"entity": "production_slot"}},
         {"name": "fulfillment", "label": "Получение", "type": "enum", "required": true, "enum": [{"value": "pickup", "label": "Самовывоз"}, {"value": "delivery", "label": "Доставка"}]},
-        {"name": "customer_name", "label": "Имя", "type": "string", "required": true, "maxLength": 120, "pii": "basic"},
-        {"name": "customer_phone", "label": "Телефон", "type": "phone", "required": true, "pii": "basic"},
-        {"name": "customer_email", "label": "Email для чека", "type": "email", "pii": "basic"},
-        {"name": "address", "label": "Адрес доставки", "type": "string", "maxLength": 300, "pii": "basic"},
+        {"name": "customer_name", "label": "Имя", "type": "string", "required": true, "maxLength": 120, "pii": "basic", "piiKind": "fio"},
+        {"name": "customer_phone", "label": "Телефон", "type": "phone", "required": true, "pii": "basic", "piiKind": "phone"},
+        {"name": "customer_email", "label": "Email для чека", "type": "email", "pii": "basic", "piiKind": "email"},
+        {"name": "address", "label": "Адрес доставки", "type": "string", "maxLength": 300, "pii": "basic", "piiKind": "address"},
         {"name": "total", "label": "Стоимость", "type": "money", "required": true, "min": 0},
         {"name": "prepay_amount", "label": "Предоплата", "type": "money", "required": true, "min": 0},
         {"name": "remaining_amount", "label": "Доплата", "type": "money", "required": true, "min": 0},
@@ -107,8 +107,8 @@
     }
   ],
   "roles": [
-    {"name": "owner", "label": "Владелец", "access": "login", "isAdmin": true},
-    {"name": "staff", "label": "Кондитер", "access": "login"},
+    {"name": "owner", "label": "Владелец", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"]},
+    {"name": "staff", "label": "Кондитер", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
     {"name": "customer", "label": "Покупатель", "access": "login", "loginMethods": ["phone_otp", "telegram"]},
     {"name": "visitor", "label": "Посетитель", "access": "public"}
   ],
@@ -223,8 +223,8 @@
       "text": "Цена считается сервером: 2,5 кг, вишня–шоколад, ягоды и надпись = 6 050 ₽",
       "check": {
         "type": "scenario",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -243,8 +243,8 @@
       "text": "Нельзя оформить заказ на день, где производство загружено полностью",
       "check": {
         "type": "scenario",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -291,8 +291,8 @@
       "text": "Предоплата — 50% стоимости, остаток — доплата при выдаче",
       "check": {
         "type": "scenario",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -326,8 +326,8 @@
       "text": "Покупатель видит только свои заказы",
       "check": {
         "type": "scenario",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -362,8 +362,8 @@
       "text": "Кондитер не может изменить сумму заказа, но видит его в работе",
       "check": {
         "type": "scenario",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -401,8 +401,8 @@
       "check": {
         "type": "constraint",
         "entity": "cake_order",
-        "actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}},
         "steps": [
+          {"actors": {"own": {"role": "owner"}, "ira": {"role": "customer"}, "oleg": {"role": "customer"}, "st": {"role": "staff"}}},
           {"as": "own"},
           {"create": {"entity": "product", "data": {"name": "Торт"}, "save": "cake"}},
           {"create": {"entity": "product_option", "data": {"product": "$cake.id", "option_group": "weight", "title": "2,5 кг", "price": 5150, "weight_kg": 2.5}, "save": "w25"}},
@@ -438,6 +438,7 @@
   "compliance": {
     "consentText": "Я соглашаюсь на обработку имени, телефона и адреса для выполнения заказа. Данные обезличиваются через 90 дней.",
     "policyPage": "/privacy",
-    "operatorName": "ИП Сахарова А. В."
+    "operatorName": "ИП Сахарова А. В.",
+    "operatorContact": "sahar.cakes@example.ru"
   }
 }

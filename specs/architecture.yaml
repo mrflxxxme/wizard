@@ -84,7 +84,7 @@ monorepo:
 
 data_stores:
   platform_db: "Postgres, схема 'platform' (аккаунты, орг., системы, ревизии, прогоны, ledger) + схема 'dbos'"
-  apps_db: "Postgres (M0 — тот же инстанс), схема на систему: app_<systemId>_<env> где env ∈ {draft, prod}"
+  apps_db: "Postgres (M0 — тот же инстанс), схема на систему: app_<schemaKey>_<env>, schemaKey — 12 символов [a-z0-9] (systems.schema_key), env ∈ {draft, prod}. В хостах <system> — это slug системы"
   artifacts: "Файловое хранилище (M0 — локальная папка .data/artifacts; M2 — S3-совместимое хранилище Cloud.ru): исходники кода ревизий, бандлы"
   secrets: "M0 — .env; M2 — KMS/OpenBao в РФ. Секреты коннекторов в систему попадают только как ссылки"
 
@@ -99,9 +99,18 @@ interfaces:                   # межпакетные контракты — м
   appspec_ops: "packages/appspec: applyOps(spec, ops[], expectedVersion) -> {spec, version} | OpsError[] (см. specs/appspec/ops.yaml)"
   migration_plan: "packages/appspec: planMigration(prevSpec, nextSpec) -> MigrationPlan {steps[], additiveOnly:boolean}"
   ddl: "packages/appspec: toDDL(plan, schemaName) -> string[] (SQL), toRLS(spec, schemaName) -> string[]"
-  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy}) -> {tier, model, result, usage, creditsCharged}"
+  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}"
   gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx) -> GateReport {passed, checks[]}"
   events: "platform-api SSE /runs/:id/events — события прогона (specs/platform/workflows.yaml#events)"
-  runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /_wizard/* (служебное)"
+  runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /_wizard/* (служебное, в т.ч. /_wizard/spec — метаданные спеки для роли)"
+  preview_bridge: "runtime /_wizard/bridge.js ↔ platform-web postMessage (specs/ui/platform-screens.yaml#preview_contract); esbuild-плагин проставляет data-wz-id и пишет wz-map.json"
+
+infra_and_libs:               # добавлено по итогам сверки спек
+  iac: "OpenTofu (M2)"
+  k8s_addons: ["cert-manager (wildcard TLS)", "gVisor RuntimeClass (W0: вопрос в Cloud.ru)"]
+  secrets: "OpenBao (MPL-2.0) или KMS Cloud.ru (M2)"
+  pooling: "PgBouncer ≥1.21, transaction mode"
+  observability: "Prometheus + Grafana + Loki (в РФ); логирование pino; без зарубежных SaaS"
+  test_data: "@faker-js/faker (локаль ru) для синтетических строк импорта и seed"
 
 coding_rules_ref: ../AGENTS.md

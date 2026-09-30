@@ -12,7 +12,7 @@ Wizard — российская альтернатива VibeCraft: пользо
 6. Коммит: `<task-id>: <что сделано>`, например `M0-03: applyOps с атомарностью и идемпотентностью`.
 
 ## Жёсткие правила (MUST / MUST NOT)
-- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR.
+- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR. Шрифты — также OFL-1.1; devDependencies — также MPL-2.0.
 - MUST NOT: использовать модели Anthropic, OpenAI, Google или xAI в продукте. Ключи провайдеров в коде не хранятся. `.env` не коммитится.
 - MUST NOT: отправлять к T1 (Z.ai) вызовы из `pii_forbidden_for_T1` и любые данные с ПДн. Всё, что идёт к T1, проходит через `packages/pii` scrub.
 - MUST NOT: копировать код из `get-convex/convex-backend` (лицензия FSL). Повторять стиль API можно.

@@ -30,7 +30,8 @@ type Tx = postgres.TransactionSql;
 
 const shared = forumSpec();
 const specs: [string, AppSpec][] = [["forum (examples or fixture)", shared]];
-if (JSON.stringify(shared) !== JSON.stringify(forumFixture)) specs.push(["forum (local fixture)", forumFixture as AppSpec]);
+if (JSON.stringify(shared) !== JSON.stringify(forumFixture))
+  specs.push(["forum (local fixture)", forumFixture as AppSpec]);
 
 beforeAll(async () => {
   await sql.unsafe(`CREATE ROLE ${quoteIdent(runtimeRole)} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
@@ -38,7 +39,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const leftovers = await sql`select nspname from pg_namespace where nspname like ${`app_test_${suffix}%`}`;
-  for (const { nspname } of leftovers) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(nspname)} CASCADE`);
+  for (const { nspname } of leftovers)
+    await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(nspname)} CASCADE`);
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(runtimeRole)}`);
   await sql.end();
 });
@@ -85,7 +87,12 @@ function valueFor(field: Field, i: number, users: string[], ids: Map<string, str
   }
 }
 
-function rowFor(entity: Entity, i: number, users: string[], ids: Map<string, string[]>): Record<string, unknown> {
+function rowFor(
+  entity: Entity,
+  i: number,
+  users: string[],
+  ids: Map<string, string[]>,
+): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   for (const f of entity.fields) {
     const v = valueFor(f, i, users, ids);
@@ -112,12 +119,15 @@ function topoOrder(spec: AppSpec): Entity[] {
   return out;
 }
 
-function insertSql(schema: string, table: string, row: Record<string, unknown>): [string, string[]] {
-  const cols = Object.keys(row);
+/** INSERT with a client-side id (no RETURNING: it would additionally require a SELECT policy). */
+function insertSql(schema: string, table: string, row: Record<string, unknown>): [string, string[], string] {
+  const id = randomUUID();
+  const full: Record<string, unknown> = { id, ...row };
+  const cols = Object.keys(full);
   const text = `insert into ${quoteIdent(schema)}.${quoteIdent(table)} (${cols.map(quoteIdent).join(", ")}) values (${cols
     .map((_, k) => `$${k + 1}`)
-    .join(", ")}) returning id`;
-  return [text, cols.map((c) => String(row[c]))];
+    .join(", ")})`;
+  return [text, cols.map((c) => String(full[c])), id];
 }
 
 /** A permission whose rowFilter is exactly `{<user-ref field>: "$user.id"}` (the owner pattern). */
@@ -140,7 +150,8 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
   const [alice, bob] = users as [string, string];
   const ids = new Map<string, string[]>();
   const roles = rev1.roles.map((r) => r.name);
-  const perm = (role: string, entity: string) => rev1.permissions.find((p) => p.role === role && p.entity === entity);
+  const perm = (role: string, entity: string) =>
+    rev1.permissions.find((p) => p.role === role && p.entity === entity);
   let rev2: AppSpec;
   const target = rev1.entities[0] as Entity;
 
@@ -169,9 +180,9 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     for (const e of topoOrder(rev1)) {
       const created: string[] = [];
       for (const i of [0, 1]) {
-        const [text, params] = insertSql(schema, e.name, rowFor(e, i, users, ids));
-        const [row] = await sql.unsafe(text, params);
-        created.push(String(row?.id));
+        const [text, params, id] = insertSql(schema, e.name, rowFor(e, i, users, ids));
+        await sql.unsafe(text, params);
+        created.push(id);
       }
       ids.set(e.name, created);
     }
@@ -183,8 +194,11 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
       join pg_namespace ns on ns.oid = c.relnamespace where ns.nspname = ${schema} and c.relkind = 'r'`;
     expect(tables.map((r) => r.relname).sort()).toEqual(rev1.entities.map((e) => e.name).sort());
     expect(tables.every((r) => r.relrowsecurity && r.relforcerowsecurity)).toBe(true);
-    const [who] = await as(roles[0] ?? null, alice, (tx) =>
-      tx`select current_user as u, (select rolbypassrls from pg_roles where rolname = current_user) as b`,
+    const [who] = await as(
+      roles[0] ?? null,
+      alice,
+      (tx) =>
+        tx`select current_user as u, (select rolbypassrls from pg_roles where rolname = current_user) as b`,
     );
     expect(who).toEqual({ u: runtimeRole, b: false });
   });
@@ -217,12 +231,17 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     for (const p of owned) {
       const key = ownerFilter(rev1, p) as string;
       for (const user of [alice, bob]) {
-        const rows = await as(p.role, user, (tx) => tx.unsafe(`select ${quoteIdent(key)} as o from ${t(p.entity)}`));
+        const rows = await as(p.role, user, (tx) =>
+          tx.unsafe(`select ${quoteIdent(key)} as o from ${t(p.entity)}`),
+        );
         expect(rows.map((r) => r.o)).toEqual([user]);
       }
       if (p.ops.includes("update")) {
         const res = await as(p.role, alice, (tx) =>
-          tx.unsafe(`update ${t(p.entity)} set ${quoteIdent(key)} = ${quoteIdent(key)} where ${quoteIdent(key)} = $1`, [bob]),
+          tx.unsafe(
+            `update ${t(p.entity)} set ${quoteIdent(key)} = ${quoteIdent(key)} where ${quoteIdent(key)} = $1`,
+            [bob],
+          ),
         );
         expect(res.count).toBe(0);
       }
@@ -231,31 +250,46 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
 
   test("create: allowed with own owner value (created_by filled from context), denied otherwise", async () => {
     const creatable = rev1.permissions.find(
-      (p) => p.ops.includes("create") && (Object.keys(p.rowFilter ?? {}).length === 0 || ownerFilter(rev1, p)),
+      (p) =>
+        p.ops.includes("create") && (Object.keys(p.rowFilter ?? {}).length === 0 || ownerFilter(rev1, p)),
     );
     expect(creatable).toBeDefined();
     const p = creatable as Permission;
     const entity = rev1.entities.find((e) => e.name === p.entity) as Entity;
-    const [text, params] = insertSql(schema, entity.name, rowFor(entity, 0, [alice], ids));
-    const [row] = await as(p.role, alice, (tx) => tx.unsafe(text, params));
-    const [stored] = await sql.unsafe(`select created_by from ${t(entity.name)} where id = $1`, [String(row?.id)]);
+    const [text, params, id] = insertSql(schema, entity.name, rowFor(entity, 0, [alice], ids));
+    await as(p.role, alice, (tx) => tx.unsafe(text, params));
+    const [stored] = await sql.unsafe(`select created_by from ${t(entity.name)} where id = $1`, [id]);
     expect(stored?.created_by).toBe(alice);
 
     const key = ownerFilter(rev1, p);
     if (key) {
-      const [foreign, fparams] = insertSql(schema, entity.name, { ...rowFor(entity, 0, [alice], ids), [key]: bob });
-      await expect(as(p.role, alice, (tx) => tx.unsafe(foreign, fparams))).rejects.toThrow(/row-level security/);
+      const [foreign, fparams] = insertSql(schema, entity.name, {
+        ...rowFor(entity, 0, [alice], ids),
+        [key]: bob,
+      });
+      await expect(as(p.role, alice, (tx) => tx.unsafe(foreign, fparams))).rejects.toThrow(
+        /row-level security/,
+      );
     }
     const denied = roles.find((r) => !perm(r, entity.name)?.ops.includes("create")) as string;
-    await expect(as(denied, alice, (tx) => tx.unsafe(text, params))).rejects.toThrow(/row-level security/);
+    const [again, aparams] = insertSql(schema, entity.name, rowFor(entity, 1, [alice], ids));
+    await expect(as(denied, alice, (tx) => tx.unsafe(again, aparams))).rejects.toThrow(/row-level security/);
   });
 
   test("revision 2 adds fields and applies as additive in prod", async () => {
     const r = applyOps(
       rev1,
       [
-        { op: "add_field", entity: target.name, field: { name: "extra_views", label: "Просмотры", type: "int", required: true, default: 0, min: 0 } },
-        { op: "add_field", entity: target.name, field: { name: "extra_tag", label: "Метка", type: "string", maxLength: 40 } },
+        {
+          op: "add_field",
+          entity: target.name,
+          field: { name: "extra_views", label: "Просмотры", type: "int", required: true, default: 0, min: 0 },
+        },
+        {
+          op: "add_field",
+          entity: target.name,
+          field: { name: "extra_tag", label: "Метка", type: "string", maxLength: 40 },
+        },
       ],
       1,
       { currentVersion: 1, env: "prod" },
@@ -272,11 +306,17 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
       { column_name: "extra_tag", is_nullable: "YES" },
       { column_name: "extra_views", is_nullable: "NO" },
     ]);
-    const existing = await sql.unsafe(`select extra_views from ${t(target.name)} where id = $1`, [ids.get(target.name)?.[0] ?? ""]);
+    const existing = await sql.unsafe(`select extra_views from ${t(target.name)} where id = $1`, [
+      ids.get(target.name)?.[0] ?? "",
+    ]);
     expect(existing).toEqual([{ extra_views: "0" }]);
-    await expect(sql.unsafe(`update ${t(target.name)} set extra_views = -1`)).rejects.toThrow(/ck_extra_views_min/);
+    await expect(sql.unsafe(`update ${t(target.name)} set extra_views = -1`)).rejects.toThrow(
+      /ck_extra_views_min/,
+    );
     // RLS survives re-application
-    const reader = roles.find((role) => perm(role, target.name)?.ops.includes("read") && !perm(role, target.name)?.rowFilter);
+    const reader = roles.find(
+      (role) => perm(role, target.name)?.ops.includes("read") && !perm(role, target.name)?.rowFilter,
+    );
     if (reader) expect(await as(reader, alice, (tx) => count(tx, target.name))).toBeGreaterThanOrEqual(2);
   });
 
@@ -287,7 +327,9 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     });
     expect(byOps.ok ? [] : byOps.errors.map((e) => e.code)).toEqual(["DESTRUCTIVE_IN_PROD"]);
 
-    const reader = rev2.permissions.find((p) => p.entity === target.name && p.ops.includes("read")) as Permission;
+    const reader = rev2.permissions.find(
+      (p) => p.entity === target.name && p.ops.includes("read"),
+    ) as Permission;
     const draft = applyOps(
       rev2,
       [
@@ -303,7 +345,8 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     expect(() => toDDL(prodPlan, schema)).toThrow(/DESTRUCTIVE_IN_PROD/);
 
     await migrate(planMigration(rev2, draft.spec, { env: "draft" }));
-    const cols = await sql`select 1 from information_schema.columns where table_schema = ${schema} and table_name = ${target.name} and column_name = 'extra_tag'`;
+    const cols =
+      await sql`select 1 from information_schema.columns where table_schema = ${schema} and table_name = ${target.name} and column_name = 'extra_tag'`;
     expect(cols).toHaveLength(0);
     expect(await as(reader.role, alice, (tx) => count(tx, target.name))).toBe(0);
   });

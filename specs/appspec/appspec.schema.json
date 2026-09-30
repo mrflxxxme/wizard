@@ -5,201 +5,829 @@
   "description": "Нормативно. Реализация: packages/appspec (zod), обязана принимать ровно этот язык. Код UI и функций хранится отдельно (files), спека ссылается на него путями.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["specVersion", "app", "entities", "roles", "permissions"],
+  "required": [
+    "specVersion",
+    "app",
+    "entities",
+    "roles",
+    "permissions"
+  ],
   "properties": {
-    "specVersion": { "const": "1" },
+    "specVersion": {
+      "const": "1"
+    },
     "app": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "locale"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "locale"
+      ],
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "description": { "type": "string", "maxLength": 2000 },
-        "locale": { "const": "ru" },
-        "template": { "type": "string", "description": "id шаблона, если сборка начата из шаблона" }
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "locale": {
+          "const": "ru"
+        },
+        "template": {
+          "type": "string",
+          "description": "id шаблона, если сборка начата из шаблона"
+        }
       }
     },
-    "theme": { "$ref": "#/$defs/theme" },
-    "entities": { "type": "array", "maxItems": 60, "items": { "$ref": "#/$defs/entity" } },
-    "roles": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/role" } },
-    "permissions": { "type": "array", "items": { "$ref": "#/$defs/permission" } },
-    "workflows": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/workflow" } },
-    "integrations": { "type": "array", "items": { "$ref": "#/$defs/integration" } },
-    "functions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/function" } },
-    "pages": { "type": "array", "maxItems": 80, "items": { "$ref": "#/$defs/page" } },
-    "aiActions": { "type": "array", "items": { "$ref": "#/$defs/aiAction" }, "description": "M3" },
-    "acceptance": { "type": "array", "items": { "$ref": "#/$defs/acceptance" } },
-    "compliance": { "$ref": "#/$defs/compliance" }
+    "theme": {
+      "$ref": "#/$defs/theme"
+    },
+    "entities": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/role"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/permission"
+      }
+    },
+    "workflows": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/workflow"
+      }
+    },
+    "integrations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/integration"
+      }
+    },
+    "functions": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/function"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "maxItems": 80,
+      "items": {
+        "$ref": "#/$defs/page"
+      }
+    },
+    "aiActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/aiAction"
+      },
+      "description": "M3"
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/acceptance"
+      }
+    },
+    "compliance": {
+      "$ref": "#/$defs/compliance"
+    }
   },
   "$defs": {
-    "ident": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$", "description": "snake_case латиница; не SQL-ключевое слово (проверяет валидатор)" },
-    "label": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Русское имя для UI" },
+    "ident": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,39}$",
+      "description": "snake_case латиница; не SQL-ключевое слово (проверяет валидатор)"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Русское имя для UI"
+    },
     "theme": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "font": { "enum": ["Onest", "Inter Tight", "Manrope", "PT Sans", "IBM Plex Sans"] },
-        "radius": { "enum": [0, 4, 8, 12, 16] },
-        "density": { "enum": ["compact", "regular"] },
-        "mode": { "enum": ["light", "dark", "auto"] },
-        "logoFile": { "type": "string" }
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "font": {
+          "enum": [
+            "Onest",
+            "Inter Tight",
+            "Manrope",
+            "PT Sans",
+            "IBM Plex Sans"
+          ]
+        },
+        "radius": {
+          "enum": [
+            0,
+            4,
+            8,
+            12,
+            16
+          ]
+        },
+        "density": {
+          "enum": [
+            "compact",
+            "regular"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "light",
+            "dark",
+            "auto"
+          ]
+        },
+        "logoFile": {
+          "type": "string"
+        }
       }
     },
-    "fieldType": { "enum": ["string", "text", "int", "decimal", "money", "bool", "date", "datetime", "enum", "ref", "file", "json", "email", "phone", "url", "qr_token"] },
-    "pii": { "enum": ["none", "basic", "special", "biometric"], "description": "special/biometric запрещены гейтом G2 в MVP" },
+    "fieldType": {
+      "enum": [
+        "string",
+        "text",
+        "int",
+        "decimal",
+        "money",
+        "bool",
+        "date",
+        "datetime",
+        "enum",
+        "ref",
+        "file",
+        "json",
+        "email",
+        "phone",
+        "url",
+        "qr_token"
+      ]
+    },
+    "pii": {
+      "enum": [
+        "none",
+        "basic",
+        "special",
+        "biometric"
+      ],
+      "description": "special/biometric запрещены гейтом G2 в MVP"
+    },
     "field": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "label", "type"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label",
+        "type"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "label": { "$ref": "#/$defs/label" },
-        "type": { "$ref": "#/$defs/fieldType" },
-        "required": { "type": "boolean", "default": false },
-        "unique": { "type": "boolean", "default": false },
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "type": {
+          "$ref": "#/$defs/fieldType"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
         "default": {},
-        "enum": { "type": "array", "items": { "type": "object", "required": ["value", "label"], "properties": { "value": { "$ref": "#/$defs/ident" }, "label": { "$ref": "#/$defs/label" } } }, "minItems": 1 },
-        "ref": { "type": "object", "required": ["entity"], "properties": { "entity": { "$ref": "#/$defs/ident" }, "onDelete": { "enum": ["restrict", "cascade", "set_null"], "default": "restrict" } } },
-        "pii": { "$ref": "#/$defs/pii", "default": "none" },
-        "min": { "type": "number" }, "max": { "type": "number" },
-        "maxLength": { "type": "integer", "minimum": 1, "maximum": 100000 }
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "label"
+            ],
+            "properties": {
+              "value": {
+                "$ref": "#/$defs/ident"
+              },
+              "label": {
+                "$ref": "#/$defs/label"
+              }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "ref": {
+          "type": "object",
+          "required": [
+            "entity"
+          ],
+          "properties": {
+            "entity": {
+              "$ref": "#/$defs/ident"
+            },
+            "onDelete": {
+              "enum": [
+                "restrict",
+                "cascade",
+                "set_null"
+              ],
+              "default": "restrict"
+            }
+          },
+          "additionalProperties": false
+        },
+        "pii": {
+          "$ref": "#/$defs/pii",
+          "default": "none"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "piiKind": {
+          "$ref": "#/$defs/piiKind"
+        }
       }
     },
     "entity": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "label", "fields"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label",
+        "fields"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "label": { "$ref": "#/$defs/label" },
-        "fields": { "type": "array", "minItems": 1, "maxItems": 80, "items": { "$ref": "#/$defs/field" } },
-        "indexes": { "type": "array", "items": { "type": "object", "required": ["fields"], "properties": { "fields": { "type": "array", "items": { "$ref": "#/$defs/ident" }, "minItems": 1 }, "unique": { "type": "boolean" } } } },
-        "ownerField": { "$ref": "#/$defs/ident", "description": "поле-ссылка на пользователя-владельца строки (для rowFilter)" },
-        "retention": { "type": "object", "required": ["deleteAfterDays"], "properties": { "deleteAfterDays": { "type": "integer", "minimum": 1, "maximum": 3650 }, "anchorField": { "$ref": "#/$defs/ident", "description": "дата-якорь (по умолчанию created_at)" }, "mode": { "enum": ["delete", "anonymize"], "default": "delete" } } }
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 80,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/ident"
+                },
+                "minItems": 1
+              },
+              "unique": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ownerField": {
+          "$ref": "#/$defs/ident",
+          "description": "поле-ссылка на пользователя-владельца строки (для rowFilter)"
+        },
+        "retention": {
+          "type": "object",
+          "required": [
+            "deleteAfterDays"
+          ],
+          "properties": {
+            "deleteAfterDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
+            },
+            "anchorField": {
+              "$ref": "#/$defs/ident",
+              "description": "дата-якорь (по умолчанию created_at)"
+            },
+            "mode": {
+              "enum": [
+                "delete",
+                "anonymize"
+              ],
+              "default": "delete"
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "description": "Системные поля id (uuid), created_at, updated_at, created_by добавляются автоматически и не объявляются"
     },
     "role": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "label", "access"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label",
+        "access"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "label": { "$ref": "#/$defs/label" },
-        "access": { "enum": ["public", "login"], "description": "public — анонимный посетитель (не более одной роли)" },
-        "loginMethods": { "type": "array", "items": { "enum": ["phone_otp", "email_otp", "telegram"] }, "minItems": 1 },
-        "isAdmin": { "type": "boolean", "default": false }
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "access": {
+          "enum": [
+            "public",
+            "login"
+          ],
+          "description": "public — анонимный посетитель (не более одной роли)"
+        },
+        "loginMethods": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "phone_otp",
+              "email_otp",
+              "telegram"
+            ]
+          },
+          "minItems": 1
+        },
+        "isAdmin": {
+          "type": "boolean",
+          "default": false
+        }
       }
     },
     "permission": {
-      "type": "object", "additionalProperties": false,
-      "required": ["role", "entity", "ops"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "entity",
+        "ops"
+      ],
       "properties": {
-        "role": { "$ref": "#/$defs/ident" },
-        "entity": { "$ref": "#/$defs/ident" },
-        "ops": { "type": "array", "items": { "enum": ["read", "create", "update", "delete"] }, "uniqueItems": true },
-        "rowFilter": { "type": "object", "description": "Ограничение строк. Значение — литерал или ссылка $user.id / $user.<attr>", "additionalProperties": { "type": ["string", "number", "boolean"] } },
-        "hiddenFields": { "type": "array", "items": { "$ref": "#/$defs/ident" } },
-        "readonlyFields": { "type": "array", "items": { "$ref": "#/$defs/ident" } }
+        "role": {
+          "$ref": "#/$defs/ident"
+        },
+        "entity": {
+          "$ref": "#/$defs/ident"
+        },
+        "ops": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "create",
+              "update",
+              "delete"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "rowFilter": {
+          "type": "object",
+          "description": "Ограничение строк. Значение — литерал или ссылка $user.id / $user.<attr>",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "hiddenFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ident"
+          }
+        },
+        "readonlyFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ident"
+          }
+        }
       },
       "description": "Запрещено всё, что не разрешено явно (deny by default)"
     },
     "workflow": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "trigger", "steps"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "trigger",
+        "steps"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "label": { "$ref": "#/$defs/label" },
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
         "trigger": {
-          "type": "object", "required": ["type"],
+          "type": "object",
+          "required": [
+            "type"
+          ],
           "properties": {
-            "type": { "enum": ["on_create", "on_update", "on_status", "schedule", "webhook", "manual"] },
-            "entity": { "$ref": "#/$defs/ident" },
-            "field": { "$ref": "#/$defs/ident" },
+            "type": {
+              "enum": [
+                "on_create",
+                "on_update",
+                "on_status",
+                "schedule",
+                "webhook",
+                "manual"
+              ]
+            },
+            "entity": {
+              "$ref": "#/$defs/ident"
+            },
+            "field": {
+              "$ref": "#/$defs/ident"
+            },
             "equals": {},
-            "cron": { "type": "string" },
-            "relative": { "type": "object", "description": "например, за 24 ч до поля даты", "properties": { "field": { "$ref": "#/$defs/ident" }, "offsetMinutes": { "type": "integer" } } }
-          }
+            "cron": {
+              "type": "string"
+            },
+            "relative": {
+              "type": "object",
+              "description": "например, за 24 ч до поля даты",
+              "properties": {
+                "field": {
+                  "$ref": "#/$defs/ident"
+                },
+                "offsetMinutes": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
         },
         "steps": {
-          "type": "array", "minItems": 1, "maxItems": 20,
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
           "items": {
-            "type": "object", "required": ["type"],
+            "type": "object",
+            "required": [
+              "type"
+            ],
             "properties": {
-              "type": { "enum": ["update", "create", "notify", "connector", "function", "ai_extract", "ai_generate", "wait"] },
-              "params": { "type": "object" }
-            }
+              "type": {
+                "enum": [
+                  "update",
+                  "create",
+                  "notify",
+                  "connector",
+                  "function",
+                  "ai_extract",
+                  "ai_generate",
+                  "wait"
+                ]
+              },
+              "params": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
           }
         }
       }
     },
     "integration": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "connector"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "connector"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "connector": { "enum": ["yookassa", "telegram", "email", "qr"] },
-        "config": { "type": "object" },
-        "secretRefs": { "type": "array", "items": { "type": "string", "pattern": "^secret://[a-z0-9_]+$" } }
-      }
-    },
-    "function": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "kind", "file"],
-      "properties": {
-        "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" },
-        "kind": { "enum": ["query", "mutation", "action"] },
-        "file": { "type": "string", "pattern": "^functions/[A-Za-z0-9_/-]+\\.ts$" },
-        "public": { "type": "boolean", "default": false },
-        "roles": { "type": "array", "items": { "$ref": "#/$defs/ident" }, "description": "кто может вызывать публичную функцию" },
-        "egress": { "type": "array", "items": { "type": "string" }, "description": "M2: хосты для egress-прокси; в M0–M1 сеть запрещена" }
-      }
-    },
-    "page": {
-      "type": "object", "additionalProperties": false,
-      "required": ["route", "title", "file", "roles"],
-      "properties": {
-        "route": { "type": "string", "pattern": "^/[a-z0-9/:_-]*$" },
-        "title": { "$ref": "#/$defs/label" },
-        "file": { "type": "string", "pattern": "^ui/[A-Za-z0-9_/-]+\\.tsx$" },
-        "roles": { "type": "array", "items": { "$ref": "#/$defs/ident" }, "minItems": 1 },
-        "nav": { "type": "boolean", "default": true }
-      }
-    },
-    "aiAction": {
-      "type": "object", "additionalProperties": false,
-      "required": ["name", "kind", "input", "output"],
-      "properties": {
-        "name": { "$ref": "#/$defs/ident" },
-        "kind": { "enum": ["extract", "generate"] },
-        "input": { "type": "object", "description": "entity + поля-источники" },
-        "output": { "type": "object", "description": "extract: поля-приёмники с типами; generate: поле-приёмник текста" },
-        "monthlyLimit": { "type": "integer", "minimum": 1 },
-        "tier": { "const": "T0" }
-      }
-    },
-    "acceptance": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "text", "check"],
-      "properties": {
-        "id": { "type": "string", "pattern": "^AC[0-9]{1,3}$" },
-        "text": { "type": "string" },
-        "check": {
-          "type": "object", "required": ["type"],
-          "properties": {
-            "type": { "enum": ["permission", "scenario", "constraint"] },
-            "role": { "$ref": "#/$defs/ident" },
-            "entity": { "$ref": "#/$defs/ident" },
-            "op": { "enum": ["read", "create", "update", "delete"] },
-            "expect": { "enum": ["allow", "deny"] },
-            "steps": { "type": "array", "description": "scenario: последовательность вызовов data API/функций с ожиданиями (specs/quality/gates.yaml#scenario_dsl)" }
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "connector": {
+          "enum": [
+            "yookassa",
+            "telegram",
+            "email",
+            "qr"
+          ]
+        },
+        "config": {
+          "type": "object"
+        },
+        "secretRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^secret://[a-z0-9_]+$"
           }
         }
       }
     },
-    "compliance": {
-      "type": "object", "additionalProperties": false,
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "file"
+      ],
       "properties": {
-        "consentText": { "type": "string" },
-        "policyPage": { "type": "string", "description": "route страницы политики обработки ПДн (генерируется автоматически)" },
-        "operatorName": { "type": "string", "description": "юрлицо/ИП клиента-оператора; заполняет пользователь до prod" }
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]{0,59}$"
+        },
+        "kind": {
+          "enum": [
+            "query",
+            "mutation",
+            "action"
+          ]
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^functions/[A-Za-z0-9_/-]+\\.ts$"
+        },
+        "public": {
+          "type": "boolean",
+          "default": false
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ident"
+          },
+          "description": "кто может вызывать публичную функцию"
+        },
+        "egress": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "M2: хосты для egress-прокси; в M0–M1 сеть запрещена"
+        }
       }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "title",
+        "file",
+        "roles"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "pattern": "^/[a-z0-9/:_-]*$"
+        },
+        "title": {
+          "$ref": "#/$defs/label"
+        },
+        "file": {
+          "type": "string",
+          "pattern": "^ui/[A-Za-z0-9_/-]+\\.tsx$"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ident"
+          },
+          "minItems": 1
+        },
+        "nav": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "aiAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "input",
+        "output"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/ident"
+        },
+        "kind": {
+          "enum": [
+            "extract",
+            "generate"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "description": "entity + поля-источники"
+        },
+        "output": {
+          "type": "object",
+          "description": "extract: поля-приёмники с типами; generate: поле-приёмник текста"
+        },
+        "monthlyLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tier": {
+          "const": "T0"
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text",
+        "check"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AC[0-9]{1,3}$"
+        },
+        "text": {
+          "type": "string"
+        },
+        "check": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "permission",
+                "scenario",
+                "constraint"
+              ]
+            },
+            "role": {
+              "$ref": "#/$defs/ident"
+            },
+            "entity": {
+              "$ref": "#/$defs/ident"
+            },
+            "op": {
+              "enum": [
+                "read",
+                "create",
+                "update",
+                "delete"
+              ]
+            },
+            "expect": {
+              "enum": [
+                "allow",
+                "deny"
+              ]
+            },
+            "steps": {
+              "type": "array",
+              "description": "scenario: последовательность вызовов data API/функций с ожиданиями (specs/quality/gates.yaml#scenario_dsl)",
+              "items": {
+                "type": "object"
+              }
+            },
+            "actors": {
+              "type": "object",
+              "description": "{alias: {role}} — синтетические пользователи сценария (gates.yaml#scenario_dsl)",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "$ref": "#/$defs/ident"
+                  }
+                }
+              }
+            },
+            "seed": {
+              "enum": [
+                "default",
+                "none"
+              ]
+            },
+            "milestone": {
+              "enum": [
+                "M0",
+                "M1",
+                "M2",
+                "M3",
+                "M4"
+              ],
+              "description": "с какой вехи проверка обязательна (раньше — skip)"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "consentText": {
+          "type": "string"
+        },
+        "policyPage": {
+          "type": "string",
+          "description": "route страницы политики обработки ПДн (генерируется автоматически)"
+        },
+        "operatorName": {
+          "type": "string",
+          "description": "юрлицо/ИП клиента-оператора; заполняет пользователь до prod"
+        },
+        "operatorContact": {
+          "type": "string",
+          "description": "email оператора для запросов субъектов ПДн; обязателен до prod (G2)"
+        },
+        "operatorInn": {
+          "type": "string",
+          "pattern": "^[0-9]{10}([0-9]{2})?$"
+        },
+        "retentionWaiver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string",
+              "minLength": 10
+            }
+          }
+        }
+      }
+    },
+    "piiKind": {
+      "enum": [
+        "fio",
+        "phone",
+        "email",
+        "address",
+        "birthdate",
+        "passport",
+        "snils",
+        "inn",
+        "card",
+        "free_text",
+        "other"
+      ],
+      "description": "Вид ПДн для точечных правил G2, шифрования и импорта"
     }
   }
 }

@@ -12,7 +12,7 @@ ui/<Page>.tsx              страница: `export default function <Page>()`;
 _generated/wizard.d.ts     результат generateTypes(spec); только чтение для агента
 ```
 
-- MUST: имя функции = `function.name` из AppSpec, файл = `function.file`. Видимость (`public`) и роли (`roles`) задаёт только спека, в коде их нет.
+- MUST: имя функции = `function.name` из AppSpec, файл = `function.file`. Прочие файлы `functions/**` (например, `functions/lib/*.ts`) — вспомогательные модули без default-экспорта функции. Видимость (`public`) и роли (`roles`) задаёт только спека, в коде их нет.
 - MUST: `functions/**` импортирует только `@wizard/sdk` и относительные файлы внутри `functions/`. `ui/**` импортирует только `@wizard/sdk`, `@wizard/ui-kit` и относительные файлы внутри `ui/`. React напрямую не импортируется: хуки React реэкспортирует `@wizard/sdk`, JSX компилируется esbuild с `jsx: "automatic"`.
 - MUST NOT (G0, статический анализ AST): `eval`, `new Function`, динамический `import()`, `require`, `process`, `globalThis`/`window` в `functions/**`, `fetch`/`XMLHttpRequest`/`WebSocket` в любом файле, `fs`, `child_process`, строки SQL как аргументы SDK, `dangerouslySetInnerHTML`, `localStorage` с полями `pii≠none`.
 - MUST: в `functions/**` нет клиентских хуков (`use*`), в `ui/**` нет определений `query/mutation/action`.

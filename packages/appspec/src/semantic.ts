@@ -18,7 +18,8 @@ const LENGTH_TYPES: ReadonlySet<FieldType> = new Set(["string", "text", "email",
 const TEMPORAL_TYPES: ReadonlySet<FieldType> = new Set(["date", "datetime"]);
 // Config keys that hold a secret value: the key (case/separator-insensitive) ENDS with one of these words,
 // so `botToken`/`secret_key` are secrets while `tokenField`/`secretRefs` are not.
-const SECRET_KEY_RE = /(secret|token|password|passwd|apikey|privatekey|secretkey|signingkey|accesskey|credentials?)$/;
+const SECRET_KEY_RE =
+  /(secret|token|password|passwd|apikey|privatekey|secretkey|signingkey|accesskey|credentials?)$/;
 const isSecretKey = (key: string) => SECRET_KEY_RE.test(key.toLowerCase().replace(/[_-]/g, ""));
 
 /** Type of a system column as seen by rowFilter/indexes/ownerField. */
