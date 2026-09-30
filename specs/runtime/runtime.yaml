@@ -65,7 +65,7 @@ data_api:                                    # CRUD по AppSpec; все отв�
     - "MUST: required, min/max, maxLength, enum, email/phone/url формат, ref существует и видим роли — иначе 422 VALIDATION_FAILED с fields[]"
     - "MUST: unique-нарушение → 409 CONFLICT с полем"
     - "MUST: qr_token-поля генерирует qr-коннектор при insert в формате ../connectors/qr.yaml#token.payload (L1-20); значение qr_token в теле create/update → 422 FIELD_READONLY (L3-30); поле qr_token у сущности без qr-интеграции — ошибка G0 (connector validateSpec)"
-    - "MUST (согласие, M0; L1-03): create/update строки сущности с полем pii≠none ролью без isAdmin требует в теле _consent: {policyVersion, textHash}, совпадающие с RoleSpec.compliance (policyVersion, consentTextHash); иначе 422 CONSENT_REQUIRED. _consent не является полем сущности. Журнал _w_consents — M2"
+    - "MUST (согласие, M0; L1-03): create строки сущности с полем pii≠none, а также update, в теле которого есть хотя бы одно поле pii≠none, ролью без isAdmin требует в теле _consent: {policyVersion, textHash}, совпадающие с RoleSpec.compliance (policyVersion, consentTextHash); иначе 422 CONSENT_REQUIRED. Update без pii-полей в теле (смена статуса, комментарий) согласия не требует: ПДн при этом не собираются. _consent не является полем сущности. Журнал _w_consents — M2"
     - "MUST: каждая запись пишет строку в _w_audit (без значений) и событие инвалидации после коммита"
   error_shape: "{error: {code, message, details?: {fields?: [{field, code, message}], allowed?: []}, requestId}}"
   error_codes:

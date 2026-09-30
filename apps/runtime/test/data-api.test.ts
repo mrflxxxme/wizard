@@ -292,7 +292,19 @@ describe("writes", () => {
       compliance: { policyVersion: string; consentTextHash: string };
     };
     const good = { policyVersion: spec.compliance.policyVersion, textHash: spec.compliance.consentTextHash };
-    expect((await post("speaker_application", { ...base, _consent: good }, "speaker")).status).toBe(201);
+    const created = await post("speaker_application", { ...base, _consent: good }, "speaker");
+    expect(created.status).toBe(201);
+    const id = ((await json(created)).item as { id: string }).id;
+    const patch = (body: unknown) =>
+      h.rt.fetch(
+        request("PATCH", A, `/api/data/speaker_application/${id}`, { cookie: cookie.speaker, body }),
+      );
+    // update without pii fields in the body collects no personal data → no consent needed
+    expect((await patch({ topic: "Новая тема" })).status).toBe(200);
+    // update that writes a pii field → consent required again
+    const piiWrite = await patch({ email: "anna2@example.ru" });
+    expect(await errCode(piiWrite)).toBe("CONSENT_REQUIRED");
+    expect((await patch({ email: "anna2@example.ru", _consent: good })).status).toBe(200);
   });
 
   it("writes _w_audit without values and publishes invalidation after commit", async () => {
