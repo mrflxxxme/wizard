@@ -18,11 +18,12 @@
     "tool_choice": "auto",
     "temperature": 0.2,
     "max_tokens": 12000,
-    "timeout_ms": 240000
+    "timeout_ms": 240000,
+    "json_schema_strict": false
   },
   "models": [
     {
-      "id": "ru-glm-5.1",
+      "id": "glm-5.1",
       "enabled": true,
       "tier": "T0",
       "provider": "cloudru",
@@ -32,7 +33,7 @@
       "_note": "Как выключить thinking у внутренних моделей Cloud.ru — уточнить; попробовать extra_body {\"chat_template_kwargs\": {\"enable_thinking\": false}} [?]"
     },
     {
-      "id": "t1-glm-5.3",
+      "id": "glm-5.3",
       "enabled": true,
       "tier": "T1",
       "provider": "zai",
@@ -41,7 +42,17 @@
       "extra_body": { "thinking": { "type": "disabled" } }
     },
     {
-      "id": "ru-kimi-k2.6",
+      "id": "ext-glm-5.2",
+      "enabled": false,
+      "tier": "T1-ext",
+      "provider": "cloudru",
+      "model": "zai-org/GLM-5.2",
+      "price": { "input": 173.15, "cached_input": 173.15, "output": 606.05 },
+      "extra_body": {},
+      "_note": "ВНЕШНЯЯ модель Cloud.ru: запросы уходят за рубеж. Только брифы без ПДн; ориентир T1, если ключа Z.ai пока нет"
+    },
+    {
+      "id": "kimi-k2.6",
       "enabled": false,
       "tier": "T0",
       "provider": "cloudru",
@@ -50,7 +61,7 @@
       "extra_body": {}
     },
     {
-      "id": "ru-deepseek-v4-pro",
+      "id": "deepseek-v4-pro",
       "enabled": false,
       "tier": "T0",
       "provider": "cloudru",
@@ -59,7 +70,7 @@
       "extra_body": {}
     },
     {
-      "id": "ru-qwen3-coder-next",
+      "id": "qwen3-coder-next",
       "enabled": false,
       "tier": "T0",
       "provider": "cloudru",

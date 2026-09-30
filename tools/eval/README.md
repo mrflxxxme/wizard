@@ -10,7 +10,7 @@ Node 22, без зависимостей и без сборки.
 # без сети, на заглушке — проверить, что стенд работает
 node tools/eval/run.mjs --dry-run
 
-# боевой прогон: модели с "enabled": true из models.json (по умолчанию ru-glm-5.1 и t1-glm-5.3)
+# боевой прогон: модели с "enabled": true из models.json (по умолчанию glm-5.1 и glm-5.3)
 export CLOUDRU_API_KEY=...        # ключ сервисного аккаунта Cloud.ru Foundation Models
 export ZAI_API_KEY=...            # ключ Z.ai
 node tools/eval/run.mjs
@@ -44,7 +44,7 @@ node tools/eval/run.mjs
 
 ## Модели и цены — `models.json`
 
-Каждая модель: `id`, `tier` (T0/T1), `provider` (`cloudru` или `zai`), `model` (id у провайдера), `price` (₽ за 1M токенов с НДС: `input`, `cached_input`, `output`), `extra_body` (добавляется в тело запроса). Можно переопределить `mode`, `response_format`, `tool_choice` (`auto`, `required`, `force`), `temperature`, `max_tokens`, `timeout_ms`.
+Каждая модель: `id` (те же id, что в каталоге `specs/agents/models.yaml`; `ext-glm-5.2` — только для eval), `tier` (T0/T1), `provider` (`cloudru` или `zai`), `model` (id у провайдера), `price` (₽ за 1M токенов с НДС: `input`, `cached_input`, `output`), `extra_body` (добавляется в тело запроса). Можно переопределить `mode`, `response_format`, `tool_choice` (`auto`, `required`, `force`), `temperature`, `max_tokens`, `timeout_ms`.
 
 - id моделей Cloud.ru взяты из [списка моделей](https://cloud.ru/docs/foundation-models/ug/topics/overview__available__models) (30.09.2026): `zai-org/GLM-5.1`, `moonshotai/Kimi-K2.6`, `deepseek-ai/DeepSeek-V4-Pro`, `Qwen/Qwen3-Coder-Next`. Все они внутренние, то есть работают в РФ.
 - Z.ai: `glm-5.3`, base URL из [quick start](https://docs.z.ai/guides/overview/quick-start). Thinking выключен через `extra_body.thinking`.
