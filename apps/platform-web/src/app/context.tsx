@@ -35,7 +35,7 @@ export function PlatformProvider({ api, children }: { api?: ApiClient; children:
   const [settings, setSettings] = useState<OrgSettings | null>(null);
   useEffect(() => {
     let live = true;
-    // M1 endpoint; in M0 the platform-api may not serve it — then no model label is shown (not a constant, L4-20).
+    // api.yaml M1 endpoint, served read-only from M0 (M0-30); on error no model label is shown (not a constant, L4-20).
     client
       .getOrgSettings(M0_ORG_ID)
       .then((s) => live && setSettings(s))

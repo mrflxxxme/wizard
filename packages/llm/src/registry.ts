@@ -1,7 +1,7 @@
 // Model registry: a typed mirror of specs/agents/models.yaml (#providers, #models, #routes, #week0_decision).
 // test/registry.test.ts checks it line by line against the YAML.
 import { createHash } from "node:crypto";
-import type { CallType, Tier } from "./types.js";
+import type { CallType, OrgPolicy, Tier } from "./types.js";
 
 export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot";
 
@@ -214,15 +214,45 @@ export const PII_FORBIDDEN_FOR_T1 = {
 /** models.yaml#week0_decision.state: t1_default=true until the week-0 eval report. */
 export const DEFAULT_BUILD_TIER: Tier = "T1";
 
-export function createRegistry(overrides: Partial<Pick<Registry, "buildDefaultTier">> = {}): Registry {
+/** Env name of the build-tier parameter (models.yaml#week0_decision.switch). */
+export const BUILD_TIER_ENV = "WIZARD_BUILD_DEFAULT_TIER";
+
+/** Build tier from env WIZARD_BUILD_DEFAULT_TIER (T0|T1); unset or empty → DEFAULT_BUILD_TIER, anything else throws. */
+export function buildDefaultTierFromEnv(env: Record<string, string | undefined> = process.env): Tier {
+  const v = env[BUILD_TIER_ENV]?.trim();
+  if (!v) return DEFAULT_BUILD_TIER;
+  if (v === "T0" || v === "T1") return v;
+  throw new Error(`${BUILD_TIER_ENV} must be T0 or T1, got ${v}`);
+}
+
+/** The single build-tier source: overrides.buildDefaultTier, else env (buildDefaultTierFromEnv). */
+export function createRegistry(
+  overrides: Partial<Pick<Registry, "buildDefaultTier">> = {},
+  env: Record<string, string | undefined> = process.env,
+): Registry {
   return {
     providers: PROVIDERS,
     models: MODELS,
     routes: ROUTES,
-    buildDefaultTier: overrides.buildDefaultTier ?? DEFAULT_BUILD_TIER,
+    buildDefaultTier: overrides.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     rubPerCredit: 5,
     piiVersion: "@wizard/pii@0.0.0",
   };
+}
+
+/** User-facing label of the RF build contour (platform-screens.yaml S1/S3, F2). */
+export const RU_BUILD_LABEL = "модели в РФ";
+const MODEL_LABELS: Record<string, string> = { "glm-5.3": "GLM-5.3" };
+
+/**
+ * api.yaml#OrgSettings.buildModelLabel: the build model by default for an org — RU_BUILD_LABEL when ruOnly,
+ * t1Restricted (anything but false, as in decideTier) or buildDefaultTier=T0; otherwise the first T1 model of build_ops.
+ */
+export function buildModelLabel(reg: Registry, policy: OrgPolicy | null | undefined): string {
+  if (policy?.ruOnly === true || policy?.t1Restricted !== false || reg.buildDefaultTier !== "T1")
+    return RU_BUILD_LABEL;
+  const id = reg.routes.build_ops.chain.T1?.[0];
+  return id ? (MODEL_LABELS[id] ?? id) : RU_BUILD_LABEL;
 }
 
 export function getModel(reg: Registry, id: string): ModelDef {

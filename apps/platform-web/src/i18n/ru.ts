@@ -12,6 +12,10 @@ const plural = (n: number, one: string, few: string, many: string): string => {
 export const fmtCredits = (n: number): string =>
   (Math.round(n * 10) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 
+/** OrgSettings.buildModelLabel of the RF build contour (@wizard/llm RU_BUILD_LABEL): no PII scrub wording then. */
+export const RU_BUILD_LABEL = "модели в РФ";
+const scrubbed = (label: string): boolean => label !== RU_BUILD_LABEL;
+
 export const ru = {
   plural,
   appName: "Wizard",
@@ -42,7 +46,7 @@ export const ru = {
     upload: "Загрузить таблицу",
     uploadHint: "Таблицу можно загрузить после первого сообщения",
     policy: (label: string | undefined) =>
-      `${label ? `Сборка: ${label}, ПДн удаляются до отправки` : "ПДн удаляются до отправки моделям"} · данные систем: только в РФ`,
+      `${label ? `Сборка: ${label}${scrubbed(label) ? ", ПДн удаляются до отправки" : ""}` : "ПДн удаляются до отправки моделям"} · данные систем: только в РФ`,
     ruOnly: "Только РФ",
     ruOnlyHint: "Переключатель «только российский контур» появится позже",
     credits: "Кредиты",
@@ -166,7 +170,7 @@ export const ru = {
     estimate: (expected: number, min?: number, max?: number) =>
       `≈ ${fmtCredits(expected)} ${plural(Math.round(expected), "кредит", "кредита", "кредитов")}${min !== undefined && max !== undefined ? ` · ${min}–${max} минут` : ""}`,
     cap: (cap: number, label: string | undefined) =>
-      `Потолок — ${fmtCredits(cap)} ${plural(cap, "кредит", "кредита", "кредитов")}.${label ? ` Сборка: ${label} без ПДн` : " Сборка без ПДн"} · данные: модели в РФ`,
+      `Потолок — ${fmtCredits(cap)} ${plural(cap, "кредит", "кредита", "кредитов")}.${label ? ` Сборка: ${label}${scrubbed(label) ? " без ПДн" : ""}` : " Сборка без ПДн"} · данные: модели в РФ`,
     edit: "Изменить",
     build: "Строить",
     updated: "Карточка обновлена",

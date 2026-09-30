@@ -176,7 +176,7 @@ export interface SystemView {
   publishBlockers?: string[];
 }
 
-/** M1 (api.yaml#OrgSettings); M0 platform-api may not serve it. */
+/** api.yaml#OrgSettings (GET served from M0 by M0-30). */
 export interface OrgSettings {
   ruOnly?: boolean;
   buildModelLabel?: string;

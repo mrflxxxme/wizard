@@ -2,7 +2,14 @@
 // run lifecycle (workflows.yaml#run_lifecycle) and restart recovery.
 import { randomUUID } from "node:crypto";
 import type { AppSpec } from "@wizard/appspec";
-import { CircuitBreaker, createRouter, LlmError, type Router, type RouterOptions } from "@wizard/llm";
+import {
+  CircuitBreaker,
+  createRegistry,
+  createRouter,
+  LlmError,
+  type Router,
+  type RouterOptions,
+} from "@wizard/llm";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
 import type { Config } from "../config.js";
@@ -658,6 +665,7 @@ export class RunEngine {
     const internal: Promise<unknown>[] = [];
     if (!routers.r) {
       const opts: RouterOptions = {
+        registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
         sink: new DbUsageSink(this.#db),
         circuit: this.#circuit,
         onEvent: (e) => {

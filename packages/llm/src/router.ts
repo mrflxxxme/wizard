@@ -80,7 +80,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
   const mode: LlmMode = opts.mode ?? (env.WIZARD_LLM_MODE as LlmMode | undefined) ?? "fixture";
   if (mode !== "fixture" && mode !== "live" && mode !== "record")
     throw new Error(`unknown WIZARD_LLM_MODE ${mode}`);
-  const reg = opts.registry ?? createRegistry();
+  const reg = opts.registry ?? createRegistry({}, env);
   const sink = opts.sink ?? new JsonlUsageSink();
   const circuit = opts.circuit ?? new CircuitBreaker(opts.now);
   const now = opts.now ?? Date.now;
