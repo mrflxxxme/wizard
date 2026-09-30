@@ -1,0 +1,50 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion must override component animations */
+/* Document-level base: tokens are set on <html> by applyTokens (ui-kit.yaml#tokens). */
+html {
+  background: var(--w-bg);
+  color: var(--w-ink);
+  font-family: var(--w-font);
+  font-size: var(--w-font-size);
+  line-height: 1.45;
+  color-scheme: var(--w-color-scheme);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+:focus-visible,
+input[type="date"]:focus,
+input[type="datetime-local"]:focus,
+input[type="date"]:focus-within,
+input[type="datetime-local"]:focus-within {
+  outline: 2px solid var(--w-focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--w-accent-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01s !important;
+  }
+}

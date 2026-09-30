@@ -1,0 +1,569 @@
+// createMemoryDataSource (ui-kit.yaml#data_binding.testing): in-memory data API with the runtime's permission
+// semantics (runtime.yaml#permissions: ops, rowFilter by $user.*, hiddenFields, readonlyFields, consent).
+import type { AppSpec, Entity, Field, Permission } from "@wizard/appspec";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { toWzError, useMutationState } from "../data/mutation.js";
+import type {
+  AsyncResult,
+  AuthApi,
+  DataSource,
+  ListQuery,
+  QrCheckRequest,
+  QrCheckResponse,
+  Rec,
+  UserResult,
+  WriteOpts,
+  WzError,
+  WzUser,
+} from "../data/types.js";
+
+export type MemoryUser = WzUser & { phone?: string; email?: string; [attr: string]: unknown };
+export type MemoryFnCtx = { user: MemoryUser | null; ds: MemoryDataSource };
+export type MemoryFn = (args: unknown, ctx: MemoryFnCtx) => unknown;
+export type MemoryCall = { op: string; entity?: string; name?: string; args: unknown[] };
+export type MemoryOutboxMessage = { channel: "phone" | "email"; destination: string; code: string };
+
+export interface MemoryOptions {
+  users?: MemoryUser[];
+  /** Initially logged-in user id (default: nobody). */
+  userId?: string | null;
+  /** query/mutation functions for useFn/useCall. */
+  functions?: Record<string, MemoryFn>;
+  /** Simulated latency of reads (default 0: synchronous). */
+  latencyMs?: number;
+  now?: () => Date;
+  /** Role of a new user created by OTP login (default: first selfSignup role). */
+  signupRole?: string;
+  /** Called by useUser().login (default: history push to /login). */
+  navigate?: (to: string) => void;
+}
+
+const SYSTEM = ["id", "created_at", "updated_at", "created_by"] as const;
+const OPS = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]);
+const MESSAGES: Record<string, [number, string]> = {
+  UNAUTHENTICATED: [401, "Войдите в систему"],
+  FORBIDDEN: [403, "Недостаточно прав для этого действия"],
+  NOT_FOUND: [404, "Запись не найдена"],
+  VALIDATION_FAILED: [422, "Проверьте заполнение полей"],
+  UNKNOWN_FIELD: [422, "Такого поля нет"],
+  FIELD_HIDDEN: [422, "Поле недоступно"],
+  FIELD_READONLY: [422, "Поле нельзя изменить"],
+  CONFLICT: [409, "Такое значение уже есть"],
+  CONSENT_REQUIRED: [422, "Нужно согласие на обработку персональных данных"],
+  LIMIT_EXCEEDED: [422, "Превышен лимит операции"],
+};
+
+export function wzError(code: string, extra: Partial<WzError> = {}): WzError {
+  const [status, message] = MESSAGES[code] ?? [400, "Операция отклонена"];
+  return { code, message, status, ...extra };
+}
+
+const cmp = (a: unknown, b: unknown): number => {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return 1;
+  if (b === null || b === undefined) return -1;
+  return (a as number | string) < (b as number | string) ? -1 : 1;
+};
+
+export interface MemoryDataSource extends DataSource {
+  /** Every DataSource call, in order (tests: "0 calls to create"). */
+  readonly calls: MemoryCall[];
+  readonly outbox: MemoryOutboxMessage[];
+  getUser(): MemoryUser | null;
+  /** Store version, bumped on every write, login and dev-sender message. */
+  version(): number;
+  setUser(id: string | null): void;
+  subscribe(cb: () => void): () => void;
+  /** Raw rows (no permission filtering). */
+  rows(entity: string): Rec[];
+  /** Next matching write fails with `error` (e.g. 403 for optimistic-update tests). */
+  failNext(op: "create" | "update" | "remove" | "call", error: WzError): void;
+  /** Permission-checked operations (also used by the hooks). */
+  list(entity: string, q?: ListQuery): { items: Rec[]; total: number };
+  get(entity: string, id: string): Rec;
+  create(entity: string, values: Record<string, unknown>, opts?: WriteOpts): Rec;
+  update(entity: string, id: string, patch: Record<string, unknown>, opts?: WriteOpts): Rec;
+  remove(entity: string, id: string): void;
+  /** Non-hook access to the dev-sender auth and QR check (tests). */
+  auth: AuthApi;
+  qrCheck(req: QrCheckRequest): QrCheckResponse;
+}
+
+export function createMemoryDataSource(
+  spec: AppSpec,
+  fixtures: Record<string, Record<string, unknown>[]> = {},
+  opts: MemoryOptions = {},
+): MemoryDataSource {
+  const now = opts.now ?? (() => new Date());
+  const db = new Map<string, Rec[]>();
+  let seq = 0;
+  const nextId = (entity: string) => `${entity}_${(++seq).toString().padStart(4, "0")}`;
+  for (const e of spec.entities) {
+    db.set(
+      e.name,
+      (fixtures[e.name] ?? []).map((r) => ({
+        created_at: now().toISOString(),
+        updated_at: null,
+        created_by: null,
+        ...r,
+        id: String(r.id ?? nextId(e.name)),
+      })),
+    );
+  }
+  const users = new Map((opts.users ?? []).map((u) => [u.id, { ...u }]));
+  let current: MemoryUser | null = opts.userId ? (users.get(opts.userId) ?? null) : null;
+  let version = 0;
+  const listeners = new Set<() => void>();
+  const bump = () => {
+    version++;
+    for (const l of [...listeners]) l();
+  };
+  const calls: MemoryCall[] = [];
+  const outbox: MemoryOutboxMessage[] = [];
+  const failures: { op: string; error: WzError }[] = [];
+  const checkins = new Map<string, { at: string; checkpoint?: string }>();
+  const challenges = new Map<string, MemoryOutboxMessage>();
+
+  const entityOf = (name: string): Entity => {
+    const e = spec.entities.find((x) => x.name === name);
+    if (!e) throw wzError("NOT_FOUND");
+    return e;
+  };
+  const roleName = () => current?.role ?? spec.roles.find((r) => r.access === "public")?.name ?? null;
+  const isAdmin = () => !!spec.roles.find((r) => r.name === roleName())?.isAdmin;
+  const perm = (entity: string, op: "read" | "create" | "update" | "delete"): Permission => {
+    const role = roleName();
+    if (!role) throw wzError("UNAUTHENTICATED");
+    const p = spec.permissions.find((x) => x.role === role && x.entity === entity);
+    if (!p?.ops.includes(op)) throw wzError(current ? "FORBIDDEN" : "UNAUTHENTICATED");
+    return p;
+  };
+  const filterValue = (v: unknown): unknown => {
+    if (typeof v !== "string" || !v.startsWith("$user.")) return v;
+    if (!current) return undefined;
+    return current[v.slice(6)] ?? undefined;
+  };
+  const inRowFilter = (p: Permission, row: Rec): boolean =>
+    Object.entries(p.rowFilter ?? {}).every(([f, v]) => {
+      const val = filterValue(v);
+      return val !== undefined && val !== null && row[f] === val;
+    });
+  const hiddenOf = (p: Permission) => new Set(p.hiddenFields ?? []);
+  const strip = (p: Permission, row: Rec): Rec => {
+    const h = hiddenOf(p);
+    return Object.fromEntries(Object.entries(row).filter(([k]) => !h.has(k))) as Rec;
+  };
+  const failIf = (op: string) => {
+    const i = failures.findIndex((f) => f.op === op);
+    if (i >= 0) {
+      const [f] = failures.splice(i, 1);
+      throw f?.error;
+    }
+  };
+
+  const matches = (row: Rec, filter: Record<string, unknown>): boolean =>
+    Object.entries(filter).every(([f, cond]) => {
+      const v = row[f];
+      if (cond === null) return v === null || v === undefined;
+      if (typeof cond !== "object" || Array.isArray(cond)) return v === cond;
+      return Object.entries(cond as Record<string, unknown>).every(([op, x]) => {
+        if (!OPS.has(op)) throw wzError("VALIDATION_FAILED");
+        switch (op) {
+          case "eq":
+            return v === x;
+          case "ne":
+            return v !== x;
+          case "lt":
+            return cmp(v, x) < 0 && v != null;
+          case "lte":
+            return cmp(v, x) <= 0 && v != null;
+          case "gt":
+            return cmp(v, x) > 0 && v != null;
+          case "gte":
+            return cmp(v, x) >= 0 && v != null;
+          case "in":
+            return Array.isArray(x) && x.includes(v);
+          default:
+            return String(v ?? "")
+              .toLowerCase()
+              .includes(String(x).toLowerCase());
+        }
+      });
+    });
+
+  const validate = (e: Entity, p: Permission, values: Record<string, unknown>, isCreate: boolean) => {
+    const fields = new Map(e.fields.map((f) => [f.name, f]));
+    const hidden = hiddenOf(p);
+    const forced = new Set(Object.keys(p.rowFilter ?? {}));
+    for (const k of Object.keys(values)) {
+      if ((SYSTEM as readonly string[]).includes(k))
+        throw wzError("FIELD_READONLY", { fields: fe(k, "READONLY") });
+      const f = fields.get(k);
+      if (!f) throw wzError("UNKNOWN_FIELD", { fields: fe(k, "UNKNOWN") });
+      if (hidden.has(k)) throw wzError("FIELD_HIDDEN", { fields: fe(k, "HIDDEN") });
+      if (f.type === "qr_token" || p.readonlyFields?.includes(k))
+        throw wzError("FIELD_READONLY", { fields: fe(k, "READONLY") });
+    }
+    const errors: { field: string; code: string; message: string }[] = [];
+    for (const f of e.fields) {
+      const has = Object.hasOwn(values, f.name);
+      const v = values[f.name];
+      const empty = v === undefined || v === null || v === "";
+      if (
+        isCreate &&
+        f.required &&
+        f.type !== "qr_token" &&
+        empty &&
+        f.default === undefined &&
+        !forced.has(f.name)
+      ) {
+        errors.push({ field: f.name, code: "REQUIRED", message: "Заполните поле" });
+        continue;
+      }
+      if (!has || v === null || v === undefined || v === "") continue;
+      const bad = fieldProblem(f, v, db);
+      if (bad) errors.push({ field: f.name, code: "INVALID", message: bad });
+    }
+    if (errors.length) throw wzError("VALIDATION_FAILED", { fields: errors });
+  };
+  /** Consent when the written values contain a pii field and the role is not admin (ui-kit.yaml RecordForm.consent). */
+  const needsConsent = (e: Entity, values: Record<string, unknown>) =>
+    !isAdmin() && e.fields.some((f) => f.pii && f.pii !== "none" && Object.hasOwn(values, f.name));
+
+  const store = {
+    subscribe: (cb: () => void) => {
+      listeners.add(cb);
+      return () => {
+        listeners.delete(cb);
+      };
+    },
+    version: () => version,
+    latencyMs: opts.latencyMs ?? 0,
+  };
+
+  const ds: MemoryDataSource = {
+    calls,
+    outbox,
+    getUser: () => current,
+    version: () => version,
+    setUser(id: string | null) {
+      current = id ? (users.get(id) ?? null) : null;
+      bump();
+    },
+    subscribe: store.subscribe,
+    rows: (entity: string) => db.get(entity) ?? [],
+    failNext(op: "create" | "update" | "remove" | "call", error: WzError) {
+      failures.push({ op, error });
+    },
+
+    list(entity: string, q: ListQuery = {}) {
+      const e = entityOf(entity);
+      const p = perm(entity, "read");
+      const hidden = hiddenOf(p);
+      const filter = { ...(q.filter ?? {}) };
+      if (q.search) {
+        const f = e.fields.find((x) => x.type === "string" && !hidden.has(x.name));
+        if (f) filter[f.name] = { contains: q.search };
+      }
+      for (const k of Object.keys(filter)) if (hidden.has(k)) throw wzError("FIELD_HIDDEN");
+      if (q.sort && hidden.has(q.sort.field)) throw wzError("FIELD_HIDDEN");
+      const pageSize = q.pageSize ?? 20;
+      if (pageSize > 100) throw wzError("VALIDATION_FAILED");
+      let rows = (db.get(entity) ?? []).filter((r) => inRowFilter(p, r) && matches(r, filter));
+      const sort = q.sort ?? { field: "created_at", dir: "desc" as const };
+      rows = [...rows].sort((a, b) => cmp(a[sort.field], b[sort.field]) * (sort.dir === "desc" ? -1 : 1));
+      const page = Math.max(1, q.page ?? 1);
+      return {
+        items: rows.slice((page - 1) * pageSize, page * pageSize).map((r) => strip(p, r)),
+        total: rows.length,
+      };
+    },
+    get(entity: string, id: string) {
+      entityOf(entity);
+      const p = perm(entity, "read");
+      const row = (db.get(entity) ?? []).find((r) => r.id === id);
+      if (!row || !inRowFilter(p, row)) throw wzError("NOT_FOUND");
+      return strip(p, row);
+    },
+    create(entity: string, values: Record<string, unknown>, o: WriteOpts = {}) {
+      calls.push({ op: "create", entity, args: [values, o] });
+      failIf("create");
+      const e = entityOf(entity);
+      const p = perm(entity, "create");
+      validate(e, p, values, true);
+      const row: Rec = {
+        id: nextId(entity),
+        created_at: now().toISOString(),
+        updated_at: null,
+        created_by: current?.id ?? null,
+      };
+      for (const f of e.fields) {
+        if (f.type === "qr_token") row[f.name] = `wzqr.${row.id}.${seq.toString(36)}`;
+        else if (Object.hasOwn(values, f.name)) row[f.name] = values[f.name];
+        else if (f.default !== undefined) row[f.name] = f.default;
+      }
+      for (const [f, v] of Object.entries(p.rowFilter ?? {})) {
+        const val = filterValue(v);
+        if (Object.hasOwn(values, f) && values[f] !== val) throw wzError("FORBIDDEN");
+        row[f] = val;
+      }
+      if (needsConsent(e, values) && !o.consent) throw wzError("CONSENT_REQUIRED");
+      db.get(entity)?.push(row);
+      bump();
+      return strip(p, row);
+    },
+    update(entity: string, id: string, patch: Record<string, unknown>, o: WriteOpts = {}) {
+      calls.push({ op: "update", entity, args: [id, patch, o] });
+      failIf("update");
+      const e = entityOf(entity);
+      const p = perm(entity, "update");
+      const row = (db.get(entity) ?? []).find((r) => r.id === id);
+      if (!row || !inRowFilter(p, row)) throw wzError("NOT_FOUND");
+      validate(e, p, patch, false);
+      if (needsConsent(e, patch) && !o.consent) throw wzError("CONSENT_REQUIRED");
+      Object.assign(row, patch, { updated_at: now().toISOString() });
+      bump();
+      return strip(p, row);
+    },
+    remove(entity: string, id: string) {
+      calls.push({ op: "remove", entity, args: [id] });
+      failIf("remove");
+      const p = perm(entity, "delete");
+      const rows = db.get(entity) ?? [];
+      const i = rows.findIndex((r) => r.id === id && inRowFilter(p, r));
+      if (i < 0) throw wzError("NOT_FOUND");
+      rows.splice(i, 1);
+      bump();
+    },
+
+    // ---------- hooks ----------
+    useList<T>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }> {
+      return useComputed(store, `${entity}:${JSON.stringify(q)}`, () => ds.list(entity, q)) as AsyncResult<{
+        items: T[];
+        total: number;
+      }>;
+    },
+    useRecord<T>(entity: string, id: string): AsyncResult<T> {
+      return useComputed(store, `${entity}:${id}`, () => ds.get(entity, id)) as AsyncResult<T>;
+    },
+    useCreate(entity: string) {
+      return useMutationState(async (values: Record<string, unknown>, o?: WriteOpts) =>
+        ds.create(entity, values, o),
+      );
+    },
+    useUpdate(entity: string) {
+      return useMutationState(async (id: string, patch: Record<string, unknown>, o?: WriteOpts) =>
+        ds.update(entity, id, patch, o),
+      );
+    },
+    useRemove(entity: string) {
+      return useMutationState(async (id: string) => ds.remove(entity, id));
+    },
+    useFn<T>(name: string, args?: unknown): AsyncResult<T> {
+      return useComputed(store, `fn:${name}:${JSON.stringify(args)}`, () => {
+        calls.push({ op: "fn", name, args: [args] });
+        const fn = opts.functions?.[name];
+        if (!fn) throw wzError("NOT_FOUND");
+        return fn(args, { user: current, ds });
+      }) as AsyncResult<T>;
+    },
+    useCall<R>(name: string) {
+      return useMutationState(async (args: unknown, o?: WriteOpts) => {
+        calls.push({ op: "call", name, args: [args, o] });
+        failIf("call");
+        const fn = opts.functions?.[name];
+        if (!fn) throw wzError("NOT_FOUND");
+        const r = fn(args, { user: current, ds }) as R;
+        bump();
+        return r;
+      });
+    },
+    useUser(): UserResult {
+      useSyncExternalStore(store.subscribe, store.version, store.version);
+      return {
+        user: current
+          ? { id: current.id, role: current.role, displayName: current.displayName, isAdmin: current.isAdmin }
+          : null,
+        isLoading: false,
+        login: (o = {}) => {
+          const q = new URLSearchParams();
+          if (o.role) q.set("role", o.role);
+          if (o.next) q.set("next", o.next);
+          const to = `/login${q.size ? `?${q}` : ""}`;
+          if (opts.navigate) opts.navigate(to);
+          else if (typeof window !== "undefined") {
+            window.history.pushState(null, "", to);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        },
+        logout: async () => {
+          current = null;
+          bump();
+        },
+      };
+    },
+    useAuth(): AuthApi {
+      return useMemo(() => auth, []);
+    },
+    useQrCheck() {
+      return useCallback(async (req: QrCheckRequest) => qrCheck(req), []);
+    },
+    get auth() {
+      return auth;
+    },
+    qrCheck: (req: QrCheckRequest) => qrCheck(req),
+  };
+
+  const auth: AuthApi = {
+    async start(channel, destination) {
+      calls.push({ op: "auth.start", args: [channel, destination] });
+      const code = String(100000 + ((seq++ * 7919 + 4243) % 900000));
+      const msg = { channel, destination, code };
+      outbox.push(msg);
+      bump();
+      const challengeId = `ch_${outbox.length}`;
+      challenges.set(challengeId, msg);
+      return { challengeId };
+    },
+    async verify(challengeId, code) {
+      const ch = challenges.get(challengeId);
+      if (!ch || ch.code !== code) throw wzError("VALIDATION_FAILED", { message: "Неверный код" });
+      challenges.delete(challengeId);
+      const key = ch.channel === "phone" ? "phone" : "email";
+      let u = [...users.values()].find((x) => x[key] === ch.destination);
+      if (!u) {
+        const role = opts.signupRole ?? spec.roles.find((r) => r.selfSignup)?.name;
+        if (!role) throw wzError("FORBIDDEN");
+        u = { id: nextId("users"), role, displayName: ch.destination, isAdmin: false, [key]: ch.destination };
+        users.set(u.id, u);
+      }
+      current = u;
+      bump();
+      return { id: u.id, role: u.role, displayName: u.displayName, isAdmin: u.isAdmin };
+    },
+    redirect() {
+      const u = [...users.values()].find((x) =>
+        spec.roles.some((r) => r.name === x.role && r.loginMethods?.includes("telegram")),
+      );
+      current = u ?? null;
+      bump();
+    },
+  };
+
+  const qrCheck = (req: QrCheckRequest): QrCheckResponse => {
+    calls.push({ op: "qrCheck", args: [req] });
+    const scannedAt = now().toISOString();
+    const qr = spec.integrations?.find((i) => i.connector === "qr")?.config as
+      | { entity?: string; tokenField?: string; validStatuses?: string[]; displayFields?: string[] }
+      | undefined;
+    const e =
+      spec.entities.find((x) => x.name === qr?.entity) ??
+      spec.entities.find((x) => x.fields.some((f) => f.type === "qr_token"));
+    const tokenField = qr?.tokenField ?? e?.fields.find((f) => f.type === "qr_token")?.name;
+    const row =
+      e && tokenField ? (db.get(e.name) ?? []).find((r) => r[tokenField] === req.payload) : undefined;
+    if (!row) return { status: "invalid", reason: "not_found", scannedAt };
+    if (qr?.validStatuses && !qr.validStatuses.includes(String(row.status)))
+      return { status: "invalid", reason: "not_valid_status", scannedAt };
+    const title = (qr?.displayFields ?? [])
+      .map((f) => refCaption(spec, db, e as Entity, f, row[f]))
+      .filter(Boolean)
+      .join(" · ");
+    const first = checkins.get(req.payload);
+    if (first)
+      return {
+        status: "duplicate",
+        scannedAt,
+        firstScannedAt: first.at,
+        ...(first.checkpoint ? { firstCheckpoint: first.checkpoint } : {}),
+        ...(title ? { ticketTitle: title } : {}),
+      };
+    checkins.set(req.payload, { at: scannedAt, ...(req.checkpoint ? { checkpoint: req.checkpoint } : {}) });
+    return { status: "ok", scannedAt, ...(title ? { ticketTitle: title } : {}) };
+  };
+
+  return ds;
+}
+
+function fe(field: string, code: string) {
+  return [{ field, code, message: "Поле нельзя передавать" }];
+}
+
+function refCaption(spec: AppSpec, db: Map<string, Rec[]>, e: Entity, field: string, v: unknown): string {
+  const f = e.fields.find((x) => x.name === field);
+  if (f?.type === "enum") return f.enum?.find((o) => o.value === v)?.label ?? String(v ?? "");
+  if (f?.type !== "ref" || !f.ref) return v == null ? "" : String(v);
+  const target = spec.entities.find((x) => x.name === f.ref?.entity);
+  const tf = target?.fields.find((x) => x.type === "string")?.name;
+  const row = (db.get(f.ref.entity) ?? []).find((r) => r.id === v);
+  return tf && row ? String(row[tf] ?? "") : String(v ?? "");
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\+7\d{10}$/;
+const URL_RE = /^https?:\/\/\S+$/;
+
+/** Server-side field validation (runtime.yaml#data_api.writes); null when valid. */
+export function fieldProblem(f: Field, v: unknown, db?: Map<string, Rec[]>): string | null {
+  switch (f.type) {
+    case "string":
+    case "text":
+      if (typeof v !== "string") return "Ожидается текст";
+      if (f.maxLength && v.length > f.maxLength) return `Не длиннее ${f.maxLength} символов`;
+      return null;
+    case "int":
+    case "decimal":
+    case "money":
+      if (typeof v !== "number" || Number.isNaN(v)) return "Ожидается число";
+      if (f.type === "int" && !Number.isInteger(v)) return "Ожидается целое число";
+      if (f.min !== undefined && v < f.min) return `Не меньше ${f.min}`;
+      if (f.max !== undefined && v > f.max) return `Не больше ${f.max}`;
+      return null;
+    case "bool":
+      return typeof v === "boolean" ? null : "Ожидается да/нет";
+    case "enum":
+      return f.enum?.some((o) => o.value === v) ? null : "Выберите значение из списка";
+    case "email":
+      return typeof v === "string" && EMAIL_RE.test(v) ? null : "Неверный email";
+    case "phone":
+      return typeof v === "string" && PHONE_RE.test(v) ? null : "Неверный телефон";
+    case "url":
+      return typeof v === "string" && URL_RE.test(v) ? null : "Неверный адрес";
+    case "ref":
+      if (!db || !f.ref) return null;
+      if (f.ref.entity === "users") return null;
+      return (db.get(f.ref.entity) ?? []).some((r) => r.id === v) ? null : "Запись не найдена";
+    default:
+      return null;
+  }
+}
+
+/** Reactive read over the memory store; `latencyMs` delays the first result (loading state). */
+function useComputed<T>(
+  store: { subscribe(cb: () => void): () => void; version(): number; latencyMs: number },
+  key: string,
+  compute: () => T,
+): AsyncResult<T> {
+  const version = useSyncExternalStore(store.subscribe, store.version, store.version);
+  const [tick, setTick] = useState(0);
+  const latency = store.latencyMs;
+  const [ready, setReady] = useState(latency === 0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new key restarts the simulated latency
+  useEffect(() => {
+    if (latency === 0) return;
+    setReady(false);
+    const t = setTimeout(() => setReady(true), latency);
+    return () => clearTimeout(t);
+  }, [key, latency]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recomputed on store version, key and refetch tick
+  const r = useMemo((): { data?: T; error?: WzError } => {
+    try {
+      return { data: compute() };
+    } catch (e) {
+      return { error: toWzError(e) };
+    }
+  }, [key, version, tick]);
+  const refetch = useCallback(() => setTick((n) => n + 1), []);
+  if (!ready) return { isLoading: true, refetch };
+  return { ...r, isLoading: false, refetch };
+}
