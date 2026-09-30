@@ -229,7 +229,7 @@ tasks:
     owner: agents
     parallel_group: m0-w4
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "На золотой ревизии форума: ≥1 SC-проверка на каждый AC scenario/constraint с milestone ≤ M0 (AC1–AC4), все pass в G1; PC-проверки из permission AC (AC7) — pass"
