@@ -4,9 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/connectors"
+  },
+  "dependencies": {
+    "@wizard/appspec": "workspace:*",
+    "@wizard/pii": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

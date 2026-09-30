@@ -75,7 +75,17 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
 
-  packages/connectors: {}
+  packages/connectors:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../appspec
+      '@wizard/pii':
+        specifier: workspace:*
+        version: link:../pii
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/e2e:
     devDependencies:
