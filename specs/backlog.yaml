@@ -130,7 +130,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "ui-kit.yaml#tokens.acceptance (vitest контраста 16³, детерминизм themeToTokens, Playwright applyTokens < 50 мс, dark)"
@@ -403,7 +403,7 @@ tasks:
     owner: frontend
     parallel_group: m0-w1
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждый компонент — acceptance из своего раздела ui-kit.yaml (Playwright на демо «форум»/«кондитерская» через createMemoryDataSource)"
