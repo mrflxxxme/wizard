@@ -10,6 +10,8 @@ export {
   priceBlended,
   tokensExpected,
 } from "./estimate.js";
+/** Short Russian fork titles and option labels for the S2 panel. */
+export { FORK_LABELS, type ForkLabels, forkOptionLabel, forkTitle } from "./fork-labels.js";
 export {
   type AnalysisSummary,
   type ChangeContext,

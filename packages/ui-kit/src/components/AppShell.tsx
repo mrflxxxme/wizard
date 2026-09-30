@@ -15,8 +15,9 @@ import { maskPhone } from "../format.js";
 import { ru } from "../i18n/ru.js";
 import styles from "./AppShell.module.css";
 import { ButtonImpl } from "./Button.js";
-import { Login } from "./Login.js";
+import { Login, safeNextPath } from "./Login.js";
 import { part } from "./root.js";
+import { Loading } from "./States.js";
 
 export type NavItem = { route: string; title: string; icon?: string; badge?: number };
 
@@ -33,8 +34,8 @@ const PHONE_LIKE = /^\+?[\d\s()-]{10,}$/;
 export function AppShell(props: AppShellProps): ReactNode {
   const root = useWzRoot("AppShell", "wz-appshell", props);
   const spec = useRoleSpec();
-  const { user, logout } = useWzUser();
-  const { pathname } = useLocation();
+  const { user, isLoading, logout } = useWzUser();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -50,6 +51,14 @@ export function AppShell(props: AppShellProps): ReactNode {
   const policyPage = spec.compliance?.policyPage;
   const known = spec.pages.length === 0 || spec.pages.some((p) => matchRoute(p.route, pathname) !== null);
   const isLogin = pathname === "/login";
+  // Start page of the role: its first own static page (not the public one), else «/», else any static page.
+  const publicRole = spec.roles.find((r) => r.access === "public")?.name;
+  const staticPages = spec.pages.filter((p) => p.nav !== false && !p.route.includes(":"));
+  const startPage =
+    staticPages.find((p) => !publicRole || !p.roles.includes(publicRole)) ??
+    staticPages.find((p) => p.route === "/") ??
+    staticPages[0];
+  const start = startPage?.route ?? "/";
 
   const close = () => {
     setOpen(false);
@@ -59,8 +68,12 @@ export function AppShell(props: AppShellProps): ReactNode {
     if (open) navRef.current?.querySelector<HTMLElement>("a, button")?.focus();
   }, [open]);
   useEffect(() => {
+    if (isLoading) return;
     if (!known && !isLogin && !user && loginRoles) navigate(`/login?next=${encodeURIComponent(pathname)}`);
-  }, [known, isLogin, user, loginRoles, navigate, pathname]);
+    // Already logged in (role switch, back button): /login leads on to `next`, as a successful login would;
+    // a page the role cannot open then shows the no-access state below.
+    if (isLogin && user) navigate(safeNextPath(new URLSearchParams(search).get("next")));
+  }, [isLoading, known, isLogin, user, loginRoles, navigate, pathname, search]);
 
   const onNavKey = (e: KeyboardEvent<HTMLElement>) => {
     if (!open) return;
@@ -94,8 +107,18 @@ export function AppShell(props: AppShellProps): ReactNode {
       : user.displayName
     : "";
   let content: ReactNode = props.children;
-  if (isLogin) content = <Login />;
-  else if (!known && user) content = <p className={styles.forbidden}>{ru.appShell.forbidden}</p>;
+  if (isLogin) content = user ? <Loading /> : <Login />;
+  else if (!known && isLoading) content = <Loading />;
+  else if (!known && user)
+    content = (
+      <section className={styles.forbidden} data-testid="wz-appshell-forbidden" role="alert">
+        <p className={styles.forbiddenText}>{ru.appShell.forbidden}</p>
+        <p className={styles.forbiddenHint}>{ru.appShell.forbiddenHint(roleLabel(spec, user.role))}</p>
+        <ButtonImpl root={part("wz-appshell-start")} variant="primary" onClick={() => navigate(start)}>
+          {startPage && startPage.route !== "/" ? ru.appShell.goTo(startPage.title) : ru.appShell.goHome}
+        </ButtonImpl>
+      </section>
+    );
 
   return (
     <div {...root} className={cx(styles.shell, props.className)} data-drawer={open ? "open" : "closed"}>

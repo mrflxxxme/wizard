@@ -11,7 +11,7 @@ type Analysis = {
   skeleton: string[];
   specifics: string[];
   constraints: string[];
-  forks: { forkId: string; status: string }[];
+  forks: { forkId: string; status: string; title?: string; choice?: string }[];
 };
 
 const strings = (v: unknown): string[] =>
@@ -41,6 +41,8 @@ export function analysisOf(messages: Message[]): Analysis | null {
         .map((f) => ({
           forkId: String(f.forkId),
           status: typeof f.status === "string" ? f.status : "pending",
+          ...(typeof f.title === "string" && f.title ? { title: f.title } : {}),
+          ...(typeof f.choice === "string" && f.choice ? { choice: f.choice } : {}),
         }))
     : [];
   return {
@@ -63,7 +65,12 @@ export function Understanding({
   questions?: Question[];
 }): ReactNode {
   const a = analysisOf(messages);
-  const forkLabel = (forkId: string) => questions.find((q) => q.forkId === forkId)?.text ?? forkId;
+  // Asked forks read as their question; the rest as a short title (+ the option taken). Raw ids never show.
+  const forkLabel = (f: Analysis["forks"][number]) => {
+    const question = questions.find((q) => q.forkId === f.forkId)?.text;
+    if (f.status === "asking" && question) return question;
+    return f.title ?? question ?? ru.understanding.forkFallback;
+  };
   if (!a) {
     return analyzing ? (
       <div className={s.skeleton} aria-busy="true">
@@ -121,8 +128,11 @@ export function Understanding({
         <h3 className={s.blockTitle}>{ru.understanding.forks}</h3>
         <ul className={s.list} data-testid="forks-list">
           {a.forks.map((f) => (
-            <li key={f.forkId} className={s.forkRow}>
-              <span>{forkLabel(f.forkId)}</span>
+            <li key={f.forkId} className={s.forkRow} data-fork-id={f.forkId}>
+              <span>
+                {forkLabel(f)}
+                {f.status !== "asking" && f.choice && <span className={s.forkChoice}> — {f.choice}</span>}
+              </span>
               <Pill tone={f.status === "resolved" ? "ok" : f.status === "asking" ? "accent" : "neutral"}>
                 {ru.understanding.forkStatus[f.status] ?? f.status}
               </Pill>

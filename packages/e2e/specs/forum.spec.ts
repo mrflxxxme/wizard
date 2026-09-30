@@ -49,24 +49,6 @@ async function switchRole(page: Page, preview: FrameLocator, role: string, label
   await expect(preview.getByTestId("wz-appshell-user")).toContainText(label, { timeout: 15_000 });
 }
 
-/** Test data through the data API of the preview, as the logged-in organizer (seed values are random). */
-async function createAs(frame: Frame, entity: string, data: Record<string, unknown>): Promise<string> {
-  const res = await frame.evaluate(
-    async ([e, body]) => {
-      const r = await fetch(`/api/data/${e}`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json", "x-wizard-request": "1" },
-        body: JSON.stringify(body),
-      });
-      return { status: r.status, body: await r.json() };
-    },
-    [entity, data] as const,
-  );
-  expect(res.status, JSON.stringify(res.body)).toBe(201);
-  return res.body.item.id as string;
-}
-
 /** Rasterizes the QrTicket SVG in the page and decodes it like a scanner would. */
 async function decodeQr(frame: Frame): Promise<string> {
   const img = await frame.getByTestId("wz-qrticket-code").evaluate(async (svg) => {
@@ -126,6 +108,8 @@ test("форум: промпт → вопросы → карточка → сб�
     await expect(page.getByText("Есть 5 вопросов, чтобы собрать карточку системы.")).toBeVisible();
     await page.getByTestId("question-card").scrollIntoViewIfNeeded();
     await shot(page, "02-questions", true);
+    // FU-4: forks read as human titles, never raw taxonomy ids.
+    await expect(page.getByTestId("forks-list")).not.toContainText(/F-[A-Z]/);
     await page.getByTestId("question-option-email_or_telegram").click();
     await page.getByTestId("question-next").click();
     await page.getByTestId("question-option-qr_offline_scanner").click();
@@ -136,6 +120,10 @@ test("форум: промпт → вопросы → карточка → сб�
 
   await test.step("S3: карточка системы → «Строить»", async () => {
     await expect(page.getByTestId("card")).toBeVisible({ timeout: 30_000 });
+    // FU-4: the answers message reads «вопрос? — ответ», never «?:».
+    const answers = page.getByTestId("chat-message").filter({ hasText: "Как проверять билеты на входе?" });
+    await expect(answers.first()).toContainText("на входе? — ");
+    await expect(answers.first()).not.toContainText("?:");
     await expect(page.getByTestId("card-version")).toContainText("1");
     await expect(page.getByTestId("card-estimate")).toBeVisible();
     await expect(page.getByTestId("card-cap")).toBeVisible();
@@ -181,27 +169,23 @@ test("форум: промпт → вопросы → карточка → сб�
     await page.getByTestId("style-toggle").click();
   });
 
-  await test.step("организатор: поток и тип билета для проверки", async () => {
+  await test.step("организатор видит сканер в меню", async () => {
     await switchRole(page, preview, "organizer", "Организатор");
     await expect(preview.getByTestId("wz-appshell-nav")).toContainText("Сканер билетов");
-    const frame = await previewFrame(page);
-    await createAs(frame, "stream", { name: "E2E поток", capacity: 50 });
-    await createAs(frame, "ticket_type", {
-      name: "E2E Стандарт",
-      kind: "standard",
-      price: 9900,
-      capacity: 100,
-      active: true,
-    });
   });
 
   let payload = "";
   await test.step("участник: регистрация с согласием, оплата-заглушка, QR-билет", async () => {
     await switchRole(page, preview, "participant", "Участник");
     await expect(preview.getByTestId("wz-appshell-nav")).not.toContainText("Сканер билетов");
-    const card = preview.getByTestId("wz-itemcard").filter({ hasText: "E2E Стандарт" });
+    // FU-4: the draft seed is a realistic, not sold-out catalog — the participant buys the seeded «Стандарт».
+    const card = preview
+      .getByTestId("wz-itemcard")
+      .filter({ has: preview.getByText("Стандарт", { exact: true }) });
+    await expect(card).toHaveCount(1);
+    await expect(preview.getByTestId("wz-catalog")).not.toContainText("Мест нет");
     await card.getByTestId("wz-itemcard-cta").click();
-    await preview.getByRole("radio", { name: "E2E поток" }).check();
+    await preview.getByRole("radio").first().check();
     await preview.locator('input[name="holderName"]').fill("Анна Тестова");
     await preview.locator('input[name="holderEmail"]').fill("guest@example.test");
     const submit = preview.getByRole("button", { name: "Оформить" });
@@ -209,7 +193,7 @@ test("форум: промпт → вопросы → карточка → сб�
     await preview.getByRole("checkbox", { name: /Я соглашаюсь/ }).check();
     await shot(page, "06-register", true);
     await submit.click();
-    await expect(preview.getByTestId("wz-pay-amount")).toContainText("9", { timeout: 15_000 });
+    await expect(preview.getByTestId("wz-pay-amount")).toContainText("4 900", { timeout: 15_000 });
     await preview.getByTestId("wz-pay-confirm").click();
     await expect(preview.getByTestId("wz-qrticket-code")).toBeVisible({ timeout: 15_000 });
     await shot(page, "07-ticket", true);
@@ -219,9 +203,12 @@ test("форум: промпт → вопросы → карточка → сб�
 
   await test.step("волонтёр: QR-проверка на входе — ok, повтор — duplicate", async () => {
     await switchRole(page, preview, "volunteer", "Волонтёр на входе");
-    // The iframe is narrower than the AppShell breakpoint: the navigation sits in the drawer.
-    await preview.getByTestId("wz-appshell-menu-toggle").click();
-    await preview.getByTestId("wz-appshell-nav").getByRole("link", { name: "Сканер билетов" }).click();
+    // FU-4: the route of the participant's ticket stays; the volunteer sees «нет доступа», not the login form,
+    // and goes on to their start page.
+    expect((await previewFrame(page)).url()).toContain("/ticket/");
+    await expect(preview.getByTestId("wz-appshell-forbidden")).toBeVisible();
+    await expect(preview.getByTestId("wz-login")).toHaveCount(0);
+    await preview.getByTestId("wz-appshell-start").click();
     await expect(preview.getByTestId("wz-qrscanner-manual")).toBeVisible();
     const check = async () => {
       await preview.getByLabel("Код билета").fill(payload);
@@ -231,7 +218,7 @@ test("форум: промпт → вопросы → карточка → сб�
     await check();
     await expect(result).toHaveAttribute("data-status", "ok");
     await expect(result).toContainText("Проходите");
-    await expect(result).toContainText("E2E Стандарт · E2E поток");
+    await expect(result).toContainText(/Стандарт · \S/);
     await expect(result).not.toContainText("[object");
     await shot(page, "08-scan-ok", true);
     await check();

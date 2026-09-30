@@ -439,13 +439,17 @@ describe("/_wizard/spec (RoleSpec)", () => {
     const res = await h.rt.fetch(request("GET", A, "/_wizard/spec", { cookie: cookie.volunteer }));
     expect(res.status).toBe(200);
     const body = (await json(res)) as {
-      role: { name: string };
+      role: string;
+      roles: { name: string; access: string }[];
       entities: { name: string; fields: { name: string }[] }[];
       permissions: { role: string; hiddenFields?: unknown }[];
       pages: { roles: string[] }[];
       compliance: { consentTextHash: string; policyVersion: string };
     };
-    expect(body.role.name).toBe("volunteer");
+    expect(body.role).toBe("volunteer");
+    // One RoleSpec contract with ui-kit (FU-4): role is a name, roles lists every role without permissions.
+    expect(body.roles.map((r) => r.name)).toContain("organizer");
+    expect(body.roles.find((r) => r.name === "visitor")?.access).toBe("public");
     const ticket = body.entities.find((e) => e.name === "ticket");
     expect(ticket?.fields.map((f) => f.name)).not.toContain("holder_name");
     expect(body.entities.map((e) => e.name)).not.toContain("payment");
@@ -457,9 +461,7 @@ describe("/_wizard/spec (RoleSpec)", () => {
       request("GET", A, "/_wizard/spec", { cookie: cookie.volunteer, headers: { "if-none-match": etag } }),
     );
     expect(again.status).toBe(304);
-    const anon = (await json(await h.rt.fetch(request("GET", A, "/_wizard/spec")))) as {
-      role: { name: string };
-    };
-    expect(anon.role.name).toBe("visitor");
+    const anon = (await json(await h.rt.fetch(request("GET", A, "/_wizard/spec")))) as { role: string };
+    expect(anon.role).toBe("visitor");
   });
 });

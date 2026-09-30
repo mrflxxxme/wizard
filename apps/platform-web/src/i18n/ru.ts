@@ -143,6 +143,7 @@ export const ru = {
     specifics: "Специфика",
     constraints: "Ограничения",
     forks: "Развилки",
+    forkFallback: "Уточнение",
     forkStatus: { resolved: "решено", asking: "выбираете сейчас", pending: "ожидает" } as Record<
       string,
       string
