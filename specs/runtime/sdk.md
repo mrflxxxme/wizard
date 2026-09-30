@@ -22,7 +22,7 @@ assets/logo.(png|webp)     логотип из панели «Стиль» (пи
 ### 1.1 Сборка и типизация кода системы (L2-06)
 
 ```
-tsconfig.system (живёт рядом со сборщиком систем — architecture.yaml#interfaces; его же использует G0-TS-01):
+tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#interfaces.build_system; его же использует G0-TS-01):
 { strict: true, module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", jsxImportSource: "@wizard/sdk",
   noEmit: true, types: [], paths: {"@wizard/sdk": [sdk.d.ts], "@wizard/ui-kit": [ui-kit.d.ts]} }
 ```

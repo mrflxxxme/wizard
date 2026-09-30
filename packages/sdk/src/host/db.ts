@@ -1,7 +1,7 @@
 // ctx.db / ctx.systemDb facade over a host DbAdapter: enforces sdk.md §2.1 limits, read-only mode for
 // queries, system-field protection, and records `deps` (entities read by the call).
 import { WizardError } from "../errors.js";
-import type { PaginationOpts } from "../types.js";
+import type { PaginationOpts } from "../sdk.js";
 import { SYSTEM_FIELD_NAMES } from "./indexes.js";
 
 export type RawDoc = Record<string, unknown>;
@@ -38,6 +38,7 @@ export interface Limits {
   maxWrites: number;
   listLimitWithWhere: number;
   listLimitWithoutWhere: number;
+  listDefaultLimit: number;
   maxPageItems: number;
   maxRunCalls: number;
   maxArgsBytes: number;
@@ -54,6 +55,7 @@ export const DEFAULT_LIMITS: Limits = {
   maxWrites: 500,
   listLimitWithWhere: 1000,
   listLimitWithoutWhere: 100,
+  listDefaultLimit: 100,
   maxPageItems: 200,
   maxRunCalls: 20,
   maxArgsBytes: 1024 * 1024,
@@ -116,9 +118,10 @@ function checkWritable(doc: unknown, meter: CallMeter): RawDoc {
   return doc as RawDoc;
 }
 
+/** sdk.md §2.4: default 100; max 1000 with `where`, 100 without (§2.1). */
 function listLimit(meter: CallMeter, where: RawWhere | undefined, limit: number | undefined): number {
   const cap = where ? meter.limits.listLimitWithWhere : meter.limits.listLimitWithoutWhere;
-  if (limit === undefined) return cap;
+  if (limit === undefined) return Math.min(meter.limits.listDefaultLimit, cap);
   if (!Number.isInteger(limit) || limit < 1 || limit > cap) {
     throw new WizardError("LIMIT_EXCEEDED", { message: `limit должен быть от 1 до ${cap}`, limit: "list" });
   }

@@ -20,7 +20,7 @@ import {
   SYSTEM_ROLE,
   stripHidden,
 } from "../host/permissions.js";
-import type { CurrentUser, PaginationOpts } from "../types.js";
+import type { CurrentUser, PaginationOpts } from "../sdk.js";
 
 export interface InvalidateEvent {
   entity: string;

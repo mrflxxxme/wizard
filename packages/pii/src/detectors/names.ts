@@ -1,4 +1,4 @@
-// person_name (data-boundary.yaml#detectors.kinds.person_name): dictionary first names + capitalization, extended by
+// person_name / person_name_latin (data-boundary.yaml#detectors.kinds): dictionary first names + capitalization, extended by
 // adjacent patronymics/surnames; "Фамилия И. О." and "И. О. Фамилия"; values after «ФИО:».
 import { nameDict } from "../dict.js";
 import type { Confidence, Finding } from "../types.js";
@@ -110,6 +110,8 @@ interface Span {
   s: number;
   e: number;
   c: Confidence;
+  /** Latin script → person_name_latin. */
+  l: boolean;
 }
 
 export function detectNames(text: string): Finding[] {
@@ -137,7 +139,7 @@ export function detectNames(text: string): Finding[] {
       INITIALS_BEFORE_RE.lastIndex = tok.s;
       const m = INITIALS_BEFORE_RE.exec(text);
       if (m && isSurname(m[3] ?? "") && sameScript(m[3] ?? "", m[1] ?? "")) {
-        spans.push({ s: tok.s, e: tok.s + m[0].length, c: "high" });
+        spans.push({ s: tok.s, e: tok.s + m[0].length, c: "high", l: LAT.test(m[3] ?? "") });
       }
       continue;
     }
@@ -147,7 +149,7 @@ export function detectNames(text: string): Finding[] {
     if (ia) {
       const sur = capitalized(tok.t);
       if (sur && isSurname(sur) && !firstName(sur) && sameScript(sur, ia[1] ?? "") && (!ia[2] || sameScript(sur, ia[2]))) {
-        spans.push({ s: tok.s, e: tok.e + ia[0].length, c: "high" });
+        spans.push({ s: tok.s, e: tok.e + ia[0].length, c: "high", l: LAT.test(sur) });
       }
     }
     // Dictionary first name as the anchor.
@@ -185,7 +187,7 @@ export function detectNames(text: string): Finding[] {
     } else if (NAMED_AFTER_BEFORE.test(before)) {
       continue; // street or institution named after a person: covered by address, not a data subject
     }
-    spans.push({ s: startTok.s, e: (toks[e] as Tok).e, c: ext ? "high" : "medium" });
+    spans.push({ s: startTok.s, e: (toks[e] as Tok).e, c: ext ? "high" : "medium", l: !CYR.test(w) });
     i = e;
   }
 
@@ -197,7 +199,7 @@ export function detectNames(text: string): Finding[] {
       if (FIELD_WORDS.has(fold(w[0]))) break;
       end = base + w.index + w[0].length;
     }
-    if (end > base) spans.push({ s: base, e: end, c: "high" });
+    if (end > base) spans.push({ s: base, e: end, c: "high", l: false });
   }
 
   // Union of overlapping spans.
@@ -210,9 +212,9 @@ export function detectNames(text: string): Finding[] {
       if (sp.c === "high") cur.c = "high";
       continue;
     }
-    if (cur) out.push(finding("person_name", cur.s, cur.e, cur.c));
+    if (cur) out.push(finding(cur.l ? "person_name_latin" : "person_name", cur.s, cur.e, cur.c));
     cur = { ...sp };
   }
-  if (cur) out.push(finding("person_name", cur.s, cur.e, cur.c));
+  if (cur) out.push(finding(cur.l ? "person_name_latin" : "person_name", cur.s, cur.e, cur.c));
   return out;
 }

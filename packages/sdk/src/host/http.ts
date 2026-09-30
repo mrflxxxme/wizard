@@ -1,6 +1,6 @@
 // Error → HTTP mapping shared by hosts (runtime.yaml#data_api.error_shape, #functions.app_errors).
 import { DEFAULT_APP_ERROR_MESSAGE, ERROR_MESSAGES, WizardError } from "../errors.js";
-import type { ErrorDetails } from "../types.js";
+import type { ErrorDetails } from "../sdk.js";
 
 export const ERROR_HTTP_STATUS: Readonly<Record<string, number>> = {
   UNAUTHENTICATED: 401,

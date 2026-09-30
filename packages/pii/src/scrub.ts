@@ -1,6 +1,6 @@
 // scrub(): one-way placeholders (data-boundary.yaml#scrub). The value→placeholder numbering lives only in a local
 // closure for the duration of ONE call and is never returned, logged or stored.
-import { detect } from "./detect.js";
+import { type DetectOptions, detect } from "./detect.js";
 import { normalizePhoneRu } from "./detectors/phone.js";
 import { type Category, type Finding, KIND_INFO, type Kind, maxCategory } from "./types.js";
 import { fold, onlyDigits } from "./util.js";
@@ -29,6 +29,11 @@ function valueKey(kind: Kind, raw: string): string {
   switch (kind) {
     case "phone_ru":
       return normalizePhoneRu(raw) ?? onlyDigits(raw);
+    case "phone_intl":
+    case "ogrnip":
+      return onlyDigits(raw);
+    case "car_plate_ru":
+      return fold(raw).replace(/\s+/g, "");
     case "card":
     case "passport_ru":
     case "snils":
@@ -46,10 +51,10 @@ interface Scrubber {
   summary(): ScrubSummary;
 }
 
-function createScrubber(): Scrubber {
+function createScrubber(options: DetectOptions): Scrubber {
   // Local only: numbering of distinct values per kind within this call.
   const seen = new Map<string, number>();
-  const next = new Map<Kind, number>();
+  const next = new Map<string, number>();
   const counts: Partial<Record<Kind, number>> = {};
   let category: Category = "none";
   let strongIds = false;
@@ -57,11 +62,12 @@ function createScrubber(): Scrubber {
   const placeholder = (f: Finding, raw: string): string | null => {
     const stem = KIND_INFO[f.kind].placeholder;
     if (!stem) return null;
-    const key = `${f.kind}:${valueKey(f.kind, raw)}`;
+    // Numbered per placeholder stem: phone_ru/phone_intl share ТЕЛЕФОН, person_name/_latin share ФИО.
+    const key = `${stem}:${valueKey(f.kind, raw)}`;
     let n = seen.get(key);
     if (n === undefined) {
-      n = (next.get(f.kind) ?? 0) + 1;
-      next.set(f.kind, n);
+      n = (next.get(stem) ?? 0) + 1;
+      next.set(stem, n);
       seen.set(key, n);
     }
     return `[${stem}_${n}]`;
@@ -69,7 +75,7 @@ function createScrubber(): Scrubber {
 
   return {
     string(text: string): string {
-      const findings = detect(text);
+      const findings = detect(text, { ignoreHandles: options.ignoreHandles });
       if (findings.length === 0) return text;
       let out = "";
       let pos = 0;
@@ -89,8 +95,8 @@ function createScrubber(): Scrubber {
 }
 
 /** Replaces personal data with `[ВИД_n]` placeholders. Returns no mapping (MUST, M0-05). */
-export function scrub(text: string): ScrubResult {
-  const s = createScrubber();
+export function scrub(text: string, options: DetectOptions = {}): ScrubResult {
+  const s = createScrubber(options);
   const out = s.string(text);
   return { text: out, ...s.summary() };
 }
@@ -118,8 +124,8 @@ function walk(value: unknown, s: Scrubber, skipKeys: ReadonlySet<string>): unkno
 }
 
 /** Scrubs every string (and object key) of a JSON value with ONE numbering (data-boundary.yaml#detectors.interface.scrubJson). */
-export function scrubJson<T>(value: T): ScrubJsonResult<T> {
-  const s = createScrubber();
+export function scrubJson<T>(value: T, options: DetectOptions = {}): ScrubJsonResult<T> {
+  const s = createScrubber(options);
   const out = walk(value, s, new Set()) as T;
   return { value: out, ...s.summary() };
 }
@@ -128,8 +134,8 @@ export function scrubJson<T>(value: T): ScrubJsonResult<T> {
 const MESSAGE_SKIP_KEYS: ReadonlySet<string> = new Set(["role", "type", "id", "tool_call_id", "tool_use_id"]);
 
 /** Scrubs a chat message array (OpenAI-compatible shape or any JSON) with one numbering across all messages. */
-export function scrubMessages<T>(messages: readonly T[]): ScrubMessagesResult<T> {
-  const s = createScrubber();
+export function scrubMessages<T>(messages: readonly T[], options: DetectOptions = {}): ScrubMessagesResult<T> {
+  const s = createScrubber(options);
   const out = messages.map((m) => walk(m, s, MESSAGE_SKIP_KEYS) as T);
   return { messages: out, ...s.summary() };
 }

@@ -8,7 +8,7 @@ import type {
   InferArgs,
   MutationCtx,
   QueryCtx,
-} from "./types.js";
+} from "./sdk.js";
 
 /** Runtime shape of a definition (the public FunctionDef type hides the handler). */
 export interface RegisteredFunction<K extends FnKind = FnKind> extends FunctionDef<K, unknown, unknown> {

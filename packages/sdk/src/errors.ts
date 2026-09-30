@@ -1,4 +1,4 @@
-import type { ErrorDetails } from "./types.js";
+import type { ErrorDetails } from "./sdk.js";
 
 /** Application error code format (sdk.md §2.5). */
 export const ERROR_CODE_RE = /^[A-Z][A-Z0-9_]{2,40}$/;

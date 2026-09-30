@@ -1,7 +1,7 @@
 // Small fetch client for the runtime API (runtime.yaml#data_api, #functions, #auth, #realtime) with one
 // shared SSE connection per client (sdk.md §3). No React here: hooks live in ./react.tsx.
 import { ERROR_MESSAGES, WizardError } from "../errors.js";
-import type { CallOptions, ClientUser, ErrorDetails } from "../types.js";
+import type { CallOptions, ClientUser, ErrorDetails } from "../sdk.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -181,10 +181,9 @@ export class SdkClient {
   // ---------- HTTP ----------
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = { Accept: "application/json" };
+    // Every SDK request carries X-Wizard-Request (sdk.md §3, runtime.yaml#auth.csrf).
+    const headers: Record<string, string> = { Accept: "application/json", "X-Wizard-Request": "1" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    // CSRF guard for state-changing requests (runtime.yaml#auth.csrf).
-    if (method !== "GET" && method !== "HEAD") headers["X-Wizard-Request"] = "1";
     let res: Response;
     try {
       res = await this.fetchImpl(this.baseUrl + path, {
@@ -439,7 +438,7 @@ export class SdkClient {
   private async stream(ac: AbortController): Promise<void> {
     try {
       const res = await this.fetchImpl(`${this.baseUrl}/api/events`, {
-        headers: { Accept: "text/event-stream" },
+        headers: { Accept: "text/event-stream", "X-Wizard-Request": "1" },
         credentials: "same-origin",
         signal: ac.signal,
       });

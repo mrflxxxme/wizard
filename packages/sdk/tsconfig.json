@@ -2,5 +2,5 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "noEmit": true },
   "include": ["src", "test"],
-  "exclude": ["test/examples-typecheck"]
+  "exclude": ["test/**/*.test-d.ts"]
 }

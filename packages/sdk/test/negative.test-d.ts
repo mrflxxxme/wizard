@@ -1,4 +1,4 @@
-// Negative type cases: every `@ts-expect-error` line MUST fail tsc against the forum registry,
+// Negative type cases (tsconfig.system + forum registry): every `@ts-expect-error` line MUST fail tsc,
 // otherwise tsc reports TS2578 (unused directive) and the examples typecheck test fails.
 import {
   action,

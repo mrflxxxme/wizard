@@ -18,7 +18,7 @@ import {
   SYSTEM_USER,
 } from "../host/executor.js";
 import { SYSTEM_ROLE } from "../host/permissions.js";
-import type { CurrentUser, Id, PaginationOpts } from "../types.js";
+import type { CurrentUser, Id, PaginationOpts } from "../sdk.js";
 import {
   createIdGenerator,
   type InvalidateEvent,

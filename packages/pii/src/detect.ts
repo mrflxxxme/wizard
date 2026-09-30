@@ -2,13 +2,14 @@
 import { detectAddresses } from "./detectors/address.js";
 import { detectBirthdates } from "./detectors/birthdate.js";
 import { detectEmails } from "./detectors/email.js";
+import { detectCarPlates, detectHandles, type HandleOptions } from "./detectors/handles.js";
 import { detectNames } from "./detectors/names.js";
 import { detectNumericIds } from "./detectors/numeric.js";
 import { detectPhones } from "./detectors/phone.js";
 import { detectSpecialContext } from "./detectors/special.js";
 import type { Finding, Kind } from "./types.js";
 
-export interface DetectOptions {
+export interface DetectOptions extends HandleOptions {
   /** Also return findings of category "none" (inn_org). Default false: detect() returns personal data only. */
   includeNonPii?: boolean;
 }
@@ -16,16 +17,21 @@ export interface DetectOptions {
 // Lower number wins an overlap; within one priority the longer span wins.
 const PRIORITY: Record<Kind, number> = {
   email: 0,
+  social_handle: 1,
   card: 1,
   account_ru: 1,
+  ogrnip: 2,
   snils: 2,
   inn_person: 3,
   passport_ru: 4,
   phone_ru: 5,
-  inn_org: 6,
+  phone_intl: 6,
+  inn_org: 7,
   birthdate: 7,
+  car_plate_ru: 8,
   address: 8,
   person_name: 9,
+  person_name_latin: 9,
   special_context: 10,
   biometric_context: 10,
 };
@@ -56,6 +62,8 @@ export function detect(text: string, options: DetectOptions = {}): Finding[] {
   if (typeof text !== "string" || text.length === 0) return [];
   const base = resolve([
     ...detectEmails(text),
+    ...detectHandles(text, options),
+    ...detectCarPlates(text),
     ...detectNumericIds(text),
     ...detectPhones(text),
     ...detectBirthdates(text),

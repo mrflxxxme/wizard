@@ -1,7 +1,8 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { appSpecSchema, validateSpec } from "../src/index.js";
+import { appSpecSchema, planMigration, toDDL, validateSpec } from "../src/index.js";
 import { fuzzCases, schemaCases } from "./fixtures/schema-cases.js";
-import { forumSpec, jsonSchemaValidator, miniSpec } from "./helpers.js";
+import { forumSpec, jsonSchemaValidator, miniSpec, repoRoot } from "./helpers.js";
 
 const jsonSchemaValid = jsonSchemaValidator();
 const cases = schemaCases();
@@ -23,6 +24,19 @@ describe("zod mirrors appspec.schema.json", () => {
       .filter((c) => appSpecSchema.safeParse(c.spec).success !== jsonSchemaValid(c.spec))
       .map((c) => c.name);
     expect(mismatches).toEqual([]);
+  });
+
+  test("specs/appspec/examples/*.json pass JSON Schema, zod + semantic rules and render DDL", () => {
+    const dir = `${repoRoot}specs/appspec/examples/`;
+    const names = readdirSync(dir).filter((f) => f.endsWith(".json"));
+    expect(names).toEqual(expect.arrayContaining(["forum.json", "bakery.json"]));
+    for (const name of names) {
+      const spec = JSON.parse(readFileSync(dir + name, "utf8"));
+      expect(jsonSchemaValid(spec), name).toBe(true);
+      const r = validateSpec(spec, { enforcePiiRetention: true });
+      expect(r.ok ? [] : r.errors, name).toEqual([]);
+      if (r.ok) expect(toDDL(planMigration(null, r.spec), "app_example_draft").length).toBeGreaterThan(0);
+    }
   });
 
   test("forum and mini fixtures pass structural and semantic validation", () => {

@@ -1,4 +1,4 @@
-# apps/runtime — хостинг созданных систем. Нормативно (backlog M0-09, M1-05, M2-03).
+# apps/runtime — хостинг созданных систем. Нормативно (backlog M0-09, M0-23, M0-24, M1-05, M2-03, M2-14).
 # Связано: sdk.md (контракт кода), ../appspec/ops.yaml (DDL/RLS), ../connectors/, ../security/ (изоляция, ПДн).
 version: 1
 port: 4100                                   # локально; один процесс обслуживает все системы
@@ -18,7 +18,7 @@ routing:
 
 system_loading:
   registry: "platform.deployments {systemId, slug, env, revision, specHash, bundleKey, publishedAt, suspended, features: {phoneOtp}} — читается runtime'ом (read-only роль; platform/db.yaml#views.deployments). M0 до появления таблиц — FileRegistry .data/artifacts/registry.json той же формы"
-  artifact_layout: ".data/artifacts/<systemId>/<revision>/{spec.json, manifest.json, client/index.html, client/assets/*, server/functions.mjs, wz-map.json (только draft; ui/ui-kit.yaml#wz_id)}"
+  artifact_layout: ".data/artifacts/<systemId>/<revision>/{spec.json, manifest.json, client/index.html, client/assets/*, server/functions.mjs, wz-map.json (только draft; ui/ui-kit.yaml#wz_id)}; артефакт собирает и пишет packages/build (architecture.yaml#interfaces.build_system: buildSystem + writeArtifact), runtime только раздаёт"
   rules:
     - "MUST: при запросе runtime держит в памяти LoadedSystem {spec, compiled permissions, functions bundle, connectors} с LRU на 200 систем"
     - "MUST: смена ревизии — через POST /_wizard/internal/reload {systemId, env} (внутренний порт) с заголовком X-Wizard-Internal-Token = WIZARD_INTERNAL_TOKEN (сравнение за постоянное время) или опрос registry раз в 10 с; переключение атомарно, запросы в полёте дорабатывают на старой ревизии"

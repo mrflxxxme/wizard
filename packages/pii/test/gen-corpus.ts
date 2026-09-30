@@ -15,8 +15,11 @@ export interface CorpusSpan {
 }
 export interface CorpusLine {
   id: string;
-  /** positive — contains PII; trap — must produce no findings; hard — known-difficult cases (both kinds), scored only. */
-  group: "positive" | "trap" | "hard";
+  /**
+   * positive — contains PII; trap — hard negative (order numbers, dates, prices, org INN, code…), must produce no
+   * findings; limits — known limitations (both PII and non-PII), scored in the metrics but not required to be perfect.
+   */
+  group: "positive" | "trap" | "limits";
   text: string;
   spans: CorpusSpan[];
 }
@@ -277,6 +280,37 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
       `город ${city}, ${st}, д. ${n}`,
     ]);
   };
+  const phoneIntl = (): string => {
+    const [cc, n1, n2] = pick([
+      ["375", 2, 7],
+      ["998", 2, 7],
+      ["380", 2, 7],
+      ["996", 3, 6],
+      ["374", 2, 6],
+      ["49", 3, 8],
+      ["1", 3, 7],
+    ] as const);
+    const a = digits(n1);
+    const b = digits(n2);
+    return pick([`+${cc} ${a} ${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}`, `+${cc} (${a}) ${b}`, `+${cc}${a}${b}`]);
+  };
+  const handle = (): string =>
+    `@${pick(Object.values(TRANSLIT))}${pick(["_", ".", ""]) === "." ? "_" : pick(["_", ""])}${pick(LAST_TRANSLIT)}${pick(["", String(int(1, 99))])}`;
+  const profile = (): string => {
+    const name = `${pick(Object.values(TRANSLIT))}_${pick(LAST_TRANSLIT)}`;
+    return pick([`t.me/${name}`, `https://vk.com/id${int(10000, 999999999)}`, `instagram.com/${name.replace("_", ".")}`, `https://ok.ru/profile/${digits(12)}`]);
+  };
+  const ogrnip = (): string => {
+    const body = `${pick(["3", "4"])}${digits(13)}`;
+    return body + String((BigInt(body) % 13n) % 10n);
+  };
+  const PLATE_LETTERS = "АВЕКМНОРСТУХ";
+  const plate = (): string => {
+    const l = () => PLATE_LETTERS[int(0, PLATE_LETTERS.length - 1)] ?? "А";
+    const region = pick([String(int(10, 99)), String(int(102, 199)), "777", "799", "750", "05"]);
+    const x = `${l()}${digits(3)}${l()}${l()}`;
+    return pick([`${x}${region}`, `${x} ${region}`, `${x.slice(0, 1)} ${x.slice(1, 4)} ${x.slice(4)} ${region}`, `${x.toLowerCase()}${region}`]);
+  };
   const special = (): string =>
     pick(["диагноз", "инвалидность", "беременность", "судимость", "вероисповедание", "ВИЧ", "национальность", "онкологии", "аллергия", "заболевание"]);
   const biometric = (): string => pick(["отпечатки пальцев", "биометрию", "скан лица", "образец голоса"]);
@@ -315,7 +349,7 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["СНИЛС ", P("snils", snils(false)), ", приложите копию"],
     () => ["ИНН ", P("inn_person", innPerson()), " (физлицо, самозанятый)"],
     () => ["Самозанятый ", P("person_name", fullName()), ", ИНН ", P("inn_person", innPerson())],
-    () => ["Оплата картой ", P("card", card()), ", держатель ", P("person_name", pick(LATIN_NAMES).toUpperCase())],
+    () => ["Оплата картой ", P("card", card()), ", держатель ", P("person_name_latin", pick(LATIN_NAMES).toUpperCase())],
     () => ["Карта для возврата: ", P("card", card())],
     () => ["Адрес доставки: ", P("address", address()), "."],
     () => ["Живу по адресу ", P("address", address()), ", домофон не работает"],
@@ -333,7 +367,13 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => ["моб. ", P("phone_ru", phone10()), ", звонить после 18:00"],
     () => ["Контакты: ", P("email", emailObfuscated())],
     () => ["ФИО: ", P("person_name", fullName()), "; дата рождения ", P("birthdate", birthdate()), "; адрес: ", P("address", address())],
-    () => ["Hi, I'm ", P("person_name", pick(LATIN_NAMES)), ", reach me at ", P("email", email())],
+    () => ["Hi, I'm ", P("person_name_latin", pick(LATIN_NAMES)), ", reach me at ", P("email", email())],
+    () => ["Телефон в Минске: ", P("phone_intl", phoneIntl()), ", спросить ", P("person_name", firstOnly())],
+    () => ["Пишите в Telegram ", P("social_handle", handle()), " или на ", P("email", email())],
+    () => ["Профиль: ", P("social_handle", profile()), ", тел. ", P("phone_ru", phone())],
+    () => ["ИП ", P("person_name", fullName()), ", ОГРНИП ", P("ogrnip", ogrnip())],
+    () => ["Пропуск на машину ", P("car_plate_ru", plate()), ", водитель ", P("person_name", fullName())],
+    () => ["Contact: ", P("person_name_latin", pick(LATIN_NAMES)), ", ", P("phone_intl", phoneIntl())],
     () => ["Сотрудник ", P("person_name", fullName()), " сдал ", P("biometric_context", biometric()), " для прохода в офис"],
     () => {
       const [r, y, n] = passportParts();
@@ -391,15 +431,30 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     () => [`Список задач на ${eventDate()}: созвон, ревью, релиз ${int(1, 9)}.${int(0, 9)}`],
     () => ["Сделать так, чтобы администратор видел все заявки, а менеджер — только свои"],
     () => [`Кабинет ${int(100, 999)}, этаж ${int(1, 20)}, корпус Б`],
+    () => [`@media (max-width: ${int(320, 1280)}px) { .card { display: none; } }`],
+    () => ["@import url('https://fonts.googleapis.com/css2?family=Inter');"],
+    () => ["@Component({ selector: 'app-root' }) export class AppComponent {}"],
+    () => ['import { useQuery } from "@tanstack/react-query";'],
+    () => [`ОГРН 1${digits(12)}, ОКПО ${digits(8)}`],
+    () => [`Номер партии ${invalid(15, (d) => /^[34]/.test(d) && BigInt(d.slice(0, 14)) % 13n % 10n === BigInt(d[14] ?? 0))}`],
+    () => [`color: #A${digits(3)}BC; border: 1px solid #${digits(6)}`],
+    () => [`id: ${digits(4)}a${digits(3)}-bc${digits(2)}-4${digits(3)}`],
+    () => [`Ехать в ${int(100, 999)} км ${int(10, 59)} минут`],
+    () => [`Самолёт A320, рейс SU ${int(1000, 9999)}, выход ${int(1, 40)}`],
+    () => [`Рост выручки +${int(1, 99)} ${digits(3)} ${digits(3)} руб.`],
+    () => [`Ссылка на канал t.me/share, чат t.me/joinchat`],
   ];
 
-  // Known-difficult cases, fixed (not random): scored in the metrics, but not required to be perfect.
-  const hard: Part[][] = [
+  // Known limitations, fixed (not random): scored in the metrics, but not required to be perfect.
+  const limits: Part[][] = [
     ["Позвоните ", P("person_name", "Петрову"), " до обеда"],
     [P("person_name", "иван петров"), ", ", P("phone_ru", "8 916 555-12-34")],
     ["Доставка: ", P("address", "Москва, Тверская 12-5")],
     [P("person_name", "Марина"), ", привет! Скинь адрес"],
-    ["Контакт: ", P("person_name", "Petrov Ivan"), ", ", P("email", "ANNA.SMIRNOVA@YANDEX.RU")],
+    ["Контакт: ", P("person_name_latin", "Petrov Ivan"), ", ", P("email", "ANNA.SMIRNOVA@YANDEX.RU")],
+    ["Hi, I'm ", P("person_name_latin", "Ivan"), ", write me"],
+    ["Скинь в личку ", P("social_handle", "@petrov"), " или ", P("phone_intl", "+44 20 7946 0958")],
+    ["Госномер ", P("car_plate_ru", "в 123 ак 77"), " на въезде"],
     ["Заказчица ", P("person_name", "Любовь Иванова"), ", WhatsApp ", P("phone_ru", "+7 916 123 45 67")],
     ["Рождён ", P("birthdate", "3.4.1990"), " в Туле"],
     [P("person_name", "Павел Дуров"), " основал Telegram"],
@@ -439,8 +494,8 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
     const t = traps[i % traps.length] as () => Part[];
     out.push({ id: `t${String(i + 1).padStart(3, "0")}`, group: "trap", ...build(t()) });
   }
-  hard.forEach((parts, i) => {
-    out.push({ id: `h${String(i + 1).padStart(3, "0")}`, group: "hard", ...build(parts) });
+  limits.forEach((parts, i) => {
+    out.push({ id: `l${String(i + 1).padStart(3, "0")}`, group: "limits", ...build(parts) });
   });
   return out;
 }

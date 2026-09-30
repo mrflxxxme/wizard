@@ -4,7 +4,7 @@
 import type { AppSpec } from "@wizard/appspec";
 import { isFunctionDef, type RegisteredFunction } from "../define.js";
 import { makeError, WizardError } from "../errors.js";
-import type { CurrentUser, ErrorDetails, FnKind, HttpClient, Json, LogFields, Logger } from "../types.js";
+import type { CurrentUser, ErrorDetails, FnKind, HttpClient, Json, LogFields, Logger } from "../sdk.js";
 import { validateArgs } from "../validators.js";
 import { CallMeter, createDbFacade, type DbAdapter, DEFAULT_LIMITS, jsonBytes, type Limits } from "./db.js";
 import { functionAllowsRole, SYSTEM_ROLE } from "./permissions.js";

@@ -1,6 +1,7 @@
-// Type contract of @wizard/sdk (specs/runtime/sdk.md §5). The registries below are empty here and are
-// filled by module augmentation from `_generated/wizard.d.ts` (generateTypes, sdk.md §4).
-import type { WizardError } from "./errors.js";
+// Handwritten public contract of @wizard/sdk = specs/runtime/sdk.md §5 (plus extensions marked "ext").
+// G0 compiles system code against this file (sdk.md §1.1 tsconfig.system); src/index.ts binds every
+// runtime export to the declarations below, so tsc keeps the implementation in sync with it.
+// The registries are empty here and are filled by `_generated/wizard.d.ts` (module augmentation, §4).
 
 // ---------- registries ----------
 // Separate interfaces instead of one Register: function types and ctx would otherwise reference each other.
@@ -57,6 +58,25 @@ export interface PaginationOpts {
   cursor: string | null;
   numItems: number;
 }
+export declare const v: {
+  string(o?: { min?: number; max?: number; pattern?: RegExp }): Validator<string>;
+  int(o?: { min?: number; max?: number }): Validator<number>;
+  number(o?: { min?: number; max?: number }): Validator<number>;
+  money(o?: { min?: number; max?: number }): Validator<number>;
+  boolean(): Validator<boolean>;
+  date(): Validator<string>;
+  datetime(): Validator<string>;
+  email(): Validator<string>;
+  phone(): Validator<string>;
+  id<E extends EntityName | "users">(entity: E): Validator<Id<E>>;
+  literal<const T extends string | number | boolean>(value: T): Validator<T>;
+  enum<const T extends readonly [string, ...string[]]>(...values: T): Validator<T[number]>;
+  array<T>(item: Validator<T>, o?: { max?: number }): Validator<T[]>;
+  object<S extends ArgsShape>(shape: S): Validator<InferArgs<S>>;
+  optional<T>(inner: Validator<T>): Validator<T | undefined>;
+  nullable<T>(inner: Validator<T>): Validator<T | null>;
+  pagination(): Validator<PaginationOpts>;
+};
 
 // ---------- data ----------
 export interface ListOptions<E extends EntityName> {
@@ -95,6 +115,13 @@ export interface CurrentUser {
 export interface ErrorDetails {
   message?: string;
   [k: string]: Json | undefined;
+}
+export declare class WizardError extends Error {
+  readonly code: string;
+  readonly details: ErrorDetails;
+  /** ext: HTTP status when the error came from the runtime API (client side). */
+  status?: number;
+  constructor(code: string, details?: ErrorDetails);
 }
 export type LogFields = Record<string, number | boolean | null>;
 export interface Logger {
@@ -154,6 +181,16 @@ export type Def<S extends ArgsShape, C, R> = {
   args: S;
   handler: (ctx: C, args: InferArgs<S>) => R | Promise<R>;
 };
+export declare function query<S extends ArgsShape, R>(
+  d: Def<S, QueryCtx, R>,
+): FunctionDef<"query", InferArgs<S>, R>;
+export declare function mutation<S extends ArgsShape, R>(
+  d: Def<S, MutationCtx, R>,
+): FunctionDef<"mutation", InferArgs<S>, R>;
+export declare function action<S extends ArgsShape, R>(
+  d: Def<S, ActionCtx, R>,
+): FunctionDef<"action", InferArgs<S>, R>;
+
 export type FunctionName = keyof Functions & string;
 // `any` below: variance-free match on the function kind, as in sdk.md §5.
 type NamesOf<K extends FnKind> = {
@@ -269,3 +306,28 @@ export interface PaymentState<I extends keyof Payments & string> {
   pending: boolean;
   error: WizardError | undefined;
 }
+
+export declare function useQuery<N extends QueryName>(
+  name: N,
+  args: FnArgs<N> | "skip",
+): QueryState<FnResult<N>>;
+export declare function useMutation<N extends MutationName | ActionName>(
+  name: N,
+): [
+  (args: FnArgs<N>, opts?: CallOptions) => Promise<FnResult<N>>,
+  { pending: boolean; error: WizardError | undefined },
+];
+export declare function useEntityList<E extends EntityName>(
+  entity: E,
+  opts?: EntityListOptions<E>,
+): EntityListState<E>;
+export declare function useEntity<E extends EntityName>(
+  entity: E,
+  id: Id<E> | string | undefined,
+): QueryState<ClientDoc<E> | null>;
+export declare function useEntityMutation<E extends EntityName>(entity: E): EntityMutations<E>;
+export declare function useUser(): UserState;
+export declare function usePayment<I extends keyof Payments & string>(integration: I): PaymentState<I>;
+export declare function useParams<T extends Record<string, string> = Record<string, string>>(): T;
+export declare function useNavigate(): (to: string) => void;
+export { useCallback, useEffect, useMemo, useRef, useState } from "react";

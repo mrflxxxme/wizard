@@ -1,6 +1,16 @@
 export const PACKAGE = "@wizard/pii";
 
-export { cardIinAllowed, innOrgValid, innPersonValid, innValid, isCardNumber, luhnValid, snilsControl, snilsValid } from "./checksums.js";
+export {
+  cardIinAllowed,
+  innOrgValid,
+  innPersonValid,
+  innValid,
+  isCardNumber,
+  luhnValid,
+  ogrnipValid,
+  snilsControl,
+  snilsValid,
+} from "./checksums.js";
 export { type FieldClassification, classifyFieldName } from "./classify.js";
 export { type DetectOptions, detect } from "./detect.js";
 export { normalizePhoneRu } from "./detectors/phone.js";

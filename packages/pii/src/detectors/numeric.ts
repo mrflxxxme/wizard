@@ -1,5 +1,5 @@
-// Numeric identifiers: card, account_ru, snils, inn_person, inn_org, passport_ru (data-boundary.yaml#detectors.kinds).
-import { innOrgValid, innPersonValid, isCardNumber, snilsValid } from "../checksums.js";
+// Numeric identifiers: card, account_ru, snils, inn_person, inn_org, ogrnip, passport_ru (data-boundary.yaml#detectors.kinds).
+import { innOrgValid, innPersonValid, isCardNumber, ogrnipValid, snilsValid } from "../checksums.js";
 import type { Finding } from "../types.js";
 import { contextBefore, finding, NON_PERSONAL_NUMBER_CTX } from "../util.js";
 
@@ -9,6 +9,7 @@ const GROUP_RE = /\d+/g;
 
 const SNILS_CTX = /снилс|snils|страхов\p{L}* номер/iu;
 const INN_CTX = /(?<!\p{L})(?:инн|inn)(?!\p{L})/iu;
+const OGRNIP_CTX = /огрнип|огрн|ogrnip/iu;
 const PASSPORT_CTX = /паспорт|серия|серии|выдан|passport|удостоверени\p{L}* личност/iu;
 
 // "серия 45 06 № 123456", "паспорт 4506 № 123456", "серия 4506 номер 123456".
@@ -58,6 +59,10 @@ function evaluate(text: string, groups: Group[], i: number, j: number): Finding 
     if ((formatted || (single && contextBefore(text, start, SNILS_CTX))) && snilsValid(num)) {
       return finding("snils", start, end, "high");
     }
+  }
+
+  if (n === 15 && single && ogrnipValid(num)) {
+    return finding("ogrnip", start, end, contextBefore(text, start, OGRNIP_CTX) ? "high" : "medium");
   }
 
   if (n === 12 && single && innPersonValid(num)) {

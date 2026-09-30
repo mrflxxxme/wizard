@@ -5,6 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts",
+    "./sdk.d.ts": "./src/sdk.d.ts",
     "./codegen": "./src/codegen/index.ts",
     "./host": "./src/host/index.ts",
     "./testing": "./src/testing/index.ts"

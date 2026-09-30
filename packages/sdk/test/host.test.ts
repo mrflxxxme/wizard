@@ -11,7 +11,7 @@ const forum = loadForum();
 let functions: Record<string, unknown>;
 
 beforeAll(async () => {
-  const dir = materializeApp("runtime");
+  const dir = materializeApp("runtime", { target: "impl" });
   functions = {};
   for (const f of forum.functions ?? []) {
     const mod = (await import(join(dir, f.file))) as { default: unknown };

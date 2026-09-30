@@ -233,7 +233,7 @@ paths:
       summary: Данные оператора ПДн (op set_compliance, без кредитов); security/compliance.yaml. Экран — S10 «Персональные данные»
       requestBody:
         required: true
-        content: {application/json: {schema: {type: object, required: [expectedVersion, operatorName, operatorContact], additionalProperties: false, properties: {expectedVersion: {type: integer}, operatorName: {type: string, minLength: 3, maxLength: 300}, operatorContact: {type: string, format: email}, operatorAddress: {type: string, maxLength: 300, description: 'M2: адрес оператора для политики (обязателен до prod с M2 — compliance.yaml#system_package.operator)'}, operatorInn: {type: string, pattern: '^[0-9]{10}([0-9]{2})?$'}, policyPage: {type: string, pattern: '^/[a-z0-9/-]*$', description: 'Маршрут страницы политики (по умолчанию /privacy)'}, consentText: {type: string, maxLength: 4000}}}}}
+        content: {application/json: {schema: {type: object, required: [expectedVersion, operatorName, operatorContact], additionalProperties: false, properties: {expectedVersion: {type: integer}, operatorName: {type: string, minLength: 3, maxLength: 300}, operatorContact: {type: string, format: email}, operatorAddress: {type: string, maxLength: 300, description: 'M2: адрес оператора для политики (обязателен до prod с M2 — compliance.yaml#system_package.operator)'}, operatorInn: {type: string, pattern: '^[0-9]{10}([0-9]{2})?$'}, policyPage: {type: string, pattern: '^/[a-z0-9/-]*$', description: 'Маршрут страницы политики (по умолчанию /privacy)'}, consentTemplateId: {type: string}, consentText: {type: string, maxLength: 4000, description: 'Свой текст согласия — только owner (compliance.yaml#system_package.consent.text)'}, retentionWaiver: {type: [object, 'null'], additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 10, maxLength: 500}}}}}}}
       responses: {'200': {description: Ревизия создана, content: {application/json: {schema: {type: object, properties: {revision: {$ref: '#/components/schemas/RevisionSummary'}}}}}}, '412': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
   /systems/{id}/preview-url:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -304,6 +304,23 @@ paths:
       summary: 'Загрузка xlsx/csv ≤ 20 МБ. Значения обрабатываются только в РФ (data-boundary.yaml#import). MUST (L3-37): парсер xlsx — библиотека MIT/Apache без исполнения формул (берутся кешированные значения), распакованный размер ≤ 100 МБ и ≤ 1 млн ячеек (иначе 413), внешние связи и макросы игнорируются. Кнопка на S1 доступна только после создания системы (L1-54)'
       requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file], properties: {file: {type: string, contentMediaType: application/octet-stream}}}}}}
       responses: {'202': {description: Прогон import_table (профиль → маппинг), content: {application/json: {schema: {type: object, properties: {importId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '413': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/imports/{importId}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: importId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getImport
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'Экран сопоставления колонок (M1-12): профиль колонок БЕЗ значений (data-boundary.yaml#import) и предложенный маппинг'
+      responses: {'200': {description: Импорт, content: {application/json: {schema: {type: object, required: [id, status], properties: {id: {type: string, format: uuid}, status: {enum: [profiling, mapping, awaiting_confirm, importing, done, failed, expired]}, runId: {type: [string, 'null'], format: uuid}, inputId: {type: [string, 'null'], description: 'needs_input для подтверждения (decisionId=import_confirm)'}, profile: {type: array, items: {type: object, properties: {column: {type: string}, typeGuess: {type: string}, piiKindGuess: {type: [string, 'null']}, nullShare: {type: number}, distinct: {type: integer}}}}, mapping: {type: array, items: {$ref: '#/components/schemas/ImportColumnMapping'}}, rowsImported: {type: [integer, 'null']}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/imports/{importId}/mapping:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: importId, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      operationId: updateImportMapping
+      x-milestone: M1
+      x-roles: [editor]
+      summary: 'Правка маппинга до подтверждения (status=awaiting_confirm); подтверждение — POST /runs/:id/input {inputId, choice: confirm}'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [mapping], additionalProperties: false, properties: {mapping: {type: array, items: {$ref: '#/components/schemas/ImportColumnMapping'}}}}}}}
+      responses: {'200': {description: Маппинг сохранён}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
   /systems/{id}/exports:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
@@ -349,7 +366,7 @@ paths:
       x-milestone: M0
       x-roles: [viewer]
       summary: SSE событий прогона (workflows.yaml#events)
-      description: 'Формат кадра: `id: <seq>`, `event: <type>`, `data: <RunEvent JSON>`. Сначала сервер MUST отдать все события с seq > after (или > Last-Event-ID), затем живые, без пропусков и дублей. Каждые 15 с — комментарий `: ping`. После терминального события (run_finished | run_failed) поток закрывается. Тест: переподключение с Last-Event-ID=N даёт ровно события N+1..; seq строго возрастает.
+      description: 'Формат кадра: `id: <seq>`, `event: <type>`, `data: <RunEvent JSON>`. Сначала сервер MUST отдать все события с seq > after (или > Last-Event-ID), затем живые, без пропусков и дублей; события с internal: true (workflows.yaml#events, например model_switched) в поток не попадают — их seq пропускается. Каждые 15 с — комментарий `: ping`. После терминального события (run_finished | run_failed) поток закрывается. Тест: переподключение с Last-Event-ID=N даёт ровно события N+1..; seq строго возрастает.
 
         '
       parameters: [{name: after, in: query, schema: {type: integer, minimum: 0, default: 0}}, {name: Last-Event-ID, in: header, schema: {type: string}}]
@@ -740,6 +757,11 @@ components:
         status: {enum: [planned, applying, live, superseded, failed, suspended]}
         migrationSteps: {type: integer}
         createdAt: {type: string, format: date-time}
+    ImportColumnMapping:
+      type: object
+      required: [column, action]
+      additionalProperties: false
+      properties: {column: {type: string}, action: {enum: [map, skip, new_field]}, entity: {type: string}, field: {type: string}, pii: {enum: [none, basic], description: 'подтверждённая пользователем разметка ПДн'}}
     Export:
       type: object
       required: [id, env, status, createdAt]

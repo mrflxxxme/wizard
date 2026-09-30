@@ -1,13 +1,14 @@
 // Checksums for card numbers (Luhn), SNILS and INN (data-boundary.yaml#detectors.kinds).
 
-function digitsOf(s: string): number[] | null {
-  if (!/^\d+$/.test(s)) return null;
+/** Digit values, or [] when `s` is not all digits. */
+function digitsOf(s: string): number[] {
+  if (!/^\d+$/.test(s)) return [];
   return [...s].map((c) => c.charCodeAt(0) - 48);
 }
 
 export function luhnValid(num: string): boolean {
   const d = digitsOf(num);
-  if (!d || d.length < 2) return false;
+  if (d.length < 2) return false;
   let sum = 0;
   for (let i = d.length - 1, alt = false; i >= 0; i--, alt = !alt) {
     let v = d[i] ?? 0;
@@ -34,7 +35,7 @@ export function isCardNumber(num: string): boolean {
 /** SNILS control number for the first 9 digits (as a 2-digit string). */
 export function snilsControl(first9: string): string | null {
   const d = digitsOf(first9);
-  if (!d || d.length !== 9) return null;
+  if (d.length !== 9) return null;
   let s = 0;
   for (let i = 0; i < 9; i++) s += (d[i] ?? 0) * (9 - i);
   let c: number;
@@ -68,15 +69,26 @@ function innDigit(d: number[], w: number[]): number {
 /** INN of a legal entity: 10 digits. */
 export function innOrgValid(num: string): boolean {
   const d = digitsOf(num);
-  if (!d || d.length !== 10 || num.startsWith("00")) return false;
+  if (d.length !== 10 || num.startsWith("00")) return false;
   return innDigit(d, W10) === d[9];
 }
 
 /** INN of a person (or sole proprietor): 12 digits. */
 export function innPersonValid(num: string): boolean {
   const d = digitsOf(num);
-  if (!d || d.length !== 12 || num.startsWith("00")) return false;
+  if (d.length !== 12 || num.startsWith("00")) return false;
   return innDigit(d, W11) === d[10] && innDigit(d, W12) === d[11];
+}
+
+/**
+ * OGRNIP (registration number of a sole proprietor): 15 digits, first 3 or 4;
+ * (number of the first 14 digits mod 13) mod 10 = 15th digit.
+ */
+export function ogrnipValid(num: string): boolean {
+  if (!/^[34]\d{14}$/.test(num)) return false;
+  let rem = 0;
+  for (let i = 0; i < 14; i++) rem = (rem * 10 + (num.charCodeAt(i) - 48)) % 13;
+  return rem % 10 === num.charCodeAt(14) - 48;
 }
 
 export function innValid(num: string): boolean {

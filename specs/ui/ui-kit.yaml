@@ -5,12 +5,12 @@
 version: 1
 package: "@wizard/ui-kit"
 path: packages/ui-kit
-tasks: [M0-08, M2-03, M3-01]
+tasks: [M0-08, M0-25, M2-03, M2-14, M3-01]
 
 scope:
   M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
   M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "FileField (поле type=file, runtime.yaml#files)", "AppShell.Login: согласие при первом входе; ссылка «Пожаловаться»", "CabinetLayout: раздел «Мои данные»"]
-  M3: ["использование wz-map.json в «Укажи и измени» (data-wz-id и плагин — M0, см. wz_id; L1-58)", "RecordCard: пометка «заполнено ИИ»"]
+  M3: ["использование wz-map.json в «Укажи и измени» (data-wz-id и плагин packages/build — M0, см. wz_id; L1-58)", "RecordCard: пометка «заполнено ИИ»"]
   core_8_for_M0_08: [Catalog, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, CabinetLayout, StatsReport]  # + AppShell, примитивы Button/Badge/Field, QrScanner(online)
 
 rules:
@@ -98,7 +98,7 @@ responsive:
 wz_id:
   attribute: "data-wz-id — стабильный идентификатор места использования компонента в исходнике системы"
   format: "<fileKey>:<ordinal>, где fileKey = первые 8 hex sha256(путь файла, напр. ui/pages/landing.tsx), ordinal = порядковый номер JSX-элемента ui-kit в файле (обход AST в порядке исходника)"
-  injection: "MUST: esbuild-плагин сборщика систем (владелец и сигнатура — architecture.yaml#interfaces, сборка бандла; не apps/runtime — runtime только раздаёт, L1-38) добавляет проп wzId каждому JSX-элементу, импортированному из @wizard/ui-kit, и пишет wz-map.json {wzId: {file, line, componentName}} рядом с draft-бандлом (runtime.yaml#system_loading.artifact_layout). Ручной проп wzId от строителя запрещён (G0). Тот же сборщик MUST соблюдать ограничения резолвера и loaders из runtime/sdk.md §1.1 (.env и файлы хоста в бандл не попадают, L3-13)."
+  injection: "MUST: esbuild-плагин в packages/build (architecture.yaml#interfaces.build_system — единственный владелец сборки кода систем; не apps/runtime — runtime только раздаёт, L1-38) добавляет проп wzId каждому JSX-элементу, импортированному из @wizard/ui-kit, и пишет wz-map.json {wzId: {file, line, componentName}} рядом с draft-бандлом (runtime.yaml#system_loading.artifact_layout). Ручной проп wzId от строителя запрещён (G0). Тот же сборщик MUST соблюдать ограничения резолвера и loaders из runtime/sdk.md §1.1 (.env и файлы хоста в бандл не попадают, L3-13)."
   stability: "MUST: сборка одного и того же исходника даёт одинаковые wzId; правка другого файла не меняет wzId в этом файле"
   in_lists: "Элементы из .map() разделяют один wzId (правка относится к месту в коде, не к строке данных); у экземпляров добавляется data-wz-index"
   fallback: "Без плагина (demo, тесты) wzId = \"demo:<Name>:<n>\""

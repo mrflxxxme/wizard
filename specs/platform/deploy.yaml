@@ -22,6 +22,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
     llm: [WIZARD_LLM_MODE, CLOUDRU_BASE_URL, CLOUDRU_API_KEY, YANDEX_BASE_URL, YANDEX_API_KEY, YANDEX_FOLDER_ID, ZAI_BASE_URL, ZAI_API_KEY, WIZARD_FIXTURE_LENIENT]
     auth_and_exec: [WIZARD_AUTH_MODE, WIZARD_DEV_LOGIN, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_PUBLIC_SCHEME]
     platform: [WIZARD_PLATFORM_ORIGIN, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, WIZARD_MILESTONE, WIZARD_DEV_SMTP]
+    M1: [WIZARD_TELEGRAM_BOT_TOKEN, WIZARD_TELEGRAM_WEBHOOK_SECRET]   # общий бот уведомлений платформы (connectors/telegram.yaml#bot)
     M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES]
     connector_secrets_M0: "WIZARD_SECRET_<SCHEMAKEY>_<NAME> (с M1 — secrets_refs)"
     notes: "Ключи провайдеров — имена из agents/models.yaml#providers. WIZARD_INTERNAL_TOKEN — заголовок X-Wizard-Internal-Token (runtime.yaml#system_loading). WIZARD_PUBLIC_SCHEME (http|https) выбирает имя cookie runtime (runtime.yaml#auth.session_cookie)"
@@ -41,7 +42,8 @@ cloud:                             # M2 (M2-06). Все ресурсы — в Р
   domains:
     platform: "<codename>.ru — UI и API платформы (E-NAME; покупка к неделе 12, F8)"
     systems: "*.<systems-domain> — отдельный регистрируемый нейтральный домен (не поддомен платформы, не связан с финальным именем; покупка в неделю 0, F8), чтобы фишинг в системах не бил по репутации и cookie платформы (D9, abuse.yaml#domain); M2-06 разворачивается сразу на нём"
-    system_host: "<slug>.<systems-domain> (prod), <slug>--draft.<systems-domain> (draft, закрыт dev-токеном превью)"
+    system_host: "<slug>.<systems-domain> (prod), <slug>--draft.<systems-domain> (draft, закрыт одноразовым токеном превью — runtime.yaml#auth.preview_login_M2)"
+    psl: "MUST (L3-14): заявка на включение <systems-domain> в Public Suffix List (private section) подаётся в M2-06, чтобы поддомены разных систем были разными site; до включения защита держится на __Host-cookie и CSRF runtime (runtime.yaml#auth). HSTS includeSubDomains; preload (abuse.yaml#domain)"
     tls: "Wildcard-сертификаты отдельно для *.<systems-domain> и <platform-domain>: cert-manager + ACME DNS-01 (API DNS Cloud.ru или регистратора); автообновление за 30 дней; ключи не покидают кластер"
     cookies: "Cookie платформы — __Host-wizard_session и __Host-wizard_csrf: Secure, Path=/, БЕЗ Domain (не уходят на поддомены платформы; L3-17), никогда не выставляются на домене систем; HSTS на обоих доменах"
   client_ip: "MUST (L3-27): IP клиента = адрес последнего хопа доверенного ingress (CIDR из WIZARD_TRUSTED_PROXIES); X-Forwarded-For от недоверенного источника игнорируется. Лимиты по IPv6 считаются по /64. Тест: XFF от недоверенного адреса не меняет ключ лимита"
@@ -74,6 +76,7 @@ cloud:                             # M2 (M2-06). Все ресурсы — в Р
   secrets:
     ci: "Ключи prod/staging — в OpenBao в РФ; в GitHub нет долгоживущих ключей: деплой получает короткоживущий токен через OIDC на self-hosted раннере (L3-38). В образах и репозитории секретов нет (E-ACCESS)"
     tenant: "Секреты коннекторов систем → OpenBao (MPL-2.0) в кластере prod, auto-unseal через Cloud.ru KMS; platform.secrets_refs хранит только путь"
+    platform_bot: "Токен и webhook-секрет общего Telegram-бота уведомлений платформы (connectors/telegram.yaml#bot) — секрет платформы в OpenBao (prod/staging раздельно), локально — .env; получение токена у @BotFather — E-ACCESS"
     kms: "Cloud.ru KMS: KEK для OpenBao, SSE для S3, ключи HMAC для reversible tokenization (data-boundary.yaml#tokenization)"
   observability:
     rule: "MUST: логи, метрики, трейсы, ошибки — только в РФ, в собственном контуре или сервисах Cloud.ru. MUST NOT: Sentry SaaS, Datadog, New Relic, Grafana Cloud, Google Analytics, внешние CDN/прокси, терминирующие TLS вне РФ"

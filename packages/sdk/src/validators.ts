@@ -1,6 +1,6 @@
 // Argument validators `v` (sdk.md §5). Validators are plain descriptors; `checkValue` enforces them at
 // runtime (the host validates args before running a handler → 422 VALIDATION_FAILED).
-import type { ArgsShape, EntityName, Id, InferArgs, PaginationOpts, Validator } from "./types.js";
+import type { ArgsShape, EntityName, Id, InferArgs, PaginationOpts, Validator } from "./sdk.js";
 
 export type ValidatorSpec =
   | { kind: "string" | "email" | "phone" | "date" | "datetime"; min?: number; max?: number; pattern?: RegExp }

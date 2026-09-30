@@ -29,7 +29,7 @@ import type {
   QueryState,
   RoleName,
   UserState,
-} from "../types.js";
+} from "../sdk.js";
 import { type ListResponse, type RealtimeMessage, SdkClient, type SdkClientOptions } from "./transport.js";
 
 // ---------- provider ----------

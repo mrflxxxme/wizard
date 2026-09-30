@@ -1,36 +1,79 @@
 // Positive type contract (sdk.md §5/§6) against the registry generated from forum.json.
 import {
+  type ActionCtx,
   type ActionName,
+  type ArgsShape,
+  action,
+  type CallOptions,
   type ClientDoc,
   type ClientUser,
   type Connectors,
+  type CurrentUser,
+  type DbReader,
+  type DbWriter,
   type Doc,
+  type EmailConnector,
+  type Entities,
+  type EntityFilter,
+  type EntityListOptions,
+  type EntityListState,
   type EntityName,
+  type ErrorDetails,
+  type FilterOps,
   type FnArgs,
+  type FnKind,
   type FnResult,
+  type FunctionDef,
+  type FunctionName,
+  type Functions,
   type Id,
   type IndexWhere,
   type Infer,
+  type InferArgs,
   type Insert,
+  type JobId,
+  type Json,
+  type ListOptions,
+  type Logger,
+  type MutationCtx,
   type MutationName,
   mutation,
   type Page,
+  type PaginationOpts,
   type Patch,
   type Payments,
+  type QrConnector,
+  type QueryCtx,
   type QueryName,
   type QueryState,
   query,
+  type Range,
   type RoleName,
+  type Roles,
+  type Scheduler,
+  type SortKey,
+  type SystemFields,
+  type TableReader,
+  type TableWriter,
   type TelegramConnector,
+  useCallback,
+  useEffect,
   useEntity,
   useEntityList,
   useEntityMutation,
+  useMemo,
   useMutation,
+  useNavigate,
+  useParams,
+  usePayment,
   useQuery,
+  useRef,
   useState,
   useUser,
+  type Validator,
   v,
-  type WizardError,
+  WizardError,
+  type YookassaConnector,
 } from "@wizard/sdk";
 import { expectTypeOf } from "vitest";
 
@@ -161,4 +204,68 @@ export function ClientContract() {
   expectTypeOf(user).toEqualTypeOf<ClientUser | null>();
   const [n] = useState(0);
   return n;
+}
+
+// ---------- remaining §5 exports ----------
+expectTypeOf<keyof Roles>().toEqualTypeOf<RoleName>();
+expectTypeOf<keyof Functions>().toEqualTypeOf<FunctionName>();
+expectTypeOf<keyof Entities>().toEqualTypeOf<EntityName>();
+expectTypeOf<keyof Connectors>().toEqualTypeOf<"yookassa" | "telegram" | "email" | "qr">();
+expectTypeOf<Connectors["email"]>().toEqualTypeOf<EmailConnector>();
+expectTypeOf<Connectors["yookassa"]>().toEqualTypeOf<YookassaConnector>();
+expectTypeOf<Connectors["qr"]>().toEqualTypeOf<QrConnector>();
+expectTypeOf<{ a: [1, "x", { b: null }] }>().toExtend<Json>();
+expectTypeOf<{ a: Date }>().not.toExtend<Json>();
+expectTypeOf<Id<"stream">>().toExtend<string>();
+expectTypeOf<string>().not.toExtend<Id<"stream">>();
+expectTypeOf<Id<"ticket">>().not.toExtend<Id<"stream">>();
+expectTypeOf<SystemFields<"stream">["id"]>().toEqualTypeOf<Id<"stream">>();
+expectTypeOf<Range<number>>().toEqualTypeOf<{ gt?: number; gte?: number; lt?: number; lte?: number }>();
+expectTypeOf(v.string()).toEqualTypeOf<Validator<string>>();
+expectTypeOf<typeof v.boolean>().returns.toEqualTypeOf<Validator<boolean>>();
+expectTypeOf<InferArgs<{ a: Validator<number>; b: Validator<string | undefined> }>>().toEqualTypeOf<
+  { a: number } & { b?: string | undefined }
+>();
+expectTypeOf<{ x: Validator<number> }>().toExtend<ArgsShape>();
+expectTypeOf(v.pagination()).toEqualTypeOf<Validator<PaginationOpts>>();
+expectTypeOf<ListOptions<"stream">["order"]>().toEqualTypeOf<"asc" | "desc" | undefined>();
+expectTypeOf<DbReader["stream"]>().toEqualTypeOf<TableReader<"stream">>();
+expectTypeOf<DbWriter["stream"]>().toEqualTypeOf<TableWriter<"stream">>();
+expectTypeOf<TableWriter<"stream">["insert"]>().returns.resolves.toEqualTypeOf<Id<"stream">>();
+expectTypeOf<QueryCtx["db"]>().toEqualTypeOf<DbReader>();
+expectTypeOf<MutationCtx["systemDb"]>().toEqualTypeOf<DbWriter>();
+expectTypeOf<MutationCtx["scheduler"]>().toEqualTypeOf<Scheduler>();
+expectTypeOf<ActionCtx["connectors"]>().toEqualTypeOf<Connectors>();
+expectTypeOf<Parameters<ActionCtx["runQuery"]>[0]>().toEqualTypeOf<QueryName>();
+expectTypeOf<Scheduler["runAfter"]>().returns.resolves.toEqualTypeOf<JobId>();
+expectTypeOf<CurrentUser["id"]>().toEqualTypeOf<Id<"users"> | null>();
+expectTypeOf<Logger["info"]>()
+  .parameter(1)
+  .toEqualTypeOf<Record<string, number | boolean | null> | undefined>();
+expectTypeOf<ErrorDetails["message"]>().toEqualTypeOf<string | undefined>();
+expectTypeOf(new WizardError("SOLD_OUT", { message: "Нет мест" })).toMatchTypeOf<Error>();
+expectTypeOf<WizardError["code"]>().toEqualTypeOf<string>();
+expectTypeOf<FnKind>().toEqualTypeOf<"query" | "mutation" | "action">();
+const noArgs = action({ args: {}, handler: async () => 1 });
+expectTypeOf(noArgs).toExtend<FunctionDef<"action", unknown, number>>();
+expectTypeOf(noArgs.kind).toEqualTypeOf<"action">();
+expectTypeOf<CallOptions>().toEqualTypeOf<{ consent?: true }>();
+expectTypeOf<FilterOps<number>["in"]>().toEqualTypeOf<number[] | undefined>();
+expectTypeOf<{ status: { in: ["paid"] } }>().toExtend<EntityFilter<"ticket">>();
+expectTypeOf<"-created_at">().toExtend<SortKey<"ticket">>();
+expectTypeOf<EntityListOptions<"ticket">["limit"]>().toEqualTypeOf<number | undefined>();
+expectTypeOf<EntityListState<"ticket">["hasMore"]>().toEqualTypeOf<boolean>();
+
+export function MoreClientContract() {
+  const payment = usePayment("yookassa");
+  expectTypeOf(payment.pay).parameter(0).toEqualTypeOf<"ticket">();
+  expectTypeOf(useParams<{ id: string }>()).toEqualTypeOf<{ id: string }>();
+  expectTypeOf(useNavigate()).toEqualTypeOf<(to: string) => void>();
+  const ref = useRef<number>(0);
+  const memo = useMemo(() => ref.current + 1, []);
+  const cb = useCallback(() => memo, [memo]);
+  useEffect(() => {
+    cb();
+  }, [cb]);
+  return memo;
 }

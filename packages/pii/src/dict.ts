@@ -47,13 +47,14 @@ function build(): NameDict {
     const gender = flags.includes("m") ? "m" : flags.includes("f") ? "f" : "u";
     if (flags.includes("s")) {
       for (const f of caseForms(form, "m")) surnames.add(fold(f));
-      continue;
+      if (!/[mfud]/.test(flags)) continue;
     }
     if (flags.includes("l")) {
       put(form, { ambiguous: true, latin: true });
       continue;
     }
-    const info: NameInfo = { ambiguous: flags.includes("a"), latin: false };
+    // A first name that is also a surname (Ким) needs a neighbour to count.
+    const info: NameInfo = { ambiguous: flags.includes("a") || flags.includes("s"), latin: false };
     const forms = extra ? [form, ...extra.split(" ")] : caseForms(form, gender === "u" ? "f" : gender);
     for (const f of forms) put(f, info);
   }

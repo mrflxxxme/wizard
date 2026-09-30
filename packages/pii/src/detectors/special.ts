@@ -10,7 +10,15 @@ const BIOMETRIC_RE =
   /(?<![\p{L}])(?:биометр\p{L}*|отпечат(?:ок|ки|ков|ка|кам|ками|ках)(?:[ \xa0]+пальц\p{L}*)?|распознаван\p{L}*[ \xa0]+лиц\p{L}*|образ(?:ец|цы|цов|ца)[ \xa0]+голоса|скан\p{L}*[ \xa0]+лиц\p{L}*|фото[ \xa0]+лица(?:[ \xa0]+для[ \xa0]+прохода)?)/giu;
 
 /** Kinds that identify a data subject for the special/biometric context rule. */
-const SUBJECT_KINDS: ReadonlySet<Kind> = new Set<Kind>(["person_name", "phone_ru", "email", "passport_ru"]);
+const SUBJECT_KINDS: ReadonlySet<Kind> = new Set<Kind>([
+  "person_name",
+  "person_name_latin",
+  "phone_ru",
+  "phone_intl",
+  "email",
+  "social_handle",
+  "passport_ru",
+]);
 const WINDOW = 100;
 
 export function detectSpecialContext(text: string, base: readonly Finding[]): Finding[] {

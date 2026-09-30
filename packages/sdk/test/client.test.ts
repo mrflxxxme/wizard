@@ -31,7 +31,7 @@ const list = useEntityList as unknown as (entity: string, opts?: unknown) => Ret
 const one = useEntity as unknown as (entity: string, id: string | undefined) => ReturnType<typeof useEntity>;
 const mut = useEntityMutation as unknown as (entity: string) => {
   create(doc: unknown, opts?: { consent?: true }): Promise<Record<string, unknown>>;
-  update(id: string, patch: unknown): Promise<Record<string, unknown>>;
+  update(id: string, patch: unknown, opts?: { consent?: true }): Promise<Record<string, unknown>>;
   remove(id: string): Promise<void>;
 };
 const pay = usePayment as unknown as (i: string) => {
@@ -212,9 +212,7 @@ describe("entities (data API)", () => {
     await expect(r.current.remove("s3")).resolves.toBeUndefined();
     const err = await r.current.update("s3", { capacity: 1 }).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: "NOT_FOUND", status: 404 });
-    expect(
-      server.requests.filter((x) => x.method !== "GET").every((x) => x.headers["x-wizard-request"] === "1"),
-    ).toBe(true);
+    expect(server.requests.every((x) => x.headers["x-wizard-request"] === "1")).toBe(true);
   });
 });
 

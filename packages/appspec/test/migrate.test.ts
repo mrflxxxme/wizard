@@ -328,6 +328,32 @@ describe("toDDL", () => {
     ]);
   });
 
+  test("index and unique names cannot collide across tables (ticket+type_x vs ticket_type+x)", () => {
+    const spec = next(miniSpec(), [
+      {
+        op: "add_entity",
+        name: "ticket",
+        label: "Билет",
+        fields: [{ name: "type_x", label: "Т", type: "string", unique: true }],
+        indexes: [{ fields: ["type_x"] }],
+      },
+      {
+        op: "add_entity",
+        name: "ticket_type",
+        label: "Тип",
+        fields: [{ name: "x", label: "Т", type: "string", unique: true }],
+        indexes: [{ fields: ["x"] }],
+      },
+    ]);
+    const names = toDDL(planMigration(null, spec), S)
+      .flatMap((x) => [...x.matchAll(/(?:CONSTRAINT|INDEX IF NOT EXISTS) "((?:ix|ux|uq)_[^"]+)"/g)])
+      .map((m) => m[1]);
+    expect(names).toEqual(
+      expect.arrayContaining(["ix_ticket$type_x", "ix_ticket_type$x", "uq_ticket$type_x"]),
+    );
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   test("retention.mode=anonymize keeps pii columns nullable in the database", () => {
     const base = next(miniSpec(), [
       { op: "update_field", entity: "task", name: "email", patch: { required: true } },

@@ -89,10 +89,10 @@ workflows:
       - { name: plan, kind: llm, callType: plan, skip_in_modes: [fix], does: "план: список сущностей, страниц, функций, критериев приёмки (agents/builder.yaml); событие plan_ready" }
       - { name: ops, kind: "loop(llm build_ops → tx applyOps)", skip_in_modes: [fix], does: "батчи ≤50 ops; каждый батч = ревизия; OpsError возвращаются модели структурно; событие ops_applied" }
       - { name: code, kind: "loop(llm build_code → tx commit_files)", does: "write_file копит изменения в рабочем дереве прогона; commit_files в конце каждого LLM-шага = ревизия kind=files; событие file_written на файл" }
-      - { name: gate_G0, kind: gate, does: "runGates('G0') (сборка бандла — внутри G0-BUILD-01 через architecture.yaml#interfaces, отдельно не собирается)" }
+      - { name: gate_G0, kind: gate, does: "runGates('G0') (G0-BUILD-01 собирает бандл через packages/build — architecture.yaml#interfaces.build_system; результат переиспользуется в bundle_and_reload)" }
       - { name: migrate_draft, kind: tx, does: "при G0 passed: planMigration(spec(preview_revision) | null, spec, {env: 'draft'}) → toDDL + toRLS в app_<key>_draft под wizard_owner; destructive в draft допустим; при несовместимости типов — DROP SCHEMA … CASCADE и создание заново (M0)" }
       - { name: seed_draft, kind: tx, does: "только при создании схемы: gates.generateSeed(spec, sha256(systemKey)) (qa.yaml#seed) + пользователи dev-<role> для каждой роли; повторно не сидировать (L2-04)" }
-      - { name: bundle_and_reload, kind: step, does: "бандл G0 в раскладке runtime.yaml#system_loading.artifact_layout, revisions.bundle_key, systems.preview_revision; затем POST /_wizard/internal/reload {systemId: schema_key, env: draft}" }
+      - { name: bundle_and_reload, kind: step, does: "packages/build writeArtifact: бандл G0 в раскладке runtime.yaml#system_loading.artifact_layout, revisions.bundle_key, systems.preview_revision; затем POST /_wizard/internal/reload {systemId: schema_key, env: draft}" }
       - { name: gate_G1, kind: gate, does: "runGates('G1') против runtime draft с seed-данными" }
       - { name: report, kind: tx, does: "messages kind=run_report, run_finished; M1: ledger charge по факту + release hold" }
     fix_loop:
@@ -137,7 +137,7 @@ workflows:
     steps:
       - { name: profile, kind: step, does: "локально: парсинг, профиль колонок, DLP заголовков (data-boundary.yaml#import); значения в LLM не идут" }
       - { name: map, kind: llm, callType: import_mapping, does: "только SyntheticPayload (заголовки после scrub, профили, ≤5 синтетических строк)" }
-      - { name: confirm, kind: needs_input, does: "decision: пользователь подтверждает маппинг и разметку ПДн" }
+      - { name: confirm, kind: needs_input, does: "decision decisionId=import_confirm: пользователь правит маппинг и разметку ПДн (PUT /systems/:id/imports/:importId/mapping, экран S-import) и подтверждает (choice confirm | cancel)" }
       - { name: schema_ops, kind: "loop(llm build_ops → tx applyOps)", does: "если нужна новая сущность/поля" }
       - { name: load_rows, kind: tx, does: "вставка значений в app_<key>_draft пачками по 1000 без участия LLM; исходник удаляется по TTL 7 дней" }
 
@@ -177,7 +177,7 @@ workflows:
 
   nightly_eval:
     milestone: M1
-    schedule: "DBOS scheduled, ежедневно 02:07 MSK, только если заданы ключи live"
+    schedule: "DBOS scheduled, ежедневно 02:07 MSK, только если заданы ключи live; объём и бюджет — quality/eval.yaml#live_cadence (F6: nightly_smoke 5 брифов, full — по метке PR, ≤ 30 000 ₽/мес)"
     does: "tools/eval/run.mjs --harness на брифах без ПДн; результат в artifacts eval/<date>.json; регрессия доли G0/G1 > 5 п.п. к медиане 7 дней → уведомление в CI-канал (M1-10)"
 
 events:
@@ -186,15 +186,16 @@ events:
     - "MUST: payload не содержит значений секретов и содержимого промптов; тексты для пользователя — на русском"
     - "MUST: тест M0-15 валидирует каждое событие fixture-прогонов «форум» и «кондитерская» по схемам ниже (ajv)"
     - "Терминальные: run_finished, run_failed — ровно одно на прогон, последнее"
+    - "internal: true — событие пишется в run_events (журнал, аудит), но в SSE пользователя не отдаётся (model_switched: модель и tier пользователю не показываются, agents/models.yaml); seq в SSE-потоке на месте внутренних событий пропускается"
     - "Этот раздел — источник истины имён и payload событий для всех агентов (L1-02). Имена из agents/builder.yaml, которых здесь нет, отображаются так: gate_finished → gate_result; budget_warning → budget_update (UI сам показывает предупреждение при used ≥ 0.8·cap); needs_user → needs_input kind=decision id=escalation; run_finished {version, humanDiff} → run_finished {resultRevision, summary_ru}, человеческий diff — в ops_applied.summary_ru. Других типов событий нет"
   types:
-    run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null", model: "string|null — label модели сборки по умолчанию (agents/models.yaml), для «Ход сборки»" } }
+    run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null" } }
     plan_ready:      { required: [steps], properties: { steps: "[{id, kind: ops|code, title}] ≤ 20 — план строителя (agents/builder.yaml#loop.phases.plan)" } }
     step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer } }
-    step_finished:   { required: [step], properties: { step: string, durationMs: integer } }
+    step_finished:   { required: [step], properties: { step: string, durationMs: integer, ruFallback: "boolean — хотя бы один LLM-вызов шага ушёл на модели в РФ по фолбэку; UI показывает общую строку без названий моделей (agents/models.yaml#fallback_rules, L4-20)" } }
     agent_message:   { required: [agent, messageId, text], properties: { agent: "orchestrator|builder|qa", messageId: string, text: string, delta: "boolean — true: кусок стрима, склеивать по messageId" } }
     chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal|notice", messageId: string, cardVersion: integer } }
-    model_switched:  { required: [fromModel, toModel, reason], properties: { fromModel: string, toModel: string, toTier: "T0|T1", reason: "fallback_circuit_open|fallback_error (agents/models.yaml#fallback_rules)" } }
+    model_switched:  { internal: true, required: [fromModel, toModel, reason], properties: { fromModel: string, toModel: string, reason: "fallback_circuit_open|fallback_error (agents/models.yaml#fallback_rules)" } }
     ops_applied:     { required: [revision, opsCount, summary_ru], properties: { revision: integer, opsCount: integer, opTypes: "string[]", summary_ru: "string[] — человеческий diff" } }
     file_written:    { required: [path, action], properties: { path: string, action: "create|update|delete", sha256: string, size: integer, revision: "integer|null" } }
     gate_started:    { required: [level], properties: { level: "G0|G1|G2", revision: integer } }
