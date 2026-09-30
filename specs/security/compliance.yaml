@@ -34,7 +34,7 @@ system_package:                    # «Пакет 152-ФЗ» в каждой с�
     rule: "ops.yaml#semantic_rules: сущность с pii=basic MUST иметь retention или compliance.retentionWaiver. Строитель SHOULD предлагать срок по умолчанию (единый источник для orchestrator.yaml#defaults): регистрация на событие — 30 дней после даты события (anchorField = дата события; 30 или 90 дней — E-LEGAL, до ответа 30), заказ — 3 года (бухучёт), заявка без сделки — 1 год"
     users: "users конечных пользователей: без входа 3 года → anonymize (email, телефон, telegram_chat_id, display_name → NULL); запись в deletion_log mode=retention"
     files: "Файлы полей file удаляются вместе со строкой (delete) и при anonymize (поле → NULL, объект в S3 удаляется); retention и anonymize применяются к ним как к pii: basic"
-    enforcement: "Удаление выполняет runtime (runtime.yaml#workflows.retention, ежесуточно, с M0); контроль и журнал — workflows.yaml#workflows.retention_cron (M2). mode delete или anonymize (ПДн-поля → NULL, остальное сохраняется для отчётов)"
+    enforcement: "Удаление выполняет runtime (runtime.yaml#workflows.retention, ежесуточно, с M1 — вместе с поллером заданий; в M0 воркфлоу только пишут в _w_jobs, L2-07); контроль и журнал — workflows.yaml#workflows.retention_cron (M2). mode delete или anonymize (ПДн-поля → NULL, остальное сохраняется для отчётов)"
     deletion_log: "platform.deletion_log: system, entity, mode, cutoff, rows_affected — без значений; владелец видит журнал в настройках системы"
   subject_requests:
     milestone: M2

@@ -77,8 +77,8 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: in_progress
-    claimed_by: pii-agent
+    status: done
+    claimed_by: null
     acceptance:
       - "Recall ≥ 0.95 на наборе packages/pii/test/corpus.ru.jsonl (≥200 строк, генерируется синтетически), precision ≥ 0.9"
       - "Корпус содержит ≥ 50 жёстких негативов (номера заказов, даты, цены, ИНН юрлиц) — они не детектируются как ПДн"
@@ -110,11 +110,12 @@ tasks:
     milestone: M0
     deps: [M0-02]
     specs: [specs/runtime/sdk.md, specs/appspec/appspec.schema.json]
+    # done: @wizard/sdk/codegen пока держит свой генератор sdk.md §4, пока packages/appspec не перейдёт на него (follow-up L2-17; CHANGELOG M0-07)
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: in_progress
-    claimed_by: sdk-agent
+    status: done
+    claimed_by: null
     acceptance:
       - "tsc --noEmit с tsconfig.system на specs/runtime/examples/functions против generateTypes(forum.json) проходит; ctx.db.ticket.list({where:{status:'paid'}}) без индекса — ошибка tsc (test-d)"
       - "packages/sdk/src/sdk.d.ts соответствует sdk.md §5; contract.test-d.ts покрывает каждый экспорт"
@@ -459,18 +460,19 @@ tasks:
     title: "packages/appspec (усиление после M0-04): типизированные литералы в DDL/RLS, fuzz-тест, ограничения $user.<attr> и полей compliance от агента, роль мигратора"
     milestone: M0
     deps: [M0-04]
-    specs: [specs/appspec/ops.yaml, specs/appspec/appspec.schema.json, "specs/architecture.yaml#data_stores"]
+    specs: [specs/appspec/ops.yaml, specs/appspec/appspec.schema.json, "specs/architecture.yaml#data_stores", specs/runtime/sdk.md]
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
     status: todo
     claimed_by: null
     acceptance:
-      - "toDDL/toRLS не интерполируют значения: литералы только через literal(value, fieldType) (число — Number.isFinite; строка — '→'', без \\0 и E-строк; bool/date — проверка формата), идентификаторы — только quoteIdent (L3-01)"
+      - "toDDL/toRLS не интерполируют значения: литералы только через sqlLiteral(value, fieldType) (ops.yaml#migrations.sql_values) (число — Number.isFinite; строка — '→'', без \\0 и E-строк; bool/date — проверка формата), идентификаторы — только quoteIdent (L3-01)"
       - "Property/fuzz-тест: значения `'); DROP SCHEMA platform; --`, `$$`, `\\\\` в default, min/max и rowFilter не меняют число SQL-выражений; на реальном Postgres схема platform цела"
       - "Интеграционный тест: миграцию выполняет роль без прав на схему platform и без superuser; попытка DDL в platform → ошибка прав"
-      - "$user.<attr> в rowFilter — только id, role и атрибуты из readonlyFields users у всех не-isAdmin ролей; иначе INVALID_ROW_FILTER (display_name запрещён) (L3-20)"
+      - "$user.<attr> в rowFilter — только id, role, phone, email, telegram_id (ops.yaml#semantic_rules); иначе INVALID_ROW_FILTER (display_name запрещён) (L3-20)"
       - "set_compliance с author='agent': разрешены только consentTemplateId и policyPage; operator*, retentionWaiver, свободный consentText → OWNER_ONLY_FIELD (L3-06)"
+      - "generateTypes в packages/appspec выдаёт формат sdk.md §4 (перенос генератора из packages/sdk/src/codegen и host/indexes.ts); @wizard/sdk/codegen становится реэкспортом (L2-17, CHANGELOG M0-07)"
 
   - id: M0-30
     title: "Применить итог eval недели 0 по правилу F2: уровень сборки по умолчанию (T1 или T0) и тексты UI"

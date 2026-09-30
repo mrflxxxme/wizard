@@ -449,10 +449,11 @@ tables:
       system_id: "uuid not null"
       env: "text not null"
       entity: "text not null"
-      mode: "text not null check (mode in ('delete','anonymize','subject_request','draft_purged','system_deleted','user_deleted','consent_revoked'))"
+      mode: "text not null check (mode in ('delete','anonymize','retention','subject_request','draft_purged','system_deleted','user_deleted','consent_revoked'))"
       cutoff: "timestamptz"
       rows_affected: "integer not null"
       run_id: "uuid"
+      created_at: "timestamptz not null default now()"
     indexes: ["(system_id, created_at desc)"]
     retention: "3 года"
 

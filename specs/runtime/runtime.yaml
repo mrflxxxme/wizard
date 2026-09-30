@@ -12,7 +12,7 @@ routing:
     - "MUST: неизвестный host или не опубликованный env → 404 со страницей «Система не найдена»"
     - "MUST: registry.suspended = true → 451 со страницей «Система временно недоступна по жалобе» (security/abuse.yaml#takedown; L1-32) на всех путях, кроме /_wizard/health"
     - "MUST: запросы без Host или с доменом платформы → 421. Локально (WIZARD_AUTH_MODE=dev или WIZARD_UNSAFE_LOCAL_EXEC=1): Host вне *.localhost/localhost/127.0.0.1/[::1] → 421, заголовки X-Forwarded-*, Forwarded, CF-* → 403 (platform/deploy.yaml#local.host_guard, L3-10)"
-    - "Пути: /api/* (API системы), /_wizard/* (служебное), /assets/*, /sw.js, /manifest.webmanifest; /login и compliance.policyPage рендерит runtime-шаблон (AppShell.Login и страница политики — ui-kit), pages[].route MUST NOT совпадать с ними (G0-SPEC-02, L1-48); остальное → index.html (SPA)"
+    - "Пути: /api/* (API системы), /_wizard/* (служебное), /assets/*, /sw.js, /manifest.webmanifest; /login и compliance.policyPage рендерит runtime-шаблон (AppShell.Login и страница политики — ui-kit), pages[].route MUST NOT совпадать с ними (G0-SPEC-05, L1-48); остальное → index.html (SPA)"
     - "MUST: /_wizard/internal/* слушается только на внутреннем порту (4101; в облаке — ClusterIP), на публичном порту и ingress → 404 (L3-19)"
   test: "Две системы в одном процессе на разных хостах не видят данных друг друга (e2e на *.localhost)"
 

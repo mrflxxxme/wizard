@@ -60,7 +60,7 @@ semantic_rules:                # проверяются после примен�
   - "selfSignup=true несовместим с isAdmin=true"
   - "Имена сущностей, совпадающие с ключевыми словами SQL-стандарта (session, user, order, group, ...), допускаются только если reserved.ts явно их разрешает: DDL всегда квотирует идентификаторы, поэтому session разрешено; список в packages/appspec/src/reserved.ts — источник истины"
   - "Системная сущность users (id, role, phone?, email?, telegram_id?, display_name) существует неявно; имя users зарезервировано; $user.<attr> ссылается на её поля"
-  - "Перед prod: compliance.operatorName и operatorContact заполнены, если есть поля pii≠none (проверяет G2); с M1 — и operatorAddress (L3-34)"
+  - "Перед prod: compliance.operatorName и operatorContact заполнены, если есть поля pii≠none (проверяет G2); с M2 — и operatorAddress (L3-34; security/compliance.yaml#system_package.operator)"
   - "Поле type=file хранит только ключ хранилища; загрузка, раздача и классификация ПДн — с M2-01 (runtime.yaml, L3-18)"
 
 migrations:
