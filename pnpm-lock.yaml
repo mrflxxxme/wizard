@@ -179,7 +179,32 @@ importers:
         specifier: 1.56.1
         version: 1.56.1
 
-  packages/gates: {}
+  packages/gates:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../appspec
+      '@wizard/build':
+        specifier: workspace:*
+        version: link:../build
+      '@wizard/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@wizard/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@wizard/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/llm:
     dependencies:

@@ -1,0 +1,9 @@
+{
+  "check": "G0-BUILD-01",
+  "expect": "fail",
+  "description": "синтаксическая ошибка в JSX (AST-проверки проходят, esbuild — нет)",
+  "files": {
+    "ui/Scanner.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Scanner() {\n  return <AppShell title=\"Сканер\">;\n}\n"
+  },
+  "match": "не собирается"
+}

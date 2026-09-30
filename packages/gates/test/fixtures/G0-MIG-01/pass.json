@@ -1,0 +1,18 @@
+{
+  "check": "G0-MIG-01",
+  "expect": "pass",
+  "description": "prod: аддитивное добавление поля",
+  "env": "prod",
+  "prevSpec": "forum",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/0/fields",
+      "value": {
+        "name": "hall",
+        "label": "Зал",
+        "type": "string"
+      }
+    }
+  ]
+}

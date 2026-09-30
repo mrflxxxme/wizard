@@ -1,0 +1,12 @@
+{
+  "check": "G0-SPEC-01",
+  "expect": "fail",
+  "description": "specVersion не \"1\"",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/specVersion",
+      "value": "2"
+    }
+  ]
+}

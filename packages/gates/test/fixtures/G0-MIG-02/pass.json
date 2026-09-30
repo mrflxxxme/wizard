@@ -1,0 +1,6 @@
+{
+  "check": "G0-MIG-02",
+  "expect": "pass",
+  "description": "DDL+RLS форума применяются к теневой схеме",
+  "prevSpec": "forum"
+}

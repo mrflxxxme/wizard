@@ -1,0 +1,17 @@
+{
+  "check": "G0-SPEC-06",
+  "expect": "pass",
+  "description": "с M2 загрузка есть — правило не действует",
+  "milestone": "M2",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/3/fields",
+      "value": {
+        "name": "photo",
+        "label": "Фото",
+        "type": "file"
+      }
+    }
+  ]
+}

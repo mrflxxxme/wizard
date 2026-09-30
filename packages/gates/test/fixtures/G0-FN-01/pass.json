@@ -1,0 +1,5 @@
+{
+  "check": "G0-FN-01",
+  "expect": "pass",
+  "description": "функции форума: default export нужного вида, аргументы через v.*"
+}

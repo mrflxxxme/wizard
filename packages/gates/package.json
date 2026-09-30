@@ -7,6 +7,18 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/gates",
+    "fixtures": "node scripts/gen-fixtures.mjs"
+  },
+  "dependencies": {
+    "@wizard/appspec": "workspace:*",
+    "@wizard/build": "workspace:*",
+    "@wizard/connectors": "workspace:*",
+    "@wizard/sdk": "workspace:*",
+    "@wizard/ui-kit": "workspace:*",
+    "ajv": "^8.20.0",
+    "postgres": "^3.4.9",
+    "typescript": "^5.9.3"
   }
 }

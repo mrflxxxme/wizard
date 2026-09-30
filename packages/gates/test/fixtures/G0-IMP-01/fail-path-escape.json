@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "escape build_path_escape: абсолютный путь",
+  "files": {
+    "functions/lib/evil.ts": "import x from \"/etc/passwd\";\n\nexport const y = x;\n"
+  },
+  "match": "/etc/passwd"
+}

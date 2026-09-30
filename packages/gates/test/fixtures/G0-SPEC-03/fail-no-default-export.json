@@ -1,0 +1,9 @@
+{
+  "check": "G0-SPEC-03",
+  "expect": "fail",
+  "description": "страница без default export",
+  "files": {
+    "ui/Scanner.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport function Scanner() {\n  return <AppShell title=\"Сканер\">Нет</AppShell>;\n}\n"
+  },
+  "match": "по умолчанию"
+}

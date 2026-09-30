@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: ui-define-query",
+  "files": {
+    "ui/Evil.tsx": "import { query } from \"@wizard/sdk\";\nimport { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Evil() {\n  void query({ args: {}, handler: async () => 1 });\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "query"
+}

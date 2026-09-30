@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "fail",
+  "description": "запрещено: constructor-chain",
+  "files": {
+    "functions/lib/evil.ts": "import type { QueryCtx } from \"@wizard/sdk\";\n\nexport async function evil(ctx: QueryCtx) {\n  void (ctx as never as { constructor: { constructor: (s: string) => unknown } }).constructor.constructor(\"return 1\");\n  return ctx.now;\n}\n"
+  },
+  "match": "constructor.constructor"
+}

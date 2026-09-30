@@ -1,0 +1,9 @@
+{
+  "check": "G0-SPEC-03",
+  "expect": "fail",
+  "description": "файла функции нет",
+  "files": {
+    "functions/partnerQuota.ts": null
+  },
+  "match": "partnerQuota"
+}

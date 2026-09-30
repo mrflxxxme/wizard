@@ -1,0 +1,5 @@
+{
+  "check": "G0-SPEC-05",
+  "expect": "pass",
+  "description": "роли speaker/participant с selfSignup: запись и ПДн только через rowFilter"
+}

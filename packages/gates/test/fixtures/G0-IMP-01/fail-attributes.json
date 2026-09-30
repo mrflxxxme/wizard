@@ -1,0 +1,9 @@
+{
+  "check": "G0-IMP-01",
+  "expect": "fail",
+  "description": "импорт с атрибутами",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\nimport data from \"./data.json\" with { type: \"json\" };\nvoid data;\n\nexport default function Evil() {\n\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n"
+  },
+  "match": "атрибут"
+}

@@ -1,0 +1,9 @@
+{
+  "check": "G0-SPEC-04",
+  "expect": "warn",
+  "description": "файл-сирота в ui/components",
+  "files": {
+    "ui/components/Unused.tsx": "export function Unused() {\n  return <p>Не используется</p>;\n}\n"
+  },
+  "match": "ui/components/Unused.tsx"
+}

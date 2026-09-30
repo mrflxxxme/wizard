@@ -1,0 +1,5 @@
+{
+  "check": "G0-SPEC-02",
+  "expect": "pass",
+  "description": "forum.json семантически корректна, интеграции проходят validateSpec коннекторов"
+}

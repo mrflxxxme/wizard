@@ -1,0 +1,9 @@
+{
+  "check": "G0-SEC-01",
+  "expect": "pass",
+  "description": "похожие, но разрешённые конструкции",
+  "files": {
+    "ui/Evil.tsx": "import { AppShell } from \"@wizard/ui-kit\";\n\nexport default function Evil() {\n  const top = 1;\n  const rect = { top: 2, parent: 3 };\n  document.title = \"Форум \" + String(top + rect.top + rect.parent);\n  const tid = setTimeout(() => {}, 10);\n  clearTimeout(tid);\n  const key = \"title\";\n  const obj: Record<string, number> = { a: 1 };\n  void obj[key];\n  void document[\"title\"];\n  if (Math.random() > 2) window.open(\"/ticket/1\");\n  return <AppShell title=\"Проверка\">Текст</AppShell>;\n}\n",
+    "functions/lib/evil.ts": "import type { QueryCtx } from \"@wizard/sdk\";\n\nexport async function evil(ctx: QueryCtx) {\n  ctx.log.info(\"ok\", { n: 1 });\n  const items = await ctx.db.stream.list({ limit: 10 });\n  void items;\n  return ctx.now;\n}\n"
+  }
+}
