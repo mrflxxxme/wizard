@@ -1,0 +1,104 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.neutral {
+  background: var(--w-line);
+  color: var(--w-ink);
+}
+
+.accent {
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+}
+
+.ok {
+  background: var(--w-ok-soft, var(--w-line));
+  color: var(--w-ok);
+}
+
+.warn {
+  background: var(--w-warn-soft, var(--w-line));
+  color: var(--w-warn);
+}
+
+.bad {
+  background: var(--w-bad-soft, var(--w-line));
+  color: var(--w-bad);
+}
+
+.alert {
+  border: 1px solid var(--w-bad);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  padding: 10px 12px;
+  font-size: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-accent-soft);
+  color: var(--w-ink);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.shield {
+  color: var(--w-accent-text);
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--w-line);
+  border-top-color: var(--w-accent);
+  animation: spin 0.9s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon {
+  display: inline-flex;
+  width: 14px;
+  justify-content: center;
+  font-weight: 700;
+  flex: none;
+}
+
+.icon_done {
+  color: var(--w-ok);
+}
+
+.icon_failed {
+  color: var(--w-bad);
+}
+
+.icon_queued {
+  color: var(--w-muted);
+}

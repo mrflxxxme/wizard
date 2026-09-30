@@ -5,7 +5,13 @@ export const APP = "@wizard/runtime";
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
 export { createRuntimeApp, type RuntimeApp, type RuntimeAppOptions } from "./app.js";
 /** Tokens of the session cookie; safeNext for next/returnTo (runtime.yaml#auth). */
-export { readSessionToken, SESSION_TTL_MS, safeNext, sessionCookieName } from "./auth/session.js";
+export {
+  previewCookieName,
+  readSessionToken,
+  SESSION_TTL_MS,
+  safeNext,
+  sessionCookieName,
+} from "./auth/session.js";
 /** Consent hashes exposed in RoleSpec.compliance. */
 export { type ComplianceInfo, complianceInfo, consentMatches } from "./compliance.js";
 /** DataAccess contract: data API + ctx.db/ctx.systemDb (architecture.yaml#interfaces.data_access). */

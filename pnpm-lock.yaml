@@ -67,7 +67,42 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
 
-  apps/platform-web: {}
+  apps/platform-web:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../../packages/appspec
+      '@wizard/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@playwright/test':
+        specifier: 1.56.1
+        version: 1.56.1
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@22.20.4)(tsx@4.23.15)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   apps/runtime:
     dependencies:
