@@ -23,6 +23,12 @@ WIZARD_UNSAFE_LOCAL_EXEC=1 node tools/eval/run.mjs --harness --llm-mode=live --m
 | `--briefs=id1,id2` | подмножество брифов |
 | `--dry-run` | только с `fixture`. Бриф без своей фикстуры проигрывает демо-сценарий своего сегмента (ev, hz → forum, gd → bakery) с добавленными предложениями-канарейками. Так проверяется механика и `pii_leaks`, а не качество |
 | `--out=dir` | куда писать результаты (по умолчанию `tools/eval/results`) |
+| `--gates=G0` | G1 заменяется заглушкой: сгенерированный код не исполняется, `WIZARD_UNSAFE_LOCAL_EXEC` не нужен, `g0g1_pass` не измеряется («—»). Так работает live в CI |
+| `--max-cost-rub=N` | бюджет прогона: когда расход достигает N ₽, новые брифы не стартуют (`skipped`) |
+| `--baseline=path\|none` | с чем сравнивать доли `g0_pass`/`g0g1_pass` (по умолчанию `tools/eval/baseline.json`). Падение больше чем на 5 п. п. даёт код выхода 1 |
+| `--preflight` | только проверить опции. Код 3 — нет ключей провайдеров (печатаются имена переменных), 0 — можно запускать |
+
+CI, бюджет live-прогонов, журнал расходов и baseline описаны в [docs/ops/eval.md](../../docs/ops/eval.md) (`tools/eval/ci.mjs`).
 
 Какая фикстура проигрывается: сначала своя `tools/fixtures/eval/<briefId>.jsonl`, иначе демо (`ev-01` → `demo/forum`, `gd-01` → `demo/bakery`). Демо-сценарий идёт со своим брифом и ответами из `tools/fixtures/golden/<name>.yaml`, потому что вопросы оркестратора зависят от текста. Бриф без фикстуры в режиме `fixture` пропускается (`skipped`), это не провал.
 
@@ -30,7 +36,7 @@ WIZARD_UNSAFE_LOCAL_EXEC=1 node tools/eval/run.mjs --harness --llm-mode=live --m
 
 Результаты: `results/<YYYY-MM-DD>-harness.{json,md}` для live (коммитятся, это отчёт для вехи и baseline) и `results/<stamp>-harness-fixture|-record|-dry.{json,md}` для остальных режимов (в git не попадают). В таблице по брифам есть `g0_pass`, `g0g1_pass`, `tokens`, `₽`, `мин`, в сводной по моделям ещё `coverage`, `credits`, вопросы и `pii_leaks`. Метрики — `eval.yaml#metrics`. JSON читает `week0.mjs`: `valid` = `g0_pass`, `attempts` = номер прогона G0, на котором он впервые прошёл, `score` = покрытие ожиданий по финальной спеке.
 
-Код выхода 1, если нарушен жёсткий порог (`eval.yaml#thresholds.hard`): `pii_leaks > 0`, `FIXTURE_MISS` или демо-фикстура не дошла до G0+G1.
+Код выхода 1, если нарушен жёсткий порог (`eval.yaml#thresholds.hard`): `pii_leaks > 0`, `FIXTURE_MISS`, демо-фикстура не дошла до G0+G1 или доля `g0_pass`/`g0g1_pass` упала больше чем на 5 п. п. к baseline (`eval.yaml#regression`).
 
 ### pii_leaks
 

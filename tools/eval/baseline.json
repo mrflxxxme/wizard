@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "entries": [
+    {
+      "mode": "harness-fixture",
+      "modelId": "glm-5.3",
+      "briefSetHash": "5c540e57e40b4e37",
+      "metrics": {
+        "n": 2,
+        "g0_pass": 1,
+        "g0g1_pass": 1
+      },
+      "per_brief": {
+        "ev-01-forum-registration@2bbbd32059b7": {
+          "g0_pass": true,
+          "g0g1_pass": true
+        },
+        "gd-01-cake-preorder@0b0ca96fbea7": {
+          "g0_pass": true,
+          "g0g1_pass": true
+        }
+      },
+      "commit": "32a4b52",
+      "date": "2026-09-30"
+    }
+  ]
+}
