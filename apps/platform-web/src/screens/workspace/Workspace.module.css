@@ -306,6 +306,10 @@
   justify-content: space-between;
 }
 
+.forkChoice {
+  color: var(--w-muted);
+}
+
 .card {
   max-width: 920px;
 }

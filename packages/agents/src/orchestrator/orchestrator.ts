@@ -8,6 +8,7 @@ import type { AgentEventSink, EmitFn, RunStepFn } from "../core/events.js";
 import { type CallBase, callTool, type RouteFn } from "../core/loop.js";
 import { defineTool, type ToolIssue } from "../core/tool.js";
 import { estimateCard } from "./estimate.js";
+import { forkOptionLabel, forkTitle } from "./fork-labels.js";
 import { piiCategories, piiNoticeText } from "./pii.js";
 import { buildMessages, type OrgContext } from "./prompt.js";
 import {
@@ -34,7 +35,8 @@ export interface AnalysisSummary {
   roles: string[];
   skeleton: string[];
   constraints: string[];
-  forks: { forkId: string; status: "resolved" | "asking" | "pending" }[];
+  /** title — short fork name, choice — label of the option taken from the brief or the default (FU-4). */
+  forks: { forkId: string; status: "resolved" | "asking" | "pending"; title: string; choice?: string }[];
 }
 
 export type OrchOutput =
@@ -612,14 +614,14 @@ export class Orchestrator {
   }
 
   private summary(a: Analysis, sel: ForkSelection): AnalysisSummary {
+    const decided = (d: ForkSelection["decided"][number], status: "resolved" | "pending") => {
+      const choice = forkOptionLabel(d.forkId, d.optionId);
+      return { forkId: d.forkId, status, title: forkTitle(d.forkId), ...(choice ? { choice } : {}) };
+    };
     const forks: AnalysisSummary["forks"] = [
-      ...sel.decided
-        .filter((d) => d.source === "brief")
-        .map((d) => ({ forkId: d.forkId, status: "resolved" as const })),
-      ...sel.asked.map((x) => ({ forkId: x.forkId, status: "asking" as const })),
-      ...sel.decided
-        .filter((d) => d.source === "default")
-        .map((d) => ({ forkId: d.forkId, status: "pending" as const })),
+      ...sel.decided.filter((d) => d.source === "brief").map((d) => decided(d, "resolved")),
+      ...sel.asked.map((x) => ({ forkId: x.forkId, status: "asking" as const, title: forkTitle(x.forkId) })),
+      ...sel.decided.filter((d) => d.source === "default").map((d) => decided(d, "pending")),
     ];
     return scrubJson({
       title: a.goals[0] ?? "",

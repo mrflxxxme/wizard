@@ -49,6 +49,9 @@ export const ru = {
     guest: "Гость",
     policy: "Политика обработки персональных данных",
     forbidden: "Нет доступа к этой странице",
+    forbiddenHint: (role: string) => (role ? `Роль «${role}» не открывает эту страницу.` : ""),
+    goHome: "На главную",
+    goTo: (title: string) => `Перейти: ${title}`,
   },
   login: {
     title: "Вход",

@@ -108,17 +108,8 @@ function clientEntry(spec: AppSpec): string {
     // a role change reloads the page (login, set-role), so one read at start is enough.
     'fetch("/_wizard/spec", { credentials: "same-origin", headers: { accept: "application/json" } })',
     '  .then((r) => (r.ok ? r.json() : Promise.reject(new Error("/_wizard/spec " + r.status))))',
-    '  .then((spec) => createRoot(document.getElementById("root")).render(jsx(App, { spec: kitSpec(spec) })));',
-    // runtime RoleSpec {role: {name, label, access, isAdmin}, loginRoles} → ui-kit RoleSpec {role: name, roles}.
-    "function kitSpec(s) {",
-    '  const roles = (s.loginRoles ?? []).map((r) => ({ ...r, access: "login", isAdmin: false }));',
-    "  if (s.role) {",
-    "    const i = roles.findIndex((r) => r.name === s.role.name);",
-    "    if (i < 0) roles.push({ ...s.role });",
-    "    else roles[i] = { ...roles[i], isAdmin: s.role.isAdmin === true };",
-    "  }",
-    "  return { ...s, role: s.role ? s.role.name : null, roles };",
-    "}",
+    // The runtime RoleSpec is ui-kit's RoleSpec (one contract, FU-4): passed through as is.
+    '  .then((spec) => createRoot(document.getElementById("root")).render(jsx(App, { spec })));',
     "",
   ];
   return lines.join("\n");

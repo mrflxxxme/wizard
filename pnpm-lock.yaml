@@ -250,6 +250,9 @@ importers:
 
   packages/gates:
     dependencies:
+      '@faker-js/faker':
+        specifier: ^10.6.0
+        version: 10.6.0
       '@wizard/appspec':
         specifier: workspace:*
         version: link:../appspec
