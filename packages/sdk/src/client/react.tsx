@@ -313,7 +313,7 @@ export function useEntityMutation<E extends EntityName>(entity: E): EntityMutati
   return useMemo(
     () => ({
       create: (doc, opts) => client.createEntity<ClientDoc<E>>(entity, doc, opts),
-      update: (id, patch) => client.updateEntity<ClientDoc<E>>(entity, String(id), patch),
+      update: (id, patch, opts) => client.updateEntity<ClientDoc<E>>(entity, String(id), patch, opts),
       remove: (id) => client.removeEntity(entity, String(id)),
     }),
     [client, entity],

@@ -589,6 +589,7 @@ tasks:
     claimed_by: null
     acceptance:
       - "Тест: реальные значения импортированной таблицы ни разу не попадают в запросы T1"
+      - "xlsx: библиотека MIT/Apache без исполнения формул; распакованный размер ≤ 100 МБ, ≤ 1 млн ячеек, внешние связи игнорируются (L3-37)"
       - "ruOnly при включении инвалидирует кэш политики и отменяет T1-вызовы в полёте; model_switched пишется только во внутренний журнал (L3-42)"
       - "Детекторы phone_intl, social_handle, ogrnip, car_plate_ru, person_name_latin; recall на отложенном корпусе (≥ 300 строк, хранится в РФ, не в репозитории) — порог data-boundary.yaml (L3-05)"
       # если по F2 сборка идёт на T0, диспетчер может перенести задачу после M2 (перенос между вехами — не эскалация)
@@ -754,6 +755,7 @@ tasks:
       - "Превью в облаке — только /_wizard/preview-login?t= с HMAC {systemId, env=draft, role, revision, platformUserId, exp ≤ 15 мин, nonce}; nonce одноразовый (L3-11)"
       - "Деплой staging/prod — self-hosted runner в Cloud.ru, в GitHub только короткоживущие токены; SBOM (CycloneDX) и license-check дерева зависимостей в CI (L3-38)"
       - "Интеграционный тест через PgBouncer: две транзакции разных систем на одном серверном соединении не видят GUC и роль друг друга (L3-21)"
+      - "Draft-хост: отдельная cookie __Host-wz_prev; SameSite=None; Partitioned только на *--draft; ответ prod никогда не содержит SameSite=None (тест, L3-15)"
 
   - id: M2-07
     title: "Биллинг подписок через ЮKassa (рекуррентные), привязка карты = идентификация перед prod"

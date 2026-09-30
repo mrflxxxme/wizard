@@ -192,7 +192,7 @@ service_endpoints:
   privacy: "M2: GET /_wizard/privacy (права субъекта для вошедшего), POST /_wizard/pd-requests (запрос субъекта ПДн, ../security/compliance.yaml)"
   api_extra: "POST /api/telegram/:integration/link (../connectors/telegram.yaml), POST /api/workflows/:name/run (workflows.triggers.webhook_manual), POST /api/admin/invite (auth.role_assignment), M2: /api/files, M3: /api/ai/:action"
   hooks: "POST /_wizard/hooks/:connector/:integration/:hookToken — вебхуки коннекторов (hookToken — 32 случайных символа на интеграцию)"
-  role_spec: "GET /_wizard/spec → RoleSpec текущей роли (../ui/ui-kit.yaml#data_binding.role_spec): без hiddenFields, только свои permissions и pages, theme, compliance; ETag = specHash+role"
+  role_spec: "GET /_wizard/spec → RoleSpec текущей роли (../ui/ui-kit.yaml#data_binding.role_spec): без hiddenFields, только свои permissions и pages, theme, compliance {consentText, policyPage, policyVersion, consentTextHash = sha256(текст согласия)} (L1-03), loginMethods с учётом features; ETag = specHash+role"
   qr: "/_wizard/qr/check, /_wizard/qr/manifest, /_wizard/qr/sync — ../connectors/qr.yaml#endpoints"
 
 rate_limits:                                 # since: M1 (L2-28); по сессии, для анонимов — по IP (platform/deploy.yaml#cloud.client_ip, IPv6 — /64); ответ 429 + Retry-After

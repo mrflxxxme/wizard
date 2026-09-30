@@ -248,7 +248,8 @@ export interface EntityListState<E extends EntityName> {
 }
 export interface EntityMutations<E extends EntityName> {
   create(doc: Insert<E>, opts?: CallOptions): Promise<ClientDoc<E>>;
-  update(id: Id<E> | string, patch: Patch<E>): Promise<ClientDoc<E>>;
+  /** `opts.consent`: extension of sdk.md §5 — runtime requires `_consent` on update of pii rows too. */
+  update(id: Id<E> | string, patch: Patch<E>, opts?: CallOptions): Promise<ClientDoc<E>>;
   remove(id: Id<E> | string): Promise<void>;
 }
 export interface ClientUser {

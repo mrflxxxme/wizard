@@ -10,13 +10,26 @@
 functions/<name>.ts        одна функция на файл, `export default query|mutation|action({...})`
 ui/**/<Page>.tsx           страница по `page.file` (строитель кладёт в ui/pages/, builder.yaml): `export default function <Page>()`; ui/components/*.tsx — общие части
 _generated/wizard.d.ts     результат generateTypes(spec); только чтение для агента
+assets/logo.(png|webp)     логотип из панели «Стиль» (пишет только платформа, ../platform/api.yaml#uploadAsset)
 ```
 
 - MUST: имя функции = `function.name` из AppSpec, файл = `function.file`. Прочие файлы `functions/**` (например, `functions/lib/*.ts`) — вспомогательные модули без default-экспорта функции. Видимость (`public`) и роли (`roles`) задаёт только спека, в коде их нет.
-- MUST: `functions/**` импортирует только `@wizard/sdk` и относительные файлы внутри `functions/`. `ui/**` импортирует только `@wizard/sdk`, `@wizard/ui-kit` и относительные файлы внутри `ui/`. React напрямую не импортируется: хуки React реэкспортирует `@wizard/sdk`, JSX компилируется esbuild с `jsx: "automatic"`.
-- MUST NOT (G0, статический анализ AST): `eval`, `new Function`, динамический `import()`, `require`, `process`, `globalThis`/`window` в `functions/**`, `fetch`/`XMLHttpRequest`/`WebSocket` в любом файле, `fs`, `child_process`, строки SQL как аргументы SDK, `dangerouslySetInnerHTML`, `localStorage` с полями `pii≠none`.
+- MUST: `functions/**` импортирует только `@wizard/sdk` и относительные файлы внутри `functions/`. `ui/**` импортирует только `@wizard/sdk`, `@wizard/ui-kit` и относительные файлы внутри `ui/`. React напрямую не импортируется: хуки React реэкспортирует `@wizard/sdk`, JSX компилируется с `jsxImportSource: "@wizard/sdk"` (§1.1).
+- MUST NOT (G0, статический анализ AST; полный список с областями — `../quality/gates.yaml#G0.forbidden_api`, он источник истины): `eval`, `new Function`, динамический `import()`, `require`, `process`, `globalThis`/`window` в `functions/**`, `fetch`/`XMLHttpRequest`/`WebSocket` в любом файле, `fs`, `child_process`, строки SQL как аргументы SDK, `dangerouslySetInnerHTML`, `localStorage` с полями `pii≠none`, `console.*` в `functions/**`; в `ui/**` — `parent`, `top`, `opener`, `postMessage`, `window.name` (мост превью не должен подделываться, L3-16).
 - MUST: в `functions/**` нет клиентских хуков (`use*`), в `ui/**` нет определений `query/mutation/action`.
 - Тест: фикстуры G0 — по одной положительной и отрицательной на каждое правило этого раздела.
+
+### 1.1 Сборка и типизация кода системы (L2-06)
+
+```
+tsconfig.system (живёт рядом со сборщиком систем — architecture.yaml#interfaces; его же использует G0-TS-01):
+{ strict: true, module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", jsxImportSource: "@wizard/sdk",
+  noEmit: true, types: [], paths: {"@wizard/sdk": [sdk.d.ts], "@wizard/ui-kit": [ui-kit.d.ts]} }
+```
+
+- `@wizard/sdk` экспортирует `./jsx-runtime` (реэкспорт `react/jsx-runtime`); G0-IMP-01 считает его частью `@wizard/sdk`. Относительные импорты без расширения (`./lib/occupancy`) допустимы.
+- `packages/sdk` поставляет рукописный `src/sdk.d.ts` = §5; G0 компилирует код системы против него, а не против исходников SDK.
+- MUST (L3-13): сборка идёт в каталоге-копии ревизии; резолвер отклоняет пути вне `ui/**`, `functions/**` и любые пакеты, кроме `@wizard/sdk` и `@wizard/ui-kit`; loaders — только ts/tsx; `define`/`process.env` не пробрасываются. `.env` и файлы хоста в бандл не попадают никогда (`../platform/deploy.yaml#local.bundles_never_contain_env`).
 
 ## 2. Серверная часть
 
@@ -45,13 +58,14 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 
 - `ctx.db` работает **от имени вызывающего**: применяются `ops`, `rowFilter`, `hiddenFields`, `readonlyFields` его роли и RLS — ровно как в data API. Скрытые поля отсутствуют в документах, строки вне `rowFilter` невидимы (`get` → `null`).
 - `ctx.systemDb` — доступ от имени системы (роль БД `__system`), без матрицы прав. SHOULD применяться только для агрегатов и проверок инвариантов (лимиты, счётчики). MUST NOT возвращать клиенту поля с `pii≠none`, прочитанные через `ctx.systemDb`, если роль вызывающего их не видит. G2 перечисляет в отчёте все вызовы `ctx.systemDb`; G1 проверяет это сценариями приёмки.
+- MUST (runtime, M2; L3-22): документы из `ctx.systemDb` помечаются, и при сериализации результата `/api/fn` поля `pii≠none`, невидимые роли вызывающего, вырезаются. `ctx.systemDb` в функции, доступной public-роли, — блокер G2 без `function.systemDbReason`. Тест: публичная query возвращает `ctx.systemDb.<сущность с ПДн>.list()` → в ответе нет phone/email.
 - Функции, запущенные планировщиком или воркфлоу, исполняются с `ctx.user = { id: null, role: "__system", attrs: {}, isAdmin: false }`, и `ctx.db` для них эквивалентен `ctx.systemDb`.
 - Тест: query, читающая `ticket` через `ctx.db` от роли `participant`, не видит чужих билетов; та же через `ctx.systemDb` видит.
 
 ### 2.4 Доступ к данным: `ctx.db.<entity>`
 
 - `get(id)`, `getBy(uniqueField, value)` — точечное чтение.
-- `list({ where, order, limit })`, `first(...)`, `count({ where })`, `paginate({ where, order }, { cursor, numItems })`.
+- `list({ where, order, limit })`, `first(...)`, `count({ where })`, `paginate({ where, order }, { cursor, numItems })`. `limit` по умолчанию 100; максимум — §2.1 (L1-35).
 - `where` — аналог `withIndex` (G0-IDX-01 проверяет его через tsc): ключи MUST образовывать префикс объявленного индекса сущности (порядок полей индекса). Последний ключ префикса может быть диапазоном `{gt|gte|lt|lte}`. Фильтров по неиндексированным полям в SDK нет — это правило G0 проверяет через типы (`IndexWhere<E>`) и tsc.
 - Неявные индексы (создаёт `toDDL`, объявлять не нужно): `id`, `created_at`, каждое `unique`-поле, каждое `ref`-поле, `ownerField`.
 - Порядок: по полям индекса, затем `created_at`, затем `id`; `order: "asc" | "desc"` (по умолчанию `asc`). Без `where` — по `created_at`.
@@ -71,20 +85,22 @@ _generated/wizard.d.ts     результат generateTypes(spec); только 
 
 ## 3. Клиентская часть (страницы React)
 
+- MUST (L1-28): все запросы SDK и ui-kit к `/api/*` (включая `/api/auth/*`) и `/_wizard/qr/*` несут заголовок `X-Wizard-Request: 1` и `credentials: "same-origin"` (`runtime.yaml#auth.csrf`).
 - `useQuery(name, args | "skip")` → `{ data, error, isLoading, refetch }`. Вызов `POST /api/fn/:name`; ответ содержит `deps` (сущности, прочитанные функцией). Хук перезапрашивает данные при событии инвалидации по любой сущности из `deps` (дебаунс 100 мс).
 - `useMutation(name)` → `[run, { pending, error }]`; `run` для mutation и action. `run` отклоняется с `WizardError`.
 - `useEntityList(entity, { filter, sort, page, limit })` → `GET /api/data/:entity` (`runtime.yaml#data_api`); `filter` — по видимым полям, `sort` — `"field"` или `"-field"`, `limit ≤ 100`. Перезапрос при инвалидации `entity`.
 - `useEntity(entity, id)`, `useEntityMutation(entity)` → `{ create, update, remove }`.
-- Согласие на ПДн: `run(args, { consent: true })` и `create(doc, { consent: true })` — SDK добавляет в тело запроса `_consent` в формате `../security/compliance.yaml#consent` (версия политики и хеш текста согласия берёт из RoleSpec). Без него запись с ПДн ролью без `isAdmin` → 422 `CONSENT_REQUIRED`. Передавать `consent: true` можно только после явной отметки пользователем отдельного чекбокса.
+- Согласие на ПДн (M0, L1-03): `run(args, { consent: true })` и `create(doc, { consent: true })` — SDK добавляет в тело запроса `_consent: { policyVersion, textHash }`, беря оба значения из RoleSpec (`compliance.policyVersion`, `compliance.consentTextHash`, `runtime.yaml#service_endpoints.role_spec`); время и `ip_hmac` ставит сервер. Без него create/update сущности с ПДн или вызов функции с `collectsPii` ролью без `isAdmin` → 422 `CONSENT_REQUIRED`. Передавать `consent: true` можно только после явной отметки пользователем компонента `ConsentCheckbox` (`../ui/ui-kit.yaml`).
 - `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, next })` ведёт на `/login` (`runtime.yaml#auth.login_page`).
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
+- M3 (в §5 добавляется в M3-02, не раньше): `useAiAction(action)` → `{ run(entity, id), pending, error }` — `POST /api/ai/:action` (`runtime.yaml#ai_actions`).
 - Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK. После переподключения SDK перезапрашивает все активные запросы.
 - Тест (M0-07): хуки против локального hono-мока: загрузка, ошибка с `code`, перезапрос по SSE `invalidate`.
 
 ## 4. Генерация типов
 
-`generateTypes(spec: AppSpec) → string` (экспорт `@wizard/sdk/codegen`, исполняется на платформе, не в системе).
+`generateTypes(spec: AppSpec) → string` (экспорт `@wizard/sdk/codegen`, исполняется на платформе, не в системе). Реализация живёт в `packages/appspec` (`src/types-gen.ts`), `@wizard/sdk/codegen` её реэкспортирует; снапшот-тест — за M0-07 (L2-17).
 
 - MUST: результат — содержимое `_generated/wizard.d.ts`, которое дополняет (module augmentation) интерфейсы `Entities`, `Roles`, `Functions`, `Connectors`, `Payments` модуля `@wizard/sdk`.
 - Отображение типов полей: `string|text|email|phone|url|file|qr_token → string`, `int|decimal → number` (точность `numeric(18,6)` проверяет runtime), `money → number` (рубли, ≤ 2 знаков после запятой), `bool → boolean`, `date → string` (`YYYY-MM-DD`), `datetime → string` (ISO 8601 UTC), `enum → union значений`, `ref → Id<"entity">`, `json → Json`.

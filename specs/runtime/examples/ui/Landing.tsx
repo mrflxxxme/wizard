@@ -1,5 +1,5 @@
 import { type ClientDoc, type Id, useEntityList, useMutation, useNavigate, usePayment, useQuery, useState, useUser } from "@wizard/sdk";
-import { AppShell, Badge, Button, Catalog, Field } from "@wizard/ui-kit";
+import { AppShell, Badge, Button, Catalog, ConsentCheckbox, Field } from "@wizard/ui-kit";
 
 type TicketType = ClientDoc<"ticket_type">;
 
@@ -34,7 +34,7 @@ export default function Landing() {
 }
 
 // Форма без RecordForm: билет создаёт функция registerTicket (лимиты, промокод), а не data API.
-// Согласие на ПДн: отдельный неотмеченный чекбокс; факт согласия уходит в runtime через { consent: true }.
+// Согласие на ПДн: ConsentCheckbox (текст и ссылка на политику — из RoleSpec); SDK отправляет _consent через { consent: true }.
 function RegisterForm({ ticketTypeId, onCancel }: { ticketTypeId: Id<"ticket_type">; onCancel: () => void }) {
   const streams = useEntityList("stream", { sort: "name" });
   const [register, reg] = useMutation("registerTicket");
@@ -65,7 +65,7 @@ function RegisterForm({ ticketTypeId, onCancel }: { ticketTypeId: Id<"ticket_typ
       <Field name="holderName" label="ФИО" type="string" required value={form.holderName} onChange={set("holderName")} />
       <Field name="holderEmail" label="Email" type="email" required value={form.holderEmail} onChange={set("holderEmail")} />
       <Field name="promoCode" label="Промокод партнёра" type="string" value={form.promoCode} onChange={set("promoCode")} />
-      <Field name="consent" label="Согласен на обработку персональных данных по политике конфиденциальности" type="bool" required value={form.consent} onChange={set("consent")} />
+      <ConsentCheckbox checked={form.consent} onChange={set("consent")} />
       {reg.error && <Badge tone="bad">{reg.error.details.message ?? "Не удалось оформить билет"}</Badge>}
       <Button type="submit" variant="primary" loading={reg.pending || payment.pending} disabled={!form.consent}>Оформить</Button>
       <Button variant="ghost" onClick={onCancel}>Отмена</Button>

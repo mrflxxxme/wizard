@@ -90,7 +90,8 @@ export function createMockRuntime() {
     return c.json({ item }, 201);
   });
   app.patch("/api/data/:entity/:id", async (c) => {
-    const patch = (await c.req.json()) as Record<string, unknown>;
+    const { _consent, ...patch } = (await c.req.json()) as Record<string, unknown>;
+    void _consent;
     const item = state.streams.stream.find((s) => s.id === c.req.param("id"));
     if (!item) return c.json({ error: { code: "NOT_FOUND", message: "Запись не найдена" } }, 404);
     Object.assign(item, patch);

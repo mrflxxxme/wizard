@@ -304,11 +304,17 @@ export class SdkClient {
     return r.item;
   }
 
-  async updateEntity<T = Record<string, unknown>>(entity: string, id: string, patch: unknown): Promise<T> {
+  async updateEntity<T = Record<string, unknown>>(
+    entity: string,
+    id: string,
+    patch: unknown,
+    opts?: CallOptions,
+  ): Promise<T> {
+    const body = await this.withConsent({ ...(patch as Record<string, unknown>) }, opts);
     const r = await this.request<{ item: T }>(
       "PATCH",
       `/api/data/${encodeURIComponent(entity)}/${encodeURIComponent(id)}`,
-      patch,
+      body,
     );
     return r.item;
   }

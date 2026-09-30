@@ -251,6 +251,12 @@ describe("ctx.db permissions (sdk.md §2.3)", () => {
     expect(await ins(sp, { ...app, color: "red" })).toBe("UNKNOWN_FIELD");
     expect(await ins(sp, { ...app, created_at: NOW })).toBe("FIELD_READONLY");
     expect(await ins(sp, { ...app, email: "bad" })).toBe("VALIDATION_FAILED");
+    const vol = host.createUser("volunteer");
+    const [ticket] = await host.seed("ticket", []);
+    expect(ticket).toBeUndefined();
+    expect(
+      await codeOf(host.run(vol, async (db) => db.checkin?.insert({ ticket: "x", qr_token: "y" }))),
+    ).toBe("UNKNOWN_FIELD");
     // AC3: another speaker neither lists nor gets it; update/delete outside rowFilter → NOT_FOUND.
     const view = await host.run(other, async (db) => ({
       n: await db.speaker_application?.count(),

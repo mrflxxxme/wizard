@@ -201,7 +201,14 @@ describe("entities (data API)", () => {
       capacity: 3,
       _consent: { policyVersion: "pv-1", textHash: "hash-from-rolespec" },
     });
-    await expect(r.current.update("s3", { capacity: 4 })).resolves.toMatchObject({ capacity: 4 });
+    await expect(r.current.update("s3", { capacity: 4 }, { consent: true })).resolves.toMatchObject({
+      capacity: 4,
+    });
+    const patch = server.requests.find((x) => x.method === "PATCH");
+    expect(patch?.body).toEqual({
+      capacity: 4,
+      _consent: { policyVersion: "pv-1", textHash: "hash-from-rolespec" },
+    });
     await expect(r.current.remove("s3")).resolves.toBeUndefined();
     const err = await r.current.update("s3", { capacity: 1 }).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: "NOT_FOUND", status: 404 });
