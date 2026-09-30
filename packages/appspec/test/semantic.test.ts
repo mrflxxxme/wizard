@@ -536,6 +536,16 @@ const cases: Case[] = [
     "LIMIT_EXCEEDED",
     "/functions",
   ],
+  [
+    "index with more than 32 fields (Postgres 54011)",
+    (s) => {
+      const e = s.entities[1] as { fields: unknown[]; indexes?: unknown };
+      e.fields = Array.from({ length: 33 }, (_, i) => ({ name: `f${i}`, label: "П", type: "int" }));
+      e.indexes = [{ fields: Array.from({ length: 33 }, (_, i) => `f${i}`) }];
+    },
+    "LIMIT_EXCEEDED",
+    "/entities/1/indexes/0/fields",
+  ],
 ];
 
 describe("semantic rules (ops.yaml#semantic_rules)", () => {
@@ -548,6 +558,14 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
       expect(e.message_ru).toMatch(/[а-яё]/i);
       expect(e.path === "" || e.path.startsWith("/")).toBe(true);
     }
+  });
+
+  test("an index of exactly 32 fields is allowed", () => {
+    const spec = miniSpec();
+    const e = spec.entities[1] as { fields: unknown[]; indexes?: unknown };
+    e.fields = Array.from({ length: 32 }, (_, i) => ({ name: `f${i}`, label: "П", type: "int" }));
+    e.indexes = [{ fields: Array.from({ length: 32 }, (_, i) => `f${i}`) }];
+    expect(errorsOf(spec).filter((x) => x.code === "LIMIT_EXCEEDED")).toEqual([]);
   });
 
   test("allowed lists are provided where applicable", () => {
