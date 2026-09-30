@@ -93,7 +93,7 @@ tasks:
     owner: agents
     parallel_group: m0-w1
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Тест: callType из pii_forbidden_for_T1.always и import_mapping без containsPiiHint=false никогда не маршрутизируются в T1; при orgPolicy.ruOnly=true всё идёт в T0"
@@ -310,7 +310,7 @@ tasks:
     owner: docs
     parallel_group: m0-w0
     estimate_days: 0.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "`node tools/specs/slice.mjs <file>[#a.b] [--milestone M0]` печатает поддерево; для api.yaml оставляет операции x-milestone ≤ M0 и транзитивно нужные components.schemas; для db.yaml/ui-kit.yaml/platform-screens.yaml — элементы с milestone ≤ M0"
@@ -434,7 +434,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "`pnpm dev` поднимает заглушки platform-api :4000, runtime :4100, platform-web :5173 и ждёт их health; Ctrl-C гасит всё"
@@ -466,7 +466,7 @@ tasks:
     owner: platform
     parallel_group: m0-w0
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "toDDL/toRLS не интерполируют значения: литералы только через sqlLiteral(value, fieldType) (ops.yaml#migrations.sql_values) (число — Number.isFinite; строка — '→'', без \\0 и E-строк; bool/date — проверка формата), идентификаторы — только quoteIdent (L3-01)"
