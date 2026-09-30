@@ -14,7 +14,7 @@ principles:
 # ---------------------------------------------------------------- Алгоритм
 algorithm:
   - id: S1_dlp
-    do: "pii.detect(brief). Если найдено хоть одно ПДн — отправить пользователю pii_notice и пометить сессию piiInBrief=true"
+    do: "pii.detect(brief). Если найдено хоть одно ПДн — persist_output пишет messages {role: system, kind: notice, payload: {type: 'pii', categories}} + событие chat_output {kind: notice, messageId} (workflows.yaml#events) и помечает сессию piiInBrief=true"
   - id: S2_analyze
     do: "Вызов callType=interview с инструментом submit_analysis → Analysis. При piiInBrief роутер сам отправит его на T0 (models.yaml#routing_algorithm шаг 5)"
     validate: "zod(Analysis); ≤2 повторов с ошибкой валидации, затем событие run_failed(ORCH_INVALID_OUTPUT)"
@@ -31,25 +31,27 @@ algorithm:
       Вызов callType=interview с инструментом ask_questions: модель формулирует тексты вопросов и вариантов
       для выбранных forkId (варианты берутся из taxonomy, модель может адаптировать формулировки и отбросить
       неприменимые, но не добавлять новые смыслы). recommended выбирается по правилу развилки и Analysis.
-      Показ пользователю: все вопросы сразу, кнопки + «Свой вариант» + общая кнопка «Остальное — по рекомендации».
-    rest_by_recommendation: "Кнопка «Остальное — по рекомендации» применяет recommended ко всем неотвеченным вопросам (byRecommendation=true) и переводит в S5"
-    custom_answer: "Свободный ответ ≤500 символов; проходит DLP; сохраняется как {forkId, custom:text}"
+      Модель формулирует все вопросы одним вызовом; показ пользователю — по одному (степпер «Вопрос k из n», ui/platform-screens.yaml#S2):
+      кнопки + «Свой вариант» + общая кнопка «Остальное — по рекомендациям».
+    rest_by_recommendation: "Кнопка «Остальное — по рекомендациям» применяет recommended ко всем неотвеченным вопросам (byRecommendation=true) и переводит в S5"
+    custom_answer: "Свободный ответ ≤500 символов; проходит DLP; сохраняется как {forkId, text}"
   - id: S5_card
     do: "Вызов callType=card с инструментом submit_card → SystemCard (без estimate/cap). Код добавляет estimate и cap (estimation), валидирует и сохраняет cardVersion"
-    validate: "zod(SystemCard) + семантика: роли/сущности в acceptance существуют в карточке; ≥1 AC на каждую роль с access=login; id AC уникальны AC1..ACn"
+    validate: "zod(SystemCard) + семантика: роли/сущности в acceptance существуют в карточке; ≥1 AC на каждую роль с access=login; id AC уникальны AC1..ACn; при тарифе free в loginMethods нет phone_otp (F4)"
   - id: S6_approve
-    do: "Пользователь: «Собрать» (APPROVE) | правка текстом (CARD_EDIT) | «Отмена». Правка → повтор S5 с диффом пожеланий, не больше 5 версий карточки; дальше — предложить начать заново"
+    do: "Пользователь: «Строить» (APPROVE) | правка текстом (CARD_EDIT) | «Отмена». Правка → повтор S5 с диффом пожеланий, не больше 5 версий карточки; дальше — предложить начать заново"
     on_approve: "Проверить баланс ≥ cap (M1+). Передать строителю {card, cardVersion, cap}. Это единственная точка согласования (D7)"
 
 pii_notice:
   when: "S1_dlp нашёл ПДн в брифе или в свободном ответе"
+  delivery: "Сообщение messages kind=notice, payload {type: 'pii', categories} + событие chat_output {kind: notice, messageId} (см. S1_dlp); отдельного события pii_notice нет"
   text_template: >
     В описании есть персональные данные ({categories}). Для сборки они не нужны: мы обработаем ваш текст
     в российском контуре, а во внешние модели передадим его без этих данных. Реальные данные клиентов лучше
     вносить уже в готовую систему.
   rules:
     - "MUST: показывать категории словами (телефон, email, ФИО…), но не сами значения"
-    - "MUST: показать один раз за сессию; тест — бриф с телефоном даёт ровно одно событие pii_notice"
+    - "MUST: показать один раз за сессию; тест — бриф с телефоном даёт ровно одно сообщение kind=notice с payload.type=pii"
     - "MUST NOT: переписывать найденные значения в Analysis, карточку и спеку (проверка: DLP по SystemCard = 0 находок)"
 
 # ---------------------------------------------------------------- Схемы вывода (zod в packages/agents/src/orchestrator/schemas.ts)
@@ -73,7 +75,7 @@ schemas:
     whyItMatters: "≤160 символов: что изменится в системе в зависимости от ответа"
     options: "{id, label ≤60, description? ≤140, recommended: bool}[] 2..4, ровно один recommended=true"
     allowCustom: "bool, по умолчанию true"
-  Answer: "{questionId, forkId, optionId? | custom?: string, byRecommendation: bool}"
+  Answer: "{questionId, forkId, optionId? | text?: string ≤500, byRecommendation: bool}"
   tools:
     - { name: submit_analysis, input: Analysis }
     - { name: ask_questions,   input: "{questions: Question[] 1..7}" }
@@ -94,7 +96,7 @@ system_card:          # схема SystemCard (backlog M0-12 ссылается 
   automations: "{name, when ≤120 (по-человечески), then ≤160}[]"
   acceptance: "{id: AC<n>, text ≤200, check: {type: permission|scenario|constraint, role?, entity?, op?, expect?: allow|deny}}[] 3..20 — формат 1:1 с appspec acceptance (steps генерирует QA)"
   pii:
-    categories: "(fio|phone|email|address|birthdate|other_basic)[]"
+    categories: "(fio|phone|email|address|birthdate|other)[] — значения appspec.schema.json#/$defs/piiKind"
     fields: "{entity, field, category}[]"
     retention: "{entity, deleteAfterDays, anchorField?, mode: delete|anonymize, humanText}[] — для каждой сущности с ПДн"
     consent: "bool — всегда true, если есть ПДн от public/login ролей"
@@ -139,21 +141,24 @@ state_machine:
     - { from: done,              event: CHANGE_REQUESTED,       to: analyzing,         note: "режим правки, см. change_requests" }
     - { from: "*",               event: CANCEL,                 to: cancelled }
     - { from: "analyzing|carding", event: LLM_FAILED,           to: failed,            note: "после ретраев и фолбэков models.yaml" }
-  persistence: "Состояние и все события — в run_events (M1: DBOS). Повтор события с тем же idempotencyKey не меняет состояние"
+  persistence: >
+    Производное, отдельной колонки нет: systems.stage=interview + pending_questions=[] → analyzing; interview + pending_questions≠[] → asking;
+    card → awaiting_approval; building → building; ready → done; failed → failed (workflows.yaml#system_stage).
+    События машины — внутренние (не RunEvent). Повтор события с тем же idempotencyKey не меняет состояние
   test: "Табличный тест всех переходов; недопустимое событие → ошибка INVALID_TRANSITION без побочных эффектов"
 
 change_requests:       # правка уже собранной системы через чат
   classify: "Код-классификатор + вызов interview: style_only | small_edit | big_change"
   style_only: "Цвет, шрифт, скругления, тема → подсказка открыть «Стиль» (0 кредитов), без прогона"
-  small_edit: "≤2 вопроса, мини-карточка {что меняется, estimate, cap}; cap по умолчанию max(3, ceil(1.5·expected))"
+  small_edit: "≤2 вопроса, мини-карточка = SystemCard с kind=change: обязательны cardVersion, summary (что меняется), estimate, cap; остальные поля опциональны; cap по умолчанию max(3, ceil(1.5·expected))"
   big_change: "Полный алгоритм S2–S6 с текущей спекой как контекстом"
-  point_and_edit: "M3: запрос из превью с componentId идёт сразу в builder.yaml#point_and_edit с мини-карточкой"
+  point_and_edit: "M3: запрос из превью с target {wzId, file} (ui/ui-kit.yaml#wz_id) идёт сразу в builder.yaml#point_and_edit с мини-карточкой"
 
 # ---------------------------------------------------------------- Промпт
 prompt_skeleton:       # порядок фиксирован; статичная часть — кэшируемый префикс (точка кэша на последнем статичном блоке)
   static:
     - { section: role,            content: "Ты — оркестратор Wizard: превращаешь описание задачи нетехнического владельца бизнеса в карточку системы. Кратко, по-русски, без жаргона" }
-    - { section: platform,        content: "Что умеет платформа: данные+права+статусы+автоматизации в спеке; экраны React на библиотеке ядра; коннекторы yookassa/telegram/email/qr; вход phone/email/telegram; PWA; 152-ФЗ встроен. Скелет Каталог→Заявка→Процесс→Оплата→Выдача" }
+    - { section: platform,        content: "Что умеет платформа: данные+права+статусы+автоматизации в спеке; экраны React на библиотеке ядра; коннекторы yookassa/telegram/email/qr; вход email/telegram (телефон — только на тарифах Старт/Бизнес); PWA; 152-ФЗ встроен. Скелет Каталог→Заявка→Процесс→Оплата→Выдача" }
     - { section: non_goals,       content: "product.yaml#non_goals человеческими словами — что честно отвечать «пока не умеем»" }
     - { section: fork_taxonomy,   content: "id, суть, варианты, правило рекомендации (компактная выжимка fork_taxonomy)" }
     - { section: defaults,        content: "defaults целиком" }
@@ -161,7 +166,7 @@ prompt_skeleton:       # порядок фиксирован; статичная
     - { section: acceptance_rules, content: "AC проверяемы машиной: права (роль×данные×действие) или сценарий с наблюдаемым результатом. Плохо: «удобный интерфейс». Хорошо: «Участник не видит чужие заявки»" }
     - { section: example,         content: "1 компактный пример: бриф → Analysis → 3 вопроса → фрагмент карточки (синтетический, без ПДн)" }
   dynamic:
-    - { section: org_context,     content: "orgPolicy.ruOnly, тариф, существующие системы (названия)" }
+    - { section: org_context,     content: "orgPolicy.ruOnly, тариф (free|start|business — определяет доступность входа по телефону), существующие системы (названия)" }
     - { section: current_spec,    content: "дайджест текущей спеки (только для change_requests)" }
     - { section: brief,           content: "бриф (на T1 — после scrub)" }
     - { section: answers,         content: "ответы пользователя" }
@@ -170,10 +175,10 @@ prompt_skeleton:       # порядок фиксирован; статичная
 # ---------------------------------------------------------------- Умолчания (не спрашивать)
 defaults:
   - "Роль-администратор (isAdmin) всегда есть; это владелец системы"
-  - "Вход для ролей access=login — phone_otp; email_otp добавляется, если в брифе есть email-рассылки"
+  - "Вход для ролей access=login — email_otp; telegram добавляется, если Telegram упомянут в брифе. phone_otp (SMS) — только на тарифах start и business (решение основателя F4); на free не предлагается ни в умолчаниях, ни в вариантах F-LOGIN"
   - "Уведомления — email; Telegram только если упомянут"
   - "Согласие на обработку ПДн и страница политики — всегда при наличии ПДн"
-  - "Срок хранения ПДн: ивенты — 90 дней после даты события; заказы — 3 года (бухучёт) для заказов и 1 год для контактов без заказов [?: E-LEGAL]; прочее — 1 год"
+  - "Срок хранения ПДн: ивенты — 30 дней после даты события (security/compliance.yaml — источник; уточняется E-LEGAL); заказы — 3 года (бухучёт) для заказов и 1 год для контактов без заказов [?: E-LEGAL]; прочее — 1 год"
   - "Внешний вид — токены по умолчанию, пользователь меняет в «Стиле» бесплатно"
   - "Адаптивность и PWA — всегда"
   - "Пользователь видит только свои записи (rowFilter по владельцу), персонал — все"
@@ -185,7 +190,7 @@ defaults:
 fork_taxonomy:
   horizontal:
     - { id: F-ACCESS,     impact: 3, applies_when: "есть внешние пользователи", q: "Как клиенты попадают в систему?", options: [public_form, login_required, staff_only], rec: "public_form, если нужна только подача заявки; иначе login_required" }
-    - { id: F-LOGIN,      impact: 2, applies_when: "есть роль access=login", q: "Как входить?", options: [phone, email, telegram, phone_or_email], rec: "phone" }
+    - { id: F-LOGIN,      impact: 2, applies_when: "есть роль access=login", q: "Как входить?", options: [email, telegram, email_or_telegram, phone, phone_or_email], rec: "email; email_or_telegram, если Telegram упомянут", plan_rule: "phone и phone_or_email — только при тарифе start|business (F4); на free варианты удаляются кодом до вызова модели" }
     - { id: F-STAFF,      impact: 3, applies_when: "≥2 вида действий персонала", q: "Кто из сотрудников работает в системе?", options: [single_admin, admin_manager, admin_manager_moderator], rec: "минимальный набор, покрывающий действия из брифа" }
     - { id: F-VISIBILITY, impact: 3, applies_when: "есть персонал кроме админа", q: "Кто из сотрудников видит какие записи?", options: [all_see_all, assigned_only, by_department], rec: "all_see_all при ≤5 сотрудниках" }
     - { id: F-APPROVAL,   impact: 3, applies_when: "есть заявки", q: "Заявки подтверждаются?", options: [auto, manual, rule_based], rec: "auto, если нет упоминания проверки" }
@@ -197,7 +202,7 @@ fork_taxonomy:
     - { id: F-INVENTORY,  impact: 3, applies_when: "остатки/склад", q: "Нужно ли учитывать остатки?", options: [no, simple_stock, reserve_on_order], rec: "reserve_on_order, если есть оплата" }
     - { id: F-REPORTS,    impact: 1, applies_when: "упомянуты отчёты", q: "Какие отчёты нужны?", options: [lists_export, summary_dashboard, both], rec: "both" }
     - { id: F-IMPORT,     impact: 2, applies_when: "упомянута существующая таблица/база", q: "С чего начинаем данные?", options: [empty, import_table], rec: "empty; import_table — M1" }
-    - { id: F-RETENTION,  impact: 2, applies_when: "есть ПДн и срок неочевиден", q: "Сколько хранить данные людей?", options: [d90_after_event, y1, y3], rec: "по defaults" }
+    - { id: F-RETENTION,  impact: 2, applies_when: "есть ПДн и срок неочевиден", q: "Сколько хранить данные людей?", options: [d30_after_event, y1, y3], rec: "по defaults" }
   b2b_events:
     - { id: F-EV-TICKETS,  impact: 3, applies_when: "segment=events", q: "Какие бывают билеты/участия?", options: [single_free, types_with_quotas, types_quotas_price_tiers], rec: "types_with_quotas, если упомянуты типы" }
     - { id: F-EV-CHECKIN,  impact: 2, applies_when: "очное событие", q: "Как проверять вход?", options: [list_only, qr_online, qr_offline_scanner], rec: "qr_offline_scanner при >300 участниках" }
@@ -217,3 +222,4 @@ fork_taxonomy:
     - "MUST: варианты — из taxonomy; модель может переименовать для понятности и убрать неприменимые, оставив ≥2"
     - "SHOULD: при segment=horizontal брать только horizontal-развилки"
     - "Тест: fixture-бриф «форум» → 3–7 вопросов, все forkId из taxonomy, по одному recommended (backlog M0-12)"
+    - "Тест: org_context.plan=free → ни в defaults, ни в вариантах F-LOGIN, ни в SystemCard.roles[].loginMethods нет phone_otp (F4)"

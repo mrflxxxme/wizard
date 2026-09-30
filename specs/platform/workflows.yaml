@@ -142,13 +142,32 @@ workflows:
 
   retention_cron:
     milestone: M2
-    ownership: "Механика удаления/обезличивания строк — runtime.yaml#workflows.retention (ежесуточно 03:00 МСК, с M0 в поллере _w_jobs runtime). Этот воркфлоу — платформенная часть"
+    ownership: "Механика удаления/обезличивания строк — runtime.yaml#workflows.retention (ежесуточно 03:00 МСК, поллер _w_jobs runtime с M1). Этот воркфлоу — платформенная часть"
     schedule: "DBOS scheduled, ежедневно 03:30 MSK (после runtime-прохода)"
     does:
-      - "Перенос счётчиков retention из _w_audit prod-схем в platform.deletion_log (system, entity, mode, cutoff, rows_affected) — владелец видит журнал в настройках"
+      - "Перенос счётчиков retention из _w_audit prod-схем в platform.deletion_log (system, entity, mode, cutoff, rows_affected) — владелец видит журнал в настройках (GET /systems/:id/deletion-log)"
       - "Контроль: prod-система с retention-сущностями без отметки прохода за 26 ч → алерт и повторный запуск runtime-задачи"
-      - "Платформенная уборка: auth_otps > 24 ч, run_events > 180 дней, импорты после expires_at, abuse_reports.contact_email через 1 год после закрытия"
-    test: "M2-05: фикстура со строками старше/младше порога → удалены ровно старые; deletion_log.rows_affected совпадает"
+      - "Платформенная уборка: auth_otps > 24 ч, run_events > 180 дней, gate_reports > 180 дней (кроме последнего на уровень и систему), импорты после expires_at, exports после expires_at, abuse_reports.contact_email через 1 год после закрытия, dbos.* терминальных воркфлоу > 30 дней (execution.M1.dbos_data)"
+      - "messages: text у role=user (kind=text) — scrub (packages/pii) через 180 дней после последней активности системы (db.yaml#messages.retention)"
+      - "Free-черновики (F5, billing.yaml#plans.free.inactive_drafts): система org с plan=free без активности 60 дней → за 7 дней письмо владельцу; затем DROP SCHEMA app_<key>_draft CASCADE (только тестовые данные), systems.draft_data_purged_at = now(), запись deletion_log mode=draft_purged. Спека, код, ревизии и prod не трогаются; следующая сборка пересоздаёт схему через migrate_draft/seed_draft"
+    test: "M2-05: фикстура со строками старше/младше порога → удалены ровно старые; deletion_log.rows_affected совпадает. F5: Free-система с активностью 61 день назад → схема draft удалена, revisions и files на месте"
+
+  delete_system:   # L3-36
+    milestone: M2
+    schedule: "в составе retention_cron"
+    does: "через 30 дней после systems.deleted_at: DROP SCHEMA app_<key>_draft и app_<key>_prod CASCADE, удаление артефактов (бандлы, блобы, на которые не ссылается другая система), messages, imports, exports, secrets_refs (+ значения в бэкенде секретов); запись deletion_log mode=system_deleted. Строку platform.runs не создаёт"
+    test: "Система с deleted_at = now−31d → схем и сообщений нет, deletion_log содержит system_deleted"
+
+  export_data:     # L1-34, L4-08, M2-10
+    milestone: M2
+    lock: false
+    trigger: "POST /systems/:id/exports {env} (только owner)"
+    steps:
+      - { name: dump, kind: step, does: "потоково из app_<key>_<env> под ролью __system: CSV (UTF-8 с BOM, ;-разделитель) на каждую сущность + spec.json текущей ревизии; код в выгрузку не входит (non_goals). qr_token и hiddenFields «для всех» не выгружаются (connectors/qr.yaml)" }
+      - { name: sanitize, kind: step, does: "MUST: ячейки, начинающиеся с = + - @ \\t \\r, экранируются префиксом ' (formula injection, L3-37)" }
+      - { name: store, kind: tx, does: "ZIP в хранилище артефактов, platform.exports {status: ready, expires_at: now()+24 ч}; событие run_finished; журнал staff_audit_log не нужен (действие owner) — запись в exports достаточна" }
+    download: "GET /systems/:id/exports/:exportId → одноразовая ссылка TTL 15 мин; архив удаляется после expires_at"
+    test: "M2-10: выгрузка «форума» содержит CSV всех сущностей и spec.json; ячейка «=1+1» выгружена как «'=1+1»; повторное скачивание по той же ссылке → 410"
 
   credits_cron:
     milestone: M1

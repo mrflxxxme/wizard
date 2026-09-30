@@ -97,7 +97,7 @@ detectors:                         # packages/pii/src/detectors/*.ts; чисты
     perf: "scrub 20 КБ текста ≤ 20 мс на 1 vCPU (бенчмарк vitest bench)"
 
 scrub:
-  placeholders: { phone_ru: "[ТЕЛЕФОН_n]", email: "[EMAIL_n]", card: "[КАРТА_n]", passport_ru: "[ПАСПОРТ_n]", snils: "[СНИЛС_n]", inn_person: "[ИНН_n]", account_ru: "[СЧЁТ_n]", birthdate: "[ДАТА_РОЖДЕНИЯ_n]", address: "[АДРЕС_n]", person_name: "[ФИО_n]" }
+  placeholders: { phone_ru: "[ТЕЛЕФОН_n]", phone_intl: "[ТЕЛЕФОН_n]", email: "[EMAIL_n]", card: "[КАРТА_n]", passport_ru: "[ПАСПОРТ_n]", snils: "[СНИЛС_n]", inn_person: "[ИНН_n]", ogrnip: "[ОГРНИП_n]", account_ru: "[СЧЁТ_n]", birthdate: "[ДАТА_РОЖДЕНИЯ_n]", address: "[АДРЕС_n]", person_name: "[ФИО_n]", person_name_latin: "[ФИО_n]", social_handle: "[КОНТАКТ_n]", car_plate_ru: "[ГОСНОМЕР_n]" }
   semantics:
     - "MUST: одноразовые плейсхолдеры; n — порядковый номер отличающегося значения внутри ОДНОГО вызова scrub (чтобы модель различала людей). Соответствие живёт только в локальной переменной и не возвращается, не логируется, не сохраняется (M0-05)"
     - "MUST NOT: обратная подстановка в ответы T1 — ответы T1 (спека, код) используются как есть"
@@ -134,9 +134,10 @@ routing:
   constraints:
     - "callType не из call_types → route() бросает UNKNOWN_CALL_TYPE (вызов не выполняется); любая иная неясность политики → T0"
     - "orgPolicy.ruOnly → T0 (policy_ru_only)"
+    - "orgPolicy.t1Restricted → T0 (policy_region_restricted) — см. region_restriction"
     - "T1 ∉ allowed → T0 (callType_forbidden_T1); import_mapping → T1 только если payload собран buildMappingPayload (он передаёт containsPiiHint=false) И detect() по payload = 0 находок"
-    - "containsPiiHint=true для любого callType → T0 (вызывающий знает, что в payload реальные записи) — расширение models.yaml"
-    - "Находки strong-видов (card, passport_ru, snils, inn_person, account_ru), special_context или biometric_context → T0 (pii_high_risk). models.yaml перечисляет минимум (passport, snils, card, special); этот список его расширяет"
+    - "containsPiiHint=true для любого callType → T0 (pii_hint): вызывающий знает, что в payload реальные записи (шаг models.yaml#routing_algorithm)"
+    - "Находки strong-видов (все kinds с strong: true в detectors.kinds), special_context или biometric_context → T0 (pii_high_risk); models.yaml шаг 4 ссылается на этот список"
     - "callType=interview и любая находка detect() → T0 (pii_detected_interview): сырой бриф с ПДн наружу не уходит даже в заглушках"
     - "Иначе tier по умолчанию из models.yaml; если T1 — scrubJson всех сообщений и tool results перед отправкой, scrubbed=true"
   fallback: "Фолбэк и circuit breaker — models.yaml#fallback_rules. Требование границы: фолбэк возможен только T1 → T0, никогда T0 → T1. Пользователь о фолбэке не предупреждается (решение для беты; записать в CHANGELOG)"
