@@ -5,7 +5,7 @@ import type { Theme } from "@wizard/appspec";
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { applyTokens, toRoleSpec, WzProvider } from "../src/index.js";
-import { createMemoryDataSource } from "../src/testing/index.js";
+import { createMemoryDataSource, type MemoryDataSource } from "../src/testing/index.js";
 import styles from "./demo.module.css";
 import { FIXTURES, SPECS, type SpecKey } from "./fixtures.js";
 import type { Story } from "./story.js";
@@ -36,6 +36,8 @@ function readTheme(spec: SpecKey): Theme {
 declare global {
   interface Window {
     __wz: { applyTokens(theme: Theme): number; ready: boolean };
+    /** Memory data sources per story (Playwright inspects calls and rows, injects failures). */
+    __wzDemo: Record<string, MemoryDataSource>;
   }
 }
 
@@ -51,6 +53,10 @@ function StoryHost({ story, roleOverride }: { story: Story; roleOverride: string
     });
   }, [spec, story.spec, role]);
   const [path, setPath] = useState(story.path ?? "/");
+  useEffect(() => {
+    window.__wzDemo ??= {};
+    window.__wzDemo[story.component] = ds;
+  }, [ds, story.component]);
   const userRole = useSyncExternalStore(ds.subscribe, () => ds.getUser()?.role ?? "");
   useSyncExternalStore(ds.subscribe, ds.version);
   const roleSpec = useMemo(

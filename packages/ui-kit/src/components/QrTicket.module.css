@@ -1,0 +1,63 @@
+.ticket {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--w-density-gap);
+  width: 100%;
+  max-width: 420px;
+  min-width: 0;
+  padding: var(--w-density-pad);
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--w-font-size-lg);
+  line-height: 1.25;
+}
+
+.subtitle,
+.hint {
+  margin: 0;
+  color: var(--w-muted);
+}
+
+.codeWrap {
+  display: flex;
+  justify-content: center;
+}
+
+/* Scales with the width, never below 220px; the SVG itself paints the white quiet zone. */
+.code {
+  display: block;
+  width: 100%;
+  min-width: 220px;
+  max-width: 360px;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.metaItem dt {
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+}
+
+.metaItem dd {
+  margin: 0;
+  font-weight: 600;
+}

@@ -1,5 +1,6 @@
 // Shared data states (ui-kit.yaml#states): loading skeleton, EmptyState, ErrorState.
 import { type ReactNode, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "../data/context.js";
 import type { WzError } from "../data/types.js";
 import { ru } from "../i18n/ru.js";
 import { ButtonImpl } from "./Button.js";
@@ -67,4 +68,30 @@ export function ErrorState({
 
 export function SrOnly({ children }: { children: ReactNode }): ReactNode {
   return <span className={styles.srOnly}>{children}</span>;
+}
+
+/** «Войти» from an error state: /login?next=<current path>. */
+export function useLoginAction(): () => void {
+  const navigate = useNavigate();
+  const { pathname, search } = useLocation();
+  return () => navigate(`/login?next=${encodeURIComponent(pathname + search)}`);
+}
+
+/** Loading / error / empty for an AsyncResult; null when data is ready and not empty. */
+export function DataState({
+  result,
+  empty,
+  emptyText,
+  lines,
+}: {
+  result: { data?: unknown; error?: WzError; isLoading: boolean; refetch(): void };
+  empty?: boolean;
+  emptyText?: string;
+  lines?: number;
+}): ReactNode {
+  const login = useLoginAction();
+  if (result.error) return <ErrorState error={result.error} onRetry={result.refetch} onLogin={login} />;
+  if (result.data === undefined) return <Loading lines={lines} />;
+  if (empty) return <EmptyState text={emptyText} />;
+  return null;
 }

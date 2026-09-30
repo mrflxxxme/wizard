@@ -1,6 +1,6 @@
 // createMemoryDataSource (ui-kit.yaml#data_binding.testing): in-memory data API with the runtime's permission
 // semantics (runtime.yaml#permissions: ops, rowFilter by $user.*, hiddenFields, readonlyFields, consent).
-import type { AppSpec, Entity, Field, Permission } from "@wizard/appspec";
+import type { AppSpec, Entity, Permission } from "@wizard/appspec";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toWzError, useMutationState } from "../data/mutation.js";
 import type {
@@ -16,6 +16,8 @@ import type {
   WzError,
   WzUser,
 } from "../data/types.js";
+import { fieldProblem } from "../data/validate.js";
+import { ru } from "../i18n/ru.js";
 
 export type MemoryUser = WzUser & { phone?: string; email?: string; [attr: string]: unknown };
 export type MemoryFnCtx = { user: MemoryUser | null; ds: MemoryDataSource };
@@ -40,22 +42,17 @@ export interface MemoryOptions {
 
 const SYSTEM = ["id", "created_at", "updated_at", "created_by"] as const;
 const OPS = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]);
-const MESSAGES: Record<string, [number, string]> = {
-  UNAUTHENTICATED: [401, "Войдите в систему"],
-  FORBIDDEN: [403, "Недостаточно прав для этого действия"],
-  NOT_FOUND: [404, "Запись не найдена"],
-  VALIDATION_FAILED: [422, "Проверьте заполнение полей"],
-  UNKNOWN_FIELD: [422, "Такого поля нет"],
-  FIELD_HIDDEN: [422, "Поле недоступно"],
-  FIELD_READONLY: [422, "Поле нельзя изменить"],
-  CONFLICT: [409, "Такое значение уже есть"],
-  CONSENT_REQUIRED: [422, "Нужно согласие на обработку персональных данных"],
-  LIMIT_EXCEEDED: [422, "Превышен лимит операции"],
+const STATUS: Record<string, number> = {
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
 };
 
 export function wzError(code: string, extra: Partial<WzError> = {}): WzError {
-  const [status, message] = MESSAGES[code] ?? [400, "Операция отклонена"];
-  return { code, message, status, ...extra };
+  const messages: Record<string, string> = ru.server;
+  const status = STATUS[code] ?? (messages[code] ? 422 : 400);
+  return { code, message: messages[code] ?? ru.server.rejected, status, ...extra };
 }
 
 const cmp = (a: unknown, b: unknown): number => {
@@ -217,7 +214,7 @@ export function createMemoryDataSource(
         f.default === undefined &&
         !forced.has(f.name)
       ) {
-        errors.push({ field: f.name, code: "REQUIRED", message: "Заполните поле" });
+        errors.push({ field: f.name, code: "REQUIRED", message: ru.field.requiredError });
         continue;
       }
       if (!has || v === null || v === undefined || v === "") continue;
@@ -367,8 +364,8 @@ export function createMemoryDataSource(
         return fn(args, { user: current, ds });
       }) as AsyncResult<T>;
     },
-    useCall<R>(name: string) {
-      return useMutationState(async (args: unknown, o?: WriteOpts) => {
+    useCall<R>() {
+      return useMutationState(async (name: string, args: unknown, o?: WriteOpts) => {
         calls.push({ op: "call", name, args: [args, o] });
         failIf("call");
         const fn = opts.functions?.[name];
@@ -427,7 +424,7 @@ export function createMemoryDataSource(
     },
     async verify(challengeId, code) {
       const ch = challenges.get(challengeId);
-      if (!ch || ch.code !== code) throw wzError("VALIDATION_FAILED", { message: "Неверный код" });
+      if (!ch || ch.code !== code) throw wzError("VALIDATION_FAILED", { message: ru.server.badCode });
       challenges.delete(challengeId);
       const key = ch.channel === "phone" ? "phone" : "email";
       let u = [...users.values()].find((x) => x[key] === ch.destination);
@@ -486,7 +483,7 @@ export function createMemoryDataSource(
 }
 
 function fe(field: string, code: string) {
-  return [{ field, code, message: "Поле нельзя передавать" }];
+  return [{ field, code, message: ru.server.notAllowedField }];
 }
 
 function refCaption(spec: AppSpec, db: Map<string, Rec[]>, e: Entity, field: string, v: unknown): string {
@@ -497,45 +494,6 @@ function refCaption(spec: AppSpec, db: Map<string, Rec[]>, e: Entity, field: str
   const tf = target?.fields.find((x) => x.type === "string")?.name;
   const row = (db.get(f.ref.entity) ?? []).find((r) => r.id === v);
   return tf && row ? String(row[tf] ?? "") : String(v ?? "");
-}
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^\+7\d{10}$/;
-const URL_RE = /^https?:\/\/\S+$/;
-
-/** Server-side field validation (runtime.yaml#data_api.writes); null when valid. */
-export function fieldProblem(f: Field, v: unknown, db?: Map<string, Rec[]>): string | null {
-  switch (f.type) {
-    case "string":
-    case "text":
-      if (typeof v !== "string") return "Ожидается текст";
-      if (f.maxLength && v.length > f.maxLength) return `Не длиннее ${f.maxLength} символов`;
-      return null;
-    case "int":
-    case "decimal":
-    case "money":
-      if (typeof v !== "number" || Number.isNaN(v)) return "Ожидается число";
-      if (f.type === "int" && !Number.isInteger(v)) return "Ожидается целое число";
-      if (f.min !== undefined && v < f.min) return `Не меньше ${f.min}`;
-      if (f.max !== undefined && v > f.max) return `Не больше ${f.max}`;
-      return null;
-    case "bool":
-      return typeof v === "boolean" ? null : "Ожидается да/нет";
-    case "enum":
-      return f.enum?.some((o) => o.value === v) ? null : "Выберите значение из списка";
-    case "email":
-      return typeof v === "string" && EMAIL_RE.test(v) ? null : "Неверный email";
-    case "phone":
-      return typeof v === "string" && PHONE_RE.test(v) ? null : "Неверный телефон";
-    case "url":
-      return typeof v === "string" && URL_RE.test(v) ? null : "Неверный адрес";
-    case "ref":
-      if (!db || !f.ref) return null;
-      if (f.ref.entity === "users") return null;
-      return (db.get(f.ref.entity) ?? []).some((r) => r.id === v) ? null : "Запись не найдена";
-    default:
-      return null;
-  }
 }
 
 /** Reactive read over the memory store; `latencyMs` delays the first result (loading state). */

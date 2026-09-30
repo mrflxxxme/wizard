@@ -25,6 +25,13 @@ export const ru = {
     yes: "Да",
     no: "Нет",
     search: "Поиск",
+    searchIn: (label: string) => `Поиск: ${label}`,
+    text: "Ожидается текст",
+    integer: "Введите целое число",
+    bool: "Выберите «да» или «нет»",
+    enumValue: "Выберите значение из списка",
+    refMissing: "Запись не найдена",
+    download: "Скачать",
   },
   button: { loading: "Подождите…" },
   consent: {
@@ -82,6 +89,10 @@ export const ru = {
     actions: "Действия",
   },
   recordCard: { notFound: "Запись не найдена", confirm: "Подтвердить", cancel: "Отмена" },
+  systemFields: { id: "Номер", created_at: "Создано", updated_at: "Изменено", created_by: "Автор" } as Record<
+    string,
+    string
+  >,
   statusBoard: {
     moveTo: "Перенести в…",
     moveToValue: (label: string) => `Перенести в «${label}»`,
@@ -113,6 +124,23 @@ export const ru = {
   },
   cabinet: { title: "Личный кабинет", sections: "Разделы" },
   stats: { title: "Сводка" },
+  /** Messages of the memory DataSource, mirroring runtime.yaml#data_api.error_codes. */
+  server: {
+    UNAUTHENTICATED: "Войдите в систему",
+    FORBIDDEN: "Недостаточно прав для этого действия",
+    NOT_FOUND: "Запись не найдена",
+    VALIDATION_FAILED: "Проверьте заполнение полей",
+    UNKNOWN_FIELD: "Такого поля нет",
+    FIELD_HIDDEN: "Поле недоступно",
+    FIELD_READONLY: "Поле нельзя изменить",
+    CONFLICT: "Такое значение уже есть",
+    CONSENT_REQUIRED: "Нужно согласие на обработку персональных данных",
+    LIMIT_EXCEEDED: "Превышен лимит операции",
+    INTERNAL: "Внутренняя ошибка, мы уже разбираемся",
+    rejected: "Операция отклонена",
+    badCode: "Неверный код",
+    notAllowedField: "Поле нельзя передавать",
+  },
 } as const;
 
 export type Ru = typeof ru;

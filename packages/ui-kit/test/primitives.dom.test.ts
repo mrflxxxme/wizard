@@ -3,7 +3,17 @@
 import { createElement as h, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { forum } from "../demo/fixtures.js";
-import { Badge, Button, ErrorState, Field, formatMoney, Loading, pluralRu, ru } from "../src/index.js";
+import {
+  Badge,
+  type BadgeProps,
+  Button,
+  ErrorState,
+  Field,
+  formatMoney,
+  Loading,
+  pluralRu,
+  ru,
+} from "../src/index.js";
 import { click, flush, type Rendered, render, type } from "./helpers/dom.js";
 
 let r: Rendered | undefined;
@@ -39,7 +49,7 @@ describe("Button", () => {
 
 describe("Badge", () => {
   test("text is always rendered with the tone as data attribute", async () => {
-    r = await render(h(Badge, { tone: "bad", children: "Отклонено" }), { app: forum });
+    r = await render(h(Badge, { tone: "bad" } as BadgeProps, "Отклонено"), { app: forum });
     expect(r.$("wz-badge").textContent).toBe("Отклонено");
     expect(r.$("wz-badge").getAttribute("data-tone")).toBe("bad");
   });

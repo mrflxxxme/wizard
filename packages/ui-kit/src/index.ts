@@ -5,22 +5,20 @@ export const PACKAGE = "@wizard/ui-kit";
 export { AppShell, type AppShellProps, type NavItem } from "./components/AppShell.js";
 export { Badge, type BadgeProps, type BadgeTone } from "./components/Badge.js";
 export { Button, type ButtonProps } from "./components/Button.js";
+export { CabinetLayout } from "./components/CabinetLayout.js";
+export { Catalog } from "./components/Catalog.js";
+export { ConsentCheckbox } from "./components/ConsentCheckbox.js";
+export { DataTable } from "./components/DataTable.js";
 export { Field, type FieldProps, type FieldType } from "./components/Field.js";
+export { ItemCard } from "./components/ItemCard.js";
 export { Login } from "./components/Login.js";
+export { QrScanner } from "./components/QrScanner.js";
+export { QrCode, QrTicket } from "./components/QrTicket.js";
+export { RecordCard } from "./components/RecordCard.js";
+export { RecordForm } from "./components/RecordForm.js";
 export { EmptyState, ErrorState, Loading } from "./components/States.js";
-export {
-  CabinetLayout,
-  Catalog,
-  ConsentCheckbox,
-  DataTable,
-  ItemCard,
-  QrScanner,
-  QrTicket,
-  RecordCard,
-  RecordForm,
-  StatsReport,
-  StatusBoard,
-} from "./components/stubs.js";
+export { StatsReport } from "./components/StatsReport.js";
+export { StatusBoard } from "./components/StatusBoard.js";
 export type {
   CabinetLayoutProps,
   CatalogProps,

@@ -1,0 +1,38 @@
+.consent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 12px;
+  accent-color: var(--w-accent);
+}
+
+.text {
+  display: block;
+  min-height: 44px;
+  padding: 12px 0;
+  font-size: var(--w-font-size-sm);
+  line-height: 1.45;
+}
+
+.link {
+  display: inline;
+}
+
+.error {
+  margin: 0 0 0 44px;
+  color: var(--w-bad);
+  font-size: var(--w-font-size-sm);
+  font-weight: 600;
+}

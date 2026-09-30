@@ -3,13 +3,13 @@ import {
   useEntity,
   useEntityList,
   useEntityMutation,
-  useMutation,
   useQuery,
   useSdkClient,
   useUser,
   type WizardError,
 } from "@wizard/sdk";
 import { useMemo } from "react";
+import { ru } from "../i18n/ru.js";
 import { useRoleSpec } from "./context.js";
 import { toWzError, useMutationState } from "./mutation.js";
 import { titleField } from "./roleSpec.js";
@@ -47,9 +47,6 @@ const mut = useEntityMutation as unknown as (e: string) => {
   remove(id: string): Promise<void>;
 };
 const fnQuery = useQuery as unknown as (n: string, a: unknown) => QState;
-const fnMutation = useMutation as unknown as (
-  n: string,
-) => [(a: unknown, o?: WriteOpts) => Promise<unknown>, { pending: boolean; error?: WizardError }];
 
 const err = (e: WizardError | undefined) => (e ? toWzError(e) : undefined);
 
@@ -87,7 +84,7 @@ export function sdkDataSource(): DataSource {
       const e =
         err(s.error) ??
         (!s.isLoading && s.data === null
-          ? { code: "NOT_FOUND", message: "Запись не найдена", status: 404 }
+          ? { code: "NOT_FOUND", message: ru.server.NOT_FOUND, status: 404 }
           : undefined);
       return {
         ...(s.data ? { data: s.data as T } : {}),
@@ -127,9 +124,12 @@ export function sdkDataSource(): DataSource {
         logout: u.logout,
       };
     },
-    useCall<R>(name: string) {
-      const [run] = fnMutation(name);
-      return useMutationState((args: unknown, opts?: WriteOpts) => run(args, opts) as Promise<R>);
+    useCall<R>() {
+      const client = useSdkClient();
+      return useMutationState(
+        async (name: string, args: unknown, opts?: WriteOpts) =>
+          (await client.callFunction(name, args, opts)).result as R,
+      );
     },
     useAuth(): AuthApi {
       const client = useSdkClient();

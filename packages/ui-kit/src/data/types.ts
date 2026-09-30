@@ -69,8 +69,8 @@ export interface DataSource {
   useFn<T>(name: string, args?: unknown): AsyncResult<T>;
   /** ext: current user (sdk useUser()). */
   useUser(): UserResult;
-  /** ext: mutation-function call (RecordCard kind=fn, QrScanner verifyFn). */
-  useCall<R = unknown>(name: string): Mutation<[args: unknown, opts?: WriteOpts], R>;
+  /** ext: mutation/action function call by name (RecordCard kind=fn). */
+  useCall<R = unknown>(): Mutation<[name: string, args: unknown, opts?: WriteOpts], R>;
   /** ext: auth endpoints for AppShell.Login. */
   useAuth(): AuthApi;
   /** ext: POST /_wizard/qr/check (connectors/qr.yaml#endpoints.check) or verifyFn. */

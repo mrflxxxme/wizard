@@ -113,7 +113,7 @@ export function forumFixture(): Fixture {
     const i = k + 1;
     return {
       id: `app_${pad(i)}`,
-      speaker_user: i === 1 ? "u_speaker" : `u_spk_${i}`,
+      speaker_user: i === 3 ? "u_speaker" : `u_spk_${i}`,
       full_name: `${FIRST[i % FIRST.length]} ${LAST[(i * 3) % LAST.length]}`,
       email: `speaker${i}@demo.example`,
       phone: `+7911${pad(i, 7)}`,

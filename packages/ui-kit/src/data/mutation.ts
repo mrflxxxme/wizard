@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { ru } from "../i18n/ru.js";
 import type { Mutation, WzError } from "./types.js";
 
 /** Converts anything thrown by a DataSource into WzError (message stays Russian). */
@@ -22,7 +23,7 @@ export function toWzError(e: unknown): WzError {
       ...(requestId ? { requestId } : {}),
     };
   }
-  return { code: "INTERNAL", message: "Внутренняя ошибка, мы уже разбираемся", status: 0 };
+  return { code: "INTERNAL", message: ru.server.INTERNAL, status: 0 };
 }
 
 /** Pending/error bookkeeping around an async function; errors are rethrown as WzError. */

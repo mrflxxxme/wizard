@@ -1,8 +1,8 @@
 // @wizard/ui-kit/testing: memory DataSource with runtime permission semantics for demo and tests.
 export { toRoleSpec } from "../data/roleSpec.js";
+export { fieldProblem } from "../data/validate.js";
 export {
   createMemoryDataSource,
-  fieldProblem,
   type MemoryCall,
   type MemoryDataSource,
   type MemoryFn,

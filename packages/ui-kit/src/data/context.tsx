@@ -83,7 +83,7 @@ export function WzProvider({
 
 export function useWz(): WzContextValue {
   const v = useContext(WzContext);
-  if (!v) throw new Error("@wizard/ui-kit: компонент должен быть внутри WzProvider");
+  if (!v) throw new Error("@wizard/ui-kit: component must be rendered inside WzProvider");
   return v;
 }
 
