@@ -6,11 +6,26 @@ export interface NameInfo {
   /** Needs a surname or patronymic next to it (Вера, Роман, Лев…). */
   ambiguous: boolean;
   latin: boolean;
+  /** Also a common word, place or brand: never an anchor of the Title-case pair heuristic. */
+  word: boolean;
 }
 
 export interface NameDict {
   names: Map<string, NameInfo>;
+  /** All dictionary surnames with case forms (lower-cased, ё→е). */
   surnames: Set<string>;
+  /** Surnames that are not common words: the dictionary side of the Title-case pair heuristic. */
+  strongSurnames: Set<string>;
+}
+
+const LATIN_FORM = /^[A-Za-z-]+$/;
+
+/** Case forms of a surname: masculine declension plus feminine -ова/-ева/-ина for possessive suffixes. */
+function surnameForms(s: string): string[] {
+  if (LATIN_FORM.test(s)) return [s];
+  const forms = caseForms(s, "m");
+  if (/(?:ов|ев|ёв|ин|ын)$/.test(s)) forms.push(...caseForms(`${s}а`, "f"));
+  return forms;
 }
 
 const VOWELS = /[аеёиоуыэюя]$/;
@@ -35,31 +50,42 @@ export function caseForms(lemma: string, gender: string): string[] {
 function build(): NameDict {
   const names = new Map<string, NameInfo>();
   const surnames = new Set<string>();
+  const strongSurnames = new Set<string>();
+  const weakSurnames = new Set<string>();
   const put = (form: string, info: NameInfo) => {
     const key = fold(form);
     const prev = names.get(key);
     // A form is ambiguous only if every lemma producing it is ambiguous (Яна vs genitive of Ян).
-    if (prev) prev.ambiguous &&= info.ambiguous;
-    else names.set(key, { ...info });
+    if (prev) {
+      prev.ambiguous &&= info.ambiguous;
+      prev.word &&= info.word;
+    } else names.set(key, { ...info });
   };
   for (const line of NAMES_DATA.split("\n")) {
     if (!line || line.startsWith("#")) continue;
     const [form = "", flags = "", extra = ""] = line.split("\t");
     const gender = flags.includes("m") ? "m" : flags.includes("f") ? "f" : "u";
     if (flags.includes("s")) {
-      for (const f of caseForms(form, "m")) surnames.add(fold(f));
-      if (!/[mfud]/.test(flags)) continue;
+      for (const f of surnameForms(form)) {
+        const key = fold(f);
+        surnames.add(key);
+        (flags.includes("x") ? weakSurnames : strongSurnames).add(key);
+      }
+      if (!/[mfudl]/.test(flags)) continue;
     }
     if (flags.includes("l")) {
-      put(form, { ambiguous: true, latin: true });
+      put(form, { ambiguous: true, latin: true, word: flags.includes("a") });
       continue;
     }
     // A first name that is also a surname (Ким) needs a neighbour to count.
-    const info: NameInfo = { ambiguous: flags.includes("a") || flags.includes("s"), latin: false };
+    const ambiguous = flags.includes("a") || flags.includes("s");
+    const info: NameInfo = { ambiguous, latin: false, word: ambiguous };
     const forms = extra ? [form, ...extra.split(" ")] : caseForms(form, gender === "u" ? "f" : gender);
     for (const f of forms) put(f, info);
   }
-  return { names, surnames };
+  // A form produced by a weak surname (Мороза ← Мороз) is never strong, whatever else produced it.
+  for (const k of weakSurnames) strongSurnames.delete(k);
+  return { names, surnames, strongSurnames };
 }
 
 let cached: NameDict | null = null;

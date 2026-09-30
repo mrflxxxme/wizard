@@ -1,6 +1,6 @@
 // person_name / person_name_latin (data-boundary.yaml#detectors.kinds): dictionary first names + capitalization, extended by
 // adjacent patronymics/surnames; "Фамилия И. О." and "И. О. Фамилия"; values after «ФИО:».
-import { nameDict } from "../dict.js";
+import { type NameInfo, nameDict } from "../dict.js";
 import type { Confidence, Finding } from "../types.js";
 import { finding, fold } from "../util.js";
 
@@ -57,6 +57,54 @@ const FIELD_WORDS = new Set(
   ).split(" "),
 );
 
+// FU-1 pair heuristic (dictionary first name or surname + an unknown Title-case word): words that are not given names
+// or surnames even when capitalized — function words, roles and titles, places and organisations, dates.
+const PAIR_STOP = new Set(
+  (
+    "а без в во вот все всё вы да для до его её ее если есть ещё еще же за здесь и из или им их к как когда кто ли " +
+    "либо мы на над не нет ни но ну о об он она они оно от по под при про с со так там тем то тоже только ты тут у уже " +
+    "чем что чтобы эта эти это этот я где куда почему зачем сегодня завтра вчера сейчас потом тогда также очень просто " +
+    "можно нужно надо хорошо спасибо пожалуйста привет пока ок окей добрый доброе доброго здравствуйте здравствуй " +
+    "москва москве москву москвы питер питере петербург казань самара екатеринбург новосибирск сочи россия россии рф " +
+    "январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь понедельник вторник среда четверг " +
+    "пятница суббота воскресенье брат брата брату сын сына сыну дочь дочери жена жены жене муж мужа мужу друг друга " +
+    "другу мама маме мамы маму папа папе папы папу дядя дяди тётя тёти тетя тети мисс сэр мэр мэра мэру мэре парк парка " +
+    "парке парку гора горы горе озеро озера река реки мост моста село села край края краю крае метро имени тур тура " +
+    "mr mrs ms miss dr prof sir madam mister dear hi hello hey thanks thank regards best cheers sincerely yours agent " +
+    "officer captain detective doctor president senator professor judge king queen prince princess lord lady saint st " +
+    "san santa mount mt lake fort port cape new north south east west upper lower old big little great grand the an " +
+    "and or but of in on at to from by with for about team project product company group inc ltd llc corp co plc gmbh " +
+    "street avenue ave road rd lane drive boulevard blvd square place way court park station center centre mall plaza " +
+    "tower building hall house home hotel hostel resort airport airlines airways university college school academy " +
+    "institute hospital clinic museum gallery theatre theater studio studios store shop market cafe restaurant bar pub " +
+    "club bank foundation fund trust capital partners holdings systems solutions services consulting software " +
+    "technologies technology tech labs lab media news times post journal magazine radio music records films pictures " +
+    "books press games sport sports fitness gym spa salon beauty design fashion style kitchen garden city county state " +
+    "country island beach bay river valley hill mountain bridge day night week year month show festival cup award " +
+    "awards prize edition collection series season episode chapter part version release pro plus max mini lite premium " +
+    "standard basic free online app apps cloud code monday tuesday wednesday thursday friday saturday sunday january " +
+    "february march april may june july august september october november december usa uk eu russia moscow london " +
+    "paris berlin america american english russian german french please call email phone contact support admin user " +
+    "manager director ceo cto cfo vp head lead senior junior intern customer client owner buyer seller visitor guest " +
+    "member author editor reporter says said wrote writes controls motors airlines express bros brothers sons ооо оао " +
+    "зао пао ип нко гбу муп фгуп"
+  ).split(" "),
+);
+// Stems of place and organisation words (folded, prefix match): "Мадина Маркет" is a brand, not a person.
+const PLACE_ORG_STEM =
+  /^(?:улиц|проспект|переул|площад|бульвар|набережн|шоссе|сквер|станци|район|город|деревн|посел|област|республик|музе|театр|школ|гимнази|лице[йя]|университет|институт|академи|библиотек|больниц|поликлиник|клиник|завод|фабрик|компани|банк|магазин|кафе|ресторан|отел[ьяюе]|гостиниц|аэропорт|вокзал|преми|приз|куб[оа]к|орден|медал|фонд|центр|клуб|фестивал|конкурс|турнир|памятник|остров|залив|групп|холдинг|сервис|маркет|плаза|сити|холл|трейд|строй|моторс|экспресс|студи|салон|шоп|стиль|авто|дизайн|мебел|фитнес|спорт|медиа|плюс)/u;
+// Stems of role, title and greeting words (folded, prefix match).
+const ROLE_STEM =
+  /^(?:клиент|сотрудни|пациент|директор|менеджер|врач|доктор|господ|госпож|товарищ|уважаем|коллег|студент|учител|ученик|автор|заказчи|получател|отправител|водител|курьер|мастер|тренер|руководител|администратор|оператор|покупател|продав|владел|участни|пользовател|абонент|граждан|мистер|миссис|бабушк|дедушк|сестр|подруг|сосед|профессор|академик|генерал|маршал|полковник|майор|капитан|лейтенант|сержант|президент|министр|губернатор|депутат|сенатор|судь|прокурор|следовател|адвокат|нотариус|инженер|бухгалтер|юрист|специалист|эксперт|консультант|агент|партнер|представител|кандидат|преподавател|воспитател|заведующ|начальни|заместител|шеф|инспектор|писател|поэт|художни|композитор|актер|актрис|певец|певиц|режиссер|цар[ья]|корол|княз|граф|барон|свят[аоыу]|дорог[аоиу]|здравству|привет|спасиб|добр[оы])/u;
+// Unknown Cyrillic words that decline like nouns or adjectives rather than names.
+const NOUN_LIKE_CYR =
+  /(?:ость|ости|остью|ств[оауеы]|ством|ни[еяюй]|нием|ци[яиюей]|тел[ьяюие]|телем|ое|ые|ого|ому|ыми|ими|ую)$/u;
+const VERB_LIKE_CYR = /(?:[иы]те|йте|ать|ять|ить|еть|уть|ться|тся|лся|лась|лись|ешь|ишь)$/u;
+const ADJ_LIKE_CYR = /(?:ый|ий|ой|ая|яя|ее|ей)$/u;
+const NOUN_LIKE_LAT = /(?:tion|sion|ment|ness|ship|ware|able|ible|ology|ics|ies)$/;
+const TITLE_WORD = /^\p{Lu}\p{Ll}+(?:-\p{Lu}\p{Ll}+)*$/u;
+const ALL_CAPS = /^[\p{Lu}-]+$/u;
+
 interface Tok {
   s: number;
   e: number;
@@ -81,7 +129,7 @@ function capitalized(w: string): string | null {
   return null;
 }
 
-function firstName(w: string): { ambiguous: boolean; latin: boolean } | null {
+function firstName(w: string): NameInfo | null {
   const { names } = nameDict();
   const key = fold(w);
   const hit = names.get(key);
@@ -90,13 +138,15 @@ function firstName(w: string): { ambiguous: boolean; latin: boolean } | null {
   // Double first names: every part must be a name.
   let ambiguous = true;
   let latin = true;
+  let word = true;
   for (const p of key.split("-")) {
     const h = names.get(p);
     if (!h) return null;
     ambiguous &&= h.ambiguous;
     latin &&= h.latin;
+    word &&= h.word;
   }
-  return { ambiguous, latin };
+  return { ambiguous, latin, word };
 }
 
 export function isSurname(w: string): boolean {
@@ -106,7 +156,34 @@ export function isSurname(w: string): boolean {
     if (nameDict().surnames.has(key)) return true;
     return w.split("-").every((p) => SURNAME_SUFFIX_CYR.test(p) && p.length >= 4);
   }
-  return LAT.test(w) && w.length >= 4 && SURNAME_SUFFIX_LAT.test(w);
+  if (!LAT.test(w)) return false;
+  return (w.length >= 4 && SURNAME_SUFFIX_LAT.test(w)) || nameDict().strongSurnames.has(key);
+}
+
+/** Capitalized place or organisation word ("Маркет", "Центр"): a first name right before it names a brand. */
+function placeOrOrg(raw: string): boolean {
+  return CYR.test(raw) && PLACE_ORG_STEM.test(fold(raw));
+}
+
+/**
+ * FU-1: can the unknown token `raw` stand next to the dictionary name/surname `anchor` as the other half of a person's
+ * name? `given` — it would be the given name (next to a surname), else the surname (next to a given name).
+ */
+function pairable(raw: string, anchor: string, given: boolean): boolean {
+  if (ALL_CAPS.test(anchor) && anchor.length > 1) {
+    if (raw.length < 3 || !ALL_CAPS.test(raw)) return false;
+  } else if (!TITLE_WORD.test(raw)) return false;
+  const w = capitalized(raw);
+  if (!w || w.length < 3 || !sameScript(w, anchor)) return false;
+  const key = fold(w);
+  if (PAIR_STOP.has(key)) return false;
+  if (CYR.test(w)) {
+    if (ROLE_STEM.test(key) || PLACE_ORG_STEM.test(key)) return false;
+    if (NOUN_LIKE_CYR.test(key) || VERB_LIKE_CYR.test(key)) return false;
+    if (given && ADJ_LIKE_CYR.test(key)) return false;
+    return true;
+  }
+  return LAT.test(w) && !NOUN_LIKE_LAT.test(key);
 }
 
 function isPatronymic(w: string): boolean {
@@ -139,8 +216,35 @@ export function detectNames(text: string): Finding[] {
     const t = toks[i];
     return t ? capitalized(t.t) : null;
   };
-  const { names } = nameDict();
+  const { names, strongSurnames } = nameDict();
   const spans: Span[] = [];
+  const beforeTok = (k: number): string => {
+    const t = toks[k] as Tok;
+    return text.slice(Math.max(0, t.s - 40), t.s);
+  };
+  // FU-1: strong dictionary surname + an unknown name-like word ("Рахимов Джахонгир", "Smith Johnny").
+  const surnamePair = (i: number, w: string): { span: Span; end: number } | null => {
+    if (!strongSurnames.has(fold(w))) return null;
+    const raw = (toks[i] as Tok).t;
+    const givenOk = (j: number): boolean => {
+      const t = toks[j];
+      const g = t ? capitalized(t.t) : null;
+      if (!t || !g || !sameScript(g, w)) return false;
+      if (firstName(g)) return true;
+      return !isSurname(g) && pairable(t.t, raw, true);
+    };
+    let s = i;
+    let e = i;
+    if (adjacent(i, i + 1) && givenOk(i + 1)) {
+      e = i + 1;
+      const p = cap(i + 2);
+      if (p && adjacent(i + 1, i + 2) && sameScript(w, p) && isPatronymic(p)) e = i + 2;
+    } else if (adjacent(i - 1, i) && givenOk(i - 1)) s = i - 1;
+    else return null;
+    const before = beforeTok(s);
+    if (STREET_BEFORE.test(before) || NAMED_AFTER_BEFORE.test(before)) return null;
+    return { span: { s: (toks[s] as Tok).s, e: (toks[e] as Tok).e, c: "high", l: !CYR.test(w) }, end: e };
+  };
 
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i] as Tok;
@@ -169,12 +273,21 @@ export function detectNames(text: string): Finding[] {
         spans.push({ s: tok.s, e: tok.e + ia[0].length, c: "high", l: LAT.test(sur) });
       }
     }
-    // Dictionary first name as the anchor.
-    if (!tok.t.includes("-") && !names.has(fold(tok.t))) continue;
+    // Dictionary first name as the anchor; otherwise a strong dictionary surname.
+    const key = fold(tok.t);
+    const nameLike = tok.t.includes("-") || names.has(key);
+    if (!nameLike && !strongSurnames.has(key)) continue;
     const w = capitalized(tok.t);
     if (!w) continue;
-    const info = firstName(w);
-    if (!info) continue;
+    const info = nameLike ? firstName(w) : null;
+    if (!info) {
+      const pair = surnamePair(i, w);
+      if (pair) {
+        spans.push(pair.span);
+        i = pair.end;
+      }
+      continue;
+    }
     let s = i;
     let e = i;
     let ext = false;
@@ -195,11 +308,19 @@ export function detectNames(text: string): Finding[] {
       s = i - 1;
       ext = true;
     }
+    // FU-1: a first name that is not a common word + an unknown name-like word ("Джахонгир Турдыбек", "John Smithers").
+    let pair = false;
+    if (!ext && !info.word && adjacent(i, i + 1) && pairable((toks[i + 1] as Tok).t, tok.t, false)) {
+      e = i + 1;
+      ext = pair = true;
+    }
     const startTok = toks[s] as Tok;
-    const before = text.slice(Math.max(0, startTok.s - 40), startTok.s);
+    const before = beforeTok(s);
+    if (pair && STREET_BEFORE.test(before)) continue;
     if (!ext) {
       if (info.ambiguous || info.latin) continue;
       if (STREET_BEFORE.test(before)) continue;
+      if (adjacent(i, i + 1) && placeOrOrg((toks[i + 1] as Tok).t)) continue; // "Мадина Маркет", "Тимур Центр"
       if (LOCATION_NAMES.has(fold(w)) && LOCATION_PREP.test(before)) continue;
     } else if (NAMED_AFTER_BEFORE.test(before)) {
       continue; // street or institution named after a person: covered by address, not a data subject

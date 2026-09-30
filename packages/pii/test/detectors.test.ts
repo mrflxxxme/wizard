@@ -240,6 +240,68 @@ describe("person_name", () => {
   });
 });
 
+describe("person_name: non-Slavic and English/European names (FU-1)", () => {
+  test("dictionary names and surnames of RF peoples", () => {
+    expect(found("Джахонгир Рахимов оплатил заказ")).toEqual([["person_name", "Джахонгир Рахимов"]]);
+    expect(found("Рахимов Джахонгир Алишерович")).toEqual([["person_name", "Рахимов Джахонгир Алишерович"]]);
+    expect(found("Передайте Джахонгиру Рахимову")).toEqual([["person_name", "Джахонгиру Рахимову"]]);
+    for (const n of [
+      "Айгуль Сатпаева",
+      "Нодира Юлдашева",
+      "Ашот Саргсян",
+      "Гиви Беридзе",
+      "Эльчин Мамедли",
+      "Сардаана Аммосова",
+      "Баир Цыденов",
+      "Фаррух Рахимзода",
+      "Олжас Сулейменов",
+    ]) {
+      expect(found(`Клиент ${n} оставил заявку`)).toEqual([["person_name", n]]);
+    }
+  });
+  test("pair heuristic: dictionary side + unknown Title-case side", () => {
+    expect(found("Водитель Нарек Турдыбек, пропуск")).toEqual([["person_name", "Нарек Турдыбек"]]);
+    expect(found("Абдумалик Юлдашев на связи")).toEqual([["person_name", "Абдумалик Юлдашев"]]);
+    expect(found("Speaker: Emily Pemberton")).toEqual([["person_name_latin", "Emily Pemberton"]]);
+    expect(found("Smith Johnny")).toEqual([["person_name_latin", "Smith Johnny"]]);
+  });
+  test("common Latin full names", () => {
+    expect(found("Contact John Smith today")).toEqual([["person_name_latin", "John Smith"]]);
+    expect(found("JOHN SMITH")).toEqual([["person_name_latin", "JOHN SMITH"]]);
+    expect(found("Thomas Mueller, Giulia Rossi, Pierre Dubois")).toEqual([
+      ["person_name_latin", "Thomas Mueller"],
+      ["person_name_latin", "Giulia Rossi"],
+      ["person_name_latin", "Pierre Dubois"],
+    ]);
+    expect(found("J. Smith")).toEqual([["person_name_latin", "J. Smith"]]);
+  });
+  test.each([
+    "Белый Дом",
+    "Дед Мороз пришёл",
+    "White House",
+    "Black Friday",
+    "Visual Studio Code",
+    "Jordan River",
+    "Лада Веста",
+    "Роза Хутор",
+    "Проспект Сахарова",
+    "Площадь Королёва",
+    "Agent Smith",
+    "Morgan Stanley",
+    "Wells Fargo",
+    "Grace Period",
+    "Smith Street",
+    "Кафе Тимур Парк",
+    "улица Мусы Джалиля",
+    "Али Экспресс",
+    "Мадина Маркет",
+    "Уважаемые Коллеги",
+    "Позвоните Петрову",
+  ])("hard negative: %s", (text) => {
+    expect(found(text).filter(([, s]) => s.includes(" "))).toEqual([]);
+  });
+});
+
 describe("phone_intl", () => {
   test("+country code ≠ 7 with 8–15 digits", () => {
     expect(found("Минск: +375 29 123-45-67")).toEqual([["phone_intl", "+375 29 123-45-67"]]);

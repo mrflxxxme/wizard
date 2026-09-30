@@ -55,6 +55,31 @@ const SURNAME_M =
   "Иванов Смирнов Кузнецов Попов Васильев Петров Соколов Михайлов Новиков Фёдоров Морозов Волков Лебедев Козлов Орлов Никитин Захаров Зайцев Соловьёв Сорокин Ильин Медведев Жуков Белов Крылов Голубев Шевчук Бондаренко Ким Черных Тихомиров Покровский Вишневский Гончаренко Ткачук".split(
     " ",
   );
+// FU-1 vocabulary: non-Slavic names common in RF, English/European names, and names absent from the dictionary.
+const OTHER_FIRST_M =
+  "Джахонгир Бахтиёр Шерзод Фаррух Улугбек Нурлан Ерлан Айдар Ильдар Рамиль Ашот Тигран Нарек Гиви Леван Эльчин Орхан Хамзат Айсен Баир Алишер".split(
+    " ",
+  );
+const OTHER_FIRST_F =
+  "Гулноза Нодира Айгерим Асель Гузель Лейсан Анаит Нино Кетеван Наргиз Сардаана Туяна Малика Зарема Айгуль".split(
+    " ",
+  );
+const OTHER_SURNAME =
+  "Рахимов Юлдашев Турсунов Эргашев Жумабаев Сафин Галиев Хабибуллин Саргсян Петросян Мкртчян Беридзе Гелашвили Кобахидзе Мамедли Гасанли Мамедов Кадыров Аммосов Цыденов Рахимзода Шарипзода".split(
+    " ",
+  );
+const UNKNOWN_FIRST = "Абдумалик Шахбоз Нурбол Бекнур Жавохир Азизбек Сайёд".split(" ");
+const UNKNOWN_SURNAME = "Турдыбек Кенжебай Нурмухамбет Сатыбалды Досмухамбет Жумагул".split(" ");
+const WEST_FIRST =
+  "John Michael David James Robert Sarah Emily Jennifer Laura Thomas Hans Pierre Giulia Carlos Peter Kevin Rachel Olivia Daniel".split(
+    " ",
+  );
+const WEST_SURNAME =
+  "Smith Johnson Williams Brown Davis Miller Wilson Anderson Taylor Thompson Garcia Martinez Mueller Schmidt Dubois Rossi Fernandez Kowalski Nowak Jansen".split(
+    " ",
+  );
+const UNKNOWN_SURNAME_LAT =
+  "Pemberton Ashworth Kilgore Whitfield Hargreaves Thornbury Fairbanks Galloway".split(" ");
 const PATRONYMIC_BASE = "Иван Сергей Алексей Андрей Николай Александр Михаил Владимир Петр Юрий".split(" ");
 
 function femSurname(s: string): string {
@@ -714,6 +739,96 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
   }
   limits.forEach((parts, i) => {
     out.push({ id: `l${String(i + 1).padStart(3, "0")}`, group: "limits", ...build(parts) });
+  });
+
+  // FU-1: non-Slavic Cyrillic names and English/European Latin names; appended so earlier lines stay unchanged.
+  const otherFull = (): string => {
+    const female = rng() < 0.4;
+    const first = pick(female ? OTHER_FIRST_F : OTHER_FIRST_M);
+    const sur = female ? femSurname(pick(OTHER_SURNAME)) : pick(OTHER_SURNAME);
+    return int(0, 3) === 0 ? `${sur} ${first}` : `${first} ${sur}`;
+  };
+  const otherDative = (): string => {
+    const first = pick(OTHER_FIRST_M);
+    const sur = pick(OTHER_SURNAME);
+    return `${first}у ${/(ов|ев|ин|ян)$/.test(sur) ? `${sur}у` : sur}`;
+  };
+  const westFull = (): string => {
+    const name = `${pick(WEST_FIRST)} ${pick(WEST_SURNAME)}`;
+    return rng() < 0.15 ? name.toUpperCase() : name;
+  };
+  const fu1: Array<() => Part[]> = [
+    () => ["Клиент ", P("person_name", otherFull()), " оставил заявку, телефон ", P("phone_ru", phone())],
+    () => ["Передайте ", P("person_name", otherDative()), ", что заказ готов"],
+    () => ["Contact: ", P("person_name_latin", westFull()), ", ", P("email", email())],
+    () => ["Hi, my name is ", P("person_name_latin", westFull()), " and I need a quote"],
+    () => [
+      "Участники: ",
+      P("person_name", otherFull()),
+      ", ",
+      P("person_name", otherFull()),
+      " и ",
+      P("person_name", otherFull()),
+    ],
+    () => ["Dear ", P("person_name_latin", westFull()), ", your order has shipped"],
+    () => ["Заказчик ", P("person_name", otherFull()), ", ИНН ", P("inn_person", innPerson())],
+    () => [
+      "Ответственный — ",
+      P("person_name", `${pick(UNKNOWN_FIRST)} ${pick(OTHER_SURNAME)}`),
+      ", тел. ",
+      P("phone_ru", phone()),
+    ],
+    () => [
+      "Водитель ",
+      P("person_name", `${pick(OTHER_FIRST_M)} ${pick(UNKNOWN_SURNAME)}`),
+      ", пропуск на завтра",
+    ],
+    () => [
+      "Speaker: ",
+      P("person_name_latin", `${pick(WEST_FIRST)} ${pick(UNKNOWN_SURNAME_LAT)}`),
+      " (keynote)",
+    ],
+    () => [P("person_name_latin", westFull()), " will call you back on ", P("phone_intl", phoneIntl())],
+    () => ["Получатель: ", P("person_name", otherFull()), ", ", P("address", address())],
+  ];
+  const fu1Traps = [
+    "Белый Дом объявил о переговорах",
+    "Дед Мороз и Снегурочка придут в 18:00",
+    "Серый Волк — герой сказки",
+    "White House press briefing at noon",
+    "Black Friday sale starts next week",
+    "Open it in Visual Studio Code or Google Chrome",
+    "Hello World example for Microsoft Teams",
+    "The New York Times reported growth",
+    "Jordan River and Austin Texas are on the map",
+    "Лада Веста и Роза Хутор",
+    "Мир Кино открылся после ремонта",
+    "Проспект Сахарова перекрыт до вечера",
+    "Площадь Королёва реконструируют",
+    "Agent Smith is a movie character",
+    "Morgan Stanley and Wells Fargo report earnings",
+    "Grace Period ends on Friday",
+    "Smith Street near Johnson Controls office",
+    "Премия Кандинского вручена в Москве",
+    "Встречаемся в кафе «Тимур Парк»",
+    "На улице Мусы Джалиля ремонт",
+    "Visual Basic и Apple Music",
+    "Red Hat Enterprise Linux 9",
+    "Pull Request прошёл Code Review",
+    "Merry Christmas and Happy New Year",
+    "Москва Сити и Нижний Новгород",
+    "Ростов Великий, Сергиев Посад",
+    "Али Экспресс доставит заказ",
+    "Уважаемые Коллеги, Добро Пожаловать",
+    "Салон Гузель Стиль работает до 20:00",
+    "Мадина Маркет, Алмаз Холдинг, Банк Санкт-Петербург",
+  ];
+  for (let i = 0; i < 60; i++) {
+    const t = fu1[i % fu1.length] as () => Part[];
+    out.push({ id: `p${String(281 + i).padStart(3, "0")}`, group: "positive", ...build(t()) });
+  }
+  fu1Traps.forEach((text, i) => {
+    out.push({ id: `t${String(141 + i).padStart(3, "0")}`, group: "trap", text, spans: [] });
   });
   return out;
 }
