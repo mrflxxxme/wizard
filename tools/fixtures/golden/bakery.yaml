@@ -74,12 +74,12 @@ questions:
       - { id: admin_manager_moderator, label: "Владелец, администратор и кондитеры", recommended: false }
     allowCustom: true
   - id: q3
-    forkId: F-VISIBILITY
-    text: "Какие заказы видит кондитер?"
-    whyItMatters: "В небольшой кондитерской проще, когда все кондитеры видят все заказы на день; иначе заказы нужно назначать."
+    forkId: F-APPROVAL
+    text: "Как подтверждать заказы?"
+    whyItMatters: "Если сразу — заказ принят после предоплаты, когда день свободен; если вручную — владелец проверяет каждый заказ."
     options:
-      - { id: all_see_all,   label: "Все заказы",                recommended: true }
-      - { id: assigned_only, label: "Только назначенные ему",    recommended: false }
+      - { id: auto,   label: "Сразу после предоплаты",         recommended: true }
+      - { id: manual, label: "Владелец подтверждает вручную", recommended: false }
     allowCustom: true
   - id: q4
     forkId: F-STATUSES
@@ -94,7 +94,7 @@ questions:
 answers:
   - { questionId: q1, forkId: F-LOGIN,      optionId: email_or_telegram, byRecommendation: false }
   - { questionId: q2, forkId: F-STAFF,      optionId: admin_manager,     byRecommendation: false }
-  - { questionId: q3, forkId: F-VISIBILITY, optionId: all_see_all,       byRecommendation: true }
+  - { questionId: q3, forkId: F-APPROVAL,   optionId: auto,              byRecommendation: true }
   - { questionId: q4, forkId: F-STATUSES,   optionId: pipeline_board,    byRecommendation: true }
 
 # ---------------------------------------------------------------- card: submit_card (без estimate/cap/cardVersion)
@@ -143,6 +143,7 @@ card:
   assumptions:
     - "Вход — по коду на почту или через Telegram (выбрано)"
     - "В системе работают владелец и кондитеры (выбрано)"
+    - "Заказ принимается сразу после предоплаты, если день свободен (по рекомендации)"
     - "Кондитеры видят все заказы (по рекомендации)"
     - "Заказы ведутся на доске по статусам и дням (по рекомендации)"
     - "Данные оператора персональных данных и текст согласия владелец заполняет в настройках"
