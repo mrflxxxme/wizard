@@ -1,6 +1,7 @@
 // Deployment registry (runtime.yaml#system_loading.registry). M0: FileRegistry over .data/artifacts/registry.json;
 // M0-26 adds DbRegistry over platform.deployments with the same entry shape.
 import { readFile, stat } from "node:fs/promises";
+import type postgres from "postgres";
 
 export type SystemEnv = "draft" | "prod";
 
@@ -78,6 +79,46 @@ export class FileRegistry implements SystemRegistry {
 
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     return (await this.entries()).find((e) => e.slug === slug && e.env === env) ?? null;
+  }
+}
+
+/**
+ * Reads platform.deployments (platform/db.yaml#views.deployments) on every resolve: a new preview_revision is picked
+ * up by the next request, so the M0 reload needs no signal. `fallback` serves hosts the view does not know (local dev
+ * keeps the FileRegistry).
+ */
+export class DbRegistry implements SystemRegistry {
+  constructor(
+    readonly sql: postgres.Sql,
+    readonly fallback?: SystemRegistry,
+  ) {}
+
+  async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
+    let rows: postgres.Row[];
+    try {
+      rows = await this.sql`
+        select system_id, slug, env, revision, spec_hash, bundle_key, published_at, suspended, features
+        from platform.deployments where slug = ${slug} and env = ${env} limit 1`;
+    } catch (e) {
+      // No platform schema yet (runtime started before platform-api migrated): only the fallback knows systems.
+      const code = (e as { code?: string }).code;
+      if (code !== "42P01" && code !== "3F000") throw e;
+      rows = [];
+    }
+    const r = rows[0];
+    if (!r) return this.fallback ? this.fallback.resolve(slug, env) : null;
+    return asEntry({
+      systemId: r.system_id,
+      slug: r.slug,
+      env: r.env,
+      revision: Number(r.revision),
+      specHash: r.spec_hash,
+      bundleKey: r.bundle_key ?? "",
+      publishedAt:
+        r.published_at instanceof Date ? r.published_at.toISOString() : String(r.published_at ?? ""),
+      suspended: r.suspended === true,
+      features: r.features ?? {},
+    });
   }
 }
 

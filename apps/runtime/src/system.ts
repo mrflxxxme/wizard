@@ -109,6 +109,11 @@ export class SystemCache {
     return sys;
   }
 
+  /** Drops a system registered by pin (G1 runs pin one per run); true when it was pinned. */
+  unpin(slug: string, env: SystemEnv): boolean {
+    return this.pinned.delete(key(slug, env));
+  }
+
   /** Loaded system for a host, or null when the registry has no such deployment. Throws SystemLoadError (→ 503). */
   async resolve(slug: string, env: SystemEnv): Promise<LoadedSystem | null> {
     const k = key(slug, env);

@@ -9,8 +9,12 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
+    "@wizard/agents": "workspace:*",
     "@wizard/appspec": "workspace:*",
+    "@wizard/build": "workspace:*",
+    "@wizard/gates": "workspace:*",
     "@wizard/llm": "workspace:*",
+    "@wizard/runtime": "workspace:*",
     "hono": "^4.13.12",
     "kysely": "^0.28.17",
     "kysely-postgres-js": "^3.0.0",

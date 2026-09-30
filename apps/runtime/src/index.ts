@@ -32,8 +32,11 @@ export { errorResponse } from "./http/errors.js";
 export { sessionOf, subjectOf } from "./http/subject.js";
 /** Schema name app_<systemId>_<env> and a migration helper for previews/G1/tests (migration role only). */
 export { type MigrateOptions, migrateSystem, schemaName } from "./migrate.js";
-/** Deployment registry: FileRegistry (.data/artifacts/registry.json), MemoryRegistry. */
+/** Test-mode connector secrets for G1 runtimes (in-memory QR keyring). */
+export { type SecretsFactory, testModeSecrets } from "./preview/connectors.js";
+/** Deployment registry: DbRegistry (platform.deployments), FileRegistry (.data/artifacts/registry.json), MemoryRegistry. */
 export {
+  DbRegistry,
   FileRegistry,
   MemoryRegistry,
   parseRegistry,

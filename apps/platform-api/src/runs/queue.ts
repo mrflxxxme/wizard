@@ -131,6 +131,11 @@ function toResult(e: unknown, aborted: boolean): Result {
   };
 }
 
+/** Routing policy of an org: unknown region counts as restricted (fail-safe, as route() does for t1Restricted). */
+export function orgPolicyOf(org: { ru_only: boolean; t1_restricted: boolean; region_code: string | null }) {
+  return { ruOnly: org.ru_only, t1Restricted: org.t1_restricted || org.region_code === null };
+}
+
 export class RunEngine {
   readonly #d: EngineDeps;
   readonly #queue: string[] = [];
@@ -683,7 +688,7 @@ export class RunEngine {
       .executeTakeFirstOrThrow();
     const out = await routers.r.route({
       ...rest,
-      orgPolicy: { ruOnly: org.ru_only, t1Restricted: org.t1_restricted || org.region_code === null },
+      orgPolicy: orgPolicyOf(org),
       ctx: {
         orgId: run.org_id,
         runId: run.id,
@@ -784,6 +789,21 @@ export class RunEngine {
         .limit(200)
         .execute();
       const input = run.input as { trigger?: InterviewContext["trigger"]; answers?: unknown[] };
+      const org = await this.#db
+        .selectFrom("platform.orgs")
+        .select(["id", "plan", "ru_only", "t1_restricted", "region_code"])
+        .where("id", "=", sys.org_id)
+        .executeTakeFirstOrThrow();
+      const prev = await this.#db
+        .selectFrom("platform.runs")
+        .select(sql<Record<string, unknown> | null>`input->'executorState'`.as("state"))
+        .where("system_id", "=", systemId)
+        .where("kind", "=", "interview_turn")
+        .where("status", "=", "succeeded")
+        .where(sql<boolean>`input ? 'executorState'`)
+        .orderBy("created_at", "desc")
+        .limit(1)
+        .executeTakeFirst();
       const ctx: InterviewContext = {
         system: {
           id: sys.id,
@@ -805,6 +825,8 @@ export class RunEngine {
         pendingQuestions: sys.pending_questions,
         card: sys.card,
         ...(input.answers ? { answers: input.answers } : {}),
+        org: { id: org.id, plan: org.plan, policy: orgPolicyOf(org) },
+        state: prev?.state ?? null,
       };
       return ctx;
     });
@@ -820,6 +842,14 @@ export class RunEngine {
   async #persistInterview(t: TxCtx, run: Run, out: InterviewOutput): Promise<void> {
     const sys = await lockSystem(t, run.system_id as string);
     const stage = sys.stage as Stage;
+    if (out.state) {
+      // Executor state (OrchSession) lives with the turn that produced it; load_context reads the latest one.
+      await t.trx
+        .updateTable("platform.runs")
+        .set({ input: sql`input || jsonb_build_object('executorState', ${json(out.state)})` })
+        .where("id", "=", run.id)
+        .execute();
+    }
     const move = async (to: Stage, extra: Record<string, unknown> = {}) => {
       const set: Record<string, unknown> = { ...extra, updated_at: new Date(), last_activity_at: new Date() };
       if (to !== stage) {
@@ -957,6 +987,7 @@ export class RunEngine {
     };
     const host: BuildHost = {
       ...base,
+      managesBudget: true,
       needsInput,
       qa: this.#d.executors.qa ?? {
         generate: async () => {
@@ -1059,6 +1090,7 @@ export class RunEngine {
         spec,
         files,
         runId: run.id,
+        prevSpec: ctx.prevSpec,
       });
       if (r?.bundleKey) {
         const bundleKey = r.bundleKey;

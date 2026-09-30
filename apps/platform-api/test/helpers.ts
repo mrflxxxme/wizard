@@ -24,10 +24,21 @@ export const loadYaml = (rel: string): Record<string, unknown> =>
   parse(readFileSync(join(ROOT, rel), "utf8")) as Record<string, unknown>;
 
 /** A throwaway database per test file (platform schema is fixed, so databases isolate parallel runs). */
-export async function createTestDb(tag: string): Promise<{ url: string; drop(): Promise<void> }> {
+export async function createTestDb(
+  tag: string,
+  o: { migrator?: boolean } = {},
+): Promise<{ url: string; drop(): Promise<void> }> {
   const name = `wz_api_${tag}_${randomBytes(4).toString("hex")}`;
   const admin = postgres(BASE_URL, { max: 1, onnotice: () => {} });
   await admin.unsafe(`CREATE DATABASE ${name}`);
+  if (o.migrator) {
+    // As scripts/db.mjs does for the dev database: wizard_owner (draft migrator) may create app_* schemas.
+    for (const role of ["wizard_owner", "wizard_runtime"])
+      await admin.unsafe(`DO $$ BEGIN
+        CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS;
+      EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`);
+    await admin.unsafe(`GRANT CREATE ON DATABASE ${name} TO wizard_owner`);
+  }
   const u = new URL(BASE_URL);
   u.pathname = `/${name}`;
   return {

@@ -1,74 +1,23 @@
-// Pluggable run executors (architecture.yaml#interfaces.agent_host). packages/agents implements them in M0-26;
-// until then platform-api ships stubs (./stub.ts) and tests inject fakes.
-import type { ApplyOpsResult, AppSpec } from "@wizard/appspec";
-import type { RouteInput, RouteOutput } from "@wizard/llm";
-import type postgres from "postgres";
+// Pluggable run executors (architecture.yaml#interfaces.agent_host). The host contract is the canonical one of
+// @wizard/agents/host; platform-api implements it durably (M0-26 wires the real agents: ../agents/executors.ts).
+import type {
+  BuildHost as AgentBuildHost,
+  BuildStore as AgentBuildStore,
+  BuilderQa,
+  HostRouteInput,
+  InputAnswer,
+  InputOption,
+  InputRequest,
+} from "@wizard/agents/host";
+import type { AppSpec } from "@wizard/appspec";
+import type { Check, GateContext, GateLevel, GateReport } from "@wizard/gates";
+import type { OrgPolicy, RouteOutput } from "@wizard/llm";
 import type { EventType } from "./events.js";
 
-export type GateLevel = "G0" | "G1" | "G2";
-
-/** specs/quality/gates.yaml#report (copy: api.yaml#/components/schemas/GateReport). */
-export interface GateCheck {
-  id: string;
-  status: "pass" | "fail" | "warn" | "skip" | "error";
-  severity: "blocker" | "warning";
-  message_ru: string;
-  file?: string;
-  line?: number;
-  path?: string;
-  acId?: string;
-  evidence?: string;
-  fixHint?: string;
-}
-export interface GateReport {
-  level: GateLevel;
-  passed: boolean;
-  specVersion?: number;
-  startedAt?: string;
-  durationMs?: number;
-  summary?: { pass?: number; fail?: number; warn?: number; skip?: number; error?: number };
-  checks: GateCheck[];
-  explanations?: unknown[];
-  [k: string]: unknown;
-}
-
-/** architecture.yaml#interfaces.gate_context as platform-api fills it. */
-export interface GateContext {
-  spec: AppSpec;
-  prevSpec: AppSpec | null;
-  specVersion: number;
-  files: ReadonlyMap<string, string>;
-  env: "draft" | "prod";
-  systemKey: string;
-  db: postgres.Sql;
-  milestone: string;
-  signal: AbortSignal;
-  [k: string]: unknown;
-}
+export type { GateContext, GateLevel, GateReport, HostRouteInput, InputAnswer, InputOption, InputRequest };
+/** specs/quality/gates.yaml#report check (api.yaml#/components/schemas/GateReport). */
+export type GateCheck = Check;
 export type GateRunner = (level: GateLevel, ctx: GateContext) => Promise<GateReport>;
-
-export interface InputOption {
-  id: string;
-  label: string;
-  recommended?: boolean;
-  freeText?: boolean;
-}
-export interface InputRequest {
-  kind?: "decision";
-  decisionId: string;
-  prompt_ru: string;
-  options: InputOption[];
-}
-export interface InputAnswer {
-  choice: string;
-  text?: string;
-}
-
-export interface HostRouteInput extends Omit<RouteInput, "ctx" | "orgPolicy" | "signal"> {
-  step?: string;
-  /** upper_bound(call) in credits (agents/builder.yaml#budgets.credits_cap); default 0. */
-  upperBoundCredits?: number;
-}
 
 export interface StepHost {
   route(input: HostRouteInput): Promise<RouteOutput>;
@@ -79,28 +28,22 @@ export interface StepHost {
   run: { id: string; orgId: string; systemId: string; kind: string; mode: string | null };
 }
 
-export interface BuildStore {
-  getSpec(): Promise<{ spec: AppSpec; version: number }>;
-  applyOps(ops: readonly unknown[], expectedVersion: number, idemKey?: string): Promise<ApplyOpsResult>;
-  writeFile(path: string, content: string): Promise<void>;
+export interface BuildStore extends AgentBuildStore {
   deleteFile(path: string): Promise<void>;
-  readFile(path: string): Promise<string | null>;
-  listFiles(prefix?: string): Promise<string[]>;
-  /** Commits the run's working tree as one revision kind=files; null when nothing changed. */
-  commitFiles(): Promise<{ revision: number } | null>;
 }
 
-export interface QaAgent {
-  generate(...args: unknown[]): Promise<unknown>;
-  explain(...args: unknown[]): Promise<unknown>;
-}
+/** Kept for compatibility: the QA agent the host hands to the builder (@wizard/agents/host BuilderQa). */
+export type QaAgent = BuilderQa;
 
-/** architecture.yaml#interfaces.agent_host (+ needsInput for budget/escalation decisions). */
-export interface BuildHost extends StepHost {
+/** agent_host as platform-api provides it: the budget is enforced in route() (managesBudget = true). */
+export interface BuildHost
+  extends Omit<AgentBuildHost, "runGates" | "emit" | "store" | "signal" | "run">,
+    StepHost {
   runGates(level: GateLevel, overrides?: Partial<GateContext>): Promise<GateReport>;
-  qa: QaAgent;
+  qa: BuilderQa;
   store: BuildStore;
   needsInput(req: InputRequest): Promise<InputAnswer>;
+  managesBudget: true;
 }
 
 export interface BuildParams {
@@ -132,6 +75,10 @@ export interface InterviewContext {
   pendingQuestions: unknown[];
   card: Record<string, unknown> | null;
   answers?: unknown[];
+  /** Org of the system: plan and the routing policy the host applies (t1Restricted as in route()). */
+  org: { id: string; plan: string; policy: OrgPolicy };
+  /** Executor state saved by the previous successful interview turn of this system (OrchSession), or null. */
+  state: Record<string, unknown> | null;
 }
 export interface InterviewHost extends StepHost {
   context: InterviewContext;
@@ -146,7 +93,11 @@ export type InterviewOutput = (
     }
   | { kind: "card"; text?: string; card: Record<string, unknown> }
   | { kind: "answer"; text: string }
-) & { notice?: { categories: string[] } };
+) & {
+  notice?: { categories: string[] };
+  /** Executor state to persist with this turn (handed back as context.state next time); never shown to users. */
+  state?: Record<string, unknown>;
+};
 
 /** Hook for bundle_and_reload after G0 passed (M0-26: migrate_draft, seed_draft, packages/build writeArtifact, reload). */
 export type OnG0Passed = (a: {
@@ -156,6 +107,8 @@ export type OnG0Passed = (a: {
   spec: AppSpec;
   files: ReadonlyMap<string, string>;
   runId: string;
+  /** Spec of the current preview_revision (what the draft schema holds), null before the first G0 pass. */
+  prevSpec: AppSpec | null;
 }) => Promise<{ bundleKey: string } | undefined>;
 
 export interface RunExecutors {
@@ -164,6 +117,8 @@ export interface RunExecutors {
   gates?: GateRunner;
   qa?: QaAgent;
   onG0Passed?: OnG0Passed;
+  /** Releases executor resources (runtime for G1, function processes) on PlatformApi.close(). */
+  close?(): Promise<void>;
 }
 
 /** Throw from an executor to fail the run with a workflows.yaml#run_lifecycle.failure_codes code. */

@@ -26,12 +26,24 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.3
         version: 2.1.3(hono@4.13.12)
+      '@wizard/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
       '@wizard/appspec':
         specifier: workspace:*
         version: link:../../packages/appspec
+      '@wizard/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      '@wizard/gates':
+        specifier: workspace:*
+        version: link:../../packages/gates
       '@wizard/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@wizard/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       hono:
         specifier: ^4.13.12
         version: 4.13.12

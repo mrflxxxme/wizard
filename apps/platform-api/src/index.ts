@@ -1,5 +1,8 @@
 export const APP = "@wizard/platform-api";
 
+export { CONSENT_TEMPLATES, renderConsentText, withConsentText } from "./agents/consent.js";
+export { bundleDraft, MIGRATOR_ROLE, migrateDraft, RUNTIME_ROLE, seedDraft } from "./agents/draft.js";
+export { type AgentExecutorsOptions, createAgentExecutors } from "./agents/executors.js";
 export { createPlatformApi, type PlatformApi, type PlatformApiOptions } from "./app.js";
 export { type Config, loadConfig } from "./config.js";
 export {
