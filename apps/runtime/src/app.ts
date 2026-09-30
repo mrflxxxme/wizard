@@ -60,6 +60,8 @@ export interface RuntimeApp {
   fetch(req: Request): Promise<Response>;
   /** Registers a system directly, bypassing the registry (previews, G1). Its schema must already exist. */
   loadSystem(input: LoadSystemInput): Promise<LoadedSystem>;
+  /** Removes a system registered by loadSystem (after a G1 run); true when it was loaded. */
+  unloadSystem(input: { slug: string; env: SystemEnv }): boolean;
   /** Messages connectors would have sent (connectors: 'outbox'). */
   outbox(): OutboxMessage[];
   readonly env: RuntimeEnv;
@@ -229,6 +231,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     env,
     systems,
     loadSystem: async (input) => systems.pin(input),
+    unloadSystem: (input) => systems.unpin(input.slug, input.env),
     outbox: () => [...outbox],
   };
 }

@@ -8,7 +8,8 @@
     "./core": "./src/core/index.ts",
     "./orchestrator": "./src/orchestrator/index.ts",
     "./builder": "./src/builder/index.ts",
-    "./qa": "./src/qa/index.ts"
+    "./qa": "./src/qa/index.ts",
+    "./host": "./src/host/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

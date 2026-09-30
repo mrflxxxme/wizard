@@ -57,7 +57,8 @@ export async function seed(db: Db): Promise<void> {
     .execute();
   await db
     .insertInto("platform.orgs")
-    .values({ id: DEFAULT_ORG_ID, name: "Локальная организация", plan: "free" })
+    // region_code 77 (Moscow): the local org is not T1-restricted by an unknown region (docs/reviews/impl-notes/M0-26.md).
+    .values({ id: DEFAULT_ORG_ID, name: "Локальная организация", plan: "free", region_code: "77" })
     .onConflict((oc) => oc.doNothing())
     .execute();
   await db

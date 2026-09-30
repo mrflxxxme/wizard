@@ -22,6 +22,7 @@ import {
   type SystemDb,
   serializeQrKeyring,
   signQrToken,
+  staticSecretReader,
   UniqueViolation,
 } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
@@ -159,6 +160,12 @@ export function devQrSecretReader(inner: SecretReader, dir: string, systemId: st
       }
     },
   };
+}
+
+/** Test-mode secrets (G1 runtimes): one in-memory QR keyring shared by every system of the factory; nothing else. */
+export function testModeSecrets(): SecretsFactory {
+  const reader = staticSecretReader({ [QR_SECRET]: serializeQrKeyring(newQrKeyring()) });
+  return () => reader;
 }
 
 export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
