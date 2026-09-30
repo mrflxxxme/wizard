@@ -200,7 +200,7 @@ fork_taxonomy:
     - { id: F-NOTIFY,     impact: 2, applies_when: "есть смена статусов", q: "Как сообщать об изменениях?", options: [email, telegram, email_and_telegram, none], rec: "email" }
     - { id: F-ASSIGN,     impact: 2, applies_when: "есть исполнители", q: "Как назначать исполнителя?", options: [manual, round_robin, self_pick], rec: "manual" }
     - { id: F-BOOKING,    impact: 3, applies_when: "запись на время/услуги", q: "Как устроено время записи?", options: [fixed_slots, specialist_schedule, requests_only], rec: "fixed_slots" }
-    - { id: F-INVENTORY,  impact: 3, applies_when: "остатки/склад", q: "Нужно ли учитывать остатки?", options: [no, simple_stock, reserve_on_order], rec: "reserve_on_order, если есть оплата" }
+    - { id: F-INVENTORY,  impact: 3, applies_when: "остатки/склад", q: "Нужно ли учитывать остатки?", options: ["no", simple_stock, reserve_on_order], rec: "reserve_on_order, если есть оплата" }
     - { id: F-REPORTS,    impact: 1, applies_when: "упомянуты отчёты", q: "Какие отчёты нужны?", options: [lists_export, summary_dashboard, both], rec: "both" }
     - { id: F-IMPORT,     impact: 2, applies_when: "упомянута существующая таблица/база", q: "С чего начинаем данные?", options: [empty, import_table], rec: "empty; import_table — M1" }
     - { id: F-RETENTION,  impact: 2, applies_when: "есть ПДн и срок неочевиден", q: "Сколько хранить данные людей?", options: [d30_after_event, y1, y3], rec: "по defaults" }

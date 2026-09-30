@@ -197,7 +197,7 @@ tasks:
     owner: agents
     parallel_group: m0-w2
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Fixture demo/forum: бриф → 3–7 вопросов, у каждого 2–4 варианта и ровно один recommended; forkId ∈ fork_taxonomy"
