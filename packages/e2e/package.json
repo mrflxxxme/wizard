@@ -8,10 +8,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@hono/node-server": "^2.1.3",
     "@playwright/test": "1.56.1",
     "@wizard/platform-api": "workspace:*",
     "@wizard/runtime": "workspace:*",
     "jsqr": "^1.4.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.15",
+    "vite": "^7.3.6"
   }
 }

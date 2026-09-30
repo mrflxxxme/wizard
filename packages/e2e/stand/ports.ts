@@ -1,0 +1,5 @@
+// Ports of the M1 stand (session auth, scripted builder): next to the M0 dev stand (4000/4100/5173, deploy.yaml#local).
+export const M1 = { api: 4210, runtime: 4110, web: 5183 } as const;
+
+/** Mail of the M1 stand (OTP codes, invites) as OutboxMailer JSON files; the specs read them. */
+export const M1_OUTBOX = new URL("../../../.data/e2e-m1/outbox/", import.meta.url).pathname;

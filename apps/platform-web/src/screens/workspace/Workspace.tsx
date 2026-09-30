@@ -2,7 +2,16 @@
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
-import type { Answer, GateReport, RunEvent, SystemCard, SystemView, Theme } from "../../api/types.js";
+import type {
+  Answer,
+  DiffChange,
+  GateReport,
+  RevisionSummary,
+  RunEvent,
+  SystemCard,
+  SystemView,
+  Theme,
+} from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
@@ -12,9 +21,12 @@ import { subscribeRun } from "../../run/stream.js";
 import { BuildLog } from "./BuildLog.js";
 import { CardView, changedSections } from "./CardView.js";
 import { ChatFeed } from "./ChatFeed.js";
+import { ChangesPanel, DiffCard } from "./DiffCard.js";
 import { GateReportView, PublishCard, publishBlockers } from "./GateReport.js";
 import { PreviewPane } from "./PreviewPane.js";
 import { QuestionCard } from "./QuestionCard.js";
+import { Rail } from "./Rail.js";
+import { RunNotice } from "./RunNotice.js";
 import { StylePanel, useStyleSaver } from "./StylePanel.js";
 import { Understanding } from "./Understanding.js";
 import s from "./Workspace.module.css";
@@ -24,6 +36,20 @@ const runReducer = (st: RunState, a: RunAction): RunState =>
   a.type === "reset" ? initialRunState() : reduceRun(st, a.e);
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
+
+/**
+ * The revision the owner would publish now (as getSystem.publishBlockers counts it): the latest draft revision
+ * unless its G0 failed, else the preview revision.
+ */
+export function publishTarget(
+  latest: RevisionSummary | undefined,
+  previewRevision: number | null,
+): number | null {
+  if (latest && latest.g0Passed !== false) return latest.version;
+  return previewRevision;
+}
+
+type Segment = "draft" | "prod" | "changes";
 
 export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const { api, settings } = usePlatform();
@@ -40,6 +66,9 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const [actionError, setActionError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [pane, setPane] = useState<"chat" | "main">("chat");
+  const [latestRevision, setLatestRevision] = useState<RevisionSummary | undefined>();
+  const [changes, setChanges] = useState<DiffChange[] | null>(null);
+  const [segment, setSegment] = useState<Segment>("draft");
   const lastText = useRef("");
   const cardRef = useRef<SystemCard | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,6 +117,36 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   useEffect(() => {
     if (hasDraft) void refreshGates();
   }, [hasDraft, refreshGates]);
+
+  // S7: the latest revision and, when the draft is ahead of prod, its human diff against prod (M1-08).
+  const prodRevision = view?.system.prodRevision ?? null;
+  const draftRev = view?.system.draftRevision ?? 0;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runFinished and draftRev are re-read triggers
+  useEffect(() => {
+    if (stage !== "ready") return;
+    let live = true;
+    api
+      .listRevisions(systemId, 5)
+      .then((r) => live && setLatestRevision(r.items[0]))
+      .catch(() => live && setLatestRevision(undefined));
+    return () => {
+      live = false;
+    };
+  }, [api, systemId, stage, draftRev, runFinished]);
+  const target = publishTarget(latestRevision, view?.system.previewRevision ?? null);
+  const ahead = prodRevision !== null && target !== null && target > prodRevision;
+  useEffect(() => {
+    setChanges(null);
+    if (!ahead || target === null) return;
+    let live = true;
+    api
+      .getRevisionDiff(systemId, target, prodRevision)
+      .then((r) => live && setChanges(r.changes))
+      .catch(() => live && setChanges([]));
+    return () => {
+      live = false;
+    };
+  }, [api, systemId, ahead, target, prodRevision]);
 
   // Current theme of the draft for «Стиль» (spec of draftRevision).
   const draftRevision = view?.system.draftRevision ?? 0;
@@ -178,6 +237,19 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     await reload().catch(() => {});
   }
 
+  async function publish(revision: number) {
+    const r = await act("publish", () => api.publish(systemId, revision));
+    if (!r) return;
+    setRunId(r.run.id);
+  }
+
+  async function cancelDraft(toRevision: number) {
+    const r = await act("cancel-draft", () => api.rollback(systemId, { env: "draft", toRevision }));
+    if (!r) return;
+    setSegment("draft");
+    setRunId(r.run.id);
+  }
+
   const focusInput = () => {
     setPane("chat");
     inputRef.current?.focus();
@@ -222,6 +294,9 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   // The newest revision known to have a preview: previewRevision catching up with g0PassedRevision is not growth.
   const previewRevision = Math.max(system.previewRevision ?? -1, run.g0PassedRevision ?? -1);
   const blockers = publishBlockers(view.publishBlockers, reports);
+  // S7: the draft is ahead of prod with real changes (an empty diff — e.g. after «Отменить» — is not a proposal).
+  const showDiff = ahead && (changes === null || changes.length > 0);
+  const seg: Segment = showDiff ? segment : "draft";
 
   const chatBody = (
     <>
@@ -281,9 +356,23 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
           <span className={s.bubbleText}>{finishedSummary}</span>
         </div>
       )}
+      {(run.kind === "publish" || run.kind === "rollback") && <RunNotice run={run} />}
       {stage === "ready" && (
         <>
           <GateReportView reports={reports} />
+          {showDiff && target !== null && prodRevision !== null && (
+            <DiffCard
+              revision={target}
+              changes={changes}
+              reports={reports}
+              credits={run.kind === "build" && run.finished ? (run.finished.creditsUsed ?? null) : null}
+              blockers={blockers}
+              canCancel={!running}
+              busy={busy === "publish" ? "publish" : busy === "cancel-draft" ? "cancel" : null}
+              onCancel={() => void cancelDraft(prodRevision)}
+              onPublish={() => void publish(target)}
+            />
+          )}
           <PublishCard slug={system.slug} blockers={blockers} onEdit={focusInput} />
         </>
       )}
@@ -314,6 +403,20 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
         onEdit={focusInput}
       />
     );
+  else if (hasDraft && seg === "changes") main = <ChangesPanel changes={changes} />;
+  else if (hasDraft && seg === "prod" && system.prodUrl)
+    main = (
+      <div className={s.frameWrap}>
+        <iframe
+          src={system.prodUrl}
+          title={ru.diff.prodFrameTitle}
+          className={s.frame}
+          style={{ width: "100%" }}
+          sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+          data-testid="prod-frame"
+        />
+      </div>
+    );
   else if (hasDraft)
     main = (
       <PreviewPane
@@ -322,6 +425,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
         available={previewAvailable}
         theme={theme ?? {}}
         testData={stage === "ready"}
+        {...(showDiff && target !== null ? { envLabel: ru.diff.draftTopbar(target) } : {})}
         toolbar={
           <Button
             size="sm"
@@ -338,31 +442,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
 
   return (
     <div className={s.shell} data-pane={pane}>
-      <nav className={s.rail} aria-label={ru.appName}>
-        <a
-          href="/"
-          className={s.logo}
-          aria-label={ru.rail.home}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/");
-          }}
-        >
-          W
-        </a>
-        <a
-          href="/"
-          className={s.railButton}
-          aria-label={ru.rail.newSystem}
-          title={ru.rail.newSystem}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/");
-          }}
-        >
-          +
-        </a>
-      </nav>
+      <Rail systemId={systemId} />
       <div className={s.paneTabs} role="tablist">
         <button type="button" role="tab" aria-selected={pane === "chat"} onClick={() => setPane("chat")}>
           {ru.workspace.tabChat}
@@ -377,6 +457,11 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
             {(system.stage !== "interview" && system.name) || ru.workspace.newSystem} ·{" "}
             {ru.workspace.stage[system.stage] ?? system.stage}
           </h1>
+          {system.prodRevision != null && (
+            <Pill tone="ok" title={ru.start.prodTitle} testId="chat-prod-revision">
+              {ru.workspace.prodRevision(system.prodRevision)}
+            </Pill>
+          )}
           {running && <Pill tone="accent">{ru.build.running}</Pill>}
         </header>
         <div className={s.chatScroll}>{chatBody}</div>
@@ -426,7 +511,32 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
           {locked && <p className={s.small}>{ru.workspace.lockedHint}</p>}
         </footer>
       </section>
-      <main className={s.main}>{main}</main>
+      <main className={s.main}>
+        {showDiff && (
+          <fieldset className={`${s.segmented} ${s.envSegments}`}>
+            <legend className={s.visuallyHidden}>{ru.diff.segments}</legend>
+            {(
+              [
+                ["prod", ru.diff.segmentProd],
+                ["draft", ru.diff.segmentDraft],
+                ["changes", ru.diff.changesSegment],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={seg === id ? s.segOn : s.seg}
+                aria-pressed={seg === id}
+                data-testid={`env-segment-${id}`}
+                onClick={() => setSegment(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </fieldset>
+        )}
+        {main}
+      </main>
       {styleOpen && theme !== null && (
         <aside className={s.aside}>
           <StylePanel

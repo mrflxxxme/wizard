@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["specs", "test", "playwright.config.ts"]
+  "include": ["specs", "stand", "test", "playwright.config.ts"]
 }

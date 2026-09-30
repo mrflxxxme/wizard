@@ -1,7 +1,11 @@
-// Minimal History API router (platform-screens.yaml#stack): "/" and "/s/:systemId".
+// Minimal History API router (platform-screens.yaml#stack): "/", "/s/:systemId", "/s/:systemId/code".
 import { useSyncExternalStore } from "react";
 
-export type Route = { name: "start" } | { name: "system"; systemId: string } | { name: "notFound" };
+export type Route =
+  | { name: "start" }
+  | { name: "system"; systemId: string }
+  | { name: "code"; systemId: string }
+  | { name: "notFound" };
 
 const EVENT = "wz:navigate";
 
@@ -28,7 +32,8 @@ export function useLocationKey(): string {
 
 export function matchRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { name: "start" };
-  const m = /^\/s\/([A-Za-z0-9-]{1,64})\/?$/.exec(pathname);
+  const m = /^\/s\/([A-Za-z0-9-]{1,64})(?:\/(code))?\/?$/.exec(pathname);
+  if (m?.[2] === "code") return { name: "code", systemId: m[1] as string };
   if (m) return { name: "system", systemId: m[1] as string };
   return { name: "notFound" };
 }

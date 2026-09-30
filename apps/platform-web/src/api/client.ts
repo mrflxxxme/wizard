@@ -3,10 +3,12 @@ import { ru } from "../i18n/ru.js";
 import type {
   Answer,
   ApiErrorBody,
+  DiffChange,
   GateReport,
   Message,
   OrgSettings,
   PreviewUrl,
+  Publication,
   Revision,
   RevisionSummary,
   Run,
@@ -63,6 +65,8 @@ export function createApiClient(opts: ClientOptions = {}) {
       body?: Json | FormData;
       idempotencyKey?: string;
       query?: Record<string, string | undefined>;
+      /** Plain-text response (GET /systems/:id/files/*path). */
+      text?: boolean;
     } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
@@ -86,6 +90,12 @@ export function createApiClient(opts: ClientOptions = {}) {
       throw new ApiError(0, { code: "NETWORK", message_ru: ru.errors.network });
     }
     const text = await res.text();
+    if (res.ok && init.text) {
+      // Binary sources come as application/octet-stream attachments: never shown, never downloaded (D14).
+      if (!(res.headers.get("content-type") ?? "").startsWith("text/"))
+        throw new ApiError(415, { code: "BINARY", message_ru: ru.code.binary });
+      return text as T;
+    }
     let data: unknown = null;
     try {
       data = text ? JSON.parse(text) : null;
@@ -119,6 +129,31 @@ export function createApiClient(opts: ClientOptions = {}) {
     startFix: (id: string, idempotencyKey = newIdempotencyKey()) =>
       call<{ run: Run }>("POST", `${sys(id)}/fix`, { body: {}, idempotencyKey }),
     getRevision: (id: string, v: number) => call<Revision>("GET", `${sys(id)}/revisions/${v}`),
+    listRevisions: (id: string, limit?: number) =>
+      call<{ items: RevisionSummary[] }>("GET", `${sys(id)}/revisions`, {
+        query: { limit: limit === undefined ? undefined : String(limit) },
+      }),
+    getRevisionDiff: (id: string, v: number, from?: number | null) =>
+      call<{ changes: DiffChange[] }>("GET", `${sys(id)}/revisions/${v}/diff`, {
+        query: { from: from == null ? undefined : String(from) },
+      }),
+    /** Source of a revision file as text (api.yaml#getFile, text/plain); binary files answer with bytes. */
+    getFileText: (id: string, path: string, rev: number) =>
+      call<string>("GET", `${sys(id)}/files/${path.split("/").map(encodeURIComponent).join("/")}`, {
+        query: { rev: String(rev) },
+        text: true,
+      }),
+    listPublications: (id: string) => call<{ items: Publication[] }>("GET", `${sys(id)}/publications`),
+    publish: (id: string, revision: number, idempotencyKey = newIdempotencyKey()) =>
+      call<{ run: Run }>("POST", `${sys(id)}/publish`, {
+        body: { revision, confirmDiff: true },
+        idempotencyKey,
+      }),
+    rollback: (
+      id: string,
+      body: { env: "draft" | "prod"; toRevision: number },
+      idempotencyKey = newIdempotencyKey(),
+    ) => call<{ run: Run }>("POST", `${sys(id)}/rollback`, { body, idempotencyKey }),
     setStyle: (id: string, body: { expectedVersion: number; theme: Theme }) =>
       call<{ revision: RevisionSummary }>("POST", `${sys(id)}/style`, { body }),
     uploadLogo: (id: string, file: Blob, expectedVersion: number) => {
