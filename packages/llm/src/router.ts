@@ -1,0 +1,387 @@
+// route(): architecture.yaml#interfaces.llm_call; models.yaml#routing_algorithm, #fallback_rules, #call_policy.retries.
+import { randomUUID } from "node:crypto";
+import { CircuitBreaker } from "./circuit.js";
+import { LlmError } from "./errors.js";
+import {
+  briefHash,
+  type FixtureLine,
+  FixtureStore,
+  type FixtureSuite,
+  loadAllowedBriefHashes,
+  requestKey,
+  schemaHash,
+} from "./fixtures.js";
+import { assertNoTokens, decideTier, isCallType, type PolicyDecision } from "./policy.js";
+import { type Env, LiveCallError, liveCall } from "./providers.js";
+import { createRegistry, type ModelDef, policyVersion, type Registry, type RouteDef } from "./registry.js";
+import type {
+  LlmEvent,
+  LlmMode,
+  LlmResult,
+  LlmUsage,
+  RouteInput,
+  RouteOutput,
+  RouteReason,
+  UsageRecord,
+  UsageSink,
+} from "./types.js";
+import { costRub, creditsMilli, JsonlUsageSink } from "./usage.js";
+
+export interface FixtureOptions {
+  suite: FixtureSuite;
+  name: string;
+  dir?: string;
+  lenient?: boolean;
+  /** record mode: the brief of this run; its sha256 must be in tools/eval/briefs or the demo briefs. */
+  brief?: string;
+  allowedBriefHashes?: ReadonlySet<string>;
+}
+
+export interface RouterOptions {
+  /** Default: env WIZARD_LLM_MODE, else "fixture". */
+  mode?: LlmMode;
+  registry?: Registry;
+  /** Default: JsonlUsageSink(.data/usage.jsonl). */
+  sink?: UsageSink;
+  /** Default: process.env. Provider keys and base URLs are read only from here. */
+  env?: Env;
+  /** Default: env WIZARD_FIXTURE="<suite>/<name>" (fixture and record modes). */
+  fixture?: FixtureOptions;
+  fetch?: typeof globalThis.fetch;
+  onEvent?: (e: LlmEvent) => void;
+  circuit?: CircuitBreaker;
+  backoffMs?: readonly number[];
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+  now?: () => number;
+}
+
+export interface Router {
+  readonly mode: LlmMode;
+  readonly registry: Registry;
+  route(input: RouteInput): Promise<RouteOutput>;
+}
+
+const MAX_ATTEMPTS = 3;
+const DEFAULT_BACKOFF = [1000, 4000, 16000];
+
+function fixtureFromEnv(env: Env): FixtureOptions | undefined {
+  const spec = env.WIZARD_FIXTURE;
+  if (!spec) return undefined;
+  const [suite, name] = spec.split("/");
+  if ((suite !== "demo" && suite !== "eval" && suite !== "unit") || !name) {
+    throw new Error(`WIZARD_FIXTURE must be <demo|eval|unit>/<name>, got ${spec}`);
+  }
+  return { suite, name, lenient: env.WIZARD_FIXTURE_LENIENT === "1" };
+}
+
+export function createRouter(opts: RouterOptions = {}): Router {
+  const env = opts.env ?? process.env;
+  const mode: LlmMode = opts.mode ?? (env.WIZARD_LLM_MODE as LlmMode | undefined) ?? "fixture";
+  if (mode !== "fixture" && mode !== "live" && mode !== "record")
+    throw new Error(`unknown WIZARD_LLM_MODE ${mode}`);
+  const reg = opts.registry ?? createRegistry();
+  const sink = opts.sink ?? new JsonlUsageSink();
+  const circuit = opts.circuit ?? new CircuitBreaker(opts.now);
+  const now = opts.now ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)));
+  const random = opts.random ?? Math.random;
+  const backoff = opts.backoffMs ?? DEFAULT_BACKOFF;
+  const version = policyVersion(reg);
+  const fixtureOpts = opts.fixture ?? fixtureFromEnv(env);
+
+  let store: FixtureStore | null = null;
+  if (mode !== "live") {
+    if (!fixtureOpts) {
+      throw new Error(
+        `WIZARD_LLM_MODE=${mode} needs a fixture (option fixture or env WIZARD_FIXTURE=<suite>/<name>)`,
+      );
+    }
+    store = new FixtureStore(fixtureOpts);
+  }
+  if (mode === "record") {
+    // eval.yaml#fixtures.rules: only repository briefs are recorded.
+    const allowed = fixtureOpts?.allowedBriefHashes ?? loadAllowedBriefHashes();
+    if (!fixtureOpts?.brief || !allowed.has(briefHash(fixtureOpts.brief))) {
+      throw new LlmError(
+        "RECORD_NOT_ALLOWED",
+        "Запись фикстур разрешена только для брифов из tools/eval/briefs и демо-брифов.",
+      );
+    }
+  }
+
+  const modelsById = new Map(reg.models.map((x) => [x.id, x]));
+  const usable = (id: string): ModelDef | null => {
+    const model = modelsById.get(id);
+    return model?.enabled && reg.providers[model.provider].enabled ? model : null;
+  };
+
+  async function route(input: RouteInput): Promise<RouteOutput> {
+    const { callType } = input;
+    if (!isCallType(callType)) {
+      throw new LlmError("UNKNOWN_CALL_TYPE", "Неизвестный тип вызова модели.", { callType });
+    }
+    const budget = input.ctx.budget;
+    if (budget && budget.spentCredits >= budget.capCredits) {
+      throw new LlmError("BUDGET_EXCEEDED", "Бюджет кредитов прогона исчерпан.", { ...budget });
+    }
+    const routeDef = reg.routes[callType];
+    const decision: PolicyDecision = decideTier(
+      {
+        callType,
+        messages: input.messages,
+        ...(input.containsPiiHint !== undefined ? { containsPiiHint: input.containsPiiHint } : {}),
+        ...(input.orgPolicy !== undefined ? { orgPolicy: input.orgPolicy } : {}),
+      },
+      reg,
+    );
+    if (decision.tier === "T1") assertNoTokens(decision.scrubbedMessages);
+
+    // Step 8 + fallback_rules: the T1 chain only when the policy chose T1; T0 is always the reserve; never T0 → T1.
+    const chain: ModelDef[] = [];
+    for (const tier of decision.tier === "T1" ? (["T1", "T0"] as const) : (["T0"] as const)) {
+      for (const id of routeDef.chain[tier] ?? []) {
+        const model = usable(id);
+        if (model && model.tier === tier) chain.push(model);
+      }
+    }
+
+    const toolNames = (input.tools ?? []).map((t) => t.name);
+    const lastMsg = decision.scrubbedMessages.at(-1);
+    const lastText = lastMsg
+      ? typeof lastMsg.content === "string"
+        ? lastMsg.content
+        : JSON.stringify(lastMsg.content)
+      : "";
+    let reason: RouteReason = decision.reason;
+    let fallbackFrom: string | null = null;
+    let charged = 0;
+    // T1 chosen but no enabled T1 model: the call goes to T0 as a fallback (fallback_rules).
+    if (decision.tier === "T1" && chain[0]?.tier === "T0") reason = "fallback_error";
+
+    const writeRecord = async (
+      model: ModelDef,
+      fields: Pick<UsageRecord, "attempt" | "status" | "errorCode" | "latencyMs" | "requestHash"> & {
+        usage?: LlmUsage;
+        toolCalls?: number;
+      },
+    ): Promise<number> => {
+      const usage = fields.usage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
+      const ok = fields.status === "ok";
+      const cost = ok ? costRub(model.price, usage) : 0;
+      const milli = ok ? creditsMilli(cost, reg.rubPerCredit) : 0;
+      const rec: UsageRecord = {
+        id: randomUUID(),
+        runId: input.ctx.runId ?? null,
+        orgId: input.ctx.orgId,
+        systemId: input.ctx.systemId ?? null,
+        step: input.ctx.step ?? null,
+        callType,
+        agentRole: routeDef.role,
+        tier: model.tier,
+        provider: model.provider,
+        modelId: model.id,
+        attempt: fields.attempt,
+        status: fields.status,
+        errorCode: fields.errorCode,
+        routeReason: reason,
+        fallbackFrom,
+        policyVersion: version,
+        scrubbed: model.tier === "T1",
+        piiCategoriesCount: { ...decision.dlp.counts },
+        inputTokens: usage.inputTokens,
+        cachedTokens: usage.cachedTokens,
+        outputTokens: usage.outputTokens,
+        toolCalls: fields.toolCalls ?? 0,
+        latencyMs: fields.latencyMs,
+        ttftMs: null,
+        costRub: cost,
+        creditsMilli: milli,
+        billable: ok,
+        mode,
+        requestHash: fields.requestHash,
+        createdAt: new Date(now()).toISOString(),
+      };
+      await sink.write(rec);
+      return milli;
+    };
+
+    const done = (model: ModelDef, result: LlmResult, usage: LlmUsage): RouteOutput => ({
+      tier: model.tier,
+      model: model.id,
+      result,
+      usage,
+      creditsCharged: charged / 1000,
+      creditsMilli: charged,
+      routeReason: reason,
+      scrubbed: model.tier === "T1",
+      ruFallback: decision.tier === "T1" && model.tier === "T0",
+    });
+
+    const switchTo = (from: ModelDef, why: "fallback_circuit_open" | "fallback_error") => {
+      reason = why;
+      fallbackFrom = from.id;
+    };
+
+    for (let idx = 0; idx < chain.length; idx++) {
+      const model = chain[idx] as ModelDef;
+      const next = chain[idx + 1];
+      const key = requestKey({
+        callType,
+        modelId: model.id,
+        messages: decision.scrubbedMessages,
+        ...(input.tools ? { tools: input.tools } : {}),
+        temperature: routeDef.temperature,
+        maxTokens: routeDef.maxTokens,
+        ...(input.ctx.runId ? { runId: input.ctx.runId } : {}),
+        ...(input.ctx.systemId ? { systemId: input.ctx.systemId } : {}),
+      });
+
+      if (mode === "fixture" && store) {
+        const line = store.lookup({ callType, key, toolNames, lastMessage: lastText });
+        const usage: LlmUsage = {
+          inputTokens: line.usage.promptTokens,
+          cachedTokens: line.usage.cachedPromptTokens,
+          outputTokens: line.usage.completionTokens,
+        };
+        charged += await writeRecord(model, {
+          attempt: 1,
+          status: "ok",
+          errorCode: null,
+          latencyMs: line.latencyMs,
+          requestHash: key,
+          usage,
+          toolCalls: line.response.toolCalls.length,
+        });
+        return done(model, line.response, usage);
+      }
+
+      const cKey = `${model.provider}:${model.id}`;
+      if (!circuit.allow(cKey)) {
+        await writeRecord(model, {
+          attempt: 0,
+          status: "circuit_open",
+          errorCode: null,
+          latencyMs: 0,
+          requestHash: key,
+        });
+        if (next) {
+          opts.onEvent?.({
+            type: "model_switched",
+            fromModel: model.id,
+            toModel: next.id,
+            reason: "fallback_circuit_open",
+          });
+          switchTo(model, "fallback_circuit_open");
+        }
+        continue;
+      }
+
+      // T1 gets only scrubbed messages; T0 may receive the original ones (fallback_rules MAY).
+      const messages = model.tier === "T1" ? decision.scrubbedMessages : input.messages;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        // The breaker may open during our own retries: stop hitting this model.
+        if (attempt > 1 && !circuit.allow(cKey)) break;
+        const started = now();
+        const timeout = AbortSignal.timeout(routeDef.timeoutMs);
+        const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+        try {
+          const out = await liveCall({
+            provider: reg.providers[model.provider],
+            model,
+            messages,
+            ...(input.tools ? { tools: input.tools } : {}),
+            toolChoice: input.toolChoice ?? "auto",
+            temperature: routeDef.temperature,
+            maxTokens: routeDef.maxTokens,
+            signal,
+            env,
+            ...(opts.fetch ? { fetch: opts.fetch } : {}),
+          });
+          const latencyMs = now() - started;
+          circuit.record(cKey, true);
+          charged += await writeRecord(model, {
+            attempt,
+            status: "ok",
+            errorCode: null,
+            latencyMs,
+            requestHash: key,
+            usage: out.usage,
+            toolCalls: out.result.toolCalls.length,
+          });
+          if (mode === "record" && store)
+            store.append(fixtureLine(key, callType, model, routeDef, decision, input, out, latencyMs));
+          return done(model, out.result, out.usage);
+        } catch (e) {
+          const err = e instanceof LiveCallError ? e : new LiveCallError("NETWORK");
+          if (err.code === "NO_API_KEY") break;
+          circuit.record(cKey, false);
+          await writeRecord(model, {
+            attempt,
+            status: err.code === "TIMEOUT" ? "timeout" : err.code === "ABORTED" ? "aborted" : "error",
+            errorCode: err.code,
+            latencyMs: now() - started,
+            requestHash: key,
+          });
+          if (err.code === "ABORTED") throw new LlmError("ABORTED", "Вызов модели отменён.");
+          if (!err.retryable || attempt === MAX_ATTEMPTS) break;
+          const base = backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? 0;
+          const jittered = base * (0.8 + 0.4 * random());
+          await sleep(err.retryAfterMs ?? jittered);
+        }
+      }
+      if (next) {
+        opts.onEvent?.({
+          type: "model_switched",
+          fromModel: model.id,
+          toModel: next.id,
+          reason: "fallback_error",
+        });
+        switchTo(model, "fallback_error");
+      }
+    }
+    throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже.", { callType });
+  }
+
+  return { mode, registry: reg, route };
+}
+
+function fixtureLine(
+  key: string,
+  callType: FixtureLine["callType"],
+  model: ModelDef,
+  route: RouteDef,
+  decision: PolicyDecision,
+  input: RouteInput,
+  out: { result: LlmResult; usage: LlmUsage },
+  latencyMs: number,
+): FixtureLine {
+  return {
+    v: 1,
+    key,
+    callType,
+    modelId: model.id,
+    // eval.yaml#fixtures.line.request: stored after scrub for any tier.
+    request: {
+      messages: decision.scrubbedMessages,
+      tools: (input.tools ?? []).map((t) => ({ name: t.name, schemaHash: schemaHash(t.parameters) })),
+      params: { temperature: route.temperature, max_tokens: route.maxTokens },
+    },
+    response: out.result,
+    usage: {
+      promptTokens: out.usage.inputTokens,
+      cachedPromptTokens: out.usage.cachedTokens,
+      completionTokens: out.usage.outputTokens,
+    },
+    latencyMs,
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+let defaultRouter: Router | null = null;
+
+/** route() with a router built from env on first use (WIZARD_LLM_MODE, WIZARD_FIXTURE, provider keys). */
+export function route(input: RouteInput): Promise<RouteOutput> {
+  defaultRouter ??= createRouter();
+  return defaultRouter.route(input);
+}
