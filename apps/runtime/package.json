@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -13,5 +14,11 @@
     "hono": "^4.13.12",
     "kysely": "^0.28.17",
     "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  },
+  "exports": {
+    ".": "./src/index.ts"
   }
 }

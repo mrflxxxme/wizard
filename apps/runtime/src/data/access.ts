@@ -91,7 +91,10 @@ export interface DataTx {
   readonly data: DbAdapter;
   readonly system: DbAdapter;
   readonly scheduler: SchedulerAdapter;
-  /** Raw SQL inside the same transaction (fully qualified names only; AGENTS.md). */
+  /**
+   * Raw SQL inside the same transaction (fully qualified names only; AGENTS.md). It runs with the RLS context of
+   * the last `data`/`system` call (initially the subject's); open the transaction with SYSTEM_SUBJECT for system work.
+   */
   readonly sql: postgres.TransactionSql;
   /** Queue an invalidation event; published after commit. */
   invalidate(e: InvalidationEvent): void;
@@ -111,8 +114,8 @@ export interface DataAccess {
   remove(subject: Subject, entity: string, id: string): Promise<void>;
 
   // ---------- functions and internal callers ----------
-  /** read → REPEATABLE READ READ ONLY, write → SERIALIZABLE (sdk.md §2.2); rolls back on reject. */
-  transaction<T>(mode: TxMode, subject: Subject, fn: (tx: DataTx) => Promise<T>): Promise<T>;
+  /** read → REPEATABLE READ READ ONLY, write → SERIALIZABLE (sdk.md §2.2), default → READ COMMITTED; rolls back on reject. */
+  transaction<T>(mode: TxMode | "default", subject: Subject, fn: (tx: DataTx) => Promise<T>): Promise<T>;
   /** TransactionRunner for createFunctionHost (@wizard/sdk/host); loads the users row of CurrentUser. */
   runner(): TransactionRunner;
   /** Subject for a row of `users` (isAdmin from the spec role). */
