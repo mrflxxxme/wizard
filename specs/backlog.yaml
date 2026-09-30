@@ -293,8 +293,8 @@ tasks:
     owner: qa
     parallel_group: m0-w3
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: orchestrator  # харнесс готов офлайн; живой отчёт ждёт ключей (E-ACCESS)
     acceptance:
       - "CI: `node tools/eval/run.mjs --harness --llm-mode=fixture --briefs=ev-01-forum-registration` выдаёт таблицу {g0_pass, g0g1_pass, tokens, ₽, мин}"
       - "Live (после E-ACCESS, вручную): отчёт tools/eval/results/<дата>-harness.md закоммичен; ≥1 из 12 брифов G0=passed"
