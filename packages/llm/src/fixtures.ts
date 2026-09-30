@@ -40,50 +40,64 @@ export function schemaHash(parameters: unknown): string {
   return sha256(stableStringify(parameters)).slice(0, 16);
 }
 
-const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const ISO_DATE_RE = /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
+// Same regexes and order of steps as the reference tools/fixtures/lib/format.mjs (M0-21): keys must match byte for byte.
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/g;
+
+/** A tool as offered (schema hashed here) or as stored in a fixture line (schemaHash given). */
+export type CanonicalTool = LlmTool | { name: string; schemaHash: string };
 
 export interface CanonicalInput {
   callType: CallType;
   modelId: string;
   messages: readonly LlmMessage[];
-  tools?: readonly LlmTool[];
+  tools?: readonly CanonicalTool[];
   temperature: number;
   maxTokens: number;
   runId?: string;
   systemId?: string;
 }
 
-/** eval.yaml#fixtures.canonical_request */
+/**
+ * eval.yaml#fixtures.canonical_request, algorithm of docs/reviews/impl-notes/M0-21.md: in message strings trailing
+ * spaces/tabs of lines are removed, then ctx.runId/ctx.systemId become <runId>/<systemId>; the object is serialized with
+ * sorted keys; over the serialized JSON UUIDs become <uuid:N> (first appearance, case-insensitive), then ISO dates <date>.
+ */
 export function canonicalRequest(input: CanonicalInput): string {
-  const uuids = new Map<string, number>();
-  const norm = (s: string): string => {
-    let out = s;
-    if (input.runId) out = out.split(input.runId).join("<runId>");
-    if (input.systemId) out = out.split(input.systemId).join("<systemId>");
-    out = out.replace(UUID_RE, (u) => {
-      const k = u.toLowerCase();
-      if (!uuids.has(k)) uuids.set(k, uuids.size + 1);
-      return `<uuid:${uuids.get(k)}>`;
-    });
-    return out.replace(ISO_DATE_RE, "<date>").replace(/[ \t]+$/gm, "");
-  };
-  const walk = (v: unknown): unknown => {
-    if (typeof v === "string") return norm(v);
-    if (Array.isArray(v)) return v.map(walk);
+  const placeholders: [string | undefined, string][] = [
+    [input.runId, "<runId>"],
+    [input.systemId, "<systemId>"],
+  ];
+  const norm = (v: unknown): unknown => {
+    if (typeof v === "string") {
+      let out = v.replace(/[ \t]+$/gm, "");
+      for (const [value, ph] of placeholders) if (value) out = out.split(value).join(ph);
+      return out;
+    }
+    if (Array.isArray(v)) return v.map(norm);
     if (v !== null && typeof v === "object") {
-      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, norm(x)]));
     }
     return v;
   };
+  const uuids = new Map<string, string>();
   return stableStringify({
     callType: input.callType,
     modelId: input.modelId,
-    messages: walk(input.messages),
-    tools: (input.tools ?? []).map((t) => ({ name: t.name, schemaHash: schemaHash(t.parameters) })),
+    messages: norm(input.messages),
+    tools: (input.tools ?? []).map((t) => ({
+      name: t.name,
+      schemaHash: "schemaHash" in t ? t.schemaHash : schemaHash(t.parameters),
+    })),
     temperature: input.temperature,
     max_tokens: input.maxTokens,
-  });
+  })
+    .replace(UUID_RE, (u) => {
+      const k = u.toLowerCase();
+      if (!uuids.has(k)) uuids.set(k, `<uuid:${uuids.size + 1}>`);
+      return uuids.get(k) as string;
+    })
+    .replace(ISO_DATE_RE, "<date>");
 }
 
 export function requestKey(input: CanonicalInput): string {
@@ -150,8 +164,9 @@ export class FixtureStore {
       const n = this.ordinals.get(q.callType) ?? 0;
       this.ordinals.set(q.callType, n + 1);
       const line = lines.filter((l) => l.callType === q.callType)[n];
-      const names = (xs: string[]) => [...xs].sort().join(",");
-      if (line && names(line.request.tools.map((t) => t.name)) === names(q.toolNames)) return line;
+      // M0-21 contract: every tool the recorded answer calls must be offered now; equal tool sets are not required.
+      const offered = new Set(q.toolNames);
+      if (line?.response.toolCalls.every((c) => offered.has(c.name))) return line;
       throw this.miss(q);
     }
     const matches = lines.map((l, i) => [l, i] as const).filter(([l]) => l.key === q.key);

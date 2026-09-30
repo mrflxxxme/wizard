@@ -133,10 +133,13 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
     "+49 30 1234567",
     "canary.person@example.ru",
     "@canary_handle",
+    "Джахонгир Рахимов",
+    "John Smith",
   ];
   const BRIEF =
     `Организатор — ${CANARIES[0]}, помощник ${CANARIES[1]}, спикер ${CANARIES[2]}. ` +
     `Телефоны: ${CANARIES[3]} и ${CANARIES[4]}. Почта ${CANARIES[5]}, телеграм ${CANARIES[6]}. ` +
+    `Бухгалтер ${CANARIES[7]}, гость ${CANARIES[8]}. ` +
     "Нужна регистрация на форум с типами билетов.";
 
   test("build calls with basic PII go to T1 only after scrub; journal has counts only", async () => {
