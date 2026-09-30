@@ -2,6 +2,7 @@
 // otherwise tsc reports TS2578 (unused directive) and the examples typecheck test fails.
 import {
   action,
+  type ClientDoc,
   type Id,
   mutation,
   query,
@@ -24,7 +25,7 @@ export const whereCases = query({
     await ctx.db.ticket.list({ where: { status: "paid" } });
     // @ts-expect-error skipping `status` in [stream, status, created_at]
     await ctx.db.ticket.count({ where: { stream: streamId, created_at: { gte: "2026-01-01" } } });
-    // @ts-expect-error a range is allowed on the last key of the prefix only
+    // @ts-expect-error ref keys take exact ids, not ranges
     await ctx.db.ticket.list({ where: { stream: { gte: streamId }, status: "paid" } });
     // @ts-expect-error `{}` is not an index prefix
     await ctx.db.ticket.count({ where: {} });
@@ -57,7 +58,7 @@ export const idCases = query({
     await ctx.scheduler.runAfter(0, "sendReminder", { ticketId, userId: ctx.user.id, startsAt: "" });
     const t = await ctx.db.ticket.get(ticketId);
     // @ts-expect-error optional fields are `T | null` in Doc
-    const phone: string = t?.holder_phone ?? "";
+    const phone: string | undefined = t?.holder_phone;
     return phone;
   },
 });
@@ -124,7 +125,7 @@ export function ClientCases() {
   useEntityList("stream", { sort: "-color" });
   const t = useEntity("ticket", ticketId);
   // @ts-expect-error field hidden for some role → optional in ClientDoc
-  const name: string = t.data?.holder_name ?? 0;
+  const name: string = (t.data as ClientDoc<"ticket">).holder_name;
   const m = useEntityMutation("stream");
   // @ts-expect-error insert shape is checked
   void m.create({ name: 1, capacity: 1 });
