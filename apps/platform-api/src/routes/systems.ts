@@ -624,7 +624,12 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     const q = parseQuery(c, z.object({ role: z.string().max(64).optional() }));
     const role = q.role ?? (roles.find((x) => x.access === "public") ?? roles[0])?.name;
     if (!role || !roles.some((x) => x.name === role)) throw invalid("Такой роли нет в системе");
-    const url = `http://${s.slug}--draft.localhost:${d.config.runtimePort}/_wizard/dev-login?role=${encodeURIComponent(role)}&next=/`;
+    // A public role has no login: runtime dev-login answers 404 for it, dev-logout drops the draft session instead.
+    const isPublic = roles.find((x) => x.name === role)?.access === "public";
+    const path = isPublic
+      ? "/_wizard/dev-logout?next=/"
+      : `/_wizard/dev-login?role=${encodeURIComponent(role)}&next=/`;
+    const url = `http://${s.slug}--draft.localhost:${d.config.runtimePort}${path}`;
     return c.json({
       url,
       revision: s.preview_revision,

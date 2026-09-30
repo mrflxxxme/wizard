@@ -238,6 +238,9 @@ importers:
       '@playwright/test':
         specifier: 1.56.1
         version: 1.56.1
+      jsqr:
+        specifier: ^1.4.0
+        version: 1.4.0
 
   packages/gates:
     dependencies:

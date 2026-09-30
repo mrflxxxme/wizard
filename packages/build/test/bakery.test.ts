@@ -40,6 +40,8 @@ function uiKitStub(files: Map<string, string>): string {
       (n) =>
         `export const ${n} = (p: { wzId?: string; children?: unknown; [k: string]: unknown }) => <div data-wz-component="${n}" data-wz-id={p.wzId ?? "demo:${n}:0"}>{p.children as never}</div>;`,
     );
+  // The client entry template mounts WzProvider (ui-kit.yaml#data_binding.provider).
+  body.push("export const WzProvider = (p: { children?: unknown }) => p.children as never;");
   writeFileSync(file, `${body.join("\n")}\n`);
   return file;
 }

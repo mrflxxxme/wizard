@@ -11,3 +11,15 @@
 - [Исследование: рынок, конкуренты, технологии](docs/research/market.md)
 - [Разбор «Чистого листа» в Void0dev/nucex](docs/research/nucex-clean-slate.md)
 - [Прототип v1 (холст, сценарий студии)](docs/prototype/README.md)
+
+## Запуск прототипа
+
+Нужны Node 22, pnpm 10 и Postgres 16 (`pnpm dev` сам поднимет его на :5433 в `.data/pg`, если порт свободен). Ключи моделей не нужны: по умолчанию платформа воспроизводит золотой прогон «форума» (`WIZARD_LLM_MODE=fixture`, `WIZARD_FIXTURE=demo/forum`).
+
+```
+pnpm i
+cp .env.example .env
+pnpm dev
+```
+
+Откройте http://localhost:5173, вставьте бриф форума из `tools/fixtures/golden/forum.yaml` и пройдите путь: вопросы-кнопки → карточка → «Строить» → G0 и G1 → превью, где можно войти любой ролью, зарегистрироваться на форум и проверить QR-билет сканером. Тот же сценарий автоматически проходит `pnpm e2e` (`packages/e2e/specs/forum.spec.ts`), снимки ключевых шагов — в [docs/prototype/m0](docs/prototype/m0).

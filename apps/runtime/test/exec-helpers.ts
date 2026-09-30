@@ -42,6 +42,7 @@ function uiKitStub(dir: string, files: Map<string, string>): string {
     }
   }
   const path = join(dir, "ui-kit-stub.ts");
+  names.add("WzProvider"); // mounted by the client entry template
   writeFileSync(path, [...names].map((n) => `export const ${n} = (_p: unknown) => null;`).join("\n"));
   return path;
 }
