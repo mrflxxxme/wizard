@@ -371,7 +371,7 @@ tasks:
     owner: platform
     parallel_group: m0-w2
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Функции из specs/runtime/examples вызываются через /api/fn; fetch недоступен; бесконечный цикл прерывается ≤ 5 с"
@@ -387,7 +387,7 @@ tasks:
     owner: platform
     parallel_group: m0-w2
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Бандл форума отдаётся на http://<slug>--draft.localhost:4100; bridge.js: set-role, apply-theme-tokens, чужой origin игнорируется"

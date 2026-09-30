@@ -97,3 +97,5 @@ AppSpec и гейты:
 - reconcile · backlog: M0-05, M0-07 — done; M0-15 += gate_reports и IDOR 404; M0-29 += перенос генератора типов; M2-10 ссылается на workflows#workflows.export_data.
 - reconcile · tools/specs/validate.mjs проверяет propertyNames, min/maxProperties, dependentSchemas/Required, if/then/else — схема шагов DSL проверяется полностью без ajv.
 - reconcile · Открыто для packages (в сверке не правилось): тесты packages/appspec читают DATABASE_URL — перейти на WIZARD_DB_URL.
+- 2026-09-30 · M0-24/M0-16 · Cookie превью для draft-хоста в iframe (wz_prev; Secure; SameSite=None; Partitioned) перенесена из M2 в M0: без неё set-role в превью не работает (Lax-cookie не уходит из iframe localhost:5173). Проверено в Chromium на http://*.localhost. Prod по-прежнему без SameSite=None.
+- 2026-09-30 · FU-1 · Детектор имён расширен неславянскими (Средняя Азия, Кавказ, тюркские, сибирские) и англо-европейскими именами и фамилиями, эвристика пар имя+фамилия; precision 0.993, recall 0.992. Ключ fixture-провайдера llm приведён к эталону tools/fixtures/lib/format.mjs.
