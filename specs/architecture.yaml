@@ -1,0 +1,107 @@
+# Архитектура Wizard. Нормативно для всех агентов. Версии: мажорные фиксируются здесь,
+# точные — в pnpm-lock.yaml (ставить latest stable мажора на момент установки).
+version: 3.1
+
+stack:
+  runtime: { node: "22.x LTS", package_manager: "pnpm 10.x (workspaces)", language: "TypeScript 5.x strict, ESM only" }
+  backend: { http: "hono 4.x", validation: "zod 4.x", sql: "kysely 0.28.x + postgres (porsager) 3.x", db: "PostgreSQL 16" }
+  durable: "@dbos-inc/dbos-sdk (DBOS Transact TS), latest stable"
+  llm_client: "ai (Vercel AI SDK) 7.x + @ai-sdk/openai-compatible"
+  frontend: { ui: "react 19.x", build_platform: "vite 7.x", build_generated: "esbuild (programmatic)", styling: "CSS variables (design tokens) + CSS modules; no Tailwind in generated apps" }
+  tests: { unit: "vitest 3.x", e2e: "@playwright/test (chromium at /opt/pw-browsers)" }
+  lint_format: "biome 2.x"
+  isolation:
+    M0_M1: "node:vm + worker_threads с таймаутом и отсутствием сети — ТОЛЬКО локально/draft, флаг WIZARD_UNSAFE_LOCAL_EXEC=1"
+    M2_plus: "workerd внутри gVisor (runsc) в отдельном пуле узлов; egress-proxy с allowlist"
+
+monorepo:
+  root_files: [package.json, pnpm-workspace.yaml, tsconfig.base.json, biome.json, AGENTS.md, .env.example]
+  packages:
+    - id: appspec
+      path: packages/appspec
+      purpose: "Схема AppSpec (zod), операции, валидация, diff ревизий, план миграций, генерация DDL/RLS"
+      spec: specs/appspec/
+      depends_on: []
+    - id: pii
+      path: packages/pii
+      purpose: "Детекторы ПДн (регулярки + словари), замена одноразовыми заглушками, классификация категорий"
+      spec: specs/security/data-boundary.yaml
+      depends_on: []
+    - id: llm
+      path: packages/llm
+      purpose: "Роутер моделей T0/T1, провайдеры (openai-compatible), fixture-провайдер для офлайн-режима, учёт токенов и кредитов"
+      spec: specs/security/data-boundary.yaml
+      depends_on: [pii]
+    - id: sdk
+      path: packages/sdk
+      purpose: "@wizard/sdk для сгенерированного кода: query/mutation/action, типизированный db, коннекторы, клиентские хуки"
+      spec: specs/runtime/sdk.md
+      depends_on: [appspec]
+    - id: ui-kit
+      path: packages/ui-kit
+      purpose: "Библиотека компонентов ядра и дизайн-токены для сгенерированных систем"
+      spec: specs/ui/ui-kit.yaml
+      depends_on: [sdk]
+    - id: connectors
+      path: packages/connectors
+      purpose: "ЮKassa, Telegram, email, QR; единый интерфейс Connector"
+      spec: specs/connectors/
+      depends_on: [sdk]
+    - id: gates
+      path: packages/gates
+      purpose: "Гейты G0–G2: валидаторы спеки, typecheck/build кода, сценарии приёмки, матрица прав, антифрод"
+      spec: specs/quality/gates.yaml
+      depends_on: [appspec, sdk]
+    - id: agents
+      path: packages/agents
+      purpose: "Оркестратор, строитель, QA: промпты, инструменты (tool definitions из zod), бюджеты"
+      spec: specs/agents/
+      depends_on: [appspec, llm, gates]
+  apps:
+    - id: platform-api
+      path: apps/platform-api
+      purpose: "API платформы: аккаунты, организации, системы, ревизии, прогоны, кредиты, публикация, SSE событий"
+      spec: specs/platform/api.yaml
+      depends_on: [appspec, agents, llm]
+    - id: worker
+      path: apps/worker
+      purpose: "DBOS-воркфлоу: интервью, сборка, гейты, публикация, миграции, автоудаление ПДн"
+      spec: specs/platform/workflows.yaml
+      depends_on: [agents, gates, appspec]
+    - id: runtime
+      path: apps/runtime
+      purpose: "Хостинг созданных систем: data API по AppSpec, вызов функций, вход конечных пользователей, статика бандлов, PWA"
+      spec: specs/runtime/runtime.yaml
+      depends_on: [appspec, sdk, connectors]
+    - id: platform-web
+      path: apps/platform-web
+      purpose: "UI платформы: чат, вопросы-кнопки, карточка, превью (iframe), отчёт гейтов, «Стиль», настройки"
+      spec: specs/ui/platform-screens.yaml
+      depends_on: [ui-kit]
+  tools:
+    - { id: eval, path: tools/eval, purpose: "Eval-стенд моделей и харнесса на брифах" }
+    - { id: specs-validate, path: tools/specs, purpose: "Проверка целостности specs/" }
+
+data_stores:
+  platform_db: "Postgres, схема 'platform' (аккаунты, орг., системы, ревизии, прогоны, ledger) + схема 'dbos'"
+  apps_db: "Postgres (M0 — тот же инстанс), схема на систему: app_<systemId>_<env> где env ∈ {draft, prod}"
+  artifacts: "Файловое хранилище (M0 — локальная папка .data/artifacts; M2 — S3-совместимое хранилище Cloud.ru): исходники кода ревизий, бандлы"
+  secrets: "M0 — .env; M2 — KMS/OpenBao в РФ. Секреты коннекторов в систему попадают только как ссылки"
+
+environments:
+  local: "Всё на одной машине: Postgres 16 локально, fixture-LLM по умолчанию, реальные ключи через .env"
+  cloud: "M2: Cloud.ru Evolution — Managed PG, Managed K8s (gVisor-пул), S3, KMS"
+  domains:
+    platform: "<codename>.ru (M2, E-DOMAIN)"
+    systems: "*.<systems-domain> (отдельный от платформы домен); локально: http://<system>--<env>.localhost:4100"
+
+interfaces:                   # межпакетные контракты — менять только через CHANGELOG
+  appspec_ops: "packages/appspec: applyOps(spec, ops[], expectedVersion) -> {spec, version} | OpsError[] (см. specs/appspec/ops.yaml)"
+  migration_plan: "packages/appspec: planMigration(prevSpec, nextSpec) -> MigrationPlan {steps[], additiveOnly:boolean}"
+  ddl: "packages/appspec: toDDL(plan, schemaName) -> string[] (SQL), toRLS(spec, schemaName) -> string[]"
+  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy}) -> {tier, model, result, usage, creditsCharged}"
+  gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx) -> GateReport {passed, checks[]}"
+  events: "platform-api SSE /runs/:id/events — события прогона (specs/platform/workflows.yaml#events)"
+  runtime_api: "apps/runtime: /api/data/:entity (CRUD с правами), /api/fn/:name, /api/auth/*, /_wizard/* (служебное)"
+
+coding_rules_ref: ../AGENTS.md
