@@ -245,7 +245,7 @@ tasks:
     owner: platform
     parallel_group: m0-w1
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Контрактный тест (ajv по components.schemas + свой сопоставитель путей) на все операции x-milestone=M0"
