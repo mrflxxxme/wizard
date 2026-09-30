@@ -1,0 +1,33 @@
+{
+  "name": "wizard",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "e2e": "pnpm --filter @wizard/e2e test",
+    "dev": "node scripts/dev.mjs",
+    "db:up": "node scripts/db.mjs up",
+    "db:down": "node scripts/db.mjs down",
+    "specs:validate": "node tools/specs/validate.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@types/node": "^22",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@biomejs/biome"
+    ]
+  }
+}
