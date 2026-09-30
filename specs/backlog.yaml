@@ -631,8 +631,8 @@ tasks:
     owner: qa
     parallel_group: m1-c
     estimate_days: 1
-    status: in_progress
-    claimed_by: orchestrator  # готово: fixture-eval на каждом PR с порогами регрессии, ночной live-прогон с бюджетом; ждёт ключей в секретах GitHub (E-ACCESS) для первого живого отчёта
+    status: todo
+    claimed_by: null
     acceptance:
       - "Регрессия доли G0/G1 >5 п.п. роняет CI"
       - "Ночью — 5 брифов на модели по умолчанию; полный прогон — по метке PR при смене промпта или модели и перед вехой; расход считается и прогон не стартует сверх 30 000 ₽/мес (D20_eval_budget)"
