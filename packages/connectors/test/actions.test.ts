@@ -104,12 +104,12 @@ describe("telegram.sendToUser (test mode)", () => {
     expect(ctx.outbox.messages).toHaveLength(0);
   });
 
-  test("prod (live) → EGRESS_DISABLED in M0", async () => {
+  test("prod (live) own bot without its token → SECRET_MISSING", async () => {
     const ctx = createTestCtx({ spec: forum, integration: "telegram", contacts, env: "prod" });
     expect(ctx.mode).toBe("live");
     await expect(
       invokeAction(telegramConnector, "sendToUser", ctx, { userId: "u1", text: "Привет" }),
-    ).rejects.toMatchObject({ code: "EGRESS_DISABLED" });
+    ).rejects.toMatchObject({ code: "SECRET_MISSING" });
   });
 });
 
@@ -153,8 +153,12 @@ describe("email.sendTemplate (test mode)", () => {
   test("QR attachment only for the record owner", async () => {
     const db = new MemorySystemDb(forum);
     const ctx = createTestCtx({ spec: forum, integration: "email", db, contacts: { u1: { email: EMAIL } } });
-    const t = await db.insert("ticket", { holder_user: "u1", status: "paid" });
-    const other = await db.insert("ticket", { holder_user: "u2", status: "paid" });
+    const t = await db.insert("ticket", { holder_user: "u1", status: "paid", qr_token: "WZ1.1.AAAA.bbbb" });
+    const other = await db.insert("ticket", {
+      holder_user: "u2",
+      status: "paid",
+      qr_token: "WZ1.1.CCCC.dddd",
+    });
     await invokeAction(emailConnector, "sendTemplate", ctx, {
       userId: "u1",
       template: "ticket_issued",

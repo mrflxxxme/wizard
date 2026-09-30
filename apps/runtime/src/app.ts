@@ -1,6 +1,7 @@
 // createRuntimeApp (architecture.yaml#interfaces.runtime_handle): host routing → guards → system routes.
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import type { PlatformConnectorConfig } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
@@ -31,9 +32,11 @@ import type { SystemEnv, SystemRegistry } from "./registry.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { fnRoutes } from "./routes/fn.js";
+import { inviteRoutes } from "./routes/invite.js";
 import { qrRoutes } from "./routes/qr.js";
 import { staticRoutes } from "./routes/static.js";
 import { notImplemented } from "./routes/stub.js";
+import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
@@ -54,6 +57,10 @@ export interface RuntimeAppOptions {
   secrets?: SecretsFactory;
   /** JSON log sink (runtime.yaml#logging); default: none. */
   log?: (line: Record<string, unknown>) => void;
+  /** Shared Telegram bot, platform SMTP, dev receiver (M1-06); default: from WIZARD_* env. */
+  platform?: PlatformConnectorConfig;
+  /** Also write test-mode connector effects to <outboxDir>/<system>/… (main: .data/outbox); default: memory only. */
+  outboxDir?: string | null;
 }
 
 export interface RuntimeApp {
@@ -94,7 +101,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     secrets: o.secrets,
     devSecretsDir: join(dirname(artifactsRoot), "secrets"),
     log: o.log,
+    platform: o.platform,
+    outboxDir: o.outboxDir ?? null,
   });
+  services.connectorHost = connectors;
   const systems = new SystemCache({
     sql: o.db,
     registry: o.registry,
@@ -113,6 +123,13 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     },
   });
   const pre = new WeakMap<Request, Pre>();
+  const platformHook = platformTelegramHook({
+    host: connectors,
+    systems,
+    sql: o.db,
+    dbRole: o.dbRole === undefined ? "wizard_runtime" : o.dbRole,
+    log: o.log,
+  });
 
   const app = new Hono<RuntimeHonoEnv>();
   app.use("*", async (c, next) => {
@@ -137,6 +154,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     return errorResponse(err, c.get("requestId") ?? "");
   });
   app.route("/_wizard/qr", qrRoutes(connectors));
+  app.route("/_wizard/hooks/telegram", telegramHookRoutes(connectors));
   app.route("/_wizard/hooks", notImplemented());
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
@@ -146,6 +164,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/api/fn", fnRoutes());
   app.route("/api/events", eventsRoutes());
   app.route("/api/pay", payRoutes(connectors));
+  app.route("/api/telegram", telegramApiRoutes(connectors));
+  app.route("/api/admin", inviteRoutes(connectors));
   app.all("/api/*", () => {
     throw new WizardError("NOT_FOUND", { message: "Адрес не найден" });
   });
@@ -165,6 +185,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     }
     if (isBareHost(name)) {
       if (url.pathname === "/_wizard/health") return { res: Response.json({ status: "ok" }), sys: null };
+      const hook = await platformHook(req);
+      if (hook) return { res: hook, sys: null };
       return { res: notFoundPage(), sys: null };
     }
     const target = parseSystemHost(name, env);

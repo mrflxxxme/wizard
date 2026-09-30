@@ -1,6 +1,7 @@
 // Deployment registry (runtime.yaml#system_loading.registry). M0: FileRegistry over .data/artifacts/registry.json;
 // M0-26 adds DbRegistry over platform.deployments with the same entry shape.
 import { readFile, stat } from "node:fs/promises";
+import { isReservedSystemSlug } from "@wizard/connectors";
 import type postgres from "postgres";
 
 export type SystemEnv = "draft" | "prod";
@@ -21,6 +22,8 @@ export interface RegistryEntry {
 export interface SystemRegistry {
   /** Published deployment for a host, or null (→ 404 «Система не найдена»). */
   resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null>;
+  /** Deployment by system key (shared Telegram bot webhook routes link tokens by it). */
+  resolveById?(systemId: string, env: SystemEnv): Promise<RegistryEntry | null>;
 }
 
 export const SYSTEM_ID_RE = /^[a-z0-9]{12}$/;
@@ -31,6 +34,8 @@ function asEntry(raw: unknown): RegistryEntry | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.systemId !== "string" || !SYSTEM_ID_RE.test(r.systemId)) return null;
   if (typeof r.slug !== "string" || !SLUG_RE.test(r.slug) || r.slug.includes("--")) return null;
+  // Mail/infrastructure names never become system hosts (runtime.yaml#routing.system_slug, L3-29).
+  if (isReservedSystemSlug(r.slug)) return null;
   if (r.env !== "draft" && r.env !== "prod") return null;
   const features = (typeof r.features === "object" && r.features !== null ? r.features : {}) as Record<
     string,
@@ -80,6 +85,10 @@ export class FileRegistry implements SystemRegistry {
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     return (await this.entries()).find((e) => e.slug === slug && e.env === env) ?? null;
   }
+
+  async resolveById(systemId: string, env: SystemEnv): Promise<RegistryEntry | null> {
+    return (await this.entries()).find((e) => e.systemId === systemId && e.env === env) ?? null;
+  }
 }
 
 /**
@@ -92,6 +101,12 @@ export class DbRegistry implements SystemRegistry {
     readonly sql: postgres.Sql,
     readonly fallback?: SystemRegistry,
   ) {}
+
+  async resolveById(systemId: string, env: SystemEnv): Promise<RegistryEntry | null> {
+    const slug = await dbResolveById(this.sql, systemId, env);
+    if (slug) return this.resolve(slug, env);
+    return (await this.fallback?.resolveById?.(systemId, env)) ?? null;
+  }
 
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     let rows: postgres.Row[];
@@ -122,10 +137,30 @@ export class DbRegistry implements SystemRegistry {
   }
 }
 
+/** DbRegistry lookup by system key; the slug then goes through resolve (M1-06, shared bot webhook). */
+export async function dbResolveById(
+  sql: postgres.Sql,
+  systemId: string,
+  env: SystemEnv,
+): Promise<string | null> {
+  try {
+    const rows =
+      await sql`select slug from platform.deployments where system_id = ${systemId} and env = ${env} limit 1`;
+    return typeof rows[0]?.slug === "string" ? rows[0].slug : null;
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01" || code === "3F000") return null;
+    throw e;
+  }
+}
+
 /** In-memory registry (tests, previews). */
 export class MemoryRegistry implements SystemRegistry {
   constructor(readonly list: RegistryEntry[] = []) {}
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     return this.list.find((e) => e.slug === slug && e.env === env) ?? null;
+  }
+  async resolveById(systemId: string, env: SystemEnv): Promise<RegistryEntry | null> {
+    return this.list.find((e) => e.systemId === systemId && e.env === env) ?? null;
   }
 }

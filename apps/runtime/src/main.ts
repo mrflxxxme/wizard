@@ -20,6 +20,9 @@ const { close } = await startRuntime({
   // Drafts built by platform-api come from platform.deployments; registry.json still serves hand-placed artifacts.
   registry: new DbRegistry(db, new FileRegistry(join(artifactsRoot, "registry.json"))),
   artifactsRoot,
+  // Test-mode mail and Telegram messages land in .data/outbox/<system>/ (connectors/*.yaml#test_mode.draft).
+  outboxDir: join(root, ".data", "outbox"),
+  connectors: process.env.WIZARD_CONNECTORS === "live" ? "live" : "outbox",
   port,
   hostname,
   log: (line) => process.stdout.write(`${JSON.stringify(line)}\n`),

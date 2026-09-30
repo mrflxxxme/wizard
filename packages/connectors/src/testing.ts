@@ -12,8 +12,11 @@ import type {
   ConnectorStore,
   ContactKind,
   Env,
+  PlatformConnectorConfig,
   Row,
+  SecretReader,
   SystemDb,
+  TelegramLinkStore,
 } from "./types.js";
 
 /** SystemDb over maps; enforces `unique` fields of the spec. */
@@ -83,6 +86,40 @@ export class MemoryStore implements ConnectorStore {
   }
 }
 
+/** _w_telegram_links in memory. */
+export class MemoryTelegramLinks implements TelegramLinkStore {
+  readonly links = new Map<string, { userId: string; expiresAt: Date }>();
+  async create(hash: Buffer, userId: string, expiresAt: Date) {
+    this.links.set(hash.toString("hex"), { userId, expiresAt });
+  }
+  async consume(hash: Buffer, now: Date) {
+    const k = hash.toString("hex");
+    const hit = this.links.get(k);
+    this.links.delete(k);
+    return hit && hit.expiresAt > now ? hit.userId : null;
+  }
+}
+
+/** Platform settings for tests: no platform secrets unless given, network disabled. */
+export function testPlatform(
+  o: Partial<PlatformConnectorConfig> & { secrets?: SecretReader } = {},
+): PlatformConnectorConfig {
+  return {
+    secrets: staticSecretReader({}),
+    telegram: { apiBase: "https://api.telegram.org", botUsername: "wizard_test_bot" },
+    smtp: null,
+    devSmtp: null,
+    mailDomain: "systems.test",
+    resolve: async () => {
+      throw new Error("DNS is disabled in tests");
+    },
+    dial: async () => {
+      throw new Error("network is disabled in tests");
+    },
+    ...o,
+  };
+}
+
 export interface TestCtxOptions {
   spec: AppSpec;
   integration: string;
@@ -96,6 +133,10 @@ export interface TestCtxOptions {
   outbox?: MemoryOutbox;
   idempotencyKey?: string;
   now?: () => Date;
+  platform?: PlatformConnectorConfig;
+  fetch?: typeof fetch;
+  plan?: "free" | "paid";
+  telegramLinks?: TelegramLinkStore;
 }
 
 /** ConnectorCtx with in-memory doubles; `logs` collects everything the connector logged. */
@@ -113,22 +154,42 @@ export function createTestCtx(o: TestCtxOptions): ConnectorCtx & {
   const secrets = staticSecretReader(o.secrets ?? {});
   const now = o.now ?? (() => new Date());
   const logs: Partial<ConnectorLogEntry>[] = [];
+  const contacts = o.contacts ?? {};
   return {
-    system: { id: systemId, env, host: o.host ?? `${systemId}--${env}.localhost:4100`, spec: o.spec },
+    system: {
+      id: systemId,
+      env,
+      host: o.host ?? `${systemId}--${env}.localhost:4100`,
+      spec: o.spec,
+      plan: o.plan ?? "free",
+    },
     integration: { name: integ.name, config },
     secrets,
     mode: connector.testMode(env, config, secrets),
     idempotencyKey: o.idempotencyKey ?? randomUUID(),
-    users: { contact: async (userId, kind) => o.contacts?.[userId]?.[kind] ?? null },
+    users: {
+      contact: async (userId, kind) => contacts[userId]?.[kind] ?? null,
+      async setTelegramChat(userId, chatId) {
+        const c = contacts[userId] ?? {};
+        contacts[userId] = c;
+        if (chatId === null) delete c.telegram_chat;
+        else c.telegram_chat = chatId;
+      },
+      async clearTelegramChat(chatId) {
+        for (const c of Object.values(contacts)) if (c.telegram_chat === chatId) delete c.telegram_chat;
+      },
+    },
     db: o.db ?? new MemorySystemDb(o.spec),
     log: createConnectorLogger(
       { system: systemId, env, integration: integ.name, connector: connector.id },
       (e) => logs.push(e),
     ),
-    fetch: () => Promise.reject(new Error("network is disabled in tests")),
+    fetch: o.fetch ?? (() => Promise.reject(new Error("network is disabled in tests"))),
     store: o.store ?? new MemoryStore(now),
     outbox: o.outbox ?? new MemoryOutbox(),
     now,
+    platform: o.platform ?? testPlatform(),
+    telegramLinks: o.telegramLinks ?? new MemoryTelegramLinks(),
     logs,
   };
 }
