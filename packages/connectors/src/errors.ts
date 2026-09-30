@@ -18,13 +18,23 @@ export class ConnectorError extends Error {
   readonly code: ConnectorErrorCode;
   readonly retryable: boolean;
   readonly providerCode?: string;
+  /** Provider status (HTTP or SMTP reply code) for the PII-free log line. */
+  readonly providerStatus?: number;
+  /** Wait hint from the provider (Telegram parameters.retry_after, HTTP Retry-After). */
+  readonly retryAfterMs?: number;
 
-  constructor(code: ConnectorErrorCode, message: string, opts: { providerCode?: string } = {}) {
+  constructor(
+    code: ConnectorErrorCode,
+    message: string,
+    opts: { providerCode?: string; providerStatus?: number; retryAfterMs?: number } = {},
+  ) {
     super(message);
     this.name = "ConnectorError";
     this.code = code;
     this.retryable = CONNECTOR_ERROR_CODES[code];
     if (opts.providerCode !== undefined) this.providerCode = opts.providerCode;
+    if (opts.providerStatus !== undefined) this.providerStatus = opts.providerStatus;
+    if (opts.retryAfterMs !== undefined) this.retryAfterMs = opts.retryAfterMs;
   }
 }
 

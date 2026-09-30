@@ -1,5 +1,6 @@
 // Host side of connectors (specs/connectors/connector-interface.md §1): ConnectorCtx for a loaded system —
-// SystemDb over DataAccess (__system), a KV store in _w_connector_calls, secrets, outbox, logger.
+// SystemDb over DataAccess (__system), a KV store in _w_connector_calls, secrets, outbox, logger; M1-06: users
+// contacts/telegram chat, _w_telegram_links, platform settings (shared bot, platform SMTP), guarded fetch.
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,8 +14,12 @@ import {
   createConnectorLogger,
   envSecretReader,
   getConnector,
+  guardedFetch,
+  JsonlOutbox,
   newQrKeyring,
+  type PlatformConnectorConfig,
   parseQrKeyring,
+  platformConfigFromEnv,
   QR_SECRET,
   type QrConfig,
   type Row,
@@ -23,6 +28,7 @@ import {
   serializeQrKeyring,
   signQrToken,
   staticSecretReader,
+  type TelegramLinkStore,
   UniqueViolation,
 } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
@@ -43,6 +49,10 @@ export interface ConnectorHostOptions {
   /** Where the generated dev QR keys live (default: <artifactsRoot>/../secrets). */
   devSecretsDir: string;
   log?: (line: Record<string, unknown>) => void;
+  /** Shared bot, platform SMTP, dev receiver; default: platformConfigFromEnv(process.env). */
+  platform?: PlatformConnectorConfig;
+  /** Also write test-mode effects to <outboxDir>/<system>/<connector>.jsonl (+ email/*.eml); default: memory only. */
+  outboxDir?: string | null;
 }
 
 /** The parts of LoadedSystem a connector context needs. */
@@ -55,6 +65,9 @@ export interface ConnectorSystem {
 export interface ConnectorHost {
   /** Context of one integration; `host` is the Host header of the request (with port). */
   ctx(sys: ConnectorSystem, integration: Integration, host?: string): ConnectorCtx;
+  /** Context of the platform mail account for host-side mail of a system (invitations, email OTP). */
+  platformMailCtx(sys: ConnectorSystem, host?: string): ConnectorCtx;
+  readonly platform: PlatformConnectorConfig;
   /** Integrations of the system with the given connector id. */
   integrations(spec: AppSpec, connector: string): Integration[];
   /** qr_token issuer for DataAccess (connectors/qr.yaml#token): signed payload for the qr integration's field. */
@@ -122,15 +135,55 @@ const CONTACT_COLUMN: Record<ContactKind, string> = {
   telegram_chat: "telegram_chat_id",
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHAT_RE = /^-?\d{1,20}$/;
+
 function contacts(data: DataAccess) {
   return {
     contact: (userId: string, kind: ContactKind) =>
+      UUID_RE.test(userId)
+        ? data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+            const rows = await tx.sql`
+              select ${tx.sql(CONTACT_COLUMN[kind])} as v from ${tx.sql(data.schema)}.${tx.sql("users")}
+              where id = ${userId} and blocked_at is null`;
+            const v = rows[0]?.v;
+            return v === null || v === undefined ? null : String(v);
+          })
+        : Promise.resolve(null),
+    setTelegramChat: async (userId: string, chatId: string | null) => {
+      if (!UUID_RE.test(userId) || (chatId !== null && !CHAT_RE.test(chatId))) return;
+      await data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        await tx.sql`
+          update ${tx.sql(data.schema)}.${tx.sql("users")} set telegram_chat_id = ${chatId} where id = ${userId}`;
+      });
+    },
+    clearTelegramChat: async (chatId: string) => {
+      if (!CHAT_RE.test(chatId)) return;
+      await data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        await tx.sql`
+          update ${tx.sql(data.schema)}.${tx.sql("users")} set telegram_chat_id = null
+          where telegram_chat_id = ${chatId}`;
+      });
+    },
+  };
+}
+
+/** _w_telegram_links (runtime.yaml#postgres.system_tables): sha256 of the token, one-time, with expiry. */
+export function pgTelegramLinks(data: DataAccess): TelegramLinkStore {
+  return {
+    create: (hash, userId, expiresAt) =>
+      data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        await tx.sql`
+          insert into ${tx.sql(data.schema)}.${tx.sql("_w_telegram_links")} (token_hash, user_id, expires_at)
+          values (${hash}, ${userId}, ${expiresAt})`;
+      }),
+    consume: (hash, now) =>
       data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
         const rows = await tx.sql`
-          select ${tx.sql(CONTACT_COLUMN[kind])} as v from ${tx.sql(data.schema)}.${tx.sql("users")}
-          where id = ${userId} and blocked_at is null`;
-        const v = rows[0]?.v;
-        return v === null || v === undefined ? null : String(v);
+          delete from ${tx.sql(data.schema)}.${tx.sql("_w_telegram_links")} where token_hash = ${hash}
+          returning user_id, expires_at`;
+        const r = rows[0];
+        return r && new Date(r.expires_at as string).getTime() > now.getTime() ? String(r.user_id) : null;
       }),
   };
 }
@@ -182,6 +235,16 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
     return r;
   };
 
+  const platform =
+    o.platform ??
+    platformConfigFromEnv(process.env, { systemsDomain: o.env.systemsDomain, local: isLocalMode(o.env) });
+  const files = o.outboxDir ? new JsonlOutbox(o.outboxDir) : null;
+  const fetchGuarded = guardedFetch({ trustedHosts: [new URL(platform.telegram.apiBase).host] });
+
+  /** Canonical host of a system (runtime.yaml#routing): prod — the alias, draft — <slug>--draft. */
+  const originOf = (entry: RegistryEntry, host?: string) =>
+    `${o.env.publicScheme}://${host ?? (entry.env === "prod" ? `${entry.slug}.${o.env.systemsDomain}` : `${entry.slug}--draft.${o.env.systemsDomain}`)}`;
+
   function ctx(sys: ConnectorSystem, integ: Integration, host?: string): ConnectorCtx {
     const connector = getConnector(integ.connector);
     if (!connector) throw new ConnectorError("INVALID_REQUEST", `Неизвестный коннектор «${integ.connector}»`);
@@ -193,8 +256,10 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
       system: {
         id: entry.systemId,
         env: entry.env,
-        host: host ?? `${entry.slug}--${entry.env}.${o.env.systemsDomain}`,
+        host: host ?? originOf(entry),
         spec,
+        // Phone OTP is a Start/Business feature (F4): the only plan signal the registry carries in M1.
+        plan: entry.features.phoneOtp ? "paid" : "free",
       },
       integration: { name: integ.name, config },
       secrets,
@@ -203,7 +268,7 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
       users: contacts(data),
       db: systemDbOf(data),
       log: createConnectorLogger(base, (line) => o.log?.({ level: "info", msg: "connector", ...line })),
-      fetch: () => Promise.reject(new ConnectorError("EGRESS_DISABLED", "Внешние запросы недоступны в M0")),
+      fetch: fetchGuarded,
       store: pgConnectorStore(data, integ.name, o.clock),
       outbox: {
         async write(m: ConnectorOutboxMessage) {
@@ -215,17 +280,28 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
             payload: m.payload,
             at: m.ts,
           });
+          await files?.write(m);
         },
       },
       now: o.clock,
+      platform,
+      telegramLinks: pgTelegramLinks(data),
     };
   }
+
+  const PLATFORM_MAIL: Integration = {
+    name: "_platform",
+    connector: "email",
+    config: { provider: "platform" },
+  };
 
   const integrations = (spec: AppSpec, connector: string) =>
     (spec.integrations ?? []).filter((i) => i.connector === connector);
 
   return {
     ctx,
+    platformMailCtx: (sys, host) => ctx(sys, PLATFORM_MAIL, host),
+    platform,
     integrations,
     // Same signing as issueQrToken(ctx); DataAccess is not needed (and not yet built) at this point.
     qrTokenIssuer(entry, spec) {
