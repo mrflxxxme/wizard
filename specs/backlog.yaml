@@ -418,7 +418,7 @@ tasks:
     owner: platform
     parallel_group: m0-w5
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Fixture demo/forum через API: POST /systems → answers → approve → run_finished succeeded; G0 и G1 passed; каждое событие валидно по workflows.yaml#events (ajv)"

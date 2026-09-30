@@ -140,6 +140,8 @@ process.on("SIGTERM", () => shutdown(0));
 // .env is optional; apps read the same variables (deploy.yaml#local.env_vars).
 const envFile = join(root, ".env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+// Offline demo out of the box: fixture mode replays the golden «форум» run unless told otherwise.
+if ((process.env.WIZARD_LLM_MODE ?? "fixture") === "fixture") process.env.WIZARD_FIXTURE ??= "demo/forum";
 
 if (!args.has("no-db")) {
   const pgPort = Number(process.env.WIZARD_PG_PORT ?? 5433);
