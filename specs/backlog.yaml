@@ -212,7 +212,7 @@ tasks:
     owner: agents
     parallel_group: m0-w3
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "runBuild(host) на demo/forum и demo/bakery доходит до G0=passed без вмешательства (G1/QA в host — фейки)"
