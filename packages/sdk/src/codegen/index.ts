@@ -94,18 +94,17 @@ function whereKeyType(entity: Entity, key: string, last: boolean): string {
 function whereType(entity: Entity, indent: string): string {
   const indexes = entityIndexes(entity);
   const allKeys = [...new Set(indexes.flat())];
-  const members = new Map<string, string>();
+  const members = new Set<string>();
   for (const idx of indexes) {
     for (let k = 1; k <= idx.length; k++) {
       const prefix = idx.slice(0, k);
       const parts = prefix.map((key, i) => `${key}: ${whereKeyType(entity, key, i === k - 1)}`);
       for (const other of allKeys) if (!prefix.includes(other)) parts.push(`${other}?: never`);
-      const key = [...prefix].sort().join(",") + (k === idx.length ? "" : `<${idx.join(",")}`);
       const text = `{ ${parts.join("; ")} }`;
-      if (![...members.values()].includes(text)) members.set(key, text);
+      members.add(text);
     }
   }
-  return [...members.values()].map((m) => `\n${indent}  | ${m}`).join("");
+  return [...members].map((m) => `\n${indent}  | ${m}`).join("");
 }
 
 function entityType(spec: AppSpec, entity: Entity, indent: string): string {
