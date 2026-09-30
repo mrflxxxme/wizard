@@ -1,0 +1,6 @@
+{
+  "root": false,
+  "extends": "//",
+  "files": { "includes": ["**", "!test/.generated", "!test/__snapshots__", "!test/artifacts", "!demo/dist"] },
+  "css": { "parser": { "cssModules": true } }
+}

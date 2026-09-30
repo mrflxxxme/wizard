@@ -1,0 +1,121 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label,
+.legend {
+  font-weight: 600;
+}
+
+.labelRow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.required {
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+  font-weight: 400;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--w-density-control);
+  padding: 8px 12px;
+  border: 1px solid var(--w-muted);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--w-bad);
+}
+
+.input:disabled,
+.input:read-only {
+  background: var(--w-bg);
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  field-sizing: content;
+}
+
+.affix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.affix .input {
+  padding-right: 32px;
+}
+
+.suffix {
+  position: absolute;
+  right: 12px;
+  color: var(--w-muted);
+}
+
+.group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--w-accent);
+}
+
+.hint {
+  color: var(--w-muted);
+  font-size: var(--w-font-size-sm);
+}
+
+.error {
+  color: var(--w-bad);
+  font-size: var(--w-font-size-sm);
+  font-weight: 600;
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .input {
+    min-height: 44px;
+  }
+
+  .check {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

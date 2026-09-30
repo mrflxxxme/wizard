@@ -1,0 +1,98 @@
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--w-density-control);
+  padding: 0 16px;
+  border: 1px solid var(--w-muted);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--w-ink);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary {
+  border-color: var(--w-accent);
+  background: var(--w-accent);
+  color: var(--w-accent-ink);
+}
+
+.primary:hover:not(:disabled) {
+  border-color: var(--w-accent-text);
+}
+
+.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--w-accent-text);
+}
+
+.danger {
+  border-color: var(--w-bad);
+  color: var(--w-bad);
+}
+
+.sm {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: var(--w-font-size-sm);
+}
+
+.label {
+  overflow-wrap: anywhere;
+}
+
+.loading {
+  cursor: progress;
+}
+
+.loading .label {
+  visibility: hidden;
+}
+
+.loading:disabled {
+  opacity: 0.8;
+}
+
+.spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .btn,
+  .sm {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

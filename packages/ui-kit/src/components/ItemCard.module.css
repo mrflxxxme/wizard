@@ -1,0 +1,116 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--w-density-pad);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--w-font-size-lg);
+  line-height: 1.25;
+}
+
+.description {
+  margin: 0;
+  color: var(--w-muted);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.price {
+  font-size: var(--w-font-size-lg);
+  font-weight: 700;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.groupLabel {
+  font-weight: 600;
+  font-size: var(--w-font-size-sm);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--w-muted);
+  border-radius: var(--w-radius-sm);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chipOn {
+  border-color: var(--w-accent-text);
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+  font-weight: 600;
+}
+
+.delta {
+  font-size: var(--w-font-size-sm);
+}
+
+.total {
+  margin: 0;
+}
+
+.cta {
+  margin-top: auto;
+  align-self: stretch;
+}
+
+.soldOut .price {
+  color: var(--w-muted);
+}

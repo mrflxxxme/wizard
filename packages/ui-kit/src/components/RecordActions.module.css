@@ -1,0 +1,29 @@
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ok,
+.bad {
+  margin: 0;
+  width: 100%;
+  font-size: var(--w-font-size-sm);
+  font-weight: 600;
+}
+
+.ok {
+  color: var(--w-ok);
+}
+
+.bad {
+  color: var(--w-bad);
+}

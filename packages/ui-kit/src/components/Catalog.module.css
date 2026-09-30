@@ -1,0 +1,28 @@
+.catalog {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--w-density-gap);
+  min-width: 0;
+}
+
+.grid {
+  display: grid;
+  gap: var(--w-density-gap);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .colsauto,
+  .cols2,
+  .cols3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 960px) {
+  .colsauto,
+  .cols3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
