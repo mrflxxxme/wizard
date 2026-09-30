@@ -262,6 +262,19 @@ export interface CreditLedgerTable {
   created_at: TsDef;
 }
 
+export interface ImportsTable {
+  id: Generated<string>;
+  system_id: string;
+  source_sha: string;
+  profile: Json | null;
+  mapping: Json | null;
+  status: string;
+  rows_imported: number | null;
+  expires_at: Ts;
+  created_by: string;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -280,4 +293,5 @@ export interface DB {
   "platform.sessions": SessionsTable;
   "platform.invites": InvitesTable;
   "platform.credit_ledger": CreditLedgerTable;
+  "platform.imports": ImportsTable;
 }

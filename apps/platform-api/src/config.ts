@@ -26,6 +26,8 @@ export interface Config {
   milestone: string;
   /** Root of .data/artifacts (deploy.yaml#local.artifacts). */
   artifactsDir: string;
+  /** Encrypted uploaded tables (.data/imports; deploy.yaml#cloud bucket imports, TTL 7 days). */
+  importsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
   runtimePort: number;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
@@ -60,6 +62,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,
     ...over,
+    importsDir:
+      over.importsDir ??
+      (over.artifactsDir ? join(over.artifactsDir, ".imports") : join(REPO_ROOT, ".data", "imports")),
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     billingExemptOrgs:
       over.billingExemptOrgs ?? ((over.authMode ?? env.WIZARD_AUTH_MODE) === "dev" ? [DEFAULT_ORG_ID] : []),
