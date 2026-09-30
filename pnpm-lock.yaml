@@ -29,7 +29,20 @@ importers:
 
   apps/worker: {}
 
-  packages/agents: {}
+  packages/agents:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../appspec
+      '@wizard/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@wizard/pii':
+        specifier: workspace:*
+        version: link:../pii
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/appspec:
     dependencies:
