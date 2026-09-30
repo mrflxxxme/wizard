@@ -19,6 +19,8 @@ export interface RuntimeServices {
   clock: () => Date;
   connectors: "outbox" | "live";
   outbox: OutboxMessage[];
+  /** JSON log sink of createRuntimeApp (runtime.yaml#logging). */
+  log?: (line: Record<string, unknown>) => void;
 }
 
 export interface RuntimeVars {

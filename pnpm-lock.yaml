@@ -46,6 +46,9 @@ importers:
         specifier: ^3.4.9
         version: 3.4.9
     devDependencies:
+      '@wizard/build':
+        specifier: workspace:*
+        version: link:../../packages/build
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

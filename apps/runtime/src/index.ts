@@ -16,6 +16,8 @@ export { createInvalidationBus } from "./data/events.js";
 export { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
 /** Process env and dev-only startup guards (L3-10, L3-11). */
 export { assertStartupAllowed, isLoopbackAddress, type RuntimeEnv, readEnv, StartupError } from "./env.js";
+/** Isolated function executor (unsafe-local, M0–M1): stop all executor processes on shutdown. */
+export { closeExecutors } from "./exec/host.js";
 /** Hono env for route modules in src/routes/* (M0-23, M0-24). */
 export type { OutboxMessage, RuntimeContext, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
 /** JSON error body (runtime.yaml#data_api.error_shape). */
