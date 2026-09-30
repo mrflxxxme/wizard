@@ -140,13 +140,30 @@ routing:
     - "Находки strong-видов (все kinds с strong: true в detectors.kinds), special_context или biometric_context → T0 (pii_high_risk); models.yaml шаг 4 ссылается на этот список"
     - "callType=interview и любая находка detect() → T0 (pii_detected_interview): сырой бриф с ПДн наружу не уходит даже в заглушках"
     - "Иначе tier по умолчанию из models.yaml; если T1 — scrubJson всех сообщений и tool results перед отправкой, scrubbed=true"
-  fallback: "Фолбэк и circuit breaker — models.yaml#fallback_rules. Требование границы: фолбэк возможен только T1 → T0, никогда T0 → T1. Пользователь о фолбэке не предупреждается (решение для беты; записать в CHANGELOG)"
+  fallback: "Фолбэк и circuit breaker — models.yaml#fallback_rules. Требование границы: фолбэк возможен только T1 → T0, никогда T0 → T1. Пользователь о фолбэке не предупреждается (решение для беты; записать в CHANGELOG). Событие model_switched {fromModelId, toModelId, reason} — только во внутренний журнал, в SSE пользователя не отдаётся (tier не раскрывается)"
   model_registry:
-    - "MUST: T0 допускает только модели с флагом inRussia=true в agents/models.yaml (внутренние модели Cloud.ru, Yandex AI Studio). «Внешние» модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash, партнёрские Claude/GPT/Gemini) MUST NOT быть T0"
-    - "MUST NOT: провайдеры Anthropic, OpenAI, Google, xAI в реестре в любом виде (тест-линтер реестра)"
+    - "MUST: T0 допускает только модели с placement=internal в agents/models.yaml (внутренние модели Cloud.ru, Yandex AI Studio). «Внешние» модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash) MUST NOT быть T0; партнёрские Claude/GPT/Gemini запрещены вовсе (правило ниже)"
+    - "MUST NOT: API и сервисы Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников) в реестре. Открытые веса этих вендоров, развёрнутые в РФ (placement=internal, например openai/gpt-oss-120b на Cloud.ru), допустимы — решение F3. Тест-линтер реестра проверяет provider и baseUrl, а не префикс имени модели"
     - "MUST: каждый запрос к Yandex AI Studio несёт заголовок x-data-logging-enabled: false (тест на мок-сервере)"
-    - "MUST: у каждой записи T1 — дата последней проверки условий провайдера (termsCheckedAt); старше 90 дней → предупреждение в CI"
-  storage_of_content: "Содержимое промптов и ответов НЕ хранится в llm_calls и логах. Отладочные транскрипты (M1+, по умолчанию выключены): только после scrub, в РФ, отдельная таблица с TTL 30 дней, доступ под staff_audit_log. Fixture-запись (WIZARD_LLM_MODE=record) — только для брифов eval-стенда без ПДн"
+    - "MUST: у каждого провайдера T1 — дата последней проверки условий (models.yaml#providers.<id>.termsCheckedAt); старше 90 дней → предупреждение в CI"
+  storage_of_content: >
+    Содержимое промптов и ответов НЕ хранится в llm_calls и логах. Отладочные транскрипты (M1+, по умолчанию выключены): только после scrub,
+    в РФ, отдельная таблица с TTL 30 дней, доступ под staff_audit_log. Ошибки провайдеров логируются только как {status, code} — тело ответа
+    (эхо промпта) не логируется. MUST: durable-движок (DBOS, схема dbos) не хранит содержимое промптов и ответов LLM и значения секретов:
+    выход LLM-шага — ссылки (revision, messageId), секрет — только secret://name (platform/workflows.yaml). Fixture-запись (WIZARD_LLM_MODE=record)
+    — только для брифов eval-стенда без ПДн: record отказывает, если sha256 брифа ∉ tools/eval/briefs и demo; T0-запросы в фикстуре хранятся
+    после scrub (ключ фикстуры считается от scrubbed-формы)
+
+region_restriction:                # условия Z.ai: тенанты из запрещённых регионов — только T0 (CHANGELOG week0); M0-06 — поле и шаг роутера, M1 — источники
+  restricted_regions: "Коды субъектов РФ 90 Запорожская обл., 91 Республика Крым, 92 Севастополь, 93 ДНР, 94 ЛНР, 95 Херсонская обл. Точный список — E-LEGAL (условия Z.ai явно называют Крым, Донецк, Запорожье); до ответа юриста действуют все шесть (безопасный вариант)"
+  fields: "platform.orgs.region_code text (двузначный код субъекта РФ; NULL — неизвестен) и platform.orgs.t1_restricted boolean not null default false (db.yaml#tables.orgs)"
+  sources:
+    - "Регион, указанный при регистрации организации (обязательный выбор из списка субъектов)"
+    - "ИНН организации или ИП из реквизитов и привязки карты: первые две цифры — код региона"
+    - "Офлайн-GeoIP по IP входов участников org: база хранится и обновляется в РФ, без внешних запросов; лицензия базы допускает коммерческое использование, атрибуция — THIRD_PARTY_NOTICES.md"
+  rule: "t1_restricted = true, если region_code ∈ restricted_regions ИЛИ любой вход участника org за 90 дней геолоцирован в restricted_regions (даже при другом region_code). Пересчёт — при входе и смене реквизитов. Снять флаг может только staff по документам (staff_audit_log)"
+  fail_safe: "region_code = NULL (регион не указан и не выведен) → роутер считает t1Restricted=true: T0 (policy_region_restricted)"
+  routing: "orgPolicy.t1Restricted — шаг models.yaml#routing_algorithm сразу после ruOnly; значение policy_region_restricted — в CHECK route_reason (db.yaml#tables.llm_calls)"
 
 audit:
   table: platform.llm_calls
@@ -157,7 +174,7 @@ audit:
 ru_only:
   milestone: M1
   setting: "orgs.ru_only (PATCH /orgs/:id/settings, только owner)"
-  effect: "Все вызовы организации → T0 со следующего LLM-шага (router читает политику на каждый вызов, не кэширует дольше 10 с)"
+  effect: "Все вызовы организации → T0 со следующего LLM-шага (router читает политику на каждый вызов, кэш ≤ 10 с). При включении ruOnly или t1_restricted — инвалидация кэша политики (pub/sub) и отмена T1-вызовов организации в полёте (AbortSignal); прерванный шаг повторяется на T0"
   ui: "Бейдж «Только российский контур» в шапке; при включении — предупреждение, что сборка может быть медленнее/дороже (цифры из eval)"
   test: "Включение ruOnly посреди fixture-прогона → все последующие llm_calls.tier = T0"
 

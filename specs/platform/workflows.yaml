@@ -165,7 +165,7 @@ workflows:
     steps:
       - { name: dump, kind: step, does: "потоково из app_<key>_<env> под ролью __system: CSV (UTF-8 с BOM, ;-разделитель) на каждую сущность + spec.json текущей ревизии; код в выгрузку не входит (non_goals). qr_token и hiddenFields «для всех» не выгружаются (connectors/qr.yaml)" }
       - { name: sanitize, kind: step, does: "MUST: ячейки, начинающиеся с = + - @ \\t \\r, экранируются префиксом ' (formula injection, L3-37)" }
-      - { name: store, kind: tx, does: "ZIP в хранилище артефактов, platform.exports {status: ready, expires_at: now()+24 ч}; событие run_finished; журнал staff_audit_log не нужен (действие owner) — запись в exports достаточна" }
+      - { name: store, kind: tx, does: "ZIP в хранилище артефактов, platform.exports {status: ready, expires_at: now()+24 ч} (она же — журнал выгрузок: кто, когда, env, число скачиваний); событие run_finished" }
     download: "GET /systems/:id/exports/:exportId → одноразовая ссылка TTL 15 мин; архив удаляется после expires_at"
     test: "M2-10: выгрузка «форума» содержит CSV всех сущностей и spec.json; ячейка «=1+1» выгружена как «'=1+1»; повторное скачивание по той же ссылке → 410"
 
@@ -185,12 +185,15 @@ events:
     - "MUST: payload не содержит значений секретов и содержимого промптов; тексты для пользователя — на русском"
     - "MUST: тест M0-15 валидирует каждое событие fixture-прогонов «форум» и «кондитерская» по схемам ниже (ajv)"
     - "Терминальные: run_finished, run_failed — ровно одно на прогон, последнее"
+    - "Этот раздел — источник истины имён и payload событий для всех агентов (L1-02). Имена из agents/builder.yaml, которых здесь нет, отображаются так: gate_finished → gate_result; budget_warning → budget_update (UI сам показывает предупреждение при used ≥ 0.8·cap); needs_user → needs_input kind=decision id=escalation; run_finished {version, humanDiff} → run_finished {resultRevision, summary_ru}, человеческий diff — в ops_applied.summary_ru. Других типов событий нет"
   types:
-    run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null" } }
+    run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null", model: "string|null — label модели сборки по умолчанию (agents/models.yaml), для «Ход сборки»" } }
+    plan_ready:      { required: [steps], properties: { steps: "[{id, kind: ops|code, title}] ≤ 20 — план строителя (agents/builder.yaml#loop.phases.plan)" } }
     step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer } }
     step_finished:   { required: [step], properties: { step: string, durationMs: integer } }
     agent_message:   { required: [agent, messageId, text], properties: { agent: "orchestrator|builder|qa", messageId: string, text: string, delta: "boolean — true: кусок стрима, склеивать по messageId" } }
-    chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal", messageId: string, cardVersion: integer } }
+    chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal|notice", messageId: string, cardVersion: integer } }
+    model_switched:  { required: [fromModel, toModel, reason], properties: { fromModel: string, toModel: string, toTier: "T0|T1", reason: "fallback_circuit_open|fallback_error (agents/models.yaml#fallback_rules)" } }
     ops_applied:     { required: [revision, opsCount, summary_ru], properties: { revision: integer, opsCount: integer, opTypes: "string[]", summary_ru: "string[] — человеческий diff" } }
     file_written:    { required: [path, action], properties: { path: string, action: "create|update|delete", sha256: string, size: integer, revision: "integer|null" } }
     gate_started:    { required: [level], properties: { level: "G0|G1|G2", revision: integer } }
