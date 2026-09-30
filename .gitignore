@@ -3,7 +3,7 @@ dist/
 .data/
 .env
 *.log
-tools/eval/results/
+tools/eval/results/*
 test-results/
 playwright-report/
 .claude/worktrees/

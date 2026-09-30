@@ -110,7 +110,13 @@ describe("decideWeek0", () => {
 
   test("report: table, gaps, decision and the parameter line; dry-run is flagged", () => {
     const d = decideWeek0([
-      { ...results(model("glm-5.3", "T1", { firstTry: 6, score: 0.7 }), model("glm-5.1", "T0", { firstTry: 6, score: 0.68 })), dry_run: true },
+      {
+        ...results(
+          model("glm-5.3", "T1", { firstTry: 6, score: 0.7 }),
+          model("glm-5.1", "T0", { firstTry: 6, score: 0.68 }),
+        ),
+        dry_run: true,
+      },
     ]);
     const md = renderWeek0Report(d, { generatedAt: "2026-10-05T12:00:00.000Z" });
     expect(md).toContain("| glm-5.1 (лучшая T0) | T0 | 10 | 60% | 60% | 0.408 |");
@@ -127,7 +133,10 @@ describe("CLI tools/eval/week0.mjs", () => {
     writeFileSync(
       input,
       JSON.stringify(
-        results(model("glm-5.3", "T1", { firstTry: 8, score: 0.8 }), model("glm-5.1", "T0", { firstTry: 8, score: 0.78 })),
+        results(
+          model("glm-5.3", "T1", { firstTry: 8, score: 0.8 }),
+          model("glm-5.1", "T0", { firstTry: 8, score: 0.78 }),
+        ),
       ),
     );
     const out = join(tmp, "week0.md");
