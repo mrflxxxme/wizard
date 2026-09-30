@@ -46,7 +46,17 @@ export async function migrate(db: Db): Promise<void> {
     provider,
     migrationTableSchema: "platform",
   });
-  const { error, results } = await migrator.migrateToLatest();
+  let { error, results } = await migrator.migrateToLatest();
+  // Kysely introspects every table of the database before migrating; a system schema dropped concurrently
+  // (G1 ephemeral schemas, rollbacks) makes that query fail. Nothing was applied then, so retrying is safe.
+  for (
+    let i = 0;
+    i < 3 && error && !results?.length && /schema ".*" does not exist/.test(String(error));
+    i++
+  ) {
+    await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+    ({ error, results } = await migrator.migrateToLatest());
+  }
   if (error) {
     const failed = results?.find((r) => r.status === "Error")?.migrationName;
     throw new Error(`migration ${failed ?? "?"} failed: ${String(error)}`);

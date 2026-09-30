@@ -13,6 +13,9 @@ import s from "./Workspace.module.css";
 
 export const PREVIEW_WIDTHS = [390, 768, 1280] as const;
 const RELOAD_DEBOUNCE_MS = 1000;
+/** PREVIEW_NOT_READY retry: the bundle and runtime pin follow G0 by a few seconds. */
+const NOT_READY_RETRY_MS = 1000;
+const NOT_READY_RETRIES = 30;
 const REFRESH_BEFORE_MS = 60_000;
 
 const prefersDark = () =>
@@ -151,12 +154,19 @@ export function PreviewPane({
     if (!available) return;
     let live = true;
     const delay = loadedOnce.current ? RELOAD_DEBOUNCE_MS : 0;
-    const t = setTimeout(async () => {
+    let t: ReturnType<typeof setTimeout>;
+    // G0 passes before the bundle is written: PREVIEW_NOT_READY is retried until the preview exists.
+    const attempt = async (left: number) => {
       const i = await load(roleRef.current);
-      if (!i || !live) return;
+      if (!live) return;
+      if (!i) {
+        if (left > 0) t = setTimeout(() => void attempt(left - 1), NOT_READY_RETRY_MS);
+        return;
+      }
       loadedOnce.current = true;
       if (i.revision !== shownRevision.current) reloadFrame(i);
-    }, delay);
+    };
+    t = setTimeout(() => void attempt(NOT_READY_RETRIES), delay);
     return () => {
       live = false;
       clearTimeout(t);
