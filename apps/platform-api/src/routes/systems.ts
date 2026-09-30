@@ -92,6 +92,9 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       }),
     );
     const user = c.get("user");
+    // M1: orgId is required for a member of several organizations (dev mode keeps the local org as default).
+    if (!b.orgId && user.orgs.size > 1 && d.config.authMode !== "dev")
+      throw invalid("Укажите организацию, в которой создать систему");
     const orgId = b.orgId ?? user.defaultOrgId;
     if (!user.orgs.has(orgId)) throw new ApiError("FORBIDDEN", "Нет доступа к организации");
     checkOrgAccess(user, orgId, "editor", "Организация");

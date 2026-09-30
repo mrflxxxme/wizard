@@ -2,6 +2,7 @@ import { Kysely, type Migration, type MigrationProvider, Migrator, type RawBuild
 import { PostgresJSDialect } from "kysely-postgres-js";
 import postgres from "postgres";
 import * as m0001 from "../../migrations/0001_m0.js";
+import * as m0002 from "../../migrations/0002_m1_accounts.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -29,7 +30,7 @@ export function json(value: unknown): RawBuilder<unknown> {
   return sql`cast(cast(${JSON.stringify(value ?? null)} as text) as jsonb)`;
 }
 
-const MIGRATIONS: Record<string, Migration> = { "0001_m0": m0001 };
+const MIGRATIONS: Record<string, Migration> = { "0001_m0": m0001, "0002_m1_accounts": m0002 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };
 
