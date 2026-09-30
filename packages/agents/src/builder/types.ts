@@ -47,6 +47,8 @@ export interface QaGenerateInput {
   card: BuildCard;
   spec: AppSpec;
   specVersion: number;
+  /** functions/** sources (arg names for the QA digest); optional. */
+  files?: ReadonlyMap<string, string>;
 }
 export interface QaExplainInput {
   card: BuildCard;
