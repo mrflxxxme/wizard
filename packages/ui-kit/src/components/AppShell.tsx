@@ -210,8 +210,14 @@ export function AppShell(props: AppShellProps): ReactNode {
         </ul>
       </nav>
       <main className={styles.main}>{content}</main>
-      {(props.footer || (piiInSpec && policyPage)) && (
+      {(props.footer || (piiInSpec && policyPage) || user) && (
         <footer className={styles.footer}>
+          {user && (
+            // Runtime page (not an SPA route): consent withdrawal, runtime.yaml#service_endpoints.privacy.
+            <a href="/_wizard/privacy" data-testid="wz-appshell-privacy-link">
+              {ru.appShell.privacy}
+            </a>
+          )}
           {piiInSpec && policyPage && (
             <a href={policyPage} data-testid="wz-appshell-policy-link" onClick={go(policyPage)}>
               {ru.appShell.policy}

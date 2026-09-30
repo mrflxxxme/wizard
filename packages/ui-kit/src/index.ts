@@ -65,6 +65,7 @@ export type {
   AuthApi,
   DataSource,
   ListQuery,
+  LoginConsent,
   Mutation,
   QrCheckRequest,
   QrCheckResponse,

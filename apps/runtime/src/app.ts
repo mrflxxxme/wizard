@@ -5,6 +5,7 @@ import type { PlatformConnectorConfig } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
+import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
@@ -34,6 +35,7 @@ import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { fnRoutes } from "./routes/fn.js";
 import { inviteRoutes } from "./routes/invite.js";
+import { loginApiRoutes, privacyRoutes } from "./routes/login.js";
 import { qrRoutes } from "./routes/qr.js";
 import { staticRoutes } from "./routes/static.js";
 import { notImplemented } from "./routes/stub.js";
@@ -62,6 +64,8 @@ export interface RuntimeAppOptions {
   platform?: PlatformConnectorConfig;
   /** Also write test-mode connector effects to <outboxDir>/<system>/… (main: .data/outbox); default: memory only. */
   outboxDir?: string | null;
+  /** End-user login (M1-05): OTP key, SMS provider, org lookup, Telegram OIDC base. */
+  auth?: RuntimeAuthOptions;
 }
 
 export interface RuntimeApp {
@@ -125,6 +129,16 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       return b;
     },
   });
+  const auth = createAuthDeps({
+    sql: o.db,
+    env,
+    clock: services.clock,
+    connectors,
+    outbox,
+    outboxDir: o.outboxDir ?? null,
+    log: o.log,
+    options: o.auth,
+  });
   const pre = new WeakMap<Request, Pre>();
   const platformHook = platformTelegramHook({
     host: connectors,
@@ -161,8 +175,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard/hooks", notImplemented());
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
+  app.route("/_wizard", privacyRoutes());
   app.all("/_wizard/*", () => notFoundPage());
   app.route("/api/data", dataRoutes());
+  app.route("/api/auth", loginApiRoutes(auth));
   app.route("/api/auth", authRoutes());
   app.route("/api/fn", fnRoutes());
   app.route("/api/events", eventsRoutes());

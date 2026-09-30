@@ -9,6 +9,8 @@ export interface RoleSpecOptions {
   role: string | null;
   compliance: ComplianceInfo;
   features: { phoneOtp: boolean };
+  /** Drafts of a Free org show phone_otp with the plan note (runtime.yaml#auth.methods_M1.phone_otp, F4). */
+  env?: "draft" | "prod";
 }
 
 type LoginMethod = "phone_otp" | "email_otp" | "telegram";
@@ -17,8 +19,9 @@ const METHOD_ORDER: readonly LoginMethod[] = ["email_otp", "phone_otp", "telegra
 export function buildRoleSpec(spec: AppSpec, o: RoleSpecOptions) {
   const role = o.role === null ? undefined : spec.roles.find((r) => r.name === o.role);
   const perms = role ? spec.permissions.filter((p) => p.role === role.name) : [];
+  const phoneAllowed = o.features.phoneOtp || o.env === "draft";
   const methods = (list: readonly string[] | undefined) =>
-    (list ?? []).filter((m): m is LoginMethod => m !== "phone_otp" || o.features.phoneOtp);
+    (list ?? []).filter((m): m is LoginMethod => m !== "phone_otp" || phoneAllowed);
   const loginRoles = spec.roles.filter((r) => r.access === "login");
   const loginMethods = new Set(
     role?.access === "login"
@@ -69,6 +72,7 @@ export function buildRoleSpec(spec: AppSpec, o: RoleSpecOptions) {
       )
       .map((f) => ({ name: f.name, kind: f.kind })),
     loginMethods: METHOD_ORDER.filter((m) => loginMethods.has(m)),
+    ...(!o.features.phoneOtp && loginMethods.has("phone_otp") ? { phoneOtpPlanNote: true } : {}),
     compliance: {
       ...(c.consentText ? { consentText: c.consentText } : {}),
       ...(c.policyPage ? { policyPage: c.policyPage } : {}),

@@ -36,6 +36,8 @@ export interface MemoryOptions {
   now?: () => Date;
   /** Role of a new user created by OTP login (default: first selfSignup role). */
   signupRole?: string;
+  /** A new user's verify without consent → CONSENT_REQUIRED (runtime.yaml#auth.consent_at_login). */
+  consentAtLogin?: boolean;
   /** Called by useUser().login (default: history push to /login). */
   navigate?: (to: string) => void;
 }
@@ -412,8 +414,8 @@ export function createMemoryDataSource(
   };
 
   const auth: AuthApi = {
-    async start(channel, destination) {
-      calls.push({ op: "auth.start", args: [channel, destination] });
+    async start(channel, destination, o) {
+      calls.push({ op: "auth.start", args: o?.role ? [channel, destination, o] : [channel, destination] });
       const code = String(100000 + ((seq++ * 7919 + 4243) % 900000));
       const msg = { channel, destination, code };
       outbox.push(msg);
@@ -422,9 +424,13 @@ export function createMemoryDataSource(
       challenges.set(challengeId, msg);
       return { challengeId };
     },
-    async verify(challengeId, code) {
+    async verify(challengeId, code, consent) {
       const ch = challenges.get(challengeId);
       if (!ch || ch.code !== code) throw wzError("VALIDATION_FAILED", { message: ru.server.badCode });
+      const known = [...users.values()].some(
+        (x) => x[ch.channel === "phone" ? "phone" : "email"] === ch.destination,
+      );
+      if (opts.consentAtLogin && !known && !consent) throw wzError("CONSENT_REQUIRED");
       challenges.delete(challengeId);
       const key = ch.channel === "phone" ? "phone" : "email";
       let u = [...users.values()].find((x) => x[key] === ch.destination);
