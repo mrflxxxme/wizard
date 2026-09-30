@@ -176,7 +176,10 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
 
   beforeAll(async () => {
     await migrate(planMigration(null, rev1, { env: "draft" }));
-    // Seed two rows per entity (row 0 owned by alice, row 1 by bob) as the migration owner (bypasses RLS).
+    // Seed users, then two rows per entity (row 0 owned by alice, row 1 by bob) as the migration owner
+    // (superuser, bypasses RLS).
+    for (const id of users)
+      await sql.unsafe(`insert into ${t("users")} (id, role) values ($1, $2)`, [id, roles[0] ?? ""]);
     for (const e of topoOrder(rev1)) {
       const created: string[] = [];
       for (const i of [0, 1]) {
@@ -216,6 +219,15 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
       }
     }
     expect(mismatches).toEqual([]);
+  });
+
+  test("__system context sees and writes every table, including system tables", async () => {
+    for (const e of rev1.entities) expect(await as("__system", null, (tx) => count(tx, e.name))).toBe(2);
+    expect(await as("__system", null, (tx) => count(tx, "users"))).toBe(2);
+    expect(await as(roles[0] ?? null, alice, (tx) => count(tx, "users"))).toBe(0);
+    await as("__system", null, (tx) =>
+      tx.unsafe(`insert into ${t("_w_audit")} (entity, op, fields) values ('x', 'read', '{a}')`),
+    );
   });
 
   test("deny by default without context or with an unknown role", async () => {

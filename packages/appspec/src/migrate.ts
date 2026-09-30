@@ -8,7 +8,7 @@
 //   SET LOCAL ROLE <runtimeRole>; select set_config('wizard.role', $1, true), set_config('wizard.user_id', $2, true)
 // ($user.<attr> in rowFilter reads set_config('wizard.user_<attr>', ..., true)).
 import { err, type OpsError } from "./errors.js";
-import { SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
+import { SYSTEM_FIELDS } from "./reserved.js";
 import {
   type AppSpec,
   type Entity,
@@ -65,6 +65,100 @@ export interface MigrationPlan {
   /** Spec the plan migrates to (source for set_rls). */
   next: AppSpec;
 }
+
+/** Context role for platform-side access (ctx.systemDb, workflows, retention). */
+export const SYSTEM_ROLE = "__system";
+const SYSTEM_ROLE_COND = `current_setting('wizard.role', true) = '${SYSTEM_ROLE}'`;
+
+/**
+ * Tables created in every system schema by create_schema (runtime.yaml#postgres.system_tables).
+ * Names are not valid AppSpec identifiers (users is reserved, `_w_` cannot start an ident), so no clashes.
+ */
+export const SYSTEM_TABLES: Record<string, string[]> = {
+  users: [
+    `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid()`,
+    `"role" text NOT NULL`,
+    `"display_name" text`,
+    `"phone" text UNIQUE`,
+    `"email" text UNIQUE`,
+    `"telegram_id" bigint UNIQUE`,
+    `"telegram_chat_id" bigint`,
+    `"attrs" jsonb NOT NULL DEFAULT '{}'`,
+    `"invited_by" uuid`,
+    `"created_at" timestamptz NOT NULL DEFAULT now()`,
+    `"blocked_at" timestamptz`,
+  ],
+  _w_sessions: [
+    `"token_hash" bytea PRIMARY KEY`,
+    `"user_id" uuid NOT NULL`,
+    `"created_at" timestamptz NOT NULL DEFAULT now()`,
+    `"last_seen_at" timestamptz`,
+    `"expires_at" timestamptz NOT NULL`,
+  ],
+  _w_otp: [
+    `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid()`,
+    `"channel" text NOT NULL`,
+    `"destination_hash" bytea NOT NULL`,
+    `"code_hash" bytea NOT NULL`,
+    `"attempts" integer NOT NULL DEFAULT 0`,
+    `"expires_at" timestamptz NOT NULL`,
+  ],
+  _w_jobs: [
+    `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid()`,
+    `"kind" text NOT NULL CHECK ("kind" IN ('function', 'workflow_step', 'retention'))`,
+    `"payload" jsonb NOT NULL DEFAULT '{}'`,
+    `"run_at" timestamptz NOT NULL DEFAULT now()`,
+    `"attempts" integer NOT NULL DEFAULT 0`,
+    `"locked_until" timestamptz`,
+    `"idempotency_key" text UNIQUE`,
+  ],
+  _w_connector_calls: [
+    `"idempotency_key" text PRIMARY KEY`,
+    `"integration" text NOT NULL`,
+    `"action" text NOT NULL`,
+    `"status" text NOT NULL`,
+    `"result" jsonb`,
+    `"created_at" timestamptz NOT NULL DEFAULT now()`,
+  ],
+  _w_qr_events: [
+    `"client_event_id" text PRIMARY KEY`,
+    `"device_id" text NOT NULL`,
+    `"integration" text NOT NULL`,
+    `"result" text NOT NULL`,
+    `"clock_skew" boolean NOT NULL DEFAULT false`,
+    `"received_at" timestamptz NOT NULL DEFAULT now()`,
+  ],
+  _w_qr_devices: [
+    `"device_id" text PRIMARY KEY`,
+    `"user_id" uuid`,
+    `"last_sync_at" timestamptz`,
+    `"pending" integer NOT NULL DEFAULT 0`,
+  ],
+  _w_telegram_links: [
+    `"token_hash" bytea PRIMARY KEY`,
+    `"user_id" uuid NOT NULL`,
+    `"expires_at" timestamptz NOT NULL`,
+  ],
+  _w_consents: [
+    `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid()`,
+    `"entity" text NOT NULL`,
+    `"row_id" uuid NOT NULL`,
+    `"policy_version" text NOT NULL`,
+    `"consent_text_hash" bytea NOT NULL`,
+    `"given_at" timestamptz NOT NULL DEFAULT now()`,
+    `"ip_hmac" bytea`,
+  ],
+  _w_audit: [
+    `"id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY`,
+    `"at" timestamptz NOT NULL DEFAULT now()`,
+    `"actor_user_id" uuid`,
+    `"role" text`,
+    `"entity" text NOT NULL`,
+    `"record_id" uuid`,
+    `"op" text NOT NULL`,
+    `"fields" text[] NOT NULL DEFAULT '{}'`,
+  ],
+};
 
 const PHASE: Record<StepKind, number> = {
   create_schema: 0,
@@ -216,10 +310,9 @@ function isUnique(field: Field): boolean {
   return field.unique === true || field.type === "qr_token";
 }
 
+/** FK target table; refs to `users` point at the system users table created with the schema. */
 function fkTarget(field: Field): string | undefined {
-  return field.type === "ref" && field.ref && field.ref.entity !== USERS_ENTITY
-    ? field.ref.entity
-    : undefined;
+  return field.type === "ref" && field.ref ? field.ref.entity : undefined;
 }
 
 function sqlDefault(field: Field): string | undefined {
@@ -473,6 +566,9 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         out.push(
           `CREATE OR REPLACE FUNCTION ${touch}() RETURNS trigger LANGUAGE plpgsql AS $wz$ BEGIN NEW.updated_at := now(); RETURN NEW; END $wz$`,
         );
+        for (const [name, cols] of Object.entries(SYSTEM_TABLES)) {
+          out.push(`CREATE TABLE IF NOT EXISTS ${t(name)} (\n  ${cols.join(",\n  ")}\n)`);
+        }
         break;
       case "create_table": {
         const e = step.entity;
@@ -584,14 +680,24 @@ function columnType(entity: Entity, name: string): string | undefined {
 }
 
 /** SQL predicate for a rowFilter entry; `$user.<attr>` reads current_setting('wizard.user_<attr>', true). */
+/** SQL reading `$user.<attr>` from the transaction context (runtime.yaml#postgres.context). */
+function userAttrSql(attr: string): string {
+  if (attr === "id") return "nullif(current_setting('wizard.user_id', true), '')";
+  if (attr === "role") return "nullif(current_setting('wizard.role', true), '')";
+  return `(nullif(current_setting('wizard.user_attrs', true), '')::jsonb ->> ${quoteLiteral(attr)})`;
+}
+
+/**
+ * SQL predicate for a rowFilter entry. Context reads are wrapped in a scalar subquery so Postgres evaluates
+ * them once per statement; a missing value yields NULL and the row is denied.
+ */
 function filterPredicate(entity: Entity, key: string, value: string | number | boolean): string {
   const type = columnType(entity, key);
   if (!type) throw new Error(`rowFilter: unknown field ${entity.name}.${key}`);
   const col = quoteIdent(key);
   if (typeof value === "string") {
     const m = USER_REF_RE.exec(value);
-    if (m)
-      return `${col} = nullif(current_setting(${quoteLiteral(`wizard.user_${m[1]}`)}, true), '')::${type}`;
+    if (m) return `${col} = (select ${userAttrSql(m[1] as string)}::${type})`;
     return `${col} = ${quoteLiteral(value)}::${type}`;
   }
   if (typeof value === "boolean") return `${col} = ${value ? "TRUE" : "FALSE"}`;
@@ -608,13 +714,21 @@ export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}):
   assertSqlName(schemaName, "schema name");
   const s = quoteIdent(schemaName);
   const out: string[] = [];
-  for (const e of spec.entities) {
-    out.push(`ALTER TABLE ${s}.${quoteIdent(e.name)} ENABLE ROW LEVEL SECURITY`);
-    out.push(`ALTER TABLE ${s}.${quoteIdent(e.name)} FORCE ROW LEVEL SECURITY`);
+  const tables = [...Object.keys(SYSTEM_TABLES), ...spec.entities.map((e) => e.name)];
+  for (const table of tables) {
+    out.push(`ALTER TABLE ${s}.${quoteIdent(table)} ENABLE ROW LEVEL SECURITY`);
+    out.push(`ALTER TABLE ${s}.${quoteIdent(table)} FORCE ROW LEVEL SECURITY`);
   }
   out.push(
     `DO $wz$ DECLARE p record; BEGIN FOR p IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = ${quoteLiteral(schemaName)} AND policyname LIKE 'wz\\_%' LOOP EXECUTE format('DROP POLICY %I ON %I.%I', p.policyname, ${quoteLiteral(schemaName)}, p.tablename); END LOOP; END $wz$`,
   );
+  // ctx.systemDb and workflows run as role '__system' (runtime.yaml#postgres.context). A separate permissive
+  // policy is equivalent to OR-ing it into every (role, op) policy, and also covers tables without permissions.
+  for (const table of tables) {
+    out.push(
+      `CREATE POLICY "wz__system" ON ${s}.${quoteIdent(table)} AS PERMISSIVE FOR ALL TO PUBLIC USING (${SYSTEM_ROLE_COND}) WITH CHECK (${SYSTEM_ROLE_COND})`,
+    );
+  }
   const entities = new Map(spec.entities.map((e) => [e.name, e]));
   for (const p of spec.permissions) {
     const entity = entities.get(p.entity);
@@ -635,6 +749,7 @@ export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}):
     const r = quoteIdent(opts.runtimeRole);
     out.push(`GRANT USAGE ON SCHEMA ${s} TO ${r}`);
     out.push(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${s} TO ${r}`);
+    out.push(`GRANT USAGE ON ALL SEQUENCES IN SCHEMA ${s} TO ${r}`);
   }
   return out;
 }

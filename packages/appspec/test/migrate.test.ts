@@ -9,6 +9,7 @@ import {
   type MigrationPlan,
   planMigration,
   type StepKind,
+  SYSTEM_TABLES,
   toDDL,
   toRLS,
 } from "../src/index.js";
@@ -290,7 +291,7 @@ describe("toDDL", () => {
     expect(all).toContain(`FOREIGN KEY ("f_ref") REFERENCES "${S}"."comment" ("id") ON DELETE SET NULL`);
   });
 
-  test("refs to users get no FK; long constraint names are hashed to ≤63 chars", () => {
+  test("refs to users reference the system users table; long constraint names are hashed to ≤63 chars", () => {
     const long = `a${"b".repeat(39)}`;
     const spec = next(miniSpec(), [
       {
@@ -302,7 +303,7 @@ describe("toDDL", () => {
       },
     ]);
     const ddl = toDDL(planMigration(null, spec), S).join("\n");
-    expect(ddl).not.toMatch(/REFERENCES "[^"]+"\."users"/);
+    expect(ddl).toContain(`FOREIGN KEY ("owner") REFERENCES "${S}"."users" ("id") ON DELETE RESTRICT`);
     for (const m of ddl.matchAll(/(?:CONSTRAINT|INDEX IF NOT EXISTS) "([^"]+)"/g))
       expect(m[1]?.length).toBeLessThanOrEqual(63);
   });
@@ -324,11 +325,25 @@ describe("toRLS", () => {
     expect(rls.some((s) => s.startsWith("DO $wz$") && s.includes("DROP POLICY"))).toBe(true);
   });
 
+  test("system tables: created with the schema, RLS forced, only the __system context may access", () => {
+    const ddl = toDDL(planMigration(null, miniSpec()), S);
+    for (const table of Object.keys(SYSTEM_TABLES)) {
+      expect(ddl.some((x) => x.startsWith(`CREATE TABLE IF NOT EXISTS "${S}"."${table}"`))).toBe(true);
+      expect(rls).toContain(`ALTER TABLE "${S}"."${table}" FORCE ROW LEVEL SECURITY`);
+      expect(rls).toContain(
+        `CREATE POLICY "wz__system" ON "${S}"."${table}" AS PERMISSIVE FOR ALL TO PUBLIC USING (current_setting('wizard.role', true) = '__system') WITH CHECK (current_setting('wizard.role', true) = '__system')`,
+      );
+    }
+    expect(ddl.findIndex((x) => x.includes(`"${S}"."users" (`))).toBeLessThan(
+      ddl.findIndex((x) => x.startsWith(`CREATE TABLE "${S}"."task"`)),
+    );
+  });
+
   test("one policy per (role, op), role from wizard.role, $user.id from wizard.user_id", () => {
-    const policies = rls.filter((s) => s.startsWith("CREATE POLICY"));
+    const policies = rls.filter((s) => s.startsWith("CREATE POLICY") && !s.includes("wz__system"));
     expect(policies).toHaveLength(6);
     expect(policies).toContain(
-      `CREATE POLICY "wz_worker_update" ON "${S}"."task" AS PERMISSIVE FOR UPDATE TO PUBLIC USING (current_setting('wizard.role', true) = 'worker' AND "owner" = nullif(current_setting('wizard.user_id', true), '')::uuid) WITH CHECK (current_setting('wizard.role', true) = 'worker' AND "owner" = nullif(current_setting('wizard.user_id', true), '')::uuid)`,
+      `CREATE POLICY "wz_worker_update" ON "${S}"."task" AS PERMISSIVE FOR UPDATE TO PUBLIC USING (current_setting('wizard.role', true) = 'worker' AND "owner" = (select nullif(current_setting('wizard.user_id', true), '')::uuid)) WITH CHECK (current_setting('wizard.role', true) = 'worker' AND "owner" = (select nullif(current_setting('wizard.user_id', true), '')::uuid))`,
     );
     expect(policies.some((p) => p.includes("wz_guest_delete"))).toBe(false);
   });
@@ -343,11 +358,17 @@ describe("toRLS", () => {
     const sql = toRLS(spec, S).join("\n");
     expect(sql).toContain(`"state" = 'todo'::text`);
     expect(sql).toContain(`"points" = 5`);
-    expect(sql).toContain(`"title" = nullif(current_setting('wizard.user_email', true), '')::text`);
+    expect(sql).toContain(
+      `"title" = (select (nullif(current_setting('wizard.user_attrs', true), '')::jsonb ->> 'email')::text)`,
+    );
   });
 
   test("grants for the runtime role", () => {
-    expect(rls.at(-1)).toBe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${S}" TO "rt"`);
+    expect(rls.slice(-3)).toEqual([
+      `GRANT USAGE ON SCHEMA "${S}" TO "rt"`,
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${S}" TO "rt"`,
+      `GRANT USAGE ON ALL SEQUENCES IN SCHEMA "${S}" TO "rt"`,
+    ]);
   });
 });
 

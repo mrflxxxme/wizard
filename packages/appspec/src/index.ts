@@ -12,6 +12,8 @@ export {
   quoteIdent,
   quoteLiteral,
   type StepKind,
+  SYSTEM_ROLE,
+  SYSTEM_TABLES,
   sqlType,
   toDDL,
   toRLS,
