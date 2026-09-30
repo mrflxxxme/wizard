@@ -937,6 +937,34 @@ const mutations: [string, boolean, (s: Json) => unknown][] = [
       s.workflows[0].trigger.relative = { field: "until", offsetMinutes: -60, note: "x" };
     },
   ],
+  [
+    "role selfSignup",
+    true,
+    (s) => {
+      s.roles[1].selfSignup = true;
+    },
+  ],
+  [
+    "role selfSignup string",
+    false,
+    (s) => {
+      s.roles[1].selfSignup = "yes";
+    },
+  ],
+  [
+    "app timezone",
+    true,
+    (s) => {
+      s.app.timezone = "Europe/Kaliningrad";
+    },
+  ],
+  [
+    "app timezone number",
+    false,
+    (s) => {
+      s.app.timezone = 3;
+    },
+  ],
   ["spec is array", false, () => []],
   ["spec is null", false, () => null],
 ];

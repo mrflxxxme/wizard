@@ -16,6 +16,7 @@ import {
   type Permission,
   planMigration,
   quoteIdent,
+  SYSTEM_TABLES,
   toDDL,
   USERS_ENTITY,
 } from "../src/index.js";
@@ -195,7 +196,9 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     const tables = await sql`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c
       join pg_namespace ns on ns.oid = c.relnamespace where ns.nspname = ${schema} and c.relkind = 'r'`;
-    expect(tables.map((r) => r.relname).sort()).toEqual(rev1.entities.map((e) => e.name).sort());
+    expect(tables.map((r) => r.relname).sort()).toEqual(
+      [...Object.keys(SYSTEM_TABLES), ...rev1.entities.map((e) => e.name)].sort(),
+    );
     expect(tables.every((r) => r.relrowsecurity && r.relforcerowsecurity)).toBe(true);
     const [who] = await as(
       roles[0] ?? null,

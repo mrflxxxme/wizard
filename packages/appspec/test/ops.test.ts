@@ -32,8 +32,14 @@ const field = { name: "due", label: "Срок", type: "date" };
 const opCases: Record<string, OpCase> = {
   set_app: {
     success: {
-      ops: [{ op: "set_app", name: "Новое", description: "Описание" }],
-      check: (s) => expect(s.app).toMatchObject({ name: "Новое", description: "Описание", locale: "ru" }),
+      ops: [{ op: "set_app", name: "Новое", description: "Описание", timezone: "Asia/Yekaterinburg" }],
+      check: (s) =>
+        expect(s.app).toEqual({
+          name: "Новое",
+          description: "Описание",
+          locale: "ru",
+          timezone: "Asia/Yekaterinburg",
+        }),
     },
     failure: { ops: [{ op: "set_app", name: "" }], code: "SCHEMA_INVALID", path: "/ops/0/name" },
   },
@@ -168,7 +174,13 @@ const opCases: Record<string, OpCase> = {
   },
   update_role: {
     success: {
-      ops: [{ op: "update_role", name: "worker", patch: { label: "Работник", loginMethods: ["telegram"] } }],
+      ops: [
+        {
+          op: "update_role",
+          name: "worker",
+          patch: { label: "Работник", loginMethods: ["telegram"], selfSignup: true },
+        },
+      ],
       check: (s) => expect(s.roles[1]).toMatchObject({ label: "Работник", loginMethods: ["telegram"] }),
     },
     failure: {

@@ -457,6 +457,19 @@
           "items": {
             "$ref": "#/$defs/ident"
           }
+        },
+        "rowFilterOps": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "create",
+              "update",
+              "delete"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "к каким ops применяется rowFilter (по умолчанию — ко всем ops разрешения)"
         }
       },
       "description": "Запрещено всё, что не разрешено явно (deny by default)"

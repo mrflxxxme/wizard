@@ -48,7 +48,7 @@ export type MigrationStep =
   | (Base<"drop_index", true> & { name: string })
   | (Base<"drop_column", true> & { entity: string; field: string })
   | (Base<"drop_table", true> & { entity: string })
-  | (Base<"alter_column_type", true> & { entity: string; field: Field; from: FieldType })
+  | (Base<"alter_column_type", true> & { entity: string; field: Field; from: FieldType; notNull: boolean })
   | Base<"set_rls", false>;
 
 export type StepKind = MigrationStep["kind"];
@@ -344,13 +344,15 @@ interface IndexDef {
   unique: boolean;
 }
 
+/** Declared indexes plus implicit ones (ops.yaml#ddl_rules): every ref field, ownerField, created_at. */
 function indexesFor(entity: Entity): Map<string, IndexDef> {
   const out = new Map<string, IndexDef>();
-  // FK columns are indexed automatically (joins, ON DELETE, rowFilter on ownerField).
-  for (const f of entity.fields) {
-    if (f.type === "ref")
-      out.set(pgName("ix", entity.name, f.name), { name: "", fields: [f.name], unique: false });
-  }
+  const implicit = [
+    ...entity.fields.filter((f) => f.type === "ref").map((f) => f.name),
+    ...(entity.ownerField !== undefined ? [entity.ownerField] : []),
+    "created_at",
+  ];
+  for (const f of implicit) out.set(pgName("ix", entity.name, f), { name: "", fields: [f], unique: false });
   for (const idx of entity.indexes ?? []) {
     const unique = idx.unique === true;
     out.set(pgName(unique ? "ux" : "ix", entity.name, ...idx.fields), {
@@ -413,16 +415,42 @@ function diffChecks(entity: string, prev: Field, next: Field, steps: MigrationSt
   }
 }
 
-function diffField(entity: string, prev: Field, next: Field, steps: MigrationStep[]): void {
+/**
+ * Whether the column is NOT NULL in the database. Fields with pii≠none of an entity with
+ * retention.mode=anonymize stay nullable (anonymization nulls them); data API enforces `required`.
+ */
+function dbRequired(entity: Entity, field: Field): boolean {
+  const anonymized = entity.retention?.mode === "anonymize" && (field.pii ?? "none") !== "none";
+  return field.required === true && !anonymized;
+}
+
+function diffField(
+  prevEntity: Entity,
+  nextEntity: Entity,
+  prev: Field,
+  next: Field,
+  steps: MigrationStep[],
+): void {
+  const entity = nextEntity.name;
+  const wasRequired = dbRequired(prevEntity, prev);
+  const isRequired = dbRequired(nextEntity, next);
   if (prev.type !== next.type) {
-    steps.push({ kind: "alter_column_type", destructive: true, entity, field: next, from: prev.type });
+    const notNull = isRequired && sqlDefault(next) !== undefined;
+    steps.push({
+      kind: "alter_column_type",
+      destructive: true,
+      entity,
+      field: next,
+      from: prev.type,
+      notNull,
+    });
     const target = fkTarget(next);
     if (target) steps.push(fkStep(entity, next, target));
     return;
   }
-  if (!prev.required && next.required)
+  if (!wasRequired && isRequired)
     steps.push({ kind: "set_not_null", destructive: true, entity, field: next });
-  if (prev.required && !next.required)
+  if (wasRequired && !isRequired)
     steps.push({ kind: "relax_not_null", destructive: false, entity, field: next.name });
   if (JSON.stringify(sqlDefault(prev)) !== JSON.stringify(sqlDefault(next)))
     steps.push({ kind: "set_default", destructive: false, entity, field: next });
@@ -459,13 +487,13 @@ function diffEntity(prev: Entity, next: Entity, steps: MigrationStep[]): void {
     const old = prevFields.get(f.name);
     if (!old) {
       // ops.yaml#required_new_column_policy: nullable + DEFAULT backfill, NOT NULL only when a default exists.
-      const notNull = f.required === true && sqlDefault(f) !== undefined;
+      const notNull = dbRequired(next, f) && sqlDefault(f) !== undefined;
       steps.push({ kind: "add_column", destructive: false, entity: e, field: f, notNull });
       const target = fkTarget(f);
       if (target) steps.push(fkStep(e, f, target));
     } else {
       if (old.type !== f.type) retyped.add(f.name);
-      diffField(e, old, f, steps);
+      diffField(prev, next, old, f, steps);
     }
   }
   const a = indexesFor(prev);
@@ -577,7 +605,7 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
           `${quoteIdent("created_at")} timestamptz NOT NULL DEFAULT now()`,
           `${quoteIdent("updated_at")} timestamptz`,
           `${quoteIdent("created_by")} uuid DEFAULT nullif(current_setting('wizard.user_id', true), '')::uuid`,
-          ...e.fields.map((f) => columnSql(e.name, f, f.required === true)),
+          ...e.fields.map((f) => columnSql(e.name, f, dbRequired(e, f))),
         ];
         out.push(`CREATE TABLE ${t(e.name)} (\n  ${cols.join(",\n  ")}\n)`);
         out.push(
@@ -594,7 +622,7 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         // Type changes recreate the column (data in it is lost) — draft only.
         out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN IF EXISTS ${quoteIdent(step.field.name)}`);
         out.push(
-          `ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.field.required === true && sqlDefault(step.field) !== undefined)}`,
+          `ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.notNull)}`,
         );
         break;
       case "set_default": {

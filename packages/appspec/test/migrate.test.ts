@@ -61,7 +61,7 @@ describe("planMigration", () => {
           fields: [{ name: "task", label: "Задача", type: "ref", ref: { entity: "task" } }],
         },
       ],
-      ["create_table", "add_fk", "add_index"],
+      ["create_table", "add_fk", "add_index", "add_index"],
       true,
     ],
     ["remove field", [{ op: "remove_field", entity: "task", name: "email" }], ["drop_column"], false],
@@ -177,7 +177,7 @@ describe("planMigration", () => {
           field: { name: "task", label: "Задача", type: "ref", ref: { entity: "project" } },
         },
       ],
-      ["drop_fk", "create_table", "relax_not_null", "add_fk"],
+      ["drop_fk", "create_table", "relax_not_null", "add_fk", "add_index"],
       false,
     ],
   ];
@@ -306,6 +306,47 @@ describe("toDDL", () => {
     expect(ddl).toContain(`FOREIGN KEY ("owner") REFERENCES "${S}"."users" ("id") ON DELETE RESTRICT`);
     for (const m of ddl.matchAll(/(?:CONSTRAINT|INDEX IF NOT EXISTS) "([^"]+)"/g))
       expect(m[1]?.length).toBeLessThanOrEqual(63);
+  });
+
+  test("implicit indexes on ref fields, ownerField and created_at", () => {
+    const spec = next(miniSpec(), [{ op: "update_entity", name: "comment", ownerField: "created_by" }]);
+    const ddl = toDDL(planMigration(null, spec), S);
+    for (const [table, col] of [
+      ["task", "owner"],
+      ["task", "created_at"],
+      ["comment", "task"],
+      ["comment", "created_by"],
+      ["comment", "created_at"],
+    ]) {
+      expect(ddl).toContain(
+        `CREATE INDEX IF NOT EXISTS "ix_${table}_${col}" ON "${S}"."${table}" ("${col}")`,
+      );
+    }
+    const plan = planMigration(miniSpec(), spec);
+    expect(plan.steps.filter((x) => x.kind === "add_index")).toEqual([
+      expect.objectContaining({ entity: "comment", fields: ["created_by"] }),
+    ]);
+  });
+
+  test("retention.mode=anonymize keeps pii columns nullable in the database", () => {
+    const base = next(miniSpec(), [
+      { op: "update_field", entity: "task", name: "email", patch: { required: true } },
+      { op: "update_field", entity: "task", name: "title", patch: { pii: "basic" } },
+    ]);
+    const anon = next(base, [
+      { op: "update_entity", name: "task", retention: { deleteAfterDays: 30, mode: "anonymize" } },
+    ]);
+    const create =
+      toDDL(planMigration(null, anon), S).find((x) => x.startsWith(`CREATE TABLE "${S}"."task"`)) ?? "";
+    expect(create).toMatch(/"title" text CONSTRAINT/);
+    expect(create).toMatch(/"email" text CONSTRAINT/);
+    expect(create).not.toMatch(/"email" text NOT NULL/);
+    const toAnon = planMigration(base, anon, { env: "prod" });
+    expect(
+      toAnon.steps.filter((x) => x.kind === "relax_not_null").map((x) => "field" in x && x.field),
+    ).toEqual(["title", "email"]);
+    expect(toAnon.additiveOnly).toBe(true);
+    expect(planMigration(anon, base).steps.filter((x) => x.kind === "set_not_null")).toHaveLength(2);
   });
 
   test("rejects unsafe schema names", () => {

@@ -397,6 +397,15 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
         }),
       );
     }
+    if (r.selfSignup && r.isAdmin) {
+      out.push(
+        err(
+          "SCHEMA_INVALID",
+          ["roles", i, "selfSignup"],
+          "Самостоятельная регистрация несовместима с ролью администратора",
+        ),
+      );
+    }
     if (r.access === "public" && r.loginMethods !== undefined) {
       out.push(
         err("SCHEMA_INVALID", ["roles", i, "loginMethods"], "Публичная роль не может иметь способов входа"),

@@ -25,7 +25,7 @@ ops:                           # op: params → эффект
   add_role:           "{name, label, access, loginMethods?, isAdmin?}"
   update_role:        "{name, patch}"
   remove_role:        "{name} → только draft, каскадно удаляет permissions"
-  set_permission:     "{role, entity, ops[], rowFilter?, hiddenFields?, readonlyFields?} → upsert по (role, entity)"
+  set_permission:     "{role, entity, ops[], rowFilter?, rowFilterOps?, hiddenFields?, readonlyFields?} → upsert по (role, entity); rowFilterOps ⊆ ops"
   remove_permission:  "{role, entity}"
   add_workflow:       "{workflow}"
   update_workflow:    "{name, workflow}"

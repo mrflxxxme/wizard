@@ -516,6 +516,24 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     ]);
   });
 
+  test("selfSignup is incompatible with isAdmin", () => {
+    const spec = miniSpec();
+    Object.assign(spec.roles[1] as object, { selfSignup: true, isAdmin: true });
+    expect(errorsOf(spec).map((e) => `${e.code} ${e.path}`)).toEqual(["SCHEMA_INVALID /roles/1/selfSignup"]);
+    Object.assign(spec.roles[1] as object, { isAdmin: false });
+    expect(errorsOf(spec)).toEqual([]);
+  });
+
+  test("SQL-standard words that Postgres does not reserve (session, date) are allowed as names", () => {
+    const spec = miniSpec();
+    spec.entities.push({
+      name: "session",
+      label: "Сессия",
+      fields: [{ name: "date", label: "Дата", type: "date" }],
+    });
+    expect(errorsOf(spec)).toEqual([]);
+  });
+
   test("$user.<attr> must be an attribute of the system entity users", () => {
     const spec = miniSpec();
     (spec.permissions[1] as { rowFilter?: unknown }).rowFilter = { title: "$user.salary" };

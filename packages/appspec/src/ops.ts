@@ -35,6 +35,7 @@ const opSchemas = [
     op: z.literal("set_app"),
     name: appSchema.shape.name.optional(),
     description: appSchema.shape.description,
+    timezone: appSchema.shape.timezone,
   }),
   z.strictObject({ op: z.literal("set_theme"), ...themeSchema.shape }),
   z.strictObject({ op: z.literal("add_entity"), ...entitySchema.shape }),
@@ -74,6 +75,7 @@ const opSchemas = [
       access: z.enum(["public", "login"]).optional(),
       loginMethods: z.array(z.enum(LOGIN_METHODS)).min(1).optional(),
       isAdmin: z.boolean().optional(),
+      selfSignup: z.boolean().optional(),
     }),
   }),
   z.strictObject({ op: z.literal("remove_role"), name: identSchema }),
@@ -247,7 +249,7 @@ function applyOne(ctx: Ctx, op: Op): undefined {
   const { op: kind, ...params } = op;
   switch (op.op) {
     case "set_app":
-      assignDefined(spec.app, { name: op.name, description: op.description });
+      assignDefined(spec.app, { name: op.name, description: op.description, timezone: op.timezone });
       return;
     case "set_theme": {
       spec.theme = { ...(spec.theme ?? {}) };

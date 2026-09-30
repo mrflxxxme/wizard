@@ -148,6 +148,7 @@ export const roleSchema = z.strictObject({
   access: z.enum(["public", "login"]),
   loginMethods: z.array(z.enum(LOGIN_METHODS)).min(1).optional(),
   isAdmin: z.boolean().optional(),
+  selfSignup: z.boolean().optional(),
 });
 
 export const rowFilterSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]));
@@ -271,6 +272,7 @@ export const appSchema = z.strictObject({
   description: cpString(0, 2000).optional(),
   locale: z.literal("ru"),
   template: z.string().optional(),
+  timezone: z.string().optional(),
 });
 
 export const LIMITS = {
