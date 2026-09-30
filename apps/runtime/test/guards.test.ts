@@ -184,9 +184,6 @@ describe("route stubs for M0-23/M0-24 (501)", () => {
     ["POST", "/api/fn/partnerQuota"],
     ["GET", "/api/events"],
     ["GET", "/_wizard/qr/manifest"],
-    ["POST", "/_wizard/qr/check"],
-    ["GET", "/"],
-    ["GET", "/tickets/123"],
   ])("%s %s → 501", async (method, path) => {
     const res = await rt.fetch(request(method, HOST, path, method === "POST" ? { body: {} } : {}));
     expect(res.status).toBe(501);

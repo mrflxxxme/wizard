@@ -1,6 +1,6 @@
 // createRuntimeApp (architecture.yaml#interfaces.runtime_handle): host routing → guards → system routes.
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
@@ -25,6 +25,8 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
+import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
+import { payRoutes, previewRoutes } from "./preview/routes.js";
 import type { SystemEnv, SystemRegistry } from "./registry.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
@@ -48,6 +50,8 @@ export interface RuntimeAppOptions {
   /** DB role for data access (default wizard_runtime; null — use the connecting role as is). */
   dbRole?: string | null;
   statementTimeout?: string;
+  /** Connector secrets (M0 default: .env WIZARD_SECRET_<SYSTEMID>_<NAME>; local drafts get a dev QR key). */
+  secrets?: SecretsFactory;
   /** JSON log sink (runtime.yaml#logging); default: none. */
   log?: (line: Record<string, unknown>) => void;
 }
@@ -79,10 +83,20 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     outbox,
   };
   const buses = new Map<string, InvalidationBus>();
+  const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
+  const connectors = createConnectorHost({
+    env,
+    clock: services.clock,
+    outbox,
+    secrets: o.secrets,
+    devSecretsDir: join(dirname(artifactsRoot), "secrets"),
+    log: o.log,
+  });
   const systems = new SystemCache({
     sql: o.db,
     registry: o.registry,
-    artifactsRoot: o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts"),
+    artifactsRoot,
+    qrToken: (entry, spec) => connectors.qrTokenIssuer(entry, spec),
     dbRole: o.dbRole,
     statementTimeout: o.statementTimeout,
     bus: (id, e) => {
@@ -119,14 +133,16 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     }
     return errorResponse(err, c.get("requestId") ?? "");
   });
-  app.route("/_wizard/qr", qrRoutes());
+  app.route("/_wizard/qr", qrRoutes(connectors));
   app.route("/_wizard/hooks", notImplemented());
+  app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.all("/_wizard/*", () => notFoundPage());
   app.route("/api/data", dataRoutes());
   app.route("/api/auth", authRoutes());
   app.route("/api/fn", fnRoutes());
   app.route("/api/events", eventsRoutes());
+  app.route("/api/pay", payRoutes(connectors));
   app.all("/api/*", () => {
     throw new WizardError("NOT_FOUND", { message: "Адрес не найден" });
   });
