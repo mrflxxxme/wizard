@@ -1,5 +1,6 @@
 // @wizard/gates — specs/architecture.yaml#interfaces.gates / gate_context, specs/quality/gates.yaml.
 import { runG0 } from "./g0/run.js";
+import { runG1 } from "./g1/run.js";
 import type { GateContext, GateLevel, GateReport } from "./types.js";
 
 export const PACKAGE = "@wizard/gates";
@@ -12,6 +13,8 @@ export {
   G0_CHECKS,
   G0_TARGET_MS,
   G0_TIME_BUDGET_MS,
+  G1_CHECKS,
+  G1_TIME_BUDGET_MS,
 } from "./catalog.js";
 /** G0-IMP-01 allowlist of package specifiers per area (ui / functions). */
 export { ALLOWED_PACKAGES } from "./g0/imports.js";
@@ -21,14 +24,43 @@ export { shadowSchema } from "./g0/migrations.js";
 export { checkFile, type G0Options, runG0, UI_BUNDLE_WARN } from "./g0/run.js";
 /** forbidden_api.limits: function source ≤ 200 KB. */
 export { FUNCTION_SOURCE_LIMIT } from "./g0/security.js";
+/** G1 check sources: PC matrix, G1 selection, consent probes, SC-<AC> (qa.yaml#checks). */
+export {
+  acceptanceChecks,
+  generateConsentChecks,
+  generatePermissionChecks,
+  selectG1,
+} from "./g1/checks.js";
+/** runG1(ctx, {timeBudgetMs?}); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
+export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
+/** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */
+export { validateScenario } from "./g1/scenario.js";
+/** generateSeed(spec, key, {now?}) and the seed DLP (qa.yaml#seed). */
+export {
+  generateSeed,
+  isSyntheticValue,
+  type SeedOptions,
+  SYNTHETIC_NAMES,
+  seedDlp,
+} from "./g1/seed.js";
+export type {
+  Expect,
+  PermissionProbe,
+  QaCheck,
+  Scenario,
+  Seed,
+  SeedUser,
+  Step,
+} from "./g1/types.js";
 /** passed = no blocker with fail/error; summary counts by status. */
 export { isPassed, summarize } from "./report.js";
 /** GateContext, GateReport, Check, GateLevel, Milestone (gates.yaml#report, architecture.yaml#interfaces.gate_context). */
 export type * from "./types.js";
 
-/** runGates(level, ctx) → GateReport. G1 (M0-11) and G2 (M2) are not implemented yet: the report fails with error. */
+/** runGates(level, ctx) → GateReport. G2 (M2) is not implemented yet: its report fails with error. */
 export async function runGates(level: GateLevel, ctx: GateContext): Promise<GateReport> {
   if (level === "G0") return runG0(ctx);
+  if (level === "G1") return runG1(ctx);
   const startedAt = (ctx.now ?? new Date()).toISOString();
   return {
     level,

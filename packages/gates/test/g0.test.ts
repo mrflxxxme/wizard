@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { buildSystem } from "@wizard/build";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { typecheck } from "../src/g0/typecheck.js";
-import { checkFile, G0_CHECKS, runG0, runGates } from "../src/index.js";
+import { checkFile, G0_CHECKS, runG0, runGates, shadowSchema } from "../src/index.js";
 import { connect, forumCtx, forumFiles, loadYaml, REPO_ROOT } from "./helpers.js";
 
 const db = connect();
@@ -137,5 +137,12 @@ describe("write_file fast path (checkFile)", () => {
     const log = 'export const f = () => console.log("x");\n';
     expect(checkFile("ui/a.tsx", log).every((c) => c.status === "pass")).toBe(true);
     expect(checkFile("functions/lib/a.ts", log).find((c) => c.id === "G0-SEC-01")?.status).toBe("fail");
+  });
+});
+
+describe("shadow schema name", () => {
+  test("accepts systems.schema_key starting with a digit (12 chars [a-z0-9]); rejects injection", () => {
+    expect(shadowSchema("1abcdefghijk")).toBe("app_1abcdefghijk_shadow");
+    expect(() => shadowSchema('x"; drop schema')).toThrow();
   });
 });

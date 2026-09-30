@@ -15,10 +15,14 @@
     "@wizard/appspec": "workspace:*",
     "@wizard/build": "workspace:*",
     "@wizard/connectors": "workspace:*",
+    "@wizard/pii": "workspace:*",
     "@wizard/sdk": "workspace:*",
     "@wizard/ui-kit": "workspace:*",
     "ajv": "^8.20.0",
     "postgres": "^3.4.9",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@wizard/runtime": "workspace:*"
   }
 }
