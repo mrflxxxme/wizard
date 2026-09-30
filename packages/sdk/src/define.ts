@@ -31,7 +31,9 @@ export function mutation<S extends ArgsShape, R>(
   return define("mutation", d);
 }
 
-export function action<S extends ArgsShape, R>(d: Def<S, ActionCtx, R>): FunctionDef<"action", InferArgs<S>, R> {
+export function action<S extends ArgsShape, R>(
+  d: Def<S, ActionCtx, R>,
+): FunctionDef<"action", InferArgs<S>, R> {
   return define("action", d);
 }
 

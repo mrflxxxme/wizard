@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./codegen": "./src/codegen/index.ts",
+    "./host": "./src/host/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -19,5 +22,8 @@
     "hono": "^4.13.12",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
+  },
+  "peerDependencies": {
+    "react": "^19"
   }
 }

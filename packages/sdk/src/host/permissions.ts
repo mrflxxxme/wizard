@@ -46,7 +46,10 @@ const DENY_POLICY: AccessPolicy = {
 };
 
 /** Resolves `$user.id` / `$user.<attr>` placeholders; literals pass through. */
-export function resolveFilterValue(raw: unknown, subject: AccessSubject): { ok: true; value: unknown } | { ok: false } {
+export function resolveFilterValue(
+  raw: unknown,
+  subject: AccessSubject,
+): { ok: true; value: unknown } | { ok: false } {
   if (typeof raw !== "string" || !raw.startsWith("$user.")) return { ok: true, value: raw };
   if (subject.id === null) return { ok: false };
   const attr = raw.slice("$user.".length);
@@ -88,7 +91,9 @@ export function compilePolicy(spec: AppSpec, entity: string, subject: AccessSubj
 export function rowMatches(row: Readonly<Record<string, unknown>>, c: RowConstraint): boolean {
   if (c === null) return true;
   if (c === false) return false;
-  return Object.entries(c).every(([k, v]) => row[k] !== null && row[k] !== undefined && String(row[k]) === String(v));
+  return Object.entries(c).every(
+    ([k, v]) => row[k] !== null && row[k] !== undefined && String(row[k]) === String(v),
+  );
 }
 
 /** Copy of the row without hidden fields (the key is absent, not null). */

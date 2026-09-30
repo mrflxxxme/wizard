@@ -24,7 +24,8 @@ function make<T>(spec: ValidatorSpec, isOptional = false): Validator<T> {
 const rt = (x: Validator<unknown>) => x as RuntimeValidator;
 
 export const v = {
-  string: (o: { min?: number; max?: number; pattern?: RegExp } = {}) => make<string>({ kind: "string", ...o }),
+  string: (o: { min?: number; max?: number; pattern?: RegExp } = {}) =>
+    make<string>({ kind: "string", ...o }),
   int: (o: { min?: number; max?: number } = {}) => make<number>({ kind: "int", ...o }),
   number: (o: { min?: number; max?: number } = {}) => make<number>({ kind: "number", ...o }),
   money: (o: { min?: number; max?: number } = {}) => make<number>({ kind: "money", ...o }),
@@ -41,7 +42,8 @@ export const v = {
     make<T[]>({ kind: "array", item: rt(item), ...o }),
   object: <S extends ArgsShape>(shape: S) => make<InferArgs<S>>({ kind: "object", shape }),
   optional: <T>(inner: Validator<T>) => make<T | undefined>({ kind: "optional", inner: rt(inner) }, true),
-  nullable: <T>(inner: Validator<T>) => make<T | null>({ kind: "nullable", inner: rt(inner) }, inner.isOptional),
+  nullable: <T>(inner: Validator<T>) =>
+    make<T | null>({ kind: "nullable", inner: rt(inner) }, inner.isOptional),
   pagination: () => make<PaginationOpts>({ kind: "pagination" }),
 };
 
@@ -74,7 +76,12 @@ function checkLength(str: string, path: string, s: { min?: number; max?: number 
 }
 
 /** Validates `value` against a validator, appending issues (field path, code, Russian message) to `out`. */
-export function checkValue(validator: Validator<unknown>, value: unknown, path: string, out: FieldIssue[]): void {
+export function checkValue(
+  validator: Validator<unknown>,
+  value: unknown,
+  path: string,
+  out: FieldIssue[],
+): void {
   const s = rt(validator).spec;
   if (value === undefined) {
     if (s.kind === "optional") return;
@@ -132,7 +139,8 @@ export function checkValue(validator: Validator<unknown>, value: unknown, path: 
       if (typeof value !== "boolean") out.push(issue(path, "type", "Ожидается да/нет"));
       return;
     case "id":
-      if (typeof value !== "string" || !ID_RE.test(value)) out.push(issue(path, "id", "Неверный идентификатор"));
+      if (typeof value !== "string" || !ID_RE.test(value))
+        out.push(issue(path, "id", "Неверный идентификатор"));
       return;
     case "literal":
       if (value !== s.value) out.push(issue(path, "literal", "Недопустимое значение"));
@@ -164,7 +172,8 @@ export function checkValue(validator: Validator<unknown>, value: unknown, path: 
         out.push(issue(path, "type", "Ожидается объект"));
         return;
       }
-      if (p.cursor !== null && typeof p.cursor !== "string") out.push(issue(`${path}.cursor`, "type", "Неверный курсор"));
+      if (p.cursor !== null && typeof p.cursor !== "string")
+        out.push(issue(`${path}.cursor`, "type", "Неверный курсор"));
       if (typeof p.numItems !== "number" || !Number.isInteger(p.numItems) || p.numItems < 1) {
         out.push(issue(`${path}.numItems`, "type", "Ожидается целое число ≥ 1"));
       }
@@ -184,7 +193,8 @@ export function checkShape(shape: ArgsShape, value: unknown, path: string, out: 
   for (const key of Object.keys(obj)) {
     if (!Object.hasOwn(shape, key)) out.push(issue(`${prefix}${key}`, "unknown", "Такого поля нет"));
   }
-  for (const [key, validator] of Object.entries(shape)) checkValue(validator, obj[key], `${prefix}${key}`, out);
+  for (const [key, validator] of Object.entries(shape))
+    checkValue(validator, obj[key], `${prefix}${key}`, out);
 }
 
 /** Validates function args; returns issues (empty = valid). */

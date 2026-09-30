@@ -155,15 +155,20 @@ export type Def<S extends ArgsShape, C, R> = {
   handler: (ctx: C, args: InferArgs<S>) => R | Promise<R>;
 };
 export type FunctionName = keyof Functions & string;
-// biome-ignore lint/suspicious/noExplicitAny: variance-free match on the function kind (sdk.md §5)
-type NamesOf<K extends FnKind> = { [N in FunctionName]: Functions[N] extends FunctionDef<K, any, any> ? N : never }[FunctionName];
+// `any` below: variance-free match on the function kind, as in sdk.md §5.
+type NamesOf<K extends FnKind> = {
+  // biome-ignore lint/suspicious/noExplicitAny: see above
+  [N in FunctionName]: Functions[N] extends FunctionDef<K, any, any> ? N : never;
+}[FunctionName];
 export type QueryName = NamesOf<"query">;
 export type MutationName = NamesOf<"mutation">;
 export type ActionName = NamesOf<"action">;
-// biome-ignore lint/suspicious/noExplicitAny: see NamesOf
-export type FnArgs<N extends FunctionName> = Functions[N] extends FunctionDef<FnKind, infer A, any> ? A : never;
-// biome-ignore lint/suspicious/noExplicitAny: see NamesOf
-export type FnResult<N extends FunctionName> = Functions[N] extends FunctionDef<FnKind, any, infer R> ? R : never;
+export type FnArgs<N extends FunctionName> =
+  // biome-ignore lint/suspicious/noExplicitAny: see NamesOf
+  Functions[N] extends FunctionDef<FnKind, infer A, any> ? A : never;
+export type FnResult<N extends FunctionName> =
+  // biome-ignore lint/suspicious/noExplicitAny: see NamesOf
+  Functions[N] extends FunctionDef<FnKind, any, infer R> ? R : never;
 
 // ---------- connectors (recipient addresses are resolved by the host) ----------
 export interface TelegramConnector {
