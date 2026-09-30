@@ -49,7 +49,8 @@ export interface RunContext {
   fixture: FixtureChoice | null;
   fixturesDir?: string;
   db: Sql;
-  g1: G1Runtime;
+  /** null = G1 is not run (live in CI: generated code never executes outside the sandbox, AGENTS.md). */
+  g1: G1Runtime | null;
   env: Record<string, string | undefined>;
   forbiddenForT1: string[];
   /** Wraps the HTTP client of the router (live/record). */
@@ -73,6 +74,8 @@ export interface HarnessRun {
   outcome: string;
   g0_pass: boolean;
   g0g1_pass: boolean;
+  /** G1 was replaced by a pass-through stub (--gates=G0): g0g1_pass is not measured. */
+  g1_skipped: boolean;
   coverage: number;
   tokens: { input: number; cached: number; output: number };
   cost_rub: number;
@@ -282,7 +285,10 @@ export async function runBrief(brief: Brief, c: RunContext): Promise<HarnessRun>
       db: c.db,
       systemKey: `ev${randomBytes(5).toString("hex")}`,
       milestone: "M0",
-      gates: { G0: timed("G0"), G1: timed("G1", { runtime: c.g1.rt, runtimeRole: c.g1.role }) },
+      gates: {
+        G0: timed("G0"),
+        G1: c.g1 ? timed("G1", { runtime: c.g1.rt, runtimeRole: c.g1.role }) : g1Skipped,
+      },
       qa: evalQa(route, { orgPolicy: EVAL_POLICY, ctx: { orgId, runId } }),
       answer,
     });
@@ -317,7 +323,7 @@ export async function runBrief(brief: Brief, c: RunContext): Promise<HarnessRun>
   const g0 = last("G0");
   const g1 = last("G1");
   const g0Pass = !!g0?.passed && g0.revision === finalVersion;
-  const g0g1Pass = g0Pass && !!g1?.passed && g1.revision === finalVersion;
+  const g0g1Pass = !!c.g1 && g0Pass && !!g1?.passed && g1.revision === finalVersion;
   const g0Runs = gates.filter((g) => g.level === "G0");
   const firstPass = g0Runs.findIndex((g) => g.passed);
   const firstPreview = gateTimes.find((g) => g.level === "G0" && g.passed);
@@ -353,6 +359,7 @@ export async function runBrief(brief: Brief, c: RunContext): Promise<HarnessRun>
     outcome: outcome ? outcome.status + (outcome.status === "failed" ? `:${outcome.code}` : "") : "no_build",
     g0_pass: g0Pass,
     g0g1_pass: g0g1Pass,
+    g1_skipped: !c.g1,
     coverage: score.total,
     tokens: {
       input: records.reduce((s, r) => s + r.inputTokens, 0),
@@ -388,6 +395,19 @@ export async function runBrief(brief: Brief, c: RunContext): Promise<HarnessRun>
     },
     gates,
     errors,
+  };
+}
+
+/** G1 stand-in for --gates=G0: passes without checks so the builder finishes after G0 (nothing is executed). */
+async function g1Skipped(ctx: GateContext): Promise<GateReport> {
+  return {
+    level: "G1",
+    passed: true,
+    specVersion: ctx.specVersion,
+    startedAt: new Date().toISOString(),
+    durationMs: 0,
+    checks: [],
+    summary: { pass: 0, fail: 0, warn: 0, skip: 1, error: 0 },
   };
 }
 

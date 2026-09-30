@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { getModel, type LlmMode } from "../../../packages/llm/src/index.ts";
+import { BASELINE_FILE, compareToBaseline, loadBaseline } from "../lib/baseline.mjs";
 import { loadBriefs } from "../lib/briefs.mjs";
 import { loadForbiddenForT1 } from "../lib/canary.mjs";
 import { hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
@@ -21,6 +22,10 @@ export interface HarnessOptions {
   briefsDir?: string;
   outDir: string;
   env: Record<string, string | undefined>;
+  /** "G0" replaces G1 with a pass-through stub: live in CI never executes generated code (AGENTS.md). Default G0G1. */
+  gates?: "G0" | "G0G1";
+  /** Budget cap in ₽ (eval.yaml#live_cadence.budget): no new brief starts once the run has spent this much. */
+  maxCostRub?: number;
   fixturesDir?: string;
   fetch?: typeof globalThis.fetch;
   log?: (line: string) => void;
@@ -34,10 +39,33 @@ export interface HarnessResult {
   finished_at: string;
   models: string[];
   briefs: string[];
+  gates: "G0" | "G0G1";
+  max_cost_rub: number | null;
   runs: HarnessRun[];
+  /** Filled by the CLI: regression against tools/eval/baseline.json (eval.yaml#regression). */
+  regression?: { regressions: string[]; compared: unknown[]; notes: string[] };
+  /** Filled by the CLI: hard thresholds and regressions that fail the run. */
+  violations?: string[];
 }
 
 const DEFAULT_DB = "postgres://wizard@localhost:5433/wizard";
+
+/** Env names of provider keys a live/record run needs and that are not set (names only, never values). */
+export function missingKeys(o: HarnessOptions): string[] {
+  if (o.llmMode === "fixture") return [];
+  const reg = registryFor(undefined, o.env);
+  const ids = o.models.length
+    ? o.models
+    : [...new Set(Object.values(reg.routes).flatMap((r) => r.chain.T1 ?? []))];
+  const providers = new Set(ids.map((id) => getModel(reg, id).provider));
+  providers.add("cloudru"); // T0 reserve of every chain
+  const out: string[] = [];
+  for (const p of providers) {
+    const def = reg.providers[p];
+    if (def?.enabled && !o.env[def.apiKeyEnv]) out.push(def.apiKeyEnv);
+  }
+  return out;
+}
 
 /** Russian reason why the options cannot run, or null. */
 export function harnessPreflight(o: HarnessOptions): string | null {
@@ -52,18 +80,13 @@ export function harnessPreflight(o: HarnessOptions): string | null {
       return `неизвестная модель ${id}: только id из specs/agents/models.yaml#models`;
     }
   }
+  if (o.gates !== undefined && o.gates !== "G0" && o.gates !== "G0G1") return "--gates: G0 или G0G1";
+  if (o.maxCostRub !== undefined && !(o.maxCostRub >= 0)) return "--max-cost-rub: неотрицательное число";
   if (o.llmMode !== "fixture") {
-    if (o.env.WIZARD_UNSAFE_LOCAL_EXEC !== "1")
-      return "live/record: G1 исполняет сгенерированные функции — только локально с WIZARD_UNSAFE_LOCAL_EXEC=1";
-    const ids = o.models.length
-      ? o.models
-      : [...new Set(Object.values(reg.routes).flatMap((r) => r.chain.T1 ?? []))];
-    const providers = new Set(ids.map((id) => getModel(reg, id).provider));
-    providers.add("cloudru"); // T0 reserve of every chain
-    for (const p of providers) {
-      const def = reg.providers[p];
-      if (def.enabled && !o.env[def.apiKeyEnv]) return `live/record: не задан ${def.apiKeyEnv}`;
-    }
+    if (o.gates !== "G0" && o.env.WIZARD_UNSAFE_LOCAL_EXEC !== "1")
+      return "live/record: G1 исполняет сгенерированные функции — только локально с WIZARD_UNSAFE_LOCAL_EXEC=1 (или --gates=G0)";
+    const missing = missingKeys(o);
+    if (missing.length) return `live/record: не задан ${missing.join(", ")}`;
   }
   return null;
 }
@@ -74,14 +97,23 @@ export async function runHarness(o: HarnessOptions): Promise<HarnessResult> {
   const forbiddenForT1 = loadForbiddenForT1();
   const db = connectDb(o.env.WIZARD_DB_URL ?? o.env.DATABASE_URL ?? DEFAULT_DB);
   // Fixture code is the repository's own; live/record code is generated and needs WIZARD_UNSAFE_LOCAL_EXEC=1.
-  const g1 = await createG1Runtime(db, {
-    unsafeLocalExec: o.llmMode === "fixture" || o.env.WIZARD_UNSAFE_LOCAL_EXEC === "1",
-    env: o.env,
-  });
+  const gates = o.gates ?? "G0G1";
+  const g1 =
+    gates === "G0G1"
+      ? await createG1Runtime(db, {
+          unsafeLocalExec: o.llmMode === "fixture" || o.env.WIZARD_UNSAFE_LOCAL_EXEC === "1",
+          env: o.env,
+        })
+      : null;
   const runs: HarnessRun[] = [];
+  const spent = () => runs.reduce((a, r) => a + r.cost_rub, 0);
   try {
     for (const modelId of o.models.length ? o.models : [undefined]) {
       for (const brief of briefs) {
+        if (o.maxCostRub !== undefined && spent() >= o.maxCostRub) {
+          runs.push(skipped(brief, modelId, o, `бюджет прогона ${o.maxCostRub} ₽ исчерпан`));
+          continue;
+        }
         const fixture = resolveFixture(brief, {
           dryRun: o.dryRun,
           ...(o.fixturesDir ? { dir: o.fixturesDir } : {}),
@@ -108,7 +140,7 @@ export async function runHarness(o: HarnessOptions): Promise<HarnessResult> {
       }
     }
   } finally {
-    await g1.close();
+    await g1?.close();
     await db.end();
   }
   return {
@@ -119,6 +151,8 @@ export async function runHarness(o: HarnessOptions): Promise<HarnessResult> {
     finished_at: new Date().toISOString(),
     models: o.models.length ? o.models : [...new Set(runs.map((r) => r.model))],
     briefs: briefs.map((b) => b.id),
+    gates,
+    max_cost_rub: o.maxCostRub ?? null,
     runs,
   };
 }
@@ -149,6 +183,7 @@ function skipped(brief: Brief, modelId: string | undefined, o: HarnessOptions, r
     outcome: "skipped",
     g0_pass: false,
     g0g1_pass: false,
+    g1_skipped: o.gates === "G0",
     coverage: 0,
     tokens: zero,
     cost_rub: 0,
@@ -183,9 +218,21 @@ export async function writeHarnessResult(result: HarnessResult, outDir: string):
   return file;
 }
 
+/**
+ * Fills result.regression (vs `baseline`, null = not compared) and result.violations: hard thresholds
+ * (eval.yaml#thresholds.hard) + regressions (eval.yaml#regression.rule). Non-empty violations = exit code 1.
+ */
+export function finishResult(result: HarnessResult, briefs: Brief[], baseline: unknown | null): string[] {
+  if (baseline) result.regression = compareToBaseline(result, briefs, baseline);
+  result.violations = [...hardViolations(result), ...(result.regression?.regressions ?? [])];
+  return result.violations;
+}
+
 export async function runHarnessCli(args: Record<string, string | true>): Promise<number> {
   const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : undefined);
   const env = { ...process.env };
+  const gates = str("gates");
+  const maxCost = str("max-cost-rub");
   const o: HarnessOptions = {
     llmMode: (str("llm-mode") ?? env.WIZARD_LLM_MODE ?? "fixture") as LlmMode,
     dryRun: Boolean(args["dry-run"]),
@@ -193,20 +240,37 @@ export async function runHarnessCli(args: Record<string, string | true>): Promis
     ...(str("briefs") ? { briefs: str("briefs") } : {}),
     outDir: resolve(str("out") ?? join(import.meta.dirname, "..", "results")),
     env,
+    ...(gates ? { gates: gates as "G0" | "G0G1" } : {}),
+    ...(maxCost !== undefined ? { maxCostRub: Number(maxCost) } : {}),
     log: (l) => process.stderr.write(`${l}\n`),
   };
+  // --preflight: only check the options; exit 3 = provider keys are missing (CI skips the live run cleanly).
+  if (args.preflight) {
+    const missing = o.llmMode === "fixture" ? [] : missingKeys(o);
+    if (missing.length) {
+      console.log(`Нет ключей провайдеров: ${missing.join(", ")}`);
+      return 3;
+    }
+  }
   const bad = harnessPreflight(o);
   if (bad) {
     console.error(`Ошибка: ${bad}`);
     return 1;
   }
+  if (args.preflight) return 0;
   const result = await runHarness(o);
+  // eval.yaml#regression: compare with tools/eval/baseline.json unless --baseline=none.
+  const baselinePath = str("baseline") ?? BASELINE_FILE;
+  const violations = finishResult(
+    result,
+    loadBriefs(o.briefs) as Brief[],
+    baselinePath === "none" ? null : loadBaseline(baselinePath),
+  );
   const file = await writeHarnessResult(result, o.outDir);
   console.log(`\n${renderHarnessReport(result)}`);
   console.log(`Результаты: ${file}`);
-  const v = hardViolations(result);
-  if (v.length) {
-    console.error(`Жёсткие пороги нарушены (${v.length}).`);
+  if (violations.length) {
+    console.error(`Пороги нарушены (${violations.length}).`);
     return 1;
   }
   return 0;
