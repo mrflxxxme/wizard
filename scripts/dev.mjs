@@ -142,6 +142,8 @@ const envFile = join(root, ".env");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 // Offline demo out of the box: fixture mode replays the golden «форум» run unless told otherwise.
 if ((process.env.WIZARD_LLM_MODE ?? "fixture") === "fixture") process.env.WIZARD_FIXTURE ??= "demo/forum";
+// platform-api defaults to session auth (email OTP, M1-02); the local stand keeps the M0 dev user unless told otherwise.
+process.env.WIZARD_AUTH_MODE ??= "dev";
 
 if (!args.has("no-db")) {
   const pgPort = Number(process.env.WIZARD_PG_PORT ?? 5433);

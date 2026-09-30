@@ -35,6 +35,9 @@ function expected(name: string, t: TableDef) {
 }
 
 const m0 = Object.entries(dbYaml.tables).filter(([, t]) => t.milestone === "M0");
+// M1 tables created so far (M1-02 accounts); the column check covers them as well.
+const M1_ACCOUNTS = ["auth_otps", "sessions", "invites"];
+const checked = [...m0, ...Object.entries(dbYaml.tables).filter(([n]) => M1_ACCOUNTS.includes(n))];
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
 let h: DbHandle;
@@ -58,7 +61,7 @@ describe("migrations vs db.yaml", () => {
     );
   });
 
-  for (const [name, def] of m0) {
+  for (const [name, def] of checked) {
     test(`platform.${name}: columns, types and nullability`, async () => {
       const rows = await h.pg<{ column_name: string; data_type: string; is_nullable: string }[]>`
         select column_name, data_type, is_nullable from information_schema.columns
@@ -70,11 +73,12 @@ describe("migrations vs db.yaml", () => {
     });
   }
 
-  test("no tables outside the M0 list (besides the migrator's own)", async () => {
+  test("every M0 and M1-02 table exists; no tables outside db.yaml (besides the migrator's own)", async () => {
     const rows = await h.pg<{ table_name: string }[]>`
       select table_name from information_schema.tables where table_schema = 'platform' and table_type = 'BASE TABLE'`;
     const names = rows.map((r) => r.table_name).filter((n) => !n.startsWith("kysely_"));
-    expect(names.sort()).toEqual(m0.map(([n]) => n).sort());
+    expect(names).toEqual(expect.arrayContaining(checked.map(([n]) => n)));
+    for (const n of names) expect(Object.keys(dbYaml.tables)).toContain(n);
   });
 
   test("M0 views exist (deployments)", async () => {

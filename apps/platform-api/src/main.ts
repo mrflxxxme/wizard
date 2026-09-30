@@ -1,18 +1,14 @@
 // Dev entry (`pnpm dev`): PORT/HOST from scripts/dev.mjs (deploy.yaml#local.ports, #local.bind).
 import { serve } from "@hono/node-server";
 import { createPlatformApi } from "./app.js";
-import { loadConfig } from "./config.js";
-
-const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
+import { assertStartupAllowed, loadConfig } from "./config.js";
 
 const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "127.0.0.1";
-const config = loadConfig();
-if (
-  (config.authMode === "dev" || config.unsafeLocalExec || process.env.WIZARD_DEV_LOGIN === "1") &&
-  !LOOPBACK.has(host)
-) {
-  console.error(`[platform-api] ошибка: в режиме разработки слушать можно только 127.0.0.1 (HOST=${host})`);
+try {
+  assertStartupAllowed(loadConfig(), host);
+} catch (e) {
+  console.error(`[platform-api] ошибка: ${(e as Error).message}`);
   process.exit(1);
 }
 
