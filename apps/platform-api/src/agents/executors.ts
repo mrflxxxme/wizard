@@ -132,6 +132,7 @@ function trackingHandle(rt: RuntimeApp, loaded: { slug: string; env: "draft" | "
       return rt.loadSystem(input);
     },
     outbox: () => rt.outbox(),
+    runJobs: (input) => rt.runJobs(input),
     env: rt.env,
   };
 }

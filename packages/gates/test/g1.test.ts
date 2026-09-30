@@ -37,6 +37,12 @@ const failing = (r: GateReport) =>
     .map((c) => c.id)
     .sort();
 
+/**
+ * Forum AC6 advances 63 days past registration while the example function fixes the event at 2026-11-14 (+30 days
+ * retention): the scenario clock must start after 2026-10-12 to cross the deadline.
+ */
+const m1Now = () => new Date(Math.max(Date.now(), Date.parse("2026-10-20T00:00:00.000Z")));
+
 /** QA scenario for AC1 (a ticket AC): a participant sees only their own tickets. */
 const participantIsolation: QaCheck = {
   id: "SC-AC1-2",
@@ -170,11 +176,12 @@ describe("G1 on the forum", () => {
     expect(c?.evidence).toContain("HTTP 201");
   }, 120_000);
 
-  test("milestone rule: with ctx.milestone M1 the M1 AC runs (and cannot run yet), M2 stays skipped", async () => {
-    const r = await runGates("G1", h.ctx({ milestone: "M1" }));
+  test("milestone M1: the M1 AC runs (retention via advanceTime), M2 stays skipped", async () => {
+    const r = await runGates("G1", h.ctx({ milestone: "M1", now: m1Now() }));
     const s = status(r);
     expect(s["SC-AC5"]).toBe("skip");
-    expect(s["SC-AC6"]).toBe("error");
+    expect(s["SC-AC6"], detail(r)).toBe("pass");
+    expect(s["G1-AC-COVER"]).toBe("pass");
   }, 120_000);
 
   test("time budget: checks over the budget end with error, the gate fails", async () => {
@@ -199,6 +206,14 @@ describe("G1 on the bakery", () => {
       "G1",
       h.ctx({ spec: b.spec, files: b.files, checks: generatePermissionChecks(b.spec) }),
     );
+    expect(failing(r), detail(r)).toEqual([]);
+  }, 120_000);
+
+  test("M1: AC7 (anonymization after 90 days) passes through advanceTime + runWorkflows", async () => {
+    const b = loadBakery();
+    const r = await runGates("G1", h.ctx({ spec: b.spec, files: b.files, milestone: "M1" }));
+    const s = status(r);
+    expect(s["SC-AC7"], detail(r)).toBe("pass");
     expect(failing(r), detail(r)).toEqual([]);
   }, 120_000);
 

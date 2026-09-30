@@ -40,6 +40,30 @@ export function functionArgs(source: string | undefined): string[] {
   );
 }
 
+type Workflow = NonNullable<AppSpec["workflows"]>[number];
+
+function triggerText(w: Workflow): string {
+  const t = w.trigger;
+  const on = `${t.entity ?? ""}${t.field ? `.${t.field}` : ""}`;
+  if (t.type === "on_status") return `on_status ${on}=${JSON.stringify(t.equals)}`;
+  if (t.type === "schedule" && t.relative?.field) {
+    const off = t.relative.offsetMinutes ?? 0;
+    return `schedule ${t.entity}.${t.relative.field}${off < 0 ? "" : "+"}${off}м`;
+  }
+  if (t.type === "schedule") return `schedule cron "${t.cron ?? ""}"`;
+  return `${t.type}${on ? ` ${on}` : ""}`;
+}
+
+function stepText(s: Workflow["steps"][number]): string {
+  const p = (s.params ?? {}) as Record<string, unknown>;
+  const cond = p.if ? ` if ${JSON.stringify(p.if)}` : "";
+  if (s.type === "notify") return `notify(${String(p.integration)} → ${String(p.to)})${cond}`;
+  if (s.type === "function") return `function(${String(p.name)})${cond}`;
+  if (s.type === "wait") return `wait(${String(p.minutes)}м)`;
+  if (s.type === "update" || s.type === "create") return `${s.type}(${JSON.stringify(p.set ?? {})})${cond}`;
+  return `${s.type}${cond}`;
+}
+
 /** Entities (fields with types, enum, required, limits, pii), roles, functions with args, workflows, connectors. */
 export function qaDigest(spec: AppSpec, files?: ReadonlyMap<string, string>): string {
   const lines: string[] = [`Система: ${spec.app.name}`, "Роли:"];
@@ -72,13 +96,19 @@ export function qaDigest(spec: AppSpec, files?: ReadonlyMap<string, string>): st
       );
     }
   }
+  const retained = spec.entities.filter((e) => e.retention);
+  if (retained.length)
+    lines.push(
+      "Сроки хранения (исполняются runWorkflows/advanceTime):",
+      ...retained.map((e) => {
+        const r = e.retention as NonNullable<typeof e.retention>;
+        return `- ${e.name}: ${r.deleteAfterDays} дн. от ${r.anchorField ?? "created_at"}, ${r.mode ?? "delete"}`;
+      }),
+    );
   if (spec.workflows?.length)
     lines.push(
-      "Автоматизации:",
-      ...spec.workflows.map(
-        (w) =>
-          `- ${w.name}: ${w.trigger.type}${w.trigger.entity ? ` ${w.trigger.entity}` : ""} → ${w.steps.map((s) => s.type).join(", ")}`,
-      ),
+      "Автоматизации (исполняются шагами runWorkflows/advanceTime):",
+      ...spec.workflows.map((w) => `- ${w.name}: ${triggerText(w)} → ${w.steps.map(stepText).join(", ")}`),
     );
   if (spec.integrations?.length)
     lines.push(`Подключения: ${spec.integrations.map((i) => `${i.name}(${i.connector})`).join(", ")}`);
