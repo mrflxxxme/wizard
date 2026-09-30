@@ -1,0 +1,11 @@
+# Синтетические значения, которые pii.detect находит, но которые не являются ПДн (security/compliance.yaml#tests, линтер CI).
+# Одна строка — одно точное значение; # — комментарий. Домен example.test зарезервирован (RFC 2606), адреса — по qa.yaml#seed.
+user1@example.test
+user2@example.test
+user3@example.test
+user4@example.test
+user5@example.test
+user6@example.test
+user7@example.test
+user8@example.test
+user9@example.test

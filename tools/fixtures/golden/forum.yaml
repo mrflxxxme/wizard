@@ -1,0 +1,213 @@
+# Золотой сценарий «форум»: источник для node tools/fixtures/gen-golden.mjs forum → tools/fixtures/demo/forum.jsonl.
+# Формат файла и что выводится из спеки автоматически — docs/reviews/impl-notes/M0-21.md.
+# Здесь только смысловые части ответов моделей; структура (сущности, роли, экраны, ops, код, сценарии) берётся из spec и code_root.
+# MUST: без ПДн (тест: pii.detect по фикстуре = 0 вне tools/eval/pii-allowlist.txt).
+version: 1
+name: forum
+spec: specs/appspec/examples/forum.json
+code_root: specs/runtime/examples      # write_file берёт functions/** и ui/** отсюда (пути = пути в спеке)
+recordedAt: "2026-09-30T00:00:00.000Z"
+
+brief: >-
+  Организуем отраслевой форум «Северный ритейл» для сетевой розницы: один день, около 600 участников, три
+  параллельных потока (e-com, логистика, магазины). Нужна регистрация с разными билетами: стандарт, VIP и
+  партнёрские. У каждого типа свой лимит, у каждого потока своя вместимость, продавать сверх лимита нельзя.
+  Стандарт и VIP оплачиваются онлайн картой, после оплаты участник получает на почту билет с QR-кодом.
+  Партнёры получают квоту бесплатных билетов и раздают своим сотрудникам промокоды; партнёр должен видеть,
+  сколько мест из его квоты уже занято, но не чужие квоты. Спикеры подают заявки с темой и описанием доклада,
+  модератор одобряет или отклоняет, одобренным приходит письмо и сообщение в Telegram. На входе волонтёры
+  сканируют QR с телефона, повторный проход по тому же билету не пускаем. За сутки до форума всем участникам
+  напоминание. Программа по потокам и залам должна быть видна всем без входа.
+
+# ---------------------------------------------------------------- interview #1: submit_analysis
+# entities выводятся из spec: {name, label, keyFields: первые ≤ 8 полей, containsPii}
+analysis:
+  goals:
+    - "Продавать и выдавать билеты на форум с лимитами по типам билетов и потокам"
+    - "Принимать и модерировать заявки спикеров"
+    - "Раздавать партнёрам квоты бесплатных билетов по промокодам"
+    - "Пропускать участников на входе по QR без повторного прохода"
+  segment: events
+  skeleton: [catalog, application, process, payment, fulfillment]
+  roles:
+    - { name: organizer,   label: "Организатор",       access: login,  isStaff: true,  evidence: "Организуем отраслевой форум" }
+    - { name: moderator,   label: "Модератор",         access: login,  isStaff: true,  evidence: "модератор одобряет или отклоняет" }
+    - { name: speaker,     label: "Спикер",            access: login,  isStaff: false, evidence: "Спикеры подают заявки с темой и описанием доклада" }
+    - { name: partner,     label: "Партнёр",           access: login,  isStaff: false, evidence: "Партнёры получают квоту бесплатных билетов" }
+    - { name: participant, label: "Участник",          access: login,  isStaff: false, evidence: "около 600 участников" }
+    - { name: volunteer,   label: "Волонтёр на входе", access: login,  isStaff: true,  evidence: "На входе волонтёры сканируют QR" }
+    - { name: visitor,     label: "Посетитель",        access: public, isStaff: false, evidence: "Программа ... должна быть видна всем без входа" }
+  integrations: [yookassa, telegram, email, qr]
+  constraints:
+    - "Около 600 участников, три потока"
+    - "Лимит билетов по типу и вместимость потока, продажа сверх лимита запрещена"
+    - "Повторный проход по одному билету запрещён"
+    - "Напоминание участникам за сутки до форума"
+  resolved:
+    - { forkId: F-EV-TICKETS,  optionId: types_with_quotas,          evidence: "стандарт, VIP и партнёрские. У каждого типа свой лимит" }
+    - { forkId: F-EV-PROGRAM,  optionId: schedule_only,              evidence: "Программа по потокам и залам должна быть видна всем" }
+    - { forkId: F-EV-SPEAKERS, optionId: call_for_papers_moderation, evidence: "Спикеры подают заявки, модератор одобряет или отклоняет" }
+    - { forkId: F-NOTIFY,      optionId: email_and_telegram,         evidence: "одобренным приходит письмо и сообщение в Telegram" }
+    - { forkId: F-ACCESS,      optionId: login_required,             evidence: "партнёр должен видеть ... но не чужие квоты" }
+  unknowns: [F-LOGIN, F-EV-CHECKIN, F-RETENTION]
+  outOfScope: []
+  complexity: large
+
+# ---------------------------------------------------------------- interview #2: ask_questions
+questions:
+  - id: q1
+    forkId: F-LOGIN
+    text: "Как участникам, спикерам и партнёрам входить в систему?"
+    whyItMatters: "Вход через Telegram быстрее для людей, но для него нужен свой бот; вход по почте работает сразу."
+    options:
+      - { id: email,             label: "По коду на почту",       recommended: false }
+      - { id: email_or_telegram, label: "По почте или через Telegram", description: "Telegram уже используется для уведомлений спикерам", recommended: true }
+    allowCustom: true
+  - id: q2
+    forkId: F-EV-CHECKIN
+    text: "Как проверять билеты на входе?"
+    whyItMatters: "При 600 гостях очередь на входе зависит от скорости проверки и от того, работает ли сканер без сети."
+    options:
+      - { id: list_only,          label: "По списку фамилий",                 recommended: false }
+      - { id: qr_online,          label: "QR-сканер с интернетом",            recommended: false }
+      - { id: qr_offline_scanner, label: "QR-сканер, работающий и без сети",  recommended: true }
+    allowCustom: true
+  - id: q3
+    forkId: F-PAYMENT
+    text: "Как принимать оплату за билеты?"
+    whyItMatters: "От способа оплаты зависит, когда билет считается выданным и нужно ли вручную сверять платежи."
+    options:
+      - { id: yookassa_full,    label: "Полная оплата картой онлайн",  recommended: true }
+      - { id: yookassa_prepay,  label: "Предоплата онлайн, остальное на месте", recommended: false }
+      - { id: invoice_manual,   label: "Счёт для компаний, отметка оплаты вручную", recommended: false }
+    allowCustom: true
+  - id: q4
+    forkId: F-STAFF
+    text: "Кто из вашей команды работает в системе?"
+    whyItMatters: "Каждой роли достаются только нужные ей данные: волонтёры на входе не видят контакты участников."
+    options:
+      - { id: single_admin,            label: "Только организатор",                              recommended: false }
+      - { id: admin_manager,           label: "Организатор и волонтёры на входе",                recommended: false }
+      - { id: admin_manager_moderator, label: "Организатор, модератор программы и волонтёры",    recommended: true }
+    allowCustom: true
+  - id: q5
+    forkId: F-RETENTION
+    text: "Сколько хранить контакты участников после форума?"
+    whyItMatters: "Чем короче срок, тем меньше риск по закону о персональных данных; после срока контакты обезличиваются."
+    options:
+      - { id: d30_after_event, label: "30 дней после форума", recommended: true }
+      - { id: y1,              label: "1 год",                recommended: false }
+      - { id: y3,              label: "3 года",               recommended: false }
+    allowCustom: true
+
+# Ответы пользователя (не LLM): два выбраны явно, остальные — кнопкой «Остальное — по рекомендациям».
+answers:
+  - { questionId: q1, forkId: F-LOGIN,      optionId: email_or_telegram,       byRecommendation: false }
+  - { questionId: q2, forkId: F-EV-CHECKIN, optionId: qr_offline_scanner,      byRecommendation: false }
+  - { questionId: q3, forkId: F-PAYMENT,    optionId: yookassa_full,           byRecommendation: true }
+  - { questionId: q4, forkId: F-STAFF,      optionId: admin_manager_moderator, byRecommendation: true }
+  - { questionId: q5, forkId: F-RETENTION,  optionId: d30_after_event,         byRecommendation: true }
+
+# ---------------------------------------------------------------- card: submit_card (без estimate/cap/cardVersion)
+# roles/data/screens/integrations/automations/pii.categories/pii.fields выводятся из spec; здесь — тексты.
+card:
+  title: "Форум «Северный ритейл»"
+  summary: >-
+    Регистрация на форум на 600 участников в трёх потоках: билеты с лимитами и онлайн-оплатой, бесплатные
+    билеты партнёров по промокодам, приём и модерация заявок спикеров, проход по QR и напоминания участникам.
+  segment: events
+  roles:
+    organizer:   { description: "Владелец форума: настраивает потоки, билеты и квоты, видит всех участников", can: ["Настраивать потоки и типы билетов", "Выдавать квоты партнёрам", "Видеть всех участников и платежи", "Модерировать заявки спикеров", "Проверять билеты на входе"] }
+    moderator:   { description: "Отбирает доклады и составляет программу", can: ["Одобрять и отклонять заявки спикеров", "Составлять программу по залам"] }
+    speaker:     { description: "Подаёт заявку на доклад и следит за решением", can: ["Подавать и править свои заявки", "Видеть программу"] }
+    partner:     { description: "Компания-партнёр с квотой бесплатных билетов", can: ["Видеть свою квоту и сколько мест занято"] }
+    participant: { description: "Покупает билет или получает его по промокоду партнёра", can: ["Регистрироваться и оплачивать билет", "Видеть свой билет с QR-кодом"] }
+    volunteer:   { description: "Проверяет билеты на входе", can: ["Сканировать QR и отмечать проход"] }
+    visitor:     { description: "Любой посетитель сайта без входа", can: ["Видеть программу и типы билетов"] }
+  specVsCode:
+    spec:
+      - "Данные: потоки, типы билетов, билеты, заявки спикеров, квоты партнёров, программа, проходы, платежи"
+      - "Кто что видит: участник — только свои билеты, партнёр — только свою квоту, спикер — только свои заявки"
+      - "Статусы билета и заявки спикера"
+      - "Автоматизации: письмо с билетом, напоминание за сутки, уведомление спикеру"
+      - "Подключения: ЮKassa, почта, Telegram, QR"
+      - "Персональные данные участников обезличиваются через 30 дней после форума"
+    code:
+      - "Экраны: главная с программой и регистрацией, модерация заявок, мой билет, сканер на входе"
+      - "Проверка лимитов потока и типа билета при регистрации"
+      - "Выдача билета по промокоду партнёра"
+      - "Рассылка напоминаний"
+  screens:                           # purpose по route
+    "/": "Программа, типы билетов и регистрация"
+    "/moderation": "Одобрение и отклонение заявок спикеров"
+    "/ticket/:id": "QR-код и статус билета участника"
+    "/scanner": "Проверка билетов на входе по QR"
+  integrations:                      # по имени интеграции
+    yookassa: { purpose: "Онлайн-оплата билетов картой", userActionRequired: "подключить магазин ЮKassa" }
+    telegram: { purpose: "Вход и уведомления спикерам", userActionRequired: "создать бота в Telegram и указать его токен" }
+    email:    { purpose: "Письма с билетом и решением по заявке" }
+    qr:       { purpose: "QR-коды билетов и сканер на входе" }
+  automations:                       # по имени воркфлоу; name = label воркфлоу
+    ticket_reminder:   { when: "За сутки до начала форума", then: "Участникам с оплаченным или выданным билетом уходит напоминание" }
+    ticket_paid_email: { when: "Билет оплачен", then: "Участник получает письмо с QR-кодом билета" }
+    speaker_approved:  { when: "Заявка спикера одобрена", then: "Спикер получает письмо и сообщение в Telegram" }
+  pii:
+    retention:                       # humanText по сущности; сроки — из spec
+      ticket: "ФИО, почта и телефон участников обезличиваются через 30 дней после форума"
+      speaker_application: "Контакты спикеров обезличиваются через 180 дней после подачи заявки"
+    summary: >-
+      Храним ФИО, почту и телефон участников и спикеров. Их видят организатор и модератор (телефон спикера
+      модератору скрыт); волонтёры на входе контактов не видят.
+  assumptions:
+    - "Вход — по коду на почту или через Telegram (выбрано)"
+    - "Проверка на входе — QR-сканер, работающий без сети (выбрано)"
+    - "Оплата — полностью онлайн через ЮKassa (по рекомендации)"
+    - "Письма уходят с адреса платформы; свой почтовый ящик можно подключить позже"
+    - "Данные оператора персональных данных и текст согласия владелец заполняет в настройках"
+  outOfScope: []
+
+# Критерии приёмки карточки = spec.acceptance после сборки (builder.yaml: set_acceptance из карточки 1:1; steps генерирует QA).
+# AC8 добавлен: у каждой роли с входом ≥ 1 AC (orchestrator.yaml#algorithm.S5_card.validate), у модератора в forum.json его нет.
+acceptance:
+  - { id: AC1, text: "Билет нельзя купить сверх лимита потока",               check: { type: scenario,   role: participant, entity: ticket } }
+  - { id: AC2, text: "Партнёр видит только свою квоту",                       check: { type: scenario,   role: partner, entity: partner_quota } }
+  - { id: AC3, text: "Спикер не видит чужие заявки",                          check: { type: scenario,   role: speaker, entity: speaker_application } }
+  - { id: AC4, text: "Повторный вход по одному QR отклоняется",               check: { type: scenario,   role: volunteer, entity: checkin } }
+  - { id: AC5, text: "Сканер работает без сети и синхронизирует (M2)",        check: { type: scenario,   role: volunteer, entity: checkin, milestone: M2 } }
+  - { id: AC6, text: "ПДн участников удаляются через 30 дней после форума",   check: { type: constraint, role: organizer, entity: ticket, milestone: M1 } }
+  - { id: AC7, text: "Посетитель без входа не видит билеты",                  check: { type: permission, role: visitor, entity: ticket, op: read, expect: deny } }
+  - { id: AC8, text: "Модератор может одобрить или отклонить заявку спикера", check: { type: permission, role: moderator, entity: speaker_application, op: update, expect: allow } }
+
+# ---------------------------------------------------------------- plan: submit_plan
+plan:
+  - { id: P1, kind: ops,  title: "Роли и данные: потоки, билеты, заявки, квоты, программа, проходы, платежи", targets: [roles, entities], acRefs: [] }
+  - { id: P2, kind: ops,  title: "Права: кто что видит и меняет", targets: [permissions], acRefs: [AC2, AC3, AC7, AC8] }
+  - { id: P3, kind: ops,  title: "Автоматизации и подключения: ЮKassa, почта, Telegram, QR", targets: [workflows, integrations], acRefs: [AC4, AC6] }
+  - { id: P4, kind: ops,  title: "Объявления функций и экранов, критерии приёмки, страница политики", targets: [functions, pages, acceptance, compliance], acRefs: [] }
+  - { id: P5, kind: code, title: "Серверная логика: лимиты, квоты партнёров, регистрация, напоминания", targets: ["functions/"], acRefs: [AC1, AC2] }
+  - { id: P6, kind: code, title: "Экраны: главная, модерация, мой билет, сканер", targets: ["ui/"], acRefs: [AC4, AC5] }
+
+# ---------------------------------------------------------------- build_ops / build_code
+build:
+  # Спека, которую собирает строитель = spec + spec_patch (RFC 6902: add|replace|remove), acceptance ← карточка,
+  # compliance без полей владельца (OWNER_ONLY_FIELD). Почта — отправитель платформы: адрес и SMTP владелец задаёт сам.
+  spec_patch:
+    - { op: replace, path: /integrations/2/config/provider, value: platform }
+    - { op: remove,  path: /integrations/2/config/host }
+    - { op: remove,  path: /integrations/2/config/port }
+    - { op: remove,  path: /integrations/2/config/secure }
+    - { op: remove,  path: /integrations/2/config/user }
+    - { op: remove,  path: /integrations/2/config/from }
+    - { op: remove,  path: /integrations/2/secretRefs }
+  files_per_step: 3                  # write_file в одном шаге build_code; run_gate G0 — в последнем шаге с записью
+  ops_done_text: "Спека собрана: {roles} ролей, {entities} видов данных, {permissions} правил доступа, {workflows} автоматизации, {integrations} подключения."
+  code_done_text: "Код записан: {functions} файлов серверной логики и {ui} экрана. G0 пройден."
+
+# ---------------------------------------------------------------- qa_generate: submit_checks
+# Сценарии для AC type=scenario|constraint с milestone ≤ M0 берутся из spec.acceptance[].check (actors, steps);
+# значения, похожие на ПДн, заменяются синтетикой (email — только tools/eval/pii-allowlist.txt).
+qa:
+  milestone: M0
+  replace:                           # регулярное выражение по целому строковому значению → синтетика; {n} — номер значения
+    - { pattern: '^\p{Lu}\p{Ll}+ Тестова?$',     with: "Участник {n}" }
+    - { pattern: '^[a-z0-9]+@example\.test$',     with: "user{n}@example.test" }
