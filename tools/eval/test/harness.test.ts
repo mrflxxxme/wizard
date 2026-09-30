@@ -112,11 +112,15 @@ describe("fixture mode", async () => {
 
 describe("--dry-run: canaries and pii_leaks", async () => {
   const result = await runHarness(
-    opts({ dryRun: true, briefs: "ev-03-partner-quotas,hz-03-field-service,hz-04-client-crm" }),
+    opts({
+      dryRun: true,
+      briefs: "ev-03-partner-quotas,hz-01-purchase-requests,hz-03-field-service,hz-04-client-crm",
+    }),
   );
 
   test("canary briefs replay a stand-in with their canary sentences; scrub keeps them out of T1 payloads", () => {
-    for (const id of ["ev-03-partner-quotas", "hz-03-field-service"]) {
+    // hz-01: «помощник финдиректора Hiroshi Tanaka-Weller» (FU-2) must be scrubbed as well.
+    for (const id of ["ev-03-partner-quotas", "hz-01-purchase-requests", "hz-03-field-service"]) {
       const r = result.runs.find((x) => x.brief === id);
       expect(r?.errors, id).toEqual([]);
       expect(r?.g0g1_pass, id).toBe(true);
@@ -150,9 +154,23 @@ describe("--dry-run: canaries and pii_leaks", async () => {
     expect(renderHarnessReport(leak)).toContain("Жёсткие пороги нарушены");
   });
 
-  // Blocked outside tools/eval: tools/fixtures/golden/bakery.yaml asks F-VISIBILITY, the orchestrator (M0-12) selects
-  // F-APPROVAL/F-INVENTORY instead → ask_questions is rejected and the retry is a FIXTURE_MISS (docs/reviews/impl-notes/M0-18.md).
-  test.todo("gd-01-cake-preorder reaches G0+G1 on demo/bakery");
+});
+
+describe("fixture mode: bakery (hard threshold «кондитерская G0+G1 = 100%»)", async () => {
+  const result = await runHarness(opts({ briefs: "gd-01-cake-preorder" }));
+
+  test("gd-01-cake-preorder reaches G0+G1 on demo/bakery without FIXTURE_MISS", () => {
+    const r = result.runs.find((x) => x.brief === "gd-01-cake-preorder");
+    expect(r?.errors).toEqual([]);
+    expect(r).toMatchObject({ fixture: "demo/bakery", g0_pass: true, g0g1_pass: true, outcome: "succeeded" });
+    expect(r?.fixture_miss).toBe(false);
+    expect(r?.questions_asked).toBe(4);
+    expect(r?.gates.map((g) => [g.level, g.passed])).toEqual([
+      ["G0", true],
+      ["G1", true],
+    ]);
+    expect(hardViolations(result)).toEqual([]);
+  });
 });
 
 describe("preflight and G1 inputs", () => {

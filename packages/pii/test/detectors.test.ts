@@ -302,6 +302,76 @@ describe("person_name: non-Slavic and English/European names (FU-1)", () => {
   });
 });
 
+describe("person_name_latin: names beyond English/European, compound surnames, role context (FU-2)", () => {
+  test("hz-01 canary after a role word in the genitive", () => {
+    expect(
+      found("Сейчас заявки вручную сводит помощник финдиректора Hiroshi Tanaka-Weller, срочные он принимает"),
+    ).toEqual([["person_name_latin", "Hiroshi Tanaka-Weller"]]);
+  });
+  test.each([
+    "Hiroshi Tanaka",
+    "Wang Wei",
+    "Priya Sharma",
+    "Mehmet Yılmaz",
+    "Zeynep Öztürk",
+    "Reza Hosseini",
+    "Fatima Haddad",
+    "Camila Oliveira",
+    "Joaquín Ortega",
+    "Seo-yeon Choi",
+    "Kim Min-jun",
+    "Park Ji-hoon",
+  ])("dictionary name: %s", (n) => {
+    expect(found(`Заказ оформил ${n}, доставка завтра`)).toEqual([["person_name_latin", n]]);
+  });
+  test.each([
+    "Gabriel García Márquez",
+    "Pieter van der Berg",
+    "Maria da Silva",
+    "Sean O'Neil",
+    "Connor McGregor",
+    "Douglas MacArthur",
+    "Omar al-Rashid",
+    "John Smith-Jones",
+  ])("compound surname: %s", (n) => {
+    expect(found(`Автор отзыва — ${n}, просит связаться`)).toEqual([["person_name_latin", n]]);
+  });
+  test.each([
+    ["менеджер Aiko Tanabe", "Aiko Tanabe"],
+    ["Контакт: Chiamaka Eze", "Chiamaka Eze"],
+    ["Ответственный — Tupac Quispe", "Tupac Quispe"],
+    ["меня зовут Bjarke Lindholm", "Bjarke Lindholm"],
+    ["CEO Nomvula Khumalo", "Nomvula Khumalo"],
+    ["директор Esi Owusu-Ansah", "Esi Owusu-Ansah"],
+    ["координатор Juan Carlos Quispe", "Juan Carlos Quispe"],
+  ])("role context: %s", (text, n) => {
+    expect(found(text)).toEqual([["person_name_latin", n]]);
+  });
+  test.each([
+    "React Native",
+    "Visual Studio",
+    "New York",
+    "Hello World",
+    "Google Sheets",
+    "Менеджер Google Sheets",
+    "Разработчик React Native",
+    "Директор New York офиса",
+    "Контакт: Visual Studio Code",
+    "Ответственный — Hello World",
+    "CEO Tesla Motors",
+    "Владелец MacBook Pro",
+    "Гостиница Radisson Blu",
+    "Suzuki Swift",
+    "Ping Pong",
+    "Hong Kong",
+    "Rio de Janeiro",
+    "Santiago de Chile",
+    "Aston Martin",
+  ])("hard negative: %s", (text) => {
+    expect(found(text)).toEqual([]);
+  });
+});
+
 describe("phone_intl", () => {
   test("+country code ≠ 7 with 8–15 digits", () => {
     expect(found("Минск: +375 29 123-45-67")).toEqual([["phone_intl", "+375 29 123-45-67"]]);

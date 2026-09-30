@@ -80,6 +80,46 @@ const WEST_SURNAME =
   );
 const UNKNOWN_SURNAME_LAT =
   "Pemberton Ashworth Kilgore Whitfield Hargreaves Thornbury Fairbanks Galloway".split(" ");
+// FU-2 vocabulary: names beyond English/European, compound surnames, role words, pairs absent from the dictionary.
+const GLOBAL_FIRST =
+  "Hiroshi Kenji Yuto Haruka Wei Xiaoming Minjun Seo-yeon Rahul Priya Arjun Omar Fatima Reza Shirin Mehmet Zeynep Emre Santiago Camila Joaquin".split(
+    " ",
+  );
+const GLOBAL_SURNAME =
+  "Tanaka Suzuki Yamamoto Zhang Wang Park Choi Sharma Patel Gupta Hassan Haddad Hosseini Yılmaz Öztürk Demir García Oliveira Marquez Ortega".split(
+    " ",
+  );
+const COMPOUND_LATIN = [
+  "Gabriel García Márquez",
+  "Pieter van der Berg",
+  "Sean O'Neil",
+  "Connor McGregor",
+  "Omar al-Rashid",
+  "Park Ji-hoon",
+  "Kim Min-jun",
+  "Maria da Silva",
+  "Hiroshi Tanaka-Weller",
+];
+const ROLE_BEFORE = [
+  "Менеджер",
+  "Директор",
+  "Помощник финдиректора",
+  "Координатор",
+  "CEO",
+  "Контакт:",
+  "Ответственный —",
+  "Меня зовут",
+];
+const UNKNOWN_LATIN_PAIR = [
+  "Aiko Tanabe",
+  "Chiamaka Eze",
+  "Nomvula Khumalo",
+  "Tupac Quispe",
+  "Bjarke Lindholm",
+  "Esi Owusu-Ansah",
+  "Thanh Nguyen-Tran",
+  "Sione Tupou",
+];
 const PATRONYMIC_BASE = "Иван Сергей Алексей Андрей Николай Александр Михаил Владимир Петр Юрий".split(" ");
 
 function femSurname(s: string): string {
@@ -829,6 +869,56 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
   }
   fu1Traps.forEach((text, i) => {
     out.push({ id: `t${String(141 + i).padStart(3, "0")}`, group: "trap", text, spans: [] });
+  });
+
+  // FU-2: names beyond English/European, compound Latin surnames, role context; appended so earlier lines stay unchanged.
+  const globalFull = (): string => `${pick(GLOBAL_FIRST)} ${pick(GLOBAL_SURNAME)}`;
+  const fu2: Array<() => Part[]> = [
+    () => [
+      "Сейчас заявки вручную сводит помощник финдиректора ",
+      P("person_name_latin", "Hiroshi Tanaka-Weller"),
+      ", срочные он принимает в Telegram ",
+      P("social_handle", "@procure_desk_ht"),
+      ".",
+    ],
+    () => [
+      `${pick(ROLE_BEFORE)} `,
+      P("person_name_latin", pick(UNKNOWN_LATIN_PAIR)),
+      " подключится к созвону",
+    ],
+    () => ["Заказ оформил ", P("person_name_latin", globalFull()), ", доставка завтра"],
+    () => ["Contact: ", P("person_name_latin", globalFull()), ", ", P("email", email())],
+    () => ["Автор отзыва — ", P("person_name_latin", pick(COMPOUND_LATIN)), ", просит связаться"],
+    () => [P("person_name_latin", globalFull()), " will call you back on ", P("phone_intl", phoneIntl())],
+  ];
+  const fu2Traps = [
+    "Менеджер Google Sheets настроит выгрузку",
+    "Разработчик React Native приложения нужен к пятнице",
+    "Директор New York офиса прилетает завтра",
+    "Ответственный — Visual Studio Code",
+    "Контакт: Hello World",
+    "Клиент Microsoft Teams не открывается",
+    "Владелец MacBook Pro и iPhone",
+    "Спикер Apple Music и Yandex Cloud",
+    "CEO Tesla Motors выступил",
+    "Hong Kong и Rio de Janeiro",
+    "Suzuki Swift и Ping Pong",
+    "Гостиница Radisson Blu рядом",
+    "Координатор Black Friday акции",
+    "Партнёр Coca Cola на форуме",
+    "Консультант Salesforce Cloud поможет",
+    "Contact Google Sheets support",
+    "Manager Visual Studio Code extension",
+    "Director New York Times",
+    "Santiago de Chile и Buenos Aires",
+    "Hello World на React Native и Visual Studio",
+  ];
+  for (let i = 0; i < 30; i++) {
+    const t = fu2[i % fu2.length] as () => Part[];
+    out.push({ id: `p${String(341 + i).padStart(3, "0")}`, group: "positive", ...build(t()) });
+  }
+  fu2Traps.forEach((text, i) => {
+    out.push({ id: `t${String(171 + i).padStart(3, "0")}`, group: "trap", text, spans: [] });
   });
   return out;
 }

@@ -26,6 +26,22 @@ export function fold(s: string): string {
   return s.toLowerCase().replace(/ё/g, "е");
 }
 
+const LATIN_EXT = /[\u00c0-\u024f]/;
+
+/** fold() for name lookups: Latin letters with diacritics lose them (García → garcia, Barış → baris). */
+export function nameKey(s: string): string {
+  if (!LATIN_EXT.test(s)) return fold(s);
+  return fold(
+    s
+      .replace(
+        /[ıİłŁøØđĐ]/g,
+        (c) => ({ ı: "i", İ: "I", ł: "l", Ł: "L", ø: "o", Ø: "O", đ: "d", Đ: "D" })[c] ?? c,
+      )
+      .normalize("NFD")
+      .replace(/\p{M}/gu, ""),
+  );
+}
+
 /** Context that marks a number as a non-personal identifier (order, invoice, tracking…). */
 export const NON_PERSONAL_NUMBER_CTX =
   /(?:№|#|(?<!\p{L})(?:заказ|order|артикул|арт\.|sku|счёт|счет|сч\.|трек|накладн|договор|id|огрн|кпп|бик|окпо|оквэд|р\/с|к\/с|инвойс|invoice|номер отправления|отправлени|партия|лот)\p{L}*)/iu;
