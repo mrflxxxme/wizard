@@ -38,11 +38,9 @@ function jsonInt() {
 }
 
 function uniqueItems<T extends z.ZodType>(item: T) {
-  return z
-    .array(item)
-    .refine((arr) => new Set(arr.map((v) => JSON.stringify(v))).size === arr.length, {
-      message: "Элементы массива должны быть уникальны",
-    });
+  return z.array(item).refine((arr) => new Set(arr.map((v) => JSON.stringify(v))).size === arr.length, {
+    message: "Элементы массива должны быть уникальны",
+  });
 }
 
 /** JSON Schema `{"type":"object"}` without further constraints. */
@@ -75,7 +73,10 @@ export const PERMISSION_OPS = ["read", "create", "update", "delete"] as const;
 export const ON_DELETE = ["restrict", "cascade", "set_null"] as const;
 
 export const themeSchema = z.strictObject({
-  accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  accent: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
   font: z.enum(["Onest", "Inter Tight", "Manrope", "PT Sans", "IBM Plex Sans"]).optional(),
   radius: z.literal([0, 4, 8, 12, 16]).optional(),
   density: z.enum(["compact", "regular"]).optional(),
@@ -145,7 +146,14 @@ export const permissionSchema = z.strictObject({
   readonlyFields: z.array(identSchema).optional(),
 });
 
-export const TRIGGER_TYPES = ["on_create", "on_update", "on_status", "schedule", "webhook", "manual"] as const;
+export const TRIGGER_TYPES = [
+  "on_create",
+  "on_update",
+  "on_status",
+  "schedule",
+  "webhook",
+  "manual",
+] as const;
 export const STEP_TYPES = [
   "update",
   "create",
@@ -241,7 +249,14 @@ export const appSchema = z.strictObject({
   template: z.string().optional(),
 });
 
-export const LIMITS = { entities: 60, fieldsPerEntity: 80, roles: 20, workflows: 100, functions: 200, pages: 80 };
+export const LIMITS = {
+  entities: 60,
+  fieldsPerEntity: 80,
+  roles: 20,
+  workflows: 100,
+  functions: 200,
+  pages: 80,
+};
 
 export const appSpecSchema = z.strictObject({
   specVersion: z.literal("1"),

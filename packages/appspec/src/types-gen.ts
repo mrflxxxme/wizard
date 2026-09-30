@@ -33,7 +33,9 @@ function doc(label: string): string {
 }
 
 function entityDecl(entity: Entity, typeName: string): string {
-  const row = entity.fields.map((f) => `  ${doc(f.label)}\n  ${f.name}: ${tsType(f)}${f.required ? "" : " | null"};`);
+  const row = entity.fields.map(
+    (f) => `  ${doc(f.label)}\n  ${f.name}: ${tsType(f)}${f.required ? "" : " | null"};`,
+  );
   const input = entity.fields.map((f) => {
     const optional = !f.required || f.default !== undefined;
     return `  ${f.name}${optional ? "?" : ""}: ${tsType(f)}${f.required ? "" : " | null"};`;

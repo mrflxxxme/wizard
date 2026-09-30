@@ -2,9 +2,9 @@
 import { z } from "zod";
 import { err, fromZodIssues, type OpsError } from "./errors.js";
 import {
+  type AppSpec,
   acceptanceSchema,
   aiActionSchema,
-  type AppSpec,
   appSchema,
   CONNECTORS,
   complianceSchema,
@@ -123,7 +123,11 @@ export type OpName = Op["op"];
 export const OP_NAMES: readonly OpName[] = opSchemas.map((s) => s.shape.op.value);
 
 /** Ops allowed only in draft (ops.yaml: remove_entity/remove_field/remove_role «только draft»). */
-export const DESTRUCTIVE_OPS: ReadonlySet<OpName> = new Set<OpName>(["remove_entity", "remove_field", "remove_role"]);
+export const DESTRUCTIVE_OPS: ReadonlySet<OpName> = new Set<OpName>([
+  "remove_entity",
+  "remove_field",
+  "remove_role",
+]);
 
 export interface Revision {
   version: number;
@@ -201,7 +205,14 @@ function findIndex<T>(items: T[] | undefined, pred: (t: T) => boolean): number {
   return items ? items.findIndex(pred) : -1;
 }
 
-function notFound(ctx: Ctx, code: OpsError["code"], key: string, what: string, value: string, allowed: string[]) {
+function notFound(
+  ctx: Ctx,
+  code: OpsError["code"],
+  key: string,
+  what: string,
+  value: string,
+  allowed: string[],
+) {
   ctx.errors.push(err(code, ["ops", ctx.i, key], `${what} «${value}» не найдено`, { allowed }));
 }
 
@@ -245,7 +256,13 @@ function applyOne(ctx: Ctx, op: Op): void {
     }
     case "update_entity": {
       const e = entityOr(op.name, "name");
-      if (e) assignDefined(e, { label: op.label, indexes: op.indexes, ownerField: op.ownerField, retention: op.retention });
+      if (e)
+        assignDefined(e, {
+          label: op.label,
+          indexes: op.indexes,
+          ownerField: op.ownerField,
+          retention: op.retention,
+        });
       return;
     }
     case "remove_entity": {
@@ -258,7 +275,8 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "add_field": {
       const e = entityOr(op.entity);
       if (!e) return;
-      if (e.fields.some((f) => f.name === op.field.name)) return duplicate(ctx, ["field", "name"], "Поле", op.field.name);
+      if (e.fields.some((f) => f.name === op.field.name))
+        return duplicate(ctx, ["field", "name"], "Поле", op.field.name);
       e.fields.push(op.field);
       return;
     }
@@ -266,7 +284,15 @@ function applyOne(ctx: Ctx, op: Op): void {
       const e = entityOr(op.entity);
       if (!e) return;
       const f = e.fields.find((x) => x.name === op.name);
-      if (!f) return notFound(ctx, "UNKNOWN_FIELD", "name", "Поле", op.name, e.fields.map((x) => x.name));
+      if (!f)
+        return notFound(
+          ctx,
+          "UNKNOWN_FIELD",
+          "name",
+          "Поле",
+          op.name,
+          e.fields.map((x) => x.name),
+        );
       assignDefined(f, op.patch);
       if ("default" in op.patch && op.patch.default !== undefined) f.default = op.patch.default;
       return;
@@ -275,7 +301,15 @@ function applyOne(ctx: Ctx, op: Op): void {
       const e = entityOr(op.entity);
       if (!e) return;
       const j = e.fields.findIndex((x) => x.name === op.name);
-      if (j < 0) return notFound(ctx, "UNKNOWN_FIELD", "name", "Поле", op.name, e.fields.map((x) => x.name));
+      if (j < 0)
+        return notFound(
+          ctx,
+          "UNKNOWN_FIELD",
+          "name",
+          "Поле",
+          op.name,
+          e.fields.map((x) => x.name),
+        );
       e.fields.splice(j, 1);
       return;
     }
@@ -322,7 +356,14 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "remove_workflow": {
       const k = findIndex(spec.workflows, (w) => w.name === op.name);
       if (k < 0 || !spec.workflows)
-        return notFound(ctx, "SCHEMA_INVALID", "name", "Процесс", op.name, (spec.workflows ?? []).map((w) => w.name));
+        return notFound(
+          ctx,
+          "SCHEMA_INVALID",
+          "name",
+          "Процесс",
+          op.name,
+          (spec.workflows ?? []).map((w) => w.name),
+        );
       if (op.op === "update_workflow") spec.workflows[k] = op.workflow;
       else spec.workflows.splice(k, 1);
       return;
@@ -351,7 +392,8 @@ function applyOne(ctx: Ctx, op: Op): void {
       return;
     }
     case "add_function": {
-      if (spec.functions?.some((f) => f.name === op.name)) return duplicate(ctx, ["name"], "Функция", op.name);
+      if (spec.functions?.some((f) => f.name === op.name))
+        return duplicate(ctx, ["name"], "Функция", op.name);
       const { op: _, ...fn } = op;
       (spec.functions ??= []).push(fn);
       return;
@@ -359,12 +401,20 @@ function applyOne(ctx: Ctx, op: Op): void {
     case "remove_function": {
       const k = findIndex(spec.functions, (f) => f.name === op.name);
       if (k < 0 || !spec.functions)
-        return notFound(ctx, "SCHEMA_INVALID", "name", "Функция", op.name, (spec.functions ?? []).map((f) => f.name));
+        return notFound(
+          ctx,
+          "SCHEMA_INVALID",
+          "name",
+          "Функция",
+          op.name,
+          (spec.functions ?? []).map((f) => f.name),
+        );
       spec.functions.splice(k, 1);
       return;
     }
     case "add_page": {
-      if (spec.pages?.some((p) => p.route === op.route)) return duplicate(ctx, ["route"], "Страница", op.route);
+      if (spec.pages?.some((p) => p.route === op.route))
+        return duplicate(ctx, ["route"], "Страница", op.route);
       const { op: _, ...page } = op;
       (spec.pages ??= []).push(page);
       return;
@@ -374,7 +424,14 @@ function applyOne(ctx: Ctx, op: Op): void {
       const k = findIndex(spec.pages, (p) => p.route === op.route);
       const page = spec.pages?.[k];
       if (!page || !spec.pages)
-        return notFound(ctx, "SCHEMA_INVALID", "route", "Страница", op.route, (spec.pages ?? []).map((p) => p.route));
+        return notFound(
+          ctx,
+          "SCHEMA_INVALID",
+          "route",
+          "Страница",
+          op.route,
+          (spec.pages ?? []).map((p) => p.route),
+        );
       if (op.op === "update_page") assignDefined(page, op.patch);
       else spec.pages.splice(k, 1);
       return;
@@ -403,7 +460,11 @@ function applyOne(ctx: Ctx, op: Op): void {
 function typeChangeHint(errors: OpsError[]): OpsError[] {
   return errors.map((e) =>
     /^\/ops\/\d+\/patch\/type$/.test(e.path)
-      ? { ...e, message: "Смена типа поля запрещена", hint: "Удалите поле (remove_field) и добавьте заново (add_field)" }
+      ? {
+          ...e,
+          message: "Смена типа поля запрещена",
+          hint: "Удалите поле (remove_field) и добавьте заново (add_field)",
+        }
       : e,
   );
 }
@@ -429,9 +490,14 @@ export function applyOps(
     return {
       ok: false,
       errors: [
-        err("VERSION_CONFLICT", "", `Спека изменилась: ожидалась версия ${expectedVersion}, текущая ${currentVersion}`, {
-          hint: "Перечитайте спеку и повторите батч",
-        }),
+        err(
+          "VERSION_CONFLICT",
+          "",
+          `Спека изменилась: ожидалась версия ${expectedVersion}, текущая ${currentVersion}`,
+          {
+            hint: "Перечитайте спеку и повторите батч",
+          },
+        ),
       ],
     };
   }
@@ -441,7 +507,9 @@ export function applyOps(
   if (ops.length > MAX_BATCH) {
     return {
       ok: false,
-      errors: [err("BATCH_TOO_LARGE", "/ops", `Слишком много операций: ${ops.length}, максимум ${MAX_BATCH}`)],
+      errors: [
+        err("BATCH_TOO_LARGE", "/ops", `Слишком много операций: ${ops.length}, максимум ${MAX_BATCH}`),
+      ],
     };
   }
 

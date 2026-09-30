@@ -9,7 +9,14 @@
 // ($user.<attr> in rowFilter reads set_config('wizard.user_<attr>', ..., true)).
 import { err, type OpsError } from "./errors.js";
 import { SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
-import { type AppSpec, type Entity, type Field, type FieldType, type PermissionOp, validateSpec } from "./schema.js";
+import {
+  type AppSpec,
+  type Entity,
+  type Field,
+  type FieldType,
+  type PermissionOp,
+  validateSpec,
+} from "./schema.js";
 import { SYSTEM_FIELD_TYPES, USER_REF_RE } from "./semantic.js";
 
 type Base<K extends string, D extends boolean> = { kind: K; destructive: D };
@@ -21,11 +28,21 @@ export type MigrationStep =
   | (Base<"set_default", false> & { entity: string; field: Field })
   | (Base<"relax_not_null", false> & { entity: string; field: string })
   | (Base<"set_not_null", true> & { entity: string; field: Field })
-  | (Base<"alter_enum_add_value" | "relax_check", false> & { entity: string; name: string; expr: string | null })
+  | (Base<"alter_enum_add_value" | "relax_check", false> & {
+      entity: string;
+      name: string;
+      expr: string | null;
+    })
   | (Base<"alter_check", true> & { entity: string; name: string; expr: string | null })
   | (Base<"add_unique", false> & { entity: string; field: string; name: string })
   | (Base<"drop_unique", true> & { entity: string; name: string })
-  | (Base<"add_fk", false> & { entity: string; field: string; target: string; onDelete: OnDelete; name: string })
+  | (Base<"add_fk", false> & {
+      entity: string;
+      field: string;
+      target: string;
+      onDelete: OnDelete;
+      name: string;
+    })
   | (Base<"drop_fk", true> & { entity: string; name: string })
   | (Base<"add_index", false> & { entity: string; name: string; fields: string[]; unique: boolean })
   | (Base<"drop_index", true> & { name: string })
@@ -158,7 +175,12 @@ function checksFor(field: Field): CheckDef[] {
   const out: CheckDef[] = [];
   const len = field.maxLength ?? DEFAULT_MAX_LENGTH[field.type];
   if (len !== undefined && ["string", "text", "email", "phone", "url"].includes(field.type)) {
-    out.push({ name: `ck_${field.name}_len`, kind: "len", expr: `char_length(${col}) <= ${len}`, limit: len });
+    out.push({
+      name: `ck_${field.name}_len`,
+      kind: "len",
+      expr: `char_length(${col}) <= ${len}`,
+      limit: len,
+    });
   }
   const fmt = FORMAT_RE[field.type];
   if (fmt) out.push({ name: `ck_${field.name}_fmt`, kind: "fmt", expr: `${col} ~ ${quoteLiteral(fmt)}` });
@@ -173,9 +195,19 @@ function checksFor(field: Field): CheckDef[] {
   }
   if (["int", "decimal", "money"].includes(field.type)) {
     if (field.min !== undefined)
-      out.push({ name: `ck_${field.name}_min`, kind: "min", expr: `${col} >= ${field.min}`, limit: field.min });
+      out.push({
+        name: `ck_${field.name}_min`,
+        kind: "min",
+        expr: `${col} >= ${field.min}`,
+        limit: field.min,
+      });
     if (field.max !== undefined)
-      out.push({ name: `ck_${field.name}_max`, kind: "max", expr: `${col} <= ${field.max}`, limit: field.max });
+      out.push({
+        name: `ck_${field.name}_max`,
+        kind: "max",
+        expr: `${col} <= ${field.max}`,
+        limit: field.max,
+      });
   }
   return out;
 }
@@ -185,7 +217,9 @@ function isUnique(field: Field): boolean {
 }
 
 function fkTarget(field: Field): string | undefined {
-  return field.type === "ref" && field.ref && field.ref.entity !== USERS_ENTITY ? field.ref.entity : undefined;
+  return field.type === "ref" && field.ref && field.ref.entity !== USERS_ENTITY
+    ? field.ref.entity
+    : undefined;
 }
 
 function sqlDefault(field: Field): string | undefined {
@@ -221,11 +255,16 @@ function indexesFor(entity: Entity): Map<string, IndexDef> {
   const out = new Map<string, IndexDef>();
   // FK columns are indexed automatically (joins, ON DELETE, rowFilter on ownerField).
   for (const f of entity.fields) {
-    if (f.type === "ref") out.set(pgName("ix", entity.name, f.name), { name: "", fields: [f.name], unique: false });
+    if (f.type === "ref")
+      out.set(pgName("ix", entity.name, f.name), { name: "", fields: [f.name], unique: false });
   }
   for (const idx of entity.indexes ?? []) {
     const unique = idx.unique === true;
-    out.set(pgName(unique ? "ux" : "ix", entity.name, ...idx.fields), { name: "", fields: idx.fields, unique });
+    out.set(pgName(unique ? "ux" : "ix", entity.name, ...idx.fields), {
+      name: "",
+      fields: idx.fields,
+      unique,
+    });
   }
   for (const [name, def] of out) def.name = name;
   return out;
@@ -240,7 +279,8 @@ function createEntitySteps(entity: Entity): MigrationStep[] {
     const target = fkTarget(f);
     if (target) steps.push(fkStep(entity.name, f, target));
   }
-  for (const idx of indexesFor(entity).values()) steps.push({ kind: "add_index", destructive: false, entity: entity.name, ...idx });
+  for (const idx of indexesFor(entity).values())
+    steps.push({ kind: "add_index", destructive: false, entity: entity.name, ...idx });
   return steps;
 }
 
@@ -287,19 +327,29 @@ function diffField(entity: string, prev: Field, next: Field, steps: MigrationSte
     if (target) steps.push(fkStep(entity, next, target));
     return;
   }
-  if (!prev.required && next.required) steps.push({ kind: "set_not_null", destructive: true, entity, field: next });
-  if (prev.required && !next.required) steps.push({ kind: "relax_not_null", destructive: false, entity, field: next.name });
+  if (!prev.required && next.required)
+    steps.push({ kind: "set_not_null", destructive: true, entity, field: next });
+  if (prev.required && !next.required)
+    steps.push({ kind: "relax_not_null", destructive: false, entity, field: next.name });
   if (JSON.stringify(sqlDefault(prev)) !== JSON.stringify(sqlDefault(next)))
     steps.push({ kind: "set_default", destructive: false, entity, field: next });
   diffChecks(entity, prev, next, steps);
   if (!isUnique(prev) && isUnique(next))
-    steps.push({ kind: "add_unique", destructive: false, entity, field: next.name, name: uniqueName(entity, next.name) });
+    steps.push({
+      kind: "add_unique",
+      destructive: false,
+      entity,
+      field: next.name,
+      name: uniqueName(entity, next.name),
+    });
   if (isUnique(prev) && !isUnique(next))
     steps.push({ kind: "drop_unique", destructive: true, entity, name: uniqueName(entity, next.name) });
   const ta = fkTarget(prev);
   const tb = fkTarget(next);
-  const onDeleteChanged = ta && tb && (prev.ref?.onDelete ?? "restrict") !== (next.ref?.onDelete ?? "restrict");
-  if (ta && (ta !== tb || onDeleteChanged)) steps.push({ kind: "drop_fk", destructive: true, entity, name: fkName(entity, next.name) });
+  const onDeleteChanged =
+    ta && tb && (prev.ref?.onDelete ?? "restrict") !== (next.ref?.onDelete ?? "restrict");
+  if (ta && (ta !== tb || onDeleteChanged))
+    steps.push({ kind: "drop_fk", destructive: true, entity, name: fkName(entity, next.name) });
   if (tb && (ta !== tb || onDeleteChanged)) steps.push(fkStep(entity, next, tb));
 }
 
@@ -309,7 +359,8 @@ function diffEntity(prev: Entity, next: Entity, steps: MigrationStep[]): void {
   const nextFields = new Map(next.fields.map((f) => [f.name, f]));
   const retyped = new Set<string>();
   for (const f of prev.fields) {
-    if (!nextFields.has(f.name)) steps.push({ kind: "drop_column", destructive: true, entity: e, field: f.name });
+    if (!nextFields.has(f.name))
+      steps.push({ kind: "drop_column", destructive: true, entity: e, field: f.name });
   }
   for (const f of next.fields) {
     const old = prevFields.get(f.name);
@@ -370,9 +421,14 @@ export function planMigration(prev: AppSpec | null, next: AppSpec, opts: PlanOpt
   if (env === "prod") {
     for (const s of destructive) {
       errors.push(
-        err("DESTRUCTIVE_IN_PROD", "", `Шаг миграции «${describeStep(s)}» разрушает данные и запрещён в prod`, {
-          hint: "В prod разрешены только аддитивные изменения; удаление и сужение выполняются в draft",
-        }),
+        err(
+          "DESTRUCTIVE_IN_PROD",
+          "",
+          `Шаг миграции «${describeStep(s)}» разрушает данные и запрещён в prod`,
+          {
+            hint: "В prod разрешены только аддитивные изменения; удаление и сужение выполняются в draft",
+          },
+        ),
       );
     }
   }
@@ -435,12 +491,15 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
       }
       case "add_column":
         out.push(`ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, false)}`);
-        if (step.notNull) out.push(`ALTER TABLE ${t(step.entity)} ALTER COLUMN ${quoteIdent(step.field.name)} SET NOT NULL`);
+        if (step.notNull)
+          out.push(`ALTER TABLE ${t(step.entity)} ALTER COLUMN ${quoteIdent(step.field.name)} SET NOT NULL`);
         break;
       case "alter_column_type":
         // Type changes recreate the column (data in it is lost) — draft only.
         out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN IF EXISTS ${quoteIdent(step.field.name)}`);
-        out.push(`ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.field.required === true && sqlDefault(step.field) !== undefined)}`);
+        out.push(
+          `ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.field.required === true && sqlDefault(step.field) !== undefined)}`,
+        );
         break;
       case "set_default": {
         const def = sqlDefault(step.field);
@@ -465,10 +524,14 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
       case "alter_enum_add_value":
         out.push(`ALTER TABLE ${t(step.entity)} DROP CONSTRAINT IF EXISTS ${quoteIdent(step.name)}`);
         if (step.expr !== null)
-          out.push(`ALTER TABLE ${t(step.entity)} ADD CONSTRAINT ${quoteIdent(step.name)} CHECK (${step.expr})`);
+          out.push(
+            `ALTER TABLE ${t(step.entity)} ADD CONSTRAINT ${quoteIdent(step.name)} CHECK (${step.expr})`,
+          );
         break;
       case "add_unique":
-        out.push(`ALTER TABLE ${t(step.entity)} ADD CONSTRAINT ${quoteIdent(step.name)} UNIQUE (${quoteIdent(step.field)})`);
+        out.push(
+          `ALTER TABLE ${t(step.entity)} ADD CONSTRAINT ${quoteIdent(step.name)} UNIQUE (${quoteIdent(step.field)})`,
+        );
         break;
       case "drop_unique":
       case "drop_fk":
@@ -527,7 +590,8 @@ function filterPredicate(entity: Entity, key: string, value: string | number | b
   const col = quoteIdent(key);
   if (typeof value === "string") {
     const m = USER_REF_RE.exec(value);
-    if (m) return `${col} = nullif(current_setting(${quoteLiteral(`wizard.user_${m[1]}`)}, true), '')::${type}`;
+    if (m)
+      return `${col} = nullif(current_setting(${quoteLiteral(`wizard.user_${m[1]}`)}, true), '')::${type}`;
     return `${col} = ${quoteLiteral(value)}::${type}`;
   }
   if (typeof value === "boolean") return `${col} = ${value ? "TRUE" : "FALSE"}`;

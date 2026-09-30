@@ -76,7 +76,8 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
     case "qr_token":
       return bad(`Значение по умолчанию не поддерживается для типа «${field.type}»`);
     case "int":
-      if (typeof d !== "number" || !Number.isInteger(d)) bad("Значение по умолчанию должно быть целым числом");
+      if (typeof d !== "number" || !Number.isInteger(d))
+        bad("Значение по умолчанию должно быть целым числом");
       return;
     case "decimal":
     case "money":
@@ -96,12 +97,7 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
   }
 }
 
-function checkField(
-  field: Field,
-  fp: PropertyKey[],
-  entityNames: readonly string[],
-  out: OpsError[],
-): void {
+function checkField(field: Field, fp: PropertyKey[], entityNames: readonly string[], out: OpsError[]): void {
   if (field.pii === "special" || field.pii === "biometric") {
     out.push(
       err("PII_CATEGORY_FORBIDDEN", [...fp, "pii"], `Категория ПДн «${field.pii}» запрещена в MVP`, {
@@ -117,16 +113,26 @@ function checkField(
       const targets = [...entityNames, USERS_ENTITY];
       if (!targets.includes(field.ref.entity)) {
         out.push(
-          err("REF_TARGET_MISSING", [...fp, "ref", "entity"], `Сущность «${field.ref.entity}» не существует`, {
-            allowed: targets,
-          }),
+          err(
+            "REF_TARGET_MISSING",
+            [...fp, "ref", "entity"],
+            `Сущность «${field.ref.entity}» не существует`,
+            {
+              allowed: targets,
+            },
+          ),
         );
       }
       if (field.ref.onDelete === "set_null" && field.required) {
         out.push(
-          err("SCHEMA_INVALID", [...fp, "ref", "onDelete"], "onDelete=set_null несовместимо с required=true", {
-            allowed: ["restrict", "cascade"],
-          }),
+          err(
+            "SCHEMA_INVALID",
+            [...fp, "ref", "onDelete"],
+            "onDelete=set_null несовместимо с required=true",
+            {
+              allowed: ["restrict", "cascade"],
+            },
+          ),
         );
       }
     }
@@ -137,7 +143,13 @@ function checkField(
     if (!field.enum) {
       out.push(err("SCHEMA_INVALID", [...fp, "enum"], "Для поля-перечисления не заданы значения"));
     } else {
-      duplicates(field.enum, (o) => o.value, (k) => [...fp, "enum", k, "value"], "Значение", out);
+      duplicates(
+        field.enum,
+        (o) => o.value,
+        (k) => [...fp, "enum", k, "value"],
+        "Значение",
+        out,
+      );
     }
   } else if (field.enum) {
     out.push(err("SCHEMA_INVALID", [...fp, "enum"], "Свойство enum допустимо только для поля типа «enum»"));
@@ -169,17 +181,17 @@ function fieldType(entity: Entity, name: string): FieldType | "uuid" | "timestam
   return entity.fields.find((f) => f.name === name)?.type;
 }
 
-function checkEntity(
-  entity: Entity,
-  i: number,
-  spec: AppSpec,
-  opts: ValidateOptions,
-  out: OpsError[],
-): void {
+function checkEntity(entity: Entity, i: number, spec: AppSpec, opts: ValidateOptions, out: OpsError[]): void {
   const ep = ["entities", i];
   const entityNames = spec.entities.map((e) => e.name);
   reserved(entity.name, [...ep, "name"], "Имя сущности", out);
-  duplicates(entity.fields, (f) => f.name, (j) => [...ep, "fields", j, "name"], "Поле", out);
+  duplicates(
+    entity.fields,
+    (f) => f.name,
+    (j) => [...ep, "fields", j, "name"],
+    "Поле",
+    out,
+  );
   entity.fields.forEach((field, j) => {
     const fp = [...ep, "fields", j];
     reserved(field.name, [...fp, "name"], "Имя поля", out);
@@ -190,9 +202,14 @@ function checkEntity(
     idx.fields.forEach((f, m) => {
       if (!names.includes(f)) {
         out.push(
-          err("UNKNOWN_FIELD", [...ep, "indexes", k, "fields", m], `Поле «${f}» не найдено в «${entity.name}»`, {
-            allowed: names,
-          }),
+          err(
+            "UNKNOWN_FIELD",
+            [...ep, "indexes", k, "fields", m],
+            `Поле «${f}» не найдено в «${entity.name}»`,
+            {
+              allowed: names,
+            },
+          ),
         );
       }
     });
@@ -286,7 +303,12 @@ function checkRowFilter(
   }
 }
 
-function checkSecrets(value: unknown, declared: ReadonlySet<string>, path: PropertyKey[], out: OpsError[]): void {
+function checkSecrets(
+  value: unknown,
+  declared: ReadonlySet<string>,
+  path: PropertyKey[],
+  out: OpsError[],
+): void {
   if (Array.isArray(value)) {
     value.forEach((v, i) => checkSecrets(v, declared, [...path, i], out));
     return;
@@ -323,16 +345,29 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
   };
   const unknownEntity = (name: string, path: PropertyKey[]): Entity | undefined => {
     const e = entityByName.get(name);
-    if (!e) out.push(err("UNKNOWN_ENTITY", path, `Сущность «${name}» не существует`, { allowed: entityNames }));
+    if (!e)
+      out.push(err("UNKNOWN_ENTITY", path, `Сущность «${name}» не существует`, { allowed: entityNames }));
     return e;
   };
 
   // Entities & fields
-  duplicates(spec.entities, (e) => e.name, (i) => ["entities", i, "name"], "Сущность", out);
+  duplicates(
+    spec.entities,
+    (e) => e.name,
+    (i) => ["entities", i, "name"],
+    "Сущность",
+    out,
+  );
   spec.entities.forEach((e, i) => checkEntity(e, i, spec, opts, out));
 
   // Roles
-  duplicates(spec.roles, (r) => r.name, (i) => ["roles", i, "name"], "Роль", out);
+  duplicates(
+    spec.roles,
+    (r) => r.name,
+    (i) => ["roles", i, "name"],
+    "Роль",
+    out,
+  );
   let publicSeen = false;
   spec.roles.forEach((r, i) => {
     reserved(r.name, ["roles", i, "name"], "Имя роли", out);
@@ -378,19 +413,31 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
     const hasFilter = p.rowFilter !== undefined && Object.keys(p.rowFilter).length > 0;
     if (publicRoles.has(p.role) && !hasFilter && (p.ops.includes("update") || p.ops.includes("delete"))) {
       out.push(
-        err("INVALID_ROW_FILTER", [...pp, "ops"], "Публичная роль не может изменять или удалять строки без rowFilter", {
-          allowed: ["read", "create"],
-          hint: "Добавьте rowFilter или уберите update/delete",
-        }),
+        err(
+          "INVALID_ROW_FILTER",
+          [...pp, "ops"],
+          "Публичная роль не может изменять или удалять строки без rowFilter",
+          {
+            allowed: ["read", "create"],
+            hint: "Добавьте rowFilter или уберите update/delete",
+          },
+        ),
       );
     }
   });
 
   // Workflows
-  duplicates(spec.workflows, (w) => w.name, (i) => ["workflows", i, "name"], "Процесс", out);
+  duplicates(
+    spec.workflows,
+    (w) => w.name,
+    (i) => ["workflows", i, "name"],
+    "Процесс",
+    out,
+  );
   (spec.workflows ?? []).forEach((w, i) => {
     const tp = ["workflows", i, "trigger"];
-    const entity = w.trigger.entity !== undefined ? unknownEntity(w.trigger.entity, [...tp, "entity"]) : undefined;
+    const entity =
+      w.trigger.entity !== undefined ? unknownEntity(w.trigger.entity, [...tp, "entity"]) : undefined;
     if (!entity) return;
     const names = allFieldNames(entity);
     const fields: [string | undefined, PropertyKey[]][] = [
@@ -404,28 +451,65 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
   });
 
   // Integrations: secrets only as declared secret:// refs
-  duplicates(spec.integrations, (x) => x.name, (i) => ["integrations", i, "name"], "Интеграция", out);
+  duplicates(
+    spec.integrations,
+    (x) => x.name,
+    (i) => ["integrations", i, "name"],
+    "Интеграция",
+    out,
+  );
   (spec.integrations ?? []).forEach((x, i) => {
-    duplicates(x.secretRefs, (s) => s, (j) => ["integrations", i, "secretRefs", j], "Секрет", out);
+    duplicates(
+      x.secretRefs,
+      (s) => s,
+      (j) => ["integrations", i, "secretRefs", j],
+      "Секрет",
+      out,
+    );
     checkSecrets(x.config, new Set(x.secretRefs ?? []), ["integrations", i, "config"], out);
   });
 
   // Functions & pages
-  duplicates(spec.functions, (f) => f.name, (i) => ["functions", i, "name"], "Функция", out);
+  duplicates(
+    spec.functions,
+    (f) => f.name,
+    (i) => ["functions", i, "name"],
+    "Функция",
+    out,
+  );
   (spec.functions ?? []).forEach((f, i) => {
     (f.roles ?? []).forEach((r, j) => unknownRole(r, ["functions", i, "roles", j]));
   });
-  duplicates(spec.pages, (p) => p.route, (i) => ["pages", i, "route"], "Страница", out);
+  duplicates(
+    spec.pages,
+    (p) => p.route,
+    (i) => ["pages", i, "route"],
+    "Страница",
+    out,
+  );
   (spec.pages ?? []).forEach((p, i) => {
     p.roles.forEach((r, j) => unknownRole(r, ["pages", i, "roles", j]));
   });
 
   // AI actions & acceptance
-  duplicates(spec.aiActions, (a) => a.name, (i) => ["aiActions", i, "name"], "ИИ-действие", out);
+  duplicates(
+    spec.aiActions,
+    (a) => a.name,
+    (i) => ["aiActions", i, "name"],
+    "ИИ-действие",
+    out,
+  );
   (spec.aiActions ?? []).forEach((a, i) => {
-    if (typeof a.input.entity === "string") unknownEntity(a.input.entity, ["aiActions", i, "input", "entity"]);
+    if (typeof a.input.entity === "string")
+      unknownEntity(a.input.entity, ["aiActions", i, "input", "entity"]);
   });
-  duplicates(spec.acceptance, (a) => a.id, (i) => ["acceptance", i, "id"], "Критерий", out);
+  duplicates(
+    spec.acceptance,
+    (a) => a.id,
+    (i) => ["acceptance", i, "id"],
+    "Критерий",
+    out,
+  );
   (spec.acceptance ?? []).forEach((a, i) => {
     if (a.check.role !== undefined) unknownRole(a.check.role, ["acceptance", i, "check", "role"]);
     if (a.check.entity !== undefined) unknownEntity(a.check.entity, ["acceptance", i, "check", "entity"]);

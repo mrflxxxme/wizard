@@ -76,7 +76,10 @@ const LIMIT_PATHS = [
 ];
 
 /** Converts zod issues to OpsError[]; `base` is prefixed to every path. */
-export function fromZodIssues(issues: readonly z.core.$ZodIssue[], base: readonly PropertyKey[] = []): OpsError[] {
+export function fromZodIssues(
+  issues: readonly z.core.$ZodIssue[],
+  base: readonly PropertyKey[] = [],
+): OpsError[] {
   const out: OpsError[] = [];
   for (const issue of issues) {
     const segs = [...base, ...issue.path];
