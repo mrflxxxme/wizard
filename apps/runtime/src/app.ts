@@ -77,6 +77,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     clock: o.clock ?? (() => new Date()),
     connectors: o.connectors ?? "outbox",
     outbox,
+    log: o.log,
   };
   const buses = new Map<string, InvalidationBus>();
   const systems = new SystemCache({

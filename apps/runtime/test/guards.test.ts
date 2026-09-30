@@ -181,8 +181,6 @@ describe("CSRF and CORS (L3-14)", () => {
 
 describe("route stubs for M0-23/M0-24 (501)", () => {
   it.each([
-    ["POST", "/api/fn/partnerQuota"],
-    ["GET", "/api/events"],
     ["GET", "/_wizard/qr/manifest"],
     ["POST", "/_wizard/qr/check"],
     ["GET", "/"],

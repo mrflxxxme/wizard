@@ -16,6 +16,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@wizard/build": "workspace:*",
     "tsx": "^4.23.15"
   },
   "exports": {
