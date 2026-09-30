@@ -11,10 +11,15 @@ execution:
     engine: "@dbos-inc/dbos-sdk в apps/worker; platform-api только ставит воркфлоу в очередь (DBOS.startWorkflow с workflowID = runs.id) и читает run_events"
     queues: { runs: "конкурентность WIZARD_RUN_CONCURRENCY (по умолчанию 8) на воркер", interview: "конкурентность 16; interview_turn одной системы — строго последовательно (ключ partition = system_id)" }
     durability: "Тест M1-01: kill -9 воркера во время шага build_code → после рестарта прогон продолжается со следующего незавершённого шага; ни один завершённый LLM-шаг не вызывается повторно (счётчик llm_calls по run_id не растёт на повторы)"
+    dbos_data:   # L3-09
+      - "MUST: значение секрета (provideRunInput.secretValue) пишется в хранилище секретов в HTTP-обработчике platform-api; в воркфлоу (DBOS.send/recv, входы шагов) уходит только secret://name"
+      - "MUST: выход LLM-шага в DBOS — ссылки и метаданные (revision, messageId, toolCalls без аргументов-значений, usage), не текст ответа модели; содержимое — только в ревизиях и messages"
+      - "MUST: очистка dbos.* (workflow_status, operation_outputs, notifications) для воркфлоу в терминальном статусе старше 30 дней — ежесуточно (retention_cron)"
+  ownership: "Цикл «план → ops → код → гейт → QA → fix» реализует runBuild(host) в packages/agents (architecture.yaml#interfaces.agent_host); каждый LLM-вызов и гейт идёт через host.runStep (M0 — identity, M1 — DBOS.runStep). Этот файл задаёт только имена шагов, статусы, события и лимиты платформы (L2-14)"
   step_rules:
-    - "MUST: каждый LLM-вызов — отдельный шаг; его результат (ответ модели и usage) мемоизируется (M1: DBOS step output; M0: в памяти)"
+    - "MUST: каждый LLM-вызов — отдельный шаг; его результат (ответ модели и usage) мемоизируется (M1: DBOS step output по execution.M1.dbos_data; M0: в памяти)"
     - "MUST: каждый батч applyOps и каждая фиксация файлов — отдельная транзакция, создающая ревизию; идемпотентность по idempotency_key = <runId>:<stepName>:<attempt>"
-    - "MUST: каждый запуск гейта — отдельный шаг; отчёт сохраняется в run_events (gate_result)"
+    - "MUST: каждый запуск гейта — отдельный шаг; полный GateReport → INSERT platform.gate_reports (db.yaml) и событие gate_result в той же транзакции"
     - "MUST: перед каждым LLM-шагом проверка бюджета (budget) и cancel_requested_at"
     - "MUST: события пишутся в platform.run_events в той же транзакции, что и эффект шага, затем публикуются в in-process шину SSE"
     - "SHOULD: шаг идемпотентен; внешние эффекты (письма, ЮKassa) — только с ключом идемпотентности"
@@ -26,7 +31,9 @@ system_stage:                     # platform.systems.stage
     - { from: card, to: card, on: "новое сообщение/ответ изменили карточку (card_version++)" }
     - { from: card, to: interview, on: "оркестратор задал новые вопросы" }
     - { from: card, to: building, on: "approveCard" }
-    - { from: ready, to: building, on: "approve мини-карточки правки или кнопка «Исправить» (build mode=fix)" }
+    - { from: ready, to: card, on: "interview_turn выдал карточку kind=change" }
+    - { from: card, to: ready, on: "отмена change-карточки при preview_revision ≠ null" }
+    - { from: ready, to: building, on: "approve мини-карточки правки или POST /systems/:id/fix (build mode=fix)" }
     - { from: building, to: ready, on: "build завершился (succeeded) ИЛИ завершился неуспешно, но preview_revision не null" }
     - { from: building, to: failed, on: "build failed/cancelled и preview_revision = null" }
     - { from: failed, to: interview, on: "новое сообщение" }
@@ -39,7 +46,7 @@ run_lifecycle:
     - { from: queued, to: running, on: "взят исполнителем; для прогонов с lock — после захвата platform.locks" }
     - { from: queued, to: waiting_lock, on: "lock занят (событие lock_waiting)" }
     - { from: waiting_lock, to: running, on: "lock освобождён; порядок FIFO по created_at" }
-    - { from: running, to: needs_input, on: "needs_input (secret | decision | budget)" }
+    - { from: running, to: needs_input, on: "needs_input (secret или decision; бюджет и эскалация строителя — decision id=budget / id=escalation)" }
     - { from: needs_input, to: running, on: "POST /runs/:id/input" }
     - { from: needs_input, to: failed, on: "24 ч без ответа → INPUT_TIMEOUT" }
     - { from: running, to: succeeded, on: "последний шаг выполнен" }
@@ -52,10 +59,11 @@ run_lifecycle:
     style_during_lock: "POST /systems/:id/style при занятом lock → 409 SYSTEM_LOCKED (панель «Стиль» блокируется в UI)"
   budget:
     source: "runs.credits_cap_milli из карточки (M0 тоже; ledger — с M1, billing.yaml)"
-    check: "перед LLM-шагом: used + оценка шага (max_output_tokens × цена выхода) > cap → событие budget_exceeded, затем needs_input kind=decision id=budget с вариантами raise_cap_<N> (N = 25% от cap, округление вверх до целого кредита) и stop"
+    check: "перед LLM-шагом: used + upper_bound(call) > cap (формула upper_bound — agents/builder.yaml#budgets.credits_cap) → событие budget_exceeded, затем needs_input kind=decision id=budget с вариантами raise_cap_<N> (N = 25% от cap, округление вверх до целого кредита) и stop"
     stop: "Выбор stop → run_finished status=cancelled; ревизии прогона остаются, preview_revision не меняется, если G0 не пройден"
     test: "M0-13: fixture с искусственно низким cap → после budget_exceeded нет ни одной новой строки llm_calls до ответа"
-  failure_codes: [BUDGET_STOPPED, CONSECUTIVE_ERRORS, GATES_FAILED, LLM_UNAVAILABLE, INPUT_TIMEOUT, WORKER_RESTARTED, LOCK_TIMEOUT, MIGRATION_FAILED, INTERNAL]
+  llm_unavailable: "Все T0-модели недоступны (agents/models.yaml#fallback_rules): M0 — сразу run_failed LLM_UNAVAILABLE retryable=true. M1 — шаг повторяется через 5 мин до 6 раз, статус остаётся running, событие step_started с attempt+1; затем run_failed LLM_UNAVAILABLE retryable=true. Отдельного статуса «пауза» нет (L1-14)"
+  failure_codes: [BUDGET_STOPPED, CONSECUTIVE_ERRORS, GATES_FAILED, LLM_UNAVAILABLE, INPUT_TIMEOUT, WORKER_RESTARTED, LOCK_TIMEOUT, MIGRATION_FAILED, INSUFFICIENT_CREDITS, DESTRUCTIVE_IN_PROD, ROLLBACK_TARGET_INVALID, ORCH_INVALID_OUTPUT, SMOKE_FAILED, EXPORT_FAILED, INTERNAL]
 
 workflows:
   interview_turn:

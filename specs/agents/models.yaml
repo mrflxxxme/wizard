@@ -23,15 +23,17 @@ providers:
     base_url_env: ZAI_BASE_URL              # по умолчанию https://api.z.ai/api/paas/v4
     api_key_env: ZAI_API_KEY
     rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1"
+    termsCheckedAt: 2026-09-30              # security/data-boundary.yaml#routing.model_registry: старше 90 дней → предупреждение CI
   moonshot:
     tier: T1
     base_url_env: MOONSHOT_BASE_URL
     api_key_env: MOONSHOT_API_KEY
     enabled: false
+    termsCheckedAt: 2026-09-30
     disabled_reason: "Kimi K3 обучается на контенте API; включать только после договора о запрете обучения (E-LEGAL)"
   fixture:
     tier: any
-    rule: "WIZARD_LLM_MODE=fixture: ответы из tools/fixtures/**/*.jsonl по ключу запроса (specs/quality/eval.yaml#fixtures). Маршрутизация и учёт выполняются так же, как в live"
+    rule: "WIZARD_LLM_MODE=fixture: ответы из tools/fixtures/<suite>/<name>.jsonl по правилам specs/quality/eval.yaml#fixtures.lookup (demo — по порядку вызовов callType, eval|unit — по ключу запроса). Маршрутизация и учёт выполняются так же, как в live. Режим record — только с ограничениями eval.yaml#fixtures.rules (брифы из репозитория, T0-запросы после scrub)"
 
 # Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot: $ × 95 ₽/$ [?] + 22% НДС налогового агента.
 # cached — цена кэшированного входа; если провайдер кэш-скидку не даёт, cached = input.
@@ -40,7 +42,7 @@ models:
   - { id: deepseek-v4-pro,  provider: cloudru, providerModel: "deepseek-ai/DeepSeek-V4-Pro",   tier: T0, placement: internal, context: 1000000, price: { input: 183,    cached: 183,    output: 732 },    enabled: true }
   - { id: glm-5.1,          provider: cloudru, providerModel: "zai-org/GLM-5.1",               tier: T0, placement: internal, context: 202000,  price: { input: 198.86, cached: 198.86, output: 829.6 },  enabled: true }
   - { id: qwen3-coder-next, provider: cloudru, providerModel: "Qwen/Qwen3-Coder-Next",         tier: T0, placement: internal, context: 262000,  price: { input: 122,    cached: 122,    output: 244 },    enabled: true }
-  - { id: gpt-oss-120b,     provider: cloudru, providerModel: "openai/gpt-oss-120b",           tier: T0, placement: internal, context: 131000,  price: { input: 15.86,  cached: 15.86,  output: 61 },     enabled: true, note: "[?] id модели" }
+  - { id: gpt-oss-120b,     provider: cloudru, providerModel: "openai/gpt-oss-120b",           tier: T0, placement: internal, context: 131000,  price: { input: 15.86,  cached: 15.86,  output: 61 },     enabled: true, note: "[?] id модели. Открытые веса (Apache-2.0), инференс во внутреннем контуре Cloud.ru — допустимо по решению основателя F3 (запрет касается API и сервисов Anthropic/OpenAI/Google/xAI, не open-weights в РФ)" }
   - { id: gigachat-3.5,     provider: cloudru, providerModel: "ai-sage/GigaChat3.5-432B-A28B", tier: T0, placement: internal, context: 262000,  price: { input: 96.22,  cached: 96.22,  output: 288.6 },  enabled: true, note: "[?] id модели" }
   - { id: yandex-qwen3-235b,        provider: yandex, providerModel: "qwen3-235b-a22b-fp8/latest", tier: T0, placement: internal, context: 262000,  price: { input: 500, cached: 500, output: 500 }, enabled: true, note: "[?] точный URI" }
   - { id: yandex-deepseek-v4-flash, provider: yandex, providerModel: "deepseek-v4-flash/latest",   tier: T0, placement: internal, context: 1000000, price: { input: 300, cached: 75,  output: 500 }, enabled: true, note: "[?] точный URI" }
@@ -51,7 +53,19 @@ catalog_rules:
   - "MUST: ids моделей — единственные имена в конфигурации, eval и логах (tools/eval использует те же id)"
   - "MUST: модель с enabled=false не выбирается ни роутером, ни фолбэком (тест)"
   - "MUST: T0 = только placement=internal (Cloud.ru внутренний контур) или провайдер yandex с заголовком без логирования"
+  - "MUST NOT: провайдеры-API Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников). Open-weights этих вендоров с инференсом в РФ (placement=internal) допустимы (решение F3). Линтер реестра проверяет provider и placement, а не префикс providerModel"
   - "SHOULD: цены проверять раз в месяц; изменение цены — правка этого файла + запись в CHANGELOG"
+
+# ---------------------------------------------------------------- Решение недели 0 (F2, основатель)
+week0_decision:
+  rule: >
+    Если на eval недели 0 (spec_only, набор брифов M0, eval.yaml) GLM-5.3 (T1) не превосходит лучшую T0-модель
+    по доле g0_pass на ≥ 10 п. п. (или Z.ai не подтвердил условия работы с РФ и отсутствие хранения, E-LEGAL),
+    сборка по умолчанию идёт на моделях в РФ (T0)
+  switch: "t1_default: true | false — единственный флаг в этом файле. false → на шаге 6 routing_algorithm routes[*].default_tier=T1 трактуется как T0 (reason=default_T0); chain.T1 остаётся для eval (--models)"
+  state: "t1_default: true до отчёта tools/eval/results/<дата>-week0.md; смена флага — PR с отчётом и строкой в CHANGELOG (эскалации не требует — правило утверждено)"
+  keeps: "scrub, роутер и журнал из M0 не меняются; при t1_default=false объём M1-07 (DLP импорта) и тексты UI про модели сборки — по backlog/platform-screens"
+  test: "Юнит-тест роутера: t1_default=false → ни один callType не получает T1 без --models в eval"
 
 # ---------------------------------------------------------------- Маршрутизация
 call_types:            # полный список; route() с иным callType → ошибка UNKNOWN_CALL_TYPE
@@ -76,14 +90,16 @@ pii_forbidden_for_T1:
       rule: "T1 допустим ТОЛЬКО если вызывающий явно передал containsPiiHint=false (в запросе лишь заголовки, профили колонок и синтетические строки) И DLP по payload нашёл 0 ПДн. Иначе (hint отсутствует/true или DLP>0) → T0"
   test: "Юнит-тест роутера: для каждого callType из always × все orgPolicy × все containsPiiHint → tier=T0; для import_mapping без hint=false → T0"
 
-routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy}) — детерминированно, policy-as-code
+routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?}}) (architecture.yaml#interfaces.llm_call) — детерминированно, policy-as-code
   - "1. dlp = pii.detect(все текстовые части messages, включая результаты инструментов)"
   - "2. Если orgPolicy.ruOnly → T0 (reason=policy_ru_only)"
+  - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Значение неизвестно или политика не загружена → считается true (fail-safe T0)"
   - "3. Если callType ∈ pii_forbidden_for_T1.always или сработало conditional → T0 (reason=callType_forbidden_T1)"
-  - "4. Если dlp содержит категории высокого риска (passport, snils, card, special) → T0 (reason=pii_high_risk)"
+  - "3a. Если containsPiiHint=true для любого callType → T0 (reason=pii_hint): вызывающий знает, что в payload реальные записи"
+  - "4. Если dlp содержит strong-виды security/data-boundary.yaml#detectors или special_context/biometric_context → T0 (reason=pii_high_risk)"
   - "5. Если callType=interview и dlp.count>0 → T0 (reason=pii_detected_interview): сырой бриф с ПДн не уходит наружу даже в заглушках"
-  - "6. Иначе tier = routes[callType].default_tier (reason=default_T1|default_T0)"
-  - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН], [EMAIL], [ФИО]… без таблицы соответствия); в журнал — только счётчики категорий"
+  - "6. Иначе tier = routes[callType].default_tier с учётом week0_decision.switch (reason=default_T1|default_T0)"
+  - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1]… — формат security/data-boundary.yaml#scrub.placeholders, без таблицы соответствия); в журнал — только счётчики категорий"
   - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled). Нет доступной → фолбэк по fallback_rules"
   - "9. Неизвестная ситуация/исключение в политике → T0 (fail-safe)"
 unknown_class_default: T0
@@ -105,9 +121,10 @@ routes:                # chain.T1 пробуется только если tier=
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
-  - "MUST NOT: автоматический фолбэк T0 → T1. Если все T0 недоступны — вызов падает с LLM_UNAVAILABLE; прогон переходит в паузу (DBOS-повтор через 5 мин, до 6 раз)"
+  - "MUST NOT: автоматический фолбэк T0 → T1. Если все T0 недоступны — вызов падает с LLM_UNAVAILABLE; поведение прогона (повторы шага, статус, run_failed) — specs/platform/workflows.yaml#run_lifecycle"
   - "MAY: при переходе T1 → T0 отправить исходные (незаскрабленные) сообщения — T0 допускает любые данные"
-  - "MUST: смена модели посреди прогона строителя логируется событием model_switched; история инструментов переносится без reasoning_content"
+  - "MUST: смена модели посреди прогона строителя логируется событием model_switched {fromModelId, toModelId, reason} — только во внутренний журнал (llm_calls.fallback_from, логи), в SSE пользователя модель и tier не отдаются; история инструментов переносится без reasoning_content"
+  - "Пользователю — только обобщённо («Часть шагов выполнена на моделях в РФ»), текст и место — ui/platform-screens.yaml"
   - "SHOULD: фолбэк на другое семейство модели внутри одного прогона не сбрасывает кэш-историю (контекст пересобирается по builder.yaml#context)"
 
 # ---------------------------------------------------------------- Политика вызова (AI SDK 7)
@@ -145,41 +162,43 @@ call_policy:
 credits:
   rub_per_credit: 5                       # product.yaml D10: 1 кредит ≈ 5 ₽ себестоимости LLM
   cost_rub: "(promptTokens − cachedPromptTokens) × price.input/1e6 + cachedPromptTokens × price.cached/1e6 + completionTokens × price.output/1e6"
-  credits_per_call: "cost_rub / rub_per_credit, 4 знака после запятой"
-  settlement: "Списание в ledger по факту — сумма credits_per_call по прогону, округление вверх до 0.1 кредита (specs/platform/billing.yaml)"
+  credits_per_call: "credits_milli = ceil(cost_rub × 1000 / rub_per_credit) на строку llm_calls (specs/platform/billing.yaml#credit.from_cost)"
+  settlement: "charge = min(cap, Σ credits_milli по строкам прогона с billable=true); округление до 0.1 кредита — только при показе (specs/platform/billing.yaml)"
   fixture_mode: "Кредиты считаются по записанному usage фикстуры — бюджеты тестируются офлайн"
-  runtime_ai: "ИИ-действия списывают кредиты организации по факту, с месячным лимитом aiAction.monthlyLimit (вызовов); превышение → ошибка AI_LIMIT_REACHED без вызова модели"
-  test: "Сумма ledger прогона = Σ cost_rub/5 по записям usage (±0.1)"
+  runtime_ai: "ИИ-действия списывают кредиты организации по факту, с месячным лимитом aiAction.monthlyLimit (вызовов); превышение → ошибка AI_LIMIT_REACHED без вызова модели. Вход от роли access=public — дополнительно ≤ 10 вызовов/ч на IP (M3). Вывод generate — текст, не HTML. Мультимодальные вызовы (скриншоты) — отдельный callType с T0 only (M3)"
+  test: "Сумма ledger прогона = Σ credits_milli по строкам llm_calls прогона с billable=true (±1 милликредит)"
 
-usage_record:          # одна запись на HTTP-попытку; payload (промпты/ответы) сюда НЕ пишется
+usage_record:          # одна запись на HTTP-попытку = строка platform.llm_calls (db.yaml, источник); camelCase ↔ snake_case колонки 1:1; payload (промпты/ответы) сюда НЕ пишется
   fields:
     - { name: id,                 type: uuid }
     - { name: runId,              type: "uuid?" }
     - { name: orgId,              type: uuid }
     - { name: systemId,           type: "uuid?" }
+    - { name: step,               type: "string?", note: "имя шага workflows.yaml" }
     - { name: callType,           type: string }
-    - { name: role,               type: string }
+    - { name: agentRole,          type: string, note: "routes[callType].role: orchestrator|builder|qa|auditor|importer|runtime|support" }
     - { name: tier,               type: "T0|T1" }
     - { name: provider,           type: string }
     - { name: modelId,            type: string, note: "id из models" }
     - { name: attempt,            type: int }
-    - { name: status,             type: "ok|error|timeout|circuit_open" }
+    - { name: status,             type: "ok|error|timeout|circuit_open|aborted" }
     - { name: errorCode,          type: "string?" }
-    - { name: routeReason,        type: "policy_ru_only|callType_forbidden_T1|pii_high_risk|pii_detected_interview|default_T1|default_T0|fallback_circuit_open|fallback_error" }
+    - { name: routeReason,        type: "policy_ru_only|policy_region_restricted|callType_forbidden_T1|pii_hint|pii_high_risk|pii_detected_interview|default_T1|default_T0|fallback_circuit_open|fallback_error" }
     - { name: fallbackFrom,       type: "string?", note: "modelId, с которого ушли" }
     - { name: policyVersion,      type: string, note: "хеш этого файла + версии packages/pii" }
     - { name: scrubbed,           type: bool }
-    - { name: piiCounts,          type: "Record<category, int>", note: "только счётчики, без значений" }
-    - { name: promptTokens,       type: int }
-    - { name: cachedPromptTokens, type: int }
-    - { name: completionTokens,   type: int }
+    - { name: piiCategoriesCount, type: "Record<kind, int>", note: "только счётчики, без значений" }
+    - { name: inputTokens,        type: int, note: "все входные, включая кэшированные" }
+    - { name: cachedTokens,       type: int }
+    - { name: outputTokens,       type: int }
     - { name: toolCalls,          type: int }
     - { name: latencyMs,          type: int }
     - { name: ttftMs,             type: "int?" }
     - { name: costRub,            type: "decimal(12,4)" }
-    - { name: credits,            type: "decimal(12,4)" }
+    - { name: creditsMilli,       type: bigint }
+    - { name: billable,           type: bool, note: "false: ошибка провайдера (status ≠ ok)" }
     - { name: mode,               type: "live|fixture|record" }
     - { name: requestHash,        type: string, note: "ключ фикстуры (eval.yaml#fixtures)" }
     - { name: createdAt,          type: timestamptz }
-  storage: "M0 — .data/usage.jsonl; M1+ — таблица platform.llm_usage. Промпты хранятся отдельно, только отредактированными, 30 дней, в РФ (security/data-boundary.yaml)"
+  storage: "platform.llm_calls с M0 через UsageSink (architecture.yaml#interfaces); JSONL-приёмник — только tools/eval и юнит-тесты без БД. Содержимое промптов и ответов не хранится (security/data-boundary.yaml#routing.storage_of_content: отладочные транскрипты выключены по умолчанию)"
   test: "Журнал вызовов e2e-прогона: ни одна запись с tier=T1 не имеет callType из pii_forbidden_for_T1.always; для каждой T1-записи scrubbed=true"
