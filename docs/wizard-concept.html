@@ -1,0 +1,800 @@
+<title>Wizard — концепция v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a single reading column (≤1120px) with full-width screen frames; mockups are fixed 1280×800 "screenshots" scaled to fit. */
+:root{
+  --bg:#F2F3F6; --surface:#FFFFFF; --ink:#15161B; --muted:#555A66; --line:#DDE0E7;
+  --accent:#2F46D8; --accent-ink:#FFFFFF; --accent-soft:#E4E8FB;
+  --ok:#1E7A4C; --ok-soft:#DDF1E6; --warn:#9A5205; --warn-soft:#F7EAD6; --bad:#B3261E; --bad-soft:#F8DEDB; --na:#8A8F9B;
+  --f-display:'Unbounded','Onest',system-ui,sans-serif; --f-body:'Onest',system-ui,sans-serif; --f-mono:'JetBrains Mono',ui-monospace,monospace;
+  /* mockup palette: fixed light product UI, identical in both themes */
+  --m-bg:#F4F3EF; --m-rail:#FAF9F6; --m-surface:#FFFFFF; --m-ink:#17171B; --m-muted:#5B5B63; --m-line:#E2DFD7; --m-acc:#2F46D8; --m-acc-soft:#E6E9FB;
+  --a-acc:#1F6B5C; --a-acc-soft:#E1F0EC; --a-side:#F5FAF8; --a-line:#E3ECE9; --a-ink:#12211D; --a-muted:#56645F;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1115; --surface:#171A21; --ink:#ECEEF3; --muted:#A3A9B6; --line:#2A2F3A;
+  --accent:#9AABFF; --accent-ink:#0F1115; --accent-soft:#1E2645;
+  --ok:#62CC93; --ok-soft:#15302A; --warn:#F0A657; --warn-soft:#352716; --bad:#F08A80; --bad-soft:#3A1A18; --na:#7D8391; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1115; --surface:#171A21; --ink:#ECEEF3; --muted:#A3A9B6; --line:#2A2F3A;
+  --accent:#9AABFF; --accent-ink:#0F1115; --accent-soft:#1E2645;
+  --ok:#62CC93; --ok-soft:#15302A; --warn:#F0A657; --warn-soft:#352716; --bad:#F08A80; --bad-soft:#3A1A18; --na:#7D8391; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--f-body);margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:32px 80px;display:flex;flex-direction:column;gap:72px}
+a{color:var(--accent)}
+h1,h2,h3{text-wrap:balance;margin:0}
+h2{font:600 28px/1.2 var(--f-display);letter-spacing:-0.01em}
+h3{font:600 18px/1.35 var(--f-body)}
+p{margin:0}
+.eyebrow{font:600 12px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sec{display:flex;flex-direction:column;gap:20px}
+.sec-head{display:flex;flex-direction:column;gap:8px;max-width:760px}
+.lead{color:var(--muted);font-size:17px}
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 12px/1.25 var(--f-body);padding:5px 9px;border-radius:999px;white-space:nowrap;max-width:100%}
+.tags .pill{white-space:normal}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-warn{background:var(--warn-soft);color:var(--warn)} .p-bad{background:var(--bad-soft);color:var(--bad)} .p-acc{background:var(--accent-soft);color:var(--accent)} .p-na{background:var(--line);color:var(--muted)}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th{text-align:left;font:600 12px/1.3 var(--f-body);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:var(--f-mono);font-size:13px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:32px;align-items:end;padding-top:16px}
+.hero h1{font:600 clamp(40px,7vw,72px)/1 var(--f-display);letter-spacing:-0.02em}
+.hero .pos{font-size:19px;line-height:1.55;max-width:640px}
+.hero-meta{display:flex;flex-direction:column;gap:10px}
+.kv{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
+.kv span:first-child{color:var(--muted)}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc a{text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;min-height:40px;display:inline-flex;align-items:center}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+.toc a:focus-visible,button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* audit */
+.audit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line)}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.audit-card{display:flex;flex-direction:column;gap:12px}
+.audit-card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+
+/* screens */
+.screens{display:flex;flex-direction:column;gap:56px}
+.scr{display:flex;flex-direction:column;gap:14px}
+.scr-head{display:grid;grid-template-columns:48px minmax(0,1fr);gap:14px;align-items:start}
+.scr-n{font:600 22px/1 var(--f-display);color:var(--accent);padding-top:2px}
+.scr-head h3{font:600 22px/1.25 var(--f-display)}
+.scr-head p{color:var(--muted);margin-top:6px;max-width:820px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.frame{position:relative;width:100%;aspect-ratio:1280/800;overflow:hidden;border-radius:12px;border:1px solid var(--line);box-shadow:0 18px 40px rgba(10,12,20,.10);background:var(--m-bg)}
+.frame > .screen{position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;transform:scale(var(--s,.85))}
+.phones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;max-width:760px}
+.phone{position:relative;width:100%;aspect-ratio:390/800;overflow:hidden;border-radius:28px;border:1px solid var(--line);box-shadow:0 18px 40px rgba(10,12,20,.12);background:#FFFFFF}
+.phone > .screen{position:absolute;left:0;top:0;width:390px;height:800px;transform-origin:0 0;transform:scale(var(--s,.9))}
+details.note{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+details.note summary{cursor:pointer;padding:12px 16px;font-size:14px;font-weight:600;color:var(--muted);min-height:44px;display:flex;align-items:center}
+details.note[open] summary{border-bottom:1px solid var(--line)}
+details.note textarea{display:block;width:100%;min-height:90px;border:0;padding:14px 16px;font:400 15px/1.5 var(--f-body);background:transparent;color:var(--ink);resize:vertical}
+
+/* ---------- MOCKUP STYLES (fixed light product UI) ---------- */
+.screen{font:400 14px/1.45 'Onest',system-ui,sans-serif;color:var(--m-ink);background:var(--m-bg);display:flex}
+.screen *{box-sizing:border-box}
+.m-rail{width:64px;flex-shrink:0;background:var(--m-rail);border-right:1px solid var(--m-line);display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:10px}
+.m-logo{width:36px;height:36px;border-radius:9px;background:var(--m-acc);color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px 'Unbounded',sans-serif;margin-bottom:10px}
+.m-ri{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--m-muted)}
+.m-ri.on{background:var(--m-acc-soft);color:var(--m-acc)}
+.m-chat{width:420px;flex-shrink:0;background:var(--m-rail);border-right:1px solid var(--m-line);display:flex;flex-direction:column}
+.m-chat-h{padding:16px 22px;border-bottom:1px solid var(--m-line);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--m-muted)}
+.m-chat-h b{font-size:15px;color:var(--m-ink)}
+.m-chat-b{flex-grow:1;padding:18px 22px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.m-chat-f{padding:14px 22px;border-top:1px solid var(--m-line);display:flex;gap:8px}
+.m-input{flex-grow:1;height:42px;border:1px solid var(--m-line);border-radius:11px;background:#fff;display:flex;align-items:center;padding:0 14px;color:var(--m-muted);font-size:14px}
+.m-user{align-self:flex-end;max-width:330px;background:#17171B;color:#fff;padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:14px;line-height:1.5}
+.m-who{font-size:12px;font-weight:600;color:var(--m-acc)}
+.m-card{background:#fff;border:1px solid var(--m-line);border-radius:13px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.m-h{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--m-muted)}
+.m-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 15px;border-radius:10px;font:600 13px 'Onest',sans-serif;border:1px solid var(--m-line);background:#fff;color:var(--m-ink)}
+.m-btn.p{background:var(--m-acc);border-color:var(--m-acc);color:#fff}
+.m-pill{font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.m-g{background:#DDF1E6;color:#155C39}.m-y{background:#F3E7D3;color:#7A4A06}.m-b{background:var(--m-acc-soft);color:#2437B8}.m-n{background:#EFEDE7;color:#4A4A52}
+.m-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.m-row{display:flex;align-items:center;gap:10px;font-size:13px}
+.m-main{flex-grow:1;min-width:0;display:flex;flex-direction:column;padding:14px 18px 18px;gap:10px}
+.m-top{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--m-muted)}
+.m-seg{display:flex;background:#EAE8E2;border-radius:9px;padding:3px;margin-left:auto}
+.m-seg span{padding:6px 10px;border-radius:7px;font-size:12px;color:#3A3A40}
+.m-seg span.on{background:#fff;font-weight:600}
+/* generated app */
+.a-win{flex-grow:1;background:#fff;border:1px solid var(--m-line);border-radius:13px;display:flex;overflow:hidden;box-shadow:0 10px 26px rgba(20,20,26,.06)}
+.a-side{width:188px;flex-shrink:0;background:var(--a-side);border-right:1px solid var(--a-line);padding:14px 10px;display:flex;flex-direction:column;gap:3px}
+.a-brand{display:flex;align-items:center;gap:8px;padding:2px 8px 12px;font-weight:700;font-size:14px;color:var(--a-ink)}
+.a-mark{width:26px;height:26px;border-radius:7px;background:var(--a-acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.a-nav{padding:8px 10px;border-radius:7px;font-size:13px;color:#33403C}
+.a-nav.on{background:var(--a-acc-soft);color:#14524A;font-weight:600}
+.a-body{flex-grow:1;min-width:0;padding:16px 18px;display:flex;flex-direction:column;gap:12px;color:var(--a-ink)}
+.a-title{display:flex;align-items:center;gap:10px}
+.a-title b{font-size:19px}
+.a-btn{height:34px;padding:0 12px;border-radius:8px;background:var(--a-acc);color:#fff;font-weight:600;font-size:12px;display:inline-flex;align-items:center}
+.a-card{border:1px solid var(--a-line);border-radius:11px;padding:12px 14px;background:#fff}
+.a-muted{color:var(--a-muted)}
+.photo{border-radius:8px;background:repeating-linear-gradient(135deg,#DCE6E2 0 8px,#E9F0ED 8px 16px);display:flex;align-items:flex-end;padding:6px;font-size:10px;color:#3E4E49;font-weight:600}
+.stage{display:grid;grid-template-columns:18px 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #EEF3F1;font-size:13px}
+.stage:last-child{border-bottom:0}
+.new{font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;background:var(--m-acc);color:#fff;letter-spacing:.04em}
+
+/* decisions */
+.dec{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.dec:last-child{border-bottom:0}
+.dec-n{font:600 18px/1.3 var(--f-display);color:var(--accent)}
+.dec p{color:var(--muted);font-size:15px;margin-top:4px}
+.choice{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.choice label{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-height:44px;font-size:14px;cursor:pointer;background:var(--surface)}
+.choice input{accent-color:var(--accent)}
+.dec textarea,.final textarea{width:100%;margin-top:10px;min-height:64px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:400 14px/1.5 var(--f-body);background:var(--bg);color:var(--ink);resize:vertical}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 20px;border-radius:11px;border:1px solid transparent;font:600 15px var(--f-body);cursor:pointer}
+.btn-p{background:var(--accent);color:var(--accent-ink)}
+.btn-g{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.timeline{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;font-size:12px}
+.timeline .m{color:var(--muted);text-align:center;padding-bottom:4px}
+.tl-bar{border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto;margin:0}
+@media (max-width:820px){
+  .hero,.audit-grid,.two{grid-template-columns:minmax(0,1fr)}
+  .phones{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+  .scr-head{grid-template-columns:36px minmax(0,1fr)}
+  .timeline{font-size:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<!-- HERO -->
+<header class="hero">
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <span class="eyebrow">Концепция v2 · после аудита · 30 сентября 2026</span>
+    <h1>Wizard</h1>
+    <p class="pos">Операционная система заказа для небольших компаний заказных услуг, собранная по описанию в чате. Смета, этапы, бригады, фотоотчёты и оплаты частями, связь с amoCRM, данные в РФ. Система проходит проверки качества до публикации и безопасно меняется тем же чатом.</p>
+    <nav class="toc" aria-label="Разделы">
+      <a href="#audit">Итог аудита</a><a href="#changes">Что изменилось</a><a href="#proto">Макеты</a><a href="#arch">Архитектура</a><a href="#econ">Модели и деньги</a><a href="#legal">Право</a><a href="#plan">План</a><a href="#decide">Ваше заключение</a>
+    </nav>
+  </div>
+  <div class="hero-meta box">
+    <div class="kv"><span>Стартовая ниша</span><b>ремонт и отделка</b></div>
+    <div class="kv"><span>Главный конкурент</span><b>Яндекс VibeCraft</b></div>
+    <div class="kv"><span>Модели</span><b>GLM-5.1, Kimi-K2.6, V4-Pro в РФ</b></div>
+    <div class="kv"><span>Себестоимость сборки</span><b class="num">≈ 46–96 ₽ (оценка)</b></div>
+    <div class="kv"><span>Закрытая бета</span><b>6-й месяц, соло</b></div>
+    <div class="kv" style="border-bottom:0"><span>Решений ждут от вас</span><b>6</b></div>
+  </div>
+</header>
+
+<!-- AUDIT -->
+<section class="sec" id="audit">
+  <div class="sec-head">
+    <span class="eyebrow">Итог аудита</span>
+    <h2>34 допущения проверены по открытым источникам</h2>
+    <p class="lead">Четыре трека шли параллельно. Подтвердилось меньше трети. Большинство допущений верны только частично, а четыре опровергнуты и поменяли план.</p>
+  </div>
+  <div class="box" style="display:flex;flex-direction:column;gap:10px">
+    <div class="bar" role="img" aria-label="Подтверждено 9, частично 18, опровергнуто 4, прочее 3 из 34">
+      <i style="width:26.5%;background:var(--ok)"></i><i style="width:52.9%;background:var(--warn)"></i><i style="width:11.8%;background:var(--bad)"></i><i style="width:8.8%;background:var(--na)"></i>
+    </div>
+    <div class="legend"><span><b style="background:var(--ok)"></b>Подтверждено 9</span><span><b style="background:var(--warn)"></b>Частично 18</span><span><b style="background:var(--bad)"></b>Опровергнуто 4</span><span><b style="background:var(--na)"></b>Не проверено или новый риск 3</span></div>
+  </div>
+  <div class="audit-grid">
+    <article class="box audit-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>Модели и экономика</h3><span class="pill p-warn">4 частично</span></div>
+      <div class="bar" aria-hidden="true"><i style="width:33.3%;background:var(--ok)"></i><i style="width:66.7%;background:var(--warn)"></i></div>
+      <ul>
+        <li>В контуре РФ доступны GLM-5.1, Kimi-K2.6 и DeepSeek-V4-Pro, это уровень Opus 4.6. Отставание от фронтира — 2+ поколения, а не одно.</li>
+        <li>«Внешние» модели Cloud.ru (GLM-5.2, V4-Flash, Claude, GPT) отправляют данные за рубеж. Для ПДн их использовать нельзя.</li>
+        <li>Сборка стоит ≈ 46–96 ₽, правка ≈ 11–22 ₽ (оценка). В худшем сценарии до 500 ₽ — это главная неизвестная.</li>
+      </ul>
+    </article>
+    <article class="box audit-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>Спрос и конкуренты</h3><span class="pill p-bad">2 опровергнуто</span></div>
+      <div class="bar" aria-hidden="true"><i style="width:66.7%;background:var(--warn)"></i><i style="width:33.3%;background:var(--bad)"></i></div>
+      <ul>
+        <li>«Аналога в РФ нет» — неверно. Яндекс VibeCraft открыт с июня 2026, есть ещё Битрикс24 Вайбкод и «Амма» в amoCRM.</li>
+        <li>Салоны и запись закрыты DIKIDI (бесплатно) и YCLIENTS (от 412 ₽). Генерировать им систему незачем.</li>
+        <li>Свободная ниша — процессы после сделки в заказных услугах: ремонт, мебель, монтаж.</li>
+      </ul>
+    </article>
+    <article class="box audit-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>Право и лицензии</h3><span class="pill p-acc">1 новый риск</span></div>
+      <div class="bar" aria-hidden="true"><i style="width:46%;background:var(--ok)"></i><i style="width:38.5%;background:var(--warn)"></i><i style="width:15.5%;background:var(--na)"></i></div>
+      <ul>
+        <li>Модель «оператор + обработчик» по 152-ФЗ верна. С 07.2025 любые зарубежные БД с ПДн запрещены.</li>
+        <li>Новый риск: хостинг систем клиентов может сделать Wizard «провайдером хостинга» по 149-ФЗ. Чат-виджет — это риск статуса ОРИ.</li>
+        <li>243-ФЗ об ИИ: основные нормы с 01.03.2027. GLM, Kimi и DeepSeek — не «национальные» модели.</li>
+      </ul>
+    </article>
+    <article class="box audit-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>Техническая реализуемость</h3><span class="pill p-bad">2 опровергнуто</span></div>
+      <div class="bar" aria-hidden="true"><i style="width:11.1%;background:var(--ok)"></i><i style="width:55.6%;background:var(--warn)"></i><i style="width:22.2%;background:var(--bad)"></i><i style="width:11.1%;background:var(--na)"></i></div>
+      <ul>
+        <li>v0.1 в исходном объёме — это 145–180 человеко-дней при ~65 доступных. Объём урезан, бета — на 6-м месяце.</li>
+        <li>workerd сам по себе не песочница, нужен внешний слой gVisor.</li>
+        <li>Chef — донор промптов, а не кода: у него агент работает в браузере через WebContainer. Для долгих прогонов берём DBOS вместо pg-boss.</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<!-- CHANGES -->
+<section class="sec" id="changes">
+  <div class="sec-head">
+    <span class="eyebrow">Что изменилось</span>
+    <h2>v1 из интервью → v2 после аудита</h2>
+    <p class="lead">Ядро не изменилось: спека вместо свободного кода, открытые модели в РФ, одна точка согласования, гейты качества. Поменялись ниша, объём и детали реализации.</p>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th scope="col">Тема</th><th scope="col">Было (v1)</th><th scope="col">Стало (v2)</th><th scope="col">Почему</th></tr></thead>
+    <tbody>
+      <tr><td><b>Ниша</b></td><td>Салоны, студии, запись</td><td>Ремонт и отделка, дальше мебель, монтаж, B2B-клининг <span class="pill p-acc">на решение</span></td><td>Запись закрыта бесплатными SaaS</td></tr>
+      <tr><td><b>Позиционирование</b></td><td>«Аналога нет»</td><td>Против VibeCraft: надёжность в проде, ниша, amoCRM</td><td>VibeCraft открыт с 06.2026</td></tr>
+      <tr><td><b>Срок беты</b></td><td>4 месяца</td><td>6 месяцев, объём урезан <span class="pill p-acc">на решение</span></td><td>Объём ×2,2–2,8 плюс юридическая работа</td></tr>
+      <tr><td><b>Каталог v0.1</b></td><td>10 блоков, включая запись</td><td>8 блоков: таблица, форма, карточка, канбан, смета, этапы с оплатами, фотоотчёт, дашборд</td><td>Под нишу и срок</td></tr>
+      <tr><td><b>Коннекторы v0.1</b></td><td>Telegram, ЮKassa, email, Дадата, amoCRM</td><td>amoCRM №1, Telegram без ПДн, ЮKassa только магазин клиента</td><td>Ниша и 152-ФЗ</td></tr>
+      <tr><td><b>Агенты</b></td><td>Планировщик + 4 строителя</td><td>Оркестратор с планом, один строитель с профилями, QA</td><td>Проще отлаживать соло</td></tr>
+      <tr><td><b>Долгие прогоны</b></td><td>pg-boss</td><td>DBOS Transact на том же Postgres</td><td>pg-boss — очередь без чекпоинтов</td></tr>
+      <tr><td><b>Изоляция кода (v0.2)</b></td><td>V8-изоляты workerd</td><td>workerd внутри gVisor, отдельный пул узлов</td><td>README workerd</td></tr>
+      <tr><td><b>Runtime</b></td><td>Схема на систему</td><td>+ шарды ≤2k схем, инвалидация вместо LISTEN/NOTIFY, в prod только аддитивные миграции, поддомены</td><td>Пределы Postgres</td></tr>
+      <tr><td><b>Модели</b></td><td>«GLM/Kimi/DeepSeek в РФ»</td><td>Allowlist только внутренних моделей Cloud.ru, thinking выключен в ходах с инструментами, Yandex без логирования</td><td>152-ФЗ, ошибки 400</td></tr>
+      <tr><td><b>Цена</b></td><td>2 000 / 6–8 тыс. ₽</td><td>1 990 / 6 990 ₽ за компанию, 1 кредит ≈ 5 ₽, Free с одной системой в prod <span class="pill p-acc">на решение</span></td><td>Рынок и маржа ≥70%</td></tr>
+      <tr><td><b>Право</b></td><td>152-ФЗ</td><td>+ 149-ФЗ (хостинг, ОРИ), чат-виджет убран, спецкатегории ПДн запрещены</td><td>Новый риск</td></tr>
+      <tr><td><b>GTM</b></td><td>Дизайн-партнёры, потом студии</td><td>Партнёры из ниши + интеграторы amoCRM с первого месяца</td><td>У Битрикс24 свои студии</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- PROTOTYPE -->
+<section class="sec" id="proto">
+  <div class="sec-head">
+    <span class="eyebrow">Макеты</span>
+    <h2>Путь пользователя на примере ремонтной компании</h2>
+    <p class="lead">Сценарий: компания «Прямой угол», 3 бригады и 2 прораба. Продажи идут в amoCRM, исполнение — в Excel и Telegram. Слева всегда чат с оркестратором, справа — система, которую он строит. Под каждым экраном можно оставить комментарий, он попадёт в ваше заключение.</p>
+  </div>
+
+  <div class="screens">
+
+  <!-- S1 -->
+  <article class="scr" id="s1">
+    <div class="scr-head"><span class="scr-n">1</span><div><h3>Старт: задача своими словами</h3><p>Один экран и одно поле. Под полем — шаблоны ниши. Внизу — уже собранные системы. Импорт Excel нужен потому, что в нише всё живёт в таблицах.</p><div class="tags"><span class="pill p-na">§1 продукт</span><span class="pill p-na">§2 ниша</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div><div class="m-ri on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><div class="m-ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div></div>
+      <div style="flex-grow:1;display:flex;flex-direction:column;padding:22px 40px 28px">
+        <div style="display:flex;justify-content:flex-end;gap:10px;align-items:center;font-size:13px;color:var(--m-muted)">Тариф «Старт» <span class="m-pill m-n" style="font-size:12px;padding:5px 10px">38 кредитов</span></div>
+        <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px">
+          <div style="text-align:center;display:flex;flex-direction:column;gap:10px"><div style="font:600 38px/1.1 'Unbounded',sans-serif">Как у вас устроена работа?</div><div style="font-size:16px;color:var(--m-muted);max-width:640px">Опишите процесс своими словами. Я задам несколько вопросов, покажу план и соберу систему: данные, права, экраны и интеграции.</div></div>
+          <div style="width:780px;background:#fff;border:1px solid var(--m-line);border-radius:16px;padding:18px;box-shadow:0 12px 30px rgba(20,20,26,.06);display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:15px;line-height:1.55">Делаем ремонт квартир под ключ: 3 бригады, 2 прораба, продажи ведём в amoCRM. После договора всё живёт в Excel и чатах. Нужна система: смета → этапы → бригады → фотоотчёты → оплаты частями, и чтобы клиент видел прогресс.</div>
+            <div style="display:flex;gap:8px;align-items:center"><span class="m-btn">Загрузить Excel со сметой</span><span class="m-btn">Шаблоны</span><span style="flex-grow:1"></span><span class="m-btn p">Начать →</span></div>
+          </div>
+          <div style="display:flex;gap:8px"><span class="m-btn" style="border-radius:999px">Ремонт и отделка</span><span class="m-btn" style="border-radius:999px">Мебель на заказ</span><span class="m-btn" style="border-radius:999px">Монтаж окон и кондиционеров</span><span class="m-btn" style="border-radius:999px">B2B-клининг</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+          <div class="m-card"><div style="display:flex;justify-content:space-between"><b>Прямой угол · объекты</b><span class="m-pill m-g">prod</span></div><span style="color:var(--m-muted)">4 роли · amoCRM, Telegram, ЮKassa</span></div>
+          <div class="m-card"><div style="display:flex;justify-content:space-between"><b>Склад материалов</b><span class="m-pill m-y">draft</span></div><span style="color:var(--m-muted)">2 роли · ревизия 3</span></div>
+          <div class="m-card" style="border-style:dashed;align-items:center;justify-content:center;color:var(--m-muted)">Импорт из Google-таблиц или Excel</div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 1</summary><label for="c1" class="sr" style="position:absolute;left:-9999px">Комментарий к экрану 1</label><textarea id="c1" data-key="c1" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S2 -->
+  <article class="scr" id="s2">
+    <div class="scr-head"><span class="scr-n">2</span><div><h3>Анализ задачи и развилки кнопками</h3><p>Оркестратор раскладывает задачу на роли, сущности и ограничения и спрашивает только то, что нельзя решить по умолчанию. Всего 5 вопросов, у каждого есть рекомендуемый вариант. Справа по ходу диалога собирается понимание задачи.</p><div class="tags"><span class="pill p-na">§3.4 оркестратор</span><span class="pill p-na">решение №7</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div></div>
+      <div class="m-chat" style="width:560px">
+        <div class="m-chat-h"><b>Новая система</b>· этап 1 из 3: понимание задачи</div>
+        <div class="m-chat-b">
+          <div class="m-user">Делаем ремонт квартир под ключ: 3 бригады, 2 прораба, продажи в amoCRM…</div>
+          <div class="m-who">Оркестратор</div>
+          <div style="font-size:14px;line-height:1.55">Разложил задачу: <b>4 роли</b>, <b>6 сущностей</b>, связь с amoCRM и оплаты по этапам. Осталось 5 развилок, их решаете вы.</div>
+          <div class="m-row" style="background:#fff;border:1px solid var(--m-line);border-radius:10px;padding:8px 12px"><span style="color:#1E7A4C;font-weight:700">✓</span><span style="color:var(--m-muted)">Заказы:</span><b>из выигранных сделок amoCRM</b></div>
+          <div class="m-row" style="background:#fff;border:1px solid var(--m-line);border-radius:10px;padding:8px 12px"><span style="color:#1E7A4C;font-weight:700">✓</span><span style="color:var(--m-muted)">Смета:</span><b>разделы и позиции, шаблоны по типу ремонта</b></div>
+          <div class="m-row" style="background:#fff;border:1px solid var(--m-line);border-radius:10px;padding:8px 12px"><span style="color:#1E7A4C;font-weight:700">✓</span><span style="color:var(--m-muted)">Оплата:</span><b>аванс 30 / черновые 30 / чистовые 30 / сдача 10</b></div>
+          <div class="m-card" style="box-shadow:0 8px 22px rgba(20,20,26,.05)">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--m-muted)"><b>Вопрос 4 из 5</b><span>определяет мобильный экран</span></div>
+            <div style="font-size:17px;font-weight:600">Что бригадир делает в системе?</div>
+            <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--m-acc);background:#F2F4FD;border-radius:11px;padding:10px 12px"><span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--m-acc);display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;border-radius:50%;background:var(--m-acc)"></span></span><span style="flex-grow:1">С телефона: выход на объект, фотоотчёт, закрытие этапа</span><span class="m-pill m-b">рекомендую</span></div>
+            <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--m-line);border-radius:11px;padding:10px 12px"><span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--m-line)"></span>Только смотрит свой график</div>
+            <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--m-line);border-radius:11px;padding:10px 12px"><span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--m-line)"></span>Ничего, всё вносит прораб</div>
+            <div style="display:flex;gap:8px"><span class="m-btn p">Далее</span><span class="m-btn">Остальное — по рекомендациям</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="m-main" style="padding:22px 28px;gap:14px">
+        <div class="m-h">Как я понял задачу</div>
+        <div style="font:600 22px/1.25 'Unbounded',sans-serif">Ремонт под ключ: от сделки до сдачи объекта</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+          <div class="m-card"><div class="m-h">Цель</div>Не терять этапы и платежи между сделкой и сдачей, показывать клиенту прогресс без звонков прорабу.</div>
+          <div class="m-card"><div class="m-h">Роли</div>Руководитель · Прораб (2) · Бригадир (3) · Клиент</div>
+          <div class="m-card"><div class="m-h">Сущности</div><div style="display:flex;flex-wrap:wrap;gap:6px"><span class="m-pill m-n">Объекты</span><span class="m-pill m-n">Сметы</span><span class="m-pill m-n">Этапы</span><span class="m-pill m-n">Бригады</span><span class="m-pill m-n">Платежи</span><span class="m-pill m-n">Фотоотчёты</span></div></div>
+          <div class="m-card"><div class="m-h">Ограничения</div>ПДн клиентов хранятся только в РФ. В Telegram — без ПДн. Клиент не видит себестоимость.</div>
+        </div>
+        <div class="m-card"><div class="m-h">Развилки</div>
+          <div class="m-row"><span class="m-dot" style="background:#1E7A4C"></span><span style="width:150px;color:var(--m-muted)">Заказы</span><b>из amoCRM</b></div>
+          <div class="m-row"><span class="m-dot" style="background:#1E7A4C"></span><span style="width:150px;color:var(--m-muted)">Смета</span><b>разделы и позиции</b></div>
+          <div class="m-row"><span class="m-dot" style="background:#1E7A4C"></span><span style="width:150px;color:var(--m-muted)">Оплата</span><b>4 платежа по этапам</b></div>
+          <div class="m-row"><span class="m-dot" style="background:var(--m-acc)"></span><span style="width:150px;color:var(--m-muted)">Бригадир</span><span style="color:#2437B8">выбираете сейчас</span></div>
+          <div class="m-row"><span class="m-dot" style="background:#CFC9BC"></span><span style="width:150px;color:var(--m-muted)">Клиент видит</span><span style="color:var(--m-muted)">ожидает</span></div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 2</summary><label for="c2" style="position:absolute;left:-9999px">Комментарий к экрану 2</label><textarea id="c2" data-key="c2" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S3 -->
+  <article class="scr" id="s3">
+    <div class="scr-head"><span class="scr-n">3</span><div><h3>Карточка системы — единственная точка согласования</h3><p>Карточка фиксирует, что будет построено: матрицу прав, экраны, интеграции, автоматизации и критерии приёмки, которые станут проверками. В ней же пометка о ПДн и потолок цены в кредитах.</p><div class="tags"><span class="pill p-na">решение №7</span><span class="pill p-na">§3.6 гейты</span><span class="pill p-na">§5 кредиты</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div></div>
+      <div class="m-chat" style="width:360px">
+        <div class="m-chat-h"><b>Прямой угол</b>· этап 2 из 3: план</div>
+        <div class="m-chat-b">
+          <div class="m-card" style="font-size:13px"><span style="color:var(--m-muted)">Ответы 5 из 5</span>amoCRM · смета с разделами · 4 платежа · бригадир с телефона · клиент видит прогресс без цен</div>
+          <div class="m-who">Оркестратор</div>
+          <div style="font-size:14px;line-height:1.55">Справа — договорённость о том, <b>что</b> я строю. Пока критерии приёмки не пройдут, система не будет опубликована.</div>
+          <div style="font-size:14px;line-height:1.55;color:var(--m-muted)">Поправить можно словами, например: «прорабу нужна себестоимость по объекту».</div>
+        </div>
+        <div class="m-chat-f"><span class="m-input">Поправить карточку…</span></div>
+      </div>
+      <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0">
+        <div style="flex-grow:1;padding:18px 24px;display:flex;flex-direction:column;gap:12px;overflow:hidden">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div class="m-h">Карточка системы · ревизия 1</div><div style="font:600 22px/1.2 'Unbounded',sans-serif;margin-top:4px">Прямой угол: объекты от сделки до сдачи</div></div><span class="m-pill m-n" style="font-size:12px;padding:5px 10px">4 роли · 6 сущностей · 7 экранов · 3 интеграции</span></div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <div class="m-card"><div class="m-h">Права</div>
+              <table style="font-size:12px;width:100%;border-collapse:collapse"><tr style="color:var(--m-muted)"><td style="padding:3px 4px"></td><td>Объекты</td><td>Сметы</td><td>Этапы</td><td>Платежи</td></tr>
+              <tr><td style="padding:4px;font-weight:600">Руководитель</td><td>всё</td><td>всё</td><td>всё</td><td>всё</td></tr>
+              <tr><td style="padding:4px;font-weight:600">Прораб</td><td>свои</td><td>свои</td><td>свои</td><td>чтение</td></tr>
+              <tr><td style="padding:4px;font-weight:600">Бригадир</td><td>назнач.</td><td style="color:var(--m-muted)">нет</td><td>отметки, фото</td><td style="color:var(--m-muted)">нет</td></tr>
+              <tr><td style="padding:4px;font-weight:600">Клиент</td><td>свой</td><td>итог без себест.</td><td>чтение, фото</td><td>свои счета</td></tr></table></div>
+            <div class="m-card"><div class="m-h">Экраны</div>
+              <div class="m-row"><span style="flex-grow:1">Объекты (канбан по стадиям)</span><span class="m-pill m-n">рук., прораб</span></div>
+              <div class="m-row"><span style="flex-grow:1">Карточка объекта: смета, этапы, платежи</span><span class="m-pill m-n">рук., прораб</span></div>
+              <div class="m-row"><span style="flex-grow:1">График бригад</span><span class="m-pill m-n">рук., прораб</span></div>
+              <div class="m-row"><span style="flex-grow:1">Бригадир: день и фотоотчёт</span><span class="m-pill m-b">телефон</span></div>
+              <div class="m-row"><span style="flex-grow:1">Кабинет клиента: прогресс и оплата</span><span class="m-pill m-b">телефон</span></div></div>
+            <div class="m-card"><div class="m-h">Интеграции</div>
+              <div class="m-row"><b style="width:80px">amoCRM</b><span style="flex-grow:1">сделка «успешно» → объект; этапы → статус сделки</span><span class="m-pill m-y">вход OAuth</span></div>
+              <div class="m-row"><b style="width:80px">Telegram</b><span style="flex-grow:1">уведомления без ПДн: «Этап по объекту №45»</span><span class="m-pill m-g">создам сам</span></div>
+              <div class="m-row"><b style="width:80px">ЮKassa</b><span style="flex-grow:1">счета клиенту на ваш магазин</span><span class="m-pill m-y">нужен ключ</span></div></div>
+            <div class="m-card"><div class="m-h">Автоматизации</div>
+              <div class="m-row">Этап закрыт с фото → счёт клиенту на следующий платёж</div>
+              <div class="m-row">Этап просрочен на 2 дня → уведомление прорабу</div>
+              <div class="m-row">Оплата получена → статус в amoCRM</div></div>
+            <div class="m-card" style="grid-column:span 2"><div class="m-h">Критерии приёмки → проверки</div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px;font-size:13px">
+                <span>☑ Выигранная сделка amoCRM создаёт объект со сметой-шаблоном</span><span>☑ Клиент не видит себестоимость и внутренние заметки</span>
+                <span>☑ Этап нельзя закрыть без хотя бы одного фото</span><span>☑ Сумма платежей равна итогу сметы</span>
+                <span>☑ Бригадир видит только назначенные объекты</span><span>☑ Оплата по ссылке меняет статус платежа и сделки</span></div></div>
+          </div>
+        </div>
+        <div style="padding:12px 24px;border-top:1px solid var(--m-line);background:#fff;display:flex;align-items:center;gap:12px">
+          <div><b>≈ 22 кредита · 15–20 минут</b><div style="font-size:12px;color:var(--m-muted)">Потолок — 30 кредитов. Сверх потолка без вашего согласия не потрачу. ПДн: имя, телефон, адрес объекта — хранятся в РФ.</div></div>
+          <span style="flex-grow:1"></span><span class="m-btn">Изменить ответы</span><span class="m-btn p">Строить</span>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 3</summary><label for="c3" style="position:absolute;left:-9999px">Комментарий к экрану 3</label><textarea id="c3" data-key="c3" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S4 -->
+  <article class="scr" id="s4">
+    <div class="scr-head"><span class="scr-n">4</span><div><h3>Сборка: агенты, гейты и живое превью</h3><p>Прогон идёт на сервере, поэтому закрытая вкладка сборку не останавливает. Слева видно, что делают агенты, сколько потрачено и какие гейты пройдены. Остановки бывают только на секретах и реальной неопределённости. Справа строится черновик системы.</p><div class="tags"><span class="pill p-na">§3.4 DBOS</span><span class="pill p-na">§3.6 G0–G2</span><span class="pill p-na">§3.7 секреты</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div></div>
+      <div class="m-chat">
+        <div class="m-chat-h"><b>Прямой угол</b>· этап 3 из 3: сборка</div>
+        <div class="m-chat-b">
+          <div class="m-card"><div style="display:flex;justify-content:space-between" class="m-h"><span>Агенты</span><span>14 из ≤30 кредитов</span></div>
+            <div class="m-row"><span class="m-dot" style="background:#1E7A4C"></span><b style="width:150px">Оркестратор</b><span style="color:var(--m-muted)">план: 6 сущностей, 7 экранов</span></div>
+            <div class="m-row"><span class="m-dot" style="background:var(--m-acc)"></span><b style="width:150px">Строитель</b><span style="color:#2437B8">профиль UI · экраны 5 из 7</span></div>
+            <div class="m-row"><span class="m-dot" style="background:#B25E09"></span><b style="width:150px">Интеграции</b><span style="color:#7A4A06">ждёт вход в amoCRM</span></div>
+            <div class="m-row"><span class="m-dot" style="background:var(--m-acc)"></span><b style="width:150px">Контроль качества</b><span style="color:#2437B8">проверки: 9 из 12</span></div></div>
+          <div class="m-card"><div class="m-h">Гейты</div>
+            <div class="m-row"><span class="m-dot" style="background:#1E7A4C"></span><b style="width:36px">G0</b>Спека валидна, миграции аддитивны</div>
+            <div class="m-row"><span class="m-dot" style="background:var(--m-acc)"></span><b style="width:36px">G1</b>Критерии приёмки: 4 из 6</div>
+            <div class="m-row"><span class="m-dot" style="background:#CFC9BC"></span><b style="width:36px">G2</b><span style="color:var(--m-muted)">Права, ПДн, секреты — после G1</span></div></div>
+          <div style="font-size:13px;line-height:1.55"><span class="m-who">Оркестратор · </span>Проверка «клиент не видит себестоимость» не прошла: в канбане была колонка «маржа». Скрыл её для роли «Клиент», проверка прошла со второй попытки.</div>
+          <div style="background:#FFF7EA;border:1.5px solid #E8C48A;border-radius:13px;padding:14px;display:flex;flex-direction:column;gap:8px"><b>Нужен вход в amoCRM</b><span style="font-size:13px;color:#3A3A40">Откроется окно amoCRM. Токен хранится в защищённом хранилище, агенты его не видят.</span><div style="display:flex;gap:8px"><span class="m-btn p">Войти в amoCRM</span><span class="m-btn">Пока без интеграции</span></div></div>
+        </div>
+      </div>
+      <div class="m-main">
+        <div class="m-top"><span class="m-pill m-y">DRAFT</span>pryamoy-ugol.draft.wizard.site<div class="m-seg"><span class="on">Руководитель</span><span>Прораб</span><span>Бригадир</span><span>Клиент</span></div></div>
+        <div class="a-win">
+          <div class="a-side"><div class="a-brand"><span class="a-mark">ПУ</span>Прямой угол</div><div class="a-nav">Объекты</div><div class="a-nav on">График бригад</div><div class="a-nav">Сметы</div><div class="a-nav" style="color:#9AA6A2">Платежи ▭▭</div><div class="a-nav" style="color:#9AA6A2">Отчёты ▭▭</div></div>
+          <div class="a-body">
+            <div class="a-title"><b>График бригад</b><span class="a-muted">6–18 октября</span><span style="flex-grow:1"></span><span class="a-btn">+ Назначить</span></div>
+            <div style="display:grid;grid-template-columns:150px repeat(10,minmax(0,1fr));font-size:11px;color:var(--a-muted);border-bottom:1px solid var(--a-line);padding-bottom:6px"><span></span><span>Пн 6</span><span>Вт 7</span><span>Ср 8</span><span>Чт 9</span><span>Пт 10</span><span>Пн 13</span><span>Вт 14</span><span>Ср 15</span><span>Чт 16</span><span>Пт 17</span></div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:grid;grid-template-columns:150px repeat(10,minmax(0,1fr));align-items:center;gap:0"><b style="font-size:13px">Бригада 1 · Сергей</b><div style="grid-column:span 3;background:#CFE6DF;border-radius:7px;padding:7px 9px;font-size:12px;margin-right:4px"><b>Лесная 12–45</b><br>Стяжка</div><div style="grid-column:span 4;background:#E1F0EC;border-radius:7px;padding:7px 9px;font-size:12px;margin-right:4px"><b>Лесная 12–45</b><br>Штукатурка</div><div style="grid-column:span 3;background:#F1F5F3;border:1px dashed #B9CCC5;border-radius:7px;padding:7px 9px;font-size:12px;color:var(--a-muted)">свободно</div></div>
+              <div style="display:grid;grid-template-columns:150px repeat(10,minmax(0,1fr));align-items:center"><b style="font-size:13px">Бригада 2 · Алексей</b><div style="grid-column:span 5;background:#CFE6DF;border-radius:7px;padding:7px 9px;font-size:12px;margin-right:4px"><b>Парковый 7–9</b><br>Электрика и сантехника</div><div style="grid-column:span 5;background:#E1F0EC;border-radius:7px;padding:7px 9px;font-size:12px"><b>Парковый 7–9</b><br>Плитка</div></div>
+              <div style="display:grid;grid-template-columns:150px repeat(10,minmax(0,1fr));align-items:center"><b style="font-size:13px">Бригада 3 · Марат</b><div style="grid-column:span 2;background:#F7E3D6;border-radius:7px;padding:7px 9px;font-size:12px;margin-right:4px"><b>Мира 50–77</b><br>Сдача · просрочка 2 дн.</div><div style="grid-column:span 4;background:#CFE6DF;border-radius:7px;padding:7px 9px;font-size:12px;margin-right:4px"><b>Речная 21–4</b><br>Демонтаж</div><div style="grid-column:span 4;height:44px;border-radius:7px;background:linear-gradient(90deg,#EEF3F1,#F7FAF9,#EEF3F1)"></div></div>
+            </div>
+            <div class="a-card" style="display:flex;gap:10px;align-items:center;font-size:12px"><span class="m-pill m-b">строится</span>Экраны «Платежи» и «Отчёты» ещё собираются. Превью обновится само.</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 4</summary><label for="c4" style="position:absolute;left:-9999px">Комментарий к экрану 4</label><textarea id="c4" data-key="c4" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S5 -->
+  <article class="scr" id="s5">
+    <div class="scr-head"><span class="scr-n">5</span><div><h3>Готово: отчёт аудита и публикация</h3><p>Все блокирующие гейты пройдены, неблокирующие замечания показаны отдельно. Публикация в v0.1 — на поддомене. Перед первой публикацией в prod клиента идентифицируем по оплате картой РФ: это требование 149-ФЗ к хостингу.</p><div class="tags"><span class="pill p-na">§3.6 отчёт</span><span class="pill p-na">§4 149-ФЗ</span><span class="pill p-na">§3.2 поддомены</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div></div>
+      <div class="m-chat">
+        <div class="m-chat-h"><b>Прямой угол</b><span class="m-pill m-g">готово</span></div>
+        <div class="m-chat-b">
+          <div style="font-size:14px;line-height:1.55"><span class="m-who">Оркестратор · </span>Собрал за 17 минут и 21 кредит. Проверьте превью от лица разных ролей и публикуйте.</div>
+          <div class="m-card"><div class="m-h">Отчёт аудита</div>
+            <div class="m-row"><b style="width:30px;color:#1E7A4C">G0</b>6 таблиц, 0 разрушающих миграций, все запросы по индексам</div>
+            <div class="m-row"><b style="width:30px;color:#1E7A4C">G1</b>6 из 6 критериев приёмки (1 исправлен автоматически)</div>
+            <div class="m-row"><b style="width:30px;color:#1E7A4C">G2</b>4 роли × 6 сущностей × 4 операции = 96 проверок прав; ПДн размечены; в Telegram ПДн нет</div>
+            <div class="m-h" style="margin-top:6px">Замечания (не блокируют)</div>
+            <div class="m-row"><b style="width:30px;color:#B25E09">!</b>Нет учёта закупки материалов по объекту</div>
+            <div class="m-row"><b style="width:30px;color:#B25E09">!</b>Нет гарантийного периода после сдачи</div>
+            <div style="display:flex;gap:8px"><span class="m-btn">Добавить оба</span><span class="m-btn">Позже</span></div></div>
+          <div class="m-card"><div class="m-h">Публикация</div><div class="m-input" style="color:var(--m-ink);font-weight:500">pryamoy-ugol.wizard.site</div><span style="font-size:12px;color:var(--m-muted)">Хостинг в РФ · PITR-бэкапы · откат к любой ревизии · свой домен — в следующей версии</span></div>
+        </div>
+        <div class="m-chat-f"><span class="m-btn">Попросить правки</span><span class="m-btn p" style="flex-grow:1">Опубликовать</span></div>
+      </div>
+      <div class="m-main">
+        <div class="m-top"><span class="m-pill m-y">DRAFT</span>данные тестовые<div class="m-seg"><span class="on">Руководитель</span><span>Прораб</span><span>Бригадир</span><span>Клиент</span></div></div>
+        <div class="a-win">
+          <div class="a-side"><div class="a-brand"><span class="a-mark">ПУ</span>Прямой угол</div><div class="a-nav on">Объекты</div><div class="a-nav">График бригад</div><div class="a-nav">Сметы</div><div class="a-nav">Платежи</div><div class="a-nav">Отчёты</div></div>
+          <div class="a-body">
+            <div class="a-title"><b>Объекты</b><span class="a-muted">12 в работе</span><span style="flex-grow:1"></span><span class="a-btn">+ Объект</span></div>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex-grow:1">
+              <div style="background:#F6F9F8;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px"><b style="font-size:12px">Смета · 3</b>
+                <div class="a-card" style="font-size:12px"><b>Речная 21–4</b><div class="a-muted">1к, 38 м² · из amoCRM</div><div>смета 540 000 ₽</div></div>
+                <div class="a-card" style="font-size:12px"><b>Садовая 3–118</b><div class="a-muted">студия, 31 м²</div><div>смета 410 000 ₽</div></div></div>
+              <div style="background:#F6F9F8;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px"><b style="font-size:12px">Черновые · 4</b>
+                <div class="a-card" style="font-size:12px"><b>Лесная 12–45</b><div class="a-muted">2к, 64 м² · бригада 1</div><div style="height:5px;background:#E3ECE9;border-radius:3px;margin-top:6px"><div style="width:62%;height:5px;background:var(--a-acc);border-radius:3px"></div></div></div>
+                <div class="a-card" style="font-size:12px"><b>Парковый 7–9</b><div class="a-muted">3к, 86 м² · бригада 2</div><div style="height:5px;background:#E3ECE9;border-radius:3px;margin-top:6px"><div style="width:40%;height:5px;background:var(--a-acc);border-radius:3px"></div></div></div></div>
+              <div style="background:#F6F9F8;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px"><b style="font-size:12px">Чистовые · 3</b>
+                <div class="a-card" style="font-size:12px"><b>Мира 50–77</b><div class="a-muted">2к, 58 м² · бригада 3</div><span class="m-pill" style="background:#F7E3D6;color:#8A3413;display:inline-block;margin-top:6px">просрочка 2 дн.</span></div></div>
+              <div style="background:#F6F9F8;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px"><b style="font-size:12px">Сдача · 2</b>
+                <div class="a-card" style="font-size:12px"><b>Зелёная 8–31</b><div class="a-muted">1к, 41 м²</div><div>ждёт платёж 10%</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 5</summary><label for="c5" style="position:absolute;left:-9999px">Комментарий к экрану 5</label><textarea id="c5" data-key="c5" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S6 -->
+  <article class="scr" id="s6">
+    <div class="scr-head"><span class="scr-n">6</span><div><h3>Доработка чатом: diff спеки и безопасная миграция</h3><p>Основная работа идёт на живой системе. Каждая правка становится ревизией спеки: сначала diff, проверка миграции и гейты на копии данных с маскированными ПДн, потом публикация одной кнопкой с возможностью отката. В v0.1 в prod разрешены только аддитивные изменения.</p><div class="tags"><span class="pill p-na">§3.1 ревизии</span><span class="pill p-na">§3.2 миграции</span><span class="pill p-na">решение №9</span></div></div></div>
+    <div class="frame"><div class="screen">
+      <div class="m-rail"><div class="m-logo">W</div></div>
+      <div class="m-chat" style="width:440px">
+        <div class="m-chat-h"><b>Прямой угол</b><span class="m-pill m-g">prod · ревизия 9</span></div>
+        <div class="m-chat-b">
+          <div class="m-user">Перед стяжкой нужен акт скрытых работ, подписанный клиентом. Без него этап закрывать нельзя.</div>
+          <div style="font-size:14px;line-height:1.55"><span class="m-who">Оркестратор · </span>Подготовил ревизию 10 в черновике. Живые данные не тронуты.</div>
+          <div class="m-card" style="gap:5px"><div class="m-h">Изменения спеки</div>
+            <div style="font:500 12px/1.5 'JetBrains Mono',monospace;background:#EAF5EE;color:#155C39;border-radius:6px;padding:5px 9px">+ сущность «Акт скрытых работ» (этап, фото, подпись)</div>
+            <div style="font:500 12px/1.5 'JetBrains Mono',monospace;background:#EAF5EE;color:#155C39;border-radius:6px;padding:5px 9px">+ действие «Подписать» · роль: Клиент</div>
+            <div style="font:500 12px/1.5 'JetBrains Mono',monospace;background:#EEF1FC;color:#2437B8;border-radius:6px;padding:5px 9px">~ этап «Стяжка» закрывается только с подписанным актом</div>
+            <div style="font:500 12px/1.5 'JetBrains Mono',monospace;background:#EEF1FC;color:#2437B8;border-radius:6px;padding:5px 9px">~ Telegram клиенту: «Акт по объекту №45 ждёт подписи»</div></div>
+          <div class="m-card" style="font-size:13px">
+            <div class="m-row"><b style="width:70px;color:#1E7A4C">Миграция</b>аддитивная: новая таблица, 12 объектов не меняются</div>
+            <div class="m-row"><b style="width:70px;color:#1E7A4C">G0–G2</b>пройдены, добавлены 2 проверки</div>
+            <div class="m-row"><b style="width:70px;color:var(--m-muted)">Цена</b>4 кредита</div></div>
+        </div>
+        <div class="m-chat-f"><span class="m-btn">Отменить</span><span class="m-btn p" style="flex-grow:1">Опубликовать ревизию 10</span></div>
+      </div>
+      <div class="m-main">
+        <div class="m-top"><span class="m-pill m-y">DRAFT · РЕВИЗИЯ 10</span>копия prod, ПДн замаскированы<div class="m-seg"><span>Prod</span><span class="on">Черновик</span><span>Подсветить изменения</span></div></div>
+        <div class="a-win">
+          <div class="a-side"><div class="a-brand"><span class="a-mark">ПУ</span>Прямой угол</div><div class="a-nav on">Объекты</div><div class="a-nav">График бригад</div><div class="a-nav">Сметы</div><div class="a-nav">Платежи</div></div>
+          <div class="a-body">
+            <div class="a-muted" style="font-size:12px">Объекты / Лесная 12–45</div>
+            <div class="a-title"><b>Лесная 12–45</b><span class="a-muted">2к, 64 м² · клиент К•••• А. · прораб Дмитрий</span></div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px">
+              <div class="a-card"><b style="font-size:13px">Этапы</b>
+                <div class="stage"><span style="color:#1E7A4C">✓</span>Демонтаж<span class="a-muted">4 фото</span><span class="m-pill m-g">закрыт</span></div>
+                <div class="stage"><span style="color:#1E7A4C">✓</span>Электрика<span class="a-muted">7 фото</span><span class="m-pill m-g">закрыт</span></div>
+                <div class="stage" style="background:#F2F4FD;margin:0 -8px;padding:8px"><span style="color:#2437B8">●</span><span>Стяжка <span class="new">НОВОЕ</span></span><span style="color:#2437B8">акт не подписан</span><span class="m-pill m-b">в работе</span></div>
+                <div class="stage"><span class="a-muted">○</span>Штукатурка<span></span><span class="m-pill m-n">ожидает</span></div>
+                <div class="stage"><span class="a-muted">○</span>Плитка<span></span><span class="m-pill m-n">ожидает</span></div></div>
+              <div class="a-card" style="border:2px solid var(--m-acc);background:#FBFCFF;display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between"><b style="font-size:13px">Акт скрытых работ</b><span class="new">НОВОЕ</span></div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px"><div class="photo" style="height:62px">гидроизол.</div><div class="photo" style="height:62px">маяки</div><div class="photo" style="height:62px">трубы</div></div>
+                <span style="font-size:12px">Подготовил: бригадир Сергей, 28.09</span>
+                <div style="display:flex;gap:6px"><span class="a-btn" style="background:#fff;color:#2437B8;border:1.5px solid var(--m-acc)">Отправить клиенту</span></div>
+                <span style="font-size:12px;color:var(--a-muted)">Закрыть «Стяжку» можно будет после подписи</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 6</summary><label for="c6" style="position:absolute;left:-9999px">Комментарий к экрану 6</label><textarea id="c6" data-key="c6" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S7 -->
+  <article class="scr" id="s7">
+    <div class="scr-head"><span class="scr-n">7</span><div><h3>Созданная система в работе</h3><p>Так руководитель видит систему каждый день. Платформы здесь нет, кроме кнопки «Изменить систему», которая открывает чат Wizard. Сверху деньги по объекту, ниже этапы с фото и следующий платёж.</p><div class="tags"><span class="pill p-na">§3.3 блоки: этапы с оплатами, фотоотчёт, смета</span></div></div></div>
+    <div class="frame"><div class="screen" style="background:#fff">
+      <div class="a-side" style="width:220px;padding:18px 12px"><div class="a-brand" style="font-size:15px"><span class="a-mark" style="width:30px;height:30px">ПУ</span><span>Прямой угол<br><span style="font-size:11px;font-weight:500;color:var(--a-muted)">pryamoy-ugol.wizard.site</span></span></div>
+        <div class="a-nav">Сегодня</div><div class="a-nav on">Объекты</div><div class="a-nav">График бригад</div><div class="a-nav">Сметы</div><div class="a-nav">Платежи</div><div class="a-nav">Отчёты</div><div style="flex-grow:1"></div>
+        <div style="border:1px solid var(--a-line);border-radius:9px;padding:9px 10px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;background:#fff"><span style="width:20px;height:20px;border-radius:5px;background:var(--m-acc);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center">W</span>Изменить систему</div>
+        <span style="font-size:11px;color:var(--a-muted);padding:8px 6px 0">Руководитель · Андрей</span></div>
+      <div class="a-body" style="padding:22px 26px;gap:16px">
+        <div class="a-title"><div style="display:flex;flex-direction:column"><b style="font-size:22px">Лесная 12–45</b><span class="a-muted">2к, 64 м² · сделка amoCRM №8812 · прораб Дмитрий · бригада 1</span></div><span style="flex-grow:1"></span><span class="a-btn" style="background:#fff;color:var(--a-ink);border:1px solid var(--a-line)">Смета</span><span class="a-btn">Выставить счёт 372 000 ₽</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+          <div class="a-card"><div class="a-muted" style="font-size:12px">Смета</div><b style="font-size:22px">1 240 000 ₽</b></div>
+          <div class="a-card"><div class="a-muted" style="font-size:12px">Оплачено</div><b style="font-size:22px">744 000 ₽</b><div style="height:5px;background:#E3ECE9;border-radius:3px;margin-top:6px"><div style="width:60%;height:5px;background:var(--a-acc);border-radius:3px"></div></div></div>
+          <div class="a-card"><div class="a-muted" style="font-size:12px">Этапы</div><b style="font-size:22px">4 из 8</b></div>
+          <div class="a-card"><div class="a-muted" style="font-size:12px">Сдача по плану</div><b style="font-size:22px">14 ноября</b></div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;flex-grow:1">
+          <div class="a-card"><b>Этапы и платежи</b>
+            <div class="stage"><span style="color:#1E7A4C">✓</span>Демонтаж<span class="a-muted">аванс 30% · оплачен</span><span class="m-pill m-g">372 000 ₽</span></div>
+            <div class="stage"><span style="color:#1E7A4C">✓</span>Электрика, сантехника</div>
+            <div class="stage"><span style="color:#1E7A4C">✓</span>Стяжка<span class="a-muted">акт подписан 29.09</span><span></span></div>
+            <div class="stage"><span style="color:#1E7A4C">✓</span>Штукатурка<span class="a-muted">черновые 30% · оплачен</span><span class="m-pill m-g">372 000 ₽</span></div>
+            <div class="stage"><span style="color:var(--a-acc)">●</span>Плитка<span class="a-muted">в работе с 30.09</span><span class="m-pill m-b">в работе</span></div>
+            <div class="stage"><span class="a-muted">○</span>Чистовая отделка<span class="a-muted">чистовые 30%</span><span class="m-pill m-n">372 000 ₽</span></div>
+            <div class="stage"><span class="a-muted">○</span>Сдача<span class="a-muted">финал 10%</span><span class="m-pill m-n">124 000 ₽</span></div></div>
+          <div class="a-card" style="display:flex;flex-direction:column;gap:8px"><b>Фотоотчёт · Плитка</b>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;flex-grow:1"><div class="photo">сан. узел · 30.09</div><div class="photo">фартук · 30.09</div><div class="photo">пол · 01.10</div><div class="photo">раскладка</div><div class="photo">гидроизол.</div><div class="photo">затирка</div></div>
+            <span class="a-muted" style="font-size:12px">Клиент видит эти фото в кабинете. Внутренние заметки прораба скрыты.</span></div>
+        </div>
+      </div>
+    </div></div>
+    <details class="note"><summary>Комментарий к экрану 7</summary><label for="c7" style="position:absolute;left:-9999px">Комментарий к экрану 7</label><textarea id="c7" data-key="c7" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+
+  <!-- S8 -->
+  <article class="scr" id="s8">
+    <div class="scr-head"><span class="scr-n">8</span><div><h3>Телефоны: бригадир и клиент</h3><p>Две роли, ради которых система вообще нужна. Бригадир отмечает работу и загружает фото. Клиент видит прогресс, подписывает акт и оплачивает этап через магазин ЮKassa самой компании. Wizard чужие деньги не принимает.</p><div class="tags"><span class="pill p-na">§3.7 ЮKassa клиента</span><span class="pill p-na">§4 согласие на ПДн</span></div></div></div>
+    <div class="phones">
+      <div class="phone"><div class="screen" style="flex-direction:column;background:#fff;color:var(--a-ink)">
+        <div style="padding:26px 18px 14px;background:var(--a-side);display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--a-muted)">Бригадир · Сергей · сегодня</span><b style="font-size:20px">Лесная 12–45</b><span class="m-pill m-b" style="align-self:flex-start">Плитка · день 2 из 5</span></div>
+        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;flex-grow:1">
+          <div class="a-card" style="display:flex;justify-content:space-between;align-items:center"><span>На объекте с 8:40</span><span class="m-pill m-g">отмечено</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px"><b style="font-size:14px">Чек-лист этапа</b>
+            <div class="m-row" style="font-size:14px">☑ Гидроизоляция санузла</div><div class="m-row" style="font-size:14px">☑ Раскладка согласована</div><div class="m-row" style="font-size:14px">☐ Пол санузла</div><div class="m-row" style="font-size:14px">☐ Фартук кухни</div></div>
+          <div style="display:flex;flex-direction:column;gap:8px"><b style="font-size:14px">Фото сегодня</b><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px"><div class="photo" style="height:80px">санузел</div><div class="photo" style="height:80px">фартук</div><div style="height:80px;border:1.5px dashed #9FB8B0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--a-acc)">+</div></div></div>
+          <div style="flex-grow:1"></div>
+          <div style="height:50px;border-radius:13px;background:#E3ECE9;color:#56645F;display:flex;align-items:center;justify-content:center;font-weight:700">Закрыть этап (осталось 2 пункта)</div>
+          <span style="font-size:11px;color:var(--a-muted);text-align:center">Уведомления в Telegram без имён и телефонов</span>
+        </div>
+      </div></div>
+      <div class="phone"><div class="screen" style="flex-direction:column;background:#fff;color:var(--a-ink)">
+        <div style="padding:26px 18px 14px;background:var(--a-side);display:flex;flex-direction:column;gap:6px"><div class="a-brand" style="padding:0"><span class="a-mark">ПУ</span>Прямой угол</div><b style="font-size:19px">Ваш ремонт: Лесная 12–45</b>
+          <div style="height:8px;background:#DDE9E5;border-radius:4px"><div style="width:56%;height:8px;background:var(--a-acc);border-radius:4px"></div></div><span style="font-size:12px;color:var(--a-muted)">Выполнено 4 из 8 этапов · сдача 14 ноября</span></div>
+        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex-grow:1">
+          <div class="a-card"><b style="font-size:14px">Сейчас: плитка</b><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px"><div class="photo" style="height:70px"></div><div class="photo" style="height:70px"></div><div class="photo" style="height:70px"></div></div></div>
+          <div class="a-card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px">Платежи</b>
+            <div class="m-row" style="justify-content:space-between"><span>Аванс</span><span class="m-pill m-g">оплачен</span></div>
+            <div class="m-row" style="justify-content:space-between"><span>Черновые работы</span><span class="m-pill m-g">оплачен</span></div>
+            <div class="m-row" style="justify-content:space-between"><span>Чистовые работы</span><b>372 000 ₽</b></div></div>
+          <div class="a-card" style="font-size:13px;display:flex;gap:8px;align-items:flex-start"><span>☑</span>Согласие на обработку персональных данных дано 12.09. <span style="text-decoration:underline">Политика</span></div>
+          <div style="flex-grow:1"></div>
+          <div style="height:50px;border-radius:13px;background:var(--a-acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">Оплатить чистовые 372 000 ₽</div>
+          <span style="font-size:11px;color:var(--a-muted);text-align:center">Оплата через ЮKassa «Прямого угла» · кнопка активна после приёмки этапа</span>
+        </div>
+      </div></div>
+    </div>
+    <details class="note"><summary>Комментарий к экрану 8</summary><label for="c8" style="position:absolute;left:-9999px">Комментарий к экрану 8</label><textarea id="c8" data-key="c8" placeholder="Что поправить на этом экране?"></textarea></details>
+  </article>
+  </div>
+</section>
+
+<!-- ARCH -->
+<section class="sec" id="arch">
+  <div class="sec-head">
+    <span class="eyebrow">Архитектура v2</span>
+    <h2>Спека как ядро, Postgres как runtime, агенты на сервере</h2>
+    <p class="lead">Агенты не пишут приложение с нуля. Они применяют к спеке типизированные операции, каждая операция валидируется и записывается ревизией. Код появляется только в точках расширения (v0.2) и исполняется за двумя слоями изоляции.</p>
+  </div>
+<pre class="mermaid">
+flowchart LR
+  U[Пользователь в чате] --> O[Оркестратор: интервью и план]
+  O --> B[Строитель с профилями инструментов]
+  B -- типизированные операции --> S[(AppSpec: ревизии, CAS)]
+  S --> P[(Postgres: схема на систему, RLS, шарды)]
+  S --> C[Коннекторы: amoCRM, Telegram, ЮKassa]
+  S --> F[v0.2: функции в workerd + gVisor]
+  B --> Q[QA: гейты G0–G2]
+  Q --> O
+  P -- инвалидация --> V[Превью и прод по SSE]
+  O & B & Q -.-> D[DBOS: durable-прогоны]
+  O & B & Q -.-> R[Роутер: только модели в РФ]
+</pre>
+  <div class="two">
+    <div class="box" style="display:flex;flex-direction:column;gap:8px"><h3>Runtime</h3><p style="font-size:15px;color:var(--muted)">У каждой системы своя схема, на кластер не больше ~2 тыс. схем, черновики живут в отдельном кластере с TTL. Контекст пользователя передаётся через <span class="mono">SET LOCAL</span>, имена в запросах всегда полностью квалифицированы. Realtime построен на инвалидации после записи, без LISTEN/NOTIFY. В prod v0.1 разрешены только аддитивные миграции, бэкапы — через PITR.</p></div>
+    <div class="box" style="display:flex;flex-direction:column;gap:8px"><h3>Агенты</h3><p style="font-size:15px;color:var(--muted)">Стек: AI SDK 7, свой UI, из Chef берём только промпты и приёмы работы с контекстом. Прогоны идут на DBOS, закрытая вкладка сборку не останавливает. В ходах с инструментами thinking выключен, structured output не используется. На сборку действует потолок кредитов, после 5 ошибок подряд задача эскалируется.</p></div>
+  </div>
+</section>
+
+<!-- ECON -->
+<section class="sec" id="econ">
+  <div class="sec-head">
+    <span class="eyebrow">Модели и деньги</span>
+    <h2>Только модели в контуре РФ, 1 кредит ≈ 5 ₽ себестоимости</h2>
+    <p class="lead">Цены — Cloud.ru Foundation Models на 28.09.2026, с НДС. Себестоимость сборки посчитана по оценочному профилю в 320 тыс. токенов. Реальный профиль замерим на неделе 0, в худшем случае он может оказаться в 3–5 раз больше.</p>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th scope="col">Роль</th><th scope="col">Модель</th><th scope="col" class="num">₽ за 1M, вход / выход</th></tr></thead>
+    <tbody>
+      <tr><td>Оркестратор</td><td>Kimi-K2.6</td><td class="num">176 / 726</td></tr>
+      <tr><td>Строитель</td><td>DeepSeek-V4-Pro или GLM-5.1 (выбор по итогам eval)</td><td class="num">183 / 732 · 199 / 830</td></tr>
+      <tr><td>Дешёвые шаги</td><td>Qwen3-Coder-Next, gpt-oss-120b</td><td class="num">122 / 244 · 16 / 61</td></tr>
+      <tr><td>Аудитор</td><td>GigaChat3.5 (другое семейство)</td><td class="num">96 / 289</td></tr>
+      <tr><td>Резерв</td><td>Yandex: Qwen3-235B, DeepSeek-V4-Flash, без логирования</td><td class="num">500 / 500 · 300 / 500</td></tr>
+      <tr><td><span class="pill p-bad">запрещено с ПДн</span></td><td>Внешние модели Cloud.ru: GLM-5.2, V4-Flash, Claude, GPT, Gemini</td><td>данные уходят за рубеж</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th scope="col">Себестоимость</th><th scope="col" class="num">Сборка</th><th scope="col" class="num">Правка</th></tr></thead>
+      <tbody>
+        <tr><td>Флагманы (Kimi + V4-Pro + GLM)</td><td class="num">57 / <b>96</b> / 133 ₽</td><td class="num">22 ₽</td></tr>
+        <tr><td>Эконом (Kimi + Qwen-Next + gpt-oss)</td><td class="num">29 / <b>46</b> / 62 ₽</td><td class="num">11 ₽</td></tr>
+        <tr><td>Yandex</td><td class="num">79 / <b>128</b> / 177 ₽</td><td class="num">29 ₽</td></tr>
+        <tr><td style="color:var(--muted)">Для сравнения: Sonnet 4.6</td><td class="num" style="color:var(--muted)">204 / 339 / 473 ₽</td><td class="num" style="color:var(--muted)">78 ₽</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th scope="col">Тариф, за компанию</th><th scope="col" class="num">Цена</th><th scope="col">Входит</th></tr></thead>
+      <tbody>
+        <tr><td>Free</td><td class="num">0 ₽</td><td>25 кредитов один раз, 1 система в prod после привязки карты</td></tr>
+        <tr><td>Старт</td><td class="num">1 990 ₽</td><td>50 кредитов/мес, 2 системы, до 10 пользователей</td></tr>
+        <tr><td>Бизнес</td><td class="num">6 990 ₽</td><td>230 кредитов/мес, 5 систем, до 30 пользователей</td></tr>
+        <tr><td>Докупка</td><td class="num">990 ₽</td><td>60 кредитов</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- LEGAL -->
+<section class="sec" id="legal">
+  <div class="sec-head">
+    <span class="eyebrow">Право</span>
+    <h2>Юридический пакет — 25–35 дней работы и 1–2 месяца ожидания</h2>
+    <p class="lead">Это кабинетный аудит, а не заключение юриста. Шаги 1–4 нужно начать в первом месяце, иначе бета упрётся в РКН и ЮKassa.</p>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th scope="col">Шаг</th><th scope="col">Что сделать</th><th scope="col">Срок</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Юрист: хостинг-провайдер или SaaS (149-ФЗ), ОРИ, субпоручение для LLM, «лицензия + хостинг» для НДС</td><td class="num">1–2 дня · 50–150 тыс. ₽</td></tr>
+      <tr><td class="num">2</td><td>Договоры-поручения с Cloud.ru и Yandex, копия аттестата УЗ-1 с границами</td><td class="num">2–3 дня</td></tr>
+      <tr><td class="num">3</td><td>Роутер: allowlist моделей в РФ, выключенное логирование в Yandex, маскирование ПДн</td><td class="num">2–3 дня</td></tr>
+      <tr><td class="num">4</td><td>Уведомление РКН, назначение ответственных</td><td class="num">1 день + 10–30 дней</td></tr>
+      <tr><td class="num">5</td><td>Оферта с ДПО и субобработчиками, политика, отдельное согласие, пункт по ст. 10 243-ФЗ</td><td class="num">3–5 дней</td></tr>
+      <tr><td class="num">6</td><td>Модель угроз (ФСТЭК), акт об уровне защищённости (УЗ-4 и УЗ-3), ОРД, регламент инцидентов 24/72 ч</td><td class="num">5–8 дней</td></tr>
+      <tr><td class="num">7</td><td>ЮKassa: магазин, автоплатежи, чеки; счёт и ЭДО для юрлиц</td><td class="num">3–5 дней</td></tr>
+      <tr><td class="num">8</td><td>Пакет 152-ФЗ для клиентов: политика, согласие, черновик уведомления в РКН</td><td class="num">3–4 дня</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- PLAN -->
+<section class="sec" id="plan">
+  <div class="sec-head">
+    <span class="eyebrow">План</span>
+    <h2>Закрытая бета на 6-м месяце, один основатель</h2>
+    <p class="lead">До кода — неделя 0: вопросы в поддержку Cloud.ru, замер токенов на 10 брифах, юрист, проверка спроса через Wordstat, лендинг с Директом на 20–30 тыс. ₽ и звонки интеграторам amoCRM.</p>
+  </div>
+  <div class="box" style="display:flex;flex-direction:column;gap:10px;overflow-x:auto">
+    <div class="timeline" style="min-width:640px">
+      <span class="m">1</span><span class="m">2</span><span class="m">3</span><span class="m">4</span><span class="m">5</span><span class="m">6</span><span class="m">7</span><span class="m">8</span><span class="m">9</span><span class="m">10</span><span class="m">11</span><span class="m">12</span>
+      <div class="tl-bar" style="grid-column:1 / span 6;background:var(--accent);color:var(--accent-ink)">v0.1: спека, runtime, 8 блоков, amoCRM, Telegram, ЮKassa, G0–G2, право</div>
+      <div class="tl-bar" style="grid-column:7 / span 3;background:var(--accent-soft);color:var(--accent)">v0.2: код, интегратор, свои домены, «Агентство»</div>
+      <div class="tl-bar" style="grid-column:10 / span 3;background:var(--line);color:var(--ink)">v0.3: React-блоки, G3–G4, экспорт</div>
+    </div>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th scope="col">Месяц</th><th scope="col">v0.1 по шагам</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td>Юрист, договоры с облаками, РКН; AppSpec и операции; DDL, RLS и CRUD; каркас DBOS</td></tr>
+      <tr><td class="num">2</td><td>Чат, события прогона, превью; оркестратор и строитель; G0; первые 10 брифов</td></tr>
+      <tr><td class="num">3</td><td>Блоки: таблица, форма, карточка, канбан; draft/prod и миграции; G1</td></tr>
+      <tr><td class="num">4</td><td>Смета, этапы с оплатами, фотоотчёт, дашборд; amoCRM</td></tr>
+      <tr><td class="num">5</td><td>Telegram, ЮKassa, G2, биллинг, пакет 152-ФЗ для клиентов</td></tr>
+      <tr><td class="num">6</td><td>Бета с 5–8 ремонтными компаниями, eval-стенд на 30 брифов</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- DECIDE -->
+<section class="sec" id="decide">
+  <div class="sec-head">
+    <span class="eyebrow">Ваше заключение</span>
+    <h2>Шесть решений, которые принимаете вы</h2>
+    <p class="lead">Отметьте позицию и при желании добавьте комментарий. Кнопка внизу соберёт ответы и комментарии к экранам в текст, который можно вставить в чат. Черновик сохраняется только в этом браузере.</p>
+  </div>
+  <div class="box" style="padding:0">
+    <div class="dec" data-dec="d1"><span class="dec-n">1</span><div><h3>Стартовая ниша — ремонт и отделка вместо салонов и студий</h3><p>Рекомендация: да. Запись закрыта DIKIDI и YCLIENTS, а в заказных услугах процесс после сделки никто не закрывает.</p><div class="choice" role="radiogroup" aria-label="Решение 1"><label><input type="radio" name="d1" value="Согласен">Согласен</label><label><input type="radio" name="d1" value="Другая ниша">Другая ниша</label><label><input type="radio" name="d1" value="Обсудить">Обсудить</label></div><label for="t1" style="position:absolute;left:-9999px">Комментарий к решению 1</label><textarea id="t1" data-key="t1" placeholder="Комментарий или ваша ниша"></textarea></div></div>
+    <div class="dec" data-dec="d2"><span class="dec-n">2</span><div><h3>Бета на 6-м месяце с урезанным объёмом</h3><p>Рекомендация: да. Альтернатива — 4-й месяц без amoCRM и фотоотчёта, но тогда в нише нечем отличаться.</p><div class="choice" role="radiogroup" aria-label="Решение 2"><label><input type="radio" name="d2" value="6-й месяц">6-й месяц</label><label><input type="radio" name="d2" value="4-й месяц, уже">4-й месяц, уже</label><label><input type="radio" name="d2" value="Обсудить">Обсудить</label></div><label for="t2" style="position:absolute;left:-9999px">Комментарий к решению 2</label><textarea id="t2" data-key="t2" placeholder="Комментарий"></textarea></div></div>
+    <div class="dec" data-dec="d3"><span class="dec-n">3</span><div><h3>Эскалация на Claude/GPT через внешние модели Cloud.ru</h3><p>Рекомендация: не в v0.1. Если включать, то только по согласию пользователя, без ПДн и с пометкой «данные уходят за рубеж».</p><div class="choice" role="radiogroup" aria-label="Решение 3"><label><input type="radio" name="d3" value="Не в v0.1">Не в v0.1</label><label><input type="radio" name="d3" value="Включить opt-in">Включить opt-in</label><label><input type="radio" name="d3" value="Обсудить">Обсудить</label></div><label for="t3" style="position:absolute;left:-9999px">Комментарий к решению 3</label><textarea id="t3" data-key="t3" placeholder="Комментарий"></textarea></div></div>
+    <div class="dec" data-dec="d4"><span class="dec-n">4</span><div><h3>Free с одной системой в prod после привязки карты</h3><p>Рекомендация: да, иначе проигрываем бесплатному уровню VibeCraft. Карта одновременно решает вопрос идентификации по 149-ФЗ.</p><div class="choice" role="radiogroup" aria-label="Решение 4"><label><input type="radio" name="d4" value="Согласен">Согласен</label><label><input type="radio" name="d4" value="Только draft">Только draft</label><label><input type="radio" name="d4" value="Обсудить">Обсудить</label></div><label for="t4" style="position:absolute;left:-9999px">Комментарий к решению 4</label><textarea id="t4" data-key="t4" placeholder="Комментарий"></textarea></div></div>
+    <div class="dec" data-dec="d5"><span class="dec-n">5</span><div><h3>Тарифы 1 990 / 6 990 ₽ за компанию, 50 / 230 кредитов</h3><p>Рекомендация: да, с пересмотром после замера токенов на неделе 0.</p><div class="choice" role="radiogroup" aria-label="Решение 5"><label><input type="radio" name="d5" value="Согласен">Согласен</label><label><input type="radio" name="d5" value="Другие цены">Другие цены</label><label><input type="radio" name="d5" value="Обсудить">Обсудить</label></div><label for="t5" style="position:absolute;left:-9999px">Комментарий к решению 5</label><textarea id="t5" data-key="t5" placeholder="Комментарий"></textarea></div></div>
+    <div class="dec" data-dec="d6"><span class="dec-n">6</span><div><h3>Канал интеграторов amoCRM с первого месяца</h3><p>Рекомендация: да. Одна сделка с интегратором даёт десятки клиентов, а собственного генератора приложений у amoCRM нет.</p><div class="choice" role="radiogroup" aria-label="Решение 6"><label><input type="radio" name="d6" value="Согласен">Согласен</label><label><input type="radio" name="d6" value="Позже">Позже</label><label><input type="radio" name="d6" value="Обсудить">Обсудить</label></div><label for="t6" style="position:absolute;left:-9999px">Комментарий к решению 6</label><textarea id="t6" data-key="t6" placeholder="Комментарий"></textarea></div></div>
+  </div>
+  <div class="box final" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Общее заключение</h3>
+    <label for="t0" style="position:absolute;left:-9999px">Общее заключение</label>
+    <textarea id="t0" data-key="t0" placeholder="Что оставить, что изменить, что убрать" style="min-height:110px"></textarea>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><button class="btn btn-p" id="copy" type="button">Скопировать заключение</button><button class="btn btn-g" id="show" type="button">Показать текст</button><span id="status" role="status" style="font-size:14px;color:var(--muted)"></span></div>
+    <label for="out" style="position:absolute;left:-9999px">Текст заключения</label>
+    <textarea id="out" readonly hidden style="min-height:220px;font-family:var(--f-mono);font-size:13px"></textarea>
+  </div>
+  <p style="font-size:14px;color:var(--muted)">Источники и подробности лежат в репозитории <span class="mono">mrflxxxme/wizard</span>: <span class="mono">docs/concept.md</span> и <span class="mono">docs/audit/*.md</span>, по каждому треку с вердиктами и ссылками на первоисточники.</p>
+</section>
+
+</div>
+
+<script>
+(function(){
+  // scale fixed-size mockups to their frames
+  function fit(){
+    document.querySelectorAll('.frame, .phone').forEach(function(f){
+      var s=f.querySelector(':scope > .screen'); if(!s) return;
+      var w=s.offsetWidth; if(!w) return;
+      f.style.setProperty('--s', (f.clientWidth / w).toFixed(4));
+    });
+  }
+  fit();
+  if (window.ResizeObserver){ var ro=new ResizeObserver(fit); document.querySelectorAll('.frame, .phone').forEach(function(f){ro.observe(f);}); }
+  else window.addEventListener('resize', fit);
+
+  // draft persistence (per viewer, best effort)
+  var KEY='wizard-concept-v2-review';
+  function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+  function save(d){ try{ localStorage.setItem(KEY, JSON.stringify(d)); }catch(e){} }
+  var st=load();
+  document.querySelectorAll('textarea[data-key]').forEach(function(t){
+    if(st[t.dataset.key]) { t.value=st[t.dataset.key]; var d=t.closest('details'); if(d) d.open=true; }
+    t.addEventListener('input', function(){ st[t.dataset.key]=t.value; save(st); });
+  });
+  document.querySelectorAll('.choice input').forEach(function(r){
+    if(st[r.name]===r.value) r.checked=true;
+    r.addEventListener('change', function(){ st[r.name]=r.value; save(st); });
+  });
+
+  function compose(){
+    var lines=['Заключение по концепции Wizard v2',''];
+    document.querySelectorAll('.dec').forEach(function(d,i){
+      var h=d.querySelector('h3').textContent.trim();
+      var c=d.querySelector('input:checked'); var t=d.querySelector('textarea').value.trim();
+      lines.push((i+1)+'. '+h+' — '+(c?c.value:'без ответа')+(t?'. '+t:''));
+    });
+    var notes=[];
+    for(var i=1;i<=8;i++){ var el=document.getElementById('c'+i); if(el && el.value.trim()){ var h=document.querySelector('#s'+i+' h3').textContent.trim(); notes.push('Экран '+i+' ('+h+'): '+el.value.trim()); } }
+    if(notes.length){ lines.push('','Комментарии к макетам:'); lines=lines.concat(notes); }
+    var g=document.getElementById('t0').value.trim(); if(g){ lines.push('','Общее: '+g); }
+    return lines.join('\n');
+  }
+  var out=document.getElementById('out'), status=document.getElementById('status');
+  document.getElementById('show').addEventListener('click', function(){ out.value=compose(); out.hidden=false; out.focus(); out.select(); });
+  document.getElementById('copy').addEventListener('click', function(){
+    var txt=compose(); out.value=txt;
+    function fallback(){ out.hidden=false; out.focus(); out.select(); status.textContent='Скопировать не вышло: текст выделен ниже, скопируйте его вручную.'; }
+    try{
+      navigator.clipboard.writeText(txt).then(function(){ status.textContent='Скопировано. Вставьте в чат.'; }, fallback);
+    }catch(e){ fallback(); }
+  });
+})();
+</script>
