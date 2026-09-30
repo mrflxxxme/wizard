@@ -8,7 +8,7 @@ import {
   runGates,
   validateScenario,
 } from "../src/index.js";
-import { type G1Harness, g1Harness, g1SchemaCount } from "./g1-helpers.js";
+import { type G1Harness, g1Harness } from "./g1-helpers.js";
 import { loadForum } from "./helpers.js";
 
 let h: G1Harness;
@@ -16,7 +16,7 @@ beforeAll(async () => {
   h = await g1Harness();
 });
 afterAll(async () => {
-  expect(await g1SchemaCount(h.db)).toBe(0);
+  expect(await h.leftoverSchemas()).toBe(0);
   await h.close();
 });
 
