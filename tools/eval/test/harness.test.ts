@@ -5,10 +5,18 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
-import { type HarnessOptions, harnessPreflight, runHarness, writeHarnessResult } from "../harness/cli.ts";
+import {
+  finishResult,
+  type HarnessOptions,
+  harnessPreflight,
+  missingKeys,
+  runHarness,
+  writeHarnessResult,
+} from "../harness/cli.ts";
 import { EVAL_OWNER_COMPLIANCE, withOwnerCompliance } from "../harness/qa.ts";
-import { BRIEFS_DIR } from "../lib/briefs.mjs";
-import { hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
+import { baselineEntries } from "../lib/baseline.mjs";
+import { BRIEFS_DIR, loadBriefs } from "../lib/briefs.mjs";
+import { aggregateHarness, hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
 import { decideWeek0, mergeRuns, modelStats } from "../lib/week0.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
@@ -153,7 +161,6 @@ describe("--dry-run: canaries and pii_leaks", async () => {
     expect(hardViolations(leak)).toEqual([expect.stringContaining("pii_leaks")]);
     expect(renderHarnessReport(leak)).toContain("Жёсткие пороги нарушены");
   });
-
 });
 
 describe("fixture mode: bakery (hard threshold «кондитерская G0+G1 = 100%»)", async () => {
@@ -205,5 +212,55 @@ describe("preflight and G1 inputs", () => {
     const out = withOwnerCompliance(spec) as unknown as { compliance: Record<string, string> };
     expect(out.compliance.operatorName).toBe("ООО «Своё»");
     expect(out.compliance.consentText).toBe(EVAL_OWNER_COMPLIANCE.consentText);
+  });
+});
+
+describe("M1-10: CI options (--gates=G0, --max-cost-rub, baseline)", async () => {
+  const g0 = await runHarness(opts({ gates: "G0", briefs: "ev-01-forum-registration" }));
+
+  test("--gates=G0: G1 is a pass-through stub, g0g1_pass is not measured, nothing is executed", () => {
+    const r = g0.runs[0];
+    expect(r).toMatchObject({ g0_pass: true, g0g1_pass: false, g1_skipped: true, outcome: "succeeded" });
+    expect(aggregateHarness(g0.runs)[0]?.g0g1_pass).toBeNull();
+    expect(hardViolations(g0)).toEqual([]);
+    expect(renderHarnessReport(g0)).toContain("G1 не запускался");
+  });
+
+  test("live with --gates=G0 does not need WIZARD_UNSAFE_LOCAL_EXEC; missing keys are reported by name", () => {
+    const clean = { DATABASE_URL: env.DATABASE_URL };
+    const live = opts({ llmMode: "live", gates: "G0", env: clean });
+    expect(harnessPreflight(live)).toMatch(/не задан .*CLOUDRU_API_KEY/);
+    expect(missingKeys(live)).toEqual(expect.arrayContaining(["CLOUDRU_API_KEY", "ZAI_API_KEY"]));
+    expect(missingKeys(opts({ llmMode: "live", gates: "G0", models: ["glm-5.1"], env: clean }))).toEqual([
+      "CLOUDRU_API_KEY",
+    ]);
+    const keys = { ...clean, CLOUDRU_API_KEY: "x", ZAI_API_KEY: "y" };
+    expect(harnessPreflight(opts({ llmMode: "live", gates: "G0", env: keys }))).toBeNull();
+    expect(harnessPreflight(opts({ llmMode: "live", env: keys }))).toMatch(/WIZARD_UNSAFE_LOCAL_EXEC/);
+  });
+
+  test("--max-cost-rub: no brief starts once the run's budget is spent", async () => {
+    const capped = await runHarness(opts({ maxCostRub: 0, briefs: "ev-01-forum-registration" }));
+    expect(capped.runs[0]?.skipped).toMatch(/бюджет прогона 0 ₽ исчерпан/);
+    expect(capped.max_cost_rub).toBe(0);
+  });
+
+  test("a G0/G1 share drop > 5 p.p. against the baseline fails the run (acceptance M1-10)", () => {
+    const briefs = loadBriefs("ev-01-forum-registration,gd-01-cake-preorder");
+    const good = {
+      ...g0,
+      gates: "G0G1" as const,
+      briefs: briefs.map((b) => b.id),
+      runs: briefs.map(
+        (b) => ({ ...g0.runs[0], brief: b.id, fixture: null, g0g1_pass: true, g1_skipped: false }) as never,
+      ),
+    };
+    const baseline = { v: 1, entries: baselineEntries(good, briefs) };
+    expect(finishResult(structuredClone(good), briefs, baseline)).toEqual([]);
+    const worse = structuredClone(good);
+    worse.runs[1] = { ...worse.runs[1], g0g1_pass: false } as never;
+    const v = finishResult(worse, briefs, baseline);
+    expect(v).toEqual([expect.stringMatching(/g0g1_pass 50% против baseline 100%/)]);
+    expect(renderHarnessReport(worse)).toContain("Регрессия к baseline");
   });
 });

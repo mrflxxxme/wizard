@@ -1,0 +1,73 @@
+# Eval stand in fixture mode on every PR (specs/quality/eval.yaml#modes.llm_mode.fixture, backlog M1-10).
+# No network, no keys. Fails on hard thresholds (pii_leaks, FIXTURE_MISS, demo G0+G1) and on a G0/G1 regression
+# > 5 p.p. against tools/eval/baseline.json. Docs: docs/ops/eval.md.
+name: eval
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: eval-fixture-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      DATABASE_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_LLM_MODE: fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Harness, fixture (thresholds + regression vs baseline)
+        id: harness
+        run: node tools/eval/run.mjs --harness --llm-mode=fixture --out=.eval-out/fixture
+      - name: Harness, dry-run (pii_leaks on every canary brief)
+        id: dry
+        if: always()
+        run: node tools/eval/run.mjs --harness --llm-mode=fixture --dry-run --out=.eval-out/dry
+      - name: Step summary
+        if: always()
+        run: |
+          for f in .eval-out/fixture/*.md .eval-out/dry/*.md; do
+            [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          true
+      - name: Prompts or models changed → eval:full label expected (eval.yaml#regression.pr_rule)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HAS_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'eval:full') }}
+        run: |
+          changed=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename' \
+            | grep -E '^(packages/agents/src/.*/prompts/|specs/agents/models\.yaml$)' || true)
+          if [ -n "$changed" ] && [ "$HAS_FULL" != "true" ]; then
+            echo "::warning::PR меняет промпты или models.yaml без метки eval:full: нужны перезаписанные фикстуры (record), метка eval:full и отчёт live (docs/ops/eval.md)."
+          fi
+      # Artifacts of fixture runs only (eval.yaml#fixtures.rules); live reports go to S3 eval in RF.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-fixture-report
+          path: .eval-out/
+          retention-days: 14

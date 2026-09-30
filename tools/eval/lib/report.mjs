@@ -42,7 +42,10 @@ export function aggregateHarness(runs) {
       tier: rs[0]?.tier ?? null,
       n: rs.length,
       g0_pass: share(rs.map((r) => r.g0_pass)),
-      g0g1_pass: share(rs.map((r) => r.g0g1_pass)),
+      // null when G1 was not run for any of them (--gates=G0).
+      g0g1_pass: rs.some((r) => !r.g1_skipped)
+        ? share(rs.filter((r) => !r.g1_skipped).map((r) => r.g0g1_pass))
+        : null,
       coverage: avg(rs.map((r) => r.coverage)),
       tokens: {
         input: Math.round(avg(rs.map((r) => r.tokens.input))),
@@ -73,7 +76,10 @@ export function hardViolations(result) {
   for (const r of result.runs.filter((x) => !x.skipped)) {
     if (r.pii_leaks > 0) out.push(`${r.model} / ${r.brief}: pii_leaks = ${r.pii_leaks}`);
     if (result.llm_mode === "fixture" && r.fixture_miss) out.push(`${r.model} / ${r.brief}: FIXTURE_MISS`);
-    if (result.llm_mode === "fixture" && !result.dry_run && r.fixture?.startsWith("demo/") && !r.g0g1_pass)
+    const demo = result.llm_mode === "fixture" && !result.dry_run && r.fixture?.startsWith("demo/");
+    if (demo && !r.g0_pass)
+      out.push(`${r.model} / ${r.brief}: демо-фикстура ${r.fixture} не дошла до G0 passed`);
+    else if (demo && !r.g1_skipped && !r.g0g1_pass)
       out.push(`${r.model} / ${r.brief}: демо-фикстура ${r.fixture} не дошла до G0+G1 passed`);
   }
   return out;
@@ -88,6 +94,12 @@ export function renderHarnessReport(result) {
   L.push(
     `Брифов: ${result.briefs.length}, моделей: ${result.models.length}. Полный путь: оркестратор → карточка → строитель → G0 → G1 (без G2 до M2).`,
   );
+  if (result.gates === "G0")
+    L.push(
+      "> G1 не запускался (--gates=G0): сгенерированный код вне песочницы не исполняется, g0g1_pass не измеряется.",
+    );
+  if (result.max_cost_rub !== null && result.max_cost_rub !== undefined)
+    L.push(`> Бюджет прогона: ${result.max_cost_rub} ₽ (eval.yaml#live_cadence.budget).`);
   if (result.dry_run)
     L.push(
       "> DRY-RUN: брифы без своей фикстуры воспроизводят демо-фикстуру (forum/bakery) — проверяется механика и pii_leaks, а не качество.",
@@ -99,7 +111,7 @@ export function renderHarnessReport(result) {
   L.push("|---|---|---|---|---|---|---|---|---|---|");
   for (const a of aggregateHarness(result.runs)) {
     L.push(
-      `| ${a.model} | ${a.tier ?? ""} | ${pct(a.g0_pass)} | ${pct(a.g0g1_pass)} | ${a.coverage.toFixed(2)} | ${a.cost_rub.toFixed(2)} | ${f2(a.credits)} | ${f1(a.minutes)} | ${f1(a.questions_asked)} | ${a.pii_leaks} |`,
+      `| ${a.model} | ${a.tier ?? ""} | ${pct(a.g0_pass)} | ${a.g0g1_pass === null ? "—" : pct(a.g0g1_pass)} | ${a.coverage.toFixed(2)} | ${a.cost_rub.toFixed(2)} | ${f2(a.credits)} | ${f1(a.minutes)} | ${f1(a.questions_asked)} | ${a.pii_leaks} |`,
     );
   }
   L.push("");
@@ -111,7 +123,7 @@ export function renderHarnessReport(result) {
       continue;
     }
     L.push(
-      `| ${r.brief} | ${r.model} | ${r.fixture ?? "live"} | ${r.g0_pass ? "✓" : "✗"} | ${r.g0g1_pass ? "✓" : "✗"} | ${tok(r.tokens)} | ${r.cost_rub.toFixed(2)} | ${r.minutes.toFixed(2)} | ${r.outcome} |`,
+      `| ${r.brief} | ${r.model} | ${r.fixture ?? "live"} | ${r.g0_pass ? "✓" : "✗"} | ${r.g1_skipped ? "—" : r.g0g1_pass ? "✓" : "✗"} | ${tok(r.tokens)} | ${r.cost_rub.toFixed(2)} | ${r.minutes.toFixed(2)} | ${r.outcome} |`,
     );
   }
   const v = hardViolations(result);
@@ -121,5 +133,18 @@ export function renderHarnessReport(result) {
       ? `**Жёсткие пороги нарушены:**\n${v.map((x) => `- ${x}`).join("\n")}`
       : "Жёсткие пороги: соблюдены.",
   );
+  const reg = result.regression;
+  if (reg && (reg.regressions.length || reg.compared.length || reg.notes.length)) {
+    L.push("");
+    if (reg.regressions.length)
+      L.push(
+        `**Регрессия к baseline (eval.yaml#regression):**\n${reg.regressions.map((x) => `- ${x}`).join("\n")}`,
+      );
+    else if (reg.compared.length)
+      L.push(
+        `Регрессия к baseline: нет (${reg.compared.map((c) => `${c.modelId} ${c.metric} ${pct(c.cur)} / ${pct(c.base)}${c.subset ? " по подмножеству" : ""}`).join("; ")}).`,
+      );
+    for (const n of reg.notes) L.push(`- ${n}`);
+  }
   return `${L.join("\n")}\n`;
 }
