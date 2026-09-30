@@ -24,7 +24,7 @@ const NOT_SURNAME = new Set(
 );
 // Capitalized non-name words that the tokenizer would otherwise accept as names at sentence start.
 const STREET_BEFORE =
-  /(?:(?<!\p{L})(?:ул|пр|просп|пер|пл|наб|б-р|пр-т|пр-кт|ш|им|ст|м|г|пос|мкр|обл)\.?|улиц\p{L}*|проспект\p{L}*|переул\p{L}*|площад\p{L}*|бульвар\p{L}*|набережн\p{L}*|шоссе|имени|памятник\p{L}*|станци\p{L}*|метро|город\p{L}*|район\p{L}*|област\p{L}*|посел\p{L}*|посёл\p{L}*|сел\p{L}*|деревн\p{L}*|аэропорт\p{L}*|вокзал\p{L}*|театр\p{L}*|музе\p{L}*|школ\p{L}*|храм\p{L}*|собор\p{L}*|фестивал\p{L}*|форум\p{L}*|бренд\p{L}*|марк\p{L}*|компани\p{L}*|ооо|оао|зао|пао|ао|ип)[ \xa0]*[«"„]?[ \xa0]*$/iu;
+  /(?:(?<!\p{L})(?:ул|пр|просп|пер|пл|наб|б-р|пр-т|пр-кт|ш|им|ст|м|г|пос|мкр|обл)\.?|улиц\p{L}*|проспект\p{L}*|переул\p{L}*|площад\p{L}*|бульвар\p{L}*|набережн\p{L}*|шоссе|имени|памятник\p{L}*|станци\p{L}*|метро|город\p{L}*|район\p{L}*|област\p{L}*|посел\p{L}*|посёл\p{L}*|сел\p{L}*|деревн\p{L}*|аэропорт\p{L}*|вокзал\p{L}*|театр\p{L}*|музе\p{L}*|школ\p{L}*|храм\p{L}*|собор\p{L}*|фестивал\p{L}*|форум\p{L}*|бренд\p{L}*|марк\p{L}*|компани\p{L}*|ооо|оао|зао|пао)[ \xa0]*[«"„]?[ \xa0]*$/iu;
 const LOCATION_PREP = /(?<!\p{L})(?:в|во|из|под|до|около|через)[ \xa0]+$/iu;
 const LOCATION_NAMES = new Set(["владимир", "владимира", "владимире", "владимиру", "владимиром", "лена", "лены", "лене"]);
 
@@ -34,6 +34,14 @@ const INITIALS_AFTER_RE =
   /(?<![\p{L}])([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?|[A-Z][a-z]+)[ \xa0]+([А-ЯЁA-Z])\.(?:[ \xa0]?([А-ЯЁA-Z])\.)?/gu;
 const INITIALS_BEFORE_RE =
   /(?<![\p{L}])([А-ЯЁA-Z])\.[ \xa0]?(?:([А-ЯЁA-Z])\.[ \xa0]?)?([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?|[A-Z][a-z]+)(?![\p{L}])/gu;
+
+// Column/field headers that follow «ФИО» in tables and forms.
+const FIELD_WORDS = new Set(
+  (
+    "телефон тел адрес дата email почта паспорт снилс инн должность подпись отдел город пол возраст статус имя отчество " +
+    "фамилия контакт контакты комментарий примечание роль номер сумма организация компания класс группа"
+  ).split(" "),
+);
 
 interface Tok {
   s: number;
@@ -166,10 +174,14 @@ export function detectNames(text: string): Finding[] {
     spans.push({ s: m.index, e: m.index + m[0].length, c: "high" });
   }
   for (const m of text.matchAll(FIO_LABEL_RE)) {
-    const value = (m[1] ?? "").trimEnd();
-    if (!value) continue;
-    const s = m.index + m[0].length - (m[1] ?? "").length;
-    spans.push({ s, e: s + value.length, c: "high" });
+    const group = m[1] ?? "";
+    const base = m.index + m[0].length - group.length;
+    let end = -1;
+    for (const w of group.matchAll(WORD_RE)) {
+      if (FIELD_WORDS.has(fold(w[0]))) break;
+      end = base + w.index + w[0].length;
+    }
+    if (end > base) spans.push({ s: base, e: end, c: "high" });
   }
 
   // Union of overlapping spans.

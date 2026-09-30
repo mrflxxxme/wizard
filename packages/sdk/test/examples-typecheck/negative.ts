@@ -108,8 +108,8 @@ export const badValidator = v.id("nope");
 export function ClientCases() {
   // @ts-expect-error mutation name in useQuery
   useQuery("registerTicket", {});
-  // @ts-expect-error wrong args for a query without args
-  useQuery("ticketAvailability", { limit: 5 });
+  // @ts-expect-error args are required ("skip" disables the query)
+  useQuery("ticketAvailability");
   const [register] = useMutation("registerTicket");
   // @ts-expect-error plain string instead of Id<"stream">
   void register({ ticketTypeId: "a" as Id<"ticket_type">, streamId: "b", holderName: "Анна", holderEmail: "a@b.c" });
