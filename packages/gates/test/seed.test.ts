@@ -70,6 +70,78 @@ describe.each(specs)("generateSeed on %s", (_name, spec) => {
   });
 });
 
+describe.each(specs)("plausible pii=none values on %s (FU-4)", (_name, spec) => {
+  const seed = generateSeed(spec, "key-1", { now: NOW });
+  const strings = spec.entities.flatMap((e) =>
+    e.fields
+      .filter((f) => (f.type === "string" || f.type === "text") && (f.pii ?? "none") === "none")
+      .map((f) => ({ e, f, values: (seed.rows[e.name] ?? []).map((r) => r[f.name]) })),
+  );
+
+  test("no «<label> N» placeholders; titles differ between rows; DLP clean for many keys", () => {
+    for (const { f, values } of strings)
+      for (const v of values)
+        if (typeof v === "string") expect(v).not.toMatch(new RegExp(`^${f.label} \\d+$`));
+    for (const { f, values } of strings.filter((x) => /^(name|title)$/.test(x.f.name)))
+      expect(new Set(values).size, f.name).toBe(values.length);
+    for (let k = 0; k < 25; k++) expect(seedDlp(spec, generateSeed(spec, `k${k}`, { now: NOW }))).toEqual([]);
+  });
+
+  test("deterministic per key; another key reorders the vocabulary", () => {
+    const names = (key: string) =>
+      spec.entities.flatMap((e) =>
+        (generateSeed(spec, key, { now: NOW }).rows[e.name] ?? []).map((r) => r.name ?? r.title),
+      );
+    expect(names("key-1")).toEqual(names("key-1"));
+    expect(
+      Array.from({ length: 5 }, (_, k) => names(`other-${k}`).join()).some(
+        (x) => x !== names("key-1").join(),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("forum seed reads like a real forum", () => {
+  const spec = loadForum();
+  const seed = generateSeed(spec, "key-1", { now: NOW });
+  const rows = (e: string) => seed.rows[e] ?? [];
+
+  test("ticket types by kind: «Стандарт», «VIP», «Партнёрский»; on sale; seats far above seeded tickets", () => {
+    const byKind = new Map(rows("ticket_type").map((r) => [r.kind, r]));
+    expect(byKind.get("standard")).toMatchObject({ name: "Стандарт", price: 4900, active: true });
+    expect(byKind.get("vip")).toMatchObject({ name: "VIP", active: true });
+    expect(byKind.get("partner")).toMatchObject({ name: "Партнёрский", price: 0 });
+    for (const t of rows("ticket_type"))
+      expect(Number(t.capacity)).toBeGreaterThan(
+        rows("ticket").filter((x) => x.ticket_type === t.id).length + 10,
+      );
+    for (const s of rows("stream")) expect(Number(s.capacity)).toBeGreaterThanOrEqual(100);
+  });
+
+  test("streams, talks, rooms and companies come from the domain vocabulary", () => {
+    expect(rows("stream").map((r) => r.name)).toContain("Ритейл-технологии");
+    for (const s of rows("session")) expect(String(s.title).length).toBeGreaterThan(15);
+    for (const t of rows("ticket")) if (t.company) expect(t.company).toMatch(/^(ООО|АО) «/);
+    for (const q of rows("partner_quota")) expect(Number(q.used)).toBeLessThan(Number(q.total));
+  });
+});
+
+describe("bakery seed reads like a real bakery", () => {
+  const { spec } = loadBakery();
+  const seed = generateSeed(spec, "key-1", { now: NOW });
+  const rows = (e: string) => seed.rows[e] ?? [];
+
+  test("cakes, options by group, consistent order money", () => {
+    for (const p of rows("product")) expect(p.name).toMatch(/Торт|Чизкейк/);
+    const opt = new Map(rows("product_option").map((r) => [r.option_group, r]));
+    expect(opt.get("weight")?.title).toMatch(/кг$/);
+    expect(opt.get("filling")?.weight_kg).toBeUndefined();
+    for (const o of rows("cake_order"))
+      expect(Number(o.prepay_amount) + Number(o.remaining_amount)).toBe(Number(o.total));
+    for (const s of rows("production_slot")) expect(Number(s.capacity)).toBeGreaterThanOrEqual(5);
+  });
+});
+
 describe("seed DLP rejects values that look like real personal data (SEED_PII)", () => {
   const spec = loadForum();
   test.each([

@@ -153,8 +153,10 @@ export interface QrCheckInput {
 export interface QrCheckResponse {
   status: "ok" | "duplicate" | "invalid";
   reason?: "not_found" | "bad_signature" | "revoked" | "not_valid_status";
+  /** First displayField value (e.g. ticket type). */
   ticketTitle?: string;
-  details?: Record<string, string>;
+  /** The other displayField values joined with « · » (ui-kit.yaml#components.QrScanner ScanResult.details). */
+  details?: string;
   scannedAt: string;
   firstScannedAt?: string;
   firstCheckpoint?: string;
@@ -170,20 +172,22 @@ function refLabel(spec: AppSpec, entity: string, row: Row | null): string {
 async function display(ctx: ConnectorCtx, config: QrConfig, row: Row) {
   const spec = ctx.system.spec;
   const carrier = entityOf(spec, config.entity);
-  const details: Record<string, string> = {};
+  const values: string[] = [];
   for (const name of config.displayFields ?? []) {
     const field = fieldOf(carrier, name);
     const v = row[name];
     if (v === null || v === undefined || v === "") continue;
     if (field?.type === "ref" && field.ref) {
-      details[name] = refLabel(spec, field.ref.entity, await ctx.db.get(field.ref.entity, String(v)));
+      values.push(refLabel(spec, field.ref.entity, await ctx.db.get(field.ref.entity, String(v))));
     } else if (field?.type === "enum") {
-      details[name] = field.enum?.find((o) => o.value === v)?.label ?? String(v);
+      values.push(field.enum?.find((o) => o.value === v)?.label ?? String(v));
     } else {
-      details[name] = String(v);
+      values.push(String(v));
     }
   }
-  return { details, ticketTitle: Object.values(details).filter(Boolean).join(" · ") };
+  const [title, ...rest] = values.filter(Boolean);
+  const details = rest.join(" · ");
+  return { ...(title ? { ticketTitle: title } : {}), ...(details ? { details } : {}) };
 }
 
 /** POST /_wizard/qr/check (qr.yaml#checkin_algorithm). `role` is the caller's role; 403 → `forbidden`. */

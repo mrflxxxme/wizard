@@ -2,6 +2,7 @@
 import type { Context } from "hono";
 import type { Subject } from "../data/access.js";
 import type { RuntimeEnv } from "../env.js";
+import type { ConnectorHost } from "../preview/connectors.js";
 import type { LoadedSystem } from "../system.js";
 
 export interface OutboxMessage {
@@ -21,6 +22,8 @@ export interface RuntimeServices {
   outbox: OutboxMessage[];
   /** JSON log sink of createRuntimeApp (runtime.yaml#logging). */
   log?: (line: Record<string, unknown>) => void;
+  /** Connector contexts of loaded systems (connectors: 'live' routes action calls through @wizard/connectors). */
+  connectorHost?: ConnectorHost;
 }
 
 export interface RuntimeVars {

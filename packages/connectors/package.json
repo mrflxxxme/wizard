@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./mocks": "./test/mocks/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -14,6 +15,7 @@
   "dependencies": {
     "@wizard/appspec": "workspace:*",
     "@wizard/pii": "workspace:*",
+    "qrcode-generator": "^2.0.4",
     "zod": "^4.6.5"
   }
 }

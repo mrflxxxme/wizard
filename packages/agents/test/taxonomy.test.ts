@@ -7,6 +7,7 @@ import {
   cardDraftSchema,
   estimateCard,
   FORK_IDS,
+  FORK_LABELS,
   FORKS,
   forkOptions,
   priceBlended,
@@ -53,6 +54,14 @@ describe("fork_taxonomy mirrors the spec", () => {
   test("free plan: no phone variants of F-LOGIN (F4)", () => {
     expect(forkOptions("F-LOGIN", { plan: "free" })).toEqual(["email", "telegram", "email_or_telegram"]);
     expect(forkOptions("F-LOGIN", { plan: "start" })).toContain("phone");
+  });
+
+  test("FU-4: every fork has a short Russian title and every option a label", () => {
+    for (const f of FORKS) {
+      const l = FORK_LABELS[f.id as keyof typeof FORK_LABELS];
+      expect(l?.title, f.id).toMatch(/^[А-ЯЁ]/);
+      expect(Object.keys(l?.options ?? {}).sort(), f.id).toEqual([...f.options].sort());
+    }
   });
 });
 

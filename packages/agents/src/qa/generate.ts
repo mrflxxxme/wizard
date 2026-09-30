@@ -71,8 +71,12 @@ export function qaValidateScenario(spec: AppSpec, sc: Scenario, ac: CardAc): str
     errs.push(`id ${sc.id} должен быть SC-${ac.id} или SC-${ac.id}-<n>`);
   const expects = sc.steps.filter((s) => s.expect);
   if (expects.length === 0) errs.push("В сценарии нет ни одного expect");
+  // A time constraint (retention, deadlines) has its negative branch in the state checked after advanceTime.
+  const timed = sc.steps.findIndex((s) => s.advanceTime !== undefined);
+  const checkedAfterTime = timed >= 0 && sc.steps.slice(timed + 1).some((s) => s.expect);
   if (
     ac.check.type === "constraint" &&
+    !checkedAfterTime &&
     !expects.some((s) => {
       const e = s.expect ?? {};
       return (
@@ -83,7 +87,9 @@ export function qaValidateScenario(spec: AppSpec, sc: Scenario, ac: CardAc): str
       );
     })
   )
-    errs.push("constraint: нужна негативная ветка — действие, нарушающее ограничение, с ожиданием ошибки");
+    errs.push(
+      "constraint: нужна негативная ветка — действие, нарушающее ограничение, с ожиданием ошибки (или expect после advanceTime)",
+    );
   const roles = new Map(spec.roles.map((r) => [r.name, r]));
   const piiFields = new Map(
     spec.entities.map((e) => [

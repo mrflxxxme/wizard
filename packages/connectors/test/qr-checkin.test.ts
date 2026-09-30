@@ -38,7 +38,7 @@ describe("qrCheck", () => {
     const first = await qrCheck(ctx, "volunteer", { payload: token, checkpoint: "A", deviceId: "d1" });
     expect(first).toMatchObject({
       forbidden: false,
-      body: { status: "ok", ticketTitle: "VIP · Технологии" },
+      body: { status: "ok", ticketTitle: "VIP", details: "Технологии" },
     });
     const again = await qrCheck(ctx, "volunteer", { payload: token, checkpoint: "B", deviceId: "d2" });
     expect(again).toMatchObject({ forbidden: false, body: { status: "duplicate", firstCheckpoint: "A" } });

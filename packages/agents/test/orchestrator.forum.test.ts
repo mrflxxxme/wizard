@@ -66,6 +66,12 @@ describe("demo/forum replay", () => {
       expect.arrayContaining(["F-EV-TICKETS", "F-ACCESS", "F-NOTIFY"]),
     );
     expect(summary?.forks.find((f) => f.forkId === "F-VISIBILITY")?.status).toBe("pending");
+    // FU-4: the panel shows human titles, never raw ids; decided forks carry the option label.
+    for (const f of summary?.forks ?? []) expect(f.title).not.toMatch(/^F-/);
+    expect(summary?.forks.find((f) => f.forkId === "F-EV-TICKETS")).toMatchObject({
+      title: "Типы билетов",
+      choice: expect.any(String),
+    });
   });
 
   test("answers → card valid by SystemCard, credits.expected ∈ [12, 35], ≤ 3 LLM calls", async () => {

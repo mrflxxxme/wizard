@@ -26,6 +26,11 @@ import { toMessage, toRevisionSummary, toRun, toSystem } from "../services/seria
 import { makeSlug, nameFromPrompt, randomKey } from "../services/slug.js";
 import { assertTransition } from "../services/stage.js";
 
+/** «Вопрос? — ответ» line of the user's answers message: no «?:» (FU-4). */
+export function answerLine(question: string, answer: string): string {
+  return `${question.trim().replace(/[\s:—-]+$/u, "")} — ${answer.trim()}`;
+}
+
 const limitQ = z.coerce.number().int().min(1).max(100).default(50);
 const intQ = z.coerce.number().int();
 
@@ -290,7 +295,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         } else if (q.allowCustom === false) throw invalid("На этот вопрос нельзя ответить своим текстом");
         seen.add(q.id);
         answers.push({ ...a, forkId: q.forkId, byRecommendation: false });
-        lines.push(`${q.text ?? q.id}: ${label}`);
+        lines.push(answerLine(q.text ?? q.id, label));
       }
       if (b.restByRecommendation) {
         for (const q of pending) {
@@ -298,7 +303,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
           const rec = q.options.find((o) => o.recommended) ?? q.options[0];
           if (!rec) continue;
           answers.push({ questionId: q.id, optionId: rec.id, forkId: q.forkId, byRecommendation: true });
-          lines.push(`${q.text ?? q.id}: ${rec.label}`);
+          lines.push(answerLine(q.text ?? q.id, rec.label));
         }
       }
       if (answers.length === 0) throw invalid("Нет ни одного ответа");

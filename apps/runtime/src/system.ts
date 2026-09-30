@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type AppSpec, validateSpec } from "@wizard/appspec";
+import { isReservedSystemSlug } from "@wizard/connectors";
 import type postgres from "postgres";
 import { type ComplianceInfo, complianceInfo, sha256Hex } from "./compliance.js";
 import type { DataAccess, InvalidationBus } from "./data/access.js";
@@ -93,6 +94,8 @@ export class SystemCache {
   pin(input: LoadSystemInput): LoadedSystem {
     const v = validateSpec(input.spec);
     if (!v.ok) throw new SystemLoadError(`invalid spec: ${v.errors.map((e) => e.code).join(", ")}`);
+    if (isReservedSystemSlug(input.slug ?? input.systemKey))
+      throw new SystemLoadError("reserved system slug");
     const entry: RegistryEntry = {
       systemId: input.systemKey,
       slug: input.slug ?? input.systemKey,
@@ -145,6 +148,15 @@ export class SystemCache {
       this.lru.delete(oldest);
     }
     return sys;
+  }
+
+  /** Loaded system by its key (pinned, cached, then the registry); null when unknown. */
+  async byId(systemId: string, env: SystemEnv): Promise<LoadedSystem | null> {
+    for (const sys of [...this.pinned.values(), ...this.lru.values()]) {
+      if (sys.entry.systemId === systemId && sys.entry.env === env) return sys;
+    }
+    const entry = await this.o.registry.resolveById?.(systemId, env);
+    return entry ? this.resolve(entry.slug, env) : null;
   }
 
   private async load(entry: RegistryEntry): Promise<LoadedSystem> {

@@ -73,7 +73,7 @@ monorepo:
       path: apps/platform-api
       purpose: "API платформы: аккаунты, организации, системы, ревизии, прогоны, кредиты, публикация, SSE событий"
       spec: specs/platform/api.yaml
-      depends_on: [appspec, agents, llm, gates, build, runtime]   # runtime — только createRuntimeApp (interfaces.runtime_handle) для превью M0 и G1
+      depends_on: [appspec, agents, llm, pii, gates, build, runtime]   # runtime — только createRuntimeApp (interfaces.runtime_handle) для превью M0 и G1
     - id: worker
       path: apps/worker
       purpose: "DBOS-воркфлоу: интервью, сборка, гейты, публикация, миграции, автоудаление ПДн"

@@ -110,7 +110,7 @@ describe("POST /_wizard/qr/check", () => {
     const first = await check(cookie, { payload: token, deviceId: "dev-1", checkpoint: "Главный вход" });
     expect(first.status).toBe(200);
     const a = (await first.json()) as QrCheckResponse;
-    expect(a).toMatchObject({ status: "ok", ticketTitle: "VIP · Технологии" });
+    expect(a).toMatchObject({ status: "ok", ticketTitle: "VIP", details: "Технологии" });
     expect(JSON.stringify(a)).not.toContain("Иван");
     const second = await check(cookie, { payload: token, deviceId: "dev-2" });
     const b = (await second.json()) as QrCheckResponse;

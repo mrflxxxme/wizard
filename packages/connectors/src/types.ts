@@ -1,6 +1,8 @@
 // Connector contract: specs/connectors/connector-interface.md §1.
 import type { AppSpec, Integration } from "@wizard/appspec";
 import type { z } from "zod";
+import type { Dialer, Resolver } from "./net.js";
+import type { SmtpEndpoint } from "./smtp.js";
 
 export type ConnectorId = "yookassa" | "telegram" | "email" | "qr";
 export type Env = "draft" | "prod";
@@ -84,13 +86,53 @@ export interface ConnectorLogger {
 
 export type ContactKind = "email" | "phone" | "telegram_chat";
 
+/** Host-side access to the system's users table (addresses never reach system code). */
+export interface ConnectorUsers {
+  contact(userId: string, kind: ContactKind): Promise<string | null>;
+  /** Sets or clears users.telegram_chat_id (chat linking, 403 blocked, my_chat_member kicked). */
+  setTelegramChat(userId: string, chatId: string | null): Promise<void>;
+  /** Clears telegram_chat_id of every user of this system linked to `chatId`. */
+  clearTelegramChat(chatId: string): Promise<void>;
+}
+
+/** One-time deep-link tokens (runtime.yaml _w_telegram_links): stored as sha256 with the user id. */
+export interface TelegramLinkStore {
+  create(tokenHash: Buffer, userId: string, expiresAt: Date): Promise<void>;
+  /** Deletes the token and returns its user when it exists and has not expired. */
+  consume(tokenHash: Buffer, now: Date): Promise<string | null>;
+}
+
+/** Platform-owned settings and secrets (not the system's): shared Telegram bot, platform SMTP, network access. */
+export interface PlatformConnectorConfig {
+  /** telegram_bot_token, telegram_webhook_secret, smtp_password of the platform (WIZARD_* env in M1). */
+  secrets: SecretReader;
+  telegram: { apiBase: string; botUsername: string | null };
+  /** Platform SMTP account (email provider=platform); null — not configured yet (E-ACCESS). */
+  smtp: SmtpEndpoint | null;
+  /** Local dev receiver for test-mode mail (WIZARD_DEV_SMTP=1); null — the outbox. */
+  devSmtp: SmtpEndpoint | null;
+  /** Sender domain of provider=platform: noreply@<mailDomain>. */
+  mailDomain: string;
+  /** DNS and TCP for SMTP (tests substitute both); TLS trusts `tlsCa` in addition to the system store. */
+  resolve: Resolver;
+  dial: Dialer;
+  tlsCa?: string;
+}
+
 export interface ConnectorCtx {
-  system: { id: string; env: Env; host: string; spec: AppSpec };
+  system: {
+    id: string;
+    env: Env;
+    host: string;
+    spec: AppSpec;
+    /** Tariff class for connector limits (billing.yaml#plans); default free. */
+    plan?: "free" | "paid";
+  };
   integration: { name: string; config: unknown };
   secrets: SecretReader;
   mode: Mode;
   idempotencyKey: string;
-  users: { contact(userId: string, kind: ContactKind): Promise<string | null> };
+  users: ConnectorUsers;
   db: SystemDb;
   log: ConnectorLogger;
   fetch: typeof fetch;
@@ -98,6 +140,8 @@ export interface ConnectorCtx {
   store: ConnectorStore;
   outbox: Outbox;
   now(): Date;
+  platform: PlatformConnectorConfig;
+  telegramLinks: TelegramLinkStore;
 }
 
 export interface ActionDef<I, O> {

@@ -1,5 +1,7 @@
 // RoleSpec: projection of the AppSpec for one role (runtime.yaml#service_endpoints.role_spec,
 // ui/ui-kit.yaml#data_binding.role_spec). Hidden fields and other roles' permissions never leave the server.
+// One contract with ui-kit's RoleSpec (role — name, roles — all roles without permissions); WzProvider takes the
+// body of GET /_wizard/spec as is. Contract test: packages/gates/test/rolespec-contract.test.ts.
 import type { AppSpec } from "@wizard/appspec";
 import type { ComplianceInfo } from "./compliance.js";
 
@@ -9,18 +11,36 @@ export interface RoleSpecOptions {
   features: { phoneOtp: boolean };
 }
 
+type LoginMethod = "phone_otp" | "email_otp" | "telegram";
+const METHOD_ORDER: readonly LoginMethod[] = ["email_otp", "phone_otp", "telegram"];
+
 export function buildRoleSpec(spec: AppSpec, o: RoleSpecOptions) {
   const role = o.role === null ? undefined : spec.roles.find((r) => r.name === o.role);
   const perms = role ? spec.permissions.filter((p) => p.role === role.name) : [];
   const methods = (list: readonly string[] | undefined) =>
-    (list ?? []).filter((m) => m !== "phone_otp" || o.features.phoneOtp);
+    (list ?? []).filter((m): m is LoginMethod => m !== "phone_otp" || o.features.phoneOtp);
   const loginRoles = spec.roles.filter((r) => r.access === "login");
+  const loginMethods = new Set(
+    role?.access === "login"
+      ? methods(role.loginMethods)
+      : loginRoles.flatMap((r) => methods(r.loginMethods)),
+  );
+  const c = o.compliance;
   return {
-    app: { name: spec.app.name, description: spec.app.description ?? null, locale: spec.app.locale },
-    theme: spec.theme ?? null,
-    role: role
-      ? { name: role.name, label: role.label, access: role.access, isAdmin: role.isAdmin === true }
-      : null,
+    app: {
+      name: spec.app.name,
+      ...(spec.app.description ? { description: spec.app.description } : {}),
+      locale: spec.app.locale,
+    },
+    ...(spec.theme ? { theme: spec.theme } : {}),
+    role: role ? role.name : null,
+    roles: spec.roles.map((r) => ({
+      name: r.name,
+      label: r.label,
+      access: r.access,
+      ...(r.isAdmin ? { isAdmin: true } : {}),
+      ...(r.selfSignup ? { selfSignup: true } : {}),
+    })),
     entities: spec.entities
       .filter((e) => perms.some((p) => p.entity === e.name))
       .map((e) => {
@@ -48,23 +68,14 @@ export function buildRoleSpec(spec: AppSpec, o: RoleSpecOptions) {
           (f.roles ? f.roles.includes(role.name) : role.isAdmin === true),
       )
       .map((f) => ({ name: f.name, kind: f.kind })),
-    loginRoles: loginRoles.map((r) => ({
-      name: r.name,
-      label: r.label,
-      selfSignup: r.selfSignup === true,
-      loginMethods: methods(r.loginMethods),
-    })),
-    loginMethods:
-      role?.access === "login"
-        ? methods(role.loginMethods)
-        : [...new Set(loginRoles.flatMap((r) => methods(r.loginMethods)))],
+    loginMethods: METHOD_ORDER.filter((m) => loginMethods.has(m)),
     compliance: {
-      consentText: o.compliance.consentText,
-      policyPage: o.compliance.policyPage,
-      policyVersion: o.compliance.policyVersion,
-      consentTextHash: o.compliance.consentTextHash,
-      operatorName: spec.compliance?.operatorName ?? null,
-      operatorContact: spec.compliance?.operatorContact ?? null,
+      ...(c.consentText ? { consentText: c.consentText } : {}),
+      ...(c.policyPage ? { policyPage: c.policyPage } : {}),
+      policyVersion: c.policyVersion,
+      consentTextHash: c.consentTextHash,
+      ...(spec.compliance?.operatorName ? { operatorName: spec.compliance.operatorName } : {}),
+      ...(spec.compliance?.operatorContact ? { operatorContact: spec.compliance.operatorContact } : {}),
     },
   };
 }
