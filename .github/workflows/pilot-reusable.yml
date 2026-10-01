@@ -107,6 +107,9 @@ jobs:
       # …and variables.
       WIZARD_PLATFORM_DOMAIN: ${{ vars.WIZARD_PLATFORM_DOMAIN }}
       WIZARD_SYSTEMS_DOMAIN: ${{ vars.WIZARD_SYSTEMS_DOMAIN }}
+      # Staging domains (no environment-level variables without GitHub Pro; pilot.mjs envVars never reuses prod's).
+      WIZARD_STAGING_PLATFORM_DOMAIN: ${{ vars.WIZARD_STAGING_PLATFORM_DOMAIN }}
+      WIZARD_STAGING_SYSTEMS_DOMAIN: ${{ vars.WIZARD_STAGING_SYSTEMS_DOMAIN }}
       WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
       WIZARD_FOUNDER_EMAIL: ${{ vars.WIZARD_FOUNDER_EMAIL }}
       WIZARD_PLATFORM_MAIL_SPF: ${{ vars.WIZARD_PLATFORM_MAIL_SPF }}

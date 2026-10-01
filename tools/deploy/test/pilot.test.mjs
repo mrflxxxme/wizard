@@ -12,6 +12,7 @@ import {
   checkInputs,
   closeAdminAccess,
   ensureStateBucket,
+  envVars,
   FOUNDER_STAFF_SQL,
   founderStaffJob,
   main,
@@ -112,6 +113,32 @@ describe("pilot: founder inputs", () => {
         WIZARD_SYSTEMS_DOMAIN: "b.ru",
       }),
     ).toEqual([]);
+  });
+
+  it("staging never reuses the prod domains (no environment-level variables without GitHub Pro)", () => {
+    expect(envVars("prod", FOUNDER)).toEqual({ vars: FOUNDER, problems: [] });
+    const none = envVars("staging", FOUNDER);
+    expect(none.problems.map(([n]) => n)).toEqual([
+      "WIZARD_STAGING_PLATFORM_DOMAIN",
+      "WIZARD_STAGING_SYSTEMS_DOMAIN",
+    ]);
+    expect(none.vars.WIZARD_PLATFORM_DOMAIN).toBe("");
+    const same = envVars("staging", {
+      ...FOUNDER,
+      WIZARD_STAGING_PLATFORM_DOMAIN: FOUNDER.WIZARD_PLATFORM_DOMAIN,
+      WIZARD_STAGING_SYSTEMS_DOMAIN: "stage-s.ru",
+    });
+    expect(same.problems).toEqual([["WIZARD_STAGING_PLATFORM_DOMAIN", "совпадает с доменом prod"]]);
+    const ok = envVars("staging", {
+      ...FOUNDER,
+      WIZARD_STAGING_PLATFORM_DOMAIN: "stage-p.ru",
+      WIZARD_STAGING_SYSTEMS_DOMAIN: "stage-s.ru",
+    });
+    expect(ok.problems).toEqual([]);
+    expect([ok.vars.WIZARD_PLATFORM_DOMAIN, ok.vars.WIZARD_SYSTEMS_DOMAIN]).toEqual([
+      "stage-p.ru",
+      "stage-s.ru",
+    ]);
   });
 
   it("tfvars: the pilot shape, generated SSH key, GHCR of the owner, no admin CIDRs", () => {
@@ -658,9 +685,18 @@ describe("pilot: one button", () => {
       0,
     );
 
-    await bootstrap(cloud, fakeTools(), { argv: ["bootstrap", "--env", "staging", "--tag", SHA] });
+    const STAGING = {
+      WIZARD_STAGING_PLATFORM_DOMAIN: "stage-p.ru",
+      WIZARD_STAGING_SYSTEMS_DOMAIN: "stage-s.ru",
+    };
+    await bootstrap(cloud, fakeTools(), {
+      argv: ["bootstrap", "--env", "staging", "--tag", SHA],
+      vars: STAGING,
+    });
     const tools = fakeTools();
-    expect((await bootstrap(cloud, tools, { argv: ["destroy", "--env", "staging"] })).code).toBe(0);
+    expect(
+      (await bootstrap(cloud, tools, { argv: ["destroy", "--env", "staging"], vars: STAGING })).code,
+    ).toBe(0);
     expect(tools.lines.join("\n")).toContain("tofu -chdir=infra/tofu/timeweb/envs/staging destroy");
     expect(tools.lines.join("\n")).not.toContain("kubectl");
   });

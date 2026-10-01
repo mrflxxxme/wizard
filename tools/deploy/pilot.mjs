@@ -98,6 +98,29 @@ export function parseArgs(argv) {
   return o;
 }
 
+/**
+ * Settings of the target environment. Without GitHub Pro a private repository has no environment-level variables, so
+ * staging takes its domains from WIZARD_STAGING_PLATFORM_DOMAIN / WIZARD_STAGING_SYSTEMS_DOMAIN; it never falls back to
+ * the prod domains (a staging apply would rewrite the prod DNS records). Problems: [[name, why]].
+ */
+export function envVars(env, vars) {
+  if (env !== "staging") return { vars, problems: [] };
+  const problems = [];
+  const out = { ...vars };
+  for (const [name, from] of [
+    ["WIZARD_PLATFORM_DOMAIN", "WIZARD_STAGING_PLATFORM_DOMAIN"],
+    ["WIZARD_SYSTEMS_DOMAIN", "WIZARD_STAGING_SYSTEMS_DOMAIN"],
+  ]) {
+    const v = vars[from] ?? "";
+    if (!v)
+      problems.push([from, "не задан: отдельный домен staging (домены prod для staging не используются)"]);
+    else if (v === vars.WIZARD_PLATFORM_DOMAIN || v === vars.WIZARD_SYSTEMS_DOMAIN)
+      problems.push([from, "совпадает с доменом prod"]);
+    out[name] = v;
+  }
+  return { vars: out, problems };
+}
+
 /** Missing or malformed founder inputs for a command: [[name, why]] (names only — values are never printed). */
 export function checkInputs(command, vars) {
   const problems = [];
@@ -484,13 +507,15 @@ function mask(values, vars, log) {
  * Entry: returns the exit code. deps (tests): fetch, now, rand, sleep, log, run/has/exists (passed to infra.mjs),
  * infraMain, skipSmoke, kdf.
  */
-export async function main(argv = process.argv.slice(2), vars = process.env, deps = {}) {
+export async function main(argv = process.argv.slice(2), env = process.env, deps = {}) {
   const o = parseArgs(argv);
+  const target = o.command === "close-access" ? { vars: env, problems: [] } : envVars(o.env, env);
+  const vars = target.vars;
   const log = deps.log ?? ((s) => console.log(s));
   const f = deps.fetch ?? fetch;
   const now = deps.now ?? (() => new Date());
   const rand = deps.rand ?? randomBytes;
-  const problems = checkInputs(o.command, vars);
+  const problems = [...target.problems, ...checkInputs(o.command, vars)];
   if (problems.length > 0) {
     const text = problems.map(([n, why]) => `  - ${n}: ${why}`).join("\n");
     log(

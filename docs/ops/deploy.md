@@ -299,7 +299,7 @@ node tools/deploy/pilot.mjs close-access --env prod      # убрать врем
 2. Создайте API-токен: «API и Terraform». **Подтверждение удаления через Telegram выключите**, иначе удаление staging зависнет.
 3. Домены платформы и систем купите в Timeweb или делегируйте на NS Timeweb. Они должны быть в разделе «Домены».
 
-**В GitHub: Settings → Secrets and variables → Actions.** Можно на уровне репозитория или окружений `prod` и `staging`. Для staging нужны свои домены, поэтому их удобнее задать переменными окружения `staging`.
+**В GitHub: Settings → Secrets and variables → Actions → вкладка Repository.** Без GitHub Pro в приватном репозитории окружений нет, поэтому всё задаётся на уровне репозитория. Staging (по требованию) берёт свои домены из переменных `WIZARD_STAGING_PLATFORM_DOMAIN` и `WIZARD_STAGING_SYSTEMS_DOMAIN` и никогда не использует домены prod: без них выкат staging откажет.
 
 | Secret | Что это |
 |---|---|
@@ -317,6 +317,7 @@ node tools/deploy/pilot.mjs close-access --env prod      # убрать врем
 | `WIZARD_SYSTEMS_DOMAIN` | отдельный домен систем клиентов |
 | `WIZARD_ACME_EMAIL` | почта для Let's Encrypt (если пусто — почта основателя) |
 | `WIZARD_FOUNDER_EMAIL` | почта основателя: вход, права staff, алерты |
+| `WIZARD_STAGING_PLATFORM_DOMAIN`, `WIZARD_STAGING_SYSTEMS_DOMAIN` | только если нужен staging: два отдельных домена (или поддомены другого домена), не совпадающие с prod |
 
 **Затем:** Actions → `bootstrap-pilot` → Run workflow (`prod`, `apply`, слово `PROD`). Через 35–50 минут в сводке задания будет ссылка на платформу и следующие шаги: войти, открыть `/admin`, включить MFA. Новые версии выкатывает `deploy-pilot` (полный SHA и `PROD`).
 
