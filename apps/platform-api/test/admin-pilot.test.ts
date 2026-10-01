@@ -113,6 +113,7 @@ describe("beta_readiness switch and the invitation gate", () => {
       "dpa",
       "zai",
       "security",
+      "pilot_d25",
     ]);
     const sent = mailer.sent.length;
     const inv = await staff.req("POST", "/admin/pilot/invites", {
