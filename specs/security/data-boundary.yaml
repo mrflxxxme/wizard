@@ -146,6 +146,7 @@ routing:
     - "MUST NOT: API и сервисы Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников) в реестре. Открытые веса этих вендоров, развёрнутые в РФ (placement=internal, например openai/gpt-oss-120b на Cloud.ru), допустимы — решение F3. Тест-линтер реестра проверяет provider и baseUrl, а не префикс имени модели"
     - "MUST: каждый запрос к Yandex AI Studio несёт заголовок x-data-logging-enabled: false (тест на мок-сервере)"
     - "MUST: у каждого провайдера T1 — дата последней проверки условий (models.yaml#providers.<id>.termsCheckedAt); старше 90 дней → предупреждение в CI"
+    - "DeepSeek API (провайдер deepseek, Ханчжоу, хранение в КНР, обучение с opt-out) — T1 на тех же условиях, что Z.ai: только после scrub, MUST NOT для pii_forbidden_for_T1 и вызовов с вложениями; thinking выключен в каждом запросе. Только претендент eval: его модели enabled=false и не входят в цепочки routes (models.yaml#providers.deepseek). Включение в маршрутизацию по умолчанию — E-LEGAL (ст. 18 ч. 5 152-ФЗ)"
   storage_of_content: >
     Содержимое промптов и ответов НЕ хранится в llm_calls и логах. Отладочные транскрипты (M1+, по умолчанию выключены): только после scrub,
     в РФ, отдельная таблица с TTL 30 дней, доступ под staff_audit_log. Ошибки провайдеров логируются только как {status, code} — тело ответа

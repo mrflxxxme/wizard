@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import type { CallType, OrgPolicy, Tier } from "./types.js";
 
-export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot";
+export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot" | "deepseek";
 
 export interface ProviderDef {
   id: ProviderId;
@@ -85,6 +85,16 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     enabled: false,
     termsCheckedAt: "2026-09-30",
   },
+  // Eval challenger only (models.yaml#providers.deepseek): its models are enabled=false and in no route chain.
+  deepseek: {
+    id: "deepseek",
+    tier: "T1",
+    baseUrlEnv: "DEEPSEEK_BASE_URL",
+    defaultBaseUrl: "https://api.deepseek.com",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    enabled: true,
+    termsCheckedAt: "2026-10-01",
+  },
 };
 
 const m = (
@@ -140,6 +150,30 @@ export const MODELS: ModelDef[] = [
   ),
   m("glm-5.3", "zai", "glm-5.3", "T1", "external", 200000, 162, 30, 510),
   m("kimi-k3", "moonshot", "kimi-k3", "T1", "external", 256000, 348, 34.8, 1739, false),
+  m(
+    "deepseek-v4.1-flash",
+    "deepseek",
+    "deepseek-flash",
+    "T1",
+    "external",
+    1000000,
+    34.77,
+    0.7,
+    139.08,
+    false,
+  ),
+  m(
+    "deepseek-v4-pro-0813",
+    "deepseek",
+    "deepseek-v4-pro",
+    "T1",
+    "external",
+    1000000,
+    152.99,
+    5.1,
+    458.96,
+    false,
+  ),
 ];
 
 const r = (

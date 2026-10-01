@@ -14,6 +14,7 @@ import {
   writeHarnessResult,
 } from "../harness/cli.ts";
 import { EVAL_OWNER_COMPLIANCE, withOwnerCompliance } from "../harness/qa.ts";
+import { registryFor } from "../harness/run-brief.ts";
 import { baselineEntries } from "../lib/baseline.mjs";
 import { BRIEFS_DIR, loadBriefs } from "../lib/briefs.mjs";
 import { aggregateHarness, hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
@@ -255,6 +256,29 @@ describe("M1-10: CI options (--gates=G0, --max-cost-rub, baseline)", async () =>
     const keys = { ...clean, CLOUDRU_API_KEY: "x", ZAI_API_KEY: "y" };
     expect(harnessPreflight(opts({ llmMode: "live", gates: "G0", env: keys }))).toBeNull();
     expect(harnessPreflight(opts({ llmMode: "live", env: keys }))).toMatch(/WIZARD_UNSAFE_LOCAL_EXEC/);
+  });
+
+  test("deepseek challenger: optional, only via --models; then DEEPSEEK_API_KEY is required by name", () => {
+    const clean = { DATABASE_URL: env.DATABASE_URL };
+    expect(missingKeys(opts({ llmMode: "live", gates: "G0", env: clean }))).not.toContain("DEEPSEEK_API_KEY");
+    const ds = opts({ llmMode: "live", gates: "G0", models: ["deepseek-v4.1-flash"], env: clean });
+    expect(missingKeys(ds).sort()).toEqual(["CLOUDRU_API_KEY", "DEEPSEEK_API_KEY"]);
+    expect(harnessPreflight({ ...ds, env: { ...clean, CLOUDRU_API_KEY: "x", DEEPSEEK_API_KEY: "y" } })).toBeNull();
+    const reg = registryFor("deepseek-v4.1-flash", clean);
+    expect(reg.buildDefaultTier).toBe("T1");
+    expect(reg.routes.build_ops.chain.T1?.[0]).toBe("deepseek-v4.1-flash");
+    expect(reg.models.find((m) => m.id === "deepseek-v4.1-flash")?.enabled).toBe(true);
+    expect(registryFor(undefined, clean).routes.build_ops.chain.T1).toEqual(["glm-5.3"]);
+    const cfg = JSON.parse(readFileSync(join(ROOT, "tools", "eval", "models.json"), "utf8")) as {
+      models: { id: string; enabled: boolean; provider: string; extra_body: unknown }[];
+    };
+    for (const id of ["deepseek-v4.1-flash", "deepseek-v4-pro-0813"]) {
+      expect(cfg.models.find((m) => m.id === id)).toMatchObject({
+        enabled: false,
+        provider: "deepseek",
+        extra_body: { thinking: { type: "disabled" } },
+      });
+    }
   });
 
   test("--max-cost-rub: no brief starts once the run's budget is spent", async () => {

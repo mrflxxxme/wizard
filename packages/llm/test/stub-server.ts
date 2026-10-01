@@ -69,7 +69,12 @@ export interface Stub {
 
 export async function startStub(): Promise<Stub> {
   const requests: Captured[] = [];
-  const respond: Record<string, Responder> = { zai: okToolCall, cloudru: okToolCall, yandex: okToolCall };
+  const respond: Record<string, Responder> = {
+    zai: okToolCall,
+    cloudru: okToolCall,
+    yandex: okToolCall,
+    deepseek: okToolCall,
+  };
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (c: Buffer) => {
@@ -104,6 +109,8 @@ export async function startStub(): Promise<Stub> {
       YANDEX_BASE_URL: `${url}/yandex`,
       YANDEX_API_KEY: "test-yandex",
       YANDEX_FOLDER_ID: "b1gfolder",
+      DEEPSEEK_BASE_URL: `${url}/deepseek`,
+      DEEPSEEK_API_KEY: "test-deepseek",
       ...extra,
     }),
     close: () => new Promise<void>((ok) => server.close(() => ok())),

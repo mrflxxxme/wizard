@@ -31,11 +31,19 @@ providers:
     enabled: false
     termsCheckedAt: 2026-09-30
     disabled_reason: "Kimi K3 обучается на контенте API; включать только после договора о запрете обучения (E-LEGAL)"
+  deepseek:
+    tier: T1
+    role: eval_challenger
+    base_url_env: DEEPSEEK_BASE_URL         # по умолчанию https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY           # необязателен: без ключа модели провайдера недоступны, цепочка идёт дальше
+    termsCheckedAt: 2026-10-01
+    rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1 (как zai). Модели провайдера enabled=false и не входят ни в одну цепочку routes — выбираются только в eval через --models (претендент недельного eval, docs/founder/models-research.md#рекомендация-для-пилота п. 4б). Включение в маршрутизацию по умолчанию — отдельное решение (хранение данных в КНР, E-LEGAL)"
+    thinking: "MUST: thinking: {type: disabled} в КАЖДОМ запросе (у DeepSeek он включён по умолчанию; с tools в режиме thinking API требует вернуть reasoning_content, а мы его вырезаем → 400 на втором ходе)"
   fixture:
     tier: any
     rule: "WIZARD_LLM_MODE=fixture: ответы из tools/fixtures/<suite>/<name>.jsonl по правилам specs/quality/eval.yaml#fixtures.lookup (demo — по порядку вызовов callType, eval|unit — по ключу запроса). Маршрутизация и учёт выполняются так же, как в live. Режим record — только с ограничениями eval.yaml#fixtures.rules (брифы из репозитория, T0-запросы после scrub)"
 
-# Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot: $ × 95 ₽/$ [?] + 22% НДС налогового агента.
+# Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot/DeepSeek: $ × 95 ₽/$ [?] + 22% НДС налогового агента (DeepSeek — цены часов пик).
 # cached — цена кэшированного входа; если провайдер кэш-скидку не даёт, cached = input.
 models:
   - { id: kimi-k2.6,        provider: cloudru, providerModel: "moonshotai/Kimi-K2.6",          tier: T0, placement: internal, context: 262000,  price: { input: 175.68, cached: 175.68, output: 725.9 },  enabled: true }
@@ -48,6 +56,8 @@ models:
   - { id: yandex-deepseek-v4-flash, provider: yandex, providerModel: "deepseek-v4-flash/latest",   tier: T0, placement: internal, context: 1000000, price: { input: 300, cached: 75,  output: 500 }, enabled: true, note: "[?] точный URI" }
   - { id: glm-5.3,          provider: zai,      providerModel: "glm-5.3",                      tier: T1, placement: external, context: 200000, price: { input: 162, cached: 30, output: 510 }, enabled: true, note: "$1.4/$0.26/$4.4 [?] курс" }
   - { id: kimi-k3,          provider: moonshot, providerModel: "kimi-k3",                      tier: T1, placement: external, context: 256000, price: { input: 348, cached: 34.8, output: 1739 }, enabled: false, note: "см. providers.moonshot.disabled_reason" }
+  - { id: deepseek-v4.1-flash,  provider: deepseek, providerModel: "deepseek-flash",   tier: T1, placement: external, context: 1000000, price: { input: 34.77,  cached: 0.7, output: 139.08 }, enabled: false, note: "претендент eval; $0.3/$0.006/$1.2 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
+  - { id: deepseek-v4-pro-0813, provider: deepseek, providerModel: "deepseek-v4-pro",  tier: T1, placement: external, context: 1000000, price: { input: 152.99, cached: 5.1, output: 458.96 }, enabled: false, note: "претендент eval; $1.32/$0.044/$3.96 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
 
 catalog_rules:
   - "MUST: ids моделей — единственные имена в конфигурации, eval и логах (tools/eval использует те же id)"
@@ -131,7 +141,7 @@ fallback_rules:
 call_policy:
   client: "ai 7.x + @ai-sdk/openai-compatible; supportsStructuredOutputs: false; includeUsage: true"
   thinking:
-    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → {thinking: {type: 'disabled'}}; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
+    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → {thinking: {type: 'disabled'}}; deepseek → {thinking: {type: 'disabled'}} в каждом вызове, и без tools; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
     - "MUST NOT: отправлять reasoning_content обратно в API (ломает DeepSeek/Kimi, аудит 04 T5)"
     - "MAY: отдельный вызов без tools с thinking для рассуждений; его результат передаётся дальше как обычный текст"
     - "Тест: контрактный тест провайдер×модель в eval (tools/eval --contract) — запрос с tools не содержит включённого thinking"
