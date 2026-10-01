@@ -344,7 +344,7 @@ tables:
 
   exports:
     milestone: M2
-    purpose: "Выгрузка данных системы (workflows.yaml#export_data, M2-10) и журнал выгрузок"
+    purpose: "Выгрузка данных системы (workflows.yaml#export_data, M2-10) и журнал выгрузок; признак выгрузки с ПДн (createExport.includePii) хранится в runs.input.includePii, отдельной колонки нет; ≤ 20 выгрузок на систему за 24 ч"
     columns:
       id: "uuid pk"
       system_id: "uuid not null references platform.systems on delete cascade"
@@ -375,7 +375,7 @@ tables:
     milestone: M2
     columns:
       org_id: "uuid pk references platform.orgs"
-      plan: "text not null check (plan in ('start','business'))"
+      plan: "text not null check (plan in ('start','business'))"   # тариф СЛЕДУЮЩЕГО периода (даунгрейд ждёт продления, api.yaml#Billing.nextPlan); текущий — orgs.plan (M2-07)
       status: "text not null check (status in ('active','past_due','cancelled'))"
       payment_method_id: "uuid references platform.payment_methods"
       current_period_start: "timestamptz not null"
@@ -394,10 +394,11 @@ tables:
       card_last4: "text not null"
       card_type: "text"
       issuer_country: "text not null check (issuer_country ~ '^[A-Z]{2}$')"
+      card_fingerprint: "text not null"                      # HMAC(first6|last4|срок) — L3-28 «одна карта — ≤ 3 org»; first6, срок и PAN не хранятся (M2-07)
       bound_by: "uuid not null references platform.users"
       bound_at: "timestamptz not null default now()"
       revoked_at: "timestamptz"
-    indexes: ["unique (provider, provider_method_id)", "(org_id) where revoked_at is null"]
+    indexes: ["unique (provider, provider_method_id)", "(org_id) where revoked_at is null", "(card_fingerprint)"]
 
   payments:
     milestone: M2
@@ -411,7 +412,9 @@ tables:
       idempotence_key: "text not null"
       packs: "integer"
       settled_at: "timestamptz"
-    indexes: ["unique (provider_payment_id)", "unique (idempotence_key)"]
+      meta: "jsonb not null default '{}'"                    # plan, mode (start|upgrade|renewal), periodStart, attempt, userId, ipHash = HMAC(IP; IPv6 по /64), result привязки карты (M2-07)
+    indexes: ["unique (provider_payment_id)", "unique (idempotence_key)", "(org_id, kind, created_at desc)"]
+    invariants: ["Попытка привязки карты = строка kind=card_binding (включая неудачные и брошенные): ≤ 3 на org и ≤ 10 на meta.ipHash за 24 ч (L3-28)"]
 
   abuse_reports:
     milestone: M2
@@ -441,6 +444,8 @@ tables:
       note: "text"
       decided_at: "timestamptz"
     primary_key: [system_id, revision]
+    indexes: ["(created_at) where status = 'pending'"]
+    purpose: "Ревью основателя перед prod (abuse.yaml#scoring.effect). M2-04: строка pending создаётся публикацией при warn G2-AF-08/G2-AF-09 (ON CONFLICT DO NOTHING); ревью привязано к ревизии. Журнал модерации для события abuse_flag отдельной таблицы не имеет — это структурированная строка лога платформы (kind=abuse_flag → Loki) плюс platform.gate_reports (gates.yaml#G2.antifraud_rules)"
 
   deletion_log:
     milestone: M2

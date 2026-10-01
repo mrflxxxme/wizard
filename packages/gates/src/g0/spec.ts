@@ -1,11 +1,10 @@
-// Spec-level G0 checks: G0-SPEC-01, -02, -05, -06 (specs/quality/gates.yaml#G0.checks).
+// Spec-level G0 checks: G0-SPEC-01, -02, -05 (specs/quality/gates.yaml#G0.checks).
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AppSpec, appSpecSchema, type Field, type Permission, validateSpec } from "@wizard/appspec";
 import { validateIntegrations } from "@wizard/connectors";
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
-import { compareMilestones } from "../catalog.js";
 import type { Finding } from "../report.js";
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -135,28 +134,6 @@ export function checkRolesAndRoutes(spec: AppSpec): Finding[] {
         evidence: `RESERVED_NAME ${pg.route}`,
         fixHint:
           "Выберите другой адрес: /login, страница политики, /api, /_wizard и /assets обслуживает платформа",
-      });
-    }
-  });
-  return out;
-}
-
-/** G0-SPEC-06: until M2 (no uploads) only isAdmin roles may write file fields. */
-export function checkFileFields(spec: AppSpec, milestone: string): Finding[] {
-  if (compareMilestones(milestone, "M2") >= 0) return [];
-  const out: Finding[] = [];
-  const admins = new Set(spec.roles.filter((r) => r.isAdmin).map((r) => r.name));
-  spec.permissions.forEach((p, j) => {
-    if (admins.has(p.role) || !p.ops.some((op) => op === "create" || op === "update")) return;
-    const entity = spec.entities.find((e) => e.name === p.entity);
-    for (const f of entity?.fields ?? []) {
-      if (f.type !== "file" || p.readonlyFields?.includes(f.name)) continue;
-      out.push({
-        message_ru: `Роль «${p.role}» не может загружать файл в поле «${f.label}»: загрузка файлов появится позже`,
-        path: `/permissions/${j}`,
-        evidence: `FILE_FIELD_UNSUPPORTED ${p.entity}.${f.name}`,
-        fixHint:
-          "Сделайте поле доступным только для чтения этой роли (readonlyFields) или уберите права на запись",
       });
     }
   });

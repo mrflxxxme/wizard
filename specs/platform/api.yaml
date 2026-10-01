@@ -333,10 +333,10 @@ paths:
       operationId: createExport
       x-milestone: M2
       x-roles: [owner]
-      summary: 'Выгрузка данных (M2-10, L4-08): прогон export → ZIP (CSV по сущностям + spec.json; кода нет — non_goals). workflows.yaml#export_data'
+      summary: 'Выгрузка данных (M2-10, L4-08): прогон export → ZIP (CSV по сущностям + spec.json; кода нет — non_goals). workflows.yaml#export_data. env=prod у неопубликованной системы и env=draft у несобранной → 409 PREVIEW_NOT_READY (UI до публикации шлёт env=draft); ≤ 20 выгрузок на систему за 24 ч → 429 RATE_LIMITED; бесплатно, без блокировки системы'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env], additionalProperties: false, properties: {env: {enum: [draft, prod]}, includePii: {type: boolean, default: false, description: 'Включить колонки с ПДн; только после явного подтверждения владельца в UI (M2-10). Отметка сохраняется в выгрузке'}}}}}}
-      responses: {'202': {description: Прогон поставлен в очередь, content: {application/json: {schema: {type: object, required: [exportId, run], properties: {exportId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '403': {$ref: '#/components/responses/Error'}}
+      responses: {'202': {description: Прогон поставлен в очередь, content: {application/json: {schema: {type: object, required: [exportId, run], properties: {exportId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '403': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
     get: {operationId: listExports, x-milestone: M2, x-roles: [owner], responses: {'200': {description: 'Журнал выгрузок, новые сверху', content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Export'}}}}}}}}}
   /systems/{id}/exports/{exportId}:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: exportId, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -510,7 +510,7 @@ paths:
       operationId: startCardBinding
       x-milestone: M2
       x-roles: [owner]
-      summary: Привязка карты РФ через магазин платформы в ЮKassa (billing.yaml#card_binding)
+      summary: 'Привязка карты РФ через магазин платформы в ЮKassa (billing.yaml#card_binding). return_url = <WIZARD_PLATFORM_ORIGIN>/billing?payment=<payments.id>; исход привязки страница возврата узнаёт опросом getBilling.cardBinding (отдельной операции статуса платежа нет — M2-11, предложение getPayment)'
       responses: {'200': {description: Ссылка на подтверждение, content: {application/json: {schema: {type: object, required: [confirmationUrl], properties: {confirmationUrl: {type: string, format: uri}}}}}}}
   /orgs/{orgId}/billing/subscription:
     parameters: [{$ref: '#/components/parameters/orgId'}]
@@ -518,8 +518,9 @@ paths:
       operationId: changeSubscription
       x-milestone: M2
       x-roles: [owner]
+      summary: 'Тот же тариф — возобновить автоплатёж; дешевле — с продления (Billing.nextPlan); дороже — платёж сразу по привязанной карте, новый период с текущего момента; без активной подписки — первый платёж по карте или страница ЮKassa (Billing.confirmationUrl) с save_payment_method (M2-07). 409 не используется'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [plan], properties: {plan: {enum: [start, business]}}}}}}
-      responses: {'200': {description: Подписка оформлена или confirmationUrl для первой оплаты, content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}, '409': {$ref: '#/components/responses/Error'}}
+      responses: {'200': {description: Подписка оформлена или confirmationUrl для первой оплаты, content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}}
     delete: {operationId: cancelSubscription, x-milestone: M2, x-roles: [owner], summary: Отмена в конце периода (автоплатёж выключается сразу), responses: {'200': {description: Отменено, content: {application/json: {schema: {$ref: '#/components/schemas/Billing'}}}}}}
   /orgs/{orgId}/billing/topups:
     parameters: [{$ref: '#/components/parameters/orgId'}]
@@ -528,6 +529,7 @@ paths:
       x-milestone: M2
       x-roles: [owner]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [packs], properties: {packs: {type: integer, minimum: 1, maximum: 20}}}}}}
+      summary: 'Докупка пакетов (billing.yaml#topup). С привязанной картой — списание сразу по payment_method_id (confirmationUrl = null, кредиты начислены в том же запросе); без карты — страница ЮKassa без сохранения карты'
       responses: {'200': {description: Платёж создан, content: {application/json: {schema: {type: object, properties: {confirmationUrl: {type: [string, 'null']}, paymentId: {type: string}}}}}}}
   /webhooks/yookassa:
     post:
@@ -581,7 +583,7 @@ paths:
       operationId: adminFounderReview
       x-milestone: M2
       x-roles: [staff]
-      summary: Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии
+      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Маршрут монтируется вместе со staff MFA и staff_audit_log (M2-08/M2-09); до этого решение принимает CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04). rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
       responses: {'200': {description: Записано}}
 components:
@@ -781,7 +783,7 @@ components:
     Export:
       type: object
       required: [id, env, status, createdAt]
-      properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, status: {enum: [running, ready, failed, expired]}, size: {type: [integer, 'null']}, downloads: {type: integer}, expiresAt: {type: string, format: date-time}, createdBy: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}
+      properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, status: {enum: [running, ready, failed, expired]}, includePii: {type: boolean, description: 'Выгрузка с колонками ПДн (createExport.includePii; хранится в runs.input)'}, size: {type: [integer, 'null']}, downloads: {type: integer}, expiresAt: {type: string, format: date-time}, createdBy: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}
     User: {type: object, properties: {id: {type: string, format: uuid}, email: {type: string}, name: {type: [string, 'null']}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean, description: M2}}}
     Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, start, business]}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}}}
     Member: {type: object, properties: {userId: {type: string}, email: {type: string}, name: {type: [string, 'null']}, role: {$ref: '#/components/schemas/OrgRole'}, joinedAt: {type: string, format: date-time}}}
@@ -814,8 +816,11 @@ components:
         status: {enum: [none, active, past_due, cancelled]}
         periodEnd: {type: [string, 'null'], format: date-time}
         cancelAtPeriodEnd: {type: boolean}
-        card: {type: [object, 'null'], properties: {last4: {type: string}, issuerCountry: {type: string}, boundAt: {type: string, format: date-time}}}
+        nextPlan: {type: ['null', string], enum: [start, business, null], description: 'Тариф следующего периода при ожидающем даунгрейде (db.yaml#subscriptions.plan — тариф следующего периода, текущий — orgs.plan); null — без смены'}
+        card: {type: [object, 'null'], properties: {last4: {type: string}, issuerCountry: {type: string}, boundAt: {type: string, format: date-time}, cardType: {type: [string, 'null']}}}
+        cardBinding: {type: [object, 'null'], description: 'Исход последней попытки привязки карты (payments kind=card_binding); его опрашивает страница возврата /billing?payment=<id>. null — попыток не было', properties: {status: {enum: [pending, bound, rejected, cancelled]}, code: {type: ['null', string], enum: [CARD_NOT_RU, CARD_BINDING_REJECTED, null]}, message_ru: {type: [string, 'null'], description: 'Текст без раскрытия причины отказа (L3-28)'}}}
         limits: {type: object, properties: {prodSystems: {type: integer}, members: {type: integer}, monthlyCredits: {type: number}}}
+        confirmationUrl: {type: [string, 'null'], description: 'Только в ответе changeSubscription: страница ЮKassa для первой оплаты без привязанной карты; null — оплачено сразу по карте'}
     AbuseReport:
       type: object
       properties: {id: {type: string}, systemId: {type: [string, 'null']}, category: {type: string}, status: {enum: [new, triaged, takedown, dismissed, restored]}, slaDeadline: {type: string, format: date-time}, createdAt: {type: string, format: date-time}}

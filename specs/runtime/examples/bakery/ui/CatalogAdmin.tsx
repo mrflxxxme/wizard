@@ -5,8 +5,8 @@ type Product = ClientDoc<"product">;
 type Option = ClientDoc<"product_option">;
 type Slot = ClientDoc<"production_slot">;
 
-// Кабинет владельца: справочники через data API (права owner — полные). Фото (file) до M2 не редактируется:
-// RecordForm поле file не рендерит (G0-SPEC-06), поэтому в fields его нет.
+// Кабинет владельца: справочники через data API (права owner — полные). Фото (file) в эталоне не редактируется
+// (поле не перечислено в fields); загрузка файлов — FileField/RecordForm с M2-14 (runtime.yaml#files).
 export default function CatalogAdmin() {
   return (
     <CabinetLayout

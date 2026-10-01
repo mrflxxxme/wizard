@@ -25,7 +25,7 @@ patterns:                          # словари и шаблоны для п�
   word_boundary: "\\b в шаблонах этого файла — Unicode-граница слова: (?<![\\p{L}\\p{N}_]) … (?![\\p{L}\\p{N}_]) с флагом u (\\b в JS кириллицу не видит). Шаблоны без \\b — стемы, совпадают с началом слова"
   scope: "спека (app, entities, labels, enum, pages.title, compliance.operatorName), исходники ui/ и functions/ (AST JSX/TS + строковые литералы), тексты шаблонов уведомлений; строки компонентов ui-kit (PayButton, ConsentCheckbox, AppShell.Login, «Напоминания в Telegram») в scope не входят"
   card_collection:                 # G2-AF-01
-    names: '(номер|№)\s*карты|card.?number|\bpan\b|\bcvv2?\b|\bcvc2?\b|\bcvp\b|код безопасности|срок действия\s+(банковской\s+)?карт|\bexpiry\b|\bexp.?date\b|держатель карты|cardholder'
+    names: '(номер|№)\s*карты|(номер|№)\s*(банковской|кредитной|дебетовой)\s+карты|card.?number|\bpan\b|\bcvv2?\b|\bcvc2?\b|\bcvp\b|код безопасности|срок действия\s+(банковской\s+)?карт|\bexpiry\b|\bexp.?date\b|держатель карты|cardholder'
     autocomplete: [cc-number, cc-csc, cc-exp, cc-exp-month, cc-exp-year, cc-name]
     code: "маска/regex из 16 цифр группами по 4, реализация алгоритма Луна в коде системы"
     allowed: "только confirmation_url коннектора yookassa (платёжная форма ЮKassa)"

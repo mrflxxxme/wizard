@@ -58,12 +58,8 @@ const M2_TABLES = [
   "founder_reviews",
   "brand_allowlist",
 ];
-/** Columns beyond db.yaml, each justified in docs/reviews/impl-notes/M2-07.md and M2-05.md (systems). */
-const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {
-  systems: { draft_purge_notice_at: { type: "timestamp with time zone", notNull: false } },
-  payment_methods: { card_fingerprint: { type: "text", notNull: true } },
-  payments: { meta: { type: "jsonb", notNull: true } },
-};
+/** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
+const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
   ...m0,
   ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),

@@ -18,7 +18,6 @@ export const G0_CHECKS: readonly CheckDef[] = [
   { id: "G0-SPEC-03", severity: "blocker", title_ru: "Все страницы и функции из описания есть в коде" },
   { id: "G0-SPEC-04", severity: "warning", title_ru: "В коде нет неиспользуемых файлов" },
   { id: "G0-SPEC-05", severity: "blocker", title_ru: "Роли, вход и адреса страниц настроены безопасно" },
-  { id: "G0-SPEC-06", severity: "blocker", title_ru: "Поля-файлы не требуют загрузки от пользователей" },
   { id: "G0-MIG-01", severity: "blocker", title_ru: "Изменения данных можно применить" },
   { id: "G0-MIG-02", severity: "blocker", title_ru: "Структура данных и права применяются к базе" },
   {

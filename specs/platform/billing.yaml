@@ -95,18 +95,22 @@ card_binding:
     - "MUST: одна карта (first6 + last4 + срок) — не более чем в 3 org; четвёртая → CARD_BINDING_REJECTED без раскрытия причины"
     - "MUST: 3-DS обязателен (confirmation redirect); привязка без 3-DS не принимается"
     - "Достаточность привязки как идентификации по ПП 2011 — E-LEGAL"
+  implementation: "M2-07: предусловие включено при WIZARD_MILESTONE ≥ M2 или NODE_ENV=production (cardBindingRequired; иначе публикации M1, e2e и стенды без магазина не требуют карты). Платёж 1 ₽ с capture=false и save_payment_method; вебхук waiting_for_capture → GET → проверки по порядку: payment_method.saved, issuer_country = RU (CARD_NOT_RU), three_d_secure.applied, отпечаток карты (db.yaml#payment_methods.card_fingerprint) не встречается в ≥ 3 других org (включая отозванные) → иначе CARD_BINDING_REJECTED; затем всегда отмена платежа (ключ cancel:<paymentId>). Успех отзывает прежние карты org и переводит подписку на новую карту. Исход — payments.meta.result → api.yaml#Billing.cardBinding; return_url — /billing?payment=<id>"
   test: "M2-07: публикация без payment_methods (revoked_at is null) → 403 CARD_BINDING_REQUIRED; тестовый магазин с картой issuer_country≠RU → привязка отклонена; 4-я попытка привязки за сутки → 429"
 
 recurring:
   milestone: M2
   provider: "ЮKassa, магазин самой платформы (не путать с магазинами клиентов — connectors/yookassa.yaml; смешивать MUST NOT)"
   first_payment: "платёж на цену тарифа с save_payment_method=true (или по уже привязанной карте)"
-  renewal: "за 24 ч до current_period_end — письмо-уведомление; в момент окончания — платёж по payment_method_id с Idempotence-Key renew:<org>:<period>"
-  retries: "3 попытки: день 0, +1, +3; затем status=past_due; через 7 дней past_due → plan=free (см. plans.enforcement)"
-  cancel: "DELETE subscription: автоплатёж выключается сразу, тариф действует до конца периода"
+  renewal: "за 24 ч до current_period_end — письмо-уведомление (ежечасный проход, окно (now+23 ч, now+24 ч], отметки отправки нет); в момент окончания — платёж по payment_method_id с Idempotence-Key renew:<org>:<period>; повторы — renew:<org>:<period>:2 и :3 (каждая попытка — новый платёж). Период — календарный месяц (addMonth с усечением дня); грант plan_monthly с ключом grant:plan_monthly:<org>:<начало периода> до конца периода"
+  retries: "3 попытки: день 0, +1, +3 (тариф сохраняется, новых кредитов нет); 4xx API или нет карты — неудачная попытка, неизвестный результат — платёж остаётся pending и повторяется с тем же ключом; затем status=past_due; через 7 дней past_due (end + 10 дней) → cancelled и plan=free (см. plans.enforcement)"
+  plan_change: "subscriptions.plan — тариф следующего периода, текущий — orgs.plan. Тот же тариф — возобновить автоплатёж; дешевле — с продления (Billing.nextPlan); дороже — платёж сразу по привязанной карте за полную цену, новый период с текущего момента, кредиты старого периода живут до своего срока; без активной подписки — первый платёж (M2-07)"
+  cancel: "DELETE subscription: автоплатёж выключается сразу (cancel_at_period_end, next_charge_at = null), тариф действует до конца периода; past_due при DELETE заканчивается сразу и переводит org на free"
+  schedule: "DBOS scheduled wizard.billing_cron (apps/worker, `13 * * * *`): шаги billing_remind, billing_end, billing_due, renew:<org> на каждое продление, billing_reconcile (GET платежей pending/waiting_for_capture старше 10 мин и моложе 3 дней — страховка от потерянных уведомлений). Без DBOS (inprocess) — тот же проход по таймеру credits_cron"
   receipts: "54-ФЗ: объект receipt в каждом платеже («Чеки от ЮKassa»); email покупателя = email owner; vat_code из конфигурации WIZARD_RECEIPT_VAT_CODE (задаёт юрист/бухгалтер)"
   webhook: "только после сверки GET /v3/payments/{id}; обработка идемпотентна по provider_payment_id; тест: двойная доставка succeeded → один grant"
-  topup: "payments kind=topup, succeeded → grant(+60×packs) bucket topup, idempotency topup:<paymentId>"
+  topup: "payments kind=topup, succeeded → grant(+60×packs) bucket topup, idempotency topup:<paymentId>; с привязанной картой — списание сразу по payment_method_id (confirmationUrl = null), без карты — страница ЮKassa без сохранения карты"
+  not_done: "Снятие лишних prod-систем через 14 дней после даунгрейда и отключение phone_otp при переходе на free (plans.enforcement, sms.downgrade), возвраты платежей платформы — не реализованы (M2-07)"
 
 tax_note:
   status: "PENDING — E-LEGAL"

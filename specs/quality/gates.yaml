@@ -53,7 +53,6 @@ G0:
     - { id: G0-SPEC-03, severity: blocker, what: "Каждый pages[].file и functions[].file существует; каждая страница — default export компонента", how: "дерево файлов + AST" }
     - { id: G0-SPEC-04, severity: warning, what: "Нет файлов-сирот: файлы ui/** и functions/**, не являющиеся page.file/function.file и не импортируемые ими транзитивно", how: "дерево файлов + граф импортов" }
     - { id: G0-SPEC-05, severity: blocker, what: "Каждая роль access=login имеет ≥1 loginMethods; каждая сущность достижима хотя бы одной ролью; pages[].route не совпадает с зарезервированными маршрутами runtime /login и compliance.policyPage (по умолчанию /privacy) (RESERVED_NAME); selfSignup=true только у роли access=login, isAdmin=false, у которой каждое право — ops ⊆ {read} или задан rowFilter, а права на сущности с полями pii≠none — только с rowFilter (SELF_SIGNUP_UNSAFE; runtime.yaml#auth не выводит это правило)", how: "обход спеки" }
-    - { id: G0-SPEC-06, severity: blocker, what: "Пока ctx.milestone < M2 (загрузки нет — runtime.yaml#files, M2-14): поле type=file с create/update у роли без isAdmin → FILE_FIELD_UNSUPPORTED; поле file, которое пишут только isAdmin-роли (фото товара в эталоне bakery), допустимо как ключ без загрузки", how: "обход спеки" }
     - { id: G0-MIG-01,  severity: blocker, what: "planMigration(prev, next) строится; для env=prod только аддитивные шаги (DESTRUCTIVE_IN_PROD)", how: "packages/appspec planMigration" }
     - { id: G0-MIG-02,  severity: blocker, what: "DDL+RLS применяются к теневой схеме", how: "BEGIN; toDDL+toRLS в app_<id>_shadow; ROLLBACK" }
     - { id: G0-IDX-01,  severity: blocker, what: "ctx.db/systemDb.<e>.list/first/count/paginate: where — префикс объявленного или неявного индекса (IndexWhere<E>, ловит G0-TS-01); list без where — limit ≤100, с where — ≤1000; paginate.numItems ≤200", how: "tsc + AST по functions/**" }
@@ -86,14 +85,14 @@ G1:
 # ---------------------------------------------------------------- G2: безопасность, права, ПДн, антифрод (≤ 300 с)
 G2:
   time_budget_s: 300
-  precondition: "G1 passed на этой ревизии"
+  precondition: "G1 passed на этой ревизии — проверяет вызывающий, а не runG2: публикация prod запускает шаг gate_G1_prod, если пройденного G1 на ревизии нет (platform/workflows.yaml#publish, M2-04)"
   checks:
     # права
     - { id: G2-PERM-01, severity: blocker, what: "Полная матрица роль×сущность×op через data API: 200/201 для allow, 403 для deny" }
     - { id: G2-PERM-02, severity: blocker, what: "Та же матрица прямым SQL под RLS (set_config('wizard.user_id'/'wizard.role', …, true)) — второй рубеж" }
     - { id: G2-PERM-03, severity: blocker, what: "rowFilter: пользователь A не читает/не меняет/не удаляет строки B ни через data API, ни через публичные функции" }
     - { id: G2-PERM-04, severity: blocker, what: "hiddenFields отсутствуют в ответах data API и публичных функций (сканирование ответов всех G1-сценариев и G1-FN-01)" }
-    - { id: G2-PERM-05, severity: blocker, what: "Роль public: нет update/delete без rowFilter; публичные mutation/action имеют roles или явный public с rate limit" }
+    - { id: G2-PERM-05, severity: blocker, what: "Роль public: нет update/delete без rowFilter; публичные mutation/action имеют roles или явный public с rate limit; функция, доступная public-роли, которая по графу импортов читает документы сущности с ПДн через ctx.systemDb (get/getBy/list/first/paginate; count, insert, patch не считаются), требует function.systemDbReason (10–300 символов, sdk.md §2.3, L3-22)" }
     # секреты
     - { id: G2-SECRET-01, severity: blocker, what: "Нет секретов в файлах и спеке: токены ЮKassa, Telegram-ботов, JWT, PEM, ключи API, пароли SMTP; high-entropy строки рядом со словами key|token|secret|пароль", patterns: "abuse.yaml#patterns.secrets" }
     - { id: G2-SECRET-02, severity: blocker, what: "Все integrations[].secretRefs вида secret://name; для prod секреты заданы в хранилище (без чтения значения)" }
@@ -118,8 +117,9 @@ G2:
   antifraud_rules:
     - "MUST: антифрод-проверки смотрят спеку, код и тексты (включая enum labels и строки в JSX), нормализуя регистр, ё/е, латиницу-двойники (a/а, o/о, c/с) и пробелы"
     - "MUST: срабатывание в G2 → публикация заблокирована; сообщение пользователю нейтральное, без раскрытия правил; событие abuse_flag в журнал модерации"
+    - "Журнал модерации (M2-04): отдельной таблицы нет — событие abuse_flag {runId, orgId, systemId, revision, checks} без текстов и evidence пишется структурированной строкой лога платформы (msg=abuse_flag, kind=abuse_flag → Loki), полный отчёт G2 — в platform.gate_reports. warn G2-AF-08/09 создаёт founder_reviews pending (db.yaml#founder_reviews); код прогона — GATES_FAILED, FOUNDER_REVIEW_PENDING — только в HTTP (403) и publishBlockers"
     - "MUST: словари G2-PII-02 (pii_field_names) и G2-PII-03 (special_categories) применяются только к сущностям с полями pii≠none или ref на users; «аллерген» в товарной сущности — allowlist (маркировка, не ПДн), «раса» — только \\bрас[аы]\\b"
-    - "Фикстуры: packages/gates/test/antifraud/{bad,good}/*.json — bad блокируются 100%, good (включая брифы eval и тексты макетов 1–10) — 0 блокировок"
+    - "Фикстуры: packages/gates/test/antifraud/{block,allow,score}/*.json (генератор scripts/gen-g2-fixtures.mjs; словари data/abuse.json и data/brands.ru.json — scripts/gen-g2-data.mjs из abuse.yaml) — block блокируются 100%, allow (включая брифы eval и тексты макетов 1–10) — 0 блокировок"
     - "MUST: good/ содержит как минимум: «Мир сладостей» (название и текст), «Напоминания в Telegram» при подключённом telegram, «Оплатить через ЮKassa» / «предоплата через ЮKassa» при подключённом yookassa, «Срок действия билета», «Аллергены: орехи, глютен» в каталоге кондитерской, «ул. Тараса Шевченко», «Адрес площадки», spinner/shipping в коде"
 
 # ---------------------------------------------------------------- После MVP
