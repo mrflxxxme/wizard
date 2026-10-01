@@ -3,15 +3,20 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** D20_eval_budget: ≤ 30 000 ₽ per month for live eval. */
-export const MONTHLY_BUDGET_RUB = 30_000;
-/** Forecast per (brief, model) pair until the ledger has MIN_HISTORY real runs; conservative on purpose. */
-export const DEFAULT_PAIR_RUB = 150;
+/** D20_eval_budget (revised 01.10.2026, D23_pilot): ≤ 4 000 ₽ per month for live eval. */
+export const MONTHLY_BUDGET_RUB = 4_000;
+/**
+ * Forecast per (brief, model) pair until the ledger has MIN_HISTORY real runs; conservative on purpose (golden
+ * fixtures estimate 8–16 ₽ a pair; 60 ₽ keeps a full run + the weekly reserve within 4 000 ₽, M2-16).
+ */
+export const DEFAULT_PAIR_RUB = 60;
 export const MIN_HISTORY = 3;
 /** Safety margin on the historical average cost per pair. */
 export const FORECAST_MARGIN = 1.25;
-/** live_cadence.nightly_smoke: 5 briefs × the default model. */
+/** live_cadence.nightly_smoke (weekly since D23_pilot; the key name is kept): 5 briefs × the default model. */
 export const NIGHTLY_PAIRS = 5;
+/** UTC weekday of the scheduled smoke: Sunday 23:17 UTC = Monday 02:17 MSK (.github/workflows/eval-live.yml). */
+export const SMOKE_WEEKDAY_UTC = 0;
 
 export const monthOf = (iso) => String(iso).slice(0, 7);
 export const emptyLedger = () => ({ v: 1, entries: [] });
@@ -103,16 +108,19 @@ export function costPerPair(entries) {
   return round2((cost / pairs) * FORECAST_MARGIN);
 }
 
-/** Nights left in the month after `now` (UTC). */
-export function nightsLeft(now) {
+/** Scheduled weekly smokes left in the month after `now` (UTC days after today that fall on SMOKE_WEEKDAY_UTC). */
+export function smokesLeft(now) {
   const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
-  return days - now.getUTCDate();
+  let n = 0;
+  for (let d = now.getUTCDate() + 1; d <= days; d++)
+    if (new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), d)).getUTCDay() === SMOKE_WEEKDAY_UTC) n++;
+  return n;
 }
 
 /**
  * Whether a live run may start (live_cadence.budget).
  *   nightly: spent + forecast ≤ budget.
- *   full:    spent + forecast + reserve for the remaining nightly smokes ≤ budget (the smoke keeps running).
+ *   full:    spent + forecast + reserve for the remaining weekly smokes ≤ budget (the smoke keeps running).
  * maxCostRub caps the run itself (the harness stops starting briefs once it is reached).
  */
 export function decide({ kind, pairs, entries, now = new Date(), budget = MONTHLY_BUDGET_RUB }) {
@@ -120,7 +128,7 @@ export function decide({ kind, pairs, entries, now = new Date(), budget = MONTHL
   const spent = monthSpent(entries, month);
   const perPair = costPerPair(entries);
   const forecast = round2(pairs * perPair);
-  const reserve = kind === "full" ? round2(NIGHTLY_PAIRS * perPair * nightsLeft(now)) : 0;
+  const reserve = kind === "full" ? round2(NIGHTLY_PAIRS * perPair * smokesLeft(now)) : 0;
   const maxCostRub = round2(budget - spent - reserve);
   const run = pairs > 0 && forecast <= maxCostRub;
   const base = { kind, month, budget, spent, perPair, pairs, forecast, reserve, maxCostRub, run };
@@ -130,8 +138,8 @@ export function decide({ kind, pairs, entries, now = new Date(), budget = MONTHL
     ...base,
     reason:
       kind === "full"
-        ? `полный прогон не стартует: израсходовано ${spent} ₽ из ${budget} ₽ за ${month}, прогноз ${forecast} ₽ и резерв ночных прогонов ${reserve} ₽ превышают остаток — нужна эскалация E-MONEY (specs/escalation.yaml)`
-        : `ночной прогон не стартует: израсходовано ${spent} ₽ из ${budget} ₽ за ${month}, прогноз ${forecast} ₽ превышает остаток`,
+        ? `полный прогон не стартует: израсходовано ${spent} ₽ из ${budget} ₽ за ${month}, прогноз ${forecast} ₽ и резерв еженедельных прогонов ${reserve} ₽ превышают остаток — нужна эскалация E-MONEY (specs/escalation.yaml)`
+        : `еженедельный прогон не стартует: израсходовано ${spent} ₽ из ${budget} ₽ за ${month}, прогноз ${forecast} ₽ превышает остаток`,
   };
 }
 

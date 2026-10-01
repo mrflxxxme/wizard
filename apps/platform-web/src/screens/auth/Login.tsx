@@ -15,7 +15,8 @@ export function Login(): ReactNode {
   const { api, auth, reloadMe } = usePlatform();
   const { search } = useRoute();
   const next = safeNext(search.get("next"));
-  const [email, setEmail] = useState("");
+  // The founder's pilot invitation links to /login?email=<address> (M2-15).
+  const [email, setEmail] = useState(() => search.get("email")?.trim().slice(0, 254) ?? "");
   const [step, setStep] = useState<"email" | "code">("email");
   const [code, setCode] = useState("");
   const [offer, setOffer] = useState(false);

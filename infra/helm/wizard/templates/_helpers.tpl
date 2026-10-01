@@ -62,6 +62,12 @@ imagePullSecrets:
   value: {{ .Values.config.connectors | quote }}
 - name: WIZARD_FILES_STORAGE
   value: {{ .Values.config.filesStorage | quote }}
+- name: WIZARD_REGISTRATION
+  value: {{ .Values.config.registration | quote }}
+- name: WIZARD_PAYMENTS
+  value: {{ .Values.config.payments | quote }}
+- name: WIZARD_LLM_MONTHLY_CAP_RUB
+  value: {{ .Values.config.llmMonthlyCapRub | quote }}
 {{- if .Values.config.s3Endpoint }}
 - name: WIZARD_S3_ENDPOINT
   value: {{ .Values.config.s3Endpoint | quote }}
@@ -78,6 +84,14 @@ imagePullSecrets:
   value: {{ .Values.images.tag | quote }}
 - name: HOST
   value: "0.0.0.0"
+{{- end -}}
+
+{{/* Founder alert webhook of platform-api and worker (LLM cap of the month, M2-15): the same optional keys as pg-ops. */}}
+{{- define "wizard.alertEnv" -}}
+- name: WIZARD_OPS_ALERT_URL
+  valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgres }}, key: WIZARD_OPS_ALERT_URL, optional: true } }
+- name: WIZARD_OPS_ALERT_CHAT_ID
+  valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgres }}, key: WIZARD_OPS_ALERT_CHAT_ID, optional: true } }
 {{- end -}}
 
 {{/* Writable paths of a read-only root filesystem: /tmp (tsx cache) and the shared .data volume. */}}

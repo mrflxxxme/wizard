@@ -9,8 +9,9 @@ import {
   type Bucket,
   DAY_MS,
   FREE_PERIOD_DAYS,
+  type PaidPlan,
+  PILOT_GRANT_DAYS,
   PLANS,
-  type PlanId,
   type PlanLimit,
   assertPlanLimit as planLimit,
   TOPUP,
@@ -118,15 +119,24 @@ export interface BillingOptions {
    * stand, config.billingExemptOrgs). The ledger itself is written as usual.
    */
   exemptOrgs?: Iterable<string>;
+  /** Platform LLM cap of the month (M2-15): checked before every new LLM run (insertRun). */
+  llmCap?: { assert(): Promise<void> };
 }
 
 export class Billing {
   readonly now: () => Date;
   readonly #exempt: ReadonlySet<string>;
+  readonly #llmCap: BillingOptions["llmCap"];
 
   constructor(o: BillingOptions = {}) {
     this.now = o.now ?? (() => new Date());
     this.#exempt = new Set(o.exemptOrgs ?? []);
+    this.#llmCap = o.llmCap;
+  }
+
+  /** M2-15: 503 LLM_BUDGET_EXHAUSTED once the platform LLM spend of the month reaches WIZARD_LLM_MONTHLY_CAP_RUB. */
+  async assertLlmBudget(): Promise<void> {
+    await this.#llmCap?.assert();
   }
 
   isExempt(orgId: string): boolean {
@@ -395,11 +405,30 @@ export class Billing {
     });
   }
 
+  /**
+   * Pilot credits granted by the founder's CLI (billing.yaml#plans.pilot.grants.manual): bucket topup, reason
+   * pilot_grant (idempotency key pilot_grant:<reference>), 365 days.
+   */
+  async grantPilot(
+    trx: Trx,
+    orgId: string,
+    g: { credits: number; reference: string; createdBy?: string | null },
+  ): Promise<boolean> {
+    return this.grant(trx, orgId, {
+      bucket: "topup",
+      amountMilli: Math.round(g.credits * 1000),
+      expiresAt: new Date(this.now().getTime() + PILOT_GRANT_DAYS * DAY_MS),
+      key: `pilot_grant:${g.reference}`,
+      note: `Кредиты пилота от команды Wizard: ${g.credits}`,
+      createdBy: g.createdBy ?? null,
+    });
+  }
+
   /** Monthly credits of a paid plan for one period; they expire at the end of the period (D10_interpretations). */
   async grantPlanPeriod(
     trx: Trx,
     orgId: string,
-    p: { plan: Exclude<PlanId, "free">; start: Date; end: Date; createdBy?: string | null },
+    p: { plan: PaidPlan; start: Date; end: Date; createdBy?: string | null },
   ): Promise<boolean> {
     return this.grant(trx, orgId, {
       bucket: "plan_monthly",

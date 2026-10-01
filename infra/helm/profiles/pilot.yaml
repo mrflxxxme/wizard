@@ -8,6 +8,11 @@
 # docker-registry Secret wizard-ghcr; no in-cluster registry.
 images:
   pullSecret: wizard-ghcr
+# D24_pilot_free (platform/deploy.yaml#pilot.env): invite-only registration, payments off, LLM cap 6 000 ₽/month.
+config:
+  registration: invite
+  payments: "off"
+  llmMonthlyCapRub: 6000
 postgres:
   inCluster: true
   storageSize: 30Gi

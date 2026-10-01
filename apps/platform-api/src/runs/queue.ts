@@ -147,11 +147,20 @@ export interface NewRun {
   startedBy: string;
 }
 
+/** Run kinds that call models (the platform LLM cap applies to them, M2-15). */
+export const LLM_RUN_KINDS: ReadonlySet<NewRun["kind"]> = new Set([
+  "interview_turn",
+  "build",
+  "import_table",
+]);
+
 /**
  * Inserts a run. With `billing`: an interview turn needs available > 0, a build or an import holds its cap in the
  * same transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
+  // M2-15: the platform LLM cap of the month refuses new LLM runs (publish/rollback/export use no LLM).
+  if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget();
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
   const id = randomUUID();

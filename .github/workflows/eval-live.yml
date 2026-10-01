@@ -1,18 +1,18 @@
-# Live eval within the F6 budget (specs/quality/eval.yaml#live_cadence, product.yaml#decisions.D20_eval_budget).
-#   nightly: 5 rotating briefs × the default build model (schedule);
+# Live eval within the budget (specs/quality/eval.yaml#live_cadence, product.yaml#decisions.D20_eval_budget, D23_pilot).
+#   nightly: 5 rotating briefs × the default build model — weekly since the pilot (schedule; the kind name is kept);
 #   full:    all briefs × 2 models — PR label eval:full (prompts/models.yaml changed) or manual run before a milestone.
 # Runs only when provider keys exist in secrets (E-ACCESS), otherwise skips cleanly. Budget ledger = the latest
-# `eval-budget-ledger` artifact; the run does not start above 30 000 ₽/month. G1 is not run (--gates=G0): generated
+# `eval-budget-ledger` artifact; the run does not start above 4 000 ₽/month (M2-16). G1 is not run (--gates=G0): generated
 # code never executes outside the sandbox (AGENTS.md). Reports go to S3 eval in RF, not to GitHub artifacts
 # (eval.yaml#fixtures.rules). Docs: docs/ops/eval.md.
 name: eval-live
 on:
   schedule:
-    - cron: "17 23 * * *" # 02:17 MSK
+    - cron: "17 23 * * 0" # weekly: Monday 02:17 MSK (tools/eval/lib/budget.mjs SMOKE_WEEKDAY_UTC)
   workflow_dispatch:
     inputs:
       kind:
-        description: "nightly | full (full — перед закрытием вехи)"
+        description: "nightly (еженедельный smoke) | full (перед закрытием вехи)"
         type: choice
         options: [nightly, full]
         default: nightly
@@ -175,11 +175,11 @@ jobs:
           aws s3 cp "$OUT" "s3://${EVAL_S3_BUCKET}/eval/live/$(date -u +%F)-${KIND}-${GITHUB_RUN_ID}/" \
             --recursive --only-show-errors --endpoint-url "$EVAL_S3_ENDPOINT"
 
-      - name: Nightly red → issue (eval.yaml#regression.rule)
+      - name: Weekly smoke red → issue (eval.yaml#regression.rule)
         if: failure() && steps.run.outcome == 'failure' && env.KIND == 'nightly'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          body=$(printf 'Ночной live-eval красный: %s\n\n%s\n' "$RUN_URL" "$(node tools/eval/ci.mjs violations --result-dir="$OUT")")
+          body=$(printf 'Еженедельный live-eval красный: %s\n\n%s\n' "$RUN_URL" "$(node tools/eval/ci.mjs violations --result-dir="$OUT")")
           title="eval nightly $(date -u +%F): жёсткие пороги или регрессия"
           gh issue create --title "$title" --body "$body" --label eval || gh issue create --title "$title" --body "$body"

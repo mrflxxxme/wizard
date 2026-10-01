@@ -287,6 +287,112 @@ describe("S-billing", () => {
   });
 });
 
+describe("S-billing with WIZARD_PAYMENTS=off (M2-15, pilot)", () => {
+  const PILOT: Billing = {
+    ...FREE,
+    plan: "pilot",
+    limits: { prodSystems: 5, members: 30, monthlyCredits: 0 },
+    paymentsEnabled: false,
+  };
+  const pilotOrg = async () => ({
+    id: ORG,
+    name: "Кофейня «Зерно»",
+    plan: "pilot" as const,
+    cardBound: false,
+    paymentsEnabled: false,
+  });
+  const pilotCredits = async () => ({
+    balance: 120,
+    held: 0,
+    available: 120,
+    buckets: [{ source: "topup", remaining: 120, expiresAt: "2027-10-01T00:00:00Z" }],
+  });
+
+  test("owner: plan «Пилот» with limits, balance and ledger; no purchase, subscriptions or card binding", async () => {
+    const createTopup = vi.fn();
+    const start = vi.fn();
+    const { api } = billingApi("owner", PILOT, {
+      getOrg: pilotOrg,
+      getCredits: pilotCredits,
+      createTopup: createTopup as unknown as ApiClient["createTopup"],
+      startCardBinding: start as unknown as ApiClient["startCardBinding"],
+    });
+    const el = mount(api, "/billing");
+    await waitFor(() => q(el, "billing-payments-off") !== null && all(el, "billing-ledger-row").length === 2);
+    expect(q(el, "billing-payments-off")?.textContent).toBe(ru.billing.paymentsOff);
+    const plan = q(el, "billing-plan");
+    expect(plan?.dataset.plan).toBe("pilot");
+    expect(plan?.textContent).toContain("Пилот");
+    expect(plan?.textContent).toContain("бесплатно");
+    expect(plan?.textContent).toContain(
+      "До 5 опубликованных систем · до 30 участников · кредиты начисляет команда Wizard",
+    );
+    expect(plan?.textContent).toContain("телефон — на тарифах Старт и Бизнес");
+    expect(q(el, "billing-available")?.textContent).toBe("Доступно: 120 кредитов");
+    expect(all(el, "billing-bucket")[0]?.textContent).toContain("от команды Wizard: 120");
+    for (const id of [
+      "billing-change-plan",
+      "billing-cancel",
+      "billing-plans",
+      "billing-card",
+      "billing-card-bind",
+      "billing-card-status",
+      "billing-topup",
+      "billing-topup-packs",
+    ])
+      expect(q(el, id), id).toBeNull();
+    expect(el.textContent).not.toContain("Докупить");
+    expect(el.textContent).not.toContain("Привязать карту");
+    expect(createTopup).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  test("viewer: the same page without the owner hint; money controls never flash before GET org answers", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const { api, getBilling } = billingApi("viewer", PILOT, {
+      getOrg: async () => {
+        await gate;
+        return pilotOrg();
+      },
+      getCredits: pilotCredits,
+    });
+    const el = mount(api, "/billing");
+    await waitFor(() => q(el, "billing-available") !== null);
+    // GET org still pending: neither the payment controls nor the notice yet.
+    expect(q(el, "billing-topup")).toBeNull();
+    expect(q(el, "billing-card")).toBeNull();
+    expect(q(el, "billing-payments-off")).toBeNull();
+    act(() => release?.());
+    await waitFor(() => q(el, "billing-payments-off") !== null);
+    expect(q(el, "billing-topup")).toBeNull();
+    expect(q(el, "billing-card")).toBeNull();
+    expect(el.textContent).not.toContain(ru.billing.ownerOnly);
+    expect(getBilling).not.toHaveBeenCalled();
+  });
+
+  test("payments on (default, Org without the flag): the M2-11 controls and no payments-off notice", async () => {
+    const { api } = billingApi("owner", FREE);
+    const el = mount(api, "/billing");
+    await waitFor(() => q(el, "billing-topup") !== null && q(el, "billing-card-bind") !== null);
+    expect(q(el, "billing-payments-off")).toBeNull();
+    expect(q(el, "billing-change-plan")).not.toBeNull();
+  });
+});
+
+describe("S-auth: the pilot invitation link fills in the e-mail (M2-15)", () => {
+  test("/login?email=… prefills the address", async () => {
+    const el = mount(
+      { getMe: async () => Promise.reject(new Error("401")) } as Partial<ApiClient>,
+      "/login?email=owner%40coffee.example",
+    );
+    await waitFor(() => q(el, "auth-email") !== null);
+    expect((q(el, "auth-email") as HTMLInputElement).value).toBe("owner@coffee.example");
+  });
+});
+
 describe("S6 publish card (M2)", () => {
   function card(codes: string[], cardBound?: boolean): HTMLDivElement {
     container = document.createElement("div");

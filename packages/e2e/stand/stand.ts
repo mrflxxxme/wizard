@@ -5,7 +5,8 @@
 // applications): no LLM, real gates G0, bundles, prod migrations and publish/rollback runs. Table import (M1-12)
 // routes import_mapping to logged mock providers (MOCK_PROVIDERS below).
 // The M2 stand (stand/m2.ts) runs with WIZARD_MILESTONE=M2 rules (card binding before prod, G2 at publish) and the
-// platform's YooKassa shop on YookassaMock with a test checkout page (stand/shop.ts).
+// platform's YooKassa shop on YookassaMock with a test checkout page (stand/shop.ts). The pilot stand (stand/pilot.ts,
+// M2-15) has the same M2 rules with WIZARD_REGISTRATION=invite and WIZARD_PAYMENTS=off and no shop.
 // Run: `pnpm --filter @wizard/e2e exec tsx stand/m1.ts` or `stand/m2.ts` (Playwright starts them as webServers).
 import { randomBytes } from "node:crypto";
 import {
@@ -25,7 +26,20 @@ import { DbRegistry, startRuntime } from "@wizard/runtime";
 import postgres from "postgres";
 import { createServer } from "vite";
 import { platformViteConfig } from "../../../apps/platform-web/vite.config.js";
-import { M1, M1_DB_FILE, M1_LLM_LOG, M1_OUTBOX, M2, M2_DB_FILE, M2_LLM_LOG, M2_OUTBOX } from "./ports.js";
+import {
+  M1,
+  M1_DB_FILE,
+  M1_LLM_LOG,
+  M1_OUTBOX,
+  M2,
+  M2_DB_FILE,
+  M2_LLM_LOG,
+  M2_OUTBOX,
+  PILOT,
+  PILOT_DB_FILE,
+  PILOT_LLM_LOG,
+  PILOT_OUTBOX,
+} from "./ports.js";
 import { startShop } from "./shop.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
@@ -189,11 +203,15 @@ const mockProviders = (async (url: string | URL | Request, init?: RequestInit) =
   );
 }) as typeof globalThis.fetch;
 
-export type StandKind = "m1" | "m2";
+export type StandKind = "m1" | "m2" | "pilot";
 
 const STANDS = {
   m1: { ports: { ...M1, shop: 0 }, files: { dbFile: M1_DB_FILE, outbox: M1_OUTBOX, llmLog: M1_LLM_LOG } },
   m2: { ports: M2, files: { dbFile: M2_DB_FILE, outbox: M2_OUTBOX, llmLog: M2_LLM_LOG } },
+  pilot: {
+    ports: { ...PILOT, shop: 0 },
+    files: { dbFile: PILOT_DB_FILE, outbox: PILOT_OUTBOX, llmLog: PILOT_LLM_LOG },
+  },
 } as const;
 
 /** Starts the stand of `kind` and stops it (dropping its database) on SIGINT/SIGTERM. */
@@ -245,7 +263,7 @@ export async function startStand(kind: StandKind): Promise<void> {
       platformOrigin: `http://localhost:${ports.web}`,
       // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
       buildDefaultTier: "T1",
-      ...(shop
+      ...(kind !== "m1"
         ? {
             // WIZARD_MILESTONE=M2: card binding before prod and G1 + G2 at publish (config.ts m2OrProd). The publish
             // G1 runs the forum's functions in the platform's in-process runtime: unsafe-local exec, as the stand's
@@ -254,12 +272,18 @@ export async function startStand(kind: StandKind): Promise<void> {
             cardBindingRequired: true,
             prodG2Required: true,
             unsafeLocalExec: true,
+          }
+        : {}),
+      ...(shop
+        ? {
             platformShop: { shopId: shop.mock.shopId, secretKey: shop.mock.secretKey },
             yookassaApiBase: shop.apiBase,
             // Notifications come from the checkout page of this stand only.
             yookassaIpAllowlist: ["127.0.0.1/32"],
           }
         : {}),
+      // Pilot (M2-15, deploy.yaml#pilot.env): invite-only registration, payments off.
+      ...(kind === "pilot" ? { registration: "invite", payments: false } : {}),
     },
     executors: (d) => ({
       ...createAgentExecutors(d),
