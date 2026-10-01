@@ -873,7 +873,7 @@ tasks:
     owner: platform
     parallel_group: m2-d
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "≤ 10 МБ; MIME по сигнатуре только jpeg/png/webp/pdf, SVG и HTML → 415; раздача с Content-Disposition: attachment, CSP sandbox, nosniff, по подписанной ссылке с правами поля (L3-18)"
