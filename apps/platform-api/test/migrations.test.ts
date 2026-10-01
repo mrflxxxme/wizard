@@ -137,6 +137,22 @@ describe("migrations vs db.yaml", () => {
     );
   });
 
+  test("0015: indexes for the hourly failure share (runs.finished_at) and the LLM cap month (llm_calls.created_at)", async () => {
+    const rows = await h.pg<{ indexname: string; indexdef: string }[]>`
+      select indexname, indexdef from pg_indexes
+      where schemaname = 'platform' and indexname in ('runs_finished_at_idx', 'llm_calls_created_at_idx')
+      order by indexname`;
+    expect(rows.map((r) => r.indexname)).toEqual(["llm_calls_created_at_idx", "runs_finished_at_idx"]);
+    expect(rows[1]?.indexdef).toContain("WHERE (finished_at IS NOT NULL)");
+    const plan = await h.pg.begin(async (tx) => {
+      await tx`set local enable_seqscan = off`;
+      return tx.unsafe(
+        "explain select count(*) from platform.runs where status in ('succeeded','failed') and finished_at >= now() - interval '1 hour'",
+      );
+    });
+    expect(JSON.stringify(plan)).toContain("runs_finished_at_idx");
+  });
+
   test("seed_M0: dev user, local org, owner membership", async () => {
     const [m] =
       await h.pg`select role from platform.memberships where org_id = ${DEFAULT_ORG_ID} and user_id = ${DEV_USER_ID}`;

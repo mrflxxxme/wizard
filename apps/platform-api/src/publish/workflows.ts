@@ -9,6 +9,7 @@ import type postgres from "postgres";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable, SystemsTable } from "../db/types.js";
+import { alertOnce } from "../ops/alert.js";
 import { opsAlertFromConfig } from "../ops/alert-config.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
 import { recordGateReport } from "../runs/gates.js";
@@ -309,16 +310,20 @@ async function founderReviewGate(
   );
   if (!reason) return;
   const status = await h.step("founder_review", "Проверяю одобрение модератора", async () => {
-    const before = await founderReviewStatus(h.db, sys.id, revision);
     const now = await requestFounderReview(h.db, sys.id, revision);
-    if (before === null) {
-      const alert = h.options.alert ?? opsAlertFromConfig(h.config);
-      await alert({
-        level: "warn",
-        event: "founder_review_requested",
-        text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}. Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
-        fields: { systemId: sys.id, orgId: sys.org_id, revision, reason },
-      });
+    if (now === "pending") {
+      // One alert per revision (db.yaml#ops_alerts key founder_review:<system>:<revision>), whichever run asks first.
+      await alertOnce(
+        h.db,
+        `founder_review:${sys.id}:${revision}`,
+        h.options.alert ?? opsAlertFromConfig(h.config),
+        {
+          level: "warn",
+          event: "founder_review_requested",
+          text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}. Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
+          fields: { systemId: sys.id, orgId: sys.org_id, revision, reason },
+        },
+      );
     }
     return now;
   });

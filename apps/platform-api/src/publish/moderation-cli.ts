@@ -8,6 +8,7 @@
 //   pnpm --filter @wizard/platform-api moderation staff-revoke <email>
 //   pnpm --filter @wizard/platform-api moderation staff-reset-mfa <email>  — lost authenticator: enrol again
 import { resetStaffMfa, setStaff } from "../abuse/staff.js";
+import { platformMailer } from "../auth/smtp-mailer.js";
 import { loadConfig } from "../config.js";
 import { createDb } from "../db/index.js";
 import { SecretStore } from "../secrets/store.js";
@@ -34,14 +35,15 @@ async function main(argv: string[]): Promise<string> {
       const note = rest.join(" ").trim();
       if (!systemId || !Number.isInteger(revision) || (cmd === "reject" && note.length < 3))
         throw new Error(`${cmd} <systemId> <revision> ${cmd === "reject" ? "<note…>" : "[note…]"}`);
-      const ok = await decideFounderReview(h.db, {
-        systemId,
-        revision,
-        decision: cmd,
-        ...(note ? { note } : {}),
-      });
+      const ok = await decideFounderReview(
+        h.db,
+        { systemId, revision, decision: cmd, ...(note ? { note } : {}) },
+        { mailer: platformMailer(config), platformOrigin: config.platformOrigin },
+      );
       if (!ok) throw new Error("ревизия не ждёт ревью");
-      return cmd === "approve" ? "одобрено" : "отклонено";
+      return cmd === "approve"
+        ? "одобрено, владельцу отправлено письмо"
+        : "отклонено, владельцу отправлено письмо";
     }
     throw new Error("команды: reviews | approve | reject | staff | staff-revoke | staff-reset-mfa");
   } finally {

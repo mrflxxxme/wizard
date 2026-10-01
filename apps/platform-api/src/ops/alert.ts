@@ -3,6 +3,8 @@
 // sendMessage URL with WIZARD_OPS_ALERT_CHAT_ID), the same channel infra/postgres/pg-ops.mjs uses.
 import type { Logger } from "@wizard/pii/log";
 import type { Mailer } from "../auth/mailer.js";
+import type { Db } from "../db/index.js";
+import { opsAlertsSent } from "./registry.js";
 
 export interface OpsAlert {
   level: "warn" | "error";
@@ -53,4 +55,35 @@ export function createOpsAlert(o: OpsAlertOptions): OpsAlertFn {
       o.onError?.("ops alert webhook failed", e);
     }
   };
+}
+
+/**
+ * Claims an alert key once (db.yaml#ops_alerts; outside any request transaction, so a refusal that rolls the request
+ * back keeps the mark); true — this caller is the first and sends the alert. The only dedup path of founder alerts.
+ */
+export async function claimOpsAlert(db: Db, key: string): Promise<boolean> {
+  const row = await db
+    .insertInto("platform.ops_alerts")
+    .values({ key })
+    .onConflict((oc) => oc.column("key").doNothing())
+    .returning("key")
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+/**
+ * Sends `a` only for the first claim of `key` across processes and replicas (LLM cap of the month, run failure rate of
+ * the hour, abuse SLA of a report, founder review of a revision, auto-suspension) and counts wizard_ops_alerts_total.
+ * true — the key was claimed here (the alert went out, or no channel was given).
+ */
+export async function alertOnce(
+  db: Db,
+  key: string,
+  alert: OpsAlertFn | undefined,
+  a: OpsAlert,
+): Promise<boolean> {
+  if (!(await claimOpsAlert(db, key))) return false;
+  opsAlertsSent.inc({ event: a.event });
+  await alert?.(a);
+  return true;
 }

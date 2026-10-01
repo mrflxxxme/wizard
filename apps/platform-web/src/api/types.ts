@@ -442,6 +442,8 @@ export interface AbuseTicket extends AbuseReport {
     orgId: string | null;
     prodUrl: string | null;
     suspended: boolean;
+    /** orgs.suspended_at is set (abuse.yaml#takedown.flow, org-wide suspension). */
+    orgSuspended?: boolean;
   } | null;
   access: { until: string } | null;
   journal: { action: string; note: string | null; actor: string; at: string }[];
