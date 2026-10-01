@@ -2,6 +2,7 @@
 import type { AppSpec } from "@wizard/appspec";
 import type { JobRunReport } from "../types.js";
 import { type Actor, errorCode, type G1Env, type HttpResult } from "./env.js";
+import { validateSeedHint } from "./seed.js";
 import type { Expect, Scenario, Seed, Step } from "./types.js";
 
 export const STEP_TIMEOUT_MS = 5_000;
@@ -50,6 +51,11 @@ export function validateScenario(spec: AppSpec, sc: Scenario): string[] {
     if (!ALIAS_RE.test(alias)) errs.push(`Недопустимое имя участника «${alias}»`);
     if (!roles.has(a?.role)) errs.push(`Участник «${alias}»: роли «${a?.role}» нет в системе`);
     aliases.add(alias);
+  }
+  if (sc.seedHints !== undefined) {
+    if (!Array.isArray(sc.seedHints) || sc.seedHints.length > 20)
+      errs.push("seedHints: не больше 20 подсказок");
+    else for (const h of sc.seedHints) errs.push(...validateSeedHint(spec, h));
   }
   if (!Array.isArray(sc.steps) || sc.steps.length < 1 || sc.steps.length > 40)
     return [...errs, "В сценарии должно быть от 1 до 40 шагов"];
