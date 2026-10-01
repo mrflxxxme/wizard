@@ -643,6 +643,12 @@
           "type": "boolean",
           "default": false,
           "description": "функция записывает ПДн (поля pii≠none): вызов ролью без isAdmin требует _consent в теле (runtime/sdk.md, security/compliance.yaml#system_package.consent)"
+        },
+        "systemDbReason": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 300,
+          "description": "M2: зачем функция, доступная public-роли, читает через ctx.systemDb; без неё такое чтение — блокер G2-PERM-05 (L3-22)"
         }
       }
     },

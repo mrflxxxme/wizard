@@ -719,7 +719,7 @@ tasks:
     owner: qa
     parallel_group: m2-b
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "100% антифрод-фикстур блокируются; 0 ложных блокировок на 12 брифах eval"

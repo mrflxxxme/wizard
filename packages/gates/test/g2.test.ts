@@ -1,6 +1,6 @@
 // backlog M2-04: G2 against a real apps/runtime — full permission matrix (data API and SQL under RLS), row isolation and
 // hidden fields incl. public functions, ctx.systemDb ПДн stripped by the runtime (L3-22); dynamic per-check fixtures;
-// forum passes G2, bakery fails only on freeSlots without systemDbReason; no app_%_g2_% schema survives.
+// forum passes G2, bakery passes, and without systemDbReason fails only on freeSlots; no app_%_g2_% schema survives.
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 // @ts-expect-error — plain ESM module without types
@@ -40,17 +40,15 @@ describe("G2 on the golden systems", () => {
     expect(validateSchema(apiSpec.components.schemas.GateReport, r, apiSpec)).toEqual([]);
   }, 300_000);
 
-  test("bakery: the only blocker is freeSlots reading cake_order via ctx.systemDb for visitors (L3-22)", async () => {
+  test("bakery passes G2; without function.systemDbReason the only blocker is freeSlots reading cake_order via ctx.systemDb for visitors (L3-22)", async () => {
     const b = loadBakery();
     const r = await runG2(h.ctx({ milestone: "M2", spec: b.spec, files: b.files }));
-    expect(failing(r).map((c) => `${c.id} ${c.path}`)).toEqual(["G2-PERM-05 /functions/1"]);
+    expect(failing(r), show(failing(r))).toEqual([]);
     const spec = structuredClone(b.spec);
-    Object.assign(spec.functions?.[1] ?? {}, {
-      systemDbReason: "Считает загрузку дней, наружу только числа",
-    });
-    // systemDbReason is not in appspec.schema.json yet (notes M2-04): migrations reject it, so static checks only.
-    const ok = await runG2(h.ctx({ milestone: "M2", spec, files: b.files }), { only: STATIC_IDS });
-    expect(failing(ok), show(failing(ok))).toEqual([]);
+    const freeSlots = spec.functions?.[1];
+    if (freeSlots) delete freeSlots.systemDbReason;
+    const bad = await runG2(h.ctx({ milestone: "M2", spec, files: b.files }), { only: STATIC_IDS });
+    expect(failing(bad).map((c) => `${c.id} ${c.path}`)).toEqual(["G2-PERM-05 /functions/1"]);
   }, 300_000);
 
   test("time budget exhausted → remaining checks error, gate not passed", async () => {

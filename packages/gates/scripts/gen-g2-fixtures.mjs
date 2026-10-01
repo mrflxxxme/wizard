@@ -708,6 +708,7 @@ const CHECKS = {
       description:
         "кондитерская: freeSlots доступна посетителю и читает cake_order.list через ctx.systemDb без systemDbReason (L3-22)",
       base: "bakery",
+      spec: [{ op: "remove", path: `/functions/${fn(B, "freeSlots")}/systemDbReason` }],
       match: "systemDb",
     },
     "pass-systemdb-reason": {
