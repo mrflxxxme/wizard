@@ -336,7 +336,12 @@ export class Billing {
           amountMilli: -take,
           bucket: b.bucket,
           expiresAt: b.expiresAt,
-          note: run.kind === "interview_turn" ? "Списание за ход интервью" : "Списание за сборку по факту",
+          note:
+            run.kind === "interview_turn"
+              ? "Списание за ход интервью"
+              : run.kind === "import_table"
+                ? "Списание за импорт таблицы по факту"
+                : "Списание за сборку по факту",
         })),
       );
     }

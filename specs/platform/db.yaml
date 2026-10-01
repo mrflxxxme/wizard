@@ -478,6 +478,21 @@ tables:
     primary_key: [org_id, brand_id]
 
 views:
+  wz_runtime.otp_sends:
+    milestone: M1
+    purpose: "Глобальные счётчики OTP по всем системам (runtime.yaml#auth, M1-05): только HMAC адреса и сети клиента; DML — роль runtime. В облаке создаёт миграция M2-06, локально — runtime при первом использовании (CREATE IF NOT EXISTS под advisory xact lock)"
+    columns:
+      id: "bigint generated always as identity pk"
+      destination_hmac: "bytea not null"
+      system_id: "text not null"
+      env: "text not null"
+      channel: "text not null"
+      ip_hmac: "bytea"
+      org_key: "text"
+      billable: "boolean not null default false"
+      sent_at: "timestamptz not null default now()"
+    indexes: ["(destination_hmac, sent_at)", "(system_id, ip_hmac, sent_at)", "(org_key, sent_at) where billable"]
+    retention: "строки старше 2 суток удаляются при вставке"
   credit_buckets:
     milestone: M1
     purpose: "Остаток по корзинам кредитов (billing.yaml#ledger): (org_id, bucket, bucket_expires_at) → sum(amount_milli) из credit_ledger с учётом распределения charge по корзинам (note)"
@@ -490,3 +505,4 @@ views:
       prod (M1+): publications со status = 'live' или 'suspended' → то же с env = 'prod', published_at = live_at.
       suspended = systems.suspended_at is not null or publications.status = 'suspended' (runtime отдаёт 451, L1-32; abuse.yaml#takedown).
       features = {phoneOtp: orgs.plan in ('start','business')} — вход по телефону в prod только на платных тарифах (F4, billing.yaml#plans; в draft метод виден с пометкой — runtime.yaml#auth.methods_M1.phone_otp)
+      org_id = systems.org_id, plan = orgs.plan ('free' | 'start' | 'business') — для SMS-бюджета org (M1-05) и лимитов коннекторов по тарифу (ctx.system.plan, M1-06); features.phoneOtp остаётся производным от plan

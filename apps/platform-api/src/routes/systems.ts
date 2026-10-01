@@ -88,7 +88,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       c,
       z.strictObject({
         prompt: z.string().min(3).max(8000),
-        orgId: z.uuid().optional(),
+        orgId: z.guid().optional(),
         templateId: z.string().optional(),
       }),
     );
@@ -160,7 +160,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
   r.get("/systems", async (c) => {
     const q = parseQuery(
       c,
-      z.object({ orgId: z.uuid().optional(), limit: limitQ, cursor: z.string().max(200).optional() }),
+      z.object({ orgId: z.guid().optional(), limit: limitQ, cursor: z.string().max(200).optional() }),
     );
     const user = c.get("user");
     const orgId = q.orgId ?? user.defaultOrgId;
@@ -215,7 +215,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),
       activeRunId: active?.id ?? null,
-      publishBlockers: await publishBlockers(d.db, c.get("user"), s),
+      publishBlockers: await publishBlockers(d.db, c.get("user"), s, d.billing),
     });
   });
 

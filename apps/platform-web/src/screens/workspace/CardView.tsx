@@ -28,6 +28,7 @@ export function CardView({
   buildModelLabel,
   busy,
   error,
+  canBuild = true,
   onBuild,
   onEdit,
 }: {
@@ -36,6 +37,8 @@ export function CardView({
   buildModelLabel: string | undefined;
   busy: boolean;
   error: string | null;
+  /** M1: «Строить» for owner/editor; a viewer sees it disabled with a hint. */
+  canBuild?: boolean;
   onBuild(): void;
   onEdit(): void;
 }): ReactNode {
@@ -168,10 +171,18 @@ export function CardView({
           <Button variant="secondary" data-testid="card-edit" onClick={onEdit}>
             {ru.card.edit}
           </Button>
-          <Button variant="primary" data-testid="card-build" loading={busy} onClick={onBuild}>
+          <Button
+            variant="primary"
+            data-testid="card-build"
+            loading={busy}
+            disabled={!canBuild}
+            title={canBuild ? undefined : ru.card.buildViewer}
+            onClick={onBuild}
+          >
             {ru.card.build}
           </Button>
         </div>
+        {!canBuild && <p className={s.small}>{ru.card.buildViewer}</p>}
         {error && <Alert>{error}</Alert>}
       </footer>
     </section>

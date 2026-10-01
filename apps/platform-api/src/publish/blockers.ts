@@ -1,12 +1,43 @@
 // Publish preconditions (workflows.yaml#workflows.publish.preconditions) and GET /systems/:id publishBlockers.
 import type { AppSpec } from "@wizard/appspec";
 import type { Selectable } from "kysely";
+import type { Billing } from "../billing/ledger.js";
+import { planOf } from "../billing/plans.js";
 import type { Db } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
 import type { ErrorCode } from "../errors.js";
 import type { AuthUser } from "../http/auth.js";
+import { ACTIVE_STATUSES } from "../runs/queue.js";
 import { loadRevision } from "../services/revisions.js";
 import { isPublishable } from "./workflows.js";
+
+/**
+ * billing.yaml#plans prod_systems: other systems of the org that are in prod or have a publish run in flight (so
+ * parallel first publications cannot both pass under the org lock). The system itself never counts.
+ */
+export async function prodSystemsCount(q: Db, orgId: string, exceptSystemId: string): Promise<number> {
+  const row = await q
+    .selectFrom("platform.systems as s")
+    .select((eb) => eb.fn.countAll<string>().as("n"))
+    .where("s.org_id", "=", orgId)
+    .where("s.deleted_at", "is", null)
+    .where("s.id", "!=", exceptSystemId)
+    .where((eb) =>
+      eb.or([
+        eb("s.prod_revision", "is not", null),
+        eb.exists(
+          eb
+            .selectFrom("platform.runs as r")
+            .select("r.id")
+            .whereRef("r.system_id", "=", "s.id")
+            .where("r.kind", "=", "publish")
+            .where("r.status", "in", [...ACTIVE_STATUSES]),
+        ),
+      ]),
+    )
+    .executeTakeFirstOrThrow();
+  return Number(row.n);
+}
 
 /** Blockers that depend only on the revision's spec and the org plan (M1; M2 adds card binding and review). */
 export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
@@ -23,6 +54,7 @@ export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
   OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
   PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
+  PLAN_LIMIT: "Лимит опубликованных систем тарифа",
 };
 
 /**
@@ -33,6 +65,7 @@ export async function publishBlockers(
   db: Db,
   user: AuthUser,
   s: Selectable<SystemsTable>,
+  billing?: Billing,
 ): Promise<ErrorCode[]> {
   const out: ErrorCode[] = [];
   if (user.orgs.get(s.org_id) !== "owner") out.push("NOT_OWNER");
@@ -46,5 +79,13 @@ export async function publishBlockers(
     .select("plan")
     .where("id", "=", s.org_id)
     .executeTakeFirstOrThrow();
-  return [...out, ...specPublishBlockers(rev.spec as unknown as AppSpec, org.plan)];
+  out.push(...specPublishBlockers(rev.spec as unknown as AppSpec, org.plan));
+  // prod_systems (billing.yaml#plans.enforcement): republishing a system already in prod is always allowed.
+  if (
+    s.prod_revision === null &&
+    !billing?.isExempt(s.org_id) &&
+    (await prodSystemsCount(db, s.org_id, s.id)) >= planOf(org.plan).limits.prod_systems
+  )
+    out.push("PLAN_LIMIT");
+  return out;
 }

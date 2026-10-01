@@ -127,6 +127,7 @@ export interface RevisionSummary {
   parentVersion?: number | null;
   author: "user" | "agent" | "system";
   kind?: "ops" | "files" | "style" | "revert" | "compliance";
+  runId?: string | null;
   summary_ru?: string;
   g0Passed?: boolean | null;
   createdAt: string;
@@ -195,4 +196,83 @@ export interface RunEvent {
   type: string;
   ts: string;
   payload: Record<string, unknown>;
+}
+
+export type OrgRole = "owner" | "editor" | "viewer";
+
+/** api.yaml#User */
+export interface User {
+  id: string;
+  email: string;
+  name?: string | null;
+  isStaff?: boolean;
+}
+
+/** GET /me memberships[] */
+export interface Membership {
+  orgId: string;
+  orgName: string;
+  role: OrgRole;
+}
+
+export interface Me {
+  user: User;
+  memberships: Membership[];
+}
+
+/** api.yaml#Member */
+export interface Member {
+  userId: string;
+  email: string;
+  name?: string | null;
+  role: OrgRole;
+  joinedAt?: string;
+}
+
+/** api.yaml#Invite */
+export interface Invite {
+  id: string;
+  email: string;
+  role: OrgRole;
+  expiresAt: string;
+}
+
+/** api.yaml#LockStatus */
+export interface LockStatus {
+  held: boolean;
+  runId?: string | null;
+  holder?: { userId: string; name: string } | null;
+  since?: string | null;
+  queue?: string[];
+}
+
+/** api.yaml#Publication */
+export interface Publication {
+  id: string;
+  env: "prod";
+  revision: number;
+  schemaRevision?: number;
+  status: "planned" | "applying" | "live" | "superseded" | "failed" | "suspended";
+  migrationSteps?: number;
+  createdAt: string;
+}
+
+export type DiffKind =
+  | "entity"
+  | "field"
+  | "role"
+  | "permission"
+  | "page"
+  | "workflow"
+  | "integration"
+  | "function"
+  | "theme"
+  | "compliance"
+  | "file";
+
+/** GET /systems/:id/revisions/:v/diff changes[] */
+export interface DiffChange {
+  kind: DiffKind;
+  text_ru: string;
+  destructive?: boolean;
 }

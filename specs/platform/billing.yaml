@@ -72,6 +72,7 @@ run_charging:
     raise_cap: "needs_input budget → raise_cap_N: дополнительный hold(−N); отказ по available → вариант недоступен"
     refunds: "MUST: полный refund, если прогон завершён failed с code ∈ {INTERNAL, WORKER_RESTARTED, LLM_UNAVAILABLE, MIGRATION_FAILED} ИЛИ если ни одна ревизия прогона не прошла G0 (пользователь ничего не получил). Решение агента для беты, записать в CHANGELOG"
   estimate_vs_actual: "Карточка показывает estimate.credits {min, expected, max} и cap; отчёт прогона — фактическое used. SHOULD: медиана |used − expected|/expected ≤ 30% на eval-брифах (калибровка — orchestrator.yaml#estimation.calibration)"
+  import_table: "hold(−15 кр., потолок импорта) в транзакции createImport, idempotency hold:<runId>; finish — как build: release, charge(−min(used, 15 кр.)); refund по кодам refunds. available < 15 → 402 INSUFFICIENT_CREDITS"
   style_and_compliance: "Панель «Стиль», setCompliance, rollback, publish — без LLM и без кредитов"
   runtime_ai: "M3: вызовы runtime_ai_* (только T0) списываются по факту: charge агрегируется по (system, час) с ключом ai:<systemId>:<yyyy-mm-ddThh>; лимит aiAction.monthlyLimit в вызовах на систему; при available ≤ 0 действие возвращает системе ошибку AI_CREDITS_EXHAUSTED, владельцу — уведомление"
   M0: "Ledger нет: runs.credits_used_milli считается из llm_calls; cap из карточки останавливает прогон (budget_exceeded)"

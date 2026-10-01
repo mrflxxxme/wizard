@@ -9,6 +9,7 @@ import { Pill } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
 import { type FromPreview, originOf, PreviewBridge, previewSrc } from "../../preview/bridge.js";
 import { previewTokens } from "../../style/theme.js";
+import { MainTabs } from "./MainTabs.js";
 import s from "./Workspace.module.css";
 
 export const PREVIEW_WIDTHS = [390, 768, 1280] as const;
@@ -27,6 +28,7 @@ export function PreviewPane({
   available,
   theme,
   testData,
+  envLabel,
   toolbar,
 }: {
   systemId: string;
@@ -35,6 +37,8 @@ export function PreviewPane({
   available: boolean;
   theme: Theme;
   testData: boolean;
+  /** S7: «DRAFT · РЕВИЗИЯ N+1 · копия prod, ПДн замаскированы». */
+  envLabel?: string;
   toolbar?: ReactNode;
 }): ReactNode {
   const { api } = usePlatform();
@@ -206,41 +210,11 @@ export function PreviewPane({
       <div className={s.previewBar}>
         <span data-testid="preview-env">
           <Pill tone="warn" title={ru.preview.draftTitle}>
-            {testData ? ru.preview.testData : ru.preview.draft}
+            {envLabel ?? (testData ? ru.preview.testData : ru.preview.draft)}
           </Pill>
         </span>
         <span className={s.address}>{address}</span>
-        <div className={s.tabs} role="tablist" aria-label={ru.preview.tabPreview}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected="true"
-            className={s.tabOn}
-            data-testid="preview-tab-preview"
-          >
-            {ru.preview.tabPreview}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected="false"
-            disabled
-            title={ru.preview.tabLater}
-            data-testid="preview-tab-code"
-          >
-            {ru.preview.tabCode}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected="false"
-            disabled
-            title={ru.preview.tabLater}
-            data-testid="preview-tab-data"
-          >
-            {ru.preview.tabData}
-          </button>
-        </div>
+        <MainTabs systemId={systemId} active="preview" />
         <span className={s.spacer} />
         {toolbar}
       </div>
