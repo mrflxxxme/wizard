@@ -48,7 +48,11 @@ export const ru = {
     logout: "Выйти",
     guest: "Гость",
     policy: "Политика обработки персональных данных",
+    privacy: "Мои данные",
     forbidden: "Нет доступа к этой странице",
+    forbiddenHint: (role: string) => (role ? `Роль «${role}» не открывает эту страницу.` : ""),
+    goHome: "На главную",
+    goTo: (title: string) => `Перейти: ${title}`,
   },
   login: {
     title: "Вход",
@@ -63,6 +67,16 @@ export const ru = {
     phonePlanNote: "Вход по телефону доступен на тарифах Старт и Бизнес",
     codeSent: (to: string) => `Код отправлен на ${to}`,
     failed: "Не удалось войти",
+    consentNeeded: "Отметьте согласие на обработку персональных данных, чтобы войти впервые",
+    telegramContinue: "Продолжить через Telegram",
+    errors: {
+      CONSENT_REQUIRED: "Отметьте согласие на обработку персональных данных, чтобы войти впервые",
+      OIDC_EXPIRED: "Время входа через Telegram истекло. Попробуйте ещё раз",
+      OIDC_DENIED: "Вход через Telegram отменён",
+      OIDC_FAILED: "Не удалось войти через Telegram. Попробуйте ещё раз",
+      LOGIN_METHOD_UNAVAILABLE: "Этот способ входа недоступен",
+      FORBIDDEN: "Вход закрыт: в эту роль входят только по приглашению, или доступ заблокирован",
+    } as Record<string, string>,
   },
   itemCard: {
     cta: "Выбрать",

@@ -1,4 +1,4 @@
-// Kysely table types for the M0 tables of specs/platform/db.yaml. Keys are fully qualified (AGENTS.md).
+// Kysely table types for the M0 tables (+ M1-02 accounts) of specs/platform/db.yaml. Keys are fully qualified (AGENTS.md).
 import type { ColumnType, Generated } from "kysely";
 
 type Ts = ColumnType<Date, Date | string, Date | string>;
@@ -194,6 +194,87 @@ export interface LocksTable {
   lease_until: Ts;
 }
 
+export interface AuthOtpsTable {
+  id: Generated<string>;
+  email: string;
+  code_hash: string;
+  attempts: Generated<number>;
+  expires_at: Ts;
+  consumed_at: TsNull;
+  ip_hash: string | null;
+  created_at: TsDef;
+}
+
+export interface SessionsTable {
+  id: Generated<string>;
+  user_id: string;
+  token_hash: string;
+  csrf_hash: string;
+  expires_at: Ts;
+  revoked_at: TsNull;
+  created_at: TsDef;
+}
+
+export interface InvitesTable {
+  id: Generated<string>;
+  org_id: string;
+  email: string;
+  role: "owner" | "editor" | "viewer";
+  token_hash: string;
+  invited_by: string;
+  expires_at: Ts;
+  accepted_at: TsNull;
+  revoked_at: TsNull;
+  created_at: TsDef;
+}
+
+export interface PublicationsTable {
+  id: Generated<string>;
+  system_id: string;
+  env: Generated<string>;
+  revision: number;
+  schema_revision: number;
+  prev_publication_id: string | null;
+  migration_plan: Json;
+  bundle_key: string;
+  status: string;
+  run_id: string | null;
+  created_by: string;
+  live_at: TsNull;
+  suspended_reason: string | null;
+  created_at: TsDef;
+}
+
+/** M1-03, billing.yaml#ledger: append-only (UPDATE/DELETE are refused by a trigger). */
+export interface CreditLedgerTable {
+  id: ColumnType<string, never, never>;
+  org_id: string;
+  kind: "grant" | "charge" | "hold" | "release" | "expire" | "refund" | "adjustment";
+  amount_milli: Big;
+  bucket: "free_welcome" | "free_monthly" | "plan_monthly" | "topup" | "adjustment" | null;
+  bucket_expires_at: TsNull;
+  run_id: string | null;
+  system_id: string | null;
+  payment_id: string | null;
+  idempotency_key: string;
+  note_ru: string | null;
+  created_by: string | null;
+  created_at: TsDef;
+}
+
+export interface ImportsTable {
+  id: Generated<string>;
+  system_id: string;
+  source_sha: string;
+  profile: Json | null;
+  mapping: Json | null;
+  status: string;
+  rows_imported: number | null;
+  expires_at: Ts;
+  created_by: string;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -207,4 +288,10 @@ export interface DB {
   "platform.gate_reports": GateReportsTable;
   "platform.llm_calls": LlmCallsTable;
   "platform.locks": LocksTable;
+  "platform.publications": PublicationsTable;
+  "platform.auth_otps": AuthOtpsTable;
+  "platform.sessions": SessionsTable;
+  "platform.invites": InvitesTable;
+  "platform.credit_ledger": CreditLedgerTable;
+  "platform.imports": ImportsTable;
 }

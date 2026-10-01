@@ -3,14 +3,14 @@
 import { type GateReport, runGates } from "@wizard/gates";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createQaAgent, type Explanation } from "../src/qa/index.js";
-import { demoRouter, type G1Harness, g1Harness, g1SchemaCount, goldenBuild } from "./qa-helpers.js";
+import { demoRouter, type G1Harness, g1Harness, goldenBuild } from "./qa-helpers.js";
 
 let h: G1Harness;
 beforeAll(async () => {
   h = await g1Harness();
 });
 afterAll(async () => {
-  expect(await g1SchemaCount(h.db)).toBe(0);
+  expect(await h.leftoverSchemas()).toBe(0);
   await h.close();
 });
 

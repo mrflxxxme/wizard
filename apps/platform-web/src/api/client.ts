@@ -41,6 +41,15 @@ export interface ClientOptions {
 
 export const newIdempotencyKey = (): string => crypto.randomUUID();
 
+/** api.yaml#info.x-auth.M1: double-submit CSRF — the readable wizard_csrf cookie goes back as X-Wizard-CSRF. */
+export function csrfToken(cookie: string = globalThis.document?.cookie ?? ""): string | undefined {
+  for (const part of cookie.split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === "__Host-wizard_csrf" || k === "wizard_csrf") return v.join("=") || undefined;
+  }
+  return undefined;
+}
+
 type Json = Record<string, unknown>;
 
 export function createApiClient(opts: ClientOptions = {}) {
@@ -59,6 +68,8 @@ export function createApiClient(opts: ClientOptions = {}) {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (opts.devUser) headers["X-Wizard-Dev-User"] = opts.devUser;
     if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
+    const csrf = method === "GET" ? undefined : csrfToken();
+    if (csrf) headers["X-Wizard-CSRF"] = csrf;
     let body: BodyInit | undefined;
     if (init.body instanceof FormData) body = init.body;
     else if (init.body !== undefined) {

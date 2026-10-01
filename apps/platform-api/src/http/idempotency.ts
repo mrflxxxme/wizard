@@ -40,13 +40,14 @@ export class IdempotencyCache {
 export function idempotency(cache: IdempotencyCache): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const key = c.req.header("idempotency-key");
-    if (c.req.method !== "POST" || key === undefined) return next();
+    const userId = c.get("user")?.id;
+    if (c.req.method !== "POST" || key === undefined || !userId) return next();
     if (key.length === 0 || key.length > 64)
       throw new ApiError("VALIDATION_FAILED", "Idempotency-Key — от 1 до 64 символов");
     const ct = c.req.header("content-type") ?? "";
     const raw = ct.startsWith("multipart/") ? "" : await c.req.text();
     const bodyHash = createHash("sha256").update(raw).digest("hex");
-    const full = `${c.get("user").id} ${c.req.path} ${key}`;
+    const full = `${userId} ${c.req.path} ${key}`;
     let prev = cache.get(full);
     if (prev?.pending) {
       await prev.pending;

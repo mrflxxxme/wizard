@@ -12,6 +12,7 @@
     "fixtures": "node scripts/gen-fixtures.mjs"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.6.0",
     "@wizard/appspec": "workspace:*",
     "@wizard/build": "workspace:*",
     "@wizard/connectors": "workspace:*",

@@ -23,7 +23,7 @@ import {
   unordered,
 } from "./builder-helpers.js";
 import { fixtureLines, scriptedRoute } from "./helpers.js";
-import { demoRouter, g1Harness, g1SchemaCount } from "./qa-helpers.js";
+import { demoRouter, g1Harness } from "./qa-helpers.js";
 
 const db = connect();
 afterAll(() => db.end());
@@ -34,7 +34,7 @@ describe("forum: golden fixture replay", async () => {
   const router = createRouter({ mode: "fixture", fixture: { suite: "demo", name: "forum" }, sink, env: {} });
   const h = await g1Harness();
   afterAll(async () => {
-    expect(await g1SchemaCount(h.db, "m013")).toBe(0);
+    expect(await h.leftoverSchemas()).toBe(0);
     await h.close();
   });
   // QA has its own router over the same fixture: its credits stay out of the builder ledger checked below (M0-26
@@ -53,7 +53,7 @@ describe("forum: golden fixture replay", async () => {
     db: h.db,
     runtime: h.rt,
     runtimeRole: h.role,
-    systemKey: uniqueKey(),
+    systemKey: uniqueKey(h.keyPrefix),
     gates: {
       G1: (ctx) =>
         runGates("G1", { ...ctx, spec: { ...ctx.spec, compliance: { ...ctx.spec.compliance, ...owner } } }),

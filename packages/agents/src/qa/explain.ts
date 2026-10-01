@@ -193,6 +193,8 @@ export function classify(c: Check, x: ExplainCtx): Explanation | null {
           suggestion: "Добавьте поле/сущность из карточки",
         },
       });
+    const jobs = jobExplanation(c, x, q, { step, entity, want, got, expected, http, n: Number(nStr) });
+    if (jobs) return jobs;
     if (
       step.callFn &&
       http &&
@@ -266,6 +268,133 @@ export function classify(c: Check, x: ExplainCtx): Explanation | null {
         },
       });
     return null;
+  }
+  return null;
+}
+
+const piiOf = (f: { pii?: string | undefined; type: string }) =>
+  f.pii ?? (f.type === "file" ? "basic" : "none");
+
+interface Fact {
+  step: Step;
+  entity: string | undefined;
+  want: string;
+  got: string;
+  expected: string;
+  http: Http | null;
+  /** 1-based number of the failed step. */
+  n: number;
+}
+
+/**
+ * Workflows, time and connector mocks (M1): runner failures after runWorkflows/advanceTime, missing outbox
+ * messages, pii fields still present after advanceTime (retention), simulate answered with an error.
+ */
+function jobExplanation(c: Check, x: ExplainCtx, q: QaCheck, f: Fact): Explanation | null {
+  const { spec } = x;
+  const { step, entity, want, got, expected, http } = f;
+  const workflows = spec.workflows ?? [];
+  if ((step.runWorkflows !== undefined || step.advanceTime !== undefined) && http && http.status >= 500) {
+    const wf = /\(воркфлоу ([a-z][a-z0-9_]*), шаг (\d+)/.exec(got);
+    const fn = /\(функция ([A-Za-z0-9]+)\)/.exec(got);
+    const wi = wf ? workflows.findIndex((w) => w.name === wf[1]) : -1;
+    const si = wf ? Number(wf[2]) - 1 : -1;
+    const ws = workflows[wi]?.steps[si];
+    const fnName = fn?.[1] ?? (ws?.type === "function" ? String(ws.params?.name ?? "") : undefined);
+    if (fnName !== undefined) {
+      const file = fnFile(spec, fnName);
+      return base(c, "function_error", {
+        expected,
+        actual: got,
+        likelyCause: `Функция ${fnName} падает при запуске автоматизацией (${http.code ?? http.status})`,
+        fix: {
+          kind: "code",
+          target: file,
+          suggestion: `Проверьте ${file}: аргументы из автоматизации и пустые данные`,
+        },
+      });
+    }
+    if (wf)
+      return base(c, "workflow_not_triggered", {
+        expected,
+        actual: got,
+        likelyCause: `Шаг ${si + 1} автоматизации «${wf[1]}» завершился ошибкой ${http.code ?? http.status}`,
+        fix: {
+          kind: "ops",
+          target: wi >= 0 ? `/workflows/${wi}/steps/${si}` : "/workflows",
+          suggestion:
+            "Проверьте параметры шага: интеграцию, получателя ($record.<ссылка на users>), функцию и аргументы",
+        },
+      });
+  }
+  const out = /^сообщений ([^:]+): /.exec(want);
+  if (out) {
+    const connector = out[1] as string;
+    const integrations = new Set(
+      (spec.integrations ?? [])
+        .filter((i) => i.connector === connector || i.name === connector)
+        .map((i) => i.name),
+    );
+    const sends = (w: (typeof workflows)[number]) =>
+      w.steps.some(
+        (s) =>
+          (s.type === "notify" || s.type === "connector") &&
+          integrations.has(String(s.params?.integration ?? "")),
+      );
+    // Prefer the workflow triggered by an entity the scenario wrote before the failed step.
+    const written = new Set(
+      (q.scenario?.steps ?? [])
+        .slice(0, f.n)
+        .map((s) => (s.create ?? s.update)?.entity)
+        .filter(Boolean),
+    );
+    const own = workflows.findIndex((w) => sends(w) && written.has(w.trigger.entity));
+    const wi = own >= 0 ? own : workflows.findIndex(sends);
+    const w = workflows[wi];
+    return base(c, "workflow_not_triggered", {
+      expected,
+      actual: `сообщений: ${got}`,
+      likelyCause: w
+        ? `Автоматизация «${w.name}» не отправила сообщение: не сработал триггер или условие if`
+        : `Нет автоматизации, которая отправляет сообщение через ${connector}`,
+      fix: {
+        kind: "ops",
+        target: w ? `/workflows/${wi}` : "/workflows",
+        suggestion: w
+          ? "Сверьте trigger (entity, field, equals) и if шага с критерием"
+          : `Добавьте автоматизацию с шагом notify через ${connector}`,
+      },
+    });
+  }
+  const afterTime = (q.scenario?.steps ?? []).slice(0, f.n).some((s) => s.advanceTime !== undefined);
+  const field = /^([a-z_][a-z0-9_]*)=/.exec(want)?.[1];
+  const e = spec.entities.find((y) => y.name === entity);
+  const ef = e?.fields.find((y) => y.name === field);
+  if (afterTime && e && ef && piiOf(ef) !== "none")
+    return base(c, "workflow_not_triggered", {
+      expected,
+      actual: got,
+      likelyCause: e.retention
+        ? `Срок хранения ${e.name} не сработал: проверьте deleteAfterDays, anchorField и mode`
+        : `У ${e.name} не задан срок хранения персональных данных`,
+      fix: {
+        kind: "ops",
+        target: `${entityTarget(spec, e.name)}/retention`,
+        suggestion: "Задайте retention по критерию: deleteAfterDays, anchorField, mode: anonymize",
+      },
+    });
+  if (step.simulate && http && http.status >= 400 && !/^(status|error)=/.test(want)) {
+    const ii = (spec.integrations ?? []).findIndex((i) => i.connector === step.simulate?.connector);
+    return base(c, "connector_mock_mismatch", {
+      expected,
+      actual: got,
+      likelyCause: `Событие ${step.simulate.connector}/${step.simulate.event} не принято системой`,
+      fix: {
+        kind: "ops",
+        target: ii >= 0 ? `/integrations/${ii}` : "/integrations",
+        suggestion: "Проверьте настройки интеграции: привязки (bindings), сущность и поле токена",
+      },
+    });
   }
   return null;
 }

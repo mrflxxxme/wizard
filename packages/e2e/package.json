@@ -9,6 +9,9 @@
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
-    "jsqr": "^1.4.0"
+    "@wizard/platform-api": "workspace:*",
+    "@wizard/runtime": "workspace:*",
+    "jsqr": "^1.4.0",
+    "postgres": "^3.4.9"
   }
 }

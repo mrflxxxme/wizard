@@ -219,11 +219,25 @@
 }
 
 .forbidden {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   margin: 0;
   padding: var(--w-density-pad);
   border: 1px solid var(--w-line);
   border-radius: var(--w-radius);
   background: var(--w-surface);
+}
+
+.forbiddenText {
+  margin: 0;
+  font-weight: 600;
+}
+
+.forbiddenHint {
+  margin: 0;
+  color: var(--w-muted);
 }
 
 .login {

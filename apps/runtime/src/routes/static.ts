@@ -3,7 +3,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { safeNext } from "../auth/session.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
 import {
@@ -14,6 +13,7 @@ import {
   IMMUTABLE,
   NO_CACHE,
 } from "../preview/headers.js";
+import { loginPage } from "./login.js";
 
 const ASSET_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$/;
 /** Names produced by @wizard/build: index-<sha256[:12]>.{js,css}. */
@@ -47,25 +47,6 @@ async function serveAsset(c: RuntimeContext, dir: string, pathname: string): Pro
     "Content-Type": contentType(name),
     "Cache-Control": HASHED_RE.test(name) ? IMMUTABLE : NO_CACHE,
   });
-}
-
-function loginPage(c: RuntimeContext): Response {
-  const sys = c.get("system");
-  const env = c.get("services").env;
-  const next = safeNext(c.req.query("next"));
-  const wanted = c.req.query("role");
-  const roles = sys.spec.roles.filter((r) => r.access === "login" && (!wanted || r.name === wanted));
-  let body: string;
-  if (sys.entry.env === "draft" && env.devLogin && roles.length > 0) {
-    const links = roles.map((r) => {
-      const href = `/_wizard/dev-login?role=${encodeURIComponent(r.name)}&next=${encodeURIComponent(next)}`;
-      return `<li><a href="${escapeHtml(href)}">${escapeHtml(r.label ?? r.name)}</a></li>`;
-    });
-    body = `<p>Тестовый вход в черновик: выберите роль.</p><ul>${links.join("")}</ul>`;
-  } else {
-    body = "<p>Вход в систему пока недоступен. Обратитесь к владельцу системы.</p>";
-  }
-  return c.body(htmlPage("Вход", body), 200, documentHeaders("no-store"));
 }
 
 function policyPage(c: RuntimeContext): Response {

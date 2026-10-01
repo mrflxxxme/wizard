@@ -6,12 +6,23 @@ import { crc32 } from "node:zlib";
 import { PNG } from "pngjs";
 import { describe, expect, test } from "vitest";
 import { ApiError } from "../src/errors.js";
+import { answerLine } from "../src/routes/systems.js";
 import { processLogo, sniff } from "../src/services/logo.js";
 import { isSafePath } from "../src/services/revisions.js";
 import { makeSlug, RESERVED_SLUGS, SLUG_RE } from "../src/services/slug.js";
 import { assertTransition, IllegalTransition, STAGES } from "../src/services/stage.js";
 import { BlobStore, IntegrityError, sha256 } from "../src/storage/blobs.js";
 import { loadYaml } from "./helpers.js";
+
+describe("answers message (FU-4)", () => {
+  test("question then answer, never «?:»", () => {
+    expect(answerLine("Как проверять билеты на входе?", "QR-сканер")).toBe(
+      "Как проверять билеты на входе? — QR-сканер",
+    );
+    expect(answerLine("Способ входа:", " По почте ")).toBe("Способ входа — По почте");
+    expect(answerLine("q1", "Да")).toBe("q1 — Да");
+  });
+});
 
 describe("system stage transitions", () => {
   const wf = loadYaml("specs/platform/workflows.yaml") as {

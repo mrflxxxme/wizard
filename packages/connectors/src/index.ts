@@ -2,8 +2,15 @@ export const PACKAGE = "@wizard/connectors";
 
 /** Typed helpers for declaring connectors and actions. */
 export { defineAction, defineConnector } from "./define.js";
-/** Email: config, validateSpec; sendTemplate is a test-mode stub in M0. */
-export { type EmailConfig, emailConfigSchema, emailConnector, validateEmailSpec } from "./email.js";
+/** Email: config, validateSpec (subject/body PII rules), sendTemplate (outbox | dev SMTP | platform | client SMTP), platform mail. */
+export {
+  type ComposedMail,
+  type EmailConfig,
+  emailConfigSchema,
+  emailConnector,
+  sendPlatformEmail,
+  validateEmailSpec,
+} from "./email.js";
 /** ConnectorError {code, retryable, message}; UniqueViolation — SystemDb.insert conflict. */
 export {
   CONNECTOR_ERROR_CODES,
@@ -12,6 +19,32 @@ export {
   isConnectorError,
   UniqueViolation,
 } from "./errors.js";
+/** RFC 5322/2047 helpers: header sanitising, encoded words, address formatting, header parsing. */
+export {
+  buildMessage,
+  decodeWords,
+  displayName,
+  encodeWords,
+  formatAddress,
+  headerSafe,
+  isPlainAddress,
+  parseHeaders,
+} from "./mime.js";
+/** SSRF guard: private-address check, public DNS resolution, guarded fetch, TCP dialer. */
+export {
+  type Dialer,
+  type GuardedFetchOptions,
+  guardedFetch,
+  isPrivateAddress,
+  type Resolver,
+  resolvePublic,
+  systemResolver,
+  tcpDialer,
+} from "./net.js";
+/** Workflow notify step → email.sendTemplate / telegram.sendToUser with key `<jobId>:<stepIndex>:<action>:0`. */
+export { type NotifyStepInput, runNotifyStep } from "./notify.js";
+/** Platform-owned connector settings (shared Telegram bot, platform SMTP, dev receiver) from WIZARD_* env. */
+export { type PlatformEnvOptions, platformConfigFromEnv } from "./platform.js";
 /** QR connector: config, validateSpec, token issue on insert, POST /_wizard/qr/check. */
 export {
   issueQrToken,
@@ -24,6 +57,8 @@ export {
   qrConnector,
   validateQrSpec,
 } from "./qr.js";
+/** QR code PNG (inline email attachment). */
+export { qrPng } from "./qr-png.js";
 /** QR payload WZ1.<kid>.<rand>.<sig>: sign/verify, keyring rotation, revocation hash. */
 export {
   base32,
@@ -45,10 +80,12 @@ export {
 } from "./qr-token.js";
 /** Registry of all four connectors and G0 validation of spec.integrations. */
 export { CONNECTORS, getConnector, validateIntegration, validateIntegrations } from "./registry.js";
-/** Logger allowlist, outbox receivers, invokeAction with input/output validation and idempotency. */
+/** Logger allowlist, outbox receivers, invokeAction (validation, idempotency, retries), store-backed quotas. */
 export {
   CALL_TTL_MS,
+  consumeQuota,
   createConnectorLogger,
+  type InvokeOptions,
   invokeAction,
   JsonlOutbox,
   MemoryOutbox,
@@ -65,15 +102,52 @@ export {
   secretRef,
   staticSecretReader,
 } from "./secrets.js";
-/** Telegram: config, validateSpec, effective bot/login settings; sendToUser is a test-mode stub in M0. */
+/** Minimal SMTP submission client (implicit TLS / mandatory STARTTLS; plaintext only for the dev receiver). */
+export { type SmtpEndpoint, SmtpError, type SmtpSendOptions, sendSmtp } from "./smtp.js";
+/** Reserved system slugs and the invitation quota (L3-29). */
 export {
+  consumeInviteQuota,
+  INVITES_PER_DAY,
+  isReservedSystemSlug,
+  RESERVED_SYSTEM_SLUGS,
+} from "./system-policy.js";
+/** Telegram: config, validateSpec (G2-TG-01), sendToUser (shared/own bot), deep links, webhooks, bot management. */
+export {
+  appLabel,
+  createTelegramLink,
+  handlePlatformUpdate,
+  handleTelegramUpdate,
+  LINK_TTL_MS,
+  LINKED_TEXT,
+  linkChat,
+  linkTokenHash,
+  newLinkToken,
+  type PlatformHookDeps,
+  parseTelegramUpdate,
+  platformHookToken,
+  platformLinkTarget,
+  secretMatches,
+  TELEGRAM_SECRET_HEADER,
   type TelegramConfig,
+  type TelegramUpdate,
   telegramBot,
+  telegramBotToken,
   telegramConfigSchema,
   telegramConnector,
+  telegramDeleteWebhook,
+  telegramGetMe,
+  telegramHookToken,
   telegramLoginEnabled,
+  telegramSetWebhook,
+  telegramWebhookSecret,
   validateTelegramSpec,
+  WEBHOOK_BODY_MAX,
+  type WebhookReply,
 } from "./telegram.js";
+/** Bot API call with error mapping, `/bot<token>` masking, derived 32-char tokens. */
+export { botCall, derivedToken, maskTelegramToken, TELEGRAM_API_BASE } from "./telegram-api.js";
+/** Template placeholders: PII resolution against the spec, notify steps of an integration, rendering. */
+export { type PlaceholderInfo, renderTemplate, resolvePlaceholder } from "./templates.js";
 /** Connector contract types (specs/connectors/connector-interface.md §1). */
 export type * from "./types.js";
 /** YooKassa: config, validateSpec, /api/pay (M0 mock), pay-mock confirmation, payment.succeeded/canceled core. */

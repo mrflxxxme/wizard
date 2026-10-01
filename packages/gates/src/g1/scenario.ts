@@ -1,10 +1,13 @@
 // Scenario DSL executor (specs/quality/gates.yaml#scenario_dsl) against a runtime through G1Env.
 import type { AppSpec } from "@wizard/appspec";
+import type { JobRunReport } from "../types.js";
 import { type Actor, errorCode, type G1Env, type HttpResult } from "./env.js";
 import type { Expect, Scenario, Seed, Step } from "./types.js";
 
 export const STEP_TIMEOUT_MS = 5_000;
 export const SCENARIO_TIMEOUT_MS = 20_000;
+/** advanceTime upper bound: the longest retention (3650 days) plus a margin. */
+export const MAX_ADVANCE_MINUTES = 4000 * 1440;
 
 const ACTIONS = [
   "as",
@@ -99,6 +102,22 @@ export function validateScenario(spec: AppSpec, sc: Scenario): string[] {
         }
       }
     }
+    if (
+      step.advanceTime !== undefined &&
+      !(
+        Number.isInteger(step.advanceTime?.minutes) &&
+        step.advanceTime.minutes >= 1 &&
+        step.advanceTime.minutes <= MAX_ADVANCE_MINUTES
+      )
+    )
+      errs.push(`Шаг ${n}: advanceTime.minutes — целое число от 1 до ${MAX_ADVANCE_MINUTES}`);
+    if (
+      step.runWorkflows !== undefined &&
+      (step.runWorkflows === null ||
+        typeof step.runWorkflows !== "object" ||
+        Object.keys(step.runWorkflows).length > 0)
+    )
+      errs.push(`Шаг ${n}: runWorkflows — пустой объект {}`);
     if (step.callFn && !fns.has(step.callFn.name))
       errs.push(`Шаг ${n}: функции «${step.callFn.name}» нет в системе`);
     if (step.as !== undefined) {
@@ -163,7 +182,13 @@ function show(key: string, v: unknown, pii: ReadonlySet<string>): string {
 
 function got(res: HttpResult): string {
   const code = errorCode(res);
-  return `HTTP ${res.status}${code ? ` ${code}` : ""}`;
+  const job = (res.body as { failed?: JobRunReport["failed"] } | null)?.failed?.[0];
+  const where = job
+    ? job.step !== undefined
+      ? ` (воркфлоу ${job.name}, шаг ${job.step + 1}${job.stepType ? ` ${job.stepType}` : ""})`
+      : ` (${job.kind === "function" ? "функция" : "задание"} ${job.name})`
+    : "";
+  return `HTTP ${res.status}${code ? ` ${code}` : ""}${where}`;
 }
 
 function sameValue(want: unknown, have: unknown): boolean {
@@ -206,6 +231,9 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
   const adhoc = new Map<string, Actor>();
   const vars = new Map<string, unknown>();
   const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
+  // Scenario time: $now = deps.now + offset; the job runner never runs behind the DB clock that stamps rows.
+  const baseMs = Math.max(deps.now.getTime(), Date.now());
+  let offsetMin = 0;
 
   const actorFor = async (role: string): Promise<Actor> =>
     publicRoles.has(role) ? env.anonymous(role) : env.newUser(role);
@@ -216,7 +244,7 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
       const now = NOW_RE.exec(v);
       if (now) {
         const delta = now[2] ? Number(now[2]) * 60_000 * (now[1] === "-" ? -1 : 1) : 0;
-        return new Date(deps.now.getTime() + delta).toISOString();
+        return new Date(deps.now.getTime() + offsetMin * 60_000 + delta).toISOString();
       }
       const s = SEED_RE.exec(v);
       if (s) {
@@ -326,12 +354,23 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
       }
       case "simulate":
         return simulate(step.simulate as NonNullable<Step["simulate"]>);
+      case "advanceTime":
+        offsetMin += (step.advanceTime as NonNullable<Step["advanceTime"]>).minutes;
+        return jobs();
       default:
-        throw new StepError(
-          "error",
-          `Шаг ${action} исполняется с этапа M1 (воркфлоу и время ещё не подключены)`,
-        );
+        return jobs();
     }
+  }
+
+  /** runWorkflows/advanceTime: one runner pass at the scenario time; a failed job answers like HTTP 500. */
+  async function jobs(): Promise<{ res: HttpResult; value: unknown }> {
+    const r = await env.runJobs(new Date(baseMs + offsetMin * 60_000), new Date(baseMs));
+    if (!r) throw new StepError("error", "Runtime не исполняет воркфлоу и задания по времени");
+    const f = r.failed[0];
+    if (f?.code === "FUNCTIONS_DISABLED")
+      throw new StepError("error", "Функции системы отключены в runtime (нужен WIZARD_UNSAFE_LOCAL_EXEC=1)");
+    if (f) return { res: { status: 500, body: { error: { code: f.code }, failed: r.failed } }, value: r };
+    return { res: { status: 200, body: r }, value: r };
   }
 
   async function simulate(s: NonNullable<Step["simulate"]>): Promise<{ res: HttpResult; value: unknown }> {

@@ -55,7 +55,20 @@ export interface RuntimeHandle {
     slug?: string;
   }): Promise<unknown>;
   outbox(): readonly { integration: string; action: string; userId?: string | null; payload: unknown }[];
+  /**
+   * M1 job runner (runtime.yaml#workflows): workflow triggers, due _w_jobs and retention at `now`; `since` bounds the
+   * cron window. Without it the DSL steps runWorkflows/advanceTime report error.
+   */
+  runJobs?(input: { slug: string; env: "draft" | "prod"; now?: Date; since?: Date }): Promise<JobRunReport>;
   readonly env?: { systemsDomain?: string; publicScheme?: string; unsafeLocalExec?: boolean };
+}
+
+/** Result of RuntimeHandle.runJobs (apps/runtime RunJobsReport, structurally). */
+export interface JobRunReport {
+  ran: number;
+  failed: readonly { kind: string; name: string; step?: number; stepType?: string; code: string }[];
+  retention?: readonly { entity: string; mode: string; rows: number }[];
+  pending?: number;
 }
 
 export interface GateContext {

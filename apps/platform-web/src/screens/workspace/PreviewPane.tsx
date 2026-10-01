@@ -13,6 +13,9 @@ import s from "./Workspace.module.css";
 
 export const PREVIEW_WIDTHS = [390, 768, 1280] as const;
 const RELOAD_DEBOUNCE_MS = 1000;
+/** PREVIEW_NOT_READY retry: the bundle and runtime pin follow G0 by a few seconds. */
+const NOT_READY_RETRY_MS = 1000;
+const NOT_READY_RETRIES = 30;
 const REFRESH_BEFORE_MS = 60_000;
 
 const prefersDark = () =>
@@ -20,15 +23,15 @@ const prefersDark = () =>
 
 export function PreviewPane({
   systemId,
-  reloadKey,
+  revision,
   available,
   theme,
   testData,
   toolbar,
 }: {
   systemId: string;
-  /** Changes on gate_result{G0, passed} and on growth of System.previewRevision. */
-  reloadKey: string;
+  /** Newest preview revision (max of gate_result{G0, passed} and System.previewRevision); growth reloads. */
+  revision: number;
   available: boolean;
   theme: Theme;
   testData: boolean;
@@ -52,23 +55,38 @@ export function PreviewPane({
   roleRef.current = role;
   const readyRef = useRef(false);
   const loadedOnce = useRef(false);
+  // Revision in the mounted iframe and its mount generation: a reply that times out for an iframe that was
+  // already replaced must not remount the new one.
+  const shownRevision = useRef<number | null>(null);
+  const generation = useRef(0);
 
   const reloadFrame = useCallback((next?: PreviewUrl) => {
     const i = next ?? infoRef.current;
     if (!i) return;
     readyRef.current = false;
+    shownRevision.current = i.revision;
+    generation.current++;
     setSrc(previewSrc(i.url, routeRef.current, i.revision));
     setNonce((n) => n + 1);
   }, []);
 
+  /** Fallback reload on a reply timeout, only if the iframe the request went to is still mounted. */
+  const reloadIfCurrent = useCallback(
+    (gen: number, next?: PreviewUrl) => {
+      if (gen === generation.current) reloadFrame(next);
+    },
+    [reloadFrame],
+  );
+
   const sendTokens = useCallback(
     (bridge: PreviewBridge) => {
       if (!readyRef.current) return;
+      const gen = generation.current;
       bridge
         .send({ type: "apply-theme-tokens", payload: previewTokens(themeRef.current, prefersDark()) }, true)
-        .catch(() => reloadFrame());
+        .catch(() => reloadIfCurrent(gen));
     },
-    [reloadFrame],
+    [reloadIfCurrent],
   );
 
   const bridgeRef = useRef<PreviewBridge | null>(null);
@@ -129,19 +147,31 @@ export function PreviewPane({
     [api, systemId],
   );
 
-  // Reload policy: new src on reloadKey change, debounce 1 s (the first load is immediate).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the trigger itself
+  // Reload policy: new src when the revision grows, debounce 1 s (the first load is immediate). The iframe is
+  // not remounted for a revision it already shows (route, role and unsaved style stay as they are).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the trigger itself
   useEffect(() => {
     if (!available) return;
+    let live = true;
     const delay = loadedOnce.current ? RELOAD_DEBOUNCE_MS : 0;
-    const t = setTimeout(async () => {
+    let t: ReturnType<typeof setTimeout>;
+    // G0 passes before the bundle is written: PREVIEW_NOT_READY is retried until the preview exists.
+    const attempt = async (left: number) => {
       const i = await load(roleRef.current);
-      if (!i) return;
+      if (!live) return;
+      if (!i) {
+        if (left > 0) t = setTimeout(() => void attempt(left - 1), NOT_READY_RETRY_MS);
+        return;
+      }
       loadedOnce.current = true;
-      reloadFrame(i);
-    }, delay);
-    return () => clearTimeout(t);
-  }, [available, reloadKey, load, reloadFrame]);
+      if (i.revision !== shownRevision.current) reloadFrame(i);
+    };
+    t = setTimeout(() => void attempt(NOT_READY_RETRIES), delay);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [available, revision, load, reloadFrame]);
 
   // M2 URLs carry a token with a TTL: re-read preview-url a minute before expiresAt (no reload).
   useEffect(() => {
@@ -162,7 +192,10 @@ export function PreviewPane({
       return;
     }
     readyRef.current = false;
-    bridge.send({ type: "set-role", payload: { role: r, url: i.url } }, true).catch(() => reloadFrame(i));
+    const gen = generation.current;
+    bridge
+      .send({ type: "set-role", payload: { role: r, url: i.url } }, true)
+      .catch(() => reloadIfCurrent(gen, i));
   }
 
   const roles = info?.roles ?? [];

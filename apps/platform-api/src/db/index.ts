@@ -2,6 +2,10 @@ import { Kysely, type Migration, type MigrationProvider, Migrator, type RawBuild
 import { PostgresJSDialect } from "kysely-postgres-js";
 import postgres from "postgres";
 import * as m0001 from "../../migrations/0001_m0.js";
+import * as m0002 from "../../migrations/0002_m1_accounts.js";
+import * as m0003 from "../../migrations/0003_m1_publications.js";
+import * as m0004 from "../../migrations/0004_m1_credits.js";
+import * as m0005 from "../../migrations/0005_m1_imports.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -29,7 +33,13 @@ export function json(value: unknown): RawBuilder<unknown> {
   return sql`cast(cast(${JSON.stringify(value ?? null)} as text) as jsonb)`;
 }
 
-const MIGRATIONS: Record<string, Migration> = { "0001_m0": m0001 };
+const MIGRATIONS: Record<string, Migration> = {
+  "0001_m0": m0001,
+  "0002_m1_accounts": m0002,
+  "0003_m1_publications": m0003,
+  "0004_m1_credits": m0004,
+  "0005_m1_imports": m0005,
+};
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };
 
@@ -40,7 +50,17 @@ export async function migrate(db: Db): Promise<void> {
     provider,
     migrationTableSchema: "platform",
   });
-  const { error, results } = await migrator.migrateToLatest();
+  let { error, results } = await migrator.migrateToLatest();
+  // Kysely introspects every table of the database before migrating; a system schema dropped concurrently
+  // (G1 ephemeral schemas, rollbacks) makes that query fail. Nothing was applied then, so retrying is safe.
+  for (
+    let i = 0;
+    i < 3 && error && !results?.length && /schema ".*" does not exist/.test(String(error));
+    i++
+  ) {
+    await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+    ({ error, results } = await migrator.migrateToLatest());
+  }
   if (error) {
     const failed = results?.find((r) => r.status === "Error")?.migrationName;
     throw new Error(`migration ${failed ?? "?"} failed: ${String(error)}`);

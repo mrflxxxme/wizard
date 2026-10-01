@@ -14,6 +14,7 @@ import {
 } from "@wizard/sdk/host";
 import type { RuntimeServices } from "../http/context.js";
 import type { LoadedSystem } from "../system.js";
+import { liveConnectors } from "./connectors-live.js";
 import { FunctionExecutor, type HostCtx, UNSAFE_CEILING_MS } from "./executor.js";
 import { toShape } from "./validators.js";
 
@@ -129,7 +130,10 @@ async function build(
     spec: sys.spec,
     functions,
     transactions: sys.data.runner(),
-    connectors: () => outboxConnectors(sys.spec, services),
+    connectors: () =>
+      services.connectors === "live" && services.connectorHost
+        ? liveConnectors(sys, services.connectorHost)
+        : outboxConnectors(sys.spec, services),
     clock: services.clock,
     limits: {
       queryTimeoutMs: deadlineOf("query") + HOST_SLACK_MS,

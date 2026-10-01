@@ -920,6 +920,46 @@ export function generateCorpus(seed = 20260930): CorpusLine[] {
   fu2Traps.forEach((text, i) => {
     out.push({ id: `t${String(171 + i).padStart(3, "0")}`, group: "trap", text, spans: [] });
   });
+
+  // M1-07: sheet names and headers with a lone surname in the genitive («Клиенты Рахимова», «Заказы Ивановой»).
+  const HEADS = "Клиенты Заказы Сделки Платежи Звонки Договоры Задачи Долги Контакты Ученики Оплаты".split(
+    " ",
+  );
+  const declinable = [...SURNAME_M, ...OTHER_SURNAME].filter((s) => /(?:ов|ев|ёв|ин|ын|ский)$/.test(s));
+  const genitive = (s: string, female: boolean): string =>
+    /ский$/.test(s) ? s.replace(/ий$/, female ? "ой" : "ого") : female ? `${s}ой` : `${s}а`;
+  const lone: Array<() => Part[]> = [
+    () => [`${pick(HEADS)} `, P("person_name", genitive(pick(declinable), false))],
+    () => [`${pick(HEADS)} `, P("person_name", genitive(pick(declinable), true))],
+    () => [`${pick(HEADS)}_`, P("person_name", genitive(pick(declinable), rng() < 0.5)), " 2025"],
+  ];
+  const loneTraps = [
+    "Заказы Москвы",
+    "Клиенты Сбера",
+    "Филиалы Саратова",
+    "Доставка из Ростова",
+    "Отчёт Минфина",
+    "Ключевые Слова",
+    "Канарские Острова",
+    "Праздник Покрова",
+    "Снежная Королева",
+    "Выручка Торговой Сети",
+    "Поставки Газпрома",
+    "Клиенты Альфа-Банка",
+    "Продажи Кирова и Пскова",
+    "Температура Нагрева",
+    "Даты Посева",
+    "Магазины Тамбова",
+    "Заказы Озона",
+    "Клиенты Магнита",
+  ];
+  for (let i = 0; i < 30; i++) {
+    const t = lone[i % lone.length] as () => Part[];
+    out.push({ id: `p${String(371 + i).padStart(3, "0")}`, group: "positive", ...build(t()) });
+  }
+  loneTraps.forEach((text, i) => {
+    out.push({ id: `t${String(191 + i).padStart(3, "0")}`, group: "trap", text, spans: [] });
+  });
   return out;
 }
 

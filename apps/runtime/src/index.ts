@@ -30,6 +30,15 @@ export type { OutboxMessage, RuntimeContext, RuntimeHonoEnv, RuntimeServices } f
 export { errorResponse } from "./http/errors.js";
 /** Request → Subject of the current session. */
 export { sessionOf, subjectOf } from "./http/subject.js";
+/** Job runner (M1 minimal): workflow triggers, due _w_jobs, retention at a given `now`; cron helpers. */
+export { type Cron, lastOccurrence, parseCron } from "./jobs/cron.js";
+export {
+  type JobFailure,
+  type RetentionResult,
+  type RunJobsOptions,
+  type RunJobsReport,
+  runJobs,
+} from "./jobs/runner.js";
 /** Schema name app_<systemId>_<env> and a migration helper for previews/G1/tests (migration role only). */
 export { type MigrateOptions, migrateSystem, schemaName } from "./migrate.js";
 /** Test-mode connector secrets for G1 runtimes (in-memory QR keyring). */

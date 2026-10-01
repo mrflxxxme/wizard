@@ -11,6 +11,7 @@ import {
   requestKey,
   schemaHash,
 } from "./fixtures.js";
+import { forbidsT1, orgPolicyBus, type PolicyBus } from "./org-policy.js";
 import { assertNoTokens, decideTier, isCallType, type PolicyDecision } from "./policy.js";
 import { type Env, LiveCallError, liveCall } from "./providers.js";
 import { createRegistry, type ModelDef, policyVersion, type Registry, type RouteDef } from "./registry.js";
@@ -19,6 +20,7 @@ import type {
   LlmMode,
   LlmResult,
   LlmUsage,
+  OrgPolicy,
   RouteInput,
   RouteOutput,
   RouteReason,
@@ -48,7 +50,10 @@ export interface RouterOptions {
   /** Default: env WIZARD_FIXTURE="<suite>/<name>" (fixture and record modes). */
   fixture?: FixtureOptions;
   fetch?: typeof globalThis.fetch;
+  /** Internal journal only (run_events with internal: true); never the user's SSE (L3-42). */
   onEvent?: (e: LlmEvent) => void;
+  /** Policy changes: in-flight T1 calls of an org whose new policy forbids T1 are aborted and repeated on T0. */
+  policyBus?: PolicyBus;
   circuit?: CircuitBreaker;
   backoffMs?: readonly number[];
   sleep?: (ms: number) => Promise<void>;
@@ -60,6 +65,19 @@ export interface Router {
   readonly mode: LlmMode;
   readonly registry: Registry;
   route(input: RouteInput): Promise<RouteOutput>;
+  /** Number of T1 HTTP attempts in flight (all orgs, or one org). */
+  inflightT1?(orgId?: string): number;
+}
+
+/** A T1 attempt aborted because the org policy now forbids T1. */
+class PolicyAbort extends Error {
+  constructor(
+    readonly policy: OrgPolicy,
+    readonly from: ModelDef,
+    readonly charged: number,
+  ) {
+    super("policy changed");
+  }
 }
 
 const MAX_ATTEMPTS = 3;
@@ -110,6 +128,33 @@ export function createRouter(opts: RouterOptions = {}): Router {
     }
   }
 
+  // In-flight T1 attempts per org; the bus subscription lives only while there are any (routers are per run).
+  const policyBus = opts.policyBus ?? orgPolicyBus;
+  const inflight = new Map<string, Set<AbortController>>();
+  let unsubscribe: (() => void) | null = null;
+  const onPolicy = (c: { orgId: string; policy: OrgPolicy }) => {
+    if (!forbidsT1(c.policy)) return;
+    for (const ctrl of inflight.get(c.orgId) ?? []) ctrl.abort(c.policy);
+  };
+  const track = (orgId: string, ctrl: AbortController) => {
+    let set = inflight.get(orgId);
+    if (!set) {
+      set = new Set();
+      inflight.set(orgId, set);
+    }
+    set.add(ctrl);
+    unsubscribe ??= policyBus.subscribe(onPolicy);
+  };
+  const untrack = (orgId: string, ctrl: AbortController) => {
+    const set = inflight.get(orgId);
+    set?.delete(ctrl);
+    if (set?.size === 0) inflight.delete(orgId);
+    if (inflight.size === 0 && unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+  };
+
   const modelsById = new Map(reg.models.map((x) => [x.id, x]));
   const usable = (id: string): ModelDef | null => {
     const model = modelsById.get(id);
@@ -117,6 +162,16 @@ export function createRouter(opts: RouterOptions = {}): Router {
   };
 
   async function route(input: RouteInput): Promise<RouteOutput> {
+    try {
+      return await routeOnce(input, null);
+    } catch (e) {
+      if (!(e instanceof PolicyAbort)) throw e;
+      // ru_only.effect: the interrupted call is repeated under the new policy (always T0).
+      return routeOnce({ ...input, orgPolicy: e.policy }, e);
+    }
+  }
+
+  async function routeOnce(input: RouteInput, switched: PolicyAbort | null): Promise<RouteOutput> {
     const { callType } = input;
     if (!isCallType(callType)) {
       throw new LlmError("UNKNOWN_CALL_TYPE", "Неизвестный тип вызова модели.", { callType });
@@ -154,8 +209,16 @@ export function createRouter(opts: RouterOptions = {}): Router {
         : JSON.stringify(lastMsg.content)
       : "";
     let reason: RouteReason = decision.reason;
-    let fallbackFrom: string | null = null;
-    let charged = 0;
+    let fallbackFrom: string | null = switched ? switched.from.id : null;
+    let charged = switched ? switched.charged : 0;
+    if (switched && chain[0]) {
+      opts.onEvent?.({
+        type: "model_switched",
+        fromModel: switched.from.id,
+        toModel: chain[0].id,
+        reason: "fallback_error",
+      });
+    }
     // T1 chosen but no enabled T1 model: the call goes to T0 as a fallback (fallback_rules).
     if (decision.tier === "T1" && chain[0]?.tier === "T0") reason = "fallback_error";
 
@@ -215,7 +278,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
       creditsMilli: charged,
       routeReason: reason,
       scrubbed: model.tier === "T1",
-      ruFallback: decision.tier === "T1" && model.tier === "T0",
+      ruFallback: (decision.tier === "T1" || switched !== null) && model.tier === "T0",
     });
 
     const switchTo = (from: ModelDef, why: "fallback_circuit_open" | "fallback_error") => {
@@ -284,7 +347,14 @@ export function createRouter(opts: RouterOptions = {}): Router {
         if (attempt > 1 && !circuit.allow(cKey)) break;
         const started = now();
         const timeout = AbortSignal.timeout(routeDef.timeoutMs);
-        const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+        const policyCtrl = model.tier === "T1" ? new AbortController() : null;
+        const signals = [
+          timeout,
+          ...(input.signal ? [input.signal] : []),
+          ...(policyCtrl ? [policyCtrl.signal] : []),
+        ];
+        const signal = signals.length === 1 ? timeout : AbortSignal.any(signals);
+        if (policyCtrl) track(input.ctx.orgId, policyCtrl);
         try {
           const out = await liveCall({
             provider: reg.providers[model.provider],
@@ -315,6 +385,17 @@ export function createRouter(opts: RouterOptions = {}): Router {
         } catch (e) {
           const err = e instanceof LiveCallError ? e : new LiveCallError("NETWORK");
           if (err.code === "NO_API_KEY") break;
+          if (policyCtrl?.signal.aborted && !input.signal?.aborted) {
+            // Not the provider's fault: the circuit is untouched.
+            await writeRecord(model, {
+              attempt,
+              status: "aborted",
+              errorCode: "POLICY_CHANGED",
+              latencyMs: now() - started,
+              requestHash: key,
+            });
+            throw new PolicyAbort(policyCtrl.signal.reason as OrgPolicy, model, charged);
+          }
           circuit.record(cKey, false);
           await writeRecord(model, {
             attempt,
@@ -328,6 +409,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
           const base = backoff[attempt - 1] ?? backoff[backoff.length - 1] ?? 0;
           const jittered = base * (0.8 + 0.4 * random());
           await sleep(err.retryAfterMs ?? jittered);
+        } finally {
+          if (policyCtrl) untrack(input.ctx.orgId, policyCtrl);
         }
       }
       if (next) {
@@ -343,7 +426,12 @@ export function createRouter(opts: RouterOptions = {}): Router {
     throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже.", { callType });
   }
 
-  return { mode, registry: reg, route };
+  const inflightT1 = (orgId?: string) =>
+    orgId === undefined
+      ? [...inflight.values()].reduce((n, s) => n + s.size, 0)
+      : (inflight.get(orgId)?.size ?? 0);
+
+  return { mode, registry: reg, route, inflightT1 };
 }
 
 function fixtureLine(

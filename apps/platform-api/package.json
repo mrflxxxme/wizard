@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
+    "credits": "tsx src/billing/cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -14,6 +15,7 @@
     "@wizard/build": "workspace:*",
     "@wizard/gates": "workspace:*",
     "@wizard/llm": "workspace:*",
+    "@wizard/pii": "workspace:*",
     "@wizard/runtime": "workspace:*",
     "hono": "^4.13.12",
     "kysely": "^0.28.17",

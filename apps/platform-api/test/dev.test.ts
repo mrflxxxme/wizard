@@ -86,4 +86,21 @@ describe("dev script", () => {
     expect(c.exitCode).not.toBe(0);
     expect(err).toContain("127.0.0.1");
   }, 40_000);
+
+  // api.yaml#info.x-auth.M1: dev mode is forbidden with NODE_ENV=production — the process start fails.
+  test.each<Record<string, string>>([
+    { WIZARD_AUTH_MODE: "dev" },
+    { WIZARD_AUTH_MODE: "session", WIZARD_DEV_LOGIN: "1" },
+  ])(
+    "refuses to start with NODE_ENV=production and %o",
+    async (env) => {
+      const c = dev({ PORT: String(await freePort()), HOST: "127.0.0.1", NODE_ENV: "production", ...env });
+      let err = "";
+      c.stderr?.on("data", (d) => (err += d));
+      await exited(c);
+      expect(c.exitCode).not.toBe(0);
+      expect(err).toContain("NODE_ENV=production");
+    },
+    40_000,
+  );
 });

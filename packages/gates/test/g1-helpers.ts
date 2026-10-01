@@ -9,19 +9,24 @@ import { newQrKeyring, QR_SECRET, serializeQrKeyring, staticSecretReader } from 
 import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } from "@wizard/runtime";
 import type postgres from "postgres";
 import type { GateContext } from "../src/index.js";
-import { connect, forumCtx, REPO_ROOT } from "./helpers.js";
+import { connect, forumCtx, REPO_ROOT, uniqueKey } from "./helpers.js";
 
 export interface G1Harness {
   db: postgres.Sql;
   rt: RuntimeApp;
   role: string;
+  /** systemKey prefix of this harness: other files run G1 on the same database at the same time. */
+  keyPrefix: string;
   ctx(over?: Partial<GateContext>): GateContext;
+  /** Ephemeral G1 schemas (app_%_g1_%) of this harness's system keys still present (gates.yaml#G1.cleanup). */
+  leftoverSchemas(): Promise<number>;
   close(): Promise<void>;
 }
 
 export async function g1Harness(): Promise<G1Harness> {
   const db = connect();
   const role = `wz_g1_rt_${randomBytes(4).toString("hex")}`;
+  const keyPrefix = `g1s${randomBytes(3).toString("hex")}`;
   await db.unsafe(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
   const qrKeyring = serializeQrKeyring(newQrKeyring());
   const root = mkdtempSync(join(tmpdir(), "wz-g1-test-"));
@@ -51,7 +56,10 @@ export async function g1Harness(): Promise<G1Harness> {
     db,
     rt,
     role,
-    ctx: (over = {}) => forumCtx(db, { runtime: rt, runtimeRole: role, ...over }),
+    keyPrefix,
+    ctx: (over = {}) =>
+      forumCtx(db, { runtime: rt, runtimeRole: role, systemKey: uniqueKey(keyPrefix), ...over }),
+    leftoverSchemas: () => g1SchemaCount(db, keyPrefix),
     async close() {
       await closeExecutors();
       await db.unsafe(`DROP OWNED BY ${role}`).catch(() => {});
@@ -77,7 +85,9 @@ export function loadBakery(): { spec: AppSpec; files: Map<string, string> } {
   return { spec, files };
 }
 
-export async function g1SchemaCount(db: postgres.Sql): Promise<number> {
-  const rows = await db`select count(*)::int as n from pg_namespace where nspname like 'app\\_%\\_g1\\_%'`;
+/** Ephemeral G1 schemas (app_%_g1_%) whose systemKey starts with keyPrefix. */
+export async function g1SchemaCount(db: postgres.Sql, keyPrefix: string): Promise<number> {
+  const rows =
+    await db`select count(*)::int as n from pg_namespace where nspname like ${`app\\_${keyPrefix}\\_%\\_g1\\_%`}`;
   return Number(rows[0]?.n ?? 0);
 }

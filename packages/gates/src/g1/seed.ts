@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { type AppSpec, DEFAULT_MAX_LENGTH, type Entity, type Field, USERS_ENTITY } from "@wizard/appspec";
 import { classifyFieldName, detect } from "@wizard/pii";
+import { domainHint, realisticValue } from "./realistic.js";
 import type { Seed, SeedUser } from "./types.js";
 
 /** Built-in synthetic dictionary (qa.yaml#seed.rules): the only names seeds and G1 actors ever get. */
@@ -96,11 +97,19 @@ const DAY_MS = 86_400_000;
  * Field values for seeds and G1 probes. `next()` gives a fresh number, so strings, emails, phones and numbers of
  * unique fields never repeat within one generator; probes use a separate range (start) from the seed.
  */
+export interface ValueGenOptions {
+  /** Seed key: plausible pii=none values (realistic.ts) vary by it. */
+  key?: string;
+  /** domainHint(spec): picks domain vocabularies (bakery, events). */
+  hint?: string;
+}
+
 export class ValueGen {
   private n: number;
   constructor(
     readonly now: Date,
     start = 1,
+    readonly opts: ValueGenOptions = {},
   ) {
     this.n = start - 1;
   }
@@ -115,6 +124,19 @@ export class ValueGen {
     const n = this.next();
     const shape = piiShape(f);
     if (shape === "forbidden") return undefined; // cards/passports are never generated (qa.yaml#seed.rules)
+    if (shape === "none") {
+      const v = realisticValue({
+        key: this.opts.key ?? "",
+        hint: this.opts.hint ?? "",
+        entity: e,
+        field: f,
+        i,
+        n,
+      });
+      if (v === null) return undefined;
+      const max = f.maxLength ?? DEFAULT_MAX_LENGTH[f.type];
+      if (typeof v !== "string" ? v !== undefined : max === undefined || [...v].length <= max) return v;
+    }
     switch (f.type) {
       case "enum": {
         const opts = f.enum ?? [];
@@ -231,7 +253,7 @@ export interface SeedOptions {
 /** gates.generateSeed(spec, key) — architecture.yaml#interfaces.gates, qa.yaml#seed. */
 export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {}): Seed {
   const now = opts.now ?? new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS);
-  const gen = new ValueGen(now, 1);
+  const gen = new ValueGen(now, 1, { key, hint: domainHint(spec) });
   const users: SeedUser[] = [];
   for (const r of spec.roles) {
     if (r.access !== "login") continue;

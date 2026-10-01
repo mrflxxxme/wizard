@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 // @ts-expect-error — plain ESM module without types
 import { validateSchema } from "../../../tools/specs/validate.mjs";
 import { type GateReport, g1Checks, type QaCheck, runG1, runGates } from "../src/index.js";
-import { type G1Harness, g1Harness, g1SchemaCount, loadBakery } from "./g1-helpers.js";
+import { type G1Harness, g1Harness, loadBakery } from "./g1-helpers.js";
 import { loadForum, loadYaml, REPO_ROOT } from "./helpers.js";
 
 const apiSpec = (await loadYaml(join(REPO_ROOT, "specs/platform/api.yaml"))) as {
@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   // gates.yaml#G1.cleanup: no ephemeral schema survives the suite.
-  expect(await g1SchemaCount(h.db)).toBe(0);
+  expect(await h.leftoverSchemas()).toBe(0);
   await h.close();
 });
 
@@ -36,6 +36,12 @@ const failing = (r: GateReport) =>
     .filter((c) => c.status === "fail" || c.status === "error")
     .map((c) => c.id)
     .sort();
+
+/**
+ * Forum AC6 advances 63 days past registration while the example function fixes the event at 2026-11-14 (+30 days
+ * retention): the scenario clock must start after 2026-10-12 to cross the deadline.
+ */
+const m1Now = () => new Date(Math.max(Date.now(), Date.parse("2026-10-20T00:00:00.000Z")));
 
 /** QA scenario for AC1 (a ticket AC): a participant sees only their own tickets. */
 const participantIsolation: QaCheck = {
@@ -87,7 +93,8 @@ describe("G1 on the forum", () => {
   test("AC1–AC4, AC7 pass; AC5, AC6 skip (milestone); G1-AC-COVER pass; the gate passes", async () => {
     report = await runGates("G1", h.ctx({ specVersion: 3 }));
     const s = status(report);
-    for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC7"]) expect(s[id], id).toBe("pass");
+    for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC7"])
+      expect(s[id], `${id} ${detail(report)}`).toBe("pass");
     expect(s["SC-AC5"]).toBe("skip");
     expect(s["SC-AC6"]).toBe("skip");
     expect(s["G1-AC-COVER"]).toBe("pass");
@@ -170,11 +177,12 @@ describe("G1 on the forum", () => {
     expect(c?.evidence).toContain("HTTP 201");
   }, 120_000);
 
-  test("milestone rule: with ctx.milestone M1 the M1 AC runs (and cannot run yet), M2 stays skipped", async () => {
-    const r = await runGates("G1", h.ctx({ milestone: "M1" }));
+  test("milestone M1: the M1 AC runs (retention via advanceTime), M2 stays skipped", async () => {
+    const r = await runGates("G1", h.ctx({ milestone: "M1", now: m1Now() }));
     const s = status(r);
     expect(s["SC-AC5"]).toBe("skip");
-    expect(s["SC-AC6"]).toBe("error");
+    expect(s["SC-AC6"], detail(r)).toBe("pass");
+    expect(s["G1-AC-COVER"]).toBe("pass");
   }, 120_000);
 
   test("time budget: checks over the budget end with error, the gate fails", async () => {
@@ -202,12 +210,20 @@ describe("G1 on the bakery", () => {
     expect(failing(r), detail(r)).toEqual([]);
   }, 120_000);
 
+  test("M1: AC7 (anonymization after 90 days) passes through advanceTime + runWorkflows", async () => {
+    const b = loadBakery();
+    const r = await runGates("G1", h.ctx({ spec: b.spec, files: b.files, milestone: "M1" }));
+    const s = status(r);
+    expect(s["SC-AC7"], detail(r)).toBe("pass");
+    expect(failing(r), detail(r)).toEqual([]);
+  }, 120_000);
+
   test("all M0 acceptance scenarios pass; AC7 (M1) skips", async () => {
     const b = loadBakery();
     const r = await runGates("G1", h.ctx({ spec: b.spec, files: b.files }));
     const s = status(r);
     for (const id of ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC5", "SC-AC6"])
-      expect(s[id], id).toBe("pass");
+      expect(s[id], `${id} ${detail(r)}`).toBe("pass");
     expect(s["SC-AC7"]).toBe("skip");
     expect(s["G1-AC-COVER"]).toBe("pass");
     expect(failing(r), detail(r)).toEqual([]);

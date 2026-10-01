@@ -12,10 +12,16 @@ import {
 } from "@wizard/llm";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
+import type { Billing } from "../billing/ledger.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import { ImportStore } from "../imports/storage.js";
+import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
+import type { PublishOptions } from "../publish/prod.js";
+import { draftSnapshot } from "../publish/snapshot.js";
+import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
 import { insertMessage } from "../services/messages.js";
 import {
   applyOpsRevision,
@@ -31,6 +37,8 @@ import { appendEvent, type EventBus, type EventType, type TxCtx, withTx } from "
 import { recordGateReport } from "./gates.js";
 import {
   type BuildHost,
+  type BuildOutcome,
+  type BuildParams,
   type GateContext,
   type GateLevel,
   type GateReport,
@@ -63,7 +71,12 @@ export const INTERVIEW_CAP_MILLI = 2000;
 
 type Run = Selectable<RunsTable>;
 type Result =
-  | { status: "succeeded" | "cancelled"; summary_ru: string }
+  | {
+      status: "succeeded" | "cancelled";
+      summary_ru: string;
+      resultRevision?: number | null;
+      prodUrl?: string | null;
+    }
   | { status: "failed"; code: string; message_ru: string; retryable: boolean };
 
 export interface EngineDeps {
@@ -73,9 +86,13 @@ export interface EngineDeps {
   blobs: BlobStore;
   config: Config;
   executors: RunExecutors;
+  /** Credits ledger (billing.yaml#run_charging). */
+  billing: Billing;
   /** Router factory (tests); default createRouter with DbUsageSink. */
   createRouter?: (opts: RouterOptions) => Router;
   log?: (msg: string, err?: unknown) => void;
+  /** publish/rollback: smoke check, DB roles, lock retry pauses (M1-04). */
+  publish?: PublishOptions;
 }
 
 interface Waiter {
@@ -86,7 +103,7 @@ interface Waiter {
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build";
+  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -95,8 +112,14 @@ export interface NewRun {
   startedBy: string;
 }
 
-export async function insertRun(t: TxCtx, r: NewRun): Promise<Run> {
-  return t.trx
+/**
+ * Inserts a run. With `billing`: an interview turn needs available > 0, a build holds its cap in the same
+ * transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
+ */
+export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
+  if (billing && r.kind === "interview_turn")
+    await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
+  const run = await t.trx
     .insertInto("platform.runs")
     .values({
       org_id: r.orgId,
@@ -106,11 +129,27 @@ export async function insertRun(t: TxCtx, r: NewRun): Promise<Run> {
       input: json(r.input ?? {}),
       card_version: r.cardVersion ?? null,
       credits_estimate_milli: r.estimateMilli ?? null,
-      credits_cap_milli: r.capMilli ?? (r.kind === "interview_turn" ? INTERVIEW_CAP_MILLI : null),
+      credits_cap_milli:
+        r.capMilli ??
+        (r.kind === "interview_turn"
+          ? INTERVIEW_CAP_MILLI
+          : r.kind === "import_table"
+            ? IMPORT_CAP_MILLI
+            : null),
       started_by: r.startedBy,
     })
     .returningAll()
     .executeTakeFirstOrThrow();
+  if (billing && r.kind === "build" && run.credits_cap_milli !== null)
+    await billing.hold(t.trx, {
+      orgId: r.orgId,
+      runId: run.id,
+      systemId: r.systemId,
+      amountMilli: Number(run.credits_cap_milli),
+      key: `hold:${run.id}`,
+      note: "Резерв на сборку (потолок из карточки)",
+    });
+  return run;
 }
 
 function toResult(e: unknown, aborted: boolean): Result {
@@ -147,6 +186,7 @@ export class RunEngine {
   readonly #waiters = new Map<string, Waiter>();
   readonly #lockWaiters = new Map<string, string[]>();
   readonly #circuit = new CircuitBreaker();
+  #imports: ImportStore | undefined;
   #closed = false;
 
   constructor(deps: EngineDeps) {
@@ -264,6 +304,8 @@ export class RunEngine {
       }
       if (run.kind === "interview_turn") result = await this.#interview(run, ac);
       else if (run.kind === "build") result = await this.#build(run, ac);
+      else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(run, ac);
+      else if (run.kind === "import_table") result = await this.#importTable(run, ac);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
       if (!(e instanceof RunFailure || e instanceof RunCancelled || e instanceof LlmError))
@@ -338,7 +380,14 @@ export class RunEngine {
         : undefined;
       await appendEvent(t, run.id, "lock_waiting", {
         holderRunId: holder,
-        holderName: holderRun?.kind === "build" ? "Сборка" : "Другой прогон",
+        holderName:
+          holderRun?.kind === "build"
+            ? "Сборка"
+            : holderRun?.kind === "publish"
+              ? "Публикация"
+              : holderRun?.kind === "rollback"
+                ? "Откат"
+                : "Другой прогон",
         position: list.indexOf(run.id) + 1,
       });
     });
@@ -406,9 +455,13 @@ export class RunEngine {
     if (!run || TERMINAL_STATUSES.has(run.status)) return null;
     const sys = run.system_id ? await lockSystem(t, run.system_id) : null;
     const isBuild = run.kind === "build";
-    const resultRevision =
-      isBuild && sys && run.base_revision !== null && sys.draft_revision > run.base_revision
+    const isFlow = run.kind === "publish" || run.kind === "rollback";
+    const resultRevision = isBuild
+      ? sys && run.base_revision !== null && sys.draft_revision > run.base_revision
         ? sys.draft_revision
+        : null
+      : r.status === "succeeded"
+        ? (r.resultRevision ?? null)
         : null;
     await t.trx
       .updateTable("platform.runs")
@@ -423,6 +476,12 @@ export class RunEngine {
       })
       .where("id", "=", runId)
       .execute();
+    // release(+hold), charge(−min(used, cap)), refund — billing.yaml#run_charging.
+    await this.#d.billing.settleRun(
+      t.trx,
+      run,
+      r.status === "failed" ? { status: r.status, code: r.code } : r,
+    );
     const released = await t.trx
       .deleteFrom("platform.locks")
       .where("run_id", "=", runId)
@@ -438,6 +497,8 @@ export class RunEngine {
           .where("id", "=", sys.id)
           .execute();
       }
+    }
+    if (sys && (isBuild || isFlow)) {
       await insertMessage(t, {
         systemId: sys.id,
         role: "assistant",
@@ -460,7 +521,7 @@ export class RunEngine {
         resultRevision,
         creditsUsed: Number(run.credits_used_milli) / 1000,
         summary_ru: r.summary_ru,
-        prodUrl: null,
+        prodUrl: r.status === "succeeded" ? (r.prodUrl ?? null) : null,
       });
     }
     return released.length > 0 ? (released[0]?.system_id ?? null) : null;
@@ -647,20 +708,47 @@ export class RunEngine {
           "Ход интервью превысил лимит кредитов. Переформулируйте запрос короче.",
         );
       const n = Math.ceil((0.25 * cap) / 1000);
+      // raise_cap_N holds N more credits; without them the option is not offered (billing.yaml#run_charging).
+      const billing = this.#d.billing;
+      const canRaise =
+        billing.isExempt(run.org_id) ||
+        (await billing.readBalance(this.#db, run.org_id)).available >= n * 1000;
       const ans = await needsInput({
         decisionId: "budget",
-        prompt_ru: `Лимит сборки (${cap / 1000} кр.) исчерпан. Увеличить лимит на ${n} кр. или остановить?`,
-        options: [
-          { id: `raise_cap_${n}`, label: `Увеличить на ${n} кр.`, recommended: true },
-          { id: "stop", label: "Остановить" },
-        ],
+        prompt_ru: canRaise
+          ? `Лимит сборки (${cap / 1000} кр.) исчерпан. Увеличить лимит на ${n} кр. или остановить?`
+          : `Лимит сборки (${cap / 1000} кр.) исчерпан, а свободных кредитов на увеличение (${n} кр.) нет. Сборку придётся остановить.`,
+        options: canRaise
+          ? [
+              { id: `raise_cap_${n}`, label: `Увеличить на ${n} кр.`, recommended: true },
+              { id: "stop", label: "Остановить" },
+            ]
+          : [{ id: "stop", label: "Остановить", recommended: true }],
       });
       if (ans.choice === "stop") throw new RunCancelled("Сборка остановлена по лимиту кредитов");
-      await this.#db
-        .updateTable("platform.runs")
-        .set({ credits_cap_milli: cap + n * 1000 })
-        .where("id", "=", run.id)
-        .execute();
+      const newCap = cap + n * 1000;
+      await this.#tx(async (t) => {
+        await t.trx.selectFrom("platform.runs").select("id").where("id", "=", run.id).forUpdate().execute();
+        await billing
+          .hold(t.trx, {
+            orgId: run.org_id,
+            runId: run.id,
+            systemId: run.system_id,
+            amountMilli: n * 1000,
+            key: `hold:${run.id}:cap:${newCap}`,
+            note: `Увеличение лимита сборки на ${n} кр.`,
+          })
+          .catch((e: unknown) => {
+            if (e instanceof ApiError && e.code === "INSUFFICIENT_CREDITS")
+              throw new RunCancelled("Сборка остановлена: не хватает кредитов на увеличение лимита");
+            throw e;
+          });
+        await t.trx
+          .updateTable("platform.runs")
+          .set({ credits_cap_milli: newCap })
+          .where("id", "=", run.id)
+          .execute();
+      });
     }
     const org = await this.#db
       .selectFrom("platform.orgs")
@@ -941,6 +1029,20 @@ export class RunEngine {
   }
 
   async #build(run: Run, ac: AbortController): Promise<Result> {
+    if (run.mode === "change") await this.#draftSnapshot(run, ac);
+    const input = run.input as { card?: Record<string, unknown> };
+    const out = await this.#runBuilder(run, ac, {
+      card: input.card ?? {},
+      cap: Number(run.credits_cap_milli ?? 0) / 1000,
+      mode: (run.mode ?? "create") as "create" | "change" | "fix",
+    });
+    if (out?.status === "cancelled")
+      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
+    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+  }
+
+  /** The build executor over this run's durable BuildHost (build runs; import_table schema_ops). */
+  async #runBuilder(run: Run, ac: AbortController, params: BuildParams): Promise<BuildOutcome | undefined> {
     const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
     const base = this.#stepHost(run, ac, needsInput);
     const systemId = run.system_id as string;
@@ -1035,16 +1137,103 @@ export class RunEngine {
       runGates: (level, overrides) =>
         base.runStep(`gate_${level}`, () => this.#gate(run, ac, level, commitFiles, filesAt, overrides)),
     };
-    const input = run.input as { card?: Record<string, unknown> };
-    const out = await this.#d.executors.build(host, {
-      card: input.card ?? {},
-      cap: Number(run.credits_cap_milli ?? 0) / 1000,
-      mode: (run.mode ?? "create") as "create" | "change" | "fix",
-    });
+    const out = await this.#d.executors.build(host, params);
     await commitFiles();
-    if (out?.status === "cancelled")
-      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
-    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+    return out;
+  }
+
+  /** import_table (workflows.yaml#workflows.import_table): steps live in ../imports/workflow.ts. */
+  async #importTable(run: Run, ac: AbortController): Promise<Result> {
+    const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
+    const base = this.#stepHost(run, ac, needsInput);
+    this.#imports ??= new ImportStore(this.#d.config.importsDir, this.#d.config.secretsKey);
+    const out = await runImportTable({
+      run: {
+        id: run.id,
+        orgId: run.org_id,
+        systemId: run.system_id as string,
+        input: run.input as unknown as ImportRunInput,
+      },
+      db: this.#db,
+      pg: this.#d.pg,
+      store: this.#imports,
+      ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      route: base.route,
+      needsInput,
+      buildChange: async (card, cap) => {
+        const r = await this.#runBuilder(run, ac, { card, cap, mode: "change" });
+        if (r?.status === "cancelled") throw new RunCancelled(r.summary_ru ?? "Импорт остановлен");
+        return r ?? {};
+      },
+    });
+    return { status: "succeeded", summary_ru: out.summary_ru, resultRevision: out.resultRevision };
+  }
+
+  /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */
+  async #draftSnapshot(run: Run, ac: AbortController): Promise<void> {
+    const sys = await this.#db
+      .selectFrom("platform.systems")
+      .selectAll()
+      .where("id", "=", run.system_id as string)
+      .executeTakeFirstOrThrow();
+    if (sys.prod_revision === null) return;
+    const live = await this.#db
+      .selectFrom("platform.publications")
+      .select("id")
+      .where("system_id", "=", sys.id)
+      .where("status", "=", "live")
+      .executeTakeFirst();
+    if (!live) return;
+    const versions = [sys.prod_revision, sys.schema_hwm_revision, sys.preview_revision].filter(
+      (v): v is number => v !== null && v > 0,
+    );
+    const specs: AppSpec[] = [];
+    for (const v of versions) specs.push(await loadSpec(this.#db, sys, v));
+    await this.#step(run, ac, "draft_snapshot", "Копирую данные prod в черновик, ПДн заменяю", () =>
+      draftSnapshot(this.#d.pg, {
+        systemKey: sys.schema_key,
+        specs,
+        marker: live.id,
+        ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      }),
+    );
+  }
+
+  /** publish / rollback runs (workflows.yaml#workflows.publish, #rollback): steps live in ../publish/workflows.ts. */
+  async #flow(run: Run, ac: AbortController): Promise<Result> {
+    const systemId = run.system_id as string;
+    const filesAt = async (): Promise<Map<string, string>> => {
+      const s = await this.#db
+        .selectFrom("platform.systems")
+        .select("draft_revision")
+        .where("id", "=", systemId)
+        .executeTakeFirstOrThrow();
+      const m = await loadManifest(this.#db, this.#d.blobs, systemId, s.draft_revision);
+      const out = new Map<string, string>();
+      for (const [p, sha] of Object.entries(m))
+        if (p.startsWith("ui/") || p.startsWith("functions/"))
+          out.set(p, (await this.#d.blobs.get(sha)).toString("utf8"));
+      return out;
+    };
+    const host: FlowHost = {
+      run,
+      db: this.#db,
+      pg: this.#d.pg,
+      blobs: this.#d.blobs,
+      config: this.#d.config,
+      gates: this.#d.executors.gates,
+      signal: ac.signal,
+      options: this.#d.publish ?? {},
+      tx: (fn) => this.#tx(fn),
+      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      draftG0: () =>
+        this.#step(run, ac, "gate_G0", "Проверяю черновик (G0)", () =>
+          this.#gate(run, ac, "G0", async () => null, filesAt, undefined),
+        ),
+    };
+    const out: FlowResult = run.kind === "publish" ? await runPublish(host) : await runRollback(host);
+    return { status: "succeeded", ...out };
   }
 
   async #gate(

@@ -219,7 +219,8 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
       : null;
   const styleOpen = hasDraft && search.get("panel") === "style" && theme !== null;
   const previewAvailable = system.previewRevision != null || run.g0PassedRevision !== null;
-  const reloadKey = `${system.previewRevision ?? ""}:${run.g0PassedRevision ?? ""}`;
+  // The newest revision known to have a preview: previewRevision catching up with g0PassedRevision is not growth.
+  const previewRevision = Math.max(system.previewRevision ?? -1, run.g0PassedRevision ?? -1);
   const blockers = publishBlockers(view.publishBlockers, reports);
 
   const chatBody = (
@@ -317,7 +318,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     main = (
       <PreviewPane
         systemId={systemId}
-        reloadKey={reloadKey}
+        revision={previewRevision}
         available={previewAvailable}
         theme={theme ?? {}}
         testData={stage === "ready"}
