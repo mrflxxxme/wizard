@@ -150,11 +150,27 @@ export {
 } from "./pilot/invites.js";
 /** M2-09: beta_readiness (platform_settings) — partner invitations only after M2-13. */
 export {
+  BETA_READINESS_CHECKLIST_RU,
   BETA_READINESS_MISSING_RU,
   type BetaReadiness,
   getBetaReadiness,
   setBetaReadiness,
 } from "./pilot/readiness.js";
+/** Pilot operations shared by the CLI and the staff console «Пилот» (invites, orgs, grants, review flag, LLM spend). */
+export {
+  findPilotOrg,
+  grantPilotCredits,
+  type LlmSpendView,
+  listPilotInvites,
+  type PilotInviteStatus,
+  type PilotInviteView,
+  type PilotOrgRow,
+  pilotOrgs,
+  platformLlmSpend,
+  revokePilotInvite,
+  setFounderReviewRequired,
+  setPilotPlan,
+} from "./pilot/service.js";
 /** retention_cron platform part (M2-05): runtime journals → platform.deletion_log, consent notices, delete_system. */
 export { type RetentionCronDeps, type RetentionCronReport, runRetentionCron } from "./privacy/cron.js";
 export { type PurgedSystem, purgeDeletedSystems, SYSTEM_PURGE_DAYS } from "./privacy/delete-system.js";

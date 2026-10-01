@@ -391,6 +391,8 @@ export interface PilotInvitesTable {
   accepted_user_id: string | null;
   org_id: string | null;
   revoked_at: TsNull;
+  /** pilot-admin: orgs.require_founder_review set at acceptance (default true). */
+  require_founder_review: Generated<boolean>;
   created_at: TsDef;
 }
 

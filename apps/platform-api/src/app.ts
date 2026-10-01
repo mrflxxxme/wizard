@@ -28,6 +28,7 @@ import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { abuseRoutes } from "./routes/abuse.js";
 import { adminRoutes } from "./routes/admin.js";
+import { adminPilotRoutes } from "./routes/admin-pilot.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
@@ -311,6 +312,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   };
   api.route("/", abuseRoutes(abuse));
   api.route("/", adminRoutes(abuse));
+  api.route("/", adminPilotRoutes({ ...abuse, billing, pilotNow: opts.now }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 

@@ -466,6 +466,51 @@ export interface StaffSession {
   mfaVerifiedUntil: string | null;
 }
 
+/** api.yaml#PilotReadiness (staff console «Пилот»). */
+export interface PilotReadiness {
+  on: boolean;
+  by: string | null;
+  at: string | null;
+  note: string | null;
+  checklist: { id: string; text: string }[];
+}
+
+/** api.yaml#PilotInvite. */
+export interface PilotInvite {
+  id: string;
+  email: string;
+  orgName: string | null;
+  credits: number;
+  requireFounderReview: boolean;
+  status: "sent" | "accepted" | "expired";
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  orgId: string | null;
+}
+
+/** api.yaml#PilotOrg. */
+export interface PilotOrg {
+  id: string;
+  name: string;
+  plan: string;
+  members: number;
+  requireFounderReview: boolean;
+  creditsAvailable: number;
+  creditsSpentMonth: number;
+  modelSpendRub: number;
+}
+
+/** api.yaml#LlmSpend. */
+export interface LlmSpend {
+  month: string;
+  spentRub: number;
+  capRub: number;
+  sharePercent: number;
+  warn: boolean;
+  reached: boolean;
+}
+
 /** api.yaml#adminSystemData. */
 export interface StaffData {
   env: "draft" | "prod";
