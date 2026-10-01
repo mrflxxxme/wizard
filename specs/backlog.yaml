@@ -889,7 +889,7 @@ tasks:
     owner: platform
     parallel_group: m2-p
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "WIZARD_REGISTRATION=invite: вход нового email без приглашения основателя → понятный отказ на русском; приглашение создаёт CLI платформы, письмо со ссылкой"
@@ -901,12 +901,12 @@ tasks:
   - id: M2-16
     title: "Eval на пилоте: smoke раз в неделю, потолок live-eval 4 000 ₽/мес (D20_eval_budget)"
     milestone: M2
-    deps: [M1-10]
+    deps: []   # расписание и бюджет eval не зависят от live-ключей M1-10
     specs: [specs/quality/eval.yaml, specs/product.yaml]
     owner: qa
     parallel_group: m2-p
     estimate_days: 0.3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "eval-live.yml: расписание раз в неделю; бюджетная проверка tools/eval использует 4 000 ₽/мес"
