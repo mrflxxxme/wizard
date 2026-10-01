@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { PLATFORM_PASSTHROUGH } from "../pilot-secrets.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const hasYaml = spawnSync("python3", ["-c", "import yaml"]).status === 0;
@@ -147,6 +148,8 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       "WIZARD_FOUNDER_EMAIL",
     ])
       expect(job.env[n]).toBe(gh(`vars.${n}`));
+    // Every setting the secrets file passes through to platform-api reaches the job's environment.
+    for (const n of PLATFORM_PASSTHROUGH) expect(job.env, n).toHaveProperty(n);
     const names = job.steps.map((s) => s.name ?? s.uses);
     expect(names).toEqual(expect.arrayContaining(["Only commits of main", "Close SSH access"]));
     const close = job.steps.find((s) => s.name === "Close SSH access");
