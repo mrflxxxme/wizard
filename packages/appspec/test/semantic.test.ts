@@ -685,6 +685,19 @@ describe("semantic rules (ops.yaml#semantic_rules)", () => {
     expect(errorsOf(waived, { enforcePiiRetention: true })).toEqual([]);
   });
 
+  test("7a. a file field without pii counts as basic (runtime.yaml#files, M2-14); pii none opts out", () => {
+    const spec = miniSpec();
+    const e = spec.entities[0] as { fields: { name: string; label: string; type: string; pii?: string }[] };
+    for (const f of e.fields) if (f.pii === "basic") f.pii = "none";
+    expect(errorsOf(spec, { enforcePiiRetention: true })).toEqual([]);
+    e.fields.push({ name: "scan", label: "Фото", type: "file" });
+    expect(errorsOf(spec, { enforcePiiRetention: true }).map((x) => `${x.code} ${x.path}`)).toEqual([
+      "SCHEMA_INVALID /entities/0/retention",
+    ]);
+    (e.fields.at(-1) as { pii?: string }).pii = "none";
+    expect(errorsOf(spec, { enforcePiiRetention: true })).toEqual([]);
+  });
+
   test("structural errors carry JSON Pointer paths and allowed values", () => {
     const spec = miniSpec() as unknown as { theme: unknown; entities: { fields: { type: string }[] }[] };
     spec.theme = { radius: 5, font: "Arial" };

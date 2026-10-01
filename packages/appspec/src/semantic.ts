@@ -296,7 +296,7 @@ function checkEntity(entity: Entity, i: number, spec: AppSpec, opts: ValidateOpt
     opts.enforcePiiRetention &&
     !entity.retention &&
     !waived &&
-    entity.fields.some((f) => f.pii === "basic")
+    entity.fields.some((f) => (f.pii ?? (f.type === "file" ? "basic" : "none")) === "basic")
   ) {
     out.push(
       err("SCHEMA_INVALID", [...ep, "retention"], "Сущность с ПДн должна иметь срок хранения", {

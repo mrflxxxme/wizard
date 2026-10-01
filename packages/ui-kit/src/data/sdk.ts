@@ -1,5 +1,6 @@
 // sdkDataSource(): DataSource over @wizard/sdk client hooks (ui-kit.yaml#data_binding.sdk_mapping).
 import {
+  SdkClient,
   useEntity,
   useEntityList,
   useEntityMutation,
@@ -17,6 +18,8 @@ import type {
   AsyncResult,
   AuthApi,
   DataSource,
+  FileInfo,
+  FilesApi,
   ListQuery,
   QrCheckRequest,
   QrCheckResponse,
@@ -179,6 +182,37 @@ export function sdkDataSource(): DataSource {
           },
         [client, verifyFn],
       );
+    },
+    useFiles() {
+      const client = useSdkClient();
+      return useMemo<FilesApi>(() => {
+        const href = (fileId: string) => `${client.baseUrl}/api/files/${encodeURIComponent(fileId)}`;
+        return {
+          href,
+          info: (fileId) => client.request<FileInfo>("GET", `/api/files/${encodeURIComponent(fileId)}/info`),
+          async upload(file, target) {
+            const form = new FormData();
+            form.set("file", file, file.name);
+            form.set("field", target.field);
+            if (target.entity) form.set("entity", target.entity);
+            let res: Response;
+            try {
+              res = await fetch(`${client.baseUrl}/api/files`, {
+                method: "POST",
+                // runtime.yaml#auth.csrf; the browser sets the multipart Content-Type with its boundary.
+                headers: { Accept: "application/json", "X-Wizard-Request": "1" },
+                body: form,
+                credentials: "same-origin",
+              });
+            } catch {
+              throw toWzError(SdkClient.toError(0, { error: { code: "NETWORK" } }));
+            }
+            const json: unknown = await res.json().catch(() => undefined);
+            if (!res.ok) throw toWzError(SdkClient.toError(res.status, json));
+            return json as FileInfo;
+          },
+        };
+      }, [client]);
     },
     useQrOffline() {
       const client = useSdkClient();

@@ -10,6 +10,7 @@ import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
+import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
 import {
   errorResponse,
@@ -43,6 +44,7 @@ import { defaultLegalTemplates, type LegalTemplates } from "./privacy/templates.
 import type { SystemEnv, SystemRegistry } from "./registry.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
+import { filesRoutes } from "./routes/files.js";
 import { fnRoutes } from "./routes/fn.js";
 import { inviteRoutes } from "./routes/invite.js";
 import { loginApiRoutes } from "./routes/login.js";
@@ -84,6 +86,11 @@ export interface RuntimeAppOptions {
   privacy?: { withdrawalDays?: number; legalTemplates?: LegalTemplates };
   /** M2: function calls go to sandbox pods (createWorkerdSandbox); WIZARD_UNSAFE_LOCAL_EXEC is then not needed. */
   sandbox?: SandboxExecutors;
+  /**
+   * Storage of file fields (runtime.yaml#files, M2-14). Default: createFileStorage(process.env) — WIZARD_FILES_STORAGE
+   * (fs in <artifactsRoot>/../files, memory or s3); null — no files (uploads 404, file values unchecked).
+   */
+  files?: FileStorage | null;
 }
 
 export interface RuntimeApp {
@@ -136,6 +143,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   };
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
+  const files =
+    o.files === undefined
+      ? createFileStorage(process.env, { defaultDir: join(dirname(artifactsRoot), "files") })
+      : o.files;
   const connectors = createConnectorHost({
     env,
     clock: services.clock,
@@ -156,6 +167,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     dbRole: o.dbRole,
     statementTimeout: o.statementTimeout,
     legalTemplates: services.legalTemplates,
+    ...(files ? { files } : {}),
+    ...(o.log ? { log: o.log } : {}),
     bus: (id, e) => {
       const k = `${id}:${e}`;
       let b = buses.get(k);
@@ -221,6 +234,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/api/auth", authRoutes());
   app.route("/api/fn", fnRoutes());
   app.route("/api/events", eventsRoutes());
+  app.route("/api/files", filesRoutes(auth.keys));
   app.route("/api/pay", payRoutes(connectors));
   app.route("/api/telegram", telegramApiRoutes(connectors));
   app.route("/api/admin/pd-requests", pdRequestsApiRoutes());

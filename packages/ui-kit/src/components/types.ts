@@ -1,7 +1,7 @@
 // Prop types of the M0 components (ui-kit.yaml#components; names and shapes are normative).
 import type { ReactNode } from "react";
 import type { WzBase } from "../data/context.js";
-import type { ListQuery, Rec } from "../data/types.js";
+import type { FileMimeType, ListQuery, Rec } from "../data/types.js";
 import type { BadgeTone } from "./Badge.js";
 
 export type Selection = Record<string, string[]>;
@@ -157,6 +157,22 @@ export interface StatsReportProps extends WzBase {
   subtitle?: string;
   fn?: string;
   data?: StatsData;
+}
+
+/** ui-kit.yaml#components.FileField (M2-14). */
+export interface FileFieldProps extends WzBase {
+  name: string;
+  label: string;
+  /** fileId */
+  value: string | null;
+  onChange(fileId: string | null): void;
+  accept?: FileMimeType[];
+  required?: boolean;
+  error?: string;
+  /** ext: entity of the field for POST /api/files; default — the runtime finds it by the field name and role. */
+  entity?: string;
+  /** ext: no upload or removal (readonly fields of RecordForm). */
+  disabled?: boolean;
 }
 
 export interface ConsentCheckboxProps extends WzBase {

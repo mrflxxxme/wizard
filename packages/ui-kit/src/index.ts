@@ -10,6 +10,7 @@ export { Catalog } from "./components/Catalog.js";
 export { ConsentCheckbox } from "./components/ConsentCheckbox.js";
 export { DataTable } from "./components/DataTable.js";
 export { Field, type FieldProps, type FieldType } from "./components/Field.js";
+export { FILE_MIMES, FileField, formatFileSize } from "./components/FileField.js";
 export { ItemCard } from "./components/ItemCard.js";
 export { Login } from "./components/Login.js";
 export { QrScanner } from "./components/QrScanner.js";
@@ -25,6 +26,7 @@ export type {
   ColumnDef,
   ConsentCheckboxProps,
   DataTableProps,
+  FileFieldProps,
   ItemCardData,
   ItemCardProps,
   OptionGroup,
@@ -64,6 +66,9 @@ export type {
   AsyncResult,
   AuthApi,
   DataSource,
+  FileInfo,
+  FileMimeType,
+  FilesApi,
   ListQuery,
   LoginConsent,
   Mutation,

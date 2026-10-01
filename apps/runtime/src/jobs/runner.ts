@@ -577,16 +577,32 @@ export async function runRetention(
     const cond = `${anchor} is not null and ${expires} < $2::timestamptz`;
     const pii = piiFields(e);
     if (mode === "anonymize" && pii.length === 0) continue;
+    // File fields cleared or deleted with their rows: objects go after the commit (runtime.yaml#files).
+    const fileCols = e.fields
+      .filter((f) => f.type === "file" && (mode === "delete" || pii.includes(f.name)))
+      .map((f) => quoteIdent(f.name));
     await privacyPass(
       `retention:${e.name}`,
       async () => {
+        const files: string[] = [];
+        const collect = (rows: readonly Row[]) => {
+          for (const row of rows)
+            for (const v of Object.values(row)) if (typeof v === "string") files.push(v);
+        };
         const rows = await system(async (tx) => {
+          if (fileCols.length && mode === "anonymize")
+            collect(
+              await tx.unsafe(`select ${fileCols.join(", ")} from ${T(e.name)} where ${cond}`, [
+                r.deleteAfterDays,
+                now.toISOString(),
+              ]),
+            );
           const res =
             mode === "delete"
-              ? await tx.unsafe(`delete from ${T(e.name)} where ${cond}`, [
-                  r.deleteAfterDays,
-                  now.toISOString(),
-                ])
+              ? await tx.unsafe(
+                  `delete from ${T(e.name)} where ${cond}${fileCols.length ? ` returning ${fileCols.join(", ")}` : ""}`,
+                  [r.deleteAfterDays, now.toISOString()],
+                )
               : await tx.unsafe(
                   `update ${T(e.name)} set ${pii.map((f) => `${quoteIdent(f)} = null`).join(", ")}
                  where ${cond} and (${pii.map((f) => `${quoteIdent(f)} is not null`).join(" or ")})`,
@@ -608,8 +624,11 @@ export async function runRetention(
               now,
             );
           }
+          if (mode === "delete" && fileCols.length) collect(res);
           return res.count;
         });
+        // A storage failure leaves the objects unreferenced: the files sweep below (or the next pass) deletes them.
+        if (files.length) await sys.files?.release(files).catch(() => 0);
         report.retention.push({ entity: e.name, mode, rows });
       },
       e.name,
@@ -623,6 +642,11 @@ export async function runRetention(
     for (const d of await runDueErasures(sys, now))
       if (d.rows > 0) report.retention.push({ entity: d.entity, mode: "consent_revoked", rows: d.rows });
   });
+  // Uploads never attached and files whose release failed earlier (runtime.yaml#files).
+  if (sys.files) {
+    const files = sys.files;
+    await privacyPass("retention:files", async () => void (await files.sweep(now)), "files");
+  }
   // The marker the platform watchdog reads (alert after 26 h without a pass); a pending request is now served.
   await privacyPass("retention:marker", () =>
     system(async (tx) => {

@@ -442,7 +442,9 @@ function diffChecks(entity: string, prev: Field, next: Field, steps: MigrationSt
  * retention.mode=anonymize stay nullable (anonymization nulls them); data API enforces `required`.
  */
 function dbRequired(entity: Entity, field: Field): boolean {
-  const anonymized = entity.retention?.mode === "anonymize" && (field.pii ?? "none") !== "none";
+  // runtime.yaml#files.pii_and_retention: a file field without pii is basic.
+  const pii = field.pii ?? (field.type === "file" ? "basic" : "none");
+  const anonymized = entity.retention?.mode === "anonymize" && pii !== "none";
   return field.required === true && !anonymized;
 }
 

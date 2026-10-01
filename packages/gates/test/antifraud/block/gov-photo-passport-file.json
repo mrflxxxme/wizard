@@ -1,0 +1,18 @@
+{
+  "check": "G2-AF-03",
+  "expect": "block",
+  "description": "M2-14: поле file «Фото паспорта» без явного pii (по умолчанию basic)",
+  "milestone": "M2",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "passport_photo",
+        "label": "Фото паспорта",
+        "type": "file"
+      }
+    }
+  ],
+  "base": "forum"
+}

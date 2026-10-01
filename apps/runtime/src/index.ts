@@ -31,6 +31,38 @@ export { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
 export { assertStartupAllowed, isLoopbackAddress, type RuntimeEnv, readEnv, StartupError } from "./env.js";
 /** Isolated function executor (unsafe-local, M0–M1): stop all executor processes on shutdown. */
 export { closeExecutors } from "./exec/host.js";
+/** AWS SigV4 (header-signed requests, presigned URLs) for the S3-compatible store. */
+export { EMPTY_SHA256, presignUrl, type S3Credentials, type SignInput, signRequest } from "./files/sigv4.js";
+/** M2-14 files (runtime.yaml#files): magic-byte allowlist, attachment headers. */
+export {
+  attachmentDisposition,
+  FILE_MIMES,
+  type FileMime,
+  MAX_FILE_BYTES,
+  safeFileName,
+  sniffMime,
+} from "./files/sniff.js";
+/** Object storage of file fields: S3 (Cloud.ru), local folder, memory; env-driven factory; purge of a schema prefix. */
+export {
+  createFileStorage,
+  FILE_KEY_RE,
+  type FileMeta,
+  type FileStorage,
+  FsFileStorage,
+  MemoryFileStorage,
+  purgeSchemaFiles,
+  type S3Config,
+  S3Error,
+  S3FileStorage,
+  type StoredFile,
+} from "./files/storage.js";
+/** Files of a loaded system: attach guard, release of detached files, sweep of abandoned uploads. */
+export {
+  ABANDONED_UPLOAD_MS,
+  FILE_NOT_FOUND_RU,
+  type FileFieldGuard,
+  SystemFiles,
+} from "./files/system-files.js";
 /** Hono env for route modules in src/routes/* (M0-23, M0-24). */
 export type { OutboxMessage, RuntimeContext, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
 /** JSON error body (runtime.yaml#data_api.error_shape). */
@@ -111,6 +143,8 @@ export {
 } from "./registry.js";
 /** RoleSpec for GET /_wizard/spec. */
 export { buildRoleSpec, type RoleSpec } from "./rolespec.js";
+/** /api/files: lifetime of signed download links, uploads per hour. */
+export { FILE_LINK_TTL_MS, UPLOADS_PER_HOUR } from "./routes/files.js";
 /** M2 sandbox (security/isolation.yaml#M2): capability tokens {systemId, env, requestId, exp} of the runtime RPC. */
 export {
   type Capability,

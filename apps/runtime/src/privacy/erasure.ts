@@ -19,7 +19,24 @@ export interface DeletionEntry {
   cutoff?: Date | null;
   /** Anonymized fields (names, never values); empty for delete. */
   fields?: string[];
+  /** fileIds of file fields this erasure cleared (their objects are deleted after the commit; never journaled). */
+  files?: string[];
 }
+
+/** Deletes the objects of erased file fields after the commit (runtime.yaml#files.pii_and_retention). */
+export async function releaseErasedFiles(
+  sys: LoadedSystem,
+  entries: readonly DeletionEntry[],
+): Promise<void> {
+  const ids = entries.flatMap((e) => e.files ?? []);
+  // A storage failure leaves the objects unreferenced: the sweep of the next retention pass deletes them.
+  if (ids.length && sys.files) await sys.files.release(ids).catch(() => 0);
+}
+
+const withoutFiles = (e: DeletionEntry): DeletionEntry => {
+  const { files: _f, ...rest } = e;
+  return rest;
+};
 
 /** Maximum delay between withdrawal and anonymization (ст. 21 ч. 5 152-ФЗ). */
 export const MAX_WITHDRAWAL_DAYS = 30;
@@ -77,9 +94,9 @@ export async function anonymizeRows(
   e: Entity,
   where: string,
   params: readonly unknown[],
-): Promise<{ rows: number; fields: string[] } | null> {
+): Promise<{ rows: number; fields: string[]; files: string[] } | null> {
   const pii = piiFieldsOf(e);
-  if (pii.length === 0) return { rows: 0, fields: [] };
+  if (pii.length === 0) return { rows: 0, fields: [], files: [] };
   const cols = await tx.unsafe<{ column_name: string; is_nullable: string }[]>(
     `select column_name, is_nullable from information_schema.columns where table_schema = $1 and table_name = $2`,
     [schema, e.name],
@@ -102,15 +119,25 @@ export async function anonymizeRows(
     }
     fields.push(f.name);
   }
-  if (sets.length === 0) return { rows: 0, fields: [] };
+  if (sets.length === 0) return { rows: 0, fields: [], files: [] };
+  const fileCols = pii.filter((f) => f.type === "file" && nullable.get(f.name)).map((f) => f.name);
   try {
-    const res = await tx.savepoint((sp) =>
-      sp.unsafe(
+    return await tx.savepoint(async (sp) => {
+      const held = fileCols.length
+        ? await sp.unsafe(
+            `select ${fileCols.map(quoteIdent).join(", ")} from ${T(schema, e.name)} where (${where}) and (${changed.join(" or ")})`,
+            params as never[],
+          )
+        : [];
+      const res = await sp.unsafe(
         `update ${T(schema, e.name)} set ${sets.join(", ")} where (${where}) and (${changed.join(" or ")})`,
         params as never[],
-      ),
-    );
-    return { rows: res.count, fields };
+      );
+      const files = held.flatMap((r) =>
+        fileCols.map((c) => r[c]).filter((v): v is string => typeof v === "string"),
+      );
+      return { rows: res.count, fields, files };
+    });
   } catch {
     return null;
   }
@@ -147,7 +174,7 @@ async function eraseUser(tx: Tx, sys: LoadedSystem, userId: string, mode: Deleti
     if (!e.ownerField) continue;
     const r = await anonymizeRows(tx, sys.schema, e, `${quoteIdent(e.ownerField)} = $1::uuid`, [userId]);
     if (r === null) pending.push(e.name);
-    else entries.push({ entity: e.name, mode, rows: r.rows, fields: r.fields });
+    else entries.push({ entity: e.name, mode, rows: r.rows, fields: r.fields, files: r.files });
   }
   await logDeletions(tx, sys.schema, entries);
   return { entries, pending };
@@ -173,7 +200,8 @@ export async function revokeConsent(
 ): Promise<RevokeResult> {
   const days = Math.min(MAX_WITHDRAWAL_DAYS, Math.max(0, Math.floor(o.withdrawalDays ?? 0)));
   const now = o.now ?? new Date();
-  return sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
+  let erased: DeletionEntry[] = [];
+  const result = await sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
     const tx = d.sql;
     const s = sys.schema;
     await tx.unsafe(`delete from ${T(s, "_w_sessions")} where user_id = $1`, [userId]);
@@ -185,6 +213,7 @@ export async function revokeConsent(
     let job = days > 0;
     if (!job) {
       const r = await eraseUser(tx, sys, userId, "consent_revoked");
+      erased = r.entries;
       out.entities = r.entries.map((x) => ({ entity: x.entity, rows: x.rows }));
       out.pending = r.pending;
       job = r.pending.length > 0;
@@ -211,11 +240,13 @@ export async function revokeConsent(
     );
     return out;
   });
+  await releaseErasedFiles(sys, erased);
+  return result;
 }
 
 /** Due consent-withdrawal tasks (_w_jobs kind retention); returns journal entries of this pass. */
 export async function runDueErasures(sys: LoadedSystem, now: Date): Promise<DeletionEntry[]> {
-  return sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
+  const all = await sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
     const tx = d.sql;
     const s = sys.schema;
     const jobs = await tx.unsafe(
@@ -247,6 +278,8 @@ export async function runDueErasures(sys: LoadedSystem, now: Date): Promise<Dele
     }
     return all;
   });
+  await releaseErasedFiles(sys, all);
+  return all.map(withoutFiles);
 }
 
 /** compliance.yaml#retention.users: no login for 3 years → contacts anonymized (journal mode retention). */
