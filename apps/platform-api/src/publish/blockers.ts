@@ -77,8 +77,9 @@ export async function cardBindingMissing(
 }
 
 /**
- * M2 (config.prodG2Required): the revision is on founder review (G2-AF-08/G2-AF-09 at a publish attempt,
- * abuse.yaml#scoring.effect) that staff has not approved — pending or rejected.
+ * M2 (config.prodG2Required or config.founderReviewRequired): the revision is on founder review (G2-AF-08/G2-AF-09
+ * at a publish attempt, abuse.yaml#scoring.effect; first publication or new personal-data fields, M2-09) that staff
+ * has not approved — pending or rejected.
  */
 export async function founderReviewBlocks(
   db: Db,
@@ -112,7 +113,7 @@ export async function publishBlockers(
   s: Selectable<SystemsTable>,
   billing?: Billing,
   cardRequired = false,
-  g2Required = false,
+  reviewRequired = false,
 ): Promise<ErrorCode[]> {
   const out: ErrorCode[] = [];
   if (user.orgs.get(s.org_id) !== "owner") out.push("NOT_OWNER");
@@ -129,7 +130,7 @@ export async function publishBlockers(
     .where("id", "=", s.org_id)
     .executeTakeFirstOrThrow();
   out.push(...specPublishBlockers(rev.spec as unknown as AppSpec, org.plan));
-  if (await founderReviewBlocks(db, s.id, rev.version, g2Required)) out.push("FOUNDER_REVIEW_PENDING");
+  if (await founderReviewBlocks(db, s.id, rev.version, reviewRequired)) out.push("FOUNDER_REVIEW_PENDING");
   // prod_systems (billing.yaml#plans.enforcement): republishing a system already in prod is always allowed.
   if (
     s.prod_revision === null &&

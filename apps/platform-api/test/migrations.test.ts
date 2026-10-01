@@ -49,7 +49,7 @@ const M1_TABLES = [
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
 // M2 tables created so far (M2-10 exports, M2-05 deletion_log, M2-07 billing, M2-04 G2 at publish: moderation, M2-15
-// pilot invitations and founder alerts, M2-08 abuse).
+// pilot invitations and founder alerts, M2-08 abuse, M2-09 platform settings).
 const M2_TABLES = [
   "exports",
   "deletion_log",
@@ -60,6 +60,7 @@ const M2_TABLES = [
   "brand_allowlist",
   "pilot_invites",
   "ops_alerts",
+  "platform_settings",
   "abuse_reports",
   "staff_audit_log",
 ];

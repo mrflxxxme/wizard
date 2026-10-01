@@ -400,6 +400,15 @@ export interface OpsAlertsTable {
   created_at: TsDef;
 }
 
+/** db.yaml#platform_settings (M2-09): platform switches set by the founder's CLI (beta_readiness), with who/when. */
+export interface PlatformSettingsTable {
+  key: string;
+  value: Json;
+  updated_by: string;
+  updated_at: TsDef;
+  created_at: TsDef;
+}
+
 /** db.yaml#brand_allowlist: brands the org proved it owns (abuse.yaml#patterns.brands.override, G2-AF-04). */
 export interface BrandAllowlistTable {
   org_id: string;
@@ -477,6 +486,7 @@ export interface DB {
   "platform.brand_allowlist": BrandAllowlistTable;
   "platform.pilot_invites": PilotInvitesTable;
   "platform.ops_alerts": OpsAlertsTable;
+  "platform.platform_settings": PlatformSettingsTable;
   "platform.abuse_reports": AbuseReportsTable;
   "platform.staff_audit_log": StaffAuditLogTable;
 }

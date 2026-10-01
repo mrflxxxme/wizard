@@ -2,8 +2,10 @@
 // M1: runs are enqueued as DBOS workflows; apps/worker executes them (workflows.yaml#execution.M1).
 import { serve } from "@hono/node-server";
 import { createLogger } from "@wizard/pii/log";
+import { metricsListenFromEnv } from "@wizard/pii/metrics";
 import { createPlatformApi } from "./app.js";
 import { assertStartupAllowed, loadConfig } from "./config.js";
+import { startMetricsServer } from "./ops/metrics.js";
 
 const logger = createLogger({ svc: "platform-api" });
 // Uncaught errors go through the allowlist too (a raw PG error carries values in detail, L3-08).
@@ -26,11 +28,23 @@ const server = serve({ fetch: api.fetch, port, hostname: host }, (info) => {
   logger.info("listening", { url: `http://${host}:${info.port}/api/v1`, port: info.port });
 });
 
+// M2-09: Prometheus /metrics on a dedicated port (WIZARD_METRICS_PORT; helm opens it to the observability namespace).
+const metricsAt = metricsListenFromEnv(process.env);
+const metrics = metricsAt
+  ? await startMetricsServer({
+      ...metricsAt,
+      db: api.deps.db,
+      capRub: api.deps.config.llmMonthlyCapRub,
+    })
+  : null;
+if (metrics) logger.info("listening_metrics", { port: metrics.port });
+
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
   server.close();
+  await metrics?.close();
   await api.close();
   process.exit(0);
 }

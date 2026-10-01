@@ -50,7 +50,8 @@ network:
 # Secrets that must exist in the platform namespace before the release
 secrets:
   # WIZARD_* of platform-api / worker / runtime (WIZARD_DB_URL via pgbouncer, WIZARD_SECRETS_KEY,
-  # WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_S3_*, SMTP, Telegram, YooKassa, LLM keys)
+  # WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_S3_*, Telegram, YooKassa, LLM keys; platform mail M2-09:
+  # WIZARD_SMTP_HOST / _PORT / _USER / _PASSWORD / _FROM [/ _TLS], docs/ops/mail.md)
   platformEnv: wizard-platform-env
   # userlist.txt and the server password for pgbouncer
   pgbouncer: wizard-pgbouncer
@@ -58,7 +59,8 @@ secrets:
   dnsSolver: wizard-dns-solver
   # Self-managed PostgreSQL (postgres.inCluster): POSTGRES_PASSWORD, WALG_LIBSODIUM_KEY (64 hex), AWS_ACCESS_KEY_ID and
   # AWS_SECRET_ACCESS_KEY of the backups bucket, WIZARD_DATA_BACKUP_KEY (rclone crypt of .data); optional
-  # WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID (alert webhook, e.g. the Telegram Bot API sendMessage URL).
+  # WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID (alert webhook, e.g. the Telegram Bot API sendMessage URL) and
+  # WIZARD_OPS_ALERT_EMAIL (founder alerts by platform mail, M2-09).
   postgres: wizard-postgres
 
 config:
@@ -72,10 +74,19 @@ config:
   registration: open
   payments: "on"
   llmMonthlyCapRub: 6000
+  # M2-09 (abuse.yaml#identification.founder_review): apply orgs.require_founder_review — the first prod publication
+  # of a system and new personal-data fields wait for the founder's approval ("on" | "off", quoted).
+  founderReview: "on"
   # S3-compatible object storage of the provider (providers/<provider>.yaml)
   s3Endpoint: ""
   s3Region: ""
   egressAllow: ""
+
+# Prometheus /metrics of platform-api, worker and runtime on a dedicated port (M2-09): pod annotations for the
+# VictoriaMetrics scrape of annotated pods (addons/victoria-metrics-values.yaml); NetworkPolicy opens it only to the
+# observability namespace. Queries: docs/ops/observability.md.
+metrics:
+  port: 9464
 
 platformApi:
   replicas: 2

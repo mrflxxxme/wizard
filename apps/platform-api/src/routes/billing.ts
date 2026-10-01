@@ -5,6 +5,7 @@ import { ipInCidrs } from "@wizard/connectors";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
+import { TOPUP_NOT_ON_PLAN_RU, TOPUP_PLANS } from "../billing/plans.js";
 import { ShopError } from "../billing/shop.js";
 import { ApiError, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, clientIp, isUuid } from "../http/auth.js";
@@ -62,6 +63,13 @@ export function billingRoutes(d: Deps): Hono<AppEnv> {
     const user = c.get("user");
     const orgId = ownerOrg(user, c.req.param("orgId"));
     paymentsOn();
+    // billing.yaml#plans.topup.available_on (M2-09): pilot credits come from the founder, even with payments on.
+    const org = await d.db
+      .selectFrom("platform.orgs")
+      .select("plan")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org || !TOPUP_PLANS.includes(org.plan)) throw new ApiError("FORBIDDEN", TOPUP_NOT_ON_PLAN_RU);
     const b = await jsonBody(c, z.strictObject({ packs: z.number().int().min(1).max(20) }));
     return c.json(await d.payments.createTopup(user, orgId, b.packs));
   });

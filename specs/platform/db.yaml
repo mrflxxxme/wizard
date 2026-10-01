@@ -117,6 +117,15 @@ tables:
     columns:
       key: "text pk"
 
+  platform_settings:
+    milestone: M2
+    purpose: "M2-09: переключатели платформы, которые ставит CLI основателя (pilot readiness on|off), с отметкой кто/когда. beta_readiness = {on: bool, note?} — пока не on, CLI не отправляет приглашения партнёрам (зеркало M2-13: юрист и уведомление РКН; compliance.yaml#beta_readiness)"
+    columns:
+      key: "text pk"
+      value: "jsonb not null"
+      updated_by: "text not null"                             # кто переключил (--by или пользователь ОС)
+      updated_at: "timestamptz not null"
+
   systems:
     milestone: M0
     columns:

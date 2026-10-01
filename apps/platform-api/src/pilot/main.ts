@@ -1,6 +1,6 @@
-// Entry of `pnpm --filter @wizard/platform-api pilot …` (commands: src/pilot/cli.ts). Letters go to the platform
-// mailer (locally the outbox .data/outbox/platform, as the API's own letters).
-import { OutboxMailer } from "../auth/mailer.js";
+// Entry of `pnpm --filter @wizard/platform-api pilot …` (commands: src/pilot/cli.ts). Letters go through the platform
+// mailer: SMTP with WIZARD_SMTP_* (M2-09), otherwise the outbox .data/outbox/platform, as the API's own letters.
+import { platformMailer } from "../auth/smtp-mailer.js";
 import { Billing } from "../billing/ledger.js";
 import { loadConfig } from "../config.js";
 import { createDb } from "../db/index.js";
@@ -13,7 +13,7 @@ try {
   const out = await runPilotCli(process.argv.slice(2), {
     db: h.db,
     billing: new Billing(),
-    mailer: new OutboxMailer(config.outboxDir),
+    mailer: platformMailer(config),
     platformOrigin: config.platformOrigin,
     llmMonthlyCapRub: config.llmMonthlyCapRub,
   });

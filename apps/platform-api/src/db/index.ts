@@ -14,6 +14,7 @@ import * as m0010 from "../../migrations/0010_m2_moderation.js";
 import * as m0011 from "../../migrations/0011_m2_draft_purge_notice.js";
 import * as m0012 from "../../migrations/0012_m2_pilot.js";
 import * as m0013 from "../../migrations/0013_m2_abuse.js";
+import * as m0014 from "../../migrations/0014_m2_pilot_ops.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -55,6 +56,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0011_m2_draft_purge_notice": m0011,
   "0012_m2_pilot": m0012,
   "0013_m2_abuse": m0013,
+  "0014_m2_pilot_ops": m0014,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

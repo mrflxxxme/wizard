@@ -1,6 +1,7 @@
 // Gate step persistence: full GateReport → platform.gate_reports and gate_result in the same transaction
 // (workflows.yaml#execution.step_rules, db.yaml#gate_reports, L1-11).
 import { type Db, json } from "../db/index.js";
+import { recordGate } from "../ops/metrics.js";
 import { appendEvent, type TxCtx } from "./events.js";
 import type { GateReport } from "./types.js";
 
@@ -56,6 +57,7 @@ export async function recordGateReport(
       .execute();
   }
   await appendEvent(t, a.runId, "gate_result", gateResultPayload(a.report, a.revision));
+  t.after?.push(() => recordGate(a.report));
 }
 
 /** GET /systems/:id/gates/latest: per level the row with max(revision). */

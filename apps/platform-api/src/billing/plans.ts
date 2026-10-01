@@ -42,6 +42,13 @@ export const WELCOME = { milli: 100_000, days: FREE_PERIOD_DAYS } as const;
 /** billing.yaml#plans.topup: one pack = 60 credits for 990 ₽, lives 365 days. */
 export const TOPUP = { milli: 60_000, priceRub: 990, days: 365 } as const;
 
+/** billing.yaml#plans.topup.available_on: no top-up on pilot (credits come from the founder, M2-09). */
+export const TOPUP_PLANS: readonly string[] = ["free", "start", "business"];
+
+/** createTopup on a plan outside TOPUP_PLANS (403 FORBIDDEN). */
+export const TOPUP_NOT_ON_PLAN_RU =
+  "Докупка кредитов на тарифе «Пилот» недоступна — кредиты начисляет команда Wizard";
+
 /** Debit order among buckets with the same expiry (billing.yaml#ledger.rules: plan credits before topup). */
 export const BUCKET_ORDER: readonly Bucket[] = [
   "free_welcome",
