@@ -26,8 +26,15 @@ const emailSchema = z
   .transform((s) => s.toLowerCase())
   .pipe(z.email());
 
+/** Refusal of a pilot operation with a Russian message; `code` — the api.yaml#Error code the console answers with. */
 export class PilotError extends Error {
   override name = "PilotError";
+  constructor(
+    message: string,
+    readonly code: "VALIDATION_FAILED" | "FORBIDDEN" | "NOT_FOUND" = "VALIDATION_FAILED",
+  ) {
+    super(message);
+  }
 }
 
 export interface PilotInviteInput {
@@ -36,6 +43,8 @@ export interface PilotInviteInput {
   orgName?: string | null;
   /** Credits granted at the first sign-in (ledger pilot_grant). */
   credits?: number;
+  /** orgs.require_founder_review of the pilot org (default true: the founder reviews before the first prod). */
+  requireFounderReview?: boolean;
 }
 
 export interface PilotInviteResult {
@@ -70,7 +79,7 @@ export async function createPilotInvite(
   if (!Number.isInteger(credits) || credits < 0) throw new PilotError("--credits: целое число ≥ 0");
   const orgName = input.orgName?.trim() || null;
   if (orgName && orgName.length > 120) throw new PilotError("--org-name: не длиннее 120 символов");
-  if (!(await getBetaReadiness(db)).on) throw new PilotError(BETA_READINESS_MISSING_RU);
+  if (!(await getBetaReadiness(db)).on) throw new PilotError(BETA_READINESS_MISSING_RU, "FORBIDDEN");
   const now = o.now ?? new Date();
   const expiresAt = new Date(now.getTime() + PILOT_INVITE_DAYS * 24 * 3600_000);
   const row = await db.transaction().execute(async (trx) => {
@@ -93,7 +102,13 @@ export async function createPilotInvite(
       .execute();
     return trx
       .insertInto("platform.pilot_invites")
-      .values({ email, org_name: orgName, credits, expires_at: expiresAt })
+      .values({
+        email,
+        org_name: orgName,
+        credits,
+        expires_at: expiresAt,
+        require_founder_review: input.requireFounderReview ?? true,
+      })
       .returning(["id"])
       .executeTakeFirstOrThrow();
   });
@@ -107,7 +122,9 @@ export async function createPilotInvite(
       orgName ? `При первом входе мы создадим организацию «${orgName}».` : "",
       `Войти: ${link}`,
       "Укажите этот адрес почты — мы пришлём код входа. Приглашение действует 30 дней.",
-      "Пилот бесплатный: кредиты на сборку начисляет команда Wizard, а перед первой публикацией системы в prod её посмотрит модератор.",
+      input.requireFounderReview === false
+        ? "Пилот бесплатный: кредиты на сборку начисляет команда Wizard."
+        : "Пилот бесплатный: кредиты на сборку начисляет команда Wizard, а перед первой публикацией системы в prod её посмотрит модератор.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -154,7 +171,7 @@ export async function admitNewUser(
 
 /**
  * First sign-in with a founder invitation: the personal org becomes the pilot org (name, plan pilot, founder review
- * before prod — abuse.yaml#identification.founder_review, M2-09), the invited credits are granted
+ * before prod as the invitation says, on by default — abuse.yaml#identification.founder_review, M2-09), the invited credits are granted
  * (pilot_grant:invite:<id>) and the invitation is accepted. Same transaction as the user.
  */
 export async function acceptPilotInvite(
@@ -166,14 +183,18 @@ export async function acceptPilotInvite(
 ): Promise<void> {
   const inv = await trx
     .selectFrom("platform.pilot_invites")
-    .select(["id", "org_name", "credits", "accepted_at", "revoked_at"])
+    .select(["id", "org_name", "credits", "require_founder_review", "accepted_at", "revoked_at"])
     .where("id", "=", inviteId)
     .forUpdate()
     .executeTakeFirst();
   if (!inv || inv.accepted_at || inv.revoked_at) return;
   await trx
     .updateTable("platform.orgs")
-    .set({ plan: "pilot", require_founder_review: true, ...(inv.org_name ? { name: inv.org_name } : {}) })
+    .set({
+      plan: "pilot",
+      require_founder_review: inv.require_founder_review,
+      ...(inv.org_name ? { name: inv.org_name } : {}),
+    })
     .where("id", "=", user.orgId)
     .execute();
   await trx

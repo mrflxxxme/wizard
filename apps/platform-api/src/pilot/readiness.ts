@@ -26,6 +26,27 @@ export const BETA_READINESS_MISSING_RU = [
   "Когда всё сделано, отметьте: pilot readiness on --by <кто> [--note <что сделано>].",
 ].join("\n");
 
+/**
+ * What beta_readiness stands for (compliance.yaml#beta_readiness, M2-13), item by item — the staff console shows it
+ * next to the switch; the same items as BETA_READINESS_MISSING_RU.
+ */
+export const BETA_READINESS_CHECKLIST_RU: readonly { id: string; text: string }[] = [
+  { id: "rkn", text: "Подано уведомление в Роскомнадзор об обработке ПДн (ст. 22 152-ФЗ)" },
+  {
+    id: "lawyer",
+    text: "Юрист согласовал оферту, согласие на обработку ПДн и шаблон политики систем (без пометки DRAFT); его позиция по хостингу и ОРИ исполнена",
+  },
+  { id: "dpa", text: "Подписаны поручения на обработку ПДн с Cloud.ru и Yandex" },
+  {
+    id: "zai",
+    text: "Если используется Z.ai (T1) — получено его письменное подтверждение; иначе T1 отключён",
+  },
+  {
+    id: "security",
+    text: "Готовы документы в docs/security: модель угроз, акт УЗ, перечень допущенных лиц, runbook инцидента с ПДн",
+  },
+];
+
 const defaultActor = (): string => {
   try {
     return userInfo().username || "cli";

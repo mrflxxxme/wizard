@@ -1,7 +1,8 @@
 // Staff console (/admin, M2-08; api.yaml x-auth M2, D21_beta_moderation): only staff with TOTP — enrolment (key,
 // first code, recovery codes shown once), step-up of each session, then the moderation queue by SLA, the ticket
 // (staff access to system data for 24 h, takedown / dismiss / restore with a journal note) and founder reviews before
-// prod. Non-staff see «Страница не найдена» (the API answers 404); any 403 MFA_REQUIRED returns to the code screen.
+// prod, and the «Пилот» tab (Pilot.tsx: beta_readiness, client invitations, pilot orgs, LLM spend). Non-staff see
+// «Страница не найдена» (the API answers 404); any 403 MFA_REQUIRED returns to the code screen.
 import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
@@ -22,6 +23,7 @@ import a from "../auth/Auth.module.css";
 import st from "../settings/Settings.module.css";
 import { Rail } from "../workspace/Rail.js";
 import s from "./Admin.module.css";
+import { PilotSection } from "./Pilot.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
 const isMfa = (e: unknown) => e instanceof ApiError && e.code === "MFA_REQUIRED";
@@ -287,7 +289,7 @@ function Verify({ onDone }: { onDone(): void }): ReactNode {
 function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   const { search } = useRoute();
   const reportId = search.get("report");
-  const [tab, setTab] = useState<"reports" | "reviews">("reports");
+  const [tab, setTab] = useState<"reports" | "reviews" | "pilot">("reports");
   return (
     <div className={st.shell}>
       <Rail />
@@ -317,9 +319,23 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
             >
               {ru.admin.tabReviews}
             </button>
+            <button
+              type="button"
+              className={s.tab}
+              aria-pressed={tab === "pilot"}
+              onClick={() => {
+                setTab("pilot");
+                setQueryParam("report", null);
+              }}
+              data-testid="admin-tab-pilot"
+            >
+              {ru.admin.tabPilot}
+            </button>
           </div>
         </header>
-        {tab === "reviews" ? (
+        {tab === "pilot" ? (
+          <PilotSection onMfaRequired={onMfaRequired} />
+        ) : tab === "reviews" ? (
           <Reviews onMfaRequired={onMfaRequired} />
         ) : reportId ? (
           <Ticket key={reportId} id={reportId} onMfaRequired={onMfaRequired} />

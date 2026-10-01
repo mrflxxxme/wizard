@@ -109,6 +109,7 @@ tables:
       accepted_user_id: "uuid references platform.users"
       org_id: "uuid references platform.orgs"
       revoked_at: "timestamptz"                               # повторное приглашение отзывает прежнее
+      require_founder_review: "boolean not null default true"  # pilot-admin: флаг «ревью основателя» при приглашении → orgs.require_founder_review при принятии
     indexes: ["unique (email) where accepted_at is null and revoked_at is null"]
 
   ops_alerts:

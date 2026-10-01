@@ -18,6 +18,7 @@ import type {
   ImportView,
   Invite,
   LedgerEntry,
+  LlmSpend,
   LockStatus,
   Me,
   Member,
@@ -25,6 +26,9 @@ import type {
   MessageTarget,
   Org,
   OrgSettings,
+  PilotInvite,
+  PilotOrg,
+  PilotReadiness,
   PreviewUrl,
   Publication,
   Revision,
@@ -360,6 +364,42 @@ export function createApiClient(opts: ClientOptions = {}) {
         `/admin/orgs/${encodeURIComponent(orgId)}/suspension`,
         { body },
       ),
+    // Staff console «Пилот» (/admin/pilot/*): the same operations as the founder CLI `pilot`.
+    adminPilotReadiness: () => call<PilotReadiness>("GET", "/admin/pilot/readiness"),
+    adminSetPilotReadiness: (body: { on: boolean; confirm?: boolean; note?: string }) =>
+      call<PilotReadiness>("PUT", "/admin/pilot/readiness", { body }),
+    adminListPilotInvites: () => call<{ items: PilotInvite[] }>("GET", "/admin/pilot/invites"),
+    adminCreatePilotInvite: (body: {
+      email: string;
+      orgName?: string;
+      credits?: number;
+      requireFounderReview?: boolean;
+    }) =>
+      call<{ id: string; email: string; expiresAt: string; link: string; requireFounderReview: boolean }>(
+        "POST",
+        "/admin/pilot/invites",
+        { body },
+      ),
+    adminRevokePilotInvite: (id: string) =>
+      call<{ id: string; status: "revoked" }>(
+        "POST",
+        `/admin/pilot/invites/${encodeURIComponent(id)}/revoke`,
+      ),
+    adminListPilotOrgs: () =>
+      call<{ month: string; capRub: number; items: PilotOrg[] }>("GET", "/admin/pilot/orgs"),
+    adminGrantPilotCredits: (orgId: string, body: { credits: number; reference: string }) =>
+      call<{ orgId: string; granted: boolean; reference: string; creditsAvailable: number }>(
+        "POST",
+        `/admin/pilot/orgs/${encodeURIComponent(orgId)}/grants`,
+        { body },
+      ),
+    adminSetPilotFounderReview: (orgId: string, on: boolean) =>
+      call<{ orgId: string; requireFounderReview: boolean }>(
+        "PUT",
+        `/admin/pilot/orgs/${encodeURIComponent(orgId)}/founder-review`,
+        { body: { on } },
+      ),
+    adminPilotSpend: () => call<LlmSpend>("GET", "/admin/pilot/spend"),
     disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
       call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,

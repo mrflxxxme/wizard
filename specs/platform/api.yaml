@@ -667,6 +667,74 @@ paths:
       x-roles: [staff]
       summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
       responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}}}}}}}}}}
+  /admin/pilot/readiness:
+    get:
+      operationId: adminPilotReadiness
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: флаг beta_readiness (db.yaml#platform_settings, M2-09) — кто и когда, заметка и чек-лист compliance.yaml#beta_readiness (РКН, юрист, поручения, Z.ai, docs/security). CLI `pilot readiness` работает как раньше'
+      responses: {'200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/PilotReadiness'}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+    put:
+      operationId: adminSetPilotReadiness
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: включить/выключить beta_readiness; кто — email staff. Включение требует confirm=true и note ≥ 3 символов, иначе 400. Строка staff_audit_log pilot_readiness_on|off (target platform_settings:beta_readiness)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [on], properties: {on: {type: boolean}, confirm: {type: boolean}, note: {type: string, maxLength: 500}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {$ref: '#/components/schemas/PilotReadiness'}}}}, '400': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/invites:
+    get:
+      operationId: adminListPilotInvites
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: приглашения основателя (db.yaml#pilot_invites, кроме отозванных), новые первыми; status: sent (ждёт входа), accepted, expired'
+      responses: {'200': {description: Приглашения, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/PilotInvite'}}}}}}}}
+    post:
+      operationId: adminCreatePilotInvite
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: приглашение в пилот — та же функция, что CLI `pilot invite` (createPilotInvite): письмо со ссылкой /login?email=…&next=/welcome, прежнее активное приглашение адреса отзывается. Пока beta_readiness выключен → 403 FORBIDDEN с текстом BETA_READINESS_MISSING_RU; уже зарегистрированный адрес или неверный email → 400. requireFounderReview (по умолчанию true) → orgs.require_founder_review пилотной org при первом входе. Строка staff_audit_log pilot_invite (target pilot_invite:<id>, email в журнал не пишется)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email], properties: {email: {type: string, format: email}, orgName: {type: string, maxLength: 120}, credits: {type: integer, minimum: 0, maximum: 100000}, requireFounderReview: {type: boolean, default: true}}}}}}
+      responses: {'201': {description: Отправлено, content: {application/json: {schema: {type: object, required: [id, email, expiresAt, link, requireFounderReview], properties: {id: {type: string, format: uuid}, email: {type: string}, expiresAt: {type: string, format: date-time}, link: {type: string, description: Ссылка из письма — основатель может переслать сам}, requireFounderReview: {type: boolean}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/invites/{inviteId}/revoke:
+    parameters: [{name: inviteId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminRevokePilotInvite
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: отозвать активное (не принятое) приглашение, как CLI `pilot revoke`; нет активного → 404. Строка staff_audit_log pilot_invite_revoke'
+      responses: {'200': {description: Отозвано, content: {application/json: {schema: {type: object, required: [id, status], properties: {id: {type: string, format: uuid}, status: {const: revoked}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs:
+    get:
+      operationId: adminListPilotOrgs
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: организации пилота (plan=pilot или созданные приглашением основателя) — как CLI `pilot orgs`: тариф, участники, доступно кредитов, списано за месяц, расход на модели ₽ за месяц (Europe/Moscow); capRub — WIZARD_LLM_MONTHLY_CAP_RUB платформы'
+      responses: {'200': {description: Организации, content: {application/json: {schema: {type: object, required: [month, capRub, items], properties: {month: {type: string}, capRub: {type: number}, items: {type: array, items: {$ref: '#/components/schemas/PilotOrg'}}}}}}}}
+  /admin/pilot/orgs/{orgId}/grants:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: adminGrantPilotCredits
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: начислить кредиты пилота (pilot_grant:<reference>, 365 дней), как CLI `pilot grant`; тот же reference второй раз не начисляет (granted=false). Строка staff_audit_log pilot_grant (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [credits, reference], properties: {credits: {type: number, exclusiveMinimum: 0, maximum: 100000}, reference: {type: string, minLength: 3, maxLength: 200}}}}}}
+      responses: {'200': {description: Начислено, content: {application/json: {schema: {type: object, required: [orgId, granted, reference, creditsAvailable], properties: {orgId: {type: string, format: uuid}, granted: {type: boolean}, reference: {type: string}, creditsAvailable: {type: number}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs/{orgId}/founder-review:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: adminSetPilotFounderReview
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: orgs.require_founder_review, как CLI `pilot review-required`. Строка staff_audit_log pilot_review_required (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [on], properties: {on: {type: boolean}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [orgId, requireFounderReview], properties: {orgId: {type: string, format: uuid}, requireFounderReview: {type: boolean}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/spend:
+    get:
+      operationId: adminPilotSpend
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: расход платформы на модели за календарный месяц (Europe/Moscow) против WIZARD_LLM_MONTHLY_CAP_RUB, как CLI `pilot spend`; warn — ≥ 80 % (порог алерта основателю), reached — новые LLM-прогоны получают 503 LLM_BUDGET_EXHAUSTED'
+      responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpend'}}}}}
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -923,3 +991,7 @@ components:
             access: {type: [object, 'null'], properties: {until: {type: string, format: date-time}}}
             journal: {type: array, items: {type: object, properties: {action: {type: string}, note: {type: [string, 'null']}, actor: {type: string}, at: {type: string, format: date-time}}}}
     StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}
+    PilotReadiness: {type: object, required: [on, by, at, note, checklist], properties: {on: {type: boolean}, by: {type: [string, 'null'], description: 'кто переключил: email staff или --by CLI'}, at: {type: [string, 'null'], format: date-time}, note: {type: [string, 'null']}, checklist: {type: array, items: {type: object, required: [id, text], properties: {id: {type: string}, text: {type: string}}}}}}
+    PilotInvite: {type: object, required: [id, email, orgName, credits, requireFounderReview, status, createdAt, expiresAt, acceptedAt, orgId], properties: {id: {type: string, format: uuid}, email: {type: string}, orgName: {type: [string, 'null']}, credits: {type: integer}, requireFounderReview: {type: boolean}, status: {enum: [sent, accepted, expired]}, createdAt: {type: string, format: date-time}, expiresAt: {type: string, format: date-time}, acceptedAt: {type: [string, 'null'], format: date-time}, orgId: {type: [string, 'null']}}}
+    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}}}
+    LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}
