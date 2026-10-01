@@ -152,7 +152,7 @@ describe("G1 on the forum", () => {
     ac3[4] = { read: { entity: "speaker_application", id: "$nope.id" } };
     const r = await runGates("G1", h.ctx({ spec }));
     const s = status(r);
-    expect(s["SC-AC1"]).toBe("fail");
+    expect(s["SC-AC1"], detail(r)).toBe("fail");
     const ac1Check = r.checks.find((c) => c.id === "SC-AC1");
     expect(ac1Check?.evidence).toContain("шаг 10: ожидалось error=SOLD_OUT, получено HTTP 400 STREAM_FULL");
     expect(s["SC-AC3"]).toBe("error");
