@@ -29,6 +29,15 @@ function messageText(m: Message): string {
   return m.text ?? "";
 }
 
+/** M3-01: «AppShell · ui/Landing.tsx» of a point-edit request (messages.payload.target), as text. */
+function targetLabel(m: Message): string | null {
+  const t = m.role === "user" ? m.payload?.target : undefined;
+  if (!t || typeof t !== "object") return null;
+  const { componentName, file } = t as { componentName?: unknown; file?: unknown };
+  if (typeof file !== "string") return null;
+  return ru.point.sent(typeof componentName === "string" ? componentName : "", file);
+}
+
 function author(m: Message): string {
   if (m.role === "user") return ru.chat.you;
   if (m.role === "system") return ru.chat.system;
@@ -55,6 +64,11 @@ export function ChatFeed({ messages, ruOnly = false }: { messages: Message[]; ru
         return (
           <li key={m.id} className={m.role === "user" ? s.bubbleUser : s.bubble} data-testid="chat-message">
             <span className={s.bubbleAuthor}>{author(m)}</span>
+            {targetLabel(m) && (
+              <span className={s.bubbleTarget} data-testid="chat-message-target">
+                {targetLabel(m)}
+              </span>
+            )}
             <span className={s.bubbleText}>{text}</span>
           </li>
         );

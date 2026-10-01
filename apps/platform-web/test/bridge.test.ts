@@ -79,22 +79,59 @@ describe("accept", () => {
     expect(bridge.accept(msg({ ...ready, payload: { ...ready.payload, revision: 2 } }))).toBeNull();
   });
 
-  test("element-selected.file must be a ui/ file of the current revision", () => {
+  const sel = (over: Record<string, unknown> = {}) => ({
+    wz: 1,
+    type: "element-selected",
+    payload: {
+      componentName: "AppShell",
+      wzId: "1a2b3c4d:0",
+      file: "ui/Landing.tsx",
+      line: 10,
+      route: "/",
+      rect: { x: 0, y: 0, width: 1, height: 1 },
+      ...over,
+    },
+  });
+
+  test("element-selected of a ui/ file of the current revision is accepted", () => {
     const { bridge, msg } = setup();
-    const sel = (file: string) => ({
-      wz: 1,
-      type: "element-selected",
-      payload: {
-        componentName: "ItemCard",
-        wzId: "ui/Landing.tsx:ItemCard:1",
-        file,
-        line: 10,
-        rect: { x: 0, y: 0, width: 1, height: 1 },
-      },
-    });
-    expect(bridge.accept(msg(sel("ui/Landing.tsx")))).not.toBeNull();
-    expect(bridge.accept(msg(sel("ui/Other.tsx")))).toBeNull();
-    expect(bridge.accept(msg(sel("functions/registerTicket.ts")))).toBeNull();
+    expect(bridge.accept(msg(sel()))).toEqual({ type: "element-selected", payload: sel().payload });
+  });
+
+  test("L3-16: a forged element-selected with a foreign file is dropped", () => {
+    const { bridge, msg } = setup();
+    // Not a file of this revision, a server function, a path escape, a non-tsx file.
+    for (const file of [
+      "ui/Other.tsx",
+      "functions/registerTicket.ts",
+      "ui/../functions/registerTicket.ts",
+      "ui/Landing.ts",
+      "/ui/Landing.tsx",
+    ])
+      expect(bridge.accept(msg(sel({ file }))), file).toBeNull();
+    // The same message from a foreign origin or another window (the system code in a popup) is dropped too.
+    expect(bridge.accept(msg(sel(), { origin: "http://evil.localhost:4100" }))).toBeNull();
+    expect(bridge.accept(msg(sel(), { source: {} }))).toBeNull();
+  });
+
+  test("element-selected: wzId format, line ≥ 1, componentName ≤ 60, route without //", () => {
+    const { bridge, msg } = setup();
+    for (const over of [
+      { wzId: "demo:AppShell:0" },
+      { wzId: "ui/Landing.tsx:ItemCard:1" },
+      { wzId: '1a2b3c4d:0"]' },
+      { line: 0 },
+      { line: 1.5 },
+      { componentName: "x".repeat(61) },
+      { componentName: "" },
+      { route: "//evil.example" },
+    ])
+      expect(bridge.accept(msg(sel(over))), JSON.stringify(over)).toBeNull();
+  });
+
+  test("element-selected is dropped while the revision files are unknown", () => {
+    const { bridge, msg } = setup({ files: () => null });
+    expect(bridge.accept(msg(sel()))).toBeNull();
   });
 });
 

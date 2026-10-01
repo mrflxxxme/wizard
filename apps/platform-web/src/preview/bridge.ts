@@ -7,6 +7,11 @@ const ROUTE = z
   .max(2000)
   .regex(/^\/(?![/\\])/);
 
+/** ui-kit.yaml#wz_id.format: <fileKey 8 hex>:<ordinal> (api.yaml#postMessage.target.wzId). */
+export const WZ_ID_RE = /^[0-9a-f]{8}:[0-9]+$/;
+/** api.yaml#postMessage.target.file: a page or component of the system UI, never functions/** (L3-16). */
+export const UI_FILE_RE = /^ui\/(?!.*\.\.)[A-Za-z0-9_/.-]+\.tsx$/;
+
 export const envelopeSchema = z.object({
   wz: z.literal(1),
   type: z.string().max(64),
@@ -23,10 +28,11 @@ export const fromPreviewSchemas = {
   }),
   "route-changed": z.object({ route: ROUTE }),
   "element-selected": z.object({
-    componentName: z.string().max(100),
-    wzId: z.string().max(300),
-    file: z.string().max(300).regex(/^ui\//),
-    line: z.number().int().min(0),
+    componentName: z.string().min(1).max(60),
+    wzId: z.string().max(32).regex(WZ_ID_RE),
+    file: z.string().max(300).regex(UI_FILE_RE),
+    line: z.number().int().min(1),
+    route: ROUTE.optional(),
     rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
   }),
   "select-cancelled": z.object({}),
@@ -45,7 +51,9 @@ export type ToPreview =
       type: "apply-theme-tokens";
       payload: { tokens: Record<string, string>; mode: "light" | "dark" | "auto" };
     }
-  | { type: "navigate"; payload: { route: string } };
+  | { type: "navigate"; payload: { route: string } }
+  | { type: "select-mode"; payload: { enabled: boolean } }
+  | { type: "highlight"; payload: { wzId: string | null } };
 
 export interface BridgeOptions {
   /** The iframe whose contentWindow is the only accepted source. */
@@ -54,7 +62,10 @@ export interface BridgeOptions {
   origin(): string | null;
   /** Expected revision of the preview (ready.revision is compared with it). */
   revision(): number | null;
-  /** Files of the current revision (element-selected.file must be one of them); null → unknown, reject. */
+  /**
+   * Files of the current revision: element-selected.file must be one of them, else the message is dropped (L3-16:
+   * the system code runs in the bridge's window and may forge it). null → unknown yet, reject.
+   */
   files?(): ReadonlySet<string> | null;
   onMessage(m: FromPreview): void;
   timeoutMs?: number;

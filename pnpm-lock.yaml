@@ -161,6 +161,9 @@ importers:
       '@wizard/build':
         specifier: workspace:*
         version: link:../../packages/build
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

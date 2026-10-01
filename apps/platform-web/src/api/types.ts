@@ -44,6 +44,15 @@ export interface Answer {
 
 export type MessageKind = "text" | "questions" | "answers" | "card" | "run_report" | "notice";
 
+/** api.yaml#postMessage.target (M3-01): an element picked in the preview (ui-kit.yaml#wz_id). */
+export interface MessageTarget {
+  wzId: string;
+  componentName: string;
+  file: string;
+  line: number;
+  route?: string;
+}
+
 export interface Message {
   id: string;
   seq: number;

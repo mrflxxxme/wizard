@@ -236,40 +236,10 @@ function deriveScenarios(g, spec) {
     });
 }
 
-/**
- * @param {string} name golden name (tools/fixtures/golden/<name>.yaml)
- * @param {{root?: string}} [opts] repository root
- */
-export function buildGolden(name, opts = {}) {
-  const root = resolve(opts.root ?? join(import.meta.dirname, "..", "..", ".."));
-  const [g, models] = loadYaml(
-    join(root, "tools/fixtures/golden", `${name}.yaml`),
-    join(root, "specs/agents/models.yaml"),
-  );
-  need(g.name === name, `name в yaml ≠ ${name}`);
-  const spec = JSON.parse(readFileSync(join(root, g.spec), "utf8"));
-
-  // Spec the builder assembles: patched example + card acceptance; owner-only compliance fields dropped by specToOps.
-  const buildSpec = applyPatch(structuredClone(spec), g.build?.spec_patch);
-  buildSpec.acceptance = structuredClone(g.acceptance);
-  const card = deriveCard(g, buildSpec);
-  const scenarios = deriveScenarios(g, spec);
-  const batches = batchOps(specToOps(buildSpec, { author: "agent" }));
-
-  const codeRoot = join(root, g.code_root);
-  const files = ["functions", "ui"].flatMap((d) =>
-    listFiles(join(codeRoot, d)).map((p) => ({
-      path: relative(codeRoot, p).split(sep).join("/"),
-      content: readFileSync(p, "utf8"),
-    })),
-  );
-  const paths = new Set(files.map((f) => f.path));
-  for (const f of [...(buildSpec.functions ?? []), ...(buildSpec.pages ?? [])])
-    need(paths.has(f.file), `нет исходника ${f.file} в ${g.code_root}`);
-
-  const lines = [];
+/** push(callType, toolset, messages, response) → appends one fixture line (eval.yaml#fixtures.line) to `lines`. */
+function pusher(models, g, lines) {
   const counters = {};
-  const push = (callType, toolset, messages, response) => {
+  return (callType, toolset, messages, response) => {
     const route = models.routes[callType];
     need(route, `нет routes.${callType} в models.yaml`);
     counters[callType] = (counters[callType] ?? 0) + 1;
@@ -305,6 +275,85 @@ export function buildGolden(name, opts = {}) {
       recordedAt: g.recordedAt,
     });
   };
+}
+
+/**
+ * «Укажи и измени» (M3-01, agents/builder.yaml#point_and_edit): a mode=point_edit run after the demo build. The first
+ * build_code turn writes a file other than target.file (the builder answers TARGET_ONLY), the second writes only
+ * target.file (golden point_edit.patch) and runs G0, the third ends the phase; qa_generate repeats the build's
+ * checks for G1. Written to demo/<name>.point_edit.jsonl; platform-api reads it for point_edit runs (fixture mode).
+ */
+function buildPointEdit(g, models, files, qaLine) {
+  const pe = g.point_edit;
+  const byPath = new Map(files.map((f) => [f.path, f.content]));
+  const before = byPath.get(pe.target.file);
+  need(before !== undefined, `point_edit.target.file ${pe.target.file} нет среди файлов`);
+  need(pe.target.file.startsWith("ui/"), "point_edit.target.file — только ui/**");
+  need(before.split(pe.patch.find).length === 2, "point_edit.patch.find должен встречаться ровно один раз");
+  const after = before.replace(pe.patch.find, pe.patch.replace);
+  const stray = byPath.get(pe.stray.path);
+  need(stray !== undefined && pe.stray.path !== pe.target.file, "point_edit.stray.path — другой файл системы");
+  const lines = [];
+  const push = pusher(models, g, lines);
+  const user = (content) => ({ role: "user", content });
+  const ask = user(`Правка по клику: ${pe.target.file} (${pe.target.componentName}). Задача: ${pe.instruction}`);
+  push("build_code", "build", [ask], {
+    toolCalls: [{ name: "write_file", args: { path: pe.stray.path, content: stray } }],
+  });
+  push("build_code", "build", [ask, user("TARGET_ONLY: только target.file")], {
+    toolCalls: [
+      { name: "write_file", args: { path: pe.target.file, content: after } },
+      { name: "run_gate", args: { level: "G0" } },
+    ],
+  });
+  push("build_code", "build", [ask, user("G0 пройден")], { text: pe.done_text });
+  push("qa_generate", "qa_generate", qaLine.request.messages, {
+    toolCalls: qaLine.response.toolCalls.map(({ name, args }) => ({ name, args })),
+  });
+  return {
+    target: pe.target,
+    instruction: pe.instruction,
+    stray: pe.stray.path,
+    before,
+    after,
+    lines,
+    text: `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`,
+  };
+}
+
+/**
+ * @param {string} name golden name (tools/fixtures/golden/<name>.yaml)
+ * @param {{root?: string}} [opts] repository root
+ */
+export function buildGolden(name, opts = {}) {
+  const root = resolve(opts.root ?? join(import.meta.dirname, "..", "..", ".."));
+  const [g, models] = loadYaml(
+    join(root, "tools/fixtures/golden", `${name}.yaml`),
+    join(root, "specs/agents/models.yaml"),
+  );
+  need(g.name === name, `name в yaml ≠ ${name}`);
+  const spec = JSON.parse(readFileSync(join(root, g.spec), "utf8"));
+
+  // Spec the builder assembles: patched example + card acceptance; owner-only compliance fields dropped by specToOps.
+  const buildSpec = applyPatch(structuredClone(spec), g.build?.spec_patch);
+  buildSpec.acceptance = structuredClone(g.acceptance);
+  const card = deriveCard(g, buildSpec);
+  const scenarios = deriveScenarios(g, spec);
+  const batches = batchOps(specToOps(buildSpec, { author: "agent" }));
+
+  const codeRoot = join(root, g.code_root);
+  const files = ["functions", "ui"].flatMap((d) =>
+    listFiles(join(codeRoot, d)).map((p) => ({
+      path: relative(codeRoot, p).split(sep).join("/"),
+      content: readFileSync(p, "utf8"),
+    })),
+  );
+  const paths = new Set(files.map((f) => f.path));
+  for (const f of [...(buildSpec.functions ?? []), ...(buildSpec.pages ?? [])])
+    need(paths.has(f.file), `нет исходника ${f.file} в ${g.code_root}`);
+
+  const lines = [];
+  const push = pusher(models, g, lines);
   const user = (content) => ({ role: "user", content });
   const brief = user(g.brief);
 
@@ -367,5 +416,6 @@ export function buildGolden(name, opts = {}) {
   );
 
   const text = `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`;
-  return { golden: g, spec, buildSpec, card, scenarios, batches, files, lines, text };
+  const pointEdit = g.point_edit ? buildPointEdit(g, models, files, lines.at(-1)) : null;
+  return { golden: g, spec, buildSpec, card, scenarios, batches, files, lines, text, pointEdit };
 }
