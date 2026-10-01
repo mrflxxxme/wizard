@@ -5,6 +5,7 @@ import type { PlatformConnectorConfig } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
+import { clientIpOf } from "./auth/client-ip.js";
 import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
@@ -30,12 +31,15 @@ import {
 import { type RunJobsOptions, type RunJobsReport, runJobs } from "./jobs/runner.js";
 import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
 import { payRoutes, previewRoutes } from "./preview/routes.js";
+import { MAX_WITHDRAWAL_DAYS } from "./privacy/erasure.js";
+import { defaultLegalTemplates, type LegalTemplates } from "./privacy/templates.js";
 import type { SystemEnv, SystemRegistry } from "./registry.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { fnRoutes } from "./routes/fn.js";
 import { inviteRoutes } from "./routes/invite.js";
-import { loginApiRoutes, privacyRoutes } from "./routes/login.js";
+import { loginApiRoutes } from "./routes/login.js";
+import { pdRequestsApiRoutes, privacyRoutes } from "./routes/privacy.js";
 import { qrRoutes } from "./routes/qr.js";
 import { staticRoutes } from "./routes/static.js";
 import { notImplemented } from "./routes/stub.js";
@@ -66,6 +70,8 @@ export interface RuntimeAppOptions {
   outboxDir?: string | null;
   /** End-user login (M1-05): OTP key, SMS provider, org lookup, Telegram OIDC base. */
   auth?: RuntimeAuthOptions;
+  /** 152-ФЗ package: withdrawal → anonymization delay (days, 0…30; default 0 — at once) and legal templates. */
+  privacy?: { withdrawalDays?: number; legalTemplates?: LegalTemplates };
 }
 
 export interface RuntimeApp {
@@ -98,6 +104,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     connectors: o.connectors ?? "outbox",
     outbox,
     log: o.log,
+    privacy: {
+      withdrawalDays: Math.min(MAX_WITHDRAWAL_DAYS, Math.max(0, Math.floor(o.privacy?.withdrawalDays ?? 0))),
+    },
+    legalTemplates: o.privacy?.legalTemplates ?? defaultLegalTemplates(),
   };
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
@@ -119,6 +129,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     qrToken: (entry, spec) => connectors.qrTokenIssuer(entry, spec),
     dbRole: o.dbRole,
     statementTimeout: o.statementTimeout,
+    legalTemplates: services.legalTemplates,
     bus: (id, e) => {
       const k = `${id}:${e}`;
       let b = buses.get(k);
@@ -139,6 +150,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     log: o.log,
     options: o.auth,
   });
+  services.ipHmac = (req) => auth.keys.ip(clientIpOf(req));
   const pre = new WeakMap<Request, Pre>();
   const platformHook = platformTelegramHook({
     host: connectors,
@@ -184,6 +196,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/api/events", eventsRoutes());
   app.route("/api/pay", payRoutes(connectors));
   app.route("/api/telegram", telegramApiRoutes(connectors));
+  app.route("/api/admin/pd-requests", pdRequestsApiRoutes());
   app.route("/api/admin", inviteRoutes(connectors));
   app.all("/api/*", () => {
     throw new WizardError("NOT_FOUND", { message: "Адрес не найден" });

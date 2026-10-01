@@ -81,3 +81,14 @@
     border-right-color: var(--w-accent);
   }
 }
+
+.mydata {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mydata p,
+.mydata ul {
+  margin: 0;
+}

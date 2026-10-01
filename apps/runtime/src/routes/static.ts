@@ -5,15 +5,9 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
-import {
-  contentType,
-  documentHeaders,
-  escapeHtml,
-  htmlPage,
-  IMMUTABLE,
-  NO_CACHE,
-} from "../preview/headers.js";
+import { contentType, documentHeaders, IMMUTABLE, NO_CACHE } from "../preview/headers.js";
 import { loginPage } from "./login.js";
+import { policyPage } from "./privacy.js";
 
 const ASSET_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$/;
 /** Names produced by @wizard/build: index-<sha256[:12]>.{js,css}. */
@@ -49,21 +43,6 @@ async function serveAsset(c: RuntimeContext, dir: string, pathname: string): Pro
   });
 }
 
-function policyPage(c: RuntimeContext): Response {
-  const cmp = c.get("system").spec.compliance;
-  const rows: [string, string | undefined][] = [
-    ["Оператор", cmp?.operatorName],
-    ["Адрес", cmp?.operatorAddress],
-    ["ИНН", cmp?.operatorInn],
-    ["Контакт для обращений", cmp?.operatorContact],
-  ];
-  const body = [
-    ...rows.filter(([, v]) => v).map(([k, v]) => `<p>${escapeHtml(k)}: ${escapeHtml(String(v))}</p>`),
-    cmp?.consentText ? `<h2>Согласие на обработку</h2><p>${escapeHtml(cmp.consentText)}</p>` : "",
-  ].join("");
-  return c.body(htmlPage("Политика обработки персональных данных", body), 200, documentHeaders());
-}
-
 export function staticRoutes(): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();
   app.all("*", async (c) => {
@@ -73,7 +52,7 @@ export function staticRoutes(): Hono<RuntimeHonoEnv> {
     const sys = c.get("system");
     const pathname = new URL(c.req.url).pathname;
     if (pathname === "/login") return loginPage(c);
-    const policy = sys.spec.compliance?.policyPage;
+    const policy = sys.compliance.policyPage;
     if (policy && pathname === policy) return policyPage(c);
     if (RESERVED_M1.has(pathname) || !sys.artifactDir) return notFoundPage();
     if (pathname.startsWith("/assets/")) return serveAsset(c, sys.artifactDir, pathname);

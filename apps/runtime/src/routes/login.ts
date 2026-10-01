@@ -1,12 +1,11 @@
 // End-user login routes (runtime.yaml#auth.methods_M1, #auth.login_page, #auth.consent_at_login;
-// service_endpoints.privacy): /api/auth/otp/*, /api/auth/telegram/*, /api/auth/consent/revoke, /_wizard/privacy
-// and the /login page (the bundle's AppShell.Login).
+// service_endpoints.privacy): /api/auth/otp/*, /api/auth/telegram/*, /api/auth/consent/revoke and the /login
+// page (the bundle's AppShell.Login). /_wizard/privacy lives in routes/privacy.ts.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import { clientIpOf } from "../auth/client-ip.js";
-import { revokeConsent } from "../auth/consent.js";
 import type { AuthDeps } from "../auth/deps.js";
 import { type LoginResult, userBody } from "../auth/login.js";
 import { OtpError, startOtp, verifyOtp } from "../auth/otp.js";
@@ -16,6 +15,7 @@ import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { sessionOf } from "../http/subject.js";
 import { documentHeaders, escapeHtml, htmlPage } from "../preview/headers.js";
 import { readObjectBody } from "../preview/http.js";
+import { revokeConsent } from "../privacy/erasure.js";
 
 function otpFailure(c: RuntimeContext, e: OtpError): Response {
   const headers: Record<string, string> = { "Cache-Control": "no-store" };
@@ -136,7 +136,11 @@ export function loginApiRoutes(deps: AuthDeps): Hono<RuntimeHonoEnv> {
     const { subject } = await sessionOf(c);
     if (subject.id === null) throw new WizardError("UNAUTHENTICATED");
     const sys = c.get("system");
-    const r = await revokeConsent(sys, subject.id);
+    const services = c.get("services");
+    const r = await revokeConsent(sys, subject.id, {
+      withdrawalDays: services.privacy?.withdrawalDays ?? 0,
+      now: services.clock(),
+    });
     deps.log?.({
       ts: new Date().toISOString(),
       level: "info",
@@ -145,42 +149,13 @@ export function loginApiRoutes(deps: AuthDeps): Hono<RuntimeHonoEnv> {
       env: sys.entry.env,
       userIdHash: deps.keys.userIdHash(subject.id),
       pending: r.pending,
+      scheduledAt: r.scheduledAt,
     });
     const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
     for (const v of logoutCookies(deps.env, sys.entry.env === "draft")) headers.append("Set-Cookie", v);
     return new Response(JSON.stringify({ revoked: true }), { status: 200, headers });
   });
 
-  return app;
-}
-
-const PRIVACY_JS = `(function(){var b=document.getElementById("wz-privacy-revoke");if(!b)return;var m=document.getElementById("wz-privacy-status");b.addEventListener("click",function(){if(!window.confirm("Отозвать согласие? Ваши данные будут удалены, войти снова этим аккаунтом не получится."))return;b.disabled=true;fetch("/api/auth/consent/revoke",{method:"POST",credentials:"same-origin",headers:{"X-Wizard-Request":"1"}}).then(function(r){if(r.ok){window.location.replace("/");return}b.disabled=false;m.textContent="Не удалось отозвать согласие, попробуйте позже"},function(){b.disabled=false;m.textContent="Нет связи с сервером"})})})();`;
-
-/** Mounted at /_wizard: the privacy page of a logged-in user (service_endpoints.privacy) and its script. */
-export function privacyRoutes(): Hono<RuntimeHonoEnv> {
-  const app = new Hono<RuntimeHonoEnv>();
-  app.get("/privacy", async (c) => {
-    const sys = c.get("system");
-    const s = await sessionOf(c).catch(() => null);
-    const policy = sys.spec.compliance?.policyPage;
-    const policyLink = policy
-      ? `<p><a href="${escapeHtml(policy)}">Политика обработки персональных данных</a></p>`
-      : "";
-    const operator = sys.spec.compliance?.operatorContact
-      ? `<p>Вопросы о ваших данных: ${escapeHtml(sys.spec.compliance.operatorContact)}</p>`
-      : "";
-    const body =
-      s?.subject.id != null
-        ? `<p>Вы можете отозвать согласие на обработку персональных данных. Мы завершим все ваши сеансы, закроем вход и удалим ваши контактные данные и персональные данные в ваших записях.</p>${operator}${policyLink}<p><button type="button" id="wz-privacy-revoke" data-testid="wz-privacy-revoke">Отозвать согласие</button></p><p id="wz-privacy-status" role="status"></p>`
-        : `<p>Чтобы управлять своими данными, <a href="/login?next=%2F_wizard%2Fprivacy">войдите</a>.</p>${operator}${policyLink}`;
-    return c.body(htmlPage("Мои данные", body, ["/_wizard/privacy.js"]), 200, documentHeaders("no-store"));
-  });
-  app.get("/privacy.js", (c) =>
-    c.body(PRIVACY_JS, 200, {
-      "Content-Type": "text/javascript; charset=utf-8",
-      "Cache-Control": "no-cache",
-    }),
-  );
   return app;
 }
 

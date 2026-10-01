@@ -45,6 +45,44 @@ export {
 export { type MigrateOptions, migrateSystem, schemaName } from "./migrate.js";
 /** Test-mode connector secrets for G1 runtimes (in-memory QR keyring). */
 export { type SecretsFactory, testModeSecrets } from "./preview/connectors.js";
+/** 152-ФЗ package (M2-05): erasure + deletion journal, policy facts, subject requests, legal template registry. */
+export {
+  type DeletionEntry,
+  type DeletionMode,
+  MAX_WITHDRAWAL_DAYS,
+  type RevokeResult,
+  retainUsers,
+  revokeConsent,
+  runDueErasures,
+} from "./privacy/erasure.js";
+export {
+  DEFAULT_POLICY_PAGE,
+  effectivePolicyPage,
+  packageApplies,
+  type RenderedPolicy,
+  renderConsentText,
+  renderPolicy,
+  systemProcessors,
+} from "./privacy/policy.js";
+export {
+  eraseSubject,
+  exportSubject,
+  findSubject,
+  parseSubjectQuery,
+  type SubjectExport,
+  type SubjectQuery,
+} from "./privacy/subject.js";
+export {
+  BUILTIN_TEMPLATES_DIR,
+  DRAFT_MARK,
+  defaultLegalTemplates,
+  type LegalTemplate,
+  LegalTemplateError,
+  type LegalTemplateKind,
+  LegalTemplates,
+  loadLegalTemplates,
+  parseLegalTemplate,
+} from "./privacy/templates.js";
 /** Deployment registry: DbRegistry (platform.deployments), FileRegistry (.data/artifacts/registry.json), MemoryRegistry. */
 export {
   DbRegistry,
