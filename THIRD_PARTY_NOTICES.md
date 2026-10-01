@@ -47,5 +47,10 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | Node.js (официальный образ) | MIT | базовый образ сервисов |
 | syft (`anchore/sbom-action`) | Apache-2.0 | SBOM образов в CI |
 | kubeconform, actionlint | Apache-2.0, MIT | проверки CI |
+| PostgreSQL 16 (официальный образ `postgres`, Debian) | PostgreSQL License | своя БД пилота (`infra/docker/postgres.Dockerfile`) |
+| WAL-G v3.0.9 (релиз `wal-g-pg-22.04-amd64`, sha256 закреплён) | Apache-2.0 | непрерывная архивация WAL и базовые копии БД пилота в S3 |
+| rclone v1.75.1 (`.deb` из релиза, sha256 закреплён) | MIT | зашифрованная копия тома `.data` пилота в S3 |
+| vlagent (чарт `victoria-logs-collector`) | Apache-2.0 | сбор stdout контейнеров в пилоте вместо Vector |
+| GitHub Container Registry (ghcr.io) | сервис GitHub, не распространяется | реестр образов пилота (приватные пакеты) |
 
 Клиенты DNS API в `infra/acme-dns01/src/backends/` написаны с нуля. Бэкенд Cloud.ru следует схеме API из провайдера `cloudruevolution` проекта lego (MIT, © Ludovic Fernandez, Sebastian Erhart и участники): обмен ключа на токен IAM, слияние значений TXT, ожидание операций. Бэкенд Timeweb Cloud следует моделям официального SDK (`timeweb-cloud/sdk-python`) и клиенту `libdns-timeweb` (MIT). Код из них не копировался.

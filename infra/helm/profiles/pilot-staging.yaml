@@ -1,0 +1,28 @@
+# Pilot staging on demand: the same stack on a smaller VM (2 vCPU / 4 GB, Timeweb Cloud MSK 50), synthetic data and
+# fixture LLM only. Smaller database buffers, one sandbox pod, a shorter base-backup/drill cadence is not needed:
+# staging is destroyed after use (its buckets go with it).
+postgres:
+  storageSize: 10Gi
+  parameters:
+    listen_addresses: "*"
+    max_connections: "50"
+    shared_buffers: 128MB
+    effective_cache_size: 512MB
+    work_mem: 4MB
+    maintenance_work_mem: 64MB
+    max_wal_size: 512MB
+    min_wal_size: 128MB
+    wal_compression: zstd
+    checkpoint_timeout: 15min
+    password_encryption: scram-sha-256
+    log_min_messages: warning
+    log_checkpoints: "off"
+  drill:
+    scratchSize: 5Gi
+  resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
+worker:
+  resources: { requests: { cpu: 200m, memory: 384Mi }, limits: { cpu: "2", memory: 1Gi } }
+data:
+  size: 5Gi
+sandbox:
+  quota: { pods: 1, requestsCpu: 500m, requestsMemory: 1536Mi, limitsCpu: 1, limitsMemory: 1536Mi }

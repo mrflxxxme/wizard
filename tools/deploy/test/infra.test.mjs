@@ -6,13 +6,19 @@ import {
   addonArgs,
   addonsFor,
   CLUSTER_SECRETS,
+  clusterSecrets,
+  imageNames,
   kubeconfigText,
   loadProvider,
   main,
   parseArgs,
   preflight,
+  profileChain,
+  registrySecret,
   requiredEnv,
   tofuEnv,
+  valueFiles,
+  waitForImages,
   wizardReleaseArgs,
 } from "../infra.mjs";
 import { parseArgs as drillArgs, mark, psql, verify } from "../pitr-drill.mjs";
@@ -323,6 +329,177 @@ describe("infra.mjs", () => {
       "wizard-pgbouncer",
       "wizard-dns-solver",
     ]);
+  });
+});
+
+describe("infra.mjs: pilot profile (one VM, PostgreSQL + WAL-G in the cluster, images from GHCR)", () => {
+  const PILOT_OUT = {
+    env: {
+      value: {
+        registry_url: "ghcr.io/owner",
+        registry_push: null,
+        ingress_ip: "203.0.113.10",
+        domains: { platform: "codename.ru", systems: "neutral.ru" },
+        network: { pods_cidr: "10.42.0.0/16", services_cidr: "10.43.0.0/16", nodes_cidr: "192.168.10.0/24" },
+        postgres_cidr: null,
+        postgres_mode: "in-cluster",
+        cluster_profile: "pilot",
+        s3_endpoint: "https://s3.twcstorage.ru",
+        buckets: { files: "abc-wizard-prod-files", backups: "abc-wizard-prod-backups" },
+      },
+    },
+    postgres: { value: { main: { in_cluster: true } } },
+    k3s_server: { value: { private_ip: "192.168.10.10", public_ip: "203.0.113.10" } },
+  };
+
+  it("pilot = k3s + pilot: values layered base first, then the environment and pilot-<env>", () => {
+    expect(profileChain("pilot")).toEqual(["k3s", "pilot"]);
+    expect(profileChain(null)).toEqual([]);
+    expect(valueFiles("prod", loadProvider("timeweb"), "pilot")).toEqual([
+      "infra/helm/wizard/values.yaml",
+      "infra/helm/providers/timeweb.yaml",
+      "infra/helm/profiles/k3s.yaml",
+      "infra/helm/profiles/pilot.yaml",
+      "infra/helm/wizard/values-prod.yaml",
+      "infra/helm/profiles/pilot-prod.yaml",
+    ]);
+    expect(valueFiles("staging", loadProvider("timeweb"), "k3s")).toEqual([
+      "infra/helm/wizard/values.yaml",
+      "infra/helm/providers/timeweb.yaml",
+      "infra/helm/profiles/k3s.yaml",
+      "infra/helm/wizard/values-staging.yaml",
+    ]);
+  });
+
+  it("pilot addons: no in-cluster registry, vlagent instead of vector, small overlays", () => {
+    expect(addonsFor("pilot").map((a) => a.name)).toEqual([
+      "cert-manager",
+      "traefik",
+      "metrics",
+      "logs",
+      "logs-collector",
+    ]);
+    const cm = addonsFor("pilot")[0];
+    expect(addonArgs(cm, "pilot").join(" ")).toContain(
+      "-f infra/helm/addons/cert-manager-values.yaml -f infra/helm/addons/pilot/cert-manager.yaml",
+    );
+    expect(addonArgs(cm, "k3s").join(" ")).not.toContain("addons/pilot/");
+  });
+
+  it("one command: the profile comes from the tofu output; database secrets and the GHCR pull secret; no image build", async () => {
+    const lines = [];
+    const inputs = [];
+    const run = (cmd, args, o = {}) => {
+      lines.push(`$ ${cmd} ${args.join(" ")}`);
+      if (o.input) inputs.push(o.input);
+      if (cmd === "tofu" && args[1] === "output") return { status: 0, stdout: JSON.stringify(PILOT_OUT) };
+      if (cmd === "ssh") return { status: 0, stdout: "server: https://127.0.0.1:6443\n" };
+      return { status: 0, stdout: "" };
+    };
+    const vars = {
+      ...TIMEWEB,
+      WIZARD_POSTGRES_ENV_FILE: "/etc/wizard/postgres-prod.env",
+      WIZARD_GHCR_USER: "owner",
+      WIZARD_GHCR_TOKEN: "ghp_secret_read_packages",
+    };
+    const deps = {
+      log: (s) => lines.push(s),
+      has: yes,
+      exists: yes,
+      skipSmoke: true,
+      skipImageWait: true,
+      run,
+    };
+    expect(
+      await main(["apply", "--env", "prod", "--yes", "--build-images", "--tag", "abc1234"], vars, deps),
+    ).toBe(0);
+    const text = lines.join("\n");
+    expect(text).not.toContain("--install registry");
+    expect(text).toContain("helm upgrade --install logs-collector");
+    expect(text).toContain("-f infra/helm/addons/pilot/traefik.yaml");
+    expect(text).toContain("--from-env-file=/etc/wizard/postgres-prod.env");
+    expect(text).not.toContain("images.mjs build");
+    expect(text).toContain(
+      "-f infra/helm/profiles/k3s.yaml -f infra/helm/profiles/pilot.yaml -f infra/helm/wizard/values-prod.yaml -f infra/helm/profiles/pilot-prod.yaml",
+    );
+    expect(text).toContain("postgres.backupsBucket=abc-wizard-prod-backups");
+    expect(text).toContain("images.registry=ghcr.io/owner");
+    expect(text).not.toContain("pgbouncer.postgresHost");
+    expect(text).not.toContain("ghp_secret_read_packages");
+    // The pull secret goes through stdin as a dockerconfigjson Secret.
+    const pull = inputs.map((i) => JSON.parse(i)).find((x) => x.metadata?.name === "wizard-ghcr");
+    expect(pull.type).toBe("kubernetes.io/dockerconfigjson");
+    const cfg = JSON.parse(Buffer.from(pull.data[".dockerconfigjson"], "base64").toString());
+    expect(cfg.auths["ghcr.io"]).toMatchObject({ username: "owner", password: "ghp_secret_read_packages" });
+    expect(clusterSecrets("pilot").map((x) => x.name)).toEqual([
+      ...CLUSTER_SECRETS.map((x) => x.name),
+      "wizard-postgres",
+      "wizard-ghcr",
+    ]);
+    expect(clusterSecrets("k3s")).toBe(CLUSTER_SECRETS);
+    expect(JSON.parse(registrySecret("ns", "n", "ghcr.io", "u", "t")).metadata).toEqual({
+      name: "n",
+      namespace: "ns",
+    });
+  });
+
+  it("a missing database secret stops the pilot release before Helm", async () => {
+    const lines = [];
+    const run = (cmd, args) => {
+      lines.push(`$ ${cmd} ${args.join(" ")}`);
+      if (cmd === "tofu" && args[1] === "output") return { status: 0, stdout: JSON.stringify(PILOT_OUT) };
+      if (cmd === "kubectl" && args.includes("wizard-postgres") && args.includes("get"))
+        return { status: 1, stdout: "" };
+      return { status: 0, stdout: "server: https://127.0.0.1:6443\n" };
+    };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true, run };
+    expect(await main(["deploy", "--env", "prod", "--yes", "--tag", "abc"], TIMEWEB, deps)).toBe(3);
+    expect(lines.join("\n")).toContain("Нет секрета wizard-platform/wizard-postgres");
+    expect(lines.join("\n")).not.toContain("upgrade --install wizard");
+  });
+
+  it("the release waits for every image of the tag in GHCR (pull token from read:packages)", async () => {
+    const calls = [];
+    let missing = 1;
+    const f = async (url, init) => {
+      calls.push(`${init.method ?? "GET"} ${url} ${init.headers.authorization.split(" ")[0]}`);
+      if (url.includes("/token?")) return { ok: true, json: async () => ({ token: "pull" }) };
+      if (url.endsWith("/wizard-worker/manifests/abc") && missing-- > 0) return { status: 404 };
+      return { status: 200 };
+    };
+    const logs = [];
+    await waitForImages({
+      registry: "ghcr.io/owner",
+      names: ["wizard-runtime", "wizard-worker"],
+      tag: "abc",
+      user: "owner",
+      token: "t",
+      f,
+      log: (s) => logs.push(s),
+      sleep: async () => {},
+    });
+    expect(calls).toEqual([
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-runtime:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-runtime/manifests/abc Bearer",
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-worker:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-worker/manifests/abc Bearer",
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-worker:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-worker/manifests/abc Bearer",
+    ]);
+    expect(logs).toHaveLength(1);
+    await expect(
+      waitForImages({
+        registry: "ghcr.io/owner",
+        names: ["x"],
+        tag: "abc",
+        user: "u",
+        token: "t",
+        f: async (url) => (url.includes("/token?") ? { ok: false } : { status: 401 }),
+        sleep: async () => {},
+        attempts: 2,
+      }),
+    ).rejects.toThrow(/not in the registry \(401\)/);
+    expect(imageNames()).toContain("wizard-postgres");
   });
 });
 

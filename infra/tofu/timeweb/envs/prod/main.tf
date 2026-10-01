@@ -1,5 +1,6 @@
-# Root of prod on Timeweb Cloud: `pnpm infra:apply --env prod` (deploy-prod.yml, repository owner only). Two VMs (k3s
-# server + gVisor sandbox agent), single managed PostgreSQL with daily backups; recovery = re-create by one command. Credentials: TWC_TOKEN (environment; token
+# Root of prod on Timeweb Cloud: `pnpm infra:apply --env prod` (deploy-prod.yml, repository owner only). Shape from
+# terraform.tfvars: pilot (terraform.tfvars.example — one VM, PostgreSQL + WAL-G in the cluster) or beta
+# (terraform.tfvars.beta.example — k3s server + sandbox agent, managed PostgreSQL). Credentials: TWC_TOKEN (environment; token
 # without Telegram deletion confirmation, provider docs), state in S3 (-backend-config from WIZARD_TF_STATE_*),
 # encrypted with TF_VAR_state_passphrase.
 terraform {
@@ -59,10 +60,13 @@ module "env" {
   source            = "../../modules/env"
   env               = "prod"
   name_prefix       = "wizard-prod"
-  location          = try(var.settings.location, "ru-1")
+  location          = "ru-3" # Moscow only (founder decision 2026-10-01)
   server            = var.settings.server
   sandbox_nodes     = try(var.settings.sandbox_nodes, {})
-  postgres          = var.settings.postgres
+  postgres          = try(var.settings.postgres, null) # null → pilot: PostgreSQL + WAL-G in the cluster
+  buckets           = try(var.settings.buckets, null)
+  image_registry    = try(var.settings.image_registry, "registry.wizard.local")
+  docker_mirror     = try(var.settings.docker_mirror, "https://dockerhub.timeweb.cloud")
   ssh_public_key    = var.settings.ssh_public_key
   admin_cidrs       = try(var.settings.admin_cidrs, [])
   platform_domain   = var.settings.platform_domain

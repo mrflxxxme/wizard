@@ -11,9 +11,13 @@ variable "name_prefix" {
 }
 
 variable "location" {
-  description = "Timeweb location: ru-1 (St. Petersburg, the only one with S3 in production) or ru-3 (Moscow)."
+  description = "Timeweb location of the VMs: Moscow only (founder decision 2026-10-01). S3 lives in ru-1 (the only S3 location)."
   type        = string
-  default     = "ru-1"
+  default     = "ru-3"
+  validation {
+    condition     = var.location == "ru-3"
+    error_message = "Only the Moscow location ru-3 is allowed (founder decision 2026-10-01)."
+  }
 }
 
 variable "vpc_cidr" {
@@ -39,8 +43,8 @@ variable "k3s_version" {
 }
 
 variable "server" {
-  description = "k3s server VM (platform pool; also the sandbox pool when sandbox_nodes is empty)."
-  type        = object({ cpu = number, ram_gb = number, disk_gb = number })
+  description = "k3s server VM (platform pool; also the sandbox pool when sandbox_nodes is empty). max_price (₽/month) → a fixed preset not dearer than that; null → the configurator."
+  type        = object({ cpu = number, ram_gb = number, disk_gb = number, max_price = optional(number) })
 }
 
 variable "sandbox_nodes" {
@@ -50,6 +54,8 @@ variable "sandbox_nodes" {
 }
 
 variable "postgres" {
+  description = "Managed PostgreSQL (beta). null → pilot: PostgreSQL 16 with WAL-G inside the cluster."
+  default     = null
   type = object({
     cpu             = number
     ram_gb          = number
@@ -66,9 +72,27 @@ variable "backup_start" {
 }
 
 variable "s3_preset_gb" {
-  description = "Disk of the S3 preset per bucket (GB)."
+  description = "Disk of the S3 preset per bucket (GB) of the beta's five buckets."
   type        = number
   default     = 10
+}
+
+variable "buckets" {
+  description = "Buckets and their preset size in GB; null → pilot {files = 10, backups = 100}, beta five × s3_preset_gb."
+  type        = map(number)
+  default     = null
+}
+
+variable "image_registry" {
+  description = "Image prefix the cluster pulls from: ghcr.io/<owner> (pilot; pull secret wizard-ghcr) or registry.wizard.local (in-cluster registry, pushed by the runner)."
+  type        = string
+  default     = "registry.wizard.local"
+}
+
+variable "docker_mirror" {
+  description = "Pull-through mirror of Docker Hub for containerd (Timeweb Cloud: https://dockerhub.timeweb.cloud); empty → none."
+  type        = string
+  default     = "https://dockerhub.timeweb.cloud"
 }
 
 variable "ssh_public_key" {

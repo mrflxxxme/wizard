@@ -126,12 +126,26 @@ const SETS = [
   "pgbouncer.postgresHost=pg.internal",
   "network.postgresCidrs[0]=10.20.0.0/24",
   "network.kubeApiCidrs[0]=10.0.0.10/32",
+  "postgres.backupsBucket=abc-wizard-backups",
 ];
-// Beta path (founder decision): Timeweb Cloud, k3s on VMs. Alternative: Cloud.ru managed Kubernetes.
-const VARIANTS = [
+// Pilot (founder decision 2026-10-01): Timeweb Cloud, ONE VM with k3s, self-managed PostgreSQL + WAL-G.
+// Beta path: Timeweb Cloud, k3s on VMs, managed PostgreSQL. Alternative: Cloud.ru managed Kubernetes.
+type Variant = {
+  name: string;
+  provider: string;
+  files: readonly string[];
+  envFiles?: Record<"staging" | "prod", string>;
+};
+const VARIANTS: readonly Variant[] = [
+  {
+    name: "timeweb+pilot",
+    provider: "timeweb",
+    files: ["../providers/timeweb.yaml", "../profiles/k3s.yaml", "../profiles/pilot.yaml"],
+    envFiles: { staging: "../profiles/pilot-staging.yaml", prod: "../profiles/pilot-prod.yaml" },
+  },
   { name: "timeweb+k3s", provider: "timeweb", files: ["../providers/timeweb.yaml", "../profiles/k3s.yaml"] },
   { name: "cloudru", provider: "cloudru", files: ["../providers/cloudru.yaml"] },
-] as const;
+];
 
 function yamlDocs(text: string): K8s[] {
   const r = spawnSync(
@@ -143,15 +157,16 @@ function yamlDocs(text: string): K8s[] {
   return JSON.parse(r.stdout);
 }
 
-function helmArgs(cmd: "template" | "lint", files: readonly string[], env: string): string[] {
+function helmArgs(cmd: "template" | "lint", v: Variant, env: "staging" | "prod"): string[] {
   const args = cmd === "template" ? ["template", "wizard", CHART] : ["lint", CHART, "--strict"];
-  for (const f of [...files, `values-${env}.yaml`]) args.push("-f", join(CHART, f));
+  const files = [...v.files, `values-${env}.yaml`, ...(v.envFiles ? [v.envFiles[env]] : [])];
+  for (const f of files) args.push("-f", join(CHART, f));
   for (const s of SETS) args.push("--set", s);
   return args;
 }
 
-function render(files: readonly string[], env: "staging" | "prod"): { docs: K8s[]; text: string } {
-  const r = spawnSync(HELM as string, helmArgs("template", files, env), {
+function render(v: Variant, env: "staging" | "prod"): { docs: K8s[]; text: string } {
+  const r = spawnSync(HELM as string, helmArgs("template", v, env), {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -176,8 +191,8 @@ describe("provider neutrality", () => {
 describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
   it("lints for every provider variant and environment", () => {
     for (const v of VARIANTS) {
-      for (const env of ["staging", "prod"]) {
-        const r = spawnSync(HELM as string, helmArgs("lint", v.files, env), { encoding: "utf8" });
+      for (const env of ["staging", "prod"] as const) {
+        const r = spawnSync(HELM as string, helmArgs("lint", v, env), { encoding: "utf8" });
         expect(r.status, `${v.name} ${env}: ${r.stdout}${r.stderr}`).toBe(0);
       }
     }
@@ -197,12 +212,21 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
   for (const v of VARIANTS) {
     for (const env of ["staging", "prod"] as const) {
       describe(`${v.name} ${env}`, () => {
-        const { docs, text } = HELM ? render(v.files, env) : { docs: [], text: "" };
+        const { docs, text } = HELM ? render(v, env) : { docs: [], text: "" };
         const of = (kind: string) => docs.filter((d) => d.kind === kind);
         const pods = of("Deployment").map((d) => ({
           name: d.metadata.name as string,
           spec: d.spec.template.spec,
         }));
+        // Every pod template of the release: Deployments, StatefulSets and CronJobs (pilot database and its Jobs).
+        const allPods = [
+          ...pods,
+          ...of("StatefulSet").map((d) => ({ name: d.metadata.name as string, spec: d.spec.template.spec })),
+          ...of("CronJob").map((d) => ({
+            name: d.metadata.name as string,
+            spec: d.spec.jobTemplate.spec.template.spec,
+          })),
+        ];
 
         it("the runtime internal port is never behind an Ingress (L3-19)", () => {
           const internal = of("Service").find((s) => s.metadata.name === "wizard-runtime-internal");
@@ -227,12 +251,12 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
 
         it("every pod is hardened (PodSecurity restricted) and has resources", () => {
           expect(pods.length).toBeGreaterThanOrEqual(7);
-          for (const p of pods) {
+          for (const p of allPods) {
             expect(p.spec.securityContext.runAsNonRoot, p.name).toBe(true);
             expect(p.spec.securityContext.seccompProfile.type, p.name).toBe("RuntimeDefault");
             if (p.name !== "wizard-acme-dns01")
               expect(p.spec.automountServiceAccountToken, p.name).toBe(false);
-            for (const c of p.spec.containers) {
+            for (const c of [...p.spec.containers, ...(p.spec.initContainers ?? [])]) {
               expect(c.securityContext.readOnlyRootFilesystem, p.name).toBe(true);
               expect(c.securityContext.allowPrivilegeEscalation, p.name).toBe(false);
               expect(c.securityContext.capabilities.drop, p.name).toEqual(["ALL"]);
@@ -316,6 +340,130 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             const rc = of("RuntimeClass")[0];
             expect(rc).toMatchObject({ metadata: { name: "gvisor" }, handler: "runsc" });
             expect(text).toContain("10.42.0.0/16");
+          });
+        }
+
+        if (v.name === "timeweb+pilot") {
+          const env0 = (c: K8s) => Object.fromEntries((c.env ?? []).map((e: K8s) => [e.name, e.value]));
+          const sts = of("StatefulSet").find((d) => d.metadata.name === "wizard-postgres");
+          const cron = (name: string) => of("CronJob").find((d) => d.metadata.name === name);
+
+          it("pilot: one replica of everything, images from GHCR with a pull secret, small sandbox quota", () => {
+            for (const d of [...of("Deployment"), ...of("StatefulSet")]) {
+              expect(d.spec.replicas, d.metadata.name).toBe(1);
+              expect(d.spec.template.spec.imagePullSecrets, d.metadata.name).toEqual([
+                { name: "wizard-ghcr" },
+              ]);
+            }
+            expect(of("PodDisruptionBudget")).toEqual([]);
+            const quota = of("ResourceQuota")[0];
+            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "2" : "1");
+            const rc = of("RuntimeClass")[0];
+            expect(rc).toMatchObject({ metadata: { name: "gvisor" }, handler: "runsc" });
+          });
+
+          it("pilot: PostgreSQL 16 StatefulSet with WAL-G archiving every ≤ 60 s, encrypted, never overwriting", () => {
+            const pg = sts?.spec.template.spec.containers.find((c: K8s) => c.name === "postgres");
+            expect(pg.args).toEqual(
+              expect.arrayContaining([
+                "wal_level=replica",
+                "archive_mode=on",
+                "archive_command=wal-g wal-push %p",
+                "archive_timeout=60",
+              ]),
+            );
+            expect(env0(pg)).toMatchObject({
+              WALG_S3_PREFIX: "s3://abc-wizard-backups/pg",
+              AWS_ENDPOINT: "https://s3.twcstorage.ru",
+              WALG_LIBSODIUM_KEY_TRANSFORM: "hex",
+              WALG_PREVENT_WAL_OVERWRITE: "true",
+              PGDATA: "/var/lib/postgresql/data/pgdata",
+            });
+            expect(pg.envFrom).toEqual([{ secretRef: { name: "wizard-postgres" } }]);
+            expect(sts?.spec.template.spec.initContainers[0].command).toEqual([
+              "node",
+              "/opt/wizard/pg-ops.mjs",
+              "bootstrap",
+            ]);
+            const ops = sts?.spec.template.spec.containers.find((c: K8s) => c.name === "pg-ops");
+            expect(ops.command.at(-1)).toBe("monitor");
+            expect(env0(ops)).toMatchObject({
+              WIZARD_ARCHIVE_MAX_LAG_SEC: "300",
+              WIZARD_DRILL_MAX_AGE_H: "192",
+            });
+            expect(sts?.spec.volumeClaimTemplates[0].spec).toMatchObject({
+              accessModes: ["ReadWriteOnce"],
+              storageClassName: "local-path",
+            });
+          });
+
+          it("pilot: daily base backup (14 days), weekly restore drill of platform tables, Moscow time", () => {
+            const bb = cron("wizard-pg-basebackup");
+            expect(bb?.spec).toMatchObject({ schedule: "17 2 * * *", timeZone: "Europe/Moscow" });
+            const bbc = bb?.spec.jobTemplate.spec.template.spec.containers[0];
+            expect(env0(bbc)).toMatchObject({ WIZARD_BACKUP_RETENTION_DAYS: "14" });
+            expect(bb?.spec.jobTemplate.spec.template.spec.volumes[0].persistentVolumeClaim).toEqual({
+              claimName: "pgdata-wizard-postgres-0",
+              readOnly: true,
+            });
+            const dr = cron("wizard-pg-restore-drill");
+            expect(dr?.spec.schedule).toMatch(/^\d+ \d+ \* \* 0$/);
+            const drc = dr?.spec.jobTemplate.spec.template.spec.containers[0];
+            expect(drc.command.at(-1)).toBe("restore-drill");
+            expect(env0(drc)).toMatchObject({ WIZARD_DRILL_SCHEMAS: "platform", WIZARD_DRILL_DIR: "/drill" });
+            expect(cron("wizard-data-restore")?.spec.suspend).toBe(true);
+            const sync = pods.find((p) => p.name === "wizard-data-backup");
+            expect(env0(sync?.spec.containers[0])).toMatchObject({
+              RCLONE_CONFIG_ENC_TYPE: "crypt",
+              RCLONE_CONFIG_ENC_REMOTE: "s3:abc-wizard-backups/data",
+            });
+          });
+
+          it("pilot: PgBouncer in front of the in-cluster server; NetworkPolicy by pod, not by CIDR", () => {
+            const ini = of("ConfigMap").find((c) => c.metadata.name === "wizard-pgbouncer")?.data[
+              "pgbouncer.ini"
+            ];
+            expect(ini).toContain(
+              "wizard = host=wizard-postgres.wizard-platform.svc port=5432 dbname=wizard",
+            );
+            expect(ini).toContain("server_tls_sslmode = disable");
+            expect(ini).not.toContain("server_tls_ca_file");
+            const nps = of("NetworkPolicy");
+            const bouncer = nps.find((n) => n.metadata.name === "wizard-pgbouncer");
+            expect(JSON.stringify(bouncer?.spec.egress)).toContain('"wizard.ru/role":"postgres"');
+            expect(JSON.stringify(bouncer?.spec.egress)).not.toContain("ipBlock");
+            const pgnp = nps.find((n) => n.metadata.name === "wizard-postgres");
+            const from = pgnp?.spec.ingress[0].from.map(
+              (f: K8s) => f.podSelector.matchLabels["wizard.ru/role"],
+            );
+            expect(from).toEqual(["pgbouncer", "platform-api", "worker", "pg-job"]);
+            for (const name of ["wizard-postgres", "wizard-pg-job", "wizard-data-backup"]) {
+              const np = nps.find((n) => n.metadata.name === name);
+              for (const e of np?.spec.egress ?? []) {
+                for (const t of e.to ?? []) {
+                  if (t.ipBlock)
+                    expect(t.ipBlock.except, name).toEqual(
+                      expect.arrayContaining(["10.0.0.0/8", "169.254.0.0/16"]),
+                    );
+                }
+              }
+            }
+          });
+
+          it("pilot: requests of the release fit the VM next to k3s and the addons", () => {
+            const mib = (q: string) => {
+              const m = /^(\d+(?:\.\d+)?)(Mi|Gi)?$/.exec(String(q));
+              if (!m) throw new Error(`quantity ${q}`);
+              return Number(m[1]) * (m[2] === "Gi" ? 1024 : m[2] === "Mi" ? 1 : 1 / 1048576);
+            };
+            let sum = 0;
+            for (const p of [...pods, { spec: sts?.spec.template.spec }]) {
+              for (const c of p.spec.containers) sum += mib(c.resources.requests.memory);
+            }
+            sum += mib(of("ResourceQuota")[0]?.spec.hard["requests.memory"]);
+            // Allocatable ≈ RAM − 0.25 GiB; k3s system pods and the pilot addons request ≈ 0.6 GiB.
+            const vmGiB = env === "prod" ? 8 : 4;
+            expect(sum / 1024, `requests ${Math.round(sum)} MiB`).toBeLessThanOrEqual(vmGiB - 0.25 - 0.6);
           });
         }
 

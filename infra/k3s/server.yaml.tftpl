@@ -1,9 +1,10 @@
 #cloud-config
 # Provider-neutral k3s server on a plain Ubuntu 24.04 VM (rendered by the provider's OpenTofu module with templatefile;
 # docs/ops/deploy.md «k3s на ВМ»). No managed control plane: single server, embedded etcd off (sqlite), restore =
-# re-create the VM + `pnpm infra:apply` (state lives in managed PostgreSQL and S3; downtime budget 1–2 h).
+# re-create the VM + `pnpm infra:apply` (state lives in S3 and in managed PostgreSQL — or, in the pilot, in the WAL-G
+# archive from which the database pod restores itself; downtime budget 1–2 h).
 # Variables: k3s_version, token, node_ip, public_ip, pods_cidr, services_cidr, sandbox_pool ("" | free | paid —
-# a single-node environment also runs the gVisor sandbox pool here).
+# a single-node environment, e.g. the pilot, also runs the gVisor sandbox pool here), docker_mirror ("" → none).
 package_update: true
 packages: [curl, ca-certificates, gnupg, apparmor]
 write_files:
@@ -36,6 +37,12 @@ write_files:
         "registry.wizard.local":
           endpoint:
             - "http://127.0.0.1:30500"
+%{ if docker_mirror != "" ~}
+        # Docker Hub through the provider's pull-through mirror (Docker Hub limits pulls from RF addresses).
+        "docker.io":
+          endpoint:
+            - "${docker_mirror}"
+%{ endif ~}
   - path: /etc/sysctl.d/90-kubelet.conf
     content: |
       vm.panic_on_oom=0

@@ -60,6 +60,11 @@ spec:
     {{- include "wizard.dnsEgress" $ | nindent 4 }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.pgbouncer.port }} }]
+    {{- if $.Values.postgres.inCluster }}
+    # DBOS system database and migrations may need a session connection: straight to the in-cluster server.
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: postgres } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.postgres.port }} }]
+    {{- end }}
     {{- if $net.postgresCidrs }}
     - to:
         {{- range $net.postgresCidrs }}
@@ -174,11 +179,78 @@ spec:
       ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.port }} }]
   egress:
     {{- include "wizard.dnsEgress" . | nindent 4 }}
+    {{- if .Values.postgres.inCluster }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: postgres } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.postgres.port }} }]
+    {{- else }}
     - to:
         {{- range (required "network.postgresCidrs is required (Managed PostgreSQL subnet)" $net.postgresCidrs) }}
         - ipBlock: { cidr: {{ . }} }
         {{- end }}
       ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.postgresPort }} }]
+    {{- end }}
+{{- end }}
+{{- if .Values.postgres.inCluster }}
+---
+# Self-managed PostgreSQL: clients are PgBouncer, platform-api/worker (DBOS) and the backup/drill Jobs; metrics only from
+# the observability namespace. Out: S3 (WAL-G) and the alert webhook on 443 — no private, cluster or metadata ranges.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-postgres, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: postgres } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { wizard.ru/role: pgbouncer } }
+        - podSelector: { matchLabels: { wizard.ru/role: platform-api } }
+        - podSelector: { matchLabels: { wizard.ru/role: worker } }
+        - podSelector: { matchLabels: { wizard.ru/role: pg-job } }
+      ports: [{ protocol: TCP, port: {{ .Values.postgres.port }} }]
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ .Values.namespaces.observability }} } } }]
+      ports: [{ protocol: TCP, port: 9187 }]
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports: [{ protocol: TCP, port: 443 }]
+---
+# Base backup and restore drill Jobs: the database Service, S3 and the alert webhook.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-pg-job, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: pg-job } }
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: postgres } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.postgres.port }} }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports: [{ protocol: TCP, port: 443 }]
+{{- end }}
+{{- if .Values.dataBackup.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-data-backup, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: data-backup } }
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports: [{ protocol: TCP, port: 443 }]
 {{- end }}
 ---
 # Generated from apps/runtime sandboxNetworkPolicy() (tools/deploy/test/helm.test.ts keeps it in sync).

@@ -121,6 +121,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KUBECONFORM_VERSION: v0.7.0
+      # WAL-G of the pilot database (infra/docker/postgres.Dockerfile pins the same release and sha256).
+      WALG_VERSION: v3.0.9
+      WALG_SHA256: 4f03ee4679db7f660bfd1b2b8291ac5df247cd2ec48074b60c112f4897299f24
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -139,6 +142,13 @@ jobs:
         run: |
           curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz -C "$RUNNER_TEMP" kubeconform
           echo "KUBECONFORM_BIN=$RUNNER_TEMP/kubeconform" >> "$GITHUB_ENV"
+      - name: wal-g (restore drill against a throwaway PostgreSQL 16 of the runner image)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/wal-g.tar.gz" "https://github.com/wal-g/wal-g/releases/download/${WALG_VERSION}/wal-g-pg-22.04-amd64.tar.gz"
+          echo "${WALG_SHA256}  $RUNNER_TEMP/wal-g.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/wal-g.tar.gz" -C "$RUNNER_TEMP"
+          echo "WALG_BIN=$RUNNER_TEMP/wal-g-pg-22.04-amd64" >> "$GITHUB_ENV"
+          ls /usr/lib/postgresql/16/bin/pg_ctl
       - run: pip install pyyaml
       - run: pnpm install --frozen-lockfile
       - run: HELM_BIN="$(command -v helm)" pnpm exec vitest run tools/deploy
@@ -151,4 +161,11 @@ jobs:
             if [ -f "$provider_dir/tofurc" ]; then export TF_CLI_CONFIG_FILE="$PWD/$provider_dir/tofurc"; else unset TF_CLI_CONFIG_FILE; fi
             tofu -chdir="$d" init -backend=false -input=false
             tofu -chdir="$d" validate
+          done
+      - name: tofu test (module shapes offline — pilot and beta, no provider credentials)
+        run: |
+          for m in infra/tofu/*/modules/*; do
+            [ -d "$m/tests" ] || continue
+            tofu -chdir="$m" init -backend=false -input=false
+            tofu -chdir="$m" test
           done

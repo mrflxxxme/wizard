@@ -1,0 +1,12 @@
+# Pilot overlay (one VM): small requests for the controller, webhook and cainjector (each ≈ 30–40 MiB RSS).
+resources:
+  requests: { cpu: 10m, memory: 48Mi }
+  limits: { memory: 192Mi }
+webhook:
+  resources:
+    requests: { cpu: 10m, memory: 24Mi }
+    limits: { memory: 96Mi }
+cainjector:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { memory: 192Mi }

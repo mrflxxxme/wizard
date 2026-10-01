@@ -2,7 +2,7 @@
 # Provider-neutral k3s agent for a gVisor sandbox pool (free | paid): runsc as a containerd handler for the RuntimeClass
 # "gvisor"; labels and taint match apps/runtime sandboxPod() (nodeSelector wizard.ru/pool=<pool>, toleration
 # wizard.ru/sandbox=<pool>:NoSchedule). Rendered by the provider's OpenTofu module (templatefile).
-# Variables: k3s_version, token, server_ip, node_ip, pool.
+# Variables: k3s_version, token, server_ip, node_ip, pool, docker_mirror ("" → pull Docker Hub directly).
 package_update: true
 packages: [curl, ca-certificates, gnupg, apparmor]
 write_files:
@@ -21,6 +21,12 @@ write_files:
         "registry.wizard.local":
           endpoint:
             - "http://127.0.0.1:30500"
+%{ if docker_mirror != "" ~}
+        # Docker Hub through the provider's pull-through mirror (Docker Hub limits pulls from RF addresses).
+        "docker.io":
+          endpoint:
+            - "${docker_mirror}"
+%{ endif ~}
   - path: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
     content: |
       {{ template "base" . }}
