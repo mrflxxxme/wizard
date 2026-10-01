@@ -452,6 +452,9 @@
             "consent": true
           },
           {"expect": {"status": "ok", "fields": {"needsPayment": false}}},
+          {"as": "org"},
+          {"update": {"entity": "ticket", "id": "$t1.ticketId", "data": {"event_starts_at": "$now"}}},
+          {"expect": {"status": "ok"}},
           {"advanceTime": {"minutes": 90720}},
           {"runWorkflows": {}},
           {"as": "org"},
