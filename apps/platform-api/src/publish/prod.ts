@@ -2,7 +2,7 @@
 // smoke check of the prod host, URLs and the Publication API shape.
 import { request } from "node:http";
 import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
-import { schemaName, type TelegramPublishOptions } from "@wizard/runtime";
+import { ensureSystemRole, schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
@@ -10,6 +10,7 @@ import { upgradeSystemTables } from "../agents/system-tables.js";
 import type { Config } from "../config.js";
 import type { PublicationsTable } from "../db/types.js";
 import { RunFailure } from "../runs/types.js";
+import type { ModerationLog } from "./moderation.js";
 
 /** Prod host of a system in M1 (local/staging, deploy.yaml#local.hosts.systems; public prod — M2-07). */
 export function prodUrl(config: Pick<Config, "runtimePort">, slug: string): string {
@@ -38,6 +39,8 @@ export interface PublishOptions {
    * WIZARD_CONNECTORS=live, otherwise outbox (calls recorded in .data/outbox/<systemKey>/telegram.jsonl).
    */
   telegram?: TelegramPublishOptions;
+  /** Moderation journal of G2 antifraud hits (abuse_flag; default: a structured platform log line). */
+  moderationLog?: ModerationLog;
 }
 
 function get(url: URL, timeoutMs: number): Promise<{ status: number; body: string }> {
@@ -119,7 +122,10 @@ export async function applyProdMigration(
 ): Promise<void> {
   const o = a.options ?? {};
   const schema = schemaName(a.systemKey, "prod");
-  const ddl = toDDL(a.plan, schema, { runtimeRole: o.runtimeRole ?? RUNTIME_ROLE, lockTimeout: "3s" });
+  const runtimeRole = o.runtimeRole ?? RUNTIME_ROLE;
+  // System access = DB role sys_<key>_prod_system (isolation.yaml#db_access, L3-20), created before the DDL.
+  const systemRole = await ensureSystemRole(pg, a.systemKey, "prod", [runtimeRole]);
+  const ddl = toDDL(a.plan, schema, { runtimeRole, systemRole, lockTimeout: "3s" });
   // An existing prod schema may predate system tables/columns of the current runtime (before set_rls touches them);
   // create_schema over a leftover schema creates missing tables itself but not missing columns.
   if (a.plan.steps.some((s) => s.kind === "create_schema")) ddl.push(...upgradeSystemTables(schema));

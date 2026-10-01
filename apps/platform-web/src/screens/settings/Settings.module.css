@@ -266,3 +266,21 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.logRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--w-line);
+}
+
+.logRow:last-child {
+  border-bottom: 0;
+}
+
+.danger {
+  border-color: var(--w-bad);
+}

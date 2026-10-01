@@ -290,7 +290,7 @@ screens:
       - "MUST: owner-only действия (откат prod, приглашения, роли, «только РФ», снятие блокировки) для editor/viewer disabled с подсказкой; сервер — 403"
       - "MUST: откат prod — подтверждение «Вернуть prod к ревизии N? Данные сохранятся» → прогон kind=rollback в ленте"
       - "422 LAST_OWNER → «В организации должен остаться владелец»"
-    test_ids: [settings-team, settings-member, settings-invite, settings-lock, settings-ru-only, settings-ai-usage, settings-login-methods, settings-retention, settings-export, settings-code, settings-pd-operator, settings-pd-consent, settings-deletion-log, revision-row, revision-rollback]
+    test_ids: [settings-team, settings-member, settings-invite, settings-lock, settings-ru-only, settings-ai-usage, settings-login-methods, settings-retention, settings-export, settings-code, settings-pd-operator, settings-pd-consent, settings-deletion-log, settings-deletion-row, settings-deletion-more, settings-deletion-empty, settings-delete-system, settings-delete-confirm, settings-delete-yes, settings-delete-no, revision-row, revision-rollback]
     acceptance:
       - "M1-02 Playwright: viewer видит settings-invite и revision-rollback disabled"
       - "M2-11: оператор ПДн сохранён → publish-blocker OPERATOR_* на S6 исчезает; журнал удалений показывает строки deletion_log без значений; «Выгрузить данные» → ZIP скачивается один раз"

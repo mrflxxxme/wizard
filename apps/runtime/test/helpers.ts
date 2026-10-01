@@ -2,13 +2,21 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type AppSpec, type Entity, type Field, quoteIdent, USERS_ENTITY } from "@wizard/appspec";
+import {
+  type AppSpec,
+  dropSystemRoleDDL,
+  type Entity,
+  type Field,
+  quoteIdent,
+  USERS_ENTITY,
+} from "@wizard/appspec";
 import postgres from "postgres";
 import {
   createRuntimeApp,
   MemoryRegistry,
   migrateSystem,
   type RuntimeApp,
+  type RuntimeAppOptions,
   type RuntimeEnv,
   schemaName,
 } from "../src/index.js";
@@ -46,7 +54,10 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function harness(env: Partial<RuntimeEnv> = {}): Promise<Harness> {
+export async function harness(
+  env: Partial<RuntimeEnv> = {},
+  app: Partial<RuntimeAppOptions> = {},
+): Promise<Harness> {
   const sql = postgres(DB_URL, { max: 6, onnotice: () => {} });
   const role = `wz_rt_test_${randomBytes(4).toString("hex")}`;
   await sql.unsafe(`CREATE ROLE ${quoteIdent(role)} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
@@ -55,6 +66,7 @@ export async function harness(env: Partial<RuntimeEnv> = {}): Promise<Harness> {
     registry: new MemoryRegistry(),
     dbRole: role,
     env: { ...devEnv, ...env },
+    ...app,
   });
   const keys: string[] = [];
   const schemas: string[] = [];
@@ -73,6 +85,7 @@ export async function harness(env: Partial<RuntimeEnv> = {}): Promise<Harness> {
     },
     async close() {
       for (const s of schemas) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
+      for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await sql.unsafe(st);
       await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
       await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
       await sql.end();

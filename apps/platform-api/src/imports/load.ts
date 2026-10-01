@@ -7,13 +7,12 @@ import {
   type LiteralType,
   literalProblem,
   quoteIdent,
-  SYSTEM_ROLE,
   sqlType,
+  systemRoleName,
 } from "@wizard/appspec";
 import type { ImportColumnMapping } from "@wizard/llm";
 import type { SyntheticPayload, Table } from "@wizard/pii/import";
 import type postgres from "postgres";
-import { MIGRATOR_ROLE } from "../agents/draft.js";
 
 export const LOAD_BATCH = 1000;
 const MAX_PARAMS = 60_000;
@@ -214,8 +213,8 @@ export async function loadRows(
   const { result, batches } = planLoad(i);
   await pg.begin(async (tx) => {
     await o.before?.(tx, result);
-    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(i.migratorRole ?? MIGRATOR_ROLE)}`);
-    await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+    // Rows are written as the target schema's system DB role (FORCE RLS; isolation.yaml#db_access, L3-20).
+    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(i.schema))}`);
     for (const b of batches) await tx.unsafe(b.sql, b.values as never[]);
   });
   return result;

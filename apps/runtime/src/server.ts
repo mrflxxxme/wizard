@@ -9,7 +9,12 @@ export interface StartOptions extends RuntimeAppOptions {
   port?: number;
   /** Bind address; default 127.0.0.1. Dev-only flags refuse non-loopback binds (L3-11). */
   hostname?: string;
+  /** Period of the retention check (runtime.yaml#workflows.retention; a pass runs once per daily slot); 0 — off. */
+  retentionTickMs?: number;
 }
+
+/** Default period of the retention check: a platform request is served within it. */
+export const RETENTION_TICK_MS = 10 * 60_000;
 
 export async function startRuntime(
   o: StartOptions,
@@ -28,10 +33,34 @@ export async function startRuntime(
     port: o.port ?? 4100,
     hostname,
   });
+  const tickMs = o.retentionTickMs ?? RETENTION_TICK_MS;
+  let ticking = false;
+  const tick =
+    tickMs > 0
+      ? setInterval(() => {
+          if (ticking) return;
+          ticking = true;
+          runtime
+            .retentionTick()
+            .catch((err: unknown) =>
+              o.log?.({
+                ts: new Date().toISOString(),
+                level: "error",
+                msg: "retention_failed",
+                sqlstate: (err as { code?: unknown }).code ?? null,
+              }),
+            )
+            .finally(() => {
+              ticking = false;
+            });
+        }, tickMs)
+      : undefined;
+  tick?.unref();
   return {
     runtime,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        if (tick) clearInterval(tick);
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

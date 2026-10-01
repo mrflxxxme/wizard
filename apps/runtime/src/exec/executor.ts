@@ -7,17 +7,21 @@ import { type CurrentUser, type FnKind, WizardError } from "@wizard/sdk";
 import { isSerializationFailure } from "@wizard/sdk/host";
 
 export const CHILD_PATH = fileURLToPath(new URL("./child.mjs", import.meta.url));
+/** Guest runtime shared with the M2 workerd Worker; the only file outside the bundle the child may read. */
+export const GUEST_PATH = fileURLToPath(new URL("../sandbox/guest.mjs", import.meta.url));
 /** Hard ceiling of any call in unsafe-local mode (sdk.md §2.1). */
 export const UNSAFE_CEILING_MS = 5000;
 
 /**
- * Node flags of an executor process: permission model with read access to the bundle folder only, no
- * --allow-child-process / --allow-worker / --allow-addons; bounded heap. Spawned with env {} and no argv.
+ * Node flags of an executor process: permission model with read access to the bundle folder (and the guest runtime
+ * file) only, no --allow-child-process / --allow-worker / --allow-addons; bounded heap. Spawned with env {} and no
+ * argv.
  */
 export function executorFlags(bundleDir: string, maxOldSpaceMb = 128): string[] {
   return [
     "--permission",
     `--allow-fs-read=${bundleDir}`,
+    `--allow-fs-read=${GUEST_PATH}`,
     "--experimental-vm-modules",
     "--disable-warning=ExperimentalWarning",
     `--max-old-space-size=${maxOldSpaceMb}`,
@@ -72,7 +76,7 @@ interface Pending {
   fatal?: unknown;
 }
 
-type ChildMsg = Record<string, unknown>;
+export type ChildMsg = Record<string, unknown>;
 
 const DB_METHODS = new Set([
   "get",
@@ -95,12 +99,18 @@ function own(o: unknown, key: unknown): unknown {
   return Object.hasOwn(o, key) ? (o as Record<string, unknown>)[key] : undefined;
 }
 
-function errorPayload(e: unknown): { code: string; details: unknown } {
+export function errorPayload(e: unknown): { code: string; details: unknown } {
   return e instanceof WizardError ? { code: e.code, details: e.details } : { code: "INTERNAL", details: {} };
 }
 
+/** Host errors that fail the whole call even if guest code catches them (internal, limits, serialization). */
+export function isFatalHostError(e: unknown): boolean {
+  const code = e instanceof WizardError ? e.code : null;
+  return code === null || code === "LIMIT_EXCEEDED" || code === "TIMEOUT" || isSerializationFailure(e);
+}
+
 /** Executes one guest request against the host ctx; everything the child sends is untrusted. */
-async function dispatch(ctx: HostCtx, m: ChildMsg): Promise<unknown> {
+export async function dispatch(ctx: HostCtx, m: ChildMsg): Promise<unknown> {
   const params = Array.isArray(m.params) ? (m.params as unknown[]) : [];
   const forbidden = () => new WizardError("FORBIDDEN", { message: "Операция недоступна в этой функции" });
   switch (m.op) {
@@ -270,10 +280,7 @@ class ExecProcess {
         const value = await current.run(this, () => dispatch(p.hostCtx, m));
         reply = { ok: true, value: value === undefined ? null : value };
       } catch (e) {
-        const code = e instanceof WizardError ? e.code : null;
-        if (code === null || code === "LIMIT_EXCEEDED" || code === "TIMEOUT" || isSerializationFailure(e)) {
-          p.fatal ??= e;
-        }
+        if (isFatalHostError(e)) p.fatal ??= e;
         reply = { ok: false, error: errorPayload(e) };
       }
     }

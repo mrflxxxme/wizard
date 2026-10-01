@@ -1,7 +1,7 @@
 // Telegram endpoints (connectors/telegram.yaml#chat_linking, #webhooks, #bots.platform.webhook):
 // POST /api/telegram/:integration/link, POST /_wizard/hooks/telegram/:integration/:hookToken (own bot) and the
 // shared bot's /_wizard/hooks/telegram/_platform/:hookToken on the bare systems domain.
-import { type Integration, quoteIdent } from "@wizard/appspec";
+import { type Integration, quoteIdent, systemRoleName } from "@wizard/appspec";
 import {
   createTelegramLink,
   handlePlatformUpdate,
@@ -136,12 +136,16 @@ async function clearEverywhere(o: PlatformHookOptions, chatId: string): Promise<
     where n.nspname like 'app\\_%'
       and pg_catalog.has_table_privilege(coalesce(${role}::text, current_user), c.oid, 'UPDATE')`;
   for (const r of rows) {
-    const table = `${quoteIdent(String(r.schema))}.${quoteIdent("users")}`;
-    await o.sql.begin(async (tx) => {
-      if (role !== null) await tx.unsafe("select pg_catalog.set_config('role', $1, true)", [role]);
-      await tx.unsafe("select pg_catalog.set_config('wizard.role', '__system', true)");
-      await tx.unsafe(`update ${table} set telegram_chat_id = null where telegram_chat_id = $1`, [chatId]);
-    });
+    const schema = String(r.schema);
+    const table = `${quoteIdent(schema)}.${quoteIdent("users")}`;
+    // System access = the schema's system DB role (isolation.yaml#db_access, L3-20); a schema whose role is
+    // missing (created before M2) is skipped rather than failing the whole webhook.
+    await o.sql
+      .begin(async (tx) => {
+        await tx.unsafe("select pg_catalog.set_config('role', $1, true)", [systemRoleName(schema)]);
+        await tx.unsafe(`update ${table} set telegram_chat_id = null where telegram_chat_id = $1`, [chatId]);
+      })
+      .catch(() => undefined);
   }
 }
 

@@ -83,7 +83,7 @@ cloud:                             # M2 (M2-06). Все ресурсы — в Р
     stack: "Prometheus + Grafana + Loki (self-hosted в кластере) или Cloud.ru Monitoring/Logging; ошибки — GlitchTip (MIT) self-hosted или только логи"
     pii_in_logs: "MUST: логгер (pino) пишет только allowlist полей; свободный текст не логируется, а поля message/err проходят redaction packages/pii.scrub. Ошибки PG → {sqlstate, constraint} (без detail/where); ошибки провайдеров LLM → {status, code} (без тела); route — без query-строки; сегмент hookToken и /bot<token>/ маскируются; egress-прокси не логирует path/query (L3-08). Тела запросов не логируются. Тест: запрос с телефоном в теле → в логе [ТЕЛЕФОН_1] или ничего; канареечный e2e + grep по логам всех процессов"
     retention: "логи 30 дней, метрики 90 дней, аудит staff 3 года"
-    alerts: ["run failed rate > 20% за 1 ч", "abuse_reports с sla_deadline < 2 ч", "PG шард schema_count > 90% capacity", "ошибки T1 > 10% → автоматический фолбэк на T0 (data-boundary.yaml)", "сертификат истекает < 14 дней"]
+    alerts: ["run failed rate > 20% за 1 ч", "abuse_reports с sla_deadline < 2 ч", "PG шард schema_count > 90% capacity", "ошибки T1 > 10% → автоматический фолбэк на T0 (data-boundary.yaml)", "сертификат истекает < 14 дней", "retention_overdue: у prod-системы с retention нет прохода runtime > 26 ч (событие лога, M2-05)"]
   ci_cd:
     ci: ".github/workflows/ci.yml: lint, typecheck, test, specs-validate, e2e (fixture); pnpm install --frozen-lockfile; SBOM (CycloneDX) и license-check всего дерева зависимостей (лицензии — AGENTS.md)"
     supply_chain: "pnpm: onlyBuiltDependencies (allowlist скриптов установки), minimumReleaseAge: 1440 (L3-38)"

@@ -1,7 +1,16 @@
 // Ephemeral G1 environment (gates.yaml#G1.setup): schema app_<systemKey>_g1_<runId>_draft with DDL+RLS and seed,
 // pinned into a runtime via RuntimeHandle (architecture.yaml#interfaces.runtime_handle); dropped in finally.
 import { createHash, randomBytes } from "node:crypto";
-import { type AppSpec, planMigration, quoteIdent, SYSTEM_ROLE, SYSTEM_TABLES, toDDL } from "@wizard/appspec";
+import {
+  type AppSpec,
+  dropSystemRoleDDL,
+  planMigration,
+  quoteIdent,
+  SYSTEM_TABLES,
+  systemRoleName,
+  toDDL,
+  toSystemRoleDDL,
+} from "@wizard/appspec";
 import type postgres from "postgres";
 import type { JobRunReport, RuntimeHandle } from "../types.js";
 import { syntheticEmail, syntheticName, syntheticPhone, uuidFor } from "./seed.js";
@@ -53,9 +62,21 @@ export class G1Env {
     return quoteIdent(this.schema);
   }
 
+  /** sys_<key>_g1_<runId>_draft_system: system access of the ephemeral schema (isolation.yaml#db_access, L3-20). */
+  get systemRole(): string {
+    return systemRoleName(this.schema);
+  }
+
   async migrate(): Promise<void> {
+    // The system role is SET by the runtime role and by this connection's session user (seed, reset).
+    const [who] = await this.db`select session_user as u`;
+    const members = [this.runtimeRole, String(who?.u)];
+    for (const st of toSystemRoleDDL(this.schema, { members })) await this.db.unsafe(st);
     const plan = planMigration(null, this.spec, { env: "draft" });
-    const statements = toDDL(plan, this.schema, { runtimeRole: this.runtimeRole });
+    const statements = toDDL(plan, this.schema, {
+      runtimeRole: this.runtimeRole,
+      systemRole: this.systemRole,
+    });
     await this.db.begin(async (tx) => {
       for (const st of statements) await tx.unsafe(st);
     });
@@ -63,6 +84,7 @@ export class G1Env {
 
   async drop(): Promise<void> {
     await this.db.unsafe(`DROP SCHEMA IF EXISTS ${this.s} CASCADE`);
+    for (const st of dropSystemRoleDDL(this.schema)) await this.db.unsafe(st);
   }
 
   async load(artifactDir: string | null, spec: AppSpec = this.spec): Promise<void> {
@@ -75,10 +97,14 @@ export class G1Env {
     });
   }
 
-  /** Runs fn as the system role (bypasses row policies via wz__system; RLS is FORCEd for the owner too). */
-  async system<T>(fn: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
+  /** Runs fn as the schema's system DB role (policy wz__system; RLS is FORCEd for the owner too). */
+  async system<T>(
+    fn: (tx: postgres.TransactionSql) => Promise<T>,
+    before?: (tx: postgres.TransactionSql) => Promise<unknown>,
+  ): Promise<T> {
     return (await this.db.begin(async (tx) => {
-      await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+      if (before) await before(tx);
+      await tx.unsafe(`set local role ${quoteIdent(this.systemRole)}`);
       return fn(tx);
     })) as T;
   }
@@ -99,13 +125,16 @@ export class G1Env {
   /** Empties every table and loads the seed (null → empty system, scenario seed: none). */
   async reset(seed: Seed | null): Promise<void> {
     const tables = [...Object.keys(SYSTEM_TABLES), ...this.spec.entities.map((e) => e.name)];
-    await this.system(async (tx) => {
-      await tx.unsafe(`TRUNCATE ${tables.map((t) => `${this.s}.${quoteIdent(t)}`).join(", ")} CASCADE`);
-      if (!seed) return;
-      for (const u of seed.users) await this.insert(tx, "users", { ...u });
-      for (const name of seed.order)
-        for (const row of seed.rows[name] ?? []) await this.insert(tx, name, row);
-    });
+    // TRUNCATE needs the owner's privilege (and ignores RLS): it runs before switching to the system role.
+    await this.system(
+      async (tx) => {
+        if (!seed) return;
+        for (const u of seed.users) await this.insert(tx, "users", { ...u });
+        for (const name of seed.order)
+          for (const row of seed.rows[name] ?? []) await this.insert(tx, name, row);
+      },
+      (tx) => tx.unsafe(`TRUNCATE ${tables.map((t) => `${this.s}.${quoteIdent(t)}`).join(", ")} CASCADE`),
+    );
   }
 
   /**

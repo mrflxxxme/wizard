@@ -10,6 +10,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   type AppSpec,
+  dropSystemRoleDDL,
   literalProblem,
   planMigration,
   quoteIdent,
@@ -18,6 +19,7 @@ import {
   sqlLiteral,
   toDDL,
   toRLS,
+  toSystemRoleDDL,
   validateSpec,
 } from "../src/index.js";
 import { rng } from "./fixtures/schema-cases.js";
@@ -326,6 +328,7 @@ const sql = postgres(url, { max: 2, onnotice: () => {} });
 const suffix = randomBytes(4).toString("hex");
 const owner = `wz_sys_owner_test_${suffix}`;
 const runtimeRole = `wz_rt_inj_${suffix}`;
+const systemRole = `wz_sys_inj_${suffix}_system`;
 const canary = `wz_canary_${suffix}`;
 const schemas: string[] = [];
 
@@ -353,6 +356,7 @@ async function ownedByMigrationRole(): Promise<string[]> {
 beforeAll(async () => {
   await sql.unsafe(`CREATE ROLE ${quoteIdent(owner)} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
   await sql.unsafe(`CREATE ROLE ${quoteIdent(runtimeRole)} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+  for (const st of toSystemRoleDDL("x", { systemRole, members: [runtimeRole] })) await sql.unsafe(st);
   await sql.unsafe(`CREATE SCHEMA ${quoteIdent(canary)}`);
   await sql.unsafe(`CREATE TABLE ${quoteIdent(canary)}.t (v text)`);
   await sql.unsafe(`INSERT INTO ${quoteIdent(canary)}.t VALUES ('alive')`);
@@ -361,6 +365,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const s of [...schemas, canary]) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(owner)}`);
+  for (const st of dropSystemRoleDDL("x", systemRole)) await sql.unsafe(st);
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(runtimeRole)}`);
   await sql.end();
 });
@@ -388,7 +393,11 @@ describe("hostile values on real Postgres", () => {
       const spec = hostileSpec(h);
       const schema = `app_inj_${suffix}_${round}_draft`;
       schemas.push(schema);
-      const statements = toDDL(planMigration(null, spec), schema, { runtimeRole, migrationRole: owner });
+      const statements = toDDL(planMigration(null, spec), schema, {
+        runtimeRole,
+        systemRole,
+        migrationRole: owner,
+      });
       await sql.begin(async (tx) => {
         // Adversarial session: backslash escapes on. The preamble MUST switch them off again.
         await tx.unsafe("SET LOCAL standard_conforming_strings = off").simple();
@@ -428,7 +437,7 @@ describe("hostile values on real Postgres", () => {
       const t = `${quoteIdent(schema)}."note"`;
       const [alice, bob] = [randomUUID(), randomUUID()];
       await sql.begin(async (tx) => {
-        await tx`select set_config('wizard.role', '__system', true)`;
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRole)}`);
         await tx.unsafe(
           `insert into ${quoteIdent(schema)}."users" (id, role) values ($1, 'writer'), ($2, 'writer')`,
           [alice, bob],

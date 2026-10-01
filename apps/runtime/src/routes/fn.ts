@@ -52,7 +52,8 @@ async function journalFnConsent(
 export function fnRoutes(): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();
   app.use("*", async (c, next) => {
-    if (!c.get("services").env.unsafeLocalExec) throw new WizardError("FUNCTIONS_DISABLED");
+    const svc = c.get("services");
+    if (!svc.env.unsafeLocalExec && !svc.sandbox) throw new WizardError("FUNCTIONS_DISABLED");
     await next();
   });
   app.post("/:name", async (c) => {

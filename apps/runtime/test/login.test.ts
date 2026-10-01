@@ -7,7 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AppSpec, quoteIdent } from "@wizard/appspec";
+import { type AppSpec, dropSystemRoleDDL, quoteIdent } from "@wizard/appspec";
 import { newQrKeyring, QR_SECRET, serializeQrKeyring, staticSecretReader } from "@wizard/connectors";
 import { testPlatform } from "@wizard/connectors/testing";
 import postgres from "postgres";
@@ -197,6 +197,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const s of schemas) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
+  for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await sql.unsafe(st);
   await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
   await sql.end();
