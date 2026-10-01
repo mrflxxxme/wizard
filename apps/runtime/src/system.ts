@@ -8,6 +8,7 @@ import { type ComplianceInfo, complianceInfo, sha256Hex } from "./compliance.js"
 import type { DataAccess, InvalidationBus } from "./data/access.js";
 import { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
 import { schemaName } from "./migrate.js";
+import type { LegalTemplates } from "./privacy/templates.js";
 import type { RegistryEntry, SystemEnv, SystemRegistry } from "./registry.js";
 
 export interface LoadedSystem {
@@ -48,6 +49,8 @@ export interface SystemCacheOptions {
   bus: (systemId: string, env: SystemEnv) => InvalidationBus;
   /** qr_token issuer of a system (qr connector, M0-24); undefined → random tokens. */
   qrToken?: (entry: RegistryEntry, spec: AppSpec) => PgDataAccessOptions["qrToken"];
+  /** Templates of the policy and consent texts; default: built-in drafts + WIZARD_LEGAL_TEMPLATES_DIR. */
+  legalTemplates?: LegalTemplates;
 }
 
 const key = (slug: string, env: SystemEnv) => `${slug}--${env}`;
@@ -72,12 +75,13 @@ export class SystemCache {
 
   private build(entry: RegistryEntry, spec: AppSpec, artifactDir: string | null): LoadedSystem {
     const schema = schemaName(entry.systemId, entry.env);
+    const compliance = complianceInfo(spec, this.o.legalTemplates);
     return {
       entry,
       spec,
       schema,
       artifactDir,
-      compliance: complianceInfo(spec),
+      compliance,
       data: createPgDataAccess({
         sql: this.o.sql,
         spec,
@@ -86,6 +90,7 @@ export class SystemCache {
         statementTimeout: this.o.statementTimeout,
         events: this.o.bus(entry.systemId, entry.env),
         qrToken: this.o.qrToken?.(entry, spec),
+        compliance,
       }),
     };
   }

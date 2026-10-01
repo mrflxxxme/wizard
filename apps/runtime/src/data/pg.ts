@@ -92,6 +92,15 @@ export interface PgDataAccessOptions {
   lockTimeout?: string;
   /** qr_token generator (connectors/qr.yaml#token, wired by the runtime to the qr connector); undefined → 24 random bytes, base64url. */
   qrToken?: (entity: string, field: string, id: string) => string | undefined | Promise<string | undefined>;
+  /** Consent text/policy version of the system (LoadedSystem.compliance); default complianceInfo(spec). */
+  compliance?: ComplianceInfo;
+}
+
+/** Consent handling of one write: check it (data API, ctx.db) and journal the accepted one in _w_consents. */
+interface ConsentCheck {
+  check: boolean;
+  value?: unknown;
+  ipHmac?: Uint8Array | null;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -326,7 +335,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
   const dbRole = o.dbRole === undefined ? "wizard_runtime" : o.dbRole;
   const statementTimeout = o.statementTimeout ?? "1s";
   const lockTimeout = o.lockTimeout ?? "500ms";
-  const compliance: ComplianceInfo = complianceInfo(spec);
+  const compliance: ComplianceInfo = o.compliance ?? complianceInfo(spec);
   const entities = new Map(spec.entities.map((e) => [e.name, e]));
   const from = (name: string) => qb.withSchema(schema).selectFrom(name);
 
@@ -468,18 +477,40 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     }
   }
 
-  /** Consent on create of a PII entity, or on update that writes a PII field (runtime.yaml#data_api). */
+  /**
+   * Consent on create of a PII entity, or on update that writes a PII field (runtime.yaml#data_api).
+   * true — consent was required and is valid: the write is journaled in _w_consents.
+   */
   function checkConsent(
     subject: Subject,
     e: Entity,
     consent: unknown,
     written?: Record<string, unknown>,
-  ): void {
-    if (subject.role === SYSTEM_ROLE || subject.isAdmin) return;
+  ): boolean {
+    if (subject.role === SYSTEM_ROLE || subject.isAdmin) return false;
     const pii = e.fields.filter((f) => f.pii !== undefined && f.pii !== "none");
-    if (pii.length === 0) return;
-    if (written && !pii.some((f) => Object.hasOwn(written, f.name))) return;
+    if (pii.length === 0) return false;
+    if (written && !pii.some((f) => Object.hasOwn(written, f.name))) return false;
     if (!consentMatches(compliance, consent)) throw new WizardError("CONSENT_REQUIRED");
+    return true;
+  }
+
+  /** compliance.yaml#system_package.consent.runtime: journal row {entity, row_id, policy_version, text hash, ip_hmac}. */
+  async function journalConsent(t: Tx, e: Entity, id: string, ipHmac: Uint8Array | null | undefined) {
+    await ensure(t, "system");
+    await exec(
+      t,
+      qb
+        .withSchema(schema)
+        .insertInto("_w_consents")
+        .values({
+          entity: e.name,
+          row_id: id,
+          policy_version: compliance.policyVersion,
+          consent_text_hash: Buffer.from(compliance.consentTextHash, "hex"),
+          ip_hmac: ipHmac ? Buffer.from(ipHmac) : null,
+        }),
+    );
   }
 
   /** ref exists and is visible to the writer (runtime.yaml#data_api.writes). */
@@ -535,7 +566,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     who: Who,
     e: Entity,
     body: unknown,
-    consent: { check: boolean; value?: unknown },
+    consent: ConsentCheck,
   ): Promise<string> {
     const p = policyFor(t, who, e);
     require(p, "create");
@@ -543,7 +574,8 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     checkWritableKeys(e, p, fields);
     applyCreateConstraint(p, fields);
     checkValues(e, fields, "create");
-    if (consent.check)
+    const journal =
+      consent.check &&
       checkConsent(who === "system" ? SYSTEM_SUBJECT : t.subject, e, consent.value ?? bodyConsent);
     await checkRefs(t, who, e, fields);
     const id = randomUUID();
@@ -560,6 +592,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
         .values({ ...values(e, fields), id }),
     );
     await audit(t, e, "create", id, Object.keys(fields));
+    if (journal) await journalConsent(t, e, id, consent.ipHmac);
     t.pending.push({ entity: e.name, id, op: "insert" });
     return id;
   }
@@ -570,7 +603,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     e: Entity,
     id: string,
     body: unknown,
-    consent: { check: boolean; value?: unknown },
+    consent: ConsentCheck,
   ): Promise<void> {
     const p = policyFor(t, who, e);
     require(p, "update");
@@ -578,7 +611,8 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     checkWritableKeys(e, p, fields);
     checkUpdateConstraint(p, fields);
     checkValues(e, fields, "update");
-    if (consent.check)
+    const journal =
+      consent.check &&
       checkConsent(who === "system" ? SYSTEM_SUBJECT : t.subject, e, consent.value ?? bodyConsent, fields);
     if (!UUID_RE.test(id)) throw new WizardError("NOT_FOUND");
     const c = p.rowConstraint("update");
@@ -596,6 +630,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     );
     if (res.count === 0) throw new WizardError("NOT_FOUND");
     await audit(t, e, "update", id, Object.keys(fields));
+    if (journal) await journalConsent(t, e, id, consent.ipHmac);
     t.pending.push({ entity: e.name, id, op: "update" });
   }
 
@@ -794,14 +829,22 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     create: (subject, name, body, w?: WriteOptions) =>
       withTx("default", subject, async (t) => {
         const e = entity(name);
-        const id = await insertRow(t, "subject", e, body, { check: true, value: w?.consent });
+        const id = await insertRow(t, "subject", e, body, {
+          check: true,
+          value: w?.consent,
+          ipHmac: w?.ipHmac,
+        });
         return readBack(t, "subject", e, id);
       }),
 
     update: (subject, name, id, body, w?: WriteOptions) =>
       withTx("default", subject, async (t) => {
         const e = entity(name);
-        await patchRow(t, "subject", e, id, body, { check: true, value: w?.consent });
+        await patchRow(t, "subject", e, id, body, {
+          check: true,
+          value: w?.consent,
+          ipHmac: w?.ipHmac,
+        });
         return readBack(t, "subject", e, id);
       }),
 

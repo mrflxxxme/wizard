@@ -147,6 +147,11 @@ export async function resolveLogin(
         where id = ${String(user.id)} returning *`;
       user = { ...(rows[0] as Record<string, unknown>) };
     }
+    // users.last_login_at drives the 3-year retention of login data (privacy/erasure.ts#retainUsers); schemas
+    // created before the column existed skip it.
+    await tx.sql
+      .savepoint((sp) => sp`update ${users} set last_login_at = now() where id = ${String(user?.id)}`)
+      .catch(() => {});
     if (needConsent)
       await tx.sql`
         insert into ${consents} (entity, row_id, policy_version, consent_text_hash, ip_hmac)

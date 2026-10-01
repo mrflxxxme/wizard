@@ -219,7 +219,8 @@ export function AppShell(props: AppShellProps): ReactNode {
             </a>
           )}
           {piiInSpec && policyPage && (
-            <a href={policyPage} data-testid="wz-appshell-policy-link" onClick={go(policyPage)}>
+            // Runtime page (compliance.policyPage), not an SPA route: the browser navigates.
+            <a href={policyPage} data-testid="wz-appshell-policy-link">
               {ru.appShell.policy}
             </a>
           )}

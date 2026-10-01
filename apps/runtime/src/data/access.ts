@@ -65,6 +65,8 @@ export interface ConsentInput {
 
 export interface WriteOptions {
   consent?: ConsentInput;
+  /** Set by the server (never the client): HMAC of the client network for the consent journal (_w_consents). */
+  ipHmac?: Uint8Array | null;
 }
 
 /** runtime.yaml#realtime.event; published only after commit, never with field values. */

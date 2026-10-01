@@ -136,7 +136,13 @@ export const ru = {
       `● Нет сети · ${tickets} билетов в памяти · ${pending} отметок ждут синхронизации`,
     video: "Камера сканера",
   },
-  cabinet: { title: "Личный кабинет", sections: "Разделы" },
+  cabinet: {
+    title: "Личный кабинет",
+    sections: "Разделы",
+    myData: "Мои данные",
+    myDataHint: "Как мы обрабатываем ваши данные и как отозвать согласие на их обработку.",
+    myDataManage: "Отозвать согласие и удалить данные",
+  },
   stats: { title: "Сводка" },
   /** Messages of the memory DataSource, mirroring runtime.yaml#data_api.error_codes. */
   server: {

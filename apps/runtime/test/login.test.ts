@@ -311,6 +311,11 @@ describe("email OTP", () => {
       [ok.json.user.id],
     );
     expect(c).toMatchObject({ policy_version: consent.policyVersion, h: consent.textHash });
+    // M2-05: last_login_at drives the 3-year retention of login data.
+    const [u] = await sql.unsafe(`select last_login_at from ${quoteIdent(A.schema)}.users where id = $1`, [
+      ok.json.user.id,
+    ]);
+    expect(u?.last_login_at).toBeInstanceOf(Date);
     // The code is single-use.
     const again = await call(rt, "POST", A.host, "/api/auth/otp/verify", {
       challengeId: s.json.challengeId,

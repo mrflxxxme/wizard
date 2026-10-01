@@ -100,6 +100,7 @@ export const SYSTEM_TABLES: Record<string, string[]> = {
     `"invited_by" uuid`,
     `"created_at" timestamptz NOT NULL DEFAULT now()`,
     `"blocked_at" timestamptz`,
+    `"last_login_at" timestamptz`,
   ],
   _w_sessions: [
     `"token_hash" bytea PRIMARY KEY`,
@@ -160,6 +161,17 @@ export const SYSTEM_TABLES: Record<string, string[]> = {
     `"consent_text_hash" bytea NOT NULL`,
     `"given_at" timestamptz NOT NULL DEFAULT now()`,
     `"ip_hmac" bytea`,
+  ],
+  // Deletion journal of the system (counters only, no values): retention, consent withdrawal, subject requests.
+  // The platform moves it into platform.deletion_log (security/compliance.yaml#system_package.retention).
+  _w_deletion_log: [
+    `"id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY`,
+    `"at" timestamptz NOT NULL DEFAULT now()`,
+    `"entity" text NOT NULL`,
+    `"mode" text NOT NULL CHECK ("mode" IN ('delete', 'anonymize', 'retention', 'consent_revoked', 'subject_request'))`,
+    `"cutoff" timestamptz`,
+    `"rows_affected" integer NOT NULL`,
+    `"fields" text[] NOT NULL DEFAULT '{}'`,
   ],
   _w_audit: [
     `"id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY`,
