@@ -1,5 +1,6 @@
 // Minimal History API router (platform-screens.yaml#stack, ≤ 10 routes): "/", "/login", "/invite/:token",
-// "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/s/:systemId/import/:importId", "/legal/:doc".
+// "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/s/:systemId/import/:importId", "/legal/:doc",
+// "/billing" (S-billing, M2-11).
 import { useSyncExternalStore } from "react";
 
 export type Route =
@@ -11,6 +12,7 @@ export type Route =
   | { name: "login" }
   | { name: "invite"; token: string }
   | { name: "legal"; doc: string }
+  | { name: "billing" }
   | { name: "notFound" };
 
 /** Routes reachable without a session (S-auth, S-invite, documents). */
@@ -47,6 +49,7 @@ export function useLocationKey(): string {
 export function matchRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { name: "start" };
   if (pathname === "/login") return { name: "login" };
+  if (pathname === "/billing" || pathname === "/billing/") return { name: "billing" };
   const inv = /^\/invite\/([A-Za-z0-9_-]{32,128})\/?$/.exec(pathname);
   if (inv) return { name: "invite", token: inv[1] as string };
   const legal = /^\/legal\/(offer|pd-consent|privacy)\/?$/.exec(pathname);
@@ -73,3 +76,22 @@ export function setQueryParam(name: string, value: string | null): void {
   else u.searchParams.set(name, value);
   navigate(u.pathname + u.search, { replace: true });
 }
+
+/**
+ * Leaves the platform for a payment page (YooKassa confirmationUrl, S-billing). Only http(s) URLs: a confirmation URL
+ * comes from the API, but a javascript: or data: URL must never be navigated to (L3-17).
+ */
+export function goExternal(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  externalNavigation.assign(u.toString());
+  return true;
+}
+
+/** The browser navigation behind goExternal (DOM tests replace it: happy-dom does not leave the page). */
+export const externalNavigation = { assign: (url: string): void => window.location.assign(url) };

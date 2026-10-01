@@ -17,16 +17,19 @@ export interface Api {
   req(method: string, path: string, body?: unknown): Promise<{ status: number; body: Json }>;
 }
 
-/** The platform API as the browser context sees it: session cookie, X-Wizard-CSRF and Origin (api.yaml x-auth M1). */
-export function api(ctx: BrowserContext): Api {
+/**
+ * The platform API as the browser context sees it: session cookie, X-Wizard-CSRF and Origin (api.yaml x-auth M1).
+ * `web` — origin of the stand (the M2 stand passes its own, M2-11).
+ */
+export function api(ctx: BrowserContext, web = WEB): Api {
   return {
     async req(method, path, body) {
-      const cookies = await ctx.cookies(WEB);
+      const cookies = await ctx.cookies(web);
       const csrf = cookies.find((c) => c.name === "wizard_csrf")?.value;
-      const res = await ctx.request.fetch(`${WEB}/api/v1${path}`, {
+      const res = await ctx.request.fetch(`${web}/api/v1${path}`, {
         method,
         headers: {
-          Origin: WEB,
+          Origin: web,
           ...(csrf && method !== "GET" ? { "X-Wizard-CSRF": csrf } : {}),
           ...(body === undefined ? {} : { "content-type": "application/json" }),
         },
@@ -39,13 +42,13 @@ export function api(ctx: BrowserContext): Api {
 }
 
 /** A session for `email` in this context without OTP (POST /auth/dev-login, the stand enables WIZARD_DEV_LOGIN). */
-export async function devLogin(ctx: BrowserContext, email: string): Promise<Api> {
-  const res = await ctx.request.post(`${WEB}/api/v1/auth/dev-login`, {
-    headers: { Origin: WEB, "content-type": "application/json" },
+export async function devLogin(ctx: BrowserContext, email: string, web = WEB): Promise<Api> {
+  const res = await ctx.request.post(`${web}/api/v1/auth/dev-login`, {
+    headers: { Origin: web, "content-type": "application/json" },
     data: JSON.stringify({ email }),
   });
   expect(res.status(), await res.text()).toBe(200);
-  return api(ctx);
+  return api(ctx, web);
 }
 
 /** Letters of the stand's OutboxMailer to `to`, oldest first. */
