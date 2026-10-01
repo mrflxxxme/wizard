@@ -35,6 +35,10 @@ spec:
               value: {{ .Values.runtime.internalPort | quote }}
             - name: WIZARD_EGRESS_ALLOW
               value: {{ .Values.config.egressAllow | quote }}
+            # M3-02: AI gateway of the platform (POST /internal/v1/ai/run, X-Wizard-Internal-Token) over the ClusterIP
+            # Service of platform-api; NetworkPolicy wizard-platform-api admits the runtime on this port only.
+            - name: WIZARD_PLATFORM_INTERNAL_URL
+              value: {{ printf "http://wizard-platform-api.%s.svc:%v" .Values.namespaces.platform .Values.platformApi.port | quote }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}

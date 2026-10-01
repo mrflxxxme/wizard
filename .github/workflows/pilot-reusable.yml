@@ -1,0 +1,160 @@
+# Pilot on Timeweb Cloud from GitHub-hosted runners (docs/ops/deploy.md «Пилот: одна кнопка»; no self-hosted runner,
+# no runner-local files). Called by bootstrap-pilot.yml and deploy-pilot.yml only. Order: the repository owner,
+# main and the confirmation are checked first (no secret is read before that); images of the SHA are built into GHCR
+# when missing (images.yml, GITHUB_TOKEN with packages: write); then tools/deploy/pilot.mjs creates or reuses the
+# state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
+# SSH tunnel and closes SSH again — also when anything fails (`close-access` with always()).
+name: pilot-reusable
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        type: string
+        required: true
+      command:
+        description: "bootstrap | deploy | destroy"
+        type: string
+        required: true
+      sha:
+        type: string
+        default: ""
+      confirm:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.a.outputs.sha }}
+    steps:
+      - id: a
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+          REF: ${{ github.ref }}
+          CONFIRM: ${{ inputs.confirm }}
+          SHA: ${{ inputs.sha || github.sha }}
+          DEPLOY_ENV: ${{ inputs.env }}
+          COMMAND: ${{ inputs.command }}
+        run: |
+          if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
+            echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
+          fi
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=pilot::Запуск только из main."; exit 1
+          fi
+          case "$DEPLOY_ENV" in prod|staging) ;; *) echo "::error title=pilot::env — prod или staging."; exit 1 ;; esac
+          case "$COMMAND" in bootstrap|deploy|destroy) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          if [ "$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging" ]; then
+            echo "::error title=pilot::Удалять можно только staging."; exit 1
+          fi
+          if [ "$DEPLOY_ENV" = "prod" ] && [ "$CONFIRM" != "PROD" ]; then
+            echo "::error title=pilot::Подтверждение не совпало (нужно PROD)."; exit 1
+          fi
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=pilot::sha — полный SHA из 40 символов."; exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: authorize
+    if: inputs.command != 'destroy'
+    uses: ./.github/workflows/images.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      sha: ${{ needs.authorize.outputs.sha }}
+      ghcr: true
+
+  pilot:
+    needs: [authorize, images]
+    if: ${{ !cancelled() && needs.authorize.result == 'success' && needs.images.result != 'failure' }}
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.env }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SHA: ${{ needs.authorize.outputs.sha }}
+      DEPLOY_ENV: ${{ inputs.env }}
+      COMMAND: ${{ inputs.command }}
+      # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
+      TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
+      WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
+      CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      WIZARD_SMTP_HOST: ${{ secrets.WIZARD_SMTP_HOST || vars.WIZARD_SMTP_HOST }}
+      WIZARD_SMTP_PORT: ${{ secrets.WIZARD_SMTP_PORT || vars.WIZARD_SMTP_PORT }}
+      WIZARD_SMTP_USER: ${{ secrets.WIZARD_SMTP_USER || vars.WIZARD_SMTP_USER }}
+      WIZARD_SMTP_PASSWORD: ${{ secrets.WIZARD_SMTP_PASSWORD }}
+      WIZARD_SMTP_FROM: ${{ secrets.WIZARD_SMTP_FROM || vars.WIZARD_SMTP_FROM }}
+      WIZARD_OPS_ALERT_TELEGRAM_TOKEN: ${{ secrets.WIZARD_OPS_ALERT_TELEGRAM_TOKEN }}
+      WIZARD_OPS_ALERT_CHAT_ID: ${{ secrets.WIZARD_OPS_ALERT_CHAT_ID || vars.WIZARD_OPS_ALERT_CHAT_ID }}
+      WIZARD_OPS_ALERT_URL: ${{ secrets.WIZARD_OPS_ALERT_URL }}
+      WIZARD_PLATFORM_YOOKASSA_SHOP_ID: ${{ secrets.WIZARD_PLATFORM_YOOKASSA_SHOP_ID }}
+      WIZARD_PLATFORM_YOOKASSA_SECRET_KEY: ${{ secrets.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY }}
+      WIZARD_RECEIPT_VAT_CODE: ${{ vars.WIZARD_RECEIPT_VAT_CODE }}
+      # …and variables.
+      WIZARD_PLATFORM_DOMAIN: ${{ vars.WIZARD_PLATFORM_DOMAIN }}
+      WIZARD_SYSTEMS_DOMAIN: ${{ vars.WIZARD_SYSTEMS_DOMAIN }}
+      WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
+      WIZARD_FOUNDER_EMAIL: ${{ vars.WIZARD_FOUNDER_EMAIL }}
+      WIZARD_PLATFORM_MAIL_SPF: ${{ vars.WIZARD_PLATFORM_MAIL_SPF }}
+      # GHCR pull: this job's token (packages: read) unless a long-lived read:packages token is provided.
+      WIZARD_GHCR_USER: ${{ github.actor }}
+      WIZARD_GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+          fetch-depth: 0
+      - name: Only commits of main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "::error::$SHA is not on main"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+      # Same provider cache as ci.yml deploy-lint (the job's `tofu init` reads TF_PLUGIN_CACHE_DIR).
+      - name: OpenTofu provider cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.tofu-plugin-cache
+          key: tofu-providers-${{ hashFiles('infra/tofu/**/.terraform.lock.hcl') }}
+          restore-keys: tofu-providers-
+      - name: Provider cache directory
+        run: |
+          mkdir -p "$HOME/.tofu-plugin-cache"
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.tofu-plugin-cache" >> "$GITHUB_ENV"
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Tools
+        run: |
+          kubectl version --client=true
+          ssh -V
+      - name: Pilot (${{ inputs.command }})
+        run: |
+          if [ "$COMMAND" = "destroy" ]; then
+            node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV"
+          else
+            node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA"
+          fi
+      - name: Close SSH access
+        if: always()
+        run: node tools/deploy/pilot.mjs close-access --env "$DEPLOY_ENV"
+      - name: Clean up the runner
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/wizard-pilot-$DEPLOY_ENV"

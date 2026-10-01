@@ -150,6 +150,27 @@ run "pilot_one_vm_in_moscow" {
   }
 }
 
+# tools/deploy/pilot.mjs (bootstrap-pilot.yml) passes admin_cidrs = []: nothing but HTTP(S) and the VPC is open between
+# jobs; each job adds a temporary SSH rule for its runner's /32 through the API and removes it again.
+run "pilot_from_github_hosted_runner_no_standing_admin_access" {
+  command = apply
+  variables {
+    admin_cidrs = []
+  }
+  assert {
+    condition     = length([for r in twc_firewall_rule.in : r if contains(["22", "6443", "30500"], r.port)]) == 0
+    error_message = "without admin_cidrs no SSH, API or registry port is open"
+  }
+  assert {
+    condition     = toset([for r in twc_firewall_rule.in : r.port if r.cidr == "0.0.0.0/0"]) == toset(["80", "443"])
+    error_message = "the world reaches only HTTP and HTTPS"
+  }
+  assert {
+    condition     = twc_firewall.nodes.name == "wizard-prod-nodes"
+    error_message = "pilot.mjs finds the firewall group by the name <name_prefix>-nodes"
+  }
+}
+
 run "staging_smaller_vm" {
   command = apply
   variables {

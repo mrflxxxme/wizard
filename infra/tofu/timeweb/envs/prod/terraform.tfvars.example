@@ -1,4 +1,5 @@
-# Copy to the runner (WIZARD_TFVARS_FILE, default /etc/wizard/terraform-prod.tfvars). Not committed.
+# Reference only: bootstrap-pilot / deploy-pilot generate the pilot tfvars themselves (tools/deploy/pilot.mjs SHAPES +
+# GitHub variables + the generated SSH key; admin_cidrs stays empty). Manual runs: WIZARD_TFVARS_FILE. Not committed.
 # PILOT prod (founder decision 2026-10-01; docs/ops/deploy.md «Пилот»): ONE VM in Moscow with single-node k3s running
 # everything, PostgreSQL 16 + WAL-G inside the cluster (postgres = null), buckets files + backups.
 # Cloud MSK 80 (4 vCPU / 8 GB / 80 GB NVMe) ≈ 1 800 ₽/month: max_price is the ceiling of the preset search — a plan
