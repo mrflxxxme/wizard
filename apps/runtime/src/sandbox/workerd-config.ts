@@ -52,13 +52,16 @@ function str(s: string): string {
 }
 
 /** Main module of a system Worker: the functions bundle first, so the guest runtime is ready before it runs. */
-export const MAIN_MODULE = `import * as functions from "functions.mjs";
-import { createWorkerHost } from "worker-host.mjs";
+export const MAIN_MODULE = `import * as functions from "./functions.mjs";
+import { createWorkerHost } from "./worker-host.mjs";
 export default createWorkerHost(functions);
 `;
 
-/** `@wizard/sdk` inside the sandbox: the guest runtime's SDK shim (validators, query/mutation/action). */
-export const SDK_MODULE = `import { guest } from "worker-host.mjs";
+/**
+ * `@wizard/sdk` inside the sandbox: the guest runtime's SDK shim (validators, query/mutation/action). workerd
+ * resolves specifiers relative to the importing module's name, so from "@wizard/sdk" the host is "../worker-host.mjs".
+ */
+export const SDK_MODULE = `import { guest } from "../worker-host.mjs";
 export const { PACKAGE, WizardError, v, query, mutation, action } = guest.sdk;
 `;
 
@@ -79,8 +82,9 @@ export function workerdPodConfig(i: WorkerdPodInput): WorkerdPodConfig {
     "sdk.mjs": SDK_MODULE,
   };
   const services: string[] = [
-    // globalOutbound of every system Worker: no CIDR allowed, everything denied (fetch()/connect() fail).
-    `(name = "deny-all", network = (allow = [], deny = ["public", "private", "local", "network", "unix", "unix-abstract"]))`,
+    // globalOutbound of every system Worker: an empty allow list admits no address (fetch()/connect() fail).
+    // workerd rejects deny = ["public", …] at load ("don't deny 'public', allow 'private' instead").
+    `(name = "deny-all", network = (allow = []))`,
     `(name = "runtime-rpc", external = (address = ${str(i.rpcAddress)}, http = ()))`,
     `(name = "health", worker = (modules = [(name = "health.mjs", esModule = ${JSON.stringify(HEALTH_MODULE)})], compatibilityDate = ${str(WORKERD_COMPATIBILITY_DATE)}, globalOutbound = "deny-all"))`,
   ];

@@ -14,6 +14,7 @@ import {
   WORKERD_COMPATIBILITY_FLAGS,
   workerdPodConfig,
 } from "../../src/index.js";
+import { dockerFlagsOf } from "./pod-docker.js";
 
 const sys = (i: number, tier: "free" | "paid" | "business" = "free", orgId = `org${i}`) => ({
   systemId: `s${String(i).padStart(11, "0")}`,
@@ -84,7 +85,10 @@ describe("workerd pod config", () => {
       expect(w).not.toMatch(/nodejs_compat|precise_timers|unsafeEval|fromEnvironment|durableObject|disk/);
     }
     expect(WORKERD_COMPATIBILITY_FLAGS).toEqual([]);
-    expect(cfg.capnp).toContain('(name = "deny-all", network = (allow = [], deny = [');
+    expect(cfg.capnp).toContain('(name = "deny-all", network = (allow = []))');
+    // workerd resolves specifiers relative to the importer's module name ("@wizard/sdk" → "../worker-host.mjs").
+    expect(cfg.files["sdk.mjs"]).toContain('from "../worker-host.mjs"');
+    expect(cfg.files["main.mjs"]).toContain('from "./functions.mjs"');
     expect(cfg.capnp).toContain('address = "*:8083"');
     expect(Object.keys(cfg.files).sort()).toEqual(
       [
@@ -164,6 +168,25 @@ describe("sandbox pod manifests", () => {
     expect(JSON.stringify(spec)).not.toMatch(/hostPath|hostPort/);
     expect(spec.nodeSelector).toEqual({ "wizard.ru/pool": "sandbox-free" });
     expect(spec.dnsPolicy).toBe("None");
+  });
+
+  it("the CI sandbox job reproduces exactly these settings with docker --runtime=runsc", () => {
+    expect(dockerFlagsOf(pod)).toEqual([
+      "--runtime=runsc",
+      "--user=65532:65532",
+      "--read-only",
+      "--cap-drop=ALL",
+      "--security-opt=no-new-privileges",
+      "--memory=1536m",
+      "--cpus=1",
+      "--pids-limit=256",
+      "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
+    ]);
+    const weakened = structuredClone(pod) as unknown as {
+      spec: { containers: { securityContext: object }[] };
+    };
+    (weakened.spec.containers[0] as { securityContext: object }).securityContext = { privileged: false };
+    expect(() => dockerFlagsOf(weakened)).toThrow(/securityContext/);
   });
 
   it("NetworkPolicy: egress only to runtime :443 and egress-proxy :3128, ingress only from runtime", () => {
