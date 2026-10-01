@@ -9,13 +9,53 @@ const R = Response;
 const stringify = JSON.stringify;
 const parse = JSON.parse;
 
-// Defense in depth on top of globalOutbound = deny: system code has no ambient network or cache API at all.
-// guestMain() itself removes console, WebAssembly, SharedArrayBuffer and Atomics (Spectre gadgets, L3-23).
-for (const k of ["fetch", "WebSocket", "EventSource", "caches", "connect"]) {
+// Defense in depth on top of globalOutbound = deny: system code has no ambient network or cache API at all
+// (isolation.yaml: fetch/XMLHttpRequest/WebSocket forbidden). guestMain() itself removes console, WebAssembly, SharedArrayBuffer and Atomics (Spectre gadgets, L3-23).
+// workerd defines some of them on the global scope's prototype, so the own-property delete alone is not enough:
+// delete along the prototype chain, then shadow whatever is left with a non-writable undefined.
+for (const k of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "caches", "connect"]) {
+  for (let o = globalThis; o; o = Object.getPrototypeOf(o)) {
+    try {
+      Reflect.deleteProperty(o, k);
+    } catch {
+      // non-configurable here: shadowed below, still unreachable through globalOutbound
+    }
+  }
+  if (k in globalThis) {
+    try {
+      Object.defineProperty(globalThis, k, { value: undefined, writable: false, configurable: false });
+    } catch {
+      // still unreachable through globalOutbound
+    }
+  }
+}
+
+// Spectre (isolation.yaml#M2.runtime): Date and performance.now do not advance within a call; the clock moves
+// only at the call start and when an RPC reply arrives (I/O), with 1 ms resolution.
+const RealDate = Date;
+const realNow = RealDate.now;
+const perf = globalThis.performance;
+const realPerfNow = perf && typeof perf.now === "function" ? perf.now.bind(perf) : null;
+let frozen = realNow();
+let frozenPerf = realPerfNow ? Math.floor(realPerfNow()) : 0;
+const tick = () => {
+  frozen = realNow();
+  if (realPerfNow) frozenPerf = Math.floor(realPerfNow());
+};
+function FrozenDate(...a) {
+  if (!new.target) return new RealDate(frozen).toString();
+  return a.length === 0 ? new RealDate(frozen) : new RealDate(...a);
+}
+FrozenDate.prototype = RealDate.prototype;
+FrozenDate.now = () => frozen;
+FrozenDate.parse = RealDate.parse;
+FrozenDate.UTC = RealDate.UTC;
+Object.defineProperty(globalThis, "Date", { value: FrozenDate, writable: false, configurable: false });
+if (perf && realPerfNow) {
   try {
-    Reflect.deleteProperty(globalThis, k);
+    Object.defineProperty(perf, "now", { value: () => frozenPerf, writable: false, configurable: false });
   } catch {
-    // non-configurable in this runtime: still unreachable through globalOutbound
+    // performance.now non-configurable: Date is still frozen
   }
 }
 
@@ -68,6 +108,7 @@ function drain() {
     }
     if (m.t === "req") {
       rpc(c, m).then((reply) => {
+        tick();
         guest.pump(
           stringify({
             t: "reply",
@@ -116,6 +157,7 @@ export function createWorkerHost(ns) {
       seq += 1;
       const id = seq;
       const done = new Promise((resolve) => calls.set(id, { resolve, token: m.token, env }));
+      tick();
       guest.pump(
         stringify({
           t: "call",

@@ -157,10 +157,11 @@ describe.skipIf(!E2E)("gVisor container with the sandbox pod's settings (CI sand
       ]),
     ).uname;
     // amicontained checks cgroups before /__runsc_containers__, so under docker it may print "docker";
-    // the gVisor kernel then shows in uname (the sentry reports a fixed 4.4.0 kernel).
-    expect(r.runtime === "gvisor" || uname === "4.4.0", `runtime=${r.runtime} uname=${uname}\n${out}`).toBe(
-      true,
-    );
+    // the gVisor kernel then shows in uname (older sentries report a fixed 4.4.0, newer ones e.g. 4.19.0-gvisor).
+    expect(
+      r.runtime === "gvisor" || uname === "4.4.0" || /gvisor/i.test(uname ?? ""),
+      `runtime=${r.runtime} uname=${uname}\n${out}`,
+    ).toBe(true);
     expect(r.seccomp, out).toBe("filtering");
     expect(r.capLines, out).toEqual([]);
   }, 300_000);
@@ -171,7 +172,7 @@ describe.skipIf(!E2E)("gVisor container with the sandbox pod's settings (CI sand
       180_000,
     );
     const r = kv(out);
-    expect(r.uname === "4.4.0" || r.dmesg === "gvisor", out).toBe(true);
+    expect(r.uname === "4.4.0" || /gvisor/i.test(r.uname ?? "") || r.dmesg === "gvisor", out).toBe(true);
     expect(r.uid).toBe("65532");
     for (const k of ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"]) expect(r[k], k).toMatch(/^0+$/);
     expect(r.NoNewPrivs).toBe("1");
