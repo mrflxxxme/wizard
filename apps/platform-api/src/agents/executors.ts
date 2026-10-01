@@ -1,5 +1,5 @@
 // Real run executors (M0-26): orchestrator for interview turns, runBuild with a QA agent routed through host.route,
-// gates G0/G1 (@wizard/gates; G1 on an in-process runtime in test mode) and the post-G0 draft steps.
+// gates G0/G1/G2 (@wizard/gates; G1 and G2 on an in-process runtime in test mode) and the post-G0 draft steps.
 import { type BuildCard, runBuild, specDigest } from "@wizard/agents/builder";
 import { AgentError } from "@wizard/agents/core";
 import { createHostQa, hostRouteFn } from "@wizard/agents/host";
@@ -194,11 +194,12 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     },
 
     async gates(level, ctx) {
-      if (level !== "G1") return runGates(level, ctx);
+      if (level === "G0") return runGates(level, ctx);
+      // G1 and G2 (permission matrix G2-PERM-01…04) run against the same in-process runtime and runtime role.
       const runtime = g1Runtime();
       const loaded: { slug: string; env: "draft" | "prod" }[] = [];
       try {
-        return await runGates("G1", {
+        return await runGates(level, {
           ...ctx,
           // compliance.consentText from the template (owner-only field, filled by the platform, never stored).
           spec: withConsentText(ctx.spec),

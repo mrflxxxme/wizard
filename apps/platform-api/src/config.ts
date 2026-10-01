@@ -58,6 +58,11 @@ export interface Config {
   receipt: ReceiptConfig;
   /** workflows.yaml#workflows.publish.preconditions «M2: привязана карта РФ»: milestone ≥ M2 or production. */
   cardBindingRequired: boolean;
+  /**
+   * gates.yaml#report.levels_for_publish «prod: G0+G1+G2 на той же ревизии (M2)», workflows.yaml#workflows.publish
+   * gate_G2 (milestone M2): milestone ≥ M2 or production. Off — the M1 publish (G0 for prod only).
+   */
+  prodG2Required: boolean;
 }
 
 export interface ReceiptConfig {
@@ -78,6 +83,11 @@ const list = (v: string | undefined): string[] | undefined => {
 };
 
 const milestoneRank = (m: string | undefined): number => Number(/^M(\d+)$/.exec(m ?? "")?.[1] ?? 0);
+
+/** M2 platform rules: milestone ≥ M2 (WIZARD_MILESTONE) or NODE_ENV=production. */
+const m2OrProd = (env: NodeJS.ProcessEnv, over: Partial<Config>): boolean =>
+  milestoneRank(over.milestone ?? env.WIZARD_MILESTONE) >= 2 ||
+  (over.nodeEnv ?? env.NODE_ENV) === "production";
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -126,10 +136,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     billingExemptOrgs:
       over.billingExemptOrgs ?? ((over.authMode ?? env.WIZARD_AUTH_MODE) === "dev" ? [DEFAULT_ORG_ID] : []),
-    cardBindingRequired:
-      over.cardBindingRequired ??
-      (milestoneRank(over.milestone ?? env.WIZARD_MILESTONE) >= 2 ||
-        (over.nodeEnv ?? env.NODE_ENV) === "production"),
+    cardBindingRequired: over.cardBindingRequired ?? m2OrProd(env, over),
+    prodG2Required: over.prodG2Required ?? m2OrProd(env, over),
   };
 }
 

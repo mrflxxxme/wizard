@@ -2,6 +2,7 @@
 // the lock and the run lifecycle; these functions are the steps between run_started and the terminal event.
 import { dirname } from "node:path";
 import { type AppSpec, planMigration } from "@wizard/appspec";
+import type { GateContext, GateLevel } from "@wizard/gates";
 import { publishTelegramBots, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
@@ -13,6 +14,18 @@ import { recordGateReport } from "../runs/gates.js";
 import { type GateReport, type GateRunner, RunFailure } from "../runs/types.js";
 import { loadManifest, loadRevision, loadSpec, lockSystem, revertRevision } from "../services/revisions.js";
 import type { BlobStore } from "../storage/blobs.js";
+import {
+  abuseContext,
+  abuseFlagChecks,
+  defaultModerationLog,
+  type FounderReviewStatus,
+  founderReviewChecks,
+  founderReviewStatus,
+  REVIEW_PENDING_RU,
+  REVIEW_REJECTED_RU,
+  requestFounderReview,
+  secretExistsFor,
+} from "./moderation.js";
 import { applyProdMigration, httpSmoke, type PublishOptions, prodUrl, storedPlan } from "./prod.js";
 
 type Run = Selectable<RunsTable>;
@@ -181,6 +194,94 @@ async function telegramBots(h: FlowHost, sys: System, revision: number, spec: Ap
   });
 }
 
+/** One gate on the publish revision: gate_started, the gate, gate_reports + gate_result (as the draft gates). */
+async function prodGate(h: FlowHost, level: GateLevel, ctx: GateContext, systemId: string) {
+  if (!h.gates) throw new RunFailure("INTERNAL", "Проверки (гейты) пока не подключены к платформе", true);
+  await h.tx((t) => appendEvent(t, h.run.id, "gate_started", { level, revision: ctx.specVersion }));
+  const report = { ...(await h.gates(level, ctx)), level };
+  await h.tx((t) => recordGateReport(t, { runId: h.run.id, systemId, revision: ctx.specVersion, report }));
+  return report;
+}
+
+/**
+ * M2 (config.prodG2Required): gate_G2 of workflows.yaml#workflows.publish on the revision being published, after its
+ * precondition «G1 passed на этой ревизии» (gates.yaml#G2.precondition; G1 runs here when the build did not pass it
+ * on this revision, e.g. after a compliance edit). A G2 blocker → GATES_FAILED; any failed G2-AF-* → abuse_flag in the
+ * moderation journal; a G2-AF-08/G2-AF-09 warning → founder review of this revision, publish waits for approval.
+ */
+async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec, prevSpec: AppSpec | null) {
+  const before = await h.once("founder_review_before", () => founderReviewStatus(h.db, sys.id, revision));
+  if (before === "rejected") throw new RunFailure("GATES_FAILED", REVIEW_REJECTED_RU);
+  const base = async (): Promise<GateContext> => ({
+    spec,
+    prevSpec,
+    specVersion: revision,
+    files: await revisionFiles(h, sys.id, revision),
+    env: "prod",
+    systemKey: sys.schema_key,
+    db: h.pg,
+    milestone: h.config.milestone,
+    signal: h.signal,
+  });
+  const g1Passed = await h.once("g1_passed", async () => {
+    const row = await h.db
+      .selectFrom("platform.gate_reports")
+      .select("run_id")
+      .where("system_id", "=", sys.id)
+      .where("revision", "=", revision)
+      .where("level", "=", "G1")
+      .where("passed", "=", true)
+      .executeTakeFirst();
+    return row !== undefined;
+  });
+  if (!g1Passed)
+    await h.step("gate_G1_prod", "Проверяю сценарии ревизии для prod (G1)", async () => {
+      const report = await prodGate(h, "G1", await base(), sys.id);
+      if (!report.passed)
+        throw new RunFailure(
+          "GATES_FAILED",
+          "Ревизия не прошла проверку сценариев — подробности в отчёте G1",
+        );
+    });
+  const review: FounderReviewStatus | null = await h.step(
+    "gate_G2",
+    "Проверяю безопасность, права и персональные данные (G2)",
+    async () => {
+      const report = await prodGate(
+        h,
+        "G2",
+        {
+          ...(await base()),
+          slug: sys.slug,
+          secretExists: secretExistsFor(h.db, sys),
+          abuse: await abuseContext(h.db, sys.org_id),
+        },
+        sys.id,
+      );
+      const flags = abuseFlagChecks(report);
+      if (flags.length > 0)
+        (h.options.moderationLog ?? defaultModerationLog())({
+          runId: h.run.id,
+          orgId: sys.org_id,
+          systemId: sys.id,
+          revision,
+          checks: flags,
+        });
+      if (!report.passed) {
+        // gates.yaml#G2.antifraud_rules: a neutral message (abuse.yaml#messages_ru), rules are not disclosed.
+        const af = report.checks.find((c) => flags.includes(c.id) && c.status === "fail");
+        throw new RunFailure(
+          "GATES_FAILED",
+          af?.message_ru ?? "Ревизия не прошла проверку безопасности для prod — подробности в отчёте G2",
+        );
+      }
+      return founderReviewChecks(report).length > 0 ? requestFounderReview(h.db, sys.id, revision) : null;
+    },
+  );
+  if (review === "pending") throw new RunFailure("GATES_FAILED", REVIEW_PENDING_RU);
+  if (review === "rejected") throw new RunFailure("GATES_FAILED", REVIEW_REJECTED_RU);
+}
+
 /** Marks the publication failed when a step throws after plan_migration (unless it already moved on). */
 async function guarded<T>(h: FlowHost, publicationId: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -285,6 +386,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
       if (!report.passed)
         throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки для prod — подробности в отчёте G0");
     });
+    if (h.config.prodG2Required) await prodG2(h, sys, revision, spec, prevSpec);
     await telegramBots(h, sys, revision, spec);
     await h.step("apply_migration", "Применяю изменения базы prod", async () => {
       await setStatus(h, pub.id, "applying", ["planned"]);

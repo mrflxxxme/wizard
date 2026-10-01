@@ -48,8 +48,16 @@ const M1_TABLES = [
 ];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
-// M2 tables created so far (M2-10 exports, M2-05 deletion_log, M2-07 billing).
-const M2_TABLES = ["exports", "deletion_log", "subscriptions", "payment_methods", "payments"];
+// M2 tables created so far (M2-10 exports, M2-05 deletion_log, M2-07 billing, M2-04 G2 at publish: moderation).
+const M2_TABLES = [
+  "exports",
+  "deletion_log",
+  "subscriptions",
+  "payment_methods",
+  "payments",
+  "founder_reviews",
+  "brand_allowlist",
+];
 /** Columns beyond db.yaml, each justified in docs/reviews/impl-notes/M2-07.md. */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {
   payment_methods: { card_fingerprint: { type: "text", notNull: true } },
