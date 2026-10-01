@@ -661,7 +661,7 @@ tasks:
     owner: frontend
     parallel_group: m1-d
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance: ["Playwright: загрузка xlsx/csv → предложенное сопоставление → правка колонки → импорт; в UI нет значений из T1-ответа, только схема"]
 
