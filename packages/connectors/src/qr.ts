@@ -123,7 +123,9 @@ function scope(ctx: ConnectorCtx) {
   return { systemId: ctx.system.id, env: ctx.system.env };
 }
 
-const revokedKey = (hash: string) => `qr:revoked:${hash}`;
+/** ctx.store key prefix of revoked token hashes (value: true); the runtime lists them for the offline package. */
+export const QR_REVOKED_PREFIX = "qr:revoked:";
+const revokedKey = (hash: string) => `${QR_REVOKED_PREFIX}${hash}`;
 const REVOKED_TTL_MS = 400 * 24 * 60 * 60_000;
 
 /** Value for the qr_token field of a new carrier row (runtime insert hook). */
@@ -169,7 +171,13 @@ function refLabel(spec: AppSpec, entity: string, row: Row | null): string {
   return firstText ? String(row[firstText.name] ?? "") : "";
 }
 
-async function display(ctx: ConnectorCtx, config: QrConfig, row: Row) {
+/** ticketTitle/details of a carrier row; `labels` caches ref captions across rows (offline package). */
+export async function display(
+  ctx: ConnectorCtx,
+  config: QrConfig,
+  row: Row,
+  labels: Map<string, Promise<string>> = new Map(),
+) {
   const spec = ctx.system.spec;
   const carrier = entityOf(spec, config.entity);
   const values: string[] = [];
@@ -178,7 +186,14 @@ async function display(ctx: ConnectorCtx, config: QrConfig, row: Row) {
     const v = row[name];
     if (v === null || v === undefined || v === "") continue;
     if (field?.type === "ref" && field.ref) {
-      values.push(refLabel(spec, field.ref.entity, await ctx.db.get(field.ref.entity, String(v))));
+      const target = field.ref.entity;
+      const k = `${target}:${String(v)}`;
+      let label = labels.get(k);
+      if (!label) {
+        label = ctx.db.get(target, String(v)).then((r) => refLabel(spec, target, r));
+        labels.set(k, label);
+      }
+      values.push(await label);
     } else if (field?.type === "enum") {
       values.push(field.enum?.find((o) => o.value === v)?.label ?? String(v));
     } else {

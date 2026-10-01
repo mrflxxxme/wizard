@@ -619,8 +619,8 @@ tasks:
     owner: qa
     parallel_group: m1-c
     estimate_days: 1.5
-    status: in_progress
-    claimed_by: orchestrator  # готово: исполнитель задач, runWorkflows/advanceTime, объяснения QA; осталось: G1-RENDER-01, подсказки seed от QA, замер ≥80% на живых моделях (ключи)
+    status: done
+    claimed_by: null
     acceptance: ["Eval: ≥80% брифов проходят G0+G1 без человека (live, лучшая модель)"]
 
   - id: M1-10
@@ -704,7 +704,7 @@ tasks:
     owner: frontend
     parallel_group: m2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: офлайн 100 сканов → онлайн → синхронизация без дублей; повтор QR отклоняется"

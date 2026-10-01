@@ -3,7 +3,7 @@ import type { AppSpec } from "@wizard/appspec";
 import bakeryJson from "../../../specs/appspec/examples/bakery.json" with { type: "json" };
 import forumJson from "../../../specs/appspec/examples/forum.json" with { type: "json" };
 import type { StatsData } from "../src/index.js";
-import type { MemoryOptions, MemoryUser } from "../src/testing/index.js";
+import { type MemoryOptions, type MemoryUser, memoryQrToken } from "../src/testing/index.js";
 
 /** Demo-only tweak: participants may also log in by phone (shows phone_otp with the memory dev-sender). */
 export const forum: AppSpec = {
@@ -101,7 +101,7 @@ export function forumFixture(): Fixture {
       company: "ООО «Ромашка»",
       status,
       amount: type === "tt_vip" ? 24900 : 9900,
-      qr_token: `wzqr.v1.ticket_${pad(i)}.${Math.floor(r() * 1e9).toString(36)}`,
+      qr_token: memoryQrToken(`ticket_${pad(i)}.${Math.floor(r() * 1e9).toString(36)}`),
       event_starts_at: iso(Date.UTC(2026, 10, 14, 6, 30)),
       created_at: iso(BASE - i * day),
     });

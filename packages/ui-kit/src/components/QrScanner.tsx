@@ -1,10 +1,18 @@
-// QrScanner, online part (ui-kit.yaml#components.QrScanner; offline queue is M2-03): camera via getUserMedia,
-// BarcodeDetector with jsQR (Apache-2.0) fallback, manual entry, 3 s debounce, result ≥ 1.2 s, shift counters.
+// QrScanner (ui-kit.yaml#components.QrScanner): camera via getUserMedia, BarcodeDetector with jsQR (Apache-2.0)
+// fallback, manual entry, 3 s debounce, result ≥ 1.2 s, shift counters. offline (M2-03): the ticket package and
+// the scan queue in IndexedDB, hash check without the network, sync every 15 s and on reconnect (../qr/offline.ts).
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { cx, useDataSource, useWzRoot } from "../data/context.js";
 import type { QrCheckResponse, WzError } from "../data/types.js";
 import { formatTime } from "../format.js";
 import { ru } from "../i18n/ru.js";
+import {
+  MANIFEST_REFRESH_MS,
+  OfflineScanner,
+  type OfflineVerdict,
+  openQrStorage,
+  SYNC_EVERY_MS,
+} from "../qr/offline.js";
 import { ButtonImpl } from "./Button.js";
 import { FieldImpl } from "./Field.js";
 import styles from "./QrScanner.module.css";
@@ -84,16 +92,49 @@ function describe(r: QrCheckResponse): Shown {
   return { ...base, title: ru.qrScanner.results.invalid };
 }
 
+function describeOffline(v: OfflineVerdict): Shown {
+  const base = {
+    status: v.status,
+    scannedAt: v.scannedAt,
+    ...(v.entry?.d ? { ticketTitle: v.entry.d } : {}),
+  };
+  if (v.status === "queued") return { ...base, title: ru.qrScanner.results.queued, text: v.entry?.d ?? "" };
+  if (v.status === "duplicate") {
+    return {
+      ...base,
+      title: ru.qrScanner.results.duplicate,
+      text: [ru.qrScanner.repeatEntry, v.entry?.d].filter(Boolean).join(" · "),
+    };
+  }
+  return {
+    ...base,
+    title: ru.qrScanner.results.invalid,
+    ...(v.reason ? { text: ru.qrScanner.offlineReasons[v.reason] } : {}),
+  };
+}
+
+const isNetworkError = (e: unknown) => {
+  const x = e as { code?: string; status?: number };
+  return x?.code === "NETWORK" || x?.status === 0;
+};
+
 export function QrScanner(props: QrScannerProps): ReactNode {
   const root = useWzRoot("QrScanner", "wz-qrscanner", props);
-  const check = useDataSource().useQrCheck(props.verifyFn);
+  const ds = useDataSource();
+  const check = ds.useQrCheck(props.verifyFn);
+  const offlineApi = ds.useQrOffline();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [camera, setCamera] = useState<"starting" | "on" | "denied" | "unavailable">("starting");
   const [shown, setShown] = useState<Shown | null>(null);
   const [counters, setCounters] = useState({ ok: 0, duplicate: 0, invalid: 0 });
   const [manual, setManual] = useState("");
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
-  const [deviceId] = useState(() => `dev-${Math.random().toString(36).slice(2, 10)}`);
+  const [sessionDevice] = useState(() => `dev-${Math.random().toString(36).slice(2, 10)}`);
+  const offlineRef = useRef<OfflineScanner | null>(null);
+  const [memory, setMemory] = useState({ tickets: 0, pending: 0 });
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  /** Queue events of this screen: sync outcomes correct the shift counters. */
+  const mine = useRef(new Set<string>());
   const last = useRef<{ code: string; at: number } | null>(null);
   const busy = useRef(false);
   const shownAt = useRef(0);
@@ -107,15 +148,37 @@ export function QrScanner(props: QrScannerProps): ReactNode {
       if (last.current && last.current.code === code && now - last.current.at < DEBOUNCE_MS) return;
       last.current = { code, at: now };
       busy.current = true;
-      try {
-        const r = await check({ payload: code, checkpoint: props.checkpoint, deviceId });
-        const s = describe(r);
-        setCounters((c) => ({ ...c, [r.status]: c[r.status] + 1 }));
+      const off = offlineRef.current;
+      const show = (s: Shown) => {
+        const key = s.status === "queued" ? "ok" : s.status;
+        setCounters((c) => ({ ...c, [key]: c[key] + 1 }));
         setShown(s);
         shownAt.current = Date.now();
         navigator.vibrate?.([80]);
         const { title: _t, text: _x, error: _e, ...result } = s;
         onResult.current?.(result);
+      };
+      const offlineScan = async (scanner: OfflineScanner) => {
+        const v = await scanner.scan(code);
+        if (v.clientEventId) mine.current.add(v.clientEventId);
+        show(describeOffline(v));
+      };
+      try {
+        if (off && !navigator.onLine) {
+          await offlineScan(off);
+        } else {
+          const deviceId = off?.deviceId || sessionDevice;
+          let r: QrCheckResponse | null = null;
+          try {
+            r = await check({ payload: code, checkpoint: props.checkpoint, deviceId });
+          } catch (e) {
+            if (!off || !isNetworkError(e)) throw e;
+          }
+          if (r) {
+            if (off && r.status !== "invalid") void off.markSeen(code);
+            show(describe(r));
+          } else if (off) await offlineScan(off);
+        }
       } catch (e) {
         setShown({
           status: "invalid",
@@ -130,8 +193,59 @@ export function QrScanner(props: QrScannerProps): ReactNode {
         }, RESULT_MS);
       }
     },
-    [check, props.checkpoint, deviceId],
+    [check, props.checkpoint, sessionDevice],
   );
+
+  // Offline package and queue (connectors/qr.yaml#offline): load, refresh every 60 s, sync every 15 s and on reconnect.
+  useEffect(() => {
+    if (!props.offline) return;
+    const scanner = new OfflineScanner(offlineApi, openQrStorage(), {
+      gate: props.checkpoint,
+      onChange: () => setMemory({ tickets: scanner.tickets, pending: scanner.pending }),
+    });
+    offlineRef.current = scanner;
+    let stopped = false;
+    const sync = async () => {
+      if (stopped || !navigator.onLine) return;
+      const results = await scanner.sync();
+      if (stopped || results.length === 0) return;
+      let dup = 0;
+      let bad = 0;
+      for (const r of results) {
+        if (!mine.current.delete(r.clientEventId)) continue;
+        if (r.result === "duplicate") dup++;
+        else if (r.result !== "accepted") bad++;
+      }
+      if (dup + bad > 0) {
+        setCounters((c) => ({
+          ok: c.ok - dup - bad,
+          duplicate: c.duplicate + dup,
+          invalid: c.invalid + bad,
+        }));
+      }
+      setSyncNote(ru.qrScanner.synced(results.filter((r) => r.result === "duplicate").length));
+    };
+    const refresh = async () => {
+      if (!stopped && navigator.onLine) await scanner.refresh();
+    };
+    const reconnect = async () => {
+      await sync();
+      await refresh();
+    };
+    void scanner.ready.then(reconnect);
+    const syncTimer = setInterval(() => {
+      if (scanner.pending > 0) void sync();
+    }, SYNC_EVERY_MS);
+    const refreshTimer = setInterval(() => void refresh(), MANIFEST_REFRESH_MS);
+    window.addEventListener("online", reconnect);
+    return () => {
+      stopped = true;
+      clearInterval(syncTimer);
+      clearInterval(refreshTimer);
+      window.removeEventListener("online", reconnect);
+      offlineRef.current = null;
+    };
+  }, [props.offline, props.checkpoint, offlineApi]);
 
   useEffect(() => {
     const on = () => setOnline(navigator.onLine);
@@ -204,10 +318,20 @@ export function QrScanner(props: QrScannerProps): ReactNode {
 
   return (
     <section {...root} className={cx(styles.scanner, props.className)}>
-      <p className={styles.status} data-testid="wz-qrscanner-status">
+      <p
+        className={styles.status}
+        data-testid="wz-qrscanner-status"
+        data-online={online ? "true" : "false"}
+        {...(props.offline ? { "data-tickets": memory.tickets, "data-pending": memory.pending } : {})}
+      >
         {online
-          ? `${ru.qrScanner.online} · ${ru.qrScanner.checkpoint(props.checkpoint)}`
-          : ru.qrScanner.offline(0, 0)}
+          ? [
+              ru.qrScanner.online,
+              ru.qrScanner.checkpoint(props.checkpoint),
+              ...(props.offline ? [ru.qrScanner.memory(memory.tickets, memory.pending)] : []),
+              ...(syncNote && memory.pending === 0 ? [syncNote] : []),
+            ].join(" · ")
+          : ru.qrScanner.offline(memory.tickets, memory.pending)}
       </p>
       <div className={styles.viewport}>
         <video
@@ -228,7 +352,11 @@ export function QrScanner(props: QrScannerProps): ReactNode {
             data-status={shown.status}
           >
             <span className={styles.icon} aria-hidden="true">
-              {shown.status === "ok" ? "✓" : shown.status === "duplicate" ? "↺" : "✕"}
+              {shown.status === "ok" || shown.status === "queued"
+                ? "✓"
+                : shown.status === "duplicate"
+                  ? "↺"
+                  : "✕"}
             </span>
             <strong className={styles.resultTitle}>{shown.title}</strong>
             {shown.text && <span>{shown.text}</span>}

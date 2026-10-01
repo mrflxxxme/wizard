@@ -179,10 +179,9 @@ describe("CSRF and CORS (L3-14)", () => {
   });
 });
 
-describe("route stubs for M0-23/M0-24 (501)", () => {
-  it.each([["GET", "/_wizard/qr/manifest"]])("%s %s → 501", async (method, path) => {
-    const res = await rt.fetch(request(method, HOST, path, method === "POST" ? { body: {} } : {}));
-    expect(res.status).toBe(501);
+describe("former route stubs", () => {
+  it("GET /_wizard/qr/manifest (M2-03) without a scanner role → 403", async () => {
+    expect((await rt.fetch(request("GET", HOST, "/_wizard/qr/manifest"))).status).toBe(403);
   });
 
   it("unknown /api and /_wizard paths → 404; internal endpoints are not on the public port", async () => {
