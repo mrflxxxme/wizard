@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-02",
+  "description": "«Фамилия» без pii в справочнике потоков (strong — в любой сущности)",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/0/fields",
+      "value": {
+        "name": "curator",
+        "label": "Фамилия куратора",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

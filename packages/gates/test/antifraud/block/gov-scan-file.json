@@ -1,0 +1,19 @@
+{
+  "check": "G2-AF-03",
+  "expect": "block",
+  "description": "abuse.yaml block_required: поле file «Скан паспорта»",
+  "milestone": "M2",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "scan",
+        "label": "Скан паспорта",
+        "type": "file",
+        "pii": "basic"
+      }
+    }
+  ],
+  "base": "forum"
+}

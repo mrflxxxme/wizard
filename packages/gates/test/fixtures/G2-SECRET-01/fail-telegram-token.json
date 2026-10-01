@@ -1,0 +1,10 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "токен Telegram-бота в коде функции",
+  "files": {
+    "functions/lib/token.ts": "export const BOT = \"1234567890:AAHx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7Qx7\";\n"
+  },
+  "match": "шаблон ключа",
+  "base": "forum",
+  "expect": "fail"
+}

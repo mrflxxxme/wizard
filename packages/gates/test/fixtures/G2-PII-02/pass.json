@@ -1,0 +1,6 @@
+{
+  "check": "G2-PII-02",
+  "description": "форум: ПДн размечены",
+  "base": "forum",
+  "expect": "pass"
+}

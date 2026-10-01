@@ -1,0 +1,7 @@
+{
+  "check": "G2-AF-09",
+  "description": "форум: заявку спикера (текст) пишет спикер, читает модератор",
+  "match": "founder_review",
+  "base": "forum",
+  "expect": "warn"
+}

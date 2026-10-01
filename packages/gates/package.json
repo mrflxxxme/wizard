@@ -9,7 +9,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --root ../.. packages/gates",
-    "fixtures": "node scripts/gen-fixtures.mjs"
+    "fixtures": "node scripts/gen-fixtures.mjs && node scripts/gen-g2-data.mjs && node scripts/gen-g2-fixtures.mjs"
   },
   "dependencies": {
     "@faker-js/faker": "^10.6.0",

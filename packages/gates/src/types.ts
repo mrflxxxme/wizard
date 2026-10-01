@@ -87,6 +87,18 @@ export interface GateContext {
   runtimeRole?: string;
   /** G1: checks from QA (qa.yaml#checks.output); merged over the ones G1 derives from the spec (same id → QA wins). */
   checks?: QaCheck[];
+  /** G2-AF-04 identity zone: the system slug (runtime.yaml#routing.system_slug). */
+  slug?: string;
+  /** G2-SECRET-02 for prod: is the secret set in the vault (existence only, the value is never read). */
+  secretExists?: (name: string) => Promise<boolean>;
+  /** G2-AF-04 override and G2-AF-08 org signals (abuse.yaml#brands.override, #scoring). */
+  abuse?: {
+    orgAgeDays?: number;
+    plan?: string;
+    abuseReportsPrev?: number;
+    /** platform.brand_allowlist: brand ids or names the org proved it owns. */
+    brandAllowlist?: string[];
+  };
   /** Default: env WIZARD_MILESTONE, else M0. */
   milestone?: Milestone | string;
   now?: Date;

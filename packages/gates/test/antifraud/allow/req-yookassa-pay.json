@@ -1,0 +1,22 @@
+{
+  "expect": "allow",
+  "description": "«Оплатить через ЮKassa», «Оплата картой Мир или через СБП», «предоплата через ЮKassa» при integrations[yookassa]",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n      <p>{\"Предоплата 50% — 3 025 ₽ через ЮKassa\"}</p>\n      <form>\n        <Field name=\"pay_hint\" label={\"Оплата картой Мир или через СБП\"} type=\"string\" value={v} onChange={setV} />\n        <Button type=\"submit\">{\"Оплатить через ЮKassa\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

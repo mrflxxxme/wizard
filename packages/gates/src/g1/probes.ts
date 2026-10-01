@@ -68,6 +68,13 @@ export class Prober {
 
   /** Fresh row inserted by the system, owned (rowFilter fields) by `owner`; refs point to seed rows. */
   async freshRow(e: Entity, role: string, owner: Actor | null): Promise<string> {
+    const row = await this.buildRow(e, role, owner);
+    await this.env.insertRow(e.name, row);
+    return row.id as string;
+  }
+
+  /** Values of a fresh row (not inserted); unique refs get their own inserted target rows. */
+  async buildRow(e: Entity, role: string, owner: Actor | null): Promise<Record<string, unknown>> {
     const n = this.d.gen.next();
     const id = `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
     const row: Record<string, unknown> = { id };
@@ -91,8 +98,7 @@ export class Prober {
       const m = typeof want === "string" ? USER_REF_RE.exec(want) : null;
       row[f] = m ? (me ? userAttr(me, m[1] as string) : null) : want;
     }
-    await this.env.insertRow(e.name, row);
-    return id;
+    return row;
   }
 
   /** Minimal valid create body for the role, or the reason it cannot be built. */

@@ -1,0 +1,16 @@
+{
+  "check": "G2-AF-08",
+  "expect": "warn",
+  "description": "жалобы ранее + бренд с опечаткой на расстоянии 2",
+  "abuse": {
+    "abuseReportsPrev": 1
+  },
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "Госуслугах онлайн"
+    }
+  ],
+  "base": "forum"
+}

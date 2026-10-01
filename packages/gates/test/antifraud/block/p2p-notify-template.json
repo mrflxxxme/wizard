@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-06",
+  "expect": "block",
+  "description": "p2p-notify-template",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/workflows/2/steps/0/params/text",
+      "value": "Ваша заявка принята. Переведите оплату на карту 4276 0000 0000 1239"
+    }
+  ],
+  "base": "forum"
+}

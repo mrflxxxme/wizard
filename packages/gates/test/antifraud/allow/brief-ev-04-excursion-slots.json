@@ -1,0 +1,274 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф ev-04-excursion-slots: «Запись на экскурсии по слотам в рамках конференции»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Запись на экскурсии по слотам в рамках конференции",
+      "description": "В последний день конференции для участников бесплатные экскурсии на три завода и в технопарк. У каждой экскурсии несколько слотов по времени, в автобусе 45 мест. Записаться могут только зарегистрированные участники конференции, не больше чем на одну экскурсию. Если мест нет — лист ожидания, и при ос",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Экскурсия",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Слот",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Запись",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Лист ожидания",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [
+      {
+        "name": "telegram",
+        "connector": "telegram",
+        "config": {},
+        "secretRefs": [
+          "secret://telegram_bot_token"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Запись на экскурсии по слотам в рамках конференции",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Запись на экскурсии по слотам в рамках конференции\"}>\n      <p>{\"В последний день конференции для участников бесплатные экскурсии на три завода и в технопарк. У каждой экскурсии несколько слотов по времени, в автобусе 45 мест. Записаться могут только зарегистрированные участники конференции, не больше чем на одну экскурсию. Если мест нет — лист ожидания, и при освобождении места первый в очереди автоматически получает приглашение и должен подтвердить его за 12 часов, иначе место уходит следующему. На некоторые заводы нужны паспортные данные для пропуска — их запрашиваем только у записавшихся на эти заводы и удаляем через 7 дней после экскурсии. За день до экскурсии — напоминание в Telegram или на почту с местом и временем сбора. Сопровождающий в день экскурсии отмечает, кто пришёл.\"}</p>\n      <ul>\n        <li>{\"Вместимость слота\"}</li>\n        <li>{\"Одна экскурсия на участника\"}</li>\n        <li>{\"Лист ожидания с автоприглашением\"}</li>\n        <li>{\"Подтверждение за 12 часов\"}</li>\n        <li>{\"Паспортные данные только для отдельных заводов\"}</li>\n        <li>{\"Автоудаление паспортных данных\"}</li>\n        <li>{\"Напоминание в Telegram\"}</li>\n        <li>{\"Отметка присутствия\"}</li>\n      </ul>\n      <p>{\"Нельзя записаться сверх вместимости\"}</p>\n      <p>{\"Нельзя записаться на две экскурсии\"}</p>\n      <p>{\"При отмене первый из листа ожидания получает приглашение\"}</p>\n      <p>{\"Неподтверждённое приглашение переходит следующему\"}</p>\n      <p>{\"Паспортные данные удаляются через 7 дней\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

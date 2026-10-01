@@ -1,0 +1,10 @@
+{
+  "check": "G2-PERM-02",
+  "description": "в схеме лишняя политика: читать билеты может любой",
+  "sql": [
+    "CREATE POLICY \"evil\" ON {schema}.\"ticket\" FOR SELECT TO PUBLIC USING (true)"
+  ],
+  "match": "RLS read",
+  "base": "forum",
+  "expect": "fail"
+}

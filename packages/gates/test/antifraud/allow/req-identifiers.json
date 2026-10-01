@@ -1,0 +1,22 @@
+{
+  "expect": "allow",
+  "description": "идентификаторы shipping, spinner, option, topic в коде",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n  const shipping = \"Доставка\";\n  const spinner = true;\n  const option = \"a\";\n  const topic = \"Тема\";\n  return (\n    <AppShell title={\"Проверка\"}>\n\n      <form>\n        <Field name=\"shipping\" label={\"Параметр\"} type=\"string\" value={v} onChange={setV} />\n        <Field name=\"spinner\" label={\"Параметр\"} type=\"string\" value={v} onChange={setV} />\n        <Field name=\"option\" label={\"Параметр\"} type=\"string\" value={v} onChange={setV} />\n        <Field name=\"topic\" label={\"Параметр\"} type=\"string\" value={v} onChange={setV} />\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

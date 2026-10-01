@@ -1,0 +1,6 @@
+{
+  "check": "G2-AF-03",
+  "description": "эталон форума",
+  "base": "forum",
+  "expect": "pass"
+}

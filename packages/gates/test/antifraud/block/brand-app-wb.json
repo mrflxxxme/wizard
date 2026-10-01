@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-app-wb",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "Wildberries Partners"
+    }
+  ],
+  "base": "forum"
+}

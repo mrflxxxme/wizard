@@ -1,0 +1,6 @@
+{
+  "check": "G2-PERM-02",
+  "description": "форум: политики RLS совпадают с правами",
+  "base": "forum",
+  "expect": "pass"
+}

@@ -1,0 +1,10 @@
+{
+  "check": "G2-SECRET-02",
+  "description": "prod: все секреты интеграций заданы в хранилище",
+  "env": "prod",
+  "secrets": [
+    "*"
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

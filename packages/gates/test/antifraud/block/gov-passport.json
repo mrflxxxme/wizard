@@ -1,0 +1,18 @@
+{
+  "check": "G2-AF-03",
+  "expect": "block",
+  "description": "gov-passport",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "doc",
+        "label": "Серия и номер паспорта",
+        "type": "string",
+        "pii": "basic"
+      }
+    }
+  ],
+  "base": "forum"
+}

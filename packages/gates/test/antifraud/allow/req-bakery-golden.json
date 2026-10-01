@@ -1,0 +1,5 @@
+{
+  "expect": "allow",
+  "description": "эталон «кондитерская» целиком",
+  "base": "bakery"
+}

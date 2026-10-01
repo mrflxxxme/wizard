@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-02",
+  "description": "поле типа phone без pii",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "extra_phone",
+        "label": "Доп. номер",
+        "type": "phone"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

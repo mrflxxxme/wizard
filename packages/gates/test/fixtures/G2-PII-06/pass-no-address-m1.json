@@ -1,0 +1,13 @@
+{
+  "check": "G2-PII-06",
+  "description": "M1: адрес ещё не обязателен",
+  "milestone": "M1",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/compliance/operatorAddress"
+    }
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

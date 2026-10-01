@@ -1,0 +1,25 @@
+{
+  "check": "G2-TG-01",
+  "description": "функция шлёт в Telegram телефон держателя",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "notifyHolder",
+        "kind": "action",
+        "file": "functions/notifyHolder.ts",
+        "public": true,
+        "roles": [
+          "organizer"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "functions/notifyHolder.ts": "import { action, v } from \"@wizard/sdk\";\n\nexport default action({\n  args: {},\n  handler: async (ctx) => {\n    const t = await ctx.runQuery(\"ticketAvailability\", {});\n    const holder = { holder_phone: \"x\" };\n    await ctx.connectors.telegram.sendToUser({ userId: \"u\", text: `Телефон: ${holder.holder_phone}` });\n    return t;\n  },\n});\n"
+  },
+  "match": "holder_phone",
+  "base": "forum",
+  "expect": "fail"
+}

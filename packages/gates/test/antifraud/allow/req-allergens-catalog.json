@@ -1,0 +1,31 @@
+{
+  "expect": "allow",
+  "description": "«Состав: может содержать аллергены», «Аллергены: орехи, глютен» в каталоге кондитерской (сущность не субъект)",
+  "base": "bakery",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/0/fields",
+      "value": {
+        "name": "allergens",
+        "label": "Аллергены",
+        "type": "string"
+      }
+    },
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n      <p>{\"Состав: может содержать аллергены\"}</p>\n      <p>{\"Аллергены: орехи, глютен\"}</p>\n      <form>\n\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

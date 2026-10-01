@@ -1,0 +1,6 @@
+{
+  "check": "G2-TG-01",
+  "description": "форум: в Telegram только время и ссылка",
+  "base": "forum",
+  "expect": "pass"
+}

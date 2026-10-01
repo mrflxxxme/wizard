@@ -1,0 +1,6 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "форум: секретов в коде и спеке нет",
+  "base": "forum",
+  "expect": "pass"
+}

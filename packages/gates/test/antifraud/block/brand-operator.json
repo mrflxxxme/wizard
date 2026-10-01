@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-operator",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/compliance/operatorName",
+      "value": "ПАО Сбербанк"
+    }
+  ],
+  "base": "forum"
+}

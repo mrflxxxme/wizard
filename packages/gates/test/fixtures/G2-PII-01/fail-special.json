@@ -1,0 +1,19 @@
+{
+  "check": "G2-PII-01",
+  "description": "поле pii=special",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "health",
+        "label": "Ограничения",
+        "type": "string",
+        "pii": "special"
+      }
+    }
+  ],
+  "match": "особой категории",
+  "base": "forum",
+  "expect": "fail"
+}

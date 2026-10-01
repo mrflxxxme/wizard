@@ -1,0 +1,298 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф hz-03-field-service: «Выездной сервис: заявки на ремонт и обслуживание оборудования»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Выездной сервис: заявки на ремонт и обслуживание оборудования",
+      "description": "Мы обслуживаем кофемашины и холодильные витрины в кафе и магазинах, у нас 12 выездных инженеров. Клиент (кафе) оставляет заявку: адрес точки, модель оборудования, описание поломки, фото, срочность. Диспетчер назначает инженера с учётом района и загрузки, у заявки есть срок реакции по договору: 4 час",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Точка клиента",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Оборудование",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Запчасть",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item5",
+        "label": "Акт работ",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item5",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item5",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Выездной сервис: заявки на ремонт и обслуживание оборудования",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Выездной сервис: заявки на ремонт и обслуживание оборудования\"}>\n      <p>{\"Мы обслуживаем кофемашины и холодильные витрины в кафе и магазинах, у нас 12 выездных инженеров. Клиент (кафе) оставляет заявку: адрес точки, модель оборудования, описание поломки, фото, срочность. Диспетчер назначает инженера с учётом района и загрузки, у заявки есть срок реакции по договору: 4 часа для срочных и сутки для обычных. Инженер на телефоне видит свои заявки на день, отмечает «выехал», «на месте», «выполнено», списывает запчасти со своего склада и прикладывает фото и акт. Если нужна запчасть, которой нет, заявка ставится на паузу, а кладовщик получает задачу на закупку. Клиент видит статус своих заявок и историю обслуживания по каждому аппарату. Руководитель видит просроченные заявки и загрузку инженеров. Сейчас звонки клиентов принимает диспетчер клиент по номеру клиент.\"}</p>\n      <ul>\n        <li>{\"Срок реакции по договору\"}</li>\n        <li>{\"Назначение инженера по району\"}</li>\n        <li>{\"Статусы выезда\"}</li>\n        <li>{\"Списание запчастей\"}</li>\n        <li>{\"Фото и акт\"}</li>\n        <li>{\"Пауза до поставки запчасти\"}</li>\n        <li>{\"История по аппарату\"}</li>\n        <li>{\"Загрузка инженеров\"}</li>\n      </ul>\n      <p>{\"Просроченная заявка видна руководителю\"}</p>\n      <p>{\"Инженер видит только свои заявки\"}</p>\n      <p>{\"Клиент видит только заявки своих точек\"}</p>\n      <p>{\"Заявка без запчасти ставится на паузу\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

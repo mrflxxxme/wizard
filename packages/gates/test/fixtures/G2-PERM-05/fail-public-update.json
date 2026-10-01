@@ -1,0 +1,17 @@
+{
+  "check": "G2-PERM-05",
+  "description": "посетитель может изменять потоки без rowFilter",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/permissions/26/ops",
+      "value": [
+        "read",
+        "update"
+      ]
+    }
+  ],
+  "match": "изменять",
+  "base": "forum",
+  "expect": "fail"
+}

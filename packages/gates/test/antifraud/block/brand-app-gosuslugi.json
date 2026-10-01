@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "abuse.yaml block_required: app.name «Госуслуги района»",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "Госуслуги района"
+    }
+  ],
+  "base": "forum"
+}
