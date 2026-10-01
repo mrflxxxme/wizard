@@ -39,7 +39,12 @@ const m0 = Object.entries(dbYaml.tables).filter(([, t]) => t.milestone === "M0")
 const M1_TABLES = ["auth_otps", "sessions", "invites", "credit_ledger", "publications", "imports"];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
-const checked = [...m0, ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n))];
+// M2 tables created so far (M2-10 exports).
+const M2_TABLES = ["exports"];
+const checked = [
+  ...m0,
+  ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),
+];
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
 let h: DbHandle;

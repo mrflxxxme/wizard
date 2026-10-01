@@ -8,6 +8,7 @@ import { Billing } from "./billing/ledger.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
+import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
@@ -16,6 +17,7 @@ import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
 import { creditRoutes } from "./routes/credits.js";
+import { exportRoutes } from "./routes/exports.js";
 import { importRoutes } from "./routes/imports.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
@@ -94,8 +96,13 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   if (opts.recover !== false) await engine.recover();
   // Import files TTL (db.yaml#imports, 7 days): at start and hourly.
   const importStore = new ImportStore(config.importsDir, config.secretsKey);
+  const exportStore = new ExportStore(config.artifactsDir, config.secretsKey);
   const sweep = () =>
-    sweepExpiredImports(handle.db, importStore).catch((e) => log("import TTL sweep failed", e));
+    Promise.all([
+      sweepExpiredImports(handle.db, importStore).catch((e) => log("import TTL sweep failed", e)),
+      // Export archives (db.yaml#exports.expires_at, 24 h).
+      sweepExpiredExports(handle.db, exportStore).catch((e) => log("export TTL sweep failed", e)),
+    ]);
   await sweep();
   const sweepTimer = setInterval(sweep, 3600_000);
   sweepTimer.unref();
@@ -135,6 +142,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", systemRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", importRoutes(deps));
+  api.route("/", exportRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
