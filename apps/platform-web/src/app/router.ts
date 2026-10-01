@@ -1,5 +1,5 @@
 // Minimal History API router (platform-screens.yaml#stack, ≤ 10 routes): "/", "/login", "/invite/:token",
-// "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/legal/:doc".
+// "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/s/:systemId/import/:importId", "/legal/:doc".
 import { useSyncExternalStore } from "react";
 
 export type Route =
@@ -7,6 +7,7 @@ export type Route =
   | { name: "system"; systemId: string }
   | { name: "code"; systemId: string }
   | { name: "settings"; systemId: string }
+  | { name: "import"; systemId: string; importId: string }
   | { name: "login" }
   | { name: "invite"; token: string }
   | { name: "legal"; doc: string }
@@ -50,6 +51,8 @@ export function matchRoute(pathname: string): Route {
   if (inv) return { name: "invite", token: inv[1] as string };
   const legal = /^\/legal\/(offer|pd-consent|privacy)\/?$/.exec(pathname);
   if (legal) return { name: "legal", doc: legal[1] as string };
+  const imp = /^\/s\/([A-Za-z0-9-]{1,64})\/import\/([A-Za-z0-9-]{1,64})\/?$/.exec(pathname);
+  if (imp) return { name: "import", systemId: imp[1] as string, importId: imp[2] as string };
   const m = /^\/s\/([A-Za-z0-9-]{1,64})(?:\/(code|settings))?\/?$/.exec(pathname);
   if (m?.[2] === "code") return { name: "code", systemId: m[1] as string };
   if (m?.[2] === "settings") return { name: "settings", systemId: m[1] as string };

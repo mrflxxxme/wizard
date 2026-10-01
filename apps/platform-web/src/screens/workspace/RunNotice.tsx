@@ -7,7 +7,12 @@ import type { RunState } from "../../run/reducer.js";
 import s from "./Workspace.module.css";
 
 export function RunNotice({ run }: { run: RunState }): ReactNode {
-  const title = run.kind === "rollback" ? ru.runs.rollback : ru.runs.publish;
+  const title =
+    run.kind === "rollback"
+      ? ru.runs.rollback
+      : run.kind === "import_table"
+        ? ru.runs.import
+        : ru.runs.publish;
   if (run.phase === "failed" && run.failure)
     return (
       <Alert testId="run-error">
@@ -34,7 +39,11 @@ export function RunNotice({ run }: { run: RunState }): ReactNode {
       <span className={s.bubbleAuthor}>{title}</span>
       <span className={s.row}>
         <Spinner label={ru.build.running} />
-        <span>{step?.title ?? ru.build.running}</span>
+        <span>
+          {run.phase === "needs_input" && run.kind === "import_table"
+            ? ru.runs.importWaiting
+            : (step?.title ?? ru.build.running)}
+        </span>
       </span>
     </div>
   );

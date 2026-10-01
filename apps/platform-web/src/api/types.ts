@@ -276,3 +276,43 @@ export interface DiffChange {
   text_ru: string;
   destructive?: boolean;
 }
+
+/** api.yaml#ImportColumnMapping */
+export interface ImportColumnMapping {
+  column: string;
+  action: "map" | "skip" | "new_field";
+  entity?: string;
+  field?: string;
+  pii?: "none" | "basic";
+}
+
+/** getImport profile item: column statistics only, never cell values (data-boundary.yaml#import). */
+export interface ImportProfileItem {
+  column: string;
+  sheet?: string;
+  typeGuess: string;
+  piiKindGuess: string | null;
+  nullShare: number;
+  distinct: number;
+}
+
+export type ImportStatus =
+  | "profiling"
+  | "mapping"
+  | "awaiting_confirm"
+  | "importing"
+  | "done"
+  | "failed"
+  | "expired";
+
+/** GET /systems/:id/imports/:importId */
+export interface ImportView {
+  id: string;
+  status: ImportStatus;
+  runId: string | null;
+  /** needs_input of decisionId=import_confirm. */
+  inputId: string | null;
+  profile: ImportProfileItem[];
+  mapping: ImportColumnMapping[];
+  rowsImported: number | null;
+}
