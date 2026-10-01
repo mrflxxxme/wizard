@@ -82,6 +82,7 @@ async function builtSystem(orgId: string, prompt: string): Promise<string> {
       expectedVersion: cur.draft_revision,
       operatorName: "ООО «Северный ритейл»",
       operatorContact: "privacy@north-retail.example",
+      operatorAddress: "г. Москва, ул. Тверская, д. 1",
     },
   });
   expect(put.status, put.text).toBe(200);

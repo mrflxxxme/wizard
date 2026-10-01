@@ -4,6 +4,7 @@ import { type AppSpec, diffSpecs, type SpecChange } from "@wizard/appspec";
 import { Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
+import { innValid } from "../auth/region.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
@@ -194,6 +195,8 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
           .optional(),
       }),
     );
+    if (b.operatorInn !== undefined && !innValid(b.operatorInn))
+      throw new ApiError("INN_INVALID", BLOCKER_RU.INN_INVALID ?? "ИНН указан с ошибкой");
     const { expectedVersion, retentionWaiver, ...fields } = b;
     const res = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);

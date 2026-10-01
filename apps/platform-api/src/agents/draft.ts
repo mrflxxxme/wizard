@@ -6,6 +6,7 @@ import { generateSeed } from "@wizard/gates";
 import { schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { RunFailure } from "../runs/types.js";
+import { upgradeSystemTables } from "./system-tables.js";
 
 /** architecture.yaml#data_stores.db_roles: M0 migrator (not the platform owner, not a superuser) and runtime role. */
 export const MIGRATOR_ROLE = "wizard_owner";
@@ -53,7 +54,7 @@ export async function migrateDraft(pg: postgres.Sql, i: MigrateDraftInput): Prom
     const plan = planMigration(i.prevSpec, i.spec, { env: "draft" });
     if (plan.errors.length > 0) return await fresh();
     try {
-      await asMigrator(pg, role, toDDL(plan, schema, { runtimeRole }));
+      await asMigrator(pg, role, [...upgradeSystemTables(schema), ...toDDL(plan, schema, { runtimeRole })]);
       return { created: false };
     } catch {
       return await fresh(); // e.g. incompatible column types: draft data is disposable

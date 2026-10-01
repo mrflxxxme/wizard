@@ -15,6 +15,7 @@ import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
 import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
+import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
 import { creditRoutes } from "./routes/credits.js";
@@ -22,6 +23,7 @@ import { exportRoutes } from "./routes/exports.js";
 import { importRoutes } from "./routes/imports.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
+import { privacyRoutes } from "./routes/privacy.js";
 import { publishRoutes } from "./routes/publish.js";
 import { runRoutes } from "./routes/runs.js";
 import { systemRoutes } from "./routes/systems.js";
@@ -55,6 +57,8 @@ export interface PlatformApiOptions {
   now?: () => Date;
   /** credits_cron period (billing.yaml#credits_cron, hourly); 0 disables the in-process timer (default 0 with dbos). */
   creditsCronMs?: number;
+  /** retention_cron platform pass period (hourly in-process; 0 disables, default 0 with dbos — worker schedule). */
+  retentionCronMs?: number;
   /**
    * inprocess (default; M0 and unit tests): runs execute in this process. dbos (M1, `pnpm dev`): runs are enqueued
    * as DBOS workflows that apps/worker executes (workflows.yaml#execution.M1).
@@ -148,6 +152,24 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
         }, cronMs)
       : undefined;
   cron?.unref();
+  // retention_cron, platform part (deletion journal, consent notices, delete_system): DBOS scheduled in apps/worker;
+  // the in-process timer only without it.
+  const retentionMs = opts.retentionCronMs ?? (dbos ? 0 : 3600_000);
+  const retention =
+    retentionMs > 0
+      ? setInterval(() => {
+          runRetentionCron({
+            db: handle.db,
+            pg: handle.pg,
+            blobs,
+            config,
+            mailer,
+            ...(opts.publish?.migratorRole ? { migratorRole: opts.publish.migratorRole } : {}),
+            log,
+          }).catch((e) => log("retention_cron failed", e));
+        }, retentionMs)
+      : undefined;
+  retention?.unref();
 
   const app = new Hono();
   app.onError((err, c) => {
@@ -176,6 +198,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", publishRoutes(deps));
   api.route("/", importRoutes(deps));
   api.route("/", exportRoutes(deps));
+  api.route("/", privacyRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
@@ -189,6 +212,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     deps,
     async close() {
       if (cron) clearInterval(cron);
+      if (retention) clearInterval(retention);
       if (sweepTimer) clearInterval(sweepTimer);
       await engine.close();
       await executors.close?.();

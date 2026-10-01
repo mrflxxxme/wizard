@@ -48,8 +48,8 @@ const M1_TABLES = [
 ];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
-// M2 tables created so far (M2-10 exports).
-const M2_TABLES = ["exports"];
+// M2 tables created so far (M2-10 exports, M2-05 deletion_log).
+const M2_TABLES = ["exports", "deletion_log"];
 const checked = [
   ...m0,
   ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),

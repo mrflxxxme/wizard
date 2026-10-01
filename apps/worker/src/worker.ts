@@ -1,6 +1,6 @@
 // apps/worker (workflows.yaml#execution.M1): DBOS Transact over the platform database (schema dbos). Runs are the
-// workflow RUN_WORKFLOW (workflowID = runs.id) on queues runs / interview; credits_cron and the dbos retention are
-// DBOS scheduled workflows.
+// workflow RUN_WORKFLOW (workflowID = runs.id) on queues runs / interview; credits_cron, the dbos retention and the
+// platform part of retention_cron (deletion journal, consent notices, delete_system) are DBOS scheduled workflows.
 import { DBOS, type WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger, type Logger } from "@wizard/pii/log";
@@ -18,7 +18,9 @@ import {
   ExportStore,
   ImportStore,
   loadConfig,
+  type Mailer,
   migrate,
+  OutboxMailer,
   type PublishOptions,
   QUEUE_INTERVIEW,
   QUEUE_RUNS,
@@ -26,6 +28,7 @@ import {
   RUN_WORKFLOW,
   RunEngine,
   type RunExecutors,
+  runRetentionCron,
   SecretStore,
   sweepExpiredExports,
   sweepExpiredImports,
@@ -39,6 +42,8 @@ export const CREDITS_CRON = "wizard.credits_cron";
 export const DBOS_RETENTION = "wizard.dbos_retention";
 /** Import files and export archives TTL (one schedule, as the in-process timer of platform-api). */
 export const IMPORTS_TTL = "wizard.imports_ttl";
+/** workflows.yaml#retention_cron (platform part): daily 03:30 MSK, after the runtime's retention pass. */
+export const RETENTION_CRON = "wizard.retention_cron";
 /** execution.M1.dbos_data: dbos.* of terminal workflows older than this are deleted daily. */
 export const DBOS_RETENTION_DAYS = 30;
 /** workflows.yaml#execution.M1.queues.runs default. */
@@ -62,6 +67,8 @@ export interface WorkerOptions {
   pollMs?: number;
   logger?: Logger;
   now?: () => Date;
+  /** Platform mail for owner notices of retention_cron (default: files in config.outboxDir). */
+  mailer?: Mailer;
 }
 
 export interface Worker {
@@ -72,6 +79,8 @@ export interface Worker {
   sweep(): Promise<void>;
   /** dbos retention (execution.M1.dbos_data): deletes terminal workflows completed before now − 30 days. */
   retainDbos(now?: Date): Promise<number>;
+  /** One pass of the platform part of retention_cron (tests; the schedule runs it daily). */
+  retention(now?: Date): ReturnType<typeof runRetentionCron>;
   close(): Promise<void>;
 }
 
@@ -169,6 +178,27 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     },
     { name: IMPORTS_TTL },
   );
+  const mailer = o.mailer ?? new OutboxMailer(config.outboxDir);
+  const retention = (now = new Date()) =>
+    runRetentionCron(
+      {
+        db: handle.db,
+        pg: handle.pg,
+        blobs: new BlobStore(config.artifactsDir),
+        config,
+        mailer,
+        ...(o.publish?.migratorRole ? { migratorRole: o.publish.migratorRole } : {}),
+        log,
+      },
+      now,
+    );
+  const retentionCron = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      // One step: the pass is idempotent (journal rows move in one transaction, the purge repeats until its marker).
+      await DBOS.runStep(async () => void (await retention()), { name: "retention_platform" });
+    },
+    { name: RETENTION_CRON },
+  );
   const dbosRetention = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
       await DBOS.runStep(() => retainDbos(), { name: "dbos_retention" });
@@ -204,6 +234,12 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     await DBOS.applySchedules([
       { scheduleName: CREDITS_CRON, workflowFn: creditsCron, schedule: "7 * * * *" },
       { scheduleName: IMPORTS_TTL, workflowFn: importsTtl, schedule: "23 * * * *" },
+      {
+        scheduleName: RETENTION_CRON,
+        workflowFn: retentionCron,
+        schedule: "30 3 * * *",
+        cronTimezone: "Europe/Moscow",
+      },
       {
         scheduleName: DBOS_RETENTION,
         workflowFn: dbosRetention,
@@ -275,6 +311,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     steps,
     sweep,
     retainDbos,
+    retention,
     async close() {
       if (closed) return;
       closed = true;

@@ -119,6 +119,7 @@ export async function setOperator(a: Api, system: Json): Promise<number> {
     expectedVersion: system.draftRevision,
     operatorName: "ООО «Северный ритейл»",
     operatorContact: "privacy@north-retail.example",
+    operatorAddress: "г. Москва, ул. Тверская, д. 1",
   });
   expect(put.status, JSON.stringify(put.body)).toBe(200);
   return put.body.revision.version;

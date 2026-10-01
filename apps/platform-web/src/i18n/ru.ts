@@ -334,6 +334,7 @@ export const ru = {
       OPERATOR_NAME_REQUIRED: "Укажите оператора ПДн",
       OPERATOR_CONTACT_REQUIRED: "Укажите оператора ПДн",
       OPERATOR_ADDRESS_REQUIRED: "Укажите оператора ПДн",
+      INN_INVALID: "Проверьте ИНН оператора ПДн",
       PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
       PLAN_LIMIT: "Лимит опубликованных систем тарифа",
       FOUNDER_REVIEW_PENDING: "Ждёт проверки",

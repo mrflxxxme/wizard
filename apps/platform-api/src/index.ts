@@ -1,8 +1,11 @@
 export const APP = "@wizard/platform-api";
 
-export { CONSENT_TEMPLATES, renderConsentText, withConsentText } from "./agents/consent.js";
+/** Consent text from the runtime's legal template registry (drafts until the lawyer). */
+export { renderConsentText, withConsentText } from "./agents/consent.js";
 export { bundleDraft, MIGRATOR_ROLE, migrateDraft, RUNTIME_ROLE, seedDraft } from "./agents/draft.js";
 export { type AgentExecutorsOptions, createAgentExecutors } from "./agents/executors.js";
+/** System tables added after a schema was created (users.last_login_at, _w_deletion_log): idempotent upgrade DDL. */
+export { upgradeSystemTables } from "./agents/system-tables.js";
 export { createPlatformApi, type PlatformApi, type PlatformApiOptions } from "./app.js";
 export { MEMBER_LIMITS, OFFER_VERSION, type OrgRole } from "./auth/accounts.js";
 export { type Mailer, type MailMessage, type OutboxLetter, OutboxMailer } from "./auth/mailer.js";
@@ -48,6 +51,10 @@ export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
 export { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 export { type AuthUser, checkOrgAccess } from "./http/auth.js";
 export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
+/** retention_cron platform part (M2-05): runtime journals → platform.deletion_log, consent notices, delete_system. */
+export { type RetentionCronDeps, type RetentionCronReport, runRetentionCron } from "./privacy/cron.js";
+export { type PurgedSystem, purgeDeletedSystems, SYSTEM_PURGE_DAYS } from "./privacy/delete-system.js";
+export { collectDeletionLogs, type MovedEntry, notifyConsentWithdrawals } from "./privacy/deletion-log.js";
 export { publishBlockers, specPublishBlockers } from "./publish/blockers.js";
 export {
   applyProdMigration,

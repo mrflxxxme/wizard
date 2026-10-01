@@ -232,6 +232,7 @@ describe("форум: prod с данными → ревизия с полем �
       expectedVersion: built.draftRevision,
       operatorName: "ООО «Северный ритейл»",
       operatorContact: "privacy@north-retail.example",
+      operatorAddress: "г. Москва, ул. Тверская, д. 1",
     });
     expect(put.status).toBe(200);
     firstRev = put.body.revision.version;
