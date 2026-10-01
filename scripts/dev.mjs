@@ -148,6 +148,7 @@ process.env.WIZARD_AUTH_MODE ??= "dev";
 // M3-02: AI actions of local systems — the runtime calls the platform's AI gateway with a per-run internal token.
 process.env.WIZARD_INTERNAL_TOKEN ||= randomBytes(16).toString("hex");
 process.env.WIZARD_PLATFORM_INTERNAL_URL ||= `http://${HOST}:${services[0].port}`;
+process.env.WIZARD_RUNTIME_INTERNAL_URL ||= `http://${HOST}:${services.find((s) => s.id === "runtime").port + 1}`; // runtime internal port (PORT+1): AI backfill and publish smoke
 
 if (!args.has("no-db")) {
   const pgPort = Number(process.env.WIZARD_PG_PORT ?? 5433);
