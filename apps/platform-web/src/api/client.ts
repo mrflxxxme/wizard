@@ -3,6 +3,7 @@ import { ru } from "../i18n/ru.js";
 import type {
   Answer,
   ApiErrorBody,
+  DeletionLogEntry,
   DiffChange,
   GateReport,
   ImportColumnMapping,
@@ -19,6 +20,7 @@ import type {
   RevisionSummary,
   Run,
   System,
+  SystemDeleted,
   SystemView,
   Theme,
   User,
@@ -228,6 +230,12 @@ export function createApiClient(opts: ClientOptions = {}) {
         operatorInn?: string;
       },
     ) => call<{ revision: RevisionSummary }>("PUT", `${sys(id)}/compliance`, { body }),
+    // 152-ФЗ of the owner (M2-05): deletion journal and the soft delete of a system.
+    listDeletionLog: (id: string, cursor?: string, limit = 20) =>
+      call<{ items: DeletionLogEntry[]; nextCursor: string | null }>("GET", `${sys(id)}/deletion-log`, {
+        query: { limit: String(limit), cursor },
+      }),
+    deleteSystem: (id: string) => call<SystemDeleted>("DELETE", sys(id)),
     // Table import (api.yaml#createImport, #getImport, #updateImportMapping; M1-07).
     createImport: (id: string, file: Blob, name: string) => {
       const form = new FormData();

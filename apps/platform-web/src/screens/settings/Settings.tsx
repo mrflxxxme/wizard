@@ -1,11 +1,13 @@
 // S10 «Настройки системы» (/s/:systemId/settings, M1-11): team and invitations, «кто меняет» lock, model policy
 // («только российский контур»), login methods and retention from the spec, operator of personal data (the publish
-// precondition, a minimal part of M2-11's block), revisions with prod rollback. Owner-only actions are disabled for
+// precondition, a minimal part of M2-11's block) with the deletion journal (M2-05), revisions with prod rollback, and
+// «Удалить систему» with a confirmation (M2-05, purge after 30 days). Owner-only actions are disabled for
 // editor/viewer with a hint; the server answers 403 anyway (D11).
 import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type {
+  DeletionLogEntry,
   Invite,
   LockStatus,
   Member,
@@ -31,9 +33,26 @@ const ROLES: OrgRole[] = ["owner", "editor", "viewer"];
 
 const errText = (e: unknown) => {
   if (e instanceof ApiError && e.code === "LAST_OWNER") return ru.settings.lastOwner;
+  if (e instanceof ApiError && e.code === "SYSTEM_LOCKED") return ru.settings.systemLocked;
   return e instanceof Error ? e.message : ru.errors.generic;
 };
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+const fmtDay = (iso: string) =>
+  new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const entityLabel = (e: DeletionLogEntry, spec: SpecLike | null | undefined) =>
+  e.entity === "*"
+    ? ru.settings.deletionEntityAll
+    : e.entity === "users"
+      ? ru.settings.deletionEntityUsers
+      : (spec?.entities?.find((x) => x.name === e.entity)?.label ?? e.entity);
 
 type RunAction = { type: "reset" } | { type: "event"; e: RunEvent };
 const runReducer = (st: RunState, a: RunAction): RunState =>
@@ -74,6 +93,10 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   const [inviteRole, setInviteRole] = useState<OrgRole>("editor");
   const [operator, setOperator] = useState({ name: "", contact: "", address: "", inn: "" });
   const [confirm, setConfirm] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Deletion journal (owner): newest first, «Показать ещё» follows nextCursor.
+  const [journal, setJournal] = useState<DeletionLogEntry[] | null>(null);
+  const [journalCursor, setJournalCursor] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, dispatch] = useReducer(runReducer, undefined, initialRunState);
 
@@ -144,6 +167,18 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   useEffect(() => {
     if (orgId) void loadTeam(orgId, owner);
   }, [orgId, owner, loadTeam]);
+
+  const loadJournal = useCallback(
+    async (cursor?: string) => {
+      const page = await api.listDeletionLog(systemId, cursor);
+      setJournal((prev) => (cursor ? [...(prev ?? []), ...page.items] : page.items));
+      setJournalCursor(page.nextCursor);
+    },
+    [api, systemId],
+  );
+  useEffect(() => {
+    if (owner) void loadJournal().catch(() => setJournal([]));
+  }, [owner, loadJournal]);
 
   // #pd from the S6 blocker link: scroll to the operator block once it is rendered.
   const scrolled = useRef(false);
@@ -251,6 +286,11 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
       await loadSystem().catch(() => {});
       await loadHistory();
     }
+  }
+
+  async function deleteSystem() {
+    setConfirmDelete(false);
+    if (await act("delete", () => api.deleteSystem(systemId))) navigate("/");
   }
 
   async function rollback(v: number) {
@@ -598,6 +638,50 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
               </Button>
               <OwnerHint owner={owner} />
             </form>
+            <div className={s.sub} data-testid="settings-deletion-log">
+              <h3 className={s.subTitle}>{ru.settings.deletionLog}</h3>
+              <p className={s.hint}>{ru.settings.deletionLogHint}</p>
+              {!owner ? (
+                <OwnerHint owner={owner} />
+              ) : journal === null ? (
+                <p className={s.small}>{ru.code.loading}</p>
+              ) : journal.length === 0 ? (
+                <p className={s.small} data-testid="settings-deletion-empty">
+                  {ru.settings.deletionLogEmpty}
+                </p>
+              ) : (
+                <ul className={s.list}>
+                  {journal.map((e) => (
+                    <li
+                      key={`${e.createdAt}|${e.env}|${e.entity}|${e.mode}`}
+                      className={s.logRow}
+                      data-testid="settings-deletion-row"
+                      data-mode={e.mode}
+                      data-env={e.env}
+                    >
+                      <span className={s.muted}>{fmtTime(e.createdAt)}</span>
+                      <b>{entityLabel(e, spec)}</b>
+                      <span>{ru.settings.deletionMode[e.mode] ?? e.mode}</span>
+                      <span>{ru.settings.deletionRows(e.rowsAffected)}</span>
+                      {e.cutoff && (
+                        <span className={s.muted}>{ru.settings.deletionCutoff(fmtDay(e.cutoff))}</span>
+                      )}
+                      <span className={s.muted}>{ru.settings.deletionEnv[e.env] ?? e.env}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {owner && journalCursor && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void loadJournal(journalCursor).catch(() => {})}
+                  data-testid="settings-deletion-more"
+                >
+                  {ru.settings.deletionLogMore}
+                </Button>
+              )}
+            </div>
           </section>
 
           <section className={`${s.block} ${s.wide}`} aria-labelledby="rev-title">
@@ -637,6 +721,27 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
               ))}
             </ul>
           </section>
+
+          <section className={`${s.block} ${s.wide} ${s.danger}`} aria-labelledby="danger-title">
+            <h2 id="danger-title" className={s.blockTitle}>
+              {ru.settings.danger}
+            </h2>
+            <p className={s.small}>{ru.settings.dangerHint}</p>
+            <div>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={!owner || busy !== null}
+                loading={busy === "delete"}
+                title={owner ? undefined : ru.settings.ownerOnly}
+                onClick={() => setConfirmDelete(true)}
+                data-testid="settings-delete-system"
+              >
+                {ru.settings.deleteSystem}
+              </Button>
+            </div>
+            <OwnerHint owner={owner} />
+          </section>
         </div>
       </main>
       {confirm !== null && (
@@ -648,23 +753,41 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           onNo={() => setConfirm(null)}
         />
       )}
+      {confirmDelete && (
+        <ConfirmDialog
+          text={ru.settings.deleteConfirm(system.name)}
+          yes={ru.settings.deleteYes}
+          no={ru.settings.rollbackNo}
+          danger
+          testId="settings-delete"
+          onYes={() => void deleteSystem()}
+          onNo={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }
 
-/** Modal confirmation: focus on the confirm button, Esc cancels, focus returns to the page on close. */
+/**
+ * Modal confirmation: focus on the confirm button (on «Отмена» for a destructive one), Esc cancels, focus returns to
+ * the page on close. Test ids: <testId>-confirm, -yes, -no.
+ */
 function ConfirmDialog({
   text,
   yes,
   no,
   onYes,
   onNo,
+  danger = false,
+  testId = "rollback",
 }: {
   text: string;
   yes: string;
   no: string;
   onYes(): void;
   onNo(): void;
+  danger?: boolean;
+  testId?: string;
 }): ReactNode {
   const ref = useRef<HTMLDivElement | null>(null);
   const cancel = useRef(onNo);
@@ -689,16 +812,26 @@ function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-text"
         className={s.dialog}
-        data-testid="rollback-confirm"
+        data-testid={`${testId}-confirm`}
       >
         <p id="confirm-text" className={s.dialogText}>
           {text}
         </p>
         <div className={s.row}>
-          <Button variant="secondary" onClick={onNo} data-testid="rollback-no">
+          <Button
+            variant="secondary"
+            onClick={onNo}
+            {...(danger ? { "data-autofocus": "" } : {})}
+            data-testid={`${testId}-no`}
+          >
             {no}
           </Button>
-          <Button variant="primary" onClick={onYes} data-autofocus="" data-testid="rollback-yes">
+          <Button
+            variant={danger ? "danger" : "primary"}
+            onClick={onYes}
+            {...(danger ? {} : { "data-autofocus": "" })}
+            data-testid={`${testId}-yes`}
+          >
             {yes}
           </Button>
         </div>

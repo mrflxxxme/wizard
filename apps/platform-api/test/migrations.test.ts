@@ -58,8 +58,9 @@ const M2_TABLES = [
   "founder_reviews",
   "brand_allowlist",
 ];
-/** Columns beyond db.yaml, each justified in docs/reviews/impl-notes/M2-07.md. */
+/** Columns beyond db.yaml, each justified in docs/reviews/impl-notes/M2-07.md and M2-05.md (systems). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {
+  systems: { draft_purge_notice_at: { type: "timestamp with time zone", notNull: false } },
   payment_methods: { card_fingerprint: { type: "text", notNull: true } },
   payments: { meta: { type: "jsonb", notNull: true } },
 };

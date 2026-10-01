@@ -495,19 +495,91 @@ export async function runJobs(
     report.ran += 1;
   }
 
-  // ---------- retention ----------
+  // ---------- the pass ----------
 
-  async function retention(): Promise<void> {
-    for (const e of spec.entities) {
-      const r = e.retention;
-      if (!r) continue;
-      const mode = r.mode ?? "delete";
-      const anchor = quoteIdent(r.anchorField ?? "created_at");
-      const expires = `(${anchor})::timestamptz + make_interval(days => $1::int)`;
-      const cond = `${anchor} is not null and ${expires} < $2::timestamptz`;
-      const pii = piiFields(e);
-      if (mode === "anonymize" && pii.length === 0) continue;
-      try {
+  await scheduleTriggers();
+  let rounds = o.maxRounds ?? 20;
+  for (; rounds > 0; rounds--) {
+    const triggered = await auditTriggers();
+    const jobs = await claim();
+    for (const job of jobs) await execute(job);
+    if (triggered === 0 && jobs.length === 0) break;
+  }
+  const ret = await runRetention(sys, services, now);
+  report.retention.push(...ret.retention);
+  report.failed.push(...ret.failed);
+  if (rounds === 0) {
+    const [row] = await system((tx) =>
+      tx.unsafe(
+        `select count(*)::int as n from ${T("_w_jobs")} where run_at <= $1::timestamptz and locked_until is null`,
+        [now.toISOString()],
+      ),
+    );
+    report.pending = Number(row?.n ?? 0);
+  }
+  return report;
+}
+
+// ---------- retention ----------
+
+/** _w_jobs row (like the cursor: kind workflow_step, run_at = locked_until = infinity, never claimed) marking the last retention pass {at, failed}. */
+export const RETENTION_MARKER_KEY = "__wizard_retention";
+/** _w_jobs row asking for a retention pass now (platform retention_cron watchdog, workflows.yaml#retention_cron). */
+export const RETENTION_REQUEST_KEY = "__wizard_retention_request";
+/** Daily slot of the pass: 03:00 MSK = 00:00 UTC (Moscow has no DST; runtime.yaml#workflows.retention). */
+const RETENTION_SLOT_UTC_HOUR = 0;
+
+export interface RetentionPassReport {
+  retention: RetentionResult[];
+  failed: JobFailure[];
+}
+
+/**
+ * One retention pass of a system (runtime.yaml#workflows.retention): entities with retention, users without login for
+ * 3 years, due consent withdrawals; then the pass marker is written and a pending request is consumed. A failing
+ * entity is reported (and logged), never thrown.
+ */
+export async function runRetention(
+  sys: LoadedSystem,
+  services: RuntimeServices,
+  now: Date,
+): Promise<RetentionPassReport> {
+  const spec = sys.spec;
+  const S = quoteIdent(sys.schema);
+  const T = (table: string) => `${S}.${quoteIdent(table)}`;
+  const report: RetentionPassReport = { retention: [], failed: [] };
+  const system = <R>(fn: (tx: Tx) => Promise<R>) =>
+    sys.data.transaction("default", SYSTEM_SUBJECT, (d) => fn(d.sql));
+
+  async function privacyPass(name: string, fn: () => Promise<void>, entity = name): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      services.log?.({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "retention_failed",
+        system: sys.entry.slug,
+        env: sys.entry.env,
+        entity,
+        sqlstate: (err as { code?: unknown }).code ?? null,
+      });
+      report.failed.push({ jobId: "", kind: "workflow_step", name, code: errorCode(err), dead: false });
+    }
+  }
+
+  for (const e of spec.entities) {
+    const r = e.retention;
+    if (!r) continue;
+    const mode = r.mode ?? "delete";
+    const anchor = quoteIdent(r.anchorField ?? "created_at");
+    const expires = `(${anchor})::timestamptz + make_interval(days => $1::int)`;
+    const cond = `${anchor} is not null and ${expires} < $2::timestamptz`;
+    const pii = piiFields(e);
+    if (mode === "anonymize" && pii.length === 0) continue;
+    await privacyPass(
+      `retention:${e.name}`,
+      async () => {
         const rows = await system(async (tx) => {
           const res =
             mode === "delete"
@@ -517,14 +589,14 @@ export async function runJobs(
                 ])
               : await tx.unsafe(
                   `update ${T(e.name)} set ${pii.map((f) => `${quoteIdent(f)} = null`).join(", ")}
-                   where ${cond} and (${pii.map((f) => `${quoteIdent(f)} is not null`).join(" or ")})`,
+                 where ${cond} and (${pii.map((f) => `${quoteIdent(f)} is not null`).join(" or ")})`,
                   [r.deleteAfterDays, now.toISOString()],
                 );
           if (res.count > 0) {
             // runtime.yaml#workflows.retention: counter in _w_audit (field names, never values).
             await tx.unsafe(
               `insert into ${T("_w_audit")} (role, entity, op, fields)
-               values ($1, $2, 'retention', string_to_array($3::text, ','))`,
+             values ($1, $2, 'retention', string_to_array($3::text, ','))`,
               [SYSTEM_ROLE, e.name, mode === "anonymize" ? pii.join(",") : ""],
             );
             // Deletion journal: anchor values before the cutoff expired (compliance.yaml#retention.deletion_log).
@@ -539,72 +611,54 @@ export async function runJobs(
           return res.count;
         });
         report.retention.push({ entity: e.name, mode, rows });
-      } catch (err) {
-        services.log?.({
-          ts: new Date().toISOString(),
-          level: "error",
-          msg: "retention_failed",
-          system: sys.entry.slug,
-          env: sys.entry.env,
-          entity: e.name,
-          sqlstate: (err as { code?: unknown }).code ?? null,
-        });
-        report.failed.push({
-          jobId: "",
-          kind: "workflow_step",
-          name: `retention:${e.name}`,
-          code: errorCode(err),
-          dead: false,
-        });
-      }
-    }
-    await privacyPass("retention:users", async () => {
-      const u = await retainUsers(sys, now);
-      if (u.rows > 0) report.retention.push({ entity: "users", mode: "anonymize", rows: u.rows });
-    });
-    await privacyPass("retention:consent_revoked", async () => {
-      for (const d of await runDueErasures(sys, now))
-        if (d.rows > 0) report.retention.push({ entity: d.entity, mode: "consent_revoked", rows: d.rows });
-    });
-  }
-
-  /** Users retention and due consent withdrawals (privacy/erasure.ts); a failure is reported, not thrown. */
-  async function privacyPass(name: string, fn: () => Promise<void>): Promise<void> {
-    try {
-      await fn();
-    } catch (err) {
-      services.log?.({
-        ts: new Date().toISOString(),
-        level: "error",
-        msg: "retention_failed",
-        system: sys.entry.slug,
-        env: sys.entry.env,
-        entity: name,
-        sqlstate: (err as { code?: unknown }).code ?? null,
-      });
-      report.failed.push({ jobId: "", kind: "workflow_step", name, code: errorCode(err), dead: false });
-    }
-  }
-
-  // ---------- the pass ----------
-
-  await scheduleTriggers();
-  let rounds = o.maxRounds ?? 20;
-  for (; rounds > 0; rounds--) {
-    const triggered = await auditTriggers();
-    const jobs = await claim();
-    for (const job of jobs) await execute(job);
-    if (triggered === 0 && jobs.length === 0) break;
-  }
-  await retention();
-  if (rounds === 0) {
-    const [row] = await system((tx) =>
-      tx.unsafe(
-        `select count(*)::int as n from ${T("_w_jobs")} where run_at <= $1::timestamptz and locked_until is null`,
-        [now.toISOString()],
-      ),
+      },
+      e.name,
     );
-    report.pending = Number(row?.n ?? 0);
   }
+  await privacyPass("retention:users", async () => {
+    const u = await retainUsers(sys, now);
+    if (u.rows > 0) report.retention.push({ entity: "users", mode: "anonymize", rows: u.rows });
+  });
+  await privacyPass("retention:consent_revoked", async () => {
+    for (const d of await runDueErasures(sys, now))
+      if (d.rows > 0) report.retention.push({ entity: d.entity, mode: "consent_revoked", rows: d.rows });
+  });
+  // The marker the platform watchdog reads (alert after 26 h without a pass); a pending request is now served.
+  await privacyPass("retention:marker", () =>
+    system(async (tx) => {
+      await tx.unsafe(
+        `insert into ${T("_w_jobs")} (kind, payload, run_at, locked_until, idempotency_key)
+         values ('workflow_step', cast($1::text as jsonb), 'infinity', 'infinity', $2)
+         on conflict (idempotency_key) do update set payload = excluded.payload`,
+        [
+          JSON.stringify({ state: "retention_pass", at: now.toISOString(), failed: report.failed.length }),
+          RETENTION_MARKER_KEY,
+        ],
+      );
+      await tx.unsafe(`delete from ${T("_w_jobs")} where idempotency_key = $1`, [RETENTION_REQUEST_KEY]);
+    }),
+  );
   return report;
+}
+
+/** The last daily slot at or before `now` (03:00 MSK). */
+export function retentionSlot(now: Date): Date {
+  const d = new Date(now);
+  d.setUTCHours(RETENTION_SLOT_UTC_HOUR, 0, 0, 0);
+  if (d.getTime() > now.getTime()) d.setUTCDate(d.getUTCDate() - 1);
+  return d;
+}
+
+/** Whether a retention pass is due: no marker, the marker predates today's slot, or the platform asked for one. */
+export async function retentionDue(sys: LoadedSystem, now: Date): Promise<boolean> {
+  const T = (table: string) => `${quoteIdent(sys.schema)}.${quoteIdent(table)}`;
+  const rows = await sys.data.transaction("default", SYSTEM_SUBJECT, (d) =>
+    d.sql.unsafe(`select idempotency_key, payload from ${T("_w_jobs")} where idempotency_key in ($1, $2)`, [
+      RETENTION_MARKER_KEY,
+      RETENTION_REQUEST_KEY,
+    ]),
+  );
+  if (rows.some((r) => r.idempotency_key === RETENTION_REQUEST_KEY)) return true;
+  const at = Date.parse(String((rows[0]?.payload as Row | undefined)?.at ?? ""));
+  return Number.isNaN(at) || at < retentionSlot(now).getTime();
 }

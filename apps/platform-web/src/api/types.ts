@@ -237,6 +237,23 @@ export interface Invite {
   expiresAt: string;
 }
 
+/** api.yaml#listDeletionLog item: counters only, never values (compliance.yaml#system_package.retention). */
+export interface DeletionLogEntry {
+  env: "draft" | "prod";
+  entity: string;
+  mode: string;
+  cutoff: string | null;
+  rowsAffected: number;
+  createdAt: string;
+}
+
+/** DELETE /systems/:id (M2-05): soft delete, purge after 30 days (workflows.yaml#delete_system). */
+export interface SystemDeleted {
+  id: string;
+  deletedAt: string;
+  purgeAfter: string;
+}
+
 /** api.yaml#LockStatus */
 export interface LockStatus {
   held: boolean;

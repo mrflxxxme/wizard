@@ -5,7 +5,15 @@
 // routes import_mapping to logged mock providers (MOCK_PROVIDERS below).
 // Run: `pnpm --filter @wizard/e2e exec tsx stand/m1.ts` (Playwright starts it as a webServer).
 import { randomBytes } from "node:crypto";
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { serve } from "@hono/node-server";
 import { createRouter } from "@wizard/llm";
@@ -14,7 +22,7 @@ import { DbRegistry, startRuntime } from "@wizard/runtime";
 import postgres from "postgres";
 import { createServer } from "vite";
 import { platformViteConfig } from "../../../apps/platform-web/vite.config.js";
-import { M1, M1_LLM_LOG, M1_OUTBOX } from "./ports.js";
+import { M1, M1_DB_FILE, M1_LLM_LOG, M1_OUTBOX } from "./ports.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const HOST = "127.0.0.1";
@@ -203,6 +211,7 @@ const artifacts = join(standDir, `artifacts-${DB}`);
 mkdirSync(artifacts, { recursive: true });
 rmSync(M1_OUTBOX, { recursive: true, force: true });
 rmSync(M1_LLM_LOG, { force: true });
+writeFileSync(M1_DB_FILE, url.toString(), { mode: 0o600 });
 
 const platform = await createPlatformApi({
   config: {
@@ -266,6 +275,7 @@ async function stop() {
   await admin.unsafe(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`).catch(() => {});
   await admin.end({ timeout: 5 }).catch(() => {});
   rmSync(artifacts, { recursive: true, force: true });
+  rmSync(M1_DB_FILE, { force: true });
   process.exit(0);
 }
 process.on("SIGINT", () => void stop());

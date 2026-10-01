@@ -174,6 +174,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
             mailer,
             ...(opts.publish?.migratorRole ? { migratorRole: opts.publish.migratorRole } : {}),
             log,
+            alert: (msg, fields) => logger.error(msg, undefined, fields),
+            platformOrigin: config.platformOrigin,
           }).catch((e) => log("retention_cron failed", e));
         }, retentionMs)
       : undefined;
