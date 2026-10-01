@@ -37,12 +37,6 @@ const failing = (r: GateReport) =>
     .map((c) => c.id)
     .sort();
 
-/**
- * Forum AC6 advances 63 days past registration while the example function fixes the event at 2026-11-14 (+30 days
- * retention): the scenario clock must start after 2026-10-12 to cross the deadline.
- */
-const m1Now = () => new Date(Math.max(Date.now(), Date.parse("2026-10-20T00:00:00.000Z")));
-
 /** QA scenario for AC1 (a ticket AC): a participant sees only their own tickets. */
 const participantIsolation: QaCheck = {
   id: "SC-AC1-2",
@@ -177,13 +171,44 @@ describe("G1 on the forum", () => {
     expect(c?.evidence).toContain("HTTP 201");
   }, 120_000);
 
-  test("milestone M1: the M1 AC runs (retention via advanceTime), M2 stays skipped", async () => {
-    const r = await runGates("G1", h.ctx({ milestone: "M1", now: m1Now() }));
+  test("milestone M1: the M1 AC runs (retention via advanceTime) at the wall clock, M2 stays skipped", async () => {
+    // No pinned `now`: the platform (draft build and gate_G1_prod at publish) runs G1 at the wall clock.
+    const r = await runGates("G1", h.ctx({ milestone: "M1" }));
     const s = status(r);
     expect(s["SC-AC5"]).toBe("skip");
     expect(s["SC-AC6"], detail(r)).toBe("pass");
     expect(s["G1-AC-COVER"]).toBe("pass");
     expect(s["G1-RENDER-01"], detail(r)).toBe("pass");
+  }, 120_000);
+
+  test("AC6 does not depend on the date G1 runs at; a retention miss shows the field as null, not «скрыто»", async () => {
+    // docs/reviews/impl-notes/M2-AC6-prod-g1.md: the example function fixes the event date, so AC6 pins the ticket's
+    // event_starts_at to the scenario's $now before advanceTime. The same steps expecting a non-null holder_name fail
+    // with evidence that names the anonymised value.
+    const ac6 = loadForum().acceptance?.find((a) => a.id === "AC6")?.check as {
+      actors: Record<string, { role: string }>;
+      steps: Record<string, unknown>[];
+    };
+    const steps = ac6.steps.map((s) =>
+      s.expect && (s.expect as { fields?: Record<string, unknown> }).fields?.holder_name === null
+        ? { expect: { fields: { holder_name: "Участник 1" } } }
+        : s,
+    );
+    const inverted = {
+      id: "SC-AC6-2",
+      acId: "AC6",
+      kind: "constraint",
+      level: "G1",
+      scenario: { id: "SC-AC6-2", acId: "AC6", title: "Ретенция", actors: ac6.actors, steps },
+    } as unknown as QaCheck;
+    const r = await runGates(
+      "G1",
+      h.ctx({ milestone: "M2", now: new Date("2027-06-01T00:00:00.000Z"), checks: [inverted] }),
+    );
+    expect(status(r)["SC-AC6"], detail(r)).toBe("pass");
+    const c = r.checks.find((x) => x.id === "SC-AC6-2");
+    expect(c?.status).toBe("fail");
+    expect(c?.evidence).toContain("ожидалось holder_name=«скрыто», получено holder_name=null");
   }, 120_000);
 
   test("M2-03: simulate qr/sync (forum AC5 steps) — device A accepted, device B duplicate, one check-in of the ticket", async () => {
@@ -203,7 +228,7 @@ describe("G1 on the forum", () => {
       level: "G1",
       scenario: { id: "SC-AC5-2", acId: "AC5", title: "Офлайн-синхронизация", actors: ac5.actors, steps },
     } as unknown as QaCheck;
-    const r = await runGates("G1", h.ctx({ milestone: "M2", now: m1Now(), checks: [check] }));
+    const r = await runGates("G1", h.ctx({ milestone: "M2", checks: [check] }));
     expect(status(r)["SC-AC5-2"], detail(r)).toBe("pass");
   }, 120_000);
 

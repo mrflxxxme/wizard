@@ -2,11 +2,14 @@
 // checkout page). One owner, one built «форум», in order:
 // S6 blockers OPERATOR_NAME_REQUIRED → S10 «Персональные данные» (L4-09) and CARD_BINDING_REQUIRED → S-billing;
 // a foreign card → «Нужна карта российского банка»; «Докупить» 990 ₽ on the YooKassa page → +60 credits;
-// «Привязать карту РФ» → «✓ Карта РФ привязана» → S6 unblocked → published; a top-up by the bound card (no page);
+// «Привязать карту РФ» → «✓ Карта РФ привязана» → S6 unblocked → publish runs G1 + G2 (prodG2Required) → the
+// G2-AF-09 warning puts the revision on founder review → staff approves → published; a top-up by the bound card (no page);
 // plan change and cancel; S10 «Выгрузить данные» → the M2-10 ZIP downloads once (L4-08, L4-10).
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { M2 } from "../../stand/ports.js";
+import { createDb, decideFounderReview, SecretStore } from "@wizard/platform-api";
+import { M2, M2_DB_FILE } from "../../stand/ports.js";
 import { type Api, builtForum, devLogin, type Json, ownerOrg, uniqueEmail } from "../m1/helpers.js";
 
 const WEB = `http://localhost:${M2.web}`;
@@ -30,6 +33,38 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => {
   await ctx?.close();
 });
+
+/** The stand's own database (stand.ts writes its URL at start). */
+async function withStandDb<T>(fn: (h: ReturnType<typeof createDb>, url: string) => Promise<T>): Promise<T> {
+  const url = readFileSync(M2_DB_FILE, "utf8").trim();
+  const h = createDb(url, 1);
+  try {
+    return await fn(h, url);
+  } finally {
+    await h.close();
+  }
+}
+
+/**
+ * Prod values of the forum's integration secrets (G2-SECRET-02 at publish), as the owner enters them in the build chat
+ * (needs_input kind=secret): the scripted builder of the stand does not ask. Stored by the platform's SecretStore in
+ * the stand's secrets file (config.secretsFile = <artifactsDir>/.secrets.enc).
+ */
+async function setIntegrationSecrets(systemId: string): Promise<void> {
+  const forumFile = join(import.meta.dirname, "../../../../specs/appspec/examples/forum.json");
+  const forum = JSON.parse(readFileSync(forumFile, "utf8")) as { integrations: { secretRefs?: string[] }[] };
+  const names = forum.integrations
+    .flatMap((i) => i.secretRefs ?? [])
+    .map((r) => r.replace(/^secret:\/\//, ""));
+  await withStandDb(async (h, url) => {
+    const artifacts = join(dirname(M2_DB_FILE), `artifacts-${new URL(url).pathname.slice(1)}`);
+    const store = new SecretStore(join(artifacts, ".secrets.enc"), process.env.WIZARD_SECRETS_KEY ?? "");
+    await h.db.transaction().execute(async (trx) => {
+      for (const name of names)
+        await store.put(trx, { orgId, systemId, env: "prod", name, value: `e2e-${name}` });
+    });
+  });
+}
 
 async function available(page: Page): Promise<number> {
   const el = page.getByTestId("billing-available");
@@ -104,7 +139,6 @@ test("«Докупить» 990 ₽ через тестовый магазин �
 });
 
 test("«Привязать карту РФ» → идентификация пройдена → публикация в prod разблокирована", async () => {
-  test.setTimeout(120_000);
   const page = await ctx.newPage();
   await page.goto("/billing");
   await page.getByTestId("billing-card-bind").click();
@@ -126,8 +160,53 @@ test("«Привязать карту РФ» → идентификация пр
   );
   await expect(page.getByTestId("publish-blocker")).toHaveCount(0);
   await expect(page.getByTestId("publish-submit")).toBeEnabled();
+  await page.close();
+});
+
+test("публикация M2: G1 (ретенция AC6) и G2 → ревью модератора → одобрение → prod", async () => {
+  test.setTimeout(240_000);
+  await setIntegrationSecrets(system.id);
+  const page = await ctx.newPage();
+  await page.goto(`/s/${system.id}`);
+  await expect(page.getByTestId("publish-submit")).toBeEnabled();
   await page.getByTestId("publish-submit").click();
-  await expect(page.getByTestId("publish-prod-revision")).toBeVisible({ timeout: 90_000 });
+  // G2 passes with the G2-AF-09 warning («Заявка спикера»): the revision waits for the founder review.
+  await expect(page.getByRole("alert").filter({ hasText: "посмотрит модератор" })).toBeVisible({
+    timeout: 120_000,
+  });
+  const sys = (await a.req("GET", `/systems/${system.id}`)).body;
+  expect(sys.publishBlockers).toContain("FOUNDER_REVIEW_PENDING");
+  expect(sys.system.prodRevision).toBeNull();
+  const revision = sys.system.draftRevision as number;
+  await page.reload();
+  await expect(page.getByTestId("publish-blocker")).toHaveText(["Ждёт проверки"]);
+  await expect(page.getByTestId("publish-submit")).toBeDisabled();
+
+  // Staff approves (the moderation CLI: decideFounderReview); publish again runs G0 and G2, G1 already passed.
+  expect(
+    await withStandDb((h) =>
+      decideFounderReview(h.db, { systemId: system.id, revision, decision: "approve", note: "e2e" }),
+    ),
+  ).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("publish-blocker")).toHaveCount(0);
+  await page.getByTestId("publish-submit").click();
+  await expect(page.getByTestId("publish-prod-revision")).toBeVisible({ timeout: 120_000 });
+
+  // gate_G1_prod ran on the compliance revision (it had no G1): AC6 retention passed; then G2 passed.
+  const latest = (await a.req("GET", `/systems/${system.id}/gates/latest`)).body as {
+    reports: {
+      level: string;
+      passed: boolean;
+      specVersion: number;
+      checks: { id: string; status: string }[];
+    }[];
+  };
+  const byLevel = new Map(latest.reports.map((r) => [r.level, r]));
+  for (const level of ["G1", "G2"])
+    expect(byLevel.get(level), level).toMatchObject({ passed: true, specVersion: revision });
+  expect(byLevel.get("G1")?.checks.find((c) => c.id === "SC-AC6")?.status).toBe("pass");
+  expect((await a.req("GET", `/systems/${system.id}`)).body.system.prodRevision).toBe(revision);
   await page.close();
 });
 

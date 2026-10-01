@@ -247,12 +247,13 @@ export async function startStand(kind: StandKind): Promise<void> {
       buildDefaultTier: "T1",
       ...(shop
         ? {
-            // WIZARD_MILESTONE=M2: card binding before prod (config.ts m2OrProd). G1+G2 at publish stay off: the forum
-            // fixture's AC6 (retention after advanceTime + runWorkflows) fails G1 at prod publish — a gates/runtime
-            // leftover recorded in docs/reviews/impl-notes/M2-11.md, not a billing rule.
+            // WIZARD_MILESTONE=M2: card binding before prod and G1 + G2 at publish (config.ts m2OrProd). The publish
+            // G1 runs the forum's functions in the platform's in-process runtime: unsafe-local exec, as the stand's
+            // own runtime (docs/reviews/impl-notes/M2-AC6-prod-g1.md).
             milestone: "M2",
             cardBindingRequired: true,
-            prodG2Required: false,
+            prodG2Required: true,
+            unsafeLocalExec: true,
             platformShop: { shopId: shop.mock.shopId, secretKey: shop.mock.secretKey },
             yookassaApiBase: shop.apiBase,
             // Notifications come from the checkout page of this stand only.

@@ -183,7 +183,8 @@ interface Last {
 const PII_KEY_RE = /name|email|phone|address|fio|фио|телефон|адрес/i;
 
 function show(key: string, v: unknown, pii: ReadonlySet<string>): string {
-  if (pii.has(key) || PII_KEY_RE.test(key)) return "«скрыто»";
+  // An empty value carries no PII: «null» vs «скрыто» is what tells a retention failure (AC6) apart.
+  if (v !== null && v !== undefined && (pii.has(key) || PII_KEY_RE.test(key))) return "«скрыто»";
   const s = JSON.stringify(v);
   return s === undefined ? "нет" : s.length > 60 ? `${s.slice(0, 57)}…` : s;
 }
