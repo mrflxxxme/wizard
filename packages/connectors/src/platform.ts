@@ -5,6 +5,7 @@ import { missingSecret } from "./secrets.js";
 import type { SmtpEndpoint } from "./smtp.js";
 import { TELEGRAM_API_BASE } from "./telegram-api.js";
 import type { PlatformConnectorConfig } from "./types.js";
+import { YOOKASSA_API_BASE, YOOKASSA_IP_ALLOWLIST } from "./yookassa-api.js";
 
 type EnvSource = Readonly<Record<string, string | undefined>>;
 
@@ -23,7 +24,8 @@ export interface PlatformEnvOptions {
 
 /**
  * WIZARD_TELEGRAM_BOT_TOKEN / _WEBHOOK_SECRET / _BOT_USERNAME / _API_BASE, WIZARD_SMTP_HOST / _PORT / _USER /
- * _PASSWORD, WIZARD_MAIL_DOMAIN, WIZARD_DEV_SMTP(_PORT). Secret values are read at call time, never cached here.
+ * _PASSWORD, WIZARD_MAIL_DOMAIN, WIZARD_DEV_SMTP(_PORT), WIZARD_CONNECTORS, WIZARD_YOOKASSA_API_BASE,
+ * WIZARD_YOOKASSA_IP_ALLOWLIST (comma-separated CIDRs). Secret values are read at call time, never cached here.
  */
 export function platformConfigFromEnv(env: EnvSource, o: PlatformEnvOptions): PlatformConnectorConfig {
   const port = Number(env.WIZARD_SMTP_PORT ?? 465);
@@ -53,6 +55,15 @@ export function platformConfigFromEnv(env: EnvSource, o: PlatformEnvOptions): Pl
         ? { host: "127.0.0.1", port: Number(env.WIZARD_DEV_SMTP_PORT ?? 1025), tls: "none" }
         : null,
     mailDomain: env.WIZARD_MAIL_DOMAIN || o.systemsDomain,
+    yookassa: {
+      live: env.WIZARD_CONNECTORS === "live",
+      apiBase: env.WIZARD_YOOKASSA_API_BASE || YOOKASSA_API_BASE,
+      ipAllowlist: env.WIZARD_YOOKASSA_IP_ALLOWLIST
+        ? env.WIZARD_YOOKASSA_IP_ALLOWLIST.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : YOOKASSA_IP_ALLOWLIST,
+    },
     resolve: systemResolver,
     dial: tcpDialer,
   };

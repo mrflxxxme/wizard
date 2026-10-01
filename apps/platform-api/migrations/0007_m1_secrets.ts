@@ -1,4 +1,4 @@
-// M1-01 (after 0005_m1_imports): platform.secrets_refs (specs/platform/db.yaml) — secrets entered at needs_input kind=secret are stored by
+// M1-01 (after 0006_m2_exports): platform.secrets_refs (specs/platform/db.yaml) — secrets entered at needs_input kind=secret are stored by
 // the HTTP handler; runs see only secret://name (workflows.yaml#execution.M1.dbos_data). Forward-only.
 import { type Kysely, sql } from "kysely";
 

@@ -50,6 +50,9 @@ importers:
       '@wizard/runtime':
         specifier: workspace:*
         version: link:../runtime
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       hono:
         specifier: ^4.13.12
         version: 4.13.12

@@ -50,6 +50,7 @@ beforeAll(async () => {
         return { ok: true };
       },
       lockRetryDelaysMs: [10, 10, 10],
+      telegram: { mode: "outbox", outboxDir: null },
     },
     sweepMs: 0,
     pollMs: 100,
@@ -127,5 +128,21 @@ describe("publish and rollback in the worker", () => {
     const pubs = await api.deps.pg<{ status: string }[]>`
       select status from platform.publications where system_id = ${b.systemId} order by created_at`;
     expect(pubs.map((p) => p.status)).toEqual(["superseded", "superseded", "live"]);
+
+    // M2-10 export runs in the worker too; platform-api decrypts the archive the worker wrote.
+    const ex = await api.req("POST", `/systems/${b.systemId}/exports`, { body: { env: "prod" } });
+    expect(ex.status, ex.text).toBe(202);
+    const exRun = await waitRun(api, ex.body.run.id, ["succeeded", "failed"], 30_000);
+    expect(exRun.status, JSON.stringify(exRun.failure)).toBe("succeeded");
+    await expectValid(exRun.id);
+    const got = await api.req("GET", `/systems/${b.systemId}/exports/${ex.body.exportId}`);
+    expect(got.body.status).toBe("ready");
+    const u = new URL(got.body.downloadUrl);
+    const zip = await api.fetch(
+      new Request(`http://localhost:4000${u.pathname}${u.search}`, { headers: { host: "localhost:4000" } }),
+    );
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get("content-type")).toBe("application/zip");
+    expect((await zip.arrayBuffer()).byteLength).toBeGreaterThan(100);
   });
 });

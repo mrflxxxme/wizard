@@ -152,3 +152,64 @@ export function guardedFetch(o: GuardedFetchOptions = {}): typeof fetch {
     return inner(input, { ...init, signal, redirect: "manual" });
   }) as typeof fetch;
 }
+
+/** Address as 4 (IPv4, incl. IPv4-mapped IPv6) or 16 bytes; null when unparseable. */
+function ipBytes(ip: string): number[] | null {
+  const bare = ip
+    .trim()
+    .replace(/^\[|\]$/g, "")
+    .replace(/%.*$/, "");
+  const kind = isIP(bare);
+  if (kind === 4) return v4(bare);
+  if (kind !== 6) return null;
+  const w = expandV6(bare);
+  if (w?.length !== 8) return null;
+  if (w.slice(0, 5).every((x) => x === 0) && w[5] === 0xffff) {
+    return [(w[6] as number) >> 8, (w[6] as number) & 255, (w[7] as number) >> 8, (w[7] as number) & 255];
+  }
+  return w.flatMap((x) => [x >> 8, x & 255]);
+}
+
+/** True when `ip` belongs to one of `cidrs` ("a.b.c.d/n", "x::/n" or a bare address). Bad entries never match. */
+export function ipInCidrs(ip: string, cidrs: Iterable<string>): boolean {
+  const addr = ipBytes(ip);
+  if (!addr) return false;
+  for (const cidr of cidrs) {
+    const [net, bitsRaw] = cidr.trim().split("/") as [string, string | undefined];
+    const base = ipBytes(net);
+    if (!base || base.length !== addr.length) continue;
+    const bits = bitsRaw === undefined ? base.length * 8 : Number(bitsRaw);
+    if (!Number.isInteger(bits) || bits < 0 || bits > base.length * 8) continue;
+    let ok = true;
+    for (let i = 0; i < base.length && ok; i++) {
+      const take = Math.max(0, Math.min(8, bits - i * 8));
+      const mask = (0xff << (8 - take)) & 0xff;
+      ok = ((addr[i] as number) & mask) === ((base[i] as number) & mask);
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+/**
+ * Client address per platform/deploy.yaml#cloud.client_ip: the socket peer, or — when the peer is a trusted ingress
+ * (CIDRs of WIZARD_TRUSTED_PROXIES) — the right-most X-Forwarded-For hop that is not itself trusted.
+ */
+export function effectiveClientIp(
+  peer: string | null | undefined,
+  forwardedFor: string | null | undefined,
+  trustedProxies: readonly string[],
+): string | null {
+  if (!peer) return null;
+  if (!forwardedFor || trustedProxies.length === 0 || !ipInCidrs(peer, trustedProxies)) return peer;
+  const hops = forwardedFor
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  for (let i = hops.length - 1; i >= 0; i--) {
+    const hop = hops[i] as string;
+    if (!ipBytes(hop)) return peer;
+    if (!ipInCidrs(hop, trustedProxies) || i === 0) return hop;
+  }
+  return peer;
+}

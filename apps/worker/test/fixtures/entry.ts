@@ -1,8 +1,11 @@
 // A worker process for the kill -9 and canary tests (tsx): scripted executors and a slow router writing llm_calls.
-// WZ_ENTRY_MODE=kill (default) builds normally; canary fails interview turns with PII inside the error.
-
-import type { InterviewHost } from "@wizard/platform-api";
+// WZ_ENTRY_MODE=kill (default) builds normally; canary fails interview turns with PII inside the error; import runs
+// the import fixtures of platform-api.
+import { createRouter } from "@wizard/llm";
+import { type InterviewHost, migrateDraft, type RunExecutors } from "@wizard/platform-api";
 import postgres from "postgres";
+import { fakeInterview, passingReport } from "../../../platform-api/test/helpers.js";
+import { ENV, importBuild, mockProviders } from "../../../platform-api/test/import-fixtures.js";
 import { startWorker } from "../../src/index.js";
 import { recordingRouter, scriptedExecutors } from "../support.js";
 
@@ -25,6 +28,17 @@ async function canaryTurn(host: InterviewHost): Promise<never> {
   throw new Error(`unreachable ${prompt}`);
 }
 
+// WZ_ENTRY_MODE=import: the import fixtures of platform-api (client spec, mock T1 mapper, scripted builder).
+const importExecutors: RunExecutors = {
+  interviewTurn: fakeInterview,
+  build: (host, p) => importBuild(host, p, []),
+  gates: async (level, ctx) => passingReport(level, ctx.specVersion),
+  onG0Passed: async (a) => {
+    await migrateDraft(pg, { systemKey: a.systemKey, spec: a.spec, prevSpec: a.prevSpec });
+    return { bundleKey: `${a.systemKey}/${a.revision}` };
+  },
+};
+const mock = mockProviders();
 const executors = scriptedExecutors();
 const worker = await startWorker({
   config: {
@@ -35,12 +49,20 @@ const worker = await startWorker({
     authMode: "dev",
     runConcurrency: 2,
   },
-  executors: mode === "canary" ? { ...executors, interviewTurn: canaryTurn } : executors,
-  createRouter: recordingRouter({
-    delayMs: Number(env.WZ_DELAY_MS ?? 250),
-    mode: env.WZ_ROUTER_MODE === "fixture" ? "fixture" : "live",
-    trace: (step) => process.stdout.write(`${JSON.stringify({ msg: "route", step })}\n`),
-  }),
+  executors:
+    mode === "import"
+      ? importExecutors
+      : mode === "canary"
+        ? { ...executors, interviewTurn: canaryTurn }
+        : executors,
+  createRouter:
+    mode === "import"
+      ? (opts) => createRouter({ ...opts, mode: "live", env: ENV, fetch: mock.fetch, sleep: async () => {} })
+      : recordingRouter({
+          delayMs: Number(env.WZ_DELAY_MS ?? 250),
+          mode: env.WZ_ROUTER_MODE === "fixture" ? "fixture" : "live",
+          trace: (step) => process.stdout.write(`${JSON.stringify({ msg: "route", step })}\n`),
+        }),
   sweepMs: 500,
   pollMs: 100,
 });

@@ -12,6 +12,7 @@ import {
   type ConnectorStore,
   type ContactKind,
   createConnectorLogger,
+  DEFAULT_YOOKASSA_PLATFORM,
   envSecretReader,
   getConnector,
   guardedFetch,
@@ -53,6 +54,8 @@ export interface ConnectorHostOptions {
   platform?: PlatformConnectorConfig;
   /** Also write test-mode effects to <outboxDir>/<system>/<connector>.jsonl (+ email/*.eml); default: memory only. */
   outboxDir?: string | null;
+  /** RuntimeAppOptions.connectors: 'live' enables YooKassa API calls (otherwise the draft mock payment). */
+  connectors?: "outbox" | "live";
 }
 
 /** The parts of LoadedSystem a connector context needs. */
@@ -235,11 +238,19 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
     return r;
   };
 
-  const platform =
+  const base =
     o.platform ??
     platformConfigFromEnv(process.env, { systemsDomain: o.env.systemsDomain, local: isLocalMode(o.env) });
+  const yookassa = {
+    ...(base.yookassa ?? DEFAULT_YOOKASSA_PLATFORM),
+    ...(o.connectors ? { live: o.connectors === "live" } : {}),
+  };
+  const platform: PlatformConnectorConfig = { ...base, yookassa };
   const files = o.outboxDir ? new JsonlOutbox(o.outboxDir) : null;
-  const fetchGuarded = guardedFetch({ trustedHosts: [new URL(platform.telegram.apiBase).host] });
+  // Provider endpoints configured by the platform itself (stubs in tests and local runs) are trusted hosts.
+  const fetchGuarded = guardedFetch({
+    trustedHosts: [new URL(platform.telegram.apiBase).host, new URL(yookassa.apiBase).host],
+  });
 
   /** Canonical host of a system (runtime.yaml#routing): prod — the alias, draft — <slug>--draft. */
   const originOf = (entry: RegistryEntry, host?: string) =>

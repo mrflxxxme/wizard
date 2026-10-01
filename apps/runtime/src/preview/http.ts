@@ -1,4 +1,4 @@
-// Error mapping for connector-backed routes (/_wizard/qr, /api/pay, /_wizard/pay-mock).
+// Error mapping for connector-backed routes (/_wizard/qr, /api/pay, /_wizard/pay-mock, connector webhooks).
 import { isConnectorError } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import type { RuntimeContext } from "../http/context.js";
@@ -17,6 +17,8 @@ const CONNECTOR_STATUS: Readonly<Record<string, number>> = {
   INVALID_REQUEST: 422,
   SECRET_MISSING: 503,
   EGRESS_DISABLED: 503,
+  CONFIG_INVALID: 503,
+  RATE_LIMITED: 429,
 };
 
 /** WizardError → rethrown (app.onError); ConnectorError → its code and Russian message; the rest → 500. */

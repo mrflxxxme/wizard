@@ -814,7 +814,7 @@ tasks:
     owner: platform
     parallel_group: m2-d
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Выгрузка всех сущностей prod в ZIP с CSV и spec.json (кода нет — non_goals); ПДн выгружает только owner; событие в журнале (L4-08)"

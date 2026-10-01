@@ -1,20 +1,18 @@
 // Draft-only service routes of a system host: /_wizard/bridge.js, /_wizard/wz-map.json, /_wizard/pay-mock
-// (platform-screens.yaml#preview_contract, runtime.yaml#service_endpoints) and POST /api/pay/:integration
-// (connectors/yookassa.yaml#runtime_endpoint, M0 stub).
+// (platform-screens.yaml#preview_contract, runtime.yaml#service_endpoints). POST /api/pay — routes/pay.ts.
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Integration } from "@wizard/appspec";
-import { confirmMockPayment, startPayment, type YookassaConfig } from "@wizard/connectors";
+import { confirmMockPayment, type YookassaConfig } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
-import type { Subject } from "../data/access.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
 import { subjectOf } from "../http/subject.js";
+import { recordFor, yookassaBinding } from "../routes/pay.js";
 import type { ConnectorHost } from "./connectors.js";
 import { documentHeaders, escapeHtml, htmlPage, NO_CACHE } from "./headers.js";
-import { connectorFailure, jsonError, readObjectBody } from "./http.js";
+import { connectorFailure, readObjectBody } from "./http.js";
 
 const BRIDGE_SOURCE = readFileSync(new URL("./bridge-client.js", import.meta.url), "utf8");
 const PAY_MOCK_SCRIPT = readFileSync(new URL("./pay-mock-client.js", import.meta.url), "utf8");
@@ -28,26 +26,6 @@ export function bridgeScript(platformOrigin: string, revision: number): string {
 }
 
 const isDraft = (c: RuntimeContext) => c.get("system").entry.env === "draft";
-
-function yookassaBinding(c: RuntimeContext, host: ConnectorHost, binding: string, integration?: string) {
-  const sys = c.get("system");
-  for (const integ of host.integrations(sys.spec, "yookassa")) {
-    if (integration !== undefined && integ.name !== integration) continue;
-    const b = (integ.config as Partial<YookassaConfig> | undefined)?.bindings?.find((x) => x.id === binding);
-    if (b) return { integ, entity: b.entity };
-  }
-  return null;
-}
-
-/** The record as the caller may read it (rights and rowFilter); null when hidden or missing. */
-async function recordFor(c: RuntimeContext, subject: Subject, entity: string, id: string) {
-  try {
-    return (await c.get("system").data.get(subject, entity, id)) as Record<string, unknown> & { id: string };
-  } catch (e) {
-    if (e instanceof WizardError && (e.code === "NOT_FOUND" || e.code === "FORBIDDEN")) return null;
-    throw e;
-  }
-}
 
 const money = (v: unknown) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" }).format(Number(v ?? 0));
@@ -118,31 +96,5 @@ export function previewRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
     }
   });
 
-  return app;
-}
-
-/** POST /api/pay/:integration {binding, id} → {confirmationUrl} (yookassa.yaml#runtime_endpoint). */
-export function payRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
-  const app = new Hono<RuntimeHonoEnv>();
-  app.post("/:integration", async (c) => {
-    const body = await readObjectBody(c);
-    const binding = typeof body.binding === "string" ? body.binding : "";
-    const id = typeof body.id === "string" ? body.id : "";
-    const b = yookassaBinding(c, host, binding, c.req.param("integration"));
-    if (!b) throw new WizardError("NOT_FOUND", { message: "Оплата не настроена" });
-    const record = await recordFor(c, await subjectOf(c), b.entity, id);
-    try {
-      const integ: Integration = b.integ;
-      const out = await startPayment(
-        host.ctx(c.get("system"), integ, c.get("host")),
-        { binding, id },
-        record,
-      );
-      if (!out.ok) return jsonError(c, out.status, out.code, out.message_ru);
-      return c.json({ confirmationUrl: out.confirmationUrl }, 200, { "Cache-Control": "no-store" });
-    } catch (e) {
-      return connectorFailure(c, e);
-    }
-  });
   return app;
 }

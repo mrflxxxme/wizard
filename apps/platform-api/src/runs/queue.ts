@@ -22,6 +22,8 @@ import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import { ExportStore } from "../exports/storage.js";
+import { type ExportRunInput, runExport } from "../exports/workflow.js";
 import { ImportStore } from "../imports/storage.js";
 import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
 import type { PublishOptions } from "../publish/prod.js";
@@ -136,7 +138,7 @@ export interface EngineDeps {
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table";
+  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table" | "export";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -266,6 +268,7 @@ export class RunEngine {
   readonly #slots: Slots;
   #cancelPoll: NodeJS.Timeout | undefined;
   #imports: ImportStore | undefined;
+  #exports: ExportStore | undefined;
   #closed = false;
 
   constructor(deps: EngineDeps) {
@@ -494,6 +497,7 @@ export class RunEngine {
       else if (run.kind === "build") result = await this.#build(x, started.cap);
       else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(x);
       else if (run.kind === "import_table") result = await this.#importTable(x);
+      else if (run.kind === "export") result = await this.#export(x);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
       // A stopping worker leaves the workflow pending: DBOS resumes it on the next start.
@@ -1569,6 +1573,24 @@ export class RunEngine {
       },
     });
     return { status: "succeeded", summary_ru: out.summary_ru, resultRevision: out.resultRevision };
+  }
+
+  /** export (workflows.yaml#workflows.export_data): steps live in ../exports/workflow.ts; each step is a checkpoint. */
+  async #export(x: Ctx): Promise<Result> {
+    const { run, D } = x;
+    this.#exports ??= new ExportStore(this.#d.config.artifactsDir, this.#d.config.secretsKey);
+    const out = await runExport({
+      run: { id: run.id, systemId: run.system_id as string, input: run.input as unknown as ExportRunInput },
+      db: this.#db,
+      pg: this.#d.pg,
+      store: this.#exports,
+      ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      signal: x.ac.signal,
+      // Outputs are counts per table and the archive size (no cell values), kept inline.
+      step: (name, label, fn) => this.#step(x, name, label, () => D.step(name, fn)),
+      log: (m, e) => this.#log(m, e),
+    });
+    return { status: "succeeded", summary_ru: out.summary_ru };
   }
 
   /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */

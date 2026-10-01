@@ -45,6 +45,7 @@ export {
   seed,
 } from "./db/index.js";
 export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
+export { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 export { type AuthUser, checkOrgAccess } from "./http/auth.js";
 export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 export { publishBlockers, specPublishBlockers } from "./publish/blockers.js";
