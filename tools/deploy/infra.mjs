@@ -13,8 +13,9 @@
 // env.cluster_profile (Timeweb pilot: `pilot`), else provider.json. A profile layers on its bases (PROFILES).
 // --build-images builds and pushes the images of infra/docker/images.json to the environment's registry between the
 // addons and the release (the in-cluster registry exists only after the addons).
-// --dry-run prints every command (secret values masked) and executes nothing. Runs on the self-hosted runner:
-// tofu, helm, kubectl on PATH. Inputs and manual steps: docs/ops/deploy.md.
+// --dry-run prints every command (secret values masked) and executes nothing. Runs on the self-hosted runner (beta) or,
+// for the pilot, on a GitHub-hosted runner through tools/deploy/pilot.mjs (deps.hooks: secrets from the encrypted
+// bundle, a temporary SSH rule, WIZARD_K3S_ACCESS=tunnel): tofu, helm, kubectl on PATH. Inputs: docs/ops/deploy.md.
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -367,7 +368,7 @@ export function createRunner({ dryRun, log = (s) => console.log(s), env = proces
       cwd: ROOT,
       env: { ...env, ...o.env },
       encoding: "utf8",
-      stdio: o.capture ? ["pipe", "pipe", "inherit"] : "inherit",
+      stdio: o.stdio ?? (o.capture ? ["pipe", "pipe", "inherit"] : "inherit"),
       input: o.input,
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -474,117 +475,167 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     return o.env === "staging" ? 0 : 3;
   }
   profile = o.profile ?? raw.env.value?.cluster_profile ?? profile;
-  const kubeDir = vars.RUNNER_TEMP || join(ROOT, ".kube");
-  const kubeconfig = join(kubeDir, `wizard-${o.env}.kubeconfig`);
-  const text = await kubeconfigText(raw, { run, vars, log, dryRun: o.dryRun, kubeDir, sleep: deps.sleep });
-  if (!o.dryRun) {
-    mkdirSync(kubeDir, { recursive: true });
-    writeFileSync(kubeconfig, text, { mode: 0o600 });
-    chmodSync(kubeconfig, 0o600);
-  } else log(`# kubeconfig → ${kubeconfig} (0600)`);
-  const kenv = { KUBECONFIG: kubeconfig };
-  const kubectl = (args, x = {}) => run("kubectl", args, { env: kenv, ...x });
-  const helm = (args, x = {}) => run("helm", args, { env: kenv, ...x });
-
-  if (o.command === "apply") {
-    kubectl(["apply", "-f", "infra/k8s/namespaces.yaml"]);
-    for (const a of addonsFor(profile)) helm(addonArgs(a, profile));
-    // Providers whose ingress IP is only known after the addons (managed LoadBalancer) get a second apply for DNS.
-    const known = raw.env?.value?.ingress_ip;
-    if (!known) {
-      const ip = kubectl(
-        [
-          "-n",
-          "wizard-ingress",
-          "get",
-          "service",
-          "traefik",
-          "-o",
-          "jsonpath={.status.loadBalancer.ingress[0].ip}",
-        ],
-        { capture: true, fake: "203.0.113.10" },
-      ).stdout.trim();
-      if (ip) {
-        tofu(applyArgs(`-var=ingress_ip=${ip}`));
-        raw = out();
-      } else log("! у балансировщика ingress ещё нет IP: повторите apply, когда он появится (A-записи DNS)");
+  const outputsOf = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v?.value]));
+  // Hooks of tools/deploy/pilot.mjs (all optional): beforeCluster(outputs) → {vars, close} — secret files from the
+  // encrypted bundle and a temporary SSH rule; afterKubeconfig({kubectl}); afterRelease({kubectl, outputs, tag}).
+  const hooks = deps.hooks ?? {};
+  const access = hooks.beforeCluster ? await hooks.beforeCluster(outputsOf(raw)) : null;
+  const v = { ...vars, ...(access?.vars ?? {}) };
+  let closeTunnel = null;
+  try {
+    const kubeDir = v.RUNNER_TEMP || join(ROOT, ".kube");
+    const kubeconfig = join(kubeDir, `wizard-${o.env}.kubeconfig`);
+    const text = await kubeconfigText(raw, {
+      run,
+      vars: v,
+      log,
+      dryRun: o.dryRun,
+      kubeDir,
+      sleep: deps.sleep,
+    });
+    if (!o.dryRun) {
+      mkdirSync(kubeDir, { recursive: true });
+      writeFileSync(kubeconfig, text, { mode: 0o600 });
+      chmodSync(kubeconfig, 0o600);
+    } else log(`# kubeconfig → ${kubeconfig} (0600)`);
+    if (v.WIZARD_K3S_ACCESS === "tunnel" && raw.k3s_server?.value) {
+      closeTunnel = openTunnel({ run, vars: v, ip: k3sAddress(raw.k3s_server.value, v), kubeDir, log });
     }
-  }
+    const kenv = { KUBECONFIG: kubeconfig };
+    const kubectl = (args, x = {}) => run("kubectl", args, { env: kenv, ...x });
+    const helm = (args, x = {}) => run("helm", args, { env: kenv, ...x });
+    if (hooks.afterKubeconfig) await hooks.afterKubeconfig({ kubectl, helm });
 
-  for (const s of clusterSecrets(profile)) {
-    const exists =
-      kubectl(["-n", s.namespace, "get", "secret", s.name, "-o", "name"], {
-        capture: true,
-        allowFail: true,
-        fake: s.name,
-      }).status === 0;
-    const src = vars[s.fromFile];
-    if (s.kind === "registry") {
-      if (src && vars.WIZARD_GHCR_USER) {
-        const registry = raw.env.value?.registry_url ?? "ghcr.io";
-        kubectl(["apply", "-f", "-"], {
-          input: registrySecret(s.namespace, s.name, registryHost(registry), vars.WIZARD_GHCR_USER, src),
-        });
+    if (o.command === "apply") {
+      kubectl(["apply", "-f", "infra/k8s/namespaces.yaml"]);
+      for (const a of addonsFor(profile)) helm(addonArgs(a, profile));
+      // Providers whose ingress IP is only known after the addons (managed LoadBalancer) get a second apply for DNS.
+      const known = raw.env?.value?.ingress_ip;
+      if (!known) {
+        const ip = kubectl(
+          [
+            "-n",
+            "wizard-ingress",
+            "get",
+            "service",
+            "traefik",
+            "-o",
+            "jsonpath={.status.loadBalancer.ingress[0].ip}",
+          ],
+          { capture: true, fake: "203.0.113.10" },
+        ).stdout.trim();
+        if (ip) {
+          tofu(applyArgs(`-var=ingress_ip=${ip}`));
+          raw = out();
+        } else
+          log("! у балансировщика ingress ещё нет IP: повторите apply, когда он появится (A-записи DNS)");
+      }
+    }
+
+    for (const s of clusterSecrets(profile)) {
+      const exists =
+        kubectl(["-n", s.namespace, "get", "secret", s.name, "-o", "name"], {
+          capture: true,
+          allowFail: true,
+          fake: s.name,
+        }).status === 0;
+      const src = v[s.fromFile];
+      if (s.kind === "registry") {
+        if (src && v.WIZARD_GHCR_USER) {
+          const registry = raw.env.value?.registry_url ?? "ghcr.io";
+          kubectl(["apply", "-f", "-"], {
+            input: registrySecret(s.namespace, s.name, registryHost(registry), v.WIZARD_GHCR_USER, src),
+          });
+        } else if (!exists) {
+          log(
+            `Нет секрета ${s.namespace}/${s.name}: задайте WIZARD_GHCR_USER и WIZARD_GHCR_TOKEN (read:packages) — docs/ops/deploy.md`,
+          );
+          return 3;
+        }
+        continue;
+      }
+      // A runner-local file is used when it is there (first bring-up); later the Secret lives in the cluster.
+      if (src && (deps.exists ?? existsSync)(src)) {
+        const from = s.kind === "dir" ? `--from-file=${src}` : `--from-env-file=${src}`;
+        const yaml = kubectl(
+          ["-n", s.namespace, "create", "secret", "generic", s.name, from, "--dry-run=client", "-o", "yaml"],
+          { capture: true, fake: "" },
+        ).stdout;
+        kubectl(["apply", "-f", "-"], { input: yaml });
       } else if (!exists) {
         log(
-          `Нет секрета ${s.namespace}/${s.name}: задайте WIZARD_GHCR_USER и WIZARD_GHCR_TOKEN (read:packages) — docs/ops/deploy.md`,
+          `Нет секрета ${s.namespace}/${s.name}: задайте ${s.fromFile} (файл из OpenBao) — docs/ops/deploy.md`,
         );
         return 3;
       }
-      continue;
     }
-    // A runner-local file is used when it is there (first bring-up); later the Secret lives in the cluster.
-    if (src && (deps.exists ?? existsSync)(src)) {
-      const from = s.kind === "dir" ? `--from-file=${src}` : `--from-env-file=${src}`;
-      const yaml = kubectl(
-        ["-n", s.namespace, "create", "secret", "generic", s.name, from, "--dry-run=client", "-o", "yaml"],
-        { capture: true, fake: "" },
-      ).stdout;
-      kubectl(["apply", "-f", "-"], { input: yaml });
-    } else if (!exists) {
-      log(
-        `Нет секрета ${s.namespace}/${s.name}: задайте ${s.fromFile} (файл из OpenBao) — docs/ops/deploy.md`,
-      );
-      return 3;
-    }
-  }
 
-  if (!tag) throw new Error("image tag: --tag, WIZARD_IMAGE_TAG or GITHUB_SHA");
-  const outputs = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, v?.value]));
-  if (outputs.env.registry_push === null) {
-    // Pilot: images are built by .github/workflows/images.yml on GitHub-hosted runners and pushed to GHCR; the release
-    // waits until every image of this tag is there (images.yml may still be running for the same commit).
-    log(
-      `Образы ${tag} берутся из ${outputs.env.registry_url} (собирает images.yml), сборка на раннере не нужна.`,
-    );
-    if (!o.dryRun && vars.WIZARD_GHCR_TOKEN && !deps.skipImageWait) {
-      await waitForImages({
-        registry: outputs.env.registry_url,
-        names: imageNames(),
-        tag,
-        user: vars.WIZARD_GHCR_USER ?? "",
-        token: vars.WIZARD_GHCR_TOKEN,
+    if (!tag) throw new Error("image tag: --tag, WIZARD_IMAGE_TAG or GITHUB_SHA");
+    const outputs = outputsOf(raw);
+    if (outputs.env.registry_push === null) {
+      // Pilot: images are built by .github/workflows/images.yml on GitHub-hosted runners and pushed to GHCR; the
+      // release waits until every image of this tag is there (images.yml may still be running for the same commit).
+      log(
+        `Образы ${tag} берутся из ${outputs.env.registry_url} (собирает images.yml), сборка на раннере не нужна.`,
+      );
+      if (!o.dryRun && v.WIZARD_GHCR_TOKEN && !deps.skipImageWait) {
+        await waitForImages({
+          registry: outputs.env.registry_url,
+          names: imageNames(),
+          tag,
+          user: v.WIZARD_GHCR_USER ?? "",
+          token: v.WIZARD_GHCR_TOKEN,
+          log,
+          sleep: deps.sleep,
+        });
+      }
+    } else if (o.buildImages) {
+      const server = outputs.k3s_server;
+      const registry = server
+        ? `${k3sAddress(server, v)}:30500`
+        : (outputs.env.registry_push ?? outputs.env.registry_url);
+      if (v.WIZARD_REGISTRY_PASSWORD) {
+        run("docker", ["login", registry, "-u", v.WIZARD_REGISTRY_USER ?? "", "--password-stdin"], {
+          input: v.WIZARD_REGISTRY_PASSWORD,
+        });
+      }
+      run("node", ["tools/deploy/images.mjs", "build", "--registry", registry, "--tag", tag, "--push"]);
+    }
+    const email = v.WIZARD_ACME_EMAIL || `security@${outputs.env.domains.platform}`;
+    helm(wizardReleaseArgs({ env: o.env, out: outputs, tag, email, provider, profile }));
+    if (hooks.afterRelease) await hooks.afterRelease({ kubectl, helm, outputs, tag });
+    if (!o.dryRun && !deps.skipSmoke) {
+      // A fresh environment gets its certificates over DNS-01 after the release: WIZARD_SMOKE_ATTEMPTS × 30 s.
+      await smokeWithRetry(outputs.env.domains, {
         log,
+        attempts: Number(v.WIZARD_SMOKE_ATTEMPTS ?? 1) || 1,
         sleep: deps.sleep,
+        f: deps.fetch,
       });
     }
-  } else if (o.buildImages) {
-    const server = outputs.k3s_server;
-    const registry = server
-      ? `${k3sAddress(server, vars)}:30500`
-      : (outputs.env.registry_push ?? outputs.env.registry_url);
-    if (vars.WIZARD_REGISTRY_PASSWORD) {
-      run("docker", ["login", registry, "-u", vars.WIZARD_REGISTRY_USER ?? "", "--password-stdin"], {
-        input: vars.WIZARD_REGISTRY_PASSWORD,
-      });
-    }
-    run("node", ["tools/deploy/images.mjs", "build", "--registry", registry, "--tag", tag, "--push"]);
+    log(o.dryRun ? "--dry-run: команды выше не выполнялись." : `Готово: ${o.env} развёрнут, образы ${tag}.`);
+    return 0;
+  } finally {
+    if (closeTunnel) closeTunnel();
+    if (access?.close) await access.close();
   }
-  const email = vars.WIZARD_ACME_EMAIL || `security@${outputs.env.domains.platform}`;
-  helm(wizardReleaseArgs({ env: o.env, out: outputs, tag, email, provider, profile }));
-  if (!o.dryRun && !deps.skipSmoke) await smoke(outputs.env.domains, log);
-  log(o.dryRun ? "--dry-run: команды выше не выполнялись." : `Готово: ${o.env} развёрнут, образы ${tag}.`);
-  return 0;
+}
+
+/** smoke() repeated while certificates are being issued: `attempts` tries 30 s apart. */
+export async function smokeWithRetry(
+  domains,
+  { log = console.log, attempts = 1, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), f = fetch } = {},
+) {
+  for (let i = 1; ; i++) {
+    try {
+      await smoke(domains, log, f);
+      return;
+    } catch (e) {
+      if (i >= attempts) throw e;
+      log(`smoke: ${e instanceof Error ? e.message : String(e)} — повтор через 30 с (${i}/${attempts})`);
+      await sleep(30_000);
+    }
+  }
 }
 
 /**
@@ -604,12 +655,65 @@ export function addonsFor(profile) {
 /**
  * Address of the k3s server the runner talks to: the private one when the runner sits in the environment's VPC
  * (prod), the public one with WIZARD_K3S_ACCESS=public (staging in its own on-demand VPC; the firewall admits only
- * admin_cidrs to 22/6443/30500).
+ * admin_cidrs to 22/6443/30500) or WIZARD_K3S_ACCESS=tunnel (pilot from a GitHub-hosted runner: only SSH is opened,
+ * for the runner's address and for the duration of the job; the API server is reached through an SSH tunnel).
  */
 export function k3sAddress(server, vars) {
-  const ip = vars.WIZARD_K3S_ACCESS === "public" ? server.public_ip : server.private_ip;
+  const ip = ["public", "tunnel"].includes(vars.WIZARD_K3S_ACCESS) ? server.public_ip : server.private_ip;
   if (!ip) throw new Error("k3s_server output has no address for WIZARD_K3S_ACCESS");
   return ip;
+}
+
+/** Local end of the SSH tunnel to the k3s API (WIZARD_K3S_ACCESS=tunnel); the k3s certificate covers 127.0.0.1. */
+export const TUNNEL_PORT = 16443;
+
+/** Options of every ssh call: the job's key, no prompts, a known_hosts file of its own. */
+export function sshBaseArgs(vars, kubeDir) {
+  return [
+    "-i",
+    vars.WIZARD_SSH_KEY_FILE ?? "<WIZARD_SSH_KEY_FILE>",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    `UserKnownHostsFile=${join(kubeDir, "known_hosts")}`,
+    "-o",
+    "ConnectTimeout=10",
+  ];
+}
+
+/**
+ * SSH tunnel 127.0.0.1:TUNNEL_PORT → the k3s API on the server's loopback, as a background control master (`-f`
+ * returns once the forward is up); returns the function that closes it. ssh writes its messages to a log file: a
+ * backgrounded ssh must not hold the step's output pipes.
+ */
+export function openTunnel({ run, vars, ip, kubeDir, log = () => {} }) {
+  const sock = join(kubeDir, "k3s-tunnel.sock");
+  const host = `root@${ip}`;
+  run(
+    "ssh",
+    [
+      ...sshBaseArgs(vars, kubeDir),
+      "-f",
+      "-N",
+      "-M",
+      "-S",
+      sock,
+      "-E",
+      join(kubeDir, "k3s-tunnel.log"),
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-o",
+      "ServerAliveInterval=30",
+      "-L",
+      `127.0.0.1:${TUNNEL_PORT}:127.0.0.1:6443`,
+      host,
+    ],
+    { stdio: "ignore" },
+  );
+  log(`туннель к API k3s: 127.0.0.1:${TUNNEL_PORT} → ${ip}`);
+  return () => run("ssh", ["-S", sock, "-O", "exit", host], { allowFail: true, stdio: "ignore" });
 }
 
 /**
@@ -627,25 +731,13 @@ export async function kubeconfigText(
   const ip = k3sAddress(server, vars);
   if (!vars.WIZARD_SSH_KEY_FILE && !dryRun)
     throw new Error("WIZARD_SSH_KEY_FILE is required for k3s environments");
-  const args = [
-    "-i",
-    vars.WIZARD_SSH_KEY_FILE ?? "<WIZARD_SSH_KEY_FILE>",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "StrictHostKeyChecking=accept-new",
-    "-o",
-    `UserKnownHostsFile=${join(kubeDir, "known_hosts")}`,
-    "-o",
-    "ConnectTimeout=10",
-    `root@${ip}`,
-    "cat /etc/rancher/k3s/k3s.yaml",
-  ];
+  const args = [...sshBaseArgs(vars, kubeDir), `root@${ip}`, "cat /etc/rancher/k3s/k3s.yaml"];
+  const api = vars.WIZARD_K3S_ACCESS === "tunnel" ? `127.0.0.1:${TUNNEL_PORT}` : `${ip}:6443`;
   if (!dryRun) mkdirSync(kubeDir, { recursive: true });
   for (let i = 1; ; i++) {
     const r = run("ssh", args, { capture: true, allowFail: true, fake: "server: https://127.0.0.1:6443\n" });
     if (r.status === 0 && r.stdout.includes("server:")) {
-      return r.stdout.replace("https://127.0.0.1:6443", `https://${ip}:6443`);
+      return r.stdout.replace("https://127.0.0.1:6443", `https://${api}`);
     }
     if (i >= attempts) throw new Error(`k3s on ${ip} is not ready (ssh ${r.status})`);
     log(`k3s на ${ip} ещё не готов (попытка ${i}/${attempts}), жду 15 с…`);

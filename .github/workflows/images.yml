@@ -1,7 +1,9 @@
 # M2-06 (deploy.yaml#cloud.ci_cd, L3-38): every image of infra/docker/images.json builds from the repo, gets a
 # CycloneDX SBOM (syft via anchore/sbom-action, Apache-2.0) as an artifact. Pilot (platform/deploy.yaml#pilot): pushes
 # of main go to GHCR of this repository (ghcr.io/<owner>/<image>:<sha>, private packages, the job's GITHUB_TOKEN with
-# packages: write) when vars.WIZARD_IMAGES_GHCR == 'enabled'; the pilot VM pulls them with a read:packages token.
+# packages: write) when vars.WIZARD_IMAGES_GHCR == 'enabled' or the pilot is configured (repository variable
+# WIZARD_PLATFORM_DOMAIN); pilot-reusable.yml calls this workflow with ghcr: true for the SHA it releases, and an image
+# already in GHCR is not rebuilt. The pilot VM pulls with the release job's token (docs/ops/deploy.md «Пилот»).
 # Beta: images are pushed by the deploy workflows on the self-hosted runner; the registry push step below is a
 # bootstrap option only (registry credentials as repository secrets).
 name: images
@@ -18,13 +20,24 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Commit to build (default: the caller's SHA)"
+        type: string
+        default: ""
+      ghcr:
+        description: "Push to GHCR of the repository (images already there are skipped)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: images-${{ github.ref }}
-  cancel-in-progress: true
+  # In a call github.workflow is the caller's name: the pilot never cancels (nor is cancelled by) a push's run.
+  group: images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'images' }}
 
 jobs:
   matrix:
@@ -33,6 +46,8 @@ jobs:
       names: ${{ steps.m.outputs.names }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
       - id: m
         run: echo "names=$(node -p 'JSON.stringify(require("./infra/docker/images.json").images.map((i) => i.name))')" >> "$GITHUB_OUTPUT"
 
@@ -48,25 +63,47 @@ jobs:
       matrix:
         image: ${{ fromJSON(needs.matrix.outputs.names) }}
     env:
+      TAG: ${{ inputs.sha || github.sha }}
+      IMAGE: ${{ matrix.image }}
       REGISTRY: ${{ vars.WIZARD_REGISTRY_STAGING }}
       REGISTRY_USER: ${{ secrets.CLOUDRU_REGISTRY_USER }}
       REGISTRY_PASSWORD: ${{ secrets.CLOUDRU_REGISTRY_PASSWORD }}
+      GHCR: ${{ (inputs.ghcr || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (vars.WIZARD_IMAGES_GHCR == 'enabled' || vars.WIZARD_PLATFORM_DOMAIN != ''))) && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Already in GHCR?
+        id: have
+        if: env.GHCR == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          if docker buildx imagetools inspect "ghcr.io/$owner/$IMAGE:$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=images::$IMAGE:$TAG уже в GHCR — сборка пропущена."
+          fi
       - uses: actions/setup-node@v4
+        if: steps.have.outputs.exists != 'true'
         with:
           node-version: 22
       - uses: docker/setup-buildx-action@v3
+        if: steps.have.outputs.exists != 'true'
       - name: Build
-        run: node tools/deploy/images.mjs build --only "${{ matrix.image }}" --tag "${{ github.sha }}"
+        if: steps.have.outputs.exists != 'true'
+        run: node tools/deploy/images.mjs build --only "$IMAGE" --tag "$TAG"
       - name: SBOM (CycloneDX)
+        if: steps.have.outputs.exists != 'true'
         uses: anchore/sbom-action@v0
         with:
-          image: wizard.local/${{ matrix.image }}:${{ github.sha }}
+          image: wizard.local/${{ matrix.image }}:${{ env.TAG }}
           format: cyclonedx-json
           output-file: sbom-${{ matrix.image }}.cdx.json
           upload-artifact: false
       - uses: actions/upload-artifact@v4
+        if: steps.have.outputs.exists != 'true'
         with:
           name: sbom-${{ matrix.image }}
           path: sbom-${{ matrix.image }}.cdx.json
@@ -75,17 +112,17 @@ jobs:
         if: github.event_name == 'push' && env.REGISTRY != '' && env.REGISTRY_PASSWORD != ''
         run: |
           echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
-          node tools/deploy/images.mjs build --only "${{ matrix.image }}" --registry "$REGISTRY" --tag "${{ github.sha }}" --push
+          node tools/deploy/images.mjs build --only "$IMAGE" --registry "$REGISTRY" --tag "$TAG" --push
           docker logout "$REGISTRY"
       - name: Push to GHCR (pilot)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.WIZARD_IMAGES_GHCR == 'enabled'
+        if: env.GHCR == 'true' && steps.have.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          node tools/deploy/images.mjs build --only "${{ matrix.image }}" --registry "ghcr.io/$owner" --tag "${{ github.sha }}" --push
+          node tools/deploy/images.mjs build --only "$IMAGE" --registry "ghcr.io/$owner" --tag "$TAG" --push
           docker logout ghcr.io
       - name: No push
-        if: ${{ !(github.event_name == 'push' && env.REGISTRY != '' && env.REGISTRY_PASSWORD != '') && vars.WIZARD_IMAGES_GHCR != 'enabled' }}
-        run: echo "::notice title=images::${{ matrix.image }} собран без публикации (нет реестра Cloud.ru или это PR)."
+        if: ${{ !(github.event_name == 'push' && env.REGISTRY != '' && env.REGISTRY_PASSWORD != '') && env.GHCR != 'true' }}
+        run: echo "::notice title=images::$IMAGE собран без публикации (нет реестра Cloud.ru или это PR)."

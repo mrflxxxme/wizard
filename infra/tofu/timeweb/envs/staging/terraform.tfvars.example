@@ -1,4 +1,5 @@
-# Copy to the runner (WIZARD_TFVARS_FILE, default /etc/wizard/terraform-staging.tfvars). Not committed.
+# Reference only: bootstrap-pilot / deploy-pilot generate the pilot tfvars themselves (tools/deploy/pilot.mjs SHAPES +
+# GitHub variables + the generated SSH key; admin_cidrs stays empty). Manual runs: WIZARD_TFVARS_FILE. Not committed.
 # PILOT staging on demand: the same module as prod with a smaller VM — Cloud MSK 50 (2 vCPU / 4 GB / 50 GB NVMe),
 # billed by the hour while it exists. `pnpm infra:apply --env staging` creates it, `node tools/deploy/infra.mjs destroy
 # --env staging --yes` removes everything (VM, IP, buckets, records). If builds run out of memory: server 4/8.

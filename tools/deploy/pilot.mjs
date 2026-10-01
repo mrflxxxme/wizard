@@ -1,0 +1,672 @@
+#!/usr/bin/env node
+// Pilot on Timeweb Cloud from a GitHub-hosted runner, no self-hosted runner and no hand-made files
+// (docs/ops/deploy.md «Пилот: одна кнопка», docs/reviews/impl-notes/pilot-bootstrap.md). The founder sets GitHub
+// secrets/variables once (FOUNDER_INPUTS); everything else is created here, idempotently:
+//   node tools/deploy/pilot.mjs bootstrap --env prod|staging --tag <sha>   state bucket + keys (Timeweb API) → secrets
+//        bundle (generated once, encrypted with WIZARD_STATE_PASSPHRASE, kept in the state bucket) → OpenTofu →
+//        temporary SSH rule for this runner's IP → k3s over an SSH tunnel → addons, Secrets, Helm → founder access;
+//        after the loss of the VM the same command recreates it (PostgreSQL restores itself from WAL-G, .data is
+//        restored by a Job)
+//   node tools/deploy/pilot.mjs deploy --env … --tag <sha>      release of a SHA (no OpenTofu apply, no addons)
+//   node tools/deploy/pilot.mjs destroy --env staging            staging on demand: everything goes
+//   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
+//   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
+// The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
+// by hand. Workflows: .github/workflows/bootstrap-pilot.yml, deploy-pilot.yml (owner only, pilot-reusable.yml).
+import { createHash, randomBytes } from "node:crypto";
+import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
+import { main as infraMain } from "./infra.mjs";
+import {
+  assertPassphrase,
+  clusterSecretFiles,
+  decryptBundle,
+  encryptBundle,
+  ensureBundle,
+  MIN_PASSPHRASE,
+  secretValues,
+} from "./pilot-secrets.mjs";
+
+export const COMMANDS = ["bootstrap", "deploy", "destroy", "close-access", "show-secrets"];
+export const ENVS = ["prod", "staging"];
+export const TWC_API = "https://api.timeweb.cloud";
+/** Timeweb S3 (only location ru-1): the state bucket, as the backend of infra/tofu/timeweb/envs/*. */
+export const S3 = { endpoint: "https://s3.twcstorage.ru", region: "ru-1" };
+export const STATE_BUCKET = "wizard-tfstate";
+export const bundleKey = (env) => `wizard/${env}.secrets.enc.json`;
+/** Description prefix of the temporary SSH rules: everything with it is removed at the start and the end of a job. */
+export const TEMP_RULE_PREFIX = "wizard-ci-temp";
+export const PLATFORM_NS = "wizard-platform";
+
+/**
+ * Shape of the pilot per environment (deploy.yaml#pilot.environments): Cloud MSK 80 for prod, MSK 50 for staging;
+ * max_price caps the preset search (growth beyond it is a reviewed change of this table, ≤ 20 000 ₽/month).
+ */
+export const SHAPES = {
+  prod: { server: { cpu: 4, ram_gb: 8, disk_gb: 80, max_price: 2000 }, buckets: { files: 10, backups: 100 } },
+  staging: {
+    server: { cpu: 2, ram_gb: 4, disk_gb: 50, max_price: 1100 },
+    buckets: { files: 10, backups: 10 },
+  },
+};
+
+/** What the founder sets in GitHub (Settings → Secrets and variables → Actions, repository or environment level). */
+export const FOUNDER_INPUTS = {
+  secrets: [
+    ["TWC_TOKEN", "API-токен Timeweb Cloud (без подтверждения удаления через Telegram)", true],
+    ["WIZARD_STATE_PASSPHRASE", `пароль из менеджера паролей, ≥ ${MIN_PASSPHRASE} символов`, true],
+    ["CLOUDRU_API_KEY", "ключ Cloud.ru Foundation Models", true],
+    ["ZAI_API_KEY", "ключ Z.ai (необязательно)", false],
+    ["WIZARD_SMTP_HOST", "SMTP-сервер почты платформы (коды входа)", true],
+    ["WIZARD_SMTP_PORT", "порт SMTP (по умолчанию 465)", false],
+    ["WIZARD_SMTP_USER", "логин SMTP", false],
+    ["WIZARD_SMTP_PASSWORD", "пароль SMTP", false],
+    ["WIZARD_SMTP_FROM", "отправитель, например «Wizard <noreply@домен>»", true],
+    ["WIZARD_OPS_ALERT_TELEGRAM_TOKEN", "токен бота для алертов (или WIZARD_OPS_ALERT_URL)", false],
+    ["WIZARD_OPS_ALERT_CHAT_ID", "чат Telegram для алертов", false],
+  ],
+  variables: [
+    ["WIZARD_PLATFORM_DOMAIN", "домен платформы (в «Доменах» Timeweb Cloud)", true],
+    ["WIZARD_SYSTEMS_DOMAIN", "домен систем клиентов (в «Доменах» Timeweb Cloud)", true],
+    ["WIZARD_ACME_EMAIL", "почта для Let's Encrypt (по умолчанию — почта основателя)", false],
+    ["WIZARD_FOUNDER_EMAIL", "почта основателя: вход, права staff, алерты", true],
+  ],
+};
+
+const DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+const SHA = /^[0-9a-f]{40}$/;
+
+export function parseArgs(argv) {
+  const [command = "", ...rest] = argv;
+  const o = { command, env: null, tag: null };
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === "--env") o.env = rest[++i] ?? null;
+    else if (a === "--tag") o.tag = rest[++i] ?? null;
+    else throw new Error(`unknown argument ${a}`);
+  }
+  if (!COMMANDS.includes(o.command)) throw new Error(`command: ${COMMANDS.join(" | ")}`);
+  if (!ENVS.includes(o.env)) throw new Error("--env prod|staging is required");
+  if (o.command === "destroy" && o.env !== "staging")
+    throw new Error("destroy: only staging (prod is never destroyed)");
+  if (["bootstrap", "deploy"].includes(o.command) && !SHA.test(o.tag ?? ""))
+    throw new Error("--tag: full commit SHA");
+  return o;
+}
+
+/** Missing or malformed founder inputs for a command: [[name, why]] (names only — values are never printed). */
+export function checkInputs(command, vars) {
+  const problems = [];
+  const need = (name, hint) => {
+    if (!vars[name]) problems.push([name, `не задан: ${hint}`]);
+  };
+  need("TWC_TOKEN", "API-токен Timeweb Cloud");
+  if (command === "close-access") return problems;
+  if (!vars.WIZARD_STATE_PASSPHRASE) need("WIZARD_STATE_PASSPHRASE", "пароль шифрования состояния и ключей");
+  else if (vars.WIZARD_STATE_PASSPHRASE.length < MIN_PASSPHRASE)
+    problems.push(["WIZARD_STATE_PASSPHRASE", `короче ${MIN_PASSPHRASE} символов`]);
+  if (command === "show-secrets") return problems;
+  for (const n of ["WIZARD_PLATFORM_DOMAIN", "WIZARD_SYSTEMS_DOMAIN"]) {
+    if (!vars[n]) need(n, "домен, добавленный в Timeweb Cloud");
+    else if (!DOMAIN.test(vars[n]))
+      problems.push([n, "не похоже на домен (только строчные буквы, цифры, точки)"]);
+  }
+  const p = vars.WIZARD_PLATFORM_DOMAIN ?? "";
+  const s = vars.WIZARD_SYSTEMS_DOMAIN ?? "";
+  if (p && s && (p === s || p.endsWith(`.${s}`) || s.endsWith(`.${p}`)))
+    problems.push([
+      "WIZARD_SYSTEMS_DOMAIN",
+      "должен быть отдельным доменом, не совпадать с доменом платформы",
+    ]);
+  if (command === "destroy") return problems;
+  for (const [name, hint, required] of [...FOUNDER_INPUTS.secrets, ...FOUNDER_INPUTS.variables]) {
+    if (required && !problems.some(([n]) => n === name)) need(name, hint);
+  }
+  for (const n of ["WIZARD_FOUNDER_EMAIL", "WIZARD_ACME_EMAIL"]) {
+    if (vars[n] && !EMAIL.test(vars[n])) problems.push([n, "не похоже на адрес почты"]);
+  }
+  if (vars.WIZARD_SMTP_PORT && !/^\d{2,5}$/.test(vars.WIZARD_SMTP_PORT))
+    problems.push(["WIZARD_SMTP_PORT", "нужен номер порта"]);
+  if (vars.WIZARD_OPS_ALERT_TELEGRAM_TOKEN && !vars.WIZARD_OPS_ALERT_CHAT_ID)
+    problems.push(["WIZARD_OPS_ALERT_CHAT_ID", "нужен вместе с WIZARD_OPS_ALERT_TELEGRAM_TOKEN"]);
+  if (!vars.WIZARD_GHCR_TOKEN) problems.push(["WIZARD_GHCR_TOKEN", "токен GHCR (в workflow — github.token)"]);
+  return problems;
+}
+
+/** Image prefix in GHCR: ghcr.io/<owner, lower case> (WIZARD_IMAGE_REGISTRY overrides). */
+export function imageRegistry(vars) {
+  if (vars.WIZARD_IMAGE_REGISTRY) return vars.WIZARD_IMAGE_REGISTRY;
+  const owner = (vars.GITHUB_REPOSITORY_OWNER ?? "").toLowerCase();
+  if (!/^[a-z0-9-]+$/.test(owner)) throw new Error("GITHUB_REPOSITORY_OWNER: нет владельца репозитория");
+  return `ghcr.io/${owner}`;
+}
+
+/**
+ * tfvars of infra/tofu/timeweb/envs/<env> (JSON): the pilot shape, the founder's domains, the generated SSH key.
+ * admin_cidrs stays empty — SSH is opened per job by openAdminAccess and closed again, nothing is open in between.
+ */
+export function tfvars(env, vars, sshPublicKey) {
+  return {
+    settings: {
+      ...SHAPES[env],
+      sandbox_nodes: {},
+      postgres: null,
+      image_registry: imageRegistry(vars),
+      ssh_public_key: sshPublicKey,
+      admin_cidrs: [],
+      platform_domain: vars.WIZARD_PLATFORM_DOMAIN,
+      systems_domain: vars.WIZARD_SYSTEMS_DOMAIN,
+      ...(vars.WIZARD_PLATFORM_MAIL_SPF ? { platform_mail_spf: vars.WIZARD_PLATFORM_MAIL_SPF } : {}),
+    },
+  };
+}
+
+/** Timeweb Cloud API client: JSON in/out, bearer token; errors carry the method, path and status, never the token. */
+export function twcClient({ token, fetch: f = fetch, base = TWC_API }) {
+  return async function api(method, path, body) {
+    const r = await f(`${base}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (r.status === 204) return {};
+    const text = await r.text();
+    if (!r.ok) {
+      let msg = text.slice(0, 200);
+      try {
+        const j = JSON.parse(text);
+        msg = [j.error_code, j.message].flat().filter(Boolean).join(": ") || msg;
+      } catch {}
+      throw new Error(`Timeweb API ${method} ${path.split("?")[0]}: HTTP ${r.status} ${msg}`);
+    }
+    return text ? JSON.parse(text) : {};
+  };
+}
+
+/** A bucket's full name carries a random prefix: "1a2b3c4d-wizard-tfstate" (twc_s3_bucket.full_name). */
+export const bucketMatches = (full, name) =>
+  full === name || new RegExp(`^[0-9a-z]+-${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`).test(full);
+
+/**
+ * The state bucket and its S3 keys, created when missing (private, the cheapest hot preset of ru-1). Idempotent: a
+ * second run finds it by name. Returns {bucket (full name), accessKeyId, secretAccessKey, created} or null when it is
+ * missing and `create` is false.
+ */
+export async function ensureStateBucket(
+  api,
+  {
+    name = STATE_BUCKET,
+    create = true,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    attempts = 20,
+    log = () => {},
+  } = {},
+) {
+  const { buckets = [] } = await api("GET", "/api/v1/storages/buckets");
+  const found = buckets.filter((b) => bucketMatches(b.name, name));
+  if (found.length > 1)
+    throw new Error(`несколько бакетов ${name}: оставьте один (${found.map((b) => b.name)})`);
+  let b = found[0];
+  let created = false;
+  if (!b) {
+    if (!create) return null;
+    const { storages_presets: presets = [] } = await api("GET", "/api/v1/presets/storages");
+    const preset = presets
+      .filter((p) => p.location === "ru-1" && (p.storage_class ?? "hot") === "hot")
+      .sort((x, y) => x.price - y.price || x.disk - y.disk)[0];
+    if (!preset) throw new Error("Timeweb API: нет тарифа S3 в ru-1");
+    log(`создаю бакет состояния ${name} (тариф ${preset.id})`);
+    b = (
+      await api("POST", "/api/v1/storages/buckets", {
+        name,
+        type: "private",
+        preset_id: preset.id,
+        description: "Wizard: состояние OpenTofu и зашифрованные ключи пилота",
+      })
+    ).bucket;
+    created = true;
+  }
+  for (let i = 1; b.status !== "created"; i++) {
+    if (b.status === "no_paid") throw new Error("бакет состояния не оплачен: пополните баланс Timeweb Cloud");
+    if (i > attempts) throw new Error(`бакет ${b.name} не готов (статус ${b.status})`);
+    await sleep(15_000);
+    b = (await api("GET", `/api/v1/storages/buckets/${b.id}`)).bucket;
+  }
+  if (!b.access_key || !b.secret_key) throw new Error(`Timeweb API: у бакета ${b.name} нет ключей S3`);
+  return { bucket: b.name, accessKeyId: b.access_key, secretAccessKey: b.secret_key, created };
+}
+
+export const stateS3 = (state) => ({
+  ...S3,
+  bucket: state.bucket,
+  accessKeyId: state.accessKeyId,
+  secretAccessKey: state.secretAccessKey,
+});
+
+/** GET of an object, null when it does not exist (404). */
+export async function getObjectOrNull(cfg, key, { fetch: f = fetch, now = () => new Date() } = {}) {
+  const url = objectUrl(cfg, key);
+  const { host: _host, ...headers } = signRequest({
+    method: "GET",
+    url,
+    payloadHash: sha256Hex(""),
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    date: now(),
+  });
+  const r = await f(url, { method: "GET", headers });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`S3 GET ${key}: HTTP ${r.status}`);
+  return Buffer.from(await r.arrayBuffer()).toString("utf8");
+}
+
+/**
+ * The environment's bundle: read and decrypted when it exists (a wrong passphrase stops everything — nothing is
+ * regenerated or overwritten), otherwise generated when `create`; missing values are added and the result written
+ * back and read again. Returns {bundle, existed, added}.
+ */
+export async function loadBundle({ s3, env, passphrase, create, fetch: f, now, rand, kdf, log = () => {} }) {
+  assertPassphrase(passphrase);
+  const key = bundleKey(env);
+  const text = await getObjectOrNull(s3, key, { fetch: f, now });
+  const existing = text ? decryptBundle(text, passphrase, env) : null;
+  if (!existing && !create) throw new Error(`нет ключей ${env} (${key}): сначала запустите bootstrap-pilot`);
+  const { bundle, added } = ensureBundle(existing, env, { rand, now });
+  if (added.length > 0) {
+    await saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, kdf });
+    log(
+      `ключи ${env}: ${existing ? "дополнены" : "созданы"} (${added.join(", ")}), сохранены зашифрованными`,
+    );
+  }
+  return { bundle, existed: Boolean(existing), added };
+}
+
+export async function saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, kdf }) {
+  const key = bundleKey(bundle.env);
+  const text = encryptBundle(bundle, passphrase, { rand, ...(kdf ? { kdf } : {}) });
+  await putObject(s3, key, text, { contentType: "application/json", fetch: f, now });
+  const back = await getObjectOrNull(s3, key, { fetch: f, now });
+  if (!back || JSON.stringify(decryptBundle(back, passphrase, bundle.env)) !== JSON.stringify(bundle))
+    throw new Error(`ключи ${bundle.env}: записанный файл не совпал с прочитанным`);
+}
+
+/** Public IPv4 of this runner (the temporary SSH rule admits only it). */
+export async function runnerIp(f = fetch) {
+  for (const url of ["https://api.ipify.org", "https://ipv4.icanhazip.com"]) {
+    try {
+      const r = await f(url);
+      const ip = (await r.text()).trim();
+      if (r.ok && /^(\d{1,3})(\.\d{1,3}){3}$/.test(ip) && ip.split(".").every((x) => Number(x) <= 255))
+        return ip;
+    } catch {}
+  }
+  throw new Error("не удалось узнать внешний IPv4 раннера");
+}
+
+/** Firewall group of the environment's VM (infra/tofu/timeweb/modules/env: "<name_prefix>-nodes"). */
+export async function findFirewall(api, env) {
+  const { groups = [] } = await api("GET", "/api/v1/firewall/groups?limit=100");
+  return groups.find((g) => g.name === `wizard-${env}-nodes`) ?? null;
+}
+
+/** Removes every temporary SSH rule of the environment; returns how many. */
+export async function closeAdminAccess(api, env, { log = () => {} } = {}) {
+  const g = await findFirewall(api, env);
+  if (!g) return 0;
+  const { rules = [] } = await api("GET", `/api/v1/firewall/groups/${g.id}/rules?limit=100`);
+  const temp = rules.filter((r) => String(r.description ?? "").startsWith(TEMP_RULE_PREFIX));
+  for (const r of temp) await api("DELETE", `/api/v1/firewall/groups/${g.id}/rules/${r.id}`);
+  if (temp.length) log(`SSH закрыт: удалено временных правил — ${temp.length}`);
+  return temp.length;
+}
+
+/**
+ * SSH (tcp/22) to the VM from `ip`/32 only, for this job. Stale temporary rules (a killed job) go first; the k3s API
+ * and the registry port are never opened — the API is reached through the SSH tunnel.
+ */
+export async function openAdminAccess(api, env, ip, { runId = "local", log = () => {} } = {}) {
+  const g = await findFirewall(api, env);
+  if (!g) throw new Error(`нет firewall wizard-${env}-nodes: OpenTofu его не создал`);
+  if (g.policy && g.policy !== "DROP")
+    log(
+      `::warning::firewall wizard-${env}-nodes: политика ${g.policy}, а не DROP — проверьте в панели Timeweb`,
+    );
+  await closeAdminAccess(api, env);
+  const { rule } = await api("POST", `/api/v1/firewall/groups/${g.id}/rules`, {
+    direction: "ingress",
+    protocol: "tcp",
+    port: "22",
+    cidr: `${ip}/32`,
+    description: `${TEMP_RULE_PREFIX} ssh run ${runId}`,
+  });
+  log(`SSH открыт для ${ip}/32 на время задания`);
+  return rule?.id ?? null;
+}
+
+/**
+ * SQL of the founder access (psql variables only, fully qualified names): one founder invitation while the address has
+ * no account (beta_readiness gates invitations of partners, not the operator's own account), then is_staff once the
+ * founder has signed in. Prints the user id when staff is granted — the Job's exit condition.
+ */
+export const FOUNDER_STAFF_SQL = `
+UPDATE platform.pilot_invites SET revoked_at = now()
+ WHERE email = lower(:'email') AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= now();
+INSERT INTO platform.pilot_invites (email, org_name, credits, expires_at)
+SELECT lower(:'email'), 'Wizard', 0, now() + interval '30 days'
+ WHERE NOT EXISTS (SELECT 1 FROM platform.users u WHERE u.email = lower(:'email') AND u.deleted_at IS NULL)
+   AND NOT EXISTS (SELECT 1 FROM platform.pilot_invites i
+                    WHERE i.email = lower(:'email') AND i.accepted_at IS NULL AND i.revoked_at IS NULL);
+UPDATE platform.users SET is_staff = true
+ WHERE email = lower(:'email') AND deleted_at IS NULL
+RETURNING id;
+`;
+
+const FOUNDER_STAFF_LOOP = [
+  "while :; do",
+  '  out="$(printf "%s" "$FOUNDER_SQL" | psql -X -q -A -t -v ON_ERROR_STOP=1 -1 -v email="$FOUNDER_EMAIL" -f -)" && [ -n "$out" ] && {',
+  '    echo \'{"level":"info","svc":"pilot","msg":"founder_staff_granted"}\'; exit 0; }',
+  "  sleep 30",
+  "done",
+].join("\n");
+
+export const FOUNDER_JOB = "wizard-founder-staff";
+
+/**
+ * One-off Job that waits for the founder's first sign-in and makes the account staff (MFA is enrolled on the first
+ * visit of /admin). Runs as a pg-job pod (NetworkPolicy wizard-pg-job: only the database), image wizard-postgres.
+ */
+export function founderStaffJob({ image, email, pullSecret = "wizard-ghcr" }) {
+  return {
+    apiVersion: "batch/v1",
+    kind: "Job",
+    metadata: {
+      name: FOUNDER_JOB,
+      namespace: PLATFORM_NS,
+      labels: { "app.kubernetes.io/part-of": "wizard" },
+    },
+    spec: {
+      backoffLimit: 30,
+      activeDeadlineSeconds: 30 * 24 * 3600,
+      template: {
+        metadata: { labels: { "wizard.ru/role": "pg-job", "app.kubernetes.io/part-of": "wizard" } },
+        spec: {
+          restartPolicy: "OnFailure",
+          automountServiceAccountToken: false,
+          enableServiceLinks: false,
+          imagePullSecrets: [{ name: pullSecret }],
+          securityContext: {
+            runAsNonRoot: true,
+            runAsUser: 999,
+            runAsGroup: 999,
+            seccompProfile: { type: "RuntimeDefault" },
+          },
+          containers: [
+            {
+              name: "grant",
+              image,
+              imagePullPolicy: "IfNotPresent",
+              command: ["sh", "-c", FOUNDER_STAFF_LOOP],
+              env: [
+                { name: "PGHOST", value: `wizard-postgres.${PLATFORM_NS}.svc` },
+                { name: "PGPORT", value: "5432" },
+                { name: "PGUSER", value: "wizard" },
+                { name: "PGDATABASE", value: "wizard" },
+                {
+                  name: "PGPASSWORD",
+                  valueFrom: { secretKeyRef: { name: "wizard-postgres", key: "POSTGRES_PASSWORD" } },
+                },
+                { name: "FOUNDER_EMAIL", value: email },
+                { name: "FOUNDER_SQL", value: FOUNDER_STAFF_SQL },
+              ],
+              resources: {
+                requests: { cpu: "10m", memory: "16Mi" },
+                limits: { cpu: "200m", memory: "64Mi" },
+              },
+              securityContext: {
+                allowPrivilegeEscalation: false,
+                readOnlyRootFilesystem: true,
+                capabilities: { drop: ["ALL"] },
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
+const emailMark = (email) =>
+  createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 16);
+
+/** Non-secret next steps for the job summary (Russian, no addresses, no values). */
+export function summaryText({ env, command, domains, tag, state }) {
+  const url = `https://${domains.platform}`;
+  const lines = [`## Пилот ${env}: ${command === "destroy" ? "удалён" : "готово"}`, ""];
+  if (command === "destroy")
+    return [...lines, "Окружение и его бакеты удалены. Ключи остаются в бакете состояния."].join("\n");
+  lines.push(`- Платформа: ${url}/`, `- Версия: \`${tag}\``, "");
+  if (state.restored)
+    lines.push(
+      "**ВМ была пересоздана.** PostgreSQL поднят из архива WAL-G, том `.data` восстановлен из копии. Проверьте последние изменения клиентов.",
+      "",
+    );
+  if (state.bundleCreated)
+    lines.push(
+      "- Ключи окружения созданы и зашифрованы паролем `WIZARD_STATE_PASSPHRASE`. Держите его в менеджере паролей: без него архив базы не расшифровать.",
+    );
+  if (state.staff === "pending")
+    lines.push(
+      `- Откройте ${url}/login и войдите с почтой из \`WIZARD_FOUNDER_EMAIL\`: код придёт письмом.`,
+      `- Через минуту после первого входа учётка получит права staff. Откройте ${url}/admin и включите MFA (приложение-аутентификатор), коды восстановления сохраните.`,
+    );
+  else if (state.staff === "done") lines.push(`- Консоль модерации: ${url}/admin (вход с MFA).`);
+  else lines.push("- `WIZARD_FOUNDER_EMAIL` не задан: права staff не выдавались.");
+  if (env === "staging")
+    lines.push("- Staging оплачивается по часам: удалите его через bootstrap-pilot → destroy.");
+  return lines.join("\n");
+}
+
+function mask(values, vars, log) {
+  if (vars.GITHUB_ACTIONS !== "true") return;
+  for (const v of values) if (v && String(v).length >= 6) log(`::add-mask::${v}`);
+}
+
+/**
+ * Entry: returns the exit code. deps (tests): fetch, now, rand, sleep, log, run/has/exists (passed to infra.mjs),
+ * infraMain, skipSmoke, kdf.
+ */
+export async function main(argv = process.argv.slice(2), vars = process.env, deps = {}) {
+  const o = parseArgs(argv);
+  const log = deps.log ?? ((s) => console.log(s));
+  const f = deps.fetch ?? fetch;
+  const now = deps.now ?? (() => new Date());
+  const rand = deps.rand ?? randomBytes;
+  const problems = checkInputs(o.command, vars);
+  if (problems.length > 0) {
+    const text = problems.map(([n, why]) => `  - ${n}: ${why}`).join("\n");
+    log(
+      `::error title=pilot::Не хватает настроек GitHub (docs/ops/deploy.md «Что нужно от основателя»):\n${text}`,
+    );
+    if (vars.GITHUB_STEP_SUMMARY)
+      appendFileSync(vars.GITHUB_STEP_SUMMARY, `## Пилот: не хватает настроек\n\n${text}\n`);
+    return 2;
+  }
+  const api = twcClient({ token: vars.TWC_TOKEN, fetch: f });
+  if (o.command === "close-access") {
+    await closeAdminAccess(api, o.env, { log });
+    return 0;
+  }
+
+  const state = await ensureStateBucket(api, { create: o.command === "bootstrap", sleep: deps.sleep, log });
+  if (!state) {
+    log(`::error title=pilot::Нет бакета ${STATE_BUCKET}: сначала запустите bootstrap-pilot для ${o.env}.`);
+    return 3;
+  }
+  mask([state.accessKeyId, state.secretAccessKey], vars, log);
+  const s3 = stateS3(state);
+  const passphrase = vars.WIZARD_STATE_PASSPHRASE;
+  const { bundle, existed } = await loadBundle({
+    s3,
+    env: o.env,
+    passphrase,
+    create: o.command === "bootstrap",
+    fetch: f,
+    now,
+    rand,
+    kdf: deps.kdf,
+    log,
+  });
+  mask(secretValues(bundle), vars, log);
+  if (o.command === "show-secrets") {
+    if (vars.GITHUB_ACTIONS === "true")
+      throw new Error("show-secrets: только на компьютере основателя, не в CI");
+    process.stdout.write(`${JSON.stringify(bundle, null, 2)}\n`);
+    return 0;
+  }
+
+  const work = join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-pilot-${o.env}`);
+  mkdirSync(work, { recursive: true, mode: 0o700 });
+  const file = (name, text) => {
+    const p = join(work, name);
+    writeFileSync(p, text, { mode: 0o600 });
+    chmodSync(p, 0o600);
+    return p;
+  };
+  const sshKey = file("id_ed25519", bundle.secrets.SSH_PRIVATE_KEY);
+  const varFile = file(
+    "pilot.tfvars.json",
+    JSON.stringify(tfvars(o.env, vars, bundle.secrets.SSH_PUBLIC_KEY), null, 2),
+  );
+  const ivars = {
+    ...vars,
+    WIZARD_PROVIDER: "timeweb",
+    WIZARD_TF_STATE_BUCKET: state.bucket,
+    WIZARD_TF_STATE_ACCESS_KEY_ID: state.accessKeyId,
+    WIZARD_TF_STATE_SECRET_ACCESS_KEY: state.secretAccessKey,
+    WIZARD_TF_STATE_PASSPHRASE: passphrase,
+    WIZARD_TFVARS_FILE: varFile,
+    WIZARD_SSH_KEY_FILE: sshKey,
+    WIZARD_K3S_ACCESS: "tunnel",
+    WIZARD_ACME_EMAIL: vars.WIZARD_ACME_EMAIL || vars.WIZARD_FOUNDER_EMAIL || "",
+    WIZARD_SMOKE_ATTEMPTS: vars.WIZARD_SMOKE_ATTEMPTS || "20",
+    RUNNER_TEMP: work,
+  };
+
+  const st = { bundleCreated: !existed, fresh: false, restored: false, staff: "none", outputs: null };
+  const founder = (vars.WIZARD_FOUNDER_EMAIL ?? "").trim().toLowerCase();
+  const hooks = {
+    beforeCluster: async (outputs) => {
+      st.outputs = outputs;
+      mask(
+        Object.values(outputs.s3_keys ?? {}).flatMap((k) => [k?.access_key, k?.secret_key]),
+        vars,
+        log,
+      );
+      const files = clusterSecretFiles({ bundle, outputs, inputs: vars });
+      mkdirSync(join(work, "pgbouncer"), { recursive: true, mode: 0o700 });
+      const extra = {
+        WIZARD_PLATFORM_ENV_FILE: file("platform.env", files.platformEnv),
+        WIZARD_POSTGRES_ENV_FILE: file("postgres.env", files.postgresEnv),
+        WIZARD_DNS_SOLVER_ENV_FILE: file("dns-solver.env", files.dnsSolverEnv),
+        WIZARD_PGBOUNCER_SECRET_DIR: join(work, "pgbouncer"),
+      };
+      file(join("pgbouncer", "userlist.txt"), files.userlist);
+      const ip = await runnerIp(f);
+      await openAdminAccess(api, o.env, ip, { runId: vars.GITHUB_RUN_ID, log });
+      return { vars: extra, close: () => closeAdminAccess(api, o.env, { log }) };
+    },
+    afterKubeconfig: async ({ kubectl }) => {
+      // A listing, not a `get` of one namespace: an unreachable API must fail here, never read as "fresh cluster"
+      // (that would restore .data over live files).
+      const names = String(kubectl(["get", "namespaces", "-o", "name"], { capture: true }).stdout ?? "");
+      if (!names.includes("namespace/")) throw new Error("kubectl: пустой список пространств имён");
+      st.fresh = !names.split(/\s+/).includes(`namespace/${PLATFORM_NS}`);
+      if (st.fresh)
+        log(st.bundleCreated ? "кластер новый: первый выкат" : "кластер пустой при существующих ключах");
+    },
+    afterRelease: async ({ kubectl, outputs, tag }) => {
+      let changed = false;
+      // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.
+      if (st.fresh && bundle.deployedAt) {
+        const job = `wizard-data-restore-${Math.floor(now().getTime() / 1000)}`;
+        log("ВМ пересоздана: восстанавливаю .data из копии в бакете backups");
+        kubectl(["-n", PLATFORM_NS, "create", "job", `--from=cronjob/wizard-data-restore`, job]);
+        kubectl(["-n", PLATFORM_NS, "wait", "--for=condition=complete", `job/${job}`, "--timeout=30m"]);
+        kubectl(["-n", PLATFORM_NS, "rollout", "restart", "deployment"]);
+        st.restored = true;
+      }
+      if (founder) {
+        const mark = emailMark(founder);
+        if (bundle.founderStaff === mark) st.staff = "done";
+        else {
+          const r = kubectl(
+            ["-n", PLATFORM_NS, "get", "job", FOUNDER_JOB, "-o", "jsonpath={.status.succeeded}"],
+            { capture: true, allowFail: true },
+          );
+          if (r.status === 0 && String(r.stdout).trim() === "1") {
+            bundle.founderStaff = mark;
+            changed = true;
+            st.staff = "done";
+          } else {
+            kubectl(["-n", PLATFORM_NS, "delete", "job", FOUNDER_JOB, "--ignore-not-found"]);
+            const image = `${outputs.env.registry_url}/wizard-postgres:${tag}`;
+            kubectl(["apply", "-f", "-"], {
+              input: JSON.stringify(founderStaffJob({ image, email: founder })),
+            });
+            st.staff = "pending";
+          }
+        }
+      }
+      if (!bundle.deployedAt) {
+        bundle.deployedAt = now().toISOString();
+        changed = true;
+      }
+      if (changed) await saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, kdf: deps.kdf });
+    },
+  };
+
+  const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy" }[o.command];
+  const args = [command, "--env", o.env, "--yes", ...(o.tag ? ["--tag", o.tag] : [])];
+  const code = await (deps.infraMain ?? infraMain)(args, ivars, {
+    log,
+    hooks,
+    run: deps.run,
+    has: deps.has,
+    exists: deps.exists,
+    sleep: deps.sleep,
+    fetch: deps.fetch,
+    skipSmoke: deps.skipSmoke,
+    skipImageWait: deps.skipImageWait,
+  });
+  if (code === 0) {
+    const text = summaryText({
+      env: o.env,
+      command: o.command,
+      domains: { platform: vars.WIZARD_PLATFORM_DOMAIN },
+      tag: o.tag,
+      state: st,
+    });
+    log(text);
+    if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  }
+  return code;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error(`::error title=pilot::${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    },
+  );
+}

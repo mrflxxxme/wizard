@@ -1,0 +1,41 @@
+# Release of one SHA of main to the pilot (docs/ops/deploy.md «Пилот: одна кнопка»): images into GHCR when missing,
+# then Secrets and Helm only — no OpenTofu apply, no addons (bootstrap-pilot.yml does those). Only the repository
+# owner, only from main, full SHA; prod needs the word PROD. Shares the concurrency group with bootstrap-pilot.
+name: deploy-pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Окружение"
+        type: choice
+        options: [prod, staging]
+        default: prod
+      sha:
+        description: "Полный SHA коммита main"
+        required: true
+        type: string
+      confirm:
+        description: "Для prod введите PROD"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    uses: ./.github/workflows/pilot-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      env: ${{ inputs.env }}
+      command: deploy
+      sha: ${{ inputs.sha }}
+      confirm: ${{ inputs.confirm }}
+    secrets: inherit

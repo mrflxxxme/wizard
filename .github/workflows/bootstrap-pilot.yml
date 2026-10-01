@@ -1,0 +1,47 @@
+# One button for the pilot (docs/ops/deploy.md «Пилот: одна кнопка»): creates — or brings back after the loss of the VM
+# — the whole environment on Timeweb Cloud from GitHub-hosted runners: state bucket and keys, encrypted secrets bundle,
+# VM, k3s, addons, Secrets, release, founder access. Idempotent: running it again changes only what is missing.
+# Only the repository owner, only from main; prod needs the word PROD. staging can also be destroyed here.
+name: bootstrap-pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Окружение"
+        type: choice
+        options: [prod, staging]
+        default: prod
+      action:
+        description: "apply — создать/обновить/восстановить; destroy — удалить (только staging)"
+        type: choice
+        options: [apply, destroy]
+        default: apply
+      sha:
+        description: "Полный SHA коммита main (пусто — последний коммит main)"
+        type: string
+        default: ""
+      confirm:
+        description: "Для prod введите PROD"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    uses: ./.github/workflows/pilot-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      env: ${{ inputs.env }}
+      command: ${{ inputs.action == 'destroy' && 'destroy' || 'bootstrap' }}
+      sha: ${{ inputs.sha }}
+      confirm: ${{ inputs.confirm }}
+    secrets: inherit

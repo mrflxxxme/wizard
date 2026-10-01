@@ -91,3 +91,72 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
     expect(JSON.stringify(images.jobs.build)).toContain("cyclonedx-json");
   });
 });
+
+describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
+  it("bootstrap and deploy: workflow_dispatch only, one concurrency group per environment, the shared reusable", () => {
+    for (const [f, command] of [
+      ["bootstrap-pilot.yml", gh("inputs.action == 'destroy' && 'destroy' || 'bootstrap'")],
+      ["deploy-pilot.yml", "deploy"],
+    ]) {
+      const { doc, on } = load(f);
+      expect(Object.keys(on)).toEqual(["workflow_dispatch"]);
+      expect(on.workflow_dispatch.inputs.env.options).toEqual(["prod", "staging"]);
+      expect(doc.concurrency).toEqual({ group: `pilot-${gh("inputs.env")}`, "cancel-in-progress": false });
+      expect(doc.jobs.pilot.uses).toBe("./.github/workflows/pilot-reusable.yml");
+      expect(doc.jobs.pilot.with.command).toBe(command);
+      expect(doc.jobs.pilot.permissions).toEqual({ contents: "read", packages: "write" });
+    }
+    expect(load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action.options).toEqual([
+      "apply",
+      "destroy",
+    ]);
+  });
+
+  it("owner, main, environment, PROD and a full SHA are checked before any secret is read", () => {
+    const { doc } = load("pilot-reusable.yml");
+    const a = doc.jobs.authorize;
+    expect(a["runs-on"]).toBe("ubuntu-latest");
+    expect(JSON.stringify(a)).not.toContain("secrets.");
+    for (const check of [
+      '"$ACTOR" != "$OWNER"',
+      '"$TRIGGERING_ACTOR" != "$OWNER"',
+      "refs/heads/main",
+      '"$CONFIRM" != "PROD"',
+      '"$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging"',
+      "{40}",
+    ])
+      expect(a.steps[0].run).toContain(check);
+    expect(doc.jobs.images.needs).toBe("authorize");
+    expect(doc.jobs.images.with).toEqual({ sha: gh("needs.authorize.outputs.sha"), ghcr: true });
+    expect(doc.jobs.pilot.needs).toEqual(["authorize", "images"]);
+  });
+
+  it("the pilot job: GitHub-hosted, environment-scoped, read-only token, SSH closed whatever happens", () => {
+    const { doc } = load("pilot-reusable.yml");
+    const job = doc.jobs.pilot;
+    expect(job["runs-on"]).toBe("ubuntu-24.04");
+    expect(job.environment).toBe(gh("inputs.env"));
+    expect(job.permissions).toEqual({ contents: "read", packages: "read" });
+    expect(job.env.WIZARD_GHCR_TOKEN).toBe(gh("secrets.WIZARD_GHCR_TOKEN || github.token"));
+    for (const n of ["TWC_TOKEN", "WIZARD_STATE_PASSPHRASE", "CLOUDRU_API_KEY", "WIZARD_SMTP_PASSWORD"])
+      expect(job.env[n]).toBe(gh(`secrets.${n}`));
+    for (const n of [
+      "WIZARD_PLATFORM_DOMAIN",
+      "WIZARD_SYSTEMS_DOMAIN",
+      "WIZARD_ACME_EMAIL",
+      "WIZARD_FOUNDER_EMAIL",
+    ])
+      expect(job.env[n]).toBe(gh(`vars.${n}`));
+    const names = job.steps.map((s) => s.name ?? s.uses);
+    expect(names).toEqual(expect.arrayContaining(["Only commits of main", "Close SSH access"]));
+    const close = job.steps.find((s) => s.name === "Close SSH access");
+    expect(close.if).toBe("always()");
+    expect(close.run).toContain("pilot.mjs close-access");
+    expect(JSON.stringify(job)).not.toContain("self-hosted");
+    // Images: the pilot's SHA into GHCR when missing; a call never cancels a push's run.
+    const images = load("images.yml");
+    expect(Object.keys(images.on.workflow_call.inputs)).toEqual(["sha", "ghcr"]);
+    expect(images.doc.concurrency.group).toBe(`images-${gh("github.workflow")}-${gh("github.ref")}`);
+    expect(JSON.stringify(images.doc.jobs.build.steps)).toContain("imagetools inspect");
+  });
+});
