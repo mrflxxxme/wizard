@@ -152,6 +152,8 @@ const platform = await createPlatformApi({
     outboxDir: M1_OUTBOX,
     runtimePort: M1.runtime,
     platformOrigin: `http://localhost:${M1.web}`,
+    // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
+    buildDefaultTier: "T1",
   },
   executors: (d) => ({
     ...createAgentExecutors(d),

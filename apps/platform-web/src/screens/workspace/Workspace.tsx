@@ -6,13 +6,14 @@ import type {
   Answer,
   DiffChange,
   GateReport,
+  LockStatus,
   RevisionSummary,
   RunEvent,
   SystemCard,
   SystemView,
   Theme,
 } from "../../api/types.js";
-import { usePlatform } from "../../app/context.js";
+import { canEdit, usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
@@ -52,7 +53,9 @@ export function publishTarget(
 type Segment = "draft" | "prod" | "changes";
 
 export function Workspace({ systemId }: { systemId: string }): ReactNode {
-  const { api, settings } = usePlatform();
+  const { api, settings, roleIn, auth } = usePlatform();
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [lock, setLock] = useState<LockStatus | null>(null);
   const { search } = useRoute();
   const [view, setView] = useState<SystemView | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
@@ -175,6 +178,23 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     [reload, refreshGates],
   );
 
+  // S4 M1: «<Имя> собирает» (GET /systems/:id/lock) while a build holds the system; a new run re-reads it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runId is the re-read trigger
+  useEffect(() => {
+    if (stage !== "building") {
+      setLock(null);
+      return;
+    }
+    let live = true;
+    api
+      .getLock(systemId)
+      .then((l) => live && setLock(l))
+      .catch(() => live && setLock(null));
+    return () => {
+      live = false;
+    };
+  }, [api, systemId, stage, runId]);
+
   useEffect(() => {
     if (!runId) return;
     dispatch({ type: "reset" });
@@ -237,10 +257,18 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     await reload().catch(() => {});
   }
 
+  /** POST publish (owner, confirmDiff); 403/422 come back as message_ru (the UI is not the protection, D8/D11). */
   async function publish(revision: number) {
-    const r = await act("publish", () => api.publish(systemId, revision));
-    if (!r) return;
-    setRunId(r.run.id);
+    setBusy("publish");
+    setPublishError(null);
+    try {
+      const r = await api.publish(systemId, revision);
+      setRunId(r.run.id);
+    } catch (e) {
+      setPublishError(errText(e));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function cancelDraft(toRevision: number) {
@@ -278,6 +306,9 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const running =
     runId !== null && (run.phase === "idle" || run.phase === "running" || run.phase === "needs_input");
   const locked = stage === "building";
+  const role = roleIn(view.system.orgId);
+  const editor = canEdit(role, auth);
+  const readOnly = !editor && auth === "ready";
   const buildRun = run.kind === "build" || (run.kind === undefined && stage === "building");
   const interviewFailure = run.kind === "interview_turn" ? run.failure : null;
   const retryText =
@@ -373,7 +404,21 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               onPublish={() => void publish(target)}
             />
           )}
-          <PublishCard slug={system.slug} blockers={blockers} onEdit={focusInput} />
+          <PublishCard
+            systemId={systemId}
+            slug={system.slug}
+            blockers={blockers}
+            codes={view.publishBlockers ?? []}
+            prodRevision={system.prodRevision ?? null}
+            prodUrl={system.prodUrl ?? null}
+            revision={target}
+            showSubmit={!showDiff}
+            running={running}
+            busy={busy === "publish"}
+            error={publishError}
+            onEdit={focusInput}
+            onPublish={() => target !== null && void publish(target)}
+          />
         </>
       )}
       {stage === "failed" && !run.failure && (
@@ -399,6 +444,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
         buildModelLabel={settings?.buildModelLabel}
         busy={busy === "approve"}
         error={null}
+        canBuild={editor}
         onBuild={() => void approve()}
         onEdit={focusInput}
       />
@@ -431,7 +477,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
             size="sm"
             variant={styleOpen ? "primary" : "secondary"}
             data-testid="style-toggle"
-            disabled={theme === null}
+            disabled={theme === null || !editor}
             onClick={() => setQueryParam("panel", styleOpen ? null : "style")}
           >
             {ru.workspace.styleToggle}
@@ -463,6 +509,11 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
             </Pill>
           )}
           {running && <Pill tone="accent">{ru.build.running}</Pill>}
+          {lock?.held && lock.holder && (
+            <Pill tone="warn" testId="chat-lock">
+              {ru.workspace.holder(lock.holder.name)}
+            </Pill>
+          )}
         </header>
         <div className={s.chatScroll}>{chatBody}</div>
         <footer className={s.chatFoot}>
@@ -478,13 +529,15 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               className={s.textarea}
               aria-label={ru.workspace.inputPlaceholder}
               placeholder={
-                locked
-                  ? ru.workspace.lockedHint
-                  : stage === "card"
-                    ? ru.workspace.inputPlaceholderCard
-                    : ru.workspace.inputPlaceholder
+                readOnly
+                  ? ru.workspace.viewerHint
+                  : locked
+                    ? ru.workspace.lockedHint
+                    : stage === "card"
+                      ? ru.workspace.inputPlaceholderCard
+                      : ru.workspace.inputPlaceholder
               }
-              disabled={locked}
+              disabled={locked || readOnly}
               maxLength={8000}
               rows={2}
               value={text}
@@ -502,13 +555,14 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               variant="primary"
               size="sm"
               data-testid="chat-send"
-              disabled={locked || !text.trim()}
+              disabled={locked || readOnly || !text.trim()}
               loading={busy === "message"}
             >
               {ru.workspace.send}
             </Button>
           </form>
           {locked && <p className={s.small}>{ru.workspace.lockedHint}</p>}
+          {readOnly && !locked && <p className={s.small}>{ru.workspace.viewerHint}</p>}
         </footer>
       </section>
       <main className={s.main}>

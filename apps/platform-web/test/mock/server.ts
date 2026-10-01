@@ -370,6 +370,16 @@ export class MockPlatform {
         nextCursor: null,
       });
     if (req.method === "POST" && p === "/systems") return json(201, this.#create(String(b.prompt ?? "")));
+    // M1 accounts (M1-11): the local user owns the local organization.
+    if (req.method === "GET" && p === "/me")
+      return json(200, {
+        user: { id: "00000000-0000-4000-8000-00000000d001", email: "dev@wizard.local", name: null },
+        memberships: [{ orgId: ORG, orgName: "Локальная организация", role: "owner" }],
+      });
+    if (req.method === "GET" && /^\/orgs\/[^/]+\/members$/.test(p))
+      return json(200, {
+        items: [{ userId: "00000000-0000-4000-8000-00000000d001", email: "dev@wizard.local", role: "owner" }],
+      });
     if (/^\/orgs\/([^/]+)\/settings$/.test(p)) {
       return this.opts.orgSettings ? json(200, this.opts.orgSettings) : fail(404, "NOT_FOUND", "Не найдено");
     }
@@ -561,6 +571,7 @@ export class MockPlatform {
       ]);
       return json(202, { run: st.run });
     }
+    if (method === "GET" && rest === "/lock") return json(200, { held: false, queue: [] });
     const m = /^\/revisions\/(\d+)$/.exec(rest);
     if (method === "GET" && m) {
       return json(200, {

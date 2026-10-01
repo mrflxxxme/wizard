@@ -1,11 +1,24 @@
-// Minimal History API router (platform-screens.yaml#stack): "/", "/s/:systemId", "/s/:systemId/code".
+// Minimal History API router (platform-screens.yaml#stack, ≤ 10 routes): "/", "/login", "/invite/:token",
+// "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/legal/:doc".
 import { useSyncExternalStore } from "react";
 
 export type Route =
   | { name: "start" }
   | { name: "system"; systemId: string }
   | { name: "code"; systemId: string }
+  | { name: "settings"; systemId: string }
+  | { name: "login" }
+  | { name: "invite"; token: string }
+  | { name: "legal"; doc: string }
   | { name: "notFound" };
+
+/** Routes reachable without a session (S-auth, S-invite, documents). */
+export const PUBLIC_ROUTES: ReadonlySet<Route["name"]> = new Set(["login", "invite", "legal"]);
+
+/** next after login: only a path of this origin (^/(?![/\\]), platform-screens.yaml S-auth). */
+export function safeNext(next: string | null | undefined): string {
+  return next && /^\/(?![/\\])/.test(next) ? next : "/";
+}
 
 const EVENT = "wz:navigate";
 
@@ -32,8 +45,14 @@ export function useLocationKey(): string {
 
 export function matchRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { name: "start" };
-  const m = /^\/s\/([A-Za-z0-9-]{1,64})(?:\/(code))?\/?$/.exec(pathname);
+  if (pathname === "/login") return { name: "login" };
+  const inv = /^\/invite\/([A-Za-z0-9_-]{32,128})\/?$/.exec(pathname);
+  if (inv) return { name: "invite", token: inv[1] as string };
+  const legal = /^\/legal\/(offer|pd-consent|privacy)\/?$/.exec(pathname);
+  if (legal) return { name: "legal", doc: legal[1] as string };
+  const m = /^\/s\/([A-Za-z0-9-]{1,64})(?:\/(code|settings))?\/?$/.exec(pathname);
   if (m?.[2] === "code") return { name: "code", systemId: m[1] as string };
+  if (m?.[2] === "settings") return { name: "settings", systemId: m[1] as string };
   if (m) return { name: "system", systemId: m[1] as string };
   return { name: "notFound" };
 }

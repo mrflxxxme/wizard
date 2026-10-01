@@ -5,6 +5,10 @@ import type {
   ApiErrorBody,
   DiffChange,
   GateReport,
+  Invite,
+  LockStatus,
+  Me,
+  Member,
   Message,
   OrgSettings,
   PreviewUrl,
@@ -15,6 +19,7 @@ import type {
   System,
   SystemView,
   Theme,
+  User,
 } from "./types.js";
 
 export const API_BASE = "/api/v1";
@@ -39,6 +44,8 @@ export interface ClientOptions {
   /** M0: X-Wizard-Dev-User; omitted → dev@wizard.local on the server. */
   devUser?: string;
   fetch?: typeof fetch;
+  /** 401 UNAUTHORIZED of any call (session expired or absent, api.yaml x-auth M1) → the app shows /login. */
+  onUnauthorized?: () => void;
 }
 
 export const newIdempotencyKey = (): string => crypto.randomUUID();
@@ -102,17 +109,25 @@ export function createApiClient(opts: ClientOptions = {}) {
     } catch {
       data = null;
     }
-    if (!res.ok) throw new ApiError(res.status, (data as ApiErrorBody | null) ?? null);
+    if (!res.ok) {
+      const err = new ApiError(res.status, (data as ApiErrorBody | null) ?? null);
+      if (res.status === 401 && err.code === "UNAUTHORIZED") opts.onUnauthorized?.();
+      throw err;
+    }
     return data as T;
   }
 
   const sys = (id: string) => `/systems/${encodeURIComponent(id)}`;
   const run = (id: string) => `/runs/${encodeURIComponent(id)}`;
+  const org = (id: string) => `/orgs/${encodeURIComponent(id)}`;
 
   return {
-    listSystems: () => call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems"),
-    createSystem: (body: { prompt: string; templateId?: string }, idempotencyKey = newIdempotencyKey()) =>
-      call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
+    listSystems: (orgId?: string) =>
+      call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems", { query: { orgId } }),
+    createSystem: (
+      body: { prompt: string; templateId?: string; orgId?: string },
+      idempotencyKey = newIdempotencyKey(),
+    ) => call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
     getSystem: (id: string) => call<SystemView>("GET", sys(id)),
     postMessage: (id: string, text: string, idempotencyKey = newIdempotencyKey()) =>
       call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, { body: { text }, idempotencyKey }),
@@ -176,8 +191,41 @@ export function createApiClient(opts: ClientOptions = {}) {
       id: string,
       body: { inputId: string; choice?: string; text?: string; secretValue?: string },
     ) => call<Run>("POST", `${run(id)}/input`, { body, idempotencyKey: newIdempotencyKey() }),
-    getOrgSettings: (orgId: string) =>
-      call<OrgSettings>("GET", `/orgs/${encodeURIComponent(orgId)}/settings`),
+    getOrgSettings: (orgId: string) => call<OrgSettings>("GET", `${org(orgId)}/settings`),
+    updateOrgSettings: (orgId: string, body: { ruOnly: boolean }) =>
+      call<OrgSettings>("PATCH", `${org(orgId)}/settings`, { body }),
+    // Accounts (api.yaml x-milestone M1, M1-02).
+    requestOtp: (email: string) => call<null>("POST", "/auth/otp/request", { body: { email } }),
+    verifyOtp: (body: { email: string; code: string; acceptOffer?: boolean; pdConsent?: boolean }) =>
+      call<{ user: User }>("POST", "/auth/otp/verify", { body }),
+    logout: () => call<null>("POST", "/auth/logout"),
+    getMe: () => call<Me>("GET", "/me"),
+    acceptInvite: (token: string) =>
+      call<Member>("POST", `/invites/${encodeURIComponent(token)}/accept`, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    listMembers: (orgId: string) => call<{ items: Member[] }>("GET", `${org(orgId)}/members`),
+    updateMemberRole: (orgId: string, userId: string, role: Member["role"]) =>
+      call<Member>("PATCH", `${org(orgId)}/members/${encodeURIComponent(userId)}`, { body: { role } }),
+    removeMember: (orgId: string, userId: string) =>
+      call<null>("DELETE", `${org(orgId)}/members/${encodeURIComponent(userId)}`),
+    listInvites: (orgId: string) => call<{ items: Invite[] }>("GET", `${org(orgId)}/invites`),
+    createInvite: (orgId: string, body: { email: string; role: Member["role"] }) =>
+      call<Invite>("POST", `${org(orgId)}/invites`, { body, idempotencyKey: newIdempotencyKey() }),
+    revokeInvite: (orgId: string, inviteId: string) =>
+      call<null>("DELETE", `${org(orgId)}/invites/${encodeURIComponent(inviteId)}`),
+    getLock: (id: string) => call<LockStatus>("GET", `${sys(id)}/lock`),
+    releaseLock: (id: string) => call<null>("DELETE", `${sys(id)}/lock`),
+    setCompliance: (
+      id: string,
+      body: {
+        expectedVersion: number;
+        operatorName: string;
+        operatorContact: string;
+        operatorAddress?: string;
+        operatorInn?: string;
+      },
+    ) => call<{ revision: RevisionSummary }>("PUT", `${sys(id)}/compliance`, { body }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }

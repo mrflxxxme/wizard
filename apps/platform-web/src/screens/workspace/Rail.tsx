@@ -1,4 +1,4 @@
-// Rail of the workspace (platform-screens.yaml#regions.rail): logo → /, «+» new system.
+// Rail of the workspace (platform-screens.yaml#regions.rail): logo → /, «+» new system, system settings (M1, S10).
 import type { ReactNode } from "react";
 import { navigate } from "../../app/router.js";
 import { ru } from "../../i18n/ru.js";
@@ -31,7 +31,7 @@ function RailLink({
   );
 }
 
-export function Rail(_: { systemId?: string }): ReactNode {
+export function Rail({ systemId }: { systemId?: string }): ReactNode {
   return (
     <nav className={s.rail} aria-label={ru.appName}>
       <RailLink to="/" label={ru.rail.home} className={s.logo}>
@@ -40,6 +40,13 @@ export function Rail(_: { systemId?: string }): ReactNode {
       <RailLink to="/" label={ru.rail.newSystem} className={s.railButton}>
         +
       </RailLink>
+      {systemId && (
+        <RailLink to={`/s/${systemId}/settings`} label={ru.rail.settings} className={s.railButton}>
+          <span aria-hidden="true" data-testid="rail-settings">
+            ⚙
+          </span>
+        </RailLink>
+      )}
     </nav>
   );
 }
