@@ -7,6 +7,8 @@ export type LlmErrorCode =
   | "PII_IN_T1_PAYLOAD"
   | "RECORD_NOT_ALLOWED"
   | "IMPORT_PAYLOAD_NOT_SYNTHETIC"
+  | "T1_FORBIDDEN"
+  | "RUNTIME_AI_INVALID"
   | "ABORTED";
 
 /** Messages are user-facing (Russian); details never contain prompt text beyond what the spec allows (FIXTURE_MISS). */

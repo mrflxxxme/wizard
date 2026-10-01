@@ -10,9 +10,17 @@ import {
   loadAllowedBriefHashes,
   requestKey,
   schemaHash,
+  withoutAttachmentBytes,
 } from "./fixtures.js";
 import { forbidsT1, orgPolicyBus, type PolicyBus } from "./org-policy.js";
-import { assertNoTokens, decideTier, isCallType, type PolicyDecision } from "./policy.js";
+import {
+  assertNoTokens,
+  assertTierAllowed,
+  decideTier,
+  isCallType,
+  type PolicyDecision,
+  t1Forbidden,
+} from "./policy.js";
 import { type Env, LiveCallError, liveCall } from "./providers.js";
 import { createRegistry, type ModelDef, policyVersion, type Registry, type RouteDef } from "./registry.js";
 import type {
@@ -193,8 +201,10 @@ export function createRouter(opts: RouterOptions = {}): Router {
     if (decision.tier === "T1") assertNoTokens(decision.scrubbedMessages);
 
     // Step 8 + fallback_rules: the T1 chain only when the policy chose T1; T0 is always the reserve; never T0 → T1.
+    // T0-only calls (runtime_ai_*, support, multimodal) never get a T1 chain, whatever the registry says (M3-02).
+    const t0Only = t1Forbidden(callType, input.messages);
     const chain: ModelDef[] = [];
-    for (const tier of decision.tier === "T1" ? (["T1", "T0"] as const) : (["T0"] as const)) {
+    for (const tier of decision.tier === "T1" && !t0Only ? (["T1", "T0"] as const) : (["T0"] as const)) {
       for (const id of routeDef.chain[tier] ?? []) {
         const model = usable(id);
         if (model && model.tier === tier) chain.push(model);
@@ -289,6 +299,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
     for (let idx = 0; idx < chain.length; idx++) {
       const model = chain[idx] as ModelDef;
       const next = chain[idx + 1];
+      // Last line of defence: nothing T0-only reaches a T1 model, in any mode (fixture included).
+      assertTierAllowed(callType, model.tier, input.messages);
       const key = requestKey({
         callType,
         modelId: model.id,
@@ -451,7 +463,7 @@ function fixtureLine(
     modelId: model.id,
     // eval.yaml#fixtures.line.request: stored after scrub for any tier.
     request: {
-      messages: decision.scrubbedMessages,
+      messages: withoutAttachmentBytes(decision.scrubbedMessages),
       tools: (input.tools ?? []).map((t) => ({ name: t.name, schemaHash: schemaHash(t.parameters) })),
       params: { temperature: route.temperature, max_tokens: route.maxTokens },
     },

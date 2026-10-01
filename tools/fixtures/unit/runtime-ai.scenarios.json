@@ -1,0 +1,101 @@
+{
+  "about": "Scenarios of tools/fixtures/unit/runtime-ai.jsonl (M3-02): runtime AI actions over the «helpdesk» test spec of apps/runtime/test/ai-helpers.ts. Regenerate: pnpm --filter @wizard/platform-api exec tsx ../../packages/llm/test/gen-runtime-ai-fixtures.ts",
+  "png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "scenarios": [
+    {
+      "name": "classify_payment",
+      "action": {
+        "name": "classify_ticket",
+        "kind": "extract",
+        "instruction": "Определи категорию обращения и срочность от 1 до 5",
+        "outputs": [
+          {
+            "name": "category",
+            "label": "Категория",
+            "type": "enum",
+            "options": [
+              { "value": "billing", "label": "Оплата" },
+              { "value": "tech", "label": "Техника" },
+              { "value": "other", "label": "Другое" }
+            ]
+          },
+          { "name": "priority", "label": "Срочность", "type": "int", "min": 1, "max": 5 }
+        ]
+      },
+      "record": [
+        { "label": "Тема", "value": "Не проходит оплата картой" },
+        { "label": "Описание", "value": "Третий день не могу оплатить заказ: банк отклоняет платёж." }
+      ],
+      "response": {
+        "toolCalls": [{ "id": "call_1", "name": "fill_fields", "args": { "category": "billing", "priority": 2 } }],
+        "finishReason": "tool-calls"
+      },
+      "usage": { "promptTokens": 420, "cachedPromptTokens": 0, "completionTokens": 18 }
+    },
+    {
+      "name": "classify_login",
+      "action": {
+        "name": "classify_ticket",
+        "kind": "extract",
+        "instruction": "Определи категорию обращения и срочность от 1 до 5",
+        "outputs": [
+          {
+            "name": "category",
+            "label": "Категория",
+            "type": "enum",
+            "options": [
+              { "value": "billing", "label": "Оплата" },
+              { "value": "tech", "label": "Техника" },
+              { "value": "other", "label": "Другое" }
+            ]
+          },
+          { "name": "priority", "label": "Срочность", "type": "int", "min": 1, "max": 5 }
+        ]
+      },
+      "record": [
+        { "label": "Тема", "value": "Не могу войти в кабинет" },
+        { "label": "Описание", "value": "После обновления приложение не принимает код из письма." }
+      ],
+      "response": {
+        "toolCalls": [{ "id": "call_1", "name": "fill_fields", "args": { "category": "Техника", "priority": 9 } }],
+        "finishReason": "tool-calls"
+      },
+      "usage": { "promptTokens": 410, "cachedPromptTokens": 0, "completionTokens": 18 }
+    },
+    {
+      "name": "reply_payment",
+      "action": {
+        "name": "draft_reply",
+        "kind": "generate",
+        "instruction": "Напиши вежливый короткий ответ клиенту",
+        "outputs": [{ "name": "reply", "label": "Ответ клиенту", "type": "text", "maxLength": 2000 }]
+      },
+      "record": [
+        { "label": "Тема", "value": "Не проходит оплата картой" },
+        { "label": "Описание", "value": "Третий день не могу оплатить заказ: банк отклоняет платёж." }
+      ],
+      "response": {
+        "text": "<img src=x onerror=\"window.__wzXss=1\"><script>window.__wzXss=2</script>Здравствуйте! Проверим платёж и вернёмся с ответом сегодня.",
+        "toolCalls": [],
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 380, "cachedPromptTokens": 0, "completionTokens": 40 }
+    },
+    {
+      "name": "photo_serial",
+      "action": {
+        "name": "read_photo",
+        "kind": "extract",
+        "instruction": "Прочитай серийный номер устройства на фото",
+        "outputs": [{ "name": "serial", "label": "Серийный номер", "type": "string", "maxLength": 40 }]
+      },
+      "record": [{ "label": "Тема", "value": "Не включается терминал" }],
+      "attachments": [{ "mime": "image/png", "png": true }],
+      "response": {
+        "toolCalls": [{ "id": "call_1", "name": "fill_fields", "args": { "serial": "SN-12345" } }],
+        "finishReason": "tool-calls"
+      },
+      "usage": { "promptTokens": 900, "cachedPromptTokens": 0, "completionTokens": 12 }
+    }
+  ]
+}

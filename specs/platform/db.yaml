@@ -518,6 +518,39 @@ tables:
       evidence_note: "text not null"
     primary_key: [org_id, brand_id]
 
+  ai_action_calls:
+    milestone: M3
+    purpose: "M3-02: журнал вызовов ИИ-действий систем (runtime.yaml#ai_actions). id — ключ вызова от runtime (кнопка — случайный, шаг воркфлоу — wf:<jobId>:<step>, backfill — bf:<backfillId>:<recordId>): повтор с тем же id не считается в лимите aiAction.monthlyLimit повторно и не списывает кредиты второй раз (ledger charge с ключом ai:<systemId>:<yyyy-mm-ddThh>:<id>). Лимит месяца (Europe/Moscow) = число строк (system_id, action) со status ∈ {pending, ok}. Значений записей и ответов модели не хранит"
+    columns:
+      id: "text pk"
+      org_id: "uuid not null references platform.orgs"
+      system_id: "uuid not null references platform.systems"
+      env: "text not null check (env in ('draft','prod'))"
+      action: "text not null"
+      call_type: "text not null check (call_type in ('runtime_ai_extract','runtime_ai_generate'))"
+      source: "text not null check (source in ('button','workflow','backfill'))"
+      status: "text not null check (status in ('pending','ok','error'))"
+      error_code: "text"
+      credits_milli: "bigint not null default 0"
+      finished_at: "timestamptz"
+    indexes: ["(system_id, action, created_at)"]
+
+  ai_backfills:
+    milestone: M3
+    purpose: "M3-02: разовое заполнение старых записей ИИ-действием по флагу change-карточки (card.aiBackfill: имена aiActions). Сборка change создаёт строки pending для draft и prod; draft исполняется в конце сборки, prod — после переключения публикации, где спека содержит действие. Исполняет runtime (POST /_wizard/internal/ai-backfill на внутреннем порту) в пределах остатка aiAction.monthlyLimit"
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems"
+      env: "text not null check (env in ('draft','prod'))"
+      action: "text not null"
+      run_id: "uuid references platform.runs"
+      status: "text not null default 'pending' check (status in ('pending','done','failed'))"
+      filled: "integer not null default 0"
+      skipped: "integer not null default 0"
+      stop_code: "text"                                       # AI_LIMIT_REACHED | AI_CREDITS_EXHAUSTED | AI_UNAVAILABLE | RUNTIME_UNREACHABLE
+      finished_at: "timestamptz"
+    indexes: ["unique (system_id, env, action) where status = 'pending'"]
+
 views:
   wz_runtime.otp_sends:
     milestone: M1

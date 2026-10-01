@@ -1,6 +1,8 @@
 // /api/data/:entity — CRUD by AppSpec (runtime.yaml#data_api) on top of DataAccess.
+import { aiTargetFields } from "@wizard/appspec";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
+import { aiFilledFields } from "../ai/actions.js";
 import type { FilterCond, FilterOp, ListQuery, SortKey } from "../data/access.js";
 import { fieldsError } from "../data/validate.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
@@ -83,9 +85,16 @@ export function dataRoutes(): Hono<RuntimeHonoEnv> {
     const ipHmac = c.get("services").ipHmac?.(c.req.raw) ?? null;
     return c.json({ item: await data(c).create(subject, c.req.param("entity"), body, { ipHmac }) }, 201);
   });
-  app.get("/:entity/:id", async (c) =>
-    c.json({ item: await data(c).get(await subjectOf(c), c.req.param("entity"), c.req.param("id")) }),
-  );
+  app.get("/:entity/:id", async (c) => {
+    const entity = c.req.param("entity");
+    const id = c.req.param("id");
+    const item = await data(c).get(await subjectOf(c), entity, id);
+    // M3-02: record meta `_aiFilled` (RecordCard «заполнено ИИ») for entities that AI actions fill.
+    const targets = aiTargetFields(c.get("system").spec, entity);
+    if (targets.size === 0) return c.json({ item });
+    const marked = await aiFilledFields(c.get("system"), entity, id, targets);
+    return c.json({ item: { ...item, _aiFilled: marked.filter((f) => f in item) } });
+  });
   app.patch("/:entity/:id", async (c) => {
     const subject = await subjectOf(c);
     const body = await readJsonBody(c);

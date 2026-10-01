@@ -64,11 +64,15 @@ const M2_TABLES = [
   "abuse_reports",
   "staff_audit_log",
 ];
+// M3 tables created so far (M3-02 runtime AI actions: call journal and backfills).
+const M3_TABLES = ["ai_action_calls", "ai_backfills"];
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
   ...m0,
-  ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),
+  ...Object.entries(dbYaml.tables).filter(
+    ([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n) || M3_TABLES.includes(n),
+  ),
 ];
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;

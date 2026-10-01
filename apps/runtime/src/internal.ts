@@ -2,7 +2,10 @@
 // Service in the cloud (NetworkPolicy: platform-api, worker, egress-proxy and sandbox pods). The public port never
 // serves these paths (/_wizard/internal/* → 404 there).
 import { timingSafeEqual } from "node:crypto";
+import { WizardError } from "@wizard/sdk";
 import type postgres from "postgres";
+import { backfillAiAction, findAiAction } from "./ai/actions.js";
+import type { AiGatewayClient } from "./ai/gateway.js";
 import type { RuntimeEnv } from "./env.js";
 import { hostname, parseSystemHost } from "./http/guards.js";
 import type { SystemEnv } from "./registry.js";
@@ -22,6 +25,8 @@ export interface InternalOptions {
   egress?: { globalAllow: Iterable<string>; platformSmtpHost?: string };
   /** DB probe timeout (default 2 s). */
   dbTimeoutMs?: number;
+  /** M3-02: AI gateway of the platform for /_wizard/internal/ai-backfill. */
+  ai?: () => AiGatewayClient | null | undefined;
 }
 
 const json = (status: number, body: unknown) =>
@@ -114,6 +119,27 @@ export function createInternalHandler(o: InternalOptions): (req: Request) => Pro
         return json(400, { error: { code: "VALIDATION_FAILED" } });
       const evicted = o.systems.evict(body.systemId, body.env);
       return json(200, { evicted });
+    }
+
+    // M3-02 (runtime.yaml#ai_actions.triggers): one-time backfill of old records requested by the platform.
+    if (url.pathname === "/_wizard/internal/ai-backfill") {
+      if (
+        typeof body.systemId !== "string" ||
+        !isEnv(body.env) ||
+        typeof body.action !== "string" ||
+        typeof body.backfillId !== "string" ||
+        !/^[0-9a-f-]{36}$/.test(body.backfillId)
+      )
+        return json(400, { error: { code: "VALIDATION_FAILED" } });
+      const sys = await o.systems.current(body.systemId, body.env).catch(() => null);
+      if (!sys) return notFound();
+      try {
+        const action = findAiAction(sys, body.action);
+        return json(200, await backfillAiAction(sys, o.ai?.(), { action, backfillId: body.backfillId }));
+      } catch (e) {
+        if (e instanceof WizardError && e.code === "NOT_FOUND") return notFound();
+        throw e;
+      }
     }
 
     // Egress proxy (L3-24): Proxy-Authorization token → policy of the open call's system; the HMAC key stays here.

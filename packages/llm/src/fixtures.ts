@@ -101,7 +101,25 @@ export function canonicalRequest(input: CanonicalInput): string {
 }
 
 export function requestKey(input: CanonicalInput): string {
-  return sha256(canonicalRequest(input));
+  return sha256(canonicalRequest({ ...input, messages: withoutAttachmentBytes(input.messages) }));
+}
+
+/**
+ * Attachments (images, PDFs) are keyed and stored by content hash, never by their bytes: fixture lines stay small and
+ * hold no file contents (M3-02).
+ */
+export function withoutAttachmentBytes(messages: readonly LlmMessage[]): LlmMessage[] {
+  return messages.map((m) =>
+    m.role === "user" && m.attachments?.length
+      ? {
+          ...m,
+          attachments: m.attachments.map((a) => ({
+            ...a,
+            data: a.data.startsWith("sha256:") ? a.data : `sha256:${sha256(a.data)}`,
+          })),
+        }
+      : m,
+  );
 }
 
 export function findRepoRoot(start = process.cwd()): string {

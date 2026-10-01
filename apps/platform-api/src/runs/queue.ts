@@ -19,6 +19,13 @@ import {
 import { createLogger } from "@wizard/pii/log";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
+import {
+  backfillActions,
+  httpRuntimeBackfill,
+  type RuntimeAiBackfill,
+  requestBackfills,
+  runPendingBackfills,
+} from "../ai/backfill.js";
 import type { Billing } from "../billing/ledger.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
@@ -137,6 +144,8 @@ export interface EngineDeps {
   log?: (msg: string, err?: unknown) => void;
   /** publish/rollback: smoke check, DB roles, lock retry pauses (M1-04). */
   publish?: PublishOptions;
+  /** M3-02: AI backfill on the runtime (default: HTTP to WIZARD_RUNTIME_INTERNAL_URL with WIZARD_INTERNAL_TOKEN). */
+  aiBackfill?: RuntimeAiBackfill | null;
 }
 
 export interface NewRun {
@@ -1497,7 +1506,48 @@ export class RunEngine {
       await this.#assertPointEditScope(x, input.fromRevision, input.target.file);
     if (out?.status === "cancelled")
       return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
+    if (run.mode === "change") await this.#aiBackfill(x, input.card ?? null);
     return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+  }
+
+  /**
+   * M3-02: card.aiBackfill of an approved change card → backfill requests for draft and prod (db.yaml#ai_backfills);
+   * the draft one runs now over the draft records (prod after its publication, publish/workflows.ts). A failed
+   * backfill does not fail the build: the action itself works, the rows stay as they were.
+   */
+  async #aiBackfill(x: Ctx, card: Record<string, unknown> | null): Promise<void> {
+    const { run, D } = x;
+    const systemId = run.system_id as string;
+    const sys = await this.#db
+      .selectFrom("platform.systems")
+      .select(["name", "schema_key", "preview_revision"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    if (sys.preview_revision === null) return;
+    const spec = await loadSpec(this.#db, { id: systemId, name: sys.name }, sys.preview_revision);
+    const actions = backfillActions(card, spec);
+    if (actions.length === 0) return;
+    await D.step("ai_backfill_request", () =>
+      requestBackfills(this.#db, { systemId, runId: run.id, actions }),
+    );
+    await this.#step(x, "ai_backfill", "Заполняю старые записи с помощью ИИ", () =>
+      D.step(
+        "ai_backfill",
+        async () => {
+          const res = await runPendingBackfills(this.#db, {
+            systemId,
+            systemKey: sys.schema_key,
+            env: "draft",
+            spec,
+            runtime: this.#d.aiBackfill ?? httpRuntimeBackfill(this.#d.config),
+          });
+          for (const r of res.filter((b) => b.stopCode))
+            this.#log("ai_backfill stopped", new Error(`${r.action}: ${r.stopCode}`));
+          return res.length;
+        },
+        { offload: true },
+      ),
+    );
   }
 
   /** The build executor over this run's durable BuildHost (build runs; import_table schema_ops). */
@@ -1761,6 +1811,7 @@ export class RunEngine {
         this.#step(x, "gate_G0", "Проверяю черновик (G0)", () =>
           this.#gate(x, "G0", async () => null, filesAt, undefined),
         ),
+      ...(this.#d.aiBackfill !== undefined ? { aiBackfill: this.#d.aiBackfill } : {}),
     };
     const out: FlowResult = run.kind === "publish" ? await runPublish(host) : await runRollback(host);
     return { status: "succeeded", ...out };

@@ -709,11 +709,11 @@
         },
         "input": {
           "type": "object",
-          "description": "entity + поля-источники"
+          "description": "{entity, fields?: string[] (поля-источники: текстовые, enum, числа, даты и file — изображения/PDF уходят мультимодально только на T0; по умолчанию все string/text/enum кроме приёмников), instruction?: string ≤ 1000} (M3-02, packages/appspec/src/ai-actions.ts)"
         },
         "output": {
           "type": "object",
-          "description": "extract: поля-приёмники с типами; generate: поле-приёмник текста"
+          "description": "extract: {fields: string[]} — поля-приёмники той же сущности (string, text, enum, int, decimal, money, bool, date, email, phone, url; типы берутся из полей); generate: {field} — одно поле string/text, получает только текст"
         },
         "monthlyLimit": {
           "type": "integer",

@@ -85,6 +85,7 @@ data_api:                                    # CRUD по AppSpec; все отв�
     UNSUPPORTED_MEDIA_TYPE: { http: 415, message: "Такой тип файла загрузить нельзя" }
     AI_CREDITS_EXHAUSTED: { http: 402, message: "ИИ-действие временно недоступно" }
     AI_LIMIT_REACHED: { http: 429, message: "Лимит ИИ-действий на этот месяц исчерпан" }   # M3, aiAction.monthlyLimit (agents/models.yaml)
+    AI_UNAVAILABLE: { http: 503, message: "ИИ-действие временно недоступно, попробуйте позже" }   # M3-02: модели T0 недоступны, месячный лимит платформы (M2-15) или нет связи со шлюзом
     RATE_LIMITED: { http: 429, message: "Слишком много запросов, попробуйте позже" }
     OTP_BUDGET_EXCEEDED: { http: 429, message: "Не удалось отправить код, попробуйте позже или войдите другим способом" }
     PAYLOAD_TOO_LARGE: { http: 413, message: "Слишком большой запрос" }
@@ -188,6 +189,12 @@ ai_actions:         # M3 (L4-07); модели и лимиты — ../agents/mod
   call: "POST /api/ai/:action {entity, id} → runtime вызывает platform-api по внутреннему RPC (WIZARD_INTERNAL_TOKEN, callType runtime_ai_extract | runtime_ai_generate, только T0); результат пишется в поля записи от имени __system, мета записи _aiFilled: string[]"
   triggers: "кнопка (SDK useAiAction, sdk.md §3) и шаг воркфлоу ai_extract / ai_generate; разовый backfill старых записей — по флагу из change-карточки (прогон на платформе, ≤ aiAction.monthlyLimit)"
   limits: "aiAction.monthlyLimit на систему (превышение → 429 AI_LIMIT_REACHED без вызова модели); вход от public-роли — ≤ 10/ч на IP (L3-41); исчерпание кредитов org → 402 AI_CREDITS_EXHAUSTED; вывод generate — только текст, не HTML"
+  shape: "input {entity, fields?, instruction?}, output extract {fields} | generate {field} — appspec.schema.json#/$defs/aiAction, разбор packages/appspec/src/ai-actions.ts (M3-02)"
+  button: "POST /api/ai/:action {entity, id}: нужен update на сущность и видимость записи (rowFilter), иначе 403/404 без вызова модели; ответ {item (с _aiFilled), filled, skipped}. Public-роль: ≤ 10/ч на сеть клиента (HMAC IP) → 429 RATE_LIMITED с Retry-After, до вызова шлюза"
+  gateway: "platform-api POST /internal/v1/ai/run (X-Wizard-Internal-Token; WIZARD_PLATFORM_INTERNAL_URL у runtime): {systemKey, env, callId, source: button|workflow|backfill, monthlyLimit, action {name, kind, instruction, outputs}, record [{label, value}], attachments? [{mime, data}]}. Порядок отказов без вызова модели: месячный лимит платформы (M2-15) → 503 AI_UNAVAILABLE; aiAction.monthlyLimit → 429; кредиты org ≤ 0 → 402 + письмо владельцу раз в месяц. Ответ — только tier=T0 (иной runtime не пишет). Журнал platform.ai_action_calls, списание — billing.yaml#run_charging.runtime_ai. Имена файлов модели не передаются"
+  meta: "_aiFilled = свёртка _w_audit записи: op=ai_fill помечает поля, любой другой update поля снимает пометку; отдаётся в GET /api/data/:entity/:id для сущностей-приёмников ИИ-действий (только видимые поля)"
+  workflow_step: "ai_extract | ai_generate {action}: запись воркфлоу; ключ вызова wf:<jobId>:<step> (повтор шага не считается и не списывается повторно); update только полей-приёмников ИИ-шагов самого воркфлоу его не перезапускает"
+  backfill: "card.aiBackfill: string[] у change-карточки → platform.ai_backfills (draft и prod). Draft — шаг ai_backfill в конце сборки, prod — после smoke публикации со спекой, где есть действие. Исполняет runtime: POST /_wizard/internal/ai-backfill {systemId, env, action, backfillId} на внутреннем порту — записи с пустыми приёмниками, старые первыми, ≤ monthlyLimit; остановка на первом AI_LIMIT_REACHED / AI_CREDITS_EXHAUSTED / AI_UNAVAILABLE"
   test: "кнопка → поле заполнено, RecordCard показывает «заполнено ИИ»; 11-й вызов public-роли за час → 429"
 
 service_endpoints:

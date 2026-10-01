@@ -381,6 +381,42 @@ export class Billing {
     return { usedMilli: used, chargedMilli: charged, refundedMilli: refunded };
   }
 
+  /**
+   * billing.yaml#run_charging.runtime_ai (M3-02): charge of one runtime AI call by fact, keyed
+   * ai:<systemId>:<yyyy-mm-ddThh>:<callId> — the hour bucket of the spec (hour of the call's journal row) plus the call
+   * id, so a repeated call never charges twice. Like an interview turn it never exceeds what is available (the
+   * platform bears the rest); an exempt org (dev stand) is topped up. Returns the charged milli-credits (0 on a repeat).
+   */
+  async chargeAi(
+    trx: Trx,
+    c: { orgId: string; systemId: string; callId: string; at: Date; amountMilli: number; action: string },
+  ): Promise<number> {
+    await this.settleOrg(trx, c.orgId);
+    const key = `ai:${c.systemId}:${c.at.toISOString().slice(0, 13)}:${c.callId}`;
+    if (c.amountMilli <= 0 || (await this.#exists(trx, c.orgId, key))) return 0;
+    let live = (await this.#liveBuckets(trx, c.orgId)).sort(byDebitOrder);
+    const avail = live.reduce((s, b) => s + b.remaining, 0);
+    if (avail < c.amountMilli && this.isExempt(c.orgId)) {
+      await this.#devTopUp(trx, c.orgId, c.amountMilli - avail, key);
+      live = (await this.#liveBuckets(trx, c.orgId)).sort(byDebitOrder);
+    }
+    const parts = allocate(live, c.amountMilli);
+    await this.#insert(
+      trx,
+      c.orgId,
+      key,
+      parts.map(({ b, take }) => ({
+        kind: "charge",
+        amountMilli: -take,
+        bucket: b.bucket,
+        expiresAt: b.expiresAt,
+        systemId: c.systemId,
+        note: `ИИ-действие «${c.action}»`,
+      })),
+    );
+    return sumOf(parts);
+  }
+
   /** grant / positive adjustment into a bucket; false when the key was already used. */
   async grant(trx: Trx, orgId: string, g: GrantInput): Promise<boolean> {
     await this.settleOrg(trx, orgId);

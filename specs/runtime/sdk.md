@@ -94,7 +94,7 @@ tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#inter
 - `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, next })` ведёт на `/login` (`runtime.yaml#auth.login_page`).
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
-- M3 (в §5 добавляется в M3-02, не раньше): `useAiAction(action)` → `{ run(entity, id), pending, error }` — `POST /api/ai/:action` (`runtime.yaml#ai_actions`).
+- M3: `useAiAction(action)` → `{ run(entity, id), pending, error }` — `POST /api/ai/:action {entity, id}` (`runtime.yaml#ai_actions`); `run` возвращает `{ item, filled, skipped }`, где `item` — запись с мета `_aiFilled: string[]` (поля, последним записанным в которые был ИИ). Ошибки: 403 `FORBIDDEN` (нет `update` на сущность), 404, 429 `AI_LIMIT_REACHED` / `RATE_LIMITED` (public-роль, ≤ 10/ч на сеть клиента), 402 `AI_CREDITS_EXHAUSTED`, 503 `AI_UNAVAILABLE`. Вывод generate — только текст: показывать текстовым узлом, не как HTML.
 - Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK (fetch streaming с `X-Wizard-Request: 1`, не EventSource). После переподключения SDK перезапрашивает все активные запросы.
 - Тест (M0-07): хуки против локального hono-мока: загрузка, ошибка с `code`, перезапрос по SSE `invalidate`.
 
@@ -299,6 +299,12 @@ declare module "@wizard/sdk" {
   };
   export function usePayment<I extends keyof Payments & string>(integration: I):
     { pay(binding: Payments[I], id: string): Promise<void>; pending: boolean; error: WizardError | undefined };
+  // M3 (M3-02): action — aiActions[].name
+  export function useAiAction(action: string): {
+    run<E extends EntityName>(entity: E, id: Id<E> | string):
+      Promise<{ item: ClientDoc<E> & { _aiFilled: string[] }; filled: string[]; skipped: string[] }>;
+    pending: boolean; error: WizardError | undefined;
+  };
   export function useParams<T extends Record<string, string> = Record<string, string>>(): T;
   export function useNavigate(): (to: string) => void;
   export { useState, useEffect, useMemo, useCallback, useRef } from "react";

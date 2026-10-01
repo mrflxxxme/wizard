@@ -301,6 +301,17 @@ export interface UserState {
   login(o?: { role?: RoleName; next?: string }): void;
   logout(): Promise<void>;
 }
+/** Result of an AI action: the record with `_aiFilled` (fields whose last write was the AI) and what was filled. */
+export interface AiActionResult<E extends EntityName = EntityName> {
+  item: ClientDoc<E> & { _aiFilled: string[] };
+  filled: string[];
+  skipped: string[];
+}
+export interface AiActionState {
+  run<E extends EntityName>(entity: E, id: Id<E> | string): Promise<AiActionResult<E>>;
+  pending: boolean;
+  error: WizardError | undefined;
+}
 export interface PaymentState<I extends keyof Payments & string> {
   pay(binding: Payments[I], id: string): Promise<void>;
   pending: boolean;
@@ -328,6 +339,8 @@ export declare function useEntity<E extends EntityName>(
 export declare function useEntityMutation<E extends EntityName>(entity: E): EntityMutations<E>;
 export declare function useUser(): UserState;
 export declare function usePayment<I extends keyof Payments & string>(integration: I): PaymentState<I>;
+/** M3-02: AI action of the spec (aiActions[].name) — POST /api/ai/:action (runtime.yaml#ai_actions). */
+export declare function useAiAction(action: string): AiActionState;
 export declare function useParams<T extends Record<string, string> = Record<string, string>>(): T;
 export declare function useNavigate(): (to: string) => void;
 export { useCallback, useEffect, useMemo, useRef, useState } from "react";

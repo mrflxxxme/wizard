@@ -25,6 +25,8 @@ export function useVisibleActions<T>(
       return Object.keys(a.patch ?? {}).every((f) => can("update", entity, f));
     }
     if (a.kind === "delete") return can(OP.delete, entity);
+    // The runtime requires the update operation on the entity for an AI action (runtime.yaml#ai_actions).
+    if (a.kind === "ai") return !!a.ai && can("update", entity);
     return true;
   });
 }
@@ -49,6 +51,7 @@ export function RecordActions<T>({
   const update = ds.useUpdate(entity);
   const remove = ds.useRemove(entity);
   const call = ds.useCall();
+  const ai = ds.useAiAction();
   const visible = useVisibleActions(entity, actions, row);
   const [confirming, setConfirming] = useState<RecordAction<T> | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -66,7 +69,12 @@ export function RecordActions<T>({
     try {
       if (a.kind === "update") await update.mutate(id, a.patch ?? {});
       else if (a.kind === "delete") await remove.mutate(id);
-      else if (a.fn) await call.mutate(a.fn, { id });
+      else if (a.kind === "ai" && a.ai) {
+        const r = await ai.mutate(a.ai, entity, id);
+        setStatus({ ok: true, text: r.filled.length > 0 ? ru.ai.done : ru.ai.nothing });
+        onDone?.();
+        return;
+      } else if (a.fn) await call.mutate(a.fn, { id });
       setStatus({ ok: true, text: ru.states.saved });
       if (a.kind === "delete") onDeleted?.();
       onDone?.();

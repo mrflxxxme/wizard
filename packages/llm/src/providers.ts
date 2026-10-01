@@ -73,7 +73,20 @@ function toModelMessages(messages: readonly LlmMessage[]): ModelMessage[] {
       case "system":
         return { role: "system", content: msg.content };
       case "user":
-        return { role: "user", content: msg.content };
+        if (!msg.attachments?.length) return { role: "user", content: msg.content };
+        // Images go out as image_url, PDFs as file parts (@ai-sdk/openai-compatible); T0 only (policy.ts).
+        return {
+          role: "user",
+          content: [
+            { type: "text" as const, text: msg.content },
+            ...msg.attachments.map((a) => ({
+              type: "file" as const,
+              data: a.data,
+              mediaType: a.mime,
+              ...(a.name ? { filename: a.name } : {}),
+            })),
+          ],
+        };
       case "assistant": {
         if (!msg.toolCalls?.length) return { role: "assistant", content: msg.content };
         const text = msg.content ? [{ type: "text" as const, text: msg.content }] : [];

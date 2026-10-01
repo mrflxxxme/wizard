@@ -43,6 +43,8 @@ import {
 import { startShop } from "./shop.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
+/** WIZARD_INTERNAL_TOKEN of the stand (platform-api ⇄ runtime internal calls, M3-02). */
+const STAND_INTERNAL_TOKEN = randomBytes(16).toString("hex");
 const HOST = "127.0.0.1";
 const BASE_URL =
   process.env.WIZARD_DB_URL ?? process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
@@ -70,6 +72,58 @@ const CREATE_CARD = {
   estimate: { credits: { min: 10, expected: 20, max: 30 }, minutes: { min: 5, max: 10 } },
   cap: { credits: 40 },
 };
+
+/**
+ * M3-02: a chat edit mentioning «ИИ» → the change card of an AI action «Резюме ИИ» of speaker applications, with the
+ * backfill flag (card.aiBackfill) for the applications that already exist.
+ */
+const AI_CHANGE_CARD = {
+  title: "ИИ-резюме заявок",
+  summary: "Добавить ИИ-действие «Резюме ИИ» в заявки спикеров и заполнить резюме для уже поданных заявок",
+  estimate: { credits: { min: 1, expected: 2, max: 4 }, minutes: { min: 1, max: 3 } },
+  cap: { credits: 4 },
+  aiBackfill: ["summarize_application"],
+};
+
+/** Ops of the AI change (scripted builder) and the moderation page with the AI button. */
+const AI_CHANGE_OPS = [
+  {
+    op: "add_field",
+    entity: "speaker_application",
+    field: { name: "ai_summary", label: "Резюме ИИ", type: "text", maxLength: 1000 },
+  },
+  {
+    op: "add_ai_action",
+    aiAction: {
+      name: "summarize_application",
+      kind: "generate",
+      input: {
+        entity: "speaker_application",
+        fields: ["topic", "abstract"],
+        instruction: "Кратко перескажи заявку для модератора в одном-двух предложениях",
+      },
+      output: { field: "ai_summary" },
+      monthlyLimit: 50,
+      tier: "T0",
+    },
+  },
+];
+
+function aiModerationPage(src: string): string {
+  return src
+    .replace(
+      '"stream", "status", "moderator_comment"]',
+      '"stream", "status", "moderator_comment", "ai_summary"]',
+    )
+    .replace(
+      "actions={[",
+      'actions={[\n          { id: "ai_summary", label: "Резюме ИИ", kind: "ai", ai: "summarize_application" },',
+    );
+}
+
+/** Text of the mock T0 model for runtime_ai_generate: plain text with markup that must stay text (XSS check). */
+export const AI_SUMMARY_TEXT =
+  '<img src=x onerror="window.__wzXss=1">Спикер расскажет о внедрении: цифры до и после, ошибки и выводы.';
 
 let changes = 0;
 function changeCard() {
@@ -112,6 +166,8 @@ async function scriptedBuild(host: BuildHost, p: BuildParams) {
     };
     const spec = JSON.parse(readFileSync(join(ROOT, "specs/appspec/examples/forum.json"), "utf8"));
     batches = lib.batchOps(lib.specToOps(spec, { author: "agent" }));
+  } else if (Array.isArray(p.card.aiBackfill)) {
+    batches = [AI_CHANGE_OPS];
   } else {
     changes++;
     const n = changes === 1 ? "" : ` ${changes}`;
@@ -132,6 +188,10 @@ async function scriptedBuild(host: BuildHost, p: BuildParams) {
     v = r.version;
   }
   if (p.mode === "create") for (const [path, src] of forumFiles()) await host.store.writeFile(path, src);
+  if (p.mode === "change" && Array.isArray(p.card.aiBackfill)) {
+    const page = await host.store.readFile("ui/Moderation.tsx");
+    if (page) await host.store.writeFile("ui/Moderation.tsx", aiModerationPage(page));
+  }
   await host.store.commitFiles();
   const report = await host.runGates("G0");
   if (!report.passed)
@@ -139,7 +199,14 @@ async function scriptedBuild(host: BuildHost, p: BuildParams) {
       "GATES_FAILED",
       JSON.stringify(report.checks.filter((c) => c.status === "fail" || c.status === "error")),
     );
-  return { summary_ru: p.mode === "create" ? "Собрал форум" : "Добавил поле «Тема трека»" };
+  return {
+    summary_ru:
+      p.mode === "create"
+        ? "Собрал форум"
+        : Array.isArray(p.card.aiBackfill)
+          ? "Добавил ИИ-резюме заявок"
+          : "Добавил поле «Тема трека»",
+  };
 }
 
 // M1-12: the import_mapping call goes through the real router (DLP, tiers) to OpenAI-compatible mock providers that
@@ -165,7 +232,10 @@ const mockProviders = (async (url: string | URL | Request, init?: RequestInit) =
   appendFileSync(llmLog, `${JSON.stringify({ provider, body })}\n`);
   const req = JSON.parse(body) as { model: string; messages: { role: string; content: string }[] };
   let message: Record<string, unknown> = { role: "assistant", content: "Готово" };
-  if (body.includes("propose_mapping")) {
+  if (body.includes("Wizard AI action of a business app (generate)")) {
+    // M3-02: runtime_ai_generate (T0 only) — the summary of a speaker application.
+    message = { role: "assistant", content: AI_SUMMARY_TEXT };
+  } else if (body.includes("propose_mapping")) {
     const user = req.messages.find((m) => m.role === "user")?.content ?? "{}";
     const { table } = JSON.parse(user) as {
       table: { sheets: { name: string; columns: { header: string }[] }[] };
@@ -261,6 +331,9 @@ export async function startStand(kind: StandKind): Promise<void> {
       outboxDir: files.outbox,
       runtimePort: ports.runtime,
       platformOrigin: `http://localhost:${ports.web}`,
+      // M3-02: AI actions — the runtime calls the platform's AI gateway, the platform calls the runtime's backfill.
+      internalToken: STAND_INTERNAL_TOKEN,
+      runtimeInternalUrl: `http://${HOST}:${ports.runtimeInternal}`,
       // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
       buildDefaultTier: "T1",
       ...(kind !== "m1"
@@ -288,10 +361,14 @@ export async function startStand(kind: StandKind): Promise<void> {
     },
     executors: (d) => ({
       ...createAgentExecutors(d),
-      interviewTurn: async (host) =>
-        host.context.system.previewRevision === null
-          ? { kind: "card" as const, text: "Карточка системы готова", card: CREATE_CARD }
-          : { kind: "card" as const, text: "Предлагаю правку", card: changeCard() },
+      interviewTurn: async (host) => {
+        if (host.context.system.previewRevision === null)
+          return { kind: "card" as const, text: "Карточка системы готова", card: CREATE_CARD };
+        const last = [...host.context.messages].reverse().find((m) => m.role === "user")?.text ?? "";
+        return last.includes("ИИ")
+          ? { kind: "card" as const, text: "Предлагаю ИИ-действие", card: AI_CHANGE_CARD }
+          : { kind: "card" as const, text: "Предлагаю правку", card: changeCard() };
+      },
       build: scriptedBuild,
     }),
     createRouter: (opts) =>
@@ -310,7 +387,10 @@ export async function startStand(kind: StandKind): Promise<void> {
     registry: new DbRegistry(pg),
     artifactsRoot: artifacts,
     port: ports.runtime,
+    internalPort: ports.runtimeInternal,
     env: {
+      internalToken: STAND_INTERNAL_TOKEN,
+      platformInternalUrl: `http://${HOST}:${ports.api}`,
       systemsDomain: "localhost",
       devLogin: true,
       unsafeLocalExec: true,

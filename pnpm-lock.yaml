@@ -161,6 +161,9 @@ importers:
       '@wizard/build':
         specifier: workspace:*
         version: link:../../packages/build
+      '@wizard/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       happy-dom:
         specifier: ^20.14.5
         version: 20.14.5

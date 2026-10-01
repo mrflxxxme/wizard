@@ -4,6 +4,8 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { checkAbuseSla } from "./abuse/reports.js";
 import { createAgentExecutors } from "./agents/executors.js";
+import type { RuntimeAiBackfill } from "./ai/backfill.js";
+import { AiGateway } from "./ai/gateway.js";
 import type { Mailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
 import { platformMailer } from "./auth/smtp-mailer.js";
@@ -31,6 +33,7 @@ import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
 import { exportRoutes } from "./routes/exports.js";
 import { importRoutes } from "./routes/imports.js";
+import { internalRoutes } from "./routes/internal.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
 import { privacyRoutes } from "./routes/privacy.js";
@@ -99,6 +102,11 @@ export interface PlatformApiOptions {
   engine?: "inprocess" | "dbos";
   /** engine dbos: hand-over to DBOS (default: DBOSClient on config.dbUrl). */
   dispatcher?: RunDispatcher;
+  /**
+   * M3-02: AI backfill on the runtime (default: HTTP to WIZARD_RUNTIME_INTERNAL_URL with WIZARD_INTERNAL_TOKEN; null —
+   * off). The AI gateway of the runtime (POST /internal/v1/ai/run) uses `createRouter` and the platform mailer.
+   */
+  aiBackfill?: RuntimeAiBackfill | null;
 }
 
 export interface PlatformApi {
@@ -162,6 +170,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     secrets,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     publish: { alert, ...opts.publish },
+    ...(opts.aiBackfill !== undefined ? { aiBackfill: opts.aiBackfill } : {}),
     log,
   });
   if (opts.recover !== false) await engine.recover();
@@ -260,6 +269,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       platformOrigin: config.platformOrigin,
     }),
   );
+  // Runtime AI gateway (runtime.yaml#ai_actions.call, M3-02): internal token, no Origin and no session.
+  const aiGateway = new AiGateway({
+    db: handle.db,
+    config,
+    billing,
+    mailer,
+    ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    ...(opts.now ? { now: opts.now } : {}),
+    log,
+  });
+  app.route("/internal/v1", internalRoutes({ config, gateway: aiGateway, log }));
   // Notifications of the platform shop come without Origin and session (api.yaml yookassaWebhook, security: []).
   app.post("/api/v1/webhooks/yookassa", yookassaWebhook(deps));
   app.use("*", originGuard(config));

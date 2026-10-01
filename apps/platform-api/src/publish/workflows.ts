@@ -1,11 +1,13 @@
 // Workflows publish and rollback (workflows.yaml#workflows.publish, #rollback). The run engine (runs/queue.ts) holds
 // the lock and the run lifecycle; these functions are the steps between run_started and the terminal event.
+
 import { dirname } from "node:path";
 import { type AppSpec, planMigration } from "@wizard/appspec";
 import type { GateContext, GateLevel } from "@wizard/gates";
 import { publishTelegramBots, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
+import { httpRuntimeBackfill, type RuntimeAiBackfill, runPendingBackfills } from "../ai/backfill.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable, SystemsTable } from "../db/types.js";
@@ -51,6 +53,8 @@ export interface FlowHost {
   once<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** gate_G0 of the draft at draft_revision, with migrate_draft/bundle_and_reload on success (engine #gate). */
   draftG0(): Promise<GateReport>;
+  /** M3-02: AI backfill on the runtime (default: HTTP to the runtime's internal port). */
+  aiBackfill?: RuntimeAiBackfill | null;
 }
 
 export interface FlowResult {
@@ -122,6 +126,36 @@ async function switchLive(h: FlowHost, publicationId: string, revision: number):
         .execute();
     }),
   );
+}
+
+/**
+ * M3-02: pending prod backfills (card.aiBackfill of a change build) of actions present in the published spec run after
+ * the smoke over the live prod records. A stopped backfill (limit, credits) does not fail the publication.
+ */
+async function prodAiBackfill(h: FlowHost, sys: System, spec: AppSpec): Promise<void> {
+  const names = (spec.aiActions ?? []).map((a) => a.name);
+  if (names.length === 0) return;
+  const pending = await h.once("ai_backfill_pending", async () => {
+    const r = await h.db
+      .selectFrom("platform.ai_backfills")
+      .select("id")
+      .where("system_id", "=", sys.id)
+      .where("env", "=", "prod")
+      .where("status", "=", "pending")
+      .where("action", "in", names)
+      .executeTakeFirst();
+    return r !== undefined;
+  });
+  if (!pending) return;
+  await h.step("ai_backfill", "Заполняю старые записи с помощью ИИ", async () => {
+    await runPendingBackfills(h.db, {
+      systemId: sys.id,
+      systemKey: sys.schema_key,
+      env: "prod",
+      spec,
+      runtime: h.aiBackfill === undefined ? httpRuntimeBackfill(h.config) : h.aiBackfill,
+    });
+  });
 }
 
 /** smoke; on failure prod goes back to prev_publication without DDL and the run fails SMOKE_FAILED. */
@@ -451,6 +485,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
     });
     await switchLive(h, pub.id, revision);
     const url = await smoke(h, sys, pub.id, pub.prev_publication_id, revision);
+    await prodAiBackfill(h, sys, spec);
     return { summary_ru: `Ревизия ${revision} опубликована`, resultRevision: revision, prodUrl: url };
   });
 }

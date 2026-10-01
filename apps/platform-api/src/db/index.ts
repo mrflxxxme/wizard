@@ -16,6 +16,7 @@ import * as m0012 from "../../migrations/0012_m2_pilot.js";
 import * as m0013 from "../../migrations/0013_m2_abuse.js";
 import * as m0014 from "../../migrations/0014_m2_pilot_ops.js";
 import * as m0015 from "../../migrations/0015_m2_ops_cleanup.js";
+import * as m0016 from "../../migrations/0016_m3_ai_actions.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -59,6 +60,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0013_m2_abuse": m0013,
   "0014_m2_pilot_ops": m0014,
   "0015_m2_ops_cleanup": m0015,
+  "0016_m3_ai_actions": m0016,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

@@ -303,17 +303,19 @@ components:
         onDeleted?(): void;
       }
       type RecordAction = { id: string; label: string; tone?: 'primary' | 'default' | 'danger';
-        kind: 'update' | 'delete' | 'fn' | 'link';
+        kind: 'update' | 'delete' | 'fn' | 'link' | 'ai';   // ai — M3 (M3-02)
         patch?: Record<string, unknown>;      // kind=update, напр. {status:'approved'}
         fn?: string; href?: string;           // kind=fn — mutation-функция; kind=link
+        ai?: string;                          // kind=ai — aiActions[].name (runtime.yaml#ai_actions)
         confirm?: string;                     // текст подтверждения (обязателен для delete)
         visible?(r: T): boolean };
     behaviour:
       - "Детали — список label: value (dl), видимые поля; ref — ссылка на запись; file — ссылка на скачивание"
       - "Действия показываются, только если can(kind→op, entity) и visible(r); update-патч на readonly-поле → действие скрыто"
       - "После действия — refetch и role=status «Сохранено»; ошибка → role=alert с message"
-      - "M3: поля, заполненные ИИ-действием (мета записи _aiFilled: string[]), помечаются Badge accent «заполнено ИИ»"
-    test_ids: [wz-recordcard, wz-recordcard-field-<name>, wz-recordcard-action-<id>]
+      - "M3: поля, заполненные ИИ-действием (мета записи _aiFilled: string[]), помечаются Badge accent «заполнено ИИ» (test id wz-recordcard-ai-<name>); правка поля пользователем снимает пометку"
+      - "M3: действие kind=ai — POST /api/ai/:action {entity, id} (DataSource.useAiAction, sdk useAiAction); видно при can(update, entity); после — refetch и role=status «Готово: поля заполнены ИИ» (ничего не заполнено — «ИИ не нашёл, чем заполнить поля»); ошибка — role=alert с message сервера. Текст ИИ выводится только текстовым узлом, не как HTML"
+    test_ids: [wz-recordcard, wz-recordcard-field-<name>, wz-recordcard-action-<id>, wz-recordcard-ai-<name>]
     acceptance: ["Playwright (demo «форум»): модератор видит «Одобрить» и после клика статус заявки = approved; спикер действия не видит"]
 
   - name: StatusBoard
