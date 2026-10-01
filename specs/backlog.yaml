@@ -607,7 +607,7 @@ tasks:
     owner: frontend
     parallel_group: m1-c
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance: ["Diff ревизии отображается списком человеческих изменений"]
 
@@ -645,7 +645,7 @@ tasks:
     owner: frontend
     parallel_group: m1-c
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Acceptance S10 и S6 из platform-screens.yaml (M1) в Playwright против API"
