@@ -278,7 +278,7 @@ test("консоль «Пилот»: готовность беты, пригла
   const readiness = admin.getByTestId("admin-pilot-readiness");
   await expect(readiness).toHaveAttribute("data-on", "true");
   await expect(admin.getByTestId("admin-pilot-readiness-by")).toContainText("Переключил e2e");
-  await expect(admin.getByTestId("admin-pilot-checklist").locator("li")).toHaveCount(5);
+  await expect(admin.getByTestId("admin-pilot-checklist").locator("li")).toHaveCount(6);
   await admin.getByTestId("admin-pilot-readiness-toggle").click();
   await expect(readiness).toHaveAttribute("data-on", "false");
 
