@@ -11,6 +11,7 @@ import { type LoginResult, userBody } from "../auth/login.js";
 import { OtpError, startOtp, verifyOtp } from "../auth/otp.js";
 import { createSession, loginCookies, logoutCookies, safeNext } from "../auth/session.js";
 import { clearOidcCookie, finishTelegram, OidcError, startTelegram } from "../auth/telegram-oidc.js";
+import { withAbuseLink } from "../http/abuse-link.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { sessionOf } from "../http/subject.js";
 import { documentHeaders, escapeHtml, htmlPage } from "../preview/headers.js";
@@ -180,7 +181,7 @@ export async function loginPage(c: RuntimeContext): Promise<Response> {
   }
   if (sys.artifactDir) {
     const index = await readFile(join(sys.artifactDir, "client", "index.html")).catch(() => null);
-    if (index) return c.body(new Uint8Array(index), 200, documentHeaders("no-store"));
+    if (index) return c.body(withAbuseLink(c, index.toString("utf8")), 200, documentHeaders("no-store"));
   }
   const body = "<p>Вход в систему пока недоступен. Обратитесь к владельцу системы.</p>";
   return c.body(htmlPage("Вход", body), 200, documentHeaders("no-store"));
