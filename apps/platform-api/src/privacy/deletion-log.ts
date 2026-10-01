@@ -1,10 +1,9 @@
 // Platform side of the deletion journal (workflows.yaml#retention_cron, security/compliance.yaml#system_package.retention
 // .deletion_log): rows of app_<key>_<env>._w_deletion_log written by the runtime (retention, consent withdrawal,
 // subject requests) move into platform.deletion_log in one transaction; owners hear about consent withdrawals.
-import { quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { quoteIdent, systemRoleName } from "@wizard/appspec";
 import { schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
-import { MIGRATOR_ROLE } from "../agents/draft.js";
 import type { Mailer } from "../auth/mailer.js";
 import type { Db } from "../db/index.js";
 
@@ -52,12 +51,10 @@ async function journalSchemas(
 export async function moveJournal(
   pg: postgres.Sql,
   t: { systemId: string; env: SystemEnv; schema: string },
-  migratorRole = MIGRATOR_ROLE,
 ): Promise<MovedEntry[]> {
   return pg.begin(async (tx) => {
-    // The schema owner under the context role __system (FORCE RLS, runtime.yaml#postgres.context).
-    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(migratorRole)}`);
-    await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+    // The schema's system DB role (FORCE RLS; isolation.yaml#db_access, L3-20), not the schema owner.
+    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(t.schema))}`);
     const rows = (await tx.unsafe(
       `delete from ${quoteIdent(t.schema)}."_w_deletion_log" returning at, entity, mode, cutoff, rows_affected`,
     )) as unknown as JournalRow[];
@@ -85,7 +82,7 @@ export async function collectDeletionLogs(pg: postgres.Sql, o: CollectOptions = 
   const out: MovedEntry[] = [];
   for (const t of await journalSchemas(pg, o.systemId)) {
     try {
-      out.push(...(await moveJournal(pg, t, o.migratorRole)));
+      out.push(...(await moveJournal(pg, t)));
     } catch (e) {
       // e.g. the schema was dropped concurrently (G1 ephemeral, delete_system).
       o.log?.("deletion_log transfer failed", e);

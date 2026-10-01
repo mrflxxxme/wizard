@@ -1,5 +1,6 @@
 // FunctionHost of a loaded system: createFunctionHost (@wizard/sdk/host) over DataAccess.runner(), with every
-// handler executed in the isolated executor (./executor.ts). One executor pool per LoadedSystem.
+// handler executed in the isolated executor: the M2 sandbox (services.sandbox, workerd in gVisor) when configured,
+// else the unsafe-local process pool (./executor.ts). One executor per LoadedSystem.
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,6 +14,7 @@ import {
   type RegisteredFunction,
 } from "@wizard/sdk/host";
 import type { RuntimeServices } from "../http/context.js";
+import type { GuestExecutor } from "../sandbox/workerd-executor.js";
 import type { LoadedSystem } from "../system.js";
 import { liveConnectors } from "./connectors-live.js";
 import { FunctionExecutor, type HostCtx, UNSAFE_CEILING_MS } from "./executor.js";
@@ -23,7 +25,7 @@ export type FunctionLog = (line: Record<string, unknown>) => void;
 
 export interface SystemFunctions {
   host: FunctionHost;
-  executor: FunctionExecutor;
+  executor: GuestExecutor;
 }
 
 /** Per-kind deadline of the executor (sdk.md §2.1, capped by the unsafe-local ceiling). */
@@ -91,12 +93,19 @@ async function build(
   services: RuntimeServices,
   log?: FunctionLog,
 ): Promise<SystemFunctions> {
-  const dir = sys.artifactDir ? resolve(sys.artifactDir) : null;
-  if (!dir || !existsSync(join(dir, "server", "functions.mjs"))) {
-    throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
+  const entities = sys.spec.entities.map((e) => e.name);
+  let executor: GuestExecutor;
+  if (services.sandbox) {
+    // M2: the bundle runs in the system's Worker (loaded into its pod from S3 by sha256, not from this disk).
+    executor = services.sandbox.executorFor({ systemId: sys.entry.systemId, env: sys.entry.env, entities });
+  } else {
+    const dir = sys.artifactDir ? resolve(sys.artifactDir) : null;
+    if (!dir || !existsSync(join(dir, "server", "functions.mjs"))) {
+      throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
+    }
+    executor = new FunctionExecutor({ bundleDir: dir, entities });
   }
-  const executor = new FunctionExecutor({ bundleDir: dir, entities: sys.spec.entities.map((e) => e.name) });
-  let guest: Awaited<ReturnType<FunctionExecutor["functions"]>>;
+  let guest: Awaited<ReturnType<GuestExecutor["functions"]>>;
   const functions: Record<string, RegisteredFunction> = {};
   try {
     guest = await executor.functions();
@@ -161,7 +170,7 @@ async function build(
 }
 
 const cache = new WeakMap<LoadedSystem, Promise<SystemFunctions>>();
-const live = new Set<FunctionExecutor>();
+const live = new Set<GuestExecutor>();
 
 /** FunctionHost for a system; the executor pool is created on first use and reused while the system is loaded. */
 export function systemFunctions(

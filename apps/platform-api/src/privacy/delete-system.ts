@@ -3,7 +3,7 @@
 // messages, imports, exports, secrets_refs and their stored values; deletion_log mode=system_deleted. No platform.runs row.
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { dropSystemRoleDDL, quoteIdent, systemRoleName } from "@wizard/appspec";
 import { schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE } from "../agents/draft.js";
@@ -141,17 +141,21 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
       for (const sha of own) await rm(join(d.blobs.root, BlobStore.key(sha)), { force: true });
 
       const purged = await d.pg.begin(async (tx) => {
-        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
-        await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
         const dropped: { env: string; schema: string; rows: number }[] = [];
         for (const env of ENVS) {
           const schema = schemaName(s.schema_key, env);
           const [exists] = await tx`select 1 from pg_catalog.pg_namespace where nspname = ${schema}`;
           if (!exists) continue;
+          // Rows are counted as the system DB role (FORCE RLS, L3-20); the schema is dropped by its owner.
+          await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schema))}`);
           dropped.push({ env, schema, rows: await countRows(tx, schema) });
+          await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
           await tx.unsafe(`DROP SCHEMA ${quoteIdent(schema)} CASCADE`);
         }
         await tx.unsafe("SET LOCAL ROLE NONE");
+        // The system roles go with their schemas (dropped by the platform session, which created them).
+        for (const env of ENVS)
+          for (const st of dropSystemRoleDDL(schemaName(s.schema_key, env))) await tx.unsafe(st);
         await tx`delete from platform.messages where system_id = ${s.id}`;
         await tx`delete from platform.imports where system_id = ${s.id}`;
         await tx`delete from platform.exports where system_id = ${s.id}`;

@@ -294,7 +294,7 @@ export async function runJobs(
     });
 
   const fns = () => {
-    if (!services.env.unsafeLocalExec) throw new WizardError("FUNCTIONS_DISABLED");
+    if (!services.env.unsafeLocalExec && !services.sandbox) throw new WizardError("FUNCTIONS_DISABLED");
     return systemFunctions(sys, services, services.log);
   };
   const connectors = () => outboxConnectors(spec, services);

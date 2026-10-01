@@ -50,8 +50,15 @@ export {
   retentionSlot,
   runJobs,
 } from "./jobs/runner.js";
-/** Schema name app_<systemId>_<env> and a migration helper for previews/G1/tests (migration role only). */
-export { type MigrateOptions, migrateSystem, schemaName } from "./migrate.js";
+/** Schema app_<id>_<env>, migration helper (migration role only), system role sys_<id>_<env>_system (L3-20). */
+export {
+  dropSystemRole,
+  ensureSystemRole,
+  type MigrateOptions,
+  migrateSystem,
+  schemaName,
+  systemRoleOf,
+} from "./migrate.js";
 /** Test-mode connector secrets for G1 runtimes (in-memory QR keyring). */
 export { type SecretsFactory, testModeSecrets } from "./preview/connectors.js";
 /** 152-ФЗ package (M2-05): erasure + deletion journal, policy facts, subject requests, legal template registry. */
@@ -104,6 +111,68 @@ export {
 } from "./registry.js";
 /** RoleSpec for GET /_wizard/spec. */
 export { buildRoleSpec, type RoleSpec } from "./rolespec.js";
+/** M2 sandbox (security/isolation.yaml#M2): capability tokens {systemId, env, requestId, exp} of the runtime RPC. */
+export {
+  type Capability,
+  type CapabilityCheck,
+  issueCapability,
+  newRequestId,
+  type SandboxEnv,
+  verifyCapability,
+} from "./sandbox/capability.js";
+/** Egress proxy: CONNECT :443 (SMTP :465/:587) to allowlisted public hosts, SNI = CONNECT host (L3-24). */
+export {
+  CONNECTOR_HOSTS,
+  capabilityAuthorizer,
+  createEgressProxy,
+  type EgressPolicy,
+  type EgressProxyOptions,
+  egressPolicyFor,
+  parseConnectTarget,
+} from "./sandbox/egress.js";
+/** Sandbox pod and NetworkPolicy manifests (gVisor RuntimeClass, non-root, read-only, no capabilities). */
+export {
+  SANDBOX_RUNTIME_CLASS,
+  type SandboxPodInput,
+  sandboxNetworkPolicy,
+  sandboxPod,
+} from "./sandbox/pod.js";
+/** Grouping of systems into pods: Free and paid at most 10 per pod in separate pools; overflow is refused. */
+export {
+  DEFAULT_POOL_CONFIG,
+  MAX_SYSTEMS_PER_POD,
+  type Placement,
+  SandboxConfigError,
+  SandboxPool,
+  type SandboxPoolConfig,
+  SandboxPoolFullError,
+  type SandboxPoolName,
+  type SandboxSystem,
+  type SandboxTier,
+  validatePoolConfig,
+} from "./sandbox/pool.js";
+/** Runtime RPC listener of sandbox Workers: per-call capability tokens, 403 for forged/expired/foreign ones. */
+export { type OpenCall, type OpenCallInput, SandboxRpc, type SandboxRpcOptions } from "./sandbox/rpc.js";
+/** TLS ClientHello SNI peek (egress proxy). */
+export { type HelloPeek, peekClientHello } from "./sandbox/sni.js";
+/** workerd config of a pod: one Worker per system, globalOutbound deny-all, no nodejs_compat. */
+export {
+  WORKERD_COMPATIBILITY_DATE,
+  WORKERD_COMPATIBILITY_FLAGS,
+  WORKERD_V8_FLAGS,
+  type WorkerdPodConfig,
+  type WorkerdPodInput,
+  type WorkerdSystem,
+  workerdPodConfig,
+} from "./sandbox/workerd-config.js";
+/** Executor over sandbox pods (createRuntimeApp({sandbox})). */
+export {
+  createWorkerdSandbox,
+  type GuestExecutor,
+  type SandboxExecutors,
+  WorkerdExecutor,
+  type WorkerdExecutorOptions,
+} from "./sandbox/workerd-executor.js";
 /** Node server on 127.0.0.1:4100. */
 export { type StartOptions, startRuntime } from "./server.js";
 export { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";

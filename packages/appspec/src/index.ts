@@ -9,6 +9,7 @@ export {
   type DdlOptions,
   DEFAULT_MAX_LENGTH,
   describeStep,
+  dropSystemRoleDDL,
   type MigrationPlan,
   type MigrationStep,
   type PlanOptions,
@@ -17,9 +18,12 @@ export {
   type StepKind,
   SYSTEM_ROLE,
   SYSTEM_TABLES,
+  type SystemRoleOptions,
   sqlType,
+  systemRoleName,
   toDDL,
   toRLS,
+  toSystemRoleDDL,
 } from "./migrate.js";
 export {
   type ApplyOpsFailure,

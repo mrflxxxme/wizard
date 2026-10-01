@@ -54,6 +54,7 @@ import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { yookassaHookRoutes } from "./routes/yookassa.js";
+import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
 export interface RuntimeAppOptions {
@@ -81,6 +82,8 @@ export interface RuntimeAppOptions {
   auth?: RuntimeAuthOptions;
   /** 152-ФЗ package: withdrawal → anonymization delay (days, 0…30; default 0 — at once) and legal templates. */
   privacy?: { withdrawalDays?: number; legalTemplates?: LegalTemplates };
+  /** M2: function calls go to sandbox pods (createWorkerdSandbox); WIZARD_UNSAFE_LOCAL_EXEC is then not needed. */
+  sandbox?: SandboxExecutors;
 }
 
 export interface RuntimeApp {
@@ -129,6 +132,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       withdrawalDays: Math.min(MAX_WITHDRAWAL_DAYS, Math.max(0, Math.floor(o.privacy?.withdrawalDays ?? 0))),
     },
     legalTemplates: o.privacy?.legalTemplates ?? defaultLegalTemplates(),
+    ...(o.sandbox ? { sandbox: o.sandbox } : {}),
   };
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
