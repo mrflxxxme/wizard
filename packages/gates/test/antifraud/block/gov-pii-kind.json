@@ -1,0 +1,19 @@
+{
+  "check": "G2-AF-03",
+  "expect": "block",
+  "description": "gov-pii-kind",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "number_x",
+        "label": "Номер",
+        "type": "string",
+        "pii": "basic",
+        "piiKind": "snils"
+      }
+    }
+  ],
+  "base": "forum"
+}

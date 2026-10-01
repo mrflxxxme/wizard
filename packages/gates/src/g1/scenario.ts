@@ -1,7 +1,10 @@
 // Scenario DSL executor (specs/quality/gates.yaml#scenario_dsl) against a runtime through G1Env.
+import { randomUUID } from "node:crypto";
 import type { AppSpec } from "@wizard/appspec";
+import { qrOfflineHash } from "@wizard/connectors";
 import type { JobRunReport } from "../types.js";
 import { type Actor, errorCode, type G1Env, type HttpResult } from "./env.js";
+import { validateSeedHint } from "./seed.js";
 import type { Expect, Scenario, Seed, Step } from "./types.js";
 
 export const STEP_TIMEOUT_MS = 5_000;
@@ -50,6 +53,11 @@ export function validateScenario(spec: AppSpec, sc: Scenario): string[] {
     if (!ALIAS_RE.test(alias)) errs.push(`Недопустимое имя участника «${alias}»`);
     if (!roles.has(a?.role)) errs.push(`Участник «${alias}»: роли «${a?.role}» нет в системе`);
     aliases.add(alias);
+  }
+  if (sc.seedHints !== undefined) {
+    if (!Array.isArray(sc.seedHints) || sc.seedHints.length > 20)
+      errs.push("seedHints: не больше 20 подсказок");
+    else for (const h of sc.seedHints) errs.push(...validateSeedHint(spec, h));
   }
   if (!Array.isArray(sc.steps) || sc.steps.length < 1 || sc.steps.length > 40)
     return [...errs, "В сценарии должно быть от 1 до 40 шагов"];
@@ -392,6 +400,31 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
           deviceId: String(data.deviceId ?? `g1-${env.runId}`),
           ...(typeof data.gate === "string" ? { checkpoint: data.gate } : {}),
         },
+      );
+      return { res, value: res.body };
+    }
+    // M2-03: offline scans of the listed carriers sent like a scanner device (connectors/qr.yaml#offline.sync_protocol).
+    if (s.connector === "qr" && s.event === "sync") {
+      const integ = integrations[0];
+      const cfg = integ?.config as { entity?: string; tokenField?: string } | undefined;
+      if (!integ || !cfg?.entity || !cfg.tokenField)
+        throw new StepError("error", "В системе нет QR-интеграции");
+      const events = [];
+      for (const e of Array.isArray(data.events) ? (data.events as Record<string, unknown>[]) : []) {
+        const id = e[cfg.entity] ?? e.ticket ?? e.id;
+        const token = await env.readColumn(cfg.entity, cfg.tokenField, String(id));
+        events.push({
+          clientEventId: randomUUID(),
+          h: qrOfflineHash(token) ?? "A".repeat(22),
+          scannedAt: new Date().toISOString(),
+          ...(typeof e.gate === "string" ? { gate: e.gate } : {}),
+        });
+      }
+      const res = await env.request(
+        current,
+        "POST",
+        `/_wizard/qr/sync?integration=${encodeURIComponent(integ.name)}`,
+        { deviceId: String(data.deviceId ?? `g1-${env.runId}`).slice(0, 64), events },
       );
       return { res, value: res.body };
     }

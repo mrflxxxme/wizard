@@ -160,42 +160,63 @@ function targets(i: LoadInput): Target[] {
   return [...out.values()];
 }
 
-export async function loadRows(pg: postgres.Sql, i: LoadInput): Promise<LoadResult> {
+interface Batch {
+  sql: string;
+  values: Value[];
+}
+
+/** The inserts of a load and their counts, without touching the database (a replay reuses the counts). */
+export function planLoad(i: LoadInput): { result: LoadResult; batches: Batch[] } {
   const result: LoadResult = { rowsImported: 0, rowsSkipped: 0, byEntity: {} };
-  const plan = targets(i);
+  const batches: Batch[] = [];
+  for (const t of targets(i)) {
+    const entity = i.spec.entities.find((e) => e.name === t.entity);
+    const sheet = i.table.sheets[t.sheet];
+    if (!entity || !sheet) continue;
+    const rows: Value[][] = [];
+    for (const r of sheet.rows) {
+      const values = t.columns.map((c) => convertCell(c.field, r[c.index]));
+      if (values.every((v) => v === null)) continue;
+      if (t.columns.some((c, k) => c.field.required === true && values[k] === null)) {
+        result.rowsSkipped++;
+        continue;
+      }
+      rows.push(values);
+    }
+    const cols = t.columns.map((c) => quoteIdent(c.field.name)).join(", ");
+    const casts = t.columns.map((c) => sqlType(c.field.type));
+    const perBatch = Math.max(1, Math.min(LOAD_BATCH, Math.floor(MAX_PARAMS / t.columns.length)));
+    const target = `${quoteIdent(i.schema)}.${quoteIdent(entity.name)}`;
+    for (let b = 0; b < rows.length; b += perBatch) {
+      const batch = rows.slice(b, b + perBatch);
+      let n = 0;
+      const tuples = batch.map((row) => `(${row.map((_, k) => `$${++n}::${casts[k]}`).join(", ")})`);
+      batches.push({
+        sql: `insert into ${target} (${cols}) values ${tuples.join(", ")}`,
+        values: batch.flat(),
+      });
+    }
+    result.rowsImported += rows.length;
+    result.byEntity[entity.name] = (result.byEntity[entity.name] ?? 0) + rows.length;
+  }
+  return { result, batches };
+}
+
+/**
+ * Inserts the rows in one transaction. `before` runs first in the same transaction under the platform role (the run
+ * marks its import done there, so a repeated load_rows after a crash sees it and does not insert twice).
+ */
+export async function loadRows(
+  pg: postgres.Sql,
+  i: LoadInput,
+  o: { before?: (tx: postgres.TransactionSql, r: LoadResult) => Promise<void> } = {},
+): Promise<LoadResult> {
+  const { result, batches } = planLoad(i);
   await pg.begin(async (tx) => {
+    await o.before?.(tx, result);
     await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(i.migratorRole ?? MIGRATOR_ROLE)}`);
     await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
-    for (const t of plan) {
-      const entity = i.spec.entities.find((e) => e.name === t.entity);
-      const sheet = i.table.sheets[t.sheet];
-      if (!entity || !sheet) continue;
-      const rows: Value[][] = [];
-      for (const r of sheet.rows) {
-        const values = t.columns.map((c) => convertCell(c.field, r[c.index]));
-        if (values.every((v) => v === null)) continue;
-        if (t.columns.some((c, k) => c.field.required === true && values[k] === null)) {
-          result.rowsSkipped++;
-          continue;
-        }
-        rows.push(values);
-      }
-      const cols = t.columns.map((c) => quoteIdent(c.field.name)).join(", ");
-      const casts = t.columns.map((c) => sqlType(c.field.type));
-      const perBatch = Math.max(1, Math.min(LOAD_BATCH, Math.floor(MAX_PARAMS / t.columns.length)));
-      const target = `${quoteIdent(i.schema)}.${quoteIdent(entity.name)}`;
-      for (let b = 0; b < rows.length; b += perBatch) {
-        const batch = rows.slice(b, b + perBatch);
-        let n = 0;
-        const tuples = batch.map((row) => `(${row.map((_, k) => `$${++n}::${casts[k]}`).join(", ")})`);
-        await tx.unsafe(
-          `insert into ${target} (${cols}) values ${tuples.join(", ")}`,
-          batch.flat() as never[],
-        );
-      }
-      result.rowsImported += rows.length;
-      result.byEntity[entity.name] = (result.byEntity[entity.name] ?? 0) + rows.length;
-    }
+    for (const b of batches) await tx.unsafe(b.sql, b.values as never[]);
   });
   return result;
 }

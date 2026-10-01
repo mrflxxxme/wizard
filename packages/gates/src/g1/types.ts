@@ -26,6 +26,16 @@ export interface Step {
   consent?: true;
 }
 
+/**
+ * MAY-hint of QA for the seed (qa.yaml#seed.rules): plausible non-personal values of one pii=none field; values[i] goes
+ * to row i of the entity (so "$seed.<entity>[0]" is the record a scenario needs). Checked by validateSeedHint + DLP.
+ */
+export interface SeedHint {
+  entity: string;
+  field: string;
+  values: (string | number | boolean)[];
+}
+
 export interface Scenario {
   id: string;
   acId?: string;
@@ -33,6 +43,8 @@ export interface Scenario {
   actors: Record<string, { role: string }>;
   milestone?: string;
   seed?: "default" | "none";
+  /** Seed hints of this scenario; G1 merges the hints of all its scenarios into the one shared seed. */
+  seedHints?: SeedHint[];
   steps: Step[];
 }
 

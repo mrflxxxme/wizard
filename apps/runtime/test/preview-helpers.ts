@@ -80,6 +80,8 @@ export interface PreviewFixture {
     key?: string;
     spec?: AppSpec;
     migrate?: boolean;
+    /** Build with the real @wizard/ui-kit instead of the stub (browser tests). */
+    realUiKit?: boolean;
   }): Promise<RegistryEntry>;
   close(): Promise<void>;
 }
@@ -108,13 +110,21 @@ export async function previewFixture(env: Partial<RuntimeEnv> = {}): Promise<Pre
     rt,
     ring,
     registry,
-    async publish({ slug, env: sysEnv, revision, key = newKey(), spec = forumSpec(), migrate = false }) {
+    async publish({
+      slug,
+      env: sysEnv,
+      revision,
+      key = newKey(),
+      spec = forumSpec(),
+      migrate = false,
+      realUiKit = false,
+    }) {
       const built = await buildSystem({
         spec,
         files: forumFiles(),
         env: sysEnv,
         platformOrigin: PLATFORM,
-        hostModules: { uiKit },
+        ...(realUiKit ? {} : { hostModules: { uiKit } }),
       });
       if (!built.ok) throw new Error(JSON.stringify(built.errors));
       const written = writeArtifact(join(root, "artifacts"), key, revision, built);

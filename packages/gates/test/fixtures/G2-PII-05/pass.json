@@ -1,0 +1,6 @@
+{
+  "check": "G2-PII-05",
+  "description": "форум: retention у всех сущностей с ПДн",
+  "base": "forum",
+  "expect": "pass"
+}

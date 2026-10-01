@@ -183,6 +183,28 @@ describe("G1 on the forum", () => {
     expect(s["SC-AC5"]).toBe("skip");
     expect(s["SC-AC6"], detail(r)).toBe("pass");
     expect(s["G1-AC-COVER"]).toBe("pass");
+    expect(s["G1-RENDER-01"], detail(r)).toBe("pass");
+  }, 120_000);
+
+  test("M2-03: simulate qr/sync (forum AC5 steps) — device A accepted, device B duplicate, one check-in of the ticket", async () => {
+    // AC5 of forum.json reads every checkin (count 1), but G1 seed already has check-ins in the shared schema: the
+    // same steps with the read narrowed to the scanned ticket (docs/reviews/impl-notes/M2-03.md).
+    const ac5 = loadForum().acceptance?.find((a) => a.id === "AC5")?.check as {
+      actors: Record<string, { role: string }>;
+      steps: Record<string, unknown>[];
+    };
+    const steps = ac5.steps.map((s) =>
+      s.read ? { read: { entity: "checkin", where: { ticket: "$t1.ticketId" } } } : s,
+    );
+    const check = {
+      id: "SC-AC5-2",
+      acId: "AC5",
+      kind: "scenario",
+      level: "G1",
+      scenario: { id: "SC-AC5-2", acId: "AC5", title: "Офлайн-синхронизация", actors: ac5.actors, steps },
+    } as unknown as QaCheck;
+    const r = await runGates("G1", h.ctx({ milestone: "M2", now: m1Now(), checks: [check] }));
+    expect(status(r)["SC-AC5-2"], detail(r)).toBe("pass");
   }, 120_000);
 
   test("time budget: checks over the budget end with error, the gate fails", async () => {

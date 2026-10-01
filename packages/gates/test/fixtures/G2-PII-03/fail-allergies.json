@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-03",
+  "description": "«Аллергии» в регистрации участника",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "allergies",
+        "label": "Аллергии",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

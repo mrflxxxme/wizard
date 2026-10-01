@@ -1,0 +1,25 @@
+{
+  "check": "G2-PERM-04",
+  "description": "функция волонтёра возвращает скрытые от него поля билета (company, promo_code) через ctx.systemDb",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "leakTickets",
+        "kind": "query",
+        "file": "functions/leakTickets.ts",
+        "public": true,
+        "roles": [
+          "volunteer"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "functions/leakTickets.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    const t = await ctx.systemDb.ticket.list({ limit: 100 });\n    return t.map((x) => ({ id: x.id, company: x.company, promo: x.promo_code }));\n  },\n});\n"
+  },
+  "match": "скрытые поля",
+  "base": "forum",
+  "expect": "fail"
+}

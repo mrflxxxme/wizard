@@ -1,0 +1,19 @@
+{
+  "check": "G2-AF-03",
+  "expect": "block",
+  "description": "gov-photo-document",
+  "milestone": "M2",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "photo_doc",
+        "label": "Фото документа",
+        "type": "file",
+        "pii": "basic"
+      }
+    }
+  ],
+  "base": "forum"
+}

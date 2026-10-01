@@ -1,0 +1,17 @@
+{
+  "check": "G2-AF-01",
+  "expect": "block",
+  "description": "card-expiry-field",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "exp",
+        "label": "Срок действия карты",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum"
+}

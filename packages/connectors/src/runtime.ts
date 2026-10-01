@@ -98,7 +98,7 @@ export function outboxMessage(
   };
 }
 
-/** Connectors without a live transport yet (yookassa until M2-02). */
+/** Effects that exist only in test mode (YooKassa draft mock refunds). */
 export function requireTestMode(ctx: ConnectorCtx): void {
   if (ctx.mode !== "test") {
     throw new ConnectorError("EGRESS_DISABLED", "В этой версии коннектор работает только в тестовом режиме");

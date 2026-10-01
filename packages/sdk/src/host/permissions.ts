@@ -82,9 +82,22 @@ export function compilePolicy(spec: AppSpec, entity: string, subject: AccessSubj
     system: false,
     allows: (op) => ops.has(op),
     rowConstraint: (op) => (filteredOps && !filteredOps.has(op) ? null : constraint),
-    hidden: new Set(perm.hiddenFields ?? []),
+    hidden: new Set([...(perm.hiddenFields ?? []), ...implicitlyHidden(spec, entity, perm)]),
     readonly: new Set(perm.readonlyFields ?? []),
   };
+}
+
+/**
+ * qr_token fields are hidden from every role except isAdmin and a role that reads only its own rows (rowFilter
+ * ownerField = $user.id): staff and partners must not be able to clone tickets (connectors/qr.yaml#token.visibility).
+ */
+function implicitlyHidden(spec: AppSpec, entity: string, perm: Permission): string[] {
+  const e = spec.entities.find((x) => x.name === entity);
+  const tokens = e?.fields.filter((f) => f.type === "qr_token").map((f) => f.name) ?? [];
+  if (tokens.length === 0) return [];
+  if (spec.roles.some((r) => r.name === perm.role && r.isAdmin === true)) return [];
+  if (e?.ownerField && perm.rowFilter?.[e.ownerField] === "$user.id") return [];
+  return tokens;
 }
 
 /** True when a row satisfies the constraint (loose equality on ids/strings/numbers). */

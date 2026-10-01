@@ -21,6 +21,7 @@ import {
   type TestApi,
   waitRun,
 } from "./helpers.js";
+import { expectContract } from "./session.js";
 
 const schemas = loadEventSchemas();
 const PII = {
@@ -143,7 +144,11 @@ describe("publish → change → publish → rollback", () => {
     const missing = await api.req("POST", `/systems/${systemId}/publish`, { body: { revision: 999 } });
     expect(missing.status).toBe(404);
     const own = await api.req("GET", `/systems/${systemId}`);
-    expect(own.body.publishBlockers).toEqual(["OPERATOR_NAME_REQUIRED", "OPERATOR_CONTACT_REQUIRED"]);
+    expect(own.body.publishBlockers).toEqual([
+      "OPERATOR_NAME_REQUIRED",
+      "OPERATOR_CONTACT_REQUIRED",
+      "OPERATOR_ADDRESS_REQUIRED",
+    ]);
     const other = await api.req("GET", `/systems/${systemId}`, {
       headers: { "x-wizard-dev-user": "editor@example.test" },
     });
@@ -151,7 +156,35 @@ describe("publish → change → publish → rollback", () => {
       "NOT_OWNER",
       "OPERATOR_NAME_REQUIRED",
       "OPERATOR_CONTACT_REQUIRED",
+      "OPERATOR_ADDRESS_REQUIRED",
     ]);
+  });
+
+  test("M2-05: operatorInn checksum (setCompliance → 422 INN_INVALID); no operatorAddress → OPERATOR_ADDRESS_REQUIRED", async () => {
+    const s0 = await sys(systemId);
+    const operator = {
+      operatorName: "ООО «Северный ритейл»",
+      operatorContact: "privacy@north-retail.example",
+    };
+    for (const inn of ["7707083894", "500100732258"]) {
+      const bad = await api.req("PUT", `/systems/${systemId}/compliance`, {
+        body: { expectedVersion: s0.draft_revision, ...operator, operatorInn: inn },
+      });
+      expect(bad.status, inn).toBe(422);
+      expect(bad.body.code).toBe("INN_INVALID");
+      expectContract("setCompliance", bad);
+    }
+    const put = await api.req("PUT", `/systems/${systemId}/compliance`, {
+      body: { expectedVersion: s0.draft_revision, ...operator, operatorInn: "7707083893" },
+    });
+    expect(put.status, put.text).toBe(200);
+    const own = await api.req("GET", `/systems/${systemId}`);
+    expect(own.body.publishBlockers).toEqual(["OPERATOR_ADDRESS_REQUIRED"]);
+    const blocked = await api.req("POST", `/systems/${systemId}/publish`, {
+      body: { revision: put.body.revision.version, confirmDiff: true },
+    });
+    expect(blocked.status).toBe(422);
+    expect(blocked.body.code).toBe("OPERATOR_ADDRESS_REQUIRED");
   });
 
   test("setCompliance (owner) → revision kind=compliance → first publish creates app_<key>_prod", async () => {
@@ -161,6 +194,8 @@ describe("publish → change → publish → rollback", () => {
         expectedVersion: s0.draft_revision,
         operatorName: "ООО «Северный ритейл»",
         operatorContact: "privacy@north-retail.example",
+        operatorAddress: "г. Москва, ул. Тверская, д. 1",
+        operatorInn: "500100732259",
       },
     });
     expect(put.status, put.text).toBe(200);

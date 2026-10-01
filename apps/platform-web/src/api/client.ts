@@ -5,6 +5,8 @@ import type {
   ApiErrorBody,
   DiffChange,
   GateReport,
+  ImportColumnMapping,
+  ImportView,
   Invite,
   LockStatus,
   Me,
@@ -226,6 +228,25 @@ export function createApiClient(opts: ClientOptions = {}) {
         operatorInn?: string;
       },
     ) => call<{ revision: RevisionSummary }>("PUT", `${sys(id)}/compliance`, { body }),
+    // Table import (api.yaml#createImport, #getImport, #updateImportMapping; M1-07).
+    createImport: (id: string, file: Blob, name: string) => {
+      const form = new FormData();
+      form.set("file", file, name);
+      return call<{ importId: string; run: Run }>("POST", `${sys(id)}/imports`, {
+        body: form,
+        idempotencyKey: newIdempotencyKey(),
+      });
+    },
+    getImport: (id: string, importId: string) =>
+      call<ImportView>("GET", `${sys(id)}/imports/${encodeURIComponent(importId)}`),
+    updateImportMapping: (id: string, importId: string, mapping: ImportColumnMapping[]) =>
+      call<{ mapping: ImportColumnMapping[] }>(
+        "PUT",
+        `${sys(id)}/imports/${encodeURIComponent(importId)}/mapping`,
+        {
+          body: { mapping },
+        },
+      ),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }

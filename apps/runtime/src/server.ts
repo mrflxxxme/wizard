@@ -1,5 +1,6 @@
 // Node HTTP server for the runtime (platform/deploy.yaml#local: 127.0.0.1:4100).
 import { serve } from "@hono/node-server";
+import { effectiveClientIp } from "@wizard/connectors";
 import { createRuntimeApp, type RuntimeApp, type RuntimeAppOptions } from "./app.js";
 import { rememberClientIp } from "./auth/client-ip.js";
 import { assertStartupAllowed, readEnv } from "./env.js";
@@ -14,11 +15,14 @@ export async function startRuntime(
   o: StartOptions,
 ): Promise<{ runtime: RuntimeApp; close(): Promise<void> }> {
   const hostname = o.hostname ?? "127.0.0.1";
-  assertStartupAllowed({ ...readEnv(), ...o.env }, hostname);
+  const env = { ...readEnv(), ...o.env };
+  assertStartupAllowed(env, hostname);
+  const trusted = env.trustedProxies ?? [];
   const runtime = createRuntimeApp(o);
   const server = serve({
-    fetch: (req: Request, env: { incoming?: { socket?: { remoteAddress?: string } } }) => {
-      rememberClientIp(req, env?.incoming?.socket?.remoteAddress);
+    fetch: (req: Request, node: { incoming?: { socket?: { remoteAddress?: string } } }) => {
+      const peer = node?.incoming?.socket?.remoteAddress;
+      rememberClientIp(req, effectiveClientIp(peer, req.headers.get("x-forwarded-for"), trusted));
       return runtime.fetch(req);
     },
     port: o.port ?? 4100,

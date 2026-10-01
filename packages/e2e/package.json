@@ -10,6 +10,8 @@
   "devDependencies": {
     "@hono/node-server": "^2.1.3",
     "@playwright/test": "1.56.1",
+    "@wizard/llm": "workspace:*",
+    "@wizard/pii": "workspace:*",
     "@wizard/platform-api": "workspace:*",
     "@wizard/runtime": "workspace:*",
     "jsqr": "^1.4.0",

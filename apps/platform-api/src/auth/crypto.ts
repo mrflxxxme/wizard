@@ -1,5 +1,7 @@
 // Hashing helpers of accounts: OTP pepper (db.yaml#auth_otps.code_hash, L3-25), session/invite token hashes.
 import { createHash, createHmac, hkdfSync, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Without WIZARD_SECRETS_KEY (local only; production refuses to start) keys are random per process.
 const EPHEMERAL = randomBytes(32);
@@ -8,6 +10,24 @@ const EPHEMERAL = randomBytes(32);
 export function deriveKey(secretsKey: string, label: string): Buffer {
   const ikm = secretsKey ? Buffer.from(secretsKey, "utf8") : EPHEMERAL;
   return Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), `wizard/${label}`, 32));
+}
+
+/**
+ * Key material of data shared by platform-api and apps/worker (import files, export archives): WIZARD_SECRETS_KEY, or —
+ * local only, without it — a random key file `<dir>/.key` (0600), so both processes decrypt the same files (M1-01).
+ */
+export function sharedKeyMaterial(secretsKey: string, dir: string): string {
+  if (secretsKey) return secretsKey;
+  const f = join(dir, ".key");
+  if (!existsSync(f)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try {
+      writeFileSync(f, randomBytes(32).toString("hex"), { mode: 0o600, flag: "wx" });
+    } catch (e) {
+      if ((e as { code?: string }).code !== "EEXIST") throw e;
+    }
+  }
+  return readFileSync(f, "utf8");
 }
 
 export const hmacHex = (key: Buffer, data: string): string =>

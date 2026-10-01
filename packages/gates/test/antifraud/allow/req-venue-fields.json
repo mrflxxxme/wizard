@@ -1,0 +1,52 @@
+{
+  "expect": "allow",
+  "description": "«Адрес площадки», «Контакты организатора», «Название товара» в сущности-субъекте; «ул. Тараса Шевченко»",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "venue_address",
+        "label": "Адрес площадки",
+        "type": "string"
+      }
+    },
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "organizer_contacts",
+        "label": "Контакты организатора",
+        "type": "string"
+      }
+    },
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "merch_title",
+        "label": "Название товара",
+        "type": "string"
+      }
+    },
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "venue",
+        "label": "Площадка",
+        "type": "enum",
+        "enum": [
+          {
+            "value": "main",
+            "label": "ул. Тараса Шевченко, 5"
+          }
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n      <p>{\"Адрес площадки: ул. Тараса Шевченко, 5\"}</p>\n      <p>{\"Контакты организатора — в письме\"}</p>\n      <form>\n\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

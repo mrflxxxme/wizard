@@ -180,11 +180,11 @@ describe("demo/forum through the API", () => {
       env: "draft",
       revision: sys.preview_revision,
     });
-    // The consent text the platform filled from the template reaches the preview (RoleSpec).
+    // The consent text the platform filled from the lawyer's template (a marked draft so far) reaches the preview.
     const spec = await rt.fetch(new Request(`http://${host}/_wizard/spec`, { headers: { host } }));
     expect(spec.status).toBe(200);
     const body = (await spec.json()) as { compliance?: { consentText?: string } };
-    expect(body.compliance?.consentText).toMatch(/Я соглашаюсь/);
+    expect(body.compliance?.consentText).toMatch(/^ЧЕРНОВИК — требует согласования юристом/);
     // …while revisions keep owner-only fields owner-only: nothing wrote consentText into the stored spec.
     const revs =
       await pg`select spec->'compliance' as c from platform.revisions where system_id = ${g.systemId}`;

@@ -500,7 +500,7 @@ tasks:
     owner: platform
     parallel_group: m1-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "kill -9 воркера посреди сборки → прогон продолжается с последнего шага"
@@ -619,8 +619,8 @@ tasks:
     owner: qa
     parallel_group: m1-c
     estimate_days: 1.5
-    status: in_progress
-    claimed_by: orchestrator  # готово: исполнитель задач, runWorkflows/advanceTime, объяснения QA; осталось: G1-RENDER-01, подсказки seed от QA, замер ≥80% на живых моделях (ключи)
+    status: done
+    claimed_by: null
     acceptance: ["Eval: ≥80% брифов проходят G0+G1 без человека (live, лучшая модель)"]
 
   - id: M1-10
@@ -661,7 +661,7 @@ tasks:
     owner: frontend
     parallel_group: m1-d
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance: ["Playwright: загрузка xlsx/csv → предложенное сопоставление → правка колонки → импорт; в UI нет значений из T1-ответа, только схема"]
 
@@ -690,7 +690,7 @@ tasks:
     owner: platform
     parallel_group: m2-a
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Тест на тестовом магазине: оплата → статус заказа → возврат"
@@ -704,7 +704,7 @@ tasks:
     owner: frontend
     parallel_group: m2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: офлайн 100 сканов → онлайн → синхронизация без дублей; повтор QR отклоняется"
@@ -814,7 +814,7 @@ tasks:
     owner: platform
     parallel_group: m2-d
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Выгрузка всех сущностей prod в ZIP с CSV и spec.json (кода нет — non_goals); ПДн выгружает только owner; событие в журнале (L4-08)"

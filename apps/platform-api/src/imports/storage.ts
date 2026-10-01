@@ -1,9 +1,9 @@
 // Uploaded tables at rest (db.yaml#imports.source_sha, data-boundary.yaml#import.values): AES-256-GCM with a sub-key of
-// WIZARD_SECRETS_KEY (deploy.yaml#local.secrets; without it — local only — a per-process key), TTL 7 days.
+// WIZARD_SECRETS_KEY (deploy.yaml#local.secrets; without it — local only — a key file next to the data), TTL 7 days.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { deriveKey } from "../auth/crypto.js";
+import { deriveKey, sharedKeyMaterial } from "../auth/crypto.js";
 import type { Db } from "../db/index.js";
 
 export const IMPORT_TTL_MS = 7 * 24 * 3600_000;
@@ -12,12 +12,19 @@ const IV = 12;
 const TAG = 16;
 
 export class ImportStore {
-  readonly #key: Buffer;
+  readonly #secretsKey: string;
+  #k: Buffer | undefined;
   constructor(
     readonly dir: string,
     secretsKey: string,
   ) {
-    this.#key = deriveKey(secretsKey, "imports/aes-256-gcm");
+    this.#secretsKey = secretsKey;
+  }
+
+  // Lazy: the local key file (no WIZARD_SECRETS_KEY) is created on first use, shared with apps/worker.
+  get #key(): Buffer {
+    this.#k ??= deriveKey(sharedKeyMaterial(this.#secretsKey, this.dir), "imports/aes-256-gcm");
+    return this.#k;
   }
 
   #path(id: string): string {

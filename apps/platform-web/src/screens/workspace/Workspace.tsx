@@ -37,6 +37,8 @@ const runReducer = (st: RunState, a: RunAction): RunState =>
   a.type === "reset" ? initialRunState() : reduceRun(st, a.e);
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
+/** api.yaml#createImport: xlsx/csv ≤ 20 МБ. */
+const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
 
 /**
  * The revision the owner would publish now (as getSystem.publishBlockers counts it): the latest draft revision
@@ -75,6 +77,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const lastText = useRef("");
   const cardRef = useRef<SystemCard | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async (): Promise<SystemView> => {
     const v = await api.getSystem(systemId);
@@ -278,6 +281,26 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     setRunId(r.run.id);
   }
 
+  /** POST /systems/:id/imports → S-import. Only the extension leaves the browser as the file name (it may hold PII). */
+  async function uploadTable(file: File) {
+    const ext = /\.(xlsx|csv)$/i.exec(file.name)?.[1]?.toLowerCase();
+    if (!ext) return setActionError(ru.import.unsupported);
+    if (file.size > IMPORT_MAX_BYTES) return setActionError(ru.import.tooLarge);
+    setBusy("upload");
+    setActionError(null);
+    try {
+      const r = await api.createImport(systemId, file, `table.${ext}`);
+      navigate(`/s/${systemId}/import/${r.importId}`);
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      setActionError(
+        status === 413 ? ru.import.tooLarge : status === 415 ? ru.import.unsupported : errText(e),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const focusInput = () => {
     setPane("chat");
     inputRef.current?.focus();
@@ -328,6 +351,13 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   // S7: the draft is ahead of prod with real changes (an empty diff — e.g. after «Отменить» — is not a proposal).
   const showDiff = ahead && (changes === null || changes.length > 0);
   const seg: Segment = showDiff ? segment : "draft";
+  // S-import (L1-54): rows are loaded into the preview revision's schema, so a built system is required.
+  const canUpload = editor && system.previewRevision != null && !running && !locked;
+  const uploadHint = !editor
+    ? ru.workspace.uploadViewer
+    : system.previewRevision == null
+      ? ru.workspace.uploadNotReady
+      : ru.workspace.uploadHint;
 
   const chatBody = (
     <>
@@ -387,7 +417,9 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
           <span className={s.bubbleText}>{finishedSummary}</span>
         </div>
       )}
-      {(run.kind === "publish" || run.kind === "rollback") && <RunNotice run={run} />}
+      {(run.kind === "publish" || run.kind === "rollback" || run.kind === "import_table") && (
+        <RunNotice run={run} />
+      )}
       {stage === "ready" && (
         <>
           <GateReportView reports={reports} />
@@ -563,6 +595,38 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
           </form>
           {locked && <p className={s.small}>{ru.workspace.lockedHint}</p>}
           {readOnly && !locked && <p className={s.small}>{ru.workspace.viewerHint}</p>}
+          <div className={s.uploadRow}>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              className={s.visuallyHidden}
+              tabIndex={-1}
+              aria-label={ru.workspace.uploadFile}
+              data-testid="chat-upload-file"
+              disabled={!canUpload}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void uploadTable(f);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid="chat-upload"
+              disabled={!canUpload}
+              loading={busy === "upload"}
+              title={uploadHint}
+              aria-describedby="chat-upload-hint"
+              onClick={() => fileRef.current?.click()}
+            >
+              {ru.workspace.upload}
+            </Button>
+            <span id="chat-upload-hint" className={s.small}>
+              {uploadHint}
+            </span>
+          </div>
         </footer>
       </section>
       <main className={s.main}>

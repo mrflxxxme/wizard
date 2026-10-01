@@ -28,8 +28,10 @@ export interface FlowHost {
   signal: AbortSignal;
   options: PublishOptions;
   tx<T>(fn: (t: TxCtx) => Promise<T>): Promise<T>;
-  /** step_started → fn → step_finished, with the cancel check before it. */
+  /** step_started → fn → step_finished, with the cancel check before it; fn is one checkpoint (M1). */
   step<T>(name: string, label_ru: string, fn: () => Promise<T>): Promise<T>;
+  /** A checkpoint without events: reads that steer the flow and writes outside steps (replayed after a restart). */
+  once<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** gate_G0 of the draft at draft_revision, with migrate_draft/bundle_and_reload on success (engine #gate). */
   draftG0(): Promise<GateReport>;
 }
@@ -119,29 +121,31 @@ async function smoke(
     check({ slug: sys.slug, systemKey: sys.schema_key, revision, url }),
   );
   if (res.ok) return url;
-  await h.tx(async (t) => {
-    const locked = await lockSystem(t, sys.id);
-    await t.trx
-      .updateTable("platform.publications")
-      .set({ status: "failed" })
-      .where("id", "=", publicationId)
-      .execute();
-    let prevRevision: number | null = null;
-    if (prevId) {
-      const prev = await t.trx
+  await h.once("smoke_rollback", () =>
+    h.tx(async (t) => {
+      const locked = await lockSystem(t, sys.id);
+      await t.trx
         .updateTable("platform.publications")
-        .set({ status: "live" })
-        .where("id", "=", prevId)
-        .returning("revision")
-        .executeTakeFirst();
-      prevRevision = prev?.revision ?? null;
-    }
-    await t.trx
-      .updateTable("platform.systems")
-      .set({ prod_revision: prevRevision, updated_at: new Date() })
-      .where("id", "=", locked.id)
-      .execute();
-  });
+        .set({ status: "failed" })
+        .where("id", "=", publicationId)
+        .execute();
+      let prevRevision: number | null = null;
+      if (prevId) {
+        const prev = await t.trx
+          .updateTable("platform.publications")
+          .set({ status: "live" })
+          .where("id", "=", prevId)
+          .returning("revision")
+          .executeTakeFirst();
+        prevRevision = prev?.revision ?? null;
+      }
+      await t.trx
+        .updateTable("platform.systems")
+        .set({ prod_revision: prevRevision, updated_at: new Date() })
+        .where("id", "=", locked.id)
+        .execute();
+    }),
+  );
   throw new RunFailure(
     "SMOKE_FAILED",
     `Новая версия не ответила после публикации (${res.reason.slice(0, 200)}). Prod возвращён к предыдущей версии.`,
@@ -182,7 +186,9 @@ async function guarded<T>(h: FlowHost, publicationId: string, fn: () => Promise<
   try {
     return await fn();
   } catch (e) {
-    await setStatus(h, publicationId, "failed", ["planned", "applying"]).catch(() => {});
+    await h
+      .once("publication_failed", () => setStatus(h, publicationId, "failed", ["planned", "applying"]))
+      .catch(() => {});
     throw e;
   }
 }
@@ -203,14 +209,18 @@ export function isPublishable(
 export async function runPublish(h: FlowHost): Promise<FlowResult> {
   const input = h.run.input as { revision?: unknown };
   const revision = typeof input.revision === "number" ? input.revision : Number.NaN;
-  const sys = await system(h);
-  let rev = Number.isInteger(revision) ? await loadRevision(h.db, sys.id, revision) : undefined;
+  const sys = await h.once("load_system", () => system(h));
+  const revisionRow = (name: string) =>
+    h.once(name, async () =>
+      Number.isInteger(revision) ? await loadRevision(h.db, sys.id, revision) : undefined,
+    );
+  let rev = await revisionRow("load_revision");
   if (!rev || !isPublishable(rev, sys.draft_revision))
     throw new RunFailure("GATES_FAILED", "Эта ревизия не прошла проверки — публиковать её нельзя");
   if (!rev.bundle_key) {
     // A style/compliance revision made without a build: the draft gate builds it first (moves the preview too).
     const report = await h.draftG0();
-    rev = await loadRevision(h.db, sys.id, revision);
+    rev = await revisionRow("reload_revision");
     if (!report.passed || !rev?.bundle_key)
       throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки — подробности в отчёте G0");
   }
@@ -296,8 +306,10 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
 export async function runRollback(h: FlowHost): Promise<FlowResult> {
   const input = h.run.input as { env?: unknown; toRevision?: unknown };
   const to = typeof input.toRevision === "number" ? input.toRevision : Number.NaN;
-  const sys = await system(h);
-  const target = Number.isInteger(to) ? await loadRevision(h.db, sys.id, to) : undefined;
+  const sys = await h.once("load_system", () => system(h));
+  const target = await h.once("load_revision", async () =>
+    Number.isInteger(to) ? await loadRevision(h.db, sys.id, to) : undefined,
+  );
   if (!target) throw new RunFailure("ROLLBACK_TARGET_INVALID", "Такой ревизии нет");
 
   if (input.env === "draft") {
@@ -327,13 +339,15 @@ export async function runRollback(h: FlowHost): Promise<FlowResult> {
     return { summary_ru: `Черновик возвращён к ревизии ${to}`, resultRevision: version };
   }
 
-  const wasLive = await h.db
-    .selectFrom("platform.publications")
-    .select("id")
-    .where("system_id", "=", sys.id)
-    .where("revision", "=", to)
-    .where("live_at", "is not", null)
-    .executeTakeFirst();
+  const wasLive = await h.once("was_live", () =>
+    h.db
+      .selectFrom("platform.publications")
+      .select("id")
+      .where("system_id", "=", sys.id)
+      .where("revision", "=", to)
+      .where("live_at", "is not", null)
+      .executeTakeFirst(),
+  );
   if (!wasLive || !target.bundle_key)
     throw new RunFailure(
       "ROLLBACK_TARGET_INVALID",

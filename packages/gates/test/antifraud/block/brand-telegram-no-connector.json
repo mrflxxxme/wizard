@@ -1,0 +1,73 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-telegram-no-connector",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/roles/0/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "set",
+      "path": "/roles/1/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "set",
+      "path": "/roles/2/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "set",
+      "path": "/roles/3/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "set",
+      "path": "/roles/4/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "set",
+      "path": "/roles/5/loginMethods",
+      "value": [
+        "email_otp"
+      ]
+    },
+    {
+      "op": "remove",
+      "path": "/integrations/1"
+    },
+    {
+      "op": "remove",
+      "path": "/workflows/2"
+    },
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n\n      <form>\n        <Button type=\"submit\">{\"Войти через Telegram\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

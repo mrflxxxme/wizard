@@ -1,0 +1,13 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "секретный ключ ЮKassa в конфиге интеграции",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/integrations/0/config/note",
+      "value": "live_aB3aB3aB3aB3aB3aB3aB3aB3aB3"
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

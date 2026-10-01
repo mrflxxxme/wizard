@@ -245,6 +245,20 @@ export interface PublicationsTable {
   created_at: TsDef;
 }
 
+/** M1-01, db.yaml#secrets_refs: metadata of connector secrets; the value lives only in the backend. */
+export interface SecretsRefsTable {
+  id: Generated<string>;
+  org_id: string;
+  system_id: string;
+  env: string;
+  name: string;
+  backend: string;
+  backend_path: string;
+  created_by: string | null;
+  rotated_at: TsNull;
+  created_at: TsDef;
+}
+
 /** M1-03, billing.yaml#ledger: append-only (UPDATE/DELETE are refused by a trigger). */
 export interface CreditLedgerTable {
   id: ColumnType<string, never, never>;
@@ -275,6 +289,34 @@ export interface ImportsTable {
   created_at: TsDef;
 }
 
+export interface ExportsTable {
+  id: Generated<string>;
+  system_id: string;
+  env: string;
+  run_id: string | null;
+  status: string;
+  storage_key: string | null;
+  size: BigNull;
+  download_token_hash: string | null;
+  download_token_expires_at: TsNull;
+  downloads: Generated<number>;
+  expires_at: Ts;
+  created_by: string;
+  created_at: TsDef;
+}
+
+export interface DeletionLogTable {
+  id: Generated<string>;
+  system_id: string;
+  env: string;
+  entity: string;
+  mode: string;
+  cutoff: TsNull;
+  rows_affected: number;
+  run_id: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -289,9 +331,12 @@ export interface DB {
   "platform.llm_calls": LlmCallsTable;
   "platform.locks": LocksTable;
   "platform.publications": PublicationsTable;
+  "platform.secrets_refs": SecretsRefsTable;
   "platform.auth_otps": AuthOtpsTable;
   "platform.sessions": SessionsTable;
   "platform.invites": InvitesTable;
   "platform.credit_ledger": CreditLedgerTable;
   "platform.imports": ImportsTable;
+  "platform.exports": ExportsTable;
+  "platform.deletion_log": DeletionLogTable;
 }

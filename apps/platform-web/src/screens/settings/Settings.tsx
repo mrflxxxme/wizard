@@ -572,6 +572,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
                     maxLength={300}
                     value={operator.address}
                     onChange={(e) => setOperator({ ...operator, address: e.target.value })}
+                    data-testid="settings-pd-address"
                   />
                 </label>
                 <label className={s.field}>
@@ -581,6 +582,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
                     pattern="[0-9]{10}([0-9]{2})?"
                     value={operator.inn}
                     onChange={(e) => setOperator({ ...operator, inn: e.target.value })}
+                    data-testid="settings-pd-inn"
                   />
                 </label>
               </fieldset>

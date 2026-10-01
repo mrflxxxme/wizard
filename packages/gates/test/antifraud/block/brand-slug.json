@@ -1,0 +1,7 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-slug",
+  "slug": "gosuslugi",
+  "base": "forum"
+}

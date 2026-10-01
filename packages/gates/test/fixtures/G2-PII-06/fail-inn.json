@@ -1,0 +1,14 @@
+{
+  "check": "G2-PII-06",
+  "description": "ИНН с неверной контрольной суммой",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/compliance/operatorInn",
+      "value": "7707083894"
+    }
+  ],
+  "match": "INN_INVALID",
+  "base": "forum",
+  "expect": "fail"
+}

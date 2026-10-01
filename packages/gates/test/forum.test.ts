@@ -71,9 +71,9 @@ describe("G0 on the forum", () => {
     expect(r.passed).toBe(true);
   }, 120_000);
 
-  test("G2 is not wired yet and G1 without a runtime cannot check: error report, not passed", async () => {
+  test("G2 and G1 without a runtime cannot check the permission matrix: error report, not passed", async () => {
     const g2 = await runGates("G2", forumCtx(db));
-    expect(g2).toMatchObject({ level: "G2", passed: false, summary: { error: 1 } });
+    expect(g2).toMatchObject({ level: "G2", passed: false, summary: { error: 4 } });
     expect(validateSchema(apiSpec.components.schemas.GateReport, g2, apiSpec)).toEqual([]);
     const g1 = await runGates("G1", forumCtx(db));
     expect(g1).toMatchObject({ level: "G1", passed: false });

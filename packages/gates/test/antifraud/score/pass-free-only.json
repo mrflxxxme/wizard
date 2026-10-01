@@ -1,0 +1,10 @@
+{
+  "check": "G2-AF-08",
+  "expect": "pass",
+  "description": "только Free и новая org — ниже порога",
+  "abuse": {
+    "orgAgeDays": 1,
+    "plan": "free"
+  },
+  "base": "forum"
+}

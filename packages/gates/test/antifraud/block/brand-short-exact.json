@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-short-exact",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "МТС Бонус"
+    }
+  ],
+  "base": "forum"
+}

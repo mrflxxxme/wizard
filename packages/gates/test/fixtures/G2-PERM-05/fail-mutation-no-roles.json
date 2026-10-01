@@ -1,0 +1,22 @@
+{
+  "check": "G2-PERM-05",
+  "description": "публичная mutation без roles",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "touch",
+        "kind": "mutation",
+        "file": "functions/touch.ts",
+        "public": true
+      }
+    }
+  ],
+  "files": {
+    "functions/touch.ts": "import { mutation, v } from \"@wizard/sdk\";\n\nexport default mutation({\n  args: {},\n  handler: async (ctx) => {\n    return null;\n  },\n});\n"
+  },
+  "match": "не указано",
+  "base": "forum",
+  "expect": "fail"
+}

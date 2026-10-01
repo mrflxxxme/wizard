@@ -1,0 +1,19 @@
+{
+  "check": "G2-PII-05",
+  "description": "retentionWaiver",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/entities/3/retention"
+    },
+    {
+      "op": "set",
+      "path": "/compliance/retentionWaiver",
+      "value": {
+        "reason": "Храним по договору с площадкой"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

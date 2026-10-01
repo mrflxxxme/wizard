@@ -1,0 +1,12 @@
+{
+  "check": "G2-PII-05",
+  "description": "у заявок спикеров нет retention",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/entities/3/retention"
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

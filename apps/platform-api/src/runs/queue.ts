@@ -1,5 +1,8 @@
-// M0 run engine (workflows.yaml#execution.M0): in-process FIFO queue, global concurrency, platform.locks,
-// run lifecycle (workflows.yaml#run_lifecycle) and restart recovery.
+// Run engine (workflows.yaml#execution): run lifecycle (#run_lifecycle), platform.locks, budget and the workflows
+// interview_turn / build / publish / rollback. Three roles:
+//   inprocess (M0, unit tests): in-process FIFO queue with global concurrency, restart recovery → WORKER_RESTARTED;
+//   client (platform-api in M1): runs are enqueued as DBOS workflows (workflowID = runs.id), never executed here;
+//   worker (apps/worker): executeRun() is the body of the DBOS workflow, every side effect is a checkpointed step.
 import { randomUUID } from "node:crypto";
 import type { AppSpec } from "@wizard/appspec";
 import {
@@ -7,9 +10,11 @@ import {
   createRegistry,
   createRouter,
   LlmError,
+  type RouteOutput,
   type Router,
   type RouterOptions,
 } from "@wizard/llm";
+import { createLogger } from "@wizard/pii/log";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
 import type { Billing } from "../billing/ledger.js";
@@ -17,11 +22,14 @@ import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import { ExportStore } from "../exports/storage.js";
+import { type ExportRunInput, runExport } from "../exports/workflow.js";
 import { ImportStore } from "../imports/storage.js";
 import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
 import type { PublishOptions } from "../publish/prod.js";
 import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
+import type { SecretStore } from "../secrets/store.js";
 import { insertMessage } from "../services/messages.js";
 import {
   applyOpsRevision,
@@ -30,9 +38,18 @@ import {
   loadManifest,
   loadSpec,
   lockSystem,
+  type Manifest,
 } from "../services/revisions.js";
 import { assertTransition, canTransition, type Stage, stageAfterBuild } from "../services/stage.js";
 import type { BlobStore } from "../storage/blobs.js";
+import {
+  type Durable,
+  type InputMessage,
+  inProcessDurable,
+  LocalMailboxes,
+  TOPIC_INPUT,
+  TOPIC_LOCK,
+} from "./durable.js";
 import { appendEvent, type EventBus, type EventType, type TxCtx, withTx } from "./events.js";
 import { recordGateReport } from "./gates.js";
 import {
@@ -50,13 +67,14 @@ import {
   RunCancelled,
   type RunExecutors,
   RunFailure,
+  type SecretInputRequest,
   type StepHost,
 } from "./types.js";
 import { DbUsageSink } from "./usage.js";
 
 export const ACTIVE_STATUSES = ["queued", "waiting_lock", "running", "needs_input"] as const;
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["succeeded", "failed", "cancelled"]);
-const NEEDS_LOCK: ReadonlySet<string> = new Set(["build", "publish", "rollback", "import_table"]);
+export const NEEDS_LOCK: ReadonlySet<string> = new Set(["build", "publish", "rollback", "import_table"]);
 const PLATFORM_EVENTS: ReadonlySet<string> = new Set([
   "run_started",
   "run_finished",
@@ -65,9 +83,15 @@ const PLATFORM_EVENTS: ReadonlySet<string> = new Set([
 ]);
 const LEASE_MS = 120_000;
 const HEARTBEAT_MS = 30_000;
+/** Durable lock waiters re-check the lock this often even without a hand-over message. */
+const LOCK_POLL_MS = 10_000;
+/** Worker: how often running runs look for cancel_requested_at (the current LLM call is aborted). */
+const CANCEL_POLL_MS = 1_000;
 export const INPUT_TIMEOUT_MS = 24 * 3600_000;
 /** workflows.yaml#workflows.interview_turn.budget */
 export const INTERVIEW_CAP_MILLI = 2000;
+const TERMINAL = "\u0000terminal";
+const fallbackLog = createLogger({ svc: "platform-api" });
 
 type Run = Selectable<RunsTable>;
 type Result =
@@ -79,6 +103,17 @@ type Result =
     }
   | { status: "failed"; code: string; message_ru: string; retryable: boolean };
 
+/** M1 (role client): how platform-api hands runs and messages to DBOS (apps/worker implements the workflows). */
+export interface RunDispatcher {
+  /** Enqueues the run workflow (workflowID = runs.id; idempotent). */
+  enqueue(run: { id: string; kind: string; system_id: string | null }): Promise<void>;
+  /** DBOS.send to the run workflow. */
+  send(runId: string, topic: string, message: unknown, idempotencyKey?: string): Promise<void>;
+  close(): Promise<void>;
+}
+
+export type EngineRole = "inprocess" | "client" | "worker";
+
 export interface EngineDeps {
   db: Db;
   pg: postgres.Sql;
@@ -88,6 +123,11 @@ export interface EngineDeps {
   executors: RunExecutors;
   /** Credits ledger (billing.yaml#run_charging). */
   billing: Billing;
+  /** Default inprocess; client needs `dispatcher` (worker: DBOS.send for messages sent outside a workflow). */
+  role?: EngineRole;
+  dispatcher?: RunDispatcher;
+  /** Connector secrets entered at needs_input kind=secret (execution.M1.dbos_data). */
+  secrets?: SecretStore;
   /** Router factory (tests); default createRouter with DbUsageSink. */
   createRouter?: (opts: RouterOptions) => Router;
   log?: (msg: string, err?: unknown) => void;
@@ -95,15 +135,10 @@ export interface EngineDeps {
   publish?: PublishOptions;
 }
 
-interface Waiter {
-  resolve(a: InputAnswer): void;
-  reject(e: unknown): void;
-}
-
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table";
+  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table" | "export";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -119,9 +154,11 @@ export interface NewRun {
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
+  const id = randomUUID();
   const run = await t.trx
     .insertInto("platform.runs")
     .values({
+      id,
       org_id: r.orgId,
       system_id: r.systemId,
       kind: r.kind,
@@ -137,6 +174,8 @@ export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise
             ? IMPORT_CAP_MILLI
             : null),
       started_by: r.startedBy,
+      // workflows.yaml#execution.M1.engine: workflowID = runs.id.
+      dbos_workflow_id: id,
     })
     .returningAll()
     .executeTakeFirstOrThrow();
@@ -176,22 +215,72 @@ export function orgPolicyOf(org: { ru_only: boolean; t1_restricted: boolean; reg
   return { ruOnly: org.ru_only, t1Restricted: org.t1_restricted || org.region_code === null };
 }
 
+/** Counting semaphore: active (non-waiting) runs of a worker (WIZARD_RUN_CONCURRENCY). */
+class Slots {
+  #free: number;
+  readonly #waiting: (() => void)[] = [];
+  constructor(n: number) {
+    this.#free = n;
+  }
+  async take(): Promise<void> {
+    if (this.#free > 0) {
+      this.#free--;
+      return;
+    }
+    await new Promise<void>((r) => this.#waiting.push(r));
+  }
+  give(): void {
+    const next = this.#waiting.shift();
+    if (next) next();
+    else this.#free++;
+  }
+}
+
+/** One executing run: its row (immutable fields), durability context and abort controller. */
+interface Ctx {
+  run: Run;
+  D: Durable;
+  ac: AbortController;
+  /** Holds a worker slot (role worker, lock-needing runs). */
+  slot: boolean;
+}
+
+interface Routers {
+  r?: Router;
+  /** Internal events (model_switched) of the current call; awaited before the call's step ends. */
+  pending: Promise<unknown>[];
+  /** Replay of a fixture call: usage and events are not written again. */
+  mute: boolean;
+}
+
 export class RunEngine {
   readonly #d: EngineDeps;
+  readonly #role: EngineRole;
   readonly #queue: string[] = [];
   readonly #meta = new Map<string, string | null>();
   readonly #busyKeys = new Set<string>();
   readonly #active = new Set<string>();
   readonly #tasks = new Set<Promise<void>>();
   readonly #controllers = new Map<string, AbortController>();
-  readonly #waiters = new Map<string, Waiter>();
+  readonly #boxes = new LocalMailboxes();
   readonly #lockWaiters = new Map<string, string[]>();
   readonly #circuit = new CircuitBreaker();
+  readonly #slots: Slots;
+  #cancelPoll: NodeJS.Timeout | undefined;
   #imports: ImportStore | undefined;
+  #exports: ExportStore | undefined;
   #closed = false;
 
   constructor(deps: EngineDeps) {
     this.#d = deps;
+    this.#role = deps.role ?? "inprocess";
+    if (this.#role === "client" && !deps.dispatcher)
+      throw new Error("RunEngine role client needs a dispatcher");
+    this.#slots = new Slots(deps.config.runConcurrency);
+  }
+
+  get role(): EngineRole {
+    return this.#role;
   }
 
   get #db(): Db {
@@ -199,16 +288,22 @@ export class RunEngine {
   }
 
   #log(msg: string, err?: unknown): void {
-    (this.#d.log ?? ((m, e) => console.error(`[platform-api] ${m}`, e ?? "")))(msg, err);
+    if (this.#d.log) this.#d.log(msg, err);
+    else fallbackLog.error(msg, err);
   }
 
   #tx<T>(fn: (t: TxCtx) => Promise<T>): Promise<T> {
     return withTx(this.#db, this.#d.bus, fn);
   }
 
-  /** Adds a persisted queued run; interview turns of one system run one at a time. */
+  /** Hands a persisted queued run to the executor; interview turns of one system run one at a time. */
   enqueue(run: { id: string; kind: string; system_id: string | null }, front = false): void {
     if (this.#closed) return;
+    if (this.#role === "client") {
+      this.#d.dispatcher?.enqueue(run).catch((e) => this.#log(`enqueue ${run.id} failed`, e));
+      return;
+    }
+    if (this.#role === "worker") return;
     this.#meta.set(run.id, run.kind === "interview_turn" ? `interview:${run.system_id}` : null);
     if (front) this.#queue.unshift(run.id);
     else this.#queue.push(run.id);
@@ -227,11 +322,12 @@ export class RunEngine {
       const key = this.#meta.get(id) ?? null;
       if (key) this.#busyKeys.add(key);
       this.#active.add(id);
-      const task: Promise<void> = this.#execute(id).finally(() => {
+      const task: Promise<void> = this.executeRun(id, inProcessDurable(id, this.#boxes)).finally(() => {
         if (key) this.#busyKeys.delete(key);
         this.#meta.delete(id);
         this.#active.delete(id);
         this.#tasks.delete(task);
+        this.#boxes.clear(id);
         this.#pump();
       });
       this.#tasks.add(task);
@@ -243,16 +339,43 @@ export class RunEngine {
     while (this.#tasks.size > 0) await Promise.allSettled([...this.#tasks]);
   }
 
-  /** Stops accepting work and aborts executors WITHOUT finalizing runs (simulates a process stop). */
-  async close(): Promise<void> {
+  /** Stops accepting work (the worker calls it before DBOS.shutdown so no run is finalized while stopping). */
+  stop(): void {
     this.#closed = true;
-    for (const c of this.#controllers.values()) c.abort();
-    for (const w of this.#waiters.values()) w.reject(new RunCancelled());
-    await Promise.allSettled([...this.#tasks]);
+    if (this.#cancelPoll) clearInterval(this.#cancelPoll);
   }
 
-  /** workflows.yaml#execution.M0.restart: every non-terminal run → failed WORKER_RESTARTED. */
+  /** Stops accepting work and aborts executors WITHOUT finalizing runs (simulates a process stop). */
+  async close(): Promise<void> {
+    this.stop();
+    for (const c of this.#controllers.values()) c.abort();
+    for (const id of this.#controllers.keys()) this.#boxes.send(id, TOPIC_INPUT, { cancel: true });
+    await Promise.allSettled([...this.#tasks]);
+    await this.#d.dispatcher?.close();
+  }
+
+  /**
+   * Worker: a run whose DBOS workflow ended without the terminal transaction (workflow error, recovery attempts
+   * exhausted) → failed WORKER_RESTARTED, lock released and handed over (no-op for a terminal run).
+   */
+  async failAbandoned(runId: string): Promise<void> {
+    const sys = await this.#tx((t) =>
+      this.#finalize(t, runId, {
+        status: "failed",
+        code: "WORKER_RESTARTED",
+        message_ru: "Прогон прервался на сервере. Запустите его ещё раз.",
+        retryable: true,
+      }),
+    );
+    if (sys) {
+      const next = await this.#nextWaiter(sys);
+      if (next) await this.#deliver(next, TOPIC_LOCK, { systemId: sys });
+    }
+  }
+
+  /** workflows.yaml#execution.M0.restart: every non-terminal run → failed WORKER_RESTARTED (role inprocess). */
   async recover(): Promise<number> {
+    if (this.#role !== "inprocess") return 0;
     const rows = await this.#db
       .selectFrom("platform.runs")
       .select("id")
@@ -276,25 +399,92 @@ export class RunEngine {
     return this.#db.selectFrom("platform.runs").selectAll().where("id", "=", id).executeTakeFirst();
   }
 
-  async #execute(id: string): Promise<void> {
+  /** Worker: aborts the current step of runs whose cancel was requested through platform-api. */
+  #watchCancels(): void {
+    if (this.#role !== "worker" || this.#cancelPoll || this.#closed) return;
+    this.#cancelPoll = setInterval(() => {
+      const ids = [...this.#controllers.keys()];
+      if (ids.length === 0) return;
+      this.#db
+        .selectFrom("platform.runs")
+        .select("id")
+        .where("id", "in", ids)
+        .where("cancel_requested_at", "is not", null)
+        .execute()
+        .then((rows) => {
+          for (const r of rows) this.#controllers.get(r.id)?.abort();
+        })
+        .catch((e) => this.#log("cancel poll failed", e));
+    }, CANCEL_POLL_MS);
+    this.#cancelPoll.unref();
+  }
+
+  async #takeSlot(x: Ctx): Promise<void> {
+    if (this.#role === "worker" && x.run.kind !== "interview_turn" && !x.slot) {
+      await this.#slots.take();
+      x.slot = true;
+    }
+  }
+
+  #giveSlot(x: Ctx): void {
+    if (x.slot) {
+      x.slot = false;
+      this.#slots.give();
+    }
+  }
+
+  /**
+   * The workflow body of one run: lock, start, the kind's steps, finalize. Role inprocess drives it from its queue;
+   * apps/worker calls it inside the DBOS workflow with a DBOS-backed `D`.
+   */
+  async executeRun(id: string, D: Durable): Promise<void> {
+    if (this.#role === "worker") {
+      const task: Promise<void> = this.#executeRun(id, D).finally(() => this.#tasks.delete(task));
+      this.#tasks.add(task);
+      return task;
+    }
+    return this.#executeRun(id, D);
+  }
+
+  async #executeRun(id: string, D: Durable): Promise<void> {
     const ac = new AbortController();
     this.#controllers.set(id, ac);
+    this.#watchCancels();
     let result: Result | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
     let locked = false;
+    let x: Ctx | undefined;
     try {
+      const status = await D.step("check_status", async () => (await this.#loadRun(id))?.status ?? null);
+      if (status === null || TERMINAL_STATUSES.has(status)) return;
+      // Fields read outside steps are immutable for the life of the run (kind, mode, org, system, input).
       const run = await this.#loadRun(id);
-      if (!run || TERMINAL_STATUSES.has(run.status)) return;
+      if (!run) return;
+      x = { run, D, ac, slot: false };
       if (NEEDS_LOCK.has(run.kind) && run.system_id) {
-        const holder = await this.#acquireLock(run);
-        if (holder) {
-          await this.#waitLock(run, holder);
-          return;
+        let holder = await D.step("acquire_lock", () => this.#acquireLock(run, D.durable));
+        if (holder === TERMINAL) return;
+        if (holder !== null) {
+          if (!D.durable) {
+            await this.#waitLock(run, holder);
+            return;
+          }
+          await D.step("lock_waiting", () => this.#markWaiting(run, holder as string));
+          while (holder !== null) {
+            await D.recv(TOPIC_LOCK, LOCK_POLL_MS);
+            holder = await D.step("acquire_lock", () => this.#acquireLock(run, true));
+            if (holder === TERMINAL) return;
+          }
         }
         locked = true;
       }
-      if (!(await this.#start(run))) {
-        if (locked) await this.#releaseLock(run.id, run.system_id);
+      await this.#takeSlot(x);
+      const started = await D.step("start", () => this.#start(run));
+      if (!started) {
+        if (locked) {
+          const sys = await D.step("release_lock", () => this.#releaseLockRow(run.id));
+          await this.#handOver(D, sys);
+        }
         return;
       }
       if (locked) {
@@ -303,35 +493,101 @@ export class RunEngine {
         }, HEARTBEAT_MS);
         heartbeat.unref();
       }
-      if (run.kind === "interview_turn") result = await this.#interview(run, ac);
-      else if (run.kind === "build") result = await this.#build(run, ac);
-      else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(run, ac);
-      else if (run.kind === "import_table") result = await this.#importTable(run, ac);
+      if (run.kind === "interview_turn") result = await this.#interview(x);
+      else if (run.kind === "build") result = await this.#build(x, started.cap);
+      else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(x);
+      else if (run.kind === "import_table") result = await this.#importTable(x);
+      else if (run.kind === "export") result = await this.#export(x);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
+      // A stopping worker leaves the workflow pending: DBOS resumes it on the next start.
+      if (this.#closed && D.durable) throw e;
       if (!(e instanceof RunFailure || e instanceof RunCancelled || e instanceof LlmError))
         this.#log(`run ${id} failed`, e);
       result = toResult(e, ac.signal.aborted);
     } finally {
       if (heartbeat) clearInterval(heartbeat);
       this.#controllers.delete(id);
-      if (result && !this.#closed) {
-        const r = result;
-        await this.#tx((t) => this.#finalize(t, id, r))
-          .then((sys) => this.#wakeLock(sys))
-          .catch((e) => this.#log(`finalize ${id} failed`, e));
+      if (x) this.#giveSlot(x);
+    }
+    if (result && !this.#closed) {
+      const r = result;
+      try {
+        const sys = await D.step("finalize", () => this.#tx((t) => this.#finalize(t, id, r)));
+        await this.#handOver(D, sys);
+      } catch (e) {
+        this.#log(`finalize ${id} failed`, e);
+        if (D.durable) throw e;
       }
     }
   }
 
-  async #acquireLock(run: Run): Promise<string | null> {
+  /** The lock of `systemId` was released: the next waiter takes it (FIFO by created_at). */
+  async #handOver(D: Durable, systemId: string | null): Promise<void> {
+    if (!systemId) return;
+    if (!D.durable) {
+      this.#wakeLock(systemId);
+      return;
+    }
+    const next = await D.step("next_waiter", () => this.#nextWaiter(systemId));
+    if (next) await D.send(next, TOPIC_LOCK, { systemId });
+  }
+
+  async #nextWaiter(systemId: string): Promise<string | null> {
+    const row = await this.#db
+      .selectFrom("platform.runs")
+      .select("id")
+      .where("system_id", "=", systemId)
+      .where("status", "=", "waiting_lock")
+      .orderBy("created_at")
+      .limit(1)
+      .executeTakeFirst();
+    return row?.id ?? null;
+  }
+
+  /**
+   * null = acquired (or already ours), else the holder run id. Durable waiters also keep FIFO among themselves and
+   * never take over a lease of a run that is still active (DBOS resumes it), and see their own cancellation.
+   */
+  async #acquireLock(run: Run, durable: boolean): Promise<string | null> {
+    if (durable) {
+      const cur = await this.#db
+        .selectFrom("platform.runs")
+        .select(["status", "created_at"])
+        .where("id", "=", run.id)
+        .executeTakeFirstOrThrow();
+      if (TERMINAL_STATUSES.has(cur.status)) return TERMINAL;
+      const older = await this.#db
+        .selectFrom("platform.runs")
+        .select("id")
+        .where("system_id", "=", run.system_id as string)
+        .where("status", "=", "waiting_lock")
+        .where("id", "<>", run.id)
+        .where("created_at", "<", cur.created_at)
+        .orderBy("created_at")
+        .limit(1)
+        .executeTakeFirst();
+      if (older) {
+        const holder = await this.#db
+          .selectFrom("platform.locks")
+          .select("run_id")
+          .where("system_id", "=", run.system_id as string)
+          .executeTakeFirst();
+        return holder?.run_id ?? older.id;
+      }
+    }
+    const takeover = durable
+      ? sql`platform.locks.run_id = EXCLUDED.run_id OR (platform.locks.lease_until < now() AND NOT EXISTS (
+          SELECT 1 FROM platform.runs r WHERE r.id = platform.locks.run_id
+            AND r.status IN ('queued','waiting_lock','running','needs_input')))`
+      : sql`platform.locks.lease_until < now() OR platform.locks.run_id = EXCLUDED.run_id`;
     const res = await sql<{ run_id: string }>`
       INSERT INTO platform.locks (system_id, run_id, holder_user_id, lease_until)
       VALUES (${run.system_id}, ${run.id}, ${run.started_by}, now() + ${`${LEASE_MS} milliseconds`}::interval)
       ON CONFLICT (system_id) DO UPDATE
         SET run_id = EXCLUDED.run_id, holder_user_id = EXCLUDED.holder_user_id,
             acquired_at = now(), lease_until = EXCLUDED.lease_until
-        WHERE platform.locks.lease_until < now() OR platform.locks.run_id = EXCLUDED.run_id
+        WHERE ${takeover}
       RETURNING run_id`.execute(this.#db);
     if (res.rows.length > 0) return null;
     const holder = await this.#db
@@ -342,9 +598,14 @@ export class RunEngine {
     return holder?.run_id ?? "";
   }
 
-  async #releaseLock(runId: string, systemId: string | null): Promise<void> {
-    await this.#db.deleteFrom("platform.locks").where("run_id", "=", runId).execute();
-    this.#wakeLock(systemId);
+  /** Deletes the run's lock row; returns the system whose lock was released. */
+  async #releaseLockRow(runId: string): Promise<string | null> {
+    const rows = await this.#db
+      .deleteFrom("platform.locks")
+      .where("run_id", "=", runId)
+      .returning("system_id")
+      .execute();
+    return rows[0]?.system_id ?? null;
   }
 
   async #heartbeat(runId: string): Promise<void> {
@@ -358,15 +619,12 @@ export class RunEngine {
       .execute();
   }
 
-  async #waitLock(run: Run, holder: string): Promise<void> {
-    const sysId = run.system_id as string;
-    const list = this.#lockWaiters.get(sysId) ?? [];
-    if (!list.includes(run.id)) list.push(run.id);
-    this.#lockWaiters.set(sysId, list);
+  /** queued → waiting_lock with lock_waiting (position = 1 + older waiters). */
+  async #markWaiting(run: Run, holder: string, position?: number): Promise<void> {
     await this.#tx(async (t) => {
       const cur = await t.trx
         .selectFrom("platform.runs")
-        .select(["status"])
+        .select(["status", "created_at"])
         .where("id", "=", run.id)
         .forUpdate()
         .executeTakeFirstOrThrow();
@@ -379,6 +637,19 @@ export class RunEngine {
       const holderRun = holder
         ? await t.trx.selectFrom("platform.runs").select(["kind"]).where("id", "=", holder).executeTakeFirst()
         : undefined;
+      const older =
+        position ??
+        Number(
+          (
+            await t.trx
+              .selectFrom("platform.runs")
+              .select((eb) => eb.fn.countAll().as("n"))
+              .where("system_id", "=", run.system_id as string)
+              .where("status", "=", "waiting_lock")
+              .where("created_at", "<", cur.created_at)
+              .executeTakeFirstOrThrow()
+          ).n,
+        ) + 1;
       await appendEvent(t, run.id, "lock_waiting", {
         holderRunId: holder,
         holderName:
@@ -389,9 +660,18 @@ export class RunEngine {
               : holderRun?.kind === "rollback"
                 ? "Откат"
                 : "Другой прогон",
-        position: list.indexOf(run.id) + 1,
+        position: older,
       });
     });
+  }
+
+  /** Role inprocess: the run leaves the queue until the holder releases the lock (#wakeLock). */
+  async #waitLock(run: Run, holder: string): Promise<void> {
+    const sysId = run.system_id as string;
+    const list = this.#lockWaiters.get(sysId) ?? [];
+    if (!list.includes(run.id)) list.push(run.id);
+    this.#lockWaiters.set(sysId, list);
+    await this.#markWaiting(run, holder, list.indexOf(run.id) + 1);
     // The holder may have released between the INSERT attempt and registration.
     const still = await this.#db
       .selectFrom("platform.locks")
@@ -409,7 +689,8 @@ export class RunEngine {
     if (next) this.enqueue({ id: next, kind: "build", system_id: systemId }, true);
   }
 
-  async #start(run: Run): Promise<boolean> {
+  /** queued|waiting_lock → running with run_started; null when cancelled meanwhile. */
+  async #start(run: Run): Promise<{ base: number | null; cap: number | null } | null> {
     return this.#tx(async (t) => {
       const cur = await t.trx
         .selectFrom("platform.runs")
@@ -417,7 +698,7 @@ export class RunEngine {
         .where("id", "=", run.id)
         .forUpdate()
         .executeTakeFirstOrThrow();
-      if ((cur.status !== "queued" && cur.status !== "waiting_lock") || cur.cancel_requested_at) return false;
+      if ((cur.status !== "queued" && cur.status !== "waiting_lock") || cur.cancel_requested_at) return null;
       const sys = cur.system_id
         ? await t.trx
             .selectFrom("platform.systems")
@@ -441,7 +722,7 @@ export class RunEngine {
             ? null
             : { estimate: Number(cur.credits_estimate_milli ?? 0) / 1000, cap: Number(cap) / 1000 },
       });
-      return true;
+      return { base, cap: cap === null ? null : Number(cap) };
     });
   }
 
@@ -531,6 +812,12 @@ export class RunEngine {
   // ---------------------------------------------------------------------------------------------
   // HTTP-facing operations
 
+  /** A message to a run's workflow: in-process mailbox or DBOS.send (role client). */
+  async #deliver(runId: string, topic: string, message: unknown, key?: string): Promise<void> {
+    if (this.#d.dispatcher) await this.#d.dispatcher.send(runId, topic, message, key);
+    else this.#boxes.send(runId, topic, message);
+  }
+
   /** POST /runs/:id/cancel (caller checked access). */
   async cancel(runId: string): Promise<void> {
     let direct = false;
@@ -555,6 +842,13 @@ export class RunEngine {
       return null;
     });
     if (direct) {
+      if (this.#role === "client") {
+        // The waiting workflow wakes, sees its terminal status and ends; the lock goes to the next waiter.
+        await this.#deliver(runId, TOPIC_LOCK, { cancel: true }).catch((e) => this.#log("cancel send", e));
+        const next = released ? await this.#nextWaiter(released) : null;
+        if (next) await this.#deliver(next, TOPIC_LOCK, { systemId: released }).catch(() => {});
+        return;
+      }
       const qi = this.#queue.indexOf(runId);
       if (qi >= 0) this.#queue.splice(qi, 1);
       for (const list of this.#lockWaiters.values()) {
@@ -565,35 +859,61 @@ export class RunEngine {
       return;
     }
     this.#controllers.get(runId)?.abort();
-    this.#waiters.get(runId)?.reject(new RunCancelled());
+    await this.#deliver(runId, TOPIC_INPUT, { cancel: true }, `${runId}:cancel`);
   }
 
-  /** POST /runs/:id/input (caller checked access and body shape). */
+  /** POST /runs/:id/input (caller checked access and body shape). Secret values go to the store, never to the run. */
   async provideInput(
     runId: string,
     body: { inputId: string; choice?: string; text?: string; secretValue?: string },
   ) {
-    const answer = await this.#tx(async (t) => {
+    const message = await this.#tx(async (t): Promise<InputMessage> => {
       const run = await t.trx
         .selectFrom("platform.runs")
         .selectAll()
         .where("id", "=", runId)
         .forUpdate()
         .executeTakeFirstOrThrow();
-      const pending = run.pending_input as
-        | (Omit<InputRequest, "kind"> & { inputId: string; kind: "decision" | "secret" })
-        | null;
+      const pending = run.pending_input as {
+        inputId: string;
+        kind: "decision" | "secret";
+        secretName?: string;
+        options?: { id: string; freeText?: boolean }[];
+      } | null;
       if (run.status !== "needs_input" || !pending)
         throw new ApiError("RUN_NOT_WAITING_INPUT", "Прогон сейчас не ждёт ответа");
       if (pending.inputId !== body.inputId)
         throw new ApiError("RUN_NOT_WAITING_INPUT", "Этот запрос уже неактуален — обновите страницу");
-      if (body.secretValue !== undefined)
-        throw new ApiError("VALIDATION_FAILED", "Ввод секретов появится позже; выберите один из вариантов");
-      const option = pending.options?.find((o) => o.id === body.choice);
-      if (!body.choice || !option)
-        throw new ApiError("VALIDATION_FAILED", "Выберите один из предложенных вариантов");
-      if (body.text !== undefined && !option.freeText)
-        throw new ApiError("VALIDATION_FAILED", "Для этого варианта свой текст не нужен");
+      let msg: InputMessage;
+      if (pending.kind === "secret" && body.secretValue !== undefined) {
+        const store = this.#d.secrets;
+        if (!store || !pending.secretName || body.choice !== undefined || body.text !== undefined)
+          throw new ApiError("VALIDATION_FAILED", "Передайте только значение секрета");
+        if (body.secretValue.length === 0) throw new ApiError("VALIDATION_FAILED", "Значение секрета пустое");
+        // execution.M1.dbos_data: the value is stored here, the workflow only gets secret://name.
+        const ref = await store.put(t.trx, {
+          orgId: run.org_id,
+          systemId: run.system_id as string,
+          env: "draft",
+          name: pending.secretName,
+          value: body.secretValue,
+          createdBy: run.started_by,
+        });
+        msg = { inputId: pending.inputId, choice: null, secretRef: ref };
+      } else {
+        if (body.secretValue !== undefined)
+          throw new ApiError("VALIDATION_FAILED", "Ввод секретов появится позже; выберите один из вариантов");
+        const option = pending.options?.find((o) => o.id === body.choice);
+        if (!body.choice || !option)
+          throw new ApiError("VALIDATION_FAILED", "Выберите один из предложенных вариантов");
+        if (body.text !== undefined && !option.freeText)
+          throw new ApiError("VALIDATION_FAILED", "Для этого варианта свой текст не нужен");
+        msg = {
+          inputId: pending.inputId,
+          choice: body.choice,
+          ...(body.text !== undefined ? { text: body.text } : {}),
+        };
+      }
       await t.trx
         .updateTable("platform.runs")
         .set({ status: "running", pending_input: null })
@@ -601,62 +921,60 @@ export class RunEngine {
         .execute();
       await appendEvent(t, runId, "input_received", {
         inputId: pending.inputId,
-        choice: pending.kind === "secret" ? null : body.choice,
+        choice: pending.kind === "secret" ? null : (body.choice ?? null),
       });
-      return { choice: body.choice, ...(body.text !== undefined ? { text: body.text } : {}) };
+      return msg;
     });
-    this.#waiters.get(runId)?.resolve(answer);
+    await this.#deliver(runId, TOPIC_INPUT, message, `${runId}:${body.inputId}`);
   }
 
   // ---------------------------------------------------------------------------------------------
   // Hosts
 
-  async #ensureActive(runId: string, ac: AbortController): Promise<void> {
-    if (ac.signal.aborted) throw new RunCancelled();
-    const r = await this.#db
-      .selectFrom("platform.runs")
-      .select("cancel_requested_at")
-      .where("id", "=", runId)
-      .executeTakeFirstOrThrow();
-    if (r.cancel_requested_at) {
-      ac.abort();
+  /** Cancel check at a step boundary (checkpointed: a replay takes the same path). */
+  async #ensureActive(x: Ctx): Promise<void> {
+    if (x.ac.signal.aborted && !x.D.durable) throw new RunCancelled();
+    const cancelled = await x.D.step("cancel_check", async () => {
+      if (x.ac.signal.aborted) return true;
+      const r = await this.#db
+        .selectFrom("platform.runs")
+        .select("cancel_requested_at")
+        .where("id", "=", x.run.id)
+        .executeTakeFirstOrThrow();
+      return r.cancel_requested_at !== null;
+    });
+    if (cancelled) {
+      x.ac.abort();
       throw new RunCancelled();
     }
   }
 
-  async #emit(runId: string, type: EventType, payload: Record<string, unknown>): Promise<void> {
-    await this.#tx(async (t) => {
-      await appendEvent(t, runId, type, payload);
-      if (type === "step_started" && typeof payload.step === "string")
-        await t.trx
-          .updateTable("platform.runs")
-          .set({ current_step: payload.step })
-          .where("id", "=", runId)
-          .execute();
-    });
+  async #emit(x: Ctx, type: EventType, payload: Record<string, unknown>): Promise<void> {
+    await x.D.step(`emit:${type}`, () =>
+      this.#tx(async (t) => {
+        await appendEvent(t, x.run.id, type, payload);
+        if (type === "step_started" && typeof payload.step === "string")
+          await t.trx
+            .updateTable("platform.runs")
+            .set({ current_step: payload.step })
+            .where("id", "=", x.run.id)
+            .execute();
+      }),
+    );
   }
 
-  async #step<T>(
-    run: Run,
-    ac: AbortController,
-    name: string,
-    label_ru: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    await this.#ensureActive(run.id, ac);
-    await this.#emit(run.id, "step_started", { step: name, label_ru, attempt: 1 });
+  async #step<T>(x: Ctx, name: string, label_ru: string, fn: () => Promise<T>): Promise<T> {
+    await this.#ensureActive(x);
+    await this.#emit(x, "step_started", { step: name, label_ru, attempt: 1 });
     const t0 = Date.now();
     const out = await fn();
-    await this.#emit(run.id, "step_finished", { step: name, durationMs: Date.now() - t0 });
+    await this.#emit(x, "step_finished", { step: name, durationMs: Date.now() - t0 });
     return out;
   }
 
-  #stepHost(
-    run: Run,
-    ac: AbortController,
-    needsInput: (req: InputRequest) => Promise<InputAnswer>,
-  ): StepHost {
-    const routers: { r?: Router } = {};
+  #stepHost(x: Ctx, needsInput: (req: InputRequest) => Promise<InputAnswer>): StepHost {
+    const routers: Routers = { pending: [], mute: false };
+    const run = x.run;
     return {
       run: {
         id: run.id,
@@ -665,40 +983,71 @@ export class RunEngine {
         kind: run.kind,
         mode: run.mode,
       },
-      signal: ac.signal,
+      signal: x.ac.signal,
+      // Durability lives in the host primitives (route, store, gates, emit); runStep only marks a boundary.
       runStep: async (_name, fn) => {
-        await this.#ensureActive(run.id, ac);
+        await this.#ensureActive(x);
         return fn();
       },
       emit: async (type, payload) => {
         if (PLATFORM_EVENTS.has(type)) throw new Error(`event ${type} is emitted by the platform only`);
-        await this.#emit(run.id, type, payload);
+        await this.#emit(x, type, payload);
       },
-      route: (input) => this.#route(run, ac, routers, input, needsInput),
+      route: (input) => this.#route(x, routers, input, needsInput),
     };
   }
 
+  #router(x: Ctx, routers: Routers): Router {
+    if (!routers.r) {
+      const sink = new DbUsageSink(this.#db);
+      const opts: RouterOptions = {
+        registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
+        sink: { write: (rec) => (routers.mute ? undefined : sink.write(rec)) },
+        circuit: this.#circuit,
+        onEvent: (e) => {
+          if (routers.mute) return;
+          const { type, ...payload } = e;
+          routers.pending.push(this.#emit(x, type, payload).catch((err) => this.#log("model_switched", err)));
+        },
+      };
+      routers.r = (this.#d.createRouter ?? createRouter)(opts);
+    }
+    return routers.r;
+  }
+
   async #route(
-    run: Run,
-    ac: AbortController,
-    routers: { r?: Router },
+    x: Ctx,
+    routers: Routers,
     input: HostRouteInput,
     needsInput: (req: InputRequest) => Promise<InputAnswer>,
-  ) {
-    await this.#ensureActive(run.id, ac);
+  ): Promise<RouteOutput> {
+    const { run, D } = x;
+    await this.#ensureActive(x);
+    const billing = this.#d.billing;
     // Budget check before every LLM step (workflows.yaml#run_lifecycle.budget).
     for (;;) {
-      const cur = await this.#db
-        .selectFrom("platform.runs")
-        .select(["credits_used_milli", "credits_cap_milli"])
-        .where("id", "=", run.id)
-        .executeTakeFirstOrThrow();
-      if (cur.credits_cap_milli === null) break;
-      const used = Number(cur.credits_used_milli);
-      const cap = Number(cur.credits_cap_milli);
-      const ub = Math.round((input.upperBoundCredits ?? 0) * 1000);
-      if (used + ub <= cap && used < cap) break;
-      await this.#emit(run.id, "budget_exceeded", {
+      const b = await D.step("budget_check", async () => {
+        const cur = await this.#db
+          .selectFrom("platform.runs")
+          .select(["credits_used_milli", "credits_cap_milli"])
+          .where("id", "=", run.id)
+          .executeTakeFirstOrThrow();
+        if (cur.credits_cap_milli === null) return null;
+        const used = Number(cur.credits_used_milli);
+        const cap = Number(cur.credits_cap_milli);
+        const ub = Math.round((input.upperBoundCredits ?? 0) * 1000);
+        if (used + ub <= cap && used < cap) return null;
+        const n = Math.ceil((0.25 * cap) / 1000);
+        // raise_cap_N holds N more credits; without them the option is not offered (billing.yaml#run_charging).
+        const canRaise =
+          run.kind === "build" &&
+          (billing.isExempt(run.org_id) ||
+            (await billing.readBalance(this.#db, run.org_id)).available >= n * 1000);
+        return { used, cap, n, canRaise };
+      });
+      if (!b) break;
+      const { used, cap, n, canRaise } = b;
+      await this.#emit(x, "budget_exceeded", {
         used: used / 1000,
         cap: cap / 1000,
         nextStep: input.step ?? input.callType,
@@ -708,12 +1057,6 @@ export class RunEngine {
           "BUDGET_STOPPED",
           "Ход интервью превысил лимит кредитов. Переформулируйте запрос короче.",
         );
-      const n = Math.ceil((0.25 * cap) / 1000);
-      // raise_cap_N holds N more credits; without them the option is not offered (billing.yaml#run_charging).
-      const billing = this.#d.billing;
-      const canRaise =
-        billing.isExempt(run.org_id) ||
-        (await billing.readBalance(this.#db, run.org_id)).available >= n * 1000;
       const ans = await needsInput({
         decisionId: "budget",
         prompt_ru: canRaise
@@ -728,204 +1071,241 @@ export class RunEngine {
       });
       if (ans.choice === "stop") throw new RunCancelled("Сборка остановлена по лимиту кредитов");
       const newCap = cap + n * 1000;
-      await this.#tx(async (t) => {
-        await t.trx.selectFrom("platform.runs").select("id").where("id", "=", run.id).forUpdate().execute();
-        await billing
-          .hold(t.trx, {
-            orgId: run.org_id,
-            runId: run.id,
-            systemId: run.system_id,
-            amountMilli: n * 1000,
-            key: `hold:${run.id}:cap:${newCap}`,
-            note: `Увеличение лимита сборки на ${n} кр.`,
-          })
-          .catch((e: unknown) => {
-            if (e instanceof ApiError && e.code === "INSUFFICIENT_CREDITS")
-              throw new RunCancelled("Сборка остановлена: не хватает кредитов на увеличение лимита");
-            throw e;
-          });
-        await t.trx
-          .updateTable("platform.runs")
-          .set({ credits_cap_milli: newCap })
-          .where("id", "=", run.id)
-          .execute();
-      });
+      await D.step("raise_cap", () =>
+        this.#tx(async (t) => {
+          await t.trx.selectFrom("platform.runs").select("id").where("id", "=", run.id).forUpdate().execute();
+          await billing
+            .hold(t.trx, {
+              orgId: run.org_id,
+              runId: run.id,
+              systemId: run.system_id,
+              amountMilli: n * 1000,
+              key: `hold:${run.id}:cap:${newCap}`,
+              note: `Увеличение лимита сборки на ${n} кр.`,
+            })
+            .catch((e: unknown) => {
+              if (e instanceof ApiError && e.code === "INSUFFICIENT_CREDITS")
+                throw new RunCancelled("Сборка остановлена: не хватает кредитов на увеличение лимита");
+              throw e;
+            });
+          await t.trx
+            .updateTable("platform.runs")
+            .set({ credits_cap_milli: newCap })
+            .where("id", "=", run.id)
+            .execute();
+        }),
+      );
     }
-    const org = await this.#db
-      .selectFrom("platform.orgs")
-      .select(["ru_only", "t1_restricted", "region_code"])
-      .where("id", "=", run.org_id)
-      .executeTakeFirstOrThrow();
-    const internal: Promise<unknown>[] = [];
-    if (!routers.r) {
-      const opts: RouterOptions = {
-        registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
-        sink: new DbUsageSink(this.#db),
-        circuit: this.#circuit,
-        onEvent: (e) => {
-          const { type, ...payload } = e;
-          internal.push(this.#emit(run.id, type, payload).catch((err) => this.#log("model_switched", err)));
-        },
-      };
-      routers.r = (this.#d.createRouter ?? createRouter)(opts);
-    }
+    const router = this.#router(x, routers);
     const { step, upperBoundCredits: _ub, ...rest } = input;
-    const used0 = await this.#db
-      .selectFrom("platform.runs")
-      .select(["credits_used_milli", "credits_cap_milli"])
-      .where("id", "=", run.id)
-      .executeTakeFirstOrThrow();
-    const out = await routers.r.route({
-      ...rest,
-      orgPolicy: orgPolicyOf(org),
-      ctx: {
-        orgId: run.org_id,
-        runId: run.id,
-        systemId: run.system_id ?? undefined,
-        ...(step ? { step } : {}),
-        ...(used0.credits_cap_milli !== null
-          ? {
-              budget: {
-                capCredits: Number(used0.credits_cap_milli) / 1000,
-                spentCredits: Number(used0.credits_used_milli) / 1000,
-              },
-            }
-          : {}),
+    const ctx = {
+      orgId: run.org_id,
+      runId: run.id,
+      systemId: run.system_id ?? undefined,
+      ...(step ? { step } : {}),
+    };
+    // The LLM step: its output is kept by reference (L3-09); usage and credits are written with it.
+    const out = await D.step(
+      `llm:${step ?? input.callType}`,
+      async () => {
+        const org = await this.#db
+          .selectFrom("platform.orgs")
+          .select(["ru_only", "t1_restricted", "region_code"])
+          .where("id", "=", run.org_id)
+          .executeTakeFirstOrThrow();
+        const used0 = await this.#db
+          .selectFrom("platform.runs")
+          .select(["credits_used_milli", "credits_cap_milli"])
+          .where("id", "=", run.id)
+          .executeTakeFirstOrThrow();
+        routers.pending = [];
+        const res = await router.route({
+          ...rest,
+          orgPolicy: orgPolicyOf(org),
+          ctx: {
+            ...ctx,
+            ...(used0.credits_cap_milli !== null
+              ? {
+                  budget: {
+                    capCredits: Number(used0.credits_cap_milli) / 1000,
+                    spentCredits: Number(used0.credits_used_milli) / 1000,
+                  },
+                }
+              : {}),
+          },
+          signal: x.ac.signal,
+        });
+        await Promise.all(routers.pending);
+        await this.#tx(async (t) => {
+          const row = await t.trx
+            .updateTable("platform.runs")
+            .set((eb) => ({ credits_used_milli: eb("credits_used_milli", "+", String(res.creditsMilli)) }))
+            .where("id", "=", run.id)
+            .returning(["credits_used_milli", "credits_cap_milli", "credits_estimate_milli"])
+            .executeTakeFirstOrThrow();
+          await appendEvent(t, run.id, "budget_update", {
+            used: Number(row.credits_used_milli) / 1000,
+            cap: Number(row.credits_cap_milli ?? 0) / 1000,
+            ...(row.credits_estimate_milli !== null
+              ? { estimate: Number(row.credits_estimate_milli) / 1000 }
+              : {}),
+          });
+        });
+        return res;
       },
-      signal: ac.signal,
-    });
-    await Promise.all(internal);
-    await this.#tx(async (t) => {
-      const row = await t.trx
-        .updateTable("platform.runs")
-        .set((eb) => ({ credits_used_milli: eb("credits_used_milli", "+", String(out.creditsMilli)) }))
-        .where("id", "=", run.id)
-        .returning(["credits_used_milli", "credits_cap_milli", "credits_estimate_milli"])
-        .executeTakeFirstOrThrow();
-      await appendEvent(t, run.id, "budget_update", {
-        used: Number(row.credits_used_milli) / 1000,
-        cap: Number(row.credits_cap_milli ?? 0) / 1000,
-        ...(row.credits_estimate_milli !== null
-          ? { estimate: Number(row.credits_estimate_milli) / 1000 }
-          : {}),
-      });
-    });
+      { offload: true },
+    );
+    if (D.replayed && router.mode === "fixture") {
+      // A fixture router answers by order within the run: replayed calls advance it without new usage rows.
+      routers.mute = true;
+      try {
+        const org = await this.#db
+          .selectFrom("platform.orgs")
+          .select(["ru_only", "t1_restricted", "region_code"])
+          .where("id", "=", run.org_id)
+          .executeTakeFirstOrThrow();
+        await router.route({ ...rest, orgPolicy: orgPolicyOf(org), ctx });
+      } catch {
+        // the checkpointed answer stands
+      } finally {
+        routers.mute = false;
+      }
+    }
     return out;
   }
 
-  async #needsInput(run: Run, ac: AbortController, req: InputRequest): Promise<InputAnswer> {
-    await this.#ensureActive(run.id, ac);
-    const inputId = `${req.decisionId}-${randomUUID().slice(0, 8)}`;
-    const pending = {
-      inputId,
-      kind: "decision" as const,
-      decisionId: req.decisionId,
-      prompt_ru: req.prompt_ru,
-      options: req.options,
-      expiresAt: new Date(Date.now() + INPUT_TIMEOUT_MS).toISOString(),
-    };
-    let timer: NodeJS.Timeout | undefined;
-    const onAbort = () => this.#waiters.get(run.id)?.reject(new RunCancelled());
-    const answer = new Promise<InputAnswer>((resolve, reject) => {
-      this.#waiters.set(run.id, { resolve, reject });
-      timer = setTimeout(
-        () => reject(new RunFailure("INPUT_TIMEOUT", "Ответа не было 24 часа — прогон остановлен")),
-        INPUT_TIMEOUT_MS,
-      );
-      timer.unref();
-    });
-    ac.signal.addEventListener("abort", onAbort, { once: true });
-    try {
+  async #needsInput(
+    x: Ctx,
+    req: InputRequest | SecretInputRequest,
+  ): Promise<InputAnswer & { secretRef?: string }> {
+    await this.#ensureActive(x);
+    const pending = await x.D.step("needs_input", async () => {
+      const secret = req.kind === "secret";
+      const inputId = `${secret ? "secret" : req.decisionId}-${randomUUID().slice(0, 8)}`;
+      const p = secret
+        ? {
+            inputId,
+            kind: "secret" as const,
+            secretName: req.secretName,
+            prompt_ru: req.prompt_ru,
+            ...(req.options ? { options: req.options } : {}),
+            expiresAt: new Date(Date.now() + INPUT_TIMEOUT_MS).toISOString(),
+          }
+        : {
+            inputId,
+            kind: "decision" as const,
+            decisionId: req.decisionId,
+            prompt_ru: req.prompt_ru,
+            options: req.options,
+            expiresAt: new Date(Date.now() + INPUT_TIMEOUT_MS).toISOString(),
+          };
       await this.#tx(async (t) => {
         await t.trx
           .updateTable("platform.runs")
-          .set({ status: "needs_input", pending_input: json(pending) })
-          .where("id", "=", run.id)
+          .set({ status: "needs_input", pending_input: json(p) })
+          .where("id", "=", x.run.id)
           .execute();
-        await appendEvent(t, run.id, "needs_input", pending);
+        await appendEvent(t, x.run.id, "needs_input", p);
       });
-      // A waiting run does not hold a concurrency slot.
-      this.#active.delete(run.id);
+      return { inputId, expiresAt: p.expiresAt };
+    });
+    // A waiting run does not hold a concurrency slot.
+    const inproc = this.#role === "inprocess";
+    if (inproc) {
+      this.#active.delete(x.run.id);
       this.#pump();
-      return await answer;
+    }
+    this.#giveSlot(x);
+    try {
+      for (;;) {
+        const left = Math.max(1000, Date.parse(pending.expiresAt) - Date.now());
+        const msg = await x.D.recv<InputMessage>(TOPIC_INPUT, Math.min(left, INPUT_TIMEOUT_MS));
+        if (!msg) throw new RunFailure("INPUT_TIMEOUT", "Ответа не было 24 часа — прогон остановлен");
+        if ("cancel" in msg) throw new RunCancelled();
+        if (msg.inputId !== pending.inputId) continue;
+        await this.#takeSlot(x);
+        if (msg.secretRef) return { choice: msg.choice ?? "secret", secretRef: msg.secretRef };
+        return { choice: msg.choice ?? "", ...(msg.text !== undefined ? { text: msg.text } : {}) };
+      }
     } finally {
-      clearTimeout(timer);
-      ac.signal.removeEventListener("abort", onAbort);
-      this.#waiters.delete(run.id);
-      this.#active.add(run.id);
+      if (inproc) this.#active.add(x.run.id);
     }
   }
 
   // ---------------------------------------------------------------------------------------------
   // Workflows
 
-  async #interview(run: Run, ac: AbortController): Promise<Result> {
-    const base = this.#stepHost(run, ac, () => {
+  async #interview(x: Ctx): Promise<Result> {
+    const { run, D } = x;
+    const base = this.#stepHost(x, () => {
       throw new RunFailure("INTERNAL", "Ход интервью не может ждать ввода");
     });
     const systemId = run.system_id as string;
-    const context = await this.#step(run, ac, "load_context", "Читаю историю", async () => {
-      const sys = await this.#db
-        .selectFrom("platform.systems")
-        .selectAll()
-        .where("id", "=", systemId)
-        .executeTakeFirstOrThrow();
-      const msgs = await this.#db
-        .selectFrom("platform.messages")
-        .selectAll()
-        .where("system_id", "=", systemId)
-        .orderBy("seq", "desc")
-        .limit(200)
-        .execute();
-      const input = run.input as { trigger?: InterviewContext["trigger"]; answers?: unknown[] };
-      const org = await this.#db
-        .selectFrom("platform.orgs")
-        .select(["id", "plan", "ru_only", "t1_restricted", "region_code"])
-        .where("id", "=", sys.org_id)
-        .executeTakeFirstOrThrow();
-      const prev = await this.#db
-        .selectFrom("platform.runs")
-        .select(sql<Record<string, unknown> | null>`input->'executorState'`.as("state"))
-        .where("system_id", "=", systemId)
-        .where("kind", "=", "interview_turn")
-        .where("status", "=", "succeeded")
-        .where(sql<boolean>`input ? 'executorState'`)
-        .orderBy("created_at", "desc")
-        .limit(1)
-        .executeTakeFirst();
-      const ctx: InterviewContext = {
-        system: {
-          id: sys.id,
-          name: sys.name,
-          stage: sys.stage,
-          draftRevision: sys.draft_revision,
-          previewRevision: sys.preview_revision,
-        },
-        trigger: input.trigger ?? "message",
-        messages: msgs.reverse().map((m) => ({
-          id: m.id,
-          seq: m.seq,
-          role: m.role,
-          kind: m.kind,
-          ...(m.text !== null ? { text: m.text } : {}),
-          ...(m.payload ? { payload: m.payload } : {}),
-        })),
-        spec: await loadSpec(this.#db, sys, sys.draft_revision),
-        pendingQuestions: sys.pending_questions,
-        card: sys.card,
-        ...(input.answers ? { answers: input.answers } : {}),
-        org: { id: org.id, plan: org.plan, policy: orgPolicyOf(org) },
-        state: prev?.state ?? null,
-      };
-      return ctx;
-    });
-    const out = await this.#step(run, ac, "orchestrate", "Думаю над ответом", () =>
+    const context = await this.#step(x, "load_context", "Читаю историю", () =>
+      D.step("load_context", () => this.#interviewContext(run, systemId), { offload: true }),
+    );
+    const out = await this.#step(x, "orchestrate", "Думаю над ответом", () =>
       this.#d.executors.interviewTurn({ ...base, context }),
     );
-    await this.#step(run, ac, "persist_output", "Сохраняю ответ", () =>
-      this.#tx((t) => this.#persistInterview(t, run, out)),
+    await this.#step(x, "persist_output", "Сохраняю ответ", () =>
+      D.step("persist_output", () => this.#tx((t) => this.#persistInterview(t, run, out))),
     );
     return { status: "succeeded", summary_ru: "Ход интервью завершён" };
+  }
+
+  async #interviewContext(run: Run, systemId: string): Promise<InterviewContext> {
+    const sys = await this.#db
+      .selectFrom("platform.systems")
+      .selectAll()
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    const msgs = await this.#db
+      .selectFrom("platform.messages")
+      .selectAll()
+      .where("system_id", "=", systemId)
+      .orderBy("seq", "desc")
+      .limit(200)
+      .execute();
+    const input = run.input as { trigger?: InterviewContext["trigger"]; answers?: unknown[] };
+    const org = await this.#db
+      .selectFrom("platform.orgs")
+      .select(["id", "plan", "ru_only", "t1_restricted", "region_code"])
+      .where("id", "=", sys.org_id)
+      .executeTakeFirstOrThrow();
+    const prev = await this.#db
+      .selectFrom("platform.runs")
+      .select(sql<Record<string, unknown> | null>`input->'executorState'`.as("state"))
+      .where("system_id", "=", systemId)
+      .where("kind", "=", "interview_turn")
+      .where("status", "=", "succeeded")
+      .where(sql<boolean>`input ? 'executorState'`)
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+    return {
+      system: {
+        id: sys.id,
+        name: sys.name,
+        stage: sys.stage,
+        draftRevision: sys.draft_revision,
+        previewRevision: sys.preview_revision,
+      },
+      trigger: input.trigger ?? "message",
+      messages: msgs.reverse().map((m) => ({
+        id: m.id,
+        seq: m.seq,
+        role: m.role,
+        kind: m.kind,
+        ...(m.text !== null ? { text: m.text } : {}),
+        ...(m.payload ? { payload: m.payload } : {}),
+      })),
+      spec: await loadSpec(this.#db, sys, sys.draft_revision),
+      pendingQuestions: sys.pending_questions,
+      card: sys.card,
+      ...(input.answers ? { answers: input.answers } : {}),
+      org: { id: org.id, plan: org.plan, policy: orgPolicyOf(org) },
+      state: prev?.state ?? null,
+    };
   }
 
   async #persistInterview(t: TxCtx, run: Run, out: InterviewOutput): Promise<void> {
@@ -1029,12 +1409,23 @@ export class RunEngine {
     await appendEvent(t, run.id, "chat_output", { kind: "answer", messageId: m.id });
   }
 
-  async #build(run: Run, ac: AbortController): Promise<Result> {
-    if (run.mode === "change") await this.#draftSnapshot(run, ac);
+  /** Files of the committed draft revision (ui/** and functions/**). */
+  async #filesAt(systemId: string, version: number): Promise<Map<string, string>> {
+    const m = await loadManifest(this.#db, this.#d.blobs, systemId, version);
+    const out = new Map<string, string>();
+    for (const [p, sha] of Object.entries(m))
+      if (p.startsWith("ui/") || p.startsWith("functions/"))
+        out.set(p, (await this.#d.blobs.get(sha)).toString("utf8"));
+    return out;
+  }
+
+  async #build(x: Ctx, capMilli: number | null): Promise<Result> {
+    const { run } = x;
+    if (run.mode === "change") await this.#draftSnapshot(x);
     const input = run.input as { card?: Record<string, unknown> };
-    const out = await this.#runBuilder(run, ac, {
+    const out = await this.#runBuilder(x, {
       card: input.card ?? {},
-      cap: Number(run.credits_cap_milli ?? 0) / 1000,
+      cap: Number(capMilli ?? 0) / 1000,
       mode: (run.mode ?? "create") as "create" | "change" | "fix",
     });
     if (out?.status === "cancelled")
@@ -1043,9 +1434,10 @@ export class RunEngine {
   }
 
   /** The build executor over this run's durable BuildHost (build runs; import_table schema_ops). */
-  async #runBuilder(run: Run, ac: AbortController, params: BuildParams): Promise<BuildOutcome | undefined> {
-    const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
-    const base = this.#stepHost(run, ac, needsInput);
+  async #runBuilder(x: Ctx, params: BuildParams): Promise<BuildOutcome | undefined> {
+    const { run, D } = x;
+    const needsInput = (req: InputRequest | SecretInputRequest) => this.#needsInput(x, req);
+    const base = this.#stepHost(x, needsInput);
     const systemId = run.system_id as string;
     const pending = new Map<string, string | null>();
     const system = () =>
@@ -1054,13 +1446,9 @@ export class RunEngine {
         .selectAll()
         .where("id", "=", systemId)
         .executeTakeFirstOrThrow();
-    const committed = async () => {
+    const manifestNow = async (): Promise<Manifest> => {
       const s = await system();
       return loadManifest(this.#db, this.#d.blobs, systemId, s.draft_revision);
-    };
-    const readCommitted = async (path: string) => {
-      const sha = (await committed())[path];
-      return sha ? (await this.#d.blobs.get(sha)).toString("utf8") : null;
     };
     const checkPath = (p: string) => {
       if (!isSafePath(p) || !(p.startsWith("ui/") || p.startsWith("functions/")))
@@ -1068,26 +1456,21 @@ export class RunEngine {
     };
     const commitFiles = async () => {
       if (pending.size === 0) return null;
-      await this.#ensureActive(run.id, ac);
+      await this.#ensureActive(x);
       const changes = [...pending].map(([path, content]) => ({
         path,
         content: content === null ? null : Buffer.from(content, "utf8"),
       }));
-      const r = await this.#tx((t) =>
-        commitFilesRevision(t, this.#d.blobs, { systemId, changes, runId: run.id, author: "agent" }),
-      );
+      const version = await D.step("commit_files", async () => {
+        const r = await this.#tx((t) =>
+          commitFilesRevision(t, this.#d.blobs, { systemId, changes, runId: run.id, author: "agent" }),
+        );
+        return r.version;
+      });
       pending.clear();
-      return { revision: r.version };
+      return { revision: version };
     };
-    const filesAt = async (): Promise<Map<string, string>> => {
-      const m = await committed();
-      const out = new Map<string, string>();
-      for (const [p, sha] of Object.entries(m)) {
-        if (p.startsWith("ui/") || p.startsWith("functions/"))
-          out.set(p, (await this.#d.blobs.get(sha)).toString("utf8"));
-      }
-      return out;
-    };
+    const filesAt = async () => this.#filesAt(systemId, (await system()).draft_revision);
     const host: BuildHost = {
       ...base,
       managesBudget: true,
@@ -1102,21 +1485,33 @@ export class RunEngine {
       },
       store: {
         getSpec: async () => {
-          const s = await system();
-          return { spec: await loadSpec(this.#db, s, s.draft_revision), version: s.draft_revision };
+          const s = await D.step("get_spec", async () => {
+            const sys = await system();
+            return { version: sys.draft_revision, name: sys.name };
+          });
+          // Revisions are immutable: the spec is read by version, not checkpointed.
+          return {
+            spec: await loadSpec(this.#db, { id: systemId, name: s.name }, s.version),
+            version: s.version,
+          };
         },
         applyOps: async (ops, expectedVersion, idemKey) => {
-          await this.#ensureActive(run.id, ac);
-          return this.#tx((t) =>
-            applyOpsRevision(t, this.#d.blobs, {
-              systemId,
-              ops,
-              expectedVersion,
-              kind: "ops",
-              author: "agent",
-              runId: run.id,
-              idempotencyKey: idemKey ?? null,
-            }),
+          await this.#ensureActive(x);
+          return D.step(
+            "apply_ops",
+            () =>
+              this.#tx((t) =>
+                applyOpsRevision(t, this.#d.blobs, {
+                  systemId,
+                  ops,
+                  expectedVersion,
+                  kind: "ops",
+                  author: "agent",
+                  runId: run.id,
+                  idempotencyKey: idemKey ?? null,
+                }),
+              ),
+            { offload: true },
           );
         },
         writeFile: async (path, content) => {
@@ -1127,26 +1522,34 @@ export class RunEngine {
           checkPath(path);
           pending.set(path, null);
         },
-        readFile: async (path) => (pending.has(path) ? (pending.get(path) ?? null) : readCommitted(path)),
+        readFile: async (path) => {
+          if (pending.has(path)) return pending.get(path) ?? null;
+          const sha = await D.step("read_file", async () => (await manifestNow())[path] ?? null);
+          return sha ? (await this.#d.blobs.get(sha)).toString("utf8") : null;
+        },
         listFiles: async (prefix = "") => {
-          const all = new Set(Object.keys(await committed()));
+          const all = new Set(await D.step("list_files", async () => Object.keys(await manifestNow())));
           for (const [p, c] of pending) c === null ? all.delete(p) : all.add(p);
           return [...all].filter((p) => p.startsWith(prefix)).sort();
         },
         commitFiles,
       },
       runGates: (level, overrides) =>
-        base.runStep(`gate_${level}`, () => this.#gate(run, ac, level, commitFiles, filesAt, overrides)),
+        base.runStep(`gate_${level}`, () => this.#gate(x, level, commitFiles, filesAt, overrides)),
     };
     const out = await this.#d.executors.build(host, params);
     await commitFiles();
     return out;
   }
 
-  /** import_table (workflows.yaml#workflows.import_table): steps live in ../imports/workflow.ts. */
-  async #importTable(run: Run, ac: AbortController): Promise<Result> {
-    const needsInput = (req: InputRequest) => this.#needsInput(run, ac, req);
-    const base = this.#stepHost(run, ac, needsInput);
+  /**
+   * import_table (workflows.yaml#workflows.import_table): steps live in ../imports/workflow.ts. The uploaded file stays
+   * in the ImportStore; checkpoints hold only import-row state and the mapping (never cell values).
+   */
+  async #importTable(x: Ctx): Promise<Result> {
+    const { run, D } = x;
+    const needsInput = (req: InputRequest) => this.#needsInput(x, req);
+    const base = this.#stepHost(x, needsInput);
     this.#imports ??= new ImportStore(this.#d.config.importsDir, this.#d.config.secretsKey);
     const out = await runImportTable({
       run: {
@@ -1159,11 +1562,12 @@ export class RunEngine {
       pg: this.#d.pg,
       store: this.#imports,
       ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
-      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      step: (name, label, fn) => this.#step(x, name, label, fn),
+      once: (name, fn) => D.step(name, fn, { offload: true }),
       route: base.route,
       needsInput,
       buildChange: async (card, cap) => {
-        const r = await this.#runBuilder(run, ac, { card, cap, mode: "change" });
+        const r = await this.#runBuilder(x, { card, cap, mode: "change" });
         if (r?.status === "cancelled") throw new RunCancelled(r.summary_ru ?? "Импорт остановлен");
         return r ?? {};
       },
@@ -1171,38 +1575,67 @@ export class RunEngine {
     return { status: "succeeded", summary_ru: out.summary_ru, resultRevision: out.resultRevision };
   }
 
+  /** export (workflows.yaml#workflows.export_data): steps live in ../exports/workflow.ts; each step is a checkpoint. */
+  async #export(x: Ctx): Promise<Result> {
+    const { run, D } = x;
+    this.#exports ??= new ExportStore(this.#d.config.artifactsDir, this.#d.config.secretsKey);
+    const out = await runExport({
+      run: { id: run.id, systemId: run.system_id as string, input: run.input as unknown as ExportRunInput },
+      db: this.#db,
+      pg: this.#d.pg,
+      store: this.#exports,
+      ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      signal: x.ac.signal,
+      // Outputs are counts per table and the archive size (no cell values), kept inline.
+      step: (name, label, fn) => this.#step(x, name, label, () => D.step(name, fn)),
+      log: (m, e) => this.#log(m, e),
+    });
+    return { status: "succeeded", summary_ru: out.summary_ru };
+  }
+
   /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */
-  async #draftSnapshot(run: Run, ac: AbortController): Promise<void> {
-    const sys = await this.#db
-      .selectFrom("platform.systems")
-      .selectAll()
-      .where("id", "=", run.system_id as string)
-      .executeTakeFirstOrThrow();
-    if (sys.prod_revision === null) return;
-    const live = await this.#db
-      .selectFrom("platform.publications")
-      .select("id")
-      .where("system_id", "=", sys.id)
-      .where("status", "=", "live")
-      .executeTakeFirst();
-    if (!live) return;
-    const versions = [sys.prod_revision, sys.schema_hwm_revision, sys.preview_revision].filter(
-      (v): v is number => v !== null && v > 0,
-    );
+  async #draftSnapshot(x: Ctx): Promise<void> {
+    const { run, D } = x;
+    const plan = await D.step("draft_snapshot_plan", async () => {
+      const sys = await this.#db
+        .selectFrom("platform.systems")
+        .selectAll()
+        .where("id", "=", run.system_id as string)
+        .executeTakeFirstOrThrow();
+      if (sys.prod_revision === null) return null;
+      const live = await this.#db
+        .selectFrom("platform.publications")
+        .select("id")
+        .where("system_id", "=", sys.id)
+        .where("status", "=", "live")
+        .executeTakeFirst();
+      if (!live) return null;
+      const versions = [sys.prod_revision, sys.schema_hwm_revision, sys.preview_revision].filter(
+        (v): v is number => v !== null && v > 0,
+      );
+      return { id: sys.id, name: sys.name, systemKey: sys.schema_key, versions, marker: live.id };
+    });
+    if (!plan) return;
     const specs: AppSpec[] = [];
-    for (const v of versions) specs.push(await loadSpec(this.#db, sys, v));
-    await this.#step(run, ac, "draft_snapshot", "Копирую данные prod в черновик, ПДн заменяю", () =>
-      draftSnapshot(this.#d.pg, {
-        systemKey: sys.schema_key,
-        specs,
-        marker: live.id,
-        ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
-      }),
+    for (const v of plan.versions) specs.push(await loadSpec(this.#db, plan, v));
+    await this.#step(x, "draft_snapshot", "Копирую данные prod в черновик, ПДн заменяю", () =>
+      D.step(
+        "draft_snapshot",
+        () =>
+          draftSnapshot(this.#d.pg, {
+            systemKey: plan.systemKey,
+            specs,
+            marker: plan.marker,
+            ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+          }),
+        { offload: true },
+      ),
     );
   }
 
   /** publish / rollback runs (workflows.yaml#workflows.publish, #rollback): steps live in ../publish/workflows.ts. */
-  async #flow(run: Run, ac: AbortController): Promise<Result> {
+  async #flow(x: Ctx): Promise<Result> {
+    const { run, D } = x;
     const systemId = run.system_id as string;
     const filesAt = async (): Promise<Map<string, string>> => {
       const s = await this.#db
@@ -1210,12 +1643,7 @@ export class RunEngine {
         .select("draft_revision")
         .where("id", "=", systemId)
         .executeTakeFirstOrThrow();
-      const m = await loadManifest(this.#db, this.#d.blobs, systemId, s.draft_revision);
-      const out = new Map<string, string>();
-      for (const [p, sha] of Object.entries(m))
-        if (p.startsWith("ui/") || p.startsWith("functions/"))
-          out.set(p, (await this.#d.blobs.get(sha)).toString("utf8"));
-      return out;
+      return this.#filesAt(systemId, s.draft_revision);
     };
     const host: FlowHost = {
       run,
@@ -1224,13 +1652,14 @@ export class RunEngine {
       blobs: this.#d.blobs,
       config: this.#d.config,
       gates: this.#d.executors.gates,
-      signal: ac.signal,
+      signal: x.ac.signal,
       options: this.#d.publish ?? {},
       tx: (fn) => this.#tx(fn),
-      step: (name, label, fn) => this.#step(run, ac, name, label, fn),
+      step: (name, label, fn) => this.#step(x, name, label, () => D.step(name, fn, { offload: true })),
+      once: (name, fn) => D.step(name, fn, { offload: true }),
       draftG0: () =>
-        this.#step(run, ac, "gate_G0", "Проверяю черновик (G0)", () =>
-          this.#gate(run, ac, "G0", async () => null, filesAt, undefined),
+        this.#step(x, "gate_G0", "Проверяю черновик (G0)", () =>
+          this.#gate(x, "G0", async () => null, filesAt, undefined),
         ),
     };
     const out: FlowResult = run.kind === "publish" ? await runPublish(host) : await runRollback(host);
@@ -1238,8 +1667,7 @@ export class RunEngine {
   }
 
   async #gate(
-    run: Run,
-    ac: AbortController,
+    x: Ctx,
     level: GateLevel,
     commitFiles: () => Promise<unknown>,
     filesAt: () => Promise<Map<string, string>>,
@@ -1248,57 +1676,66 @@ export class RunEngine {
     const gates = this.#d.executors.gates;
     if (!gates) throw new RunFailure("INTERNAL", "Проверки (гейты) пока не подключены к платформе", true);
     await commitFiles();
+    const { run } = x;
     const systemId = run.system_id as string;
-    const sys = await this.#db
-      .selectFrom("platform.systems")
-      .selectAll()
-      .where("id", "=", systemId)
-      .executeTakeFirstOrThrow();
-    const revision = sys.draft_revision;
-    await this.#emit(run.id, "gate_started", { level, revision });
-    const spec: AppSpec = await loadSpec(this.#db, sys, revision);
-    const files = await filesAt();
-    const ctx: GateContext = {
-      spec,
-      prevSpec: sys.preview_revision !== null ? await loadSpec(this.#db, sys, sys.preview_revision) : null,
-      specVersion: revision,
-      files,
-      env: "draft",
-      systemKey: sys.schema_key,
-      db: this.#d.pg,
-      milestone: this.#d.config.milestone,
-      signal: ac.signal,
-      ...overrides,
-    };
-    const report = { ...(await gates(level, ctx)), level };
-    await this.#tx((t) => recordGateReport(t, { runId: run.id, systemId, revision, report }));
-    if (level === "G0" && report.passed && this.#d.executors.onG0Passed) {
-      const r = await this.#d.executors.onG0Passed({
-        systemId,
-        systemKey: sys.schema_key,
-        revision,
-        spec,
-        files,
-        runId: run.id,
-        prevSpec: ctx.prevSpec,
-      });
-      if (r?.bundleKey) {
-        const bundleKey = r.bundleKey;
-        await this.#tx(async (t) => {
-          await t.trx
-            .updateTable("platform.revisions")
-            .set({ bundle_key: bundleKey })
-            .where("system_id", "=", systemId)
-            .where("version", "=", revision)
-            .execute();
-          await t.trx
-            .updateTable("platform.systems")
-            .set({ preview_revision: revision, updated_at: new Date() })
-            .where("id", "=", systemId)
-            .execute();
-        });
-      }
-    }
-    return report;
+    // One checkpoint: gate_started, the gate, gate_reports + gate_result and the post-G0 draft steps.
+    return x.D.step(
+      `gate_${level}`,
+      async () => {
+        const sys = await this.#db
+          .selectFrom("platform.systems")
+          .selectAll()
+          .where("id", "=", systemId)
+          .executeTakeFirstOrThrow();
+        const revision = sys.draft_revision;
+        await this.#emit(x, "gate_started", { level, revision });
+        const spec: AppSpec = await loadSpec(this.#db, sys, revision);
+        const files = await filesAt();
+        const ctx: GateContext = {
+          spec,
+          prevSpec:
+            sys.preview_revision !== null ? await loadSpec(this.#db, sys, sys.preview_revision) : null,
+          specVersion: revision,
+          files,
+          env: "draft",
+          systemKey: sys.schema_key,
+          db: this.#d.pg,
+          milestone: this.#d.config.milestone,
+          signal: x.ac.signal,
+          ...overrides,
+        };
+        const report = { ...(await gates(level, ctx)), level };
+        await this.#tx((t) => recordGateReport(t, { runId: run.id, systemId, revision, report }));
+        if (level === "G0" && report.passed && this.#d.executors.onG0Passed) {
+          const r = await this.#d.executors.onG0Passed({
+            systemId,
+            systemKey: sys.schema_key,
+            revision,
+            spec,
+            files,
+            runId: run.id,
+            prevSpec: ctx.prevSpec,
+          });
+          if (r?.bundleKey) {
+            const bundleKey = r.bundleKey;
+            await this.#tx(async (t) => {
+              await t.trx
+                .updateTable("platform.revisions")
+                .set({ bundle_key: bundleKey })
+                .where("system_id", "=", systemId)
+                .where("version", "=", revision)
+                .execute();
+              await t.trx
+                .updateTable("platform.systems")
+                .set({ preview_revision: revision, updated_at: new Date() })
+                .where("id", "=", systemId)
+                .execute();
+            });
+          }
+        }
+        return report;
+      },
+      { offload: true },
+    );
   }
 }

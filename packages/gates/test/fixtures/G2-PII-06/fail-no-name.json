@@ -1,0 +1,13 @@
+{
+  "check": "G2-PII-06",
+  "description": "нет operatorName",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/compliance/operatorName"
+    }
+  ],
+  "match": "OPERATOR_NAME_REQUIRED",
+  "base": "forum",
+  "expect": "fail"
+}

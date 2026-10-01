@@ -1,0 +1,24 @@
+{
+  "check": "G2-PERM-04",
+  "description": "публичная функция посетителя возвращает ctx.systemDb.ticket.list(): runtime вырезает ПДн",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "leakTickets",
+        "kind": "query",
+        "file": "functions/leakTickets.ts",
+        "public": true,
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "functions/leakTickets.ts": "import { query, v } from \"@wizard/sdk\";\n\nexport default query({\n  args: {},\n  handler: async (ctx) => {\n    return ctx.systemDb.ticket.list({ limit: 100 });\n  },\n});\n"
+  },
+  "base": "forum",
+  "expect": "pass"
+}

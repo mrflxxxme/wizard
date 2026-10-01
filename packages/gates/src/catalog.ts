@@ -54,8 +54,41 @@ export const G1_CHECKS: readonly CheckDef[] = [
   },
 ];
 
+export const G2_TIME_BUDGET_MS = 300_000;
+
+// gates.yaml#G2.checks.
+export const G2_CHECKS: readonly CheckDef[] = [
+  { id: "G2-PERM-01", severity: "blocker", title_ru: "Права всех ролей в данных совпадают с описанием" },
+  { id: "G2-PERM-02", severity: "blocker", title_ru: "База данных сама защищает записи по правам ролей" },
+  { id: "G2-PERM-03", severity: "blocker", title_ru: "Пользователи не видят чужие записи" },
+  { id: "G2-PERM-04", severity: "blocker", title_ru: "Скрытые поля и чужие ПДн не попадают в ответы" },
+  { id: "G2-PERM-05", severity: "blocker", title_ru: "Анонимные посетители не могут менять чужие данные" },
+  { id: "G2-SECRET-01", severity: "blocker", title_ru: "В коде и описании нет секретов" },
+  { id: "G2-SECRET-02", severity: "blocker", title_ru: "Секреты интеграций хранятся в хранилище" },
+  { id: "G2-PII-01", severity: "blocker", title_ru: "Нет особых категорий персональных данных" },
+  { id: "G2-PII-02", severity: "blocker", title_ru: "Персональные данные размечены" },
+  {
+    id: "G2-PII-03",
+    severity: "blocker",
+    title_ru: "Нет сведений о здоровье, религии и других особых данных",
+  },
+  { id: "G2-PII-04", severity: "blocker", title_ru: "Формы с ПДн спрашивают согласие" },
+  { id: "G2-PII-05", severity: "blocker", title_ru: "У персональных данных есть срок хранения" },
+  { id: "G2-PII-06", severity: "blocker", title_ru: "Указаны данные оператора ПДн" },
+  { id: "G2-TG-01", severity: "blocker", title_ru: "В Telegram не уходят персональные данные" },
+  { id: "G2-AF-01", severity: "blocker", title_ru: "Система не собирает данные банковских карт" },
+  { id: "G2-AF-02", severity: "blocker", title_ru: "Система не собирает пароли и коды подтверждения" },
+  { id: "G2-AF-03", severity: "blocker", title_ru: "Система не собирает паспорта и сканы документов" },
+  { id: "G2-AF-04", severity: "blocker", title_ru: "Система не выдаёт себя за известный бренд" },
+  { id: "G2-AF-05", severity: "blocker", title_ru: "Данные форм не уходят на сторонние сайты" },
+  { id: "G2-AF-06", severity: "blocker", title_ru: "Нет реквизитов для оплаты мимо ЮKassa" },
+  { id: "G2-AF-07", severity: "blocker", title_ru: "Система не собирает ключи и секретные фразы" },
+  { id: "G2-AF-08", severity: "warning", title_ru: "Риск-оценка в норме" },
+  { id: "G2-AF-09", severity: "warning", title_ru: "Нет переписки между пользователями" },
+];
+
 export const CHECK_BY_ID: ReadonlyMap<string, CheckDef> = new Map(
-  [...G0_CHECKS, ...G1_CHECKS].map((c) => [c.id, c]),
+  [...G0_CHECKS, ...G1_CHECKS, ...G2_CHECKS].map((c) => [c.id, c]),
 );
 
 const ORDER: readonly string[] = ["M0", "M1", "M2", "M3", "M4"];

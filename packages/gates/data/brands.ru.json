@@ -1,0 +1,598 @@
+[
+  {
+    "id": "sberbank",
+    "names": [
+      "Сбербанк"
+    ],
+    "domains": [
+      "sberbank.ru",
+      "sber.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "sber",
+    "names": [
+      "Сбер"
+    ],
+    "domains": [
+      "sber.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "sberbank-onlayn",
+    "names": [
+      "СберБанк Онлайн"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "vtb",
+    "names": [
+      "ВТБ"
+    ],
+    "domains": [
+      "vtb.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "t-bank",
+    "names": [
+      "Т-Банк"
+    ],
+    "domains": [
+      "tbank.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "tinkoff",
+    "names": [
+      "Тинькофф"
+    ],
+    "domains": [
+      "tinkoff.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "alfa-bank",
+    "names": [
+      "Альфа-Банк"
+    ],
+    "domains": [
+      "alfabank.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "gazprombank",
+    "names": [
+      "Газпромбанк"
+    ],
+    "domains": [
+      "gazprombank.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "rosselhozbank",
+    "names": [
+      "Россельхозбанк"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "sovkombank",
+    "names": [
+      "Совкомбанк"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "rayffayzenbank",
+    "names": [
+      "Райффайзенбанк"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "pochta-bank",
+    "names": [
+      "Почта Банк"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "mkb",
+    "names": [
+      "МКБ"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "otkrytie",
+    "names": [
+      "Открытие"
+    ],
+    "domains": [],
+    "category": "banks",
+    "ambiguous": true
+  },
+  {
+    "id": "yumoney",
+    "names": [
+      "ЮMoney"
+    ],
+    "domains": [
+      "yoomoney.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "yukassa",
+    "names": [
+      "ЮKassa"
+    ],
+    "domains": [
+      "yookassa.ru"
+    ],
+    "category": "banks"
+  },
+  {
+    "id": "sbp",
+    "names": [
+      "СБП"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "mir",
+    "names": [
+      "Мир"
+    ],
+    "domains": [],
+    "category": "banks",
+    "ambiguous": true
+  },
+  {
+    "id": "qiwi",
+    "names": [
+      "QIWI"
+    ],
+    "domains": [],
+    "category": "banks"
+  },
+  {
+    "id": "gosuslugi",
+    "names": [
+      "Госуслуги"
+    ],
+    "domains": [
+      "gosuslugi.ru"
+    ],
+    "category": "government"
+  },
+  {
+    "id": "esia",
+    "names": [
+      "ЕСИА"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "fns",
+    "names": [
+      "ФНС"
+    ],
+    "domains": [
+      "nalog.gov.ru"
+    ],
+    "category": "government"
+  },
+  {
+    "id": "nalogovaya",
+    "names": [
+      "Налоговая"
+    ],
+    "domains": [
+      "nalog.gov.ru"
+    ],
+    "category": "government",
+    "ambiguous": true
+  },
+  {
+    "id": "mvd",
+    "names": [
+      "МВД"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "gibdd",
+    "names": [
+      "ГИБДД"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "socialnyy-fond",
+    "names": [
+      "Социальный фонд"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "sfr",
+    "names": [
+      "СФР"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "pensionnyy-fond",
+    "names": [
+      "Пенсионный фонд"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "pfr",
+    "names": [
+      "ПФР"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "cb-rf",
+    "names": [
+      "ЦБ РФ"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "bank-rossii",
+    "names": [
+      "Банк России"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "fssp",
+    "names": [
+      "ФССП"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "rosreestr",
+    "names": [
+      "Росреестр"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "mincifry",
+    "names": [
+      "Минцифры"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "mfc",
+    "names": [
+      "МФЦ"
+    ],
+    "domains": [],
+    "category": "government"
+  },
+  {
+    "id": "mos-ru",
+    "names": [
+      "Мос.ру"
+    ],
+    "domains": [
+      "mos.ru"
+    ],
+    "category": "government"
+  },
+  {
+    "id": "ozon",
+    "names": [
+      "Ozon"
+    ],
+    "domains": [
+      "ozon.ru"
+    ],
+    "category": "marketplaces"
+  },
+  {
+    "id": "ozon",
+    "names": [
+      "Озон"
+    ],
+    "domains": [
+      "ozon.ru"
+    ],
+    "category": "marketplaces"
+  },
+  {
+    "id": "wildberries",
+    "names": [
+      "Wildberries"
+    ],
+    "domains": [
+      "wildberries.ru",
+      "wb.ru"
+    ],
+    "category": "marketplaces"
+  },
+  {
+    "id": "yandeks-market",
+    "names": [
+      "Яндекс Маркет"
+    ],
+    "domains": [],
+    "category": "marketplaces"
+  },
+  {
+    "id": "avito",
+    "names": [
+      "Авито"
+    ],
+    "domains": [
+      "avito.ru"
+    ],
+    "category": "marketplaces"
+  },
+  {
+    "id": "megamarket",
+    "names": [
+      "Мегамаркет"
+    ],
+    "domains": [],
+    "category": "marketplaces"
+  },
+  {
+    "id": "aliexpress",
+    "names": [
+      "AliExpress"
+    ],
+    "domains": [],
+    "category": "marketplaces"
+  },
+  {
+    "id": "lamoda",
+    "names": [
+      "Lamoda"
+    ],
+    "domains": [],
+    "category": "marketplaces"
+  },
+  {
+    "id": "kuper",
+    "names": [
+      "Купер"
+    ],
+    "domains": [],
+    "category": "marketplaces",
+    "ambiguous": true
+  },
+  {
+    "id": "sdek",
+    "names": [
+      "СДЭК"
+    ],
+    "domains": [
+      "cdek.ru"
+    ],
+    "category": "delivery"
+  },
+  {
+    "id": "pochta-rossii",
+    "names": [
+      "Почта России"
+    ],
+    "domains": [
+      "pochta.ru"
+    ],
+    "category": "delivery"
+  },
+  {
+    "id": "boxberry",
+    "names": [
+      "Boxberry"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "dpd",
+    "names": [
+      "DPD"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "yandeks-dostavka",
+    "names": [
+      "Яндекс Доставка"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "delovye-linii",
+    "names": [
+      "Деловые Линии"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "pek",
+    "names": [
+      "ПЭК"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "5post",
+    "names": [
+      "5Post"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "dostavista",
+    "names": [
+      "Достависта"
+    ],
+    "domains": [],
+    "category": "delivery"
+  },
+  {
+    "id": "mts",
+    "names": [
+      "МТС"
+    ],
+    "domains": [
+      "mts.ru"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "bilayn",
+    "names": [
+      "Билайн"
+    ],
+    "domains": [
+      "beeline.ru"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "megafon",
+    "names": [
+      "МегаФон"
+    ],
+    "domains": [
+      "megafon.ru"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "t2",
+    "names": [
+      "Т2"
+    ],
+    "domains": [],
+    "category": "telecom_social"
+  },
+  {
+    "id": "tele2",
+    "names": [
+      "Tele2"
+    ],
+    "domains": [],
+    "category": "telecom_social"
+  },
+  {
+    "id": "rostelekom",
+    "names": [
+      "Ростелеком"
+    ],
+    "domains": [
+      "rt.ru"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "vkontakte",
+    "names": [
+      "ВКонтакте"
+    ],
+    "domains": [
+      "vk.com"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "vk",
+    "names": [
+      "VK"
+    ],
+    "domains": [
+      "vk.com"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "odnoklassniki",
+    "names": [
+      "Одноклассники"
+    ],
+    "domains": [],
+    "category": "telecom_social"
+  },
+  {
+    "id": "telegram",
+    "names": [
+      "Telegram"
+    ],
+    "domains": [
+      "telegram.org",
+      "t.me"
+    ],
+    "category": "telecom_social"
+  },
+  {
+    "id": "whatsapp",
+    "names": [
+      "WhatsApp"
+    ],
+    "domains": [],
+    "category": "telecom_social"
+  },
+  {
+    "id": "max",
+    "names": [
+      "Max"
+    ],
+    "domains": [],
+    "category": "telecom_social",
+    "ambiguous": true
+  },
+  {
+    "id": "wizard",
+    "names": [
+      "Wizard"
+    ],
+    "domains": [],
+    "category": "platform"
+  }
+]

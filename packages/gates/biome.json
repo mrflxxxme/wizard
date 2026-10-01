@@ -1,6 +1,6 @@
 {
   "root": false,
-  "files": { "includes": ["**", "!test/fixtures", "!test/.generated"] },
+  "files": { "includes": ["**", "!test/fixtures", "!test/.generated", "!test/antifraud", "!data"] },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 110 },
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } }
 }

@@ -35,12 +35,14 @@ export class G1Env {
     readonly spec: AppSpec,
     systemKey: string,
     readonly runId: string,
-    private readonly runtimeRole: string,
+    readonly runtimeRole: string,
+    /** Ephemeral schema tag: app_<key>_<tag>_<runId>_draft (G1 and G2 runs). */
+    tag: "g1" | "g2" = "g1",
   ) {
     if (!SYSTEM_KEY_RE.test(systemKey)) throw new Error(`invalid systemKey ${systemKey}`);
-    this.systemKey = `${systemKey}_g1_${runId}`;
+    this.systemKey = `${systemKey}_${tag}_${runId}`;
     this.schema = `app_${this.systemKey}_draft`;
-    this.slug = `g1-${runId}`;
+    this.slug = `${tag}-${runId}`;
     const scheme = runtime.env?.publicScheme ?? "http";
     this.host = `${this.slug}--draft.${runtime.env?.systemsDomain ?? "localhost"}`;
     this.origin = `${scheme}://${this.host}`;
@@ -63,11 +65,11 @@ export class G1Env {
     await this.db.unsafe(`DROP SCHEMA IF EXISTS ${this.s} CASCADE`);
   }
 
-  async load(artifactDir: string | null): Promise<void> {
+  async load(artifactDir: string | null, spec: AppSpec = this.spec): Promise<void> {
     await this.runtime.loadSystem({
       systemKey: this.systemKey,
       env: "draft",
-      spec: this.spec,
+      spec,
       artifactDir,
       slug: this.slug,
     });
@@ -81,7 +83,7 @@ export class G1Env {
     })) as T;
   }
 
-  private async insert(tx: postgres.TransactionSql, table: string, row: Record<string, unknown>) {
+  async insert(tx: postgres.TransactionSql, table: string, row: Record<string, unknown>) {
     const cols = Object.keys(row);
     await tx.unsafe(
       `insert into ${this.s}.${quoteIdent(table)} (${cols.map(quoteIdent).join(", ")}) values (${cols
@@ -104,6 +106,32 @@ export class G1Env {
       for (const name of seed.order)
         for (const row of seed.rows[name] ?? []) await this.insert(tx, name, row);
     });
+  }
+
+  /**
+   * Runs fn as the runtime DB role under a subject (SET LOCAL ROLE + set_config(…, true): RLS applies like for the
+   * runtime) and always rolls back. G2-PERM-02 probes the policies directly with it.
+   */
+  async rolledBack<T>(
+    subject: { role: string; id: string | null; attrs: Record<string, unknown> },
+    fn: (tx: postgres.TransactionSql) => Promise<T>,
+  ): Promise<T> {
+    const rollback = new Error("rollback");
+    let out: { v: T } | null = null;
+    try {
+      await this.db.begin(async (tx) => {
+        await tx.unsafe(`set local role ${quoteIdent(this.runtimeRole)}`);
+        await tx.unsafe(
+          "select set_config('wizard.role', $1, true), set_config('wizard.user_id', $2, true), set_config('wizard.user_attrs', $3, true)",
+          [subject.role, subject.id ?? "", JSON.stringify(subject.attrs)],
+        );
+        out = { v: await fn(tx) };
+        throw rollback;
+      });
+    } catch (e) {
+      if (e !== rollback) throw e;
+    }
+    return (out as { v: T } | null)?.v as T;
   }
 
   async insertRow(entity: string, row: Record<string, unknown>): Promise<void> {
@@ -160,22 +188,29 @@ export class G1Env {
     return { id: null, role, cookie: null };
   }
 
-  async request(actor: Actor, method: string, path: string, body?: unknown): Promise<HttpResult> {
+  /** Request with a raw JSON body (page renders forward the SDK's own body); returns the raw text. */
+  async raw(
+    actor: Actor,
+    method: string,
+    path: string,
+    payload?: string,
+  ): Promise<{ status: number; text: string }> {
     const headers: Record<string, string> = { host: this.host };
     if (actor.cookie) headers.cookie = actor.cookie;
     if (method !== "GET" && method !== "HEAD") {
       headers.origin = this.origin;
       headers["x-wizard-request"] = "1";
     }
-    let payload: string | undefined;
-    if (body !== undefined) {
-      payload = JSON.stringify(body);
-      headers["content-type"] = "application/json";
-    }
+    if (payload !== undefined) headers["content-type"] = "application/json";
     const res = await this.runtime.fetch(
       new Request(`${this.origin}${path}`, { method, headers, body: payload }),
     );
-    const text = await res.text();
+    return { status: res.status, text: await res.text() };
+  }
+
+  async request(actor: Actor, method: string, path: string, body?: unknown): Promise<HttpResult> {
+    const res = await this.raw(actor, method, path, body === undefined ? undefined : JSON.stringify(body));
+    const text = res.text;
     let parsed: unknown = null;
     if (text) {
       try {

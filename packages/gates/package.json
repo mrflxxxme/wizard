@@ -9,7 +9,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --root ../.. packages/gates",
-    "fixtures": "node scripts/gen-fixtures.mjs"
+    "fixtures": "node scripts/gen-fixtures.mjs && node scripts/gen-g2-data.mjs && node scripts/gen-g2-fixtures.mjs"
   },
   "dependencies": {
     "@faker-js/faker": "^10.6.0",
@@ -20,7 +20,10 @@
     "@wizard/sdk": "workspace:*",
     "@wizard/ui-kit": "workspace:*",
     "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
     "postgres": "^3.4.9",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^5.9.3"
   },
   "devDependencies": {

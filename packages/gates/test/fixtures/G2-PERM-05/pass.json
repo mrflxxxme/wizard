@@ -1,0 +1,6 @@
+{
+  "check": "G2-PERM-05",
+  "description": "форум: у посетителя нет update/delete, systemDb в публичных функциях — только count",
+  "base": "forum",
+  "expect": "pass"
+}

@@ -16,7 +16,7 @@ import {
 } from "../runs/types.js";
 import { loadSpec } from "../services/revisions.js";
 import { type ApiMapping, fieldTypeFor, fromLlm, type ProfileItem, profileItems, toLoad } from "./columns.js";
-import { loadRows } from "./load.js";
+import { loadRows, planLoad } from "./load.js";
 import { entitiesOf } from "./pipeline.js";
 import type { ImportStore } from "./storage.js";
 
@@ -35,6 +35,11 @@ export interface ImportHost {
   store: ImportStore;
   migratorRole?: string;
   step<T>(name: string, label_ru: string, fn: () => Promise<T>): Promise<T>;
+  /**
+   * A checkpoint (M1: DBOS step; identity in-process) for reads that steer the flow and writes outside steps. Cell
+   * values never go through it: the table is re-read from the import store after a restart.
+   */
+  once<T>(name: string, fn: () => Promise<T>): Promise<T>;
   route(input: HostRouteInput): Promise<RouteOutput>;
   needsInput(req: InputRequest): Promise<InputAnswer>;
   /** schema_ops: a change build by the builder (build_ops → applyOps → G0 → draft migration). */
@@ -100,31 +105,41 @@ function resolveNewField(spec: AppSpec, m: ApiMapping, label: string): string | 
 export async function runImportTable(h: ImportHost): Promise<ImportResult> {
   const importId = h.run.input.importId;
   try {
-    const row = await h.db
-      .selectFrom("platform.imports")
-      .selectAll()
-      .where("id", "=", importId)
-      .executeTakeFirstOrThrow();
-    if (row.status === "expired" || row.expires_at.getTime() <= Date.now())
+    const row = await h.once("import_row", async () => {
+      const r = await h.db
+        .selectFrom("platform.imports")
+        .select(["source_sha", "status", "expires_at"])
+        .where("id", "=", importId)
+        .executeTakeFirstOrThrow();
+      return {
+        sourceSha: r.source_sha,
+        expired: r.status === "expired" || r.expires_at.getTime() <= Date.now(),
+      };
+    });
+    if (row.expired)
       throw new RunFailure("INTERNAL", "Файл импорта удалён по сроку хранения — загрузите его снова");
 
     const { table, payload, items } = await h.step("profile", "Читаю таблицу", async () => {
-      const file = await h.store.get(importId, row.source_sha);
+      // Read from the encrypted import store on every execution (also when a restarted worker replays the run).
+      const file = await h.store.get(importId, row.sourceSha);
       const table = readTable(file, h.run.input.filename ? { filename: h.run.input.filename } : {});
       // Seed from the file hash: the same file gives the same payload (stable fixture keys, WIZARD_LLM_MODE=fixture).
-      const payload = buildMappingPayload(table, { seed: Number.parseInt(row.source_sha.slice(0, 8), 16) });
+      const payload = buildMappingPayload(table, { seed: Number.parseInt(row.sourceSha.slice(0, 8), 16) });
       const items = profileItems(profileTable(table), payload);
-      await setImport(h, { profile: json(items), status: "mapping" });
+      await h.once("profile_saved", () => setImport(h, { profile: json(items), status: "mapping" }));
       return { table, payload, items };
     });
 
     await h.step("map", "Сопоставляю колонки", async () => {
-      const { spec } = await preview(h);
+      const spec = await h.once("map_spec", async () => (await preview(h)).spec);
       const out = await routeImportMapping(
         { route: hostRouteFn((i) => h.route(i), { step: "map" }) },
         { payload, entities: entitiesOf(spec), ctx: { orgId: h.run.orgId } },
       );
-      await setImport(h, { mapping: json(fromLlm(items, out.mapping)), status: "awaiting_confirm" });
+      // Checkpointed: a replay must not overwrite the mapping the user edited while the run waited.
+      await h.once("mapping_saved", () =>
+        setImport(h, { mapping: json(fromLlm(items, out.mapping)), status: "awaiting_confirm" }),
+      );
     });
 
     const answer = await h.needsInput({
@@ -136,23 +151,30 @@ export async function runImportTable(h: ImportHost): Promise<ImportResult> {
       ],
     });
     if (answer.choice !== "confirm") throw new RunCancelled("Импорт отменён");
-    const confirmed = await h.db
-      .selectFrom("platform.imports")
-      .select("mapping")
-      .where("id", "=", importId)
-      .executeTakeFirstOrThrow();
-    let mapping = (confirmed.mapping as ApiMapping[] | null) ?? [];
-    await setImport(h, { status: "importing" });
+    let mapping = await h.once("confirmed_mapping", async () => {
+      const confirmed = await h.db
+        .selectFrom("platform.imports")
+        .select("mapping")
+        .where("id", "=", importId)
+        .executeTakeFirstOrThrow();
+      await setImport(h, { status: "importing" });
+      return (confirmed.mapping as ApiMapping[] | null) ?? [];
+    });
 
     let resultRevision: number | null = null;
     const newFields = mapping.filter((m) => m.action === "new_field" && m.entity && m.field);
     if (newFields.length > 0) {
       await h.step("schema_ops", "Добавляю поля для колонок таблицы", async () => {
-        const { sys } = await preview(h);
-        const before = sys.preview_revision;
-        await h.buildChange(changeCard(sys.card as Record<string, unknown> | null, items, newFields), 10);
-        const after = await preview(h);
-        if (after.revision !== before) resultRevision = after.revision;
+        const before = await h.once("schema_before", async () => {
+          const { sys } = await preview(h);
+          return { revision: sys.preview_revision, card: sys.card as Record<string, unknown> | null };
+        });
+        await h.buildChange(changeCard(before.card, items, newFields), 10);
+        const after = await h.once("schema_after", async () => {
+          const a = await preview(h);
+          return { revision: a.revision, spec: a.spec };
+        });
+        if (after.revision !== before.revision) resultRevision = after.revision;
         mapping = mapping.map((m) => {
           if (m.action !== "new_field") return m;
           const p = items.find((x) => x.column === m.column) as ProfileItem;
@@ -163,24 +185,39 @@ export async function runImportTable(h: ImportHost): Promise<ImportResult> {
       });
     }
 
-    const loaded = await h.step("load_rows", "Загружаю строки в черновик", async () => {
-      const { sys, spec } = await preview(h);
-      const r = await loadRows(h.pg, {
-        schema: schemaName(sys.schema_key, "draft"),
-        spec,
-        table,
-        payload,
-        mapping: toLoad(items, mapping),
-        ...(h.migratorRole ? { migratorRole: h.migratorRole } : {}),
-      });
-      await setImport(h, { rows_imported: r.rowsImported, status: "done" });
-      return r;
-    });
+    const loaded = await h.step("load_rows", "Загружаю строки в черновик", () =>
+      h.once("load_rows", async () => {
+        const { sys, spec } = await preview(h);
+        const input = {
+          schema: schemaName(sys.schema_key, "draft"),
+          spec,
+          table,
+          payload,
+          mapping: toLoad(items, mapping),
+          ...(h.migratorRole ? { migratorRole: h.migratorRole } : {}),
+        };
+        const cur = await h.db
+          .selectFrom("platform.imports")
+          .select("status")
+          .where("id", "=", importId)
+          .executeTakeFirstOrThrow();
+        // Loaded before a crash that lost this checkpoint: the rows are in, only the counts are recomputed.
+        if (cur.status === "done") return planLoad(input).result;
+        return loadRows(h.pg, input, {
+          // In the insert transaction: the import is done exactly when its rows are committed.
+          before: async (tx, r) => {
+            await tx`
+              update platform.imports set rows_imported = ${r.rowsImported}, status = 'done'
+              where id = ${importId} and status <> 'expired'`;
+          },
+        });
+      }),
+    );
     const skipped =
       loaded.rowsSkipped > 0 ? `, пропущено ${loaded.rowsSkipped} (не заполнены обязательные поля)` : "";
     return { summary_ru: `Импортировано строк: ${loaded.rowsImported}${skipped}`, resultRevision };
   } catch (e) {
-    await setImport(h, { status: "failed" }).catch(() => {});
+    await h.once("import_failed", () => setImport(h, { status: "failed" })).catch(() => {});
     throw e;
   }
 }

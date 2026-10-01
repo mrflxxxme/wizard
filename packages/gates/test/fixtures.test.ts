@@ -87,7 +87,7 @@ function materialize(c: FixtureCase) {
 
 const onDisk = (): Map<string, FixtureCase> => {
   const out = new Map<string, FixtureCase>();
-  for (const check of readdirSync(FIXTURES_DIR)) {
+  for (const check of readdirSync(FIXTURES_DIR).filter((d) => d.startsWith("G0-"))) {
     for (const f of readdirSync(join(FIXTURES_DIR, check))) {
       out.set(`${check}/${f}`, JSON.parse(readFileSync(join(FIXTURES_DIR, check, f), "utf8")) as FixtureCase);
     }
@@ -106,7 +106,7 @@ describe("fixtures", () => {
           fresh.set(`${check}/${f}`, readFileSync(join(dir, check, f), "utf8"));
       }
       const current = new Map<string, string>();
-      for (const check of readdirSync(FIXTURES_DIR)) {
+      for (const check of readdirSync(FIXTURES_DIR).filter((d) => d.startsWith("G0-"))) {
         for (const f of readdirSync(join(FIXTURES_DIR, check))) {
           current.set(`${check}/${f}`, readFileSync(join(FIXTURES_DIR, check, f), "utf8"));
         }

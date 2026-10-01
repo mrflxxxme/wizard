@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "abuse.yaml block_required: title «Вход в Сбербанк Онлайн»",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/pages/0/title",
+      "value": "Вход в Сбербанк Онлайн"
+    }
+  ],
+  "base": "forum"
+}

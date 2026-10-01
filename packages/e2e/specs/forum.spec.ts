@@ -190,7 +190,7 @@ test("форум: промпт → вопросы → карточка → сб�
     await preview.locator('input[name="holderEmail"]').fill("guest@example.test");
     const submit = preview.getByRole("button", { name: "Оформить" });
     await expect(submit).toBeDisabled();
-    await preview.getByRole("checkbox", { name: /Я соглашаюсь/ }).check();
+    await preview.getByRole("checkbox", { name: /Текст согласия предоставит юрист/ }).check();
     await shot(page, "06-register", true);
     await submit.click();
     await expect(preview.getByTestId("wz-pay-amount")).toContainText("4 900", { timeout: 15_000 });

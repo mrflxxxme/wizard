@@ -19,6 +19,7 @@ import {
 import { type Actor, G1Env } from "./env.js";
 import { minimalArgs } from "./fnargs.js";
 import { Prober } from "./probes.js";
+import { type RenderContext, renderPages } from "./render/index.js";
 import { runScenario, validateScenario } from "./scenario.js";
 import { fieldPiiCategory, generateSeed, seedDlp, ValueGen } from "./seed.js";
 import type { QaCheck, Seed } from "./types.js";
@@ -27,6 +28,10 @@ export interface G1Options {
   timeBudgetMs?: number;
   /** Injection point for tests. */
   deps?: { buildSystem?: typeof buildSystem };
+  /** G1-RENDER-01 observer of every page render (tests). */
+  onRender?: RenderContext["onRender"];
+  /** G1-RENDER-01 ceiling per page × role (default RENDER_TIMEOUT_MS). */
+  renderTimeoutMs?: number;
 }
 
 const def = (id: string): CheckDef => CHECK_BY_ID.get(id) as CheckDef;
@@ -75,10 +80,14 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
   const now = ctx.now ?? new Date();
   const checks = g1Checks(spec, ctx.checks ?? []);
   const results = new Map<string, Check>();
-  let fnOutcome: { kind: "findings"; findings: Finding[] } | { kind: "skip" | "error"; reason_ru: string } = {
-    kind: "skip",
-    reason_ru: "Не запускалась",
-  };
+  type Outcome =
+    | { kind: "findings"; findings: Finding[] }
+    | { kind: "skip" | "error"; reason_ru: string; evidence?: string };
+  let fnOutcome: Outcome = { kind: "skip", reason_ru: "Не запускалась" };
+  const renderOn = !isLaterMilestone("M1", milestone);
+  let renderOutcome: Outcome = renderOn
+    ? { kind: "error", reason_ru: "не запускалась" }
+    : { kind: "skip", reason_ru: "Проверка включается с этапа M1" };
 
   // Milestone rule and static validity first: they need no runtime.
   const runnable: QaCheck[] = [];
@@ -107,6 +116,7 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
       if (!results.has(c.id))
         results.set(c.id, entry(c, "error", `Не удалось проверить: ${reason}`, evidence ? { evidence } : {}));
     fnOutcome = { kind: "error", reason_ru: reason };
+    if (renderOn) renderOutcome = { kind: "error", reason_ru: reason };
   };
 
   const runtime = ctx.runtime;
@@ -126,7 +136,9 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
         artifactDir = writeArtifact(artifacts, randomBytes(6).toString("hex"), 1, built).dir;
       }
       await env.load(artifactDir);
-      const seed = generateSeed(spec, g1SeedKey(ctx.systemKey, ctx.specVersion), { now });
+      // QA seed hints of the scenarios that run (qa.yaml#seed.rules MAY), merged in check order.
+      const hints = runnable.flatMap((c) => c.scenario?.seedHints ?? []);
+      const seed = generateSeed(spec, g1SeedKey(ctx.systemKey, ctx.specVersion), { now, hints });
       const dlp = seedDlp(spec, seed);
       if (dlp.length)
         throw new G1SetupError(
@@ -204,6 +216,24 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
           findings: await publicQueries(env, spec, ctx.files, seed, await seedActors(env, spec, seed), now),
         };
       } else fnOutcome = { kind: "error", reason_ru: "превышено время G1 (120 с)" };
+
+      // G1-RENDER-01 (since M1) on the seed: every page × each of its roles.
+      if (renderOn) {
+        if (timeLeft()) {
+          await env.reset(seed);
+          renderOutcome = await renderPages({
+            env,
+            spec,
+            files: ctx.files,
+            seed,
+            actors: await seedActors(env, spec, seed),
+            timeLeft: () => (ctx.signal?.aborted ? 0 : deadline - Date.now()),
+            workDir: artifacts,
+            ...(opts.onRender ? { onRender: opts.onRender } : {}),
+            ...(opts.renderTimeoutMs ? { timeoutMs: opts.renderTimeoutMs } : {}),
+          });
+        } else renderOutcome = { kind: "error", reason_ru: "превышено время G1 (120 с)" };
+      }
     } catch (e) {
       if (e instanceof G1SetupError) failAll(e.message, e.evidence);
       else failAll("не удалось подготовить окружение проверки", String((e as Error)?.message ?? e));
@@ -216,14 +246,7 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
   const out: Check[] = checks.map((c) => results.get(c.id) as Check).filter(Boolean);
   out.push(...coverage(spec, checks, results, milestone));
   out.push(...toChecks(def("G1-FN-01"), fnOutcome));
-  out.push(
-    ...toChecks(
-      def("G1-RENDER-01"),
-      isLaterMilestone("M1", milestone)
-        ? { kind: "skip", reason_ru: "Проверка включается с этапа M1" }
-        : { kind: "skip", reason_ru: "Проверка ещё не подключена" },
-    ),
-  );
+  out.push(...toChecks(def("G1-RENDER-01"), renderOutcome));
   return {
     level: "G1",
     passed: isPassed(out),
@@ -245,7 +268,7 @@ class G1SetupError extends Error {
 }
 
 /** A and B (seed users with sessions) per login role; an anonymous actor per public role. */
-async function seedActors(env: G1Env, spec: AppSpec, seed: Seed): Promise<Map<string, Actor[]>> {
+export async function seedActors(env: G1Env, spec: AppSpec, seed: Seed): Promise<Map<string, Actor[]>> {
   const out = new Map<string, Actor[]>();
   for (const r of spec.roles) {
     if (r.access === "public") out.set(r.name, [env.anonymous(r.name)]);

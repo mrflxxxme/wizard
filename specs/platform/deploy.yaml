@@ -23,7 +23,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
     auth_and_exec: [WIZARD_AUTH_MODE, WIZARD_DEV_LOGIN, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_PUBLIC_SCHEME]
     platform: [WIZARD_PLATFORM_ORIGIN, WIZARD_SYSTEMS_DOMAIN, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, WIZARD_MILESTONE, WIZARD_DEV_SMTP]
     M1: [WIZARD_TELEGRAM_BOT_TOKEN, WIZARD_TELEGRAM_WEBHOOK_SECRET, WIZARD_TELEGRAM_BOT_USERNAME, WIZARD_TELEGRAM_API_BASE, WIZARD_TELEGRAM_OAUTH_BASE, WIZARD_SMTP_HOST, WIZARD_SMTP_PORT, WIZARD_SMTP_USER, WIZARD_SMTP_PASSWORD, WIZARD_MAIL_DOMAIN, WIZARD_CONNECTORS]   # общий бот уведомлений платформы (connectors/telegram.yaml#bot)
-    M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES]
+    M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES, WIZARD_YOOKASSA_API_BASE, WIZARD_YOOKASSA_IP_ALLOWLIST]
     connector_secrets_M0: "WIZARD_SECRET_<SCHEMAKEY>_<NAME> (с M1 — secrets_refs)"
     notes: "Ключи провайдеров — имена из agents/models.yaml#providers. WIZARD_INTERNAL_TOKEN — заголовок X-Wizard-Internal-Token (runtime.yaml#system_loading). WIZARD_PUBLIC_SCHEME (http|https) выбирает имя cookie runtime (runtime.yaml#auth.session_cookie)"
   bind: "Все процессы слушают 127.0.0.1. MUST: при WIZARD_UNSAFE_LOCAL_EXEC=1 или WIZARD_DEV_LOGIN=1 и адресе привязки ≠ loopback процесс отказывается стартовать (isolation.yaml#M0_M1)"

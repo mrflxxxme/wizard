@@ -5,7 +5,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface MailMessage {
-  kind: "otp" | "invite";
+  /** notice — events for the owner of a system (consent withdrawal, compliance.yaml#consent.withdrawal). */
+  kind: "otp" | "invite" | "notice";
   to: string;
   subject: string;
   text: string;

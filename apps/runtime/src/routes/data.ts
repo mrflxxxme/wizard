@@ -80,7 +80,8 @@ export function dataRoutes(): Hono<RuntimeHonoEnv> {
   app.post("/:entity", async (c) => {
     const subject = await subjectOf(c);
     const body = await readJsonBody(c);
-    return c.json({ item: await data(c).create(subject, c.req.param("entity"), body) }, 201);
+    const ipHmac = c.get("services").ipHmac?.(c.req.raw) ?? null;
+    return c.json({ item: await data(c).create(subject, c.req.param("entity"), body, { ipHmac }) }, 201);
   });
   app.get("/:entity/:id", async (c) =>
     c.json({ item: await data(c).get(await subjectOf(c), c.req.param("entity"), c.req.param("id")) }),
@@ -88,7 +89,9 @@ export function dataRoutes(): Hono<RuntimeHonoEnv> {
   app.patch("/:entity/:id", async (c) => {
     const subject = await subjectOf(c);
     const body = await readJsonBody(c);
-    return c.json({ item: await data(c).update(subject, c.req.param("entity"), c.req.param("id"), body) });
+    const ipHmac = c.get("services").ipHmac?.(c.req.raw) ?? null;
+    const id = c.req.param("id");
+    return c.json({ item: await data(c).update(subject, c.req.param("entity"), id, body, { ipHmac }) });
   });
   app.delete("/:entity/:id", async (c) => {
     await data(c).remove(await subjectOf(c), c.req.param("entity"), c.req.param("id"));

@@ -1,6 +1,7 @@
 // @wizard/gates — specs/architecture.yaml#interfaces.gates / gate_context, specs/quality/gates.yaml.
 import { runG0 } from "./g0/run.js";
 import { runG1 } from "./g1/run.js";
+import { runG2 } from "./g2/run.js";
 import type { GateContext, GateLevel, GateReport } from "./types.js";
 
 export const PACKAGE = "@wizard/gates";
@@ -15,6 +16,8 @@ export {
   G0_TIME_BUDGET_MS,
   G1_CHECKS,
   G1_TIME_BUDGET_MS,
+  G2_CHECKS,
+  G2_TIME_BUDGET_MS,
 } from "./catalog.js";
 /** G0-IMP-01 allowlist of package specifiers per area (ui / functions). */
 export { ALLOWED_PACKAGES } from "./g0/imports.js";
@@ -31,17 +34,20 @@ export {
   generatePermissionChecks,
   selectG1,
 } from "./g1/checks.js";
-/** runG1(ctx, {timeBudgetMs?}); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
+/** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?}) incl. G1-RENDER-01 (M1+); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
 export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
 /** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */
 export { validateScenario } from "./g1/scenario.js";
-/** generateSeed(spec, key, {now?}) and the seed DLP (qa.yaml#seed). */
+/** generateSeed(spec, key, {now?, hints?}), the seed DLP and QA seed hints: validateSeedHint, mergeSeedHints (qa.yaml#seed). */
 export {
   generateSeed,
   isSyntheticValue,
+  mergeSeedHints,
+  SEED_HINT_MAX_VALUES,
   type SeedOptions,
   SYNTHETIC_NAMES,
   seedDlp,
+  validateSeedHint,
 } from "./g1/seed.js";
 export type {
   Expect,
@@ -49,33 +55,26 @@ export type {
   QaCheck,
   Scenario,
   Seed,
+  SeedHint,
   SeedUser,
   Step,
 } from "./g1/types.js";
+/** G2 test hooks of the runtime part (tampered RLS, runtime/spec drift). */
+export type { DynamicOptions } from "./g2/dynamic.js";
+/** Antifraud dictionaries (data/*.json from abuse.yaml) and matching: normalize, rx (Unicode \b), findBrands. */
+export { ABUSE, BRANDS, type Brand, type BrandHit, findBrands, normalize, rx } from "./g2/patterns.js";
+/** ИНН-10/12 checksum (G2-PII-06, INN_INVALID). */
+export { innValid, isSubject } from "./g2/pii.js";
+/** runG2(ctx, {only?, timeBudgetMs?, dynamic?}): static G2 (secrets, ПДн, Telegram, antifraud, public role) + permission matrix against ctx.runtime. */
+export { type G2Options, runG2 } from "./g2/run.js";
 /** passed = no blocker with fail/error; summary counts by status. */
 export { isPassed, summarize } from "./report.js";
 /** GateContext, GateReport, Check, GateLevel, Milestone (gates.yaml#report, architecture.yaml#interfaces.gate_context). */
 export type * from "./types.js";
 
-/** runGates(level, ctx) → GateReport. G2 (M2) is not implemented yet: its report fails with error. */
+/** runGates(level, ctx) → GateReport (G0, G1 with ctx.runtime, G2 with ctx.runtime for the permission matrix). */
 export async function runGates(level: GateLevel, ctx: GateContext): Promise<GateReport> {
   if (level === "G0") return runG0(ctx);
   if (level === "G1") return runG1(ctx);
-  const startedAt = (ctx.now ?? new Date()).toISOString();
-  return {
-    level,
-    passed: false,
-    specVersion: ctx.specVersion,
-    startedAt,
-    durationMs: 0,
-    checks: [
-      {
-        id: level,
-        status: "error",
-        severity: "blocker",
-        message_ru: `Не удалось проверить: гейт ${level} ещё не подключён`,
-      },
-    ],
-    summary: { pass: 0, fail: 0, warn: 0, skip: 0, error: 1 },
-  };
+  return runG2(ctx);
 }

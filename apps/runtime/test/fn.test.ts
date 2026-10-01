@@ -1,5 +1,6 @@
 // backlog M0-23: /api/fn over the isolated executor — examples, roles/public/consent, limits, SERIALIZABLE retries,
 // ctx.db vs ctx.systemDb, scheduler → _w_jobs, escape attempts (security/isolation.yaml#escape_tests.M0).
+import { quoteIdent } from "@wizard/appspec";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { complianceInfo } from "../src/index.js";
 import { type ExecHarness, type ExecSystem, type ExtraFunction, execHarness } from "./exec-helpers.js";
@@ -207,6 +208,13 @@ describe("examples via /api/fn", () => {
     const ok = await call("registerTicket", args, "participant", { _consent: consent() });
     expect(ok.status).toBe(200);
     expect(ok.body.result).toMatchObject({ needsPayment: true });
+    // M2-05: an accepted collectsPii call is journaled in _w_consents (entity fn:<name>, row_id = caller).
+    const journal = await h.sql.unsafe(
+      `select row_id::text as row_id, policy_version from ${quoteIdent(sys.schema)}."_w_consents" where entity = 'fn:registerTicket'`,
+    );
+    expect(journal).toEqual([
+      { row_id: await userIdOf(h.sql, sys.schema, "participant"), policy_version: c().policyVersion },
+    ]);
     const full = await call("registerTicket", args, "participant", { _consent: consent() });
     expect(full.status).toBe(400);
     expect(full.body.error.code).toBe("STREAM_FULL");

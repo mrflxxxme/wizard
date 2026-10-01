@@ -237,8 +237,14 @@ describe("yookassa actions (test-mode stubs)", () => {
       invokeAction(yookassaConnector, "refund", ctx, { binding: "ticket", id, amount: 9999 }),
     ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
     const r = await invokeAction(yookassaConnector, "refund", ctx, { binding: "ticket", id });
-    expect(r).toMatchObject({ status: "pending" });
+    // Draft mock refund: recorded in the journal and the outbox; a full refund → refundedStatus.
+    expect(r).toMatchObject({ status: "succeeded" });
     expect(ctx.outbox.messages.filter((m) => m.action === "refund")).toHaveLength(1);
+    expect((await db.get("ticket", id))?.status).toBe("refunded");
+    expect((await db.list("payment")).map((p) => [p.kind, p.status])).toEqual([
+      ["payment", "succeeded"],
+      ["refund", "succeeded"],
+    ]);
   });
 
   test("testMode: draft → test; prod → live unless config.testMode", () => {
