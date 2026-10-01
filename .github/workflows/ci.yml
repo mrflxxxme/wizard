@@ -165,13 +165,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: HELM_BIN="$(command -v helm)" pnpm exec vitest run tools/deploy
       - run: tofu fmt -check -recursive infra/tofu
+      # Providers are downloaded once and cached between runs: the Cloud.ru registry is slow (~3 min per download)
+      # and sometimes resets the connection; init is retried.
+      - name: OpenTofu provider cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.tofu-plugin-cache
+          key: tofu-providers-${{ hashFiles('infra/tofu/**/.terraform.lock.hcl') }}
+          restore-keys: tofu-providers-
       - name: tofu validate
         run: |
+          export TF_PLUGIN_CACHE_DIR="$HOME/.tofu-plugin-cache"
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
           for d in infra/tofu/*/envs/* infra/tofu/*/drills/*; do
             [ -f "$d/main.tf" ] || continue
             provider_dir="${d%%/envs/*}"; provider_dir="${provider_dir%%/drills/*}"
             if [ -f "$provider_dir/tofurc" ]; then export TF_CLI_CONFIG_FILE="$PWD/$provider_dir/tofurc"; else unset TF_CLI_CONFIG_FILE; fi
-            tofu -chdir="$d" init -backend=false -input=false
+            ok=""
+            for attempt in 1 2 3; do
+              if tofu -chdir="$d" init -backend=false -input=false; then ok=1; break; fi
+              echo "tofu init failed (attempt $attempt), retrying"; sleep $((attempt * 10))
+            done
+            [ -n "$ok" ] || exit 1
             tofu -chdir="$d" validate
           done
       - name: tofu test (module shapes offline — pilot and beta, no provider credentials)
