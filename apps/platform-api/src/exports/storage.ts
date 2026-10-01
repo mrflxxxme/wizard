@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline, Readable } from "node:stream";
-import { deriveKey } from "../auth/crypto.js";
+import { deriveKey, sharedKeyMaterial } from "../auth/crypto.js";
 import type { Db } from "../db/index.js";
 
 export const EXPORT_TTL_MS = 24 * 3600_000;
@@ -25,11 +25,18 @@ export interface ExportWriter {
 }
 
 export class ExportStore {
-  readonly #key: Buffer;
+  readonly #secretsKey: string;
+  #k: Buffer | undefined;
   readonly dir: string;
   constructor(artifactsDir: string, secretsKey: string) {
     this.dir = join(artifactsDir, "exports");
-    this.#key = deriveKey(secretsKey, "exports/aes-256-gcm");
+    this.#secretsKey = secretsKey;
+  }
+
+  // Lazy: the local key file (no WIZARD_SECRETS_KEY) is created on first use, shared with apps/worker.
+  get #key(): Buffer {
+    this.#k ??= deriveKey(sharedKeyMaterial(this.#secretsKey, this.dir), "exports/aes-256-gcm");
+    return this.#k;
   }
 
   /** db.yaml#exports.storage_key of an export. */

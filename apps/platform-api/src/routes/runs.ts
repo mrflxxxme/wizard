@@ -77,8 +77,14 @@ export function runRoutes(d: Deps, opts: { pingMs?: number } = {}): Hono<AppEnv>
       try {
         while (!done) {
           if (!dirty) {
+            const poll = d.eventPollMs ?? 0;
             await new Promise<void>((res) => {
               wake = res;
+              if (poll > 0)
+                setTimeout(() => {
+                  dirty = true;
+                  res();
+                }, poll).unref();
             });
             wake = null;
             continue;

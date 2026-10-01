@@ -2,6 +2,7 @@
 // Configuration from env (platform/deploy.yaml#local.env_vars); the repo .env is loaded when present.
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createLogger } from "@wizard/pii/log";
 import postgres from "postgres";
 import { DbRegistry, FileRegistry } from "./registry.js";
 import { startRuntime } from "./server.js";
@@ -13,6 +14,13 @@ const db = postgres(process.env.WIZARD_DB_URL ?? "postgres://wizard@localhost:54
   onnotice: () => {},
 });
 
+// deploy.yaml#cloud.observability.pii_in_logs (L3-08): every line passes the allowlist.
+const logger = createLogger({ svc: "runtime" });
+for (const ev of ["uncaughtException", "unhandledRejection"] as const)
+  process.on(ev, (e: unknown) => {
+    logger.error(ev, e);
+    process.exit(1);
+  });
 const port = Number(process.env.PORT ?? process.env.WIZARD_RUNTIME_PORT ?? 4100);
 const hostname = process.env.HOST ?? process.env.WIZARD_RUNTIME_HOST ?? "127.0.0.1";
 const { close } = await startRuntime({
@@ -25,11 +33,9 @@ const { close } = await startRuntime({
   connectors: process.env.WIZARD_CONNECTORS === "live" ? "live" : "outbox",
   port,
   hostname,
-  log: (line) => process.stdout.write(`${JSON.stringify(line)}\n`),
+  log: (line) => logger.line(line),
 });
-process.stdout.write(
-  `${JSON.stringify({ level: "info", msg: "listening", url: `http://${hostname}:${port}` })}\n`,
-);
+logger.info("listening", { url: `http://${hostname}:${port}`, port });
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {

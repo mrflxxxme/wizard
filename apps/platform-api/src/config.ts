@@ -26,6 +26,10 @@ export interface Config {
   milestone: string;
   /** Root of .data/artifacts (deploy.yaml#local.artifacts). */
   artifactsDir: string;
+  /** Local secret backend (deploy.yaml#local.secrets: .data/secrets.enc, key WIZARD_SECRETS_KEY). */
+  secretsFile: string;
+  /** Worker: step outputs kept by reference outside dbos.* until the workflow ends (execution.M1.dbos_data). */
+  stepsDir: string;
   /** Encrypted uploaded tables (.data/imports; deploy.yaml#cloud bucket imports, TTL 7 days). */
   importsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
@@ -62,6 +66,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,
     ...over,
+    // Tests that move artifactsDir get the other .data stores next to it.
+    secretsFile:
+      over.secretsFile ??
+      (over.artifactsDir ? join(over.artifactsDir, ".secrets.enc") : join(REPO_ROOT, ".data", "secrets.enc")),
+    stepsDir:
+      over.stepsDir ??
+      (over.artifactsDir ? join(over.artifactsDir, ".steps") : join(REPO_ROOT, ".data", "steps")),
     importsDir:
       over.importsDir ??
       (over.artifactsDir ? join(over.artifactsDir, ".imports") : join(REPO_ROOT, ".data", "imports")),

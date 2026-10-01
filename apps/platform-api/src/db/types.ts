@@ -245,6 +245,20 @@ export interface PublicationsTable {
   created_at: TsDef;
 }
 
+/** M1-01, db.yaml#secrets_refs: metadata of connector secrets; the value lives only in the backend. */
+export interface SecretsRefsTable {
+  id: Generated<string>;
+  org_id: string;
+  system_id: string;
+  env: string;
+  name: string;
+  backend: string;
+  backend_path: string;
+  created_by: string | null;
+  rotated_at: TsNull;
+  created_at: TsDef;
+}
+
 /** M1-03, billing.yaml#ledger: append-only (UPDATE/DELETE are refused by a trigger). */
 export interface CreditLedgerTable {
   id: ColumnType<string, never, never>;
@@ -305,6 +319,7 @@ export interface DB {
   "platform.llm_calls": LlmCallsTable;
   "platform.locks": LocksTable;
   "platform.publications": PublicationsTable;
+  "platform.secrets_refs": SecretsRefsTable;
   "platform.auth_otps": AuthOtpsTable;
   "platform.sessions": SessionsTable;
   "platform.invites": InvitesTable;
