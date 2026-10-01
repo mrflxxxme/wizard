@@ -555,6 +555,20 @@ describe("daily retention tick over the registry (marker for the platform watchd
 
       // Same slot: nothing to do.
       expect((await rt.retentionTick({ now: new Date(now.getTime() + 3 * 3600_000) })).ran).toEqual([]);
+      // An explicit runner pass (G1 runWorkflows/advanceTime) ignores the daily marker: it always runs retention.
+      const again = await seedRow(sql, schema, spec, "ticket", {
+        event_starts_at: new Date(now.getTime() - 40 * DAY).toISOString(),
+      });
+      const explicit = await rt.runJobs({
+        slug: "rt-tick",
+        env: "prod",
+        now: new Date(now.getTime() + 3 * 3600_000),
+      });
+      expect(explicit.retention).toContainEqual({ entity: "ticket", mode: "anonymize", rows: 1 });
+      const [t2] = await sql.unsafe(`select holder_name from ${q(schema, "ticket")} where id = $1`, [again]);
+      expect(t2?.holder_name).toBeNull();
+      // The tick still waits for the next slot.
+      expect((await rt.retentionTick({ now: new Date(now.getTime() + 3.5 * 3600_000) })).ran).toEqual([]);
       // The platform watchdog asks for a pass: served at the next tick, the request row is gone.
       await sql.unsafe(
         `insert into ${q(schema, "_w_jobs")} (kind, payload, run_at, locked_until, idempotency_key)
