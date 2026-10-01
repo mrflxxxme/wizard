@@ -112,6 +112,22 @@ export interface QrOfflineApi {
   sync(req: QrSyncRequest): Promise<QrSyncResponse>;
 }
 
+/** Upload types of runtime.yaml#files.upload (checked by signature on the server). */
+export type FileMimeType = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+
+/** POST /api/files result and GET /api/files/:fileId/info (runtime.yaml#files). */
+export type FileInfo = { fileId: string; name: string; size: number; mime: FileMimeType };
+
+/** ext: files of file fields (FileField, M2-14). */
+export interface FilesApi {
+  /** POST /api/files (multipart: file, field, entity?) with X-Wizard-Request: 1. */
+  upload(file: File, target: { field: string; entity?: string }): Promise<FileInfo>;
+  /** Name, size and type of a stored file the user may read. */
+  info(fileId: string): Promise<FileInfo>;
+  /** Download address: GET /api/files/:fileId (302 to a short-lived signed link). */
+  href(fileId: string): string;
+}
+
 export interface DataSource {
   useList<T = Rec>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
   useRecord<T = Rec>(entity: string, id: string): AsyncResult<T>;
@@ -129,4 +145,6 @@ export interface DataSource {
   useQrCheck(verifyFn?: string): (req: QrCheckRequest) => Promise<QrCheckResponse>;
   /** ext: GET /_wizard/qr/manifest and POST /_wizard/qr/sync (connectors/qr.yaml#endpoints). */
   useQrOffline(): QrOfflineApi;
+  /** ext: POST /api/files and file info (FileField, runtime.yaml#files). */
+  useFiles(): FilesApi;
 }

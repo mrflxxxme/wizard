@@ -31,6 +31,7 @@ import {
 } from "kysely";
 import type postgres from "postgres";
 import { type ComplianceInfo, complianceInfo, consentMatches } from "../compliance.js";
+import { FILE_ID_RE, FILE_NOT_FOUND_RU, type FileFieldGuard } from "../files/system-files.js";
 import {
   type DataAccess,
   type DataOp,
@@ -100,6 +101,8 @@ export interface PgDataAccessOptions {
   qrToken?: (entity: string, field: string, id: string) => string | undefined | Promise<string | undefined>;
   /** Consent text/policy version of the system (LoadedSystem.compliance); default complianceInfo(spec). */
   compliance?: ComplianceInfo;
+  /** File fields (runtime.yaml#files): values must be uploads for that entity.field; detached files are released. */
+  files?: FileFieldGuard;
 }
 
 /** Consent handling of one write: check it (data API, ctx.db) and journal the accepted one in _w_consents. */
@@ -120,6 +123,8 @@ interface Tx {
   current: Who;
   now: Date;
   pending: InvalidationEvent[];
+  /** File ids detached by writes of this transaction (released after the commit). */
+  released: string[];
   exclusive: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
@@ -392,6 +397,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     load?: string | null,
   ): Promise<T> {
     const pending: InvalidationEvent[] = [];
+    const released: string[] = [];
     const opts =
       mode === "read"
         ? "isolation level repeatable read read only"
@@ -412,6 +418,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
           current: "subject",
           now: head?.now instanceof Date ? head.now : new Date(),
           pending,
+          released,
           exclusive: mutex(),
         };
         if (load) {
@@ -427,6 +434,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
       };
       const result = opts ? await o.sql.begin(opts, body) : await o.sql.begin(body);
       if (pending.length) events.publish(pending);
+      if (released.length) o.files?.released(released);
       return result as T;
     } catch (err) {
       throw mapPgError(err);
@@ -503,7 +511,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     written?: Record<string, unknown>,
   ): boolean {
     if (subject.role === SYSTEM_ROLE || subject.isAdmin) return false;
-    const pii = e.fields.filter((f) => f.pii !== undefined && f.pii !== "none");
+    const pii = e.fields.filter((f) => (f.pii ?? (f.type === "file" ? "basic" : "none")) !== "none");
     if (pii.length === 0) return false;
     if (written && !pii.some((f) => Object.hasOwn(written, f.name))) return false;
     if (!consentMatches(compliance, consent)) throw new WizardError("CONSENT_REQUIRED");
@@ -552,6 +560,69 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     if (issues.length) throw fieldsError("VALIDATION_FAILED", issues);
   }
 
+  /** Current values of the entity's file fields in row `id` (system context; {} when there are none). */
+  async function fileValues(t: Tx, e: Entity, id: string): Promise<Record<string, string | null>> {
+    const cols = e.fields.filter((f) => f.type === "file").map((f) => f.name);
+    if (cols.length === 0 || !o.files || !UUID_RE.test(id)) return {};
+    await ensure(t, "system");
+    const row = (await exec(t, from(e.name).select(cols).where("id", "=", id)))[0];
+    const out: Record<string, string | null> = {};
+    for (const c of cols) out[c] = typeof row?.[c] === "string" ? (row[c] as string) : null;
+    return out;
+  }
+
+  /**
+   * runtime.yaml#files: a file value is the fileId of an upload for this entity.field by the writer (system context:
+   * any upload of the field), not held by another row. Unchanged values are not re-checked; replaced ones are released.
+   */
+  async function checkFiles(
+    t: Tx,
+    who: Who,
+    e: Entity,
+    fields: Record<string, unknown>,
+    id: string,
+    old: Record<string, string | null>,
+  ): Promise<void> {
+    const guard = o.files;
+    if (!guard) return;
+    const issues: { field: string; code: string; message: string }[] = [];
+    const detached: string[] = [];
+    for (const f of e.fields) {
+      if (f.type !== "file" || !Object.hasOwn(fields, f.name)) continue;
+      const v = fields[f.name];
+      const prev = old[f.name] ?? null;
+      if (v === prev) continue;
+      if (prev) detached.push(prev);
+      if (v === null || v === undefined) continue;
+      const bad = (message = FILE_NOT_FOUND_RU) =>
+        issues.push({ field: f.name, code: "FILE_NOT_FOUND", message });
+      if (typeof v !== "string" || !FILE_ID_RE.test(v)) {
+        bad();
+        continue;
+      }
+      const s = who === "system" ? SYSTEM_SUBJECT : t.subject;
+      const problem = await guard.check({
+        entity: e.name,
+        field: f.name,
+        fileId: v,
+        uploader: s.id,
+        system: s.role === SYSTEM_ROLE,
+      });
+      if (problem) {
+        bad(problem);
+        continue;
+      }
+      await ensure(t, "system");
+      const taken = await exec(
+        t,
+        from(e.name).select("id").where(f.name, "=", v).where("id", "<>", id).limit(1),
+      );
+      if (taken.length > 0) bad();
+    }
+    if (issues.length) throw fieldsError("VALIDATION_FAILED", issues);
+    t.released.push(...detached);
+  }
+
   async function audit(t: Tx, e: Entity, op: DataOp, id: string, fields: string[]): Promise<void> {
     await ensure(t, "system");
     const s = t.subject;
@@ -594,6 +665,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
       checkConsent(who === "system" ? SYSTEM_SUBJECT : t.subject, e, consent.value ?? bodyConsent);
     await checkRefs(t, who, e, fields);
     const id = randomUUID();
+    await checkFiles(t, who, e, fields, id, {});
     for (const f of e.fields) {
       if (f.type === "qr_token")
         fields[f.name] = (await o.qrToken?.(e.name, f.name, id)) ?? randomBytes(24).toString("base64url");
@@ -633,6 +705,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     const c = p.rowConstraint("update");
     if (c === false) throw new WizardError("NOT_FOUND");
     await checkRefs(t, who, e, fields);
+    await checkFiles(t, who, e, fields, id, await fileValues(t, e, id));
     await ensure(t, who);
     const set = values(e, fields);
     const res = await exec(
@@ -654,6 +727,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     require(p, "delete");
     const c = p.rowConstraint("delete");
     if (!UUID_RE.test(id) || c === false) throw new WizardError("NOT_FOUND");
+    const files = Object.values(await fileValues(t, e, id)).filter((v): v is string => v !== null);
     await ensure(t, who);
     const res = await exec(
       t,
@@ -663,6 +737,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
         .where(() => and([sql<SqlBool>`${sql.ref("id")} = ${id}`, ...constraintConds(c)])),
     );
     if (res.count === 0) throw new WizardError("NOT_FOUND");
+    t.released.push(...files);
     await audit(t, e, "delete", id, []);
     t.pending.push({ entity: e.name, id, op: "delete" });
   }

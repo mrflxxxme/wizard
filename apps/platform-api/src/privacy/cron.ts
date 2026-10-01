@@ -3,7 +3,7 @@
 // F5 purge of inactive Free drafts, then delete_system. In-process timer of platform-api (engine inprocess) or the DBOS
 // scheduled workflow of apps/worker (wizard.retention_cron, 03:30 MSK).
 import type { Mailer } from "../auth/mailer.js";
-import { type PurgeDeps, type PurgedSystem, purgeDeletedSystems } from "./delete-system.js";
+import { fileStorageOf, type PurgeDeps, type PurgedSystem, purgeDeletedSystems } from "./delete-system.js";
 import { collectDeletionLogs, notifyConsentWithdrawals } from "./deletion-log.js";
 import { type FreeDraftReport, purgeInactiveFreeDrafts } from "./free-drafts.js";
 import { type HousekeepingReport, runHousekeeping } from "./housekeeping.js";
@@ -49,7 +49,11 @@ async function step<T>(d: RetentionCronDeps, name: string, fn: () => Promise<T>,
 }
 
 /** One full pass (idempotent; safe to repeat after a crash). */
-export async function runRetentionCron(d: RetentionCronDeps, now = new Date()): Promise<RetentionCronReport> {
+export async function runRetentionCron(
+  deps: RetentionCronDeps,
+  now = new Date(),
+): Promise<RetentionCronReport> {
+  const d: RetentionCronDeps = { ...deps, files: fileStorageOf(deps) };
   const t = await transferDeletionLogs(d);
   const alert: AlertFn =
     d.alert ?? ((msg, fields) => d.log?.(msg, { name: "RetentionOverdue", message: JSON.stringify(fields) }));

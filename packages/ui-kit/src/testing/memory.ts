@@ -7,6 +7,9 @@ import type {
   AsyncResult,
   AuthApi,
   DataSource,
+  FileInfo,
+  FileMimeType,
+  FilesApi,
   ListQuery,
   QrCheckRequest,
   QrCheckResponse,
@@ -73,7 +76,21 @@ const STATUS: Record<string, number> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
+  PAYLOAD_TOO_LARGE: 413,
+  UNSUPPORTED_MEDIA_TYPE: 415,
 };
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** The runtime's signature allowlist (runtime.yaml#files.upload), for memory uploads. */
+function sniffFile(b: Uint8Array): FileMimeType | null {
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  if (ascii(0, 5) === "%PDF-") return "application/pdf";
+  return null;
+}
 
 export function wzError(code: string, extra: Partial<WzError> = {}): WzError {
   const messages: Record<string, string> = ru.server;
@@ -114,6 +131,8 @@ export interface MemoryDataSource extends DataSource {
   readonly qrOffline: QrOfflineApi;
   /** Check-ins made by qrCheck and sync: token → first scan. */
   qrCheckins(): Map<string, { at: string; checkpoint?: string }>;
+  /** Non-hook file uploads (signature allowlist and 10 МБ like the runtime) and the stored files. */
+  readonly files: FilesApi & { stored(): Map<string, FileInfo & { field: string; entity?: string }> };
 }
 
 export function createMemoryDataSource(
@@ -438,6 +457,12 @@ export function createMemoryDataSource(
     useQrOffline() {
       return useMemo(() => qrOffline, []);
     },
+    useFiles() {
+      return useMemo(() => files, []);
+    },
+    get files() {
+      return files;
+    },
     get auth() {
       return auth;
     },
@@ -446,6 +471,29 @@ export function createMemoryDataSource(
       return qrOffline;
     },
     qrCheckins: () => new Map(checkins),
+  };
+
+  const stored = new Map<string, FileInfo & { field: string; entity?: string }>();
+  let fileSeq = 0;
+  const files: MemoryDataSource["files"] = {
+    async upload(file, target) {
+      calls.push({ op: "files.upload", args: [file.name, target] });
+      if (file.size > MAX_FILE_BYTES) throw wzError("PAYLOAD_TOO_LARGE", { message: ru.file.tooLarge });
+      const mime = sniffFile(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+      if (!mime) throw wzError("UNSUPPORTED_MEDIA_TYPE");
+      const fileId = `00000000-0000-4000-8000-${String(++fileSeq).padStart(12, "0")}`;
+      const info: FileInfo = { fileId, name: file.name || "файл", size: file.size, mime };
+      stored.set(fileId, { ...info, ...target });
+      bump();
+      return info;
+    },
+    async info(fileId) {
+      const f = stored.get(fileId);
+      if (!f) throw wzError("NOT_FOUND");
+      return { fileId: f.fileId, name: f.name, size: f.size, mime: f.mime };
+    },
+    href: (fileId) => `/api/files/${encodeURIComponent(fileId)}`,
+    stored: () => new Map(stored),
   };
 
   const auth: AuthApi = {

@@ -21,6 +21,14 @@ export interface HttpResult {
   body: unknown;
 }
 
+/** Smallest valid PNG (1×1, RGBA, transparent). */
+const TINY_PNG = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
+
 export interface Actor {
   id: string | null;
   role: string;
@@ -235,6 +243,24 @@ export class G1Env {
       new Request(`${this.origin}${path}`, { method, headers, body: payload }),
     );
     return { status: res.status, text: await res.text() };
+  }
+
+  /**
+   * Uploads a 1×1 PNG into entity.field as the actor (POST /api/files, runtime.yaml#files, M2-14): a required file field
+   * of a create probe needs a real upload of the writer. null when the runtime refuses it.
+   */
+  async upload(actor: Actor, entity: string, field: string): Promise<string | null> {
+    const form = new FormData();
+    form.set("file", new File([TINY_PNG], "g1.png", { type: "image/png" }));
+    form.set("entity", entity);
+    form.set("field", field);
+    const headers: Record<string, string> = { host: this.host, origin: this.origin, "x-wizard-request": "1" };
+    if (actor.cookie) headers.cookie = actor.cookie;
+    const res = await this.runtime.fetch(
+      new Request(`${this.origin}/api/files`, { method: "POST", headers, body: form }),
+    );
+    const json = (await res.json().catch(() => null)) as { fileId?: unknown } | null;
+    return res.status === 201 && typeof json?.fileId === "string" ? json.fileId : null;
   }
 
   async request(actor: Actor, method: string, path: string, body?: unknown): Promise<HttpResult> {

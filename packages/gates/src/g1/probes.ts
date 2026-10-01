@@ -138,6 +138,13 @@ export class Prober {
         else body[f.name] = ref;
         continue;
       }
+      if (f.type === "file") {
+        // A file value is an upload of the writer (runtime.yaml#files): seeds' placeholder keys are refused.
+        const fileId = await this.env.upload(actor, e.name, f.name);
+        if (fileId) body[f.name] = fileId;
+        else problem ??= `роль не может загрузить файл в поле «${f.label}»`;
+        continue;
+      }
       const v = this.d.gen.value(e, f, 0);
       if (v === undefined) problem ??= `для поля «${f.label}» нельзя сгенерировать синтетическое значение`;
       else body[f.name] = v;

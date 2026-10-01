@@ -107,8 +107,10 @@ export function titleField(spec: RoleSpec, entity: string): string | undefined {
   return entityOf(spec, entity)?.fields.find((f) => f.type === "string")?.name;
 }
 
+/** pii ≠ none; a file field without pii is basic (runtime.yaml#files.pii_and_retention). */
 export function hasPii(f: Field | undefined): boolean {
-  return !!f?.pii && f.pii !== "none";
+  if (!f) return false;
+  return (f.pii ?? (f.type === "file" ? "basic" : "none")) !== "none";
 }
 
 export function roleLabel(spec: RoleSpec, role: string | null | undefined): string {

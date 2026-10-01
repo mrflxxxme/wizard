@@ -189,6 +189,12 @@ const BLOCK = {
     milestone: "M2",
     spec: addField(F, "ticket", { name: "scan", label: "Скан паспорта", type: "file", pii: "basic" }),
   },
+  "gov-photo-passport-file": {
+    check: "G2-AF-03",
+    description: "M2-14: поле file «Фото паспорта» без явного pii (по умолчанию basic)",
+    milestone: "M2",
+    spec: addField(F, "ticket", { name: "passport_photo", label: "Фото паспорта", type: "file" }),
+  },
   "gov-photo-document": {
     check: "G2-AF-03",
     milestone: "M2",

@@ -5,7 +5,13 @@ import type postgres from "postgres";
 import { SYSTEM_SUBJECT } from "../data/access.js";
 import { fieldsError } from "../data/validate.js";
 import type { LoadedSystem } from "../system.js";
-import { anonymizeRows, anonymizeUsers, type DeletionEntry, logDeletions } from "./erasure.js";
+import {
+  anonymizeRows,
+  anonymizeUsers,
+  type DeletionEntry,
+  logDeletions,
+  releaseErasedFiles,
+} from "./erasure.js";
 
 type Tx = postgres.TransactionSql;
 type Row = Record<string, unknown>;
@@ -161,7 +167,7 @@ export async function exportSubject(
   adminId: string,
   now: Date,
 ): Promise<SubjectExport> {
-  return sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
+  const exported = await sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
     const tx = d.sql;
     const users = await matchUsers(tx, sys.schema, q);
     const out: SubjectExport = {
@@ -214,6 +220,20 @@ export async function exportSubject(
     );
     return out;
   });
+  // runtime.yaml#files.pii_and_retention: a file is exported by its name only.
+  for (const block of exported.entities) {
+    const e = sys.spec.entities.find((x) => x.name === block.entity);
+    for (const f of e?.fields ?? []) {
+      if (f.type !== "file") continue;
+      for (const row of block.rows) {
+        const v = row[f.name];
+        if (typeof v !== "string") continue;
+        const meta = await sys.files?.head(v).catch(() => null);
+        row[f.name] = meta?.name ?? v;
+      }
+    }
+  }
+  return exported;
 }
 
 /**
@@ -225,7 +245,7 @@ export async function eraseSubject(
   q: SubjectQuery,
   adminId: string,
 ): Promise<{ entries: DeletionEntry[]; pending: string[] }> {
-  return sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
+  const out = await sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
     const tx = d.sql;
     const users = await matchUsers(tx, sys.schema, q);
     const entries: DeletionEntry[] = [];
@@ -235,7 +255,14 @@ export async function eraseSubject(
       if (!w) continue;
       const r = await anonymizeRows(tx, sys.schema, e, w.sql, w.params);
       if (r === null) pending.push(e.name);
-      else entries.push({ entity: e.name, mode: "subject_request", rows: r.rows, fields: r.fields });
+      else
+        entries.push({
+          entity: e.name,
+          mode: "subject_request",
+          rows: r.rows,
+          fields: r.fields,
+          files: r.files,
+        });
     }
     // Users last: rows above are matched by the users' contacts and ids.
     entries.push({
@@ -254,4 +281,6 @@ export async function eraseSubject(
     );
     return { entries: entries.filter((x) => x.rows > 0), pending };
   });
+  await releaseErasedFiles(sys, out.entries);
+  return { entries: out.entries.map(({ files: _f, ...e }) => e), pending: out.pending };
 }

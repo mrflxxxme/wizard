@@ -7,6 +7,8 @@ import type postgres from "postgres";
 import { type ComplianceInfo, complianceInfo, sha256Hex } from "./compliance.js";
 import type { DataAccess, InvalidationBus } from "./data/access.js";
 import { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
+import type { FileStorage } from "./files/storage.js";
+import { SystemFiles } from "./files/system-files.js";
 import { schemaName } from "./migrate.js";
 import type { LegalTemplates } from "./privacy/templates.js";
 import type { RegistryEntry, SystemEnv, SystemRegistry } from "./registry.js";
@@ -19,6 +21,8 @@ export interface LoadedSystem {
   compliance: ComplianceInfo;
   /** .data/artifacts/<systemId>/<revision> or the folder given to loadSystem; null when there is none. */
   artifactDir: string | null;
+  /** Files of file fields (runtime.yaml#files); null when the runtime has no file storage. */
+  files: SystemFiles | null;
 }
 
 export class SystemLoadError extends Error {
@@ -51,6 +55,9 @@ export interface SystemCacheOptions {
   qrToken?: (entry: RegistryEntry, spec: AppSpec) => PgDataAccessOptions["qrToken"];
   /** Templates of the policy and consent texts; default: built-in drafts + WIZARD_LEGAL_TEMPLATES_DIR. */
   legalTemplates?: LegalTemplates;
+  /** Storage of file fields (M2-14); absent — file values are not checked and nothing is stored. */
+  files?: FileStorage;
+  log?: (line: Record<string, unknown>) => void;
 }
 
 const key = (slug: string, env: SystemEnv) => `${slug}--${env}`;
@@ -76,12 +83,14 @@ export class SystemCache {
   private build(entry: RegistryEntry, spec: AppSpec, artifactDir: string | null): LoadedSystem {
     const schema = schemaName(entry.systemId, entry.env);
     const compliance = complianceInfo(spec, this.o.legalTemplates);
-    return {
+    const files = this.o.files ? new SystemFiles(this.o.files, schema, spec, this.o.log) : null;
+    const sys: LoadedSystem = {
       entry,
       spec,
       schema,
       artifactDir,
       compliance,
+      files,
       data: createPgDataAccess({
         sql: this.o.sql,
         spec,
@@ -91,8 +100,11 @@ export class SystemCache {
         events: this.o.bus(entry.systemId, entry.env),
         qrToken: this.o.qrToken?.(entry, spec),
         compliance,
+        ...(files ? { files: files.guard() } : {}),
       }),
     };
+    files?.bind(sys.data);
+    return sys;
   }
 
   /** Registers a system directly (previews, G1: runtime_handle.loadSystem); takes precedence over the registry. */
