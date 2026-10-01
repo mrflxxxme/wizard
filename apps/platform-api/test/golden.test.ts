@@ -11,6 +11,7 @@ import { MIGRATOR_ROLE } from "../src/agents/draft.js";
 import { createAgentExecutors } from "../src/agents/executors.js";
 import { listEvents } from "../src/runs/events.js";
 import type { RunExecutors } from "../src/runs/types.js";
+import { loadManifest, loadSpec } from "../src/services/revisions.js";
 import { loadEventSchemas } from "./event-schemas.js";
 import { createTestDb, loadYaml, ROOT, startApi, type TestApi, waitRun } from "./helpers.js";
 
@@ -224,6 +225,40 @@ describe("demo/forum through the API", () => {
     expect(calls.filter((c) => c.tier === "T1" && forbiddenT1.includes(c.call_type))).toEqual([]);
     expect(calls.filter((c) => c.call_type === "qa_generate").map((c) => c.run_id)).toEqual([g.buildRunId]);
   });
+
+  test("G2 through the platform executors: the permission matrix runs on the G1 runtime and role (publish wiring)", async () => {
+    const s = await api.deps.db
+      .selectFrom("platform.systems")
+      .selectAll()
+      .where("id", "=", g.systemId)
+      .executeTakeFirstOrThrow();
+    const rev = s.preview_revision as number;
+    const manifest = await loadManifest(api.deps.db, api.deps.blobs, s.id, rev);
+    const files = new Map<string, string>();
+    for (const [p, sha] of Object.entries(manifest))
+      files.set(p, (await api.deps.blobs.get(sha)).toString("utf8"));
+    // Same executors as the platform (the API's own instance shares the module-level function processes).
+    const ex = createAgentExecutors({ pg: api.deps.pg, config: api.deps.config });
+    const report = await ex.gates?.("G2", {
+      spec: await loadSpec(api.deps.db, s, rev),
+      prevSpec: null,
+      specVersion: rev,
+      files,
+      env: "draft",
+      systemKey: s.schema_key,
+      db: api.deps.pg,
+      milestone: "M1",
+    });
+    const matrix = (report?.checks ?? []).filter((c) => /^G2-PERM-0[1-4]$/.test(c.id));
+    expect(new Set(matrix.map((c) => c.id))).toEqual(
+      new Set(["G2-PERM-01", "G2-PERM-02", "G2-PERM-03", "G2-PERM-04"]),
+    );
+    expect(matrix.filter((c) => c.status !== "pass" && c.status !== "skip")).toEqual([]);
+    // The G2 ephemeral schema is dropped after the gate.
+    const [{ n } = { n: 0 }] = await api.deps
+      .pg`select count(*)::int as n from pg_namespace where nspname like ${`app\\_${s.schema_key}\\_g2\\_%`}`;
+    expect(n).toBe(0);
+  }, 300_000);
 });
 
 describe("demo/bakery through the API", () => {

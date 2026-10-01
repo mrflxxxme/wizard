@@ -62,6 +62,8 @@ export interface SystemsTable {
   shard_id: string | null;
   suspended_at: TsNull;
   draft_data_purged_at: TsNull;
+  /** M2-05 (F5): the owner was warned about the purge of the draft data (beyond db.yaml, impl-notes M2-05). */
+  draft_purge_notice_at: TsNull;
   last_activity_at: TsDef;
   created_by: string;
   updated_at: TsDef;
@@ -361,6 +363,26 @@ export interface SubscriptionsTable {
   failed_attempts: Generated<number>;
 }
 
+/** db.yaml#founder_reviews: a revision waiting for staff before prod (abuse.yaml#scoring.effect, G2-AF-08/09). */
+export interface FounderReviewsTable {
+  system_id: string;
+  revision: number;
+  status: "pending" | "approved" | "rejected";
+  reviewer: string | null;
+  note: string | null;
+  decided_at: TsNull;
+  created_at: TsDef;
+}
+
+/** db.yaml#brand_allowlist: brands the org proved it owns (abuse.yaml#patterns.brands.override, G2-AF-04). */
+export interface BrandAllowlistTable {
+  org_id: string;
+  brand_id: string;
+  verified_by: string;
+  evidence_note: string;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -386,4 +408,6 @@ export interface DB {
   "platform.payment_methods": PaymentMethodsTable;
   "platform.payments": PaymentsTable;
   "platform.subscriptions": SubscriptionsTable;
+  "platform.founder_reviews": FounderReviewsTable;
+  "platform.brand_allowlist": BrandAllowlistTable;
 }

@@ -24,6 +24,8 @@ export interface SystemRegistry {
   resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null>;
   /** Deployment by system key (shared Telegram bot webhook routes link tokens by it). */
   resolveById?(systemId: string, env: SystemEnv): Promise<RegistryEntry | null>;
+  /** Every deployment (the daily retention pass walks them, runtime.yaml#workflows.retention). */
+  entries?(): Promise<RegistryEntry[]>;
 }
 
 export const SYSTEM_ID_RE = /^[a-z0-9]{12}$/;
@@ -108,6 +110,23 @@ export class DbRegistry implements SystemRegistry {
     return (await this.fallback?.resolveById?.(systemId, env)) ?? null;
   }
 
+  async entries(): Promise<RegistryEntry[]> {
+    let rows: postgres.Row[];
+    try {
+      rows = await this.sql`
+        select system_id, slug, env, revision, spec_hash, bundle_key, published_at, suspended, features
+        from platform.deployments order by slug, env`;
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code !== "42P01" && code !== "3F000") throw e;
+      rows = [];
+    }
+    const own = rows.map(rowEntry).filter((e): e is RegistryEntry => e !== null);
+    const seen = new Set(own.map((e) => `${e.slug}--${e.env}`));
+    const extra = ((await this.fallback?.entries?.()) ?? []).filter((e) => !seen.has(`${e.slug}--${e.env}`));
+    return [...own, ...extra];
+  }
+
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     let rows: postgres.Row[];
     try {
@@ -122,19 +141,23 @@ export class DbRegistry implements SystemRegistry {
     }
     const r = rows[0];
     if (!r) return this.fallback ? this.fallback.resolve(slug, env) : null;
-    return asEntry({
-      systemId: r.system_id,
-      slug: r.slug,
-      env: r.env,
-      revision: Number(r.revision),
-      specHash: r.spec_hash,
-      bundleKey: r.bundle_key ?? "",
-      publishedAt:
-        r.published_at instanceof Date ? r.published_at.toISOString() : String(r.published_at ?? ""),
-      suspended: r.suspended === true,
-      features: r.features ?? {},
-    });
+    return rowEntry(r);
   }
+}
+
+/** A platform.deployments row as a registry entry (invalid rows → null). */
+function rowEntry(r: postgres.Row): RegistryEntry | null {
+  return asEntry({
+    systemId: r.system_id,
+    slug: r.slug,
+    env: r.env,
+    revision: Number(r.revision),
+    specHash: r.spec_hash,
+    bundleKey: r.bundle_key ?? "",
+    publishedAt: r.published_at instanceof Date ? r.published_at.toISOString() : String(r.published_at ?? ""),
+    suspended: r.suspended === true,
+    features: r.features ?? {},
+  });
 }
 
 /** DbRegistry lookup by system key; the slug then goes through resolve (M1-06, shared bot webhook). */
@@ -162,5 +185,8 @@ export class MemoryRegistry implements SystemRegistry {
   }
   async resolveById(systemId: string, env: SystemEnv): Promise<RegistryEntry | null> {
     return this.list.find((e) => e.systemId === systemId && e.env === env) ?? null;
+  }
+  async entries(): Promise<RegistryEntry[]> {
+    return [...this.list];
   }
 }

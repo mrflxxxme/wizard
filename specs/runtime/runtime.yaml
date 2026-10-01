@@ -159,7 +159,7 @@ workflows:                                   # исполнение workflows и
     - "notify: {integration, to: '$record.<ref на users>', template | text, attachQr?}"
     - "function: {name, args}; connector: {integration, action, input}; update/create: {entity?, set: {...}}; wait: {minutes}"
   execution: "M0: ctx.scheduler и триггеры только пишут в _w_jobs (outbox), поллер не запускается (G1 проверяет факт постановки задания; решение агента, L2-07). M1: поллер _w_jobs (FOR UPDATE SKIP LOCKED) в процессе runtime; at-least-once; ключ идемпотентности шага = <jobId>:<stepIndex>; 5 попыток с экспонентой 1 с…16 мин; затем перенос на DBOS (D6) без смены семантики"
-  retention: "M1+: ежесуточно 03:00 МСК: для сущностей с retention строки старше anchorField + deleteAfterDays удаляются или обезличиваются (pii-поля → NULL, файлы полей file удаляются); счётчик в _w_audit"
+  retention: "M1+: ежесуточно 03:00 МСК: для сущностей с retention строки старше anchorField + deleteAfterDays удаляются или обезличиваются (pii-поля → NULL, файлы полей file удаляются); счётчик в _w_audit. Запуск — тик процесса runtime (по умолчанию раз в 10 мин проверяет слот 03:00 МСК); отметка прохода — строка _w_jobs с idempotency_key `__wizard_retention`, запрос платформы на внеочередной проход — `__wizard_retention_request` (оба не исполняются как задачи; M2-05)"
   test: "Сценарий AC6 форума: запись с event_starts_at = now-31d после прогона retention имеет pii-поля NULL"
 
 static:

@@ -1,4 +1,5 @@
-// S6 «Отчёт проверок» (GET /systems/:id/gates/latest) and the publish card (publishing itself is M1-04/M1-11).
+// S6 «Отчёт проверок» (GET /systems/:id/gates/latest) and the publish card (publishing itself is M1-04/M1-11; the
+// RU card status and blocker links to S10 «Персональные данные» and S-billing — M2-11).
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import type { GateReport as Report } from "../../api/types.js";
@@ -88,6 +89,32 @@ const SETTINGS_BLOCKERS = new Set([
   "OPERATOR_ADDRESS_REQUIRED",
   "INN_INVALID",
 ]);
+/** Blocker codes fixed on S-billing: the card (identification, D9) and the plan (F4 phone login, prod limit). */
+const BILLING_BLOCKERS = new Set(["CARD_BINDING_REQUIRED", "PHONE_LOGIN_PLAN_REQUIRED", "PLAN_LIMIT"]);
+
+function InternalLink({
+  to,
+  testId,
+  children,
+}: {
+  to: string;
+  testId: string;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <a
+      href={to}
+      className={s.linkButton}
+      data-testid={testId}
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(to);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 export function PublishCard({
   systemId,
@@ -101,6 +128,7 @@ export function PublishCard({
   running,
   busy,
   error,
+  cardBound,
   onEdit,
   onPublish,
 }: {
@@ -119,10 +147,13 @@ export function PublishCard({
   running: boolean;
   busy: boolean;
   error: string | null;
+  /** M2: Org.cardBound of the system's organization (GET /orgs/:orgId); undefined — unknown. */
+  cardBound?: boolean | undefined;
   onEdit(): void;
   onPublish(): void;
 }): ReactNode {
   const upToDate = prodRevision !== null && revision === prodRevision;
+  const needsCard = codes.includes("CARD_BINDING_REQUIRED");
   return (
     <section className={s.publish} data-testid="publish-card" aria-label={ru.publish.title}>
       <div className={s.buildHead}>
@@ -143,25 +174,28 @@ export function PublishCard({
         )}
       </p>
       <p className={s.small}>{ru.publish.features}</p>
-      <p className={s.small} data-testid="publish-card-status">
-        {ru.publish.cardStatus}
+      <p
+        className={s.small}
+        data-testid="publish-card-status"
+        data-bound={cardBound === true ? "true" : needsCard ? "false" : undefined}
+      >
+        {cardBound ? ru.publish.cardBound : needsCard ? ru.publish.cardMissing : ru.publish.cardStatus}
       </p>
       {blockers.map((b) => (
         <p key={b} className={s.blocker} data-testid="publish-blocker">
           {b}
         </p>
       ))}
+      {codes.includes("FOUNDER_REVIEW_PENDING") && <p className={s.small}>{ru.publish.reviewHint}</p>}
       {codes.some((c) => SETTINGS_BLOCKERS.has(c)) && (
-        <a
-          href={`/s/${systemId}/settings#pd`}
-          className={s.linkButton}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate(`/s/${systemId}/settings#pd`);
-          }}
-        >
+        <InternalLink to={`/s/${systemId}/settings#pd`} testId="publish-to-settings">
           {ru.publish.toSettings}
-        </a>
+        </InternalLink>
+      )}
+      {codes.some((c) => BILLING_BLOCKERS.has(c)) && (
+        <InternalLink to="/billing" testId="publish-to-billing">
+          {needsCard ? ru.publish.bindCard : ru.publish.toBilling}
+        </InternalLink>
       )}
       <div className={s.row}>
         <Button variant="secondary" data-testid="chat-edit" onClick={onEdit}>

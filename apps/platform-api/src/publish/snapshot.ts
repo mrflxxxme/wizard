@@ -6,7 +6,7 @@ import {
   DEFAULT_MAX_LENGTH,
   type Field,
   quoteIdent,
-  SYSTEM_ROLE,
+  systemRoleName,
   textLiteral,
 } from "@wizard/appspec";
 import { SYNTHETIC_NAMES } from "@wizard/gates";
@@ -235,8 +235,11 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
       from pg_catalog.pg_namespace where nspname in (${draft}, ${prod})`;
     const draftNs = ns.find((x) => x.nspname === draft);
     if (!draftNs || !ns.some((x) => x.nspname === prod) || draftNs.note === marker) return;
-    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(i.migratorRole ?? MIGRATOR_ROLE)}`);
-    await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+    // DDL-level work (TRUNCATE, COMMENT) as the schema owner; row reads/writes as each schema's system DB role
+    // (FORCE RLS; security/isolation.yaml#db_access, L3-20).
+    const migrator = i.migratorRole ?? MIGRATOR_ROLE;
+    const as = (role: string) => tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
+    await as(migrator);
 
     const colRows = await tx<
       { table_schema: string; table_name: string; column_name: string; is_nullable: string }[]
@@ -263,6 +266,7 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
 
     // users: draft ones stay; prod ones are copied with synthetic contacts.
     const ids = new Map<string, Set<string>>();
+    await as(systemRoleName(draft));
     const existing = await tx.unsafe(
       `select ${quoteIdent("id")}, ${quoteIdent("email")}, ${quoteIdent("phone")} from ${quoteIdent(draft)}.${quoteIdent(USERS)}`,
     );
@@ -279,6 +283,7 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
       (c) => dCols.get(USERS)?.has(c) && USER_PII[c] !== "drop",
     );
     if (uCols.length > 0 && uCols.includes("id")) {
+      await as(systemRoleName(prod));
       const prodUsers = await tx.unsafe(
         `select ${uCols.map(quoteIdent).join(", ")} from ${quoteIdent(prod)}.${quoteIdent(USERS)} order by ${quoteIdent("created_at")} desc, ${quoteIdent("id")} limit ${limit}`,
       );
@@ -290,6 +295,7 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
           return masker.text(`users.${c}`, String(u.id), c, shape, c === "phone" ? 16 : 254);
         }),
       );
+      await as(systemRoleName(draft));
       const inserted = await insertRows(tx, draft, USERS, uCols, rows, "on conflict do nothing");
       for (const id of inserted) userIds.add(id);
       result.users = inserted.length;
@@ -309,6 +315,7 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
         (c) => d.has(c) && (["id", "created_at", "updated_at", "created_by"].includes(c) || f.has(c)),
       );
       if (!shared.includes("id")) continue;
+      await as(systemRoleName(prod));
       const src = await tx.unsafe(
         `select ${shared.map(quoteIdent).join(", ")} from ${quoteIdent(prod)}.${quoteIdent(t)} order by ${quoteIdent("created_at")} desc, ${quoteIdent("id")} limit ${limit}`,
       );
@@ -336,10 +343,12 @@ export async function draftSnapshot(pg: postgres.Sql, i: SnapshotInput): Promise
         });
         if (keep) rows.push(values);
       }
+      await as(systemRoleName(draft));
       const inserted = await insertRows(tx, draft, t, shared, rows, "");
       ids.set(t, new Set(inserted));
       result.rows[t] = inserted.length;
     }
+    await as(migrator);
     await tx.unsafe(`COMMENT ON SCHEMA ${quoteIdent(draft)} IS ${textLiteral(marker)}`);
     result.skipped = false;
   });

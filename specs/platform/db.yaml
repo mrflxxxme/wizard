@@ -113,6 +113,7 @@ tables:
       shard_id: "text"                                     # M2: platform.shards; M0–M1 null = локальный инстанс
       suspended_at: "timestamptz"                          # M2, снятие публикации
       draft_data_purged_at: "timestamptz"                  # M2: схема draft Free-черновика удалена по неактивности (F5, workflows.yaml#retention_cron)
+      draft_purge_notice_at: "timestamptz"                 # M2: письмо владельцам за 7 дней до F5-очистки отправлено (идемпотентность прохода; M2-05)
       last_activity_at: "timestamptz not null default now()"   # сообщение, прогон, стиль или вход владельца в систему; основа для F5
       created_by: "uuid not null references platform.users"
       updated_at: "timestamptz not null default now()"

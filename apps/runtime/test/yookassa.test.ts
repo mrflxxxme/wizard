@@ -6,7 +6,7 @@ import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { quoteIdent } from "@wizard/appspec";
+import { dropSystemRoleDDL, quoteIdent } from "@wizard/appspec";
 import {
   type ConnectorCtx,
   derivedToken,
@@ -94,6 +94,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const close of closers) await close();
   await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`);
+  for (const st of dropSystemRoleDDL(schema)) await sql.unsafe(st);
   await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
   await sql.end();

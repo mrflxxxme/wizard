@@ -21,6 +21,7 @@ export function Start(): ReactNode {
   const [error, setError] = useState<ApiError | null>(null);
   const [systems, setSystems] = useState<System[]>([]);
   const keyRef = useRef<string | null>(null);
+  const [money, setMoney] = useState<{ plan: string; available: number; until: string | null } | null>(null);
 
   const signedIn = auth === "ready";
   // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
@@ -37,6 +38,24 @@ export function Start(): ReactNode {
         .listMembers(orgId)
         .then((r) => live && setTeam(r.items.length))
         .catch(() => live && setTeam(null));
+    if (signedIn && typeof api.getCredits === "function")
+      Promise.all([api.getCredits(orgId), api.getOrg(orgId)])
+        .then(([c, o]) => {
+          if (!live) return;
+          // The nearest expiry of a non-empty bucket (billing.yaml#ledger: credits burn bucket by bucket).
+          const until = (c.buckets ?? [])
+            .filter((x) => x.remaining > 0 && x.expiresAt)
+            .map((x) => x.expiresAt as string)
+            .sort()[0];
+          setMoney({
+            plan: ru.billing.planName[o.plan] ?? o.plan,
+            available: c.available,
+            until: until
+              ? new Date(until).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+              : null,
+          });
+        })
+        .catch(() => live && setMoney(null));
     return () => {
       live = false;
     };
@@ -155,10 +174,25 @@ export function Start(): ReactNode {
           />
           {ru.start.ruOnly}
         </label>
-        {/* Balance: GET /orgs/:orgId/credits (M1-03); until then a placeholder without numbers. */}
-        <span data-testid="start-credits" title={ru.start.creditsHint}>
-          <Pill tone="neutral">{ru.start.credits}: —</Pill>
-        </span>
+        {/* «Free · N кредитов до <дата>»: GET /orgs/:orgId/credits + plan (M1); a link to S-billing (M2-11). */}
+        {money ? (
+          <a
+            href="/billing"
+            data-testid="start-credits"
+            className={s.creditsLink}
+            title={ru.start.creditsTitle}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/billing");
+            }}
+          >
+            <Pill tone="neutral">{ru.start.creditsPill(money.plan, money.available, money.until)}</Pill>
+          </a>
+        ) : (
+          <span data-testid="start-credits" title={ru.start.creditsHint}>
+            <Pill tone="neutral">{ru.start.credits}: —</Pill>
+          </span>
+        )}
         {signedIn && (
           <Button size="sm" variant="ghost" onClick={() => void logout()} data-testid="start-logout">
             {ru.start.logout}
@@ -223,7 +257,7 @@ export function Start(): ReactNode {
           <Alert>
             {error.message}{" "}
             {error.code === "INSUFFICIENT_CREDITS" && (
-              <Button size="sm" variant="secondary" disabled title={ru.start.creditsHint}>
+              <Button size="sm" variant="secondary" disabled={!signedIn} onClick={() => navigate("/billing")}>
                 {ru.errors.topUp}
               </Button>
             )}

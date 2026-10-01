@@ -674,8 +674,8 @@ tasks:
     owner: platform
     parallel_group: m2-a
     estimate_days: 4
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: session_01Kjy3G7366wziUWKjb17JRQ
     acceptance:
       - "Набор escape-тестов (fs, сеть, процессы, чужой тенант) падает внутри песочницы"
       - "RPC к runtime — по токену-возможности запроса {systemId, env, requestId, exp}; украденный токен после exp → 403; Free-пул ≤ 10 систем на под; SharedArrayBuffer выключен (L3-23)"
@@ -735,7 +735,7 @@ tasks:
     owner: platform
     parallel_group: m2-b
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Записи старше retention удаляются/обезличиваются кроном; журнал удаления"
@@ -828,7 +828,7 @@ tasks:
     owner: frontend
     parallel_group: m2-d
     estimate_days: 2.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Playwright: привязка карты (тестовый магазин) → публикация в prod разблокирована; докупка 990 ₽ → +60 кредитов в балансе"

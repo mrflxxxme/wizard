@@ -78,6 +78,17 @@ export { type RetentionCronDeps, type RetentionCronReport, runRetentionCron } fr
 export { type PurgedSystem, purgeDeletedSystems, SYSTEM_PURGE_DAYS } from "./privacy/delete-system.js";
 export { collectDeletionLogs, type MovedEntry, notifyConsentWithdrawals } from "./privacy/deletion-log.js";
 export { publishBlockers, specPublishBlockers } from "./publish/blockers.js";
+/** G2 at prod publication: founder reviews (db.yaml#founder_reviews), abuse_flag journal, G2 context from the DB. */
+export {
+  type AbuseFlag,
+  abuseContext,
+  decideFounderReview,
+  type FounderReviewStatus,
+  founderReviewStatus,
+  type ModerationLog,
+  pendingFounderReviews,
+  secretExistsFor,
+} from "./publish/moderation.js";
 export {
   applyProdMigration,
   httpSmoke,

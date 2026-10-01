@@ -10,6 +10,7 @@ import {
   type AppSpec,
   applyOps,
   DEFAULT_MAX_LENGTH,
+  dropSystemRoleDDL,
   type Entity,
   type Field,
   type MigrationPlan,
@@ -17,7 +18,9 @@ import {
   planMigration,
   quoteIdent,
   SYSTEM_TABLES,
+  systemRoleName,
   toDDL,
+  toSystemRoleDDL,
   USERS_ENTITY,
 } from "../src/index.js";
 import forumFixture from "./fixtures/forum.json" with { type: "json" };
@@ -43,6 +46,9 @@ afterAll(async () => {
   const leftovers = await sql`select nspname from pg_namespace where nspname like ${`app_test_${suffix}%`}`;
   for (const { nspname } of leftovers)
     await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(nspname)} CASCADE`);
+  for (const n of specs.keys())
+    for (const st of dropSystemRoleDDL(`app_test_${suffix}${n}_draft`)) await sql.unsafe(st);
+  await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(`wz_canary_${suffix}`)} CASCADE`);
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(runtimeRole)}`);
   await sql.end();
 });
@@ -157,17 +163,23 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
   let rev2: AppSpec;
   const target = rev1.entities[0] as Entity;
 
+  const systemRole = systemRoleName(schema);
+
   async function migrate(plan: MigrationPlan): Promise<void> {
-    const statements = toDDL(plan, schema, { runtimeRole });
+    for (const s of toSystemRoleDDL(schema, { members: [runtimeRole] })) await sql.unsafe(s);
+    const statements = toDDL(plan, schema, { runtimeRole, systemRole });
     await sql.begin(async (tx) => {
       for (const s of statements) await tx.unsafe(s);
     });
   }
 
-  /** Runs `fn` as the non-superuser runtime role with RLS context set via set_config(..., true). */
+  /**
+   * Runs `fn` as the non-superuser runtime role with RLS context set via set_config(..., true); role "__system"
+   * switches to the schema's system DB role instead (isolation.yaml#db_access, L3-20), like the runtime does.
+   */
   function as<T>(role: string | null, userId: string | null, fn: (tx: Tx) => Promise<T>): Promise<T> {
     return sql.begin(async (tx) => {
-      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(runtimeRole)}`);
+      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role === "__system" ? systemRole : runtimeRole)}`);
       if (role !== null) await tx`select set_config('wizard.role', ${role}, true)`;
       if (userId !== null) await tx`select set_config('wizard.user_id', ${userId}, true)`;
       return fn(tx);
@@ -232,6 +244,47 @@ describe.each(specs.map((s, i) => [...s, i] as const))("%s on real Postgres", (_
     await as("__system", null, (tx) =>
       tx.unsafe(`insert into ${t("_w_audit")} (entity, op, fields) values ('x', 'read', '{a}')`),
     );
+  });
+
+  test("L3-20: the GUC wizard.role = '__system' grants nothing to the runtime role", async () => {
+    const asGuc = <T>(fn: (tx: Tx) => Promise<T>) =>
+      sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(runtimeRole)}`);
+        await tx`select set_config('wizard.role', '__system', true)`;
+        return fn(tx);
+      }) as Promise<T>;
+    for (const e of rev1.entities) expect(await asGuc((tx) => count(tx, e.name))).toBe(0);
+    expect(await asGuc((tx) => count(tx, "users"))).toBe(0);
+    const policies = await sql`
+      select policyname, roles::text[] as roles, qual from pg_policies where schemaname = ${schema}`;
+    expect(policies.some((p) => String(p.qual ?? "").includes("__system"))).toBe(false);
+    const sys = policies.filter((x) => x.policyname === "wz__system");
+    expect(sys.length).toBeGreaterThan(0);
+    for (const p of sys) expect(p.roles).toEqual([systemRole]);
+    // Membership without INHERIT: the runtime role holds no privilege of the system role until SET ROLE.
+    const [m] = await sql`
+      select pg_has_role(${runtimeRole}, ${systemRole}, 'USAGE') as usage,
+             pg_has_role(${runtimeRole}, ${systemRole}, 'SET') as can_set`;
+    expect(m).toEqual({ usage: false, can_set: true });
+  });
+
+  test("system role: no access outside its schema (escape other_schema_via_rpc at DB level)", async () => {
+    const canary = `wz_canary_${suffix}`;
+    await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(canary)}`);
+    await sql.unsafe(`CREATE TABLE IF NOT EXISTS ${quoteIdent(canary)}.t (v text)`);
+    const denied = async (q: string) => {
+      const code = await as("__system", null, (tx) => tx.unsafe(q)).then(
+        () => null,
+        (e: { code?: string }) => e.code,
+      );
+      expect(code, q).toBe("42501");
+    };
+    await denied(`select * from ${quoteIdent(canary)}.t`);
+    const [platform] = await sql`select to_regclass('platform.systems')::text as r`;
+    if (platform?.r) await denied("select * from platform.systems");
+    const [attrs] = await sql`
+      select rolbypassrls, rolsuper, rolinherit, rolcanlogin from pg_roles where rolname = ${systemRole}`;
+    expect(attrs).toEqual({ rolbypassrls: false, rolsuper: false, rolinherit: false, rolcanlogin: false });
   });
 
   test("deny by default without context or with an unknown role", async () => {

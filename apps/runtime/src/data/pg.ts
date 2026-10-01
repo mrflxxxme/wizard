@@ -1,7 +1,7 @@
 // DataAccess over Postgres: kysely compiles the SQL, postgres.js executes it inside one transaction per call with
 // the RLS context set by set_config(..., true) (runtime.yaml#postgres.context, #permissions.algorithm).
 import { randomBytes, randomUUID } from "node:crypto";
-import { type AppSpec, type Entity, literalProblem } from "@wizard/appspec";
+import { type AppSpec, type Entity, literalProblem, systemRoleName } from "@wizard/appspec";
 import { WizardError } from "@wizard/sdk";
 import {
   type AccessPolicy,
@@ -86,6 +86,12 @@ export interface PgDataAccessOptions {
    * wizard_runtime, no BYPASSRLS). null → stay as the connecting role (it MUST then be wizard_runtime itself).
    */
   dbRole?: string | null;
+  /**
+   * DB role of system access (ctx.systemDb, workflows, scheduler, SYSTEM_SUBJECT): every system context switches
+   * to it with set_config('role', ..., true) (security/isolation.yaml#db_access, L3-20). The connecting session
+   * user MUST be allowed to SET it (toSystemRoleDDL members). Default systemRoleName(schema).
+   */
+  systemRole?: string;
   events?: InvalidationBus;
   /** runtime.yaml#postgres.statement_timeout */
   statementTimeout?: string;
@@ -108,6 +114,8 @@ interface ConsentCheck {
 
 interface Tx {
   sql: postgres.TransactionSql;
+  /** DB roles of the two contexts: the subject's (null → the session user) and the system role. */
+  roles: { subject: string | null; system: string };
   subject: Subject;
   current: Who;
   now: Date;
@@ -145,11 +153,16 @@ function userAttrs(record: Readonly<Record<string, unknown>>): Record<string, un
   return out;
 }
 
+/**
+ * RLS context of the next statements. System access is the DB role t.roles.system, never a GUC value (L3-20):
+ * the subject context switches back to the runtime role, whose policies only match spec roles.
+ */
 async function setContext(t: Tx, who: Who): Promise<void> {
   const s = who === "system" ? SYSTEM_SUBJECT : t.subject;
+  const dbRole = s.role === SYSTEM_ROLE ? t.roles.system : (t.roles.subject ?? "none");
   await t.sql.unsafe(
-    "select set_config('wizard.role', $1, true), set_config('wizard.user_id', $2, true), set_config('wizard.user_attrs', $3, true)",
-    [s.role, s.id ?? "", JSON.stringify(userAttrs(s.record))],
+    "select set_config('role', $4, true), set_config('wizard.role', $1, true), set_config('wizard.user_id', $2, true), set_config('wizard.user_attrs', $3, true)",
+    [s.role, s.id ?? "", JSON.stringify(userAttrs(s.record)), dbRole],
   );
   t.current = who;
 }
@@ -333,6 +346,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
   const { spec, schema } = o;
   const events = o.events ?? createInvalidationBus();
   const dbRole = o.dbRole === undefined ? "wizard_runtime" : o.dbRole;
+  const systemRole = o.systemRole ?? systemRoleName(schema);
   const statementTimeout = o.statementTimeout ?? "1s";
   const lockTimeout = o.lockTimeout ?? "500ms";
   const compliance: ComplianceInfo = o.compliance ?? complianceInfo(spec);
@@ -393,6 +407,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
         if (dbRole !== null) await tx.unsafe("select set_config('role', $1, true)", [dbRole]);
         const t: Tx = {
           sql: tx,
+          roles: { subject: dbRole, system: systemRole },
           subject,
           current: "subject",
           now: head?.now instanceof Date ? head.now : new Date(),

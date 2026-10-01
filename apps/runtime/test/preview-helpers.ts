@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AppSpec, quoteIdent } from "@wizard/appspec";
+import { type AppSpec, dropSystemRoleDDL, quoteIdent } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
 import { newQrKeyring, type QrKeyring, serializeQrKeyring, staticSecretReader } from "@wizard/connectors";
 import postgres from "postgres";
@@ -148,6 +148,7 @@ export async function previewFixture(env: Partial<RuntimeEnv> = {}): Promise<Pre
     },
     async close() {
       for (const s of schemas) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
+      for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await sql.unsafe(st);
       await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
       await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
       await sql.end();

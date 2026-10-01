@@ -12,9 +12,11 @@ import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import {
   BLOCKER_RU,
   cardBindingMissing,
+  founderReviewBlocks,
   prodSystemsCount,
   specPublishBlockers,
 } from "../publish/blockers.js";
+import { founderReviewStatus, REVIEW_REJECTED_RU } from "../publish/moderation.js";
 import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
@@ -77,6 +79,13 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });
+    if (await founderReviewBlocks(d.db, s.id, b.revision, d.config.prodG2Required))
+      throw new ApiError(
+        "FOUNDER_REVIEW_PENDING",
+        (await founderReviewStatus(d.db, s.id, b.revision)) === "rejected"
+          ? REVIEW_REJECTED_RU
+          : (BLOCKER_RU.FOUNDER_REVIEW_PENDING as string),
+      );
     const run = await tx(async (t) => {
       // billing.yaml#plans: prod_systems counts other systems in prod or being published (prodSystemsCount) under
       // the org lock, so parallel first publications of two systems cannot both pass; republishing is free.

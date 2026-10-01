@@ -215,7 +215,14 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),
       activeRunId: active?.id ?? null,
-      publishBlockers: await publishBlockers(d.db, c.get("user"), s, d.billing, d.config.cardBindingRequired),
+      publishBlockers: await publishBlockers(
+        d.db,
+        c.get("user"),
+        s,
+        d.billing,
+        d.config.cardBindingRequired,
+        d.config.prodG2Required,
+      ),
     });
   });
 
