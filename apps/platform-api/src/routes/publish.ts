@@ -72,7 +72,12 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       // the org lock, so parallel first publications of two systems cannot both pass; republishing is free.
       if (s.prod_revision === null) {
         await d.billing.lock(t.trx, s.org_id);
-        await d.billing.assertLimit(t.trx, s.org_id, "prod_systems", await prodSystemsCount(t.trx, s.org_id, s.id));
+        await d.billing.assertLimit(
+          t.trx,
+          s.org_id,
+          "prod_systems",
+          await prodSystemsCount(t.trx, s.org_id, s.id),
+        );
       }
       // publish/rollback cost no credits (billing.yaml#run_charging.style_and_compliance): insertRun without billing.
       return insertRun(t, {

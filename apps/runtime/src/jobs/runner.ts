@@ -387,7 +387,13 @@ export async function runJobs(
               try {
                 await runNotifyStep(
                   live.ctx(sys, integ),
-                  { params, entity: p.entity, record: rec, jobId: job.id, stepIndex: i },
+                  {
+                    params,
+                    entity: p.entity,
+                    record: { ...rec, id: String(rec.id) },
+                    jobId: job.id,
+                    stepIndex: i,
+                  },
                   { deadlineMs: 25_000 },
                 );
               } catch (e) {

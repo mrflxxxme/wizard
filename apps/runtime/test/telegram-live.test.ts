@@ -134,7 +134,9 @@ describe("publishTelegramBots", () => {
       ["setWebhook", OWN_TOKEN],
     ]);
     const body = mock.calls[1]?.body as { url: string; secret_token: string; allowed_updates: string[] };
-    expect(body.url).toMatch(/^http:\/\/tgpub\.localhost\/_wizard\/hooks\/telegram\/telegram\/[A-Za-z0-9_-]{32}$/);
+    expect(body.url).toMatch(
+      /^http:\/\/tgpub\.localhost\/_wizard\/hooks\/telegram\/telegram\/[A-Za-z0-9_-]{32}$/,
+    );
     expect(body.secret_token).toBe(derivedToken(OWN_TOKEN, "telegram-webhook-secret"));
     expect(body.allowed_updates).toEqual(["message", "my_chat_member"]);
   });
@@ -152,9 +154,13 @@ describe("publishTelegramBots", () => {
     mock.calls.length = 0;
     const outbox: OutboxMessage[] = [];
     const res = await publishTelegramBots({ ...opts(), mode: "outbox", outbox, outboxDir }, sys(forumSpec()));
-    expect(res).toEqual([{ integration: "telegram", username: "north_retail_forum_bot", status: "recorded" }]);
+    expect(res).toEqual([
+      { integration: "telegram", username: "north_retail_forum_bot", status: "recorded" },
+    ]);
     expect(outbox.map((m) => m.action)).toEqual(["getMe", "setWebhook"]);
-    const lines = readFileSync(join(outboxDir, "tgpub0000001", "telegram.jsonl"), "utf8").trim().split("\n");
+    const lines = readFileSync(join(outboxDir, "tgpub0000001", "telegram.jsonl"), "utf8")
+      .trim()
+      .split("\n");
     expect(lines).toHaveLength(2);
     expect(lines.join("\n")).not.toContain(OWN_TOKEN);
     expect(mock.calls).toEqual([]);

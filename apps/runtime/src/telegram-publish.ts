@@ -11,7 +11,7 @@ import {
   telegramSetWebhook,
 } from "@wizard/connectors";
 import type { DataAccess } from "./data/access.js";
-import { readEnv, type RuntimeEnv } from "./env.js";
+import { type RuntimeEnv, readEnv } from "./env.js";
 import type { OutboxMessage } from "./http/context.js";
 import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
 import type { SystemEnv } from "./registry.js";

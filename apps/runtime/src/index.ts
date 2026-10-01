@@ -2,6 +2,8 @@
 // worker, gates (G1) and later runtime tasks.
 export const APP = "@wizard/runtime";
 
+/** Reserved system slugs (L3-29): shared by runtime routing and platform-api slug generation. */
+export { isReservedSystemSlug, RESERVED_SYSTEM_SLUGS } from "@wizard/connectors";
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
 export { createRuntimeApp, type RuntimeApp, type RuntimeAppOptions } from "./app.js";
 /** Tokens of the session cookie; safeNext for next/returnTo (runtime.yaml#auth). */
@@ -55,8 +57,9 @@ export {
 } from "./registry.js";
 /** RoleSpec for GET /_wizard/spec. */
 export { buildRoleSpec, type RoleSpec } from "./rolespec.js";
-/** Reserved system slugs (L3-29): shared by runtime routing and platform-api slug generation. */
-export { isReservedSystemSlug, RESERVED_SYSTEM_SLUGS } from "@wizard/connectors";
+/** Node server on 127.0.0.1:4100. */
+export { type StartOptions, startRuntime } from "./server.js";
+export { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 /** Own Telegram bots at publication: getMe + setWebhook (live) or recorded calls (outbox). */
 export {
   publishTelegramBots,
@@ -64,6 +67,3 @@ export {
   type TelegramPublishOptions,
   type TelegramPublishSystem,
 } from "./telegram-publish.js";
-/** Node server on 127.0.0.1:4100. */
-export { type StartOptions, startRuntime } from "./server.js";
-export { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";

@@ -113,8 +113,8 @@ export interface NewRun {
 }
 
 /**
- * Inserts a run. With `billing`: an interview turn needs available > 0, a build holds its cap in the same
- * transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
+ * Inserts a run. With `billing`: an interview turn needs available > 0, a build or an import holds its cap in the
+ * same transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
   if (billing && r.kind === "interview_turn")
@@ -140,14 +140,15 @@ export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  if (billing && r.kind === "build" && run.credits_cap_milli !== null)
+  // import_table holds its fixed cap like a build (FU-6); publish/rollback cost nothing and are inserted without billing.
+  if (billing && (r.kind === "build" || r.kind === "import_table") && run.credits_cap_milli !== null)
     await billing.hold(t.trx, {
       orgId: r.orgId,
       runId: run.id,
       systemId: r.systemId,
       amountMilli: Number(run.credits_cap_milli),
       key: `hold:${run.id}`,
-      note: "Резерв на сборку (потолок из карточки)",
+      note: r.kind === "build" ? "Резерв на сборку (потолок из карточки)" : "Резерв на импорт таблицы",
     });
   return run;
 }

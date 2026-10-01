@@ -11,7 +11,9 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { canaryGrid, canaryNeedles, canaryRows } from "../../../packages/pii/test/import-canaries.js";
 import { migrateDraft } from "../src/agents/draft.js";
+import { DEFAULT_ORG_ID } from "../src/db/index.js";
 import { ImportStore, sweepExpiredImports } from "../src/imports/storage.js";
+import { IMPORT_CAP_MILLI } from "../src/imports/workflow.js";
 import type { BuildHost, BuildParams, RunExecutors } from "../src/runs/types.js";
 import { toCard } from "./flow.js";
 import {
@@ -404,5 +406,73 @@ describe("import_table over HTTP", () => {
     expect(readdirSync(dir)).not.toContain(`${importId}.enc`);
     const g = await api.req("GET", `/systems/${systemId}/imports/${importId}`);
     expect(g.body.status).toBe("expired");
+  });
+});
+
+describe("import_table credits (billing.yaml#run_charging, FU-6)", () => {
+  const ledger = async (runId: string): Promise<Record<string, number>> =>
+    Object.fromEntries(
+      (
+        await pg`select kind, sum(amount_milli)::int as s from platform.credit_ledger
+                 where run_id = ${runId} group by kind`
+      ).map((r) => [String(r.kind), Number(r.s)]),
+    );
+
+  test("upload holds the import cap; the finish releases it and charges the mapping by fact", async () => {
+    const created = await upload(xlsx());
+    expect(created.status).toBe(202);
+    const runId = created.body.run.id as string;
+    expect(await ledger(runId)).toEqual({ hold: -IMPORT_CAP_MILLI });
+    const got = await awaitingConfirm(created.body.importId);
+    await api.req("POST", `/runs/${runId}/input`, { body: { inputId: got.body.inputId, choice: "cancel" } });
+    await waitRun(api, runId, ["cancelled"]);
+    const [u] =
+      await pg`select coalesce(sum(credits_milli), 0)::int as used from platform.llm_calls where run_id = ${runId} and billable`;
+    const used = Number(u?.used);
+    expect(used).toBeGreaterThan(0);
+    const l = await ledger(runId);
+    expect(l).toMatchObject({
+      hold: -IMPORT_CAP_MILLI,
+      release: IMPORT_CAP_MILLI,
+      charge: -Math.min(used, IMPORT_CAP_MILLI),
+    });
+    expect(l.refund).toBeUndefined();
+  });
+
+  test("an org (not exempt) without the import cap available → 402 INSUFFICIENT_CREDITS, the file is not kept", async () => {
+    const strict = await startApi(tdb.url, {
+      config: {
+        billingExemptOrgs: [],
+        artifactsDir: api.artifactsDir,
+        importsDir: api.deps.config.importsDir,
+        secretsKey: api.deps.config.secretsKey,
+      },
+      recover: false,
+      creditsCronMs: 0,
+    });
+    try {
+      const b = strict.deps.billing;
+      const { available } = await b.readBalance(strict.deps.db, DEFAULT_ORG_ID);
+      const adjust = (amountMilli: number, key: string) =>
+        strict.deps.db
+          .transaction()
+          .execute((trx) => b.adjust(trx, DEFAULT_ORG_ID, { amountMilli, key, note: "тест" }));
+      await adjust(10_000 - available, "fu6:drain");
+      const files = readdirSync(api.deps.config.importsDir).length;
+      const form = new FormData();
+      form.set("file", new Blob([xlsx() as Uint8Array<ArrayBuffer>]), "a.xlsx");
+      const r = await strict.req("POST", `/systems/${systemId}/imports`, { body: form });
+      expect(r.status).toBe(402);
+      expect(r.body).toMatchObject({
+        code: "INSUFFICIENT_CREDITS",
+        details: { available: 10, required: 15 },
+      });
+      expect(readdirSync(api.deps.config.importsDir)).toHaveLength(files);
+      const [n] = await pg`select count(*)::int as n from platform.imports where status = 'profiling'`;
+      expect(n?.n).toBe(0);
+      await adjust(available - 10_000, "fu6:restore");
+    } finally {
+      await strict.dispose();
+    }
   });
 });
