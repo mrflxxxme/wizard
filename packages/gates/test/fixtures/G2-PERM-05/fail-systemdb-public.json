@@ -1,0 +1,7 @@
+{
+  "check": "G2-PERM-05",
+  "description": "кондитерская: freeSlots доступна посетителю и читает cake_order.list через ctx.systemDb без systemDbReason (L3-22)",
+  "base": "bakery",
+  "match": "systemDb",
+  "expect": "fail"
+}

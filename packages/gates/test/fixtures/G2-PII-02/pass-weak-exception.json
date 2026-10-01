@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-02",
+  "description": "«Адрес площадки» в сущности-субъекте — исключение",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "venue_address",
+        "label": "Адрес площадки",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

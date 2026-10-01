@@ -1,0 +1,6 @@
+{
+  "check": "G2-PERM-01",
+  "description": "форум: весь роль × сущность × операция через data API совпадает с правами",
+  "base": "forum",
+  "expect": "pass"
+}

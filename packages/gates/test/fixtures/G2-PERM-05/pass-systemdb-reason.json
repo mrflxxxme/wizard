@@ -1,0 +1,13 @@
+{
+  "check": "G2-PERM-05",
+  "description": "та же функция с function.systemDbReason",
+  "base": "bakery",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/1/systemDbReason",
+      "value": "Считает занятость дней по всем заказам, наружу — только числа"
+    }
+  ],
+  "expect": "pass"
+}

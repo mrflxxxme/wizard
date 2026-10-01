@@ -1,0 +1,9 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "приватный ключ PEM",
+  "files": {
+    "functions/lib/pem.ts": "export const k = \"-----BEGIN RSA PRIVATE KEY-----\";\n"
+  },
+  "base": "forum",
+  "expect": "fail"
+}

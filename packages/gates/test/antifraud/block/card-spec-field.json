@@ -1,0 +1,17 @@
+{
+  "check": "G2-AF-01",
+  "expect": "block",
+  "description": "card-spec-field",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "card_no",
+        "label": "Номер карты",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum"
+}

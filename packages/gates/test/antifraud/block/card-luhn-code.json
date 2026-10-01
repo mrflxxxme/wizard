@@ -1,0 +1,9 @@
+{
+  "check": "G2-AF-01",
+  "expect": "block",
+  "description": "card-luhn-code",
+  "files": {
+    "functions/lib/check.ts": "export function valid(n: string): boolean {\n  let s = 0;\n  for (let i = 0; i < n.length; i++) {\n    let d = Number(n[n.length - 1 - i]);\n    if (i % 2 === 1) {\n      d = d * 2;\n      if (d > 9) d = d - 9;\n    }\n    s += d;\n  }\n  return s % 10 === 0;\n}\n"
+  },
+  "base": "forum"
+}

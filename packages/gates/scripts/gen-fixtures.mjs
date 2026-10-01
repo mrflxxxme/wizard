@@ -520,12 +520,15 @@ export function fixtureCases() {
 }
 
 export function writeFixtures(dir = FIXTURES_DIR) {
-  rmSync(dir, { recursive: true, force: true });
+  // G2 fixtures live next to these (scripts/gen-g2-fixtures.mjs): only G0 folders are regenerated here.
+  mkdirSync(dir, { recursive: true });
+  for (const d of readdirSync(dir).filter((x) => x.startsWith("G0-")))
+    rmSync(join(dir, d), { recursive: true, force: true });
   for (const { check, name, case: c } of fixtureCases()) {
     mkdirSync(join(dir, check), { recursive: true });
     writeFileSync(join(dir, check, `${name}.json`), `${JSON.stringify(c, null, 2)}\n`);
   }
-  return readdirSync(dir);
+  return readdirSync(dir).filter((x) => x.startsWith("G0-"));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

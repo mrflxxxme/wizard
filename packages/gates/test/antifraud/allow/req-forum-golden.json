@@ -1,0 +1,5 @@
+{
+  "expect": "allow",
+  "description": "эталон «форум» целиком",
+  "base": "forum"
+}

@@ -1,0 +1,23 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "brand-appshell-title",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Тинькофф",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Тинькофф\"}>\n\n      <form>\n\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

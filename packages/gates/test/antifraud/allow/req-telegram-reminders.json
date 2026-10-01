@@ -1,0 +1,22 @@
+{
+  "expect": "allow",
+  "description": "«Напоминания в Telegram» и «Войти через Telegram» при loginMethods telegram",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n      <p>{\"Напоминания в Telegram · данные удалятся через 30 дней после форума\"}</p>\n      <form>\n        <Button type=\"submit\">{\"Войти через Telegram\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

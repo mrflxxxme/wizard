@@ -1,0 +1,23 @@
+{
+  "check": "G2-PII-03",
+  "description": "enum «Вероисповедание» в регистрации",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "meal",
+        "label": "Питание",
+        "type": "enum",
+        "enum": [
+          {
+            "value": "a",
+            "label": "По вероисповеданию"
+          }
+        ]
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

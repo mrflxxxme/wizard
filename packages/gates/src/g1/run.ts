@@ -268,7 +268,7 @@ class G1SetupError extends Error {
 }
 
 /** A and B (seed users with sessions) per login role; an anonymous actor per public role. */
-async function seedActors(env: G1Env, spec: AppSpec, seed: Seed): Promise<Map<string, Actor[]>> {
+export async function seedActors(env: G1Env, spec: AppSpec, seed: Seed): Promise<Map<string, Actor[]>> {
   const out = new Map<string, Actor[]>();
   for (const r of spec.roles) {
     if (r.access === "public") out.set(r.name, [env.anonymous(r.name)]);

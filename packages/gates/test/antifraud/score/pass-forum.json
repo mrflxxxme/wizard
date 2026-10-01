@@ -1,0 +1,6 @@
+{
+  "check": "G2-AF-08",
+  "expect": "pass",
+  "description": "эталон форума без сигналов",
+  "base": "forum"
+}

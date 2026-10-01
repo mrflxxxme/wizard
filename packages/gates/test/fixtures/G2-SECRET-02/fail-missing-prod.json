@@ -1,0 +1,15 @@
+{
+  "check": "G2-SECRET-02",
+  "description": "prod: секрет telegram_bot_token не задан",
+  "env": "prod",
+  "secrets": [
+    "yookassa_shop_id",
+    "yookassa_secret_key",
+    "telegram_webhook_secret",
+    "smtp_password",
+    "qr_signing_key"
+  ],
+  "match": "telegram_bot_token",
+  "base": "forum",
+  "expect": "fail"
+}

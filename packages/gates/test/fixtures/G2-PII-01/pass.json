@@ -1,0 +1,6 @@
+{
+  "check": "G2-PII-01",
+  "description": "форум: особых категорий нет",
+  "base": "forum",
+  "expect": "pass"
+}

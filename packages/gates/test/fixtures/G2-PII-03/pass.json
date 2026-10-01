@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-03",
+  "description": "форум: признаков спецкатегорий нет; «Аллергены» в каталоге не субъект",
+  "base": "bakery",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/0/fields",
+      "value": {
+        "name": "allergens",
+        "label": "Аллергены",
+        "type": "string"
+      }
+    }
+  ],
+  "expect": "pass"
+}

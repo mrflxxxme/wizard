@@ -1,0 +1,14 @@
+{
+  "check": "G2-PII-06",
+  "description": "M2: нет operatorAddress",
+  "milestone": "M2",
+  "spec": [
+    {
+      "op": "remove",
+      "path": "/compliance/operatorAddress"
+    }
+  ],
+  "match": "OPERATOR_ADDRESS_REQUIRED",
+  "base": "forum",
+  "expect": "fail"
+}

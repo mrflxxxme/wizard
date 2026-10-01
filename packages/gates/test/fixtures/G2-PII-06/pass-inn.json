@@ -1,0 +1,13 @@
+{
+  "check": "G2-PII-06",
+  "description": "ИНН-10 и ИНН-12 верные",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/compliance/operatorInn",
+      "value": "500100732259"
+    }
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

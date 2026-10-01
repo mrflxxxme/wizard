@@ -1,0 +1,13 @@
+{
+  "check": "G2-PII-04",
+  "description": "страница системы занимает адрес политики",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/compliance/policyPage",
+      "value": "/"
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

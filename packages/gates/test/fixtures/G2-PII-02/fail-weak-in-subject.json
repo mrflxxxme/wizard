@@ -1,0 +1,17 @@
+{
+  "check": "G2-PII-02",
+  "description": "«Адрес» без pii в сущности-субъекте",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "home",
+        "label": "Адрес проживания",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

@@ -1,0 +1,13 @@
+{
+  "check": "G2-TG-01",
+  "description": "шаблон Telegram подставляет ФИО",
+  "base": "bakery",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/workflows/0/steps/0/params/text",
+      "value": "Заказ {{customer_name}} принят"
+    }
+  ],
+  "expect": "fail"
+}

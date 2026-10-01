@@ -1,0 +1,6 @@
+{
+  "check": "G2-PERM-03",
+  "description": "форум: rowFilter изолирует строки, публичные функции не отдают чужие",
+  "base": "forum",
+  "expect": "pass"
+}

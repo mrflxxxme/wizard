@@ -1,0 +1,17 @@
+{
+  "check": "G2-AF-02",
+  "expect": "block",
+  "description": "cred-otp-spec",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/entities/2/fields",
+      "value": {
+        "name": "otp",
+        "label": "Код",
+        "type": "string"
+      }
+    }
+  ],
+  "base": "forum"
+}

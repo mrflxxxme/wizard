@@ -1,0 +1,7 @@
+{
+  "check": "G2-PII-06",
+  "description": "форум: оператор заполнен (M2, с адресом)",
+  "milestone": "M2",
+  "base": "forum",
+  "expect": "pass"
+}

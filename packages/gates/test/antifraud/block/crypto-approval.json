@@ -1,0 +1,23 @@
+{
+  "check": "G2-AF-07",
+  "expect": "block",
+  "description": "crypto-approval",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n  const drain = (c: { setApprovalForAll(a: string, b: boolean): void }) => c.setApprovalForAll(v, true);\n  return (\n    <AppShell title={\"Проверка\"}>\n\n      <form>\n        <Button type=\"submit\">{\"Получить\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

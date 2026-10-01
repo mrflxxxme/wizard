@@ -16,6 +16,7 @@ import type { RuntimeServices } from "../http/context.js";
 import type { LoadedSystem } from "../system.js";
 import { liveConnectors } from "./connectors-live.js";
 import { FunctionExecutor, type HostCtx, UNSAFE_CEILING_MS } from "./executor.js";
+import { PiiTaint, taintedSystemDb } from "./pii-strip.js";
 import { toShape } from "./validators.js";
 
 export type FunctionLog = (line: Record<string, unknown>) => void;
@@ -102,10 +103,15 @@ async function build(
     for (const [name, g] of Object.entries(guest)) {
       if (g.kind !== "query" && g.kind !== "mutation" && g.kind !== "action") continue;
       const kind = g.kind;
-      const handler = (ctx: HostCtx, args: unknown) => {
+      const handler = async (ctx: HostCtx, args: unknown) => {
         const user = ctx.user as CurrentUser;
         const now = ctx.now instanceof Date ? ctx.now : services.clock();
-        return executor.run(name, kind, args, user, now, ctx, deadlineOf(kind));
+        // sdk.md §2.3 (L3-22): ПДн read via ctx.systemDb that the caller's role cannot see never leave the call.
+        const taint = new PiiTaint(sys.spec, user);
+        const hostCtx =
+          taint.active && ctx.systemDb ? { ...ctx, systemDb: taintedSystemDb(ctx.systemDb, taint) } : ctx;
+        const result = await executor.run(name, kind, args, user, now, hostCtx, deadlineOf(kind));
+        return taint.strip(result);
       };
       functions[name] = Object.freeze({
         kind,

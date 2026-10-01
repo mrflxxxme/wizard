@@ -1,0 +1,20 @@
+{
+  "check": "G2-PERM-01",
+  "description": "runtime обслуживает ревизию, где посетитель читает билеты, а права спеки это запрещают",
+  "runtimeSpec": [
+    {
+      "op": "push",
+      "path": "/permissions",
+      "value": {
+        "role": "visitor",
+        "entity": "ticket",
+        "ops": [
+          "read"
+        ]
+      }
+    }
+  ],
+  "match": "visitor",
+  "base": "forum",
+  "expect": "fail"
+}

@@ -1,0 +1,23 @@
+{
+  "check": "G2-AF-06",
+  "expect": "block",
+  "description": "p2p-account",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "Проверка",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"Проверка\"}>\n      <p>{\"Оплата на счёт 40817810099910004312 в любом банке\"}</p>\n      <form>\n\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

@@ -1,0 +1,6 @@
+{
+  "check": "G2-PII-04",
+  "description": "форум: форма регистрации с ConsentCheckbox",
+  "base": "forum",
+  "expect": "pass"
+}
