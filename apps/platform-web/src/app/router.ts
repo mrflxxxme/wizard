@@ -1,4 +1,4 @@
-// Minimal History API router (platform-screens.yaml#stack, ≤ 10 routes): "/", "/login", "/invite/:token",
+// Minimal History API router (platform-screens.yaml#stack, ≤ 12 routes): "/", "/login", "/invite/:token",
 // "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/s/:systemId/import/:importId", "/legal/:doc",
 // "/billing" (S-billing, M2-11), "/abuse" (public complaint form) and "/admin" (staff console, M2-08; the ticket is
 // ?report=<id>, so the console stays one route), "/welcome" (S-welcome, pilot onboarding, M2-09).

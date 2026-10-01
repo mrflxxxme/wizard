@@ -11,9 +11,11 @@ import type { DB, Db } from "../db/index.js";
 import type { AbuseCategory, AbuseStatus } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { planExport } from "../exports/csv.js";
-import type { OpsAlertFn } from "../ops/alert.js";
+import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
+import { orgOwnerEmails } from "../publish/moderation.js";
 import { prodUrl } from "../publish/prod.js";
 import { loadSpec } from "../services/revisions.js";
+import type { BlobStore } from "../storage/blobs.js";
 
 const HOUR_MS = 3600_000;
 /** abuse.yaml#report.storage: sla_deadline = created_at + 24 h. */
@@ -72,6 +74,13 @@ export interface AbuseDeps {
   mailer: Mailer;
   alert?: OpsAlertFn | undefined;
   log?: ((msg: string, err?: unknown) => void) | undefined;
+  /** Revision files for the antifraud re-check of the auto-suspension (abuse.yaml#takedown.auto_suspend). */
+  blobs?: BlobStore | undefined;
+  /**
+   * Failed G2 antifraud blockers of the live revision (default: abuse/escalation.ts antifraudRecheck — runG2 with
+   * G2-AF-01…07 on the stored revision and current patterns); tests may replace it.
+   */
+  antifraudRecheck?: ((s: { systemId: string; revision: number }) => Promise<string[]>) | undefined;
 }
 
 type Q = Db | Transaction<DB>;
@@ -187,20 +196,27 @@ export async function createAbuseReport(
   return { id: row.id, systemId: row.system_id, slaDeadline: row.sla_deadline };
 }
 
-const mskTime = (d: Date): string =>
+export const mskTime = (d: Date): string =>
   `${d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} МСК`;
 
-/** Founder alert (log + webhook) and a letter to every staff account; no reporter data leaves the DB. */
-async function alertNewReport(
+/**
+ * Founder alert (log + webhook) and a letter to every staff account about a new ticket — a complaint or the owner's
+ * «Оспорить» (kind dispute, category auto_g2); no reporter data leaves the DB.
+ */
+export async function alertNewReport(
   d: AbuseDeps,
   r: { id: string; category: AbuseCategory; systemId: string | null; sla: Date },
+  kind: "report" | "dispute" = "report",
 ): Promise<void> {
   const link = `${d.config.platformOrigin}/admin?report=${r.id}`;
-  const text = `Новая жалоба: ${CATEGORY_RU[r.category]}. Решение — до ${mskTime(r.sla)}. ${link}`;
+  const text =
+    kind === "dispute"
+      ? `Владелец оспаривает остановку публикации проверкой безопасности. Ответ — до ${mskTime(r.sla)}. ${link}`
+      : `Новая жалоба: ${CATEGORY_RU[r.category]}. Решение — до ${mskTime(r.sla)}. ${link}`;
   try {
     await d.alert?.({
       level: r.category === "phishing" ? "error" : "warn",
-      event: "abuse_report_new",
+      event: kind === "dispute" ? "abuse_dispute_new" : "abuse_report_new",
       text,
       fields: { kind: "abuse_report", code: r.category, reason: r.id, systemId: r.systemId },
     });
@@ -210,8 +226,8 @@ async function alertNewReport(
       .where("is_staff", "=", true)
       .where("deleted_at", "is", null)
       .execute();
-    for (const s of staff)
-      await d.mailer.send({ kind: "notice", to: s.email, subject: "Новая жалоба на систему", text });
+    const subject = kind === "dispute" ? "Владелец оспаривает блокировку" : "Новая жалоба на систему";
+    for (const s of staff) await d.mailer.send({ kind: "notice", to: s.email, subject, text });
   } catch (e) {
     d.log?.("abuse report alert failed", e);
   }
@@ -228,22 +244,16 @@ export async function checkAbuseSla(d: Pick<AbuseDeps, "db" | "alert">, now = ne
     .limit(100)
     .execute();
   let sent = 0;
-  for (const r of due) {
-    const claimed = await d.db
-      .insertInto("platform.ops_alerts")
-      .values({ key: `abuse_sla:${r.id}` })
-      .onConflict((oc) => oc.column("key").doNothing())
-      .returning("key")
-      .executeTakeFirst();
-    if (!claimed) continue;
-    sent++;
-    await d.alert?.({
-      level: "error",
-      event: "abuse_sla_at_risk",
-      text: `Жалоба (${CATEGORY_RU[r.category]}) без решения, срок — ${mskTime(r.sla_deadline)}`,
-      fields: { kind: "abuse_report", code: r.category, reason: r.id, systemId: r.system_id },
-    });
-  }
+  for (const r of due)
+    if (
+      await alertOnce(d.db, `abuse_sla:${r.id}`, d.alert, {
+        level: "error",
+        event: "abuse_sla_at_risk",
+        text: `Жалоба (${CATEGORY_RU[r.category]}) без решения, срок — ${mskTime(r.sla_deadline)}`,
+        fields: { kind: "abuse_report", code: r.category, reason: r.id, systemId: r.system_id },
+      })
+    )
+      sent++;
   return sent;
 }
 
@@ -335,6 +345,7 @@ export async function abuseTicket(d: Pick<AbuseDeps, "db" | "config">, id: strin
   const r = await d.db
     .selectFrom("platform.abuse_reports as ar")
     .leftJoin("platform.systems as s", "s.id", "ar.system_id")
+    .leftJoin("platform.orgs as o", "o.id", "s.org_id")
     .select([
       ...reportColumns,
       "ar.text",
@@ -345,6 +356,7 @@ export async function abuseTicket(d: Pick<AbuseDeps, "db" | "config">, id: strin
       "s.org_id",
       "s.suspended_at",
       "s.prod_revision",
+      "o.suspended_at as org_suspended_at",
     ])
     .where("ar.id", "=", id)
     .executeTakeFirst();
@@ -353,7 +365,11 @@ export async function abuseTicket(d: Pick<AbuseDeps, "db" | "config">, id: strin
     .selectFrom("platform.staff_audit_log as l")
     .innerJoin("platform.users as u", "u.id", "l.actor")
     .select(["l.action", "l.note", "l.created_at", "u.email"])
-    .where("l.target", "in", [reportTarget(id), ...(r.system_id ? [`system:${r.system_id}`] : [])])
+    .where("l.target", "in", [
+      reportTarget(id),
+      ...(r.system_id ? [`system:${r.system_id}`] : []),
+      ...(r.org_id ? [`org:${r.org_id}`] : []),
+    ])
     .orderBy("l.created_at", "desc")
     .limit(100)
     .execute();
@@ -370,6 +386,7 @@ export async function abuseTicket(d: Pick<AbuseDeps, "db" | "config">, id: strin
           orgId: r.org_id,
           prodUrl: r.slug && r.prod_revision !== null ? prodUrl(d.config, r.slug) : null,
           suspended: r.suspended_at !== null,
+          orgSuspended: r.org_suspended_at !== null,
         }
       : null,
     access: until ? { until: until.toISOString() } : null,
@@ -382,31 +399,48 @@ export async function abuseTicket(d: Pick<AbuseDeps, "db" | "config">, id: strin
   };
 }
 
-async function ownerEmails(db: Db, systemId: string): Promise<{ name: string; emails: string[] }> {
-  const sys = await db
-    .selectFrom("platform.systems")
-    .select(["name", "org_id"])
-    .where("id", "=", systemId)
-    .executeTakeFirstOrThrow();
-  const owners = await db
-    .selectFrom("platform.memberships as m")
-    .innerJoin("platform.users as u", "u.id", "m.user_id")
-    .select("u.email")
-    .where("m.org_id", "=", sys.org_id)
-    .where("m.role", "=", "owner")
-    .where("u.deleted_at", "is", null)
-    .execute();
-  return { name: sys.name, emails: owners.map((o) => o.email) };
-}
-
-async function mailOwners(d: AbuseDeps, systemId: string, letter: (name: string) => [string, string]) {
+/** Letter to every owner of the system's org (subject and text from the system name); failures are logged. */
+export async function mailOwners(
+  d: Pick<AbuseDeps, "db" | "mailer" | "log">,
+  systemId: string,
+  letter: (name: string) => [string, string],
+) {
   try {
-    const { name, emails } = await ownerEmails(d.db, systemId);
-    const [subject, text] = letter(name);
-    for (const to of emails) await d.mailer.send({ kind: "notice", to, subject, text });
+    const sys = await d.db
+      .selectFrom("platform.systems")
+      .select(["name", "org_id"])
+      .where("id", "=", systemId)
+      .executeTakeFirstOrThrow();
+    const [subject, text] = letter(sys.name);
+    for (const to of await orgOwnerEmails(d.db, sys.org_id))
+      await d.mailer.send({ kind: "notice", to, subject, text });
   } catch (e) {
     d.log?.("abuse owner notice failed", e);
   }
+}
+
+/** The answer to the owner's «Оспорить» (abuse.yaml#messages_ru.dispute «Ответим на почту владельца»). */
+export function disputeAnswerLetter(name: string, note: string): [string, string] {
+  return [
+    `Проверка блокировки системы «${name}» завершена`,
+    [
+      `Модератор Wizard рассмотрел вашу заявку на проверку остановки публикации системы «${name}».`,
+      `Ответ модератора: ${note}`,
+      "Если вопросы остались, ответьте на это письмо.",
+    ].join("\n"),
+  ];
+}
+
+/** abuse.yaml#takedown.flow «Уведомление владельцу сразу при takedown: причина, как оспорить». */
+export function takedownLetter(name: string, category: AbuseCategory): [string, string] {
+  return [
+    `Система «${name}» временно недоступна по жалобе`,
+    [
+      `Публикация системы «${name}» приостановлена по жалобе. Причина: ${CATEGORY_RU[category]}.`,
+      "Посетители видят страницу «Система временно недоступна по жалобе». Данные системы сохранены и не удаляются.",
+      "Если вы не согласны с решением, ответьте на это письмо — мы рассмотрим обращение в течение 24 часов.",
+    ].join("\n"),
+  ];
 }
 
 /** compliance.yaml staff_access: the owner learns about staff access, except while phishing is investigated. */
@@ -567,14 +601,10 @@ export async function applyAbuseAction(
 
   if (a.action === "triage") await noticeStaffAccess(d, rep);
   if (a.action === "takedown" && rep.system_id)
-    await mailOwners(d, rep.system_id, (name) => [
-      `Система «${name}» временно недоступна по жалобе`,
-      [
-        `Публикация системы «${name}» приостановлена по жалобе. Причина: ${CATEGORY_RU[rep.category]}.`,
-        "Посетители видят страницу «Система временно недоступна по жалобе». Данные системы сохранены и не удаляются.",
-        "Если вы не согласны с решением, ответьте на это письмо — мы рассмотрим обращение в течение 24 часов.",
-      ].join("\n"),
-    ]);
+    await mailOwners(d, rep.system_id, (name) => takedownLetter(name, rep.category));
+  // «Оспорить» (category auto_g2): the owner asked for a check, so the staff note answers them when the ticket closes.
+  if (a.action === "dismiss" && rep.category === "auto_g2" && rep.system_id)
+    await mailOwners(d, rep.system_id, (name) => disputeAnswerLetter(name, a.note));
   if (a.action === "restore" && rep.system_id)
     await mailOwners(d, rep.system_id, (name) => [
       `Система «${name}» снова доступна`,

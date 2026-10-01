@@ -1,11 +1,12 @@
 // Minimal job runner (runtime.yaml#workflows, M1): workflow triggers from _w_audit (on_create/on_update/
 // on_status), schedule triggers (relative, cron), due _w_jobs (function, workflow_step) and retention. runJobs is
 // one pass at a given `now` until nothing is due (G1 runWorkflows/advanceTime); the background poller comes later.
-import { type Entity, quoteIdent, type Workflow } from "@wizard/appspec";
+import { type Entity, quoteIdent, resolveAiAction, type Workflow } from "@wizard/appspec";
 import { isConnectorError, runNotifyStep } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { SYSTEM_USER } from "@wizard/sdk/host";
 import type postgres from "postgres";
+import { findAiAction, runAiAction } from "../ai/actions.js";
 import { SYSTEM_ROLE, SYSTEM_SUBJECT } from "../data/access.js";
 import { outboxConnectors, systemFunctions } from "../exec/host.js";
 import type { RuntimeServices } from "../http/context.js";
@@ -143,6 +144,21 @@ export async function runJobs(
     step: 0,
   });
 
+  /**
+   * Target fields of the workflow's own AI steps (M3-02): an on_update of only these fields is the workflow's own AI
+   * fill and does not start it again (no loop when the trigger has no field or watches an AI target).
+   */
+  const ownAiFields = (w: Workflow): Set<string> => {
+    const out = new Set<string>();
+    for (const st of w.steps) {
+      if (st.type !== "ai_extract" && st.type !== "ai_generate") continue;
+      const a = (spec.aiActions ?? []).find((x) => x.name === (st.params as Row | undefined)?.action);
+      const r = a ? resolveAiAction(spec, a) : null;
+      if (r?.ok) for (const f of r.action.outputs) out.add(f.name);
+    }
+    return out;
+  };
+
   // ---------- triggers ----------
 
   /** on_create / on_update / on_status from new _w_audit rows; the cursor moves in the same transaction. */
@@ -164,7 +180,10 @@ export async function runJobs(
         const has = (r: Row) => tr.field === undefined || (r.fields as string[] | null)?.includes(tr.field);
         if (tr.type === "on_create" || tr.type === "on_update") {
           const op = tr.type === "on_create" ? "create" : "update";
-          for (const r of mine.filter((x) => x.op === op && (op === "create" || has(x))))
+          const own = ownAiFields(w);
+          const ownFill = (r: Row) =>
+            own.size > 0 && ((r.fields as string[] | null) ?? []).every((f) => own.has(f));
+          for (const r of mine.filter((x) => x.op === op && (op === "create" || (has(x) && !ownFill(x)))))
             n += await enqueue(
               tx,
               "workflow_step",
@@ -455,8 +474,26 @@ export async function runJobs(
             );
             return;
           }
+          case "ai_extract":
+          case "ai_generate": {
+            // runtime.yaml#ai_actions.triggers: params {action}; the record of the workflow, call id = the step key, so
+            // a retried step neither counts against the monthly limit nor charges twice (M3-02).
+            const action = findAiAction(sys, String(params.action ?? ""));
+            if (!p.recordId || action.entity.name !== p.entity)
+              throw new WizardError("VALIDATION_FAILED", {
+                message: "ИИ-действие относится к другому разделу",
+              });
+            if (action.kind !== (step.type === "ai_extract" ? "extract" : "generate"))
+              throw new WizardError("VALIDATION_FAILED", { message: "Тип шага не совпадает с ИИ-действием" });
+            await runAiAction(sys, services.ai, {
+              action,
+              recordId: p.recordId,
+              callId: `wf:${key}`,
+              source: "workflow",
+            });
+            break;
+          }
           default:
-            // ai_extract / ai_generate: M3 (runtime.yaml#ai_actions) — skipped.
             break;
         }
       } catch (e) {

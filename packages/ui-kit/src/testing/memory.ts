@@ -4,6 +4,7 @@ import type { AppSpec, Entity, Permission } from "@wizard/appspec";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toWzError, useMutationState } from "../data/mutation.js";
 import type {
+  AiActionResult,
   AsyncResult,
   AuthApi,
   DataSource,
@@ -67,7 +68,14 @@ export interface MemoryOptions {
   consentAtLogin?: boolean;
   /** Called by useUser().login (default: history push to /login). */
   navigate?: (to: string) => void;
+  /**
+   * AI actions (M3-02) by name: entity and a fill function over the stored row (the "model"); the result is written
+   * like the runtime does — as __system, marking the fields in `_aiFilled` until a user edits them.
+   */
+  aiActions?: Record<string, MemoryAiAction>;
 }
+
+export type MemoryAiAction = { entity: string; fill: (row: Rec) => Record<string, unknown> };
 
 const SYSTEM = ["id", "created_at", "updated_at", "created_by"] as const;
 const OPS = new Set(["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains"]);
@@ -117,7 +125,7 @@ export interface MemoryDataSource extends DataSource {
   /** Raw rows (no permission filtering). */
   rows(entity: string): Rec[];
   /** Next matching write fails with `error` (e.g. 403 for optimistic-update tests). */
-  failNext(op: "create" | "update" | "remove" | "call", error: WzError): void;
+  failNext(op: "create" | "update" | "remove" | "call" | "ai", error: WzError): void;
   /** Permission-checked operations (also used by the hooks). */
   list(entity: string, q?: ListQuery): { items: Rec[]; total: number };
   get(entity: string, id: string): Rec;
@@ -131,6 +139,8 @@ export interface MemoryDataSource extends DataSource {
   readonly qrOffline: QrOfflineApi;
   /** Check-ins made by qrCheck and sync: token → first scan. */
   qrCheckins(): Map<string, { at: string; checkpoint?: string }>;
+  /** Non-hook AI action run (POST /api/ai/:action semantics: update permission, rowFilter, `_aiFilled`). */
+  runAi(action: string, entity: string, id: string): AiActionResult;
   /** Non-hook file uploads (signature allowlist and 10 МБ like the runtime) and the stored files. */
   readonly files: FilesApi & { stored(): Map<string, FileInfo & { field: string; entity?: string }> };
 }
@@ -168,6 +178,12 @@ export function createMemoryDataSource(
   const outbox: MemoryOutboxMessage[] = [];
   const failures: { op: string; error: WzError }[] = [];
   const checkins = new Map<string, { at: string; checkpoint?: string }>();
+  /** `${entity}:${id}` → fields whose last write was an AI action. */
+  const aiMeta = new Map<string, Set<string>>();
+  const withMeta = (entity: string, row: Rec): Rec => {
+    const marked = aiMeta.get(`${entity}:${row.id}`);
+    return marked?.size ? { ...row, _aiFilled: [...marked].filter((f) => f in row) } : row;
+  };
   const challenges = new Map<string, MemoryOutboxMessage>();
 
   const entityOf = (name: string): Entity => {
@@ -298,7 +314,7 @@ export function createMemoryDataSource(
     },
     subscribe: store.subscribe,
     rows: (entity: string) => db.get(entity) ?? [],
-    failNext(op: "create" | "update" | "remove" | "call", error: WzError) {
+    failNext(op: "create" | "update" | "remove" | "call" | "ai", error: WzError) {
       failures.push({ op, error });
     },
 
@@ -329,7 +345,27 @@ export function createMemoryDataSource(
       const p = perm(entity, "read");
       const row = (db.get(entity) ?? []).find((r) => r.id === id);
       if (!row || !inRowFilter(p, row)) throw wzError("NOT_FOUND");
-      return strip(p, row);
+      return withMeta(entity, strip(p, row));
+    },
+    runAi(action: string, entity: string, id: string) {
+      calls.push({ op: "ai", entity, name: action, args: [id] });
+      failIf("ai");
+      const def = opts.aiActions?.[action];
+      if (!def) throw wzError("NOT_FOUND", { message: "ИИ-действие не найдено" });
+      if (def.entity !== entity) throw wzError("VALIDATION_FAILED");
+      const p = perm(entity, "update");
+      const row = (db.get(entity) ?? []).find((r) => r.id === id);
+      if (!row || !inRowFilter(p, row)) throw wzError("NOT_FOUND");
+      const values = def.fill({ ...row });
+      const filled = Object.keys(values).filter((k) => values[k] !== undefined && values[k] !== null);
+      for (const k of filled) row[k] = values[k];
+      row.updated_at = now().toISOString();
+      const key = `${entity}:${id}`;
+      const marked = aiMeta.get(key) ?? new Set<string>();
+      for (const k of filled) marked.add(k);
+      aiMeta.set(key, marked);
+      bump();
+      return { item: ds.get(entity, id), filled, skipped: [] };
     },
     create(entity: string, values: Record<string, unknown>, o: WriteOpts = {}) {
       calls.push({ op: "create", entity, args: [values, o] });
@@ -368,6 +404,8 @@ export function createMemoryDataSource(
       validate(e, p, patch, false);
       if (needsConsent(e, patch) && !o.consent) throw wzError("CONSENT_REQUIRED");
       Object.assign(row, patch, { updated_at: now().toISOString() });
+      // A user's write of an AI-filled field clears its mark (runtime: the _w_audit fold).
+      for (const k of Object.keys(patch)) aiMeta.get(`${entity}:${id}`)?.delete(k);
       bump();
       return strip(p, row);
     },
@@ -459,6 +497,11 @@ export function createMemoryDataSource(
     },
     useFiles() {
       return useMemo(() => files, []);
+    },
+    useAiAction() {
+      return useMutationState(async (action: string, entity: string, id: string) =>
+        ds.runAi(action, entity, id),
+      );
     },
     get files() {
       return files;

@@ -24,7 +24,33 @@ export const BETA_READINESS_MISSING_RU = [
   "(3) подписать поручения на обработку с Cloud.ru и Yandex; (4) получить письменное подтверждение Z.ai или отключить T1;",
   "(5) подготовить документы в docs/security (модель угроз, акт УЗ, перечень допущенных, runbook инцидента с ПДн).",
   "Когда всё сделано, отметьте: pilot readiness on --by <кто> [--note <что сделано>].",
+  'Пилот без юр. обвязки (product.yaml#decisions.D25_pilot_no_legal): основатель включает флаг сразу — pilot readiness on --note "D25 пилот без юр. обвязки" (в /admin «Пилот» — та же заметка).',
 ].join("\n");
+
+/**
+ * What beta_readiness stands for (compliance.yaml#beta_readiness, M2-13), item by item — the staff console shows it
+ * next to the switch; the same items as BETA_READINESS_MISSING_RU.
+ */
+export const BETA_READINESS_CHECKLIST_RU: readonly { id: string; text: string }[] = [
+  { id: "rkn", text: "Подано уведомление в Роскомнадзор об обработке ПДн (ст. 22 152-ФЗ)" },
+  {
+    id: "lawyer",
+    text: "Юрист согласовал оферту, согласие на обработку ПДн и шаблон политики систем (без пометки DRAFT); его позиция по хостингу и ОРИ исполнена",
+  },
+  { id: "dpa", text: "Подписаны поручения на обработку ПДн с Cloud.ru и Yandex" },
+  {
+    id: "zai",
+    text: "Если используется Z.ai (T1) — получено его письменное подтверждение; иначе T1 отключён",
+  },
+  {
+    id: "security",
+    text: "Готовы документы в docs/security: модель угроз, акт УЗ, перечень допущенных лиц, runbook инцидента с ПДн",
+  },
+  {
+    id: "pilot_d25",
+    text: "Пилот без юр. обвязки (решение D25): пункты выше откладываются до открытой беты — включите флаг с заметкой «D25 пилот без юр. обвязки»",
+  },
+];
 
 const defaultActor = (): string => {
   try {

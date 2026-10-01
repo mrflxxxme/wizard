@@ -56,6 +56,7 @@ import {
   type TableReader,
   type TableWriter,
   type TelegramConnector,
+  useAiAction,
   useCallback,
   useEffect,
   useEntity,
@@ -257,6 +258,9 @@ expectTypeOf<EntityListOptions<"ticket">["limit"]>().toEqualTypeOf<number | unde
 expectTypeOf<EntityListState<"ticket">["hasMore"]>().toEqualTypeOf<boolean>();
 
 export function MoreClientContract() {
+  const ai = useAiAction("summarize");
+  expectTypeOf(ai.run).parameter(0).toEqualTypeOf<EntityName>();
+  expectTypeOf(ai.pending).toEqualTypeOf<boolean>();
   const payment = usePayment("yookassa");
   expectTypeOf(payment.pay).parameter(0).toEqualTypeOf<"ticket">();
   expectTypeOf(useParams<{ id: string }>()).toEqualTypeOf<{ id: string }>();

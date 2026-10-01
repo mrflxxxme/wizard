@@ -17,7 +17,7 @@ domain:
 identification:
   rule: "Prod доступен только после привязки карты российского банка (billing.yaml#card_binding) — это же идентификация клиента провайдером хостинга (149-ФЗ, позиция юриста E-LEGAL)"
   draft: "Draft-системы закрыты: доступ только по токену превью платформы (api.yaml#getPreviewUrl), индексация запрещена (X-Robots-Tag: noindex, nofollow)"
-  founder_review: "В бете orgs.require_founder_review=true: первая публикация каждой системы и каждая публикация с новыми формами сбора ПДн — после одобрения staff (M2-09). В бете staff — основатель с обязательной MFA (решение F7)"
+  founder_review: "В бете orgs.require_founder_review=true: первая публикация каждой системы и каждая публикация с новыми формами сбора ПДн — после одобрения staff (M2-09). В бете staff — основатель с обязательной MFA (решение F7). Реализация: платформенный переключатель WIZARD_FOUNDER_REVIEW=on|off (по умолчанию on при NODE_ENV=production, deploy.yaml#pilot.env), под ним — orgs.require_founder_review (CLI pilot review-required <orgId> on|off); «новые формы сбора ПДн» = новые поля с pii ≠ none относительно схемы prod. Решение (админка /admin или CLI moderation approve|reject) приходит владельцам письмом; отказ — с комментарием «что исправить»"
 
 patterns:                          # словари и шаблоны для проверок G2 (specs/quality/gates.yaml — id проверок и severity)
   location: "packages/gates/data/*.json (генерируются из этого файла скриптом; правка — PR)"
@@ -116,10 +116,10 @@ messages_ru:                       # нейтральные тексты без 
   http_451: "Система временно недоступна по жалобе. Владелец системы уведомлён."
   dispute: "Заявка на проверку отправлена. Ответим на почту владельца в течение 24 часов."
 
-rescan: "При обновлении patterns — ночной перескан live-ревизий; новое срабатывание → abuse_report category=auto_g2 (без автоматического снятия, кроме takedown.auto_suspend). Ложная блокировка в G2 → кнопка «Оспорить» → тикет staff category=auto_g2"
+rescan: "При обновлении patterns — ночной перескан live-ревизий; новое срабатывание → abuse_report category=auto_g2 (без автоматического снятия, кроме takedown.auto_suspend). Ложная блокировка в G2 → кнопка «Оспорить» → тикет staff category=auto_g2. Реализовано (cleanup M2): «Оспорить» в строке G2 отчёта S6 у владельца → POST /systems/:id/disputes (api.yaml#disputeG2Block; только если последний G2 ревизии провалил G2-AF-01…07; один открытый тикет на систему) → messages_ru.dispute; ответ модератора уходит владельцу письмом при закрытии тикета; тикеты auto_g2 не считаются в abuse_reports_prev. Ночной перескан — не реализован (остаток)"
 
 report:                            # «Пожаловаться»
-  entry_points: ["Ссылка «Пожаловаться» в футере каждой prod-системы (вставляется runtime, код системы не может её убрать — G0 проверяет наличие слота AppShell)", "страница <platform-domain>/abuse", "abuse@<platform-domain>"]
+  entry_points: ["Ссылка «Пожаловаться» на каждой странице prod-системы (вставляется runtime в документ prod как фиксированная ссылка вне корня приложения, код системы не может её убрать; поэтому G0 слот AppShell не проверяет — runtime.yaml#routing.rules, M2-08)", "страница <platform-domain>/abuse", "abuse@<platform-domain>"]
   endpoint: "POST /api/v1/abuse-reports (api.yaml#createAbuseReport); без входа; лимит 10/ч на IP (IP клиента — только из последнего хопа доверенного ingress, deploy.yaml; для IPv6 — по /64); hCaptcha/капча — только российский сервис или своя (SHOULD, M4)"
   storage: "platform.abuse_reports; sla_deadline = created_at + 24 ч"
 
@@ -129,8 +129,9 @@ takedown:
     - "new → triaged: staff открывает систему по тикету жалобы (доступ с TTL 24 ч, в staff_audit_log — compliance.yaml#platform.security_org staff_access), фиксирует категорию"
     - "triaged → takedown: publications.status=suspended, systems.suspended_at; runtime отдаёт 451 со страницей messages_ru.http_451 (без раскрытия деталей); данные НЕ удаляются"
     - "Уведомление владельцу (email owner) сразу при takedown: причина, как оспорить"
-    - "Повторное нарушение или явный фишинг → orgs.suspended_at: все системы организации снимаются, новые публикации запрещены (ORG_SUSPENDED)"
-    - "Апелляция владельца → staff; restore → publications live, событие в staff_audit_log"
+    - "Повторное нарушение или явный фишинг → orgs.suspended_at: все системы организации снимаются, новые публикации запрещены (ORG_SUSPENDED). Реализация: действие staff в /admin (api.yaml#adminOrgSuspension, suspend|restore с комментарием и тикетом-основанием, staff_audit_log org_suspend|org_restore, письмо владельцам); вид deployments помечает suspended все системы org (draft и prod) → runtime 451; publish → 403 ORG_SUSPENDED, publishBlockers ORG_SUSPENDED"
+    - "Апелляция владельца → staff; restore → publications live, событие в staff_audit_log. Апелляция на снятие — ответом на письмо о takedown (почта staff); «Оспорить» блокировку G2 — кнопкой в S6 (см. rescan)"
     - "Запросы РКН и госорганов (149-ФЗ) — отдельный регламент от юриста (E-LEGAL)"
   auto_suspend: "Без решения staff автоматически НЕ снимать, кроме: ≥ 3 жалобы категории phishing от разных IP за 1 ч И live-ревизия проваливает текущий G2 → немедленное снятие с тикетом"
+  auto_suspend_impl: "Проверка — после каждой жалобы phishing на систему (apps/platform-api/src/abuse/escalation.ts checkAutoSuspend): разные IP = различные reporter_ip_hash не отклонённых жалоб за час; «текущий G2» = runG2 только с блокерами G2-AF-01…07 по сохранённой live-ревизии и сегодняшним patterns (без runtime), не чаще раза в час на публикацию (ключ db.yaml#ops_alerts auto_suspend:<publication>:<час>). Провал → publication suspended (suspended_reason phishing), systems.suspended_at, вызвавшая жалоба становится тикетом со статусом takedown и resolution_note «Автоматическое снятие…», письмо владельцу как при takedown, алерт abuse_auto_suspend (error). G2 чист → снятия нет, алерт abuse_phishing_cluster. Восстановление — restore тикета staff"
   test: "M2-08: жалоба → тикет → takedown → prod-URL отдаёт 451 → письмо владельцу в dev-sender; restore → 200"

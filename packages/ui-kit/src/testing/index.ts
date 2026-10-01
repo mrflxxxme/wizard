@@ -5,6 +5,7 @@ export { fieldProblem } from "../data/validate.js";
 export { memoryStorage, OfflineScanner, offlineHash, payloadRand } from "../qr/offline.js";
 export {
   createMemoryDataSource,
+  type MemoryAiAction,
   type MemoryCall,
   type MemoryDataSource,
   type MemoryFn,

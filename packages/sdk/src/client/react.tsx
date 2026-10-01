@@ -13,6 +13,8 @@ import {
 import { WizardError } from "../errors.js";
 import type {
   ActionName,
+  AiActionResult,
+  AiActionState,
   CallOptions,
   ClientDoc,
   EntityListOptions,
@@ -365,6 +367,31 @@ export function usePayment<I extends keyof Payments & string>(integration: I): P
     [client, integration, redirect],
   );
   return { pay, pending, error };
+}
+
+// ---------- AI actions (M3-02) ----------
+
+export function useAiAction(action: string): AiActionState {
+  const { client } = useSdkContext();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<WizardError | undefined>(undefined);
+  const run = useCallback(
+    async <E extends EntityName>(entity: E, id: Id<E> | string): Promise<AiActionResult<E>> => {
+      setPending(true);
+      setError(undefined);
+      try {
+        return (await client.runAiAction(action, entity, String(id))) as AiActionResult<E>;
+      } catch (e) {
+        const err = asWizardError(e);
+        setError(err);
+        throw err;
+      } finally {
+        setPending(false);
+      }
+    },
+    [client, action],
+  );
+  return { run, pending, error };
 }
 
 // ---------- routing ----------

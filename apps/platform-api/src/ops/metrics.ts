@@ -5,13 +5,13 @@
 // worker (dbos), so series of both processes add up. Database gauges (queue depth, LLM ₽ of the month and the cap,
 // pending founder reviews, failure share of the last hour) are read on scrape by platform-api only. Queries for vmui:
 // docs/ops/observability.md. WAL archive lag comes from the pg-ops sidecar (wizard_pg_archive_lag_seconds).
-import { DURATION_BUCKETS_S, Registry, serveMetrics } from "@wizard/pii/metrics";
+import { DURATION_BUCKETS_S, serveMetrics } from "@wizard/pii/metrics";
 import { sql } from "kysely";
 import { llmSpentRub, moscowMonth } from "../billing/llm-cap.js";
 import type { Db } from "../db/index.js";
+import { opsAlertsSent, platformMetrics } from "./registry.js";
 
-/** Registry of this process (platform-api or worker). */
-export const platformMetrics = new Registry();
+export { opsAlertsSent, platformMetrics };
 
 export const runsStarted = platformMetrics.counter("wizard_runs_started_total", "Runs started, by kind", [
   "kind",
@@ -45,11 +45,6 @@ export const retentionPasses = platformMetrics.counter(
   "wizard_retention_passes_total",
   "Platform retention_cron passes by result (ok, failed)",
   ["result"],
-);
-export const opsAlertsSent = platformMetrics.counter(
-  "wizard_ops_alerts_total",
-  "Founder alerts claimed (one per key), by event",
-  ["event"],
 );
 
 /** Records a run's terminal transition (after its transaction committed). */

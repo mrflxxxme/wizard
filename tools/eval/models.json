@@ -1,5 +1,5 @@
 {
-  "_note": "Цены — ₽ за 1M токенов с НДС. Cloud.ru — тарифы от 28.09.2026 (аудит 01). Z.ai — $1.4/$0.26/$4.4 × 95 ₽/$ + 22% НДС агента (research/data-boundary-frontier.md). Проверить перед прогоном.",
+  "_note": "Цены — ₽ за 1M токенов с НДС. Cloud.ru — тарифы от 28.09.2026 (аудит 01). Z.ai — $1.4/$0.26/$4.4 × 95 ₽/$ + 22% НДС агента (research/data-boundary-frontier.md). DeepSeek — цены часов пик × 95 ₽/$ + 22% (founder/models-research.md §2). Проверить перед прогоном.",
   "providers": {
     "cloudru": {
       "baseUrlEnv": "CLOUDRU_BASE_URL",
@@ -10,6 +10,11 @@
       "baseUrlEnv": "ZAI_BASE_URL",
       "defaultBaseUrl": "https://api.z.ai/api/paas/v4",
       "apiKeyEnv": "ZAI_API_KEY"
+    },
+    "deepseek": {
+      "baseUrlEnv": "DEEPSEEK_BASE_URL",
+      "defaultBaseUrl": "https://api.deepseek.com",
+      "apiKeyEnv": "DEEPSEEK_API_KEY"
     }
   },
   "defaults": {
@@ -77,6 +82,26 @@
       "model": "Qwen/Qwen3-Coder-Next",
       "price": { "input": 122, "cached_input": 122, "output": 244 },
       "extra_body": {}
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "enabled": false,
+      "tier": "T1",
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "price": { "input": 34.77, "cached_input": 0.7, "output": 139.08 },
+      "extra_body": { "thinking": { "type": "disabled" } },
+      "_note": "Претендент недельного eval (необязательный, ключ DEEPSEEK_API_KEY). Хранение в КНР; цены часов пик. Thinking выключен всегда: иначе второй ход с tools — 400"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "enabled": false,
+      "tier": "T1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "price": { "input": 152.99, "cached_input": 5.1, "output": 458.96 },
+      "extra_body": { "thinking": { "type": "disabled" } },
+      "_note": "Претендент недельного eval (необязательный, ключ DEEPSEEK_API_KEY). Хранение в КНР; цены часов пик"
     }
   ]
 }

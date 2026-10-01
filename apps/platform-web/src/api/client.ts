@@ -18,12 +18,17 @@ import type {
   ImportView,
   Invite,
   LedgerEntry,
+  LlmSpend,
   LockStatus,
   Me,
   Member,
   Message,
+  MessageTarget,
   Org,
   OrgSettings,
+  PilotInvite,
+  PilotOrg,
+  PilotReadiness,
   PreviewUrl,
   Publication,
   Revision,
@@ -145,8 +150,17 @@ export function createApiClient(opts: ClientOptions = {}) {
       idempotencyKey = newIdempotencyKey(),
     ) => call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
     getSystem: (id: string) => call<SystemView>("GET", sys(id)),
-    postMessage: (id: string, text: string, idempotencyKey = newIdempotencyKey()) =>
-      call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, { body: { text }, idempotencyKey }),
+    /** With target (M3-01) the request becomes a point_edit build of target.file. */
+    postMessage: (
+      id: string,
+      text: string,
+      opts: { target?: MessageTarget } = {},
+      idempotencyKey = newIdempotencyKey(),
+    ) =>
+      call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, {
+        body: opts.target ? { text, target: opts.target } : { text },
+        idempotencyKey,
+      }),
     postAnswers: (
       id: string,
       body: { answers: Answer[]; restByRecommendation?: boolean },
@@ -340,6 +354,54 @@ export function createApiClient(opts: ClientOptions = {}) {
         `/admin/systems/${encodeURIComponent(systemId)}/founder-review`,
         { body },
       ),
+    // abuse.yaml#takedown.flow: org-wide suspension (staff) and «Оспорить» a G2 antifraud stop (owner).
+    adminOrgSuspension: (
+      orgId: string,
+      body: { action: "suspend" | "restore"; note: string; reportId?: string },
+    ) =>
+      call<{ orgId: string; suspendedAt: string | null }>(
+        "POST",
+        `/admin/orgs/${encodeURIComponent(orgId)}/suspension`,
+        { body },
+      ),
+    // Staff console «Пилот» (/admin/pilot/*): the same operations as the founder CLI `pilot`.
+    adminPilotReadiness: () => call<PilotReadiness>("GET", "/admin/pilot/readiness"),
+    adminSetPilotReadiness: (body: { on: boolean; confirm?: boolean; note?: string }) =>
+      call<PilotReadiness>("PUT", "/admin/pilot/readiness", { body }),
+    adminListPilotInvites: () => call<{ items: PilotInvite[] }>("GET", "/admin/pilot/invites"),
+    adminCreatePilotInvite: (body: {
+      email: string;
+      orgName?: string;
+      credits?: number;
+      requireFounderReview?: boolean;
+    }) =>
+      call<{ id: string; email: string; expiresAt: string; link: string; requireFounderReview: boolean }>(
+        "POST",
+        "/admin/pilot/invites",
+        { body },
+      ),
+    adminRevokePilotInvite: (id: string) =>
+      call<{ id: string; status: "revoked" }>(
+        "POST",
+        `/admin/pilot/invites/${encodeURIComponent(id)}/revoke`,
+      ),
+    adminListPilotOrgs: () =>
+      call<{ month: string; capRub: number; items: PilotOrg[] }>("GET", "/admin/pilot/orgs"),
+    adminGrantPilotCredits: (orgId: string, body: { credits: number; reference: string }) =>
+      call<{ orgId: string; granted: boolean; reference: string; creditsAvailable: number }>(
+        "POST",
+        `/admin/pilot/orgs/${encodeURIComponent(orgId)}/grants`,
+        { body },
+      ),
+    adminSetPilotFounderReview: (orgId: string, on: boolean) =>
+      call<{ orgId: string; requireFounderReview: boolean }>(
+        "PUT",
+        `/admin/pilot/orgs/${encodeURIComponent(orgId)}/founder-review`,
+        { body: { on } },
+      ),
+    adminPilotSpend: () => call<LlmSpend>("GET", "/admin/pilot/spend"),
+    disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
+      call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }

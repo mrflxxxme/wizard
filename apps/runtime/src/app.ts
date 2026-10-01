@@ -5,6 +5,7 @@ import type { PlatformConnectorConfig } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
+import { type AiGatewayClient, httpAiGateway } from "./ai/gateway.js";
 import { clientIpOf } from "./auth/client-ip.js";
 import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
 import { readSessionToken, sessionUser } from "./auth/session.js";
@@ -44,6 +45,7 @@ import { previewRoutes } from "./preview/routes.js";
 import { MAX_WITHDRAWAL_DAYS } from "./privacy/erasure.js";
 import { defaultLegalTemplates, type LegalTemplates } from "./privacy/templates.js";
 import type { SystemEnv, SystemRegistry } from "./registry.js";
+import { aiRoutes } from "./routes/ai.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { filesRoutes } from "./routes/files.js";
@@ -100,6 +102,11 @@ export interface RuntimeAppOptions {
   version?: string;
   /** Egress allowlist inputs of the internal egress-authorize endpoint. */
   egress?: InternalOptions["egress"];
+  /**
+   * M3-02: AI gateway of the platform (runtime.yaml#ai_actions.call). Default: HTTP to WIZARD_PLATFORM_INTERNAL_URL with
+   * WIZARD_INTERNAL_TOKEN when both are set; null — AI actions answer 503 AI_UNAVAILABLE.
+   */
+  ai?: AiGatewayClient | null;
 }
 
 export interface RuntimeApp {
@@ -151,6 +158,12 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     },
     legalTemplates: o.privacy?.legalTemplates ?? defaultLegalTemplates(),
     ...(o.sandbox ? { sandbox: o.sandbox } : {}),
+    ai:
+      o.ai !== undefined
+        ? o.ai
+        : env.platformInternalUrl && env.internalToken
+          ? httpAiGateway({ url: env.platformInternalUrl, token: env.internalToken })
+          : null,
   };
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
@@ -244,6 +257,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/api/auth", loginApiRoutes(auth));
   app.route("/api/auth", authRoutes());
   app.route("/api/fn", fnRoutes());
+  app.route("/api/ai", aiRoutes());
   app.route("/api/events", eventsRoutes());
   app.route("/api/files", filesRoutes(auth.keys));
   app.route("/api/pay", payRoutes(connectors));
@@ -353,6 +367,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     ...(o.rpc ? { rpc: o.rpc } : {}),
     ...(o.version ? { version: o.version } : {}),
     ...(o.egress ? { egress: o.egress } : {}),
+    ai: () => services.ai,
   });
 
   return {

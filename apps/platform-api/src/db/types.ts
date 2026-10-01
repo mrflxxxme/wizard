@@ -391,6 +391,8 @@ export interface PilotInvitesTable {
   accepted_user_id: string | null;
   org_id: string | null;
   revoked_at: TsNull;
+  /** pilot-admin: orgs.require_founder_review set at acceptance (default true). */
+  require_founder_review: Generated<boolean>;
   created_at: TsDef;
 }
 
@@ -457,6 +459,37 @@ export interface StaffAuditLogTable {
   created_at: TsDef;
 }
 
+/** db.yaml#ai_action_calls (M3-02): one row per runtime AI call id; no record values, no model answers. */
+export interface AiActionCallsTable {
+  id: string;
+  org_id: string;
+  system_id: string;
+  env: "draft" | "prod";
+  action: string;
+  call_type: "runtime_ai_extract" | "runtime_ai_generate";
+  source: "button" | "workflow" | "backfill";
+  status: "pending" | "ok" | "error";
+  error_code: string | null;
+  credits_milli: Generated<string>;
+  finished_at: TsNull;
+  created_at: TsDef;
+}
+
+/** db.yaml#ai_backfills (M3-02): one-time fill of old records by a change card flag. */
+export interface AiBackfillsTable {
+  id: Generated<string>;
+  system_id: string;
+  env: "draft" | "prod";
+  action: string;
+  run_id: string | null;
+  status: Generated<"pending" | "done" | "failed">;
+  filled: Generated<number>;
+  skipped: Generated<number>;
+  stop_code: string | null;
+  finished_at: TsNull;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -486,6 +519,8 @@ export interface DB {
   "platform.brand_allowlist": BrandAllowlistTable;
   "platform.pilot_invites": PilotInvitesTable;
   "platform.ops_alerts": OpsAlertsTable;
+  "platform.ai_action_calls": AiActionCallsTable;
+  "platform.ai_backfills": AiBackfillsTable;
   "platform.platform_settings": PlatformSettingsTable;
   "platform.abuse_reports": AbuseReportsTable;
   "platform.staff_audit_log": StaffAuditLogTable;

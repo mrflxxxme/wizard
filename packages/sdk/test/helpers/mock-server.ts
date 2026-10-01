@@ -112,6 +112,26 @@ export function createMockRuntime() {
     return c.body(null, 204);
   });
   app.post("/api/pay/:integration", (c) => c.json({ confirmationUrl: "https://yoomoney.ru/checkout/test" }));
+  // M3-02: POST /api/ai/:action — "over_limit" answers like the runtime at the monthly limit.
+  app.post("/api/ai/:action", async (c) => {
+    const b = (await c.req.json()) as { entity: string; id: string };
+    if (c.req.param("action") === "over_limit")
+      return c.json(
+        {
+          error: {
+            code: "AI_LIMIT_REACHED",
+            message: "Лимит ИИ-действий на этот месяц исчерпан",
+            requestId: "r",
+          },
+        },
+        429,
+      );
+    return c.json({
+      item: { id: b.id, summary: "Кратко", _aiFilled: ["summary"] },
+      filled: ["summary"],
+      skipped: [],
+    });
+  });
   app.get("/_wizard/spec", (c) =>
     c.json({
       compliance: {

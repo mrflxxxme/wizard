@@ -17,6 +17,8 @@ export const CALL_TYPES = [
   "support",
 ] as const;
 export type CallType = (typeof CALL_TYPES)[number];
+/** AI actions of systems (M3-02): T0 only. */
+export type RuntimeAiCallType = "runtime_ai_extract" | "runtime_ai_generate";
 
 export type Tier = "T0" | "T1";
 export type LlmMode = "fixture" | "live" | "record";
@@ -41,10 +43,21 @@ export interface ToolCall {
   args: unknown;
 }
 
+/**
+ * Image or PDF of a multimodal call (M3-02: file fields of runtime AI actions). Base64 bytes; such a call is T0 only
+ * (models.yaml#credits.runtime_ai «мультимодальные вызовы — T0 only»): decideTier and the router guard enforce it.
+ */
+export interface LlmAttachment {
+  mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+  /** Base64 of the file bytes. */
+  data: string;
+  name?: string;
+}
+
 /** Chat message in a provider-neutral shape. reasoning_content is never part of it (models.yaml#call_policy.thinking). */
 export type LlmMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string; attachments?: LlmAttachment[] }
   | { role: "assistant"; content: string; toolCalls?: ToolCall[] }
   | { role: "tool"; toolCallId: string; toolName: string; content: unknown };
 

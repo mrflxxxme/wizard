@@ -341,6 +341,33 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
           expect(JSON.stringify(sandbox?.spec.egress)).toContain('"port":4101');
         });
 
+        it("M3-02: the runtime reaches the AI gateway of platform-api on its port only", () => {
+          const runtime = pods.find((p) => p.name === "wizard-runtime");
+          const env0 = Object.fromEntries(
+            runtime?.spec.containers[0].env.map((e: K8s) => [e.name, e.value]) ?? [],
+          );
+          expect(env0.WIZARD_PLATFORM_INTERNAL_URL).toBe(
+            "http://wizard-platform-api.wizard-platform.svc:4000",
+          );
+          const nps = of("NetworkPolicy");
+          const toApi = (n: K8s) =>
+            n.spec.egress.filter((e: K8s) =>
+              (e.to ?? []).some(
+                (t: K8s) => t.podSelector?.matchLabels?.["wizard.ru/role"] === "platform-api",
+              ),
+            );
+          const rt = nps.find((n) => n.metadata.name === "wizard-runtime");
+          expect(toApi(rt).map((e: K8s) => e.ports)).toEqual([[{ protocol: "TCP", port: 4000 }]]);
+          const api = nps.find((n) => n.metadata.name === "wizard-platform-api");
+          const fromRuntime = api.spec.ingress.filter((i: K8s) =>
+            (i.from ?? []).some((f: K8s) => f.podSelector?.matchLabels?.["wizard.ru/role"] === "runtime"),
+          );
+          expect(fromRuntime.map((i: K8s) => i.ports)).toEqual([[{ protocol: "TCP", port: 4000 }]]);
+          // Nobody else from the platform namespace gets in: worker, sandbox and egress-proxy are not admitted.
+          for (const role of ["worker", "egress-proxy", "pgbouncer"])
+            expect(JSON.stringify(api.spec.ingress)).not.toContain(`"wizard.ru/role":"${role}"`);
+        });
+
         it("HSTS with includeSubDomains everywhere; preload and ≥ 1 year on prod (L3-14)", () => {
           const mw = docs.find((d) => d.kind === "Middleware" && d.metadata.name === "wizard-hsts");
           expect(mw?.spec.headers.stsIncludeSubdomains).toBe(true);

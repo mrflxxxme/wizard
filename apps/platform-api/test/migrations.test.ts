@@ -64,11 +64,15 @@ const M2_TABLES = [
   "abuse_reports",
   "staff_audit_log",
 ];
+// M3 tables created so far (M3-02 runtime AI actions: call journal and backfills).
+const M3_TABLES = ["ai_action_calls", "ai_backfills"];
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
   ...m0,
-  ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),
+  ...Object.entries(dbYaml.tables).filter(
+    ([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n) || M3_TABLES.includes(n),
+  ),
 ];
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
@@ -135,6 +139,22 @@ describe("migrations vs db.yaml", () => {
         "system_id",
       ].sort(),
     );
+  });
+
+  test("0015: indexes for the hourly failure share (runs.finished_at) and the LLM cap month (llm_calls.created_at)", async () => {
+    const rows = await h.pg<{ indexname: string; indexdef: string }[]>`
+      select indexname, indexdef from pg_indexes
+      where schemaname = 'platform' and indexname in ('runs_finished_at_idx', 'llm_calls_created_at_idx')
+      order by indexname`;
+    expect(rows.map((r) => r.indexname)).toEqual(["llm_calls_created_at_idx", "runs_finished_at_idx"]);
+    expect(rows[1]?.indexdef).toContain("WHERE (finished_at IS NOT NULL)");
+    const plan = await h.pg.begin(async (tx) => {
+      await tx`set local enable_seqscan = off`;
+      return tx.unsafe(
+        "explain select count(*) from platform.runs where status in ('succeeded','failed') and finished_at >= now() - interval '1 hour'",
+      );
+    });
+    expect(JSON.stringify(plan)).toContain("runs_finished_at_idx");
   });
 
   test("seed_M0: dev user, local org, owner membership", async () => {

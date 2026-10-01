@@ -266,11 +266,14 @@ class Builder implements ToolEnv {
       }
       const { version } = await this.#host.store.getSpec();
       const title = this.#card.title ? `«${this.#card.title}» ` : "";
+      const target = this.#p.mode === "point_edit" ? this.#p.target : undefined;
       return {
         status: "succeeded",
         resultRevision: version,
         creditsUsed: this.#credits(),
-        summary_ru: `Система ${title}собрана и прошла проверки G0 и G1.`,
+        summary_ru: target
+          ? `Правка по клику внесена в ${target.file}; проверки G0 и G1 пройдены.`
+          : `Система ${title}собрана и прошла проверки G0 и G1.`,
         steps: this.#steps,
       };
     }

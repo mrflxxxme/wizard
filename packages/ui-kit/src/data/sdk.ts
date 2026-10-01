@@ -15,6 +15,7 @@ import { useRoleSpec } from "./context.js";
 import { toWzError, useMutationState } from "./mutation.js";
 import { titleField } from "./roleSpec.js";
 import type {
+  AiActionResult,
   AsyncResult,
   AuthApi,
   DataSource,
@@ -181,6 +182,13 @@ export function sdkDataSource(): DataSource {
             return client.request<QrCheckResponse>("POST", "/_wizard/qr/check", req);
           },
         [client, verifyFn],
+      );
+    },
+    useAiAction() {
+      const client = useSdkClient();
+      return useMutationState(
+        async (action: string, entity: string, id: string): Promise<AiActionResult> =>
+          client.runAiAction(action, entity, id),
       );
     },
     useFiles() {

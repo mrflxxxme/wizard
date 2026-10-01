@@ -3,6 +3,7 @@
 // `moderation` keeps working) and org flags. Every action is written to staff_audit_log; non-staff get 404.
 import { Hono } from "hono";
 import { z } from "zod";
+import { setOrgSuspension } from "../abuse/escalation.js";
 import {
   type AbuseDeps,
   abuseTicket,
@@ -136,13 +137,11 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
     if (b.decision === "reject" && (b.note ?? "").length < 3)
       throw invalid("Напишите владельцу, что исправить");
     const actor = c.get("user").id;
-    const ok = await decideFounderReview(d.db, {
-      systemId,
-      revision: b.revision,
-      decision: b.decision,
-      reviewer: actor,
-      note: b.note ?? null,
-    });
+    const ok = await decideFounderReview(
+      d.db,
+      { systemId, revision: b.revision, decision: b.decision, reviewer: actor, note: b.note ?? null },
+      { mailer: d.mailer, platformOrigin: d.config.platformOrigin, log: d.log },
+    );
     if (!ok) throw notFound("Ревизия на ревью");
     await staffAudit(
       d.db,
@@ -156,6 +155,16 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
       revision: b.revision,
       status: b.decision === "approve" ? "approved" : "rejected",
     });
+  });
+
+  // abuse.yaml#takedown.flow: org-wide suspension for a repeated or obvious violation, and its restore.
+  r.post("/admin/orgs/:orgId/suspension", staff, async (c) => {
+    const orgId = uuidParam(c.req.param("orgId"), "Организация");
+    const b = await jsonBody(
+      c,
+      z.object({ action: z.enum(["suspend", "restore"]), note, reportId: z.guid().optional() }),
+    );
+    return c.json(await setOrgSuspension(d, { orgId, actor: c.get("user").id, ...b }));
   });
 
   r.put("/admin/orgs/:orgId/flags", staff, async (c) => {

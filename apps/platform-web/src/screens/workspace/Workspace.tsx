@@ -7,6 +7,7 @@ import type {
   DiffChange,
   GateReport,
   LockStatus,
+  MessageTarget,
   RevisionSummary,
   RunEvent,
   SystemCard,
@@ -24,6 +25,7 @@ import { CardView, changedSections } from "./CardView.js";
 import { ChatFeed } from "./ChatFeed.js";
 import { ChangesPanel, DiffCard } from "./DiffCard.js";
 import { GateReportView, PublishCard, publishBlockers } from "./GateReport.js";
+import { TargetChip } from "./PointTarget.js";
 import { PreviewPane } from "./PreviewPane.js";
 import { QuestionCard } from "./QuestionCard.js";
 import { Rail } from "./Rail.js";
@@ -70,6 +72,8 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  // M3-01: the element picked in the preview; the next message becomes a point_edit of its file.
+  const [pointTarget, setPointTarget] = useState<MessageTarget | null>(null);
   const [pane, setPane] = useState<"chat" | "main">("chat");
   const [latestRevision, setLatestRevision] = useState<RevisionSummary | undefined>();
   const [changes, setChanges] = useState<DiffChange[] | null>(null);
@@ -242,13 +246,14 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     }
   }
 
-  async function sendMessage(t: string) {
+  async function sendMessage(t: string, target: MessageTarget | null = null) {
     const value = t.trim();
     if (!value) return;
-    const r = await act("message", () => api.postMessage(systemId, value));
+    const r = await act("message", () => api.postMessage(systemId, value, target ? { target } : undefined));
     if (!r) return;
     lastText.current = value;
     setText("");
+    if (target) setPointTarget(null);
     setRunId(r.run.id);
     await reload().catch(() => {});
   }
@@ -365,6 +370,9 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   // The newest revision known to have a preview: previewRevision catching up with g0PassedRevision is not growth.
   const previewRevision = Math.max(system.previewRevision ?? -1, run.g0PassedRevision ?? -1);
   const blockers = publishBlockers(view.publishBlockers, reports);
+  // S5 M3: a point edit needs a built system, edit rights and no run in progress.
+  const pointable = editor && stage === "ready" && !running && !locked && previewRevision > 0;
+  const chipTarget = pointable ? pointTarget : null;
   // S7: the draft is ahead of prod with real changes (an empty diff — e.g. after «Отменить» — is not a proposal).
   const showDiff = ahead && (changes === null || changes.length > 0);
   const seg: Segment = showDiff ? segment : "draft";
@@ -439,7 +447,19 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
       )}
       {stage === "ready" && (
         <>
-          <GateReportView reports={reports} />
+          <GateReportView
+            reports={reports}
+            revision={view.system.previewRevision ?? null}
+            dispute={
+              (view.publishBlockers ?? []).includes("NOT_OWNER")
+                ? undefined
+                : {
+                    send: async (revision, note) =>
+                      (await api.disputeG2Block(systemId, { revision, ...(note ? { text: note } : {}) }))
+                        .message_ru,
+                  }
+            }
+          />
           {showDiff && target !== null && prodRevision !== null && (
             <DiffCard
               revision={target}
@@ -522,6 +542,13 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
         theme={theme ?? {}}
         testData={stage === "ready"}
         {...(showDiff && target !== null ? { envLabel: ru.diff.draftTopbar(target) } : {})}
+        pointable={pointable}
+        selected={chipTarget}
+        onSelect={(t) => {
+          setPointTarget(t);
+          setPane("chat");
+          inputRef.current?.focus();
+        }}
         toolbar={
           <Button
             size="sm"
@@ -567,11 +594,19 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
         </header>
         <div className={s.chatScroll}>{chatBody}</div>
         <footer className={s.chatFoot}>
+          {chipTarget && (
+            <TargetChip
+              systemId={systemId}
+              revision={previewRevision}
+              target={chipTarget}
+              onClear={() => setPointTarget(null)}
+            />
+          )}
           <form
             className={s.composer}
             onSubmit={(e) => {
               e.preventDefault();
-              void sendMessage(text);
+              void sendMessage(text, chipTarget);
             }}
           >
             <textarea
@@ -583,9 +618,11 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
                   ? ru.workspace.viewerHint
                   : locked
                     ? ru.workspace.lockedHint
-                    : stage === "card"
-                      ? ru.workspace.inputPlaceholderCard
-                      : ru.workspace.inputPlaceholder
+                    : chipTarget
+                      ? ru.point.placeholder(chipTarget.componentName)
+                      : stage === "card"
+                        ? ru.workspace.inputPlaceholderCard
+                        : ru.workspace.inputPlaceholder
               }
               disabled={locked || readOnly}
               maxLength={8000}
@@ -595,7 +632,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  void sendMessage(text);
+                  void sendMessage(text, chipTarget);
                 }
               }}
               data-testid="chat-input"

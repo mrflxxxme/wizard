@@ -1,5 +1,6 @@
 // Semantic rules applied after the structural (zod) check. Source: specs/appspec/ops.yaml#semantic_rules.
 // Only `import type` from ./schema.js here: schema.ts imports this module at runtime.
+import { resolveAiAction } from "./ai-actions.js";
 import { err, type OpsError } from "./errors.js";
 import { isReservedName, SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
 import type { AppSpec, Entity, Field, FieldType, PermissionOp } from "./schema.js";
@@ -601,8 +602,18 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
     out,
   );
   (spec.aiActions ?? []).forEach((a, i) => {
-    if (typeof a.input.entity === "string")
-      unknownEntity(a.input.entity, ["aiActions", i, "input", "entity"]);
+    if (
+      typeof a.input.entity === "string" &&
+      !unknownEntity(a.input.entity, ["aiActions", i, "input", "entity"])
+    )
+      return;
+    // M3-02: input/output shape of ai-actions.ts (fields exist, output types the runtime can fill).
+    const r = resolveAiAction(spec, a);
+    if (r.ok) return;
+    for (const p of r.problems)
+      out.push(
+        err(p.kind === "field" ? "UNKNOWN_FIELD" : "SCHEMA_INVALID", ["aiActions", i, ...p.path], p.message),
+      );
   });
   duplicates(
     spec.acceptance,

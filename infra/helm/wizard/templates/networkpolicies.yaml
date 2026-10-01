@@ -53,6 +53,9 @@ spec:
     {{- if eq $role "platform-api" }}
     - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.ingress }} } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.platformApi.port }} }]
+    # M3-02: the runtime calls the AI gateway (/internal/v1/ai/run, internal token) — this port only.
+    - from: [{ podSelector: { matchLabels: { wizard.ru/role: runtime } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.platformApi.port }} }]
     {{- end }}
     # M2-09: /metrics only from the observability namespace (VictoriaMetrics).
     - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.observability }} } } }]
@@ -113,6 +116,9 @@ spec:
       ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.port }} }]
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: egress-proxy } } }]
       ports: [{ protocol: TCP, port: {{ .Values.egressProxy.port }} }]
+    # M3-02: AI gateway of platform-api (WIZARD_PLATFORM_INTERNAL_URL).
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: platform-api } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.platformApi.port }} }]
     - to:
         - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
           podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox } }

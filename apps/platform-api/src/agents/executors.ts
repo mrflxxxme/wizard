@@ -191,7 +191,12 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
       const qa = createHostQa(host, { milestone: o.config.milestone });
       const out = await runBuild(
         { ...host, qa },
-        { card: params.card as unknown as BuildCard, cap: params.cap, mode: params.mode },
+        {
+          card: params.card as unknown as BuildCard,
+          cap: params.cap,
+          mode: params.mode,
+          ...(params.target ? { target: params.target } : {}),
+        },
       );
       if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
       if (out.status === "cancelled") {

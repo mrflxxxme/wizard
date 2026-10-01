@@ -1,5 +1,6 @@
 // Hono environment shared by runtime routes (src/routes/*): the resolved system and request metadata.
 import type { Context } from "hono";
+import type { AiGatewayClient } from "../ai/gateway.js";
 import type { Subject } from "../data/access.js";
 import type { RuntimeEnv } from "../env.js";
 import type { ConnectorHost } from "../preview/connectors.js";
@@ -34,6 +35,8 @@ export interface RuntimeServices {
   legalTemplates?: LegalTemplates;
   /** M2 sandbox executors (workerd in gVisor, security/isolation.yaml#M2); absent → unsafe-local or disabled. */
   sandbox?: SandboxExecutors;
+  /** M3-02: the platform's AI gateway (runtime.yaml#ai_actions.call); null/absent → AI actions answer 503. */
+  ai?: AiGatewayClient | null;
 }
 
 export interface PrivacySettings {

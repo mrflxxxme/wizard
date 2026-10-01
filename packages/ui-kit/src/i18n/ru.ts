@@ -117,6 +117,12 @@ export const ru = {
     actions: "Действия",
   },
   recordCard: { notFound: "Запись не найдена", confirm: "Подтвердить", cancel: "Отмена" },
+  /** AI actions (M3-02, ui-kit.yaml#components.RecordCard). */
+  ai: {
+    filled: "заполнено ИИ",
+    done: "Готово: поля заполнены ИИ",
+    nothing: "ИИ не нашёл, чем заполнить поля",
+  },
   systemFields: { id: "Номер", created_at: "Создано", updated_at: "Изменено", created_by: "Автор" } as Record<
     string,
     string

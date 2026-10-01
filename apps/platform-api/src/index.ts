@@ -1,5 +1,16 @@
 export const APP = "@wizard/platform-api";
 
+/** abuse.yaml#takedown escalations: org-wide suspension, automatic takedown (auto_suspend), the owner's «Оспорить». */
+export {
+  AF_BLOCKERS,
+  AUTO_SUSPEND_REPORTS,
+  type AutoSuspendResult,
+  antifraudRecheck,
+  checkAutoSuspend,
+  DISPUTE_SENT_RU,
+  disputeG2Block,
+  setOrgSuspension,
+} from "./abuse/escalation.js";
 /** «Пожаловаться», takedown and staff access by ticket (security/abuse.yaml#report, #takedown; M2-08). */
 export {
   ABUSE_SLA_MS,
@@ -105,17 +116,22 @@ export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
 export { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 export { type AuthUser, checkOrgAccess } from "./http/auth.js";
 export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
-/** Founder alerts: structured log + optional WIZARD_OPS_ALERT_URL webhook (deploy.yaml#pilot.observability). */
-export { createOpsAlert, type OpsAlert, type OpsAlertFn, type OpsAlertOptions } from "./ops/alert.js";
+/**
+ * Founder alerts: structured log + optional WIZARD_OPS_ALERT_URL webhook (deploy.yaml#pilot.observability);
+ * claimOpsAlert/alertOnce — the one dedup path over db.yaml#ops_alerts.
+ */
+export {
+  alertOnce,
+  claimOpsAlert,
+  createOpsAlert,
+  type OpsAlert,
+  type OpsAlertFn,
+  type OpsAlertOptions,
+} from "./ops/alert.js";
 /** M2-09: the founder alert channel from the config (log, webhook, WIZARD_OPS_ALERT_EMAIL letter). */
 export { opsAlertFromConfig } from "./ops/alert-config.js";
 /** M2-09: founder alert «run failed rate > 20% за 1 ч» (one per clock hour). */
-export {
-  checkRunFailureRate,
-  claimOpsAlert,
-  RUN_FAIL_RATE_MIN_RUNS,
-  RUN_FAIL_RATE_THRESHOLD,
-} from "./ops/checks.js";
+export { checkRunFailureRate, RUN_FAIL_RATE_MIN_RUNS, RUN_FAIL_RATE_THRESHOLD } from "./ops/checks.js";
 /** M2-09: Prometheus metrics of platform-api and the worker (WIZARD_METRICS_PORT), DB gauges on scrape. */
 export { collectDbGauges, platformMetrics, startMetricsServer } from "./ops/metrics.js";
 /** M2-15 pilot: founder CLI (invite, plan, grant, orgs, spend) and the invite-only registration. */
@@ -134,11 +150,27 @@ export {
 } from "./pilot/invites.js";
 /** M2-09: beta_readiness (platform_settings) — partner invitations only after M2-13. */
 export {
+  BETA_READINESS_CHECKLIST_RU,
   BETA_READINESS_MISSING_RU,
   type BetaReadiness,
   getBetaReadiness,
   setBetaReadiness,
 } from "./pilot/readiness.js";
+/** Pilot operations shared by the CLI and the staff console «Пилот» (invites, orgs, grants, review flag, LLM spend). */
+export {
+  findPilotOrg,
+  grantPilotCredits,
+  type LlmSpendView,
+  listPilotInvites,
+  type PilotInviteStatus,
+  type PilotInviteView,
+  type PilotOrgRow,
+  pilotOrgs,
+  platformLlmSpend,
+  revokePilotInvite,
+  setFounderReviewRequired,
+  setPilotPlan,
+} from "./pilot/service.js";
 /** retention_cron platform part (M2-05): runtime journals → platform.deletion_log, consent notices, delete_system. */
 export { type RetentionCronDeps, type RetentionCronReport, runRetentionCron } from "./privacy/cron.js";
 export { type PurgedSystem, purgeDeletedSystems, SYSTEM_PURGE_DAYS } from "./privacy/delete-system.js";
@@ -151,11 +183,15 @@ export {
   decideFounderReview,
   type FounderReviewReason,
   type FounderReviewStatus,
+  founderReviewLetter,
   founderReviewReason,
   founderReviewStatus,
   type ModerationLog,
+  ORG_SUSPENDED_RU,
+  orgSuspended,
   pdFields,
   pendingFounderReviews,
+  type ReviewNotice,
   secretExistsFor,
 } from "./publish/moderation.js";
 export {

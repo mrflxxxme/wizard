@@ -59,11 +59,23 @@ export interface BuildHost
   managesBudget: true;
 }
 
+/** builder.yaml#point_and_edit input (M3-01). */
+export interface PointEditTarget {
+  wzId: string;
+  componentName: string;
+  file: string;
+  line: number;
+  route: string;
+  instruction: string;
+}
+
 export interface BuildParams {
   card: Record<string, unknown>;
   /** Credits cap of the run. */
   cap: number;
-  mode: "create" | "change" | "fix";
+  mode: "create" | "change" | "fix" | "point_edit";
+  /** Only mode=point_edit: the element picked in the preview; the build may change target.file only. */
+  target?: PointEditTarget;
 }
 export interface BuildOutcome {
   /** "cancelled" = user chose to stop (escalation rollback). */

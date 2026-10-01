@@ -44,6 +44,15 @@ export interface Answer {
 
 export type MessageKind = "text" | "questions" | "answers" | "card" | "run_report" | "notice";
 
+/** api.yaml#postMessage.target (M3-01): an element picked in the preview (ui-kit.yaml#wz_id). */
+export interface MessageTarget {
+  wzId: string;
+  componentName: string;
+  file: string;
+  line: number;
+  route?: string;
+}
+
 export interface Message {
   id: string;
   seq: number;
@@ -442,6 +451,8 @@ export interface AbuseTicket extends AbuseReport {
     orgId: string | null;
     prodUrl: string | null;
     suspended: boolean;
+    /** orgs.suspended_at is set (abuse.yaml#takedown.flow, org-wide suspension). */
+    orgSuspended?: boolean;
   } | null;
   access: { until: string } | null;
   journal: { action: string; note: string | null; actor: string; at: string }[];
@@ -453,6 +464,51 @@ export interface StaffSession {
   isStaff: boolean;
   mfaEnrolled: boolean;
   mfaVerifiedUntil: string | null;
+}
+
+/** api.yaml#PilotReadiness (staff console «Пилот»). */
+export interface PilotReadiness {
+  on: boolean;
+  by: string | null;
+  at: string | null;
+  note: string | null;
+  checklist: { id: string; text: string }[];
+}
+
+/** api.yaml#PilotInvite. */
+export interface PilotInvite {
+  id: string;
+  email: string;
+  orgName: string | null;
+  credits: number;
+  requireFounderReview: boolean;
+  status: "sent" | "accepted" | "expired";
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  orgId: string | null;
+}
+
+/** api.yaml#PilotOrg. */
+export interface PilotOrg {
+  id: string;
+  name: string;
+  plan: string;
+  members: number;
+  requireFounderReview: boolean;
+  creditsAvailable: number;
+  creditsSpentMonth: number;
+  modelSpendRub: number;
+}
+
+/** api.yaml#LlmSpend. */
+export interface LlmSpend {
+  month: string;
+  spentRub: number;
+  capRub: number;
+  sharePercent: number;
+  warn: boolean;
+  reached: boolean;
 }
 
 /** api.yaml#adminSystemData. */

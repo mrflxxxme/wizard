@@ -1,7 +1,8 @@
 // Staff console (/admin, M2-08; api.yaml x-auth M2, D21_beta_moderation): only staff with TOTP — enrolment (key,
 // first code, recovery codes shown once), step-up of each session, then the moderation queue by SLA, the ticket
 // (staff access to system data for 24 h, takedown / dismiss / restore with a journal note) and founder reviews before
-// prod. Non-staff see «Страница не найдена» (the API answers 404); any 403 MFA_REQUIRED returns to the code screen.
+// prod, and the «Пилот» tab (Pilot.tsx: beta_readiness, client invitations, pilot orgs, LLM spend). Non-staff see
+// «Страница не найдена» (the API answers 404); any 403 MFA_REQUIRED returns to the code screen.
 import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
@@ -22,6 +23,7 @@ import a from "../auth/Auth.module.css";
 import st from "../settings/Settings.module.css";
 import { Rail } from "../workspace/Rail.js";
 import s from "./Admin.module.css";
+import { PilotSection } from "./Pilot.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
 const isMfa = (e: unknown) => e instanceof ApiError && e.code === "MFA_REQUIRED";
@@ -287,7 +289,7 @@ function Verify({ onDone }: { onDone(): void }): ReactNode {
 function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   const { search } = useRoute();
   const reportId = search.get("report");
-  const [tab, setTab] = useState<"reports" | "reviews">("reports");
+  const [tab, setTab] = useState<"reports" | "reviews" | "pilot">("reports");
   return (
     <div className={st.shell}>
       <Rail />
@@ -317,9 +319,23 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
             >
               {ru.admin.tabReviews}
             </button>
+            <button
+              type="button"
+              className={s.tab}
+              aria-pressed={tab === "pilot"}
+              onClick={() => {
+                setTab("pilot");
+                setQueryParam("report", null);
+              }}
+              data-testid="admin-tab-pilot"
+            >
+              {ru.admin.tabPilot}
+            </button>
           </div>
         </header>
-        {tab === "reviews" ? (
+        {tab === "pilot" ? (
+          <PilotSection onMfaRequired={onMfaRequired} />
+        ) : tab === "reviews" ? (
           <Reviews onMfaRequired={onMfaRequired} />
         ) : reportId ? (
           <Ticket key={reportId} id={reportId} onMfaRequired={onMfaRequired} />
@@ -407,7 +423,7 @@ function Queue({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   );
 }
 
-type Act = "triage" | "access" | "takedown" | "dismiss" | "restore";
+type Act = "triage" | "access" | "takedown" | "dismiss" | "restore" | "org-suspend" | "org-restore";
 
 function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): ReactNode {
   const { api } = usePlatform();
@@ -416,6 +432,7 @@ function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): R
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<Act | null>(null);
   const [confirmTakedown, setConfirmTakedown] = useState(false);
+  const [confirmOrg, setConfirmOrg] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [data, setData] = useState<StaffData | null>(null);
@@ -444,14 +461,24 @@ function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): R
   async function act(kind: Act) {
     if (note.trim().length < 3) return setError(ru.admin.noteRequired);
     if (kind === "takedown" && !confirmTakedown) return setConfirmTakedown(true);
+    if (kind === "org-suspend" && !confirmOrg) return setConfirmOrg(true);
     setBusy(kind);
     setError(null);
     setNotice(null);
     try {
+      const orgId = t?.system?.orgId;
       if (kind === "access") await api.adminOpenStaffAccess(id, note.trim());
-      else await api.adminAbuseAction(id, { action: kind, note: note.trim() });
+      else if (kind === "org-suspend" || kind === "org-restore") {
+        if (!orgId) return;
+        await api.adminOrgSuspension(orgId, {
+          action: kind === "org-suspend" ? "suspend" : "restore",
+          note: note.trim(),
+          reportId: id,
+        });
+      } else await api.adminAbuseAction(id, { action: kind, note: note.trim() });
       setNote("");
       setConfirmTakedown(false);
+      setConfirmOrg(false);
       setNotice(ru.admin.done);
       await load();
     } catch (e) {
@@ -507,6 +534,11 @@ function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): R
   if (OPEN.includes(t.status) && t.system) actions.push(button("takedown", ru.admin.actTakedown, "danger"));
   if (OPEN.includes(t.status)) actions.push(button("dismiss", ru.admin.actDismiss));
   if (t.status === "takedown") actions.push(button("restore", ru.admin.actRestore, "primary"));
+  // abuse.yaml#takedown.flow: repeated violation or obvious phishing → the whole org (orgs.suspended_at).
+  if (t.system?.orgId && !t.system.orgSuspended)
+    actions.push(button("org-suspend", ru.admin.actOrgSuspend, "danger"));
+  if (t.system?.orgId && t.system.orgSuspended)
+    actions.push(button("org-restore", ru.admin.actOrgRestore, "secondary"));
 
   return (
     <>
@@ -553,6 +585,14 @@ function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): R
                     </Pill>
                   </>
                 )}
+                {t.system.orgSuspended && (
+                  <>
+                    {" "}
+                    <Pill tone="bad" testId="admin-ticket-org-suspended">
+                      {ru.admin.orgSuspended}
+                    </Pill>
+                  </>
+                )}
                 {t.system.prodUrl && (
                   <>
                     {" · "}
@@ -592,6 +632,11 @@ function Ticket({ id, onMfaRequired }: { id: string; onMfaRequired(): void }): R
             {confirmTakedown && (
               <p className={st.warn} role="alert" data-testid="admin-takedown-confirm-text">
                 {ru.admin.takedownConfirm}
+              </p>
+            )}
+            {confirmOrg && (
+              <p className={st.warn} role="alert" data-testid="admin-org-suspend-confirm-text">
+                {ru.admin.orgSuspendConfirm}
               </p>
             )}
             <div className={s.actions}>{actions}</div>

@@ -45,6 +45,11 @@ export interface Config {
   previewSecret: string | null;
   /** WIZARD_RUNTIME_INTERNAL_URL: runtime internal port (health with revision for the publish smoke; L3-19). */
   runtimeInternalUrl: string | null;
+  /**
+   * WIZARD_INTERNAL_TOKEN: X-Wizard-Internal-Token shared with the runtime (M3-02): the runtime calls the AI gateway
+   * (POST /internal/v1/ai/run), the platform calls the runtime's AI backfill. null — both are off (404).
+   */
+  internalToken: string | null;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
   buildDefaultTier: Tier;
   /**
@@ -208,6 +213,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     systemsDomain: env.WIZARD_SYSTEMS_DOMAIN || "localhost",
     previewSecret: env.WIZARD_PREVIEW_SECRET || null,
     runtimeInternalUrl: env.WIZARD_RUNTIME_INTERNAL_URL || null,
+    internalToken: env.WIZARD_INTERNAL_TOKEN || null,
     platformShop:
       env.WIZARD_PLATFORM_YOOKASSA_SHOP_ID && env.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY
         ? {

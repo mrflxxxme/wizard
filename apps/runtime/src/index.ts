@@ -4,6 +4,23 @@ export const APP = "@wizard/runtime";
 
 /** Reserved system slugs (L3-29): shared by runtime routing and platform-api slug generation. */
 export { isReservedSystemSlug, RESERVED_SYSTEM_SLUGS } from "@wizard/connectors";
+/** AI actions (runtime.yaml#ai_actions, M3-02): run on a record, `_aiFilled` meta, one-time backfill. */
+export {
+  AI_FILL_OP,
+  type AiRunOutcome,
+  aiFilledFields,
+  type BackfillReport,
+  backfillAiAction,
+  findAiAction,
+  runAiAction,
+} from "./ai/actions.js";
+/** Client of the platform AI gateway (POST /internal/v1/ai/run, X-Wizard-Internal-Token). */
+export {
+  type AiGatewayClient,
+  type AiRunRequest,
+  type AiRunResponse,
+  httpAiGateway,
+} from "./ai/gateway.js";
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
 export {
   createRuntimeApp,
@@ -164,6 +181,8 @@ export {
 } from "./registry.js";
 /** RoleSpec for GET /_wizard/spec. */
 export { buildRoleSpec, type RoleSpec } from "./rolespec.js";
+/** POST /api/ai/:action: public-role limit per client network and hour (L3-41). */
+export { AI_PUBLIC_PER_HOUR } from "./routes/ai.js";
 /** /api/files: lifetime of signed download links, uploads per hour. */
 export { FILE_LINK_TTL_MS, UPLOADS_PER_HOUR } from "./routes/files.js";
 /** M2 sandbox (security/isolation.yaml#M2): capability tokens {systemId, env, requestId, exp} of the runtime RPC. */

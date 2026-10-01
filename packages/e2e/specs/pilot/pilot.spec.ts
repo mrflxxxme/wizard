@@ -4,7 +4,10 @@
 // link opens S-auth with the address → OTP + consents → S-welcome (pilot onboarding) → a template opens S1 of the
 // pilot org; S-billing shows the plan «Пилот» and the invited credits without purchase, subscriptions or card; a
 // «форум» is built and published to prod without a card: the first publication waits for the founder's review, the
-// moderation CLI path approves it, the next attempt goes live.
+// moderation CLI path approves it, the next attempt goes live. Then the staff console «Пилот» (pilot-admin): the
+// founder (staff with TOTP) switches beta_readiness off and on again (note + second press), is refused while it is off,
+// invites a client from /admin — the client signs in by the letter's link and lands on S-welcome; the invitation turns
+// «принято» and the org shows up in the pilot table, where the founder grants credits by a reference.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
@@ -15,9 +18,20 @@ import {
   OutboxMailer,
   runPilotCli,
   SecretStore,
+  setStaff,
+  totpCode,
 } from "@wizard/platform-api";
 import { PILOT, PILOT_DB_FILE, PILOT_OUTBOX } from "../../stand/ports.js";
-import { type Api, api, builtForum, type Json, ownerOrg, setOperator, uniqueEmail } from "../m1/helpers.js";
+import {
+  type Api,
+  api,
+  builtForum,
+  devLogin,
+  type Json,
+  ownerOrg,
+  setOperator,
+  uniqueEmail,
+} from "../m1/helpers.js";
 
 const WEB = `http://localhost:${PILOT.web}`;
 
@@ -234,4 +248,115 @@ test("сборка «форума» и публикация в prod без пр�
   // No card was ever bound.
   expect((await a.req("GET", `/orgs/${orgId}`)).body.cardBound).toBe(false);
   await page.close();
+});
+
+test("консоль «Пилот»: готовность беты, приглашение клиента из /admin → вход клиента → S-welcome", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  // The founder's account as on the pilot (bootstrap Job: one invitation, then is_staff after the first sign-in).
+  const founder = uniqueEmail("pilot-founder");
+  await withStandDb(async (h) => {
+    await h.db
+      .insertInto("platform.pilot_invites")
+      .values({ email: founder, credits: 0, expires_at: new Date(Date.now() + 86_400_000) })
+      .execute();
+  });
+  const staffCtx = await browser.newContext({ baseURL: WEB, locale: "ru-RU" });
+  await devLogin(staffCtx, founder, WEB);
+  await withStandDb((h) => setStaff(h.db, founder, true));
+  const admin = await staffCtx.newPage();
+  await admin.goto("/admin");
+  await admin.getByTestId("admin-mfa-start").click();
+  const secret = (await admin.getByTestId("admin-mfa-secret").getAttribute("data-secret")) ?? "";
+  await admin.getByTestId("admin-mfa-code").fill(totpCode(secret));
+  await admin.getByTestId("admin-mfa-confirm").click();
+  await admin.getByTestId("admin-recovery-done").click();
+  await admin.getByTestId("admin-tab-pilot").click();
+
+  // beta_readiness was recorded by the CLI above (same flag): who/when are shown; switching off is one press.
+  const readiness = admin.getByTestId("admin-pilot-readiness");
+  await expect(readiness).toHaveAttribute("data-on", "true");
+  await expect(admin.getByTestId("admin-pilot-readiness-by")).toContainText("Переключил e2e");
+  await expect(admin.getByTestId("admin-pilot-checklist").locator("li")).toHaveCount(6);
+  await admin.getByTestId("admin-pilot-readiness-toggle").click();
+  await expect(readiness).toHaveAttribute("data-on", "false");
+
+  // While it is off the invitation is refused with the same Russian text as the CLI.
+  const client = uniqueEmail("pilot-client");
+  await admin.getByTestId("admin-pilot-invite-email").fill(client);
+  await admin.getByTestId("admin-pilot-invite-org").fill("Пекарня «Колос»");
+  await admin.getByTestId("admin-pilot-invite-credits").fill("40");
+  await admin.getByTestId("admin-pilot-invite-submit").click();
+  await expect(admin.getByTestId("admin-pilot-invite-error")).toContainText(
+    "Приглашать партнёров пока нельзя",
+  );
+  expect(letters(client, "invite")).toHaveLength(0);
+
+  // On: a note and a second press with the consequences.
+  await admin.getByTestId("admin-pilot-readiness-note").fill("M2-13: РКН, юрист, поручения — готово");
+  await admin.getByTestId("admin-pilot-readiness-toggle").click();
+  await expect(admin.getByTestId("admin-pilot-readiness-confirm-text")).toContainText("Нажмите ещё раз");
+  await admin.getByTestId("admin-pilot-readiness-toggle").click();
+  await expect(readiness).toHaveAttribute("data-on", "true");
+  await expect(admin.getByTestId("admin-pilot-readiness-by")).toContainText(`Переключил ${founder}`);
+
+  // The invitation from the console (the form kept the address).
+  await expect(admin.getByTestId("admin-pilot-invite-review")).toBeChecked();
+  await admin.getByTestId("admin-pilot-invite-submit").click();
+  await expect(admin.getByTestId("admin-pilot-invite-done")).toContainText(client);
+  const row = admin.getByTestId("admin-pilot-invite-row").filter({ hasText: client });
+  await expect(row).toHaveAttribute("data-status", "sent");
+  const letter = await lastLetter(client, "invite");
+  const link = letter.match(/https?:\/\/\S+/)?.[0] ?? "";
+  expect(link).toBe(`${WEB}/login?email=${encodeURIComponent(client)}&next=%2Fwelcome`);
+  await expect(admin.getByTestId("admin-pilot-invite-link")).toHaveText(link);
+
+  // The client signs in by the link → S-welcome of the pilot org.
+  const clientCtx = await browser.newContext({ baseURL: WEB, locale: "ru-RU" });
+  const page = await clientCtx.newPage();
+  await page.goto(link);
+  await expect(page.getByTestId("auth-email")).toHaveValue(client);
+  const code = await requestCode(page, client);
+  await page.getByTestId("auth-code").fill(code);
+  await page.getByTestId("auth-submit").click();
+  await page.getByTestId("auth-offer").check();
+  await page.getByTestId("auth-pd-consent").check();
+  await page.getByTestId("auth-submit").click();
+  await expect(page).toHaveURL(`${WEB}/welcome`);
+  await expect(page.getByTestId("welcome-org")).toContainText("Пекарня «Колос»");
+  await expect(page.getByTestId("welcome-credits")).toContainText("Сейчас доступно: 40 кредитов");
+  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит модератор");
+
+  // The console: the invitation is accepted, the org is in the pilot table; a grant by reference.
+  await admin.reload();
+  await admin.getByTestId("admin-tab-pilot").click();
+  await expect(admin.getByTestId("admin-pilot-invite-row").filter({ hasText: client })).toHaveAttribute(
+    "data-status",
+    "accepted",
+  );
+  const org = admin.getByTestId("admin-pilot-org-row").filter({ hasText: "Пекарня «Колос»" });
+  await expect(org.getByTestId("admin-pilot-org-available")).toHaveText("40");
+  await expect(org.getByTestId("admin-pilot-org-review")).toBeChecked();
+  await org.getByTestId("admin-pilot-grant-credits").fill("10");
+  await org.getByTestId("admin-pilot-grant-reference").fill("e2e договор 1");
+  await org.getByTestId("admin-pilot-grant").click();
+  await expect(org.getByTestId("admin-pilot-org-notice")).toHaveText("Начислено. Доступно: 50 кр.");
+  await expect(admin.getByTestId("admin-pilot-spend")).toHaveAttribute("data-warn", "false");
+  const journal = await withStandDb((h) =>
+    h.db
+      .selectFrom("platform.staff_audit_log")
+      .select(["action"])
+      .where("action", "like", "pilot_%")
+      .orderBy("id")
+      .execute(),
+  );
+  expect(journal.map((j) => j.action)).toEqual([
+    "pilot_readiness_off",
+    "pilot_readiness_on",
+    "pilot_invite",
+    "pilot_grant",
+  ]);
+  await clientCtx.close();
+  await staffCtx.close();
 });

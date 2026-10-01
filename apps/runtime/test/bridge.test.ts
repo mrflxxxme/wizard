@@ -131,7 +131,7 @@ describe("bridge.js", () => {
     f.send({ ...msg, wz: 2 });
     f.send("apply-theme-tokens");
     f.send({ wz: 1, type: "toString", payload: {} });
-    f.send({ wz: 1, type: "select-mode", payload: { enabled: true } });
+    f.send({ wz: 1, type: "select-all", payload: { enabled: true } });
     f.send(
       { wz: 1, type: "set-role", payload: { role: "organizer", url: "/_wizard/dev-login?role=organizer" } },
       "null",

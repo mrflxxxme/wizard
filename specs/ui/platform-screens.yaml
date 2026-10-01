@@ -4,10 +4,10 @@
 # specs/agents/orchestrator.yaml. Здесь — что видит пользователь, откуда данные и как это проверить.
 version: 1
 app: apps/platform-web
-tasks: [M0-16, M0-30, M1-08, M1-11, M1-12, M2-11, M3-01]   # M0-30: метка модели сборки по итогу eval (F2); M1-11: S10, публикация S6, M1-части S1/S3/S4/S7, S-auth, S-invite; M1-12: UI импорта; M2-11: S-billing, карта, выгрузка, блок «Персональные данные» (L4-02)
+tasks: [M0-16, M0-30, M1-08, M1-11, M1-12, M2-08, M2-09, M2-11, M2-15, M3-01]   # M0-30: метка модели сборки по итогу eval (F2); M1-11: S10, публикация S6, M1-части S1/S3/S4/S7, S-auth, S-invite; M1-12: UI импорта; M2-08: S-abuse, S-admin; M2-09: S-welcome; M2-11: S-billing, карта, выгрузка, блок «Персональные данные» (L4-02); M2-15: пилот (оплата выключена, вход по приглашению)
 
 stack:
-  - "React 19 + Vite 7, TypeScript strict. Роутер — свой минимальный на History API (≤ 10 маршрутов); сторонний — только с обоснованием в PR"
+  - "React 19 + Vite 7, TypeScript strict. Роутер — свой минимальный на History API (≤ 12 маршрутов: /, /login, /invite/:token, /legal/:doc, /s/:id, /s/:id/code, /s/:id/settings, /s/:id/import/:importId, /billing, /welcome, /abuse, /admin. До M2 было ≤ 10: публичная форма жалобы, консоль staff и онбординг пилота — отдельные маршруты, потому что у каждого свой доступ (без входа, staff с MFA, пилот); тикет и вкладки консоли — параметр ?report=, а не маршруты); сторонний — только с обоснованием в PR"
   - "Компоненты и токены — @wizard/ui-kit (Button, Badge, Field, themeToTokens) с темой платформы; CSS modules + --w-*"
   - "Весь текст — русский (src/i18n/ru.ts); ошибки API показываются из Error.message_ru; data-testid по таблицам ниже. Допустимы короткие латинские метки DRAFT, PROD, G0, G1, G2 — всегда с русской подсказкой (title/aria-label: «Черновик», «Опубликовано», «Проверки уровня N»); для нетехнических экранов SHOULD «Черновик»/«Опубликовано» (L4-22)"
   - "Авторизация: M0 — заголовок X-Wizard-Dev-User; M1 — cookie __Host-wizard_session + X-Wizard-CSRF на мутациях (api.yaml#info.x-auth); мутации с Idempotency-Key (uuid на клик)"
@@ -112,6 +112,8 @@ screens:
       submitting: "кнопка loading → /s/:system.id"
       no_systems: "блок систем скрыт"
       error: "role=alert с message_ru; 402 INSUFFICIENT_CREDITS → «Пополнить» (→ S-billing); текст промпта сохраняется"
+    rules:
+      - "M2-09: /?template=<id> (переход с S-welcome) — шаблон выбран и заготовка промпта подставлена; у org на тарифе pilot — ссылка «Как устроен пилот» (start-pilot-about → /welcome; в test_ids не входит: рендерится только у пилотных org)"
     test_ids: [start-prompt, start-submit, start-template-<id>, start-upload, start-policy, start-ru-only, start-credits, start-system-card]
     acceptance:
       - "Playwright (fixture): бриф «форум» → «Начать» → URL /s/<id>, в ленте сообщение пользователя"
@@ -223,9 +225,10 @@ screens:
       main: "превью с пилюлей «DRAFT · тестовые данные» и переключателем ролей"
     data: ["GET /systems/:id/gates/latest → {revision, reports: GateReport[]}", "GET /systems/:id (publishBlockers)", "POST /systems/:id/publish {revision, confirmDiff: true} (M1)", "M2: GET /orgs/:orgId (Org.cardBound — статус карты видят все роли; getBilling только для owner)"]
     rules:
-      - "MUST: «Опубликовать» disabled при непустом publishBlockers; подсказка по коду: GATES_FAILED «Не пройдены проверки: G1», NOT_OWNER «Публикует владелец», CARD_BINDING_REQUIRED «Привяжите карту РФ» (→ S-billing), OPERATOR_NAME_REQUIRED / OPERATOR_CONTACT_REQUIRED / OPERATOR_ADDRESS_REQUIRED «Укажите оператора ПДн» (→ S10, блок «Персональные данные»; L4-09), PHONE_LOGIN_PLAN_REQUIRED «Вход по телефону доступен на тарифах Старт и Бизнес» (→ S-billing), PLAN_LIMIT «Лимит опубликованных систем тарифа», FOUNDER_REVIEW_PENDING «Ждёт проверки», SYSTEM_SUSPENDED «Система снята по жалобе»"
+      - "MUST: «Опубликовать» disabled при непустом publishBlockers; подсказка по коду: GATES_FAILED «Не пройдены проверки: G1», NOT_OWNER «Публикует владелец», CARD_BINDING_REQUIRED «Привяжите карту РФ» (→ S-billing), OPERATOR_NAME_REQUIRED / OPERATOR_CONTACT_REQUIRED / OPERATOR_ADDRESS_REQUIRED «Укажите оператора ПДн» (→ S10, блок «Персональные данные»; L4-09), PHONE_LOGIN_PLAN_REQUIRED «Вход по телефону доступен на тарифах Старт и Бизнес» (→ S-billing), PLAN_LIMIT «Лимит опубликованных систем тарифа», FOUNDER_REVIEW_PENDING «Ждёт проверки», SYSTEM_SUSPENDED «Система снята по жалобе», ORG_SUSPENDED «Публикации организации приостановлены — подробности в письме владельцу»"
       - "M2-11: ссылки блокеров — OPERATOR_* и INN_INVALID → S10 #pd (publish-to-settings); CARD_BINDING_REQUIRED, PHONE_LOGIN_PLAN_REQUIRED, PLAN_LIMIT → /billing (publish-to-billing, «Привязать карту» / «Тариф и оплата»); FOUNDER_REVIEW_PENDING — пояснение без ссылки (исправлять в интерфейсе нечего). publish-card-status несёт data-bound (true|false); при CARD_BINDING_REQUIRED — «Для публикации в prod нужна привязанная карта российского банка»"
       - "MUST: 403/422 от publish показываются как message_ru; UI не считается защитой (D8, D11)"
+      - "«Оспорить» (abuse.yaml#rescan, messages_ru.G2-AF-*): в строке G2 отчёта с проваленным блокером G2-AF-01…07 владелец видит пояснение и кнопку gate-dispute → необязательный комментарий gate-dispute-text → gate-dispute-send (POST /systems/:id/disputes {revision, text?}) → gate-dispute-sent с текстом abuse.yaml#messages_ru.dispute; ошибка — gate-dispute-error. Не владельцу (NOT_OWNER в publishBlockers) кнопка не показывается. В test_ids не входит: рендерится только при провале антифрода"
       - "Публикация — прогон kind=publish в ленте; run_finished.prodUrl → ссылка и пилюля «prod · ревизия N»"
     test_ids: [gate-report, gate-report-row-<level>, gate-warning, publish-card, publish-address, publish-card-status, publish-blocker, publish-submit, chat-edit]   # M2-11 ссылки блокеров publish-to-settings и publish-to-billing — в rules (рендерятся только при блокерах M2)
     acceptance:
@@ -308,6 +311,9 @@ screens:
       form: "email → «Получить код» → 6 цифр; для нового пользователя — два раздельных неотмеченных чекбокса: оферта (acceptOffer) и согласие на обработку ПДн (pdConsent) со ссылками на документы (compliance.yaml#platform)"
     data: ["POST /auth/otp/request {email}", "POST /auth/otp/verify {email, code, acceptOffer?, pdConsent?}", "GET /me"]
     rules: ["MUST: запрос кода всегда показывает «Если адрес верный, код отправлен» (204 не раскрывает аккаунт)", "422 CONSENT_REQUIRED → ошибка у соответствующего чекбокса; 429 → «Слишком много попыток»", "next после входа — только путь (^/(?![/\\\\]))"]
+    notes:
+      - "M2-15: /login?email=<адрес> подставляет адрес (ссылка из письма приглашения основателя); M2-09: ссылка приглашения — /login?email=…&next=%2Fwelcome"
+      - "M2-15 (WIZARD_REGISTRATION=invite): verifyOtp нового адреса без приглашения → 403 REGISTRATION_INVITE_ONLY, message_ru показывается в auth-error (до чекбоксов согласий дело не доходит)"
     test_ids: [auth-email, auth-request-code, auth-code, auth-offer, auth-pd-consent, auth-submit, auth-error]
     acceptance: ["M1 Playwright (dev-sender): новый email → оба чекбокса обязательны; вход → S1"]
 
@@ -335,10 +341,55 @@ screens:
       card: "«Привязать карту РФ» → confirmationUrl; статус «✓ Карта РФ привязана — идентификация пройдена» (last4); CARD_NOT_RU → «Нужна карта российского банка»; CARD_BINDING_REJECTED → «Эту карту привязать не получилось…» (причина не раскрывается, L3-28)"
       return: "M2-11: возврат из ЮKassa — /billing?payment=<payments.id> (return_url платформы): «Проверяем оплату…» (billing-checking), опрос GET billing и баланса раз в 1 с до 40 раз, пока Billing.cardBinding.status = pending; затем параметр убирается из URL. Статуса отдельного платежа в API нет: опоздавшая докупка видна при следующем открытии"
     data: ["GET /orgs/:orgId/credits", "GET /orgs/:orgId/credits/ledger", "GET /orgs/:orgId/billing", "POST /orgs/:orgId/billing/card-binding", "PUT|DELETE /orgs/:orgId/billing/subscription", "POST /orgs/:orgId/billing/topups"]
+    notes:
+      - "M2-15 (WIZARD_PAYMENTS=off, Org.paymentsEnabled = false): нет покупки, подписок и карты — скрыты «Сменить тариф», «Отменить подписку», выбор тарифа, блок «Карта» и «Докупить»; тариф, баланс с корзинами и журнал видны; плашка billing-payments-off «Оплата на пилоте отключена: тариф и кредиты назначает команда Wizard. Публикация в prod — без привязки карты». Денежные кнопки появляются только после ответа GET /orgs/:orgId"
+      - "M2-09: на тарифе pilot блок «Докупить» скрыт и при включённой оплате (billing.yaml#plans.topup.available_on; API — 403 FORBIDDEN); корзина topup на pilot подписана «от команды Wizard»"
     rules: ["MUST: действия с деньгами — только owner; editor/viewer видят тариф и баланс (Org.plan, Org.cardBound из GET /orgs/:orgId), кнопки disabled с подсказкой; GET billing для них не запрашивается", "Суммы кредитов показываются с одним знаком после запятой (billing.yaml#credit.unit)", "Переход на оплату — только http(s) confirmationUrl (L3-17). Докупка и смена тарифа с привязанной картой проходят сразу: «Начислено N кредитов» / «Тариф «X» оформлен» / «…начнёт действовать со следующего периода»", "«Отменить подписку» — подтверждение «Отменить подписку? Автоплатёж выключится сразу, тариф действует до <дата>»; при выключенном автопродлении или ожидающем даунгрейде кнопка — «Возобновить автопродление» (PUT с тем же тарифом)", "Каталог тарифов для «Сменить тариф» — копия billing.yaml#plans в platform-web (getBilling отдаёт лимиты только текущего тарифа)"]
-    test_ids: [billing-org, billing-plan, billing-plan-status, billing-change-plan, billing-plans, billing-plan-<plan>, billing-plan-<plan>-submit, billing-cancel, billing-cancel-confirm, billing-cancel-yes, billing-cancel-no, billing-balance, billing-available, billing-bucket, billing-topup, billing-topup-packs, billing-ledger, billing-ledger-row, billing-ledger-more, billing-card, billing-card-status, billing-card-error, billing-card-bind, billing-checking, billing-notice, billing-error]
+    test_ids: [billing-payments-off, billing-org, billing-plan, billing-plan-status, billing-change-plan, billing-plans, billing-plan-<plan>, billing-plan-<plan>-submit, billing-cancel, billing-cancel-confirm, billing-cancel-yes, billing-cancel-no, billing-balance, billing-available, billing-bucket, billing-topup, billing-topup-packs, billing-ledger, billing-ledger-row, billing-ledger-more, billing-card, billing-card-status, billing-card-error, billing-card-bind, billing-checking, billing-notice, billing-error]
     test_attrs: "billing-plan[data-plan], billing-plan-status[data-status], billing-available[data-value — число API], billing-bucket[data-source], billing-ledger-row[data-kind], billing-card-status[data-status: bound|none|pending|loading], settings-export-status[data-status], settings-deletion-row[data-mode, data-env], publish-card-status[data-bound]"
     acceptance: ["M2-07 e2e (тестовый магазин): привязка карты RU → billing-card-status «привязана»; карта не RU → сообщение CARD_NOT_RU; S6 publish-blocker CARD_BINDING_REQUIRED исчезает"]
+
+  - id: S-welcome
+    mockup: "—"
+    name: "Онбординг пилота"
+    route: "/welcome"
+    milestone: M2   # задача M2-09 (D24_pilot_free)
+    regions:
+      intro: "заголовок и организация пилота; что бесплатно (welcome-free), сколько кредитов начислено (welcome-credits, GET /orgs/:orgId/credits), лимиты пилота (welcome-limits: 5 prod, 30 черновиков, 30 участников, вход по почте и Telegram), первая публикация проходит ревью (welcome-review), данные хранятся в РФ"
+      start: "шаблоны (welcome-template-<id> → /?template=<id>) и «Описать свою систему» (welcome-start → /)"
+    data: ["GET /me", "GET /orgs/:orgId", "GET /orgs/:orgId/credits"]
+    rules: ["Org не на тарифе pilot → сразу S1 (replace)", "Ссылка приглашения основателя ведёт сюда через /login?email=…&next=%2Fwelcome"]
+    test_ids: [welcome-title, welcome-org, welcome-free, welcome-credits, welcome-limits, welcome-review, welcome-template-<id>, welcome-start]
+    acceptance: ["M2-09 Playwright pilot: приглашение → вход → S-welcome → шаблон → S1 с выбранным шаблоном"]
+
+  - id: S-abuse
+    mockup: "—"
+    name: "«Пожаловаться» — публичная форма жалобы"
+    route: "/abuse?url=<адрес страницы>"
+    milestone: M2   # задача M2-08 (security/abuse.yaml#report)
+    regions:
+      form: "адрес (abuse-url, из ?url= — ссылку «Пожаловаться» вставляет runtime в каждый документ prod), категория (abuse-category), описание (abuse-text), почта (abuse-contact, необязательно) и отдельный чекбокс согласия (abuse-consent — появляется, только если почта введена), «Отправить» (abuse-submit)"
+      done: "abuse-done: «Жалоба отправлена. Мы рассмотрим её в течение 24 часов.» — статус системы не раскрывается"
+    data: ["POST /abuse-reports (без входа, api.yaml#createAbuseReport)"]
+    rules: ["Без входа (PUBLIC_ROUTES)", "Почта без согласия → ошибка у формы (abuse-error), запрос не отправляется; 400/429 → message_ru в abuse-error"]
+    test_ids: [abuse-page, abuse-form, abuse-url, abuse-category, abuse-text, abuse-contact, abuse-consent, abuse-submit, abuse-error, abuse-done]
+    acceptance: ["M2-08 Playwright m1/abuse.spec.ts: посетитель prod → «Пожаловаться» → форма → тикет в /admin"]
+
+  - id: S-admin
+    mockup: "—"
+    name: "Консоль staff: модерация, ревью и пилот"
+    route: "/admin (тикет — ?report=<id>)"
+    milestone: M2   # задача M2-08 (api.yaml x-auth M2, D21_beta_moderation)
+    regions:
+      access: "не staff (API 404) → admin-not-found «Страница не найдена»; без сессии → /login?next=/admin; подключение TOTP (admin-enroll: admin-mfa-start → ключ base32 группами по 4 admin-mfa-secret и ссылка otpauth admin-mfa-otpauth → admin-mfa-code + admin-mfa-confirm → 10 кодов восстановления один раз admin-recovery-codes, admin-recovery-done); подтверждение сессии (admin-verify: код или код восстановления — admin-mfa-toggle, admin-mfa-recovery, admin-mfa-verify, admin-mfa-error). Любой MFA_REQUIRED возвращает на экран кода"
+      queue: "вкладки admin-tab-reports / admin-tab-reviews; очередь admin-queue (фильтр статуса admin-queue-filter), строки admin-report-row с таймером SLA admin-report-sla («осталось N ч M мин» / «просрочено на …»)"
+      ticket: "admin-ticket[data-status]: статус admin-ticket-status, SLA admin-ticket-sla, адрес admin-ticket-url, система admin-ticket-system (пилюли admin-ticket-suspended, admin-ticket-org-suspended), доступ к данным admin-ticket-access; комментарий для журнала admin-note обязателен (≥ 3 символов); действия admin-act-<triage|access|takedown|dismiss|restore|org-suspend|org-restore>; снятие и приостановка организации требуют второго нажатия с текстом последствий (admin-takedown-confirm-text, admin-org-suspend-confirm-text); итог admin-ticket-notice, ошибка admin-ticket-error; данные системы (только при открытом доступе, без полей ПДн) admin-data, admin-data-entity, admin-data-table; журнал admin-journal-row (тикет, система, организация)"
+      reviews: "admin-reviews: строки admin-review-row, комментарий admin-review-note (обязателен для отказа), admin-review-approve / admin-review-reject; владелец получает письмо о решении"
+      pilot: "вкладка admin-tab-pilot → admin-pilot (pilot-admin; те же функции, что CLI `pilot`): готовность беты admin-pilot-readiness[data-on] — состояние admin-pilot-readiness-state, кто и когда admin-pilot-readiness-by, чек-лист admin-pilot-checklist (РКН, юрист, поручения, Z.ai, docs/security — текст из API), заметка admin-pilot-readiness-note, admin-pilot-readiness-toggle; включение требует заметку ≥ 3 символов и второго нажатия с текстом admin-pilot-readiness-confirm-text, ошибка admin-pilot-readiness-error; расход платформы на модели admin-pilot-spend[data-warn][data-reached] (admin-pilot-spend-value «месяц: N ₽ из лимита (P %)», предупреждение admin-pilot-spend-warn с 80 %); приглашение admin-pilot-invite: admin-pilot-invite-email, admin-pilot-invite-org, admin-pilot-invite-credits, admin-pilot-invite-review (ревью основателя, по умолчанию вкл), admin-pilot-invite-submit, итог admin-pilot-invite-done со ссылкой admin-pilot-invite-link, отказ API (в т. ч. без beta_readiness) admin-pilot-invite-error; список admin-pilot-invites: строки admin-pilot-invite-row[data-status=sent|accepted|expired], статус admin-pilot-invite-status («ждёт входа» / «принято» / «истекло»), admin-pilot-invite-revoke только у sent; организации admin-pilot-orgs: строки admin-pilot-org-row[data-id] (организация, тариф, участники, доступно кр. admin-pilot-org-available, списано кр. за месяц, модели ₽ за месяц из лимита платформы), флаг ревью admin-pilot-org-review, начисление admin-pilot-grant-credits + admin-pilot-grant-reference (основание обязательно) + admin-pilot-grant, итог admin-pilot-org-notice, ошибка admin-pilot-org-error"
+    data: ["GET /admin/session", "POST /admin/mfa/enroll|confirm|verify", "GET /admin/abuse-reports", "GET /admin/abuse-reports/:id", "POST /admin/abuse-reports/:id/actions|access", "GET /admin/abuse-reports/:id/data", "POST /admin/orgs/:orgId/suspension", "GET /admin/founder-reviews", "POST /admin/systems/:id/founder-review", "GET|PUT /admin/pilot/readiness", "GET|POST /admin/pilot/invites", "POST /admin/pilot/invites/:inviteId/revoke", "GET /admin/pilot/orgs", "POST /admin/pilot/orgs/:orgId/grants", "PUT /admin/pilot/orgs/:orgId/founder-review", "GET /admin/pilot/spend"]
+    rules: ["QR-код otpauth не рисуется (нет зависимости): ключ для ручного ввода и ссылка", "Тикет category=auto_g2 — это «Оспорить» владельца: при «Отклонить» комментарий уходит владельцу письмом как ответ модератора"]
+    test_ids: [admin-not-found, admin-enroll, admin-mfa-start, admin-mfa-secret, admin-mfa-otpauth, admin-mfa-code, admin-mfa-confirm, admin-recovery-codes, admin-recovery-done, admin-verify, admin-mfa-toggle, admin-mfa-recovery, admin-mfa-verify, admin-mfa-error, admin-console, admin-tab-reports, admin-tab-reviews, admin-queue, admin-queue-filter, admin-report-row, admin-report-sla, admin-back, admin-ticket, admin-ticket-status, admin-ticket-sla, admin-ticket-url, admin-ticket-system, admin-ticket-suspended, admin-ticket-org-suspended, admin-ticket-access, admin-note, admin-act-<action>, admin-takedown-confirm-text, admin-org-suspend-confirm-text, admin-ticket-notice, admin-ticket-error, admin-data, admin-data-entity, admin-data-table, admin-journal-row, admin-reviews, admin-review-row, admin-review-note, admin-review-approve, admin-review-reject, admin-tab-pilot, admin-pilot, admin-pilot-readiness, admin-pilot-readiness-state, admin-pilot-readiness-by, admin-pilot-checklist, admin-pilot-readiness-note, admin-pilot-readiness-toggle, admin-pilot-readiness-confirm-text, admin-pilot-readiness-error, admin-pilot-spend, admin-pilot-spend-value, admin-pilot-spend-warn, admin-pilot-invite, admin-pilot-invite-email, admin-pilot-invite-org, admin-pilot-invite-credits, admin-pilot-invite-review, admin-pilot-invite-submit, admin-pilot-invite-done, admin-pilot-invite-link, admin-pilot-invite-error, admin-pilot-invites, admin-pilot-invite-row, admin-pilot-invite-status, admin-pilot-invite-revoke, admin-pilot-orgs, admin-pilot-org-row, admin-pilot-org-available, admin-pilot-org-review, admin-pilot-grant-credits, admin-pilot-grant-reference, admin-pilot-grant, admin-pilot-org-notice, admin-pilot-org-error]
+    acceptance: ["M2-08 Playwright m1/abuse.spec.ts: staff подключает TOTP → очередь → triage → takedown → prod 451 → restore → 200", "DOM apps/platform-web/test/admin.dom.test.ts: приостановка организации — со вторым нажатием", "pilot-admin Playwright pilot/pilot.spec.ts: staff с TOTP выключает и включает готовность беты (заметка и второе нажатие) → приглашает клиента из /admin (отказ без готовности) → клиент входит по ссылке из письма → /welcome; приглашение «принято», организация в таблице пилота", "pilot-admin DOM apps/platform-web/test/admin-pilot.dom.test.ts, API apps/platform-api/test/admin-pilot.test.ts (не staff 404, без MFA 403, staff_audit_log на каждое действие, шлюз beta_readiness)"]
 
   - id: S-import
     mockup: "—"

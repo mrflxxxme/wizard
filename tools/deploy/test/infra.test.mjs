@@ -11,11 +11,14 @@ import {
   kubeconfigText,
   loadProvider,
   main,
+  openTunnel,
   parseArgs,
   preflight,
   profileChain,
   registrySecret,
   requiredEnv,
+  smokeWithRetry,
+  TUNNEL_PORT,
   tofuEnv,
   valueFiles,
   waitForImages,
@@ -278,6 +281,70 @@ describe("infra.mjs", () => {
       },
     );
     expect(pub).toContain("server: https://203.0.113.5:6443");
+    // Pilot from a GitHub-hosted runner: SSH to the public address, the API through the local tunnel end.
+    const sshTo = [];
+    const tun = await kubeconfigText(
+      { k3s_server: { value: { private_ip: "192.168.10.10", public_ip: "203.0.113.5" } } },
+      {
+        run: (_cmd, args) => {
+          sshTo.push(args.at(-2));
+          return { status: 0, stdout: "server: https://127.0.0.1:6443\n" };
+        },
+        vars: { WIZARD_SSH_KEY_FILE: "/k", WIZARD_K3S_ACCESS: "tunnel" },
+        log: () => {},
+        dryRun: true,
+        kubeDir: "/tmp/x",
+      },
+    );
+    expect(tun).toContain(`server: https://127.0.0.1:${TUNNEL_PORT}`);
+    expect(sshTo).toEqual(["root@203.0.113.5"]);
+  });
+
+  it("tunnel: a background control master with a forward to the API only, closed through its socket", () => {
+    const calls = [];
+    const close = openTunnel({
+      run: (cmd, args, o) => calls.push({ cmd, args: args.join(" "), stdio: o.stdio }),
+      vars: { WIZARD_SSH_KEY_FILE: "/k" },
+      ip: "203.0.113.5",
+      kubeDir: "/w",
+    });
+    expect(calls[0].args).toContain("-f -N -M -S /w/k3s-tunnel.sock -E /w/k3s-tunnel.log");
+    expect(calls[0].args).toContain(`-L 127.0.0.1:${TUNNEL_PORT}:127.0.0.1:6443 root@203.0.113.5`);
+    expect(calls[0].stdio).toBe("ignore");
+    close();
+    expect(calls[1].args).toBe("-S /w/k3s-tunnel.sock -O exit root@203.0.113.5");
+  });
+
+  it("smoke is retried while certificates are issued, then fails with the last reason", async () => {
+    let n = 0;
+    const ok = (status) => ({
+      status,
+      headers: { get: () => "max-age=63072000; includeSubDomains; preload" },
+    });
+    const f = async (url) => {
+      n++;
+      if (n <= 2) throw new TypeError("fetch failed");
+      return ok(url.endsWith("/") ? 200 : 404);
+    };
+    const logs = [];
+    await smokeWithRetry(
+      { platform: "p.ru", systems: "s.ru" },
+      { log: (s) => logs.push(s), attempts: 5, sleep: async () => {}, f },
+    );
+    expect(logs.filter((l) => l.includes("повтор"))).toHaveLength(2);
+    await expect(
+      smokeWithRetry(
+        { platform: "p.ru", systems: "s.ru" },
+        {
+          log: () => {},
+          attempts: 2,
+          sleep: async () => {},
+          f: async () => {
+            throw new TypeError("fetch failed");
+          },
+        },
+      ),
+    ).rejects.toThrow(/fetch failed/);
   });
 
   it("the release takes registry, domains, networks, S3 and the PG host from tofu outputs", () => {

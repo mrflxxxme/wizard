@@ -60,7 +60,7 @@ paths:
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
                   activeRunId: {type: [string, 'null'], format: uuid}
-                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED, ORG_SUSPENDED]}, description: 'M1+; пусто — публиковать можно. ORG_SUSPENDED — orgs.suspended_at (abuse.yaml#takedown.flow)'}
         '404': {$ref: '#/components/responses/Error'}
     delete:
       operationId: deleteSystem
@@ -280,7 +280,7 @@ paths:
       operationId: publish
       x-milestone: M1
       x-roles: [owner]
-      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve)'
+      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve). Снятая система → 422 SYSTEM_SUSPENDED, приостановленная организация → 403 ORG_SUSPENDED (abuse.yaml#messages_ru.ORG_SUSPENDED)'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
       responses:
@@ -539,12 +539,21 @@ paths:
       summary: Уведомления магазина ПЛАТФОРМЫ. Доверять только после GET /v3/payments/{id} к API ЮKassa и проверки IP из списка ЮKassa; идемпотентно по provider_payment_id
       requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
       responses: {'200': {description: Принято}}
+  /systems/{id}/disputes:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: disputeG2Block
+      x-milestone: M2
+      x-roles: [owner]
+      summary: '«Оспорить» (abuse.yaml#rescan, #messages_ru.G2-AF-*): последний G2-отчёт ревизии провалил блокер антифрода G2-AF-01…07 → тикет staff category=auto_g2 (sla_deadline +24 ч, алерт abuse_dispute_new и письма staff); один открытый тикет на систему (повтор возвращает его). Ответ владельцу — письмом при закрытии тикета (dismiss с note). Иначе 400. Тикеты auto_g2 не считаются в abuse_reports_prev (G2-AF-08)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], properties: {revision: {type: integer, minimum: 1}, text: {type: string, maxLength: 2000, description: комментарий владельца}}}}}}
+      responses: {'202': {description: Заявка принята, content: {application/json: {schema: {type: object, required: [reportId, message_ru], properties: {reportId: {type: string, format: uuid}, message_ru: {type: string, description: abuse.yaml#messages_ru.dispute}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /abuse-reports:
     post:
       operationId: createAbuseReport
       x-milestone: M2
       security: []
-      summary: «Пожаловаться» (abuse.yaml#report). Без входа; лимит 10/ч на IP; ответ не раскрывает статус системы
+      summary: '«Пожаловаться» (abuse.yaml#report). Без входа; лимит 10/ч на IP; ответ не раскрывает статус системы. Жалоба phishing на live-систему запускает abuse.yaml#takedown.auto_suspend: ≥ 3 жалобы phishing с разных IP за 1 ч → перепроверка live-ревизии текущим G2 (только G2-AF-01…07, не чаще раза в час на публикацию); провал → публикация suspended, эта жалоба становится тикетом takedown, письмо владельцу, алерт abuse_auto_suspend; G2 чист → только алерт abuse_phishing_cluster'
       requestBody:
         required: true
         content:
@@ -578,13 +587,22 @@ paths:
       x-roles: [staff]
       requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}}}}}}
       responses: {'200': {description: Обновлено}}
+  /admin/orgs/{orgId}/suspension:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: adminOrgSuspension
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'abuse.yaml#takedown.flow «Повторное нарушение или явный фишинг → orgs.suspended_at»: suspend — все системы организации отдают 451 (вид deployments, draft и prod), publish → 403 ORG_SUSPENDED, в publishBlockers ORG_SUSPENDED; restore — снимает признак (системы, снятые своими тикетами, остаются снятыми). Строка staff_audit_log org_suspend|org_restore (target org:<id>, в note — тикет), письмо владельцам. Переход без изменения → 400'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action, note], properties: {action: {enum: [suspend, restore]}, note: {type: string, minLength: 3, maxLength: 2000}, reportId: {type: string, format: uuid, description: тикет-основание}}}}}}
+      responses: {'200': {description: Выполнено, content: {application/json: {schema: {type: object, required: [orgId, suspendedAt], properties: {orgId: {type: string, format: uuid}, suspendedAt: {type: [string, 'null'], format: date-time}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /admin/systems/{id}/founder-review:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
       operationId: adminFounderReview
       x-milestone: M2
       x-roles: [staff]
-      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
+      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). Владельцам org уходит письмо о решении (одобрено — можно публиковать; не одобрено — note как «что исправить»), и из админки, и из CLI. rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
       responses: {'200': {description: Записано}}
   /admin/session:
@@ -649,6 +667,74 @@ paths:
       x-roles: [staff]
       summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
       responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}}}}}}}}}}
+  /admin/pilot/readiness:
+    get:
+      operationId: adminPilotReadiness
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: флаг beta_readiness (db.yaml#platform_settings, M2-09) — кто и когда, заметка и чек-лист compliance.yaml#beta_readiness (РКН, юрист, поручения, Z.ai, docs/security). CLI `pilot readiness` работает как раньше'
+      responses: {'200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/PilotReadiness'}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+    put:
+      operationId: adminSetPilotReadiness
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: включить/выключить beta_readiness; кто — email staff. Включение требует confirm=true и note ≥ 3 символов, иначе 400. Строка staff_audit_log pilot_readiness_on|off (target platform_settings:beta_readiness)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [on], properties: {on: {type: boolean}, confirm: {type: boolean}, note: {type: string, maxLength: 500}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {$ref: '#/components/schemas/PilotReadiness'}}}}, '400': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/invites:
+    get:
+      operationId: adminListPilotInvites
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: приглашения основателя (db.yaml#pilot_invites, кроме отозванных), новые первыми; status: sent (ждёт входа), accepted, expired'
+      responses: {'200': {description: Приглашения, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/PilotInvite'}}}}}}}}
+    post:
+      operationId: adminCreatePilotInvite
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: приглашение в пилот — та же функция, что CLI `pilot invite` (createPilotInvite): письмо со ссылкой /login?email=…&next=/welcome, прежнее активное приглашение адреса отзывается. Пока beta_readiness выключен → 403 FORBIDDEN с текстом BETA_READINESS_MISSING_RU; уже зарегистрированный адрес или неверный email → 400. requireFounderReview (по умолчанию true) → orgs.require_founder_review пилотной org при первом входе. Строка staff_audit_log pilot_invite (target pilot_invite:<id>, email в журнал не пишется)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [email], properties: {email: {type: string, format: email}, orgName: {type: string, maxLength: 120}, credits: {type: integer, minimum: 0, maximum: 100000}, requireFounderReview: {type: boolean, default: true}}}}}}
+      responses: {'201': {description: Отправлено, content: {application/json: {schema: {type: object, required: [id, email, expiresAt, link, requireFounderReview], properties: {id: {type: string, format: uuid}, email: {type: string}, expiresAt: {type: string, format: date-time}, link: {type: string, description: Ссылка из письма — основатель может переслать сам}, requireFounderReview: {type: boolean}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/invites/{inviteId}/revoke:
+    parameters: [{name: inviteId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminRevokePilotInvite
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: отозвать активное (не принятое) приглашение, как CLI `pilot revoke`; нет активного → 404. Строка staff_audit_log pilot_invite_revoke'
+      responses: {'200': {description: Отозвано, content: {application/json: {schema: {type: object, required: [id, status], properties: {id: {type: string, format: uuid}, status: {const: revoked}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs:
+    get:
+      operationId: adminListPilotOrgs
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: организации пилота (plan=pilot или созданные приглашением основателя) — как CLI `pilot orgs`: тариф, участники, доступно кредитов, списано за месяц, расход на модели ₽ за месяц (Europe/Moscow); capRub — WIZARD_LLM_MONTHLY_CAP_RUB платформы'
+      responses: {'200': {description: Организации, content: {application/json: {schema: {type: object, required: [month, capRub, items], properties: {month: {type: string}, capRub: {type: number}, items: {type: array, items: {$ref: '#/components/schemas/PilotOrg'}}}}}}}}
+  /admin/pilot/orgs/{orgId}/grants:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: adminGrantPilotCredits
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: начислить кредиты пилота (pilot_grant:<reference>, 365 дней), как CLI `pilot grant`; тот же reference второй раз не начисляет (granted=false). Строка staff_audit_log pilot_grant (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [credits, reference], properties: {credits: {type: number, exclusiveMinimum: 0, maximum: 100000}, reference: {type: string, minLength: 3, maxLength: 200}}}}}}
+      responses: {'200': {description: Начислено, content: {application/json: {schema: {type: object, required: [orgId, granted, reference, creditsAvailable], properties: {orgId: {type: string, format: uuid}, granted: {type: boolean}, reference: {type: string}, creditsAvailable: {type: number}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs/{orgId}/founder-review:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: adminSetPilotFounderReview
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: orgs.require_founder_review, как CLI `pilot review-required`. Строка staff_audit_log pilot_review_required (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [on], properties: {on: {type: boolean}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [orgId, requireFounderReview], properties: {orgId: {type: string, format: uuid}, requireFounderReview: {type: boolean}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/spend:
+    get:
+      operationId: adminPilotSpend
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'pilot-admin: расход платформы на модели за календарный месяц (Europe/Moscow) против WIZARD_LLM_MONTHLY_CAP_RUB, как CLI `pilot spend`; warn — ≥ 80 % (порог алерта основателю), reached — новые LLM-прогоны получают 503 LLM_BUDGET_EXHAUSTED'
+      responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpend'}}}}}
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -901,7 +987,11 @@ components:
             text: {type: [string, 'null']}
             contactEmail: {type: [string, 'null']}
             resolutionNote: {type: [string, 'null']}
-            system: {type: [object, 'null'], properties: {id: {type: string}, name: {type: [string, 'null']}, orgId: {type: [string, 'null']}, prodUrl: {type: [string, 'null']}, suspended: {type: boolean}}}
+            system: {type: [object, 'null'], properties: {id: {type: string}, name: {type: [string, 'null']}, orgId: {type: [string, 'null']}, prodUrl: {type: [string, 'null']}, suspended: {type: boolean}, orgSuspended: {type: boolean, description: 'orgs.suspended_at задан (снятие всей организации)'}}}
             access: {type: [object, 'null'], properties: {until: {type: string, format: date-time}}}
             journal: {type: array, items: {type: object, properties: {action: {type: string}, note: {type: [string, 'null']}, actor: {type: string}, at: {type: string, format: date-time}}}}
     StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}
+    PilotReadiness: {type: object, required: [on, by, at, note, checklist], properties: {on: {type: boolean}, by: {type: [string, 'null'], description: 'кто переключил: email staff или --by CLI'}, at: {type: [string, 'null'], format: date-time}, note: {type: [string, 'null']}, checklist: {type: array, items: {type: object, required: [id, text], properties: {id: {type: string}, text: {type: string}}}}}}
+    PilotInvite: {type: object, required: [id, email, orgName, credits, requireFounderReview, status, createdAt, expiresAt, acceptedAt, orgId], properties: {id: {type: string, format: uuid}, email: {type: string}, orgName: {type: [string, 'null']}, credits: {type: integer}, requireFounderReview: {type: boolean}, status: {enum: [sent, accepted, expired]}, createdAt: {type: string, format: date-time}, expiresAt: {type: string, format: date-time}, acceptedAt: {type: [string, 'null'], format: date-time}, orgId: {type: [string, 'null']}}}
+    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}}}
+    LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}

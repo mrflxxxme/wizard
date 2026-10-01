@@ -6,6 +6,7 @@ import {
   matchRoute,
   SdkClient,
   SseParser,
+  useAiAction,
   useEntity,
   useEntityList,
   useEntityMutation,
@@ -250,6 +251,29 @@ describe("auth, payments, routing", () => {
       id: "t1",
     });
     expect(redirect).toHaveBeenCalledWith("https://yoomoney.ru/checkout/test");
+  });
+
+  test("useAiAction posts {entity, id} to /api/ai/:action; errors keep code and Russian message", async () => {
+    const { server, render } = setup();
+    const ok = render(() => useAiAction("summarize"));
+    const res = await ok.current.run("ticket", "t1");
+    expect(server.requests.find((x) => x.path === "/api/ai/summarize")).toMatchObject({
+      method: "POST",
+      body: { entity: "ticket", id: "t1" },
+      headers: { "x-wizard-request": "1" },
+    });
+    expect(res).toEqual({
+      item: { id: "t1", summary: "Кратко", _aiFilled: ["summary"] },
+      filled: ["summary"],
+      skipped: [],
+    });
+    const bad = render(() => useAiAction("over_limit"));
+    await expect(bad.current.run("ticket", "t1")).rejects.toMatchObject({
+      code: "AI_LIMIT_REACHED",
+      message: "Лимит ИИ-действий на этот месяц исчерпан",
+    });
+    await vi.waitFor(() => expect(bad.current.error?.code).toBe("AI_LIMIT_REACHED"));
+    expect(bad.current.pending).toBe(false);
   });
 
   test("useParams matches pages[].route; static segments win", async () => {

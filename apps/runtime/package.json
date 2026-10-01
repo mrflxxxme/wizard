@@ -20,6 +20,8 @@
   "devDependencies": {
     "@playwright/test": "1.56.1",
     "@wizard/build": "workspace:*",
+    "@wizard/llm": "workspace:*",
+    "happy-dom": "^20.14.5",
     "tsx": "^4.23.15"
   },
   "exports": {

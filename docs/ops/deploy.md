@@ -9,7 +9,7 @@ Runbook задачи M2-06. Спека — `specs/platform/deploy.yaml#cloud`. �
 
 Первый провайдер — **Timeweb Cloud**. Cloud.ru остаётся провайдером LLM (Foundation Models). Модуль Cloud.ru с managed Kubernetes сохранён как альтернатива (`infra/tofu/cloudru`).
 
-**Текущий путь — пилот** (решение основателя от 01.10.2026): одна ВМ, своя PostgreSQL с WAL-G, ≈ 3,5 тыс. ₽/мес. Он описан в первом разделе. Остальные разделы — общий механизм одной команды и форма беты: managed PostgreSQL и несколько ВМ. Это следующая ступень роста.
+**Текущий путь — пилот** (решение основателя от 01.10.2026): одна ВМ, своя PostgreSQL с WAL-G, ≈ 3 тыс. ₽/мес. Он описан в первом разделе. Основатель один раз задаёт секреты и переменные GitHub и нажимает одну кнопку — workflow `bootstrap-pilot` на раннерах GitHub; своего раннера и файлов на нём нет (раздел «Пилот: одна кнопка»). Остальные разделы — общий механизм одной команды и форма беты: managed PostgreSQL и несколько ВМ. Это следующая ступень роста.
 
 ## Пилот (текущий путь)
 
@@ -37,12 +37,14 @@ Runbook задачи M2-06. Спека — `specs/platform/deploy.yaml#cloud`. �
 | PostgreSQL + WAL-G | `infra/helm/wizard/templates/postgres.yaml`, образ `infra/docker/postgres.Dockerfile`, сценарии `infra/postgres/pg-ops.mjs` |
 | Аддоны | `infra/helm/addons/addons.json`: без реестра в кластере, плюс `logs-collector`. Оверлеи — `infra/helm/addons/pilot/*` |
 | Образы | GHCR репозитория. Собирает `.github/workflows/images.yml` на GitHub-hosted раннерах |
+| Кнопка: состояние, ключи, доступ, выкат | `.github/workflows/bootstrap-pilot.yml`, `deploy-pilot.yml` → `pilot-reusable.yml` → `tools/deploy/pilot.mjs` (ключи — `pilot-secrets.mjs`) → `tools/deploy/infra.mjs` |
 
 Профиль выбирается сам: модуль OpenTofu отдаёт `env.cluster_profile = "pilot"`, его читает `tools/deploy/infra.mjs`.
 
 **Образы — из GHCR, а не из реестра в кластере.**
 
 - Так ВМ не тратит память на реестр, а раннеру не нужны Docker и insecure-registries.
+- ВМ тянет образы с токеном задания выката (`GITHUB_TOKEN`, `packages: read`): Secret `wizard-ghcr` обновляется при каждом выкате, токен истекает с концом задания. Все образы скачиваются во время выката и остаются в кэше containerd узла, поэтому перезапуск подов и CronJob их не тянет заново. Если появится `ImagePullBackOff` (кэш вычищен, например при нехватке диска) — запустите `deploy-pilot` с тем же SHA. Постоянный токен `WIZARD_GHCR_TOKEN` (`read:packages`) — необязательная замена.
 - Образы собираются вне РФ: Docker Hub для сборки не нужен из РФ.
 - Лицензия: GHCR — сервис GitHub. Образы не распространяются, приватные пакеты. Хранение и трафик Container registry, по документации GitHub, сейчас бесплатны [не проверено для тарифа репозитория].
 - Доступность из РФ: GitHub и ghcr.io работают. Если доступ закроют, есть запасной путь — профиль `k3s` с реестром в кластере: `image_registry = "registry.wizard.local"` и `--build-images`.
@@ -107,10 +109,11 @@ node tools/deploy/rss-sample.mjs --out rss.json --phase-file phase
 | S3 `files`, 10 ГБ, поля type=file, пресет растёт сам | 79 | тариф S3 |
 | Исходящий трафик S3 | 0 | 100 ГБ/мес бесплатно; учение раз в неделю скачивает ≈ размер БД |
 | Два домена .ru (платформа и системы), ≈ 900 ₽/год каждый | ≈ 150 | [оценка] |
-| ВМ раннера GitHub (1 vCPU / 1–2 ГБ, Москва) | ≈ 500 | [оценка]. Можно 0, если раннер работает на ВМ пилота, но тогда восстановление после потери ВМ — с ноутбука |
+| Раннер выката | 0 | раннеры GitHub (`bootstrap-pilot`, `deploy-pilot`): минуты Actions из квоты тарифа GitHub. Новый SHA — ≈ 40–80 мин раннера на сборку 8 образов и ≈ 10–15 мин на выкат [оценка] |
+| Бакет состояния `wizard-tfstate` (состояние OpenTofu и зашифрованные ключи) | ≈ 20 | самый дешёвый пресет S3, создаётся сам [не проверено] |
 | Staging по требованию: MSK 50, ≈ 1,4 ₽/ч + IP и бакеты на время жизни | ≈ 50–150 | 20–40 ч в месяц |
 | Запас 10 % (рост S3, трафик) | ≈ 300 | |
-| **Итого** | **≈ 3 400–3 500** | цель ≤ 6–8 тыс. выполнена |
+| **Итого** | **≈ 2 900–3 000** | цель ≤ 6–8 тыс. выполнена |
 
 Не входят: токены LLM и юрист. Скидка за оплату на 12 месяцев (−10 %) не учтена.
 
@@ -149,11 +152,13 @@ platform-api шлёт в тот же вебхук алерты платформ�
 
 Профиль `pilot` задаёт `WIZARD_REGISTRATION=invite` и `WIZARD_PAYMENTS=off`. Новый email входит только по приглашению основателя: без него вход отклоняется с текстом «Регистрация в Wizard пока только по приглашению». Оплата, подписки и привязка карты скрыты, операции оплаты отвечают 403 `PAYMENTS_DISABLED`, вебхук ЮKassa выключен. Организации пилота публикуются в prod без карты.
 
-Локально команды запускаются через `pnpm --filter @wizard/platform-api pilot …`. В кластере в образе нет pnpm, поэтому так: `kubectl -n <namespace> exec deploy/wizard-platform-api -- node --import tsx src/pilot/main.ts …`. У платформы пока нет SMTP для своих писем: письмо ложится в outbox на томе `.data`, поэтому ссылку из вывода `invite` основатель пересылает сам.
+Основной путь — вкладка «Пилот» в консоли `/admin` (staff с подтверждением кодом из приложения-аутентификатора). Там готовность беты (`beta_readiness`) с чек-листом, приглашения клиентов и их статусы, отзыв, организации пилота с расходом за месяц, начисление кредитов по основанию, флаг ревью основателя и расход платформы на модели против лимита. Каждое действие пишется в `staff_audit_log`. Консоль вызывает те же функции, что CLI, поэтому `kubectl exec` для приглашений не нужен, и адреса клиентов не попадают в логи CI.
+
+CLI остаётся запасным путём. Локально команды запускаются через `pnpm --filter @wizard/platform-api pilot …`. В кластере в образе нет pnpm, поэтому так: `kubectl -n <namespace> exec deploy/wizard-platform-api -- node --import tsx src/pilot/main.ts …`. У платформы пока нет SMTP для своих писем: письмо ложится в outbox на томе `.data`, поэтому ссылку из вывода `invite` основатель пересылает сам.
 
 | Команда | Что делает |
 |---|---|
-| `pilot invite <email> [--org-name <название>] [--credits <N>]` | приглашение на 30 дней и письмо со ссылкой `/login?email=…`; ссылка печатается и в консоль. При первом входе организация получает тариф «Пилот», название и кредиты |
+| `pilot invite <email> [--org-name <название>] [--credits <N>] [--review on\|off]` | приглашение на 30 дней и письмо со ссылкой `/login?email=…`; ссылка печатается и в консоль. При первом входе организация получает тариф «Пилот», название, кредиты и флаг ревью основателя (по умолчанию on) |
 | `pilot invites`, `pilot revoke <email>` | список приглашений, отзыв активного |
 | `pilot plan <orgId> pilot\|free` | назначить тариф уже зарегистрированной организации |
 | `pilot grant <orgId> <кредиты> [reference]` | начислить кредиты: ledger, корзина topup, `pilot_grant:<reference>`, срок 365 дней. Повтор с тем же reference не начисляет второй раз |
@@ -181,43 +186,46 @@ CronJob `wizard-pg-restore-drill` запускается по воскресен
 
 Ежемесячное ручное учение (`#cloud.postgres.restore_drill`) для пилота заменено этим.
 
-### Восстановление после потери ВМ (пилот)
+### Пилот: одна кнопка
 
-1. `pnpm infra:apply --env prod --yes --tag <sha последнего выката>`. Можно с раннера или с ноутбука владельца: нужны tofu, helm, kubectl, SSH-ключ и tfvars. Если ВМ удалена в панели, OpenTofu создаст её заново. Плавающий IP и DNS сохраняются.
-2. Секреты кластера создаются заново из файлов: `WIZARD_PLATFORM_ENV_FILE`, `WIZARD_PGBOUNCER_SECRET_DIR`, `WIZARD_DNS_SOLVER_ENV_FILE`, `WIZARD_POSTGRES_ENV_FILE`, `WIZARD_GHCR_USER` и `WIZARD_GHCR_TOKEN`.
-   - **Ключ `WALG_LIBSODIUM_KEY` и `WIZARD_DATA_BACKUP_KEY` хранятся вне ВМ**: OpenBao или сейф основателя. Без них архив не расшифровать.
-3. Под `wizard-postgres` восстановит БД сам: событие `pg_restored_from_archive`.
-4. Верните `.data`: `kubectl -n wizard-platform create job --from=cronjob/wizard-data-restore data-restore-1`. Затем перезапустите platform-api, worker и runtime: `kubectl -n wizard-platform rollout restart deploy`.
-5. Проверьте: smoke прошёл; учение, запущенное вручную, зелёное.
+Основатель один раз задаёт секреты и переменные GitHub (раздел «Что нужно от основателя» ниже) и запускает **Actions → bootstrap-pilot → Run workflow**: окружение `prod`, слово `PROD`. Всё остальное делает workflow на раннерах GitHub. Своего раннера, файлов с правами 600, ручных ключей и копирования из `tofu output` больше нет.
 
-### Одна команда (пилот)
+| Workflow | Когда | Что делает |
+|---|---|---|
+| `bootstrap-pilot` (`action: apply`) | первый запуск; после потери ВМ; после правки tofu или аддонов | бакет состояния и его ключи, ключи окружения, ВМ, k3s, аддоны, Secrets, релиз, доступ основателя |
+| `deploy-pilot` | выкат нового SHA из main | образы в GHCR (если их ещё нет), Secrets, релиз Helm. Без OpenTofu и аддонов |
+| `bootstrap-pilot` (`action: destroy`, `staging`) | staging больше не нужен | удаляет ВМ, IP, бакеты и записи staging |
+
+Оба workflow запускает только владелец репозитория и только из main. Для prod нужно слово `PROD`. У них одна группа concurrency на окружение, поэтому они не идут одновременно.
+
+Что происходит внутри (`tools/deploy/pilot.mjs`, поверх `tools/deploy/infra.mjs`):
+
+1. **Бакет состояния.** Через API Timeweb ищется бакет `wizard-tfstate`. Если его нет, создаётся приватный бакет на самом дешёвом пресете. Ключи S3 берутся из API, руками ничего не копируется.
+2. **Ключи окружения.** В бакете состояния лежит один зашифрованный файл `wizard/<env>.secrets.enc.json`: пароль PostgreSQL, `WIZARD_SECRETS_KEY`, `WIZARD_PREVIEW_SECRET`, `WIZARD_INTERNAL_TOKEN`, `WALG_LIBSODIUM_KEY`, `WIZARD_DATA_BACKUP_KEY` и SSH-ключ ed25519. Ключи создаются один раз, при следующих запусках берутся из файла. Шифр — AES-256-GCM, ключ выводится из `WIZARD_STATE_PASSPHRASE` через scrypt (128 МиБ). Имя окружения входит в аутентифицированные данные. Если пароль не тот, workflow останавливается и ничего не перезаписывает.
+3. **OpenTofu.** tfvars собираются из переменных GitHub и таблицы `SHAPES` в `pilot.mjs`. Состояние шифруется тем же паролем. `admin_cidrs` пустой: в firewall постоянно открыты только 80 и 443.
+4. **Доступ к ВМ на время задания.** Через API добавляется правило firewall: tcp/22 только с внешнего IPv4 этого раннера (`/32`). API k3s наружу не открывается: kubectl и helm ходят к нему через SSH-туннель `127.0.0.1:16443`. После задания правило удаляется (`finally` и шаг `Close SSH access` с `always()`). Если задание было убито, оставшееся правило удалит следующий запуск.
+5. **Кластер.** Аддоны, Secrets `wizard-platform-env`, `wizard-postgres`, `wizard-pgbouncer`, `wizard-dns-solver` (из ключей, выходов tofu и секретов GitHub), pull-секрет GHCR (токен задания), релиз Helm, HTTPS-smoke. Пока выпускаются сертификаты, smoke повторяется до 10 минут.
+6. **Доступ основателя.** Job `wizard-founder-staff` один раз создаёт приглашение на `WIZARD_FOUNDER_EMAIL` и ждёт первого входа (до 30 дней). После входа он выдаёт учётке права staff. MFA подключается при первом открытии `/admin`.
+7. **Сводка задания** — только несекретные следующие шаги. Все сгенерированные значения маскируются в логе (`::add-mask::`).
+
+Повторный запуск идемпотентен: бакет, ключи и ВМ переиспользуются, меняется только то, чего не хватает.
+
+С ноутбука владельца (нужны Node 22, tofu, helm, kubectl, ssh, а также `TWC_TOKEN`, `WIZARD_STATE_PASSPHRASE`, переменные и `GITHUB_REPOSITORY_OWNER` в окружении):
 
 ```sh
-pnpm infra:apply --env prod --yes --tag <sha>       # ВМ, аддоны, секреты, релиз; образы ждёт в GHCR
-pnpm infra:apply --env staging --tag <sha>          # staging по требованию (MSK 50)
-node tools/deploy/infra.mjs destroy --env staging --yes
+node tools/deploy/pilot.mjs bootstrap --env prod --tag <sha>
+node tools/deploy/pilot.mjs show-secrets --env prod      # расшифровать ключи (только не в CI)
+node tools/deploy/pilot.mjs close-access --env prod      # убрать временные правила SSH
 ```
 
-### Что нужно от основателя (дополнительно к разделу ниже)
+### Восстановление после потери ВМ (пилот)
 
-1. tfvars пилота: `infra/tofu/timeweb/envs/*/terraform.tfvars.example`. Форма беты лежит в `terraform.tfvars.beta.example`.
-2. GHCR:
-   - variable `WIZARD_IMAGES_GHCR=enabled` — образы публикуются из main;
-   - variable `WIZARD_GHCR_USER`;
-   - secret `WIZARD_GHCR_TOKEN` — fine-grained или classic токен только с `read:packages`.
-3. Файл `/etc/wizard/postgres-<env>.env` на раннере (права 600) для первого `apply`:
-   - `POSTGRES_PASSWORD`;
-   - `WALG_LIBSODIUM_KEY` (`openssl rand -hex 32`);
-   - `AWS_ACCESS_KEY_ID` и `AWS_SECRET_ACCESS_KEY` из `tofu output -json s3_keys`, бакет `backups`;
-   - `WIZARD_DATA_BACKUP_KEY` (`openssl rand -hex 32`);
-   - по желанию `WIZARD_OPS_ALERT_URL` и `WIZARD_OPS_ALERT_CHAT_ID`.
+1. Запустите `bootstrap-pilot` для `prod` с SHA последнего выката (`PROD`). OpenTofu пересоздаст удалённую ВМ. Плавающий IP, DNS, бакеты и ключи сохраняются: ключи лежат в бакете состояния, а не на ВМ.
+2. Init-контейнер `wizard-postgres` восстановит БД из архива WAL-G сам. В логе появится событие `pg_restored_from_archive`.
+3. Workflow видит пустой кластер при уже существующих ключах. Он запускает Job `wizard-data-restore`, ждёт его и перезапускает сервисы. В сводке будет «ВМ была пересоздана».
+4. Проверьте последние данные. Учение восстановления пройдёт само в ближайшее воскресенье.
 
-   Копию ключей положите в OpenBao или сейф.
-4. В `wizard-platform-env`:
-   - `WIZARD_DB_URL=postgres://wizard:<POSTGRES_PASSWORD>@wizard-pgbouncer:6432/wizard`;
-   - для DBOS — прямой адрес `wizard-postgres:5432`, если понадобится сессионное соединение.
-
-   В каталоге `wizard-pgbouncer` достаточно `userlist.txt`: `server-ca.crt` не нужен.
+Без `WIZARD_STATE_PASSPHRASE` ключи архива не расшифровать: храните его в менеджере паролей.
 
 ### Пилот: когда расти
 
@@ -283,51 +291,63 @@ node tools/deploy/infra.mjs destroy --env staging --yes
 
 ## Что нужно от основателя
 
-Это разовые клики. Секреты не присылайте в чат: только в GitHub или OpenBao.
+Для пилота — только это. Секреты не присылайте в чат: их место — GitHub и менеджер паролей.
 
-1. **Timeweb Cloud.**
-   - Создайте API-токен: панель → API и Terraform. **Отключите подтверждение удаления через Telegram**, иначе `destroy` зависнет (так требует документация провайдера).
-   - Положите токен в GitHub: Settings → Environments → `staging` и `prod` → secret `TWC_TOKEN`.
-   - Пополните баланс.
-2. **Домены.**
-   - Добавьте домен систем (и, когда будет, домен платформы) в раздел «Домены» Timeweb Cloud.
-   - Делегируйте их у регистратора на NS Timeweb.
-   - Для staging нужен отдельный домен систем (`docs/founder/access-checklist.md` §2).
-3. **Бакет состояния OpenTofu.**
-   - В S3 Timeweb создайте приватный бакет `wizard-tfstate` и ключ к нему.
-   - В GitHub (environments `staging` и `prod`) положите:
-     - variable `WIZARD_TF_STATE_BUCKET`;
-     - secrets `WIZARD_TF_STATE_ACCESS_KEY_ID` и `WIZARD_TF_STATE_SECRET_ACCESS_KEY`;
-     - secret `WIZARD_TF_STATE_PASSPHRASE` — 16+ символов, шифрует состояние на клиенте.
-4. **ВМ раннера.**
-   - Создайте небольшую ВМ (1–2 vCPU / 2 ГБ, Ubuntu 24.04) в той же локации и в VPC prod. Её можно создать после первого `apply` prod или сразу, вручную.
-   - Установите на неё: Docker (в `insecure-registries` впишите `<приватный IP сервера k3s>:30500` и, для staging, `<публичный IP staging>:30500`), OpenTofu ≥ 1.8, Helm 3, kubectl, Node 22 с pnpm, psql.
-   - Зарегистрируйте runner GitHub: Settings → Actions → Runners → New self-hosted runner. Метки — `wizard-prod` и `wizard-staging`.
-   - Положите на раннер файлы:
-     - SSH-ключ `/etc/wizard/id_ed25519`, его публичная часть идёт в tfvars;
-     - `/etc/wizard/terraform-staging.tfvars` и `/etc/wizard/terraform-prod.tfvars` по образцам `infra/tofu/timeweb/envs/*/terraform.tfvars.example`.
-   - В `admin_cidrs` tfvars укажите публичный IP раннера.
-5. **GitHub variables** уровня репозитория:
-   - `WIZARD_PROVIDER=timeweb`;
-   - `WIZARD_ACME_EMAIL` — контакт для Let's Encrypt;
-   - когда всё готово — `WIZARD_DEPLOY_STAGING=enabled` и `WIZARD_DEPLOY_PROD=enabled`.
+**В панели Timeweb Cloud (один раз):**
 
-   До этого оба workflow выходят с уведомлением «Пропущено: облако не подключено».
-6. **Секреты приложения** (OpenBao, а до него файлы на раннере с правами 600). Это файл env для Secret `wizard-platform-env`:
-   - `WIZARD_DB_URL` — строка на PgBouncer: `postgres://wizard:<пароль>@wizard-pgbouncer:6432/wizard`. Пароль — из `tofu output -json postgres`;
-   - `WIZARD_SECRETS_KEY`, `WIZARD_PREVIEW_SECRET` (32+ байт), `WIZARD_INTERNAL_TOKEN`;
-   - `WIZARD_S3_*` — ключи из `tofu output -json s3_keys`;
-   - SMTP, Telegram, ЮKassa, LLM (`CLOUDRU_API_KEY`, `ZAI_API_KEY`).
+1. Пополните баланс.
+2. Создайте API-токен: «API и Terraform». **Подтверждение удаления через Telegram выключите**, иначе удаление staging зависнет.
+3. Домены платформы и систем купите в Timeweb или делегируйте на NS Timeweb. Они должны быть в разделе «Домены».
 
-   Ещё нужны:
-   - каталог для Secret `wizard-pgbouncer`: `userlist.txt` и `server-ca.crt`;
-   - env-файл для Secret `wizard-dns-solver` (cert-manager): `TWC_TOKEN=…`.
+**В GitHub: Settings → Secrets and variables → Actions → вкладка Repository.** Без GitHub Pro в приватном репозитории окружений нет, поэтому всё задаётся на уровне репозитория. Staging (по требованию) берёт свои домены из переменных `WIZARD_STAGING_PLATFORM_DOMAIN` и `WIZARD_STAGING_SYSTEMS_DOMAIN` и никогда не использует домены prod: без них выкат staging откажет.
 
-   Пути к ним передайте в `WIZARD_PLATFORM_ENV_FILE`, `WIZARD_PGBOUNCER_SECRET_DIR`, `WIZARD_DNS_SOLVER_ENV_FILE` при первом `apply`. Дальше секреты живут в кластере.
+| Secret | Что это |
+|---|---|
+| `TWC_TOKEN` | API-токен Timeweb Cloud |
+| `WIZARD_STATE_PASSPHRASE` | один пароль, 16+ символов. Шифрует состояние OpenTofu и ключи окружения. **Сохраните его в менеджере паролей**: без него не расшифровать архив базы |
+| `CLOUDRU_API_KEY` | ключ Cloud.ru Foundation Models |
+| `ZAI_API_KEY` | ключ Z.ai (необязательно) |
+| `WIZARD_SMTP_HOST`, `WIZARD_SMTP_PORT`, `WIZARD_SMTP_USER`, `WIZARD_SMTP_PASSWORD`, `WIZARD_SMTP_FROM` | почта платформы: коды входа, приглашения, алерты. Обязательны `HOST` и `FROM` («Wizard <noreply@домен>»), порт по умолчанию 465 |
+| `WIZARD_OPS_ALERT_TELEGRAM_TOKEN` и `WIZARD_OPS_ALERT_CHAT_ID` | бот и чат для алертов. Можно вместо них задать готовый `WIZARD_OPS_ALERT_URL`. Необязательно: алерты придут и письмом на почту основателя |
+| `WIZARD_PLATFORM_YOOKASSA_SHOP_ID`, `WIZARD_PLATFORM_YOOKASSA_SECRET_KEY` | позже, когда включится оплата (на пилоте оплата выключена) |
 
-Prod запускает только владелец репозитория: Actions → deploy-prod → Run workflow, полный SHA, слово `PROD`. Это вариант «а» из чек-листа §8.
+| Variable | Что это |
+|---|---|
+| `WIZARD_PLATFORM_DOMAIN` | домен платформы, например `codename.ru` |
+| `WIZARD_SYSTEMS_DOMAIN` | отдельный домен систем клиентов |
+| `WIZARD_ACME_EMAIL` | почта для Let's Encrypt (если пусто — почта основателя) |
+| `WIZARD_FOUNDER_EMAIL` | почта основателя: вход, права staff, алерты |
+| `WIZARD_STAGING_PLATFORM_DOMAIN`, `WIZARD_STAGING_SYSTEMS_DOMAIN` | только если нужен staging: два отдельных домена (или поддомены другого домена), не совпадающие с prod |
+
+**Затем:** Actions → `bootstrap-pilot` → Run workflow (`prod`, `apply`, слово `PROD`). Через 35–50 минут в сводке задания будет ссылка на платформу и следующие шаги: войти, открыть `/admin`, включить MFA. Новые версии выкатывает `deploy-pilot` (полный SHA и `PROD`).
+
+Всё остальное делается само: бакет и ключи состояния, пароли и ключи окружения, SSH-ключ, правила firewall, Secrets Kubernetes. Постоянный токен GHCR не нужен: ВМ тянет образы с токеном задания выката.
+
+### Позже: бета на своём раннере (не нужно для пилота)
+
+Форма беты — managed PostgreSQL, несколько ВМ, self-hosted раннер в VPC (`deploy-staging.yml`, `deploy-prod.yml`). Она сохранена как следующая ступень роста. Тогда понадобится:
+
+1. **Бакет состояния** — тот же `wizard-tfstate`, его создаёт `bootstrap-pilot`. В GitHub (environments `staging` и `prod`) положите:
+   - variable `WIZARD_TF_STATE_BUCKET` — полное имя бакета с префиксом;
+   - secrets `WIZARD_TF_STATE_ACCESS_KEY_ID`, `WIZARD_TF_STATE_SECRET_ACCESS_KEY` и `WIZARD_TF_STATE_PASSPHRASE` (тот же пароль).
+2. **ВМ раннера.**
+   - Небольшая ВМ (1–2 vCPU / 2 ГБ, Ubuntu 24.04) в той же локации и в VPC prod.
+   - На ней: Docker (`insecure-registries` — `<приватный IP сервера k3s>:30500`, для staging — `<публичный IP staging>:30500`), OpenTofu ≥ 1.8, Helm 3, kubectl, Node 22 с pnpm, psql.
+   - Регистрация: Settings → Actions → Runners → New self-hosted runner, метки `wizard-prod` и `wizard-staging`.
+   - Файлы: SSH-ключ `/etc/wizard/id_ed25519` (публичная часть — в tfvars), `/etc/wizard/terraform-<env>.tfvars` по образцу `terraform.tfvars.beta.example`, в `admin_cidrs` — IP раннера.
+3. **GitHub variables:** `WIZARD_PROVIDER=timeweb`, `WIZARD_ACME_EMAIL`, затем `WIZARD_DEPLOY_STAGING=enabled` и `WIZARD_DEPLOY_PROD=enabled`. До этого оба workflow выходят с уведомлением «Пропущено: облако не подключено».
+4. **Секреты приложения** (OpenBao, до него — файлы на раннере с правами 600):
+   - env-файл Secret `wizard-platform-env`: `WIZARD_DB_URL` на PgBouncer с паролем из `tofu output -json postgres`, `WIZARD_SECRETS_KEY`, `WIZARD_PREVIEW_SECRET`, `WIZARD_INTERNAL_TOKEN`, `WIZARD_S3_*` из `tofu output -json s3_keys`, SMTP, Telegram, ЮKassa, LLM;
+   - каталог Secret `wizard-pgbouncer` (`userlist.txt`, `server-ca.crt`);
+   - env-файл Secret `wizard-dns-solver`: `TWC_TOKEN=…`.
+
+   Пути передаются в `WIZARD_PLATFORM_ENV_FILE`, `WIZARD_PGBOUNCER_SECRET_DIR`, `WIZARD_DNS_SOLVER_ENV_FILE` при первом `apply`. Дальше секреты живут в кластере.
+
+Prod беты запускает только владелец репозитория: Actions → deploy-prod → Run workflow, полный SHA, слово `PROD`. Это вариант «а» из чек-листа §8.
 
 ## Одна команда
+
+Пилот выкатывается кнопками `bootstrap-pilot` и `deploy-pilot` (раздел «Пилот: одна кнопка»). Команды ниже — общий механизм `infra.mjs` и путь беты с self-hosted раннера.
 
 ```sh
 # staging по требованию

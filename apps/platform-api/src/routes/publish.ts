@@ -16,7 +16,12 @@ import {
   prodSystemsCount,
   specPublishBlockers,
 } from "../publish/blockers.js";
-import { founderReviewStatus, REVIEW_REJECTED_RU } from "../publish/moderation.js";
+import {
+  founderReviewStatus,
+  ORG_SUSPENDED_RU,
+  orgSuspended,
+  REVIEW_REJECTED_RU,
+} from "../publish/moderation.js";
 import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
@@ -68,6 +73,7 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       z.strictObject({ revision: z.number().int().min(1), confirmDiff: z.literal(true).optional() }),
     );
     if (s.suspended_at) throw new ApiError("SYSTEM_SUSPENDED", "Публикация системы приостановлена");
+    if (await orgSuspended(d.db, s.org_id)) throw new ApiError("ORG_SUSPENDED", ORG_SUSPENDED_RU);
     if (
       await cardBindingMissing(d.db, s.org_id, { required: d.config.cardBindingRequired, billing: d.billing })
     )
