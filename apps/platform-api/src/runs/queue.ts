@@ -4,11 +4,13 @@
 //   client (platform-api in M1): runs are enqueued as DBOS workflows (workflowID = runs.id), never executed here;
 //   worker (apps/worker): executeRun() is the body of the DBOS workflow, every side effect is a checkpointed step.
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import type { AppSpec } from "@wizard/appspec";
 import {
   CircuitBreaker,
   createRegistry,
   createRouter,
+  FixtureStore,
   LlmError,
   type RouteOutput,
   type Router,
@@ -65,6 +67,7 @@ import {
   type InputRequest,
   type InterviewContext,
   type InterviewOutput,
+  type PointEditTarget,
   RunCancelled,
   type RunExecutors,
   RunFailure,
@@ -140,12 +143,25 @@ export interface NewRun {
   orgId: string;
   systemId: string;
   kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table" | "export";
-  mode?: "create" | "change" | "fix" | null;
+  mode?: "create" | "change" | "fix" | "point_edit" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
   estimateMilli?: number | null;
   capMilli?: number | null;
   startedBy: string;
+}
+
+/**
+ * Fixture of a run mode (WIZARD_LLM_MODE=fixture, M3-01): a demo transcript is replayed by ordinal per call type, so a
+ * point_edit run after the demo build reads its own transcript <suite>/<name>.<mode>.jsonl (written by
+ * tools/fixtures/gen-golden.mjs) when it exists; otherwise the run uses WIZARD_FIXTURE as is.
+ */
+export function modeFixture(env: NodeJS.ProcessEnv, mode: string): RouterOptions["fixture"] {
+  if ((env.WIZARD_LLM_MODE ?? "fixture") !== "fixture") return undefined;
+  const [suite, name] = (env.WIZARD_FIXTURE ?? "").split("/");
+  if ((suite !== "demo" && suite !== "eval" && suite !== "unit") || !name) return undefined;
+  const opts = { suite, name: `${name}.${mode}`, lenient: env.WIZARD_FIXTURE_LENIENT === "1" } as const;
+  return existsSync(new FixtureStore(opts).path) ? opts : undefined;
 }
 
 /** Run kinds that call models (the platform LLM cap applies to them, M2-15). */
@@ -1024,7 +1040,9 @@ export class RunEngine {
   #router(x: Ctx, routers: Routers): Router {
     if (!routers.r) {
       const sink = new DbUsageSink(this.#db);
+      const variant = x.run.mode === "point_edit" ? modeFixture(process.env, "point_edit") : undefined;
       const opts: RouterOptions = {
+        ...(variant ? { fixture: variant } : {}),
         registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
         sink: { write: (rec) => (routers.mute ? undefined : sink.write(rec)) },
         circuit: this.#circuit,
@@ -1461,12 +1479,22 @@ export class RunEngine {
   async #build(x: Ctx, capMilli: number | null): Promise<Result> {
     const { run } = x;
     if (run.mode === "change") await this.#draftSnapshot(x);
-    const input = run.input as { card?: Record<string, unknown> };
+    const input = run.input as {
+      card?: Record<string, unknown>;
+      target?: PointEditTarget;
+      fromRevision?: number;
+    };
+    const mode = (run.mode ?? "create") as BuildParams["mode"];
+    if (mode === "point_edit" && !input.target)
+      throw new RunFailure("INTERNAL", "Не указан элемент для правки по клику");
     const out = await this.#runBuilder(x, {
       card: input.card ?? {},
       cap: Number(capMilli ?? 0) / 1000,
-      mode: (run.mode ?? "create") as "create" | "change" | "fix",
+      mode,
+      ...(mode === "point_edit" && input.target ? { target: input.target } : {}),
     });
+    if (mode === "point_edit" && input.target && typeof input.fromRevision === "number")
+      await this.#assertPointEditScope(x, input.fromRevision, input.target.file);
     if (out?.status === "cancelled")
       return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
     return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
@@ -1489,9 +1517,14 @@ export class RunEngine {
       const s = await system();
       return loadManifest(this.#db, this.#d.blobs, systemId, s.draft_revision);
     };
+    // point_edit (builder.yaml#point_and_edit): the working tree may change target.file only; the builder already
+    // refuses other paths with TARGET_ONLY, the store refuses them again (defence in depth, M3-01).
+    const only = params.mode === "point_edit" ? (params.target?.file ?? null) : null;
     const checkPath = (p: string) => {
       if (!isSafePath(p) || !(p.startsWith("ui/") || p.startsWith("functions/")))
         throw new Error(`Путь ${p} вне ui/** и functions/**`);
+      if (params.mode === "point_edit" && p !== only)
+        throw new Error(`TARGET_ONLY: в правке по клику можно менять только ${only}`);
     };
     const commitFiles = async () => {
       if (pending.size === 0) return null;
@@ -1535,6 +1568,8 @@ export class RunEngine {
           };
         },
         applyOps: async (ops, expectedVersion, idemKey) => {
+          if (params.mode === "point_edit")
+            throw new Error("TARGET_ONLY: в правке по клику спека не меняется (ask_orchestrator)");
           await this.#ensureActive(x);
           return D.step(
             "apply_ops",
@@ -1630,6 +1665,32 @@ export class RunEngine {
       log: (m, e) => this.#log(m, e),
     });
     return { status: "succeeded", summary_ru: out.summary_ru };
+  }
+
+  /**
+   * M3-01 exit check (builder.yaml#point_and_edit.test): the files diff of the run = {target.file}. A violation
+   * cannot pass the guards above; if it ever does, the run fails rather than report a wider change as done.
+   */
+  async #assertPointEditScope(x: Ctx, fromRevision: number, file: string): Promise<void> {
+    const systemId = x.run.system_id as string;
+    const changed = await x.D.step("point_edit_scope", async () => {
+      const sys = await this.#db
+        .selectFrom("platform.systems")
+        .select("draft_revision")
+        .where("id", "=", systemId)
+        .executeTakeFirstOrThrow();
+      const before = await loadManifest(this.#db, this.#d.blobs, systemId, fromRevision);
+      const after = await loadManifest(this.#db, this.#d.blobs, systemId, sys.draft_revision);
+      return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+        (p) => before[p] !== after[p],
+      );
+    });
+    const foreign = changed.filter((p) => p !== file);
+    if (foreign.length > 0)
+      throw new RunFailure(
+        "TARGET_ONLY",
+        `Правка по клику затронула другие файлы (${foreign.slice(0, 3).join(", ")}) — изменения не приняты.`,
+      );
   }
 
   /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */

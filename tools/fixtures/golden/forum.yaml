@@ -211,3 +211,15 @@ qa:
   replace:                           # регулярное выражение по целому строковому значению → синтетика; {n} — номер значения
     - { pattern: '^\p{Lu}\p{Ll}+ Тестова?$',     with: "Участник {n}" }
     - { pattern: '^[a-z0-9]+@example\.test$',     with: "user{n}@example.test" }
+
+# ---------------------------------------------------------------- «Укажи и измени» (M3-01) → demo/forum.point_edit.jsonl
+# Прогон mode=point_edit после демо-сборки (agents/builder.yaml#point_and_edit): первый шаг build_code пишет чужой файл
+# (строитель отвечает TARGET_ONLY), второй — только target.file по patch и G0, третий завершает фазу; qa_generate — как в сборке.
+point_edit:
+  target: { file: ui/Landing.tsx, componentName: AppShell, route: / }
+  instruction: "сделай заголовок крупнее"
+  stray: { path: ui/MyTicket.tsx }
+  patch:
+    find: "    <AppShell>\n"
+    replace: "    <AppShell>\n      <h1 style={{ fontSize: \"var(--w-font-size-xl)\", lineHeight: 1.2, margin: 0 }}>Форум «Северный ритейл»</h1>\n"
+  done_text: "Заголовок на главной стал крупнее. Изменён только ui/Landing.tsx, G0 пройден."

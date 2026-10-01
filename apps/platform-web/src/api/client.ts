@@ -22,6 +22,7 @@ import type {
   Me,
   Member,
   Message,
+  MessageTarget,
   Org,
   OrgSettings,
   PreviewUrl,
@@ -145,8 +146,17 @@ export function createApiClient(opts: ClientOptions = {}) {
       idempotencyKey = newIdempotencyKey(),
     ) => call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
     getSystem: (id: string) => call<SystemView>("GET", sys(id)),
-    postMessage: (id: string, text: string, idempotencyKey = newIdempotencyKey()) =>
-      call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, { body: { text }, idempotencyKey }),
+    /** With target (M3-01) the request becomes a point_edit build of target.file. */
+    postMessage: (
+      id: string,
+      text: string,
+      opts: { target?: MessageTarget } = {},
+      idempotencyKey = newIdempotencyKey(),
+    ) =>
+      call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, {
+        body: opts.target ? { text, target: opts.target } : { text },
+        idempotencyKey,
+      }),
     postAnswers: (
       id: string,
       body: { answers: Answer[]; restByRecommendation?: boolean },

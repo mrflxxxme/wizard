@@ -1,7 +1,8 @@
 // /systems/* operations of specs/platform/api.yaml (x-milestone M0).
+import { createHash } from "node:crypto";
 import { type AppSpec, applyOps } from "@wizard/appspec";
 import { issuePreviewToken, newPreviewNonce, PREVIEW_TOKEN_TTL_MS } from "@wizard/runtime";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
 import { json } from "../db/index.js";
@@ -35,6 +36,32 @@ export function answerLine(question: string, answer: string): string {
 }
 
 const limitQ = z.coerce.number().int().min(1).max(100).default(50);
+
+/**
+ * builder.yaml#point_and_edit: instruction ≤ 500. The cap there is 3 credits, but one build_code call alone has an
+ * upper_bound of ~2.7–3.4 credits (max_tokens 16000, #budgets.credits_cap), so 3 would stop every edit before its
+ * second call: the run holds 6 (docs/reviews/impl-notes/M3-01.md), the charge is the real usage.
+ */
+export const POINT_EDIT_CAP_CREDITS = 6;
+export const POINT_EDIT_MAX_TEXT = 500;
+/** ui-kit.yaml#wz_id.format: fileKey = first 8 hex of sha256(path). */
+export const wzFileKey = (file: string) => createHash("sha256").update(file).digest("hex").slice(0, 8);
+
+/** api.yaml#postMessage.target (M3-01); route is an M3-01 addition (builder.yaml#inputs.target). */
+const targetSchema = z.strictObject({
+  wzId: z.string().regex(/^[0-9a-f]{8}:[0-9]+$/),
+  componentName: z.string().max(60).optional(),
+  file: z
+    .string()
+    .max(300)
+    .regex(/^ui\/[A-Za-z0-9_/.-]+\.tsx$/),
+  line: z.number().int().min(1).optional(),
+  route: z
+    .string()
+    .max(2000)
+    .regex(/^\/(?![/\\])/)
+    .optional(),
+});
 const intQ = z.coerce.number().int();
 
 interface Question {
@@ -231,11 +258,15 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     });
   });
 
-  // postMessage
+  // postMessage (M3-01: with target → a point_edit build of target.file, agents/builder.yaml#point_and_edit)
   r.post("/systems/:id/messages", async (c) => {
     const user = c.get("user");
     const s0 = await loadSystem(user, c.req.param("id"), "editor");
-    const b = await jsonBody(c, z.strictObject({ text: z.string().min(1).max(8000) }));
+    const b = await jsonBody(
+      c,
+      z.strictObject({ text: z.string().min(1).max(8000), target: targetSchema.optional() }),
+    );
+    if (b.target) return pointEdit(c, user, s0, b.text, b.target);
     const out = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);
       if (s.stage === "building") throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
@@ -275,6 +306,84 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     d.engine.enqueue(out.run);
     return c.json({ message: toMessage(out.message), run: toRun(out.run, 0) }, 202);
   });
+
+  /**
+   * «Укажи и измени»: the request goes straight to a build run mode=point_edit (the click and «Применить» are the
+   * owner's consent; cap builder.yaml#point_and_edit = 3 credits). target.file must be a ui/**.tsx file of the
+   * draft revision and wzId must belong to it (fileKey = sha256(file)[0..8], ui-kit.yaml#wz_id), else 400.
+   */
+  async function pointEdit(
+    c: Context<AppEnv>,
+    user: AuthUser,
+    s0: Selectable<SystemsTable>,
+    text: string,
+    target: z.infer<typeof targetSchema>,
+  ) {
+    if (text.length > POINT_EDIT_MAX_TEXT)
+      throw invalid(`Опишите правку элемента короче — до ${POINT_EDIT_MAX_TEXT} символов`);
+    if (!isSafePath(target.file) || wzFileKey(target.file) !== target.wzId.split(":")[0])
+      throw invalid("Элемент не относится к этому файлу — выберите его в превью ещё раз");
+    if (await lockHeld(s0.id)) throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
+    const out = await tx(async (t) => {
+      const s = await lockSystem(t, s0.id);
+      if (s.stage === "building") throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
+      if (s.preview_revision === null || s.stage !== "ready")
+        throw new ApiError("PREVIEW_NOT_READY", "Правка по клику доступна, когда система собрана");
+      const manifest = await loadManifest(t.trx, d.blobs, s.id, s.draft_revision);
+      if (!Object.hasOwn(manifest, target.file))
+        throw invalid(`Файла ${target.file} нет в текущей версии — обновите превью и выберите элемент снова`);
+      await t.trx
+        .updateTable("platform.systems")
+        .set({
+          stage: assertTransition(s.stage, "building"),
+          updated_at: new Date(),
+          last_activity_at: new Date(),
+        })
+        .where("id", "=", s.id)
+        .execute();
+      const pointTarget = {
+        wzId: target.wzId,
+        componentName: target.componentName ?? "",
+        file: target.file,
+        line: target.line ?? 1,
+        route: target.route ?? "/",
+        instruction: text,
+      };
+      const run = await insertRun(
+        t,
+        {
+          orgId: s.org_id,
+          systemId: s.id,
+          kind: "build",
+          mode: "point_edit",
+          input: { card: s.card ?? {}, target: pointTarget, fromRevision: s.draft_revision },
+          cardVersion: s.card_approved_version,
+          capMilli: POINT_EDIT_CAP_CREDITS * 1000,
+          startedBy: user.id,
+        },
+        d.billing,
+      );
+      const message = await insertMessage(t, {
+        systemId: s.id,
+        role: "user",
+        kind: "text",
+        text,
+        payload: {
+          target: {
+            wzId: target.wzId,
+            componentName: pointTarget.componentName,
+            file: target.file,
+            line: pointTarget.line,
+          },
+        },
+        runId: run.id,
+        authorUserId: user.id,
+      });
+      return { run, message };
+    });
+    d.engine.enqueue(out.run);
+    return c.json({ message: toMessage(out.message), run: toRun(out.run, 0) }, 202);
+  }
 
   // listMessages
   r.get("/systems/:id/messages", async (c) => {

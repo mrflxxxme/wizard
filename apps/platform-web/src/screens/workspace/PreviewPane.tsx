@@ -1,9 +1,10 @@
 // Preview iframe per platform-screens.yaml#preview_contract: preview-url, role switch through the bridge,
 // apply-theme-tokens without reload, reload policy (debounce 1 s, route and role kept), 2 s reply timeout → reload.
+// M3-01 «Указать на экране»: select-mode → element-selected (file ∈ files of the shown revision, L3-16) → highlight.
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
-import type { PreviewUrl, Theme } from "../../api/types.js";
+import type { MessageTarget, PreviewUrl, Theme } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { Pill } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
@@ -30,6 +31,9 @@ export function PreviewPane({
   testData,
   envLabel,
   toolbar,
+  pointable = false,
+  selected = null,
+  onSelect,
 }: {
   systemId: string;
   /** Newest preview revision (max of gate_result{G0, passed} and System.previewRevision); growth reloads. */
@@ -40,6 +44,11 @@ export function PreviewPane({
   /** S7: «DRAFT · РЕВИЗИЯ N+1 · копия prod, ПДн замаскированы». */
   envLabel?: string;
   toolbar?: ReactNode;
+  /** M3-01: «Указать на экране» is offered (editor, system ready, no run). */
+  pointable?: boolean;
+  /** The element picked for the next chat message; highlighted in the preview. */
+  selected?: MessageTarget | null;
+  onSelect?(target: MessageTarget): void;
 }): ReactNode {
   const { api } = usePlatform();
   const [info, setInfo] = useState<PreviewUrl | null>(null);
@@ -49,6 +58,13 @@ export function PreviewPane({
   const [width, setWidth] = useState<(typeof PREVIEW_WIDTHS)[number]>(1280);
   const [notReady, setNotReady] = useState(false);
   const [frameError, setFrameError] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  // Files of the revision shown in the iframe: element-selected.file must be one of them (L3-16).
+  const filesRef = useRef<{ revision: number; files: ReadonlySet<string> } | null>(null);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const infoRef = useRef(info);
   infoRef.current = info;
@@ -100,17 +116,40 @@ export function PreviewPane({
         frame: () => frameRef.current,
         origin: () => (infoRef.current ? originOf(infoRef.current.url) : null),
         revision: () => infoRef.current?.revision ?? null,
-        files: () => null,
+        files: () => {
+          const f = filesRef.current;
+          return f && f.revision === infoRef.current?.revision ? f.files : null;
+        },
         onMessage: (m: FromPreview) => {
           const b = bridgeRef.current;
           if (!b) return;
           switch (m.type) {
-            case "ready":
+            case "ready": {
               readyRef.current = true;
               routeRef.current = m.payload.route;
               if (m.payload.role) setRole(m.payload.role);
               setFrameError(null);
+              setSelecting(false);
               sendTokens(b);
+              const sel = selectedRef.current;
+              if (sel) b.send({ type: "highlight", payload: { wzId: sel.wzId } }).catch(() => {});
+              break;
+            }
+            case "element-selected": {
+              const { wzId, componentName, file, line } = m.payload;
+              setSelecting(false);
+              b.send({ type: "highlight", payload: { wzId } }).catch(() => {});
+              onSelectRef.current?.({
+                wzId,
+                componentName,
+                file,
+                line,
+                route: m.payload.route ?? routeRef.current,
+              });
+              break;
+            }
+            case "select-cancelled":
+              setSelecting(false);
               break;
             case "route-changed":
               routeRef.current = m.payload.route;
@@ -177,6 +216,51 @@ export function PreviewPane({
     };
   }, [available, revision, load, reloadFrame]);
 
+  // Files of the shown revision for the element-selected check (GET /systems/:id/revisions/:v).
+  const shown = info?.revision ?? null;
+  useEffect(() => {
+    if (shown === null || filesRef.current?.revision === shown) return;
+    let live = true;
+    api
+      .getRevision(systemId, shown)
+      .then((r) => {
+        if (live) filesRef.current = { revision: shown, files: new Set(r.files.map((f) => f.path)) };
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [api, systemId, shown]);
+
+  const setSelectMode = useCallback(
+    (enabled: boolean) => {
+      setSelecting(enabled);
+      if (readyRef.current) bridge.send({ type: "select-mode", payload: { enabled } }).catch(() => {});
+    },
+    [bridge],
+  );
+
+  // Leaving «ready» (a run started, the viewer lost rights) ends the select mode.
+  useEffect(() => {
+    if (!pointable && selecting) setSelectMode(false);
+  }, [pointable, selecting, setSelectMode]);
+
+  // Esc on the platform side ends the mode too (inside the iframe the bridge answers select-cancelled).
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selecting, setSelectMode]);
+
+  // Clearing the chip removes the highlight in the preview.
+  const selectedId = selected?.wzId ?? null;
+  useEffect(() => {
+    if (readyRef.current) bridge.send({ type: "highlight", payload: { wzId: selectedId } }).catch(() => {});
+  }, [bridge, selectedId]);
+
   // M2 URLs carry a token with a TTL: re-read preview-url a minute before expiresAt (no reload).
   useEffect(() => {
     if (!info) return;
@@ -216,8 +300,24 @@ export function PreviewPane({
         <span className={s.address}>{address}</span>
         <MainTabs systemId={systemId} active="preview" />
         <span className={s.spacer} />
+        <Button
+          size="sm"
+          variant={selecting ? "primary" : "secondary"}
+          data-testid="select-toggle"
+          aria-pressed={selecting}
+          disabled={!pointable || !src}
+          title={pointable ? ru.point.toggleHint : ru.point.unavailable}
+          onClick={() => setSelectMode(!selecting)}
+        >
+          {selecting ? ru.point.toggleOff : ru.point.toggle}
+        </Button>
         {toolbar}
       </div>
+      {selecting && (
+        <div className={s.selectBanner} role="status" data-testid="select-banner">
+          <b>{ru.point.banner}</b> <span className={s.muted}>{ru.point.bannerEsc}</span>
+        </div>
+      )}
       <div className={s.previewBar}>
         {roles.length > 0 && (
           <fieldset className={s.segmented}>

@@ -398,6 +398,22 @@ export const ru = {
     reload: "Обновить",
     frameTitle: "Превью системы",
   },
+  /** S5 «Укажи и измени» (M3-01). */
+  point: {
+    toggle: "Указать на экране",
+    toggleOff: "Отменить выбор",
+    toggleHint: "Наведите на элемент превью и кликните — правка коснётся только его файла",
+    unavailable: "Указать элемент можно, когда система собрана и сборка не идёт",
+    banner: "DRAFT · Режим «Укажи и измени» · кликните по элементу",
+    bannerEsc: "Esc — выход",
+    chip: (name: string) => `Изменить: ${name || "элемент"}`,
+    where: (file: string, line: number) => `${file}:${line}`,
+    clear: "Убрать элемент",
+    cost: (credits: number) => `до ${credits} кредитов, правится только этот файл`,
+    placeholder: (name: string) =>
+      `Что изменить в «${name || "элементе"}»? Например: сделай заголовок крупнее`,
+    sent: (name: string, file: string) => `${name || "Элемент"} · ${file}`,
+  },
   style: {
     title: "Стиль",
     subtitle: "меняется мгновенно, без кредитов",

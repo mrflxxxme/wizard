@@ -345,3 +345,54 @@ describe("fixture key", () => {
     expect(fixtureKey(a)).not.toBe(fixtureKey(line("other")));
   });
 });
+
+/** M3-01: demo/forum.point_edit.jsonl — the point_edit run after the demo build (agents/builder.yaml#point_and_edit). */
+describe("golden forum point_edit", () => {
+  const text = readFileSync(join(root, "tools/fixtures/demo/forum.point_edit.jsonl"), "utf8");
+  const lines: Line[] = text
+    .trimEnd()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  const g = buildGolden("forum", { root });
+  const pe = g.pointEdit;
+  if (!pe) throw new Error("forum.yaml has no point_edit");
+
+  it("сгенерирован gen-golden и актуален", () => {
+    expect(pe.text).toBe(text);
+    expect(genGolden("forum", "--check").status).toBe(0);
+  });
+
+  it("build_code×3 → qa_generate: чужой файл, затем target.file и G0, затем ответ без инструментов", () => {
+    expect(lines.map((l) => l.callType)).toEqual(["build_code", "build_code", "build_code", "qa_generate"]);
+    const [stray, edit, done, qaLine] = lines;
+    expect(stray?.response.toolCalls.map((c) => [c.name, c.args.path])).toEqual([["write_file", pe.stray]]);
+    expect(pe.stray).not.toBe(pe.target.file);
+    expect(edit?.response.toolCalls.map((c) => [c.name, c.args.path ?? c.args.level])).toEqual([
+      ["write_file", pe.target.file],
+      ["run_gate", "G0"],
+    ]);
+    expect(done?.response.toolCalls).toEqual([]);
+    expect(lines.flatMap((l) => l.response.toolCalls).some((c) => c.name === "apply_ops")).toBe(false);
+    expect(qaLine?.response.toolCalls.map((c) => c.args)).toEqual(
+      g.lines.at(-1)?.response.toolCalls.map((c: ToolCall) => c.args),
+    );
+  });
+
+  it("правка меняет только target.file: исходник после patch отличается одной вставкой", () => {
+    expect(lines[1]?.response.toolCalls[0]?.args.content).toBe(pe.after);
+    expect(pe.after).not.toBe(pe.before);
+    const patch = g.golden.point_edit.patch;
+    expect(pe.after.replace(patch.replace, patch.find)).toBe(pe.before);
+    expect(pe.target.file).toMatch(/^ui\/[A-Za-z0-9_/.-]+\.tsx$/);
+  });
+
+  it("pii.detect = 0 и поиск секретов = 0", () => {
+    const leaks = [text, ...lines.flatMap((l) => strings(l))].flatMap((t) =>
+      detect(t)
+        .map((f) => t.slice(f.start, f.end))
+        .filter((v) => !allowlist.has(v)),
+    );
+    expect(leaks).toEqual([]);
+    expect(secretFindings(text)).toEqual([]);
+  });
+});
