@@ -85,6 +85,11 @@ export interface PlatformApiOptions {
   creditsCronMs?: number;
   /** SLA watch of abuse reports (< 2 h left → founder alert once per report; M2-08); 0 disables. Default 10 min. */
   abuseSlaMs?: number;
+  /**
+   * Test hook of the automatic takedown (abuse.yaml#takedown.auto_suspend): failed G2 antifraud blockers of the live
+   * revision; default — runG2 with G2-AF-01…07 on the stored revision (abuse/escalation.ts antifraudRecheck).
+   */
+  antifraudRecheck?: (s: { systemId: string; revision: number }) => Promise<string[]>;
   /** retention_cron platform pass period (hourly in-process; 0 disables, default 0 with dbos — worker schedule). */
   retentionCronMs?: number;
   /**
@@ -273,7 +278,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
   api.route("/", billingRoutes(deps));
-  const abuse = { db: handle.db, pg: handle.pg, config, mailer, alert, log, secrets };
+  const abuse = {
+    db: handle.db,
+    pg: handle.pg,
+    config,
+    mailer,
+    alert,
+    log,
+    secrets,
+    blobs,
+    antifraudRecheck: opts.antifraudRecheck,
+  };
   api.route("/", abuseRoutes(abuse));
   api.route("/", adminRoutes(abuse));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));

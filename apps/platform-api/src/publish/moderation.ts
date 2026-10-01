@@ -6,6 +6,7 @@ import { secretEnvVar } from "@wizard/connectors";
 import { ABUSE, type GateContext, type GateReport } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import { sql } from "kysely";
+import type { Mailer } from "../auth/mailer.js";
 import type { Db } from "../db/index.js";
 
 const DAY_MS = 86_400_000;
@@ -50,7 +51,8 @@ export function defaultModerationLog(): ModerationLog {
 
 /**
  * abuse.yaml#scoring signals new_org_lt_7d, free_plan, abuse_reports_prev and #patterns.brands.override
- * (platform.brand_allowlist). Earlier reports (M2-08): reports on the org's systems that staff did not dismiss.
+ * (platform.brand_allowlist). Earlier reports (M2-08): reports on the org's systems that staff did not dismiss; the
+ * owner's own «Оспорить» tickets (category auto_g2) are not complaints and do not count.
  */
 export async function abuseContext(
   db: Db,
@@ -72,7 +74,7 @@ export async function abuseContext(
     select count(*)::int as n
     from platform.abuse_reports ar
     join platform.systems s on s.id = ar.system_id
-    where s.org_id = ${orgId} and ar.status <> 'dismissed'`.execute(db);
+    where s.org_id = ${orgId} and ar.status <> 'dismissed' and ar.category <> 'auto_g2'`.execute(db);
   return {
     orgAgeDays: Math.max(0, Math.floor((now.getTime() - new Date(org.created_at).getTime()) / DAY_MS)),
     plan: org.plan,
@@ -152,9 +154,73 @@ export async function requestFounderReview(
   return (await founderReviewStatus(db, systemId, revision)) ?? "pending";
 }
 
+/** abuse.yaml#messages_ru.ORG_SUSPENDED (api.yaml ORG_SUSPENDED 403). */
+export const ORG_SUSPENDED_RU =
+  ABUSE.messages.ORG_SUSPENDED ??
+  "Публикации организации приостановлены. Подробности — в письме владельцу; оспорить решение можно ответом на это письмо.";
+
+/** orgs.suspended_at is set (abuse.yaml#takedown.flow): publishBlockers ORG_SUSPENDED, POST publish → 403. */
+export async function orgSuspended(db: Db, orgId: string): Promise<boolean> {
+  const o = await db
+    .selectFrom("platform.orgs")
+    .select("suspended_at")
+    .where("id", "=", orgId)
+    .executeTakeFirst();
+  return !!o?.suspended_at;
+}
+
+/** E-mails of the active owners of an org (letters about moderation decisions). */
+export async function orgOwnerEmails(db: Db, orgId: string): Promise<string[]> {
+  const rows = await db
+    .selectFrom("platform.memberships as m")
+    .innerJoin("platform.users as u", "u.id", "m.user_id")
+    .select("u.email")
+    .where("m.org_id", "=", orgId)
+    .where("m.role", "=", "owner")
+    .where("u.deleted_at", "is", null)
+    .execute();
+  return rows.map((r) => r.email);
+}
+
+/** Where the owner learns about the founder's decision (platform mail; failures are logged, never thrown). */
+export interface ReviewNotice {
+  mailer: Mailer;
+  platformOrigin: string;
+  log?: ((msg: string, err?: unknown) => void) | undefined;
+}
+
+/** Russian letter to the owner about the decision (the staff note is meant for the owner: «что исправить»). */
+export function founderReviewLetter(a: {
+  systemName: string;
+  revision: number;
+  decision: "approve" | "reject";
+  note?: string | null;
+  link: string;
+}): { subject: string; text: string } {
+  if (a.decision === "approve")
+    return {
+      subject: `Система «${a.systemName}» одобрена к публикации`,
+      text: [
+        `Модератор Wizard проверил ревизию ${a.revision} системы «${a.systemName}» и одобрил её публикацию.`,
+        `Теперь её можно опубликовать: откройте систему и нажмите «Опубликовать» — ${a.link}`,
+        ...(a.note ? [`Комментарий модератора: ${a.note}`] : []),
+      ].join("\n"),
+    };
+  return {
+    subject: `Публикация системы «${a.systemName}» не одобрена`,
+    text: [
+      `Модератор Wizard не одобрил публикацию ревизии ${a.revision} системы «${a.systemName}».`,
+      `Что исправить: ${a.note ?? "—"}`,
+      `Внесите правки в чате и опубликуйте новую версию — ${a.link}`,
+      "Если вы не согласны с решением, ответьте на это письмо.",
+    ].join("\n"),
+  };
+}
+
 /**
  * api.yaml#adminFounderReview: staff decision on a revision that waits for review; approve unblocks publishing that
- * revision. false — the revision has no review.
+ * revision. With `notice` every owner of the org gets the decision by mail (approved / rejected with the note).
+ * false — the revision has no review.
  */
 export async function decideFounderReview(
   db: Db,
@@ -165,6 +231,7 @@ export async function decideFounderReview(
     reviewer?: string | null;
     note?: string | null;
   },
+  notice?: ReviewNotice,
 ): Promise<boolean> {
   const r = await db
     .updateTable("platform.founder_reviews")
@@ -177,7 +244,28 @@ export async function decideFounderReview(
     .where("system_id", "=", a.systemId)
     .where("revision", "=", a.revision)
     .executeTakeFirst();
-  return Number(r.numUpdatedRows) > 0;
+  const ok = Number(r.numUpdatedRows) > 0;
+  if (ok && notice) {
+    try {
+      const sys = await db
+        .selectFrom("platform.systems")
+        .select(["name", "org_id"])
+        .where("id", "=", a.systemId)
+        .executeTakeFirstOrThrow();
+      const letter = founderReviewLetter({
+        systemName: sys.name,
+        revision: a.revision,
+        decision: a.decision,
+        note: a.note ?? null,
+        link: `${notice.platformOrigin.replace(/\/+$/, "")}/s/${a.systemId}`,
+      });
+      for (const to of await orgOwnerEmails(db, sys.org_id))
+        await notice.mailer.send({ kind: "notice", to, ...letter });
+    } catch (e) {
+      notice.log?.("founder review notice failed", e);
+    }
+  }
+  return ok;
 }
 
 /** Reviews waiting for staff, oldest first. */

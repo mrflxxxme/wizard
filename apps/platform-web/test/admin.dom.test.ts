@@ -384,6 +384,50 @@ describe("console: queue, ticket, reviews", () => {
     await waitFor(() => q(el, "admin-queue") !== null);
   });
 
+  test("org-wide suspension: confirmed first, sent with the ticket; then «Восстановить организацию»", async () => {
+    let t = ticket({
+      status: "takedown",
+      system: { ...(ticket().system as NonNullable<AbuseTicket["system"]>), suspended: true },
+    });
+    const adminOrgSuspension = vi.fn(async (orgId: string, b: { action: string }) => {
+      t = ticket({
+        status: "takedown",
+        system: { ...(t.system as NonNullable<AbuseTicket["system"]>), orgSuspended: b.action === "suspend" },
+      });
+      return { orgId, suspendedAt: b.action === "suspend" ? iso(0) : null };
+    });
+    const el = mount(
+      base({
+        adminSession: async () => VERIFIED,
+        adminGetAbuseReport: async () => t,
+        adminOrgSuspension: adminOrgSuspension as unknown as ApiClient["adminOrgSuspension"],
+      }),
+      `/admin?report=${R1}`,
+    );
+    await waitFor(() => q(el, "admin-act-org-suspend") !== null);
+    expect(q(el, "admin-act-org-restore")).toBeNull();
+    type(q(el, "admin-note"), "Повторный фишинг в организации");
+    click(q(el, "admin-act-org-suspend"));
+    expect(q(el, "admin-org-suspend-confirm-text")?.textContent).toBe(ru.admin.orgSuspendConfirm);
+    expect(adminOrgSuspension).not.toHaveBeenCalled();
+    click(q(el, "admin-act-org-suspend"));
+    await waitFor(() => q(el, "admin-ticket-org-suspended") !== null);
+    expect(adminOrgSuspension).toHaveBeenCalledWith(ORG, {
+      action: "suspend",
+      note: "Повторный фишинг в организации",
+      reportId: R1,
+    });
+    expect(q(el, "admin-act-org-suspend")).toBeNull();
+    type(q(el, "admin-note"), "Владелец удалил фишинговые системы");
+    click(q(el, "admin-act-org-restore"));
+    await waitFor(() => q(el, "admin-ticket-org-suspended") === null);
+    expect(adminOrgSuspension).toHaveBeenLastCalledWith(ORG, {
+      action: "restore",
+      note: "Владелец удалил фишинговые системы",
+      reportId: R1,
+    });
+  });
+
   test("founder reviews: approve and reject with a note", async () => {
     let items = [{ systemId: SYS, systemName: "Форум", orgId: ORG, revision: 7, createdAt: iso(-3600_000) }];
     const adminFounderReview = vi.fn(async () => {

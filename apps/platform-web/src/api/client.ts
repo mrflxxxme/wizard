@@ -350,6 +350,18 @@ export function createApiClient(opts: ClientOptions = {}) {
         `/admin/systems/${encodeURIComponent(systemId)}/founder-review`,
         { body },
       ),
+    // abuse.yaml#takedown.flow: org-wide suspension (staff) and «Оспорить» a G2 antifraud stop (owner).
+    adminOrgSuspension: (
+      orgId: string,
+      body: { action: "suspend" | "restore"; note: string; reportId?: string },
+    ) =>
+      call<{ orgId: string; suspendedAt: string | null }>(
+        "POST",
+        `/admin/orgs/${encodeURIComponent(orgId)}/suspension`,
+        { body },
+      ),
+    disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
+      call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }

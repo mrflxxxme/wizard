@@ -6,7 +6,7 @@
 import { sql } from "kysely";
 import type { Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
-import type { OpsAlertFn } from "../ops/alert.js";
+import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
 
 /** api.yaml#Error LLM_BUDGET_EXHAUSTED */
 export const LLM_BUDGET_EXHAUSTED_RU =
@@ -95,14 +95,8 @@ export class LlmMonthlyCap {
       });
   }
 
-  /** Sends the alert only for the first claim of `key` (db.yaml#ops_alerts; outside the caller's transaction). */
+  /** Sends the alert only for the first claim of `key` (ops/alert.ts alertOnce; outside the caller's transaction). */
   async #once(key: string, a: Parameters<OpsAlertFn>[0]): Promise<void> {
-    const claimed = await this.#o.db
-      .insertInto("platform.ops_alerts")
-      .values({ key })
-      .onConflict((oc) => oc.column("key").doNothing())
-      .returning("key")
-      .executeTakeFirst();
-    if (claimed) await this.#o.alert?.(a);
+    await alertOnce(this.#o.db, key, this.#o.alert, a);
   }
 }

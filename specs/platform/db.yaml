@@ -68,7 +68,7 @@ tables:
       ru_only: "boolean not null default false"           # M1, data-boundary.yaml#ru_only
       require_founder_review: "boolean not null default true"   # M2-09; в бете true
       passport_collection_allowed: "boolean not null default false"  # M2, abuse.yaml#patterns.gov_ids
-      suspended_at: "timestamptz"                         # M2, abuse
+      suspended_at: "timestamptz"                         # M2, abuse: приостановка всей организации (abuse.yaml#takedown.flow, api.yaml#adminOrgSuspension) — все системы org suspended в deployments, publish → ORG_SUSPENDED
       region_code: "text check (region_code ~ '^[0-9]{2}$')"   # M1: код субъекта РФ (ИНН, регион при регистрации, офлайн-GeoIP в РФ); L3-02
       t1_restricted: "boolean not null default false"      # M1: true → все вызовы org только T0 (route_reason policy_region_restricted); region_code is null (регион неизвестен) → тоже только T0 (fail-safe); IP входа из регионов с ограничением Z.ai → true; список регионов — E-LEGAL
 
@@ -113,7 +113,7 @@ tables:
 
   ops_alerts:
     milestone: M2
-    purpose: "M2-15: алерты основателю, отправляемые один раз на ключ (llm_cap_80:<yyyy-mm>, llm_cap_100:<yyyy-mm> — платформенный лимит токенов месяца)"
+    purpose: "Алерты основателю, отправляемые один раз на ключ — единственный путь дедупликации (apps/platform-api/src/ops/alert.ts alertOnce): llm_cap_80:<yyyy-mm>, llm_cap_100:<yyyy-mm> (лимит токенов месяца, M2-15), run_fail_rate:<yyyy-mm-ddThh> (M2-09), abuse_sla:<reportId> (M2-08), founder_review:<systemId>:<revision> (M2-09), auto_suspend:<publicationId>:<yyyy-mm-ddThh> (abuse.yaml#takedown.auto_suspend)"
     columns:
       key: "text pk"
 
@@ -233,7 +233,7 @@ tables:
       heartbeat_at: "timestamptz"
       started_at: "timestamptz"
       finished_at: "timestamptz"
-    indexes: ["(system_id, created_at desc)", "(status) where status in ('queued','waiting_lock','running','needs_input')", "unique (dbos_workflow_id)"]
+    indexes: ["(system_id, created_at desc)", "(status) where status in ('queued','waiting_lock','running','needs_input')", "unique (dbos_workflow_id)", "(finished_at) where finished_at is not null"]   # последний — доля упавших прогонов за час (алерт и метрика M2-09; миграция 0015)
 
   run_events:
     milestone: M0
@@ -295,7 +295,7 @@ tables:
       billable: "boolean not null default true"             # false: ошибка провайдера (status ≠ ok)
       mode: "text not null check (mode in ('live','fixture','record'))"
       request_hash: "text"                                  # sha256 scrubbed-запроса (ключ fixture); не содержимое
-    indexes: ["(run_id)", "(org_id, created_at)", "(tier, call_type, created_at)"]
+    indexes: ["(run_id)", "(org_id, created_at)", "(tier, call_type, created_at)", "(created_at)"]   # последний — платформенный лимит токенов месяца (M2-15; миграция 0015)
     checks: ["check (tier = 'T0' or scrubbed)"]
 
   credit_ledger:
@@ -544,6 +544,6 @@ views:
       draft: systems с preview_revision is not null → {system_id: schema_key, slug, env: 'draft', revision: preview_revision,
       spec_hash: sha256(revisions.spec), bundle_key, published_at: revisions.created_at, suspended, features};
       prod (M1+): publications со status = 'live' или 'suspended' → то же с env = 'prod', published_at = live_at.
-      suspended = systems.suspended_at is not null or publications.status = 'suspended' (runtime отдаёт 451, L1-32; abuse.yaml#takedown).
+      suspended = systems.suspended_at is not null or orgs.suspended_at is not null or publications.status = 'suspended' (runtime отдаёт 451, L1-32; abuse.yaml#takedown; orgs.suspended_at — миграция 0015, в draft и prod).
       features = {phoneOtp: orgs.plan in ('start','business')} — вход по телефону в prod только на платных тарифах (F4, billing.yaml#plans; в draft метод виден с пометкой — runtime.yaml#auth.methods_M1.phone_otp)
       org_id = systems.org_id, plan = orgs.plan ('free' | 'start' | 'business') — для SMS-бюджета org (M1-05) и лимитов коннекторов по тарифу (ctx.system.plan, M1-06); features.phoneOtp остаётся производным от plan

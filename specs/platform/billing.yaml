@@ -23,7 +23,10 @@ plans:
     limits: { prod_systems: 5, draft_systems: 30, members: 30 }
     login_methods: [email_otp, telegram]      # SMS не подключаем на пилоте (расходы); phone_otp — после пилота на платных тарифах
     prod_requires: "приглашение основателя (идентификация вместо привязки карты на пилоте); CARD_BINDING_REQUIRED не применяется"
-    payments: "WIZARD_PAYMENTS=off: покупка, подписки и привязка карты скрыты в UI и отвечают 403 PAYMENTS_DISABLED"
+    payments: "WIZARD_PAYMENTS=off: покупка, подписки и привязка карты скрыты в UI (по Org.paymentsEnabled / Billing.paymentsEnabled) и отвечают 403 PAYMENTS_DISABLED"
+    cli: "pnpm --filter @wizard/platform-api pilot invite|invites|revoke|plan|grant|orgs|spend|readiness|review-required (apps/platform-api/src/pilot/cli.ts); plan <orgId> pilot|free отказывает при активной подписке"
+    new_orgs: "M2-09: в режиме WIZARD_REGISTRATION=invite новая org владельца пилотной org создаётся с plan=pilot без кредитов (их начисляет основатель) и require_founder_review=true; остальным создание org на пилоте закрыто (403 FORBIDDEN). В режиме open — Free, как в M1"
+    topup: "докупки на pilot нет и при WIZARD_PAYMENTS=on (topup.available_on; createTopup → 403 FORBIDDEN, блок «Докупить» скрыт); смена тарифа на start/business при включённой оплате — обычная подписка"
   start:
     price_rub_month: 1990
     grants: { monthly: { credits: 50, expires: "конец периода подписки" } }

@@ -11,7 +11,7 @@ import type { ErrorCode } from "../errors.js";
 import type { AuthUser } from "../http/auth.js";
 import { ACTIVE_STATUSES } from "../runs/queue.js";
 import { loadRevision } from "../services/revisions.js";
-import { founderReviewStatus, REVIEW_PENDING_RU } from "./moderation.js";
+import { founderReviewStatus, ORG_SUSPENDED_RU, orgSuspended, REVIEW_PENDING_RU } from "./moderation.js";
 import { isPublishable } from "./workflows.js";
 
 /**
@@ -94,6 +94,7 @@ export async function founderReviewBlocks(
 
 export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
   FOUNDER_REVIEW_PENDING: REVIEW_PENDING_RU,
+  ORG_SUSPENDED: ORG_SUSPENDED_RU,
   CARD_BINDING_REQUIRED: "Привяжите карту российского банка — это нужно для публикации",
   OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
@@ -118,6 +119,7 @@ export async function publishBlockers(
   const out: ErrorCode[] = [];
   if (user.orgs.get(s.org_id) !== "owner") out.push("NOT_OWNER");
   if (s.suspended_at) out.push("SYSTEM_SUSPENDED");
+  if (await orgSuspended(db, s.org_id)) out.push("ORG_SUSPENDED");
   if (await cardBindingMissing(db, s.org_id, { required: cardRequired, ...(billing ? { billing } : {}) }))
     out.push("CARD_BINDING_REQUIRED");
   let rev = s.draft_revision > 0 ? await loadRevision(db, s.id, s.draft_revision) : undefined;

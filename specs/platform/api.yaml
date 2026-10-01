@@ -60,7 +60,7 @@ paths:
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
                   activeRunId: {type: [string, 'null'], format: uuid}
-                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED, ORG_SUSPENDED]}, description: 'M1+; пусто — публиковать можно. ORG_SUSPENDED — orgs.suspended_at (abuse.yaml#takedown.flow)'}
         '404': {$ref: '#/components/responses/Error'}
     delete:
       operationId: deleteSystem
@@ -280,7 +280,7 @@ paths:
       operationId: publish
       x-milestone: M1
       x-roles: [owner]
-      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve)'
+      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve). Снятая система → 422 SYSTEM_SUSPENDED, приостановленная организация → 403 ORG_SUSPENDED (abuse.yaml#messages_ru.ORG_SUSPENDED)'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
       responses:
@@ -539,12 +539,21 @@ paths:
       summary: Уведомления магазина ПЛАТФОРМЫ. Доверять только после GET /v3/payments/{id} к API ЮKassa и проверки IP из списка ЮKassa; идемпотентно по provider_payment_id
       requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
       responses: {'200': {description: Принято}}
+  /systems/{id}/disputes:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: disputeG2Block
+      x-milestone: M2
+      x-roles: [owner]
+      summary: '«Оспорить» (abuse.yaml#rescan, #messages_ru.G2-AF-*): последний G2-отчёт ревизии провалил блокер антифрода G2-AF-01…07 → тикет staff category=auto_g2 (sla_deadline +24 ч, алерт abuse_dispute_new и письма staff); один открытый тикет на систему (повтор возвращает его). Ответ владельцу — письмом при закрытии тикета (dismiss с note). Иначе 400. Тикеты auto_g2 не считаются в abuse_reports_prev (G2-AF-08)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], properties: {revision: {type: integer, minimum: 1}, text: {type: string, maxLength: 2000, description: комментарий владельца}}}}}}
+      responses: {'202': {description: Заявка принята, content: {application/json: {schema: {type: object, required: [reportId, message_ru], properties: {reportId: {type: string, format: uuid}, message_ru: {type: string, description: abuse.yaml#messages_ru.dispute}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /abuse-reports:
     post:
       operationId: createAbuseReport
       x-milestone: M2
       security: []
-      summary: «Пожаловаться» (abuse.yaml#report). Без входа; лимит 10/ч на IP; ответ не раскрывает статус системы
+      summary: '«Пожаловаться» (abuse.yaml#report). Без входа; лимит 10/ч на IP; ответ не раскрывает статус системы. Жалоба phishing на live-систему запускает abuse.yaml#takedown.auto_suspend: ≥ 3 жалобы phishing с разных IP за 1 ч → перепроверка live-ревизии текущим G2 (только G2-AF-01…07, не чаще раза в час на публикацию); провал → публикация suspended, эта жалоба становится тикетом takedown, письмо владельцу, алерт abuse_auto_suspend; G2 чист → только алерт abuse_phishing_cluster'
       requestBody:
         required: true
         content:
@@ -578,13 +587,22 @@ paths:
       x-roles: [staff]
       requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}}}}}}
       responses: {'200': {description: Обновлено}}
+  /admin/orgs/{orgId}/suspension:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    post:
+      operationId: adminOrgSuspension
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'abuse.yaml#takedown.flow «Повторное нарушение или явный фишинг → orgs.suspended_at»: suspend — все системы организации отдают 451 (вид deployments, draft и prod), publish → 403 ORG_SUSPENDED, в publishBlockers ORG_SUSPENDED; restore — снимает признак (системы, снятые своими тикетами, остаются снятыми). Строка staff_audit_log org_suspend|org_restore (target org:<id>, в note — тикет), письмо владельцам. Переход без изменения → 400'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action, note], properties: {action: {enum: [suspend, restore]}, note: {type: string, minLength: 3, maxLength: 2000}, reportId: {type: string, format: uuid, description: тикет-основание}}}}}}
+      responses: {'200': {description: Выполнено, content: {application/json: {schema: {type: object, required: [orgId, suspendedAt], properties: {orgId: {type: string, format: uuid}, suspendedAt: {type: [string, 'null'], format: date-time}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /admin/systems/{id}/founder-review:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
       operationId: adminFounderReview
       x-milestone: M2
       x-roles: [staff]
-      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
+      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). Владельцам org уходит письмо о решении (одобрено — можно публиковать; не одобрено — note как «что исправить»), и из админки, и из CLI. rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
       responses: {'200': {description: Записано}}
   /admin/session:
@@ -901,7 +919,7 @@ components:
             text: {type: [string, 'null']}
             contactEmail: {type: [string, 'null']}
             resolutionNote: {type: [string, 'null']}
-            system: {type: [object, 'null'], properties: {id: {type: string}, name: {type: [string, 'null']}, orgId: {type: [string, 'null']}, prodUrl: {type: [string, 'null']}, suspended: {type: boolean}}}
+            system: {type: [object, 'null'], properties: {id: {type: string}, name: {type: [string, 'null']}, orgId: {type: [string, 'null']}, prodUrl: {type: [string, 'null']}, suspended: {type: boolean}, orgSuspended: {type: boolean, description: 'orgs.suspended_at задан (снятие всей организации)'}}}
             access: {type: [object, 'null'], properties: {until: {type: string, format: date-time}}}
             journal: {type: array, items: {type: object, properties: {action: {type: string}, note: {type: [string, 'null']}, actor: {type: string}, at: {type: string, format: date-time}}}}
     StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}

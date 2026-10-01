@@ -447,7 +447,19 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
       )}
       {stage === "ready" && (
         <>
-          <GateReportView reports={reports} />
+          <GateReportView
+            reports={reports}
+            revision={view.system.previewRevision ?? null}
+            dispute={
+              (view.publishBlockers ?? []).includes("NOT_OWNER")
+                ? undefined
+                : {
+                    send: async (revision, note) =>
+                      (await api.disputeG2Block(systemId, { revision, ...(note ? { text: note } : {}) }))
+                        .message_ru,
+                  }
+            }
+          />
           {showDiff && target !== null && prodRevision !== null && (
             <DiffCard
               revision={target}

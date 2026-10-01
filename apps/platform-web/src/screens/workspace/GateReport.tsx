@@ -1,5 +1,6 @@
 // S6 «Отчёт проверок» (GET /systems/:id/gates/latest) and the publish card (publishing itself is M1-04/M1-11; the
-// RU card status and blocker links to S10 «Персональные данные» and S-billing — M2-11).
+// RU card status and blocker links to S10 «Персональные данные» and S-billing — M2-11). A G2 antifraud stop offers the
+// owner «Оспорить» (abuse.yaml#rescan, #messages_ru.dispute → api.yaml#disputeG2Block).
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import type { GateReport as Report } from "../../api/types.js";
@@ -8,11 +9,85 @@ import { Alert, Pill } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
-function ReportRow({ r }: { r: Report }): ReactNode {
+/** G2 antifraud blockers the owner may dispute (gates.yaml#G2.antifraud_rules; AF-08/09 are review warnings). */
+const DISPUTABLE = /^G2-AF-0[1-7]$/;
+
+/** Owner's «Оспорить» of a G2 antifraud stop: `send` returns the server's message_ru. */
+export interface DisputeHandler {
+  send(revision: number, text: string): Promise<string>;
+}
+
+function Dispute({ revision, handler }: { revision: number; handler: DisputeHandler }): ReactNode {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (sent)
+    return (
+      <p className={s.small} role="status" data-testid="gate-dispute-sent">
+        {sent}
+      </p>
+    );
+  if (!open)
+    return (
+      <div className={s.row}>
+        <span className={s.small}>{ru.gates.disputeHint}</span>
+        <Button size="sm" variant="secondary" data-testid="gate-dispute" onClick={() => setOpen(true)}>
+          {ru.gates.dispute}
+        </Button>
+      </div>
+    );
+  return (
+    <div className={s.checks}>
+      <label className={s.small}>
+        {ru.gates.disputeText}
+        <textarea
+          value={text}
+          maxLength={2000}
+          rows={3}
+          onChange={(e) => setText(e.target.value)}
+          data-testid="gate-dispute-text"
+        />
+      </label>
+      <Button
+        size="sm"
+        variant="primary"
+        loading={busy}
+        data-testid="gate-dispute-send"
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          handler
+            .send(revision, text.trim())
+            .then((m) => setSent(m || ru.gates.disputeSent))
+            .catch((e: unknown) => setError(e instanceof Error ? e.message : ru.errors.generic))
+            .finally(() => setBusy(false));
+        }}
+      >
+        {ru.gates.disputeSend}
+      </Button>
+      {error && <Alert testId="gate-dispute-error">{error}</Alert>}
+    </div>
+  );
+}
+
+function ReportRow({
+  r,
+  revision,
+  dispute,
+}: {
+  r: Report;
+  revision: number | null;
+  dispute?: DisputeHandler | undefined;
+}): ReactNode {
   const [open, setOpen] = useState(false);
   const pass = r.summary?.pass ?? r.checks.filter((c) => c.status === "pass").length;
   const counted = r.checks.filter((c) => c.status !== "skip").length;
   const warnings = r.checks.filter((c) => c.status === "warn");
+  const disputable =
+    r.level === "G2" && !r.passed && r.checks.some((c) => c.status === "fail" && DISPUTABLE.test(c.id));
+  const rev = r.specVersion ?? revision;
   return (
     <li className={s.reportRow} data-testid={`gate-report-row-${r.level}`} data-passed={r.passed}>
       <div className={s.row}>
@@ -36,6 +111,7 @@ function ReportRow({ r }: { r: Report }): ReactNode {
           ))}
         </ul>
       )}
+      {disputable && dispute && rev !== null && <Dispute revision={rev} handler={dispute} />}
       {open && (
         <ul className={s.checks}>
           {r.checks.map((c) => (
@@ -51,7 +127,17 @@ function ReportRow({ r }: { r: Report }): ReactNode {
   );
 }
 
-export function GateReportView({ reports }: { reports: Report[] }): ReactNode {
+export function GateReportView({
+  reports,
+  revision = null,
+  dispute,
+}: {
+  reports: Report[];
+  /** Revision of the latest reports (GET gates/latest), when a report has no specVersion. */
+  revision?: number | null;
+  /** Owner only: «Оспорить» on a G2 antifraud stop. */
+  dispute?: DisputeHandler | undefined;
+}): ReactNode {
   const order = ["G0", "G1", "G2"];
   const sorted = [...reports].sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level));
   return (
@@ -62,7 +148,7 @@ export function GateReportView({ reports }: { reports: Report[] }): ReactNode {
       ) : (
         <ul className={s.reportList}>
           {sorted.map((r) => (
-            <ReportRow key={r.level} r={r} />
+            <ReportRow key={r.level} r={r} revision={revision} dispute={dispute} />
           ))}
         </ul>
       )}

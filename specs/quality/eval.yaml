@@ -43,7 +43,7 @@ modes:
   spec_only_schema: "M0-18: tools/eval валидирует ответ по specs/appspec/appspec.schema.json; до этого — упрощённая схема tools/eval/lib/appspec.mjs (known-issues #11)"
 
 live_cadence:           # решение основателя F6, пересмотрено 01.10.2026 (product.yaml#decisions.D20_eval_budget, D23_pilot)
-  nightly_smoke: "Раз в неделю (имя ключа сохранено для совместимости) — 5 брифов (ротационный поднабор: ≥ 1 ev, ≥ 1 gd, ≥ 1 hz, ≥ 1 с canaries), одна модель — модель сборки по умолчанию (models.yaml#week0_decision)"
+  nightly_smoke: "Раз в неделю (имя ключа сохранено для совместимости) — 5 брифов (ротационный поднабор least-recently-picked, tools/eval/lib/rotation.mjs: условия ≥ 1 ev, ≥ 1 gd, ≥ 1 hz, ≥ 1 с canaries, остальные места — брифы, которые дольше всех не запускались; весь набор из N брифов — за ⌈N/5⌉ запусков), одна модель — модель сборки по умолчанию (models.yaml#week0_decision)"
   full: "Все брифы × 2 модели (по умолчанию + лучшая альтернативная) — только по метке PR eval:full при смене промптов, models.yaml или версии модели, и перед закрытием вехи"
   week0: "Неделя 0: spec_only на наборе M0, GLM-5.3 против лучшей T0 → правило models.yaml#week0_decision (F2)"
   budget: "≤ 4 000 ₽/мес на live-eval (в общем потолке токенов 10 000 ₽/мес, D20). tools/eval суммирует cost_rub отчётов tools/eval/results/ за календарный месяц; если прогноз прогона превышает остаток — full не стартует (ночной smoke продолжается), нужна эскалация E-MONEY"
