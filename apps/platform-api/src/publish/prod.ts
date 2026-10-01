@@ -2,7 +2,7 @@
 // smoke check of the prod host, URLs and the Publication API shape.
 import { request } from "node:http";
 import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
-import { schemaName, type TelegramPublishOptions } from "@wizard/runtime";
+import { ensureSystemRole, schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
@@ -119,7 +119,10 @@ export async function applyProdMigration(
 ): Promise<void> {
   const o = a.options ?? {};
   const schema = schemaName(a.systemKey, "prod");
-  const ddl = toDDL(a.plan, schema, { runtimeRole: o.runtimeRole ?? RUNTIME_ROLE, lockTimeout: "3s" });
+  const runtimeRole = o.runtimeRole ?? RUNTIME_ROLE;
+  // System access = DB role sys_<key>_prod_system (isolation.yaml#db_access, L3-20), created before the DDL.
+  const systemRole = await ensureSystemRole(pg, a.systemKey, "prod", [runtimeRole]);
+  const ddl = toDDL(a.plan, schema, { runtimeRole, systemRole, lockTimeout: "3s" });
   // An existing prod schema may predate system tables/columns of the current runtime (before set_rls touches them);
   // create_schema over a leftover schema creates missing tables itself but not missing columns.
   if (a.plan.steps.some((s) => s.kind === "create_schema")) ddl.push(...upgradeSystemTables(schema));

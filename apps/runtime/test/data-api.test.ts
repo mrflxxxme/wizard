@@ -1,8 +1,8 @@
 // Data API behaviour beyond the matrix: RLS as the second barrier, isolation of systems, query params, write
 // validation, consent, audit, invalidation, RoleSpec, dev-login.
-import { quoteIdent } from "@wizard/appspec";
+import { quoteIdent, systemRoleName } from "@wizard/appspec";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { complianceInfo, type InvalidationEvent } from "../src/index.js";
+import { complianceInfo, type InvalidationEvent, SYSTEM_SUBJECT } from "../src/index.js";
 import { forumSpec, type Harness, harness, login, request, seedRow, seedUser, userIdOf } from "./helpers.js";
 
 const spec = forumSpec();
@@ -39,9 +39,10 @@ describe("RLS (second barrier)", () => {
     role: string,
     userId: string | null,
     table: string,
+    dbRole = h.role,
   ): Promise<number> {
     return h.sql.begin(async (tx) => {
-      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(h.role)}`);
+      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(dbRole)}`);
       await tx`select set_config('wizard.role', ${role}, true), set_config('wizard.user_id', ${userId ?? ""}, true)`;
       const rows = await tx.unsafe(
         `select count(*)::int as n from ${quoteIdent(schema)}.${quoteIdent(table)}`,
@@ -57,12 +58,45 @@ describe("RLS (second barrier)", () => {
     expect(await countAs(schemaA, "organizer", null, "ticket")).toBeGreaterThan(0);
   });
 
-  it("rowFilter in RLS: participant sees only own tickets; system tables only for __system", async () => {
+  it("rowFilter in RLS: participant sees only own tickets; system tables only for the system DB role", async () => {
     const me = await userIdOf(h.sql, schemaA, "participant");
     await seedRow(h.sql, schemaA, spec, "ticket", { holder_user: me });
     expect(await countAs(schemaA, "participant", me, "ticket")).toBe(1);
     expect(await countAs(schemaA, "organizer", null, "users")).toBe(0);
-    expect(await countAs(schemaA, "__system", null, "users")).toBeGreaterThan(0);
+    // L3-20: the GUC value '__system' grants nothing; only the role sys_<key>_<env>_system does.
+    expect(await countAs(schemaA, "__system", null, "users")).toBe(0);
+    expect(await countAs(schemaA, "", null, "users", systemRoleName(schemaA))).toBeGreaterThan(0);
+  });
+
+  it("system context of DataAccess runs as sys_<key>_<env>_system, the subject context as the runtime role", async () => {
+    const sys = await h.rt.systems.resolve("alpha", "draft");
+    const who = await sys?.data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+      const sysUser = (await tx.sql`select current_user as u`)[0]?.u;
+      await tx.data.count("stream", undefined);
+      return sysUser;
+    });
+    expect(who).toBe(systemRoleName(schemaA));
+    const back = await sys?.data.transaction("default", sys.data.publicSubject() as never, async (tx) => {
+      await tx.system.count("stream", undefined);
+      const inSystem = (await tx.sql`select current_user as u`)[0]?.u;
+      await tx.data.count("stream", undefined).catch(() => undefined);
+      const inSubject = (await tx.sql`select current_user as u`)[0]?.u;
+      return [inSystem, inSubject];
+    });
+    expect(back).toEqual([systemRoleName(schemaA), h.role]);
+  });
+
+  it("system role of one system cannot read another system's schema", async () => {
+    const err = await h.sql
+      .begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schemaA))}`);
+        return tx.unsafe(`select count(*) from ${quoteIdent(schemaB)}."users"`);
+      })
+      .then(
+        () => null,
+        (e: { code?: string }) => e.code,
+      );
+    expect(err).toBe("42501");
   });
 
   it("the runtime connection is not a superuser inside transactions (set_config('role'))", async () => {

@@ -4,6 +4,7 @@ import type { Subject } from "../data/access.js";
 import type { RuntimeEnv } from "../env.js";
 import type { ConnectorHost } from "../preview/connectors.js";
 import type { LegalTemplates } from "../privacy/templates.js";
+import type { SandboxExecutors } from "../sandbox/workerd-executor.js";
 import type { LoadedSystem } from "../system.js";
 
 export interface OutboxMessage {
@@ -31,6 +32,8 @@ export interface RuntimeServices {
   privacy?: PrivacySettings;
   /** Lawyer's templates of the policy page and consent texts (privacy/templates.ts). */
   legalTemplates?: LegalTemplates;
+  /** M2 sandbox executors (workerd in gVisor, security/isolation.yaml#M2); absent → unsafe-local or disabled. */
+  sandbox?: SandboxExecutors;
 }
 
 export interface PrivacySettings {

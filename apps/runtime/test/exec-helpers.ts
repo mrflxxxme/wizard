@@ -3,10 +3,10 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AppSpec } from "@wizard/appspec";
+import { type AppSpec, dropSystemRoleDDL } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
 import { closeExecutors } from "../src/exec/host.js";
-import { migrateSystem, schemaName } from "../src/index.js";
+import { migrateSystem, type RuntimeAppOptions, schemaName } from "../src/index.js";
 import { forumSpec, type Harness, harness, newKey, repoRoot } from "./helpers.js";
 
 const EXAMPLES = join(repoRoot, "specs/runtime/examples");
@@ -60,8 +60,11 @@ export interface ExecHarness extends Harness {
   fnSystem(slug: string, extra?: ExtraFunction[], mutate?: (spec: AppSpec) => void): Promise<ExecSystem>;
 }
 
-export async function execHarness(unsafeLocalExec = true): Promise<ExecHarness> {
-  const h = await harness({ unsafeLocalExec });
+export async function execHarness(
+  unsafeLocalExec = true,
+  app: Partial<RuntimeAppOptions> = {},
+): Promise<ExecHarness> {
+  const h = await harness({ unsafeLocalExec }, app);
   const tmp = mkdtempSync(join(tmpdir(), "wz-exec-"));
   const schemas: string[] = [];
   return {
@@ -107,6 +110,7 @@ export async function execHarness(unsafeLocalExec = true): Promise<ExecHarness> 
     async close() {
       closeExecutors();
       for (const s of schemas) await h.sql.unsafe(`DROP SCHEMA IF EXISTS "${s}" CASCADE`);
+      for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await h.sql.unsafe(st);
       await h.close();
       rmSync(tmp, { recursive: true, force: true });
     },

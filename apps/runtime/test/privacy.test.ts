@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AppSpec, type Entity, quoteIdent } from "@wizard/appspec";
+import { type AppSpec, dropSystemRoleDDL, type Entity, quoteIdent } from "@wizard/appspec";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -51,6 +51,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const s of schemas) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
+  for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await sql.unsafe(st);
   await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
   await sql.end();

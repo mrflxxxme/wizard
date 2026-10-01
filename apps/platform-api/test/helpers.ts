@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { quoteIdent, systemRoleName } from "@wizard/appspec";
 import type { RouteOutput, Router, RouterOptions } from "@wizard/llm";
 import postgres from "postgres";
 import { parse } from "yaml";
@@ -44,7 +45,14 @@ export async function createTestDb(
   return {
     url: u.toString(),
     async drop() {
+      // System roles (sys_<key>_<env>_system, L3-20) are cluster-wide: drop the ones of this database's schemas.
+      const db = postgres(u.toString(), { max: 1, onnotice: () => {} });
+      const schemas = await db<{ n: string }[]>`
+        select nspname as n from pg_catalog.pg_namespace where nspname like 'app\\_%'`.catch(() => []);
+      await db.end();
       await admin.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      for (const { n } of schemas)
+        await admin.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(systemRoleName(n))}`).catch(() => {});
       await admin.end();
     },
   };

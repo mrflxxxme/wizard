@@ -7,6 +7,9 @@
 // Runtime queries then run inside a transaction with
 //   SET LOCAL ROLE <runtimeRole>; select set_config('wizard.role', $1, true), set_config('wizard.user_id', $2, true)
 // ($user.<attr> in rowFilter reads set_config('wizard.user_<attr>', ..., true)).
+// System access (ctx.systemDb, workflows, retention) is a DB role, not a GUC (security/isolation.yaml#db_access,
+// L3-20): toSystemRoleDDL(schema, {members}) once by a CREATEROLE role, toDDL(..., {systemRole}), then
+//   SET LOCAL ROLE <systemRole>  (policy "wz__system" TO <systemRole> USING (true)).
 import { err, type OpsError } from "./errors.js";
 import { SYSTEM_FIELDS } from "./reserved.js";
 import {
@@ -79,9 +82,11 @@ export interface MigrationPlan {
   next: AppSpec;
 }
 
-/** Context role for platform-side access (ctx.systemDb, workflows, retention). */
+/**
+ * Logical subject name of platform-side access (ctx.systemDb, workflows, retention) in audit rows and ctx.user.role.
+ * It grants nothing in the database: RLS gives system access only to the DB role systemRoleName(schema) (L3-20).
+ */
 export const SYSTEM_ROLE = "__system";
-const SYSTEM_ROLE_COND = `current_setting('wizard.role', true) = ${textLiteral(SYSTEM_ROLE)}`;
 
 /**
  * Tables created in every system schema by create_schema (runtime.yaml#postgres.system_tables).
@@ -587,6 +592,11 @@ export interface DdlOptions {
   /** DB role used by the runtime; receives USAGE on the schema and DML on its tables. */
   runtimeRole?: string;
   /**
+   * System role of this schema (systemRoleName(schema), created by toSystemRoleDDL): receives USAGE + DML and the
+   * only policy with system access, "wz__system" TO <systemRole> USING (true). Omitted → no system access at all.
+   */
+  systemRole?: string;
+  /**
    * Per-system migration role (ops.yaml#migrations.roles; isolation.yaml M2: sys_owner_<key>_<env>). The schema is
    * created `AUTHORIZATION <role>`, then `SET LOCAL ROLE <role>` makes every following statement run with the
    * rights of this schema's owner only (no access to platform or other systems). The executing role MUST be a
@@ -792,12 +802,16 @@ export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}):
   out.push(
     `DO ${dollarQuote(` DECLARE p record; BEGIN FOR p IN SELECT policyname, tablename FROM pg_policies WHERE schemaname = ${schemaLit} AND policyname LIKE ${textLiteral("wz\\_%")} LOOP EXECUTE format(${textLiteral("DROP POLICY %I ON %I.%I")}, p.policyname, ${schemaLit}, p.tablename); END LOOP; END `)}`,
   );
-  // ctx.systemDb and workflows run as role '__system' (runtime.yaml#postgres.context). A separate permissive
-  // policy is equivalent to OR-ing it into every (role, op) policy, and also covers tables without permissions.
-  for (const table of tables) {
-    out.push(
-      `CREATE POLICY "wz__system" ON ${s}.${quoteIdent(table)} AS PERMISSIVE FOR ALL TO PUBLIC USING (${SYSTEM_ROLE_COND}) WITH CHECK (${SYSTEM_ROLE_COND})`,
-    );
+  // ctx.systemDb, workflows and connector webhooks run as the DB role sys_<key>_<env>_system (isolation.yaml#db_access,
+  // L3-20); no GUC value grants system access. A separate permissive policy also covers tables without permissions.
+  const systemRole = opts.systemRole;
+  if (systemRole !== undefined) {
+    assertSqlName(systemRole, "system role");
+    for (const table of tables) {
+      out.push(
+        `CREATE POLICY "wz__system" ON ${s}.${quoteIdent(table)} AS PERMISSIVE FOR ALL TO ${quoteIdent(systemRole)} USING (true) WITH CHECK (true)`,
+      );
+    }
   }
   const entities = new Map(spec.entities.map((e) => [e.name, e]));
   for (const p of spec.permissions) {
@@ -819,12 +833,60 @@ export function toRLS(spec: AppSpec, schemaName: string, opts: DdlOptions = {}):
       else out.push(`${head} USING (${cond})`);
     }
   }
-  if (opts.runtimeRole !== undefined) {
-    assertSqlName(opts.runtimeRole, "runtime role");
-    const r = quoteIdent(opts.runtimeRole);
+  const grantees = [opts.runtimeRole, systemRole].filter((r): r is string => r !== undefined);
+  for (const role of grantees) {
+    assertSqlName(role, "runtime role");
+    const r = quoteIdent(role);
     out.push(`GRANT USAGE ON SCHEMA ${s} TO ${r}`);
     out.push(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${s} TO ${r}`);
     out.push(`GRANT USAGE ON ALL SEQUENCES IN SCHEMA ${s} TO ${r}`);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// System role (security/isolation.yaml#db_access, L3-20)
+
+/** sys_<key>_<env>_system for app_<key>_<env>; any other schema name → sys_<schema>_system (hashed past 63 bytes). */
+export function systemRoleName(schemaName: string): string {
+  assertSqlName(schemaName, "schema name");
+  return pgName("sys", schemaName.startsWith("app_") ? schemaName.slice(4) : schemaName, "system");
+}
+
+export interface SystemRoleOptions {
+  /** Default systemRoleName(schemaName). */
+  systemRole?: string;
+  /**
+   * Roles that may `SET LOCAL ROLE` to the system role (the runtime role, a platform migrator for exports and
+   * deletion). Granted WITH INHERIT FALSE, SET TRUE: membership gives no privileges until the explicit SET ROLE.
+   */
+  members: readonly string[];
+}
+
+/**
+ * Creates the system role of a schema (NOLOGIN NOINHERIT NOBYPASSRLS, no privileges until toDDL grants them) and
+ * its memberships. Idempotent. Run by a role with CREATEROLE (platform provisioner; locally the `wizard` owner),
+ * never by the per-system migrator, and before toDDL(..., {systemRole}).
+ */
+export function toSystemRoleDDL(schemaName: string, o: SystemRoleOptions): string[] {
+  const role = o.systemRole ?? systemRoleName(schemaName);
+  assertSqlName(role, "system role");
+  const r = quoteIdent(role);
+  const out = [
+    `DO ${dollarQuote(` BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = ${textLiteral(role)}) THEN CREATE ROLE ${r} NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; END IF; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END `)}`,
+  ];
+  for (const m of o.members) {
+    assertSqlName(m, "system role member");
+    out.push(`GRANT ${r} TO ${quoteIdent(m)} WITH INHERIT FALSE, SET TRUE`);
+  }
+  return out;
+}
+
+/** Drops the system role of a schema with its remaining grants in this database (after DROP SCHEMA). Idempotent. */
+export function dropSystemRoleDDL(schemaName: string, systemRole = systemRoleName(schemaName)): string[] {
+  assertSqlName(systemRole, "system role");
+  const r = quoteIdent(systemRole);
+  return [
+    `DO ${dollarQuote(` BEGIN IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = ${textLiteral(systemRole)}) THEN EXECUTE ${textLiteral(`DROP OWNED BY ${r}`)}; EXECUTE ${textLiteral(`DROP ROLE ${r}`)}; END IF; END `)}`,
+  ];
 }

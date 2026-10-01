@@ -1,9 +1,9 @@
 // Build steps after G0 passed (workflows.yaml#workflows.build): migrate_draft, seed_draft, bundle_and_reload.
 import { createHash } from "node:crypto";
-import { type AppSpec, planMigration, quoteIdent, SYSTEM_ROLE, toDDL } from "@wizard/appspec";
+import { type AppSpec, planMigration, quoteIdent, toDDL } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
 import { generateSeed } from "@wizard/gates";
-import { schemaName } from "@wizard/runtime";
+import { ensureSystemRole, schemaName, systemRoleOf } from "@wizard/runtime";
 import type postgres from "postgres";
 import { RunFailure } from "../runs/types.js";
 import { upgradeSystemTables } from "./system-tables.js";
@@ -44,17 +44,23 @@ export async function migrateDraft(pg: postgres.Sql, i: MigrateDraftInput): Prom
   const role = i.migratorRole ?? MIGRATOR_ROLE;
   const runtimeRole = i.runtimeRole ?? RUNTIME_ROLE;
   const schema = schemaName(i.systemKey, "draft");
+  let systemRole = "";
   const fresh = async () => {
-    const ddl = toDDL(planMigration(null, i.spec, { env: "draft" }), schema, { runtimeRole });
+    const ddl = toDDL(planMigration(null, i.spec, { env: "draft" }), schema, { runtimeRole, systemRole });
     await asMigrator(pg, role, [`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`, ...ddl]);
     return { created: true };
   };
   try {
+    // System access = DB role sys_<key>_draft_system (isolation.yaml#db_access, L3-20), created before the DDL.
+    systemRole = await ensureSystemRole(pg, i.systemKey, "draft", [runtimeRole]);
     if (!(await schemaExists(pg, schema)) || i.prevSpec === null) return await fresh();
     const plan = planMigration(i.prevSpec, i.spec, { env: "draft" });
     if (plan.errors.length > 0) return await fresh();
     try {
-      await asMigrator(pg, role, [...upgradeSystemTables(schema), ...toDDL(plan, schema, { runtimeRole })]);
+      await asMigrator(pg, role, [
+        ...upgradeSystemTables(schema),
+        ...toDDL(plan, schema, { runtimeRole, systemRole }),
+      ]);
       return { created: false };
     } catch {
       return await fresh(); // e.g. incompatible column types: draft data is disposable
@@ -98,8 +104,8 @@ export async function seedDraft(
   let rows = 0;
   let users = 0;
   await pg.begin(async (tx) => {
-    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(i.migratorRole ?? MIGRATOR_ROLE)}`);
-    await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+    // Seed rows are written as the system DB role (FORCE RLS; isolation.yaml#db_access, L3-20).
+    await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleOf(i.systemKey, "draft"))}`);
     for (const u of seed.users) {
       await insertRow(tx, schema, "users", { ...u });
       users += 1;
