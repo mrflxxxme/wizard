@@ -3,6 +3,7 @@
 Состояние на **01.10.2026**. Цены проверены в этот день по страницам из раздела «Источники».
 
 > **Для пилота достаточно короткого `docs/founder/pilot-checklist.md`** (решения D23–D25). Этот файл — справочник по каждому сервису и план беты.
+
 Нормативная основа: `specs/escalation.yaml#calendar`, `specs/platform/deploy.yaml`, `specs/product.yaml#decisions`, `.env.example`.
 
 Пометки:
