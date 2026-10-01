@@ -18,7 +18,7 @@ export function Start(): ReactNode {
   const [ruBusy, setRuBusy] = useState(false);
   const { search } = useRoute();
   const preset = ru.templates.find((t) => t.id === search.get("template"));
-  const [prompt, setPrompt] = useState(preset?.prompt ?? "");
+  const [prompt, setPrompt] = useState<string>(preset?.prompt ?? "");
   const [templateId, setTemplateId] = useState<string | undefined>(preset?.id);
   const [pilot, setPilot] = useState(false);
   const [busy, setBusy] = useState(false);
