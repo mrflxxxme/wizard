@@ -62,6 +62,8 @@ export interface SystemsTable {
   shard_id: string | null;
   suspended_at: TsNull;
   draft_data_purged_at: TsNull;
+  /** M2-05 (F5): the owner was warned about the purge of the draft data (beyond db.yaml, impl-notes M2-05). */
+  draft_purge_notice_at: TsNull;
   last_activity_at: TsDef;
   created_by: string;
   updated_at: TsDef;

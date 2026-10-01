@@ -5,7 +5,12 @@ export const APP = "@wizard/runtime";
 /** Reserved system slugs (L3-29): shared by runtime routing and platform-api slug generation. */
 export { isReservedSystemSlug, RESERVED_SYSTEM_SLUGS } from "@wizard/connectors";
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
-export { createRuntimeApp, type RuntimeApp, type RuntimeAppOptions } from "./app.js";
+export {
+  createRuntimeApp,
+  type RetentionTickReport,
+  type RuntimeApp,
+  type RuntimeAppOptions,
+} from "./app.js";
 /** Tokens of the session cookie; safeNext for next/returnTo (runtime.yaml#auth). */
 export {
   previewCookieName,
@@ -36,9 +41,13 @@ export { sessionOf, subjectOf } from "./http/subject.js";
 export { type Cron, lastOccurrence, parseCron } from "./jobs/cron.js";
 export {
   type JobFailure,
+  RETENTION_MARKER_KEY,
+  RETENTION_REQUEST_KEY,
+  type RetentionPassReport,
   type RetentionResult,
   type RunJobsOptions,
   type RunJobsReport,
+  retentionSlot,
   runJobs,
 } from "./jobs/runner.js";
 /** Schema name app_<systemId>_<env> and a migration helper for previews/G1/tests (migration role only). */

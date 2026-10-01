@@ -225,6 +225,8 @@ async function launch(o: WorkerOptions): Promise<Worker> {
         mailer,
         ...(o.publish?.migratorRole ? { migratorRole: o.publish.migratorRole } : {}),
         log,
+        alert: (msg, fields) => logger.error(msg, undefined, fields),
+        platformOrigin: config.platformOrigin,
       },
       now,
     );
