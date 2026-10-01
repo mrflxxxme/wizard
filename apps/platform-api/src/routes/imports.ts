@@ -117,13 +117,18 @@ export function importRoutes(d: Deps): Hono<AppEnv> {
           })
           .execute();
         const input: ImportRunInput = { importId, ...(filename ? { filename } : {}) };
-        return insertRun(t, {
-          orgId: s.org_id,
-          systemId: s.id,
-          kind: "import_table",
-          input: input as unknown as Record<string, unknown>,
-          startedBy: user.id,
-        });
+        // billing.yaml#run_charging: hold of the import cap (IMPORT_CAP_MILLI) now, settlement by fact at finish.
+        return insertRun(
+          t,
+          {
+            orgId: s.org_id,
+            systemId: s.id,
+            kind: "import_table",
+            input: input as unknown as Record<string, unknown>,
+            startedBy: user.id,
+          },
+          d.billing,
+        );
       });
       d.engine.enqueue(run);
       return c.json({ importId, run: toRun(run, 0) }, 202);

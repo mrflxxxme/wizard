@@ -2,6 +2,7 @@
 // on_status), schedule triggers (relative, cron), due _w_jobs (function, workflow_step) and retention. runJobs is
 // one pass at a given `now` until nothing is due (G1 runWorkflows/advanceTime); the background poller comes later.
 import { type Entity, quoteIdent, type Workflow } from "@wizard/appspec";
+import { isConnectorError, runNotifyStep } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { SYSTEM_USER } from "@wizard/sdk/host";
 import type postgres from "postgres";
@@ -380,6 +381,27 @@ export async function runJobs(
             if (!integ) throw new WizardError("NOT_FOUND", { message: "Интеграция не найдена" });
             const to = subst(params.to, rec);
             if (typeof to !== "string" || to === "") break; // no recipient on this record
+            const live = services.connectors === "live" ? services.connectorHost : undefined;
+            if (live && rec && p.entity) {
+              // connectors: 'live' — the connector renders the template and sends (M1-06 runNotifyStep).
+              try {
+                await runNotifyStep(
+                  live.ctx(sys, integ),
+                  {
+                    params,
+                    entity: p.entity,
+                    record: { ...rec, id: String(rec.id) },
+                    jobId: job.id,
+                    stepIndex: i,
+                  },
+                  { deadlineMs: 25_000 },
+                );
+              } catch (e) {
+                if (isConnectorError(e)) throw new WizardError(e.code, { message: e.message });
+                throw e;
+              }
+              break;
+            }
             const text = typeof params.text === "string" ? await render(params.text, entity, rec) : undefined;
             const base = { userId: to, idempotencyKey: key };
             if (integ.connector === "telegram") await callAction(integ.name, "sendToUser", { ...base, text });

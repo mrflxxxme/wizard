@@ -2,7 +2,7 @@
 // smoke check of the prod host, URLs and the Publication API shape.
 import { request } from "node:http";
 import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
-import { schemaName } from "@wizard/runtime";
+import { schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
@@ -32,6 +32,11 @@ export interface PublishOptions {
   runtimeRole?: string;
   /** Pauses between apply_migration attempts on lock_timeout (default 5/15/45 s). */
   lockRetryDelaysMs?: number[];
+  /**
+   * Own Telegram bots at publication (telegram.yaml#bot_api getMe/setWebhook, FU-6). Default: live with
+   * WIZARD_CONNECTORS=live, otherwise outbox (calls recorded in .data/outbox/<systemKey>/telegram.jsonl).
+   */
+  telegram?: TelegramPublishOptions;
 }
 
 function get(url: URL, timeoutMs: number): Promise<{ status: number; body: string }> {
