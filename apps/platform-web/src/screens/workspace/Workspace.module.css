@@ -97,6 +97,14 @@
   align-items: flex-end;
 }
 
+.uploadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+}
+
 .main {
   min-width: 0;
   min-height: 0;
@@ -537,6 +545,7 @@
 }
 
 .tabs button,
+.tab,
 .seg,
 .segOn,
 .tabOn,
@@ -555,6 +564,13 @@
 .tabs button:disabled {
   color: var(--w-muted);
   cursor: not-allowed;
+}
+
+.tab,
+.tabOn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .segOn,
@@ -685,4 +701,82 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--w-accent);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+}
+
+.diffList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.diffLine {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.diffSign {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+
+.diffSign[data-sign="add"] {
+  color: var(--w-ok);
+}
+
+.diffSign[data-sign="remove"] {
+  color: var(--w-bad);
+}
+
+.diffSign[data-sign="change"] {
+  color: var(--w-warn);
+}
+
+.destructive {
+  color: var(--w-bad);
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.facts dt {
+  color: var(--w-muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.changesPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 920px;
+}
+
+.envSegments {
+  margin-bottom: 8px;
 }

@@ -352,6 +352,22 @@ describe("buildMappingPayload (SyntheticPayload)", () => {
     expect(named.sheets.map((x) => x.name)).toEqual(["Лист1", "sheet_2"]);
   });
 
+  test("a lone surname in the genitive in a sheet name or header is scrubbed; places and brands stay", () => {
+    const s: Sheet = {
+      name: "Клиенты Рахимова",
+      header: ["Заказы Ивановой", "Заказы Москвы", "Клиенты Сбера", "Долг Хабибуллиной"],
+      rows: [["a", "b", "c", "d"]],
+    };
+    const payload = buildMappingPayload([s, { ...s, name: "Заказы Москвы" }], { seed: 1 });
+    expect(payload.sheets.map((x) => x.name)).toEqual(["sheet_1", "Заказы Москвы"]);
+    expect(payload.sheets[0]?.columns.map((c) => c.header)).toEqual([
+      "col_1",
+      "Заказы Москвы",
+      "Клиенты Сбера",
+      "col_4",
+    ]);
+  });
+
   test("synthetic values never copy a real value, even when faker would produce one", () => {
     const f = new Faker({ locale: [ru] });
     f.seed(3);

@@ -22,6 +22,8 @@ import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
+import { ImportStore } from "../imports/storage.js";
+import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
 import type { PublishOptions } from "../publish/prod.js";
 import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
@@ -50,6 +52,8 @@ import { appendEvent, type EventBus, type EventType, type TxCtx, withTx } from "
 import { recordGateReport } from "./gates.js";
 import {
   type BuildHost,
+  type BuildOutcome,
+  type BuildParams,
   type GateContext,
   type GateLevel,
   type GateReport,
@@ -132,7 +136,7 @@ export interface EngineDeps {
 export interface NewRun {
   orgId: string;
   systemId: string;
-  kind: "interview_turn" | "build" | "publish" | "rollback";
+  kind: "interview_turn" | "build" | "publish" | "rollback" | "import_table";
   mode?: "create" | "change" | "fix" | null;
   input?: Record<string, unknown>;
   cardVersion?: number | null;
@@ -142,8 +146,8 @@ export interface NewRun {
 }
 
 /**
- * Inserts a run. With `billing`: an interview turn needs available > 0, a build holds its cap in the same
- * transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
+ * Inserts a run. With `billing`: an interview turn needs available > 0, a build or an import holds its cap in the
+ * same transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
   if (billing && r.kind === "interview_turn")
@@ -160,21 +164,28 @@ export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise
       input: json(r.input ?? {}),
       card_version: r.cardVersion ?? null,
       credits_estimate_milli: r.estimateMilli ?? null,
-      credits_cap_milli: r.capMilli ?? (r.kind === "interview_turn" ? INTERVIEW_CAP_MILLI : null),
+      credits_cap_milli:
+        r.capMilli ??
+        (r.kind === "interview_turn"
+          ? INTERVIEW_CAP_MILLI
+          : r.kind === "import_table"
+            ? IMPORT_CAP_MILLI
+            : null),
       started_by: r.startedBy,
       // workflows.yaml#execution.M1.engine: workflowID = runs.id.
       dbos_workflow_id: id,
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  if (billing && r.kind === "build" && run.credits_cap_milli !== null)
+  // import_table holds its fixed cap like a build (FU-6); publish/rollback cost nothing and are inserted without billing.
+  if (billing && (r.kind === "build" || r.kind === "import_table") && run.credits_cap_milli !== null)
     await billing.hold(t.trx, {
       orgId: r.orgId,
       runId: run.id,
       systemId: r.systemId,
       amountMilli: Number(run.credits_cap_milli),
       key: `hold:${run.id}`,
-      note: "Резерв на сборку (потолок из карточки)",
+      note: r.kind === "build" ? "Резерв на сборку (потолок из карточки)" : "Резерв на импорт таблицы",
     });
   return run;
 }
@@ -254,6 +265,7 @@ export class RunEngine {
   readonly #circuit = new CircuitBreaker();
   readonly #slots: Slots;
   #cancelPoll: NodeJS.Timeout | undefined;
+  #imports: ImportStore | undefined;
   #closed = false;
 
   constructor(deps: EngineDeps) {
@@ -481,6 +493,7 @@ export class RunEngine {
       if (run.kind === "interview_turn") result = await this.#interview(x);
       else if (run.kind === "build") result = await this.#build(x, started.cap);
       else if (run.kind === "publish" || run.kind === "rollback") result = await this.#flow(x);
+      else if (run.kind === "import_table") result = await this.#importTable(x);
       else throw new RunFailure("INTERNAL", "Этот тип прогона ещё не поддерживается");
     } catch (e) {
       // A stopping worker leaves the workflow pending: DBOS resumes it on the next start.
@@ -1403,6 +1416,21 @@ export class RunEngine {
   }
 
   async #build(x: Ctx, capMilli: number | null): Promise<Result> {
+    const { run } = x;
+    if (run.mode === "change") await this.#draftSnapshot(x);
+    const input = run.input as { card?: Record<string, unknown> };
+    const out = await this.#runBuilder(x, {
+      card: input.card ?? {},
+      cap: Number(capMilli ?? 0) / 1000,
+      mode: (run.mode ?? "create") as "create" | "change" | "fix",
+    });
+    if (out?.status === "cancelled")
+      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
+    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+  }
+
+  /** The build executor over this run's durable BuildHost (build runs; import_table schema_ops). */
+  async #runBuilder(x: Ctx, params: BuildParams): Promise<BuildOutcome | undefined> {
     const { run, D } = x;
     const needsInput = (req: InputRequest | SecretInputRequest) => this.#needsInput(x, req);
     const base = this.#stepHost(x, needsInput);
@@ -1505,17 +1533,42 @@ export class RunEngine {
       runGates: (level, overrides) =>
         base.runStep(`gate_${level}`, () => this.#gate(x, level, commitFiles, filesAt, overrides)),
     };
-    if (run.mode === "change") await this.#draftSnapshot(x);
-    const input = run.input as { card?: Record<string, unknown> };
-    const out = await this.#d.executors.build(host, {
-      card: input.card ?? {},
-      cap: Number(capMilli ?? 0) / 1000,
-      mode: (run.mode ?? "create") as "create" | "change" | "fix",
-    });
+    const out = await this.#d.executors.build(host, params);
     await commitFiles();
-    if (out?.status === "cancelled")
-      return { status: "cancelled", summary_ru: out.summary_ru ?? "Сборка остановлена" };
-    return { status: "succeeded", summary_ru: out?.summary_ru ?? "Сборка завершена" };
+    return out;
+  }
+
+  /**
+   * import_table (workflows.yaml#workflows.import_table): steps live in ../imports/workflow.ts. The uploaded file stays
+   * in the ImportStore; checkpoints hold only import-row state and the mapping (never cell values).
+   */
+  async #importTable(x: Ctx): Promise<Result> {
+    const { run, D } = x;
+    const needsInput = (req: InputRequest) => this.#needsInput(x, req);
+    const base = this.#stepHost(x, needsInput);
+    this.#imports ??= new ImportStore(this.#d.config.importsDir, this.#d.config.secretsKey);
+    const out = await runImportTable({
+      run: {
+        id: run.id,
+        orgId: run.org_id,
+        systemId: run.system_id as string,
+        input: run.input as unknown as ImportRunInput,
+      },
+      db: this.#db,
+      pg: this.#d.pg,
+      store: this.#imports,
+      ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+      step: (name, label, fn) => this.#step(x, name, label, fn),
+      once: (name, fn) => D.step(name, fn, { offload: true }),
+      route: base.route,
+      needsInput,
+      buildChange: async (card, cap) => {
+        const r = await this.#runBuilder(x, { card, cap, mode: "change" });
+        if (r?.status === "cancelled") throw new RunCancelled(r.summary_ru ?? "Импорт остановлен");
+        return r ?? {};
+      },
+    });
+    return { status: "succeeded", summary_ru: out.summary_ru, resultRevision: out.resultRevision };
   }
 
   /** workflows.yaml#workflows.build.steps.draft_snapshot (mode=change, prod exists, not yet copied from it). */

@@ -17,7 +17,7 @@ import {
   waitFor,
   waitRun,
 } from "../../platform-api/test/helpers.js";
-import { CREDITS_CRON, DBOS_RETENTION, startWorker, type Worker } from "../src/index.js";
+import { CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, startWorker, type Worker } from "../src/index.js";
 import { CODE_STEPS, LLM_CANARY, recordingRouter, scriptedBuild, scriptedExecutors } from "./support.js";
 
 const SECRET = "shpk_live_9f8e7d6c5b4a";
@@ -356,6 +356,6 @@ describe("runs as DBOS workflows (M1-01)", () => {
     // The run itself (platform.runs, run_events) is untouched.
     expect((await api.req("GET", `/runs/${b.buildRunId}`)).body.status).toBe("succeeded");
     const names = (await DBOS.listSchedules()).map((s) => s.scheduleName).sort();
-    expect(names).toEqual([CREDITS_CRON, DBOS_RETENTION].sort());
+    expect(names).toEqual([CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL].sort());
   });
 });

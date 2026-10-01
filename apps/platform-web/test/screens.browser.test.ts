@@ -245,13 +245,14 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
     await collect(page);
   });
 
-  test("S6: three gate rows passed, non-blocking warning, publish disabled in M0", async () => {
+  test("S6: three gate rows passed, non-blocking warning, publish enabled for the owner without blockers", async () => {
     await waitStage(h, systemId, "ready");
     await page.getByTestId("gate-report").waitFor();
     for (const l of ["G0", "G1", "G2"])
       expect(await page.getByTestId(`gate-report-row-${l}`).getAttribute("data-passed")).toBe("true");
     expect(await page.getByTestId("gate-warning").count()).toBeGreaterThan(0);
-    expect(await page.getByTestId("publish-submit").isDisabled()).toBe(true);
+    expect(await page.getByTestId("publish-blocker").count()).toBe(0);
+    await expect.poll(() => page.getByTestId("publish-submit").isDisabled()).toBe(false);
     await collect(page);
     await page.goto(`${h.origin}/`);
     await page.getByTestId("start-system-card").first().waitFor();

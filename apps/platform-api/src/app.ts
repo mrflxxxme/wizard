@@ -13,9 +13,11 @@ import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
+import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
 import { creditRoutes } from "./routes/credits.js";
+import { importRoutes } from "./routes/imports.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
 import { publishRoutes } from "./routes/publish.js";
@@ -109,6 +111,16 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     log,
   });
   if (opts.recover !== false) await engine.recover();
+  // Import files TTL (db.yaml#imports, 7 days): at start and hourly; with dbos — a scheduled workflow of apps/worker.
+  const importStore = new ImportStore(config.importsDir, config.secretsKey);
+  const sweep = () =>
+    sweepExpiredImports(handle.db, importStore).catch((e) => log("import TTL sweep failed", e));
+  let sweepTimer: NodeJS.Timeout | undefined;
+  if (!dbos) {
+    await sweep();
+    sweepTimer = setInterval(sweep, 3600_000);
+    sweepTimer.unref();
+  }
   const deps: Deps = {
     db: handle.db,
     pg: handle.pg,
@@ -154,6 +166,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
   api.route("/", publishRoutes(deps));
+  api.route("/", importRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
@@ -167,6 +180,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     deps,
     async close() {
       if (cron) clearInterval(cron);
+      if (sweepTimer) clearInterval(sweepTimer);
       await engine.close();
       await executors.close?.();
       if (!opts.db) await handle.close();

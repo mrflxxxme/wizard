@@ -1,0 +1,185 @@
+# Live eval within the F6 budget (specs/quality/eval.yaml#live_cadence, product.yaml#decisions.D20_eval_budget).
+#   nightly: 5 rotating briefs × the default build model (schedule);
+#   full:    all briefs × 2 models — PR label eval:full (prompts/models.yaml changed) or manual run before a milestone.
+# Runs only when provider keys exist in secrets (E-ACCESS), otherwise skips cleanly. Budget ledger = the latest
+# `eval-budget-ledger` artifact; the run does not start above 30 000 ₽/month. G1 is not run (--gates=G0): generated
+# code never executes outside the sandbox (AGENTS.md). Reports go to S3 eval in RF, not to GitHub artifacts
+# (eval.yaml#fixtures.rules). Docs: docs/ops/eval.md.
+name: eval-live
+on:
+  schedule:
+    - cron: "17 23 * * *" # 02:17 MSK
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "nightly | full (full — перед закрытием вехи)"
+        type: choice
+        options: [nightly, full]
+        default: nightly
+      models:
+        description: "id моделей из models.yaml через запятую (пусто — по умолчанию)"
+        type: string
+        default: ""
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: read
+  actions: read
+  issues: write
+# One live run at a time: the ledger is read, spent and written back without races.
+concurrency:
+  group: eval-live-budget
+  cancel-in-progress: false
+jobs:
+  live:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.label.name == 'eval:full' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: eval-live
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      DATABASE_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_LLM_MODE: live
+      WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
+      KIND: ${{ github.event_name == 'schedule' && 'nightly' || github.event_name == 'pull_request' && 'full' || inputs.kind }}
+      MODELS_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.models || github.event_name == 'pull_request' && vars.EVAL_FULL_MODELS || '' }}
+      LEDGER: .eval-ledger/ledger.json
+      OUT: .eval-out/live
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Provider keys present?
+        id: keys
+        env:
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+        run: |
+          set +e
+          node tools/eval/run.mjs --harness --llm-mode=live --gates=G0 --preflight ${MODELS_INPUT:+--models=$MODELS_INPUT}
+          code=$?
+          set -e
+          if [ "$code" = 3 ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::live-eval пропущен: в secrets нет ключей провайдеров (E-ACCESS, docs/ops/eval.md)"
+            echo "live-eval ($KIND) пропущен: нет ключей провайдеров в GitHub Secrets (docs/ops/eval.md)." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$code" = 0 ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$code"
+          fi
+
+      - name: Budget ledger (latest eval-budget-ledger artifact)
+        if: steps.keys.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .eval-ledger
+          list=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=eval-budget-ledger&per_page=100")
+          id=$(jq -r '[.artifacts[] | select(.expired | not)] | sort_by(.created_at) | last | .id // empty' <<<"$list")
+          if [ -n "$id" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" > .eval-ledger/ledger.zip
+            unzip -o -q .eval-ledger/ledger.zip -d .eval-ledger
+            rm .eval-ledger/ledger.zip
+          else
+            echo "::notice::журнала бюджета ещё нет — начинаем новый"
+          fi
+
+      - name: Plan and budget check
+        id: plan
+        if: steps.keys.outputs.ok == 'true'
+        run: node tools/eval/ci.mjs plan --kind="$KIND" --ledger="$LEDGER" ${MODELS_INPUT:+--models=$MODELS_INPUT} --github-output="$GITHUB_OUTPUT"
+
+      - name: Over budget → do not start
+        if: steps.keys.outputs.ok == 'true' && steps.plan.outputs.run != 'true'
+        env:
+          REASON: ${{ steps.plan.outputs.reason }}
+        run: |
+          echo "live-eval ($KIND): $REASON" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$KIND" = full ]; then echo "::error::$REASON"; exit 1; fi
+          echo "::warning::$REASON"
+
+      - name: Live harness
+        id: run
+        if: steps.plan.outputs.run == 'true'
+        env:
+          CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
+          CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+          YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+          BRIEFS: ${{ steps.plan.outputs.briefs }}
+          MODELS: ${{ steps.plan.outputs.models }}
+          MAX_COST: ${{ steps.plan.outputs.max_cost_rub }}
+        run: node tools/eval/run.mjs --harness --llm-mode=live --gates=G0 --briefs="$BRIEFS" ${MODELS:+--models=$MODELS} --max-cost-rub="$MAX_COST" --out="$OUT"
+
+      - name: Book the spend into the ledger
+        if: always() && steps.plan.outputs.run == 'true'
+        env:
+          FORECAST: ${{ steps.plan.outputs.forecast_rub }}
+          PAIRS: ${{ steps.plan.outputs.pairs }}
+        run: node tools/eval/ci.mjs record --kind="$KIND" --ledger="$LEDGER" --result-dir="$OUT" --forecast-rub="$FORECAST" --pairs="$PAIRS" --run-url="$RUN_URL" --commit="$GITHUB_SHA"
+
+      # The ledger holds only dates, ₽ and pair counts (no LLM output), so it may live in GitHub.
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.plan.outputs.run == 'true'
+        with:
+          name: eval-budget-ledger
+          path: .eval-ledger/ledger.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Step summary
+        if: always() && steps.plan.outputs.run == 'true'
+        run: |
+          for f in "$OUT"/*.md; do [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"; done
+          true
+
+      - name: Report → S3 eval (RF)
+        if: always() && steps.plan.outputs.run == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.EVAL_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.EVAL_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.EVAL_S3_REGION || 'ru-central1' }}
+          EVAL_S3_BUCKET: ${{ vars.EVAL_S3_BUCKET }}
+          EVAL_S3_ENDPOINT: ${{ vars.EVAL_S3_ENDPOINT }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$EVAL_S3_BUCKET" ] || [ -z "$EVAL_S3_ENDPOINT" ]; then
+            echo "::warning::S3 eval не настроен (docs/ops/eval.md): отчёт live есть только в step summary"
+            exit 0
+          fi
+          [ -d "$OUT" ] || exit 0
+          aws s3 cp "$OUT" "s3://${EVAL_S3_BUCKET}/eval/live/$(date -u +%F)-${KIND}-${GITHUB_RUN_ID}/" \
+            --recursive --only-show-errors --endpoint-url "$EVAL_S3_ENDPOINT"
+
+      - name: Nightly red → issue (eval.yaml#regression.rule)
+        if: failure() && steps.run.outcome == 'failure' && env.KIND == 'nightly'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(printf 'Ночной live-eval красный: %s\n\n%s\n' "$RUN_URL" "$(node tools/eval/ci.mjs violations --result-dir="$OUT")")
+          title="eval nightly $(date -u +%F): жёсткие пороги или регрессия"
+          gh issue create --title "$title" --body "$body" --label eval || gh issue create --title "$title" --body "$body"

@@ -46,6 +46,7 @@ export {
 } from "./db/index.js";
 export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
 export { type AuthUser, checkOrgAccess } from "./http/auth.js";
+export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 export { publishBlockers, specPublishBlockers } from "./publish/blockers.js";
 export {
   applyProdMigration,

@@ -156,6 +156,28 @@ describe("seed DLP rejects values that look like real personal data (SEED_PII)",
   });
 });
 
+// FU-5: G1 keys are random (sha256(systemKey + specVersion)); ~0.3% of keys drew a provider_payment_id UUID whose
+// digit run read as a phone/INN/account, so the seed tripped its own DLP and the whole G1 run ended in error.
+describe("the generator never trips its own DLP (FU-5)", () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  test.each([
+    ["forum", ["seed-dlp-34", "seed-dlp-949", "seed-dlp-1024", "seed-dlp-1111"]],
+    ["bakery", ["seed-dlp-949", "seed-dlp-1150", "seed-dlp-1274", "seed-dlp-1475"]],
+  ] as const)("%s: keys that used to yield SEED_PII pass; provider ids stay UUIDs", (name, keys) => {
+    const spec = name === "forum" ? loadForum() : loadBakery().spec;
+    for (const key of keys) {
+      const seed = generateSeed(spec, key, { now: NOW });
+      expect(seedDlp(spec, seed), key).toEqual([]);
+      for (const r of seed.rows.payment ?? []) expect(r.provider_payment_id, key).toMatch(UUID);
+    }
+  });
+
+  test.each(specs)("%s: 300 more keys are DLP-clean", (_name, spec) => {
+    for (let i = 0; i < 300; i++)
+      expect(seedDlp(spec, generateSeed(spec, `fu5-${i}`, { now: NOW })), `fu5-${i}`).toEqual([]);
+  });
+});
+
 describe("check generation", () => {
   const forum = loadForum();
 

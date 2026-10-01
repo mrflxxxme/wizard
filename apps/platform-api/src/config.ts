@@ -30,6 +30,8 @@ export interface Config {
   secretsFile: string;
   /** Worker: step outputs kept by reference outside dbos.* until the workflow ends (execution.M1.dbos_data). */
   stepsDir: string;
+  /** Encrypted uploaded tables (.data/imports; deploy.yaml#cloud bucket imports, TTL 7 days). */
+  importsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
   runtimePort: number;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
@@ -62,10 +64,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     runConcurrency: Number.isInteger(conc) && conc > 0 ? conc : 2,
     milestone: env.WIZARD_MILESTONE || "M0",
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
-    secretsFile: join(REPO_ROOT, ".data", "secrets.enc"),
-    stepsDir: join(REPO_ROOT, ".data", "steps"),
     runtimePort: 4100,
     ...over,
+    // Tests that move artifactsDir get the other .data stores next to it.
+    secretsFile:
+      over.secretsFile ??
+      (over.artifactsDir ? join(over.artifactsDir, ".secrets.enc") : join(REPO_ROOT, ".data", "secrets.enc")),
+    stepsDir:
+      over.stepsDir ??
+      (over.artifactsDir ? join(over.artifactsDir, ".steps") : join(REPO_ROOT, ".data", "steps")),
+    importsDir:
+      over.importsDir ??
+      (over.artifactsDir ? join(over.artifactsDir, ".imports") : join(REPO_ROOT, ".data", "imports")),
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     billingExemptOrgs:
       over.billingExemptOrgs ?? ((over.authMode ?? env.WIZARD_AUTH_MODE) === "dev" ? [DEFAULT_ORG_ID] : []),

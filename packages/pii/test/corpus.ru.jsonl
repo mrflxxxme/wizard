@@ -582,3 +582,51 @@
 {"id":"t188","group":"trap","text":"Director New York Times","spans":[]}
 {"id":"t189","group":"trap","text":"Santiago de Chile и Buenos Aires","spans":[]}
 {"id":"t190","group":"trap","text":"Hello World на React Native и Visual Studio","spans":[]}
+{"id":"p371","group":"positive","text":"Ученики Михайлова","spans":[{"kind":"person_name","start":8,"end":17}]}
+{"id":"p372","group":"positive","text":"Задачи Медведевой","spans":[{"kind":"person_name","start":7,"end":17}]}
+{"id":"p373","group":"positive","text":"Оплаты_Зайцева 2025","spans":[{"kind":"person_name","start":7,"end":14}]}
+{"id":"p374","group":"positive","text":"Платежи Морозова","spans":[{"kind":"person_name","start":8,"end":16}]}
+{"id":"p375","group":"positive","text":"Задачи Сорокиной","spans":[{"kind":"person_name","start":7,"end":16}]}
+{"id":"p376","group":"positive","text":"Звонки_Васильевой 2025","spans":[{"kind":"person_name","start":7,"end":17}]}
+{"id":"p377","group":"positive","text":"Ученики Смирнова","spans":[{"kind":"person_name","start":8,"end":16}]}
+{"id":"p378","group":"positive","text":"Договоры Соколовой","spans":[{"kind":"person_name","start":9,"end":18}]}
+{"id":"p379","group":"positive","text":"Оплаты_Цыденовой 2025","spans":[{"kind":"person_name","start":7,"end":16}]}
+{"id":"p380","group":"positive","text":"Платежи Жумабаева","spans":[{"kind":"person_name","start":8,"end":17}]}
+{"id":"p381","group":"positive","text":"Долги Васильевой","spans":[{"kind":"person_name","start":6,"end":16}]}
+{"id":"p382","group":"positive","text":"Клиенты_Новиковой 2025","spans":[{"kind":"person_name","start":8,"end":17}]}
+{"id":"p383","group":"positive","text":"Заказы Жумабаева","spans":[{"kind":"person_name","start":7,"end":16}]}
+{"id":"p384","group":"positive","text":"Договоры Волковой","spans":[{"kind":"person_name","start":9,"end":17}]}
+{"id":"p385","group":"positive","text":"Договоры_Кадыровой 2025","spans":[{"kind":"person_name","start":9,"end":18}]}
+{"id":"p386","group":"positive","text":"Заказы Эргашева","spans":[{"kind":"person_name","start":7,"end":15}]}
+{"id":"p387","group":"positive","text":"Звонки Сафиной","spans":[{"kind":"person_name","start":7,"end":14}]}
+{"id":"p388","group":"positive","text":"Договоры_Соколова 2025","spans":[{"kind":"person_name","start":9,"end":17}]}
+{"id":"p389","group":"positive","text":"Контакты Новикова","spans":[{"kind":"person_name","start":9,"end":17}]}
+{"id":"p390","group":"positive","text":"Ученики Поповой","spans":[{"kind":"person_name","start":8,"end":15}]}
+{"id":"p391","group":"positive","text":"Ученики_Козловой 2025","spans":[{"kind":"person_name","start":8,"end":16}]}
+{"id":"p392","group":"positive","text":"Клиенты Ильина","spans":[{"kind":"person_name","start":8,"end":14}]}
+{"id":"p393","group":"positive","text":"Долги Михайловой","spans":[{"kind":"person_name","start":6,"end":16}]}
+{"id":"p394","group":"positive","text":"Ученики_Жумабаева 2025","spans":[{"kind":"person_name","start":8,"end":17}]}
+{"id":"p395","group":"positive","text":"Договоры Кузнецова","spans":[{"kind":"person_name","start":9,"end":18}]}
+{"id":"p396","group":"positive","text":"Сделки Галиевой","spans":[{"kind":"person_name","start":7,"end":15}]}
+{"id":"p397","group":"positive","text":"Договоры_Орлова 2025","spans":[{"kind":"person_name","start":9,"end":15}]}
+{"id":"p398","group":"positive","text":"Оплаты Васильева","spans":[{"kind":"person_name","start":7,"end":16}]}
+{"id":"p399","group":"positive","text":"Задачи Покровской","spans":[{"kind":"person_name","start":7,"end":17}]}
+{"id":"p400","group":"positive","text":"Контакты_Морозова 2025","spans":[{"kind":"person_name","start":9,"end":17}]}
+{"id":"t191","group":"trap","text":"Заказы Москвы","spans":[]}
+{"id":"t192","group":"trap","text":"Клиенты Сбера","spans":[]}
+{"id":"t193","group":"trap","text":"Филиалы Саратова","spans":[]}
+{"id":"t194","group":"trap","text":"Доставка из Ростова","spans":[]}
+{"id":"t195","group":"trap","text":"Отчёт Минфина","spans":[]}
+{"id":"t196","group":"trap","text":"Ключевые Слова","spans":[]}
+{"id":"t197","group":"trap","text":"Канарские Острова","spans":[]}
+{"id":"t198","group":"trap","text":"Праздник Покрова","spans":[]}
+{"id":"t199","group":"trap","text":"Снежная Королева","spans":[]}
+{"id":"t200","group":"trap","text":"Выручка Торговой Сети","spans":[]}
+{"id":"t201","group":"trap","text":"Поставки Газпрома","spans":[]}
+{"id":"t202","group":"trap","text":"Клиенты Альфа-Банка","spans":[]}
+{"id":"t203","group":"trap","text":"Продажи Кирова и Пскова","spans":[]}
+{"id":"t204","group":"trap","text":"Температура Нагрева","spans":[]}
+{"id":"t205","group":"trap","text":"Даты Посева","spans":[]}
+{"id":"t206","group":"trap","text":"Магазины Тамбова","spans":[]}
+{"id":"t207","group":"trap","text":"Заказы Озона","spans":[]}
+{"id":"t208","group":"trap","text":"Клиенты Магнита","spans":[]}

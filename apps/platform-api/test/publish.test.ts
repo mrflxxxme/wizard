@@ -65,6 +65,7 @@ beforeAll(async () => {
         return smokeResult;
       },
       lockRetryDelaysMs: [10, 10, 10],
+      telegram: { mode: "outbox", outboxDir: null },
     },
   });
 }, 60_000);
@@ -174,6 +175,7 @@ describe("publish → change → publish → rollback", () => {
       "gate_G0",
       "plan_migration",
       "gate_G0_prod",
+      "telegram_webhook", // forum has its own bot: getMe + setWebhook (recorded, outbox mode)
       "apply_migration",
       "switch",
       "smoke",

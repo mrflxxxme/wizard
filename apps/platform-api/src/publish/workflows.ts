@@ -1,6 +1,8 @@
 // Workflows publish and rollback (workflows.yaml#workflows.publish, #rollback). The run engine (runs/queue.ts) holds
 // the lock and the run lifecycle; these functions are the steps between run_started and the terminal event.
+import { dirname } from "node:path";
 import { type AppSpec, planMigration } from "@wizard/appspec";
+import { publishTelegramBots, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import type { Config } from "../config.js";
@@ -151,6 +153,34 @@ async function smoke(
   );
 }
 
+/**
+ * telegram.yaml#bot_api (bot=own): getMe checks the token and setWebhook points the bot at the prod host, before
+ * apply_migration so a broken bot never leaves prod half-published. Outbox mode (default without
+ * WIZARD_CONNECTORS=live) only records the calls.
+ */
+async function telegramBots(h: FlowHost, sys: System, revision: number, spec: AppSpec): Promise<void> {
+  if (!(spec.integrations ?? []).some((i) => i.connector === "telegram")) return;
+  const o: TelegramPublishOptions = h.options.telegram ?? {
+    mode: process.env.WIZARD_CONNECTORS === "live" ? "live" : "outbox",
+    outboxDir: dirname(h.config.outboxDir),
+  };
+  await h.step("telegram_webhook", "Подключаю Telegram-бота системы", async () => {
+    try {
+      await publishTelegramBots(o, { systemKey: sys.schema_key, slug: sys.slug, revision, spec });
+    } catch (e) {
+      // ConnectorError.retryable: Telegram down or throttling; otherwise the owner has to fix the bot.
+      const transient = (e as { retryable?: unknown }).retryable === true;
+      throw new RunFailure(
+        "GATES_FAILED",
+        transient
+          ? "Telegram сейчас недоступен — бот системы не подключён. Повторите публикацию позже."
+          : "Telegram не принял бота системы: проверьте токен бота в секретах интеграции и повторите публикацию.",
+        transient,
+      );
+    }
+  });
+}
+
 /** Marks the publication failed when a step throws after plan_migration (unless it already moved on). */
 async function guarded<T>(h: FlowHost, publicationId: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -255,6 +285,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
       if (!report.passed)
         throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки для prod — подробности в отчёте G0");
     });
+    await telegramBots(h, sys, revision, spec);
     await h.step("apply_migration", "Применяю изменения базы prod", async () => {
       await setStatus(h, pub.id, "applying", ["planned"]);
       await applyProdMigration(h.pg, {

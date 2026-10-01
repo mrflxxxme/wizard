@@ -3,16 +3,25 @@ import { ru } from "../i18n/ru.js";
 import type {
   Answer,
   ApiErrorBody,
+  DiffChange,
   GateReport,
+  ImportColumnMapping,
+  ImportView,
+  Invite,
+  LockStatus,
+  Me,
+  Member,
   Message,
   OrgSettings,
   PreviewUrl,
+  Publication,
   Revision,
   RevisionSummary,
   Run,
   System,
   SystemView,
   Theme,
+  User,
 } from "./types.js";
 
 export const API_BASE = "/api/v1";
@@ -37,6 +46,8 @@ export interface ClientOptions {
   /** M0: X-Wizard-Dev-User; omitted → dev@wizard.local on the server. */
   devUser?: string;
   fetch?: typeof fetch;
+  /** 401 UNAUTHORIZED of any call (session expired or absent, api.yaml x-auth M1) → the app shows /login. */
+  onUnauthorized?: () => void;
 }
 
 export const newIdempotencyKey = (): string => crypto.randomUUID();
@@ -63,6 +74,8 @@ export function createApiClient(opts: ClientOptions = {}) {
       body?: Json | FormData;
       idempotencyKey?: string;
       query?: Record<string, string | undefined>;
+      /** Plain-text response (GET /systems/:id/files/*path). */
+      text?: boolean;
     } = {},
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
@@ -86,23 +99,37 @@ export function createApiClient(opts: ClientOptions = {}) {
       throw new ApiError(0, { code: "NETWORK", message_ru: ru.errors.network });
     }
     const text = await res.text();
+    if (res.ok && init.text) {
+      // Binary sources come as application/octet-stream attachments: never shown, never downloaded (D14).
+      if (!(res.headers.get("content-type") ?? "").startsWith("text/"))
+        throw new ApiError(415, { code: "BINARY", message_ru: ru.code.binary });
+      return text as T;
+    }
     let data: unknown = null;
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
       data = null;
     }
-    if (!res.ok) throw new ApiError(res.status, (data as ApiErrorBody | null) ?? null);
+    if (!res.ok) {
+      const err = new ApiError(res.status, (data as ApiErrorBody | null) ?? null);
+      if (res.status === 401 && err.code === "UNAUTHORIZED") opts.onUnauthorized?.();
+      throw err;
+    }
     return data as T;
   }
 
   const sys = (id: string) => `/systems/${encodeURIComponent(id)}`;
   const run = (id: string) => `/runs/${encodeURIComponent(id)}`;
+  const org = (id: string) => `/orgs/${encodeURIComponent(id)}`;
 
   return {
-    listSystems: () => call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems"),
-    createSystem: (body: { prompt: string; templateId?: string }, idempotencyKey = newIdempotencyKey()) =>
-      call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
+    listSystems: (orgId?: string) =>
+      call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems", { query: { orgId } }),
+    createSystem: (
+      body: { prompt: string; templateId?: string; orgId?: string },
+      idempotencyKey = newIdempotencyKey(),
+    ) => call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
     getSystem: (id: string) => call<SystemView>("GET", sys(id)),
     postMessage: (id: string, text: string, idempotencyKey = newIdempotencyKey()) =>
       call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, { body: { text }, idempotencyKey }),
@@ -119,6 +146,31 @@ export function createApiClient(opts: ClientOptions = {}) {
     startFix: (id: string, idempotencyKey = newIdempotencyKey()) =>
       call<{ run: Run }>("POST", `${sys(id)}/fix`, { body: {}, idempotencyKey }),
     getRevision: (id: string, v: number) => call<Revision>("GET", `${sys(id)}/revisions/${v}`),
+    listRevisions: (id: string, limit?: number) =>
+      call<{ items: RevisionSummary[] }>("GET", `${sys(id)}/revisions`, {
+        query: { limit: limit === undefined ? undefined : String(limit) },
+      }),
+    getRevisionDiff: (id: string, v: number, from?: number | null) =>
+      call<{ changes: DiffChange[] }>("GET", `${sys(id)}/revisions/${v}/diff`, {
+        query: { from: from == null ? undefined : String(from) },
+      }),
+    /** Source of a revision file as text (api.yaml#getFile, text/plain); binary files answer with bytes. */
+    getFileText: (id: string, path: string, rev: number) =>
+      call<string>("GET", `${sys(id)}/files/${path.split("/").map(encodeURIComponent).join("/")}`, {
+        query: { rev: String(rev) },
+        text: true,
+      }),
+    listPublications: (id: string) => call<{ items: Publication[] }>("GET", `${sys(id)}/publications`),
+    publish: (id: string, revision: number, idempotencyKey = newIdempotencyKey()) =>
+      call<{ run: Run }>("POST", `${sys(id)}/publish`, {
+        body: { revision, confirmDiff: true },
+        idempotencyKey,
+      }),
+    rollback: (
+      id: string,
+      body: { env: "draft" | "prod"; toRevision: number },
+      idempotencyKey = newIdempotencyKey(),
+    ) => call<{ run: Run }>("POST", `${sys(id)}/rollback`, { body, idempotencyKey }),
     setStyle: (id: string, body: { expectedVersion: number; theme: Theme }) =>
       call<{ revision: RevisionSummary }>("POST", `${sys(id)}/style`, { body }),
     uploadLogo: (id: string, file: Blob, expectedVersion: number) => {
@@ -141,8 +193,60 @@ export function createApiClient(opts: ClientOptions = {}) {
       id: string,
       body: { inputId: string; choice?: string; text?: string; secretValue?: string },
     ) => call<Run>("POST", `${run(id)}/input`, { body, idempotencyKey: newIdempotencyKey() }),
-    getOrgSettings: (orgId: string) =>
-      call<OrgSettings>("GET", `/orgs/${encodeURIComponent(orgId)}/settings`),
+    getOrgSettings: (orgId: string) => call<OrgSettings>("GET", `${org(orgId)}/settings`),
+    updateOrgSettings: (orgId: string, body: { ruOnly: boolean }) =>
+      call<OrgSettings>("PATCH", `${org(orgId)}/settings`, { body }),
+    // Accounts (api.yaml x-milestone M1, M1-02).
+    requestOtp: (email: string) => call<null>("POST", "/auth/otp/request", { body: { email } }),
+    verifyOtp: (body: { email: string; code: string; acceptOffer?: boolean; pdConsent?: boolean }) =>
+      call<{ user: User }>("POST", "/auth/otp/verify", { body }),
+    logout: () => call<null>("POST", "/auth/logout"),
+    getMe: () => call<Me>("GET", "/me"),
+    acceptInvite: (token: string) =>
+      call<Member>("POST", `/invites/${encodeURIComponent(token)}/accept`, {
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    listMembers: (orgId: string) => call<{ items: Member[] }>("GET", `${org(orgId)}/members`),
+    updateMemberRole: (orgId: string, userId: string, role: Member["role"]) =>
+      call<Member>("PATCH", `${org(orgId)}/members/${encodeURIComponent(userId)}`, { body: { role } }),
+    removeMember: (orgId: string, userId: string) =>
+      call<null>("DELETE", `${org(orgId)}/members/${encodeURIComponent(userId)}`),
+    listInvites: (orgId: string) => call<{ items: Invite[] }>("GET", `${org(orgId)}/invites`),
+    createInvite: (orgId: string, body: { email: string; role: Member["role"] }) =>
+      call<Invite>("POST", `${org(orgId)}/invites`, { body, idempotencyKey: newIdempotencyKey() }),
+    revokeInvite: (orgId: string, inviteId: string) =>
+      call<null>("DELETE", `${org(orgId)}/invites/${encodeURIComponent(inviteId)}`),
+    getLock: (id: string) => call<LockStatus>("GET", `${sys(id)}/lock`),
+    releaseLock: (id: string) => call<null>("DELETE", `${sys(id)}/lock`),
+    setCompliance: (
+      id: string,
+      body: {
+        expectedVersion: number;
+        operatorName: string;
+        operatorContact: string;
+        operatorAddress?: string;
+        operatorInn?: string;
+      },
+    ) => call<{ revision: RevisionSummary }>("PUT", `${sys(id)}/compliance`, { body }),
+    // Table import (api.yaml#createImport, #getImport, #updateImportMapping; M1-07).
+    createImport: (id: string, file: Blob, name: string) => {
+      const form = new FormData();
+      form.set("file", file, name);
+      return call<{ importId: string; run: Run }>("POST", `${sys(id)}/imports`, {
+        body: form,
+        idempotencyKey: newIdempotencyKey(),
+      });
+    },
+    getImport: (id: string, importId: string) =>
+      call<ImportView>("GET", `${sys(id)}/imports/${encodeURIComponent(importId)}`),
+    updateImportMapping: (id: string, importId: string, mapping: ImportColumnMapping[]) =>
+      call<{ mapping: ImportColumnMapping[] }>(
+        "PUT",
+        `${sys(id)}/imports/${encodeURIComponent(importId)}/mapping`,
+        {
+          body: { mapping },
+        },
+      ),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }

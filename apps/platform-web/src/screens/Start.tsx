@@ -1,16 +1,20 @@
-// S1 «Старт» (platform-screens.yaml#screens S1).
+// S1 «Старт» (platform-screens.yaml#screens S1): M1 — current organization, «только РФ» (owner → PATCH settings),
+// the team size on system cards, sign out.
 import { Button } from "@wizard/ui-kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, newIdempotencyKey } from "../api/client.js";
 import type { System } from "../api/types.js";
-import { usePlatform } from "../app/context.js";
+import { canEdit, canOwn, usePlatform } from "../app/context.js";
 import { navigate } from "../app/router.js";
 import { Alert, Pill } from "../components/ui.js";
 import { ru } from "../i18n/ru.js";
 import s from "./Start.module.css";
 
 export function Start(): ReactNode {
-  const { api, settings } = usePlatform();
+  const { api, settings, setSettings, auth, me, orgId, roleIn, setOrg } = usePlatform();
+  const role = roleIn(orgId);
+  const [team, setTeam] = useState<number | null>(null);
+  const [ruBusy, setRuBusy] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [templateId, setTemplateId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -18,16 +22,47 @@ export function Start(): ReactNode {
   const [systems, setSystems] = useState<System[]>([]);
   const keyRef = useRef<string | null>(null);
 
+  const signedIn = auth === "ready";
+  // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
+  // defaults to the user's organization otherwise — and the seeded M0 id is not an RFC 4122 uuid for z.uuid().
+  const orgParam = signedIn && (me?.memberships.length ?? 0) > 1 ? orgId : undefined;
   useEffect(() => {
     let live = true;
     api
-      .listSystems()
+      .listSystems(orgParam)
       .then((r) => live && setSystems(r.items))
       .catch(() => live && setSystems([]));
+    if (signedIn)
+      api
+        .listMembers(orgId)
+        .then((r) => live && setTeam(r.items.length))
+        .catch(() => live && setTeam(null));
     return () => {
       live = false;
     };
-  }, [api]);
+  }, [api, orgId, orgParam, signedIn]);
+
+  /** Optimistic switch (owner): the box follows the click, a refusal puts the previous settings back. */
+  async function toggleRuOnly(ruOnly: boolean) {
+    if (!settings) return;
+    const prev = settings;
+    setSettings({ ...prev, ruOnly });
+    setRuBusy(true);
+    setError(null);
+    try {
+      setSettings(await api.updateOrgSettings(orgId, { ruOnly }));
+    } catch (e) {
+      setSettings(prev);
+      setError(e instanceof ApiError ? e : new ApiError(0, null));
+    } finally {
+      setRuBusy(false);
+    }
+  }
+
+  async function logout() {
+    await api.logout().catch(() => {});
+    window.location.assign("/login");
+  }
 
   const empty = prompt.trim().length < 3;
 
@@ -38,7 +73,11 @@ export function Start(): ReactNode {
     keyRef.current ??= newIdempotencyKey();
     try {
       const r = await api.createSystem(
-        { prompt: prompt.trim(), ...(templateId && templateId !== "custom" ? { templateId } : {}) },
+        {
+          prompt: prompt.trim(),
+          ...(templateId && templateId !== "custom" ? { templateId } : {}),
+          ...(orgParam ? { orgId: orgParam } : {}),
+        },
         keyRef.current,
       );
       keyRef.current = null;
@@ -75,19 +114,56 @@ export function Start(): ReactNode {
           {ru.start.policy(settings?.buildModelLabel)}
         </span>
         <span className={s.spacer} />
-        <label className={s.ruOnly} title={ru.start.ruOnlyHint}>
+        {signedIn && (me?.memberships.length ?? 0) > 1 && (
+          <label className={s.ruOnly}>
+            <span>{ru.start.org}</span>
+            <select
+              className={s.orgSelect}
+              value={orgId}
+              onChange={(e) => setOrg(e.target.value)}
+              data-testid="start-org"
+            >
+              {me?.memberships.map((m) => (
+                <option key={m.orgId} value={m.orgId}>
+                  {ru.start.orgOption(m.orgName, ru.roles[m.role] ?? m.role)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {signedIn && (me?.memberships.length ?? 0) <= 1 && role && (
+          <span className={s.policy} data-testid="start-org">
+            {ru.start.orgOption(me?.memberships[0]?.orgName ?? "", ru.roles[role] ?? role)}
+          </span>
+        )}
+        <label
+          className={s.ruOnly}
+          title={
+            settings?.t1Restricted
+              ? ru.start.ruOnlyRestricted
+              : canOwn(role)
+                ? ru.start.ruOnlyHint
+                : ru.start.ruOnlyOwner
+          }
+        >
           <input
             type="checkbox"
             data-testid="start-ru-only"
-            checked={settings?.ruOnly ?? false}
-            disabled
-            readOnly
+            checked={settings?.ruOnly === true || settings?.t1Restricted === true}
+            disabled={!settings || settings.t1Restricted === true || !canOwn(role) || ruBusy}
+            onChange={(e) => void toggleRuOnly(e.target.checked)}
           />
           {ru.start.ruOnly}
         </label>
+        {/* Balance: GET /orgs/:orgId/credits (M1-03); until then a placeholder without numbers. */}
         <span data-testid="start-credits" title={ru.start.creditsHint}>
           <Pill tone="neutral">{ru.start.credits}: —</Pill>
         </span>
+        {signedIn && (
+          <Button size="sm" variant="ghost" onClick={() => void logout()} data-testid="start-logout">
+            {ru.start.logout}
+          </Button>
+        )}
       </header>
 
       <main className={s.hero}>
@@ -135,7 +211,7 @@ export function Start(): ReactNode {
           <Button
             variant="primary"
             data-testid="start-submit"
-            disabled={empty}
+            disabled={empty || !canEdit(role, auth)}
             loading={busy}
             onClick={() => void submit()}
             title={ru.start.submitHint}
@@ -160,7 +236,7 @@ export function Start(): ReactNode {
           <h2 className={s.systemsTitle}>{ru.start.systems}</h2>
           <ul className={s.systemsList}>
             {systems.map((sys) => (
-              <li key={sys.id}>
+              <li key={sys.id} className={s.systemItem}>
                 <a
                   href={`/s/${sys.id}`}
                   className={s.systemCard}
@@ -178,6 +254,25 @@ export function Start(): ReactNode {
                   </span>
                   <span className={s.systemStage}>{ru.workspace.stage[sys.stage] ?? sys.stage}</span>
                 </a>
+                {team !== null && (
+                  <span className={s.systemTeam}>
+                    {ru.start.team(team)}
+                    {canOwn(role) && (
+                      <>
+                        {" · "}
+                        <a
+                          href={`/s/${sys.id}/settings`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/s/${sys.id}/settings`);
+                          }}
+                        >
+                          {ru.start.invite}
+                        </a>
+                      </>
+                    )}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

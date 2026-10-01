@@ -15,6 +15,7 @@ import {
   type DbHandle,
   dbosLogger,
   EventBus,
+  ImportStore,
   loadConfig,
   migrate,
   type PublishOptions,
@@ -25,6 +26,7 @@ import {
   RunEngine,
   type RunExecutors,
   SecretStore,
+  sweepExpiredImports,
 } from "@wizard/platform-api";
 import { dbosDurable } from "./durable.js";
 import { StepStore } from "./step-store.js";
@@ -33,6 +35,7 @@ import { StepStore } from "./step-store.js";
 export const WORKER_VERSION = "wizard-worker-1";
 export const CREDITS_CRON = "wizard.credits_cron";
 export const DBOS_RETENTION = "wizard.dbos_retention";
+export const IMPORTS_TTL = "wizard.imports_ttl";
 /** execution.M1.dbos_data: dbos.* of terminal workflows older than this are deleted daily. */
 export const DBOS_RETENTION_DAYS = 30;
 /** workflows.yaml#execution.M1.queues.runs default. */
@@ -149,6 +152,14 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     },
     { name: CREDITS_CRON },
   );
+  // db.yaml#imports: uploaded files are deleted after expires_at (7 days), hourly.
+  const importStore = new ImportStore(config.importsDir, config.secretsKey);
+  const importsTtl = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      await DBOS.runStep(() => sweepExpiredImports(handle.db, importStore), { name: "imports_ttl" });
+    },
+    { name: IMPORTS_TTL },
+  );
   const dbosRetention = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
       await DBOS.runStep(() => retainDbos(), { name: "dbos_retention" });
@@ -183,6 +194,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
   if (o.schedules !== false) {
     await DBOS.applySchedules([
       { scheduleName: CREDITS_CRON, workflowFn: creditsCron, schedule: "7 * * * *" },
+      { scheduleName: IMPORTS_TTL, workflowFn: importsTtl, schedule: "23 * * * *" },
       {
         scheduleName: DBOS_RETENTION,
         workflowFn: dbosRetention,
@@ -191,6 +203,9 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       },
     ]);
   }
+
+  // As in-process platform-api: one TTL pass at start (then hourly by the schedule).
+  await sweepExpiredImports(handle.db, importStore).catch((e) => log("import TTL sweep failed", e));
 
   async function status(id: string): Promise<WorkflowStatus | null> {
     return DBOS.getWorkflowStatus(id);
