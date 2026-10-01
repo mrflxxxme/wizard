@@ -1,6 +1,7 @@
 // M1 exit criterion «Прогон переживает рестарт воркера (тест с kill -9)», workflows.yaml#execution.M1.durability:
 // kill -9 of the worker during build_code → after a restart the run continues from the next unfinished step; no
-// finished LLM step runs again; settlement is written once; events stay gap-free with one terminal event.
+// finished LLM step runs again; settlement is written once; events stay gap-free with one terminal event. Also a kill
+// between the start transaction and its checkpoint: the re-run step resumes the run (not failed WORKER_RESTARTED).
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { listEvents } from "../../platform-api/src/runs/events.js";
 import { loadManifest } from "../../platform-api/src/services/revisions.js";
 import { loadEventSchemas } from "../../platform-api/test/event-schemas.js";
-import { startBuild } from "../../platform-api/test/flow.js";
+import { startBuild, toCard } from "../../platform-api/test/flow.js";
 import { createTestDb, startApi, type TestApi, waitFor, waitRun } from "../../platform-api/test/helpers.js";
 import { ENTRY, type Proc, start, stopProc, waitOut } from "./proc.js";
 import { CODE_STEPS, LLM_CANARY, scriptedExecutors } from "./support.js";
@@ -54,8 +55,8 @@ afterAll(async () => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-async function worker(): Promise<Proc> {
-  const p = start(ENTRY, env);
+async function worker(extra: Record<string, string> = {}): Promise<Proc> {
+  const p = start(ENTRY, { ...env, ...extra });
   procs.push(p);
   await waitOut(p, '"msg":"ready"');
   return p;
@@ -145,6 +146,35 @@ describe("kill -9 of the worker (M1-01)", () => {
     expect(leaks[0]?.n).toBe(0);
     // Step outputs are dropped once the workflow has ended (worker sweep).
     await waitFor(async () => !existsSync(join(env.WZ_STEPS as string, runId)), 10_000);
+    await stopProc(w2);
+  }, 120_000);
+
+  test("killed after the start transaction, before its checkpoint → the re-run step resumes the run", async () => {
+    const w0 = await worker();
+    const c = await toCard(api, "Форум на 300 человек");
+    await stopProc(w0);
+    const w1 = await worker({ WZ_FAULT_HANG_AFTER: "start" });
+    const ap = await api.req("POST", `/systems/${c.systemId}/card/approve`, {
+      body: { cardVersion: c.cardVersion },
+    });
+    expect(ap.status).toBe(202);
+    const runId = ap.body.run.id as string;
+    await waitOut(w1, '"msg":"fault_hang"');
+    w1.child.kill("SIGKILL");
+    await w1.exited;
+    const [cp] = await api.deps.pg`
+      select count(*)::int as n from dbos.operation_outputs where workflow_uuid = ${runId} and function_name = 'start'`;
+    expect(cp?.n, "killed inside the commit→checkpoint window").toBe(0);
+    expect((await api.req("GET", `/runs/${runId}`)).body.status).toBe("running");
+
+    const w2 = await worker();
+    const run = await waitRun(api, runId, ["succeeded", "failed", "cancelled"], 60_000);
+    expect(run, JSON.stringify(run.failure)).toMatchObject({ status: "succeeded" });
+    const ev = await listEvents(api.deps.db, runId, 0);
+    expect(ev.map((e) => schemas.validate(e)).filter(Boolean)).toEqual([]);
+    expect(ev.map((e) => e.seq)).toEqual(ev.map((_, i) => i + 1));
+    expect(ev.filter((e) => e.type === "run_started")).toHaveLength(1);
+    expect(ev.filter((e) => e.type === "run_finished")).toHaveLength(1);
     await stopProc(w2);
   }, 120_000);
 });
