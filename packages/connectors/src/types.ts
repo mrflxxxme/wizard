@@ -117,6 +117,18 @@ export interface PlatformConnectorConfig {
   resolve: Resolver;
   dial: Dialer;
   tlsCa?: string;
+  /** YooKassa API transport; absent — defaults (no network: the draft mock payment only). */
+  yookassa?: YookassaPlatformConfig;
+}
+
+/** Platform-side YooKassa settings (yookassa.yaml#api, #webhooks.verification). */
+export interface YookassaPlatformConfig {
+  /** WIZARD_CONNECTORS=live: real API calls with the shop's keys; otherwise the draft mock flow. */
+  live: boolean;
+  /** https://api.yookassa.ru/v3 (WIZARD_YOOKASSA_API_BASE for stubs). */
+  apiBase: string;
+  /** Source CIDRs of HTTP notifications (WIZARD_YOOKASSA_IP_ALLOWLIST overrides the built-in list). */
+  ipAllowlist: readonly string[];
 }
 
 export interface ConnectorCtx {

@@ -1,5 +1,5 @@
-// Client address of a request (runtime.yaml#auth.anti_abuse). The Node server records the socket address; forwarded
-// headers are never trusted here (cloud: platform/deploy.yaml#cloud.client_ip, M2 WIZARD_TRUSTED_PROXIES).
+// Client address of a request (runtime.yaml#auth.anti_abuse). The Node server records the socket address, or the
+// X-Forwarded-For hop added by a trusted ingress (platform/deploy.yaml#cloud.client_ip, WIZARD_TRUSTED_PROXIES).
 const addresses = new WeakMap<Request, string>();
 
 export function rememberClientIp(req: Request, address: string | undefined | null): void {

@@ -162,7 +162,7 @@ describe("CSRF and CORS (L3-14)", () => {
     expect(
       (await rt.fetch(request("POST", HOST, "/_wizard/hooks/yookassa/pay/abc", { ...noHeaders, body: {} })))
         .status,
-    ).toBe(501);
+    ).toBe(404); // not 403: reaches the YooKassa hook (M2-02), which has no integration "pay"
   });
 
   it("never sends CORS headers; sets nosniff and frame-ancestors", async () => {

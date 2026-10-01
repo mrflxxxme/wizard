@@ -16,6 +16,8 @@ export interface RuntimeEnv {
   systemsDomain: string;
   nodeEnv: string | undefined;
   kubernetes: boolean;
+  /** WIZARD_TRUSTED_PROXIES (comma-separated CIDRs): ingress hops whose X-Forwarded-For is believed (deploy.yaml#cloud.client_ip). */
+  trustedProxies?: readonly string[];
 }
 
 type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -30,6 +32,10 @@ export function readEnv(env: EnvSource = process.env): RuntimeEnv {
     systemsDomain: env.WIZARD_SYSTEMS_DOMAIN ?? "localhost",
     nodeEnv: env.NODE_ENV,
     kubernetes: env.KUBERNETES_SERVICE_HOST !== undefined && env.KUBERNETES_SERVICE_HOST !== "",
+    trustedProxies: (env.WIZARD_TRUSTED_PROXIES ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }
 

@@ -29,18 +29,20 @@ import {
 } from "./http/guards.js";
 import { type RunJobsOptions, type RunJobsReport, runJobs } from "./jobs/runner.js";
 import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
-import { payRoutes, previewRoutes } from "./preview/routes.js";
+import { previewRoutes } from "./preview/routes.js";
 import type { SystemEnv, SystemRegistry } from "./registry.js";
 import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { fnRoutes } from "./routes/fn.js";
 import { inviteRoutes } from "./routes/invite.js";
 import { loginApiRoutes, privacyRoutes } from "./routes/login.js";
+import { payRoutes } from "./routes/pay.js";
 import { qrRoutes } from "./routes/qr.js";
 import { staticRoutes } from "./routes/static.js";
 import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
+import { yookassaHookRoutes } from "./routes/yookassa.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
 export interface RuntimeAppOptions {
@@ -110,6 +112,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     log: o.log,
     platform: o.platform,
     outboxDir: o.outboxDir ?? null,
+    connectors: services.connectors,
   });
   services.connectorHost = connectors;
   const systems = new SystemCache({
@@ -172,6 +175,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   });
   app.route("/_wizard/qr", qrRoutes(connectors));
   app.route("/_wizard/hooks/telegram", telegramHookRoutes(connectors));
+  app.route("/_wizard/hooks/yookassa", yookassaHookRoutes(connectors));
   app.route("/_wizard/hooks", notImplemented());
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
