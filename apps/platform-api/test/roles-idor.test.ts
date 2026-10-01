@@ -53,6 +53,8 @@ const BODIES: Record<string, unknown> = {
   updateOrgSettings: { ruOnly: true },
   updateImportMapping: { mapping: [] },
   createExport: { env: "draft" },
+  changeSubscription: { plan: "start" },
+  createTopup: { packs: 1 },
 };
 
 interface OrgFixture {
@@ -162,7 +164,7 @@ async function send(s: Session, op: Op, f: OrgFixture): Promise<Res> {
 }
 
 describe("IDOR across organizations (session cookies)", () => {
-  test("implemented operations with {id}/{orgId} include M0, M1-02, M1-04, M1-07, M2-10 and M2-05 ones", () => {
+  test("implemented operations with {id}/{orgId} include M0, M1-02, M1-04, M1-07, M2-05, M2-07 and M2-10 ones", () => {
     const ids = ops.map((o) => o.id);
     expect(ids).toEqual(
       expect.arrayContaining([
@@ -194,6 +196,11 @@ describe("IDOR across organizations (session cookies)", () => {
         "listExports",
         "getExport",
         "listDeletionLog",
+        "getBilling",
+        "startCardBinding",
+        "changeSubscription",
+        "cancelSubscription",
+        "createTopup",
       ]),
     );
   });

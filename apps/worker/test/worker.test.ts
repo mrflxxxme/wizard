@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DBOS } from "@dbos-inc/dbos-sdk";
+import { idempotenceKey } from "@wizard/connectors";
+import { YookassaMock } from "@wizard/connectors/mocks";
 import { createLogger } from "@wizard/pii/log";
 import { type BuildHost, type BuildParams, RUN_WORKFLOW, SecretStore } from "@wizard/platform-api";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -18,6 +20,7 @@ import {
   waitRun,
 } from "../../platform-api/test/helpers.js";
 import {
+  BILLING_CRON,
   CREDITS_CRON,
   DBOS_RETENTION,
   IMPORTS_TTL,
@@ -32,6 +35,7 @@ const schemas = loadEventSchemas();
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
 let api: TestApi;
 let worker: Worker;
+let shop: YookassaMock;
 const dirs: string[] = [];
 let secretsFile = "";
 let build: (host: BuildHost, p: BuildParams) => Promise<{ summary_ru: string }> = scriptedBuild;
@@ -44,8 +48,12 @@ const tmp = (p: string) => {
 
 beforeAll(async () => {
   tdb = await createTestDb("worker");
+  shop = await new YookassaMock().start();
   secretsFile = join(tmp("wz-secrets-"), "secrets.enc");
   const config = {
+    // M2-07: the platform shop for billing_cron renewals (YooKassa API stub).
+    platformShop: { shopId: shop.shopId, secretKey: shop.secretKey },
+    yookassaApiBase: shop.apiBase,
     dbUrl: tdb.url,
     artifactsDir: tmp("wz-art-"),
     stepsDir: tmp("wz-steps-"),
@@ -72,6 +80,7 @@ afterAll(async () => {
   await worker?.close();
   await api?.dispose();
   await tdb?.drop();
+  await shop?.stop();
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
@@ -363,7 +372,7 @@ describe("runs as DBOS workflows (M1-01)", () => {
     // The run itself (platform.runs, run_events) is untouched.
     expect((await api.req("GET", `/runs/${b.buildRunId}`)).body.status).toBe("succeeded");
     const names = (await DBOS.listSchedules()).map((s) => s.scheduleName).sort();
-    expect(names).toEqual([CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, RETENTION_CRON].sort());
+    expect(names).toEqual([BILLING_CRON, CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, RETENTION_CRON].sort());
   });
 
   test("retention_cron (M2-05): a system deleted 31 days ago is purged by the worker pass; messages gone, journal written", async () => {
@@ -382,5 +391,58 @@ describe("runs as DBOS workflows (M1-01)", () => {
     expect(log.body.items.map((i: { mode: string }) => i.mode)).toContain("system_deleted");
     // Idempotent: a second pass finds nothing to purge.
     expect((await worker.retention()).purged).toEqual([]);
+  });
+});
+
+describe("billing_cron (M2-07): renewals as a durable scheduled workflow", () => {
+  test("a due subscription is renewed by the saved card in step renew:<org>; the same workflow id never charges twice", async () => {
+    const [org] = await api.deps
+      .pg`insert into platform.orgs (name, plan) values ('Подписчик', 'start') returning id`;
+    const [user] = await api.deps
+      .pg`insert into platform.users (email) values ('payer@example.ru') returning id`;
+    await api.deps
+      .pg`insert into platform.memberships (org_id, user_id, role) values (${org?.id}, ${user?.id}, 'owner')`;
+    const card = {
+      first6: "220220",
+      last4: "5151",
+      expiry_month: "01",
+      expiry_year: "2032",
+      card_type: "Mir",
+      issuer_country: "RU",
+    };
+    shop.savedMethods.set("pm-worker-1", { type: "bank_card", id: "pm-worker-1", saved: true, card });
+    const [pm] = await api.deps.pg`
+      insert into platform.payment_methods (org_id, provider_method_id, card_last4, card_type, issuer_country,
+        card_fingerprint, bound_by)
+      values (${org?.id}, 'pm-worker-1', '5151', 'Mir', 'RU', 'fp-worker', ${user?.id}) returning id`;
+    const end = new Date(Date.now() - 60_000);
+    await api.deps.pg`
+      insert into platform.subscriptions (org_id, plan, status, payment_method_id, current_period_start,
+        current_period_end, next_charge_at)
+      values (${org?.id}, 'start', 'active', ${pm?.id}, ${new Date(end.getTime() - 30 * 24 * 3600_000)}, ${end}, ${end})`;
+
+    await worker.runBillingCron("billing-cron-test-1");
+    const calls = shop.callsTo("POST", "/v3/payments");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.idempotenceKey).toBe(idempotenceKey(`renew:${org?.id}:${end.toISOString()}`));
+    expect(calls[0]?.body).toMatchObject({ payment_method_id: "pm-worker-1", amount: { value: "1990.00" } });
+    const [sub] = await api.deps
+      .pg`select current_period_start from platform.subscriptions where org_id = ${org?.id}`;
+    expect(new Date(sub?.current_period_start).getTime()).toBe(end.getTime());
+    const steps = await api.deps.pg`
+      select function_name from dbos.operation_outputs where workflow_uuid = 'billing-cron-test-1' order by function_id`;
+    expect(steps.map((r) => r.function_name)).toEqual([
+      "billing_remind",
+      "billing_end",
+      "billing_due",
+      `renew:${org?.id}`,
+      "billing_reconcile",
+    ]);
+    // Replaying the finished workflow returns its recorded result: no second payment.
+    await worker.runBillingCron("billing-cron-test-1");
+    expect(shop.callsTo("POST", "/v3/payments")).toHaveLength(1);
+    const grants = await api.deps.pg`
+      select count(*)::int as n from platform.credit_ledger where org_id = ${org?.id} and bucket = 'plan_monthly'`;
+    expect(grants[0]?.n).toBe(1);
   });
 });

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { lockOrg, MEMBER_LIMITS, type OrgRole, ROLE_RANK, ROLE_RU, seatsUsed } from "../auth/accounts.js";
 import { randomToken, sha256Hex } from "../auth/crypto.js";
 import { applyRegion, innValid } from "../auth/region.js";
+import { activeCard } from "../billing/payments.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid } from "../http/auth.js";
 import { type Deps, jsonBody } from "../http/util.js";
@@ -55,8 +56,9 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
       .where("id", "=", orgId)
       .executeTakeFirst();
     if (!o) throw notFound("Организация");
-    // Card binding arrives with payment_methods (M2-11).
-    return { id: o.id, name: o.name, plan: o.plan as "free" | "start" | "business", role, cardBound: false };
+    // billing.yaml#card_binding (M2-07): an active payment_methods row.
+    const cardBound = !!(await activeCard(d.db, orgId));
+    return { id: o.id, name: o.name, plan: o.plan as "free" | "start" | "business", role, cardBound };
   }
 
   async function settings(orgId: string) {

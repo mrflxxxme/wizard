@@ -2,7 +2,9 @@
 export { type ReceivedMail, SmtpMock, type SmtpMockOptions, type TestCert, testCert } from "./smtp/server.js";
 export { type BotCall, type ScriptedReply, TelegramMock } from "./telegram/server.js";
 export {
+  type MockCard,
   type MockPayment,
+  type MockPaymentMethod,
   type MockRefund,
   type ScriptedFailure,
   type YookassaCall,

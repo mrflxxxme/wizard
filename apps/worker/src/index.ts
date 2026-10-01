@@ -6,6 +6,7 @@ export { dbosDurable } from "./durable.js";
 export { type StepRef, StepStore } from "./step-store.js";
 /** startWorker(): DBOS launch, run workflow, queues runs/interview, credits_cron, dbos and platform retention schedules. */
 export {
+  BILLING_CRON,
   CREDITS_CRON,
   DBOS_RETENTION,
   DBOS_RETENTION_DAYS,

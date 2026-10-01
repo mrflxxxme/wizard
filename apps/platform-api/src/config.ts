@@ -1,5 +1,7 @@
-// Env names: specs/platform/deploy.yaml#local.env_vars (canonical list, no new names).
+// Env names: specs/platform/deploy.yaml#local.env_vars (canonical list; the platform shop keys of M2-07 —
+// docs/reviews/impl-notes/M2-07.md).
 import { join, resolve } from "node:path";
+import { YOOKASSA_API_BASE, YOOKASSA_IP_ALLOWLIST } from "@wizard/connectors";
 import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
 import { DEFAULT_DB_URL, DEFAULT_ORG_ID } from "./db/index.js";
 
@@ -41,7 +43,41 @@ export interface Config {
    * org in dev auth mode (the dev stand and e2e), otherwise none.
    */
   billingExemptOrgs: string[];
+  /**
+   * M2-07: the platform's own YooKassa shop (billing.yaml#recurring; never a client's shop). Keys only from
+   * WIZARD_PLATFORM_YOOKASSA_SHOP_ID / WIZARD_PLATFORM_YOOKASSA_SECRET_KEY; null — payments are unavailable.
+   */
+  platformShop: { shopId: string; secretKey: string } | null;
+  /** WIZARD_YOOKASSA_API_BASE (stubs in tests; shared with the connector, M2-02). */
+  yookassaApiBase: string;
+  /** WIZARD_YOOKASSA_IP_ALLOWLIST: sources of shop notifications (connectors/yookassa.yaml#webhooks). */
+  yookassaIpAllowlist: readonly string[];
+  /** WIZARD_TRUSTED_PROXIES: ingress CIDRs whose X-Forwarded-For is trusted (deploy.yaml#cloud.client_ip). */
+  trustedProxies: readonly string[];
+  /** 54-FZ receipts of platform payments (billing.yaml#recurring.receipts, #tax_note). */
+  receipt: ReceiptConfig;
+  /** workflows.yaml#workflows.publish.preconditions «M2: привязана карта РФ»: milestone ≥ M2 or production. */
+  cardBindingRequired: boolean;
 }
+
+export interface ReceiptConfig {
+  /** WIZARD_RECEIPT_VAT_CODE (1..6, 11, 12); null — not set (1 «без НДС» outside production). */
+  vatCode: number | null;
+  /** billing.yaml#tax_note: two items «право использования ПО» (share, own VAT) + «услуги хостинга». */
+  split?: { softwareShare: number; softwareVatCode: number };
+}
+
+export const VAT_CODES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 11, 12]);
+
+const list = (v: string | undefined): string[] | undefined => {
+  const xs = (v ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return xs.length > 0 ? xs : undefined;
+};
+
+const milestoneRank = (m: string | undefined): number => Number(/^M(\d+)$/.exec(m ?? "")?.[1] ?? 0);
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
@@ -65,6 +101,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     milestone: env.WIZARD_MILESTONE || "M0",
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,
+    platformShop:
+      env.WIZARD_PLATFORM_YOOKASSA_SHOP_ID && env.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY
+        ? {
+            shopId: env.WIZARD_PLATFORM_YOOKASSA_SHOP_ID,
+            secretKey: env.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY,
+          }
+        : null,
+    yookassaApiBase: env.WIZARD_YOOKASSA_API_BASE || YOOKASSA_API_BASE,
+    yookassaIpAllowlist: list(env.WIZARD_YOOKASSA_IP_ALLOWLIST) ?? YOOKASSA_IP_ALLOWLIST,
+    trustedProxies: list(env.WIZARD_TRUSTED_PROXIES) ?? [],
+    receipt: { vatCode: env.WIZARD_RECEIPT_VAT_CODE ? Number(env.WIZARD_RECEIPT_VAT_CODE) : null },
     ...over,
     // Tests that move artifactsDir get the other .data stores next to it.
     secretsFile:
@@ -79,6 +126,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     billingExemptOrgs:
       over.billingExemptOrgs ?? ((over.authMode ?? env.WIZARD_AUTH_MODE) === "dev" ? [DEFAULT_ORG_ID] : []),
+    cardBindingRequired:
+      over.cardBindingRequired ??
+      (milestoneRank(over.milestone ?? env.WIZARD_MILESTONE) >= 2 ||
+        (over.nodeEnv ?? env.NODE_ENV) === "production"),
   };
 }
 
@@ -114,6 +165,11 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
   }
   if (c.nodeEnv === "production" && c.billingExemptOrgs.length > 0)
     throw new StartupError("организации без учёта кредитов запрещены при NODE_ENV=production");
+  const vat = c.receipt.vatCode;
+  if (vat !== null && !VAT_CODES.has(vat))
+    throw new StartupError("WIZARD_RECEIPT_VAT_CODE: допустимы коды НДС 1–6, 11, 12");
+  if (c.nodeEnv === "production" && c.platformShop && vat === null)
+    throw new StartupError("WIZARD_RECEIPT_VAT_CODE обязателен для чеков платежей платформы (54-ФЗ)");
   if (c.nodeEnv === "production" && c.secretsKey.length < 32)
     throw new StartupError("WIZARD_SECRETS_KEY обязателен при NODE_ENV=production");
 }

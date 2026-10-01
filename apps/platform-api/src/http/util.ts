@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type postgres from "postgres";
 import type { z } from "zod";
 import type { Billing } from "../billing/ledger.js";
+import type { Payments } from "../billing/payments.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/index.js";
 import { invalid } from "../errors.js";
@@ -17,6 +18,8 @@ export interface Deps {
   engine: RunEngine;
   config: Config;
   billing: Billing;
+  /** M2-07: payments of the platform shop (card binding, subscription, topups). */
+  payments: Payments;
   /** SSE re-reads run_events this often even without a bus wake-up (events written by apps/worker); 0 = bus only. */
   eventPollMs?: number;
 }

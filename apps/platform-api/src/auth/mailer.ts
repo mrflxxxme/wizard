@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 export interface MailMessage {
   /** notice — events for the owner of a system (consent withdrawal, compliance.yaml#consent.withdrawal). */
-  kind: "otp" | "invite" | "notice";
+  kind: "otp" | "invite" | "notice" | "billing";
   to: string;
   subject: string;
   text: string;

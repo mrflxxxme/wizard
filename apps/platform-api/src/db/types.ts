@@ -317,6 +317,50 @@ export interface DeletionLogTable {
   created_at: TsDef;
 }
 
+/** M2-07, billing.yaml#card_binding: a bound card (no PAN — last4 and an HMAC fingerprint of first6/last4/expiry). */
+export interface PaymentMethodsTable {
+  id: Generated<string>;
+  org_id: string;
+  provider: Generated<string>;
+  provider_method_id: string;
+  card_last4: string;
+  card_type: string | null;
+  issuer_country: string;
+  card_fingerprint: string;
+  bound_by: string;
+  bound_at: TsDef;
+  revoked_at: TsNull;
+  created_at: TsDef;
+}
+
+/** M2-07: payments of the platform shop (card binding 1 ₽, subscription, topup). */
+export interface PaymentsTable {
+  id: Generated<string>;
+  org_id: string;
+  kind: "card_binding" | "subscription" | "topup";
+  amount_kop: Big;
+  status: "pending" | "waiting_for_capture" | "succeeded" | "canceled" | "refunded";
+  provider_payment_id: string | null;
+  idempotence_key: string;
+  packs: number | null;
+  settled_at: TsNull;
+  meta: ColumnType<Record<string, unknown>, unknown, unknown>;
+  created_at: TsDef;
+}
+
+/** M2-07, billing.yaml#recurring: `plan` is the plan of the next period (a downgrade waits for it). */
+export interface SubscriptionsTable {
+  org_id: string;
+  plan: "start" | "business";
+  status: "active" | "past_due" | "cancelled";
+  payment_method_id: string | null;
+  current_period_start: Ts;
+  current_period_end: Ts;
+  cancel_at_period_end: Generated<boolean>;
+  next_charge_at: TsNull;
+  failed_attempts: Generated<number>;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -339,4 +383,7 @@ export interface DB {
   "platform.imports": ImportsTable;
   "platform.exports": ExportsTable;
   "platform.deletion_log": DeletionLogTable;
+  "platform.payment_methods": PaymentMethodsTable;
+  "platform.payments": PaymentsTable;
+  "platform.subscriptions": SubscriptionsTable;
 }

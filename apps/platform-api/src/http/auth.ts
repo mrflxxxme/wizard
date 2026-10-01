@@ -1,6 +1,7 @@
 // Authentication (api.yaml#info.x-auth): M1 session cookie with double-submit CSRF and the platform Origin on
 // mutating requests; M0 dev mode (WIZARD_AUTH_MODE=dev only) — X-Wizard-Dev-User, default dev@wizard.local.
 import type { IncomingMessage } from "node:http";
+import { effectiveClientIp } from "@wizard/connectors";
 import type { Context, MiddlewareHandler } from "hono";
 import { memberships, type OrgRole, ROLE_RANK } from "../auth/accounts.js";
 import {
@@ -34,10 +35,14 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const isMutating = (method: string): boolean => !SAFE_METHODS.has(method);
 const apiPath = (c: Context): string => c.req.path.replace(/^\/api\/v1(?=\/)/, "");
 
-/** Peer address of the request (node-server); behind a proxy — M2 (WIZARD_TRUSTED_PROXIES). */
-export function clientIp(c: Context): string {
+/**
+ * Client address (deploy.yaml#cloud.client_ip, L3-27): the socket peer (node-server), or — when the peer is a trusted
+ * ingress (WIZARD_TRUSTED_PROXIES) — the right-most untrusted X-Forwarded-For hop.
+ */
+export function clientIp(c: Context, trustedProxies: readonly string[] = []): string {
   const env = c.env as { incoming?: IncomingMessage } | undefined;
-  return env?.incoming?.socket?.remoteAddress ?? "unknown";
+  const peer = env?.incoming?.socket?.remoteAddress;
+  return effectiveClientIp(peer, c.req.header("x-forwarded-for"), trustedProxies) ?? "unknown";
 }
 
 async function authUser(db: Db, id: string, email: string): Promise<AuthUser> {
