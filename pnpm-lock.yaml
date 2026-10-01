@@ -38,6 +38,9 @@ importers:
       '@wizard/build':
         specifier: workspace:*
         version: link:../../packages/build
+      '@wizard/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@wizard/gates':
         specifier: workspace:*
         version: link:../../packages/gates
@@ -75,9 +78,6 @@ importers:
       '@types/pngjs':
         specifier: ^6.0.5
         version: 6.0.5
-      '@wizard/connectors':
-        specifier: workspace:*
-        version: link:../../packages/connectors
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -183,6 +183,9 @@ importers:
         specifier: ^3.4.9
         version: 3.4.9
     devDependencies:
+      '@wizard/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

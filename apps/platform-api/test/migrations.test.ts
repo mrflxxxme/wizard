@@ -31,7 +31,7 @@ function expected(name: string, t: TableDef) {
     };
   }
   if (!NO_CREATED_AT.has(name)) cols.created_at = { type: "timestamp with time zone", notNull: true };
-  return cols;
+  return { ...cols, ...EXTRA_COLUMNS[name] };
 }
 
 const m0 = Object.entries(dbYaml.tables).filter(([, t]) => t.milestone === "M0");
@@ -48,8 +48,13 @@ const M1_TABLES = [
 ];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
-// M2 tables created so far (M2-10 exports).
-const M2_TABLES = ["exports"];
+// M2 tables created so far (M2-10 exports, M2-07 billing).
+const M2_TABLES = ["exports", "subscriptions", "payment_methods", "payments"];
+/** Columns beyond db.yaml, each justified in docs/reviews/impl-notes/M2-07.md. */
+const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {
+  payment_methods: { card_fingerprint: { type: "text", notNull: true } },
+  payments: { meta: { type: "jsonb", notNull: true } },
+};
 const checked = [
   ...m0,
   ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n) || M2_TABLES.includes(n)),

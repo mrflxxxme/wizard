@@ -5,7 +5,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface MailMessage {
-  kind: "otp" | "invite";
+  kind: "otp" | "invite" | "billing";
   to: string;
   subject: string;
   text: string;

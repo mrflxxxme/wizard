@@ -1,6 +1,6 @@
 // apps/worker (workflows.yaml#execution.M1): DBOS Transact over the platform database (schema dbos). Runs are the
-// workflow RUN_WORKFLOW (workflowID = runs.id) on queues runs / interview; credits_cron and the dbos retention are
-// DBOS scheduled workflows.
+// workflow RUN_WORKFLOW (workflowID = runs.id) on queues runs / interview; credits_cron, subscription renewals
+// (billing_cron, M2-07) and the dbos retention are DBOS scheduled workflows.
 import { DBOS, type WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger, type Logger } from "@wizard/pii/log";
@@ -18,7 +18,10 @@ import {
   ExportStore,
   ImportStore,
   loadConfig,
+  type Mailer,
   migrate,
+  OutboxMailer,
+  Payments,
   type PublishOptions,
   QUEUE_INTERVIEW,
   QUEUE_RUNS,
@@ -36,6 +39,8 @@ import { StepStore } from "./step-store.js";
 /** Recovery picks up pending workflows of the same application version (kept stable across code edits). */
 export const WORKER_VERSION = "wizard-worker-1";
 export const CREDITS_CRON = "wizard.credits_cron";
+/** billing.yaml#recurring: renewal notices, autopayments with retries, past_due → Free (hourly). */
+export const BILLING_CRON = "wizard.billing_cron";
 export const DBOS_RETENTION = "wizard.dbos_retention";
 /** Import files and export archives TTL (one schedule, as the in-process timer of platform-api). */
 export const IMPORTS_TTL = "wizard.imports_ttl";
@@ -62,6 +67,8 @@ export interface WorkerOptions {
   pollMs?: number;
   logger?: Logger;
   now?: () => Date;
+  /** Platform mail for renewal notices (default: files in config.outboxDir). */
+  mailer?: Mailer;
 }
 
 export interface Worker {
@@ -70,6 +77,10 @@ export interface Worker {
   steps: StepStore;
   /** One pass of the orphan sweep (tests). */
   sweep(): Promise<void>;
+  /** Platform shop payments (renewals of billing_cron). */
+  payments: Payments;
+  /** One billing_cron pass as a DBOS workflow with this id (tests, manual catch-up); the same id never repeats. */
+  runBillingCron(workflowID: string): Promise<void>;
   /** dbos retention (execution.M1.dbos_data): deletes terminal workflows completed before now − 30 days. */
   retainDbos(now?: Date): Promise<number>;
   close(): Promise<void>;
@@ -149,6 +160,34 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     return rows.count;
   }
 
+  const payments = new Payments({
+    db: handle.db,
+    config,
+    ledger: billing,
+    mailer: o.mailer ?? new OutboxMailer(config.outboxDir),
+    log,
+  });
+  // Each phase and each org's renewal is a step: a crash resumes after the last finished one; a renewal repeated
+  // inside its step is safe (payments.idempotence_key + Idempotence-Key renew:<org>:<period>).
+  const billingCron = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      if (!payments.enabled) return;
+      await DBOS.runStep(() => payments.remind(), { name: "billing_remind" });
+      await DBOS.runStep(() => payments.endDue(), { name: "billing_end" });
+      const due = await DBOS.runStep(() => payments.dueRenewals(), { name: "billing_due" });
+      for (const orgId of due)
+        await DBOS.runStep(
+          () =>
+            payments.renew(orgId).catch((e) => {
+              log("billing renewal failed", e);
+              return false;
+            }),
+          { name: `renew:${orgId}` },
+        );
+      await DBOS.runStep(() => payments.reconcile(), { name: "billing_reconcile" });
+    },
+    { name: BILLING_CRON },
+  );
   const creditsCron = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
       await DBOS.runStep(() => billing.sweep(handle.db), { name: "credits_sweep" });
@@ -203,6 +242,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
   if (o.schedules !== false) {
     await DBOS.applySchedules([
       { scheduleName: CREDITS_CRON, workflowFn: creditsCron, schedule: "7 * * * *" },
+      { scheduleName: BILLING_CRON, workflowFn: billingCron, schedule: "13 * * * *" },
       { scheduleName: IMPORTS_TTL, workflowFn: importsTtl, schedule: "23 * * * *" },
       {
         scheduleName: DBOS_RETENTION,
@@ -273,6 +313,11 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     engine,
     config,
     steps,
+    payments,
+    async runBillingCron(workflowID: string) {
+      const h = await DBOS.startWorkflow(billingCron, { workflowID })(new Date(), {});
+      await h.getResult();
+    },
     sweep,
     retainDbos,
     async close() {

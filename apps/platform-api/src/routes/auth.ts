@@ -74,14 +74,14 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
     for (const v of sessionCookies(d.config, s.token, s.csrf, s.expiresAt))
       c.header("set-cookie", v, { append: true });
     c.header("cache-control", "no-store");
-    await recheckRegion(d.db, a.geoRegion, user.id, clientIp(c)).catch(() => {});
+    await recheckRegion(d.db, a.geoRegion, user.id, clientIp(c, d.config.trustedProxies)).catch(() => {});
     return c.json({ user: toUser(user) }, 200);
   }
 
   // requestOtp: always 204; limits per e-mail and per IP.
   r.post("/auth/otp/request", async (c) => {
     const b = await jsonBody(c, z.object({ email: emailSchema }));
-    const ipHash = hmacHex(ipKey, clientIp(c));
+    const ipHash = hmacHex(ipKey, clientIp(c, d.config.trustedProxies));
     const code = otpCode();
     await d.db.transaction().execute(async (trx) => {
       await sql`SELECT pg_advisory_xact_lock(hashtext(${`otp:${b.email}`}))`.execute(trx);

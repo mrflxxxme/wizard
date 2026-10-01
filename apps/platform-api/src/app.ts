@@ -6,6 +6,7 @@ import { createAgentExecutors } from "./agents/executors.js";
 import { type Mailer, OutboxMailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
 import { Billing } from "./billing/ledger.js";
+import { Payments } from "./billing/payments.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -17,6 +18,7 @@ import type { Deps } from "./http/util.js";
 import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
+import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
 import { exportRoutes } from "./routes/exports.js";
 import { importRoutes } from "./routes/imports.js";
@@ -53,7 +55,10 @@ export interface PlatformApiOptions {
   geoRegion?: GeoRegion;
   /** Clock of the credits ledger (grants, expiry); tests move it forward. */
   now?: () => Date;
-  /** credits_cron period (billing.yaml#credits_cron, hourly); 0 disables the in-process timer (default 0 with dbos). */
+  /**
+   * credits_cron period (billing.yaml#credits_cron, hourly), also renewals of subscriptions (M2-07); 0 disables the
+   * in-process timer (default 0 with dbos: DBOS scheduled workflows of apps/worker).
+   */
   creditsCronMs?: number;
   /**
    * inprocess (default; M0 and unit tests): runs execute in this process. dbos (M1, `pnpm dev`): runs are enqueued
@@ -129,6 +134,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     sweepTimer = setInterval(sweep, 3600_000);
     sweepTimer.unref();
   }
+  const payments = new Payments({ db: handle.db, config, ledger: billing, mailer, log });
   const deps: Deps = {
     db: handle.db,
     pg: handle.pg,
@@ -137,6 +143,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     engine,
     config,
     billing,
+    payments,
     ...(dbos ? { eventPollMs: 250 } : {}),
   };
   // credits_cron: a DBOS scheduled workflow of apps/worker in M1; the in-process timer only without it.
@@ -145,6 +152,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     cronMs > 0
       ? setInterval(() => {
           billing.sweep(handle.db).catch((e) => log("credits_cron failed", e));
+          payments.sweep().catch((e) => log("billing renewals failed", e));
         }, cronMs)
       : undefined;
   cron?.unref();
@@ -165,6 +173,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       platformOrigin: config.platformOrigin,
     }),
   );
+  // Notifications of the platform shop come without Origin and session (api.yaml yookassaWebhook, security: []).
+  app.post("/api/v1/webhooks/yookassa", yookassaWebhook(deps));
   app.use("*", originGuard(config));
 
   const accounts = { mailer, geoRegion: opts.geoRegion };
@@ -179,6 +189,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
+  api.route("/", billingRoutes(deps));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 

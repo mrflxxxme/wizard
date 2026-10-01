@@ -23,6 +23,20 @@ export {
   type RunCharge,
   type RunOutcome,
 } from "./billing/ledger.js";
+/** M2-07: platform shop payments — card binding, subscriptions (renewals, dunning), topups; sweep() is hourly. */
+export {
+  activeCard,
+  addMonth,
+  BINDINGS_PER_IP_DAY,
+  BINDINGS_PER_ORG_DAY,
+  type BillingView,
+  CARD_BINDING_KOP,
+  ORGS_PER_CARD,
+  PAST_DUE_DAYS,
+  Payments,
+  type PaymentsOptions,
+  RETRY_DAYS,
+} from "./billing/payments.js";
 export {
   assertPlanLimit,
   type Bucket,
@@ -33,7 +47,15 @@ export {
   TOPUP,
   WELCOME,
 } from "./billing/plans.js";
-export { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
+/** YooKassa API client of the platform's own shop (never a client's shop). */
+export { PlatformShop, type ShopOptions, type ShopPayment } from "./billing/shop.js";
+export {
+  assertStartupAllowed,
+  type Config,
+  loadConfig,
+  type ReceiptConfig,
+  StartupError,
+} from "./config.js";
 export {
   createDb,
   type Db,

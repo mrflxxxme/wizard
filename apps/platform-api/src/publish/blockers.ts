@@ -2,6 +2,7 @@
 import type { AppSpec } from "@wizard/appspec";
 import type { Selectable } from "kysely";
 import type { Billing } from "../billing/ledger.js";
+import { activeCard } from "../billing/payments.js";
 import { planOf } from "../billing/plans.js";
 import type { Db } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
@@ -50,7 +51,21 @@ export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
   return out;
 }
 
+/**
+ * workflows.yaml#workflows.publish.preconditions «M2: привязана карта РФ» (billing.yaml#card_binding): a prod
+ * publication needs an active payment_methods row of the org; exempt orgs (local stand) and M0/M1 do not.
+ */
+export async function cardBindingMissing(
+  db: Db,
+  orgId: string,
+  o: { required: boolean; billing?: Billing },
+): Promise<boolean> {
+  if (!o.required || o.billing?.isExempt(orgId)) return false;
+  return !(await activeCard(db, orgId));
+}
+
 export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
+  CARD_BINDING_REQUIRED: "Привяжите карту российского банка — это нужно для публикации",
   OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
   PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
@@ -66,10 +81,13 @@ export async function publishBlockers(
   user: AuthUser,
   s: Selectable<SystemsTable>,
   billing?: Billing,
+  cardRequired = false,
 ): Promise<ErrorCode[]> {
   const out: ErrorCode[] = [];
   if (user.orgs.get(s.org_id) !== "owner") out.push("NOT_OWNER");
   if (s.suspended_at) out.push("SYSTEM_SUSPENDED");
+  if (await cardBindingMissing(db, s.org_id, { required: cardRequired, ...(billing ? { billing } : {}) }))
+    out.push("CARD_BINDING_REQUIRED");
   let rev = s.draft_revision > 0 ? await loadRevision(db, s.id, s.draft_revision) : undefined;
   if (rev && !isPublishable(rev, s.draft_revision))
     rev = s.preview_revision !== null ? await loadRevision(db, s.id, s.preview_revision) : undefined;

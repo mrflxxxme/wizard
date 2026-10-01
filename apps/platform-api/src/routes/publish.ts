@@ -8,7 +8,12 @@ import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
-import { BLOCKER_RU, prodSystemsCount, specPublishBlockers } from "../publish/blockers.js";
+import {
+  BLOCKER_RU,
+  cardBindingMissing,
+  prodSystemsCount,
+  specPublishBlockers,
+} from "../publish/blockers.js";
 import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
@@ -60,6 +65,10 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       z.strictObject({ revision: z.number().int().min(1), confirmDiff: z.literal(true).optional() }),
     );
     if (s.suspended_at) throw new ApiError("SYSTEM_SUSPENDED", "Публикация системы приостановлена");
+    if (
+      await cardBindingMissing(d.db, s.org_id, { required: d.config.cardBindingRequired, billing: d.billing })
+    )
+      throw new ApiError("CARD_BINDING_REQUIRED", BLOCKER_RU.CARD_BINDING_REQUIRED as string);
     const rev = await loadRevision(d.db, s.id, b.revision);
     if (!rev) throw notFound("Ревизия");
     if (!isPublishable(rev, s.draft_revision))
