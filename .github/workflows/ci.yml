@@ -119,7 +119,19 @@ jobs:
   # every provider root: Timeweb from the OpenTofu registry, Cloud.ru through its mirror).
   deploy-lint:
     runs-on: ubuntu-latest
+    # tools/deploy tests (PITR drill marks, pg-ops) need a PostgreSQL on :5433 like the other jobs.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
       KUBECONFORM_VERSION: v0.7.0
       # WAL-G of the pilot database (infra/docker/postgres.Dockerfile pins the same release and sha256).
       WALG_VERSION: v3.0.9
