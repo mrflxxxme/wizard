@@ -41,9 +41,10 @@ Settings → Secrets and variables → Actions. Секреты можно пол
 | `CLOUDRU_API_KEY` | secret | да | Cloud.ru Foundation Models (T0, резерв каждой цепочки) |
 | `ZAI_API_KEY` | secret | да, пока сборка по умолчанию на T1 | Z.ai (GLM-5.3). После решения недели 0 в пользу T0 не нужен |
 | `YANDEX_API_KEY`, `YANDEX_FOLDER_ID` | secret | нет | Yandex AI Studio (T0, резерв) |
+| `DEEPSEEK_API_KEY` | secret | нет | DeepSeek API (T1, хранение в КНР) — только претендент eval: `deepseek-v4.1-flash`, `deepseek-v4-pro-0813` через входной параметр `models` или `EVAL_FULL_MODELS`. Если модель выбрана, а ключа нет, прогон пропускается как без ключей |
 | `EVAL_S3_ACCESS_KEY_ID`, `EVAL_S3_SECRET_ACCESS_KEY` | secret | нет | запись live-отчётов в S3 eval в РФ |
 | `EVAL_S3_BUCKET`, `EVAL_S3_ENDPOINT`, `EVAL_S3_REGION` | variable | нет | бакет, endpoint S3-совместимого хранилища (например `https://storage.yandexcloud.net`), регион (по умолчанию `ru-central1`) |
-| `CLOUDRU_BASE_URL`, `ZAI_BASE_URL`, `YANDEX_BASE_URL` | variable | нет | другие base URL провайдеров |
+| `CLOUDRU_BASE_URL`, `ZAI_BASE_URL`, `YANDEX_BASE_URL`, `DEEPSEEK_BASE_URL` | variable | нет | другие base URL провайдеров |
 | `WIZARD_BUILD_DEFAULT_TIER` | variable | нет | `T0` или `T1`, как в деплое (решение недели 0). Пусто — T1 |
 | `EVAL_FULL_MODELS` | variable | нет | модели полного прогона по метке, по умолчанию `glm-5.3,glm-5.1` |
 

@@ -56,7 +56,14 @@ export function transformBody(
       return rest;
     });
   }
-  if (Array.isArray(out.tools) && out.tools.length > 0) {
+  if (providerId === "deepseek") {
+    // DeepSeek thinks by default; with tools it then requires reasoning_content back, which we strip above → 400
+    // on the second turn. So thinking is off for every DeepSeek call, with or without tools.
+    delete out.reasoning_effort;
+    delete out.enable_thinking;
+    delete out.chat_template_kwargs;
+    out.thinking = { type: "disabled" };
+  } else if (Array.isArray(out.tools) && out.tools.length > 0) {
     delete out.reasoning_effort;
     delete out.enable_thinking;
     if (providerId === "zai") out.thinking = { type: "disabled" };

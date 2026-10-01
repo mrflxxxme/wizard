@@ -63,7 +63,7 @@ describe("registry lint", () => {
 
   test("no Anthropic/OpenAI/Google/xAI providers or base URLs (checks provider and baseUrl, not the model name)", () => {
     for (const p of Object.values(PROVIDERS)) {
-      expect(["cloudru", "yandex", "zai", "moonshot"]).toContain(p.id);
+      expect(["cloudru", "yandex", "zai", "moonshot", "deepseek"]).toContain(p.id);
       expect(p.defaultBaseUrl).not.toMatch(FORBIDDEN_HOSTS);
     }
   });

@@ -69,6 +69,8 @@ node tools/eval/run.mjs
 | `CLOUDRU_BASE_URL` | OpenAI-совместимый base URL | `https://foundation-models.api.cloud.ru/v1` |
 | `ZAI_API_KEY` | ключ Z.ai | — |
 | `ZAI_BASE_URL` | OpenAI-совместимый base URL | `https://api.z.ai/api/paas/v4` |
+| `DEEPSEEK_API_KEY` | ключ DeepSeek API (необязательно, только для претендентов `deepseek-*`) | — |
+| `DEEPSEEK_BASE_URL` | OpenAI-совместимый base URL | `https://api.deepseek.com` |
 
 Запрос идёт на `<BASE_URL>/chat/completions`. Ключ нужен только для провайдеров выбранных моделей.
 
@@ -87,10 +89,11 @@ node tools/eval/run.mjs
 
 ## Модели и цены — `models.json`
 
-Каждая модель: `id` (те же id, что в каталоге `specs/agents/models.yaml`; `ext-glm-5.2` — только для eval), `tier` (T0/T1), `provider` (`cloudru` или `zai`), `model` (id у провайдера), `price` (₽ за 1M токенов с НДС: `input`, `cached_input`, `output`), `extra_body` (добавляется в тело запроса). Можно переопределить `mode`, `response_format`, `tool_choice` (`auto`, `required`, `force`), `temperature`, `max_tokens`, `timeout_ms`.
+Каждая модель: `id` (те же id, что в каталоге `specs/agents/models.yaml`; `ext-glm-5.2` — только для eval), `tier` (T0/T1), `provider` (`cloudru`, `zai` или `deepseek`), `model` (id у провайдера), `price` (₽ за 1M токенов с НДС: `input`, `cached_input`, `output`), `extra_body` (добавляется в тело запроса). Можно переопределить `mode`, `response_format`, `tool_choice` (`auto`, `required`, `force`), `temperature`, `max_tokens`, `timeout_ms`.
 
 - id моделей Cloud.ru взяты из [списка моделей](https://cloud.ru/docs/foundation-models/ug/topics/overview__available__models) (30.09.2026): `zai-org/GLM-5.1`, `moonshotai/Kimi-K2.6`, `deepseek-ai/DeepSeek-V4-Pro`, `Qwen/Qwen3-Coder-Next`. Все они внутренние, то есть работают в РФ.
 - Z.ai: `glm-5.3`, base URL из [quick start](https://docs.z.ai/guides/overview/quick-start). Thinking выключен через `extra_body.thinking`.
+- DeepSeek (T1, претендент, по умолчанию выключен): `deepseek-v4.1-flash` (`deepseek-flash`) и `deepseek-v4-pro-0813` (`deepseek-v4-pro`), запуск `--models=deepseek-v4.1-flash`. Thinking у DeepSeek включён по умолчанию, поэтому `extra_body.thinking` выключает его в каждом запросе. Цены — часов пик ([docs/founder/models-research.md](../../docs/founder/models-research.md) §2).
 - Как выключить thinking у моделей Cloud.ru, не проверено **[?]**. Если латентность и выходные токены GLM-5.1 заметно выше ожидаемых, попробуйте `"extra_body": {"chat_template_kwargs": {"enable_thinking": false}}`.
 - Цены проверяйте перед прогоном. Cloud.ru — тарифы от 28.09.2026. Z.ai — $1.4 / $0.26 кэш / $4.4 за 1M при курсе 95 ₽/$ плюс 22% НДС, который Wizard платит как налоговый агент.
 
