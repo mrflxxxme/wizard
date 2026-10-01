@@ -275,6 +275,22 @@ export interface ImportsTable {
   created_at: TsDef;
 }
 
+export interface ExportsTable {
+  id: Generated<string>;
+  system_id: string;
+  env: string;
+  run_id: string | null;
+  status: string;
+  storage_key: string | null;
+  size: BigNull;
+  download_token_hash: string | null;
+  download_token_expires_at: TsNull;
+  downloads: Generated<number>;
+  expires_at: Ts;
+  created_by: string;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -294,4 +310,5 @@ export interface DB {
   "platform.invites": InvitesTable;
   "platform.credit_ledger": CreditLedgerTable;
   "platform.imports": ImportsTable;
+  "platform.exports": ExportsTable;
 }

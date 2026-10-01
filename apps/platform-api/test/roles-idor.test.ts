@@ -52,6 +52,7 @@ const BODIES: Record<string, unknown> = {
   createInvite: { email: "intruder@example.ru", role: "owner" },
   updateOrgSettings: { ruOnly: true },
   updateImportMapping: { mapping: [] },
+  createExport: { env: "draft" },
 };
 
 interface OrgFixture {
@@ -161,7 +162,7 @@ async function send(s: Session, op: Op, f: OrgFixture): Promise<Res> {
 }
 
 describe("IDOR across organizations (session cookies)", () => {
-  test("implemented operations with {id}/{orgId} include M0, M1-02, M1-04 and M1-07 ones", () => {
+  test("implemented operations with {id}/{orgId} include M0, M1-02, M1-04, M1-07 and M2-10 ones", () => {
     const ids = ops.map((o) => o.id);
     expect(ids).toEqual(
       expect.arrayContaining([
@@ -189,6 +190,9 @@ describe("IDOR across organizations (session cookies)", () => {
         "createImport",
         "getImport",
         "updateImportMapping",
+        "createExport",
+        "listExports",
+        "getExport",
       ]),
     );
   });

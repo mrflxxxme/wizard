@@ -17,6 +17,7 @@
     "@wizard/llm": "workspace:*",
     "@wizard/pii": "workspace:*",
     "@wizard/runtime": "workspace:*",
+    "fflate": "^0.8.3",
     "hono": "^4.13.12",
     "kysely": "^0.28.17",
     "kysely-postgres-js": "^3.0.0",

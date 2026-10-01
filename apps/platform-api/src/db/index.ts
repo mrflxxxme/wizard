@@ -6,6 +6,7 @@ import * as m0002 from "../../migrations/0002_m1_accounts.js";
 import * as m0003 from "../../migrations/0003_m1_publications.js";
 import * as m0004 from "../../migrations/0004_m1_credits.js";
 import * as m0005 from "../../migrations/0005_m1_imports.js";
+import * as m0006 from "../../migrations/0006_m2_exports.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -39,6 +40,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0003_m1_publications": m0003,
   "0004_m1_credits": m0004,
   "0005_m1_imports": m0005,
+  "0006_m2_exports": m0006,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };
