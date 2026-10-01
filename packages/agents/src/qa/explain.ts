@@ -125,6 +125,15 @@ export function classify(c: Check, x: ExplainCtx): Explanation | null {
       },
     });
   }
+  if (c.id === "G1-RENDER-01") {
+    // Page code defect (throw, blank, console error, form without consent, untagged ui-kit element): the
+    // category list has no UI entry, function_error is the code-fix one (docs/reviews/impl-notes/M1-09.md).
+    return base(c, "function_error", {
+      expected: "страница отрисовывается для своей роли на начальных данных",
+      likelyCause: "Ошибка в коде страницы",
+      fix: { kind: "code", target: c.file ?? "ui/", suggestion: c.fixHint ?? "Исправьте код страницы" },
+    });
+  }
   const http = lastHttp(c.evidence);
   const ok = http !== null && http.status < 300;
   const denied = http !== null && (http.status === 401 || http.status === 403);

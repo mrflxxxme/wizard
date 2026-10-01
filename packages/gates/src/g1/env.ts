@@ -160,22 +160,29 @@ export class G1Env {
     return { id: null, role, cookie: null };
   }
 
-  async request(actor: Actor, method: string, path: string, body?: unknown): Promise<HttpResult> {
+  /** Request with a raw JSON body (page renders forward the SDK's own body); returns the raw text. */
+  async raw(
+    actor: Actor,
+    method: string,
+    path: string,
+    payload?: string,
+  ): Promise<{ status: number; text: string }> {
     const headers: Record<string, string> = { host: this.host };
     if (actor.cookie) headers.cookie = actor.cookie;
     if (method !== "GET" && method !== "HEAD") {
       headers.origin = this.origin;
       headers["x-wizard-request"] = "1";
     }
-    let payload: string | undefined;
-    if (body !== undefined) {
-      payload = JSON.stringify(body);
-      headers["content-type"] = "application/json";
-    }
+    if (payload !== undefined) headers["content-type"] = "application/json";
     const res = await this.runtime.fetch(
       new Request(`${this.origin}${path}`, { method, headers, body: payload }),
     );
-    const text = await res.text();
+    return { status: res.status, text: await res.text() };
+  }
+
+  async request(actor: Actor, method: string, path: string, body?: unknown): Promise<HttpResult> {
+    const res = await this.raw(actor, method, path, body === undefined ? undefined : JSON.stringify(body));
+    const text = res.text;
     let parsed: unknown = null;
     if (text) {
       try {

@@ -183,6 +183,7 @@ describe("G1 on the forum", () => {
     expect(s["SC-AC5"]).toBe("skip");
     expect(s["SC-AC6"], detail(r)).toBe("pass");
     expect(s["G1-AC-COVER"]).toBe("pass");
+    expect(s["G1-RENDER-01"], detail(r)).toBe("pass");
   }, 120_000);
 
   test("time budget: checks over the budget end with error, the gate fails", async () => {

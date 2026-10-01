@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { type AppSpec, DEFAULT_MAX_LENGTH, type Entity, type Field, USERS_ENTITY } from "@wizard/appspec";
 import { classifyFieldName, detect } from "@wizard/pii";
 import { domainHint, realisticValue } from "./realistic.js";
-import type { Seed, SeedUser } from "./types.js";
+import type { Seed, SeedHint, SeedUser } from "./types.js";
 
 /** Built-in synthetic dictionary (qa.yaml#seed.rules): the only names seeds and G1 actors ever get. */
 export const SYNTHETIC_NAMES = {
@@ -259,12 +259,83 @@ export function insertOrder(spec: AppSpec): string[] {
 export interface SeedOptions {
   /** $now for dates (default: start of the current UTC day). */
   now?: Date;
+  /** QA hints (qa.yaml#seed.rules MAY); invalid ones are ignored, see validateSeedHint. */
+  hints?: readonly SeedHint[];
+}
+
+/** Rows per entity never exceed this, so a hint has at most as many values. */
+export const SEED_HINT_MAX_VALUES = 10;
+const HINT_TYPES = new Set(["string", "text", "enum", "int", "decimal", "money", "bool"]);
+
+/** Problems of one seed hint (Russian, for the QA repeat); [] = the generator takes it. */
+export function validateSeedHint(spec: AppSpec, h: SeedHint): string[] {
+  const where = `seedHints ${String(h?.entity)}.${String(h?.field)}`;
+  const e = spec.entities.find((x) => x.name === h?.entity);
+  if (!e) return [`${where}: нет сущности «${String(h?.entity)}»`];
+  const f = e.fields.find((x) => x.name === h.field);
+  if (!f) return [`${where}: нет поля «${String(h.field)}»`];
+  if (fieldPiiCategory(f) !== "none")
+    return [`${where}: поле с персональными данными — только генератор синтетики`];
+  if (!HINT_TYPES.has(f.type))
+    return [`${where}: подсказки только для полей string, text, enum, int, decimal, money, bool`];
+  if (f.unique) return [`${where}: уникальное поле — значения даёт только генератор`];
+  if (!Array.isArray(h.values) || h.values.length < 1 || h.values.length > SEED_HINT_MAX_VALUES)
+    return [`${where}: нужно от 1 до ${SEED_HINT_MAX_VALUES} значений`];
+  const errs: string[] = [];
+  const max = f.maxLength ?? DEFAULT_MAX_LENGTH[f.type];
+  const inRange = (v: number) => (f.min === undefined || v >= f.min) && (f.max === undefined || v <= f.max);
+  for (const [i, v] of h.values.entries()) {
+    const bad = (why: string) => errs.push(`${where}[${i}]: ${why}`);
+    switch (f.type) {
+      case "string":
+      case "text":
+        if (typeof v !== "string" || v.trim() === "") bad("ожидается непустая строка");
+        else if (max !== undefined && [...v].length > max) bad(`длиннее ${max} символов`);
+        else if (nonSyntheticPii(v).length) bad("похоже на персональные данные (SEED_PII)");
+        break;
+      case "enum":
+        if (!(f.enum ?? []).some((o) => o.value === v)) bad("значения нет в enum поля");
+        break;
+      case "bool":
+        if (typeof v !== "boolean") bad("ожидается true или false");
+        break;
+      case "int":
+        if (typeof v !== "number" || !Number.isInteger(v) || !inRange(v))
+          bad("ожидается целое в пределах min/max");
+        break;
+      case "decimal":
+        if (typeof v !== "number" || !Number.isFinite(v) || !inRange(v))
+          bad("ожидается число в пределах min/max");
+        break;
+      case "money":
+        if (typeof v !== "number" || !Number.isInteger(v) || v % 100 !== 0 || !inRange(v))
+          bad("ожидается сумма, кратная 100, в пределах min/max");
+        break;
+    }
+  }
+  return errs;
+}
+
+/** Valid hints merged per entity.field: for each row index the first hint that sets it wins. */
+export function mergeSeedHints(spec: AppSpec, hints: readonly SeedHint[]): Map<string, unknown[]> {
+  const out = new Map<string, unknown[]>();
+  for (const h of hints) {
+    if (validateSeedHint(spec, h).length) continue;
+    const key = `${h.entity}.${h.field}`;
+    const cur = out.get(key) ?? [];
+    h.values.forEach((v, i) => {
+      if (cur[i] === undefined) cur[i] = v;
+    });
+    out.set(key, cur);
+  }
+  return out;
 }
 
 /** gates.generateSeed(spec, key) — architecture.yaml#interfaces.gates, qa.yaml#seed. */
 export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {}): Seed {
   const now = opts.now ?? new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS);
   const gen = new ValueGen(now, 1, { key, hint: domainHint(spec) });
+  const hints = mergeSeedHints(spec, opts.hints ?? []);
   const users: SeedUser[] = [];
   for (const r of spec.roles) {
     if (r.access !== "login") continue;
@@ -316,7 +387,9 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
           continue;
         }
         const v = gen.value(e, f, i);
-        if (v !== undefined) row[f.name] = v;
+        const hinted = hints.get(`${name}.${f.name}`)?.[i];
+        if (hinted !== undefined) row[f.name] = hinted;
+        else if (v !== undefined) row[f.name] = v;
       }
       const owner = owners[i];
       if (owner) {
