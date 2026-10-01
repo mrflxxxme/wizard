@@ -1,0 +1,99 @@
+{{- if .Values.pgbouncer.enabled }}
+{{- $ns := .Values.namespaces.platform }}
+{{- $p := .Values.pgbouncer }}
+# PgBouncer ≥ 1.21, transaction mode, max_prepared_statements > 0 (deploy.yaml#cloud.postgres.pooling, L3-21).
+# Context is set only with set_config(..., true) inside transactions; SET without LOCAL, session advisory locks and
+# LISTEN are banned by lint (scripts/check-code.mjs) — test: apps/runtime/test/pgbouncer.test.ts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wizard-pgbouncer
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+data:
+  pgbouncer.ini: |
+    [databases]
+    {{- if .Values.postgres.inCluster }}
+    {{ $p.database }} = host=wizard-postgres.{{ $ns }}.svc port={{ .Values.postgres.port }} dbname={{ .Values.postgres.database }}
+    {{- else }}
+    {{ $p.database }} = host={{ required "pgbouncer.postgresHost is required (tofu output postgres_host)" $p.postgresHost }} port={{ $p.postgresPort }} dbname={{ $p.database }}
+    {{- end }}
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = {{ $p.port }}
+    unix_socket_dir =
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/secret/userlist.txt
+    pool_mode = transaction
+    default_pool_size = {{ $p.defaultPoolSize }}
+    max_client_conn = {{ $p.maxClientConn }}
+    max_prepared_statements = {{ $p.maxPreparedStatements }}
+    server_tls_sslmode = {{ $p.serverTlsSslmode }}
+    {{- if eq $p.serverTlsSslmode "verify-full" "verify-ca" }}
+    server_tls_ca_file = /etc/pgbouncer/secret/server-ca.crt
+    {{- end }}
+    ignore_startup_parameters = extra_float_digits,options
+    server_reset_query =
+    log_connections = 0
+    log_disconnections = 0
+    stats_period = 60
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-pgbouncer
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-pgbouncer" | nindent 4 }}
+spec:
+  replicas: {{ $p.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-pgbouncer" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-pgbouncer" | nindent 8 }}
+        wizard.ru/role: pgbouncer
+      annotations:
+        checksum/config: {{ $p | toJson | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1001 | nindent 6 }}
+      containers:
+        - name: pgbouncer
+          image: {{ include "wizard.image" (list . .Values.images.names.pgbouncer) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args: ["/etc/pgbouncer/pgbouncer.ini"]
+          ports:
+            - { name: pg, containerPort: {{ $p.port }}, protocol: TCP }
+          readinessProbe:
+            tcpSocket: { port: pg }
+          livenessProbe:
+            tcpSocket: { port: pg }
+            periodSeconds: 20
+          resources: {{- toYaml $p.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/pgbouncer/pgbouncer.ini, subPath: pgbouncer.ini, readOnly: true }
+            - { name: secret, mountPath: /etc/pgbouncer/secret, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: wizard-pgbouncer }
+        - name: secret
+          secret: { secretName: {{ .Values.secrets.pgbouncer }}, defaultMode: 0440 }
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-pgbouncer
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-pgbouncer" | nindent 4 }}
+  ports:
+    - { name: pg, port: {{ $p.port }}, targetPort: pg }
+{{- end }}

@@ -1,7 +1,9 @@
 // /_wizard/* service endpoints of a system host (runtime.yaml#service_endpoints) and /api/auth/me|logout.
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
+import { verifyPreviewToken } from "../auth/preview-token.js";
 import {
+  consumePreviewNonce,
   createSession,
   deleteSession,
   devUser,
@@ -26,7 +28,12 @@ async function roleOrNull(c: RuntimeContext): Promise<string | null> {
 }
 
 function redirectWithCookies(location: string, cookies: string[]): Response {
-  const headers = new Headers({ Location: location, "Cache-Control": "no-store" });
+  // no-referrer: the one-time token of preview-login must not leak to the next page's requests.
+  const headers = new Headers({
+    Location: location,
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+  });
   for (const v of cookies) headers.append("Set-Cookie", v);
   return new Response(null, { status: 302, headers });
 }
@@ -34,9 +41,11 @@ function redirectWithCookies(location: string, cookies: string[]): Response {
 export function wizardRoutes(): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();
 
-  // runtime.yaml#service_endpoints.health: on a system host also {system, env, revision} (smoke, preview reload).
+  // runtime.yaml#service_endpoints.health (L3-19): public hosts behind TLS (https) answer only {status}; details live on
+  // the internal port. Local http keeps {system, env, revision} on the public port for M0–M1 tooling (smoke, preview).
   app.get("/health", (c) => {
     const { entry } = c.get("system");
+    if (c.get("services").env.publicScheme === "https") return c.json({ status: "ok" });
     return c.json({ status: "ok", system: entry.slug, env: entry.env, revision: entry.revision });
   });
 
@@ -88,6 +97,51 @@ export function wizardRoutes(): Hono<RuntimeHonoEnv> {
     const s = await sessionOf(c).catch(() => null);
     if (s?.token) await deleteSession(sys, s.token);
     return redirectWithCookies(safeNext(c.req.query("next")), logoutCookies(env, true));
+  });
+
+  // runtime.yaml#auth.preview_login_M2 (L3-11): draft host + WIZARD_PREVIEW_SECRET; HMAC token from platform-api
+  // (getPreviewUrl), exp ≤ 15 min, one-time nonce. Any failure is 404 (the route reveals nothing).
+  app.get("/preview-login", async (c) => {
+    const sys = c.get("system");
+    const { env, clock, log } = c.get("services");
+    if (sys.entry.env !== "draft" || !env.previewSecret) return notFoundPage();
+    const deny = (reason: string) => {
+      log?.({
+        ts: clock().toISOString(),
+        level: "warn",
+        requestId: c.get("requestId"),
+        msg: "preview_login_denied",
+        system: sys.entry.slug,
+        reason,
+      });
+      return notFoundPage();
+    };
+    const check = verifyPreviewToken(env.previewSecret, c.req.query("t") ?? "", clock().getTime());
+    if (!check.ok) return deny(check.reason);
+    const { claims } = check;
+    if (claims.systemId !== sys.entry.systemId) return deny("system_mismatch");
+    const role = sys.spec.roles.find((r) => r.name === claims.role);
+    if (!role) return deny("unknown_role");
+    let fresh: boolean;
+    try {
+      fresh = await consumePreviewNonce(sys, claims.nonce, claims.exp);
+    } catch {
+      return deny("nonce_store"); // schema predates _w_preview_nonces: fail closed until the draft is migrated
+    }
+    if (!fresh) return deny("replay");
+    // Same identity as dev-login (dev-<role>): draft seeds reference these users. A public role gets a session too, so
+    // the draft gate passes; resolveSubject maps it to the public subject (the role has no login access).
+    const userId = await devUser(sys, role.name);
+    const token = await createSession(sys, userId);
+    log?.({
+      ts: clock().toISOString(),
+      level: "info",
+      requestId: c.get("requestId"),
+      msg: "preview_login",
+      system: sys.entry.slug,
+      revision: claims.revision,
+    });
+    return redirectWithCookies(safeNext(c.req.query("next")), loginCookies(env, token, true));
   });
 
   // Internal endpoints listen on the internal port only (runtime.yaml#routing.rules, L3-19).

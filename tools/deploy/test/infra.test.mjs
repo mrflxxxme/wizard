@@ -1,0 +1,540 @@
+// M2-06: `pnpm infra:apply --env staging|prod` and the PITR drill — planning, preflight and the control-row check.
+import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { afterAll, describe, expect, it } from "vitest";
+import {
+  addonArgs,
+  addonsFor,
+  CLUSTER_SECRETS,
+  clusterSecrets,
+  imageNames,
+  kubeconfigText,
+  loadProvider,
+  main,
+  parseArgs,
+  preflight,
+  profileChain,
+  registrySecret,
+  requiredEnv,
+  tofuEnv,
+  valueFiles,
+  waitForImages,
+  wizardReleaseArgs,
+} from "../infra.mjs";
+import { parseArgs as drillArgs, mark, psql, verify } from "../pitr-drill.mjs";
+
+const STATE = {
+  WIZARD_TF_STATE_BUCKET: "wizard-tfstate",
+  WIZARD_TF_STATE_ACCESS_KEY_ID: "tenant:key",
+  WIZARD_TF_STATE_SECRET_ACCESS_KEY: "s3-secret-value",
+  WIZARD_TF_STATE_PASSPHRASE: "correct horse battery staple",
+  WIZARD_TFVARS_FILE: "/runner/staging.tfvars",
+  GITHUB_SHA: "abc1234",
+};
+const TIMEWEB = { ...STATE, TWC_TOKEN: "twc-very-secret-token", WIZARD_SSH_KEY_FILE: "/runner/id_ed25519" };
+const CLOUDRU = {
+  ...STATE,
+  WIZARD_PROVIDER: "cloudru",
+  CLOUDRU_PROJECT_ID: "proj-1",
+  CLOUDRU_IAC_KEY_ID: "kid-123456",
+  CLOUDRU_IAC_KEY_SECRET: "very-secret-value",
+};
+const yes = () => true;
+
+describe("infra.mjs", () => {
+  it("arguments: command, --env, provider and profile", () => {
+    expect(parseArgs(["apply", "--env", "staging"], {})).toMatchObject({
+      command: "apply",
+      env: "staging",
+      provider: "timeweb",
+    });
+    expect(parseArgs(["deploy", "--env=prod", "--yes", "--tag", "x", "--build-images"], {})).toMatchObject({
+      yes: true,
+      tag: "x",
+      buildImages: true,
+    });
+    expect(parseArgs(["plan", "--env", "prod"], { WIZARD_PROVIDER: "cloudru" }).provider).toBe("cloudru");
+    expect(() => parseArgs(["apply"], {})).toThrow(/--env/);
+    expect(() => parseArgs(["pause", "--env", "staging"], {})).toThrow(/unknown command/);
+    expect(() => loadProvider("nope")).toThrow(/no provider/);
+  });
+
+  it("each provider declares its credentials; the state settings are shared", () => {
+    const tw = loadProvider("timeweb");
+    expect(tw).toMatchObject({
+      profile: "k3s",
+      destroyable: ["staging"],
+      helmValues: "infra/helm/providers/timeweb.yaml",
+    });
+    expect(requiredEnv(tw).map(([n]) => n)).toEqual([
+      "TWC_TOKEN",
+      "WIZARD_SSH_KEY_FILE",
+      "WIZARD_TF_STATE_BUCKET",
+      "WIZARD_TF_STATE_ACCESS_KEY_ID",
+      "WIZARD_TF_STATE_SECRET_ACCESS_KEY",
+      "WIZARD_TF_STATE_PASSPHRASE",
+    ]);
+    const cr = loadProvider("cloudru");
+    expect(
+      requiredEnv(cr)
+        .map(([n]) => n)
+        .slice(0, 3),
+    ).toEqual(["CLOUDRU_PROJECT_ID", "CLOUDRU_IAC_KEY_ID", "CLOUDRU_IAC_KEY_SECRET"]);
+    expect(tofuEnv(CLOUDRU, cr)).toMatchObject({
+      TF_VAR_project_id: "proj-1",
+      TF_VAR_iac_key_secret: "very-secret-value",
+      TF_VAR_state_passphrase: "correct horse battery staple",
+      AWS_ACCESS_KEY_ID: "tenant:key",
+    });
+    expect(tofuEnv(CLOUDRU, cr).TF_CLI_CONFIG_FILE).toMatch(/infra\/tofu\/cloudru\/tofurc$/);
+    // Timeweb's provider reads TWC_TOKEN from the environment itself; no CLI config needed.
+    expect(tofuEnv(TIMEWEB, tw).TF_CLI_CONFIG_FILE).toBeUndefined();
+  });
+
+  it("preflight names every missing credential, tool and the tfvars file", () => {
+    const r = preflight(
+      "staging",
+      {},
+      () => false,
+      () => false,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.vars.map(([n]) => n)).toEqual(
+      expect.arrayContaining(["TWC_TOKEN", "WIZARD_TF_STATE_PASSPHRASE"]),
+    );
+    expect(r.tools).toEqual(["tofu", "helm", "kubectl"]);
+    expect(r.tfvars).toMatch(/infra\/tofu\/timeweb\/envs\/staging\/terraform\.tfvars$/);
+    expect(preflight("staging", TIMEWEB, yes, yes).ok).toBe(true);
+    expect(preflight("staging", { ...TIMEWEB, WIZARD_TF_STATE_PASSPHRASE: "short" }, yes, yes).ok).toBe(
+      false,
+    );
+  });
+
+  it("without access: --if-configured is a clean skip (exit 0), a real run stops with 2 and runs nothing", async () => {
+    const lines = [];
+    const ran = [];
+    const deps = {
+      log: (s) => lines.push(s),
+      run: (c) => ran.push(c),
+      has: () => false,
+      exists: () => false,
+    };
+    expect(await main(["apply", "--env", "staging", "--if-configured"], {}, deps)).toBe(0);
+    expect(lines.join("\n")).toMatch(/пропущено: нет доступов Timeweb Cloud/);
+    expect(await main(["apply", "--env", "prod"], {}, deps)).toBe(2);
+    expect(ran).toEqual([]);
+  });
+
+  it("k3s on VMs: tofu → kubeconfig over SSH → addons with the registry → images → release; no secrets printed", async () => {
+    const lines = [];
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true };
+    expect(await main(["apply", "--env", "staging", "--dry-run", "--build-images"], TIMEWEB, deps)).toBe(0);
+    const text = lines.join("\n");
+    const order = [
+      "tofu -chdir=infra/tofu/timeweb/envs/staging init",
+      "tofu -chdir=infra/tofu/timeweb/envs/staging apply",
+      "output -json",
+      "ssh -i /runner/id_ed25519",
+      "root@192.168.10.10 cat /etc/rancher/k3s/k3s.yaml",
+      "kubectl apply -f infra/k8s/namespaces.yaml",
+      "helm upgrade --install cert-manager",
+      "helm upgrade --install traefik",
+      "helm upgrade --install registry",
+      "helm upgrade --install metrics",
+      "helm upgrade --install logs",
+      "get secret wizard-platform-env",
+      "node tools/deploy/images.mjs build --registry 192.168.10.10:30500 --tag abc1234 --push",
+      "helm upgrade --install wizard infra/helm/wizard",
+      "-f infra/helm/providers/timeweb.yaml -f infra/helm/profiles/k3s.yaml -f infra/helm/wizard/values-staging.yaml",
+    ];
+    let at = -1;
+    for (const step of order) {
+      const i = text.indexOf(step, at + 1);
+      expect(i, step).toBeGreaterThan(at);
+      at = i;
+    }
+    // The floating IP is known up front: no second apply for DNS.
+    expect(text).not.toContain("-var=ingress_ip=");
+    for (const secret of ["twc-very-secret-token", "s3-secret-value", "correct horse battery staple"]) {
+      expect(text).not.toContain(secret);
+    }
+  });
+
+  it("managed Kubernetes (Cloud.ru): kubeconfig from outputs, second apply for the LoadBalancer IP, no registry addon", async () => {
+    const lines = [];
+    const out = {
+      env: {
+        value: {
+          registry_url: "wizard-staging.cr.cloud.ru",
+          domains: { platform: "p.example", systems: "s.example" },
+          network: { pods_cidr: "10.1.0.0/16", services_cidr: "10.96.0.0/12", nodes_cidr: "10.0.0.0/22" },
+          postgres_cidr: "10.0.8.0/24",
+        },
+      },
+      postgres: { value: { main: { connection_string: "postgres://u@pg.internal:5432/wizard" } } },
+      kubeconfig: { value: "apiVersion: v1\n" },
+    };
+    const run = (cmd, args) => {
+      lines.push(`$ ${cmd} ${args.join(" ")}`);
+      if (cmd === "tofu" && args[1] === "output") return { status: 0, stdout: JSON.stringify(out) };
+      if (cmd === "kubectl" && args.includes("jsonpath={.status.loadBalancer.ingress[0].ip}"))
+        return { status: 0, stdout: "203.0.113.7" };
+      return { status: 0, stdout: "" };
+    };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true, run };
+    expect(await main(["apply", "--env", "staging", "--dry-run"], CLOUDRU, deps)).toBe(0);
+    const text = lines.join("\n");
+    expect(text).toContain("tofu -chdir=infra/tofu/cloudru/envs/staging apply");
+    expect(text).toContain("-var=ingress_ip=203.0.113.7");
+    expect(text).not.toContain("ssh ");
+    expect(text).not.toContain("--install registry");
+    expect(text).toContain("-f infra/helm/providers/cloudru.yaml -f infra/helm/wizard/values-staging.yaml");
+  });
+
+  it("staging is destroyed by one command; prod never", async () => {
+    const lines = [];
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes };
+    expect(await main(["destroy", "--env", "staging", "--dry-run"], TIMEWEB, deps)).toBe(0);
+    expect(lines.join("\n")).toContain(
+      "tofu -chdir=infra/tofu/timeweb/envs/staging destroy -input=false -auto-approve",
+    );
+    const ran = [];
+    const real = { ...deps, run: (c, a) => ran.push(`${c} ${a.join(" ")}`) };
+    expect(await main(["destroy", "--env", "staging"], TIMEWEB, real)).toBe(2); // needs --yes
+    expect(await main(["destroy", "--env", "prod", "--yes"], TIMEWEB, real)).toBe(2);
+    expect(ran).toEqual([]);
+  });
+
+  it("CD to a destroyed staging is a no-op (no state → nothing to deploy)", async () => {
+    const lines = [];
+    const run = (cmd, args) =>
+      cmd === "tofu" && args[1] === "output" ? { status: 0, stdout: "{}" } : { status: 0, stdout: "" };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, run };
+    expect(await main(["deploy", "--env", "staging"], TIMEWEB, deps)).toBe(0);
+    expect(lines.join("\n")).toMatch(/staging не создан/);
+    expect(await main(["deploy", "--env", "prod", "--yes"], TIMEWEB, deps)).toBe(3);
+  });
+
+  it("prod needs --yes outside dry runs (deploy-prod.yml passes it after the owner check)", async () => {
+    const lines = [];
+    const deps = {
+      log: (s) => lines.push(s),
+      has: yes,
+      exists: yes,
+      run: () => ({ status: 0, stdout: "{}" }),
+    };
+    expect(await main(["apply", "--env", "prod"], TIMEWEB, deps)).toBe(2);
+    expect(lines.join("\n")).toMatch(/--yes/);
+  });
+
+  it("k3s kubeconfig: retried while cloud-init installs k3s, API address rewritten to the private IP", async () => {
+    let calls = 0;
+    const run = () => {
+      calls++;
+      return calls < 3
+        ? { status: 255, stdout: "" }
+        : { status: 0, stdout: "clusters:\n- cluster:\n    server: https://127.0.0.1:6443\n" };
+    };
+    const logs = [];
+    const text = await kubeconfigText(
+      { k3s_server: { value: { private_ip: "192.168.10.10" } } },
+      {
+        run,
+        vars: { WIZARD_SSH_KEY_FILE: "/k" },
+        log: (s) => logs.push(s),
+        dryRun: true,
+        kubeDir: "/tmp/x",
+        sleep: async () => {},
+      },
+    );
+    expect(text).toContain("server: https://192.168.10.10:6443");
+    expect(calls).toBe(3);
+    await expect(
+      kubeconfigText(
+        { k3s_server: { value: { private_ip: "192.168.10.10" } } },
+        {
+          run: () => ({ status: 255, stdout: "" }),
+          vars: { WIZARD_SSH_KEY_FILE: "/k" },
+          log: () => {},
+          dryRun: true,
+          kubeDir: "/tmp/x",
+          sleep: async () => {},
+          attempts: 2,
+        },
+      ),
+    ).rejects.toThrow(/not ready/);
+    await expect(
+      kubeconfigText({}, { run, vars: {}, log: () => {}, dryRun: true, kubeDir: "/tmp/x" }),
+    ).rejects.toThrow(/neither kubeconfig nor k3s_server/);
+    // Staging in its own on-demand VPC: the runner reaches it on the public address.
+    const pub = await kubeconfigText(
+      { k3s_server: { value: { private_ip: "192.168.10.10", public_ip: "203.0.113.5" } } },
+      {
+        run: () => ({ status: 0, stdout: "server: https://127.0.0.1:6443\n" }),
+        vars: { WIZARD_SSH_KEY_FILE: "/k", WIZARD_K3S_ACCESS: "public" },
+        log: () => {},
+        dryRun: true,
+        kubeDir: "/tmp/x",
+      },
+    );
+    expect(pub).toContain("server: https://203.0.113.5:6443");
+  });
+
+  it("the release takes registry, domains, networks, S3 and the PG host from tofu outputs", () => {
+    const out = {
+      env: {
+        registry_url: "registry.wizard.local",
+        domains: { platform: "codename.ru", systems: "neutral.ru" },
+        network: { pods_cidr: "10.42.0.0/16", services_cidr: "10.43.0.0/16", nodes_cidr: "192.168.10.0/24" },
+        postgres_cidr: "192.168.10.0/24",
+        s3_endpoint: "https://s3.twcstorage.ru",
+      },
+      postgres: {
+        main: { connection_string: "postgres://wizard:pw@192.168.10.4:5432/wizard?sslmode=require" },
+      },
+    };
+    const args = wizardReleaseArgs({
+      env: "prod",
+      out,
+      tag: "abc",
+      email: "ops@codename.ru",
+      profile: "k3s",
+    });
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--atomic",
+        "infra/helm/wizard/values-prod.yaml",
+        "infra/helm/profiles/k3s.yaml",
+      ]),
+    );
+    expect(args).toContain("pgbouncer.postgresHost=192.168.10.4");
+    expect(args).toContain("config.s3Endpoint=https://s3.twcstorage.ru");
+    expect(args).toContain("domains.systems=neutral.ru");
+    expect(() =>
+      wizardReleaseArgs({ env: "prod", out: { ...out, postgres: {} }, tag: "abc", email: "x" }),
+    ).toThrow(/postgresHost/);
+    expect(
+      addonArgs({ name: "x", chart: "c", repo: "https://r", version: "1", namespace: "n", values: "v" }),
+    ).toEqual(expect.arrayContaining(["--version", "1", "--create-namespace"]));
+    expect(addonsFor("k3s").map((a) => a.name)).toEqual([
+      "cert-manager",
+      "traefik",
+      "registry",
+      "metrics",
+      "logs",
+    ]);
+    expect(addonsFor(null).map((a) => a.name)).not.toContain("registry");
+    expect(CLUSTER_SECRETS.map((s) => s.name)).toEqual([
+      "wizard-platform-env",
+      "wizard-pgbouncer",
+      "wizard-dns-solver",
+    ]);
+  });
+});
+
+describe("infra.mjs: pilot profile (one VM, PostgreSQL + WAL-G in the cluster, images from GHCR)", () => {
+  const PILOT_OUT = {
+    env: {
+      value: {
+        registry_url: "ghcr.io/owner",
+        registry_push: null,
+        ingress_ip: "203.0.113.10",
+        domains: { platform: "codename.ru", systems: "neutral.ru" },
+        network: { pods_cidr: "10.42.0.0/16", services_cidr: "10.43.0.0/16", nodes_cidr: "192.168.10.0/24" },
+        postgres_cidr: null,
+        postgres_mode: "in-cluster",
+        cluster_profile: "pilot",
+        s3_endpoint: "https://s3.twcstorage.ru",
+        buckets: { files: "abc-wizard-prod-files", backups: "abc-wizard-prod-backups" },
+      },
+    },
+    postgres: { value: { main: { in_cluster: true } } },
+    k3s_server: { value: { private_ip: "192.168.10.10", public_ip: "203.0.113.10" } },
+  };
+
+  it("pilot = k3s + pilot: values layered base first, then the environment and pilot-<env>", () => {
+    expect(profileChain("pilot")).toEqual(["k3s", "pilot"]);
+    expect(profileChain(null)).toEqual([]);
+    expect(valueFiles("prod", loadProvider("timeweb"), "pilot")).toEqual([
+      "infra/helm/wizard/values.yaml",
+      "infra/helm/providers/timeweb.yaml",
+      "infra/helm/profiles/k3s.yaml",
+      "infra/helm/profiles/pilot.yaml",
+      "infra/helm/wizard/values-prod.yaml",
+      "infra/helm/profiles/pilot-prod.yaml",
+    ]);
+    expect(valueFiles("staging", loadProvider("timeweb"), "k3s")).toEqual([
+      "infra/helm/wizard/values.yaml",
+      "infra/helm/providers/timeweb.yaml",
+      "infra/helm/profiles/k3s.yaml",
+      "infra/helm/wizard/values-staging.yaml",
+    ]);
+  });
+
+  it("pilot addons: no in-cluster registry, vlagent instead of vector, small overlays", () => {
+    expect(addonsFor("pilot").map((a) => a.name)).toEqual([
+      "cert-manager",
+      "traefik",
+      "metrics",
+      "logs",
+      "logs-collector",
+    ]);
+    const cm = addonsFor("pilot")[0];
+    expect(addonArgs(cm, "pilot").join(" ")).toContain(
+      "-f infra/helm/addons/cert-manager-values.yaml -f infra/helm/addons/pilot/cert-manager.yaml",
+    );
+    expect(addonArgs(cm, "k3s").join(" ")).not.toContain("addons/pilot/");
+  });
+
+  it("one command: the profile comes from the tofu output; database secrets and the GHCR pull secret; no image build", async () => {
+    const lines = [];
+    const inputs = [];
+    const run = (cmd, args, o = {}) => {
+      lines.push(`$ ${cmd} ${args.join(" ")}`);
+      if (o.input) inputs.push(o.input);
+      if (cmd === "tofu" && args[1] === "output") return { status: 0, stdout: JSON.stringify(PILOT_OUT) };
+      if (cmd === "ssh") return { status: 0, stdout: "server: https://127.0.0.1:6443\n" };
+      return { status: 0, stdout: "" };
+    };
+    const vars = {
+      ...TIMEWEB,
+      WIZARD_POSTGRES_ENV_FILE: "/etc/wizard/postgres-prod.env",
+      WIZARD_GHCR_USER: "owner",
+      WIZARD_GHCR_TOKEN: "ghp_secret_read_packages",
+    };
+    const deps = {
+      log: (s) => lines.push(s),
+      has: yes,
+      exists: yes,
+      skipSmoke: true,
+      skipImageWait: true,
+      run,
+    };
+    expect(
+      await main(["apply", "--env", "prod", "--yes", "--build-images", "--tag", "abc1234"], vars, deps),
+    ).toBe(0);
+    const text = lines.join("\n");
+    expect(text).not.toContain("--install registry");
+    expect(text).toContain("helm upgrade --install logs-collector");
+    expect(text).toContain("-f infra/helm/addons/pilot/traefik.yaml");
+    expect(text).toContain("--from-env-file=/etc/wizard/postgres-prod.env");
+    expect(text).not.toContain("images.mjs build");
+    expect(text).toContain(
+      "-f infra/helm/profiles/k3s.yaml -f infra/helm/profiles/pilot.yaml -f infra/helm/wizard/values-prod.yaml -f infra/helm/profiles/pilot-prod.yaml",
+    );
+    expect(text).toContain("postgres.backupsBucket=abc-wizard-prod-backups");
+    expect(text).toContain("images.registry=ghcr.io/owner");
+    expect(text).not.toContain("pgbouncer.postgresHost");
+    expect(text).not.toContain("ghp_secret_read_packages");
+    // The pull secret goes through stdin as a dockerconfigjson Secret.
+    const pull = inputs.map((i) => JSON.parse(i)).find((x) => x.metadata?.name === "wizard-ghcr");
+    expect(pull.type).toBe("kubernetes.io/dockerconfigjson");
+    const cfg = JSON.parse(Buffer.from(pull.data[".dockerconfigjson"], "base64").toString());
+    expect(cfg.auths["ghcr.io"]).toMatchObject({ username: "owner", password: "ghp_secret_read_packages" });
+    expect(clusterSecrets("pilot").map((x) => x.name)).toEqual([
+      ...CLUSTER_SECRETS.map((x) => x.name),
+      "wizard-postgres",
+      "wizard-ghcr",
+    ]);
+    expect(clusterSecrets("k3s")).toBe(CLUSTER_SECRETS);
+    expect(JSON.parse(registrySecret("ns", "n", "ghcr.io", "u", "t")).metadata).toEqual({
+      name: "n",
+      namespace: "ns",
+    });
+  });
+
+  it("a missing database secret stops the pilot release before Helm", async () => {
+    const lines = [];
+    const run = (cmd, args) => {
+      lines.push(`$ ${cmd} ${args.join(" ")}`);
+      if (cmd === "tofu" && args[1] === "output") return { status: 0, stdout: JSON.stringify(PILOT_OUT) };
+      if (cmd === "kubectl" && args.includes("wizard-postgres") && args.includes("get"))
+        return { status: 1, stdout: "" };
+      return { status: 0, stdout: "server: https://127.0.0.1:6443\n" };
+    };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true, run };
+    expect(await main(["deploy", "--env", "prod", "--yes", "--tag", "abc"], TIMEWEB, deps)).toBe(3);
+    expect(lines.join("\n")).toContain("Нет секрета wizard-platform/wizard-postgres");
+    expect(lines.join("\n")).not.toContain("upgrade --install wizard");
+  });
+
+  it("the release waits for every image of the tag in GHCR (pull token from read:packages)", async () => {
+    const calls = [];
+    let missing = 1;
+    const f = async (url, init) => {
+      calls.push(`${init.method ?? "GET"} ${url} ${init.headers.authorization.split(" ")[0]}`);
+      if (url.includes("/token?")) return { ok: true, json: async () => ({ token: "pull" }) };
+      if (url.endsWith("/wizard-worker/manifests/abc") && missing-- > 0) return { status: 404 };
+      return { status: 200 };
+    };
+    const logs = [];
+    await waitForImages({
+      registry: "ghcr.io/owner",
+      names: ["wizard-runtime", "wizard-worker"],
+      tag: "abc",
+      user: "owner",
+      token: "t",
+      f,
+      log: (s) => logs.push(s),
+      sleep: async () => {},
+    });
+    expect(calls).toEqual([
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-runtime:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-runtime/manifests/abc Bearer",
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-worker:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-worker/manifests/abc Bearer",
+      "GET https://ghcr.io/token?service=ghcr.io&scope=repository:owner/wizard-worker:pull Basic",
+      "HEAD https://ghcr.io/v2/owner/wizard-worker/manifests/abc Bearer",
+    ]);
+    expect(logs).toHaveLength(1);
+    await expect(
+      waitForImages({
+        registry: "ghcr.io/owner",
+        names: ["x"],
+        tag: "abc",
+        user: "u",
+        token: "t",
+        f: async (url) => (url.includes("/token?") ? { ok: false } : { status: 401 }),
+        sleep: async () => {},
+        attempts: 2,
+      }),
+    ).rejects.toThrow(/not in the registry \(401\)/);
+    expect(imageNames()).toContain("wizard-postgres");
+  });
+});
+
+const DB = process.env.WIZARD_DB_URL ?? "postgres://wizard@localhost:5433/wizard";
+const hasPsql = spawnSync("psql", ["--version"]).status === 0;
+
+describe.skipIf(!hasPsql)("pitr-drill.mjs (control rows)", () => {
+  const schema = `wz_ops_test_${randomBytes(4).toString("hex")}`;
+  afterAll(() => {
+    psql(DB, `DROP SCHEMA IF EXISTS ${schema} CASCADE;`);
+  });
+
+  it("rows written before T are present after restore, rows after T are absent", () => {
+    const before = mark(DB, "before T; it's quoted", schema);
+    const after = mark(DB, "after T", schema);
+    expect(before.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Date.parse(after.at)).toBeGreaterThanOrEqual(Date.parse(before.at));
+    // Same database plays the restored one: both exist, so "absent" fails — as it would for a wrong PITR point.
+    expect(verify(DB, [before.id], [], schema)).toEqual({ ok: true, missing: [], leaked: [] });
+    expect(verify(DB, [before.id], [after.id], schema)).toEqual({
+      ok: false,
+      missing: [],
+      leaked: [after.id],
+    });
+    psql(DB, `DELETE FROM ${schema}.drill_markers WHERE id = :'id';`, { id: after.id });
+    expect(verify(DB, [before.id], [after.id], schema).ok).toBe(true);
+    const ghost = "00000000-0000-4000-8000-000000000000";
+    expect(verify(DB, [ghost], [], schema)).toMatchObject({ ok: false, missing: [ghost] });
+  });
+
+  it("arguments: marker ids must be UUIDs, schema names are identifiers", () => {
+    expect(() => drillArgs(["verify", "--present", "1;drop"])).toThrow(/marker id/);
+    expect(() => drillArgs(["mark", "--schema", "x;y"])).toThrow(/schema/);
+    expect(drillArgs(["restore", "--at", "Thu, 01 Oct 2026 11:00:00 UTC"]).at).toBe(
+      "Thu, 01 Oct 2026 11:00:00 UTC",
+    );
+  });
+});

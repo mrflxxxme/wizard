@@ -605,6 +605,7 @@ components:
       properties:
         code:
           type: string
+          description: 'M2-15 (D24_pilot_free): REGISTRATION_INVITE_ONLY — verifyOtp нового email при WIZARD_REGISTRATION=invite без приглашения основателя (CLI pilot invite) и без активного приглашения в org: «Регистрация в Wizard пока только по приглашению…»; PAYMENTS_DISABLED — startCardBinding, changeSubscription, cancelSubscription, createTopup при WIZARD_PAYMENTS=off: «Оплата на пилоте отключена — кредиты начисляет команда Wizard»; LLM_BUDGET_EXHAUSTED — новые interview_turn, build (create/change/fix) и import_table, когда Σ billable cost_rub live-вызовов llm_calls за календарный месяц (Europe/Moscow) ≥ WIZARD_LLM_MONTHLY_CAP_RUB (eval считается отдельно, eval.yaml#live_cadence.budget): «Месячный лимит платформы на работу моделей исчерпан…»'
           x-http-status:
             VALIDATION_FAILED: 400
             UNAUTHORIZED: 401
@@ -617,6 +618,8 @@ components:
             CARD_BINDING_REQUIRED: 403
             FOUNDER_REVIEW_PENDING: 403
             ORG_SUSPENDED: 403
+            REGISTRATION_INVITE_ONLY: 403
+            PAYMENTS_DISABLED: 403
             NOT_FOUND: 404
             SYSTEM_LOCKED: 409
             NO_GATE_FAILURE: 409
@@ -649,6 +652,7 @@ components:
             RATE_LIMITED: 429
             INTERNAL: 500
             LLM_UNAVAILABLE: 503
+            LLM_BUDGET_EXHAUSTED: 503
         message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
         details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
     OrgRole: {enum: [owner, editor, viewer]}
@@ -785,7 +789,7 @@ components:
       required: [id, env, status, createdAt]
       properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, status: {enum: [running, ready, failed, expired]}, includePii: {type: boolean, description: 'Выгрузка с колонками ПДн (createExport.includePii; хранится в runs.input)'}, size: {type: [integer, 'null']}, downloads: {type: integer}, expiresAt: {type: string, format: date-time}, createdBy: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}
     User: {type: object, properties: {id: {type: string, format: uuid}, email: {type: string}, name: {type: [string, 'null']}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean, description: M2}}}
-    Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, start, business]}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}}}
+    Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business], description: 'pilot — только CLI основателя (billing.yaml#plans.pilot)'}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}, paymentsEnabled: {type: boolean, description: 'M2-15: WIZARD_PAYMENTS платформы; false — S-billing скрывает покупку, подписки и привязку карты'}}}
     Member: {type: object, properties: {userId: {type: string}, email: {type: string}, name: {type: [string, 'null']}, role: {$ref: '#/components/schemas/OrgRole'}, joinedAt: {type: string, format: date-time}}}
     Invite: {type: object, properties: {id: {type: string}, email: {type: string}, role: {$ref: '#/components/schemas/OrgRole'}, expiresAt: {type: string, format: date-time}}}
     OrgSettings: {type: object, additionalProperties: false, properties: {ruOnly: {type: boolean, default: false}, buildModelLabel: {type: string, readOnly: true, description: 'Фактическая модель сборки по умолчанию для org с учётом ruOnly, t1Restricted и решения F2 (agents/models.yaml), например «GLM-5.3» или «модели в РФ»; S1/S3/S10 показывают её, а не константу (L4-20)'}, t1Restricted: {type: boolean, readOnly: true, description: 'db.yaml#orgs.t1_restricted (L3-02); ставит платформа/staff'}}}
@@ -812,7 +816,8 @@ components:
     Billing:
       type: object
       properties:
-        plan: {enum: [free, start, business]}
+        plan: {enum: [free, pilot, start, business]}
+        paymentsEnabled: {type: boolean, description: 'M2-15: WIZARD_PAYMENTS платформы; false — операции оплаты отвечают 403 PAYMENTS_DISABLED'}
         status: {enum: [none, active, past_due, cancelled]}
         periodEnd: {type: [string, 'null'], format: date-time}
         cancelAtPeriodEnd: {type: boolean}

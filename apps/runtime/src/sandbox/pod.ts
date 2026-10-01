@@ -90,9 +90,11 @@ export function sandboxPod(i: SandboxPodInput): Record<string, unknown> {
 
 /**
  * NetworkPolicy of sandbox pods: ingress only from the runtime to the system/health ports; egress only to the runtime
- * RPC listener (443) and the egress proxy (3128). No DNS, no metadata, no other pods.
+ * RPC listener (rpcPort: 443 by default; the chart serves RPC on the internal port 4101) and the egress proxy (3128).
+ * No DNS, no metadata, no other pods.
  */
 export function sandboxNetworkPolicy(i: {
+  rpcPort?: number;
   namespace: string;
   runtimeSelector: Record<string, string>;
   egressProxySelector: Record<string, string>;
@@ -131,7 +133,7 @@ export function sandboxNetworkPolicy(i: {
               podSelector: { matchLabels: i.runtimeSelector },
             },
           ],
-          ports: [{ protocol: "TCP", port: 443 }],
+          ports: [{ protocol: "TCP", port: i.rpcPort ?? 443 }],
         },
         {
           to: [

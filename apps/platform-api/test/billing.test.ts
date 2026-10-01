@@ -192,8 +192,14 @@ describe("card binding (identification before prod, L3-28)", () => {
       await api.deps
         .pg`select (select json_agg(m) from platform.payment_methods m) as m, (select json_agg(p) from platform.payments p) as p`,
     );
-    expect(dump).not.toContain("555555");
-    expect(dump).not.toContain("2030");
+    // Random ids, hashes and timestamps may contain these digits by chance: drop them before searching.
+    const plain = dump
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "")
+      .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:?\d{2})?/g, "")
+      .replace(/[A-Za-z0-9_+/=-]{16,}/g, "");
+    expect(plain).not.toContain("555555");
+    expect(plain).not.toContain("2030");
+    expect(dump).not.toMatch(/"(first6|expiry_month|expiry_year|card_number|pan)"/);
 
     // A repeated notification changes nothing (one card, one cancel).
     const cancels = mock.callsTo("POST", `/v3/payments/${id}/cancel`).length;

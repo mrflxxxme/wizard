@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars on the runner (not committed: .gitignore / .dockerignore). IDs from the Cloud.ru console.
+# Sizes: checklist §1 «Сколько стоит» (staging ≈ 34 тыс. ₽/мес).
+settings = {
+  zone_id = "<ru-central-1 zone id>"
+  control_plane = { count = 1, flavor_id = "<2 vCPU / 4 GB flavor id>" }
+  node_pools = {
+    platform = { flavor_id = "<4 vCPU / 16 GB flavor id>", count = 2 }
+    free     = { flavor_id = "<4 vCPU / 16 GB flavor id>", count = 1, sandbox = true }
+  }
+  postgres_clusters = {
+    main = { specification_id = "<2 vCPU / 8 GB spec id>", instances = 1, data_gb = 50, backup_days = 14 }
+  }
+  platform_domain = "<staging platform domain>"
+  systems_domain  = "<staging systems domain>"
+  ingress_ip      = ""   # second apply, after the ingress LoadBalancer got its IP
+  kms_kek_id      = ""   # KMS key created by hand
+}

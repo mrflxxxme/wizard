@@ -1,0 +1,221 @@
+# Defaults of the Wizard chart — provider-neutral (managed Kubernetes or k3s on plain VMs). Layers, in order:
+#   values.yaml → ../providers/<provider>.yaml (S3, DNS-01 solver, storage) → ../profiles/k3s.yaml (lean VM clusters)
+#   → values-<env>.yaml → --set from OpenTofu outputs (tools/deploy/infra.mjs).
+# Secrets are never values: Secrets named below are created from OpenBao (or by hand at first bring-up,
+# docs/ops/deploy.md) and referenced with envFrom / secretKeyRef.
+
+env: staging
+
+namespaces:
+  platform: wizard-platform
+  sandbox: wizard-sandbox
+  ingress: wizard-ingress
+  certManager: cert-manager
+  # Addons (infra/helm/addons): VictoriaMetrics scrapes /metrics of annotated pods from here.
+  observability: wizard-observability
+
+images:
+  # Container registry of the environment (tofu output registry_url)
+  registry: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecret: ""
+  names:
+    platformApi: wizard-platform-api
+    platformWeb: wizard-platform-web
+    runtime: wizard-runtime
+    worker: wizard-worker
+    egressProxy: wizard-egress-proxy
+    pgbouncer: wizard-pgbouncer
+    acmeWebhook: wizard-acme-dns01
+    postgres: wizard-postgres
+
+domains:
+  # <codename>.ru — UI and API of the platform (E-NAME)
+  platform: ""
+  # neutral systems domain (F8): <slug>.<systems> and <slug>--draft.<systems>
+  systems: ""
+
+# Networks of the cluster (tofu outputs): XFF is trusted only from the ingress pods (L3-27); egress policies exclude
+# pod/service CIDRs, the API server and metadata (L3-24).
+network:
+  podCidr: 10.1.0.0/16
+  serviceCidr: 10.96.0.0/12
+  nodeCidr: 10.0.0.0/16
+  kubeApiCidrs: []
+  metadataCidrs: ["169.254.0.0/16", "100.64.0.0/10"]
+  # PostgreSQL addresses (managed service subnet or the DB VM; pgbouncer egress)
+  postgresCidrs: []
+
+# Secrets that must exist in the platform namespace before the release
+secrets:
+  # WIZARD_* of platform-api / worker / runtime (WIZARD_DB_URL via pgbouncer, WIZARD_SECRETS_KEY,
+  # WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_S3_*, SMTP, Telegram, YooKassa, LLM keys)
+  platformEnv: wizard-platform-env
+  # userlist.txt and the server password for pgbouncer
+  pgbouncer: wizard-pgbouncer
+  # Credentials of the DNS-01 solver backend (keys of that backend: providers/<provider>.yaml)
+  dnsSolver: wizard-dns-solver
+  # Self-managed PostgreSQL (postgres.inCluster): POSTGRES_PASSWORD, WALG_LIBSODIUM_KEY (64 hex), AWS_ACCESS_KEY_ID and
+  # AWS_SECRET_ACCESS_KEY of the backups bucket, WIZARD_DATA_BACKUP_KEY (rclone crypt of .data); optional
+  # WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID (alert webhook, e.g. the Telegram Bot API sendMessage URL).
+  postgres: wizard-postgres
+
+config:
+  # Non-secret env shared by the Node services (platform/deploy.yaml#local.env_vars)
+  milestone: M2
+  llmMode: live
+  connectors: live
+  filesStorage: s3
+  # M2-15 (platform/deploy.yaml#pilot.env): registration open|invite, payments "on"|"off" (quoted: YAML 1.1 reads
+  # bare on/off as booleans), platform LLM cap of the calendar month in ₽.
+  registration: open
+  payments: "on"
+  llmMonthlyCapRub: 6000
+  # S3-compatible object storage of the provider (providers/<provider>.yaml)
+  s3Endpoint: ""
+  s3Region: ""
+  egressAllow: ""
+
+platformApi:
+  replicas: 2
+  port: 4000
+  resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+
+worker:
+  replicas: 1
+  resources: { requests: { cpu: 500m, memory: 1Gi }, limits: { cpu: "2", memory: 2Gi } }
+
+runtime:
+  replicas: 2
+  port: 4100
+  internalPort: 4101
+  # Object storage endpoint addresses (provider) for file fields (runtime.yaml#files)
+  s3Cidrs: []
+  # TEMPORARY: live connector calls of the runtime go out directly until they use the egress proxy (impl-notes M2-06)
+  directConnectorEgress: false
+  resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+
+platformWeb:
+  replicas: 2
+  port: 8080
+  resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 128Mi } }
+
+egressProxy:
+  replicas: 2
+  port: 3128
+  resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+
+pgbouncer:
+  # In-cluster PgBouncer (transaction mode, max_prepared_statements > 0; L3-21). false → the provider's managed
+  # pooler, only if it supports max_prepared_statements.
+  enabled: true
+  replicas: 2
+  port: 6432
+  # host of the platform PostgreSQL (from the tofu output postgres)
+  postgresHost: ""
+  postgresPort: 5432
+  database: wizard
+  defaultPoolSize: 20
+  maxClientConn: 500
+  maxPreparedStatements: 200
+  # TLS to the server: verify-full against a managed PostgreSQL (server-ca.crt in the Secret); the in-cluster server
+  # of the pilot is reached pod to pod on one node behind NetworkPolicy — `disable` there (profiles/pilot.yaml).
+  serverTlsSslmode: verify-full
+  resources: { requests: { cpu: 100m, memory: 64Mi }, limits: { cpu: 500m, memory: 128Mi } }
+
+# Self-managed PostgreSQL 16 in the cluster (profile pilot, platform/deploy.yaml#pilot.postgres): StatefulSet on the
+# node's local volume, WAL-G continuous archiving to the backups bucket (archive_timeout → RPO ≈ 1 min), daily base
+# backup with retention, archive-lag monitor, weekly restore drill, bootstrap of a lost volume from the archive
+# (infra/postgres/pg-ops.mjs). false → the provider's managed PostgreSQL (pgbouncer.postgresHost from tofu).
+postgres:
+  inCluster: false
+  port: 5432
+  database: wizard
+  user: wizard
+  storageSize: 30Gi
+  # Bucket of backups (tofu output env.buckets.backups): WAL-G under pg/, the .data copy under data/.
+  backupsBucket: ""
+  archiveTimeoutSec: 60
+  maxArchiveLagSec: 300
+  walg:
+    compression: zstd
+    uploadConcurrency: 2
+  # Server settings (-c key=value). The chart adds wal_level, archive_mode, archive_command, archive_timeout.
+  parameters:
+    listen_addresses: "*"
+    max_connections: "100"
+    shared_buffers: 512MB
+    effective_cache_size: 2GB
+    work_mem: 8MB
+    maintenance_work_mem: 128MB
+    max_wal_size: 1GB
+    min_wal_size: 256MB
+    wal_compression: zstd
+    checkpoint_timeout: 15min
+    password_encryption: scram-sha-256
+    log_min_messages: warning
+    log_checkpoints: "off"
+  backup:
+    schedule: "17 2 * * *"
+    timeZone: Europe/Moscow
+    retentionDays: 14
+    maxAgeHours: 26
+  drill:
+    schedule: "37 4 * * 0"
+    timeZone: Europe/Moscow
+    schemas: platform
+    scratchSize: 20Gi
+    maxAgeHours: 192
+  resources: { requests: { cpu: 250m, memory: 768Mi }, limits: { cpu: "2", memory: 1536Mi } }
+  opsResources: { requests: { cpu: 10m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } }
+  jobResources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 1Gi } }
+
+# Encrypted copy of the shared .data volume (revision sources, connector secrets file) in the backups bucket, every
+# intervalSec (rclone crypt, nothing deleted remotely) — the single-node pilot keeps .data on the node's disk.
+dataBackup:
+  enabled: false
+  intervalSec: 60
+  resources: { requests: { cpu: 10m, memory: 48Mi }, limits: { cpu: 500m, memory: 256Mi } }
+
+# Shared .data volume (artifacts, encrypted secrets file) until artifacts move to S3 (docs/reviews/impl-notes/M2-06.md).
+# ReadWriteMany across nodes; the k3s profile uses ReadWriteOnce + local-path (all pods on one node).
+data:
+  storageClass: ""
+  size: 20Gi
+  accessMode: ReadWriteMany
+
+tls:
+  acmeServer: https://acme-staging-v02.api.letsencrypt.org/directory
+  email: ""
+  # DNS-01 solver: "webhook" (infra/acme-dns01 with the backend tls.webhook.dnsProvider) or "none" + tls.solvers
+  # (any cert-manager solver list, e.g. acmeDNS) — set by providers/<provider>.yaml.
+  solver: none
+  solvers: []
+  webhook:
+    dnsProvider: ""
+    groupName: acme.wizard.ru
+    solverName: dns01
+    # Users kube-apiserver may proxy for (cert-manager controller service account)
+    allowedUsers: ["system:serviceaccount:cert-manager:cert-manager"]
+
+hsts:
+  # abuse.yaml#domain.psl: max-age ≥ 1 year, includeSubDomains, preload (both domains)
+  maxAge: 63072000
+  preload: true
+
+ingress:
+  className: traefik
+
+sandbox:
+  # gVisor (runsc) on nodes we control: the RuntimeClass is created when those nodes have the runsc containerd
+  # handler (infra/k3s/*.tftpl on own VMs; on managed node pools only where the provider allows it).
+  runtimeClass:
+    create: false
+    handler: runsc
+  # Workloads of the sandbox are placed by the runtime (SandboxPool); the chart only isolates the namespace.
+  basePort: 9000
+  systems: 10
+  healthPort: 8999
+  # ResourceQuota of the sandbox namespace (a pod of runtime sandboxPod() requests 1536Mi = its limit).
+  quota: { pods: 50, requestsCpu: 16, requestsMemory: 64Gi, limitsCpu: 32, limitsMemory: 96Gi }

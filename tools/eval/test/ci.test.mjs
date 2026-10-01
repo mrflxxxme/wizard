@@ -1,4 +1,4 @@
-// M1-10: regression vs baseline, live-eval budget (F6, D20_eval_budget) and the nightly brief rotation.
+// M1-10, M2-16: regression vs baseline, live-eval budget (D20_eval_budget: 4 000 ₽/month) and the weekly brief rotation.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,8 +21,9 @@ import {
   MONTHLY_BUDGET_RUB,
   mergeEntries,
   monthSpent,
-  nightsLeft,
   resultsEntries,
+  SMOKE_WEEKDAY_UTC,
+  smokesLeft,
 } from "../lib/budget.mjs";
 import { nightlyBriefs, SEGMENTS } from "../lib/rotation.mjs";
 
@@ -101,47 +102,63 @@ describe("regression (eval.yaml#regression.test)", () => {
   });
 });
 
-describe("budget (live_cadence.budget, D20_eval_budget ≤ 30 000 ₽/мес)", () => {
+describe("budget (live_cadence.budget, D20_eval_budget ≤ 4 000 ₽/мес)", () => {
   const at = (iso) => new Date(iso);
   const spend = (rub, month = "2026-10") => [
     { id: `${month}-01`, month, pairs: 0, cost_rub: rub, estimated: true },
   ];
 
-  test("nightly does not start once the month's spend + forecast exceeds 30 000 ₽", () => {
-    expect(MONTHLY_BUDGET_RUB).toBe(30_000);
-    const ok = decide({ kind: "nightly", pairs: 5, entries: spend(10_000), now: at("2026-10-10T01:00:00Z") });
+  test("the weekly smoke does not start once the month's spend + forecast exceeds 4 000 ₽", () => {
+    expect(MONTHLY_BUDGET_RUB).toBe(4_000);
+    const ok = decide({ kind: "nightly", pairs: 5, entries: spend(1_000), now: at("2026-10-11T23:17:00Z") });
     expect(ok).toMatchObject({
       run: true,
-      spent: 10_000,
+      budget: 4_000,
+      spent: 1_000,
       forecast: 5 * DEFAULT_PAIR_RUB,
-      maxCostRub: 20_000,
+      maxCostRub: 3_000,
     });
-    const no = decide({ kind: "nightly", pairs: 5, entries: spend(29_500), now: at("2026-10-10T01:00:00Z") });
+    const no = decide({ kind: "nightly", pairs: 5, entries: spend(3_800), now: at("2026-10-11T23:17:00Z") });
     expect(no.run).toBe(false);
-    expect(no.reason).toMatch(/ночной прогон не стартует/);
+    expect(no.reason).toMatch(/еженедельный прогон не стартует: израсходовано 3800 ₽ из 4000 ₽/);
     // A new calendar month starts from zero.
     expect(
       decide({
         kind: "nightly",
         pairs: 5,
-        entries: spend(29_900, "2026-09"),
-        now: at("2026-10-01T01:00:00Z"),
+        entries: spend(3_990, "2026-09"),
+        now: at("2026-10-04T23:17:00Z"),
       }).run,
     ).toBe(true);
   });
 
-  test("full keeps a reserve for the remaining nightly smokes and escalates E-MONEY", () => {
+  test("full keeps a reserve for the remaining weekly smokes of the month and escalates E-MONEY", () => {
+    // October 2026: Sundays (UTC) 4, 11, 18, 25.
+    expect(SMOKE_WEEKDAY_UTC).toBe(0);
     const now = at("2026-10-10T12:00:00Z");
-    expect(nightsLeft(now)).toBe(21);
-    const d = decide({ kind: "full", pairs: 28, entries: spend(12_000), now });
-    expect(d.reserve).toBe(5 * DEFAULT_PAIR_RUB * 21);
+    expect(smokesLeft(now)).toBe(3);
+    expect(smokesLeft(at("2026-10-25T23:30:00Z"))).toBe(0);
+    expect(smokesLeft(at("2026-10-01T00:00:00Z"))).toBe(4);
+    expect(DEFAULT_PAIR_RUB).toBe(60);
+    // A fresh month: full (28 pairs) + the reserve of 3 smokes fits into 4 000 ₽.
+    expect(decide({ kind: "full", pairs: 28, entries: [], now }).run).toBe(true);
+    const d = decide({ kind: "full", pairs: 28, entries: spend(1_500), now });
+    expect(d.reserve).toBe(5 * DEFAULT_PAIR_RUB * 3);
+    expect(d.forecast).toBe(28 * DEFAULT_PAIR_RUB);
     expect(d.run).toBe(false);
-    expect(d.reason).toMatch(/E-MONEY/);
-    // Same spend, the nightly smoke still runs.
-    expect(decide({ kind: "nightly", pairs: 5, entries: spend(12_000), now }).run).toBe(true);
-    expect(
-      decide({ kind: "full", pairs: 28, entries: spend(1_000), now: at("2026-10-28T12:00:00Z") }).run,
-    ).toBe(true);
+    expect(d.reason).toMatch(/резерв еженедельных прогонов 900 ₽.*E-MONEY/);
+    // Same spend, the weekly smoke still runs.
+    expect(decide({ kind: "nightly", pairs: 5, entries: spend(1_500), now }).run).toBe(true);
+    // With a calibrated price per pair a full run fits after the last smoke of the month.
+    const cheap = [1, 2, 3].map((i) => ({
+      id: `2026-10-0${i}`,
+      month: "2026-10",
+      pairs: 5,
+      cost_rub: 100,
+      estimated: false,
+    }));
+    const late = decide({ kind: "full", pairs: 28, entries: cheap, now: at("2026-10-28T12:00:00Z") });
+    expect(late).toMatchObject({ reserve: 0, perPair: 25, forecast: 700, run: true });
   });
 
   test("forecast per pair = 1.25 × average of real runs once there are ≥ 3", () => {
@@ -171,11 +188,12 @@ describe("budget (live_cadence.budget, D20_eval_budget ≤ 30 000 ₽/мес)", 
   });
 });
 
-describe("nightly rotation (live_cadence.nightly_smoke)", () => {
-  test("5 briefs a night: ≥ 1 per segment and ≥ 1 with canaries; deterministic; the whole set within 14 nights", () => {
+describe("weekly rotation (live_cadence.nightly_smoke, weekly since D23_pilot)", () => {
+  test("5 briefs a week: ≥ 1 per segment and ≥ 1 with canaries; deterministic; the whole set within 14 weeks", () => {
     const seen = new Set();
     for (let d = 0; d < 60; d++) {
-      const date = new Date(Date.UTC(2026, 9, 1 + d));
+      // Weekly schedule: Sunday 23:17 UTC (2026-10-04 is a Sunday).
+      const date = new Date(Date.UTC(2026, 9, 4 + 7 * d, 23, 17));
       const pick = nightlyBriefs(briefs, date);
       expect(new Set(pick.map((b) => b.id)).size).toBe(5);
       for (const seg of SEGMENTS) expect(pick.some((b) => b.segment === seg)).toBe(true);

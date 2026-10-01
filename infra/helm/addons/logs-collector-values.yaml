@@ -1,0 +1,11 @@
+# Container logs → VictoriaLogs (release `logs` in wizard-observability) with vlagent (Apache-2.0), the pilot's
+# replacement of the vector agent. The apps log allowlisted JSON fields only (packages/pii log.ts, L3-08): `ts` and
+# `msg` are the time and message fields; level error lines are the alert path (docs/ops/deploy.md «Алерты пилота»).
+remoteWrite:
+  - url: http://logs-victoria-logs-single-server.wizard-observability.svc:9428
+collector:
+  timeField: [ts, time, timestamp]
+  msgField: [msg, message, log]
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { cpu: 300m, memory: 128Mi }

@@ -1,0 +1,12 @@
+# OpenTofu CLI config (TF_CLI_CONFIG_FILE=infra/tofu/cloudru/tofurc, set by tools/deploy/infra.mjs).
+# The Cloud.ru Evolution provider (MIT, github.com/cloud-ru/evo-terraform) is not in the OpenTofu registry; Cloud.ru
+# serves it from its Artifact Registry mirror under the registry.opentofu.org namespace (checked 2026-10-01: 2.1.3).
+provider_installation {
+  network_mirror {
+    url     = "https://evo-tf-provider-generic.ar.cloud.ru/"
+    include = ["registry.opentofu.org/cloudru/*"]
+  }
+  direct {
+    exclude = ["registry.opentofu.org/cloudru/*"]
+  }
+}

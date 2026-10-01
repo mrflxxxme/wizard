@@ -1,0 +1,49 @@
+#cloud-config
+# Provider-neutral k3s agent for a gVisor sandbox pool (free | paid): runsc as a containerd handler for the RuntimeClass
+# "gvisor"; labels and taint match apps/runtime sandboxPod() (nodeSelector wizard.ru/pool=<pool>, toleration
+# wizard.ru/sandbox=<pool>:NoSchedule). Rendered by the provider's OpenTofu module (templatefile).
+# Variables: k3s_version, token, server_ip, node_ip, pool, docker_mirror ("" → pull Docker Hub directly).
+package_update: true
+packages: [curl, ca-certificates, gnupg, apparmor]
+write_files:
+  - path: /etc/rancher/k3s/config.yaml
+    permissions: "0600"
+    content: |
+      server: https://${server_ip}:6443
+      token: "${token}"
+      node-ip: ${node_ip}
+      protect-kernel-defaults: true
+      node-label: ["wizard.ru/pool=${pool}", "wizard.ru/sandbox-node=true"]
+      node-taint: ["wizard.ru/sandbox=${pool}:NoSchedule"]
+  - path: /etc/rancher/k3s/registries.yaml
+    content: |
+      mirrors:
+        "registry.wizard.local":
+          endpoint:
+            - "http://127.0.0.1:30500"
+%{ if docker_mirror != "" ~}
+        # Docker Hub through the provider's pull-through mirror (Docker Hub limits pulls from RF addresses).
+        "docker.io":
+          endpoint:
+            - "${docker_mirror}"
+%{ endif ~}
+  - path: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
+    content: |
+      {{ template "base" . }}
+
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+        runtime_type = "io.containerd.runsc.v1"
+  - path: /etc/sysctl.d/90-kubelet.conf
+    content: |
+      vm.panic_on_oom=0
+      vm.overcommit_memory=1
+      kernel.panic=10
+      kernel.panic_on_oops=1
+runcmd:
+  - sysctl --system
+  # gVisor from its official apt repository (Apache-2.0): runsc + containerd-shim-runsc-v1.
+  - curl -fsSL https://gvisor.dev/archive.key | gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" > /etc/apt/sources.list.d/gvisor.list
+  - apt-get update && apt-get install -y runsc
+  - curl -sfL https://get.k3s.io -o /root/k3s-install.sh
+  - INSTALL_K3S_VERSION='${k3s_version}' K3S_URL='https://${server_ip}:6443' sh /root/k3s-install.sh agent

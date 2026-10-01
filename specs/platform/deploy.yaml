@@ -1,4 +1,4 @@
-# Развёртывание. M0–M1 — локально; M2 — Cloud.ru Evolution (D16), staging + prod.
+# Развёртывание. M0–M1 — локально; M2 — Cloud.ru Evolution (D16), staging + prod; пилот (решение основателя 01.10.2026) — #pilot.
 version: 1
 
 local:                             # M0 (M0-01, M0-15, M0-17)
@@ -23,7 +23,7 @@ local:                             # M0 (M0-01, M0-15, M0-17)
     auth_and_exec: [WIZARD_AUTH_MODE, WIZARD_DEV_LOGIN, WIZARD_UNSAFE_LOCAL_EXEC, WIZARD_PREVIEW_SECRET, WIZARD_INTERNAL_TOKEN, WIZARD_PUBLIC_SCHEME]
     platform: [WIZARD_PLATFORM_ORIGIN, WIZARD_SYSTEMS_DOMAIN, WIZARD_RUN_CONCURRENCY, WIZARD_SECRETS_KEY, WIZARD_MILESTONE, WIZARD_DEV_SMTP]
     M1: [WIZARD_TELEGRAM_BOT_TOKEN, WIZARD_TELEGRAM_WEBHOOK_SECRET, WIZARD_TELEGRAM_BOT_USERNAME, WIZARD_TELEGRAM_API_BASE, WIZARD_TELEGRAM_OAUTH_BASE, WIZARD_SMTP_HOST, WIZARD_SMTP_PORT, WIZARD_SMTP_USER, WIZARD_SMTP_PASSWORD, WIZARD_MAIL_DOMAIN, WIZARD_CONNECTORS]   # общий бот уведомлений платформы (connectors/telegram.yaml#bot)
-    M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES, WIZARD_YOOKASSA_API_BASE, WIZARD_YOOKASSA_IP_ALLOWLIST, WIZARD_PLATFORM_YOOKASSA_SHOP_ID, WIZARD_PLATFORM_YOOKASSA_SECRET_KEY, WIZARD_LEGAL_TEMPLATES_DIR, WIZARD_FILES_STORAGE, WIZARD_FILES_DIR, WIZARD_S3_ENDPOINT, WIZARD_S3_REGION, WIZARD_S3_BUCKET, WIZARD_S3_ACCESS_KEY_ID, WIZARD_S3_SECRET_ACCESS_KEY, WIZARD_S3_KMS_KEY_ID]   # магазин ЮKassa ПЛАТФОРМЫ (M2-07; без обоих ключей операции оплаты → 500 «Оплата пока не подключена», вебхук → 404; WIZARD_RECEIPT_VAT_CODE ∈ 1–6, 11, 12, пусто → 1 вне production, в production с ключами магазина обязателен; база API и allowlist IP общие с коннектором); каталог замены юр. шаблонов runtime (M2-05); файлы полей file (runtime.yaml#files, M2-14): fs (по умолчанию WIZARD_FILES_DIR или .data/files) | memory | s3 (Cloud.ru, регион ru-central-1, бакет system-files; s3 без ключей — ошибка старта)
+    M2: [WIZARD_RECEIPT_VAT_CODE, WIZARD_TRUSTED_PROXIES, WIZARD_YOOKASSA_API_BASE, WIZARD_YOOKASSA_IP_ALLOWLIST, WIZARD_PLATFORM_YOOKASSA_SHOP_ID, WIZARD_PLATFORM_YOOKASSA_SECRET_KEY, WIZARD_LEGAL_TEMPLATES_DIR, WIZARD_FILES_STORAGE, WIZARD_FILES_DIR, WIZARD_S3_ENDPOINT, WIZARD_S3_REGION, WIZARD_S3_BUCKET, WIZARD_S3_ACCESS_KEY_ID, WIZARD_S3_SECRET_ACCESS_KEY, WIZARD_S3_KMS_KEY_ID, WIZARD_REGISTRATION, WIZARD_PAYMENTS, WIZARD_LLM_MONTHLY_CAP_RUB, WIZARD_OPS_ALERT_URL, WIZARD_OPS_ALERT_CHAT_ID]   # пилот (M2-15, #pilot.env): регистрация open|invite, оплата on|off, платформенный лимит токенов месяца в ₽ (по умолчанию 6000), вебхук алертов основателю; магазин ЮKassa ПЛАТФОРМЫ (M2-07; без обоих ключей операции оплаты → 500 «Оплата пока не подключена», вебхук → 404; WIZARD_RECEIPT_VAT_CODE ∈ 1–6, 11, 12, пусто → 1 вне production, в production с ключами магазина обязателен; база API и allowlist IP общие с коннектором); каталог замены юр. шаблонов runtime (M2-05); файлы полей file (runtime.yaml#files, M2-14): fs (по умолчанию WIZARD_FILES_DIR или .data/files) | memory | s3 (Cloud.ru, регион ru-central-1, бакет system-files; s3 без ключей — ошибка старта)
     connector_secrets_M0: "WIZARD_SECRET_<SCHEMAKEY>_<NAME> (с M1 — secrets_refs)"
     notes: "Ключи провайдеров — имена из agents/models.yaml#providers. WIZARD_INTERNAL_TOKEN — заголовок X-Wizard-Internal-Token (runtime.yaml#system_loading). WIZARD_PUBLIC_SCHEME (http|https) выбирает имя cookie runtime (runtime.yaml#auth.session_cookie)"
   bind: "Все процессы слушают 127.0.0.1. MUST: при WIZARD_UNSAFE_LOCAL_EXEC=1 или WIZARD_DEV_LOGIN=1 и адресе привязки ≠ loopback процесс отказывается стартовать (isolation.yaml#M0_M1)"
@@ -90,3 +90,36 @@ cloud:                             # M2 (M2-06). Все ресурсы — в Р
     cd: ".github/workflows/deploy.yml на self-hosted раннере в Cloud.ru (не GitHub-hosted): сборка образов → Cloud.ru Artifact Registry → helm upgrade staging; prod — вручную с одобрением"
     iac: "OpenTofu (MPL-2.0) + провайдер Cloud.ru в infra/; `pnpm infra:apply --env staging|prod` — одна команда (M2-06)"
   runtime_limits: "Лимиты функций — specs/runtime/runtime.yaml и isolation.yaml#limits; здесь только квоты подов"
+
+pilot:                             # Решение основателя 01.10.2026: пилот на паре живых клиентов. Runbook и расчёт — docs/ops/deploy.md «Пилот»
+  scope: "Полная функциональность (сборка в чате, гейты G0–G2 с живым runtime, превью, публикация, песочница gVisor, файлы, коннекторы Telegram/SMTP, retention) при упрощённой инфраструктуре; оплата в платформе выключена (D24_pilot_free, #pilot.env); действует вместо #cloud, пока рост по метрикам не потребует большего"
+  env:   # M2-15, D24_pilot_free: значения пилота (infra/helm/profiles/pilot.yaml → config.*); код M2-07/M2-11 остаётся и включается после пилота
+    WIZARD_REGISTRATION: "invite — новый email входит только по приглашению основателя (pnpm --filter @wizard/platform-api pilot invite <email> [--org-name] [--credits]) или активному приглашению в org; без него verifyOtp → 403 REGISTRATION_INVITE_ONLY"
+    WIZARD_PAYMENTS: "off — покупка, подписки и привязка карты скрыты в S-billing, операции оплаты → 403 PAYMENTS_DISABLED, вебхук ЮKassa и продления выключены"
+    WIZARD_LLM_MONTHLY_CAP_RUB: "6000 — Σ billable cost_rub live-вызовов llm_calls за календарный месяц (МСК); достигнут → новые сборки, ходы интервью и импорты → 503 LLM_BUDGET_EXHAUSTED и алерт основателю (один раз в месяц), 80 % → предупреждение. Live-eval считается отдельно (≤ 4 000 ₽, quality/eval.yaml#live_cadence.budget); вместе ≤ 10 000 ₽ (D20_eval_budget)"
+    WIZARD_OPS_ALERT_URL: "необязательный вебхук алертов (тот же, что у pg-ops; Secret wizard-postgres); без него — только событие лога level error/warn"
+  provider: "Timeweb Cloud; ВМ только в Москве (location ru-3, валидация в infra/tofu/timeweb). S3 Timeweb есть только в Санкт-Петербурге (ru-1) — единственная часть вне Москвы, в РФ"
+  budget: { target_rub_month: "5 000–10 000", expected_rub_month: "≈ 3 300–3 700 (prod) + staging по часам", auto_growth_ceiling_rub_month: 20000 }
+  availability: { downtime: "1–2 ч допустимы", rpo: "≈ 1 мин (archive_timeout 60 с)", rto: "≤ 2 ч (пересоздание ВМ одной командой; БД восстанавливается из архива сама)" }
+  environments:
+    prod: "одна ВМ Cloud MSK 80: 4 vCPU / 8 ГБ / 80 ГБ NVMe (пресет с потолком цены max_price); single-node k3s"
+    staging: "тот же модуль OpenTofu и профиль, ВМ Cloud MSK 50: 2 vCPU / 4 ГБ; создаётся `pnpm infra:apply --env staging`, удаляется `node tools/deploy/infra.mjs destroy --env staging --yes`; только синтетика"
+  kubernetes: "k3s на одной ВМ без managed control plane. На ней же: platform-api, worker, runtime, platform-web, egress-proxy, PgBouncer, PostgreSQL, DNS-01-решатель, Traefik, cert-manager, RuntimeClass gvisor и пул песочницы (узел помечен wizard.ru/sandbox-node=true, пул free). По одной реплике (infra/helm/profiles/pilot.yaml)"
+  sizing: "Замер RSS на стенде (tools/deploy/rss-sample.mjs, docs/ops/deploy.md «Пилот: замер»): пик всего стека ≈ 4,7 ГБ из ≈ 7,7 ГБ → запас ≈ 39 % (≥ 30 %). CPU: всплески сборки до ≈ 2,7 ядра, в покое < 0,5 ядра"
+  postgres:
+    service: "PostgreSQL 16 в кластере: StatefulSet wizard-postgres на local-path (том на диске ВМ), образ wizard-postgres (PostgreSQL + WAL-G + rclone + infra/postgres/pg-ops.mjs)"
+    pooling: "PgBouncer как в #cloud.postgres.pooling; до сервера в кластере — без TLS, только под NetworkPolicy (pod → pod на одной ВМ)"
+    archiving: "WAL-G: archive_command на каждый сегмент WAL, archive_timeout 60 с, шифрование libsodium (ключ из Secret wizard-postgres), сжатие zstd, WALG_PREVENT_WAL_OVERWRITE; бакет backups, префикс pg/"
+    base_backup: "CronJob wizard-pg-basebackup ежедневно в 02:17 МСК; хранение 14 дней (wal-g delete before FIND_FULL <сейчас − 14 дней>)"
+    monitoring: "Сайдкар pg-ops monitor. Отставание архива — возраст самого старого готового, но не отправленного сегмента; > 5 мин → событие walg_archive_lag (level error). Также: ошибки архивации, нет базовой копии > 26 ч, нет успешного учения > 8 сут. /healthz и /metrics (VictoriaMetrics)"
+    restore_drill: "CronJob wizard-pg-restore-drill еженедельно (вс 04:37 МСК): точка восстановления под SHARE-блокировками с точными счётчиками строк таблиц схемы platform → базовая копия + WAL в одноразовый PostgreSQL → сверка счётчиков по каждой таблице → лог pg_restore_drill_ok | pg_restore_drill_failed и строка wizard_ops.ops_runs. Для пилота заменяет ручное учение #cloud.postgres.restore_drill; ручной прогон — kubectl create job --from=cronjob/wizard-pg-restore-drill"
+    bootstrap: "Пустой том (пересозданная ВМ) → init-контейнер восстанавливает БД из архива (последняя базовая копия + весь WAL). Пустой архив → initdb. Недоступный архив → под не стартует"
+  data_volume: "Том .data (исходники ревизий, зашифрованный файл секретов коннекторов) копируется rclone crypt в бакет backups (префикс data/) раз в минуту, удалённо ничего не удаляется; восстановление — kubectl create job --from=cronjob/wizard-data-restore"
+  object_storage: "Бакеты files (10 ГБ, поля type=file) и backups (100 ГБ: WAL-G и копия .data), пресет увеличивается автоматически; ключи — на бакет"
+  images: "GHCR репозитория (ghcr.io/<owner>/<image>:<sha>, приватные пакеты): собирает .github/workflows/images.yml на GitHub-hosted раннерах при vars.WIZARD_IMAGES_GHCR=enabled; ВМ тянет образы с токеном read:packages (Secret wizard-ghcr); реестра в кластере нет. Docker Hub — через зеркало dockerhub.timeweb.cloud. Если GHCR станет недоступен из РФ — профиль k3s с реестром в кластере (--build-images)"
+  observability: "VictoriaMetrics single (90 дней, том 5 ГБ) и VictoriaLogs single (30 дней, том 5 ГБ) со сборщиком vlagent вместо Vector. Алерты — события level error в логе плюс необязательный вебхук WIZARD_OPS_ALERT_URL (например, Bot API Telegram)"
+  scale_up:
+    - "CPU ВМ > 60 % или RAM > 75 % устойчиво (p95 за 7 дней) → пресет больше (MSK 160: 8 vCPU / 16 ГБ, ≈ 4 300 ₽)"
+    - "Сборки или песочница упираются в одну ВМ → вторая ВМ (агент k3s с пулом песочницы, settings.sandbox_nodes)"
+    - "Клиенту нужен SLA или простой 1–2 ч стал неприемлем → managed PostgreSQL (форма беты, settings.postgres) или HA"
+    - "Автоматический рост без основателя — до 20 000 ₽/мес (escalation.yaml); выше — эскалация E-MONEY"

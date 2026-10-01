@@ -7,6 +7,7 @@
     "dev": "tsx src/main.ts",
     "credits": "tsx src/billing/cli.ts",
     "moderation": "tsx src/publish/moderation-cli.ts",
+    "pilot": "tsx src/pilot/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -6,12 +6,15 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ShopError } from "../billing/shop.js";
-import { notFound } from "../errors.js";
+import { ApiError, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, clientIp, isUuid } from "../http/auth.js";
 import { type Deps, jsonBody } from "../http/util.js";
 
 /** connectors/yookassa.yaml#webhooks: notification bodies are small. */
 export const WEBHOOK_BODY_MAX = 256 * 1024;
+
+/** api.yaml#Error PAYMENTS_DISABLED (M2-15). */
+export const PAYMENTS_DISABLED_RU = "Оплата на пилоте отключена — кредиты начисляет команда Wizard";
 
 export function billingRoutes(d: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -23,6 +26,11 @@ export function billingRoutes(d: Deps): Hono<AppEnv> {
     return id;
   }
 
+  /** WIZARD_PAYMENTS=off (D24_pilot_free): every money operation → 403 PAYMENTS_DISABLED; GET billing stays. */
+  function paymentsOn(): void {
+    if (!d.config.payments) throw new ApiError("PAYMENTS_DISABLED", PAYMENTS_DISABLED_RU);
+  }
+
   r.get("/orgs/:orgId/billing", async (c) => {
     const orgId = ownerOrg(c.get("user"), c.req.param("orgId"));
     return c.json(await d.payments.view(orgId));
@@ -31,6 +39,7 @@ export function billingRoutes(d: Deps): Hono<AppEnv> {
   r.post("/orgs/:orgId/billing/card-binding", async (c) => {
     const user = c.get("user");
     const orgId = ownerOrg(user, c.req.param("orgId"));
+    paymentsOn();
     const ip = clientIp(c, d.config.trustedProxies);
     return c.json(await d.payments.startCardBinding(user, orgId, ip));
   });
@@ -38,18 +47,21 @@ export function billingRoutes(d: Deps): Hono<AppEnv> {
   r.put("/orgs/:orgId/billing/subscription", async (c) => {
     const user = c.get("user");
     const orgId = ownerOrg(user, c.req.param("orgId"));
+    paymentsOn();
     const b = await jsonBody(c, z.strictObject({ plan: z.enum(["start", "business"]) }));
     return c.json(await d.payments.changeSubscription(user, orgId, b.plan));
   });
 
   r.delete("/orgs/:orgId/billing/subscription", async (c) => {
     const orgId = ownerOrg(c.get("user"), c.req.param("orgId"));
+    paymentsOn();
     return c.json(await d.payments.cancelSubscription(orgId));
   });
 
   r.post("/orgs/:orgId/billing/topups", async (c) => {
     const user = c.get("user");
     const orgId = ownerOrg(user, c.req.param("orgId"));
+    paymentsOn();
     const b = await jsonBody(c, z.strictObject({ packs: z.number().int().min(1).max(20) }));
     return c.json(await d.payments.createTopup(user, orgId, b.packs));
   });

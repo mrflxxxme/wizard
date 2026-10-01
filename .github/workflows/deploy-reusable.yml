@@ -1,0 +1,104 @@
+# Deploy one environment from the self-hosted runner in the hosting provider's VPC (deploy.yaml#cloud.ci_cd.cd, M2-06).
+# Called by deploy-staging.yml and deploy-prod.yml only. Provider: vars.WIZARD_PROVIDER (default timeweb). Credentials:
+# GitHub OIDC → OpenBao (tools/deploy/bao-env.mjs), short-lived; until OpenBao exists, the bootstrap environment
+# secrets (TWC_TOKEN, state keys), revoked once OpenBao is up. Images are built and pushed on the runner by
+# `infra.mjs --build-images`, never with GitHub-hosted credentials. Runner-local files (never in GitHub):
+# /etc/wizard/terraform-<env>.tfvars, the SSH key /etc/wizard/id_ed25519 (k3s kubeconfig over the VPC).
+name: deploy-reusable
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        type: string
+        required: true
+      sha:
+        type: string
+        required: true
+      mode:
+        description: "deploy (images + Helm) | apply (OpenTofu + addons + images + Helm) | destroy (staging only)"
+        type: string
+        default: deploy
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, "wizard-${{ inputs.env }}"]
+    environment: ${{ inputs.env }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ inputs.sha }}
+      DEPLOY_ENV: ${{ inputs.env }}
+      MODE: ${{ inputs.mode }}
+      OPENBAO_ADDR: ${{ vars.OPENBAO_ADDR }}
+      WIZARD_PROVIDER: ${{ vars.WIZARD_PROVIDER || 'timeweb' }}
+      WIZARD_TF_STATE_BUCKET: ${{ vars.WIZARD_TF_STATE_BUCKET }}
+      WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
+      WIZARD_TFVARS_FILE: /etc/wizard/terraform-${{ inputs.env }}.tfvars
+      WIZARD_SSH_KEY_FILE: /etc/wizard/id_ed25519
+      # Pilot: images from GHCR (pull secret wizard-ghcr; the release waits for the tag) and the database Secret from a
+      # runner-local env file on first bring-up (docs/ops/deploy.md «Пилот»).
+      WIZARD_GHCR_USER: ${{ vars.WIZARD_GHCR_USER }}
+      WIZARD_POSTGRES_ENV_FILE: /etc/wizard/postgres-${{ inputs.env }}.env
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: Only commits of main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "::error::$SHA is not on main"; exit 1; }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+
+      - name: Short-lived credentials (GitHub OIDC → OpenBao)
+        if: env.OPENBAO_ADDR != ''
+        run: node tools/deploy/bao-env.mjs --role "wizard-deploy-$DEPLOY_ENV" --path "secret/data/wizard/$DEPLOY_ENV/deploy"
+      - name: Bootstrap credentials (before OpenBao)
+        if: env.OPENBAO_ADDR == ''
+        env:
+          TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
+          STATE_KEY_ID: ${{ secrets.WIZARD_TF_STATE_ACCESS_KEY_ID }}
+          STATE_SECRET: ${{ secrets.WIZARD_TF_STATE_SECRET_ACCESS_KEY }}
+          STATE_PASSPHRASE: ${{ secrets.WIZARD_TF_STATE_PASSPHRASE }}
+          GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN }}
+        run: |
+          {
+            echo "TWC_TOKEN=$TWC_TOKEN"
+            echo "WIZARD_TF_STATE_ACCESS_KEY_ID=$STATE_KEY_ID"
+            echo "WIZARD_TF_STATE_SECRET_ACCESS_KEY=$STATE_SECRET"
+            echo "WIZARD_TF_STATE_PASSPHRASE=$STATE_PASSPHRASE"
+            if [ -n "$GHCR_TOKEN" ]; then echo "WIZARD_GHCR_TOKEN=$GHCR_TOKEN"; fi
+          } >> "$GITHUB_ENV"
+
+      - name: Preflight
+        id: pre
+        run: |
+          if node tools/deploy/infra.mjs check --env "$DEPLOY_ENV"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=deploy-$DEPLOY_ENV::Нет доступов провайдера или файлов раннера — выкат пропущен (docs/ops/deploy.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: OpenTofu, addons, images and Helm (${{ inputs.mode }})
+        if: steps.pre.outputs.ready == 'true'
+        run: |
+          if [ "$MODE" = "destroy" ]; then
+            node tools/deploy/infra.mjs destroy --env "$DEPLOY_ENV" --yes
+          else
+            node tools/deploy/infra.mjs "$MODE" --env "$DEPLOY_ENV" --tag "$SHA" --build-images --yes
+          fi
+
+      - name: Clean up the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/wizard-*.kubeconfig

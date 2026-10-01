@@ -7,3 +7,12 @@ tools/eval/results/*
 test-results/
 playwright-report/
 .claude/worktrees/
+# OpenTofu working state (infra/tofu): providers, local state, real variable files
+infra/tofu/**/.terraform/
+infra/tofu/**/*.tfstate
+infra/tofu/**/*.tfstate.*
+infra/tofu/**/*.tfplan
+infra/tofu/**/terraform.tfvars
+# Rendered/generated deploy outputs
+sbom*.cdx.json
+.kube/

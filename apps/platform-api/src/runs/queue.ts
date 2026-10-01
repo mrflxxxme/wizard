@@ -3,7 +3,7 @@
 //   inprocess (M0, unit tests): in-process FIFO queue with global concurrency, restart recovery → WORKER_RESTARTED;
 //   client (platform-api in M1): runs are enqueued as DBOS workflows (workflowID = runs.id), never executed here;
 //   worker (apps/worker): executeRun() is the body of the DBOS workflow, every side effect is a checkpointed step.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AppSpec } from "@wizard/appspec";
 import {
   CircuitBreaker,
@@ -147,11 +147,20 @@ export interface NewRun {
   startedBy: string;
 }
 
+/** Run kinds that call models (the platform LLM cap applies to them, M2-15). */
+export const LLM_RUN_KINDS: ReadonlySet<NewRun["kind"]> = new Set([
+  "interview_turn",
+  "build",
+  "import_table",
+]);
+
 /**
  * Inserts a run. With `billing`: an interview turn needs available > 0, a build or an import holds its cap in the
  * same transaction (billing.yaml#run_charging; 402 INSUFFICIENT_CREDITS).
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
+  // M2-15: the platform LLM cap of the month refuses new LLM runs (publish/rollback/export use no LLM).
+  if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget();
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
   const id = randomUUID();
@@ -243,6 +252,8 @@ interface Ctx {
   ac: AbortController;
   /** Holds a worker slot (role worker, lock-needing runs). */
   slot: boolean;
+  /** needs_input calls so far in this execution: a replay reaches the same ordinal at the same call. */
+  inputs: number;
 }
 
 interface Routers {
@@ -460,7 +471,7 @@ export class RunEngine {
       // Fields read outside steps are immutable for the life of the run (kind, mode, org, system, input).
       const run = await this.#loadRun(id);
       if (!run) return;
-      x = { run, D, ac, slot: false };
+      x = { run, D, ac, slot: false, inputs: 0 };
       if (NEEDS_LOCK.has(run.kind) && run.system_id) {
         let holder = await D.step("acquire_lock", () => this.#acquireLock(run, D.durable));
         if (holder === TERMINAL) return;
@@ -479,7 +490,7 @@ export class RunEngine {
         locked = true;
       }
       await this.#takeSlot(x);
-      const started = await D.step("start", () => this.#start(run));
+      const started = await D.step("start", () => this.#start(run, D.durable));
       if (!started) {
         if (locked) {
           const sys = await D.step("release_lock", () => this.#releaseLockRow(run.id));
@@ -689,8 +700,12 @@ export class RunEngine {
     if (next) this.enqueue({ id: next, kind: "build", system_id: systemId }, true);
   }
 
-  /** queued|waiting_lock → running with run_started; null when cancelled meanwhile. */
-  async #start(run: Run): Promise<{ base: number | null; cap: number | null } | null> {
+  /**
+   * queued|waiting_lock → running with run_started; null when cancelled meanwhile. `resumed` (durable): a re-run of
+   * this step whose transaction committed before the worker died (no checkpoint) finds the run already running —
+   * only this workflow starts it — and continues instead of leaving it unfinalized.
+   */
+  async #start(run: Run, resumed: boolean): Promise<{ base: number | null; cap: number | null } | null> {
     return this.#tx(async (t) => {
       const cur = await t.trx
         .selectFrom("platform.runs")
@@ -698,6 +713,8 @@ export class RunEngine {
         .where("id", "=", run.id)
         .forUpdate()
         .executeTakeFirstOrThrow();
+      const cap = cur.credits_cap_milli === null ? null : Number(cur.credits_cap_milli);
+      if (resumed && cur.status === "running") return { base: cur.base_revision, cap };
       if ((cur.status !== "queued" && cur.status !== "waiting_lock") || cur.cancel_requested_at) return null;
       const sys = cur.system_id
         ? await t.trx
@@ -712,17 +729,14 @@ export class RunEngine {
         .set({ status: "running", started_at: new Date(), heartbeat_at: new Date(), base_revision: base })
         .where("id", "=", run.id)
         .execute();
-      const cap = cur.credits_cap_milli;
       await appendEvent(t, run.id, "run_started", {
         kind: cur.kind,
         ...(cur.mode ? { mode: cur.mode } : {}),
         baseRevision: base,
         credits:
-          cap === null
-            ? null
-            : { estimate: Number(cur.credits_estimate_milli ?? 0) / 1000, cap: Number(cap) / 1000 },
+          cap === null ? null : { estimate: Number(cur.credits_estimate_milli ?? 0) / 1000, cap: cap / 1000 },
       });
-      return { base, cap: cap === null ? null : Number(cap) };
+      return { base, cap };
     });
   }
 
@@ -1179,9 +1193,13 @@ export class RunEngine {
     req: InputRequest | SecretInputRequest,
   ): Promise<InputAnswer & { secretRef?: string }> {
     await this.#ensureActive(x);
+    // The id is a function of the call's position, not random: a worker killed after the transaction below but
+    // before its checkpoint re-runs the step, and an answer sent meanwhile (keyed by this id) must still match.
+    const secret = req.kind === "secret";
+    const ordinal = x.inputs++;
+    const tag = createHash("sha256").update(`${x.run.id}:input:${ordinal}`).digest("hex").slice(0, 8);
+    const inputId = `${secret ? "secret" : req.decisionId}-${tag}`;
     const pending = await x.D.step("needs_input", async () => {
-      const secret = req.kind === "secret";
-      const inputId = `${secret ? "secret" : req.decisionId}-${randomUUID().slice(0, 8)}`;
       const p = secret
         ? {
             inputId,
@@ -1199,15 +1217,26 @@ export class RunEngine {
             options: req.options,
             expiresAt: new Date(Date.now() + INPUT_TIMEOUT_MS).toISOString(),
           };
-      await this.#tx(async (t) => {
+      return this.#tx(async (t) => {
+        await t.trx.selectFrom("platform.runs").select("id").where("id", "=", x.run.id).forUpdate().execute();
+        // Re-run of a step whose transaction committed: the request is already out (maybe answered, which moved
+        // the run to running), so nothing is written again and the original deadline stays.
+        const prior = await t.trx
+          .selectFrom("platform.run_events")
+          .select("payload")
+          .where("run_id", "=", x.run.id)
+          .where("type", "=", "needs_input")
+          .where(sql<boolean>`payload->>'inputId' = ${inputId}`)
+          .executeTakeFirst();
+        if (prior) return { inputId, expiresAt: (prior.payload as { expiresAt: string }).expiresAt };
         await t.trx
           .updateTable("platform.runs")
           .set({ status: "needs_input", pending_input: json(p) })
           .where("id", "=", x.run.id)
           .execute();
         await appendEvent(t, x.run.id, "needs_input", p);
+        return { inputId, expiresAt: p.expiresAt };
       });
-      return { inputId, expiresAt: p.expiresAt };
     });
     // A waiting run does not hold a concurrency slot.
     const inproc = this.#role === "inprocess";

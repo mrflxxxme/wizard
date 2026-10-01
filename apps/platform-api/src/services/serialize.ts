@@ -6,8 +6,8 @@ const iso = (d: Date | string | null | undefined): string | null => (d ? new Dat
 const credits = (milli: string | number | null | undefined): number | undefined =>
   milli === null || milli === undefined ? undefined : Number(milli) / 1000;
 
-/** runtimePort given → prodUrl of the M1 local prod host (publish/prod.ts prodUrl) when something is live. */
-export function toSystem(s: Selectable<SystemsTable>, runtimePort?: number) {
+/** prodUrlOf given (publish/prod.ts prodUrl) → the system's prod URL when something is live. */
+export function toSystem(s: Selectable<SystemsTable>, prodUrlOf?: (slug: string) => string) {
   return {
     id: s.id,
     orgId: s.org_id,
@@ -17,10 +17,7 @@ export function toSystem(s: Selectable<SystemsTable>, runtimePort?: number) {
     draftRevision: s.draft_revision,
     previewRevision: s.preview_revision,
     prodRevision: s.prod_revision,
-    prodUrl:
-      s.prod_revision !== null && runtimePort !== undefined
-        ? `http://${s.slug}.localhost:${runtimePort}/`
-        : null,
+    prodUrl: s.prod_revision !== null && prodUrlOf !== undefined ? prodUrlOf(s.slug) : null,
     suspended: s.suspended_at !== null,
     createdAt: iso(s.created_at),
     updatedAt: iso(s.updated_at),

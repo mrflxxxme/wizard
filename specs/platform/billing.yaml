@@ -16,6 +16,14 @@ plans:
     login_methods: [email_otp, telegram]      # F4: вход по телефону (SMS) в созданных системах — только на платных тарифах
     prod_requires: "привязанная карта РФ (D9, card_binding)"
     inactive_drafts: "F5 (утверждено по рекомендации, основатель может пересмотреть): черновик Free без активности 60 дней (systems.last_activity_at) → уведомление за 7 дней, затем удаляется ТОЛЬКО схема draft с тестовыми данными; спека, код, ревизии и prod сохраняются (workflows.yaml#retention_cron)"
+  pilot:   # D24_pilot_free: бесплатный пилот по приглашению основателя
+    price_rub_month: 0
+    assigned_by: "основатель (CLI платформы); самостоятельно выбрать нельзя"
+    grants: { manual: "кредиты начисляет основатель CLI (ledger bucket topup с reason=pilot_grant, срок 365 дней)" }
+    limits: { prod_systems: 5, draft_systems: 30, members: 30 }
+    login_methods: [email_otp, telegram]      # SMS не подключаем на пилоте (расходы); phone_otp — после пилота на платных тарифах
+    prod_requires: "приглашение основателя (идентификация вместо привязки карты на пилоте); CARD_BINDING_REQUIRED не применяется"
+    payments: "WIZARD_PAYMENTS=off: покупка, подписки и привязка карты скрыты в UI и отвечают 403 PAYMENTS_DISABLED"
   start:
     price_rub_month: 1990
     grants: { monthly: { credits: 50, expires: "конец периода подписки" } }

@@ -35,7 +35,7 @@ async function main(argv: string[]): Promise<string> {
         const days = Number(rest[1] ?? 30);
         await h.db.transaction().execute(async (trx) => {
           await trx.updateTable("platform.orgs").set({ plan }).where("id", "=", orgId).execute();
-          if (plan !== "free") {
+          if (plan === "start" || plan === "business") {
             const start = billing.now();
             await billing.grantPlanPeriod(trx, orgId, {
               plan,

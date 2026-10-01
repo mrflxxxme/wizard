@@ -180,7 +180,7 @@ workflows:
 
   nightly_eval:
     milestone: M1
-    schedule: "DBOS scheduled, ежедневно 02:07 MSK, только если заданы ключи live; объём и бюджет — quality/eval.yaml#live_cadence (F6: nightly_smoke 5 брифов, full — по метке PR, ≤ 30 000 ₽/мес)"
+    schedule: "GitHub Actions eval-live.yml, раз в неделю (понедельник 02:17 MSK), только если заданы ключи live; объём и бюджет — quality/eval.yaml#live_cadence (D20_eval_budget: 5 брифов раз в неделю, full — по метке PR, ≤ 4 000 ₽/мес)"
     does: "tools/eval/run.mjs --harness на брифах без ПДн; результат в artifacts eval/<date>.json; регрессия доли G0/G1 > 5 п.п. к медиане 7 дней → уведомление в CI-канал (M1-10)"
 
 events:

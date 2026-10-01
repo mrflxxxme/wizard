@@ -1,0 +1,15 @@
+# Copy to the runner (WIZARD_TFVARS_FILE, default /etc/wizard/terraform-staging.tfvars). Not committed.
+# PILOT staging on demand: the same module as prod with a smaller VM — Cloud MSK 50 (2 vCPU / 4 GB / 50 GB NVMe),
+# billed by the hour while it exists. `pnpm infra:apply --env staging` creates it, `node tools/deploy/infra.mjs destroy
+# --env staging --yes` removes everything (VM, IP, buckets, records). If builds run out of memory: server 4/8.
+settings = {
+  server          = { cpu = 2, ram_gb = 4, disk_gb = 50, max_price = 1100 }
+  sandbox_nodes   = {}
+  postgres        = null
+  buckets         = { files = 10, backups = 10 }
+  image_registry  = "ghcr.io/<github owner, lower case>"
+  ssh_public_key  = "ssh-ed25519 AAAA... wizard-runner"
+  admin_cidrs     = ["192.0.2.10/32"] # runner VM / founder
+  platform_domain = "<staging platform domain>"
+  systems_domain  = "<staging systems domain>"
+}

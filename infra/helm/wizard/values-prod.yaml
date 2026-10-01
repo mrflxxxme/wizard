@@ -1,0 +1,19 @@
+# Prod (deploy.yaml#cloud.environments.prod): manual deploy by the repo owner (deploy-prod.yml, checklist §8 option a).
+env: prod
+domains:
+  platform: ""   # <codename>.ru (WIZARD_PLATFORM_DOMAIN)
+  systems: ""    # neutral systems domain (WIZARD_SYSTEMS_DOMAIN)
+config:
+  llmMode: live
+  connectors: live
+platformApi: { replicas: 2 }
+# Live connectors (YooKassa, Telegram) still call out directly from the runtime (impl-notes M2-06).
+runtime: { replicas: 3, directConnectorEgress: true }
+platformWeb: { replicas: 2 }
+egressProxy: { replicas: 2 }
+pgbouncer: { replicas: 2, defaultPoolSize: 20 }
+tls:
+  acmeServer: https://acme-v02.api.letsencrypt.org/directory
+hsts:
+  maxAge: 63072000
+  preload: true

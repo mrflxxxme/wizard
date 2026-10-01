@@ -1,6 +1,7 @@
 // Prod side of publish/rollback (workflows.yaml#workflows.publish, #rollback): schema migration of app_<key>_prod,
 // smoke check of the prod host, URLs and the Publication API shape.
 import { request } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
 import { ensureSystemRole, schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
@@ -12,9 +13,22 @@ import type { PublicationsTable } from "../db/types.js";
 import { RunFailure } from "../runs/types.js";
 import type { ModerationLog } from "./moderation.js";
 
-/** Prod host of a system in M1 (local/staging, deploy.yaml#local.hosts.systems; public prod — M2-07). */
-export function prodUrl(config: Pick<Config, "runtimePort">, slug: string): string {
-  return `http://${slug}.localhost:${config.runtimePort}/`;
+type HostConfig = Pick<Config, "runtimePort"> & Partial<Pick<Config, "systemsDomain" | "publicScheme">>;
+
+/**
+ * Origin of a system host (deploy.yaml#local.hosts.systems, #cloud.domains.system_host): locally
+ * http://<slug>[--draft].localhost:<runtimePort>; in the cloud <scheme>://<slug>[--draft].<systemsDomain>.
+ */
+export function systemOrigin(config: HostConfig, slug: string, env: "draft" | "prod"): string {
+  const label = env === "draft" ? `${slug}--draft` : slug;
+  const domain = config.systemsDomain ?? "localhost";
+  if (domain === "localhost") return `http://${label}.localhost:${config.runtimePort}`;
+  return `${config.publicScheme ?? "https"}://${label}.${domain}`;
+}
+
+/** Canonical prod URL of a system (runtime.yaml#routing.prod_alias). */
+export function prodUrl(config: HostConfig, slug: string): string {
+  return `${systemOrigin(config, slug, "prod")}/`;
 }
 
 export interface SmokeInput {
@@ -43,17 +57,20 @@ export interface PublishOptions {
   moderationLog?: ModerationLog;
 }
 
-function get(url: URL, timeoutMs: number): Promise<{ status: number; body: string }> {
+function get(url: URL, timeoutMs: number, hostHeader?: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     // *.localhost is not resolvable everywhere: connect to loopback and send the system host explicitly.
-    const req = request(
+    const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost");
+    const tls = url.protocol === "https:";
+    const req = (tls ? httpsRequest : request)(
       {
-        host: "127.0.0.1",
-        port: url.port || 80,
+        host: local ? "127.0.0.1" : url.hostname,
+        port: url.port || (tls ? 443 : 80),
         path: url.pathname + url.search,
         agent: false,
-        headers: { host: url.host },
+        headers: { host: hostHeader ?? url.host },
         timeout: timeoutMs,
+        ...(tls ? { servername: url.hostname } : {}),
       },
       (res) => {
         let body = "";
@@ -70,14 +87,20 @@ function get(url: URL, timeoutMs: number): Promise<{ status: number; body: strin
   });
 }
 
-/** Default smoke: the page answers 200 and /_wizard/health of the system host reports the new revision. */
-export function httpSmoke(timeoutMs = 5000): ProdSmoke {
+/**
+ * Default smoke: the page answers 200 and /_wizard/health of the system host reports the new revision. With
+ * internalUrl (cloud) the health comes from the runtime's internal port with the system Host: public hosts answer
+ * only {status} there (L3-19).
+ */
+export function httpSmoke(timeoutMs = 5000, o: { internalUrl?: string | null } = {}): ProdSmoke {
   return async (i) => {
     try {
       const base = new URL(i.url);
       const page = await get(new URL("/", base), timeoutMs);
       if (page.status !== 200) return { ok: false, reason: `GET / → ${page.status}` };
-      const health = await get(new URL("/_wizard/health", base), timeoutMs);
+      const health = o.internalUrl
+        ? await get(new URL("/_wizard/health", o.internalUrl), timeoutMs, base.host)
+        : await get(new URL("/_wizard/health", base), timeoutMs);
       const rev = (JSON.parse(health.body || "{}") as { revision?: unknown }).revision;
       if (health.status !== 200 || rev !== i.revision)
         return { ok: false, reason: `health → ${health.status}, revision ${String(rev)}` };

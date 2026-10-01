@@ -3,6 +3,8 @@
 // «Привязать карту РФ» through the platform's YooKassa shop (billing.yaml#card_binding). Money actions are owner-only;
 // editor/viewer see the plan and the balance without buttons (the server answers 403 NOT_OWNER anyway). The YooKassa
 // return URL is /billing?payment=<id>: the page polls GET billing until the card binding is no longer pending.
+// M2-15 (WIZARD_PAYMENTS=off, Org.paymentsEnabled = false): no plan change, cancel, card or top-up — the plan, the
+// balance and the ledger stay; the money controls appear only once GET /orgs/:orgId has answered (no flash).
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
@@ -21,13 +23,14 @@ export const PLANS: Record<
   { priceRub: number; prod: number; members: number; credits: number; phone: boolean }
 > = {
   free: { priceRub: 0, prod: 1, members: 3, credits: 25, phone: false },
+  pilot: { priceRub: 0, prod: 5, members: 30, credits: 0, phone: false },
   start: { priceRub: 1990, prod: 2, members: 10, credits: 50, phone: true },
   business: { priceRub: 6990, prod: 5, members: 30, credits: 230, phone: true },
 };
 /** billing.yaml#plans.topup */
 export const TOPUP = { priceRub: 990, credits: 60, maxPacks: 20 } as const;
 
-const PAID: Exclude<PlanId, "free">[] = ["start", "business"];
+const PAID: ("start" | "business")[] = ["start", "business"];
 const POLL_MS = 1000;
 const POLL_TRIES = 40;
 
@@ -50,6 +53,8 @@ export function BillingScreen(): ReactNode {
   const role = roleIn(orgId);
   const owner = canOwn(role);
   const [org, setOrgView] = useState<Org | null>(null);
+  // GET /orgs/:orgId answered (or failed): only then is Org.paymentsEnabled known.
+  const [orgReady, setOrgReady] = useState(false);
   // undefined — loading; null — not available (not an owner, or the request failed).
   const [billing, setBilling] = useState<Billing | null | undefined>(undefined);
   const [credits, setCredits] = useState<CreditBalance | null>(null);
@@ -89,7 +94,8 @@ export function BillingScreen(): ReactNode {
     api
       .getOrg(orgId)
       .then((o) => live && setOrgView(o))
-      .catch(() => live && setOrgView(null));
+      .catch(() => live && setOrgView(null))
+      .finally(() => live && setOrgReady(true));
     void loadMoney();
     void loadBilling();
     return () => {
@@ -154,7 +160,7 @@ export function BillingScreen(): ReactNode {
     });
   }
 
-  async function changePlan(plan: Exclude<PlanId, "free">) {
+  async function changePlan(plan: "start" | "business") {
     await act(`plan:${plan}`, async () => {
       const r = await api.changeSubscription(orgId, plan);
       if (r.confirmationUrl) {
@@ -195,6 +201,7 @@ export function BillingScreen(): ReactNode {
     members: def.members,
     monthlyCredits: def.credits,
   };
+  const payments = orgReady && org?.paymentsEnabled !== false && billing?.paymentsEnabled !== false;
   const active = billing?.status === "active";
   const renewing = active && !billing?.cancelAtPeriodEnd;
   const memberships = me?.memberships ?? [];
@@ -243,7 +250,12 @@ export function BillingScreen(): ReactNode {
             {ru.billing.returned}
           </p>
         )}
-        {!owner && <p className={s.hint}>{ru.billing.ownerOnly}</p>}
+        {orgReady && !payments && (
+          <p className={s.notice} data-testid="billing-payments-off">
+            {ru.billing.paymentsOff}
+          </p>
+        )}
+        {!owner && payments && <p className={s.hint}>{ru.billing.ownerOnly}</p>}
 
         <div className={s.grid}>
           <section
@@ -279,7 +291,7 @@ export function BillingScreen(): ReactNode {
               {ru.billing.limits(limits.prodSystems, limits.members, limits.monthlyCredits)}
             </p>
             <p className={s.small}>{ru.billing.loginMethods(def.phone)}</p>
-            {owner && (
+            {owner && payments && (
               <div className={s.row}>
                 <Button
                   size="sm"
@@ -305,7 +317,7 @@ export function BillingScreen(): ReactNode {
                 )}
               </div>
             )}
-            {confirmCancel && billing && (
+            {payments && confirmCancel && billing && (
               <div className={b.confirm} data-testid="billing-cancel-confirm">
                 <p className={s.small}>
                   {ru.billing.cancelConfirm(
@@ -332,7 +344,7 @@ export function BillingScreen(): ReactNode {
                 </div>
               </div>
             )}
-            {plansOpen && billing && (
+            {payments && plansOpen && billing && (
               <ul className={s.list} data-testid="billing-plans">
                 {PAID.map((p) => {
                   const d = PLANS[p];
@@ -370,50 +382,52 @@ export function BillingScreen(): ReactNode {
             )}
           </section>
 
-          <section className={s.block} data-testid="billing-card" aria-labelledby="card-title">
-            <h2 id="card-title" className={s.blockTitle}>
-              {ru.billing.card}
-            </h2>
-            {owner && (
-              <p
-                className={cardState === "bound" ? b.ok : s.small}
-                data-testid="billing-card-status"
-                data-status={cardState}
-              >
-                {cardState === "bound" && billing?.card
-                  ? `${ru.billing.cardBound} · ${ru.billing.cardNumber(billing.card.last4, billing.card.cardType)}`
-                  : cardState === "pending"
-                    ? ru.billing.cardPending
-                    : cardState === "loading"
-                      ? ru.code.loading
-                      : ru.billing.cardNone}
-              </p>
-            )}
-            {owner && binding?.status === "rejected" && (
-              <Alert testId="billing-card-error">
-                {binding.code === "CARD_NOT_RU" ? ru.billing.cardNotRu : ru.billing.cardRejected}
-              </Alert>
-            )}
-            {!owner && (
-              <p className={org?.cardBound ? b.ok : s.small} data-testid="billing-card-status">
-                {org?.cardBound ? ru.billing.cardBound : ru.billing.cardNone}
-              </p>
-            )}
-            <p className={s.hint}>{ru.billing.bindHint}</p>
-            <div>
-              <Button
-                size="sm"
-                variant={billing?.card ? "secondary" : "primary"}
-                disabled={!owner || busy !== null || billing === undefined}
-                loading={busy === "bind"}
-                title={owner ? undefined : ru.billing.ownerOnly}
-                onClick={() => void bindCard()}
-                data-testid="billing-card-bind"
-              >
-                {billing?.card ? ru.billing.rebind : ru.billing.bind}
-              </Button>
-            </div>
-          </section>
+          {payments && (
+            <section className={s.block} data-testid="billing-card" aria-labelledby="card-title">
+              <h2 id="card-title" className={s.blockTitle}>
+                {ru.billing.card}
+              </h2>
+              {owner && (
+                <p
+                  className={cardState === "bound" ? b.ok : s.small}
+                  data-testid="billing-card-status"
+                  data-status={cardState}
+                >
+                  {cardState === "bound" && billing?.card
+                    ? `${ru.billing.cardBound} · ${ru.billing.cardNumber(billing.card.last4, billing.card.cardType)}`
+                    : cardState === "pending"
+                      ? ru.billing.cardPending
+                      : cardState === "loading"
+                        ? ru.code.loading
+                        : ru.billing.cardNone}
+                </p>
+              )}
+              {owner && binding?.status === "rejected" && (
+                <Alert testId="billing-card-error">
+                  {binding.code === "CARD_NOT_RU" ? ru.billing.cardNotRu : ru.billing.cardRejected}
+                </Alert>
+              )}
+              {!owner && (
+                <p className={org?.cardBound ? b.ok : s.small} data-testid="billing-card-status">
+                  {org?.cardBound ? ru.billing.cardBound : ru.billing.cardNone}
+                </p>
+              )}
+              <p className={s.hint}>{ru.billing.bindHint}</p>
+              <div>
+                <Button
+                  size="sm"
+                  variant={billing?.card ? "secondary" : "primary"}
+                  disabled={!owner || busy !== null || billing === undefined}
+                  loading={busy === "bind"}
+                  title={owner ? undefined : ru.billing.ownerOnly}
+                  onClick={() => void bindCard()}
+                  data-testid="billing-card-bind"
+                >
+                  {billing?.card ? ru.billing.rebind : ru.billing.bind}
+                </Button>
+              </div>
+            </section>
+          )}
 
           <section className={s.block} data-testid="billing-balance" aria-labelledby="balance-title">
             <h2 id="balance-title" className={s.blockTitle}>
@@ -436,7 +450,9 @@ export function BillingScreen(): ReactNode {
                         data-source={x.source}
                       >
                         {ru.billing.bucketLine(
-                          ru.billing.bucket[x.source] ?? x.source,
+                          plan === "pilot" && x.source === "topup"
+                            ? ru.billing.pilotBucket
+                            : (ru.billing.bucket[x.source] ?? x.source),
                           fmtCredits(x.remaining),
                           x.expiresAt ? fmtDay(x.expiresAt) : null,
                         )}
@@ -447,38 +463,40 @@ export function BillingScreen(): ReactNode {
             ) : (
               <p className={s.small}>{ru.code.loading}</p>
             )}
-            <div className={s.sub}>
-              <h3 className={s.subTitle}>{ru.billing.topup}</h3>
-              <div className={s.row}>
-                <label className={s.field}>
-                  <span className={s.muted}>{ru.billing.topupPacks}</span>
-                  <select
-                    value={packs}
+            {payments && (
+              <div className={s.sub}>
+                <h3 className={s.subTitle}>{ru.billing.topup}</h3>
+                <div className={s.row}>
+                  <label className={s.field}>
+                    <span className={s.muted}>{ru.billing.topupPacks}</span>
+                    <select
+                      value={packs}
+                      disabled={!owner || busy !== null}
+                      onChange={(e) => setPacks(Number(e.target.value))}
+                      data-testid="billing-topup-packs"
+                    >
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="primary"
                     disabled={!owner || busy !== null}
-                    onChange={(e) => setPacks(Number(e.target.value))}
-                    data-testid="billing-topup-packs"
+                    loading={busy === "topup"}
+                    title={owner ? undefined : ru.billing.ownerOnly}
+                    onClick={() => void topup()}
+                    data-testid="billing-topup"
                   >
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={!owner || busy !== null}
-                  loading={busy === "topup"}
-                  title={owner ? undefined : ru.billing.ownerOnly}
-                  onClick={() => void topup()}
-                  data-testid="billing-topup"
-                >
-                  {ru.billing.topupButton(packs, packs * TOPUP.priceRub)}
-                </Button>
+                    {ru.billing.topupButton(packs, packs * TOPUP.priceRub)}
+                  </Button>
+                </div>
+                <p className={s.hint}>{ru.billing.topupHint}</p>
               </div>
-              <p className={s.hint}>{ru.billing.topupHint}</p>
-            </div>
+            )}
           </section>
 
           <section

@@ -1,0 +1,8 @@
+# Pilot overlay: VictoriaMetrics single stays (it answers the scale-up triggers: CPU > 60 % / RAM > 75 % sustained,
+# docs/ops/deploy.md «Пилот: когда расти», and keeps the pg-ops gauges); retention 90 days on a small volume.
+server:
+  persistentVolume:
+    size: 5Gi
+  resources:
+    requests: { cpu: 20m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 384Mi }

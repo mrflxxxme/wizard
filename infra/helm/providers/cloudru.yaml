@@ -1,0 +1,19 @@
+# Provider layer: Cloud.ru Evolution with managed Kubernetes (alternative; the beta runs on Timeweb Cloud + k3s).
+# Same keys as every providers/<provider>.yaml (docs/reviews/impl-notes/M2-06.md «Смена провайдера»).
+config:
+  # Object Storage (S3-compatible), region ru-central-1
+  s3Endpoint: https://s3.cloud.ru
+  s3Region: ru-central-1
+tls:
+  # DNS-01 through the Evolution DNS API: webhook solver infra/acme-dns01, backend cloudru
+  # (Secret wizard-dns-solver in cert-manager: CLOUDRU_PROJECT_ID, CLOUDRU_KEY_ID, CLOUDRU_KEY_SECRET)
+  solver: webhook
+  webhook:
+    dnsProvider: cloudru
+data:
+  # RWX class of the managed cluster's CSI (fill in after the first bring-up: `kubectl get storageclass`)
+  storageClass: ""
+  accessMode: ReadWriteMany
+runtime:
+  # s3.cloud.ru addresses for the runtime's file traffic (fill in: dig +short s3.cloud.ru)
+  s3Cidrs: []

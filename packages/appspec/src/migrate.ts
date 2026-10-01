@@ -158,6 +158,8 @@ export const SYSTEM_TABLES: Record<string, string[]> = {
     `"user_id" uuid NOT NULL`,
     `"expires_at" timestamptz NOT NULL`,
   ],
+  // M2: one-time nonces of preview-login tokens (runtime.yaml#auth.preview_login_M2, L3-11).
+  _w_preview_nonces: [`"nonce" text PRIMARY KEY`, `"expires_at" timestamptz NOT NULL`],
   _w_consents: [
     `"id" uuid PRIMARY KEY DEFAULT gen_random_uuid()`,
     `"entity" text NOT NULL`,

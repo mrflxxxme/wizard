@@ -635,7 +635,7 @@ tasks:
     claimed_by: null
     acceptance:
       - "Регрессия доли G0/G1 >5 п.п. роняет CI"
-      - "Ночью — 5 брифов на модели по умолчанию; полный прогон — по метке PR при смене промпта или модели и перед вехой; расход считается и прогон не стартует сверх 30 000 ₽/мес (D20_eval_budget)"
+      - "Ночью — 5 брифов на модели по умолчанию; полный прогон — по метке PR при смене промпта или модели и перед вехой; расход считается и прогон не стартует сверх потолка live-eval D20_eval_budget (≤ 4 000 ₽/мес; на пилоте — раз в неделю, M2-16)"
 
   - id: M1-11
     title: "platform-web: S10 (команда и приглашения, «только РФ», ревизии и откат) и M1-части S1, S3, S4, S6 (карточка «Публикация»), S7; экраны входа и принятия приглашения"
@@ -880,6 +880,36 @@ tasks:
       - "Поле file по умолчанию pii: basic, удаляется по retention и anonymize; G2-AF-03 срабатывает на label «скан/фото паспорта»"
       - "Логотип системы — только PNG/WebP (SVG запрещён), растеризация на сервере"
       - "До закрытия задачи G0 отклоняет поле типа file (L4-12)"
+
+  - id: M2-15
+    title: "Режим пилота (D23_pilot, D24_pilot_free): регистрация по приглашению основателя, тариф pilot, WIZARD_PAYMENTS=off, ручное начисление кредитов, платформенный месячный лимит расходов на модели"
+    milestone: M2
+    deps: [M2-07, M2-11]
+    specs: [specs/product.yaml, specs/platform/billing.yaml, specs/platform/api.yaml, specs/ui/platform-screens.yaml, specs/escalation.yaml, specs/quality/eval.yaml]
+    owner: platform
+    parallel_group: m2-p
+    estimate_days: 1.5
+    status: done
+    claimed_by: null
+    acceptance:
+      - "WIZARD_REGISTRATION=invite: вход нового email без приглашения основателя → понятный отказ на русском; приглашение создаёт CLI платформы, письмо со ссылкой"
+      - "Тариф pilot назначает только CLI основателя; лимиты и методы входа — billing.yaml#plans.pilot; публикация в prod без привязки карты"
+      - "WIZARD_PAYMENTS=off: в /billing нет покупки, подписок и привязки карты (виден тариф pilot и баланс), платёжные операции API → 403 PAYMENTS_DISABLED; e2e M2 стенда работает с payments=on, пилотный e2e — с off"
+      - "CLI основателя: начислить кредиты организации (ledger, reason=pilot_grant), список организаций с балансом и расходом"
+      - "Платформенный лимит токенов: сумма cost_rub llm_calls за календарный месяц ≥ WIZARD_LLM_MONTHLY_CAP_RUB (по умолчанию 6 000) → новые сборки и интервью отвечают понятным отказом на русском, основателю — алерт; при 80 % — предупреждение; eval-бюджет считается отдельно (eval.yaml#live_cadence.budget)"
+
+  - id: M2-16
+    title: "Eval на пилоте: smoke раз в неделю, потолок live-eval 4 000 ₽/мес (D20_eval_budget)"
+    milestone: M2
+    deps: []   # расписание и бюджет eval не зависят от live-ключей M1-10
+    specs: [specs/quality/eval.yaml, specs/product.yaml]
+    owner: qa
+    parallel_group: m2-p
+    estimate_days: 0.3
+    status: done
+    claimed_by: null
+    acceptance:
+      - "eval-live.yml: расписание раз в неделю; бюджетная проверка tools/eval использует 4 000 ₽/мес"
 
   # ---------------- M3: вторая волна ----------------
   - id: M3-01

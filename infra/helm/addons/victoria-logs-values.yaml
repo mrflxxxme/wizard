@@ -1,0 +1,13 @@
+# Logs, self-hosted and small (deploy.yaml#cloud.observability): VictoriaLogs single (Apache-2.0) with the bundled
+# vector agent (MPL-2.0, infrastructure outside the bundle) collecting container stdout — the apps already log only
+# allowlisted fields (packages/pii log.ts, L3-08). Retention 30 days (#retention). UI: :9428/select/vmui.
+server:
+  retentionPeriod: 30d
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+vector:
+  enabled: true

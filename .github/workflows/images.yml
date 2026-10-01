@@ -1,0 +1,91 @@
+# M2-06 (deploy.yaml#cloud.ci_cd, L3-38): every image of infra/docker/images.json builds from the repo, gets a
+# CycloneDX SBOM (syft via anchore/sbom-action, Apache-2.0) as an artifact. Pilot (platform/deploy.yaml#pilot): pushes
+# of main go to GHCR of this repository (ghcr.io/<owner>/<image>:<sha>, private packages, the job's GITHUB_TOKEN with
+# packages: write) when vars.WIZARD_IMAGES_GHCR == 'enabled'; the pilot VM pulls them with a read:packages token.
+# Beta: images are pushed by the deploy workflows on the self-hosted runner; the registry push step below is a
+# bootstrap option only (registry credentials as repository secrets).
+name: images
+
+on:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "infra/**"
+      - "pnpm-lock.yaml"
+      - ".dockerignore"
+      - ".github/workflows/images.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      names: ${{ steps.m.outputs.names }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "names=$(node -p 'JSON.stringify(require("./infra/docker/images.json").images.map((i) => i.name))')" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.matrix.outputs.names) }}
+    env:
+      REGISTRY: ${{ vars.WIZARD_REGISTRY_STAGING }}
+      REGISTRY_USER: ${{ secrets.CLOUDRU_REGISTRY_USER }}
+      REGISTRY_PASSWORD: ${{ secrets.CLOUDRU_REGISTRY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        run: node tools/deploy/images.mjs build --only "${{ matrix.image }}" --tag "${{ github.sha }}"
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: wizard.local/${{ matrix.image }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.image }}.cdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.image }}
+          path: sbom-${{ matrix.image }}.cdx.json
+          retention-days: 90
+      - name: Push (only with registry credentials)
+        if: github.event_name == 'push' && env.REGISTRY != '' && env.REGISTRY_PASSWORD != ''
+        run: |
+          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+          node tools/deploy/images.mjs build --only "${{ matrix.image }}" --registry "$REGISTRY" --tag "${{ github.sha }}" --push
+          docker logout "$REGISTRY"
+      - name: Push to GHCR (pilot)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.WIZARD_IMAGES_GHCR == 'enabled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          node tools/deploy/images.mjs build --only "${{ matrix.image }}" --registry "ghcr.io/$owner" --tag "${{ github.sha }}" --push
+          docker logout ghcr.io
+      - name: No push
+        if: ${{ !(github.event_name == 'push' && env.REGISTRY != '' && env.REGISTRY_PASSWORD != '') && vars.WIZARD_IMAGES_GHCR != 'enabled' }}
+        run: echo "::notice title=images::${{ matrix.image }} собран без публикации (нет реестра Cloud.ru или это PR)."

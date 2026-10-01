@@ -1,0 +1,33 @@
+{
+  "$comment": "Images of one release (M2-06): CI builds every entry (.github/workflows/images.yml), the chart references them by name (infra/helm/wizard/values.yaml images.names). tools/deploy/test/helm.test.ts keeps both in sync.",
+  "images": [
+    {
+      "name": "wizard-platform-api",
+      "dockerfile": "infra/docker/app.Dockerfile",
+      "args": { "FILTER": "@wizard/platform-api", "APP_DIR": "apps/platform-api", "ENTRY": "src/main.ts" }
+    },
+    {
+      "name": "wizard-worker",
+      "dockerfile": "infra/docker/app.Dockerfile",
+      "args": { "FILTER": "@wizard/worker", "APP_DIR": "apps/worker", "ENTRY": "src/main.ts" }
+    },
+    {
+      "name": "wizard-runtime",
+      "dockerfile": "infra/docker/app.Dockerfile",
+      "args": { "FILTER": "@wizard/runtime", "APP_DIR": "apps/runtime", "ENTRY": "src/main.ts" }
+    },
+    {
+      "name": "wizard-egress-proxy",
+      "dockerfile": "infra/docker/app.Dockerfile",
+      "args": { "FILTER": "@wizard/runtime", "APP_DIR": "apps/runtime", "ENTRY": "src/egress-main.ts" }
+    },
+    {
+      "name": "wizard-acme-dns01",
+      "dockerfile": "infra/docker/app.Dockerfile",
+      "args": { "FILTER": "@wizard/acme-dns01", "APP_DIR": "infra/acme-dns01", "ENTRY": "src/main.ts" }
+    },
+    { "name": "wizard-platform-web", "dockerfile": "infra/docker/web.Dockerfile", "args": {} },
+    { "name": "wizard-pgbouncer", "dockerfile": "infra/docker/pgbouncer.Dockerfile", "args": {} },
+    { "name": "wizard-postgres", "dockerfile": "infra/docker/postgres.Dockerfile", "args": {} }
+  ]
+}

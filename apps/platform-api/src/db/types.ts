@@ -374,6 +374,26 @@ export interface FounderReviewsTable {
   created_at: TsDef;
 }
 
+/** db.yaml#pilot_invites (M2-15): founder invitations of the invite-only registration (WIZARD_REGISTRATION=invite). */
+export interface PilotInvitesTable {
+  id: Generated<string>;
+  email: string;
+  org_name: string | null;
+  credits: Generated<number>;
+  expires_at: Ts;
+  accepted_at: TsNull;
+  accepted_user_id: string | null;
+  org_id: string | null;
+  revoked_at: TsNull;
+  created_at: TsDef;
+}
+
+/** db.yaml#ops_alerts (M2-15): founder alerts sent once per key (e.g. llm_cap_80:<yyyy-mm>). */
+export interface OpsAlertsTable {
+  key: string;
+  created_at: TsDef;
+}
+
 /** db.yaml#brand_allowlist: brands the org proved it owns (abuse.yaml#patterns.brands.override, G2-AF-04). */
 export interface BrandAllowlistTable {
   org_id: string;
@@ -410,4 +430,6 @@ export interface DB {
   "platform.subscriptions": SubscriptionsTable;
   "platform.founder_reviews": FounderReviewsTable;
   "platform.brand_allowlist": BrandAllowlistTable;
+  "platform.pilot_invites": PilotInvitesTable;
+  "platform.ops_alerts": OpsAlertsTable;
 }

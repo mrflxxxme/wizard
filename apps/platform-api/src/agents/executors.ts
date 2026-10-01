@@ -73,13 +73,18 @@ function toOutput(res: TurnResult): InterviewOutput {
   };
 }
 
+/** Plan as the orchestrator sees it: pilot → free (phone_otp is blocked like on Free). */
+export const agentPlan = (plan: string): "free" | "start" | "business" =>
+  plan === "start" || plan === "business" ? plan : "free";
+
 async function turn(host: InterviewHost): Promise<TurnResult> {
   const c = host.context;
   const orch = createOrchestrator({
     route: hostRouteFn(host.route, { step: "orchestrate" }),
     orgPolicy: c.org.policy,
     ctx: { orgId: c.org.id, runId: host.run.id, systemId: c.system.id },
-    org: { plan: c.org.plan as "free" | "start" | "business", ruOnly: c.org.policy.ruOnly },
+    // The orchestrator knows free/start/business; pilot has the free login methods (no phone_otp, billing.yaml#plans.pilot).
+    org: { plan: agentPlan(c.org.plan), ruOnly: c.org.policy.ruOnly },
     runStep: host.runStep,
   });
   let session = (c.state as OrchSession | null) ?? newSession();

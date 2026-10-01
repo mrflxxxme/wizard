@@ -1,0 +1,191 @@
+{{- $ns := .Values.namespaces.platform }}
+# platform-api (UI/API of the platform), worker (DBOS), platform-web (static), shared .data volume.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wizard-data
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .Values.data.accessMode }}]
+  {{- if .Values.data.storageClass }}
+  storageClassName: {{ .Values.data.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.data.size }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wizard-app
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-platform-api
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-platform-api" | nindent 4 }}
+spec:
+  replicas: {{ .Values.platformApi.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-platform-api" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-platform-api" | nindent 8 }}
+        wizard.ru/role: platform-api
+    spec:
+      serviceAccountName: wizard-app
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: platform-api
+          image: {{ include "wizard.image" (list . .Values.images.names.platformApi) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            {{- include "wizard.commonEnv" . | nindent 12 }}
+            {{- include "wizard.alertEnv" . | nindent 12 }}
+            - name: PORT
+              value: {{ .Values.platformApi.port | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.platformEnv }}
+          ports:
+            - { name: http, containerPort: {{ .Values.platformApi.port }}, protocol: TCP }
+          # platform-api has no health route in api.yaml yet: TCP readiness (impl-notes M2-06).
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.platformApi.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "wizard.nodeMounts" . | nindent 12 }}
+      volumes: {{- include "wizard.nodeVolumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-platform-api
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-platform-api" | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.platformApi.port }}, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-worker
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-worker" | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-worker" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-worker" | nindent 8 }}
+        wizard.ru/role: worker
+    spec:
+      serviceAccountName: wizard-app
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "wizard.image" (list . .Values.images.names.worker) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            {{- include "wizard.commonEnv" . | nindent 12 }}
+            {{- include "wizard.alertEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.platformEnv }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "wizard.nodeMounts" . | nindent 12 }}
+      volumes: {{- include "wizard.nodeVolumes" . | nindent 8 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-platform-web
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-platform-web" | nindent 4 }}
+spec:
+  replicas: {{ .Values.platformWeb.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-platform-web" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-platform-web" | nindent 8 }}
+        wizard.ru/role: platform-web
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 101 | nindent 6 }}
+      containers:
+        - name: platform-web
+          image: {{ include "wizard.image" (list . .Values.images.names.platformWeb) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: WIZARD_SYSTEMS_DOMAIN
+              value: {{ .Values.domains.systems | quote }}
+          ports:
+            - { name: http, containerPort: {{ .Values.platformWeb.port }}, protocol: TCP }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.platformWeb.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: confd, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+        - { name: cache, emptyDir: { sizeLimit: 64Mi } }
+        - { name: confd, emptyDir: { sizeLimit: 1Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-platform-web
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-platform-web" | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.platformWeb.port }}, targetPort: http }
+{{- if gt (int .Values.platformApi.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wizard-platform-api
+  namespace: {{ $ns }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-platform-api" | nindent 6 }}
+{{- end }}

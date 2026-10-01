@@ -104,6 +104,25 @@ export class SandboxRpc {
     };
   }
 
+  /**
+   * Capability of a call that is still open (egress proxy authorization via the internal port, L3-24): signature,
+   * expiry and the open-call registry, exactly like the RPC listener; null otherwise.
+   */
+  openCapability(token: string): Capability | null {
+    const check = verifyCapability(this.o.key, token, this.clock());
+    if (!check.ok) return null;
+    const entry = this.calls.get(check.cap.requestId);
+    if (
+      !entry ||
+      entry.cap.systemId !== check.cap.systemId ||
+      entry.cap.env !== check.cap.env ||
+      entry.cap.exp !== check.cap.exp
+    ) {
+      return null;
+    }
+    return check.cap;
+  }
+
   private deny(reason: string, extra: Record<string, unknown> = {}): Response {
     this.o.log?.({
       ts: new Date().toISOString(),

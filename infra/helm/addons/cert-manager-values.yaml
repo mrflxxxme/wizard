@@ -1,0 +1,8 @@
+# cert-manager (Apache-2.0): CRDs with the release; ACME DNS-01 checks go to the authoritative Cloud.ru DNS servers.
+crds:
+  enabled: true
+extraArgs:
+  - --dns01-recursive-nameservers-only
+  - --dns01-recursive-nameservers=77.88.8.8:53,77.88.8.1:53
+prometheus:
+  enabled: false

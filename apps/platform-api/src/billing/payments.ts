@@ -13,12 +13,11 @@ import { type Db, json } from "../db/index.js";
 import type { DB, PaymentsTable } from "../db/types.js";
 import { ApiError, notFound } from "../errors.js";
 import type { Billing } from "./ledger.js";
-import { DAY_MS, PLANS, type PlanId, TOPUP } from "./plans.js";
+import { DAY_MS, type PaidPlan, PLANS, type PlanId, TOPUP } from "./plans.js";
 import { kopOf, PlatformShop, rubles, ShopError, type ShopPayment } from "./shop.js";
 
 type Trx = Transaction<DB>;
 type Q = Db | Trx;
-type PaidPlan = Exclude<PlanId, "free">;
 type PaymentRow = {
   id: string;
   org_id: string;
@@ -104,6 +103,8 @@ export interface BillingView {
     message_ru: string | null;
   } | null;
   limits: { prodSystems: number; members: number; monthlyCredits: number };
+  /** WIZARD_PAYMENTS (M2-15): false — purchase, subscriptions and card binding are hidden and answer 403. */
+  paymentsEnabled: boolean;
   confirmationUrl?: string | null;
 }
 
@@ -140,8 +141,9 @@ export class Payments {
     );
   }
 
+  /** Shop keys set and WIZARD_PAYMENTS on (D24_pilot_free): the webhook and the renewals sweep run only then. */
   get enabled(): boolean {
-    return this.#shop !== null;
+    return this.#shop !== null && this.#d.config.payments;
   }
 
   #now(): Date {
@@ -214,6 +216,7 @@ export class Payments {
         members: def.limits.members,
         monthlyCredits: def.monthlyMilli / 1000,
       },
+      paymentsEnabled: this.#d.config.payments,
     };
   }
 
@@ -681,7 +684,7 @@ export class Payments {
    */
   async sweep(): Promise<{ reminded: number; ended: number; charged: number; reconciled: number }> {
     const out = { reminded: 0, ended: 0, charged: 0, reconciled: 0 };
-    if (!this.#shop) return out;
+    if (!this.enabled) return out;
     out.reminded = await this.remind();
     out.ended = await this.endDue();
     for (const orgId of await this.dueRenewals()) {

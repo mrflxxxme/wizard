@@ -19,3 +19,12 @@ export const M2_OUTBOX = new URL("../../../.data/e2e-m2/outbox/", import.meta.ur
 export const M2_DB_FILE = new URL("../../../.data/e2e-m2/db-url", import.meta.url).pathname;
 
 export const M2_LLM_LOG = new URL("../../../.data/e2e-m2/llm-requests.jsonl", import.meta.url).pathname;
+
+// Ports of the pilot stand (M2-15): the M2 rules with WIZARD_REGISTRATION=invite and WIZARD_PAYMENTS=off, no shop.
+export const PILOT = { api: 4230, runtime: 4130, web: 5203 } as const;
+
+export const PILOT_OUTBOX = new URL("../../../.data/e2e-pilot/outbox/", import.meta.url).pathname;
+
+export const PILOT_DB_FILE = new URL("../../../.data/e2e-pilot/db-url", import.meta.url).pathname;
+
+export const PILOT_LLM_LOG = new URL("../../../.data/e2e-pilot/llm-requests.jsonl", import.meta.url).pathname;

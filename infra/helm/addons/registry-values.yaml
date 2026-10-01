@@ -1,0 +1,17 @@
+# In-cluster image registry (CNCF distribution, Apache-2.0) — provider-neutral, no managed registry needed.
+# The runner pushes to <server private ip>:30500 over the VPC (firewall: never public); every k3s node pulls
+# registry.wizard.local/* through the containerd mirror http://127.0.0.1:30500 (infra/k3s/cloud-init-*.yaml).
+service:
+  type: NodePort
+  port: 5000
+  nodePort: 30500
+persistence:
+  enabled: true
+  size: 20Gi
+  accessMode: ReadWriteOnce
+garbageCollect:
+  enabled: true
+  schedule: "0 4 * * 0"
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 256Mi }

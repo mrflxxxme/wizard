@@ -1,0 +1,64 @@
+# Staging (deploy.yaml#cloud.environments.staging, M2-06) is on demand: workflow_dispatch mode apply creates it,
+# destroy removes it; while it exists, every green ci on main deploys there (a destroyed staging makes that a no-op).
+# Everything is a no-op with a notice until the founder enables it (repository variable WIZARD_DEPLOY_STAGING=enabled,
+# after the runner and provider access exist — docs/ops/deploy.md).
+name: deploy-staging
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "deploy (образы + Helm) | apply (создать/обновить окружение) | destroy (удалить staging)"
+        type: choice
+        options: [deploy, apply, destroy]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      enabled: ${{ steps.g.outputs.enabled }}
+      sha: ${{ steps.g.outputs.sha }}
+    steps:
+      - id: g
+        env:
+          ENABLED: ${{ vars.WIZARD_DEPLOY_STAGING }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          REF: ${{ github.ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::staging is deployed from main only"; exit 1
+          fi
+          if [ "$ENABLED" = "enabled" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=deploy-staging::Пропущено: облако не подключено (vars.WIZARD_DEPLOY_STAGING ≠ enabled). Что нужно от основателя — docs/ops/deploy.md."
+          fi
+
+  deploy:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    uses: ./.github/workflows/deploy-reusable.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      env: staging
+      sha: ${{ needs.gate.outputs.sha }}
+      mode: ${{ inputs.mode || 'deploy' }}
+    secrets: inherit

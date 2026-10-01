@@ -1,0 +1,69 @@
+#cloud-config
+# Provider-neutral k3s server on a plain Ubuntu 24.04 VM (rendered by the provider's OpenTofu module with templatefile;
+# docs/ops/deploy.md «k3s на ВМ»). No managed control plane: single server, embedded etcd off (sqlite), restore =
+# re-create the VM + `pnpm infra:apply` (state lives in S3 and in managed PostgreSQL — or, in the pilot, in the WAL-G
+# archive from which the database pod restores itself; downtime budget 1–2 h).
+# Variables: k3s_version, token, node_ip, public_ip, pods_cidr, services_cidr, sandbox_pool ("" | free | paid —
+# a single-node environment, e.g. the pilot, also runs the gVisor sandbox pool here), docker_mirror ("" → none).
+package_update: true
+packages: [curl, ca-certificates, gnupg, apparmor]
+write_files:
+  - path: /etc/rancher/k3s/config.yaml
+    permissions: "0600"
+    content: |
+      token: "${token}"
+      write-kubeconfig-mode: "0600"
+      node-ip: ${node_ip}
+      advertise-address: ${node_ip}
+      tls-san: ["${node_ip}", "${public_ip}"]
+      cluster-cidr: ${pods_cidr}
+      service-cidr: ${services_cidr}
+      # Our own ingress (infra/helm/addons traefik) replaces the bundled one; ServiceLB stays (LoadBalancer IP).
+      disable: [traefik]
+      secrets-encryption: true
+      protect-kernel-defaults: true
+      node-label:
+        - "wizard.ru/pool=${sandbox_pool == "" ? "platform" : sandbox_pool}"
+%{ if sandbox_pool != "" ~}
+        - "wizard.ru/sandbox-node=true"
+%{ endif ~}
+      kube-apiserver-arg:
+        - "audit-log-path=/var/log/k3s-audit.log"
+        - "audit-log-maxage=30"
+  # Images come from the in-cluster registry (infra/helm/addons/registry-values.yaml) through the node port.
+  - path: /etc/rancher/k3s/registries.yaml
+    content: |
+      mirrors:
+        "registry.wizard.local":
+          endpoint:
+            - "http://127.0.0.1:30500"
+%{ if docker_mirror != "" ~}
+        # Docker Hub through the provider's pull-through mirror (Docker Hub limits pulls from RF addresses).
+        "docker.io":
+          endpoint:
+            - "${docker_mirror}"
+%{ endif ~}
+  - path: /etc/sysctl.d/90-kubelet.conf
+    content: |
+      vm.panic_on_oom=0
+      vm.overcommit_memory=1
+      kernel.panic=10
+      kernel.panic_on_oops=1
+%{ if sandbox_pool != "" ~}
+  # gVisor handler for the RuntimeClass "gvisor" (containerd 2 template of k3s ≥ v1.32).
+  - path: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
+    content: |
+      {{ template "base" . }}
+
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+        runtime_type = "io.containerd.runsc.v1"
+%{ endif ~}
+runcmd:
+  - sysctl --system
+%{ if sandbox_pool != "" ~}
+  - curl -fsSL https://gvisor.dev/archive.key | gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" > /etc/apt/sources.list.d/gvisor.list
+  - apt-get update && apt-get install -y runsc
+%{ endif ~}
+  - curl -sfL https://get.k3s.io -o /root/k3s-install.sh
+  - INSTALL_K3S_VERSION='${k3s_version}' sh /root/k3s-install.sh server

@@ -334,15 +334,20 @@ export interface ImportView {
   rowsImported: number | null;
 }
 
-export type PlanId = "free" | "start" | "business";
+/** billing.yaml#plans; pilot — assigned only by the founder's CLI (M2-15). */
+export type PlanId = "free" | "pilot" | "start" | "business";
 
-/** api.yaml#Org (GET /orgs/:orgId, viewer): plan and whether a RU card is bound (M2-07). */
+/**
+ * api.yaml#Org (GET /orgs/:orgId, viewer): plan, whether a RU card is bound (M2-07) and whether the platform takes
+ * payments at all (WIZARD_PAYMENTS, M2-15; absent — on).
+ */
 export interface Org {
   id: string;
   name: string;
   plan: PlanId;
   role?: OrgRole;
   cardBound?: boolean;
+  paymentsEnabled?: boolean;
 }
 
 /** api.yaml#CreditBalance: credits with 0.001 precision, rounded to 0.1 only in UI (billing.yaml#credit.unit). */
@@ -375,7 +380,7 @@ export interface Billing {
   status: "none" | "active" | "past_due" | "cancelled";
   periodEnd: string | null;
   cancelAtPeriodEnd: boolean;
-  nextPlan?: Exclude<PlanId, "free"> | null;
+  nextPlan?: "start" | "business" | null;
   card: { last4: string; issuerCountry: string; boundAt: string; cardType?: string | null } | null;
   cardBinding?: {
     status: "pending" | "bound" | "rejected" | "cancelled";
@@ -383,6 +388,8 @@ export interface Billing {
     message_ru: string | null;
   } | null;
   limits: { prodSystems: number; members: number; monthlyCredits: number };
+  /** WIZARD_PAYMENTS (M2-15): false — payment operations answer 403 PAYMENTS_DISABLED. */
+  paymentsEnabled?: boolean;
   confirmationUrl?: string | null;
 }
 
