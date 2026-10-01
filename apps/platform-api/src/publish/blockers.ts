@@ -1,6 +1,7 @@
 // Publish preconditions (workflows.yaml#workflows.publish.preconditions) and GET /systems/:id publishBlockers.
 import type { AppSpec } from "@wizard/appspec";
 import type { Selectable } from "kysely";
+import { innValid } from "../auth/region.js";
 import type { Billing } from "../billing/ledger.js";
 import { planOf } from "../billing/plans.js";
 import type { Db } from "../db/index.js";
@@ -39,12 +40,19 @@ export async function prodSystemsCount(q: Db, orgId: string, exceptSystemId: str
   return Number(row.n);
 }
 
-/** Blockers that depend only on the revision's spec and the org plan (M1; M2 adds card binding and review). */
+/**
+ * Blockers that depend only on the revision's spec and the org plan (M1; M2 adds card binding and review). Operator
+ * of personal data (security/compliance.yaml#system_package.operator, gates.yaml G2-PII-06): name, contact and, since
+ * M2, address when the spec has pii fields; operatorInn, when set, must pass the INN-10/12 checksum.
+ */
 export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
   const out: ErrorCode[] = [];
+  const c = spec.compliance;
   const hasPii = spec.entities.some((e) => e.fields.some((f) => (f.pii ?? "none") !== "none"));
-  if (hasPii && !spec.compliance?.operatorName?.trim()) out.push("OPERATOR_NAME_REQUIRED");
-  if (hasPii && !spec.compliance?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
+  if (hasPii && !c?.operatorName?.trim()) out.push("OPERATOR_NAME_REQUIRED");
+  if (hasPii && !c?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
+  if (hasPii && !c?.operatorAddress?.trim()) out.push("OPERATOR_ADDRESS_REQUIRED");
+  if (c?.operatorInn !== undefined && !innValid(c.operatorInn)) out.push("INN_INVALID");
   if (plan === "free" && spec.roles.some((r) => r.loginMethods?.includes("phone_otp")))
     out.push("PHONE_LOGIN_PLAN_REQUIRED");
   return out;
@@ -53,6 +61,8 @@ export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
 export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
   OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
+  OPERATOR_ADDRESS_REQUIRED: "Укажите адрес оператора персональных данных — он нужен для политики обработки",
+  INN_INVALID: "ИНН оператора указан с ошибкой — проверьте цифры",
   PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
   PLAN_LIMIT: "Лимит опубликованных систем тарифа",
 };

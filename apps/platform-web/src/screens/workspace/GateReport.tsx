@@ -86,6 +86,7 @@ const SETTINGS_BLOCKERS = new Set([
   "OPERATOR_NAME_REQUIRED",
   "OPERATOR_CONTACT_REQUIRED",
   "OPERATOR_ADDRESS_REQUIRED",
+  "INN_INVALID",
 ]);
 
 export function PublishCard({

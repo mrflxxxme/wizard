@@ -17,7 +17,14 @@ import {
   waitFor,
   waitRun,
 } from "../../platform-api/test/helpers.js";
-import { CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, startWorker, type Worker } from "../src/index.js";
+import {
+  CREDITS_CRON,
+  DBOS_RETENTION,
+  IMPORTS_TTL,
+  RETENTION_CRON,
+  startWorker,
+  type Worker,
+} from "../src/index.js";
 import { CODE_STEPS, LLM_CANARY, recordingRouter, scriptedBuild, scriptedExecutors } from "./support.js";
 
 const SECRET = "shpk_live_9f8e7d6c5b4a";
@@ -356,6 +363,24 @@ describe("runs as DBOS workflows (M1-01)", () => {
     // The run itself (platform.runs, run_events) is untouched.
     expect((await api.req("GET", `/runs/${b.buildRunId}`)).body.status).toBe("succeeded");
     const names = (await DBOS.listSchedules()).map((s) => s.scheduleName).sort();
-    expect(names).toEqual([CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL].sort());
+    expect(names).toEqual([CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, RETENTION_CRON].sort());
+  });
+
+  test("retention_cron (M2-05): a system deleted 31 days ago is purged by the worker pass; messages gone, journal written", async () => {
+    const b = await startBuild(api, "Форум для удаления");
+    await waitRun(api, b.buildRunId, ["succeeded"], 30_000);
+    const del = await api.req("DELETE", `/systems/${b.systemId}`);
+    expect(del.status, del.text).toBe(200);
+    await api.deps.pg`
+      update platform.systems set deleted_at = now() - interval '31 days' where id = ${b.systemId}`;
+    const report = await worker.retention();
+    expect(report.purged.map((p) => p.systemId)).toContain(b.systemId);
+    const [m] = await api.deps
+      .pg`select count(*)::int as n from platform.messages where system_id = ${b.systemId}`;
+    expect(m?.n).toBe(0);
+    const log = await api.req("GET", `/systems/${b.systemId}/deletion-log`);
+    expect(log.body.items.map((i: { mode: string }) => i.mode)).toContain("system_deleted");
+    // Idempotent: a second pass finds nothing to purge.
+    expect((await worker.retention()).purged).toEqual([]);
   });
 });

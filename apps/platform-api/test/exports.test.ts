@@ -57,6 +57,7 @@ beforeAll(async () => {
       expectedVersion: s0.draft_revision,
       operatorName: "ООО «Форум»",
       operatorContact: "privacy@forum.example",
+      operatorAddress: "г. Москва, ул. Тверская, д. 1",
     },
   });
   expect(put.status, put.text).toBe(200);

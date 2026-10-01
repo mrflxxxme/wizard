@@ -86,6 +86,7 @@ test("S1 → S3 → S4 → S6: блокер оператора ПДн → S10 �
   await expect(page).toHaveURL(new RegExp(`/s/${systemId}/settings`));
   await page.getByTestId("settings-pd-name").fill("ООО «Северный ритейл»");
   await page.getByTestId("settings-pd-contact").fill("privacy@north-retail.example");
+  await page.getByTestId("settings-pd-address").fill("г. Москва, ул. Тверская, д. 1");
   await page.getByTestId("settings-pd-save").click();
   await expect(page.getByTestId("settings-notice")).toHaveText("Сохранено");
 

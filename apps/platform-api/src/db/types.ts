@@ -305,6 +305,18 @@ export interface ExportsTable {
   created_at: TsDef;
 }
 
+export interface DeletionLogTable {
+  id: Generated<string>;
+  system_id: string;
+  env: string;
+  entity: string;
+  mode: string;
+  cutoff: TsNull;
+  rows_affected: number;
+  run_id: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
@@ -326,4 +338,5 @@ export interface DB {
   "platform.credit_ledger": CreditLedgerTable;
   "platform.imports": ImportsTable;
   "platform.exports": ExportsTable;
+  "platform.deletion_log": DeletionLogTable;
 }

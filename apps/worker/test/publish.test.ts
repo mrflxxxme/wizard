@@ -80,6 +80,7 @@ async function compliance(systemId: string, name: string): Promise<number> {
       expectedVersion: s.body.system.draftRevision,
       operatorName: name,
       operatorContact: "privacy@north-retail.example",
+      operatorAddress: "г. Москва, ул. Тверская, д. 1",
     },
   });
   expect(put.status, put.text).toBe(200);

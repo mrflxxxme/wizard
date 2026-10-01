@@ -6,6 +6,7 @@ import { schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
+import { upgradeSystemTables } from "../agents/system-tables.js";
 import type { Config } from "../config.js";
 import type { PublicationsTable } from "../db/types.js";
 import { RunFailure } from "../runs/types.js";
@@ -119,6 +120,10 @@ export async function applyProdMigration(
   const o = a.options ?? {};
   const schema = schemaName(a.systemKey, "prod");
   const ddl = toDDL(a.plan, schema, { runtimeRole: o.runtimeRole ?? RUNTIME_ROLE, lockTimeout: "3s" });
+  // An existing prod schema may predate system tables/columns of the current runtime (before set_rls touches them);
+  // create_schema over a leftover schema creates missing tables itself but not missing columns.
+  if (a.plan.steps.some((s) => s.kind === "create_schema")) ddl.push(...upgradeSystemTables(schema));
+  else ddl.unshift(...upgradeSystemTables(schema));
   const delays = o.lockRetryDelaysMs ?? [5000, 15_000, 45_000];
   for (let attempt = 0; ; attempt++) {
     try {

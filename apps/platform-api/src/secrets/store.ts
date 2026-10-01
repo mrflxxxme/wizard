@@ -92,6 +92,16 @@ export class SecretStore {
     return `secret://${p.name}`;
   }
 
+  /** Deletes every value of a system (workflows.yaml#delete_system); returns the number removed. */
+  removeSystem(systemId: string): number {
+    const f = this.#read();
+    const prefix = `${systemId}/`;
+    const kept = Object.entries(f.entries).filter(([k]) => !k.startsWith(prefix));
+    const removed = Object.keys(f.entries).length - kept.length;
+    if (removed > 0) this.#write({ ...f, entries: Object.fromEntries(kept) });
+    return removed;
+  }
+
   /** The stored value, or null. */
   get(systemId: string, env: "draft" | "prod", name: string): string | null {
     const path = `${systemId}/${env}/${name}`;
