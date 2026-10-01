@@ -205,3 +205,8 @@
   color: var(--w-muted);
   padding: 0 4px;
 }
+
+.creditsLink {
+  text-decoration: none;
+  color: inherit;
+}

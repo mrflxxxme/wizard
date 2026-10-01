@@ -1,0 +1,48 @@
+/* S-billing extras on top of the S10 layout (settings/Settings.module.css). */
+.big {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.planLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+}
+
+.planOption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--w-line);
+  font-size: 14px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+}
+
+.ok {
+  margin: 0;
+  font-size: 14px;
+  color: var(--w-ok);
+}
+
+.plus {
+  color: var(--w-ok);
+}
+
+.minus {
+  color: var(--w-ink);
+}

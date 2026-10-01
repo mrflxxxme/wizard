@@ -547,6 +547,21 @@ describe("topups and webhook security", () => {
     await fx?.drop();
   });
 
+  test("PlatformApi.fetch hands the node-server env on: the webhook sees the peer IP (main.ts serves api.fetch)", async () => {
+    const { api } = fx;
+    const notify = (ip: string) =>
+      api.fetch(
+        new Request("http://localhost:4000/api/v1/webhooks/yookassa", {
+          method: "POST",
+          headers: { host: "localhost:4000", "content-type": "application/json" },
+          body: JSON.stringify(mock.notification("payment.succeeded", "unknown-payment")),
+        }),
+        { incoming: { socket: { remoteAddress: ip } } },
+      );
+    expect((await notify(YK_IP)).status).toBe(200);
+    expect((await notify("198.51.100.7")).status).toBe(401);
+  });
+
   test("without a card: YooKassa page; payment.succeeded (twice) → one grant of 60 × packs for 365 days", async () => {
     const { api, clock } = fx;
     const org = await newOrg(api);

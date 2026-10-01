@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { M1 } from "./stand/ports.js";
+import { M1, M2 } from "./stand/ports.js";
 
 // Local containers ship chromium in /opt/pw-browsers (revision pinned by the exact @playwright/test version);
 // CI runs `playwright install --with-deps chromium` and uses the default cache.
@@ -25,12 +25,19 @@ export default defineConfig({
   },
   projects: [
     // M0 dev stand (scripts/dev.mjs, WIZARD_AUTH_MODE=dev, fixture LLM).
-    { name: "chromium", testIgnore: /m1\//, use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: /m[12]\//, use: { ...devices["Desktop Chrome"] } },
     // M1 stand (stand/m1.ts): session auth (email OTP, dev-login for setup), scripted builder, real publish.
     {
       name: "m1",
       testMatch: /m1\/.*\.spec\.ts$/,
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${M1.web}`, locale: "ru-RU" },
+    },
+    // M2 stand (stand/m2.ts): WIZARD_MILESTONE=M2 rules (card binding before prod) and the platform shop on
+    // YookassaMock with a test checkout page (M2-11).
+    {
+      name: "m2",
+      testMatch: /m2\/.*\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${M2.web}`, locale: "ru-RU" },
     },
   ],
   webServer: [
@@ -59,6 +66,16 @@ export default defineConfig({
       cwd: import.meta.dirname,
       // 401 without a session means platform-api answers through the Vite proxy (both up).
       url: `http://127.0.0.1:${M1.web}/api/v1/me`,
+      reuseExistingServer: !ci,
+      timeout: 120_000,
+      stdout: "pipe",
+      gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
+      env: { WIZARD_LLM_MODE: "fixture" },
+    },
+    {
+      command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "m2.ts"))}`,
+      cwd: import.meta.dirname,
+      url: `http://127.0.0.1:${M2.web}/api/v1/me`,
       reuseExistingServer: !ci,
       timeout: 120_000,
       stdout: "pipe",
