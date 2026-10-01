@@ -1,9 +1,9 @@
-// M0-18: brief set (eval.yaml#briefs): gd-* ids, ≥ 4 horizontal, ≥ 4 with canaries, no PII outside canaries/allowlist.
+// M0-18 / M2-12: brief set (eval.yaml#briefs): gd-* ids, M0 and M2 composition, no PII outside canaries/allowlist.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { detect } from "../../../packages/pii/src/index.ts";
-import { BRIEFS_DIR, briefProblems, loadBriefs, M0_SET } from "../lib/briefs.mjs";
+import { BRIEFS_DIR, briefProblems, loadBriefs, M0_SET, M2_SET } from "../lib/briefs.mjs";
 
 const briefs = loadBriefs();
 const allow = readFileSync(join(import.meta.dirname, "..", "pii-allowlist.txt"), "utf8")
@@ -28,6 +28,15 @@ describe("brief set", () => {
     expect(count("gd")).toBeGreaterThanOrEqual(M0_SET.gd);
     expect(count("hz")).toBeGreaterThanOrEqual(M0_SET.hz);
     expect(briefs.filter((b) => b.canaries?.length).length).toBeGreaterThanOrEqual(M0_SET.canaries);
+  });
+
+  test("M2-12: M2 composition (≥ 30 briefs, ≥ 10 horizontal outside the two proving grounds — L4-28)", () => {
+    expect(briefs.length).toBeGreaterThanOrEqual(M2_SET.total);
+    const hz = briefs.filter((b) => b.segment === "horizontal");
+    expect(hz.length).toBeGreaterThanOrEqual(M2_SET.hz);
+    expect(hz.every((b) => b.id.startsWith("hz-"))).toBe(true);
+    // Titles are unique: every brief is its own scenario.
+    expect(new Set(briefs.map((b) => b.title)).size).toBe(briefs.length);
   });
 
   test("canary kinds: Latin full name, @handle, non-RU phone are all present in the set", () => {

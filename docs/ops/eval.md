@@ -58,3 +58,7 @@ Settings → Secrets and variables → Actions. Секреты можно пол
 ```bash
 node tools/eval/ci.mjs baseline --result=tools/eval/results/<дата>-harness.json --commit=<sha>
 ```
+
+## Брифы дизайн-партнёров
+
+Оригиналы брифов партнёров хранятся только в S3 eval в РФ (`eval/partners/<P01…>/<id брифа>.<ext>`), в репозитории — синтетический пересказ с блоком `partner` (ключ, sha256, размер). Загрузка и выгрузка — `node tools/eval/partner-brief.mjs upload|fetch`, переменные те же `EVAL_S3_*`. Если `EVAL_S3_ENDPOINT` и `EVAL_S3_REGION` не заданы, скрипт берёт S3 Timeweb пилота (`https://s3.twcstorage.ru`, `ru-1`). Подробности и защитные проверки — `tools/eval/README.md`, раздел «Брифы дизайн-партнёров».

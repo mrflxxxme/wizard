@@ -116,6 +116,24 @@ describe("fixture mode", async () => {
     expect(["T0", "T1"]).toContain(d.tier);
     expect(renderHarnessReport(parsed)).toContain("| glm-5.1 | T0 | 100% | 100% |");
   });
+
+  test("M2-12 (L4-27): p80 build time and time to first preview are recorded in the JSON and the report", async () => {
+    const file = await writeHarnessResult(result, join(tmp, "p80"));
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    for (const model of ["glm-5.3", "glm-5.1"]) {
+      const a = parsed.aggregates.find((x: { model: string }) => x.model === model);
+      expect(a, model).toBeDefined();
+      expect(a.minutes_p80).toBeGreaterThan(0);
+      expect(a.first_preview_minutes_p80).toBeGreaterThan(0);
+      expect(a.first_preview_minutes_p80).toBeLessThanOrEqual(a.minutes_p80);
+      expect(a.no_preview).toBe(0);
+    }
+    const md = readFileSync(file.replace(/\.json$/, ".md"), "utf8");
+    expect(md).toContain("| мин p80 | до превью, мин (ср.) | до превью p80 |");
+    expect(md).toContain("В fixture время не показательно");
+    const row = md.split("\n").find((l) => l.startsWith("| ev-01-forum-registration | glm-5.3 |")) ?? "";
+    expect(row).toMatch(/\| \d+\.\d\d \| \d+\.\d\d \| succeeded \|$/);
+  });
 });
 
 describe("--dry-run: canaries and pii_leaks", async () => {

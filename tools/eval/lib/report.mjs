@@ -30,12 +30,22 @@ const f1 = (x) => (x === null || x === undefined ? "—" : x.toFixed(1));
 const f2 = (x) => (x === null || x === undefined ? "—" : x.toFixed(2));
 const tok = (t) => `${t.input} / ${t.cached} / ${t.output}`;
 
+/** Nearest-rank percentile (p ∈ (0, 1]) of the non-null values; null when there are none. */
+export function percentile(xs, p) {
+  const v = xs.filter((x) => typeof x === "number" && Number.isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v[Math.min(v.length, Math.max(1, Math.ceil(p * v.length))) - 1];
+}
+
+/** eval.yaml#thresholds.by_milestone.M2 (L4-27): p80 build time and p80 time to the first preview, minutes. */
+export const M2_TIME_TARGETS = { minutes_p80: 30, first_preview_minutes_p80: 10 };
+
 /** Aggregates of harness runs per model (skipped runs excluded). */
 export function aggregateHarness(runs) {
   const models = [...new Set(runs.map((r) => r.model))];
   return models.map((model) => {
     const rs = runs.filter((r) => r.model === model && !r.skipped);
-    const previews = rs.map((r) => r.first_preview_minutes).filter((x) => x !== null);
+    const previews = rs.map((r) => r.first_preview_minutes).filter((x) => x !== null && x !== undefined);
     const ratios = rs.map((r) => r.estimate_ratio).filter((x) => x !== null);
     return {
       model,
@@ -55,7 +65,15 @@ export function aggregateHarness(runs) {
       cost_rub: sum(rs.map((r) => r.cost_rub)),
       credits: avg(rs.map((r) => r.credits)),
       minutes: avg(rs.map((r) => r.minutes)),
+      // L4-27: p80 of the build time (brief → final gate) and of the time to the first preview (first G0 pass).
+      minutes_p80: percentile(
+        rs.map((r) => r.minutes),
+        0.8,
+      ),
       first_preview_minutes: previews.length ? avg(previews) : null,
+      first_preview_minutes_p80: percentile(previews, 0.8),
+      // Runs that never reached a preview (no G0 pass): they are not in the p80 above.
+      no_preview: rs.length - previews.length,
       questions_asked: avg(rs.map((r) => r.questions_asked)),
       estimate_ratio: ratios.length ? avg(ratios) : null,
       escalations: sum(rs.map((r) => r.escalations)),
@@ -85,6 +103,20 @@ export function hardViolations(result) {
   return out;
 }
 
+/**
+ * Time targets of M2 (eval.yaml#thresholds.by_milestone.M2) missed by a live result; [] for fixture/dry runs, where
+ * wall time is not the model's. Reported, not a hard threshold.
+ */
+export function timeTargetMisses(result) {
+  if (result.llm_mode === "fixture" || result.dry_run) return [];
+  const out = [];
+  for (const a of aggregateHarness(result.runs)) {
+    for (const [k, max] of Object.entries(M2_TIME_TARGETS))
+      if (a[k] !== null && a[k] > max) out.push(`${a.model}: ${k} = ${a[k].toFixed(1)} > ${max}`);
+  }
+  return out;
+}
+
 /** Markdown report: per-model table (eval.yaml#report.outputs) and the per-brief table. */
 export function renderHarnessReport(result) {
   const L = [];
@@ -106,24 +138,35 @@ export function renderHarnessReport(result) {
     );
   L.push("");
   L.push(
-    "| Модель | Уровень | g0_pass | g0g1_pass | coverage | ₽ | credits (ср.) | мин (ср.) | вопросы (ср.) | pii_leaks |",
+    "| Модель | Уровень | g0_pass | g0g1_pass | coverage | ₽ | credits (ср.) | мин (ср.) | вопросы (ср.) | pii_leaks | мин p80 | до превью, мин (ср.) | до превью p80 |",
   );
-  L.push("|---|---|---|---|---|---|---|---|---|---|");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const a of aggregateHarness(result.runs)) {
     L.push(
-      `| ${a.model} | ${a.tier ?? ""} | ${pct(a.g0_pass)} | ${a.g0g1_pass === null ? "—" : pct(a.g0g1_pass)} | ${a.coverage.toFixed(2)} | ${a.cost_rub.toFixed(2)} | ${f2(a.credits)} | ${f1(a.minutes)} | ${f1(a.questions_asked)} | ${a.pii_leaks} |`,
+      `| ${a.model} | ${a.tier ?? ""} | ${pct(a.g0_pass)} | ${a.g0g1_pass === null ? "—" : pct(a.g0g1_pass)} | ${a.coverage.toFixed(2)} | ${a.cost_rub.toFixed(2)} | ${f2(a.credits)} | ${f1(a.minutes)} | ${f1(a.questions_asked)} | ${a.pii_leaks} | ${f2(a.minutes_p80)} | ${f2(a.first_preview_minutes)} | ${f2(a.first_preview_minutes_p80)}${a.no_preview ? ` (без превью: ${a.no_preview})` : ""} |`,
     );
   }
   L.push("");
-  L.push("| Бриф | Модель | Фикстура | g0_pass | g0g1_pass | tokens (вход / кэш / выход) | ₽ | мин | Итог |");
-  L.push("|---|---|---|---|---|---|---|---|---|");
+  L.push(
+    `Время: «мин» — от брифа до финального гейта, «до превью» — до первой ревизии с G0 passed; p80 — 80-й перцентиль по брифам (цель M2: ≤ ${M2_TIME_TARGETS.minutes_p80} и ≤ ${M2_TIME_TARGETS.first_preview_minutes_p80} мин в live).`,
+  );
+  if (result.llm_mode === "fixture" || result.dry_run)
+    L.push(
+      "> В fixture время не показательно: ответы модели не ждутся, считается только работа харнесса и гейтов.",
+    );
+  for (const m of timeTargetMisses(result)) L.push(`- Цель M2 по времени не достигнута: ${m}`);
+  L.push("");
+  L.push(
+    "| Бриф | Модель | Фикстура | g0_pass | g0g1_pass | tokens (вход / кэш / выход) | ₽ | мин | до превью, мин | Итог |",
+  );
+  L.push("|---|---|---|---|---|---|---|---|---|---|");
   for (const r of result.runs) {
     if (r.skipped) {
-      L.push(`| ${r.brief} | ${r.model} | — | — | — | — | — | — | пропущен: ${r.skipped} |`);
+      L.push(`| ${r.brief} | ${r.model} | — | — | — | — | — | — | — | пропущен: ${r.skipped} |`);
       continue;
     }
     L.push(
-      `| ${r.brief} | ${r.model} | ${r.fixture ?? "live"} | ${r.g0_pass ? "✓" : "✗"} | ${r.g1_skipped ? "—" : r.g0g1_pass ? "✓" : "✗"} | ${tok(r.tokens)} | ${r.cost_rub.toFixed(2)} | ${r.minutes.toFixed(2)} | ${r.outcome} |`,
+      `| ${r.brief} | ${r.model} | ${r.fixture ?? "live"} | ${r.g0_pass ? "✓" : "✗"} | ${r.g1_skipped ? "—" : r.g0g1_pass ? "✓" : "✗"} | ${tok(r.tokens)} | ${r.cost_rub.toFixed(2)} | ${r.minutes.toFixed(2)} | ${r.first_preview_minutes === null || r.first_preview_minutes === undefined ? "—" : r.first_preview_minutes.toFixed(2)} | ${r.outcome} |`,
     );
   }
   const v = hardViolations(result);

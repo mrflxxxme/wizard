@@ -70,7 +70,7 @@ describe("regression (eval.yaml#regression.test)", () => {
   });
 
   test("nightly subset is compared with the per-brief flags of a full-set baseline", () => {
-    const base = { v: 1, entries: baselineEntries(result(allFlags(14)), briefs) };
+    const base = { v: 1, entries: baselineEntries(result(allFlags(ids.length)), briefs) };
     const night = nightlyBriefs(briefs, "2026-10-10");
     const flags = Object.fromEntries(night.map((b) => [b.id, [true, true]]));
     const ok = compareToBaseline(result(flags), briefs, base);
@@ -172,20 +172,32 @@ describe("budget (live_cadence.budget, D20_eval_budget ≤ 30 000 ₽/мес)", 
 });
 
 describe("nightly rotation (live_cadence.nightly_smoke)", () => {
-  test("5 briefs a night: ≥ 1 per segment and ≥ 1 with canaries; deterministic; the whole set within 14 nights", () => {
-    const seen = new Set();
-    for (let d = 0; d < 60; d++) {
-      const date = new Date(Date.UTC(2026, 9, 1 + d));
-      const pick = nightlyBriefs(briefs, date);
-      expect(new Set(pick.map((b) => b.id)).size).toBe(5);
-      for (const seg of SEGMENTS) expect(pick.some((b) => b.segment === seg)).toBe(true);
-      expect(pick.some((b) => b.canaries?.length)).toBe(true);
-      if (d < 14) for (const b of pick) seen.add(b.id);
+  // M2-12: 30 briefs; the smoke may run daily or weekly (M2-16), consecutive runs still cover the whole set.
+  test("5 briefs a run: ≥ 1 per segment and ≥ 1 with canaries; deterministic; the whole set within ceil(N/5) runs", () => {
+    const runs = Math.ceil(briefs.length / 5);
+    for (const [step, periodDays] of [
+      [1, 1],
+      [7, 7],
+      [7, 1],
+    ]) {
+      for (let start = 0; start < 21; start++) {
+        const seen = new Set();
+        for (let k = 0; k < runs; k++) {
+          const date = new Date(Date.UTC(2026, 9, 1 + start + k * step));
+          const pick = nightlyBriefs(briefs, date, 5, periodDays);
+          expect(new Set(pick.map((b) => b.id)).size).toBe(5);
+          for (const seg of SEGMENTS) expect(pick.some((b) => b.segment === seg)).toBe(true);
+          expect(pick.some((b) => b.canaries?.length)).toBe(true);
+          for (const b of pick) seen.add(b.id);
+        }
+        expect(seen.size, `step ${step}, periodDays ${periodDays}, start +${start}`).toBe(briefs.length);
+      }
     }
-    expect(seen.size).toBe(briefs.length);
     expect(nightlyBriefs(briefs, "2026-10-10").map((b) => b.id)).toEqual(
       nightlyBriefs([...briefs].reverse(), "2026-10-10").map((b) => b.id),
     );
+    // A weekly period keeps one subset for the whole week.
+    expect(nightlyBriefs(briefs, "2026-10-05", 5, 7)).toEqual(nightlyBriefs(briefs, "2026-10-08", 5, 7));
   });
 });
 
