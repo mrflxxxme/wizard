@@ -11,6 +11,7 @@ import { clearCookies, issueSession, revokeSession, sessionCookies } from "../au
 import { ApiError, notFound } from "../errors.js";
 import { type AppEnv, clientIp } from "../http/auth.js";
 import { type Deps, jsonBody } from "../http/util.js";
+import { acceptPilotInvite, admitNewUser } from "../pilot/invites.js";
 
 export const OTP_TTL_MS = 10 * 60_000;
 export const OTP_MAX_ATTEMPTS = 5;
@@ -158,6 +159,11 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
         .where("email", "=", b.email)
         .where("deleted_at", "is", null)
         .executeTakeFirst();
+      // M2-15 (WIZARD_REGISTRATION=invite): a new address needs an invitation; checked after the code proved the
+      // mailbox, before the consents — the refusal reaches only the mailbox owner (requestOtp stays 204).
+      const admission = existing
+        ? { pilotInviteId: null }
+        : await admitNewUser(trx, b.email, d.config.registration);
       const needOffer = existing?.offer_version !== OFFER_VERSION;
       const needPd = !existing?.pd_consent_at;
       const missing = [
@@ -172,6 +178,11 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
         .where("id", "=", otp.id)
         .execute();
       const user = await ensureUser(trx, b.email, { offer: needOffer, pd: needPd });
+      if (admission.pilotInviteId && user.createdOrgId)
+        await acceptPilotInvite(trx, d.billing, admission.pilotInviteId, {
+          id: user.id,
+          orgId: user.createdOrgId,
+        });
       return { kind: "ok" as const, user };
     });
     if (out.kind === "invalid") throw new ApiError("OTP_INVALID", "Неверный или устаревший код");
@@ -192,9 +203,22 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
   r.post("/auth/dev-login", async (c) => {
     if (d.config.authMode !== "dev" && !d.config.devLogin) throw notFound("Страница");
     const b = await jsonBody(c, z.object({ email: emailSchema }));
-    const user = await d.db
-      .transaction()
-      .execute((trx) => ensureUser(trx, b.email, { offer: false, pd: false }));
+    const user = await d.db.transaction().execute(async (trx) => {
+      const existing = await trx
+        .selectFrom("platform.users")
+        .select("id")
+        .where("email", "=", b.email)
+        .where("deleted_at", "is", null)
+        .executeTakeFirst();
+      // Dev-login skips the code, not the invite-only registration (M2-15).
+      const admission = existing
+        ? { pilotInviteId: null }
+        : await admitNewUser(trx, b.email, d.config.registration);
+      const u = await ensureUser(trx, b.email, { offer: false, pd: false });
+      if (admission.pilotInviteId && u.createdOrgId)
+        await acceptPilotInvite(trx, d.billing, admission.pilotInviteId, { id: u.id, orgId: u.createdOrgId });
+      return u;
+    });
     return login(c, user);
   });
 

@@ -143,6 +143,23 @@ node tools/deploy/rss-sample.mjs --out rss.json --phase-file phase
 
 Метрики для VictoriaMetrics — `wizard_pg_archive_lag_seconds`, `wizard_pg_last_basebackup_timestamp_seconds`, `wizard_pg_last_restore_drill_timestamp_seconds` и другие. Их отдаёт `/metrics` на порту 9187 пода БД. `/healthz` отвечает 503, если есть проблема.
 
+platform-api шлёт в тот же вебхук алерты платформенного лимита токенов (M2-15, `WIZARD_LLM_MONTHLY_CAP_RUB`, по умолчанию 6 000 ₽ за календарный месяц по Москве). Каждый алерт уходит один раз в месяц: `llm_monthly_cap_warning` (`level: warn`) — при 80 %, `llm_monthly_cap_reached` (`level: error`) — когда лимит исчерпан. После этого новые сборки, ходы интервью и импорты отклоняются с кодом `LLM_BUDGET_EXHAUSTED` до 1-го числа или до повышения лимита в `config.llmMonthlyCapRub`.
+
+### Пилот: приглашения, тариф и кредиты (M2-15)
+
+Профиль `pilot` задаёт `WIZARD_REGISTRATION=invite` и `WIZARD_PAYMENTS=off`. Новый email входит только по приглашению основателя: без него вход отклоняется с текстом «Регистрация в Wizard пока только по приглашению». Оплата, подписки и привязка карты скрыты, операции оплаты отвечают 403 `PAYMENTS_DISABLED`, вебхук ЮKassa выключен. Организации пилота публикуются в prod без карты.
+
+Локально команды запускаются через `pnpm --filter @wizard/platform-api pilot …`. В кластере в образе нет pnpm, поэтому так: `kubectl -n <namespace> exec deploy/wizard-platform-api -- node --import tsx src/pilot/main.ts …`. У платформы пока нет SMTP для своих писем: письмо ложится в outbox на томе `.data`, поэтому ссылку из вывода `invite` основатель пересылает сам.
+
+| Команда | Что делает |
+|---|---|
+| `pilot invite <email> [--org-name <название>] [--credits <N>]` | приглашение на 30 дней и письмо со ссылкой `/login?email=…`; ссылка печатается и в консоль. При первом входе организация получает тариф «Пилот», название и кредиты |
+| `pilot invites`, `pilot revoke <email>` | список приглашений, отзыв активного |
+| `pilot plan <orgId> pilot\|free` | назначить тариф уже зарегистрированной организации |
+| `pilot grant <orgId> <кредиты> [reference]` | начислить кредиты: ledger, корзина topup, `pilot_grant:<reference>`, срок 365 дней. Повтор с тем же reference не начисляет второй раз |
+| `pilot orgs` | организации: тариф, участники, доступно, списано за месяц, расход на модели в ₽ |
+| `pilot spend` | расход платформы на модели за месяц и доля лимита |
+
 ### Учение восстановления (автоматически, еженедельно)
 
 CronJob `wizard-pg-restore-drill` запускается по воскресеньям в 04:37 МСК.

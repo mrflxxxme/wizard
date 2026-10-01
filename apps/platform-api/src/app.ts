@@ -6,6 +6,7 @@ import { createAgentExecutors } from "./agents/executors.js";
 import { type Mailer, OutboxMailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
 import { Billing } from "./billing/ledger.js";
+import { LlmMonthlyCap } from "./billing/llm-cap.js";
 import { Payments } from "./billing/payments.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
@@ -16,6 +17,7 @@ import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
 import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
+import { createOpsAlert, type OpsAlertFn } from "./ops/alert.js";
 import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { authRoutes } from "./routes/auth.js";
@@ -55,7 +57,9 @@ export interface PlatformApiOptions {
   mailer?: Mailer;
   /** Offline GeoIP of logins for the T1 region restriction (data-boundary.yaml#region_restriction.sources). */
   geoRegion?: GeoRegion;
-  /** Clock of the credits ledger (grants, expiry); tests move it forward. */
+  /** Founder alerts (LLM cap of the month); default: structured log + WIZARD_OPS_ALERT_URL webhook. */
+  alert?: OpsAlertFn;
+  /** Clock of the credits ledger (grants, expiry) and of the LLM cap month; tests move it forward. */
   now?: () => Date;
   /**
    * credits_cron period (billing.yaml#credits_cron, hourly), also renewals of subscriptions (M2-07); 0 disables the
@@ -99,8 +103,18 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const blobs = new BlobStore(config.artifactsDir);
   const logger = createLogger({ svc: "platform-api" });
   const log = opts.log ?? ((m: string, e?: unknown) => logger.error(m, e));
+  const alert =
+    opts.alert ??
+    createOpsAlert({ logger, webhook: config.opsAlert, onError: (m, e) => log(m, e ?? undefined) });
+  const llmCap = new LlmMonthlyCap({
+    db: handle.db,
+    capRub: config.llmMonthlyCapRub,
+    alert,
+    ...(opts.now ? { now: opts.now } : {}),
+  });
   const billing = new Billing({
     exemptOrgs: config.billingExemptOrgs,
+    llmCap,
     ...(opts.now ? { now: opts.now } : {}),
   });
   const executors =

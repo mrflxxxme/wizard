@@ -2,7 +2,9 @@
 // interpretations — D10_interpretations / F5).
 import { ApiError } from "../errors.js";
 
-export type PlanId = "free" | "start" | "business";
+export type PlanId = "free" | "pilot" | "start" | "business";
+/** Plans sold through the platform shop (subscriptions, billing.yaml#recurring). */
+export type PaidPlan = "start" | "business";
 export type PlanLimit = "prod_systems" | "draft_systems" | "members";
 export type Bucket = "free_welcome" | "free_monthly" | "plan_monthly" | "topup" | "adjustment";
 
@@ -21,6 +23,8 @@ export interface PlanDef {
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: { priceRubMonth: 0, monthlyMilli: 25_000, limits: { prod_systems: 1, draft_systems: 3, members: 3 } },
+  // billing.yaml#plans.pilot (D24_pilot_free): only the founder's CLI assigns it; credits are granted by hand.
+  pilot: { priceRubMonth: 0, monthlyMilli: 0, limits: { prod_systems: 5, draft_systems: 30, members: 30 } },
   start: {
     priceRubMonth: 1990,
     monthlyMilli: 50_000,
@@ -48,6 +52,12 @@ export const BUCKET_ORDER: readonly Bucket[] = [
 ];
 
 export const planOf = (plan: string): PlanDef => PLANS[plan as PlanId] ?? PLANS.free;
+
+/** billing.yaml#plans.*.login_methods: phone_otp only on paid plans (F4); free and pilot — email and Telegram. */
+export const phoneOtpAllowed = (plan: string): boolean => plan === "start" || plan === "business";
+
+/** Pilot credits granted by the founder: ledger bucket topup, reason pilot_grant, 365 days (billing.yaml#plans.pilot). */
+export const PILOT_GRANT_DAYS = 365;
 
 const LIMIT_RU: Record<PlanLimit, (n: number) => string> = {
   prod_systems: (n) => `На тарифе можно опубликовать не больше ${n} ${n === 1 ? "системы" : "систем"}`,

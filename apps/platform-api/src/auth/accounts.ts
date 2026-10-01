@@ -16,7 +16,7 @@ export const OFFER_VERSION = "draft-2026-09";
 /** Name of the organization created at the first sign-in (the user renames it in S10). */
 export const PERSONAL_ORG_NAME = "Моя организация";
 
-export const MEMBER_LIMITS: Record<string, number> = { free: 3, start: 10, business: 30 };
+export const MEMBER_LIMITS: Record<string, number> = { free: 3, pilot: 30, start: 10, business: 30 };
 
 export interface Membership {
   orgId: string;
@@ -44,7 +44,15 @@ export async function ensureUser(
   trx: Transaction<DB>,
   email: string,
   consents: { offer: boolean; pd: boolean },
-): Promise<{ id: string; email: string; name: string | null; is_staff: boolean; created: boolean }> {
+): Promise<{
+  id: string;
+  email: string;
+  name: string | null;
+  is_staff: boolean;
+  created: boolean;
+  /** The personal organization created now (a user without organizations), else null. */
+  createdOrgId: string | null;
+}> {
   const now = new Date();
   let user = await trx
     .selectFrom("platform.users")
@@ -75,6 +83,7 @@ export async function ensureUser(
     .select("org_id")
     .where("user_id", "=", user.id)
     .executeTakeFirst();
+  let createdOrgId: string | null = null;
   if (!any) {
     const org = await trx
       .insertInto("platform.orgs")
@@ -85,8 +94,9 @@ export async function ensureUser(
       .insertInto("platform.memberships")
       .values({ org_id: org.id, user_id: user.id, role: "owner" })
       .execute();
+    createdOrgId = org.id;
   }
-  return { ...user, created };
+  return { ...user, created, createdOrgId };
 }
 
 /** Row lock of the org: serializes membership/invite changes (LAST_OWNER, PLAN_LIMIT; db.yaml#memberships). */

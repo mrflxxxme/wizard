@@ -61,7 +61,7 @@ tables:
     columns:
       id: "uuid pk"
       name: "text not null check (length(name) between 1 and 120)"
-      plan: "text not null default 'free' check (plan in ('free','start','business'))"
+      plan: "text not null default 'free' check (plan in ('free','pilot','start','business'))"   # pilot — только CLI основателя (billing.yaml#plans.pilot, M2-15)
       ru_only: "boolean not null default false"           # M1, data-boundary.yaml#ru_only
       require_founder_review: "boolean not null default true"   # M2-09; в бете true
       passport_collection_allowed: "boolean not null default false"  # M2, abuse.yaml#patterns.gov_ids
@@ -92,6 +92,27 @@ tables:
       accepted_at: "timestamptz"
       revoked_at: "timestamptz"
     indexes: ["unique (token_hash)", "(org_id) where accepted_at is null and revoked_at is null"]
+
+  pilot_invites:
+    milestone: M2
+    purpose: "M2-15 (D24_pilot_free): приглашения основателя при WIZARD_REGISTRATION=invite. Создаёт CLI платформы (pilot invite), письмо со ссылкой на /login. Первый вход нового email с активным приглашением создаёт org с plan=pilot (имя org_name), начисляет credits (pilot_grant) и отмечает accepted_*"
+    columns:
+      id: "uuid pk"
+      email: "text not null check (email = lower(email))"
+      org_name: "text"
+      credits: "integer not null default 0 check (credits >= 0)"
+      expires_at: "timestamptz not null"                       # 30 дней
+      accepted_at: "timestamptz"
+      accepted_user_id: "uuid references platform.users"
+      org_id: "uuid references platform.orgs"
+      revoked_at: "timestamptz"                               # повторное приглашение отзывает прежнее
+    indexes: ["unique (email) where accepted_at is null and revoked_at is null"]
+
+  ops_alerts:
+    milestone: M2
+    purpose: "M2-15: алерты основателю, отправляемые один раз на ключ (llm_cap_80:<yyyy-mm>, llm_cap_100:<yyyy-mm> — платформенный лимит токенов месяца)"
+    columns:
+      key: "text pk"
 
   systems:
     milestone: M0

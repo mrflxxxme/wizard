@@ -52,6 +52,7 @@ spec:
           imagePullPolicy: {{ .Values.images.pullPolicy }}
           env:
             {{- include "wizard.commonEnv" . | nindent 12 }}
+            {{- include "wizard.alertEnv" . | nindent 12 }}
             - name: PORT
               value: {{ .Values.platformApi.port | quote }}
           envFrom:
@@ -109,7 +110,9 @@ spec:
         - name: worker
           image: {{ include "wizard.image" (list . .Values.images.names.worker) }}
           imagePullPolicy: {{ .Values.images.pullPolicy }}
-          env: {{- include "wizard.commonEnv" . | nindent 12 }}
+          env:
+            {{- include "wizard.commonEnv" . | nindent 12 }}
+            {{- include "wizard.alertEnv" . | nindent 12 }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}

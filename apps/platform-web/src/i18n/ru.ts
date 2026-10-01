@@ -583,7 +583,7 @@ export const ru = {
     back: "На главную",
     org: "Организация",
     plan: "Тариф",
-    planName: { free: "Free", start: "Старт", business: "Бизнес" } as Record<string, string>,
+    planName: { free: "Free", pilot: "Пилот", start: "Старт", business: "Бизнес" } as Record<string, string>,
     planPrice: (rub: number) => (rub === 0 ? "бесплатно" : `${rub.toLocaleString("ru-RU")} ₽ в месяц`),
     status: {
       none: "",
@@ -595,7 +595,11 @@ export const ru = {
     endsAt: (date: string) => `автопродление выключено — тариф действует до ${date}`,
     nextPlan: (plan: string, date: string) => `с ${date} — тариф «${plan}»`,
     limits: (prod: number, members: number, credits: number) =>
-      `До ${prod} ${plural(prod, "опубликованной системы", "опубликованных систем", "опубликованных систем")} · до ${members} ${plural(members, "участника", "участников", "участников")} · ${credits} ${plural(credits, "кредит", "кредита", "кредитов")} в месяц`,
+      `До ${prod} ${plural(prod, "опубликованной системы", "опубликованных систем", "опубликованных систем")} · до ${members} ${plural(members, "участника", "участников", "участников")} · ${credits > 0 ? `${credits} ${plural(credits, "кредит", "кредита", "кредитов")} в месяц` : "кредиты начисляет команда Wizard"}`,
+    /** M2-15, WIZARD_PAYMENTS=off (D24_pilot_free). */
+    paymentsOff:
+      "Оплата на пилоте отключена: тариф и кредиты назначает команда Wizard. Публикация в prod — без привязки карты",
+    pilotBucket: "от команды Wizard",
     loginMethods: (phone: boolean) =>
       phone
         ? "Вход в системах: почта, Telegram, телефон"

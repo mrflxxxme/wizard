@@ -67,6 +67,11 @@ config:
   llmMode: live
   connectors: live
   filesStorage: s3
+  # M2-15 (platform/deploy.yaml#pilot.env): registration open|invite, payments "on"|"off" (quoted: YAML 1.1 reads
+  # bare on/off as booleans), platform LLM cap of the calendar month in ₽.
+  registration: open
+  payments: "on"
+  llmMonthlyCapRub: 6000
   # S3-compatible object storage of the provider (providers/<provider>.yaml)
   s3Endpoint: ""
   s3Region: ""

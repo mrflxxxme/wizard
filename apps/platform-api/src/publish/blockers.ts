@@ -4,7 +4,7 @@ import type { Selectable } from "kysely";
 import { innValid } from "../auth/region.js";
 import type { Billing } from "../billing/ledger.js";
 import { activeCard } from "../billing/payments.js";
-import { planOf } from "../billing/plans.js";
+import { phoneOtpAllowed, planOf } from "../billing/plans.js";
 import type { Db } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
 import type { ErrorCode } from "../errors.js";
@@ -55,14 +55,15 @@ export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
   if (hasPii && !c?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
   if (hasPii && !c?.operatorAddress?.trim()) out.push("OPERATOR_ADDRESS_REQUIRED");
   if (c?.operatorInn !== undefined && !innValid(c.operatorInn)) out.push("INN_INVALID");
-  if (plan === "free" && spec.roles.some((r) => r.loginMethods?.includes("phone_otp")))
+  if (!phoneOtpAllowed(plan) && spec.roles.some((r) => r.loginMethods?.includes("phone_otp")))
     out.push("PHONE_LOGIN_PLAN_REQUIRED");
   return out;
 }
 
 /**
  * workflows.yaml#workflows.publish.preconditions «M2: привязана карта РФ» (billing.yaml#card_binding): a prod
- * publication needs an active payment_methods row of the org; exempt orgs (local stand) and M0/M1 do not.
+ * publication needs an active payment_methods row of the org; exempt orgs (local stand), M0/M1 and pilot orgs
+ * (billing.yaml#plans.pilot.prod_requires: the founder's invitation identifies the owner) do not.
  */
 export async function cardBindingMissing(
   db: Db,
@@ -70,6 +71,8 @@ export async function cardBindingMissing(
   o: { required: boolean; billing?: Billing },
 ): Promise<boolean> {
   if (!o.required || o.billing?.isExempt(orgId)) return false;
+  const org = await db.selectFrom("platform.orgs").select("plan").where("id", "=", orgId).executeTakeFirst();
+  if (org?.plan === "pilot") return false;
   return !(await activeCard(db, orgId));
 }
 
