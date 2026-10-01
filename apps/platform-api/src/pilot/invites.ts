@@ -8,6 +8,7 @@ import type { Mailer } from "../auth/mailer.js";
 import type { Billing } from "../billing/ledger.js";
 import type { DB, Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
+import { BETA_READINESS_MISSING_RU, getBetaReadiness } from "./readiness.js";
 
 type Trx = Transaction<DB>;
 
@@ -44,13 +45,17 @@ export interface PilotInviteResult {
   link: string;
 }
 
-/** Link of the invitation letter: the sign-in page with the address filled in. */
+/** First screen after the first sign-in by the invitation: the pilot onboarding (platform-web /welcome, M2-09). */
+export const PILOT_WELCOME_PATH = "/welcome";
+
+/** Link of the invitation letter: the sign-in page with the address filled in, then the pilot onboarding. */
 export const pilotInviteLink = (origin: string, email: string): string =>
-  `${origin}/login?email=${encodeURIComponent(email)}`;
+  `${origin}/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent(PILOT_WELCOME_PATH)}`;
 
 /**
  * Founder invitation (pilot CLI): replaces an active one for the same address, then sends the letter through the
  * platform mailer. An already registered address needs no invitation (`pilot plan` assigns the plan instead).
+ * M2-09: refused until the founder records beta_readiness (M2-13 done: lawyer, RKN notification).
  */
 export async function createPilotInvite(
   db: Db,
@@ -65,6 +70,7 @@ export async function createPilotInvite(
   if (!Number.isInteger(credits) || credits < 0) throw new PilotError("--credits: целое число ≥ 0");
   const orgName = input.orgName?.trim() || null;
   if (orgName && orgName.length > 120) throw new PilotError("--org-name: не длиннее 120 символов");
+  if (!(await getBetaReadiness(db)).on) throw new PilotError(BETA_READINESS_MISSING_RU);
   const now = o.now ?? new Date();
   const expiresAt = new Date(now.getTime() + PILOT_INVITE_DAYS * 24 * 3600_000);
   const row = await db.transaction().execute(async (trx) => {
@@ -101,6 +107,7 @@ export async function createPilotInvite(
       orgName ? `При первом входе мы создадим организацию «${orgName}».` : "",
       `Войти: ${link}`,
       "Укажите этот адрес почты — мы пришлём код входа. Приглашение действует 30 дней.",
+      "Пилот бесплатный: кредиты на сборку начисляет команда Wizard, а перед первой публикацией системы в prod её посмотрит модератор.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -146,8 +153,9 @@ export async function admitNewUser(
 }
 
 /**
- * First sign-in with a founder invitation: the personal org becomes the pilot org (name, plan pilot), the invited
- * credits are granted (pilot_grant:invite:<id>) and the invitation is accepted. Same transaction as the user.
+ * First sign-in with a founder invitation: the personal org becomes the pilot org (name, plan pilot, founder review
+ * before prod — abuse.yaml#identification.founder_review, M2-09), the invited credits are granted
+ * (pilot_grant:invite:<id>) and the invitation is accepted. Same transaction as the user.
  */
 export async function acceptPilotInvite(
   trx: Trx,
@@ -165,7 +173,7 @@ export async function acceptPilotInvite(
   if (!inv || inv.accepted_at || inv.revoked_at) return;
   await trx
     .updateTable("platform.orgs")
-    .set({ plan: "pilot", ...(inv.org_name ? { name: inv.org_name } : {}) })
+    .set({ plan: "pilot", require_founder_review: true, ...(inv.org_name ? { name: inv.org_name } : {}) })
     .where("id", "=", user.orgId)
     .execute();
   await trx

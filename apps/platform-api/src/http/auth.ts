@@ -29,7 +29,7 @@ export type AppEnv = { Variables: { user: AuthUser; sessionId: string | undefine
 
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 /** Operations without a user (api.yaml security: []), relative to /api/v1. */
-const PUBLIC_PATHS = new Set(["/auth/otp/request", "/auth/otp/verify", "/auth/dev-login"]);
+const PUBLIC_PATHS = new Set(["/auth/otp/request", "/auth/otp/verify", "/auth/dev-login", "/abuse-reports"]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export const isMutating = (method: string): boolean => !SAFE_METHODS.has(method);

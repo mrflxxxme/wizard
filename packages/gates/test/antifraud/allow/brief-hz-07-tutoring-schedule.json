@@ -1,0 +1,351 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф hz-07-tutoring-schedule: «Учебный центр: группы, расписание, посещаемость и абонементы»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Учебный центр: группы, расписание, посещаемость и абонементы",
+      "description": "Учебный центр для школьников: английский, математика и шахматы, десять преподавателей, четыре кабинета. Расписание сейчас в таблице, родители путаются, кабинеты иногда заняты дважды. Нужна система: курсы, группы (до 8 детей), преподаватель группы, расписание занятий на четверть с кабинетом и времене",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Курс",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Группа",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Занятие",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Ученик",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item5",
+        "label": "Абонемент",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item6",
+        "label": "Кабинет",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item5",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item6",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item5",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item6",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [
+      {
+        "name": "yookassa",
+        "connector": "yookassa",
+        "config": {},
+        "secretRefs": [
+          "secret://yookassa_shop_id",
+          "secret://yookassa_secret_key"
+        ]
+      },
+      {
+        "name": "telegram",
+        "connector": "telegram",
+        "config": {},
+        "secretRefs": [
+          "secret://telegram_bot_token"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Учебный центр: группы, расписание, посещаемость и абонементы",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Учебный центр: группы, расписание, посещаемость и абонементы\"}>\n      <p>{\"Учебный центр для школьников: английский, математика и шахматы, десять преподавателей, четыре кабинета. Расписание сейчас в таблице, родители путаются, кабинеты иногда заняты дважды. Нужна система: курсы, группы (до 8 детей), преподаватель группы, расписание занятий на четверть с кабинетом и временем. Один кабинет и один преподаватель не могут быть заняты в одно и то же время — система должна это проверять. Преподаватель отмечает посещаемость и пишет короткий комментарий к занятию. Родитель регистрируется по почте или через Telegram, записывает ребёнка в группу, если есть места, и видит расписание и посещаемость только своих детей. Оплата — абонементы на 8 занятий через ЮKassa; посещённое занятие списывается с абонемента, а когда осталось 2 занятия, родителю приходит напоминание. Если занятие отменили, всем родителям группы уходит уведомление. Администратор ведёт курсы, группы и расписание, переводит ребёнка между группами. Отчёт: заполненность групп, пропуски, продажи абонементов за месяц.\"}</p>\n      <ul>\n        <li>{\"Лимит 8 детей в группе\"}</li>\n        <li>{\"Проверка занятости кабинета и преподавателя\"}</li>\n        <li>{\"Посещаемость\"}</li>\n        <li>{\"Оплата абонемента через ЮKassa\"}</li>\n        <li>{\"Списание занятия с абонемента\"}</li>\n        <li>{\"Напоминание об окончании абонемента\"}</li>\n        <li>{\"Уведомление об отмене занятия\"}</li>\n        <li>{\"Вход через Telegram\"}</li>\n        <li>{\"Отчёт по заполненности и пропускам\"}</li>\n      </ul>\n      <p>{\"Нельзя поставить два занятия в один кабинет в одно время\"}</p>\n      <p>{\"Родитель видит только своих детей\"}</p>\n      <p>{\"Нельзя записать в полную группу\"}</p>\n      <p>{\"Посещённое занятие списывается с абонемента\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

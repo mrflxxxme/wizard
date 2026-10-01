@@ -9,6 +9,7 @@ import {
   Billing,
   BlobStore,
   type Config,
+  checkRunFailureRate,
   createAgentExecutors,
   createDb,
   DBOS_APP,
@@ -21,9 +22,11 @@ import {
   loadConfig,
   type Mailer,
   migrate,
-  OutboxMailer,
+  type OpsAlertFn,
+  opsAlertFromConfig,
   Payments,
   type PublishOptions,
+  platformMailer,
   QUEUE_INTERVIEW,
   QUEUE_RUNS,
   queueOf,
@@ -48,6 +51,8 @@ export const DBOS_RETENTION = "wizard.dbos_retention";
 export const IMPORTS_TTL = "wizard.imports_ttl";
 /** workflows.yaml#retention_cron (platform part): daily 03:30 MSK, after the runtime's retention pass. */
 export const RETENTION_CRON = "wizard.retention_cron";
+/** M2-09: founder alert «run failed rate > 20% за 1 ч» (deploy.yaml#cloud.observability.alerts), every 10 min. */
+export const OPS_CHECKS = "wizard.ops_checks";
 /** execution.M1.dbos_data: dbos.* of terminal workflows older than this are deleted daily. */
 export const DBOS_RETENTION_DAYS = 30;
 /** workflows.yaml#execution.M1.queues.runs default. */
@@ -71,8 +76,10 @@ export interface WorkerOptions {
   pollMs?: number;
   logger?: Logger;
   now?: () => Date;
-  /** Platform mail for owner notices of retention_cron and renewal notices (default: files in config.outboxDir). */
+  /** Platform mail for owner notices of retention_cron and renewal notices (default: SMTP or the outbox, M2-09). */
   mailer?: Mailer;
+  /** Founder alerts of the ops checks (default: log + webhook + e-mail from the config). */
+  alert?: OpsAlertFn;
 }
 
 export interface Worker {
@@ -89,6 +96,8 @@ export interface Worker {
   retainDbos(now?: Date): Promise<number>;
   /** One pass of the platform part of retention_cron (tests; the schedule runs it daily). */
   retention(now?: Date): ReturnType<typeof runRetentionCron>;
+  /** One pass of the ops checks (run failure rate; tests). */
+  opsChecks(now?: Date): ReturnType<typeof checkRunFailureRate>;
   close(): Promise<void>;
 }
 
@@ -135,7 +144,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     },
     secrets: new SecretStore(config.secretsFile, config.secretsKey),
     ...(o.createRouter ? { createRouter: o.createRouter } : {}),
-    ...(o.publish ? { publish: o.publish } : {}),
+    publish: { alert: (a) => alert(a), ...o.publish },
     log,
   });
   const steps = new StepStore(config.stepsDir, config.secretsKey);
@@ -166,11 +175,13 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     return rows.count;
   }
 
+  const mailer = o.mailer ?? platformMailer(config);
+  const alert = o.alert ?? opsAlertFromConfig(config, { logger, mailer, log });
   const payments = new Payments({
     db: handle.db,
     config,
     ledger: billing,
-    mailer: o.mailer ?? new OutboxMailer(config.outboxDir),
+    mailer,
     log,
   });
   // Each phase and each org's renewal is a step: a crash resumes after the last finished one; a renewal repeated
@@ -214,7 +225,6 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     },
     { name: IMPORTS_TTL },
   );
-  const mailer = o.mailer ?? new OutboxMailer(config.outboxDir);
   const retention = (now = new Date()) =>
     runRetentionCron(
       {
@@ -236,6 +246,13 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       await DBOS.runStep(async () => void (await retention()), { name: "retention_platform" });
     },
     { name: RETENTION_CRON },
+  );
+  const opsChecks = (now = new Date()) => checkRunFailureRate(handle.db, alert, now);
+  const opsChecksCron = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      await DBOS.runStep(async () => void (await opsChecks()), { name: "ops_checks" });
+    },
+    { name: OPS_CHECKS },
   );
   const dbosRetention = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
@@ -273,6 +290,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       { scheduleName: CREDITS_CRON, workflowFn: creditsCron, schedule: "7 * * * *" },
       { scheduleName: BILLING_CRON, workflowFn: billingCron, schedule: "13 * * * *" },
       { scheduleName: IMPORTS_TTL, workflowFn: importsTtl, schedule: "23 * * * *" },
+      { scheduleName: OPS_CHECKS, workflowFn: opsChecksCron, schedule: "*/10 * * * *" },
       {
         scheduleName: RETENTION_CRON,
         workflowFn: retentionCron,
@@ -356,6 +374,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     sweep,
     retainDbos,
     retention,
+    opsChecks,
     async close() {
       if (closed) return;
       closed = true;

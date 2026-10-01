@@ -16,6 +16,10 @@ import type { AccountDeps } from "./auth.js";
 
 export const INVITE_TTL_MS = 7 * 24 * 3600_000;
 
+/** createOrg in invite mode by a user without a pilot org of their own (M2-09). */
+export const PILOT_ORG_CREATE_RU =
+  "На пилоте новые организации создаёт команда Wizard. Напишите нам, если нужна ещё одна";
+
 const roleSchema = z.enum(["owner", "editor", "viewer"]);
 const regionSchema = z.string().regex(/^[0-9]{2}$/);
 const innSchema = z.string().regex(/^[0-9]{10}$|^[0-9]{12}$/);
@@ -93,7 +97,28 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
     return c.json({ items });
   });
 
-  // createOrg: the creator becomes owner (Free grants — credit ledger, M1-03).
+  /**
+   * M2-09 (D24_pilot_free, leftover of M2-15): in invite mode a new org is a pilot org when its creator owns a pilot
+   * org (plan pilot, no Free welcome credits — the founder grants them, founder review before prod); other users may
+   * not create orgs on the pilot (403 FORBIDDEN). Open mode keeps the M1 Free org.
+   */
+  async function newOrgPlan(user: AuthUser): Promise<"free" | "pilot"> {
+    if (d.config.registration !== "invite") return "free";
+    const owned = [...user.orgs].filter(([, role]) => role === "owner").map(([id]) => id);
+    const pilot =
+      owned.length > 0
+        ? await d.db
+            .selectFrom("platform.orgs")
+            .select("id")
+            .where("id", "in", owned)
+            .where("plan", "=", "pilot")
+            .executeTakeFirst()
+        : undefined;
+    if (!pilot) throw new ApiError("FORBIDDEN", PILOT_ORG_CREATE_RU);
+    return "pilot";
+  }
+
+  // createOrg: the creator becomes owner (Free grants — credit ledger, M1-03; pilot in invite mode — M2-09).
   r.post("/orgs", async (c) => {
     const b = await jsonBody(
       c,
@@ -105,11 +130,16 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
     );
     checkInn(b.inn);
     const user = c.get("user");
+    const plan = await newOrgPlan(user);
     const region = applyRegion({ region_code: null, t1_restricted: false }, b);
     const org = await d.db.transaction().execute(async (trx) => {
       const o = await trx
         .insertInto("platform.orgs")
-        .values({ name: b.name, ...region })
+        .values({
+          name: b.name,
+          ...region,
+          ...(plan === "pilot" ? { plan, require_founder_review: true } : {}),
+        })
         .returning("id")
         .executeTakeFirstOrThrow();
       await trx

@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { withAbuseLink } from "../http/abuse-link.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
 import { contentType, documentHeaders, IMMUTABLE, NO_CACHE } from "../preview/headers.js";
@@ -70,7 +71,7 @@ export function staticRoutes(): Hono<RuntimeHonoEnv> {
     if (pathname.startsWith("/assets/")) return serveAsset(c, sys.artifactDir, pathname);
     const index = await readOrNull(join(sys.artifactDir, "client", "index.html"));
     if (!index) return notFoundPage();
-    return c.body(injectPwa(index.toString("utf8"), sys.spec), 200, documentHeaders());
+    return c.body(withAbuseLink(c, injectPwa(index.toString("utf8"), sys.spec)), 200, documentHeaders());
   });
   return app;
 }

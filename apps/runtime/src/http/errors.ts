@@ -41,7 +41,8 @@ export function page(status: number, title: string, text: string): Response {
 export const notFoundPage = () =>
   page(404, "Система не найдена", "Проверьте адрес или обратитесь к владельцу системы.");
 export const suspendedPage = () =>
-  page(451, "Система временно недоступна по жалобе", "Доступ к системе ограничен до рассмотрения жалобы.");
+  // security/abuse.yaml#messages_ru.http_451: neutral, no details of the complaint.
+  page(451, "Система временно недоступна по жалобе", "Владелец системы уведомлён.");
 export const misdirectedPage = () => page(421, "Неверный адрес", "Этот адрес не обслуживается.");
 export const unavailablePage = () =>
   page(503, "Система временно недоступна", "Попробуйте обновить страницу позже.");

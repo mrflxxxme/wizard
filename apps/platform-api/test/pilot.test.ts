@@ -14,6 +14,7 @@ import type { OpsAlert } from "../src/ops/alert.js";
 import { createOpsAlert } from "../src/ops/alert.js";
 import { parseArgs, runPilotCli } from "../src/pilot/cli.js";
 import { PilotError } from "../src/pilot/invites.js";
+import { setBetaReadiness } from "../src/pilot/readiness.js";
 import { specPublishBlockers } from "../src/publish/blockers.js";
 import {
   createTestDb,
@@ -54,6 +55,8 @@ async function fixture(tag: string, over: Partial<Config> = {}, migrator = false
     createRouter: fakeRouterFactory(),
     publish: { smoke: async () => ({ ok: true }), lockRetryDelaysMs: [10, 10, 10] },
   });
+  // M2-09: partner invitations need beta_readiness (tested in pilot-ops.test.ts).
+  await setBetaReadiness(api.deps.db, { on: true, by: "test" });
   return {
     api,
     mailer,

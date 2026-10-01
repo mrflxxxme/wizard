@@ -9,6 +9,7 @@ briefs:
     segment: "events | made_to_order | horizontal"
     title: "≤ 100, по-русски"
     text: "бриф как его написал бы владелец бизнеса, 300–1500 символов"
+    partner: "опционально {ref: P01…P99, original: {key: eval/partners/<ref>/<id>.<ext>, sha256, bytes}} — синтетический пересказ брифа дизайн-партнёра; оригинал только в S3 eval в РФ (tools/eval/partner-brief.mjs), в репозиторий не попадает (M2-12)"
     expected:
       roles: "string[] — «Подпись :: стем1|стем2»"
       entities: "string[] — тот же формат"

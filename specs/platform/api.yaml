@@ -280,7 +280,7 @@ paths:
       operationId: publish
       x-milestone: M1
       x-roles: [owner]
-      summary: Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2
+      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve)'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
       responses:
@@ -443,7 +443,7 @@ paths:
     post:
       operationId: createOrg
       x-milestone: M1
-      summary: Создатель становится owner; стартовый грант Free (billing.yaml#plans.free.grants)
+      summary: 'Создатель становится owner; стартовый грант Free (billing.yaml#plans.free.grants). M2-09: при WIZARD_REGISTRATION=invite новая org владельца пилотной org — plan pilot без кредитов и с require_founder_review=true; без своей пилотной org — 403 FORBIDDEN «На пилоте новые организации создаёт команда Wizard…»'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, minLength: 1, maxLength: 120}}}}}}
       responses: {'201': {description: Создана, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}}
   /orgs/{orgId}:
@@ -529,7 +529,7 @@ paths:
       x-milestone: M2
       x-roles: [owner]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [packs], properties: {packs: {type: integer, minimum: 1, maximum: 20}}}}}}
-      summary: 'Докупка пакетов (billing.yaml#topup). С привязанной картой — списание сразу по payment_method_id (confirmationUrl = null, кредиты начислены в том же запросе); без карты — страница ЮKassa без сохранения карты'
+      summary: 'Докупка пакетов (billing.yaml#topup; на тарифе pilot — 403 FORBIDDEN, billing.yaml#plans.topup.available_on, M2-09). С привязанной картой — списание сразу по payment_method_id (confirmationUrl = null, кредиты начислены в том же запросе); без карты — страница ЮKassa без сохранения карты'
       responses: {'200': {description: Платёж создан, content: {application/json: {schema: {type: object, properties: {confirmationUrl: {type: [string, 'null']}, paymentId: {type: string}}}}}}}
   /webhooks/yookassa:
     post:
@@ -552,8 +552,8 @@ paths:
             schema:
               type: object
               required: [url, category]
-              properties: {url: {type: string, format: uri, description: URL на домене систем}, category: {enum: [phishing, fraud, brand_impersonation, illegal_content, pd_violation, spam, other]}, text: {type: string, maxLength: 4000}, contactEmail: {type: string, format: email}}
-      responses: {'202': {description: Жалоба принята, content: {application/json: {schema: {type: object, properties: {reportId: {type: string}}}}}}, '429': {$ref: '#/components/responses/Error'}}
+              properties: {url: {type: string, format: uri, description: URL на домене систем}, category: {enum: [phishing, fraud, brand_impersonation, illegal_content, pd_violation, spam, other]}, text: {type: string, maxLength: 4000}, contactEmail: {type: string, format: email}, contactConsent: {type: boolean, description: 'M2-08: отдельное согласие на обработку адреса заявителя (только для ответа по этой жалобе; хранится до 1 года после закрытия — db.yaml#abuse_reports.contact_email); обязательно true, если задан contactEmail, иначе 400'}}
+      responses: {'202': {description: Жалоба принята, content: {application/json: {schema: {type: object, properties: {reportId: {type: string}}}}}}, '400': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
   /admin/abuse-reports:
     get:
       operationId: adminListAbuseReports
@@ -567,7 +567,8 @@ paths:
       operationId: adminAbuseAction
       x-milestone: M2
       x-roles: [staff]
-      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action, note], properties: {action: {enum: [triage, takedown, dismiss, restore]}, note: {type: string, minLength: 3}}}}}}
+      summary: 'Переходы abuse.yaml#takedown.flow: triage (new → triaged; открывает доступ staff к данным системы на 24 ч, можно уточнить category), takedown (new|triaged → takedown: publications.status=suspended, systems.suspended_at, письмо владельцу всегда — причина и как оспорить), dismiss (new|triaged → dismissed), restore (takedown → restored; publications снова live, письмо владельцу). Заявителю с contactEmail — нейтральное письмо о рассмотрении. Недопустимый переход → 400'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action, note], properties: {action: {enum: [triage, takedown, dismiss, restore]}, note: {type: string, minLength: 3}, category: {enum: [phishing, fraud, brand_impersonation, illegal_content, pd_violation, spam, other], description: 'M2-08: уточнённая категория при triage'}}}}}}
       responses: {'200': {description: 'Выполнено, владельцу отправлено уведомление', content: {application/json: {schema: {$ref: '#/components/schemas/AbuseReport'}}}}}
   /admin/orgs/{orgId}/flags:
     parameters: [{$ref: '#/components/parameters/orgId'}]
@@ -583,9 +584,71 @@ paths:
       operationId: adminFounderReview
       x-milestone: M2
       x-roles: [staff]
-      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Маршрут монтируется вместе со staff MFA и staff_audit_log (M2-08/M2-09); до этого решение принимает CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04). rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
+      summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
       responses: {'200': {description: Записано}}
+  /admin/session:
+    get:
+      operationId: adminSession
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: состояние staff в этой сессии (без MFA-подтверждения). Не staff → 404 NOT_FOUND (консоль не раскрывается); вход по заголовку разработки (без сессии) никогда не подтверждён'
+      responses: {'200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/StaffSession'}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/mfa/enroll:
+    post:
+      operationId: adminMfaEnroll
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: начать подключение TOTP (RFC 6238, SHA1, 30 с, 6 цифр); секрет — в хранилище секретов (users.totp_secret_ref = secret://…), показывается один раз. Уже подключено → 400; сброс — CLI `moderation staff-reset-mfa <email>`'
+      responses: {'200': {description: Секрет, content: {application/json: {schema: {type: object, required: [secret, otpauthUrl], properties: {secret: {type: string, description: base32}, otpauthUrl: {type: string}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}}
+  /admin/mfa/confirm:
+    post:
+      operationId: adminMfaConfirm
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: первый код подтверждает подключение: mfa_enrolled_at, сессия подтверждена, 10 кодов восстановления (хранятся только HMAC) — показываются один раз. Неверный код → 401 OTP_INVALID; 5 неверных кодов за 15 мин → 429'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [code], properties: {code: {type: string, pattern: '^[0-9]{6}$'}}}}}}
+      responses: {'200': {description: Подключено, content: {application/json: {schema: {type: object, required: [recoveryCodes, mfaVerifiedUntil], properties: {recoveryCodes: {type: array, items: {type: string}}, mfaVerifiedUntil: {type: string, format: date-time}}}}}}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
+  /admin/mfa/verify:
+    post:
+      operationId: adminMfaVerify
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: step-up сессии кодом TOTP (каждый код — один раз, users.totp_last_step) или одноразовым кодом восстановления; действует 12 ч в этой сессии (x-auth.M2). Неверный → 401 OTP_INVALID; 5 неверных за 15 мин → 429'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {code: {type: string, pattern: '^[0-9]{6}$'}, recoveryCode: {type: string}}}}}}
+      responses: {'200': {description: Сессия подтверждена, content: {application/json: {schema: {type: object, required: [mfaVerifiedUntil], properties: {mfaVerifiedUntil: {type: string, format: date-time}}}}}}, '401': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
+  /admin/abuse-reports/{reportId}:
+    parameters: [{name: reportId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: adminGetAbuseReport
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: тикет — жалоба (текст, контакт заявителя), система, открытый доступ staff и журнал staff по тикету и системе; просмотр пишется в staff_audit_log'
+      responses: {'200': {description: Тикет, content: {application/json: {schema: {$ref: '#/components/schemas/AbuseTicket'}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/abuse-reports/{reportId}/access:
+    parameters: [{name: reportId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminOpenStaffAccess
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08 (compliance.yaml#platform.security_org staff_access, L3-43): открыть доступ staff к данным системы по открытому тикету на 24 ч; строка staff_audit_log; владельцу — письмо, кроме category=phishing. triage открывает доступ так же'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [note], properties: {note: {type: string, minLength: 3}}}}}}
+      responses: {'200': {description: Доступ открыт, content: {application/json: {schema: {type: object, required: [until], properties: {until: {type: string, format: date-time}}}}}}, '400': {$ref: '#/components/responses/Error'}}
+  /admin/abuse-reports/{reportId}/data:
+    parameters: [{name: reportId, in: path, required: true, schema: {type: string, format: uuid}}, {name: entity, in: query, schema: {type: string}}]
+    get:
+      operationId: adminSystemData
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: данные системы тикета только для чтения (prod, иначе draft): счётчики строк по сущностям и до 50 последних строк одной сущности; поля ПДн не отдаются (как выгрузка без ПДн, workflows.yaml#export_data). Без открытого доступа по тикету (24 ч, тикет не закрыт) → 403 FORBIDDEN; каждое чтение — строка staff_audit_log'
+      responses: {'200': {description: Данные, content: {application/json: {schema: {type: object, required: [env, entities, columns, rows], properties: {env: {enum: [draft, prod]}, revision: {type: [integer, 'null']}, accessUntil: {type: string, format: date-time}, omittedPii: {type: integer}, entities: {type: array, items: {type: object, properties: {name: {type: string}, label: {type: string}, rows: {type: integer}}}}, entity: {type: [string, 'null']}, columns: {type: array, items: {type: string}}, rows: {type: array, items: {type: object}}}}}}}, '403': {$ref: '#/components/responses/Error'}}
+  /admin/founder-reviews:
+    get:
+      operationId: adminListFounderReviews
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
+      responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}}}}}}}}}}
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -828,4 +891,17 @@ components:
         confirmationUrl: {type: [string, 'null'], description: 'Только в ответе changeSubscription: страница ЮKassa для первой оплаты без привязанной карты; null — оплачено сразу по карте'}
     AbuseReport:
       type: object
-      properties: {id: {type: string}, systemId: {type: [string, 'null']}, category: {type: string}, status: {enum: [new, triaged, takedown, dismissed, restored]}, slaDeadline: {type: string, format: date-time}, createdAt: {type: string, format: date-time}}
+      properties: {id: {type: string}, systemId: {type: [string, 'null']}, category: {type: string}, status: {enum: [new, triaged, takedown, dismissed, restored]}, slaDeadline: {type: string, format: date-time}, createdAt: {type: string, format: date-time}, url: {type: string, description: M2-08}, resolvedAt: {type: [string, 'null'], format: date-time}, systemName: {type: [string, 'null'], description: 'M2-08, только в очереди'}}
+    AbuseTicket:
+      description: 'M2-08: тикет модерации для staff'
+      allOf:
+        - {$ref: '#/components/schemas/AbuseReport'}
+        - type: object
+          properties:
+            text: {type: [string, 'null']}
+            contactEmail: {type: [string, 'null']}
+            resolutionNote: {type: [string, 'null']}
+            system: {type: [object, 'null'], properties: {id: {type: string}, name: {type: [string, 'null']}, orgId: {type: [string, 'null']}, prodUrl: {type: [string, 'null']}, suspended: {type: boolean}}}
+            access: {type: [object, 'null'], properties: {until: {type: string, format: date-time}}}
+            journal: {type: array, items: {type: object, properties: {action: {type: string}, note: {type: [string, 'null']}, actor: {type: string}, at: {type: string, format: date-time}}}}
+    StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}

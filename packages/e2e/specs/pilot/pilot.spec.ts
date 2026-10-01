@@ -1,8 +1,10 @@
-// M2-15 on the pilot stand (stand/pilot.ts: M2 rules, WIZARD_REGISTRATION=invite, WIZARD_PAYMENTS=off, no shop), in
-// order: a new e-mail without an invitation is refused in Russian on S-auth; the founder's CLI (`pilot invite`) sends
-// the letter → its link opens S-auth with the address → OTP + consents → S1 of the pilot org; S-billing shows the plan
-// «Пилот» and the invited credits without purchase, subscriptions or card; a «форум» is built and published to prod
-// without a card (G1 + G2 at publish, founder review approved by the moderation CLI path).
+// M2-15 / M2-09 on the pilot stand (stand/pilot.ts: M2 rules, WIZARD_REGISTRATION=invite, WIZARD_PAYMENTS=off,
+// founder review on, no shop), in order: a new e-mail without an invitation is refused in Russian on S-auth; the
+// founder's CLI refuses `pilot invite` until `pilot readiness on` (beta_readiness, M2-13), then sends the letter → its
+// link opens S-auth with the address → OTP + consents → S-welcome (pilot onboarding) → a template opens S1 of the
+// pilot org; S-billing shows the plan «Пилот» and the invited credits without purchase, subscriptions or card; a
+// «форум» is built and published to prod without a card: the first publication waits for the founder's review, the
+// moderation CLI path approves it, the next attempt goes live.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
@@ -115,9 +117,9 @@ test("S-auth: новый email без приглашения основател�
   await page.close();
 });
 
-test("приглашение CLI основателя → письмо со ссылкой → вход → организация на тарифе «Пилот»", async () => {
-  const out = await withStandDb((h) =>
-    runPilotCli(["invite", owner, "--org-name", "Кофейня «Зерно»", "--credits", "100"], {
+const pilotCli = (argv: string[]) =>
+  withStandDb((h) =>
+    runPilotCli(argv, {
       db: h.db,
       billing: new Billing(),
       mailer: new OutboxMailer(PILOT_OUTBOX),
@@ -125,10 +127,21 @@ test("приглашение CLI основателя → письмо со сс
       llmMonthlyCapRub: 6000,
     }),
   );
+
+test("приглашение CLI основателя → письмо со ссылкой → вход → онбординг пилота → организация на тарифе «Пилот»", async () => {
+  // beta_readiness (M2-09): no partner invitations until the founder records M2-13 as done.
+  const invite = ["invite", owner, "--org-name", "Кофейня «Зерно»", "--credits", "100"];
+  await expect(pilotCli(invite)).rejects.toThrow("Приглашать партнёров пока нельзя");
+  expect(letters(owner, "invite")).toHaveLength(0);
+  expect(await pilotCli(["readiness", "on", "--by", "e2e", "--note", "M2-13 выполнена"])).toMatch(
+    /^beta_readiness: on \(e2e, /,
+  );
+  const out = await pilotCli(invite);
   expect(out).toContain(`приглашение отправлено: ${owner}`);
   const letter = await lastLetter(owner, "invite");
+  expect(letter).toContain("посмотрит модератор");
   const link = letter.match(/https?:\/\/\S+/)?.[0] ?? "";
-  expect(link).toBe(`${WEB}/login?email=${encodeURIComponent(owner)}`);
+  expect(link).toBe(`${WEB}/login?email=${encodeURIComponent(owner)}&next=%2Fwelcome`);
 
   const page = await ctx.newPage();
   await page.goto(link);
@@ -140,9 +153,21 @@ test("приглашение CLI основателя → письмо со сс
   await page.getByTestId("auth-offer").check();
   await page.getByTestId("auth-pd-consent").check();
   await page.getByTestId("auth-submit").click();
-  await expect(page).toHaveURL(`${WEB}/`);
-  await expect(page.getByTestId("start-prompt")).toBeVisible();
+  // S-welcome: the pilot explained in Russian — free, credits, limits, review before the first publication.
+  await expect(page).toHaveURL(`${WEB}/welcome`);
+  await expect(page.getByTestId("welcome-title")).toHaveText("Добро пожаловать в пилот Wizard");
+  await expect(page.getByTestId("welcome-org")).toContainText("Кофейня «Зерно»");
+  await expect(page.getByTestId("welcome-free")).toContainText("Оплата и привязка карты не нужны");
+  await expect(page.getByTestId("welcome-credits")).toContainText("Сейчас доступно: 100 кредитов");
+  await expect(page.getByTestId("welcome-limits")).toContainText("До 5 опубликованных систем");
+  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит модератор");
+  // A template opens S1 with its description; S1 links back to the onboarding.
+  await page.getByTestId("welcome-template-event_registration").click();
+  await expect(page).toHaveURL(`${WEB}/?template=event_registration`);
+  await expect(page.getByTestId("start-prompt")).toHaveValue(/Мероприятие: регистрация участников/);
+  await expect(page.getByTestId("start-template-event_registration")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("start-org")).toContainText("Кофейня «Зерно»");
+  await expect(page.getByTestId("start-pilot-about")).toHaveText("Как устроен пилот");
 
   a = api(ctx, WEB);
   orgId = await ownerOrg(a);
@@ -187,20 +212,23 @@ test("сборка «форума» и публикация в prod без пр�
   await page.getByTestId("publish-submit").click();
   const prod = page.getByTestId("publish-prod-revision");
   const review = page.getByRole("alert").filter({ hasText: "посмотрит модератор" });
-  await expect(prod.or(review)).toBeVisible({ timeout: 150_000 });
-  if (!(await prod.isVisible())) {
-    // G2 warning (abuse.yaml#scoring.effect): the founder approves (the moderation CLI path), publish again.
-    const revision = (await a.req("GET", `/systems/${system.id}`)).body.system.draftRevision as number;
-    expect(
-      await withStandDb((h) =>
-        decideFounderReview(h.db, { systemId: system.id, revision, decision: "approve", note: "e2e pilot" }),
-      ),
-    ).toBe(true);
-    await page.reload();
-    await expect(page.getByTestId("publish-blocker")).toHaveCount(0);
-    await page.getByTestId("publish-submit").click();
-    await expect(prod).toBeVisible({ timeout: 150_000 });
-  }
+  // M2-09: the first prod publication of a pilot org waits for the founder's review (orgs.require_founder_review).
+  await expect(review).toBeVisible({ timeout: 150_000 });
+  await expect(prod).toHaveCount(0);
+  const revision = (await a.req("GET", `/systems/${system.id}`)).body.system.draftRevision as number;
+  const blocked = (await a.req("GET", `/systems/${system.id}`)).body;
+  expect(blocked.publishBlockers).toEqual(["FOUNDER_REVIEW_PENDING"]);
+  expect(blocked.system.prodRevision).toBeNull();
+  // The founder approves (the moderation CLI path), the owner publishes again.
+  expect(
+    await withStandDb((h) =>
+      decideFounderReview(h.db, { systemId: system.id, revision, decision: "approve", note: "e2e pilot" }),
+    ),
+  ).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("publish-blocker")).toHaveCount(0);
+  await page.getByTestId("publish-submit").click();
+  await expect(prod).toBeVisible({ timeout: 150_000 });
   const after = (await a.req("GET", `/systems/${system.id}`)).body;
   expect(after.system.prodRevision).toBe(after.system.draftRevision);
   // No card was ever bound.

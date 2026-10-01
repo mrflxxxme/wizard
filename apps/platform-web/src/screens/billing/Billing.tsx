@@ -463,7 +463,8 @@ export function BillingScreen(): ReactNode {
             ) : (
               <p className={s.small}>{ru.code.loading}</p>
             )}
-            {payments && (
+            {/* billing.yaml#plans.topup.available_on: no top-up on pilot even with payments on (M2-09). */}
+            {payments && plan !== "pilot" && (
               <div className={s.sub}>
                 <h3 className={s.subTitle}>{ru.billing.topup}</h3>
                 <div className={s.row}>

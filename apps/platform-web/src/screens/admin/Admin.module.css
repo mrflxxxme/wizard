@@ -1,0 +1,127 @@
+/* Staff console (/admin, M2-08) on top of the S10 layout (settings/Settings.module.css). */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tab {
+  padding: 6px 12px;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tab[aria-pressed="true"] {
+  border-color: var(--w-accent);
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius-sm);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  border-color: var(--w-accent);
+}
+
+.url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--w-muted);
+}
+
+.late {
+  color: var(--w-bad);
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.facts dt {
+  color: var(--w-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secret {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+.codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.table th,
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--w-line);
+  text-align: left;
+  vertical-align: top;
+  max-width: 280px;
+  overflow-wrap: anywhere;
+}
+
+.journal {
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

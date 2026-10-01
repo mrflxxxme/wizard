@@ -214,7 +214,12 @@ describe("G2 in the publish workflow (M2)", () => {
       "ui/Landing.tsx",
     ]);
     expect(g2?.secrets).toEqual({ telegram_bot_token: true, missing_token: false });
-    expect(g2?.ctx.abuse).toEqual({ orgAgeDays: 0, plan: "free", brandAllowlist: ["sber"] });
+    expect(g2?.ctx.abuse).toEqual({
+      orgAgeDays: 0,
+      plan: "free",
+      brandAllowlist: ["sber"],
+      abuseReportsPrev: 0,
+    });
     // compliance.consentText is filled by the executors (not stored); the spec is the stored revision.
     expect(g2?.ctx.spec.compliance?.operatorName).toBe("ООО «Северный ритейл 1»");
     expect((await gateRows(id, rev)).map((r) => [r.level, r.passed])).toEqual([
@@ -335,22 +340,22 @@ describe("G2 in the publish workflow (M2)", () => {
     );
   });
 
-  test("abuse context: org age, plan, brand allowlist; earlier reports once platform.abuse_reports exists", async () => {
+  test("abuse context: org age, plan, brand allowlist; earlier reports (M2-08 abuse_reports)", async () => {
     const now = new Date(Date.now() + 10 * 86_400_000);
     expect(await abuseContext(api.deps.db, DEFAULT_ORG_ID, now)).toEqual({
       orgAgeDays: 10,
       plan: "free",
       brandAllowlist: ["sber"],
+      abuseReportsPrev: 0,
     });
-    // Minimal stand-in for M2-08's table (db.yaml#abuse_reports): status and system only.
-    await api.deps.pg`create table platform.abuse_reports (id uuid primary key default gen_random_uuid(),
-      system_id uuid references platform.systems, status text not null)`;
+    // M2-08 reports (db.yaml#abuse_reports): dismissed ones do not count.
+    await api.deps.pg`insert into platform.abuse_reports (system_id, url, category, status, sla_deadline)
+      values (${id}, 'http://x.localhost/', 'fraud', 'takedown', now()), (${id}, 'http://x.localhost/', 'spam', 'dismissed', now()),
+             (${id}, 'http://x.localhost/', 'phishing', 'new', now())`;
     try {
-      await api.deps.pg`insert into platform.abuse_reports (system_id, status)
-        values (${id}, 'takedown'), (${id}, 'dismissed'), (${id}, 'new')`;
       expect((await abuseContext(api.deps.db, DEFAULT_ORG_ID)).abuseReportsPrev).toBe(2);
     } finally {
-      await api.deps.pg`drop table platform.abuse_reports`;
+      await api.deps.pg`delete from platform.abuse_reports where system_id = ${id}`;
     }
   });
 });

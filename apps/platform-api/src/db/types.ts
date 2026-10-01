@@ -17,6 +17,10 @@ export interface UsersTable {
   is_staff: Generated<boolean>;
   totp_secret_ref: string | null;
   mfa_enrolled_at: TsNull;
+  /** M2-08: RFC 6238 time step of the last accepted code (a code is accepted once). */
+  totp_last_step: ColumnType<string | null, number | string | null | undefined, number | string | null>;
+  /** M2-08: HMAC hashes of the unused recovery codes. */
+  mfa_recovery_hashes: Json<string[] | null>;
   deleted_at: TsNull;
   pd_consent_at: TsNull;
   offer_accepted_at: TsNull;
@@ -214,6 +218,8 @@ export interface SessionsTable {
   csrf_hash: string;
   expires_at: Ts;
   revoked_at: TsNull;
+  /** M2-08: TOTP step-up of a staff session (api.yaml#info.x-auth.M2). */
+  mfa_verified_at: TsNull;
   created_at: TsDef;
 }
 
@@ -394,12 +400,60 @@ export interface OpsAlertsTable {
   created_at: TsDef;
 }
 
+/** db.yaml#platform_settings (M2-09): platform switches set by the founder's CLI (beta_readiness), with who/when. */
+export interface PlatformSettingsTable {
+  key: string;
+  value: Json;
+  updated_by: string;
+  updated_at: TsDef;
+  created_at: TsDef;
+}
+
 /** db.yaml#brand_allowlist: brands the org proved it owns (abuse.yaml#patterns.brands.override, G2-AF-04). */
 export interface BrandAllowlistTable {
   org_id: string;
   brand_id: string;
   verified_by: string;
   evidence_note: string;
+  created_at: TsDef;
+}
+
+export type AbuseCategory =
+  | "phishing"
+  | "fraud"
+  | "brand_impersonation"
+  | "illegal_content"
+  | "pd_violation"
+  | "spam"
+  | "other"
+  | "auto_g2";
+export type AbuseStatus = "new" | "triaged" | "takedown" | "dismissed" | "restored";
+
+/** db.yaml#abuse_reports: «Пожаловаться» tickets (security/abuse.yaml#report, #takedown; M2-08). */
+export interface AbuseReportsTable {
+  id: Generated<string>;
+  system_id: string | null;
+  publication_id: string | null;
+  url: string;
+  category: AbuseCategory;
+  text: string | null;
+  contact_email: string | null;
+  reporter_ip_hash: string | null;
+  status: Generated<AbuseStatus>;
+  sla_deadline: Ts;
+  assignee: string | null;
+  resolution_note: string | null;
+  resolved_at: TsNull;
+  created_at: TsDef;
+}
+
+/** db.yaml#staff_audit_log: every staff action (compliance.yaml#platform.security_org). */
+export interface StaffAuditLogTable {
+  id: Generated<string>;
+  actor: string;
+  action: string;
+  target: string;
+  note: string | null;
   created_at: TsDef;
 }
 
@@ -432,4 +486,7 @@ export interface DB {
   "platform.brand_allowlist": BrandAllowlistTable;
   "platform.pilot_invites": PilotInvitesTable;
   "platform.ops_alerts": OpsAlertsTable;
+  "platform.platform_settings": PlatformSettingsTable;
+  "platform.abuse_reports": AbuseReportsTable;
+  "platform.staff_audit_log": StaffAuditLogTable;
 }

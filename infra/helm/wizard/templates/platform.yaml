@@ -40,6 +40,7 @@ spec:
     metadata:
       labels: {{- include "wizard.selector" "wizard-platform-api" | nindent 8 }}
         wizard.ru/role: platform-api
+      annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
@@ -60,6 +61,7 @@ spec:
                 name: {{ .Values.secrets.platformEnv }}
           ports:
             - { name: http, containerPort: {{ .Values.platformApi.port }}, protocol: TCP }
+            - { name: metrics, containerPort: {{ .Values.metrics.port }}, protocol: TCP }
           # platform-api has no health route in api.yaml yet: TCP readiness (impl-notes M2-06).
           readinessProbe:
             tcpSocket: { port: http }
@@ -99,6 +101,7 @@ spec:
     metadata:
       labels: {{- include "wizard.selector" "wizard-worker" | nindent 8 }}
         wizard.ru/role: worker
+      annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
@@ -116,6 +119,8 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}
+          ports:
+            - { name: metrics, containerPort: {{ .Values.metrics.port }}, protocol: TCP }
           resources: {{- toYaml .Values.worker.resources | nindent 12 }}
           {{- include "wizard.containerSecurity" . | nindent 10 }}
           volumeMounts: {{- include "wizard.nodeMounts" . | nindent 12 }}

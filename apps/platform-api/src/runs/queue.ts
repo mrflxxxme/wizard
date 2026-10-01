@@ -26,6 +26,7 @@ import { ExportStore } from "../exports/storage.js";
 import { type ExportRunInput, runExport } from "../exports/workflow.js";
 import { ImportStore } from "../imports/storage.js";
 import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
+import { recordRunEnd, runsStarted } from "../ops/metrics.js";
 import type { PublishOptions } from "../publish/prod.js";
 import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
@@ -729,6 +730,7 @@ export class RunEngine {
         .set({ status: "running", started_at: new Date(), heartbeat_at: new Date(), base_revision: base })
         .where("id", "=", run.id)
         .execute();
+      t.after?.push(() => runsStarted.inc({ kind: cur.kind }));
       await appendEvent(t, run.id, "run_started", {
         kind: cur.kind,
         ...(cur.mode ? { mode: cur.mode } : {}),
@@ -772,6 +774,14 @@ export class RunEngine {
       })
       .where("id", "=", runId)
       .execute();
+    t.after?.push(() =>
+      recordRunEnd({
+        kind: run.kind,
+        status: r.status,
+        code: r.status === "failed" ? r.code : null,
+        startedAt: run.started_at,
+      }),
+    );
     // release(+hold), charge(−min(used, cap)), refund — billing.yaml#run_charging.
     await this.#d.billing.settleRun(
       t.trx,

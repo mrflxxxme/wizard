@@ -1,14 +1,19 @@
 // Routes: "/" → S1, "/s/:systemId" → workspace (S2–S7), "/s/:systemId/code" → S-code, "/s/:systemId/settings" →
-// S10, "/s/:systemId/import/:importId" → S-import, "/billing" → S-billing, "/login" → S-auth, "/invite/:token" → S-invite. Without a session (401) every private route goes to /login.
+// S10, "/s/:systemId/import/:importId" → S-import, "/billing" → S-billing, "/login" → S-auth, "/invite/:token" → S-invite,
+// "/abuse" → «Пожаловаться» (public), "/admin" → staff console (M2-08), "/welcome" → S-welcome (pilot onboarding,
+// M2-09). Without a session (401) every private route goes to /login.
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useEffect } from "react";
 import { ru } from "../i18n/ru.js";
+import { AbuseForm } from "../screens/abuse/AbuseForm.js";
+import { AdminConsole } from "../screens/admin/AdminConsole.js";
 import { InviteScreen } from "../screens/auth/Invite.js";
 import { Legal } from "../screens/auth/Legal.js";
 import { Login } from "../screens/auth/Login.js";
 import { BillingScreen } from "../screens/billing/Billing.js";
 import { CodeScreen } from "../screens/code/CodeScreen.js";
 import { ImportScreen } from "../screens/import/ImportScreen.js";
+import { Welcome } from "../screens/onboarding/Welcome.js";
 import { Start } from "../screens/Start.js";
 import { Settings } from "../screens/settings/Settings.js";
 import { Workspace } from "../screens/workspace/Workspace.js";
@@ -28,6 +33,7 @@ export function App(): ReactNode {
   if (route.name === "login") return <Login />;
   if (route.name === "invite") return <InviteScreen token={route.token} />;
   if (route.name === "legal") return <Legal doc={route.doc} />;
+  if (route.name === "abuse") return <AbuseForm />;
   if (auth === "loading" || needsLogin)
     return (
       <main aria-busy="true" style={{ padding: 24 }}>
@@ -36,6 +42,8 @@ export function App(): ReactNode {
     );
   if (route.name === "start") return <Start />;
   if (route.name === "billing") return <BillingScreen />;
+  if (route.name === "welcome") return <Welcome />;
+  if (route.name === "admin") return <AdminConsole />;
   if (route.name === "system") return <Workspace key={route.systemId} systemId={route.systemId} />;
   if (route.name === "code") return <CodeScreen key={route.systemId} systemId={route.systemId} />;
   if (route.name === "settings") return <Settings key={route.systemId} systemId={route.systemId} />;

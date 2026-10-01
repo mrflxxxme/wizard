@@ -1,11 +1,12 @@
 // S1 «Старт» (platform-screens.yaml#screens S1): M1 — current organization, «только РФ» (owner → PATCH settings),
-// the team size on system cards, sign out.
+// the team size on system cards, sign out. M2-09: `/?template=<id>` preselects a template (from S-welcome); pilot
+// orgs get a link back to the pilot onboarding.
 import { Button } from "@wizard/ui-kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, newIdempotencyKey } from "../api/client.js";
 import type { System } from "../api/types.js";
 import { canEdit, canOwn, usePlatform } from "../app/context.js";
-import { navigate } from "../app/router.js";
+import { navigate, useRoute } from "../app/router.js";
 import { Alert, Pill } from "../components/ui.js";
 import { ru } from "../i18n/ru.js";
 import s from "./Start.module.css";
@@ -15,8 +16,11 @@ export function Start(): ReactNode {
   const role = roleIn(orgId);
   const [team, setTeam] = useState<number | null>(null);
   const [ruBusy, setRuBusy] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [templateId, setTemplateId] = useState<string | undefined>();
+  const { search } = useRoute();
+  const preset = ru.templates.find((t) => t.id === search.get("template"));
+  const [prompt, setPrompt] = useState<string>(preset?.prompt ?? "");
+  const [templateId, setTemplateId] = useState<string | undefined>(preset?.id);
+  const [pilot, setPilot] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [systems, setSystems] = useState<System[]>([]);
@@ -42,6 +46,7 @@ export function Start(): ReactNode {
       Promise.all([api.getCredits(orgId), api.getOrg(orgId)])
         .then(([c, o]) => {
           if (!live) return;
+          setPilot(o.plan === "pilot");
           // The nearest expiry of a non-empty bucket (billing.yaml#ledger: credits burn bucket by bucket).
           const until = (c.buckets ?? [])
             .filter((x) => x.remaining > 0 && x.expiresAt)
@@ -192,6 +197,19 @@ export function Start(): ReactNode {
           <span data-testid="start-credits" title={ru.start.creditsHint}>
             <Pill tone="neutral">{ru.start.credits}: —</Pill>
           </span>
+        )}
+        {pilot && (
+          <a
+            href="/welcome"
+            className={s.creditsLink}
+            data-testid="start-pilot-about"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/welcome");
+            }}
+          >
+            {ru.start.pilotAbout}
+          </a>
         )}
         {signedIn && (
           <Button size="sm" variant="ghost" onClick={() => void logout()} data-testid="start-logout">

@@ -406,3 +406,72 @@ export interface ExportView {
   createdAt: string;
   downloadUrl?: string | null;
 }
+
+/** M2-08: api.yaml#createAbuseReport categories. */
+export type AbuseCategory =
+  | "phishing"
+  | "fraud"
+  | "brand_impersonation"
+  | "illegal_content"
+  | "pd_violation"
+  | "spam"
+  | "other";
+export type AbuseStatus = "new" | "triaged" | "takedown" | "dismissed" | "restored";
+
+/** api.yaml#AbuseReport (+ url, resolvedAt, systemName of the queue). */
+export interface AbuseReport {
+  id: string;
+  systemId: string | null;
+  category: AbuseCategory | "auto_g2";
+  status: AbuseStatus;
+  slaDeadline: string;
+  createdAt: string;
+  url: string;
+  resolvedAt: string | null;
+  systemName?: string | null;
+}
+
+/** api.yaml#AbuseTicket (staff). */
+export interface AbuseTicket extends AbuseReport {
+  text: string | null;
+  contactEmail: string | null;
+  resolutionNote: string | null;
+  system: {
+    id: string;
+    name: string | null;
+    orgId: string | null;
+    prodUrl: string | null;
+    suspended: boolean;
+  } | null;
+  access: { until: string } | null;
+  journal: { action: string; note: string | null; actor: string; at: string }[];
+}
+
+/** api.yaml#StaffSession. */
+export interface StaffSession {
+  email?: string;
+  isStaff: boolean;
+  mfaEnrolled: boolean;
+  mfaVerifiedUntil: string | null;
+}
+
+/** api.yaml#adminSystemData. */
+export interface StaffData {
+  env: "draft" | "prod";
+  revision: number | null;
+  accessUntil?: string;
+  omittedPii?: number;
+  entities: { name: string; label: string; rows: number }[];
+  entity: string | null;
+  columns: string[];
+  rows: Record<string, string | null>[];
+}
+
+/** api.yaml#adminListFounderReviews item. */
+export interface FounderReviewItem {
+  systemId: string;
+  systemName: string;
+  orgId: string;
+  revision: number;
+  createdAt: string;
+}

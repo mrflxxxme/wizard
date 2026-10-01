@@ -1,6 +1,7 @@
 // Minimal History API router (platform-screens.yaml#stack, ≤ 10 routes): "/", "/login", "/invite/:token",
 // "/s/:systemId", "/s/:systemId/code", "/s/:systemId/settings", "/s/:systemId/import/:importId", "/legal/:doc",
-// "/billing" (S-billing, M2-11).
+// "/billing" (S-billing, M2-11), "/abuse" (public complaint form) and "/admin" (staff console, M2-08; the ticket is
+// ?report=<id>, so the console stays one route), "/welcome" (S-welcome, pilot onboarding, M2-09).
 import { useSyncExternalStore } from "react";
 
 export type Route =
@@ -13,10 +14,13 @@ export type Route =
   | { name: "invite"; token: string }
   | { name: "legal"; doc: string }
   | { name: "billing" }
+  | { name: "welcome" }
+  | { name: "abuse" }
+  | { name: "admin" }
   | { name: "notFound" };
 
-/** Routes reachable without a session (S-auth, S-invite, documents). */
-export const PUBLIC_ROUTES: ReadonlySet<Route["name"]> = new Set(["login", "invite", "legal"]);
+/** Routes reachable without a session (S-auth, S-invite, documents, «Пожаловаться»). */
+export const PUBLIC_ROUTES: ReadonlySet<Route["name"]> = new Set(["login", "invite", "legal", "abuse"]);
 
 /** next after login: only a path of this origin (^/(?![/\\]), platform-screens.yaml S-auth). */
 export function safeNext(next: string | null | undefined): string {
@@ -50,6 +54,9 @@ export function matchRoute(pathname: string): Route {
   if (pathname === "/" || pathname === "") return { name: "start" };
   if (pathname === "/login") return { name: "login" };
   if (pathname === "/billing" || pathname === "/billing/") return { name: "billing" };
+  if (pathname === "/welcome" || pathname === "/welcome/") return { name: "welcome" };
+  if (pathname === "/abuse" || pathname === "/abuse/") return { name: "abuse" };
+  if (pathname === "/admin" || pathname === "/admin/") return { name: "admin" };
   const inv = /^\/invite\/([A-Za-z0-9_-]{32,128})\/?$/.exec(pathname);
   if (inv) return { name: "invite", token: inv[1] as string };
   const legal = /^\/legal\/(offer|pd-consent|privacy)\/?$/.exec(pathname);

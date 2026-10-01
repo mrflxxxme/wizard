@@ -1,7 +1,7 @@
 // Env names: specs/platform/deploy.yaml#local.env_vars (canonical list; the platform shop keys of M2-07 —
 // docs/reviews/impl-notes/M2-07.md).
 import { join, resolve } from "node:path";
-import { YOOKASSA_API_BASE, YOOKASSA_IP_ALLOWLIST } from "@wizard/connectors";
+import { isPlainAddress, YOOKASSA_API_BASE, YOOKASSA_IP_ALLOWLIST } from "@wizard/connectors";
 import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
 import { DEFAULT_DB_URL, DEFAULT_ORG_ID } from "./db/index.js";
 
@@ -89,6 +89,70 @@ export interface Config {
   llmMonthlyCapRub: number;
   /** WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID: founder alert webhook (deploy.yaml#pilot.observability). */
   opsAlert: { url: string; chatId: string | null } | null;
+  /** WIZARD_OPS_ALERT_EMAIL (M2-09, D21_beta_moderation «алерты в Telegram и на почту»): founder alerts by platform mail. */
+  opsAlertEmail: string | null;
+  /**
+   * WIZARD_FOUNDER_REVIEW=on|off (M2-09; abuse.yaml#identification.founder_review): apply orgs.require_founder_review —
+   * the first prod publication of a system and a publication with new personal-data fields need an approved founder
+   * review. Default: on with NODE_ENV=production (pilot, beta), off for dev and the test stands.
+   */
+  founderReviewRequired: boolean;
+  /**
+   * Platform mail over SMTP (M2-09): WIZARD_SMTP_HOST / _PORT / _USER / _PASSWORD / _FROM / _TLS; null — letters go to
+   * the outbox files (outboxDir). Production needs it unless a mailer is injected.
+   */
+  smtp: PlatformSmtp | null;
+  /** WIZARD_SMTP_HOST is set but WIZARD_SMTP_FROM is missing or not an address (refused at startup). */
+  smtpFromInvalid: boolean;
+}
+
+export interface PlatformSmtp {
+  host: string;
+  port: number;
+  /** implicit (465), starttls (587/25, mandatory), none — local receiver only, refused in production. */
+  tls: "implicit" | "starttls" | "none";
+  user: string | null;
+  password: string | null;
+  from: { address: string; name: string };
+}
+
+/** WIZARD_SMTP_FROM: "Wizard <noreply@example.ru>" or a bare address; null when invalid. */
+export function parseMailFrom(v: string | undefined): { address: string; name: string } | null {
+  const s = (v ?? "").trim();
+  if (!s) return null;
+  const m = /^(.*?)\s*<([^<>\s]+)>$/.exec(s);
+  const address = (m ? m[2] : s) ?? "";
+  const name = m ? (m[1] ?? "").replace(/^"(.*)"$/, "$1").trim() : "";
+  return isPlainAddress(address) ? { address, name } : null;
+}
+
+const onOff = (v: string | undefined): boolean | null => {
+  const s = (v ?? "").trim().toLowerCase();
+  if (["on", "true", "1"].includes(s)) return true;
+  if (["off", "false", "0"].includes(s)) return false;
+  return null;
+};
+
+function smtpFromEnv(env: NodeJS.ProcessEnv): { smtp: PlatformSmtp | null; fromInvalid: boolean } {
+  const host = env.WIZARD_SMTP_HOST?.trim();
+  if (!host) return { smtp: null, fromInvalid: false };
+  const port = Number(env.WIZARD_SMTP_PORT ?? 465);
+  const t = env.WIZARD_SMTP_TLS?.trim().toLowerCase();
+  const tls: PlatformSmtp["tls"] =
+    t === "implicit" || t === "starttls" || t === "none" ? t : port === 465 ? "implicit" : "starttls";
+  const from = parseMailFrom(env.WIZARD_SMTP_FROM);
+  if (!from) return { smtp: null, fromInvalid: true };
+  return {
+    smtp: {
+      host,
+      port,
+      tls,
+      user: env.WIZARD_SMTP_USER || null,
+      password: env.WIZARD_SMTP_PASSWORD || null,
+      from,
+    },
+    fromInvalid: false,
+  };
 }
 
 /** Default of WIZARD_LLM_MONTHLY_CAP_RUB (D23_pilot: models ≤ 10 000 ₽/month, of them live eval ≤ 4 000 ₽). */
@@ -122,6 +186,7 @@ export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<Config> = {}): Config {
   const conc = Number(env.WIZARD_RUN_CONCURRENCY ?? 2);
+  const mail = smtpFromEnv(env);
   return {
     dbUrl: env.WIZARD_DB_URL ?? env.DATABASE_URL ?? DEFAULT_DB_URL,
     authMode: env.WIZARD_AUTH_MODE || "session",
@@ -162,6 +227,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     opsAlert: env.WIZARD_OPS_ALERT_URL
       ? { url: env.WIZARD_OPS_ALERT_URL, chatId: env.WIZARD_OPS_ALERT_CHAT_ID || null }
       : null,
+    opsAlertEmail: env.WIZARD_OPS_ALERT_EMAIL?.trim() || null,
+    founderReviewRequired:
+      onOff(env.WIZARD_FOUNDER_REVIEW) ?? (over.nodeEnv ?? env.NODE_ENV) === "production",
+    smtp: mail.smtp,
+    smtpFromInvalid: mail.fromInvalid,
     ...over,
     // Tests that move artifactsDir get the other .data stores next to it.
     secretsFile:
@@ -222,6 +292,18 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
     throw new StartupError("WIZARD_RECEIPT_VAT_CODE: допустимы коды НДС ЮKassa 1–12");
   if (c.nodeEnv === "production" && c.platformShop && vat === null)
     throw new StartupError("WIZARD_RECEIPT_VAT_CODE обязателен для чеков платежей платформы (54-ФЗ)");
+  if (c.smtpFromInvalid)
+    throw new StartupError(
+      'WIZARD_SMTP_FROM: нужен адрес отправителя писем платформы, например "Wizard <noreply@домен>"',
+    );
+  if (c.smtp && !(Number.isInteger(c.smtp.port) && c.smtp.port > 0 && c.smtp.port < 65536))
+    throw new StartupError("WIZARD_SMTP_PORT: нужен номер порта");
+  if (c.nodeEnv === "production" && c.smtp?.tls === "none")
+    throw new StartupError(
+      "WIZARD_SMTP_TLS=none запрещено при NODE_ENV=production (только TLS 465 или STARTTLS)",
+    );
+  if (c.opsAlertEmail !== null && !isPlainAddress(c.opsAlertEmail))
+    throw new StartupError("WIZARD_OPS_ALERT_EMAIL: нужен адрес почты");
   if (c.nodeEnv === "production" && c.secretsKey.length < 32)
     throw new StartupError("WIZARD_SECRETS_KEY обязателен при NODE_ENV=production");
 }

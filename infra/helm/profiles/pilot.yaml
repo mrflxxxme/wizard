@@ -13,6 +13,7 @@ config:
   registration: invite
   payments: "off"
   llmMonthlyCapRub: 6000
+  founderReview: "on"
 postgres:
   inCluster: true
   storageSize: 30Gi

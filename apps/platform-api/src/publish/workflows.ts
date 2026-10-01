@@ -9,6 +9,7 @@ import type postgres from "postgres";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable, SystemsTable } from "../db/types.js";
+import { opsAlertFromConfig } from "../ops/alert-config.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
 import { recordGateReport } from "../runs/gates.js";
 import { type GateReport, type GateRunner, RunFailure } from "../runs/types.js";
@@ -18,8 +19,10 @@ import {
   abuseContext,
   abuseFlagChecks,
   defaultModerationLog,
+  FOUNDER_REVIEW_REASON_RU,
   type FounderReviewStatus,
   founderReviewChecks,
+  founderReviewReason,
   founderReviewStatus,
   REVIEW_PENDING_RU,
   REVIEW_REJECTED_RU,
@@ -282,6 +285,47 @@ async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec,
   if (review === "rejected") throw new RunFailure("GATES_FAILED", REVIEW_REJECTED_RU);
 }
 
+/**
+ * M2-09 (abuse.yaml#identification.founder_review, workflows.yaml#workflows.publish.preconditions): with
+ * config.founderReviewRequired and orgs.require_founder_review, the first prod publication of a system and a
+ * publication with new personal-data fields wait for the founder's approval of this revision (after G0/G2 passed, so
+ * the founder reviews a revision that is otherwise publishable). A new request alerts the founder (ids only).
+ */
+async function founderReviewGate(
+  h: FlowHost,
+  sys: System,
+  revision: number,
+  spec: AppSpec,
+  prodSpec: AppSpec | null,
+): Promise<void> {
+  const reason = await h.once("founder_review_reason", () =>
+    founderReviewReason(h.db, {
+      systemId: sys.id,
+      orgId: sys.org_id,
+      spec,
+      prodSpec,
+      required: h.config.founderReviewRequired,
+    }),
+  );
+  if (!reason) return;
+  const status = await h.step("founder_review", "Проверяю одобрение модератора", async () => {
+    const before = await founderReviewStatus(h.db, sys.id, revision);
+    const now = await requestFounderReview(h.db, sys.id, revision);
+    if (before === null) {
+      const alert = h.options.alert ?? opsAlertFromConfig(h.config);
+      await alert({
+        level: "warn",
+        event: "founder_review_requested",
+        text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}. Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
+        fields: { systemId: sys.id, orgId: sys.org_id, revision, reason },
+      });
+    }
+    return now;
+  });
+  if (status === "pending") throw new RunFailure("GATES_FAILED", REVIEW_PENDING_RU);
+  if (status === "rejected") throw new RunFailure("GATES_FAILED", REVIEW_REJECTED_RU);
+}
+
 /** Marks the publication failed when a step throws after plan_migration (unless it already moved on). */
 async function guarded<T>(h: FlowHost, publicationId: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -387,6 +431,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
         throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки для prod — подробности в отчёте G0");
     });
     if (h.config.prodG2Required) await prodG2(h, sys, revision, spec, prevSpec);
+    await founderReviewGate(h, sys, revision, spec, prevSpec);
     await telegramBots(h, sys, revision, spec);
     await h.step("apply_migration", "Применяю изменения базы prod", async () => {
       await setStatus(h, pub.id, "applying", ["planned"]);

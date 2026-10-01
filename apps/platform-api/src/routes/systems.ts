@@ -226,7 +226,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         s,
         d.billing,
         d.config.cardBindingRequired,
-        d.config.prodG2Required,
+        d.config.prodG2Required || d.config.founderReviewRequired,
       ),
     });
   });

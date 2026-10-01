@@ -1,12 +1,15 @@
-// Platform mail (OTP codes, invites). No SMTP provider is chosen yet (compliance.yaml#subprocessors, E-ACCESS):
-// locally letters go to files in .data/outbox/platform (deploy.yaml#local.env_vars, WIZARD_DEV_SMTP empty).
+// Platform mail (OTP codes, invites, notices, billing, founder alerts). With WIZARD_SMTP_HOST letters go over SMTP
+// (auth/smtp-mailer.ts, M2-09); otherwise — locally and in tests — to files in .data/outbox/platform.
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface MailMessage {
-  /** notice — events for the owner of a system (consent withdrawal, compliance.yaml#consent.withdrawal). */
-  kind: "otp" | "invite" | "notice" | "billing";
+  /**
+   * notice — events for the owner of a system (consent withdrawal, compliance.yaml#consent.withdrawal); alert — founder
+   * alerts (ops/alert.ts, WIZARD_OPS_ALERT_EMAIL).
+   */
+  kind: "otp" | "invite" | "notice" | "billing" | "alert";
   to: string;
   subject: string;
   text: string;

@@ -1,7 +1,8 @@
 // workflows.yaml#retention_cron «Платформенная уборка» and «messages» (db.yaml retention of auth_otps, run_events,
 // gate_reports, messages; L3-09). Imports/exports after expires_at are swept hourly elsewhere (imports/ttl, exports),
-// dbos.* by the worker's dbos_retention; abuse_reports has no table yet (M2 abuse task).
+// dbos.* by the worker's dbos_retention; abuse_reports.contact_email one year after the ticket closed (M2-08).
 import { scrub } from "@wizard/pii";
+import { purgeAbuseContacts } from "../abuse/reports.js";
 import type { Db } from "../db/index.js";
 
 const HOUR_MS = 3600_000;
@@ -18,6 +19,8 @@ export interface HousekeepingReport {
   otps: number;
   runEvents: number;
   gateReports: number;
+  /** Reporter e-mails of abuse reports closed more than a year ago (db.yaml#abuse_reports.contact_email). */
+  abuseContacts: number;
   /** User messages whose text changed after scrub. */
   messagesScrubbed: number;
 }
@@ -52,6 +55,7 @@ export async function cleanPlatformTables(
     otps: Number(otps.numDeletedRows),
     runEvents: Number(runEvents.numDeletedRows),
     gateReports: Number(gateReports.numDeletedRows),
+    abuseContacts: await purgeAbuseContacts(db, now),
   };
 }
 
