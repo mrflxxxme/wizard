@@ -16,6 +16,7 @@ spec:
     metadata:
       labels: {{- include "wizard.selector" "wizard-runtime" | nindent 8 }}
         wizard.ru/role: runtime
+      annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
@@ -40,6 +41,7 @@ spec:
           ports:
             - { name: public, containerPort: {{ .Values.runtime.port }}, protocol: TCP }
             - { name: internal, containerPort: {{ .Values.runtime.internalPort }}, protocol: TCP }
+            - { name: metrics, containerPort: {{ .Values.metrics.port }}, protocol: TCP }
           # Internal health checks the DB too ({status, version, db, systemsLoaded}).
           readinessProbe:
             httpGet: { path: /_wizard/health, port: internal }

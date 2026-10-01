@@ -66,13 +66,23 @@ export class EventBus {
 export interface TxCtx {
   trx: Transaction<DB>;
   events: RunEvent[];
+  /** Side effects after commit (metrics, M2-09); never run when the transaction rolls back. */
+  after?: (() => void)[];
 }
 
-/** Runs fn in a transaction; events appended inside are published to the bus after commit. */
+/** Runs fn in a transaction; events appended inside are published to the bus after commit, then `after` hooks run. */
 export async function withTx<T>(db: Db, bus: EventBus, fn: (t: TxCtx) => Promise<T>): Promise<T> {
   const events: RunEvent[] = [];
-  const out = await db.transaction().execute((trx) => fn({ trx, events }));
+  const after: (() => void)[] = [];
+  const out = await db.transaction().execute((trx) => fn({ trx, events, after }));
   for (const e of events) bus.publish(e);
+  for (const f of after) {
+    try {
+      f();
+    } catch {
+      // Metrics must never break a committed transition.
+    }
+  }
   return out;
 }
 

@@ -3,6 +3,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createLogger } from "@wizard/pii/log";
+import { metricsListenFromEnv } from "@wizard/pii/metrics";
 import postgres from "postgres";
 import { DbRegistry, FileRegistry } from "./registry.js";
 import { startRuntime } from "./server.js";
@@ -26,7 +27,9 @@ const hostname = process.env.HOST ?? process.env.WIZARD_RUNTIME_HOST ?? "127.0.0
 // runtime.yaml#routing.rules (L3-19): internal port 4101 next to the public 4100; "off" disables it.
 const internalEnv = process.env.WIZARD_RUNTIME_INTERNAL_PORT;
 const internalPort = internalEnv === "off" ? null : Number(internalEnv ?? port + 1);
-const { close } = await startRuntime({
+// M2-09: Prometheus /metrics on WIZARD_METRICS_PORT (off by default locally).
+const metricsAt = metricsListenFromEnv(process.env);
+const { close, metricsPort } = await startRuntime({
   db,
   // Drafts built by platform-api come from platform.deployments; registry.json still serves hand-placed artifacts.
   registry: new DbRegistry(db, new FileRegistry(join(artifactsRoot, "registry.json"))),
@@ -49,9 +52,11 @@ const { close } = await startRuntime({
     ...(process.env.WIZARD_SMTP_HOST ? { platformSmtpHost: process.env.WIZARD_SMTP_HOST } : {}),
   },
   log: (line) => logger.line(line),
+  ...(metricsAt ? { metricsPort: metricsAt.port, metricsHostname: metricsAt.hostname } : {}),
 });
 logger.info("listening", { url: `http://${hostname}:${port}`, port });
 if (internalPort !== null) logger.info("listening_internal", { port: internalPort });
+if (metricsPort !== null) logger.info("listening_metrics", { port: metricsPort });
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {

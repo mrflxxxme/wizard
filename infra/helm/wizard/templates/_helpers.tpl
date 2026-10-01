@@ -68,6 +68,13 @@ imagePullSecrets:
   value: {{ .Values.config.payments | quote }}
 - name: WIZARD_LLM_MONTHLY_CAP_RUB
   value: {{ .Values.config.llmMonthlyCapRub | quote }}
+- name: WIZARD_FOUNDER_REVIEW
+  value: {{ .Values.config.founderReview | quote }}
+# M2-09: Prometheus /metrics listener (scraped through the pod annotations of wizard.metricsAnnotations).
+- name: WIZARD_METRICS_PORT
+  value: {{ .Values.metrics.port | quote }}
+- name: WIZARD_METRICS_HOST
+  value: "0.0.0.0"
 {{- if .Values.config.s3Endpoint }}
 - name: WIZARD_S3_ENDPOINT
   value: {{ .Values.config.s3Endpoint | quote }}
@@ -92,6 +99,15 @@ imagePullSecrets:
   valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgres }}, key: WIZARD_OPS_ALERT_URL, optional: true } }
 - name: WIZARD_OPS_ALERT_CHAT_ID
   valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgres }}, key: WIZARD_OPS_ALERT_CHAT_ID, optional: true } }
+- name: WIZARD_OPS_ALERT_EMAIL
+  valueFrom: { secretKeyRef: { name: {{ .Values.secrets.postgres }}, key: WIZARD_OPS_ALERT_EMAIL, optional: true } }
+{{- end -}}
+
+{{/* M2-09: VictoriaMetrics scrapes annotated pods (addons/victoria-metrics-values.yaml) on the metrics port. */}}
+{{- define "wizard.metricsAnnotations" -}}
+prometheus.io/scrape: "true"
+prometheus.io/port: {{ .Values.metrics.port | quote }}
+prometheus.io/path: /metrics
 {{- end -}}
 
 {{/* Writable paths of a read-only root filesystem: /tmp (tsx cache) and the shared .data volume. */}}

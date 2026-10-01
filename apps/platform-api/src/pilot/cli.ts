@@ -7,6 +7,8 @@
 //   pnpm --filter @wizard/platform-api pilot grant <orgId> <credits> [reference]
 //   pnpm --filter @wizard/platform-api pilot orgs
 //   pnpm --filter @wizard/platform-api pilot spend
+//   pnpm --filter @wizard/platform-api pilot readiness [on|off] [--by <кто>] [--note <что сделано>]   (M2-09)
+//   pnpm --filter @wizard/platform-api pilot review-required <orgId> on|off                          (M2-09)
 import { randomUUID } from "node:crypto";
 import { sql } from "kysely";
 import type { Mailer } from "../auth/mailer.js";
@@ -14,6 +16,7 @@ import type { Billing } from "../billing/ledger.js";
 import { llmSpentRub, moscowMonth } from "../billing/llm-cap.js";
 import type { Db } from "../db/index.js";
 import { createPilotInvite, PilotError } from "./invites.js";
+import { getBetaReadiness, setBetaReadiness } from "./readiness.js";
 
 export interface PilotCliDeps {
   db: Db;
@@ -33,6 +36,8 @@ export const PILOT_CLI_USAGE = [
   "  grant <orgId> <кредиты> [reference]                     начислить кредиты пилота (365 дней)",
   "  orgs                                                    организации: тариф, баланс, расход за месяц",
   "  spend                                                   расход платформы на модели за месяц и лимит",
+  "  readiness [on|off] [--by <кто>] [--note <текст>]        готовность беты (M2-13): без неё приглашения не уходят",
+  "  review-required <orgId> on|off                          ревью основателя перед первой публикацией в prod",
 ].join("\n");
 
 /** Positional arguments and --flag value / --flag=value options. */
@@ -198,6 +203,30 @@ export async function runPilotCli(argv: string[], d: PilotCliDeps): Promise<stri
       const rub = await llmSpentRub(d.db, m.start, m.end);
       const share = Math.floor((100 * rub) / d.llmMonthlyCapRub);
       return `модели за ${m.key} (МСК): ${fmt(rub, 2)} ₽ из ${fmt(d.llmMonthlyCapRub, 0)} ₽ (${share} %)`;
+    }
+    case "readiness": {
+      const show = (r: Awaited<ReturnType<typeof getBetaReadiness>>) =>
+        r.at
+          ? `beta_readiness: ${r.on ? "on" : "off"} (${r.by}, ${r.at.toISOString().slice(0, 16).replace("T", " ")} UTC)${r.note ? ` — ${r.note}` : ""}`
+          : "beta_readiness: off (не отмечалась) — приглашения партнёрам не отправляются";
+      if (!a1) return show(await getBetaReadiness(d.db));
+      if (a1 !== "on" && a1 !== "off")
+        throw new PilotError("readiness [on|off] [--by <кто>] [--note <текст>]");
+      return show(
+        await setBetaReadiness(d.db, { on: a1 === "on", by: opts.by ?? null, note: opts.note ?? null, now }),
+      );
+    }
+    case "review-required": {
+      if (a2 !== "on" && a2 !== "off") throw new PilotError("review-required <orgId> on|off");
+      const org = await orgExists(d.db, a1);
+      await d.db
+        .updateTable("platform.orgs")
+        .set({ require_founder_review: a2 === "on" })
+        .where("id", "=", org.id)
+        .execute();
+      return a2 === "on"
+        ? `«${org.name}»: первая публикация каждой системы и новые формы сбора ПДн — после одобрения модератора`
+        : `«${org.name}»: ревью перед prod только по сигналам антифрода G2`;
     }
     default:
       throw new PilotError(PILOT_CLI_USAGE);

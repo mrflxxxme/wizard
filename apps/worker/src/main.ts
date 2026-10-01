@@ -1,8 +1,11 @@
-// Entry point: `pnpm --filter @wizard/worker dev` (tsx), started by scripts/dev.mjs; no HTTP port.
+// Entry point: `pnpm --filter @wizard/worker dev` (tsx), started by scripts/dev.mjs; no HTTP port except the optional
+// Prometheus /metrics listener (WIZARD_METRICS_PORT, M2-09).
 // Configuration from env (platform/deploy.yaml#local.env_vars); the repo .env is loaded when present.
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createLogger } from "@wizard/pii/log";
+import { metricsListenFromEnv } from "@wizard/pii/metrics";
+import { startMetricsServer } from "@wizard/platform-api";
 import { startWorker } from "./worker.js";
 
 const root = resolve(join(import.meta.dirname, "..", "..", ".."));
@@ -19,6 +22,12 @@ process.on("unhandledRejection", fatal("unhandled rejection"));
 // platform-api migrates the platform schema; DBOS.launch migrates dbos.
 const worker = await startWorker({ logger, migrate: false }).catch(fatal("start failed"));
 if (!worker) process.exit(1);
+// Process counters only (runs, gates, retention); the database gauges come from platform-api.
+const metricsAt = metricsListenFromEnv(process.env);
+const metrics = metricsAt
+  ? await startMetricsServer(metricsAt).catch(fatal("metrics listener failed"))
+  : null;
+if (metrics) logger.info("listening_metrics", { port: metrics.port });
 
 let stopping = false;
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
@@ -26,8 +35,8 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
     if (stopping) return;
     stopping = true;
     // Running workflows stay pending in dbos.* and resume on the next start.
-    void worker
-      .close()
+    void Promise.resolve(metrics?.close())
+      .then(() => worker.close())
       .catch((e) => logger.error("close failed", e))
       .finally(() => process.exit(0));
   });

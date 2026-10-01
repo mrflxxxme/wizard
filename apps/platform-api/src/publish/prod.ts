@@ -1,5 +1,6 @@
 // Prod side of publish/rollback (workflows.yaml#workflows.publish, #rollback): schema migration of app_<key>_prod,
 // smoke check of the prod host, URLs and the Publication API shape.
+
 import { request } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
@@ -10,6 +11,7 @@ import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
 import { upgradeSystemTables } from "../agents/system-tables.js";
 import type { Config } from "../config.js";
 import type { PublicationsTable } from "../db/types.js";
+import type { OpsAlertFn } from "../ops/alert.js";
 import { RunFailure } from "../runs/types.js";
 import type { ModerationLog } from "./moderation.js";
 
@@ -55,6 +57,8 @@ export interface PublishOptions {
   telegram?: TelegramPublishOptions;
   /** Moderation journal of G2 antifraud hits (abuse_flag; default: a structured platform log line). */
   moderationLog?: ModerationLog;
+  /** Founder alert when a revision is put on review (M2-09; default: log + webhook/e-mail from the config). */
+  alert?: OpsAlertFn;
 }
 
 function get(url: URL, timeoutMs: number, hostHeader?: string): Promise<{ status: number; body: string }> {

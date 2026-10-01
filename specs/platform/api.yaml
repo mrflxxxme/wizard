@@ -280,7 +280,7 @@ paths:
       operationId: publish
       x-milestone: M1
       x-roles: [owner]
-      summary: Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2
+      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve)'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
       responses:
@@ -443,7 +443,7 @@ paths:
     post:
       operationId: createOrg
       x-milestone: M1
-      summary: Создатель становится owner; стартовый грант Free (billing.yaml#plans.free.grants)
+      summary: 'Создатель становится owner; стартовый грант Free (billing.yaml#plans.free.grants). M2-09: при WIZARD_REGISTRATION=invite новая org владельца пилотной org — plan pilot без кредитов и с require_founder_review=true; без своей пилотной org — 403 FORBIDDEN «На пилоте новые организации создаёт команда Wizard…»'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, minLength: 1, maxLength: 120}}}}}}
       responses: {'201': {description: Создана, content: {application/json: {schema: {$ref: '#/components/schemas/Org'}}}}}
   /orgs/{orgId}:
@@ -529,7 +529,7 @@ paths:
       x-milestone: M2
       x-roles: [owner]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [packs], properties: {packs: {type: integer, minimum: 1, maximum: 20}}}}}}
-      summary: 'Докупка пакетов (billing.yaml#topup). С привязанной картой — списание сразу по payment_method_id (confirmationUrl = null, кредиты начислены в том же запросе); без карты — страница ЮKassa без сохранения карты'
+      summary: 'Докупка пакетов (billing.yaml#topup; на тарифе pilot — 403 FORBIDDEN, billing.yaml#plans.topup.available_on, M2-09). С привязанной картой — списание сразу по payment_method_id (confirmationUrl = null, кредиты начислены в том же запросе); без карты — страница ЮKassa без сохранения карты'
       responses: {'200': {description: Платёж создан, content: {application/json: {schema: {type: object, properties: {confirmationUrl: {type: [string, 'null']}, paymentId: {type: string}}}}}}}
   /webhooks/yookassa:
     post:

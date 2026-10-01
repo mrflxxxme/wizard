@@ -32,6 +32,8 @@ export {
   RESTRICTED_REGIONS,
 } from "./auth/region.js";
 export { cookieNames } from "./auth/sessions.js";
+/** M2-09: platform mail over SMTP (WIZARD_SMTP_*), outbox fallback when not configured. */
+export { platformMailer, SmtpMailer, type SmtpMailerOptions } from "./auth/smtp-mailer.js";
 /** RFC 6238 TOTP on node:crypto (staff MFA): code of a base32 secret, verification with replay guard. */
 export { base32Decode, base32Encode, newTotpSecret, otpauthUri, totpCode, verifyTotp } from "./auth/totp.js";
 export {
@@ -105,6 +107,17 @@ export { type AuthUser, checkOrgAccess } from "./http/auth.js";
 export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 /** Founder alerts: structured log + optional WIZARD_OPS_ALERT_URL webhook (deploy.yaml#pilot.observability). */
 export { createOpsAlert, type OpsAlert, type OpsAlertFn, type OpsAlertOptions } from "./ops/alert.js";
+/** M2-09: the founder alert channel from the config (log, webhook, WIZARD_OPS_ALERT_EMAIL letter). */
+export { opsAlertFromConfig } from "./ops/alert-config.js";
+/** M2-09: founder alert «run failed rate > 20% за 1 ч» (one per clock hour). */
+export {
+  checkRunFailureRate,
+  claimOpsAlert,
+  RUN_FAIL_RATE_MIN_RUNS,
+  RUN_FAIL_RATE_THRESHOLD,
+} from "./ops/checks.js";
+/** M2-09: Prometheus metrics of platform-api and the worker (WIZARD_METRICS_PORT), DB gauges on scrape. */
+export { collectDbGauges, platformMetrics, startMetricsServer } from "./ops/metrics.js";
 /** M2-15 pilot: founder CLI (invite, plan, grant, orgs, spend) and the invite-only registration. */
 export { PILOT_CLI_USAGE, type PilotCliDeps, parseArgs, runPilotCli } from "./pilot/cli.js";
 export {
@@ -112,12 +125,20 @@ export {
   admitNewUser,
   createPilotInvite,
   PILOT_INVITE_DAYS,
+  PILOT_WELCOME_PATH,
   PilotError,
   type PilotInviteInput,
   type PilotInviteResult,
   pilotInviteLink,
   REGISTRATION_INVITE_ONLY_RU,
 } from "./pilot/invites.js";
+/** M2-09: beta_readiness (platform_settings) — partner invitations only after M2-13. */
+export {
+  BETA_READINESS_MISSING_RU,
+  type BetaReadiness,
+  getBetaReadiness,
+  setBetaReadiness,
+} from "./pilot/readiness.js";
 /** retention_cron platform part (M2-05): runtime journals → platform.deletion_log, consent notices, delete_system. */
 export { type RetentionCronDeps, type RetentionCronReport, runRetentionCron } from "./privacy/cron.js";
 export { type PurgedSystem, purgeDeletedSystems, SYSTEM_PURGE_DAYS } from "./privacy/delete-system.js";
@@ -128,9 +149,12 @@ export {
   type AbuseFlag,
   abuseContext,
   decideFounderReview,
+  type FounderReviewReason,
   type FounderReviewStatus,
+  founderReviewReason,
   founderReviewStatus,
   type ModerationLog,
+  pdFields,
   pendingFounderReviews,
   secretExistsFor,
 } from "./publish/moderation.js";

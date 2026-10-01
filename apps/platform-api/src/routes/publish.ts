@@ -79,7 +79,14 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });
-    if (await founderReviewBlocks(d.db, s.id, b.revision, d.config.prodG2Required))
+    if (
+      await founderReviewBlocks(
+        d.db,
+        s.id,
+        b.revision,
+        d.config.prodG2Required || d.config.founderReviewRequired,
+      )
+    )
       throw new ApiError(
         "FOUNDER_REVIEW_PENDING",
         (await founderReviewStatus(d.db, s.id, b.revision)) === "rejected"

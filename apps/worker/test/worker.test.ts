@@ -24,6 +24,7 @@ import {
   CREDITS_CRON,
   DBOS_RETENTION,
   IMPORTS_TTL,
+  OPS_CHECKS,
   RETENTION_CRON,
   startWorker,
   type Worker,
@@ -372,7 +373,11 @@ describe("runs as DBOS workflows (M1-01)", () => {
     // The run itself (platform.runs, run_events) is untouched.
     expect((await api.req("GET", `/runs/${b.buildRunId}`)).body.status).toBe("succeeded");
     const names = (await DBOS.listSchedules()).map((s) => s.scheduleName).sort();
-    expect(names).toEqual([BILLING_CRON, CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, RETENTION_CRON].sort());
+    expect(names).toEqual(
+      [BILLING_CRON, CREDITS_CRON, DBOS_RETENTION, IMPORTS_TTL, OPS_CHECKS, RETENTION_CRON].sort(),
+    );
+    // M2-09: one pass of the ops checks (run failure rate of the last hour) — the build above succeeded.
+    expect(await worker.opsChecks()).toMatchObject({ alerted: false });
   });
 
   test("retention_cron (M2-05): a system deleted 31 days ago is purged by the worker pass; messages gone, journal written", async () => {

@@ -282,8 +282,9 @@ export async function startStand(kind: StandKind): Promise<void> {
             yookassaIpAllowlist: ["127.0.0.1/32"],
           }
         : {}),
-      // Pilot (M2-15, deploy.yaml#pilot.env): invite-only registration, payments off.
-      ...(kind === "pilot" ? { registration: "invite", payments: false } : {}),
+      // Pilot (M2-15, deploy.yaml#pilot.env): invite-only registration, payments off; founder review before the first
+      // prod publication (M2-09, WIZARD_FOUNDER_REVIEW=on as in the pilot profile).
+      ...(kind === "pilot" ? { registration: "invite", payments: false, founderReviewRequired: true } : {}),
     },
     executors: (d) => ({
       ...createAgentExecutors(d),

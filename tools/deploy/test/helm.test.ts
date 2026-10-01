@@ -187,6 +187,36 @@ describe("pilot switches (M2-15, platform/deploy.yaml#pilot.env)", () => {
     const platform = read("infra/helm/wizard/templates/platform.yaml");
     expect(platform.match(/include "wizard\.alertEnv"/g)).toHaveLength(2);
   });
+
+  it("M2-09: founder review on, /metrics of platform-api, worker and runtime scraped and open only to observability", () => {
+    expect(values).toMatch(/\n {2}founderReview: "on"\n/);
+    expect(values).toMatch(/\nmetrics:\n {2}port: 9464\n/);
+    expect(read("infra/helm/profiles/pilot.yaml")).toMatch(/\n {2}founderReview: "on"\n/);
+    const helpers = read("infra/helm/wizard/templates/_helpers.tpl");
+    for (const name of [
+      "WIZARD_FOUNDER_REVIEW",
+      "WIZARD_METRICS_PORT",
+      "WIZARD_METRICS_HOST",
+      "WIZARD_OPS_ALERT_EMAIL",
+    ])
+      expect(helpers).toContain(`- name: ${name}\n`);
+    expect(helpers).toContain('prometheus.io/scrape: "true"');
+    const platform = read("infra/helm/wizard/templates/platform.yaml");
+    const runtime = read("infra/helm/wizard/templates/runtime.yaml");
+    expect(platform.match(/include "wizard\.metricsAnnotations"/g)).toHaveLength(2);
+    expect(runtime.match(/include "wizard\.metricsAnnotations"/g)).toHaveLength(1);
+    expect(platform.match(/name: metrics, containerPort: \{\{ \.Values\.metrics\.port \}\}/g)).toHaveLength(
+      2,
+    );
+    expect(runtime).toContain("name: metrics, containerPort: {{ .Values.metrics.port }}");
+    const np = read("infra/helm/wizard/templates/networkpolicies.yaml");
+    // platform-api + worker (one range block) and runtime: the metrics port only from the observability namespace.
+    expect(
+      np.match(
+        /observability \}\} \} \} \}\]\n {6}ports: \[\{ protocol: TCP, port: \{\{ \$?\.Values\.metrics\.port \}\} \}\]/g,
+      ),
+    ).toHaveLength(2);
+  });
 });
 
 describe("provider neutrality", () => {

@@ -101,6 +101,8 @@ export {
   retentionSlot,
   runJobs,
 } from "./jobs/runner.js";
+/** M2-09: Prometheus metrics of the runtime (public port requests, retention passes); served on StartOptions.metricsPort. */
+export { instrumentFetch, runtimeMetrics } from "./metrics.js";
 /** Schema app_<id>_<env>, migration helper (migration role only), system role sys_<id>_<env>_system (L3-20). */
 export {
   dropSystemRole,

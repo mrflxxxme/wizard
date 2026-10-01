@@ -49,13 +49,14 @@ metadata: { name: wizard-{{ $role }}, namespace: {{ $ns }} }
 spec:
   podSelector: { matchLabels: { wizard.ru/role: {{ $role }} } }
   policyTypes: [Ingress, Egress]
-  {{- if eq $role "platform-api" }}
   ingress:
+    {{- if eq $role "platform-api" }}
     - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.ingress }} } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.platformApi.port }} }]
-  {{- else }}
-  ingress: []
-  {{- end }}
+    {{- end }}
+    # M2-09: /metrics only from the observability namespace (VictoriaMetrics).
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.observability }} } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.metrics.port }} }]
   egress:
     {{- include "wizard.dnsEgress" $ | nindent 4 }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
@@ -103,6 +104,9 @@ spec:
         - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
           podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox } }
       ports: [{ protocol: TCP, port: {{ .Values.runtime.internalPort }} }]
+    # M2-09: /metrics only from the observability namespace (VictoriaMetrics); the internal port stays closed to it.
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ .Values.namespaces.observability }} } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.metrics.port }} }]
   egress:
     {{- include "wizard.dnsEgress" . | nindent 4 }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]

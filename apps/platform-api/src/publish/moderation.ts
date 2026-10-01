@@ -1,6 +1,7 @@
 // G2 at prod publication (workflows.yaml#workflows.publish.steps.gate_G2, gates.yaml#G2, security/abuse.yaml):
 // the GateContext additions read from the platform DB (secretExists, abuse signals, brand allowlist), founder reviews
 // (db.yaml#founder_reviews, abuse.yaml#scoring.effect) and the abuse_flag moderation event (gates.yaml#G2.antifraud_rules).
+import type { AppSpec } from "@wizard/appspec";
 import { secretEnvVar } from "@wizard/connectors";
 import { ABUSE, type GateContext, type GateReport } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
@@ -188,4 +189,51 @@ export async function pendingFounderReviews(db: Db) {
     .where("fr.status", "=", "pending")
     .orderBy("fr.created_at")
     .execute();
+}
+
+/**
+ * Why a revision needs the founder's approval before prod regardless of G2 (abuse.yaml#identification.founder_review,
+ * M2-09): first_publication — the system has never been live in prod; new_pd_fields — the revision adds personal-data
+ * fields (forms that collect ПДн) the prod schema did not have.
+ */
+export type FounderReviewReason = "first_publication" | "new_pd_fields";
+
+export const FOUNDER_REVIEW_REASON_RU: Record<FounderReviewReason, string> = {
+  first_publication: "первая публикация системы",
+  new_pd_fields: "новые поля с персональными данными",
+};
+
+/** entity.field of every field with a personal-data category (AppSpec field.pii ≠ none). */
+export function pdFields(spec: AppSpec | null): Set<string> {
+  const out = new Set<string>();
+  for (const e of spec?.entities ?? [])
+    for (const f of e.fields) if ((f.pii ?? "none") !== "none") out.add(`${e.name}.${f.name}`);
+  return out;
+}
+
+/**
+ * M2-09: the founder review rule of the org (orgs.require_founder_review) under the platform switch
+ * (config.founderReviewRequired). `prodSpec` — the schema prod already has (schema high-water mark), null — none.
+ */
+export async function founderReviewReason(
+  db: Db,
+  a: { systemId: string; orgId: string; spec: AppSpec; prodSpec: AppSpec | null; required: boolean },
+): Promise<FounderReviewReason | null> {
+  if (!a.required) return null;
+  const org = await db
+    .selectFrom("platform.orgs")
+    .select("require_founder_review")
+    .where("id", "=", a.orgId)
+    .executeTakeFirst();
+  if (!org?.require_founder_review) return null;
+  const live = await db
+    .selectFrom("platform.publications")
+    .select("id")
+    .where("system_id", "=", a.systemId)
+    .where("live_at", "is not", null)
+    .executeTakeFirst();
+  if (!live) return "first_publication";
+  const before = pdFields(a.prodSpec);
+  for (const f of pdFields(a.spec)) if (!before.has(f)) return "new_pd_fields";
+  return null;
 }
