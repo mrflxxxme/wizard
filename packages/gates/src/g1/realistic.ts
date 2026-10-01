@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { base, Faker, ru } from "@faker-js/faker";
 import type { AppSpec, Entity, Field } from "@wizard/appspec";
+import { detect } from "@wizard/pii";
 
 export interface RealCtx {
   key: string;
@@ -237,8 +238,14 @@ function stringValue(c: RealCtx): string | undefined {
   const unique = c.field.unique === true;
   if (fieldIs(c, /promo|coupon|voucher/, /промокод|купон/i)) return `${rotate(PROMO_PREFIX, c)}${10 + c.n}`;
   if (fieldIs(c, /(provider|external|payment)_?(payment_)?id$/, /id платежа/i)) {
-    f.seed(seedOf(c.key, "provider-id", c.n));
-    return f.string.uuid();
+    // ~0.3% of random UUIDs hold a digit run that reads as a phone/INN/account; draw again (attempt 0 keeps the
+    // original value, so existing seeds do not change).
+    for (let k = 0; k < 16; k++) {
+      f.seed(k === 0 ? seedOf(c.key, "provider-id", c.n) : seedOf(c.key, "provider-id", c.n, k));
+      const id = f.string.uuid();
+      if (detect(id).length === 0) return id;
+    }
+    return undefined;
   }
   if (unique) return undefined;
   if (fieldIs(c, /company|organization|org_name|employer/, /компани|организац/i)) return rotate(COMPANIES, c);

@@ -46,6 +46,13 @@ export function isSyntheticValue(v: string): boolean {
   return words.length > 0 && words.every((w) => NAME_WORDS.has(w));
 }
 
+/** Kinds of personal data `detect()` finds in `v` outside the synthetic dictionary/patterns (the seed DLP rule). */
+export function nonSyntheticPii(v: string): string[] {
+  return detect(v)
+    .filter((f) => !isSyntheticValue(v.slice(f.start, f.end)))
+    .map((f) => f.kind);
+}
+
 /** Deterministic UUID (v4 layout) from the seed key and a path. */
 export function uuidFor(key: string, ...parts: (string | number)[]): string {
   const h = createHash("sha256")
@@ -135,7 +142,11 @@ export class ValueGen {
       });
       if (v === null) return undefined;
       const max = f.maxLength ?? DEFAULT_MAX_LENGTH[f.type];
-      if (typeof v !== "string" ? v !== undefined : max === undefined || [...v].length <= max) return v;
+      // A plausible value the seed DLP would flag (e.g. a digit run read as a phone) falls back to the synthetic one:
+      // the generator never trips its own DLP (FU-5: random SEED_PII errors of G1).
+      if (typeof v !== "string") {
+        if (v !== undefined) return v;
+      } else if ((max === undefined || [...v].length <= max) && nonSyntheticPii(v).length === 0) return v;
     }
     switch (f.type) {
       case "enum": {
@@ -338,10 +349,7 @@ export function seedDlp(spec: AppSpec, seed: Seed): DlpFinding[] {
       out.push({ path, kind: "non_synthetic_pii_field" });
       return;
     }
-    for (const f of detect(value)) {
-      const part = value.slice(f.start, f.end);
-      if (!isSyntheticValue(part)) out.push({ path, kind: f.kind });
-    }
+    for (const kind of nonSyntheticPii(value)) out.push({ path, kind });
   };
   seed.users.forEach((u, i) => {
     scan(`/users/${i}/display_name`, u.display_name, true);
