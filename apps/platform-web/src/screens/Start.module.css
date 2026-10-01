@@ -182,3 +182,26 @@
   color: var(--w-muted);
   font-size: 13px;
 }
+
+.orgSelect {
+  min-height: 32px;
+  max-width: 260px;
+  padding: 4px 8px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius-sm);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+}
+
+.systemItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.systemTeam {
+  font-size: 13px;
+  color: var(--w-muted);
+  padding: 0 4px;
+}

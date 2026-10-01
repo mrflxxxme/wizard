@@ -1,0 +1,285 @@
+.shell {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--w-bg);
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--w-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.revSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.revSelect select {
+  min-height: 32px;
+  max-width: 320px;
+  padding: 4px 8px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius-sm);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.tree,
+.viewer {
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius);
+  background: var(--w-surface);
+  min-width: 0;
+}
+
+.tree {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: start;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dir {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--w-muted);
+  font-family: ui-monospace, monospace;
+}
+
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file,
+.fileOn {
+  display: block;
+  padding: 4px 8px;
+  border-radius: var(--w-radius-sm);
+  color: var(--w-ink);
+  text-decoration: none;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.file:hover {
+  background: var(--w-bg);
+}
+
+.fileOn {
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+  font-weight: 600;
+}
+
+.changedMark {
+  color: var(--w-warn);
+}
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.viewerBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--w-line);
+}
+
+.path {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.segmented {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.seg,
+.segOn {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--w-line);
+  border-radius: 8px;
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segOn {
+  border-color: var(--w-accent);
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+  font-weight: 600;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.line {
+  display: flex;
+  min-width: max-content;
+}
+
+.num {
+  flex: none;
+  width: 48px;
+  padding-right: 12px;
+  text-align: right;
+  color: var(--w-muted);
+  user-select: none;
+}
+
+.mark {
+  flex: none;
+  width: 16px;
+  color: var(--w-muted);
+}
+
+.code {
+  white-space: pre;
+  font: inherit;
+  padding-right: 16px;
+}
+
+.add {
+  background: var(--w-ok-soft, var(--w-accent-soft));
+}
+
+.add .mark {
+  color: var(--w-ok);
+}
+
+.del {
+  background: var(--w-bad-soft, var(--w-line));
+}
+
+.del .mark {
+  color: var(--w-bad);
+}
+
+.gap {
+  padding: 2px 0 2px 64px;
+  color: var(--w-muted);
+  background: var(--w-bg);
+}
+
+.keyword {
+  color: var(--w-accent-text);
+  font-weight: 600;
+}
+
+.string {
+  color: var(--w-ok);
+}
+
+.comment {
+  color: var(--w-muted);
+  font-style: italic;
+}
+
+.number {
+  color: var(--w-warn);
+}
+
+.tag {
+  color: var(--w-bad);
+}
+
+@media (max-width: 1023px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell > nav:first-child {
+    display: none;
+  }
+}

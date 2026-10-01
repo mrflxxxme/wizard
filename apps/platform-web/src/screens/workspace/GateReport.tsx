@@ -2,7 +2,8 @@
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import type { GateReport as Report } from "../../api/types.js";
-import { Pill } from "../../components/ui.js";
+import { navigate } from "../../app/router.js";
+import { Alert, Pill } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
@@ -80,19 +81,66 @@ export function publishBlockers(apiBlockers: string[] | undefined, reports: Repo
   });
 }
 
+/** Blocker codes that the owner fixes in S10 (operator of personal data, L4-09). */
+const SETTINGS_BLOCKERS = new Set([
+  "OPERATOR_NAME_REQUIRED",
+  "OPERATOR_CONTACT_REQUIRED",
+  "OPERATOR_ADDRESS_REQUIRED",
+]);
+
 export function PublishCard({
+  systemId,
   slug,
   blockers,
+  codes,
+  prodRevision,
+  prodUrl,
+  revision,
+  showSubmit,
+  running,
+  busy,
+  error,
   onEdit,
+  onPublish,
 }: {
+  systemId: string;
   slug: string;
+  /** Blockers already in Russian (publishBlockers). */
   blockers: string[];
+  /** Raw blocker codes of GET /systems/:id. */
+  codes: string[];
+  prodRevision: number | null;
+  prodUrl: string | null;
+  /** Revision «Опубликовать» would publish; null — nothing to publish. */
+  revision: number | null;
+  /** false when the diff card (S7) carries the publish button. */
+  showSubmit: boolean;
+  running: boolean;
+  busy: boolean;
+  error: string | null;
   onEdit(): void;
+  onPublish(): void;
 }): ReactNode {
+  const upToDate = prodRevision !== null && revision === prodRevision;
   return (
     <section className={s.publish} data-testid="publish-card" aria-label={ru.publish.title}>
-      <h3 className={s.blockTitle}>{ru.publish.title}</h3>
-      <p data-testid="publish-address">{ru.publish.address(slug)}</p>
+      <div className={s.buildHead}>
+        <h3 className={s.blockTitle}>{ru.publish.title}</h3>
+        {prodRevision !== null && (
+          <Pill tone="ok" title={ru.start.prodTitle} testId="publish-prod-revision">
+            {ru.publish.published(prodRevision)}
+          </Pill>
+        )}
+      </div>
+      <p data-testid="publish-address">
+        {prodUrl ? (
+          <a href={prodUrl} target="_blank" rel="noopener noreferrer" data-testid="publish-prod-url">
+            {prodUrl}
+          </a>
+        ) : (
+          ru.publish.address(slug)
+        )}
+      </p>
       <p className={s.small}>{ru.publish.features}</p>
       <p className={s.small} data-testid="publish-card-status">
         {ru.publish.cardStatus}
@@ -102,15 +150,37 @@ export function PublishCard({
           {b}
         </p>
       ))}
+      {codes.some((c) => SETTINGS_BLOCKERS.has(c)) && (
+        <a
+          href={`/s/${systemId}/settings#pd`}
+          className={s.linkButton}
+          onClick={(e) => {
+            e.preventDefault();
+            navigate(`/s/${systemId}/settings#pd`);
+          }}
+        >
+          {ru.publish.toSettings}
+        </a>
+      )}
       <div className={s.row}>
         <Button variant="secondary" data-testid="chat-edit" onClick={onEdit}>
           {ru.publish.edits}
         </Button>
-        <Button variant="primary" data-testid="publish-submit" disabled title={ru.publish.unavailable}>
-          {ru.publish.submit}
-        </Button>
+        {showSubmit && (
+          <Button
+            variant="primary"
+            data-testid="publish-submit"
+            disabled={blockers.length > 0 || revision === null || upToDate || running}
+            loading={busy}
+            onClick={onPublish}
+          >
+            {revision !== null && prodRevision !== null && !upToDate
+              ? ru.publish.submitRevision(revision)
+              : ru.publish.submit}
+          </Button>
+        )}
       </div>
-      <p className={s.small}>{ru.publish.unavailable}</p>
+      {error && <Alert testId="publish-error">{error}</Alert>}
     </section>
   );
 }
