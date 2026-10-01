@@ -30,11 +30,13 @@ export {
   isPlainAddress,
   parseHeaders,
 } from "./mime.js";
-/** SSRF guard: private-address check, public DNS resolution, guarded fetch, TCP dialer. */
+/** SSRF guard: private-address check, public DNS resolution, guarded fetch, TCP dialer; CIDR match, client IP. */
 export {
   type Dialer,
+  effectiveClientIp,
   type GuardedFetchOptions,
   guardedFetch,
+  ipInCidrs,
   isPrivateAddress,
   type Resolver,
   resolvePublic,
@@ -150,19 +152,37 @@ export { botCall, derivedToken, maskTelegramToken, TELEGRAM_API_BASE } from "./t
 export { type PlaceholderInfo, renderTemplate, resolvePlaceholder } from "./templates.js";
 /** Connector contract types (specs/connectors/connector-interface.md §1). */
 export type * from "./types.js";
-/** YooKassa: config, validateSpec, /api/pay (M0 mock), pay-mock confirmation, payment.succeeded/canceled core. */
+/** YooKassa: config, validateSpec, /api/pay (API or draft mock), pay-mock, webhooks (verify, re-read, apply), refunds. */
 export {
   applyPaymentCanceled,
   applyPaymentSucceeded,
+  applyRefundSucceeded,
   confirmMockPayment,
+  handleYookassaNotification,
+  type NotificationResult,
   type PaymentEventResult,
   type PayResult,
   PENDING_REUSE_MS,
   type ProviderPayment,
+  parseYookassaNotification,
   startPayment,
   validateYookassaSpec,
+  YOOKASSA_EVENTS,
   type YookassaBinding,
   type YookassaConfig,
   yookassaConfigSchema,
   yookassaConnector,
+  yookassaHookToken,
+  yookassaSourceAllowed,
+  yookassaWebhookUrl,
 } from "./yookassa.js";
+/** YooKassa API v3 client: Basic auth, Idempotence-Key (sha256 → UUID), error mapping, built-in IP allowlist. */
+export {
+  type ApiPayment,
+  type ApiRefund,
+  DEFAULT_YOOKASSA_PLATFORM,
+  idempotenceKey,
+  YOOKASSA_API_BASE,
+  YOOKASSA_IP_ALLOWLIST,
+  yookassaPlatform,
+} from "./yookassa-api.js";
