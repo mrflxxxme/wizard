@@ -9,6 +9,7 @@ import type postgres from "postgres";
 import { SYSTEM_ROLE, SYSTEM_SUBJECT } from "../data/access.js";
 import { outboxConnectors, systemFunctions } from "../exec/host.js";
 import type { RuntimeServices } from "../http/context.js";
+import { logDeletions, retainUsers, runDueErasures } from "../privacy/erasure.js";
 import type { LoadedSystem } from "../system.js";
 import { DEFAULT_TIMEZONE, lastOccurrence, parseCron } from "./cron.js";
 
@@ -37,7 +38,8 @@ export interface JobFailure {
 
 export interface RetentionResult {
   entity: string;
-  mode: "delete" | "anonymize";
+  /** consent_revoked — anonymization of a withdrawn consent that came due (privacy/erasure.ts). */
+  mode: "delete" | "anonymize" | "consent_revoked";
   rows: number;
 }
 
@@ -518,13 +520,22 @@ export async function runJobs(
                    where ${cond} and (${pii.map((f) => `${quoteIdent(f)} is not null`).join(" or ")})`,
                   [r.deleteAfterDays, now.toISOString()],
                 );
-          if (res.count > 0)
+          if (res.count > 0) {
             // runtime.yaml#workflows.retention: counter in _w_audit (field names, never values).
             await tx.unsafe(
               `insert into ${T("_w_audit")} (role, entity, op, fields)
                values ($1, $2, 'retention', string_to_array($3::text, ','))`,
               [SYSTEM_ROLE, e.name, mode === "anonymize" ? pii.join(",") : ""],
             );
+            // Deletion journal: anchor values before the cutoff expired (compliance.yaml#retention.deletion_log).
+            const cutoff = new Date(now.getTime() - r.deleteAfterDays * 86_400_000);
+            await logDeletions(
+              tx,
+              sys.schema,
+              [{ entity: e.name, mode, rows: res.count, cutoff, fields: mode === "anonymize" ? pii : [] }],
+              now,
+            );
+          }
           return res.count;
         });
         report.retention.push({ entity: e.name, mode, rows });
@@ -546,6 +557,32 @@ export async function runJobs(
           dead: false,
         });
       }
+    }
+    await privacyPass("retention:users", async () => {
+      const u = await retainUsers(sys, now);
+      if (u.rows > 0) report.retention.push({ entity: "users", mode: "anonymize", rows: u.rows });
+    });
+    await privacyPass("retention:consent_revoked", async () => {
+      for (const d of await runDueErasures(sys, now))
+        if (d.rows > 0) report.retention.push({ entity: d.entity, mode: "consent_revoked", rows: d.rows });
+    });
+  }
+
+  /** Users retention and due consent withdrawals (privacy/erasure.ts); a failure is reported, not thrown. */
+  async function privacyPass(name: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      services.log?.({
+        ts: new Date().toISOString(),
+        level: "error",
+        msg: "retention_failed",
+        system: sys.entry.slug,
+        env: sys.entry.env,
+        entity: name,
+        sqlstate: (err as { code?: unknown }).code ?? null,
+      });
+      report.failed.push({ jobId: "", kind: "workflow_step", name, code: errorCode(err), dead: false });
     }
   }
 

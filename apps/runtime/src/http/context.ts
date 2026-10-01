@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { Subject } from "../data/access.js";
 import type { RuntimeEnv } from "../env.js";
 import type { ConnectorHost } from "../preview/connectors.js";
+import type { LegalTemplates } from "../privacy/templates.js";
 import type { LoadedSystem } from "../system.js";
 
 export interface OutboxMessage {
@@ -24,6 +25,17 @@ export interface RuntimeServices {
   log?: (line: Record<string, unknown>) => void;
   /** Connector contexts of loaded systems (connectors: 'live' routes action calls through @wizard/connectors). */
   connectorHost?: ConnectorHost;
+  /** HMAC of the client network of a request (consent journal); null when unknown. */
+  ipHmac?: (req: Request) => Buffer | null;
+  /** 152-ФЗ package settings (privacy/erasure.ts). */
+  privacy?: PrivacySettings;
+  /** Lawyer's templates of the policy page and consent texts (privacy/templates.ts). */
+  legalTemplates?: LegalTemplates;
+}
+
+export interface PrivacySettings {
+  /** Days between consent withdrawal and anonymization (0 — at once; at most 30, ст. 21 ч. 5). */
+  withdrawalDays: number;
 }
 
 export interface RuntimeVars {

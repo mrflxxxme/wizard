@@ -31,17 +31,20 @@ export {
   generatePermissionChecks,
   selectG1,
 } from "./g1/checks.js";
-/** runG1(ctx, {timeBudgetMs?}); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
+/** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?}) incl. G1-RENDER-01 (M1+); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
 export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
 /** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */
 export { validateScenario } from "./g1/scenario.js";
-/** generateSeed(spec, key, {now?}) and the seed DLP (qa.yaml#seed). */
+/** generateSeed(spec, key, {now?, hints?}), the seed DLP and QA seed hints: validateSeedHint, mergeSeedHints (qa.yaml#seed). */
 export {
   generateSeed,
   isSyntheticValue,
+  mergeSeedHints,
+  SEED_HINT_MAX_VALUES,
   type SeedOptions,
   SYNTHETIC_NAMES,
   seedDlp,
+  validateSeedHint,
 } from "./g1/seed.js";
 export type {
   Expect,
@@ -49,6 +52,7 @@ export type {
   QaCheck,
   Scenario,
   Seed,
+  SeedHint,
   SeedUser,
   Step,
 } from "./g1/types.js";

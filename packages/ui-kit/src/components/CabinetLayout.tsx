@@ -1,6 +1,6 @@
 // CabinetLayout (ui-kit.yaml#components.CabinetLayout): personal area with keyboard tabs, active section in #hash.
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { cx, useWzRoot, useWzUser } from "../data/context.js";
+import { cx, useRoleSpec, useWzRoot, useWzUser } from "../data/context.js";
 import { ru } from "../i18n/ru.js";
 import styles from "./CabinetLayout.module.css";
 import { ErrorState, useLoginAction } from "./States.js";
@@ -12,8 +12,52 @@ function hashSection(ids: string[]): string | undefined {
   return ids.includes(h) ? h : undefined;
 }
 
-export function CabinetLayout(props: CabinetLayoutProps): ReactNode {
-  const root = useWzRoot("CabinetLayout", "wz-cabinet", props);
+/** Runtime page of a logged-in user: consent withdrawal (runtime.yaml#service_endpoints.privacy). */
+export const PRIVACY_PAGE = "/_wizard/privacy";
+const MY_DATA = "mydata";
+
+/**
+ * «Мои данные» (ui-kit.yaml#components.CabinetLayout, M2): the policy page and /_wizard/privacy. Both are runtime
+ * pages, not SPA routes, so the links navigate the browser.
+ */
+function MyData({ policyPage }: { policyPage: string | undefined }): ReactNode {
+  return (
+    <div className={styles.mydata} data-testid="wz-cabinet-mydata">
+      <p>{ru.cabinet.myDataHint}</p>
+      <ul>
+        {policyPage && (
+          <li>
+            <a href={policyPage} data-testid="wz-cabinet-mydata-policy">
+              {ru.appShell.policy}
+            </a>
+          </li>
+        )}
+        <li>
+          <a href={PRIVACY_PAGE} data-testid="wz-cabinet-mydata-privacy">
+            {ru.cabinet.myDataManage}
+          </a>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+export function CabinetLayout(input: CabinetLayoutProps): ReactNode {
+  const root = useWzRoot("CabinetLayout", "wz-cabinet", input);
+  const spec = useRoleSpec();
+  const props: CabinetLayoutProps = input.sections.some((s) => s.id === MY_DATA)
+    ? input
+    : {
+        ...input,
+        sections: [
+          ...input.sections,
+          {
+            id: MY_DATA,
+            label: ru.cabinet.myData,
+            content: <MyData policyPage={spec.compliance?.policyPage} />,
+          },
+        ],
+      };
   const { user, isLoading } = useWzUser();
   const login = useLoginAction();
   const ids = props.sections.map((s) => s.id);

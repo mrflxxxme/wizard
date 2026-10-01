@@ -12,5 +12,11 @@ export {
   scenarioChecks,
 } from "./generate.js";
 export { EXPLAIN_SYSTEM, functionArgs, GENERATE_SYSTEM, QA_ASSETS, qaDigest } from "./prompt.js";
-export { explanationSchema, scenarioSchema, submitChecksTool, submitExplanationsTool } from "./schemas.js";
+export {
+  explanationSchema,
+  scenarioSchema,
+  seedHintSchema,
+  submitChecksTool,
+  submitExplanationsTool,
+} from "./schemas.js";
 export * from "./types.js";
