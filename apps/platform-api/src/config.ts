@@ -66,13 +66,13 @@ export interface Config {
 }
 
 export interface ReceiptConfig {
-  /** WIZARD_RECEIPT_VAT_CODE (1..6, 11, 12); null — not set (1 «без НДС» outside production). */
+  /** WIZARD_RECEIPT_VAT_CODE (1..12, YooKassa vat_code incl. 5%/7% USN codes 7–10); null — not set (1 «без НДС» outside production). */
   vatCode: number | null;
   /** billing.yaml#tax_note: two items «право использования ПО» (share, own VAT) + «услуги хостинга». */
   split?: { softwareShare: number; softwareVatCode: number };
 }
 
-export const VAT_CODES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 11, 12]);
+export const VAT_CODES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 
 const list = (v: string | undefined): string[] | undefined => {
   const xs = (v ?? "")
@@ -175,7 +175,7 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
     throw new StartupError("организации без учёта кредитов запрещены при NODE_ENV=production");
   const vat = c.receipt.vatCode;
   if (vat !== null && !VAT_CODES.has(vat))
-    throw new StartupError("WIZARD_RECEIPT_VAT_CODE: допустимы коды НДС 1–6, 11, 12");
+    throw new StartupError("WIZARD_RECEIPT_VAT_CODE: допустимы коды НДС ЮKassa 1–12");
   if (c.nodeEnv === "production" && c.platformShop && vat === null)
     throw new StartupError("WIZARD_RECEIPT_VAT_CODE обязателен для чеков платежей платформы (54-ФЗ)");
   if (c.nodeEnv === "production" && c.secretsKey.length < 32)
