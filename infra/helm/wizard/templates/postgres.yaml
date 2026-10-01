@@ -1,0 +1,362 @@
+{{- if .Values.postgres.inCluster }}
+{{- $ns := .Values.namespaces.platform }}
+{{- $pg := .Values.postgres }}
+{{- $bucket := required "postgres.backupsBucket is required (tofu output env.buckets.backups)" $pg.backupsBucket }}
+{{- $pgdata := "/var/lib/postgresql/data/pgdata" }}
+# Self-managed PostgreSQL 16 of the pilot (platform/deploy.yaml#pilot.postgres; docs/ops/deploy.md «Пилот»):
+# one StatefulSet pod on the node's local volume; WAL-G archives every WAL segment to the backups bucket (encrypted with
+# the libsodium key of the Secret, archive_timeout bounds the loss to about a minute); a sidecar watches the archive;
+# CronJobs take the daily base backup and run the weekly restore drill (infra/postgres/pg-ops.mjs).
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-postgres
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-postgres" | nindent 4 }}
+  ports:
+    - { name: pg, port: {{ $pg.port }}, targetPort: pg }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-postgres-hl
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "wizard.selector" "wizard-postgres" | nindent 4 }}
+  ports:
+    - { name: pg, port: {{ $pg.port }}, targetPort: pg }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wizard-postgres
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-postgres" | nindent 4 }}
+spec:
+  serviceName: wizard-postgres-hl
+  replicas: 1
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-postgres" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-postgres" | nindent 8 }}
+        wizard.ru/role: postgres
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: /metrics
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 120
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 999 | nindent 6 }}
+      initContainers:
+        # An empty volume (re-created VM) is restored from the archive; an unreachable archive stops here.
+        - name: bootstrap
+          image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["node", "/opt/wizard/pg-ops.mjs", "bootstrap"]
+          env: {{- include "wizard.walgEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.postgres }}
+          resources: {{- toYaml $pg.jobResources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: postgres
+          image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args:
+            - postgres
+            - -c
+            - wal_level=replica
+            - -c
+            - archive_mode=on
+            - -c
+            - archive_command=wal-g wal-push %p
+            - -c
+            - archive_timeout={{ $pg.archiveTimeoutSec }}
+            {{- range $k, $v := $pg.parameters }}
+            - -c
+            - {{ printf "%s=%v" $k $v | quote }}
+            {{- end }}
+          env:
+            {{- include "wizard.walgEnv" . | nindent 12 }}
+            - name: POSTGRES_USER
+              value: {{ $pg.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ $pg.database | quote }}
+            - name: POSTGRES_INITDB_ARGS
+              value: "--data-checksums --encoding=UTF8 --locale=C.UTF-8"
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.postgres }}
+          ports:
+            - { name: pg, containerPort: {{ $pg.port }}, protocol: TCP }
+          startupProbe:
+            # Replaying the archive after a bootstrap may take a while.
+            exec: { command: ["pg_isready", "-h", "/var/run/postgresql", "-U", {{ $pg.user | quote }}, "-d", {{ $pg.database | quote }}] }
+            periodSeconds: 10
+            failureThreshold: 360
+          readinessProbe:
+            exec: { command: ["pg_isready", "-h", "/var/run/postgresql", "-U", {{ $pg.user | quote }}, "-d", {{ $pg.database | quote }}] }
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: ["pg_isready", "-h", "/var/run/postgresql", "-U", {{ $pg.user | quote }}, "-d", {{ $pg.database | quote }}] }
+            periodSeconds: 30
+            failureThreshold: 6
+          resources: {{- toYaml $pg.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+            - { name: shm, mountPath: /dev/shm }
+        # Archive lag, base backup and drill ages → log/alert, /healthz and /metrics (scraped by VictoriaMetrics).
+        - name: pg-ops
+          image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["node", "/opt/wizard/pg-ops.mjs", "monitor"]
+          env:
+            {{- include "wizard.opsEnv" . | nindent 12 }}
+            - name: PGHOST
+              value: /var/run/postgresql
+          ports:
+            - { name: ops, containerPort: 9187, protocol: TCP }
+          resources: {{- toYaml $pg.opsResources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: run, mountPath: /var/run/postgresql }
+      volumes:
+        - { name: run, emptyDir: { sizeLimit: 16Mi } }
+        - { name: tmp, emptyDir: { sizeLimit: 512Mi } }
+        - { name: shm, emptyDir: { medium: Memory, sizeLimit: 256Mi } }
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+        annotations:
+          helm.sh/resource-policy: keep
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.data.storageClass }}
+        storageClassName: {{ .Values.data.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.storageSize }}
+---
+# Daily base backup (wal-g backup-push reads PGDATA, so the Job runs next to the database pod on the same volume)
+# and deletion of everything older than the retention window.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wizard-pg-basebackup
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $pg.backup.schedule | quote }}
+  timeZone: {{ $pg.backup.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 14400
+      template:
+        metadata:
+          labels:
+            wizard.ru/role: pg-job
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- include "wizard.imagePullSecrets" . | nindent 10 }}
+          {{- include "wizard.podSecurity" 999 | nindent 10 }}
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels: { wizard.ru/role: postgres }
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: basebackup
+              image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command: ["node", "/opt/wizard/pg-ops.mjs", "basebackup"]
+              env:
+                {{- include "wizard.opsEnv" . | nindent 16 }}
+                {{- include "wizard.walgEnv" . | nindent 16 }}
+                {{- include "wizard.pgTcpEnv" . | nindent 16 }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.postgres }}
+              resources: {{- toYaml $pg.jobResources | nindent 16 }}
+              {{- include "wizard.containerSecurity" . | nindent 14 }}
+              volumeMounts:
+                - { name: pgdata, mountPath: /var/lib/postgresql/data, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: pgdata
+              persistentVolumeClaim:
+                claimName: pgdata-wizard-postgres-0
+                readOnly: true
+            - { name: tmp, emptyDir: { sizeLimit: 512Mi } }
+---
+# Weekly restore drill: restore point under SHARE locks with exact counts → latest base backup + archive replayed into a
+# throwaway server in a scratch volume → row counts of {{ $pg.drill.schemas }} compared table by table → log/alert
+# and wizard_ops.ops_runs. On demand: kubectl -n {{ $ns }} create job --from=cronjob/wizard-pg-restore-drill drill-now
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wizard-pg-restore-drill
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $pg.drill.schedule | quote }}
+  timeZone: {{ $pg.drill.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 10800
+      template:
+        metadata:
+          labels:
+            wizard.ru/role: pg-job
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- include "wizard.imagePullSecrets" . | nindent 10 }}
+          {{- include "wizard.podSecurity" 999 | nindent 10 }}
+          containers:
+            - name: restore-drill
+              image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command: ["node", "/opt/wizard/pg-ops.mjs", "restore-drill"]
+              env:
+                {{- include "wizard.opsEnv" . | nindent 16 }}
+                {{- include "wizard.walgEnv" . | nindent 16 }}
+                {{- include "wizard.pgTcpEnv" . | nindent 16 }}
+                - name: WIZARD_DRILL_DIR
+                  value: /drill
+                - name: WIZARD_DRILL_SCHEMAS
+                  value: {{ $pg.drill.schemas | quote }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.postgres }}
+              resources: {{- toYaml $pg.jobResources | nindent 16 }}
+              {{- include "wizard.containerSecurity" . | nindent 14 }}
+              volumeMounts:
+                - { name: drill, mountPath: /drill }
+                - { name: tmp, mountPath: /tmp }
+                - { name: shm, mountPath: /dev/shm }
+          volumes:
+            - { name: drill, emptyDir: { sizeLimit: {{ $pg.drill.scratchSize }} } }
+            - { name: tmp, emptyDir: { sizeLimit: 512Mi } }
+            - { name: shm, emptyDir: { medium: Memory, sizeLimit: 256Mi } }
+{{- end }}
+{{- if .Values.dataBackup.enabled }}
+{{- $ns := .Values.namespaces.platform }}
+---
+# Encrypted copy of the shared .data volume (revision sources, connector secrets file) into the backups bucket every
+# {{ .Values.dataBackup.intervalSec }} s; restore: kubectl -n {{ $ns }} create job --from=cronjob/wizard-data-restore data-restore-1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-data-backup
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-data-backup" | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-data-backup" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-data-backup" | nindent 8 }}
+        wizard.ru/role: data-backup
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- /* uid of the Node services: the secrets file is 0600 */}}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: data-backup
+          image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["node", "/opt/wizard/pg-ops.mjs", "data-sync"]
+          env: {{- include "wizard.rcloneEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.postgres }}
+          resources: {{- toYaml .Values.dataBackup.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: data, mountPath: /app/.data, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: wizard-data
+            readOnly: true
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+# Suspended template of the one-off restore of .data (never runs on schedule).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wizard-data-restore
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            wizard.ru/role: data-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          {{- include "wizard.imagePullSecrets" . | nindent 10 }}
+          {{- include "wizard.podSecurity" 1000 | nindent 10 }}
+          containers:
+            - name: data-restore
+              image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
+              imagePullPolicy: {{ .Values.images.pullPolicy }}
+              command: ["node", "/opt/wizard/pg-ops.mjs", "data-restore"]
+              env: {{- include "wizard.rcloneEnv" . | nindent 16 }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.postgres }}
+              resources: {{- toYaml .Values.dataBackup.resources | nindent 16 }}
+              {{- include "wizard.containerSecurity" . | nindent 14 }}
+              volumeMounts:
+                - { name: data, mountPath: /app/.data }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: wizard-data
+            - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+{{- end }}

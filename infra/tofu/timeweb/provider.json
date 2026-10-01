@@ -1,5 +1,5 @@
 {
-  "$comment": "Contract of a hosting provider for tools/deploy/infra.mjs (docs/reviews/impl-notes/M2-06.md «Смена провайдера»). Timeweb Cloud: k3s on VMs (cluster profile k3s), managed PostgreSQL, S3, DNS. envs/<env> roots expose the outputs below and accept -var=ingress_ip.",
+  "$comment": "Contract of a hosting provider for tools/deploy/infra.mjs (docs/reviews/impl-notes/M2-06.md «Смена провайдера»). Timeweb Cloud, Moscow: pilot (one VM, PostgreSQL + WAL-G in the cluster, output env.cluster_profile = pilot) or beta (k3s on VMs, managed PostgreSQL); S3, DNS. envs/<env> roots expose the outputs below and accept -var=ingress_ip.",
   "name": "timeweb",
   "title": "Timeweb Cloud",
   "profile": "k3s",
@@ -11,9 +11,9 @@
   "optionalEnv": [],
   "helmValues": "infra/helm/providers/timeweb.yaml",
   "outputs": {
-    "env": "registry_url, registry_push, domains {platform, systems}, network {pods_cidr, services_cidr, nodes_cidr}, postgres_cidr, s3_endpoint, buckets, ingress_ip",
+    "env": "registry_url, registry_push (null: images from an external registry), domains {platform, systems}, network {pods_cidr, services_cidr, nodes_cidr}, postgres_cidr (null in the pilot), postgres_mode (in-cluster | managed), cluster_profile (pilot | k3s), s3_endpoint, buckets, ingress_ip",
     "k3s_server": "{private_ip, public_ip}: kubeconfig is fetched over SSH from private_ip",
-    "postgres": "{main: {host, connection_string}}",
+    "postgres": "{main: {host, connection_string}} or, in the pilot, {main: {in_cluster: true}}",
     "s3_keys": "per bucket {access_key, secret_key}"
   }
 }

@@ -1,0 +1,44 @@
+# Profile pilot (platform/deploy.yaml#pilot; docs/ops/deploy.md «Пилот»): ONE VM with single-node k3s carries
+# everything — platform-api, worker, runtime, platform-web, egress-proxy, PgBouncer, PostgreSQL 16 with WAL-G, the
+# DNS-01 solver, Traefik, cert-manager, the gVisor RuntimeClass and the sandbox pool, a small metrics/logs stack.
+# Layers on top of profiles/k3s.yaml (tools/deploy/infra.mjs PROFILES): values → provider → k3s → pilot →
+# values-<env> → pilot-<env>. Requests/limits come from the memory measured on the dev stand (docs/ops/deploy.md
+# «Пилот: замер»): requests ≈ measured idle-to-typical RSS, limits ≈ 2× the peak during a build + G1.
+# Images: GHCR of the repository (built by .github/workflows/images.yml on GitHub-hosted runners), pulled with the
+# docker-registry Secret wizard-ghcr; no in-cluster registry.
+images:
+  pullSecret: wizard-ghcr
+postgres:
+  inCluster: true
+  storageSize: 30Gi
+dataBackup:
+  enabled: true
+pgbouncer:
+  replicas: 1
+  defaultPoolSize: 10
+  maxClientConn: 200
+  serverTlsSslmode: disable
+  resources: { requests: { cpu: 20m, memory: 16Mi }, limits: { cpu: 500m, memory: 64Mi } }
+platformApi:
+  replicas: 1
+  # measured: 300 MiB idle, 356 MiB peak (tsx compiles on start)
+  resources: { requests: { cpu: 100m, memory: 384Mi }, limits: { cpu: "2", memory: 768Mi } }
+worker:
+  replicas: 1
+  # measured: 312 MiB idle, 565 MiB peak during a build + G1 (≈ +250 MiB per concurrent build)
+  resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "3", memory: 1536Mi } }
+runtime:
+  replicas: 1
+  # measured: 132 MiB idle, 185 MiB peak (preview + published system)
+  resources: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: "2", memory: 512Mi } }
+platformWeb:
+  replicas: 1
+  resources: { requests: { cpu: 10m, memory: 24Mi }, limits: { cpu: 250m, memory: 96Mi } }
+egressProxy:
+  replicas: 1
+  resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { cpu: 500m, memory: 256Mi } }
+data:
+  size: 20Gi
+sandbox:
+  # Two gVisor pods (a pod = up to sandbox.systems systems; requests = limits = 1536Mi each).
+  quota: { pods: 2, requestsCpu: 1, requestsMemory: 3Gi, limitsCpu: 2, limitsMemory: 3Gi }

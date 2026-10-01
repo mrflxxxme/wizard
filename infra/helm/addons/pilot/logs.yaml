@@ -1,0 +1,10 @@
+# Pilot overlay: VictoriaLogs single keeps the 30-day time-based retention (deploy.yaml#cloud.observability.retention);
+# the bundled vector agent is replaced by the lighter vlagent (addon logs-collector, Apache-2.0).
+server:
+  persistentVolume:
+    size: 5Gi
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+vector:
+  enabled: false

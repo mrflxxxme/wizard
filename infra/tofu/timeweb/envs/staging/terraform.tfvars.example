@@ -1,10 +1,13 @@
 # Copy to the runner (WIZARD_TFVARS_FILE, default /etc/wizard/terraform-staging.tfvars). Not committed.
-# Staging on demand: one VM runs k3s, the platform and the gVisor sandbox pool. Rough price: docs/ops/deploy.md.
+# PILOT staging on demand: the same module as prod with a smaller VM — Cloud MSK 50 (2 vCPU / 4 GB / 50 GB NVMe),
+# billed by the hour while it exists. `pnpm infra:apply --env staging` creates it, `node tools/deploy/infra.mjs destroy
+# --env staging --yes` removes everything (VM, IP, buckets, records). If builds run out of memory: server 4/8.
 settings = {
-  location        = "ru-1"
-  server          = { cpu = 4, ram_gb = 8, disk_gb = 80 }
+  server          = { cpu = 2, ram_gb = 4, disk_gb = 50, max_price = 1100 }
   sandbox_nodes   = {}
-  postgres        = { cpu = 1, ram_gb = 2, disk_gb = 20, backup_copies = 3 }
+  postgres        = null
+  buckets         = { files = 10, backups = 10 }
+  image_registry  = "ghcr.io/<github owner, lower case>"
   ssh_public_key  = "ssh-ed25519 AAAA... wizard-runner"
   admin_cidrs     = ["192.0.2.10/32"] # runner VM / founder
   platform_domain = "<staging platform domain>"

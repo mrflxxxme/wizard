@@ -9,6 +9,218 @@ Runbook задачи M2-06. Спека — `specs/platform/deploy.yaml#cloud`. �
 
 Первый провайдер — **Timeweb Cloud**. Cloud.ru остаётся провайдером LLM (Foundation Models). Модуль Cloud.ru с managed Kubernetes сохранён как альтернатива (`infra/tofu/cloudru`).
 
+**Текущий путь — пилот** (решение основателя от 01.10.2026): одна ВМ, своя PostgreSQL с WAL-G, ≈ 3,5 тыс. ₽/мес. Он описан в первом разделе. Остальные разделы — общий механизм одной команды и форма беты: managed PostgreSQL и несколько ВМ. Это следующая ступень роста.
+
+## Пилот (текущий путь)
+
+Решение основателя от 01.10.2026: пилот на паре живых клиентов. Спека — `specs/platform/deploy.yaml#pilot`.
+
+- Расходы на инфраструктуру — 5–10 тыс. ₽/мес.
+- Функциональность полная: сборка в чате, гейты G0–G2 с живым runtime, превью, публикация, песочница с gVisor, файлы, оплата, коннекторы Telegram и SMTP, retention.
+- Провайдер — Timeweb Cloud, только Москва. Без managed Kubernetes и без managed PostgreSQL.
+- Допустимый простой — 1–2 ч. Потеря закоммиченных данных — не больше ≈ 1 минуты.
+
+### Как устроено
+
+Всё работает на **одной ВМ** с single-node k3s:
+
+- platform-api, worker, runtime, platform-web, egress-proxy;
+- PgBouncer и PostgreSQL 16;
+- DNS-01-решатель, Traefik, cert-manager;
+- RuntimeClass `gvisor` и пул песочницы: узел помечен `wizard.ru/sandbox-node=true`, пул `free`;
+- VictoriaMetrics, VictoriaLogs и сборщик vlagent.
+
+| Слой | Где |
+|---|---|
+| ВМ, firewall, плавающий IP, бакеты `files` и `backups`, записи DNS | `infra/tofu/timeweb` — тот же модуль, что у беты. Форма пилота: `settings.postgres = null`, пресет с потолком цены `max_price` |
+| Профиль Helm | `infra/helm/profiles/pilot.yaml` поверх `k3s.yaml`, плюс `pilot-prod.yaml` и `pilot-staging.yaml` |
+| PostgreSQL + WAL-G | `infra/helm/wizard/templates/postgres.yaml`, образ `infra/docker/postgres.Dockerfile`, сценарии `infra/postgres/pg-ops.mjs` |
+| Аддоны | `infra/helm/addons/addons.json`: без реестра в кластере, плюс `logs-collector`. Оверлеи — `infra/helm/addons/pilot/*` |
+| Образы | GHCR репозитория. Собирает `.github/workflows/images.yml` на GitHub-hosted раннерах |
+
+Профиль выбирается сам: модуль OpenTofu отдаёт `env.cluster_profile = "pilot"`, его читает `tools/deploy/infra.mjs`.
+
+**Образы — из GHCR, а не из реестра в кластере.**
+
+- Так ВМ не тратит память на реестр, а раннеру не нужны Docker и insecure-registries.
+- Образы собираются вне РФ: Docker Hub для сборки не нужен из РФ.
+- Лицензия: GHCR — сервис GitHub. Образы не распространяются, приватные пакеты. Хранение и трафик Container registry, по документации GitHub, сейчас бесплатны [не проверено для тарифа репозитория].
+- Доступность из РФ: GitHub и ghcr.io работают. Если доступ закроют, есть запасной путь — профиль `k3s` с реестром в кластере: `image_registry = "registry.wizard.local"` и `--build-images`.
+- Docker Hub для образов аддонов ВМ тянет через зеркало Timeweb `dockerhub.timeweb.cloud` (cloud-init, `registries.yaml`).
+
+### Пилот: замер
+
+Стенд разработки (`scripts/dev.mjs`) поднимался под замком e2e, затем выполнялся сценарий `forum.spec.ts`: промпт → сборка → G0/G1 → превью → билет. Сэмплер — `tools/deploy/rss-sample.mjs`, раз в 0,5 с. Он считает RSS того процесса Node, который выполняет `src/main.ts` через tsx. Так же сервис запускается в образе.
+
+| Процесс | Покой, МиБ | Пик (сборка + G1), МиБ | CPU, пик ядер |
+|---|---|---|---|
+| platform-api | 300 | 356 (старт, компиляция tsx) | 1,7 на старте, 0,3 при сборке |
+| worker (сборка и G1 идут в нём) | 312 | 565 | 2,7 |
+| runtime (превью и опубликованная система) | 132 | 185 | 0,4 |
+| workerd (2 пода песочницы с тестовыми системами, `workerd.sandbox.test.ts`) | — | 100 | 1,0 |
+
+Сумма backend PostgreSQL на стенде (325 → 1 041 МиБ) не годится для оценки. Shared buffers считаются в RSS каждого backend, а на том же сервере работали базы соседних стендов. Поэтому память PostgreSQL рассчитана из настроек: `shared_buffers` 512 МБ, до 100 соединений.
+
+Оценка пика на ВМ пилота (Москва, 8 ГБ ≈ 7,7 ГиБ доступно ОС):
+
+| Компонент | МиБ | Основание |
+|---|---|---|
+| k3s: server, kubelet, containerd, coredns, metrics-server, local-path, svclb | 900 | [оценка] по профилированию k3s в документации; на этой машине k3s не запускался (запрет на root-операции) |
+| Traefik + cert-manager (3 пода) | 200 | [оценка] |
+| VictoriaMetrics + VictoriaLogs + vlagent | 250 | [оценка], лимиты в оверлеях |
+| platform-api | 360 | замер |
+| worker, две сборки одновременно | 820 | замер 565 + ≈ 250 на вторую |
+| runtime | 190 | замер |
+| egress-proxy, DNS-01-решатель, pg-ops, data-backup (Node) | 290 | [оценка] по базовому Node-процессу ≈ 60–100 МиБ |
+| platform-web (nginx), PgBouncer | 30 | [оценка] |
+| PostgreSQL | 800 | расчёт: 512 МБ buffers + backend'ы |
+| Песочница: 2 пода gVisor + workerd | 500 | замер workerd 100 + gVisor ≈ 100 на под + системы клиентов |
+| ОС: systemd, journald, sshd | 300 | [оценка] |
+| **Итого** | **≈ 4 640 (4,5 ГиБ)** | запас **≈ 40 %** |
+
+Еженедельное учение восстановления ночью добавляет ≈ 0,4 ГиБ (временный PostgreSQL, WAL-G, Node), запас — ≈ 35 %.
+
+**Выбор: Cloud MSK 80 — 4 vCPU / 8 ГБ / 80 ГБ NVMe, ≈ 1 800 ₽/мес.**
+
+- Это минимальный пресет с запасом памяти ≥ 30 %.
+- 2 vCPU / 4 ГБ не вмещает даже пик (4,5 ГиБ при 3,8 доступных).
+- 8 vCPU / 16 ГБ (4 300 ₽) даёт запас ≈ 70 %, сейчас это лишнее: это первая ступень роста.
+- CPU: в покое весь стек занимает меньше 0,5 ядра. Сборка — всплеск до ≈ 2,7 ядра на секунды, так что 4 vCPU хватает с запасом более 30 % в среднем.
+- Запросы памяти: чарт ≈ 5,1 ГиБ (из них 3 ГиБ — квота двух подов песочницы), аддоны и системные поды k3s ≈ 0,5 ГиБ, всего ≈ 5,7 ГиБ из ≈ 7,5 ГиБ на узле. Помещается ли чарт, проверяет тест `tools/deploy/test/helm.test.ts`.
+
+Повторить замер:
+
+```sh
+node tools/deploy/rss-sample.mjs --out rss.json --phase-file phase
+# в другом терминале: echo idle > phase; …; echo build > phase; сценарий; Ctrl-C сэмплеру
+```
+
+### Пилот: стоимость в месяц
+
+Цены Timeweb Cloud с НДС на 01.10.2026 (`docs/founder/hosting-research.md`).
+
+| Статья | ₽/мес | Основание |
+|---|---|---|
+| ВМ prod: Cloud MSK 80 — 4 vCPU / 8 ГБ / 80 ГБ NVMe, Москва; первый IPv4 входит | 1 800 | пресет |
+| Плавающий IPv4 (не меняется при пересоздании ВМ) | ≈ 150 | [не проверено]: цена из анонса Timeweb 2023 г. |
+| S3 `backups`, 100 ГБ: WAL-G (14 дней) и копия `.data` | 349 | тариф S3 |
+| S3 `files`, 10 ГБ, поля type=file, пресет растёт сам | 79 | тариф S3 |
+| Исходящий трафик S3 | 0 | 100 ГБ/мес бесплатно; учение раз в неделю скачивает ≈ размер БД |
+| Два домена .ru (платформа и системы), ≈ 900 ₽/год каждый | ≈ 150 | [оценка] |
+| ВМ раннера GitHub (1 vCPU / 1–2 ГБ, Москва) | ≈ 500 | [оценка]. Можно 0, если раннер работает на ВМ пилота, но тогда восстановление после потери ВМ — с ноутбука |
+| Staging по требованию: MSK 50, ≈ 1,4 ₽/ч + IP и бакеты на время жизни | ≈ 50–150 | 20–40 ч в месяц |
+| Запас 10 % (рост S3, трафик) | ≈ 300 | |
+| **Итого** | **≈ 3 400–3 500** | цель ≤ 6–8 тыс. выполнена |
+
+Не входят: токены LLM и юрист. Скидка за оплату на 12 месяцев (−10 %) не учтена.
+
+### Пилот: PostgreSQL, RPO и RTO
+
+- **Сервер.** StatefulSet `wizard-postgres`: PostgreSQL 16 на томе local-path, `--data-checksums`. PgBouncer ходит к нему внутри узла, без TLS, под NetworkPolicy. DBOS и миграции подключаются напрямую.
+- **Архив.** WAL-G отправляет каждый сегмент WAL в `s3://<backups>/pg`.
+  - `archive_timeout = 60 s`, шифрование libsodium (ключ `WALG_LIBSODIUM_KEY`), zstd.
+  - `WALG_PREVENT_WAL_OVERWRITE=true`: свежий кластер рядом со старым архивом не затрёт его.
+- **Базовая копия** — CronJob `wizard-pg-basebackup`, ежедневно в 02:17 МСК. После копии удаляется всё, что старше 14 дней: `wal-g delete before FIND_FULL <сейчас − 14 дней>`. Восстановить можно любую точку последних 14 дней.
+- **RPO ≈ 1 минута.** Закоммиченная транзакция попадает в архив не позже чем через `archive_timeout` плюс время отправки. Если очередь растёт, срабатывает алерт.
+- **RTO ≤ 2 часа.** Порядок:
+  1. Пересоздать ВМ одной командой (≈ 15–25 мин).
+  2. Init-контейнер `bootstrap` видит пустой том и восстанавливает БД из архива: последняя базовая копия плюс весь WAL. Это минуты на объёмах пилота.
+  3. Том `.data` восстанавливается Job'ом из копии, которая обновляется раз в минуту.
+- Пустой архив означает первый запуск: тогда initdb. Если архив недоступен, под не стартует, и пустая БД рядом с данными клиентов не поднимется.
+
+### Алерты пилота
+
+Сайдкар `pg-ops monitor` раз в минуту пишет события в лог в формате логгера платформы (`{ts, level, svc, msg, …}`). События с `level: error` — путь алерта: они видны в VictoriaLogs (`svc:pg-ops AND level:error`). Если в Secret `wizard-postgres` задан `WIZARD_OPS_ALERT_URL`, событие уходит и туда, не чаще раза в час на вид. Например, Bot API Telegram: `https://api.telegram.org/bot<токен>/sendMessage`, плюс `WIZARD_OPS_ALERT_CHAT_ID`.
+
+| Событие | Когда |
+|---|---|
+| `walg_archive_lag` | самый старый готовый, но не отправленный сегмент WAL ждёт дольше 5 минут |
+| `walg_archive_failing` | `archive_command` падает или `archive_mode` выключен |
+| `walg_backup_stale` / `walg_backup_failed` | нет успешной базовой копии больше 26 ч / копия упала |
+| `pg_restore_drill_failed` / `pg_restore_drill_stale` | учение не прошло / не проходило больше 8 суток |
+| `pg_restored_from_archive` | БД поднята из архива после потери тома: проверьте данные |
+| `data_backup_failing` | копия `.data` не обновляется (3 неудачи подряд) |
+
+Метрики для VictoriaMetrics — `wizard_pg_archive_lag_seconds`, `wizard_pg_last_basebackup_timestamp_seconds`, `wizard_pg_last_restore_drill_timestamp_seconds` и другие. Их отдаёт `/metrics` на порту 9187 пода БД. `/healthz` отвечает 503, если есть проблема.
+
+### Учение восстановления (автоматически, еженедельно)
+
+CronJob `wizard-pg-restore-drill` запускается по воскресеньям в 04:37 МСК.
+
+1. В одной транзакции берёт блокировки SHARE на все таблицы схемы `platform`. Писатели ждут, а не падают; `lock_timeout` — 10 с.
+2. Считает строки и ставит именованную точку восстановления, пока блокировки держатся.
+3. Переключает WAL и ждёт, пока сегмент окажется в архиве.
+4. `wal-g backup-fetch LATEST` во временный каталог. Затем временный PostgreSQL проигрывает WAL ровно до точки и промоутится. Он работает только на сокете и с `archive_mode=off`.
+5. Сверяет счётчики по каждой таблице: должно быть точное равенство. Пишет `pg_restore_drill_ok` или `pg_restore_drill_failed`, а также строку в `wizard_ops.ops_runs`. Сайдкар следит за давностью этой строки.
+
+Запуск вручную: `kubectl -n wizard-platform create job --from=cronjob/wizard-pg-restore-drill drill-$(date +%s)`.
+
+Логику учения проверяет `tools/deploy/test/pg-ops.test.mjs` с настоящими PostgreSQL 16 и WAL-G, хранилище — каталог:
+
+- строки, записанные после базовой копии, возвращаются через WAL;
+- строки, записанные после точки, в восстановленной БД отсутствуют;
+- сломанный архив даёт алерт;
+- потерянный том поднимается из архива.
+
+Ежемесячное ручное учение (`#cloud.postgres.restore_drill`) для пилота заменено этим.
+
+### Восстановление после потери ВМ (пилот)
+
+1. `pnpm infra:apply --env prod --yes --tag <sha последнего выката>`. Можно с раннера или с ноутбука владельца: нужны tofu, helm, kubectl, SSH-ключ и tfvars. Если ВМ удалена в панели, OpenTofu создаст её заново. Плавающий IP и DNS сохраняются.
+2. Секреты кластера создаются заново из файлов: `WIZARD_PLATFORM_ENV_FILE`, `WIZARD_PGBOUNCER_SECRET_DIR`, `WIZARD_DNS_SOLVER_ENV_FILE`, `WIZARD_POSTGRES_ENV_FILE`, `WIZARD_GHCR_USER` и `WIZARD_GHCR_TOKEN`.
+   - **Ключ `WALG_LIBSODIUM_KEY` и `WIZARD_DATA_BACKUP_KEY` хранятся вне ВМ**: OpenBao или сейф основателя. Без них архив не расшифровать.
+3. Под `wizard-postgres` восстановит БД сам: событие `pg_restored_from_archive`.
+4. Верните `.data`: `kubectl -n wizard-platform create job --from=cronjob/wizard-data-restore data-restore-1`. Затем перезапустите platform-api, worker и runtime: `kubectl -n wizard-platform rollout restart deploy`.
+5. Проверьте: smoke прошёл; учение, запущенное вручную, зелёное.
+
+### Одна команда (пилот)
+
+```sh
+pnpm infra:apply --env prod --yes --tag <sha>       # ВМ, аддоны, секреты, релиз; образы ждёт в GHCR
+pnpm infra:apply --env staging --tag <sha>          # staging по требованию (MSK 50)
+node tools/deploy/infra.mjs destroy --env staging --yes
+```
+
+### Что нужно от основателя (дополнительно к разделу ниже)
+
+1. tfvars пилота: `infra/tofu/timeweb/envs/*/terraform.tfvars.example`. Форма беты лежит в `terraform.tfvars.beta.example`.
+2. GHCR:
+   - variable `WIZARD_IMAGES_GHCR=enabled` — образы публикуются из main;
+   - variable `WIZARD_GHCR_USER`;
+   - secret `WIZARD_GHCR_TOKEN` — fine-grained или classic токен только с `read:packages`.
+3. Файл `/etc/wizard/postgres-<env>.env` на раннере (права 600) для первого `apply`:
+   - `POSTGRES_PASSWORD`;
+   - `WALG_LIBSODIUM_KEY` (`openssl rand -hex 32`);
+   - `AWS_ACCESS_KEY_ID` и `AWS_SECRET_ACCESS_KEY` из `tofu output -json s3_keys`, бакет `backups`;
+   - `WIZARD_DATA_BACKUP_KEY` (`openssl rand -hex 32`);
+   - по желанию `WIZARD_OPS_ALERT_URL` и `WIZARD_OPS_ALERT_CHAT_ID`.
+
+   Копию ключей положите в OpenBao или сейф.
+4. В `wizard-platform-env`:
+   - `WIZARD_DB_URL=postgres://wizard:<POSTGRES_PASSWORD>@wizard-pgbouncer:6432/wizard`;
+   - для DBOS — прямой адрес `wizard-postgres:5432`, если понадобится сессионное соединение.
+
+   В каталоге `wizard-pgbouncer` достаточно `userlist.txt`: `server-ca.crt` не нужен.
+
+### Пилот: когда расти
+
+Сигналы берутся из VictoriaMetrics (vmui, p95 за 7 дней), действия выполняются правкой tfvars и `pnpm infra:apply`.
+
+| Триггер | Действие | +₽/мес |
+|---|---|---|
+| CPU ВМ > 60 % или RAM > 75 % устойчиво | пресет MSK 160 — 8 vCPU / 16 ГБ (`server`, `max_price = 4500`) | +2 500 |
+| Сборки или песочница мешают платформе, песочнице не хватает памяти | вторая ВМ — агент k3s с пулом песочницы (`sandbox_nodes = { free = {…} }`) | +1 000–1 800 |
+| Клиенту нужен SLA, или простой 1–2 ч стал неприемлем | managed PostgreSQL (форма беты: `settings.postgres`). PITR у Timeweb DBaaS нет — тогда HA-реплика своего PG или другой провайдер БД. Решение основателя | +1 600–5 000 |
+| Сумма превышает 20 000 ₽/мес | **стоп**: эскалация E-MONEY (`specs/escalation.yaml`). Агенты сами дальше не растут | — |
+
+Потолок самостоятельного роста — **20 000 ₽/мес**. `max_price` в tfvars не даёт плану молча взять пресет дороже заданного.
+
+Запросы для vmui:
+
+- CPU: `1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))`. Если node-exporter не установлен — `sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) / 4`.
+- RAM: `sum(container_memory_working_set_bytes{container!=""}) / 8e9`.
+
+
 ## Как устроено
 
 | Слой | Где | Зависит от провайдера |

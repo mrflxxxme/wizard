@@ -22,11 +22,11 @@ metadata:
   namespace: {{ .Values.namespaces.sandbox }}
 spec:
   hard:
-    pods: "50"
-    requests.cpu: "16"
-    requests.memory: 64Gi
-    limits.cpu: "32"
-    limits.memory: 96Gi
+    pods: {{ .Values.sandbox.quota.pods | quote }}
+    requests.cpu: {{ .Values.sandbox.quota.requestsCpu | quote }}
+    requests.memory: {{ .Values.sandbox.quota.requestsMemory }}
+    limits.cpu: {{ .Values.sandbox.quota.limitsCpu | quote }}
+    limits.memory: {{ .Values.sandbox.quota.limitsMemory }}
 ---
 apiVersion: v1
 kind: LimitRange

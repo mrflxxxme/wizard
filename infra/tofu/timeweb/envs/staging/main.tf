@@ -59,10 +59,13 @@ module "env" {
   source            = "../../modules/env"
   env               = "staging"
   name_prefix       = "wizard-staging"
-  location          = try(var.settings.location, "ru-1")
+  location          = "ru-3" # Moscow only (founder decision 2026-10-01)
   server            = var.settings.server
   sandbox_nodes     = try(var.settings.sandbox_nodes, {})
-  postgres          = var.settings.postgres
+  postgres          = try(var.settings.postgres, null) # null → pilot: PostgreSQL + WAL-G in the cluster
+  buckets           = try(var.settings.buckets, null)
+  image_registry    = try(var.settings.image_registry, "registry.wizard.local")
+  docker_mirror     = try(var.settings.docker_mirror, "https://dockerhub.timeweb.cloud")
   ssh_public_key    = var.settings.ssh_public_key
   admin_cidrs       = try(var.settings.admin_cidrs, [])
   platform_domain   = var.settings.platform_domain

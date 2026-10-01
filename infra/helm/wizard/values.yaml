@@ -11,6 +11,8 @@ namespaces:
   sandbox: wizard-sandbox
   ingress: wizard-ingress
   certManager: cert-manager
+  # Addons (infra/helm/addons): VictoriaMetrics scrapes /metrics of annotated pods from here.
+  observability: wizard-observability
 
 images:
   # Container registry of the environment (tofu output registry_url)
@@ -26,6 +28,7 @@ images:
     egressProxy: wizard-egress-proxy
     pgbouncer: wizard-pgbouncer
     acmeWebhook: wizard-acme-dns01
+    postgres: wizard-postgres
 
 domains:
   # <codename>.ru — UI and API of the platform (E-NAME)
@@ -53,6 +56,10 @@ secrets:
   pgbouncer: wizard-pgbouncer
   # Credentials of the DNS-01 solver backend (keys of that backend: providers/<provider>.yaml)
   dnsSolver: wizard-dns-solver
+  # Self-managed PostgreSQL (postgres.inCluster): POSTGRES_PASSWORD, WALG_LIBSODIUM_KEY (64 hex), AWS_ACCESS_KEY_ID and
+  # AWS_SECRET_ACCESS_KEY of the backups bucket, WIZARD_DATA_BACKUP_KEY (rclone crypt of .data); optional
+  # WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID (alert webhook, e.g. the Telegram Bot API sendMessage URL).
+  postgres: wizard-postgres
 
 config:
   # Non-secret env shared by the Node services (platform/deploy.yaml#local.env_vars)
@@ -107,7 +114,64 @@ pgbouncer:
   defaultPoolSize: 20
   maxClientConn: 500
   maxPreparedStatements: 200
+  # TLS to the server: verify-full against a managed PostgreSQL (server-ca.crt in the Secret); the in-cluster server
+  # of the pilot is reached pod to pod on one node behind NetworkPolicy — `disable` there (profiles/pilot.yaml).
+  serverTlsSslmode: verify-full
   resources: { requests: { cpu: 100m, memory: 64Mi }, limits: { cpu: 500m, memory: 128Mi } }
+
+# Self-managed PostgreSQL 16 in the cluster (profile pilot, platform/deploy.yaml#pilot.postgres): StatefulSet on the
+# node's local volume, WAL-G continuous archiving to the backups bucket (archive_timeout → RPO ≈ 1 min), daily base
+# backup with retention, archive-lag monitor, weekly restore drill, bootstrap of a lost volume from the archive
+# (infra/postgres/pg-ops.mjs). false → the provider's managed PostgreSQL (pgbouncer.postgresHost from tofu).
+postgres:
+  inCluster: false
+  port: 5432
+  database: wizard
+  user: wizard
+  storageSize: 30Gi
+  # Bucket of backups (tofu output env.buckets.backups): WAL-G under pg/, the .data copy under data/.
+  backupsBucket: ""
+  archiveTimeoutSec: 60
+  maxArchiveLagSec: 300
+  walg:
+    compression: zstd
+    uploadConcurrency: 2
+  # Server settings (-c key=value). The chart adds wal_level, archive_mode, archive_command, archive_timeout.
+  parameters:
+    listen_addresses: "*"
+    max_connections: "100"
+    shared_buffers: 512MB
+    effective_cache_size: 2GB
+    work_mem: 8MB
+    maintenance_work_mem: 128MB
+    max_wal_size: 1GB
+    min_wal_size: 256MB
+    wal_compression: zstd
+    checkpoint_timeout: 15min
+    password_encryption: scram-sha-256
+    log_min_messages: warning
+    log_checkpoints: "off"
+  backup:
+    schedule: "17 2 * * *"
+    timeZone: Europe/Moscow
+    retentionDays: 14
+    maxAgeHours: 26
+  drill:
+    schedule: "37 4 * * 0"
+    timeZone: Europe/Moscow
+    schemas: platform
+    scratchSize: 20Gi
+    maxAgeHours: 192
+  resources: { requests: { cpu: 250m, memory: 768Mi }, limits: { cpu: "2", memory: 1536Mi } }
+  opsResources: { requests: { cpu: 10m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } }
+  jobResources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 1Gi } }
+
+# Encrypted copy of the shared .data volume (revision sources, connector secrets file) in the backups bucket, every
+# intervalSec (rclone crypt, nothing deleted remotely) — the single-node pilot keeps .data on the node's disk.
+dataBackup:
+  enabled: false
+  intervalSec: 60
+  resources: { requests: { cpu: 10m, memory: 48Mi }, limits: { cpu: 500m, memory: 256Mi } }
 
 # Shared .data volume (artifacts, encrypted secrets file) until artifacts move to S3 (docs/reviews/impl-notes/M2-06.md).
 # ReadWriteMany across nodes; the k3s profile uses ReadWriteOnce + local-path (all pods on one node).
@@ -148,3 +212,5 @@ sandbox:
   basePort: 9000
   systems: 10
   healthPort: 8999
+  # ResourceQuota of the sandbox namespace (a pod of runtime sandboxPod() requests 1536Mi = its limit).
+  quota: { pods: 50, requestsCpu: 16, requestsMemory: 64Gi, limitsCpu: 32, limitsMemory: 96Gi }

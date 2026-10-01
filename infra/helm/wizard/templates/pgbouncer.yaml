@@ -13,7 +13,11 @@ metadata:
 data:
   pgbouncer.ini: |
     [databases]
+    {{- if .Values.postgres.inCluster }}
+    {{ $p.database }} = host=wizard-postgres.{{ $ns }}.svc port={{ .Values.postgres.port }} dbname={{ .Values.postgres.database }}
+    {{- else }}
     {{ $p.database }} = host={{ required "pgbouncer.postgresHost is required (tofu output postgres_host)" $p.postgresHost }} port={{ $p.postgresPort }} dbname={{ $p.database }}
+    {{- end }}
     [pgbouncer]
     listen_addr = 0.0.0.0
     listen_port = {{ $p.port }}
@@ -24,8 +28,10 @@ data:
     default_pool_size = {{ $p.defaultPoolSize }}
     max_client_conn = {{ $p.maxClientConn }}
     max_prepared_statements = {{ $p.maxPreparedStatements }}
-    server_tls_sslmode = verify-full
+    server_tls_sslmode = {{ $p.serverTlsSslmode }}
+    {{- if eq $p.serverTlsSslmode "verify-full" "verify-ca" }}
     server_tls_ca_file = /etc/pgbouncer/secret/server-ca.crt
+    {{- end }}
     ignore_startup_parameters = extra_float_digits,options
     server_reset_query =
     log_connections = 0

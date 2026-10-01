@@ -1,0 +1,7 @@
+# Pilot prod on top of values-prod.yaml (which scales the beta to 2–3 replicas): one VM → one replica each.
+# The VM: 4 vCPU / 8 GB (Timeweb Cloud MSK 80), sizing in docs/ops/deploy.md «Пилот: замер».
+platformApi: { replicas: 1 }
+runtime: { replicas: 1 }
+platformWeb: { replicas: 1 }
+egressProxy: { replicas: 1 }
+pgbouncer: { replicas: 1, defaultPoolSize: 10 }

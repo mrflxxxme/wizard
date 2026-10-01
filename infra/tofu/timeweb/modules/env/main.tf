@@ -1,6 +1,9 @@
-# One Wizard environment on Timeweb Cloud (founder decision for the beta: k3s on own VMs + managed PostgreSQL + S3,
-# no managed Kubernetes; budget ≤ 30 000 ₽/month). Provider-neutral pieces live elsewhere: the k3s bootstrap
-# (infra/k3s/*.tftpl), the chart (infra/helm/wizard), the addons. This module only makes VMs, network, PG, S3, DNS.
+# One Wizard environment on Timeweb Cloud, Moscow (ru-3) only. Two shapes (docs/ops/deploy.md):
+#   pilot (founder decision 2026-10-01, ≤ 10 000 ₽/month): ONE VM with single-node k3s carrying everything, PostgreSQL
+#     inside the cluster with WAL-G into the backups bucket (settings.postgres = null), buckets files + backups;
+#   beta: k3s server + sandbox agents, managed PostgreSQL (settings.postgres = {…}), five buckets.
+# Provider-neutral pieces live elsewhere: the k3s bootstrap (infra/k3s/*.tftpl), the chart (infra/helm/wizard), the
+# addons. This module only makes VMs, network, (managed) PG, S3, DNS.
 terraform {
   required_version = ">= 1.8.0"
   required_providers {
@@ -20,6 +23,25 @@ locals {
   server_ip   = cidrhost(var.vpc_cidr, 10)
   agent_ip    = { for i, k in sort(keys(var.sandbox_nodes)) : k => cidrhost(var.vpc_cidr, 20 + i) }
   single_node = length(var.sandbox_nodes) == 0
+  # Pilot: no managed PostgreSQL — the chart runs PostgreSQL 16 with WAL-G in the cluster (profile pilot).
+  pilot = var.postgres == null
+  # Images from an external registry (GHCR) → no in-cluster registry, no push port.
+  in_cluster_registry = var.image_registry == "registry.wizard.local"
+  # A fixed Timeweb preset (cheaper than the configurator) bounded by a price ceiling: a plan that would need a dearer
+  # preset finds none and fails instead of silently raising the bill (auto-growth ceiling, docs/ops/deploy.md).
+  server_preset = var.server.max_price != null
+}
+
+data "twc_presets" "server" {
+  count    = local.server_preset ? 1 : 0
+  location = var.location
+  cpu      = var.server.cpu
+  ram      = var.server.ram_gb * 1024
+  disk     = var.server.disk_gb * 1024
+  price_filter {
+    from = 0
+    to   = var.server.max_price
+  }
 }
 
 resource "random_password" "k3s_token" {
@@ -69,11 +91,15 @@ resource "twc_server" "k3s" {
   ssh_keys_ids              = [twc_ssh_key.admin.id]
   is_root_password_required = false
   floating_ip_id            = twc_floating_ip.ingress.id
-  configuration {
-    configurator_id = data.twc_configurator.vm.id
-    cpu             = var.server.cpu
-    ram             = var.server.ram_gb * 1024
-    disk            = var.server.disk_gb * 1024
+  preset_id                 = local.server_preset ? data.twc_presets.server[0].id : null
+  dynamic "configuration" {
+    for_each = local.server_preset ? [] : [1]
+    content {
+      configurator_id = data.twc_configurator.vm.id
+      cpu             = var.server.cpu
+      ram             = var.server.ram_gb * 1024
+      disk            = var.server.disk_gb * 1024
+    }
   }
   local_network {
     id   = twc_vpc.main.id
@@ -88,6 +114,7 @@ resource "twc_server" "k3s" {
     pods_cidr     = var.pods_cidr
     services_cidr = var.services_cidr
     sandbox_pool  = local.single_node ? "free" : ""
+    docker_mirror = var.docker_mirror
   })
   lifecycle {
     # A changed bootstrap template must not silently rebuild the server: re-create explicitly (`-replace`).
@@ -116,11 +143,12 @@ resource "twc_server" "agent" {
     mode = "snat"
   }
   cloud_init = templatefile("${path.module}/../../../../k3s/agent.yaml.tftpl", {
-    k3s_version = var.k3s_version
-    token       = random_password.k3s_token.result
-    server_ip   = local.server_ip
-    node_ip     = local.agent_ip[each.key]
-    pool        = each.key
+    k3s_version   = var.k3s_version
+    token         = random_password.k3s_token.result
+    server_ip     = local.server_ip
+    node_ip       = local.agent_ip[each.key]
+    pool          = each.key
+    docker_mirror = var.docker_mirror
   })
   lifecycle {
     ignore_changes = [cloud_init]
@@ -154,11 +182,13 @@ locals {
       { proto = "udp", port = "1-65535", cidr = var.vpc_cidr, what = "vpc udp" },
     ],
     # The runner (and the founder): SSH (kubeconfig), the k3s API and the registry node port — never the world.
-    flatten([for c in var.admin_cidrs : [
-      { proto = "tcp", port = "22", cidr = c, what = "ssh admin" },
-      { proto = "tcp", port = "6443", cidr = c, what = "k3s api admin" },
-      { proto = "tcp", port = "30500", cidr = c, what = "registry push admin" },
-    ]]),
+    flatten([for c in var.admin_cidrs : concat(
+      [
+        { proto = "tcp", port = "22", cidr = c, what = "ssh admin" },
+        { proto = "tcp", port = "6443", cidr = c, what = "k3s api admin" },
+      ],
+      local.in_cluster_registry ? [{ proto = "tcp", port = "30500", cidr = c, what = "registry push admin" }] : [],
+    )]),
   )
 }
 

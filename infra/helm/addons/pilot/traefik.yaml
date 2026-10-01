@@ -1,0 +1,6 @@
+# Pilot overlay (one VM): one Traefik replica behind the k3s ServiceLB on the VM's floating IP.
+deployment:
+  replicas: 1
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: "1", memory: 192Mi }

@@ -41,6 +41,10 @@ jobs:
       WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
       WIZARD_TFVARS_FILE: /etc/wizard/terraform-${{ inputs.env }}.tfvars
       WIZARD_SSH_KEY_FILE: /etc/wizard/id_ed25519
+      # Pilot: images from GHCR (pull secret wizard-ghcr; the release waits for the tag) and the database Secret from a
+      # runner-local env file on first bring-up (docs/ops/deploy.md «Пилот»).
+      WIZARD_GHCR_USER: ${{ vars.WIZARD_GHCR_USER }}
+      WIZARD_POSTGRES_ENV_FILE: /etc/wizard/postgres-${{ inputs.env }}.env
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,12 +70,14 @@ jobs:
           STATE_KEY_ID: ${{ secrets.WIZARD_TF_STATE_ACCESS_KEY_ID }}
           STATE_SECRET: ${{ secrets.WIZARD_TF_STATE_SECRET_ACCESS_KEY }}
           STATE_PASSPHRASE: ${{ secrets.WIZARD_TF_STATE_PASSPHRASE }}
+          GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN }}
         run: |
           {
             echo "TWC_TOKEN=$TWC_TOKEN"
             echo "WIZARD_TF_STATE_ACCESS_KEY_ID=$STATE_KEY_ID"
             echo "WIZARD_TF_STATE_SECRET_ACCESS_KEY=$STATE_SECRET"
             echo "WIZARD_TF_STATE_PASSPHRASE=$STATE_PASSPHRASE"
+            if [ -n "$GHCR_TOKEN" ]; then echo "WIZARD_GHCR_TOKEN=$GHCR_TOKEN"; fi
           } >> "$GITHUB_ENV"
 
       - name: Preflight

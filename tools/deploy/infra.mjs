@@ -9,7 +9,8 @@
 //   node tools/deploy/infra.mjs check   --env … [--if-configured]   preflight; --if-configured: a missing
 //                                           credential is a clean skip (exit 0), used by the GitHub workflows
 // Provider: --provider / WIZARD_PROVIDER (default timeweb) → infra/tofu/<provider>/ (provider.json, envs/<env>, tofurc)
-// and infra/helm/providers/<provider>.yaml; cluster profile from provider.json (k3s on VMs) or --profile.
+// and infra/helm/providers/<provider>.yaml; cluster profile: --profile, else the environment's tofu output
+// env.cluster_profile (Timeweb pilot: `pilot`), else provider.json. A profile layers on its bases (PROFILES).
 // --build-images builds and pushes the images of infra/docker/images.json to the environment's registry between the
 // addons and the release (the in-cluster registry exists only after the addons).
 // --dry-run prints every command (secret values masked) and executes nothing. Runs on the self-hosted runner:
@@ -141,12 +142,29 @@ export function tofuInitArgs(env, vars, provider = loadProvider(vars.WIZARD_PROV
   ];
 }
 
-/** Values layers of the release: chart defaults → provider → cluster profile → environment. */
+/** Cluster profiles and their bases (values and addons of a base apply first): pilot = k3s + one VM for everything. */
+export const PROFILES = { k3s: [], pilot: ["k3s"] };
+
+/** Profile with its bases, base first: profileChain("pilot") → ["k3s", "pilot"]. */
+export function profileChain(profile) {
+  if (!profile) return [];
+  return [...(PROFILES[profile] ?? []).flatMap((b) => profileChain(b)), profile];
+}
+
+/**
+ * Values layers of the release: chart defaults → provider → cluster profiles (base first) → environment →
+ * profiles/<profile>-<env>.yaml where present (a profile can override what values-<env>.yaml scales up).
+ */
 export function valueFiles(env, provider, profile) {
+  const chain = profileChain(profile);
   const files = ["infra/helm/wizard/values.yaml"];
   if (provider.helmValues) files.push(provider.helmValues);
-  if (profile) files.push(`infra/helm/profiles/${profile}.yaml`);
+  for (const p of chain) files.push(`infra/helm/profiles/${p}.yaml`);
   files.push(`infra/helm/wizard/values-${env}.yaml`);
+  for (const p of chain) {
+    const f = `infra/helm/profiles/${p}-${env}.yaml`;
+    if (existsSync(join(ROOT, f))) files.push(f);
+  }
   for (const f of files) if (!existsSync(join(ROOT, f))) throw new Error(`no values file ${f}`);
   return files;
 }
@@ -164,6 +182,11 @@ export function wizardReleaseArgs({
   const pgHost = hostOf(
     out.postgres?.platform?.connection_string ?? out.postgres?.main?.connection_string ?? "",
   );
+  // Pilot: PostgreSQL runs in the cluster (WAL-G into the backups bucket) — no managed host or subnet.
+  const inCluster = out.env.postgres_mode === "in-cluster";
+  const database = inCluster
+    ? { "postgres.backupsBucket": out.env.buckets?.backups }
+    : { "network.postgresCidrs[0]": out.env.postgres_cidr, "pgbouncer.postgresHost": pgHost };
   const set = {
     ...(out.env.s3_endpoint ? { "config.s3Endpoint": out.env.s3_endpoint } : {}),
     "images.registry": out.env.registry_url,
@@ -174,8 +197,7 @@ export function wizardReleaseArgs({
     "network.podCidr": out.env.network.pods_cidr,
     "network.serviceCidr": out.env.network.services_cidr,
     "network.nodeCidr": out.env.network.nodes_cidr,
-    "network.postgresCidrs[0]": out.env.postgres_cidr,
-    "pgbouncer.postgresHost": pgHost,
+    ...database,
     "namespaces.ingress": ingressNamespace,
   };
   const args = ["upgrade", "--install", "wizard", "infra/helm/wizard", "--namespace", "wizard-platform"];
@@ -193,7 +215,12 @@ function hostOf(conn) {
   return m ? m[1] : "";
 }
 
-export function addonArgs(a) {
+/** `helm upgrade --install` of an addon; overlays of the profiles in the chain come after its values. */
+export function addonArgs(a, profile = null) {
+  const overlays = profileChain(profile)
+    .map((p) => a.overlays?.[p])
+    .filter(Boolean)
+    .flatMap((f) => ["-f", f]);
   return [
     "upgrade",
     "--install",
@@ -208,6 +235,7 @@ export function addonArgs(a) {
     "--create-namespace",
     "-f",
     a.values,
+    ...overlays,
     "--wait",
     "--timeout",
     "10m",
@@ -235,6 +263,94 @@ export const CLUSTER_SECRETS = [
     kind: "env-file",
   },
 ];
+
+/**
+ * Secrets of a profile chain. Pilot: the self-managed database (env file: POSTGRES_PASSWORD, WALG_LIBSODIUM_KEY,
+ * AWS_* of the backups bucket, WIZARD_DATA_BACKUP_KEY, optional alert webhook) and the pull secret of GHCR (built from
+ * WIZARD_GHCR_USER / WIZARD_GHCR_TOKEN, a token with read:packages only).
+ */
+export function clusterSecrets(profile) {
+  const chain = profileChain(profile);
+  if (!chain.includes("pilot")) return CLUSTER_SECRETS;
+  return [
+    ...CLUSTER_SECRETS,
+    {
+      namespace: "wizard-platform",
+      name: "wizard-postgres",
+      fromFile: "WIZARD_POSTGRES_ENV_FILE",
+      kind: "env-file",
+    },
+    {
+      namespace: "wizard-platform",
+      name: "wizard-ghcr",
+      fromFile: "WIZARD_GHCR_TOKEN",
+      kind: "registry",
+    },
+  ];
+}
+
+/** kubernetes.io/dockerconfigjson Secret as JSON (applied through stdin: the token never appears in argv). */
+export function registrySecret(namespace, name, server, user, token) {
+  const auth = Buffer.from(`${user}:${token}`).toString("base64");
+  const config = JSON.stringify({ auths: { [server]: { username: user, password: token, auth } } });
+  return JSON.stringify({
+    apiVersion: "v1",
+    kind: "Secret",
+    type: "kubernetes.io/dockerconfigjson",
+    metadata: { name, namespace },
+    data: { ".dockerconfigjson": Buffer.from(config).toString("base64") },
+  });
+}
+
+/** Names of the release's images (infra/docker/images.json). */
+export function imageNames() {
+  return JSON.parse(readFileSync(join(ROOT, "infra/docker/images.json"), "utf8")).images.map((i) => i.name);
+}
+
+/**
+ * Waits until `<registry>/<name>:<tag>` exists for every name (OCI distribution API with a pull token, as GHCR
+ * issues it for a read:packages token). Throws after `attempts` × 30 s.
+ */
+export async function waitForImages({
+  registry,
+  names,
+  tag,
+  user,
+  token,
+  log = () => {},
+  f = fetch,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  attempts = 40,
+}) {
+  const [host, ...rest] = String(registry).split("/");
+  const basic = Buffer.from(`${user}:${token}`).toString("base64");
+  const accept = [
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+  ].join(", ");
+  for (const name of names) {
+    const repo = [...rest, name].join("/");
+    for (let i = 1; ; i++) {
+      const t = await f(`https://${host}/token?service=${host}&scope=repository:${repo}:pull`, {
+        headers: { authorization: `Basic ${basic}` },
+      });
+      const bearer = t.ok ? (await t.json()).token : "";
+      const r = await f(`https://${host}/v2/${repo}/manifests/${tag}`, {
+        method: "HEAD",
+        headers: { authorization: `Bearer ${bearer}`, accept },
+      });
+      if (r.status === 200) break;
+      if (i >= attempts) throw new Error(`image ${host}/${repo}:${tag} is not in the registry (${r.status})`);
+      log(`жду образ ${repo}:${tag} в ${host} (${i}/${attempts})…`);
+      await sleep(30_000);
+    }
+  }
+}
+
+/** Registry host of an image reference prefix: "ghcr.io/owner" → "ghcr.io". */
+export const registryHost = (registry) => String(registry).split("/")[0];
 
 const mask = (args, env) =>
   args.map((a) => {
@@ -305,7 +421,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     log("prod: добавьте --yes (запуск только из deploy-prod.yml владельцем репозитория)");
     return 2;
   }
-  const profile = o.profile ?? provider.profile;
+  let profile = o.profile ?? provider.profile;
   const run = deps.run ?? createRunner({ dryRun: o.dryRun, log, env: vars });
   const tenv = tofuEnv(vars, provider);
   const tag = o.tag ?? vars.WIZARD_IMAGE_TAG ?? vars.GITHUB_SHA ?? (o.dryRun ? "<image-tag>" : "");
@@ -357,6 +473,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     log(`${o.env} не создан (нет состояния OpenTofu): \`pnpm infra:apply --env ${o.env}\` создаст его.`);
     return o.env === "staging" ? 0 : 3;
   }
+  profile = o.profile ?? raw.env.value?.cluster_profile ?? profile;
   const kubeDir = vars.RUNNER_TEMP || join(ROOT, ".kube");
   const kubeconfig = join(kubeDir, `wizard-${o.env}.kubeconfig`);
   const text = await kubeconfigText(raw, { run, vars, log, dryRun: o.dryRun, kubeDir, sleep: deps.sleep });
@@ -371,7 +488,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
 
   if (o.command === "apply") {
     kubectl(["apply", "-f", "infra/k8s/namespaces.yaml"]);
-    for (const a of addonsFor(profile)) helm(addonArgs(a));
+    for (const a of addonsFor(profile)) helm(addonArgs(a, profile));
     // Providers whose ingress IP is only known after the addons (managed LoadBalancer) get a second apply for DNS.
     const known = raw.env?.value?.ingress_ip;
     if (!known) {
@@ -394,7 +511,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     }
   }
 
-  for (const s of CLUSTER_SECRETS) {
+  for (const s of clusterSecrets(profile)) {
     const exists =
       kubectl(["-n", s.namespace, "get", "secret", s.name, "-o", "name"], {
         capture: true,
@@ -402,7 +519,22 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
         fake: s.name,
       }).status === 0;
     const src = vars[s.fromFile];
-    if (src) {
+    if (s.kind === "registry") {
+      if (src && vars.WIZARD_GHCR_USER) {
+        const registry = raw.env.value?.registry_url ?? "ghcr.io";
+        kubectl(["apply", "-f", "-"], {
+          input: registrySecret(s.namespace, s.name, registryHost(registry), vars.WIZARD_GHCR_USER, src),
+        });
+      } else if (!exists) {
+        log(
+          `Нет секрета ${s.namespace}/${s.name}: задайте WIZARD_GHCR_USER и WIZARD_GHCR_TOKEN (read:packages) — docs/ops/deploy.md`,
+        );
+        return 3;
+      }
+      continue;
+    }
+    // A runner-local file is used when it is there (first bring-up); later the Secret lives in the cluster.
+    if (src && (deps.exists ?? existsSync)(src)) {
       const from = s.kind === "dir" ? `--from-file=${src}` : `--from-env-file=${src}`;
       const yaml = kubectl(
         ["-n", s.namespace, "create", "secret", "generic", s.name, from, "--dry-run=client", "-o", "yaml"],
@@ -419,7 +551,24 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
 
   if (!tag) throw new Error("image tag: --tag, WIZARD_IMAGE_TAG or GITHUB_SHA");
   const outputs = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, v?.value]));
-  if (o.buildImages) {
+  if (outputs.env.registry_push === null) {
+    // Pilot: images are built by .github/workflows/images.yml on GitHub-hosted runners and pushed to GHCR; the release
+    // waits until every image of this tag is there (images.yml may still be running for the same commit).
+    log(
+      `Образы ${tag} берутся из ${outputs.env.registry_url} (собирает images.yml), сборка на раннере не нужна.`,
+    );
+    if (!o.dryRun && vars.WIZARD_GHCR_TOKEN && !deps.skipImageWait) {
+      await waitForImages({
+        registry: outputs.env.registry_url,
+        names: imageNames(),
+        tag,
+        user: vars.WIZARD_GHCR_USER ?? "",
+        token: vars.WIZARD_GHCR_TOKEN,
+        log,
+        sleep: deps.sleep,
+      });
+    }
+  } else if (o.buildImages) {
     const server = outputs.k3s_server;
     const registry = server
       ? `${k3sAddress(server, vars)}:30500`
@@ -438,10 +587,18 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
   return 0;
 }
 
-/** Addons of infra/helm/addons/addons.json for a cluster profile (entries with `profiles` only for those). */
+/**
+ * Addons of infra/helm/addons/addons.json for a cluster profile and its bases: `profiles` — only with one of them,
+ * `exceptProfiles` — never with them (the pilot pulls from GHCR: no in-cluster registry).
+ */
 export function addonsFor(profile) {
+  const chain = profileChain(profile);
   const all = JSON.parse(readFileSync(join(ROOT, "infra/helm/addons/addons.json"), "utf8")).addons;
-  return all.filter((a) => !a.profiles || (profile !== null && a.profiles.includes(profile)));
+  return all.filter(
+    (a) =>
+      (!a.profiles || a.profiles.some((p) => chain.includes(p))) &&
+      !(a.exceptProfiles ?? []).some((p) => chain.includes(p)),
+  );
 }
 
 /**

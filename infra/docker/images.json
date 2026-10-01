@@ -27,6 +27,7 @@
       "args": { "FILTER": "@wizard/acme-dns01", "APP_DIR": "infra/acme-dns01", "ENTRY": "src/main.ts" }
     },
     { "name": "wizard-platform-web", "dockerfile": "infra/docker/web.Dockerfile", "args": {} },
-    { "name": "wizard-pgbouncer", "dockerfile": "infra/docker/pgbouncer.Dockerfile", "args": {} }
+    { "name": "wizard-pgbouncer", "dockerfile": "infra/docker/pgbouncer.Dockerfile", "args": {} },
+    { "name": "wizard-postgres", "dockerfile": "infra/docker/postgres.Dockerfile", "args": {} }
   ]
 }

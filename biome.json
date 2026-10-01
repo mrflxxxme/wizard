@@ -11,6 +11,7 @@
       "apps/**",
       "scripts/**",
       "infra/acme-dns01/**",
+      "infra/postgres/**",
       "tools/supply-chain/**",
       "tools/deploy/**",
       "!**/dist",

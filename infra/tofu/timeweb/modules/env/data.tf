@@ -1,8 +1,9 @@
-# State of the environment: managed PostgreSQL (single node, daily backups; PITR — see docs/ops/deploy.md), S3 buckets,
-# DNS records. Staging is destroyed with everything (synthetic data); prod is protected by tools/deploy/infra.mjs,
-# which refuses `destroy` for prod.
+# State of the environment: managed PostgreSQL (beta only: single node, daily backups), S3 buckets (pilot: files +
+# backups — WAL-G and the .data copy), DNS records. Staging is destroyed with everything (synthetic data); prod is
+# protected by tools/deploy/infra.mjs, which refuses `destroy` for prod.
 
 data "twc_database_preset" "pg" {
+  count    = local.pilot ? 0 : 1
   location = var.location
   type     = "postgres"
   cpu      = var.postgres.cpu
@@ -11,9 +12,10 @@ data "twc_database_preset" "pg" {
 }
 
 resource "twc_database_cluster" "pg" {
+  count                        = local.pilot ? 0 : 1
   name                         = replace("${var.name_prefix}-pg", "-", "_")
   type                         = "postgres"
-  preset_id                    = data.twc_database_preset.pg.id
+  preset_id                    = data.twc_database_preset.pg[0].id
   is_external_ip               = false
   is_secure_connection_enabled = true
   network {
@@ -29,12 +31,14 @@ resource "twc_database_cluster" "pg" {
 }
 
 resource "twc_database_instance" "wizard" {
-  cluster_id = twc_database_cluster.pg.id
+  count      = local.pilot ? 0 : 1
+  cluster_id = twc_database_cluster.pg[0].id
   name       = "wizard"
 }
 
 resource "twc_database_backup_schedule" "pg" {
-  cluster_id = twc_database_cluster.pg.id
+  count      = local.pilot ? 0 : 1
+  cluster_id = twc_database_cluster.pg[0].id
   enabled    = true
   interval   = "day"
   copy_count = var.postgres.backup_copies
@@ -45,22 +49,31 @@ resource "twc_database_backup_schedule" "pg" {
   }
 }
 
+# Object storage of Timeweb Cloud exists only in St. Petersburg (ru-1) — the one part of the environment outside
+# Moscow; still in RF (compliance.yaml#platform.localization). Preset size per bucket: var.bucket_gb.
 data "twc_s3_preset" "bucket" {
+  for_each      = toset([for k, gb in local.buckets : tostring(gb)])
   location      = "ru-1"
   storage_class = "hot"
-  disk          = var.s3_preset_gb * 1024
+  disk          = tonumber(each.key) * 1024
 }
 
 locals {
-  buckets = toset(["artifacts", "files", "imports", "eval", "backups"])
+  buckets = var.buckets != null ? var.buckets : (
+    local.pilot
+    ? { files = 10, backups = 100 }
+    : { artifacts = var.s3_preset_gb, files = var.s3_preset_gb, imports = var.s3_preset_gb, eval = var.s3_preset_gb, backups = var.s3_preset_gb }
+  )
 }
 
 resource "twc_s3_bucket" "b" {
   for_each    = local.buckets
   name        = "${var.name_prefix}-${each.key}"
   type        = "private"
-  preset_id   = data.twc_s3_preset.bucket.id
+  preset_id   = data.twc_s3_preset.bucket[tostring(each.value)].id
   description = "Wizard ${var.env}: ${each.key}"
+  # A full bucket moves to the next preset instead of refusing writes (WAL archive, uploads).
+  is_allow_auto_upgrade = true
 }
 
 # DNS: the domains are added to the Timeweb account (and delegated to its NS) by hand once — docs/ops/deploy.md.
