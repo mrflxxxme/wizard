@@ -1,0 +1,19 @@
+# Build context of infra/docker/*.Dockerfile: sources only. Secrets and local state never enter an image
+# (deploy.yaml#cloud.secrets, L3-13).
+**/node_modules
+.git
+.github
+.claude
+.data
+.env
+.env.*
+!.env.example
+**/*.log
+**/dist
+**/test-results
+**/playwright-report
+tools/eval/results
+infra/tofu/**/.terraform
+infra/tofu/**/*.tfstate*
+infra/tofu/**/*.tfvars
+docs

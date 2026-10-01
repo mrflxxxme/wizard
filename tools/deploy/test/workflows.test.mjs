@@ -1,0 +1,93 @@
+// L3-38 / M2-06: deploys run only on the self-hosted runner in Cloud.ru with short-lived credentials; prod only by the
+// repository owner from main; both workflows are no-ops until the founder enables them.
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = join(import.meta.dirname, "..", "..", "..");
+const hasYaml = spawnSync("python3", ["-c", "import yaml"]).status === 0;
+const load = (f) => {
+  const text = readFileSync(join(ROOT, ".github/workflows", f), "utf8");
+  const r = spawnSync(
+    "python3",
+    ["-c", "import sys,json,yaml; print(json.dumps(yaml.safe_load(sys.stdin)))"],
+    {
+      input: text,
+      encoding: "utf8",
+    },
+  );
+  if (r.status !== 0) throw new Error(r.stderr);
+  // YAML 1.1: the key `on` loads as true.
+  const doc = JSON.parse(r.stdout);
+  return { doc, on: doc.on ?? doc.true, text };
+};
+
+// GitHub Actions expression text: gh("inputs.env") is the literal dollar-brace expression for inputs.env.
+const gh = (expr) => `$${"{{"} ${expr} }}`;
+
+describe.skipIf(!hasYaml)("deploy workflows", () => {
+  it("the deploy job runs only on the self-hosted runner in the provider's VPC, with OIDC and per-environment protection", () => {
+    const { doc } = load("deploy-reusable.yml");
+    const job = doc.jobs.deploy;
+    expect(job["runs-on"]).toEqual(["self-hosted", "linux", `wizard-${gh("inputs.env")}`]);
+    expect(job.environment).toBe(gh("inputs.env"));
+    expect(job.permissions).toEqual({ contents: "read", "id-token": "write" });
+    const steps = job.steps.map((s) => s.name ?? s.uses ?? s.run);
+    expect(steps).toEqual(
+      expect.arrayContaining(["Short-lived credentials (GitHub OIDC → OpenBao)", "Only commits of main"]),
+    );
+    // Long-lived secrets appear only in the bootstrap step, which is skipped once OpenBao is configured.
+    for (const s of job.steps) {
+      if (JSON.stringify(s).includes("secrets.")) {
+        expect(s.name).toBe("Bootstrap credentials (before OpenBao)");
+        expect(s.if).toBe("env.OPENBAO_ADDR == ''");
+      }
+    }
+  });
+
+  it("staging: after green ci on main, no-op notice until enabled", () => {
+    const { doc, on } = load("deploy-staging.yml");
+    expect(on.workflow_run).toEqual({ workflows: ["ci"], types: ["completed"], branches: ["main"] });
+    expect(doc.jobs.gate["runs-on"]).toBe("ubuntu-latest");
+    expect(JSON.stringify(doc.jobs.gate)).toContain("vars.WIZARD_DEPLOY_STAGING");
+    expect(JSON.stringify(doc.jobs.gate)).toContain("::notice");
+    expect(doc.jobs.deploy.uses).toBe("./.github/workflows/deploy-reusable.yml");
+    expect(doc.jobs.deploy.with.env).toBe("staging");
+    // On demand: created and destroyed from the dispatch form; prod has no destroy.
+    expect(on.workflow_dispatch.inputs.mode.options).toEqual(["deploy", "apply", "destroy"]);
+    expect(load("deploy-prod.yml").on.workflow_dispatch.inputs.mode.options).toEqual(["deploy", "apply"]);
+    expect(load("deploy-reusable.yml").text).toContain("infra.mjs destroy --env");
+  });
+
+  it("prod: workflow_dispatch only; owner, main, confirmation and full SHA are checked before any runner in prod", () => {
+    const { doc, on } = load("deploy-prod.yml");
+    expect(Object.keys(on)).toEqual(["workflow_dispatch"]);
+    const run = doc.jobs.authorize.steps[0].run;
+    expect(doc.jobs.authorize.steps[0].env).toMatchObject({
+      ACTOR: gh("github.actor"),
+      TRIGGERING_ACTOR: gh("github.triggering_actor"),
+      OWNER: gh("github.repository_owner"),
+    });
+    for (const check of [
+      '"$ACTOR" != "$OWNER"',
+      '"$TRIGGERING_ACTOR" != "$OWNER"',
+      "refs/heads/main",
+      '"PROD"',
+      "{40}",
+    ]) {
+      expect(run).toContain(check);
+    }
+    expect(doc.jobs.deploy.needs).toBe("authorize");
+    expect(doc.jobs.deploy.with.env).toBe("prod");
+  });
+
+  it("ci runs the license check with SBOM and the PgBouncer integration test", () => {
+    const { doc } = load("ci.yml");
+    expect(JSON.stringify(doc.jobs["supply-chain"])).toContain("pnpm licenses:check");
+    expect(JSON.stringify(doc.jobs["supply-chain"])).toContain("sbom.mjs");
+    expect(doc.jobs.pgbouncer.env.WIZARD_PGBOUNCER_BIN).toBe("/usr/sbin/pgbouncer");
+    const images = load("images.yml").doc;
+    expect(JSON.stringify(images.jobs.build)).toContain("cyclonedx-json");
+  });
+});

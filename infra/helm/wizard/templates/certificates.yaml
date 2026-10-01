@@ -1,0 +1,54 @@
+{{- $t := .Values.tls }}
+# Wildcard TLS (deploy.yaml#cloud.domains.tls): cert-manager + ACME DNS-01; keys never leave the cluster; renewal
+# 30 days before expiry. The DNS-01 solver is the provider's (tls.solver / tls.solvers in providers/<provider>.yaml).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: wizard-letsencrypt
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: {{ $t.acmeServer }}
+    email: {{ required "tls.email is required (ACME account contact)" $t.email | quote }}
+    privateKeySecretRef:
+      name: wizard-letsencrypt-account
+    solvers:
+      {{- if eq $t.solver "webhook" }}
+      - dns01:
+          webhook:
+            groupName: {{ $t.webhook.groupName }}
+            solverName: {{ $t.webhook.solverName }}
+            config:
+              ttl: 120
+      {{- else }}
+      {{- toYaml (required "tls.solvers is required when tls.solver is not a built-in one" $t.solvers) | nindent 6 }}
+      {{- end }}
+---
+# *.<systems> and the apex (system hosts <slug>, <slug>--draft); stored in the platform namespace for the ingress.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wizard-systems-wildcard
+  namespace: {{ .Values.namespaces.platform }}
+spec:
+  secretName: wizard-systems-tls
+  renewBefore: 720h
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  dnsNames:
+    - {{ printf "*.%s" .Values.domains.systems | quote }}
+    - {{ .Values.domains.systems | quote }}
+  issuerRef: { name: wizard-letsencrypt, kind: ClusterIssuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wizard-platform
+  namespace: {{ .Values.namespaces.platform }}
+spec:
+  secretName: wizard-platform-tls
+  renewBefore: 720h
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  dnsNames:
+    - {{ .Values.domains.platform | quote }}
+    - {{ printf "*.%s" .Values.domains.platform | quote }}
+  issuerRef: { name: wizard-letsencrypt, kind: ClusterIssuer }

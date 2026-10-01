@@ -7,9 +7,10 @@ import { Hono } from "hono";
 import type postgres from "postgres";
 import { clientIpOf } from "./auth/client-ip.js";
 import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
+import { readSessionToken, sessionUser } from "./auth/session.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
-import { assertStartupAllowed, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
+import { assertStartupAllowed, draftPreviewOnly, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
 import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
 import {
@@ -29,6 +30,7 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
+import { createInternalHandler, type InternalOptions } from "./internal.js";
 import {
   type RetentionPassReport,
   type RunJobsOptions,
@@ -56,6 +58,7 @@ import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { yookassaHookRoutes } from "./routes/yookassa.js";
+import type { SandboxRpc } from "./sandbox/rpc.js";
 import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
@@ -91,10 +94,18 @@ export interface RuntimeAppOptions {
    * (fs in <artifactsRoot>/../files, memory or s3); null — no files (uploads 404, file values unchecked).
    */
   files?: FileStorage | null;
+  /** Sandbox RPC listener served on the internal port (/rpc/*) and egress-proxy authorization (L3-23, L3-24). */
+  rpc?: SandboxRpc;
+  /** Version reported by the internal health (image tag, WIZARD_VERSION). */
+  version?: string;
+  /** Egress allowlist inputs of the internal egress-authorize endpoint. */
+  egress?: InternalOptions["egress"];
 }
 
 export interface RuntimeApp {
   fetch(req: Request): Promise<Response>;
+  /** Handler of the internal port (health with details, /_wizard/internal/*, /rpc/*; runtime.yaml#routing, L3-19). */
+  internalFetch(req: Request): Promise<Response>;
   /** Registers a system directly, bypassing the registry (previews, G1). Its schema must already exist. */
   loadSystem(input: LoadSystemInput): Promise<LoadedSystem>;
   /** Removes a system registered by loadSystem (after a G1 run); true when it was loaded. */
@@ -287,9 +298,23 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     }
     if (!sys) return { res: notFoundPage(), sys: null };
     if (sys.entry.suspended && url.pathname !== "/_wizard/health") return { res: suspendedPage(), sys };
+    if (sys.entry.env === "draft" && draftPreviewOnly(env) && !(await draftAdmitted(sys, req, url.pathname)))
+      return { res: notFoundPage(), sys };
     if (!isHookPath(url.pathname) && !csrfOk(req, host, env)) return { res: forbidden(requestId), sys };
     pre.set(req, { system: sys, host, requestId });
     return { res: await app.fetch(req), sys };
+  }
+
+  /**
+   * Cloud drafts are closed (abuse.yaml#identification.draft): only preview-login, health and connector hooks pass
+   * without a live session that preview-login created; everything else is 404 (api.yaml#getPreviewUrl).
+   */
+  async function draftAdmitted(sys: LoadedSystem, req: Request, path: string): Promise<boolean> {
+    if (path === "/_wizard/preview-login" || path === "/_wizard/health" || isHookPath(path)) return true;
+    const t = readSessionToken(req.headers.get("cookie"), env, { draft: true });
+    if (t.kind !== "token") return false;
+    const user = await sessionUser(sys, t.token);
+    return user !== null && !user.blocked_at;
   }
 
   async function fetch(req: Request): Promise<Response> {
@@ -321,8 +346,18 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     return res;
   }
 
+  const internalFetch = createInternalHandler({
+    env,
+    systems,
+    db: o.db,
+    ...(o.rpc ? { rpc: o.rpc } : {}),
+    ...(o.version ? { version: o.version } : {}),
+    ...(o.egress ? { egress: o.egress } : {}),
+  });
+
   return {
     fetch,
+    internalFetch,
     env,
     systems,
     loadSystem: async (input) => systems.pin(input),

@@ -1,0 +1,12 @@
+# Provider layer: Timeweb Cloud (first implementation for the beta: k3s on VMs, managed PostgreSQL, S3, DNS).
+# Same keys as every providers/<provider>.yaml (docs/reviews/impl-notes/M2-06.md «Смена провайдера»).
+config:
+  # Timeweb Cloud S3 (location ru-1)
+  s3Endpoint: https://s3.twcstorage.ru
+  s3Region: ru-1
+tls:
+  # DNS-01 through the Timeweb Cloud DNS API: webhook solver infra/acme-dns01, backend timeweb
+  # (Secret wizard-dns-solver in cert-manager: TWC_TOKEN — a token limited to DNS if the panel allows it)
+  solver: webhook
+  webhook:
+    dnsProvider: timeweb

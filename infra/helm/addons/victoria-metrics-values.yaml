@@ -1,0 +1,12 @@
+# Metrics, self-hosted and small (deploy.yaml#cloud.observability): VictoriaMetrics single (Apache-2.0), the chart's
+# Kubernetes scrape config (nodes, cAdvisor, annotated pods). Retention 90 days (#retention). UI: vmui on :8428.
+server:
+  retentionPeriod: 90d
+  scrape:
+    enabled: true
+  persistentVolume:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }

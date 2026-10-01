@@ -1,0 +1,207 @@
+{{- if eq .Values.tls.solver "webhook" }}
+{{- $cm := .Values.namespaces.certManager }}
+{{- $s := .Values.tls.webhook }}
+# cert-manager DNS-01 webhook solver (infra/acme-dns01): the provider's DNS API is chosen by tls.webhook.dnsProvider
+# (providers/<provider>.yaml); its credentials come from the Secret secrets.dnsSolver (keys of that backend).
+# The solver runs in the cert-manager namespace: only cert-manager's service account may call it (ALLOWED_USERS).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wizard-acme-dns01
+  namespace: {{ $cm }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+---
+# Reads kube-system/extension-apiserver-authentication (front-proxy CA) — the standard reader role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wizard-acme-dns01:auth-reader
+  namespace: kube-system
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - { kind: ServiceAccount, name: wizard-acme-dns01, namespace: {{ $cm }} }
+---
+# cert-manager may create ChallengePayloads of the solver group.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wizard-acme-dns01:solver
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [{{ $s.groupName | quote }}]
+    resources: ["*"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wizard-acme-dns01:solver
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wizard-acme-dns01:solver
+subjects:
+  - { kind: ServiceAccount, name: cert-manager, namespace: {{ $cm }} }
+---
+# Serving certificate of the solver (self-signed CA inside the cluster; cainjector fills the APIService caBundle).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: wizard-acme-dns01-selfsign
+  namespace: {{ $cm }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wizard-acme-dns01-ca
+  namespace: {{ $cm }}
+spec:
+  isCA: true
+  commonName: wizard-acme-dns01-ca
+  secretName: wizard-acme-dns01-ca
+  duration: 43800h
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef: { name: wizard-acme-dns01-selfsign, kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: wizard-acme-dns01-ca
+  namespace: {{ $cm }}
+spec:
+  ca:
+    secretName: wizard-acme-dns01-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wizard-acme-dns01-tls
+  namespace: {{ $cm }}
+spec:
+  secretName: wizard-acme-dns01-tls
+  duration: 8760h
+  renewBefore: 720h
+  privateKey: { algorithm: ECDSA, size: 256 }
+  dnsNames:
+    - wizard-acme-dns01
+    - wizard-acme-dns01.{{ $cm }}
+    - wizard-acme-dns01.{{ $cm }}.svc
+  issuerRef: { name: wizard-acme-dns01-ca, kind: Issuer }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-acme-dns01
+  namespace: {{ $cm }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-acme-dns01" | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-acme-dns01" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-acme-dns01" | nindent 8 }}
+    spec:
+      serviceAccountName: wizard-acme-dns01
+      # The token reads the front-proxy CA once at start (RoleBinding above, nothing else).
+      automountServiceAccountToken: true
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: solver
+          image: {{ include "wizard.image" (list . .Values.images.names.acmeWebhook) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: PORT, value: "8443" }
+            - { name: TLS_DIR, value: /tls }
+            - { name: GROUP_NAME, value: {{ $s.groupName | quote }} }
+            - { name: SOLVER_NAME, value: {{ $s.solverName | quote }} }
+            - name: ACME_ZONES
+              value: {{ printf "%s,%s" (required "domains.platform" .Values.domains.platform) (required "domains.systems" .Values.domains.systems) | quote }}
+            - name: ALLOWED_USERS
+              value: {{ join "," $s.allowedUsers | quote }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            - name: DNS_PROVIDER
+              value: {{ required "tls.webhook.dnsProvider is required (providers/<provider>.yaml)" $s.dnsProvider | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.dnsSolver }}
+          ports:
+            - { name: https, containerPort: 8443, protocol: TCP }
+          readinessProbe:
+            httpGet: { path: /healthz, port: https, scheme: HTTPS }
+          livenessProbe:
+            httpGet: { path: /healthz, port: https, scheme: HTTPS }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tls
+          secret: { secretName: wizard-acme-dns01-tls }
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-acme-dns01
+  namespace: {{ $cm }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-acme-dns01" | nindent 4 }}
+  ports:
+    - { name: https, port: 443, targetPort: https }
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.{{ $s.groupName }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ $cm }}/wizard-acme-dns01-tls
+spec:
+  group: {{ $s.groupName }}
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: wizard-acme-dns01
+    namespace: {{ $cm }}
+    port: 443
+---
+# Called by kube-apiserver (front-proxy mTLS checked in the app), calls the provider's DNS API, reads one ConfigMap.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-acme-dns01, namespace: {{ $cm }} }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: wizard-acme-dns01 } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports: [{ protocol: TCP, port: 8443 }]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock: { cidr: 0.0.0.0/0 }
+      ports: [{ protocol: TCP, port: 443 }, { protocol: TCP, port: 6443 }]
+{{- end }}

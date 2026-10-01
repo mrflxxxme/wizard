@@ -68,3 +68,87 @@ jobs:
             packages/e2e/playwright-report
             packages/e2e/test-results
           retention-days: 7
+  # L3-38 (deploy.yaml#cloud.ci_cd.ci): license policy of AGENTS.md over the whole dependency tree + CycloneDX SBOM.
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm licenses:check
+      - run: node tools/supply-chain/sbom.mjs --out sbom-workspace.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-workspace
+          path: sbom-workspace.cdx.json
+          retention-days: 90
+  # L3-21: transactions of different systems through one PgBouncer server connection (transaction mode).
+  pgbouncer:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_PGBOUNCER_BIN: /usr/sbin/pgbouncer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # PgBouncer ≥ 1.21 (Ubuntu 24.04: 1.22); the test starts its own instance, the packaged service is stopped.
+      - run: sudo apt-get update && sudo apt-get install -y pgbouncer
+      - run: sudo systemctl stop pgbouncer || true
+      - run: /usr/sbin/pgbouncer --version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vitest run apps/runtime/test/pgbouncer.test.ts
+  # M2-06: Helm chart (lint, render invariants for every provider variant, kubeconform), OpenTofu (fmt, validate of
+  # every provider root: Timeweb from the OpenTofu registry, Cloud.ru through its mirror).
+  deploy-lint:
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFORM_VERSION: v0.7.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+      - name: kubeconform
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz -C "$RUNNER_TEMP" kubeconform
+          echo "KUBECONFORM_BIN=$RUNNER_TEMP/kubeconform" >> "$GITHUB_ENV"
+      - run: pip install pyyaml
+      - run: pnpm install --frozen-lockfile
+      - run: HELM_BIN="$(command -v helm)" pnpm exec vitest run tools/deploy
+      - run: tofu fmt -check -recursive infra/tofu
+      - name: tofu validate
+        run: |
+          for d in infra/tofu/*/envs/* infra/tofu/*/drills/*; do
+            [ -f "$d/main.tf" ] || continue
+            provider_dir="${d%%/envs/*}"; provider_dir="${provider_dir%%/drills/*}"
+            if [ -f "$provider_dir/tofurc" ]; then export TF_CLI_CONFIG_FILE="$PWD/$provider_dir/tofurc"; else unset TF_CLI_CONFIG_FILE; fi
+            tofu -chdir="$d" init -backend=false -input=false
+            tofu -chdir="$d" validate
+          done

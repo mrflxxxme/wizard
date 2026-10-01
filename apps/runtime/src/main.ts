@@ -23,6 +23,9 @@ for (const ev of ["uncaughtException", "unhandledRejection"] as const)
   });
 const port = Number(process.env.PORT ?? process.env.WIZARD_RUNTIME_PORT ?? 4100);
 const hostname = process.env.HOST ?? process.env.WIZARD_RUNTIME_HOST ?? "127.0.0.1";
+// runtime.yaml#routing.rules (L3-19): internal port 4101 next to the public 4100; "off" disables it.
+const internalEnv = process.env.WIZARD_RUNTIME_INTERNAL_PORT;
+const internalPort = internalEnv === "off" ? null : Number(internalEnv ?? port + 1);
 const { close } = await startRuntime({
   db,
   // Drafts built by platform-api come from platform.deployments; registry.json still serves hand-placed artifacts.
@@ -33,9 +36,22 @@ const { close } = await startRuntime({
   connectors: process.env.WIZARD_CONNECTORS === "live" ? "live" : "outbox",
   port,
   hostname,
+  internalPort,
+  ...(process.env.WIZARD_RUNTIME_INTERNAL_HOST
+    ? { internalHostname: process.env.WIZARD_RUNTIME_INTERNAL_HOST }
+    : {}),
+  ...(process.env.WIZARD_VERSION ? { version: process.env.WIZARD_VERSION } : {}),
+  egress: {
+    globalAllow: (process.env.WIZARD_EGRESS_ALLOW ?? "")
+      .split(",")
+      .map((h) => h.trim())
+      .filter(Boolean),
+    ...(process.env.WIZARD_SMTP_HOST ? { platformSmtpHost: process.env.WIZARD_SMTP_HOST } : {}),
+  },
   log: (line) => logger.line(line),
 });
 logger.info("listening", { url: `http://${hostname}:${port}`, port });
+if (internalPort !== null) logger.info("listening_internal", { port: internalPort });
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {

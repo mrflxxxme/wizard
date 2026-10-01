@@ -1,0 +1,185 @@
+{{- $ns := .Values.namespaces.platform }}
+{{- $sb := .Values.namespaces.sandbox }}
+{{- $net := .Values.network }}
+{{- $nsKey := "kubernetes.io/metadata.name" }}
+{{- /* Internet without private, cluster, metadata and API-server ranges (L3-24): */}}
+{{- $except := concat (list "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "127.0.0.0/8") $net.metadataCidrs $net.kubeApiCidrs | uniq }}
+{{- define "wizard.dnsEgress" -}}
+- to:
+    - namespaceSelector:
+        matchLabels: { kubernetes.io/metadata.name: kube-system }
+  ports:
+    - { protocol: UDP, port: 53 }
+    - { protocol: TCP, port: 53 }
+{{- end }}
+# NetworkPolicy default-deny in every namespace (deploy.yaml#cloud.kubernetes.policies); then only the flows below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny, namespace: {{ $ns }} }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: default-deny, namespace: {{ $sb }} }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# platform-web: only from the ingress controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-platform-web, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: platform-web } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ .Values.namespaces.ingress }} } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.platformWeb.port }} }]
+  egress: []
+---
+# platform-api and worker: PgBouncer, Managed PG (DBOS system DB, migrations), runtime internal port, the internet on
+# 443 (LLM providers in RU, S3, YooKassa, Telegram) and SMTP submission.
+{{- range $role := list "platform-api" "worker" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-{{ $role }}, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: {{ $role }} } }
+  policyTypes: [Ingress, Egress]
+  {{- if eq $role "platform-api" }}
+  ingress:
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.ingress }} } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.platformApi.port }} }]
+  {{- else }}
+  ingress: []
+  {{- end }}
+  egress:
+    {{- include "wizard.dnsEgress" $ | nindent 4 }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.pgbouncer.port }} }]
+    {{- if $net.postgresCidrs }}
+    - to:
+        {{- range $net.postgresCidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ protocol: TCP, port: {{ $.Values.pgbouncer.postgresPort }} }]
+    {{- end }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: runtime } } }]
+      ports: [{ protocol: TCP, port: {{ $.Values.runtime.internalPort }} }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 465 }
+        - { protocol: TCP, port: 587 }
+{{- end }}
+---
+# runtime: public port only from the ingress; internal port only from platform-api, worker, egress-proxy and the
+# sandbox namespace (RPC). Egress: PgBouncer, the egress proxy, S3 and sandbox pods — no API server, no metadata,
+# no other pods (L3-19, L3-24).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-runtime, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: runtime } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ .Values.namespaces.ingress }} } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.runtime.port }} }]
+    - from:
+        - podSelector: { matchLabels: { wizard.ru/role: platform-api } }
+        - podSelector: { matchLabels: { wizard.ru/role: worker } }
+        - podSelector: { matchLabels: { wizard.ru/role: egress-proxy } }
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox } }
+      ports: [{ protocol: TCP, port: {{ .Values.runtime.internalPort }} }]
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.port }} }]
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: egress-proxy } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.egressProxy.port }} }]
+    - to:
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox } }
+      ports:
+        {{- range $k := until (int .Values.sandbox.systems) }}
+        - { protocol: TCP, port: {{ add $.Values.sandbox.basePort $k }} }
+        {{- end }}
+        - { protocol: TCP, port: {{ .Values.sandbox.healthPort }} }
+    {{- if .Values.runtime.s3Cidrs }}
+    - to:
+        {{- range .Values.runtime.s3Cidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ protocol: TCP, port: 443 }]
+    {{- end }}
+    {{- if .Values.runtime.directConnectorEgress }}
+    # TEMPORARY (impl-notes M2-06): live connector calls of the runtime go out directly until their transport uses
+    # the egress proxy (M2-01 leftover). Still no private, cluster, metadata or API-server ranges.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 465 }
+        - { protocol: TCP, port: 587 }
+    {{- end }}
+---
+# egress-proxy: CONNECT from the runtime and sandbox pods; out to public addresses on 443/465/587 and to the
+# runtime's internal port (capability check). The proxy itself re-checks resolved addresses (deniedCidrs).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-egress-proxy, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: egress-proxy } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { wizard.ru/role: runtime } }
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox } }
+      ports: [{ protocol: TCP, port: {{ .Values.egressProxy.port }} }]
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to: [{ podSelector: { matchLabels: { wizard.ru/role: runtime } } }]
+      ports: [{ protocol: TCP, port: {{ .Values.runtime.internalPort }} }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson $except }}
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 465 }
+        - { protocol: TCP, port: 587 }
+{{- if .Values.pgbouncer.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: wizard-pgbouncer, namespace: {{ $ns }} }
+spec:
+  podSelector: { matchLabels: { wizard.ru/role: pgbouncer } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { wizard.ru/role: platform-api } }
+        - podSelector: { matchLabels: { wizard.ru/role: worker } }
+        - podSelector: { matchLabels: { wizard.ru/role: runtime } }
+      ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.port }} }]
+  egress:
+    {{- include "wizard.dnsEgress" . | nindent 4 }}
+    - to:
+        {{- range (required "network.postgresCidrs is required (Managed PostgreSQL subnet)" $net.postgresCidrs) }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.postgresPort }} }]
+{{- end }}
+---
+# Generated from apps/runtime sandboxNetworkPolicy() (tools/deploy/test/helm.test.ts keeps it in sync).
+{{ tpl (.Files.Get "generated/sandbox-networkpolicy.json") . }}

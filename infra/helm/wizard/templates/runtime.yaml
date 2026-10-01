@@ -1,0 +1,155 @@
+{{- $ns := .Values.namespaces.platform }}
+# runtime: public port (ingress of the systems domain) and internal port (ClusterIP only: health details,
+# /_wizard/internal/*, sandbox RPC; runtime.yaml#routing.rules, L3-19). egress-proxy: the only way out (L3-24).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-runtime
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-runtime" | nindent 4 }}
+spec:
+  replicas: {{ .Values.runtime.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-runtime" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-runtime" | nindent 8 }}
+        wizard.ru/role: runtime
+    spec:
+      serviceAccountName: wizard-app
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: runtime
+          image: {{ include "wizard.image" (list . .Values.images.names.runtime) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            {{- include "wizard.commonEnv" . | nindent 12 }}
+            - name: PORT
+              value: {{ .Values.runtime.port | quote }}
+            - name: WIZARD_RUNTIME_INTERNAL_PORT
+              value: {{ .Values.runtime.internalPort | quote }}
+            - name: WIZARD_EGRESS_ALLOW
+              value: {{ .Values.config.egressAllow | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.platformEnv }}
+          ports:
+            - { name: public, containerPort: {{ .Values.runtime.port }}, protocol: TCP }
+            - { name: internal, containerPort: {{ .Values.runtime.internalPort }}, protocol: TCP }
+          # Internal health checks the DB too ({status, version, db, systemsLoaded}).
+          readinessProbe:
+            httpGet: { path: /_wizard/health, port: internal }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /_wizard/health, port: public }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.runtime.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts: {{- include "wizard.nodeMounts" . | nindent 12 }}
+      volumes: {{- include "wizard.nodeVolumes" . | nindent 8 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-runtime
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-runtime" | nindent 4 }}
+  ports:
+    - { name: public, port: {{ .Values.runtime.port }}, targetPort: public }
+---
+# Never referenced by an Ingress; NetworkPolicy admits only platform-api, worker, egress-proxy and sandbox pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-runtime-internal
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-runtime" | nindent 4 }}
+  ports:
+    - { name: internal, port: {{ .Values.runtime.internalPort }}, targetPort: internal }
+{{- if gt (int .Values.runtime.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wizard-runtime
+  namespace: {{ $ns }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-runtime" | nindent 6 }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wizard-egress-proxy
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+    {{- include "wizard.selector" "wizard-egress-proxy" | nindent 4 }}
+spec:
+  replicas: {{ .Values.egressProxy.replicas }}
+  selector:
+    matchLabels: {{- include "wizard.selector" "wizard-egress-proxy" | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wizard.selector" "wizard-egress-proxy" | nindent 8 }}
+        wizard.ru/role: egress-proxy
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "wizard.imagePullSecrets" . | nindent 6 }}
+      {{- include "wizard.podSecurity" 1000 | nindent 6 }}
+      containers:
+        - name: egress-proxy
+          image: {{ include "wizard.image" (list . .Values.images.names.egressProxy) }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.egressProxy.port | quote }}
+            - name: WIZARD_RUNTIME_INTERNAL_URL
+              value: {{ printf "http://wizard-runtime-internal.%s.svc:%v" $ns .Values.runtime.internalPort | quote }}
+            # Cluster networks on top of the built-in private/metadata ranges (apps/runtime/src/egress-main.ts).
+            - name: WIZARD_EGRESS_DENIED_CIDRS
+              value: {{ join "," (concat (list .Values.network.podCidr .Values.network.serviceCidr .Values.network.nodeCidr) .Values.network.kubeApiCidrs .Values.network.metadataCidrs) | quote }}
+            - name: WIZARD_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secrets.platformEnv }}, key: WIZARD_INTERNAL_TOKEN }
+          ports:
+            - { name: proxy, containerPort: {{ .Values.egressProxy.port }}, protocol: TCP }
+          readinessProbe:
+            tcpSocket: { port: proxy }
+          livenessProbe:
+            tcpSocket: { port: proxy }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.egressProxy.resources | nindent 12 }}
+          {{- include "wizard.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wizard-egress-proxy
+  namespace: {{ $ns }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "wizard.selector" "wizard-egress-proxy" | nindent 4 }}
+  ports:
+    - { name: proxy, port: {{ .Values.egressProxy.port }}, targetPort: proxy }

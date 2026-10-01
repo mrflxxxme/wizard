@@ -1,0 +1,21 @@
+# Lean profile: k3s on plain VMs (one server node for the platform, optional agent nodes for the sandbox pools;
+# infra/k3s/cloud-init.yaml). No managed control plane is assumed: ServiceLB (klipper) gives the LoadBalancer IP,
+# local-path gives volumes (ReadWriteOnce → every pod that mounts .data runs on the server node), kube-router enforces
+# NetworkPolicy, gVisor comes from runsc on our own nodes.
+network:
+  # k3s defaults (--cluster-cidr / --service-cidr)
+  podCidr: 10.42.0.0/16
+  serviceCidr: 10.43.0.0/16
+data:
+  storageClass: local-path
+  accessMode: ReadWriteOnce
+  size: 20Gi
+platformApi: { replicas: 1 }
+runtime: { replicas: 1 }
+platformWeb: { replicas: 1 }
+egressProxy: { replicas: 1 }
+pgbouncer: { replicas: 1, defaultPoolSize: 10 }
+sandbox:
+  runtimeClass:
+    create: true
+    handler: runsc

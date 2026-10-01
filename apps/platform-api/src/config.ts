@@ -36,6 +36,15 @@ export interface Config {
   importsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
   runtimePort: number;
+  /**
+   * WIZARD_SYSTEMS_DOMAIN (deploy.yaml#cloud.domains.systems): "localhost" (default) → http://<host>.localhost:<runtimePort>;
+   * otherwise <publicScheme>://<slug>[--draft].<systemsDomain> through the ingress.
+   */
+  systemsDomain: string;
+  /** WIZARD_PREVIEW_SECRET: getPreviewUrl issues one-time preview-login tokens (L3-11); null — M0 dev-login URLs. */
+  previewSecret: string | null;
+  /** WIZARD_RUNTIME_INTERNAL_URL: runtime internal port (health with revision for the publish smoke; L3-19). */
+  runtimeInternalUrl: string | null;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
   buildDefaultTier: Tier;
   /**
@@ -111,6 +120,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     milestone: env.WIZARD_MILESTONE || "M0",
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
     runtimePort: 4100,
+    systemsDomain: env.WIZARD_SYSTEMS_DOMAIN || "localhost",
+    previewSecret: env.WIZARD_PREVIEW_SECRET || null,
+    runtimeInternalUrl: env.WIZARD_RUNTIME_INTERNAL_URL || null,
     platformShop:
       env.WIZARD_PLATFORM_YOOKASSA_SHOP_ID && env.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY
         ? {

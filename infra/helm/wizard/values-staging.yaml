@@ -1,0 +1,20 @@
+# Staging (deploy.yaml#cloud.environments.staging): auto-deploy from main, synthetic data only.
+# Values marked "from tofu" are filled by tools/deploy/infra.mjs (--set) from `tofu output -json`.
+env: staging
+domains:
+  platform: ""   # e.g. staging.<codename>.ru (WIZARD_PLATFORM_DOMAIN_STAGING)
+  systems: ""    # separate neutral staging systems domain (checklist §2, WIZARD_SYSTEMS_DOMAIN_STAGING)
+config:
+  llmMode: fixture
+  connectors: outbox
+platformApi: { replicas: 1 }
+runtime: { replicas: 1 }
+platformWeb: { replicas: 1 }
+egressProxy: { replicas: 1 }
+pgbouncer: { replicas: 1, defaultPoolSize: 10 }
+tls:
+  acmeServer: https://acme-staging-v02.api.letsencrypt.org/directory
+hsts:
+  # No preload on staging: preload is irreversible for weeks; staging keeps a short max-age.
+  maxAge: 86400
+  preload: false

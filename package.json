@@ -17,7 +17,12 @@
     "check:code": "node scripts/check-code.mjs",
     "db:up": "node scripts/db.mjs up",
     "db:down": "node scripts/db.mjs down",
-    "specs:validate": "node tools/specs/validate.mjs"
+    "specs:validate": "node tools/specs/validate.mjs",
+    "infra:apply": "node tools/deploy/infra.mjs apply",
+    "infra:plan": "node tools/deploy/infra.mjs plan",
+    "infra:deploy": "node tools/deploy/infra.mjs deploy",
+    "licenses:check": "node tools/supply-chain/licenses.mjs",
+    "sbom": "node tools/supply-chain/sbom.mjs --out sbom.cdx.json"
   },
   "devDependencies": {
     "@biomejs/biome": "^2",

@@ -1,0 +1,20 @@
+{
+  "$comment": "License policy of AGENTS.md (L3-38). allowed: every dependency; devOnly: allowed only outside the production tree (pnpm --prod); exceptions: name → reason, reviewed in docs/reviews/impl-notes/M2-06.md. Fonts (OFL-1.1) and data (CC0/CC-BY) are allowed by AGENTS.md as such.",
+  "allowed": [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "ISC",
+    "OFL-1.1",
+    "CC0-1.0",
+    "CC-BY-3.0",
+    "CC-BY-4.0"
+  ],
+  "devOnly": ["MPL-2.0"],
+  "exceptions": {
+    "postgres": "Unlicense (public-domain dedication). Named in architecture.yaml#stack.backend.sql (postgres by porsager); no obligations beyond MIT."
+  }
+}

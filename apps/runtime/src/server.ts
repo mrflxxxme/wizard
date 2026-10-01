@@ -9,6 +9,13 @@ export interface StartOptions extends RuntimeAppOptions {
   port?: number;
   /** Bind address; default 127.0.0.1. Dev-only flags refuse non-loopback binds (L3-11). */
   hostname?: string;
+  /**
+   * Internal listener (health details, /_wizard/internal/*, sandbox RPC; runtime.yaml#routing.rules, L3-19): port, or
+   * undefined/null — none. Bound to internalHostname (default: hostname); in the cloud only a ClusterIP Service and
+   * NetworkPolicy expose it.
+   */
+  internalPort?: number | null;
+  internalHostname?: string;
   /** Period of the retention check (runtime.yaml#workflows.retention; a pass runs once per daily slot); 0 — off. */
   retentionTickMs?: number;
 }
@@ -33,6 +40,14 @@ export async function startRuntime(
     port: o.port ?? 4100,
     hostname,
   });
+  const internal =
+    o.internalPort === undefined || o.internalPort === null
+      ? null
+      : serve({
+          fetch: (req: Request) => runtime.internalFetch(req),
+          port: o.internalPort,
+          hostname: o.internalHostname ?? hostname,
+        });
   const tickMs = o.retentionTickMs ?? RETENTION_TICK_MS;
   let ticking = false;
   const tick =
@@ -61,6 +76,7 @@ export async function startRuntime(
     close: () =>
       new Promise<void>((resolve, reject) => {
         if (tick) clearInterval(tick);
+        internal?.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };
