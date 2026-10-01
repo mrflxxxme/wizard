@@ -228,6 +228,7 @@ export const functionSchema = z.strictObject({
   roles: z.array(identSchema).optional(),
   egress: z.array(z.string().regex(EGRESS_HOST_RE)).optional(),
   collectsPii: z.boolean().optional(),
+  systemDbReason: z.string().min(10).max(300).optional(),
 });
 
 export const pageSchema = z.strictObject({

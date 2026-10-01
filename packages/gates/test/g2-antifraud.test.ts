@@ -92,12 +92,10 @@ describe("antifraud fixtures: block 100%", () => {
 });
 
 describe("antifraud fixtures: allow — 0 false blocks", () => {
-  // G2-PERM-05 on the bakery golden flags freeSlots (systemDb without systemDbReason): covered by its own fixtures.
-  const ids = STATIC_IDS.filter((id) => id !== "G2-PERM-05");
   for (const [name, c] of [...cases].filter(([k]) => k.startsWith("allow/"))) {
     test(name, async () => {
       const { ctx } = materialize(c, db);
-      const r = await runG2(ctx, { only: ids });
+      const r = await runG2(ctx, { only: STATIC_IDS });
       expect(bad(r.checks), show(bad(r.checks))).toEqual([]);
     });
   }

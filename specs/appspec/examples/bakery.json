@@ -208,7 +208,7 @@
   ],
   "functions": [
     {"name": "calcPrice", "kind": "query", "file": "functions/calcPrice.ts", "public": true, "roles": ["visitor", "customer", "owner"]},
-    {"name": "freeSlots", "kind": "query", "file": "functions/freeSlots.ts", "public": true, "roles": ["visitor", "customer", "owner", "staff"]},
+    {"name": "freeSlots", "kind": "query", "file": "functions/freeSlots.ts", "public": true, "roles": ["visitor", "customer", "owner", "staff"], "systemDbReason": "Считает загрузку дней по всем заказам, наружу отдаёт только числа свободных слотов"},
     {"name": "placeOrder", "kind": "mutation", "file": "functions/placeOrder.ts", "public": true, "roles": ["customer"], "collectsPii": true}
   ],
   "pages": [
