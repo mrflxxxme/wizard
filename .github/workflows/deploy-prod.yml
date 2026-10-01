@@ -1,0 +1,77 @@
+# Prod deploy (deploy.yaml#cloud.environments.prod; docs/founder/access-checklist.md §8, option «а»): required reviewers
+# are unavailable for private repos on Pro/Team, so the approval is the trigger itself — workflow_dispatch that only the
+# repository owner may start, only from main, with an explicit confirmation. Anyone else fails in `authorize` before
+# the prod runner is touched. Prod is never destroyed by a workflow. No-op with a notice until WIZARD_DEPLOY_PROD=enabled.
+name: deploy-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Полный SHA коммита main, уже проверенного на staging"
+        required: true
+        type: string
+      mode:
+        description: "deploy (образы + Helm) | apply (OpenTofu + аддоны + образы + Helm)"
+        type: choice
+        options: [deploy, apply]
+        default: deploy
+      confirm:
+        description: "Введите PROD"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.a.outputs.enabled }}
+    steps:
+      - id: a
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+          REF: ${{ github.ref }}
+          CONFIRM: ${{ inputs.confirm }}
+          SHA: ${{ inputs.sha }}
+          ENABLED: ${{ vars.WIZARD_DEPLOY_PROD }}
+        run: |
+          if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
+            echo "::error title=deploy-prod::Выкат в prod запускает только владелец репозитория ($OWNER)."; exit 1
+          fi
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=deploy-prod::Запуск только из main."; exit 1
+          fi
+          if [ "$CONFIRM" != "PROD" ]; then
+            echo "::error title=deploy-prod::Подтверждение не совпало (нужно PROD)."; exit 1
+          fi
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error title=deploy-prod::sha — полный SHA из 40 символов."; exit 1
+          fi
+          if [ "$ENABLED" = "enabled" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=deploy-prod::Пропущено: prod не подключён (vars.WIZARD_DEPLOY_PROD ≠ enabled). Что нужно — docs/ops/deploy.md."
+          fi
+
+  deploy:
+    needs: authorize
+    if: needs.authorize.outputs.enabled == 'true'
+    uses: ./.github/workflows/deploy-reusable.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      env: prod
+      sha: ${{ inputs.sha }}
+      mode: ${{ inputs.mode }}
+    secrets: inherit

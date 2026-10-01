@@ -129,7 +129,7 @@ async function smoke(
   revision: number,
 ): Promise<string> {
   const url = prodUrl(h.config, sys.slug);
-  const check = h.options.smoke ?? httpSmoke();
+  const check = h.options.smoke ?? httpSmoke(5000, { internalUrl: h.config.runtimeInternalUrl });
   const res = await h.step("smoke", "Проверяю, что prod отвечает", () =>
     check({ slug: sys.slug, systemKey: sys.schema_key, revision, url }),
   );

@@ -1,0 +1,37 @@
+{
+  "$comment": "Alternative provider (managed Kubernetes on Cloud.ru Evolution): kept validated, not the beta path (founder decision: k3s on VMs, Timeweb Cloud first). Contract of a hosting provider for tools/deploy/infra.mjs (docs/reviews/impl-notes/M2-06.md «Смена провайдера»). Everything provider-specific of the deploy lives in infra/tofu/<provider>/ and infra/helm/providers/<provider>.yaml; the envs/<env> roots must expose the outputs listed in outputs.",
+  "name": "cloudru",
+  "title": "Cloud.ru Evolution (managed Kubernetes)",
+  "requiredEnv": [
+    [
+      "CLOUDRU_PROJECT_ID",
+      "id проекта Cloud.ru окружения (GitHub variable окружения)",
+      "TF_VAR_project_id"
+    ],
+    [
+      "CLOUDRU_IAC_KEY_ID",
+      "Key ID сервисного аккаунта IaC",
+      "TF_VAR_iac_key_id"
+    ],
+    [
+      "CLOUDRU_IAC_KEY_SECRET",
+      "Key Secret сервисного аккаунта IaC",
+      "TF_VAR_iac_key_secret"
+    ]
+  ],
+  "optionalEnv": [
+    [
+      "CLOUDRU_S3_TENANT_ID",
+      "tenant id Object Storage",
+      "TF_VAR_object_storage_tenant_id"
+    ]
+  ],
+  "helmValues": "infra/helm/providers/cloudru.yaml",
+  "outputs": {
+    "env": "registry_url, domains {platform, systems}, network {pods_cidr, services_cidr, nodes_cidr}, postgres_cidr, db_subnet_id",
+    "postgres": "map name → {id, connection_string}; key platform (prod) or main (staging)",
+    "kubeconfig": "kubeconfig text of the cluster"
+  },
+  "profile": null,
+  "destroyable": []
+}

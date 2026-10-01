@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars on the runner (not committed). IDs from the Cloud.ru console of the prod project.
+# Sizes: checklist §1 «Сколько стоит» (prod ≈ 73 тыс. ₽/мес); HA of apps — founder decision (checklist §1 ⚑).
+settings = {
+  zone_id = "<ru-central-1 zone id>"
+  control_plane = { count = 3, flavor_id = "<2 vCPU / 4 GB flavor id>" }
+  node_pools = {
+    platform = { flavor_id = "<4 vCPU / 16 GB flavor id>", count = 3 }
+    free     = { flavor_id = "<4 vCPU / 16 GB flavor id>", count = 1, sandbox = true }
+    paid     = { flavor_id = "<4 vCPU / 16 GB flavor id>", count = 1, sandbox = true }
+  }
+  postgres_clusters = {
+    platform  = { specification_id = "<2 vCPU / 8 GB spec id>", instances = 2, data_gb = 50, backup_days = 14 }
+    apps-01   = { specification_id = "<2 vCPU / 8 GB spec id>", instances = 2, data_gb = 100, backup_days = 14 }
+    drafts-01 = { specification_id = "<2 vCPU / 4 GB spec id>", instances = 1, data_gb = 50, backup_days = 7 }
+  }
+  platform_domain = "<codename>.ru"
+  systems_domain  = "<neutral systems domain>"
+  ingress_ip      = ""
+  kms_kek_id      = "<KMS KEK id>"
+}

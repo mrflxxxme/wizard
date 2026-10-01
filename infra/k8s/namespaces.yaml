@@ -1,0 +1,32 @@
+# Namespaces of one environment (staging and prod are separate clusters in separate Cloud.ru projects,
+# deploy.yaml#cloud.environments.isolation). Applied by tools/deploy/infra.mjs before the Helm release.
+# PodSecurity "restricted" everywhere (deploy.yaml#cloud.kubernetes.policies); the sandbox namespace has no
+# service-account tokens and is reachable only through NetworkPolicy from the runtime.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wizard-platform
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wizard-sandbox
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wizard-ingress
+  labels:
+    # Traefik binds :8000/:8443 as non-root; restricted fits its chart defaults.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

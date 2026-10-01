@@ -134,6 +134,21 @@ export class SystemCache {
     return this.pinned.delete(key(slug, env));
   }
 
+  /**
+   * POST /_wizard/internal/reload (runtime.yaml#system_loading.rules): drops the cached LoadedSystem of a deployment;
+   * the next request reloads it from the registry. Requests in flight keep the old object. true when one was cached.
+   */
+  evict(systemId: string, env: SystemEnv): boolean {
+    let hit = false;
+    for (const [k, sys] of this.lru) {
+      if (sys.entry.systemId === systemId && sys.entry.env === env) {
+        this.lru.delete(k);
+        hit = true;
+      }
+    }
+    return hit;
+  }
+
   /** Loaded system for a host, or null when the registry has no such deployment. Throws SystemLoadError (→ 503). */
   async resolve(slug: string, env: SystemEnv): Promise<LoadedSystem | null> {
     const k = key(slug, env);

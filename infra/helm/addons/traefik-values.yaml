@@ -1,0 +1,60 @@
+# Traefik (MIT), chart 41.x — the trusted ingress of L3-27: X-Forwarded-For sent by clients is not trusted
+# (forwardedHeaders.insecure false, no trustedIPs), Traefik appends the peer address; the apps trust XFF only from the
+# pod CIDR (WIZARD_TRUSTED_PROXIES). externalTrafficPolicy Local keeps the client IP through the Cloud.ru L4 balancer
+# (verify on first bring-up; if the balancer SNATs, set ports.websecure.proxyProtocol.trustedIPs to its subnet).
+deployment:
+  replicas: 2
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+providers:
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: false
+service:
+  type: LoadBalancer
+  spec:
+    externalTrafficPolicy: Local
+ports:
+  web:
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+    forwardedHeaders:
+      insecure: false
+      trustedIPs: []
+  websecure:
+    http:
+      tls:
+        enabled: true
+    forwardedHeaders:
+      insecure: false
+      trustedIPs: []
+accessLog:
+  enabled: true
+  format: json
+  # Paths, query strings and headers are not logged (deploy.yaml#cloud.observability.pii_in_logs).
+  fields:
+    defaultMode: drop
+    names:
+      ClientHost: keep
+      RequestMethod: keep
+      DownstreamStatus: keep
+      Duration: keep
+      RouterName: keep
+    headers:
+      defaultMode: drop
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: "1", memory: 256Mi }

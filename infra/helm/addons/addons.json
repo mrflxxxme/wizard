@@ -1,0 +1,53 @@
+{
+  "$comment": "Provider-neutral cluster addons installed by tools/deploy/infra.mjs before the wizard chart (managed Kubernetes or k3s). Versions pinned (checked 2026-10-01); upgrades are PRs. Observability is small and self-hosted. An addon with profiles is installed only with one of those cluster profiles.",
+  "addons": [
+    {
+      "name": "cert-manager",
+      "repo": "https://charts.jetstack.io",
+      "chart": "cert-manager",
+      "version": "v1.21.2",
+      "namespace": "cert-manager",
+      "license": "Apache-2.0",
+      "values": "infra/helm/addons/cert-manager-values.yaml"
+    },
+    {
+      "name": "traefik",
+      "repo": "https://traefik.github.io/charts",
+      "chart": "traefik",
+      "version": "41.6.1",
+      "namespace": "wizard-ingress",
+      "license": "MIT",
+      "values": "infra/helm/addons/traefik-values.yaml"
+    },
+    {
+      "name": "registry",
+      "repo": "https://twuni.github.io/docker-registry.helm",
+      "chart": "docker-registry",
+      "version": "3.0.0",
+      "namespace": "wizard-registry",
+      "license": "Apache-2.0",
+      "values": "infra/helm/addons/registry-values.yaml",
+      "profiles": [
+        "k3s"
+      ]
+    },
+    {
+      "name": "metrics",
+      "repo": "https://victoriametrics.github.io/helm-charts/",
+      "chart": "victoria-metrics-single",
+      "version": "0.48.0",
+      "namespace": "wizard-observability",
+      "license": "Apache-2.0",
+      "values": "infra/helm/addons/victoria-metrics-values.yaml"
+    },
+    {
+      "name": "logs",
+      "repo": "https://victoriametrics.github.io/helm-charts/",
+      "chart": "victoria-logs-single",
+      "version": "0.13.9",
+      "namespace": "wizard-observability",
+      "license": "Apache-2.0 (vector agent: MPL-2.0)",
+      "values": "infra/helm/addons/victoria-logs-values.yaml"
+    }
+  ]
+}

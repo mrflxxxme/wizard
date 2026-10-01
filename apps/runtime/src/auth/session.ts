@@ -128,6 +128,22 @@ export async function deleteSession(sys: LoadedSystem, token: string): Promise<v
   });
 }
 
+/**
+ * Burns a preview-token nonce (_w_preview_nonces, runtime.yaml#auth.preview_login_M2): true the first time, false on a
+ * replay. Expired rows are swept in the same transaction.
+ */
+export async function consumePreviewNonce(sys: LoadedSystem, nonce: string, expMs: number): Promise<boolean> {
+  return sys.data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+    const t = tx.sql`${tx.sql(sys.schema)}.${tx.sql("_w_preview_nonces")}`;
+    await tx.sql`delete from ${t} where expires_at < now()`;
+    const rows = await tx.sql`
+      insert into ${t} (nonce, expires_at) values (${nonce}, ${new Date(expMs)})
+      on conflict (nonce) do nothing
+      returning nonce`;
+    return rows.length === 1;
+  });
+}
+
 /** Creates (or takes) the user dev-<role> (runtime.yaml#auth.dev_login_M0). */
 export async function devUser(sys: LoadedSystem, role: string): Promise<string> {
   const email = `dev-${role}@dev.localhost`;

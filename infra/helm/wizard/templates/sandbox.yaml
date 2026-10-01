@@ -1,0 +1,41 @@
+{{- if .Values.sandbox.runtimeClass.create }}
+# gVisor RuntimeClass of the sandbox pool (isolation.yaml#M2): created only when the cluster's
+# sandbox nodes have runsc as a containerd handler. Pods of apps/runtime sandboxPod() select it by name.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+handler: {{ .Values.sandbox.runtimeClass.handler }}
+scheduling:
+  nodeSelector:
+    wizard.ru/sandbox-node: "true"
+  tolerations:
+    - { key: wizard.ru/sandbox, operator: Exists, effect: NoSchedule }
+{{- end }}
+---
+# Quotas of the sandbox namespace (deploy.yaml#runtime_limits: pod quotas here, call limits in runtime.yaml).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: wizard-sandbox
+  namespace: {{ .Values.namespaces.sandbox }}
+spec:
+  hard:
+    pods: "50"
+    requests.cpu: "16"
+    requests.memory: 64Gi
+    limits.cpu: "32"
+    limits.memory: 96Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: wizard-sandbox
+  namespace: {{ .Values.namespaces.sandbox }}
+spec:
+  limits:
+    - type: Container
+      default: { cpu: "1", memory: 1536Mi }
+      defaultRequest: { cpu: 250m, memory: 1536Mi }
+      max: { cpu: "2", memory: 2Gi }

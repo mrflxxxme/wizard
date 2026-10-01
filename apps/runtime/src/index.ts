@@ -11,6 +11,16 @@ export {
   type RuntimeApp,
   type RuntimeAppOptions,
 } from "./app.js";
+/** Preview-login tokens (runtime.yaml#auth.preview_login_M2, L3-11): issued by platform-api, verified by the runtime. */
+export {
+  issuePreviewToken,
+  newPreviewNonce,
+  PREVIEW_SECRET_MIN_BYTES,
+  PREVIEW_TOKEN_TTL_MS,
+  type PreviewCheck,
+  type PreviewClaims,
+  verifyPreviewToken,
+} from "./auth/preview-token.js";
 /** Tokens of the session cookie; safeNext for next/returnTo (runtime.yaml#auth). */
 export {
   previewCookieName,
@@ -27,8 +37,15 @@ export * from "./data/access.js";
 export { createInvalidationBus } from "./data/events.js";
 /** DataAccess over Postgres with RLS context (set_config(..., true)). */
 export { createPgDataAccess, type PgDataAccessOptions } from "./data/pg.js";
-/** Process env and dev-only startup guards (L3-10, L3-11). */
-export { assertStartupAllowed, isLoopbackAddress, type RuntimeEnv, readEnv, StartupError } from "./env.js";
+/** Process env and dev-only startup guards (L3-10, L3-11); cloud drafts open only via preview-login. */
+export {
+  assertStartupAllowed,
+  draftPreviewOnly,
+  isLoopbackAddress,
+  type RuntimeEnv,
+  readEnv,
+  StartupError,
+} from "./env.js";
 /** Isolated function executor (unsafe-local, M0–M1): stop all executor processes on shutdown. */
 export { closeExecutors } from "./exec/host.js";
 /** AWS SigV4 (header-signed requests, presigned URLs) for the S3-compatible store. */
@@ -69,6 +86,8 @@ export type { OutboxMessage, RuntimeContext, RuntimeHonoEnv, RuntimeServices } f
 export { errorResponse } from "./http/errors.js";
 /** Request → Subject of the current session. */
 export { sessionOf, subjectOf } from "./http/subject.js";
+/** Internal port handler (health details, /_wizard/internal/reload, egress-authorize, sandbox RPC; L3-19). */
+export { createInternalHandler, type InternalOptions, internalTokenOk } from "./internal.js";
 /** Job runner (M1 minimal): workflow triggers, due _w_jobs, retention at a given `now`; cron helpers. */
 export { type Cron, lastOccurrence, parseCron } from "./jobs/cron.js";
 export {
@@ -164,6 +183,8 @@ export {
   egressPolicyFor,
   parseConnectTarget,
 } from "./sandbox/egress.js";
+/** authorize() of the egress-proxy deployment: capability check delegated to the runtime's internal port. */
+export { type RemoteAuthorizerOptions, remoteCapabilityAuthorizer } from "./sandbox/egress-remote.js";
 /** Sandbox pod and NetworkPolicy manifests (gVisor RuntimeClass, non-root, read-only, no capabilities). */
 export {
   SANDBOX_RUNTIME_CLASS,

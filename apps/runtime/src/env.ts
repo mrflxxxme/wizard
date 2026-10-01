@@ -18,6 +18,10 @@ export interface RuntimeEnv {
   kubernetes: boolean;
   /** WIZARD_TRUSTED_PROXIES (comma-separated CIDRs): ingress hops whose X-Forwarded-For is believed (deploy.yaml#cloud.client_ip). */
   trustedProxies?: readonly string[];
+  /** WIZARD_PREVIEW_SECRET: HMAC key of preview-login tokens (runtime.yaml#auth.preview_login_M2); unset locally. */
+  previewSecret?: string;
+  /** WIZARD_INTERNAL_TOKEN: X-Wizard-Internal-Token of the internal port (runtime.yaml#system_loading). */
+  internalToken?: string;
 }
 
 type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -36,12 +40,22 @@ export function readEnv(env: EnvSource = process.env): RuntimeEnv {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    ...(env.WIZARD_PREVIEW_SECRET ? { previewSecret: env.WIZARD_PREVIEW_SECRET } : {}),
+    ...(env.WIZARD_INTERNAL_TOKEN ? { internalToken: env.WIZARD_INTERNAL_TOKEN } : {}),
   };
 }
 
 /** Local modes enable the Host allowlist and the tunnel-header ban (deploy.yaml#local.host_guard). */
 export function isLocalMode(env: RuntimeEnv): boolean {
   return env.authModeDev || env.unsafeLocalExec || env.devLogin;
+}
+
+/**
+ * Draft hosts open only through preview-login (abuse.yaml#identification.draft, L3-11): outside local modes, when a
+ * preview secret is configured or the public scheme is https (fail-closed in the cloud even without the secret).
+ */
+export function draftPreviewOnly(env: RuntimeEnv): boolean {
+  return !isLocalMode(env) && (env.previewSecret !== undefined || env.publicScheme === "https");
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "[::1]", "localhost"]);
