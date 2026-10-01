@@ -11,6 +11,7 @@ principle: >
 secrets:                                     # только при bot=own; для bot=platform секретов в системе нет
   - { name: telegram_bot_token, required: false, label: "Токен бота из @BotFather (обязателен при bot=own — validateSpec)" }
   - { name: telegram_webhook_secret, required: false, label: "Секрет вебхука (генерирует платформа, 32 символа A-Za-z0-9_-; при bot=own)" }
+  - { name: telegram_client_secret, required: false, label: "Client secret входа через Telegram (OIDC, Basic client_id:client_secret на token endpoint; client_id — числовой префикс токена бота); при bot=own и входе через Telegram" }
 
 config_schema:
   bot: "platform | own; по умолчанию platform, а если задан botUsername — own. platform — общий бот уведомлений платформы (имя — E-NAME, токен — секрет платформы в хранилище deploy.yaml#secrets, E-ACCESS); own — бот клиента"
@@ -32,7 +33,7 @@ api:
   base_url: "https://api.telegram.org/bot<token>/<method> — путь содержит токен: в логах runtime и egress-proxy MUST маскироваться (connector-interface.md, ../security/isolation.yaml#M2.network)"
   methods:
     getMe: "проверка токена при сохранении интеграции (bot=own)"
-    setWebhook: "{url, secret_token, allowed_updates:['message','my_chat_member']} — при публикации ревизии и смене токена (bot=own)"
+    setWebhook: "{url, secret_token, allowed_updates:['message','my_chat_member']} — при публикации ревизии (шаг telegram_webhook до apply_migration; workflows.yaml#workflows.publish) и смене токена (bot=own)"
     deleteWebhook: "при удалении интеграции (bot=own)"
     sendMessage: "{chat_id, text ≤ 4096 символов, parse_mode:'HTML', reply_markup:{inline_keyboard:[[{text,url}]]}, link_preview_options:{is_disabled:true}}"
   errors: "Ответ {ok:false, error_code, description, parameters.retry_after?}"
