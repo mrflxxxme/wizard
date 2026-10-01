@@ -1,4 +1,4 @@
-// Dev orchestrator (M0-27): ports and hosts — specs/platform/deploy.yaml#local.
+// Dev orchestrator (M0-27): ports and hosts — specs/platform/deploy.yaml#local; plus the DBOS worker (M1-01).
 // Starts each app via its own `dev` script (PORT/HOST in env); an app without one gets a stub HTTP server.
 // Flags: --no-db, --stub (force stubs), --port-api=N, --port-web=N, --port-runtime=N, --root=DIR, --timeout=MS.
 import { spawn, spawnSync } from "node:child_process";
@@ -164,26 +164,23 @@ for (const s of services) {
     fail(`порт ${s.port} (${s.id}) занят — остановите процесс, который его слушает`);
 }
 
-for (const s of services) {
-  const script = args.has("stub") ? undefined : devScript(s.dir);
-  if (!script) {
-    stubs.push(await startStub(s));
-    log(`${s.id}: заглушка на http://localhost:${s.port}`);
-    continue;
-  }
+function startApp(s, env) {
+  let out = "";
   const child = spawn("pnpm", ["run", "dev"], {
     cwd: join(root, s.dir),
-    env: { ...process.env, PORT: String(s.port), HOST },
+    env: { ...process.env, ...env, HOST },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true, // own process group so shutdown reaches grandchildren (tsx, vite)
   });
-  const prefix = (chunk) =>
-    chunk
+  const prefix = (chunk) => {
+    if (out.length < 65_536) out += chunk;
+    return chunk
       .toString()
       .split("\n")
       .filter(Boolean)
       .map((l) => `[${s.id}] ${l}\n`)
       .join("");
+  };
   child.stdout.on("data", (d) => process.stdout.write(prefix(d)));
   child.stderr.on("data", (d) => process.stderr.write(prefix(d)));
   child.on("exit", (code, signal) => {
@@ -192,7 +189,27 @@ for (const s of services) {
     shutdown(1);
   });
   children.push(child);
+  return () => out;
+}
+
+for (const s of services) {
+  const script = args.has("stub") ? undefined : devScript(s.dir);
+  if (!script) {
+    stubs.push(await startStub(s));
+    log(`${s.id}: заглушка на http://localhost:${s.port}`);
+    continue;
+  }
+  startApp(s, { PORT: String(s.port) });
   log(`${s.id}: pnpm run dev (PORT=${s.port})`);
+}
+
+// Background apps without a port (M1-01): the DBOS worker executes the runs platform-api enqueues
+// (workflows.yaml#execution.M1). Started only when the app has a dev script; ready = its "ready" log line.
+const background = [{ id: "worker", dir: "apps/worker", ready: '"msg":"ready"' }];
+for (const b of background) {
+  if (args.has("stub") || !devScript(b.dir)) continue;
+  b.out = startApp(b, {});
+  log(`${b.id}: pnpm run dev`);
 }
 
 const deadline = Date.now() + timeoutMs;
@@ -211,5 +228,16 @@ for (const s of services) {
     await shutdown(1);
   }
   log(`${s.id}: готов (GET ${s.probe} → ${status})`);
+}
+for (const b of background) {
+  if (!b.out || stopping) continue;
+  while (!stopping && Date.now() < deadline && !b.out().includes(b.ready))
+    await new Promise((r) => setTimeout(r, 250));
+  if (stopping) break;
+  if (!b.out().includes(b.ready)) {
+    console.error(`[dev] ошибка: ${b.id} не сообщил о готовности за ${timeoutMs} мс`);
+    await shutdown(1);
+  }
+  log(`${b.id}: готов`);
 }
 if (!stopping) log(`${READY_LINE}. Ctrl-C — остановить.`);

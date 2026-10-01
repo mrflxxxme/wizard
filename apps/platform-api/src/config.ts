@@ -26,6 +26,10 @@ export interface Config {
   milestone: string;
   /** Root of .data/artifacts (deploy.yaml#local.artifacts). */
   artifactsDir: string;
+  /** Local secret backend (deploy.yaml#local.secrets: .data/secrets.enc, key WIZARD_SECRETS_KEY). */
+  secretsFile: string;
+  /** Worker: step outputs kept by reference outside dbos.* until the workflow ends (execution.M1.dbos_data). */
+  stepsDir: string;
   /** Base of draft preview URLs (runtime :4100, deploy.yaml#local.hosts.systems). */
   runtimePort: number;
   /** models.yaml#week0_decision.switch via @wizard/llm (env WIZARD_BUILD_DEFAULT_TIER); runs and OrgSettings use it. */
@@ -58,6 +62,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     runConcurrency: Number.isInteger(conc) && conc > 0 ? conc : 2,
     milestone: env.WIZARD_MILESTONE || "M0",
     artifactsDir: join(REPO_ROOT, ".data", "artifacts"),
+    secretsFile: join(REPO_ROOT, ".data", "secrets.enc"),
+    stepsDir: join(REPO_ROOT, ".data", "steps"),
     runtimePort: 4100,
     ...over,
     buildDefaultTier: over.buildDefaultTier ?? buildDefaultTierFromEnv(env),

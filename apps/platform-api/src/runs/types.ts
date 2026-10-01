@@ -35,14 +35,27 @@ export interface BuildStore extends AgentBuildStore {
 /** Kept for compatibility: the QA agent the host hands to the builder (@wizard/agents/host BuilderQa). */
 export type QaAgent = BuilderQa;
 
+/**
+ * needs_input kind=secret (workflows.yaml#events.needs_input): the value goes to the secret store in the HTTP handler;
+ * the run only gets `secretRef` = secret://name (execution.M1.dbos_data, L3-09).
+ */
+export interface SecretInputRequest {
+  kind: "secret";
+  /** [a-z0-9_]+ (db.yaml#secrets_refs.name). */
+  secretName: string;
+  prompt_ru: string;
+  /** Alternatives to entering the value (e.g. {id: "test", label: "Тестовый режим"}). */
+  options?: InputOption[];
+}
+
 /** agent_host as platform-api provides it: the budget is enforced in route() (managesBudget = true). */
 export interface BuildHost
-  extends Omit<AgentBuildHost, "runGates" | "emit" | "store" | "signal" | "run">,
+  extends Omit<AgentBuildHost, "runGates" | "emit" | "store" | "signal" | "run" | "needsInput">,
     StepHost {
   runGates(level: GateLevel, overrides?: Partial<GateContext>): Promise<GateReport>;
   qa: BuilderQa;
   store: BuildStore;
-  needsInput(req: InputRequest): Promise<InputAnswer>;
+  needsInput(req: InputRequest | SecretInputRequest): Promise<InputAnswer & { secretRef?: string }>;
   managesBudget: true;
 }
 

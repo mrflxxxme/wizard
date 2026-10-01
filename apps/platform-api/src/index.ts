@@ -62,9 +62,43 @@ export {
   type SnapshotInput,
   type SnapshotResult,
 } from "./publish/snapshot.js";
-export { EVENT_TYPES, type EventType, INTERNAL_EVENTS, type RunEvent } from "./runs/events.js";
+export {
+  createDbosDispatcher,
+  DBOS_APP,
+  DBOS_SCHEMA,
+  dbosLogger,
+  QUEUE_INTERVIEW,
+  QUEUE_RUNS,
+  queueOf,
+  RUN_WORKFLOW,
+} from "./runs/dispatch.js";
+export {
+  type Durable,
+  decodeError,
+  type EncodedError,
+  encodeError,
+  type InputMessage,
+  inProcessDurable,
+  LocalMailboxes,
+  ReplayedError,
+  type StepOptions,
+  TOPIC_INPUT,
+  TOPIC_LOCK,
+} from "./runs/durable.js";
+export { EVENT_TYPES, EventBus, type EventType, INTERNAL_EVENTS, type RunEvent } from "./runs/events.js";
 export { gateResultPayload, recordGateReport } from "./runs/gates.js";
-export { RunEngine } from "./runs/queue.js";
+export {
+  ACTIVE_STATUSES,
+  type EngineDeps,
+  type EngineRole,
+  NEEDS_LOCK,
+  type RunDispatcher,
+  RunEngine,
+  TERMINAL_STATUSES,
+} from "./runs/queue.js";
 export { stubExecutors } from "./runs/stub.js";
 export * from "./runs/types.js";
+export { DbUsageSink } from "./runs/usage.js";
+export { SECRET_NAME, type SecretPut, SecretStore } from "./secrets/store.js";
 export { IllegalTransition, STAGES, type Stage } from "./services/stage.js";
+export { BlobStore } from "./storage/blobs.js";

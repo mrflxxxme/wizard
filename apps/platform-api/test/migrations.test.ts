@@ -35,8 +35,9 @@ function expected(name: string, t: TableDef) {
 }
 
 const m0 = Object.entries(dbYaml.tables).filter(([, t]) => t.milestone === "M0");
-// M1 tables created so far (M1-02 accounts, M1-03 credits, M1-04 publications); the column check covers them as well.
-const M1_TABLES = ["auth_otps", "sessions", "invites", "credit_ledger", "publications"];
+// M1 tables created so far (M1-02 accounts, M1-03 credits, M1-04 publications, M1-01 secrets_refs); the column check
+// covers them as well.
+const M1_TABLES = ["auth_otps", "sessions", "invites", "credit_ledger", "publications", "secrets_refs"];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
 const checked = [...m0, ...Object.entries(dbYaml.tables).filter(([n]) => M1_TABLES.includes(n))];

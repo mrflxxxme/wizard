@@ -17,6 +17,8 @@ export interface Deps {
   engine: RunEngine;
   config: Config;
   billing: Billing;
+  /** SSE re-reads run_events this often even without a bus wake-up (events written by apps/worker); 0 = bus only. */
+  eventPollMs?: number;
 }
 
 function issues(e: z.ZodError) {
