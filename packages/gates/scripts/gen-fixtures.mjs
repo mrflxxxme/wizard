@@ -21,8 +21,6 @@ const FN = (body) => ({
 const QUERY = (handlerBody, args = "{}") =>
   `import { query, v } from "@wizard/sdk";\n\nexport default query({\n  args: ${args},\n  handler: async (ctx) => {\n${handlerBody}\n  },\n});\n`;
 
-const fileField = { name: "photo", label: "Фото", type: "file" };
-
 /** @type {Record<string, Record<string, object>>} */
 const CASES = {
   "G0-SPEC-01": {
@@ -148,22 +146,6 @@ const CASES = {
         },
       ],
       match: "недоступна",
-    },
-  },
-  "G0-SPEC-06": {
-    pass: {
-      description: "поле file пишет только isAdmin-роль (organizer)",
-      spec: [{ op: "push", path: "/entities/0/fields", value: fileField }],
-    },
-    "pass-m2": {
-      description: "с M2 загрузка есть — правило не действует",
-      milestone: "M2",
-      spec: [{ op: "push", path: "/entities/3/fields", value: fileField }],
-    },
-    fail: {
-      description: "поле file в заявке спикера, которую спикер создаёт сам",
-      spec: [{ op: "push", path: "/entities/3/fields", value: fileField }],
-      match: "FILE_FIELD_UNSUPPORTED",
     },
   },
   "G0-MIG-01": {

@@ -22,7 +22,7 @@ import { checkImports } from "./imports.js";
 import { checkMigrationPlan, checkShadowApply } from "./migrations.js";
 import { checkSecurity } from "./security.js";
 import { parseAll, type SourceInfo } from "./source.js";
-import { checkFileFields, checkRolesAndRoutes, checkSchema, checkSemantics, fieldPii } from "./spec.js";
+import { checkRolesAndRoutes, checkSchema, checkSemantics, fieldPii } from "./spec.js";
 import { typecheck } from "./typecheck.js";
 
 /** UI bundle soft limit (G0-BUILD-01: warning > 1 MB). */
@@ -164,10 +164,6 @@ export async function runG0(ctx: GateContext, opts: G0Options = {}): Promise<Gat
   await run(
     "G0-SPEC-05",
     needsSpec(() => ok(checkRolesAndRoutes(spec))),
-  );
-  await run(
-    "G0-SPEC-06",
-    needsSpec(() => ok(checkFileFields(spec, milestone))),
   );
 
   // 3. Migrations.

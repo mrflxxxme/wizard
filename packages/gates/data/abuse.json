@@ -51,7 +51,7 @@
     ]
   ],
   "card": {
-    "names": "(номер|№)\\s*карты|card.?number|\\bpan\\b|\\bcvv2?\\b|\\bcvc2?\\b|\\bcvp\\b|код безопасности|срок действия\\s+(банковской\\s+)?карт|\\bexpiry\\b|\\bexp.?date\\b|держатель карты|cardholder",
+    "names": "(номер|№)\\s*карты|(номер|№)\\s*(банковской|кредитной|дебетовой)\\s+карты|card.?number|\\bpan\\b|\\bcvv2?\\b|\\bcvc2?\\b|\\bcvp\\b|код безопасности|срок действия\\s+(банковской\\s+)?карт|\\bexpiry\\b|\\bexp.?date\\b|держатель карты|cardholder",
     "autocomplete": [
       "cc-number",
       "cc-csc",
