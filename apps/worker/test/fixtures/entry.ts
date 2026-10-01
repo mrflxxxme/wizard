@@ -1,6 +1,7 @@
 // A worker process for the kill -9 and canary tests (tsx): scripted executors and a slow router writing llm_calls.
 // WZ_ENTRY_MODE=kill (default) builds normally; canary fails interview turns with PII inside the error; import runs
-// the import fixtures of platform-api.
+// the import fixtures of platform-api. WZ_FAULT_HANG_AFTER injects a kill window (below).
+import { DBOS } from "@dbos-inc/dbos-sdk";
 import { createRouter } from "@wizard/llm";
 import { type InterviewHost, migrateDraft, type RunExecutors } from "@wizard/platform-api";
 import postgres from "postgres";
@@ -38,6 +39,22 @@ const importExecutors: RunExecutors = {
     return { bundleKey: `${a.systemKey}/${a.revision}` };
   },
 };
+// WZ_FAULT_HANG_AFTER=<step>: that step runs its side effects, then hangs before DBOS records its checkpoint, so a
+// kill -9 lands exactly in the commit→checkpoint window ("msg":"fault_hang" tells the test when).
+const hangAfter = env.WZ_FAULT_HANG_AFTER;
+if (hangAfter) {
+  const runStep = DBOS.runStep.bind(DBOS);
+  DBOS.runStep = (async (fn: () => Promise<unknown>, config?: { name?: string }) =>
+    runStep(async () => {
+      const v = await fn();
+      if (config?.name === hangAfter) {
+        process.stdout.write(`${JSON.stringify({ msg: "fault_hang", step: hangAfter })}\n`);
+        await new Promise(() => {});
+      }
+      return v;
+    }, config)) as typeof DBOS.runStep;
+}
+
 const mock = mockProviders();
 const executors = scriptedExecutors();
 const worker = await startWorker({

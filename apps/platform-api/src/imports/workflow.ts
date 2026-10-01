@@ -136,10 +136,16 @@ export async function runImportTable(h: ImportHost): Promise<ImportResult> {
         { route: hostRouteFn((i) => h.route(i), { step: "map" }) },
         { payload, entities: entitiesOf(spec), ctx: { orgId: h.run.orgId } },
       );
-      // Checkpointed: a replay must not overwrite the mapping the user edited while the run waited.
-      await h.once("mapping_saved", () =>
-        setImport(h, { mapping: json(fromLlm(items, out.mapping)), status: "awaiting_confirm" }),
-      );
+      // Checkpointed, and only from status mapping: a replay — also a re-run after a crash between this write and
+      // its checkpoint — must not overwrite the mapping the user edited while the run waited.
+      await h.once("mapping_saved", async () => {
+        await h.db
+          .updateTable("platform.imports")
+          .set({ mapping: json(fromLlm(items, out.mapping)), status: "awaiting_confirm" })
+          .where("id", "=", importId)
+          .where("status", "=", "mapping")
+          .execute();
+      });
     });
 
     const answer = await h.needsInput({
