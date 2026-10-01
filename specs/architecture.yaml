@@ -78,7 +78,7 @@ monorepo:
       path: apps/worker
       purpose: "DBOS-воркфлоу: интервью, сборка, гейты, публикация, миграции, автоудаление ПДн"
       spec: specs/platform/workflows.yaml
-      depends_on: [agents, gates, appspec, llm, build, runtime]
+      depends_on: [agents, gates, appspec, llm, build, runtime, platform-api, pii]   # platform-api — общий движок прогонов (in-process и DBOS-режим, M1-01)
     - id: runtime
       path: apps/runtime
       purpose: "Хостинг созданных систем: data API по AppSpec, вызов функций, вход конечных пользователей, статика бандлов, PWA"
