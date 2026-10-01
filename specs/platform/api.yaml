@@ -60,8 +60,14 @@ paths:
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
                   activeRunId: {type: [string, 'null'], format: uuid}
-                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED]}, description: M1+; пусто — публиковать можно}
         '404': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteSystem
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Удаление системы: сразу скрыта из списков и снята с публикации; схемы, сообщения, импорты, выгрузки, секреты и неиспользуемые блобы очищаются через 30 дней (запись system_deleted в журнале удаления, M2-05). Активный запуск → 409 SYSTEM_LOCKED, повтор → 404'
+      responses: {'200': {description: Удалена, content: {application/json: {schema: {type: object, required: [id, deletedAt, purgeAfter], properties: {id: {type: string, format: uuid}, deletedAt: {type: string, format: date-time}, purgeAfter: {type: string, format: date-time}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}
   /systems/{id}/messages:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
@@ -356,7 +362,7 @@ paths:
       x-roles: [owner]
       summary: 'Журнал автоудаления и обезличивания ПДн (db.yaml#deletion_log; compliance.yaml#system_package.retention.deletion_log). Только счётчики'
       parameters: [{$ref: '#/components/parameters/limit'}, {$ref: '#/components/parameters/cursor'}]
-      responses: {'200': {description: Записи журнала, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [env, entity, mode, rowsAffected, createdAt], properties: {env: {enum: [draft, prod]}, entity: {type: string}, mode: {enum: [delete, anonymize, subject_request, draft_purged, system_deleted, user_deleted, consent_revoked]}, cutoff: {type: [string, 'null'], format: date-time}, rowsAffected: {type: integer}, createdAt: {type: string, format: date-time}}}}, nextCursor: {type: [string, 'null']}}}}}}}
+      responses: {'200': {description: Записи журнала, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [env, entity, mode, rowsAffected, createdAt], properties: {env: {enum: [draft, prod]}, entity: {type: string}, mode: {enum: [delete, anonymize, retention, subject_request, draft_purged, system_deleted, user_deleted, consent_revoked]}, cutoff: {type: [string, 'null'], format: date-time}, rowsAffected: {type: integer}, createdAt: {type: string, format: date-time}}}}, nextCursor: {type: [string, 'null']}}}}}}}
   /systems/{id}/data/{entity}:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: entity, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}}]
     get:
