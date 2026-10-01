@@ -31,8 +31,8 @@ endpoints:                                   # служебные маршрут
   note: "Параметр ?integration=<name> обязателен, только если в системе больше одной qr-интеграции. Показ билета отдельного эндпоинта не требует: владелец читает qr_token через data API"
   csrf: "POST check и sync — под CSRF runtime (Origin = хост системы и X-Wizard-Request: 1, иначе 403; ../security/abuse.yaml#domain.tenant_separation)"
   check: "POST /_wizard/qr/check {payload, checkpoint?, deviceId} → {status: 'ok'|'duplicate'|'invalid', reason?: 'not_found'|'bad_signature'|'revoked'|'not_valid_status', ticketTitle?, details?, scannedAt, firstScannedAt?, firstCheckpoint?}"
-  manifest: "GET /_wizard/qr/manifest?since=<cursor> (M2) → {manifestId, cursor, generatedAt, expiresAt, entries[], checkedIn[], revoked[]}"
-  sync: "POST /_wizard/qr/sync {deviceId, events[≤500]} (M2) → {results[], accepted, duplicate, unknown, cursor}"
+  manifest: "GET /_wizard/qr/manifest?since=<cursor> (M2) → {manifestId, cursor, generatedAt, expiresAt, entries[], checkedIn[], revoked[], full, validStatuses[]} — full: полный пакет или дельта; validStatuses — значения s, с которыми устройство пропускает (M2-03). Пакет один на QR-интеграцию (checkpoint не фильтрует), expiresAt = выдача + 72 ч; cursor = base64url {v:1,t}, дельта перечитывает 60 с до курсора; курсор битый, из будущего или старше 72 ч → полный пакет; удалённые носители уходят с ближайшим полным пакетом"
+  sync: "POST /_wizard/qr/sync {deviceId, events[≤500], sentAt?, pending?} (M2) → {results[], accepted, duplicate, unknown, cursor}; sentAt — часы устройства при отправке (clock_skew при |sentAt − now| > 10 мин, без него — scannedAt > now + 10 мин), pending пишется в _w_qr_devices.pending"
 
 checkin_algorithm:
   - "1. Роль ∈ scannerRoles, иначе 403"
@@ -53,7 +53,7 @@ offline:                                     # M2, PWA волонтёра
   sync_protocol:
     - "Очередь отправляется при появлении сети и каждые 15 с, партиями ≤ 500, по порядку"
     - "Сервер идемпотентен по clientEventId (хранит результаты 7 дней в _w_qr_events)"
-    - "Результат по событию: accepted | duplicate | unknown | revoked. duplicate — отметка уже есть (с другого устройства или онлайн); checkin.scanned_at = min(существующий, пришедший)"
+    - "Результат по событию: accepted | duplicate | unknown | revoked (билет со статусом вне validStatuses — тоже revoked; scannedAt из будущего обрезается до времени сервера). duplicate — отметка уже есть (с другого устройства или онлайн); checkin.scanned_at = min(существующий, пришедший)"
     - "Сервер пишет offline:true и receivedAt; расхождение часов > 10 мин — флаг clock_skew в _w_qr_events"
     - "Ответ содержит cursor; клиент удаляет из очереди только подтверждённые события"
   limits: "Два офлайн-устройства могут пропустить один билет дважды — это фиксируется при синхронизации как duplicate и показывается организатору в отчёте «Повторных»"

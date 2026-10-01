@@ -128,7 +128,15 @@ data_binding:
       useUpdate(entity: string): Mutation<[id: string, patch: Record<string, unknown>, opts?: { consent?: true }], Rec>;
       useRemove(entity: string): Mutation<[id: string], void>;
       useFn<T>(name: string, args?: unknown): AsyncResult<T>;   // query-функции (StatsReport, calcPrice)
+      // ext-методы реализации (useUser, useCall, useAuth, useQrCheck, useQrOffline, useFiles) — packages/ui-kit/src/data/types.ts
+      useFiles(): FilesApi;   // ext, M2-14: файлы полей file (FileField, RecordForm)
     }
+    interface FilesApi {
+      upload(file: File, target: { field: string; entity?: string }): Promise<FileInfo>;   // POST /api/files (multipart: file, field, entity?), X-Wizard-Request: 1
+      info(fileId: string): Promise<FileInfo>;    // GET /api/files/:fileId/info
+      href(fileId: string): string;               // GET /api/files/:fileId (302 на подписанную ссылку)
+    }
+    type FileInfo = { fileId: string; name: string; size: number; mime: string };
     type ListQuery = { filter?: Record<string, unknown>; sort?: { field: string; dir: 'asc' | 'desc' }; page?: number; pageSize?: number; search?: string };
     type AsyncResult<T> = { data?: T; isLoading: boolean; error?: WzError; refetch(): void };
     type WzError = { code: string; message: string; status: number; fields?: { field: string; code: string; message: string }[]; requestId?: string };  // message — ru; форма — runtime.yaml#data_api.error_shape (L1-29)
@@ -236,7 +244,7 @@ components:
       date|datetime: "input type=date / datetime-local"
       enum: "≤5 значений → radiogroup, иначе select"
       ref: "select с поиском по записям целевой сущности (useList, search), подпись — первое string-поле"
-      file: "M2: FileField (POST /api/files, runtime.yaml#files); до M2 поле file в спеке блокирует G0 — RecordForm его не рендерит"
+      file: "M2: FileField (POST /api/files, runtime.yaml#files); RecordForm рендерит поля file через FileField (и поля по умолчанию), readonly — disabled; поле file по умолчанию pii: basic → форма показывает ConsentCheckbox"
       json: "не рендерится в формах (только код)"
       email|phone|url: "input type=email/tel/url; phone — маска +7 (___) ___-__-__, хранение E.164"
       qr_token: "никогда не редактируется"
@@ -430,11 +438,13 @@ components:
         onChange(fileId: string | null): void;
         accept?: ('image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf')[];
         required?: boolean; error?: string;
+        entity?: string;     // ext: сущность поля для POST /api/files; по умолчанию runtime находит её по имени поля и роли
+        disabled?: boolean;  // ext: без загрузки и удаления (readonly-поля RecordForm)
       }
     behaviour:
       - "Загрузка — POST /api/files (runtime.yaml#files) с X-Wizard-Request: 1; ≤ 10 МБ; только типы из accept (по умолчанию все из allowlist runtime); 415 → «Такой тип файла загрузить нельзя»"
-      - "Показывает имя и размер файла; превью не рендерит (файлы раздаются как attachment)"
-    test_ids: [wz-filefield-<name>]
+      - "Показывает имя и размер файла текстом; превью и ссылку не рендерит (до сохранения записи файл не читается; скачивание — «Скачать» в RecordCard/FieldValue; файлы раздаются как attachment). Тексты: «Выбрать файл», «Файл больше 10 МБ», подсказка «JPEG, PNG, WebP, PDF, до 10 МБ»; memory DataSource повторяет проверку сигнатуры и 10 МБ"
+    test_ids: [wz-filefield-<name>, wz-filefield-<name>-input, wz-filefield-<name>-file, wz-filefield-<name>-name, wz-filefield-<name>-size, wz-filefield-<name>-remove, wz-filefield-<name>-error]
     acceptance: ["Playwright (M2): PDF загружается и сохраняется в записи; SVG → ошибка у поля"]
 
   - name: Button

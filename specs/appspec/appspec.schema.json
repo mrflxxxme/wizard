@@ -192,7 +192,7 @@
         "url",
         "qr_token"
       ],
-      "description": "file — только ключ хранилища; загрузка, раздача и классификация — с M2-14 (runtime.yaml#files, L3-18); до M2 поле, которое пишет роль без isAdmin, блокирует G0-SPEC-06"
+      "description": "file — значение поля = fileId собственной загрузки (POST /api/files), не URL; загрузка, раздача и классификация — runtime.yaml#files (M2-14, L3-18); pii по умолчанию basic"
     },
     "pii": {
       "enum": [

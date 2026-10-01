@@ -111,13 +111,15 @@ workflows:
     preconditions:
       - "revision ≤ draft_revision и revisions.g0_passed = true"
       - "M1: operatorName и operatorContact заданы, если в спеке есть поле pii ≠ none (compliance.yaml#system_package.operator; иначе OPERATOR_NAME_REQUIRED / OPERATOR_CONTACT_REQUIRED)"
-      - "M2: привязана карта РФ (billing.yaml#card_binding); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review; с M2 — compliance.operatorAddress (OPERATOR_ADDRESS_REQUIRED)"
+      - "M2: привязана карта РФ (billing.yaml#card_binding; проверка включена при WIZARD_MILESTONE ≥ M2 или NODE_ENV=production, 403 CARD_BINDING_REQUIRED после SYSTEM_SUSPENDED и до проверки ревизии); лимит prod-систем тарифа; founder review approved, если orgs.require_founder_review (M2-09; до этого ревью создаёт только warn G2-AF-08/09 — ниже); с M2 — compliance.operatorAddress (OPERATOR_ADDRESS_REQUIRED), operatorInn — по контрольной сумме (INN_INVALID)"
+      - "M2: founder_reviews ревизии в статусе pending или rejected → 403 FOUNDER_REVIEW_PENDING (и в publishBlockers)"
       - "F4: phone_otp в loginMethods какой-либо роли у org с plan=free → PHONE_LOGIN_PLAN_REQUIRED («Вход по телефону доступен на тарифах Старт и Бизнес»); billing.yaml#plans.*.login_methods"
     steps:
       - { name: acquire_lock, kind: tx }
       - { name: plan_migration, kind: tx, does: "planMigration(spec(schema_hwm_revision) или пустая, spec(revision)); publications status=planned" }
       - { name: gate_G0_prod, kind: gate, does: "G0 с env=prod: additiveOnly обязателен, иначе DESTRUCTIVE_IN_PROD → run_failed" }
-      - { name: gate_G2, kind: gate, milestone: M2, does: "runGates('G2') включая антифрод (security/abuse.yaml)" }
+      - { name: gate_G1_prod, kind: gate, milestone: M2, does: "предусловие G2 (gates.yaml#G2.precondition): если в gate_reports нет пройденного G1 на публикуемой ревизии (типично — ревизия из setCompliance без сборки), G1 прогоняется здесь; провал → run_failed GATES_FAILED" }
+      - { name: gate_G2, kind: gate, milestone: M2, does: "runGates('G2') включая антифрод (security/abuse.yaml); env=prod, slug, secretExists (без чтения значения), abuse {orgAgeDays, plan, abuseReportsPrev, brandAllowlist}. Включается при WIZARD_MILESTONE ≥ M2 или NODE_ENV=production (prodG2Required). Блокер → run_failed GATES_FAILED, prod не тронут; провал G2-AF-* → message_ru первой упавшей AF-проверки (abuse.yaml#messages_ru) и событие abuse_flag; warn G2-AF-08/09 → founder_reviews pending и run_failed GATES_FAILED с abuse.yaml#messages_ru.review; после approve повтор публикации снова прогоняет G0 и G2 (M2-04)" }
       - { name: telegram_webhook, kind: step, does: "для интеграций telegram с bot=own: getMe (проверка токена) и setWebhook на prod-хост (connectors/telegram.yaml#bot_api); WIZARD_CONNECTORS≠live — вызовы пишутся в outbox; ошибка → run_failed GATES_FAILED, prod не тронут" }
       - { name: apply_migration, kind: tx, does: "toDDL+toRLS в схеме app_<key>_prod одной транзакцией, SET LOCAL lock_timeout='3s'; до 3 повторов с паузой 5/15/45 с при lock_timeout; status=applying" }
       - { name: switch, kind: tx, does: "одной транзакцией: новая publication live, прежняя superseded, systems.prod_revision, systems.schema_hwm_revision = max(hwm, revision); после коммита POST /_wizard/internal/reload {systemId: schema_key, env: prod} (runtime.yaml)" }
@@ -147,8 +149,8 @@ workflows:
     ownership: "Механика удаления/обезличивания строк — runtime.yaml#workflows.retention (ежесуточно 03:00 МСК, поллер _w_jobs runtime с M1). Этот воркфлоу — платформенная часть"
     schedule: "DBOS scheduled, ежедневно 03:30 MSK (после runtime-прохода)"
     does:
-      - "Перенос счётчиков retention из _w_audit prod-схем в platform.deletion_log (system, entity, mode, cutoff, rows_affected) — владелец видит журнал в настройках (GET /systems/:id/deletion-log)"
-      - "Контроль: prod-система с retention-сущностями без отметки прохода за 26 ч → алерт и повторный запуск runtime-задачи"
+      - "Перенос строк _w_deletion_log схем app_<key>_{draft,prod} в platform.deletion_log (system, env, entity, mode, cutoff, rows_affected; одна транзакция на схему: DELETE … RETURNING системной ролью, затем вставка) — владелец видит журнал в настройках (GET /systems/:id/deletion-log); при строках mode=consent_revoked — письмо owner org (только счётчики)"
+      - "Контроль: prod-публикация live|suspended со спекой с retention, у которой отметка прохода runtime (runtime.yaml#workflows.retention) старше 26 ч или её нет при live_at старше 26 ч → событие лога retention_overdue уровня error {systemId, env, reason: no_pass|stale_pass, count: часы, status: requested|unreachable} (deploy.yaml#cloud.observability.alerts) и строка-запрос __wizard_retention_request в _w_jobs (не дублируется)"
       - "Платформенная уборка: auth_otps > 24 ч, run_events > 180 дней, gate_reports > 180 дней (кроме последнего на уровень и систему), импорты после expires_at, exports после expires_at, abuse_reports.contact_email через 1 год после закрытия, dbos.* терминальных воркфлоу > 30 дней (execution.M1.dbos_data)"
       - "messages: text у role=user (kind=text) — scrub (packages/pii) через 180 дней после последней активности системы (db.yaml#messages.retention)"
       - "Free-черновики (F5, billing.yaml#plans.free.inactive_drafts): система org с plan=free без активности 60 дней → за 7 дней письмо владельцу; затем DROP SCHEMA app_<key>_draft CASCADE (только тестовые данные), systems.draft_data_purged_at = now(), запись deletion_log mode=draft_purged. Спека, код, ревизии и prod не трогаются; следующая сборка пересоздаёт схему через migrate_draft/seed_draft"
