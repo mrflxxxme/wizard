@@ -12,6 +12,12 @@ const plural = (n: number, one: string, few: string, many: string): string => {
 export const fmtCredits = (n: number): string =>
   (Math.round(n * 10) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 
+/** «кредит» agreeing with a shown amount: fractions take the genitive singular («2,5 кредита»). */
+export const creditWord = (n: number): string => {
+  const r = Math.round(Math.abs(n) * 10) / 10;
+  return Number.isInteger(r) ? plural(r, "кредит", "кредита", "кредитов") : "кредита";
+};
+
 /** OrgSettings.buildModelLabel of the RF build contour (@wizard/llm RU_BUILD_LABEL): no PII scrub wording then. */
 export const RU_BUILD_LABEL = "модели в РФ";
 const scrubbed = (label: string): boolean => label !== RU_BUILD_LABEL;
@@ -58,6 +64,9 @@ export const ru = {
     logout: "Выйти",
     credits: "Кредиты",
     creditsHint: "Баланс кредитов появится позже",
+    creditsPill: (plan: string, available: number, until: string | null) =>
+      `${plan} · ${fmtCredits(available)} ${creditWord(available)}${until ? ` до ${until}` : ""}`,
+    creditsTitle: "Тариф, баланс и журнал списаний",
     systems: "Ваши системы",
     stageDraft: "черновик",
     stageProd: "prod",
@@ -321,6 +330,11 @@ export const ru = {
     address: (slug: string) => `Адрес: ${slug}.<домен систем>`,
     features: "Отдельный домен систем · хостинг в РФ · PITR · откат к любой ревизии",
     cardStatus: "Сейчас публикация доступна без привязки карты",
+    cardBound: "✓ Карта РФ привязана — идентификация пройдена",
+    cardMissing: "Для публикации в prod нужна привязанная карта российского банка",
+    bindCard: "Привязать карту",
+    toBilling: "Тариф и оплата",
+    reviewHint: "Мы проверяем систему перед первой публикацией — обычно это занимает до одного рабочего дня",
     submit: "Опубликовать",
     submitRevision: (v: number) => `Опубликовать ревизию ${v}`,
     published: (v: number) => `prod · ревизия ${v}`,
@@ -484,6 +498,171 @@ export const ru = {
     rollbackYes: "Вернуть",
     rollbackNo: "Отмена",
     notPublished: "Система ещё не опубликована",
+    deletionLog: "Журнал удалений",
+    deletionLogHint:
+      "Что и когда удалено или обезличено по срокам хранения и запросам — только счётчики, без данных",
+    deletionLogEmpty: "Удалений пока не было",
+    deletionLogMore: "Показать ещё",
+    deletionRows: (n: number) => `${n} ${plural(n, "запись", "записи", "записей")}`,
+    deletionCutoff: (date: string) => `данные до ${date}`,
+    deletionEntityAll: "вся база",
+    deletionEntityUsers: "пользователи",
+    deletionMode: {
+      delete: "удаление по сроку",
+      anonymize: "обезличивание по сроку",
+      retention: "обезличивание неактивных пользователей",
+      subject_request: "запрос субъекта ПДн",
+      consent_revoked: "отзыв согласия",
+      draft_purged: "очистка тестовых данных черновика",
+      system_deleted: "удаление системы",
+      user_deleted: "удаление аккаунта",
+    } as Record<string, string>,
+    deletionEnv: { draft: "черновик", prod: "prod" } as Record<string, string>,
+    danger: "Удаление системы",
+    dangerHint:
+      "Система сразу пропадёт из списка и перестанет открываться. Через 30 дней базы черновика и prod, файлы и история чата будут удалены безвозвратно; запись об удалении останется в журнале.",
+    deleteSystem: "Удалить систему",
+    deleteConfirm: (name: string) =>
+      `Удалить систему «${name}»? Она перестанет открываться сразу, а её данные будут удалены безвозвратно через 30 дней`,
+    deleteYes: "Удалить",
+    systemLocked: "Идёт сборка или публикация — дождитесь окончания или отмените прогон",
+    backups: "Бэкапы: PITR, 14 дней",
+    export: "Выгрузить данные",
+    exportHint: (env: string) =>
+      `ZIP: таблица CSV на каждую сущность и spec.json, из ${env}. Ссылка одноразовая и действует 15 минут, архив хранится сутки`,
+    exportEnv: { prod: "рабочей версии (prod)", draft: "черновика (тестовые данные)" } as Record<
+      string,
+      string
+    >,
+    exportPii: "Включить персональные данные",
+    exportPiiConfirm:
+      "Выгрузить данные вместе с персональными данными? Архив будет содержать почту, телефоны и другие ПДн пользователей системы. Храните его как документ с ПДн и не пересылайте по открытым каналам",
+    exportPiiYes: "Выгрузить с ПДн",
+    exportRunning: "Готовим архив…",
+    exportReady: "Архив готов",
+    exportDownload: "Скачать ZIP",
+    exportDownloaded: "Скачано. Ссылка одноразовая — для повторного скачивания получите новую",
+    exportNewLink: "Получить новую ссылку",
+    exportFailed: "Не удалось подготовить архив. Попробуйте ещё раз",
+    exportExpired: "Срок хранения архива истёк — сделайте новую выгрузку",
+    exportNotReady: "Выгрузка станет доступна после первой сборки",
+    exportSize: (bytes: number) =>
+      bytes >= 1024 * 1024
+        ? `${(bytes / 1024 / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ`
+        : `${Math.max(1, Math.round(bytes / 1024))} КБ`,
+    exportWithPii: "с ПДн",
+    exportRecent: "Последние выгрузки",
+    exportRow: (date: string, env: string, downloads: number) =>
+      `${date} · ${env} · скачиваний: ${downloads}`,
+    exportStatus: {
+      running: "готовится",
+      ready: "готова",
+      failed: "ошибка",
+      expired: "удалена по сроку",
+    } as Record<string, string>,
+    consent: "Текст согласия на обработку ПДн",
+    consentTemplate: "По шаблону юриста",
+    consentOwn: "Свой текст",
+    consentTemplates: {
+      default: "Общий",
+      event_registration: "Регистрация на мероприятие",
+      orders: "Заказы",
+    } as Record<string, string>,
+    consentTemplateLabel: "Шаблон",
+    consentTemplateNote:
+      "Платформа подставит в шаблон оператора, цели, перечень данных, получателей, срок и порядок отзыва согласия из спеки. Полный текст пользователи видят у галочки согласия и на странице политики",
+    consentOwnLabel: "Текст согласия",
+    consentPreview: "Так увидит пользователь",
+    consentSave: "Сохранить текст согласия",
+    consentNoOperator: "Сначала укажите оператора ПДн",
+    policy: "Страница политики обработки ПДн",
+    policyNotPublished: "Страница политики появится по адресу /privacy после публикации",
+  },
+  billing: {
+    title: "Тариф, баланс и карта",
+    back: "На главную",
+    org: "Организация",
+    plan: "Тариф",
+    planName: { free: "Free", start: "Старт", business: "Бизнес" } as Record<string, string>,
+    planPrice: (rub: number) => (rub === 0 ? "бесплатно" : `${rub.toLocaleString("ru-RU")} ₽ в месяц`),
+    status: {
+      none: "",
+      active: "подписка активна",
+      past_due: "не удалось списать оплату — повторим автоматически",
+      cancelled: "подписка отменена",
+    } as Record<string, string>,
+    paidUntil: (date: string) => `оплачен до ${date}`,
+    endsAt: (date: string) => `автопродление выключено — тариф действует до ${date}`,
+    nextPlan: (plan: string, date: string) => `с ${date} — тариф «${plan}»`,
+    limits: (prod: number, members: number, credits: number) =>
+      `До ${prod} ${plural(prod, "опубликованной системы", "опубликованных систем", "опубликованных систем")} · до ${members} ${plural(members, "участника", "участников", "участников")} · ${credits} ${plural(credits, "кредит", "кредита", "кредитов")} в месяц`,
+    loginMethods: (phone: boolean) =>
+      phone
+        ? "Вход в системах: почта, Telegram, телефон"
+        : "Вход в системах: почта и Telegram (телефон — на тарифах Старт и Бизнес)",
+    changePlan: "Сменить тариф",
+    choosePlan: (plan: string, price: string) => `«${plan}» · ${price}`,
+    toPlan: (plan: string) => `Перейти на «${plan}»`,
+    resume: "Возобновить автопродление",
+    current: "текущий",
+    downgradeNote: "Более дешёвый тариф начнёт действовать со следующего периода",
+    upgradeNote: "Более дорогой тариф начнёт действовать сразу: оплата спишется с привязанной карты",
+    cancel: "Отменить подписку",
+    cancelConfirm: (date: string | null) =>
+      date
+        ? `Отменить подписку? Автоплатёж выключится сразу, тариф действует до ${date}`
+        : "Отменить подписку? Автоплатёж выключится сразу",
+    cancelYes: "Отменить подписку",
+    cancelNo: "Оставить",
+    cancelled: "Подписка отменена: автоплатёж выключен",
+    changed: (plan: string) => `Тариф «${plan}» оформлен`,
+    scheduled: (plan: string) => `Тариф «${plan}» начнёт действовать со следующего периода`,
+    balance: "Баланс",
+    available: (n: number) => `Доступно: ${fmtCredits(n)} ${creditWord(n)}`,
+    total: (balance: number, held: number) =>
+      `На счёте ${fmtCredits(balance)} · в резерве сборок ${fmtCredits(held)}`,
+    bucket: {
+      free_welcome: "приветственные",
+      free_monthly: "ежемесячные Free",
+      plan_monthly: "по тарифу",
+      topup: "докупленные",
+      adjustment: "корректировка",
+    } as Record<string, string>,
+    bucketLine: (what: string, n: string, until: string | null) =>
+      `${what}: ${n}${until ? ` · сгорят ${until}` : ""}`,
+    topup: "Докупить",
+    topupPacks: "Пакетов по 60 кредитов",
+    topupButton: (packs: number, rub: number) =>
+      `Докупить ${packs * 60} кредитов за ${rub.toLocaleString("ru-RU")} ₽`,
+    topupHint: "Докупленные кредиты действуют 365 дней. С привязанной карты оплата спишется сразу",
+    topupDone: (credits: number) => `Начислено ${credits} кредитов`,
+    ledger: "Журнал списаний",
+    ledgerHint: "Начисления и списания по прогонам, новые сверху",
+    ledgerEmpty: "Записей пока нет",
+    ledgerMore: "Показать ещё",
+    ledgerKind: {
+      grant: "начисление",
+      charge: "списание",
+      hold: "резерв на сборку",
+      release: "снятие резерва",
+      expire: "сгорание",
+      refund: "возврат",
+      adjustment: "корректировка",
+    } as Record<string, string>,
+    ledgerSystem: "система",
+    card: "Карта",
+    cardBound: "✓ Карта РФ привязана — идентификация пройдена",
+    cardNumber: (last4: string, type: string | null | undefined) => `${type ? `${type} ` : ""}•• ${last4}`,
+    cardNone: "Карта не привязана. Без неё нельзя опубликовать систему в prod",
+    cardPending: "Проверяем карту…",
+    cardNotRu: "Нужна карта российского банка",
+    cardRejected: "Эту карту привязать не получилось. Попробуйте другую карту",
+    cardCancelled: "Привязка карты не завершена",
+    bind: "Привязать карту РФ",
+    rebind: "Привязать другую карту",
+    bindHint: "Спишем и сразу вернём 1 ₽ — это проверка карты и идентификация владельца перед публикацией",
+    ownerOnly: "Тариф, оплату и карту меняет владелец организации",
+    returned: "Проверяем оплату…",
   },
   runs: {
     publish: "Публикация",

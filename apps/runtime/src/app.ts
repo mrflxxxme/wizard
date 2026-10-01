@@ -28,7 +28,14 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
-import { type RunJobsOptions, type RunJobsReport, runJobs } from "./jobs/runner.js";
+import {
+  type RetentionPassReport,
+  type RunJobsOptions,
+  type RunJobsReport,
+  retentionDue,
+  runJobs,
+  runRetention,
+} from "./jobs/runner.js";
 import { createConnectorHost, type SecretsFactory } from "./preview/connectors.js";
 import { previewRoutes } from "./preview/routes.js";
 import { MAX_WITHDRAWAL_DAYS } from "./privacy/erasure.js";
@@ -47,6 +54,7 @@ import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { yookassaHookRoutes } from "./routes/yookassa.js";
+import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
 export interface RuntimeAppOptions {
@@ -74,6 +82,8 @@ export interface RuntimeAppOptions {
   auth?: RuntimeAuthOptions;
   /** 152-ФЗ package: withdrawal → anonymization delay (days, 0…30; default 0 — at once) and legal templates. */
   privacy?: { withdrawalDays?: number; legalTemplates?: LegalTemplates };
+  /** M2: function calls go to sandbox pods (createWorkerdSandbox); WIZARD_UNSAFE_LOCAL_EXEC is then not needed. */
+  sandbox?: SandboxExecutors;
 }
 
 export interface RuntimeApp {
@@ -86,8 +96,20 @@ export interface RuntimeApp {
   outbox(): OutboxMessage[];
   /** One pass of the job runner (jobs/runner.ts) for a loaded system at `now` (G1 runWorkflows/advanceTime). */
   runJobs(input: { slug: string; env: SystemEnv } & RunJobsOptions): Promise<RunJobsReport>;
+  /**
+   * Daily retention (runtime.yaml#workflows.retention, 03:00 MSK): one pass for every registry deployment whose pass
+   * is due (no marker since today's slot, or a platform request); the server calls it on a timer.
+   */
+  retentionTick(input?: { now?: Date }): Promise<RetentionTickReport>;
   readonly env: RuntimeEnv;
   readonly systems: SystemCache;
+}
+
+export interface RetentionTickReport {
+  /** Systems whose pass ran, with its report. */
+  ran: ({ slug: string; env: SystemEnv } & RetentionPassReport)[];
+  /** Systems that could not be loaded or checked (logged as retention_failed). */
+  failed: { slug: string; env: SystemEnv }[];
 }
 
 type Pre = { system: LoadedSystem; host: string; requestId: string };
@@ -110,6 +132,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       withdrawalDays: Math.min(MAX_WITHDRAWAL_DAYS, Math.max(0, Math.floor(o.privacy?.withdrawalDays ?? 0))),
     },
     legalTemplates: o.privacy?.legalTemplates ?? defaultLegalTemplates(),
+    ...(o.sandbox ? { sandbox: o.sandbox } : {}),
   };
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
@@ -295,6 +318,30 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       const sys = await systems.resolve(slug, sysEnv);
       if (!sys) throw new WizardError("NOT_FOUND", { message: "Система не найдена" });
       return runJobs(sys, services, opts);
+    },
+    retentionTick: async (input = {}) => {
+      const now = input.now ?? services.clock();
+      const report: RetentionTickReport = { ran: [], failed: [] };
+      for (const entry of (await o.registry.entries?.()) ?? []) {
+        const at = { slug: entry.slug, env: entry.env };
+        try {
+          const sys = await systems.resolve(entry.slug, entry.env);
+          if (!sys || !(await retentionDue(sys, now))) continue;
+          report.ran.push({ ...at, ...(await runRetention(sys, services, now)) });
+        } catch (err) {
+          o.log?.({
+            ts: new Date().toISOString(),
+            level: "error",
+            msg: "retention_failed",
+            system: entry.slug,
+            env: entry.env,
+            sqlstate: (err as { code?: unknown }).code ?? null,
+            reason: err instanceof Error ? err.name : "unknown",
+          });
+          report.failed.push(at);
+        }
+      }
+      return report;
     },
   };
 }

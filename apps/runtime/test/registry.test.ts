@@ -2,7 +2,7 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { quoteIdent } from "@wizard/appspec";
+import { dropSystemRoleDDL, quoteIdent } from "@wizard/appspec";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -73,6 +73,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(`app_${key}_draft`)} CASCADE`);
+  for (const st of dropSystemRoleDDL(`app_${key}_draft`)) await sql.unsafe(st);
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
   await sql.end();
   rmSync(root, { recursive: true, force: true });

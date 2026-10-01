@@ -11,6 +11,7 @@ import type { ErrorCode } from "../errors.js";
 import type { AuthUser } from "../http/auth.js";
 import { ACTIVE_STATUSES } from "../runs/queue.js";
 import { loadRevision } from "../services/revisions.js";
+import { founderReviewStatus, REVIEW_PENDING_RU } from "./moderation.js";
 import { isPublishable } from "./workflows.js";
 
 /**
@@ -72,7 +73,23 @@ export async function cardBindingMissing(
   return !(await activeCard(db, orgId));
 }
 
+/**
+ * M2 (config.prodG2Required): the revision is on founder review (G2-AF-08/G2-AF-09 at a publish attempt,
+ * abuse.yaml#scoring.effect) that staff has not approved — pending or rejected.
+ */
+export async function founderReviewBlocks(
+  db: Db,
+  systemId: string,
+  revision: number,
+  required: boolean,
+): Promise<boolean> {
+  if (!required) return false;
+  const st = await founderReviewStatus(db, systemId, revision);
+  return st === "pending" || st === "rejected";
+}
+
 export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
+  FOUNDER_REVIEW_PENDING: REVIEW_PENDING_RU,
   CARD_BINDING_REQUIRED: "Привяжите карту российского банка — это нужно для публикации",
   OPERATOR_NAME_REQUIRED: "Укажите оператора персональных данных (раздел «Персональные данные»)",
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
@@ -92,6 +109,7 @@ export async function publishBlockers(
   s: Selectable<SystemsTable>,
   billing?: Billing,
   cardRequired = false,
+  g2Required = false,
 ): Promise<ErrorCode[]> {
   const out: ErrorCode[] = [];
   if (user.orgs.get(s.org_id) !== "owner") out.push("NOT_OWNER");
@@ -108,6 +126,7 @@ export async function publishBlockers(
     .where("id", "=", s.org_id)
     .executeTakeFirstOrThrow();
   out.push(...specPublishBlockers(rev.spec as unknown as AppSpec, org.plan));
+  if (await founderReviewBlocks(db, s.id, rev.version, g2Required)) out.push("FOUNDER_REVIEW_PENDING");
   // prod_systems (billing.yaml#plans.enforcement): republishing a system already in prod is always allowed.
   if (
     s.prod_revision === null &&

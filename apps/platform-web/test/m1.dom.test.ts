@@ -257,6 +257,114 @@ describe("S10", () => {
     expect(patch).toHaveBeenCalledWith(ORG, { ruOnly: true });
   });
 
+  test("M2-05 owner: deletion journal (labels, counters, no values, «Показать ещё»); «Удалить систему» confirms → DELETE → S1", async () => {
+    const log = vi.fn(async (_id: string, cursor?: string) =>
+      cursor
+        ? {
+            items: [
+              {
+                env: "prod" as const,
+                entity: "users",
+                mode: "consent_revoked",
+                cutoff: null,
+                rowsAffected: 1,
+                createdAt: "2026-08-01T09:00:00.000Z",
+              },
+            ],
+            nextCursor: null,
+          }
+        : {
+            items: [
+              {
+                env: "prod" as const,
+                entity: "ticket",
+                mode: "anonymize",
+                cutoff: "2026-09-01T00:00:00.000Z",
+                rowsAffected: 3,
+                createdAt: "2026-10-01T00:30:00.000Z",
+              },
+            ],
+            nextCursor: "c1",
+          },
+    );
+    const del = vi.fn(async (id: string) => ({
+      id,
+      deletedAt: "2026-10-01T10:00:00.000Z",
+      purgeAfter: "2026-10-31T10:00:00.000Z",
+    }));
+    const el = mountApp(
+      {
+        ...settingsApi("owner", { ruOnly: false, t1Restricted: false }),
+        listDeletionLog: log as unknown as ApiClient["listDeletionLog"],
+        deleteSystem: del as unknown as ApiClient["deleteSystem"],
+        listSystems: async () => ({ items: [] }),
+      },
+      `/s/${SYS}/settings`,
+    );
+    await waitFor(() => el.querySelectorAll('[data-testid="settings-deletion-row"]').length === 1);
+    const row = q(el, "settings-deletion-row");
+    expect(row?.dataset.mode).toBe("anonymize");
+    expect(row?.textContent).toContain("Билет");
+    expect(row?.textContent).toContain("обезличивание по сроку");
+    expect(row?.textContent).toContain("3 записи");
+    expect(row?.textContent).toContain("данные до 1 сентября 2026");
+    click(q(el, "settings-deletion-more"));
+    await waitFor(() => el.querySelectorAll('[data-testid="settings-deletion-row"]').length === 2);
+    expect(log).toHaveBeenLastCalledWith(SYS, "c1");
+    expect(q(el, "settings-deletion-log")?.textContent).toContain("пользователи");
+    expect(q(el, "settings-deletion-log")?.textContent).toContain("отзыв согласия");
+    expect(q(el, "settings-deletion-more")).toBeNull();
+
+    const btn = q(el, "settings-delete-system") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    click(btn);
+    expect(q(el, "settings-delete-confirm")?.textContent).toContain(
+      "Удалить систему «Форум»? Она перестанет открываться сразу",
+    );
+    // Destructive: the focus starts on «Отмена».
+    expect(document.activeElement).toBe(q(el, "settings-delete-no"));
+    click(q(el, "settings-delete-no"));
+    expect(q(el, "settings-delete-confirm")).toBeNull();
+    expect(del).not.toHaveBeenCalled();
+    click(q(el, "settings-delete-system"));
+    click(q(el, "settings-delete-yes"));
+    await waitFor(() => window.location.pathname === "/");
+    expect(del).toHaveBeenCalledWith(SYS);
+  });
+
+  test("M2-05 viewer: «Удалить систему» disabled, the journal is not requested", async () => {
+    const log = vi.fn();
+    const el = mountApp(
+      {
+        ...settingsApi("viewer", { ruOnly: false, t1Restricted: false }),
+        listDeletionLog: log as unknown as ApiClient["listDeletionLog"],
+      },
+      `/s/${SYS}/settings`,
+    );
+    await waitFor(() => q(el, "settings-delete-system") !== null);
+    expect((q(el, "settings-delete-system") as HTMLButtonElement).disabled).toBe(true);
+    expect(q(el, "settings-deletion-log")?.textContent).toContain("Доступно владельцу организации");
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  test("M2-05: SYSTEM_LOCKED on delete → «Идёт сборка или публикация…»", async () => {
+    const el = mountApp(
+      {
+        ...settingsApi("owner", { ruOnly: false, t1Restricted: false }),
+        listDeletionLog: async () => ({ items: [], nextCursor: null }),
+        deleteSystem: () => Promise.reject(new ApiError(409, { code: "SYSTEM_LOCKED", message_ru: "x" })),
+      },
+      `/s/${SYS}/settings`,
+    );
+    await waitFor(() => q(el, "settings-deletion-empty") !== null);
+    expect(q(el, "settings-deletion-empty")?.textContent).toBe("Удалений пока не было");
+    click(q(el, "settings-delete-system"));
+    click(q(el, "settings-delete-yes"));
+    await waitFor(() => q(el, "settings-error") !== null);
+    expect(q(el, "settings-error")?.textContent).toContain("Идёт сборка или публикация");
+    expect(window.location.pathname).toBe(`/s/${SYS}/settings`);
+  });
+
   test("t1Restricted: text «Сборка только на моделях в РФ (регион организации)» without the switch", async () => {
     const el = mountApp(settingsApi("owner", { ruOnly: false, t1Restricted: true }), `/s/${SYS}/settings`);
     await waitFor(() => q(el, "settings-ru-only") !== null && q(el, "settings-ru-only")?.tagName === "P");

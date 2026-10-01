@@ -1,11 +1,15 @@
 // S10 «Настройки системы» (/s/:systemId/settings, M1-11): team and invitations, «кто меняет» lock, model policy
 // («только российский контур»), login methods and retention from the spec, operator of personal data (the publish
-// precondition, a minimal part of M2-11's block), revisions with prod rollback. Owner-only actions are disabled for
+// precondition) with the consent text and the policy page link (M2-11) and the deletion journal (M2-05), «Выгрузить
+// данные» — the M2-10 ZIP by a single-use link, personal data only after a confirmation (M2-11), revisions with prod
+// rollback, and «Удалить систему» with a confirmation (M2-05, purge after 30 days). Owner-only actions are disabled for
 // editor/viewer with a hint; the server answers 403 anyway (D11).
 import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type {
+  DeletionLogEntry,
+  ExportView,
   Invite,
   LockStatus,
   Member,
@@ -28,12 +32,44 @@ import { RunNotice } from "../workspace/RunNotice.js";
 import s from "./Settings.module.css";
 
 const ROLES: OrgRole[] = ["owner", "editor", "viewer"];
+/** Consent templates of the lawyer (apps/platform-api agents/consent.ts, runtime templates). */
+const CONSENT_TEMPLATES = ["default", "event_registration", "orders"];
+const EXPORT_POLL_MS = 1000;
+const EXPORT_POLL_TRIES = 180;
+
+/** Only http(s) links from the API become hrefs (L3-17). */
+const safeHref = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  try {
+    const u = new URL(url, window.location.origin);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 const errText = (e: unknown) => {
   if (e instanceof ApiError && e.code === "LAST_OWNER") return ru.settings.lastOwner;
+  if (e instanceof ApiError && e.code === "SYSTEM_LOCKED") return ru.settings.systemLocked;
   return e instanceof Error ? e.message : ru.errors.generic;
 };
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+const fmtDay = (iso: string) =>
+  new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const entityLabel = (e: DeletionLogEntry, spec: SpecLike | null | undefined) =>
+  e.entity === "*"
+    ? ru.settings.deletionEntityAll
+    : e.entity === "users"
+      ? ru.settings.deletionEntityUsers
+      : (spec?.entities?.find((x) => x.name === e.entity)?.label ?? e.entity);
 
 type RunAction = { type: "reset" } | { type: "event"; e: RunEvent };
 const runReducer = (st: RunState, a: RunAction): RunState =>
@@ -47,6 +83,9 @@ interface SpecLike {
     operatorContact?: string;
     operatorAddress?: string;
     operatorInn?: string;
+    consentTemplateId?: string;
+    consentText?: string;
+    policyPage?: string;
   };
 }
 
@@ -74,8 +113,20 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   const [inviteRole, setInviteRole] = useState<OrgRole>("editor");
   const [operator, setOperator] = useState({ name: "", contact: "", address: "", inn: "" });
   const [confirm, setConfirm] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Deletion journal (owner): newest first, «Показать ещё» follows nextCursor.
+  const [journal, setJournal] = useState<DeletionLogEntry[] | null>(null);
+  const [journalCursor, setJournalCursor] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, dispatch] = useReducer(runReducer, undefined, initialRunState);
+  // Consent text: the lawyer's template (default) or the owner's own text.
+  const [consent, setConsent] = useState({ own: false, templateId: "default", text: "" });
+  // Data export (M2-10): the current export, a confirmation for personal data, used single-use link.
+  const [exportPii, setExportPii] = useState(false);
+  const [confirmPii, setConfirmPii] = useState(false);
+  const [exp, setExp] = useState<ExportView | null>(null);
+  const [linkUsed, setLinkUsed] = useState(false);
+  const [exports, setExports] = useState<ExportView[]>([]);
 
   const orgId = view?.system.orgId;
   const role = roleIn(orgId);
@@ -129,6 +180,11 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           address: c.operatorAddress ?? "",
           inn: c.operatorInn ?? "",
         });
+        setConsent({
+          own: (c.consentText ?? "").trim() !== "",
+          templateId: c.consentTemplateId ?? "default",
+          text: c.consentText ?? "",
+        });
       })
       .catch(
         (e) =>
@@ -144,6 +200,50 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   useEffect(() => {
     if (orgId) void loadTeam(orgId, owner);
   }, [orgId, owner, loadTeam]);
+
+  const loadJournal = useCallback(
+    async (cursor?: string) => {
+      const page = await api.listDeletionLog(systemId, cursor);
+      setJournal((prev) => (cursor ? [...(prev ?? []), ...page.items] : page.items));
+      setJournalCursor(page.nextCursor);
+    },
+    [api, systemId],
+  );
+  useEffect(() => {
+    if (owner) void loadJournal().catch(() => setJournal([]));
+  }, [owner, loadJournal]);
+
+  const loadExports = useCallback(async () => {
+    const r = await api.listExports(systemId).catch(() => null);
+    setExports(r?.items ?? []);
+  }, [api, systemId]);
+  useEffect(() => {
+    if (owner && typeof api.listExports === "function") void loadExports();
+  }, [owner, api, loadExports]);
+
+  // A running export is polled until it settles; the first «ready» answer carries the single-use downloadUrl
+  // (every getExport of a ready export issues a new link and voids the previous one, so polling stops there).
+  const pollingExport = exp?.status === "running" ? exp.id : null;
+  useEffect(() => {
+    if (!pollingExport) return;
+    let live = true;
+    void (async () => {
+      for (let i = 0; i < EXPORT_POLL_TRIES && live; i++) {
+        await new Promise((r) => setTimeout(r, EXPORT_POLL_MS));
+        if (!live) return;
+        const v = await api.getExport(systemId, pollingExport).catch(() => null);
+        if (!live) return;
+        if (v && v.status !== "running") {
+          setExp(v);
+          void loadExports();
+          return;
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [api, systemId, pollingExport, loadExports]);
 
   // #pd from the S6 blocker link: scroll to the operator block once it is rendered.
   const scrolled = useRef(false);
@@ -253,6 +353,48 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
     }
   }
 
+  async function saveConsent(ev: FormEvent) {
+    ev.preventDefault();
+    if (!view) return;
+    const body = {
+      expectedVersion: view.system.draftRevision,
+      operatorName: operator.name.trim(),
+      operatorContact: operator.contact.trim(),
+      ...(operator.address.trim() ? { operatorAddress: operator.address.trim() } : {}),
+      ...(operator.inn.trim() ? { operatorInn: operator.inn.trim() } : {}),
+      consentTemplateId: consent.templateId,
+      // An empty own text means «по шаблону»: the platform renders the template (agents/consent.ts).
+      consentText: consent.own ? consent.text.trim() : "",
+    };
+    if (await act("consent", () => api.setCompliance(systemId, body), ru.settings.saved)) {
+      await loadSystem().catch(() => {});
+      await loadHistory();
+    }
+  }
+
+  async function startExport(includePii: boolean) {
+    setConfirmPii(false);
+    const env = view?.system.prodRevision != null ? "prod" : "draft";
+    await act("export", async () => {
+      const r = await api.createExport(systemId, { env, ...(includePii ? { includePii: true } : {}) });
+      setLinkUsed(false);
+      setExp({ id: r.exportId, env, status: "running", includePii, createdAt: new Date().toISOString() });
+    });
+  }
+
+  async function newLink() {
+    if (!exp) return;
+    await act("export-link", async () => {
+      setExp(await api.getExport(systemId, exp.id));
+      setLinkUsed(false);
+    });
+  }
+
+  async function deleteSystem() {
+    setConfirmDelete(false);
+    if (await act("delete", () => api.deleteSystem(systemId))) navigate("/");
+  }
+
   async function rollback(v: number) {
     setConfirm(null);
     setBusy("rollback");
@@ -297,6 +439,12 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
     (r) => r.access !== "public" || (r.loginMethods?.length ?? 0) > 0,
   );
   const retention = (spec?.entities ?? []).filter((e) => e.retention);
+  const exportEnv = prod !== null ? "prod" : "draft";
+  const exportRunning = exp?.status === "running";
+  const downloadHref = safeHref(exp?.downloadUrl);
+  const operatorSet = operator.name.trim().length >= 3 && operator.contact.trim() !== "";
+  const prodUrl = safeHref(system.prodUrl);
+  const policyHref = prodUrl ? new URL(spec?.compliance?.policyPage || "/privacy", prodUrl).toString() : null;
 
   return (
     <div className={s.shell}>
@@ -522,6 +670,103 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
                 </ul>
               )}
             </div>
+            <p className={s.small}>{ru.settings.backups}</p>
+            <div className={s.sub} data-testid="settings-export-block">
+              <h3 className={s.subTitle}>{ru.settings.export}</h3>
+              <p className={s.hint}>
+                {ru.settings.exportHint(ru.settings.exportEnv[exportEnv] ?? exportEnv)}
+              </p>
+              <label className={s.check}>
+                <input
+                  type="checkbox"
+                  checked={exportPii}
+                  disabled={!owner || busy !== null || exportRunning}
+                  onChange={(e) => setExportPii(e.target.checked)}
+                  data-testid="settings-export-pii"
+                />
+                <span>{ru.settings.exportPii}</span>
+              </label>
+              <div className={s.row}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!owner || busy !== null || exportRunning || system.previewRevision == null}
+                  loading={busy === "export" || exportRunning}
+                  title={
+                    !owner
+                      ? ru.settings.ownerOnly
+                      : system.previewRevision == null
+                        ? ru.settings.exportNotReady
+                        : undefined
+                  }
+                  onClick={() => (exportPii ? setConfirmPii(true) : void startExport(false))}
+                  data-testid="settings-export"
+                >
+                  {ru.settings.export}
+                </Button>
+              </div>
+              {exp && (
+                <div className={s.sub} data-testid="settings-export-status" data-status={exp.status}>
+                  {exp.status === "running" && <p className={s.small}>{ru.settings.exportRunning}</p>}
+                  {exp.status === "failed" && <Alert>{ru.settings.exportFailed}</Alert>}
+                  {exp.status === "expired" && <p className={s.small}>{ru.settings.exportExpired}</p>}
+                  {exp.status === "ready" && (
+                    <>
+                      <p className={s.small}>
+                        {ru.settings.exportReady}
+                        {exp.size ? ` · ${ru.settings.exportSize(exp.size)}` : ""}
+                        {exp.includePii ? ` · ${ru.settings.exportWithPii}` : ""}
+                      </p>
+                      {downloadHref && !linkUsed ? (
+                        <a
+                          href={downloadHref}
+                          download
+                          className={s.link}
+                          onClick={() => setTimeout(() => setLinkUsed(true), 0)}
+                          data-testid="settings-export-download"
+                        >
+                          {ru.settings.exportDownload}
+                        </a>
+                      ) : (
+                        <div className={s.row}>
+                          <span className={s.small}>{ru.settings.exportDownloaded}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy !== null}
+                            onClick={() => void newLink()}
+                            data-testid="settings-export-relink"
+                          >
+                            {ru.settings.exportNewLink}
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              {owner && exports.length > 0 && (
+                <ul className={s.list} aria-label={ru.settings.exportRecent}>
+                  {exports.slice(0, 3).map((x) => (
+                    <li
+                      key={x.id}
+                      className={s.small}
+                      data-testid="settings-export-row"
+                      data-status={x.status}
+                    >
+                      {ru.settings.exportRow(
+                        fmtTime(x.createdAt),
+                        ru.settings.deletionEnv[x.env] ?? x.env,
+                        x.downloads ?? 0,
+                      )}{" "}
+                      · {ru.settings.exportStatus[x.status] ?? x.status}
+                      {x.includePii ? ` · ${ru.settings.exportWithPii}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <OwnerHint owner={owner} />
+            </div>
             <a
               href={`/s/${systemId}/code`}
               className={s.link}
@@ -598,6 +843,144 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
               </Button>
               <OwnerHint owner={owner} />
             </form>
+            <form
+              className={s.form}
+              onSubmit={(e) => void saveConsent(e)}
+              data-testid="settings-pd-consent"
+              aria-labelledby="consent-title"
+            >
+              <h3 id="consent-title" className={s.subTitle}>
+                {ru.settings.consent}
+              </h3>
+              <fieldset className={s.fieldset} disabled={!owner || busy !== null || spec === undefined}>
+                <label className={s.check}>
+                  <input
+                    type="radio"
+                    name="consent-kind"
+                    checked={!consent.own}
+                    onChange={() => setConsent({ ...consent, own: false })}
+                    data-testid="settings-pd-consent-template"
+                  />
+                  <span>{ru.settings.consentTemplate}</span>
+                </label>
+                {!consent.own && (
+                  <label className={s.field}>
+                    <span>{ru.settings.consentTemplateLabel}</span>
+                    <select
+                      value={consent.templateId}
+                      onChange={(e) => setConsent({ ...consent, templateId: e.target.value })}
+                      data-testid="settings-pd-consent-template-id"
+                    >
+                      {[...new Set([...CONSENT_TEMPLATES, consent.templateId])].map((t) => (
+                        <option key={t} value={t}>
+                          {ru.settings.consentTemplates[t] ?? t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className={s.check}>
+                  <input
+                    type="radio"
+                    name="consent-kind"
+                    checked={consent.own}
+                    onChange={() => setConsent({ ...consent, own: true })}
+                    data-testid="settings-pd-consent-own"
+                  />
+                  <span>{ru.settings.consentOwn}</span>
+                </label>
+                {consent.own && (
+                  <label className={s.field}>
+                    <span>{ru.settings.consentOwnLabel}</span>
+                    <textarea
+                      rows={5}
+                      maxLength={4000}
+                      required
+                      value={consent.text}
+                      onChange={(e) => setConsent({ ...consent, text: e.target.value })}
+                      data-testid="settings-pd-consent-text"
+                    />
+                  </label>
+                )}
+              </fieldset>
+              {consent.own ? (
+                consent.text.trim() && (
+                  <div className={s.sub}>
+                    <span className={s.muted}>{ru.settings.consentPreview}</span>
+                    <label className={s.check} data-testid="settings-pd-consent-preview">
+                      <input type="checkbox" disabled />
+                      <span className={s.preWrap}>{consent.text}</span>
+                    </label>
+                  </div>
+                )
+              ) : (
+                <p className={s.hint}>{ru.settings.consentTemplateNote}</p>
+              )}
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                disabled={!owner || busy !== null || spec === undefined || !operatorSet}
+                loading={busy === "consent"}
+                title={operatorSet ? undefined : ru.settings.consentNoOperator}
+                data-testid="settings-pd-consent-save"
+              >
+                {ru.settings.consentSave}
+              </Button>
+            </form>
+            <p className={s.small} data-testid="settings-pd-policy">
+              {policyHref ? (
+                <a href={policyHref} target="_blank" rel="noopener noreferrer" className={s.link}>
+                  {ru.settings.policy}
+                </a>
+              ) : (
+                ru.settings.policyNotPublished
+              )}
+            </p>
+            <div className={s.sub} data-testid="settings-deletion-log">
+              <h3 className={s.subTitle}>{ru.settings.deletionLog}</h3>
+              <p className={s.hint}>{ru.settings.deletionLogHint}</p>
+              {!owner ? (
+                <OwnerHint owner={owner} />
+              ) : journal === null ? (
+                <p className={s.small}>{ru.code.loading}</p>
+              ) : journal.length === 0 ? (
+                <p className={s.small} data-testid="settings-deletion-empty">
+                  {ru.settings.deletionLogEmpty}
+                </p>
+              ) : (
+                <ul className={s.list}>
+                  {journal.map((e) => (
+                    <li
+                      key={`${e.createdAt}|${e.env}|${e.entity}|${e.mode}`}
+                      className={s.logRow}
+                      data-testid="settings-deletion-row"
+                      data-mode={e.mode}
+                      data-env={e.env}
+                    >
+                      <span className={s.muted}>{fmtTime(e.createdAt)}</span>
+                      <b>{entityLabel(e, spec)}</b>
+                      <span>{ru.settings.deletionMode[e.mode] ?? e.mode}</span>
+                      <span>{ru.settings.deletionRows(e.rowsAffected)}</span>
+                      {e.cutoff && (
+                        <span className={s.muted}>{ru.settings.deletionCutoff(fmtDay(e.cutoff))}</span>
+                      )}
+                      <span className={s.muted}>{ru.settings.deletionEnv[e.env] ?? e.env}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {owner && journalCursor && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void loadJournal(journalCursor).catch(() => {})}
+                  data-testid="settings-deletion-more"
+                >
+                  {ru.settings.deletionLogMore}
+                </Button>
+              )}
+            </div>
           </section>
 
           <section className={`${s.block} ${s.wide}`} aria-labelledby="rev-title">
@@ -637,6 +1020,27 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
               ))}
             </ul>
           </section>
+
+          <section className={`${s.block} ${s.wide} ${s.danger}`} aria-labelledby="danger-title">
+            <h2 id="danger-title" className={s.blockTitle}>
+              {ru.settings.danger}
+            </h2>
+            <p className={s.small}>{ru.settings.dangerHint}</p>
+            <div>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={!owner || busy !== null}
+                loading={busy === "delete"}
+                title={owner ? undefined : ru.settings.ownerOnly}
+                onClick={() => setConfirmDelete(true)}
+                data-testid="settings-delete-system"
+              >
+                {ru.settings.deleteSystem}
+              </Button>
+            </div>
+            <OwnerHint owner={owner} />
+          </section>
         </div>
       </main>
       {confirm !== null && (
@@ -648,23 +1052,52 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           onNo={() => setConfirm(null)}
         />
       )}
+      {confirmPii && (
+        <ConfirmDialog
+          text={ru.settings.exportPiiConfirm}
+          yes={ru.settings.exportPiiYes}
+          no={ru.settings.rollbackNo}
+          danger
+          testId="settings-export-pii"
+          onYes={() => void startExport(true)}
+          onNo={() => setConfirmPii(false)}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          text={ru.settings.deleteConfirm(system.name)}
+          yes={ru.settings.deleteYes}
+          no={ru.settings.rollbackNo}
+          danger
+          testId="settings-delete"
+          onYes={() => void deleteSystem()}
+          onNo={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }
 
-/** Modal confirmation: focus on the confirm button, Esc cancels, focus returns to the page on close. */
+/**
+ * Modal confirmation: focus on the confirm button (on «Отмена» for a destructive one), Esc cancels, focus returns to
+ * the page on close. Test ids: <testId>-confirm, -yes, -no.
+ */
 function ConfirmDialog({
   text,
   yes,
   no,
   onYes,
   onNo,
+  danger = false,
+  testId = "rollback",
 }: {
   text: string;
   yes: string;
   no: string;
   onYes(): void;
   onNo(): void;
+  danger?: boolean;
+  testId?: string;
 }): ReactNode {
   const ref = useRef<HTMLDivElement | null>(null);
   const cancel = useRef(onNo);
@@ -689,16 +1122,26 @@ function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-text"
         className={s.dialog}
-        data-testid="rollback-confirm"
+        data-testid={`${testId}-confirm`}
       >
         <p id="confirm-text" className={s.dialogText}>
           {text}
         </p>
         <div className={s.row}>
-          <Button variant="secondary" onClick={onNo} data-testid="rollback-no">
+          <Button
+            variant="secondary"
+            onClick={onNo}
+            {...(danger ? { "data-autofocus": "" } : {})}
+            data-testid={`${testId}-no`}
+          >
             {no}
           </Button>
-          <Button variant="primary" onClick={onYes} data-autofocus="" data-testid="rollback-yes">
+          <Button
+            variant={danger ? "danger" : "primary"}
+            onClick={onYes}
+            {...(danger ? {} : { "data-autofocus": "" })}
+            data-testid={`${testId}-yes`}
+          >
             {yes}
           </Button>
         </div>

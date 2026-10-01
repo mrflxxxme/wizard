@@ -124,6 +124,23 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     if (hasDraft) void refreshGates();
   }, [hasDraft, refreshGates]);
 
+  // S6 (M2-11): «✓ Карта РФ привязана» from Org.cardBound (any role); re-read when the publish blockers change.
+  const [cardBound, setCardBound] = useState<boolean | undefined>(undefined);
+  const sysOrg = view?.system.orgId;
+  const blockerKey = (view?.publishBlockers ?? []).join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: blockerKey is a re-read trigger
+  useEffect(() => {
+    if (stage !== "ready" || !sysOrg || typeof api.getOrg !== "function") return;
+    let live = true;
+    api
+      .getOrg(sysOrg)
+      .then((o) => live && setCardBound(o.cardBound === true))
+      .catch(() => live && setCardBound(undefined));
+    return () => {
+      live = false;
+    };
+  }, [api, sysOrg, stage, blockerKey]);
+
   // S7: the latest revision and, when the draft is ahead of prod, its human diff against prod (M1-08).
   const prodRevision = view?.system.prodRevision ?? null;
   const draftRev = view?.system.draftRevision ?? 0;
@@ -448,6 +465,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
             running={running}
             busy={busy === "publish"}
             error={publishError}
+            cardBound={cardBound}
             onEdit={focusInput}
             onPublish={() => target !== null && void publish(target)}
           />

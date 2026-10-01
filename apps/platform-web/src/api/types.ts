@@ -237,6 +237,23 @@ export interface Invite {
   expiresAt: string;
 }
 
+/** api.yaml#listDeletionLog item: counters only, never values (compliance.yaml#system_package.retention). */
+export interface DeletionLogEntry {
+  env: "draft" | "prod";
+  entity: string;
+  mode: string;
+  cutoff: string | null;
+  rowsAffected: number;
+  createdAt: string;
+}
+
+/** DELETE /systems/:id (M2-05): soft delete, purge after 30 days (workflows.yaml#delete_system). */
+export interface SystemDeleted {
+  id: string;
+  deletedAt: string;
+  purgeAfter: string;
+}
+
 /** api.yaml#LockStatus */
 export interface LockStatus {
   held: boolean;
@@ -315,4 +332,70 @@ export interface ImportView {
   profile: ImportProfileItem[];
   mapping: ImportColumnMapping[];
   rowsImported: number | null;
+}
+
+export type PlanId = "free" | "start" | "business";
+
+/** api.yaml#Org (GET /orgs/:orgId, viewer): plan and whether a RU card is bound (M2-07). */
+export interface Org {
+  id: string;
+  name: string;
+  plan: PlanId;
+  role?: OrgRole;
+  cardBound?: boolean;
+}
+
+/** api.yaml#CreditBalance: credits with 0.001 precision, rounded to 0.1 only in UI (billing.yaml#credit.unit). */
+export interface CreditBalance {
+  balance: number;
+  held: number;
+  available: number;
+  buckets?: { source: string; remaining: number; expiresAt: string | null }[];
+}
+
+/** api.yaml#LedgerEntry: + grant, − charge. */
+export interface LedgerEntry {
+  id: string;
+  kind: "grant" | "charge" | "hold" | "release" | "expire" | "refund" | "adjustment";
+  amount: number;
+  source?: string;
+  runId?: string | null;
+  systemId?: string | null;
+  note_ru?: string;
+  createdAt: string;
+}
+
+/**
+ * api.yaml#Billing plus the M2-07 extensions (docs/reviews/impl-notes/M2-07.md): nextPlan (a downgrade waiting for the
+ * period end), cardBinding (outcome of the latest binding, polled by the YooKassa return page), confirmationUrl
+ * (first subscription payment on the YooKassa page).
+ */
+export interface Billing {
+  plan: PlanId;
+  status: "none" | "active" | "past_due" | "cancelled";
+  periodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  nextPlan?: Exclude<PlanId, "free"> | null;
+  card: { last4: string; issuerCountry: string; boundAt: string; cardType?: string | null } | null;
+  cardBinding?: {
+    status: "pending" | "bound" | "rejected" | "cancelled";
+    code: string | null;
+    message_ru: string | null;
+  } | null;
+  limits: { prodSystems: number; members: number; monthlyCredits: number };
+  confirmationUrl?: string | null;
+}
+
+/** api.yaml#Export (+ includePii, M2-10) with getExport.downloadUrl (single use, 15 min). */
+export interface ExportView {
+  id: string;
+  env: "draft" | "prod";
+  status: "running" | "ready" | "failed" | "expired";
+  size?: number | null;
+  downloads?: number;
+  includePii?: boolean;
+  expiresAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  downloadUrl?: string | null;
 }

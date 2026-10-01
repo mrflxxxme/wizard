@@ -1,11 +1,10 @@
 // export run (workflows.yaml#workflows.export_data): dump (+ sanitize per cell) → store. Rows are read in one
 // REPEATABLE READ snapshot of app_<key>_<env> as the migrator with wizard.role = __system and streamed into a ZIP that
 // is encrypted while it is written; nothing of the data is kept in memory beyond one cursor batch.
-import { type AppSpec, quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { type AppSpec, quoteIdent, systemRoleName } from "@wizard/appspec";
 import { schemaName } from "@wizard/runtime";
 import { Zip, ZipDeflate } from "fflate";
 import type postgres from "postgres";
-import { MIGRATOR_ROLE } from "../agents/draft.js";
 import type { Db } from "../db/index.js";
 import { RunCancelled, RunFailure } from "../runs/types.js";
 import { loadSpec } from "../services/revisions.js";
@@ -141,8 +140,8 @@ export async function dumpExport(
         );
       const spec: AppSpec = await loadSpec(db, sys, revision);
       const schema = schemaName(sys.schema_key, i.env);
-      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(i.migratorRole ?? MIGRATOR_ROLE)}`);
-      await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+      // Rows are read as the schema's system DB role (FORCE RLS; isolation.yaml#db_access, L3-20).
+      await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schema))}`);
       await tx.unsafe("select set_config('TimeZone', 'UTC', true)");
       const colRows = await tx<{ table_name: string; column_name: string }[]>`
         select table_name, column_name from information_schema.columns where table_schema = ${schema}`;

@@ -1,10 +1,11 @@
 // M2-05: 152-ФЗ package of a system — legal template registry, policy page and version, consent journal _w_consents,
-// withdrawal with a configured delay, subject requests of an admin, retention with the deletion journal.
+// withdrawal with a configured delay, subject requests of an admin, retention with the deletion journal, the daily
+// retention tick over the registry with its pass marker and platform requests.
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AppSpec, type Entity, quoteIdent } from "@wizard/appspec";
+import { type AppSpec, dropSystemRoleDDL, type Entity, quoteIdent } from "@wizard/appspec";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -17,7 +18,10 @@ import {
   MemoryRegistry,
   migrateSystem,
   parseLegalTemplate,
+  RETENTION_MARKER_KEY,
+  RETENTION_REQUEST_KEY,
   type RuntimeApp,
+  retentionSlot,
   schemaName,
 } from "../src/index.js";
 import { DB_URL, devEnv, forumSpec, login, newKey, request, seedRow, userIdOf, valueFor } from "./helpers.js";
@@ -51,6 +55,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const s of schemas) await sql.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(s)} CASCADE`);
+  for (const s of schemas) for (const st of dropSystemRoleDDL(s)) await sql.unsafe(st);
   await sql.unsafe(`DROP OWNED BY ${quoteIdent(role)}`).catch(() => {});
   await sql.unsafe(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
   await sql.end();
@@ -498,5 +503,87 @@ describe("retention with the deletion journal", () => {
 
     await now0.runJobs({ slug: "rt-a", env: "draft", now });
     expect(await deletionLog(A.schema)).toHaveLength(log.length);
+  });
+});
+
+describe("daily retention tick over the registry (marker for the platform watchdog)", () => {
+  test("one pass per daily slot (03:00 MSK); a platform request forces a pass and is consumed", async () => {
+    const spec = forumSpec();
+    const key = newKey();
+    const schema = schemaName(key, "prod");
+    schemas.push(schema);
+    await migrateSystem(sql, { systemId: key, env: "prod", spec, runtimeRole: role });
+    const root = mkdtempSync(join(tmpdir(), "wz-rt-retention-"));
+    try {
+      const dir = join(root, key, "1");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "manifest.json"), JSON.stringify({ specHash: "h", bundleKey: "b" }));
+      writeFileSync(join(dir, "spec.json"), JSON.stringify(spec));
+      const registry = new MemoryRegistry([
+        {
+          systemId: key,
+          slug: "rt-tick",
+          env: "prod",
+          revision: 1,
+          specHash: "h",
+          bundleKey: "b",
+          publishedAt: new Date(0).toISOString(),
+          suspended: false,
+          features: { phoneOtp: false },
+        },
+      ]);
+      const rt = createRuntimeApp({ db: sql, dbRole: role, env: devEnv, registry, artifactsRoot: root });
+      const now = new Date("2026-10-01T05:00:00.000Z");
+      const old = await seedRow(sql, schema, spec, "ticket", {
+        event_starts_at: new Date(now.getTime() - 40 * DAY).toISOString(),
+      });
+      const marker = async () =>
+        (
+          await sql.unsafe(`select payload from ${q(schema, "_w_jobs")} where idempotency_key = $1`, [
+            RETENTION_MARKER_KEY,
+          ])
+        )[0]?.payload as { at?: string; failed?: number } | undefined;
+
+      const first = await rt.retentionTick({ now });
+      expect(first.failed).toEqual([]);
+      expect(first.ran).toHaveLength(1);
+      expect(first.ran[0]).toMatchObject({ slug: "rt-tick", env: "prod", failed: [] });
+      expect(first.ran[0]?.retention).toContainEqual({ entity: "ticket", mode: "anonymize", rows: 1 });
+      const [t] = await sql.unsafe(`select holder_name from ${q(schema, "ticket")} where id = $1`, [old]);
+      expect(t?.holder_name).toBeNull();
+      expect(await marker()).toMatchObject({ at: now.toISOString(), failed: 0 });
+
+      // Same slot: nothing to do.
+      expect((await rt.retentionTick({ now: new Date(now.getTime() + 3 * 3600_000) })).ran).toEqual([]);
+      // The platform watchdog asks for a pass: served at the next tick, the request row is gone.
+      await sql.unsafe(
+        `insert into ${q(schema, "_w_jobs")} (kind, payload, run_at, locked_until, idempotency_key)
+         values ('workflow_step', '{"state":"request"}', 'infinity', 'infinity', $1)`,
+        [RETENTION_REQUEST_KEY],
+      );
+      const later = new Date(now.getTime() + 4 * 3600_000);
+      expect((await rt.retentionTick({ now: later })).ran).toHaveLength(1);
+      const req = await sql.unsafe(`select 1 from ${q(schema, "_w_jobs")} where idempotency_key = $1`, [
+        RETENTION_REQUEST_KEY,
+      ]);
+      expect(req).toHaveLength(0);
+      expect((await marker())?.at).toBe(later.toISOString());
+      // Next day after 03:00 MSK (00:00 UTC): due again; the marker is never claimed as a job.
+      expect((await rt.retentionTick({ now: new Date(now.getTime() + DAY) })).ran).toHaveLength(1);
+      const jobs = await rt.runJobs({ slug: "rt-tick", env: "prod", now: new Date(now.getTime() + DAY) });
+      expect(jobs.failed).toEqual([]);
+      expect(jobs.pending).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("retentionSlot: the last 00:00 UTC (03:00 MSK) at or before now", () => {
+    expect(retentionSlot(new Date("2026-10-01T23:59:00.000Z")).toISOString()).toBe(
+      "2026-10-01T00:00:00.000Z",
+    );
+    expect(retentionSlot(new Date("2026-10-01T00:00:00.000Z")).toISOString()).toBe(
+      "2026-10-01T00:00:00.000Z",
+    );
   });
 });

@@ -2,14 +2,17 @@ import { describe, expect, test } from "vitest";
 import {
   type AppSpec,
   applyOps,
+  dropSystemRoleDDL,
   FIELD_TYPES,
   type Field,
   type MigrationPlan,
   planMigration,
   type StepKind,
   SYSTEM_TABLES,
+  systemRoleName,
   toDDL,
   toRLS,
+  toSystemRoleDDL,
 } from "../src/index.js";
 import { forumSpec, miniSpec } from "./helpers.js";
 
@@ -378,8 +381,46 @@ describe("toDDL", () => {
   });
 });
 
+describe("system role (isolation.yaml#db_access, L3-20)", () => {
+  test("name: sys_<key>_<env>_system for app_<key>_<env>, hashed past 63 bytes, invalid names rejected", () => {
+    expect(systemRoleName("app_abcdef012345_prod")).toBe("sys_abcdef012345_prod_system");
+    expect(systemRoleName("shadow_x")).toBe("sys_shadow_x_system");
+    const long = systemRoleName(`app_${"a".repeat(58)}`);
+    expect(long.length).toBeLessThanOrEqual(63);
+    expect(long).not.toBe(systemRoleName(`app_${"a".repeat(57)}b`));
+    expect(() => systemRoleName('x"; drop')).toThrow();
+  });
+
+  test("no GUC grants system access; without systemRole there is no system policy at all", () => {
+    const all = [...toRLS(miniSpec(), S), ...toDDL(planMigration(null, miniSpec()), S)].join("\n");
+    expect(all).not.toContain("__system'");
+    expect(all).not.toContain('"wz__system"');
+    const withRole = toRLS(miniSpec(), S, { systemRole: "sys_x_draft_system" });
+    expect(
+      withRole
+        .filter((x) => x.includes('"wz__system"'))
+        .every((x) => x.includes('TO "sys_x_draft_system" USING (true)')),
+    ).toBe(true);
+    expect(withRole).toContain(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${S}" TO "sys_x_draft_system"`,
+    );
+    expect(withRole).toContain(`GRANT USAGE ON SCHEMA "${S}" TO "sys_x_draft_system"`);
+  });
+
+  test("toSystemRoleDDL: idempotent NOLOGIN NOINHERIT NOBYPASSRLS role, members WITH INHERIT FALSE, SET TRUE", () => {
+    const ddl = toSystemRoleDDL("app_k_draft", { members: ["wizard_runtime"] });
+    expect(ddl[0]).toContain(`CREATE ROLE "sys_k_draft_system" NOLOGIN NOINHERIT`);
+    expect(ddl[0]).toContain("NOBYPASSRLS");
+    expect(ddl[0]).toContain("IF NOT EXISTS");
+    expect(ddl[1]).toBe(`GRANT "sys_k_draft_system" TO "wizard_runtime" WITH INHERIT FALSE, SET TRUE`);
+    expect(() => toSystemRoleDDL("app_k_draft", { members: ['x"; drop'] })).toThrow();
+    expect(() => toRLS(miniSpec(), S, { systemRole: "Bad Role" })).toThrow();
+    expect(dropSystemRoleDDL("app_k_draft")[0]).toContain(`DROP ROLE "sys_k_draft_system"`);
+  });
+});
+
 describe("toRLS", () => {
-  const rls = toRLS(miniSpec(), S, { runtimeRole: "rt" });
+  const rls = toRLS(miniSpec(), S, { runtimeRole: "rt", systemRole: "sys_x_draft_system" });
 
   test("enable + force on every table, stale wz_* policies dropped", () => {
     for (const t of ["task", "comment"]) {
@@ -389,13 +430,13 @@ describe("toRLS", () => {
     expect(rls.some((s) => s.startsWith("DO $wz$") && s.includes("DROP POLICY"))).toBe(true);
   });
 
-  test("system tables: created with the schema, RLS forced, only the __system context may access", () => {
+  test("system tables: created with the schema, RLS forced, only the system DB role may access (L3-20)", () => {
     const ddl = toDDL(planMigration(null, miniSpec()), S);
     for (const table of Object.keys(SYSTEM_TABLES)) {
       expect(ddl.some((x) => x.startsWith(`CREATE TABLE IF NOT EXISTS "${S}"."${table}"`))).toBe(true);
       expect(rls).toContain(`ALTER TABLE "${S}"."${table}" FORCE ROW LEVEL SECURITY`);
       expect(rls).toContain(
-        `CREATE POLICY "wz__system" ON "${S}"."${table}" AS PERMISSIVE FOR ALL TO PUBLIC USING (current_setting('wizard.role', true) = '__system') WITH CHECK (current_setting('wizard.role', true) = '__system')`,
+        `CREATE POLICY "wz__system" ON "${S}"."${table}" AS PERMISSIVE FOR ALL TO "sys_x_draft_system" USING (true) WITH CHECK (true)`,
       );
     }
     expect(ddl.findIndex((x) => x.includes(`"${S}"."users" (`))).toBeLessThan(
@@ -428,7 +469,7 @@ describe("toRLS", () => {
   });
 
   test("grants for the runtime role", () => {
-    expect(rls.slice(-3)).toEqual([
+    expect(rls.slice(-6, -3)).toEqual([
       `GRANT USAGE ON SCHEMA "${S}" TO "rt"`,
       `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${S}" TO "rt"`,
       `GRANT USAGE ON ALL SEQUENCES IN SCHEMA "${S}" TO "rt"`,
