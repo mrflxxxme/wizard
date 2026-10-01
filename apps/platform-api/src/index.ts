@@ -1,5 +1,20 @@
 export const APP = "@wizard/platform-api";
 
+/** «Пожаловаться», takedown and staff access by ticket (security/abuse.yaml#report, #takedown; M2-08). */
+export {
+  ABUSE_SLA_MS,
+  applyAbuseAction,
+  CATEGORY_RU,
+  checkAbuseSla,
+  createAbuseReport,
+  purgeAbuseContacts,
+  REPORT_CATEGORIES,
+  STAFF_ACCESS_TTL_MS,
+  staffAccessUntil,
+  systemOfUrl,
+} from "./abuse/reports.js";
+/** Staff accounts with mandatory TOTP (api.yaml#info.x-auth.M2): grant/revoke, MFA reset, session state. */
+export { resetStaffMfa, STAFF_MFA_TTL_MS, setStaff, staffState } from "./abuse/staff.js";
 /** Consent text from the runtime's legal template registry (drafts until the lawyer). */
 export { renderConsentText, withConsentText } from "./agents/consent.js";
 export { bundleDraft, MIGRATOR_ROLE, migrateDraft, RUNTIME_ROLE, seedDraft } from "./agents/draft.js";
@@ -17,6 +32,8 @@ export {
   RESTRICTED_REGIONS,
 } from "./auth/region.js";
 export { cookieNames } from "./auth/sessions.js";
+/** RFC 6238 TOTP on node:crypto (staff MFA): code of a base32 secret, verification with replay guard. */
+export { base32Decode, base32Encode, newTotpSecret, otpauthUri, totpCode, verifyTotp } from "./auth/totp.js";
 export {
   type BalanceMilli,
   Billing,

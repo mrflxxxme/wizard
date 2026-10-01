@@ -1,0 +1,37 @@
+/* «Пожаловаться» (/abuse) and the staff console (/admin): form controls on --w-* tokens, M2-08. */
+.control {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-radius-sm);
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.control[aria-invalid="true"] {
+  border-color: var(--w-bad);
+}
+
+textarea.control {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.hint {
+  margin: 0;
+  color: var(--w-muted);
+  font-size: 12px;
+}
+
+.done {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--w-radius-sm);
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+  font-size: 14px;
+}

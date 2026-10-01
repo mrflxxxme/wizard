@@ -49,8 +49,7 @@ export function defaultModerationLog(): ModerationLog {
 
 /**
  * abuse.yaml#scoring signals new_org_lt_7d, free_plan, abuse_reports_prev and #patterns.brands.override
- * (platform.brand_allowlist). Earlier reports are counted once platform.abuse_reports exists (M2-08): reports on
- * the org's systems that staff did not dismiss.
+ * (platform.brand_allowlist). Earlier reports (M2-08): reports on the org's systems that staff did not dismiss.
  */
 export async function abuseContext(
   db: Db,
@@ -68,27 +67,17 @@ export async function abuseContext(
     .where("org_id", "=", orgId)
     .orderBy("brand_id")
     .execute();
-  const out: NonNullable<GateContext["abuse"]> = {
-    orgAgeDays: Math.max(0, Math.floor((now.getTime() - new Date(org.created_at).getTime()) / DAY_MS)),
-    plan: org.plan,
-    brandAllowlist: brands.map((b) => b.brand_id),
-  };
-  const reports = await abuseReportsPrev(db, orgId);
-  if (reports !== null) out.abuseReportsPrev = reports;
-  return out;
-}
-
-async function abuseReportsPrev(db: Db, orgId: string): Promise<number | null> {
-  const t = await sql<{ t: string | null }>`select to_regclass('platform.abuse_reports')::text as t`.execute(
-    db,
-  );
-  if (!t.rows[0]?.t) return null;
-  const r = await sql<{ n: number }>`
+  const reports = await sql<{ n: number }>`
     select count(*)::int as n
     from platform.abuse_reports ar
     join platform.systems s on s.id = ar.system_id
     where s.org_id = ${orgId} and ar.status <> 'dismissed'`.execute(db);
-  return r.rows[0]?.n ?? 0;
+  return {
+    orgAgeDays: Math.max(0, Math.floor((now.getTime() - new Date(org.created_at).getTime()) / DAY_MS)),
+    plan: org.plan,
+    brandAllowlist: brands.map((b) => b.brand_id),
+    abuseReportsPrev: reports.rows[0]?.n ?? 0,
+  };
 }
 
 /**

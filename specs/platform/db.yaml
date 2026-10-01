@@ -26,6 +26,8 @@ tables:
       is_staff: "boolean not null default false"          # M2; в бете staff = учётная запись основателя (F7)
       totp_secret_ref: "text"                             # M2, secret://; значение в OpenBao
       mfa_enrolled_at: "timestamptz"                      # M2; is_staff без MFA не получает доступ к /admin/* (api.yaml#info.x-auth.M2, F7)
+      totp_last_step: "bigint"                            # M2-08; шаг RFC 6238 последнего принятого кода — код принимается один раз
+      mfa_recovery_hashes: "jsonb"                        # M2-08; HMAC неиспользованных кодов восстановления (сами коды показываются один раз)
       deleted_at: "timestamptz"                           # M2, DELETE /me: email → anonymized-<id>, name → null, сессии отозваны (L3-36)
       pd_consent_at: "timestamptz"                        # M1, compliance.yaml#platform
       offer_accepted_at: "timestamptz"
@@ -54,6 +56,7 @@ tables:
       csrf_hash: "text not null"
       expires_at: "timestamptz not null"
       revoked_at: "timestamptz"
+      mfa_verified_at: "timestamptz"                          # M2-08; TOTP-подтверждение staff в этой сессии (step-up, api.yaml#info.x-auth.M2)
     indexes: ["unique (token_hash)", "(user_id)"]
 
   orgs:
@@ -453,7 +456,7 @@ tables:
       assignee: "uuid references platform.users"
       resolution_note: "text"
       resolved_at: "timestamptz"
-    indexes: ["(status, sla_deadline)", "(system_id)"]
+    indexes: ["(status, sla_deadline)", "(system_id)", "(reporter_ip_hash, created_at)"]   # последний — лимит 10/ч на IP (M2-08)
 
   founder_reviews:
     milestone: M2
@@ -493,6 +496,8 @@ tables:
       action: "text not null"
       target: "text not null"
       note: "text"
+    indexes: ["(target, created_at desc)", "(actor, action, created_at desc)"]   # M2-08: журнал тикета; доступ staff по тикету и неудачные коды MFA
+    retention: "3 года (deploy.yaml#cloud.observability: аудит staff 3 года)"
 
   brand_allowlist:
     milestone: M2

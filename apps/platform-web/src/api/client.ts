@@ -1,6 +1,10 @@
 // Typed client of the M0 subset of specs/platform/api.yaml. Mutations carry Idempotency-Key (one uuid per click).
 import { ru } from "../i18n/ru.js";
 import type {
+  AbuseCategory,
+  AbuseReport,
+  AbuseStatus,
+  AbuseTicket,
   Answer,
   ApiErrorBody,
   Billing,
@@ -8,6 +12,7 @@ import type {
   DeletionLogEntry,
   DiffChange,
   ExportView,
+  FounderReviewItem,
   GateReport,
   ImportColumnMapping,
   ImportView,
@@ -24,6 +29,8 @@ import type {
   Revision,
   RevisionSummary,
   Run,
+  StaffData,
+  StaffSession,
   System,
   SystemDeleted,
   SystemView,
@@ -292,6 +299,46 @@ export function createApiClient(opts: ClientOptions = {}) {
         {
           body: { mapping },
         },
+      ),
+    // «Пожаловаться» (M2-08, no login) and the staff console /admin (api.yaml x-auth M2).
+    createAbuseReport: (body: {
+      url: string;
+      category: AbuseCategory;
+      text?: string;
+      contactEmail?: string;
+      contactConsent?: boolean;
+    }) => call<{ reportId: string }>("POST", "/abuse-reports", { body }),
+    adminSession: () => call<StaffSession>("GET", "/admin/session"),
+    adminMfaEnroll: () => call<{ secret: string; otpauthUrl: string }>("POST", "/admin/mfa/enroll"),
+    adminMfaConfirm: (code: string) =>
+      call<{ recoveryCodes: string[]; mfaVerifiedUntil: string }>("POST", "/admin/mfa/confirm", {
+        body: { code },
+      }),
+    adminMfaVerify: (body: { code: string } | { recoveryCode: string }) =>
+      call<{ mfaVerifiedUntil: string }>("POST", "/admin/mfa/verify", { body }),
+    adminListAbuseReports: (status?: AbuseStatus) =>
+      call<{ items: AbuseReport[] }>("GET", "/admin/abuse-reports", { query: { status } }),
+    adminGetAbuseReport: (id: string) =>
+      call<AbuseTicket>("GET", `/admin/abuse-reports/${encodeURIComponent(id)}`),
+    adminAbuseAction: (
+      id: string,
+      body: { action: "triage" | "takedown" | "dismiss" | "restore"; note: string; category?: AbuseCategory },
+    ) => call<AbuseReport>("POST", `/admin/abuse-reports/${encodeURIComponent(id)}/actions`, { body }),
+    adminOpenStaffAccess: (id: string, note: string) =>
+      call<{ until: string }>("POST", `/admin/abuse-reports/${encodeURIComponent(id)}/access`, {
+        body: { note },
+      }),
+    adminSystemData: (id: string, entity?: string) =>
+      call<StaffData>("GET", `/admin/abuse-reports/${encodeURIComponent(id)}/data`, { query: { entity } }),
+    adminListFounderReviews: () => call<{ items: FounderReviewItem[] }>("GET", "/admin/founder-reviews"),
+    adminFounderReview: (
+      systemId: string,
+      body: { revision: number; decision: "approve" | "reject"; note?: string },
+    ) =>
+      call<{ systemId: string; revision: number; status: string }>(
+        "POST",
+        `/admin/systems/${encodeURIComponent(systemId)}/founder-review`,
+        { body },
       ),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };

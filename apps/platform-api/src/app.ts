@@ -2,6 +2,7 @@ import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger } from "@wizard/pii/log";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { checkAbuseSla } from "./abuse/reports.js";
 import { createAgentExecutors } from "./agents/executors.js";
 import { type Mailer, OutboxMailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
@@ -20,6 +21,8 @@ import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 import { createOpsAlert, type OpsAlertFn } from "./ops/alert.js";
 import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
+import { abuseRoutes } from "./routes/abuse.js";
+import { adminRoutes } from "./routes/admin.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
@@ -66,6 +69,8 @@ export interface PlatformApiOptions {
    * in-process timer (default 0 with dbos: DBOS scheduled workflows of apps/worker).
    */
   creditsCronMs?: number;
+  /** SLA watch of abuse reports (< 2 h left → founder alert once per report; M2-08); 0 disables. Default 10 min. */
+  abuseSlaMs?: number;
   /** retention_cron platform pass period (hourly in-process; 0 disables, default 0 with dbos — worker schedule). */
   retentionCronMs?: number;
   /**
@@ -117,6 +122,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     llmCap,
     ...(opts.now ? { now: opts.now } : {}),
   });
+  const secrets = new SecretStore(config.secretsFile, config.secretsKey);
   const executors =
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
@@ -134,7 +140,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     billing,
     role: dbos ? "client" : "inprocess",
     ...(dispatcher ? { dispatcher } : {}),
-    secrets: new SecretStore(config.secretsFile, config.secretsKey),
+    secrets,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     ...(opts.publish ? { publish: opts.publish } : {}),
     log,
@@ -198,6 +204,15 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
         }, retentionMs)
       : undefined;
   retention?.unref();
+  // abuse.yaml#takedown.sla: every API process watches (one alert per report through db.yaml#ops_alerts).
+  const abuseSlaMs = opts.abuseSlaMs ?? 600_000;
+  const abuseSla =
+    abuseSlaMs > 0
+      ? setInterval(() => {
+          checkAbuseSla({ db: handle.db, alert }).catch((e) => log("abuse SLA watch failed", e));
+        }, abuseSlaMs)
+      : undefined;
+  abuseSla?.unref();
 
   const app = new Hono();
   app.onError((err, c) => {
@@ -233,6 +248,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", orgRoutes(deps, accounts));
   api.route("/", creditRoutes(deps));
   api.route("/", billingRoutes(deps));
+  const abuse = { db: handle.db, pg: handle.pg, config, mailer, alert, log, secrets };
+  api.route("/", abuseRoutes(abuse));
+  api.route("/", adminRoutes(abuse));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 
@@ -244,6 +262,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     async close() {
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
+      if (abuseSla) clearInterval(abuseSla);
       if (sweepTimer) clearInterval(sweepTimer);
       await engine.close();
       await executors.close?.();
