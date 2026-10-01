@@ -75,7 +75,11 @@ export interface PlatformApiOptions {
 
 export interface PlatformApi {
   app: Hono;
-  fetch: (req: Request) => Response | Promise<Response>;
+  /**
+   * Hono fetch for @hono/node-server: `env` ({incoming, outgoing}) MUST be passed on — clientIp() reads the peer
+   * address from it (webhook IP allowlist, OTP and card-binding limits; M2-11 fix).
+   */
+  fetch: (req: Request, env?: unknown) => Response | Promise<Response>;
   engine: RunEngine;
   deps: Deps;
   close(): Promise<void>;
@@ -220,7 +224,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
 
   return {
     app,
-    fetch: (req) => app.fetch(req),
+    fetch: (req, env) => app.fetch(req, env),
     engine,
     deps,
     async close() {

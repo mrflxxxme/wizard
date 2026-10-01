@@ -3,16 +3,21 @@ import { ru } from "../i18n/ru.js";
 import type {
   Answer,
   ApiErrorBody,
+  Billing,
+  CreditBalance,
   DeletionLogEntry,
   DiffChange,
+  ExportView,
   GateReport,
   ImportColumnMapping,
   ImportView,
   Invite,
+  LedgerEntry,
   LockStatus,
   Me,
   Member,
   Message,
+  Org,
   OrgSettings,
   PreviewUrl,
   Publication,
@@ -228,6 +233,9 @@ export function createApiClient(opts: ClientOptions = {}) {
         operatorContact: string;
         operatorAddress?: string;
         operatorInn?: string;
+        /** Lawyer's template (agents/consent.ts ids); consentText — the owner's own text instead (M2-11). */
+        consentTemplateId?: string;
+        consentText?: string;
       },
     ) => call<{ revision: RevisionSummary }>("PUT", `${sys(id)}/compliance`, { body }),
     // 152-ФЗ of the owner (M2-05): deletion journal and the soft delete of a system.
@@ -236,6 +244,36 @@ export function createApiClient(opts: ClientOptions = {}) {
         query: { limit: String(limit), cursor },
       }),
     deleteSystem: (id: string) => call<SystemDeleted>("DELETE", sys(id)),
+    // Data export (M2-10): run → ZIP; getExport issues a fresh single-use downloadUrl on every call when ready.
+    createExport: (id: string, body: { env: "draft" | "prod"; includePii?: boolean }) =>
+      call<{ exportId: string; run: Run }>("POST", `${sys(id)}/exports`, {
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    listExports: (id: string) => call<{ items: ExportView[] }>("GET", `${sys(id)}/exports`),
+    getExport: (id: string, exportId: string) =>
+      call<ExportView>("GET", `${sys(id)}/exports/${encodeURIComponent(exportId)}`),
+    // Plan, balance and the platform shop (M1-03, M2-07; S-billing).
+    getOrg: (orgId: string) => call<Org>("GET", org(orgId)),
+    getCredits: (orgId: string) => call<CreditBalance>("GET", `${org(orgId)}/credits`),
+    listLedger: (orgId: string, cursor?: string, limit = 20) =>
+      call<{ items: LedgerEntry[]; nextCursor: string | null }>("GET", `${org(orgId)}/credits/ledger`, {
+        query: { limit: String(limit), cursor },
+      }),
+    getBilling: (orgId: string) => call<Billing>("GET", `${org(orgId)}/billing`),
+    startCardBinding: (orgId: string) =>
+      call<{ confirmationUrl: string }>("POST", `${org(orgId)}/billing/card-binding`, {
+        body: {},
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    changeSubscription: (orgId: string, plan: "start" | "business") =>
+      call<Billing>("PUT", `${org(orgId)}/billing/subscription`, { body: { plan } }),
+    cancelSubscription: (orgId: string) => call<Billing>("DELETE", `${org(orgId)}/billing/subscription`),
+    createTopup: (orgId: string, packs: number) =>
+      call<{ confirmationUrl: string | null; paymentId: string }>("POST", `${org(orgId)}/billing/topups`, {
+        body: { packs },
+        idempotencyKey: newIdempotencyKey(),
+      }),
     // Table import (api.yaml#createImport, #getImport, #updateImportMapping; M1-07).
     createImport: (id: string, file: Blob, name: string) => {
       const form = new FormData();

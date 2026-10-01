@@ -101,7 +101,8 @@
 
 .member select,
 .field select,
-.field input {
+.field input,
+.field textarea {
   min-height: 34px;
   padding: 4px 8px;
   border: 1px solid var(--w-line);
@@ -283,4 +284,8 @@
 
 .danger {
   border-color: var(--w-bad);
+}
+
+.preWrap {
+  white-space: pre-wrap;
 }
