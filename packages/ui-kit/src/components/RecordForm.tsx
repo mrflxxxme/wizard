@@ -10,12 +10,14 @@ import { ru } from "../i18n/ru.js";
 import { ButtonImpl } from "./Button.js";
 import { ConsentCheckboxImpl } from "./ConsentCheckbox.js";
 import { FieldImpl } from "./Field.js";
+import { FileFieldImpl } from "./FileField.js";
 import styles from "./RecordForm.module.css";
 import { part, type RootAttrs } from "./root.js";
 import { DataState } from "./States.js";
 import type { RecordFormProps } from "./types.js";
 
-const NEVER = new Set(["qr_token", "file", "json"]);
+// file → FileField (M2-14, RecordForm.field_mapping); qr_token and json are never edited in forms.
+const NEVER = new Set(["qr_token", "json"]);
 
 /** Default field list: visible, editable by the role, not rowFilter-bound, not refs to users (RecordForm.fields). */
 export function defaultFormFields(spec: RoleSpec, entity: string): string[] {
@@ -155,6 +157,21 @@ function FormImpl(props: RecordFormProps & { root: RootAttrs; initial: Record<st
           readOnly: !editable(f),
           enumOptions: f.enum,
         };
+        if (f.type === "file")
+          return (
+            <FileFieldImpl
+              key={f.name}
+              root={part(`wz-filefield-${f.name}`)}
+              name={f.name}
+              label={f.label}
+              entity={entity}
+              value={typeof values[f.name] === "string" ? (values[f.name] as string) : null}
+              onChange={common.onChange}
+              required={common.required}
+              error={common.error}
+              disabled={common.disabled}
+            />
+          );
         return f.type === "ref" && f.ref ? (
           <RefField key={f.name} target={f.ref.entity} {...common} />
         ) : (

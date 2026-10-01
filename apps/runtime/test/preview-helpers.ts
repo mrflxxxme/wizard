@@ -13,6 +13,7 @@ import {
   migrateSystem,
   type RegistryEntry,
   type RuntimeApp,
+  type RuntimeAppOptions,
   type RuntimeEnv,
   schemaName,
 } from "../src/index.js";
@@ -82,11 +83,16 @@ export interface PreviewFixture {
     migrate?: boolean;
     /** Build with the real @wizard/ui-kit instead of the stub (browser tests). */
     realUiKit?: boolean;
+    /** Extra or replaced ui/** and functions/** files on top of the forum's. */
+    files?: ReadonlyMap<string, string>;
   }): Promise<RegistryEntry>;
   close(): Promise<void>;
 }
 
-export async function previewFixture(env: Partial<RuntimeEnv> = {}): Promise<PreviewFixture> {
+export async function previewFixture(
+  env: Partial<RuntimeEnv> = {},
+  app: Partial<RuntimeAppOptions> = {},
+): Promise<PreviewFixture> {
   const root = mkdtempSync(join(tmpdir(), "wz-rt-preview-"));
   const sql = postgres(DB_URL, { max: 8, onnotice: () => {} });
   const role = `wz_rt_prev_${newKey()}`;
@@ -100,6 +106,7 @@ export async function previewFixture(env: Partial<RuntimeEnv> = {}): Promise<Pre
     artifactsRoot: join(root, "artifacts"),
     env: { ...devEnv, platformOrigin: PLATFORM, ...env },
     secrets: () => staticSecretReader({ qr_signing_key: serializeQrKeyring(ring) }),
+    ...app,
   });
   const schemas: string[] = [];
   const uiKit = uiKitStub();
@@ -118,10 +125,11 @@ export async function previewFixture(env: Partial<RuntimeEnv> = {}): Promise<Pre
       spec = forumSpec(),
       migrate = false,
       realUiKit = false,
+      files,
     }) {
       const built = await buildSystem({
         spec,
-        files: forumFiles(),
+        files: new Map([...forumFiles(), ...(files ?? [])]),
         env: sysEnv,
         platformOrigin: PLATFORM,
         ...(realUiKit ? {} : { hostModules: { uiKit } }),

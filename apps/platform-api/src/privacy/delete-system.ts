@@ -1,10 +1,11 @@
 // workflows.yaml#delete_system (L3-36): a system soft-deleted by its owner (systems.deleted_at) is purged 30 days later
 // in the retention_cron pass: DROP SCHEMA app_<key>_{draft,prod}, artifacts (bundles, blobs no other system references),
-// messages, imports, exports, secrets_refs and their stored values; deletion_log mode=system_deleted. No platform.runs row.
+// messages, imports, exports, secrets_refs and their stored values, objects of file fields (M2-14); deletion_log
+// mode=system_deleted. No platform.runs row.
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { dropSystemRoleDDL, quoteIdent, systemRoleName } from "@wizard/appspec";
-import { schemaName } from "@wizard/runtime";
+import { createFileStorage, type FileStorage, purgeSchemaFiles, schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE } from "../agents/draft.js";
 import type { Config } from "../config.js";
@@ -29,6 +30,18 @@ export interface PurgeDeps {
   config: Pick<Config, "artifactsDir" | "importsDir" | "secretsFile" | "secretsKey">;
   migratorRole?: string;
   log?: (msg: string, err?: unknown) => void;
+  /**
+   * Storage of file fields shared with the runtime (runtime.yaml#files.storage); default from env
+   * (WIZARD_FILES_STORAGE, folder <artifactsDir>/../files like the runtime).
+   */
+  files?: FileStorage;
+}
+
+/** The file storage of the deps or the env default (the runtime resolves the same one). */
+export function fileStorageOf(d: Pick<PurgeDeps, "files" | "config">): FileStorage {
+  return (
+    d.files ?? createFileStorage(process.env, { defaultDir: join(dirname(d.config.artifactsDir), "files") })
+  );
 }
 
 export interface PurgedSystem {
@@ -36,6 +49,8 @@ export interface PurgedSystem {
   schemas: string[];
   rows: number;
   blobs: number;
+  /** Objects of file fields deleted (both envs). */
+  files: number;
 }
 
 /** Blob shas a revision set references: files manifests and the files they list. Missing blobs are skipped. */
@@ -111,6 +126,7 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
   const exports = new ExportStore(d.config.artifactsDir, d.config.secretsKey);
   const secrets = new SecretStore(d.config.secretsFile, d.config.secretsKey);
   const role = d.migratorRole ?? MIGRATOR_ROLE;
+  const storage = fileStorageOf(d);
   const out: PurgedSystem[] = [];
   for (const s of candidates) {
     try {
@@ -136,8 +152,11 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
         .execute())
         await exports.remove(r.id);
       secrets.removeSystem(s.id);
-      if (KEY_RE.test(s.schema_key))
+      let files = 0;
+      if (KEY_RE.test(s.schema_key)) {
         await rm(join(d.config.artifactsDir, s.schema_key), { recursive: true, force: true });
+        for (const env of ENVS) files += await purgeSchemaFiles(storage, schemaName(s.schema_key, env));
+      }
       for (const sha of own) await rm(join(d.blobs.root, BlobStore.key(sha)), { force: true });
 
       const purged = await d.pg.begin(async (tx) => {
@@ -174,6 +193,7 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
         schemas: purged.map((p) => p.schema),
         rows: purged.reduce((n, p) => n + p.rows, 0),
         blobs: own.length,
+        files,
       });
     } catch (e) {
       d.log?.("delete_system failed", e);

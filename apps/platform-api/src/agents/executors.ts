@@ -14,6 +14,7 @@ import { type RuntimeHandle, runGates } from "@wizard/gates";
 import {
   closeExecutors,
   createRuntimeApp,
+  MemoryFileStorage,
   MemoryRegistry,
   type RuntimeApp,
   readEnv,
@@ -151,6 +152,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         connectors: "outbox",
         secrets: testModeSecrets(),
         artifactsRoot: o.config.artifactsDir,
+        // G1 systems are ephemeral: their uploads (probes of required file fields) never reach the shared storage.
+        files: new MemoryFileStorage(),
         env: {
           ...readEnv(),
           authModeDev: true,

@@ -2,7 +2,7 @@
 // org without activity for 60 days loses only its test schema app_<key>_draft — the owner is warned 7 days before;
 // spec, code, revisions and prod stay; the next build recreates the schema (migrate_draft on a missing schema).
 import { quoteIdent, systemRoleName } from "@wizard/appspec";
-import { schemaName } from "@wizard/runtime";
+import { type FileStorage, purgeSchemaFiles, schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE } from "../agents/draft.js";
 import type { Mailer } from "../auth/mailer.js";
@@ -23,6 +23,8 @@ export interface FreeDraftDeps {
   log?: (msg: string, err?: unknown) => void;
   /** Platform URL for the link in the letter (config.platformOrigin). */
   platformOrigin?: string;
+  /** Storage of file fields: the draft's objects go with its data (M2-14); absent — not touched. */
+  files?: FileStorage;
 }
 
 export interface FreeDraftReport {
@@ -120,6 +122,8 @@ export async function purgeInactiveFreeDrafts(d: FreeDraftDeps, now = new Date()
         ...(d.log ? { log: d.log } : {}),
       });
       const schema = schemaName(s.schema_key, "draft");
+      // Files first (idempotent): a crash before the drop repeats the purge.
+      if (d.files) await purgeSchemaFiles(d.files, schema);
       const rows = await d.pg.begin(async (tx) => {
         // Counted under the schema's system DB role (FORCE RLS; L3-20), dropped by its owner.
         await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schema))}`);

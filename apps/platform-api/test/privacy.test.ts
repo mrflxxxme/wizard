@@ -8,7 +8,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
-import { RETENTION_MARKER_KEY, RETENTION_REQUEST_KEY } from "@wizard/runtime";
+import {
+  type FileMeta,
+  MemoryFileStorage,
+  RETENTION_MARKER_KEY,
+  RETENTION_REQUEST_KEY,
+} from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { migrateDraft } from "../src/agents/draft.js";
 import { upgradeSystemTables } from "../src/agents/system-tables.js";
@@ -50,6 +55,22 @@ const prod = () => `"app_${key}_prod"`;
 const draft = () => `"app_${key}_draft"`;
 
 const alerts: { msg: string; fields: Record<string, unknown> }[] = [];
+/** Objects of file fields (M2-14): the runtime and retention_cron share this storage. */
+const fileStore = new MemoryFileStorage();
+const FILE_META: FileMeta = {
+  name: "Доклад.pdf",
+  mime: "application/pdf",
+  size: 5,
+  entity: "speaker_application",
+  field: "slides",
+  uploadedBy: null,
+  uploadedAt: "2026-01-01T00:00:00.000Z",
+};
+async function putFile(schema: string): Promise<string> {
+  const key = `${schema}/${crypto.randomUUID()}`;
+  await fileStore.put(key, new TextEncoder().encode("%PDF-"), FILE_META);
+  return key;
+}
 
 function cron(now?: Date) {
   return runRetentionCron(
@@ -61,6 +82,7 @@ function cron(now?: Date) {
       mailer,
       alert: (msg, fields) => alerts.push({ msg, fields }),
       platformOrigin: "http://localhost:5173",
+      files: fileStore,
     },
     now,
   );
@@ -404,6 +426,8 @@ describe("F5: inactive Free drafts (workflows.yaml#retention_cron)", () => {
         (await pg`select count(*)::int as n from platform.revisions where system_id = ${b.systemId}`)[0]?.n,
       );
     const revCount = await revs();
+    const draftFile = await putFile(draftSchema);
+    const prodFile = await putFile(`app_${k}_prod`);
     const now = new Date();
     const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
 
@@ -427,6 +451,9 @@ describe("F5: inactive Free drafts (workflows.yaml#retention_cron)", () => {
     const r = await cron(new Date(now.getTime() + 7 * 86_400_000 + 60_000));
     expect(r.freeDrafts.purged).toEqual([{ systemId: b.systemId, rows: expect.any(Number) }]);
     expect(await exists()).toBe(false);
+    // M2-14: the draft's file objects go with its data; prod files stay.
+    expect(fileStore.objects.has(draftFile)).toBe(false);
+    expect(fileStore.objects.has(prodFile)).toBe(true);
     expect(await revs()).toBe(revCount);
     const [sys] =
       await pg`select draft_data_purged_at, deleted_at from platform.systems where id = ${b.systemId}`;
@@ -479,6 +506,8 @@ describe("delete_system (L3-36)", () => {
       returning id`;
     const imports = new ImportStore(cfg.importsDir, cfg.secretsKey);
     await imports.put(imp?.id, new TextEncoder().encode("a;b\n1;2\n"));
+    const files = [await putFile(`app_${key}_prod`), await putFile(`app_${key}_draft`)];
+    const foreignFile = await putFile("app_zzzzzzzzzzzz_prod");
     const bundleDir = join(cfg.artifactsDir, key, "1");
     mkdirSync(bundleDir, { recursive: true });
     writeFileSync(join(bundleDir, "manifest.json"), "{}");
@@ -544,7 +573,9 @@ describe("delete_system (L3-36)", () => {
     await pg`update platform.systems set deleted_at = now() - interval '31 days' where id = ${systemId}`;
     const r = await cron();
     expect(r.purged).toHaveLength(1);
-    expect(r.purged[0]).toMatchObject({ systemId, blobs: 2 });
+    expect(r.purged[0]).toMatchObject({ systemId, blobs: 2, files: 2 });
+    for (const f of files) expect(fileStore.objects.has(f)).toBe(false);
+    expect(fileStore.objects.has(foreignFile)).toBe(true);
     expect(r.purged[0]?.schemas.sort()).toEqual([`app_${key}_draft`, `app_${key}_prod`]);
 
     const [ns] = await pg`select count(*)::int as n from pg_namespace where nspname like ${`app_${key}_%`}`;
