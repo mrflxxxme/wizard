@@ -1,7 +1,7 @@
 // F5 (product.yaml#decisions, billing.yaml#plans.free.inactive_drafts, workflows.yaml#retention_cron): a system of a Free
 // org without activity for 60 days loses only its test schema app_<key>_draft — the owner is warned 7 days before;
 // spec, code, revisions and prod stay; the next build recreates the schema (migrate_draft on a missing schema).
-import { quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { quoteIdent, systemRoleName } from "@wizard/appspec";
 import { schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE } from "../agents/draft.js";
@@ -121,8 +121,8 @@ export async function purgeInactiveFreeDrafts(d: FreeDraftDeps, now = new Date()
       });
       const schema = schemaName(s.schema_key, "draft");
       const rows = await d.pg.begin(async (tx) => {
-        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
-        await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+        // Counted under the schema's system DB role (FORCE RLS; L3-20), dropped by its owner.
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schema))}`);
         const tables = await tx<{ tablename: string }[]>`
           select tablename from pg_catalog.pg_tables where schemaname = ${schema} and tablename not like '\\_w\\_%'`;
         let n = 0;
@@ -132,6 +132,7 @@ export async function purgeInactiveFreeDrafts(d: FreeDraftDeps, now = new Date()
           );
           n += Number((r as { n?: number } | undefined)?.n ?? 0);
         }
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
         await tx.unsafe(`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`);
         await tx.unsafe("SET LOCAL ROLE NONE");
         await tx`update platform.systems set draft_data_purged_at = ${now} where id = ${s.id}`;

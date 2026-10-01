@@ -1,10 +1,9 @@
 // workflows.yaml#retention_cron «Контроль»: a prod system with retention entities and no runtime retention pass for 26 h
 // → alert (structured log event retention_overdue, level error — the log pipeline turns it into an alert) and a request
 // row in its _w_jobs that the runtime retention tick serves within minutes (runtime.yaml#workflows.retention).
-import { quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { quoteIdent, systemRoleName } from "@wizard/appspec";
 import { RETENTION_MARKER_KEY, RETENTION_REQUEST_KEY, schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
-import { MIGRATOR_ROLE } from "../agents/draft.js";
 import type { Db } from "../db/index.js";
 
 /** Hours without a pass before the alert (daily pass + 2 h slack). */
@@ -62,8 +61,8 @@ export async function checkRetentionPasses(d: WatchdogDeps, now = new Date()): P
     let requested = false;
     try {
       requested = await d.pg.begin(async (tx) => {
-        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(d.migratorRole ?? MIGRATOR_ROLE)}`);
-        await tx.unsafe("select set_config('wizard.role', $1, true)", [SYSTEM_ROLE]);
+        // The schema's system DB role (isolation.yaml#db_access, L3-20).
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(systemRoleName(schema))}`);
         const [m] = await tx.unsafe(`select payload from ${jobs} where idempotency_key = $1`, [
           RETENTION_MARKER_KEY,
         ]);
