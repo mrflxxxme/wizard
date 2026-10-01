@@ -329,7 +329,7 @@ paths:
       x-roles: [owner]
       summary: 'Выгрузка данных (M2-10, L4-08): прогон export → ZIP (CSV по сущностям + spec.json; кода нет — non_goals). workflows.yaml#export_data'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env], additionalProperties: false, properties: {env: {enum: [draft, prod]}}}}}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env], additionalProperties: false, properties: {env: {enum: [draft, prod]}, includePii: {type: boolean, default: false, description: 'Включить колонки с ПДн; только после явного подтверждения владельца в UI (M2-10). Отметка сохраняется в выгрузке'}}}}}}
       responses: {'202': {description: Прогон поставлен в очередь, content: {application/json: {schema: {type: object, required: [exportId, run], properties: {exportId: {type: string, format: uuid}, run: {$ref: '#/components/schemas/Run'}}}}}}, '403': {$ref: '#/components/responses/Error'}}
     get: {operationId: listExports, x-milestone: M2, x-roles: [owner], responses: {'200': {description: 'Журнал выгрузок, новые сверху', content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Export'}}}}}}}}}
   /systems/{id}/exports/{exportId}:
@@ -340,6 +340,14 @@ paths:
       x-roles: [owner]
       summary: 'Статус выгрузки; при status=ready выдаёт одноразовую ссылку на ZIP (TTL 15 мин, L3-37); архив удаляется через 24 ч'
       responses: {'200': {description: Выгрузка, content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/Export'}, {type: object, properties: {downloadUrl: {type: [string, 'null'], format: uri}}}]}}}}, '404': {$ref: '#/components/responses/Error'}, '410': {$ref: '#/components/responses/Error'}}
+  /systems/{id}/exports/{exportId}/download:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: exportId, in: path, required: true, schema: {type: string, format: uuid}}, {name: token, in: query, required: true, schema: {type: string}}]
+    get:
+      operationId: downloadExport
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'Одноразовая ссылка из getExport.downloadUrl (TTL 15 мин, токен хранится как sha256, нужна сессия владельца); повтор или истечение → 410 EXPORT_LINK_USED'
+      responses: {'200': {description: ZIP, content: {application/zip: {schema: {type: string, format: binary}}}}, '404': {$ref: '#/components/responses/Error'}, '410': {$ref: '#/components/responses/Error'}}
   /systems/{id}/deletion-log:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     get:
