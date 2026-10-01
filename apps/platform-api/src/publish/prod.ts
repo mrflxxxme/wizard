@@ -10,6 +10,7 @@ import { upgradeSystemTables } from "../agents/system-tables.js";
 import type { Config } from "../config.js";
 import type { PublicationsTable } from "../db/types.js";
 import { RunFailure } from "../runs/types.js";
+import type { ModerationLog } from "./moderation.js";
 
 /** Prod host of a system in M1 (local/staging, deploy.yaml#local.hosts.systems; public prod — M2-07). */
 export function prodUrl(config: Pick<Config, "runtimePort">, slug: string): string {
@@ -38,6 +39,8 @@ export interface PublishOptions {
    * WIZARD_CONNECTORS=live, otherwise outbox (calls recorded in .data/outbox/<systemKey>/telegram.jsonl).
    */
   telegram?: TelegramPublishOptions;
+  /** Moderation journal of G2 antifraud hits (abuse_flag; default: a structured platform log line). */
+  moderationLog?: ModerationLog;
 }
 
 function get(url: URL, timeoutMs: number): Promise<{ status: number; body: string }> {
