@@ -13,13 +13,12 @@ import {
   IMMUTABLE,
   NO_CACHE,
 } from "../preview/headers.js";
+import { injectPwa, serviceWorker, webManifest } from "../pwa/pwa.js";
 import { loginPage } from "./login.js";
 
 const ASSET_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$/;
 /** Names produced by @wizard/build: index-<sha256[:12]>.{js,css}. */
 const HASHED_RE = /-[0-9a-f]{12}\.[a-z0-9]+$/;
-/** PWA files arrive in M1 (runtime.yaml#static.pwa). */
-const RESERVED_M1 = new Set(["/sw.js", "/manifest.webmanifest"]);
 
 async function readOrNull(path: string): Promise<Buffer | null> {
   try {
@@ -75,11 +74,24 @@ export function staticRoutes(): Hono<RuntimeHonoEnv> {
     if (pathname === "/login") return loginPage(c);
     const policy = sys.spec.compliance?.policyPage;
     if (policy && pathname === policy) return policyPage(c);
-    if (RESERVED_M1.has(pathname) || !sys.artifactDir) return notFoundPage();
+    if (!sys.artifactDir) return notFoundPage();
+    // runtime.yaml#static.pwa: generated per system and revision.
+    if (pathname === "/sw.js") {
+      return c.body(await serviceWorker(sys), 200, {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Cache-Control": NO_CACHE,
+      });
+    }
+    if (pathname === "/manifest.webmanifest") {
+      return c.body(JSON.stringify(await webManifest(sys)), 200, {
+        "Content-Type": contentType(pathname),
+        "Cache-Control": NO_CACHE,
+      });
+    }
     if (pathname.startsWith("/assets/")) return serveAsset(c, sys.artifactDir, pathname);
     const index = await readOrNull(join(sys.artifactDir, "client", "index.html"));
     if (!index) return notFoundPage();
-    return c.body(new Uint8Array(index), 200, documentHeaders());
+    return c.body(injectPwa(index.toString("utf8"), sys.spec), 200, documentHeaders());
   });
   return app;
 }

@@ -134,6 +134,17 @@ export const ru = {
     online: "В сети",
     offline: (tickets: number, pending: number) =>
       `● Нет сети · ${tickets} билетов в памяти · ${pending} отметок ждут синхронизации`,
+    memory: (tickets: number, pending: number) =>
+      `${tickets} билетов в памяти${pending > 0 ? ` · ${pending} отметок ждут синхронизации` : ""}`,
+    repeatEntry: "Повторный вход",
+    offlineReasons: {
+      no_manifest: "Нет сохранённого списка билетов — подключитесь к сети",
+      bad_format: "Код не похож на билет",
+      not_found: "Билет не найден",
+      revoked: "Билет отозван",
+      not_valid_status: "Билет не оплачен или отменён",
+    },
+    synced: (duplicates: number) => `Синхронизировано, повторных при сверке: ${duplicates}`,
     video: "Камера сканера",
   },
   cabinet: { title: "Личный кабинет", sections: "Разделы" },

@@ -2,6 +2,8 @@
 import { randomUUID } from "node:crypto";
 import type { AppSpec, Integration } from "@wizard/appspec";
 import { UniqueViolation } from "./errors.js";
+import { QR_REVOKED_PREFIX, type QrConfig } from "./qr.js";
+import type { QrOfflineStore, QrSyncResult } from "./qr-offline.js";
 import { getConnector } from "./registry.js";
 import { createConnectorLogger, MemoryOutbox } from "./runtime.js";
 import { staticSecretReader } from "./secrets.js";
@@ -83,6 +85,62 @@ export class MemoryStore implements ConnectorStore {
   }
   async set(key: string, value: unknown, ttlMs = Number.POSITIVE_INFINITY) {
     this.data.set(key, { value: structuredClone(value), until: this.now().getTime() + ttlMs });
+  }
+}
+
+/**
+ * QrOfflineStore over MemorySystemDb/MemoryStore. `since` is ignored (memory rows have no timestamps): deltas
+ * equal the full package here; the runtime tests cover them against Postgres.
+ */
+export class MemoryQrOfflineStore implements QrOfflineStore {
+  readonly qrEvents = new Map<
+    string,
+    { deviceId: string; result: QrSyncResult; clockSkew: boolean; receivedAt: Date }
+  >();
+  readonly devices = new Map<string, { userId: string | null; pending: number; lastSyncAt: Date }>();
+  constructor(
+    private readonly db: MemorySystemDb,
+    private readonly store: MemoryStore,
+    private readonly config: QrConfig,
+  ) {}
+  async carriers() {
+    return this.db.list(this.config.entity);
+  }
+  async checkedInTokens() {
+    const out: string[] = [];
+    for (const c of await this.db.list(this.config.checkin.entity)) {
+      const t = await this.db.get(this.config.entity, String(c[this.config.checkin.refField]));
+      if (typeof t?.[this.config.tokenField] === "string") out.push(t[this.config.tokenField] as string);
+    }
+    return out;
+  }
+  async revokedHashes() {
+    const out: string[] = [];
+    for (const k of this.store.data.keys()) {
+      if (k.startsWith(QR_REVOKED_PREFIX) && (await this.store.get(k)) !== undefined)
+        out.push(k.slice(QR_REVOKED_PREFIX.length));
+    }
+    return out;
+  }
+  async events(ids: readonly string[]) {
+    const out = new Map<string, QrSyncResult>();
+    for (const id of ids) {
+      const e = this.qrEvents.get(id);
+      if (e) out.set(id, e.result);
+    }
+    return out;
+  }
+  async saveEvent(e: Parameters<QrOfflineStore["saveEvent"]>[0]) {
+    const hit = this.qrEvents.get(e.clientEventId);
+    if (hit) return hit.result;
+    this.qrEvents.set(e.clientEventId, e);
+    return e.result;
+  }
+  async saveDevice(d: Parameters<QrOfflineStore["saveDevice"]>[0]) {
+    this.devices.set(d.deviceId, d);
+  }
+  async purgeEvents(before: Date) {
+    for (const [k, e] of this.qrEvents) if (e.receivedAt < before) this.qrEvents.delete(k);
   }
 }
 

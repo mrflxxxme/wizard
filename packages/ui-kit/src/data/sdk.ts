@@ -20,6 +20,9 @@ import type {
   ListQuery,
   QrCheckRequest,
   QrCheckResponse,
+  QrManifest,
+  QrOfflineApi,
+  QrSyncResponse,
   Rec,
   UserResult,
   WriteOpts,
@@ -175,6 +178,20 @@ export function sdkDataSource(): DataSource {
             return client.request<QrCheckResponse>("POST", "/_wizard/qr/check", req);
           },
         [client, verifyFn],
+      );
+    },
+    useQrOffline() {
+      const client = useSdkClient();
+      return useMemo<QrOfflineApi>(
+        () => ({
+          manifest: (since) =>
+            client.request<QrManifest>(
+              "GET",
+              `/_wizard/qr/manifest${since ? `?since=${encodeURIComponent(since)}` : ""}`,
+            ),
+          sync: (req) => client.request<QrSyncResponse>("POST", "/_wizard/qr/sync", req),
+        }),
+        [client],
       );
     },
   };

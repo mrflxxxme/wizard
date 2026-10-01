@@ -12,6 +12,8 @@ import {
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
 import { sessionOf } from "../http/subject.js";
+import { NO_CACHE } from "../preview/headers.js";
+import { monogramSvg, REGISTER_SCRIPT } from "../pwa/pwa.js";
 import { buildRoleSpec } from "../rolespec.js";
 
 async function roleOrNull(c: RuntimeContext): Promise<string | null> {
@@ -51,6 +53,20 @@ export function wizardRoutes(): Hono<RuntimeHonoEnv> {
     });
     return c.json(body, 200, { ETag: etag, "Cache-Control": "no-cache" });
   });
+
+  // runtime.yaml#static.pwa: service worker registration and the monogram icon of the manifest.
+  app.get("/pwa.js", (c) =>
+    c.body(REGISTER_SCRIPT, 200, {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Cache-Control": NO_CACHE,
+    }),
+  );
+  app.get("/icon.svg", (c) =>
+    c.body(monogramSvg(c.get("system").spec), 200, {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": NO_CACHE,
+    }),
+  );
 
   // runtime.yaml#auth.dev_login_M0: draft + WIZARD_DEV_LOGIN=1 only; elsewhere the route does not exist.
   app.get("/dev-login", async (c) => {

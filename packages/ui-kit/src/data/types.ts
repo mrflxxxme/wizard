@@ -73,6 +73,45 @@ export type QrCheckResponse = {
   firstCheckpoint?: string;
 };
 
+/** One ticket of the offline package (connectors/qr.yaml#offline.package): hash of rand, id, display line, status. */
+export type QrManifestEntry = { h: string; id: string; d: string; s: string };
+/** GET /_wizard/qr/manifest (connectors/qr.yaml#endpoints.manifest). */
+export type QrManifest = {
+  manifestId: string;
+  cursor: string;
+  generatedAt: string;
+  expiresAt: string;
+  /** true — replaces the device copy; false — delta since the requested cursor. */
+  full: boolean;
+  validStatuses: string[];
+  entries: QrManifestEntry[];
+  checkedIn: string[];
+  revoked: string[];
+};
+export type QrSyncEvent = {
+  clientEventId: string;
+  h: string;
+  scannedAt: string;
+  gate?: string;
+  localResult?: string;
+};
+export type QrSyncRequest = { deviceId: string; events: QrSyncEvent[]; sentAt?: string; pending?: number };
+export type QrSyncResult = "accepted" | "duplicate" | "unknown" | "revoked";
+/** POST /_wizard/qr/sync (connectors/qr.yaml#offline.sync_protocol). */
+export type QrSyncResponse = {
+  results: { clientEventId: string; result: QrSyncResult; firstScannedAt?: string }[];
+  accepted: number;
+  duplicate: number;
+  unknown: number;
+  revoked: number;
+  cursor: string;
+};
+/** ext: offline package and sync of QrScanner offline (M2-03). */
+export interface QrOfflineApi {
+  manifest(since?: string): Promise<QrManifest>;
+  sync(req: QrSyncRequest): Promise<QrSyncResponse>;
+}
+
 export interface DataSource {
   useList<T = Rec>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
   useRecord<T = Rec>(entity: string, id: string): AsyncResult<T>;
@@ -88,4 +127,6 @@ export interface DataSource {
   useAuth(): AuthApi;
   /** ext: POST /_wizard/qr/check (connectors/qr.yaml#endpoints.check) or verifyFn. */
   useQrCheck(verifyFn?: string): (req: QrCheckRequest) => Promise<QrCheckResponse>;
+  /** ext: GET /_wizard/qr/manifest and POST /_wizard/qr/sync (connectors/qr.yaml#endpoints). */
+  useQrOffline(): QrOfflineApi;
 }
