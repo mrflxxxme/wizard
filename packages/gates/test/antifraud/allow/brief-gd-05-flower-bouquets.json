@@ -1,0 +1,283 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф gd-05-flower-bouquets: «Цветочная мастерская: букеты на заказ к дате с доставкой»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Цветочная мастерская: букеты на заказ к дате с доставкой",
+      "description": "Цветочная мастерская, два флориста и курьер. Принимаем заказы в Telegram и по телефону, в праздники теряем заказы и путаем адреса. Нужен сайт: каталог букетов-образцов с ценой и конструктор — клиент выбирает размер (S, M, L), гамму, основные цветы, упаковку и открытку с текстом. Итоговая цена считае",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Букет",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Заказ",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Цветок",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Интервал доставки",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [
+      {
+        "name": "yookassa",
+        "connector": "yookassa",
+        "config": {},
+        "secretRefs": [
+          "secret://yookassa_shop_id",
+          "secret://yookassa_secret_key"
+        ]
+      },
+      {
+        "name": "telegram",
+        "connector": "telegram",
+        "config": {},
+        "secretRefs": [
+          "secret://telegram_bot_token"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Цветочная мастерская: букеты на заказ к дате с доставкой",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Цветочная мастерская: букеты на заказ к дате с доставкой\"}>\n      <p>{\"Цветочная мастерская, два флориста и курьер. Принимаем заказы в Telegram и по телефону, в праздники теряем заказы и путаем адреса. Нужен сайт: каталог букетов-образцов с ценой и конструктор — клиент выбирает размер (S, M, L), гамму, основные цветы, упаковку и открытку с текстом. Итоговая цена считается автоматически; если выбранных цветов нет в наличии, флорист предлагает замену, а клиент её подтверждает. Клиент указывает дату и интервал доставки (по 2 часа, с 9 до 21) или самовывоз; на один интервал не больше 6 доставок. Заказ на завтра принимается до 18:00. Оплата онлайн через ЮKassa при оформлении. Флорист видит заказы на день по времени сборки, отмечает «собран» и прикладывает фото букета, клиент получает фото на почту до отправки. Курьер видит свой маршрут на день и адреса получателей и отмечает «доставлен». В большие праздники владелица хочет ограничивать число заказов в день. Отчёт: продажи по дням и популярные цветы.\"}</p>\n      <ul>\n        <li>{\"Конструктор букета\"}</li>\n        <li>{\"Автоматический расчёт цены\"}</li>\n        <li>{\"Замена при отсутствии цветов\"}</li>\n        <li>{\"Лимит доставок на интервал\"}</li>\n        <li>{\"Приём до 18:00 на завтра\"}</li>\n        <li>{\"Оплата через ЮKassa\"}</li>\n        <li>{\"Фото собранного букета\"}</li>\n        <li>{\"Ограничение заказов в праздники\"}</li>\n      </ul>\n      <p>{\"Нельзя выбрать заполненный интервал доставки\"}</p>\n      <p>{\"Заказ на завтра после 18:00 не принимается\"}</p>\n      <p>{\"Курьер видит только свои доставки\"}</p>\n      <p>{\"Замена цветов требует подтверждения клиента\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

@@ -1,6 +1,7 @@
 // Briefs tools/eval/briefs/<id>.json (specs/quality/eval.yaml#briefs).
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const BRIEFS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "briefs");
@@ -8,6 +9,36 @@ export const BRIEF_ID = /^(ev|gd|hz)-[0-9]{2}-[a-z0-9-]+$/;
 export const SEGMENT_BY_PREFIX = { ev: "events", gd: "made_to_order", hz: "horizontal" };
 /** eval.yaml#briefs.set for M0. */
 export const M0_SET = { total: 12, ev: 5, gd: 3, hz: 4, canaries: 4 };
+/** eval.yaml#briefs.set for M2 (L4-28): 30 briefs, ≥ 10 horizontal (outside the two proving grounds). */
+export const M2_SET = { total: 30, hz: 10 };
+
+/** Object keys of originals: eval/partners/<ref>/<briefId>.<ext> (the eval-live workflow writes eval/live/…). */
+export const PARTNER_PREFIX = "eval/partners";
+/** Pseudonymous partner id; names and contacts of partners never reach the repository. */
+export const PARTNER_REF = /^P[0-9]{2}$/;
+export const ORIGINAL_EXT = /^\.(txt|md|json|pdf|docx|rtf|odt)$/;
+
+export const partnerKey = (ref, briefId, ext) => `${PARTNER_PREFIX}/${ref}/${briefId}${ext}`;
+
+/** Problems of a brief's `partner` block (Russian; [] when absent or valid). */
+export function partnerProblems(b) {
+  if (b.partner === undefined) return [];
+  const p = b.partner;
+  const out = [];
+  if (!p || typeof p !== "object" || Array.isArray(p)) return ["partner: объект {ref, original}"];
+  if (!PARTNER_REF.test(p.ref ?? "")) out.push(`partner.ref "${p.ref}" не подходит под ${PARTNER_REF}`);
+  const o = p.original ?? {};
+  const ext = extname(String(o.key ?? ""));
+  if (!ORIGINAL_EXT.test(ext) || o.key !== partnerKey(p.ref, b.id, ext))
+    out.push(
+      `partner.original.key: ожидается ${PARTNER_PREFIX}/${p.ref}/${b.id}.<txt|md|json|pdf|docx|rtf|odt>`,
+    );
+  if (!/^[0-9a-f]{64}$/.test(o.sha256 ?? "")) out.push("partner.original.sha256: 64 hex-символа");
+  if (!Number.isInteger(o.bytes) || o.bytes <= 0) out.push("partner.original.bytes: целое > 0");
+  if (typeof b.text === "string" && createHash("sha256").update(b.text).digest("hex") === o.sha256)
+    out.push("text брифа совпадает с оригиналом партнёра — нужен синтетический пересказ");
+  return out;
+}
 
 /** Format problems of one brief (Russian, for test and CLI messages). */
 export function briefProblems(b, file) {
@@ -29,6 +60,7 @@ export function briefProblems(b, file) {
   }
   if (b.answers !== undefined && (typeof b.answers !== "object" || Array.isArray(b.answers)))
     out.push("answers: объект {forkId: optionId}");
+  out.push(...partnerProblems(b));
   return out;
 }
 

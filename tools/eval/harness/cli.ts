@@ -6,7 +6,7 @@ import { getModel, type LlmMode } from "../../../packages/llm/src/index.ts";
 import { BASELINE_FILE, compareToBaseline, loadBaseline } from "../lib/baseline.mjs";
 import { loadBriefs } from "../lib/briefs.mjs";
 import { loadForbiddenForT1 } from "../lib/canary.mjs";
-import { hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
+import { aggregateHarness, hardViolations, harnessBaseName, renderHarnessReport } from "../lib/report.mjs";
 import { connectDb } from "./db.ts";
 import { resolveFixture } from "./fixtures.ts";
 import { createG1Runtime } from "./g1.ts";
@@ -46,6 +46,8 @@ export interface HarnessResult {
   regression?: { regressions: string[]; compared: unknown[]; notes: string[] };
   /** Filled by the CLI: hard thresholds and regressions that fail the run. */
   violations?: string[];
+  /** Written with the file: per-model aggregates incl. p80 build time and time to first preview (L4-27). */
+  aggregates?: ReturnType<typeof aggregateHarness>;
 }
 
 const DEFAULT_DB = "postgres://wizard@localhost:5433/wizard";
@@ -213,6 +215,7 @@ export async function writeHarnessResult(result: HarnessResult, outDir: string):
     dryRun: result.dry_run,
   });
   const file = join(outDir, `${base}.json`);
+  result.aggregates = aggregateHarness(result.runs);
   await writeFile(file, JSON.stringify(result, null, 2));
   await writeFile(join(outDir, `${base}.md`), renderHarnessReport(result));
   return file;

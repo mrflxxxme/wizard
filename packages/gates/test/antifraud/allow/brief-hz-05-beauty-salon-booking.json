@@ -1,0 +1,283 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф hz-05-beauty-salon-booking: «Онлайн-запись в салон красоты к мастерам»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Онлайн-запись в салон красоты к мастерам",
+      "description": "У нас салон красоты в спальном районе: шесть мастеров (маникюр, стрижки, брови), администратор и я как владелица. Клиенты записываются по телефону и в мессенджерах, администратор ведёт тетрадь, бывают накладки. Нужна онлайн-запись: клиент выбирает услугу, мастера и свободное время, видит цену и длит",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Услуга",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Запись",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "График мастера",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Мастер",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp",
+          "telegram"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [
+      {
+        "name": "yookassa",
+        "connector": "yookassa",
+        "config": {},
+        "secretRefs": [
+          "secret://yookassa_shop_id",
+          "secret://yookassa_secret_key"
+        ]
+      },
+      {
+        "name": "telegram",
+        "connector": "telegram",
+        "config": {},
+        "secretRefs": [
+          "secret://telegram_bot_token"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Онлайн-запись в салон красоты к мастерам",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Онлайн-запись в салон красоты к мастерам\"}>\n      <p>{\"У нас салон красоты в спальном районе: шесть мастеров (маникюр, стрижки, брови), администратор и я как владелица. Клиенты записываются по телефону и в мессенджерах, администратор ведёт тетрадь, бывают накладки. Нужна онлайн-запись: клиент выбирает услугу, мастера и свободное время, видит цену и длительность. У каждого мастера свой график по дням недели, перерывы и выходные; одна запись не может пересекаться с другой у того же мастера. Отменить или перенести запись клиент может не позже чем за 3 часа, дальше — только через администратора. За сутки клиенту приходит напоминание в Telegram или на почту. Администратор видит расписание всех мастеров на день, может записать клиента сам и отметить «пришёл» или «не пришёл». Мастер видит только свои записи. Раз в месяц хочу отчёт: загрузка мастеров, выручка по услугам, доля неявок. Оплата на месте, предоплату не берём. Сейчас график мастеров ведёт старший мастер клиент, переносы она согласует в Telegram клиент.\"}</p>\n      <ul>\n        <li>{\"Выбор свободного времени\"}</li>\n        <li>{\"Длительность услуги\"}</li>\n        <li>{\"Без пересечений у мастера\"}</li>\n        <li>{\"Отмена не позже чем за 3 часа\"}</li>\n        <li>{\"Напоминание за сутки\"}</li>\n        <li>{\"Отметка неявки\"}</li>\n        <li>{\"Отчёт по загрузке и выручке\"}</li>\n      </ul>\n      <p>{\"Запись не пересекается с другой у того же мастера\"}</p>\n      <p>{\"Клиент не может отменить позже чем за 3 часа\"}</p>\n      <p>{\"Мастер видит только свои записи\"}</p>\n      <p>{\"Администратор может отметить неявку\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}
