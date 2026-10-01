@@ -2,6 +2,7 @@
 // Starts each app via its own `dev` script (PORT/HOST in env); an app without one gets a stub HTTP server.
 // Flags: --no-db, --stub (force stubs), --port-api=N, --port-web=N, --port-runtime=N, --root=DIR, --timeout=MS.
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
@@ -144,6 +145,9 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 if ((process.env.WIZARD_LLM_MODE ?? "fixture") === "fixture") process.env.WIZARD_FIXTURE ??= "demo/forum";
 // platform-api defaults to session auth (email OTP, M1-02); the local stand keeps the M0 dev user unless told otherwise.
 process.env.WIZARD_AUTH_MODE ??= "dev";
+// M3-02: AI actions of local systems — the runtime calls the platform's AI gateway with a per-run internal token.
+process.env.WIZARD_INTERNAL_TOKEN ||= randomBytes(16).toString("hex");
+process.env.WIZARD_PLATFORM_INTERNAL_URL ||= `http://${HOST}:${services[0].port}`;
 
 if (!args.has("no-db")) {
   const pgPort = Number(process.env.WIZARD_PG_PORT ?? 5433);

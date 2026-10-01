@@ -8,6 +8,7 @@ const EXTRA_STATUS: Readonly<Record<string, number>> = {
   UNSUPPORTED_MEDIA_TYPE: 415,
   AI_CREDITS_EXHAUSTED: 402,
   AI_LIMIT_REACHED: 429,
+  AI_UNAVAILABLE: 503,
   OTP_BUDGET_EXCEEDED: 429,
   FUNCTIONS_DISABLED: 503,
   NOT_IMPLEMENTED: 501,
@@ -18,6 +19,9 @@ const EXTRA_MESSAGES: Readonly<Record<string, string>> = {
   UNSUPPORTED_MEDIA_TYPE: "Такой тип файла загрузить нельзя",
   NOT_IMPLEMENTED: "Функция пока недоступна",
   FUNCTIONS_DISABLED: "Функции системы временно недоступны",
+  AI_CREDITS_EXHAUSTED: "ИИ-действие временно недоступно",
+  AI_LIMIT_REACHED: "Лимит ИИ-действий на этот месяц исчерпан",
+  AI_UNAVAILABLE: "ИИ-действие временно недоступно, попробуйте позже",
 };
 
 export function errorResponse(e: unknown, requestId: string): Response {

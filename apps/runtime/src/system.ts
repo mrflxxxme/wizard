@@ -182,6 +182,15 @@ export class SystemCache {
     return sys;
   }
 
+  /**
+   * The current deployment by key: the registry entry first (a cached object of an older revision is replaced), a
+   * pinned system otherwise (M3-02 AI backfill runs right after a new revision was published).
+   */
+  async current(systemId: string, env: SystemEnv): Promise<LoadedSystem | null> {
+    const entry = await this.o.registry.resolveById?.(systemId, env);
+    return entry ? this.resolve(entry.slug, env) : this.byId(systemId, env);
+  }
+
   /** Loaded system by its key (pinned, cached, then the registry); null when unknown. */
   async byId(systemId: string, env: SystemEnv): Promise<LoadedSystem | null> {
     for (const sys of [...this.pinned.values(), ...this.lru.values()]) {

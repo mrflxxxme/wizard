@@ -62,9 +62,12 @@ export type RecordAction<T = Rec> = {
   id: string;
   label: string;
   tone?: "primary" | "default" | "danger";
-  kind: "update" | "delete" | "fn" | "link";
+  /** ai (M3-02): runs the AI action `ai` of the spec on the record; filled fields get «заполнено ИИ». */
+  kind: "update" | "delete" | "fn" | "link" | "ai";
   patch?: Record<string, unknown>;
   fn?: string;
+  /** kind=ai: aiActions[].name (runtime.yaml#ai_actions). */
+  ai?: string;
   href?: string;
   confirm?: string;
   visible?(r: T): boolean;

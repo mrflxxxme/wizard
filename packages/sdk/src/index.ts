@@ -1,6 +1,7 @@
 // @wizard/sdk — the only runtime import of generated systems (specs/runtime/sdk.md).
 // Every export of §5 is bound to its declaration in ./sdk.d.ts: tsc fails if the implementation drifts.
 import {
+  useAiAction as useAiActionImpl,
   useEntity as useEntityImpl,
   useEntityList as useEntityListImpl,
   useEntityMutation as useEntityMutationImpl,
@@ -34,6 +35,7 @@ export const useEntity: typeof Sdk.useEntity = useEntityImpl;
 export const useEntityMutation: typeof Sdk.useEntityMutation = useEntityMutationImpl;
 export const useUser: typeof Sdk.useUser = useUserImpl;
 export const usePayment: typeof Sdk.usePayment = usePaymentImpl;
+export const useAiAction: typeof Sdk.useAiAction = useAiActionImpl;
 export const useParams: typeof Sdk.useParams = useParamsImpl;
 export const useNavigate: typeof Sdk.useNavigate = useNavigateImpl;
 // React hooks for pages: ui/** never imports react directly (sdk.md §1).

@@ -22,6 +22,8 @@ export interface RuntimeEnv {
   previewSecret?: string;
   /** WIZARD_INTERNAL_TOKEN: X-Wizard-Internal-Token of the internal port (runtime.yaml#system_loading). */
   internalToken?: string;
+  /** WIZARD_PLATFORM_INTERNAL_URL: platform-api for the AI gateway of AI actions (M3-02), with internalToken. */
+  platformInternalUrl?: string;
 }
 
 type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -42,6 +44,7 @@ export function readEnv(env: EnvSource = process.env): RuntimeEnv {
       .filter(Boolean),
     ...(env.WIZARD_PREVIEW_SECRET ? { previewSecret: env.WIZARD_PREVIEW_SECRET } : {}),
     ...(env.WIZARD_INTERNAL_TOKEN ? { internalToken: env.WIZARD_INTERNAL_TOKEN } : {}),
+    ...(env.WIZARD_PLATFORM_INTERNAL_URL ? { platformInternalUrl: env.WIZARD_PLATFORM_INTERNAL_URL } : {}),
   };
 }
 

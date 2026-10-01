@@ -1,5 +1,16 @@
 export const PACKAGE = "@wizard/appspec";
 
+/** aiAction input/output shape (M3-02): resolveAiAction → entity, source and target fields; aiTargetFields per entity. */
+export {
+  AI_EXTRACT_TYPES,
+  AI_GENERATE_TYPES,
+  AI_INPUT_TYPES,
+  AI_INSTRUCTION_MAX,
+  type AiActionProblem,
+  aiTargetFields,
+  type ResolvedAiAction,
+  resolveAiAction,
+} from "./ai-actions.js";
 /** diffSpecs(prev|null, next) → human changes {kind, text_ru, destructive?} for getRevisionDiff (M1-04). */
 export { diffSpecs, type SpecChange, type SpecChangeKind } from "./diff.js";
 export { ERROR_CODES, type OpsError, type OpsErrorCode, pointer } from "./errors.js";

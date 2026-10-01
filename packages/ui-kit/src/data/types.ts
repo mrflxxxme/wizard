@@ -128,6 +128,14 @@ export interface FilesApi {
   href(fileId: string): string;
 }
 
+/** ext: result of an AI action (POST /api/ai/:action, runtime.yaml#ai_actions, M3-02). */
+export type AiActionResult = {
+  /** The record as the user sees it, with `_aiFilled` (fields whose last write was the AI). */
+  item: Rec & { _aiFilled?: string[] };
+  filled: string[];
+  skipped: string[];
+};
+
 export interface DataSource {
   useList<T = Rec>(entity: string, q: ListQuery): AsyncResult<{ items: T[]; total: number }>;
   useRecord<T = Rec>(entity: string, id: string): AsyncResult<T>;
@@ -147,4 +155,6 @@ export interface DataSource {
   useQrOffline(): QrOfflineApi;
   /** ext: POST /api/files and file info (FileField, runtime.yaml#files). */
   useFiles(): FilesApi;
+  /** ext (M3-02): POST /api/ai/:action {entity, id} — RecordCard action kind=ai. */
+  useAiAction(): Mutation<[action: string, entity: string, id: string], AiActionResult>;
 }

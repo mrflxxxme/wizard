@@ -63,6 +63,7 @@ export {
 } from "./data/roleSpec.js";
 export { sdkDataSource, toSdkListOptions } from "./data/sdk.js";
 export type {
+  AiActionResult,
   AsyncResult,
   AuthApi,
   DataSource,

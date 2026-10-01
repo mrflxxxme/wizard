@@ -322,6 +322,18 @@ export class SdkClient {
     await this.request("DELETE", `/api/data/${encodeURIComponent(entity)}/${encodeURIComponent(id)}`);
   }
 
+  /**
+   * POST /api/ai/:action {entity, id} (runtime.yaml#ai_actions, M3-02): the runtime fills the target fields with the
+   * action's result; the answer is the record with `_aiFilled` plus the filled and skipped fields.
+   */
+  async runAiAction<T = Record<string, unknown>>(
+    action: string,
+    entity: string,
+    id: string,
+  ): Promise<{ item: T & { _aiFilled: string[] }; filled: string[]; skipped: string[] }> {
+    return this.request("POST", `/api/ai/${encodeURIComponent(action)}`, { entity, id });
+  }
+
   /** POST /api/pay/:integration → confirmationUrl (connectors/yookassa.yaml#runtime_endpoint). */
   async pay(integration: string, binding: string, id: string): Promise<string> {
     const r = await this.request<{ confirmationUrl: string }>(

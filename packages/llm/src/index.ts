@@ -15,6 +15,7 @@ export {
   requestKey,
   schemaHash,
   stableStringify,
+  withoutAttachmentBytes,
 } from "./fixtures.js";
 /** import_mapping call over a SyntheticPayload only (data-boundary.yaml#import); mapping per api.yaml#ImportColumnMapping. */
 export {
@@ -38,7 +39,16 @@ export {
   type PolicyChange,
   type PolicyListener,
 } from "./org-policy.js";
-export { assertNoTokens, type Dlp, decideTier, isCallType, type PolicyDecision } from "./policy.js";
+export {
+  assertNoTokens,
+  assertTierAllowed,
+  type Dlp,
+  decideTier,
+  hasAttachments,
+  isCallType,
+  type PolicyDecision,
+  t1Forbidden,
+} from "./policy.js";
 export { transformBody } from "./providers.js";
 export {
   BUILD_TIER_ENV,
@@ -60,9 +70,26 @@ export {
   RU_BUILD_LABEL,
 } from "./registry.js";
 export { createRouter, type FixtureOptions, type Router, type RouterOptions, route } from "./router.js";
+/** Runtime AI actions (runtime.yaml#ai_actions, M3-02): T0-only extract/generate over one record; plain-text output. */
+export {
+  FILL_FIELDS_TOOL_NAME,
+  fillFieldsTool,
+  GENERATE_MAX_CHARS,
+  normalizeAiValue,
+  type RuntimeAiAction,
+  type RuntimeAiField,
+  type RuntimeAiInput,
+  type RuntimeAiOutput,
+  type RuntimeAiValue,
+  routeRuntimeAi,
+  runtimeAiCallType,
+  runtimeAiMessages,
+  toPlainText,
+} from "./runtime-ai.js";
 export {
   CALL_TYPES,
   type CallType,
+  type LlmAttachment,
   type LlmEvent,
   type LlmMessage,
   type LlmMode,
@@ -76,6 +103,7 @@ export {
   type RouteInput,
   type RouteOutput,
   type RouteReason,
+  type RuntimeAiCallType,
   type Tier,
   type ToolCall,
   type UsageRecord,

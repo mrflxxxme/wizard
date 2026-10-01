@@ -37,6 +37,13 @@
   overflow-wrap: anywhere;
 }
 
+/* «заполнено ИИ» after the value (M3-02). */
+.ai {
+  margin-inline-start: 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 @media (min-width: 640px) {
   .item {
     grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
