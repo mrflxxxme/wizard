@@ -3,6 +3,7 @@
 // One contract with ui-kit's RoleSpec (role — name, roles — all roles without permissions); WzProvider takes the
 // body of GET /_wizard/spec as is. Contract test: packages/gates/test/rolespec-contract.test.ts.
 import type { AppSpec } from "@wizard/appspec";
+import { compilePolicy } from "@wizard/sdk/host";
 import type { ComplianceInfo } from "./compliance.js";
 
 export interface RoleSpecOptions {
@@ -47,7 +48,8 @@ export function buildRoleSpec(spec: AppSpec, o: RoleSpecOptions) {
     entities: spec.entities
       .filter((e) => perms.some((p) => p.entity === e.name))
       .map((e) => {
-        const hidden = new Set(perms.find((p) => p.entity === e.name)?.hiddenFields ?? []);
+        // Declared hiddenFields plus implicit ones (qr_token of other people's rows, connectors/qr.yaml#token).
+        const hidden = compilePolicy(spec, e.name, { id: null, role: role?.name ?? "" }).hidden;
         return {
           name: e.name,
           label: e.label,

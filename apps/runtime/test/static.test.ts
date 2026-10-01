@@ -84,9 +84,9 @@ describe("draft bundle", () => {
     expect(res.headers.get("allow")).toBe("GET, HEAD");
   });
 
-  test("PWA files are not served before M1", async () => {
-    expect((await get(DRAFT, "/sw.js")).status).toBe(404);
-    expect((await get(DRAFT, "/manifest.webmanifest")).status).toBe(404);
+  test("PWA files are served for every system (M2-03; details in qr-offline.test.ts)", async () => {
+    expect((await get(DRAFT, "/sw.js")).status).toBe(200);
+    expect((await get(DRAFT, "/manifest.webmanifest")).status).toBe(200);
   });
 
   test("bridge.js: platform origin and revision baked in, no-cache JS", async () => {

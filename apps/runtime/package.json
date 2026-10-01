@@ -17,6 +17,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@wizard/build": "workspace:*",
     "tsx": "^4.23.15"
   },

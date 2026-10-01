@@ -166,7 +166,7 @@ describe("POST /_wizard/qr/check", () => {
     expect((await check(cookie, { payload: token, deviceId: "d" }, { csrf: false })).status).toBe(403);
   });
 
-  test("body validation → 422; unknown integration → 404; manifest/sync → 501 until M2", async () => {
+  test("body validation → 422; unknown integration → 404; manifest (M2-03) → 200 for a scanner", async () => {
     const cookie = await login(fx.rt, HOST, "volunteer");
     expect((await check(cookie, { payload: "x" })).status).toBe(422);
     expect((await check(cookie, [1, 2])).status).toBe(422);
@@ -177,6 +177,6 @@ describe("POST /_wizard/qr/check", () => {
       }),
     );
     expect(other.status).toBe(404);
-    expect((await fx.rt.fetch(request("GET", HOST, "/_wizard/qr/manifest", { cookie }))).status).toBe(501);
+    expect((await fx.rt.fetch(request("GET", HOST, "/_wizard/qr/manifest", { cookie }))).status).toBe(200);
   });
 });

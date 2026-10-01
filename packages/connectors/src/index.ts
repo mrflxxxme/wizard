@@ -47,9 +47,10 @@ export {
 export { type NotifyStepInput, runNotifyStep } from "./notify.js";
 /** Platform-owned connector settings (shared Telegram bot, platform SMTP, dev receiver) from WIZARD_* env. */
 export { type PlatformEnvOptions, platformConfigFromEnv } from "./platform.js";
-/** QR connector: config, validateSpec, token issue on insert, POST /_wizard/qr/check. */
+/** QR connector: config, validateSpec, token issue on insert, POST /_wizard/qr/check; revoked hashes in ctx.store. */
 export {
   issueQrToken,
+  QR_REVOKED_PREFIX,
   QR_SECRET,
   type QrCheckInput,
   type QrCheckResponse,
@@ -59,6 +60,29 @@ export {
   qrConnector,
   validateQrSpec,
 } from "./qr.js";
+/** QR offline package (h, id, display line, status — no token/PII) and sync with first-scan-wins (M2-03). */
+export {
+  decodeQrCursor,
+  encodeQrCursor,
+  parseQrSyncBody,
+  QR_CLOCK_SKEW_MS,
+  QR_EVENT_RETENTION_MS,
+  QR_MANIFEST_TTL_MS,
+  QR_SYNC_MAX_EVENTS,
+  type QrManifest,
+  type QrManifestEntry,
+  type QrOfflineDenied,
+  type QrOfflineStore,
+  type QrSyncBody,
+  type QrSyncEvent,
+  type QrSyncInput,
+  type QrSyncResponse,
+  type QrSyncResult,
+  qrManifest,
+  qrManifestId,
+  qrOfflineHash,
+  qrSync,
+} from "./qr-offline.js";
 /** QR code PNG (inline email attachment). */
 export { qrPng } from "./qr-png.js";
 /** QR payload WZ1.<kid>.<rand>.<sig>: sign/verify, keyring rotation, revocation hash. */

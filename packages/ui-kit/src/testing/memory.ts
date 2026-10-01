@@ -10,6 +10,10 @@ import type {
   ListQuery,
   QrCheckRequest,
   QrCheckResponse,
+  QrManifestEntry,
+  QrOfflineApi,
+  QrSyncResponse,
+  QrSyncResult,
   Rec,
   UserResult,
   WriteOpts,
@@ -18,6 +22,26 @@ import type {
 } from "../data/types.js";
 import { fieldProblem } from "../data/validate.js";
 import { ru } from "../i18n/ru.js";
+import { offlineHash, payloadRand } from "../qr/offline.js";
+
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const SIG = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+
+/** Deterministic token in the WZ1 shape (connectors/qr.yaml#token.payload); the signature is fake. */
+export function memoryQrToken(seed: string): string {
+  let x = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) x = Math.imul(x ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+  const next = () => {
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    x >>>= 0;
+    return x;
+  };
+  const pick = (alphabet: string, n: number) =>
+    Array.from({ length: n }, () => alphabet[next() % alphabet.length]).join("");
+  return `WZ1.1.${pick(B32, 26)}.${pick(SIG, 16)}`;
+}
 
 export type MemoryUser = WzUser & { phone?: string; email?: string; [attr: string]: unknown };
 export type MemoryFnCtx = { user: MemoryUser | null; ds: MemoryDataSource };
@@ -86,6 +110,10 @@ export interface MemoryDataSource extends DataSource {
   /** Non-hook access to the dev-sender auth and QR check (tests). */
   auth: AuthApi;
   qrCheck(req: QrCheckRequest): QrCheckResponse;
+  /** Non-hook offline package and sync (tests). */
+  readonly qrOffline: QrOfflineApi;
+  /** Check-ins made by qrCheck and sync: token → first scan. */
+  qrCheckins(): Map<string, { at: string; checkpoint?: string }>;
 }
 
 export function createMemoryDataSource(
@@ -297,7 +325,7 @@ export function createMemoryDataSource(
         created_by: current?.id ?? null,
       };
       for (const f of e.fields) {
-        if (f.type === "qr_token") row[f.name] = `wzqr.${row.id}.${seq.toString(36)}`;
+        if (f.type === "qr_token") row[f.name] = memoryQrToken(`${row.id}.${seq}`);
         else if (Object.hasOwn(values, f.name)) row[f.name] = values[f.name];
         else if (f.default !== undefined) row[f.name] = f.default;
       }
@@ -407,10 +435,17 @@ export function createMemoryDataSource(
     useQrCheck() {
       return useCallback(async (req: QrCheckRequest) => qrCheck(req), []);
     },
+    useQrOffline() {
+      return useMemo(() => qrOffline, []);
+    },
     get auth() {
       return auth;
     },
     qrCheck: (req: QrCheckRequest) => qrCheck(req),
+    get qrOffline() {
+      return qrOffline;
+    },
+    qrCheckins: () => new Map(checkins),
   };
 
   const auth: AuthApi = {
@@ -453,9 +488,7 @@ export function createMemoryDataSource(
     },
   };
 
-  const qrCheck = (req: QrCheckRequest): QrCheckResponse => {
-    calls.push({ op: "qrCheck", args: [req] });
-    const scannedAt = now().toISOString();
+  const qrCarrier = () => {
     const qr = spec.integrations?.find((i) => i.connector === "qr")?.config as
       | { entity?: string; tokenField?: string; validStatuses?: string[]; displayFields?: string[] }
       | undefined;
@@ -463,15 +496,98 @@ export function createMemoryDataSource(
       spec.entities.find((x) => x.name === qr?.entity) ??
       spec.entities.find((x) => x.fields.some((f) => f.type === "qr_token"));
     const tokenField = qr?.tokenField ?? e?.fields.find((f) => f.type === "qr_token")?.name;
-    const row =
-      e && tokenField ? (db.get(e.name) ?? []).find((r) => r[tokenField] === req.payload) : undefined;
+    const rows = e && tokenField ? (db.get(e.name) ?? []) : [];
+    const title = (row: Rec) =>
+      (qr?.displayFields ?? [])
+        .map((f) => refCaption(spec, db, e as Entity, f, row[f]))
+        .filter(Boolean)
+        .join(" · ");
+    return { qr, rows, tokenField: tokenField ?? "", title };
+  };
+  /** h → carrier row of every WZ1 token (offline package and sync). */
+  const byHash = async () => {
+    const c = qrCarrier();
+    const out = new Map<string, Rec>();
+    for (const row of c.rows) {
+      const rand = typeof row[c.tokenField] === "string" ? payloadRand(row[c.tokenField] as string) : null;
+      if (rand) out.set(await offlineHash(rand), row);
+    }
+    return { ...c, map: out };
+  };
+  const syncResults = new Map<string, QrSyncResult>();
+
+  const qrOffline: QrOfflineApi = {
+    async manifest(since) {
+      calls.push({ op: "qrManifest", args: since ? [since] : [] });
+      const c = await byHash();
+      const entries: QrManifestEntry[] = [...c.map].map(([h, row]) => ({
+        h,
+        id: row.id,
+        d: c.title(row),
+        s: String(row.status ?? ""),
+      }));
+      const checkedIn = [...c.map]
+        .filter(([, row]) => checkins.has(String(row[c.tokenField])))
+        .map(([h]) => h);
+      const at = now();
+      return {
+        manifestId: "memory",
+        cursor: String(at.getTime()),
+        generatedAt: at.toISOString(),
+        expiresAt: new Date(at.getTime() + 72 * 3_600_000).toISOString(),
+        full: true,
+        validStatuses: c.qr?.validStatuses ?? [],
+        entries,
+        checkedIn,
+        revoked: [],
+      };
+    },
+    async sync(req) {
+      calls.push({ op: "qrSync", args: [req] });
+      const c = await byHash();
+      const results: QrSyncResponse["results"] = req.events.map((ev) => {
+        const known = syncResults.get(ev.clientEventId);
+        if (known) return { clientEventId: ev.clientEventId, result: known };
+        const row = c.map.get(ev.h);
+        let result: QrSyncResult = "accepted";
+        let firstScannedAt: string | undefined;
+        if (!row) result = "unknown";
+        else if (c.qr?.validStatuses && !c.qr.validStatuses.includes(String(row.status))) result = "revoked";
+        else {
+          const token = String(row[c.tokenField]);
+          const first = checkins.get(token);
+          if (first) {
+            result = "duplicate";
+            firstScannedAt = first.at < ev.scannedAt ? first.at : ev.scannedAt;
+            first.at = firstScannedAt;
+          } else checkins.set(token, { at: ev.scannedAt, ...(ev.gate ? { checkpoint: ev.gate } : {}) });
+        }
+        syncResults.set(ev.clientEventId, result);
+        return { clientEventId: ev.clientEventId, result, ...(firstScannedAt ? { firstScannedAt } : {}) };
+      });
+      bump();
+      const count = (r: QrSyncResult) => results.filter((x) => x.result === r).length;
+      return {
+        results,
+        accepted: count("accepted"),
+        duplicate: count("duplicate"),
+        unknown: count("unknown"),
+        revoked: count("revoked"),
+        cursor: String(now().getTime()),
+      };
+    },
+  };
+
+  const qrCheck = (req: QrCheckRequest): QrCheckResponse => {
+    calls.push({ op: "qrCheck", args: [req] });
+    const scannedAt = now().toISOString();
+    const c = qrCarrier();
+    const qr = c.qr;
+    const row = c.tokenField ? c.rows.find((r) => r[c.tokenField] === req.payload) : undefined;
     if (!row) return { status: "invalid", reason: "not_found", scannedAt };
     if (qr?.validStatuses && !qr.validStatuses.includes(String(row.status)))
       return { status: "invalid", reason: "not_valid_status", scannedAt };
-    const title = (qr?.displayFields ?? [])
-      .map((f) => refCaption(spec, db, e as Entity, f, row[f]))
-      .filter(Boolean)
-      .join(" · ");
+    const title = c.title(row);
     const first = checkins.get(req.payload);
     if (first)
       return {

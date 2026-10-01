@@ -424,7 +424,7 @@
           {"expect": {"fields": {"accepted": 1, "duplicate": 0}}},
           {"simulate": {"connector": "qr", "event": "sync", "data": {"deviceId": "dev-b", "events": [{"ticket": "$t1.ticketId"}]}}},
           {"expect": {"fields": {"accepted": 0, "duplicate": 1}}},
-          {"read": {"entity": "checkin"}},
+          {"read": {"entity": "checkin", "where": {"ticket": "$t1.ticketId"}}},
           {"expect": {"count": 1}}
         ]
       }
