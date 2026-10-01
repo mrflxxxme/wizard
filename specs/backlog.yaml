@@ -735,7 +735,7 @@ tasks:
     owner: platform
     parallel_group: m2-b
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Записи старше retention удаляются/обезличиваются кроном; журнал удаления"
