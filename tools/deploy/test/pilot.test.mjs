@@ -11,6 +11,7 @@ import {
   bucketMatches,
   checkInputs,
   closeAdminAccess,
+  ensureDmarc,
   ensureStateBucket,
   envVars,
   FOUNDER_STAFF_SQL,
@@ -980,5 +981,43 @@ describe("state bucket keys as S3 sees them (first live apply: SignatureDoesNotM
     expect(e.message).toBe(
       "S3 не пускает к бакету wizard-tfstate: ключи бакета — SignatureDoesNotMatch; пользователь хранилища 7 — SignatureDoesNotMatch",
     );
+  });
+});
+
+describe("DMARC of the systems domain through the DNS records API", () => {
+  it("added once, skipped when present, a warning (not a failure) when Timeweb refuses", async () => {
+    const calls = [];
+    const api = (records, fail) => async (method, path, body) => {
+      calls.push([method, path, body]);
+      if (method === "GET") return { dns_records: records };
+      if (fail) throw new Error("Timeweb API POST: HTTP 400 Bad subdomain name");
+      return {};
+    };
+    expect(await ensureDmarc(api([]), "neutral.ru")).toBe("created");
+    expect(calls[1]).toEqual([
+      "POST",
+      "/api/v1/domains/neutral.ru/dns-records",
+      {
+        type: "TXT",
+        subdomain: "_dmarc.neutral.ru",
+        value: "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s",
+      },
+    ]);
+    expect(
+      await ensureDmarc(api([{ type: "TXT", data: { value: "v=DMARC1; p=reject" } }]), "neutral.ru"),
+    ).toBe("exists");
+    const logs = [];
+    expect(await ensureDmarc(api([], true), "neutral.ru", { log: (l) => logs.push(l) })).toBe("failed");
+    expect(logs[0]).toMatch(/^::warning/);
+  });
+
+  it("the VM region follows WIZARD_TIMEWEB_LOCATION (ru-1 | ru-3), anything else is ignored", () => {
+    expect(tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_LOCATION: "ru-1" }, "k").settings.location).toBe(
+      "ru-1",
+    );
+    expect(
+      tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_LOCATION: "eu-1" }, "k").settings.location,
+    ).toBeUndefined();
+    expect(tfvars("prod", FOUNDER, "k").settings.location).toBeUndefined();
   });
 });
