@@ -1,7 +1,8 @@
 // L3-38 / M2-06: deploys run only on the self-hosted runner in Cloud.ru with short-lived credentials; prod only by the
 // repository owner from main; both workflows are no-ops until the founder enables them.
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATFORM_PASSTHROUGH } from "../pilot-secrets.mjs";
@@ -96,7 +97,7 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
 describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
   it("bootstrap and deploy: workflow_dispatch only, one concurrency group per environment, the shared reusable", () => {
     for (const [f, command] of [
-      ["bootstrap-pilot.yml", gh("inputs.action == 'destroy' && 'destroy' || 'bootstrap'")],
+      ["bootstrap-pilot.yml", gh("inputs.action == 'apply' && 'bootstrap' || inputs.action")],
       ["deploy-pilot.yml", "deploy"],
     ]) {
       const { doc, on } = load(f);
@@ -107,10 +108,74 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       expect(doc.jobs.pilot.with.command).toBe(command);
       expect(doc.jobs.pilot.permissions).toEqual({ contents: "read", packages: "write" });
     }
-    expect(load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action.options).toEqual([
-      "apply",
-      "destroy",
-    ]);
+    // The read-only check comes first and is the default: a run without choosing anything changes nothing.
+    const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
+    expect(action.options).toEqual(["check", "apply", "destroy"]);
+    expect(action.default).toBe("check");
+  });
+
+  // The authorize step's shell, run with the given context (GITHUB_OUTPUT in a temporary file).
+  const authorize = (over) => {
+    const step = load("pilot-reusable.yml").doc.jobs.authorize.steps[0];
+    const dir = mkdtempSync(join(tmpdir(), "wizard-authorize-"));
+    try {
+      const r = spawnSync("bash", ["-e", "-c", step.run], {
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_OUTPUT: join(dir, "out"),
+          ACTOR: "owner",
+          TRIGGERING_ACTOR: "owner",
+          OWNER: "owner",
+          REF: "refs/heads/main",
+          CONFIRM: "",
+          SHA: "0123456789abcdef0123456789abcdef01234567",
+          DEPLOY_ENV: "prod",
+          COMMAND: "check",
+          ...over,
+        },
+      });
+      return { code: r.status, out: r.stdout };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("check: no PROD word, but still the owner only and main only", () => {
+    expect(authorize({}).code).toBe(0);
+    expect(authorize({ DEPLOY_ENV: "staging" }).code).toBe(0);
+    expect(authorize({ COMMAND: "bootstrap" }).out).toContain("Подтверждение не совпало");
+    expect(authorize({ COMMAND: "bootstrap", CONFIRM: "PROD" }).code).toBe(0);
+    expect(authorize({ ACTOR: "someone" }).code).toBe(1);
+    expect(authorize({ TRIGGERING_ACTOR: "someone" }).code).toBe(1);
+    expect(authorize({ REF: "refs/heads/feature" }).code).toBe(1);
+    expect(authorize({ COMMAND: "destroy" }).code).toBe(1);
+    expect(authorize({ COMMAND: "plan" }).code).toBe(1);
+  });
+
+  it("check: no images, no OpenTofu/helm setup, no SSH to close, a short timeout", () => {
+    const { doc } = load("pilot-reusable.yml");
+    expect(doc.jobs.images.if).toBe("inputs.command != 'destroy' && inputs.command != 'check'");
+    // A skipped images job does not block the pilot job.
+    expect(doc.jobs.pilot.if).toContain("needs.images.result != 'failure'");
+    const job = doc.jobs.pilot;
+    expect(job["timeout-minutes"]).toBe(gh("inputs.command == 'check' && 5 || 90"));
+    const step = (k) => job.steps.find((s) => s.name === k || s.uses?.startsWith(k));
+    for (const heavy of [
+      "opentofu/setup-opentofu",
+      "OpenTofu provider cache",
+      "Provider cache directory",
+      "azure/setup-helm",
+      "Tools",
+    ])
+      expect(step(heavy).if, heavy).toBe("inputs.command != 'check'");
+    for (const always of ["actions/checkout", "Only commits of main", "actions/setup-node"])
+      expect(step(always).if, always).toBeUndefined();
+    expect(step(`Pilot (${gh("inputs.command")})`).run).toContain(
+      'check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV"',
+    );
+    expect(step("Close SSH access").if).toBe("always() && inputs.command != 'check'");
+    expect(step("Clean up the runner").if).toBe("always()");
   });
 
   it("owner, main, environment, PROD and a full SHA are checked before any secret is read", () => {
@@ -153,7 +218,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const names = job.steps.map((s) => s.name ?? s.uses);
     expect(names).toEqual(expect.arrayContaining(["Only commits of main", "Close SSH access"]));
     const close = job.steps.find((s) => s.name === "Close SSH access");
-    expect(close.if).toBe("always()");
+    expect(close.if).toBe("always() && inputs.command != 'check'");
     expect(close.run).toContain("pilot.mjs close-access");
     expect(JSON.stringify(job)).not.toContain("self-hosted");
     // Images: the pilot's SHA into GHCR when missing; a call never cancels a push's run.

@@ -3,7 +3,8 @@
 # main and the confirmation are checked first (no secret is read before that); images of the SHA are built into GHCR
 # when missing (images.yml, GITHUB_TOKEN with packages: write); then tools/deploy/pilot.mjs creates or reuses the
 # state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
-# SSH tunnel and closes SSH again — also when anything fails (`close-access` with always()).
+# SSH tunnel and closes SSH again — also when anything fails (`close-access` with always()). `check` is the read-only
+# preflight (tools/deploy/preflight.mjs): same owner/main checks, no PROD word, no images, no OpenTofu/helm setup.
 name: pilot-reusable
 
 on:
@@ -13,7 +14,7 @@ on:
         type: string
         required: true
       command:
-        description: "bootstrap | deploy | destroy"
+        description: "check | bootstrap | deploy | destroy"
         type: string
         required: true
       sha:
@@ -50,11 +51,12 @@ jobs:
             echo "::error title=pilot::Запуск только из main."; exit 1
           fi
           case "$DEPLOY_ENV" in prod|staging) ;; *) echo "::error title=pilot::env — prod или staging."; exit 1 ;; esac
-          case "$COMMAND" in bootstrap|deploy|destroy) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          case "$COMMAND" in check|bootstrap|deploy|destroy) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
           if [ "$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging" ]; then
             echo "::error title=pilot::Удалять можно только staging."; exit 1
           fi
-          if [ "$DEPLOY_ENV" = "prod" ] && [ "$CONFIRM" != "PROD" ]; then
+          # check only reads: no confirmation word.
+          if [ "$DEPLOY_ENV" = "prod" ] && [ "$COMMAND" != "check" ] && [ "$CONFIRM" != "PROD" ]; then
             echo "::error title=pilot::Подтверждение не совпало (нужно PROD)."; exit 1
           fi
           if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
@@ -64,7 +66,7 @@ jobs:
 
   images:
     needs: authorize
-    if: inputs.command != 'destroy'
+    if: inputs.command != 'destroy' && inputs.command != 'check'
     uses: ./.github/workflows/images.yml
     permissions:
       contents: read
@@ -78,7 +80,7 @@ jobs:
     if: ${{ !cancelled() && needs.authorize.result == 'success' && needs.images.result != 'failure' }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.command == 'check' && 5 || 90 }}
     permissions:
       contents: read
       packages: read
@@ -129,36 +131,42 @@ jobs:
         with:
           node-version: 22
       - uses: opentofu/setup-opentofu@v1
+        if: inputs.command != 'check'
         with:
           tofu_version: 1.10.6
           tofu_wrapper: false
       # Same provider cache as ci.yml deploy-lint (the job's `tofu init` reads TF_PLUGIN_CACHE_DIR).
       - name: OpenTofu provider cache
+        if: inputs.command != 'check'
         uses: actions/cache@v4
         with:
           path: ~/.tofu-plugin-cache
           key: tofu-providers-${{ hashFiles('infra/tofu/**/.terraform.lock.hcl') }}
           restore-keys: tofu-providers-
       - name: Provider cache directory
+        if: inputs.command != 'check'
         run: |
           mkdir -p "$HOME/.tofu-plugin-cache"
           echo "TF_PLUGIN_CACHE_DIR=$HOME/.tofu-plugin-cache" >> "$GITHUB_ENV"
       - uses: azure/setup-helm@v4
+        if: inputs.command != 'check'
         with:
           version: v3.19.0
       - name: Tools
+        if: inputs.command != 'check'
         run: |
           kubectl version --client=true
           ssh -V
       - name: Pilot (${{ inputs.command }})
         run: |
-          if [ "$COMMAND" = "destroy" ]; then
-            node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV"
-          else
-            node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA"
-          fi
+          case "$COMMAND" in
+            check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
+            destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
+            *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
+          esac
+      # check opens nothing (and may run with a rejected TWC_TOKEN), so there is nothing to close.
       - name: Close SSH access
-        if: always()
+        if: always() && inputs.command != 'check'
         run: node tools/deploy/pilot.mjs close-access --env "$DEPLOY_ENV"
       - name: Clean up the runner
         if: always()
