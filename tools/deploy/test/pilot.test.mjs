@@ -15,12 +15,15 @@ import {
   envVars,
   FOUNDER_STAFF_SQL,
   founderStaffJob,
+  getObjectOrNull,
   main,
   parseArgs,
   SHAPES,
+  s3ErrorCode,
   summaryText,
   tfvars,
   twcClient,
+  untilS3Ready,
 } from "../pilot.mjs";
 import {
   alertSettings,
@@ -721,7 +724,13 @@ describe("pilot: one button", () => {
       accessKeyId: "STATEKEY",
       secretAccessKey: "state-bucket-secret",
       created: false,
+      empty: false,
     });
+    // The API's object count marks an empty bucket (Timeweb answers 403 for a missing key).
+    const emptyCloud = fakeCloud({ buckets: [{ ...existing, object_amount: 0 }] });
+    expect(
+      (await ensureStateBucket(twcClient({ token: "twc-very-secret-token", fetch: emptyCloud.fetch }))).empty,
+    ).toBe(true);
     const unpaid = fakeCloud({ status: "no_paid" });
     await expect(
       ensureStateBucket(twcClient({ token: "twc-very-secret-token", fetch: unpaid.fetch }), {
@@ -820,5 +829,69 @@ describe.skipIf(!pgUp)("pilot: founder access SQL (PostgreSQL)", () => {
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect(q("SELECT is_staff FROM platform.users")).toBe("t");
     expect(step()).toBe(id);
+  });
+});
+
+describe("S3 of a just created state bucket", () => {
+  it("error codes are kept, messages (which may echo the key id) are dropped", () => {
+    expect(s3ErrorCode("<Error><Code>AccessDenied</Code><Message>key AKIAEXAMPLE</Message></Error>")).toBe(
+      " (AccessDenied)",
+    );
+    expect(s3ErrorCode("")).toBe("");
+  });
+
+  it("403 is retried until the keys work; other errors and the last 403 are not swallowed", async () => {
+    const forbidden = Object.assign(new Error("S3 GET: HTTP 403"), { status: 403 });
+    let n = 0;
+    const logs = [];
+    const ok = await untilS3Ready(
+      async () => {
+        if (++n < 3) throw forbidden;
+        return "bundle";
+      },
+      { sleep: async () => {}, log: (l) => logs.push(l) },
+    );
+    expect([ok, n, logs.length]).toEqual(["bundle", 3, 1]);
+    await expect(
+      untilS3Ready(async () => Promise.reject(forbidden), { attempts: 2, sleep: async () => {} }),
+    ).rejects.toBe(forbidden);
+    let calls = 0;
+    const other = Object.assign(new Error("HTTP 500"), { status: 500 });
+    await expect(
+      untilS3Ready(
+        async () => {
+          calls++;
+          throw other;
+        },
+        { sleep: async () => {} },
+      ),
+    ).rejects.toBe(other);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("GET of the bundle when Timeweb answers 403 for a missing key", () => {
+  const cfg = {
+    endpoint: "https://s3.twcstorage.ru",
+    region: "ru-1",
+    bucket: "1a2b-wizard-tfstate",
+    accessKeyId: "AK",
+    secretAccessKey: "SK",
+  };
+  const forbidden = async () =>
+    new Response("<Error><Code>AccessDenied</Code><Message>no</Message></Error>", { status: 403 });
+  it("an empty bucket (per the Timeweb API) means no bundle yet", async () => {
+    expect(
+      await getObjectOrNull({ ...cfg, empty: true }, "wizard/prod.secrets.enc.json", { fetch: forbidden }),
+    ).toBeNull();
+  });
+  it("otherwise 403 stops with the bucket and the S3 code, no secret", async () => {
+    const e = await getObjectOrNull(cfg, "wizard/prod.secrets.enc.json", { fetch: forbidden }).catch(
+      (x) => x,
+    );
+    expect(e.message).toBe(
+      "S3 GET 1a2b-wizard-tfstate/wizard/prod.secrets.enc.json: HTTP 403 (AccessDenied)",
+    );
+    expect(e.status).toBe(403);
   });
 });

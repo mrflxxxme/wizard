@@ -267,7 +267,15 @@ export async function ensureStateBucket(
     b = (await api("GET", `/api/v1/storages/buckets/${b.id}`)).bucket;
   }
   if (!b.access_key || !b.secret_key) throw new Error(`Timeweb API: у бакета ${b.name} нет ключей S3`);
-  return { bucket: b.name, accessKeyId: b.access_key, secretAccessKey: b.secret_key, created };
+  return {
+    bucket: b.name,
+    accessKeyId: b.access_key,
+    secretAccessKey: b.secret_key,
+    created,
+    // Timeweb answers GET of a missing key with 403 (S3 semantics without list rights), so an empty bucket — per the
+    // API's own count — is what tells "no bundle yet" apart from a real access problem.
+    empty: created || b.object_amount === 0,
+  };
 }
 
 export const stateS3 = (state) => ({
@@ -275,6 +283,7 @@ export const stateS3 = (state) => ({
   bucket: state.bucket,
   accessKeyId: state.accessKeyId,
   secretAccessKey: state.secretAccessKey,
+  empty: Boolean(state.empty),
 });
 
 /** GET of an object, null when it does not exist (404). */
@@ -291,8 +300,38 @@ export async function getObjectOrNull(cfg, key, { fetch: f = fetch, now = () => 
   });
   const r = await f(url, { method: "GET", headers });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`S3 GET ${key}: HTTP ${r.status}`);
+  if (r.status === 403 && cfg.empty) return null;
+  if (!r.ok) {
+    const err = new Error(`S3 GET ${cfg.bucket}/${key}: HTTP ${r.status}${s3ErrorCode(await r.text())}`);
+    err.status = r.status;
+    throw err;
+  }
   return Buffer.from(await r.arrayBuffer()).toString("utf8");
+}
+
+/** " (<Code>)" of an S3 XML error body — codes carry no secrets (messages may echo the key id, so they are dropped). */
+export function s3ErrorCode(body) {
+  const m = /<Code>([A-Za-z]{1,64})<\/Code>/.exec(String(body ?? ""));
+  return m ? ` (${m[1]})` : "";
+}
+
+/**
+ * A just created bucket's S3 keys start working with a delay (the first bootstrap got 403): retry 403 for up to
+ * `attempts` × 15 s, then rethrow. Other errors are not retried.
+ */
+export async function untilS3Ready(
+  fn,
+  { attempts = 12, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} } = {},
+) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e.status !== 403 || i >= attempts) throw e;
+      if (i === 1) log("ключи S3 нового бакета ещё не действуют — жду (до 3 мин)");
+      await sleep(15_000);
+    }
+  }
 }
 
 /**
@@ -320,7 +359,8 @@ export async function saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, 
   const key = bundleKey(bundle.env);
   const text = encryptBundle(bundle, passphrase, { rand, ...(kdf ? { kdf } : {}) });
   await putObject(s3, key, text, { contentType: "application/json", fetch: f, now });
-  const back = await getObjectOrNull(s3, key, { fetch: f, now });
+  // Read back as a non-empty bucket: a 403 now is a real access problem, never "missing".
+  const back = await getObjectOrNull({ ...s3, empty: false }, key, { fetch: f, now });
   if (!back || JSON.stringify(decryptBundle(back, passphrase, bundle.env)) !== JSON.stringify(bundle))
     throw new Error(`ключи ${bundle.env}: записанный файл не совпал с прочитанным`);
 }
@@ -576,17 +616,22 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   mask([state.accessKeyId, state.secretAccessKey], vars, log);
   const s3 = stateS3(state);
   const passphrase = vars.WIZARD_STATE_PASSPHRASE;
-  const { bundle, existed } = await loadBundle({
-    s3,
-    env: o.env,
-    passphrase,
-    create: o.command === "bootstrap",
-    fetch: f,
-    now,
-    rand,
-    kdf: deps.kdf,
-    log,
-  });
+  log(`бакет состояния: ${state.bucket}${state.created ? " (создан сейчас)" : ""}`);
+  const { bundle, existed } = await untilS3Ready(
+    () =>
+      loadBundle({
+        s3,
+        env: o.env,
+        passphrase,
+        create: o.command === "bootstrap",
+        fetch: f,
+        now,
+        rand,
+        kdf: deps.kdf,
+        log,
+      }),
+    { sleep: deps.sleep, log },
+  );
   mask(secretValues(bundle), vars, log);
   if (o.command === "show-secrets") {
     if (vars.GITHUB_ACTIONS === "true")
