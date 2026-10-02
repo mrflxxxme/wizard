@@ -215,6 +215,8 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(job.env.WIZARD_S3_ACCOUNT_KEY_ID).toBe(gh("secrets.AWS_ACCESS_KEY_ID"));
     expect(job.env.WIZARD_S3_ACCOUNT_SECRET).toBe(gh("secrets.AWS_SECRET_ACCESS_KEY"));
     expect(job.env.AWS_ACCESS_KEY_ID).toBeUndefined();
+    // The VM region: the run's input wins over the repository variable (ru-1 when Moscow has no free node).
+    expect(job.env.WIZARD_TIMEWEB_LOCATION).toBe(gh("inputs.location || vars.WIZARD_TIMEWEB_LOCATION"));
     // Every setting the secrets file passes through to platform-api reaches the job's environment.
     for (const n of PLATFORM_PASSTHROUGH) expect(job.env, n).toHaveProperty(n);
     const names = job.steps.map((s) => s.name ?? s.uses);

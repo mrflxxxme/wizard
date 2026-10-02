@@ -23,6 +23,11 @@ on:
         description: "Полный SHA коммита main (пусто — последний коммит main)"
         type: string
         default: ""
+      location:
+        description: "Регион сервера: пусто — переменная WIZARD_TIMEWEB_LOCATION или Москва; ru-1 — Санкт-Петербург; ru-3 — Москва"
+        type: choice
+        options: ["", ru-3, ru-1]
+        default: ""
       confirm:
         description: "Для prod (apply) введите PROD; для check не нужно"
         type: string
@@ -46,4 +51,5 @@ jobs:
       command: ${{ inputs.action == 'apply' && 'bootstrap' || inputs.action }}
       sha: ${{ inputs.sha }}
       confirm: ${{ inputs.confirm }}
+      location: ${{ inputs.location }}
     secrets: inherit
