@@ -27,7 +27,8 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Skipped without a runner (no Actions minutes) until the founder enables staging deploys.
+    if: vars.WIZARD_DEPLOY_STAGING == 'enabled' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     outputs:
       enabled: ${{ steps.g.outputs.enabled }}
       sha: ${{ steps.g.outputs.sha }}
