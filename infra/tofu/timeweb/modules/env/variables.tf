@@ -11,12 +11,12 @@ variable "name_prefix" {
 }
 
 variable "location" {
-  description = "Timeweb location of the VMs: Moscow only (founder decision 2026-10-01). S3 lives in ru-1 (the only S3 location)."
+  description = "Timeweb location of the VMs, RF only: ru-3 Moscow (default) or ru-1 St Petersburg (founder, 2026-10-02: any RF region at the same price and capacity). S3 lives in ru-1 (the only S3 location)."
   type        = string
   default     = "ru-3"
   validation {
-    condition     = var.location == "ru-3"
-    error_message = "Only the Moscow location ru-3 is allowed (founder decision 2026-10-01)."
+    condition     = contains(["ru-1", "ru-3"], var.location)
+    error_message = "Only RF locations ru-3 (Moscow) or ru-1 (St Petersburg) are allowed."
   }
 }
 
