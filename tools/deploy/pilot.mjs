@@ -281,7 +281,7 @@ export async function reportServerOptions(api, shape, { log = () => {} } = {}) {
   try {
     const { server_presets: presets = [] } = await api("GET", "/api/v1/presets/servers");
     const fit = presets
-      .filter((p) => ["ru-1", "ru-2", "ru-3"].includes(p.location))
+      .filter((p) => String(p.location).startsWith("ru-"))
       .filter((p) => p.cpu === shape.cpu && p.ram === shape.ram_gb * 1024 && p.disk >= shape.disk_gb * 1024)
       .sort((a, b) => a.location.localeCompare(b.location) || a.price - b.price);
     log(
