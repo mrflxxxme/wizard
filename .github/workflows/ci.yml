@@ -37,6 +37,8 @@ jobs:
       - run: pnpm check:code
       - run: pnpm typecheck
       - run: pnpm test
+      # Time budgets alone, after the parallel suite (vitest.config.ts: perf).
+      - run: pnpm test:perf
       - run: node tools/specs/validate.mjs
         if: hashFiles('tools/specs/validate.mjs') != ''
   e2e:

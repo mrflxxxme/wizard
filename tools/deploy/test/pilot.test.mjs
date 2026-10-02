@@ -18,6 +18,7 @@ import {
   getObjectOrNull,
   main,
   parseArgs,
+  resolveStateS3,
   SHAPES,
   s3ErrorCode,
   summaryText,
@@ -306,6 +307,20 @@ describe("pilot: secrets bundle", () => {
     expect(() => clusterSecretFiles({ bundle, outputs: { env: {} }, inputs: FOUNDER })).toThrow(
       /бакета files/,
     );
+    // The founder's S3 account key (secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) wins over per-bucket API keys.
+    const acc = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: {
+        ...FOUNDER,
+        WIZARD_S3_ACCOUNT_KEY_ID: " ACCKEY ",
+        WIZARD_S3_ACCOUNT_SECRET: "account-secret\n",
+      },
+    });
+    expect(acc.platformEnv).toContain(
+      "WIZARD_S3_ACCESS_KEY_ID=ACCKEY\nWIZARD_S3_SECRET_ACCESS_KEY=account-secret\n",
+    );
+    expect(acc.postgresEnv).toContain("AWS_ACCESS_KEY_ID=ACCKEY\nAWS_SECRET_ACCESS_KEY=account-secret\n");
     expect(() => envFile({ A: "x\ny" })).toThrow(/перевод строки/);
     expect(
       alertSettings({ WIZARD_OPS_ALERT_URL: "https://hook.example/x", WIZARD_OPS_ALERT_CHAT_ID: "1" }),
@@ -341,6 +356,7 @@ function fakeCloud({ buckets = [], status = "created" } = {}) {
       expect(init.headers.authorization).toBe("Bearer twc-very-secret-token");
       const p = u.pathname;
       if (p === "/api/v1/storages/buckets" && method === "GET") return json({ buckets: st.buckets });
+      if (p === "/api/v1/storages/users" && method === "GET") return json({ users: st.users ?? [] });
       if (p === "/api/v1/presets/storages")
         return json({
           storages_presets: [
@@ -390,6 +406,10 @@ function fakeCloud({ buckets = [], status = "created" } = {}) {
       expect(init.headers.authorization).toMatch(
         /^AWS4-HMAC-SHA256 Credential=STATEKEY\/\d{8}\/ru-1\/s3\/aws4_request/,
       );
+      if (u.pathname === "/" && method === "GET")
+        return new Response(
+          `<ListAllMyBucketsResult><Buckets>${st.buckets.map((b) => `<Bucket><Name>${b.name}</Name></Bucket>`).join("")}</Buckets></ListAllMyBucketsResult>`,
+        );
       const key = decodeURIComponent(u.pathname);
       if (method === "PUT") {
         st.objects.set(key, String(init.body));
@@ -893,5 +913,72 @@ describe("GET of the bundle when Timeweb answers 403 for a missing key", () => {
       "S3 GET 1a2b-wizard-tfstate/wizard/prod.secrets.enc.json: HTTP 403 (AccessDenied)",
     );
     expect(e.status).toBe(403);
+  });
+});
+
+describe("state bucket keys as S3 sees them (first live apply: SignatureDoesNotMatch with the bucket's keys)", () => {
+  const state = {
+    bucket: "wizard-tfstate",
+    accessKeyId: "BUCKETKEY",
+    secretAccessKey: "bucket-secret-value",
+    created: false,
+    empty: true,
+  };
+  const twc = (users) => async (method, path) => {
+    expect([method, path]).toEqual(["GET", "/api/v1/storages/users"]);
+    return { users };
+  };
+  const s3 = (good) => async (_url, init) => {
+    const id = /Credential=([^/]+)\//.exec(init.headers.authorization)[1];
+    if (id !== good)
+      return new Response("<Error><Code>SignatureDoesNotMatch</Code><Message>m</Message></Error>", {
+        status: 403,
+      });
+    return new Response(
+      "<ListAllMyBucketsResult><Buckets><Bucket><Name>9f8e7d6c-wizard-tfstate</Name></Bucket><Bucket><Name>other</Name></Bucket></Buckets></ListAllMyBucketsResult>",
+    );
+  };
+  it("falls back to the storage user's keys and the prefixed S3 name", async () => {
+    const logs = [];
+    const r = await resolveStateS3(
+      twc([{ id: 7, access_key: " USERKEY ", secret_key: "user-secret-value\n" }]),
+      state,
+      {
+        fetch: s3("USERKEY"),
+        log: (l) => logs.push(l),
+      },
+    );
+    expect(r).toMatchObject({
+      bucket: "9f8e7d6c-wizard-tfstate",
+      accessKeyId: "USERKEY",
+      secretAccessKey: "user-secret-value",
+      empty: true,
+    });
+    expect(logs.join("\n")).toContain("пользователь хранилища 7");
+    expect(logs.join("\n")).not.toContain("user-secret-value");
+  });
+  it("the founder's S3 account key is tried first", async () => {
+    const r = await resolveStateS3(twc([]), state, {
+      fetch: s3("ACCKEY"),
+      vars: { WIZARD_S3_ACCOUNT_KEY_ID: "ACCKEY", WIZARD_S3_ACCOUNT_SECRET: "account-secret" },
+    });
+    expect(r).toMatchObject({
+      bucket: "9f8e7d6c-wizard-tfstate",
+      accessKeyId: "ACCKEY",
+      secretAccessKey: "account-secret",
+    });
+  });
+  it("nothing works: 403 with each attempt's S3 code and no key", async () => {
+    const e = await resolveStateS3(
+      twc([{ id: 7, access_key: "USERKEY", secret_key: "user-secret-value" }]),
+      state,
+      {
+        fetch: s3("NOBODY"),
+      },
+    ).catch((x) => x);
+    expect(e.status).toBe(403);
+    expect(e.message).toBe(
+      "S3 не пускает к бакету wizard-tfstate: ключи бакета — SignatureDoesNotMatch; пользователь хранилища 7 — SignatureDoesNotMatch",
+    );
   });
 });

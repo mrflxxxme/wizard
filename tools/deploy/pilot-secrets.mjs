@@ -229,7 +229,16 @@ export function alertSettings(inputs) {
 export function clusterSecretFiles({ bundle, outputs, inputs }) {
   const s = bundle.secrets;
   const buckets = outputs.env?.buckets ?? {};
-  const keys = outputs.s3_keys ?? {};
+  // The founder's Timeweb S3 account key (GitHub secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) wins over the keys
+  // the API reports per bucket: those were refused by S3 on the first live apply (SignatureDoesNotMatch).
+  const account =
+    inputs.WIZARD_S3_ACCOUNT_KEY_ID && inputs.WIZARD_S3_ACCOUNT_SECRET
+      ? {
+          access_key: inputs.WIZARD_S3_ACCOUNT_KEY_ID.trim(),
+          secret_key: inputs.WIZARD_S3_ACCOUNT_SECRET.trim(),
+        }
+      : null;
+  const keys = account ? { files: account, backups: account } : (outputs.s3_keys ?? {});
   for (const b of ["files", "backups"]) {
     if (!buckets[b] || !keys[b]?.access_key || !keys[b]?.secret_key)
       throw new Error(`tofu outputs: нет бакета ${b} или его ключей`);

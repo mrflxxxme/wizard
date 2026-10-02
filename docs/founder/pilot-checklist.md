@@ -92,6 +92,7 @@
 | `ZAI_API_KEY` | шаг 4 |
 | `WIZARD_SMTP_HOST`, `WIZARD_SMTP_USER`, `WIZARD_SMTP_PASSWORD`, `WIZARD_SMTP_FROM` | шаг 5 |
 | `WIZARD_OPS_ALERT_TELEGRAM_TOKEN`, `WIZARD_OPS_ALERT_CHAT_ID` | шаг 6 |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ключ S3 аккаунта Timeweb: панель → S3 → «Ключи доступа». Выкат пользуется им для всех бакетов: ключи, которые API Timeweb отдаёт в описании бакета, S3 не принимает |
 | `WIZARD_FOUNDER_EMAIL` | ваша почта: вход, права staff, алерты. Именно секретом: репозиторий публичный, и значения переменных видны в логах Actions |
 
 **Variables** (вкладка Variables → «New repository variable»):

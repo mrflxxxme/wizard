@@ -36,5 +36,6 @@ test("scrub: 20 KB ≤ 20 ms and ≥ 1 MB/s", () => {
   const big = text(1_000_000);
   scrub(small); // warm-up (dictionary build, JIT)
   expect(best(() => scrub(small), 15)).toBeLessThanOrEqual(20);
-  expect(best(() => scrub(big), 3)).toBeLessThanOrEqual(1000);
+  // Best of 5, not 3: on a loaded 2-vCPU CI runner the best of 3 once landed at 1003 ms (≈ 600 ms locally).
+  expect(best(() => scrub(big), 5)).toBeLessThanOrEqual(1000);
 });

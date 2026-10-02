@@ -30,6 +30,8 @@ export const SECRET_NAMES = [
   "WIZARD_OPS_ALERT_CHAT_ID",
   "WIZARD_OPS_ALERT_URL",
   "WIZARD_GHCR_TOKEN",
+  "WIZARD_S3_ACCOUNT_KEY_ID",
+  "WIZARD_S3_ACCOUNT_SECRET",
 ];
 
 export const STATUS_TEXT = { ok: "ok", fail: "ошибка", skipped: "пропущено" };

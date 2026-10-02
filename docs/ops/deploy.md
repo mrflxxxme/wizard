@@ -332,6 +332,7 @@ node tools/deploy/pilot.mjs close-access --env prod      # убрать врем
 | `WIZARD_SMTP_HOST`, `WIZARD_SMTP_PORT`, `WIZARD_SMTP_USER`, `WIZARD_SMTP_PASSWORD`, `WIZARD_SMTP_FROM` | почта платформы: коды входа, приглашения, алерты. Обязательны `HOST` и `FROM` («Wizard <noreply@домен>»), порт по умолчанию 465 |
 | `WIZARD_OPS_ALERT_TELEGRAM_TOKEN` и `WIZARD_OPS_ALERT_CHAT_ID` | бот и чат для алертов. Можно вместо них задать готовый `WIZARD_OPS_ALERT_URL`. Необязательно: алерты придут и письмом на почту основателя |
 | `WIZARD_PLATFORM_YOOKASSA_SHOP_ID`, `WIZARD_PLATFORM_YOOKASSA_SECRET_KEY` | позже, когда включится оплата (на пилоте оплата выключена) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ключ S3 аккаунта Timeweb (панель → S3 → «Ключи доступа»). Им выкат открывает бакет состояния и его же кладёт платформе (файлы) и WAL-G (резервные копии): ключи из описания бакета в API Timeweb S3 отвергает (`SignatureDoesNotMatch`). Без него выкат пробует ключи бакета и пользователей хранилища |
 | `WIZARD_FOUNDER_EMAIL`, `WIZARD_ACME_EMAIL` | почта основателя (вход, права staff, алерты) и почта для Let's Encrypt (если пусто — почта основателя). Секретами, а не переменными: репозиторий публичный, GitHub печатает значения переменных в открытых логах. Переменные с теми же именами тоже читаются, но попадают в лог |
 
 | Variable | Что это |
