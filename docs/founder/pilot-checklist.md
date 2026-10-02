@@ -92,6 +92,7 @@
 | `ZAI_API_KEY` | шаг 4 |
 | `WIZARD_SMTP_HOST`, `WIZARD_SMTP_USER`, `WIZARD_SMTP_PASSWORD`, `WIZARD_SMTP_FROM` | шаг 5 |
 | `WIZARD_OPS_ALERT_TELEGRAM_TOKEN`, `WIZARD_OPS_ALERT_CHAT_ID` | шаг 6 |
+| `WIZARD_FOUNDER_EMAIL` | ваша почта: вход, права staff, алерты. Именно секретом: репозиторий публичный, и значения переменных видны в логах Actions |
 
 **Variables** (вкладка Variables → «New repository variable»):
 
@@ -99,8 +100,7 @@
 |---|---|
 | `WIZARD_PLATFORM_DOMAIN` | домен платформы, например `primer.ru` |
 | `WIZARD_SYSTEMS_DOMAIN` | домен систем |
-| `WIZARD_FOUNDER_EMAIL` | ваша почта: вход, права staff, алерты |
-| `WIZARD_PLATFORM_MAIL_SPF` | шаг 5 |
+| `WIZARD_PLATFORM_MAIL_SPF` | шаг 5, только механизмы: `include:spf.unisender.ru` — без `v=spf1` и `~all` |
 
 Ключи `CLOUDRU_API_KEY` и `ZAI_API_KEY` используют и пилот, и еженедельный eval. Отдельно для eval ничего задавать не нужно.
 

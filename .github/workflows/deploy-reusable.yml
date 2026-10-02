@@ -38,7 +38,7 @@ jobs:
       OPENBAO_ADDR: ${{ vars.OPENBAO_ADDR }}
       WIZARD_PROVIDER: ${{ vars.WIZARD_PROVIDER || 'timeweb' }}
       WIZARD_TF_STATE_BUCKET: ${{ vars.WIZARD_TF_STATE_BUCKET }}
-      WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
+      WIZARD_ACME_EMAIL: ${{ secrets.WIZARD_ACME_EMAIL || vars.WIZARD_ACME_EMAIL }}
       WIZARD_TFVARS_FILE: /etc/wizard/terraform-${{ inputs.env }}.tfvars
       WIZARD_SSH_KEY_FILE: /etc/wizard/id_ed25519
       # Pilot: images from GHCR (pull secret wizard-ghcr; the release waits for the tag) and the database Secret from a

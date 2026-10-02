@@ -106,14 +106,15 @@ jobs:
       WIZARD_PLATFORM_YOOKASSA_SHOP_ID: ${{ secrets.WIZARD_PLATFORM_YOOKASSA_SHOP_ID }}
       WIZARD_PLATFORM_YOOKASSA_SECRET_KEY: ${{ secrets.WIZARD_PLATFORM_YOOKASSA_SECRET_KEY }}
       WIZARD_RECEIPT_VAT_CODE: ${{ vars.WIZARD_RECEIPT_VAT_CODE }}
-      # …and variables.
+      # …and variables. The repository is public, so its Actions logs are too: GitHub prints a step's env in clear
+      # text, hence personal addresses are read from secrets first (a variable still works, but shows in the log).
       WIZARD_PLATFORM_DOMAIN: ${{ vars.WIZARD_PLATFORM_DOMAIN }}
       WIZARD_SYSTEMS_DOMAIN: ${{ vars.WIZARD_SYSTEMS_DOMAIN }}
       # Staging domains (no environment-level variables without GitHub Pro; pilot.mjs envVars never reuses prod's).
       WIZARD_STAGING_PLATFORM_DOMAIN: ${{ vars.WIZARD_STAGING_PLATFORM_DOMAIN }}
       WIZARD_STAGING_SYSTEMS_DOMAIN: ${{ vars.WIZARD_STAGING_SYSTEMS_DOMAIN }}
-      WIZARD_ACME_EMAIL: ${{ vars.WIZARD_ACME_EMAIL }}
-      WIZARD_FOUNDER_EMAIL: ${{ vars.WIZARD_FOUNDER_EMAIL }}
+      WIZARD_ACME_EMAIL: ${{ secrets.WIZARD_ACME_EMAIL || vars.WIZARD_ACME_EMAIL }}
+      WIZARD_FOUNDER_EMAIL: ${{ secrets.WIZARD_FOUNDER_EMAIL || vars.WIZARD_FOUNDER_EMAIL }}
       WIZARD_PLATFORM_MAIL_SPF: ${{ vars.WIZARD_PLATFORM_MAIL_SPF }}
       # GHCR pull: this job's token (packages: read) unless a long-lived read:packages token is provided.
       WIZARD_GHCR_USER: ${{ github.actor }}

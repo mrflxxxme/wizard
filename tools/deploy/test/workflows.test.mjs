@@ -206,13 +206,11 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(job.env.WIZARD_GHCR_TOKEN).toBe(gh("secrets.WIZARD_GHCR_TOKEN || github.token"));
     for (const n of ["TWC_TOKEN", "WIZARD_STATE_PASSPHRASE", "CLOUDRU_API_KEY", "WIZARD_SMTP_PASSWORD"])
       expect(job.env[n]).toBe(gh(`secrets.${n}`));
-    for (const n of [
-      "WIZARD_PLATFORM_DOMAIN",
-      "WIZARD_SYSTEMS_DOMAIN",
-      "WIZARD_ACME_EMAIL",
-      "WIZARD_FOUNDER_EMAIL",
-    ])
+    for (const n of ["WIZARD_PLATFORM_DOMAIN", "WIZARD_SYSTEMS_DOMAIN"])
       expect(job.env[n]).toBe(gh(`vars.${n}`));
+    // Public repository, public logs: personal addresses come from secrets first (masked in the printed env).
+    for (const n of ["WIZARD_ACME_EMAIL", "WIZARD_FOUNDER_EMAIL"])
+      expect(job.env[n]).toBe(gh(`secrets.${n} || vars.${n}`));
     // Every setting the secrets file passes through to platform-api reaches the job's environment.
     for (const n of PLATFORM_PASSTHROUGH) expect(job.env, n).toHaveProperty(n);
     const names = job.steps.map((s) => s.name ?? s.uses);
