@@ -1,4 +1,4 @@
-# One Wizard environment on Timeweb Cloud, Moscow (ru-3) only. Two shapes (docs/ops/deploy.md):
+# One Wizard environment on Timeweb Cloud, RF only: Moscow (ru-3) by default or St Petersburg (ru-1). Two shapes (docs/ops/deploy.md):
 #   pilot (founder decision 2026-10-01, ≤ 10 000 ₽/month): ONE VM with single-node k3s carrying everything, PostgreSQL
 #     inside the cluster with WAL-G into the backups bucket (settings.postgres = null), buckets files + backups;
 #   beta: k3s server + sandbox agents, managed PostgreSQL (settings.postgres = {…}), five buckets.
