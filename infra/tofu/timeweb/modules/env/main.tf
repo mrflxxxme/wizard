@@ -19,7 +19,13 @@ terraform {
 }
 
 locals {
-  zone        = lookup({ "ru-1" = "spb-3", "ru-2" = "nsk-1", "ru-3" = "msk-1" }, var.location, var.location)
+  # Zone of the VM and its floating IP (they must match). St Petersburg: ready presets (e.g. «Cloud-80», id 2455) live
+  # in the classic zone spb-1 — spb-3 refused them («location_zone: spb-3 is not valid», live apply 2026-10-02) —
+  # while configurator VMs go to spb-3. var.zone overrides (WIZARD_TIMEWEB_ZONE).
+  zone = var.zone != "" ? var.zone : lookup(
+    { "ru-1" = local.server_preset ? "spb-1" : "spb-3", "ru-2" = "nsk-1", "ru-3" = "msk-1" },
+    var.location, var.location,
+  )
   server_ip   = cidrhost(var.vpc_cidr, 10)
   agent_ip    = { for i, k in sort(keys(var.sandbox_nodes)) : k => cidrhost(var.vpc_cidr, 20 + i) }
   single_node = length(var.sandbox_nodes) == 0

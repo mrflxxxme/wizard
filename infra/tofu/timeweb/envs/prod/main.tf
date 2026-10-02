@@ -61,6 +61,7 @@ module "env" {
   env               = "prod"
   name_prefix       = "wizard-prod"
   location          = try(var.settings.location, "ru-3") # Moscow by default; ru-1 (St Petersburg) when Moscow has no free node
+  zone              = try(var.settings.zone, "")
   server            = var.settings.server
   sandbox_nodes     = try(var.settings.sandbox_nodes, {})
   postgres          = try(var.settings.postgres, null) # null → pilot: PostgreSQL + WAL-G in the cluster

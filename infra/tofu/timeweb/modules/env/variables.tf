@@ -20,6 +20,12 @@ variable "location" {
   }
 }
 
+variable "zone" {
+  description = "Availability zone override for the VM and its floating IP (e.g. spb-1, spb-4); empty — by location."
+  type        = string
+  default     = ""
+}
+
 variable "vpc_cidr" {
   type    = string
   default = "192.168.10.0/24"

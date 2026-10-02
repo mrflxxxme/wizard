@@ -1020,6 +1020,8 @@ describe("DMARC of the systems domain through the DNS records API", () => {
       tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_LOCATION: "eu-1" }, "k").settings.location,
     ).toBeUndefined();
     expect(tfvars("prod", FOUNDER, "k").settings.location).toBeUndefined();
+    expect(tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_ZONE: "spb-4" }, "k").settings.zone).toBe("spb-4");
+    expect(tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_ZONE: "fra-1" }, "k").settings.zone).toBeUndefined();
   });
 });
 
