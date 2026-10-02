@@ -23,6 +23,10 @@ on:
       confirm:
         type: string
         default: ""
+      location:
+        description: "ru-1 | ru-3 for this run; empty — the WIZARD_TIMEWEB_LOCATION variable"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -120,7 +124,7 @@ jobs:
       WIZARD_ACME_EMAIL: ${{ secrets.WIZARD_ACME_EMAIL || vars.WIZARD_ACME_EMAIL }}
       WIZARD_FOUNDER_EMAIL: ${{ secrets.WIZARD_FOUNDER_EMAIL || vars.WIZARD_FOUNDER_EMAIL }}
       WIZARD_PLATFORM_MAIL_SPF: ${{ vars.WIZARD_PLATFORM_MAIL_SPF }}
-      WIZARD_TIMEWEB_LOCATION: ${{ vars.WIZARD_TIMEWEB_LOCATION }}
+      WIZARD_TIMEWEB_LOCATION: ${{ inputs.location || vars.WIZARD_TIMEWEB_LOCATION }}
       # GHCR pull: this job's token (packages: read) unless a long-lived read:packages token is provided.
       WIZARD_GHCR_USER: ${{ github.actor }}
       WIZARD_GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN || github.token }}
