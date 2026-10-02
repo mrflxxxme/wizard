@@ -1,7 +1,13 @@
 name: ci
+# GitHub Free: 2 000 Actions minutes a month for a private repository. Branch pushes are covered by their PR run
+# (no second run per push); a newer push to the same PR cancels the older run.
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build:
     runs-on: ubuntu-latest
