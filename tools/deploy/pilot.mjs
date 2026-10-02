@@ -286,6 +286,60 @@ export const stateS3 = (state) => ({
   empty: Boolean(state.empty),
 });
 
+/** S3 ListBuckets with a key pair: {names} or {code} (the S3 error code, or HTTP status) — never throws on 4xx. */
+export async function listBuckets(cfg, { fetch: f = fetch, now = () => new Date() } = {}) {
+  const url = new URL(`${cfg.endpoint}/`);
+  const { host: _host, ...headers } = signRequest({
+    method: "GET",
+    url,
+    payloadHash: sha256Hex(""),
+    region: cfg.region,
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    date: now(),
+  });
+  const r = await f(url, { method: "GET", headers });
+  const text = await r.text();
+  if (!r.ok) return { code: s3ErrorCode(text).slice(2, -1) || `HTTP ${r.status}` };
+  return { names: [...text.matchAll(/<Name>([^<]+)<\/Name>/g)].map((m) => m[1]) };
+}
+
+/**
+ * The state bucket as S3 sees it. The first apply showed that the bucket's own key pair in the Timeweb API is refused
+ * by S3 (SignatureDoesNotMatch) and that the API name may lack the random prefix of the real bucket. So: try the
+ * bucket's keys, then each storage user's (GET /api/v1/storages/users), and take the first pair whose ListBuckets
+ * shows the bucket (the exact name or "<prefix>-<name>"). Errors name each attempt's S3 code, never a key.
+ */
+export async function resolveStateS3(api, state, { fetch: f = fetch, now, log = () => {} } = {}) {
+  const pairs = [["ключи бакета", state.accessKeyId, state.secretAccessKey]];
+  try {
+    const { users = [] } = await api("GET", "/api/v1/storages/users");
+    for (const u of users) pairs.push([`пользователь хранилища ${u.id}`, u.access_key, u.secret_key]);
+  } catch (e) {
+    log(`::warning::Timeweb API: пользователи хранилища недоступны (${e.message})`);
+  }
+  const tried = [];
+  for (const [label, rawId, rawSecret] of pairs) {
+    const accessKeyId = String(rawId ?? "").trim();
+    const secretAccessKey = String(rawSecret ?? "").trim();
+    if (!accessKeyId || !secretAccessKey) continue;
+    if (tried.some(([, id, sec]) => id === accessKeyId && sec === secretAccessKey)) continue;
+    const res = await listBuckets({ ...S3, accessKeyId, secretAccessKey }, { fetch: f, now });
+    const bucket = res.names?.find((n) => bucketMatches(n, state.bucket) || bucketMatches(n, STATE_BUCKET));
+    tried.push([label, accessKeyId, secretAccessKey, res.code ?? (bucket ? "ok" : "нет бакета в списке")]);
+    if (bucket) {
+      if (label !== "ключи бакета" || bucket !== state.bucket)
+        log(`S3: бакет ${bucket}, доступ через ${label}`);
+      return { ...state, bucket, accessKeyId, secretAccessKey };
+    }
+  }
+  const err = new Error(
+    `S3 не пускает к бакету ${state.bucket}: ${tried.map(([l, , , c]) => `${l} — ${c}`).join("; ") || "нет ключей"}`,
+  );
+  err.status = 403; // a just created bucket may need a moment: untilS3Ready retries
+  throw err;
+}
+
 /** GET of an object, null when it does not exist (404). */
 export async function getObjectOrNull(cfg, key, { fetch: f = fetch, now = () => new Date() } = {}) {
   const url = objectUrl(cfg, key);
@@ -555,7 +609,9 @@ export async function checkState(api, env, vars, { fetch: f = fetch, now, log = 
   if (!state)
     return { status: "skipped", detail: `бакета ${STATE_BUCKET} ещё нет: его создаст первый apply` };
   mask([state.accessKeyId, state.secretAccessKey], vars, log);
-  const text = await getObjectOrNull(stateS3(state), bundleKey(env), { fetch: f, now });
+  const resolved = await resolveStateS3(api, state, { fetch: f, now, log });
+  mask([resolved.accessKeyId, resolved.secretAccessKey], vars, log);
+  const text = await getObjectOrNull(stateS3(resolved), bundleKey(env), { fetch: f, now });
   if (!text) return { status: "ok", detail: `бакет есть, ключей ${env} ещё нет: их создаст первый apply` };
   decryptBundle(text, vars.WIZARD_STATE_PASSPHRASE, env);
   return { status: "ok", detail: `пароль подходит к ключам ${env}` };
@@ -614,9 +670,14 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     return 3;
   }
   mask([state.accessKeyId, state.secretAccessKey], vars, log);
-  const s3 = stateS3(state);
+  const resolved = await untilS3Ready(() => resolveStateS3(api, state, { fetch: f, now, log }), {
+    sleep: deps.sleep,
+    log,
+  });
+  mask([resolved.accessKeyId, resolved.secretAccessKey], vars, log);
+  const s3 = stateS3(resolved);
   const passphrase = vars.WIZARD_STATE_PASSPHRASE;
-  log(`бакет состояния: ${state.bucket}${state.created ? " (создан сейчас)" : ""}`);
+  log(`бакет состояния: ${resolved.bucket}${state.created ? " (создан сейчас)" : ""}`);
   const { bundle, existed } = await untilS3Ready(
     () =>
       loadBundle({
@@ -656,9 +717,9 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   const ivars = {
     ...vars,
     WIZARD_PROVIDER: "timeweb",
-    WIZARD_TF_STATE_BUCKET: state.bucket,
-    WIZARD_TF_STATE_ACCESS_KEY_ID: state.accessKeyId,
-    WIZARD_TF_STATE_SECRET_ACCESS_KEY: state.secretAccessKey,
+    WIZARD_TF_STATE_BUCKET: resolved.bucket,
+    WIZARD_TF_STATE_ACCESS_KEY_ID: resolved.accessKeyId,
+    WIZARD_TF_STATE_SECRET_ACCESS_KEY: resolved.secretAccessKey,
     WIZARD_TF_STATE_PASSPHRASE: passphrase,
     WIZARD_TFVARS_FILE: varFile,
     WIZARD_SSH_KEY_FILE: sshKey,

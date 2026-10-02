@@ -89,6 +89,13 @@ const okRoutes = (over = {}) => [
     () => ({ body: { domain: { domain_status: "paid" } } }),
   ],
   [/\/api\/v1\/storages\/buckets$/, () => ({ body: { buckets: over.buckets ?? [] } })],
+  [/\/api\/v1\/storages\/users$/, () => ({ body: { users: [] } })],
+  [
+    /s3\.twcstorage\.ru\/$/,
+    () => ({
+      body: `<ListAllMyBucketsResult><Buckets>${(over.buckets ?? []).map((b) => `<Bucket><Name>${b.name}</Name></Bucket>`).join("")}</Buckets></ListAllMyBucketsResult>`,
+    }),
+  ],
   [/s3\.twcstorage\.ru/, () => (over.bundle ? { body: over.bundle } : { status: 404, body: "" })],
   [
     /foundation-models\.api\.cloud\.ru\/v1\/models$/,
