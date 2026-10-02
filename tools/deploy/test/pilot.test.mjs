@@ -24,6 +24,7 @@ import {
   s3ErrorCode,
   summaryText,
   tfvars,
+  tidyDns,
   twcClient,
   untilS3Ready,
 } from "../pilot.mjs";
@@ -1019,5 +1020,102 @@ describe("DMARC of the systems domain through the DNS records API", () => {
       tfvars("prod", { ...FOUNDER, WIZARD_TIMEWEB_LOCATION: "eu-1" }, "k").settings.location,
     ).toBeUndefined();
     expect(tfvars("prod", FOUNDER, "k").settings.location).toBeUndefined();
+  });
+});
+
+describe("DNS tidy after OpenTofu (Timeweb defaults, the founder's DKIM in the root)", () => {
+  const zoneApi = (zones) => {
+    const calls = [];
+    const api = async (method, path, body) => {
+      calls.push([method, path, body]);
+      const [, zone, id] = /^\/api\/v1\/domains\/([^/]+)\/dns-records(?:\/(\d+))?$/.exec(path);
+      if (method === "GET") return { dns_records: zones[zone] };
+      if (method === "DELETE") {
+        zones[zone] = zones[zone].filter((r) => String(r.id) !== id);
+        return {};
+      }
+      zones[zone].push({ id: 999, type: body.type, data: { subdomain: body.subdomain, value: body.value } });
+      return {};
+    };
+    return { api, calls };
+  };
+  const rec = (id, type, value, subdomain = null) => ({ id, type, data: { value, subdomain } });
+
+  it("drops only the default SPF and parking A records, moves DKIM, never touches DMARC", async () => {
+    const zones = {
+      "codename.ru": [
+        rec(1, "TXT", "v=spf1 include:_spf.timeweb.ru ~all"),
+        rec(2, "TXT", "v=spf1 include:spf.unisender.ru -all"),
+        rec(3, "TXT", "v=DKIM1; k=rsa; p=AAAA"),
+        rec(4, "TXT", "unisender-go-validate-hash=abc"),
+        rec(5, "TXT", "v=DMARC1; p=none; adkim=s; aspf=s", "_dmarc"),
+        rec(6, "A", "194.87.187.207"),
+        rec(7, "A", "203.0.113.10"),
+      ],
+      "neutral.ru": [
+        rec(11, "TXT", "v=spf1 include:_spf.timeweb.ru ~all"),
+        rec(12, "TXT", "v=spf1 -all"),
+        rec(13, "A", "194.87.187.207"),
+        rec(14, "A", "203.0.113.10"),
+        rec(15, "A", "203.0.113.10", "*.neutral.ru"),
+        rec(16, "A", "147.45.99.196", "*"),
+      ],
+    };
+    const { api } = zoneApi(zones);
+    const logs = [];
+    await tidyDns(api, {
+      zones: ["codename.ru", "neutral.ru"],
+      ingressIp: "203.0.113.10",
+      ourSpf: { "codename.ru": "v=spf1 include:spf.unisender.ru -all", "neutral.ru": "v=spf1 -all" },
+      dkimSelector: "gokey",
+      log: (l) => logs.push(l),
+    });
+    expect(zones["codename.ru"].map((r) => [r.type, r.data.subdomain, r.data.value])).toEqual([
+      ["TXT", null, "v=spf1 include:spf.unisender.ru -all"],
+      ["TXT", null, "unisender-go-validate-hash=abc"],
+      ["TXT", "_dmarc", "v=DMARC1; p=none; adkim=s; aspf=s"],
+      ["A", null, "203.0.113.10"],
+      ["TXT", "gokey._domainkey.codename.ru", "v=DKIM1; k=rsa; p=AAAA"],
+    ]);
+    expect(zones["neutral.ru"].map((r) => r.id)).toEqual([12, 14, 15]);
+    expect(logs.join("\n")).toContain("DKIM скопирован в gokey._domainkey.codename.ru");
+  });
+
+  it("DKIM already at its name: no second copy, the equal root one is removed", async () => {
+    const zones = {
+      "codename.ru": [
+        rec(3, "TXT", "v=DKIM1; p=AAAA"),
+        rec(8, "TXT", "v=DKIM1; p=AAAA", "gokey._domainkey.codename.ru"),
+      ],
+    };
+    const { api, calls } = zoneApi(zones);
+    await tidyDns(api, { zones: ["codename.ru"], dkimSelector: "gokey" });
+    expect(calls.some(([m]) => m === "POST")).toBe(false);
+    expect(zones["codename.ru"].map((r) => r.id)).toEqual([8]);
+  });
+
+  it("nothing is deleted while ours is missing; a refused DKIM copy leaves the root DKIM", async () => {
+    const zones = {
+      "codename.ru": [
+        rec(1, "TXT", "v=spf1 include:_spf.timeweb.ru ~all"),
+        rec(3, "TXT", "v=DKIM1; p=AAAA"),
+        rec(6, "A", "194.87.187.207"),
+      ],
+    };
+    const { api: base } = zoneApi(zones);
+    const api = async (m, p, b) => {
+      if (m === "POST") throw new Error("HTTP 400 Bad subdomain name");
+      return base(m, p, b);
+    };
+    const logs = [];
+    await tidyDns(api, {
+      zones: ["codename.ru"],
+      ingressIp: "203.0.113.10",
+      ourSpf: { "codename.ru": "v=spf1 include:spf.unisender.ru -all" },
+      dkimSelector: "gokey",
+      log: (l) => logs.push(l),
+    });
+    expect(zones["codename.ru"].map((r) => r.id)).toEqual([1, 3, 6]);
+    expect(logs.join("\n")).toMatch(/DKIM не перенесён/);
   });
 });

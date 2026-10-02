@@ -196,6 +196,78 @@ export function tfvars(env, vars, sshPublicKey) {
   };
 }
 
+/**
+ * Tidy the two zones after OpenTofu (founder, 2026-10-02): Timeweb puts a default SPF and parking A records into a
+ * new zone, and the provider's DKIM was first added at the root instead of <selector>._domainkey. Only these are
+ * touched, each step checked first and logged (no secrets in DNS values here):
+ *   - a root SPF other than ours is deleted once ours exists (two SPF records = SPF permerror);
+ *   - root / wildcard A records not pointing at the ingress IP are deleted once one that does exists;
+ *   - a root DKIM (v=DKIM1) is copied to <selector>._domainkey and deleted from the root only after the copy exists.
+ * DMARC of the platform domain is the founder's and is never created, moved or deleted here.
+ */
+export async function tidyDns(api, { zones, ingressIp, ourSpf = {}, dkimSelector = "", log = () => {} }) {
+  const done = [];
+  // The API may give the subdomain short ("*") or full ("*.zone"); both are normalized per zone below.
+  const sub = (r, zone) => {
+    const v = String(r.data?.subdomain ?? "");
+    return v === zone || v === "@" ? "" : v.endsWith(`.${zone}`) ? v.slice(0, -zone.length - 1) : v;
+  };
+  const val = (r) => String(r.data?.value ?? "").replace(/^"|"$/g, "");
+  for (const zone of zones) {
+    let records;
+    try {
+      ({ dns_records: records = [] } = await api("GET", `/api/v1/domains/${zone}/dns-records`));
+    } catch (e) {
+      log(`::warning title=pilot::DNS ${zone}: список записей недоступен (${e.message})`);
+      continue;
+    }
+    const del = async (r, why) => {
+      try {
+        await api("DELETE", `/api/v1/domains/${zone}/dns-records/${r.id}`);
+        done.push(`${zone}: удалена ${r.type} ${r.data?.subdomain || "@"} «${val(r).slice(0, 40)}» (${why})`);
+      } catch (e) {
+        log(
+          `::warning title=pilot::DNS ${zone}: не удалось удалить ${r.type} ${val(r).slice(0, 40)} (${e.message})`,
+        );
+      }
+    };
+    const isRoot = (r) => sub(r, zone) === "";
+    const rootTxt = records.filter((r) => r.type === "TXT" && isRoot(r));
+    const spf = rootTxt.filter((r) => val(r).startsWith("v=spf1"));
+    const ours = ourSpf[zone];
+    if (ours && spf.some((r) => val(r) === ours))
+      for (const r of spf) if (val(r) !== ours) await del(r, "вторая SPF-запись");
+    for (const name of ["", "*"]) {
+      const group = records.filter((r) => r.type === "A" && sub(r, zone) === name);
+      if (ingressIp && group.some((r) => val(r) === ingressIp))
+        for (const r of group) if (val(r) !== ingressIp) await del(r, `A не на сервер ${ingressIp}`);
+    }
+    const dkim = rootTxt.filter((r) => val(r).startsWith("v=DKIM1"));
+    const target = `${dkimSelector}._domainkey.${zone}`;
+    const placed = records.find((r) => r.type === "TXT" && sub(r, zone) === `${dkimSelector}._domainkey`);
+    if (dkimSelector && dkim.length === 1 && placed) {
+      // Already at its name (a rerun, or added in the panel): never a second copy; the root one goes only if equal.
+      if (val(placed) === val(dkim[0])) await del(dkim[0], `DKIM уже есть в ${target}`);
+    } else if (dkimSelector && dkim.length === 1) {
+      try {
+        await api("POST", `/api/v1/domains/${zone}/dns-records`, {
+          type: "TXT",
+          subdomain: target,
+          value: val(dkim[0]),
+        });
+        done.push(`${zone}: DKIM скопирован в ${target}`);
+        await del(dkim[0], `DKIM перенесён в ${target}`);
+      } catch (e) {
+        log(
+          `::warning title=pilot::DNS ${zone}: DKIM не перенесён в ${target} (${e.message}) — оставлен в корне`,
+        );
+      }
+    }
+  }
+  for (const line of done) log(`DNS: ${line}`);
+  return done;
+}
+
 export const DMARC_REJECT = "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s";
 
 /**
@@ -852,7 +924,21 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     skipSmoke: deps.skipSmoke,
     skipImageWait: deps.skipImageWait,
   });
-  if (code === 0 && o.command === "bootstrap") await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
+  if (code === 0 && o.command === "bootstrap") {
+    await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
+    await tidyDns(api, {
+      zones: [vars.WIZARD_PLATFORM_DOMAIN, vars.WIZARD_SYSTEMS_DOMAIN],
+      ingressIp: st.outputs?.env?.ingress_ip,
+      ourSpf: {
+        [vars.WIZARD_SYSTEMS_DOMAIN]: "v=spf1 -all",
+        ...(vars.WIZARD_PLATFORM_MAIL_SPF
+          ? { [vars.WIZARD_PLATFORM_DOMAIN]: `v=spf1 ${vars.WIZARD_PLATFORM_MAIL_SPF} -all` }
+          : {}),
+      },
+      dkimSelector: vars.WIZARD_PLATFORM_DKIM_SELECTOR || "",
+      log,
+    });
+  }
   if (code === 0) {
     const text = summaryText({
       env: o.env,
