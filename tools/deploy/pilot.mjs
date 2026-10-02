@@ -187,8 +187,38 @@ export function tfvars(env, vars, sshPublicKey) {
       platform_domain: vars.WIZARD_PLATFORM_DOMAIN,
       systems_domain: vars.WIZARD_SYSTEMS_DOMAIN,
       ...(vars.WIZARD_PLATFORM_MAIL_SPF ? { platform_mail_spf: vars.WIZARD_PLATFORM_MAIL_SPF } : {}),
+      // Region of the VM: Moscow (ru-3) unless the GitHub variable WIZARD_TIMEWEB_LOCATION says ru-1 (St Petersburg),
+      // e.g. when Moscow answers «No free node» (first live apply, 2026-10-02).
+      ...(["ru-1", "ru-3"].includes(vars.WIZARD_TIMEWEB_LOCATION)
+        ? { location: vars.WIZARD_TIMEWEB_LOCATION }
+        : {}),
     },
   };
+}
+
+export const DMARC_REJECT = "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s";
+
+/**
+ * The systems domain never sends mail: DMARC p=reject at _dmarc.<domain>, through the DNS records API (the OpenTofu
+ * provider cannot create an underscore name). Best effort: a failure is a warning, never a stopped deploy.
+ */
+export async function ensureDmarc(api, domain, { log = () => {} } = {}) {
+  try {
+    const { dns_records: records = [] } = await api("GET", `/api/v1/domains/${domain}/dns-records`);
+    if (JSON.stringify(records).includes("v=DMARC1")) return "exists";
+    await api("POST", `/api/v1/domains/${domain}/dns-records`, {
+      type: "TXT",
+      subdomain: `_dmarc.${domain}`,
+      value: DMARC_REJECT,
+    });
+    log(`DNS: _dmarc.${domain} TXT p=reject добавлена`);
+    return "created";
+  } catch (e) {
+    log(
+      `::warning title=pilot::DNS: не удалось добавить _dmarc.${domain} (${e.message}) — добавьте TXT «${DMARC_REJECT}» в панели Timeweb`,
+    );
+    return "failed";
+  }
 }
 
 /** Timeweb Cloud API client: JSON in/out, bearer token; errors carry the method, path and status, never the token. */
@@ -822,6 +852,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     skipSmoke: deps.skipSmoke,
     skipImageWait: deps.skipImageWait,
   });
+  if (code === 0 && o.command === "bootstrap") await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
   if (code === 0) {
     const text = summaryText({
       env: o.env,

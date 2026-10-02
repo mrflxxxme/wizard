@@ -59,7 +59,7 @@ module "env" {
   source            = "../../modules/env"
   env               = "staging"
   name_prefix       = "wizard-staging"
-  location          = "ru-3" # Moscow only (founder decision 2026-10-01)
+  location          = try(var.settings.location, "ru-3") # Moscow by default; ru-1 (St Petersburg) when Moscow has no free node
   server            = var.settings.server
   sandbox_nodes     = try(var.settings.sandbox_nodes, {})
   postgres          = try(var.settings.postgres, null) # null → pilot: PostgreSQL + WAL-G in the cluster
