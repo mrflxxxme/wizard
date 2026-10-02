@@ -368,11 +368,20 @@ export function createRunner({ dryRun, log = (s) => console.log(s), env = proces
       cwd: ROOT,
       env: { ...env, ...o.env },
       encoding: "utf8",
-      stdio: o.stdio ?? (o.capture ? ["pipe", "pipe", "inherit"] : "inherit"),
+      // tee: shown as usual, and also kept for the caller (the error carries it: Timeweb capacity errors, pilot.mjs).
+      stdio: o.stdio ?? (o.capture || o.tee ? ["pipe", "pipe", o.tee ? "pipe" : "inherit"] : "inherit"),
       input: o.input,
       maxBuffer: 64 * 1024 * 1024,
     });
-    if (r.status !== 0 && !o.allowFail) throw new Error(`${cmd} ${args[0]} failed with ${r.status}`);
+    if (o.tee) {
+      if (r.stdout) process.stdout.write(r.stdout);
+      if (r.stderr) process.stderr.write(r.stderr);
+    }
+    if (r.status !== 0 && !o.allowFail) {
+      const err = new Error(`${cmd} ${args[0]} failed with ${r.status}`);
+      if (o.tee) err.output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+      throw err;
+    }
     return r;
   };
 }
@@ -467,7 +476,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     JSON.parse(
       tofu([chdir, "output", "-json"], { capture: true, fake: JSON.stringify(FAKE_OUTPUTS) }).stdout || "{}",
     );
-  if (o.command === "apply") tofu(applyArgs());
+  if (o.command === "apply") tofu(applyArgs(), { tee: true });
   let raw = out();
   if (!raw.env) {
     // Staging on demand: CD after a green main is a no-op while the environment does not exist.

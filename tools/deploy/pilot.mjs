@@ -301,6 +301,29 @@ export async function reportServerOptions(api, shape, { log = () => {} } = {}) {
   }
 }
 
+/** Timeweb out of capacity for this place (or the preset not offered there): try the next one (founder, 2026-10-02). */
+export const CAPACITY_ERROR = /No free node|no available free IPs|location_zone: \S+ is not valid/i;
+
+/**
+ * Places for the pilot VM, all in the RF and with the same preset price ceiling: Moscow, then St Petersburg zones.
+ * The run starts with the requested one (WIZARD_TIMEWEB_LOCATION / _ZONE), then goes down this list.
+ */
+export const PLACES = [
+  { location: "ru-3", zone: "" },
+  { location: "ru-1", zone: "spb-1" },
+  { location: "ru-1", zone: "spb-4" },
+  { location: "ru-1", zone: "spb-2" },
+  { location: "ru-1", zone: "spb-5" },
+];
+
+export function placesFrom(vars) {
+  const location = vars.WIZARD_TIMEWEB_LOCATION || "ru-3";
+  // An empty zone means the module's default for a preset VM: spb-1 in St Petersburg, msk-1 (empty here) in Moscow.
+  const first = { location, zone: vars.WIZARD_TIMEWEB_ZONE || (location === "ru-1" ? "spb-1" : "") };
+  const rest = PLACES.filter((p) => !(p.location === first.location && p.zone === first.zone));
+  return [first, ...rest];
+}
+
 export const DMARC_REJECT = "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s";
 
 /**
@@ -947,17 +970,46 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
 
   const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy" }[o.command];
   const args = [command, "--env", o.env, "--yes", ...(o.tag ? ["--tag", o.tag] : [])];
-  const code = await (deps.infraMain ?? infraMain)(args, ivars, {
-    log,
-    hooks,
-    run: deps.run,
-    has: deps.has,
-    exists: deps.exists,
-    sleep: deps.sleep,
-    fetch: deps.fetch,
-    skipSmoke: deps.skipSmoke,
-    skipImageWait: deps.skipImageWait,
-  });
+  const runInfra = () =>
+    (deps.infraMain ?? infraMain)(args, ivars, {
+      log,
+      hooks,
+      run: deps.run,
+      has: deps.has,
+      exists: deps.exists,
+      sleep: deps.sleep,
+      fetch: deps.fetch,
+      skipSmoke: deps.skipSmoke,
+      skipImageWait: deps.skipImageWait,
+    });
+  // Bootstrap only: when Timeweb has no capacity at the requested place, the next RF place is tried with the same
+  // preset ceiling (OpenTofu replaces the floating IP and the VPC; nothing is paid twice).
+  const places = o.command === "bootstrap" ? placesFrom(vars) : [null];
+  let code;
+  for (let i = 0; ; i++) {
+    try {
+      code = await runInfra();
+      break;
+    } catch (e) {
+      const next = places[i + 1];
+      if (!next || !CAPACITY_ERROR.test(e?.output ?? "")) throw e;
+      log(
+        `::warning title=pilot::Timeweb: нет мощностей в ${places[i].location}${places[i].zone ? `/${places[i].zone}` : ""} — пробую ${next.location}${next.zone ? `/${next.zone}` : ""}`,
+      );
+      file(
+        "pilot.tfvars.json",
+        JSON.stringify(
+          tfvars(
+            o.env,
+            { ...vars, WIZARD_TIMEWEB_LOCATION: next.location, WIZARD_TIMEWEB_ZONE: next.zone },
+            bundle.secrets.SSH_PUBLIC_KEY,
+          ),
+          null,
+          2,
+        ),
+      );
+    }
+  }
   if (code === 0 && o.command === "bootstrap") {
     await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
     await tidyDns(api, {
