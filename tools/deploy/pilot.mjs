@@ -310,8 +310,15 @@ export async function listBuckets(cfg, { fetch: f = fetch, now = () => new Date(
  * bucket's keys, then each storage user's (GET /api/v1/storages/users), and take the first pair whose ListBuckets
  * shows the bucket (the exact name or "<prefix>-<name>"). Errors name each attempt's S3 code, never a key.
  */
-export async function resolveStateS3(api, state, { fetch: f = fetch, now, log = () => {} } = {}) {
-  const pairs = [["ключи бакета", state.accessKeyId, state.secretAccessKey]];
+export async function resolveStateS3(api, state, { fetch: f = fetch, now, log = () => {}, vars = {} } = {}) {
+  const pairs = [
+    [
+      "ключ S3 аккаунта (секреты AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)",
+      vars.WIZARD_S3_ACCOUNT_KEY_ID,
+      vars.WIZARD_S3_ACCOUNT_SECRET,
+    ],
+    ["ключи бакета", state.accessKeyId, state.secretAccessKey],
+  ];
   try {
     const { users = [] } = await api("GET", "/api/v1/storages/users");
     for (const u of users) pairs.push([`пользователь хранилища ${u.id}`, u.access_key, u.secret_key]);
@@ -609,7 +616,7 @@ export async function checkState(api, env, vars, { fetch: f = fetch, now, log = 
   if (!state)
     return { status: "skipped", detail: `бакета ${STATE_BUCKET} ещё нет: его создаст первый apply` };
   mask([state.accessKeyId, state.secretAccessKey], vars, log);
-  const resolved = await resolveStateS3(api, state, { fetch: f, now, log });
+  const resolved = await resolveStateS3(api, state, { fetch: f, now, log, vars });
   mask([resolved.accessKeyId, resolved.secretAccessKey], vars, log);
   const text = await getObjectOrNull(stateS3(resolved), bundleKey(env), { fetch: f, now });
   if (!text) return { status: "ok", detail: `бакет есть, ключей ${env} ещё нет: их создаст первый apply` };
@@ -670,7 +677,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     return 3;
   }
   mask([state.accessKeyId, state.secretAccessKey], vars, log);
-  const resolved = await untilS3Ready(() => resolveStateS3(api, state, { fetch: f, now, log }), {
+  const resolved = await untilS3Ready(() => resolveStateS3(api, state, { fetch: f, now, log, vars }), {
     sleep: deps.sleep,
     log,
   });

@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "test": "vitest run",
+    "test:perf": "WIZARD_PERF=1 vitest run --project perf",
     "e2e": "pnpm --filter @wizard/e2e test",
     "dev": "node scripts/dev.mjs",
     "check:code": "node scripts/check-code.mjs",

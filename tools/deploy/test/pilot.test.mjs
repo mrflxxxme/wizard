@@ -307,6 +307,20 @@ describe("pilot: secrets bundle", () => {
     expect(() => clusterSecretFiles({ bundle, outputs: { env: {} }, inputs: FOUNDER })).toThrow(
       /бакета files/,
     );
+    // The founder's S3 account key (secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) wins over per-bucket API keys.
+    const acc = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: {
+        ...FOUNDER,
+        WIZARD_S3_ACCOUNT_KEY_ID: " ACCKEY ",
+        WIZARD_S3_ACCOUNT_SECRET: "account-secret\n",
+      },
+    });
+    expect(acc.platformEnv).toContain(
+      "WIZARD_S3_ACCESS_KEY_ID=ACCKEY\nWIZARD_S3_SECRET_ACCESS_KEY=account-secret\n",
+    );
+    expect(acc.postgresEnv).toContain("AWS_ACCESS_KEY_ID=ACCKEY\nAWS_SECRET_ACCESS_KEY=account-secret\n");
     expect(() => envFile({ A: "x\ny" })).toThrow(/перевод строки/);
     expect(
       alertSettings({ WIZARD_OPS_ALERT_URL: "https://hook.example/x", WIZARD_OPS_ALERT_CHAT_ID: "1" }),
@@ -942,6 +956,17 @@ describe("state bucket keys as S3 sees them (first live apply: SignatureDoesNotM
     });
     expect(logs.join("\n")).toContain("пользователь хранилища 7");
     expect(logs.join("\n")).not.toContain("user-secret-value");
+  });
+  it("the founder's S3 account key is tried first", async () => {
+    const r = await resolveStateS3(twc([]), state, {
+      fetch: s3("ACCKEY"),
+      vars: { WIZARD_S3_ACCOUNT_KEY_ID: "ACCKEY", WIZARD_S3_ACCOUNT_SECRET: "account-secret" },
+    });
+    expect(r).toMatchObject({
+      bucket: "9f8e7d6c-wizard-tfstate",
+      accessKeyId: "ACCKEY",
+      secretAccessKey: "account-secret",
+    });
   });
   it("nothing works: 403 with each attempt's S3 code and no key", async () => {
     const e = await resolveStateS3(

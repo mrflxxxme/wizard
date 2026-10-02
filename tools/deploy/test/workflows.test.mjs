@@ -211,6 +211,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     // Public repository, public logs: personal addresses come from secrets first (masked in the printed env).
     for (const n of ["WIZARD_ACME_EMAIL", "WIZARD_FOUNDER_EMAIL"])
       expect(job.env[n]).toBe(gh(`secrets.${n} || vars.${n}`));
+    // The founder's Timeweb S3 account key, under names no runner tool reads implicitly.
+    expect(job.env.WIZARD_S3_ACCOUNT_KEY_ID).toBe(gh("secrets.AWS_ACCESS_KEY_ID"));
+    expect(job.env.WIZARD_S3_ACCOUNT_SECRET).toBe(gh("secrets.AWS_SECRET_ACCESS_KEY"));
+    expect(job.env.AWS_ACCESS_KEY_ID).toBeUndefined();
     // Every setting the secrets file passes through to platform-api reaches the job's environment.
     for (const n of PLATFORM_PASSTHROUGH) expect(job.env, n).toHaveProperty(n);
     const names = job.steps.map((s) => s.name ?? s.uses);
