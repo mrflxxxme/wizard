@@ -317,10 +317,10 @@ export const PLACES = [
 ];
 
 export function placesFrom(vars) {
-  const first = { location: vars.WIZARD_TIMEWEB_LOCATION || "ru-3", zone: vars.WIZARD_TIMEWEB_ZONE || "" };
-  const rest = PLACES.filter(
-    (p) => !(p.location === first.location && (p.zone === first.zone || !first.zone)),
-  );
+  const location = vars.WIZARD_TIMEWEB_LOCATION || "ru-3";
+  // An empty zone means the module's default for a preset VM: spb-1 in St Petersburg, msk-1 (empty here) in Moscow.
+  const first = { location, zone: vars.WIZARD_TIMEWEB_ZONE || (location === "ru-1" ? "spb-1" : "") };
+  const rest = PLACES.filter((p) => !(p.location === first.location && p.zone === first.zone));
   return [first, ...rest];
 }
 

@@ -1125,6 +1125,13 @@ describe("DNS tidy after OpenTofu (Timeweb defaults, the founder's DKIM in the r
 
 describe("Timeweb capacity: the next RF place with the same preset ceiling", () => {
   it("starts with the requested place, then Moscow and the St Petersburg zones, without repeats", () => {
+    expect(placesFrom({ WIZARD_TIMEWEB_LOCATION: "ru-1" }).map((p) => `${p.location}/${p.zone}`)).toEqual([
+      "ru-1/spb-1",
+      "ru-3/",
+      "ru-1/spb-4",
+      "ru-1/spb-2",
+      "ru-1/spb-5",
+    ]);
     expect(placesFrom({}).map((p) => `${p.location}/${p.zone}`)).toEqual([
       "ru-3/",
       "ru-1/spb-1",
