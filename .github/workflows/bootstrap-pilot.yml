@@ -2,6 +2,8 @@
 # — the whole environment on Timeweb Cloud from GitHub-hosted runners: state bucket and keys, encrypted secrets bundle,
 # VM, k3s, addons, Secrets, release, founder access. Idempotent: running it again changes only what is missing.
 # Only the repository owner, only from main; prod needs the word PROD. staging can also be destroyed here.
+# action `check` (the default) is a read-only preflight of the secrets and variables (tools/deploy/preflight.mjs):
+# no images, no OpenTofu, no PROD word; about two Actions minutes. Run it first, then apply.
 name: bootstrap-pilot
 
 on:
@@ -13,16 +15,16 @@ on:
         options: [prod, staging]
         default: prod
       action:
-        description: "apply — создать/обновить/восстановить; destroy — удалить (только staging)"
+        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; destroy — удалить (только staging)"
         type: choice
-        options: [apply, destroy]
-        default: apply
+        options: [check, apply, destroy]
+        default: check
       sha:
         description: "Полный SHA коммита main (пусто — последний коммит main)"
         type: string
         default: ""
       confirm:
-        description: "Для prod введите PROD"
+        description: "Для prod (apply) введите PROD; для check не нужно"
         type: string
         default: ""
 
@@ -41,7 +43,7 @@ jobs:
       packages: write
     with:
       env: ${{ inputs.env }}
-      command: ${{ inputs.action == 'destroy' && 'destroy' || 'bootstrap' }}
+      command: ${{ inputs.action == 'apply' && 'bootstrap' || inputs.action }}
       sha: ${{ inputs.sha }}
       confirm: ${{ inputs.confirm }}
     secrets: inherit

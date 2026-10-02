@@ -2,6 +2,8 @@
 // Pilot on Timeweb Cloud from a GitHub-hosted runner, no self-hosted runner and no hand-made files
 // (docs/ops/deploy.md «Пилот: одна кнопка», docs/reviews/impl-notes/pilot-bootstrap.md). The founder sets GitHub
 // secrets/variables once (FOUNDER_INPUTS); everything else is created here, idempotently:
+//   node tools/deploy/pilot.mjs check --env prod|staging                read-only preflight of the founder inputs
+//        (tools/deploy/preflight.mjs): Timeweb token, balance and DNS zones, Cloud.ru, Z.ai, SMTP login, alerts, SPF
 //   node tools/deploy/pilot.mjs bootstrap --env prod|staging --tag <sha>   state bucket + keys (Timeweb API) → secrets
 //        bundle (generated once, encrypted with WIZARD_STATE_PASSPHRASE, kept in the state bucket) → OpenTofu →
 //        temporary SSH rule for this runner's IP → k3s over an SSH tunnel → addons, Secrets, Helm → founder access;
@@ -29,8 +31,9 @@ import {
   MIN_PASSPHRASE,
   secretValues,
 } from "./pilot-secrets.mjs";
+import { runPreflight, SECRET_NAMES } from "./preflight.mjs";
 
-export const COMMANDS = ["bootstrap", "deploy", "destroy", "close-access", "show-secrets"];
+export const COMMANDS = ["check", "bootstrap", "deploy", "destroy", "close-access", "show-secrets"];
 export const ENVS = ["prod", "staging"];
 export const TWC_API = "https://api.timeweb.cloud";
 /** Timeweb S3 (only location ru-1): the state bucket, as the backend of infra/tofu/timeweb/envs/*. */
@@ -504,6 +507,21 @@ function mask(values, vars, log) {
 }
 
 /**
+ * Read-only state probe of `check`: the state bucket (never created, never waited for) and, when the environment's keys
+ * exist, whether WIZARD_STATE_PASSPHRASE decrypts them. Returns {status, detail}.
+ */
+export async function checkState(api, env, vars, { fetch: f = fetch, now, log = () => {} } = {}) {
+  const state = await ensureStateBucket(api, { create: false, attempts: 0 });
+  if (!state)
+    return { status: "skipped", detail: `бакета ${STATE_BUCKET} ещё нет: его создаст первый apply` };
+  mask([state.accessKeyId, state.secretAccessKey], vars, log);
+  const text = await getObjectOrNull(stateS3(state), bundleKey(env), { fetch: f, now });
+  if (!text) return { status: "ok", detail: `бакет есть, ключей ${env} ещё нет: их создаст первый apply` };
+  decryptBundle(text, vars.WIZARD_STATE_PASSPHRASE, env);
+  return { status: "ok", detail: `пароль подходит к ключам ${env}` };
+}
+
+/**
  * Entry: returns the exit code. deps (tests): fetch, now, rand, sleep, log, run/has/exists (passed to infra.mjs),
  * infraMain, skipSmoke, kdf.
  */
@@ -515,6 +533,25 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   const f = deps.fetch ?? fetch;
   const now = deps.now ?? (() => new Date());
   const rand = deps.rand ?? randomBytes;
+  if (o.command === "check") {
+    mask(
+      SECRET_NAMES.map((n) => vars[n]),
+      vars,
+      log,
+    );
+    const api = twcClient({ token: vars.TWC_TOKEN, fetch: f });
+    return runPreflight({
+      env: o.env,
+      vars,
+      inputProblems: checkInputs("bootstrap", vars),
+      stagingProblems: target.problems,
+      stateProbe: () => checkState(api, o.env, vars, { fetch: f, now, log }),
+      fetch: f,
+      smtp: deps.smtp,
+      log,
+      summary: (text) => vars.GITHUB_STEP_SUMMARY && appendFileSync(vars.GITHUB_STEP_SUMMARY, text),
+    });
+  }
   const problems = [...target.problems, ...checkInputs(o.command, vars)];
   if (problems.length > 0) {
     const text = problems.map(([n, why]) => `  - ${n}: ${why}`).join("\n");

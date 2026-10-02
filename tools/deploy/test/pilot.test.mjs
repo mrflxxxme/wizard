@@ -70,6 +70,7 @@ describe("pilot: founder inputs", () => {
     expect(() => parseArgs(["destroy", "--env", "prod"])).toThrow(/staging/);
     expect(() => parseArgs(["bootstrap", "--env", "qa", "--tag", SHA])).toThrow(/--env/);
     expect(parseArgs(["close-access", "--env", "staging"]).command).toBe("close-access");
+    expect(parseArgs(["check", "--env", "prod"])).toMatchObject({ command: "check", tag: null });
   });
 
   it("names every missing or malformed input, never a value", () => {
