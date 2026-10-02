@@ -192,6 +192,10 @@ export function tfvars(env, vars, sshPublicKey) {
       ...(["ru-1", "ru-3"].includes(vars.WIZARD_TIMEWEB_LOCATION)
         ? { location: vars.WIZARD_TIMEWEB_LOCATION }
         : {}),
+      // Zone override (spb-1…spb-5, msk-1): when a preset is refused in the default zone of its location.
+      ...(/^(spb-[1-5]|msk-1)$/.test(vars.WIZARD_TIMEWEB_ZONE ?? "")
+        ? { zone: vars.WIZARD_TIMEWEB_ZONE }
+        : {}),
     },
   };
 }
