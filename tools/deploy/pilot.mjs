@@ -268,6 +268,35 @@ export async function tidyDns(api, { zones, ingressIp, ourSpf = {}, dkimSelector
   return done;
 }
 
+/**
+ * `check`: the VM presets Timeweb offers for the pilot shape in each RF location, and the zones of each location —
+ * data for picking a region/zone when a create fails («No free node», «location_zone … is not valid»). Read-only;
+ * a failure is a warning.
+ */
+export async function reportServerOptions(api, shape, { log = () => {} } = {}) {
+  try {
+    const { server_presets: presets = [] } = await api("GET", "/api/v1/presets/servers");
+    const fit = presets
+      .filter((p) => ["ru-1", "ru-2", "ru-3"].includes(p.location))
+      .filter((p) => p.cpu === shape.cpu && p.ram === shape.ram_gb * 1024 && p.disk >= shape.disk_gb * 1024)
+      .sort((a, b) => a.location.localeCompare(b.location) || a.price - b.price);
+    log(
+      `Тарифы ВМ ${shape.cpu} vCPU / ${shape.ram_gb} ГБ / от ${shape.disk_gb} ГБ (потолок ${shape.max_price} ₽):`,
+    );
+    for (const p of fit)
+      log(
+        `  ${p.location} id=${p.id} ${p.price} ₽ диск ${p.disk / 1024} ГБ ${p.disk_type ?? ""} CPU ${p.cpu_frequency ?? "?"} ГГц «${p.description_short ?? p.description ?? ""}» теги=${JSON.stringify(p.tags ?? [])}`,
+      );
+    const { locations = [] } = await api("GET", "/api/v2/locations").catch(() => ({ locations: [] }));
+    for (const l of locations)
+      log(
+        `  локация ${l.location ?? l.code ?? JSON.stringify(l).slice(0, 40)}: зоны ${JSON.stringify(l.availability_zones ?? [])}`,
+      );
+  } catch (e) {
+    log(`::warning title=pilot::Тарифы ВМ недоступны (${e.message})`);
+  }
+}
+
 export const DMARC_REJECT = "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s";
 
 /**
@@ -745,6 +774,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       log,
     );
     const api = twcClient({ token: vars.TWC_TOKEN, fetch: f });
+    await reportServerOptions(api, SHAPES[o.env].server, { log });
     return runPreflight({
       env: o.env,
       vars,
