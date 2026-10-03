@@ -753,5 +753,6 @@ describe("diagnoseCluster", () => {
     // plain values and the database Secret as is; secretKeyRef entries are not copied
     expect(walg.env.map((e) => e.name)).toEqual(["WALG_S3_PREFIX", "WALG_LOG_LEVEL", "S3_LOG_LEVEL"]);
     expect(walg.envFrom).toEqual([{ secretRef: { name: "wizard-postgres" } }]);
+    expect(inputs[1].spec.securityContext.runAsUser).toBe(999);
   });
 });
