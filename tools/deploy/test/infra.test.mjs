@@ -7,6 +7,7 @@ import {
   addonsFor,
   CLUSTER_SECRETS,
   clusterSecrets,
+  createRunner,
   imageNames,
   kubeconfigText,
   loadProvider,
@@ -603,5 +604,13 @@ describe.skipIf(!hasPsql)("pitr-drill.mjs (control rows)", () => {
     expect(drillArgs(["restore", "--at", "Thu, 01 Oct 2026 11:00:00 UTC"]).at).toBe(
       "Thu, 01 Oct 2026 11:00:00 UTC",
     );
+  });
+});
+
+describe("createRunner", () => {
+  it("feeds o.input to stdin also without capture (`kubectl apply -f -`)", () => {
+    const run = createRunner({ log: () => {} });
+    expect(run("sh", ["-c", 'test "$(cat)" = hello'], { input: "hello", allowFail: true }).status).toBe(0);
+    expect(run("sh", ["-c", "cat"], { input: "x", capture: true }).stdout).toBe("x");
   });
 });

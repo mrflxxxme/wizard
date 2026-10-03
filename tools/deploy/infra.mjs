@@ -369,7 +369,13 @@ export function createRunner({ dryRun, log = (s) => console.log(s), env = proces
       env: { ...env, ...o.env },
       encoding: "utf8",
       // tee: shown as usual, and also kept for the caller (the error carries it: Timeweb capacity errors, pilot.mjs).
-      stdio: o.stdio ?? (o.capture || o.tee ? ["pipe", "pipe", o.tee ? "pipe" : "inherit"] : "inherit"),
+      // stdin is a pipe whenever there is input: with "inherit" spawnSync silently drops o.input (`kubectl apply -f -`
+      // got nothing — first live bootstrap, 2026-10-03).
+      stdio: o.stdio ?? [
+        o.capture || o.tee || o.input !== undefined ? "pipe" : "inherit",
+        o.capture || o.tee ? "pipe" : "inherit",
+        o.tee ? "pipe" : "inherit",
+      ],
       input: o.input,
       maxBuffer: 64 * 1024 * 1024,
     });
