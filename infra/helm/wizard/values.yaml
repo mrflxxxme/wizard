@@ -238,6 +238,8 @@ sandbox:
   systems: 10
   maxPods: 50
   healthPort: 8999
+  # M2-19: G1 RPC listener of the worker (sandbox Workers of the system under test call back here)
+  g1RpcPort: 4102
   # resources of one sandbox pod (requests = limits for memory; sandboxPod())
   memoryLimit: 1536Mi
   cpuLimit: "1"

@@ -1,6 +1,9 @@
 // Gate contracts: specs/quality/gates.yaml#report, specs/architecture.yaml#interfaces.gate_context.
+
 import type { AppSpec } from "@wizard/appspec";
 import type postgres from "postgres";
+import type { RenderJob, RenderOutcome } from "./g1/render/host.js";
+import type { RenderAnswer } from "./g1/render/remote.js";
 import type { QaCheck } from "./g1/types.js";
 
 export type GateLevel = "G0" | "G1" | "G2";
@@ -60,7 +63,18 @@ export interface RuntimeHandle {
    * cron window. Without it the DSL steps runWorkflows/advanceTime report error.
    */
   runJobs?(input: { slug: string; env: "draft" | "prod"; now?: Date; since?: Date }): Promise<JobRunReport>;
+  /**
+   * M2-19: a page render Worker in the sandbox for this bundle (cluster, WIZARD_SANDBOX=k8s; platform-api executors);
+   * absent → the local render process (unsafe-local). close() removes the Worker.
+   */
+  renderer?(input: { key: string; code: string }): Promise<PageRenderer>;
   readonly env?: { systemsDomain?: string; publicScheme?: string; unsafeLocalExec?: boolean };
+}
+
+/** One sandboxed page render Worker (RuntimeHandle.renderer). */
+export interface PageRenderer {
+  render(job: RenderJob, answer: RenderAnswer, timeoutMs: number): Promise<RenderOutcome>;
+  close(): Promise<void>;
 }
 
 /** Result of RuntimeHandle.runJobs (apps/runtime RunJobsReport, structurally). */

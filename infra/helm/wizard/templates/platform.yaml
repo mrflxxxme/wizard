@@ -103,8 +103,14 @@ spec:
         wizard.ru/role: worker
       annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
+      {{- if .Values.sandbox.orchestrate }}
+      # M2-19: G1 runs the system under test in workerd pods of the sandbox (Role wizard-runtime-sandbox).
+      serviceAccountName: wizard-g1
+      automountServiceAccountToken: true
+      {{- else }}
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
+      {{- end }}
       enableServiceLinks: false
       terminationGracePeriodSeconds: 60
       {{- include "wizard.imagePullSecrets" . | nindent 6 }}
@@ -116,11 +122,20 @@ spec:
           env:
             {{- include "wizard.commonEnv" . | nindent 12 }}
             {{- include "wizard.alertEnv" . | nindent 12 }}
+            {{- if .Values.sandbox.orchestrate }}
+            # M2-19: one G1 pod at a time; its Workers call back on the G1 RPC port of this pod.
+            {{- include "wizard.sandboxEnv" (list . .Values.sandbox.g1RpcPort 1) | nindent 12 }}
+            - name: WIZARD_G1_RPC_PORT
+              value: {{ .Values.sandbox.g1RpcPort | quote }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}
           ports:
             - { name: metrics, containerPort: {{ .Values.metrics.port }}, protocol: TCP }
+            {{- if .Values.sandbox.orchestrate }}
+            - { name: g1-rpc, containerPort: {{ .Values.sandbox.g1RpcPort }}, protocol: TCP }
+            {{- end }}
           resources: {{- toYaml .Values.worker.resources | nindent 12 }}
           {{- include "wizard.containerSecurity" . | nindent 10 }}
           volumeMounts: {{- include "wizard.nodeMounts" . | nindent 12 }}

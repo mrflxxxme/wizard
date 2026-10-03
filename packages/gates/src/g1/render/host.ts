@@ -37,10 +37,14 @@ type Msg =
   | ({ t: "fetch"; id: number } & GuestFetch)
   | { t: "done"; id: number; ok: boolean; [k: string]: unknown };
 
+/** The guest module child.mjs imports (shared with the workerd render Worker): readable besides the bundle. */
+export const RENDER_GUEST = fileURLToPath(new URL("./guest.mjs", import.meta.url));
+
 export function renderFlags(dir: string): string[] {
   return [
     "--permission",
     `--allow-fs-read=${dir}`,
+    `--allow-fs-read=${RENDER_GUEST}`,
     "--disable-warning=ExperimentalWarning",
     "--max-old-space-size=256",
   ];

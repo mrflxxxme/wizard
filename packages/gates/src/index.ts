@@ -34,6 +34,8 @@ export {
   generatePermissionChecks,
   selectG1,
 } from "./g1/checks.js";
+/** M2-19: G1-RENDER-01 in the sandbox — render Worker modules, page-fetch bridge by token, one render over HTTP. */
+export { type RenderAnswer, RenderBridge, renderRemote, renderWorkerModules } from "./g1/render/remote.js";
 /** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?}) incl. G1-RENDER-01 (M1+); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
 export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
 /** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */

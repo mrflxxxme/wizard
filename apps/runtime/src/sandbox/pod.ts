@@ -20,6 +20,11 @@ export interface SandboxPodInput {
   cpuLimit?: string;
   /** ConfigMap keys → file paths under /etc/workerd (keys cannot hold "/": s0/functions.mjs is s0__functions.mjs). */
   configItems?: readonly { key: string; path: string }[];
+  /**
+   * Several ConfigMaps in one projected volume (the orchestrator: shared files + one per system slot, each ≤ 1 MiB);
+   * replaces configMap/configItems.
+   */
+  configSources?: readonly { name: string; items: readonly { key: string; path: string }[] }[];
   /** Extra labels (the orchestrator's owner and pod id). */
   labels?: Readonly<Record<string, string>>;
 }
@@ -100,13 +105,22 @@ export function sandboxPod(i: SandboxPodInput): Record<string, unknown> {
         },
       ],
       volumes: [
-        {
-          name: "config",
-          configMap: {
-            name: i.configMap,
-            ...(i.configItems ? { items: i.configItems.map((x) => ({ ...x })) } : {}),
-          },
-        },
+        i.configSources
+          ? {
+              name: "config",
+              projected: {
+                sources: i.configSources.map((c) => ({
+                  configMap: { name: c.name, items: c.items.map((x) => ({ ...x })) },
+                })),
+              },
+            }
+          : {
+              name: "config",
+              configMap: {
+                name: i.configMap,
+                ...(i.configItems ? { items: i.configItems.map((x) => ({ ...x })) } : {}),
+              },
+            },
       ],
     },
   };

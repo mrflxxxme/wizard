@@ -46,30 +46,9 @@ spec:
             - name: WIZARD_PLATFORM_INTERNAL_URL
               value: {{ printf "http://wizard-platform-api.%s.svc:%v" .Values.namespaces.platform .Values.platformApi.port | quote }}
             {{- if .Values.sandbox.orchestrate }}
-            # M2-18: functions run in workerd pods under gVisor (apps/runtime/src/sandbox/from-env.ts); the pods have no
-            # DNS and reach the RPC listener on this pod's IP.
-            - name: WIZARD_SANDBOX
-              value: k8s
-            - name: WIZARD_SANDBOX_NAMESPACE
-              value: {{ .Values.namespaces.sandbox | quote }}
-            - name: WIZARD_SANDBOX_IMAGE
-              value: {{ include "wizard.image" (list . .Values.images.names.sandbox) | quote }}
-            - name: POD_IP
-              valueFrom: { fieldRef: { fieldPath: status.podIP } }
-            - name: WIZARD_SANDBOX_RPC_ADDRESS
-              value: {{ printf "$(POD_IP):%v" .Values.runtime.internalPort | quote }}
-            - name: WIZARD_SANDBOX_BASE_PORT
-              value: {{ .Values.sandbox.basePort | quote }}
-            - name: WIZARD_SANDBOX_HEALTH_PORT
-              value: {{ .Values.sandbox.healthPort | quote }}
-            - name: WIZARD_SANDBOX_SYSTEMS_PER_POD
-              value: {{ .Values.sandbox.systems | quote }}
-            - name: WIZARD_SANDBOX_MAX_PODS
-              value: {{ .Values.sandbox.maxPods | quote }}
-            - name: WIZARD_SANDBOX_MEMORY
-              value: {{ .Values.sandbox.memoryLimit | quote }}
-            - name: WIZARD_SANDBOX_CPU
-              value: {{ .Values.sandbox.cpuLimit | quote }}
+            # M2-18: functions run in workerd pods under gVisor placed by this process; the pods reach its RPC
+            # listener on the internal port of this pod's IP (they have no DNS).
+            {{- include "wizard.sandboxEnv" (list . .Values.runtime.internalPort .Values.sandbox.maxPods) | nindent 12 }}
             {{- end }}
           envFrom:
             - secretRef:

@@ -33,13 +33,16 @@ class ProcessKube implements KubeApi {
     return [...this.cms.keys()];
   }
   async createPod(pod: Obj) {
-    const vol = pod.spec.volumes[0].configMap;
-    const cm = this.cms.get(vol.name);
-    if (!cm) throw new Error(`no ConfigMap ${vol.name}`);
+    // Local "pods" share 127.0.0.1 and its ports; in the cluster every pod has its own IP. One process at a time.
+    for (const name of [...this.procs.keys()]) await this.deletePod(name);
     const dir = mkdtempSync(join(tmpdir(), "wz-orch-"));
-    for (const { key, path } of vol.items as { key: string; path: string }[]) {
-      mkdirSync(dirname(join(dir, path)), { recursive: true });
-      writeFileSync(join(dir, path), cm.data[key]);
+    for (const src of pod.spec.volumes[0].projected.sources.map((x: Obj) => x.configMap)) {
+      const cm = this.cms.get(src.name);
+      if (!cm) throw new Error(`no ConfigMap ${src.name}`);
+      for (const { key, path } of src.items as { key: string; path: string }[]) {
+        mkdirSync(dirname(join(dir, path)), { recursive: true });
+        writeFileSync(join(dir, path), cm.data[key]);
+      }
     }
     const file = join(dir, "config.capnp");
     const proc = await startWorkerd({ dir, file, cleanup: () => {} }, this.healthPort);

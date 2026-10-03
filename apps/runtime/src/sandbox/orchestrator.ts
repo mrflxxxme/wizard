@@ -44,8 +44,10 @@ export interface PrepareInput {
   systemId: string;
   env: SandboxEnv;
   entities: readonly string[];
-  /** server/functions.mjs of the artifact. */
+  /** server/functions.mjs of the artifact ("" with `worker`). */
   functionsSource: string;
+  /** Another Worker instead of the functions host (M2-19: the G1 render Worker). */
+  worker?: WorkerdSystem["worker"];
   orgId?: string;
 }
 
@@ -53,6 +55,8 @@ interface PodRecord {
   name: string;
   hash: string;
   ip: string;
+  /** The pod's ConfigMaps: shared files + one per system slot. */
+  configMaps: string[];
 }
 
 /** Kubernetes stores at most 1 MiB per ConfigMap; the rest is headroom for metadata. */
@@ -132,7 +136,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       }
       throw e;
     }
-    const hash = sha(`${s.functionsSource}\0${s.entities.join(",")}`);
+    const hash = sha(`${s.functionsSource}\0${s.entities.join(",")}\0${JSON.stringify(s.worker ?? null)}`);
     this.sources.set(key, {
       systemId: s.systemId,
       env: s.env,
@@ -140,6 +144,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       entities: [...s.entities],
       slot,
       hash,
+      ...(s.worker ? { worker: s.worker } : {}),
     });
     await this.serial(podId, () => this.sync(podId));
   }
@@ -169,25 +174,44 @@ export class SandboxOrchestrator implements SandboxExecutors {
     const prev = this.pods.get(podId);
     if (prev?.hash === hash) return;
     const name = `wz-${this.o.owner}-${podId.replace(/^sandbox-/, "")}-${hash}`;
-    const data: Record<string, string> = { "config.capnp": cfg.capnp };
-    for (const [path, text] of Object.entries(cfg.files)) data[configKey(path)] = text;
-    const size = Object.values(data).reduce((n, t) => n + Buffer.byteLength(t), 0);
-    if (size > CONFIGMAP_BUDGET) {
-      this.log({ msg: "sandbox_config_too_large", count: size });
-      throw unavailable("Функции систем этого пода не помещаются в песочницу");
+    // One ConfigMap for the shared files and one per system slot (s<n>/…): the 1 MiB limit holds per system.
+    const groups = new Map<
+      string,
+      { data: Record<string, string>; items: { key: string; path: string }[] }
+    >();
+    const put = (cm: string, path: string, text: string) => {
+      const g = groups.get(cm) ?? { data: {}, items: [] };
+      g.data[configKey(path)] = text;
+      g.items.push({ key: configKey(path), path });
+      groups.set(cm, g);
+    };
+    put(name, "config.capnp", cfg.capnp);
+    for (const [path, text] of Object.entries(cfg.files)) {
+      const slot = /^s(\d+)\//.exec(path)?.[1];
+      put(slot === undefined ? name : `${name}-s${slot}`, path, text);
+    }
+    for (const g of groups.values()) {
+      const size = Object.values(g.data).reduce((n, t) => n + Buffer.byteLength(t), 0);
+      if (size > CONFIGMAP_BUDGET) {
+        this.log({ msg: "sandbox_config_too_large", count: size });
+        throw unavailable("Код системы не помещается в песочницу");
+      }
     }
     const labels = this.labels(podId);
-    try {
-      await this.o.kube.createConfigMap({
-        apiVersion: "v1",
-        kind: "ConfigMap",
-        metadata: { name, namespace: this.o.namespace, labels },
-        immutable: true,
-        data,
-      });
-    } catch (e) {
-      if (!(e instanceof KubeError && e.status === 409)) throw e;
+    for (const [cm, g] of groups) {
+      try {
+        await this.o.kube.createConfigMap({
+          apiVersion: "v1",
+          kind: "ConfigMap",
+          metadata: { name: cm, namespace: this.o.namespace, labels },
+          immutable: true,
+          data: g.data,
+        });
+      } catch (e) {
+        if (!(e instanceof KubeError && e.status === 409)) throw e;
+      }
     }
+    const configMaps = [...groups.keys()];
     const pool = (this.pool.listPods().find((p) => p.id === podId)?.pool ??
       "sandbox-free") as SandboxPoolName;
     const pod = sandboxPod({
@@ -196,10 +220,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       pool,
       image: this.o.image,
       configMap: name,
-      configItems: [
-        { key: "config.capnp", path: "config.capnp" },
-        ...Object.keys(cfg.files).map((p) => ({ key: configKey(p), path: p })),
-      ],
+      configSources: [...groups].map(([cm, g]) => ({ name: cm, items: g.items })),
       basePort: this.o.basePort,
       systems: this.perPod,
       healthPort: this.o.healthPort,
@@ -208,10 +229,10 @@ export class SandboxOrchestrator implements SandboxExecutors {
       ...(this.o.cpuLimit ? { cpuLimit: this.o.cpuLimit } : {}),
     });
     await this.createPod(pod, prev);
-    const ip = await this.waitReady(name);
-    this.pods.set(podId, { name, hash, ip });
+    const ip = await this.waitReady(name, configMaps);
+    this.pods.set(podId, { name, hash, ip, configMaps });
     this.log({ msg: "sandbox_pod_ready", step: name });
-    if (prev && prev.name !== name) await this.drop(prev.name);
+    if (prev && prev.name !== name) await this.drop(prev.name, prev.configMaps);
   }
 
   /** Creates the pod; a full namespace quota frees the old pod of the same pool pod first. */
@@ -222,7 +243,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       if (e instanceof KubeError && e.status === 409) return;
       if (!(e instanceof KubeError && e.status === 403 && /quota/i.test(e.message) && prev)) throw e;
       this.pods.delete(this.podIdOf(prev.name));
-      await this.drop(prev.name);
+      await this.drop(prev.name, prev.configMaps);
       await this.o.kube.createPod(pod);
     }
   }
@@ -232,16 +253,17 @@ export class SandboxOrchestrator implements SandboxExecutors {
     return "";
   }
 
-  private async drop(name: string): Promise<void> {
+  private async drop(name: string, configMaps: readonly string[]): Promise<void> {
     await this.o.kube
       .deletePod(name)
       .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", error: e }));
-    await this.o.kube
-      .deleteConfigMap(name)
-      .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", error: e }));
+    for (const cm of configMaps)
+      await this.o.kube
+        .deleteConfigMap(cm)
+        .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", error: e }));
   }
 
-  private async waitReady(name: string): Promise<string> {
+  private async waitReady(name: string, configMaps: readonly string[]): Promise<string> {
     const sleep = this.o.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
     const deadline = (this.o.readyTimeoutMs ?? 120_000) / (this.o.pollMs ?? 500);
     for (let i = 0; i < deadline; i++) {
@@ -249,13 +271,13 @@ export class SandboxOrchestrator implements SandboxExecutors {
       if (p?.ready && p.podIP) return p.podIP;
       if (p && (p.phase === "Failed" || (p.reason && STUCK.has(p.reason)))) {
         this.log({ msg: "sandbox_pod_failed", step: name, reason: p.reason ?? p.phase });
-        await this.drop(name);
+        await this.drop(name, configMaps);
         throw unavailable("Песочница функций не запустилась");
       }
       await sleep(this.o.pollMs ?? 500);
     }
     this.log({ msg: "sandbox_pod_timeout", step: name });
-    await this.drop(name);
+    await this.drop(name, configMaps);
     throw unavailable("Песочница функций не запустилась вовремя");
   }
 
@@ -284,17 +306,21 @@ export class SandboxOrchestrator implements SandboxExecutors {
     });
   }
 
-  /** Frees the system's slot; its pod is re-rendered without it (or removed when empty). */
-  async remove(systemId: string, env: SandboxEnv): Promise<void> {
+  /**
+   * Frees the system's slot; its pod is re-rendered without it, or removed when empty. resync: false leaves a pod
+   * that still serves other systems as it is (the next prepare re-renders it) — G1 frees its render Worker so.
+   */
+  async remove(systemId: string, env: SandboxEnv, o: { resync?: boolean } = {}): Promise<void> {
     const p = this.pool.placement({ systemId, env });
     if (!p) return;
     this.pool.remove({ systemId, env });
     this.sources.delete(`${systemId}:${env}`);
     await this.serial(p.podId, async () => {
-      if (this.pool.podSlots(p.podId).some((x) => x !== null)) return this.sync(p.podId);
+      if (this.pool.podSlots(p.podId).some((x) => x !== null))
+        return o.resync === false ? undefined : this.sync(p.podId);
       const r = this.pods.get(p.podId);
       this.pods.delete(p.podId);
-      if (r) await this.drop(r.name);
+      if (r) await this.drop(r.name, r.configMaps);
     });
   }
 
@@ -316,7 +342,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
       this.log({ msg: "sandbox_pod_lost", step: r.name });
       this.pods.delete(podId);
       // A failed pod keeps its name: remove it with its ConfigMap so the same config can be created again.
-      if (p) await this.drop(r.name);
+      if (p) await this.drop(r.name, r.configMaps);
       await this.serial(podId, () => this.sync(podId));
     }
   }

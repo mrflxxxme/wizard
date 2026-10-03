@@ -74,4 +74,39 @@ roleRef:
   name: wizard-runtime-sandbox
 subjects:
   - { kind: ServiceAccount, name: wizard-runtime, namespace: {{ .Values.namespaces.platform }} }
+  - { kind: ServiceAccount, name: wizard-g1, namespace: {{ .Values.namespaces.platform }} }
+---
+# M2-19: the worker's identity for G1 in the sandbox (same Role as the runtime).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wizard-g1
+  namespace: {{ .Values.namespaces.platform }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+# M2-19: G1 pods (owner g1) — in from the worker on the system ports, out to its G1 RPC port only. Adds to the
+# generated wizard-sandbox policy (runtime and egress-proxy), never widens anything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wizard-sandbox-g1
+  namespace: {{ .Values.namespaces.sandbox }}
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox, wizard.ru/sandbox-owner: g1 } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.platform }} } }
+          podSelector: { matchLabels: { wizard.ru/role: worker } }
+      ports:
+        {{- range $k := until (int .Values.sandbox.systems) }}
+        - { protocol: TCP, port: {{ add $.Values.sandbox.basePort $k }} }
+        {{- end }}
+        - { protocol: TCP, port: {{ .Values.sandbox.healthPort }} }
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.platform }} } }
+          podSelector: { matchLabels: { wizard.ru/role: worker } }
+      ports: [{ protocol: TCP, port: {{ .Values.sandbox.g1RpcPort }} }]
 {{- end }}

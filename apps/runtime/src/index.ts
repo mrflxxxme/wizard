@@ -206,6 +206,12 @@ export {
 } from "./sandbox/egress.js";
 /** authorize() of the egress-proxy deployment: capability check delegated to the runtime's internal port. */
 export { type RemoteAuthorizerOptions, remoteCapabilityAuthorizer } from "./sandbox/egress-remote.js";
+/** M2-18: sandbox of a process from its env (WIZARD_SANDBOX=k8s) and the capability key. */
+export { sandboxFromEnv, sandboxKey } from "./sandbox/from-env.js";
+/** M2-18: in-cluster Kubernetes API of the orchestrator (pods and ConfigMaps of one namespace). */
+export { inClusterSend, type KubeApi, KubeError, type KubePodStatus, kubeApi } from "./sandbox/kube.js";
+/** M2-18: places systems into workerd pods (ConfigMap + pod per config hash) and serves their executors. */
+export { type OrchestratorOptions, type PrepareInput, SandboxOrchestrator } from "./sandbox/orchestrator.js";
 /** Sandbox pod and NetworkPolicy manifests (gVisor RuntimeClass, non-root, read-only, no capabilities). */
 export {
   SANDBOX_RUNTIME_CLASS,

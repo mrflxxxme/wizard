@@ -11,6 +11,7 @@ import {
   type TurnResult,
 } from "@wizard/agents/orchestrator";
 import { type RuntimeHandle, runGates } from "@wizard/gates";
+import { createLogger } from "@wizard/pii/log";
 import {
   closeExecutors,
   createRuntimeApp,
@@ -30,6 +31,11 @@ import {
   RunFailure,
 } from "../runs/types.js";
 import { withConsentText } from "./consent.js";
+import { type G1Sandbox, startG1Sandbox } from "./g1-sandbox.js";
+
+/** Sandbox events of the G1 host (allowlisted fields only). */
+const g1Logger = createLogger({ svc: "worker" });
+
 import { bundleDraft, MIGRATOR_ROLE, migrateDraft, RUNTIME_ROLE, seedDraft } from "./draft.js";
 
 export interface AgentExecutorsOptions {
@@ -40,6 +46,11 @@ export interface AgentExecutorsOptions {
   runtimeRole?: string;
   /** Runtime for G1 (default: created on first G1 — outbox connectors, test-mode secrets). */
   runtime?: RuntimeApp;
+  /**
+   * M2-19: sandbox of G1 (functions and page renders in workerd pods). Default: started on the first G1 from
+   * WIZARD_SANDBOX=k8s (null without it — local unsafe-exec only); tests pass one or null.
+   */
+  g1Sandbox?: G1Sandbox | null;
 }
 
 const ASKING_HINT = "Ответьте на вопросы выше или нажмите «Остальное — по рекомендациям».";
@@ -130,15 +141,20 @@ async function turn(host: InterviewHost): Promise<TurnResult> {
 }
 
 /** Loads a system into the G1 runtime and remembers it, so the pinned G1 system is unloaded after the gate. */
-function trackingHandle(rt: RuntimeApp, loaded: { slug: string; env: "draft" | "prod" }[]): RuntimeHandle {
+function trackingHandle(
+  rt: RuntimeApp,
+  loaded: { slug: string; env: "draft" | "prod"; systemKey: string }[],
+  sandbox: G1Sandbox | null,
+): RuntimeHandle {
   return {
     fetch: (req) => rt.fetch(req),
     loadSystem: async (input) => {
-      loaded.push({ slug: input.slug ?? input.systemKey, env: input.env });
+      loaded.push({ slug: input.slug ?? input.systemKey, env: input.env, systemKey: input.systemKey });
       return rt.loadSystem(input);
     },
     outbox: () => rt.outbox(),
     runJobs: (input) => rt.runJobs(input),
+    ...(sandbox ? { renderer: (input: { key: string; code: string }) => sandbox.renderer(input) } : {}),
     env: rt.env,
   };
 }
@@ -148,9 +164,18 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
   const migratorRole = o.migratorRole ?? MIGRATOR_ROLE;
   let rt: RuntimeApp | undefined = o.runtime;
   let ownRuntime = false;
-  const g1Runtime = (): RuntimeApp => {
+  let sandbox: Promise<G1Sandbox | null> | undefined;
+  const g1Sandbox = (): Promise<G1Sandbox | null> => {
+    sandbox ??=
+      o.g1Sandbox !== undefined
+        ? Promise.resolve(o.g1Sandbox)
+        : startG1Sandbox(process.env, { log: (line) => g1Logger.line({ svc: "worker", ...line }) });
+    return sandbox;
+  };
+  const g1Runtime = (sb: G1Sandbox | null): RuntimeApp => {
     if (!rt) {
       rt = createRuntimeApp({
+        ...(sb ? { sandbox: sb.orchestrator, rpc: sb.rpc } : {}),
         db: o.pg,
         registry: new MemoryRegistry(),
         dbRole: runtimeRole,
@@ -209,18 +234,21 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     async gates(level, ctx) {
       if (level === "G0") return runGates(level, ctx);
       // G1 and G2 (permission matrix G2-PERM-01…04) run against the same in-process runtime and runtime role.
-      const runtime = g1Runtime();
-      const loaded: { slug: string; env: "draft" | "prod" }[] = [];
+      const sb = await g1Sandbox();
+      const runtime = g1Runtime(sb);
+      const loaded: { slug: string; env: "draft" | "prod"; systemKey: string }[] = [];
       try {
         return await runGates(level, {
           ...ctx,
           // compliance.consentText from the template (owner-only field, filled by the platform, never stored).
           spec: withConsentText(ctx.spec),
-          runtime: trackingHandle(runtime, loaded),
+          runtime: trackingHandle(runtime, loaded, sb),
           runtimeRole,
         });
       } finally {
         for (const l of loaded) runtime.unloadSystem(l);
+        // M2-19: the sandbox pods of this gate's systems go with them.
+        await sb?.release(loaded.map((l) => l.systemKey)).catch(() => {});
       }
     },
 
@@ -252,6 +280,7 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
 
     async close() {
       if (ownRuntime) await closeExecutors();
+      if (sandbox && o.g1Sandbox === undefined) await (await sandbox)?.close();
     },
   };
 }

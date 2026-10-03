@@ -124,6 +124,10 @@ export async function buildRenderBundle(
       define: { "process.env.NODE_ENV": '"production"' },
       tsconfigRaw: { compilerOptions: { jsx: "react-jsx", jsxImportSource: SDK } },
       legalComments: "none",
+      // Whitespace and syntax only: names stay readable in console errors; the sandbox ships the bundle in a
+      // ConfigMap (≤ 1 MiB; the forum: 1.16 MB → 0.71 MB, M2-19).
+      minifyWhitespace: true,
+      minifySyntax: true,
       sourcemap: false,
       charset: "utf8",
       logLevel: "silent",
