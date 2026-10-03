@@ -65,7 +65,9 @@ function parseRequest(body: unknown): ChallengeRequest | null {
     typeof x[k] === "string" && (x[k] as string).length > 0 && (x[k] as string).length < 512;
   if (!str("uid") || !str("key") || !str("resolvedFQDN") || !str("resolvedZone")) return null;
   if (x.action !== "Present" && x.action !== "CleanUp") return null;
-  if (x.type !== undefined && x.type !== "dns-01") return null;
+  // cert-manager sends the ACME challenge type as "DNS-01" (acme.cert-manager.io ACMEChallengeType); every request
+  // was refused as malformed while this compared case-sensitively with "dns-01" (first live bootstrap, 2026-10-03).
+  if (x.type !== undefined && String(x.type).toLowerCase() !== "dns-01") return null;
   return x as unknown as ChallengeRequest;
 }
 

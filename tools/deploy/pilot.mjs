@@ -987,7 +987,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     WIZARD_SSH_KEY_FILE: sshKey,
     WIZARD_K3S_ACCESS: "tunnel",
     WIZARD_ACME_EMAIL: vars.WIZARD_ACME_EMAIL || vars.WIZARD_FOUNDER_EMAIL || "",
-    WIZARD_SMOKE_ATTEMPTS: vars.WIZARD_SMOKE_ATTEMPTS || "20",
+    // First certificates over DNS-01 (TXT propagation + Let's Encrypt) may take more than 10 minutes: 40 × 30 s.
+    WIZARD_SMOKE_ATTEMPTS: vars.WIZARD_SMOKE_ATTEMPTS || "40",
     // Never released yet → the database starts empty without asking the archive (it cannot hold anything).
     WIZARD_PG_FIRST_BOOT: bundle.deployedAt ? "" : "1",
     RUNNER_TEMP: work,
