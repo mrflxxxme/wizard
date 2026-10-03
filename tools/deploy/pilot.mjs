@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
-import { main as infraMain, NET_PROBE } from "./infra.mjs";
+import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
   assertPassphrase,
   clusterSecretFiles,
@@ -1244,6 +1244,9 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
           log,
         });
       }
+      // The sandbox of client functions (M2-18): one gVisor pod of this release's workerd image.
+      if (outputs.env?.registry_url)
+        gvisorProbe({ kubectl, image: `${outputs.env.registry_url}/wizard-sandbox:${tag}`, log });
       // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
       checkArchive({ kubectl, log, bucket: outputs.env?.buckets?.backups ?? "" });
       // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.

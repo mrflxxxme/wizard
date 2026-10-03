@@ -6,6 +6,7 @@ import { createLogger } from "@wizard/pii/log";
 import { metricsListenFromEnv } from "@wizard/pii/metrics";
 import postgres from "postgres";
 import { DbRegistry, FileRegistry } from "./registry.js";
+import { sandboxFromEnv } from "./sandbox/from-env.js";
 import { startRuntime } from "./server.js";
 
 const root = resolve(process.env.WIZARD_ROOT ?? join(import.meta.dirname, "..", "..", ".."));
@@ -29,6 +30,14 @@ const internalEnv = process.env.WIZARD_RUNTIME_INTERNAL_PORT;
 const internalPort = internalEnv === "off" ? null : Number(internalEnv ?? port + 1);
 // M2-09: Prometheus /metrics on WIZARD_METRICS_PORT (off by default locally).
 const metricsAt = metricsListenFromEnv(process.env);
+// M2-18: WIZARD_SANDBOX=k8s — functions run in workerd pods under gVisor, placed by this process; the pods reach
+// ctx.* through the RPC listener on the internal port. Pods of a previous process are removed first.
+const sandbox = sandboxFromEnv(process.env, { log: (line) => logger.line({ svc: "runtime", ...line }) });
+if (sandbox) {
+  if (internalPort === null) throw new Error("WIZARD_SANDBOX=k8s needs the internal port (sandbox RPC)");
+  await sandbox.orchestrator.reconcile();
+  sandbox.orchestrator.startWatchdog();
+}
 const { close, metricsPort } = await startRuntime({
   db,
   // Drafts built by platform-api come from platform.deployments; registry.json still serves hand-placed artifacts.
@@ -52,6 +61,7 @@ const { close, metricsPort } = await startRuntime({
     ...(process.env.WIZARD_SMTP_HOST ? { platformSmtpHost: process.env.WIZARD_SMTP_HOST } : {}),
   },
   log: (line) => logger.line(line),
+  ...(sandbox ? { sandbox: sandbox.orchestrator, rpc: sandbox.rpc } : {}),
   ...(metricsAt ? { metricsPort: metricsAt.port, metricsHostname: metricsAt.hostname } : {}),
 });
 logger.info("listening", { url: `http://${hostname}:${port}`, port });
@@ -61,6 +71,7 @@ if (metricsPort !== null) logger.info("listening_metrics", { port: metricsPort }
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {
     void close()
+      .finally(() => sandbox?.orchestrator.close())
       .finally(() => db.end())
       .finally(() => process.exit(0));
   });

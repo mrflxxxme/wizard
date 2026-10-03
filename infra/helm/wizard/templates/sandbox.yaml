@@ -39,3 +39,39 @@ spec:
       default: { cpu: "1", memory: 1536Mi }
       defaultRequest: { cpu: 250m, memory: 1536Mi }
       max: { cpu: "2", memory: 2Gi }
+{{- if .Values.sandbox.orchestrate }}
+---
+# M2-18: the runtime's identity for the sandbox orchestrator. It may manage pods and ConfigMaps of the sandbox
+# namespace and nothing else (no Secrets, no other namespace, no exec/attach/portforward).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wizard-runtime
+  namespace: {{ .Values.namespaces.platform }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wizard-runtime-sandbox
+  namespace: {{ .Values.namespaces.sandbox }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, configmaps]
+    verbs: [get, list, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wizard-runtime-sandbox
+  namespace: {{ .Values.namespaces.sandbox }}
+  labels: {{- include "wizard.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: wizard-runtime-sandbox
+subjects:
+  - { kind: ServiceAccount, name: wizard-runtime, namespace: {{ .Values.namespaces.platform }} }
+{{- end }}

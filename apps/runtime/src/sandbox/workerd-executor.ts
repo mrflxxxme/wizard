@@ -24,6 +24,16 @@ export interface GuestExecutor {
 
 /** Executors of loaded systems in sandbox mode (RuntimeServices.sandbox). */
 export interface SandboxExecutors {
+  /**
+   * Makes the system's Worker run this functions source before executorFor (the orchestrator places it and starts or
+   * replaces its pod, M2-18). Absent when pods are placed elsewhere (tests with a fixed endpoint).
+   */
+  prepare?(sys: {
+    systemId: string;
+    env: SandboxEnv;
+    entities: readonly string[];
+    functionsSource: string;
+  }): Promise<void>;
   executorFor(sys: { systemId: string; env: SandboxEnv; entities: readonly string[] }): GuestExecutor;
 }
 

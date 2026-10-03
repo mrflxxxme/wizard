@@ -25,4 +25,6 @@ worker:
 data:
   size: 5Gi
 sandbox:
-  quota: { pods: 1, requestsCpu: 500m, requestsMemory: 1536Mi, limitsCpu: 1, limitsMemory: 1536Mi }
+  # one sandbox pod plus its replacement in flight (512Mi each, profiles/pilot.yaml)
+  maxPods: 1
+  quota: { pods: 2, requestsCpu: 500m, requestsMemory: 1Gi, limitsCpu: 2, limitsMemory: 1Gi }

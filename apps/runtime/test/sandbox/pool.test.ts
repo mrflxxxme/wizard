@@ -166,7 +166,8 @@ describe("sandbox pod manifests", () => {
       capabilities: { drop: ["ALL"] },
     });
     expect(JSON.stringify(spec)).not.toMatch(/hostPath|hostPort/);
-    expect(spec.nodeSelector).toEqual({ "wizard.ru/pool": "sandbox-free" });
+    // Node label of the pool (infra/k3s: wizard.ru/pool=free), not the SandboxPool name.
+    expect(spec.nodeSelector).toEqual({ "wizard.ru/pool": "free" });
     expect(spec.dnsPolicy).toBe("None");
   });
 

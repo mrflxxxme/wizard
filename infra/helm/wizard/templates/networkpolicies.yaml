@@ -112,6 +112,15 @@ spec:
       ports: [{ protocol: TCP, port: {{ .Values.metrics.port }} }]
   egress:
     {{- include "wizard.dnsEgress" . | nindent 4 }}
+    {{- if .Values.sandbox.orchestrate }}
+    # M2-18: the sandbox orchestrator reaches the API server (RBAC: pods and ConfigMaps of the sandbox namespace).
+    # k3s serves it on the nodes (6443 after the kubernetes Service's DNAT); managed clusters list kubeApiCidrs.
+    - to:
+        {{- range (default (list .Values.network.nodeCidr) .Values.network.kubeApiCidrs) }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 }]
+    {{- end }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
       ports: [{ protocol: TCP, port: {{ .Values.pgbouncer.port }} }]
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: egress-proxy } } }]

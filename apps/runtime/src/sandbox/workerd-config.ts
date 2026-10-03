@@ -20,6 +20,8 @@ export interface WorkerdSystem {
   /** server/functions.mjs of the artifact (sha256 checked by the loader before it gets here). */
   functionsSource: string;
   entities: readonly string[];
+  /** Socket slot (port basePort + slot); default: the position in `systems`. A pod keeps the slots of SandboxPool. */
+  slot?: number;
 }
 
 export interface WorkerdPodInput {
@@ -92,7 +94,13 @@ export function workerdPodConfig(i: WorkerdPodInput): WorkerdPodConfig {
     `(name = "health", address = ${str(`${host}:${i.healthPort}`)}, http = (), service = "health")`,
   ];
   const workers: string[] = [];
-  i.systems.forEach((s, slot) => {
+  const slots = new Set<number>();
+  i.systems.forEach((s, index) => {
+    const slot = s.slot ?? index;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_SYSTEMS_PER_POD || slots.has(slot)) {
+      throw new Error(`invalid slot ${slot}`);
+    }
+    slots.add(slot);
     if (!SYSTEM_ID_RE.test(s.systemId) || (s.env !== "draft" && s.env !== "prod")) {
       throw new Error(`invalid system ${s.systemId}/${s.env}`);
     }

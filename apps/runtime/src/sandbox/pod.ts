@@ -18,7 +18,17 @@ export interface SandboxPodInput {
   /** Memory of the whole pod (≤ 10 isolates × 128 MB + workerd). */
   memoryLimit?: string;
   cpuLimit?: string;
+  /** ConfigMap keys → file paths under /etc/workerd (keys cannot hold "/": s0/functions.mjs is s0__functions.mjs). */
+  configItems?: readonly { key: string; path: string }[];
+  /** Extra labels (the orchestrator's owner and pod id). */
+  labels?: Readonly<Record<string, string>>;
 }
+
+/**
+ * Node label value of a pool: nodes carry wizard.ru/pool=free|paid|business (infra/k3s/*.tftpl), the pool names of
+ * SandboxPool are sandbox-free|… — a pod selecting "sandbox-free" would stay Pending forever.
+ */
+export const poolNodeLabel = (pool: SandboxPoolName): string => pool.replace(/^sandbox-/, "");
 
 export const SANDBOX_RUNTIME_CLASS = "gvisor";
 const NONROOT_UID = 65532;
@@ -35,7 +45,11 @@ export function sandboxPod(i: SandboxPodInput): Record<string, unknown> {
     metadata: {
       name: i.name,
       namespace: i.namespace,
-      labels: { "app.kubernetes.io/name": "wizard-sandbox", "wizard.ru/pool": i.pool },
+      labels: {
+        ...i.labels,
+        "app.kubernetes.io/name": "wizard-sandbox",
+        "wizard.ru/pool": poolNodeLabel(i.pool),
+      },
     },
     spec: {
       runtimeClassName: SANDBOX_RUNTIME_CLASS,
@@ -47,8 +61,10 @@ export function sandboxPod(i: SandboxPodInput): Record<string, unknown> {
       // DNS is denied (isolation.yaml#M2.network): addresses of runtime-rpc and egress-proxy come from the config.
       dnsPolicy: "None",
       dnsConfig: { nameservers: ["127.0.0.1"] },
-      nodeSelector: { "wizard.ru/pool": i.pool },
-      tolerations: [{ key: "wizard.ru/sandbox", operator: "Equal", value: i.pool, effect: "NoSchedule" }],
+      nodeSelector: { "wizard.ru/pool": poolNodeLabel(i.pool) },
+      tolerations: [
+        { key: "wizard.ru/sandbox", operator: "Equal", value: poolNodeLabel(i.pool), effect: "NoSchedule" },
+      ],
       securityContext: {
         runAsNonRoot: true,
         runAsUser: NONROOT_UID,
@@ -83,7 +99,15 @@ export function sandboxPod(i: SandboxPodInput): Record<string, unknown> {
           volumeMounts: [{ name: "config", mountPath: "/etc/workerd", readOnly: true }],
         },
       ],
-      volumes: [{ name: "config", configMap: { name: i.configMap } }],
+      volumes: [
+        {
+          name: "config",
+          configMap: {
+            name: i.configMap,
+            ...(i.configItems ? { items: i.configItems.map((x) => ({ ...x })) } : {}),
+          },
+        },
+      ],
     },
   };
 }

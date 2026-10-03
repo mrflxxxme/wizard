@@ -48,7 +48,7 @@ describe("generated manifests", () => {
     const pod = sandboxPod({
       name: "p",
       namespace: "wizard-sandbox",
-      pool: "free",
+      pool: "sandbox-free",
       image: "i",
       configMap: "c",
       basePort: 9000,
@@ -68,6 +68,9 @@ describe("generated manifests", () => {
     expect(tf).toContain(`key    = "${tol.key}"`);
     expect(tf).toContain('effect = "EFFECT_NO_SCHEDULE"');
     expect(tf).toContain(`"${label}"`);
+    // The single pilot node is labelled with the free pool (infra/tofu/timeweb/modules/env/main.tf sandbox_pool).
+    expect(pod.spec.nodeSelector[label]).toBe("free");
+    expect(read("infra/tofu/timeweb/modules/env/main.tf")).toContain('sandbox_pool  = "free"');
     expect(pod.spec.runtimeClassName).toBe("gvisor");
     expect(read("infra/helm/wizard/templates/sandbox.yaml")).toContain("name: gvisor");
   });
@@ -79,6 +82,12 @@ describe("images", () => {
     dockerfile: string;
     args: Record<string, string>;
   }[];
+
+  it("the sandbox image pins the workerd version the CI sandbox job tests (M2-18)", () => {
+    const v = /WORKERD_VERSION: "([^"]+)"/.exec(read(".github/workflows/sandbox.yml"))?.[1];
+    expect(v).toBeTruthy();
+    expect(read("infra/docker/sandbox.Dockerfile")).toContain(`ARG WORKERD_VERSION=${v}`);
+  });
 
   it("every image is buildable from the repo and named in the chart", () => {
     for (const img of images) {
@@ -299,7 +308,10 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
           for (const p of allPods) {
             expect(p.spec.securityContext.runAsNonRoot, p.name).toBe(true);
             expect(p.spec.securityContext.seccompProfile.type, p.name).toBe("RuntimeDefault");
-            if (p.name !== "wizard-acme-dns01")
+            // The DNS-01 solver and, with the sandbox orchestrator (M2-18), the runtime talk to the API server.
+            const sandboxOrchestrator =
+              p.name === "wizard-runtime" && p.spec.serviceAccountName === "wizard-runtime";
+            if (p.name !== "wizard-acme-dns01" && !sandboxOrchestrator)
               expect(p.spec.automountServiceAccountToken, p.name).toBe(false);
             for (const c of [...p.spec.containers, ...(p.spec.initContainers ?? [])]) {
               expect(c.securityContext.readOnlyRootFilesystem, p.name).toBe(true);
@@ -446,10 +458,50 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
               ]);
             }
             expect(of("PodDisruptionBudget")).toEqual([]);
+            // Sandbox pods of the orchestrator plus one replacement in flight (512Mi each).
             const quota = of("ResourceQuota")[0];
-            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "2" : "1");
+            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "3" : "2");
             const rc = of("RuntimeClass")[0];
             expect(rc).toMatchObject({ metadata: { name: "gvisor" }, handler: "runsc" });
+          });
+
+          it("pilot (M2-18): the runtime orchestrates workerd pods with a Role on pods/ConfigMaps of the sandbox only", () => {
+            const runtime = of("Deployment").find((d) => d.metadata.name === "wizard-runtime");
+            const spec = runtime?.spec.template.spec;
+            expect(spec.serviceAccountName).toBe("wizard-runtime");
+            expect(spec.automountServiceAccountToken).toBe(true);
+            const env0 = Object.fromEntries(
+              spec.containers[0].env.map((e: K8s) => [e.name, e.value ?? e.valueFrom?.fieldRef?.fieldPath]),
+            );
+            expect(env0).toMatchObject({
+              WIZARD_SANDBOX: "k8s",
+              WIZARD_SANDBOX_NAMESPACE: "wizard-sandbox",
+              WIZARD_SANDBOX_RPC_ADDRESS: "$(POD_IP):4101",
+              POD_IP: "status.podIP",
+              WIZARD_SANDBOX_MEMORY: "512Mi",
+            });
+            expect(env0.WIZARD_SANDBOX_IMAGE).toMatch(/\/wizard-sandbox:0123abc$/);
+            const role = of("Role").find((r) => r.metadata.name === "wizard-runtime-sandbox");
+            expect(role?.metadata.namespace).toBe("wizard-sandbox");
+            expect(role?.rules).toEqual([
+              {
+                apiGroups: [""],
+                resources: ["pods", "configmaps"],
+                verbs: ["get", "list", "create", "delete"],
+              },
+            ]);
+            const binding = of("RoleBinding").find((r) => r.metadata.name === "wizard-runtime-sandbox");
+            expect(binding?.subjects).toEqual([
+              { kind: "ServiceAccount", name: "wizard-runtime", namespace: "wizard-platform" },
+            ]);
+            // API server only on its ports and only on the node addresses (k3s).
+            const np = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-runtime");
+            const api = np?.spec.egress.find((e: K8s) => (e.ports ?? []).some((p: K8s) => p.port === 6443));
+            expect(api.ports).toEqual([
+              { protocol: "TCP", port: 6443 },
+              { protocol: "TCP", port: 443 },
+            ]);
+            expect(api.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
           });
 
           it("pilot: PostgreSQL 16 StatefulSet with WAL-G archiving every ≤ 60 s, encrypted, never overwriting", () => {
