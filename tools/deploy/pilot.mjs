@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
-import { main as infraMain } from "./infra.mjs";
+import { main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
   assertPassphrase,
   clusterSecretFiles,
@@ -168,7 +168,11 @@ export function checkInputs(command, vars) {
     problems.push(["WIZARD_SMTP_PORT", "нужен номер порта"]);
   if (vars.WIZARD_OPS_ALERT_TELEGRAM_TOKEN && !vars.WIZARD_OPS_ALERT_CHAT_ID)
     problems.push(["WIZARD_OPS_ALERT_CHAT_ID", "нужен вместе с WIZARD_OPS_ALERT_TELEGRAM_TOKEN"]);
-  if (!vars.WIZARD_GHCR_TOKEN) problems.push(["WIZARD_GHCR_TOKEN", "токен GHCR (в workflow — github.token)"]);
+  if (!vars.WIZARD_GHCR_TOKEN && vars.WIZARD_GHCR_ANONYMOUS !== "1")
+    problems.push([
+      "WIZARD_GHCR_TOKEN",
+      "токен GHCR read:packages (или публичные пакеты: WIZARD_GHCR_ANONYMOUS=1)",
+    ]);
   return problems;
 }
 
@@ -860,6 +864,53 @@ export async function openAdminAccess(api, env, ip, { runId = "local", log = () 
  * no account (beta_readiness gates invitations of partners, not the operator's own account), then is_staff once the
  * founder has signed in. Prints the user id when staff is granted — the Job's exit condition.
  */
+/** S3 client debug output without credentials (the Authorization header carries the access key id). */
+export const redactS3Log = (text) =>
+  String(text ?? "")
+    .split("\n")
+    .filter((l) => !/^\s*(Authorization|X-Amz-Security-Token):/i.test(l))
+    .join("\n");
+
+/**
+ * `wal-g backup-list` from inside the running database container. On failure prints what WAL-G did (its stderr, the S3
+ * requests it sent — the SDK logs them to stdout, which used to be dropped — and the Go resolver trace), then the
+ * same network probe as diagnose from that pod's own network namespace. Returns whether the archive answered.
+ */
+export function checkArchive({ kubectl, log = console.log, bucket = "" }) {
+  const exec = (cmd) =>
+    kubectl(["-n", PLATFORM_NS, "exec", "wizard-postgres-0", "-c", "postgres", "--", ...cmd], {
+      capture: true,
+      allowFail: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  const walg = exec([
+    "env",
+    "WALG_LOG_LEVEL=DEVEL",
+    "S3_LOG_LEVEL=DEVEL",
+    "GODEBUG=netdns=go+2",
+    "timeout",
+    "60",
+    "wal-g",
+    "backup-list",
+  ]);
+  if (walg.status === 0) {
+    log("WAL-G: архив резервных копий доступен");
+    return true;
+  }
+  log("::group::WAL-G backup-list: журнал и запросы S3");
+  log(String(walg.stderr ?? "").slice(-4000));
+  log(redactS3Log(walg.stdout).slice(-4000));
+  log("::endgroup::");
+  const probe = exec(["env", `PROBE_BUCKET=${bucket}`, "timeout", "40", "node", "-e", NET_PROBE]);
+  log(
+    `проба сети из пода postgres: ${`${probe.stdout ?? ""}${probe.stderr ?? ""}`.trim() || `код ${probe.status}`}`,
+  );
+  log(
+    `::warning title=pilot::WAL-G не получил список копий из архива (код ${walg.status}): архивирование WAL не работает, см. лог выше`,
+  );
+  return false;
+}
+
 export const FOUNDER_STAFF_SQL = `
 UPDATE platform.pilot_invites SET revoked_at = now()
  WHERE email = lower(:'email') AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= now();
@@ -1135,6 +1186,9 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     WIZARD_SMOKE_ATTEMPTS: vars.WIZARD_SMOKE_ATTEMPTS || "40",
     // Never released yet → the database starts empty without asking the archive (it cannot hold anything).
     WIZARD_PG_FIRST_BOOT: bundle.deployedAt ? "" : "1",
+    // SSH waits: a fresh VM installs k3s from cloud-init (40 × ~25 s); a server that has run a release only needs to
+    // answer; diagnose looks at a running cluster.
+    WIZARD_K3S_WAIT_ATTEMPTS: o.command === "diagnose" ? "4" : bundle.deployedAt ? "12" : "40",
     RUNNER_TEMP: work,
   };
 
@@ -1191,30 +1245,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
         });
       }
       // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
-      const walg = kubectl(
-        [
-          "-n",
-          PLATFORM_NS,
-          "exec",
-          "wizard-postgres-0",
-          "-c",
-          "postgres",
-          "--",
-          "env",
-          "WALG_LOG_LEVEL=DEVEL",
-          "S3_LOG_LEVEL=DEVEL",
-          "timeout",
-          "60",
-          "wal-g",
-          "backup-list",
-        ],
-        { capture: true, allowFail: true },
-      );
-      if (walg.status === 0) log("WAL-G: архив резервных копий доступен");
-      else
-        log(
-          `::warning title=pilot::WAL-G не получил список копий из архива (код ${walg.status}): архивирование WAL не работает, см. лог выше`,
-        );
+      checkArchive({ kubectl, log, bucket: outputs.env?.buckets?.backups ?? "" });
       // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.
       if (st.fresh && bundle.deployedAt) {
         const job = `wizard-data-restore-${Math.floor(now().getTime() / 1000)}`;

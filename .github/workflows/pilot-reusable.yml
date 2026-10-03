@@ -133,9 +133,13 @@ jobs:
       WIZARD_PILOT_SERVER: ${{ inputs.server || vars.WIZARD_PILOT_SERVER }}
       # DKIM selector of the platform mail provider (Unisender Go: gokey → gokey._domainkey.<platform domain>).
       WIZARD_PLATFORM_DKIM_SELECTOR: ${{ vars.WIZARD_PLATFORM_DKIM_SELECTOR || 'gokey' }}
-      # GHCR pull: this job's token (packages: read) unless a long-lived read:packages token is provided.
+      # GHCR: the packages of this public repository are public — the cluster pulls anonymously (a job token in the
+      # pull secret expires with the job). A long-lived read:packages secret is used instead when provided; this job's
+      # token only checks that the images of the SHA are there.
       WIZARD_GHCR_USER: ${{ github.actor }}
-      WIZARD_GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN || github.token }}
+      WIZARD_GHCR_TOKEN: ${{ secrets.WIZARD_GHCR_TOKEN }}
+      WIZARD_GHCR_JOB_TOKEN: ${{ github.token }}
+      WIZARD_GHCR_ANONYMOUS: "1"
     steps:
       - uses: actions/checkout@v4
         with:

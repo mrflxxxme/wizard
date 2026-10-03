@@ -6,6 +6,8 @@ import {
   addonArgs,
   addonsFor,
   CLUSTER_SECRETS,
+  certificateGate,
+  certificateReport,
   clusterSecrets,
   createRunner,
   diagnoseCluster,
@@ -335,6 +337,23 @@ describe("infra.mjs", () => {
       { log: (s) => logs.push(s), attempts: 5, sleep: async () => {}, f },
     );
     expect(logs.filter((l) => l.includes("повтор"))).toHaveLength(2);
+    // onRetry runs between attempts and may stop the wait.
+    await expect(
+      smokeWithRetry(
+        { platform: "p.ru", systems: "s.ru" },
+        {
+          log: () => {},
+          attempts: 40,
+          sleep: async () => {},
+          f: async () => {
+            throw new TypeError("fetch failed");
+          },
+          onRetry: (i) => {
+            if (i === 3) throw new Error("stop");
+          },
+        },
+      ),
+    ).rejects.toThrow("stop");
     await expect(
       smokeWithRetry(
         { platform: "p.ru", systems: "s.ru" },
@@ -512,6 +531,13 @@ describe("infra.mjs: pilot profile (one VM, PostgreSQL + WAL-G in the cluster, i
     expect(JSON.parse(registrySecret("ns", "n", "ghcr.io", "u", "t")).metadata).toEqual({
       name: "n",
       namespace: "ns",
+    });
+  });
+
+  it("public packages: the pull secret carries no credentials (a job token would expire with the job)", () => {
+    const anon = JSON.parse(registrySecret("ns", "n", "ghcr.io"));
+    expect(JSON.parse(Buffer.from(anon.data[".dockerconfigjson"], "base64").toString())).toEqual({
+      auths: {},
     });
   });
 
@@ -753,8 +779,99 @@ describe("diagnoseCluster", () => {
     expect(net.env).toEqual([{ name: "PROBE_BUCKET", value: "wizard-prod-backups" }]);
     expect(walg.command).toEqual(["timeout", "45", "wal-g", "backup-list"]);
     // plain values and the database Secret as is; secretKeyRef entries are not copied
-    expect(walg.env.map((e) => e.name)).toEqual(["WALG_S3_PREFIX", "WALG_LOG_LEVEL", "S3_LOG_LEVEL"]);
+    expect(walg.env.map((e) => e.name)).toEqual([
+      "WALG_S3_PREFIX",
+      "WALG_LOG_LEVEL",
+      "S3_LOG_LEVEL",
+      "GODEBUG",
+    ]);
     expect(walg.envFrom).toEqual([{ secretRef: { name: "wizard-postgres" } }]);
     expect(inputs[1].spec.securityContext.runAsUser).toBe(999);
+  });
+});
+
+describe("certificates during the smoke (certificateReport, certificateGate)", () => {
+  const items = (challengeState, reason = "") => ({
+    items: [
+      {
+        kind: "Certificate",
+        metadata: { namespace: "wizard-platform", name: "platform" },
+        status: {
+          conditions: [{ type: "Ready", status: "False", reason: "DoesNotExist", message: "Issuing" }],
+        },
+      },
+      {
+        kind: "Order",
+        metadata: { namespace: "wizard-platform", name: "platform-1" },
+        status: { state: challengeState === "pending" ? "pending" : challengeState },
+      },
+      {
+        kind: "Challenge",
+        metadata: { namespace: "wizard-platform", name: "platform-1-0" },
+        spec: { dnsName: "borntobuild.ru" },
+        status: { state: challengeState, reason },
+      },
+    ],
+  });
+  const kubectlOf = (doc) => {
+    const calls = [];
+    const kubectl = (args) => {
+      calls.push(args.join(" "));
+      return { status: 0, stdout: JSON.stringify(doc) };
+    };
+    return { kubectl, calls };
+  };
+
+  it("pending issuance: a line per certificate, order and challenge, no failure", () => {
+    const { lines, failure } = certificateReport(
+      kubectlOf(items("pending", "Waiting for DNS-01 challenge propagation")),
+    );
+    expect(failure).toBe("");
+    expect(lines).toEqual([
+      "сертификат wizard-platform/platform: не готов (DoesNotExist: Issuing)",
+      "заказ wizard-platform/platform-1: pending",
+      "челлендж borntobuild.ru: pending — Waiting for DNS-01 challenge propagation",
+    ]);
+  });
+
+  it("an errored challenge stops the smoke with its reason and the solver log; checked every 4th retry", () => {
+    const { kubectl, calls } = kubectlOf(items("errored", "malformed ChallengeRequest"));
+    const log = [];
+    expect(certificateGate({ kubectl, log: (s) => log.push(s), attempt: 2 })).toBeUndefined();
+    expect(calls).toEqual([]);
+    expect(() => certificateGate({ kubectl, log: (s) => log.push(s), attempt: 5 })).toThrow(
+      /сертификаты не выпускаются: заказ wizard-platform\/platform-1: errored/,
+    );
+    expect(calls.at(-1)).toContain("logs deploy/wizard-acme-dns01");
+  });
+});
+
+describe("kubeconfigText on an unreachable server", () => {
+  it("WIZARD_K3S_WAIT_ATTEMPTS bounds the SSH waits; a network timeout says to look at the server", async () => {
+    let calls = 0;
+    const run = () => {
+      calls++;
+      return {
+        status: 255,
+        stdout: "",
+        stderr: "ssh: connect to host 1.2.3.4 port 22: Connection timed out\n",
+      };
+    };
+    const logs = [];
+    await expect(
+      kubeconfigText(
+        { k3s_server: { value: { private_ip: "192.168.10.10" } } },
+        {
+          run,
+          vars: { WIZARD_SSH_KEY_FILE: "/k", WIZARD_K3S_WAIT_ATTEMPTS: "3" },
+          log: (s) => logs.push(s),
+          dryRun: true,
+          kubeDir: "/tmp/x",
+          sleep: async () => {},
+        },
+      ),
+    ).rejects.toThrow(/Connection timed out\) — сервер не отвечает по сети/);
+    expect(calls).toBe(3);
+    expect(logs[0]).toMatch(/попытка 1\/3, ssh: connect to host/);
   });
 });
