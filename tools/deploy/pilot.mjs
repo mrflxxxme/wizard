@@ -481,6 +481,33 @@ export async function reportExistingServers(api, { log = () => {} } = {}) {
       log(
         `  id=${s.id} «${s.name}» ${s.status} ${s.location}/${s.availability_zone ?? "?"} ${s.cpu} vCPU / ${s.ram / 1024} ГБ / ${disk} ГБ ОС ${s.os?.name ?? "?"} ${s.os?.version ?? ""} тариф=${s.preset_id ?? "-"} IP ${serverIps(s).join(", ")}`,
       );
+      // Reachability as Timeweb sees it (never the root/VNC passwords of the same object).
+      log(
+        `    загрузка=${s.boot_mode ?? "?"} старт=${s.start_at ?? "?"} ddos=${s.is_ddos_guard ?? "?"} qemu-agent=${s.is_qemu_agent ?? "?"}`,
+      );
+      for (const n of s.networks ?? [])
+        log(
+          `    сеть ${n.type} nat=${n.nat_mode ?? "-"} полоса=${n.bandwidth ?? "?"} ddos=${n.is_ddos_guard ?? "-"} закрытые порты=${JSON.stringify(n.blocked_ports ?? [])}`,
+        );
+    }
+    const { groups = [] } = await api("GET", "/api/v1/firewall/groups?limit=100").catch(() => ({
+      groups: [],
+    }));
+    for (const g of groups) {
+      const { rules = [] } = await api("GET", `/api/v1/firewall/groups/${g.id}/rules?limit=100`).catch(
+        () => ({
+          rules: [],
+        }),
+      );
+      const { resources = [] } = await api(
+        "GET",
+        `/api/v1/firewall/groups/${g.id}/resources?limit=100`,
+      ).catch(() => ({ resources: [] }));
+      log(
+        `  firewall «${g.name}» политика=${g.policy ?? "?"} ресурсы=${resources.map((r) => `${r.type}:${r.id}`).join(",") || "—"}`,
+      );
+      for (const r of rules)
+        log(`    ${r.direction} ${r.protocol} ${r.port ?? "*"} ${r.cidr ?? ""} «${r.description ?? ""}»`);
     }
     const { ips = [] } = await api("GET", "/api/v1/floating-ips").catch(() => ({ ips: [] }));
     for (const f of ips)
