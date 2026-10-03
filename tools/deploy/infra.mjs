@@ -700,16 +700,18 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   if (!pg) return;
   const env = (pg.env ?? []).filter((e) => e.value !== undefined);
   const bucket = /^s3:\/\/([^/]+)/.exec(env.find((e) => e.name === "WALG_S3_PREFIX")?.value ?? "")?.[1] ?? "";
+  // WAL-G resolves its user: the postgres user of the image (uid 999), as the database container runs.
   const pods = [
-    ["wizard-net-probe", ["node", "-e", NET_PROBE], [{ name: "PROBE_BUCKET", value: bucket }], []],
+    ["wizard-net-probe", ["node", "-e", NET_PROBE], [{ name: "PROBE_BUCKET", value: bucket }], [], 1000],
     [
       "wizard-walg-probe",
       ["timeout", "45", "wal-g", "backup-list"],
       [...env, { name: "WALG_LOG_LEVEL", value: "DEVEL" }, { name: "S3_LOG_LEVEL", value: "DEVEL" }],
       pg.envFrom ?? [],
+      999,
     ],
   ];
-  for (const [name, command, podEnv, envFrom] of pods) {
+  for (const [name, command, podEnv, envFrom, uid] of pods) {
     const ns = "wizard-platform";
     kubectl(["-n", ns, "delete", "pod", name, "--ignore-not-found", "--wait=true"], opt);
     const manifest = netProbePod({
@@ -721,6 +723,7 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
       command,
       env: podEnv,
       envFrom,
+      uid,
     });
     kubectl(["apply", "-f", "-"], { ...opt, input: JSON.stringify(manifest) });
     kubectl(
@@ -757,6 +760,7 @@ export function netProbePod({
   command = ["node", "-e", NET_PROBE],
   env = [],
   envFrom = [],
+  uid = 1000,
 }) {
   return {
     apiVersion: "v1",
@@ -768,8 +772,8 @@ export function netProbePod({
       ...(pullSecret ? { imagePullSecrets: [{ name: pullSecret }] } : {}),
       securityContext: {
         runAsNonRoot: true,
-        runAsUser: 1000,
-        runAsGroup: 1000,
+        runAsUser: uid,
+        runAsGroup: uid,
         seccompProfile: { type: "RuntimeDefault" },
       },
       containers: [

@@ -134,7 +134,8 @@ describe("cert-manager webhook protocol", () => {
     request: {
       uid: "u-1",
       action,
-      type: "dns-01",
+      // as cert-manager sends it (acme.cert-manager.io ACMEChallengeType)
+      type: "DNS-01",
       dnsName: "*.sys-example.ru",
       key: "txt-value",
       resolvedFQDN: "_acme-challenge.sys-example.ru.",
