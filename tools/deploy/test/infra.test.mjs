@@ -634,6 +634,7 @@ describe("releaseWizard", () => {
             items: [
               {
                 metadata: { name: "api-1" },
+                spec: { containers: [{ name: "api", image: "ghcr.io/o/wizard-platform-api:t" }] },
                 status: {
                   phase: "Pending",
                   conditions: [{ type: "Ready", status: "False" }],
@@ -671,6 +672,9 @@ describe("releaseWizard", () => {
     expect(
       flat.some((c) => c.startsWith("kubectl -n wizard-platform exec api-1 -c bootstrap -- node -e")),
     ).toBe(true);
+    // probe pods: with the egress rules of PostgreSQL, and without any NetworkPolicy
+    expect(flat).toContain("kubectl -n wizard-platform logs wizard-net-probe");
+    expect(flat).toContain("kubectl -n default logs wizard-net-probe");
     expect(flat.at(-1)).toMatch(/^helm uninstall wizard/);
   });
   it("an upgrade not ready: back to the last deployed revision", () => {
