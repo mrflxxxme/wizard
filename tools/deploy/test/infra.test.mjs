@@ -330,7 +330,7 @@ describe("infra.mjs", () => {
     const f = async (url) => {
       n++;
       if (n <= 2) throw new TypeError("fetch failed");
-      return ok(url.endsWith("/") ? 200 : 404);
+      return ok(url.endsWith("/") ? 200 : url.endsWith("/api/v1/me") ? 401 : 404);
     };
     const logs = [];
     await smokeWithRetry(
