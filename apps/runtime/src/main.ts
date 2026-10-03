@@ -35,7 +35,8 @@ const metricsAt = metricsListenFromEnv(process.env);
 const sandbox = sandboxFromEnv(process.env, { log: (line) => logger.line({ svc: "runtime", ...line }) });
 if (sandbox) {
   if (internalPort === null) throw new Error("WIZARD_SANDBOX=k8s needs the internal port (sandbox RPC)");
-  await sandbox.orchestrator.reconcile();
+  // Not fatal: published systems without functions keep working; calls report FUNCTIONS_DISABLED and the log says why.
+  await sandbox.orchestrator.reconcile().catch((e: unknown) => logger.error("sandbox_reconcile_failed", e));
   sandbox.orchestrator.startWatchdog();
 }
 const { close, metricsPort } = await startRuntime({

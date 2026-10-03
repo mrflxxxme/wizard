@@ -146,7 +146,14 @@ export class SandboxOrchestrator implements SandboxExecutors {
       hash,
       ...(s.worker ? { worker: s.worker } : {}),
     });
-    await this.serial(podId, () => this.sync(podId));
+    try {
+      await this.serial(podId, () => this.sync(podId));
+    } catch (e) {
+      if (e instanceof WizardError) throw e;
+      // The API server refused or was unreachable (RBAC, network): the call fails cleanly, the log says why.
+      this.log({ msg: "sandbox_api_failed", error: e });
+      throw unavailable("Песочница функций недоступна");
+    }
   }
 
   /** The workerd config of a pool pod from the sources of its systems. */

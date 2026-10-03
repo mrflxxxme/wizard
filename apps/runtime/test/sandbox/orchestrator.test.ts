@@ -201,6 +201,17 @@ describe("SandboxOrchestrator", () => {
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).not.toBeNull();
   });
 
+  it("an API server error becomes FUNCTIONS_DISABLED, logged", async () => {
+    const kube = new FakeKube();
+    kube.createConfigMap = async () => {
+      throw new KubeError(403, "configmaps is forbidden");
+    };
+    const logs: Obj[] = [];
+    const o = make(kube, { log: (l) => logs.push(l) });
+    await expect(o.prepare(sys("aaaaaaaaaaaa"))).rejects.toMatchObject({ code: "FUNCTIONS_DISABLED" });
+    expect(logs).toContainEqual(expect.objectContaining({ msg: "sandbox_api_failed" }));
+  });
+
   it("config over the ConfigMap budget is refused", async () => {
     const o = make(new FakeKube());
     await expect(o.prepare(sys("aaaaaaaaaaaa", "x".repeat(CONFIGMAP_BUDGET + 1)))).rejects.toMatchObject({

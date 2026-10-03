@@ -45,7 +45,10 @@ export async function startG1Sandbox(
       return new Response(null, { status: 404 });
     },
   });
-  await sb.orchestrator.reconcile();
+  // Pods of a previous worker process; the API being unreachable here is not fatal (each prepare reports it).
+  await sb.orchestrator
+    .reconcile()
+    .catch((e: unknown) => o.log?.({ msg: "sandbox_reconcile_failed", error: e }));
   const { orchestrator, rpc } = sb;
   return {
     orchestrator,
