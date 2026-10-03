@@ -651,9 +651,48 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
 /** Network probe run inside a pod by releaseWizard: DNS of the S3 endpoint and one HTTPS request to it. */
 export const NET_PROBE = [
   'const h = "s3.twcstorage.ru";',
-  'require("node:dns").promises.lookup(h).then((a) => console.log("probe dns", h, a.address), (e) => console.log("probe dns error", e.code));',
-  'fetch("https://" + h, { signal: AbortSignal.timeout(10000) }).then((r) => console.log("probe https", r.status), (e) => console.log("probe https error", e.cause?.code ?? e.name));',
+  'require("node:dns").promises.lookup(h, { all: true }).then((a) => console.log("probe dns", h, a.map((x) => x.address).join(",")), (e) => console.log("probe dns error", e.code));',
+  "const t0 = Date.now();",
+  'fetch("https://" + h, { signal: AbortSignal.timeout(15000) }).then((r) => console.log("probe https", r.status, Date.now() - t0, "ms"), (e) => console.log("probe https error", e.cause?.code ?? e.name, Date.now() - t0, "ms"));',
 ].join(" ");
+
+/**
+ * One-shot pod running NET_PROBE with `image` (already on the node): in the platform namespace with the role
+ * pg-job (the egress rules of PostgreSQL and its Jobs) and in `default` (no NetworkPolicy) — the difference tells a
+ * policy from the network. Restricted PodSecurity fields included.
+ */
+export function netProbePod({ name, namespace, image, labels = {}, pullSecret = "" }) {
+  return {
+    apiVersion: "v1",
+    kind: "Pod",
+    metadata: { name, namespace, labels: { "app.kubernetes.io/name": "wizard-net-probe", ...labels } },
+    spec: {
+      restartPolicy: "Never",
+      automountServiceAccountToken: false,
+      ...(pullSecret ? { imagePullSecrets: [{ name: pullSecret }] } : {}),
+      securityContext: {
+        runAsNonRoot: true,
+        runAsUser: 1000,
+        runAsGroup: 1000,
+        seccompProfile: { type: "RuntimeDefault" },
+      },
+      containers: [
+        {
+          name: "probe",
+          image,
+          imagePullPolicy: "IfNotPresent",
+          command: ["node", "-e", NET_PROBE],
+          resources: { limits: { cpu: "200m", memory: "128Mi" } },
+          securityContext: {
+            allowPrivilegeEscalation: false,
+            readOnlyRootFilesystem: true,
+            capabilities: { drop: ["ALL"] },
+          },
+        },
+      ],
+    },
+  };
+}
 
 export function releaseWizard({ helm, kubectl, args, log = console.log, namespace = "wizard-platform" }) {
   const history = helm(["history", "wizard", "-n", namespace, "-o", "json"], {
@@ -703,6 +742,31 @@ export function releaseWizard({ helm, kubectl, args, log = console.log, namespac
       if (running && probes < 3) {
         probes++;
         kubectl(["-n", namespace, "exec", name, "-c", running.name, "--", "node", "-e", NET_PROBE], opt);
+      }
+    }
+    const image = items
+      .flatMap((p) => p.spec?.containers ?? [])
+      .find((c) => /wizard-postgres|wizard-platform-api/.test(c.image ?? ""))?.image;
+    if (image) {
+      for (const [ns, labels, pullSecret] of [
+        [namespace, { "wizard.ru/role": "pg-job" }, "wizard-ghcr"],
+        ["default", {}, ""],
+      ]) {
+        const name = "wizard-net-probe";
+        kubectl(["-n", ns, "delete", "pod", name, "--ignore-not-found", "--wait=true"], opt);
+        kubectl(["apply", "-f", "-"], {
+          ...opt,
+          input: JSON.stringify(netProbePod({ name, namespace: ns, image, labels, pullSecret })),
+        });
+        kubectl(
+          ["-n", ns, "wait", `pod/${name}`, "--for=jsonpath={.status.phase}=Succeeded", "--timeout=60s"],
+          opt,
+        );
+        log(
+          `проба сети из ${ns}${labels["wizard.ru/role"] ? ` (роль ${labels["wizard.ru/role"]})` : " (без NetworkPolicy)"}:`,
+        );
+        kubectl(["-n", ns, "logs", name], opt);
+        kubectl(["-n", ns, "delete", "pod", name, "--ignore-not-found", "--wait=false"], opt);
       }
     }
     log("::endgroup::");

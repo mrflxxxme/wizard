@@ -51,13 +51,13 @@ spec:
             httpGet: { path: /_wizard/health, port: internal }
             periodSeconds: 10
             timeoutSeconds: 3
-          # The public listener answers health on the bare systems domain only; the kubelet's default Host (the pod IP)
-          # gets 421 and the container was restarted forever (first live bootstrap, 2026-10-03).
+          # The public listener answers health only on a bare host (localhost; apps/runtime/src/http/guards.ts); the
+          # kubelet's default Host (the pod IP) gets 421 and the container was restarted forever (live bootstrap, 2026-10-03).
           livenessProbe:
             httpGet:
               path: /_wizard/health
               port: public
-              httpHeaders: [{ name: Host, value: {{ .Values.domains.systems | quote }} }]
+              httpHeaders: [{ name: Host, value: localhost }]
             periodSeconds: 20
             timeoutSeconds: 3
           resources: {{- toYaml .Values.runtime.resources | nindent 12 }}
