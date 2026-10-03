@@ -206,7 +206,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(job["runs-on"]).toBe("ubuntu-24.04");
     expect(job.environment).toBe(gh("inputs.env"));
     expect(job.permissions).toEqual({ contents: "read", packages: "read" });
-    expect(job.env.WIZARD_GHCR_TOKEN).toBe(gh("secrets.WIZARD_GHCR_TOKEN || github.token"));
+    // Public packages: the cluster pulls anonymously; the job token only checks that the images are there.
+    expect(job.env.WIZARD_GHCR_TOKEN).toBe(gh("secrets.WIZARD_GHCR_TOKEN"));
+    expect(job.env.WIZARD_GHCR_JOB_TOKEN).toBe(gh("github.token"));
+    expect(job.env.WIZARD_GHCR_ANONYMOUS).toBe("1");
     for (const n of ["TWC_TOKEN", "WIZARD_STATE_PASSPHRASE", "CLOUDRU_API_KEY", "WIZARD_SMTP_PASSWORD"])
       expect(job.env[n]).toBe(gh(`secrets.${n}`));
     for (const n of ["WIZARD_PLATFORM_DOMAIN", "WIZARD_SYSTEMS_DOMAIN"])

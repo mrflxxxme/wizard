@@ -588,7 +588,9 @@ function lastLogLine(file) {
 
 /** Backups in the archive: `wal-g backup-list --json` → array (an empty archive prints nothing or null). */
 export function parseBackupList(stdout) {
-  const text = stdout.trim();
+  // Only the JSON line counts: anything else on stdout (the S3 client's debug output) is not the answer.
+  const lines = stdout.split("\n").map((l) => l.trim());
+  const text = lines.findLast((l) => l.startsWith("[") || l === "null") ?? lines.join("").trim();
   if (text === "" || text === "null") return [];
   const list = JSON.parse(text);
   if (!Array.isArray(list)) throw new OpsError("backup-list", "неожиданный ответ");
@@ -626,8 +628,9 @@ export async function bootstrap(cfg, rep) {
     timeout: limit * 1000,
     killSignal: "SIGKILL",
     allowError: true,
-    // Verbose WAL-G and S3 client logs: a hang shows the request it waits on (the stderr tail goes to the alert).
-    env: { ...process.env, WALG_LOG_LEVEL: "DEVEL", S3_LOG_LEVEL: "DEVEL" },
+    // Verbose WAL-G log on stderr (its tail goes to the alert): a hang shows how far it got. Not S3_LOG_LEVEL — the S3
+    // client prints its requests to stdout, into the JSON this call parses.
+    env: { ...process.env, WALG_LOG_LEVEL: "DEVEL" },
   });
   if (listed.error || listed.status !== 0) {
     const stderr = (listed.stderr || "").slice(-2000);

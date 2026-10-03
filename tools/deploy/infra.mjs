@@ -295,9 +295,12 @@ export function clusterSecrets(profile) {
 }
 
 /** kubernetes.io/dockerconfigjson Secret as JSON (applied through stdin: the token never appears in argv). */
-export function registrySecret(namespace, name, server, user, token) {
+export function registrySecret(namespace, name, server, user = "", token = "") {
   const auth = Buffer.from(`${user}:${token}`).toString("base64");
-  const config = JSON.stringify({ auths: { [server]: { username: user, password: token, auth } } });
+  // No token → an empty auths map: kubelet pulls anonymously (public packages).
+  const config = JSON.stringify({
+    auths: token ? { [server]: { username: user, password: token, auth } } : {},
+  });
   return JSON.stringify({
     apiVersion: "v1",
     kind: "Secret",
@@ -564,11 +567,18 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
         }).status === 0;
       const src = v[s.fromFile];
       if (s.kind === "registry") {
+        const registry = raw.env.value?.registry_url ?? "ghcr.io";
         if (src && v.WIZARD_GHCR_USER) {
-          const registry = raw.env.value?.registry_url ?? "ghcr.io";
           kubectl(["apply", "-f", "-"], {
             input: registrySecret(s.namespace, s.name, registryHost(registry), v.WIZARD_GHCR_USER, src),
           });
+        } else if (v.WIZARD_GHCR_ANONYMOUS === "1") {
+          // Public packages: no credentials at all. A job token here expires with the job, and a pod restarted later
+          // would fail its pull with the stale credentials (pilot, 2026-10-03).
+          kubectl(["apply", "-f", "-"], {
+            input: registrySecret(s.namespace, s.name, registryHost(registry)),
+          });
+          log(`${s.namespace}/${s.name}: образы ${registry} публичные — загрузка без учётных данных`);
         } else if (!exists) {
           log(
             `Нет секрета ${s.namespace}/${s.name}: задайте WIZARD_GHCR_USER и WIZARD_GHCR_TOKEN (read:packages) — docs/ops/deploy.md`,
@@ -601,13 +611,14 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
       log(
         `Образы ${tag} берутся из ${outputs.env.registry_url} (собирает images.yml), сборка на раннере не нужна.`,
       );
-      if (!o.dryRun && v.WIZARD_GHCR_TOKEN && !deps.skipImageWait) {
+      const waitToken = v.WIZARD_GHCR_TOKEN || v.WIZARD_GHCR_JOB_TOKEN;
+      if (!o.dryRun && waitToken && !deps.skipImageWait) {
         await waitForImages({
           registry: outputs.env.registry_url,
           names: imageNames(),
           tag,
           user: v.WIZARD_GHCR_USER ?? "",
-          token: v.WIZARD_GHCR_TOKEN,
+          token: waitToken,
           log,
           sleep: deps.sleep,
         });
@@ -647,6 +658,7 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
         attempts: Number(v.WIZARD_SMOKE_ATTEMPTS ?? 1) || 1,
         sleep: deps.sleep,
         f: deps.fetch,
+        onRetry: (i) => certificateGate({ kubectl, log, attempt: i }),
       });
     }
     log(o.dryRun ? "--dry-run: команды выше не выполнялись." : `Готово: ${o.env} развёрнут, образы ${tag}.`);
@@ -706,7 +718,12 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
     [
       "wizard-walg-probe",
       ["timeout", "45", "wal-g", "backup-list"],
-      [...env, { name: "WALG_LOG_LEVEL", value: "DEVEL" }, { name: "S3_LOG_LEVEL", value: "DEVEL" }],
+      [
+        ...env,
+        { name: "WALG_LOG_LEVEL", value: "DEVEL" },
+        { name: "S3_LOG_LEVEL", value: "DEVEL" },
+        { name: "GODEBUG", value: "netdns=go+2" },
+      ],
       pg.envFrom ?? [],
       999,
     ],
@@ -879,10 +896,19 @@ export function releaseWizard({ helm, kubectl, args, log = console.log, namespac
   }
 }
 
-/** smoke() repeated while certificates are being issued: `attempts` tries 30 s apart. */
+/**
+ * smoke() repeated while certificates are being issued: `attempts` tries 30 s apart. `onRetry(i)` runs before each
+ * wait and may throw to stop early (certificateGate: Let's Encrypt gave up, waiting cannot help).
+ */
 export async function smokeWithRetry(
   domains,
-  { log = console.log, attempts = 1, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), f = fetch } = {},
+  {
+    log = console.log,
+    attempts = 1,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    f = fetch,
+    onRetry = async () => {},
+  } = {},
 ) {
   for (let i = 1; ; i++) {
     try {
@@ -891,9 +917,62 @@ export async function smokeWithRetry(
     } catch (e) {
       if (i >= attempts) throw e;
       log(`smoke: ${e instanceof Error ? e.message : String(e)} — повтор через 30 с (${i}/${attempts})`);
+      await onRetry(i);
       await sleep(30_000);
     }
   }
+}
+
+/**
+ * ACME issuance as cert-manager sees it: a line per certificate and challenge; `failure` names a challenge or order
+ * that ended errored/invalid (cert-manager retries it only after an hour-long backoff).
+ */
+export function certificateReport({ kubectl }) {
+  const r = kubectl(["get", "certificates,orders,challenges", "-A", "-o", "json"], {
+    capture: true,
+    allowFail: true,
+    fake: '{"items":[]}',
+  });
+  let items = [];
+  try {
+    items = JSON.parse(r.stdout || "{}").items ?? [];
+  } catch {}
+  const lines = [];
+  let failure = "";
+  for (const it of items) {
+    const name = `${it.metadata?.namespace}/${it.metadata?.name}`;
+    const s = it.status ?? {};
+    if (it.kind === "Certificate") {
+      const ready = (s.conditions ?? []).find((c) => c.type === "Ready");
+      lines.push(
+        ready?.status === "True"
+          ? `сертификат ${name}: готов`
+          : `сертификат ${name}: не готов (${ready?.reason ?? "нет статуса"}${ready?.message ? `: ${ready.message}` : ""})`,
+      );
+    } else if (it.kind === "Challenge" || it.kind === "Order") {
+      const what = it.kind === "Challenge" ? `челлендж ${it.spec?.dnsName ?? name}` : `заказ ${name}`;
+      if (it.kind === "Challenge" || s.state !== "valid")
+        lines.push(`${what}: ${s.state || "ожидает"}${s.reason ? ` — ${s.reason}` : ""}`);
+      if (["errored", "invalid"].includes(s.state) && !failure)
+        failure = `${what}: ${s.state}${s.reason ? ` — ${s.reason}` : ""}`;
+    }
+  }
+  return { lines, failure };
+}
+
+/**
+ * Between smoke retries (every 4th, i.e. each 2 minutes): prints the issuance state; throws when ACME has given up,
+ * with the DNS-01 solver log — instead of 20 minutes of waiting on a self-signed certificate (pilot, 2026-10-03).
+ */
+export function certificateGate({ kubectl, log = console.log, attempt = 1 }) {
+  if ((attempt - 1) % 4 !== 0) return;
+  const { lines, failure } = certificateReport({ kubectl });
+  for (const l of lines) log(`  ${l}`);
+  if (!failure) return;
+  log("::group::Решатель DNS-01");
+  kubectl(["-n", "cert-manager", "logs", "deploy/wizard-acme-dns01", "--tail=80"], { allowFail: true });
+  log("::endgroup::");
+  throw new Error(`сертификаты не выпускаются: ${failure}`);
 }
 
 /**
@@ -992,13 +1071,36 @@ export async function kubeconfigText(
   const args = [...sshBaseArgs(vars, kubeDir), `root@${ip}`, "cat /etc/rancher/k3s/k3s.yaml"];
   const api = vars.WIZARD_K3S_ACCESS === "tunnel" ? `127.0.0.1:${TUNNEL_PORT}` : `${ip}:6443`;
   if (!dryRun) mkdirSync(kubeDir, { recursive: true });
+  // A known, running server needs only a few tries (WIZARD_K3S_WAIT_ATTEMPTS from pilot.mjs); a fresh VM installs
+  // k3s from cloud-init first. An unreachable node used to burn 16 minutes here (pilot diagnose, 2026-10-03).
+  const max = Number(vars.WIZARD_K3S_WAIT_ATTEMPTS) || attempts;
   for (let i = 1; ; i++) {
-    const r = run("ssh", args, { capture: true, allowFail: true, fake: "server: https://127.0.0.1:6443\n" });
+    const r = run("ssh", args, {
+      capture: true,
+      allowFail: true,
+      // stderr kept: its last line (a timeout, a refused key) goes into the retry message and the error.
+      stdio: ["ignore", "pipe", "pipe"],
+      fake: "server: https://127.0.0.1:6443\n",
+    });
     if (r.status === 0 && r.stdout.includes("server:")) {
       return r.stdout.replace("https://127.0.0.1:6443", `https://${api}`);
     }
-    if (i >= attempts) throw new Error(`k3s on ${ip} is not ready (ssh ${r.status})`);
-    log(`k3s на ${ip} ещё не готов (попытка ${i}/${attempts}), жду 15 с…`);
+    const why =
+      String(r.stderr ?? "")
+        .trim()
+        .split("\n")
+        .at(-1) ?? "";
+    if (i >= max) {
+      const net = /timed out|No route|unreachable/i.test(why);
+      throw new Error(
+        `k3s on ${ip} is not ready (ssh ${r.status}${why ? `: ${why}` : ""})${
+          net
+            ? " — сервер не отвечает по сети: проверьте его в панели Timeweb (уведомления, консоль VNC)"
+            : ""
+        }`,
+      );
+    }
+    log(`k3s на ${ip} ещё не готов (попытка ${i}/${max}${why ? `, ${why}` : ""}), жду 15 с…`);
     await sleep(15_000);
   }
 }

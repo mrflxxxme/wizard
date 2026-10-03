@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 import { adoptServer } from "../adopt-server.mjs";
 import {
+  checkArchive,
   rebootServer,
+  redactS3Log,
   releaseStuckChallenges,
   reportDns,
   reportServerHealth,
@@ -177,5 +179,35 @@ describe("releaseStuckChallenges", () => {
         "-n ",
       ),
     ]);
+  });
+});
+
+describe("checkArchive", () => {
+  it("a failing WAL-G prints its log and S3 requests without credentials, then probes from the database pod", () => {
+    const calls = [];
+    const kubectl = (args) => {
+      calls.push(args);
+      return args.includes("wal-g")
+        ? {
+            status: 124,
+            stderr: "INFO: List backups from storages: [default]\n",
+            stdout:
+              "DEBUG: Request s3/GetBucketVersioning\nAuthorization: AWS4-HMAC-SHA256 Credential=AKIA/x\nHost: s3\n",
+          }
+        : { status: 0, stdout: "probe https 403 120 ms\n", stderr: "" };
+    };
+    const log = [];
+    expect(checkArchive({ kubectl, log: (s) => log.push(s), bucket: "b" })).toBe(false);
+    const text = log.join("\n");
+    expect(text).toContain("DEBUG: Request s3/GetBucketVersioning");
+    expect(text).not.toContain("Credential=AKIA");
+    expect(text).toContain("проба сети из пода postgres: probe https 403 120 ms");
+    expect(calls[1]).toEqual(expect.arrayContaining(["exec", "wizard-postgres-0", "PROBE_BUCKET=b", "node"]));
+    expect(redactS3Log("a\n  authorization: x\nb")).toBe("a\nb");
+  });
+  it("an answering archive is one line", () => {
+    const log = [];
+    expect(checkArchive({ kubectl: () => ({ status: 0, stdout: "" }), log: (s) => log.push(s) })).toBe(true);
+    expect(log).toEqual(["WAL-G: архив резервных копий доступен"]);
   });
 });

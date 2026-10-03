@@ -196,6 +196,10 @@ describe("pg-ops: evaluation and reporting", () => {
     expect(parseBackupList("null\n")).toEqual([]);
     expect(parseBackupList('[{"backup_name":"base_000000010000000000000004"}]')).toHaveLength(1);
     expect(() => parseBackupList("{}")).toThrow(/неожиданный/);
+    // S3 client debug output on stdout around the answer (S3_LOG_LEVEL=DEVEL) is not the answer.
+    const noisy =
+      '2026/10/03 21:30:49 DEBUG: Request s3/ListObjectsV2 Details:\n---[ REQUEST POST-SIGN ]---\n[{"backup_name":"base_1"}]\n';
+    expect(parseBackupList(noisy)).toEqual([{ backup_name: "base_1" }]);
     expect(syncArgs("/app/.data", true)).toEqual(
       expect.arrayContaining(["copy", "/app/.data", "enc:", "--max-age", "15m", "--no-traverse"]),
     );
