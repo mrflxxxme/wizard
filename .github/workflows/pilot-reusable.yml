@@ -27,6 +27,10 @@ on:
         description: "ru-1 | ru-3 for this run; empty — the WIZARD_TIMEWEB_LOCATION variable"
         type: string
         default: ""
+      server:
+        description: "A Timeweb VM handed over to the environment (IP or id); empty — the one remembered in the bundle, else a new VM"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -126,6 +130,7 @@ jobs:
       WIZARD_PLATFORM_MAIL_SPF: ${{ vars.WIZARD_PLATFORM_MAIL_SPF }}
       WIZARD_TIMEWEB_LOCATION: ${{ inputs.location || vars.WIZARD_TIMEWEB_LOCATION }}
       WIZARD_TIMEWEB_ZONE: ${{ vars.WIZARD_TIMEWEB_ZONE }}
+      WIZARD_PILOT_SERVER: ${{ inputs.server || vars.WIZARD_PILOT_SERVER }}
       # DKIM selector of the platform mail provider (Unisender Go: gokey → gokey._domainkey.<platform domain>).
       WIZARD_PLATFORM_DKIM_SELECTOR: ${{ vars.WIZARD_PLATFORM_DKIM_SELECTOR || 'gokey' }}
       # GHCR pull: this job's token (packages: read) unless a long-lived read:packages token is provided.

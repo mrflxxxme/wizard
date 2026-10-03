@@ -28,6 +28,10 @@ on:
         type: choice
         options: [auto, ru-3, ru-1]
         default: auto
+      server:
+        description: "Готовый сервер Timeweb (IP или id), если он отдан под пилот: один раз переустанавливается под k3s; пусто — сервер из прошлого запуска или новый"
+        type: string
+        default: ""
       confirm:
         description: "Для prod (apply) введите PROD; для check не нужно"
         type: string
@@ -52,4 +56,5 @@ jobs:
       sha: ${{ inputs.sha }}
       confirm: ${{ inputs.confirm }}
       location: ${{ inputs.location != 'auto' && inputs.location || '' }}
+      server: ${{ inputs.server }}
     secrets: inherit

@@ -12,12 +12,12 @@ output "env" {
     cluster_profile = local.pilot ? "pilot" : "k3s"
     s3_endpoint     = "https://s3.twcstorage.ru"
     buckets         = { for k, b in twc_s3_bucket.b : k => b.full_name }
-    ingress_ip      = twc_floating_ip.ingress.ip
+    ingress_ip      = local.ingress_ip
   }
 }
 
 output "k3s_server" {
-  value = { private_ip = local.server_ip, public_ip = twc_floating_ip.ingress.ip }
+  value = { private_ip = local.adopt ? var.existing_server.ip : local.server_ip, public_ip = local.ingress_ip }
 }
 
 locals {
