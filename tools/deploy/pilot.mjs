@@ -392,6 +392,42 @@ export async function rebootServer(
   throw new Error(`сервер ${server.id} не включился за ${waitMs / 60_000} мин после перезагрузки`);
 }
 
+/**
+ * ACME challenges stuck in deletion (their cleanup kept failing — the DNS-01 solver bug of 2026-10-03) block every
+ * new challenge for the same name: cert-manager retries the cleanup only every ~30 minutes. Those deleted more than
+ * `minutes` ago lose their finalizer; the TXT records they could have left are the solver's (TTL 120 s) and harmless.
+ */
+export function releaseStuckChallenges({ kubectl, log = () => {}, now = () => new Date(), minutes = 10 }) {
+  const r = kubectl(["get", "challenges.acme.cert-manager.io", "-A", "-o", "json"], {
+    capture: true,
+    allowFail: true,
+    fake: "{}",
+  });
+  let items = [];
+  try {
+    items = JSON.parse(r.stdout || "{}").items ?? [];
+  } catch {}
+  for (const c of items) {
+    const since = Date.parse(c.metadata?.deletionTimestamp ?? "");
+    if (!Number.isFinite(since) || now().getTime() - since < minutes * 60_000) continue;
+    const { name, namespace } = c.metadata;
+    log(`ACME: снимаю зависший челлендж ${namespace}/${name} (${c.spec?.dnsName ?? ""})`);
+    kubectl(
+      [
+        "-n",
+        namespace,
+        "patch",
+        "challenges.acme.cert-manager.io",
+        name,
+        "--type=merge",
+        "-p",
+        '{"metadata":{"finalizers":[]}}',
+      ],
+      { allowFail: true },
+    );
+  }
+}
+
 /** Address records of the zones as Timeweb serves them (diagnose; read-only). */
 export async function reportDns(api, zones, { log = () => {} } = {}) {
   for (const zone of zones) {
@@ -445,6 +481,33 @@ export async function reportExistingServers(api, { log = () => {} } = {}) {
       log(
         `  id=${s.id} «${s.name}» ${s.status} ${s.location}/${s.availability_zone ?? "?"} ${s.cpu} vCPU / ${s.ram / 1024} ГБ / ${disk} ГБ ОС ${s.os?.name ?? "?"} ${s.os?.version ?? ""} тариф=${s.preset_id ?? "-"} IP ${serverIps(s).join(", ")}`,
       );
+      // Reachability as Timeweb sees it (never the root/VNC passwords of the same object).
+      log(
+        `    загрузка=${s.boot_mode ?? "?"} старт=${s.start_at ?? "?"} ddos=${s.is_ddos_guard ?? "?"} qemu-agent=${s.is_qemu_agent ?? "?"}`,
+      );
+      for (const n of s.networks ?? [])
+        log(
+          `    сеть ${n.type} nat=${n.nat_mode ?? "-"} полоса=${n.bandwidth ?? "?"} ddos=${n.is_ddos_guard ?? "-"} закрытые порты=${JSON.stringify(n.blocked_ports ?? [])}`,
+        );
+    }
+    const { groups = [] } = await api("GET", "/api/v1/firewall/groups?limit=100").catch(() => ({
+      groups: [],
+    }));
+    for (const g of groups) {
+      const { rules = [] } = await api("GET", `/api/v1/firewall/groups/${g.id}/rules?limit=100`).catch(
+        () => ({
+          rules: [],
+        }),
+      );
+      const { resources = [] } = await api(
+        "GET",
+        `/api/v1/firewall/groups/${g.id}/resources?limit=100`,
+      ).catch(() => ({ resources: [] }));
+      log(
+        `  firewall «${g.name}» политика=${g.policy ?? "?"} ресурсы=${resources.map((r) => `${r.type}:${r.id}`).join(",") || "—"}`,
+      );
+      for (const r of rules)
+        log(`    ${r.direction} ${r.protocol} ${r.port ?? "*"} ${r.cidr ?? ""} «${r.description ?? ""}»`);
     }
     const { ips = [] } = await api("GET", "/api/v1/floating-ips").catch(() => ({ ips: [] }));
     for (const f of ips)
@@ -1106,6 +1169,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       st.fresh = !names.split(/\s+/).includes(`namespace/${PLATFORM_NS}`);
       if (st.fresh)
         log(st.bundleCreated ? "кластер новый: первый выкат" : "кластер пустой при существующих ключах");
+      if (!st.fresh) releaseStuckChallenges({ kubectl, log, now });
     },
     afterRelease: async ({ kubectl, outputs, tag }) => {
       let changed = false;

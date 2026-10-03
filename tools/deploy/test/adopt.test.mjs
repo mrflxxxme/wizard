@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { adoptServer } from "../adopt-server.mjs";
 import {
   rebootServer,
+  releaseStuckChallenges,
   reportDns,
   reportServerHealth,
   resolvePilotServer,
@@ -151,5 +152,30 @@ describe("server health and reboot", () => {
     };
     await rebootServer(api, { id: 7, name: "x" }, { sleep: async () => {}, pollMs: 1, waitMs: 10 });
     expect(calls[0]).toEqual(["POST", "/api/v1/servers/7/action", { action: "hard_reboot" }]);
+  });
+});
+
+describe("releaseStuckChallenges", () => {
+  it("drops the finalizer of challenges deleted more than 10 minutes ago, nothing else", () => {
+    const items = [
+      {
+        metadata: { name: "old", namespace: "p", deletionTimestamp: "2026-10-03T12:00:00Z" },
+        spec: { dnsName: "a.ru" },
+      },
+      { metadata: { name: "fresh", namespace: "p", deletionTimestamp: "2026-10-03T17:55:00Z" } },
+      { metadata: { name: "live", namespace: "p" } },
+    ];
+    const calls = [];
+    const kubectl = (args) => {
+      calls.push(args.join(" "));
+      return { status: 0, stdout: JSON.stringify({ items }) };
+    };
+    releaseStuckChallenges({ kubectl, now: () => new Date("2026-10-03T18:00:00Z") });
+    expect(calls.filter((c) => c.includes("patch"))).toEqual([
+      'p patch challenges.acme.cert-manager.io old --type=merge -p {"metadata":{"finalizers":[]}}'.replace(
+        /^/,
+        "-n ",
+      ),
+    ]);
   });
 });
