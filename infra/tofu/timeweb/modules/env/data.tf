@@ -93,7 +93,7 @@ locals {
       systems_root     = { zone = data.twc_dns_zone.systems.id, name = "@", type = "A", value = local.ingress_ip }
       platform_root    = { zone = data.twc_dns_zone.platform.id, name = "@", type = "A", value = local.ingress_ip }
       # The systems domain never sends mail (abuse.yaml#reserved_slugs): SPF -all, DMARC p=reject.
-      systems_spf   = { zone = data.twc_dns_zone.systems.id, name = "@", type = "TXT", value = "v=spf1 -all" }
+      systems_spf = { zone = data.twc_dns_zone.systems.id, name = "@", type = "TXT", value = "v=spf1 -all" }
       # DMARC p=reject: the provider makes "_dmarc" a subdomain object, which Timeweb refuses ("Bad subdomain name"),
       # so tools/deploy/pilot.mjs adds this TXT through the DNS records API (ensureDmarc).
     },
