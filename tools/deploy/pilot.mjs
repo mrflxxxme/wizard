@@ -175,10 +175,12 @@ export function imageRegistry(vars) {
  * tfvars of infra/tofu/timeweb/envs/<env> (JSON): the pilot shape, the founder's domains, the generated SSH key.
  * admin_cidrs stays empty — SSH is opened per job by openAdminAccess and closed again, nothing is open in between.
  */
-export function tfvars(env, vars, sshPublicKey) {
+export function tfvars(env, vars, sshPublicKey, server = null) {
   return {
     settings: {
       ...SHAPES[env],
+      // A VM the founder handed over (resolvePilotServer): adopted, not created; no region search.
+      ...(server ? { existing_server: { id: server.id, ip: server.ip } } : {}),
       sandbox_nodes: {},
       postgres: null,
       image_registry: imageRegistry(vars),
@@ -307,6 +309,36 @@ function serverIps(s) {
   return (s.networks ?? []).flatMap((n) =>
     (n.ips ?? []).filter((i) => i.type === "ipv4").map((i) => `${n.type}:${i.ip}`),
   );
+}
+
+/** Public IPv4 of a Timeweb server (its floating IP when it has one). */
+export const publicIpv4 = (s) =>
+  (s?.networks ?? [])
+    .filter((n) => n.type === "public")
+    .flatMap((n) => (n.ips ?? []).filter((i) => i.type === "ipv4").map((i) => i.ip))[0] ?? "";
+
+/**
+ * The VM the founder handed over to the environment (founder, 2026-10-03), by id or public IP: workflow input
+ * `server` (WIZARD_PILOT_SERVER) on the first run, then the encrypted bundle. It must be in the RF and at least the
+ * shape of the environment. null → OpenTofu creates the VM.
+ */
+export async function resolvePilotServer(api, want, shape) {
+  if (!want) return null;
+  const { servers = [] } = await api("GET", "/api/v1/servers");
+  const s = servers.find(
+    (x) => String(x.id) === String(want) || serverIps(x).some((i) => i.endsWith(`:${want}`)),
+  );
+  if (!s) throw new Error(`сервер ${want} не найден в аккаунте Timeweb`);
+  const disk = (s.disks ?? []).reduce((a, d) => a + (d.size ?? 0), 0);
+  const small = s.cpu < shape.cpu || s.ram < shape.ram_gb * 1024 || disk < shape.disk_gb * 1024;
+  if (small)
+    throw new Error(
+      `сервер ${s.id} меньше нужного: ${s.cpu} vCPU / ${s.ram / 1024} ГБ / ${disk / 1024} ГБ, нужно ${shape.cpu} / ${shape.ram_gb} / ${shape.disk_gb}`,
+    );
+  if (!String(s.location).startsWith("ru-")) throw new Error(`сервер ${s.id} не в РФ (${s.location})`);
+  const ip = publicIpv4(s);
+  if (!ip) throw new Error(`у сервера ${s.id} нет публичного IPv4`);
+  return { id: Number(s.id), ip, name: s.name, location: s.location };
 }
 
 /** The account's existing servers and floating IPs (read-only): candidates for reuse and leftovers of failed runs. */
@@ -904,10 +936,24 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     chmodSync(p, 0o600);
     return p;
   };
+  const server = await resolvePilotServer(
+    api,
+    vars.WIZARD_PILOT_SERVER || bundle.server?.id,
+    SHAPES[o.env].server,
+  );
+  if (server) {
+    log(
+      `сервер окружения: ${server.id} «${server.name}» ${server.location}, ${server.ip} (передан основателем)`,
+    );
+    if (bundle.server?.id !== server.id || bundle.server?.ip !== server.ip) {
+      bundle.server = { id: server.id, ip: server.ip };
+      await saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, kdf: deps.kdf });
+    }
+  }
   const sshKey = file("id_ed25519", bundle.secrets.SSH_PRIVATE_KEY);
   const varFile = file(
     "pilot.tfvars.json",
-    JSON.stringify(tfvars(o.env, vars, bundle.secrets.SSH_PUBLIC_KEY), null, 2),
+    JSON.stringify(tfvars(o.env, vars, bundle.secrets.SSH_PUBLIC_KEY, server), null, 2),
   );
   const ivars = {
     ...vars,
@@ -1013,7 +1059,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     });
   // Bootstrap only: when Timeweb has no capacity at the requested place, the next RF place is tried with the same
   // preset ceiling (OpenTofu replaces the floating IP and the VPC; nothing is paid twice).
-  const places = o.command === "bootstrap" ? placesFrom(vars) : [null];
+  const places = o.command === "bootstrap" && !server ? placesFrom(vars) : [null];
   let code;
   for (let i = 0; ; i++) {
     try {

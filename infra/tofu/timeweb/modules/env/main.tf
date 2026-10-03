@@ -36,6 +36,9 @@ locals {
   # A fixed Timeweb preset (cheaper than the configurator) bounded by a price ceiling: a plan that would need a dearer
   # preset finds none and fails instead of silently raising the bill (auto-growth ceiling, docs/ops/deploy.md).
   server_preset = var.server.max_price != null
+  # Adopted VM (var.existing_server): no VM, floating IP or VPC of ours; its own public IP is the ingress.
+  adopt     = var.existing_server != null
+  server_id = local.adopt ? var.existing_server.id : twc_server.k3s[0].id
 }
 
 data "twc_presets" "server" {
@@ -71,6 +74,7 @@ data "twc_configurator" "vm" {
 }
 
 resource "twc_vpc" "main" {
+  count       = local.adopt ? 0 : 1
   name        = "${var.name_prefix}-vpc"
   description = "Wizard ${var.env}"
   location    = var.location
@@ -83,6 +87,7 @@ resource "twc_ssh_key" "admin" {
 }
 
 resource "twc_floating_ip" "ingress" {
+  count             = local.adopt ? 0 : 1
   availability_zone = local.zone
   ddos_guard        = var.ddos_guard
   comment           = "Wizard ${var.env}: ingress (platform + systems domains)"
@@ -90,13 +95,14 @@ resource "twc_floating_ip" "ingress" {
 
 # k3s server: control plane + platform workloads (+ the sandbox pool itself when there are no agent nodes).
 resource "twc_server" "k3s" {
+  count                     = local.adopt ? 0 : 1
   name                      = "${var.name_prefix}-k3s"
   hostname                  = "${var.name_prefix}-k3s"
   os_id                     = data.twc_os.ubuntu.id
   availability_zone         = local.zone
   ssh_keys_ids              = [twc_ssh_key.admin.id]
   is_root_password_required = false
-  floating_ip_id            = twc_floating_ip.ingress.id
+  floating_ip_id            = twc_floating_ip.ingress[0].id
   preset_id                 = local.server_preset ? data.twc_presets.server[0].id : null
   dynamic "configuration" {
     for_each = local.server_preset ? [] : [1]
@@ -108,7 +114,7 @@ resource "twc_server" "k3s" {
     }
   }
   local_network {
-    id   = twc_vpc.main.id
+    id   = twc_vpc.main[0].id
     ip   = local.server_ip
     mode = "dnat_and_snat"
   }
@@ -116,11 +122,12 @@ resource "twc_server" "k3s" {
     k3s_version   = var.k3s_version
     token         = random_password.k3s_token.result
     node_ip       = local.server_ip
-    public_ip     = twc_floating_ip.ingress.ip
+    public_ip     = twc_floating_ip.ingress[0].ip
     pods_cidr     = var.pods_cidr
     services_cidr = var.services_cidr
     sandbox_pool  = local.single_node ? "free" : ""
     docker_mirror = var.docker_mirror
+    root_ssh_key  = ""
   })
   lifecycle {
     # A changed bootstrap template must not silently rebuild the server: re-create explicitly (`-replace`).
@@ -130,7 +137,7 @@ resource "twc_server" "k3s" {
 
 # Sandbox agents (gVisor): one VM per pool (free / paid), only in environments that have them.
 resource "twc_server" "agent" {
-  for_each                  = var.sandbox_nodes
+  for_each                  = local.adopt ? {} : var.sandbox_nodes
   name                      = "${var.name_prefix}-sandbox-${each.key}"
   hostname                  = "${var.name_prefix}-sandbox-${each.key}"
   os_id                     = data.twc_os.ubuntu.id
@@ -144,7 +151,7 @@ resource "twc_server" "agent" {
     disk            = each.value.disk_gb * 1024
   }
   local_network {
-    id   = twc_vpc.main.id
+    id   = twc_vpc.main[0].id
     ip   = local.agent_ip[each.key]
     mode = "snat"
   }
@@ -162,12 +169,53 @@ resource "twc_server" "agent" {
   depends_on = [twc_server.k3s]
 }
 
+# Count was added for the adopted-VM mode: existing states keep their objects.
+moved {
+  from = twc_vpc.main
+  to   = twc_vpc.main[0]
+}
+moved {
+  from = twc_floating_ip.ingress
+  to   = twc_floating_ip.ingress[0]
+}
+moved {
+  from = twc_server.k3s
+  to   = twc_server.k3s[0]
+}
+
+# Adopted VM: one reinstall (Ubuntu 24.04 + the same k3s bootstrap as a created VM, plus the admin key for root) per
+# server id; its own public IP stays. Founder's consent 2026-10-03: the VM is dedicated to Wizard.
+resource "terraform_data" "adopt" {
+  count            = local.adopt ? 1 : 0
+  triggers_replace = [var.existing_server.id]
+  provisioner "local-exec" {
+    command = "node ${abspath("${path.module}/../../../../../tools/deploy/adopt-server.mjs")}"
+    environment = {
+      WIZARD_ADOPT_SERVER_ID  = var.existing_server.id
+      WIZARD_ADOPT_SERVER_IP  = var.existing_server.ip
+      WIZARD_ADOPT_OS_ID      = data.twc_os.ubuntu.id
+      WIZARD_ADOPT_SSH_KEY_ID = twc_ssh_key.admin.id
+      WIZARD_ADOPT_CLOUD_INIT = templatefile("${path.module}/../../../../k3s/server.yaml.tftpl", {
+        k3s_version   = var.k3s_version
+        token         = random_password.k3s_token.result
+        node_ip       = ""
+        public_ip     = var.existing_server.ip
+        pods_cidr     = var.pods_cidr
+        services_cidr = var.services_cidr
+        sandbox_pool  = "free"
+        docker_mirror = var.docker_mirror
+        root_ssh_key  = var.ssh_public_key
+      })
+    }
+  }
+}
+
 # Public side: HTTP(S) only; SSH, the API server and the registry node port only from the VPC and admin_cidrs.
 resource "twc_firewall" "nodes" {
   name        = "${var.name_prefix}-nodes"
   description = "Wizard ${var.env}: k3s nodes"
   link {
-    id   = twc_server.k3s.id
+    id   = local.server_id
     type = "server"
   }
   dynamic "link" {

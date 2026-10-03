@@ -19,7 +19,7 @@ resource "twc_database_cluster" "pg" {
   is_external_ip               = false
   is_secure_connection_enabled = true
   network {
-    id = twc_vpc.main.id
+    id = twc_vpc.main[0].id
   }
   config_parameters = {
     max_connections = tostring(var.postgres.max_connections)
@@ -86,7 +86,7 @@ data "twc_dns_zone" "platform" {
 }
 
 locals {
-  ingress_ip = twc_floating_ip.ingress.ip
+  ingress_ip = local.adopt ? var.existing_server.ip : twc_floating_ip.ingress[0].ip
   dns_records = merge(
     {
       systems_wildcard = { zone = data.twc_dns_zone.systems.id, name = "*", type = "A", value = local.ingress_ip }

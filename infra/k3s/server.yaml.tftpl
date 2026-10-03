@@ -3,8 +3,10 @@
 # docs/ops/deploy.md «k3s на ВМ»). No managed control plane: single server, embedded etcd off (sqlite), restore =
 # re-create the VM + `pnpm infra:apply` (state lives in S3 and in managed PostgreSQL — or, in the pilot, in the WAL-G
 # archive from which the database pod restores itself; downtime budget 1–2 h).
-# Variables: k3s_version, token, node_ip, public_ip, pods_cidr, services_cidr, sandbox_pool ("" | free | paid —
-# a single-node environment, e.g. the pilot, also runs the gVisor sandbox pool here), docker_mirror ("" → none).
+# Variables: k3s_version, token, node_ip ("" → k3s takes the default-route address: an adopted VM outside our VPC),
+# public_ip, pods_cidr, services_cidr, sandbox_pool ("" | free | paid — a single-node environment, e.g. the pilot,
+# also runs the gVisor sandbox pool here), docker_mirror ("" → none), root_ssh_key ("" → none: a created VM gets the
+# admin key through the provider's ssh_keys_ids, an adopted one here).
 package_update: true
 packages: [curl, ca-certificates, gnupg, apparmor]
 write_files:
@@ -13,9 +15,13 @@ write_files:
     content: |
       token: "${token}"
       write-kubeconfig-mode: "0600"
+%{ if node_ip != "" ~}
       node-ip: ${node_ip}
       advertise-address: ${node_ip}
       tls-san: ["${node_ip}", "${public_ip}"]
+%{ else ~}
+      tls-san: ["${public_ip}"]
+%{ endif ~}
       cluster-cidr: ${pods_cidr}
       service-cidr: ${services_cidr}
       # Our own ingress (infra/helm/addons traefik) replaces the bundled one; ServiceLB stays (LoadBalancer IP).
@@ -59,6 +65,9 @@ write_files:
         runtime_type = "io.containerd.runsc.v1"
 %{ endif ~}
 runcmd:
+%{ if root_ssh_key != "" ~}
+  - mkdir -p -m 700 /root/.ssh && echo '${root_ssh_key}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+%{ endif ~}
   - sysctl --system
 %{ if sandbox_pool != "" ~}
   - curl -fsSL https://gvisor.dev/archive.key | gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg

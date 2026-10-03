@@ -130,3 +130,12 @@ variable "platform_mail_spf" {
   type        = string
   default     = ""
 }
+
+variable "existing_server" {
+  description = "A VM the founder created for the pilot and handed over (2026-10-03: Timeweb had no capacity for new ones): {id, ip}. The module then makes no VM, floating IP or VPC, links the firewall and DNS to this VM and reinstalls it ONCE per id with the k3s bootstrap (tools/deploy/adopt-server.mjs). It is never deleted by this module. null → the module creates the VM."
+  type = object({
+    id = number
+    ip = string
+  })
+  default = null
+}

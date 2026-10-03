@@ -109,11 +109,11 @@ run "pilot_one_vm_in_moscow" {
   command = apply
 
   assert {
-    condition     = length(twc_server.agent) == 0 && twc_server.k3s.availability_zone == "msk-1"
+    condition     = length(twc_server.agent) == 0 && twc_server.k3s[0].availability_zone == "msk-1"
     error_message = "the pilot is one VM in Moscow (msk-1)"
   }
   assert {
-    condition     = twc_server.k3s.preset_id == 2447 && length(twc_server.k3s.configuration) == 0
+    condition     = twc_server.k3s[0].preset_id == 2447 && length(twc_server.k3s[0].configuration) == 0
     error_message = "the pilot VM comes from a fixed preset"
   }
   assert {
@@ -145,7 +145,7 @@ run "pilot_one_vm_in_moscow" {
     error_message = "no registry push port without the in-cluster registry"
   }
   assert {
-    condition     = strcontains(twc_server.k3s.cloud_init, "https://dockerhub.timeweb.cloud") && strcontains(twc_server.k3s.cloud_init, "wizard.ru/sandbox-node=true")
+    condition     = strcontains(twc_server.k3s[0].cloud_init, "https://dockerhub.timeweb.cloud") && strcontains(twc_server.k3s[0].cloud_init, "wizard.ru/sandbox-node=true")
     error_message = "the single node pulls Docker Hub through the mirror and carries the gVisor sandbox pool"
   }
 }
@@ -198,7 +198,7 @@ run "beta_managed_postgres" {
     error_message = "the beta keeps managed PostgreSQL and the sandbox agent"
   }
   assert {
-    condition     = length(twc_server.k3s.configuration) == 1 && length(data.twc_presets.server) == 0
+    condition     = length(twc_server.k3s[0].configuration) == 1 && length(data.twc_presets.server) == 0
     error_message = "without max_price the configurator is used"
   }
   assert {
@@ -213,4 +213,30 @@ run "rf_only" {
     location = "nl-1"
   }
   expect_failures = [var.location]
+}
+
+# A VM the founder handed over: nothing of ours is created for compute (no VM, floating IP, VPC), the firewall and DNS
+# go to that VM, and it is reinstalled once with the k3s bootstrap carrying the admin key. Plan only: the reinstall is
+# a local-exec provisioner and must never run offline.
+run "adopted_vm" {
+  command = plan
+  variables {
+    existing_server = { id = 9256729, ip = "129.101.115.207" }
+  }
+  assert {
+    condition     = length(twc_server.k3s) == 0 && length(twc_floating_ip.ingress) == 0 && length(twc_vpc.main) == 0
+    error_message = "an adopted VM gets no VM, floating IP or VPC of ours"
+  }
+  assert {
+    condition     = tostring(one(twc_firewall.nodes.link).id) == "9256729" && output.env.ingress_ip == "129.101.115.207"
+    error_message = "the firewall and the ingress address are the adopted VM's"
+  }
+  assert {
+    condition     = output.k3s_server.public_ip == "129.101.115.207" && twc_dns_rr.r["platform_root"].value == "129.101.115.207"
+    error_message = "DNS and the SSH address point at the adopted VM"
+  }
+  assert {
+    condition     = tostring(terraform_data.adopt[0].triggers_replace[0]) == "9256729"
+    error_message = "the reinstall is keyed by the server id (once per VM)"
+  }
 }
