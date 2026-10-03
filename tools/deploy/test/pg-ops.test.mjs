@@ -4,7 +4,15 @@
 // leaves the machine. As root (dev containers) the cluster runs as the "postgres" user, like scripts/db.mjs.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -431,4 +439,23 @@ DELETE FROM platform.runs WHERE id <= 5;`);
       spawnSync(...asUser(cfg, join(PG_BIN, "pg_ctl"), ["-D", rebuilt, "-m", "immediate", "stop"]));
     }
   }, 120_000);
+});
+
+describe("pg-ops bootstrap: a hanging archive", () => {
+  it("fails with a reason after archiveProbeTimeoutSec instead of hanging", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pgops-hang-"));
+    const walg = join(dir, "wal-g");
+    writeFileSync(walg, "#!/bin/sh\necho 'dial tcp: i/o timeout, retrying' >&2\nsleep 30\n", { mode: 0o755 });
+    const events = [];
+    const rep = { info: () => {}, error: async (msg, data) => events.push({ msg, ...data }) };
+    try {
+      await expect(
+        bootstrap({ walg, pgdata: join(dir, "pgdata"), archiveProbeTimeoutSec: 1 }, rep),
+      ).rejects.toThrow(/архив недоступен/);
+      expect(events.at(-1)).toMatchObject({ msg: "pg_bootstrap_failed", step: "backup-list" });
+      expect(events.at(-1).reason).toMatch(/нет ответа за 1 с.*i\/o timeout/s);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
 });
