@@ -1012,7 +1012,21 @@ export async function smoke(domains, log = console.log, f = fetch) {
     { url: `https://${probe}.${domains.systems}/_wizard/internal/reload`, status: 404, method: "POST" },
   ];
   for (const c of checks) {
-    const r = await f(c.url, { method: c.method ?? "GET", redirect: "manual" });
+    let r;
+    try {
+      r = await f(c.url, {
+        method: c.method ?? "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (e) {
+      // fetch says only "fetch failed": the cause (certificate, refused, timeout) is what tells the problem.
+      const cause = e?.cause;
+      const why = cause ? `${cause.code ?? cause.name ?? ""} ${cause.message ?? ""}`.trim() : (e?.name ?? "");
+      throw new Error(
+        `smoke ${c.url}: ${e instanceof Error ? e.message : String(e)}${why ? ` (${why})` : ""}`,
+      );
+    }
     const hsts = r.headers.get("strict-transport-security") ?? "";
     if (r.status !== c.status) throw new Error(`smoke ${c.url}: ${r.status} ≠ ${c.status}`);
     if (!/max-age=\d+/.test(hsts) || !/includeSubDomains/i.test(hsts)) {
