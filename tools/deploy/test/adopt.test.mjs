@@ -2,7 +2,14 @@
 // IP, checked against the shape and the RF, reinstalled once with the k3s bootstrap — never the wrong server. Fake API.
 import { describe, expect, it } from "vitest";
 import { adoptServer } from "../adopt-server.mjs";
-import { reportDns, resolvePilotServer, SHAPES, tfvars } from "../pilot.mjs";
+import {
+  rebootServer,
+  reportDns,
+  reportServerHealth,
+  resolvePilotServer,
+  SHAPES,
+  tfvars,
+} from "../pilot.mjs";
 
 const vm = (o = {}) => ({
   id: 9256729,
@@ -109,5 +116,40 @@ describe("reportDns", () => {
     const log = [];
     await reportDns(api, ["p.ru", "s.ru"], { log: (s) => log.push(s) });
     expect(log).toEqual(["DNS p.ru: A @ → 1.2.3.4", "DNS s.ru: A * → 1.2.3.4"]);
+  });
+});
+
+describe("server health and reboot", () => {
+  it("reportServerHealth prints the last points of each metric and the latest events", async () => {
+    const api = async (_m, path) =>
+      path.includes("/statistics")
+        ? {
+            cpu: [
+              { logged_at: "2026-10-03T17:10:00+03:00", load: 12.34 },
+              { logged_at: "2026-10-03T17:20:00+03:00", load: 99.9 },
+            ],
+            response_id: "x",
+          }
+        : { server_logs: [{ logged_at: "2026-10-03T17:21:00Z", event: "reboot" }] };
+    const log = [];
+    await reportServerHealth(
+      api,
+      { id: 7 },
+      { log: (s) => log.push(s), now: () => new Date("2026-10-03T18:00:00Z") },
+    );
+    expect(log).toEqual([
+      "  7 cpu: 17:10 load=12.3 | 17:20 load=99.9",
+      "  7 событие 2026-10-03T17:21:00Z reboot",
+    ]);
+  });
+  it("rebootServer: a hard reboot, then waits until the VM is on again", async () => {
+    const calls = [];
+    const statuses = ["off", "on"];
+    const api = async (m, path, body) => {
+      calls.push([m, path, body]);
+      return m === "GET" ? { server: { status: statuses.shift() ?? "on" } } : {};
+    };
+    await rebootServer(api, { id: 7, name: "x" }, { sleep: async () => {}, pollMs: 1, waitMs: 10 });
+    expect(calls[0]).toEqual(["POST", "/api/v1/servers/7/action", { action: "hard_reboot" }]);
   });
 });
