@@ -898,6 +898,37 @@ tasks:
       - "CLI основателя: начислить кредиты организации (ledger, reason=pilot_grant), список организаций с балансом и расходом"
       - "Платформенный лимит токенов: сумма cost_rub llm_calls за календарный месяц ≥ WIZARD_LLM_MONTHLY_CAP_RUB (по умолчанию 6 000) → новые сборки и интервью отвечают понятным отказом на русском, основателю — алерт; при 80 % — предупреждение; eval-бюджет считается отдельно (eval.yaml#live_cadence.budget)"
 
+
+  - id: M2-18
+    title: "Оркестрация песочницы: runtime размещает функции систем в поды workerd под gVisor (SandboxPool → ConfigMap + Pod через API Kubernetes), RPC по capability-токенам, образ wizard-sandbox, RBAC и сеть в чарте"
+    milestone: M2
+    deps: [M2-01]
+    specs: [specs/security/isolation.yaml, specs/runtime/runtime.yaml, specs/platform/deploy.yaml]
+    owner: platform
+    parallel_group: m2-s
+    estimate_days: 2
+    status: done
+    claimed_by: null
+    acceptance:
+      - "WIZARD_SANDBOX=k8s: первый вызов функции системы размещает её (SandboxPool, ≤ systemsPerPod на под), создаёт ConfigMap с config.capnp и под workerd (runtimeClass gvisor, sandboxPod()), ждёт готовности и вызывает функцию через WorkerdExecutor; ctx.* — только через SandboxRpc с токеном вызова"
+      - "Новая ревизия функций системы → новый ConfigMap и под по хэшу конфига, старые удаляются после готовности нового; при старте runtime удаляет поды и ConfigMap прошлого процесса (метка владельца)"
+      - "nodeSelector пода совпадает с меткой узла пула (wizard.ru/pool=free, а не sandbox-free)"
+      - "Чарт: ServiceAccount runtime с Role только на pods/configmaps в namespace песочницы; egress runtime к API Kubernetes; образ wizard-sandbox (workerd) в images.json; пилот включает оркестрацию"
+      - "Тесты: оркестратор на фейковом API Kubernetes; в джобе sandbox CI — путь вызова функции через настоящий workerd"
+
+  - id: M2-19
+    title: "G1 в песочнице: функции и отрисовка страниц проверяемой системы исполняются в подах workerd (без WIZARD_UNSAFE_LOCAL_EXEC в кластере)"
+    milestone: M2
+    deps: [M2-18]
+    specs: [specs/security/isolation.yaml, specs/quality/gates.yaml]
+    owner: qa
+    parallel_group: m2-s
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "G1 в кластере (WIZARD_SANDBOX=k8s): сценарии с callFn и воркфлоу исполняют функции в поде workerd; G1-RENDER-01 отрисовывает страницы в Worker'е workerd, запросы данных страницы идут через RPC к G1"
+      - "Сборка и публикация тестовой системы с функциями и страницами проходят G0, G1, G2 на пилоте; smoke после выката проверяет это"
   - id: M2-16
     title: "Eval на пилоте: smoke раз в неделю, потолок live-eval 4 000 ₽/мес (D20_eval_budget)"
     milestone: M2

@@ -813,6 +813,50 @@ export function netProbePod({
   };
 }
 
+/**
+ * gVisor on the node (M2-18): a one-shot pod of the sandbox image under the RuntimeClass gvisor prints the workerd
+ * version. Functions of client systems run only in such pods — a broken runsc handler or a missing image shows up
+ * here, not at a client's first build. Returns whether the pod ran.
+ */
+export function gvisorProbe({ kubectl, image, log = console.log, namespace = "wizard-sandbox" }) {
+  const name = "wizard-gvisor-probe";
+  const opt = { allowFail: true };
+  const pod = netProbePod({
+    name,
+    namespace,
+    image,
+    command: ["/usr/local/bin/workerd", "--version"],
+    uid: 65532,
+  });
+  pod.metadata.labels = { "app.kubernetes.io/name": "wizard-gvisor-probe" };
+  pod.spec.runtimeClassName = "gvisor";
+  // The sandbox namespace has a ResourceQuota: requests and limits are mandatory.
+  pod.spec.containers[0].resources = {
+    limits: { cpu: "500m", memory: "128Mi" },
+    requests: { cpu: "50m", memory: "128Mi" },
+  };
+  kubectl(["-n", namespace, "delete", "pod", name, "--ignore-not-found", "--wait=true"], opt);
+  kubectl(["apply", "-f", "-"], { ...opt, input: JSON.stringify(pod) });
+  const ok =
+    kubectl(
+      ["-n", namespace, "wait", `pod/${name}`, "--for=jsonpath={.status.phase}=Succeeded", "--timeout=180s"],
+      opt,
+    ).status === 0;
+  if (ok) {
+    const out = kubectl(["-n", namespace, "logs", name], { ...opt, capture: true, fake: "workerd" });
+    log(`gVisor: под песочницы запускается (${String(out.stdout ?? "").trim()})`);
+  } else {
+    log("::group::gVisor: под песочницы не запустился");
+    kubectl(["-n", namespace, "describe", "pod", name], opt);
+    log("::endgroup::");
+    log(
+      "::warning title=pilot::Под песочницы (gVisor) не запустился: функции систем клиентов работать не будут, см. лог выше",
+    );
+  }
+  kubectl(["-n", namespace, "delete", "pod", name, "--ignore-not-found", "--wait=false"], opt);
+  return ok;
+}
+
 export function releaseWizard({ helm, kubectl, args, log = console.log, namespace = "wizard-platform" }) {
   const history = helm(["history", "wizard", "-n", namespace, "-o", "json"], {
     capture: true,

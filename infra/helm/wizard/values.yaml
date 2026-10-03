@@ -29,6 +29,8 @@ images:
     pgbouncer: wizard-pgbouncer
     acmeWebhook: wizard-acme-dns01
     postgres: wizard-postgres
+    # workerd of the sandbox pods (M2-18; the runtime creates them)
+    sandbox: wizard-sandbox
 
 domains:
   # <codename>.ru — UI and API of the platform (E-NAME)
@@ -228,8 +230,16 @@ sandbox:
     create: false
     handler: runsc
   # Workloads of the sandbox are placed by the runtime (SandboxPool); the chart only isolates the namespace.
+  # orchestrate (M2-18): the runtime creates the workerd pods itself (WIZARD_SANDBOX=k8s, service account with a Role
+  # on pods/ConfigMaps of the sandbox namespace, egress to the API server); needs the RuntimeClass and runsc nodes.
+  orchestrate: false
   basePort: 9000
+  # systems per pod (≤ 10, isolation.yaml#M2.pods) and pods the orchestrator may run
   systems: 10
+  maxPods: 50
   healthPort: 8999
+  # resources of one sandbox pod (requests = limits for memory; sandboxPod())
+  memoryLimit: 1536Mi
+  cpuLimit: "1"
   # ResourceQuota of the sandbox namespace (a pod of runtime sandboxPod() requests 1536Mi = its limit).
   quota: { pods: 50, requestsCpu: 16, requestsMemory: 64Gi, limitsCpu: 32, limitsMemory: 96Gi }

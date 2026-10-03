@@ -11,6 +11,7 @@ import {
   clusterSecrets,
   createRunner,
   diagnoseCluster,
+  gvisorProbe,
   imageNames,
   kubeconfigText,
   loadProvider,
@@ -873,5 +874,34 @@ describe("kubeconfigText on an unreachable server", () => {
     ).rejects.toThrow(/Connection timed out\) — сервер не отвечает по сети/);
     expect(calls).toBe(3);
     expect(logs[0]).toMatch(/попытка 1\/3, ssh: connect to host/);
+  });
+});
+
+describe("gvisorProbe (M2-18)", () => {
+  it("one restricted pod of the sandbox image under RuntimeClass gvisor, with quota-compliant resources, removed after", () => {
+    const calls = [];
+    let pod = null;
+    const kubectl = (args, o = {}) => {
+      calls.push(args.join(" "));
+      if (o.input) pod = JSON.parse(o.input);
+      return { status: 0, stdout: "workerd 2026-09-30" };
+    };
+    const log = [];
+    expect(gvisorProbe({ kubectl, image: "ghcr.io/o/wizard-sandbox:abc", log: (s) => log.push(s) })).toBe(
+      true,
+    );
+    expect(pod.spec.runtimeClassName).toBe("gvisor");
+    expect(pod.metadata.namespace).toBe("wizard-sandbox");
+    expect(pod.spec.containers[0].image).toBe("ghcr.io/o/wizard-sandbox:abc");
+    expect(pod.spec.containers[0].resources.requests).toEqual({ cpu: "50m", memory: "128Mi" });
+    expect(pod.spec.securityContext.runAsUser).toBe(65532);
+    expect(calls.at(-1)).toContain("delete pod wizard-gvisor-probe");
+    expect(log).toEqual(["gVisor: под песочницы запускается (workerd 2026-09-30)"]);
+  });
+  it("a pod that does not run is described and reported as a warning", () => {
+    const log = [];
+    const kubectl = (args) => ({ status: args.includes("wait") ? 1 : 0, stdout: "" });
+    expect(gvisorProbe({ kubectl, image: "i", log: (s) => log.push(s) })).toBe(false);
+    expect(log.at(-1)).toMatch(/::warning.*gVisor/);
   });
 });

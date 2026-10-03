@@ -2,7 +2,7 @@
 // handler executed in the isolated executor: the M2 sandbox (services.sandbox, workerd in gVisor) when configured,
 // else the unsafe-local process pool (./executor.ts). One executor per LoadedSystem.
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
 import { type CurrentUser, type FnKind, WizardError } from "@wizard/sdk";
@@ -95,12 +95,20 @@ async function build(
 ): Promise<SystemFunctions> {
   const entities = sys.spec.entities.map((e) => e.name);
   let executor: GuestExecutor;
+  const dir = sys.artifactDir ? resolve(sys.artifactDir) : null;
+  const bundle = dir ? join(dir, "server", "functions.mjs") : null;
   if (services.sandbox) {
-    // M2: the bundle runs in the system's Worker (loaded into its pod from S3 by sha256, not from this disk).
-    executor = services.sandbox.executorFor({ systemId: sys.entry.systemId, env: sys.entry.env, entities });
+    // M2: the bundle runs in the system's Worker; the orchestrator embeds this file into its pod's config (M2-18).
+    const ids = { systemId: sys.entry.systemId, env: sys.entry.env, entities };
+    if (services.sandbox.prepare) {
+      if (!bundle || !existsSync(bundle)) {
+        throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
+      }
+      await services.sandbox.prepare({ ...ids, functionsSource: readFileSync(bundle, "utf8") });
+    }
+    executor = services.sandbox.executorFor(ids);
   } else {
-    const dir = sys.artifactDir ? resolve(sys.artifactDir) : null;
-    if (!dir || !existsSync(join(dir, "server", "functions.mjs"))) {
+    if (!dir || !bundle || !existsSync(bundle)) {
       throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
     }
     executor = new FunctionExecutor({ bundleDir: dir, entities });
