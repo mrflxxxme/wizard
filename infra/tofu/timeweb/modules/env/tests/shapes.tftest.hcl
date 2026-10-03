@@ -207,10 +207,10 @@ run "beta_managed_postgres" {
   }
 }
 
-run "moscow_only" {
+run "rf_only" {
   command = plan
   variables {
-    location = "ru-1"
+    location = "nl-1"
   }
   expect_failures = [var.location]
 }

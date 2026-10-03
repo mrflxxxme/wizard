@@ -299,6 +299,35 @@ export async function reportServerOptions(api, shape, { log = () => {} } = {}) {
   } catch (e) {
     log(`::warning title=pilot::Тарифы ВМ недоступны (${e.message})`);
   }
+  await reportExistingServers(api, { log });
+}
+
+/** IPv4 addresses of a Timeweb server (public and VPC). */
+function serverIps(s) {
+  return (s.networks ?? []).flatMap((n) =>
+    (n.ips ?? []).filter((i) => i.type === "ipv4").map((i) => `${n.type}:${i.ip}`),
+  );
+}
+
+/** The account's existing servers and floating IPs (read-only): candidates for reuse and leftovers of failed runs. */
+export async function reportExistingServers(api, { log = () => {} } = {}) {
+  try {
+    const { servers = [] } = await api("GET", "/api/v1/servers");
+    log(`Серверы в аккаунте: ${servers.length}`);
+    for (const s of servers) {
+      const disk = (s.disks ?? []).reduce((a, d) => a + (d.size ?? 0), 0) / 1024;
+      log(
+        `  id=${s.id} «${s.name}» ${s.status} ${s.location}/${s.availability_zone ?? "?"} ${s.cpu} vCPU / ${s.ram / 1024} ГБ / ${disk} ГБ ОС ${s.os?.name ?? "?"} ${s.os?.version ?? ""} тариф=${s.preset_id ?? "-"} IP ${serverIps(s).join(", ")}`,
+      );
+    }
+    const { ips = [] } = await api("GET", "/api/v1/floating-ips").catch(() => ({ ips: [] }));
+    for (const f of ips)
+      log(
+        `  плавающий IP ${f.ip} ${f.availability_zone ?? ""} привязан к ${f.resource_type ?? "—"} ${f.resource_id ?? ""}`,
+      );
+  } catch (e) {
+    log(`::warning title=pilot::Список серверов недоступен (${e.message})`);
+  }
 }
 
 /** Timeweb out of capacity for this place (or the preset not offered there): try the next one (founder, 2026-10-02). */
