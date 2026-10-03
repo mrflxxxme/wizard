@@ -343,11 +343,13 @@ describe("infra.mjs", () => {
           attempts: 2,
           sleep: async () => {},
           f: async () => {
-            throw new TypeError("fetch failed");
+            throw Object.assign(new TypeError("fetch failed"), {
+              cause: Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" }),
+            });
           },
         },
       ),
-    ).rejects.toThrow(/fetch failed/);
+    ).rejects.toThrow(/smoke https:\/\/p\.ru\/: fetch failed \(CERT_HAS_EXPIRED certificate has expired\)/);
   });
 
   it("the release takes registry, domains, networks, S3 and the PG host from tofu outputs", () => {
