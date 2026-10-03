@@ -33,7 +33,15 @@ import {
 } from "./pilot-secrets.mjs";
 import { runPreflight, SECRET_NAMES } from "./preflight.mjs";
 
-export const COMMANDS = ["check", "bootstrap", "deploy", "destroy", "close-access", "show-secrets"];
+export const COMMANDS = [
+  "check",
+  "bootstrap",
+  "deploy",
+  "destroy",
+  "diagnose",
+  "close-access",
+  "show-secrets",
+];
 export const ENVS = ["prod", "staging"];
 export const TWC_API = "https://api.timeweb.cloud";
 /** Timeweb S3 (only location ru-1): the state bucket, as the backend of infra/tofu/timeweb/envs/*. */
@@ -309,6 +317,19 @@ function serverIps(s) {
   return (s.networks ?? []).flatMap((n) =>
     (n.ips ?? []).filter((i) => i.type === "ipv4").map((i) => `${n.type}:${i.ip}`),
   );
+}
+
+/** Address records of the zones as Timeweb serves them (diagnose; read-only). */
+export async function reportDns(api, zones, { log = () => {} } = {}) {
+  for (const zone of zones) {
+    try {
+      const { dns_records: records = [] } = await api("GET", `/api/v1/domains/${zone}/dns-records`);
+      for (const r of records.filter((x) => ["A", "AAAA", "CNAME"].includes(x.type)))
+        log(`DNS ${zone}: ${r.type} ${r.data?.subdomain || "@"} → ${r.data?.value ?? ""}`);
+    } catch (e) {
+      log(`::warning title=pilot::DNS ${zone}: список записей недоступен (${e.message})`);
+    }
+  }
 }
 
 /** Public IPv4 of a Timeweb server (its floating IP when it has one). */
@@ -1006,6 +1027,23 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     },
     afterRelease: async ({ kubectl, outputs, tag }) => {
       let changed = false;
+      // DNS before the smoke: records that are not ours (a parked A on the root, a duplicate SPF) would send part of
+      // the checks elsewhere (6th live bootstrap, 2026-10-03: the root still had the founder's other VM).
+      if (o.command === "bootstrap") {
+        await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
+        await tidyDns(api, {
+          zones: [vars.WIZARD_PLATFORM_DOMAIN, vars.WIZARD_SYSTEMS_DOMAIN],
+          ingressIp: outputs.env?.ingress_ip,
+          ourSpf: {
+            [vars.WIZARD_SYSTEMS_DOMAIN]: "v=spf1 -all",
+            ...(vars.WIZARD_PLATFORM_MAIL_SPF
+              ? { [vars.WIZARD_PLATFORM_DOMAIN]: `v=spf1 ${vars.WIZARD_PLATFORM_MAIL_SPF} -all` }
+              : {}),
+          },
+          dkimSelector: vars.WIZARD_PLATFORM_DKIM_SELECTOR || "",
+          log,
+        });
+      }
       // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
       const walg = kubectl(
         [
@@ -1070,7 +1108,11 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     },
   };
 
-  const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy" }[o.command];
+  const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy", diagnose: "diagnose" }[
+    o.command
+  ];
+  if (o.command === "diagnose")
+    await reportDns(api, [vars.WIZARD_PLATFORM_DOMAIN, vars.WIZARD_SYSTEMS_DOMAIN], { log });
   const args = [command, "--env", o.env, "--yes", ...(o.tag ? ["--tag", o.tag] : [])];
   const runInfra = () =>
     (deps.infraMain ?? infraMain)(args, ivars, {
@@ -1111,21 +1153,6 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
         ),
       );
     }
-  }
-  if (code === 0 && o.command === "bootstrap") {
-    await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
-    await tidyDns(api, {
-      zones: [vars.WIZARD_PLATFORM_DOMAIN, vars.WIZARD_SYSTEMS_DOMAIN],
-      ingressIp: st.outputs?.env?.ingress_ip,
-      ourSpf: {
-        [vars.WIZARD_SYSTEMS_DOMAIN]: "v=spf1 -all",
-        ...(vars.WIZARD_PLATFORM_MAIL_SPF
-          ? { [vars.WIZARD_PLATFORM_DOMAIN]: `v=spf1 ${vars.WIZARD_PLATFORM_MAIL_SPF} -all` }
-          : {}),
-      },
-      dkimSelector: vars.WIZARD_PLATFORM_DKIM_SELECTOR || "",
-      log,
-    });
   }
   if (code === 0) {
     const text = summaryText({

@@ -8,6 +8,7 @@ import {
   CLUSTER_SECRETS,
   clusterSecrets,
   createRunner,
+  diagnoseCluster,
   imageNames,
   kubeconfigText,
   loadProvider,
@@ -705,5 +706,52 @@ describe("releaseWizard", () => {
     );
     expect(() => releaseWizard({ ...f, args, log: () => {} })).toThrow();
     expect(f.calls.at(-1).slice(0, 4)).toEqual(["helm", "rollback", "wizard", "3"]);
+  });
+});
+
+describe("diagnoseCluster", () => {
+  it("reads the cluster; the only things it creates are one-shot probe pods, removed again", () => {
+    const calls = [];
+    const inputs = [];
+    const sts = {
+      spec: {
+        template: {
+          spec: {
+            containers: [
+              {
+                name: "postgres",
+                image: "ghcr.io/o/wizard-postgres:t",
+                env: [
+                  { name: "WALG_S3_PREFIX", value: "s3://wizard-prod-backups/pg" },
+                  { name: "POSTGRES_PASSWORD", valueFrom: { secretKeyRef: { name: "x", key: "y" } } },
+                ],
+                envFrom: [{ secretRef: { name: "wizard-postgres" } }],
+              },
+            ],
+          },
+        },
+      },
+    };
+    const kubectl = (args, o = {}) => {
+      calls.push(args.join(" "));
+      if (o.input) inputs.push(JSON.parse(o.input));
+      return args.includes("statefulset")
+        ? { status: 0, stdout: JSON.stringify(sts) }
+        : { status: 0, stdout: "" };
+    };
+    diagnoseCluster({ kubectl, log: () => {} });
+    expect(calls).toContain("get certificates,certificaterequests,orders,challenges -A -o wide");
+    expect(calls).toContain("-n cert-manager logs deploy/wizard-acme-dns01 --tail=120");
+    const writes = calls.filter((c) => /\b(apply|delete|create|patch|edit|scale|rollout)\b/.test(c));
+    expect(writes.every((c) => c === "apply -f -" || /delete pod wizard-(net|walg)-probe/.test(c))).toBe(
+      true,
+    );
+    expect(inputs.map((m) => m.metadata.name)).toEqual(["wizard-net-probe", "wizard-walg-probe"]);
+    const [net, walg] = inputs.map((m) => m.spec.containers[0]);
+    expect(net.env).toEqual([{ name: "PROBE_BUCKET", value: "wizard-prod-backups" }]);
+    expect(walg.command).toEqual(["timeout", "45", "wal-g", "backup-list"]);
+    // plain values and the database Secret as is; secretKeyRef entries are not copied
+    expect(walg.env.map((e) => e.name)).toEqual(["WALG_S3_PREFIX", "WALG_LOG_LEVEL", "S3_LOG_LEVEL"]);
+    expect(walg.envFrom).toEqual([{ secretRef: { name: "wizard-postgres" } }]);
   });
 });
