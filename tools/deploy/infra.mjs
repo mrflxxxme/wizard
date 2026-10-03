@@ -1154,6 +1154,8 @@ export async function smoke(domains, log = console.log, f = fetch) {
   const probe = `wz-smoke-${Date.now().toString(36)}`;
   const checks = [
     { url: `https://${domains.platform}/`, status: 200 },
+    // platform-api behind the ingress: without a session cookie the API answers 401 (not the web app's 200/404).
+    { url: `https://${domains.platform}/api/v1/me`, status: 401 },
     { url: `https://${probe}.${domains.systems}/_wizard/health`, status: 404 },
     { url: `https://${probe}.${domains.systems}/_wizard/internal/reload`, status: 404, method: "POST" },
   ];

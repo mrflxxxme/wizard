@@ -214,3 +214,33 @@ prometheus.io/path: /metrics
 - name: RCLONE_CONFIG_ENC_REMOTE
   value: {{ printf "s3:%s/data" (required "postgres.backupsBucket is required" .Values.postgres.backupsBucket) | quote }}
 {{- end -}}
+
+{{/*
+M2-18/M2-19: env of a sandbox orchestrator (apps/runtime/src/sandbox/from-env.ts) — (list $ <RPC port> <max pods>).
+The pods have no DNS: they reach the orchestrating process on its pod IP.
+*/}}
+{{- define "wizard.sandboxEnv" -}}
+{{- $ := index . 0 -}}
+- name: WIZARD_SANDBOX
+  value: k8s
+- name: WIZARD_SANDBOX_NAMESPACE
+  value: {{ $.Values.namespaces.sandbox | quote }}
+- name: WIZARD_SANDBOX_IMAGE
+  value: {{ include "wizard.image" (list $ $.Values.images.names.sandbox) | quote }}
+- name: POD_IP
+  valueFrom: { fieldRef: { fieldPath: status.podIP } }
+- name: WIZARD_SANDBOX_RPC_ADDRESS
+  value: {{ printf "$(POD_IP):%v" (index . 1) | quote }}
+- name: WIZARD_SANDBOX_BASE_PORT
+  value: {{ $.Values.sandbox.basePort | quote }}
+- name: WIZARD_SANDBOX_HEALTH_PORT
+  value: {{ $.Values.sandbox.healthPort | quote }}
+- name: WIZARD_SANDBOX_SYSTEMS_PER_POD
+  value: {{ $.Values.sandbox.systems | quote }}
+- name: WIZARD_SANDBOX_MAX_PODS
+  value: {{ index . 2 | quote }}
+- name: WIZARD_SANDBOX_MEMORY
+  value: {{ $.Values.sandbox.memoryLimit | quote }}
+- name: WIZARD_SANDBOX_CPU
+  value: {{ $.Values.sandbox.cpuLimit | quote }}
+{{- end -}}

@@ -22,6 +22,11 @@ export interface WorkerdSystem {
   entities: readonly string[];
   /** Socket slot (port basePort + slot); default: the position in `systems`. A pod keeps the slots of SandboxPool. */
   slot?: number;
+  /**
+   * Another Worker in this slot instead of the functions host (M2-19: the G1 page render Worker of packages/gates):
+   * its main module and named ES modules. Same bindings and deny-all outbound; functionsSource is then ignored.
+   */
+  worker?: { main: string; modules: Readonly<Record<string, string>> };
 }
 
 export interface WorkerdPodInput {
@@ -46,6 +51,7 @@ export interface WorkerdPodConfig {
 const SYSTEM_ID_RE = /^[a-z0-9][a-z0-9_]{0,62}$/;
 const ADDRESS_RE = /^[A-Za-z0-9.\-[\]:*]{1,255}$/;
 const ENTITY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
+const MODULE_RE = /^[a-z0-9][a-z0-9_-]{0,40}\.(mjs|js)$/;
 
 /** Cap'n Proto text literal (input is restricted to printable ASCII without quotes or backslashes). */
 function str(s: string): string {
@@ -109,19 +115,33 @@ export function workerdPodConfig(i: WorkerdPodInput): WorkerdPodConfig {
     seen.add(key);
     if (!s.entities.every((e) => ENTITY_RE.test(e))) throw new Error(`invalid entity name in ${key}`);
     const dir = `s${slot}`;
-    files[`${dir}/functions.mjs`] = s.functionsSource;
     const name = `sys_${key}`;
+    let modules: string[];
+    if (s.worker) {
+      files[`${dir}/main.mjs`] = s.worker.main;
+      modules = [`(name = "main.mjs", esModule = embed ${str(`${dir}/main.mjs`)})`];
+      for (const [mod, text] of Object.entries(s.worker.modules)) {
+        if (!MODULE_RE.test(mod) || mod === "main.mjs") throw new Error(`invalid module name ${mod}`);
+        files[`${dir}/${mod}`] = text;
+        modules.push(`(name = ${str(mod)}, esModule = embed ${str(`${dir}/${mod}`)})`);
+      }
+    } else {
+      files[`${dir}/functions.mjs`] = s.functionsSource;
+      modules = [
+        `(name = "main.mjs", esModule = embed "main.mjs")`,
+        `(name = "functions.mjs", esModule = embed ${str(`${dir}/functions.mjs`)})`,
+        `(name = "@wizard/sdk", esModule = embed "sdk.mjs")`,
+        `(name = "worker-host.mjs", esModule = embed "worker-host.mjs")`,
+        `(name = "guest.mjs", esModule = embed "guest.mjs")`,
+      ];
+    }
     services.push(`(name = ${str(name)}, worker = .w${slot})`);
     sockets.push(
       `(name = ${str(`s${slot}`)}, address = ${str(`${host}:${i.basePort + slot}`)}, http = (), service = ${str(name)})`,
     );
     workers.push(`const w${slot} :Workerd.Worker = (
   modules = [
-    (name = "main.mjs", esModule = embed "main.mjs"),
-    (name = "functions.mjs", esModule = embed ${str(`${dir}/functions.mjs`)}),
-    (name = "@wizard/sdk", esModule = embed "sdk.mjs"),
-    (name = "worker-host.mjs", esModule = embed "worker-host.mjs"),
-    (name = "guest.mjs", esModule = embed "guest.mjs"),
+    ${modules.join(",\n    ")},
   ],
   compatibilityDate = ${str(WORKERD_COMPATIBILITY_DATE)},
   compatibilityFlags = [${WORKERD_COMPATIBILITY_FLAGS.map(str).join(", ")}],

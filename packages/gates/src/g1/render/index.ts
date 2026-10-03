@@ -4,11 +4,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type AppSpec, USERS_ENTITY } from "@wizard/appspec";
 import type { Finding } from "../../report.js";
+import type { PageRenderer } from "../../types.js";
 import type { Actor, G1Env } from "../env.js";
 import { fieldPiiCategory } from "../seed.js";
 import type { Seed } from "../types.js";
 import { buildRenderBundle } from "./bundle.js";
-import { type GuestFetch, RenderProcess } from "./host.js";
+import { type GuestFetch, type RenderJob, type RenderOutcome, RenderProcess } from "./host.js";
 import { formsWithoutConsent, isBlank, parseHtml, wzProblems } from "./html.js";
 
 /** Per page × role ceiling (data round trips included). */
@@ -102,11 +103,13 @@ export async function renderPages(ctx: RenderContext): Promise<RenderOutcomeChec
   const { spec, env } = ctx;
   const pages = spec.pages ?? [];
   if (pages.length === 0) return { kind: "findings", findings: [] };
-  if (env.runtime.env?.unsafeLocalExec !== true)
+  // In the cluster pages render in a workerd Worker of the sandbox (M2-19); locally only with unsafe-local exec.
+  const sandboxed = env.runtime.renderer;
+  if (!sandboxed && env.runtime.env?.unsafeLocalExec !== true)
     return {
       kind: "error",
       reason_ru:
-        "страницы не отрисованы: выполнение кода системы отключено (нужен WIZARD_UNSAFE_LOCAL_EXEC=1)",
+        "страницы не отрисованы: выполнение кода системы отключено (нужна песочница WIZARD_SANDBOX=k8s или локально WIZARD_UNSAFE_LOCAL_EXEC=1)",
     };
   const bundle = await buildRenderBundle(spec, ctx.files);
   if (!bundle.ok)
@@ -115,12 +118,8 @@ export async function renderPages(ctx: RenderContext): Promise<RenderOutcomeChec
       reason_ru: "страницы не собираются для отрисовки",
       evidence: bundle.errors.slice(0, 5).join("; "),
     };
-  const dir = join(ctx.workDir, "render");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "render.js"), bundle.code);
-
   let current: Actor = env.anonymous();
-  const proc = new RenderProcess(dir, async (req) => {
+  const answer = async (req: GuestFetch) => {
     if (!allowed(spec, req))
       return {
         status: 403,
@@ -128,7 +127,30 @@ export async function renderPages(ctx: RenderContext): Promise<RenderOutcomeChec
       };
     const r = await env.raw(current, req.method, req.path, req.body ?? undefined);
     return { status: r.status, body: r.text };
-  });
+  };
+  let proc: {
+    render(job: RenderJob, timeoutMs: number): Promise<RenderOutcome>;
+    kill(): void | Promise<void>;
+  };
+  if (sandboxed) {
+    let worker: PageRenderer;
+    try {
+      worker = await sandboxed({ key: env.systemKey, code: bundle.code });
+    } catch (e) {
+      return {
+        kind: "error",
+        reason_ru: "страницы не отрисованы: песочница отрисовки не запустилась",
+        evidence: String((e as Error)?.message ?? e).slice(0, 300),
+      };
+    }
+    proc = { render: (job, timeoutMs) => worker.render(job, answer, timeoutMs), kill: () => worker.close() };
+  } else {
+    const dir = join(ctx.workDir, "render");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "render.js"), bundle.code);
+    const local = new RenderProcess(dir, answer);
+    proc = { render: (job, timeoutMs) => local.render(job, timeoutMs), kill: () => local.kill() };
+  }
   const routes = pages.map((p) => p.route);
   const roleSpecs = new Map<string, unknown>();
   const findings: Finding[] = [];
@@ -221,7 +243,7 @@ export async function renderPages(ctx: RenderContext): Promise<RenderOutcomeChec
       }
     }
   } finally {
-    proc.kill();
+    await proc.kill();
   }
   return { kind: "findings", findings };
 }

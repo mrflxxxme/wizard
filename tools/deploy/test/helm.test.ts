@@ -310,7 +310,8 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             expect(p.spec.securityContext.seccompProfile.type, p.name).toBe("RuntimeDefault");
             // The DNS-01 solver and, with the sandbox orchestrator (M2-18), the runtime talk to the API server.
             const sandboxOrchestrator =
-              p.name === "wizard-runtime" && p.spec.serviceAccountName === "wizard-runtime";
+              (p.name === "wizard-runtime" && p.spec.serviceAccountName === "wizard-runtime") ||
+              (p.name === "wizard-worker" && p.spec.serviceAccountName === "wizard-g1");
             if (p.name !== "wizard-acme-dns01" && !sandboxOrchestrator)
               expect(p.spec.automountServiceAccountToken, p.name).toBe(false);
             for (const c of [...p.spec.containers, ...(p.spec.initContainers ?? [])]) {
@@ -460,7 +461,7 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             expect(of("PodDisruptionBudget")).toEqual([]);
             // Sandbox pods of the orchestrator plus one replacement in flight (512Mi each).
             const quota = of("ResourceQuota")[0];
-            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "3" : "2");
+            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "4" : "3");
             const rc = of("RuntimeClass")[0];
             expect(rc).toMatchObject({ metadata: { name: "gvisor" }, handler: "runsc" });
           });
@@ -493,7 +494,36 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             const binding = of("RoleBinding").find((r) => r.metadata.name === "wizard-runtime-sandbox");
             expect(binding?.subjects).toEqual([
               { kind: "ServiceAccount", name: "wizard-runtime", namespace: "wizard-platform" },
+              { kind: "ServiceAccount", name: "wizard-g1", namespace: "wizard-platform" },
             ]);
+            // M2-19: the worker runs G1 in the sandbox — one pod, callbacks on its G1 RPC port only.
+            const worker = of("Deployment").find((d) => d.metadata.name === "wizard-worker")?.spec.template
+              .spec;
+            expect(worker.serviceAccountName).toBe("wizard-g1");
+            const wenv = Object.fromEntries(
+              worker.containers[0].env.map((e: K8s) => [e.name, e.value ?? e.valueFrom?.fieldRef?.fieldPath]),
+            );
+            expect(wenv).toMatchObject({
+              WIZARD_SANDBOX: "k8s",
+              WIZARD_SANDBOX_RPC_ADDRESS: "$(POD_IP):4102",
+              WIZARD_G1_RPC_PORT: "4102",
+              WIZARD_SANDBOX_MAX_PODS: "1",
+            });
+            const g1np = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-sandbox-g1");
+            expect(g1np?.spec.podSelector.matchLabels["wizard.ru/sandbox-owner"]).toBe("g1");
+            expect(g1np?.spec.egress).toEqual([
+              {
+                to: [
+                  {
+                    namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-platform" } },
+                    podSelector: { matchLabels: { "wizard.ru/role": "worker" } },
+                  },
+                ],
+                ports: [{ protocol: "TCP", port: 4102 }],
+              },
+            ]);
+            const wnp = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-worker");
+            expect(JSON.stringify(wnp?.spec.ingress)).toContain('"port":4102');
             // API server only on its ports and only on the node addresses (k3s).
             const np = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-runtime");
             const api = np?.spec.egress.find((e: K8s) => (e.ports ?? []).some((p: K8s) => p.port === 6443));

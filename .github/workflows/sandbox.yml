@@ -79,3 +79,19 @@ jobs:
           WIZARD_SANDBOX_E2E: "1"
           WIZARD_SANDBOX_PROBE_IMAGE: ${{ env.PROBE_IMAGE }}
         run: pnpm exec vitest run --config apps/runtime/sandbox.vitest.config.ts
+
+      # A service container would not survive the docker restart of `runsc install`: the database starts here.
+      - name: PostgreSQL for the G1 test
+        run: |
+          docker run -d --name wizard-pg -p 5433:5432 -e POSTGRES_USER=wizard -e POSTGRES_DB=wizard \
+            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
+          for _ in $(seq 1 60); do docker exec wizard-pg pg_isready -U wizard -h 127.0.0.1 && exit 0; sleep 1; done
+          docker logs wizard-pg; exit 1
+
+      # M2-19: G1 of the forum with its functions and page renders in workerd (orchestrator → ConfigMaps → workerd
+      # processes standing in for pods), the database as in the build job.
+      - name: G1 in the sandbox (workerd)
+        env:
+          WIZARD_SANDBOX_E2E: "1"
+          WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+        run: pnpm exec vitest run apps/platform-api/test/g1-sandbox.e2e.test.ts

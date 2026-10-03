@@ -112,15 +112,17 @@ describe("SandboxOrchestrator", () => {
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).toBeNull();
     expect(() => o.executorFor({ systemId: "aaaaaaaaaaaa", env: "draft", entities: [] })).toThrow();
     await o.prepare(sys("aaaaaaaaaaaa"));
-    const [cm] = [...kube.configMaps.values()];
     const [pod] = [...kube.pods.values()];
+    // Shared files in the pod's ConfigMap, each system slot in its own (the 1 MiB limit holds per system).
+    const cm = kube.configMaps.get(pod?.metadata.name);
+    const slot = kube.configMaps.get(`${pod?.metadata.name}-s0`);
+    expect(kube.configMaps.size).toBe(2);
     expect(cm?.immutable).toBe(true);
     expect(Object.keys(cm?.data ?? {})).toEqual(
-      expect.arrayContaining(["config.capnp", "s0__functions.mjs", "worker-host.mjs", "guest.mjs"]),
+      expect.arrayContaining(["config.capnp", "worker-host.mjs", "guest.mjs"]),
     );
     expect(cm?.data["config.capnp"]).toContain('address = "10.42.0.5:4101"');
-    expect(cm?.data["s0__functions.mjs"]).toBe("export const f = 1;");
-    expect(pod?.metadata.name).toBe(cm?.metadata.name);
+    expect(slot?.data).toEqual({ "s0__functions.mjs": "export const f = 1;" });
     expect(pod?.metadata.labels).toMatchObject({
       "wizard.ru/sandbox-owner": "runtime",
       "wizard.ru/sandbox-pod": "sandbox-free-1",
@@ -131,12 +133,10 @@ describe("SandboxOrchestrator", () => {
     expect(pod?.spec.automountServiceAccountToken).toBe(false);
     expect(pod?.spec.containers[0].resources.limits.memory).toBe("512Mi");
     expect(pod?.spec.containers[0].ports.map((p: Obj) => p.containerPort)).toEqual([9000, 9001, 9002, 8999]);
-    expect(pod?.spec.volumes[0].configMap.items).toEqual(
-      expect.arrayContaining([
-        { key: "config.capnp", path: "config.capnp" },
-        { key: "s0__functions.mjs", path: "s0/functions.mjs" },
-      ]),
-    );
+    const sources = pod?.spec.volumes[0].projected.sources.map((x: Obj) => x.configMap);
+    expect(sources.map((x: Obj) => x.name)).toEqual([pod?.metadata.name, `${pod?.metadata.name}-s0`]);
+    expect(sources[0].items).toContainEqual({ key: "config.capnp", path: "config.capnp" });
+    expect(sources[1].items).toEqual([{ key: "s0__functions.mjs", path: "s0/functions.mjs" }]);
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).toBe("http://10.42.0.10:9000");
   });
 
@@ -154,7 +154,7 @@ describe("SandboxOrchestrator", () => {
     expect(created).toBeGreaterThanOrEqual(0);
     expect(deleted).toBeGreaterThan(created);
     expect(kube.pods.size).toBe(1);
-    expect(kube.configMaps.size).toBe(1);
+    expect(kube.configMaps.size).toBe(2);
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).toBe("http://10.42.0.11:9000");
   });
 
@@ -164,10 +164,7 @@ describe("SandboxOrchestrator", () => {
     await o.prepare(sys("aaaaaaaaaaaa"));
     await o.prepare(sys("bbbbbbbbbbbb"));
     expect(kube.pods.size).toBe(1);
-    const [cm] = [...kube.configMaps.values()];
-    expect(Object.keys(cm?.data ?? {})).toEqual(
-      expect.arrayContaining(["s0__functions.mjs", "s1__functions.mjs"]),
-    );
+    expect([...kube.configMaps.keys()].filter((n) => /-s\d$/.test(n))).toHaveLength(2);
     expect(o.endpointOf("bbbbbbbbbbbb", "draft")).toMatch(/:9001$/);
     await o.prepare(sys("cccccccccccc"));
     expect(kube.pods.size).toBe(2);
@@ -204,9 +201,20 @@ describe("SandboxOrchestrator", () => {
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).not.toBeNull();
   });
 
+  it("an API server error becomes FUNCTIONS_DISABLED, logged", async () => {
+    const kube = new FakeKube();
+    kube.createConfigMap = async () => {
+      throw new KubeError(403, "configmaps is forbidden");
+    };
+    const logs: Obj[] = [];
+    const o = make(kube, { log: (l) => logs.push(l) });
+    await expect(o.prepare(sys("aaaaaaaaaaaa"))).rejects.toMatchObject({ code: "FUNCTIONS_DISABLED" });
+    expect(logs).toContainEqual(expect.objectContaining({ msg: "sandbox_api_failed" }));
+  });
+
   it("config over the ConfigMap budget is refused", async () => {
     const o = make(new FakeKube());
-    await expect(o.prepare(sys("aaaaaaaaaaaa", "x".repeat(CONFIGMAP_BUDGET)))).rejects.toMatchObject({
+    await expect(o.prepare(sys("aaaaaaaaaaaa", "x".repeat(CONFIGMAP_BUDGET + 1)))).rejects.toMatchObject({
       code: "FUNCTIONS_DISABLED",
     });
   });

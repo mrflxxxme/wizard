@@ -33,7 +33,12 @@ const int = (v: string | undefined, d: number) => {
 
 export function sandboxFromEnv(
   env: Env,
-  deps: { kube?: KubeApi; log?: (line: Record<string, unknown>) => void } = {},
+  deps: {
+    kube?: KubeApi;
+    log?: (line: Record<string, unknown>) => void;
+    /** Owner label of the pods: "runtime" (system functions) or "g1" (the G1 host of the worker, M2-19). */
+    owner?: string;
+  } = {},
 ): { orchestrator: SandboxOrchestrator; rpc: SandboxRpc } | null {
   if ((env.WIZARD_SANDBOX ?? "off") === "off") return null;
   if (env.WIZARD_SANDBOX !== "k8s") throw new Error(`WIZARD_SANDBOX: off | k8s, got ${env.WIZARD_SANDBOX}`);
@@ -46,7 +51,7 @@ export function sandboxFromEnv(
   const orchestrator = new SandboxOrchestrator({
     kube: deps.kube ?? kubeApi(namespace, inClusterSend(env)),
     rpc,
-    owner: "runtime",
+    owner: deps.owner ?? "runtime",
     namespace,
     image,
     rpcAddress,
@@ -56,6 +61,8 @@ export function sandboxFromEnv(
     maxPods: int(env.WIZARD_SANDBOX_MAX_PODS, 50),
     ...(env.WIZARD_SANDBOX_MEMORY ? { memoryLimit: env.WIZARD_SANDBOX_MEMORY } : {}),
     ...(env.WIZARD_SANDBOX_CPU ? { cpuLimit: env.WIZARD_SANDBOX_CPU } : {}),
+    // Tests run workerd as a local process (pods listen on "*").
+    ...(env.WIZARD_SANDBOX_LISTEN_HOST ? { listenHost: env.WIZARD_SANDBOX_LISTEN_HOST } : {}),
     ...(deps.log ? { log: deps.log } : {}),
   });
   return { orchestrator, rpc };

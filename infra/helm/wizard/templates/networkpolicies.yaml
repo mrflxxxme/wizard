@@ -60,8 +60,23 @@ spec:
     # M2-09: /metrics only from the observability namespace (VictoriaMetrics).
     - from: [{ namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.observability }} } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.metrics.port }} }]
+    {{- if and (eq $role "worker") $.Values.sandbox.orchestrate }}
+    # M2-19: G1 Workers of the system under test call back (ctx.* and page data, per-call tokens).
+    - from:
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox, wizard.ru/sandbox-owner: g1 } }
+      ports: [{ protocol: TCP, port: {{ $.Values.sandbox.g1RpcPort }} }]
+    {{- end }}
   egress:
     {{- include "wizard.dnsEgress" $ | nindent 4 }}
+    {{- if and (eq $role "worker") $.Values.sandbox.orchestrate }}
+    # M2-19: the G1 sandbox orchestrator reaches the API server (RBAC: pods and ConfigMaps of the sandbox only).
+    - to:
+        {{- range (default (list $.Values.network.nodeCidr) $.Values.network.kubeApiCidrs) }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports: [{ protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 }]
+    {{- end }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.pgbouncer.port }} }]
     {{- if $.Values.postgres.inCluster }}

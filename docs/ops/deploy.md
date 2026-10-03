@@ -16,7 +16,7 @@ Runbook задачи M2-06. Спека — `specs/platform/deploy.yaml#cloud`. �
 Решение основателя от 01.10.2026: пилот на паре живых клиентов. Спека — `specs/platform/deploy.yaml#pilot`.
 
 - Расходы на инфраструктуру — 5–10 тыс. ₽/мес.
-- Функциональность полная: сборка в чате, гейты G0–G2 с живым runtime, превью, публикация, песочница с gVisor, файлы, оплата, коннекторы Telegram и SMTP, retention.
+- Функциональность полная: сборка в чате, гейты G0–G2 с живым runtime, превью, публикация, песочница workerd под gVisor (раздел «Песочница»), файлы, оплата, коннекторы Telegram и SMTP, retention.
 - Провайдер — Timeweb Cloud, только Москва. Без managed Kubernetes и без managed PostgreSQL.
 - Допустимый простой — 1–2 ч. Потеря закоммиченных данных — не больше ≈ 1 минуты.
 
@@ -391,6 +391,25 @@ node tools/deploy/infra.mjs apply --env staging --dry-run --build-images
 ```
 
 Staging живёт в своём VPC, который удаляется вместе с ним. Поэтому раннер ходит к нему по публичному IP: `WIZARD_K3S_ACCESS=public`, а firewall пускает на порты 22/6443/30500 только `admin_cidrs`. К prod раннер ходит по приватной сети.
+
+## Песочница: где исполняется код систем (M2-18, M2-19)
+
+Сгенерированный код систем клиентов исполняется только в подах workerd под gVisor в namespace `wizard-sandbox`. Платформа, база и секреты в эти поды не попадают.
+
+- **Функции опубликованных систем и черновиков.** Поды создаёт runtime (`WIZARD_SANDBOX=k8s`, ServiceAccount `wizard-runtime`). Права — только pods и configmaps namespace песочницы. В одном поде до 10 систем, у каждой свой изолят. Новая ревизия функций получает новый под; старый удаляется, когда новый готов. После перезапуска runtime поды пересоздаются при первом вызове функции, это занимает несколько секунд.
+- **Проверка G1 при сборке и публикации.** Функции и отрисовку страниц проверяемой системы исполняет worker в своём поде (ServiceAccount `wizard-g1`, метка `wizard.ru/sandbox-owner=g1`). Под удаляется после проверки.
+- **Связь пода с платформой.** DNS у подов нет. Они ходят только обратно к своему процессу по IP пода: к runtime на порт 4101, к worker на порт 4102. Каждый вызов несёт одноразовый токен. Выход в интернет закрыт.
+- **Квота пилота:** 4 пода по 512 МиБ.
+
+После каждого выката запускается проверочный под под gVisor. Если он не запустился, в сводке задания будет предупреждение «Под песочницы (gVisor) не запустился»: функции клиентов при этом работать не будут. Как разобраться:
+
+```
+kubectl -n wizard-sandbox get pods,configmaps -l wizard.ru/sandbox-owner
+kubectl -n wizard-platform logs deploy/wizard-runtime | grep sandbox_
+kubectl get runtimeclass gvisor; kubectl get nodes -L wizard.ru/pool,wizard.ru/sandbox-node
+```
+
+Если runsc не установлен на узле, проверочный под останется в `ContainerCreating` с ошибкой о runtime handler. Тогда нужно проверить cloud-init сервера: `/var/log/cloud-init-output.log`, пакет `runsc` и шаблон `/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl`.
 
 ## Восстановление после потери сервера (простой 1–2 ч)
 

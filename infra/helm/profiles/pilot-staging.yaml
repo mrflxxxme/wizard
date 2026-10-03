@@ -25,6 +25,6 @@ worker:
 data:
   size: 5Gi
 sandbox:
-  # one sandbox pod plus its replacement in flight (512Mi each, profiles/pilot.yaml)
+  # one runtime sandbox pod, the G1 pod and one replacement in flight (512Mi each, profiles/pilot.yaml)
   maxPods: 1
-  quota: { pods: 2, requestsCpu: 500m, requestsMemory: 1Gi, limitsCpu: 2, limitsMemory: 1Gi }
+  quota: { pods: 3, requestsCpu: 750m, requestsMemory: 1536Mi, limitsCpu: 3, limitsMemory: 1536Mi }

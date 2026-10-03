@@ -924,7 +924,7 @@ tasks:
     owner: qa
     parallel_group: m2-s
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "G1 в кластере (WIZARD_SANDBOX=k8s): сценарии с callFn и воркфлоу исполняют функции в поде workerd; G1-RENDER-01 отрисовывает страницы в Worker'е workerd, запросы данных страницы идут через RPC к G1"
