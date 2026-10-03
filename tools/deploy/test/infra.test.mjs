@@ -17,6 +17,7 @@ import {
   preflight,
   profileChain,
   registrySecret,
+  releaseWizard,
   requiredEnv,
   smokeWithRetry,
   TUNNEL_PORT,
@@ -370,7 +371,7 @@ describe("infra.mjs", () => {
     });
     expect(args).toEqual(
       expect.arrayContaining([
-        "--atomic",
+        "--wait",
         "infra/helm/wizard/values-prod.yaml",
         "infra/helm/profiles/k3s.yaml",
       ]),
@@ -612,5 +613,64 @@ describe("createRunner", () => {
     const run = createRunner({ log: () => {} });
     expect(run("sh", ["-c", 'test "$(cat)" = hello'], { input: "hello", allowFail: true }).status).toBe(0);
     expect(run("sh", ["-c", "cat"], { input: "x", capture: true }).stdout).toBe("x");
+  });
+});
+
+describe("releaseWizard", () => {
+  const fake = (history, failRelease) => {
+    const calls = [];
+    const helm = (args) => {
+      calls.push(["helm", ...args]);
+      if (args[0] === "history") return { status: 0, stdout: JSON.stringify(history) };
+      if (args[0] === "upgrade" && failRelease) throw new Error("helm upgrade failed with 1");
+      return { status: 0, stdout: "" };
+    };
+    const kubectl = (args) => {
+      calls.push(["kubectl", ...args]);
+      if (args.includes("json"))
+        return {
+          status: 0,
+          stdout: JSON.stringify({
+            items: [
+              {
+                metadata: { name: "api-1" },
+                status: { phase: "Running", conditions: [{ type: "Ready", status: "False" }] },
+              },
+              {
+                metadata: { name: "web-1" },
+                status: { phase: "Running", conditions: [{ type: "Ready", status: "True" }] },
+              },
+            ],
+          }),
+        };
+      return { status: 0, stdout: "" };
+    };
+    return { calls, helm, kubectl };
+  };
+  const args = ["upgrade", "--install", "wizard", "infra/helm/wizard", "--wait"];
+
+  it("a ready release: no diagnostics, no rollback", () => {
+    const f = fake([], false);
+    releaseWizard({ ...f, args, log: () => {} });
+    expect(f.calls.map((c) => c[1])).toEqual(["history", "upgrade"]);
+  });
+  it("first install not ready: diagnostics of the pods that are not ready, then uninstall", () => {
+    const f = fake([], true);
+    expect(() => releaseWizard({ ...f, args, log: () => {} })).toThrow(/helm upgrade failed/);
+    const flat = f.calls.map((c) => c.join(" "));
+    expect(flat).toContain("kubectl -n wizard-platform describe pod api-1");
+    expect(flat.some((c) => c.includes("describe pod web-1"))).toBe(false);
+    expect(flat.at(-1)).toMatch(/^helm uninstall wizard/);
+  });
+  it("an upgrade not ready: back to the last deployed revision", () => {
+    const f = fake(
+      [
+        { revision: 3, status: "deployed" },
+        { revision: 4, status: "failed" },
+      ],
+      true,
+    );
+    expect(() => releaseWizard({ ...f, args, log: () => {} })).toThrow();
+    expect(f.calls.at(-1).slice(0, 4)).toEqual(["helm", "rollback", "wizard", "3"]);
   });
 });

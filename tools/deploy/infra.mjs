@@ -203,7 +203,8 @@ export function wizardReleaseArgs({
   };
   const args = ["upgrade", "--install", "wizard", "infra/helm/wizard", "--namespace", "wizard-platform"];
   for (const f of valueFiles(env, provider, profile)) args.push("-f", f);
-  args.push("--atomic", "--wait", "--timeout", "15m");
+  // No --atomic: releaseWizard rolls back itself, after printing why the release did not become ready.
+  args.push("--wait", "--timeout", "15m");
   for (const [k, v] of Object.entries(set)) {
     if (v === undefined || v === null || v === "") throw new Error(`missing value for ${k}`);
     args.push("--set-string", `${k}=${v}`);
@@ -617,7 +618,12 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
       run("node", ["tools/deploy/images.mjs", "build", "--registry", registry, "--tag", tag, "--push"]);
     }
     const email = v.WIZARD_ACME_EMAIL || `security@${outputs.env.domains.platform}`;
-    helm(wizardReleaseArgs({ env: o.env, out: outputs, tag, email, provider, profile }));
+    releaseWizard({
+      helm,
+      kubectl,
+      args: wizardReleaseArgs({ env: o.env, out: outputs, tag, email, provider, profile }),
+      log,
+    });
     if (hooks.afterRelease) await hooks.afterRelease({ kubectl, helm, outputs, tag });
     if (!o.dryRun && !deps.skipSmoke) {
       // A fresh environment gets its certificates over DNS-01 after the release: WIZARD_SMOKE_ATTEMPTS × 30 s.
@@ -633,6 +639,57 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
   } finally {
     if (closeTunnel) closeTunnel();
     if (access?.close) await access.close();
+  }
+}
+
+/**
+ * `helm upgrade --install --wait` of the platform with --atomic semantics plus diagnostics: when the release does not
+ * become ready, the pods, the events and the logs of the pods that are not ready are printed first (with --atomic
+ * they were gone before anyone could look — first live bootstrap, 2026-10-03), then the release goes back to its last
+ * deployed revision, or is uninstalled when there is none.
+ */
+export function releaseWizard({ helm, kubectl, args, log = console.log, namespace = "wizard-platform" }) {
+  const history = helm(["history", "wizard", "-n", namespace, "-o", "json"], {
+    capture: true,
+    allowFail: true,
+    fake: "[]",
+  });
+  let deployed = null;
+  try {
+    const revs = history.status === 0 ? JSON.parse(history.stdout || "[]") : [];
+    deployed = revs.filter((h) => h.status === "deployed").at(-1)?.revision ?? null;
+  } catch {}
+  try {
+    helm(args);
+  } catch (e) {
+    log("::group::Диагностика: релиз wizard не стал готовым");
+    const opt = { allowFail: true };
+    kubectl(["get", "pods", "-A", "-o", "wide"], opt);
+    kubectl(["-n", namespace, "get", "events", "--sort-by=.lastTimestamp"], opt);
+    const pods = kubectl(["-n", namespace, "get", "pods", "-o", "json"], {
+      ...opt,
+      capture: true,
+      fake: "{}",
+    });
+    let items = [];
+    try {
+      items = JSON.parse(pods.stdout || "{}").items ?? [];
+    } catch {}
+    const notReady = items.filter(
+      (p) => !(p.status?.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True"),
+    );
+    for (const p of notReady.slice(0, 8)) {
+      const name = p.metadata?.name;
+      if (p.status?.phase === "Succeeded" || !name) continue;
+      kubectl(["-n", namespace, "describe", "pod", name], opt);
+      kubectl(["-n", namespace, "logs", name, "--all-containers", "--tail=80"], opt);
+      kubectl(["-n", namespace, "logs", name, "--all-containers", "--previous", "--tail=40"], opt);
+    }
+    log("::endgroup::");
+    if (deployed !== null)
+      helm(["rollback", "wizard", String(deployed), "-n", namespace, "--wait", "--timeout", "10m"], opt);
+    else helm(["uninstall", "wizard", "-n", namespace, "--wait", "--timeout", "10m"], opt);
+    throw e;
   }
 }
 
