@@ -24,10 +24,10 @@ on:
         type: string
         default: ""
       location:
-        description: "Регион сервера: пусто — переменная WIZARD_TIMEWEB_LOCATION или Москва; ru-1 — Санкт-Петербург; ru-3 — Москва"
+        description: "Регион сервера: auto — переменная WIZARD_TIMEWEB_LOCATION или Москва; ru-1 — Санкт-Петербург; ru-3 — Москва"
         type: choice
-        options: ["", ru-3, ru-1]
-        default: ""
+        options: [auto, ru-3, ru-1]
+        default: auto
       confirm:
         description: "Для prod (apply) введите PROD; для check не нужно"
         type: string
@@ -51,5 +51,5 @@ jobs:
       command: ${{ inputs.action == 'apply' && 'bootstrap' || inputs.action }}
       sha: ${{ inputs.sha }}
       confirm: ${{ inputs.confirm }}
-      location: ${{ inputs.location }}
+      location: ${{ inputs.location != 'auto' && inputs.location || '' }}
     secrets: inherit
