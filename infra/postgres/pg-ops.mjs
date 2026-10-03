@@ -56,6 +56,9 @@ export function config(env = process.env) {
     drillDir: env.WIZARD_DRILL_DIR ?? "/drill",
     drillPort: num("WIZARD_DRILL_PORT", 5499),
     drillTimeoutSec: num("WIZARD_DRILL_TIMEOUT_SEC", 3600),
+    // bootstrap: how long `wal-g backup-list` may take before the archive counts as unreachable (a silent network
+    // hang kept the first live pod in Init for 15 minutes with nothing in its log, 2026-10-03).
+    archiveProbeTimeoutSec: num("WIZARD_ARCHIVE_PROBE_TIMEOUT_SEC", 120),
     archiveWaitSec: num("WIZARD_DRILL_ARCHIVE_WAIT_SEC", 300),
     schemas,
     alertUrl: env.WIZARD_OPS_ALERT_URL ?? "",
@@ -72,10 +75,10 @@ export function asUser(cfg, cmd, args) {
   return cfg.runAs ? ["runuser", ["-u", cfg.runAs, "--", cmd, ...args]] : [cmd, args];
 }
 
-function run(cfg, cmd, args, opts = {}) {
+function run(cfg, cmd, args, { allowError = false, ...opts } = {}) {
   const [c, a] = asUser(cfg, cmd, args);
   const r = spawnSync(c, a, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...opts });
-  if (r.error) throw r.error;
+  if (r.error && !allowError) throw r.error;
   return r;
 }
 
@@ -612,11 +615,19 @@ export async function bootstrap(cfg, rep) {
     rep.info("pg_bootstrap_existing", {});
     return "existing";
   }
-  const listed = run(cfg, cfg.walg, ["backup-list", "--json"]);
-  if (listed.status !== 0) {
+  const limit = cfg.archiveProbeTimeoutSec ?? 120;
+  const listed = run(cfg, cfg.walg, ["backup-list", "--json"], {
+    timeout: limit * 1000,
+    killSignal: "SIGKILL",
+    allowError: true,
+  });
+  if (listed.error || listed.status !== 0) {
+    const stderr = (listed.stderr || "").slice(-400);
     await rep.error("pg_bootstrap_failed", {
       step: "backup-list",
-      reason: (listed.stderr || "").slice(-200),
+      reason: listed.error
+        ? `нет ответа за ${limit} с (${listed.error.code ?? listed.error.message}); ${stderr}`
+        : stderr,
     });
     throw new OpsError("backup-list", "архив недоступен");
   }

@@ -634,7 +634,12 @@ describe("releaseWizard", () => {
             items: [
               {
                 metadata: { name: "api-1" },
-                status: { phase: "Running", conditions: [{ type: "Ready", status: "False" }] },
+                status: {
+                  phase: "Pending",
+                  conditions: [{ type: "Ready", status: "False" }],
+                  initContainerStatuses: [{ name: "bootstrap", state: { running: {} }, restartCount: 0 }],
+                  containerStatuses: [{ name: "api", state: { waiting: {} }, restartCount: 0 }],
+                },
               },
               {
                 metadata: { name: "web-1" },
@@ -660,6 +665,12 @@ describe("releaseWizard", () => {
     const flat = f.calls.map((c) => c.join(" "));
     expect(flat).toContain("kubectl -n wizard-platform describe pod api-1");
     expect(flat.some((c) => c.includes("describe pod web-1"))).toBe(false);
+    // logs container by container (the init one runs, the waiting main one has none), then a probe from inside
+    expect(flat).toContain("kubectl -n wizard-platform logs api-1 -c bootstrap --tail=80");
+    expect(flat.some((c) => c.includes("logs api-1 -c api"))).toBe(false);
+    expect(
+      flat.some((c) => c.startsWith("kubectl -n wizard-platform exec api-1 -c bootstrap -- node -e")),
+    ).toBe(true);
     expect(flat.at(-1)).toMatch(/^helm uninstall wizard/);
   });
   it("an upgrade not ready: back to the last deployed revision", () => {

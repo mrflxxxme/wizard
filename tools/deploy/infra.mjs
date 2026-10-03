@@ -648,6 +648,13 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
  * they were gone before anyone could look — first live bootstrap, 2026-10-03), then the release goes back to its last
  * deployed revision, or is uninstalled when there is none.
  */
+/** Network probe run inside a pod by releaseWizard: DNS of the S3 endpoint and one HTTPS request to it. */
+export const NET_PROBE = [
+  'const h = "s3.twcstorage.ru";',
+  'require("node:dns").promises.lookup(h).then((a) => console.log("probe dns", h, a.address), (e) => console.log("probe dns error", e.code));',
+  'fetch("https://" + h, { signal: AbortSignal.timeout(10000) }).then((r) => console.log("probe https", r.status), (e) => console.log("probe https error", e.cause?.code ?? e.name));',
+].join(" ");
+
 export function releaseWizard({ helm, kubectl, args, log = console.log, namespace = "wizard-platform" }) {
   const history = helm(["history", "wizard", "-n", namespace, "-o", "json"], {
     capture: true,
@@ -678,12 +685,25 @@ export function releaseWizard({ helm, kubectl, args, log = console.log, namespac
     const notReady = items.filter(
       (p) => !(p.status?.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True"),
     );
+    let probes = 0;
     for (const p of notReady.slice(0, 8)) {
       const name = p.metadata?.name;
       if (p.status?.phase === "Succeeded" || !name) continue;
       kubectl(["-n", namespace, "describe", "pod", name], opt);
-      kubectl(["-n", namespace, "logs", name, "--all-containers", "--tail=80"], opt);
-      kubectl(["-n", namespace, "logs", name, "--all-containers", "--previous", "--tail=40"], opt);
+      // Container by container, init containers included (--all-containers fails while the main one waits).
+      const statuses = [...(p.status?.initContainerStatuses ?? []), ...(p.status?.containerStatuses ?? [])];
+      for (const c of statuses) {
+        if (c.state?.waiting && !c.restartCount) continue;
+        kubectl(["-n", namespace, "logs", name, "-c", c.name, "--tail=80"], opt);
+        if (c.restartCount)
+          kubectl(["-n", namespace, "logs", name, "-c", c.name, "--previous", "--tail=40"], opt);
+      }
+      // A container that hangs (no log) is asked from inside: DNS and HTTPS to the S3 endpoint, 10 s each.
+      const running = statuses.find((c) => c.state?.running);
+      if (running && probes < 3) {
+        probes++;
+        kubectl(["-n", namespace, "exec", name, "-c", running.name, "--", "node", "-e", NET_PROBE], opt);
+      }
     }
     log("::endgroup::");
     if (deployed !== null)
