@@ -39,6 +39,7 @@ export const COMMANDS = [
   "deploy",
   "destroy",
   "diagnose",
+  "reboot",
   "close-access",
   "show-secrets",
 ];
@@ -317,6 +318,78 @@ function serverIps(s) {
   return (s.networks ?? []).flatMap((n) =>
     (n.ips ?? []).filter((i) => i.type === "ipv4").map((i) => `${n.type}:${i.ip}`),
   );
+}
+
+/**
+ * Load of a server over the last `hours` and its latest events, from the Timeweb API (check; read-only): tells a hung
+ * or overloaded VM (no SSH, no HTTP while the API says "on") from a network problem.
+ */
+export async function reportServerHealth(
+  api,
+  server,
+  { log = () => {}, now = () => new Date(), hours = 2 } = {},
+) {
+  const iso = (d) => encodeURIComponent(d.toISOString().slice(0, 19));
+  const to = now();
+  const from = new Date(to.getTime() - hours * 3600_000);
+  try {
+    const stats = await api(
+      "GET",
+      `/api/v1/servers/${server.id}/statistics?date_from=${iso(from)}&date_to=${iso(to)}`,
+    );
+    for (const [key, rows] of Object.entries(stats)) {
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      const tail = rows.slice(-6).map((r) => {
+        const at = String(r.logged_at ?? "").slice(11, 16);
+        const vals = Object.entries(r)
+          .filter(([k, v]) => k !== "logged_at" && typeof v === "number")
+          .map(([k, v]) => `${k}=${Math.round(v * 10) / 10}`);
+        return `${at} ${vals.join(" ")}`;
+      });
+      log(`  ${server.id} ${key}: ${tail.join(" | ")}`);
+    }
+  } catch (e) {
+    log(`  ${server.id}: статистика недоступна (${e.message})`);
+  }
+  try {
+    const { server_logs: logs = [] } = await api(
+      "GET",
+      `/api/v1/servers/${server.id}/logs?limit=8&order=desc`,
+    );
+    for (const l of logs)
+      log(`  ${server.id} событие ${l.logged_at ?? ""} ${l.event ?? JSON.stringify(l).slice(0, 80)}`);
+  } catch (e) {
+    log(`  ${server.id}: журнал недоступен (${e.message})`);
+  }
+}
+
+/**
+ * Hard reboot of the environment's VM (bootstrap-pilot `reboot`, PROD word): the way back from a hung VM — no SSH,
+ * no HTTP while the API says "on" (2026-10-03). PostgreSQL recovers from its WAL on start. Waits until "on" again.
+ */
+export async function rebootServer(
+  api,
+  server,
+  {
+    log = () => {},
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    pollMs = 10_000,
+    waitMs = 600_000,
+  } = {},
+) {
+  log(`сервер ${server.id} «${server.name ?? ""}»: жёсткая перезагрузка`);
+  await api("POST", `/api/v1/servers/${server.id}/action`, { action: "hard_reboot" });
+  let seenOff = false;
+  for (let waited = 0; waited < waitMs; waited += pollMs) {
+    await sleep(pollMs);
+    const s = (await api("GET", `/api/v1/servers/${server.id}`)).server?.status;
+    if (s !== "on") seenOff = true;
+    else if (seenOff || waited >= 60_000) {
+      log(`сервер ${server.id}: снова включён`);
+      return;
+    }
+  }
+  throw new Error(`сервер ${server.id} не включился за ${waitMs / 60_000} мин после перезагрузки`);
 }
 
 /** Address records of the zones as Timeweb serves them (diagnose; read-only). */
@@ -884,6 +957,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     );
     const api = twcClient({ token: vars.TWC_TOKEN, fetch: f });
     await reportServerOptions(api, SHAPES[o.env].server, { log });
+    const { servers = [] } = await api("GET", "/api/v1/servers").catch(() => ({ servers: [] }));
+    for (const s of servers) await reportServerHealth(api, s, { log, now });
     return runPreflight({
       env: o.env,
       vars,
@@ -970,6 +1045,12 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       bundle.server = { id: server.id, ip: server.ip };
       await saveBundle({ s3, bundle, passphrase, fetch: f, now, rand, kdf: deps.kdf });
     }
+  }
+  if (o.command === "reboot") {
+    if (!server)
+      throw new Error("reboot: у окружения нет переданного сервера (WIZARD_PILOT_SERVER или bootstrap)");
+    await rebootServer(api, server, { log, sleep: deps.sleep });
+    return 0;
   }
   const sshKey = file("id_ed25519", bundle.secrets.SSH_PRIVATE_KEY);
   const varFile = file(

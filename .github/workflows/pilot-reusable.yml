@@ -14,7 +14,7 @@ on:
         type: string
         required: true
       command:
-        description: "check | bootstrap | deploy | destroy | diagnose"
+        description: "check | bootstrap | deploy | destroy | diagnose | reboot"
         type: string
         required: true
       sha:
@@ -59,7 +59,7 @@ jobs:
             echo "::error title=pilot::Запуск только из main."; exit 1
           fi
           case "$DEPLOY_ENV" in prod|staging) ;; *) echo "::error title=pilot::env — prod или staging."; exit 1 ;; esac
-          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
           if [ "$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging" ]; then
             echo "::error title=pilot::Удалять можно только staging."; exit 1
           fi
@@ -74,7 +74,7 @@ jobs:
 
   images:
     needs: authorize
-    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose'
+    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'reboot'
     uses: ./.github/workflows/images.yml
     permissions:
       contents: read
@@ -181,6 +181,7 @@ jobs:
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
+            reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac
       # check opens nothing (and may run with a rejected TWC_TOKEN), so there is nothing to close.

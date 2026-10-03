@@ -15,9 +15,9 @@ on:
         options: [prod, staging]
         default: prod
       action:
-        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); destroy — удалить (только staging)"
+        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); reboot — жёсткая перезагрузка зависшего сервера (PROD); destroy — удалить (только staging)"
         type: choice
-        options: [check, apply, diagnose, destroy]
+        options: [check, apply, diagnose, reboot, destroy]
         default: check
       sha:
         description: "Полный SHA коммита main (пусто — последний коммит main)"
