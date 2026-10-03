@@ -63,7 +63,12 @@ spec:
           image: {{ include "wizard.image" (list . .Values.images.names.postgres) }}
           imagePullPolicy: {{ .Values.images.pullPolicy }}
           command: ["node", "/opt/wizard/pg-ops.mjs", "bootstrap"]
-          env: {{- include "wizard.walgEnv" . | nindent 12 }}
+          env:
+            {{- include "wizard.walgEnv" . | nindent 12 }}
+            {{- if $pg.firstBoot }}
+            - name: WIZARD_PG_FIRST_BOOT
+              value: "1"
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.postgres }}
