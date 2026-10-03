@@ -134,8 +134,7 @@ describe("cert-manager webhook protocol", () => {
     request: {
       uid: "u-1",
       action,
-      // as cert-manager sends it (acme.cert-manager.io ACMEChallengeType)
-      type: "DNS-01",
+      type: "dns-01",
       dnsName: "*.sys-example.ru",
       key: "txt-value",
       resolvedFQDN: "_acme-challenge.sys-example.ru.",
@@ -163,6 +162,14 @@ describe("cert-manager webhook protocol", () => {
     const anon: CallerInfo = { authorized: false, commonName: null, allowedNames: [] };
     expect((await handle(new Request("https://webhook/healthz"), anon)).status).toBe(200);
     expect((await handle(new Request(`https://webhook/apis/${GROUP}/v1alpha1`), anon)).status).toBe(401);
+  });
+
+  it("a request exactly as cert-manager sends it (no uid, type dns-01) is served", async () => {
+    const { handle, fake } = setup();
+    const { uid: _uid, ...request } = challenge("Present", { type: "dns-01" }).request;
+    const res = await handle(post({ ...challenge("Present"), request }), apiserver);
+    expect(await res.json()).toMatchObject({ response: { uid: "", success: true } });
+    expect(fake.records.size).toBeGreaterThan(0);
   });
 
   it("Present / CleanUp through the DNS API; response carries the uid", async () => {

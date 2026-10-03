@@ -56,19 +56,24 @@ export function trusted(caller: CallerInfo): boolean {
   return caller.allowedNames.length === 0 || caller.allowedNames.includes(caller.commonName);
 }
 
-function parseRequest(body: unknown): ChallengeRequest | null {
-  if (typeof body !== "object" || body === null) return null;
+/**
+ * The request as cert-manager builds it (pkg/issuer/acme/dns: type "dns-01", key, resolvedFQDN, resolvedZone; the
+ * webhook client adds action and config). cert-manager never fills `uid`: it is optional here (it was required, so
+ * every Present and CleanUp was refused as malformed — first live bootstrap, 2026-10-03). Returns the request or the
+ * name of the field that does not fit (logged, never its value).
+ */
+function parseRequest(body: unknown): ChallengeRequest | string {
+  if (typeof body !== "object" || body === null) return "body";
   const r = (body as { request?: unknown }).request;
-  if (typeof r !== "object" || r === null) return null;
+  if (typeof r !== "object" || r === null) return "request";
   const x = r as Record<string, unknown>;
   const str = (k: string) =>
     typeof x[k] === "string" && (x[k] as string).length > 0 && (x[k] as string).length < 512;
-  if (!str("uid") || !str("key") || !str("resolvedFQDN") || !str("resolvedZone")) return null;
-  if (x.action !== "Present" && x.action !== "CleanUp") return null;
-  // cert-manager sends the ACME challenge type as "DNS-01" (acme.cert-manager.io ACMEChallengeType); every request
-  // was refused as malformed while this compared case-sensitively with "dns-01" (first live bootstrap, 2026-10-03).
-  if (x.type !== undefined && String(x.type).toLowerCase() !== "dns-01") return null;
-  return x as unknown as ChallengeRequest;
+  for (const k of ["key", "resolvedFQDN", "resolvedZone"]) if (!str(k)) return k;
+  if (x.uid !== undefined && (typeof x.uid !== "string" || x.uid.length > 128)) return "uid";
+  if (x.action !== "Present" && x.action !== "CleanUp") return "action";
+  if (x.type !== undefined && String(x.type).toLowerCase() !== "dns-01") return "type";
+  return { ...(x as unknown as ChallengeRequest), uid: typeof x.uid === "string" ? x.uid : "" };
 }
 
 /** Only _acme-challenge names inside an allowed zone; the zone itself must be allowed exactly. */
@@ -141,7 +146,8 @@ export function createWebhook(o: WebhookOptions): (req: Request, caller: CallerI
       return json(403, { kind: "Status", status: "Failure", code: 403, reason: "Forbidden" });
     }
     const body = await req.json().catch(() => null);
-    const cr = parseRequest(body);
+    const parsed = parseRequest(body);
+    const cr = typeof parsed === "string" ? null : parsed;
     const apiVersion = (body as { apiVersion?: unknown } | null)?.apiVersion ?? gv;
     const reply = (uid: string, success: boolean, message?: string) =>
       json(200, {
@@ -153,12 +159,14 @@ export function createWebhook(o: WebhookOptions): (req: Request, caller: CallerI
           ...(message ? { status: { status: "Failure", message, reason: "BadRequest", code: 400 } } : {}),
         },
       });
-    if (!cr)
+    if (!cr) {
+      log({ level: "warn", msg: "malformed", field: parsed });
       return reply(
         String((body as { request?: { uid?: unknown } } | null)?.request?.uid ?? ""),
         false,
         "malformed ChallengeRequest",
       );
+    }
     if (!inScope(cr, o.zones)) {
       log({ level: "warn", msg: "out_of_scope", zone: norm(cr.resolvedZone) });
       return reply(cr.uid, false, `zone ${norm(cr.resolvedZone)} is not managed by this solver`);
