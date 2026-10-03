@@ -2,7 +2,7 @@
 // IP, checked against the shape and the RF, reinstalled once with the k3s bootstrap — never the wrong server. Fake API.
 import { describe, expect, it } from "vitest";
 import { adoptServer } from "../adopt-server.mjs";
-import { resolvePilotServer, SHAPES, tfvars } from "../pilot.mjs";
+import { reportDns, resolvePilotServer, SHAPES, tfvars } from "../pilot.mjs";
 
 const vm = (o = {}) => ({
   id: 9256729,
@@ -93,5 +93,21 @@ describe("adoptServer", () => {
   it("fails when the VM does not come back", async () => {
     const { api } = fakeApi([vm()], ["installing"]);
     await expect(adoptServer(api, input, opts)).rejects.toThrow(/не включился/);
+  });
+});
+
+describe("reportDns", () => {
+  it("lists the address records of each zone, nothing else", async () => {
+    const api = async (_m, path) => ({
+      dns_records: path.includes("p.ru")
+        ? [
+            { type: "A", data: { subdomain: "", value: "1.2.3.4" } },
+            { type: "TXT", data: { subdomain: "", value: "v=spf1 -all" } },
+          ]
+        : [{ type: "A", data: { subdomain: "*", value: "1.2.3.4" } }],
+    });
+    const log = [];
+    await reportDns(api, ["p.ru", "s.ru"], { log: (s) => log.push(s) });
+    expect(log).toEqual(["DNS p.ru: A @ → 1.2.3.4", "DNS s.ru: A * → 1.2.3.4"]);
   });
 });

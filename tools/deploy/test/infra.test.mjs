@@ -8,6 +8,7 @@ import {
   CLUSTER_SECRETS,
   clusterSecrets,
   createRunner,
+  diagnoseCluster,
   imageNames,
   kubeconfigText,
   loadProvider,
@@ -705,5 +706,15 @@ describe("releaseWizard", () => {
     );
     expect(() => releaseWizard({ ...f, args, log: () => {} })).toThrow();
     expect(f.calls.at(-1).slice(0, 4)).toEqual(["helm", "rollback", "wizard", "3"]);
+  });
+});
+
+describe("diagnoseCluster", () => {
+  it("reads only: pods, certificates with ACME orders and challenges, solver and cert-manager logs", () => {
+    const calls = [];
+    diagnoseCluster({ kubectl: (args) => calls.push(args.join(" ")), log: () => {} });
+    expect(calls).toContain("get certificates,certificaterequests,orders,challenges -A -o wide");
+    expect(calls).toContain("-n cert-manager logs deploy/wizard-acme-dns01 --tail=120");
+    expect(calls.some((c) => /\b(apply|delete|create|patch|edit|scale|rollout)\b/.test(c))).toBe(false);
   });
 });

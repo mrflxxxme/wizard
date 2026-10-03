@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const ENVS = ["staging", "prod"];
-export const COMMANDS = ["apply", "plan", "deploy", "destroy", "check"];
+export const COMMANDS = ["apply", "plan", "deploy", "destroy", "check", "diagnose"];
 export const DEFAULT_PROVIDER = "timeweb";
 export const TOOLS = ["tofu", "helm", "kubectl"];
 const SECRET_NAMES = /SECRET|PASSPHRASE|KEY_ID|PASSWORD|TOKEN/;
@@ -523,6 +523,10 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     const kenv = { KUBECONFIG: kubeconfig };
     const kubectl = (args, x = {}) => run("kubectl", args, { env: kenv, ...x });
     const helm = (args, x = {}) => run("helm", args, { env: kenv, ...x });
+    if (o.command === "diagnose") {
+      diagnoseCluster({ kubectl, log });
+      return 0;
+    }
     if (hooks.afterKubeconfig) await hooks.afterKubeconfig({ kubectl, helm });
 
     if (o.command === "apply") {
@@ -659,6 +663,29 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
  * they were gone before anyone could look — first live bootstrap, 2026-10-03), then the release goes back to its last
  * deployed revision, or is uninstalled when there is none.
  */
+/**
+ * Read-only picture of a running cluster (`diagnose`, minutes instead of a whole release): nodes, pods, the ingress,
+ * certificates with their ACME orders and challenges, the DNS-01 solver and cert-manager logs, platform events.
+ */
+export function diagnoseCluster({ kubectl, log = console.log }) {
+  const opt = { allowFail: true };
+  const step = (title, args) => {
+    log(`::group::${title}`);
+    kubectl(args, opt);
+    log("::endgroup::");
+  };
+  step("Узлы", ["get", "nodes", "-o", "wide"]);
+  step("Поды", ["get", "pods", "-A", "-o", "wide"]);
+  step("Вход (Traefik)", ["-n", "wizard-ingress", "get", "svc,pods", "-o", "wide"]);
+  step("Сертификаты", ["get", "certificates,certificaterequests,orders,challenges", "-A", "-o", "wide"]);
+  step("ACME-челленджи подробно", ["describe", "challenges", "-A"]);
+  step("ACME-заказы подробно", ["describe", "orders", "-A"]);
+  step("Решатель DNS-01", ["-n", "cert-manager", "logs", "deploy/wizard-acme-dns01", "--tail=120"]);
+  step("cert-manager", ["-n", "cert-manager", "logs", "deploy/cert-manager", "--tail=120"]);
+  step("События платформы", ["-n", "wizard-platform", "get", "events", "--sort-by=.lastTimestamp"]);
+  step("События cert-manager", ["-n", "cert-manager", "get", "events", "--sort-by=.lastTimestamp"]);
+}
+
 /** Network probe run inside a pod by releaseWizard: DNS of the S3 endpoint and one HTTPS request to it. */
 export const NET_PROBE = [
   'const h = "s3.twcstorage.ru";',

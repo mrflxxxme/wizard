@@ -110,7 +110,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     }
     // The read-only check comes first and is the default: a run without choosing anything changes nothing.
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
-    expect(action.options).toEqual(["check", "apply", "destroy"]);
+    expect(action.options).toEqual(["check", "apply", "diagnose", "destroy"]);
     expect(action.default).toBe("check");
   });
 
@@ -155,7 +155,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
 
   it("check: no images, no OpenTofu/helm setup, no SSH to close, a short timeout", () => {
     const { doc } = load("pilot-reusable.yml");
-    expect(doc.jobs.images.if).toBe("inputs.command != 'destroy' && inputs.command != 'check'");
+    // diagnose reads the running cluster: no images either.
+    expect(doc.jobs.images.if).toBe(
+      "inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose'",
+    );
     // A skipped images job does not block the pilot job.
     expect(doc.jobs.pilot.if).toContain("needs.images.result != 'failure'");
     const job = doc.jobs.pilot;
