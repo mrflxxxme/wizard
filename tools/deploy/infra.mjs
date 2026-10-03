@@ -684,6 +684,52 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   step("cert-manager", ["-n", "cert-manager", "logs", "deploy/cert-manager", "--tail=120"]);
   step("События платформы", ["-n", "wizard-platform", "get", "events", "--sort-by=.lastTimestamp"]);
   step("События cert-manager", ["-n", "cert-manager", "get", "events", "--sort-by=.lastTimestamp"]);
+  // The WAL-G archive: the same image, environment and Secret as the database, from a one-shot pod with the egress
+  // rules of the PostgreSQL Jobs; plus the network probe with an unsigned listing of the backups bucket.
+  const sts = kubectl(["-n", "wizard-platform", "get", "statefulset", "wizard-postgres", "-o", "json"], {
+    ...opt,
+    capture: true,
+    fake: "{}",
+  });
+  let pg = null;
+  try {
+    pg = (JSON.parse(sts.stdout || "{}").spec?.template?.spec?.containers ?? []).find(
+      (c) => c.name === "postgres",
+    );
+  } catch {}
+  if (!pg) return;
+  const env = (pg.env ?? []).filter((e) => e.value !== undefined);
+  const bucket = /^s3:\/\/([^/]+)/.exec(env.find((e) => e.name === "WALG_S3_PREFIX")?.value ?? "")?.[1] ?? "";
+  const pods = [
+    ["wizard-net-probe", ["node", "-e", NET_PROBE], [{ name: "PROBE_BUCKET", value: bucket }], []],
+    [
+      "wizard-walg-probe",
+      ["timeout", "45", "wal-g", "backup-list"],
+      [...env, { name: "WALG_LOG_LEVEL", value: "DEVEL" }, { name: "S3_LOG_LEVEL", value: "DEVEL" }],
+      pg.envFrom ?? [],
+    ],
+  ];
+  for (const [name, command, podEnv, envFrom] of pods) {
+    const ns = "wizard-platform";
+    kubectl(["-n", ns, "delete", "pod", name, "--ignore-not-found", "--wait=true"], opt);
+    const manifest = netProbePod({
+      name,
+      namespace: ns,
+      image: pg.image,
+      labels: { "wizard.ru/role": "pg-job" },
+      pullSecret: "wizard-ghcr",
+      command,
+      env: podEnv,
+      envFrom,
+    });
+    kubectl(["apply", "-f", "-"], { ...opt, input: JSON.stringify(manifest) });
+    kubectl(
+      ["-n", ns, "wait", `pod/${name}`, "--for=jsonpath={.status.phase}=Succeeded", "--timeout=90s"],
+      opt,
+    );
+    step(`Проба ${name}`, ["-n", ns, "logs", name]);
+    kubectl(["-n", ns, "delete", "pod", name, "--ignore-not-found", "--wait=false"], opt);
+  }
 }
 
 /** Network probe run inside a pod by releaseWizard: DNS of the S3 endpoint and one HTTPS request to it. */
@@ -692,6 +738,9 @@ export const NET_PROBE = [
   'require("node:dns").promises.lookup(h, { all: true }).then((a) => console.log("probe dns", h, a.map((x) => x.address).join(",")), (e) => console.log("probe dns error", e.code));',
   "const t0 = Date.now();",
   'fetch("https://" + h, { signal: AbortSignal.timeout(15000) }).then((r) => console.log("probe https", r.status, Date.now() - t0, "ms"), (e) => console.log("probe https error", e.cause?.code ?? e.name, Date.now() - t0, "ms"));',
+  // An unsigned listing of the backups bucket: a quick 403 means S3 answers for it (a hang is then WAL-G's own).
+  "const b = process.env.PROBE_BUCKET;",
+  'if (b) { const t1 = Date.now(); fetch("https://" + h + "/" + b + "?list-type=2&max-keys=1&prefix=pg/", { signal: AbortSignal.timeout(20000) }).then((r) => console.log("probe bucket", b, r.status, Date.now() - t1, "ms"), (e) => console.log("probe bucket error", b, e.cause?.code ?? e.name, Date.now() - t1, "ms")); }',
 ].join(" ");
 
 /**
@@ -699,7 +748,16 @@ export const NET_PROBE = [
  * pg-job (the egress rules of PostgreSQL and its Jobs) and in `default` (no NetworkPolicy) — the difference tells a
  * policy from the network. Restricted PodSecurity fields included.
  */
-export function netProbePod({ name, namespace, image, labels = {}, pullSecret = "" }) {
+export function netProbePod({
+  name,
+  namespace,
+  image,
+  labels = {},
+  pullSecret = "",
+  command = ["node", "-e", NET_PROBE],
+  env = [],
+  envFrom = [],
+}) {
   return {
     apiVersion: "v1",
     kind: "Pod",
@@ -719,8 +777,10 @@ export function netProbePod({ name, namespace, image, labels = {}, pullSecret = 
           name: "probe",
           image,
           imagePullPolicy: "IfNotPresent",
-          command: ["node", "-e", NET_PROBE],
-          resources: { limits: { cpu: "200m", memory: "128Mi" } },
+          command,
+          env,
+          envFrom,
+          resources: { limits: { cpu: "500m", memory: "256Mi" } },
           securityContext: {
             allowPrivilegeEscalation: false,
             readOnlyRootFilesystem: true,
