@@ -967,6 +967,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     WIZARD_K3S_ACCESS: "tunnel",
     WIZARD_ACME_EMAIL: vars.WIZARD_ACME_EMAIL || vars.WIZARD_FOUNDER_EMAIL || "",
     WIZARD_SMOKE_ATTEMPTS: vars.WIZARD_SMOKE_ATTEMPTS || "20",
+    // Never released yet → the database starts empty without asking the archive (it cannot hold anything).
+    WIZARD_PG_FIRST_BOOT: bundle.deployedAt ? "" : "1",
     RUNNER_TEMP: work,
   };
 
@@ -1004,6 +1006,31 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     },
     afterRelease: async ({ kubectl, outputs, tag }) => {
       let changed = false;
+      // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
+      const walg = kubectl(
+        [
+          "-n",
+          PLATFORM_NS,
+          "exec",
+          "wizard-postgres-0",
+          "-c",
+          "postgres",
+          "--",
+          "env",
+          "WALG_LOG_LEVEL=DEVEL",
+          "S3_LOG_LEVEL=DEVEL",
+          "timeout",
+          "60",
+          "wal-g",
+          "backup-list",
+        ],
+        { capture: true, allowFail: true },
+      );
+      if (walg.status === 0) log("WAL-G: архив резервных копий доступен");
+      else
+        log(
+          `::warning title=pilot::WAL-G не получил список копий из архива (код ${walg.status}): архивирование WAL не работает, см. лог выше`,
+        );
       // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.
       if (st.fresh && bundle.deployedAt) {
         const job = `wizard-data-restore-${Math.floor(now().getTime() / 1000)}`;

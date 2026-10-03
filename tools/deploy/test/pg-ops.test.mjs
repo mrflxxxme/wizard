@@ -441,6 +441,21 @@ DELETE FROM platform.runs WHERE id <= 5;`);
   }, 120_000);
 });
 
+describe("pg-ops bootstrap: first bring-up", () => {
+  it("never asks the archive while nothing was released (WIZARD_PG_FIRST_BOOT)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pgops-first-"));
+    const infos = [];
+    const rep = { info: (m) => infos.push(m), error: async () => {} };
+    try {
+      const cfg = { walg: join(dir, "no-such-wal-g"), pgdata: join(dir, "pgdata"), firstBoot: true };
+      expect(await bootstrap(cfg, rep)).toBe("initdb");
+      expect(infos).toEqual(["pg_bootstrap_first_boot"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("pg-ops bootstrap: a hanging archive", () => {
   it("fails with a reason after archiveProbeTimeoutSec instead of hanging", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pgops-hang-"));

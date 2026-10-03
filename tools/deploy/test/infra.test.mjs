@@ -616,6 +616,24 @@ describe("createRunner", () => {
   });
 });
 
+describe("wizardReleaseArgs: first bring-up", () => {
+  it("postgres.firstBoot only for an in-cluster database on the first release", () => {
+    const out = {
+      env: {
+        registry_url: "ghcr.io/o",
+        domains: { platform: "p.ru", systems: "s.ru" },
+        network: { pods_cidr: "10.42.0.0/16", services_cidr: "10.43.0.0/16", nodes_cidr: "1.2.3.4/32" },
+        postgres_mode: "in-cluster",
+        buckets: { backups: "b" },
+        s3_endpoint: "https://s3",
+      },
+    };
+    const base = { env: "prod", out, tag: "t", email: "a@p.ru", profile: "pilot" };
+    expect(wizardReleaseArgs({ ...base, firstBoot: true })).toContain("postgres.firstBoot=true");
+    expect(wizardReleaseArgs(base)).not.toContain("postgres.firstBoot=true");
+  });
+});
+
 describe("releaseWizard", () => {
   const fake = (history, failRelease) => {
     const calls = [];

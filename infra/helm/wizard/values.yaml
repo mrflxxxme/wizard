@@ -147,6 +147,9 @@ postgres:
   storageSize: 30Gi
   # Bucket of backups (tofu output env.buckets.backups): WAL-G under pg/, the .data copy under data/.
   backupsBucket: ""
+  # First bring-up of the environment (set by the deploy while nothing was ever released): an empty volume starts with
+  # initdb without asking the archive — there can be nothing in it yet (tools/deploy/pilot.mjs, bundle.deployedAt).
+  firstBoot: false
   archiveTimeoutSec: 60
   maxArchiveLagSec: 300
   walg:

@@ -179,6 +179,7 @@ export function wizardReleaseArgs({
   provider = loadProvider(DEFAULT_PROVIDER),
   profile = null,
   ingressNamespace = "wizard-ingress",
+  firstBoot = false,
 }) {
   const pgHost = hostOf(
     out.postgres?.platform?.connection_string ?? out.postgres?.main?.connection_string ?? "",
@@ -205,6 +206,8 @@ export function wizardReleaseArgs({
   for (const f of valueFiles(env, provider, profile)) args.push("-f", f);
   // No --atomic: releaseWizard rolls back itself, after printing why the release did not become ready.
   args.push("--wait", "--timeout", "15m");
+  // First bring-up of an in-cluster database: initdb without asking the (necessarily empty) archive.
+  if (inCluster && firstBoot) args.push("--set", "postgres.firstBoot=true");
   for (const [k, v] of Object.entries(set)) {
     if (v === undefined || v === null || v === "") throw new Error(`missing value for ${k}`);
     args.push("--set-string", `${k}=${v}`);
@@ -621,7 +624,15 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     releaseWizard({
       helm,
       kubectl,
-      args: wizardReleaseArgs({ env: o.env, out: outputs, tag, email, provider, profile }),
+      args: wizardReleaseArgs({
+        env: o.env,
+        out: outputs,
+        tag,
+        email,
+        provider,
+        profile,
+        firstBoot: v.WIZARD_PG_FIRST_BOOT === "1",
+      }),
       log,
     });
     if (hooks.afterRelease) await hooks.afterRelease({ kubectl, helm, outputs, tag });

@@ -59,6 +59,7 @@ export function config(env = process.env) {
     // bootstrap: how long `wal-g backup-list` may take before the archive counts as unreachable (a silent network
     // hang kept the first live pod in Init for 15 minutes with nothing in its log, 2026-10-03).
     archiveProbeTimeoutSec: num("WIZARD_ARCHIVE_PROBE_TIMEOUT_SEC", 120),
+    firstBoot: env.WIZARD_PG_FIRST_BOOT === "1",
     archiveWaitSec: num("WIZARD_DRILL_ARCHIVE_WAIT_SEC", 300),
     schemas,
     alertUrl: env.WIZARD_OPS_ALERT_URL ?? "",
@@ -615,14 +616,21 @@ export async function bootstrap(cfg, rep) {
     rep.info("pg_bootstrap_existing", {});
     return "existing";
   }
+  // First bring-up of the environment: nothing was ever released, so the archive cannot hold anything yet.
+  if (cfg.firstBoot) {
+    rep.info("pg_bootstrap_first_boot", {});
+    return "initdb";
+  }
   const limit = cfg.archiveProbeTimeoutSec ?? 120;
   const listed = run(cfg, cfg.walg, ["backup-list", "--json"], {
     timeout: limit * 1000,
     killSignal: "SIGKILL",
     allowError: true,
+    // Verbose WAL-G and S3 client logs: a hang shows the request it waits on (the stderr tail goes to the alert).
+    env: { ...process.env, WALG_LOG_LEVEL: "DEVEL", S3_LOG_LEVEL: "DEVEL" },
   });
   if (listed.error || listed.status !== 0) {
-    const stderr = (listed.stderr || "").slice(-400);
+    const stderr = (listed.stderr || "").slice(-2000);
     await rep.error("pg_bootstrap_failed", {
       step: "backup-list",
       reason: listed.error
