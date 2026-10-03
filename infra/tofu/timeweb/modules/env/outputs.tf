@@ -5,7 +5,7 @@ output "env" {
     registry_url  = var.image_registry
     registry_push = local.in_cluster_registry ? "${local.server_ip}:30500" : null
     domains       = { platform = var.platform_domain, systems = var.systems_domain }
-    network       = { pods_cidr = var.pods_cidr, services_cidr = var.services_cidr, nodes_cidr = var.vpc_cidr }
+    network       = { pods_cidr = var.pods_cidr, services_cidr = var.services_cidr, nodes_cidr = local.adopt ? "${var.existing_server.ip}/32" : var.vpc_cidr }
     postgres_cidr = local.pilot ? null : var.vpc_cidr
     # Pilot: PostgreSQL in the cluster and the Helm profile `pilot` (tools/deploy/infra.mjs reads both).
     postgres_mode   = local.pilot ? "in-cluster" : "managed"
