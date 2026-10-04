@@ -15,6 +15,7 @@ import {
   ensureStateBucket,
   envVars,
   FOUNDER_STAFF_SQL,
+  FOUNDER_START_CREDITS,
   founderStaffJob,
   getObjectOrNull,
   main,
@@ -837,6 +838,8 @@ describe.skipIf(!pgUp)("pilot: founder access SQL (PostgreSQL)", () => {
     expect(q("SELECT count(*) || '/' || min(email) FROM platform.pilot_invites")).toBe(
       `1/${email.toLowerCase()}`,
     );
+    // The founder can try builds at once: payments are off on the pilot.
+    expect(q("SELECT credits FROM platform.pilot_invites")).toBe(String(FOUNDER_START_CREDITS));
     q("UPDATE platform.pilot_invites SET expires_at = now() - interval '1 day'");
     expect(step()).toBe("");
     expect(
