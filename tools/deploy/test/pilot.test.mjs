@@ -699,6 +699,23 @@ describe("pilot: one button", () => {
     expect(cloud.st.buckets).toEqual([]);
   });
 
+  it("Timeweb API: an idempotent call is sent again after a dropped socket, a POST is not", async () => {
+    const cloud = fakeCloud();
+    cloud.st.rules.set("fw-staging", [{ id: "a", description: "wizard-ci-temp ssh run 1" }]);
+    let drops = 1;
+    const flaky = (url, init) => {
+      if (drops > 0) {
+        drops -= 1;
+        return Promise.reject(new TypeError("fetch failed"));
+      }
+      return cloud.fetch(url, init);
+    };
+    const api = twcClient({ token: "twc-very-secret-token", fetch: flaky, sleep: async () => {} });
+    expect(await closeAdminAccess(api, "staging")).toBe(1);
+    drops = 1;
+    await expect(api("POST", "/api/v1/firewall/groups/x/rules", {})).rejects.toThrow("fetch failed");
+  });
+
   it("close-access removes only the temporary rules; staging destroy keeps prod's keys", async () => {
     const cloud = fakeCloud();
     cloud.st.rules.set("fw-staging", [

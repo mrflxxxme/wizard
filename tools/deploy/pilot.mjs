@@ -572,17 +572,35 @@ export async function ensureDmarc(api, domain, { log = () => {} } = {}) {
 }
 
 /** Timeweb Cloud API client: JSON in/out, bearer token; errors carry the method, path and status, never the token. */
-export function twcClient({ token, fetch: f = fetch, base = TWC_API }) {
+export function twcClient({
+  token,
+  fetch: f = fetch,
+  base = TWC_API,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   return async function api(method, path, body) {
-    const r = await f(`${base}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: "application/json",
-        ...(body ? { "content-type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+    const send = () =>
+      f(`${base}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    // A keep-alive socket idle for the whole release is closed by Timeweb's side: the next call fails before any
+    // response ("fetch failed" when closing SSH, pilot 2026-10-04). Idempotent calls are sent again on a fresh one.
+    let r;
+    for (let i = 0; ; i++) {
+      try {
+        r = await send();
+        break;
+      } catch (e) {
+        if (method === "POST" || i >= 2) throw e;
+        await sleep(1000 * (i + 1));
+      }
+    }
     if (r.status === 204) return {};
     const text = await r.text();
     if (!r.ok) {
