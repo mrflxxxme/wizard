@@ -169,6 +169,21 @@ describe("infra.mjs", () => {
     }
   });
 
+  it("a failed close of the temporary access is a warning, not a failed run (close-access step repeats it)", async () => {
+    const lines = [];
+    const hooks = {
+      beforeCluster: async () => ({
+        vars: {},
+        close: async () => {
+          throw new Error("fetch failed");
+        },
+      }),
+    };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true, hooks };
+    expect(await main(["apply", "--env", "staging", "--dry-run"], TIMEWEB, deps)).toBe(0);
+    expect(lines.join("\n")).toMatch(/::warning::доступ не закрыт: fetch failed/);
+  });
+
   it("managed Kubernetes (Cloud.ru): kubeconfig from outputs, second apply for the LoadBalancer IP, no registry addon", async () => {
     const lines = [];
     const out = {
