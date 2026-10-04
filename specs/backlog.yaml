@@ -6,6 +6,13 @@
 #   owner: platform (backend/инфра), frontend, agents (LLM-харнесс), qa (тесты/гейты), docs, founder (действие основателя;
 #          агент такую задачу не берёт, а готовит материалы и сверяет её acceptance).
 #   status: todo | in_progress | done. claimed_by: id сессии агента (обязателен при in_progress).
+#   Задачи вехи M2P (полнофункциональный пилот, решения D26–D64) дополнительно несут:
+#   description — что сделать и зафиксированные имена (договорённость между параллельными задачами волны p-w0);
+#   owns — пути, которые задаче можно править (внутри волны не пересекаются; общие файлы и порядок мержа —
+#          milestones.yaml M2P.plan.hotspots и merge_rules). Спека — первой: файлы из specs задачи правятся до кода;
+#          новые спеки, которые задача пишет сама, перечислены в owns, а не в specs;
+#   specs_pending — спеки, которые создают задачи из deps (пока файла нет, slice его не печатает; читать, когда появится);
+#   critical — true у задач с запасом ≤ 1 дня до критического пути вехи: из доступных их берут первыми (AGENTS.md п. 1).
 # Волны и критический путь M0 — milestones.yaml#milestones (M0.plan). Происхождение правок — docs/reviews/spec-audit/.
 tasks:
   # ---------------- M0: первый прототип ----------------
@@ -941,6 +948,1982 @@ tasks:
     claimed_by: null
     acceptance:
       - "eval-live.yml: расписание раз в неделю; бюджетная проверка tools/eval использует 4 000 ₽/мес"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w0 — контракты и инструменты ----------------
+  - id: M2-17
+    title: "Инструменты спек и гигиена: validate и slice на Windows, пропуск ненаписанных спек, проверки волн и owns в validate, чек-лист основателя, хвосты старых решений"
+    milestone: M2P
+    deps: []
+    specs: ["specs/README.md", "specs/milestones.yaml", "specs/escalation.yaml#calendar", "specs/product.yaml#pilot", "docs/research/integrations-2026-10.md#10. Что основателю зарегистрировать", "docs/research/integrations-2026-10.md#1.7. Что спрашивать у клиента"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      tools/specs/validate.mjs: relative() даёт обратные слэши на Windows — ключи specs/… не находятся (executability MP-43); перевести на
+      POSIX-разделители. slice.mjs: отсутствующий файл из specs — предупреждение в stderr и пропуск (MP-14), файлы из specs_pending
+      печатаются, когда появились; размер среза и предупреждение > 60 КБ (MP-17). validate: проверки вехи M2P (MP-33) — зависимость не из
+      более поздней волны, пересечение owns двух задач одной волны вне plan.hotspots и plan.merge_rules, миграции задачи из резерва
+      db.yaml, поле critical — булево. vitest tools/specs проходит на Windows. Чек-лист основателя docs/founder/pilot-checklist.md (бывшая
+      предложенная M2-20a): по каждому сервису M2-20 — что получить и куда положить (integrations-2026-10.md §1.7 и §10), уведомление РКН
+      о трансграничной передаче для имени в Telegram (D53) с юристом, вопрос о темах. Хвост M0-30: закрыть записью «заменено D26» в
+      CHANGELOG (status done).
+    owns: ["tools/specs/**", "docs/founder/pilot-checklist.md (новый)", "specs/backlog.yaml (только статус M0-30)"]
+    acceptance:
+      - "На Windows и Linux `node tools/specs/validate.mjs` даёт одинаковые числа файлов, задач и ошибок; тест с путями win32"
+      - "`node tools/specs/slice.mjs --task <id>` завершается 0 для каждой задачи M2P; отсутствующий файл — предупреждение; печатается размер среза, > 60 КБ — предупреждение"
+      - "validate: зависимость из более поздней волны, пересечение owns внутри волны вне hotspots и миграция вне резерва → ошибка (тесты на синтетическом backlog); текущий backlog проходит"
+      - "docs/founder/pilot-checklist.md покрывает каждый пункт acceptance M2-20; M0-30 закрыта с записью в CHANGELOG"
+
+  - id: M2-20
+    title: "Доступы и домены пилота P (E-ACCESS): домены и API DNS, статический IP egress, ключи моделей, SMS, стоки Pexels и Pixabay, Яндекс Карты и SmartCaptcha, тестовые магазины и CRM"
+    milestone: M2P
+    deps: []
+    specs: ["specs/escalation.yaml#calendar", "specs/product.yaml#decisions.D26_models_default", "specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#decisions.D59_eval_budget_and_autonomy", "docs/research/integrations-2026-10.md#10. Что основателю зарегистрировать"]
+    owner: founder
+    parallel_group: p-w0
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      Действия основателя для живого пилота. Чек-лист с полями для каждого сервиса готовит агент в M2-17
+      (docs/founder/pilot-checklist.md); основатель может начать без него. Ключи — только в .data/local/inputs.env (локально) и GitHub
+      Secrets (сервер), не в чат и не в репозиторий. Бюджет замера порога D42 отдельно не согласуется: он внутри месячного лимита
+      платформы (D59).
+    owns: [".data/local/inputs.env (вне git)", "GitHub Secrets и Variables"]
+    acceptance:
+      - "Домены borntobuild.ru и sandpile.ru куплены; доступ к API DNS передан (wildcard *.sandpile.ru по DNS-01) — для M2-37 и M2-60"
+      - "Статический IPv4 исходящего egress-прокси выделен и подан в белый список тестовой среды Т-Банка"
+      - "ZAI_API_KEY, CLOUDRU_API_KEY, YANDEX_API_KEY, YANDEX_FOLDER_ID и *_BASE_URL лежат в .data/local/inputs.env и GitHub Secrets"
+      - "Аккаунт SMS-агрегатора с именем отправителя; ключи Pexels и Pixabay; ключи Яндекс Карт (JS API) и SmartCaptcha; chat_id команды в Telegram (WIZARD_TEAM_CHAT_ID)"
+      - "Тестовые магазины ЮKassa, Т-Кассы, CloudPayments, Robokassa, Prodamus (заявки на автоплатежи ЮKassa и Т-Банка поданы менеджерам, рекуррент Robokassa согласован или отмечен «нет»); тестовые доступы amoCRM (долгосрочный токен), Битрикс24 (входящий вебхук), МойСклад, СДЭК, проект Tilda; ключи — в GitHub Secrets"
+      - "Ответ основателя: кто утверждает 6–8 тем — внешний дизайнер или сам основатель (fidelity P-12)"
+
+  - id: M2-21
+    title: "Контракт AppSpec v2: новые коннекторы, allowlist, SEO и Метрика, тема v2, изображения и видео, контакты посетителей, подписки и «оплатил — видит», запрет пересечения слотов, системные таблицы"
+    milestone: M2P
+    deps: []
+    specs: ["specs/appspec/appspec.schema.json", "specs/appspec/ops.yaml", "specs/runtime/runtime.yaml#postgres", "specs/product.yaml#decisions.D35_client_payments", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D39_design", "docs/research/design-agent-sources.md", "specs/product.yaml#decisions.D52_strong_identifiers", "specs/product.yaml#decisions.D56_destructive_changes"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 3
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Спека первой: appspec.schema.json и ops.yaml (семантические правила с кодами ошибок), затем zod 1:1, semantic, toDDL, SYSTEM_TABLES.
+      Имена фиксируются здесь, их используют параллельные задачи p-w0. integration.connector += tbank, cloudpayments, robokassa, prodamus,
+      sms, webhook, amocrm, bitrix24, tilda, moysklad, cdek. app.egress — FQDN-список (объединяется с function.egress);
+      app.analytics.yandexMetrikaId (^[0-9]{5,10}$); app.seo {title, description, ogImage} и pages[].seo {title?, description?, ogImage?,
+      noindex?}. theme v2 по docs/research/design-agent-sources.md §3.1 (поля v1 сохраняются, font становится текстовой ролью пары):
+      preset ∈ reestr|zabota|atelie|vitrina|masterskaya|klass|afisha|pult, accent, accent2, neutral ∈ cool|neutral|warm|green|plum,
+      colorStrategy ∈ restrained|committed|drenched|duo, fontPair (id курируемой пары из каталога FONT_PAIRS в packages/appspec),
+      typeScale ∈ calm|classic|dramatic, radius ∈ 0|2|4|8|12|16|24, controls ∈ match|pill, density ∈ compact|regular|airy, depth ∈
+      flat|outline|soft, motion ∈ still|calm|lively, imagery ∈ natural|duotone|mono, mode, logoFile, blocks (имя блока → вариант;
+      допустимость варианта проверяет G0 по каталогу ui-kit, не схема). fieldType += image (публичное изображение на странице, варианты
+      размеров) и video_url (Rutube, VK Видео, Kinescope). entity.contact {emailField?, phoneField?} — адреса посетителя без аккаунта для
+      транзакционных сообщений с согласием. entity.noOverlap {resourceField?, startField, endField} — запрет пересечения слотов (DDL:
+      исключающее ограничение или эквивалент). subscriptions[] {name, label, plans [{id, label, priceRub, periodDays}], integration,
+      trialDays?, autoRenew, reminderDaysBefore = 3}; permission.requires {subscription}; workflow trigger webhook {integration}.
+      SYSTEM_TABLES += _w_payments, _w_subscriptions, _w_messages (журнал доставки, квота SMS), _w_egress_log, _w_webhook_events. Операции
+      ops.yaml, которые M2-21 добавляет сразу (executability MP-13): set_app {seo, analytics, egress}, set_theme (тема v2),
+      add_subscription, update_subscription, remove_subscription, update_entity {contact, noOverlap, payable}, update_field {secure},
+      update_page {seo}, set_integration_config (несекретные поля: subdomain, portalHost, payformHost, allowNames у telegram). Поля notify
+      v2 в шагах workflow: to ∈ $record.<поле contact> | $record.<ref users> | $role:<роль> | $owners; channel ∈ email | sms | telegram |
+      auto; kind: transactional (обязателен для получателя-посетителя); links только на маршруты системы. entity.payable {amountField,
+      statusField} для платёжных коннекторов. field.secure (D52): только для полей strong-видов (паспорт, СНИЛС, ИНН физлица, file-скан),
+      без where, sort и индексов. video_url — паттерн хостов и путей (rutube.ru/play/embed/<32 hex>, vkvideo.ru|vk.com|vk.ru/video_ext.php
+      с oid, id, hash; kinescope.io/embed/<id>; vk.com/away.php и прочие — отказ; executability MP-41). Подтверждение destructive-шагов в
+      prod (D56): поле confirmDestructive {revision, planHash, token} у публикации; реализует M2-72. SYSTEM_TABLES разбиваются на модули
+      packages/appspec/src/system-tables/<таблица>.ts с индексом по glob: колонки своей таблицы дописывает задача-владелец без «appspec
+      delta». В appspec.schema.json#/$defs/aiAction пояснение «изображения уходят только на T0» уточнить: причина — ПДн живых записей, не
+      мультимодальность (fidelity P-13). app.locale остаётся ru (D55).
+    owns: ["specs/appspec/**", "packages/appspec/**"]
+    acceptance:
+      - "JSON Schema и zod принимают и отклоняют одинаково на фикстурах каждого нового поля (≥ 40 новых valid/invalid в packages/appspec/test/fixtures)"
+      - "Каждое новое семантическое правило ops.yaml покрыто тестом с ожидаемым кодом ошибки (permission.requires на несуществующую подписку, noOverlap на поля не date/datetime, contact на поле не email/phone, неизвестная fontPair и т. п.)"
+      - "toDDL: две пересекающиеся записи noOverlap на один ресурс при конкурентной вставке → одна отклонена (интеграционный тест на Postgres 16); новые SYSTEM_TABLES создаются в новой схеме и добавляются в существующую идемпотентно"
+      - "specs/appspec/examples/forum.json и bakery.json валидны; тема v1 без новых полей валидна; `node tools/specs/validate.mjs` зелёный"
+      - "Каждая новая операция из списка ops.yaml имеет тест успеха и тест ошибки с кодом; video_url отклоняет vk.com/away.php, http:// и чужие хосты; field.secure на поле не strong-вида или в where/индексе → ошибка"
+
+  - id: M2-22
+    title: "Контракт платформы, часть 1: API и таблицы человеческого слоя и цен — каталог цен, использование организации, обращения, заказы «под ключ», пробелы, лимиты организации, матрица доступа"
+    milestone: M2P
+    deps: []
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/platform/billing.yaml#rub_model", "specs/product.yaml#decisions.D32_human_layer", "specs/product.yaml#decisions.D34_capability_gaps", "specs/product.yaml#decisions.D60_support_hours"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Только спеки и типы; вторая половина контракта — M2-98 (параллельно). api.yaml — пути в блоке между маркерами «M2P · M2-22»: каталог
+      цен и использование организации без кредитов (черновики, правки, SMS); обращения (клиент — треды и сообщения; admin — очередь,
+      ответ, срок 2 ч рабочего времени Пн–Пт 10–19 МСК, D60); заказы (передача системы команде с согласием клиента на доступ команды и
+      закрытыми по умолчанию prod-данными — executability MP-32; заявка «под ключ» без системы; admin — оценка, «взять в работу», «вернуть
+      клиенту»); пробелы {category, quote, offered, systemId, runId, canHandoff} (запись из хоста агента; admin — агрегат по категории и
+      частоте). Клиентские ответы MUST NOT содержать кредитов (billing.yaml#rub_model.principle). db.yaml — блок «M2P · M2-22»:
+      support_threads, support_messages, orders, capability_gaps, org_limits (со счётчиками правок и флагом secure_fields_allowed для
+      D52); у каждой таблицы — owner_task, номер миграции из резерва, правило удаления ПДн; внешние ключи только от более поздней миграции
+      к более ранней (orders → capability_gaps добавляет 0023, executability MP-37). Матрица доступа (executability MP-28): генератор
+      теста из api.yaml — аноним 401, чужая организация 404, viewer на запись 403, не staff на /admin 404, staff без MFA 403; маршруты,
+      которых ещё нет, тест печатает списком и пропускает. apps/platform-api/src/db/types.ts — типы новых таблиц (дописывание).
+    owns: ["specs/platform/api.yaml (блок M2-22)", "specs/platform/db.yaml (блок M2-22)", "apps/platform-api/src/db/types.ts (дописывание)", "apps/platform-api/test/access-matrix*.test.ts (новый)"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; api.yaml — валидный OpenAPI 3.1 (существующий тест схемы API проходит); у каждого нового пути — коды ошибок с message_ru и пример"
+      - "Тест-линтер спеки: ни одна схема ответа клиентских путей (не /admin, не /internal) не содержит свойств credits*, cap*, costRub, tokens"
+      - "db.yaml: у каждой новой таблицы — owner_task, номер миграции из резерва и правило удаления ПДн; направление внешних ключей по номерам миграций; типы в db/types.ts компилируются (pnpm typecheck)"
+      - "Тест матрицы доступа генерируется из api.yaml и зелёный на существующих маршрутах; новые маршруты включаются в проверку автоматически по мере реализации"
+
+  - id: M2-23
+    title: "Контракт runtime и SDK: исключения CSP, SEO, изображения на страницах, видео, свой домен, платный доступ и подписки, сообщения v2, исходящий HTTP и входящие вебхуки"
+    milestone: M2P
+    deps: []
+    specs: ["specs/runtime/runtime.yaml", "specs/runtime/sdk.md", "specs/security/isolation.yaml", "specs/product.yaml#decisions.D36_messaging", "specs/product.yaml#decisions.D37_integrations", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D53_telegram_names", "specs/product.yaml#decisions.D57_yandex_widgets", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Только спеки. runtime.yaml: security_headers — исключения CSP по спеке системы только из закрытого списка: Метрика (mc.yandex.ru,
+      yastatic.net; без хостов Вебвизора — webvisor выключен), Яндекс Карты и SmartCaptcha (D57: api-maps.yandex.ru и хосты тайлов,
+      smartcaptcha.yandexcloud.net — уточнить по документации), видео во frame-src (rutube.ru, vkvideo.ru, vk.com, vk.ru, kinescope.io);
+      Unsplash нет (D61); плашка о Метрике с согласием; seo (мета по маршруту, sitemap.xml, robots.txt, OG); files — поле image
+      показывается inline с вариантами, file остаётся attachment; routing — свой домен клиента (Host → система, cookie своего хоста, 421
+      для непроверенных); payments и subscriptions (общий /api/pay/:integration, один диспетчер
+      /_wizard/hooks/<connector>/<integration>/<hookToken> с проверкой verify ∈ {hmac, shared_secret, refetch}, сырое тело, токен ≥ 32
+      байт; доступ до даты, напоминание, автопродление только с явным согласием плательщика, отмена — страница подтверждения и POST, не
+      GET — MP-25); permissions — permission.requires.subscription в data API и RLS; secure-поля (D52): шифрование на хосте, без фильтров
+      и сортировки; workflows.notify v2 — получатели $record.<поле contact> (только транзакционно, с согласием purpose=messages, лимиты на
+      контакт и SmartCaptcha на публичном создании — MP-26), роли и владелец, каналы email | sms | telegram | auto, имя клиента в Telegram
+      по флажку D53; SMS не только для входа (D36, правка runtime.yaml#auth.methods_M1.phone_otp по billing.yaml#rub_model.phone_login);
+      egress — ctx.http.fetch через egress-прокси по allowlist системы, журнал _w_egress_log без тел; входящие вебхуки исполняются под
+      служебной ролью integration:<имя> с белым списком полей (MP-24); слоты — /api/slots и 409 SLOT_TAKEN. sdk.md: ctx.http.fetch,
+      usePayment, useSubscription, useSlots — только новые разделы с новыми номерами в конце (генератор builder.json режет разделы по
+      номерам — MP-36). isolation.yaml#M2: allowlist системы без пересечения с глобальным списком (D37), запрет 6to4, Teredo, NAT64,
+      лимиты; защита от SSRF остаётся (D44). Имена таблиц и полей — из M2-21.
+    owns: ["specs/runtime/runtime.yaml", "specs/runtime/sdk.md", "specs/security/isolation.yaml"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; runtime.yaml#security_headers перечисляет закрытый список сторонних origin и условия их включения (MUST)"
+      - "У каждого нового эндпоинта runtime — коды ответов, лимиты и строка test, которую реализующая задача превращает в автотест"
+      - "sdk.md содержит сигнатуру и пример для ctx.http.fetch, usePayment, useSubscription, useSlots (компиляцию примеров проверяют M2-49, M2-52, M2-64)"
+      - "`node packages/agents/scripts/gen-builder-assets.mjs` отрабатывает после правки sdk.md (старые номера разделов не сдвинуты)"
+
+  - id: M2-24
+    title: "Контракт коннекторов: интерфейсы платёжного провайдера, подписок, каналов сообщений, CRM и входящих вебхуков; payments.yaml, sms.yaml, webhook.yaml, свой отправитель в email.yaml"
+    milestone: M2P
+    deps: []
+    specs: ["specs/connectors/connector-interface.md", "specs/connectors/yookassa.yaml", "specs/connectors/email.yaml", "specs/connectors/telegram.yaml", "specs/product.yaml#decisions.D35_client_payments", "specs/product.yaml#decisions.D36_messaging", "specs/product.yaml#decisions.D37_integrations", "docs/research/integrations-2026-10.md#1. Платежи", "docs/research/integrations-2026-10.md#4. Готовые коннекторы", "docs/research/integrations-2026-10.md#2. SMS-агрегаторы"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Спеки и заглушки реестра. connector-interface.md: PaymentProvider {createPayment, parseWebhook, getPayment, refund, receipt (54-ФЗ:
+      позиции, НДС 22 % с 2026 года, email или телефон покупателя), sbp, chargeSaved, capabilities}, MessagingChannel {send, quota,
+      testMode}, OutboundConnector (CRM; только через egressFetch и allowlist; хосты клиента — несекретные поля config), InboundWebhook
+      {verify ∈ {hmac, shared_secret, refetch}, map} — по фактам docs/research/integrations-2026-10.md: подпись есть у CloudPayments
+      (HMAC-SHA256, Content-HMAC), Prodamus (HMAC-SHA256, заголовок Sign), Т-Банка (Token SHA-256 с паролем терминала), Robokassa (хеш с
+      Password #2); у ЮKassa, amoCRM, Tilda, МойСклад, СДЭК, SMS Aero подписи нет — секретный путь и перезапрос объекта (executability
+      MP-23). Ответы приёмника по сервисам (OK, {"code":0}, OK{InvId} и т. п.) и сроки ответа — таблица. Для hmac — подпись по сырым
+      байтам, timingSafeEqual, алгоритмы из закрытого списка (md5 и sha1 — только где их требует сервис). Каждая спека провайдера обязана
+      содержать тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) — fixtures, независимые
+      от кода (MP-22). specs/connectors/payments.yaml — общее ядро (статусы монотонны: поздний pending не откатывает paid; сверка суммы,
+      валюты и recordId; подписки; матрица возможностей пяти сервисов; автоплатежи ЮKassa и Т-Банка включает менеджер, Robokassa — по
+      согласованию). sms.yaml — аккаунт платформы (кандидаты SMS Aero, SMSC) и свой аккаунт клиента, квота
+      billing.yaml#rub_model.sms_included, в том числе на пилоте (fidelity P-03). webhook.yaml — секретный путь, режимы проверки, защита
+      от повтора, сопоставление полей с белым списком. email.yaml — отправитель: платформа, свой SMTP или свой домен клиента (SPF, DKIM,
+      DMARC — инструкция). Код: packages/connectors/src/registry.ts регистрирует заглушки всех новых id из M2-21
+      (packages/connectors/src/<id>/index.ts; использование незавершённого коннектора → понятная ошибка), чтобы задачи провайдеров и CRM
+      не зависели от M2-49 (MP-10).
+    owns: ["specs/connectors/connector-interface.md", "specs/connectors/payments.yaml", "specs/connectors/sms.yaml", "specs/connectors/webhook.yaml", "specs/connectors/email.yaml", "packages/connectors/src/registry.ts", "packages/connectors/src/{tbank,cloudpayments,robokassa,prodamus,sms,webhook,amocrm,bitrix24,tilda,moysklad,cdek}/index.ts (заглушки)", "packages/connectors/test/registry*.test.ts"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; payments.yaml содержит матрицу возможностей ЮKassa, Т-Кассы, CloudPayments, Robokassa, Prodamus со ссылками на документацию"
+      - "Для каждого интерфейса — список обязательных тестов для реализующих задач (верная и неверная подпись, неверная подпись → 401 без побочных эффектов, двойная доставка → одна запись)"
+      - "Все секреты коннекторов — только secret://name (AGENTS.md)"
+      - "Реестр: все id из integration.connector имеют модуль; спека с незавершённым коннектором → G0 «Подключение <имя> пока недоступно» (тест)"
+
+  - id: M2-25
+    title: "Контракт ui-kit и тем: блоки лендинга, календарь со слотами, тарифы и пейвол, галерея, изображение, видео, графики; токены v2 и 8 тем; разделы i18n и demo"
+    milestone: M2P
+    deps: []
+    specs: ["specs/ui/ui-kit.yaml", "specs/runtime/sdk.md", "specs/product.yaml#decisions.D39_design", "specs/product.yaml#decisions.D47_design_sources_and_fonts", "specs/product.yaml#decisions.D49_no_fabrication", "docs/research/design-agent-sources.md", "specs/product.yaml#decisions.D57_yandex_widgets", "specs/product.yaml#decisions.D64_fonts", "docs/research/design-agent-catalog.md"]
+    owner: frontend
+    parallel_group: p-w0
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Спеки первыми. ui-kit.yaml — новые компоненты с props, поведением, test_ids и a11y: Header, Hero, Features, Steps, Testimonials,
+      Faq, Cta, LeadForm, Footer; BookingCalendar и SlotPicker; PricingTable и Paywall; Gallery, Image, VideoEmbed; Chart (столбцы, линия,
+      круг, без внешних библиотек); варианты блоков (их id идут в theme.blocks); правила классов из research §2.5 (рабочие кабинеты —
+      compact, restrained, still). Testimonials принимает только отзыв с источником (автор, где оставлен) или заглушку с пометкой
+      «пример», которая не публикуется (D49). tokens v2 — производные переменные research §3.1 (шкала, интервалы, глубина, движение,
+      prefers-reduced-motion). Новый specs/ui/themes.yaml — 8 пресетов research §3.2 (id из M2-21): ниши для выбора агентом, палитра, пара
+      шрифтов, форма, плотность, движение, варианты блоков по умолчанию; статус draft до утверждения дизайнером (M2-20). Код:
+      packages/ui-kit/src/i18n/ru.ts разбивается на i18n/ru/<раздел>.ts, demo собирает разделы demo/sections/*.tsx через import.meta.glob
+      — задачи компонентов не правят общие файлы. Новые компоненты помечаются milestone M2 (в builder.json их включает M2-40).
+      Дополнительно (05.10.2026): компоненты YandexMap (карта проезда, D57) и CaptchaSlot (место для SmartCaptcha, которую подключает
+      runtime); шрифты — по D64 (любая свободная лицензия с правом коммерческого веб-встраивания, лицензия записывается по каждому шрифту;
+      у Fontshare кириллицы нет). Индекс i18n — import.meta.glob с типизацией через satisfies (MP-39).
+    owns: ["specs/ui/ui-kit.yaml", "specs/ui/themes.yaml (новый)", "packages/ui-kit/src/i18n/**", "packages/ui-kit/demo/** (точка входа и сборка разделов)"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; у каждого нового компонента в ui-kit.yaml — props, behaviour, test_ids, a11y и acceptance"
+      - "themes.yaml: 8 пресетов с нишами и значениями всех полей темы v2; пороги контраста — ссылка на tokens.acceptance (проверяет M2-42)"
+      - "Разбиение i18n и demo без изменения поведения: существующие тесты и Playwright demo ui-kit зелёные; `node packages/agents/scripts/gen-builder-assets.mjs --check` проходит"
+
+  - id: M2-26
+    title: "Контракт экранов платформы: «Написать команде», «Передать команде» и «Под ключ», этап дизайна, цены вместо кредитов, адрес и подключения в S10, разделы /admin, «Подробнее для специалиста»"
+    milestone: M2P
+    deps: []
+    specs: ["specs/ui/platform-screens.yaml", "specs/product.yaml#decisions.D28_humanizer", "specs/product.yaml#decisions.D32_human_layer", "specs/product.yaml#decisions.D48_plain_language", "specs/platform/billing.yaml#rub_model.pilot_display", "specs/product.yaml#decisions.D56_destructive_changes", "specs/product.yaml#decisions.D60_support_hours", "specs/product.yaml#decisions.D52_strong_identifiers", "specs/product.yaml#decisions.D53_telegram_names"]
+    owner: frontend
+    parallel_group: p-w0
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Только platform-screens.yaml. Правило stack о латинских метках заменяется политикой текста (D28, D48): простой язык, жаргон — только
+      под «Подробнее для специалиста» и в /admin, список слов — quality/humanizer.yaml#jargon (M2-29). Новое: кнопка и панель «Написать
+      команде» на всех экранах кабинета (непрочитанные, ответ команды, срок ответа, гарантия), «Передать команде» на S2–S7, вход «Под
+      ключ» на S1, этап дизайна S-design после одобрения карточки (три направления, референсы, логотип, цвета, «Ещё варианты»,
+      «Пропустить»), цены rub_model на S3, S6, S-billing с пометкой «на пилоте бесплатно» и без кредитов на S1, S3, S4, S-welcome, S10 —
+      «Адрес и домен» и «Подключения» (платёжный магазин, SMS, почта, бот, CRM, Метрика, SEO), /admin — «Обращения», «Заказы»,
+      «Ограничения», хосты egress в ревью. S1 — обещание, четыре класса систем, два входа. test_ids для всего нового. Дополнительно
+      (05.10.2026): S10 «Подключения» — ввод и замена секретов (поле только на запись, маска, «Проверить подключение»; API — M2-95),
+      Метрика и SEO без сборки, флажок «Имя клиента в Telegram» (D53), заявка на сбор документов с шифрованием (D52); S7 — подтверждение
+      правки, удаляющей данные, словами «поле „Телефон“ исчезнет у 112 записей», снимок и откат (D56); «Написать команде» вне рабочего
+      времени — обещание ответа с конкретным сроком (D60); диалог «Передать команде» — строка согласия на доступ команды к системе
+      (MP-32).
+    owns: ["specs/ui/platform-screens.yaml"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; у каждого нового экрана и региона — data, states, test_ids и acceptance для Playwright"
+      - "Политика текста перечисляет места, где допустимы технические детали (раскрытие «Подробнее для специалиста», /admin, вкладка «Код»)"
+      - "Маршрутов platform-web по-прежнему ≤ 12 (stack): новые сценарии — регионы и этапы существующих маршрутов"
+
+  - id: M2-27
+    title: "Контракт агентов: классы систем и развилки, нейтральный текст о платформе, честные ограничения и «Передать команде», допущения вместо выдуманных фактов, общий модуль правил текста, QA без форума"
+    milestone: M2P
+    deps: []
+    specs: ["specs/agents/orchestrator.yaml", "specs/agents/builder.yaml", "specs/agents/qa.yaml", "specs/product.yaml#decisions.D33_system_classes", "specs/product.yaml#decisions.D34_capability_gaps", "specs/product.yaml#decisions.D43_degolden_prompts", "specs/product.yaml#decisions.D48_plain_language", "specs/product.yaml#decisions.D49_no_fabrication", "specs/product.yaml#decisions.D50_brief_pii_routing", "specs/product.yaml#decisions.D51_special_categories"]
+    owner: agents
+    parallel_group: p-w0
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Только спеки. orchestrator.yaml: Analysis.segment ∈ site|booking|paid_access|crm|events|made_to_order|horizontal (id классов —
+      product.yaml#positioning.system_classes); fork_taxonomy — группы четырёх классов (сайт: блоки, форма заявки, кому уведомление,
+      адрес; запись: услуги, специалисты, слоты, напоминания, предоплата, отмена; платный доступ: тарифы, период, пробный период,
+      автопродление, что закрыто; CRM: воронка, задачи, импорт, дашборд, роли); prompt_skeleton.platform — нейтральный, без скелета
+      Каталог→Заявка…; инструмент report_capability_gap {category, quote, offered, canHandoff} и порядок ответа «честно → альтернатива →
+      «Передать команде»»; output_rules = общий модуль @wizard/humanizer (D48) + допущения помечаются «Предположение:», непроверенное не
+      выдаётся за факт, источники — когда факт чувствительный или пользователь просит (D49). builder.yaml: карточки возможностей
+      (packages/agents/assets/capabilities/*.md — по одной на возможность и класс), инструменты lint_copy, search_stock_images,
+      report_capability_gap, правила текстов внутри систем (D48, D49: без выдуманных отзывов, «лучший в городе», цифр без источника).
+      qa.yaml: эталонные сценарии по одному на класс вместо двух сценариев билетов форума. Дополнительно (05.10.2026): pii_notice — новый
+      текст (ПДн заменяются заглушками, затем лучшая модель; сильные идентификаторы — только в РФ; D50); orchestrator.yaml:162 — список
+      коннекторов текущий и без тарифов (fidelity P-13, P-18); снять лимит «не больше 5 версий карточки» (restrictions-review № 18: расход
+      держит internal_guard); D51 — агент не создаёт полей спецкатегорий, предлагает запись без медданных и записывает пробел.
+    owns: ["specs/agents/orchestrator.yaml", "specs/agents/builder.yaml", "specs/agents/qa.yaml"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; в orchestrator.yaml#prompt_skeleton.static нет скелета «Каталог → Заявка»"
+      - "Для каждого класса D33 — ≥ 4 развилки с options, rec и applies_when; правила из fork_taxonomy.rules превращаются в автотесты в M2-38"
+      - "Поля инструмента report_capability_gap совпадают с api.yaml (M2-22) по именам; список категорий пробелов задан (payments, integration, native_app, design, data, legal, other)"
+
+  - id: M2-28
+    title: "Контракт дизайн-агента и моделей: design.yaml, модели со зрением (сначала T1), callType design_*, граница ПДн для изображений, срок хранения снимков"
+    milestone: M2P
+    deps: []
+    specs: ["specs/agents/models.yaml", "specs/security/data-boundary.yaml#call_types", "specs/product.yaml#decisions.D39_design", "specs/product.yaml#decisions.D46_open_fetching", "docs/research/design-agent-sources.md", "specs/product.yaml#decisions.D45_vision_t1", "specs/product.yaml#decisions.D50_brief_pii_routing", "specs/product.yaml#decisions.D54_direct_chinese_models", "specs/product.yaml#decisions.D62_image_pii_masking", "docs/research/integrations-2026-10.md#8. Vision-модели"]
+    owner: agents
+    parallel_group: p-w0
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Новый specs/agents/design.yaml по docs/research/design-agent-sources.md §4 (документ дорабатывается по D45–D47; расхождения — в
+      пользу product.yaml): шаги D0–D8, контракты DesignBrief, ReferenceDigest, Direction, CriticVerdict; три далёких направления с
+      настоящим текстом клиента; извлечение принципов без копирования; развёртывание в тему v2 и theme.blocks; интерфейсы runDesign(host,
+      input) для platform-api и снимков для fetcher; класс системы — id из product.yaml#positioning.system_classes. models.yaml: callType
+      design_refs (зрение), design_direction, design_critic (зрение, семейство ≠ генератора), design_expand; модели со зрением в реестре —
+      сначала T1, T0 только по правилу региона и «Только РФ» (D45, D26); линтер провайдеров D18; бюджеты —
+      billing.yaml#rub_model.internal_guard.caps.design. data-boundary.yaml#call_types: изображения проходят проверку ПДн (распознанный
+      текст → detect(); находки → T0, D3, D44); снимки публичных страниц — к T1; снимки и тексты чужих страниц удаляются по завершении
+      этапа (D46). Код: packages/llm — новые callType и модели в реестре, строки матрицы роутера. Уточнения 05.10.2026: изображения к T1 —
+      только после обработки packages/pii/image (M2-97; D62), правило кода «любое вложение → T0» (packages/llm policy) заменяется
+      проверкой признака screened; шаг 5 роутера снят (D50: интервью с basic-ПДн — заглушки и tier по умолчанию); DeepSeek — переключатель
+      enabled=false до замера (D54). Кандидаты моделей со зрением в документах расходятся: Z.ai glm-5.3-flash, glm-4.6v, glm-4.6v-flashx;
+      Cloud.ru Kimi-K2.6, Qwen3.6-35B-A3B, Qwen3.5-397B-A17B (формат изображения в Cloud.ru не документирован) — в реестр с
+      verified=false; дымовой тест зрения tools/eval --contract --vision подтверждает формат и включает модель.
+    owns: ["specs/agents/design.yaml (новый)", "specs/agents/models.yaml", "specs/security/data-boundary.yaml (только call_types и правило изображений)", "packages/llm/src/registry.ts", "packages/llm/src/policy.ts", "packages/llm/src/router.ts", "packages/llm/src/types.ts", "packages/llm/test/**", "tools/eval/lib/contract-vision.mjs (новый)"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; линтер реестра моделей (packages/llm) проходит с новыми моделями и callType"
+      - "Матрица роутера: design_refs с изображением, помеченным screened (M2-97), → tier по умолчанию (T1); без признака screened → T0; ruOnly или известный запрещённый регион → T0; интервью с basic-ПДн → T1 с заглушками, со strong-видом → T0 (D50)"
+      - "design.yaml задаёт критерий «разные направления» (различаются минимум пресет, вариант hero и пара шрифтов) и запрет копирования (нет текста, логотипов и раскладки hero референса 1:1)"
+      - "Дымовой тест зрения при наличии ключей (иначе skipped, повтор — M2-62): формат изображения подтверждён для каждого кандидата, модели получают verified=true; отчёт в PR"
+
+  - id: M2-29
+    title: "Контракт качества и общий модуль текста: правила humanizer и простого языка, запрет выдуманных фактов, проверки G0-COPY, G2-COPY, G1-DESIGN, G2-EGRESS, live-набор P и метрики порога"
+    milestone: M2P
+    deps: []
+    specs: ["specs/quality/gates.yaml", "specs/quality/eval.yaml", "specs/product.yaml#decisions.D28_humanizer", "specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#decisions.D48_plain_language", "specs/product.yaml#decisions.D49_no_fabrication", "specs/product.yaml#decisions.D59_eval_budget_and_autonomy"]
+    owner: qa
+    parallel_group: p-w0
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Новый specs/quality/humanizer.yaml — единый источник правил текста (основа — скилл humanizer, адаптация под русский язык): раздутая
+      и рекламная лексика, «правило трёх», злоупотребление тире (в русском тире — грамматический знак, правило ловит избыток вставок, а не
+      тире как таковое), вода и канцелярит, расплывчатые ссылки «эксперты считают», «не просто X, а Y», ИИ-словарь, эмодзи в деловом
+      тексте; простой язык для нетехнических людей; jargon — список технических слов кабинета; no_fabrication (D49, 38-ФЗ): превосходные
+      степени без основания («лучший», «№1»), выдуманные отзывы и цифры, заглушки без пометки «пример»; severity hard|soft и где что
+      применяется (кабинет и письма — строго; тексты систем: hard → блокер, soft → предупреждение). gates.yaml: G0-COPY-01/02, G2-COPY-01
+      (prod: заглушки «пример» и непроверенные утверждения не публикуются без замены или подтверждения владельцем), G1-DESIGN-01…04 по
+      research §4.4 (контраст, переполнение, кегль и длина строки, цели касания — на снимках fetcher), G2-EGRESS-01 (новые хосты → ревью
+      основателя), предупреждения SEO. eval.yaml: формат брифов P (p-<site|book|paid|crm>-NN-slug, поля class, sloppy, beyond),
+      expected_gap, метрики publish_ready, minutes (медиана), cost_rub на систему, gap_reported, fabricated_claims, audit; пороги
+      by_milestone.M2P (≥ 16/20, медиана ≤ 40 мин, ≤ 300 ₽); бюджет прогонов P (утверждает M2-20). Код: packages/gates/src/catalog.ts —
+      записи новых проверок; новый packages/humanizer — правила-данные из humanizer.yaml и модуль промпта promptRules(context) для всех
+      агентов (D48); линтер — M2-33. Дополнительно (executability MP-09, MP-38; D59): run.ts каждого уровня (packages/gates/src/g0, g1,
+      g2) становится реестровым — проверки подхватываются из каталогов g0/checks, g1/checks, g2/checks по glob, поэтому M2-33, M2-52,
+      M2-72, M2-76 добавляют только свои файлы. В gates.yaml и catalog.ts сразу все id проверок вехи: G0-COPY-01/02, G0-DATA-01 (числа из
+      брифа и карточки не выдуманы), G0-CONN-AVAIL-01, G0-NOTIFY-KIND-01, G0-MEDIA-URL-01, G0-SECURE-FIELD-01, G2-COPY-01,
+      G2-PAY-RECEIPT-01, G2-SUB-CONSENT-01 (автопродление без согласия плательщика — блокер prod), G1-DESIGN-01…04, G2-EGRESS-01.
+      eval.yaml: publish_ready и needs_founder_review по D59, minutes — от отправки брифа до publish_ready с этапом дизайна, cost_rub без
+      шага audit, fabricated_claims, формат пакета для агентов-ревьюеров. Корпус для линтера: негативы — реальные строки репозитория
+      (i18n, docs), позитивы — примеры humanizer.yaml.
+    owns: ["specs/quality/**", "specs/quality/humanizer.yaml (новый)", "packages/gates/src/catalog.ts", "packages/gates/test/catalog.test.ts", "packages/humanizer/** (каркас, данные правил, модуль промпта)", "packages/gates/src/g0/run.ts", "packages/gates/src/g1/run.ts", "packages/gates/src/g2/run.ts", "packages/gates/src/{g0,g1,g2}/checks/index.ts (новый, реестр по glob)"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; catalog.test.ts сверяет catalog.ts с gates.yaml, включая новые проверки"
+      - "humanizer.yaml: у каждого правила ≥ 2 положительных и ≥ 2 отрицательных примера на русском (фикстуры для M2-33); «Москва — столица России» не нарушение тире"
+      - "packages/humanizer: promptRules('cabinet' | 'system' | 'chat') детерминирован (снимок), собирается из humanizer.yaml генератором с --check; размер ≤ 1 500 токенов"
+      - "eval.yaml#thresholds.by_milestone содержит M2P с порогами D42; описан режим «без помощи человека» (ответы по рекомендации, первое направление дизайна, тестовый режим коннекторов)"
+      - "Тест реестра проверок: файл в g0/checks, g1/checks или g2/checks подключается без правки run.ts; отчёты существующих проверок не изменились (снимок)"
+
+  - id: M2-30
+    title: "platform-web: точки расширения — реестр фич features/*/register.ts, слоты шапки, Workspace, S10 и /admin, разбиение i18n по разделам, компонент «Подробнее для специалиста»"
+    milestone: M2P
+    deps: []
+    specs: ["specs/ui/platform-screens.yaml", "specs/product.yaml#decisions.D28_humanizer"]
+    owner: frontend
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Рефакторинг без изменения поведения, чтобы фичи волн p-w1…p-w3 не правили общие файлы. Реестр
+      apps/platform-web/src/features/*/register.ts (import.meta.glob, eager): фича регистрирует кнопку в шапке кабинета, панель, регион
+      этапа рабочего пространства, раздел S10, вкладку /admin, блок в ревью основателя. i18n: ru.ts → i18n/ru/*.ts по разделам с той же
+      формой объекта строк. Компонент SpecialistDetails («Подробнее для специалиста», закрыт по умолчанию, aria-expanded) для технических
+      деталей (D28). Индекс i18n — import.meta.glob (eager) с типизацией через satisfies; в register.ts поле order и тест на дубликаты
+      (executability MP-39).
+    owns: ["apps/platform-web/src/app/**", "apps/platform-web/src/i18n/**", "apps/platform-web/src/features/** (каркас и реестр)", "apps/platform-web/src/components/**", "apps/platform-web/src/screens/workspace/Workspace.tsx", "apps/platform-web/src/screens/settings/Settings.tsx", "apps/platform-web/src/screens/admin/AdminConsole.tsx", "apps/platform-web/test/**"]
+    acceptance:
+      - "Все существующие тесты platform-web (vitest DOM) и Playwright m1, m2, pilot зелёные без изменения ожиданий"
+      - "Тест реестра: тестовая фича из apps/platform-web/test/fixtures появляется в шапке, S10 и /admin без правки Workspace.tsx, Settings.tsx и AdminConsole.tsx"
+      - "SpecialistDetails: закрыт по умолчанию, раскрывается по клику и Enter, содержимое вне доступного дерева до раскрытия (DOM-тест)"
+
+  - id: M2-91
+    title: "Ревизия ограничений (D44): таблица всех ограничений моделей, агентов, гейтов, коннекторов и runtime с классом основания и предложением «оставить / ослабить / снять / серая зона»"
+    milestone: M2P
+    deps: []
+    specs: ["specs/product.yaml#decisions.D44_restriction_principle", "specs/product.yaml#non_goals", "specs/agents/models.yaml", "specs/security/data-boundary.yaml", "specs/security/abuse.yaml", "specs/security/compliance.yaml", "specs/security/isolation.yaml", "specs/quality/gates.yaml", "specs/connectors/email.yaml", "specs/connectors/telegram.yaml", "specs/connectors/yookassa.yaml", "specs/connectors/qr.yaml", "specs/runtime/runtime.yaml", "specs/agents/orchestrator.yaml"]
+    owner: docs
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: done
+    claimed_by: null
+    description: >
+      Сделано 04.10.2026: таблица docs/reviews/2026-10-04-restrictions-review.md (120 ограничений, классы основания, предложения, раздел 3
+      — серые зоны, раздел 5 — решения основателя). Спеки этой задачей не правились.
+    owns: ["docs/reviews/2026-10-04-restrictions-review.md"]
+    acceptance:
+      - "Каждое ограничение перечисленных спек — строка таблицы со ссылкой файл#якорь; выборочная сверка: grep «MUST NOT» по этим файлам не находит неучтённых пунктов"
+      - "Для классов «иное законодательство» и «закон о ПДн и ИБ» указана норма (152-ФЗ, 149-ФЗ, 38-ФЗ, 54-ФЗ, 161-ФЗ и т. п.); для «продуктовое без основания» — предложение снять или вынести в серую зону"
+      - "Сводка для основателя на одной странице: сколько строк по классам, топ-10 ограничений, которые сильнее всего мешают четырём классам систем и порогу D42"
+
+  - id: M2-98
+    title: "Контракт платформы, часть 2: адрес системы и свой домен с подтверждением владения, дизайн и референсы, медиа Pexels и Pixabay, хосты egress в ревью; стадия design; deploy; monorepo"
+    milestone: M2P
+    deps: []
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/platform/workflows.yaml", "specs/platform/deploy.yaml", "specs/architecture.yaml", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D46_open_fetching", "specs/product.yaml#decisions.D57_yandex_widgets", "specs/product.yaml#decisions.D61_stock_photos", "docs/research/integrations-2026-10.md#7. Кастомные домены", "docs/research/integrations-2026-10.md#9. Egress-allowlist", "docs/research/integrations-2026-10.md#3. Стоковые фото"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Только спеки и типы; вторая половина разделённого контракта M2-22 (executability MP-17). api.yaml — пути в блоке «M2P · M2-98»:
+      адрес системы (выбор имени <имя>.sandpile.ru; свой домен: TXT _btb-challenge.<домен> с токеном организации подтверждает владение и
+      привязку к организации, плюс одна целевая запись — CNAME на <slug>.sandpile.ru для поддомена или A на статический IP входа для
+      корня; статус проверки с подсказками; периодическая перепроверка; «надгробия» освобождённых доменов и slug ≥ 90 дней; ≤ 3 своих
+      домена на организацию, ≤ 5 проверок в час на домен; домены платформы и публичные суффиксы запрещены; Host вне проверенных → 421 —
+      executability MP-03); дизайн (референсы-ссылки и файлы, три направления, выбор, «ещё варианты», «пропустить»); медиа (поиск в Pexels
+      и Pixabay через платформу, импорт с хранением у нас и атрибуцией, D61); хосты egress и per-tenant хосты коннекторов в карточке ревью
+      основателя. db.yaml — блок «M2P · M2-98»: custom_domains с надгробиями, design_references, design_directions, media_assets,
+      fetch_log (хост, время, организация, без содержимого; 90 дней — executability MP-31). workflows.yaml: стадия design после одобрения
+      карточки и до сборки, прогон kind=design, событие design_ready. deploy.yaml: borntobuild.ru и sandpile.ru (wildcard *.sandpile.ru по
+      DNS-01, сертификат на каждый свой домен по HTTP-01 — лимиты Let’s Encrypt по integrations §7.2), статический IP egress, два
+      развёртывания загрузчика — fetcher-public и renderer-internal (MP-04), переменные WIZARD_TEAM_CHAT_ID, WIZARD_TEAM_HOURS, SMS,
+      PEXELS_API_KEY, PIXABAY_API_KEY, YANDEX_MAPS_API_KEY, SMARTCAPTCHA_*. architecture.yaml#monorepo: packages/humanizer, apps/fetcher,
+      packages/pii/image и depends_on; interfaces.gate_context.abuse += secureFieldsAllowed (D52). apps/platform-api/src/db/types.ts —
+      типы (дописывание).
+    owns: ["specs/platform/api.yaml (блок M2-98)", "specs/platform/db.yaml (блок M2-98)", "specs/platform/workflows.yaml", "specs/platform/deploy.yaml", "specs/architecture.yaml", "apps/platform-api/src/db/types.ts (дописывание)"]
+    acceptance:
+      - "`node tools/specs/validate.mjs` зелёный; api.yaml — валидный OpenAPI 3.1; у каждого нового пути — коды ошибок с message_ru и пример"
+      - "Контракт своего домена описывает подтверждение владения TXT с токеном организации, перепроверку, надгробия, лимиты и 421; отдельно — инструкции для поддомена (CNAME) и корня (A)"
+      - "workflows.yaml: стадия design (вход, выход, пропуск с темой по нише) и событие design_ready; deploy.yaml: два развёртывания загрузчика с сетевыми политиками и новые переменные; architecture.yaml без циклов depends_on"
+
+  - id: M2-99
+    title: "Самообнаружение регистрации: миграции по каталогу и allowUnorderedMigrations, маршруты по glob, генерируемые builder.json и qa.json вне git, merge=union для дописываемых файлов"
+    milestone: M2P
+    deps: []
+    specs: ["specs/platform/db.yaml", "specs/milestones.yaml", "specs/architecture.yaml#monorepo"]
+    owner: platform
+    parallel_group: p-w0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Снимает коллизии параллельных задач на общих файлах регистрации (executability MP-01, MP-15, MP-44).
+      apps/platform-api/src/db/index.ts читает каталог migrations/ (readdir, сортировка по имени) вместо статических import и включает
+      allowUnorderedMigrations на время вехи; apps/platform-api/test/migrations.test.ts выводит ожидаемые таблицы и колонки из db.yaml
+      (поле owner_task), а не из массивов M1_TABLES и M2_TABLES. apps/platform-api/src/app.ts и apps/runtime/src/app.ts подключают модули
+      маршрутов по glob (routes/*.ts) — задачи добавляют файл, не правя app.ts. packages/agents/assets/builder.json, qa.json и design.json
+      не коммитятся: генерируются в pretest и prebuild (.gitignore), CI перестаёт требовать `--check` от задач, не владеющих генераторами.
+      .gitattributes: merge=union для THIRD_PARTY_NOTICES.md.
+    owns: ["apps/platform-api/src/db/index.ts", "apps/platform-api/test/migrations.test.ts", "apps/platform-api/src/app.ts", "apps/runtime/src/app.ts", "package.json (скрипты pretest и prebuild)", "packages/agents/package.json (скрипты генерации)", ".gitignore", ".gitattributes", ".github/workflows/ci.yml (шаг генерации ассетов)"]
+    acceptance:
+      - "Тест: миграции, слитые не по порядку (0023 раньше 0021), применяются на чистой и на существующей БД без ошибки «corrupted migrations»"
+      - "Тест: новый файл routes/<имя>.ts подключается в platform-api и runtime без правки app.ts"
+      - "builder.json, qa.json и design.json отсутствуют в git, `pnpm test` их генерирует, CI зелёный"
+      - "migrations.test.ts берёт таблицы новой миграции из db.yaml; .gitattributes содержит merge=union для THIRD_PARTY_NOTICES.md"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w1 — независимые потоки возможностей ----------------
+  - id: M2-32
+    title: "Живые модели и правило региона на стенде: неизвестный регион не ограничивает T1 (D26); pilot-secrets передаёт YANDEX_*, *_BASE_URL, WIZARD_BUILD_DEFAULT_TIER и новые переменные; локальный стенд в live-режиме"
+    milestone: M2P
+    deps: [M2-22, M2-98, M2-23, M2-24, M2-28]
+    specs: ["specs/product.yaml#decisions.D26_models_default", "specs/platform/deploy.yaml#local", "specs/platform/deploy.yaml#pilot", "specs/agents/models.yaml", "specs/security/data-boundary.yaml#region_restriction", "specs/agents/models.yaml#routing_algorithm", "specs/ui/platform-screens.yaml#screens.S10"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      tools/deploy/pilot-secrets.mjs передаёт только CLOUDRU_API_KEY и ZAI_API_KEY, локальный стенд по умолчанию — fixture, поэтому каждая
+      сборка повторяла золотой «форум». Передать YANDEX_API_KEY, YANDEX_FOLDER_ID, CLOUDRU_BASE_URL, ZAI_BASE_URL, YANDEX_BASE_URL,
+      DEEPSEEK_* (если заданы), WIZARD_BUILD_DEFAULT_TIER и все переменные контрактов p-w0 (WIZARD_TEAM_CHAT_ID, WIZARD_TEAM_HOURS, SMS,
+      PEXELS_API_KEY, UNSPLASH_ACCESS_KEY, fetcher). tools/deploy/local.mjs читает .data/local/inputs.env и поднимает стенд с
+      WIZARD_LLM_MODE=live, если ключи есть; иначе — явное предупреждение, fixture только по флагу. Сюда же перенесена прежняя задача
+      M2-31 (правило региона): apps/platform-api/src/runs/queue.ts orgPolicyOf считает region_code = NULL ограничением, по D26
+      t1Restricted = orgs.t1_restricted; источники региона и GeoIP не меняются; роутер packages/llm по-прежнему считает отсутствующее поле
+      ограничением.
+    owns: ["tools/deploy/pilot-secrets.mjs", "tools/deploy/local.mjs", "tools/deploy/test/**", ".env.example", ".github/workflows/pilot*.yml (только передача секретов)", "docs/ops/local-rehearsal.md", "apps/platform-api/src/runs/queue.ts (только orgPolicyOf)", "apps/platform-api/src/routes/orgs.ts", "apps/platform-api/test/org-*.test.ts", "apps/platform-api/test/region*.test.ts"]
+    acceptance:
+      - "Тест (data-boundary.yaml#tests «Регион»): org с region_code=NULL → tier по умолчанию (T1 при WIZARD_BUILD_DEFAULT_TIER=T1); region_code=91 → T0 policy_region_restricted; region_code=77 и вход из 91 по GeoIP → T0; ruOnly=true → T0 policy_ru_only"
+      - "GET /orgs/:id/settings отдаёт t1Restricted=false для org без региона; переключатель «Только РФ» в S10 по-прежнему переводит все вызовы на T0 (существующий e2e)"
+      - "packages/llm: route() без поля t1Restricted → T0 (существующий тест fail-safe не меняется)"
+      - "Тест pilot-secrets: из inputs.env с полным набором ключей Secret содержит все переменные deploy.yaml#local.env_vars.llm и новые переменные контрактов; пропуск обязательной → ошибка с именем переменной"
+      - "Тест local.mjs: при ключах в .data/local/inputs.env стенд стартует с WIZARD_LLM_MODE=live и WIZARD_BUILD_DEFAULT_TIER=T1 по умолчанию; без ключей — предупреждение и режим fixture только с флагом --fixture"
+      - "Смоук на стенде при наличии ключей (иначе skipped с причиной; отчёт в docs/ops/local-rehearsal.md): свободный бриф не про форум даёт карточку со своим названием и ролями; в llm_calls есть tier=T1 со scrubbed=true"
+
+  - id: M2-33
+    title: "Линтер текста packages/humanizer: признаки ИИ-текста, жаргон и выдуманные факты по humanizer.yaml, CLI, проверки G0-COPY и G2-COPY, отчётный режим для кабинета и писем"
+    milestone: M2P
+    deps: [M2-29, M2-98]
+    specs: ["specs/quality/gates.yaml", "specs/product.yaml#decisions.D28_humanizer", "specs/product.yaml#decisions.D49_no_fabrication", "specs/architecture.yaml#monorepo"]
+    specs_pending: ["specs/quality/humanizer.yaml"]
+    owner: qa
+    parallel_group: p-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Чистая функция lintCopy(text, {locale, context: cabinet|email|system|chat}) → findings [{rule, severity, span, hint_ru}] по правилам
+      humanizer.yaml, без сети и LLM (типографские правила — можно npm typograf, MIT, после проверки лицензии). CLI `pnpm --filter
+      @wizard/humanizer lint <glob> [--strict]`; тест, прогоняющий строки apps/platform-web/src/i18n/** и шаблоны писем в отчётном режиме
+      (не падает до M2-86 и M2-87). G0-COPY-01 (hard → блокер), G0-COPY-02 (soft → предупреждение) по видимым текстам ui/** и шаблонам
+      уведомлений; G2-COPY-01 при публикации в prod — заглушки «пример» и непроверенные утверждения.
+    owns: ["packages/humanizer/src/lint/** (новый)", "packages/humanizer/bin/** (новый)", "packages/humanizer/test/**", "packages/gates/src/g0/checks/copy.ts (новый)", "packages/gates/src/g0/checks/data.ts (G0-DATA-01)", "packages/gates/src/g2/checks/copy.ts (новый)", "packages/gates/package.json", "packages/gates/test/copy*.test.ts"]
+    acceptance:
+      - "vitest: все примеры humanizer.yaml классифицируются верно; на корпусе packages/humanizer/test/corpus.ru.jsonl (негативы — реальные строки репозитория, ≥ 200; позитивы — примеры humanizer.yaml) precision ≥ 0.9 и recall ≥ 0.8; корпус зафиксирован снимком, а не генерируется проверяемым кодом; грамматическое тире не нарушение"
+      - "G0: текст «Наша инновационная платформа — это не просто сайт, а настоящий прорыв» → G0-COPY-01 с подсказкой; нейтральный текст — passed; ≤ 1 с на систему"
+      - "G2-COPY-01: отзыв без источника, «лучший в городе», «1000+ довольных клиентов» без данных владельца → блокер prod с текстом для владельца; заглушка с пометкой «пример» → блокер prod, в draft — предупреждение"
+      - "Отчётный режим печатает число нарушений по кабинету и письмам и завершается 0; --strict завершается 1 при нарушениях (включают M2-86, M2-87)"
+      - "G0-DATA-01: числа и цены, которые есть в брифе или карточке, не считаются выдуманными (restrictions-review № 43); тест"
+
+  - id: M2-34
+    title: "Рублёвая модель в platform-api: каталог цен, лимит бесплатных черновиков, счётчики правок и SMS, внутренний лимит организации вместо видимых кредитов, возврат за неудачные сборки"
+    milestone: M2P
+    deps: [M2-22]
+    specs: ["specs/platform/billing.yaml#rub_model", "specs/platform/billing.yaml", "specs/platform/api.yaml", "specs/platform/db.yaml", "specs/product.yaml#decisions.D31_pricing_rub"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Реализация billing.yaml#rub_model: каталог цен из одного места (API M2-22), использование организации без кредитов,
+      FREE_DRAFTS_LIMIT при создании системы, EDITS_LIMIT при одобрении change-карточки запущенной системы, учёт SMS для квоты,
+      автоматический внутренний грант org_allowance, потолки internal_guard.caps, полный внутренний refund неудачных прогонов,
+      staff-переопределения в /admin API и CLI pilot. Платформенный лимит 6 000 ₽ и предупреждение на 80 % уже есть (M2-15): проверить
+      алерты 80 % и 100 % в Telegram основателю.
+    owns: ["apps/platform-api/src/billing/**", "apps/platform-api/src/pricing/** (новый)", "apps/platform-api/src/routes/billing.ts", "apps/platform-api/src/routes/credits.ts", "apps/platform-api/src/routes/systems.ts (только проверка лимита черновиков)", "apps/platform-api/src/pilot/**", "apps/platform-api/migrations/0020_p_billing.ts", "apps/platform-api/test/billing-v2*.test.ts"]
+    acceptance:
+      - "Тест: 4-й новый черновик за 30 дней → 402 FREE_DRAFTS_LIMIT с message_ru из billing.yaml#rub_model.free_drafts; черновик, все сборки которого упали по вине платформы, квоту не тратит; staff-переопределение снимает лимит (staff_audit_log)"
+      - "Тест: 11-я успешная правка запущенной системы за месяц → 402 EDITS_LIMIT; неудачная или отменённая правка и «Стиль» счётчик не меняют"
+      - "Тест-линтер ответов: ни один клиентский эндпоинт (не /admin, не /internal) не возвращает полей credits*, cap*, costRub; /admin и CLI pilot видят расход и лимит"
+      - "Прогон, завершённый failed или без ревизии с пройденным G0, возвращает внутренний hold полностью; сумма ledger по прогону = 0"
+      - "80 % и 100 % WIZARD_LLM_MONTHLY_CAP_RUB → по одному алерту основателю за месяц в Telegram (мок Bot API) и письмом"
+      - "Суммарный расход на модели одной системы > 60 кредитов (≈ 300 ₽) → алерт основателю и метка в /admin (billing.yaml#rub_model.internal_guard.system_cost_alert)"
+
+  - id: M2-35
+    title: "«Написать команде» в platform-api: обращения и сообщения, уведомление основателю в Telegram со ссылкой на систему, ответ из /admin, письмо клиенту, срок ответа в рабочее время"
+    milestone: M2P
+    deps: [M2-22]
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/security/compliance.yaml", "specs/product.yaml#decisions.D32_human_layer", "specs/product.yaml#decisions.D60_support_hours"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Треды обращений организации (с привязкой к системе и экрану или без), сообщения клиента и команды, вложения — скриншоты PNG/WebP ≤ 5
+      МБ. Новое сообщение клиента → бот платформы шлёт в WIZARD_TEAM_CHAT_ID короткий текст и ссылки на /admin и на систему. Ответ staff
+      (с MFA) → сообщение в кабинете и письмо автору. Срок ответа — 2 часа рабочего времени (WIZARD_TEAM_HOURS, по умолчанию Пн–Пт
+      10:00–19:00 МСК), просрочка → повторный алерт. Удаление — по сроку хранения организации. Безопасность (executability MP-28): в
+      Telegram уходит только организация, система и ссылка — без текста клиента; ≤ 10 сообщений в час на организацию; вложения
+      перекодируются и отдаются с nosniff. Рабочее время — D60.
+    owns: ["apps/platform-api/src/support/** (новый)", "apps/platform-api/src/routes/support.ts", "apps/platform-api/migrations/0021_p_support.ts", "apps/platform-api/test/support*.test.ts"]
+    acceptance:
+      - "API-тест: клиент пишет со ссылкой на систему → мок Bot API получает сообщение с chat_id команды и ссылкой /admin; staff отвечает → клиент видит ответ в треде, письмо в dev-outbox"
+      - "Срок: сообщение в пятницу 18:30 МСК → срок ответа понедельник 11:30; просрочка → один повторный алерт (тест на поддельных часах)"
+      - "Чужая организация не видит тред (404); не staff не видит admin-пути (404), staff без MFA — 403; каждое действие staff — staff_audit_log"
+      - "Тест: сообщение в Telegram не содержит текста клиента; 11-е сообщение организации за час → 429; вложение SVG или HTML → 415"
+
+  - id: M2-36
+    title: "«Передать команде» и «Под ключ» в platform-api: заказы, снимок брифа, карточки и черновика, временный доступ основателя к системе с журналом, продолжение с того же состояния"
+    milestone: M2P
+    deps: [M2-22]
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/platform/billing.yaml#rub_model.turnkey_order", "specs/product.yaml#decisions.D32_human_layer", "specs/product.yaml#decisions.D30_offer"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Заказ kind=handoff (из системы на любом этапе: интервью, карточка, дизайн, сборка, готово) фиксирует сообщения, версию карточки и
+      ревизию черновика; kind=turnkey (с S1, без системы) — бриф и контакты. Очередь /admin: оценить (цена ≥ 49 000 ₽, срок ≤ 14 дней, на
+      пилоте — «бесплатно»), взять в работу. Взятие даёт staff временную роль editor в организации клиента (истекает, отзывается, каждое
+      действие — staff_audit_log, клиент видит «Систему ведёт команда»); основатель продолжает чат и сборки той же системы; «Вернуть
+      клиенту» снимает доступ. Прогон, шедший в момент передачи, доигрывается или отменяется без потери ревизий. Согласие и границы
+      (executability MP-32): при передаче клиент подтверждает строку «команда получит доступ к системе и данным»; по умолчанию staff видит
+      draft, спеку и код, prod-данные — только после отдельного подтверждения клиента; чтение prod-записей пишется в staff_audit_log. По
+      заказу «под ключ» исходники выдаются вручную (D55), кнопки экспорта нет.
+    owns: ["apps/platform-api/src/handoff/** (новый)", "apps/platform-api/src/routes/handoff.ts", "apps/platform-api/src/http/auth.ts (только временный доступ staff)", "apps/platform-api/migrations/0022_p_handoff.ts", "apps/platform-api/test/handoff*.test.ts"]
+    acceptance:
+      - "API-тест: передача на этапе card → заказ с версией карточки; staff берёт в работу → отправляет сообщение и одобряет карточку от имени staff; клиент видит статус «Систему ведёт команда»; «Вернуть клиенту» → доступ staff 403"
+      - "Заявка «Под ключ» без системы → заказ kind=turnkey; основатель создаёт из неё систему в организации клиента"
+      - "Временный доступ staff истекает через срок заказа (по умолчанию 14 дней); после истечения — 403; журнал содержит все действия"
+      - "Уведомление основателю в Telegram о новом заказе (мок Bot API) со ссылкой на /admin"
+      - "Тест: без отдельного подтверждения клиента staff получает 403 на чтение prod-данных системы; после подтверждения — 200 и строка staff_audit_log"
+
+  - id: M2-37
+    title: "Домены Born to Build: платформа на borntobuild.ru, системы на <имя>.sandpile.ru — DNS, wildcard TLS, ingress, frame-src платформы, PSL, отправитель писем"
+    milestone: M2P
+    deps: [M2-20, M2-98]
+    specs: ["specs/platform/deploy.yaml#pilot", "specs/platform/deploy.yaml#cloud.domains", "specs/architecture.yaml#environments", "specs/product.yaml#decisions.D27_brand"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      Конфигурация пилота на финальных доменах: значения helm и профиль pilot, DNS-записи (OpenTofu Timeweb или API регистратора),
+      wildcard-сертификаты *.sandpile.ru и borntobuild.ru через DNS-01, WIZARD_PLATFORM_ORIGIN, домен систем в runtime, frame-src
+      платформы, отправитель noreply@borntobuild.ru (SPF, DKIM, DMARC у провайдера), заявка sandpile.ru в Public Suffix List. Wildcard
+      *.sandpile.ru — один сертификат по DNS-01 (лимит Let’s Encrypt 50 сертификатов на зарегистрированный домен в неделю). Маскирование
+      сегмента hookToken в access-логах ingress (executability MP-24). Cookie систем — host-only (__Host-, без Domain), пока заявка в PSL
+      не применена (MP-40).
+    owns: ["infra/helm/wizard/values*.yaml", "infra/helm/profiles/**", "infra/helm/wizard/templates/{ingress,certificates,acme-webhook}.yaml", "infra/tofu/timeweb/**", "infra/acme-dns01/**", "apps/platform-web/src/csp.ts", "docs/ops/deploy.md"]
+    acceptance:
+      - "helm template профиля pilot: ingress на borntobuild.ru и *.sandpile.ru, сертификаты для обоих; тесты tools/deploy/test зелёные"
+      - "Смоук на staging: https://borntobuild.ru открывает кабинет, превью открывается с <slug>--draft.sandpile.ru во фрейме, prod — <slug>.sandpile.ru; frame-src платформы = *.sandpile.ru; без доступа к домену или staging — skipped с причиной"
+      - "Письмо входа приходит от noreply@borntobuild.ru, SPF и DKIM проходят (заголовок Authentication-Results)"
+      - "Тест: access-лог ingress не содержит hookToken (маска); cookie систем без атрибута Domain"
+
+  - id: M2-38
+    title: "Оркестратор без золотого сценария: нейтральный текст о платформе, сегменты и развилки четырёх классов, общий модуль правил текста, допущения вместо выдуманных фактов"
+    milestone: M2P
+    deps: [M2-27, M2-29]
+    specs: ["specs/agents/orchestrator.yaml#fork_taxonomy", "specs/agents/orchestrator.yaml#prompt_skeleton", "specs/agents/orchestrator.yaml", "specs/quality/eval.yaml#fixtures", "specs/product.yaml#decisions.D43_degolden_prompts", "specs/product.yaml#decisions.D33_system_classes", "specs/product.yaml#decisions.D50_brief_pii_routing"]
+    owner: agents
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      packages/agents/src/orchestrator/prompt.ts — текст о платформе по prompt_skeleton без «Скелет: Каталог → Заявка → …»; пример в
+      промпте — не форум и не кондитерская; output_rules — импорт promptRules('chat') из @wizard/humanizer (D48) и правила допущений и
+      источников (D49); schemas.ts SEGMENTS += site, booking, paid_access, crm; taxonomy.ts и fork-labels.ts — развилки классов из
+      orchestrator.yaml; estimate.coefficients по классам. Золотые фикстуры demo остаются для CI; фикстуры unit и eval перезаписываются в
+      порядке мержа milestones.yaml M2P.plan.hotspots. Новый текст плашки ПДн (D50) и снятый лимит версий карточки — из M2-27.
+    owns: ["packages/agents/src/orchestrator/**", "packages/agents/test/orchestrator/**", "tools/fixtures/demo/** (детерминированная регенерация gen-golden.mjs; при конфликте — перезапустить генератор; eval.yaml#regression.pr_rule_M2P)"]
+    acceptance:
+      - "Тест: в собранном системном промпте оркестратора нет подстрок «Каталог → Заявка», «форум», «билет», «кондитер»; правила текста берутся из @wizard/humanizer, а не копией"
+      - "Тест: Analysis с segment ∈ {site, booking, paid_access, crm} → развилки своего класса (≥ 2) и горизонтальные; segment=events — прежнее поведение"
+      - "Тест (orchestrator.yaml#fork_taxonomy.rules): для каждого класса 3–7 вопросов, ровно один recommended, все forkId из таксономии; plan=free — нет phone_otp"
+      - "pnpm test зелёный в fixture-режиме; FIXTURE_MISS нет"
+
+  - id: M2-39
+    title: "QA без привязки к форуму: эталонные сценарии по одному на класс в gen-qa-assets.mjs, нейтральный промпт QA, понятные объяснения провалов"
+    milestone: M2P
+    deps: [M2-27, M2-29]
+    specs: ["specs/agents/qa.yaml", "specs/quality/gates.yaml#scenario_dsl", "specs/product.yaml#decisions.D43_degolden_prompts", "specs/product.yaml#decisions.D48_plain_language"]
+    owner: agents
+    parallel_group: p-w1
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      packages/agents/scripts/gen-qa-assets.mjs кладёт в qa.json два сценария билетов форума. Заменить на четыре эталонных сценария из
+      qa.yaml (заявка с сайта, запись на слот с напоминанием, доступ после оплаты подписки, перенос сделки по воронке CRM); промпт QA без
+      доменных слов форума; объяснения провалов, которые видит клиент (qa_explain), — с promptRules('chat') из @wizard/humanizer.
+    owns: ["packages/agents/src/qa/**", "packages/agents/scripts/gen-qa-assets.mjs", "packages/agents/test/qa/**", "tools/fixtures/demo/** (детерминированная регенерация gen-golden.mjs; при конфликте — перезапустить генератор; eval.yaml#regression.pr_rule_M2P)"]
+    acceptance:
+      - "`node packages/agents/scripts/gen-qa-assets.mjs --check` проходит; в qa.json нет подстрок «форум», «билет», «ticket»"
+      - "Тест: четыре эталонных сценария валидны по scenario_dsl и проходят G1 на синтетических спеках классов в packages/agents/test/qa"
+      - "pnpm test зелёный в fixture-режиме"
+
+  - id: M2-40
+    title: "Строитель: карточки возможностей и рецепты классов, общий модуль правил текста и запрет выдуманных фактов, новые компоненты ui-kit в builder.json, заглушки lint_copy, search_stock_images, report_capability_gap"
+    milestone: M2P
+    deps: [M2-21, M2-25, M2-27, M2-29]
+    specs: ["specs/agents/builder.yaml", "specs/ui/ui-kit.yaml", "specs/product.yaml#decisions.D48_plain_language", "specs/product.yaml#decisions.D49_no_fabrication", "specs/product.yaml#decisions.D43_degolden_prompts"]
+    specs_pending: ["specs/quality/humanizer.yaml"]
+    owner: agents
+    parallel_group: p-w1
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Загрузчик карточек возможностей packages/agents/assets/capabilities/*.md (одна карточка — один файл; задачи коннекторов и классов
+      добавляют свои файлы без правки кода); в промпте строителя — оглавление карточек и инструмент чтения карточки.
+      gen-builder-assets.mjs включает компоненты ui-kit с milestone ≤ M2. Тексты внутри систем — promptRules('system') из
+      @wizard/humanizer и правила D49 (отзывы — только от владельца, иначе заглушка «пример»; без превосходных степеней и цифр без
+      источника). Инструменты lint_copy (вызывает линтер M2-33; до него — заглушка без находок), search_stock_images и
+      report_capability_gap — определения и заглушки хоста; обработчики — M2-61 и M2-77.
+    owns: ["packages/agents/src/builder/**", "packages/agents/scripts/gen-builder-assets.mjs", "packages/agents/assets/capabilities/** (загрузчик и общие карточки)", "packages/agents/test/builder/**", "tools/fixtures/demo/** (детерминированная регенерация gen-golden.mjs; при конфликте — перезапустить генератор; eval.yaml#regression.pr_rule_M2P)"]
+    acceptance:
+      - "`node packages/agents/scripts/gen-builder-assets.mjs --check` проходит; builder.json содержит новые компоненты ui-kit (Hero, BookingCalendar, Paywall, Gallery, Chart и др.)"
+      - "Тест: новая карточка в assets/capabilities появляется в оглавлении промпта без правки кода; статическая часть промпта ≤ бюджета builder.yaml"
+      - "Тест: инструменты lint_copy, search_stock_images, report_capability_gap объявлены с zod-схемами; заглушки хоста отвечают NOT_IMPLEMENTED с понятным текстом для модели"
+      - "pnpm test зелёный в fixture-режиме"
+
+  - id: M2-41
+    title: "Знания дизайн-агента: максимальная выжимка локальных дизайн-скиллов в packages/agents/assets/design (принципы, анти-слоп, русская типографика, цвет, классы, движение) с генератором, бюджетом и атрибуцией"
+    milestone: M2P
+    deps: [M2-28]
+    specs: ["docs/research/design-agent-sources.md", "specs/product.yaml#decisions.D47_design_sources_and_fonts", "specs/product.yaml#decisions.D39_design", "docs/research/design-agent-catalog.md"]
+    specs_pending: ["specs/agents/design.yaml"]
+    owner: agents
+    parallel_group: p-w1
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      По docs/research/design-agent-sources.md и design-agent-catalog.md (§2 и §5) — максимум полезного из локальных дизайн-скиллов
+      (design-pipeline и dp-*, impeccable, ui-ux-pro-max, taste-skill, apple-design, emil-design-eng и др.) с соблюдением серой зоны GZ-02
+      (fidelity P-01): дословно — только из источников под MIT или Apache-2.0 с LICENSE и NOTICE в THIRD_PARTY_NOTICES.md; репозитории без
+      подтверждённой лицензии и цитаты Apple — только пересказ принципов своими словами. Противоречия между скиллами и правила, ломающие
+      русскую типографику, решаются по research §2.3–2.4. Генератор gen-design-assets.mjs собирает design.json (не коммитится, M2-99) с
+      бюджетом токенов из design.yaml.
+    owns: ["packages/agents/assets/design/** (новый)", "packages/agents/scripts/gen-design-assets.mjs (новый)", "packages/agents/test/design-assets*.test.ts", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "`node packages/agents/scripts/gen-design-assets.mjs` собирает design.json в пределах бюджета design.yaml"
+      - "Тест: у каждого правила есть source (скилл и раздел) и тип verbatim | paraphrase; каждый verbatim-фрагмент ссылается на источник с лицензией MIT или Apache-2.0, записанный в THIRD_PARTY_NOTICES.md; у источников без лицензии и apple-design — только paraphrase"
+      - "design.json содержит разделы directions, antislop, typography_ru, color, classes, motion; в каждом ≥ 5 правил (тест)"
+
+  - id: M2-42
+    title: "ui-kit: токены v2 (палитра от фирменного цвета, пара шрифтов с кириллицей, шкала, форма, плотность, глубина, движение) и 8 тем, шрифты из открытых источников"
+    milestone: M2P
+    deps: [M2-21, M2-25]
+    specs: ["specs/ui/ui-kit.yaml#tokens", "specs/appspec/appspec.schema.json", "specs/product.yaml#decisions.D39_design", "specs/product.yaml#decisions.D47_design_sources_and_fonts", "specs/product.yaml#decisions.D64_fonts"]
+    specs_pending: ["specs/ui/themes.yaml"]
+    owner: frontend
+    parallel_group: p-w1
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      themeToTokens(theme v2, scheme) остаётся чистой функцией и обратно совместима с темой v1; themeLint (research §3.1: понижение
+      drenched → committed при нехватке контраста, display ≠ text, рабочие экраны — still); 6–8 пресетов themes.yaml как данные пакета;
+      themeForNiche для агента. Шрифты (D64): максимум открытых семейств с кириллицей (Google Fonts, свободные семейства ParaType и т. п.;
+      у Fontshare кириллицы нет, Velvetyne — почти только латиница) с любой лицензией, которая разрешает бесплатное коммерческое
+      веб-встраивание и самостоятельный хостинг (правило AGENTS.md); коммерческие шрифты с агрегаторов не используются (GZ-01). Каталог
+      шрифтов с лицензией и источником; woff2 cyrillic+latin в пакете, раздача runtime с /_wizard/fonts; лицензии —
+      THIRD_PARTY_NOTICES.md. Темы помечены draft до утверждения (кто утверждает — ответ основателя в M2-20).
+    owns: ["packages/ui-kit/src/tokens/**", "packages/ui-kit/src/themes/** (новый)", "packages/ui-kit/fonts/** (новый)", "packages/ui-kit/test/tokens*.test.ts", "packages/ui-kit/test/themes*.test.ts", "apps/runtime/src/routes/fonts.ts (новый, если нужен маршрут)", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "vitest (ui-kit.yaml#tokens.acceptance): для 8 тем и 4096 фирменных цветов контраст текста и кнопок ≥ 4.5:1 в обеих схемах после themeLint"
+      - "vitest: тема v1 без новых полей даёт те же токены, что до изменений (снимок); тема v2 детерминирована"
+      - "Скрипт проверки каталога шрифтов: у каждого поставляемого шрифта лицензия из списка AGENTS.md (D64), источник и тип лицензии записаны в каталоге и THIRD_PARTY_NOTICES.md, глифы А–я, Ё, ё есть; шрифт без проверенной лицензии в бандл не попадает; runtime отдаёт файлы темы без сторонних запросов"
+
+  - id: M2-43
+    title: "ui-kit: блоки лендинга — Header, Hero, Features, Steps, Testimonials (только с источником или «пример»), Faq, Cta, LeadForm, Footer — с вариантами"
+    milestone: M2P
+    deps: [M2-25]
+    specs: ["specs/ui/ui-kit.yaml", "specs/product.yaml#decisions.D39_design", "specs/product.yaml#decisions.D49_no_fabrication"]
+    specs_pending: ["specs/ui/themes.yaml"]
+    owner: frontend
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Компоненты по ui-kit.yaml (M2-25): варианты блоков, токены v2, data-wz-*, 390 и 1280 без горизонтального скролла, изображения через
+      Image (M2-45; до него — img с обязательным alt), LeadForm пишет запись сущности заявки через data_binding и показывает согласие на
+      обработку ПДн и на сообщения. Testimonials рендерит отзыв только с автором и источником; заглушка показывает метку «Пример —
+      замените своим отзывом». LeadForm на публичной странице содержит CaptchaSlot — капчу подключает runtime (M2-46), токен уходит вместе
+      с заявкой.
+    owns: ["packages/ui-kit/src/components/blocks/** (новый)", "packages/ui-kit/demo/sections/blocks.tsx", "packages/ui-kit/src/i18n/ru/blocks.ts", "packages/ui-kit/test/blocks*.test.ts"]
+    acceptance:
+      - "Playwright demo: каждый блок и вариант на 390×844 и 1280×800 — scrollWidth ≤ innerWidth; скриншоты в артефактах CI"
+      - "a11y (axe в demo): 0 нарушений уровня serious; порядок заголовков; LeadForm с подписями и сообщениями об ошибках"
+      - "LeadForm через createMemoryDataSource создаёт запись, без согласия отправка невозможна; Testimonials без источника показывает метку «Пример» (тест)"
+
+  - id: M2-45
+    title: "ui-kit: Image (варианты, атрибуция Pexels и Pixabay), Gallery, VideoEmbed (Rutube, VK Видео, Kinescope, фасад до клика), YandexMap, Chart без внешних библиотек"
+    milestone: M2P
+    deps: [M2-23, M2-25]
+    specs: ["specs/ui/ui-kit.yaml", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D57_yandex_widgets", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: frontend
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Image — srcset и sizes из вариантов runtime (контракт M2-23), lazy, обязательный alt, атрибуция автора и стока (Pexels, Pixabay) из
+      метаданных; Gallery — сетка и просмотр с клавиатуры; VideoEmbed — iframe строится из разобранного {provider, id, hash}, а не из src
+      клиента, sandbox и referrerpolicy, фасад-превью до клика; YandexMap — карта проезда по адресу, скрипт подключает runtime по
+      закрытому списку CSP (D57), до клика — статичная плашка с адресом; Chart — SVG, подписи на графике, таблица данных для скринридера,
+      цвета из токенов, без 3D.
+    owns: ["packages/ui-kit/src/components/media/** (новый)", "packages/ui-kit/src/components/charts/** (новый)", "packages/ui-kit/demo/sections/media.tsx", "packages/ui-kit/demo/sections/charts.tsx", "packages/ui-kit/src/i18n/ru/media.ts", "packages/ui-kit/src/i18n/ru/charts.ts", "packages/ui-kit/test/media*.test.ts", "packages/ui-kit/test/charts*.test.ts", "packages/ui-kit/src/components/map/** (новый)", "packages/ui-kit/demo/sections/map.tsx", "packages/ui-kit/src/i18n/ru/map.ts"]
+    acceptance:
+      - "vitest: VideoEmbed отклоняет URL вне Rutube, VK Видео, Kinescope; разбор id видео каждого сервиса"
+      - "Playwright demo: Gallery и Chart на 390 и 1280 без горизонтального скролла; у Chart есть таблица данных; Image без alt — ошибка в dev"
+      - "До клика по фасаду VideoEmbed нет запросов к сторонним хостам (перехват сети в Playwright)"
+      - "YandexMap: до клика нет запросов к хостам Яндекса; ключ API не попадает в бандл системы (подставляет runtime)"
+
+  - id: M2-46
+    title: "runtime: исключения CSP по спеке (Метрика без Вебвизора, видео, Яндекс Карты, SmartCaptcha), согласие на аналитику, проверка SmartCaptcha на публичных формах, SEO"
+    milestone: M2P
+    deps: [M2-21, M2-23]
+    specs: ["specs/runtime/runtime.yaml#security_headers", "specs/runtime/runtime.yaml", "specs/security/compliance.yaml", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D57_yandex_widgets", "docs/research/integrations-2026-10.md#5. Яндекс Метрика", "docs/research/integrations-2026-10.md#6. Встраивание видео"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      CSP строится из спеки системы: базовая политика + только закрытый список origin (runtime.yaml, M2-23) при
+      app.analytics.yandexMetrikaId, полях video_url, YandexMap и публичных формах со SmartCaptcha; Unsplash нет (D61). Метрику подключает
+      runtime (не код системы) после согласия на аналитические cookie: webvisor:false, без clickmap, trackLinks и ecommerce; CSP с путями
+      (mc.yandex.ru/metrika/, yastatic.net/s3/metrika/) (executability MP-30); отказ запоминается. SmartCaptcha (D57): runtime подключает
+      виджет в CaptchaSlot и проверяет токен на сервере (smartcaptcha через egress) при публичном создании записи и перед сообщением
+      посетителю (MP-26); без ключа (локально) — тестовый режим. SEO: title, description и og:* маршрута из app.seo и pages[].seo в
+      index.html; /sitemap.xml и /robots.txt для prod, draft — noindex.
+    owns: ["apps/runtime/src/preview/headers.ts", "apps/runtime/src/routes/static.ts", "apps/runtime/src/seo/** (новый)", "apps/runtime/src/captcha/** (новый)", "apps/runtime/test/csp*.test.ts", "apps/runtime/test/seo*.test.ts", "apps/runtime/test/captcha*.test.ts"]
+    acceptance:
+      - "Тест: система без аналитики и видео — CSP как прежде (снимок); с yandexMetrikaId — только mc.yandex.ru и yastatic.net с путями в нужных директивах; хостов Вебвизора нет; бандл с <script src='https://evil.example'> по-прежнему блокируется (e2e)"
+      - "Тест: до согласия запросов к mc.yandex.ru нет; после согласия счётчик грузится с webvisor:false (в DOM нет признаков Вебвизора); отказ запоминается"
+      - "Тест: публичное создание записи без валидного токена SmartCaptcha → 422 с понятным текстом; с токеном (мок проверки) → 201"
+      - "Тест: GET маршрута prod отдаёт <title>, meta description и og:* страницы; /sitemap.xml содержит публичные страницы; draft-хост отдаёт X-Robots-Tag: noindex"
+
+  - id: M2-47
+    title: "runtime: изображения на страницах — поле image, автосжатие и адаптивные варианты при загрузке, раздача inline с кешем; file остаётся скачиванием"
+    milestone: M2P
+    deps: [M2-21, M2-23]
+    specs: ["specs/runtime/runtime.yaml#files", "specs/security/isolation.yaml", "specs/product.yaml#decisions.D38_sites_domains", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Загрузка в поле image: сигнатура jpeg/png/webp, снятие EXIF (геометка), сжатие в WebP и варианты по ширине (например 480, 960, 1600)
+      кодеком с допустимой лицензией (MIT, Apache-2.0, BSD; без LGPL-нативных сборок — AGENTS.md; вариант — WASM-кодеки). Раздача
+      вариантов inline с Content-Type из allowlist, nosniff и долгим кешем по хешу; права чтения — как у строки (публичные страницы — без
+      входа). Поле file — без изменений (attachment). Защита (executability MP-29): ≤ 40 Мпикс и ≤ 8000 px по стороне, потолок памяти и
+      времени кодека (worker thread) — иначе 413 или 422; запись в поле image — только ролям с create, публичное создание с image по
+      умолчанию запрещено; лимит частоты загрузок.
+    owns: ["apps/runtime/src/files/**", "apps/runtime/src/routes/files.ts", "apps/runtime/src/media/** (новый)", "apps/runtime/package.json (зависимость кодека)", "apps/runtime/test/files*.test.ts", "apps/runtime/test/media*.test.ts", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "Тест: JPEG 4000×3000 с EXIF GPS → варианты WebP заданных ширин без EXIF; крупнейший вариант ≤ 400 КБ"
+      - "Тест: GET варианта image → 200 inline, Content-Type image/webp, nosniff, Cache-Control immutable; поле file по-прежнему attachment + CSP sandbox; SVG в поле image → 415"
+      - "Лицензия кодека из allowlist AGENTS.md; `pnpm licenses:check` зелёный"
+      - "Тест: PNG 20 000×20 000 (декомпрессионная бомба) → 413 без превышения памяти; публичная роль без права create не загружает image"
+
+  - id: M2-48
+    title: "apps/fetcher: два развёртывания — fetcher-public (любые открытые страницы, только интернет через свой прокси с pinning) и renderer-internal (draft-превью систем для G1-DESIGN); снимки 390/1280 только на время прогона"
+    milestone: M2P
+    deps: [M2-98, M2-28]
+    specs: ["specs/platform/deploy.yaml", "specs/security/isolation.yaml", "specs/product.yaml#decisions.D46_open_fetching", "docs/research/design-agent-sources.md"]
+    specs_pending: ["specs/agents/design.yaml"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Headless Chromium (Playwright, Apache-2.0) под gVisor (research §4.3), executability MP-04 и MP-31. fetcher-public: только интернет
+      — весь трафик Chromium через собственный прокси с проверкой IP после резолва и соединением по проверенному IP (pinning), включая
+      подресурсы, iframe, fetch и XHR страницы, meta refresh и JS-редиректы; NetworkPolicy запрещает кластер, RFC 1918 и метаданные
+      облака; схемы только http и https; WebRTC, WebSocket и FTP выключены; лимиты CPU, памяти и pids, readOnlyRootFilesystem, свежий
+      контекст на запрос, kill по времени; квоты ≤ 10 страниц на этап дизайна и ≤ 30 в сутки на организацию; журнал fetch_log (хост,
+      время, организация, без содержимого). renderer-internal: только draft-превью по внутренней сети и setContent для HTML дизайн-агента,
+      без выхода в интернет. Результат — снимки 390 и 1280, видимый текст, computed styles; текст страницы передаётся агенту как данные.
+      По D46 содержимое открытых страниц не фильтруется; снимки и тексты живут только на время прогона (fidelity P-11). Ядро проверки
+      адресов — packages/connectors/src/net.ts (isPrivateAddress) только чтение.
+    owns: ["apps/fetcher/** (новый, кроме src/checks)", "infra/helm/wizard/templates/fetcher.yaml (новый)", "infra/docker/fetcher/** (новый)", "infra/helm/wizard/values.yaml (только ключ fetcher, дописывание)", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "Корпус SSRF: десятичные, восьмеричные и hex-IP, [::ffff:7f00:1], 6to4, NAT64, localhost., userinfo, 30x на приватный адрес, img, iframe, fetch() и location= на 169.254.169.254, порты вне 80/443/8080/8443, DNS-ребиндинг на уровне прокси → отказ без соединения; публичная страница любого содержания → снимок"
+      - "Снимок тестовой страницы 390 и 1280: PNG нужных размеров, текст и computed styles извлечены; cookies не сохраняются между запросами; таймаут, лимит размера и квоты соблюдаются"
+      - "Тест хранения: по завершении прогона снимки и тексты удалены, в fetch_log — только хост, время и организация; helm template: fetcher-public без доступа к кластеру и БД, renderer-internal без выхода в интернет"
+
+  - id: M2-49
+    title: "Платежи: ядро PaymentProvider, общий /api/pay/:integration, диспетчер вебхуков с проверкой подписи, _w_payments, чеки 54-ФЗ и СБП, mock-провайдер, заглушки новых коннекторов"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-24]
+    specs: ["specs/connectors/connector-interface.md", "specs/runtime/runtime.yaml#payments_endpoint", "specs/runtime/sdk.md", "specs/product.yaml#decisions.D35_client_payments"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Общий слой пяти сервисов: платёж по записи (сумма из спеки или функции, не от клиента; entity.payable), сверка суммы, валюты и
+      recordId по уведомлению и getPayment (L3-28), идемпотентность, монотонные статусы (поздний pending не откатывает paid), возврат,
+      модель чека 54-ФЗ, СБП, usePayment в SDK. Один диспетчер /_wizard/hooks/<connector>/<integration>/<hookToken> для всех коннекторов:
+      сырое тело, режим проверки провайдера (hmac | shared_secret | refetch, M2-24) до разбора, исполнение под служебной ролью
+      integration:<имя>, ответ приёмника в формате сервиса. Контрактный набор тестов paymentProviderContract(provider) для задач
+      провайдеров (executability MP-11). mock-провайдер для e2e. Заглушки реестра — в M2-24.
+    owns: ["packages/connectors/src/payments/** (новый)", "apps/runtime/src/routes/pay.ts", "apps/runtime/src/routes/hooks.ts (новый)", "apps/runtime/src/payments/** (новый, кроме subscriptions*)", "packages/sdk/src/client/payments*.ts", "packages/connectors/test/payments*.test.ts", "apps/runtime/test/pay*.test.ts"]
+    acceptance:
+      - "Тест на mock-провайдере: оплата → вебхук → запись paid; сумма в вебхуке ≠ сумме записи → needs_review, не paid; повторная доставка → одна запись в _w_payments"
+      - "Тест: неверная подпись или неподтверждённый перезапросом статус → 401, тело не разбирается, записей нет; уведомление на чужую интеграцию → 404; поздний pending после paid статус не меняет"
+      - "Модель чека 54-ФЗ сериализуется для mock; у провайдера без чеков — отправка без чека и предупреждение G2"
+      - "paymentProviderContract(mock) зелёный и экспортируется для задач провайдеров"
+
+  - id: M2-50
+    title: "Сообщения v2: получатели — контакт посетителя с согласием, роль, владелец; каналы email, SMS, Telegram, auto; только транзакционные; журнал _w_messages"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-24]
+    specs: ["specs/runtime/runtime.yaml#workflows", "specs/connectors/email.yaml", "specs/connectors/telegram.yaml", "specs/security/compliance.yaml", "specs/product.yaml#decisions.D36_messaging", "specs/product.yaml#decisions.D53_telegram_names", "specs/product.yaml#decisions.D57_yandex_widgets"]
+    specs_pending: ["specs/connectors/sms.yaml"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      packages/connectors/src/notify.ts шлёт только пользователям, на которых ссылается запись. Добавить: $record.<поле entity.contact>
+      для посетителей без аккаунта — только шаблоны kind=transactional и только при согласии purpose=messages в _w_consents (форма пишет
+      согласие вместе с записью); $role:<role> и $owners — уведомления персоналу о новых заявках и записях всегда; канал auto (Telegram,
+      если связан, иначе email, иначе SMS в пределах квоты); журнал доставки _w_messages без текста и адреса (хеш адреса). Согласие
+      purpose=messages пишется вместе с записью (DataAccess — только запись согласия). Защита посетителей (executability MP-26): ≤ 1
+      подтверждение на контакт за 24 ч, ≤ 3 сообщения в сутки на контакт и систему; SMS посетителю — после проверки номера одноразовым
+      кодом или одно служебное сообщение с кодом; ссылки в шаблонах — только на домен системы; «отписаться» в каждом сообщении, отзыв →
+      _w_consents; публичное создание проверено SmartCaptcha (M2-46). Telegram (D53, fidelity P-14): при флажке владельца allowNames в
+      уведомлении персоналу — имя клиента и суть заявки, без телефона и почты; канал auto выбирает Telegram для шаблона с ПДн только при
+      флажке.
+    owns: ["packages/connectors/src/notify.ts", "packages/connectors/src/templates.ts", "packages/connectors/src/channels/** (новый)", "apps/runtime/src/jobs/**", "packages/connectors/test/notify*.test.ts", "apps/runtime/test/notify*.test.ts", "apps/runtime/src/data/access.ts (только запись согласия purpose=messages; дальше — M2-64)"]
+    acceptance:
+      - "Тест: заявка посетителя без согласия на сообщения → подтверждение не отправлено, уведомление владельцу отправлено; с согласием → подтверждение отправлено, в _w_messages строка без адреса и текста"
+      - "Тест: шаблон не kind=transactional для посетителя → ошибка G0 при сборке и отказ runtime"
+      - "Тест: канал auto выбирает Telegram при связанном чате, иначе email, иначе SMS; исчерпание квоты SMS → email и уведомление владельцу"
+      - "Тест лимитов: второе подтверждение на тот же контакт за сутки не уходит; четвёртое сообщение контакту за сутки → отказ с событием владельцу; в каждом сообщении есть ссылка «отписаться»"
+      - "Тест D53: без флажка шаблон Telegram с именем клиента → ошибка G2-TG-01, канал auto уходит в email; с флажком — имя и суть, телефон и почта по-прежнему блок"
+
+  - id: M2-51
+    title: "Коннектор SMS: аккаунт агрегатора платформы (SMS Aero или SMSC) и свой аккаунт клиента, имя отправителя, квота 100 SMS/мес на запущенную систему, тестовый режим"
+    milestone: M2P
+    deps: [M2-24]
+    specs: ["specs/connectors/connector-interface.md", "specs/platform/billing.yaml#rub_model.sms_included", "specs/product.yaml#decisions.D36_messaging"]
+    specs_pending: ["specs/connectors/sms.yaml"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      MessagingChannel для SMS: агрегатор — по ключам M2-20, второй — через тот же интерфейс; номера РФ, нормализация, длина и кодировка,
+      стоимость в журнале, квота billing.yaml#rub_model.sms_included, test_mode — в .data/outbox. Вход по телефону (phone_otp) не меняется
+      (D19). Вызовы агрегатора — через egressFetch (прокси с pinning), не guardedFetch (executability MP-27). На пилоте канал работает
+      сразу (D36).
+    owns: ["packages/connectors/src/sms/** (новый)", "packages/connectors/test/sms*.test.ts"]
+    acceptance:
+      - "Тест на мок-сервере агрегатора: отправка, статус доставки, ошибка баланса → понятная ошибка владельцу без раскрытия ключа"
+      - "Тест: 101-е SMS системы за месяц на аккаунте платформы → QUOTA_EXCEEDED; свой аккаунт клиента — без квоты платформы"
+      - "Живой смоук при ключе в GitHub Secrets: одно SMS на номер основателя; без ключа тест пропускается с пометкой"
+
+  - id: M2-52
+    title: "Исходящий HTTP из функций систем: ctx.http.fetch через egress-прокси по allowlist спеки, журнал _w_egress_log, лимиты, G2-EGRESS и список хостов в ревью основателя"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-30]
+    specs: ["specs/security/isolation.yaml", "specs/runtime/runtime.yaml#functions", "specs/runtime/sdk.md", "specs/quality/gates.yaml", "specs/ui/platform-screens.yaml#screens.S-admin", "specs/product.yaml#decisions.D37_integrations"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      apps/runtime/src/sandbox/guest.mjs отвечает на ctx.http.fetch ошибкой EGRESS_DISABLED. Включить: https, только хосты app.egress ∪
+      function.egress, через egress-прокси (SNI = хост CONNECT), таймаут, размер ответа и число запросов на вызов; журнал без тел и
+      заголовков авторизации; секреты — из secret://. G2-EGRESS-01: новый хост относительно опубликованной ревизии → ревью основателя;
+      список хостов виден в /admin (блок ревью через реестр фич M2-30). Allowlist системы — без пересечения с глобальным списком (D37,
+      isolation.yaml); per-tenant хосты коннекторов (config.subdomain, portalHost, payformHost) входят в allowlist и видны на ревью.
+      Коннекторы с хостами клиента ходят через egressFetch, а не guardedFetch (MP-27).
+    owns: ["apps/runtime/src/sandbox/guest.mjs", "apps/runtime/src/sandbox/egress*.ts", "apps/runtime/src/egress-main.ts", "packages/sdk/src/host/http*.ts", "packages/gates/src/g2/checks/egress.ts (новый)", "apps/platform-api/src/publish/moderation.ts (только список хостов)", "apps/platform-web/src/features/egress-review/** (новый)", "apps/runtime/test/egress*.test.ts"]
+    acceptance:
+      - "Тест в песочнице (workerd, джоба sandbox CI): fetch к хосту из allowlist через тестовый прокси → 200; к хосту вне списка, к IP, к http:// → EGRESS_FORBIDDEN без соединения; строка в _w_egress_log без тела"
+      - "Тест: спека с новым хостом относительно prod-ревизии → G2-EGRESS-01 требует ревью основателя; в /admin в карточке ревью виден список хостов"
+      - "escape-тесты isolation.yaml по-прежнему падают внутри песочницы"
+      - "Тест: 3xx на хост вне allowlist, подмена Host и Proxy-*, превышение суточного лимита исходящих байт системы → отказ с записью в журнал"
+
+  - id: M2-54
+    title: "Live-набор P: 20 брифов по 5 на класс (сайт, запись, платный доступ, CRM), часть небрежных, часть за пределами возможностей, с ожиданиями и категориями пробелов"
+    milestone: M2P
+    deps: [M2-29]
+    specs: ["specs/quality/eval.yaml#briefs", "specs/quality/eval.yaml", "specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#decisions.D33_system_classes"]
+    owner: qa
+    parallel_group: p-w1
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      Брифы пишем сами, без ПДн: в каждом классе ≥ 2 «как пишет спешащий нетехнический человек» (опечатки, без структуры, разговорный тон)
+      и ≥ 1 с запросом за пределами возможностей (например, приложение в App Store, интеграция с 1С без API, оплата криптовалютой) —
+      expected_gap с категорией. tools/eval/lib/briefs.mjs принимает новый формат id.
+    owns: ["tools/eval/briefs/p-*.json (новые)", "tools/eval/lib/briefs.mjs", "tools/eval/test/briefs*.test.mjs"]
+    acceptance:
+      - "20 файлов p-<site|book|paid|crm>-NN-*.json, по 5 на класс; ≥ 8 помечены sloppy, ≥ 4 — beyond с expected_gap"
+      - "CI: packages/pii по всем text → 0 находок (eval.yaml#briefs.rules); валидация формата брифов зелёная"
+      - "Ни в одном брифе нет «форум», «билет», «кондитер» (тест); expected не ссылается на золотые фикстуры"
+
+  - id: M2-55
+    title: "Eval-харнесс режима P: готовность к публикации без человека (G0–G2), медиана минут, ₽ на систему, пробелы, выдуманные факты, независимый аудит на моделях другого семейства, бюджет"
+    milestone: M2P
+    deps: [M2-29]
+    specs: ["specs/quality/eval.yaml", "specs/quality/eval.yaml#metrics", "specs/agents/models.yaml#routes", "specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#decisions.D59_eval_budget_and_autonomy"]
+    owner: qa
+    parallel_group: p-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Режим --suite=p: харнесс проходит путь как клиент без помощи (ответы по рекомендации, первое направление дизайна, тестовый режим
+      коннекторов, тестовые секреты) и считает publish_ready = G0, G1, G2 без блокеров на финальной ревизии; ожидание ревью основателя не
+      считается помощью и пишется метрикой needs_founder_review (D59); minutes — от отправки брифа до publish_ready; cost_rub на систему
+      без шага audit; gap_reported для beyond; fabricated_claims (G2-COPY). Шаг audit — модель другого семейства (routes.audit). Пакет для
+      агентов-ревьюеров — каталог docs/reviews/p-eval/<дата>/<бриф>/ с брифом, спекой, отчётами гейтов, снимками 390 и 1280 и списком
+      пробелов (JSON по схеме в eval.yaml). Бюджет — остаток месячного лимита платформы (D59): бриф, прогноз которого не помещается, не
+      стартует; флаг --only-failed <отчёт> повторяет только провалившиеся брифы. Раннер --smoke-connectors прогоняет живой смоук каждого
+      коннектора по ключам из GitHub Secrets.
+    owns: ["tools/eval/harness/**", "tools/eval/lib/** (кроме briefs.mjs)", "tools/eval/run.mjs", "tools/eval/ci.mjs", "tools/eval/test/** (кроме briefs*)", ".github/workflows/eval-live.yml"]
+    acceptance:
+      - "Юнит-тесты метрик на записанных результатах: publish_ready, needs_founder_review, медиана minutes, cost_rub, gap_reported, fabricated_claims; порог by_milestone.M2P даёт pass/fail верно на границах (16/20, 40 мин, 300 ₽)"
+      - "Тест: модель аудита того же семейства, что строитель прогона, → аудит отклоняется; пакет ревьюера валиден по схеме"
+      - "Тест: прогноз стоимости > остатка лимита → бриф не стартует с понятным сообщением; --only-failed берёт только провалы из отчёта; fixture-режим P работает без сети"
+
+  - id: M2-72
+    title: "Правки prod, удаляющие данные (D56): последствия словами, подтверждение владельца, снимок данных перед изменением, откат одной кнопкой"
+    milestone: M2P
+    deps: [M2-21, M2-26, M2-29, M2-30]
+    specs: ["specs/product.yaml#decisions.D56_destructive_changes", "specs/appspec/ops.yaml", "specs/platform/workflows.yaml", "specs/quality/gates.yaml#G0", "specs/ui/platform-screens.yaml#screens.S7"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Id M2-72 переиспользован: прежняя задача «Битрикс24» объединена с M2-71. planMigration помечает destructive-шаги и считает
+      последствия на prod (число непустых значений поля, затронутых строк); change-карточка S7 показывает «поле „Телефон“ исчезнет у 112
+      записей»; владелец (не editor) подтверждает — токен привязан к ревизии и хешу плана (confirmDestructive, M2-21). Публикация с
+      подтверждением: снимок затронутых таблиц и колонок (копия в служебную схему снимков или выгрузка в S3 в РФ) до применения, затем
+      миграция; «Откатить» одной кнопкой возвращает ревизию спеки и данные из снимка. Снимки хранятся 30 дней и попадают под retention и
+      удаление ПДн. G0-MIG-01 пропускает destructive-шаг только с валидным токеном.
+    owns: ["packages/appspec/src/migrate.ts (только destructive с подтверждением — исключение из заморозки M2-21)", "packages/gates/src/g0/migrations.ts (G0-MIG-01)", "apps/platform-api/src/destructive/** (новый)", "apps/platform-api/src/publish/snapshot.ts", "apps/platform-api/src/publish/prod.ts (шаг снимка и отката)", "apps/platform-api/migrations/0029_p_snapshots.ts", "apps/platform-web/src/screens/workspace/DiffCard.tsx", "apps/platform-web/src/features/destructive/** (новый)", "apps/platform-web/src/i18n/ru/destructive.ts", "apps/platform-api/test/destructive*.test.ts", "packages/e2e/specs/p/destructive.spec.ts"]
+    acceptance:
+      - "Тест: удаление поля с 112 непустыми значениями → в diff «поле „Телефон“ исчезнет у 112 записей»; публикация без подтверждения → DESTRUCTIVE_IN_PROD; editor подтвердить не может (403)"
+      - "e2e: владелец подтверждает → снимок создан до миграции → поле удалено → «Откатить» возвращает поле и все 112 значений"
+      - "Тест: токен подтверждения от другой ревизии или плана не принимается; снимок удаляется через 30 дней (журнал удаления)"
+
+  - id: M2-92
+    title: "Решение основателя по таблице ограничений (D44): по каждой строке — оставить, ослабить, снять или серая зона"
+    milestone: M2P
+    deps: [M2-91]
+    specs: ["specs/product.yaml#decisions.D44_restriction_principle", "specs/product.yaml#gray_zone", "specs/escalation.yaml#merge_policy"]
+    owner: founder
+    parallel_group: p-w1
+    estimate_days: 0.5
+    status: done
+    claimed_by: null
+    description: >
+      Сделано 05.10.2026: основатель решил серые зоны раздела 3 таблицы (grill-4 № 27–44, restrictions-review §5); решения записаны в
+      product.yaml#decisions D50–D64 и product.yaml#gray_zone.items (правка спек этого раунда).
+    owns: ["specs/product.yaml#gray_zone"]
+    acceptance:
+      - "У каждой строки таблицы заполнено решение основателя с датой"
+      - "Пункты «серая зона» перенесены в product.yaml#gray_zone.items; изменения решений product.yaml — PR с меткой founder-review (escalation.yaml#merge_policy)"
+
+  - id: M2-95
+    title: "Секреты и настройки подключений без сборки: ввод и ротация секретов систем владельцем, «Проверить подключение», Метрика, SEO, хосты и несекретные поля коннекторов"
+    milestone: M2P
+    deps: [M2-21, M2-22, M2-24, M2-98]
+    specs: ["specs/platform/api.yaml", "specs/quality/gates.yaml#G2", "specs/connectors/connector-interface.md", "specs/appspec/ops.yaml", "specs/product.yaml#decisions.D37_integrations", "specs/product.yaml#decisions.D38_sites_domains"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Ввод prod-секретов владельцем не был спроектирован — без него G2-SECRET-02 не пропустит ни одну систему с платёжным сервисом, своим
+      SMS или CRM (executability MP-02). API: PUT и DELETE /systems/{id}/secrets/{name}?env=draft|prod — только запись (значение не
+      возвращается), маска и дата, ротация (старое значение действует до успешной проверки нового), формат по configSchema коннектора,
+      «Проверить подключение» (тестовый вызов коннектора через egress); staff_audit_log без значения; только owner. Настройки без сборки и
+      без LLM (как POST /systems/:id/style): set_app {analytics.yandexMetrikaId, seo, egress}, update_page {seo}, set_integration_config
+      (subdomain, portalHost, payformHost, allowNames) — ревизия kind=settings; новый хост egress или per-tenant хост → флаг ревью
+      основателя. Пути — в api.yaml после M2-22 и M2-98 (правило мержа по возрастанию id).
+    owns: ["apps/platform-api/src/secrets/**", "apps/platform-api/src/settings/** (новый)", "apps/platform-api/src/routes/settings.ts (новый)", "apps/platform-api/migrations/0030_p_secrets.ts", "apps/platform-api/test/secrets*.test.ts", "apps/platform-api/test/settings*.test.ts", "specs/platform/api.yaml (только пути секретов и настроек)"]
+    acceptance:
+      - "Тест: PUT секрета prod → G2-SECRET-02 проходит; GET не возвращает значения; канареечное значение не найдено в логах, ответах API, таблицах dbos, событиях SSE и staff_audit_log"
+      - "Тест: «Проверить подключение» на mock-провайдере — успех и понятная ошибка; при ротации старое значение действует до успешной проверки нового"
+      - "Тест: set_app с номером Метрики и SEO создаёт ревизию без LLM и без расхода; новый хост egress ставит флаг ревью основателя; editor → 403"
+
+  - id: M2-96
+    title: "Запись на слоты: useSlots, расчёт свободных слотов из расписания, 409 SLOT_TAKEN при пересечении (noOverlap), расширение btree_gist платформенной миграцией"
+    milestone: M2P
+    deps: [M2-21, M2-23]
+    specs: ["specs/runtime/sdk.md", "specs/runtime/runtime.yaml", "specs/appspec/ops.yaml", "specs/product.yaml#decisions.D33_system_classes"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      У useSlots, расчёта слотов, маппинга нарушения noOverlap в 409 и контракта расписания не было владельца — класс «запись» не
+      собирался (executability MP-06). Источник расписания — по контракту M2-21 и M2-23 (рабочие часы ресурса, длительность услуги,
+      буфер); /api/slots считает свободные слоты в app.timezone с учётом существующих записей; useSlots в packages/sdk; SQLSTATE 23P01
+      (или ошибка триггера) → 409 SLOT_TAKEN «Этот слот уже заняли, выберите другой». CREATE EXTENSION под мигратором системы невозможен —
+      btree_gist создаёт платформенная миграция (резерв 0027); если расширение недоступно — noOverlap через триггер с блокировкой _xact_.
+    owns: ["apps/runtime/src/data/slots*.ts (новый)", "apps/runtime/src/routes/slots.ts (новый)", "apps/runtime/src/http/errors.ts (только 23P01 → 409)", "packages/sdk/src/client/slots*.ts (новый)", "packages/sdk/src/sdk.d.ts (дописывание)", "apps/platform-api/migrations/0027_p_btree_gist.ts", "apps/runtime/test/slots*.test.ts"]
+    acceptance:
+      - "Интеграционный тест на Postgres 16: две параллельные записи на один слот → одна 201, другая 409 SLOT_TAKEN"
+      - "Тест: слоты на границе суток в app.timezone, длительность услуги и буфер учитываются; занятые слоты не возвращаются"
+      - "Пример useSlots из sdk.md компилируется (tsc); M2-44 и M2-82 используют хук без моков в e2e"
+
+  - id: M2-97
+    title: "Изображения перед моделями со зрением (D62): распознавание текста на нашем сервере, маскирование имён, телефонов и почт, размытие лиц; сильные идентификаторы — только T0"
+    milestone: M2P
+    deps: [M2-28]
+    specs: ["specs/product.yaml#decisions.D62_image_pii_masking", "specs/product.yaml#decisions.D45_vision_t1", "specs/security/data-boundary.yaml", "specs/agents/models.yaml"]
+    owner: platform
+    parallel_group: p-w1
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Распознавания текста на изображениях не делал никто — загрузки клиента и снимки чужих страниц ушли бы к T1 с ПДн (executability
+      MP-05). packages/pii/image: локальный OCR (ru и en; например tesseract.js, Apache-2.0 — лицензия и модели проверяются, всё офлайн),
+      detect() по распознанному тексту с координатами, замазывание найденных имён, телефонов и почт; детектор лиц с совместимой лицензией
+      → размытие; документ или strong-вид (паспорт, СНИЛС, карта) → решение t0_only. Результат {image, screened: true, counts} — роутер
+      пускает изображение к T1 только с screened (M2-28). Оригиналы не хранятся дольше прогона.
+    owns: ["packages/pii/src/image/** (новый)", "packages/pii/package.json", "packages/pii/test/image/**", "packages/pii/data/image/** (модели OCR и лиц)", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "Канареечные PNG: ФИО, телефон и email замазаны — OCR выходного изображения не находит ни одной канарейки; лицо на фикстуре размыто"
+      - "Страница паспорта → t0_only; роутер не пускает изображение без screened к T1 (тест вместе с матрицей M2-28)"
+      - "Лицензии OCR и детектора лиц — из списка AGENTS.md; обработка ≤ 3 с на изображение 1280 px на CPU стенда; тесты без сети"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w2 — зависимые потоки: интерфейсы, провайдеры, коннекторы, дизайн-агент ----------------
+  - id: M2-31
+    title: "Шифрование полей с сильными идентификаторами (D52): паспорт, СНИЛС, ИНН физлица, сканы документов — по заявке организации после проверки командой"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-30, M2-47]
+    specs: ["specs/product.yaml#decisions.D52_strong_identifiers", "specs/security/abuse.yaml#patterns.gov_ids", "specs/security/data-boundary.yaml", "specs/security/compliance.yaml", "specs/runtime/runtime.yaml#files"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Id M2-31 переиспользован: прежняя задача «правило региона» объединена с M2-32. Конвертное шифрование: ключ данных системы
+      (AES-256-GCM), обёрнутый мастер-ключом платформы (WIZARD_FIELD_KEK из хранилища секретов); значения field.secure шифруются на уровне
+      построителя запросов runtime (apps/runtime/src/data/pg.ts) при записи и расшифровываются при чтении ролям с read; без фильтров,
+      сортировки и индексов; объекты file-полей secure — в S3 с отдельным ключом KMS (параметр FileStorage). Выгрузка — только owner, с
+      расшифровкой; retention, anonymize и запросы субъектов работают; значения к моделям не уходят (заглушки), runtime_ai их не получает.
+      Флаг организации secure_fields_allowed: заявка через «Написать команде», staff включает в /admin после проверки цели
+      (staff_audit_log); platform-api передаёт его в GateContext.abuse.secureFieldsAllowed (исключение G2-AF-03 применяет M2-93). В S10 —
+      статус «Можно собирать документы» и кнопка заявки.
+    owns: ["apps/runtime/src/data/pg.ts (кодек secure-полей)", "apps/runtime/src/data/secure-fields*.ts (новый)", "apps/runtime/src/files/storage.ts (только ключ KMS для secure-объектов)", "apps/platform-api/src/secure-fields/** (новый)", "apps/platform-api/src/routes/secure-fields.ts (новый)", "apps/platform-api/migrations/0028_p_secure_fields.ts", "apps/platform-web/src/features/secure-fields/** (новый)", "apps/platform-web/src/i18n/ru/secure-fields.ts", "apps/runtime/test/secure-fields*.test.ts", "apps/platform-api/test/secure-fields*.test.ts"]
+    acceptance:
+      - "Тест: значение поля «Номер паспорта» в БД и резервной копии зашифровано (прямой SELECT не содержит открытого текста); роль с read видит расшифрованное; where и sort по полю → 422"
+      - "Тест: включение флага организации — только staff с MFA, запись staff_audit_log; без флага публикация такой системы → блок G2-AF-03"
+      - "Тест: выгрузка — только owner, расшифрованная; anonymize обнуляет поле; канарейка паспорта не встречается в llm_calls payload (мок T1 и T0)"
+
+  - id: M2-44
+    title: "ui-kit: BookingCalendar и SlotPicker (свободные слоты, часовой пояс, занятость), PricingTable и Paywall (доступ по подписке, отмена в один клик)"
+    milestone: M2P
+    deps: [M2-23, M2-25, M2-96]
+    specs: ["specs/ui/ui-kit.yaml", "specs/runtime/sdk.md", "specs/product.yaml#decisions.D33_system_classes", "specs/product.yaml#decisions.D35_client_payments"]
+    owner: frontend
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Календарь и выбор слота поверх useSlots (сигнатура sdk.md, M2-23): занятые слоты недоступны, конфликт 409 от noOverlap показывается
+      понятно, часовой пояс app.timezone. PricingTable — планы подписки из спеки; Paywall — содержимое при активной подписке
+      (useSubscription), иначе тизер и кнопка оплаты или продления; «Отменить подписку» — одна кнопка. В demo и тестах —
+      createMemoryDataSource и мок хуков. «Отменить подписку» в письме ведёт на страницу подтверждения, отмена — POST (executability
+      MP-25); первая оплата с автопродлением показывает отдельную галочку согласия на повторные списания.
+    owns: ["packages/ui-kit/src/components/booking/** (новый)", "packages/ui-kit/src/components/pricing/** (новый)", "packages/ui-kit/demo/sections/booking.tsx", "packages/ui-kit/demo/sections/pricing.tsx", "packages/ui-kit/src/i18n/ru/booking.ts", "packages/ui-kit/src/i18n/ru/pricing.ts", "packages/ui-kit/test/booking*.test.ts", "packages/ui-kit/test/pricing*.test.ts"]
+    acceptance:
+      - "vitest: слоты на день с учётом длительности услуги и занятости; слот на границе суток в app.timezone не теряется"
+      - "Playwright demo: выбор слота → подтверждение → слот занят; конфликт 409 → «Этот слот уже заняли, выберите другой»"
+      - "Paywall: без подписки — цена и кнопка оплаты, с активной — содержимое, после paidUntil — снова пейвол (мок useSubscription)"
+
+  - id: M2-53
+    title: "Входящие вебхуки: коннектор webhook внутри общего диспетчера M2-49 — секретный путь, режим проверки (hmac | shared_secret), защита от повтора, белый список полей, служебная роль, журнал _w_webhook_events"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-24, M2-49]
+    specs: ["specs/connectors/connector-interface.md", "specs/runtime/runtime.yaml#workflows", "specs/product.yaml#decisions.D37_integrations"]
+    specs_pending: ["specs/connectors/webhook.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Реализация InboundWebhook для универсального коннектора webhook внутри диспетчера M2-49 — своего маршрута нет (executability MP-10).
+      Токен ≥ 32 байт, ротация по API; проверка hmac по сырым байтам (заголовок и алгоритм из закрытого списка) или shared_secret в пути;
+      окно времени и nonce против повтора; лимиты частоты и размера; сопоставление полей с белым списком — поля вне карты, системные и
+      платёжные игнорируются; исполнение под служебной ролью integration:<имя> только с create на целевую сущность (MP-24). Используют
+      M2-73 (Tilda) и M2-75 (СДЭК).
+    owns: ["packages/connectors/src/webhook/** (кроме index.ts-заглушки M2-24 — заменяется)", "packages/connectors/test/webhook*.test.ts", "apps/runtime/test/webhook*.test.ts"]
+    acceptance:
+      - "Тест: верная подпись → запись создана, _w_webhook_events с хешем тела; неверная подпись или старый timestamp → 401 без записи; повтор nonce → 200 без дубля"
+      - "Тест: через вебхук нельзя записать status=paid, created_by и поле владельца; неизвестный hookToken → 404 за постоянное время; > 60 запросов в минуту → 429"
+      - "Логи runtime без тела запроса, подписи и токена пути"
+
+  - id: M2-56
+    title: "platform-web: цены в рублях вместо кредитов — S1, S3, S4, S6, S-billing («Тариф и оплата»), S-welcome; пометка «на пилоте бесплатно», лимиты черновиков и правок"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-34]
+    specs: ["specs/ui/platform-screens.yaml#screens.S-billing", "specs/ui/platform-screens.yaml#screens.S6", "specs/ui/platform-screens.yaml", "specs/platform/billing.yaml#rub_model", "specs/platform/api.yaml"]
+    owner: frontend
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Убрать кредиты из кабинета клиента (пилюля S1, оценка и потолок S3, «used из cap» S4, баланс и журнал S-billing, кредиты S-welcome);
+      показать каталог цен из API: запуск на S6, «Тариф и оплата» на S-billing, использованные черновики и правки, пометку «на пилоте
+      бесплатно», сообщения FREE_DRAFTS_LIMIT и EDITS_LIMIT с кнопкой «Написать команде». Кредиты остаются только в /admin.
+    owns: ["apps/platform-web/src/features/pricing/** (новый)", "apps/platform-web/src/screens/billing/**", "apps/platform-web/src/screens/workspace/CardView.tsx", "apps/platform-web/src/screens/workspace/BuildLog.tsx", "apps/platform-web/src/screens/onboarding/Welcome.tsx (только блок кредитов)", "apps/platform-web/src/i18n/ru/pricing.ts", "apps/platform-web/test/pricing*.test.ts", "packages/e2e/specs/p/pricing.spec.ts"]
+    acceptance:
+      - "Playwright (pilot): на S-billing, в карточке (CardView) и ходе сборки (BuildLog) и в блоке S-welcome нет «кредит», «кр.», «токен»; на S6 — «2 990 ₽ + 990 ₽/мес · на пилоте бесплатно» (полный обход всех экранов — M2-86; executability MP-12)"
+      - "Цифры только из API каталога (DOM-тест: подмена ответа меняет цену; в бандле нет литералов 2990, 990, 49000)"
+      - "4-й черновик за 30 дней → сообщение лимита и кнопка «Написать команде»; staff видит расход и лимит в кредитах в /admin"
+
+  - id: M2-57
+    title: "platform-web: «Написать команде» на всех экранах кабинета (панель, непрочитанные, срок ответа, гарантия) и вкладка «Обращения» в /admin с таймером срока"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-35]
+    specs: ["specs/ui/platform-screens.yaml", "specs/platform/api.yaml", "specs/product.yaml#decisions.D32_human_layer"]
+    owner: frontend
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Кнопка в шапке кабинета через реестр фич открывает панель переписки; при открытии из системы прикладываются система и экран; ответ
+      команды — бейдж непрочитанного; текст о сроке ответа и гарантии. /admin «Обращения»: очередь с таймером срока, ответ, ссылка на
+      систему.
+    owns: ["apps/platform-web/src/features/support/** (новый)", "apps/platform-web/src/i18n/ru/support.ts", "apps/platform-web/test/support*.test.ts", "packages/e2e/specs/p/support.spec.ts"]
+    acceptance:
+      - "Playwright: клиент на S4 пишет команде → в /admin обращение со ссылкой на систему и экран → staff отвечает → у клиента бейдж и ответ; письмо в dev-outbox"
+      - "Кнопка «Написать команде» есть на S1–S10, S-billing, S-welcome (по test_id)"
+      - "a11y: панель — диалог с фокусом и закрытием по Esc; ответ команды озвучивается live-region"
+      - "DOM-тест /admin и панели: <img onerror>, <script> в сообщении, имени файла и заголовке выводятся текстом (stored XSS); вне рабочего времени панель обещает ответ с конкретным сроком (D60)"
+
+  - id: M2-58
+    title: "platform-web: «Передать команде» на S2–S7, заявка «Под ключ», плашка «Систему ведёт команда», вкладка «Заказы» в /admin"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-36]
+    specs: ["specs/ui/platform-screens.yaml", "specs/platform/api.yaml", "specs/platform/billing.yaml#rub_model.pilot_display", "specs/product.yaml#decisions.D32_human_layer"]
+    owner: frontend
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Диалог «Передать команде» (что передаётся, «под ключ» от 49 000 ₽ · на пилоте бесплатно, срок, гарантия) → заказ; форма «Под ключ»
+      без системы (компонент для S1, ставит M2-80); плашка «Систему ведёт команда» с «Написать команде»; /admin «Заказы»: очередь, оценка
+      цены и срока, «Взять в работу» (открывает систему клиента как staff), «Вернуть клиенту».
+    owns: ["apps/platform-web/src/features/handoff/** (новый)", "apps/platform-web/src/i18n/ru/handoff.ts", "apps/platform-web/test/handoff*.test.ts", "packages/e2e/specs/p/handoff.spec.ts"]
+    acceptance:
+      - "Playwright: клиент на S3 нажимает «Передать команде» → заказ в /admin → staff берёт в работу и открывает систему → у клиента плашка «Систему ведёт команда» → «Вернуть клиенту» снимает плашку"
+      - "Цена в диалоге — из каталога API с пометкой «на пилоте бесплатно»; кнопок оплаты нет"
+      - "«Передать команде» есть на S2, S3, S4, S6, S7 и на этапе дизайна (по test_id)"
+      - "Диалог передачи содержит строку согласия на доступ команды; без неё кнопка неактивна (executability MP-32)"
+
+  - id: M2-59
+    title: "«Ограничения»: запись пробелов возможностей, «Передать команде» в один клик, раздел /admin с группировкой по категории и частоте"
+    milestone: M2P
+    deps: [M2-22, M2-26, M2-30, M2-36]
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/ui/platform-screens.yaml", "specs/product.yaml#decisions.D34_capability_gaps"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Пробел {category, quote (после scrub ПДн), offered, systemId, runId, canHandoff}; API для хоста агента (внутренний вызов из
+      прогона); «Передать команде» из сообщения агента создаёт заказ M2-36 со ссылкой на пробел; /admin «Ограничения»: категории по
+      частоте за 7 и 30 дней, цитаты, ссылки на системы, отметка «сделано в платформе».
+    owns: ["apps/platform-api/src/gaps/** (новый)", "apps/platform-api/src/routes/gaps.ts", "apps/platform-api/migrations/0023_p_gaps.ts", "apps/platform-api/test/gaps*.test.ts", "apps/platform-web/src/features/gaps/** (новый)", "apps/platform-web/src/i18n/ru/gaps.ts", "apps/platform-web/test/gaps*.test.ts"]
+    acceptance:
+      - "API-тест: пробел из прогона → категория с частотой 1 в агрегате /admin; цитата с телефоном хранится с заглушкой [ТЕЛЕФОН_1]"
+      - "API-тест: «Передать команде» по пробелу → заказ kind=handoff со ссылкой на пробел; повторный клик — тот же заказ"
+      - "DOM-тест /admin «Ограничения»: сортировка по частоте, фильтр 7 и 30 дней, «сделано» убирает категорию из активных"
+      - "DOM-тест /admin «Ограничения»: цитата с <script> выводится текстом; категория data_special для полей спецкатегорий (D51)"
+
+  - id: M2-60
+    title: "Адрес системы: имя <имя>.sandpile.ru и свой домен клиента — одна DNS-запись, проверка с подсказками, автоматический сертификат, маршрутизация runtime"
+    milestone: M2P
+    deps: [M2-98, M2-23, M2-37]
+    specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/runtime/runtime.yaml#routing", "specs/platform/deploy.yaml", "specs/security/abuse.yaml#domain", "specs/product.yaml#decisions.D38_sites_domains", "docs/research/integrations-2026-10.md#7. Кастомные домены"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Имя на sandpile.ru — проверка доступности, reserved и «надгробий». Свой домен (executability MP-03): владение подтверждает TXT
+      _btb-challenge.<домен> с токеном организации, плюс одна целевая запись (CNAME на <slug>.sandpile.ru для поддомена или A на
+      статический IP входа для корня); проверка DNS с подсказками на русском (не та запись, ещё не обновилось, CAA, лишний AAAA);
+      сертификат по HTTP-01 через cert-manager (ресурс создаёт platform-api, как оркестратор песочницы), сначала staging-issuer в CI,
+      backoff при отказе; периодическая перепроверка; снятие удаляет Certificate и хост Ingress; освобождённые домены и slug ≥ 90 дней в
+      «надгробиях»; ≤ 3 домена на организацию, ≤ 5 проверок в час на домен. runtime по Host находит систему; Host вне проверенных → 421;
+      cookie своего хоста; G2 и «Пожаловаться» работают на своём домене. Режим фейкового DNS WIZARD_DNS_FAKE для e2e-стенда — файл
+      packages/e2e/stand/p/dns.ts (MP-16).
+    owns: ["apps/platform-api/src/domains/** (новый)", "apps/platform-api/src/routes/domains.ts", "apps/platform-api/src/services/slug.ts", "apps/platform-api/migrations/0024_p_domains.ts", "apps/runtime/src/registry.ts", "apps/runtime/src/http/guards.ts", "infra/helm/wizard/templates/{ingress,certificates}.yaml (шаблон своих доменов)", "apps/platform-api/test/domains*.test.ts", "apps/runtime/test/custom-host*.test.ts", "packages/e2e/stand/p/dns.ts (новый)"]
+    acceptance:
+      - "Тест: повторная привязка снятого домена другой организацией без TXT своей организации → отказ; slug удалённой системы зарезервирован 90 дней"
+      - "Тест на фейковом DNS: верные TXT и CNAME → проверка пройдена; A не на вход → подсказка «Запись указывает на другой адрес»; шестая проверка за час → 429"
+      - "Тест на фейковом API Kubernetes: после проверки создаётся Certificate; снятие домена удаляет Certificate и хост Ingress"
+      - "runtime-тест: Host своего домена → prod системы; draft на своём домене не открывается; непроверенный Host → 421; cookie другой системы не принимается"
+
+  - id: M2-61
+    title: "Стоковые изображения Pexels и Pixabay с хранением у нас (D61): поиск через платформу, импорт с атрибуцией, обработчик инструмента search_stock_images"
+    milestone: M2P
+    deps: [M2-98, M2-40, M2-47]
+    specs: ["specs/platform/api.yaml", "specs/agents/builder.yaml", "specs/runtime/runtime.yaml#files", "specs/product.yaml#decisions.D46_open_fetching", "specs/product.yaml#decisions.D61_stock_photos", "docs/research/integrations-2026-10.md#3. Стоковые фото"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Ключи только на сервере; поиск с кешем и лимитами по правилам API (Pexels: 200 запросов в час, атрибуция «Photos provided by Pexels»
+      и автор; Pixabay — проверить актуальные правила API и показа источника); выбранное фото скачивается только с хостов стока
+      (images.pexels.com, CDN Pixabay: https, redirect manual, ≤ 15 МБ, Content-Type image/*), перекодируется конвейером M2-47 (варианты,
+      без EXIF) и хранится у нас; в метаданных — автор, ссылка на страницу фото, сток, дата выбора; атрибуция на странице. Unsplash не
+      используется (D61). Обработчик search_stock_images (заглушка M2-40) в хосте platform-api для строителя и дизайн-агента.
+    owns: ["apps/platform-api/src/media/** (новый)", "apps/platform-api/src/routes/media.ts", "apps/platform-api/src/agents/stock.ts (новый)", "apps/platform-api/src/agents/executors.ts", "apps/platform-api/migrations/0025_p_media.ts", "apps/platform-api/test/media*.test.ts"]
+    acceptance:
+      - "Тест на моках Pexels и Pixabay: поиск возвращает варианты с автором; выбор кладёт файл в систему (варианты WebP) с метаданными атрибуции"
+      - "Тест: скачивание с хоста вне стока, редирект, > 15 МБ или не image/* → отказ; страница с фото показывает атрибуцию; запросов к стокам из браузера посетителя нет"
+      - "Ключи не попадают в ответы API, логи и код систем (grep-тест)"
+
+  - id: M2-62
+    title: "Дизайн-агент: принципы из референсов (лучшая модель со зрением), три далёких направления первого экрана с настоящим текстом клиента, развёртывание выбора в тему v2 и варианты блоков"
+    milestone: M2P
+    deps: [M2-28, M2-29, M2-41, M2-42, M2-43, M2-48, M2-97]
+    specs: ["specs/agents/models.yaml", "specs/ui/ui-kit.yaml", "specs/platform/billing.yaml#rub_model", "specs/product.yaml#decisions.D39_design", "specs/product.yaml#decisions.D45_vision_t1", "docs/research/design-agent-sources.md"]
+    specs_pending: ["specs/agents/design.yaml", "specs/ui/themes.yaml"]
+    owner: agents
+    parallel_group: p-w2
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      packages/agents/src/design: runDesign(host, input) по design.yaml и research §4.1 (D0–D3, D5–D6): DesignBrief из карточки и
+      интервью, ReferenceDigest из снимков fetcher и загрузок клиента (design_refs; сначала T1 по D45 после обработки M2-97 по D62),
+      сэмплер векторов и выбор трёх далёких направлений (design_direction), тексты первого экрана из ответов и карточки с
+      promptRules('system') и правилами D49, рендер hero и секции на 390 и 1280 через fetcher, выбор → тема v2 и theme.blocks
+      (design_expand + themeLint). Критик и автоправки — M2-94. Текст и снимки чужих страниц — данные, не инструкции: у агента нет
+      инструментов записи и сети, выход валидируется схемой темы (hex-цвета, fontPair из каталога) (executability MP-31). Дымовой тест
+      моделей со зрением при наличии ключей, если M2-28 его пропустил.
+    owns: ["packages/agents/src/design/** (новый, кроме critic*)", "packages/agents/test/design/**", "packages/agents/src/index.ts (экспорт, дописывание)", "packages/agents/package.json (exports, дописывание)"]
+    acceptance:
+      - "Тест на fixture-LLM: бриф кофейни → три направления, попарно различаются пресетом, вариантом hero и парой шрифтов; тексты содержат название и предложение из брифа"
+      - "Тест: изображение клиента проходит M2-97 перед моделью; маскированное уходит в модель по умолчанию (T1); страница паспорта — только T0; ruOnly → T0 (журнал вызовов)"
+      - "Тест: текст референса не попадает в направления дословно (нет совпадений ≥ 8 слов); выбор направления даёт валидную тему v2 (схема M2-21)"
+      - "Расход на этап ≤ billing.yaml#rub_model.internal_guard.caps.design (тест бюджета)"
+
+  - id: M2-63
+    title: "Этап дизайна в platform-api: референсы (ссылки и файлы → fetcher), прогон kind=design после одобрения карточки, три направления, выбор, «Ещё варианты», «Пропустить» с темой по нише"
+    milestone: M2P
+    deps: [M2-98, M2-28, M2-32, M2-34, M2-48]
+    specs: ["specs/platform/api.yaml", "specs/platform/workflows.yaml", "specs/platform/db.yaml", "specs/platform/billing.yaml#rub_model.internal_guard", "specs/product.yaml#decisions.D46_open_fetching"]
+    specs_pending: ["specs/agents/design.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Стадия design после одобрения карточки и до сборки (workflows.yaml, M2-22; «после интервью» по D39 = после интервью и карточки):
+      ссылки-референсы → fetcher (M2-48); файлы клиента PNG, WebP, JPEG ≤ 5 МБ; прогон kind=design вызывает runDesign по интерфейсу
+      design.yaml (до M2-62 — fixture-реализация); направления сохраняются с превью первого экрана; выбор пишет тему в спеку; «Пропустить»
+      — тема по нише; потолок internal_guard.caps.design; снимки чужих страниц удаляются по завершении прогона (D46, fidelity P-11).
+    owns: ["apps/platform-api/src/design/** (новый)", "apps/platform-api/src/routes/design.ts", "apps/platform-api/src/runs/queue.ts (прогон kind=design)", "apps/platform-api/src/runs/dispatch.ts", "apps/platform-api/src/services/stage.ts", "apps/platform-api/migrations/0026_p_design.ts", "apps/worker/src/** (шаг design в DBOS)", "apps/platform-api/test/design*.test.ts"]
+    acceptance:
+      - "API-тест (fixture): после одобрения карточки — стадия design, три направления с превью; выбор → сборка с темой в спеке; «Пропустить» → тема по нише"
+      - "Ссылка на приватный адрес → «Не получилось открыть страницу»; файл SVG → 415; после этапа снимки чужих страниц удалены"
+      - "Прогон design переживает рестарт воркера (DBOS) и не превышает потолок"
+
+  - id: M2-64
+    title: "Подписки и платный доступ: доступ до оплаченной даты, напоминание со ссылкой оплаты за 3 дня, автопродление сохранённым способом, отмена в один клик, «оплатил — видит» в data API и RLS"
+    milestone: M2P
+    deps: [M2-21, M2-23, M2-49, M2-50]
+    specs: ["specs/runtime/runtime.yaml#permissions", "specs/runtime/runtime.yaml", "specs/runtime/sdk.md", "specs/appspec/ops.yaml", "specs/product.yaml#decisions.D35_client_payments"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Движок _w_subscriptions: оплата плана → paidUntil; за reminderDaysBefore — сообщение со ссылкой оплаты; в момент окончания —
+      chargeSaved, если autoRenew включён ЯВНОЙ галочкой плательщика при первой оплате (сумма, период, способ, как отменить; версия
+      текста, время и хеш IP — в _w_subscriptions) и сервис или магазин поддерживают автоплатёж, иначе доступ закрывается; отмена — одна
+      кнопка в кабинете и ссылка в письме на страницу подтверждения, сама отмена — POST с одноразовым токеном (срок ≤ 14 дней, привязка к
+      subscription_id), а не GET (почтовые сканеры) (executability MP-25); permission.requires.subscription в data API (DataAccess) и RLS
+      (packages/appspec/src/sql.ts); useSubscription в SDK; в draft и G1 — только тестовые режимы сервисов.
+    owns: ["apps/runtime/src/payments/subscriptions*.ts (новый)", "apps/runtime/src/routes/subscriptions.ts (новый)", "apps/runtime/src/data/access.ts", "packages/appspec/src/sql.ts (RLS платного доступа)", "packages/sdk/src/client/subscription*.ts", "packages/sdk/src/sdk.d.ts (дописывание)", "apps/runtime/test/subscriptions*.test.ts"]
+    acceptance:
+      - "Тест на mock-провайдере с поддельными часами: оплата → чтение закрытой сущности 200; за 3 дня до paidUntil — одно напоминание со ссылкой; после paidUntil без автопродления → 403; автопродление → новый платёж и paidUntil + период"
+      - "RLS-тест: прямой SELECT под wizard_runtime с контекстом пользователя без активной подписки → 0 строк закрытой сущности"
+      - "Ссылка из письма открывает страницу подтверждения без изменения состояния (GET не отменяет); POST с токеном → autoRenew выключен, доступ до paidUntil сохраняется; повтор POST — без эффекта"
+      - "Тест: подписка с autoRenew без записанного согласия плательщика → G2-SUB-CONSENT-01 блокирует prod; доставка уведомлений не по порядку не откатывает paidUntil"
+
+  - id: M2-65
+    title: "ЮKassa v2: перенос на ядро PaymentProvider, рекуррентные платежи (сохранённый способ), чеки 54-ФЗ, СБП"
+    milestone: M2P
+    deps: [M2-49]
+    specs: ["specs/connectors/yookassa.yaml", "specs/connectors/connector-interface.md", "docs/research/integrations-2026-10.md#1. Платежи"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Коннектор M2-02 переходит на интерфейс PaymentProvider без изменения поведения; добавляются save_payment_method и chargeSaved, СБП
+      как способ оплаты, чек в каждом платеже при включённых чеках магазина; карточка возможности для строителя. Подписи у уведомлений
+      ЮKassa нет: статус — только из getPayment (refetch), список IP — дополнительная проверка (executability MP-23). Автоплатежи магазина
+      включает менеджер ЮKassa.
+    owns: ["packages/connectors/src/yookassa/** (перенос yookassa*.ts)", "apps/runtime/src/routes/yookassa.ts", "specs/connectors/yookassa.yaml", "packages/agents/assets/capabilities/yookassa.md (новый)", "packages/connectors/test/yookassa*.test.ts"]
+    acceptance:
+      - "paymentProviderContract(yookassa) из M2-49 зелёный; тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) лежат в спеке как fixtures (executability MP-22)"
+      - "Существующие тесты ЮKassa (M2-02) зелёные после переноса"
+      - "Тест на моке API: первый платёж с сохранением способа → chargeSaved возвращает результат по интерфейсу подписок (paymentProviderContract); СБП-платёж проходит через тот же вебхук; чек содержит позиции и email покупателя"
+      - "Живой смоук на тестовом магазине при ключах: оплата → paid → возврат; без ключей — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-66
+    title: "Коннектор Т-Касса (Т-Банк): платёж и СБП, уведомления с проверкой Token, чеки 54-ФЗ, рекуррент"
+    milestone: M2P
+    deps: [M2-49]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D35_client_payments", "docs/research/integrations-2026-10.md#1. Платежи"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/tbank.yaml первой (по документации эквайринга Т-Банка: инициализация платежа, статус, отмена, уведомления с
+      Token, Receipt, рекуррентные списания, QR СБП); затем PaymentProvider и карточка возможности. Ответ приёмника — тело OK за 10 с;
+      тестовая среда — только со статического IP egress (M2-20); автоплатежи включает менеджер Т-Банка.
+    owns: ["packages/connectors/src/tbank/** (новый)", "specs/connectors/tbank.yaml (новый)", "packages/agents/assets/capabilities/tbank.md (новый)", "packages/connectors/test/tbank*.test.ts"]
+    acceptance:
+      - "paymentProviderContract(tbank) из M2-49 зелёный; тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) лежат в спеке как fixtures (executability MP-22)"
+      - "Тест на моке API: платёж → уведомление с верным Token → paid; неверный Token → 401 без изменения записи; двойная доставка → одна запись"
+      - "Тест: чек 54-ФЗ в запросе платежа; рекуррентное списание возвращает результат, который принимает интерфейс подписок (paymentProviderContract); СБП-платёж через тот же поток"
+      - "Живой смоук на тестовом терминале при ключах; без ключей — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-67
+    title: "Коннектор CloudPayments: платёж и СБП, уведомления с проверкой HMAC, чеки 54-ФЗ, подписки"
+    milestone: M2P
+    deps: [M2-49]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D35_client_payments", "docs/research/integrations-2026-10.md#1. Платежи"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/cloudpayments.yaml первой (по документации CloudPayments: создание счёта или ссылки оплаты, уведомления
+      Check, Pay, Fail с HMAC, чеки, рекуррент и подписки); затем PaymentProvider и карточка возможности. Подпись — HMAC-SHA256 base64 в
+      Content-HMAC и X-Content-HMAC; ответ {"code":0}; чеки — CloudKassir; ставка НДС 22 % — проверить.
+    owns: ["packages/connectors/src/cloudpayments/** (новый)", "specs/connectors/cloudpayments.yaml (новый)", "packages/agents/assets/capabilities/cloudpayments.md (новый)", "packages/connectors/test/cloudpayments*.test.ts"]
+    acceptance:
+      - "paymentProviderContract(cloudpayments) из M2-49 зелёный; тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) лежат в спеке как fixtures (executability MP-22)"
+      - "Тест на моке API: оплата → уведомление с верной HMAC → paid; неверная HMAC → 401 без изменения записи; двойная доставка → одна запись"
+      - "Тест: чек в платеже; автопродление через подписку или рекуррент возвращает результат, который принимает интерфейс подписок (paymentProviderContract)"
+      - "Живой смоук на тестовом сайте при ключах; без ключей — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-68
+    title: "Коннектор Robokassa: ссылка оплаты с подписью, ResultURL с проверкой подписи, фискализация (чеки 54-ФЗ), рекуррент, СБП"
+    milestone: M2P
+    deps: [M2-49]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D35_client_payments", "docs/research/integrations-2026-10.md#1. Платежи"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/robokassa.yaml первой (по документации Robokassa: SignatureValue ссылки, проверка подписи ResultURL вторым
+      паролем, Receipt, повторные списания, СБП); затем PaymentProvider и карточка возможности. Ответ ResultURL — OK{InvId}; сумма в
+      подписи — строкой как пришла; рекуррент — по согласованию с Robokassa (без него — разовые платежи и ссылки продления).
+    owns: ["packages/connectors/src/robokassa/** (новый)", "specs/connectors/robokassa.yaml (новый)", "packages/agents/assets/capabilities/robokassa.md (новый)", "packages/connectors/test/robokassa*.test.ts"]
+    acceptance:
+      - "paymentProviderContract(robokassa) из M2-49 зелёный; тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) лежат в спеке как fixtures (executability MP-22)"
+      - "Тест: ссылка оплаты с верной подписью; ResultURL с верной подписью → paid и ответ OK<InvId>; неверная подпись → отказ без изменения записи"
+      - "Тест: чек 54-ФЗ в ссылке; повторное списание возвращает результат, который принимает интерфейс подписок (paymentProviderContract)"
+      - "Живой смоук в тестовом режиме магазина при ключах; без ключей — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-69
+    title: "Коннектор Prodamus: ссылка платёжной формы с подписью, вебхук с проверкой Sign, подписки, чеки"
+    milestone: M2P
+    deps: [M2-49]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D35_client_payments", "docs/research/integrations-2026-10.md#1. Платежи"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/prodamus.yaml первой (по документации Prodamus: параметры и подпись ссылки, уведомление с заголовком Sign,
+      подписки, чеки, СБП); затем PaymentProvider и карточка возможности. Хост платёжной формы <имя>.payform.ru — несекретное поле
+      config.payformHost: входит в allowlist и виден основателю на ревью (executability MP-27).
+    owns: ["packages/connectors/src/prodamus/** (новый)", "specs/connectors/prodamus.yaml (новый)", "packages/agents/assets/capabilities/prodamus.md (новый)", "packages/connectors/test/prodamus*.test.ts"]
+    acceptance:
+      - "paymentProviderContract(prodamus) из M2-49 зелёный; тестовые векторы подписи и примеры запросов и ответов из официальной документации (ссылка, дата) лежат в спеке как fixtures (executability MP-22)"
+      - "Тест: ссылка формы с верной подписью; вебхук с верным Sign → paid; неверный Sign → 401 без изменения записи; двойная доставка → одна запись"
+      - "Тест: подписка Prodamus возвращает результат по интерфейсу подписок (paymentProviderContract); отмена в кабинете отменяет подписку у сервиса"
+      - "Живой смоук в тестовом режиме при ключах; без ключей — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-70
+    title: "Свой отправитель клиента: почта со своего SMTP или своего домена (SPF, DKIM, DMARC с проверкой), свой Telegram-бот в общем потоке уведомлений"
+    milestone: M2P
+    deps: [M2-24, M2-50]
+    specs: ["specs/connectors/email.yaml", "specs/connectors/telegram.yaml", "specs/product.yaml#decisions.D36_messaging"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Email-коннектор: sender = platform (по умолчанию) | own_smtp (secret://) | own_domain (провайдер платформы, DNS-записи для проверки)
+      с подсказками; свой бот (bot=own) используется каналом auto из M2-50. Проверка SPF, DKIM и DMARC — через публичный резолвер с
+      лимитом запросов в час, без дальнейших запросов по полученным адресам (executability MP-42); SMTP-хост клиента — не внутренний
+      адрес, порт 465 или 587, через egress.
+    owns: ["packages/connectors/src/email.ts", "packages/connectors/src/smtp.ts", "packages/connectors/src/telegram.ts (только выбор бота для уведомлений)", "specs/connectors/email.yaml (уточнения после M2-24)", "packages/connectors/test/email*.test.ts"]
+    acceptance:
+      - "Тест: own_smtp с тестовым SMTP-сервером → письмо ушло с адреса клиента; неверный пароль → понятная ошибка владельцу без раскрытия секрета"
+      - "Тест: own_domain без DKIM-записи → проверка не пройдена с подсказкой, какую запись добавить; с записью на фейковом DNS — пройдена"
+      - "Тест: при своём боте уведомления персоналу идут через него, без него — через общий бот платформы"
+
+  - id: M2-71
+    title: "Коннекторы amoCRM и Битрикс24 по инструкции (D63): закрытая интеграция amoCRM с долгосрочным токеном и входящий вебхук портала Битрикс24, сделка или лид из заявки, хост клиента — на ревью"
+    milestone: M2P
+    deps: [M2-24, M2-52]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D37_integrations", "specs/product.yaml#decisions.D63_crm_connect_by_instruction", "docs/research/integrations-2026-10.md#4. Готовые коннекторы"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Спеки specs/connectors/amocrm.yaml и bitrix24.yaml первыми (по docs/research/integrations-2026-10.md §4.1–4.2). Только подключение
+      по пошаговой инструкции со скриншотами и «Передать команде» (D63): amoCRM — закрытая интеграция клиента, долгосрочный токен (секрет)
+      и поддомен (несекретный config.subdomain, шаблон ^[a-z0-9-]+$, хост только *.amocrm.ru, *.amocrm.com или *.kommo.com; предупредить
+      клиента, что закрытая интеграция на нетехническом аккаунте требует отказа от техподдержки amoCRM); создание сделки и контакта POST
+      /api/v4/leads/complex. Битрикс24 — входящий вебхук портала: хост портала — несекретный config.portalHost (суффиксы .bitrix24.ru,
+      .com, .by, .kz; свой домен портала — только через ревью основателя), путь с user_id и кодом — секрет; лид через crm.item.add
+      (entityTypeId 1), устаревший crm.lead.add не использовать. Подписи у входящих событий нет — только перезапрос объекта. Вызовы —
+      через egressFetch (прокси с pinning), не guardedFetch; хосты клиента попадают в allowlist спеки и видны основателю на ревью
+      (G2-EGRESS-01). Публичные приложения маркетплейсов и OAuth — после пилота. Объединяет прежние M2-71 и M2-72.
+    owns: ["packages/connectors/src/amocrm/** (новый)", "packages/connectors/src/bitrix24/** (новый)", "specs/connectors/amocrm.yaml (новый)", "specs/connectors/bitrix24.yaml (новый)", "packages/agents/assets/capabilities/amocrm.md (новый)", "packages/agents/assets/capabilities/bitrix24.md (новый)", "packages/connectors/test/amocrm*.test.ts", "packages/connectors/test/bitrix24*.test.ts"]
+    acceptance:
+      - "Тест на моках API: заявка → контакт и сделка amoCRM в выбранной воронке; заявка → лид Битрикс24 через crm.item.add; отозванный токен или вебхук → понятная ошибка владельцу без раскрытия секрета"
+      - "Тест: config.subdomain и config.portalHost проверяются по шаблонам; хост вне допустимых суффиксов → ошибка конфигурации; хост клиента попадает в allowlist спеки и виден в карточке ревью основателя"
+      - "Карточки возможностей содержат пошаговую инструкцию для клиента (места скриншотов отмечены) и кнопку «Передать команде»"
+      - "Живой смоук на тестовых доступах из M2-20 (amoCRM токен, вебхук Битрикс24): заявка дошла; отчёт в PR; без доступа — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-74
+    title: "Коннектор МойСклад: товары и остатки для каталога, заказ покупателя из заявки"
+    milestone: M2P
+    deps: [M2-24, M2-52]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D37_integrations", "docs/research/integrations-2026-10.md#4. Готовые коннекторы"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/moysklad.yaml первой (JSON API МойСклад: токен, ассортимент и остатки, заказ покупателя); OutboundConnector
+      через ctx.http; кеш каталога; карточка возможности. Обязателен Accept-Encoding: gzip; с 01.12.2026 токен пользователя — 11 запросов
+      за 3 с (вес 4), токен решения — 45; рекомендация основателю — зарегистрировать решение МойСклад (M2-17 чек-лист); вебхуки без
+      подписи — перезапрос сущности по meta.
+    owns: ["packages/connectors/src/moysklad/** (новый)", "specs/connectors/moysklad.yaml (новый)", "packages/agents/assets/capabilities/moysklad.md (новый)", "packages/connectors/test/moysklad*.test.ts"]
+    acceptance:
+      - "Тест на моке API: товары и остатки читаются постранично; заказ из заявки создаётся с позициями; лимит запросов сервиса соблюдается"
+      - "Неверный токен → понятная ошибка владельцу без раскрытия секрета"
+      - "Живой смоук на тестовом аккаунте при ключах"
+
+  - id: M2-76
+    title: "G1-DESIGN: проверки на телефоне и десктопе — контраст, переполнение, кегль и длина строки, цели касания, первый экран — по снимкам fetcher"
+    milestone: M2P
+    deps: [M2-29, M2-48]
+    specs: ["specs/quality/gates.yaml", "specs/ui/ui-kit.yaml", "docs/research/design-agent-sources.md"]
+    specs_pending: ["specs/agents/design.yaml"]
+    owner: qa
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Детерминированные проверки research §4.4 на draft-страницах системы через fetcher: scrollWidth ≤ innerWidth, контраст каждого
+      текстового узла против фактического фона, цели касания ≥ 44×44, CTA на первом экране 390×844, кегль ≥ 16 (нигде < 12), длина строки
+      45–75 знаков на 1280. У каждой проверки негативная фикстура. axe-core (MPL-2.0) допустим как неизменяемая инфраструктура вне бандла
+      систем (AGENTS.md), запись в THIRD_PARTY_NOTICES.md. Снимки собранных страниц делает renderer-internal (M2-48), не fetcher-public.
+    owns: ["packages/gates/src/g1/checks/design.ts (новый)", "apps/fetcher/src/checks/** (новый)", "packages/gates/test/g1-design*.test.ts", "THIRD_PARTY_NOTICES.md (дописывание)"]
+    acceptance:
+      - "Тест на эталонных страницах: текст #999 на #fff → G1-DESIGN-01 с указанием элемента; блок шириной 500 px на 390 → G1-DESIGN-02; основной текст 11 px → G1-DESIGN-03"
+      - "Страницы demo ui-kit всех 8 тем проходят без блокеров"
+      - "≤ 60 с на систему из 10 страниц; без fetcher (локально) — статус skipped с предупреждением"
+
+  - id: M2-84
+    title: "Класс «CRM и внутренние инструменты»: эталонная система (клиенты, сделки по воронке, задачи, дашборд с графиками, импорт таблицы, роли менеджера и руководителя, выгрузка CSV)"
+    milestone: M2P
+    deps: [M2-38, M2-40, M2-42, M2-45]
+    specs: ["specs/appspec/appspec.schema.json", "specs/runtime/sdk.md", "specs/ui/ui-kit.yaml", "specs/agents/builder.yaml", "specs/quality/gates.yaml", "specs/product.yaml#decisions.D33_system_classes"]
+    owner: agents
+    parallel_group: p-w2
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Эталон и рецепт класса; рабочий вариант темы (compact, restrained, still), StatusBoard, DataTable, Chart.
+    owns: ["specs/appspec/examples/crm.json (новый)", "specs/runtime/examples/crm/** (новый)", "packages/agents/assets/capabilities/class-crm.md (новый)", "packages/gates/test/classes/crm*.test.ts", "packages/e2e/specs/p/class-crm.spec.ts", "tools/fixtures/golden/crm.yaml (новый, для CI)"]
+    acceptance:
+      - "specs/appspec/examples/crm.json валиден; эталонный код проходит G0, G1, G2 в CI"
+      - "e2e: менеджер видит только свои сделки, руководитель — все; перенос сделки по воронке обновляет дашборд; таблицы на 390 px — карточки без горизонтального скролла"
+      - "Live-смоук (вне CI, отчёт в PR): бриф класса из набора P собирается до готовности к публикации"
+      - "e2e: уведомление ответственному в Telegram без флажка — «Сделка №…» и ссылка без имени клиента; с флажком владельца (D53) — имя и суть, без телефона и почты (fidelity P-14)"
+
+  - id: M2-93
+    title: "Решения по серым зонам в гейтах, антифроде и согласиях: allowlist всех коннекторов, сужение G2-AF-02 и G2-PII-03, исключение G2-AF-03 по D52, имя в Telegram по D53, получатели и цели согласий в политике системы"
+    milestone: M2P
+    deps: [M2-21, M2-24, M2-29, M2-92]
+    specs: ["specs/product.yaml#decisions.D44_restriction_principle", "specs/product.yaml#gray_zone", "specs/security/abuse.yaml#patterns", "specs/security/compliance.yaml#system_package", "specs/quality/gates.yaml#G2", "specs/product.yaml#decisions.D51_special_categories", "specs/product.yaml#decisions.D52_strong_identifiers", "specs/product.yaml#decisions.D53_telegram_names", "docs/reviews/2026-10-04-restrictions-review.md"]
+    owner: platform
+    parallel_group: p-w2
+    estimate_days: 2.5
+    status: todo
+    claimed_by: null
+    description: >
+      Применение решений основателя 05.10.2026 и пунктов таблицы ревизии, записанных в спеки этим раундом (abuse.yaml, gates.yaml,
+      compliance.yaml). Код G2: connector_allowlist выводится из integrations[] и платформенных компонентов (пять платёжных сервисов,
+      СДЭК, МойСклад, amoCRM, Битрикс24, Tilda, Telegram, видеохостинги, сервисы Яндекса D57) — fidelity P-04; card_collection.allowed и
+      external_post.allowed — платёжные страницы всех пяти сервисов; G2-AF-02 — только поля ввода паролей и кодов (№ 54); G2-PII-03 —
+      сужение словаря по D51; G2-AF-03 — исключение при GateContext.abuse.secureFieldsAllowed и field.secure (D52; флаг организации ставит
+      M2-31); G2-TG-01 — флажок allowNames (D53). Фикстуры allow — по одной на каждый коннектор; block — прежние. runtime: страница
+      политики системы перечисляет получателей по compliance.yaml#system_package.policy_page.subprocessors_of_system; шаблоны согласий —
+      цели pd, messages, analytics, telegram_transfer (DRAFT до юриста, D25). Не входит (вне вехи, кандидаты после пилота, решение
+      основателя по приоритету): свой CSS систем (№ 23), docx и xlsx с антивирусом (№ 86), SVG-логотип с растеризацией (№ 87), несколько
+      ролей (№ 88), атрибуты rowFilter кроме подписки (№ 89), встраивание /embed (№ 92), ФИО при онлайн-скане QR (№ 80), правки email №
+      64–65, thinking по модели (№ 14).
+    owns: ["specs/security/abuse.yaml", "specs/security/compliance.yaml", "specs/quality/gates.yaml (только правила G2-AF, G2-PII-03, G2-TG-01)", "packages/gates/src/g2/antifraud.ts", "packages/gates/src/g2/patterns.ts", "packages/gates/src/g2/pii.ts", "packages/gates/src/g2/static.ts (G2-TG-01)", "packages/gates/data/** (генерация из abuse.yaml)", "packages/gates/scripts/gen-g2-*.mjs", "packages/gates/test/antifraud/**", "apps/runtime/src/compliance.ts", "apps/runtime/templates/**", "apps/runtime/test/compliance*.test.ts"]
+    acceptance:
+      - "Фикстуры allow по каждому коннектору и компоненту (abuse.yaml#scoring.allow_required) — 0 блокировок; block — 100 %; «Пожаловаться» и снятие по жалобе не затронуты"
+      - "Тест: «Пароль от Wi-Fi» в описании без поля ввода → не находка; input type=password → блок; «Пожелания по питанию» в записи гостя → не находка, «Диагноз» → блок G2-PII-03"
+      - "Тест: поле «Номер паспорта» с field.secure у организации с флагом → G2-AF-03 не срабатывает, без флага → блок; Telegram-шаблон с именем при allowNames → проходит, с телефоном → блок"
+      - "Тест: страница /privacy системы с подключёнными Т-Кассой, СДЭК, Метрикой и видео перечисляет этих получателей; согласие при флажке D53 упоминает Telegram"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w3 — интеграция: классы систем, дизайн-этап и критик, подключения, старт ----------------
+  - id: M2-73
+    title: "Коннектор Tilda: приём заявок форм Tilda во входящий вебхук, сопоставление полей с сущностью заявки, тестовый запрос Tilda"
+    milestone: M2P
+    deps: [M2-24, M2-53]
+    specs: ["specs/product.yaml#decisions.D37_integrations", "docs/research/integrations-2026-10.md#4. Готовые коннекторы"]
+    specs_pending: ["specs/connectors/webhook.yaml"]
+    owner: platform
+    parallel_group: p-w3
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/tilda.yaml первой (integrations §4.3); поверх коннектора webhook (M2-53): подписи у Tilda нет — секрет в пути
+      (shared_secret), ответ 200 за 5 с, тестовый запрос test=test без записи, дедупликация по tranid (executability MP-23); поля формы →
+      заявка, согласие посетителя из формы; карточка возможности с инструкцией.
+    owns: ["packages/connectors/src/tilda/** (новый)", "specs/connectors/tilda.yaml (новый)", "packages/agents/assets/capabilities/tilda.md (новый)", "packages/connectors/test/tilda*.test.ts"]
+    acceptance:
+      - "Тест: test=test → 200 без записи; заявка формы на верный секретный путь → запись и уведомление владельцу; повтор с тем же tranid → без дубля; неверный путь → 404"
+      - "Тест: поля формы с ПДн попадают только в поля сущности с разметкой pii"
+      - "Живой смоук на тестовом проекте Tilda из M2-20 (отчёт в PR); без проекта — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-75
+    title: "Коннектор СДЭК: расчёт доставки, пункты выдачи, создание заказа, статусы через вебхук"
+    milestone: M2P
+    deps: [M2-24, M2-52, M2-53]
+    specs: ["specs/connectors/connector-interface.md", "specs/product.yaml#decisions.D37_integrations", "docs/research/integrations-2026-10.md#4. Готовые коннекторы"]
+    specs_pending: ["specs/connectors/webhook.yaml"]
+    owner: platform
+    parallel_group: p-w3
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Спека specs/connectors/cdek.yaml первой (integrations §4.5: OAuth client credentials, калькулятор, пункты выдачи, заказ, вебхуки;
+      тестовая среда api.edu.cdek.ru с публичной парой ключей); вебхук СДЭК без подписи — только триггер, статус заказа берётся из API
+      СДЭК по uuid (refetch, executability MP-23); карточка возможности.
+    owns: ["packages/connectors/src/cdek/** (новый)", "specs/connectors/cdek.yaml (новый)", "packages/agents/assets/capabilities/cdek.md (новый)", "packages/connectors/test/cdek*.test.ts"]
+    acceptance:
+      - "Тест на моке API: расчёт стоимости и срока, пункты выдачи по городу, заказ создан; токен обновляется по истечении"
+      - "Тест: вебхук статуса вызывает перезапрос заказа; поддельный вебхук с выдуманным статусом статус в системе не меняет (статус берётся из API)"
+      - "Живой смоук на тестовой среде СДЭК (отчёт в PR); без доступа — skipped с причиной (обязательный прогон — M2-88)"
+
+  - id: M2-77
+    title: "Честные ограничения в агентах: report_capability_gap в интервью и сборке, ответ «не умеем → альтернатива → «Передать команде»», запись пробела через хост"
+    milestone: M2P
+    deps: [M2-36, M2-38, M2-40, M2-59, M2-61]
+    specs: ["specs/agents/orchestrator.yaml", "specs/agents/builder.yaml", "specs/platform/api.yaml", "specs/product.yaml#decisions.D34_capability_gaps", "specs/product.yaml#decisions.D49_no_fabrication", "specs/product.yaml#decisions.D51_special_categories"]
+    owner: agents
+    parallel_group: p-w3
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Инструмент report_capability_gap (M2-27) в оркестраторе и строителе: агент честно говорит, что платформа не умеет, предлагает
+      ближайшую альтернативу и кнопку «Передать команде»; пробел пишется через хост в M2-59. Что умеет — собирается дальше, карточка
+      помечает, что не войдёт. Поля спецкатегорий (D51) — тот же поток: честный ответ, альтернатива «запись без медданных», пробел
+      категории data_special.
+    owns: ["packages/agents/src/orchestrator/orchestrator.ts", "packages/agents/src/orchestrator/gaps.ts (новый)", "packages/agents/src/builder/tools.ts (обработчик report_capability_gap)", "apps/platform-api/src/agents/executors.ts", "apps/platform-api/src/agents/gaps-tool.ts (новый)", "packages/agents/test/gaps*.test.ts", "tools/fixtures/demo/** (детерминированная регенерация gen-golden.mjs; при конфликте — перезапустить генератор; eval.yaml#regression.pr_rule_M2P)"]
+    acceptance:
+      - "Тест (fixture): бриф «нужно приложение в App Store и оплата криптовалютой» → честный ответ и альтернатива (PWA, оплата через подключённый сервис), пробелы двух категорий записаны, в сообщении кнопка «Передать команде»"
+      - "Тест: пробел не останавливает сборку того, что платформа умеет; карточка содержит пометку о том, что не войдёт"
+      - "Текст ответа агента проходит lintCopy без hard-нарушений и не содержит непроверенных утверждений о сроках и ценах третьих сторон"
+
+  - id: M2-78
+    title: "platform-web: этап дизайна — три направления с превью 390/1280, референсы (ссылки, скриншоты), логотип и фирменный цвет, «Ещё варианты», «Пропустить»; 8 тем в панели «Стиль»"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-42, M2-62, M2-63]
+    specs: ["specs/ui/platform-screens.yaml", "specs/platform/api.yaml", "specs/ui/platform-screens.yaml#screens.S5", "specs/product.yaml#decisions.D39_design"]
+    specs_pending: ["specs/ui/themes.yaml"]
+    owner: frontend
+    parallel_group: p-w3
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Регион этапа design через реестр фич: карточки направлений с короткой причиной на простом языке, переключение 390/1280, загрузка
+      референсов, логотипа, цветов; «Стиль» — выбор пресета и фирменного цвета без прогона.
+    owns: ["apps/platform-web/src/features/design/** (новый)", "apps/platform-web/src/screens/workspace/StylePanel.tsx", "apps/platform-web/src/i18n/ru/design.ts", "apps/platform-web/test/design*.test.ts", "packages/e2e/specs/p/design.spec.ts"]
+    acceptance:
+      - "Playwright (fixture): после одобрения карточки три направления с превью первого экрана; переключение 390/1280; выбор → сборка; тема видна в превью"
+      - "Загрузка скриншота и ссылки-референса → направления перегенерированы; SVG отклонён с понятным текстом"
+      - "«Стиль»: выбор из 8 пресетов и фирменный цвет меняют превью без прогона и перезагрузки (как S5 acceptance)"
+
+  - id: M2-79
+    title: "platform-web S10: «Адрес и домен» (имя на sandpile.ru, свой домен по шагам) и «Подключения» (платёжный магазин, SMS, почта, бот, CRM, Метрика, SEO) без жаргона"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-46, M2-49, M2-51, M2-60, M2-70, M2-71, M2-95]
+    specs: ["specs/ui/platform-screens.yaml#screens.S10", "specs/ui/platform-screens.yaml", "specs/platform/api.yaml", "specs/product.yaml#decisions.D38_sites_domains"]
+    owner: frontend
+    parallel_group: p-w3
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Разделы S10 через реестр фич; секреты — в поля только на запись через API M2-95 (значение не возвращается), «Проверить подключение»;
+      Метрика, SEO и несекретные поля коннекторов сохраняются без сборки (ops M2-95); флажок «Имя клиента в Telegram» (D53); пошаговые
+      инструкции amoCRM и Битрикс24 со скриншотами из карточек M2-71 и кнопка «Передать команде» (D63); технические детали — под
+      «Подробнее для специалиста».
+    owns: ["apps/platform-web/src/features/domains/** (новый)", "apps/platform-web/src/features/connections/** (новый)", "apps/platform-web/src/i18n/ru/domains.ts", "apps/platform-web/src/i18n/ru/connections.ts", "apps/platform-web/test/domains*.test.ts", "apps/platform-web/test/connections*.test.ts", "packages/e2e/specs/p/domains.spec.ts"]
+    acceptance:
+      - "Playwright (фейковый DNS стенда, packages/e2e/stand/p/dns.ts): свой домен → инструкция с TXT и одной целевой записью → «Проверить» → подсказка при ошибке → после записей «Домен подключён»"
+      - "Подключение магазина и SMS: значения ключей не попадают в состояние клиента, DOM после сохранения и логи; «Проверить подключение» показывает итог словами"
+      - "Номер счётчика Метрики и SEO-поля сохраняются без сборки; неверный формат — подсказка; флажок Telegram меняет config интеграции"
+
+  - id: M2-80
+    title: "platform-web S1 и S-welcome: обещание, четыре класса систем, два входа («Собрать самому» и «Под ключ»), цены с пометкой пилота"
+    milestone: M2P
+    deps: [M2-26, M2-30, M2-56, M2-58]
+    specs: ["specs/ui/platform-screens.yaml#screens.S1", "specs/ui/platform-screens.yaml#screens.S-welcome", "specs/product.yaml#decisions.D30_offer", "specs/product.yaml#decisions.D48_plain_language"]
+    owner: frontend
+    parallel_group: p-w3
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Обещание (черновик product.yaml#positioning.promise_draft до финала M2-86), шаблоны четырёх классов, вход «Под ключ» (форма M2-58),
+      цены из каталога.
+    owns: ["apps/platform-web/src/screens/Start.tsx", "apps/platform-web/src/screens/Start.module.css", "apps/platform-web/src/screens/onboarding/**", "apps/platform-web/src/features/start/** (новый)", "apps/platform-web/src/i18n/ru/start.ts", "apps/platform-web/test/start*.test.ts"]
+    acceptance:
+      - "Playwright: S1 показывает обещание, 4 шаблона классов и вход «Под ключ» (форма → заказ в /admin)"
+      - "Шаблон класса подставляет заготовку промпта; прежние test_ids start-* сохраняются"
+      - "Тексты S1 и S-welcome проходят lintCopy без нарушений"
+
+  - id: M2-81
+    title: "Класс «сайт с заявками»: эталонная система (блоки, форма заявки, уведомление владельцу, подтверждение посетителю с согласием, SEO, Метрика, стоковые фото), рецепт строителя, сценарий G1"
+    milestone: M2P
+    deps: [M2-38, M2-40, M2-42, M2-43, M2-46, M2-47, M2-50, M2-61]
+    specs: ["specs/appspec/appspec.schema.json", "specs/runtime/sdk.md", "specs/ui/ui-kit.yaml", "specs/agents/builder.yaml", "specs/quality/gates.yaml", "specs/product.yaml#decisions.D33_system_classes", "specs/product.yaml#decisions.D61_stock_photos"]
+    owner: agents
+    parallel_group: p-w3
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Эталон даёт строителю образец и доказывает, что платформа умеет класс; отзывы — заглушки «пример» (D49).
+    owns: ["specs/appspec/examples/site.json (новый)", "specs/runtime/examples/site/** (новый)", "packages/agents/assets/capabilities/class-site.md (новый)", "packages/gates/test/classes/site*.test.ts", "packages/e2e/specs/p/class-site.spec.ts", "tools/fixtures/golden/site.yaml (новый, для CI)"]
+    acceptance:
+      - "specs/appspec/examples/site.json валиден (validate.mjs); эталонный код проходит G0, G1, G2 в CI; G2-COPY-01 блокирует prod, пока отзывы — заглушки"
+      - "e2e на эталоне: посетитель на 390 px оставляет заявку с согласием → владельцу уведомление, посетителю подтверждение; страница отдаёт title, description, OG; PWA устанавливается (manifest и service worker проверяются в Playwright, без Lighthouse — executability MP-18)"
+      - "Live-смоук (вне CI, отчёт в PR): бриф класса из набора P собирается до готовности к публикации"
+
+  - id: M2-82
+    title: "Класс «запись с напоминаниями»: эталонная система (услуги, специалисты, слоты без пересечений, предоплата по желанию, напоминания за 24 и 2 часа с согласия, отмена по ссылке, уведомление владельцу)"
+    milestone: M2P
+    deps: [M2-38, M2-40, M2-44, M2-49, M2-50, M2-51, M2-96]
+    specs: ["specs/appspec/appspec.schema.json", "specs/runtime/sdk.md", "specs/ui/ui-kit.yaml", "specs/agents/builder.yaml", "specs/quality/gates.yaml", "specs/product.yaml#decisions.D33_system_classes"]
+    owner: agents
+    parallel_group: p-w3
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    description: >
+      Эталон и рецепт класса; noOverlap, useSlots, notify v2 с согласием, mock-провайдер для предоплаты.
+    owns: ["specs/appspec/examples/booking.json (новый)", "specs/runtime/examples/booking/** (новый)", "packages/agents/assets/capabilities/class-booking.md (новый)", "packages/gates/test/classes/booking*.test.ts", "packages/e2e/specs/p/class-booking.spec.ts", "tools/fixtures/golden/booking.yaml (новый, для CI)"]
+    acceptance:
+      - "specs/appspec/examples/booking.json валиден; эталонный код проходит G0, G1, G2 в CI"
+      - "e2e: две параллельные записи на один слот → одна успешна, вторая 409 с понятным текстом; напоминание за 24 ч уходит на поддельных часах только при согласии; отмена по ссылке освобождает слот"
+      - "Live-смоук (вне CI, отчёт в PR): бриф класса из набора P собирается до готовности к публикации"
+
+  - id: M2-83
+    title: "Класс «подписка и платный доступ»: эталонная система (тарифы, пейвол, оплата, закрытый раздел с видео и материалами, доступ до даты, напоминание за 3 дня, автопродление, отмена в один клик)"
+    milestone: M2P
+    deps: [M2-38, M2-40, M2-44, M2-45, M2-64, M2-65]
+    specs: ["specs/appspec/appspec.schema.json", "specs/runtime/sdk.md", "specs/ui/ui-kit.yaml", "specs/agents/builder.yaml", "specs/product.yaml#decisions.D33_system_classes"]
+    specs_pending: ["specs/connectors/payments.yaml"]
+    owner: agents
+    parallel_group: p-w3
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Эталон и рецепт класса; permission.requires.subscription, Paywall, VideoEmbed, ЮKassa (тестовый магазин или мок) как эталонный
+      провайдер.
+    owns: ["specs/appspec/examples/paid_access.json (новый)", "specs/runtime/examples/paid_access/** (новый)", "packages/agents/assets/capabilities/class-paid_access.md (новый)", "packages/gates/test/classes/paid_access*.test.ts", "packages/e2e/specs/p/class-paid-access.spec.ts", "tools/fixtures/golden/paid_access.yaml (новый, для CI)"]
+    acceptance:
+      - "specs/appspec/examples/paid_access.json валиден; эталонный код проходит G0, G1, G2 в CI"
+      - "e2e: без оплаты закрытый раздел не виден (403 и пейвол); после оплаты — виден; после paidUntil без автопродления — снова пейвол; отмена в кабинете одной кнопкой"
+      - "Live-смоук (вне CI, отчёт в PR): бриф класса из набора P собирается до готовности к публикации"
+
+  - id: M2-87
+    title: "Финальный проход писем и текстов систем: бренд Born to Build в письмах и отправителе, шаблоны уведомлений, страницы runtime (политика, «Пожаловаться», вход), строки ui-kit — по правилам humanizer"
+    milestone: M2P
+    deps: [M2-33, M2-34, M2-35, M2-36, M2-43, M2-44, M2-45, M2-50, M2-52, M2-64, M2-70, M2-93]
+    specs: ["specs/product.yaml#decisions.D27_brand", "specs/product.yaml#decisions.D28_humanizer", "specs/product.yaml#decisions.D48_plain_language", "specs/connectors/email.yaml"]
+    specs_pending: ["specs/quality/humanizer.yaml"]
+    owner: platform
+    parallel_group: p-w3
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      Тексты писем платформы собираются в apps/platform-api/src/mail; шаблоны коннекторов, apps/runtime/templates и строки ui-kit — по
+      правилам humanizer; юридические шаблоны меняются только в бренде и стиле, смысл и статус DRAFT (D25) сохраняются.
+    owns: ["apps/platform-api/src/mail/** (новый)", "текстовые литералы писем в apps/platform-api/src/{auth,pilot,publish,abuse,ops,support,handoff}/**", "packages/connectors/src/templates.ts", "apps/runtime/templates/**", "apps/runtime/src/http/abuse-link.ts (текст)", "packages/ui-kit/src/i18n/**"]
+    acceptance:
+      - "lintCopy --strict по apps/platform-api/src/mail, шаблонам коннекторов, apps/runtime/templates и packages/ui-kit/src/i18n — 0 нарушений (проверка в CI)"
+      - "Письма платформы — от «Born to Build <noreply@borntobuild.ru>», в теме и подписи нет «Wizard» (тест dev-sender)"
+      - "consent.*.ru.md и privacy.ru.md: изменения только бренда и стиля, статус DRAFT сохраняется (diff-ревью в PR)"
+
+  - id: M2-94
+    title: "Критик дизайна: модель со зрением другого семейства по снимкам 390/1280, автоправка токенами до LLM, «признак → где → замена», не больше двух кругов; проверка собранных страниц"
+    milestone: M2P
+    deps: [M2-28, M2-40, M2-48, M2-62, M2-76]
+    specs: ["specs/agents/models.yaml", "specs/quality/gates.yaml", "specs/product.yaml#decisions.D45_vision_t1", "docs/research/design-agent-sources.md"]
+    specs_pending: ["specs/agents/design.yaml"]
+    owner: agents
+    parallel_group: p-w3
+    estimate_days: 1.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Research §4.5: упавшая проверка G1-DESIGN чинится правкой токенов без LLM и перепроверкой; затем design_critic (лучшая модель со
+      зрением, сначала T1, семейство ≠ генератора) смотрит снимки направлений и 3–4 собранных экранов, находка без замены отбрасывается,
+      «пресность» — major; решение pass | regenerate | show-with-notes, не больше двух кругов. Подключается к этапу дизайна (M2-62) и к
+      проверке после сборки.
+    owns: ["packages/agents/src/design/critic*.ts (новый)", "packages/agents/src/builder/verify-design.ts (новый, вызов из цикла строителя)", "packages/agents/test/design/critic*.test.ts"]
+    acceptance:
+      - "Тест (fixture): направление с текстом ниже контраста чинится токенами без вызова модели; находки критика имеют замену в рамках темы, без замены — отброшены"
+      - "Тест: критик того же семейства, что генератор, не назначается; ruOnly → модель со зрением из T0"
+      - "Не больше двух кругов regenerate на направление; итог show-with-notes виден в событиях прогона"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w4 — финал: тексты и бренд, e2e, live-eval ----------------
+  - id: M2-85
+    title: "Репетиционный e2e без золотого сценария: pilot.spec.ts отвечает на любые вопросы интервью по рекомендации, проходит этап дизайна, бриф из набора P; fixture в CI и live на стенде"
+    milestone: M2P
+    deps: [M2-32, M2-38, M2-54, M2-56, M2-63, M2-77, M2-78, M2-80, M2-81]
+    specs: ["specs/product.yaml#decisions.D42_readiness_bar", "specs/ui/platform-screens.yaml", "specs/quality/eval.yaml", "specs/platform/deploy.yaml#pilot"]
+    owner: qa
+    parallel_group: p-w4
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    description: >
+      packages/e2e/specs/rehearsal/pilot.spec.ts читает золотой бриф форума и рассчитывает на порядок вопросов фикстуры. Заменить
+      драйвером интервью и брифом класса из набора P; фикстуры для CI записать новым брифом. Здесь же один раз перезаписываются
+      sha256-фикстуры unit и eval после всех промптовых задач (eval.yaml#regression.pr_rule_M2P). Расширения стенда задач лежат в
+      packages/e2e/stand/p/<задача>.ts и подключаются по glob; M2-85 — потребитель (executability MP-16).
+    owns: ["packages/e2e/specs/rehearsal/**", "packages/e2e/stand/*.ts (ядро стенда; расширения задач — stand/p/**)", "tools/fixtures/demo/p-*.jsonl (новые)", "tools/fixtures/unit/**", "tools/fixtures/eval/**", "docs/ops/local-rehearsal.md"]
+    acceptance:
+      - "pilot.spec.ts не читает tools/fixtures/golden/forum.yaml и не зависит от числа и порядка вопросов: драйвер отвечает рекомендацией на любой показанный вопрос (grep-тест + прогон с перемешанным порядком вопросов в фикстуре)"
+      - "Fixture-режим CI: бриф класса из набора P (не форум) проходит S1 → интервью → карточка → дизайн → сборка → G0–G2 → публикация → prod"
+      - "Live-режим на локальном стенде (WIZARD_E2E_LIVE=1): тот же спек проходит на одном брифе каждого класса; отчёт в docs/ops/local-rehearsal.md"
+
+  - id: M2-86
+    title: "Финальный проход текстов кабинета: бренд Born to Build, обещание через правила humanizer, простой язык, жаргон — только под «Подробнее для специалиста», линтер в строгом режиме"
+    milestone: M2P
+    deps: [M2-31, M2-33, M2-37, M2-52, M2-56, M2-57, M2-58, M2-59, M2-72, M2-78, M2-79, M2-80]
+    specs: ["specs/product.yaml#decisions.D27_brand", "specs/product.yaml#decisions.D28_humanizer", "specs/product.yaml#decisions.D48_plain_language", "specs/ui/platform-screens.yaml"]
+    specs_pending: ["specs/quality/humanizer.yaml"]
+    owner: frontend
+    parallel_group: p-w4
+    estimate_days: 2.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Весь видимый текст platform-web: бренд, простой язык, правила humanizer; финальная формулировка обещания из двух черновиков
+      product.yaml#positioning.promise_draft (скилл humanizer).
+    owns: ["apps/platform-web/**"]
+    acceptance:
+      - "`pnpm --filter @wizard/humanizer lint --strict apps/platform-web/src/i18n` — 0 нарушений; проверка в CI"
+      - "В видимом тексте кабинета клиента нет «Wizard», G0/G1/G2, prod, PROD, DRAFT, PITR, «миграц», spec.json, file:line, «кредит», T0/T1 вне раскрытия «Подробнее для специалиста» (Playwright-обход S1–S10, S-billing, S-welcome, этапа дизайна); /admin не проверяется"
+      - "Обещание на S1 и S-welcome — комбинация двух формулировок основателя после правил humanizer без изменения смысла; PR с правкой обещания — с меткой founder-review, утверждает основатель (fidelity P-09); заголовок вкладки, manifest и ссылки в письмах — Born to Build"
+
+  - id: M2-88
+    title: "Live-прогон набора P и независимый аудит: 20 брифов на стенде, порог D42, проверка выдуманных фактов, отчёт и список дефектов"
+    milestone: M2P
+    deps: [M2-20, M2-32, M2-51, M2-54, M2-55, M2-60, M2-62, M2-63, M2-65, M2-66, M2-67, M2-68, M2-69, M2-71, M2-73, M2-74, M2-75, M2-76, M2-77, M2-79, M2-81, M2-82, M2-83, M2-84, M2-93, M2-94]
+    specs: ["specs/quality/eval.yaml", "specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#decisions.D49_no_fabrication", "specs/platform/billing.yaml#rub_model.internal_guard", "specs/agents/models.yaml", "specs/product.yaml#decisions.D59_eval_budget_and_autonomy", "specs/product.yaml#decisions.D41_all_before_clients"]
+    owner: qa
+    parallel_group: p-w4
+    estimate_days: 1.5
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Прогон --suite=p на локальном стенде в live-режиме в пределах месячного лимита платформы (D59: до 6 000 ₽, один полный прогон);
+      аудит моделью другого семейства и агентами-ревьюерами на разных моделях. Здесь же обязательные живые смоуки (D41, fidelity P-06):
+      каждый из пяти платёжных сервисов, SMS-агрегатор, amoCRM, Битрикс24, Tilda, МойСклад, СДЭК на тестовых аккаунтах M2-20 и свой домен
+      клиента на реальной DNS-записи для одной системы стенда.
+    owns: ["tools/eval/results/** (отчёты P)", "docs/reviews/p-eval/** (аудит и дефекты)"]
+    acceptance:
+      - "Отчёт tools/eval/results/<дата>-p.json и .md: publish_ready и needs_founder_review по каждому брифу, медиана minutes, cost_rub на систему, gap_reported для beyond, fabricated_claims, 0 ложных блокировок G2; итог по eval.yaml#thresholds.by_milestone.M2P"
+      - "Аудит: модель другого семейства (routes.audit) и не меньше двух независимых агентов-ревьюеров на разных моделях проверили каждую систему против брифа по пакету M2-55; натяжки и выдуманные факты — в docs/reviews/p-eval/"
+      - "docs/reviews/p-eval/connectors-smoke.md: по каждому из пяти платёжных сервисов, SMS, amoCRM, Битрикс24, Tilda, МойСклад, СДЭК — живой смоук пройден (дата, аккаунт, результат); свой домен подключён на реальной DNS-записи"
+      - "Список дефектов с приоритетами и владельцами для M2-89; расход прогона и аудита — в пределах месячного лимита платформы"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w5 — доводка по итогам live-eval ----------------
+  - id: M2-89
+    title: "Доводка по итогам live-eval P и повторный прогон до порога D42 (резерв)"
+    milestone: M2P
+    deps: [M2-88]
+    specs: ["specs/quality/eval.yaml", "specs/product.yaml#decisions.D42_readiness_bar", "specs/milestones.yaml", "specs/product.yaml#decisions.D59_eval_budget_and_autonomy", "specs/product.yaml#decisions.D54_direct_chinese_models"]
+    owner: platform
+    parallel_group: p-w5
+    estimate_days: 2
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Единственная задача волны: правит пути по списку дефектов docs/reviews/p-eval/ с соблюдением milestones.yaml M2P.plan.hotspots;
+      затем повтор только провалившихся брифов (D59) и повторный аудит. Если остаток лимита позволяет — замер DeepSeek напрямую на
+      условиях Z.ai (D54); иначе после пилота. Готовит чек-лист сценариев основателя docs/founder/pilot-walkthrough.md для M2-90.
+    owns: ["пути по списку дефектов docs/reviews/p-eval/ (хотспоты — по milestones.yaml M2P.plan.hotspots)", "tools/eval/results/**", "docs/founder/pilot-walkthrough.md (новый, чек-лист сценариев)"]
+    acceptance:
+      - "Все дефекты P0 и P1 из отчёта M2-88 закрыты или перенесены с записью в CHANGELOG"
+      - "Повтор провалившихся брифов: итог по набору P ≥ 16/20 publish_ready без помощи, медиана ≤ 40 мин, ≤ 300 ₽ на систему, 0 выдуманных фактов в опубликованных текстах; повторный аудит без блокирующих замечаний"
+      - "docs/founder/pilot-walkthrough.md: по одному сценарию каждого класса, шаги и что проверить"
+
+  # ---------------- M2P: полнофункциональный пилот (D26–D64), волна p-w6 — сценарии основателя ----------------
+  - id: M2-90
+    title: "Сценарии основателя: по одному на класс на локальном стенде в live-режиме и допуск первых клиентов пилота"
+    milestone: M2P
+    deps: [M2-85, M2-86, M2-87, M2-89]
+    specs: ["specs/product.yaml#decisions.D42_readiness_bar", "specs/product.yaml#pilot", "specs/milestones.yaml"]
+    owner: founder
+    parallel_group: p-w6
+    estimate_days: 1
+    critical: true
+    status: todo
+    claimed_by: null
+    description: >
+      Агент готовит стенд и чек-лист сценариев; основатель проходит их своими словами, не эталонными брифами.
+    owns: ["docs/founder/pilot-walkthrough.md (замечания основателя)"]
+    acceptance:
+      - "Основатель прошёл на локальном стенде (live) сайт с заявками, запись, платный доступ и CRM до готовности к публикации; замечания — в docs/founder/pilot-walkthrough.md"
+      - "Замечания P0 закрыты; основатель отмечает допуск (CHANGELOG) и отправляет первые приглашения"
 
   # ---------------- M3: вторая волна ----------------
   - id: M3-01

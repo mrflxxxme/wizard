@@ -47,6 +47,7 @@ live_cadence:           # решение основателя F6, пересмо
   full: "Все брифы × 2 модели (по умолчанию + лучшая альтернативная) — только по метке PR eval:full при смене промптов, models.yaml или версии модели, и перед закрытием вехи"
   week0: "Неделя 0: spec_only на наборе M0, GLM-5.3 против лучшей T0 → правило models.yaml#week0_decision (F2)"
   budget: "≤ 4 000 ₽/мес на live-eval (в общем потолке токенов 10 000 ₽/мес, D20). tools/eval суммирует cost_rub отчётов tools/eval/results/ за календарный месяц; если прогноз прогона превышает остаток — full не стартует (ночной smoke продолжается), нужна эскалация E-MONEY"
+  pilot_P: "Замер порога D42 (набор P, 20 брифов) — product.yaml#decisions.D59_eval_budget_and_autonomy: до 6 000 ₽ в рамках месячного лимита платформы WIZARD_LLM_MONTHLY_CAP_RUB (отдельной статьи нет; включая шаг audit); один полный прогон, повтор только провалившихся брифов (M2-88, M2-89). Харнесс считает остаток лимита по llm_calls стенда и не стартует бриф, прогноз которого не помещается"
 
 metrics:          # на пару (бриф, модель); агрегаты — среднее/доля по набору
   - { id: g0_pass,            kind: bool,  def: "G0 passed на финальной ревизии (harness) / спека валидна по схеме и семантике (spec_only)" }
@@ -75,6 +76,7 @@ thresholds:
     M0: "live: g0_pass ≥ 1 из 12 брифов (milestones.yaml M0); questions_asked ∈ [3, 7] в среднем"
     M1: "live, лучшая модель: g0g1_pass ≥ 80% (backlog M1-09); estimate_ratio ∈ [0.6, 1.5] для ≥ 80% брифов"
     M2: "live: g0g1_pass ≥ 85%; средние credits ≤ 25; p80 minutes ≤ 30; p80 first_preview_minutes ≤ 10; 0 ложных блокировок G2 на брифах (backlog M2-04)"
+    M2P: "live, набор P (D42, D59): publish_ready ≥ 16 из 20 без помощи человека (publish_ready = G0, G1 и G2 на финальной ревизии без блокеров; ожидание ревью основателя — G2-AF-08/09, G2-EGRESS-01, require_founder_review — не считается помощью и пишется отдельной метрикой needs_founder_review); медиана minutes ≤ 40 (от отправки брифа до publish_ready, включая этап дизайна); cost_rub ≤ 300 на систему (без шага audit); beyond-брифы — gap_reported; 0 ложных блокировок G2; 0 выдуманных фактов в опубликованных текстах. Детали метрик — M2-29"
   soft:                       # предупреждение в отчёте PR
     - "cost_rub вырос > 25% к baseline"
     - "minutes вырос > 30% к baseline"
@@ -85,6 +87,7 @@ regression:
   rule: "Доля g0_pass или g0g1_pass упала более чем на 5 п.п. к baseline той же пары (mode, modelId, briefSetHash) → провал (CI для fixture, ночной — issue + красный статус)"
   update: "baseline обновляется только PR-ом с отчётом live-прогона (tools/eval/results/<date>-<mode>.json) и строкой в specs/CHANGELOG.md"
   pr_rule: "PR, меняющий промпты или models.yaml, MUST содержать перезаписанные фикстуры (mode=record), метку eval:full и отчёт live (live_cadence.full); CI проверяет отсутствие FIXTURE_MISS и регрессию"
+  pr_rule_M2P: "Исключение на время вехи M2P (executability MP-08): PR задач волн p-w0…p-w3, меняющие промпты или models.yaml, проходят только fixture-режим: demo-фикстуры ищутся по (callType, номер) и регенерируются детерминированно (gen-golden.mjs), sha256-фикстуры unit и eval перезаписывает один раз M2-85 после M2-77; метка eval:full и live-отчёт не требуются. Единый live-замер — M2-88 и M2-89 в бюджете D59"
   test: "Юнит-тест сравнения: baseline 0.80 → текущее 0.74 = провал; 0.76 = успех"
 
 fixtures:

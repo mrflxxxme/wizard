@@ -16,7 +16,7 @@ system_package:                    # «Пакет 152-ФЗ» в каждой с�
     milestone: M2
     route: "compliance.policyPage, по умолчанию /privacy; генерирует runtime (не код агента), доступна роли public"
     content: "шаблон apps/runtime/templates/privacy.ru.md (текст от юриста) + подстановки из спеки: operatorName, operatorAddress, operatorContact; цели (app.description + сущности); перечень категорий ПДн по сущностям (label полей с pii ≠ none, включая данные входа из users); действия; сроки хранения из retention; обработчик Wizard и субобработчики системы (subprocessors_of_system); права субъекта и порядок отзыва согласия (consent.withdrawal); дата и версия"
-    subprocessors_of_system: "Список выводится из фактических интеграций и методов входа системы, а не из статического списка: ЮKassa (email/телефон для чека) — pii: true; почтовый провайдер при email OTP или коннекторе email — pii: true; SMS-провайдер при phone_otp — pii: true; Telegram при коннекторе telegram или входе через Telegram (chat_id, аккаунт) — pii: true до позиции юриста (E-LEGAL)"
+    subprocessors_of_system: "Список выводится из фактических интеграций, методов входа и платформенных компонентов системы, а не из статического списка (реализация — M2-46): платёжный сервис из подключённых (ЮKassa, Т-Касса, CloudPayments, Robokassa, Prodamus; email/телефон для чека) — pii: true; почтовый провайдер при email OTP или коннекторе email — pii: true; SMS-агрегатор при phone_otp или SMS-уведомлениях посетителям (D36) — pii: true; Telegram при коннекторе telegram или входе через Telegram (chat_id, аккаунт; при флажке D53 — имя клиента и суть заявки, передача за рубеж) — pii: true; СДЭК (ФИО, телефон, адрес получателя), МойСклад, amoCRM, Битрикс24 — получатели, которых выбрал клиент (его CRM и учёт), pii: true; Яндекс Метрика — только после согласия посетителя на аналитические cookie (cookie, IP, без Вебвизора) — pii: true; Яндекс Карты и SmartCaptcha (D57) — IP и технические данные браузера посетителя — pii: true; видеохостинги Rutube, VK Видео, Kinescope — iframe только после клика по превью (IP посетителя) — pii: true. Pexels и Pixabay — не получатели: изображения хранятся у платформы (D61). Внутри РФ — все, кроме Telegram (fidelity P-07)"
     versioning: "версия = sha256 отрендеренного текста (policyVersion); хранится в журнале согласий"
     status: "До текста юриста шаблон помечен DRAFT; публикация prod в бете с реальными людьми ждёт platform.beta_readiness"
     test: "Спека «форум» → GET /privacy содержит operatorName, operatorAddress, все label полей с pii=basic, сроки retention и ЮKassa в списке получателей; при смене retention версия меняется"
@@ -29,6 +29,7 @@ system_package:                    # «Пакет 152-ФЗ» в каждой с�
     text: "Текст = шаблон юриста (compliance.consentTemplateId) + подстановки из спеки: оператор, цели, перечень данных, обработчик и получатели (subprocessors_of_system), срок, способ отзыва. Свой consentText задаёт только owner; агент — только consentTemplateId (operator.source)"
     gates: "G2: каждая страница, вызывающая create по сущности с ПДн или update pii-полей или функцию с collectsPii для не-admin роли, содержит ConsentCheckbox (статический анализ JSX); G1: сценарий «create без согласия → 422» генерируется автоматически (DSL: consent?: true у шагов create и callFn)"
     retention: "Журнал согласий хранится срок хранения сущности + 3 года (срок исковой давности) — уточнить у юриста (E-LEGAL)"
+    purposes: "С M2P у записи _w_consents есть purpose: pd (обработка ПДн, как прежде), messages (транзакционные сообщения посетителю без аккаунта на указанный контакт, D36; отдельный неотмеченный чекбокс), analytics (аналитические cookie Яндекс Метрики, плашка runtime, D38), telegram_transfer (при флажке D53 текст согласия pd упоминает передачу имени и сути заявки в Telegram). Отзыв по каждой цели отдельно; ссылка «отписаться» в каждом сообщении посетителю (M2-50). Шаблоны текстов — apps/runtime/templates (M2-46), статус DRAFT до юриста (D25)"
   retention:
     milestone: M2
     rule: "ops.yaml#semantic_rules: сущность с pii=basic MUST иметь retention или compliance.retentionWaiver. Строитель SHOULD предлагать срок по умолчанию (единый источник для orchestrator.yaml#defaults): регистрация на событие — 30 дней после даты события (anchorField = дата события; 30 или 90 дней — E-LEGAL, до ответа 30), заказ — 3 года (бухучёт), заявка без сделки — 1 год"
@@ -40,8 +41,8 @@ system_package:                    # «Пакет 152-ФЗ» в каждой с�
     milestone: M2
     level: MUST
     rule: "Админ-страница системы /_wizard/pd-requests: найти строки по email/телефону субъекта → выгрузить или удалить; ответ оператора — ≤ 10 рабочих дней (ст. 14, 20); удаление пишется в deletion_log mode=subject_request"
-  telegram_and_email: "Уведомления через Telegram — без полей pii ≠ none, без исключений (G2-TG-01 — блок): «Заявка №123» + ссылка"
-  forbidden: "pii ∈ {special, biometric} — PII_CATEGORY_FORBIDDEN в applyOps и блок в G2 (MVP)"
+  telegram_and_email: "Уведомления через Telegram — без полей pii ≠ none (G2-TG-01 — блок): «Заявка №123» + ссылка. Исключение D53 (05.10.2026): по флажку владельца системы — имя клиента и суть заявки, без телефона и почты; согласие посетителя упоминает передачу в Telegram (consent.purposes); уведомление РКН о трансграничной передаче — чек-лист основателя и юриста"
+  forbidden: "pii ∈ {special, biometric} — PII_CATEGORY_FORBIDDEN в applyOps и блок в G2. D51: на пилоте без исключений (запись на услугу без медданных; поля спецкатегорий → «Ограничения»); полный поток с письменным согласием — после пилота с юристом. D52: паспорт, СНИЛС, ИНН физлица и сканы документов — только с шифрованием полей и флагом организации (abuse.yaml#patterns.gov_ids.policy)"
   rkn_notice_draft:
     milestone: M2
     level: SHOULD
@@ -71,10 +72,11 @@ platform:
   subprocessors:                   # машиночитаемый список платформы; выводится в ДПО. Для политики системы — system_package.policy_page.subprocessors_of_system
     - { name: "Cloud.ru (Облачные технологии)", location: RU, purpose: "хостинг: Managed PG, K8s, S3, KMS; T0-модели (внутренние, включая open-weights, решение F3)", pii: true }
     - { name: "Yandex Cloud (Яндекс.Облако)", location: RU, purpose: "резерв T0 (AI Studio, x-data-logging-enabled: false), поиск", pii: true }
-    - { name: "Z.ai (JINGSHENG HENGXING, Сингапур)", location: SG, purpose: "T1 для сборки (если включён по F2)", pii: "не передаются по замыслу; остаточный риск пропуска детектором", note: "получает только контекст сборки после scrub (data-boundary.yaml); org из restricted_regions — никогда" }
+    - { name: "Z.ai (JINGSHENG HENGXING, Сингапур)", location: SG, purpose: "T1 по умолчанию для интервью, карточки, сборки и дизайна, включая изображения (D26, D45, D50)", pii: "не передаются по замыслу: текст после scrub, изображения после маскирования (D62); остаточный риск пропуска детектором", note: "org из restricted_regions и с «Только РФ» — никогда" }
+    - { name: "DeepSeek (Ханчжоу, КНР)", location: CN, purpose: "T1 только после замера и решения (D54); до этого — только eval", pii: "как у Z.ai", note: "включение — PR с отчётом eval и строкой в CHANGELOG" }
     - { name: "ЮKassa (ООО НКО «ЮМани»)", location: RU, purpose: "платежи платформы (подписки, докупка)", pii: true, note: "самостоятельный оператор платёжных данных" }
     - { name: "Почтовый провайдер (РФ, выбрать; E-ACCESS)", location: RU, purpose: "OTP и уведомления", pii: true }
-    - { name: "SMS-провайдер (РФ, выбрать; E-ACCESS)", location: RU, purpose: "phone OTP в системах на тарифах Старт и Бизнес (F4)", pii: true }
+    - { name: "SMS-агрегатор (РФ; кандидаты SMS Aero, SMSC; E-ACCESS)", location: RU, purpose: "phone OTP запущенных систем и транзакционные SMS посетителям с согласия в пределах квоты (D36, billing.yaml#rub_model.sms_included)", pii: true }
     - { name: "Telegram", location: "за рубежом", purpose: "уведомления и вход в системах, если клиент подключил коннектор или метод входа", pii: true, note: "chat_id и аккаунт Telegram — ПДн до позиции юриста (E-LEGAL); тексты уведомлений без ПДн (G2-TG-01)" }
   localization:
     - "MUST: все ПДн, логи, бэкапы, метрики, трейсы и ошибки — только в РФ (ст. 18 ч. 5; deploy.yaml#cloud.observability)"

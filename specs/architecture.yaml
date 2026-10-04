@@ -105,15 +105,15 @@ environments:
   local: "Всё на одной машине: Postgres 16 локально, fixture-LLM по умолчанию, реальные ключи через .env"
   cloud: "M2: Cloud.ru Evolution — Managed PG, Managed K8s (gVisor-пул), S3, KMS"
   domains:
-    platform: "<финальное-имя>.ru — покупается к неделе 12 вместе с именем (product.yaml#decisions.D22_domains, E-NAME)"
-    systems: "*.<systems-domain> — нейтральный домен, отдельный от платформы, покупается на неделе 0 (D22_domains); локально: http://<system>--<env>.localhost:4100"
+    platform: "borntobuild.ru (product.yaml#decisions.D27_brand, 2026-10-04; прежний плейсхолдер <финальное-имя>.ru)"
+    systems: "*.sandpile.ru — нейтральный домен, отдельный от платформы (D22_domains, D27_brand); свой домен клиента — поверх (D38_sites_domains); локально: http://<system>--<env>.localhost:4100"
 
 interfaces:                   # межпакетные контракты — менять только через CHANGELOG; публичный API пакета = его src/index.ts
   appspec_ops: "packages/appspec: applyOps(spec, ops[], expectedVersion, {currentVersion=0, env, idempotencyKey, store: IdempotencyStore, author: 'user'|'agent'|'system', runId}) -> {ok: true, spec, version, revision: Revision} | {ok: false, errors: OpsError[]}; revision вызывающий MUST сохранить (specs/appspec/ops.yaml#apply)"
   migration_plan: "packages/appspec: planMigration(prevSpec|null, nextSpec, {env: 'draft'|'prod'}) -> MigrationPlan {env, steps[], additiveOnly, destructive[], errors: OpsError[], next}"
   ddl: "packages/appspec: toDDL(plan, schemaName, {runtimeRole?, lockTimeout?}) -> string[] — первый оператор SET LOCAL lock_timeout, включает toRLS(plan.next) и GRANT для runtimeRole; бросает Error, если plan.errors не пуст (невалидная спека или DESTRUCTIVE_IN_PROD); исполнять одной транзакцией. toRLS(spec, schemaName, opts) -> string[]. Литералы — только quoteLiteral/literal(value, fieldType), идентификаторы — quoteIdent (M0-29)"
   types: "packages/appspec: generateTypes(spec) -> string (d.ts); @wizard/sdk/codegen только реэкспортирует"
-  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}; t1Restricted ≠ false → T0 (policy_region_restricted)"
+  llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}; t1Restricted ≠ false → T0 (policy_region_restricted). Платформа вычисляет t1Restricted по security/data-boundary.yaml#region_restriction: регион NULL → false (D26_models_default)"
   usage_sink: "packages/llm: UsageSink {write(UsageRecord)}; по умолчанию JsonlUsageSink(.data/usage.jsonl); platform-api подставляет DbUsageSink(platform.llm_calls)"
   gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx: GateContext) -> GateReport (specs/quality/gates.yaml#report); generateSeed(spec, key) (specs/agents/qa.yaml#seed)"
   gate_context: "packages/gates: GateContext {spec, prevSpec: AppSpec|null, specVersion, files: ReadonlyMap<path, string> (ui/**, functions/**), env: 'draft'|'prod', systemKey, db: postgres.Sql (роль мигратора, только теневые/эфемерные схемы), runtime?: RuntimeHandle (G1), runtimeRole?: string (G1/G2), checks?: Check[] (G1, от QA), slug?: string, secretExists?: (name) => Promise<boolean> (G2-SECRET-02 prod, без чтения значения), abuse?: {orgAgeDays?, plan?, abuseReportsPrev?, brandAllowlist?} (G2-AF-04/08; M2-04), milestone: 'M0'|… (по умолчанию env WIZARD_MILESTONE), now?: Date, signal?: AbortSignal}"
