@@ -169,6 +169,21 @@ describe("infra.mjs", () => {
     }
   });
 
+  it("a failed close of the temporary access is a warning, not a failed run (close-access step repeats it)", async () => {
+    const lines = [];
+    const hooks = {
+      beforeCluster: async () => ({
+        vars: {},
+        close: async () => {
+          throw new Error("fetch failed");
+        },
+      }),
+    };
+    const deps = { log: (s) => lines.push(s), has: yes, exists: yes, skipSmoke: true, hooks };
+    expect(await main(["apply", "--env", "staging", "--dry-run"], TIMEWEB, deps)).toBe(0);
+    expect(lines.join("\n")).toMatch(/::warning::доступ не закрыт: fetch failed/);
+  });
+
   it("managed Kubernetes (Cloud.ru): kubeconfig from outputs, second apply for the LoadBalancer IP, no registry addon", async () => {
     const lines = [];
     const out = {
@@ -844,6 +859,84 @@ describe("certificates during the smoke (certificateReport, certificateGate)", (
       /сертификаты не выпускаются: заказ wizard-platform\/platform-1: errored/,
     );
     expect(calls.at(-1)).toContain("logs deploy/wizard-acme-dns01");
+  });
+});
+
+describe("certificate gate: a failed order is retried once, stale orders are history", () => {
+  const cert = (ready) => ({
+    kind: "Certificate",
+    metadata: { namespace: "wizard-platform", name: "wizard-platform" },
+    status: { conditions: [{ type: "Ready", status: ready ? "True" : "False", reason: "DoesNotExist" }] },
+  });
+  const order = (name, state, at) => ({
+    kind: "Order",
+    metadata: {
+      namespace: "wizard-platform",
+      name,
+      creationTimestamp: at,
+      annotations: { "cert-manager.io/certificate-name": "wizard-platform" },
+    },
+    status: { state },
+  });
+  const challenge = (orderName, state) => ({
+    kind: "Challenge",
+    metadata: {
+      namespace: "wizard-platform",
+      name: `${orderName}-0`,
+      ownerReferences: [{ name: orderName }],
+    },
+    spec: { dnsName: "borntobuild.ru" },
+    status: { state, reason: state === "invalid" ? "NXDOMAIN looking up TXT" : "" },
+  });
+  const cluster = (items) => {
+    const calls = [];
+    const kubectl = (args) => {
+      calls.push(args);
+      return { status: 0, stdout: JSON.stringify({ items: items() }) };
+    };
+    return { kubectl, calls };
+  };
+
+  it("first failure asks cert-manager for a new issuance (Issuing condition), a second failure throws", () => {
+    let items = [cert(false), order("p-1", "invalid", "2026-10-04T17:25:29Z"), challenge("p-1", "invalid")];
+    const { kubectl, calls } = cluster(() => items);
+    const retried = new Set();
+    const log = [];
+    expect(certificateGate({ kubectl, log: (s) => log.push(s), attempt: 1, retried })).toBeUndefined();
+    const patch = calls.find((a) => a.includes("patch"));
+    expect(patch.slice(0, 6)).toEqual([
+      "-n",
+      "wizard-platform",
+      "patch",
+      "certificate",
+      "wizard-platform",
+      "--subresource=status",
+    ]);
+    expect(JSON.parse(patch.at(-1))[0].value).toMatchObject({
+      type: "Issuing",
+      status: "True",
+      reason: "ManuallyTriggered",
+    });
+    expect(log.join("\n")).toMatch(/запрошен новый выпуск/);
+    // The new order is pending: the old invalid one is history, no failure.
+    items = [...items, order("p-2", "pending", "2026-10-04T19:00:00Z"), challenge("p-2", "pending")];
+    expect(certificateReport({ kubectl }).failure).toBe("");
+    expect(certificateGate({ kubectl, log: () => {}, attempt: 5, retried })).toBeUndefined();
+    // It fails too: no second retry.
+    items = [
+      cert(false),
+      order("p-1", "invalid", "2026-10-04T17:25:29Z"),
+      order("p-2", "invalid", "2026-10-04T19:00:00Z"),
+      challenge("p-2", "invalid"),
+    ];
+    expect(() => certificateGate({ kubectl, log: () => {}, attempt: 9, retried })).toThrow(
+      /сертификаты не выпускаются: заказ wizard-platform\/p-2: invalid/,
+    );
+  });
+
+  it("an invalid order of a ready certificate is not a failure", () => {
+    const { kubectl } = cluster(() => [cert(true), order("p-1", "invalid", "2026-10-04T17:25:29Z")]);
+    expect(certificateReport({ kubectl })).toMatchObject({ failure: "", stuck: [] });
   });
 });
 

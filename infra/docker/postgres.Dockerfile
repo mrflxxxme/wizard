@@ -26,6 +26,13 @@ RUN mkdir -p /out \
  && install -m 0755 /tmp/rclone/usr/bin/rclone /out/rclone
 
 FROM ${POSTGRES_IMAGE}
+# The official image purges ca-certificates after fetching gosu; WAL-G and rclone (Go) verify S3 TLS against the
+# system roots and retried every request without a word until their timeout (pilot diagnose, 2026-10-04). Node
+# carries its own roots, which is why the network probe answered.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && test -s /etc/ssl/certs/ca-certificates.crt
 COPY --from=tools /out/wal-g /out/rclone /usr/local/bin/
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY infra/postgres/pg-ops.mjs /opt/wizard/pg-ops.mjs
