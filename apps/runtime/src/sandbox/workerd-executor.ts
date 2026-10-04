@@ -37,12 +37,27 @@ export interface SandboxExecutors {
   executorFor(sys: { systemId: string; env: SandboxEnv; entities: readonly string[] }): GuestExecutor;
 }
 
+/** An endpoint held for one call: a replaced pod is removed only after the calls it was given have released it. */
+export interface EndpointLease {
+  endpoint: string;
+  release(): void;
+}
+
+/** Below this much of its time limit left, a call is not started (it could only time out). */
+export const MIN_CALL_MS = 50;
+const RESTARTING = "Песочница функций перезапускается";
+
 export interface WorkerdExecutorOptions {
   /**
    * Base URL of the system's socket in its pod (http://<pod-ip>:<basePort + slot>); a function is asked on every
    * call (pods restart with new addresses). null → the system is not placed (503 FUNCTIONS_DISABLED).
    */
   endpoint: string | (() => string | null);
+  /**
+   * Instead of `endpoint` (the orchestrator): the endpoint held for one call, waited for at most waitMs while the
+   * system's pod is (re)starting; rejects with FUNCTIONS_DISABLED.
+   */
+  lease?: (waitMs: number) => Promise<EndpointLease>;
   systemId: string;
   env: SandboxEnv;
   rpc: SandboxRpc;
@@ -68,21 +83,39 @@ export class WorkerdExecutor implements GuestExecutor {
     this.f = o.fetch ?? fetch;
   }
 
-  private base(): string {
-    const e = typeof this.o.endpoint === "function" ? this.o.endpoint() : this.o.endpoint;
-    if (!e) throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
-    return e;
+  /**
+   * The endpoint for one call within its time limit: waiting for a restarting pod counts against it, and a call left
+   * with less than MIN_CALL_MS is not started — it never runs after its caller gave up. Returns the time left.
+   */
+  private async acquire(limitMs: number): Promise<EndpointLease & { left: number }> {
+    const started = Date.now();
+    let lease: EndpointLease;
+    if (this.o.lease) lease = await this.o.lease(limitMs);
+    else {
+      const e = typeof this.o.endpoint === "function" ? this.o.endpoint() : this.o.endpoint;
+      if (!e) throw new WizardError("FUNCTIONS_DISABLED", { message: "Функции системы не загружены" });
+      lease = { endpoint: e, release: () => {} };
+    }
+    const left = limitMs - (Date.now() - started);
+    if (left < MIN_CALL_MS) {
+      lease.release();
+      throw new WizardError("FUNCTIONS_DISABLED", { message: RESTARTING });
+    }
+    return { endpoint: lease.endpoint, release: () => lease.release(), left };
   }
 
   async functions(): Promise<Record<string, GuestFunction>> {
-    const res = await this.f(`${this.base()}/__wizard/functions`, {
-      signal: AbortSignal.timeout(this.o.loadTimeoutMs ?? 10_000),
-    });
-    if (!res.ok) throw new Error(`sandbox functions: HTTP ${res.status}`);
-    const body: unknown = await res.json();
-    if (typeof body !== "object" || body === null || Array.isArray(body))
-      throw new Error("sandbox functions: shape");
-    return body as Record<string, GuestFunction>;
+    const { endpoint: base, release, left } = await this.acquire(this.o.loadTimeoutMs ?? 10_000);
+    try {
+      const res = await this.f(`${base}/__wizard/functions`, { signal: AbortSignal.timeout(left) });
+      if (!res.ok) throw new Error(`sandbox functions: HTTP ${res.status}`);
+      const body: unknown = await res.json();
+      if (typeof body !== "object" || body === null || Array.isArray(body))
+        throw new Error("sandbox functions: shape");
+      return body as Record<string, GuestFunction>;
+    } finally {
+      release();
+    }
   }
 
   async run(
@@ -95,8 +128,8 @@ export class WorkerdExecutor implements GuestExecutor {
     timeoutMs: number,
   ): Promise<unknown> {
     if (this.closed) throw new WizardError("INTERNAL");
-    const base = this.base();
-    const call = this.o.rpc.open({ systemId: this.o.systemId, env: this.o.env, hostCtx, timeoutMs });
+    const { endpoint: base, release, left } = await this.acquire(timeoutMs);
+    const call = this.o.rpc.open({ systemId: this.o.systemId, env: this.o.env, hostCtx, timeoutMs: left });
     try {
       let res: Response;
       try {
@@ -111,7 +144,7 @@ export class WorkerdExecutor implements GuestExecutor {
             now: now.toISOString(),
             user: { id: user.id, role: user.role, isAdmin: user.isAdmin, attrs: { ...user.attrs } },
           }),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: AbortSignal.timeout(left),
         });
       } catch (e) {
         if (isAbort(e)) {
@@ -140,6 +173,7 @@ export class WorkerdExecutor implements GuestExecutor {
     } finally {
       // The token dies with the call: replaying it later gets 403 even before exp.
       call.close();
+      release();
     }
   }
 

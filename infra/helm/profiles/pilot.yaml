@@ -31,10 +31,15 @@ platformApi:
   resources: { requests: { cpu: 100m, memory: 384Mi }, limits: { cpu: "2", memory: 768Mi } }
 worker:
   replicas: 1
+  # Recreate, not RollingUpdate: the sandbox orchestrators (G1 here, runtime below) own their pods per process —
+  # during a rolling update the old process's watchdog re-creates pods the new one just reconciled away, and they leak
+  # into the namespace quota (found by the local rehearsal). A few seconds without builds/functions per deploy.
+  strategy: { type: Recreate }
   # measured: 312 MiB idle, 565 MiB peak during a build + G1 (≈ +250 MiB per concurrent build)
   resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "3", memory: 1536Mi } }
 runtime:
   replicas: 1
+  strategy: { type: Recreate }
   # measured: 132 MiB idle, 185 MiB peak (preview + published system)
   resources: { requests: { cpu: 100m, memory: 192Mi }, limits: { cpu: "2", memory: 512Mi } }
 platformWeb:

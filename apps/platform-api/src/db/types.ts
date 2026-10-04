@@ -159,6 +159,15 @@ export interface GateReportsTable {
   created_at: TsDef;
 }
 
+/** db.yaml#g1_checks: QA scenarios of a passed G1 (runs/g1-checks.ts StoredG1Check[]), reused by the publish G1. */
+export interface G1ChecksTable {
+  system_id: string;
+  revision: number;
+  run_id: string;
+  checks: Json<unknown[]>;
+  created_at: TsDef;
+}
+
 export interface LlmCallsTable {
   id: Generated<string>;
   org_id: string;
@@ -501,6 +510,7 @@ export interface DB {
   "platform.runs": RunsTable;
   "platform.run_events": RunEventsTable;
   "platform.gate_reports": GateReportsTable;
+  "platform.g1_checks": G1ChecksTable;
   "platform.llm_calls": LlmCallsTable;
   "platform.locks": LocksTable;
   "platform.publications": PublicationsTable;

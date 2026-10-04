@@ -263,6 +263,19 @@ tables:
     reads: "GET /systems/:id/gates/latest: для каждого level строка с max(revision) по system_id"
     retention: "180 дней, кроме последней строки на (system_id, level) (retention_cron, M2)"
 
+  g1_checks:
+    milestone: M2
+    purpose: "QA-сценарии пройденного G1 (qa.yaml#checks.output) для критериев карточки без шагов в спеке: G1 при публикации ревизии без своего G1 (правка compliance поверх сборки, workflows.yaml#workflows.publish.steps.gate_G1_prod) берёт их у ближайшей ревизии ≤ публикуемой — по каждому AC, только при совпадении acId и sha256(text) (как qa.yaml#checks.determinism); у изменённого AC сценария нет → G1-AC-COVER. Сценарии синтетические (QA не видит записей и значений секретов)"
+    columns:
+      system_id: "uuid not null"
+      revision: "integer not null"
+      run_id: "uuid not null references platform.runs on delete cascade"
+      checks: "jsonb not null"                                # [{acId, textSha256, check: QaCheck}] — только scenario/constraint с acId, level G1
+    primary_key: [system_id, revision]
+    constraints: ["foreign key (system_id, revision) references platform.revisions (system_id, version) on delete cascade"]
+    invariants: ["Строка пишется в одной транзакции с gate_reports пройденного G1 (сборка или публикация); повторный пройденный G1 той же ревизии её заменяет"]
+    retention: "живёт вместе с ревизией (retention_cron gate_reports её не трогает)"
+
   llm_calls:
     milestone: M0
     purpose: "Журнал маршрутизации и учёта = models.yaml#usage_record (одна строка на HTTP-попытку; models.yaml называет её llm_usage — имя таблицы здесь). НИКОГДА не содержит текст запросов и ответов"

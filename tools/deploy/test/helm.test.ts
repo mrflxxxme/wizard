@@ -166,16 +166,27 @@ function yamlDocs(text: string): K8s[] {
   return JSON.parse(r.stdout);
 }
 
-function helmArgs(cmd: "template" | "lint", v: Variant, env: "staging" | "prod"): string[] {
+function helmArgs(
+  cmd: "template" | "lint",
+  v: Variant,
+  env: "staging" | "prod",
+  extra: readonly string[] = [],
+): string[] {
   const args = cmd === "template" ? ["template", "wizard", CHART] : ["lint", CHART, "--strict"];
   const files = [...v.files, `values-${env}.yaml`, ...(v.envFiles ? [v.envFiles[env]] : [])];
   for (const f of files) args.push("-f", join(CHART, f));
   for (const s of SETS) args.push("--set", s);
+  // `extra`: further helm flags after every layer (a later -f, --set), e.g. the local rehearsal values.
+  args.push(...extra);
   return args;
 }
 
-function render(v: Variant, env: "staging" | "prod"): { docs: K8s[]; text: string } {
-  const r = spawnSync(HELM as string, helmArgs("template", v, env), {
+function render(
+  v: Variant,
+  env: "staging" | "prod",
+  extra: readonly string[] = [],
+): { docs: K8s[]; text: string } {
+  const r = spawnSync(HELM as string, helmArgs("template", v, env, extra), {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -381,6 +392,163 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             expect(JSON.stringify(api.spec.ingress)).not.toContain(`"wizard.ru/role":"${role}"`);
         });
 
+        it("platform-api and worker (only) reach the Traefik pods on websecure: the post-publish smoke goes through the DNATed ingress address", () => {
+          // The smoke opens https://<slug>.<systems>; the domain resolves to the ingress LoadBalancer IP, which
+          // kube-proxy DNATs in-cluster to the private IPs of the Traefik pods, so the 0.0.0.0/0-except-private rule
+          // never matched and every publication rolled back with SMOKE_FAILED.
+          expect(num("websecurePort")).toBe(8443);
+          const nps = of("NetworkPolicy");
+          const toTraefik = (n: K8s) =>
+            (n.spec.egress ?? []).filter((e: K8s) =>
+              (e.to ?? []).some(
+                (t: K8s) => t.podSelector?.matchLabels?.["app.kubernetes.io/name"] === "traefik",
+              ),
+            );
+          for (const name of ["wizard-platform-api", "wizard-worker"]) {
+            const np = nps.find((n) => n.metadata.name === name);
+            expect(np?.metadata.namespace, name).toBe("wizard-platform");
+            // Exactly one rule: namespace AND pod selector in the same peer (not two peers = a union), one TCP port.
+            expect(toTraefik(np as K8s), name).toEqual([
+              {
+                to: [
+                  {
+                    namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-ingress" } },
+                    podSelector: { matchLabels: { "app.kubernetes.io/name": "traefik" } },
+                  },
+                ],
+                ports: [{ protocol: "TCP", port: 8443 }],
+              },
+            ]);
+          }
+          // Nobody else got the hop: not the runtime (its public egress goes via the egress proxy), not the sandbox,
+          // proxy, web, PgBouncer or Postgres policies.
+          for (const n of nps) {
+            if (["wizard-platform-api", "wizard-worker"].includes(n.metadata.name)) continue;
+            expect(toTraefik(n), n.metadata.name).toEqual([]);
+            expect(JSON.stringify(n.spec.egress ?? []), n.metadata.name).not.toMatch(
+              /traefik|wizard-ingress|"port":8443/,
+            );
+          }
+          const runtime = nps.find((n) => n.metadata.name === "wizard-runtime");
+          expect(runtime?.spec.egress.length).toBeGreaterThan(0);
+        });
+
+        it("every object of the release is unique by apiVersion, kind, namespace and name", () => {
+          const seen = new Map<string, number>();
+          for (const d of docs) {
+            const id = `${d.apiVersion} ${d.kind} ${d.metadata?.namespace ?? "-"}/${d.metadata?.name}`;
+            seen.set(id, (seen.get(id) ?? 0) + 1);
+          }
+          expect(seen.size).toBeGreaterThan(30);
+          expect([...seen].filter(([, n]) => n > 1).map(([id]) => id)).toEqual([]);
+        });
+
+        it("extraCa is off by default: no CA volume, mount or NODE_EXTRA_CA_CERTS on the Node services", () => {
+          // (the DNS-01 solver sets its own NODE_EXTRA_CA_CERTS to the service account CA: not ours)
+          for (const p of allPods) {
+            expect(
+              (p.spec.volumes ?? []).filter((x: K8s) => x.name === "extra-ca"),
+              p.name,
+            ).toEqual([]);
+            for (const c of p.spec.containers) {
+              expect(
+                (c.volumeMounts ?? []).filter((m: K8s) => m.name === "extra-ca"),
+                p.name,
+              ).toEqual([]);
+              expect(
+                (c.env ?? []).filter(
+                  (e: K8s) => e.name === "NODE_EXTRA_CA_CERTS" && p.name !== "wizard-acme-dns01",
+                ),
+                p.name,
+              ).toEqual([]);
+            }
+          }
+          expect(text).not.toContain("/etc/wizard/extra-ca");
+        });
+
+        it("extraCa.configMap: platform-api, worker and runtime mount it read-only and trust it; nothing else does", () => {
+          const out = render(v, env, ["--set", "extraCa.configMap=my-ca", "--set", "extraCa.key=bundle.pem"]);
+          const deployments = out.docs.filter((d) => d.kind === "Deployment");
+          const trusting = ["wizard-platform-api", "wizard-worker", "wizard-runtime"];
+          for (const d of deployments) {
+            const spec = d.spec.template.spec;
+            const name = d.metadata.name as string;
+            const vol = (spec.volumes ?? []).find((x: K8s) => x.name === "extra-ca");
+            for (const c of spec.containers) {
+              const mount = (c.volumeMounts ?? []).find((m: K8s) => m.name === "extra-ca");
+              const envVar = (c.env ?? []).find((e: K8s) => e.name === "NODE_EXTRA_CA_CERTS");
+              if (!trusting.includes(name)) {
+                expect(vol, name).toBeUndefined();
+                expect(mount, name).toBeUndefined();
+                // (the DNS-01 solver's own NODE_EXTRA_CA_CERTS is the service account CA)
+                expect(envVar?.value ?? "", name).not.toContain("/etc/wizard/extra-ca");
+                continue;
+              }
+              expect(vol, name).toEqual({
+                name: "extra-ca",
+                configMap: { name: "my-ca", items: [{ key: "bundle.pem", path: "bundle.pem" }] },
+              });
+              expect(mount, name).toEqual({
+                name: "extra-ca",
+                mountPath: "/etc/wizard/extra-ca",
+                readOnly: true,
+              });
+              expect(envVar, name).toEqual({
+                name: "NODE_EXTRA_CA_CERTS",
+                value: "/etc/wizard/extra-ca/bundle.pem",
+              });
+              // The hardening stays: read-only root, restricted pod, the data volume is still there.
+              expect(c.securityContext.readOnlyRootFilesystem, name).toBe(true);
+              expect(spec.securityContext.runAsNonRoot, name).toBe(true);
+              expect(
+                c.volumeMounts.map((m: K8s) => m.name),
+                name,
+              ).toEqual(expect.arrayContaining(["tmp", "data"]));
+            }
+          }
+          expect(
+            deployments.filter((d) => trusting.includes(d.metadata.name)).length,
+            "all three Deployments exist",
+          ).toBe(3);
+          // Only those three containers get our file (not the egress proxy, PgBouncer, PostgreSQL, Jobs).
+          expect(out.text.match(/value: "\/etc\/wizard\/extra-ca\/bundle\.pem"/g)).toHaveLength(3);
+          expect(out.text.match(/mountPath: \/etc\/wizard\/extra-ca\r?$/gm)).toHaveLength(3);
+        });
+
+        it("the local rehearsal values trust wizard-local-ca (key ca.crt) in the three Node services", () => {
+          const out = render(v, env, ["-f", join(ROOT, "infra/local/values-local.yaml")]);
+          for (const name of ["wizard-platform-api", "wizard-worker", "wizard-runtime"]) {
+            const spec = out.docs.find((d) => d.kind === "Deployment" && d.metadata.name === name)?.spec
+              .template.spec;
+            expect(spec.volumes.find((x: K8s) => x.name === "extra-ca").configMap, name).toEqual({
+              name: "wizard-local-ca",
+              items: [{ key: "ca.crt", path: "ca.crt" }],
+            });
+            expect(
+              spec.containers[0].env.find((e: K8s) => e.name === "NODE_EXTRA_CA_CERTS").value,
+              name,
+            ).toBe("/etc/wizard/extra-ca/ca.crt");
+          }
+        });
+
+        it("WIZARD_FIXTURE is set for the fixture and record LLM modes and only for them", () => {
+          const fixtureOf = (mode: string) => {
+            const out = render(v, env, [
+              "--set",
+              `config.llmMode=${mode}`,
+              "--set",
+              "config.fixture=demo/forum",
+            ]);
+            const dep = out.docs.find((d) => d.kind === "Deployment" && d.metadata.name === "wizard-worker");
+            const e = dep?.spec.template.spec.containers[0].env;
+            expect(e.find((x: K8s) => x.name === "WIZARD_LLM_MODE").value).toBe(mode);
+            return e.find((x: K8s) => x.name === "WIZARD_FIXTURE")?.value;
+          };
+          expect(fixtureOf("fixture")).toBe("demo/forum");
+          expect(fixtureOf("record")).toBe("demo/forum");
+          expect(fixtureOf("live")).toBeUndefined();
+        });
+
         it("HSTS with includeSubDomains everywhere; preload and ≥ 1 year on prod (L3-14)", () => {
           const mw = docs.find((d) => d.kind === "Middleware" && d.metadata.name === "wizard-hsts");
           expect(mw?.spec.headers.stsIncludeSubdomains).toBe(true);
@@ -532,6 +700,66 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
               { protocol: "TCP", port: 443 },
             ]);
             expect(api.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
+          });
+
+          it("pilot (M2-19): the worker reaches its own G1 sandbox pods on exactly the system ports (production defect)", () => {
+            // Without this egress rule the default-deny of the platform namespace cut G1 off from its workerd pods.
+            const worker = of("Deployment").find((d) => d.metadata.name === "wizard-worker");
+            const wenv = env0(worker?.spec.template.spec.containers[0]);
+            const systems = Number(wenv.WIZARD_SANDBOX_SYSTEMS_PER_POD);
+            const base = Number(wenv.WIZARD_SANDBOX_BASE_PORT);
+            const health = Number(wenv.WIZARD_SANDBOX_HEALTH_PORT);
+            expect(base).toBe(num("basePort"));
+            expect(systems).toBeGreaterThan(0);
+            const systemPorts = Array.from({ length: systems }, (_, k) => ({
+              protocol: "TCP",
+              port: base + k,
+            }));
+
+            const wnp = of("NetworkPolicy").find(
+              (n) => n.metadata.name === "wizard-worker" && n.metadata.namespace === "wizard-platform",
+            );
+            expect(wnp?.spec.policyTypes).toEqual(["Ingress", "Egress"]);
+            const toSandbox = wnp?.spec.egress.filter((e: K8s) =>
+              (e.to ?? []).some(
+                (t: K8s) =>
+                  t.namespaceSelector?.matchLabels?.["kubernetes.io/metadata.name"] === "wizard-sandbox",
+              ),
+            );
+            expect(toSandbox).toEqual([
+              {
+                to: [
+                  {
+                    namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-sandbox" } },
+                    podSelector: {
+                      matchLabels: {
+                        "app.kubernetes.io/name": "wizard-sandbox",
+                        "wizard.ru/sandbox-owner": "g1",
+                      },
+                    },
+                  },
+                ],
+                ports: systemPorts,
+              },
+            ]);
+            // The pods' own policy admits the same ports from the worker (both sides of the flow); the health port
+            // belongs to the kubelet probes, which the orchestrator and the executors never call.
+            const g1np = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-sandbox-g1");
+            expect(g1np?.spec.ingress).toEqual([
+              {
+                from: [
+                  {
+                    namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-platform" } },
+                    podSelector: { matchLabels: { "wizard.ru/role": "worker" } },
+                  },
+                ],
+                ports: systemPorts,
+              },
+            ]);
+            expect(JSON.stringify([toSandbox, g1np?.spec.ingress])).not.toContain(`"port":${health}`);
+            // The runtime keeps reaching all pods (not only owner g1) on the system ports.
+            const rnp = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-runtime");
+            expect(JSON.stringify(rnp?.spec.egress)).toContain(`"port":${base}`);
           });
 
           it("pilot: PostgreSQL 16 StatefulSet with WAL-G archiving every ≤ 60 s, encrypted, never overwriting", () => {

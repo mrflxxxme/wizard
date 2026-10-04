@@ -25,7 +25,8 @@ export default defineConfig({
   },
   projects: [
     // M0 dev stand (scripts/dev.mjs, WIZARD_AUTH_MODE=dev, fixture LLM).
-    { name: "chromium", testIgnore: /(m[12]|pilot)\//, use: { ...devices["Desktop Chrome"] } },
+    // rehearsal/: a deployed environment only (playwright.rehearsal.config.ts), never the dev stand.
+    { name: "chromium", testIgnore: /(m[12]|pilot|rehearsal)\//, use: { ...devices["Desktop Chrome"] } },
     // M1 stand (stand/m1.ts): session auth (email OTP, dev-login for setup), scripted builder, real publish.
     {
       name: "m1",

@@ -293,11 +293,13 @@ describe("строитель: план, apply_ops, write_file", () => {
 });
 
 describe("QA: submit_checks", () => {
-  it("SC на каждый AC scenario|constraint ≤ M0; шаги по DSL; роли, функции и переменные существуют", () => {
+  it("SC на каждый AC scenario|constraint ≤ qa.milestone; шаги по DSL; роли, функции и переменные существуют", () => {
     const { checks } = toolArgs("qa_generate");
     const spec = g.buildSpec;
+    const order = ["M0", "M1", "M2", "M3", "M4"];
+    const upTo = order.indexOf(g.golden.qa?.milestone ?? "M0");
     const due = g.card.acceptance.filter(
-      (a: any) => a.check.type !== "permission" && (a.check.milestone ?? "M0") === "M0",
+      (a: any) => a.check.type !== "permission" && order.indexOf(a.check.milestone ?? "M0") <= upTo,
     );
     expect(checks.map((c: any) => c.acId)).toEqual(due.map((a: any) => a.id));
     const roles = new Set(spec.roles.map((r: any) => r.name));

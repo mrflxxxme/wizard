@@ -1,4 +1,4 @@
-// backlog M0-14 on a real runtime: QA checks from the golden qa_generate lines pass G1 on the golden forum and bakery;
+// backlog M0-14 on a real runtime: QA checks from the golden qa_generate lines pass G1 on the golden forum (M0–M2) and bakery;
 // a spec with delete opened for the participant is explained as permission_too_broad with an ops fix.
 import { type GateReport, runGates } from "@wizard/gates";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -39,6 +39,26 @@ describe("forum", () => {
     expect(s["G1-AC-COVER"]).toBe("pass");
     expect(r.passed, failing(r)).toBe(true);
   }, 120_000);
+});
+
+// The pilot and its staging run WIZARD_MILESTONE=M2 in fixture mode: the one recorded qa_generate answer must cover
+// AC6 (M1) and AC5 (M2) too, otherwise QA asks again and the second call is a FIXTURE_MISS.
+describe.each(["M1", "M2"] as const)("forum at %s", (milestone) => {
+  test("one golden qa_generate covers every due AC; AC6 (and AC5 at M2) pass G1; the gate passes", async () => {
+    const { spec, files, card } = await goldenBuild("forum");
+    const { route, calls } = demoRouter("forum");
+    const qa = createQaAgent({ route, milestone });
+    const checks = await qa.generate({ card, spec, specVersion: 7 });
+    expect(calls).toEqual(["qa_generate"]);
+    const sc = checks.filter((c) => c.scenario).map((c) => c.id);
+    const due = ["SC-AC1", "SC-AC2", "SC-AC3", "SC-AC4", "SC-AC6", ...(milestone === "M2" ? ["SC-AC5"] : [])];
+    expect(sc.sort()).toEqual(due.sort());
+    const r = await runGates("G1", h.ctx(spec, files, { checks, specVersion: 7, milestone }));
+    const s = status(r);
+    for (const id of [...due, "SC-AC7", "SC-AC8"]) expect(s[id], `${id} ${failing(r)}`).toBe("pass");
+    expect(s["G1-AC-COVER"]).toBe("pass");
+    expect(r.passed, failing(r)).toBe(true);
+  }, 180_000);
 });
 
 describe("bakery", () => {

@@ -204,10 +204,12 @@ build:
   code_done_text: "Код записан: {functions} файлов серверной логики и {ui} экрана. G0 пройден."
 
 # ---------------------------------------------------------------- qa_generate: submit_checks
-# Сценарии для AC type=scenario|constraint с milestone ≤ M0 берутся из spec.acceptance[].check (actors, steps);
+# Сценарии для AC type=scenario|constraint с milestone ≤ qa.milestone берутся из spec.acceptance[].check (actors, steps);
 # значения, похожие на ПДн, заменяются синтетикой (email — только tools/eval/pii-allowlist.txt).
+# M2: пилот и staging работают с WIZARD_MILESTONE=M2, там QA просит сценарии и для AC5 (M2) и AC6 (M1). На M0/M1 лишние
+# сценарии (AC вне запроса) QA пропускает, поэтому одна строка qa_generate годится для M0–M2.
 qa:
-  milestone: M0
+  milestone: M2
   replace:                           # регулярное выражение по целому строковому значению → синтетика; {n} — номер значения
     - { pattern: '^\p{Lu}\p{Ll}+ Тестова?$',     with: "Участник {n}" }
     - { pattern: '^[a-z0-9]+@example\.test$',     with: "user{n}@example.test" }

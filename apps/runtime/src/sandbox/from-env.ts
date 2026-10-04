@@ -38,6 +38,8 @@ export function sandboxFromEnv(
     log?: (line: Record<string, unknown>) => void;
     /** Owner label of the pods: "runtime" (system functions) or "g1" (the G1 host of the worker, M2-19). */
     owner?: string;
+    /** Replace a pod in place when the quota has no room for two (OrchestratorOptions.inPlace; the G1 host). */
+    inPlace?: boolean;
   } = {},
 ): { orchestrator: SandboxOrchestrator; rpc: SandboxRpc } | null {
   if ((env.WIZARD_SANDBOX ?? "off") === "off") return null;
@@ -64,6 +66,7 @@ export function sandboxFromEnv(
     // Tests run workerd as a local process (pods listen on "*").
     ...(env.WIZARD_SANDBOX_LISTEN_HOST ? { listenHost: env.WIZARD_SANDBOX_LISTEN_HOST } : {}),
     ...(deps.log ? { log: deps.log } : {}),
+    ...(deps.inPlace ? { inPlace: true } : {}),
   });
   return { orchestrator, rpc };
 }

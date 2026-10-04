@@ -1,0 +1,31 @@
+# Local rehearsal of the pilot (docs/ops/local-rehearsal.md, tools/deploy/local.mjs): the last values layer, after
+# values.yaml → profiles/k3s.yaml → profiles/pilot.yaml → values-staging.yaml → profiles/pilot-staging.yaml.
+# Everything else — PostgreSQL with WAL-G, the .data copy, PgBouncer, NetworkPolicies, the gVisor sandbox pool, G1 in
+# workerd — is the pilot as it is. Only what a laptop cannot have is replaced:
+#   GHCR → images imported into the node's containerd (no pull secret);
+#   Timeweb S3 → MinIO, DNS-01 at Let's Encrypt → a local CA (the TLS Secrets are made by local.mjs);
+#   Unisender Go → Mailpit (STARTTLS with the local CA; letters never leave the machine).
+# The docker network of the rehearsal is 198.18.0.0/24 (RFC 2544, not RFC 1918): NetworkPolicies of the chart let the
+# platform reach S3 and SMTP only outside private ranges, exactly as on the VM.
+images:
+  pullSecret: ""
+  pullPolicy: IfNotPresent
+config:
+  s3Region: us-east-1
+runtime:
+  # file fields of systems: the runtime reaches the object storage only through runtime.s3Cidrs (MinIO)
+  s3Cidrs: ["198.18.0.3/32"]
+tls:
+  # ACME is never reached: the Certificates stay unready and the ingress serves the Secrets of the local CA.
+  acmeServer: https://acme.invalid/directory
+  solver: none
+  solvers:
+    - http01: { ingress: { ingressClassName: traefik } }
+# The local CA also signs Mailpit's STARTTLS certificate: platform-api, worker and runtime trust it through
+# NODE_EXTRA_CA_CERTS. local.mjs creates ConfigMap wizard-local-ca (key ca.crt) in the platform namespace.
+extraCa:
+  configMap: wizard-local-ca
+  key: ca.crt
+hsts:
+  maxAge: 300
+  preload: false

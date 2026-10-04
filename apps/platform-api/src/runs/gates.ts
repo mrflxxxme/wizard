@@ -1,8 +1,11 @@
 // Gate step persistence: full GateReport → platform.gate_reports and gate_result in the same transaction
 // (workflows.yaml#execution.step_rules, db.yaml#gate_reports, L1-11).
+import type { AppSpec } from "@wizard/appspec";
+import type { QaCheck } from "@wizard/gates";
 import { type Db, json } from "../db/index.js";
 import { recordGate } from "../ops/metrics.js";
 import { appendEvent, type TxCtx } from "./events.js";
+import { saveG1Checks } from "./g1-checks.js";
 import type { GateReport } from "./types.js";
 
 const MAX_FAILED = 20;
@@ -29,7 +32,14 @@ export function gateResultPayload(report: GateReport, revision: number): Record<
 
 export async function recordGateReport(
   t: TxCtx,
-  a: { runId: string; systemId: string; revision: number; report: GateReport },
+  a: {
+    runId: string;
+    systemId: string;
+    revision: number;
+    report: GateReport;
+    /** G1: the QA checks the gate ran with and the spec they cover — kept when G1 passed (db.yaml#g1_checks). */
+    qa?: { spec: AppSpec; checks: readonly QaCheck[] } | undefined;
+  },
 ): Promise<void> {
   await t.trx
     .insertInto("platform.gate_reports")
@@ -56,6 +66,14 @@ export async function recordGateReport(
       .where("version", "=", a.revision)
       .execute();
   }
+  if (a.report.level === "G1" && a.report.passed && a.qa && a.qa.checks.length > 0)
+    await saveG1Checks(t, {
+      systemId: a.systemId,
+      revision: a.revision,
+      runId: a.runId,
+      spec: a.qa.spec,
+      checks: a.qa.checks,
+    });
   await appendEvent(t, a.runId, "gate_result", gateResultPayload(a.report, a.revision));
   t.after?.push(() => recordGate(a.report));
 }

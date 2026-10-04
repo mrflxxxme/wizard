@@ -1,0 +1,3 @@
+# runsc flags of the local rehearsal (shim options file). systrap needs no KVM: the Docker Desktop VM has none.
+[runsc_config]
+  platform = "systrap"

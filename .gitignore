@@ -16,3 +16,5 @@ infra/tofu/**/terraform.tfvars
 # Rendered/generated deploy outputs
 sbom*.cdx.json
 .kube/
+# Session state of agent tooling (oh-my-claudecode)
+.omc/

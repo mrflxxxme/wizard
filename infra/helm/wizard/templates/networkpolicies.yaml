@@ -76,6 +76,15 @@ spec:
         - ipBlock: { cidr: {{ . }} }
         {{- end }}
       ports: [{ protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 }]
+    # M2-19: the G1 host calls the functions and render Workers of its own sandbox pods (owner g1): the system ports
+    # only. The health port is the kubelet's (probes come from the node), the orchestrator never connects to it.
+    - to:
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $sb }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: wizard-sandbox, wizard.ru/sandbox-owner: g1 } }
+      ports:
+        {{- range $k := until (int $.Values.sandbox.systems) }}
+        - { protocol: TCP, port: {{ add $.Values.sandbox.basePort $k }} }
+        {{- end }}
     {{- end }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: pgbouncer } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.pgbouncer.port }} }]
@@ -93,6 +102,14 @@ spec:
     {{- end }}
     - to: [{ podSelector: { matchLabels: { wizard.ru/role: runtime } } }]
       ports: [{ protocol: TCP, port: {{ $.Values.runtime.internalPort }} }]
+    # Post-publish smoke (workflows.yaml#publish.smoke) and live re-checks open https://<slug>.<systems> like a visitor.
+    # The domain resolves to the ingress LoadBalancer address, and kube-proxy DNATs that in-cluster to the Traefik pods —
+    # the 0.0.0.0/0 rule below never matches a pod IP, so without this hop every publication rolled back with
+    # SMOKE_FAILED (found by the local rehearsal). Only Traefik's websecure container port.
+    - to:
+        - namespaceSelector: { matchLabels: { {{ $nsKey }}: {{ $.Values.namespaces.ingress }} } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: traefik } }
+      ports: [{ protocol: TCP, port: {{ $.Values.ingress.websecurePort }} }]
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
