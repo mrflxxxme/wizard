@@ -653,19 +653,24 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     if (hooks.afterRelease) await hooks.afterRelease({ kubectl, helm, outputs, tag });
     if (!o.dryRun && !deps.skipSmoke) {
       // A fresh environment gets its certificates over DNS-01 after the release: WIZARD_SMOKE_ATTEMPTS × 30 s.
+      const retried = new Set();
       await smokeWithRetry(outputs.env.domains, {
         log,
         attempts: Number(v.WIZARD_SMOKE_ATTEMPTS ?? 1) || 1,
         sleep: deps.sleep,
         f: deps.fetch,
-        onRetry: (i) => certificateGate({ kubectl, log, attempt: i }),
+        onRetry: (i) => certificateGate({ kubectl, log, attempt: i, retried }),
       });
     }
     log(o.dryRun ? "--dry-run: команды выше не выполнялись." : `Готово: ${o.env} развёрнут, образы ${tag}.`);
     return 0;
   } finally {
     if (closeTunnel) closeTunnel();
-    if (access?.close) await access.close();
+    // The workflow closes the access again in a step of its own; a failed API call here must not fail a done release.
+    if (access?.close)
+      await Promise.resolve()
+        .then(() => access.close())
+        .catch((e) => log(`::warning::доступ не закрыт: ${e?.message ?? e} — закроет шаг close-access`));
   }
 }
 
@@ -981,8 +986,40 @@ export function certificateReport({ kubectl }) {
   try {
     items = JSON.parse(r.stdout || "{}").items ?? [];
   } catch {}
+  const key = (ns, name) => `${ns}/${name}`;
+  const ready = new Set();
+  for (const it of items)
+    if (
+      it.kind === "Certificate" &&
+      (it.status?.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True")
+    )
+      ready.add(key(it.metadata?.namespace, it.metadata?.name));
+  // The newest order of each certificate; older ones (and those of ready certificates) are history, not the state.
+  const certOf = (o) => o.metadata?.annotations?.["cert-manager.io/certificate-name"];
+  const newest = new Map();
+  for (const it of items) {
+    const c = it.kind === "Order" && certOf(it);
+    if (!c) continue;
+    const k = key(it.metadata?.namespace, c);
+    const prev = newest.get(k);
+    if (
+      !prev ||
+      String(it.metadata?.creationTimestamp ?? "") > String(prev.metadata?.creationTimestamp ?? "")
+    )
+      newest.set(k, it);
+  }
+  const orders = new Map(
+    items.filter((it) => it.kind === "Order").map((o) => [key(o.metadata?.namespace, o.metadata?.name), o]),
+  );
+  const current = (order) => {
+    const c = order && certOf(order);
+    if (!c) return true;
+    const k = key(order.metadata?.namespace, c);
+    return !ready.has(k) && newest.get(k) === order;
+  };
   const lines = [];
   let failure = "";
+  const stuck = [];
   for (const it of items) {
     const name = `${it.metadata?.namespace}/${it.metadata?.name}`;
     const s = it.status ?? {};
@@ -994,25 +1031,65 @@ export function certificateReport({ kubectl }) {
           : `сертификат ${name}: не готов (${ready?.reason ?? "нет статуса"}${ready?.message ? `: ${ready.message}` : ""})`,
       );
     } else if (it.kind === "Challenge" || it.kind === "Order") {
+      const order =
+        it.kind === "Order"
+          ? it
+          : orders.get(key(it.metadata?.namespace, it.metadata?.ownerReferences?.[0]?.name ?? ""));
+      if (!current(order)) continue;
       const what = it.kind === "Challenge" ? `челлендж ${it.spec?.dnsName ?? name}` : `заказ ${name}`;
       if (it.kind === "Challenge" || s.state !== "valid")
         lines.push(`${what}: ${s.state || "ожидает"}${s.reason ? ` — ${s.reason}` : ""}`);
-      if (["errored", "invalid"].includes(s.state) && !failure)
-        failure = `${what}: ${s.state}${s.reason ? ` — ${s.reason}` : ""}`;
+      if (["errored", "invalid"].includes(s.state)) {
+        if (!failure) failure = `${what}: ${s.state}${s.reason ? ` — ${s.reason}` : ""}`;
+        const c = order && certOf(order);
+        if (c && !stuck.some((x) => x.namespace === it.metadata?.namespace && x.name === c))
+          stuck.push({ namespace: it.metadata?.namespace, name: c });
+      }
     }
   }
-  return { lines, failure };
+  return { lines, failure, stuck };
 }
 
 /**
- * Between smoke retries (every 4th, i.e. each 2 minutes): prints the issuance state; throws when ACME has given up,
- * with the DNS-01 solver log — instead of 20 minutes of waiting on a self-signed certificate (pilot, 2026-10-03).
+ * Between smoke retries (every 4th, i.e. each 2 minutes): prints the issuance state. When the newest order of a
+ * certificate has failed, a new issuance is asked for once per run (what `cmctl renew` does: the Issuing condition) —
+ * cert-manager would otherwise back off for an hour after a transient DNS answer (pilot, 2026-10-04); a second failure
+ * throws with the DNS-01 solver log instead of 20 minutes of waiting on a self-signed certificate (pilot, 2026-10-03).
  */
-export function certificateGate({ kubectl, log = console.log, attempt = 1 }) {
+export function certificateGate({ kubectl, log = console.log, attempt = 1, retried = new Set() }) {
   if ((attempt - 1) % 4 !== 0) return;
-  const { lines, failure } = certificateReport({ kubectl });
+  const { lines, failure, stuck = [] } = certificateReport({ kubectl });
   for (const l of lines) log(`  ${l}`);
   if (!failure) return;
+  const fresh = stuck.filter((c) => !retried.has(`${c.namespace}/${c.name}`));
+  if (fresh.length) {
+    for (const c of fresh) {
+      retried.add(`${c.namespace}/${c.name}`);
+      const condition = {
+        type: "Issuing",
+        status: "True",
+        reason: "ManuallyTriggered",
+        message: "Certificate re-issuance manually triggered by the deploy after a failed order",
+        lastTransitionTime: new Date().toISOString(),
+      };
+      kubectl(
+        [
+          "-n",
+          c.namespace,
+          "patch",
+          "certificate",
+          c.name,
+          "--subresource=status",
+          "--type=json",
+          "-p",
+          JSON.stringify([{ op: "add", path: "/status/conditions/-", value: condition }]),
+        ],
+        { allowFail: true },
+      );
+      log(`  сертификат ${c.namespace}/${c.name}: заказ не прошёл (${failure}) — запрошен новый выпуск`);
+    }
+    return;
+  }
   log("::group::Решатель DNS-01");
   kubectl(["-n", "cert-manager", "logs", "deploy/wizard-acme-dns01", "--tail=80"], { allowFail: true });
   log("::endgroup::");
