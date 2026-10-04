@@ -665,7 +665,11 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     return 0;
   } finally {
     if (closeTunnel) closeTunnel();
-    if (access?.close) await access.close();
+    // The workflow closes the access again in a step of its own; a failed API call here must not fail a done release.
+    if (access?.close)
+      await Promise.resolve()
+        .then(() => access.close())
+        .catch((e) => log(`::warning::доступ не закрыт: ${e?.message ?? e} — закроет шаг close-access`));
   }
 }
 
