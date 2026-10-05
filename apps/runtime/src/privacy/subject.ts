@@ -1,6 +1,6 @@
 // Subject requests of a system admin (security/compliance.yaml#system_package.subject_requests): find the rows of
 // a data subject by email or phone → export them or erase them (pii → NULL, journal mode subject_request).
-import { type Entity, quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
+import { type Entity, isFileFieldType, quoteIdent, SYSTEM_ROLE } from "@wizard/appspec";
 import type postgres from "postgres";
 import { SYSTEM_SUBJECT } from "../data/access.js";
 import { fieldsError } from "../data/validate.js";
@@ -127,7 +127,7 @@ function exportRow(e: Entity, r: Row): Row {
   for (const f of e.fields) {
     if (f.type === "qr_token") continue;
     const v = r[f.name];
-    out[f.name] = f.type === "file" && typeof v === "string" ? (v.split("/").pop() ?? v) : jsonValue(v);
+    out[f.name] = isFileFieldType(f.type) && typeof v === "string" ? (v.split("/").pop() ?? v) : jsonValue(v);
   }
   return out;
 }
@@ -224,7 +224,7 @@ export async function exportSubject(
   for (const block of exported.entities) {
     const e = sys.spec.entities.find((x) => x.name === block.entity);
     for (const f of e?.fields ?? []) {
-      if (f.type !== "file") continue;
+      if (!isFileFieldType(f.type)) continue;
       for (const row of block.rows) {
         const v = row[f.name];
         if (typeof v !== "string") continue;

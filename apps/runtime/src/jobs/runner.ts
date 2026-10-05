@@ -1,7 +1,7 @@
 // Minimal job runner (runtime.yaml#workflows, M1): workflow triggers from _w_audit (on_create/on_update/
 // on_status), schedule triggers (relative, cron), due _w_jobs (function, workflow_step) and retention. runJobs is
 // one pass at a given `now` until nothing is due (G1 runWorkflows/advanceTime); the background poller comes later.
-import { type Entity, quoteIdent, resolveAiAction, type Workflow } from "@wizard/appspec";
+import { type Entity, isFileFieldType, quoteIdent, resolveAiAction, type Workflow } from "@wizard/appspec";
 import { isConnectorError, runNotifyStep } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { SYSTEM_USER } from "@wizard/sdk/host";
@@ -616,7 +616,7 @@ export async function runRetention(
     if (mode === "anonymize" && pii.length === 0) continue;
     // File fields cleared or deleted with their rows: objects go after the commit (runtime.yaml#files).
     const fileCols = e.fields
-      .filter((f) => f.type === "file" && (mode === "delete" || pii.includes(f.name)))
+      .filter((f) => isFileFieldType(f.type) && (mode === "delete" || pii.includes(f.name)))
       .map((f) => quoteIdent(f.name));
     await privacyPass(
       `retention:${e.name}`,

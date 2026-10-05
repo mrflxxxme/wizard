@@ -175,6 +175,35 @@ export const ru = {
     myDataManage: "Отозвать согласие и удалить данные",
   },
   stats: { title: "Сводка" },
+  /** Image and ImageField (M2-47). */
+  image: {
+    choose: "Выбрать картинку",
+    replace: "Заменить картинку",
+    remove: "Убрать картинку",
+    uploading: "Загружаем и сжимаем…",
+    hint: "JPEG, PNG или WebP, до 10 МБ. Сожмём и подготовим для телефона и компьютера",
+    unsupported: "Нужна картинка JPEG, PNG или WebP",
+    tooLarge: "Картинка больше 10 МБ",
+    failed: "Не удалось загрузить картинку, попробуйте ещё раз",
+    preview: (label: string) => `Предпросмотр: ${label}`,
+    missingAlt: "Image: нужен alt — короткое описание картинки для незрячих (или decorative для украшений)",
+  },
+  /** Landing blocks (M2-43). Only structural texts: the content comes from the builder, nothing is invented (D49). */
+  blocks: {
+    nav: "Основное меню",
+    menu: "Меню",
+    closeMenu: "Закрыть меню",
+    footerNav: "Ссылки в подвале",
+    policy: "Политика обработки персональных данных",
+    contacts: "Контакты",
+    stepLabel: (n: number) => `Шаг ${n}`,
+    leadTitle: "Оставьте заявку",
+    leadSubmit: "Отправить заявку",
+    leadSentTitle: "Заявка отправлена",
+    leadSentText: "Спасибо! Мы получили вашу заявку.",
+    leadAgain: "Отправить ещё одну",
+    leadUnavailable: "Форма заявки сейчас недоступна",
+  },
   /** Messages of the memory DataSource, mirroring runtime.yaml#data_api.error_codes. */
   server: {
     UNAUTHENTICATED: "Войдите в систему",

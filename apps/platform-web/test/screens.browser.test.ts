@@ -245,6 +245,26 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
     await collect(page);
   });
 
+  test("S5 (M2-42): a theme preset keeps the brand colour, reaches the preview and is saved with /style", async () => {
+    await page.getByTestId("style-panel").waitFor();
+    const frame = await previewFrame(page);
+    await page.getByTestId("style-preset-warm").click();
+    expect(await page.getByTestId("style-preset-warm").getAttribute("aria-pressed")).toBe("true");
+    await expect
+      .poll(() => frame.evaluate(() => document.documentElement.style.getPropertyValue("--w-bg")))
+      .toBe("#FBF6F0");
+    expect(
+      await frame.evaluate(() => document.documentElement.style.getPropertyValue("--w-font-heading")),
+    ).toContain("Lora");
+    expect(await page.getByTestId("style-heading-font").inputValue()).toBe("Lora");
+    await expect.poll(() => page.getByTestId("style-status").textContent()).toBe("Сохранено");
+    const saved = h.mock.requests.filter((r) => r.method === "POST" && r.path.endsWith("/style")).at(-1);
+    expect((saved?.body as { theme: Record<string, unknown> } | undefined)?.theme).toMatchObject({
+      preset: "warm",
+      accent: "#0A7D3E",
+    });
+  });
+
   test("S6: three gate rows passed, non-blocking warning, publish enabled for the owner without blockers", async () => {
     await waitStage(h, systemId, "ready");
     await page.getByTestId("gate-report").waitFor();

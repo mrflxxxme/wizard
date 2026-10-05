@@ -5,6 +5,32 @@ export const PACKAGE = "@wizard/ui-kit";
 export { AppShell, type AppShellProps, type NavItem } from "./components/AppShell.js";
 export { Badge, type BadgeProps, type BadgeTone } from "./components/Badge.js";
 export { Button, type ButtonProps } from "./components/Button.js";
+/** Landing blocks (M2-43): Header, Hero, Features, Steps, Faq, Cta, LeadForm (lead over useCreate + consent), Footer. */
+export { Cta } from "./components/blocks/Cta.js";
+export { Faq } from "./components/blocks/Faq.js";
+export { Features } from "./components/blocks/Features.js";
+export { Footer } from "./components/blocks/Footer.js";
+export { Header } from "./components/blocks/Header.js";
+export { Hero } from "./components/blocks/Hero.js";
+export { LeadForm } from "./components/blocks/LeadForm.js";
+export { Steps } from "./components/blocks/Steps.js";
+export type {
+  BlockLink,
+  BlockTone,
+  ContactItem,
+  CtaProps,
+  FaqItem,
+  FaqProps,
+  FeatureItem,
+  FeaturesProps,
+  FooterColumn,
+  FooterProps,
+  HeaderProps,
+  HeroProps,
+  LeadFormProps,
+  StepItem,
+  StepsProps,
+} from "./components/blocks/types.js";
 export { CabinetLayout } from "./components/CabinetLayout.js";
 export { Catalog } from "./components/Catalog.js";
 export { ConsentCheckbox } from "./components/ConsentCheckbox.js";
@@ -13,6 +39,10 @@ export { Field, type FieldProps, type FieldType } from "./components/Field.js";
 export { FILE_MIMES, FileField, formatFileSize } from "./components/FileField.js";
 export { ItemCard } from "./components/ItemCard.js";
 export { Login } from "./components/Login.js";
+/** Image of an image field (srcset of runtime variants 480/960/1600, lazy, alt required) or of the bundle (M2-47). */
+export { Image, type ImageProps, type ImageRatio, type ImageSource } from "./components/media/Image.js";
+/** Upload into an image field with a preview (RecordForm uses it for type=image). */
+export { ImageField, type ImageFieldProps } from "./components/media/ImageField.js";
 export { QrScanner } from "./components/QrScanner.js";
 export { QrCode, QrTicket } from "./components/QrTicket.js";
 export { RecordCard } from "./components/RecordCard.js";
@@ -70,6 +100,7 @@ export type {
   FileInfo,
   FileMimeType,
   FilesApi,
+  ImageWidth,
   ListQuery,
   LoginConsent,
   Mutation,
@@ -90,17 +121,45 @@ export type {
 } from "./data/types.js";
 export * from "./format.js";
 export { ru } from "./i18n/ru.js";
+/** themeLint(theme) → plain-Russian notes (adjusted accent shades, unknown fonts) for the panel «Стиль» and the agent. */
+export { type ThemeLintCode, type ThemeLintNote, themeLint } from "./themes/lint.js";
+/** themeForNiche(«студия маникюра») → preset id for the agent (themes.yaml#selection). */
+export { themeForNiche } from "./themes/niche.js";
+/** Four theme presets v2 (themes.yaml): id, Russian name and description, niches, defaults, neutrals, depth, rhythm. */
+export {
+  THEME_PRESET_LIST,
+  type ThemeNeutrals,
+  type ThemePreset,
+  type ThemePresetId,
+  themePreset,
+} from "./themes/presets.js";
 export { blend, contrast, hexToOklch, luminance, oklchToHex } from "./tokens/color.js";
+/** Self-hosted theme fonts (D64): catalog with license and source, @font-face for /_wizard/fonts. */
+export {
+  FONT_CATALOG,
+  FONTS_BASE,
+  type FontEntry,
+  type FontFile,
+  fontEntry,
+  fontFaceCss,
+  fontFiles,
+  fontStack,
+} from "./tokens/fonts.js";
 export {
   accentInk,
+  accentStrong,
   accentText,
   applyTokens,
   PALETTE,
+  type ResolvedTheme,
+  resolveTheme,
   type Scheme,
   THEME_DEFAULTS,
   type ThemeInput,
   type TokenName,
   type Tokens,
+  themeFonts,
   themeToTokens,
   tokensToCss,
+  V2_TOKENS,
 } from "./tokens/tokens.js";

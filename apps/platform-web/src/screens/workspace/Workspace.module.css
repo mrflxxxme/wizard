@@ -843,3 +843,33 @@
   font-size: 12px;
   color: var(--w-muted);
 }
+
+/* «Стиль»: theme presets (M2-42). */
+.presets {
+  display: grid;
+  gap: 6px;
+}
+
+.preset,
+.presetOn {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--w-line);
+  border-radius: 8px;
+  background: var(--w-surface);
+  color: var(--w-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.presetOn {
+  border-color: var(--w-accent);
+  background: var(--w-accent-soft);
+}
+
+.presetName {
+  font-weight: 600;
+}

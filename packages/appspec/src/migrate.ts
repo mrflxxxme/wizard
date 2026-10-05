@@ -345,7 +345,7 @@ function fkTarget(field: Field): string | undefined {
 /** DEFAULT expression; throws SqlValueError when the default does not match the field type (validator rejects it first). */
 function sqlDefault(field: Field): string | undefined {
   const d = field.default;
-  if (d === undefined || ["ref", "file", "qr_token"].includes(field.type)) return undefined;
+  if (d === undefined || ["ref", "file", "image", "qr_token"].includes(field.type)) return undefined;
   return sqlLiteral(d, field.type);
 }
 

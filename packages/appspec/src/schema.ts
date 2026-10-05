@@ -62,12 +62,32 @@ export const FIELD_TYPES = [
   "enum",
   "ref",
   "file",
+  "image",
   "json",
   "email",
   "phone",
   "url",
   "qr_token",
 ] as const;
+/** Field types whose value is a fileId of an own upload (runtime.yaml#files): file — download, image — shown on pages. */
+export const FILE_FIELD_TYPES = ["file", "image"] as const;
+/** file and image fields hold fileIds (runtime.yaml#files, #files.image). */
+export const isFileFieldType = (t: string): t is (typeof FILE_FIELD_TYPES)[number] =>
+  t === "file" || t === "image";
+/** Self-hosted font families of themes (ui-kit.yaml#tokens.fonts; catalog with licenses — packages/ui-kit/fonts). */
+export const THEME_FONTS = [
+  "Onest",
+  "Inter Tight",
+  "Manrope",
+  "PT Sans",
+  "IBM Plex Sans",
+  "Golos Text",
+  "PT Serif",
+  "Lora",
+  "Unbounded",
+] as const;
+/** Theme presets v2 (specs/ui/themes.yaml): one of four looks the agent picks by niche. */
+export const THEME_PRESETS = ["strict", "warm", "bright", "calm"] as const;
 export const PII_CATEGORIES = ["none", "basic", "special", "biometric"] as const;
 export const PERMISSION_OPS = ["read", "create", "update", "delete"] as const;
 export const ON_DELETE = ["restrict", "cascade", "set_null"] as const;
@@ -77,7 +97,9 @@ export const themeSchema = z.strictObject({
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .optional(),
-  font: z.enum(["Onest", "Inter Tight", "Manrope", "PT Sans", "IBM Plex Sans"]).optional(),
+  preset: z.enum(THEME_PRESETS).optional(),
+  font: z.enum(THEME_FONTS).optional(),
+  headingFont: z.enum(THEME_FONTS).optional(),
   radius: z.literal([0, 4, 8, 12, 16]).optional(),
   density: z.enum(["compact", "regular"]).optional(),
   mode: z.enum(["light", "dark", "auto"]).optional(),

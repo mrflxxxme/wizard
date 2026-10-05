@@ -1,0 +1,51 @@
+# Темы систем v2 (M2-42, D69, D64). Нормативно. Данные пакета — packages/ui-kit/src/themes/presets.ts (тест сверяет этот файл с ними).
+# Приоритет: product.yaml > architecture.yaml > ui-kit.yaml > этот файл.
+version: 1
+status: draft          # темы помечены draft до утверждения основателем (кто утверждает — M2-20); на выпуске MVP используются как есть
+tasks: [M2-42]
+
+model:
+  appspec: "AppSpec.theme {preset?, accent?, font?, headingFont?, radius?, density?, mode?, logoFile?}; preset задаёт значения по умолчанию, явные поля темы их уточняют"
+  brand_colour: "Владелец задаёт один фирменный цвет (theme.accent). Производные: --w-accent-ink (текст на кнопке), --w-accent-text (ссылки и акцентный текст, шаги по OKLCH до 4.5:1 со всеми фонами темы), --w-accent-soft и --w-accent-tint (подложки), --w-accent-strong (наведение), --w-accent-edge (кромка кнопки ≥ 3:1 к фону). Проверка — тест 4 темы × 4096 цветов × 2 схемы"
+  compatibility: "Тема без preset и headingFont (v1) даёт прежние значения всех прежних токенов; v2 только добавляет токены (ui-kit.yaml#tokens.v2)"
+  fonts: "Пара шрифтов: headingFont — заголовки, font — текст. Только каталог packages/ui-kit/fonts (OFL-1.1, кириллица и латиница, 400 и 700), раздача runtime с /_wizard/fonts; запросов к Google Fonts и чужим CDN нет"
+
+selection:
+  rule: "Агент выбирает тему по нише брифа: themeForNiche(ниша) из @wizard/ui-kit; без совпадений — strict. Владелец меняет тему и цвет в панели «Стиль»"
+  agent_hint: "Тему не придумывать: одна из четырёх ниже; фирменный цвет — из брифа (цвет логотипа, вывески), иначе цвет темы"
+
+presets:
+  - id: strict
+    name: "Строгая деловая"
+    looks: "Сдержанные цвета, чёткая сетка, небольшие скругления, лёгкие тени"
+    niches: ["юристы и нотариусы", "бухгалтерия и финансы", "консалтинг и B2B-услуги", "строительство и ремонт", "производство и логистика", "CRM и внутренние инструменты"]
+    defaults: { accent: "#1F4FB8", font: "IBM Plex Sans", headingFont: "Manrope", radius: 4, density: regular }
+    depth: soft
+    space: regular
+  - id: warm
+    name: "Тёплая"
+    looks: "Кремовый фон, заголовки с засечками, большие скругления"
+    niches: ["салоны красоты и барбершопы", "мастера маникюра и косметологи", "кафе, пекарни и кондитерские", "цветы и подарки", "ателье и мастерские", "гостевые дома"]
+    defaults: { accent: "#A84B25", font: "Golos Text", headingFont: "Lora", radius: 16, density: regular }
+    depth: soft
+    space: airy
+  - id: bright
+    name: "Яркая современная"
+    looks: "Насыщенный цвет, крупные широкие заголовки, заметные карточки"
+    niches: ["фитнес, танцы и спорт", "онлайн-школы и курсы", "детские студии и кружки", "мероприятия и фестивали", "квесты и развлечения", "молодёжные проекты"]
+    defaults: { accent: "#6D28D9", font: "Onest", headingFont: "Unbounded", radius: 12, density: regular }
+    depth: lifted
+    space: regular
+  - id: calm
+    name: "Спокойная минималистичная"
+    looks: "Много воздуха, приглушённые тона, тонкие линии вместо теней"
+    niches: ["психологи и коучи", "частные клиники и стоматология", "йога и практики", "архитектура и дизайн интерьеров", "фотографы", "образование для взрослых"]
+    defaults: { accent: "#2F6B5A", font: "PT Sans", headingFont: "PT Serif", radius: 8, density: regular }
+    depth: flat
+    space: airy
+
+lint:
+  api: "themeLint(theme) → [{code, message}] простым русским языком: ACCENT_TEXT_ADJUSTED (для ссылок взят другой оттенок), ACCENT_LOW_EDGE (кнопки сливаются с фоном — будет рамка), ACCENT_GREY, UNKNOWN_PRESET, UNKNOWN_FONT, SAME_DISPLAY_FONT"
+  rule: "Контраст не нарушается никогда: токены сами подбирают оттенки; lint только объясняет, что изменилось"
+
+after_release: ["8 тем вместо 4", "дизайн-агент и стоки (D61)", "утверждение тем основателем (M2-20)"]

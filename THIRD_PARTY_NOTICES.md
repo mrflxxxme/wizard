@@ -54,3 +54,22 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | GitHub Container Registry (ghcr.io) | сервис GitHub, не распространяется | реестр образов пилота (приватные пакеты) |
 
 Клиенты DNS API в `infra/acme-dns01/src/backends/` написаны с нуля. Бэкенд Cloud.ru следует схеме API из провайдера `cloudruevolution` проекта lego (MIT, © Ludovic Fernandez, Sebastian Erhart и участники): обмен ключа на токен IAM, слияние значений TXT, ожидание операций. Бэкенд Timeweb Cloud следует моделям официального SDK (`timeweb-cloud/sdk-python`) и клиенту `libdns-timeweb` (MIT). Код из них не копировался.
+
+## Изображения и шрифты систем (M2-42, M2-47)
+
+Кодеки изображений работают на сервере runtime (WASM, без нативных сборок и без LGPL). Шрифты раздаются системам с `/_wizard/fonts` их собственного домена, запросов к Google Fonts нет. Файлы шрифтов взяты из дистрибутива Google Fonts без изменений (подмножества cyrillic и latin в том виде, в каком их публикует Google Fonts) через npm-пакеты `@fontsource/*` (обвязка — MIT, только для разработки). Копирует их `packages/ui-kit/scripts/sync-fonts.mjs`; каталог с лицензией и источником каждого шрифта — `packages/ui-kit/src/tokens/font-catalog.ts`, тексты лицензий — `packages/ui-kit/fonts/LICENSE-*.txt`.
+
+| Пакет | Версия | Лицензия | Где используется |
+|---|---|---|---|
+| @jsquash/jpeg (Jamie Sinclair; кодек MozJPEG/libjpeg-turbo — IJG, BSD-3-Clause, zlib) | 1.6.0 | Apache-2.0 | `apps/runtime/src/media`: чтение JPEG при загрузке в поле image |
+| @jsquash/png (кодек на Rust-крейте png — MIT/Apache-2.0) | 3.1.1 | Apache-2.0 | `apps/runtime/src/media`: чтение PNG при загрузке в поле image |
+| @jsquash/webp (кодек libwebp — BSD-3-Clause) и wasm-feature-detect (Apache-2.0) | 1.5.0 | Apache-2.0 | `apps/runtime/src/media`: чтение WebP и сжатие вариантов WebP |
+| Onest | @fontsource/onest 5.3.1 | OFL-1.1 | шрифт тем; © 2021 The Onest Project Authors; Google Fonts, npm @fontsource/onest |
+| Inter Tight | @fontsource/inter-tight 5.3.0 | OFL-1.1 | шрифт тем; © 2022 The Inter Project Authors; Google Fonts, npm @fontsource/inter-tight |
+| Manrope | @fontsource/manrope 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Строгой деловой»); © 2019 The Manrope Project Authors; Google Fonts, npm @fontsource/manrope |
+| PT Sans | @fontsource/pt-sans 5.3.0 | OFL-1.1 | шрифт тем (текст «Спокойной»); © 2009 ParaType Ltd.; Google Fonts, npm @fontsource/pt-sans |
+| IBM Plex Sans | @fontsource/ibm-plex-sans 5.3.0 | OFL-1.1 | шрифт тем (текст «Строгой деловой»); © 2019 IBM Corp.; Google Fonts, npm @fontsource/ibm-plex-sans |
+| Golos Text | @fontsource/golos-text 5.3.0 | OFL-1.1 | шрифт тем (текст «Тёплой»); © 2019 The Golos Text Project Authors; Google Fonts, npm @fontsource/golos-text |
+| PT Serif | @fontsource/pt-serif 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Спокойной»); © 2010 ParaType Ltd.; Google Fonts, npm @fontsource/pt-serif |
+| Lora | @fontsource/lora 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Тёплой»); © 2011 The Lora Project Authors, Reserved Font Name «Lora» (файлы не изменяются, имя сохранено); Google Fonts, npm @fontsource/lora |
+| Unbounded | @fontsource/unbounded 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Яркой»); © 2022 The Unbounded Project Authors; Google Fonts, npm @fontsource/unbounded |

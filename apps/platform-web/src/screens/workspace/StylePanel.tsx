@@ -1,6 +1,6 @@
 // S5 «Стиль»: token edits go to the preview at once; saving is POST /style with debounce 600 ms,
 // 412 → re-read the system and retry once, 409 SYSTEM_LOCKED → retry after the run finishes (platform-screens.yaml S5).
-import { Button } from "@wizard/ui-kit";
+import { Button, themeLint } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { Theme } from "../../api/types.js";
@@ -13,8 +13,10 @@ import {
   HEX_RE,
   hexId,
   MODES,
+  PRESETS,
   RADII,
   withDefaults,
+  withPreset,
 } from "../../style/theme.js";
 import s from "./Workspace.module.css";
 
@@ -140,11 +142,12 @@ export function StylePanel({
 }): ReactNode {
   const t = withDefaults(theme);
   const [custom, setCustom] = useState(t.accent);
-  const set = (patch: Partial<Theme>) => {
-    const next = { ...theme, ...patch };
+  const apply = (next: Theme) => {
     onChange(next);
     saver.schedule(next);
   };
+  const set = (patch: Partial<Theme>) => apply({ ...theme, ...patch });
+  const notes = themeLint(theme);
   const statusText =
     saver.status === "saving"
       ? ru.style.saving
@@ -164,6 +167,25 @@ export function StylePanel({
           ✕
         </button>
       </header>
+
+      <fieldset className={s.fieldset}>
+        <legend>{ru.style.preset}</legend>
+        <div className={s.presets}>
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={theme.preset === p.id ? s.presetOn : s.preset}
+              aria-pressed={theme.preset === p.id}
+              data-testid={`style-preset-${p.id}`}
+              onClick={() => apply(withPreset(theme, theme.preset === p.id ? "" : p.id))}
+            >
+              <span className={s.presetName}>{p.name}</span>
+              <span className={s.small}>{p.niches.slice(0, 3).join(", ")}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className={s.fieldset}>
         <legend>{ru.style.accent}</legend>
@@ -206,6 +228,21 @@ export function StylePanel({
           data-testid="style-font"
           value={t.font}
           onChange={(e) => set({ font: e.target.value as (typeof FONTS)[number] })}
+        >
+          {FONTS.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className={s.field}>
+        {ru.style.headingFont}
+        <select
+          data-testid="style-heading-font"
+          value={t.headingFont}
+          onChange={(e) => set({ headingFont: e.target.value as (typeof FONTS)[number] })}
         >
           {FONTS.map((f) => (
             <option key={f} value={f}>
@@ -286,6 +323,13 @@ export function StylePanel({
         </div>
       </fieldset>
 
+      {notes.length > 0 && (
+        <ul className={s.small} data-testid="style-notes">
+          {notes.map((n) => (
+            <li key={`${n.code}:${n.message}`}>{n.message}</li>
+          ))}
+        </ul>
+      )}
       <p className={s.small}>{ru.style.hint}</p>
       <div data-testid="style-status" className={s.small} role="status">
         {statusText}

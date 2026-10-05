@@ -1,7 +1,7 @@
 // DataAccess over Postgres: kysely compiles the SQL, postgres.js executes it inside one transaction per call with
 // the RLS context set by set_config(..., true) (runtime.yaml#postgres.context, #permissions.algorithm).
 import { randomBytes, randomUUID } from "node:crypto";
-import { type AppSpec, type Entity, literalProblem, systemRoleName } from "@wizard/appspec";
+import { type AppSpec, type Entity, isFileFieldType, literalProblem, systemRoleName } from "@wizard/appspec";
 import { WizardError } from "@wizard/sdk";
 import {
   type AccessPolicy,
@@ -281,7 +281,7 @@ function whereConds(e: Entity, policy: AccessPolicy, where: RawWhere | undefined
     const type = checkVisibleColumn(e, policy, key);
     const col = sql.ref(key);
     const check = (x: unknown) => {
-      const lit = type === "enum" || type === "qr_token" || type === "file" ? "string" : type;
+      const lit = type === "enum" || type === "qr_token" || isFileFieldType(type) ? "string" : type;
       const p = x === null ? undefined : literalProblem(x, lit);
       if (p) throw fieldsError("VALIDATION_FAILED", [{ field: key, code: "INVALID_WHERE", message: p }]);
       return x;
@@ -562,7 +562,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
 
   /** Current values of the entity's file fields in row `id` (system context; {} when there are none). */
   async function fileValues(t: Tx, e: Entity, id: string): Promise<Record<string, string | null>> {
-    const cols = e.fields.filter((f) => f.type === "file").map((f) => f.name);
+    const cols = e.fields.filter((f) => isFileFieldType(f.type)).map((f) => f.name);
     if (cols.length === 0 || !o.files || !UUID_RE.test(id)) return {};
     await ensure(t, "system");
     const row = (await exec(t, from(e.name).select(cols).where("id", "=", id)))[0];
@@ -588,7 +588,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     const issues: { field: string; code: string; message: string }[] = [];
     const detached: string[] = [];
     for (const f of e.fields) {
-      if (f.type !== "file" || !Object.hasOwn(fields, f.name)) continue;
+      if (!isFileFieldType(f.type) || !Object.hasOwn(fields, f.name)) continue;
       const v = fields[f.name];
       const prev = old[f.name] ?? null;
       if (v === prev) continue;

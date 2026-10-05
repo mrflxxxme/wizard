@@ -58,12 +58,33 @@ describe("public API", () => {
     expect(typeof kit.sdkDataSource).toBe("function");
   });
 
+  test("M2 landing blocks and Image are exported functions (M2-43, M2-47)", () => {
+    for (const n of [
+      "Header",
+      "Hero",
+      "Features",
+      "Steps",
+      "Faq",
+      "Cta",
+      "LeadForm",
+      "Footer",
+      "Image",
+      "ImageField",
+    ])
+      expect(typeof (kit as unknown as Record<string, unknown>)[n], n).toBe("function");
+    expect(specComponents(SPEC_TEXT, "M2")).toEqual(
+      expect.arrayContaining(["Hero", "LeadForm", "Footer", "Image", "ImageField"]),
+    );
+  });
+
   test("exactly one demo story per component", () => {
     const stories = readdirSync(join(UI_KIT_ROOT, "demo/stories"))
       .filter((f) => f.endsWith(".tsx"))
       .map((f) => f.replace(/\.tsx$/, ""))
       .sort();
-    expect(stories).toEqual([...COMPONENTS].sort());
+    // Every M0 component and every M2 landing/media component has exactly one story (FileField is shown in RecordForm).
+    const m2 = specComponents(SPEC_TEXT, "M2").filter((c) => c !== "FileField");
+    expect(stories).toEqual([...COMPONENTS, ...m2].sort());
     for (const s of stories) {
       const src = readFileSync(join(UI_KIT_ROOT, "demo/stories", `${s}.tsx`), "utf8");
       expect(src, s).toContain(`component: "${s}"`);
