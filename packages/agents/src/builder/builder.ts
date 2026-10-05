@@ -12,6 +12,7 @@ import { humanDiff } from "./diff.js";
 import { maskSpec } from "./digest.js";
 import { sdkDocs, uiKitDocs } from "./docs.js";
 import { gateReportText, PHASE_TEXT, STATIC_PROMPT, sessionMessage } from "./prompt.js";
+import { droppedPageNote, dropReservedPages, isStub, pageStub, pagesOnReservedRoutes } from "./scaffold.js";
 import {
   type AnyTool,
   type ApplyOpsArgs,
@@ -46,6 +47,8 @@ export const DEFAULT_LIMITS: BuildLimits = {
 /** builder.yaml#point_and_edit: max_steps 12. */
 export const POINT_EDIT_MAX_STEPS = 12;
 export const RETRY_EXTRA_STEPS = 8;
+/** builder.yaml#scaffold: extra code rounds when page stubs are still left after the code phase. */
+export const STUB_ROUNDS = 2;
 
 /** builder.yaml#escalation.buttons. */
 export const ESCALATION_OPTIONS: InputOption[] = [
@@ -150,7 +153,15 @@ class Builder implements ToolEnv {
           const text = mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version);
           await this.#toolPhase("build_ops", text);
         });
-        await this.#phaseStep("code", () => this.#toolPhase("build_code", PHASE_TEXT.code()));
+        await this.#phaseStep("code", async () => {
+          const stubs = await this.#scaffoldPages();
+          await this.#toolPhase("build_code", PHASE_TEXT.code(stubs));
+          for (let i = 0; i < STUB_ROUNDS; i++) {
+            const left = await this.#stubPages();
+            if (left.length === 0) break;
+            await this.#toolPhase("build_code", PHASE_TEXT.stubs(left));
+          }
+        });
       } else if (mode === "point_edit") {
         const t = this.#p.target;
         if (t) {
@@ -223,6 +234,28 @@ class Builder implements ToolEnv {
     await this.#host.emit("plan_ready", {
       steps: r.value.steps.map((s) => ({ id: s.id, kind: s.kind, title: s.title })),
     });
+  }
+
+  /** builder.yaml#scaffold: a stub for every declared page whose file does not exist yet; returns their paths. */
+  async #scaffoldPages(): Promise<string[]> {
+    const { spec } = await this.#host.store.getSpec();
+    const out: string[] = [];
+    for (const page of spec.pages ?? []) {
+      if (out.includes(page.file) || (await this.#host.store.readFile(page.file)) !== null) continue;
+      await this.#stage(page.file, pageStub(page), null);
+      out.push(page.file);
+    }
+    await this.#flushFiles();
+    return out;
+  }
+
+  /** Declared page files that still hold the stub. */
+  async #stubPages(): Promise<string[]> {
+    const { spec } = await this.#host.store.getSpec();
+    const out: string[] = [];
+    for (const page of spec.pages ?? [])
+      if (!out.includes(page.file) && isStub(await this.#host.store.readFile(page.file))) out.push(page.file);
+    return out;
   }
 
   /** One LLM step per iteration until the model answers without tool calls. */
@@ -553,8 +586,14 @@ class Builder implements ToolEnv {
 
   // ------------------------------------------------------------------------------------------ tools (ToolEnv)
 
-  async applyOps(args: ApplyOpsArgs): Promise<{ ok: true; version: number; humanDiff: string[] }> {
+  async applyOps(
+    input: ApplyOpsArgs,
+  ): Promise<{ ok: true; version: number; humanDiff: string[]; notes?: string[] }> {
     const before = await this.#host.store.getSpec();
+    const { ops, dropped } = dropReservedPages(input.ops, before.spec);
+    const notes = dropped.map(droppedPageNote);
+    if (ops.length === 0) return { ok: true, version: before.version, humanDiff: [], notes };
+    const args = { ...input, ops };
     const issues = this.#lockIssues(args.ops);
     if (issues.length > 0) {
       const code = issues[0]?.code ?? "ACCEPTANCE_LOCKED";
@@ -586,7 +625,26 @@ class Builder implements ToolEnv {
       opTypes: [...new Set(args.ops.map((o) => String(o.op)))],
       summary_ru: diff,
     });
-    return { ok: true, version: r.version, humanDiff: diff };
+    // A page declared earlier may end up on the policy page set by this batch: the runtime serves that route.
+    let version = r.version;
+    const taken = pagesOnReservedRoutes(r.spec);
+    if (taken.length > 0) {
+      const fix = taken.map((p) => ({ op: "remove_page", route: p.route }));
+      const r2 = await this.#host.store.applyOps(fix, r.version, `${key}:reserved`);
+      if (r2.ok) {
+        version = r2.version;
+        const diff2 = humanDiff(fix, r.spec, r2.spec);
+        diff.push(...diff2);
+        notes.push(...taken.map(droppedPageNote));
+        await this.#host.emit("ops_applied", {
+          revision: r2.version,
+          opsCount: fix.length,
+          opTypes: ["remove_page"],
+          summary_ru: diff2,
+        });
+      }
+    }
+    return { ok: true, version, humanDiff: diff, ...(notes.length ? { notes } : {}) };
   }
 
   /** ACCEPTANCE_LOCKED (create|change) and PERMISSION_WIDENING (create) — builder.yaml#tools.apply_ops.rules. */
@@ -675,21 +733,25 @@ class Builder implements ToolEnv {
           checks: bad.map((c) => ({ id: c.id, message_ru: c.message_ru, line: c.line, fixHint: c.fixHint })),
         },
       );
-    const prev = await this.#host.store.readFile(path);
-    await this.#host.store.writeFile(path, content);
-    const known = this.#pending.get(path);
-    this.#pending.set(path, {
-      action: known?.action ?? (prev === null ? "create" : "update"),
-      sha256: createHash("sha256").update(content).digest("hex"),
-      size: bytes,
-    });
-    this.#dirty = true;
+    await this.#stage(path, content, await this.#host.store.readFile(path));
     this.#ctx.touch(path);
     const warnings = checks.filter((c) => c.status === "warn").map((c) => c.message_ru);
     const lines = content.split("\n").length;
     if (lines > SOFT_MAX_LINES)
       warnings.push(`В файле ${lines} строк: лучше разбить на компоненты до 400 строк.`);
     return { ok: true, bytes, warnings };
+  }
+
+  /** Stages a file in the store; file_written goes out on the next flush. */
+  async #stage(path: string, content: string, prev: string | null): Promise<void> {
+    await this.#host.store.writeFile(path, content);
+    const known = this.#pending.get(path);
+    this.#pending.set(path, {
+      action: known?.action ?? (prev === null ? "create" : "update"),
+      sha256: createHash("sha256").update(content).digest("hex"),
+      size: Buffer.byteLength(content),
+    });
+    this.#dirty = true;
   }
 
   async readFile(path: string): Promise<{ content: string }> {
