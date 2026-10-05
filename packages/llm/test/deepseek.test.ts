@@ -162,6 +162,9 @@ describe("transformBody(deepseek): thinking disabled on every call", () => {
   test("other providers keep their rules (zai: no thinking field, middle reasoning effort with or without tools)", () => {
     expect(transformBody("zai", { messages: [] })).not.toHaveProperty("thinking");
     expect(transformBody("zai", { messages: [] }).reasoning_effort).toBe("high");
+    // Reasoning shares max_tokens with the answer: the answer budget keeps its size.
+    expect(transformBody("zai", { messages: [], max_tokens: 4000 }).max_tokens).toBe(4000 + 8192);
+    expect(transformBody("cloudru", { messages: [], max_tokens: 4000 }).max_tokens).toBe(4000);
     expect(transformBody("zai", { messages: [], tools: [{}], thinking: { type: "disabled" } })).toMatchObject(
       {
         reasoning_effort: "high",

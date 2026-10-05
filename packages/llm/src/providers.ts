@@ -42,6 +42,9 @@ export class LiveCallError extends Error {
   }
 }
 
+/** Extra output tokens for the reasoning of zai models (reasoning_effort high); billed only as used. */
+export const ZAI_REASONING_HEADROOM = 8192;
+
 /** Body rewrite applied to every outgoing request (models.yaml#call_policy.thinking, #structured_output). */
 export function transformBody(
   providerId: ProviderDef["id"],
@@ -70,6 +73,9 @@ export function transformBody(
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
     out.reasoning_effort = "high";
+    // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
+    // (finish=length, empty text — the 30-token probe on the pilot server).
+    if (typeof out.max_tokens === "number") out.max_tokens += ZAI_REASONING_HEADROOM;
   } else if (Array.isArray(out.tools) && out.tools.length > 0) {
     delete out.reasoning_effort;
     delete out.enable_thinking;

@@ -714,14 +714,15 @@ const variants = [
       const { turn2, ...vv } = v;
       const messages = [{ role: "system", content: "Отвечай кратко." }, { role: "user", content: "Скажи: да" }];
       if (turn2) messages.push({ role: "assistant", content: "", tool_calls: [{ id: "c0", type: "function", function: { name: "answer", arguments: JSON.stringify({ text: "да" }) } }] }, { role: "tool", tool_call_id: "c0", content: "ok" });
-      const body = { model: t.model, messages, max_tokens: 400, temperature: 0.1, ...vv, ...(vv.tools ? t.extra : {}) };
+      const body = { model: t.model, messages, max_tokens: 400 + (t.host.includes("z.ai") ? 8192 : 0), temperature: 0.1, ...vv, ...(vv.tools ? t.extra : {}) };
+      const t0 = Date.now();
       try {
         const r = await fetch(t.host + "/chat/completions", { method: "POST", headers: { authorization: "Bearer " + t.key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
         const txt = await r.text();
         let note = "";
         if (r.ok) { try { const j = JSON.parse(txt); const c = j.choices?.[0]; note = "finish=" + c?.finish_reason + (c?.message?.tool_calls?.length ? " tool_calls=" + c.message.tool_calls.length : "") + " text=" + JSON.stringify(String(c?.message?.content ?? "").slice(0, 40)); } catch { note = txt.slice(0, 120); } }
         else note = txt.replace(/\\s+/g, " ").slice(0, 300);
-        console.log(t.model, "|", name, "| HTTP", r.status, "|", note);
+        console.log(t.model, "|", name, "| HTTP", r.status, "|", Date.now() - t0, "мс |", note);
       } catch (e) {
         console.log(t.model, "|", name, "| ошибка", String(e?.cause?.code ?? e?.message ?? e).slice(0, 160));
       }
