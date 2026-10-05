@@ -3,7 +3,8 @@
 import { OP_NAMES } from "@wizard/appspec";
 import { z } from "zod";
 import { defineTool, type Tool, ToolFailure } from "../core/index.js";
-import { SDK_TOPICS } from "./docs.js";
+import { type CapabilityGap, type RecordDevelopmentRequest, reportCapabilityGapTool } from "../gaps.js";
+import { capabilityDoc, SDK_TOPICS } from "./docs.js";
 
 export const WRITE_PATH_RE = /^(ui\/[A-Za-z0-9_/-]+\.tsx|functions\/[A-Za-z0-9_/-]+\.ts)$/;
 export const MAX_FILE_BYTES = 48 * 1024;
@@ -72,12 +73,22 @@ export interface ToolEnv {
   uiKitDocs(components?: string[]): { docs: string; unknown?: string[] };
   sdkDocs(topic?: (typeof SDK_TOPICS)[number]): { docs: string };
   askOrchestrator(q: { question: string; options?: string[] }): Promise<{ answer: string; source: string }>;
+  /** Host method of BuildHost (D73); absent → report_capability_gap records nothing. Read once when tools are built. */
+  readonly recordDevelopmentRequest?: RecordDevelopmentRequest | undefined;
+  /** A new gap was reported: the builder tells the owner (agent_message). */
+  onCapabilityGap?(gap: CapabilityGap): void | Promise<void>;
 }
+
+/** Builder tools beyond the golden set (builder.yaml#tools): capability cards and honest gaps (M2-40, M2-77). */
+export const EXTRA_BUILDER_TOOLS = ["get_capability", "report_capability_gap"] as const;
 
 // biome-ignore lint/suspicious/noExplicitAny: heterogeneous tool list
 export type AnyTool = Tool<any, any>;
 
-/** The 8 builder tools in builder.yaml#tools order (the golden fixture offers the same set). */
+/**
+ * Builder tools in builder.yaml#tools order: the 8 tools of the golden fixture, then get_capability and
+ * report_capability_gap (EXTRA_BUILDER_TOOLS).
+ */
 export function builderTools(env: ToolEnv, opts: { applyOps: boolean } = { applyOps: true }): AnyTool[] {
   const tools: AnyTool[] = [
     defineTool({
@@ -141,6 +152,20 @@ export function builderTools(env: ToolEnv, opts: { applyOps: boolean } = { apply
         options: z.array(z.string().trim().min(1).max(120)).min(2).max(4).optional(),
       }),
       run: (a) => env.askOrchestrator(a),
+    }),
+    defineTool({
+      name: "get_capability",
+      description: "Read a capability card (recipe of a system class) by id from the table of contents.",
+      input: z.object({ id: z.string().trim().min(1).max(60) }),
+      run: (a) => {
+        const r = capabilityDoc(a.id);
+        if ("doc" in r) return r;
+        return fail("NOT_FOUND", `Карточки ${a.id} нет; есть: ${r.available.join(", ")}.`);
+      },
+    }),
+    reportCapabilityGapTool({
+      record: env.recordDevelopmentRequest,
+      onGap: (g) => env.onCapabilityGap?.(g),
     }),
   ];
   return opts.applyOps ? tools : tools.filter((t) => t.name !== "apply_ops");

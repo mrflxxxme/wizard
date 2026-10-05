@@ -92,14 +92,27 @@ export type StructuredResult<T> =
  * (zod issues + semantic check) and the call is repeated at most `maxRepairs` times.
  */
 export async function callTool<S extends z.ZodType>(
-  opts: CallBase & { messages: LlmMessage[]; tool: Tool<S>; maxRepairs?: number },
+  opts: CallBase & {
+    messages: LlmMessage[];
+    tool: Tool<S>;
+    maxRepairs?: number;
+    /**
+     * Tools the model may call next to `tool` in the same answer (e.g. report_capability_gap); they run like in
+     * runToolLoop, their results go back to the model, and they never replace the required `tool` call.
+     */
+    // biome-ignore lint/suspicious/noExplicitAny: heterogeneous tool list
+    sideTools?: Tool<any, any>[];
+  },
 ): Promise<StructuredResult<z.output<S>>> {
   const messages = [...opts.messages];
   const stats = emptyStats();
   const maxRepairs = opts.maxRepairs ?? DEFAULT_MAX_REPAIRS;
+  const side = opts.sideTools ?? [];
+  const sideByName = new Map(side.map((t) => [t.name, t]));
+  const offered = [opts.tool, ...side];
   let issues: ToolIssue[] = [];
   for (let attempt = 0; attempt <= maxRepairs; attempt++) {
-    const out = await callRoute(opts, messages, [opts.tool], "required", attempt + 1);
+    const out = await callRoute(opts, messages, offered, "required", attempt + 1);
     addStats(stats, out);
     messages.push(assistantMessage(out));
     const calls = out.result.toolCalls;
@@ -118,13 +131,22 @@ export async function callTool<S extends z.ZodType>(
       if (parsed.ok) value = parsed.value;
       else issues = parsed.issues;
     }
-    for (const c of calls) {
-      const content =
-        c === mine && value !== undefined
-          ? { ok: true }
-          : c === mine
-            ? toolError("INVALID_ARGS", "Аргументы не прошли проверку, исправь и вызови снова.", issues)
-            : toolError("UNKNOWN_TOOL", `Доступен только инструмент ${opts.tool.name}.`);
+    for (const [i, c] of calls.entries()) {
+      let content: unknown;
+      if (c === mine)
+        content =
+          value !== undefined
+            ? { ok: true }
+            : toolError("INVALID_ARGS", "Аргументы не прошли проверку, исправь и вызови снова.", issues);
+      else if (sideByName.has(c.name))
+        content = (await execute(c, i, sideByName, MAX_PARALLEL_TOOL_CALLS)).content;
+      else
+        content = toolError(
+          "UNKNOWN_TOOL",
+          side.length === 0
+            ? `Доступен только инструмент ${opts.tool.name}.`
+            : `Доступны только инструменты: ${offered.map((t) => t.name).join(", ")}.`,
+        );
       messages.push({ role: "tool", toolCallId: c.id, toolName: c.name, content });
     }
     if (value !== undefined) return { ok: true, value, messages, stats };

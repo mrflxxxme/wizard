@@ -897,6 +897,34 @@ describe("certificate gate: a failed order is retried once, stale orders are his
     return { kubectl, calls };
   };
 
+  it("an Issuing condition left by the failed issuance is replaced, not duplicated", () => {
+    const failed = cert(false);
+    failed.status.conditions.push({ type: "Issuing", status: "False", reason: "Failed" });
+    const items = [failed, order("p-1", "invalid", "2026-10-04T17:25:29Z"), challenge("p-1", "invalid")];
+    const { kubectl, calls } = cluster(() => items);
+    const log = [];
+    certificateGate({ kubectl, log: (s) => log.push(s), attempt: 1, retried: new Set() });
+    const patch = JSON.parse(calls.find((a) => a.includes("patch")).at(-1));
+    expect(patch).toEqual([
+      expect.objectContaining({
+        op: "replace",
+        path: "/status/conditions/1",
+        value: expect.objectContaining({ type: "Issuing", status: "True" }),
+      }),
+    ]);
+    expect(log.join("\n")).toMatch(/запрошен новый выпуск/);
+  });
+
+  it("a rejected patch is reported, not claimed as a new issuance", () => {
+    const items = [cert(false), order("p-1", "invalid", "2026-10-04T17:25:29Z"), challenge("p-1", "invalid")];
+    const kubectl = (args) =>
+      args.includes("patch") ? { status: 1, stdout: "" } : { status: 0, stdout: JSON.stringify({ items }) };
+    const log = [];
+    certificateGate({ kubectl, log: (s) => log.push(s), attempt: 1, retried: new Set() });
+    expect(log.join("\n")).toMatch(/новый выпуск не запрошен/);
+    expect(log.join("\n")).not.toMatch(/запрошен новый выпуск/);
+  });
+
   it("first failure asks cert-manager for a new issuance (Issuing condition), a second failure throws", () => {
     let items = [cert(false), order("p-1", "invalid", "2026-10-04T17:25:29Z"), challenge("p-1", "invalid")];
     const { kubectl, calls } = cluster(() => items);
@@ -918,6 +946,8 @@ describe("certificate gate: a failed order is retried once, stale orders are his
       reason: "ManuallyTriggered",
     });
     expect(log.join("\n")).toMatch(/запрошен новый выпуск/);
+    // The certificate already carries Ready only: the Issuing condition is appended.
+    expect(JSON.parse(patch.at(-1))[0]).toMatchObject({ op: "add", path: "/status/conditions/-" });
     // The new order is pending: the old invalid one is history, no failure.
     items = [...items, order("p-2", "pending", "2026-10-04T19:00:00Z"), challenge("p-2", "pending")];
     expect(certificateReport({ kubectl }).failure).toBe("");

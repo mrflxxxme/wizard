@@ -1577,6 +1577,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Нейтральный текст о платформе без скелета полигонов, сегменты site/booking/crm/other как рецепты (D66), запрет выдуманных фактов в промпте; общий модуль правил текста — короткий свод правил humanizer в промпте, линтер M2-33 после"
+    mvp_done: true
     claimed_by: null
     description: >
       packages/agents/src/orchestrator/prompt.ts — текст о платформе по prompt_skeleton без «Скелет: Каталог → Заявка → …»; пример в
@@ -1602,6 +1603,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Few-shot QA без форума: по одному эталонному сценарию на класс D65 в gen-qa-assets.mjs, нейтральный промпт"
+    mvp_done: true
     claimed_by: null
     description: >
       packages/agents/scripts/gen-qa-assets.mjs кладёт в qa.json два сценария билетов форума. Заменить на четыре эталонных сценария из
@@ -1626,6 +1628,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Рецепты трёх классов D65 в карточках возможностей, новые компоненты ui-kit (блоки, Image, темы) в builder.json, report_capability_gap; без search_stock_images и lint_copy"
+    mvp_done: true
     claimed_by: null
     description: >
       Загрузчик карточек возможностей packages/agents/assets/capabilities/*.md (одна карточка — один файл; задачи коннекторов и классов
@@ -2678,6 +2681,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Ответ «не умеем → замена → Написать команде» в интервью и сборке, запись запроса через хост (D73)"
+    mvp_done: true
     claimed_by: null
     description: >
       Инструмент report_capability_gap (M2-27) в оркестраторе и строителе: агент честно говорит, что платформа не умеет, предлагает

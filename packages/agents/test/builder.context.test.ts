@@ -176,14 +176,15 @@ describe("package", () => {
     expect(JSON.parse(readFileSync(gen.ASSET_PATH, "utf8"))).toEqual(JSON.parse(gen.buildAssets()));
   });
 
-  test("@wizard/agents/builder is a sub-path export; the package index is untouched (L2-19)", async () => {
+  test("@wizard/agents/builder is a sub-path export; the package index does not re-export agents (L2-19)", async () => {
     const pkg = JSON.parse(readFileSync(`${REPO}packages/agents/package.json`, "utf8")) as {
       exports: Record<string, string>;
     };
     expect(pkg.exports["./builder"]).toBe("./src/builder/index.ts");
-    expect(readFileSync(`${REPO}packages/agents/src/index.ts`, "utf8")).toBe(
-      'export const PACKAGE = "@wizard/agents";\n',
-    );
+    // The index carries only shared contracts (text rules, development requests — M2-77), never the agents.
+    const index = readFileSync(`${REPO}packages/agents/src/index.ts`, "utf8");
+    expect(index).toContain('export const PACKAGE = "@wizard/agents";');
+    expect(index).not.toMatch(/from "\.\/(builder|orchestrator|qa)/);
     const mod = (await import("@wizard/agents/builder")) as { runBuild: unknown };
     expect(mod.runBuild).toBe(runBuild);
   });

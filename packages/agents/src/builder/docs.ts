@@ -34,3 +34,27 @@ export function sdkDocs(topic?: SdkTopic): { docs: string } {
 
 export const PROMPT_PARTS: { conventions: string; ops: string; semantic: string; phases: string } =
   assets.prompt;
+
+export interface CapabilityCard {
+  title: string;
+  summary: string;
+  body: string;
+}
+
+const CARDS = (assets as unknown as { capabilities?: Record<string, CapabilityCard> }).capabilities ?? {};
+
+/** Ids of the capability cards (assets/capabilities/*.md via gen-builder-assets.mjs). */
+export const CAPABILITY_IDS: readonly string[] = Object.keys(CARDS);
+
+/** Prompt TOC of the capability cards: "- id: title — summary". */
+export function capabilityToc(): string {
+  return Object.entries(CARDS)
+    .map(([id, c]) => `- ${id}: ${c.title} — ${c.summary}`)
+    .join("\n");
+}
+
+/** get_capability: the full card, or the list of ids for an unknown one. */
+export function capabilityDoc(id: string): { doc: string } | { unknown: string; available: string[] } {
+  const c = CARDS[id];
+  return c ? { doc: c.body } : { unknown: id, available: [...CAPABILITY_IDS] };
+}

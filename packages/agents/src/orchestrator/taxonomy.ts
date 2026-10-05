@@ -2,7 +2,8 @@
 // and deterministic fork selection S3_select_forks.
 import type { Analysis } from "./schemas.js";
 
-export type ForkGroup = "horizontal" | "b2b_events" | "made_to_order_goods";
+/** horizontal — any brief; the rest are quality recipes of a segment (D66: recipes, not a menu). */
+export type ForkGroup = "horizontal" | "b2b_events" | "made_to_order_goods" | "site" | "booking" | "crm";
 export type Plan = "free" | "start" | "business";
 
 export interface ForkContext {
@@ -67,12 +68,20 @@ const RE = {
   toDate: /к дате|срок|изготов|предзаказ/,
   delivery: /доставк/,
   check: /провер|модерац|одобр|подтвержд/,
+  catalog: /каталог|прайс|услуг|товар|меню/,
+  group: /групп|заняти|мест на/,
+  sales: /продаж|сделк|воронк|лид/,
+  companies: /компани|юрлиц|юридическ|организац|контрагент/,
+  site: /сайт|лендинг|страниц/,
 };
 
 type Raw = Omit<ForkDef, "group">;
 const H = (d: Raw): ForkDef => ({ ...d, group: "horizontal" });
 const EV = (d: Raw): ForkDef => ({ ...d, group: "b2b_events" });
 const GD = (d: Raw): ForkDef => ({ ...d, group: "made_to_order_goods" });
+const ST = (d: Raw): ForkDef => ({ ...d, group: "site" });
+const BK = (d: Raw): ForkDef => ({ ...d, group: "booking" });
+const CR = (d: Raw): ForkDef => ({ ...d, group: "crm" });
 
 export const FORKS: readonly ForkDef[] = [
   H({
@@ -136,7 +145,8 @@ export const FORKS: readonly ForkDef[] = [
     q: "Какой путь проходит заявка?",
     options: ["simple_3", "pipeline_board", "custom"],
     rec: "simple_3 (новая → в работе → готово)",
-    applies: (a) => sk(a, "process"),
+    // CRM: the path is asked by F-CRM-PIPELINE.
+    applies: (a) => sk(a, "process") && a.segment !== "crm",
     recommend: () => "simple_3",
   }),
   H({
@@ -144,9 +154,9 @@ export const FORKS: readonly ForkDef[] = [
     impact: 3,
     q: "Как принимать оплату?",
     options: ["none", "yookassa_full", "yookassa_prepay", "invoice_manual"],
-    rec: "yookassa_full; invoice_manual добавляется вариантом при B2B",
+    rec: "none, пока приём оплаты не подключён (report_capability_gap payments); invoice_manual — счёт вне системы при B2B",
     applies: (a) => sk(a, "payment") || a.integrations.includes("yookassa") || has(a, RE.payment),
-    recommend: () => "yookassa_full",
+    recommend: (a) => (has(a, RE.b2b) ? "invoice_manual" : "none"),
   }),
   H({
     id: "F-NOTIFY",
@@ -172,7 +182,7 @@ export const FORKS: readonly ForkDef[] = [
     q: "Как устроено время записи?",
     options: ["fixed_slots", "specialist_schedule", "requests_only"],
     rec: "fixed_slots",
-    applies: (a) => has(a, RE.booking),
+    applies: (a) => a.segment === "booking" || has(a, RE.booking),
     recommend: () => "fixed_slots",
   }),
   H({
@@ -217,7 +227,7 @@ export const FORKS: readonly ForkDef[] = [
   EV({
     id: "F-EV-TICKETS",
     impact: 3,
-    q: "Какие бывают билеты/участия?",
+    q: "Какие бывают виды участия?",
     options: ["single_free", "types_with_quotas", "types_quotas_price_tiers"],
     rec: "types_with_quotas, если упомянуты типы",
     applies: (a) => a.segment === "events",
@@ -324,6 +334,105 @@ export const FORKS: readonly ForkDef[] = [
     recommend: () => "fixed_percent",
     dependsOn: { forkId: "F-PAYMENT", when: (o) => o !== "none" },
   }),
+  ST({
+    id: "F-ST-PAGE",
+    impact: 3,
+    q: "Что будет на странице?",
+    options: ["single_form", "landing_blocks", "landing_with_catalog"],
+    rec: "landing_blocks (первый экран, преимущества, шаги, вопросы, форма заявки, подвал); landing_with_catalog, если есть услуги или прайс",
+    applies: (a) => a.segment === "site",
+    recommend: (a) => (has(a, RE.catalog) ? "landing_with_catalog" : "landing_blocks"),
+  }),
+  ST({
+    id: "F-ST-LEAD",
+    impact: 3,
+    q: "Что спрашивать в заявке?",
+    options: ["name_phone", "name_contact_comment", "custom_fields"],
+    rec: "name_contact_comment",
+    applies: (a) => a.segment === "site",
+    recommend: () => "name_contact_comment",
+  }),
+  ST({
+    id: "F-ST-ALERT",
+    impact: 2,
+    q: "Как владельцу узнавать о новой заявке?",
+    options: ["email", "telegram", "email_and_telegram"],
+    rec: "email; email_and_telegram, если Telegram упомянут",
+    applies: (a) => a.segment === "site",
+    recommend: (a) => (mentionsTelegram(a) ? "email_and_telegram" : "email"),
+  }),
+  BK({
+    id: "F-BK-SERVICES",
+    impact: 3,
+    q: "Как устроены услуги?",
+    options: ["single_service", "service_list", "services_by_specialist"],
+    rec: "service_list; services_by_specialist, если упомянуты мастера",
+    applies: (a) => a.segment === "booking",
+    recommend: (a) => (has(a, RE.performers) ? "services_by_specialist" : "service_list"),
+  }),
+  BK({
+    id: "F-BK-CAPACITY",
+    impact: 3,
+    q: "Сколько человек на одно время?",
+    options: ["one_per_slot", "group_capacity"],
+    rec: "one_per_slot; group_capacity, если упомянуты группы или занятия",
+    applies: (a) => a.segment === "booking",
+    recommend: (a) => (has(a, RE.group) ? "group_capacity" : "one_per_slot"),
+  }),
+  BK({
+    id: "F-BK-REMIND",
+    impact: 2,
+    q: "Когда напоминать клиенту о записи?",
+    options: ["h24", "h24_and_h2", "none"],
+    rec: "h24 (письмо за 24 часа)",
+    applies: (a) => a.segment === "booking",
+    recommend: () => "h24",
+  }),
+  BK({
+    id: "F-BK-CANCEL",
+    impact: 2,
+    q: "Как клиент отменяет запись?",
+    options: ["link_in_email", "by_phone_only"],
+    rec: "link_in_email",
+    applies: (a) => a.segment === "booking",
+    recommend: () => "link_in_email",
+  }),
+  CR({
+    id: "F-CRM-CONTACTS",
+    impact: 3,
+    q: "Кого ведём в базе?",
+    options: ["people", "companies_and_people"],
+    rec: "people; companies_and_people, если упомянуты компании или юрлица",
+    applies: (a) => a.segment === "crm",
+    recommend: (a) => (has(a, RE.companies) ? "companies_and_people" : "people"),
+  }),
+  CR({
+    id: "F-CRM-PIPELINE",
+    impact: 3,
+    q: "Какие этапы проходит сделка или обращение?",
+    options: ["simple_3", "sales_funnel", "custom"],
+    rec: "sales_funnel, если упомянуты продажи; иначе simple_3",
+    applies: (a) => a.segment === "crm",
+    recommend: (a) => (has(a, RE.sales) ? "sales_funnel" : "simple_3"),
+  }),
+  CR({
+    id: "F-CRM-TASKS",
+    impact: 2,
+    q: "Нужны ли задачи сотрудникам?",
+    options: ["none", "tasks", "tasks_with_reminders"],
+    rec: "tasks_with_reminders",
+    applies: (a) => a.segment === "crm",
+    recommend: () => "tasks_with_reminders",
+  }),
+  CR({
+    id: "F-CRM-SOURCES",
+    impact: 2,
+    q: "Откуда приходят клиенты?",
+    options: ["manual_entry", "site_form", "import_and_form"],
+    rec: "manual_entry; site_form, если упомянут сайт",
+    applies: (a) => a.segment === "crm",
+    recommend: (a) => (has(a, RE.site) ? "site_form" : "manual_entry"),
+  }),
 ];
 
 export const FORK_IDS = [
@@ -353,6 +462,17 @@ export const FORK_IDS = [
   "F-GD-CAPACITY",
   "F-GD-DELIVERY",
   "F-GD-PREPAY",
+  "F-ST-PAGE",
+  "F-ST-LEAD",
+  "F-ST-ALERT",
+  "F-BK-SERVICES",
+  "F-BK-CAPACITY",
+  "F-BK-REMIND",
+  "F-BK-CANCEL",
+  "F-CRM-CONTACTS",
+  "F-CRM-PIPELINE",
+  "F-CRM-TASKS",
+  "F-CRM-SOURCES",
 ] as const;
 export type ForkId = (typeof FORK_IDS)[number];
 
@@ -379,10 +499,12 @@ export interface ForkSelection {
   decided: { forkId: string; optionId: string; source: "brief" | "default" }[];
 }
 
+/** Recipe forks only for their segment; other and horizontal briefs get horizontal forks (fork_taxonomy.rules). */
 function groupAllowed(f: ForkDef, a: Analysis): boolean {
   if (f.group === "horizontal") return true;
   if (f.group === "b2b_events") return a.segment === "events";
-  return a.segment === "made_to_order";
+  if (f.group === "made_to_order_goods") return a.segment === "made_to_order";
+  return a.segment === f.group;
 }
 
 /** S3_select_forks: deterministic, code only. */

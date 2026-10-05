@@ -44,10 +44,22 @@ tools:
       - "Полный GateReport сохраняется в platform.gate_reports (db.yaml) + событие gate_result (workflows.yaml#events); модели — только упавшие проверки"
   get_ui_kit_docs:
     input: "{components?: string[]}"
-    output: "пропсы, примеры и правила компонентов из specs/ui/ui-kit.yaml (без аргумента — оглавление ≤ 1.5k токенов); фрагменты режет tools/specs/slice.mjs при сборке packages/agents/assets (второй копии документации нет)"
+    output: "пропсы, примеры и правила компонентов из specs/ui/ui-kit.yaml (без аргумента — оглавление ≤ 1.5k токенов); фрагменты режет packages/agents/scripts/gen-builder-assets.mjs при сборке packages/agents/assets/builder.json (второй копии документации нет). В builder.json — все компоненты ui-kit.yaml с milestone ≤ M2 (M2P считается M2), в том числе FileField, блоки лендинга, Image и темы (themes или tokens.themes), как только они появились в ui-kit.yaml: генератор подхватывает их без правки кода (M2-40)"
   get_sdk_docs:
     input: "{topic?: 'query'|'mutation'|'action'|'db'|'hooks'|'connectors'|'errors'|'limits'}"
     output: "фрагмент specs/runtime/sdk.md (тот же механизм нарезки, что у get_ui_kit_docs)"
+  get_capability:
+    input: "{id: string}"
+    output: "{doc} — карточка возможности (рецепт класса) из packages/agents/assets/capabilities/<id>.md; неизвестный id → NOT_FOUND со списком"
+    rules:
+      - "Карточка — один файл .md: первая строка «# Заголовок», вторая «> кратко», дальше тело. gen-builder-assets.mjs кладёт карточки в builder.json; оглавление (id, заголовок, кратко) — в статичном промпте. Новая карточка появляется в оглавлении после перегенерации ассета, без правки кода"
+      - "Карточки выпуска (D65, D66): site (лендинг из блоков Header → Hero → Features → Steps → Faq → Cta → LeadForm → Footer, Image, тема), booking (услуги, время, напоминание за 24 часа по почте, отмена по ссылке), crm (клиенты, сделки, этапы, задачи), general (бриф вне рецептов). Рецепт — подсказка качества, состав системы задаёт карточка"
+  report_capability_gap:
+    input: "{category: payments|subscriptions|integration|messaging|design|domain|media|data|mobile|ai|other, quote ≤300, missing ≤200, offered ≤200 | null}"
+    output: "{ok: true, recorded: bool, reply}"
+    rules:
+      - "M2-77, D73: scrub ПДн в quote и offered (packages/pii) → необязательный метод хоста BuildHost.recordDevelopmentRequest({category, quote, offered}); нет метода или ошибка записи — recorded=false, сборка идёт дальше"
+      - "Владелец получает agent_message: «Пока не умеем: … Можно сделать так: … «Написать команде»». То, что платформа умеет, строитель собирает дальше"
   ask_orchestrator:
     input: "{question: string, options?: string[2..4]}"
     output: "{answer: string, source: 'card'|'defaults'|'user'}"
@@ -113,7 +125,7 @@ escalation:
 # ---------------------------------------------------------------- Контекст
 context:
   layout:                        # порядок сообщений; 1–2 — кэшируемый префикс, точка кэша на последнем системном
-    - "1. system static: role + platform rules + code_conventions + SDK/ui-kit cheatsheet (≤ 12k токенов, одинаковый для всех прогонов)"
+    - "1. system static: role + platform rules + code_conventions + SDK/ui-kit cheatsheet + оглавление карточек возможностей + правила текста textRules('system') (packages/agents/src/text-rules.ts, D48, D49) + «пока не умеем» (≤ 12k токенов, одинаковый для всех прогонов)"
     - "2. system session: карточка (сжатая) + дайджест спеки + дерево файлов (пути и размеры)"
     - "3. relevant files (user-сообщение, обновляется только при свёртке)"
     - "4. свёрнутая история + последние ходы полностью"
@@ -173,6 +185,7 @@ code_conventions:
     - "Состояния загрузки/пусто/ошибка — у каждого списка и формы"
     - "Формы с полями pii≠none от public/login ролей — с компонентом согласия ui-kit (G2-PII-04)"
     - "Не выдумывать данные: демо-значения только в пустых состояниях с пометкой «пример»"
+    - "Тексты внутри системы (заголовки, преимущества, ответы, письма) — по правилам textRules('system'): без выдуманных отзывов, цифр, адресов и превосходных степеней; чего нет у владельца — заглушка «Пример: …» (D49)"
 
 # ---------------------------------------------------------------- Понятный diff
 human_diff:

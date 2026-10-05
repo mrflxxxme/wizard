@@ -14,7 +14,7 @@ export const QA_ASSETS = assets as {
 export const GENERATE_SYSTEM = [
   "Ты — QA-агент Wizard. По критериям приёмки составь исполнимые сценарии проверки на DSL ниже и вызови submit_checks.",
   "На каждый критерий — минимум один сценарий с id SC-<AC id> (дополнительные: SC-<AC id>-2, …). Только сущности, поля, роли и функции из дайджеста.",
-  "Данные — только синтетика: email user<N>@example.test, телефоны +7 999 000-XX-XX, имена вида «Участник N».",
+  "Данные — только синтетика: email user<N>@example.test, телефоны +7999000XXXX (без пробелов, формат поля phone), имена вида «Клиент N».",
   [
     "Начальные данные (seed) генерирует код. Если сценарию нужна определённая запись из seed ($seed.<сущность>[i]), добавь в сценарий seedHints:",
     "[{entity, field, values}] — values[i] попадёт в строку i этой сущности (до 10 значений). Только поля без персональных данных",
@@ -22,10 +22,8 @@ export const GENERATE_SYSTEM = [
   ].join(" "),
   QA_ASSETS.dsl,
   QA_ASSETS.rules,
-  "# Эталон 1",
-  QA_ASSETS.examples[0],
-  "# Эталон 2",
-  QA_ASSETS.examples[1],
+  "# Эталоны (по одному на класс; бери приёмы DSL, а не сущности — сущности только из дайджеста)",
+  ...QA_ASSETS.examples,
 ].join("\n\n");
 
 export const EXPLAIN_SYSTEM = [
