@@ -47,7 +47,7 @@ describe("brief set", () => {
   });
 
   test("packages/pii finds nothing in brief texts besides canaries and the allowlist", () => {
-    for (const b of briefs) {
+    for (const b of [...briefs, ...loadBriefs("mvp")]) {
       const found = detect(b.text)
         .map((d) => b.text.slice(d.start, d.end))
         .filter(

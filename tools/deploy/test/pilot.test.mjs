@@ -3,10 +3,11 @@
 // fake S3, the whole bootstrap/deploy/DR flow with a fake tofu/ssh/kubectl/helm. No cloud calls.
 import { spawnSync } from "node:child_process";
 import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { fakePlatform } from "../../eval/test/fake-platform.mjs";
 import {
   bucketMatches,
   checkInputs,
@@ -1164,5 +1165,163 @@ describe("Timeweb capacity: the next RF place with the same preset ceiling", () 
         (p) => `${p.location}/${p.zone}`,
       ),
     ).toEqual(["ru-1/spb-4", "ru-3/", "ru-1/spb-1", "ru-1/spb-2", "ru-1/spb-5"]);
+  });
+});
+
+describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", () => {
+  it("arguments: briefs and the ₽ budget only for eval, validated; defaults all and 2 000", () => {
+    expect(parseArgs(["eval", "--env", "prod"])).toMatchObject({
+      command: "eval",
+      briefs: "all",
+      maxCostRub: 2000,
+    });
+    expect(
+      parseArgs(["eval", "--env", "prod", "--briefs", "mvp-03,mvp-10", "--max-cost-rub", "700"]),
+    ).toMatchObject({ briefs: "mvp-03,mvp-10", maxCostRub: 700 });
+    expect(parseArgs(["eval", "--env", "prod", "--briefs", "", "--max-cost-rub", ""])).toMatchObject({
+      briefs: "all",
+      maxCostRub: 2000,
+    });
+    expect(() => parseArgs(["eval", "--env", "prod", "--briefs", "mvp-01;rm -rf"])).toThrow(/--briefs/);
+    expect(() => parseArgs(["eval", "--env", "prod", "--max-cost-rub", "9000"])).toThrow(/6000/);
+    expect(() => parseArgs(["eval", "--env", "prod", "--max-cost-rub", "1.5"])).toThrow(/целое/);
+    expect(() => parseArgs(["deploy", "--env", "prod", "--tag", SHA, "--briefs", "all"])).toThrow(/unknown/);
+  });
+
+  it("account in the database over the tunnel, briefs over HTTPS, session closed, report in the summary; no secrets in the log", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const db = { tokenHash: "", csrfHash: "", orgId: "11111111-1111-4111-8111-111111111111" };
+    const platform = fakePlatform({
+      hashes: () => db,
+      origin: "https://codename.ru",
+      cookieNames: { session: "__Host-wizard_session", csrf: "__Host-wizard_csrf" },
+    });
+    const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const sqls = [];
+    const run = (cmd, args, o = {}) => {
+      const r = base.run(cmd, args, o);
+      if (cmd !== "kubectl" || !args.includes("exec")) return r;
+      sqls.push(o.input);
+      if (o.input.includes("INSERT INTO platform.users")) {
+        db.tokenHash = /\\set token_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        db.csrfHash = /\\set csrf_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        const email = /\\set email '([^']+)'/.exec(o.input)[1];
+        return {
+          status: 0,
+          stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "33333333-3333-4333-8333-333333333333", email })}\n`,
+        };
+      }
+      if (o.input.includes("'costs='")) {
+        const ids = [...platform.st.systems.keys()];
+        return {
+          status: 0,
+          stdout: `costs=${JSON.stringify(ids.map((id) => ({ system_id: id, rub: 123.45, credits_milli: 25000, calls: 9 })))}\ngaps=null\n`,
+        };
+      }
+      return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
+    };
+    const summary = join(tmp, "summary-eval.md");
+    const logs = [];
+    const code = await main(
+      ["eval", "--env", "prod", "--briefs", "mvp-02,mvp-10", "--max-cost-rub", "500"],
+      { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
+      {
+        fetch: (url, init = {}) =>
+          new URL(url).host === "codename.ru"
+            ? platform.handler(new Request(url, init))
+            : cloud.fetch(url, init),
+        run,
+        has: () => true,
+        exists: () => true,
+        sleep: async () => {},
+        evalPollMs: 1,
+        kdf: FAST,
+        tmpRoot: tmp,
+        log: (s) => logs.push(s),
+      },
+    );
+    expect(code).toBe(0);
+    // Database work only inside the postgres container, values through stdin: seed, then collect and revoke.
+    const text = base.lines.join("\n");
+    expect(text).toContain(
+      'kubectl -n wizard-platform exec -i wizard-postgres-0 -c postgres -- sh -c PGPASSWORD="$POSTGRES_PASSWORD" exec psql',
+    );
+    expect(
+      sqls.map((x) =>
+        x.includes("INSERT INTO platform.users")
+          ? "seed"
+          : x.includes("'costs='")
+            ? "collect"
+            : x.includes("UPDATE platform.sessions")
+              ? "revoke"
+              : "?",
+      ),
+    ).toEqual(["seed", "collect", "revoke"]);
+    expect(sqls[0]).toContain("\\set email 'eval+");
+    expect(sqls[0]).toContain("@codename.ru'");
+    // No release in eval: diagnose access only (no helm, no OpenTofu apply), SSH closed after each cluster visit.
+    expect(text).not.toContain("helm upgrade");
+    expect(text).not.toContain(" apply -input=false");
+    expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
+    // The briefs went through the public HTTPS with the seeded session; logout at the end.
+    expect(platform.st.systems.size).toBe(2);
+    expect(platform.st.logout).toBe(1);
+    const [token, csrf] = [...platform.st.tokens];
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(logs).toContain(`::add-mask::${token}`);
+    expect(logs).toContain(`::add-mask::${csrf}`);
+    // Nothing secret in the visible log, the summary, the artifact or the SQL.
+    const shown = visible(logs);
+    const sum = readFileSync(summary, "utf8");
+    const dir = join(tmp, "wizard-eval-prod");
+    const files = readdirSync(dir);
+    expect(files.filter((f) => /^d67-\d{8}-[0-9a-f]{6}\.(md|json)$/.test(f))).toHaveLength(2);
+    const artifact = files.map((f) => readFileSync(join(dir, f), "utf8")).join("\n");
+    for (const s of [...SECRETS, token, csrf]) {
+      expect(shown).not.toContain(s);
+      expect(sum).not.toContain(s);
+      expect(artifact).not.toContain(s);
+      expect(sqls.join("\n")).not.toContain(s);
+    }
+    expect(sum).not.toContain("founder@example.ru");
+    expect(sum).toContain("Замер D67 на сервере пилота");
+    expect(sum).toContain("**Итог: 2 из 2 дошли до готовности к публикации");
+    expect(sum).toContain("247 ₽ (точно, по журналу вызовов моделей)");
+    expect(sum).toContain("Лимита D70");
+  });
+
+  it("the seed refused by the database: no briefs, SSH closed, the psql error without the statement's values", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const run = (cmd, args, o = {}) => {
+      const r = base.run(cmd, args, o);
+      if (cmd === "kubectl" && args.includes("exec"))
+        return {
+          status: 3,
+          stdout: "",
+          stderr: `psql:<stdin>:9: ERROR:  duplicate key value violates unique constraint\nDETAIL:  Key (token_hash)=(${"f".repeat(64)}) already exists.\n`,
+        };
+      return r;
+    };
+    const calls = [];
+    await expect(
+      main(["eval", "--env", "prod", "--briefs", "mvp-01"], FOUNDER, {
+        fetch: (url, init = {}) => {
+          if (new URL(url).host === "codename.ru") calls.push(url);
+          return cloud.fetch(url, init);
+        },
+        run,
+        has: () => true,
+        exists: () => true,
+        sleep: async () => {},
+        kdf: FAST,
+        tmpRoot: tmp,
+        log: () => {},
+      }),
+    ).rejects.toThrow(/psql в wizard-postgres-0: код 3: psql:<stdin>:9: ERROR: {2}duplicate key/);
+    expect(calls).toEqual([]);
+    expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
   });
 });
