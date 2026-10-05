@@ -52,8 +52,8 @@ test("S7: «добавь поле тема в заявки» → diff-line «+ �
   await expect(line.first()).toHaveAttribute("data-sign", "add");
   await expect(line.first()).toContainText("+");
   await expect(diff.getByTestId("diff-migration")).toHaveText("сохранятся");
-  await expect(diff.getByTestId("diff-gates")).toContainText("G0");
-  await expect(page.getByTestId("preview-env")).toContainText(`РЕВИЗИЯ`);
+  await expect(diff.getByTestId("diff-gates")).toContainText("пройдено");
+  await expect(page.getByTestId("preview-env")).toContainText("версия");
 
   await page.getByTestId("env-segment-changes").click();
   await expect(page.getByTestId("diff-groups")).toContainText("Поля данных");

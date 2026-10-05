@@ -190,7 +190,7 @@ test("S10: откат prod к ранее опубликованной ревиз
   await expect(row.first()).toHaveAttribute("data-version", String(firstRev));
   await row.first().getByTestId("revision-rollback").click();
   await expect(page.getByTestId("rollback-confirm")).toContainText(
-    `Вернуть prod к ревизии ${firstRev}? Данные сохранятся`,
+    `Вернуть опубликованную систему к версии ${firstRev}? Данные сохранятся`,
   );
   await page.getByTestId("rollback-yes").click();
   await expect(page.getByTestId("run-result")).toBeVisible({ timeout: 60_000 });

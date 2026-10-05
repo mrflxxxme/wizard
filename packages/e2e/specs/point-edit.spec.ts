@@ -94,7 +94,7 @@ test("укажи и измени: заголовок в превью → «сд�
     await page.getByTestId("chat-input").fill("сделай заголовок крупнее");
     await page.getByTestId("chat-send").click();
     await expect(page.getByTestId("chat-target")).toHaveCount(0);
-    await expect(page.getByTestId("chat-message-target").last()).toHaveText(`AppShell · ${FILE}`);
+    await expect(page.getByTestId("chat-message-target").last()).toHaveText("AppShell");
     await expect
       .poll(
         async () => {

@@ -153,7 +153,7 @@ test("приглашение CLI основателя → письмо со сс
   const out = await pilotCli(invite);
   expect(out).toContain(`приглашение отправлено: ${owner}`);
   const letter = await lastLetter(owner, "invite");
-  expect(letter).toContain("посмотрит модератор");
+  expect(letter).toContain("посмотрит команда");
   const link = letter.match(/https?:\/\/\S+/)?.[0] ?? "";
   expect(link).toBe(`${WEB}/login?email=${encodeURIComponent(owner)}&next=%2Fwelcome`);
 
