@@ -316,3 +316,9 @@ declare module "@wizard/sdk" {
 - M0-07: `packages/sdk/test/contract.test-d.ts` — тип-тесты (`expectTypeOf`) на каждый экспорт раздела 5; `tsc --noEmit` на `specs/runtime/examples` с `_generated/wizard.d.ts` из `forum.json`.
 - M0-09: интеграционные тесты runtime на лимиты (2.1), транзакции (2.2), права в функциях (2.3).
 - M0-10: G0 — правила раздела 1 и `where` только по индексам (через tsc).
+
+## 7. Исходящий HTTP из action (M2-52, D71)
+
+- `ctx.http.fetch(url, { method?, headers?, body? })` → `{ status, ok, headers.get("content-type"), text(), json() }`. Запрос делает runtime, а не код системы: только `https://` на стандартный порт, только хосты из `functions[].egress` этой функции (любой публичный адрес, кроме доменов платформы и внутренних зон; проверка G2-EGRESS-01), без редиректов.
+- Секреты — только ссылкой `secret://<имя>` из `functions[].secretRefs` в значении заголовка или в query: `headers: { Authorization: "Bearer secret://crm_token" }`. Значение подставляет runtime, код его не видит.
+- Лимиты: 10 запросов на вызов, 60 в минуту на систему, тело ≤ 256 КиБ, ответ ≤ 2 МиБ, 10 с на запрос. Ошибки: `EGRESS_FORBIDDEN` (адрес не объявлен или ведёт во внутреннюю сеть), `EGRESS_FAILED` (сервис недоступен), `LIMIT_EXCEEDED`, `RATE_LIMITED`, `PAYLOAD_TOO_LARGE`; без настроенного egress — `EGRESS_DISABLED`. Подробности — runtime.yaml#functions.egress.

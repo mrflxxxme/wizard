@@ -546,6 +546,29 @@ const CASES: Case[] = [
     integration: "qr",
     mutate: (_, c) => void c.scannerRoles.push("moderator"),
   },
+  // ---- webhook (M2-53): the telegram slot of the forum spec is turned into a webhook integration
+  {
+    rule: "webhook.config_schema",
+    integration: "telegram",
+    mutate: (s) => {
+      s.integrations[integrationIndex(s, "telegram")] = {
+        name: "telegram",
+        connector: "webhook",
+        config: { verify: "hmac", entity: "ticket", fields: {} },
+      };
+    },
+  },
+  {
+    rule: "webhook.field",
+    integration: "telegram",
+    mutate: (s) => {
+      s.integrations[integrationIndex(s, "telegram")] = {
+        name: "telegram",
+        connector: "webhook",
+        config: { verify: "shared_secret", entity: "ticket", fields: { created_by: "user" } },
+      };
+    },
+  },
   // ---- secrets (all connectors)
   {
     rule: "connector.secret_required",

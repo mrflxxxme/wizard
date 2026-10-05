@@ -519,6 +519,10 @@
             "cron": {
               "type": "string"
             },
+            "integration": {
+              "$ref": "#/$defs/ident",
+              "description": "M2-53: для type=webhook — интеграция connector=webhook, чей входящий вебхук запускает воркфлоу (runtime.yaml#workflows.triggers.webhook_manual)"
+            },
             "relative": {
               "type": "object",
               "description": "например, за 24 ч до поля даты",
@@ -581,7 +585,8 @@
             "yookassa",
             "telegram",
             "email",
-            "qr"
+            "qr",
+            "webhook"
           ]
         },
         "config": {
@@ -637,7 +642,15 @@
             "type": "string",
             "pattern": "^(?!\\d+\\.)[a-z0-9-]+(\\.[a-z0-9-]+)+$"
           },
-          "description": "M2: хосты (FQDN, без IP, порта и wildcard) для egress-прокси; в M0–M1 сеть запрещена"
+          "description": "M2: хосты (FQDN, без IP, порта и wildcard) для egress-прокси; в M0–M1 сеть запрещена. M2-52 (D71): любой публичный хост, кроме доменов платформы (G2-EGRESS-01), только https"
+        },
+        "secretRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^secret://[a-z0-9_]+$"
+          },
+          "description": "M2-52: секреты, которые ctx.http.fetch подставляет на хосте вместо значений secret://name в заголовках и query запроса (код функции значений не видит)"
         },
         "collectsPii": {
           "type": "boolean",

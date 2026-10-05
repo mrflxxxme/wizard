@@ -590,6 +590,10 @@ views:
   credit_buckets:
     milestone: M1
     purpose: "Остаток по корзинам кредитов (billing.yaml#ledger): (org_id, bucket, bucket_expires_at) → sum(amount_milli) из credit_ledger с учётом распределения charge по корзинам (note)"
+  system_owner_emails:
+    milestone: M2
+    purpose: "M2-50 (D69): email владельцев организации для уведомления $owner — runtime читает, как deployments; миграция 0024"
+    definition: "systems (deleted_at is null) × memberships (role = owner) × users (deleted_at is null) → {system_id: schema_key, email}"
   deployments:
     milestone: M0
     purpose: "Реестр для runtime (runtime.yaml#system_loading.registry), только чтение ролью runtime"

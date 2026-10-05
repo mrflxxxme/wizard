@@ -376,11 +376,11 @@ describe("limits and transactions", () => {
     expect(job?.kind).toBe("function");
   });
 
-  it("actions: runQuery in the same executor, connectors go to the outbox, ctx.http → EGRESS_DISABLED", async () => {
+  it("actions: runQuery in the same executor, connectors go to the outbox, ctx.http to an undeclared host → EGRESS_FORBIDDEN (M2-52)", async () => {
     const before = h.rt.outbox().length;
     const r = await call("nestedAction", {}, "organizer");
     expect(r.status).toBe(200);
-    expect(r.body.result).toMatchObject({ delivered: false, egress: "EGRESS_DISABLED" });
+    expect(r.body.result).toMatchObject({ delivered: false, egress: "EGRESS_FORBIDDEN" });
     expect(r.body.deps).toEqual(expect.arrayContaining(["ticket_type"]));
     const sent = h.rt.outbox().slice(before);
     expect(sent).toHaveLength(1);

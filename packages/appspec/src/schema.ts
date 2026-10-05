@@ -194,6 +194,7 @@ export const workflowSchema = z.strictObject({
     field: identSchema.optional(),
     equals: z.unknown().optional(),
     cron: z.string().optional(),
+    integration: identSchema.optional(),
     relative: z
       .looseObject({
         field: identSchema.optional(),
@@ -207,7 +208,7 @@ export const workflowSchema = z.strictObject({
     .max(20),
 });
 
-export const CONNECTORS = ["yookassa", "telegram", "email", "qr"] as const;
+export const CONNECTORS = ["yookassa", "telegram", "email", "qr", "webhook"] as const;
 export const SECRET_REF_RE = /^secret:\/\/[a-z0-9_]+$/;
 
 export const integrationSchema = z.strictObject({
@@ -227,6 +228,7 @@ export const functionSchema = z.strictObject({
   public: z.boolean().optional(),
   roles: z.array(identSchema).optional(),
   egress: z.array(z.string().regex(EGRESS_HOST_RE)).optional(),
+  secretRefs: z.array(z.string().regex(SECRET_REF_RE)).optional(),
   collectsPii: z.boolean().optional(),
   systemDbReason: z.string().min(10).max(300).optional(),
 });

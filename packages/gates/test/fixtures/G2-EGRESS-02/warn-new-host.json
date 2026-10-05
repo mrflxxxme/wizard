@@ -1,0 +1,16 @@
+{
+  "check": "G2-EGRESS-02",
+  "description": "новый хост относительно опубликованной ревизии → ревью основателя",
+  "env": "prod",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/3/egress",
+      "value": [
+        "api.partner-crm.ru"
+      ]
+    }
+  ],
+  "base": "forum",
+  "expect": "warn"
+}

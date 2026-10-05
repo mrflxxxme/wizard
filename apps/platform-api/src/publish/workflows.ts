@@ -23,6 +23,7 @@ import {
   abuseContext,
   abuseFlagChecks,
   defaultModerationLog,
+  egressHostsNote,
   FOUNDER_REVIEW_REASON_RU,
   type FounderReviewStatus,
   founderReviewChecks,
@@ -366,7 +367,7 @@ async function founderReviewGate(
         {
           level: "warn",
           event: "founder_review_requested",
-          text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}. Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
+          text: `Wizard: ревизия ${revision} системы ${sys.id} (org ${sys.org_id}) ждёт ревью перед prod — ${FOUNDER_REVIEW_REASON_RU[reason]}.${egressHostsNote(spec, prodSpec)} Одобрить: pnpm --filter @wizard/platform-api moderation approve ${sys.id} ${revision}`,
           fields: { systemId: sys.id, orgId: sys.org_id, revision, reason },
         },
       );

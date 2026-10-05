@@ -15,7 +15,7 @@ config_schema:
   from: "{name ≤ 60 символов без @, <, >, CR/LF, address} — для platform address всегда noreply@<systemsDomain>, name — app.name (после той же очистки); домен систем: SPF, DKIM, DMARC p=reject"
   replyTo: "email организатора (необязательно)"
   templates: "{<id>: {subject ≤ 120, body ≤ 10000}}; подстановки {{field}}, {{ref.field}}, {{link}} (ссылка на страницу записи)"
-  validation: "G0: шаблоны, на которые ссылаются workflows/код, существуют; G2: subject не ссылается на поля pii≠none; body — только на pii-поля записи, чей ownerField = получатель"
+  validation: "G0: шаблоны, на которые ссылаются workflows/код, существуют; subject не ссылается на поля pii≠none (email.subject_pii); body с pii-полями записи — только сотрудникам ($owner, $role:<роль>), владельцу записи (ownerField) или самому посетителю (его собственные поля записи, без {{ref.поле}} с ПДн) — D71, email.body_pii_recipient; {{cancel_link}} — только при cancel.set на поля без ПДн (notify.cancel_link)"
 
 actions:
   sendTemplate:
@@ -28,9 +28,17 @@ actions:
       - "Заголовки: Auto-Submitted: auto-generated; Message-ID на домене отправителя"
       - "MUST: в значениях заголовков (subject с подстановками, from.name, replyTo) CR, LF и NUL вырезаются; не-ASCII — кодирование RFC 2047; replyTo — один валидный адрес"
     output: "{messageId}"
-  notify_step: "Шаг воркфлоу notify с integration=email → sendTemplate"
+  notify_step: >
+    Шаг воркфлоу notify с integration=email (M2-50, D69, D71; runtime.yaml#workflows.step_params): получатели to — $record.<ссылка на users>
+    (users.email, как sendTemplate), $owner (email владельцев организации — platform.system_owner_emails), $role:<роль со входом>
+    (все незаблокированные пользователи роли, ≤ 200), $record.<поле type=email> — посетитель без аккаунта: только при consentField
+    (поле bool записи = true; форма заполняет его отдельной неотмеченной галочкой «Согласен получать служебные сообщения»), только
+    служебные письма (подтверждение, напоминание, отмена) с его собственными данными; в каждое письмо посетителю добавляется ссылка
+    «отписаться» ({{unsubscribe_link}} и строка в конце), {{cancel_link}} — одноразовая подписанная ссылка отмены (cancel.set шага).
+    Адреса владельцев и посетителей подставляет хост (sendTemplateToAddress), коду системы они недоступны. Ключ идемпотентности —
+    <jobId>:<step>:sendTemplate:<получатель>; журнал _w_messages без адреса и текста (хеш адреса)
 
-limits: "≤ 300 писем в час на систему (Free — 100); превышение → RATE_LIMITED и событие для владельца"
+limits: "≤ 300 писем в час на систему (Free — 100); превышение → RATE_LIMITED и событие для владельца. M2-50: посетителю без аккаунта ≤ 3 письма в сутки на контакт и интеграцию (RATE_LIMITED, строка rate_limited в _w_messages)"
 bounces: "platform: вебхук провайдера /_wizard/hooks/email/<integration>/<hookToken> (подпись по документации выбранного провайдера) → users.email_bounced_at; следующие письма → RECIPIENT_UNAVAILABLE"
 logging: "MUST NOT: адрес, тема с подстановками, тело; логируются template id и messageId"
 

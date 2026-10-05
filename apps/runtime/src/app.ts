@@ -1,7 +1,7 @@
 // createRuntimeApp (architecture.yaml#interfaces.runtime_handle): host routing → guards → system routes.
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import type { PlatformConnectorConfig } from "@wizard/connectors";
+import { type PlatformConnectorConfig, platformDomains, webhookKeyFromEnv } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
@@ -52,14 +52,17 @@ import { filesRoutes } from "./routes/files.js";
 import { fnRoutes } from "./routes/fn.js";
 import { inviteRoutes } from "./routes/invite.js";
 import { loginApiRoutes } from "./routes/login.js";
+import { messageLinkRoutes } from "./routes/message-links.js";
 import { payRoutes } from "./routes/pay.js";
 import { pdRequestsApiRoutes, privacyRoutes } from "./routes/privacy.js";
 import { qrRoutes } from "./routes/qr.js";
 import { staticRoutes } from "./routes/static.js";
 import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
+import { webhookHookRoutes } from "./routes/webhook.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { yookassaHookRoutes } from "./routes/yookassa.js";
+import { createEgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
 import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
@@ -107,6 +110,12 @@ export interface RuntimeAppOptions {
    * WIZARD_INTERNAL_TOKEN when both are set; null — AI actions answer 503 AI_UNAVAILABLE.
    */
   ai?: AiGatewayClient | null;
+  /**
+   * M2-52: ctx.http.fetch of functions. Default: through WIZARD_EGRESS_PROXY_URL when set; without it direct requests
+   * after the address check outside the cloud, EGRESS_DISABLED in the cloud (NODE_ENV=production or Kubernetes).
+   * false — always EGRESS_DISABLED.
+   */
+  http?: HttpEgressOptions | false;
 }
 
 export interface RuntimeApp {
@@ -126,9 +135,25 @@ export interface RuntimeApp {
    * is due (no marker since today's slot, or a platform request); the server calls it on a timer.
    */
   retentionTick(input?: { now?: Date }): Promise<RetentionTickReport>;
+  /**
+   * Background workflow poller (runtime.yaml#workflows.execution, M2-50): one runJobs pass for every published
+   * deployment of `envs` (default prod) — new records start their workflows, reminders of schedule triggers and wait
+   * steps come due; the server calls it on a timer (WIZARD_JOBS_TICK_MS).
+   */
+  jobsTick(input?: { now?: Date; envs?: readonly SystemEnv[] }): Promise<JobsTickReport>;
   readonly env: RuntimeEnv;
   readonly systems: SystemCache;
 }
+
+export interface JobsTickReport {
+  /** Systems whose pass ran: jobs executed and failed. */
+  ran: { slug: string; env: SystemEnv; jobs: number; failed: number }[];
+  /** Systems that could not be loaded or whose pass threw (logged as jobs_tick_failed). */
+  failed: { slug: string; env: SystemEnv }[];
+}
+
+/** First pass of a system under the poller: audit rows older than this start nothing (no replay of history). */
+export const JOBS_FIRST_PASS_LOOKBACK_MS = 15 * 60_000;
 
 export interface RetentionTickReport {
   /** Systems whose pass ran, with its report. */
@@ -138,6 +163,11 @@ export interface RetentionTickReport {
 }
 
 type Pre = { system: LoadedSystem; host: string; requestId: string };
+
+/** Hook-token key material: WIZARD_SECRETS_KEY of the process; production without it refuses webhooks at startup. */
+function webhookEnv(env: RuntimeEnv): NodeJS.ProcessEnv {
+  return { WIZARD_SECRETS_KEY: process.env.WIZARD_SECRETS_KEY, NODE_ENV: env.nodeEnv };
+}
 
 function forbidden(requestId: string): Response {
   return errorResponse(new WizardError("FORBIDDEN"), requestId);
@@ -165,6 +195,17 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
           ? httpAiGateway({ url: env.platformInternalUrl, token: env.internalToken })
           : null,
   };
+  if (o.http !== false) {
+    const proxyUrl = process.env.WIZARD_EGRESS_PROXY_URL || null;
+    const cloud = env.nodeEnv === "production" || env.kubernetes;
+    services.egress = createEgressService(
+      o.http ?? {
+        proxyUrl,
+        direct: proxyUrl || cloud ? false : {},
+        platformDomains: platformDomains(process.env),
+      },
+    );
+  }
   const buses = new Map<string, InvalidationBus>();
   const artifactsRoot = o.artifactsRoot ?? join(process.cwd(), ".data", "artifacts");
   const files =
@@ -181,6 +222,9 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     platform: o.platform,
     outboxDir: o.outboxDir ?? null,
     connectors: services.connectors,
+    // M2-50: $owner recipients and the sealed cancel/unsubscribe links of visitor mail (auth is built below).
+    owners: async (systemId) => (await o.registry.ownerEmails?.(systemId)) ?? [],
+    seal: (value, aad) => auth.keys.seal(value, aad),
   });
   services.connectorHost = connectors;
   const systems = new SystemCache({
@@ -248,6 +292,11 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard/qr", qrRoutes(connectors));
   app.route("/_wizard/hooks/telegram", telegramHookRoutes(connectors));
   app.route("/_wizard/hooks/yookassa", yookassaHookRoutes(connectors));
+  app.route(
+    "/_wizard/hooks/webhook",
+    webhookHookRoutes({ host: connectors, key: webhookKeyFromEnv(webhookEnv(env)) }),
+  );
+  app.route("/_wizard/hooks/message", messageLinkRoutes(auth.keys));
   app.route("/_wizard/hooks", notImplemented());
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
@@ -367,6 +416,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     ...(o.rpc ? { rpc: o.rpc } : {}),
     ...(o.version ? { version: o.version } : {}),
     ...(o.egress ? { egress: o.egress } : {}),
+    ...(services.egress ? { grants: services.egress.grants } : {}),
     ai: () => services.ai,
   });
 
@@ -382,6 +432,38 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       const sys = await systems.resolve(slug, sysEnv);
       if (!sys) throw new WizardError("NOT_FOUND", { message: "Система не найдена" });
       return runJobs(sys, services, opts);
+    },
+    jobsTick: async (input = {}) => {
+      const now = input.now ?? services.clock();
+      const envs = new Set(input.envs ?? ["prod"]);
+      const report: JobsTickReport = { ran: [], failed: [] };
+      for (const entry of (await o.registry.entries?.()) ?? []) {
+        if (!envs.has(entry.env) || entry.suspended) continue;
+        const at = { slug: entry.slug, env: entry.env };
+        try {
+          const sys = await systems.resolve(entry.slug, entry.env);
+          if (!sys) continue;
+          const r = await runJobs(sys, services, {
+            now,
+            since: new Date(now.getTime() - JOBS_FIRST_PASS_LOOKBACK_MS),
+            auditFrom: new Date(now.getTime() - JOBS_FIRST_PASS_LOOKBACK_MS),
+            maxRounds: 5,
+          });
+          report.ran.push({ ...at, jobs: r.ran, failed: r.failed.length });
+        } catch (err) {
+          o.log?.({
+            ts: new Date().toISOString(),
+            level: "error",
+            msg: "jobs_tick_failed",
+            system: entry.slug,
+            env: entry.env,
+            sqlstate: (err as { code?: unknown }).code ?? null,
+            reason: err instanceof Error ? err.name : "unknown",
+          });
+          report.failed.push(at);
+        }
+      }
+      return report;
     },
     retentionTick: async (input = {}) => {
       const now = input.now ?? services.clock();

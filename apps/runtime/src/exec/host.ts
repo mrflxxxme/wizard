@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
-import { type CurrentUser, type FnKind, WizardError } from "@wizard/sdk";
+import type { SecretReader } from "@wizard/connectors";
+import { type CurrentUser, type FnKind, type HttpClient, WizardError } from "@wizard/sdk";
 import {
   createFunctionHost,
   DEFAULT_LIMITS,
@@ -38,6 +39,13 @@ export function deadlineOf(kind: FnKind, limits: Limits = DEFAULT_LIMITS): numbe
         : limits.actionTimeoutMs;
   return Math.min(ms, UNSAFE_CEILING_MS);
 }
+
+/** ctx.http when egress is not configured for this runtime (sdk.md: EGRESS_DISABLED). */
+const DISABLED_HTTP = Object.freeze({
+  fetch: async () => {
+    throw new WizardError("EGRESS_DISABLED");
+  },
+});
 
 // The executor kills the process at its deadline; the host-side race only backs it up.
 const HOST_SLACK_MS = 500;
@@ -158,6 +166,19 @@ async function build(
         ? liveConnectors(sys, services.connectorHost)
         : outboxConnectors(sys.spec, services),
     clock: services.clock,
+    // M2-52: ctx.http.fetch — the runtime makes the request for the function (egress proxy, declared hosts only).
+    ...(services.egress && services.connectorHost
+      ? {
+          http: (fn: string) => {
+            const client = services.egress?.client(
+              sys,
+              fn,
+              services.connectorHost?.secrets(sys.entry) as SecretReader,
+            );
+            return (client ?? DISABLED_HTTP) as unknown as HttpClient;
+          },
+        }
+      : {}),
     limits: {
       queryTimeoutMs: deadlineOf("query") + HOST_SLACK_MS,
       mutationTimeoutMs: deadlineOf("mutation") + HOST_SLACK_MS,

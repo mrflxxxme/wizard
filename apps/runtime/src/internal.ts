@@ -2,6 +2,7 @@
 // Service in the cloud (NetworkPolicy: platform-api, worker, egress-proxy and sandbox pods). The public port never
 // serves these paths (/_wizard/internal/* → 404 there).
 import { timingSafeEqual } from "node:crypto";
+import { platformDomains } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import type postgres from "postgres";
 import { backfillAiAction, findAiAction } from "./ai/actions.js";
@@ -10,6 +11,7 @@ import type { RuntimeEnv } from "./env.js";
 import { hostname, parseSystemHost } from "./http/guards.js";
 import type { SystemEnv } from "./registry.js";
 import { type EgressPolicy, egressPolicyFor } from "./sandbox/egress.js";
+import { type EgressGrants, GRANT_PREFIX } from "./sandbox/egress-grants.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
 import { type SystemCache, SystemLoadError } from "./system.js";
 
@@ -27,6 +29,8 @@ export interface InternalOptions {
   dbTimeoutMs?: number;
   /** M3-02: AI gateway of the platform for /_wizard/internal/ai-backfill. */
   ai?: () => AiGatewayClient | null | undefined;
+  /** M2-52: grants of runtime-made ctx.http requests (CONNECT through the egress proxy). */
+  grants?: EgressGrants;
 }
 
 const json = (status: number, body: unknown) =>
@@ -144,13 +148,21 @@ export function createInternalHandler(o: InternalOptions): (req: Request) => Pro
 
     // Egress proxy (L3-24): Proxy-Authorization token → policy of the open call's system; the HMAC key stays here.
     if (url.pathname === "/_wizard/internal/egress-authorize") {
-      if (!o.rpc || typeof body.token !== "string") return json(403, { error: { code: "FORBIDDEN" } });
+      if (typeof body.token !== "string") return json(403, { error: { code: "FORBIDDEN" } });
+      if (body.token.startsWith(GRANT_PREFIX)) {
+        // M2-52: a ctx.http.fetch request the runtime makes for a function call — only that function's hosts.
+        const g = o.grants?.open(body.token);
+        if (!g) return json(403, { error: { code: "FORBIDDEN" } });
+        return json(200, { https: [...g.https].sort(), smtp: [], label: g.systemId, exp: g.exp });
+      }
+      if (!o.rpc) return json(403, { error: { code: "FORBIDDEN" } });
       const cap = o.rpc.openCapability(body.token);
       if (!cap) return json(403, { error: { code: "FORBIDDEN" } });
       const sys = await o.systems.byId(cap.systemId, cap.env).catch(() => null);
       if (!sys) return json(403, { error: { code: "FORBIDDEN" } });
       const policy = egressPolicyFor(sys.spec, {
         globalAllow: o.egress?.globalAllow ?? [],
+        platformDomains: platformDomains(process.env),
         ...(o.egress?.platformSmtpHost ? { platformSmtpHost: o.egress.platformSmtpHost } : {}),
         label: cap.systemId,
       });

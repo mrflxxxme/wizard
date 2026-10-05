@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { Dialer, Resolver } from "./net.js";
 import type { SmtpEndpoint } from "./smtp.js";
 
-export type ConnectorId = "yookassa" | "telegram" | "email" | "qr";
+export type ConnectorId = "yookassa" | "telegram" | "email" | "qr" | "webhook";
 export type Env = "draft" | "prod";
 export type Mode = "test" | "live";
 
@@ -93,6 +93,41 @@ export interface ConnectorUsers {
   setTelegramChat(userId: string, chatId: string | null): Promise<void>;
   /** Clears telegram_chat_id of every user of this system linked to `chatId`. */
   clearTelegramChat(chatId: string): Promise<void>;
+  /** M2-50: ids of the active (not blocked) users of a role, for notify `$role:<role>` (≤ 200). */
+  byRole?(role: string): Promise<string[]>;
+  /** M2-50: ids of the active users whose email is one of `emails` (owners who also use the system). */
+  byEmail?(emails: readonly string[]): Promise<string[]>;
+}
+
+/** M2-50: one line of the delivery journal _w_messages (no text, no address — only its hash). */
+export interface MessageJournalEntry {
+  workflow: string | null;
+  step: number | null;
+  integration: string;
+  channel: "email" | "telegram";
+  /** user | owner | role | visitor */
+  recipient: string;
+  addressHash: Buffer | null;
+  template: string | null;
+  /** sent | test_mode | replayed | no_consent | no_address | not_linked | rate_limited | failed */
+  status: string;
+  errorCode: string | null;
+}
+
+export interface MessageJournal {
+  write(entry: MessageJournalEntry): Promise<void>;
+}
+
+/** M2-50: one-time signed links of visitor messages (cancel, unsubscribe) — runtime /_wizard/hooks/message/*. */
+export interface MessageLinks {
+  /** Absolute https URL of the system host carrying a signed token; null when links are not available. */
+  url(a: {
+    action: "cancel" | "unsubscribe";
+    entity: string;
+    id: string;
+    workflow: string;
+    step: number;
+  }): string | null;
 }
 
 /** One-time deep-link tokens (runtime.yaml _w_telegram_links): stored as sha256 with the user id. */
@@ -154,6 +189,12 @@ export interface ConnectorCtx {
   now(): Date;
   platform: PlatformConnectorConfig;
   telegramLinks: TelegramLinkStore;
+  /** M2-50: emails of the org owners of the system (platform accounts); absent or [] — unknown. */
+  owners?(): Promise<string[]>;
+  /** M2-50: delivery journal of notify steps (_w_messages); absent — not journaled. */
+  messages?: MessageJournal;
+  /** M2-50: signed cancel/unsubscribe links of visitor messages; absent — no links. */
+  messageLinks?: MessageLinks;
 }
 
 export interface ActionDef<I, O> {
@@ -184,6 +225,8 @@ export interface ConnectorDefinition<Config, Actions extends Record<string, AnyA
   milestone: "M0" | "M1" | "M2";
   configSchema: z.ZodType<Config>;
   secrets: readonly SecretDecl[];
+  /** M2-53: secret names with this prefix are also accepted in secretRefs (one secret per webhook integration). */
+  secretPrefix?: string;
   validateSpec?(config: Config, spec: AppSpec, at: SpecCheckContext): SpecIssue[];
   actions: Actions;
   webhooks?: WebhookDef[];

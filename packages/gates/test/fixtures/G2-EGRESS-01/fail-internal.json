@@ -1,0 +1,15 @@
+{
+  "check": "G2-EGRESS-01",
+  "description": "хост во внутренней зоне кластера",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/3/egress",
+      "value": [
+        "wizard-runtime-internal.svc.cluster.local"
+      ]
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

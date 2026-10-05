@@ -1,0 +1,109 @@
+{
+  "specVersion": "1",
+  "app": { "name": "Запись к мастеру", "locale": "ru", "description": "Запись на услуги без регистрации: заявка, подтверждение, напоминание за сутки и отмена по ссылке" },
+  "entities": [
+    {
+      "name": "booking",
+      "label": "Запись",
+      "fields": [
+        { "name": "name", "label": "Имя", "type": "string", "required": true, "maxLength": 120, "pii": "basic", "piiKind": "fio" },
+        { "name": "phone", "label": "Телефон", "type": "phone", "required": true, "pii": "basic", "piiKind": "phone" },
+        { "name": "email", "label": "Почта", "type": "email", "pii": "basic", "piiKind": "email" },
+        { "name": "service", "label": "Услуга", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "starts_at", "label": "Время записи", "type": "datetime", "required": true },
+        {
+          "name": "status",
+          "label": "Статус",
+          "type": "enum",
+          "required": true,
+          "default": "booked",
+          "enum": [
+            { "value": "booked", "label": "Записан" },
+            { "value": "cancelled", "label": "Отменена" }
+          ]
+        },
+        { "name": "consent_messages", "label": "Согласен получать служебные письма", "type": "bool", "default": false }
+      ],
+      "retention": { "deleteAfterDays": 365, "anchorField": "starts_at", "mode": "anonymize" }
+    }
+  ],
+  "roles": [
+    { "name": "owner", "label": "Владелец", "access": "login", "isAdmin": true, "loginMethods": ["email_otp"] },
+    { "name": "master", "label": "Мастер", "access": "login", "loginMethods": ["email_otp"] },
+    { "name": "visitor", "label": "Посетитель", "access": "public" }
+  ],
+  "permissions": [
+    { "role": "owner", "entity": "booking", "ops": ["read", "create", "update", "delete"] },
+    { "role": "master", "entity": "booking", "ops": ["read", "update"] },
+    { "role": "visitor", "entity": "booking", "ops": ["create"] }
+  ],
+  "workflows": [
+    {
+      "name": "booking_new",
+      "label": "Новая запись: владельцу, мастерам и посетителю",
+      "trigger": { "type": "on_create", "entity": "booking" },
+      "steps": [
+        { "type": "notify", "params": { "integration": "mail", "to": ["$owner", "$role:master"], "template": "staff_new" } },
+        { "type": "notify", "params": { "integration": "tg", "to": ["$owner", "$role:master"], "text": "Новая заявка — откройте по ссылке {{link}}", "link": "/admin" } },
+        {
+          "type": "notify",
+          "params": {
+            "integration": "mail",
+            "to": "$record.email",
+            "consentField": "consent_messages",
+            "template": "visitor_confirm",
+            "cancel": { "set": { "status": "cancelled" } }
+          }
+        }
+      ]
+    },
+    {
+      "name": "booking_reminder",
+      "label": "Напоминание посетителю за 24 часа",
+      "trigger": { "type": "schedule", "entity": "booking", "relative": { "field": "starts_at", "offsetMinutes": -1440 } },
+      "steps": [
+        {
+          "type": "notify",
+          "params": {
+            "integration": "mail",
+            "to": "$record.email",
+            "consentField": "consent_messages",
+            "template": "visitor_reminder",
+            "cancel": { "set": { "status": "cancelled" } },
+            "if": { "status": ["booked"] }
+          }
+        }
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "name": "mail",
+      "connector": "email",
+      "config": {
+        "templates": {
+          "staff_new": {
+            "subject": "Новая запись",
+            "body": "Новая запись на «{{service}}» на {{starts_at}}.\nИмя: {{name}}\nТелефон: {{phone}}\nОткрыть: {{link}}"
+          },
+          "visitor_confirm": {
+            "subject": "Вы записаны",
+            "body": "{{name}}, вы записаны на «{{service}}» на {{starts_at}}.\nНе сможете прийти — отмените запись: {{cancel_link}}"
+          },
+          "visitor_reminder": {
+            "subject": "Напоминание о записи",
+            "body": "{{name}}, напоминаем: завтра в {{starts_at}} — «{{service}}».\nНе сможете прийти — отмените запись: {{cancel_link}}"
+          }
+        }
+      }
+    },
+    { "name": "tg", "connector": "telegram" }
+  ],
+  "compliance": {
+    "consentText": "Я соглашаюсь на обработку имени и контактов для записи.",
+    "policyPage": "/privacy",
+    "operatorName": "ИП Пример",
+    "operatorContact": "owner@example.ru",
+    "operatorAddress": "г. Москва, ул. Примерная, 1"
+  }
+}
