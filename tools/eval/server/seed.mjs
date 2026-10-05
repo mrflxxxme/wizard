@@ -118,8 +118,10 @@ export function revokeSql({ tokenHash }) {
 /**
  * After the run: exact model spend per system (platform.llm_calls.cost_rub of billable calls, ₽ with VAT) and the
  * «Запросы на развитие» rows of the org's systems when that table exists (M2-59 is in progress; the candidates are
- * fixed names, so the interpolated identifier never comes from input). One line per result: `costs=<json>`,
- * `gaps=<json|null>`; ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
+ * fixed names, so the interpolated identifier never comes from input), and the stage metrics of the harness (payload
+ * of the last build_metrics event of each system's latest build run, eval.yaml stages). One line per result:
+ * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`; ::jsonb::text keeps each on one line (json_agg puts a newline
+ * between elements).
  */
 export function collectSql({ orgId }) {
   return [
@@ -138,11 +140,22 @@ export function collectSql({ orgId }) {
     `\\else`,
     `SELECT 'gaps=null';`,
     `\\endif`,
+    `SELECT 'metrics=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT s.id AS system_id, e.payload
+    FROM platform.systems s
+   CROSS JOIN LATERAL (SELECT r.id FROM platform.runs r WHERE r.system_id = s.id AND r.kind = 'build'
+                        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) r
+   CROSS JOIN LATERAL (SELECT ev.payload FROM platform.run_events ev
+                        WHERE ev.run_id = r.id AND ev.type = 'build_metrics' ORDER BY ev.seq DESC LIMIT 1) e
+   WHERE s.org_id = :'org_id') x;`,
     "",
   ].join("\n");
 }
 
-/** Output of collectSql → {costs: {systemId: {rub, credits, calls}}, gaps: {systemId: [{category, quote, offered}]}|null}. */
+/**
+ * Output of collectSql → {costs: {systemId: {rub, credits, calls}}, gaps: {systemId: [{category, quote, offered}]}|null,
+ * metrics: {systemId: build_metrics payload}}.
+ */
 export function parseCollectOutput(stdout) {
   const lines = String(stdout ?? "").split("\n");
   const value = (k) => {
@@ -168,5 +181,8 @@ export function parseCollectOutput(stdout) {
       });
     }
   }
-  return { costs, gaps };
+  const metrics = {};
+  for (const m of value("metrics") ?? [])
+    if (m.system_id && m.payload && typeof m.payload === "object") metrics[m.system_id] = m.payload;
+  return { costs, gaps, metrics };
 }
