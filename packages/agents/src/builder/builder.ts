@@ -5,6 +5,7 @@ import { type AppSpec, generateTypes } from "@wizard/appspec";
 import { type Check, checkFile, type GateReport, type QaCheck } from "@wizard/gates";
 import { type CallType, LlmError, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { callTool, runToolLoop, type ToolLoopResult } from "../core/index.js";
+import { type CapabilityGap, gapMessage, type RecordDevelopmentRequest } from "../gaps.js";
 import { raiseStep, upperBoundCredits } from "./budget.js";
 import { BuilderContext, MAX_CHARS, MIN_CHARS } from "./context.js";
 import { humanDiff } from "./diff.js";
@@ -754,6 +755,18 @@ class Builder implements ToolEnv {
   async askOrchestrator(q: { question: string; options?: string[] }) {
     if (this.#host.askOrchestrator) return this.#host.askOrchestrator(q);
     return answerFromCard(this.#card, q);
+  }
+
+  get recordDevelopmentRequest(): RecordDevelopmentRequest | undefined {
+    const host = this.#host;
+    return host.recordDevelopmentRequest
+      ? (input) => host.recordDevelopmentRequest?.(input) as Promise<void>
+      : undefined;
+  }
+
+  /** report_capability_gap during the build: the owner gets the honest answer as an agent message (M2-77). */
+  async onCapabilityGap(gap: CapabilityGap): Promise<void> {
+    await this.#say(gapMessage([gap]));
   }
 }
 
