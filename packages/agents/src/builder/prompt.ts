@@ -7,6 +7,7 @@ import { gapsPromptSection } from "../gaps.js";
 import { textRulesSection } from "../text-rules.js";
 import { cardDigest, fileTree, specDigest } from "./digest.js";
 import { capabilityToc, PROMPT_PARTS, uiKitDocs } from "./docs.js";
+import { specShapes } from "./shapes.js";
 import type { PlanStep } from "./tools.js";
 import type { BuildCard } from "./types.js";
 
@@ -26,6 +27,8 @@ export const STATIC_PROMPT = [
   "",
   "# AppSpec operations (apply_ops)",
   PROMPT_PARTS.ops,
+  "",
+  specShapes(),
   "",
   "# Semantic rules",
   PROMPT_PARTS.semantic,
@@ -79,7 +82,7 @@ export const PHASE_TEXT = {
   plan: (title: string) =>
     `Карточка «${title}» утверждена. Составь план сборки вызовом submit_plan: шаги ops (роли → сущности → права → автоматизации → подключения → объявления функций и экранов → критерии приёмки → compliance), затем code (functions/**, потом ui/**).`,
   ops: (version: number) =>
-    `Фаза ops: собери спеку системы по карточке через apply_ops; текущая версия спеки — ${version}. Порядок батчей: роли → сущности с полями, индексами и сроком хранения → права ролей на сущности → автоматизации → подключения → объявления функций и страниц (файлы functions/<имя>.ts и ui/pages/<Имя>.tsx) → set_acceptance (список из карточки 1:1) → set_compliance (consentTemplateId, policyPage). Не больше 50 операций в батче; батч с ошибкой не применяется целиком — исправь указанные операции и отправь его снова. Когда спека собрана, ответь коротким итогом без вызова инструментов.`,
+    `Фаза ops: собери спеку системы по карточке через apply_ops; текущая версия спеки — ${version}. Порядок операций: роли → сущности с полями, индексами и сроком хранения → права ролей на сущности → подключения → автоматизации → объявления функций и страниц (файлы functions/<имя>.ts и ui/pages/<Имя>.tsx) → set_acceptance (список из карточки 1:1) → set_compliance (consentTemplateId, policyPage). Операции батча применяются по порядку, поэтому ссылки на объявленное выше в том же батче работают. Обычно хватает 2–3 батчей до 50 операций; формы объектов — в разделе «Точные формы объектов». Батч с ошибкой не применяется целиком — исправь операции из списка ошибок и отправь батч снова целиком. Когда спека собрана, ответь коротким итогом без вызова инструментов.`,
   /** Harness v2, single pipeline keeps the plan-driven text. */
   opsFromPlan: (version: number) =>
     `Фаза ops: примени план через apply_ops батчами до 50 операций; текущая версия спеки — ${version}. set_acceptance — список из карточки 1:1. Когда все ops-шаги выполнены, ответь коротким итогом без вызова инструментов.`,
