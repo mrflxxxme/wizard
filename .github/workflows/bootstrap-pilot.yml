@@ -60,6 +60,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # eval: live progress of the measurement in the issue «Замер D67: ход на сервере» (tools/eval/server/progress.mjs).
+      issues: write
     with:
       env: ${{ inputs.env }}
       command: ${{ inputs.action == 'apply' && 'bootstrap' || inputs.action }}

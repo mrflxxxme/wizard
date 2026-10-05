@@ -28,7 +28,8 @@ import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
 import { DEFAULTS as EVAL_DEFAULTS, runEval } from "../eval/server/driver.mjs";
-import { renderReport } from "../eval/server/report.mjs";
+import { githubProgress, progressText } from "../eval/server/progress.mjs";
+import { evaluate, renderReport } from "../eval/server/report.mjs";
 import {
   collectSql,
   EVAL_MIN_BUILDS,
@@ -1190,7 +1191,67 @@ export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, poll
     return 0;
   });
   if (seeded !== 0 || !seed) return seeded || 1;
-  const client = platformClient({ base, session, fetch: f, ...(sleep ? { sleep } : {}) });
+  // A cancelled job (SIGINT, then SIGTERM ~7 s later) stops the briefs at once: runs are cancelled, the report is
+  // written from what the driver has, the database step is skipped (it would not finish before the kill).
+  const stop = new AbortController();
+  const onSignal = () => stop.abort("задание отменено");
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+  const abortableSleep =
+    sleep ??
+    ((ms) =>
+      new Promise((res) => {
+        const t = setTimeout(res, ms);
+        stop.signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(t);
+            res();
+          },
+          { once: true },
+        );
+      }));
+  // Live progress in a GitHub issue (the job log is readable only after the job ends).
+  const progress = githubProgress({ token: vars.GITHUB_TOKEN, repo: vars.GITHUB_REPOSITORY, fetch: f, log });
+  const runUrl =
+    vars.GITHUB_SERVER_URL && vars.GITHUB_REPOSITORY && vars.GITHUB_RUN_ID
+      ? `${vars.GITHUB_SERVER_URL}/${vars.GITHUB_REPOSITORY}/actions/runs/${vars.GITHUB_RUN_ID}`
+      : null;
+  const startedAtMsk = now().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+  const lines = [];
+  let snapshot = briefs.map((b) => ({ id: b.id, status: "pending", ready: false, costRubEstimate: 0 }));
+  let stoppedWhy = null;
+  const render = (finished = false) =>
+    progressText({
+      runId: runid,
+      runUrl,
+      startedAt: startedAtMsk,
+      budgetRub: o.maxCostRub,
+      results: snapshot,
+      lines,
+      stopped: stoppedWhy,
+      finished,
+    });
+  const tee = (line) => {
+    log(line);
+    const t = now().toLocaleTimeString("ru-RU", {
+      timeZone: "Europe/Moscow",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    lines.push(`${t} ${line}`);
+    if (/замер остановлен/.test(line)) stoppedWhy = line.replace(/^.*замер остановлен:\s*/, "");
+    progress?.publish(render(), { force: /готова|не готова|ошибка|остановлен/.test(line) });
+  };
+  stop.signal.addEventListener(
+    "abort",
+    () => {
+      stoppedWhy = String(stop.signal.reason);
+      progress?.publish(render(), { force: true });
+    },
+    { once: true },
+  );
+  const client = platformClient({ base, session, fetch: f, sleep: abortableSleep });
   let doc;
   let db = {};
   const notes = [
@@ -1204,29 +1265,43 @@ export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, poll
       ownerEmail: seed.email,
       runId: runid,
       maxCostRub: o.maxCostRub,
-      log,
-      ...(sleep ? { sleep } : {}),
+      log: tee,
+      sleep: abortableSleep,
+      signal: stop.signal,
+      // The same counting as the report (a beyond-capability brief counts by the agent's honest answer).
+      counted: (r) => evaluate({ results: [r] }).items[0]?.counted === true,
+      onUpdate: (results) => {
+        snapshot = results;
+        progress?.publish(render());
+      },
       ...(pollMs ? { pollMs } : {}),
     });
+    if (doc.stopped) stoppedWhy = doc.stopped;
   } finally {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
     await client
       .post("/auth/logout")
       .catch((e) => log(`::warning::выход учётки замера по API: ${e.message}`));
     await Promise.resolve()
       .then(() =>
-        inCluster(async ({ kubectl }) => {
-          try {
-            db = parseCollectOutput(psqlInPod(kubectl, collectSql({ orgId: seed.orgId })));
-          } catch (e) {
-            notes.push(
-              "Точный расход из журнала вызовов моделей прочитать не удалось — в отчёте оценка по кредитам.",
-            );
-            log(`::warning::расход замера из базы: ${e.message}`);
-          }
-          psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
-          log("сессия учётки замера закрыта");
-          return 0;
-        }),
+        stop.signal.aborted
+          ? notes.push(
+              "Замер остановлен отменой задания: расход — оценка по кредитам, сессия закрыта выходом по API.",
+            ) && 0
+          : inCluster(async ({ kubectl }) => {
+              try {
+                db = parseCollectOutput(psqlInPod(kubectl, collectSql({ orgId: seed.orgId })));
+              } catch (e) {
+                notes.push(
+                  "Точный расход из журнала вызовов моделей прочитать не удалось — в отчёте оценка по кредитам.",
+                );
+                log(`::warning::расход замера из базы: ${e.message}`);
+              }
+              psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
+              log("сессия учётки замера закрыта");
+              return 0;
+            }),
       )
       .catch((e) => log(`::warning::после замера: ${e.message} — сессия закрыта выходом по API`));
   }
@@ -1236,6 +1311,13 @@ export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, poll
   writeFileSync(join(outDir, `d67-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  if (doc?.results) snapshot = doc.results;
+  await progress?.publish(
+    `${render(true)}\n\n<details><summary>Отчёт</summary>\n\n${text.slice(0, 45_000)}\n</details>`,
+    {
+      force: true,
+    },
+  );
   if (!summary.passed)
     log(
       `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,

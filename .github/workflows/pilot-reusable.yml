@@ -109,6 +109,8 @@ jobs:
     permissions:
       contents: read
       packages: read
+      # eval: live progress in an issue comment (the job log is readable only after the job ends).
+      issues: write
     env:
       SHA: ${{ needs.authorize.outputs.sha }}
       DEPLOY_ENV: ${{ inputs.env }}
@@ -210,6 +212,9 @@ jobs:
           kubectl version --client=true
           ssh -V
       - name: Pilot (${{ inputs.command }})
+        env:
+          # Only eval uses it: the issue comment with the live progress of the measurement.
+          GITHUB_TOKEN: ${{ inputs.command == 'eval' && github.token || '' }}
         run: |
           case "$COMMAND" in
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;

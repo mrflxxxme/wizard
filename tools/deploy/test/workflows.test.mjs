@@ -106,7 +106,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       expect(doc.concurrency).toEqual({ group: `pilot-${gh("inputs.env")}`, "cancel-in-progress": false });
       expect(doc.jobs.pilot.uses).toBe("./.github/workflows/pilot-reusable.yml");
       expect(doc.jobs.pilot.with.command).toBe(command);
-      expect(doc.jobs.pilot.permissions).toEqual({ contents: "read", packages: "write" });
+      expect(doc.jobs.pilot.permissions).toEqual({ contents: "read", packages: "write", issues: "write" });
     }
     // The read-only check comes first and is the default: a run without choosing anything changes nothing.
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
@@ -238,7 +238,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const job = doc.jobs.pilot;
     expect(job["runs-on"]).toBe("ubuntu-24.04");
     expect(job.environment).toBe(gh("inputs.env"));
-    expect(job.permissions).toEqual({ contents: "read", packages: "read" });
+    // issues: write — only the live progress of eval (the token reaches the step for eval only).
+    expect(job.permissions).toEqual({ contents: "read", packages: "read", issues: "write" });
+    const pilotStep = job.steps.find((s) => String(s.name).startsWith("Pilot"));
+    expect(pilotStep.env.GITHUB_TOKEN).toBe(gh("inputs.command == 'eval' && github.token || ''"));
     // Public packages: the cluster pulls anonymously; the job token only checks that the images are there.
     expect(job.env.WIZARD_GHCR_TOKEN).toBe(gh("secrets.WIZARD_GHCR_TOKEN"));
     expect(job.env.WIZARD_GHCR_JOB_TOKEN).toBe(gh("github.token"));

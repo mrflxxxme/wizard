@@ -701,6 +701,10 @@ select to_char(r.created_at at time zone 'Europe/Moscow', 'HH24:MI') as msk, coa
      where e.run_id = r.id and e.type = 'build_metrics' order by e.seq desc limit 1)::text as stages
 from platform.runs r where r.kind = 'build' and r.created_at > now() - interval '6 hours'
 order by r.created_at desc limit 20;
+select to_char(date_trunc('hour', created_at at time zone 'Europe/Moscow'), 'DD.MM HH24:00') as msk_hour,
+  round(sum(cost_rub), 0) as rub, count(*) as calls
+from platform.llm_calls where billable and created_at > now() - interval '24 hours'
+group by 1 order by 1;
 select fc->>'id' as failed_check, count(*) as times
 from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'failedChecks', '[]'::jsonb)) fc
 where e.type = 'gate_result' and e.ts > now() - interval '6 hours'
