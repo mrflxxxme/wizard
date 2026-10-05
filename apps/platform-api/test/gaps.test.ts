@@ -47,7 +47,21 @@ const interviewTurn = async (host: InterviewHost) => {
         offered: null,
       });
   }
-  return fakeInterview(host);
+  const out = await fakeInterview(host);
+  // The orchestrator's payload.gaps of this turn reach the message (platform-web shows «Написать команде»).
+  return last.includes("оплат")
+    ? {
+        ...out,
+        gaps: [
+          {
+            category: "payments" as const,
+            quote: "Хочу принимать оплату картой",
+            missing: "приём оплаты на сайте",
+            offered: "Заявка с оплатой по счёту",
+          },
+        ],
+      }
+    : out;
 };
 
 function outageRouterFactory(opts: RouterOptions): Router {
@@ -115,6 +129,11 @@ describe("«Запросы на развитие»", () => {
     const pay = rows.find((r) => r.category === "payments");
     expect(pay?.quote).toContain("[ТЕЛЕФОН_1]");
     expect(pay?.quote).not.toContain("123-45-67");
+    const view = await client.req("GET", `/systems/${systemId}`);
+    const q = view.body.messages.find((m: { kind: string }) => m.kind === "questions");
+    expect(q.payload.gaps).toEqual([
+      expect.objectContaining({ category: "payments", missing: "приём оплаты на сайте" }),
+    ]);
     expect(pay).toMatchObject({
       system_id: systemId,
       run_id: created.body.run.id,
@@ -133,7 +152,7 @@ describe("«Запросы на развитие»", () => {
     expect(r.body.categories.map((c: { category: string }) => c.category)).toEqual(["payments", "other"]);
     expect(r.body.categories[0]).toMatchObject({ last7: 2, last30: 2, total: 2, systems: 2 });
     const item = r.body.items.find(
-      (x: { systemId: string }) => x.systemId === systemId && x.category === "payments",
+      (x: { systemId: string; category: string }) => x.systemId === systemId && x.category === "payments",
     );
     expect(item).toMatchObject({ email: "olga@salon.example", systemName: expect.any(String) });
     const only = await staff.req("GET", "/admin/development-requests?category=other");

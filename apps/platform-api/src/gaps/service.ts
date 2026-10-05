@@ -2,31 +2,19 @@
 // beyond the platform's abilities. The agents record it from a run through the host (recordDevelopmentRequest: the
 // interview and the builder report_capability_gap); /admin groups the requests by category and frequency and links to
 // the system and the client. The quote comes scrubbed of personal data; it is scrubbed once more before it is stored.
+import {
+  DEVELOPMENT_REQUEST_CATEGORIES,
+  type DevelopmentRequestCategory,
+  type DevelopmentRequestInput,
+} from "@wizard/agents";
 import { scrub } from "@wizard/pii";
 import { sql } from "kysely";
 import type { Db } from "../db/index.js";
 
-export const DEVELOPMENT_CATEGORIES = [
-  "payments",
-  "subscriptions",
-  "integration",
-  "messaging",
-  "design",
-  "domain",
-  "media",
-  "data",
-  "mobile",
-  "ai",
-  "other",
-] as const;
-export type DevelopmentCategory = (typeof DEVELOPMENT_CATEGORIES)[number];
-
-/** Host method input (same shape as @wizard/agents/host recordDevelopmentRequest). */
-export interface DevelopmentRequestInput {
-  category: DevelopmentCategory;
-  quote: string;
-  offered: string | null;
-}
+/** The agents' contract (@wizard/agents gaps.ts): categories and the host method input. */
+export const DEVELOPMENT_CATEGORIES = DEVELOPMENT_REQUEST_CATEGORIES;
+export type DevelopmentCategory = DevelopmentRequestCategory;
+export type { DevelopmentRequestInput };
 
 const QUOTE_MAX = 1000;
 const cut = (s: string) => (s.length > QUOTE_MAX ? `${s.slice(0, QUOTE_MAX - 1)}…` : s);

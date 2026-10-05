@@ -167,14 +167,15 @@ test("приглашение CLI основателя → письмо со сс
   await page.getByTestId("auth-offer").check();
   await page.getByTestId("auth-pd-consent").check();
   await page.getByTestId("auth-submit").click();
-  // S-welcome: the pilot explained in Russian — free, credits, limits, review before the first publication.
+  // S-welcome: the pilot explained in Russian — free, the D70 limit in words, limits, review before the first publication.
   await expect(page).toHaveURL(`${WEB}/welcome`);
-  await expect(page.getByTestId("welcome-title")).toHaveText("Добро пожаловать в пилот Wizard");
+  await expect(page.getByTestId("welcome-title")).toHaveText("Добро пожаловать в пилот Born to Build");
   await expect(page.getByTestId("welcome-org")).toContainText("Кофейня «Зерно»");
   await expect(page.getByTestId("welcome-free")).toContainText("Оплата и привязка карты не нужны");
-  await expect(page.getByTestId("welcome-credits")).toContainText("Сейчас доступно: 100 кредитов");
+  await expect(page.getByTestId("welcome-usage")).toContainText("5 сборок и сделать 20 правок за 30 дней");
   await expect(page.getByTestId("welcome-limits")).toContainText("До 5 опубликованных систем");
-  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит модератор");
+  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит команда");
+  await expect(page.locator("body")).not.toContainText("кредит");
   // A template opens S1 with its description; S1 links back to the onboarding.
   await page.getByTestId("welcome-template-event_registration").click();
   await expect(page).toHaveURL(`${WEB}/?template=event_registration`);
@@ -190,16 +191,23 @@ test("приглашение CLI основателя → письмо со сс
   await page.close();
 });
 
-test("S-billing: тариф «Пилот» и баланс видны, покупки, подписок и привязки карты нет", async () => {
+test("S-billing: тариф «Пилот» и «На пилоте бесплатно» с остатком словами; кредитов, покупки, подписок и карты нет", async () => {
   const page = await ctx.newPage();
   await page.goto("/billing");
   await expect(page.getByTestId("billing-payments-off")).toContainText("Оплата на пилоте отключена");
   await expect(page.getByTestId("billing-plan")).toHaveAttribute("data-plan", "pilot");
   await expect(page.getByTestId("billing-plan")).toContainText("Пилот");
-  await expect(page.getByTestId("billing-available")).toHaveAttribute("data-value", "100");
-  await expect(page.getByTestId("billing-bucket")).toContainText("от команды Wizard: 100");
-  await expect(page.getByTestId("billing-ledger-row").first()).toHaveAttribute("data-kind", "grant");
-  for (const id of ["billing-topup", "billing-card", "billing-card-bind", "billing-change-plan"])
+  await expect(page.getByTestId("usage-free")).toHaveText("На пилоте бесплатно");
+  await expect(page.getByTestId("usage-left")).toHaveText(/^ещё \d+ сбор\S* · ещё \d+ прав/);
+  await expect(page.getByTestId("billing-team")).toHaveText("Написать команде");
+  for (const id of [
+    "billing-available",
+    "billing-ledger",
+    "billing-topup",
+    "billing-card",
+    "billing-card-bind",
+    "billing-change-plan",
+  ])
     await expect(page.getByTestId(id)).toHaveCount(0);
   // The API agrees: payment operations are off.
   const topup = await a.req("POST", `/orgs/${orgId}/billing/topups`, { packs: 1 });
@@ -325,8 +333,8 @@ test("консоль «Пилот»: готовность беты, пригла
   await page.getByTestId("auth-submit").click();
   await expect(page).toHaveURL(`${WEB}/welcome`);
   await expect(page.getByTestId("welcome-org")).toContainText("Пекарня «Колос»");
-  await expect(page.getByTestId("welcome-credits")).toContainText("Сейчас доступно: 40 кредитов");
-  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит модератор");
+  await expect(page.getByTestId("welcome-usage")).toContainText("за 30 дней");
+  await expect(page.getByTestId("welcome-review")).toContainText("посмотрит команда");
 
   // The console: the invitation is accepted, the org is in the pilot table; a grant by reference.
   await admin.reload();

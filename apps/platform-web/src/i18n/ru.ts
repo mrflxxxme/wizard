@@ -411,7 +411,7 @@ export const ru = {
     cost: "Изменится только этот элемент",
     placeholder: (name: string) =>
       `Что изменить в «${name || "элементе"}»? Например: сделай заголовок крупнее`,
-    sent: (name: string, file: string) => `${name || "Элемент"} · ${file}`,
+    sent: (name: string) => name || "Элемент",
   },
   style: {
     title: "Стиль",
@@ -927,6 +927,7 @@ export const ru = {
       colSpent: "Списано кр. за месяц",
       colModels: "Модели ₽ за месяц",
       colReview: "Ревью",
+      colLimits: "Лимит пилота за 30 дней (D70)",
       colActions: "Начислить кредиты",
       reviewOn: "ревью вкл",
       reviewOff: "ревью выкл",

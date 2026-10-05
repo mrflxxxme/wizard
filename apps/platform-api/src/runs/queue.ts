@@ -1450,6 +1450,7 @@ export class RunEngine {
         payload: {
           questionIds: out.questions.map((q) => q.id),
           ...(out.analysis ? { analysis: out.analysis } : {}),
+          ...(out.gaps?.length ? { gaps: out.gaps } : {}),
         },
         runId: run.id,
       });
@@ -1477,7 +1478,7 @@ export class RunEngine {
         role: "assistant",
         kind: "card",
         text: out.text ?? null,
-        payload: { cardVersion },
+        payload: { cardVersion, ...(out.gaps?.length ? { gaps: out.gaps } : {}) },
         runId: run.id,
       });
       if (stage === "card" || canTransition(stage, "card")) {
@@ -1502,6 +1503,7 @@ export class RunEngine {
       role: "assistant",
       kind: "text",
       text: out.text,
+      ...(out.gaps?.length ? { payload: { gaps: out.gaps } } : {}),
       runId: run.id,
     });
     await appendEvent(t, run.id, "chat_output", { kind: "answer", messageId: m.id });

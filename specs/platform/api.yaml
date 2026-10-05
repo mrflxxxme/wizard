@@ -912,7 +912,7 @@ components:
         role: {enum: [user, assistant, system]}
         kind: {enum: [text, questions, answers, card, run_report, notice]}
         text: {type: string}
-        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}'}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
         runId: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
     RevisionSummary:

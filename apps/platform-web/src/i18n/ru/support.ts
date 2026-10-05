@@ -16,6 +16,9 @@ export const support = {
   sending: "Отправляем…",
   empty: "Напишите сообщение",
   failed: "Не получилось отправить. Попробуйте ещё раз через минуту.",
+  /** D73: pre-filled text after «Пока не умеем» in the chat. */
+  gapText: (missing: string[]) =>
+    `Хочу, чтобы в системе было: ${missing.join("; ")}. Можете помочь это сделать?`,
   admin: {
     tab: "Обращения",
     empty: "Обращений нет",

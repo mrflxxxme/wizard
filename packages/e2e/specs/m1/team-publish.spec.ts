@@ -65,7 +65,7 @@ test("S1 → S3 → S4 → S6: блокер оператора ПДн → S10 �
   test.setTimeout(180_000);
   const { ctx, page } = await asOwner(browser);
   await page.goto("/");
-  await expect(page.getByTestId("start-policy")).toContainText("ПДн удаляются до отправки");
+  await expect(page.getByTestId("start-policy")).toContainText("личные данные убираем до отправки");
   await page
     .getByTestId("start-prompt")
     .fill("Регистрация на форум «Северный ритейл» с билетами и заявками спикеров");
@@ -99,7 +99,7 @@ test("S1 → S3 → S4 → S6: блокер оператора ПДн → S10 �
   await expect(page.getByTestId("run-result")).toBeVisible({ timeout: 90_000 });
   const prodUrl = (await page.getByTestId("run-prod-url").getAttribute("href")) ?? "";
   expect(prodUrl).toMatch(new RegExp(`^http://[a-z0-9-]+\\.localhost:${M1.runtime}/$`));
-  await expect(page.getByTestId("publish-prod-revision")).toContainText("prod · ревизия");
+  await expect(page.getByTestId("publish-prod-revision")).toContainText("Опубликована версия");
   await expect(page.getByTestId("publish-prod-url")).toHaveAttribute("href", prodUrl);
   firstRev = Number((await page.getByTestId("publish-prod-revision").textContent())?.match(/\d+/)?.[0]);
 
@@ -180,7 +180,9 @@ test("viewer: settings-invite и revision-rollback disabled (после втор
   await owner.ctx.close();
 });
 
-test("S10: откат prod к ранее опубликованной ревизии → пилюля «prod · ревизия N»", async ({ browser }) => {
+test("S10: откат prod к ранее опубликованной ревизии → пилюля «Опубликована версия N»", async ({
+  browser,
+}) => {
   test.setTimeout(90_000);
   const { ctx, page } = await asOwner(browser);
   await page.goto(`/s/${systemId}/settings`);
@@ -192,7 +194,7 @@ test("S10: откат prod к ранее опубликованной ревиз
   );
   await page.getByTestId("rollback-yes").click();
   await expect(page.getByTestId("run-result")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByTestId("settings-prod-revision")).toHaveText(`prod · ревизия ${firstRev}`);
+  await expect(page.getByTestId("settings-prod-revision")).toHaveText(`Опубликована версия ${firstRev}`);
   await expect(
     page.getByTestId("revision-row").filter({ has: page.getByTestId("revision-prod") }),
   ).toHaveAttribute("data-version", String(firstRev));
@@ -205,7 +207,7 @@ test("«Только российский контур» → GET settings ruOnly
   const { ctx, page, a } = await asOwner(browser);
   await page.goto("/");
   const policy = page.getByTestId("start-policy");
-  await expect(policy).toContainText("ПДн удаляются до отправки");
+  await expect(policy).toContainText("личные данные убираем до отправки");
   await page.goto(`/s/${systemId}/settings`);
   const sw = page.getByTestId("settings-ru-only");
   await expect(sw).toBeEnabled();
@@ -215,7 +217,7 @@ test("«Только российский контур» → GET settings ruOnly
   expect((await a.req("GET", `/orgs/${orgId}/settings`)).body).toMatchObject({ ruOnly: true });
   await page.getByRole("link", { name: "На главную" }).click();
   await expect(policy).toContainText("Сборка: модели в РФ");
-  await expect(policy).not.toContainText("ПДн удаляются");
+  await expect(policy).not.toContainText("личные данные убираем");
   await expect(page.getByTestId("start-ru-only")).toBeChecked();
   await ctx.close();
 });
