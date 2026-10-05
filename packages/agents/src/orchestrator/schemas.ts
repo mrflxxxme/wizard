@@ -5,7 +5,11 @@ import { FORK_IDS } from "./taxonomy.js";
 
 const str = (max: number) => z.string().trim().min(1).max(max);
 
-export const SEGMENTS = ["events", "made_to_order", "horizontal"] as const;
+/**
+ * Segment = the closest quality recipe (D66): site, booking, crm — release classes; events, made_to_order — earlier
+ * recipes; horizontal / other — the general pipeline only. A segment never limits what the system may contain.
+ */
+export const SEGMENTS = ["site", "booking", "crm", "events", "made_to_order", "horizontal", "other"] as const;
 export const SKELETON = ["catalog", "application", "process", "payment", "fulfillment"] as const;
 export const CONNECTORS = ["yookassa", "telegram", "email", "qr"] as const;
 export const LOGIN_METHODS = ["phone_otp", "email_otp", "telegram"] as const;

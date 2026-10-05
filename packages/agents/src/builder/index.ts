@@ -11,7 +11,16 @@ export {
 export { abbreviate, BuilderContext, MAX_CHARS, MIN_CHARS, outline } from "./context.js";
 export { humanDiff, humanDiffFiles, OP_TEMPLATES } from "./diff.js";
 export { cardDigest, HIDDEN_MASK, maskSpec, OPERATOR_MASK, specDigest } from "./digest.js";
-export { SDK_TOPICS, sdkDocs, UI_KIT_COMPONENTS, uiKitDocs } from "./docs.js";
+export {
+  CAPABILITY_IDS,
+  type CapabilityCard,
+  capabilityDoc,
+  capabilityToc,
+  SDK_TOPICS,
+  sdkDocs,
+  UI_KIT_COMPONENTS,
+  uiKitDocs,
+} from "./docs.js";
 export {
   createMemoryHost,
   executeBuild,
@@ -23,6 +32,7 @@ export {
 export { STATIC_PROMPT } from "./prompt.js";
 export {
   builderTools,
+  EXTRA_BUILDER_TOOLS,
   MAX_FILE_BYTES,
   type PlanStep,
   planStepSchema,

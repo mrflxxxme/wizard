@@ -23,16 +23,73 @@ checks:
     permission: "AC {type: permission, role, entity, op, expect} → PC-проверка 1:1 (без LLM). id: SC-<AC id>"
     scenario:
       how: "callType=qa_generate, инструмент submit_checks {checks: Scenario[]} (DSL — gates.yaml#scenario_dsl)"
-      prompt_inputs: "текст AC, дайджест спеки (сущности, поля с типами и enum, роли, функции с args, воркфлоу), правила DSL, 2 эталонных сценария"
+      prompt_inputs: "текст AC, дайджест спеки (сущности, поля с типами и enum, роли, функции с args, воркфлоу), правила DSL, эталонные сценарии reference_scenarios (по одному на класс выпуска site, booking, crm — M2-39, D43)"
       validate:
         - "zod(Scenario) + статическое разрешение: сущности, поля, функции, роли, переменные ($x) существуют и определены до использования"
         - "Каждый сценарий содержит ≥1 expect; сценарий не может менять спеку"
         - "actors — поле сценария, не шаг; шаги create/callFn, пишущие поля pii≠none от роли без isAdmin, несут consent: true (gates.yaml#scenario_dsl)"
-        - "MUST: сценарий с advanceTime не опирается на абсолютные даты, которые ставит код функций или seed (например event_starts_at = 2026-11-14 в registerTicket): сначала привязать якорное поле к $now (update) или создать запись с $now±Nm, затем сдвигать время. Иначе результат G1 зависит от даты запуска (M2-AC6: forum.json AC6 ставит event_starts_at = \"$now\" перед advanceTime)"
+        - "MUST: сценарий с advanceTime не опирается на абсолютные даты, которые ставит код функций или seed (например, дату начала, которую функция ставит константой): сначала привязать якорное поле к $now (update) или создать запись с $now±Nm, затем сдвигать время. Иначе результат G1 зависит от даты запуска (M2-AC6)"
         - "Невалидный → 1 повтор с ошибками; снова невалидный → проверка status=error, category=check_invalid (строитель её не чинит, AC помечается «не удалось проверить автоматически»)"
     constraint:
       how: "Как scenario, но обязательна негативная ветка: действие, нарушающее ограничение (лимит, уникальность, статус), ожидает ошибку"
       examples: ["лимит мест через функцию: callFn N+1 → expect {error: '<код ctx.error>'} (напр. SOLD_OUT)", "нарушение required/maxLength/enum: create → expect {status: invalid}", "уникальность: второй create с тем же значением → expect {status: conflict}"]
+  # Эталонные сценарии для few-shot qa_generate (M2-39, D43: не только форум). Источник для packages/agents/scripts/gen-qa-assets.mjs.
+  # Синтетические спеки классов, на которых эталоны проходят G1, — packages/agents/test/qa/class-specs.ts.
+  reference_scenarios:
+    - class: site
+      title_ru: "сайт с заявками"
+      scenario:
+        id: SC-AC1
+        acId: AC1
+        title: "Посетитель оставляет заявку без входа; владелец её видит, посетитель чужие заявки не читает"
+        actors: { own: { role: owner } }
+        steps:
+          - as: anon
+          - create: { entity: lead, data: { name: "Клиент Один", phone: "+79990000001", comment: "Нужна консультация" }, save: l1 }
+            consent: true
+          - expect: { status: created }
+          - read: { entity: lead }
+          - expect: { status: denied }
+          - as: own
+          - read: { entity: lead, id: $l1.id }
+          - expect: { status: ok, fields: { status: new } }
+    - class: booking
+      title_ru: "запись с напоминанием"
+      scenario:
+        id: SC-AC2
+        acId: AC2
+        title: "Одно время нельзя занять дважды; за сутки до записи клиенту приходит письмо-напоминание"
+        actors: { own: { role: owner }, kate: { role: client }, max: { role: client } }
+        steps:
+          - as: own
+          - create: { entity: service, data: { name: "Консультация", duration_min: 60 }, save: svc }
+          - as: kate
+          - create: { entity: booking, data: { service: $svc.id, starts_at: "$now+2880m" }, save: b1 }
+          - expect: { status: created }
+          - as: max
+          - create: { entity: booking, data: { service: $svc.id, starts_at: $b1.starts_at } }
+          - expect: { status: conflict }
+          - advanceTime: { minutes: 1500 }
+          - expect: { outbox: { connector: email, to: kate, count: 1 } }
+    - class: crm
+      title_ru: "CRM: сделки по этапам"
+      scenario:
+        id: SC-AC3
+        acId: AC3
+        title: "Менеджер переносит свою сделку на следующий этап и не видит чужие сделки"
+        actors: { own: { role: owner }, m1: { role: manager }, m2: { role: manager } }
+        steps:
+          - as: m1
+          - create: { entity: deal, data: { title: "Поставка оборудования", amount: 150000 }, save: d1 }
+          - expect: { status: created, fields: { stage: new } }
+          - update: { entity: deal, id: $d1.id, data: { stage: negotiation } }
+          - expect: { status: ok, fields: { stage: negotiation } }
+          - as: m2
+          - read: { entity: deal, id: $d1.id }
+          - expect: { status: not_found }
+          - as: own
+          - read: { entity: deal, where: { stage: negotiation } }
+          - expect: { count: { gte: 1 } }
   determinism: "Сгенерированные сценарии кешируются по (specVersion, AC id, sha256(текст AC)); повторный G1 без изменений AC не вызывает LLM"
   output: "Check {id, acId?, kind: permission|scenario|constraint, level: G1|G2, scenario?: Scenario, expect?}"
   test: "Спека «форум» → ≥ 1 SC-проверка на каждый AC type=scenario|constraint с milestone ≤ M0, все исполнимы без status=error и pass на золотой ревизии (backlog M0-14)"
