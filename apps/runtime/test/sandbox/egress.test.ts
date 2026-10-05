@@ -290,6 +290,13 @@ describe("egress policy and parsing", () => {
     expect([...p.https].sort()).toEqual(["api.partner.ru", "api.yookassa.ru"]);
     expect([...egressPolicyFor(spec, {}).https]).toEqual(["api.yookassa.ru"]);
     expect([...p.smtp].sort()).toEqual(["smtp.wizard-mail.ru", "smtp.yandex.ru"]);
+    // Platform mail over the Unisender Go HTTP API (email.yaml#transport): its host on https instead of SMTP.
+    const api = egressPolicyFor(spec, {
+      platformSmtpHost: "smtp.go1.unisender.ru",
+      platformMailApiHost: "go1.unisender.ru",
+    });
+    expect([...api.https].sort()).toEqual(["api.yookassa.ru", "go1.unisender.ru"]);
+    expect([...api.smtp]).toEqual(["smtp.yandex.ru"]);
   });
 
   it("peekClientHello: partial input waits, non-TLS and garbage are refused", () => {

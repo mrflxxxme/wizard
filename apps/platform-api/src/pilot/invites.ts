@@ -153,10 +153,13 @@ export async function admitNewUser(
   email: string,
   mode: string,
   now: Date = new Date(),
+  founderEmail: string | null = null,
 ): Promise<{ pilotInviteId: string | null }> {
   const pilot = await activePilotInvite(trx, email, now);
   if (pilot) return { pilotInviteId: pilot.id };
   if (mode !== "invite") return { pilotInviteId: null };
+  // The founder (WIZARD_FOUNDER_EMAIL) opens the invite-only pilot: nobody can invite the first account.
+  if (founderEmail && email.toLowerCase() === founderEmail) return { pilotInviteId: null };
   const orgInvite = await trx
     .selectFrom("platform.invites")
     .select("id")

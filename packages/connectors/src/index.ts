@@ -30,6 +30,22 @@ export {
   isConnectorError,
   UniqueViolation,
 } from "./errors.js";
+/** Unisender Go HTTP API transport (443): transport choice from env, API base, send with SMTP-equivalent errors. */
+export {
+  type ApiAttachment,
+  type ApiMail,
+  MAIL_TRANSPORTS,
+  MailApiError,
+  type MailTransport,
+  mailApiFromEnv,
+  mailTransportOf,
+  sendUnisenderApi,
+  UNISENDER_API_TIMEOUT_MS,
+  UNISENDER_DEFAULT_BASE,
+  type UnisenderSendOptions,
+  unisenderApiBase,
+  unisenderBody,
+} from "./mail-api.js";
 /** RFC 5322/2047 helpers: header sanitising, encoded words, address formatting, header parsing. */
 export {
   buildMessage,

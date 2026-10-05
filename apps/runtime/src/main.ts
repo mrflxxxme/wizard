@@ -2,6 +2,7 @@
 // Configuration from env (platform/deploy.yaml#local.env_vars); the repo .env is loaded when present.
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { mailApiFromEnv } from "@wizard/connectors";
 import { createLogger } from "@wizard/pii/log";
 import { metricsListenFromEnv } from "@wizard/pii/metrics";
 import postgres from "postgres";
@@ -39,6 +40,8 @@ if (sandbox) {
   await sandbox.orchestrator.reconcile().catch((e: unknown) => logger.error("sandbox_reconcile_failed", e));
   sandbox.orchestrator.startWatchdog();
 }
+// Platform mail over the Unisender Go HTTP API (email.yaml#transport): its host replaces the SMTP host in the policy.
+const mailApi = mailApiFromEnv(process.env);
 const { close, metricsPort } = await startRuntime({
   db,
   // Drafts built by platform-api come from platform.deployments; registry.json still serves hand-placed artifacts.
@@ -60,6 +63,7 @@ const { close, metricsPort } = await startRuntime({
       .map((h) => h.trim())
       .filter(Boolean),
     ...(process.env.WIZARD_SMTP_HOST ? { platformSmtpHost: process.env.WIZARD_SMTP_HOST } : {}),
+    ...(mailApi ? { platformMailApiHost: new URL(mailApi.base).hostname } : {}),
   },
   log: (line) => logger.line(line),
   // M2-50: workflow poller over published systems (0 — off; tests and G1 drive runJobs themselves).

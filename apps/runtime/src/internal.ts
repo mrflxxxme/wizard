@@ -24,7 +24,7 @@ export interface InternalOptions {
   /** Image version reported by health (WIZARD_VERSION). */
   version?: string;
   /** Egress allowlist inputs (L3-24): global function allowlist and the platform SMTP host. */
-  egress?: { globalAllow: Iterable<string>; platformSmtpHost?: string };
+  egress?: { globalAllow: Iterable<string>; platformSmtpHost?: string; platformMailApiHost?: string };
   /** DB probe timeout (default 2 s). */
   dbTimeoutMs?: number;
   /** M3-02: AI gateway of the platform for /_wizard/internal/ai-backfill. */
@@ -165,6 +165,7 @@ export function createInternalHandler(o: InternalOptions): (req: Request) => Pro
         globalAllow: o.egress?.globalAllow ?? [],
         platformDomains: platformDomains(process.env),
         ...(o.egress?.platformSmtpHost ? { platformSmtpHost: o.egress.platformSmtpHost } : {}),
+        ...(o.egress?.platformMailApiHost ? { platformMailApiHost: o.egress.platformMailApiHost } : {}),
         label: cap.systemId,
       });
       return json(200, { ...policyJson(policy), exp: cap.exp });

@@ -144,6 +144,11 @@ export interface PlatformConnectorConfig {
   telegram: { apiBase: string; botUsername: string | null };
   /** Platform SMTP account (email provider=platform); null — not configured yet (E-ACCESS). */
   smtp: SmtpEndpoint | null;
+  /**
+   * The platform account sends over the Unisender Go HTTP API instead of SMTP (WIZARD_MAIL_TRANSPORT=unisender-api,
+   * default for a *.unisender.ru host; key = smtp_password); absent or null — SMTP.
+   */
+  mailApi?: { base: string } | null;
   /** Local dev receiver for test-mode mail (WIZARD_DEV_SMTP=1); null — the outbox. */
   devSmtp: SmtpEndpoint | null;
   /** Sender domain of provider=platform: noreply@<mailDomain>. */

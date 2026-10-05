@@ -2,7 +2,9 @@
 // org invites, owner notices, billing letters, pilot invitations and founder alerts. Reuses the connectors' minimal
 // SMTP client and MIME builder (implicit TLS on 465 or mandatory STARTTLS on 587; plaintext only for a local
 // receiver outside production) — no new dependency. Without WIZARD_SMTP_HOST letters go to the outbox files as
-// before. DKIM/SPF/DMARC of the sender domain are DNS records at the provider (docs/ops/mail.md).
+// before. DKIM/SPF/DMARC of the sender domain are DNS records at the provider (docs/ops/mail.md). With
+// WIZARD_MAIL_TRANSPORT=unisender-api (default for a *.unisender.ru host) letters go over the Unisender Go HTTP API
+// on 443 instead (ApiMailer, email.yaml#transport): the pilot's server has the mail ports closed.
 import { randomUUID } from "node:crypto";
 import {
   buildMessage,
@@ -12,6 +14,8 @@ import {
   isPlainAddress,
   SmtpError,
   sendSmtp,
+  sendUnisenderApi,
+  UNISENDER_DEFAULT_BASE,
 } from "@wizard/connectors";
 import type { Config, PlatformSmtp } from "../config.js";
 import { type Mailer, type MailMessage, OutboxMailer } from "./mailer.js";
@@ -31,6 +35,8 @@ export interface SmtpMailerOptions {
   timeoutMs?: number;
   /** Pause before the single retry of a transient failure (connection, TLS, 4xx); default 2 s. */
   retryDelayMs?: number;
+  /** HTTP transport of ApiMailer (tests substitute it). */
+  fetch?: typeof fetch;
 }
 
 /** Transient: connection/TLS/timeouts (code 0) and 4xx replies; 5xx (bad recipient, auth) are final. */
@@ -92,10 +98,50 @@ export class SmtpMailer implements Mailer {
   }
 }
 
-/** The platform's mailer from the config: SMTP when WIZARD_SMTP_HOST is set, else the outbox files. */
+/**
+ * Platform mail over the Unisender Go HTTP API (POST email/send.json, X-API-KEY = the SMTP password). Same letter as
+ * SmtpMailer: subject, text and its HTML twin, the sender with its name, X-Wizard-Kind. 429/5xx/network are retried
+ * once, other 4xx are final (MailApiError, an SmtpError with an SMTP-equivalent code).
+ */
+export class ApiMailer implements Mailer {
+  constructor(
+    readonly smtp: PlatformSmtp,
+    private readonly o: SmtpMailerOptions = {},
+  ) {}
+
+  async send(m: MailMessage): Promise<void> {
+    if (!isPlainAddress(m.to)) throw new Error("invalid recipient address");
+    await sendUnisenderApi(
+      {
+        from: this.smtp.from.address,
+        ...(this.smtp.from.name ? { fromName: this.smtp.from.name } : {}),
+        to: m.to,
+        subject: headerSafe(m.subject),
+        text: m.text,
+        html: htmlOf(m.text),
+        headers: { "X-Wizard-Kind": m.kind },
+      },
+      {
+        base: this.smtp.apiBase ?? UNISENDER_DEFAULT_BASE,
+        apiKey: this.smtp.password ?? "",
+        timeoutMs: this.o.timeoutMs ?? 15_000,
+        retryDelayMs: this.o.retryDelayMs ?? 2000,
+        ...(this.o.fetch ? { fetch: this.o.fetch } : {}),
+      },
+    );
+  }
+}
+
+/**
+ * The platform's mailer from the config: the Unisender Go API or SMTP when WIZARD_SMTP_HOST is set, else the outbox
+ * files.
+ */
 export function platformMailer(
   config: Pick<Config, "smtp" | "outboxDir">,
   o: SmtpMailerOptions = {},
 ): Mailer {
-  return config.smtp ? new SmtpMailer(config.smtp, o) : new OutboxMailer(config.outboxDir);
+  if (!config.smtp) return new OutboxMailer(config.outboxDir);
+  return config.smtp.transport === "unisender-api"
+    ? new ApiMailer(config.smtp, o)
+    : new SmtpMailer(config.smtp, o);
 }

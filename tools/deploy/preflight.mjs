@@ -1,8 +1,9 @@
 // Read-only preflight of the pilot's founder inputs (`node tools/deploy/pilot.mjs check`, bootstrap-pilot action
 // `check`; docs/ops/deploy.md «Пилот: одна кнопка», docs/reviews/impl-notes/pilot-preflight.md). Every probe is a
-// cheap authenticated read: it creates nothing, changes nothing and spends no model tokens. The only side effect is
-// one Telegram message to the alert chat — that is the probe. Output names settings, never their values: every line
-// and the step summary pass through `scrub`, which replaces any secret value that slipped into a message.
+// cheap authenticated read (the Unisender Go key check is a POST to system/ping, which sends nothing): it creates
+// nothing, changes nothing and spends no model tokens. The only side effect is one Telegram message to the alert
+// chat — that is the probe. Output names settings, never their values: every line and the step summary pass through
+// `scrub`, which replaces any secret value that slipped into a message.
 import { connect as netConnect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 
@@ -439,6 +440,84 @@ export async function probeSmtp(
   }
 }
 
+/**
+ * Platform mail transport as packages/connectors/src/mail-api.ts mailTransportOf (a test keeps them equal):
+ * WIZARD_MAIL_TRANSPORT, else unisender-api for a *.unisender.ru SMTP host, else smtp; null — unknown value.
+ */
+export function mailTransport(vars) {
+  const v = String(vars.WIZARD_MAIL_TRANSPORT ?? "")
+    .trim()
+    .toLowerCase();
+  if (v) return ["smtp", "unisender-api"].includes(v) ? v : null;
+  return /(^|\.)unisender\.ru$/i.test(
+    String(vars.WIZARD_SMTP_HOST ?? "")
+      .trim()
+      .replace(/\.$/, ""),
+  )
+    ? "unisender-api"
+    : "smtp";
+}
+
+/** Unisender Go API origin as mail-api.ts unisenderApiBase: WIZARD_MAIL_API_BASE, smtp.goN → goN, else goapi. */
+export function mailApiBase(vars) {
+  const o = String(vars.WIZARD_MAIL_API_BASE ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (o) return o;
+  const m = /^smtp\.(go\d+)\.unisender\.ru\.?$/i.exec(String(vars.WIZARD_SMTP_HOST ?? "").trim());
+  return m ? `https://${m[1].toLowerCase()}.unisender.ru` : "https://goapi.unisender.ru";
+}
+
+/**
+ * The Unisender Go key (WIZARD_SMTP_PASSWORD) against POST system/ping.json on 443 — it checks the key and sends no
+ * letter. Used instead of the SMTP login when platform mail goes over the HTTP API (the server's mail ports are closed).
+ */
+export async function probeMailApi(vars, { fetch: f = fetch, timeoutMs = TIMEOUT_MS } = {}) {
+  const title = "Почта: ключ API Unisender Go";
+  const key = vars.WIZARD_SMTP_PASSWORD || "";
+  if (!key)
+    return row(title, "fail", "WIZARD_SMTP_PASSWORD не задан: для отправки через API это ключ Unisender Go");
+  const base = mailApiBase(vars);
+  if (!base.startsWith("https://")) return row(title, "fail", "WIZARD_MAIL_API_BASE: нужен https-адрес");
+  const host = new URL(base).host;
+  let res;
+  try {
+    res = await f(`${base}/ru/transactional/api/v1/system/ping.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "X-API-KEY": key },
+      body: "{}",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    return row(title, "fail", `нет ответа от ${host} (порт 443)`);
+  }
+  const body = await res.json().catch(() => null);
+  if (res.ok && body?.status === "success")
+    return row(title, "ok", `${host}: ключ принят (system/ping), письмо не отправлялось`);
+  if (res.status === 401 || res.status === 403)
+    return row(
+      title,
+      "fail",
+      `${host} не принял WIZARD_SMTP_PASSWORD как API-ключ (HTTP ${res.status}); проверьте, что сервер (go1 или go2) тот же, что в адресе кабинета`,
+    );
+  return row(
+    title,
+    "fail",
+    `${host} ответил HTTP ${res.status}${typeof body?.code === "number" ? `, код ${body.code}` : ""}`,
+  );
+}
+
+/** Mail login row by transport: the Unisender Go API key or the SMTP login. */
+export function probeMail(vars, { fetch: f = fetch, smtp = {} } = {}) {
+  const transport = mailTransport(vars);
+  if (transport === null)
+    return Promise.resolve(
+      row("Почта: вход", "fail", "WIZARD_MAIL_TRANSPORT: допустимо smtp или unisender-api"),
+    );
+  if (transport === "unisender-api" && vars.WIZARD_SMTP_HOST) return probeMailApi(vars, { fetch: f });
+  return probeSmtp(vars, smtp);
+}
+
 /** WIZARD_SMTP_FROM: an address; its domain should be the platform's (DKIM/SPF are set up for it). */
 export function probeFrom(vars) {
   const title = "Почта: отправитель";
@@ -617,7 +696,7 @@ export async function runPreflight({
       state(),
       probeCloudru(vars, { fetch: f }),
       probeZai(vars, { fetch: f }),
-      probeSmtp(vars, smtp),
+      probeMail(vars, { fetch: f, smtp }),
       Promise.resolve(probeFrom(vars)),
       Promise.resolve(probeSpf(vars)),
       probeTelegram(vars, { fetch: f }),

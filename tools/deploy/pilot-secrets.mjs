@@ -211,6 +211,8 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_SMTP_PASSWORD",
   "WIZARD_SMTP_FROM",
   "WIZARD_SMTP_TLS",
+  "WIZARD_MAIL_TRANSPORT",
+  "WIZARD_MAIL_API_BASE",
   "WIZARD_TELEGRAM_BOT_TOKEN",
   "WIZARD_PLATFORM_YOOKASSA_SHOP_ID",
   "WIZARD_PLATFORM_YOOKASSA_SECRET_KEY",
@@ -258,6 +260,8 @@ export function clusterSecretFiles({ bundle, outputs, inputs }) {
     WIZARD_SECRETS_KEY: s.WIZARD_SECRETS_KEY,
     WIZARD_PREVIEW_SECRET: s.WIZARD_PREVIEW_SECRET,
     WIZARD_INTERNAL_TOKEN: s.WIZARD_INTERNAL_TOKEN,
+    // The invite-only pilot (registration: invite) lets the founder sign in without an invitation.
+    WIZARD_FOUNDER_EMAIL: (inputs.WIZARD_FOUNDER_EMAIL ?? "").trim().toLowerCase(),
     WIZARD_S3_BUCKET: buckets.files,
     WIZARD_S3_ACCESS_KEY_ID: keys.files.access_key,
     WIZARD_S3_SECRET_ACCESS_KEY: keys.files.secret_key,

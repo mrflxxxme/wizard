@@ -308,7 +308,11 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
   const files = o.outboxDir ? new JsonlOutbox(o.outboxDir) : null;
   // Provider endpoints configured by the platform itself (stubs in tests and local runs) are trusted hosts.
   const fetchGuarded = guardedFetch({
-    trustedHosts: [new URL(platform.telegram.apiBase).host, new URL(yookassa.apiBase).host],
+    trustedHosts: [
+      new URL(platform.telegram.apiBase).host,
+      new URL(yookassa.apiBase).host,
+      ...(platform.mailApi ? [new URL(platform.mailApi.base).host] : []),
+    ],
   });
 
   /** Canonical host of a system (runtime.yaml#routing): prod — the alias, draft — <slug>--draft. */

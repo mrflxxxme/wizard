@@ -89,7 +89,12 @@ const verify = (api: TestApi, email: string, code: string) =>
 describe("WIZARD_REGISTRATION=invite: sign-in of a new e-mail only with an invitation", () => {
   let fx: Fx;
   beforeAll(async () => {
-    fx = await fixture("pilotreg", { authMode: "session", registration: "invite", devLogin: true });
+    fx = await fixture("pilotreg", {
+      authMode: "session",
+      registration: "invite",
+      devLogin: true,
+      founderEmail: "founder@born.example",
+    });
   });
   afterAll(async () => {
     await fx?.drop();
@@ -104,6 +109,17 @@ describe("WIZARD_REGISTRATION=invite: sign-in of a new e-mail only with an invit
     expect(() => assertStartupAllowed(loadConfig({ WIZARD_REGISTRATION: "closed" }))).toThrow(
       /WIZARD_REGISTRATION/,
     );
+  });
+
+  test("the founder (WIZARD_FOUNDER_EMAIL) signs in without an invitation; the address matches without case", async () => {
+    expect(loadConfig({ WIZARD_FOUNDER_EMAIL: " Founder@Born.Example " }).founderEmail).toBe(
+      "founder@born.example",
+    );
+    const email = "founder@born.example";
+    expect((await requestOtp(fx.api, email)).status).toBe(204);
+    const res = await verify(fx.api, email, fx.mailer.code(email));
+    expect(res.status, res.text).toBe(200);
+    expect(await fx.api.deps.pg`select id from platform.users where email = ${email}`).toHaveLength(1);
   });
 
   test("new e-mail without an invitation: code is sent (204), sign-in → 403 REGISTRATION_INVITE_ONLY in Russian", async () => {
