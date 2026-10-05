@@ -809,7 +809,9 @@ describe("diagnoseCluster", () => {
     expect(sql).toHaveLength(1);
     expect(sql[0]).toMatch(/^select provider, model_id/);
     expect(sql[0]).not.toMatch(/\b(insert|update|delete|drop|alter)\b/i);
-    expect(calls.some((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e"))).toBe(true);
+    expect(calls.some((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e"))).toBe(
+      true,
+    );
   });
 });
 
