@@ -86,7 +86,7 @@ test("S-code: «Код» → ui/…tsx read-only, no textarea or contenteditable
   await expect(viewer).toContainText(path ?? "");
   await expect(viewer.locator("ol")).toContainText("export");
   await expect(page.locator("textarea, [contenteditable]")).toHaveCount(0);
-  await page.getByRole("button", { name: "Изменения ревизии" }).click();
+  await page.getByRole("button", { name: "Изменения версии" }).click();
   await expect(page).toHaveURL(/view=changes/);
   await expect(page.locator("textarea, [contenteditable]")).toHaveCount(0);
   await ctx.close();

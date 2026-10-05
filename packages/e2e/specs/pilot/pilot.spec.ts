@@ -194,7 +194,7 @@ test("приглашение CLI основателя → письмо со сс
 test("S-billing: тариф «Пилот» и «На пилоте бесплатно» с остатком словами; кредитов, покупки, подписок и карты нет", async () => {
   const page = await ctx.newPage();
   await page.goto("/billing");
-  await expect(page.getByTestId("billing-payments-off")).toContainText("Оплата на пилоте отключена");
+  await expect(page.getByTestId("billing-payments-off")).toContainText("На пилоте всё бесплатно");
   await expect(page.getByTestId("billing-plan")).toHaveAttribute("data-plan", "pilot");
   await expect(page.getByTestId("billing-plan")).toContainText("Пилот");
   await expect(page.getByTestId("usage-free")).toHaveText("На пилоте бесплатно");
