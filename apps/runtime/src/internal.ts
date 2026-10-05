@@ -150,7 +150,8 @@ export function createInternalHandler(o: InternalOptions): (req: Request) => Pro
     if (url.pathname === "/_wizard/internal/egress-authorize") {
       if (typeof body.token !== "string") return json(403, { error: { code: "FORBIDDEN" } });
       if (body.token.startsWith(GRANT_PREFIX)) {
-        // M2-52: a ctx.http.fetch request the runtime makes for a function call — only that function's hosts.
+        // M2-52: a ctx.http.fetch request the runtime makes for a function call — only the granted host. The grant
+        // is signed, so any replica behind the internal Service checks it, not only the one that issued it.
         const g = o.grants?.open(body.token);
         if (!g) return json(403, { error: { code: "FORBIDDEN" } });
         return json(200, { https: [...g.https].sort(), smtp: [], label: g.systemId, exp: g.exp });

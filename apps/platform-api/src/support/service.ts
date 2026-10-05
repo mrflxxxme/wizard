@@ -105,23 +105,16 @@ export interface SupportCreated {
   message_ru: string;
 }
 
-/** Saves the copy, checks the limits and sends the founder the Telegram message (never throws on delivery). */
+const RATE_LIMITED_RU =
+  "Сообщений за последний час слишком много. Мы уже получили ваши обращения и ответим на них. Новое можно отправить через час.";
+
+/**
+ * Saves the copy, checks the limits and sends the founder the Telegram message (never throws on delivery). The limit
+ * of a user counts their messages in every org; the check and the insert run in one transaction under transaction-level
+ * advisory locks of the user and the org, so parallel requests cannot all pass the same count.
+ */
 export async function createSupportRequest(d: SupportDeps, i: SupportInput): Promise<SupportCreated> {
   const since = new Date(d.now.getTime() - HOUR_MS);
-  const recent = await d.db
-    .selectFrom("platform.support_requests")
-    .select([
-      sql<number>`count(*) filter (where user_id = ${i.userId})::int`.as("byUser"),
-      sql<number>`count(*)::int`.as("byOrg"),
-    ])
-    .where("org_id", "=", i.orgId)
-    .where("created_at", ">", since)
-    .executeTakeFirstOrThrow();
-  if (Number(recent.byUser) >= SUPPORT_PER_USER_HOUR || Number(recent.byOrg) >= SUPPORT_PER_ORG_HOUR)
-    throw new ApiError(
-      "RATE_LIMITED",
-      "Сообщений за последний час слишком много. Мы уже получили ваши обращения и ответим на них. Новое можно отправить через час.",
-    );
   const org = await d.db
     .selectFrom("platform.orgs")
     .select("name")
@@ -139,20 +132,40 @@ export async function createSupportRequest(d: SupportDeps, i: SupportInput): Pro
     : undefined;
   if (i.systemId && !system) throw notFound("Система");
   const replyBy = replyDeadline(d.now);
-  const row = await d.db
-    .insertInto("platform.support_requests")
-    .values({
-      org_id: i.orgId,
-      user_id: i.userId,
-      system_id: system?.id ?? null,
-      screen: i.screen,
-      text: i.text,
-      wants_team: i.wantsTeam,
-      reply_by: replyBy,
-      created_at: d.now,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const row = await d.db.transaction().execute(async (trx) => {
+    // Always user, then org: one order, no deadlock. Released at commit or rollback.
+    await sql`select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`support:user:${i.userId}`}, 0))`.execute(
+      trx,
+    );
+    await sql`select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(${`support:org:${i.orgId}`}, 0))`.execute(
+      trx,
+    );
+    const recent = await trx
+      .selectFrom("platform.support_requests")
+      .select([
+        sql<number>`count(*) filter (where user_id = ${i.userId})::int`.as("byUser"),
+        sql<number>`count(*) filter (where org_id = ${i.orgId})::int`.as("byOrg"),
+      ])
+      .where((eb) => eb.or([eb("user_id", "=", i.userId), eb("org_id", "=", i.orgId)]))
+      .where("created_at", ">", since)
+      .executeTakeFirstOrThrow();
+    if (Number(recent.byUser) >= SUPPORT_PER_USER_HOUR || Number(recent.byOrg) >= SUPPORT_PER_ORG_HOUR)
+      throw new ApiError("RATE_LIMITED", RATE_LIMITED_RU);
+    return trx
+      .insertInto("platform.support_requests")
+      .values({
+        org_id: i.orgId,
+        user_id: i.userId,
+        system_id: system?.id ?? null,
+        screen: i.screen,
+        text: i.text,
+        wants_team: i.wantsTeam,
+        reply_by: replyBy,
+        created_at: d.now,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+  });
   await d.alert?.({
     level: "warn",
     event: "support_request",
@@ -188,6 +201,9 @@ export function telegramText(
     replyBy: Date;
   },
 ): string {
+  // Single-line fields come from users (org and system names, address, screen): a line break there would forge
+  // lines of the message («Система: …»), so it becomes a space.
+  const line = (v: string) => v.replace(/[\r\n\u2028\u2029]+/g, " ");
   const masked = scrub(m.text).text;
   const body = masked.length > TELEGRAM_TEXT_MAX ? `${masked.slice(0, TELEGRAM_TEXT_MAX)}…` : masked;
   const msk = new Date(m.replyBy.getTime() + MSK_MS);
@@ -195,10 +211,12 @@ export function telegramText(
   const due = `${dd(msk.getUTCDate())}.${dd(msk.getUTCMonth() + 1)} ${dd(msk.getUTCHours())}:${dd(msk.getUTCMinutes())} МСК`;
   return [
     m.wantsTeam ? "Написать команде · хочет, чтобы доделала команда" : "Написать команде",
-    `Организация: ${m.orgName}`,
-    `Клиент: ${m.email}`,
-    m.system ? `Система: ${m.system.name} — ${d.platformOrigin}/s/${m.system.id}` : "Система: не открыта",
-    ...(m.screen ? [`Экран: ${m.screen}`] : []),
+    `Организация: ${line(m.orgName)}`,
+    `Клиент: ${line(m.email)}`,
+    m.system
+      ? `Система: ${line(m.system.name)} — ${d.platformOrigin}/s/${m.system.id}`
+      : "Система: не открыта",
+    ...(m.screen ? [`Экран: ${line(m.screen)}`] : []),
     `Ответить письмом до ${due}`,
     "",
     body,

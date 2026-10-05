@@ -219,6 +219,9 @@ export const SYSTEM_TABLES: Record<string, string[]> = {
     `"body_hash" bytea NOT NULL`,
     `"status" text NOT NULL`,
     `"record_id" uuid`,
+    // Set only for signed (verify: hmac) deliveries: the same signed body is one event whatever unsigned event id
+    // header comes with it (unique index in SYSTEM_INDEXES; NULLs of unsigned hooks never clash).
+    `"signed_body_hash" bytea`,
     `UNIQUE ("integration", "event_key")`,
   ],
   _w_audit: [
@@ -232,6 +235,34 @@ export const SYSTEM_TABLES: Record<string, string[]> = {
     `"fields" text[] NOT NULL DEFAULT '{}'`,
   ],
 };
+
+/** Index of a system table added after the table itself (existing schemas get it by upgrade, IF NOT EXISTS). */
+export interface SystemIndex {
+  table: keyof typeof SYSTEM_TABLES & string;
+  /** Starts with `_w_`: never clashes with entity index names (ix_/uq_/fk_…). */
+  name: string;
+  columns: string[];
+  unique: boolean;
+}
+
+export const SYSTEM_INDEXES: readonly SystemIndex[] = [
+  // M2-53: replay of a signed webhook body with another (unsigned) event id header → the same event.
+  {
+    table: "_w_webhook_events",
+    name: "_w_webhook_events_signed_body",
+    columns: ["integration", "signed_body_hash"],
+    unique: true,
+  },
+];
+
+/** `CREATE [UNIQUE] INDEX IF NOT EXISTS` of every SYSTEM_INDEXES entry in `schema`. */
+export function systemIndexDDL(schema: string): string[] {
+  const s = quoteIdent(schema);
+  return SYSTEM_INDEXES.map(
+    (i) =>
+      `CREATE ${i.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${quoteIdent(i.name)} ON ${s}.${quoteIdent(i.table)} (${i.columns.map(quoteIdent).join(", ")})`,
+  );
+}
 
 const PHASE: Record<StepKind, number> = {
   create_schema: 0,
@@ -992,6 +1023,7 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         for (const [name, cols] of Object.entries(SYSTEM_TABLES)) {
           out.push(`CREATE TABLE IF NOT EXISTS ${t(name)} (\n  ${cols.join(",\n  ")}\n)`);
         }
+        out.push(...systemIndexDDL(schemaName));
         break;
       case "create_table": {
         const e = step.entity;

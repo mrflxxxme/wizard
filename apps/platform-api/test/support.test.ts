@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { setStaff } from "../src/abuse/staff.js";
 import { totpCode } from "../src/auth/totp.js";
 import type { OpsAlert } from "../src/ops/alert.js";
-import { deadlineRu, replyDeadline, SUPPORT_PER_USER_HOUR } from "../src/support/service.js";
+import { deadlineRu, replyDeadline, SUPPORT_PER_USER_HOUR, telegramText } from "../src/support/service.js";
 import { toCard } from "./flow.js";
 import { createTestDb, fakeExecutors, fakeRouterFactory, startApi, type TestApi } from "./helpers.js";
 import { devLogin, expectContract, type Session } from "./session.js";
@@ -165,5 +165,81 @@ describe("/admin «Обращения»", () => {
         })
       ).status,
     ).toBe(404);
+  });
+});
+
+describe("limits across orgs and in parallel; single-line fields of the Telegram message", () => {
+  const post = (s: Session, body: Record<string, unknown>) => s.req("POST", "/support/requests", { body });
+
+  test(`the user limit counts messages in every org: ${SUPPORT_PER_USER_HOUR} split over two orgs → the next one is 429`, async () => {
+    const multi = await devLogin(api, "multi-org-support@example.test");
+    const me = (await multi.req("GET", "/me")).body;
+    const orgA = me.memberships[0].orgId as string;
+    const orgB = (
+      await api.deps.db
+        .insertInto("platform.orgs")
+        .values({
+          name: "Вторая организация",
+          region_code: null,
+          pilot_builds_limit: null,
+          pilot_edits_limit: null,
+        })
+        .returning("id")
+        .executeTakeFirstOrThrow()
+    ).id;
+    const userId = (
+      await api.deps.db
+        .selectFrom("platform.users")
+        .select("id")
+        .where("email", "=", "multi-org-support@example.test")
+        .executeTakeFirstOrThrow()
+    ).id;
+    await api.deps.db
+      .insertInto("platform.memberships")
+      .values({ org_id: orgB, user_id: userId, role: "owner" })
+      .execute();
+    for (let i = 0; i < SUPPORT_PER_USER_HOUR; i++) {
+      const r = await post(multi, { text: `Вопрос ${i}`, orgId: i % 2 === 0 ? orgA : orgB });
+      expect(r.status, r.text).toBe(201);
+    }
+    expect((await post(multi, { text: "Ещё в первую", orgId: orgA })).status).toBe(429);
+    expect((await post(multi, { text: "Ещё во вторую", orgId: orgB })).status).toBe(429);
+  });
+
+  test("parallel requests of one user: exactly the limit passes", async () => {
+    const burst = await devLogin(api, "burst-support@example.test");
+    const statuses = await Promise.all(
+      Array.from({ length: SUPPORT_PER_USER_HOUR + 4 }, (_, i) => post(burst, { text: `Срочно ${i}` })),
+    ).then((rs) => rs.map((r) => r.status));
+    expect(statuses.filter((s) => s === 201)).toHaveLength(SUPPORT_PER_USER_HOUR);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(4);
+  });
+
+  test("a line break in the org name, address, system name or screen does not forge lines of the message", () => {
+    const text = telegramText(
+      { platformOrigin: "https://borntobuild.ru", now: msk("2026-10-07T12:00:00") },
+      {
+        id: "x",
+        orgName: "Пекарня\r\nСистема: поддельная — https://evil.example",
+        email: "anna@bakery.example\nКлиент: другой",
+        system: { id: "s1", name: "Заказы Экран: подмена" },
+        screen: "system\r\nОтветить письмом до никогда",
+        text: "Текст\nв несколько строк",
+        wantsTeam: false,
+        replyBy: msk("2026-10-07T14:00:00"),
+      },
+    );
+    const lines = text.split("\n");
+    expect(lines).toContain("Организация: Пекарня Система: поддельная — https://evil.example");
+    expect(lines).toContain("Клиент: anna@bakery.example Клиент: другой");
+    expect(lines.filter((l) => l.startsWith("Система:"))).toEqual([
+      "Система: Заказы Экран: подмена — https://borntobuild.ru/s/s1",
+    ]);
+    expect(lines.filter((l) => l.startsWith("Ответить письмом до"))).toEqual([
+      "Ответить письмом до 07.10 14:00 МСК",
+    ]);
+    expect(text).not.toMatch(/\r/);
+    // The client's own text keeps its lines.
+    expect(lines).toContain("в несколько строк");
   });
 });

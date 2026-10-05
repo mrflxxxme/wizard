@@ -217,7 +217,7 @@ export {
   proxyTransport,
 } from "./sandbox/egress-fetch.js";
 /** M2-52: proxy grants of runtime-made requests (checked at /_wizard/internal/egress-authorize). */
-export { type EgressGrant, EgressGrants } from "./sandbox/egress-grants.js";
+export { type EgressGrant, EgressGrants, egressGrantKey } from "./sandbox/egress-grants.js";
 /** authorize() of the egress-proxy deployment: capability check delegated to the runtime's internal port. */
 export { type RemoteAuthorizerOptions, remoteCapabilityAuthorizer } from "./sandbox/egress-remote.js";
 /** M2-52: per-call ctx.http clients of a runtime (RuntimeAppOptions.http). */

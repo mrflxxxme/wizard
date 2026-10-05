@@ -63,6 +63,7 @@ import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./r
 import { webhookHookRoutes } from "./routes/webhook.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
 import { yookassaHookRoutes } from "./routes/yookassa.js";
+import { egressGrantKey } from "./sandbox/egress-grants.js";
 import { createEgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
 import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
@@ -204,6 +205,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
         proxyUrl,
         direct: proxyUrl || cloud ? false : {},
         platformDomains: platformDomains(process.env),
+        grantKey: egressGrantKey(process.env),
       },
     );
   }

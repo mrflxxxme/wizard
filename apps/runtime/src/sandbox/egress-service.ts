@@ -4,11 +4,13 @@ import { quoteIdent } from "@wizard/appspec";
 import type { Resolver, SecretReader } from "@wizard/connectors";
 import { SYSTEM_SUBJECT } from "../data/access.js";
 import type { LoadedSystem } from "../system.js";
+import { newRequestId } from "./capability.js";
 import {
   DEFAULT_EGRESS_LIMITS,
   directTransport,
   type EgressLimits,
   type EgressLogEntry,
+  EgressRefused,
   type EgressResponse,
   type EgressTransport,
   egressHttpClient,
@@ -27,6 +29,8 @@ export interface HttpEgressOptions {
   platformDomains: readonly string[];
   limits?: Partial<EgressLimits>;
   clock?: () => number;
+  /** Key of proxy grants, the same in every replica (egressGrantKey of the env); default — random, this process only. */
+  grantKey?: Uint8Array | null;
 }
 
 export interface FnHttpClient {
@@ -69,7 +73,7 @@ async function journal(sys: LoadedSystem, e: EgressLogEntry): Promise<void> {
 
 export function createEgressService(o: HttpEgressOptions): EgressService {
   const clock = o.clock ?? Date.now;
-  const grants = new EgressGrants(clock);
+  const grants = new EgressGrants(o.grantKey ?? null, clock);
   const minute = new MinuteWindows(clock);
   const limits: EgressLimits = { ...DEFAULT_EGRESS_LIMITS, ...o.limits };
   return {
@@ -80,12 +84,20 @@ export function createEgressService(o: HttpEgressOptions): EgressService {
       let transport: EgressTransport;
       if (o.proxyUrl) {
         const { systemId, env } = sys.entry;
-        // One grant per call: the function's hosts only, alive for the call's time budget.
-        let token: string | null = null;
+        // Grants of one call: one declared host each (the client checks the host first), one call id, alive for the
+        // call's time budget. Self-verifying, so the proxy may ask any runtime replica about them.
+        const callId = newRequestId();
+        const declared = new Set(hosts.map((h) => h.toLowerCase()));
+        const tokens = new Map<string, string>();
         transport = proxyTransport({
           proxyUrl: o.proxyUrl,
-          grant: () => {
-            token ??= grants.issue({ systemId, env, https: hosts }, 60_000);
+          grant: (host) => {
+            if (!declared.has(host)) throw new EgressRefused("proxy_denied");
+            let token = tokens.get(host);
+            if (!token) {
+              token = grants.issue({ systemId, env, https: [host], callId }, 60_000);
+              tokens.set(host, token);
+            }
             return token;
           },
           ...(o.ca ? { ca: o.ca } : {}),

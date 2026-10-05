@@ -569,6 +569,19 @@ const CASES: Case[] = [
       };
     },
   },
+  {
+    // An image field holds a fileId of an own upload: a webhook may not point it at someone else's file.
+    rule: "webhook.field",
+    integration: "telegram",
+    mutate: (s) => {
+      entity(s, "ticket").fields.push({ name: "photo", label: "Фото", type: "image" });
+      s.integrations[integrationIndex(s, "telegram")] = {
+        name: "telegram",
+        connector: "webhook",
+        config: { verify: "shared_secret", entity: "ticket", fields: { photo: "photo" } },
+      };
+    },
+  },
   // ---- secrets (all connectors)
   {
     rule: "connector.secret_required",

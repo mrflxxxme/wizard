@@ -152,10 +152,17 @@ export function webhookHookRoutes(o: WebhookRouteOptions): Hono<RuntimeHonoEnv> 
     const workflows = webhookWorkflows(sys.spec, name);
     try {
       const out = await sys.data.transaction("write", SYSTEM_SUBJECT, async (d) => {
+        // Replay guard: the event key, and for signed hooks also the body — an event id header is not signed, so
+        // the same signed body with another id is the same event (either unique index → duplicate).
         const ev = await d.sql.unsafe(
-          `insert into ${T("_w_webhook_events")} (integration, event_key, body_hash, status)
-           values ($1, $2, $3, 'accepted') on conflict (integration, event_key) do nothing returning id::text as id`,
-          [name, verdict.eventKey.slice(0, 300), verdict.bodyHash],
+          `insert into ${T("_w_webhook_events")} (integration, event_key, body_hash, signed_body_hash, status)
+           values ($1, $2, $3, $4, 'accepted') on conflict do nothing returning id::text as id`,
+          [
+            name,
+            verdict.eventKey.slice(0, 300),
+            verdict.bodyHash,
+            config.verify === "hmac" ? verdict.bodyHash : null,
+          ],
         );
         const eventId = ev[0]?.id as string | undefined;
         if (!eventId) return { duplicate: true as const };

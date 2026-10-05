@@ -2,7 +2,7 @@
 // CREATE TABLE IF NOT EXISTS, so tables and columns added later (M2-05: users.last_login_at, _w_deletion_log) are
 // missing in older app_<key>_<env>. The draft migration and publish run these statements before the plan's DDL;
 // toRLS of the plan then enables RLS and grants on the new tables.
-import { quoteIdent, SYSTEM_TABLES } from "@wizard/appspec";
+import { quoteIdent, SYSTEM_TABLES, systemIndexDDL } from "@wizard/appspec";
 
 const COLUMN_NAME = /^"([a-z_][a-z0-9_]*)"\s/;
 /** Column constraints that cannot be added to an existing table by ADD COLUMN IF NOT EXISTS safely. */
@@ -10,7 +10,7 @@ const KEY_COLUMN = /\bPRIMARY KEY\b|\bGENERATED\b/;
 
 /**
  * Idempotent upgrade of an existing system schema to SYSTEM_TABLES: missing tables are created, missing nullable or
- * defaulted columns are added. Run as the schema owner (migrator role) in the migration transaction.
+ * defaulted columns and SYSTEM_INDEXES are added. Run as the schema owner (migrator role) in the migration transaction.
  */
 export function upgradeSystemTables(schema: string): string[] {
   const s = quoteIdent(schema);
@@ -25,5 +25,6 @@ export function upgradeSystemTables(schema: string): string[] {
       out.push(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS ${col}`);
     }
   }
+  out.push(...systemIndexDDL(schema));
   return out;
 }

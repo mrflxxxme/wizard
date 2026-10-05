@@ -20,7 +20,7 @@ config_schema:
   eventIdHeader: "заголовок с идентификатором события (защита от повтора)"
   eventIdField: "ключ тела с идентификатором события (a.b — вложенный JSON); без eventId* ключ повтора — sha256 тела"
   entity: "сущность, в которую пишется запись"
-  fields: "{<поле сущности>: <ключ тела>} — белый список; остальное в теле игнорируется. Нельзя: системные поля, ownerField, ссылки на users, file, qr_token (G0 webhook.field)"
+  fields: "{<поле сущности>: <ключ тела>} — белый список; остальное в теле игнорируется. Нельзя: системные поля, ownerField, ссылки на users, file, image, qr_token (G0 webhook.field)"
   tokenVersion: "1…1000; увеличение меняет секретный адрес (ротация), старый перестаёт работать"
 
 route:
@@ -33,10 +33,10 @@ route:
     - "3. Размер: тело ≤ 64 КиБ (читается с потолком) → иначе 413"
     - "4. Проверка: hmac по сырым байтам (с timestamp — `<ts>.<тело>`) или общий секрет в заголовке → иначе 401; секрет не задан → 503"
     - "5. Тело: JSON-объект или application/x-www-form-urlencoded → иначе 422"
-    - "6. Повтор: _w_webhook_events (integration, event_key) unique — повтор → 200 {ok: true, duplicate: true} без второй записи"
+    - "6. Повтор: _w_webhook_events (integration, event_key) unique, при verify: hmac ещё (integration, signed_body_hash) unique — то же подписанное тело с другим (неподписанным) id события — тоже повтор; повтор → 200 {ok: true, duplicate: true} без второй записи"
     - "7. Запись: только поля fields, скалярные значения (строки обрезаются до maxLength ≤ 10 000; bool и числа приводятся); пусто → 422; вставка от __system в той же транзакции, что строка журнала и задания воркфлоу trigger webhook (_w_jobs, ключ wf:<имя>:hook:<id события>); on_create-воркфлоу сущности срабатывают как обычно"
 
-journal: "_w_webhook_events {id, received_at, integration, event_key, body_hash (sha256), status, record_id} — без тела и подписи"
+journal: "_w_webhook_events {id, received_at, integration, event_key, body_hash (sha256), signed_body_hash (sha256 тела только при verify: hmac; уникален в интеграции), status, record_id} — без тела и подписи"
 logging: "MUST NOT: тело, подпись, секрет, токен пути (маскируется в логе запроса runtime); в логе — msg webhook_rejected | webhook_failed с причиной-кодом"
 
 acceptance:

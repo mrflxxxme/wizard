@@ -1,9 +1,17 @@
 // Universal incoming webhook (M2-53, D71; specs/connectors/webhook.yaml): a secret path per integration, verification
 // by HMAC over the raw body (header and algorithm from a closed list) or a shared secret, replay protection by event
-// id or body hash within the time window, an allowlist mapping of payload keys to fields of one entity. The runtime
+// id or body hash (signed hooks: also by the body hash whatever the unsigned event id), an allowlist mapping of payload
+// keys to fields of one entity (never file or image fields). The runtime
 // route (apps/runtime/src/routes/webhook.ts) owns HTTP, rate limits, the _w_webhook_events journal and the insert.
 import { createHash, createHmac, hkdfSync } from "node:crypto";
-import { type AppSpec, type Entity, SECRET_REF_RE, SYSTEM_FIELDS, USERS_ENTITY } from "@wizard/appspec";
+import {
+  type AppSpec,
+  type Entity,
+  isFileFieldType,
+  SECRET_REF_RE,
+  SYSTEM_FIELDS,
+  USERS_ENTITY,
+} from "@wizard/appspec";
 import { z } from "zod";
 import { defineConnector } from "../define.js";
 import { parseSecretRef } from "../secrets.js";
@@ -108,9 +116,9 @@ export function validateWebhookSpec(config: WebhookConfig, spec: AppSpec, at: Sp
         : (SYSTEM_FIELDS as readonly string[]).includes(target) ||
             target === entity.ownerField ||
             (f.type === "ref" && f.ref?.entity === USERS_ENTITY) ||
-            f.type === "file" ||
+            isFileFieldType(f.type) ||
             f.type === "qr_token"
-          ? `Поле «${target}» нельзя заполнять из вебхука (системное, владелец записи, файл или QR)`
+          ? `Поле «${target}» нельзя заполнять из вебхука (системное, владелец записи, файл, картинка или QR)`
           : null;
       if (why) issues.add("webhook.field", ["fields", target], why);
     }
@@ -294,7 +302,8 @@ export function mapWebhookFields(config: WebhookConfig, entity: Entity, payload:
   const doc: Record<string, unknown> = {};
   for (const [target, key] of Object.entries(config.fields)) {
     const f = fieldOf(entity, target);
-    if (!f) continue;
+    // file/image hold a fileId of an own upload, qr_token is issued by the platform: never from a webhook (G0 refuses).
+    if (!f || isFileFieldType(f.type) || f.type === "qr_token") continue;
     const v = pick(payload, key);
     if (v === undefined || v === null || v === "") continue;
     if (typeof v === "string") {

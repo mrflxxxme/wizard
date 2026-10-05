@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { RUNTIME_ROLE } from "../src/agents/draft.js";
+import { markApplied } from "../src/destructive/service.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../src/runs/types.js";
 import { startBuild } from "./flow.js";
 import {
@@ -100,6 +101,7 @@ describe("prod change that removes data: confirm, archive, undo", () => {
   let key = "";
   let baseRev = 0;
   let destructiveRev = 0;
+  let firstRev = 0;
   let hash = "";
   const prod = () => `"app_${key}_prod"`;
   const archive = () => `app_${key}_prod_archive`;
@@ -120,7 +122,8 @@ describe("prod change that removes data: confirm, archive, undo", () => {
       },
     });
     expect(put.status, put.text).toBe(200);
-    expect((await publish(systemId, put.body.revision.version)).status).toBe("succeeded");
+    firstRev = put.body.revision.version;
+    expect((await publish(systemId, firstRev)).status).toBe("succeeded");
     // An additive change first: «Зал» as a string, to retype it later.
     baseRev = await change(systemId, [
       { op: "add_field", entity: "stream", field: { name: "hall", label: "Зал", type: "string" } },
@@ -189,7 +192,7 @@ describe("prod change that removes data: confirm, archive, undo", () => {
     expect(col?.x).toBe(1);
   });
 
-  test("a confirmation goes stale when the consequences change", async () => {
+  test("new records do not make a confirmation stale; another set of changes does", async () => {
     const wrong = await api.req("POST", `/systems/${systemId}/destructive/confirm`, {
       body: { revision: destructiveRev, hash: "0".repeat(64) },
     });
@@ -201,23 +204,41 @@ describe("prod change that removes data: confirm, archive, undo", () => {
     });
     expect(ok.status, ok.text).toBe(201);
     expectContract("confirmDestructive", ok);
-    // A new record with a description: one more value would leave → the confirmation no longer matches.
+    // A new record with a description: the count grows, but the owner confirmed what the change does, not a number.
     await api.deps.pg.unsafe(
       `insert into ${prod()}.stream (name, capacity, description) values ('Маркетинг', 50, 'Про рекламу')`,
     );
     const now = await api.req("GET", `/systems/${systemId}/destructive?revision=${destructiveRev}`);
-    expect(now.body.confirmation.status).toBe("stale");
+    expect(now.body.confirmation.status).toBe("confirmed");
     expect(now.body.changes[0].text_ru).toMatch(/затронет 3 записи/);
-    expect(now.body.hash).not.toBe(hash);
-    const run = await publish(systemId, destructiveRev);
-    expect(run.status).toBe("failed");
-    expect(run.failure.code).toBe("DESTRUCTIVE_IN_PROD");
-    expect(run.failure.message_ru).toMatch(/последствия правки изменились/);
-    hash = now.body.hash;
-    const again = await api.req("POST", `/systems/${systemId}/destructive/confirm`, {
-      body: { revision: destructiveRev, hash },
-    });
-    expect(again.status, again.text).toBe(201);
+    expect(now.body.hash).toBe(hash);
+    // Another set of changes: prod as if on the first publication (no «Зал» yet) — the retype of «Зал» becomes a
+    // plain new column, so the list differs from what the owner confirmed.
+    const hwm = (await sys(systemId)).schema_hwm_revision;
+    await api.deps.db
+      .updateTable("platform.systems")
+      .set({ schema_hwm_revision: firstRev })
+      .where("id", "=", systemId)
+      .execute();
+    try {
+      const other = await api.req("GET", `/systems/${systemId}/destructive?revision=${destructiveRev}`);
+      expect(other.body.confirmation.status).toBe("stale");
+      expect(other.body.hash).not.toBe(hash);
+      expect(other.body.changes.map((c: { kind: string }) => c.kind)).toEqual(["drop_column", "drop_table"]);
+      const run = await publish(systemId, destructiveRev);
+      expect(run.status).toBe("failed");
+      expect(run.failure.code).toBe("DESTRUCTIVE_IN_PROD");
+      expect(run.failure.message_ru).toMatch(/состав правки изменился/);
+    } finally {
+      await api.deps.db
+        .updateTable("platform.systems")
+        .set({ schema_hwm_revision: hwm })
+        .where("id", "=", systemId)
+        .execute();
+    }
+    const back = await api.req("GET", `/systems/${systemId}/destructive?revision=${destructiveRev}`);
+    expect(back.body.confirmation.status).toBe("confirmed");
+    expect(back.body.hash).toBe(hash);
   });
 
   test("confirmed publish: values go to the archive, the runtime role cannot read it", async () => {
@@ -264,11 +285,39 @@ describe("prod change that removes data: confirm, archive, undo", () => {
     expect([s.prod_revision, s.schema_hwm_revision]).toEqual([destructiveRev, destructiveRev]);
   });
 
+  test("markApplied takes only a confirmation still waiting: an applied one throws and the transaction rolls back", async () => {
+    const pg = api.deps.pg;
+    const [row] = await pg`
+      select id, publication_id, archive_tables from platform.destructive_changes
+       where system_id = ${systemId} and status = 'applied'`;
+    expect(row).toBeDefined();
+    const marker = `wz-mark-${randomUUID()}`;
+    const err = await pg
+      .begin(async (tx) => {
+        await tx`update platform.systems set name = ${marker} where id = ${systemId}`;
+        await markApplied(tx, {
+          changeId: row?.id,
+          publicationId: randomUUID(),
+          baseRevision: 1,
+          schema: "x",
+          tables: [],
+        });
+      })
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "DESTRUCTIVE_IN_PROD" });
+    const [after] = await pg`
+      select d.publication_id, d.archive_tables, s.name from platform.destructive_changes d
+        join platform.systems s on s.id = d.system_id where d.id = ${row?.id}`;
+    expect(after).toMatchObject({ publication_id: row?.publication_id, archive_tables: row?.archive_tables });
+    expect(after?.name).not.toBe(marker);
+  });
+
   test("journal; editor cannot undo; a plain rollback past the change is refused", async () => {
     const j = await api.req("GET", `/systems/${systemId}/destructive/changes`);
     expect(j.status).toBe(200);
     expectContract("listDestructiveChanges", j);
-    expect(j.body.items.map((x: { status: string }) => x.status)).toEqual(["applied", "superseded"]);
+    // One confirmation: new records after it did not make the owner confirm again.
+    expect(j.body.items.map((x: { status: string }) => x.status)).toEqual(["applied"]);
     expect(j.body.undo).toMatchObject({ changeId: j.body.items[0].id, toRevision: baseRev });
     const asEditor = await api.req(
       "POST",

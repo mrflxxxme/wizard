@@ -75,6 +75,21 @@ beforeAll(async () => {
       host: req.headers.host ?? null,
     });
     if (req.url === "/big") return res.end("x".repeat(3 * 1024 * 1024));
+    if (req.url === "/drip") {
+      // One byte every 100 ms for 3 s: never idle long enough for a socket timeout.
+      res.writeHead(200, { "content-type": "text/plain" });
+      let n = 0;
+      const t = setInterval(() => {
+        if (res.destroyed || n++ >= 30) {
+          clearInterval(t);
+          if (!res.destroyed) res.end();
+          return;
+        }
+        res.write("x");
+      }, 100);
+      res.on("close", () => clearInterval(t));
+      return;
+    }
     if (req.url === "/redirect") {
       res.writeHead(302, { location: "https://169.254.169.254/latest/meta-data" });
       return res.end();
@@ -124,6 +139,7 @@ function client(o: {
   transport: Parameters<typeof egressHttpClient>[0]["transport"];
   log?: unknown[];
   perCall?: number;
+  timeoutMs?: number;
 }) {
   const log = (o.log ?? []) as unknown[];
   return egressHttpClient({
@@ -133,7 +149,11 @@ function client(o: {
     secretNames: ["partner_key"],
     secrets: staticSecretReader({ partner_key: "S3CRET-VALUE" }),
     transport: o.transport,
-    limits: { requestsPerCall: o.perCall ?? 10, maxResponseBytes: 1024 * 1024 },
+    limits: {
+      requestsPerCall: o.perCall ?? 10,
+      maxResponseBytes: 1024 * 1024,
+      ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}),
+    },
     minuteGate: () => true,
     log: (e) => void log.push(e),
   });
@@ -282,9 +302,144 @@ describe("through the egress proxy with a runtime grant", () => {
     await expect(c.fetch(`https://${HOST}/c`)).rejects.toMatchObject({ code: "LIMIT_EXCEEDED" });
   });
 
-  test("an unknown or expired grant is refused at egress-authorize", async () => {
-    const c = client({ transport: proxyTransport({ proxyUrl, grant: () => "g1.unknown", ca: tls.cert }) });
-    await expect(c.fetch(`https://${HOST}/`)).rejects.toMatchObject({ code: "EGRESS_FORBIDDEN" });
+  test("an unknown, forged or expired grant is refused at egress-authorize — and the text says so", async () => {
+    const forged = (() => {
+      const [p, body, sig] = grants
+        .issue({ systemId: "sys0000000a1", env: "prod", https: ["other.partner.ru"] }, 60_000)
+        .split(".") as [string, string, string];
+      const g = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { https: string[] };
+      g.https = [HOST];
+      return `${p}.${Buffer.from(JSON.stringify(g)).toString("base64url")}.${sig}`;
+    })();
+    const expired = new EgressGrants(null, () => Date.now() - 120_000).issue(
+      { systemId: "sys0000000a1", env: "prod", https: [HOST] },
+      60_000,
+    );
+    for (const token of ["g2.unknown", "g1.legacy", forged, expired]) {
+      const c = client({ transport: proxyTransport({ proxyUrl, grant: () => token, ca: tls.cert }) });
+      const err = await c.fetch(`https://${HOST}/`).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "EGRESS_FORBIDDEN" });
+      expect((err as Error).message).toMatch(/не подтвердил разрешение/);
+      expect((err as Error).message).not.toMatch(/внутреннюю сеть/);
+    }
+  });
+
+  test("a slow server dripping a byte at a time is cut by the overall deadline", async () => {
+    const c = client({
+      transport: proxyTransport({
+        proxyUrl,
+        grant: () => grants.issue({ systemId: "sys0000000a1", env: "prod", https: [HOST] }, 60_000),
+        ca: tls.cert,
+      }),
+      timeoutMs: 700,
+    });
+    const t0 = Date.now();
+    await expect(c.fetch(`https://${HOST}/drip`)).rejects.toMatchObject({
+      code: "EGRESS_FAILED",
+      message: "Внешний сервис отвечал слишком долго",
+    });
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+});
+
+describe("overall deadline without a proxy", () => {
+  test("a server dripping a byte every 100 ms is cut at timeoutMs from the start", async () => {
+    const log: unknown[] = [];
+    const c = client({
+      transport: directTransport({ resolve: resolver, ca: tls.cert, allowPrivate: true, port: upstreamPort }),
+      timeoutMs: 700,
+      log,
+    });
+    const t0 = Date.now();
+    await expect(c.fetch(`https://${HOST}/drip`)).rejects.toMatchObject({
+      code: "EGRESS_FAILED",
+      message: "Внешний сервис отвечал слишком долго",
+    });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(log).toEqual([expect.objectContaining({ host: HOST, outcome: "timeout" })]);
+  });
+});
+
+describe("grants are checked by any runtime replica", () => {
+  const KEY = new Uint8Array(randomBytes(32));
+  const INTERNAL = "t".repeat(32);
+  // Two independent runtime processes of one deployment: same env secret, separate memory.
+  const replicaA = createEgressService({
+    proxyUrl: "http://127.0.0.1:1",
+    platformDomains: PLATFORM,
+    grantKey: KEY,
+  });
+  const replicaB = createEgressService({
+    proxyUrl: "http://127.0.0.1:1",
+    platformDomains: PLATFORM,
+    grantKey: KEY,
+  });
+  const authorizeAt = (grants: EgressGrants) => {
+    const internal = createInternalHandler({
+      env: { ...devEnv, internalToken: INTERNAL },
+      systems: {} as never,
+      db: {} as never,
+      grants,
+    });
+    return async (token: string) =>
+      internal(
+        new Request("http://internal/_wizard/internal/egress-authorize", {
+          method: "POST",
+          headers: { "x-wizard-internal-token": INTERNAL },
+          body: JSON.stringify({ token }),
+        }),
+      );
+  };
+
+  test("a grant issued by replica A is accepted at replica B; another key or a tampered grant is not", async () => {
+    const token = replicaA.grants.issue({ systemId: "sys0000000a1", env: "prod", https: [HOST] }, 60_000);
+    const res = await authorizeAt(replicaB.grants)(token);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ https: [HOST], smtp: [], label: "sys0000000a1" });
+    expect(replicaB.grants.open(token)).toMatchObject({
+      systemId: "sys0000000a1",
+      env: "prod",
+      https: [HOST],
+    });
+    const stranger = new EgressGrants(new Uint8Array(randomBytes(32)));
+    expect((await authorizeAt(stranger)(token)).status).toBe(403);
+    expect((await authorizeAt(replicaB.grants)(`${token.slice(0, -2)}AA`)).status).toBe(403);
+  });
+
+  test("ctx.http of a call on replica A goes through a proxy that asks replica B", async () => {
+    const internalB = authorizeAt(replicaB.grants);
+    const proxy = createEgressProxy({
+      authorize: async (h) => {
+        const res = await internalB(h?.startsWith("Bearer ") ? h.slice(7) : "");
+        if (res.status !== 200) return null;
+        const b = (await res.json()) as { https: string[]; smtp: string[] };
+        return { https: new Set(b.https), smtp: new Set(b.smtp) };
+      },
+      resolve: resolver,
+      dial: ({ host }) => tcpDialer({ host, port: upstreamPort }),
+      allowLoopbackForTests: true,
+    });
+    await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+    try {
+      const a = createEgressService({
+        proxyUrl: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`,
+        ca: tls.cert,
+        platformDomains: PLATFORM,
+        grantKey: KEY,
+      });
+      const sys = {
+        spec: { functions: [{ name: "syncLead", egress: [HOST] }] },
+        entry: { systemId: "sys0000000a1", env: "prod" },
+        schema: "app_sys0000000a1_prod",
+        data: { transaction: async () => undefined },
+      } as never;
+      const c = a.client(sys, "syncLead", staticSecretReader({}));
+      if (!c) throw new Error("no client");
+      const r = await c.fetch(`https://${HOST}/v1/ping`);
+      expect(r.status).toBe(200);
+    } finally {
+      await new Promise<void>((r) => proxy.close(() => r()));
+    }
   });
 });
 

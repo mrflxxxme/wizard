@@ -77,6 +77,20 @@ const spec = (): AppSpec =>
         secretRefs: ["secret://webhook_site"],
       },
       {
+        // Event id in an unsigned header (most CRMs): a replay may come with another id.
+        name: "crm",
+        connector: "webhook",
+        config: {
+          verify: "hmac",
+          secret: "secret://webhook_crm",
+          header: "X-Crm-Signature",
+          eventIdHeader: "X-Event-Id",
+          entity: "lead",
+          fields: { name: "name", comment: "note" },
+        },
+        secretRefs: ["secret://webhook_crm"],
+      },
+      {
         name: "tilda",
         connector: "webhook",
         config: {
@@ -145,7 +159,7 @@ beforeAll(async () => {
   h = await harness(
     {},
     {
-      secrets: () => staticSecretReader({ webhook_site: SECRET, webhook_tilda: TILDA }),
+      secrets: () => staticSecretReader({ webhook_site: SECRET, webhook_crm: SECRET, webhook_tilda: TILDA }),
       log: (l) => logs.push(l),
     },
   );
@@ -230,6 +244,37 @@ describe("hmac webhook", () => {
     expect((await post(`/_wizard/hooks/webhook/site/${token("site")}`, big.raw, big.headers)).status).toBe(
       413,
     );
+  });
+});
+
+describe("hmac webhook with an unsigned event id header", () => {
+  test("the same signed body with another X-Event-Id → duplicate, one record", async () => {
+    const path = `/_wizard/hooks/webhook/crm/${token("crm")}`;
+    const raw = JSON.stringify({ name: "Евгений", note: "Повтор" });
+    const sig = createHmac("sha256", SECRET).update(raw).digest("hex");
+    const headers = (id: string) => ({
+      "content-type": "application/json",
+      "x-crm-signature": sig,
+      "x-event-id": id,
+    });
+    const before = (await leads()).length;
+    const first = await post(path, raw, headers("crm-1"));
+    expect(await first.json()).toEqual({ ok: true });
+    const replay = await post(path, raw, headers("crm-2"));
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({ ok: true, duplicate: true });
+    expect(await leads()).toHaveLength(before + 1);
+    // Another signed body is another event.
+    const raw2 = JSON.stringify({ name: "Евгений", note: "Новая заявка" });
+    const sig2 = createHmac("sha256", SECRET).update(raw2).digest("hex");
+    const next = await post(path, raw2, { ...headers("crm-3"), "x-crm-signature": sig2 });
+    expect(await next.json()).toEqual({ ok: true });
+    expect(await leads()).toHaveLength(before + 2);
+    const ev = await h.sql.unsafe(
+      `select event_key, signed_body_hash from ${T("_w_webhook_events")} where integration = 'crm' order by id`,
+    );
+    expect(ev.map((r) => r.event_key)).toEqual(["id:crm-1", "id:crm-3"]);
+    expect((ev[0]?.signed_body_hash as Buffer | undefined)?.length).toBe(32);
   });
 });
 
