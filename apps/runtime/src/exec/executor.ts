@@ -131,6 +131,18 @@ export async function dispatch(ctx: HostCtx, m: ChildMsg): Promise<unknown> {
       if (typeof fn !== "function") throw forbidden();
       return fn(String(m.name), m.args ?? {});
     }
+    case "http": {
+      // M2-52: ctx.http.fetch — the host client decides (hosts, limits, secrets); only JSON crosses back.
+      const fetchFn = own(own(ctx, "http"), "fetch");
+      if (typeof fetchFn !== "function") throw new WizardError("EGRESS_DISABLED");
+      const init = typeof m.init === "object" && m.init !== null && !Array.isArray(m.init) ? m.init : {};
+      const r = (await fetchFn(String(m.url ?? ""), init)) as {
+        status: number;
+        contentType?: string | null;
+        text(): Promise<string>;
+      };
+      return { status: r.status, contentType: r.contentType ?? null, body: await r.text() };
+    }
     case "connector": {
       const fn = own(own(own(ctx, "connectors"), m.integration), m.method);
       if (typeof fn !== "function") {

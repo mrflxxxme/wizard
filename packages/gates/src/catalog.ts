@@ -75,6 +75,8 @@ export const G2_CHECKS: readonly CheckDef[] = [
   { id: "G2-PII-05", severity: "blocker", title_ru: "У персональных данных есть срок хранения" },
   { id: "G2-PII-06", severity: "blocker", title_ru: "Указаны данные оператора ПДн" },
   { id: "G2-TG-01", severity: "blocker", title_ru: "В Telegram не уходят персональные данные" },
+  { id: "G2-EGRESS-01", severity: "blocker", title_ru: "Внешние запросы идут только на публичные адреса" },
+  { id: "G2-EGRESS-02", severity: "warning", title_ru: "Новые адреса внешних запросов проверены" },
   { id: "G2-AF-01", severity: "blocker", title_ru: "Система не собирает данные банковских карт" },
   { id: "G2-AF-02", severity: "blocker", title_ru: "Система не собирает пароли и коды подтверждения" },
   { id: "G2-AF-03", severity: "blocker", title_ru: "Система не собирает паспорта и сканы документов" },

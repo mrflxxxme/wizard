@@ -26,6 +26,8 @@ export interface SystemRegistry {
   resolveById?(systemId: string, env: SystemEnv): Promise<RegistryEntry | null>;
   /** Every deployment (the daily retention pass walks them, runtime.yaml#workflows.retention). */
   entries?(): Promise<RegistryEntry[]>;
+  /** M2-50: emails of the org owners of a system (notify `$owner`; platform.system_owner_emails). */
+  ownerEmails?(systemId: string): Promise<string[]>;
 }
 
 export const SYSTEM_ID_RE = /^[a-z0-9]{12}$/;
@@ -110,6 +112,19 @@ export class DbRegistry implements SystemRegistry {
     return (await this.fallback?.resolveById?.(systemId, env)) ?? null;
   }
 
+  async ownerEmails(systemId: string): Promise<string[]> {
+    try {
+      const rows = await this.sql`
+        select email from platform.system_owner_emails where system_id = ${systemId} order by email limit 20`;
+      const own = rows.map((r) => String(r.email));
+      if (own.length > 0) return own;
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code !== "42P01" && code !== "3F000") throw e;
+    }
+    return (await this.fallback?.ownerEmails?.(systemId)) ?? [];
+  }
+
   async entries(): Promise<RegistryEntry[]> {
     let rows: postgres.Row[];
     try {
@@ -177,9 +192,15 @@ export async function dbResolveById(
   }
 }
 
-/** In-memory registry (tests, previews). */
+/** In-memory registry (tests, previews); `owners` — systemId → owner emails (notify `$owner`). */
 export class MemoryRegistry implements SystemRegistry {
-  constructor(readonly list: RegistryEntry[] = []) {}
+  constructor(
+    readonly list: RegistryEntry[] = [],
+    readonly owners: Record<string, string[]> = {},
+  ) {}
+  async ownerEmails(systemId: string): Promise<string[]> {
+    return [...(this.owners[systemId] ?? [])];
+  }
   async resolve(slug: string, env: SystemEnv): Promise<RegistryEntry | null> {
     return this.list.find((e) => e.slug === slug && e.env === env) ?? null;
   }

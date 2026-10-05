@@ -44,6 +44,7 @@ import { publishRoutes } from "./routes/publish.js";
 import { runRoutes } from "./routes/runs.js";
 import { supportRoutes } from "./routes/support.js";
 import { systemRoutes } from "./routes/systems.js";
+import { webhookRoutes } from "./routes/webhooks.js";
 import { createDbosDispatcher } from "./runs/dispatch.js";
 import { EventBus } from "./runs/events.js";
 import { type RunDispatcher, RunEngine } from "./runs/queue.js";
@@ -294,6 +295,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.use("*", idempotency(new IdempotencyCache()));
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
+  api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));
   api.route("/", importRoutes(deps));

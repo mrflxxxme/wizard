@@ -2,7 +2,7 @@
 // the GateContext additions read from the platform DB (secretExists, abuse signals, brand allowlist), founder reviews
 // (db.yaml#founder_reviews, abuse.yaml#scoring.effect) and the abuse_flag moderation event (gates.yaml#G2.antifraud_rules).
 import type { AppSpec } from "@wizard/appspec";
-import { secretEnvVar } from "@wizard/connectors";
+import { newEgressHosts, secretEnvVar, specEgressHosts } from "@wizard/connectors";
 import { ABUSE, type GateContext, type GateReport } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import { sql } from "kysely";
@@ -11,8 +11,11 @@ import type { Db } from "../db/index.js";
 
 const DAY_MS = 86_400_000;
 
-/** G2 warnings that put the revision on founder review before prod (G2-AF-08 risk score, G2-AF-09 ОРИ signal). */
-export const FOUNDER_REVIEW_CHECKS: readonly string[] = ["G2-AF-08", "G2-AF-09"];
+/**
+ * G2 warnings that put the revision on founder review before prod (G2-AF-08 risk score, G2-AF-09 ОРИ signal, M2-52
+ * G2-EGRESS-02 new hosts of outgoing requests).
+ */
+export const FOUNDER_REVIEW_CHECKS: readonly string[] = ["G2-AF-08", "G2-AF-09", "G2-EGRESS-02"];
 
 /** abuse.yaml#messages_ru.review: neutral text while the revision waits for staff. */
 export const REVIEW_PENDING_RU =
@@ -268,15 +271,49 @@ export async function decideFounderReview(
   return ok;
 }
 
-/** Reviews waiting for staff, oldest first. */
+/**
+ * Reviews waiting for staff, oldest first, with the outgoing-request hosts of the revision (M2-52, D71: the founder
+ * sees every host before prod) and the ones the published revision did not have.
+ */
 export async function pendingFounderReviews(db: Db) {
-  return db
+  const rows = await db
     .selectFrom("platform.founder_reviews as fr")
     .innerJoin("platform.systems as s", "s.id", "fr.system_id")
-    .select(["fr.system_id", "fr.revision", "fr.created_at", "s.org_id", "s.name"])
+    .leftJoin("platform.revisions as r", (j) =>
+      j.onRef("r.system_id", "=", "fr.system_id").onRef("r.version", "=", "fr.revision"),
+    )
+    .leftJoin("platform.revisions as p", (j) =>
+      j.onRef("p.system_id", "=", "fr.system_id").onRef("p.version", "=", "s.prod_revision"),
+    )
+    .select([
+      "fr.system_id",
+      "fr.revision",
+      "fr.created_at",
+      "s.org_id",
+      "s.name",
+      "r.spec as spec",
+      "p.spec as prod_spec",
+    ])
     .where("fr.status", "=", "pending")
     .orderBy("fr.created_at")
     .execute();
+  return rows.map(({ spec, prod_spec, ...x }) => {
+    const rev = (spec as unknown as AppSpec | null) ?? null;
+    const prod = (prod_spec as unknown as AppSpec | null) ?? null;
+    return {
+      ...x,
+      egress_hosts: rev ? specEgressHosts(rev) : [],
+      new_egress_hosts: rev ? newEgressHosts(rev, prod) : [],
+    };
+  });
+}
+
+/** Line of the founder alert listing the revision's egress hosts (empty when it has none). */
+export function egressHostsNote(spec: AppSpec, prodSpec: AppSpec | null): string {
+  const all = specEgressHosts(spec);
+  if (all.length === 0) return "";
+  const fresh = newEgressHosts(spec, prodSpec);
+  return ` Внешние запросы функций: ${all.join(", ")}${fresh.length ? ` (новые: ${fresh.join(", ")})` : ""}.`;
 }
 
 /**
@@ -284,11 +321,12 @@ export async function pendingFounderReviews(db: Db) {
  * M2-09): first_publication — the system has never been live in prod; new_pd_fields — the revision adds personal-data
  * fields (forms that collect ПДн) the prod schema did not have.
  */
-export type FounderReviewReason = "first_publication" | "new_pd_fields";
+export type FounderReviewReason = "first_publication" | "new_pd_fields" | "new_egress_hosts";
 
 export const FOUNDER_REVIEW_REASON_RU: Record<FounderReviewReason, string> = {
   first_publication: "первая публикация системы",
   new_pd_fields: "новые поля с персональными данными",
+  new_egress_hosts: "новые адреса внешних запросов",
 };
 
 /** entity.field of every field with a personal-data category (AppSpec field.pii ≠ none). */
@@ -323,5 +361,7 @@ export async function founderReviewReason(
   if (!live) return "first_publication";
   const before = pdFields(a.prodSpec);
   for (const f of pdFields(a.spec)) if (!before.has(f)) return "new_pd_fields";
+  // M2-52 (G2-EGRESS-02): a host the published revision did not call.
+  if (newEgressHosts(a.spec, a.prodSpec).length > 0) return "new_egress_hosts";
   return null;
 }

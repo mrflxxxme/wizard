@@ -666,7 +666,7 @@ paths:
       x-milestone: M2
       x-roles: [staff]
       summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
-      responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}}}}}}}}}}
+      responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}, egressHosts: {type: array, items: {type: string}, description: 'M2-52 (D71): хосты исходящих запросов функций ревизии (functions[].egress) — основатель видит их на ревью'}, newEgressHosts: {type: array, items: {type: string}, description: 'M2-52: хосты, которых нет в опубликованной ревизии (G2-EGRESS-01)'}}}}}}}}}}
   # ==== M2P · M2-22 (человеческий слой и цены: каталог цен, использование организации, обращения, заказы «под ключ», пробелы, матрица доступа) — новые пути дописывать ЗДЕСЬ, над этой строкой не трогать ====
   /orgs/{orgId}/usage:
     parameters: [{$ref: '#/components/parameters/orgId'}]
@@ -788,6 +788,14 @@ paths:
       summary: 'pilot-admin: расход платформы на модели за календарный месяц (Europe/Moscow) против WIZARD_LLM_MONTHLY_CAP_RUB, как CLI `pilot spend`; warn — ≥ 80 % (порог алерта основателю), reached — новые LLM-прогоны получают 503 LLM_BUDGET_EXHAUSTED'
       responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpend'}}}}}
   # ==== M2P · M2-98 (адрес и свой домен, дизайн и референсы, медиа и стоки, хосты egress в ревью; секреты и настройки — M2-95 после M2-22/M2-98) — новые пути дописывать ЗДЕСЬ ====
+  /systems/{id}/webhooks:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemWebhooks
+      x-milestone: M2
+      x-roles: [editor]
+      summary: 'M2-53 (D71): секретные адреса входящих вебхуков системы (интеграции connector=webhook) для кабинета владельца — prod по опубликованной ревизии, draft по превью; адрес — /_wizard/hooks/webhook/<integration>/<hookToken>, hookToken = HMAC от WIZARD_SECRETS_KEY (тот же ключ у runtime), смена tokenVersion в спеке меняет адрес'
+      responses: {'200': {description: Адреса, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [integration, env, url, verify, entity], properties: {integration: {type: string}, env: {enum: [draft, prod]}, url: {type: string, format: uri}, verify: {enum: [hmac, shared_secret]}, entity: {type: string}}}}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   # ==== конец блока M2-98 ====
   # ==== M2P · M2-72 (правки prod, удаляющие данные: последствия, подтверждение владельца, архив, «Отменить правку») ====
   /systems/{id}/destructive:

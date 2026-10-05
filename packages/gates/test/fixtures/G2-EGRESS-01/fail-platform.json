@@ -1,0 +1,15 @@
+{
+  "check": "G2-EGRESS-01",
+  "description": "хост — домен платформы",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/3/egress",
+      "value": [
+        "admin.borntobuild.ru"
+      ]
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

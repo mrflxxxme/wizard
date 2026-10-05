@@ -172,7 +172,29 @@ export function guestMain(notify) {
       ...base,
       scheduler,
       connectors,
-      http: freeze({ fetch: () => Promise.reject(new WizardError("EGRESS_DISABLED")) }),
+      // M2-52: the runtime makes the request (declared hosts, egress proxy); the answer comes back as JSON.
+      http: freeze({
+        fetch: (url, init) =>
+          request(callId, "http", {
+            url: String(url),
+            init: {
+              ...(init?.method !== undefined ? { method: String(init.method) } : {}),
+              ...(init?.headers !== undefined ? { headers: init.headers } : {}),
+              ...(init?.body !== undefined && init?.body !== null ? { body: String(init.body) } : {}),
+            },
+          }).then((r) => {
+            const body = typeof r?.body === "string" ? r.body : "";
+            const status = Number(r?.status ?? 0);
+            const type = typeof r?.contentType === "string" ? r.contentType : null;
+            return freeze({
+              status,
+              ok: status >= 200 && status < 300,
+              headers: freeze({ get: (n) => (String(n).toLowerCase() === "content-type" ? type : null) }),
+              text: () => Promise.resolve(body),
+              json: () => Promise.resolve().then(() => parse(body)),
+            });
+          }),
+      }),
       runQuery: (name, args) => request(callId, "run", { kind: "query", name, args }),
       runMutation: (name, args) => request(callId, "run", { kind: "mutation", name, args }),
     });

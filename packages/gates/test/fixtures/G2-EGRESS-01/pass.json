@@ -1,0 +1,15 @@
+{
+  "check": "G2-EGRESS-01",
+  "description": "action ходит на публичный API",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/3/egress",
+      "value": [
+        "api.partner-crm.ru"
+      ]
+    }
+  ],
+  "base": "forum",
+  "expect": "pass"
+}

@@ -23,6 +23,7 @@ import {
   riskScore,
 } from "./antifraud.js";
 import { DYNAMIC_CHECKS, type DynamicOptions, runDynamic } from "./dynamic.js";
+import { egressHosts, egressNewHosts } from "./egress.js";
 import { ABUSE } from "./patterns.js";
 import { consentForms, forbiddenCategories, markup, operator, retention, specialHints } from "./pii.js";
 import { publicRole, secretRefs, secretsInCode, telegramNoPii } from "./static.js";
@@ -90,6 +91,8 @@ export async function runG2(ctx: GateContext, opts: G2Options = {}): Promise<Gat
   set("G2-PII-06", () => findings(operator(spec, afterM2)));
   set("G2-TG-01", () => findings(telegramNoPii(spec, corpus.sources)));
   set("G2-PERM-05", () => findings(publicRole(spec, corpus.sources, files)));
+  set("G2-EGRESS-01", () => findings(egressHosts(spec)));
+  set("G2-EGRESS-02", () => findings(egressNewHosts(spec, ctx.prevSpec, ctx.env)));
   set("G2-AF-01", () => findings(cardCollection(af)));
   set("G2-AF-02", () => findings(credentials(af)));
   set("G2-AF-03", () => findings(govIds(af)));

@@ -2,7 +2,7 @@
 // on_status), schedule triggers (relative, cron), due _w_jobs (function, workflow_step) and retention. runJobs is
 // one pass at a given `now` until nothing is due (G1 runWorkflows/advanceTime); the background poller comes later.
 import { type Entity, quoteIdent, resolveAiAction, type Workflow } from "@wizard/appspec";
-import { isConnectorError, runNotifyStep } from "@wizard/connectors";
+import { isConnectorError, parseRecipients, recordRecipientKind, runNotifyStep } from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { SYSTEM_USER } from "@wizard/sdk/host";
 import type postgres from "postgres";
@@ -21,6 +21,11 @@ export interface RunJobsOptions {
   since?: Date;
   /** Trigger → execute rounds (jobs may write records that trigger more workflows); default 20. */
   maxRounds?: number;
+  /**
+   * Background poller (M2-50): when the system has no cursor yet, audit rows written before this moment start no
+   * workflows (a system published before the poller existed does not replay its history).
+   */
+  auditFrom?: Date;
 }
 
 export interface JobFailure {
@@ -60,6 +65,8 @@ type Tx = postgres.TransactionSql;
 interface Cursor {
   audit: string;
   at: string | null;
+  /** No cursor row yet (first pass of this system with auditFrom). */
+  fresh?: boolean;
 }
 
 interface JobRow {
@@ -74,6 +81,8 @@ interface WorkflowPayload {
   entity?: string;
   recordId?: string;
   step?: number;
+  /** schedule.relative: the moment the job was planned for; a moved date field cancels it (runtime.yaml#workflows). */
+  dueAt?: string;
 }
 
 const CURSOR_KEY = "__wizard_cursor";
@@ -120,6 +129,13 @@ export async function runJobs(
       CURSOR_KEY,
     ]);
     const p = (rows[0]?.payload ?? {}) as Partial<Cursor>;
+    if (!rows[0] && o.auditFrom) {
+      const last = await tx.unsafe(
+        `select coalesce(max(id), 0)::text as id from ${T("_w_audit")} where at < $1::timestamptz`,
+        [o.auditFrom.toISOString()],
+      );
+      return { audit: String(last[0]?.id ?? "0"), at: null, fresh: true };
+    }
     return { audit: typeof p.audit === "string" ? p.audit : "0", at: typeof p.at === "string" ? p.at : null };
   };
   const writeCursor = (tx: Tx, c: Cursor) =>
@@ -127,7 +143,7 @@ export async function runJobs(
       `insert into ${T("_w_jobs")} (kind, payload, run_at, locked_until, idempotency_key)
        values ('workflow_step', cast($1::text as jsonb), 'infinity', 'infinity', $2)
        on conflict (idempotency_key) do update set payload = excluded.payload`,
-      [JSON.stringify({ state: "cursor", ...c }), CURSOR_KEY],
+      [JSON.stringify({ state: "cursor", audit: c.audit, at: c.at }), CURSOR_KEY],
     );
   const enqueue = async (tx: Tx, kind: string, payload: Row, runAt: Date, key: string) => {
     const r = await tx.unsafe(
@@ -171,7 +187,10 @@ export async function runJobs(
         [cursor.audit],
       );
       const last = rows.at(-1);
-      if (!last) return 0;
+      if (!last) {
+        if (cursor.fresh) await writeCursor(tx, cursor);
+        return 0;
+      }
       let n = 0;
       for (const w of spec.workflows ?? []) {
         const tr = w.trigger;
@@ -223,6 +242,9 @@ export async function runJobs(
     system(async (tx) => {
       const cursor = await readCursor(tx);
       const from = cursor.at ? new Date(cursor.at) : (o.since ?? now);
+      // Relative schedules look back from the previous pass (1 h slack), so a record whose moment passed long before
+      // the poller first saw it is not reminded late; the very first pass without `since` keeps the M1 behaviour (G1).
+      const lower = cursor.at || o.since ? new Date(from.getTime() - 60 * MINUTE) : null;
       let n = 0;
       for (const w of spec.workflows ?? []) {
         const tr = w.trigger;
@@ -232,15 +254,16 @@ export async function runJobs(
           const due = `(${f})::timestamptz + make_interval(mins => $1::int)`;
           const rows = await tx.unsafe(
             `select id::text as id, ${due} as due from ${T(tr.entity)}
-             where ${f} is not null and ${due} <= $2::timestamptz and ${due} >= created_at limit 1000`,
-            [tr.relative.offsetMinutes ?? 0, now.toISOString()],
+             where ${f} is not null and ${due} <= $2::timestamptz and ${due} >= created_at
+             and ($3::timestamptz is null or ${due} > $3::timestamptz) limit 1000`,
+            [tr.relative.offsetMinutes ?? 0, now.toISOString(), lower ? lower.toISOString() : null],
           );
           for (const r of rows) {
             const at = r.due instanceof Date ? r.due : new Date(String(r.due));
             n += await enqueue(
               tx,
               "workflow_step",
-              wfJob(w, tr.entity, r.id as string),
+              { ...wfJob(w, tr.entity, r.id as string), dueAt: at.toISOString() },
               at,
               `wf:${w.name}:${r.id}:${at.toISOString()}`,
             );
@@ -375,11 +398,55 @@ export async function runJobs(
     return fn(input);
   }
 
+  /**
+   * Recipients of a notify step in test mode (connectors: 'outbox', G1): users by id; the owner and a visitor with
+   * consent as markers without an address (userId null, recipient owner | visitor).
+   */
+  async function outboxTargets(
+    refs: NonNullable<ReturnType<typeof parseRecipients>>,
+    entity: Entity | undefined,
+    rec: Row | null,
+    params: Row,
+  ): Promise<{ userId: string | null; recipient: "user" | "role" | "owner" | "visitor" }[]> {
+    const out: { userId: string | null; recipient: "user" | "role" | "owner" | "visitor" }[] = [];
+    for (const r of refs) {
+      if (r.kind === "owner") out.push({ userId: null, recipient: "owner" });
+      else if (r.kind === "role") {
+        const rows = await system((tx) =>
+          tx.unsafe(
+            `select id::text as id from ${T("users")} where role = $1 and blocked_at is null order by created_at limit 200`,
+            [r.role],
+          ),
+        );
+        for (const u of rows) out.push({ userId: String(u.id), recipient: "role" });
+      } else {
+        const v = rec?.[r.field];
+        if (recordRecipientKind(entity, r.field) === "user") {
+          if (typeof v === "string" && v !== "") out.push({ userId: v, recipient: "user" });
+        } else {
+          const consent = typeof params.consentField === "string" ? rec?.[params.consentField] : undefined;
+          if (consent === true && typeof v === "string" && v !== "")
+            out.push({ userId: null, recipient: "visitor" });
+        }
+      }
+    }
+    return out;
+  }
+
   /** Runs the steps from payload.step; a wait step re-enqueues the rest. Throws StepFailure. */
   async function runWorkflow(job: JobRow, p: WorkflowPayload): Promise<void> {
     const w = (spec.workflows ?? []).find((x) => x.name === p.workflow);
     if (!w) return; // the workflow was removed from the spec
     const entity = spec.entities.find((e) => e.name === p.entity);
+    if (p.dueAt && (p.step ?? 0) === 0 && w.trigger.relative?.field && p.entity && p.recordId) {
+      // The date moved (or was cleared) after the job was planned: the reminder for the old moment is dropped; the
+      // schedule trigger plans one for the new moment.
+      const rec = await record(p.entity, p.recordId);
+      const v = rec?.[w.trigger.relative.field];
+      const base = v instanceof Date ? v.getTime() : typeof v === "string" ? Date.parse(v) : Number.NaN;
+      const due = base + (w.trigger.relative.offsetMinutes ?? 0) * MINUTE;
+      if (!Number.isFinite(due) || Math.abs(due - Date.parse(p.dueAt)) > MINUTE) return;
+    }
     for (let i = p.step ?? 0; i < w.steps.length; i++) {
       const step = w.steps[i] as Workflow["steps"][number];
       const params = (step.params ?? {}) as Row;
@@ -400,8 +467,15 @@ export async function runJobs(
           case "notify": {
             const integ = integrationOf(params.integration);
             if (!integ) throw new WizardError("NOT_FOUND", { message: "Интеграция не найдена" });
-            const to = subst(params.to, rec);
-            if (typeof to !== "string" || to === "") break; // no recipient on this record
+            const refs = parseRecipients(params.to);
+            if (!refs)
+              throw new WizardError("VALIDATION_FAILED", { message: "Получатель уведомления не указан" });
+            const single = refs.length === 1 && refs[0]?.kind === "record" ? refs[0].field : null;
+            // M1 behaviour: a single `$record.<user>` recipient without a value skips the step.
+            if (single && recordRecipientKind(entity, single) === "user") {
+              const to = rec?.[single];
+              if (typeof to !== "string" || to === "") break;
+            }
             const live = services.connectors === "live" ? services.connectorHost : undefined;
             if (live && rec && p.entity) {
               // connectors: 'live' — the connector renders the template and sends (M1-06 runNotifyStep).
@@ -414,6 +488,7 @@ export async function runJobs(
                     record: { ...rec, id: String(rec.id) },
                     jobId: job.id,
                     stepIndex: i,
+                    workflow: w.name,
                   },
                   { deadlineMs: 25_000 },
                 );
@@ -424,17 +499,25 @@ export async function runJobs(
               break;
             }
             const text = typeof params.text === "string" ? await render(params.text, entity, rec) : undefined;
-            const base = { userId: to, idempotencyKey: key };
-            if (integ.connector === "telegram") await callAction(integ.name, "sendToUser", { ...base, text });
-            else if (integ.connector === "email")
-              await callAction(integ.name, "sendTemplate", {
-                ...base,
-                template: params.template ?? null,
-                ...(text !== undefined ? { text } : {}),
-                ...(params.attachQr === true ? { attachQr: true } : {}),
-                ...(p.entity && p.recordId ? { entity: p.entity, recordId: p.recordId } : {}),
-              });
-            else throw new WizardError("VALIDATION_FAILED", { message: "Коннектор не шлёт уведомления" });
+            const targets = await outboxTargets(refs, entity, rec, params);
+            for (const [n, t] of targets.entries()) {
+              const base = {
+                userId: t.userId,
+                ...(t.recipient !== "user" ? { recipient: t.recipient } : {}),
+                idempotencyKey: n === 0 ? key : `${key}:${n}`,
+              };
+              if (integ.connector === "telegram")
+                await callAction(integ.name, "sendToUser", { ...base, text });
+              else if (integ.connector === "email")
+                await callAction(integ.name, "sendTemplate", {
+                  ...base,
+                  template: params.template ?? null,
+                  ...(text !== undefined ? { text } : {}),
+                  ...(params.attachQr === true ? { attachQr: true } : {}),
+                  ...(p.entity && p.recordId ? { entity: p.entity, recordId: p.recordId } : {}),
+                });
+              else throw new WizardError("VALIDATION_FAILED", { message: "Коннектор не шлёт уведомления" });
+            }
             break;
           }
           case "connector": {

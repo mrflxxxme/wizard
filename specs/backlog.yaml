@@ -1864,6 +1864,7 @@ tasks:
     critical: true
     status: todo
     release: mvp
+    mvp_done: true
     mvp_scope: "Получатели: владелец, роль, контакт посетителя с согласием; каналы email и Telegram; служебные письма посетителю (подтверждение, напоминание за 24 ч, ссылка отмены); письмо сотрудникам с данными заявки, Telegram без ПДн (D71); без SMS"
     claimed_by: null
     description: >
@@ -1918,6 +1919,7 @@ tasks:
     critical: true
     status: todo
     release: mvp
+    mvp_done: true
     mvp_scope: "ctx.http.fetch через egress-прокси на хосты из спеки (любой публичный, D71), журнал _w_egress_log, лимиты, список хостов в ревью основателя"
     claimed_by: null
     description: >
@@ -2150,6 +2152,7 @@ tasks:
     estimate_days: 1.5
     status: todo
     release: mvp
+    mvp_done: true
     mvp_scope: "Самостоятельный маршрут вебхука без общего диспетчера M2-49: секретный путь, hmac или shared_secret, защита от повтора, журнал"
     claimed_by: null
     description: >

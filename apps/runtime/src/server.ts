@@ -20,6 +20,8 @@ export interface StartOptions extends RuntimeAppOptions {
   internalHostname?: string;
   /** Period of the retention check (runtime.yaml#workflows.retention; a pass runs once per daily slot); 0 — off. */
   retentionTickMs?: number;
+  /** Period of the workflow poller over published systems (M2-50; WIZARD_JOBS_TICK_MS); 0 — off. */
+  jobsTickMs?: number;
   /**
    * Prometheus /metrics listener (M2-09; WIZARD_METRICS_PORT): port, or undefined/null — none. Only the observability
    * namespace reaches it in the cluster (NetworkPolicy); bound to metricsHostname (default: hostname).
@@ -30,6 +32,8 @@ export interface StartOptions extends RuntimeAppOptions {
 
 /** Default period of the retention check: a platform request is served within it. */
 export const RETENTION_TICK_MS = 10 * 60_000;
+/** Default period of the workflow poller: a new lead reaches the owner within about half a minute. */
+export const JOBS_TICK_MS = 20_000;
 
 export async function startRuntime(
   o: StartOptions,
@@ -85,6 +89,29 @@ export async function startRuntime(
         }, tickMs)
       : undefined;
   tick?.unref();
+  const jobsMs = o.jobsTickMs ?? JOBS_TICK_MS;
+  let polling = false;
+  const jobs =
+    jobsMs > 0
+      ? setInterval(() => {
+          if (polling) return;
+          polling = true;
+          runtime
+            .jobsTick()
+            .catch((err: unknown) =>
+              o.log?.({
+                ts: new Date().toISOString(),
+                level: "error",
+                msg: "jobs_tick_failed",
+                sqlstate: (err as { code?: unknown }).code ?? null,
+              }),
+            )
+            .finally(() => {
+              polling = false;
+            });
+        }, jobsMs)
+      : undefined;
+  jobs?.unref();
   const metrics =
     o.metricsPort === undefined || o.metricsPort === null
       ? null
@@ -99,6 +126,7 @@ export async function startRuntime(
     close: () =>
       new Promise<void>((resolve, reject) => {
         if (tick) clearInterval(tick);
+        if (jobs) clearInterval(jobs);
         internal?.close();
         void metrics?.close();
         server.close((err) => (err ? reject(err) : resolve()));

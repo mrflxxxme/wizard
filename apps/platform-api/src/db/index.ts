@@ -23,6 +23,7 @@ import * as m0019 from "../../migrations/0019_g1_checks.js";
 import * as m0020 from "../../migrations/0020_p_pilot_limits.js";
 import * as m0021 from "../../migrations/0021_p_support.js";
 import * as m0022 from "../../migrations/0022_p_development_requests.js";
+import * as m0024 from "../../migrations/0024_m2_notify_owners.js";
 import * as m0025 from "../../migrations/0025_p_destructive.js";
 import type { DB } from "./types.js";
 
@@ -74,6 +75,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0020_p_pilot_limits": m0020,
   "0021_p_support": m0021,
   "0022_p_development_requests": m0022,
+  "0024_m2_notify_owners": m0024,
   "0025_p_destructive": m0025,
 };
 

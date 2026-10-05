@@ -1,0 +1,7 @@
+{
+  "check": "G2-EGRESS-02",
+  "description": "prod без внешних адресов",
+  "env": "prod",
+  "base": "forum",
+  "expect": "pass"
+}

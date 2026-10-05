@@ -17,6 +17,8 @@ import {
   getConnector,
   guardedFetch,
   JsonlOutbox,
+  type MessageJournal,
+  type MessageLinks,
   newQrKeyring,
   type PlatformConnectorConfig,
   parseQrKeyring,
@@ -56,7 +58,29 @@ export interface ConnectorHostOptions {
   outboxDir?: string | null;
   /** RuntimeAppOptions.connectors: 'live' enables YooKassa API calls (otherwise the draft mock payment). */
   connectors?: "outbox" | "live";
+  /** M2-50: emails of the org owners of a system (registry: platform.system_owner_emails); default: none. */
+  owners?: (systemId: string) => Promise<string[]>;
+  /** M2-50: AES-GCM sealing of message links (auth keys, WIZARD_SECRETS_KEY); absent — visitor mail has no links. */
+  seal?: (value: unknown, aad: string) => string;
 }
+
+/** Path of the one-time links of visitor messages (CSRF-free like connector hooks; the token segment is masked in logs). */
+export const MESSAGE_LINK_PATH = "/_wizard/hooks/message";
+/** Lifetime of a cancel/unsubscribe link. */
+export const MESSAGE_LINK_TTL_MS = 30 * 24 * 60 * 60_000;
+
+/** Payload of a sealed message link. */
+export interface MessageLinkPayload {
+  a: "cancel" | "unsubscribe";
+  en: string;
+  id: string;
+  wf: string;
+  st: number;
+  exp: number;
+}
+
+/** AAD binding a message link to one deployment. */
+export const messageLinkAad = (systemId: string, env: SystemEnv) => `wizard-message-link:${systemId}:${env}`;
 
 /** The parts of LoadedSystem a connector context needs. */
 export interface ConnectorSystem {
@@ -68,6 +92,8 @@ export interface ConnectorSystem {
 export interface ConnectorHost {
   /** Context of one integration; `host` is the Host header of the request (with port). */
   ctx(sys: ConnectorSystem, integration: Integration, host?: string): ConnectorCtx;
+  /** Secrets of a deployment (secret://name of functions — ctx.http, M2-52; never exposed to system code). */
+  secrets(entry: RegistryEntry): SecretReader;
   /** Context of the platform mail account for host-side mail of a system (invitations, email OTP). */
   platformMailCtx(sys: ConnectorSystem, host?: string): ConnectorCtx;
   readonly platform: PlatformConnectorConfig;
@@ -141,8 +167,27 @@ const CONTACT_COLUMN: Record<ContactKind, string> = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHAT_RE = /^-?\d{1,20}$/;
 
+const USERS_LIMIT = 200;
+
 function contacts(data: DataAccess) {
   return {
+    byRole: (role: string) =>
+      data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        const rows = await tx.sql`
+          select id::text as id from ${tx.sql(data.schema)}.${tx.sql("users")}
+          where role = ${role} and blocked_at is null order by created_at limit ${USERS_LIMIT}`;
+        return rows.map((r) => String(r.id));
+      }),
+    byEmail: (emails: readonly string[]) =>
+      emails.length === 0
+        ? Promise.resolve([])
+        : data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+            const rows = await tx.sql`
+              select id::text as id from ${tx.sql(data.schema)}.${tx.sql("users")}
+              where lower(email) = any(${emails.map((e) => e.toLowerCase())}::text[]) and blocked_at is null
+              limit ${USERS_LIMIT}`;
+            return rows.map((r) => String(r.id));
+          }),
     contact: (userId: string, kind: ContactKind) =>
       UUID_RE.test(userId)
         ? data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
@@ -168,6 +213,20 @@ function contacts(data: DataAccess) {
           where telegram_chat_id = ${chatId}`;
       });
     },
+  };
+}
+
+/** _w_messages (M2-50): delivery journal without text or address; a schema without the table is skipped. */
+export function pgMessageJournal(data: DataAccess): MessageJournal {
+  return {
+    write: (e) =>
+      data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        await tx.sql`
+          insert into ${tx.sql(data.schema)}.${tx.sql("_w_messages")}
+            (workflow, step, integration, channel, recipient, address_hash, template, status, error_code)
+          values (${e.workflow}, ${e.step}, ${e.integration}, ${e.channel}, ${e.recipient}, ${e.addressHash},
+            ${e.template}, ${e.status}, ${e.errorCode})`;
+      }),
   };
 }
 
@@ -256,6 +315,39 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
   const originOf = (entry: RegistryEntry, host?: string) =>
     `${o.env.publicScheme}://${host ?? (entry.env === "prod" ? `${entry.slug}.${o.env.systemsDomain}` : `${entry.slug}--draft.${o.env.systemsDomain}`)}`;
 
+  // Owners change rarely: one lookup a minute per system.
+  const ownerCache = new Map<string, { at: number; emails: Promise<string[]> }>();
+  const ownersOf = (systemId: string): Promise<string[]> => {
+    const owners = o.owners;
+    if (!owners) return Promise.resolve([]);
+    const now = Date.now();
+    const hit = ownerCache.get(systemId);
+    if (hit && now - hit.at < 60_000) return hit.emails;
+    const emails = owners(systemId).catch(() => [] as string[]);
+    ownerCache.set(systemId, { at: now, emails });
+    return emails;
+  };
+
+  function messageLinks(entry: RegistryEntry, host?: string): MessageLinks | undefined {
+    const seal = o.seal;
+    if (!seal) return undefined;
+    const origin = originOf(entry, host);
+    return {
+      url: (a) => {
+        const payload: MessageLinkPayload = {
+          a: a.action,
+          en: a.entity,
+          id: a.id,
+          wf: a.workflow,
+          st: a.step,
+          exp: o.clock().getTime() + MESSAGE_LINK_TTL_MS,
+        };
+        const token = seal(payload, messageLinkAad(entry.systemId, entry.env));
+        return `${origin}${MESSAGE_LINK_PATH}/${a.action}/${token}`;
+      },
+    };
+  }
+
   function ctx(sys: ConnectorSystem, integ: Integration, host?: string): ConnectorCtx {
     const connector = getConnector(integ.connector);
     if (!connector) throw new ConnectorError("INVALID_REQUEST", `Неизвестный коннектор «${integ.connector}»`);
@@ -263,6 +355,7 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
     const config = connector.configSchema.parse(integ.config ?? {});
     const secrets = secretsOf(entry.systemId, entry.env);
     const base = { system: entry.systemId, env: entry.env, integration: integ.name, connector: connector.id };
+    const links = messageLinks(entry, host);
     return {
       system: {
         id: entry.systemId,
@@ -297,6 +390,9 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
       now: o.clock,
       platform,
       telegramLinks: pgTelegramLinks(data),
+      owners: () => ownersOf(entry.systemId),
+      messages: pgMessageJournal(data),
+      ...(links ? { messageLinks: links } : {}),
     };
   }
 
@@ -311,6 +407,7 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
 
   return {
     ctx,
+    secrets: (entry) => secretsOf(entry.systemId, entry.env),
     platformMailCtx: (sys, host) => ctx(sys, PLATFORM_MAIL, host),
     platform,
     integrations,
