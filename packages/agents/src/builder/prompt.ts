@@ -2,6 +2,7 @@
 
 import type { AppSpec } from "@wizard/appspec";
 import type { GateReport } from "@wizard/gates";
+import { PAGE_STUB_MARKER } from "@wizard/gates";
 import { gapsPromptSection } from "../gaps.js";
 import { textRulesSection } from "../text-rules.js";
 import { cardDigest, fileTree, specDigest } from "./digest.js";
@@ -10,7 +11,7 @@ import type { PlanStep } from "./tools.js";
 import type { BuildCard } from "./types.js";
 
 /** First line of a page scaffold (builder.ts): the file still waits for the model's full text. */
-export const STUB_MARKER = "wizard:stub";
+export const STUB_MARKER = PAGE_STUB_MARKER;
 
 export const STATIC_PROMPT = [
   "You are the Wizard builder. You turn an approved system card into an AppSpec (via apply_ops) and code of",

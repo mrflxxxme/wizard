@@ -136,12 +136,20 @@ describe("SDK cheatsheet in the static prompt", () => {
     expect(STATIC_PROMPT).toContain(PROMPT_PARTS.sdk);
   });
 
-  test("its function examples pass G0 (FN-01, TS-01 against sdk.d.ts) together with page stubs", async () => {
+  test("its function examples pass G0 (FN-01, TS-01 against sdk.d.ts); a page left as a stub is a G0 blocker", async () => {
     const spec = leadSpec();
     const fns = cheatsheetFunctions();
     expect(fns.map(([p]) => p).sort()).toEqual((spec.functions ?? []).map((f) => f.file).sort());
+    // Stubs compile and import the ui-kit, but a build that still holds one is not ready (G0-SPEC-03).
+    const stubbed = new Map<string, string>(fns);
+    for (const p of spec.pages ?? []) stubbed.set(p.file, pageStub(p));
+    const s0 = await runG0({ ...ctxOf(spec), files: stubbed }, { only: G0_CODE });
+    const stubFails = s0.checks.filter((c) => c.status === "fail" || c.status === "error");
+    expect(stubFails.map((c) => c.id)).toEqual((spec.pages ?? []).map(() => "G0-SPEC-03"));
+    expect(stubFails.every((c) => c.message_ru.includes("осталась заготовкой"))).toBe(true);
+    // The same files once the model rewrote the pages (here: the stub body without its marker line) pass.
     const files = new Map<string, string>(fns);
-    for (const p of spec.pages ?? []) files.set(p.file, pageStub(p));
+    for (const p of spec.pages ?? []) files.set(p.file, pageStub(p).split("\n").slice(1).join("\n"));
     const r = await runG0({ ...ctxOf(spec), files }, { only: G0_CODE });
     const bad = r.checks.filter((c) => c.status === "fail" || c.status === "error");
     expect(bad, JSON.stringify(bad, null, 1)).toEqual([]);

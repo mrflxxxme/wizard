@@ -767,6 +767,17 @@ const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, ""
   } catch (e) {
     console.log("system/info: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
   }
+  // A send to a reserved .invalid address: nothing can be delivered, the provider names why it refuses the sender.
+  const fromRaw = process.env.WIZARD_SMTP_FROM || "";
+  const from = (/<([^>]+)>/.exec(fromRaw)?.[1] ?? fromRaw).trim();
+  try {
+    const r = await fetch(base + "/ru/transactional/api/v1/email/send.json", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "X-API-KEY": process.env.WIZARD_SMTP_PASSWORD || "" }, body: JSON.stringify({ message: { recipients: [{ email: "probe@wizard-diagnose.invalid" }], subject: "probe", from_email: from, template_engine: "none", body: { plaintext: "probe" } } }), signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    const mask = (v) => String(v ?? "").replace(/[^\\s@"'<>]+@[^\\s@"'<>]+/g, "<почта>").slice(0, 200);
+    console.log("email/send (адрес .invalid, письмо не доставляется): HTTP", r.status, j.status ? "status=" + j.status : "", j.code !== undefined ? "code=" + j.code : "", j.message ? "message=" + mask(j.message) : "", j.failed_emails ? "failed=" + mask(JSON.stringify(j.failed_emails)) : "", "· домен отправителя:", from.split("@")[1] || "—");
+  } catch (e) {
+    console.log("email/send: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
+  }
 })();
 `;
 

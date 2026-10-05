@@ -19,6 +19,8 @@ export {
   G2_CHECKS,
   G2_TIME_BUDGET_MS,
 } from "./catalog.js";
+/** G0-SPEC-03: first-line marker of a builder page placeholder; a page that still holds it is a blocker. */
+export { PAGE_STUB_MARKER } from "./g0/code.js";
 /** G0-IMP-01 allowlist of package specifiers per area (ui / functions). */
 export { ALLOWED_PACKAGES } from "./g0/imports.js";
 /** Name of the rolled-back shadow schema used by G0-MIG-02: app_<systemKey>_shadow. */
