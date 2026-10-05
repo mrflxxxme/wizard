@@ -101,7 +101,7 @@ async function revisionFiles(h: FlowHost, systemId: string, version: number): Pr
 
 /** switch: new publication live, previous superseded, prod_revision, hwm (workflows.yaml#workflows.publish). */
 async function switchLive(h: FlowHost, publicationId: string, revision: number): Promise<void> {
-  await h.step("switch", "Переключаю prod на новую ревизию", () =>
+  await h.step("switch", "Переключаю систему на новую версию", () =>
     h.tx(async (t) => {
       const sys = await lockSystem(t, h.run.system_id as string);
       await t.trx
@@ -169,7 +169,7 @@ async function smoke(
 ): Promise<string> {
   const url = prodUrl(h.config, sys.slug);
   const check = h.options.smoke ?? httpSmoke(5000, { internalUrl: h.config.runtimeInternalUrl });
-  const res = await h.step("smoke", "Проверяю, что prod отвечает", () =>
+  const res = await h.step("smoke", "Проверяю, что опубликованная система открывается", () =>
     check({ slug: sys.slug, systemKey: sys.schema_key, revision, url }),
   );
   if (res.ok) return url;
@@ -277,7 +277,7 @@ async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec,
     return row !== undefined;
   });
   if (!g1Passed)
-    await h.step("gate_G1_prod", "Проверяю сценарии ревизии для prod (G1)", async () => {
+    await h.step("gate_G1_prod", "Проверяю сценарии работы", async () => {
       // QA scenarios of card ACs without inline steps come from the build's G1 (db.yaml#g1_checks): reused per AC
       // while its text is unchanged; an AC rewritten since then stays uncovered (G1-AC-COVER fails).
       const { checks } = await inheritedG1Checks(h.db, sys.id, revision, spec);
@@ -290,12 +290,12 @@ async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec,
       if (!report.passed)
         throw new RunFailure(
           "GATES_FAILED",
-          "Ревизия не прошла проверку сценариев — подробности в отчёте G1",
+          "Версия не прошла проверку сценариев работы. Подробности — в отчёте проверок",
         );
     });
   const review: FounderReviewStatus | null = await h.step(
     "gate_G2",
-    "Проверяю безопасность, права и персональные данные (G2)",
+    "Проверяю безопасность, права доступа и персональные данные",
     async () => {
       const report = await prodGate(
         h,
@@ -322,7 +322,7 @@ async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec,
         const af = report.checks.find((c) => flags.includes(c.id) && c.status === "fail");
         throw new RunFailure(
           "GATES_FAILED",
-          af?.message_ru ?? "Ревизия не прошла проверку безопасности для prod — подробности в отчёте G2",
+          af?.message_ru ?? "Версия не прошла проверку безопасности. Подробности — в отчёте проверок",
         );
       }
       return founderReviewChecks(report).length > 0 ? requestFounderReview(h.db, sys.id, revision) : null;
@@ -418,7 +418,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
     const report = await h.draftG0();
     rev = await revisionRow("reload_revision");
     if (!report.passed || !rev?.bundle_key)
-      throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки — подробности в отчёте G0");
+      throw new RunFailure("GATES_FAILED", "Версия не прошла проверки. Подробности — в отчёте проверок");
   }
   const bundleKey = rev.bundle_key;
   const spec = rev.spec as unknown as AppSpec;
@@ -426,7 +426,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   const prevSpec = hwm !== null ? await loadSpec(h.db, sys, hwm) : null;
 
   const plan = planMigration(prevSpec, spec, { env: "prod" });
-  const pub = await h.step("plan_migration", "Готовлю изменения базы prod", () =>
+  const pub = await h.step("plan_migration", "Готовлю изменения данных", () =>
     h.tx(async (t) => {
       const live = await livePublication(t.trx, sys.id);
       return t.trx
@@ -448,12 +448,12 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   );
 
   return guarded(h, pub.id, async () => {
-    await h.step("gate_G0_prod", "Проверяю ревизию для prod (G0)", async () => {
+    await h.step("gate_G0_prod", "Проверяю версию перед публикацией", async () => {
       if (!plan.additiveOnly) {
         const what = plan.destructive.map((s) => s.kind).join(", ");
         throw new RunFailure(
           "DESTRUCTIVE_IN_PROD",
-          `Публикация заблокирована: изменения удаляют или сужают данные prod (${what}). В prod разрешены только добавления.`,
+          `Публикация остановлена: изменения удаляют или сужают данные работающей системы (${what}). В опубликованную систему пока можно только добавлять.`,
         );
       }
       if (plan.errors.length > 0)
@@ -479,12 +479,15 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
       };
       await h.tx((t) => recordGateReport(t, { runId: h.run.id, systemId: sys.id, revision, report }));
       if (!report.passed)
-        throw new RunFailure("GATES_FAILED", "Ревизия не прошла проверки для prod — подробности в отчёте G0");
+        throw new RunFailure(
+          "GATES_FAILED",
+          "Версия не прошла проверки перед публикацией. Подробности — в отчёте проверок",
+        );
     });
     if (h.config.prodG2Required) await prodG2(h, sys, revision, spec, prevSpec);
     await founderReviewGate(h, sys, revision, spec, prevSpec);
     await telegramBots(h, sys, revision, spec);
-    await h.step("apply_migration", "Применяю изменения базы prod", async () => {
+    await h.step("apply_migration", "Применяю изменения данных", async () => {
       await setStatus(h, pub.id, "applying", ["planned"]);
       await applyProdMigration(h.pg, {
         systemId: sys.id,
@@ -512,7 +515,7 @@ export async function runRollback(h: FlowHost): Promise<FlowResult> {
   if (!target) throw new RunFailure("ROLLBACK_TARGET_INVALID", "Такой ревизии нет");
 
   if (input.env === "draft") {
-    const version = await h.step("revert", `Возвращаю черновик к ревизии ${to}`, () =>
+    const version = await h.step("revert", `Возвращаю черновик к версии ${to}`, () =>
       h.tx(async (t) => {
         const v = await revertRevision(t, {
           systemId: sys.id,
@@ -550,10 +553,10 @@ export async function runRollback(h: FlowHost): Promise<FlowResult> {
   if (!wasLive || !target.bundle_key)
     throw new RunFailure(
       "ROLLBACK_TARGET_INVALID",
-      "Откатить prod можно только к ревизии, которая уже была в prod",
+      "Вернуться можно только к версии, которая уже была опубликована",
     );
   const bundleKey = target.bundle_key;
-  const pub = await h.step("plan_migration", "Готовлю откат prod без изменения базы", () =>
+  const pub = await h.step("plan_migration", "Готовлю возврат к прежней версии без изменения данных", () =>
     h.tx(async (t) => {
       const cur = await lockSystem(t, sys.id);
       const live = await livePublication(t.trx, sys.id);

@@ -47,7 +47,7 @@ export const TOPUP_PLANS: readonly string[] = ["free", "start", "business"];
 
 /** createTopup on a plan outside TOPUP_PLANS (403 FORBIDDEN). */
 export const TOPUP_NOT_ON_PLAN_RU =
-  "Докупка кредитов на тарифе «Пилот» недоступна — кредиты начисляет команда Wizard";
+  "На пилоте ничего докупать не нужно: всё бесплатно. Если лимита не хватает, напишите команде";
 
 /** Debit order among buckets with the same expiry (billing.yaml#ledger.rules: plan credits before topup). */
 export const BUCKET_ORDER: readonly Bucket[] = [

@@ -12,8 +12,10 @@ import type {
 import type { AppSpec } from "@wizard/appspec";
 import type { Check, GateContext, GateLevel, GateReport } from "@wizard/gates";
 import type { OrgPolicy, RouteOutput } from "@wizard/llm";
+import type { DevelopmentRequestInput } from "../gaps/service.js";
 import type { EventType } from "./events.js";
 
+export type { DevelopmentRequestInput } from "../gaps/service.js";
 export type { GateContext, GateLevel, GateReport, HostRouteInput, InputAnswer, InputOption, InputRequest };
 /** specs/quality/gates.yaml#report check (api.yaml#/components/schemas/GateReport). */
 export type GateCheck = Check;
@@ -21,6 +23,11 @@ export type GateRunner = (level: GateLevel, ctx: GateContext) => Promise<GateRep
 
 export interface StepHost {
   route(input: HostRouteInput): Promise<RouteOutput>;
+  /**
+   * D73 «Запросы на развитие»: the agent records what the client asked beyond the platform's abilities (quote already
+   * scrubbed of PII; the platform scrubs once more). Same shape as the optional method of @wizard/agents/host.
+   */
+  recordDevelopmentRequest(input: DevelopmentRequestInput): Promise<void>;
   emit(type: EventType, payload: Record<string, unknown>): Promise<void>;
   /** M0: identity with cancel check (M1: DBOS.runStep). */
   runStep<T>(name: string, fn: () => Promise<T>): Promise<T>;

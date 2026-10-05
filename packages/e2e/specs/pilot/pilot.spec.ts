@@ -123,7 +123,7 @@ test("S-auth: новый email без приглашения основател�
   await page.getByTestId("auth-code").fill(code);
   await page.getByTestId("auth-submit").click();
   await expect(page.getByTestId("auth-error")).toContainText(
-    "Регистрация в Wizard пока только по приглашению",
+    "Регистрация в Born to Build пока только по приглашению",
   );
   // The refusal comes before the consents: nothing to tick, no account.
   await expect(page.getByTestId("auth-offer")).toHaveCount(0);

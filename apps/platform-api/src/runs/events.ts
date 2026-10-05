@@ -10,6 +10,7 @@ export const EVENT_TYPES = [
   "agent_message",
   "chat_output",
   "model_switched",
+  "models_unavailable",
   "ops_applied",
   "file_written",
   "gate_started",
@@ -25,7 +26,7 @@ export const EVENT_TYPES = [
 export type EventType = (typeof EVENT_TYPES)[number];
 
 /** Written to run_events, never streamed to the user (workflows.yaml#events.rules). */
-export const INTERNAL_EVENTS: ReadonlySet<string> = new Set(["model_switched"]);
+export const INTERNAL_EVENTS: ReadonlySet<string> = new Set(["model_switched", "models_unavailable"]);
 export const TERMINAL_EVENTS: ReadonlySet<string> = new Set(["run_finished", "run_failed"]);
 
 export interface RunEvent {

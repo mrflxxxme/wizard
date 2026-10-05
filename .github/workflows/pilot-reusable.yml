@@ -101,6 +101,13 @@ jobs:
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
       CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
       ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      # Models (D26, M2-32): provider base URLs and the default build tier are variables, the Yandex key is a secret.
+      CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+      ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+      YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+      YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID || vars.YANDEX_FOLDER_ID }}
+      YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+      WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
       # Timeweb S3 account key (panel → S3 → Ключи доступа): the keys on bucket objects in the API are refused by S3
       # (SignatureDoesNotMatch). Named apart from AWS_* so no tool on the runner picks them up implicitly.
       WIZARD_S3_ACCOUNT_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

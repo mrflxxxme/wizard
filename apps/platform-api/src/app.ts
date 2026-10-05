@@ -33,6 +33,7 @@ import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
 import { exportRoutes } from "./routes/exports.js";
+import { gapsRoutes } from "./routes/gaps.js";
 import { importRoutes } from "./routes/imports.js";
 import { internalRoutes } from "./routes/internal.js";
 import { lockRoutes } from "./routes/lock.js";
@@ -40,6 +41,7 @@ import { orgRoutes } from "./routes/orgs.js";
 import { privacyRoutes } from "./routes/privacy.js";
 import { publishRoutes } from "./routes/publish.js";
 import { runRoutes } from "./routes/runs.js";
+import { supportRoutes } from "./routes/support.js";
 import { systemRoutes } from "./routes/systems.js";
 import { createDbosDispatcher } from "./runs/dispatch.js";
 import { EventBus } from "./runs/events.js";
@@ -313,6 +315,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", abuseRoutes(abuse));
   api.route("/", adminRoutes(abuse));
   api.route("/", adminPilotRoutes({ ...abuse, billing, pilotNow: opts.now }));
+  // M2P MVP cut: «Написать команде» (D68) and «Запросы на развитие» (D73).
+  api.route("/", supportRoutes({ ...abuse, supportNow: opts.now }));
+  api.route("/", gapsRoutes({ ...abuse, gapsNow: opts.now }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 

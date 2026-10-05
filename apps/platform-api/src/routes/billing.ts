@@ -5,6 +5,7 @@ import { ipInCidrs } from "@wizard/connectors";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
+import { pilotUsage, usageView } from "../billing/pilot-limits.js";
 import { TOPUP_NOT_ON_PLAN_RU, TOPUP_PLANS } from "../billing/plans.js";
 import { ShopError } from "../billing/shop.js";
 import { ApiError, notFound } from "../errors.js";
@@ -15,7 +16,7 @@ import { type Deps, jsonBody } from "../http/util.js";
 export const WEBHOOK_BODY_MAX = 256 * 1024;
 
 /** api.yaml#Error PAYMENTS_DISABLED (M2-15). */
-export const PAYMENTS_DISABLED_RU = "Оплата на пилоте отключена — кредиты начисляет команда Wizard";
+export const PAYMENTS_DISABLED_RU = "Оплата на пилоте отключена: на пилоте всё бесплатно";
 
 export function billingRoutes(d: Deps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
@@ -31,6 +32,14 @@ export function billingRoutes(d: Deps): Hono<AppEnv> {
   function paymentsOn(): void {
     if (!d.config.payments) throw new ApiError("PAYMENTS_DISABLED", PAYMENTS_DISABLED_RU);
   }
+
+  // getOrgUsage (D70): «На пилоте бесплатно» and what is left of the pilot limit — any member, no credits.
+  r.get("/orgs/:orgId/usage", async (c) => {
+    const orgId = c.req.param("orgId");
+    if (!isUuid(orgId)) throw notFound("Организация");
+    checkOrgAccess(c.get("user"), orgId, "viewer", "Организация");
+    return c.json(usageView(await pilotUsage(d.db, orgId, d.billing.now())));
+  });
 
   r.get("/orgs/:orgId/billing", async (c) => {
     const orgId = ownerOrg(c.get("user"), c.req.param("orgId"));

@@ -313,6 +313,13 @@ describe("pilot orgs, grants, review flag and the platform spend", () => {
         creditsAvailable: 150,
         creditsSpentMonth: 0,
         modelSpendRub: 120.5,
+        // D70: the pilot limit next to the internal credits.
+        usage: {
+          pilot: true,
+          free: true,
+          builds: { limit: 5, used: 0, left: 5, nextAt: null },
+          edits: { limit: 20, used: 0, left: 20, nextAt: null },
+        },
       },
     ]);
   });

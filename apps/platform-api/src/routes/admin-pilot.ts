@@ -8,6 +8,7 @@ import { z } from "zod";
 import { type AbuseDeps, staffAudit } from "../abuse/reports.js";
 import { type StaffDeps, staffGuard } from "../abuse/staff.js";
 import type { Billing } from "../billing/ledger.js";
+import { PILOT_LIMIT_MAX, pilotUsage, setPilotLimits, usageView } from "../billing/pilot-limits.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, isUuid } from "../http/auth.js";
 import { jsonBody } from "../http/util.js";
@@ -148,7 +149,29 @@ export function adminPilotRoutes(d: AdminPilotDeps): Hono<AppEnv> {
 
   r.get("/admin/pilot/orgs", staff, async (c) => {
     const { month, items } = await pilotOrgs(d.db, d.billing, { now: now(), pilotOnly: true });
-    return c.json({ month, capRub: d.config.llmMonthlyCapRub, items });
+    // D70: the pilot limit (builds and edits in 30 days) next to the internal credits.
+    const withUsage = await Promise.all(
+      items.map(async (x) => ({ ...x, usage: usageView(await pilotUsage(d.db, x.id, now())) })),
+    );
+    return c.json({ month, capRub: d.config.llmMonthlyCapRub, items: withUsage });
+  });
+
+  // D70: the founder raises (or lowers) the org's pilot limit; null — back to the default (5 builds, 20 edits).
+  r.put("/admin/pilot/orgs/:orgId/limits", staff, async (c) => {
+    const orgId = c.req.param("orgId");
+    if (!isUuid(orgId)) throw notFound("Организация");
+    const limit = z.number().int().min(0).max(PILOT_LIMIT_MAX).nullable().optional();
+    const b = await jsonBody(c, z.object({ builds: limit, edits: limit }));
+    const res = await setPilotLimits(d.db, orgId, b);
+    if (!res) throw notFound("Организация");
+    await staffAudit(
+      d.db,
+      c.get("user").id,
+      "pilot_limits",
+      `org:${orgId}`,
+      `сборки ${res.builds}, правки ${res.edits} за 30 дней`,
+    );
+    return c.json({ orgId, ...res, usage: usageView(await pilotUsage(d.db, orgId, now())) });
   });
 
   r.post("/admin/pilot/orgs/:orgId/grants", staff, async (c) => {

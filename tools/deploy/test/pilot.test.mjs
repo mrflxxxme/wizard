@@ -298,6 +298,31 @@ describe("pilot: secrets bundle", () => {
     expect(f.platformEnv).toContain("WIZARD_SMTP_FROM=Wizard <noreply@codename.ru>\n");
     expect(f.platformEnv).toContain("CLOUDRU_API_KEY=cloudru-secret-key\n");
     expect(f.platformEnv).not.toContain("ZAI_API_KEY");
+    // Models (D26, M2-32): base URLs, Yandex and the default build tier reach the pods when set.
+    const models = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: {
+        ...FOUNDER,
+        ZAI_API_KEY: "zai-key",
+        CLOUDRU_BASE_URL: "https://foundation-models.api.cloud.ru/v1",
+        ZAI_BASE_URL: "https://api.z.ai/api/paas/v4",
+        YANDEX_API_KEY: "yandex-key",
+        YANDEX_FOLDER_ID: "b1gfolder",
+        YANDEX_BASE_URL: "https://llm.api.cloud.yandex.net/v1",
+        WIZARD_BUILD_DEFAULT_TIER: "T1",
+      },
+    }).platformEnv;
+    for (const line of [
+      "ZAI_API_KEY=zai-key",
+      "CLOUDRU_BASE_URL=https://foundation-models.api.cloud.ru/v1",
+      "ZAI_BASE_URL=https://api.z.ai/api/paas/v4",
+      "YANDEX_API_KEY=yandex-key",
+      "YANDEX_FOLDER_ID=b1gfolder",
+      "YANDEX_BASE_URL=https://llm.api.cloud.yandex.net/v1",
+      "WIZARD_BUILD_DEFAULT_TIER=T1",
+    ])
+      expect(models).toContain(`${line}\n`);
     expect(f.platformEnv).not.toContain("WALG");
     expect(f.postgresEnv).toContain(`WALG_LIBSODIUM_KEY=${s.WALG_LIBSODIUM_KEY}\n`);
     expect(f.postgresEnv).toContain("AWS_SECRET_ACCESS_KEY=backups-secret\n");

@@ -1,0 +1,158 @@
+// «Запросы на развитие» (product.yaml#decisions.D73_development_requests, M2-59 mvp_scope): what a client asked for
+// beyond the platform's abilities. The agents record it from a run through the host (recordDevelopmentRequest: the
+// interview and the builder report_capability_gap); /admin groups the requests by category and frequency and links to
+// the system and the client. The quote comes scrubbed of personal data; it is scrubbed once more before it is stored.
+import { scrub } from "@wizard/pii";
+import { sql } from "kysely";
+import type { Db } from "../db/index.js";
+
+export const DEVELOPMENT_CATEGORIES = [
+  "payments",
+  "subscriptions",
+  "integration",
+  "messaging",
+  "design",
+  "domain",
+  "media",
+  "data",
+  "mobile",
+  "ai",
+  "other",
+] as const;
+export type DevelopmentCategory = (typeof DEVELOPMENT_CATEGORIES)[number];
+
+/** Host method input (same shape as @wizard/agents/host recordDevelopmentRequest). */
+export interface DevelopmentRequestInput {
+  category: DevelopmentCategory;
+  quote: string;
+  offered: string | null;
+}
+
+const QUOTE_MAX = 1000;
+const cut = (s: string) => (s.length > QUOTE_MAX ? `${s.slice(0, QUOTE_MAX - 1)}…` : s);
+
+export const isDevelopmentCategory = (c: unknown): c is DevelopmentCategory =>
+  typeof c === "string" && (DEVELOPMENT_CATEGORIES as readonly string[]).includes(c);
+
+/**
+ * Stores one request of a run (idempotent per run, category and quote). An unknown category is stored as other, an
+ * empty quote is ignored; returns whether a row was written.
+ */
+export async function recordDevelopmentRequest(
+  db: Db,
+  run: { id: string; org_id: string; system_id: string | null; started_by: string | null },
+  input: DevelopmentRequestInput,
+): Promise<boolean> {
+  const quote = cut(scrub(String(input.quote ?? "")).text.trim());
+  if (!quote) return false;
+  const offeredRaw = input.offered ? scrub(String(input.offered)).text.trim() : "";
+  const row = await db
+    .insertInto("platform.development_requests")
+    .values({
+      org_id: run.org_id,
+      system_id: run.system_id,
+      run_id: run.id,
+      user_id: run.started_by,
+      category: isDevelopmentCategory(input.category) ? input.category : "other",
+      quote,
+      offered: offeredRaw ? cut(offeredRaw) : null,
+    })
+    .onConflict((oc) =>
+      oc.expression(sql`run_id, category, md5(quote)`).where("run_id", "is not", null).doNothing(),
+    )
+    .returning("id")
+    .executeTakeFirst();
+  return row !== undefined;
+}
+
+export interface CategoryStat {
+  category: DevelopmentCategory;
+  last7: number;
+  last30: number;
+  total: number;
+  systems: number;
+  lastAt: Date;
+}
+
+export interface DevelopmentRequestRow {
+  id: string;
+  category: DevelopmentCategory;
+  quote: string;
+  offered: string | null;
+  createdAt: Date;
+  orgId: string;
+  orgName: string;
+  systemId: string | null;
+  systemName: string | null;
+  email: string | null;
+}
+
+const DAY_MS = 86_400_000;
+
+/** /admin: categories by frequency (30 days, then all time) and the latest requests (optionally of one category). */
+export async function developmentRequests(
+  db: Db,
+  o: { now: Date; category?: DevelopmentCategory | undefined; limit?: number },
+): Promise<{ categories: CategoryStat[]; items: DevelopmentRequestRow[] }> {
+  const d7 = new Date(o.now.getTime() - 7 * DAY_MS);
+  const d30 = new Date(o.now.getTime() - 30 * DAY_MS);
+  const stats = await db
+    .selectFrom("platform.development_requests")
+    .select([
+      "category",
+      sql<number>`count(*) filter (where created_at > ${d7})::int`.as("last7"),
+      sql<number>`count(*) filter (where created_at > ${d30})::int`.as("last30"),
+      sql<number>`count(*)::int`.as("total"),
+      sql<number>`count(distinct system_id)::int`.as("systems"),
+      sql<Date>`max(created_at)`.as("last_at"),
+    ])
+    .groupBy("category")
+    .orderBy(sql`count(*) filter (where created_at > ${d30})`, "desc")
+    .orderBy(sql`count(*)`, "desc")
+    .orderBy("category")
+    .execute();
+  let q = db
+    .selectFrom("platform.development_requests as r")
+    .innerJoin("platform.orgs as o", "o.id", "r.org_id")
+    .leftJoin("platform.systems as s", "s.id", "r.system_id")
+    .leftJoin("platform.users as u", "u.id", "r.user_id")
+    .select([
+      "r.id",
+      "r.category",
+      "r.quote",
+      "r.offered",
+      "r.created_at",
+      "r.org_id",
+      "o.name as org_name",
+      "r.system_id",
+      "s.name as system_name",
+      "u.email",
+    ]);
+  if (o.category) q = q.where("r.category", "=", o.category);
+  const rows = await q
+    .orderBy("r.created_at", "desc")
+    .limit(o.limit ?? 50)
+    .execute();
+  return {
+    categories: stats.map((s) => ({
+      category: s.category as DevelopmentCategory,
+      last7: Number(s.last7),
+      last30: Number(s.last30),
+      total: Number(s.total),
+      systems: Number(s.systems),
+      lastAt: new Date(s.last_at),
+    })),
+    items: rows.map((r) => ({
+      id: r.id,
+      category: r.category as DevelopmentCategory,
+      quote: r.quote,
+      offered: r.offered,
+      createdAt: new Date(r.created_at),
+      orgId: r.org_id,
+      orgName: r.org_name,
+      systemId: r.system_id,
+      systemName: r.system_name ?? null,
+      email: r.email ?? null,
+    })),
+  };
+}
