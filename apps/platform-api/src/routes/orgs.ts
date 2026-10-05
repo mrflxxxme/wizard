@@ -18,7 +18,7 @@ export const INVITE_TTL_MS = 7 * 24 * 3600_000;
 
 /** createOrg in invite mode by a user without a pilot org of their own (M2-09). */
 export const PILOT_ORG_CREATE_RU =
-  "На пилоте новые организации создаёт команда Wizard. Напишите нам, если нужна ещё одна";
+  "На пилоте новые организации создаёт команда Born to Build. Напишите нам, если нужна ещё одна";
 
 const roleSchema = z.enum(["owner", "editor", "viewer"]);
 const regionSchema = z.string().regex(/^[0-9]{2}$/);
@@ -81,7 +81,7 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
       .where("id", "=", orgId)
       .executeTakeFirst();
     if (!org) throw notFound("Организация");
-    // Same policy as the run engine: unknown region → T0 until determined (fail-safe).
+    // Same policy as the run engine (D26): an unknown region does not restrict T1.
     const policy = orgPolicyOf(org);
     return {
       ruOnly: org.ru_only,
@@ -363,8 +363,8 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
     await a.mailer.send({
       kind: "invite",
       to: b.email,
-      subject: "Приглашение в Wizard",
-      text: `Вас пригласили в организацию «${orgName}» в Wizard с ролью «${ROLE_RU[b.role]}».\nПринять приглашение: ${d.config.platformOrigin}/invite/${token}\nСсылка действует 7 дней.`,
+      subject: "Приглашение в Born to Build",
+      text: `Вас пригласили в организацию «${orgName}» в Born to Build с ролью «${ROLE_RU[b.role]}».\nПринять приглашение: ${d.config.platformOrigin}/invite/${token}\nСсылка действует 7 дней.`,
     });
     return c.json(toInvite(invite), 201);
   });

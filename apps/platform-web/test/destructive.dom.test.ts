@@ -88,7 +88,6 @@ const card = () =>
       },
     ],
     reports,
-    credits: null,
     blockers: [],
     canCancel: true,
     busy: null,

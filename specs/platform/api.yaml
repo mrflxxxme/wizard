@@ -668,6 +668,56 @@ paths:
       summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
       responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}}}}}}}}}}
   # ==== M2P · M2-22 (человеческий слой и цены: каталог цен, использование организации, обращения, заказы «под ключ», пробелы, матрица доступа) — новые пути дописывать ЗДЕСЬ, над этой строкой не трогать ====
+  /orgs/{orgId}/usage:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get:
+      operationId: getOrgUsage
+      x-milestone: M2P
+      x-roles: [viewer]
+      summary: 'M2-34/M2-56 (D70, mvp_scope): «На пилоте бесплатно» и остаток лимита пилота организации — сборки (build mode=create) и правки (mode=change|point_edit) за скользящие 30 дней; failed и cancelled не считаются, активные считаются. Для org не на тарифе pilot limit и left = null. Кредитов, потолков и себестоимости в ответе нет (billing.yaml#rub_model.principle)'
+      responses: {'200': {description: Использование, content: {application/json: {schema: {$ref: '#/components/schemas/PilotUsage'}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /support/requests:
+    post:
+      operationId: createSupportRequest
+      x-milestone: M2P
+      x-roles: [viewer]
+      summary: 'M2-35 (D68, mvp_scope): «Написать команде». Копия — в db.yaml#support_requests; основателю — сообщение в Telegram через бота платформы (канал алертов WIZARD_OPS_ALERT_URL/CHAT_ID; письмо — WIZARD_OPS_ALERT_EMAIL): организация, почта клиента, ссылка на систему, срок ответа и текст с замаскированными ПДн (@wizard/pii scrub). systemId — система открыта (org берётся из неё; чужая → 404), иначе orgId или org пользователя по умолчанию. replyBy — 2 часа рабочего времени Пн–Пт 10–19 МСК (D60); message_ru — подтверждение со сроком. > 5 обращений в час от пользователя или > 10 от организации → 429 RATE_LIMITED. Ответ основатель даёт письмом'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [text], properties: {text: {type: string, minLength: 1, maxLength: 4000}, wantsTeam: {type: boolean, description: «Хочу, чтобы доделала команда»}, systemId: {type: string, format: uuid}, orgId: {type: string, format: uuid}, screen: {type: string, maxLength: 64, pattern: '^[a-z0-9_-]*$'}}}}}}
+      responses: {'201': {description: Отправлено, content: {application/json: {schema: {type: object, required: [id, replyBy, message_ru], properties: {id: {type: string, format: uuid}, replyBy: {type: string, format: date-time}, message_ru: {type: string}}}}}}, '404': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
+  /admin/support/requests:
+    get:
+      operationId: adminListSupportRequests
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-35/M2-57 (mvp_scope): обращения «Написать команде» — сначала неотвеченные по сроку ответа, затем отвеченные; status=open — только неотвеченные'
+      parameters: [{name: status, in: query, schema: {enum: [open, all]}}]
+      responses: {'200': {description: Обращения, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/SupportRequest'}}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/support/requests/{requestId}/answered:
+    parameters: [{name: requestId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminMarkSupportRequest
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-35 (mvp_scope): отметка «отвечено» (answered=false снимает её). Строка staff_audit_log support_answered | support_reopened (target support_request:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [answered], properties: {answered: {type: boolean}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [id, answeredAt], properties: {id: {type: string, format: uuid}, answeredAt: {type: [string, 'null'], format: date-time}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/development-requests:
+    get:
+      operationId: adminDevelopmentRequests
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-59 (D73, mvp_scope): «Запросы на развитие» — категории по частоте (за 7 и 30 дней, всего, число систем) и последние 50 запросов (category — только этой категории) со ссылкой на систему и почтой клиента, запустившего прогон. Пишет хост агентов прогона (recordDevelopmentRequest), не HTTP'
+      parameters: [{name: category, in: query, schema: {$ref: '#/components/schemas/DevelopmentCategory'}}]
+      responses: {'200': {description: Запросы, content: {application/json: {schema: {type: object, required: [categories, items], properties: {categories: {type: array, items: {type: object, required: [category, last7, last30, total, systems, lastAt], properties: {category: {$ref: '#/components/schemas/DevelopmentCategory'}, last7: {type: integer}, last30: {type: integer}, total: {type: integer}, systems: {type: integer}, lastAt: {type: string, format: date-time}}}}, items: {type: array, items: {$ref: '#/components/schemas/DevelopmentRequest'}}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs/{orgId}/limits:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: adminSetPilotLimits
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-34 (D70, mvp_scope): лимит пилота организации — сборки и правки за 30 дней (0…1000; null — по умолчанию 5 и 20). Строка staff_audit_log pilot_limits (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {builds: {type: [integer, 'null'], minimum: 0, maximum: 1000}, edits: {type: [integer, 'null'], minimum: 0, maximum: 1000}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [orgId, builds, edits, usage], properties: {orgId: {type: string, format: uuid}, builds: {type: integer}, edits: {type: integer}, usage: {$ref: '#/components/schemas/PilotUsage'}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   # ==== конец блока M2-22 ====
   /admin/pilot/readiness:
     get:
@@ -812,6 +862,8 @@ components:
             OTP_INVALID: 401
             INSUFFICIENT_CREDITS: 402
             PLAN_LIMIT: 402
+            BUILDS_LIMIT: 402
+            EDITS_LIMIT: 402
             FORBIDDEN: 403
             MFA_REQUIRED: 403
             NOT_OWNER: 403
@@ -857,7 +909,7 @@ components:
             LLM_UNAVAILABLE: 503
             LLM_BUDGET_EXHAUSTED: 503
         message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
-        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
+        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}; для BUILDS_LIMIT и EDITS_LIMIT (D70, лимит пилота организации: сборки и правки за скользящие 30 дней, billing.yaml#rub_model.pilot_limit) — {limit, used, nextAt}, message_ru без слова «кредит», UI показывает «Написать команде»'}
     OrgRole: {enum: [owner, editor, viewer]}
     SystemStage: {enum: [interview, card, building, ready, failed], description: workflows.yaml#system_stage}
     System:
@@ -910,7 +962,7 @@ components:
         role: {enum: [user, assistant, system]}
         kind: {enum: [text, questions, answers, card, run_report, notice]}
         text: {type: string}
-        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}'}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
         runId: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
     RevisionSummary:
@@ -1093,5 +1145,10 @@ components:
     StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}
     PilotReadiness: {type: object, required: [on, by, at, note, checklist], properties: {on: {type: boolean}, by: {type: [string, 'null'], description: 'кто переключил: email staff или --by CLI'}, at: {type: [string, 'null'], format: date-time}, note: {type: [string, 'null']}, checklist: {type: array, items: {type: object, required: [id, text], properties: {id: {type: string}, text: {type: string}}}}}}
     PilotInvite: {type: object, required: [id, email, orgName, credits, requireFounderReview, status, createdAt, expiresAt, acceptedAt, orgId], properties: {id: {type: string, format: uuid}, email: {type: string}, orgName: {type: [string, 'null']}, credits: {type: integer}, requireFounderReview: {type: boolean}, status: {enum: [sent, accepted, expired]}, createdAt: {type: string, format: date-time}, expiresAt: {type: string, format: date-time}, acceptedAt: {type: [string, 'null'], format: date-time}, orgId: {type: [string, 'null']}}}
-    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}}}
+    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}, usage: {$ref: '#/components/schemas/PilotUsage', description: 'M2-34 (D70): лимит пилота (только /admin, у CLI нет)'}}}
+    PilotCounter: {type: object, required: [limit, used, left, nextAt], properties: {limit: {type: [integer, 'null'], description: 'null — org не на пилоте, лимита нет'}, used: {type: integer}, left: {type: [integer, 'null']}, nextAt: {type: [string, 'null'], format: date-time, description: 'Когда освободится следующая (только при left = 0)'}}}
+    PilotUsage: {type: object, required: [pilot, free, builds, edits], properties: {pilot: {type: boolean}, free: {type: boolean, description: '«На пилоте бесплатно» (D70)'}, builds: {$ref: '#/components/schemas/PilotCounter'}, edits: {$ref: '#/components/schemas/PilotCounter'}}}
+    SupportRequest: {type: object, required: [id, orgId, orgName, email, systemId, systemName, screen, text, wantsTeam, createdAt, replyBy, answeredAt], properties: {id: {type: string, format: uuid}, orgId: {type: string, format: uuid}, orgName: {type: string}, email: {type: [string, 'null']}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, screen: {type: [string, 'null']}, text: {type: string}, wantsTeam: {type: boolean}, createdAt: {type: string, format: date-time}, replyBy: {type: string, format: date-time}, answeredAt: {type: [string, 'null'], format: date-time}}}
+    DevelopmentCategory: {enum: [payments, subscriptions, integration, messaging, design, domain, media, data, mobile, ai, other]}
+    DevelopmentRequest: {type: object, required: [id, category, quote, offered, createdAt, orgId, orgName, systemId, systemName, email], properties: {id: {type: string, format: uuid}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, quote: {type: string, description: 'Цитата клиента после scrub ПДн'}, offered: {type: [string, 'null'], description: 'Предложенная замена'}, createdAt: {type: string, format: date-time}, orgId: {type: string, format: uuid}, orgName: {type: string}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, email: {type: [string, 'null']}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}

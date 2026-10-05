@@ -230,13 +230,13 @@ describe("S10", () => {
     expect((q(el, "revision-rollback") as HTMLButtonElement).disabled).toBe(true);
     expect(input(el, "settings-ru-only").disabled).toBe(true);
     expect(el.textContent).toContain("Доступно владельцу организации");
-    expect(q(el, "settings-prod-revision")?.textContent).toBe("prod · ревизия 5");
+    expect(q(el, "settings-prod-revision")?.textContent).toBe("Опубликована версия 5");
     expect(q(el, "settings-login-methods")?.textContent).toContain("почта · телефон");
     expect(q(el, "settings-login-methods")?.textContent).toContain("только тарифы Старт и Бизнес");
     expect(q(el, "settings-retention")?.textContent).toContain("«Билет»: обезличивание через 30 дней");
   });
 
-  test("owner: rollback asks «Вернуть prod к ревизии N? Данные сохранятся»; «только РФ» → PATCH settings", async () => {
+  test("owner: rollback asks «Вернуть опубликованную систему к версии N? Данные сохранятся»; «только РФ» → PATCH settings", async () => {
     const patch = vi.fn(async (_org: string, b: { ruOnly: boolean }) => ({
       ruOnly: b.ruOnly,
       t1Restricted: false,
@@ -248,7 +248,9 @@ describe("S10", () => {
     await waitFor(() => q(el, "revision-rollback") !== null && !input(el, "settings-ru-only").disabled);
     expect((q(el, "revision-rollback") as HTMLButtonElement).disabled).toBe(false);
     click(q(el, "revision-rollback"));
-    expect(q(el, "rollback-confirm")?.textContent).toContain("Вернуть prod к ревизии 3? Данные сохранятся");
+    expect(q(el, "rollback-confirm")?.textContent).toContain(
+      "Вернуть опубликованную систему к версии 3? Данные сохранятся",
+    );
     expect(document.activeElement).toBe(q(el, "rollback-yes"));
     click(q(el, "rollback-no"));
     expect(q(el, "rollback-confirm")).toBeNull();

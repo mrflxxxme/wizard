@@ -499,6 +499,8 @@ export interface PilotOrg {
   creditsAvailable: number;
   creditsSpentMonth: number;
   modelSpendRub: number;
+  /** D70: the pilot limit (builds and edits in 30 days). */
+  usage?: PilotUsage;
 }
 
 /** api.yaml#LlmSpend. */
@@ -530,6 +532,76 @@ export interface FounderReviewItem {
   orgId: string;
   revision: number;
   createdAt: string;
+}
+
+/** api.yaml#PilotCounter (D70): limit null — the org is not on the pilot. */
+export interface PilotCounter {
+  limit: number | null;
+  used: number;
+  left: number | null;
+  nextAt: string | null;
+}
+
+/** api.yaml#PilotUsage (getOrgUsage): «На пилоте бесплатно» and what is left, no credits. */
+export interface PilotUsage {
+  pilot: boolean;
+  free: boolean;
+  builds: PilotCounter;
+  edits: PilotCounter;
+}
+
+/** api.yaml#SupportRequest (/admin «Обращения»). */
+export interface SupportRequestItem {
+  id: string;
+  orgId: string;
+  orgName: string;
+  email: string | null;
+  systemId: string | null;
+  systemName: string | null;
+  screen: string | null;
+  text: string;
+  wantsTeam: boolean;
+  createdAt: string;
+  replyBy: string;
+  answeredAt: string | null;
+}
+
+/** api.yaml#DevelopmentCategory. */
+export type DevelopmentCategory =
+  | "payments"
+  | "subscriptions"
+  | "integration"
+  | "messaging"
+  | "design"
+  | "domain"
+  | "media"
+  | "data"
+  | "mobile"
+  | "ai"
+  | "other";
+
+/** api.yaml adminDevelopmentRequests. */
+export interface DevelopmentRequests {
+  categories: {
+    category: DevelopmentCategory;
+    last7: number;
+    last30: number;
+    total: number;
+    systems: number;
+    lastAt: string;
+  }[];
+  items: {
+    id: string;
+    category: DevelopmentCategory;
+    quote: string;
+    offered: string | null;
+    createdAt: string;
+    orgId: string;
+    orgName: string;
+    systemId: string | null;
+    systemName: string | null;
+    email: string | null;
+  }[];
 }
 
 /** api.yaml#/components/schemas/DestructiveConsequence (M2-72). */

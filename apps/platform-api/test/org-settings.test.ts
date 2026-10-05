@@ -74,12 +74,15 @@ describe("GET /orgs/{orgId}/settings (M0-30)", () => {
     expect(res.body).toEqual({ ruOnly: false, buildModelLabel: "модели в РФ", t1Restricted: false });
   });
 
-  test("T1 by default → GLM-5.3 for an open org; ruOnly / t1Restricted / unknown region → «модели в РФ»", async () => {
+  test("T1 by default → GLM-5.3 for an open org and for an unknown region (D26); ruOnly / t1Restricted → «модели в РФ»", async () => {
     const a = await api("T1");
     await setRegion(a, "77");
     expect((await a.req("GET", path)).body.buildModelLabel).toBe("GLM-5.3");
     await setRegion(a, null);
-    expect((await a.req("GET", path)).body.buildModelLabel).toBe("модели в РФ");
+    expect((await a.req("GET", path)).body).toMatchObject({
+      t1Restricted: false,
+      buildModelLabel: "GLM-5.3",
+    });
     await setRegion(a, "77");
     await a.deps.db
       .updateTable("platform.orgs")

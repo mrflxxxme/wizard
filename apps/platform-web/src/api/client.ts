@@ -13,6 +13,8 @@ import type {
   DestructiveChangeRecord,
   DestructiveConsequences,
   DestructiveJournal,
+  DevelopmentCategory,
+  DevelopmentRequests,
   DiffChange,
   ExportView,
   FounderReviewItem,
@@ -32,6 +34,7 @@ import type {
   PilotInvite,
   PilotOrg,
   PilotReadiness,
+  PilotUsage,
   PreviewUrl,
   Publication,
   Revision,
@@ -39,6 +42,7 @@ import type {
   Run,
   StaffData,
   StaffSession,
+  SupportRequestItem,
   System,
   SystemDeleted,
   SystemView,
@@ -280,6 +284,20 @@ export function createApiClient(opts: ClientOptions = {}) {
     // Plan, balance and the platform shop (M1-03, M2-07; S-billing).
     getOrg: (orgId: string) => call<Org>("GET", org(orgId)),
     getCredits: (orgId: string) => call<CreditBalance>("GET", `${org(orgId)}/credits`),
+    /** D70: «На пилоте бесплатно» and what is left of the pilot limit (no credits). */
+    getUsage: (orgId: string) => call<PilotUsage>("GET", `${org(orgId)}/usage`),
+    /** D68: «Написать команде» — the founder gets it in Telegram and answers by letter. */
+    createSupportRequest: (body: {
+      text: string;
+      wantsTeam?: boolean;
+      systemId?: string;
+      orgId?: string;
+      screen?: string;
+    }) =>
+      call<{ id: string; replyBy: string; message_ru: string }>("POST", "/support/requests", {
+        body,
+        idempotencyKey: newIdempotencyKey(),
+      }),
     listLedger: (orgId: string, cursor?: string, limit = 20) =>
       call<{ items: LedgerEntry[]; nextCursor: string | null }>("GET", `${org(orgId)}/credits/ledger`, {
         query: { limit: String(limit), cursor },
@@ -403,6 +421,25 @@ export function createApiClient(opts: ClientOptions = {}) {
         { body: { on } },
       ),
     adminPilotSpend: () => call<LlmSpend>("GET", "/admin/pilot/spend"),
+    // D70: the founder raises an org's pilot limit (null — the default).
+    adminSetPilotLimits: (orgId: string, body: { builds?: number | null; edits?: number | null }) =>
+      call<{ orgId: string; builds: number; edits: number; usage: PilotUsage }>(
+        "PUT",
+        `/admin/pilot/orgs/${encodeURIComponent(orgId)}/limits`,
+        { body },
+      ),
+    // D68 «Написать команде»: copies of client messages, the «отвечено» mark.
+    adminListSupportRequests: (status?: "open" | "all") =>
+      call<{ items: SupportRequestItem[] }>("GET", "/admin/support/requests", { query: { status } }),
+    adminMarkSupportRequest: (id: string, answered: boolean) =>
+      call<{ id: string; answeredAt: string | null }>(
+        "POST",
+        `/admin/support/requests/${encodeURIComponent(id)}/answered`,
+        { body: { answered } },
+      ),
+    // D73 «Запросы на развитие».
+    adminDevelopmentRequests: (category?: DevelopmentCategory) =>
+      call<DevelopmentRequests>("GET", "/admin/development-requests", { query: { category } }),
     disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
       call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
     // M2-72: prod changes that remove data (api.yaml getDestructiveConsequences … undoDestructiveChange).

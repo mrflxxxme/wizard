@@ -113,7 +113,7 @@ describe("WIZARD_REGISTRATION=invite: sign-in of a new e-mail only with an invit
     const res = await verify(fx.api, email, fx.mailer.code(email));
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("REGISTRATION_INVITE_ONLY");
-    expect(res.body.message_ru).toMatch(/^Регистрация в Wizard пока только по приглашению/);
+    expect(res.body.message_ru).toMatch(/^Регистрация в Born to Build пока только по приглашению/);
     expectContract("verifyOtp", res);
     // Nothing is created; dev-login does not bypass the invitation either.
     expect(await fx.api.deps.pg`select id from platform.users where email = ${email}`).toHaveLength(0);
@@ -127,7 +127,7 @@ describe("WIZARD_REGISTRATION=invite: sign-in of a new e-mail only with an invit
     const out = await fx.cli("invite", email, "--org-name", "Кофейня «Зерно»", "--credits=120");
     expect(out).toMatch(/приглашение отправлено: owner@coffee\.example/);
     const letter = fx.mailer.last("owner@coffee.example", "invite");
-    expect(letter?.subject).toBe("Приглашение в пилот Wizard");
+    expect(letter?.subject).toBe("Приглашение в пилот Born to Build");
     expect(letter?.text).toContain(`${ORIGIN}/login?email=owner%40coffee.example`);
     expect(letter?.text).toContain("«Кофейня «Зерно»»");
 
@@ -394,7 +394,7 @@ describe("WIZARD_PAYMENTS=off: no purchase, subscriptions or card binding", () =
       expect(res.status, `${method} ${path}`).toBe(403);
       expect(res.body).toEqual({
         code: "PAYMENTS_DISABLED",
-        message_ru: "Оплата на пилоте отключена — кредиты начисляет команда Wizard",
+        message_ru: "Оплата на пилоте отключена: на пилоте всё бесплатно",
       });
       expectContract(ops[i] as string, res);
     }

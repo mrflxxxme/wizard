@@ -41,6 +41,25 @@ export function Note({ children, testId }: { children: ReactNode; testId?: strin
   );
 }
 
+/**
+ * D28/D48: technical details (check ids, levels G0–G2, file:line, error codes) stay out of the main view — only under
+ * this «Подробнее для специалиста» disclosure (closed by default).
+ */
+export function Specialist({
+  children,
+  testId = "specialist",
+}: {
+  children: ReactNode;
+  testId?: string;
+}): ReactNode {
+  return (
+    <details className={s.specialist} data-testid={testId}>
+      <summary>Подробнее для специалиста</summary>
+      <div className={s.specialistBody}>{children}</div>
+    </details>
+  );
+}
+
 export function Spinner({ label }: { label?: string }): ReactNode {
   return <span className={s.spinner} role="img" aria-label={label} />;
 }

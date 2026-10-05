@@ -1,5 +1,7 @@
 // Pluggable run executors (architecture.yaml#interfaces.agent_host). The host contract is the canonical one of
 // @wizard/agents/host; platform-api implements it durably (M0-26 wires the real agents: ../agents/executors.ts).
+
+import type { CapabilityGap, DevelopmentRequestInput } from "@wizard/agents";
 import type {
   BuildHost as AgentBuildHost,
   BuildStore as AgentBuildStore,
@@ -14,6 +16,7 @@ import type { Check, GateContext, GateLevel, GateReport } from "@wizard/gates";
 import type { OrgPolicy, RouteOutput } from "@wizard/llm";
 import type { EventType } from "./events.js";
 
+export type { CapabilityGap, DevelopmentRequestInput } from "@wizard/agents";
 export type { GateContext, GateLevel, GateReport, HostRouteInput, InputAnswer, InputOption, InputRequest };
 /** specs/quality/gates.yaml#report check (api.yaml#/components/schemas/GateReport). */
 export type GateCheck = Check;
@@ -21,6 +24,12 @@ export type GateRunner = (level: GateLevel, ctx: GateContext) => Promise<GateRep
 
 export interface StepHost {
   route(input: HostRouteInput): Promise<RouteOutput>;
+  /**
+   * D73 «Запросы на развитие»: the agent records what the client asked beyond the platform's abilities (quote already
+   * scrubbed of PII; the platform scrubs once more): @wizard/agents RecordDevelopmentRequest of the orchestrator deps
+   * and BuildHost.
+   */
+  recordDevelopmentRequest(input: DevelopmentRequestInput): Promise<void>;
   emit(type: EventType, payload: Record<string, unknown>): Promise<void>;
   /** M0: identity with cancel check (M1: DBOS.runStep). */
   runStep<T>(name: string, fn: () => Promise<T>): Promise<T>;
@@ -50,7 +59,10 @@ export interface SecretInputRequest {
 
 /** agent_host as platform-api provides it: the budget is enforced in route() (managesBudget = true). */
 export interface BuildHost
-  extends Omit<AgentBuildHost, "runGates" | "emit" | "store" | "signal" | "run" | "needsInput">,
+  extends Omit<
+      AgentBuildHost,
+      "runGates" | "emit" | "store" | "signal" | "run" | "needsInput" | "recordDevelopmentRequest"
+    >,
     StepHost {
   runGates(level: GateLevel, overrides?: Partial<GateContext>): Promise<GateReport>;
   qa: BuilderQa;
@@ -120,6 +132,8 @@ export type InterviewOutput = (
   | { kind: "answer"; text: string }
 ) & {
   notice?: { categories: string[] };
+  /** M2-77/M2-59: capability gaps reported in this turn — kept in the message payload (platform-web: «Написать команде»). */
+  gaps?: CapabilityGap[];
   /** Executor state to persist with this turn (handed back as context.state next time); never shown to users. */
   state?: Record<string, unknown>;
 };

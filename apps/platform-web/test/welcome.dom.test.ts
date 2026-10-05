@@ -70,11 +70,39 @@ function pilotApi(
       available,
       buckets: [{ source: "topup", remaining: available, expiresAt: "2027-10-01T00:00:00Z" }],
     }),
+    getUsage: (async () => ({
+      pilot: plan === "pilot",
+      free: plan === "pilot",
+      builds: {
+        limit: plan === "pilot" ? 5 : null,
+        used: 3,
+        left: plan === "pilot" ? 2 : null,
+        nextAt: null,
+      },
+      edits: {
+        limit: plan === "pilot" ? 20 : null,
+        used: 5,
+        left: plan === "pilot" ? 15 : null,
+        nextAt: null,
+      },
+    })) as unknown as ApiClient["getUsage"],
     listSystems: async () => ({ items: [] }),
     listMembers: async () => ({ items: [] }),
     ...over,
   } as Partial<ApiClient>;
 }
+
+describe("S1 usage pill (D70)", () => {
+  test("pilot: «На пилоте бесплатно · ещё 2 сборки · ещё 15 правок», no credits, links to S-billing", async () => {
+    const el = mount(pilotApi(), "/");
+    await waitFor(() => q(el, "start-usage") !== null);
+    expect(q(el, "start-usage")?.textContent).toBe("На пилоте бесплатно · ещё 2 сборки · ещё 15 правок");
+    expect(q(el, "start-credits")).toBeNull();
+    expect(el.textContent).not.toMatch(/кредит/i);
+    act(() => q(el, "start-usage")?.click());
+    expect(window.location.pathname).toBe("/billing");
+  });
+});
 
 describe("S-welcome (pilot onboarding)", () => {
   test("route /welcome", () => {
@@ -82,20 +110,22 @@ describe("S-welcome (pilot onboarding)", () => {
     expect(matchRoute("/welcome/")).toEqual({ name: "welcome" });
   });
 
-  test("explains the pilot in Russian: free, credits, limits, review before the first publication", async () => {
+  test("explains the pilot in Russian: free, the pilot limit in words (no credits), limits, review before the first publication", async () => {
     const el = mount(pilotApi(), "/welcome");
     await waitFor(() => q(el, "welcome-title") !== null);
-    expect(q(el, "welcome-title")?.textContent).toBe("Добро пожаловать в пилот Wizard");
+    expect(q(el, "welcome-title")?.textContent).toBe("Добро пожаловать в пилот Born to Build");
     expect(q(el, "welcome-org")?.textContent).toBe("Ваша организация — «Кофейня «Зерно»».");
-    expect(q(el, "welcome-free")?.textContent).toContain("Пилот бесплатный");
+    expect(q(el, "welcome-free")?.textContent).toContain("На пилоте всё бесплатно");
     expect(q(el, "welcome-free")?.textContent).toContain("Оплата и привязка карты не нужны");
-    await waitFor(() => q(el, "welcome-credits")?.textContent?.includes("100") === true);
-    expect(q(el, "welcome-credits")?.textContent).toBe(
-      "Кредиты на сборку начисляет команда Wizard. Сейчас доступно: 100 кредитов.",
+    await waitFor(() => q(el, "welcome-usage")?.textContent?.includes("5 сборок") === true);
+    expect(q(el, "welcome-usage")?.textContent).toContain(
+      "На пилоте можно запустить 5 сборок и сделать 20 правок за 30 дней.",
     );
+    expect(q(el, "welcome-usage")?.textContent).toContain("Напишите команде");
+    expect(el.textContent).not.toMatch(/кредит|Wizard|prod/);
     expect(q(el, "welcome-limits")?.textContent).toContain("До 5 опубликованных систем, до 30 черновиков");
     expect(q(el, "welcome-review")?.textContent).toContain(
-      "Перед первой публикацией системы в prod её посмотрит модератор",
+      "Перед первой публикацией систему посмотрит команда Born to Build",
     );
     // Templates without the empty «Своя задача»; the own-words button.
     expect(q(el, "welcome-template-custom")).toBeNull();
@@ -122,22 +152,22 @@ describe("S-welcome (pilot onboarding)", () => {
     expect((q(el, "start-prompt") as HTMLTextAreaElement).value).toBe("");
   });
 
-  test("zero credits: the founder grants them; a non-pilot org goes straight to S1 without the pilot link", async () => {
-    let el = mount(pilotApi("pilot", 0), "/welcome");
-    await waitFor(() => q(el, "welcome-credits") !== null);
-    expect(q(el, "welcome-credits")?.textContent).toBe(ru.welcome.credits(0));
+  test("usage unknown: a general line; a non-pilot org goes straight to S1 without the pilot link", async () => {
+    let el = mount(pilotApi("pilot", 0, { getUsage: undefined }), "/welcome");
+    await waitFor(() => q(el, "welcome-usage") !== null);
+    expect(q(el, "welcome-usage")?.textContent).toBe(ru.welcome.usageUnknown);
     act(() => root?.unmount());
     container?.remove();
     el = mount(pilotApi("free", 100), "/welcome");
     await waitFor(() => q(el, "start-prompt") !== null);
     expect(window.location.pathname).toBe("/");
-    await waitFor(() => q(el, "start-credits")?.textContent?.includes("Free") === true);
+    await waitFor(() => q(el, "start-usage")?.textContent === "Тариф «Free»");
     expect(q(el, "start-pilot-about")).toBeNull();
   });
 });
 
 describe("S-billing on the pilot plan with payments on", () => {
-  test("no «Докупить» (billing.yaml#plans.topup.available_on), plan and balance visible", async () => {
+  test("no «Докупить» and no credits (D70): the plan and «На пилоте бесплатно» with what is left", async () => {
     const billing: Billing = {
       plan: "pilot",
       status: "none",
@@ -157,8 +187,11 @@ describe("S-billing on the pilot plan with payments on", () => {
       }),
       "/billing",
     );
-    await waitFor(() => q(el, "billing-available") !== null);
+    await waitFor(() => q(el, "billing-usage") !== null);
     expect(q(el, "billing-plan")?.dataset.plan).toBe("pilot");
+    expect(q(el, "usage-left")?.textContent).toBe("ещё 2 сборки · ещё 15 правок");
+    expect(q(el, "billing-available")).toBeNull();
+    expect(q(el, "billing-ledger")).toBeNull();
     expect(q(el, "billing-topup")).toBeNull();
     expect(q(el, "billing-topup-packs")).toBeNull();
   });

@@ -1,5 +1,6 @@
 // Real run executors (M0-26): orchestrator for interview turns, runBuild with a QA agent routed through host.route,
 // gates G0/G1/G2 (@wizard/gates; G1 and G2 on an in-process runtime in test mode) and the post-G0 draft steps.
+import type { CapabilityGap } from "@wizard/agents";
 import { type BuildCard, runBuild, specDigest } from "@wizard/agents/builder";
 import { AgentError } from "@wizard/agents/core";
 import { createHostQa, hostRouteFn } from "@wizard/agents/host";
@@ -64,7 +65,10 @@ function lastUserText(host: InterviewHost): string {
 function toOutput(res: TurnResult): InterviewOutput {
   let main: InterviewOutput | undefined;
   let notice: { categories: string[] } | undefined;
+  const gaps: CapabilityGap[] = [];
   for (const o of res.outputs as OrchOutput[]) {
+    const g = (o.payload as { gaps?: CapabilityGap[] } | undefined)?.gaps;
+    if (g?.length) gaps.push(...g);
     if (o.kind === "notice") notice = { categories: o.payload.categories };
     else if (o.kind === "questions")
       main = {
@@ -80,6 +84,7 @@ function toOutput(res: TurnResult): InterviewOutput {
   return {
     ...(main ?? { kind: "answer", text: "Готово." }),
     ...(notice ? { notice } : {}),
+    ...(gaps.length > 0 ? { gaps } : {}),
     state: res.session as unknown as Record<string, unknown>,
   };
 }
@@ -97,6 +102,8 @@ async function turn(host: InterviewHost): Promise<TurnResult> {
     // The orchestrator knows free/start/business; pilot has the free login methods (no phone_otp, billing.yaml#plans.pilot).
     org: { plan: agentPlan(c.org.plan), ruOnly: c.org.policy.ruOnly },
     runStep: host.runStep,
+    // D73: honest capability gaps → «Запросы на развитие» (org, system and run of this host).
+    recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
   });
   let session = (c.state as OrchSession | null) ?? newSession();
   if (c.trigger === "create") return orch.submitBrief(newSession(), lastUserText(host));

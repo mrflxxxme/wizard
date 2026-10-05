@@ -278,7 +278,8 @@ describe("G2 in the publish workflow (M2)", () => {
     flags.length = 0;
     const { run } = await publish(id, rev);
     expect(run.failure).toMatchObject({ code: "GATES_FAILED" });
-    expect(run.failure.message_ru).toContain("G2");
+    expect(run.failure.message_ru).toContain("проверку безопасности");
+    expect(run.failure.message_ru).not.toContain("G2");
     expect(flags).toEqual([]);
   });
 

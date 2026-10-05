@@ -16,7 +16,7 @@ import type { Me, OrgRole, OrgSettings } from "../api/types.js";
 
 /** Platform UI is a RoleSpec-less app: an empty spec only carries the platform theme for ui-kit components. */
 const PLATFORM_SPEC: RoleSpec = {
-  app: { name: "Wizard" },
+  app: { name: "Born to Build" },
   role: null,
   roles: [],
   entities: [],

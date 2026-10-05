@@ -38,6 +38,9 @@ export interface OrgsTable {
   suspended_at: TsNull;
   region_code: string | null;
   t1_restricted: Generated<boolean>;
+  /** D70: pilot limits of the org (NULL — billing/pilot-limits.ts defaults). */
+  pilot_builds_limit: number | null;
+  pilot_edits_limit: number | null;
   created_at: TsDef;
 }
 
@@ -499,6 +502,34 @@ export interface AiBackfillsTable {
   created_at: TsDef;
 }
 
+/** «Написать команде» (D68): copies of client messages for /admin (db.yaml#support_requests). */
+export interface SupportRequestsTable {
+  id: Generated<string>;
+  org_id: string;
+  user_id: string | null;
+  system_id: string | null;
+  screen: string | null;
+  text: string;
+  wants_team: boolean;
+  reply_by: ColumnType<Date, Date | string, Date | string>;
+  answered_at: TsNull;
+  answered_by: string | null;
+  created_at: TsDef;
+}
+
+/** «Запросы на развитие» (D73, db.yaml#development_requests). */
+export interface DevelopmentRequestsTable {
+  id: Generated<string>;
+  org_id: string;
+  system_id: string | null;
+  run_id: string | null;
+  user_id: string | null;
+  category: string;
+  quote: string;
+  offered: string | null;
+  created_at: TsDef;
+}
+
 /** db.yaml#destructive_changes (M2-72): owner confirmation of a destructive prod change and its journal. */
 export interface DestructiveChangesTable {
   id: Generated<string>;
@@ -557,4 +588,6 @@ export interface DB {
   "platform.platform_settings": PlatformSettingsTable;
   "platform.abuse_reports": AbuseReportsTable;
   "platform.staff_audit_log": StaffAuditLogTable;
+  "platform.support_requests": SupportRequestsTable;
+  "platform.development_requests": DevelopmentRequestsTable;
 }

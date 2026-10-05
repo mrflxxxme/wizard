@@ -1,9 +1,11 @@
 // Routes: "/" → S1, "/s/:systemId" → workspace (S2–S7), "/s/:systemId/code" → S-code, "/s/:systemId/settings" →
 // S10, "/s/:systemId/import/:importId" → S-import, "/billing" → S-billing, "/login" → S-auth, "/invite/:token" → S-invite,
 // "/abuse" → «Пожаловаться» (public), "/admin" → staff console (M2-08), "/welcome" → S-welcome (pilot onboarding,
-// M2-09). Without a session (401) every private route goes to /login.
+// M2-09). Without a session (401) every private route goes to /login. The «Написать команде» button (D68) is on every
+// cabinet screen.
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useEffect } from "react";
+import { SupportWidget } from "../features/support/SupportWidget.js";
 import { ru } from "../i18n/ru.js";
 import { AbuseForm } from "../screens/abuse/AbuseForm.js";
 import { AdminConsole } from "../screens/admin/AdminConsole.js";
@@ -21,6 +23,16 @@ import { usePlatform } from "./context.js";
 import { navigate, PUBLIC_ROUTES, useRoute } from "./router.js";
 
 export function App(): ReactNode {
+  return (
+    <>
+      <Page />
+      {/* D68: «Написать команде» on every cabinet screen (hidden on /admin, sign-in and public pages). */}
+      <SupportWidget />
+    </>
+  );
+}
+
+function Page(): ReactNode {
   const { route } = useRoute();
   const { auth } = usePlatform();
   const needsLogin = auth === "anon" && !PUBLIC_ROUTES.has(route.name);

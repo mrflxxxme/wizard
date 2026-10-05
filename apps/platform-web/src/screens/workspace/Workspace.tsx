@@ -467,7 +467,6 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               revision={target}
               changes={changes}
               reports={reports}
-              credits={run.kind === "build" && run.finished ? (run.finished.creditsUsed ?? null) : null}
               blockers={blockers}
               canCancel={!running}
               busy={busy === "publish" ? "publish" : busy === "cancel-draft" ? "cancel" : null}

@@ -20,6 +20,9 @@ import * as m0016 from "../../migrations/0016_m3_ai_actions.js";
 import * as m0017 from "../../migrations/0017_m2_pilot_admin.js";
 import * as m0018 from "../../migrations/0018_db_roles.js";
 import * as m0019 from "../../migrations/0019_g1_checks.js";
+import * as m0020 from "../../migrations/0020_p_pilot_limits.js";
+import * as m0021 from "../../migrations/0021_p_support.js";
+import * as m0022 from "../../migrations/0022_p_development_requests.js";
 import * as m0025 from "../../migrations/0025_p_destructive.js";
 import type { DB } from "./types.js";
 
@@ -68,6 +71,9 @@ const MIGRATIONS: Record<string, Migration> = {
   "0017_m2_pilot_admin": m0017,
   "0018_db_roles": m0018,
   "0019_g1_checks": m0019,
+  "0020_p_pilot_limits": m0020,
+  "0021_p_support": m0021,
+  "0022_p_development_requests": m0022,
   "0025_p_destructive": m0025,
 };
 

@@ -1,8 +1,11 @@
 // S4 «Ход сборки»: steps, gates, agent messages, needs_input, budget, errors (platform-screens.yaml#sse.events).
+// D28/D48/D70: human names of the checks, no credits; levels, check ids and file:line only under «Подробнее для
+// специалиста»; a failed run offers «Написать команде» (D68).
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import type { GateLevel, GateReport } from "../../api/types.js";
-import { Alert, Pill, StatusIcon } from "../../components/ui.js";
+import { Alert, Pill, Specialist, StatusIcon } from "../../components/ui.js";
+import { TeamButton } from "../../features/support/SupportWidget.js";
 import { ru } from "../../i18n/ru.js";
 import type { GateRow, NeedsInput, RunState } from "../../run/reducer.js";
 import s from "./Workspace.module.css";
@@ -16,7 +19,12 @@ function gateFromReport(r: GateReport | undefined): GateRow | null {
     totalChecks: r.checks.length,
     failedChecks: r.checks
       .filter((c) => c.status === "fail" || c.status === "error")
-      .map((c) => ({ id: c.id, message_ru: c.message_ru, ...(c.file ? { file: c.file } : {}) })),
+      .map((c) => ({
+        id: c.id,
+        message_ru: c.message_ru,
+        ...(c.file ? { file: c.file } : {}),
+        ...(c.line ? { line: c.line } : {}),
+      })),
   };
 }
 
@@ -35,9 +43,7 @@ function GateLine({ level, row }: { level: GateLevel; row: GateRow }): ReactNode
   return (
     <li className={s.gateRow} data-testid={`gate-row-${level}`} data-status={row.status}>
       <StatusIcon status={icon} />
-      <span title={ru.build.gate[level]} className={s.gateLevel}>
-        {level}
-      </span>
+      <span className={s.gateLevel}>{ru.build.gate[level] ?? level}</span>
       <span className={s.muted}>
         {row.status === "pending" && level === "G2" ? ru.build.afterG1 : ru.build.gateStatus[row.status]}
       </span>
@@ -52,11 +58,19 @@ function GateLine({ level, row }: { level: GateLevel; row: GateRow }): ReactNode
       {open && (
         <ul className={s.checks}>
           {row.failedChecks.map((c) => (
-            <li key={c.id}>
-              {c.message_ru}
-              {c.file ? ` (${c.file}${c.line ? `:${c.line}` : ""})` : ""}
-            </li>
+            <li key={c.id}>{c.message_ru}</li>
           ))}
+          <li>
+            <Specialist testId={`gate-specialist-${level}`}>
+              {level}
+              {row.failedChecks.map((c) => (
+                <div key={c.id}>
+                  {c.id}
+                  {c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}
+                </div>
+              ))}
+            </Specialist>
+          </li>
         </ul>
       )}
     </li>
@@ -195,7 +209,6 @@ export function BuildLog({
   onFix(): void;
   onRetry(): void;
 }): ReactNode {
-  const warn = run.credits.cap !== null && run.credits.used >= 0.8 * run.credits.cap;
   const gate = (l: GateLevel): GateRow => {
     const fromRun = run.gates[l];
     if (fromRun.status !== "pending") return fromRun;
@@ -205,9 +218,6 @@ export function BuildLog({
     <section className={s.buildLog} data-testid="build-progress" aria-label={ru.build.progress}>
       <header className={s.buildHead}>
         <h3 className={s.blockTitle}>{ru.build.progress}</h3>
-        <span data-testid="build-credits">
-          <Pill tone={warn ? "warn" : "neutral"}>{ru.build.credits(run.credits.used, run.credits.cap)}</Pill>
-        </span>
         {active && (
           <Button size="sm" variant="ghost" data-testid="build-cancel" onClick={onCancel}>
             {ru.build.cancel}
@@ -263,7 +273,7 @@ export function BuildLog({
       )}
       {run.budgetExceeded && (
         <div role="alert" className={s.alertBox} data-testid="budget-exceeded">
-          {ru.build.budgetExceeded(run.budgetExceeded.cap)}
+          {ru.build.budgetExceeded}
         </div>
       )}
       {run.input && <Decision key={run.input.inputId} input={run.input} onAnswer={onAnswer} />}
@@ -280,6 +290,8 @@ export function BuildLog({
               {ru.build.retry}
             </Button>
           ) : null}
+          <TeamButton testId="run-team" />
+          {run.failure.code && <Specialist testId="run-specialist">{run.failure.code}</Specialist>}
         </Alert>
       )}
     </section>
