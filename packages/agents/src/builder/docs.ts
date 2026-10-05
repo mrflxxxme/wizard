@@ -32,8 +32,14 @@ export function sdkDocs(topic?: SdkTopic): { docs: string } {
   return { docs: (assets.sdk.topics as Record<SdkTopic, string>)[topic] };
 }
 
-export const PROMPT_PARTS: { conventions: string; ops: string; semantic: string; phases: string } =
-  assets.prompt;
+/** Static prompt fragments; `sdk` is the SDK cheatsheet (runtime/sdk.md §1.2: imports, function shapes, v.*, ctx.db). */
+export const PROMPT_PARTS: {
+  conventions: string;
+  ops: string;
+  semantic: string;
+  phases: string;
+  sdk: string;
+} = assets.prompt;
 
 export interface CapabilityCard {
   title: string;

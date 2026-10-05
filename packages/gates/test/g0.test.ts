@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { buildSystem } from "@wizard/build";
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { typecheck } from "../src/g0/typecheck.js";
-import { checkFile, G0_CHECKS, runG0, runGates, shadowSchema } from "../src/index.js";
+import { checkFile, G0_CHECKS, reservedRoute, runG0, runGates, shadowSchema } from "../src/index.js";
 import { connect, forumCtx, forumFiles, loadYaml, REPO_ROOT } from "./helpers.js";
 
 const db = connect();
@@ -144,5 +144,18 @@ describe("shadow schema name", () => {
   test("accepts systems.schema_key starting with a digit (12 chars [a-z0-9]); rejects injection", () => {
     expect(shadowSchema("1abcdefghijk")).toBe("app_1abcdefghijk_shadow");
     expect(() => shadowSchema('x"; drop schema')).toThrow();
+  });
+});
+
+describe("reserved page routes (G0-SPEC-05)", () => {
+  test("/login, the policy page (default /privacy) and system prefixes are taken; trailing slash ignored", () => {
+    expect(reservedRoute("/login")).toBe("login");
+    expect(reservedRoute("/privacy/")).toBe("policy");
+    expect(reservedRoute("/policy", "/policy")).toBe("policy");
+    expect(reservedRoute("/policy")).toBeNull();
+    expect(reservedRoute("/api/x")).toBe("system");
+    expect(reservedRoute("/_wizard")).toBe("system");
+    expect(reservedRoute("/apiary")).toBeNull();
+    expect(reservedRoute("/")).toBeNull();
   });
 });

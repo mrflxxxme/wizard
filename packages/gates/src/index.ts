@@ -27,6 +27,8 @@ export { shadowSchema } from "./g0/migrations.js";
 export { checkFile, type G0Options, runG0, UI_BUNDLE_WARN } from "./g0/run.js";
 /** forbidden_api.limits: function source ≤ 200 KB. */
 export { FUNCTION_SOURCE_LIMIT } from "./g0/security.js";
+/** G0-SPEC-05: reservedRoute(route, policyPage?) → "login" | "policy" | "system" | null; default policy page /privacy. */
+export { DEFAULT_POLICY_PAGE, reservedRoute } from "./g0/spec.js";
 /** G1 check sources: PC matrix, G1 selection, consent probes, SC-<AC> (qa.yaml#checks). */
 export {
   acceptanceChecks,

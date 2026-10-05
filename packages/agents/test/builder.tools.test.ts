@@ -313,7 +313,7 @@ describe("write_file", () => {
     });
     const out = await runBuild(mem.host, {
       card: cardFor(spec),
-      cap: 3,
+      cap: 6, // POINT_EDIT_CAP_CREDITS of platform-api: one build_code upper bound alone is ~3 credits
       mode: "point_edit",
       target: {
         wzId: "abcd1234:1",
