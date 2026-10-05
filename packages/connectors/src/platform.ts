@@ -1,5 +1,6 @@
 // Platform-owned connector settings from the process environment (platform/deploy.yaml#local.env_vars M1 list;
 // names beyond it are listed in docs/reviews/impl-notes/M1-06.md).
+import { mailApiFromEnv } from "./mail-api.js";
 import { systemResolver, tcpDialer } from "./net.js";
 import { missingSecret } from "./secrets.js";
 import type { SmtpEndpoint } from "./smtp.js";
@@ -24,7 +25,7 @@ export interface PlatformEnvOptions {
 
 /**
  * WIZARD_TELEGRAM_BOT_TOKEN / _WEBHOOK_SECRET / _BOT_USERNAME / _API_BASE, WIZARD_SMTP_HOST / _PORT / _USER /
- * _PASSWORD, WIZARD_MAIL_DOMAIN, WIZARD_DEV_SMTP(_PORT), WIZARD_CONNECTORS, WIZARD_YOOKASSA_API_BASE,
+ * _PASSWORD, WIZARD_MAIL_TRANSPORT / WIZARD_MAIL_API_BASE (Unisender Go HTTP API), WIZARD_MAIL_DOMAIN, WIZARD_DEV_SMTP(_PORT), WIZARD_CONNECTORS, WIZARD_YOOKASSA_API_BASE,
  * WIZARD_YOOKASSA_IP_ALLOWLIST (comma-separated CIDRs). Secret values are read at call time, never cached here.
  */
 export function platformConfigFromEnv(env: EnvSource, o: PlatformEnvOptions): PlatformConnectorConfig {
@@ -50,6 +51,7 @@ export function platformConfigFromEnv(env: EnvSource, o: PlatformEnvOptions): Pl
       botUsername: env.WIZARD_TELEGRAM_BOT_USERNAME || null,
     },
     smtp,
+    mailApi: mailApiFromEnv(env),
     devSmtp:
       o.local && env.WIZARD_DEV_SMTP === "1"
         ? { host: "127.0.0.1", port: Number(env.WIZARD_DEV_SMTP_PORT ?? 1025), tls: "none" }

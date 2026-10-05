@@ -293,6 +293,19 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
           })),
         ];
 
+        it("mail over the Unisender Go HTTP API: platform-api, worker (and the prod runtime) reach public 443", () => {
+          // The pilot's server has the mail ports closed; platform mail leaves over 443 (email.yaml#transport).
+          const public443 = (name: string) =>
+            (of("NetworkPolicy").find((n) => n.metadata.name === name)?.spec.egress ?? []).some(
+              (e: K8s) =>
+                (e.to ?? []).some((t: K8s) => t.ipBlock?.cidr === "0.0.0.0/0") &&
+                (e.ports ?? []).some((p: K8s) => p.port === 443),
+            );
+          expect(public443("wizard-platform-api")).toBe(true);
+          expect(public443("wizard-worker")).toBe(true);
+          if (env === "prod") expect(public443("wizard-runtime")).toBe(true);
+        });
+
         it("the runtime internal port is never behind an Ingress (L3-19)", () => {
           const internal = of("Service").find((s) => s.metadata.name === "wizard-runtime-internal");
           expect(internal?.spec.type).toBe("ClusterIP");

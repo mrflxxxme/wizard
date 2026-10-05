@@ -63,7 +63,8 @@ export const CONNECTOR_HOSTS: Readonly<Record<string, readonly string[]>> = {
 /**
  * Policy of a capability token (a sandbox pod or the runtime's connector traffic): https = connector hosts of the
  * system's integrations ∪ (function.egress ∩ globalAllow, without platform domains and internal names); smtp = hosts of
- * its email integrations with provider=smtp, plus the platform SMTP host when it uses provider=platform. Any other
+ * its email integrations with provider=smtp, plus the platform SMTP host when it uses provider=platform (or, on https,
+ * the platform's mail API host when platform mail leaves over the Unisender Go HTTP API). Any other
  * public host a function declares (D71) is reached only by ctx.http.fetch through a per-call grant of the runtime
  * (egress-grants.ts) — a capability token never opens it.
  */
@@ -72,6 +73,8 @@ export function egressPolicyFor(
   o: {
     globalAllow?: Iterable<string>;
     platformSmtpHost?: string;
+    /** Host of the platform mail HTTP API (WIZARD_MAIL_TRANSPORT=unisender-api); replaces the SMTP host. */
+    platformMailApiHost?: string;
     label?: string;
     platformDomains?: readonly string[];
   },
@@ -85,7 +88,8 @@ export function egressPolicyFor(
       const cfg = (integ.config ?? {}) as { provider?: unknown; host?: unknown };
       if (cfg.provider === "smtp" && typeof cfg.host === "string" && HOST_RE.test(cfg.host.toLowerCase())) {
         smtp.add(cfg.host.toLowerCase());
-      } else if (o.platformSmtpHost) smtp.add(o.platformSmtpHost.toLowerCase());
+      } else if (o.platformMailApiHost) https.add(o.platformMailApiHost.toLowerCase());
+      else if (o.platformSmtpHost) smtp.add(o.platformSmtpHost.toLowerCase());
     }
   }
   const global = new Set([...(o.globalAllow ?? [])].map((h) => h.toLowerCase()));

@@ -1,7 +1,14 @@
 // Env names: specs/platform/deploy.yaml#local.env_vars (canonical list; the platform shop keys of M2-07 —
 // docs/reviews/impl-notes/M2-07.md).
 import { join, resolve } from "node:path";
-import { isPlainAddress, YOOKASSA_API_BASE, YOOKASSA_IP_ALLOWLIST } from "@wizard/connectors";
+import {
+  isPlainAddress,
+  type MailTransport,
+  mailTransportOf,
+  unisenderApiBase,
+  YOOKASSA_API_BASE,
+  YOOKASSA_IP_ALLOWLIST,
+} from "@wizard/connectors";
 import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
 import { DEFAULT_DB_URL, DEFAULT_ORG_ID } from "./db/index.js";
 
@@ -106,11 +113,14 @@ export interface Config {
   founderReviewRequired: boolean;
   /**
    * Platform mail over SMTP (M2-09): WIZARD_SMTP_HOST / _PORT / _USER / _PASSWORD / _FROM / _TLS; null — letters go to
-   * the outbox files (outboxDir). Production needs it unless a mailer is injected.
+   * the outbox files (outboxDir). Production needs it unless a mailer is injected. WIZARD_MAIL_TRANSPORT /
+   * WIZARD_MAIL_API_BASE switch it to the Unisender Go HTTP API (email.yaml#transport).
    */
   smtp: PlatformSmtp | null;
   /** WIZARD_SMTP_HOST is set but WIZARD_SMTP_FROM is missing or not an address (refused at startup). */
   smtpFromInvalid: boolean;
+  /** WIZARD_MAIL_TRANSPORT has an unknown value (refused at startup). */
+  mailTransportInvalid: boolean;
 }
 
 export interface PlatformSmtp {
@@ -121,6 +131,13 @@ export interface PlatformSmtp {
   user: string | null;
   password: string | null;
   from: { address: string; name: string };
+  /**
+   * smtp (default) or unisender-api: the Unisender Go HTTP API on 443 with the password as X-API-KEY (the pilot's
+   * server has the mail ports closed). Default unisender-api for a *.unisender.ru host.
+   */
+  transport?: MailTransport;
+  /** API origin of transport unisender-api (WIZARD_MAIL_API_BASE, else derived from the host). */
+  apiBase?: string;
 }
 
 /** WIZARD_SMTP_FROM: "Wizard <noreply@example.ru>" or a bare address; null when invalid. */
@@ -140,15 +157,20 @@ const onOff = (v: string | undefined): boolean | null => {
   return null;
 };
 
-function smtpFromEnv(env: NodeJS.ProcessEnv): { smtp: PlatformSmtp | null; fromInvalid: boolean } {
+function smtpFromEnv(env: NodeJS.ProcessEnv): {
+  smtp: PlatformSmtp | null;
+  fromInvalid: boolean;
+  transportInvalid: boolean;
+} {
+  const transport = mailTransportOf(env);
   const host = env.WIZARD_SMTP_HOST?.trim();
-  if (!host) return { smtp: null, fromInvalid: false };
+  if (!host) return { smtp: null, fromInvalid: false, transportInvalid: transport === null };
   const port = Number(env.WIZARD_SMTP_PORT ?? 465);
   const t = env.WIZARD_SMTP_TLS?.trim().toLowerCase();
   const tls: PlatformSmtp["tls"] =
     t === "implicit" || t === "starttls" || t === "none" ? t : port === 465 ? "implicit" : "starttls";
   const from = parseMailFrom(env.WIZARD_SMTP_FROM);
-  if (!from) return { smtp: null, fromInvalid: true };
+  if (!from) return { smtp: null, fromInvalid: true, transportInvalid: transport === null };
   return {
     smtp: {
       host,
@@ -157,8 +179,11 @@ function smtpFromEnv(env: NodeJS.ProcessEnv): { smtp: PlatformSmtp | null; fromI
       user: env.WIZARD_SMTP_USER || null,
       password: env.WIZARD_SMTP_PASSWORD || null,
       from,
+      transport: transport ?? "smtp",
+      ...(transport === "unisender-api" ? { apiBase: unisenderApiBase(host, env.WIZARD_MAIL_API_BASE) } : {}),
     },
     fromInvalid: false,
+    transportInvalid: transport === null,
   };
 }
 
@@ -241,6 +266,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
       onOff(env.WIZARD_FOUNDER_REVIEW) ?? (over.nodeEnv ?? env.NODE_ENV) === "production",
     smtp: mail.smtp,
     smtpFromInvalid: mail.fromInvalid,
+    mailTransportInvalid: mail.transportInvalid,
     ...over,
     // Tests that move artifactsDir get the other .data stores next to it.
     secretsFile:
@@ -305,6 +331,14 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
     throw new StartupError(
       'WIZARD_SMTP_FROM: нужен адрес отправителя писем платформы, например "Wizard <noreply@домен>"',
     );
+  if (c.mailTransportInvalid)
+    throw new StartupError("WIZARD_MAIL_TRANSPORT: допустимо smtp или unisender-api");
+  if (c.smtp?.transport === "unisender-api") {
+    if (!c.smtp.password)
+      throw new StartupError("WIZARD_SMTP_PASSWORD: нужен API-ключ Unisender Go (он же пароль SMTP)");
+    if (c.nodeEnv === "production" && !c.smtp.apiBase?.startsWith("https://"))
+      throw new StartupError("WIZARD_MAIL_API_BASE: нужен https-адрес");
+  }
   if (c.smtp && !(Number.isInteger(c.smtp.port) && c.smtp.port > 0 && c.smtp.port < 65536))
     throw new StartupError("WIZARD_SMTP_PORT: нужен номер порта");
   if (c.nodeEnv === "production" && c.smtp?.tls === "none")

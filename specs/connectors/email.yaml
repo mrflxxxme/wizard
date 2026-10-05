@@ -17,6 +17,19 @@ config_schema:
   templates: "{<id>: {subject ≤ 120, body ≤ 10000}}; подстановки {{field}}, {{ref.field}}, {{link}} (ссылка на страницу записи)"
   validation: "G0: шаблоны, на которые ссылаются workflows/код, существуют; subject не ссылается на поля pii≠none (email.subject_pii); body с pii-полями записи — только сотрудникам ($owner, $role:<роль>), владельцу записи (ownerField) или самому посетителю (его собственные поля записи, без {{ref.поле}} с ПДн) — D71, email.body_pii_recipient; {{cancel_link}} — только при cancel.set на поля без ПДн (notify.cancel_link)"
 
+transport: >
+  provider=platform уходит по SMTP или через HTTP API Unisender Go (порт 443) — на сервере пилота Timeweb закрыты
+  исходящие почтовые порты 25, 465, 587 и 2525. WIZARD_MAIL_TRANSPORT=smtp|unisender-api; по умолчанию unisender-api,
+  если WIZARD_SMTP_HOST — *.unisender.ru, иначе smtp. API: POST <база>/ru/transactional/api/v1/email/send.json,
+  заголовок X-API-KEY = WIZARD_SMTP_PASSWORD (у Unisender Go пароль SMTP и есть API-ключ — новых секретов нет).
+  База: WIZARD_MAIL_API_BASE, иначе smtp.goN.unisender.ru → https://goN.unisender.ru, иначе https://goapi.unisender.ru.
+  Тело: recipients [{email}], subject, from_email, from_name, reply_to, body {plaintext, html}, inline_attachments
+  [{type, name = cid, content base64}] (QR), attachments, только X-заголовки, template_engine none (текст уже
+  отрисован). track_links, track_read, skip_unsubscribe не передаются: их отключение Unisender включает только через
+  поддержку (действие основателя). Ошибки — как у SMTP: 4xx кроме 429 — окончательные (401/403 → AUTH_FAILED, API-код
+  204 → RECIPIENT_UNAVAILABLE, прочие → INVALID_REQUEST), 429, 5xx и сеть — временные, один повтор; тайм-аут 15 с.
+  Ключ, адрес и текст письма в логи и ошибки не попадают. Свой SMTP клиента (provider=smtp) и dev-приёмник остаются
+  SMTP. Код: packages/connectors/src/mail-api.ts.
 actions:
   sendTemplate:
     input: "{userId, template, params, attachQrOf?: {entity, id}, idempotencyKey?}"
