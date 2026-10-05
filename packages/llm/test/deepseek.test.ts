@@ -159,12 +159,12 @@ describe("transformBody(deepseek): thinking disabled on every call", () => {
     expect(JSON.stringify(out.messages)).not.toContain("reasoning_content");
   });
 
-  test("other providers keep their rules (zai: no thinking field, lowest reasoning effort with or without tools)", () => {
+  test("other providers keep their rules (zai: no thinking field, middle reasoning effort with or without tools)", () => {
     expect(transformBody("zai", { messages: [] })).not.toHaveProperty("thinking");
-    expect(transformBody("zai", { messages: [] }).reasoning_effort).toBe("low");
+    expect(transformBody("zai", { messages: [] }).reasoning_effort).toBe("high");
     expect(transformBody("zai", { messages: [], tools: [{}], thinking: { type: "disabled" } })).toMatchObject(
       {
-        reasoning_effort: "low",
+        reasoning_effort: "high",
       },
     );
     expect(

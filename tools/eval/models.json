@@ -44,7 +44,7 @@
       "provider": "zai",
       "model": "glm-5.3",
       "price": { "input": 162, "cached_input": 30, "output": 510 },
-      "extra_body": { "reasoning_effort": "low" },
+      "extra_body": { "reasoning_effort": "high" },
       "_note": "glm-5.3 думает всегда: thinking disabled даёт 400 (замер на сервере 05.10.2026)"
     },
     {

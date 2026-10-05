@@ -696,7 +696,7 @@ group by 1, 2, 3, 4, 5, 6 order by last_at desc limit 40;
  */
 const LLM_SHAPE_PROBE = `
 const targets = [
-  { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { reasoning_effort: "low" } },
+  { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { reasoning_effort: "high" } },
   { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "moonshotai/Kimi-K2.6", extra: { chat_template_kwargs: { enable_thinking: false } } },
   { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "zai-org/GLM-5.1", extra: { chat_template_kwargs: { enable_thinking: false } } },
 ];

@@ -65,11 +65,11 @@ export function transformBody(
     out.thinking = { type: "disabled" };
   } else if (providerId === "zai") {
     // glm-5.3 always thinks: `thinking: {type: "disabled"}` is a 400 («cannot be disabled; please use low, high, or
-    // max», pilot eval 2026-10-05). The lowest effort on every call instead; reasoning_content is still not sent back.
+    // max», pilot eval 2026-10-05). The middle of the three efforts (low | high | max) on every call instead (founder, 2026-10-05: quality over cost); reasoning_content is still not sent back.
     delete out.thinking;
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
-    out.reasoning_effort = "low";
+    out.reasoning_effort = "high";
   } else if (Array.isArray(out.tools) && out.tools.length > 0) {
     delete out.reasoning_effort;
     delete out.enable_thinking;
