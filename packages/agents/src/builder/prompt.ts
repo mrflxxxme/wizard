@@ -2,8 +2,10 @@
 
 import type { AppSpec } from "@wizard/appspec";
 import type { GateReport } from "@wizard/gates";
+import { gapsPromptSection } from "../gaps.js";
+import { textRulesSection } from "../text-rules.js";
 import { cardDigest, fileTree, specDigest } from "./digest.js";
-import { PROMPT_PARTS, uiKitDocs } from "./docs.js";
+import { capabilityToc, PROMPT_PARTS, uiKitDocs } from "./docs.js";
 import type { PlanStep } from "./tools.js";
 import type { BuildCard } from "./types.js";
 
@@ -28,6 +30,15 @@ export const STATIC_PROMPT = [
   PROMPT_PARTS.conventions,
   "",
   uiKitDocs().docs,
+  "",
+  "# Recipes (get_capability({id}) before planning; a recipe is a quality hint, the card decides what to build)",
+  capabilityToc(),
+  "",
+  "# Тексты для людей (страницы, письма, подписи внутри системы)",
+  textRulesSection("system"),
+  "",
+  "# Чего платформа пока не умеет (честно: чего нет → замена)",
+  gapsPromptSection("build"),
 ].join("\n");
 
 export function sessionMessage(a: {

@@ -7,6 +7,13 @@ import { AgentError } from "../core/errors.js";
 import type { AgentEventSink, EmitFn, RunStepFn } from "../core/events.js";
 import { type CallBase, callTool, type RouteFn } from "../core/loop.js";
 import { defineTool, type ToolIssue } from "../core/tool.js";
+import {
+  type CapabilityGap,
+  gapMessage,
+  gapOutOfScope,
+  type RecordDevelopmentRequest,
+  reportCapabilityGapTool,
+} from "../gaps.js";
 import { estimateCard } from "./estimate.js";
 import { forkOptionLabel, forkTitle } from "./fork-labels.js";
 import { piiCategories, piiNoticeText } from "./pii.js";
@@ -52,7 +59,7 @@ export type OrchOutput =
       role: "assistant";
       kind: "questions";
       text: string;
-      payload: { questionIds: string[]; analysis?: AnalysisSummary };
+      payload: { questionIds: string[]; analysis?: AnalysisSummary; gaps?: CapabilityGap[] };
       questions: Question[];
     }
   | {
@@ -60,7 +67,7 @@ export type OrchOutput =
       role: "assistant";
       kind: "card";
       text: string;
-      payload: { cardVersion: number };
+      payload: { cardVersion: number; gaps?: CapabilityGap[] };
       card: SystemCard | ChangeCard;
     }
   | {
@@ -68,7 +75,7 @@ export type OrchOutput =
       role: "assistant";
       kind: "text";
       text: string;
-      payload?: { hint?: "style" | "restart" | "topup" };
+      payload?: { hint?: "style" | "restart" | "topup"; gaps?: CapabilityGap[] };
     };
 
 export interface ChangeContext {
@@ -97,6 +104,8 @@ export interface OrchSession {
   seenKeys: string[];
   llmCalls: number;
   creditsCharged: number;
+  /** Capability gaps reported in this session (M2-77); absent in sessions stored before it. */
+  gaps?: CapabilityGap[];
 }
 
 export interface Handoff {
@@ -136,6 +145,8 @@ export interface OrchestratorDeps {
   runStep?: RunStepFn;
   onEvent?: AgentEventSink;
   newId?: () => string;
+  /** Optional host method: records a development request (D73); absent → the answer is still honest, nothing stored. */
+  recordDevelopmentRequest?: RecordDevelopmentRequest;
 }
 
 export interface TurnOptions {
@@ -165,6 +176,7 @@ export function newSession(): OrchSession {
     seenKeys: [],
     llmCalls: 0,
     creditsCharged: 0,
+    gaps: [],
   };
 }
 
@@ -360,6 +372,7 @@ export class Orchestrator {
           task: "Это правка готовой системы. Классифицируй её и вызови submit_change.",
         }),
         tool,
+        sideTools: [this.gapTool(s)],
       });
       this.count(s, r.stats);
       if (!r.ok) throw new InvalidOutput(r.issues);
@@ -396,6 +409,7 @@ export class Orchestrator {
           "Structured analysis of the brief: goals, segment, roles, data, integrations, resolved forks.",
         input: analysisSchema,
       }),
+      sideTools: [this.gapTool(s)],
     });
     this.count(s, r.stats);
     if (!r.ok) throw new InvalidOutput(r.issues);
@@ -461,10 +475,11 @@ export class Orchestrator {
         input: cardDraftSchema,
         check: (v) => checkCard(v, { plan: this.org.plan }),
       }),
+      sideTools: [this.gapTool(s)],
     });
     this.count(s, r.stats);
     if (!r.ok) throw new InvalidOutput(r.issues);
-    const draft = { ...r.value, forkAnswers: s.answers };
+    const draft = { ...r.value, outOfScope: withGaps(r.value.outOfScope, s.gaps), forkAnswers: s.answers };
     const est = estimateCard(draft, { ...this.estimateOpts(), kind: "create" });
     const cardVersion = s.cardVersion + 1;
     const card = systemCardSchema.parse({ ...draft, cardVersion, estimate: est.estimate, cap: est.cap });
@@ -495,13 +510,17 @@ export class Orchestrator {
         input: changeDraftSchema,
         check: (v) => checkChangeDraft(v, change, { plan: this.org.plan }),
       }),
+      sideTools: [this.gapTool(s)],
     });
     this.count(s, r.stats);
     if (!r.ok) throw new InvalidOutput(r.issues);
-    const est = estimateCard(r.value, { ...this.estimateOpts(), kind: "change" });
+    const gaps = s.gaps ?? [];
+    const value =
+      gaps.length > 0 ? { ...r.value, outOfScope: withGaps(r.value.outOfScope ?? [], gaps) } : r.value;
+    const est = estimateCard(value, { ...this.estimateOpts(), kind: "change" });
     const cardVersion = s.cardVersion + 1;
     const card = changeCardSchema.parse({
-      ...r.value,
+      ...value,
       kind: "change",
       cardVersion,
       estimate: est.estimate,
@@ -515,6 +534,33 @@ export class Orchestrator {
 
   // ------------------------------------------------------------------ helpers
 
+  /** report_capability_gap for this session: new gaps go to s.gaps and to the host (M2-77). */
+  private gapTool(s: OrchSession) {
+    return reportCapabilityGapTool({
+      record: this.deps.recordDevelopmentRequest,
+      known: s.gaps ?? [],
+      onGap: (g) => {
+        s.gaps = [...(s.gaps ?? []), g];
+      },
+    });
+  }
+
+  /**
+   * Honest answer for gaps reported in this turn: appended to the main output (questions, card or text) with
+   * payload.gaps; without such an output (a failed turn) — a separate text message.
+   */
+  private attachGaps(outputs: OrchOutput[], gaps: CapabilityGap[]): void {
+    if (gaps.length === 0) return;
+    const note = gapMessage(gaps);
+    const main = [...outputs].reverse().find((o) => o.kind !== "notice");
+    if (!main) {
+      outputs.push({ id: this.id(), role: "assistant", kind: "text", text: note, payload: { gaps } });
+      return;
+    }
+    main.text = `${main.text}\n\n${note}`;
+    main.payload = { ...main.payload, gaps } as never;
+  }
+
   private async turn(
     session: OrchSession,
     opts: TurnOptions,
@@ -524,6 +570,8 @@ export class Orchestrator {
       return { session, outputs: [] };
     }
     const s = structuredClone(session);
+    s.gaps ??= [];
+    const known = s.gaps.length;
     const outputs: OrchOutput[] = [];
     const res: TurnResult = { session: s, outputs };
     try {
@@ -533,6 +581,7 @@ export class Orchestrator {
       else if (e instanceof LlmError) this.llmFailed(s, res, e);
       else throw e;
     }
+    this.attachGaps(outputs, s.gaps.slice(known));
     if (opts.idempotencyKey !== undefined) s.seenKeys.push(opts.idempotencyKey);
     for (const o of outputs) {
       const kind =
@@ -661,6 +710,16 @@ export class Orchestrator {
   private id(): string {
     return (this.deps.newId ?? randomUUID)();
   }
+}
+
+/** Card outOfScope with a «Пока не войдёт» line per gap that the model did not mention (gap lines first, ≤ 10). */
+function withGaps(outOfScope: readonly string[], gaps: readonly CapabilityGap[] | undefined): string[] {
+  if (!gaps || gaps.length === 0) return [...outOfScope];
+  const lower = outOfScope.map((x) => x.toLowerCase());
+  const extra = gaps
+    .filter((g) => !lower.some((x) => x.includes(g.missing.toLowerCase().slice(0, 24))))
+    .map(gapOutOfScope);
+  return [...extra, ...outOfScope].slice(0, 10);
 }
 
 class InvalidOutput extends Error {

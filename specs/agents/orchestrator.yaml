@@ -59,8 +59,8 @@ pii_notice:
 schemas:
   Analysis:
     goals: "string[] 1..5 — что пользователь хочет получить, по-русски"
-    segment: "events | made_to_order | horizontal"
-    skeleton: "подмножество [catalog, application, process, payment, fulfillment] — какие звенья ядра нужны"
+    segment: "site | booking | crm | events | made_to_order | horizontal | other — ближайший рецепт качества (D66): классы выпуска site/booking/crm, прежние рецепты events/made_to_order, horizontal/other — только общий конвейер. Сегмент не ограничивает состав системы"
+    skeleton: "подмножество [catalog, application, process, payment, fulfillment] — какие звенья нужны задаче (сигналы для развилок, не шаблон системы)"
     roles: "{name: ident, label, access: public|login, isStaff: bool, evidence: string}[] 1..8"
     entities: "{name: ident, label, keyFields: string[] ≤8, containsPii: bool}[] 1..20"
     integrations: "(yookassa|telegram|email|qr)[]"
@@ -81,6 +81,7 @@ schemas:
     - { name: submit_analysis, input: Analysis }
     - { name: ask_questions,   input: "{questions: Question[] 1..7}" }
     - { name: submit_card,     input: "SystemCard без estimate/cap/cardVersion" }
+    - { name: report_capability_gap, input: "{category: payments|subscriptions|integration|messaging|design|domain|media|data|mobile|ai|other, quote ≤300 — слова клиента, missing ≤200 — чего нет, offered ≤200 | null — ближайшая замена}", note: "M2-77, D73: предлагается рядом с submit_analysis, submit_card, submit_change и submit_change_card (модель вызывает его в том же ответе). Код: scrub ПДн в quote и offered, запись через необязательный метод хоста recordDevelopmentRequest({category, quote, offered}) (нет метода — не пишет, ответ клиенту всё равно честный), дедупликация по (category, quote) за сессию. Выход: OrchSession.gaps, в тексте вопросов или карточки — честный ответ «Пока не умеем … Можно сделать так … «Написать команде»», payload.gaps; в карточке outOfScope — строки «Пока не войдёт: …». Пробел не останавливает интервью и сборку" }
 
 system_card:          # схема SystemCard (backlog M0-12 ссылается на этот якорь)
   cardVersion: "int ≥1"
@@ -159,13 +160,15 @@ change_requests:       # правка уже собранной системы �
 prompt_skeleton:       # порядок фиксирован; статичная часть — кэшируемый префикс (точка кэша на последнем статичном блоке)
   static:
     - { section: role,            content: "Ты — оркестратор Wizard: превращаешь описание задачи нетехнического владельца бизнеса в карточку системы. Кратко, по-русски, без жаргона" }
-    - { section: platform,        content: "Что умеет платформа: данные+права+статусы+автоматизации в спеке; экраны React на библиотеке ядра; коннекторы yookassa/telegram/email/qr; вход email/telegram (телефон — только на тарифах Старт/Бизнес); PWA; 152-ФЗ встроен. Скелет Каталог→Заявка→Процесс→Оплата→Выдача" }
-    - { section: non_goals,       content: "product.yaml#non_goals человеческими словами — что честно отвечать «пока не умеем»" }
+    - { section: platform,        content: "Нейтрально, без навязанного скелета (D43, D66): платформа собирает веб-приложение под задачу (данные, роли и права, статусы, автоматизации, экраны на компонентах ядра, PWA, 152-ФЗ встроен); состав системы выводится из задачи. Список «умеем к выпуску» — PLATFORM_CAN в packages/agents/src/gaps.ts" }
+    - { section: recipes,         content: "Классы site / booking / crm (+ events, made_to_order) — рецепты качества с типовыми развилками; other — общий конвейер. Не меню и не ограничитель" }
+    - { section: non_goals,       content: "Что честно отвечать «пока не умеем» к выпуску и ближайшая замена (PLATFORM_LIMITS в packages/agents/src/gaps.ts) + product.yaml#non_goals человеческими словами; когда вызывать report_capability_gap" }
     - { section: fork_taxonomy,   content: "id, суть, варианты, правило рекомендации (компактная выжимка fork_taxonomy)" }
     - { section: defaults,        content: "defaults целиком" }
     - { section: output_rules,    content: "Отвечай только вызовом инструмента. Ровно один recommended. whyItMatters — про последствия для бизнеса. Не выдумывай реальные данные. Не повторяй ПДн из брифа" }
+    - { section: text_rules,      content: "Общий свод правил текста для людей textRules('chat') из packages/agents/src/text-rules.ts (D48, D49: простой язык, без жаргона и ИИ-штампов, без выдуманных фактов; допущения помечаются). Один модуль на всех агентов; линтер M2-33 — после выпуска" }
     - { section: acceptance_rules, content: "AC проверяемы машиной: права (роль×данные×действие) или сценарий с наблюдаемым результатом. Плохо: «удобный интерфейс». Хорошо: «Участник не видит чужие заявки»" }
-    - { section: example,         content: "1 компактный пример: бриф → Analysis → 3 вопроса → фрагмент карточки (синтетический, без ПДн)" }
+    - { section: example,         content: "1 компактный нейтральный пример: бриф → Analysis → 3 вопроса → фрагмент карточки (синтетический, без ПДн; не форум и не кондитерская)" }
   dynamic:
     - { section: org_context,     content: "orgPolicy.ruOnly, тариф (free|start|business — определяет доступность входа по телефону), существующие системы (названия)" }
     - { section: current_spec,    content: "дайджест текущей спеки (только для change_requests)" }
@@ -184,7 +187,7 @@ defaults:
   - "Адаптивность и PWA — всегда"
   - "Пользователь видит только свои записи (rowFilter по владельцу), персонал — все"
   - "Выгрузка CSV для таблиц персонала — всегда"
-  - "Оплата не подключается, если про деньги в брифе ничего нет"
+  - "Оплата не подключается, если про деньги в брифе ничего нет; к выпуску приём оплаты не подключается вовсе (D65): сумма — поле заявки, оплата вне системы, запрос — report_capability_gap(payments)"
 
 # ---------------------------------------------------------------- Таксономия развилок
 # rec — правило выбора recommended. applies_when — сигналы в Analysis.
@@ -195,17 +198,17 @@ fork_taxonomy:
     - { id: F-STAFF,      impact: 3, applies_when: "≥2 вида действий персонала", q: "Кто из сотрудников работает в системе?", options: [single_admin, admin_manager, admin_manager_moderator], rec: "минимальный набор, покрывающий действия из брифа" }
     - { id: F-VISIBILITY, impact: 3, applies_when: "есть персонал кроме админа", q: "Кто из сотрудников видит какие записи?", options: [all_see_all, assigned_only, by_department], rec: "all_see_all при ≤5 сотрудниках" }
     - { id: F-APPROVAL,   impact: 3, applies_when: "есть заявки", q: "Заявки подтверждаются?", options: [auto, manual, rule_based], rec: "auto, если нет упоминания проверки" }
-    - { id: F-STATUSES,   impact: 2, applies_when: "есть процесс", q: "Какой путь проходит заявка?", options: [simple_3, pipeline_board, custom], rec: "simple_3 (новая → в работе → готово)" }
-    - { id: F-PAYMENT,    impact: 3, applies_when: "есть цена/оплата", q: "Как принимать оплату?", options: [none, yookassa_full, yookassa_prepay, invoice_manual], rec: "yookassa_full; invoice_manual добавляется вариантом при B2B" }
+    - { id: F-STATUSES,   impact: 2, applies_when: "есть процесс; не segment=crm (там F-CRM-PIPELINE)", q: "Какой путь проходит заявка?", options: [simple_3, pipeline_board, custom], rec: "simple_3 (новая → в работе → готово)" }
+    - { id: F-PAYMENT,    impact: 3, applies_when: "есть цена/оплата", q: "Как принимать оплату?", options: [none, yookassa_full, yookassa_prepay, invoice_manual], rec: "none, пока приём оплаты не подключён (report_capability_gap payments); invoice_manual — счёт вне системы при B2B" }
     - { id: F-NOTIFY,     impact: 2, applies_when: "есть смена статусов", q: "Как сообщать об изменениях?", options: [email, telegram, email_and_telegram, none], rec: "email" }
     - { id: F-ASSIGN,     impact: 2, applies_when: "есть исполнители", q: "Как назначать исполнителя?", options: [manual, round_robin, self_pick], rec: "manual" }
-    - { id: F-BOOKING,    impact: 3, applies_when: "запись на время/услуги", q: "Как устроено время записи?", options: [fixed_slots, specialist_schedule, requests_only], rec: "fixed_slots" }
+    - { id: F-BOOKING,    impact: 3, applies_when: "segment=booking или запись на время/услуги", q: "Как устроено время записи?", options: [fixed_slots, specialist_schedule, requests_only], rec: "fixed_slots" }
     - { id: F-INVENTORY,  impact: 3, applies_when: "остатки/склад", q: "Нужно ли учитывать остатки?", options: ["no", simple_stock, reserve_on_order], rec: "reserve_on_order, если есть оплата" }
     - { id: F-REPORTS,    impact: 1, applies_when: "упомянуты отчёты", q: "Какие отчёты нужны?", options: [lists_export, summary_dashboard, both], rec: "both" }
     - { id: F-IMPORT,     impact: 2, applies_when: "упомянута существующая таблица/база", q: "С чего начинаем данные?", options: [empty, import_table], rec: "empty; import_table — M1" }
     - { id: F-RETENTION,  impact: 2, applies_when: "есть ПДн и срок неочевиден", q: "Сколько хранить данные людей?", options: [d30_after_event, y1, y3], rec: "по defaults" }
   b2b_events:
-    - { id: F-EV-TICKETS,  impact: 3, applies_when: "segment=events", q: "Какие бывают билеты/участия?", options: [single_free, types_with_quotas, types_quotas_price_tiers], rec: "types_with_quotas, если упомянуты типы" }
+    - { id: F-EV-TICKETS,  impact: 3, applies_when: "segment=events", q: "Какие бывают виды участия?", options: [single_free, types_with_quotas, types_quotas_price_tiers], rec: "types_with_quotas, если упомянуты типы" }
     - { id: F-EV-CHECKIN,  impact: 2, applies_when: "очное событие", q: "Как проверять вход?", options: [list_only, qr_online, qr_offline_scanner], rec: "qr_offline_scanner при >300 участниках" }
     - { id: F-EV-PROGRAM,  impact: 2, applies_when: "секции/спикеры/расписание", q: "Нужна ли программа?", options: [none, schedule_only, schedule_with_signup], rec: "schedule_only" }
     - { id: F-EV-SPEAKERS, impact: 2, applies_when: "спикеры/доклады", q: "Как отбирать доклады?", options: [manual_list, call_for_papers_moderation], rec: "call_for_papers_moderation, если упомянута подача" }
@@ -218,9 +221,25 @@ fork_taxonomy:
     - { id: F-GD-CAPACITY, impact: 3, applies_when: "изготовление к дате", q: "Как ограничивать заказы по срокам?", options: [no_limit, daily_capacity, preorder_batches], rec: "daily_capacity" }
     - { id: F-GD-DELIVERY, impact: 2, applies_when: "выдача товара", q: "Как клиент получает заказ?", options: [pickup, delivery, both], rec: "pickup, если не упомянута доставка" }
     - { id: F-GD-PREPAY,   impact: 2, applies_when: "F-PAYMENT≠none", q: "Сколько оплачивать заранее?", options: [full, fixed_percent, on_pickup], rec: "fixed_percent (50%)" }
+  # Рецепты классов выпуска (D65, D66): развилки только своего сегмента; segment=other/horizontal — только horizontal.
+  site:
+    - { id: F-ST-PAGE,      impact: 3, applies_when: "segment=site", q: "Что будет на странице?", options: [single_form, landing_blocks, landing_with_catalog], rec: "landing_blocks (первый экран, преимущества, шаги, вопросы, форма заявки, подвал); landing_with_catalog, если есть услуги или прайс" }
+    - { id: F-ST-LEAD,      impact: 3, applies_when: "segment=site", q: "Что спрашивать в заявке?", options: [name_phone, name_contact_comment, custom_fields], rec: "name_contact_comment" }
+    - { id: F-ST-ALERT,     impact: 2, applies_when: "segment=site", q: "Как владельцу узнавать о новой заявке?", options: [email, telegram, email_and_telegram], rec: "email; email_and_telegram, если Telegram упомянут" }
+  booking:
+    - { id: F-BK-SERVICES,  impact: 3, applies_when: "segment=booking", q: "Как устроены услуги?", options: [single_service, service_list, services_by_specialist], rec: "service_list; services_by_specialist, если упомянуты мастера" }
+    - { id: F-BK-CAPACITY,  impact: 3, applies_when: "segment=booking", q: "Сколько человек на одно время?", options: [one_per_slot, group_capacity], rec: "one_per_slot; group_capacity, если упомянуты группы или занятия" }
+    - { id: F-BK-REMIND,    impact: 2, applies_when: "segment=booking", q: "Когда напоминать клиенту о записи?", options: [h24, h24_and_h2, none], rec: "h24 (письмо за 24 часа)" }
+    - { id: F-BK-CANCEL,    impact: 2, applies_when: "segment=booking", q: "Как клиент отменяет запись?", options: [link_in_email, by_phone_only], rec: "link_in_email" }
+  crm:
+    - { id: F-CRM-CONTACTS, impact: 3, applies_when: "segment=crm", q: "Кого ведём в базе?", options: [people, companies_and_people], rec: "people; companies_and_people, если упомянуты компании или юрлица" }
+    - { id: F-CRM-PIPELINE, impact: 3, applies_when: "segment=crm", q: "Какие этапы проходит сделка или обращение?", options: [simple_3, sales_funnel, custom], rec: "sales_funnel, если упомянуты продажи; иначе simple_3" }
+    - { id: F-CRM-TASKS,    impact: 2, applies_when: "segment=crm", q: "Нужны ли задачи сотрудникам?", options: ["none", tasks, tasks_with_reminders], rec: "tasks_with_reminders" }
+    - { id: F-CRM-SOURCES,  impact: 2, applies_when: "segment=crm", q: "Откуда приходят клиенты?", options: [manual_entry, site_form, import_and_form], rec: "manual_entry; site_form, если упомянут сайт" }
   rules:
     - "MUST: каждая развилка задаётся не более одного раза за сессию"
     - "MUST: варианты — из taxonomy; модель может переименовать для понятности и убрать неприменимые, оставив ≥2"
-    - "SHOULD: при segment=horizontal брать только horizontal-развилки"
+    - "SHOULD: при segment=horizontal|other брать только horizontal-развилки; группы site/booking/crm/b2b_events/made_to_order_goods — только для своего сегмента"
+    - "Тест: Analysis с segment ∈ {site, booking, crm} → 3–7 вопросов, ≥ 2 развилки своего класса и горизонтальные, при plan=free нет phone_otp (M2-38)"
     - "Тест: fixture-бриф «форум» → 3–7 вопросов, все forkId из taxonomy, по одному recommended (backlog M0-12)"
     - "Тест: org_context.plan=free → ни в defaults, ни в вариантах F-LOGIN, ни в SystemCard.roles[].loginMethods нет phone_otp (F4)"

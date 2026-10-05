@@ -164,6 +164,66 @@ export const FORK_LABELS: Record<ForkId, ForkLabels> = {
     title: "Предоплата",
     options: { full: "полная", fixed_percent: "часть заранее", on_pickup: "при получении" },
   },
+  "F-ST-PAGE": {
+    title: "Страница",
+    options: {
+      single_form: "только форма заявки",
+      landing_blocks: "лендинг из блоков",
+      landing_with_catalog: "лендинг с услугами и ценами",
+    },
+  },
+  "F-ST-LEAD": {
+    title: "Поля заявки",
+    options: {
+      name_phone: "имя и телефон",
+      name_contact_comment: "имя, контакт и комментарий",
+      custom_fields: "свои поля",
+    },
+  },
+  "F-ST-ALERT": {
+    title: "Уведомление о заявке",
+    options: { email: "письмо", telegram: "Telegram", email_and_telegram: "письмо и Telegram" },
+  },
+  "F-BK-SERVICES": {
+    title: "Услуги",
+    options: {
+      single_service: "одна услуга",
+      service_list: "список услуг",
+      services_by_specialist: "услуги по мастерам",
+    },
+  },
+  "F-BK-CAPACITY": {
+    title: "Мест на одно время",
+    options: { one_per_slot: "один человек", group_capacity: "группа" },
+  },
+  "F-BK-REMIND": {
+    title: "Напоминание",
+    options: { h24: "за 24 часа", h24_and_h2: "за 24 и за 2 часа", none: "без напоминания" },
+  },
+  "F-BK-CANCEL": {
+    title: "Отмена записи",
+    options: { link_in_email: "по ссылке из письма", by_phone_only: "только по звонку" },
+  },
+  "F-CRM-CONTACTS": {
+    title: "База клиентов",
+    options: { people: "люди", companies_and_people: "компании и люди" },
+  },
+  "F-CRM-PIPELINE": {
+    title: "Этапы",
+    options: { simple_3: "новая → в работе → готово", sales_funnel: "воронка продаж", custom: "свои этапы" },
+  },
+  "F-CRM-TASKS": {
+    title: "Задачи сотрудникам",
+    options: { none: "не нужны", tasks: "задачи", tasks_with_reminders: "задачи с напоминаниями" },
+  },
+  "F-CRM-SOURCES": {
+    title: "Откуда клиенты",
+    options: {
+      manual_entry: "вносим вручную",
+      site_form: "форма на сайте",
+      import_and_form: "импорт таблицы и форма",
+    },
+  },
 };
 
 /** Short title of a fork ("Типы билетов"); unknown ids come back as is. */

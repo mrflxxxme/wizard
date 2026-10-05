@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 // Generates packages/agents/assets/builder.json — the builder's docs and prompt fragments cut from the specs
 // (builder.yaml#tools.get_ui_kit_docs/get_sdk_docs: one source of documentation, sliced at build time).
+// Capability cards (recipes of system classes, builder.yaml#capabilities) are packages/agents/assets/capabilities/*.md:
+// one card per file, a new file shows up in the builder's prompt TOC after regeneration, without code changes.
 // Usage: node packages/agents/scripts/gen-builder-assets.mjs [--check]
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..", "..", "..");
 export const ASSET_PATH = join(ROOT, "packages/agents/assets/builder.json");
+export const CAPABILITIES_DIR = join(ROOT, "packages/agents/assets/capabilities");
 const MILESTONES = ["M0", "M1", "M2", "M3", "M4"];
-/** Components and docs up to this milestone go into the asset. */
-const MILESTONE = "M0";
+/**
+ * Components and docs up to this milestone go into the asset: everything ui-kit has for the release (M2P counts as M2).
+ * New ui-kit components (landing blocks, Image, ...) are picked up from specs/ui/ui-kit.yaml automatically.
+ */
+const MILESTONE = "M2";
 
 const PY_YAML =
   "import sys, json, yaml\nprint(json.dumps([yaml.safe_load(open(p, encoding='utf-8')) for p in sys.argv[1:]]))";
@@ -24,12 +30,39 @@ function loadYaml(...paths) {
   return JSON.parse(r.stdout);
 }
 
-const upTo = (m) => MILESTONES.indexOf(m ?? "M0") <= MILESTONES.indexOf(MILESTONE);
+const upTo = (m) => {
+  const i = MILESTONES.indexOf(String(m ?? "M0").slice(0, 2));
+  return i >= 0 && i <= MILESTONES.indexOf(MILESTONE);
+};
 
-function uiKitDocs(kit) {
+const oneLine = (v) =>
+  String(v ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Themes of ui-kit.yaml (themes or tokens.themes: list of {id|name, label?, description?} or a map id → text). */
+function themesText(kit) {
+  const t = kit.themes ?? kit.tokens?.themes;
+  if (!t) return [];
+  const items = Array.isArray(t)
+    ? t.map((x) =>
+        typeof x === "object" && x !== null
+          ? `${x.id ?? x.name}${x.label || x.description || x.niche ? `: ${oneLine(x.label ?? x.description ?? x.niche)}` : ""}`
+          : oneLine(x),
+      )
+    : Object.entries(t).map(([k, v]) =>
+        typeof v === "object" && v !== null
+          ? `${k}${v.label || v.description || v.niche ? `: ${oneLine(v.label ?? v.description ?? v.niche)}` : ""}`
+          : `${k}: ${oneLine(v)}`,
+      );
+  return ["Темы (set_theme):", ...items.map((x) => `- ${x.length > 120 ? `${x.slice(0, 119)}…` : x}`)];
+}
+
+export function uiKitDocs(kit) {
   const components = {};
   const toc = [];
-  for (const c of kit.components.filter((c) => upTo(c.milestone))) {
+  const all = [...(kit.components ?? []), ...(Array.isArray(kit.blocks) ? kit.blocks : [])];
+  for (const c of all.filter((c) => upTo(c.milestone))) {
     const behaviour = (c.behaviour ?? []).map((b) => `- ${b}`).join("\n");
     components[c.name] = [`## ${c.name}`, c.props?.trim() ?? "", behaviour].filter(Boolean).join("\n");
     const first = String(c.behaviour?.[0] ?? "").replace(/\s+/g, " ");
@@ -45,6 +78,7 @@ function uiKitDocs(kit) {
     "Правила:",
     ...rules,
     `Токены: var(--w-*); тема — ${kit.tokens?.source ?? "AppSpec.theme"}`,
+    ...themesText(kit),
   ].join("\n");
   return { toc: tocText, components };
 }
@@ -109,6 +143,27 @@ function promptParts(builder, ops, gates) {
   return { conventions, ops: opsText, semantic, phases };
 }
 
+/**
+ * Capability cards: "# Title" on the first line, "> summary" on the second, the rest is the body. Sorted by file name;
+ * the id is the file name without .md.
+ */
+export function capabilityCards(dir = CAPABILITIES_DIR) {
+  const cards = {};
+  if (!existsSync(dir)) return cards;
+  for (const f of readdirSync(dir)
+    .filter((x) => x.endsWith(".md"))
+    .sort()) {
+    const id = f.slice(0, -3);
+    if (!/^[a-z][a-z0-9_-]*$/.test(id)) throw new Error(`${f}: имя карточки — латиница в нижнем регистре`);
+    const lines = readFileSync(join(dir, f), "utf8").replace(/\r/g, "").split("\n");
+    const title = /^# (.+)$/.exec(lines[0] ?? "")?.[1]?.trim();
+    const summary = /^> (.+)$/.exec(lines[1] ?? "")?.[1]?.trim();
+    if (!title || !summary) throw new Error(`${f}: первая строка «# Заголовок», вторая «> кратко»`);
+    cards[id] = { title, summary, body: lines.join("\n").trim() };
+  }
+  return cards;
+}
+
 export function buildAssets() {
   const [builder, ops, gates, kit] = loadYaml(
     join(ROOT, "specs/agents/builder.yaml"),
@@ -123,6 +178,7 @@ export function buildAssets() {
     uiKit: uiKitDocs(kit),
     sdk: sdkDocs(md),
     prompt: promptParts(builder, ops, gates),
+    capabilities: capabilityCards(),
   };
   return `${JSON.stringify(assets, null, 1)}\n`;
 }
