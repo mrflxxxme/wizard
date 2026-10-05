@@ -568,6 +568,32 @@ tables:
       finished_at: "timestamptz"
     indexes: ["unique (system_id, env, action) where status = 'pending'"]
 
+  # ==== M2P · M2-72: destructive_changes (миграция 0025) ====
+  destructive_changes:
+    milestone: M2
+    purpose: "M2-72 (product.yaml#decisions.D56_destructive_changes, D72): подтверждение владельцем правки prod, удаляющей или сужающей данные, и журнал её судьбы. Подтверждение действует только для revision и consequences_hash (sha256 ревизии, base_revision и строк последствий со счётчиками по prod); новое подтверждение системы переводит прежние неприменённые в superseded. Публикация с подтверждением применяет план с архивом (runtime.yaml#archive: archive_tag — префикс архивных таблиц, archive_tables — их имена) и в той же транзакции ставит applied, publication_id, base_revision = schema_hwm_revision до правки. «Отменить правку» (undo) — последняя applied, пока schema_hwm_revision = revision: status undone, кто, когда, прогон. Значений полей не хранит — только счётчики и тексты"
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems"
+      revision: "integer not null"
+      base_revision: "integer"
+      consequences_hash: "text not null"
+      consequences: "jsonb not null"                         # DestructiveConsequence[] (api.yaml) на момент подтверждения
+      status: "text not null check (status in ('confirmed','superseded','applied','undone'))"
+      confirmed_by: "uuid not null references platform.users"
+      confirmed_at: "timestamptz not null default now()"
+      archive_tag: "text not null"                          # c<12 hex>; таблицы <tag>_<entity>[$<field>] в app_<key>_prod_archive
+      archive_schema: "text"
+      archive_tables: "jsonb not null default '[]'"
+      publication_id: "uuid references platform.publications"
+      applied_at: "timestamptz"
+      undone_by: "uuid references platform.users"
+      undone_at: "timestamptz"
+      undo_run_id: "uuid references platform.runs"
+    indexes: ["(system_id, created_at desc)"]
+    constraints: ["foreign key (system_id, revision) references platform.revisions (system_id, version) on delete cascade"]
+  # ==== конец блока M2-72 ====
+
   # ==== M2P · M2-98: custom_domains (+ tombstones), design_references, design_directions, media_assets, fetch_log — дописывать ЗДЕСЬ ====
   # ==== конец блока M2-98 ====
 

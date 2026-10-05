@@ -499,7 +499,30 @@ export interface AiBackfillsTable {
   created_at: TsDef;
 }
 
+/** db.yaml#destructive_changes (M2-72): owner confirmation of a destructive prod change and its journal. */
+export interface DestructiveChangesTable {
+  id: Generated<string>;
+  system_id: string;
+  revision: number;
+  base_revision: number | null;
+  consequences_hash: string;
+  consequences: Json<unknown>;
+  status: "confirmed" | "superseded" | "applied" | "undone";
+  confirmed_by: string;
+  confirmed_at: TsDef;
+  archive_tag: string;
+  archive_schema: string | null;
+  archive_tables: Json<string[]>;
+  publication_id: string | null;
+  applied_at: TsNull;
+  undone_by: string | null;
+  undone_at: TsNull;
+  undo_run_id: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
+  "platform.destructive_changes": DestructiveChangesTable;
   "platform.users": UsersTable;
   "platform.orgs": OrgsTable;
   "platform.memberships": MembershipsTable;

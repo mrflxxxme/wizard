@@ -156,7 +156,7 @@ describe("DiffCard (S7)", () => {
     expect(q(el, "diff-line")?.textContent?.startsWith("−")).toBe(true);
     expect(q(el, "diff-migration")?.textContent).toContain("удаляет данные");
     expect((q(el, "diff-publish") as HTMLButtonElement).disabled).toBe(true);
-    expect(q(el, "diff-destructive")?.textContent).toContain("В prod разрешены только добавления");
+    expect(q(el, "diff-destructive")?.textContent).toContain("владелец смотрит последствия");
   });
 
   test("publish blockers disable publishing", () => {

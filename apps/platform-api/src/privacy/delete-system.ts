@@ -4,7 +4,7 @@
 // mode=system_deleted. No platform.runs row.
 import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { dropSystemRoleDDL, quoteIdent, systemRoleName } from "@wizard/appspec";
+import { archiveSchemaName, dropSystemRoleDDL, quoteIdent, systemRoleName } from "@wizard/appspec";
 import { createFileStorage, type FileStorage, purgeSchemaFiles, schemaName } from "@wizard/runtime";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE } from "../agents/draft.js";
@@ -171,6 +171,11 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
           await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
           await tx.unsafe(`DROP SCHEMA ${quoteIdent(schema)} CASCADE`);
         }
+        // M2-72: the prod archive (fields and entities removed by confirmed changes) goes with the system.
+        await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(role)}`);
+        await tx.unsafe(
+          `DROP SCHEMA IF EXISTS ${quoteIdent(archiveSchemaName(schemaName(s.schema_key, "prod")))} CASCADE`,
+        );
         await tx.unsafe("SET LOCAL ROLE NONE");
         // The system roles go with their schemas (dropped by the platform session, which created them).
         for (const env of ENVS)

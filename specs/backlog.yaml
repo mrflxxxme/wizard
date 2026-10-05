@@ -1982,6 +1982,7 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2.5
     status: todo
+    mvp_done: true
     release: mvp
     mvp_scope: "Предупреждение словами и подтверждение владельца, данные в архив вместо удаления, откат (D72)"
     claimed_by: null

@@ -16,10 +16,22 @@ export { diffSpecs, type SpecChange, type SpecChangeKind } from "./diff.js";
 export { ERROR_CODES, type OpsError, type OpsErrorCode, pointer } from "./errors.js";
 /** Index model for `where`/`getBy` (sdk.md §2.4): usable indexes, unique fields, where → index resolution. */
 export { entityIndexes, isRangeValue, resolveIndex, SYSTEM_FIELD_NAMES, uniqueFields } from "./indexes.js";
+/**
+ * M2-72 destructive changes in prod: destructiveChanges(plan) — what the owner confirms; destructiveCountSql — affected
+ * rows on the live schema; toDDL(..., {archive}) — removed data goes to archiveSchemaName(schema), undo restores it.
+ */
 export {
+  type ArchiveOptions,
+  archiveSchemaName,
+  archiveTableName,
+  archiveTables,
   type DdlOptions,
   DEFAULT_MAX_LENGTH,
+  type DestructiveChange,
+  type DestructiveKind,
   describeStep,
+  destructiveChanges,
+  destructiveCountSql,
   dropSystemRoleDDL,
   type MigrationPlan,
   type MigrationStep,

@@ -10,6 +10,9 @@ import type {
   Billing,
   CreditBalance,
   DeletionLogEntry,
+  DestructiveChangeRecord,
+  DestructiveConsequences,
+  DestructiveJournal,
   DiffChange,
   ExportView,
   FounderReviewItem,
@@ -402,6 +405,22 @@ export function createApiClient(opts: ClientOptions = {}) {
     adminPilotSpend: () => call<LlmSpend>("GET", "/admin/pilot/spend"),
     disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
       call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
+    // M2-72: prod changes that remove data (api.yaml getDestructiveConsequences … undoDestructiveChange).
+    getDestructive: (id: string, revision: number) =>
+      call<DestructiveConsequences>("GET", `${sys(id)}/destructive`, {
+        query: { revision: String(revision) },
+      }),
+    confirmDestructive: (id: string, body: { revision: number; hash: string }) =>
+      call<{ change: DestructiveChangeRecord; consequences: DestructiveConsequences }>(
+        "POST",
+        `${sys(id)}/destructive/confirm`,
+        { body },
+      ),
+    listDestructiveChanges: (id: string) => call<DestructiveJournal>("GET", `${sys(id)}/destructive/changes`),
+    undoDestructiveChange: (id: string, changeId: string, idempotencyKey = newIdempotencyKey()) =>
+      call<{ run: Run }>("POST", `${sys(id)}/destructive/changes/${encodeURIComponent(changeId)}/undo`, {
+        idempotencyKey,
+      }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
   };
 }
