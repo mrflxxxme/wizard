@@ -147,17 +147,19 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
     expect(r.publish.status).toBe("review_pending");
     expect(r.inputs).toEqual([{ kind: "decision", decisionId: "escalation", choice: "retry" }]);
     expect(r.creditsUsed).toBeGreaterThan(0);
+    // D70: the eval org has room for every brief (pilot limit raised as /admin does).
+    const [org] = await api.deps.pg`select pilot_builds_limit from platform.orgs where id = ${seed.orgId}`;
+    expect(org.pilot_builds_limit).toBe(15);
+
     // Nothing went live: the first publication waits for the founder.
     const [rev] = await api.deps.pg`
       select status from platform.founder_reviews where system_id = ${r.systemId}`;
     expect(rev.status).toBe("pending");
 
-    // «Запросы на развитие»: no table → null; with the table (M2-59) → rows of the org's systems.
-    expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).gaps).toBeNull();
-    await api.deps.pg.unsafe(`create table platform.development_requests (
-      id uuid primary key default gen_random_uuid(), system_id uuid, category text, quote text, offered text)`);
-    await api.deps.pg`insert into platform.development_requests (system_id, category, quote, offered)
-      values (${r.systemId}, 'payments', 'оплата картой каждый месяц', 'доступ по приглашению')`;
+    // «Запросы на развитие» (M2-59, migration 0022): none yet → empty; a request of the org's system is collected.
+    expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).gaps).toEqual({});
+    await api.deps.pg`insert into platform.development_requests (org_id, system_id, category, quote, offered)
+      values (${seed.orgId}, ${r.systemId}, 'payments', 'оплата картой каждый месяц', 'доступ по приглашению')`;
     const db = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId })));
     expect(db.gaps).toEqual({
       [r.systemId as string]: [
