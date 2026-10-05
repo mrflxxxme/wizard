@@ -88,6 +88,9 @@ function pilotApi(
     })) as unknown as ApiClient["getUsage"],
     listSystems: async () => ({ items: [] }),
     listMembers: async () => ({ items: [] }),
+    // S1 → S-billing: the billing screen loads its ledger and plan on mount.
+    listLedger: (async () => ({ items: [], nextCursor: null })) as unknown as ApiClient["listLedger"],
+    getBilling: (async () => null) as unknown as ApiClient["getBilling"],
     ...over,
   } as Partial<ApiClient>;
 }
