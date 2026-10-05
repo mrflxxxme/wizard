@@ -21,6 +21,7 @@ export const FIELD_KINDS = [
   "choice",
   "link",
   "file",
+  "image",
   "contact",
   "qr",
 ] as const;

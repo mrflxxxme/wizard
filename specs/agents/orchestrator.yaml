@@ -89,7 +89,7 @@ system_card:          # схема SystemCard (backlog M0-12 ссылается 
   summary: "≤400, что делает система, 2–3 предложения"
   segment: "как в Analysis"
   roles: "{name, label, access, loginMethods?: (phone_otp|email_otp|telegram)[], description ≤160, can: string[] ≤8 — человеческие права}[]"
-  data: "{name, label, fields: {label, kind: text|number|money|date|choice|link|file|contact|qr}[] ≤12, pii: none|basic}[] — «какие данные храним»"
+  data: "{name, label, fields: {label, kind: text|number|money|date|choice|link|file|image|contact|qr}[] ≤12, pii: none|basic}[] — «какие данные храним»"
   specVsCode:
     spec: "string[] — что гарантируется спекой: данные, права, статусы, автоматизации, интеграции, ПДн"
     code: "string[] — что пишется кодом: экраны, расчёты, особая логика"
