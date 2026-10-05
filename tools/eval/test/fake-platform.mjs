@@ -3,7 +3,10 @@
 // handler(Request) → Response, so it serves both a node:http server and an injected fetch.
 import { createHash } from "node:crypto";
 
-const sha256 = (v) => createHash("sha256").update(String(v ?? ""), "utf8").digest("hex");
+const sha256 = (v) =>
+  createHash("sha256")
+    .update(String(v ?? ""), "utf8")
+    .digest("hex");
 
 const CREDITS = { interview_turn: 0.5, build: 40, fix: 10, publish: 0 };
 
@@ -18,7 +21,9 @@ export function scenarioOf(prompt) {
     complianceNeeded: /библиотеки/i.test(prompt),
     buildFails: /йоги/i.test(prompt),
     outOfScope: /йоги/i.test(prompt)
-      ? ["Оплата картой с автоплатежом и платная подписка пока недоступны — сделаем доступ к урокам по приглашению владельца"]
+      ? [
+          "Оплата картой с автоплатежом и платная подписка пока недоступны — сделаем доступ к урокам по приглашению владельца",
+        ]
       : [],
     credits: { ...CREDITS },
   };
@@ -39,7 +44,15 @@ const gate = (level, failed = []) => ({
  * (the pilot action generates the token itself, as the operator does).
  */
 export function fakePlatform({ token, csrf, hashes, origin, cookieNames, override = () => undefined }) {
-  const st = { systems: new Map(), runs: new Map(), requests: [], tokens: new Set(), logout: 0, inFlight: 0, peak: 0 };
+  const st = {
+    systems: new Map(),
+    runs: new Map(),
+    requests: [],
+    tokens: new Set(),
+    logout: 0,
+    inFlight: 0,
+    peak: 0,
+  };
   let n = 0;
   const id = (p) => {
     n += 1;
@@ -69,7 +82,8 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
     st.peak = Math.max(st.peak, st.inFlight);
     return run;
   }
-  const event = (run, type, payload) => run.events.push({ runId: run.id, seq: run.events.length + 1, type, payload });
+  const event = (run, type, payload) =>
+    run.events.push({ runId: run.id, seq: run.events.length + 1, type, payload });
   function finish(run, status, failure = null) {
     run.status = status;
     run.failure = failure;
@@ -107,7 +121,11 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
       if (sc.freeQuestion && trigger === "create") {
         sys.stage = "interview";
         sys.pending = [];
-        sys.messages.push({ role: "assistant", kind: "text", text: "Сколько переговорных и с какого часа бронь?" });
+        sys.messages.push({
+          role: "assistant",
+          kind: "text",
+          text: "Сколько переговорных и с какого часа бронь?",
+        });
       } else if (trigger === "create") {
         sys.pending = [
           {
@@ -143,8 +161,25 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
           estimate: { credits: { expected: 30 } },
           outOfScope: sc.outOfScope,
         };
-        if (sc.outOfScope.length)
-          sys.messages.push({ role: "assistant", kind: "text", text: `Пока не умею: ${sc.outOfScope[0]}` });
+        // As the orchestrator (M2-77): the honest answer is appended to the card message with payload.gaps.
+        const gaps = sc.outOfScope.length
+          ? [
+              {
+                category: "subscriptions",
+                quote: "платной подпиской на видеоуроки, оплата картой каждый месяц",
+                missing: "оплата картой каждый месяц и платная подписка",
+                offered: "доступ к урокам по приглашению владельца",
+              },
+            ]
+          : [];
+        sys.messages.push({
+          role: "assistant",
+          kind: "card",
+          text: gaps.length
+            ? "Карточка готова. Пока не умеем: оплата картой каждый месяц и платная подписка. Можно сделать так: доступ к урокам по приглашению владельца."
+            : "Карточка готова",
+          payload: { cardVersion: 1, ...(gaps.length ? { gaps } : {}) },
+        });
       }
       finish(run, "succeeded");
     };
@@ -153,7 +188,10 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
 
   function buildRun(sys, mode) {
     const sc = sys.sc;
-    const run = newRun(sys, "build", mode, { used: mode === "fix" ? sc.credits.fix : sc.credits.build, polls: 2 });
+    const run = newRun(sys, "build", mode, {
+      used: mode === "fix" ? sc.credits.fix : sc.credits.build,
+      polls: 2,
+    });
     if (sc.escalation && mode === "create")
       run.ask = {
         inputId: "esc-1",
@@ -200,7 +238,10 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
       if (!sys.gates.G2.passed)
         return finish(run, "failed", { code: "GATES_FAILED", message_ru: "Ревизия не прошла G2" });
       sys.review = "pending";
-      finish(run, "failed", { code: "GATES_FAILED", message_ru: "Перед публикацией систему посмотрит модератор" });
+      finish(run, "failed", {
+        code: "GATES_FAILED",
+        message_ru: "Перед публикацией систему посмотрит модератор",
+      });
     };
     return run;
   }
@@ -232,7 +273,9 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
         .map((x) => x.trim().split("="))
         .filter((x) => x.length === 2),
     );
-    const sessionOk = hashes ? sha256(jar[cookieNames.session]) === hashes().tokenHash : jar[cookieNames.session] === token;
+    const sessionOk = hashes
+      ? sha256(jar[cookieNames.session]) === hashes().tokenHash
+      : jar[cookieNames.session] === token;
     if (!sessionOk || st.logout > 0) return err(401, "UNAUTHENTICATED");
     st.tokens.add(jar[cookieNames.session]);
     if (method !== "GET") {
@@ -283,7 +326,10 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
       const after = Number(u.searchParams.get("after") ?? 0);
       const text = `: ping\n\n${run.events
         .filter((e) => e.seq > after)
-        .map((e) => `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify({ ...e, ts: "2026-10-05T10:00:00Z" })}\n\n`)
+        .map(
+          (e) =>
+            `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify({ ...e, ts: "2026-10-05T10:00:00Z" })}\n\n`,
+        )
         .join("")}`;
       // Two chunks split inside a frame: the client must reassemble.
       const enc = new TextEncoder();

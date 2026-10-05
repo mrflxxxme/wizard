@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadBriefs, MVP_SET } from "../lib/briefs.mjs";
+import { main as cli, selectBriefs } from "../server/cli.mjs";
 import { cookieNames, parseFrame, platformClient } from "../server/client.mjs";
 import { freeAnswer, pickDecision, pickOption, runEval } from "../server/driver.mjs";
-import { main as cli, selectBriefs } from "../server/cli.mjs";
 import { evaluate, median, renderReport } from "../server/report.mjs";
 import { fakePlatform } from "./fake-platform.mjs";
 
@@ -66,7 +66,10 @@ describe("D67 brief set", () => {
     const b = loadBriefs("mvp");
     expect(b).toHaveLength(MVP_SET.total);
     for (const c of ["site", "booking", "crm", "other"])
-      expect(b.filter((x) => x.class === c), c).toHaveLength(MVP_SET[c]);
+      expect(
+        b.filter((x) => x.class === c),
+        c,
+      ).toHaveLength(MVP_SET[c]);
     expect(b.filter((x) => x.beyond).map((x) => x.id)).toEqual(["mvp-10-yoga-subscription"]);
     // The P set is untouched: mvp-* only by "mvp" or by id.
     expect(loadBriefs().some((x) => x.id.startsWith("mvp-"))).toBe(false);
@@ -81,11 +84,14 @@ describe("D67 brief set", () => {
     expect(pickOption({ options: [{ id: "a" }, { id: "b", recommended: true }] }).id).toBe("b");
     expect(pickOption({ options: [{ id: "a" }, { id: "b" }] }).id).toBe("a");
     expect(
-      pickDecision({ kind: "decision", options: [{ id: "stop" }, { id: "raise_cap_15", recommended: false }] }),
+      pickDecision({
+        kind: "decision",
+        options: [{ id: "stop" }, { id: "raise_cap_15", recommended: false }],
+      }),
     ).toBe("raise_cap_15");
-    expect(pickDecision({ kind: "decision", options: [{ id: "rephrase", freeText: true }, { id: "retry" }] })).toBe(
-      "retry",
-    );
+    expect(
+      pickDecision({ kind: "decision", options: [{ id: "rephrase", freeText: true }, { id: "retry" }] }),
+    ).toBe("retry");
     expect(pickDecision({ kind: "secret", options: [{ id: "test" }] })).toBe("test");
     expect(pickDecision({ kind: "secret", options: [] })).toBeNull();
     expect(freeAnswer({ free_answer: "Переговорка одна." })).toBe(
@@ -134,7 +140,9 @@ describe("D67 driver on a fake platform", () => {
     expect(by["mvp-07"].inputs).toEqual([{ kind: "decision", decisionId: "escalation", choice: "retry" }]);
     // G1 still failing after the fix: not ready, the check and its reason are kept.
     expect(by["mvp-08"]).toMatchObject({ status: "not_ready", ready: false, fixes: 1 });
-    expect(by["mvp-08"].gates.G1.blockers).toEqual([{ id: "G1-AC-02", message: "Менеджер видит чужие сделки" }]);
+    expect(by["mvp-08"].gates.G1.blockers).toEqual([
+      { id: "G1-AC-02", message: "Менеджер видит чужие сделки" },
+    ]);
     // Owner action in G2 (a prod secret) does not take readiness away.
     expect(by["mvp-01"]).toMatchObject({ status: "ready", publish: { status: "failed" } });
     expect(by["mvp-01"].gates.G2.ownerActions.map((c) => c.id)).toEqual(["G2-SECRET-02"]);
@@ -149,7 +157,15 @@ describe("D67 driver on a fake platform", () => {
     // Beyond: build failed, but the honest answer is in the card and in the chat.
     expect(by["mvp-10"]).toMatchObject({ status: "build_failed", ready: false });
     expect(by["mvp-10"].gaps.outOfScope[0]).toContain("Оплата картой");
-    expect(by["mvp-10"].gaps.mentions[0]).toContain("Пока не умею");
+    expect(by["mvp-10"].gaps.mentions[0]).toContain("Пока не умеем: оплата картой");
+    expect(by["mvp-10"].gaps.reported).toEqual([
+      {
+        category: "subscriptions",
+        missing: "оплата картой каждый месяц и платная подписка",
+        offered: "доступ к урокам по приглашению владельца",
+      },
+    ]);
+    expect(by["mvp-02"].gaps.reported).toEqual([]);
     // Cost: credits of every run × 5 ₽.
     expect(by["mvp-02"].creditsUsed).toBe(41);
     expect(by["mvp-02"].costRubEstimate).toBe(205);
@@ -159,6 +175,13 @@ describe("D67 driver on a fake platform", () => {
     expect(e.ready).toBe(9);
     expect(e.passed).toBe(true);
     expect(e.items.find((x) => x.id.startsWith("mvp-10")).countedVia).toBe("gap_mentioned");
+    expect(e.gaps).toBe(1);
+    const { text } = renderReport(doc);
+    expect(text).toContain("Пробелов возможностей («Пока не умеем…») назвали агенты: 1 — в брифах mvp-10");
+    expect(text).toContain(
+      "- Пока не умеем (subscriptions): оплата картой каждый месяц и платная подписка — замена: доступ к урокам по приглашению владельца",
+    );
+    expect(text).toMatch(/\| mvp-10-yoga-subscription \|.*\| 1 \| subscriptions \|/);
     expect(logs.join("\n")).not.toContain(SESSION.token);
   });
 
@@ -205,56 +228,76 @@ describe("D67 driver on a fake platform", () => {
 });
 
 const doc = () => ({
-    base: "https://borntobuild.ru",
-    runId: "20261005-abcdef",
-    startedAt: "2026-10-05T10:00:00.000Z",
-    maxCostRub: 2000,
-    concurrency: 2,
-    g2: "publish",
-    results: loadBriefs("mvp").map((b, i) => ({
-      id: b.id,
-      class: b.class,
-      title: b.title,
-      beyond: b.beyond ? { gapStems: b.beyond.gap_stems } : null,
-      status: i < 6 ? "ready" : i === 9 ? "build_failed" : "not_ready",
-      ready: i < 6,
-      systemId: `00000000-0000-4000-8000-00000000000${i}`,
-      error: null,
-      interview: { turns: 2, buttons: 2, free: 0 },
-      build: { status: "succeeded" },
-      fixes: 0,
-      inputs: [],
-      publish: { status: i < 6 ? "review_pending" : "not_publishable" },
-      gates: {
-        G0: { passed: true, blockers: [], ownerActions: [], warnings: 0 },
-        G1:
-          i < 6
-            ? { passed: true, blockers: [], ownerActions: [], warnings: 1 }
-            : { passed: false, blockers: [{ id: "G1-AC-01", message: "Запись | на занятое время" }], ownerActions: [], warnings: 0 },
-      },
-      gaps: { outOfScope: i === 9 ? ["Подписка с автоплатежом пока недоступна"] : [], mentions: [] },
-      runs: [],
-      creditsUsed: 40,
-      costRubEstimate: 200,
-      minutes: 10 + i,
-      buildMinutes: 8,
-    })),
-  });
+  base: "https://borntobuild.ru",
+  runId: "20261005-abcdef",
+  startedAt: "2026-10-05T10:00:00.000Z",
+  maxCostRub: 2000,
+  concurrency: 2,
+  g2: "publish",
+  results: loadBriefs("mvp").map((b, i) => ({
+    id: b.id,
+    class: b.class,
+    title: b.title,
+    beyond: b.beyond ? { gapStems: b.beyond.gap_stems } : null,
+    status: i < 6 ? "ready" : i === 9 ? "build_failed" : "not_ready",
+    ready: i < 6,
+    systemId: `00000000-0000-4000-8000-00000000000${i}`,
+    error: null,
+    interview: { turns: 2, buttons: 2, free: 0 },
+    build: { status: "succeeded" },
+    fixes: 0,
+    inputs: [],
+    publish: { status: i < 6 ? "review_pending" : "not_publishable" },
+    gates: {
+      G0: { passed: true, blockers: [], ownerActions: [], warnings: 0 },
+      G1:
+        i < 6
+          ? { passed: true, blockers: [], ownerActions: [], warnings: 1 }
+          : {
+              passed: false,
+              blockers: [{ id: "G1-AC-01", message: "Запись | на занятое время" }],
+              ownerActions: [],
+              warnings: 0,
+            },
+    },
+    gaps: { outOfScope: i === 9 ? ["Подписка с автоплатежом пока недоступна"] : [], mentions: [] },
+    runs: [],
+    creditsUsed: 40,
+    costRubEstimate: 200,
+    minutes: 10 + i,
+    buildMinutes: 8,
+  })),
+});
 
 describe("D67 report", () => {
   it("6 ready + beyond recorded in «Запросы на развитие» = 7 of 10: the threshold is met; ₽ exact from the DB", () => {
     const d = doc();
     const db = {
       costs: Object.fromEntries(d.results.map((r) => [r.systemId, { rub: 150.5, credits: 31, calls: 12 }])),
-      gaps: { [d.results[9].systemId]: [{ category: "payments", quote: "оплата картой каждый месяц", offered: "доступ по приглашению" }] },
+      gaps: {
+        [d.results[9].systemId]: [
+          { category: "payments", quote: "оплата картой каждый месяц", offered: "доступ по приглашению" },
+        ],
+      },
     };
     const { text, summary } = renderReport(d, db);
-    expect(summary).toMatchObject({ ready: 7, total: 10, passed: true, medianMinutes: 14.5, costRub: 1505, costExact: true });
-    expect(text).toContain("**Итог: 7 из 10 дошли до готовности к публикации — порог D67 (не меньше 7 из 10) достигнут.**");
+    expect(summary).toMatchObject({
+      ready: 7,
+      total: 10,
+      passed: true,
+      medianMinutes: 14.5,
+      costRub: 1505,
+      costExact: true,
+    });
+    expect(text).toContain(
+      "**Итог: 7 из 10 дошли до готовности к публикации — порог D67 (не меньше 7 из 10) достигнут.**",
+    );
     expect(text).toContain("1 505 ₽ (точно, по журналу вызовов моделей)");
     expect(text).toContain("G1 · G1-AC-01");
     expect(text).toContain("  - G1-AC-01: Запись | на занятое время");
-    expect(text).toContain("Запрос на развитие: payments — оплата картой каждый месяц — замена: доступ по приглашению");
+    expect(text).toContain(
+      "Запрос на развитие: payments — оплата картой каждый месяц — замена: доступ по приглашению",
+    );
     expect(text).toContain("честный отказ записан");
     expect(text).not.toContain("Таблицы «Запросов на развитие» в базе платформы ещё нет");
   });

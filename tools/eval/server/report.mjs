@@ -52,9 +52,11 @@ export function evaluate(doc, db = {}) {
     const costRub = exact ? exact.rub : r.costRubEstimate;
     const recorded = gapsTable && r.systemId ? (db.gaps[r.systemId] ?? []) : [];
     const mentioned = r.beyond
-      ? [...(r.gaps?.outOfScope ?? []), ...(r.gaps?.mentions ?? [])].filter((t) =>
-          r.beyond.gapStems.some((s) => t.toLowerCase().includes(s.toLowerCase())),
-        )
+      ? [
+          ...(r.gaps?.reported ?? []).map((g) => [g.missing, g.offered].filter(Boolean).join(" — ")),
+          ...(r.gaps?.outOfScope ?? []),
+          ...(r.gaps?.mentions ?? []),
+        ].filter((t) => r.beyond.gapStems.some((s) => t.toLowerCase().includes(s.toLowerCase())))
       : [];
     let counted = r.ready;
     let via = r.ready ? "ready" : null;
@@ -71,6 +73,7 @@ export function evaluate(doc, db = {}) {
       costExact: !!exact,
       developmentRequests: recorded,
       gapMentioned: mentioned,
+      gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
       counted,
       countedVia: via,
     };
@@ -89,6 +92,7 @@ export function evaluate(doc, db = {}) {
     costRub: Math.round(items.reduce((s, x) => s + (x.costRub ?? 0), 0) * 100) / 100,
     costExact: items.filter((x) => x.systemId).every((x) => x.costExact),
     credits: Math.round(items.reduce((s, x) => s + (x.creditsUsed ?? 0), 0) * 1000) / 1000,
+    gaps: items.reduce((s, x) => s + x.gapCount, 0),
     gapsTable,
   };
 }
@@ -120,22 +124,35 @@ export function renderReport(doc, db = {}, meta = {}) {
   L.push(
     `- Медиана времени от брифа до конца сборки: ${e.medianMinutes === null ? "—" : `${e.medianMinutes} мин`}`,
     `- Расход моделей: ${rub(e.costRub)} ${e.costExact ? "(точно, по журналу вызовов моделей)" : `(оценка по кредитам: 1 кредит ≈ ${RUB_PER_CREDIT} ₽)`}; кредитов списано по прогонам: ${e.credits}`,
+    `- Пробелов возможностей («Пока не умеем…») назвали агенты: ${e.gaps}${
+      e.gaps
+        ? ` — в брифах ${e.items
+            .filter((x) => x.gapCount > 0)
+            .map((x) => x.id.slice(0, 6))
+            .join(", ")}`
+        : ""
+    }`,
     `- Готовность к публикации — G0, G1 и G2 без блокеров; то, что делает владелец (секреты интеграций), показано отдельно и готовность не снимает.${doc.g2 === "skip" ? " **В этом прогоне G2 не запускался.**" : " G2 запускается первой публикацией: на пилоте она останавливается на ревью основателя, в prod ничего не уходит."}`,
     "",
   );
-  L.push("| Бриф | Класс | Итог | Не прошли | Мин | ₽ | Запросы на развитие |", "|---|---|---|---|---|---|---|");
+  L.push(
+    "| Бриф | Класс | Итог | Не прошли | Мин | ₽ | Пробелы | Запросы на развитие |",
+    "|---|---|---|---|---|---|---|---|",
+  );
   for (const x of e.items) {
     const failed = checksLine(x);
     const gaps = x.developmentRequests.length
       ? x.developmentRequests.map((g) => g.category ?? g.quote).join("; ")
-      : x.gapMentioned.length
-        ? `в ответе агента: ${x.gapMentioned[0]}`
-        : x.gaps?.outOfScope?.length
-          ? `вне рамок: ${x.gaps.outOfScope.join("; ")}`
-          : "—";
+      : x.gaps?.reported?.length
+        ? x.gaps.reported.map((g) => g.category ?? g.missing).join("; ")
+        : x.gapMentioned.length
+          ? `в ответе агента: ${x.gapMentioned[0]}`
+          : x.gaps?.outOfScope?.length
+            ? `вне рамок: ${x.gaps.outOfScope.join("; ")}`
+            : "—";
     const mark = x.counted ? (x.countedVia === "ready" ? "✅" : "✅*") : "❌";
     L.push(
-      `| ${cell(x.id)} | ${cell(CLASS_RU[x.class] ?? x.class)} | ${mark} ${cell(STATUS_RU[x.status] ?? x.status)} | ${cell(failed.length ? `${failed.length}: ${failed.map((f) => f.split(":")[0]).join(", ")}` : "—")} | ${x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${cell(gaps).slice(0, 200)} |`,
+      `| ${cell(x.id)} | ${cell(CLASS_RU[x.class] ?? x.class)} | ${mark} ${cell(STATUS_RU[x.status] ?? x.status)} | ${cell(failed.length ? `${failed.length}: ${failed.map((f) => f.split(":")[0]).join(", ")}` : "—")} | ${x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${x.gapCount} | ${cell(gaps).slice(0, 200)} |`,
     );
   }
   if (e.items.some((x) => x.countedVia === "gap_mentioned"))
@@ -160,7 +177,9 @@ export function renderReport(doc, db = {}, meta = {}) {
         `- Сборка: ${x.build.status === "succeeded" ? "завершилась" : `не завершилась (${x.build.failure?.message_ru ?? x.build.status})`}${x.fixes ? `, «Исправить» нажато ${x.fixes} раз` : ""}; ${x.buildMinutes ?? "—"} мин сборки, ${x.minutes ?? "—"} мин от брифа.`,
       );
     if (x.inputs?.length)
-      L.push(`- Сборка спрашивала: ${x.inputs.map((i) => `${i.decisionId ?? i.kind} → ${i.choice ?? "нет ответа"}`).join("; ")}.`);
+      L.push(
+        `- Сборка спрашивала: ${x.inputs.map((i) => `${i.decisionId ?? i.kind} → ${i.choice ?? "нет ответа"}`).join("; ")}.`,
+      );
     for (const level of ["G0", "G1", "G2"]) {
       const g = x.gates?.[level];
       if (!g) continue;
@@ -169,14 +188,24 @@ export function renderReport(doc, db = {}, meta = {}) {
       for (const c of g.blockers) L.push(`  - ${c.id}: ${c.message}`);
       for (const c of g.ownerActions) L.push(`  - владельцу: ${c.id} — ${c.message}`);
     }
-    if (x.publish) L.push(`- Публикация: ${PUBLISH_RU[x.publish.status] ?? x.publish.status}${x.publish.message ? ` — ${x.publish.message}` : ""}.`);
+    if (x.publish)
+      L.push(
+        `- Публикация: ${PUBLISH_RU[x.publish.status] ?? x.publish.status}${x.publish.message ? ` — ${x.publish.message}` : ""}.`,
+      );
     L.push(
       `- Расход: ${x.systemId ? rub(x.costRub) : "—"}${x.costExact ? "" : " (оценка)"}, кредитов ${x.creditsUsed}.`,
     );
     if (x.developmentRequests.length)
       for (const g of x.developmentRequests)
-        L.push(`- Запрос на развитие: ${[g.category, g.quote, g.offered && `замена: ${g.offered}`].filter(Boolean).join(" — ")}`);
-    else if (x.gaps?.outOfScope?.length) L.push(`- Вне рамок по карточке: ${x.gaps.outOfScope.join("; ")}`);
+        L.push(
+          `- Запрос на развитие: ${[g.category, g.quote, g.offered && `замена: ${g.offered}`].filter(Boolean).join(" — ")}`,
+        );
+    for (const g of x.gaps?.reported ?? [])
+      L.push(
+        `- Пока не умеем${g.category ? ` (${g.category})` : ""}: ${g.missing}${g.offered ? ` — замена: ${g.offered}` : ""}`,
+      );
+    if (!x.developmentRequests.length && !x.gaps?.reported?.length && x.gaps?.outOfScope?.length)
+      L.push(`- Вне рамок по карточке: ${x.gaps.outOfScope.join("; ")}`);
     if (x.beyond)
       L.push(
         `- Бриф сверх возможностей: ${x.countedVia === "ready" ? "система с заменой готова" : x.countedVia === "gap_recorded" ? "честный отказ записан в «Запросы на развитие»" : x.countedVia === "gap_mentioned" ? "честный ответ агента есть, запись в разделе не проверена" : "честного ответа о недоступном не найдено"}.`,

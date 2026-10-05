@@ -53,7 +53,9 @@ export function pickDecision(p) {
 
 /** A short answer to a free question of the orchestrator, from the brief (≤ 500 characters, postMessage). */
 export function freeAnswer(brief) {
-  const base = String(brief.free_answer ?? "Всё, что знаю, написал в описании").trim().replace(/[.\s]+$/u, "");
+  const base = String(brief.free_answer ?? "Всё, что знаю, написал в описании")
+    .trim()
+    .replace(/[.\s]+$/u, "");
   return `${base}. Остальное решите сами, по своим рекомендациям.`.slice(0, 500);
 }
 
@@ -103,7 +105,7 @@ export function newResult(brief) {
     inputs: [],
     publish: null,
     gates: {},
-    gaps: { outOfScope: [], mentions: [] },
+    gaps: { outOfScope: [], reported: [], mentions: [] },
     runs: [],
     creditsUsed: 0,
     costRubEstimate: 0,
@@ -192,8 +194,9 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
   r.status = "running";
   try {
     // Interview.
-    const created = (await client.post("/systems", { prompt: brief.text, ...(ctx.orgId ? { orgId: ctx.orgId } : {}) }))
-      .body;
+    const created = (
+      await client.post("/systems", { prompt: brief.text, ...(ctx.orgId ? { orgId: ctx.orgId } : {}) })
+    ).body;
     r.systemId = created.system.id;
     say(`система ${r.systemId}, интервью`);
     let run = await waitRun(created.run, "interview");
@@ -283,13 +286,17 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
       : build.status !== "succeeded" && !gates.G0?.passed
         ? "build_failed"
         : "not_ready";
-    if (r.beyond) r.gaps.mentions = await gapMentions(client, r.systemId, r.beyond.gapStems);
     say(r.ready ? `готова к публикации (${r.minutes} мин)` : `не готова: ${r.status}`);
   } catch (e) {
     r.status = r.status === "running" ? "error" : r.status;
     r.error = String(e?.message ?? e).slice(0, 500);
     say(`ошибка: ${r.error}`);
   } finally {
+    // Honest answers of the agents («Пока не умеем…», payload.gaps of chat messages, M2-77) — also after a failure.
+    if (r.systemId)
+      await collectGaps(client, r)
+        .then((g) => Object.assign(r.gaps, g))
+        .catch((e) => say(`пробелы не прочитаны: ${e?.message ?? e}`));
     r.finishedAt = now().toISOString();
   }
   return r;
@@ -316,7 +323,12 @@ async function probeG2(ctx, r, waitRun, say) {
   try {
     p = await client.post(`/systems/${r.systemId}/publish`, { revision: s.system.draftRevision });
   } catch (e) {
-    return { ...out, status: "refused", code: e?.code ?? null, message: String(e?.message ?? e).slice(0, 300) };
+    return {
+      ...out,
+      status: "refused",
+      code: e?.code ?? null,
+      message: String(e?.message ?? e).slice(0, 300),
+    };
   }
   const run = await waitRun(p.body.run, "publish");
   if (run.status === "succeeded") return { ...out, status: "published" };
@@ -328,16 +340,35 @@ async function probeG2(ctx, r, waitRun, say) {
   };
 }
 
-/** Assistant messages of the system that speak about what the platform cannot do yet (beyond briefs). */
-async function gapMentions(client, systemId, stems) {
-  const msgs = (await client.get(`/systems/${systemId}/messages?limit=100`)).body.items ?? [];
-  const low = stems.map((s) => s.toLowerCase());
-  return msgs
-    .filter((m) => m.role === "assistant" && typeof m.text === "string")
-    .map((m) => m.text)
-    .filter((t) => low.some((s) => t.toLowerCase().includes(s)))
-    .map((t) => t.slice(0, 300))
-    .slice(0, 3);
+/**
+ * Capability gaps the agents reported in the chat: payload.gaps of assistant messages ({category, missing, offered},
+ * deduplicated), and for a beyond brief the assistant texts that speak about its stems.
+ */
+export async function collectGaps(client, r) {
+  const msgs = (await client.get(`/systems/${r.systemId}/messages?limit=100`)).body.items ?? [];
+  const assistant = msgs.filter((m) => m.role === "assistant");
+  const reported = [];
+  const seen = new Set();
+  for (const m of assistant)
+    for (const g of Array.isArray(m.payload?.gaps) ? m.payload.gaps : []) {
+      const key = `${g.category}|${g.missing}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reported.push({
+        category: typeof g.category === "string" ? g.category : null,
+        missing: String(g.missing ?? "").slice(0, 300),
+        offered: g.offered ? String(g.offered).slice(0, 300) : null,
+      });
+    }
+  const low = (r.beyond?.gapStems ?? []).map((s) => s.toLowerCase());
+  const mentions = low.length
+    ? assistant
+        .map((m) => (typeof m.text === "string" ? m.text : ""))
+        .filter((t) => low.some((s) => t.toLowerCase().includes(s)))
+        .map((t) => t.slice(0, 300))
+        .slice(0, 3)
+    : [];
+  return { reported, mentions };
 }
 
 /**

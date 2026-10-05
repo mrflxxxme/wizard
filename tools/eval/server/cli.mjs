@@ -76,9 +76,19 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     const runid = o.runid || newRunId();
     const session = newEvalSession();
     const { email } = evalIdentity(runid, o.domain || undefined);
-    const credits = o.credits ? num(o.credits, "credits") : evalCredits(num(o["max-cost-rub"], "max-cost-rub", 2000));
+    const credits = o.credits
+      ? num(o.credits, "credits")
+      : evalCredits(num(o["max-cost-rub"], "max-cost-rub", 2000));
     writeFileSync(o["session-file"], JSON.stringify({ runid, email, ...session }), { mode: 0o600 });
-    out(seedSql({ runid, domain: o.domain || undefined, tokenHash: session.tokenHash, csrfHash: session.csrfHash, credits }));
+    out(
+      seedSql({
+        runid,
+        domain: o.domain || undefined,
+        tokenHash: session.tokenHash,
+        csrfHash: session.csrfHash,
+        credits,
+      }),
+    );
     log(`учётка замера ${email}: ${credits} кредитов; токен — в ${o["session-file"]}`);
     return 0;
   }
@@ -109,7 +119,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       runId: s.runid,
       maxCostRub: num(o["max-cost-rub"], "max-cost-rub", DEFAULTS.maxCostRub),
       concurrency: num(o.concurrency, "concurrency", DEFAULTS.concurrency),
-      fixAttempts: o["fix-attempts"] === "0" ? 0 : num(o["fix-attempts"], "fix-attempts", DEFAULTS.fixAttempts),
+      fixAttempts:
+        o["fix-attempts"] === "0" ? 0 : num(o["fix-attempts"], "fix-attempts", DEFAULTS.fixAttempts),
       g2: o.g2 === "skip" ? "skip" : "publish",
       log,
       ...(deps.sleep ? { sleep: deps.sleep } : {}),

@@ -60,8 +60,10 @@ const setLine = (name, value, re) => {
 export function seedSql({ runid, domain, tokenHash, csrfHash, credits, sessionDays = SESSION_DAYS }) {
   const { email, orgName } = evalIdentity(runid, domain);
   if (!HEX64.test(tokenHash) || !HEX64.test(csrfHash)) throw new Error("seed: нужны sha256 токена и CSRF");
-  if (!Number.isInteger(credits) || credits <= 0 || credits > 100_000) throw new Error("seed: кредиты 1…100 000");
-  if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 7) throw new Error("seed: сессия 1…7 дней");
+  if (!Number.isInteger(credits) || credits <= 0 || credits > 100_000)
+    throw new Error("seed: кредиты 1…100 000");
+  if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 7)
+    throw new Error("seed: сессия 1…7 дней");
   return [
     setLine("email", email, /^eval\+[a-z0-9-]+@[a-z0-9.-]+$/),
     setLine("org_name", orgName, /^Замер D67 · [a-z0-9-]+$/),

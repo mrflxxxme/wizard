@@ -103,7 +103,8 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
     expect(credits.status).toBe(200);
     expect(JSON.stringify(credits.body)).toContain("900");
     // The database has only hashes: neither the token nor the CSRF value.
-    const rows = await api.deps.pg`select token_hash, csrf_hash from platform.sessions where id = ${seed.sessionId}`;
+    const rows = await api.deps
+      .pg`select token_hash, csrf_hash from platform.sessions where id = ${seed.sessionId}`;
     expect(JSON.stringify(rows)).not.toContain(session.token);
     expect(rows[0]).toEqual({ token_hash: session.tokenHash, csrf_hash: session.csrfHash });
     // A mutating request without the CSRF header is refused, as for any client.
@@ -125,7 +126,9 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
       base: ORIGIN,
       session,
       fetch: (url: string, init: RequestInit) =>
-        api.fetch(new Request(url, { ...init, headers: { ...(init.headers as object), host: "localhost:4000" } })),
+        api.fetch(
+          new Request(url, { ...init, headers: { ...(init.headers as object), host: "localhost:4000" } }),
+        ),
       sleep: async () => {},
     });
     const doc = await runEval({
