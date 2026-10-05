@@ -683,6 +683,32 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
  * they were gone before anyone could look — first live bootstrap, 2026-10-03), then the release goes back to its last
  * deployed revision, or is uninstalled when there is none.
  */
+const LLM_CALLS_SQL = `select provider, model_id, tier, status, coalesce(error_code, '') as error_code, route_reason,
+  count(*) as calls, max(created_at) as last_at
+from platform.llm_calls where created_at > now() - interval '3 hours'
+group by 1, 2, 3, 4, 5, 6 order by last_at desc limit 40;
+`;
+
+/** Reachability of the model providers (packages/llm/src/registry.ts default base URLs): HTTP status or the error. */
+const LLM_PROBE = `
+const urls = ["https://foundation-models.api.cloud.ru/v1/models", "https://api.z.ai/api/paas/v4/models", "https://llm.api.cloud.yandex.net/v1/models"];
+const keys = { "foundation-models.api.cloud.ru": process.env.CLOUDRU_API_KEY, "api.z.ai": process.env.ZAI_API_KEY };
+(async () => {
+  for (const u of urls) {
+    const host = new URL(u).host;
+    const t = Date.now();
+    try {
+      const k = keys[host];
+      const r = await fetch(u, { headers: k ? { authorization: "Bearer " + k } : {}, signal: AbortSignal.timeout(15000) });
+      console.log(host, "HTTP", r.status, "за", Date.now() - t, "мс", k ? "(с ключом)" : "(без ключа)", k ? "" : "");
+    } catch (e) {
+      console.log(host, "ошибка:", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160), "за", Date.now() - t, "мс");
+    }
+  }
+  console.log("ключи в поде:", "CLOUDRU_API_KEY", process.env.CLOUDRU_API_KEY ? "задан" : "НЕТ", "· ZAI_API_KEY", process.env.ZAI_API_KEY ? "задан" : "НЕТ", "· WIZARD_LLM_MODE", process.env.WIZARD_LLM_MODE ?? "—");
+})();
+`;
+
 /**
  * Read-only picture of a running cluster (`diagnose`, minutes instead of a whole release): nodes, pods, the ingress,
  * certificates with their ACME orders and challenges, the DNS-01 solver and cert-manager logs, platform events.
@@ -704,6 +730,37 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   step("cert-manager", ["-n", "cert-manager", "logs", "deploy/cert-manager", "--tail=120"]);
   step("События платформы", ["-n", "wizard-platform", "get", "events", "--sort-by=.lastTimestamp"]);
   step("События cert-manager", ["-n", "cert-manager", "get", "events", "--sort-by=.lastTimestamp"]);
+  // Model calls (D67 eval, 2026-10-05: «Модели сейчас недоступны» on every brief): which provider and model failed with
+  // which code over the last 3 hours, and whether the providers answer from the worker pod with its NetworkPolicy.
+  // Counts and codes only — no prompts, orgs or users.
+  log("::group::Вызовы моделей за 3 часа");
+  kubectl(
+    [
+      "-n",
+      "wizard-platform",
+      "exec",
+      "-i",
+      "wizard-postgres-0",
+      "-c",
+      "postgres",
+      "--",
+      "sh",
+      "-c",
+      'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h /var/run/postgresql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -q -P pager=off -f -',
+    ],
+    { ...opt, input: LLM_CALLS_SQL },
+  );
+  log("::endgroup::");
+  step("Провайдеры моделей из пода worker", [
+    "-n",
+    "wizard-platform",
+    "exec",
+    "deploy/wizard-worker",
+    "--",
+    "node",
+    "-e",
+    LLM_PROBE,
+  ]);
   // The WAL-G archive: the same image, environment and Secret as the database, from a one-shot pod with the egress
   // rules of the PostgreSQL Jobs; plus the network probe with an unsigned listing of the backups bucket.
   const sts = kubectl(["-n", "wizard-platform", "get", "statefulset", "wizard-postgres", "-o", "json"], {
