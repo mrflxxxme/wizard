@@ -196,6 +196,8 @@ export async function applyProdMigration(
       });
       return;
     } catch (e) {
+      // A refusal of inTx (e.g. the confirmation is no longer valid): the transaction is rolled back, keep its text.
+      if (e instanceof RunFailure) throw e;
       const code = (e as { code?: string }).code ?? "";
       const wait = delays[attempt];
       if (code === LOCK_NOT_AVAILABLE && wait !== undefined) {

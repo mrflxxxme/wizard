@@ -20,6 +20,7 @@ import { RUNTIME_ROLE } from "../agents/draft.js";
 import { type Db, json } from "../db/index.js";
 import type { DestructiveChangesTable, SystemsTable } from "../db/types.js";
 import { ApiError, invalid } from "../errors.js";
+import { RunFailure } from "../runs/types.js";
 import { loadRevision, loadSpec } from "../services/revisions.js";
 import { consequenceText, isBlocking } from "./texts.js";
 
@@ -53,7 +54,7 @@ export interface Consequences {
   /** The revision removes or narrows prod data: publishing needs the owner's confirmation. */
   required: boolean;
   blocking: boolean;
-  /** Hash of the revision, the base and every line with its counts; a confirmation is valid only for it. */
+  /** Hash of the revision, the base and the set of changes (no counts); a confirmation is valid only for it. */
   hash: string | null;
   changes: Consequence[];
 }
@@ -92,17 +93,28 @@ async function countAll(
   })) as { affected: number; unconvertible: number }[];
 }
 
-function hashOf(revision: number, baseRevision: number | null, changes: Consequence[]): string {
+/**
+ * Hash of what the revision changes, not of the live counts: kind, entity, field, types, default and check of every
+ * step, plus the revision and its base. New records after the owner's confirmation do not make it stale (the counts
+ * are information; blocking rows are counted again at publish); another set of changes does.
+ */
+export function consequencesHash(
+  revision: number,
+  baseRevision: number | null,
+  changes: readonly DestructiveChange[],
+): string {
   const lines = changes.map((c) => [
     c.kind,
     c.entity,
     c.field ?? null,
     c.fromType ?? null,
     c.toType ?? null,
-    c.affected,
-    c.unconvertible,
+    c.hasDefault ?? null,
+    c.check ?? null,
   ]);
-  return createHash("sha256").update(JSON.stringify({ revision, baseRevision, lines })).digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify({ v: 2, revision, baseRevision, lines }))
+    .digest("hex");
 }
 
 /** Consequences of publishing `revision` of the system now (sys must be fresh: schema_hwm_revision). */
@@ -141,7 +153,7 @@ export async function computeConsequences(
     baseRevision,
     required: true,
     blocking: changes.some((c) => c.blocking),
-    hash: hashOf(revision, baseRevision, changes),
+    hash: consequencesHash(revision, baseRevision, list),
     changes,
   };
 }
@@ -171,8 +183,10 @@ export const DESTRUCTIVE_RU = {
   missing:
     "Правка удаляет или меняет данные работающей системы. Владелец должен посмотреть последствия и подтвердить её — затем опубликуйте снова.",
   stale:
-    "После подтверждения последствия правки изменились (данные в системе поменялись). Посмотрите их ещё раз и подтвердите заново.",
-  changed: "Последствия правки изменились — посмотрите их ещё раз и подтвердите заново",
+    "После подтверждения состав правки изменился (до неё опубликовали другую версию). Посмотрите последствия ещё раз и подтвердите заново.",
+  changed: "Состав правки изменился — посмотрите последствия ещё раз и подтвердите заново",
+  notApplicable:
+    "Подтверждение правки уже не действует — посмотрите последствия ещё раз и подтвердите заново",
   nothing: "В этой правке нет удаления данных — подтверждать нечего",
   undoUnavailable:
     "Отменить можно только последнюю опубликованную правку, удалившую данные, пока после неё ничего не публиковали",
@@ -268,12 +282,14 @@ export async function markApplied(
     tables: string[];
   },
 ): Promise<void> {
-  await tx`
+  const res = await tx`
     update platform.destructive_changes
        set status = 'applied', applied_at = now(), publication_id = ${a.publicationId},
            base_revision = ${a.baseRevision}, archive_schema = ${a.schema},
            archive_tables = cast(${JSON.stringify(a.tables)} as jsonb)
-     where id = ${a.changeId}`;
+     where id = ${a.changeId} and status = 'confirmed'`;
+  // The confirmation was superseded or applied by another publication meanwhile: the migration transaction rolls back.
+  if (res.count !== 1) throw new RunFailure("DESTRUCTIVE_IN_PROD", DESTRUCTIVE_RU.notApplicable);
 }
 
 /** The change «Отменить правку» would undo: the newest applied one whose schema is still the current prod schema. */

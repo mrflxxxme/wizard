@@ -29,7 +29,7 @@ export interface EgressLimits {
   requestsPerMinute: number;
   maxRequestBytes: number;
   maxResponseBytes: number;
-  /** Connect + response, per request. */
+  /** One deadline per request from its start: DNS, connect, TLS, sending and the whole response. */
   timeoutMs: number;
 }
 
@@ -70,6 +70,14 @@ export class EgressRefused extends Error {
   }
 }
 
+/** Text of EGRESS_FORBIDDEN by the refusal reason of a transport. */
+const REFUSED_RU: Record<string, string> & { proxy_denied: string } = {
+  address_not_public: "Адрес сервера указывает во внутреннюю сеть — запрос запрещён",
+  proxy_denied:
+    "Прокси платформы запретил запрос: хост не разрешён функции или его адрес указывает во внутреннюю сеть",
+  proxy_unauthorized: "Прокси платформы не подтвердил разрешение на запрос — попробуйте ещё раз",
+};
+
 /** Opens TLS to `host`:443 with SNI = host (the transport decides how the bytes leave the cluster). */
 export interface EgressTransport {
   connect(host: string, timeoutMs: number): Promise<TLSSocket>;
@@ -108,8 +116,8 @@ function tlsOver(socket: Socket | undefined, host: string, ca?: string, ip?: str
 export function proxyTransport(o: {
   /** http://wizard-egress-proxy:3128 */
   proxyUrl: string;
-  /** Grant of the system for this host (the proxy asks the runtime's internal port about it). */
-  grant: () => string;
+  /** Grant of the call for this host (the proxy asks the runtime's internal port about it). */
+  grant: (host: string) => string;
   dial?: Dialer;
   ca?: string;
 }): EgressTransport {
@@ -117,6 +125,7 @@ export function proxyTransport(o: {
   const dial = o.dial ?? tcpDialer;
   return {
     async connect(host, timeoutMs) {
+      const grant = o.grant(host);
       let raw: Socket | undefined;
       const work = (async () => {
         raw = await dial({ host: u.hostname, port: Number(u.port || 3128) });
@@ -139,10 +148,12 @@ export function proxyTransport(o: {
           socket.once("error", reject);
           socket.once("close", () => reject(new Error("proxy_closed")));
           socket.write(
-            `CONNECT ${host}:443 HTTP/1.1\r\nHost: ${host}:443\r\nProxy-Authorization: Bearer ${o.grant()}\r\n\r\n`,
+            `CONNECT ${host}:443 HTTP/1.1\r\nHost: ${host}:443\r\nProxy-Authorization: Bearer ${grant}\r\n\r\n`,
           );
         });
-        if (status === 403 || status === 407) throw new EgressRefused("proxy_denied");
+        // 407: the grant was not accepted; 403: the host or its resolved address is not allowed.
+        if (status === 407) throw new EgressRefused("proxy_unauthorized");
+        if (status === 403) throw new EgressRefused("proxy_denied");
         if (status !== 200) throw new Error(`proxy_${status}`);
         socket.removeAllListeners("close");
         socket.removeAllListeners("error");
@@ -163,30 +174,39 @@ export function directTransport(
   const resolve = o.resolve ?? systemResolver;
   return {
     async connect(host, timeoutMs) {
-      let addrs: string[];
-      try {
-        addrs = await resolve(host);
-      } catch {
-        throw new Error("dns");
-      }
-      if (addrs.length === 0) throw new Error("dns");
-      if (!o.allowPrivate && addrs.some((a) => isPrivateAddress(a)))
-        throw new EgressRefused("address_not_public");
-      const ip = addrs[0] as string;
       let sock: TLSSocket | undefined;
-      const work = new Promise<TLSSocket>((resolveSock, reject) => {
-        const s = tlsConnect({
-          host: ip,
-          port: o.port ?? 443,
-          servername: isIP(host) ? "" : host,
-          ...(o.ca ? { ca: o.ca } : {}),
-          ALPNProtocols: ["http/1.1"],
+      let late = false;
+      // The DNS lookup counts against the same deadline as the TLS handshake.
+      const work = (async () => {
+        let addrs: string[];
+        try {
+          addrs = await resolve(host);
+        } catch {
+          throw new Error("dns");
+        }
+        if (addrs.length === 0) throw new Error("dns");
+        if (!o.allowPrivate && addrs.some((a) => isPrivateAddress(a)))
+          throw new EgressRefused("address_not_public");
+        if (late) throw new Error("timeout");
+        const ip = addrs[0] as string;
+        return await new Promise<TLSSocket>((resolveSock, reject) => {
+          const s = tlsConnect({
+            host: ip,
+            port: o.port ?? 443,
+            servername: isIP(host) ? "" : host,
+            ...(o.ca ? { ca: o.ca } : {}),
+            ALPNProtocols: ["http/1.1"],
+          });
+          sock = s;
+          s.once("secureConnect", () => resolveSock(s));
+          s.once("error", reject);
         });
-        sock = s;
-        s.once("secureConnect", () => resolveSock(s));
-        s.once("error", reject);
+      })();
+      work.catch(() => {});
+      return withTimeout(work, timeoutMs, () => {
+        late = true;
+        sock?.destroy();
       });
-      return withTimeout(work, timeoutMs, () => sock?.destroy());
     },
   };
 }
@@ -344,18 +364,21 @@ export function egressHttpClient(o: EgressClientOptions): {
       headers.connection = "close";
       if (body) headers["content-length"] = String(body.length);
       if (!headers["user-agent"]) headers["user-agent"] = "Wizard-System/1";
+      // One deadline for the whole request (connect, TLS, sending, every byte of the answer): a server that keeps
+      // the socket busy with a byte now and then is cut at timeoutMs from the start, not only after an idle gap.
+      const left = () => Math.max(1, limits.timeoutMs - (Date.now() - started));
       let socket: TLSSocket;
       try {
-        socket = await o.transport.connect(host, limits.timeoutMs);
+        socket = await o.transport.connect(host, left());
       } catch (e) {
         if (e instanceof EgressRefused) {
           await entry("forbidden");
-          throw forbidden("Адрес сервера указывает во внутреннюю сеть — запрос запрещён");
+          throw forbidden(REFUSED_RU[e.reason] ?? REFUSED_RU.proxy_denied);
         }
         await entry(String((e as Error)?.message) === "timeout" ? "timeout" : "failed");
         throw new WizardError("EGRESS_FAILED", { message: "Внешний сервис недоступен" });
       }
-      const left = Math.max(1, limits.timeoutMs - (Date.now() - started));
+      let deadline: NodeJS.Timeout | undefined;
       try {
         const res = await new Promise<{ status: number; type: string | null; buf: Buffer }>(
           (resolve, reject) => {
@@ -389,11 +412,16 @@ export function egressHttpClient(o: EgressClientOptions): {
                 r.on("error", reject);
               },
             );
-            req.setTimeout(left, () => req.destroy(new Error("timeout")));
+            deadline = setTimeout(() => {
+              req.destroy(new Error("timeout"));
+              socket.destroy();
+              reject(new Error("timeout"));
+            }, left());
             req.on("error", reject);
             req.end(body ?? undefined);
           },
         );
+        clearTimeout(deadline);
         await entry("ok", { status: res.status, bytesOut: body?.length ?? 0, bytesIn: res.buf.length });
         const text = res.buf.toString("utf8");
         return {
@@ -410,6 +438,7 @@ export function egressHttpClient(o: EgressClientOptions): {
           },
         };
       } catch (e) {
+        clearTimeout(deadline);
         socket.destroy();
         const why = String((e as Error)?.message);
         if (why === "too_large") {

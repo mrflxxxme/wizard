@@ -257,7 +257,7 @@ export function filesRoutes(keys: AuthKeys): Hono<RuntimeHonoEnv> {
     return c.json({ fileId, name: meta.name, size: meta.size, mime: meta.mime }, 201);
   });
 
-  // Image variant, inline (runtime.yaml#files.image.serve): the row permission of every read, long cache by content.
+  // Image variant, inline (runtime.yaml#files.image.serve): the row permission of every read, short revalidated cache.
   app.get("/:fileId/img/:slot", async (c) => {
     const sys = c.get("system");
     const files = filesOf(c);
@@ -274,8 +274,9 @@ export function filesRoutes(keys: AuthKeys): Hono<RuntimeHonoEnv> {
       "Content-Disposition": "inline",
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "X-Content-Type-Options": "nosniff",
-      // A fileId never changes its bytes: immutable. Shared caches only for what the public role reads.
-      "Cache-Control": `${subject.id === null ? "public" : "private"}, max-age=31536000, immutable`,
+      // The bytes of a fileId never change, but read access to its row can be taken away: a short cache that the
+      // browser revalidates (ETag → 304 only after the row check above). Shared caches only for the public role.
+      "Cache-Control": `${subject.id === null ? "public" : "private"}, max-age=300, must-revalidate`,
       ETag: etag,
       "Referrer-Policy": "no-referrer",
     };

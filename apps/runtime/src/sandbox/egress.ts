@@ -61,10 +61,11 @@ export const CONNECTOR_HOSTS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * Policy of one system: https = connector hosts of its integrations ∪ function.egress (D71, isolation.yaml#M2.network:
- * any public host the spec declares, no intersection with a global list; platform domains and internal names are
- * dropped — G2-EGRESS-01); smtp = hosts of its email integrations with provider=smtp, plus the platform SMTP host
- * when it uses provider=platform. `globalAllow` is kept for compatibility and no longer narrows function hosts.
+ * Policy of a capability token (a sandbox pod or the runtime's connector traffic): https = connector hosts of the
+ * system's integrations ∪ (function.egress ∩ globalAllow, without platform domains and internal names); smtp = hosts of
+ * its email integrations with provider=smtp, plus the platform SMTP host when it uses provider=platform. Any other
+ * public host a function declares (D71) is reached only by ctx.http.fetch through a per-call grant of the runtime
+ * (egress-grants.ts) — a capability token never opens it.
  */
 export function egressPolicyFor(
   spec: AppSpec,
@@ -87,8 +88,12 @@ export function egressPolicyFor(
       } else if (o.platformSmtpHost) smtp.add(o.platformSmtpHost.toLowerCase());
     }
   }
+  const global = new Set([...(o.globalAllow ?? [])].map((h) => h.toLowerCase()));
   for (const f of spec.functions ?? [])
-    for (const h of f.egress ?? []) if (egressHostProblem(h, platform) === null) https.add(h.toLowerCase());
+    for (const raw of f.egress ?? []) {
+      const h = raw.toLowerCase();
+      if (global.has(h) && egressHostProblem(h, platform) === null) https.add(h);
+    }
   return { https, smtp, ...(o.label ? { label: o.label } : {}) };
 }
 

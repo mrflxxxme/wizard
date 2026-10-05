@@ -1,5 +1,5 @@
 // M2-47 acceptance (runtime): image fields — upload by a signed-in role → WebP variants without EXIF; GET of a variant →
-// 200 inline, image/webp, nosniff, immutable cache, by the row permission (the public role reads public rows); SVG and
+// 200 inline, image/webp, nosniff, a short revalidated cache with an ETag (304 only after the row check), by the row permission (the public role reads public rows); SVG and
 // PDF → 415; a PNG bomb → 413; the public role never uploads images; a replaced image goes with all its variants;
 // file fields stay attachments. Also the theme fonts route (M2-42): /_wizard/fonts serves catalog files only.
 import type { AppSpec, Entity } from "@wizard/appspec";
@@ -72,6 +72,7 @@ afterAll(async () => {
 describe("image upload", () => {
   let fileId = "";
   let streamId = "";
+  let etag = "";
 
   test("organizer uploads a 4000×3000 JPEG with EXIF → 201 WebP 1600×1200, variants 960 and 480 stored", async () => {
     const r = await upload(organizer, jpeg);
@@ -88,7 +89,7 @@ describe("image upload", () => {
     expect((await get(`/api/files/${fileId}/img/960`, organizer)).status).toBe(404);
   });
 
-  test("attached to a stream: the visitor (no account) gets the variant inline with an immutable cache", async () => {
+  test("attached to a stream: the visitor (no account) gets the variant inline with a short revalidated cache", async () => {
     const created = await json("POST", "/api/data/stream", organizer, {
       name: "Дизайн",
       capacity: 100,
@@ -101,13 +102,14 @@ describe("image upload", () => {
     expect(res.headers.get("content-type")).toBe("image/webp");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("content-disposition")).toBe("inline");
-    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    // Access to a row can be taken away: 5 minutes, then the browser asks again (and the row check runs).
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300, must-revalidate");
     const body = new Uint8Array(await res.arrayBuffer());
     expect(webpSize(body)).toEqual({ width: 960, height: 720 });
-    const etag = res.headers.get("etag") ?? "";
+    etag = res.headers.get("etag") ?? "";
     expect((await get(`/api/files/${fileId}/img/960`, null, { "if-none-match": etag })).status).toBe(304);
     const big = await get(`/api/files/${fileId}/img/1600`, organizer);
-    expect(big.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    expect(big.headers.get("cache-control")).toBe("private, max-age=300, must-revalidate");
     expect(webpSize(new Uint8Array(await big.arrayBuffer()))).toEqual({ width: 1600, height: 1200 });
     expect((await get(`/api/files/${fileId}/img/777`)).status).toBe(404);
     const info = await json("GET", `/api/files/${fileId}/info`, null);
@@ -123,6 +125,8 @@ describe("image upload", () => {
     await expect
       .poll(() => [...storage.objects.keys()].filter((k) => k.includes(fileId)).length, { timeout: 3000 })
       .toBe(0);
+    // The old image is no longer readable: a revalidation with its ETag gets 404, not 304.
+    expect((await get(`/api/files/${fileId}/img/960`, null, { "if-none-match": etag })).status).toBe(404);
     // 640 wide: the 960 slot falls back to the largest variant, 480 exists.
     const nid = String(next.json.fileId);
     expect(webpSize(new Uint8Array(await (await get(`/api/files/${nid}/img/960`)).arrayBuffer())).width).toBe(
