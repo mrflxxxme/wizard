@@ -705,6 +705,13 @@ select to_char(date_trunc('hour', created_at at time zone 'Europe/Moscow'), 'DD.
   round(sum(cost_rub), 0) as rub, count(*) as calls
 from platform.llm_calls where billable and created_at > now() - interval '24 hours'
 group by 1 order by 1;
+select to_char(e.ts at time zone 'Europe/Moscow', 'HH24:MI') as msk, e.payload->>'decisionId' as decision,
+  left(e.payload->>'prompt_ru', 400) as why,
+  (select s.payload->>'step' from platform.run_events s where s.run_id = e.run_id and s.type = 'step_started'
+     and s.seq < e.seq order by s.seq desc limit 1) as at_step
+from platform.run_events e
+where e.type = 'needs_input' and e.payload->>'decisionId' = 'escalation' and e.ts > now() - interval '6 hours'
+order by e.ts desc limit 15;
 select fc->>'id' as failed_check, count(*) as times
 from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'failedChecks', '[]'::jsonb)) fc
 where e.type = 'gate_result' and e.ts > now() - interval '6 hours'
