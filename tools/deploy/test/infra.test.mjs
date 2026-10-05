@@ -757,6 +757,7 @@ describe("diagnoseCluster", () => {
   it("reads the cluster; the only things it creates are one-shot probe pods, removed again", () => {
     const calls = [];
     const inputs = [];
+    const sql = [];
     const sts = {
       spec: {
         template: {
@@ -778,7 +779,8 @@ describe("diagnoseCluster", () => {
     };
     const kubectl = (args, o = {}) => {
       calls.push(args.join(" "));
-      if (o.input) inputs.push(JSON.parse(o.input));
+      if (o.input?.trimStart().startsWith("{")) inputs.push(JSON.parse(o.input));
+      else if (o.input) sql.push(o.input);
       return args.includes("statefulset")
         ? { status: 0, stdout: JSON.stringify(sts) }
         : { status: 0, stdout: "" };
@@ -803,6 +805,13 @@ describe("diagnoseCluster", () => {
     ]);
     expect(walg.envFrom).toEqual([{ secretRef: { name: "wizard-postgres" } }]);
     expect(inputs[1].spec.securityContext.runAsUser).toBe(999);
+    // Model calls: a read-only aggregate of platform.llm_calls (codes and counts) and a probe from the worker pod.
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toMatch(/^select provider, model_id/);
+    expect(sql[0]).not.toMatch(/\b(insert|update|delete|drop|alter)\b/i);
+    expect(calls.some((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e"))).toBe(
+      true,
+    );
   });
 });
 
