@@ -1042,8 +1042,19 @@ export function certificateReport({ kubectl }) {
       if (["errored", "invalid"].includes(s.state)) {
         if (!failure) failure = `${what}: ${s.state}${s.reason ? ` — ${s.reason}` : ""}`;
         const c = order && certOf(order);
-        if (c && !stuck.some((x) => x.namespace === it.metadata?.namespace && x.name === c))
-          stuck.push({ namespace: it.metadata?.namespace, name: c });
+        if (c && !stuck.some((x) => x.namespace === it.metadata?.namespace && x.name === c)) {
+          const certificate = items.find(
+            (x) =>
+              x.kind === "Certificate" &&
+              x.metadata?.namespace === it.metadata?.namespace &&
+              x.metadata?.name === c,
+          );
+          stuck.push({
+            namespace: it.metadata?.namespace,
+            name: c,
+            conditions: certificate?.status?.conditions ?? [],
+          });
+        }
       }
     }
   }
@@ -1072,7 +1083,18 @@ export function certificateGate({ kubectl, log = console.log, attempt = 1, retri
         message: "Certificate re-issuance manually triggered by the deploy after a failed order",
         lastTransitionTime: new Date().toISOString(),
       };
-      kubectl(
+      // A failed issuance leaves its Issuing=False condition behind: a second one is a duplicate the API rejects
+      // (pilot, 2026-10-04), so the existing condition is replaced.
+      const at = (c.conditions ?? []).findIndex((x) => x.type === "Issuing");
+      const op =
+        at >= 0
+          ? { op: "replace", path: `/status/conditions/${at}`, value: condition }
+          : {
+              op: "add",
+              path: (c.conditions ?? []).length ? "/status/conditions/-" : "/status/conditions",
+              value: (c.conditions ?? []).length ? condition : [condition],
+            };
+      const r = kubectl(
         [
           "-n",
           c.namespace,
@@ -1082,11 +1104,15 @@ export function certificateGate({ kubectl, log = console.log, attempt = 1, retri
           "--subresource=status",
           "--type=json",
           "-p",
-          JSON.stringify([{ op: "add", path: "/status/conditions/-", value: condition }]),
+          JSON.stringify([op]),
         ],
         { allowFail: true },
       );
-      log(`  сертификат ${c.namespace}/${c.name}: заказ не прошёл (${failure}) — запрошен новый выпуск`);
+      log(
+        r?.status === 0 || r?.status === undefined
+          ? `  сертификат ${c.namespace}/${c.name}: заказ не прошёл (${failure}) — запрошен новый выпуск`
+          : `::warning::сертификат ${c.namespace}/${c.name}: новый выпуск не запрошен — kubectl patch завершился с кодом ${r.status}`,
+      );
     }
     return;
   }
