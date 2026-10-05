@@ -20,7 +20,7 @@
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
 // by hand. Workflows: .github/workflows/bootstrap-pilot.yml, deploy-pilot.yml (owner only, pilot-reusable.yml).
 import { createHash, randomBytes } from "node:crypto";
-import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -610,6 +610,78 @@ export async function ensureDmarc(api, domain, { log = () => {} } = {}) {
     );
     return "failed";
   }
+}
+
+/** infra/dns/platform-records.json: provider records of the platform domain ({subdomain, type: CNAME|TXT, value}). */
+export function platformDnsRecords(
+  path = fileURLToPath(new URL("../../infra/dns/platform-records.json", import.meta.url)),
+) {
+  const { records = [] } = JSON.parse(readFileSync(path, "utf8"));
+  for (const r of records)
+    if (
+      !/^[a-z0-9_]([a-z0-9_.-]{0,200}[a-z0-9])?$/i.test(String(r.subdomain)) ||
+      !["CNAME", "TXT"].includes(r.type) ||
+      typeof r.value !== "string" ||
+      r.value.length === 0 ||
+      r.value.length > 1024
+    )
+      throw new Error(
+        `infra/dns/platform-records.json: запись ${JSON.stringify(r).slice(0, 120)} — нужны subdomain, type CNAME|TXT, value`,
+      );
+  return records;
+}
+
+/**
+ * Creates the missing records of `records` in the zone (one per subdomain+type+value; nothing is deleted or changed:
+ * a different value under the same name is reported for the founder). Failures are warnings.
+ */
+export async function ensureDnsRecords(api, domain, records, { log = () => {} } = {}) {
+  if (records.length === 0) return [];
+  let existing;
+  try {
+    ({ dns_records: existing = [] } = await api("GET", `/api/v1/domains/${domain}/dns-records`));
+  } catch (e) {
+    log(`::warning title=pilot::DNS ${domain}: список записей недоступен (${e.message})`);
+    return [];
+  }
+  const sub = (r) => {
+    const v = String(r.data?.subdomain ?? "");
+    return v.endsWith(`.${domain}`) ? v.slice(0, -domain.length - 1) : v;
+  };
+  const val = (v) =>
+    String(v ?? "")
+      .replace(/^"|"$/g, "")
+      .replace(/\.$/, "");
+  const out = [];
+  for (const r of records) {
+    const same = existing.filter((e) => e.type === r.type && sub(e) === r.subdomain);
+    if (same.some((e) => val(e.data?.value) === val(r.value))) {
+      out.push(`${r.subdomain} ${r.type}: есть`);
+      continue;
+    }
+    if (same.length > 0 && r.type === "CNAME") {
+      log(
+        `::warning title=pilot::DNS ${domain}: у ${r.subdomain} уже другой CNAME — проверьте в панели Timeweb`,
+      );
+      out.push(`${r.subdomain} ${r.type}: другое значение`);
+      continue;
+    }
+    try {
+      await api("POST", `/api/v1/domains/${domain}/dns-records`, {
+        type: r.type,
+        subdomain: `${r.subdomain}.${domain}`,
+        value: r.value,
+      });
+      out.push(`${r.subdomain} ${r.type}: добавлена`);
+    } catch (e) {
+      log(
+        `::warning title=pilot::DNS ${domain}: не удалось добавить ${r.subdomain} ${r.type} (${e.message})`,
+      );
+      out.push(`${r.subdomain} ${r.type}: ошибка`);
+    }
+  }
+  for (const line of out) log(`DNS ${domain}: ${line}`);
+  return out;
 }
 
 /** Timeweb Cloud API client: JSON in/out, bearer token; errors carry the method, path and status, never the token. */
@@ -1408,6 +1480,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       // the checks elsewhere (6th live bootstrap, 2026-10-03: the root still had the founder's other VM).
       if (o.command === "bootstrap") {
         await ensureDmarc(api, vars.WIZARD_SYSTEMS_DOMAIN, { log });
+        await ensureDnsRecords(api, vars.WIZARD_PLATFORM_DOMAIN, platformDnsRecords(), { log });
         await tidyDns(api, {
           zones: [vars.WIZARD_PLATFORM_DOMAIN, vars.WIZARD_SYSTEMS_DOMAIN],
           ingressIp: outputs.env?.ingress_ip,
