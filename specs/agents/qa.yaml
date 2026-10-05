@@ -9,6 +9,7 @@ inputs:
 
 # ---------------------------------------------------------------- Генерация проверок
 checks:
+  when: "Харнесс v2 (agents/builder.yaml#harness.checks): генерация — до кода, по спеке; сценарии с callFn прикладываются к задачам функций; те же проверки идут в G1"
   permission_auto:
     source: "Детерминированно (код, без LLM) из spec.permissions — deny by default"
     generate:

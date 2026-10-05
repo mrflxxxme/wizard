@@ -74,14 +74,14 @@ loop:
   phases:
     - id: plan
       callType: plan
-      do: "Один вызов с инструментом submit_plan {steps: {id: P<n>, kind: ops|code, title, targets: string[], acRefs: AC[]}[] ≤ 20}. План показывается в журнале сборки"
+      do: "Харнесс v2 (#harness): план — это ТЗ архитектора после ops (submit_brief); отдельного вызова submit_plan до ops нет"
     - id: ops
       callType: build_ops
       do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance({consentTemplateId, policyPage}). operator*, retentionWaiver и свободный consentText агенту недоступны (OWNER_ONLY_FIELD, appspec/ops.yaml). Страниц входа (/login) и политики ПДн (адрес = policyPage) не объявлять: их рендерит платформа"
       done_when: "Все ops-шаги плана выполнены и G0-SPEC-01/02 проходят"
     - id: code
       callType: build_code
-      do: "write_file: сначала functions/** (форма — шпаргалка runtime/sdk.md §1.2), затем каждая страница ui/** (заготовки из спеки переписываются целиком, #scaffold). run_gate(G0) — когда записаны все функции и страницы, без исправлений раньше"
+      do: "create|change — этап tasks харнесса (#harness): исполнители по задачам ТЗ. Ниже — point_edit. Прежний общий ход: write_file: сначала functions/** (форма — шпаргалка runtime/sdk.md §1.2), затем каждая страница ui/** (заготовки из спеки переписываются целиком, #scaffold). run_gate(G0) — когда записаны все функции и страницы, без исправлений раньше"
     - id: verify
       do: "Модель заканчивает ход без вызовов инструментов → харнесс сам запускает G0, затем (если passed) QA генерирует проверки (qa.yaml) и G1"
     - id: fix
@@ -104,6 +104,69 @@ scaffold:
   rounds: "Фаза code перечисляет заготовки; после неё, пока в объявленных страницах остался маркер wizard:stub, — до 2 дополнительных ходов build_code с сообщением «Остались незаполненные заготовки страниц: …». Потом — verify как обычно"
   sdk_cheatsheet: "Шпаргалка runtime/sdk.md §1.2 (точный импорт, форма query/mutation/action, v.* с v.optional, методы ctx.db) — целиком в статичном промпте (gen-builder-assets.mjs → builder.json prompt.sdk); тест компилирует её примеры функций через G0 (FN-01, TS-01). Отчёт fix-раунда с упавшими G0-TS-01/G0-FN-01 дописывает короткое напоминание об API SDK"
   functions: "Заготовки функций не пишутся: оставшаяся после remove_function заготовка с default-экспортом валит G0-FN-01, а BuildStore не удаляет файлы"
+
+# ---------------------------------------------------------------- Харнесс v2 (create|change; решение основателя 05.10.2026, D74)
+harness:
+  why: >
+    Замер D67 (05.10.2026): один агент в одном контексте делал план, спеку и весь код; модель увязала в исправлении функций и не
+    доходила до страниц, сборки шли дольше 45 минут. Основатель: «строить не одним агентом» — формализация задачи, исполнители по
+    задачам, контроль качества. Хост (BuildHost) прежний; всё ниже — внутри runBuild.
+  stages:
+    - id: ops
+      who: "строитель (build_ops), как фаза ops в loop.phases"
+      out: "AppSpec: роли, сущности, права, воркфлоу, объявления функций и страниц, acceptance 1:1 из карточки, compliance"
+    - id: scaffold
+      who: "код (#scaffold)"
+      out: "заготовки всех объявленных страниц"
+    - id: brief
+      who: "архитектор: callType plan, инструмент submit_brief"
+      do: >
+        Техническое задание по карточке и спеке: ровно одна задача на каждую объявленную функцию и страницу
+        {id: T<n>, kind: function|page, file, title ≤80, goal ≤600 — что делает и для кого, details ≤12 строк ≤300 — блоки
+        страницы (ui-kit) с их текстами по брифу, поля форм, поведение, состояния пусто/ошибка, контракт функции (аргументы,
+        результат, права, побочные эффекты), uses ≤12 — функции, которые страница вызывает, или сущности функции, acRefs — AC}.
+      validate: >
+        Код: файл каждой задачи объявлен в спеке; каждая объявленная функция и страница покрыта (change — новые и меняемые);
+        uses ссылаются на объявленные функции и сущности; acRefs — id карточки; каждый AC карточки, кроме type=permission,
+        упомянут хотя бы в одной задаче. Ошибка → повтор вызова с текстом ошибки (≤2, models.yaml#call_policy).
+      emits: "plan_ready {steps: задачи → {id, kind: code, title}} (≤20 первых)"
+    - id: checks
+      who: "QA (qa.yaml#checks) до кода — test-first"
+      do: "host.qa.generate по спеке; сценарии, вызывающие функцию (callFn), прикладываются к задаче этой функции текстом «Должно пройти»; те же проверки потом идут в G1"
+    - id: tasks
+      who: "исполнители: callType build_code, свежий контекст на задачу"
+      context: >
+        system static (как у строителя, кэшируемый префикс) + одно user-сообщение: карточка сжато, дайджест спеки, задача ТЗ целиком,
+        сигнатуры функций из uses, проверки «Должно пройти», текущий текст файла (заготовка или прежняя версия). История других
+        задач не подаётся.
+      tools: "write_file (только файл задачи, иначе TASK_FILE_ONLY), read_file, list_files, get_sdk_docs, get_ui_kit_docs, get_capability, report_capability_gap"
+      check: >
+        После хода с записью файла харнесс сам проверяет файл кодовыми проверками G0 (IMP-01, SEC-01, SPEC-01, SPEC-03, FN-01, TS-01)
+        без базы и без событий gate_* (@wizard/gates checkCode) и оставляет находки этого файла. Нет находок — задача готова без
+        лишнего вызова. Есть — находки уходят исполнителю следующим сообщением.
+      limits: "≤4 хода на задачу; задача, не прошедшая проверку, не останавливает сборку — её находки попадут в verify"
+      parallel: >
+        Волны по 3 задачи (функции раньше страниц), вызовы волны идут одним пакетом: BuildHost.routeBatch, если хост его даёт
+        (один durable-шаг и одна проверка бюджета на волну — детерминированный повтор после рестарта), иначе по очереди в порядке задач.
+        Пакет в режиме fixture исполняется по очереди. Проверки файлов — по очереди.
+    - id: verify
+      who: "код: G0 → G1 (как loop.phases.verify)"
+      fix: >
+        Упавшие проверки с файлом → задачи исправления по файлам (свежий контекст: задача ТЗ, текст файла, находки, объяснение QA,
+        напоминание SDK) волнами; проверки без файла (спека, права) → фаза fix строителя с apply_ops (loop.phases.fix).
+        Итерации и эскалация — #escalation.
+    - id: review
+      who: "рецензент: callType audit (models.yaml#routes.audit — семейство, отличное от строителя), инструмент submit_review"
+      do: >
+        После G0 и G1 passed: каждая страница сверяется с задачей ТЗ и карточкой {verdict: ok|fix, issues ≤8: {severity:
+        critical|minor, text ≤300}}. critical — только то, что ломает ценность для владельца: страница пустая или заглушка, нет формы
+        или действия из AC, тексты не по брифу или не на русском, видимые служебные строки. Пакетом, как tasks.
+      after: "Страницы с critical → один раунд задач исправления, затем снова verify. minor — в метрики. Рецензент недоступен → этап пропускается, отметка в метриках"
+  metrics: >
+    Внутреннее событие build_metrics (workflows.yaml#events) перед run_finished/run_failed: {stages: {ops: {calls}, brief: {tasks,
+    retries}, checks: {total, attached}, tasks: {total, firstPass, passed, failed, calls}, verify: {g0Runs, g1Runs, fixTasks,
+    fixPhases}, review: {pages, ok, critical, minor, skipped}}, creditsUsed, durationMs}. Замер D67 читает его из базы (eval.yaml).
+  modes: "create и change; fix стартует с verify; point_edit — без изменений (#point_and_edit)"
 
 budgets:
   credits_cap: "card.cap.credits. Перед каждым вызовом: spent + upper_bound(call) > cap → не вызывать, событие budget_exceeded. upper_bound = оценка входных токенов × input + max_tokens × output"

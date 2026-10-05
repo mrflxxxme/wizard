@@ -61,6 +61,7 @@ metrics:          # на пару (бриф, модель); агрегаты —
   - { id: cost_rub,           kind: float, def: "Σ costRub (models.yaml#credits)" }
   - { id: credits,            kind: float, def: "Σ creditsMilli / 1000 (models.yaml#credits)" }
   - { id: minutes,            kind: float, def: "стенное время от брифа до финального гейта" }
+  - { id: stages,             kind: object, def: "этапы харнесса v2 из внутреннего события build_metrics последнего build-прогона (agents/builder.yaml#harness.metrics): доля задач ТЗ с первого хода, задачи исправления, вердикты рецензента; замер на сервере читает его из platform.run_events (tools/eval/server collectSql)" }
   - { id: first_preview_minutes, kind: float, def: "стенное время от брифа до первой ревизии с G0 passed (первое превью)" }
   - { id: steps,              kind: int,   def: "шаги строителя" }
   - { id: questions_asked,    kind: int,   def: "число вопросов оркестратора" }

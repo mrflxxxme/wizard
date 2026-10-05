@@ -67,8 +67,17 @@ export interface OrchestratorAnswer {
   source: "card" | "defaults" | "user";
 }
 
+/** One answer of routeBatch: the output, or the error of that call (LlmError code and message). */
+export type RouteBatchItem = { ok: true; out: RouteOutput } | { ok: false; code: string; message: string };
+
 export interface BuildHost {
   route(input: HostRouteInput): Promise<RouteOutput>;
+  /**
+   * Optional (builder.yaml#harness.tasks.parallel): several route() calls of one wave as ONE durable step with ONE budget
+   * check (Σ upperBoundCredits); the calls may run concurrently, the answers come back in input order. Absent → the
+   * builder calls route() one by one in the same order.
+   */
+  routeBatch?(inputs: HostRouteInput[]): Promise<RouteBatchItem[]>;
   /**
    * Runs a gate on the current revision (the host commits staged files, builds the GateContext, stores the
    * full report and emits gate_started/gate_result — workflows.yaml#build.step_rules).
