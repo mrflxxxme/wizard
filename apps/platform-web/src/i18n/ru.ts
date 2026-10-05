@@ -1,4 +1,6 @@
-// All user-facing text of platform-web (platform-screens.yaml#stack: Russian only).
+// All user-facing text of platform-web (platform-screens.yaml#stack: Russian only). D27: the product is «Born to Build»
+// («Wizard» is only the internal code name); D28/D48: plain language, no credits in the client cabinet (D70), technical
+// details only under «Подробнее для специалиста» (components/ui.tsx Specialist). Feature texts: i18n/ru/<feature>.ts.
 
 const plural = (n: number, one: string, few: string, many: string): string => {
   const m10 = n % 10;
@@ -24,7 +26,7 @@ const scrubbed = (label: string): boolean => label !== RU_BUILD_LABEL;
 
 export const ru = {
   plural,
-  appName: "Wizard",
+  appName: "Born to Build",
   errors: {
     generic: "Что-то пошло не так. Попробуйте ещё раз.",
     network: "Нет связи с сервером. Проверьте подключение и повторите.",
@@ -32,7 +34,7 @@ export const ru = {
     toStart: "На главную",
     systemNotFound: "Система не найдена или у вас нет к ней доступа.",
     retry: "Повторить",
-    topUp: "Пополнить",
+    team: "Написать команде",
   },
   rail: {
     home: "На главную",
@@ -52,7 +54,7 @@ export const ru = {
     upload: "Загрузить таблицу",
     uploadHint: "Таблицу можно загрузить после первого сообщения",
     policy: (label: string | undefined) =>
-      `${label ? `Сборка: ${label}${scrubbed(label) ? ", ПДн удаляются до отправки" : ""}` : "ПДн удаляются до отправки моделям"} · данные систем: только в РФ`,
+      `${label ? `Сборка: ${label}${scrubbed(label) ? ", личные данные убираем до отправки" : ""}` : "Личные данные убираем до отправки моделям"} · данные систем хранятся в России`,
     ruOnly: "Только РФ",
     ruOnlyHint: "Только российский контур: все модели организации — в РФ",
     ruOnlyOwner: "Меняет владелец организации",
@@ -62,14 +64,9 @@ export const ru = {
     team: (n: number) => `Команда: ${n} ${plural(n, "человек", "человека", "человек")}`,
     invite: "пригласить",
     logout: "Выйти",
-    credits: "Кредиты",
-    creditsHint: "Баланс кредитов появится позже",
-    creditsPill: (plan: string, available: number, until: string | null) =>
-      `${plan} · ${fmtCredits(available)} ${creditWord(available)}${until ? ` до ${until}` : ""}`,
-    creditsTitle: "Тариф, баланс и журнал списаний",
     systems: "Ваши системы",
     stageDraft: "черновик",
-    stageProd: "prod",
+    stageProd: "опубликована",
     draftTitle: "Черновик",
     prodTitle: "Опубликовано",
     /** M2-09: link to the pilot onboarding for pilot orgs. */
@@ -77,23 +74,20 @@ export const ru = {
   },
   /** S-welcome (M2-09): first screen of a design partner after the founder's invitation. */
   welcome: {
-    title: "Добро пожаловать в пилот Wizard",
+    title: "Добро пожаловать в пилот Born to Build",
     org: (name: string) => `Ваша организация — «${name}».`,
-    lead: "Опишите систему своими словами — Wizard соберёт её, проверит и опубликует. Ниже коротко о том, как устроен пилот.",
+    lead: "Опишите систему своими словами: мы соберём её, проверим и опубликуем. Ниже коротко о том, как устроен пилот.",
     freeTitle: "Что бесплатно",
-    free: "Пилот бесплатный: сборка в чате, превью, публикация и работа систем. Оплата и привязка карты не нужны.",
-    credits: (n: number) =>
-      n > 0
-        ? `Кредиты на сборку начисляет команда Wizard. Сейчас доступно: ${fmtCredits(n)} ${creditWord(n)}.`
-        : "Кредиты на сборку начисляет команда Wizard — если их не хватит, напишите нам.",
+    free: "На пилоте всё бесплатно: сборка в чате, просмотр, публикация и работа систем. Оплата и привязка карты не нужны.",
+    usageUnknown: "Число сборок и правок на пилоте ограничено. Если понадобится больше, напишите команде.",
     limitsTitle: "Лимиты пилота",
     limits:
-      "До 5 опубликованных систем, до 30 черновиков и до 30 участников в организации. Вход в системах — по почте и через Telegram.",
+      "До 5 опубликованных систем, до 30 черновиков и до 30 участников в организации. Вход в системы — по почте и через Telegram.",
     reviewTitle: "Публикация",
     review:
-      "Перед первой публикацией системы в prod её посмотрит модератор Wizard — обычно это занимает до одного рабочего дня. Повторно смотрим, только если в системе появляются новые поля с персональными данными.",
+      "Перед первой публикацией систему посмотрит команда Born to Build. Обычно это занимает до одного рабочего дня. Повторно смотрим, только если в системе появляются новые поля с личными данными.",
     dataTitle: "Данные",
-    data: "Данные систем хранятся только в России. Персональные данные удаляются из запросов к моделям до отправки.",
+    data: "Данные систем хранятся только в России. Личные данные убираем из запросов к моделям до отправки.",
     startTitle: "С чего начать",
     startHint: "Выберите шаблон — описание подставится, и его можно поправить. Или опишите задачу сами.",
     start: "Описать свою систему",
@@ -148,12 +142,12 @@ export const ru = {
     send: "Отправить",
     lockedHint: "Правки можно отправить после сборки",
     styleToggle: "Стиль",
-    prodRevision: (v: number) => `prod · ревизия ${v}`,
+    prodRevision: (v: number) => `Опубликована версия ${v}`,
     viewerHint: "Правки вносит редактор или владелец — у вас роль наблюдателя",
     holder: (name: string) => `${name} собирает`,
     upload: "Загрузить таблицу",
     uploadFile: "Файл таблицы (.xlsx или .csv)",
-    uploadHint: "xlsx или csv до 20 МБ · сопоставление колонок — до 15 кредитов",
+    uploadHint: "xlsx или csv до 20 МБ",
     uploadNotReady: "Таблицу можно загрузить после первой сборки",
     uploadViewer: "Загружает таблицы редактор или владелец",
   },
@@ -230,8 +224,8 @@ export const ru = {
   },
   chat: {
     you: "Вы",
-    agents: { orchestrator: "Оркестратор", builder: "Строитель", qa: "Проверка" } as Record<string, string>,
-    system: "Wizard",
+    agents: { orchestrator: "Помощник", builder: "Сборщик", qa: "Проверка" } as Record<string, string>,
+    system: "Born to Build",
     piiCategory: {
       phone: "телефон",
       email: "email",
@@ -280,18 +274,18 @@ export const ru = {
     version: (v: number) => `Карточка системы · версия ${v}`,
     counts: (r: number, d: number, s: number, i: number) =>
       `${r} ${plural(r, "роль", "роли", "ролей")} · ${d} ${plural(d, "вид", "вида", "видов")} данных · ${s} ${plural(s, "экран", "экрана", "экранов")} · ${i} ${plural(i, "интеграция", "интеграции", "интеграций")}`,
-    spec: "Спека · гарантии",
-    code: "Код · гибкость",
+    spec: "Гарантии платформы",
+    code: "Что настраивается под вас",
     integrations: "Интеграции",
     keyNeeded: "ключ",
-    acceptance: "Критерии приёмки → проверки",
+    acceptance: "Что проверим перед сдачей",
     roles: "Роли",
     data: "Данные",
     pii: "Персональные данные",
-    estimate: (expected: number, min?: number, max?: number) =>
-      `≈ ${fmtCredits(expected)} ${plural(Math.round(expected), "кредит", "кредита", "кредитов")}${min !== undefined && max !== undefined ? ` · ${min}–${max} минут` : ""}`,
-    cap: (cap: number, label: string | undefined) =>
-      `Потолок — ${fmtCredits(cap)} ${plural(cap, "кредит", "кредита", "кредитов")}.${label ? ` Сборка: ${label}${scrubbed(label) ? " без ПДн" : ""}` : " Сборка без ПДн"} · данные: модели в РФ`,
+    /** D70: no credits — only the time and «на пилоте бесплатно». */
+    estimate: (min: number, max: number) => `Сборка займёт примерно ${min}–${max} минут`,
+    cap: (label: string | undefined) =>
+      `На пилоте бесплатно.${label ? ` Сборка: ${label}${scrubbed(label) ? ", без личных данных" : ""}` : " Сборка без личных данных"} · данные систем хранятся в России`,
     edit: "Изменить",
     build: "Строить",
     buildViewer: "Сборку запускает редактор или владелец",
@@ -304,28 +298,27 @@ export const ru = {
   },
   build: {
     progress: "Ход сборки",
-    credits: (used: number, cap: number | null) =>
-      cap === null ? `${fmtCredits(used)} кредитов` : `${fmtCredits(used)} из ≤${fmtCredits(cap)} кредитов`,
     queued: "в очереди",
     running: "выполняется",
     done: "готово",
     attempt: (n: number) => `попытка ${n}`,
     modelNotice: "Часть шагов выполнена на моделях в РФ",
     cancel: "Остановить",
-    gate: { G0: "Проверки уровня 0", G1: "Проверки уровня 1", G2: "Проверки уровня 2" } as Record<
-      string,
-      string
-    >,
+    /** Human names of the check levels (codes G0–G2 only under «Подробнее для специалиста»). */
+    gate: {
+      G0: "Проверка сборки",
+      G1: "Проверка сценариев работы",
+      G2: "Проверка прав доступа, данных и согласий",
+    } as Record<string, string>,
     gateStatus: {
       pending: "ожидает",
       running: "проверяется",
       passed: "пройдено",
       failed: "не пройдено",
     } as Record<string, string>,
-    afterG1: "после G1",
+    afterG1: "после проверки сценариев",
     gateCount: (passed: number, total: number) => `${passed} из ${total}`,
-    budgetExceeded: (cap: number) =>
-      `Достигнут потолок ${fmtCredits(cap)} ${plural(Math.round(cap), "кредит", "кредита", "кредитов")}`,
+    budgetExceeded: "Сборка потребовала больше работы, чем рассчитывали",
     decisionSend: "Ответить",
     freeTextPlaceholder: "Опишите по-другому (до 2000 символов)",
     recommended: "рекомендую",
@@ -334,7 +327,7 @@ export const ru = {
     fix: "Исправить",
     retry: "Повторить",
     secretTitle: (name: string) =>
-      `Нужны ключи ${name}. Вводятся в защищённую форму, агенты видят только ссылку на секрет`,
+      `Нужны ключи ${name}. Они вводятся в защищённую форму, и сборщик их не видит`,
     secretEnter: "Ввести",
     secretTest: "Тестовый режим",
     secretLabel: "Ключ",
@@ -350,7 +343,7 @@ export const ru = {
     hideChecks: "Скрыть",
     noReport: "Отчёта проверок пока нет",
     dispute: "Оспорить",
-    disputeHint: "Считаете остановку ошибкой? Модератор проверит систему и ответит на почту владельца.",
+    disputeHint: "Считаете остановку ошибкой? Команда проверит систему и ответит на почту владельца.",
     disputeText: "Что не так (необязательно)",
     disputeSend: "Отправить на проверку",
     disputeSent: "Заявка на проверку отправлена. Ответим на почту владельца в течение 24 часов.",
@@ -358,16 +351,16 @@ export const ru = {
   publish: {
     title: "Публикация",
     address: (slug: string) => `Адрес: ${slug}.<домен систем>`,
-    features: "Отдельный домен систем · хостинг в РФ · PITR · откат к любой ревизии",
+    features: "Отдельный адрес · хостинг в России · резервные копии · можно вернуть любую прежнюю версию",
     cardStatus: "Сейчас публикация доступна без привязки карты",
     cardBound: "✓ Карта РФ привязана — идентификация пройдена",
-    cardMissing: "Для публикации в prod нужна привязанная карта российского банка",
+    cardMissing: "Для публикации нужна привязанная карта российского банка",
     bindCard: "Привязать карту",
     toBilling: "Тариф и оплата",
     reviewHint: "Мы проверяем систему перед первой публикацией — обычно это занимает до одного рабочего дня",
     submit: "Опубликовать",
-    submitRevision: (v: number) => `Опубликовать ревизию ${v}`,
-    published: (v: number) => `prod · ревизия ${v}`,
+    submitRevision: (v: number) => `Опубликовать версию ${v}`,
+    published: (v: number) => `Опубликована версия ${v}`,
     openProd: "Открыть опубликованную систему",
     toSettings: "Указать в настройках",
     running: "Идёт публикация…",
@@ -379,8 +372,8 @@ export const ru = {
       OPERATOR_CONTACT_REQUIRED: "Укажите оператора ПДн",
       OPERATOR_ADDRESS_REQUIRED: "Укажите оператора ПДн",
       INN_INVALID: "Проверьте ИНН оператора ПДн",
-      PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
-      PLAN_LIMIT: "Лимит опубликованных систем тарифа",
+      PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону пока недоступен для этой системы",
+      PLAN_LIMIT: "Опубликовано наибольшее число систем для пилота. Напишите команде, если нужно больше",
       FOUNDER_REVIEW_PENDING: "Ждёт проверки",
       SYSTEM_SUSPENDED: "Система снята по жалобе",
       ORG_SUSPENDED: "Публикации организации приостановлены — подробности в письме владельцу",
@@ -388,9 +381,9 @@ export const ru = {
     edits: "Правки",
   },
   preview: {
-    draft: "DRAFT",
+    draft: "Черновик",
     draftTitle: "Черновик",
-    testData: "DRAFT · тестовые данные",
+    testData: "Черновик · тестовые данные",
     tabPreview: "Превью",
     tabCode: "Код",
     tabData: "Данные",
@@ -410,19 +403,19 @@ export const ru = {
     toggleOff: "Отменить выбор",
     toggleHint: "Наведите на элемент превью и кликните — правка коснётся только его файла",
     unavailable: "Указать элемент можно, когда система собрана и сборка не идёт",
-    banner: "DRAFT · Режим «Укажи и измени» · кликните по элементу",
+    banner: "Черновик · Режим «Укажи и измени»: нажмите на элемент",
     bannerEsc: "Esc — выход",
     chip: (name: string) => `Изменить: ${name || "элемент"}`,
     where: (file: string, line: number) => `${file}:${line}`,
     clear: "Убрать элемент",
-    cost: (credits: number) => `до ${credits} кредитов, правится только этот файл`,
+    cost: "Изменится только этот элемент",
     placeholder: (name: string) =>
       `Что изменить в «${name || "элементе"}»? Например: сделай заголовок крупнее`,
-    sent: (name: string, file: string) => `${name || "Элемент"} · ${file}`,
+    sent: (name: string) => name || "Элемент",
   },
   style: {
     title: "Стиль",
-    subtitle: "меняется мгновенно, без кредитов",
+    subtitle: "меняется сразу и не тратит правки",
     accent: "Акцент",
     accentCustom: "Свой цвет (#RRGGBB)",
     font: "Шрифт",
@@ -447,7 +440,7 @@ export const ru = {
     viewer: "наблюдатель",
   } as Record<string, string>,
   auth: {
-    title: "Вход в Wizard",
+    title: "Вход в Born to Build",
     subtitle: "Введите почту — пришлём код для входа. Пароль не нужен.",
     email: "Электронная почта",
     requestCode: "Получить код",
@@ -469,7 +462,7 @@ export const ru = {
   },
   invite: {
     title: "Приглашение в организацию",
-    text: "Вас пригласили в организацию в Wizard. Роль указана в письме с приглашением.",
+    text: "Вас пригласили в организацию в Born to Build. Роль указана в письме с приглашением.",
     login: "Войти, чтобы принять",
     accept: "Принять",
     expired: "Приглашение устарело, попросите новое",
@@ -537,11 +530,11 @@ export const ru = {
     operatorInn: "ИНН оператора",
     save: "Сохранить",
     saved: "Сохранено",
-    revisions: "Ревизии",
-    revision: (v: number) => `Ревизия ${v}`,
-    prod: "prod",
-    rollback: "Откатить",
-    rollbackConfirm: (v: number) => `Вернуть prod к ревизии ${v}? Данные сохранятся`,
+    revisions: "Версии",
+    revision: (v: number) => `Версия ${v}`,
+    prod: "опубликована",
+    rollback: "Вернуть",
+    rollbackConfirm: (v: number) => `Вернуть опубликованную систему к версии ${v}? Данные сохранятся`,
     rollbackYes: "Вернуть",
     rollbackNo: "Отмена",
     notPublished: "Система ещё не опубликована",
@@ -564,23 +557,20 @@ export const ru = {
       system_deleted: "удаление системы",
       user_deleted: "удаление аккаунта",
     } as Record<string, string>,
-    deletionEnv: { draft: "черновик", prod: "prod" } as Record<string, string>,
+    deletionEnv: { draft: "черновик", prod: "рабочая версия" } as Record<string, string>,
     danger: "Удаление системы",
     dangerHint:
-      "Система сразу пропадёт из списка и перестанет открываться. Через 30 дней базы черновика и prod, файлы и история чата будут удалены безвозвратно; запись об удалении останется в журнале.",
+      "Система сразу пропадёт из списка и перестанет открываться. Через 30 дней базы черновика и рабочей версии, файлы и история чата будут удалены безвозвратно; запись об удалении останется в журнале.",
     deleteSystem: "Удалить систему",
     deleteConfirm: (name: string) =>
       `Удалить систему «${name}»? Она перестанет открываться сразу, а её данные будут удалены безвозвратно через 30 дней`,
     deleteYes: "Удалить",
     systemLocked: "Идёт сборка или публикация — дождитесь окончания или отмените прогон",
-    backups: "Бэкапы: PITR, 14 дней",
+    backups: "Резервные копии хранятся 14 дней: систему можно восстановить на любой момент",
     export: "Выгрузить данные",
     exportHint: (env: string) =>
-      `ZIP: таблица CSV на каждую сущность и spec.json, из ${env}. Ссылка одноразовая и действует 15 минут, архив хранится сутки`,
-    exportEnv: { prod: "рабочей версии (prod)", draft: "черновика (тестовые данные)" } as Record<
-      string,
-      string
-    >,
+      `ZIP-архив: по таблице CSV на каждый вид данных и описание системы, из ${env}. Ссылка одноразовая и действует 15 минут, архив хранится сутки`,
+    exportEnv: { prod: "рабочей версии", draft: "черновика (тестовые данные)" } as Record<string, string>,
     exportPii: "Включить персональные данные",
     exportPiiConfirm:
       "Выгрузить данные вместе с персональными данными? Архив будет содержать почту, телефоны и другие ПДн пользователей системы. Храните его как документ с ПДн и не пересылайте по открытым каналам",
@@ -626,7 +616,7 @@ export const ru = {
     policyNotPublished: "Страница политики появится по адресу /privacy после публикации",
   },
   billing: {
-    title: "Тариф, баланс и карта",
+    title: "Тариф",
     back: "На главную",
     org: "Организация",
     plan: "Тариф",
@@ -641,12 +631,11 @@ export const ru = {
     paidUntil: (date: string) => `оплачен до ${date}`,
     endsAt: (date: string) => `автопродление выключено — тариф действует до ${date}`,
     nextPlan: (plan: string, date: string) => `с ${date} — тариф «${plan}»`,
-    limits: (prod: number, members: number, credits: number) =>
-      `До ${prod} ${plural(prod, "опубликованной системы", "опубликованных систем", "опубликованных систем")} · до ${members} ${plural(members, "участника", "участников", "участников")} · ${credits > 0 ? `${credits} ${plural(credits, "кредит", "кредита", "кредитов")} в месяц` : "кредиты начисляет команда Wizard"}`,
+    limits: (prod: number, members: number) =>
+      `До ${prod} ${plural(prod, "опубликованной системы", "опубликованных систем", "опубликованных систем")} · до ${members} ${plural(members, "участника", "участников", "участников")}`,
     /** M2-15, WIZARD_PAYMENTS=off (D24_pilot_free). */
-    paymentsOff:
-      "Оплата на пилоте отключена: тариф и кредиты назначает команда Wizard. Публикация в prod — без привязки карты",
-    pilotBucket: "от команды Wizard",
+    paymentsOff: "На пилоте всё бесплатно: оплата и привязка карты не нужны.",
+    pilotBucket: "от команды Born to Build",
     loginMethods: (phone: boolean) =>
       phone
         ? "Вход в системах: почта, Telegram, телефон"
@@ -704,7 +693,7 @@ export const ru = {
     card: "Карта",
     cardBound: "✓ Карта РФ привязана — идентификация пройдена",
     cardNumber: (last4: string, type: string | null | undefined) => `${type ? `${type} ` : ""}•• ${last4}`,
-    cardNone: "Карта не привязана. Без неё нельзя опубликовать систему в prod",
+    cardNone: "Карта не привязана. Без неё нельзя опубликовать систему",
     cardPending: "Проверяем карту…",
     cardNotRu: "Нужна карта российского банка",
     cardRejected: "Эту карту привязать не получилось. Попробуйте другую карту",
@@ -726,18 +715,18 @@ export const ru = {
   code: {
     title: "Код",
     readOnly: "только чтение",
-    tree: "Файлы ревизии",
-    revision: (v: number) => `Ревизия ${v}`,
-    revisionSelect: "Ревизия",
-    noFiles: "В этой ревизии пока нет файлов",
+    tree: "Файлы версии",
+    revision: (v: number) => `Версия ${v}`,
+    revisionSelect: "Версия",
+    noFiles: "В этой версии пока нет файлов",
     pickFile: "Выберите файл слева",
     loading: "Загружаю…",
     binary: "Это не текстовый файл — просмотр недоступен",
     whole: "Весь файл",
-    changes: "Изменения ревизии",
+    changes: "Изменения версии",
     viewMode: "Что показать",
-    noChanges: "В этой ревизии файл не менялся",
-    newFile: "Файл появился в этой ревизии",
+    noChanges: "В этой версии файл не менялся",
+    newFile: "Файл появился в этой версии",
     tooBig: "Файл слишком большой для сравнения — показан целиком",
     lines: (n: number) => `${n} ${plural(n, "строка", "строки", "строк")}`,
     added: "добавлено",
@@ -765,25 +754,24 @@ export const ru = {
       compliance: "Персональные данные",
       file: "Файлы кода",
     } as Record<string, string>,
-    migration: "Миграция",
-    migrationAdditive: "аддитивная — данные сохранятся",
-    migrationNone: "не требуется",
-    migrationDestructive: "удаляет данные",
+    migration: "Данные",
+    migrationAdditive: "сохранятся",
+    migrationNone: "не меняются",
+    migrationDestructive: "часть данных удалится",
     destructiveBlock:
-      "Публикация заблокирована: изменения удаляют или сужают данные prod. В prod разрешены только добавления.",
+      "Правка удаляет данные работающей системы: перед публикацией владелец смотрит последствия и подтверждает её. Данные уйдут в архив, правку можно отменить.",
     gates: "Проверки",
-    gatesLine: (levels: string, checks: number) =>
-      `${levels} · ${checks} ${plural(checks, "проверка", "проверки", "проверок")}`,
+    gatesLine: (checks: number) => `пройдено ${checks} ${plural(checks, "проверка", "проверки", "проверок")}`,
     gatesPending: "ещё не пройдены",
-    price: "Цена",
-    priceLine: (credits: number) =>
-      `${fmtCredits(credits)} ${plural(Math.round(credits), "кредит", "кредита", "кредитов")} за правку`,
-    priceUnknown: "появится после сборки",
+    price: "Стоимость",
+    /** D70: the client sees no credits. */
+    priceLine: "на пилоте бесплатно",
     cancel: "Отменить",
-    cancelHint: "Вернуть черновик к опубликованной ревизии",
-    publish: (v: number) => `Опубликовать ревизию ${v}`,
-    draftTopbar: (v: number) => `DRAFT · РЕВИЗИЯ ${v} · копия prod, ПДн замаскированы`,
-    segmentProd: "Prod",
+    cancelHint: "Вернуть черновик к опубликованной версии",
+    publish: (v: number) => `Опубликовать версию ${v}`,
+    draftTopbar: (v: number) =>
+      `Черновик · версия ${v} · копия рабочей версии, личные данные заменены примерами`,
+    segmentProd: "Рабочая версия",
     segmentDraft: "Черновик",
     segments: "Что показать",
     prodFrameTitle: "Опубликованная система",
@@ -791,7 +779,7 @@ export const ru = {
   // M2-08: public complaint form (/abuse, security/abuse.yaml#report).
   abuse: {
     title: "Пожаловаться на систему",
-    lead: "Сообщите о мошенничестве, фишинге или другом нарушении в системе, созданной на платформе Wizard. Мы рассмотрим жалобу в течение 24 часов.",
+    lead: "Сообщите о мошенничестве, фишинге или другом нарушении в системе, созданной на платформе Born to Build. Мы рассмотрим жалобу в течение 24 часов.",
     url: "Адрес страницы",
     urlHint: "Адрес системы, на которую вы жалуетесь",
     category: "Что не так",
@@ -808,7 +796,7 @@ export const ru = {
     textHint: "Что именно вы увидели — без своих паролей и данных карт",
     contact: "Почта для ответа (необязательно)",
     consent:
-      "Согласен на обработку моего адреса почты платформой Wizard только для ответа по этой жалобе; адрес удаляется через год после её рассмотрения",
+      "Согласен на обработку моего адреса почты платформой Born to Build только для ответа по этой жалобе; адрес удаляется через год после её рассмотрения",
     consentRequired: "Отметьте согласие или оставьте поле почты пустым",
     urlRequired: "Укажите адрес страницы",
     submit: "Отправить жалобу",
@@ -939,6 +927,7 @@ export const ru = {
       colSpent: "Списано кр. за месяц",
       colModels: "Модели ₽ за месяц",
       colReview: "Ревью",
+      colLimits: "Лимит пилота за 30 дней (D70)",
       colActions: "Начислить кредиты",
       reviewOn: "ревью вкл",
       reviewOff: "ревью выкл",

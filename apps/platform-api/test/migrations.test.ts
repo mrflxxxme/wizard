@@ -66,6 +66,10 @@ const M2_TABLES = [
   "abuse_reports",
   "staff_audit_log",
   "g1_checks",
+  // M2P (MVP release cut): «Написать команде», «Запросы на развитие».
+  "support_requests",
+  "development_requests",
+  "destructive_changes",
 ];
 // M3 tables created so far (M3-02 runtime AI actions: call journal and backfills).
 const M3_TABLES = ["ai_action_calls", "ai_backfills"];

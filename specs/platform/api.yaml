@@ -668,6 +668,56 @@ paths:
       summary: 'M2-08: ревизии, ожидающие ревью основателя перед prod (db.yaml#founder_reviews status=pending), старые первыми'
       responses: {'200': {description: Очередь, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {type: object, properties: {systemId: {type: string}, systemName: {type: string}, orgId: {type: string}, revision: {type: integer}, createdAt: {type: string, format: date-time}, egressHosts: {type: array, items: {type: string}, description: 'M2-52 (D71): хосты исходящих запросов функций ревизии (functions[].egress) — основатель видит их на ревью'}, newEgressHosts: {type: array, items: {type: string}, description: 'M2-52: хосты, которых нет в опубликованной ревизии (G2-EGRESS-01)'}}}}}}}}}}
   # ==== M2P · M2-22 (человеческий слой и цены: каталог цен, использование организации, обращения, заказы «под ключ», пробелы, матрица доступа) — новые пути дописывать ЗДЕСЬ, над этой строкой не трогать ====
+  /orgs/{orgId}/usage:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    get:
+      operationId: getOrgUsage
+      x-milestone: M2P
+      x-roles: [viewer]
+      summary: 'M2-34/M2-56 (D70, mvp_scope): «На пилоте бесплатно» и остаток лимита пилота организации — сборки (build mode=create) и правки (mode=change|point_edit) за скользящие 30 дней; failed и cancelled не считаются, активные считаются. Для org не на тарифе pilot limit и left = null. Кредитов, потолков и себестоимости в ответе нет (billing.yaml#rub_model.principle)'
+      responses: {'200': {description: Использование, content: {application/json: {schema: {$ref: '#/components/schemas/PilotUsage'}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /support/requests:
+    post:
+      operationId: createSupportRequest
+      x-milestone: M2P
+      x-roles: [viewer]
+      summary: 'M2-35 (D68, mvp_scope): «Написать команде». Копия — в db.yaml#support_requests; основателю — сообщение в Telegram через бота платформы (канал алертов WIZARD_OPS_ALERT_URL/CHAT_ID; письмо — WIZARD_OPS_ALERT_EMAIL): организация, почта клиента, ссылка на систему, срок ответа и текст с замаскированными ПДн (@wizard/pii scrub). systemId — система открыта (org берётся из неё; чужая → 404), иначе orgId или org пользователя по умолчанию. replyBy — 2 часа рабочего времени Пн–Пт 10–19 МСК (D60); message_ru — подтверждение со сроком. > 5 обращений в час от пользователя или > 10 от организации → 429 RATE_LIMITED. Ответ основатель даёт письмом'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [text], properties: {text: {type: string, minLength: 1, maxLength: 4000}, wantsTeam: {type: boolean, description: «Хочу, чтобы доделала команда»}, systemId: {type: string, format: uuid}, orgId: {type: string, format: uuid}, screen: {type: string, maxLength: 64, pattern: '^[a-z0-9_-]*$'}}}}}}
+      responses: {'201': {description: Отправлено, content: {application/json: {schema: {type: object, required: [id, replyBy, message_ru], properties: {id: {type: string, format: uuid}, replyBy: {type: string, format: date-time}, message_ru: {type: string}}}}}}, '404': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
+  /admin/support/requests:
+    get:
+      operationId: adminListSupportRequests
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-35/M2-57 (mvp_scope): обращения «Написать команде» — сначала неотвеченные по сроку ответа, затем отвеченные; status=open — только неотвеченные'
+      parameters: [{name: status, in: query, schema: {enum: [open, all]}}]
+      responses: {'200': {description: Обращения, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/SupportRequest'}}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/support/requests/{requestId}/answered:
+    parameters: [{name: requestId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminMarkSupportRequest
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-35 (mvp_scope): отметка «отвечено» (answered=false снимает её). Строка staff_audit_log support_answered | support_reopened (target support_request:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [answered], properties: {answered: {type: boolean}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [id, answeredAt], properties: {id: {type: string, format: uuid}, answeredAt: {type: [string, 'null'], format: date-time}}}}}}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/development-requests:
+    get:
+      operationId: adminDevelopmentRequests
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-59 (D73, mvp_scope): «Запросы на развитие» — категории по частоте (за 7 и 30 дней, всего, число систем) и последние 50 запросов (category — только этой категории) со ссылкой на систему и почтой клиента, запустившего прогон. Пишет хост агентов прогона (recordDevelopmentRequest), не HTTP'
+      parameters: [{name: category, in: query, schema: {$ref: '#/components/schemas/DevelopmentCategory'}}]
+      responses: {'200': {description: Запросы, content: {application/json: {schema: {type: object, required: [categories, items], properties: {categories: {type: array, items: {type: object, required: [category, last7, last30, total, systems, lastAt], properties: {category: {$ref: '#/components/schemas/DevelopmentCategory'}, last7: {type: integer}, last30: {type: integer}, total: {type: integer}, systems: {type: integer}, lastAt: {type: string, format: date-time}}}}, items: {type: array, items: {$ref: '#/components/schemas/DevelopmentRequest'}}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/pilot/orgs/{orgId}/limits:
+    parameters: [{$ref: '#/components/parameters/orgId'}]
+    put:
+      operationId: adminSetPilotLimits
+      x-milestone: M2P
+      x-roles: [staff]
+      summary: 'M2-34 (D70, mvp_scope): лимит пилота организации — сборки и правки за 30 дней (0…1000; null — по умолчанию 5 и 20). Строка staff_audit_log pilot_limits (target org:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {builds: {type: [integer, 'null'], minimum: 0, maximum: 1000}, edits: {type: [integer, 'null'], minimum: 0, maximum: 1000}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [orgId, builds, edits, usage], properties: {orgId: {type: string, format: uuid}, builds: {type: integer}, edits: {type: integer}, usage: {$ref: '#/components/schemas/PilotUsage'}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   # ==== конец блока M2-22 ====
   /admin/pilot/readiness:
     get:
@@ -747,6 +797,53 @@ paths:
       summary: 'M2-53 (D71): секретные адреса входящих вебхуков системы (интеграции connector=webhook) для кабинета владельца — prod по опубликованной ревизии, draft по превью; адрес — /_wizard/hooks/webhook/<integration>/<hookToken>, hookToken = HMAC от WIZARD_SECRETS_KEY (тот же ключ у runtime), смена tokenVersion в спеке меняет адрес'
       responses: {'200': {description: Адреса, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [integration, env, url, verify, entity], properties: {integration: {type: string}, env: {enum: [draft, prod]}, url: {type: string, format: uri}, verify: {enum: [hmac, shared_secret]}, entity: {type: string}}}}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   # ==== конец блока M2-98 ====
+  # ==== M2P · M2-72 (правки prod, удаляющие данные: последствия, подтверждение владельца, архив, «Отменить правку») ====
+  /systems/{id}/destructive:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getDestructiveConsequences
+      x-milestone: M2
+      x-roles: [viewer]
+      summary: 'M2-72 (product.yaml#decisions.D56_destructive_changes, D72): что публикация ревизии (по умолчанию draft_revision) удалит или сузит в данных prod — план schema_hwm_revision → revision (appspec destructiveChanges), счётчики по живым данным prod под системной ролью БД (FORCE RLS): удаление сущности — записей; удаление поля — заполненных значений; смена типа — заполненных и непереносимых значений; поле стало обязательным — пустых записей; новое правило проверки — нарушающих записей. text_ru — простыми словами («Удаление поля „Телефон“ в разделе „Заявки“ затронет 112 записей. Значения сохранятся в архиве, правку можно отменить»). required=false — подтверждение не нужно (удаление индексов и уникальности данных не меняет). hash — sha256 ревизии, базы и всех строк со счётчиками; confirmation — последнее подтверждение этой ревизии (stale, если hash уже другой). canConfirm — пользователь owner'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}]
+      responses:
+        '200': {description: Последствия, content: {application/json: {schema: {$ref: '#/components/schemas/DestructiveConsequences'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/destructive/confirm:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: confirmDestructive
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'M2-72: владелец подтверждает последствия ревизии. Подтверждение привязано к revision и hash: последствия пересчитываются; другой hash → 409 DESTRUCTIVE_CONSEQUENCES_CHANGED (details.consequences — новый список, подтвердить заново); строка, нарушающая новое правило (blocking) → 422 DESTRUCTIVE_BLOCKED; нечего подтверждать → 400; не owner → 403 NOT_OWNER (D11). Прежние неприменённые подтверждения системы → superseded. Строка журнала db.yaml#destructive_changes (кто, когда, что). Публикация (workflows.yaml#workflows.publish, gate_G0_prod) без действующего подтверждения или с устаревшим → прогон failed DESTRUCTIVE_IN_PROD'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, hash], additionalProperties: false, properties: {revision: {type: integer, minimum: 1}, hash: {type: string, pattern: '^[0-9a-f]{64}$'}}}}}}
+      responses:
+        '201': {description: Подтверждено, content: {application/json: {schema: {type: object, required: [change, consequences], properties: {change: {$ref: '#/components/schemas/DestructiveChangeRecord'}, consequences: {$ref: '#/components/schemas/DestructiveConsequences'}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /systems/{id}/destructive/changes:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listDestructiveChanges
+      x-milestone: M2
+      x-roles: [viewer]
+      summary: 'M2-72: журнал удаляющих правок системы (подтверждено, применено, отменено — кто и когда), новые первыми, ≤ 50. undo — правка, которую можно отменить: последняя применённая, пока схема prod на её ревизии (schema_hwm_revision); canUndo — пользователь owner'
+      responses:
+        '200': {description: Журнал, content: {application/json: {schema: {type: object, required: [items, undo, canUndo], properties: {items: {type: array, items: {$ref: '#/components/schemas/DestructiveChangeRecord'}}, undo: {type: ['object', 'null'], properties: {changeId: {type: string, format: uuid}, toRevision: {type: integer}}}, canUndo: {type: boolean}}}}}}
+  /systems/{id}/destructive/changes/{changeId}/undo:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: changeId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: undoDestructiveChange
+      x-milestone: M2
+      x-roles: [owner]
+      summary: '«Отменить правку» (M2-72): прогон kind=rollback {env: prod, toRevision, undoChangeId} — обратный план схемы к base_revision в одной транзакции: удалённые сущности и поля возвращаются из архива со значениями (по id), смена типа — исходные значения; добавленное правкой само уходит в архив; schema_hwm_revision = base_revision; prod переключается на публикацию, работавшую до правки; smoke. Только последняя применённая правка, пока после неё ничего не публиковали, иначе 409 DESTRUCTIVE_UNDO_UNAVAILABLE; не owner → 403 NOT_OWNER. Обычный откат prod к ревизии старше применённой правки → ROLLBACK_TARGET_INVALID (сначала «Отменить правку»)'
+      responses:
+        '202': {description: Прогон отмены, content: {application/json: {schema: {type: object, properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  # ==== конец блока M2-72 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -773,6 +870,8 @@ components:
             OTP_INVALID: 401
             INSUFFICIENT_CREDITS: 402
             PLAN_LIMIT: 402
+            BUILDS_LIMIT: 402
+            EDITS_LIMIT: 402
             FORBIDDEN: 403
             MFA_REQUIRED: 403
             NOT_OWNER: 403
@@ -809,13 +908,16 @@ components:
             SYSTEM_SUSPENDED: 422
             GATES_FAILED: 422
             DESTRUCTIVE_IN_PROD: 422
+            DESTRUCTIVE_BLOCKED: 422
+            DESTRUCTIVE_CONSEQUENCES_CHANGED: 409
+            DESTRUCTIVE_UNDO_UNAVAILABLE: 409
             ROLLBACK_TARGET_INVALID: 422
             RATE_LIMITED: 429
             INTERNAL: 500
             LLM_UNAVAILABLE: 503
             LLM_BUDGET_EXHAUSTED: 503
         message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
-        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}'}
+        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}; для BUILDS_LIMIT и EDITS_LIMIT (D70, лимит пилота организации: сборки и правки за скользящие 30 дней, billing.yaml#rub_model.pilot_limit) — {limit, used, nextAt}, message_ru без слова «кредит», UI показывает «Написать команде»'}
     OrgRole: {enum: [owner, editor, viewer]}
     SystemStage: {enum: [interview, card, building, ready, failed], description: workflows.yaml#system_stage}
     System:
@@ -868,7 +970,7 @@ components:
         role: {enum: [user, assistant, system]}
         kind: {enum: [text, questions, answers, card, run_report, notice]}
         text: {type: string}
-        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}'}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
         runId: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
     RevisionSummary:
@@ -929,6 +1031,52 @@ components:
       type: object
       required: [held]
       properties: {held: {type: boolean}, runId: {type: [string, 'null']}, holder: {type: [object, 'null'], properties: {userId: {type: string}, name: {type: string}}}, since: {type: [string, 'null'], format: date-time}, queue: {type: array, items: {type: string, format: uuid}}}
+    DestructiveConsequence:
+      type: object
+      description: 'M2-72: одна строка последствий удаляющей правки (appspec destructiveChanges + счётчики prod)'
+      required: [kind, entity, entityLabel, affected, unconvertible, archived, blocking, text_ru]
+      properties:
+        kind: {enum: [drop_table, drop_column, alter_column_type, set_not_null, alter_check]}
+        entity: {type: string}
+        entityLabel: {type: string}
+        field: {type: string}
+        fieldLabel: {type: string}
+        fromType: {type: string}
+        toType: {type: string}
+        affected: {type: integer, minimum: 0}
+        unconvertible: {type: integer, minimum: 0, description: 'смена типа: значения, которые нельзя перевести в новый тип (остаются только в архиве)'}
+        archived: {type: boolean, description: 'удалённые значения сохраняются в архиве (runtime.yaml#archive)'}
+        blocking: {type: boolean, description: 'существующие записи нарушают новое правило — публикация невозможна, пока данные не исправлены'}
+        text_ru: {type: string}
+    DestructiveConsequences:
+      type: object
+      required: [revision, baseRevision, required, blocking, hash, changes]
+      properties:
+        revision: {type: integer}
+        baseRevision: {type: ['integer', 'null']}
+        required: {type: boolean}
+        blocking: {type: boolean}
+        hash: {type: ['string', 'null']}
+        changes: {type: array, items: {$ref: '#/components/schemas/DestructiveConsequence'}}
+        confirmation: {type: ['object', 'null'], properties: {status: {enum: [confirmed, stale]}, confirmedAt: {type: string, format: date-time}}}
+        canConfirm: {type: boolean}
+    DestructiveChangeRecord:
+      type: object
+      description: 'M2-72: строка журнала db.yaml#destructive_changes'
+      required: [id, revision, status, consequences, confirmedBy, confirmedAt, undoable]
+      properties:
+        id: {type: string, format: uuid}
+        revision: {type: integer}
+        baseRevision: {type: ['integer', 'null']}
+        status: {enum: [confirmed, superseded, applied, undone]}
+        consequences: {type: array, items: {$ref: '#/components/schemas/DestructiveConsequence'}}
+        confirmedBy: {type: string, format: uuid}
+        confirmedAt: {type: string, format: date-time}
+        appliedAt: {type: ['string', 'null'], format: date-time}
+        undoneBy: {type: ['string', 'null'], format: uuid}
+        undoneAt: {type: ['string', 'null'], format: date-time}
+        undoRunId: {type: ['string', 'null'], format: uuid}
+        undoable: {type: boolean}
     Publication:
       type: object
       required: [id, env, revision, status, createdAt]
@@ -1005,5 +1153,10 @@ components:
     StaffSession: {type: object, required: [isStaff, mfaEnrolled, mfaVerifiedUntil], properties: {email: {type: string}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean}, mfaVerifiedUntil: {type: [string, 'null'], format: date-time}}}
     PilotReadiness: {type: object, required: [on, by, at, note, checklist], properties: {on: {type: boolean}, by: {type: [string, 'null'], description: 'кто переключил: email staff или --by CLI'}, at: {type: [string, 'null'], format: date-time}, note: {type: [string, 'null']}, checklist: {type: array, items: {type: object, required: [id, text], properties: {id: {type: string}, text: {type: string}}}}}}
     PilotInvite: {type: object, required: [id, email, orgName, credits, requireFounderReview, status, createdAt, expiresAt, acceptedAt, orgId], properties: {id: {type: string, format: uuid}, email: {type: string}, orgName: {type: [string, 'null']}, credits: {type: integer}, requireFounderReview: {type: boolean}, status: {enum: [sent, accepted, expired]}, createdAt: {type: string, format: date-time}, expiresAt: {type: string, format: date-time}, acceptedAt: {type: [string, 'null'], format: date-time}, orgId: {type: [string, 'null']}}}
-    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}}}
+    PilotOrg: {type: object, required: [id, name, plan, members, requireFounderReview, creditsAvailable, creditsSpentMonth, modelSpendRub], properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business]}, members: {type: integer}, requireFounderReview: {type: boolean}, creditsAvailable: {type: number}, creditsSpentMonth: {type: number}, modelSpendRub: {type: number}, usage: {$ref: '#/components/schemas/PilotUsage', description: 'M2-34 (D70): лимит пилота (только /admin, у CLI нет)'}}}
+    PilotCounter: {type: object, required: [limit, used, left, nextAt], properties: {limit: {type: [integer, 'null'], description: 'null — org не на пилоте, лимита нет'}, used: {type: integer}, left: {type: [integer, 'null']}, nextAt: {type: [string, 'null'], format: date-time, description: 'Когда освободится следующая (только при left = 0)'}}}
+    PilotUsage: {type: object, required: [pilot, free, builds, edits], properties: {pilot: {type: boolean}, free: {type: boolean, description: '«На пилоте бесплатно» (D70)'}, builds: {$ref: '#/components/schemas/PilotCounter'}, edits: {$ref: '#/components/schemas/PilotCounter'}}}
+    SupportRequest: {type: object, required: [id, orgId, orgName, email, systemId, systemName, screen, text, wantsTeam, createdAt, replyBy, answeredAt], properties: {id: {type: string, format: uuid}, orgId: {type: string, format: uuid}, orgName: {type: string}, email: {type: [string, 'null']}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, screen: {type: [string, 'null']}, text: {type: string}, wantsTeam: {type: boolean}, createdAt: {type: string, format: date-time}, replyBy: {type: string, format: date-time}, answeredAt: {type: [string, 'null'], format: date-time}}}
+    DevelopmentCategory: {enum: [payments, subscriptions, integration, messaging, design, domain, media, data, mobile, ai, other]}
+    DevelopmentRequest: {type: object, required: [id, category, quote, offered, createdAt, orgId, orgName, systemId, systemName, email], properties: {id: {type: string, format: uuid}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, quote: {type: string, description: 'Цитата клиента после scrub ПДн'}, offered: {type: [string, 'null'], description: 'Предложенная замена'}, createdAt: {type: string, format: date-time}, orgId: {type: string, format: uuid}, orgName: {type: string}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, email: {type: [string, 'null']}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}

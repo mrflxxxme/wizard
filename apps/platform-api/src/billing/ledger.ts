@@ -81,14 +81,18 @@ export const REFUND_CODES: ReadonlySet<string> = new Set([
 export const fmtCredits = (milli: number): string =>
   (Math.round(milli / 100) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 
+/**
+ * billing.yaml#rub_model.internal_guard.org_allowance (D31, D70): credits are the internal guard, the client never
+ * sees them — the text asks to write to the team (the founder raises the org's credits in /admin).
+ */
+export const INSUFFICIENT_CREDITS_RU =
+  "Сейчас не получается продолжить сборку: закончился внутренний запас организации. Напишите команде, и мы быстро его пополним.";
+
 export function insufficient(availableMilli: number, requiredMilli: number): ApiError {
-  return new ApiError(
-    "INSUFFICIENT_CREDITS",
-    availableMilli <= 0
-      ? "Кредиты закончились. Докупите кредиты, чтобы продолжить."
-      : `Не хватает кредитов: доступно ${fmtCredits(availableMilli)}, нужно ${fmtCredits(requiredMilli)}. Докупите кредиты или понизьте лимит.`,
-    { available: Math.max(0, availableMilli) / 1000, required: requiredMilli / 1000 },
-  );
+  return new ApiError("INSUFFICIENT_CREDITS", INSUFFICIENT_CREDITS_RU, {
+    available: Math.max(0, availableMilli) / 1000,
+    required: requiredMilli / 1000,
+  });
 }
 
 const expiryMs = (b: { expiresAt: Date | null }) => b.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;

@@ -3,12 +3,14 @@
 // press and a note), invitations of pilot clients (refused with the API's Russian text while readiness is off), their
 // statuses and revoke, pilot orgs with the month's spend, grants by reference, the founder-review flag, and the
 // platform LLM spend vs the monthly cap with the 80 % warning. Any MFA_REQUIRED returns to the code screen.
+
 import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { LlmSpend, PilotInvite, PilotOrg, PilotReadiness } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
+import { AdminLimits } from "../../features/pricing/AdminLimits.js";
 import { ru } from "../../i18n/ru.js";
 import f from "../abuse/Abuse.module.css";
 import st from "../settings/Settings.module.css";
@@ -403,6 +405,7 @@ function Orgs({
                 <th>{t.colSpent}</th>
                 <th>{t.colModels}</th>
                 <th>{t.colReview}</th>
+                <th>{t.colLimits}</th>
                 <th>{t.colActions}</th>
               </tr>
             </thead>
@@ -484,6 +487,9 @@ function OrgRow({
             data-testid="admin-pilot-org-review"
           />
         </label>
+      </td>
+      <td>
+        <AdminLimits orgId={org.id} usage={org.usage} onChanged={onChanged} />
       </td>
       <td>
         <div className={st.inviteForm}>

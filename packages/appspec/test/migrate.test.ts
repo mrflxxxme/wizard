@@ -177,7 +177,8 @@ describe("planMigration", () => {
           field: { name: "task", label: "Задача", type: "ref", ref: { entity: "project" } },
         },
       ],
-      ["drop_fk", "create_table", "relax_not_null", "add_fk", "add_index"],
+      // M2-72: a ref moved to another entity recreates the column (prod archives old values, keeps the valid ones).
+      ["alter_column_type", "create_table", "add_fk", "add_index", "add_index"],
       false,
     ],
   ];
@@ -205,7 +206,7 @@ describe("planMigration", () => {
     );
     expect(destructiveKinds(plan).sort()).toEqual(["drop_column", "drop_table"]);
     expect(plan.errors.map((e) => e.code)).toEqual(["DESTRUCTIVE_IN_PROD", "DESTRUCTIVE_IN_PROD"]);
-    expect(plan.errors[0]?.message_ru).toMatch(/запрещён в prod/);
+    expect(plan.errors[0]?.message_ru).toMatch(/требует подтверждения владельца/);
   });
 
   test("invalid next spec surfaces validation errors and blocks toDDL", () => {

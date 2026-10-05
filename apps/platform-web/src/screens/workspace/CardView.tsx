@@ -1,4 +1,5 @@
 // S3 «Карточка системы» (orchestrator.yaml#system_card): the single approval point; «Строить» → POST approve.
+// D70: no credits — the build time and «На пилоте бесплатно»; the internal cap stays on the server.
 import { Button } from "@wizard/ui-kit";
 import type { ReactNode } from "react";
 import type { SystemCard } from "../../api/types.js";
@@ -43,7 +44,6 @@ export function CardView({
   onEdit(): void;
 }): ReactNode {
   const cls = (k: SectionKey) => (changed.has(k) ? `${s.cardSection} ${s.changed}` : s.cardSection);
-  const credits = card.estimate?.credits;
   const minutes = card.estimate?.minutes;
   const roles = card.roles?.length ?? 0;
   const data = card.data?.length ?? 0;
@@ -158,13 +158,11 @@ export function CardView({
       )}
       <footer className={s.cardFooter}>
         <div className={s.cardFooterText}>
-          {credits?.expected !== undefined && (
-            <span data-testid="card-estimate">
-              {ru.card.estimate(credits.expected, minutes?.min, minutes?.max)}
-            </span>
+          {minutes?.min !== undefined && minutes.max !== undefined && (
+            <span data-testid="card-estimate">{ru.card.estimate(minutes.min, minutes.max)}</span>
           )}
           <span data-testid="card-cap" className={s.muted}>
-            {ru.card.cap(card.cap.credits, buildModelLabel)}
+            {ru.card.cap(buildModelLabel)}
           </span>
         </div>
         <div className={s.row}>

@@ -17,6 +17,7 @@ import type {
 import { canEdit, usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { UndoPanel } from "../../features/destructive/DestructivePanel.js";
 import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
 import { subscribeRun } from "../../run/stream.js";
@@ -462,10 +463,10 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
           />
           {showDiff && target !== null && prodRevision !== null && (
             <DiffCard
+              systemId={systemId}
               revision={target}
               changes={changes}
               reports={reports}
-              credits={run.kind === "build" && run.finished ? (run.finished.creditsUsed ?? null) : null}
               blockers={blockers}
               canCancel={!running}
               busy={busy === "publish" ? "publish" : busy === "cancel-draft" ? "cancel" : null}
@@ -473,6 +474,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
               onPublish={() => void publish(target)}
             />
           )}
+          <UndoPanel systemId={systemId} prodRevision={prodRevision} onRun={setRunId} />
           <PublishCard
             systemId={systemId}
             slug={system.slug}

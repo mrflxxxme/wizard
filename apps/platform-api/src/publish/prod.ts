@@ -3,7 +3,7 @@
 
 import { request } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
+import { type ArchiveOptions, describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
 import { ensureSystemRole, schemaName, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
@@ -147,6 +147,12 @@ export async function applyProdMigration(
     revision: number;
     publicationId: string;
     options?: PublishOptions;
+    /** M2-72: a confirmed destructive plan moves removed data to the archive; an undo restores from it. */
+    archive?: ArchiveOptions;
+    /** M2-72 undo: the schema goes back to this revision (otherwise the hwm only grows). */
+    hwmRevision?: number;
+    /** Runs in the migration transaction after the DDL (the journal row of a destructive change). */
+    inTx?: (tx: postgres.TransactionSql) => Promise<void>;
   },
 ): Promise<void> {
   const o = a.options ?? {};
@@ -154,7 +160,12 @@ export async function applyProdMigration(
   const runtimeRole = o.runtimeRole ?? RUNTIME_ROLE;
   // System access = DB role sys_<key>_prod_system (isolation.yaml#db_access, L3-20), created before the DDL.
   const systemRole = await ensureSystemRole(pg, a.systemKey, "prod", [runtimeRole]);
-  const ddl = toDDL(a.plan, schema, { runtimeRole, systemRole, lockTimeout: "3s" });
+  const ddl = toDDL(a.plan, schema, {
+    runtimeRole,
+    systemRole,
+    lockTimeout: "3s",
+    ...(a.archive ? { archive: a.archive } : {}),
+  });
   // An existing prod schema may predate system tables/columns of the current runtime (before set_rls touches them);
   // create_schema over a leftover schema creates missing tables itself but not missing columns.
   if (a.plan.steps.some((s) => s.kind === "create_schema")) ddl.push(...upgradeSystemTables(schema));
@@ -166,16 +177,22 @@ export async function applyProdMigration(
         await tx.unsafe(`SET LOCAL ROLE ${quoteIdent(o.migratorRole ?? MIGRATOR_ROLE)}`);
         for (const st of ddl) await tx.unsafe(st);
         await tx.unsafe("SET LOCAL ROLE NONE");
-        await tx`
-          update platform.systems
-             set schema_hwm_revision = greatest(coalesce(schema_hwm_revision, 0), ${a.revision}::int),
-                 updated_at = now()
-           where id = ${a.systemId}`;
+        if (a.hwmRevision !== undefined)
+          await tx`
+            update platform.systems set schema_hwm_revision = ${a.hwmRevision}::int, updated_at = now()
+             where id = ${a.systemId}`;
+        else
+          await tx`
+            update platform.systems
+               set schema_hwm_revision = greatest(coalesce(schema_hwm_revision, 0), ${a.revision}::int),
+                   updated_at = now()
+             where id = ${a.systemId}`;
         await tx`
           update platform.publications p
              set schema_revision = s.schema_hwm_revision
             from platform.systems s
            where p.id = ${a.publicationId} and s.id = p.system_id`;
+        if (a.inTx) await a.inTx(tx);
       });
       return;
     } catch (e) {

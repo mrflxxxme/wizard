@@ -1,11 +1,13 @@
 // S6 «Отчёт проверок» (GET /systems/:id/gates/latest) and the publish card (publishing itself is M1-04/M1-11; the
 // RU card status and blocker links to S10 «Персональные данные» and S-billing — M2-11). A G2 antifraud stop offers the
-// owner «Оспорить» (abuse.yaml#rescan, #messages_ru.dispute → api.yaml#disputeG2Block).
+// owner «Оспорить» (abuse.yaml#rescan, #messages_ru.dispute → api.yaml#disputeG2Block). D28/D48: checks are named for
+// people («Проверка прав доступа, данных и согласий»); levels G0–G2, check ids and file:line only under «Подробнее для
+// специалиста».
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import type { GateReport as Report } from "../../api/types.js";
 import { navigate } from "../../app/router.js";
-import { Alert, Pill } from "../../components/ui.js";
+import { Alert, Pill, Specialist } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
@@ -94,7 +96,7 @@ function ReportRow({
         <span aria-hidden="true" className={r.passed ? s.okMark : s.badMark}>
           {r.passed ? "✓" : "✗"}
         </span>
-        <b title={ru.build.gate[r.level]}>{r.level}</b>
+        <b>{ru.build.gate[r.level] ?? r.level}</b>
         <span>{r.passed ? ru.gates.passed : ru.gates.failed}</span>
         <span className={s.muted}>{ru.gates.summary(pass, counted)}</span>
         <button type="button" className={s.linkButton} aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -106,7 +108,6 @@ function ReportRow({
           {warnings.map((c) => (
             <li key={c.id} data-testid="gate-warning">
               <Pill tone="warn">{ru.gates.nonBlocking}</Pill> {c.message_ru}
-              {c.file ? ` (${c.file}${c.line ? `:${c.line}` : ""})` : ""}
             </li>
           ))}
         </ul>
@@ -118,9 +119,19 @@ function ReportRow({
             <li key={c.id} data-status={c.status}>
               <span className={s.muted}>{c.status === "pass" ? "✓" : c.status === "skip" ? "–" : "✗"}</span>{" "}
               {c.message_ru}
-              {c.file ? ` (${c.file}${c.line ? `:${c.line}` : ""})` : ""}
             </li>
           ))}
+          <li>
+            <Specialist testId={`gate-report-specialist-${r.level}`}>
+              {r.level}
+              {r.checks.map((c) => (
+                <div key={c.id}>
+                  {c.id} {c.status}
+                  {c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}
+                </div>
+              ))}
+            </Specialist>
+          </li>
         </ul>
       )}
     </li>
@@ -163,7 +174,7 @@ export function publishBlockers(apiBlockers: string[] | undefined, reports: Repo
   if (failed.length > 0 && !out.includes("GATES_FAILED")) out.unshift("GATES_FAILED");
   return out.map((code) => {
     const t = ru.publish.blockers[code];
-    if (typeof t === "function") return t(failed.join(", "));
+    if (typeof t === "function") return t(failed.map((l) => ru.build.gate[l] ?? l).join(", "));
     return t ?? code;
   });
 }

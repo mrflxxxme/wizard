@@ -5,6 +5,8 @@
 // return URL is /billing?payment=<id>: the page polls GET billing until the card binding is no longer pending.
 // M2-15 (WIZARD_PAYMENTS=off, Org.paymentsEnabled = false): no plan change, cancel, card or top-up — the plan, the
 // balance and the ledger stay; the money controls appear only once GET /orgs/:orgId has answered (no flash).
+// D70 (M2-56 mvp_scope): on the pilot plan or with payments off the client sees «На пилоте бесплатно» and what is left
+// of the pilot limit in words (GET /orgs/:id/usage) — no balance, ledger or credits; «Написать команде» for more.
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
@@ -12,6 +14,9 @@ import type { Billing, CreditBalance, LedgerEntry, Org, PlanId } from "../../api
 import { canOwn, usePlatform } from "../../app/context.js";
 import { goExternal, navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { UsageDetails, useUsage } from "../../features/pricing/Usage.js";
+import { TeamButton } from "../../features/support/SupportWidget.js";
+import { pricing } from "../../i18n/ru/pricing.js";
 import { fmtCredits, ru } from "../../i18n/ru.js";
 import s from "../settings/Settings.module.css";
 import { Rail } from "../workspace/Rail.js";
@@ -66,6 +71,7 @@ export function BillingScreen(): ReactNode {
   const [packs, setPacks] = useState(1);
   const [plansOpen, setPlansOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const usage = useUsage(api, orgId);
   const returned = useRef(search.get("payment"));
   const [checking, setChecking] = useState(returned.current !== null);
 
@@ -202,6 +208,8 @@ export function BillingScreen(): ReactNode {
     monthlyCredits: def.credits,
   };
   const payments = orgReady && org?.paymentsEnabled !== false && billing?.paymentsEnabled !== false;
+  // D70: credits are the internal guard — shown only to paying plans with payments on (after the pilot).
+  const showCredits = payments && plan !== "pilot";
   const active = billing?.status === "active";
   const renewing = active && !billing?.cancelAtPeriodEnd;
   const memberships = me?.memberships ?? [];
@@ -287,9 +295,7 @@ export function BillingScreen(): ReactNode {
                   .join(" · ")}
               </p>
             )}
-            <p className={s.small}>
-              {ru.billing.limits(limits.prodSystems, limits.members, limits.monthlyCredits)}
-            </p>
+            <p className={s.small}>{ru.billing.limits(limits.prodSystems, limits.members)}</p>
             <p className={s.small}>{ru.billing.loginMethods(def.phone)}</p>
             {owner && payments && (
               <div className={s.row}>
@@ -356,7 +362,7 @@ export function BillingScreen(): ReactNode {
                       <span>
                         <b>{ru.billing.choosePlan(planName(p), ru.billing.planPrice(d.priceRub))}</b>
                         <br />
-                        <span className={s.muted}>{ru.billing.limits(d.prod, d.members, d.credits)}</span>
+                        <span className={s.muted}>{ru.billing.limits(d.prod, d.members)}</span>
                       </span>
                       {current && renewing && !billing.nextPlan ? (
                         <Pill tone="ok">{ru.billing.current}</Pill>
@@ -429,127 +435,141 @@ export function BillingScreen(): ReactNode {
             </section>
           )}
 
-          <section className={s.block} data-testid="billing-balance" aria-labelledby="balance-title">
-            <h2 id="balance-title" className={s.blockTitle}>
-              {ru.billing.balance}
-            </h2>
-            {credits ? (
-              <>
-                <p className={b.big} data-testid="billing-available" data-value={credits.available}>
-                  {ru.billing.available(credits.available)}
-                </p>
-                <p className={s.small}>{ru.billing.total(credits.balance, credits.held)}</p>
-                <ul className={s.list}>
-                  {(credits.buckets ?? [])
-                    .filter((x) => x.remaining > 0)
-                    .map((x) => (
-                      <li
-                        key={`${x.source}|${x.expiresAt}`}
-                        className={s.small}
-                        data-testid="billing-bucket"
-                        data-source={x.source}
-                      >
-                        {ru.billing.bucketLine(
-                          plan === "pilot" && x.source === "topup"
-                            ? ru.billing.pilotBucket
-                            : (ru.billing.bucket[x.source] ?? x.source),
-                          fmtCredits(x.remaining),
-                          x.expiresAt ? fmtDay(x.expiresAt) : null,
-                        )}
-                      </li>
-                    ))}
-                </ul>
-              </>
-            ) : (
-              <p className={s.small}>{ru.code.loading}</p>
-            )}
-            {/* billing.yaml#plans.topup.available_on: no top-up on pilot even with payments on (M2-09). */}
-            {payments && plan !== "pilot" && (
-              <div className={s.sub}>
-                <h3 className={s.subTitle}>{ru.billing.topup}</h3>
-                <div className={s.row}>
-                  <label className={s.field}>
-                    <span className={s.muted}>{ru.billing.topupPacks}</span>
-                    <select
-                      value={packs}
-                      disabled={!owner || busy !== null}
-                      onChange={(e) => setPacks(Number(e.target.value))}
-                      data-testid="billing-topup-packs"
-                    >
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
+          {usage?.pilot && (
+            <section className={s.block} data-testid="billing-usage" aria-labelledby="usage-title">
+              <h2 id="usage-title" className={s.blockTitle}>
+                {pricing.free}
+              </h2>
+              <UsageDetails usage={usage} />
+              <div>
+                <TeamButton testId="billing-team" />
+              </div>
+            </section>
+          )}
+
+          {showCredits && (
+            <section className={s.block} data-testid="billing-balance" aria-labelledby="balance-title">
+              <h2 id="balance-title" className={s.blockTitle}>
+                {ru.billing.balance}
+              </h2>
+              {credits ? (
+                <>
+                  <p className={b.big} data-testid="billing-available" data-value={credits.available}>
+                    {ru.billing.available(credits.available)}
+                  </p>
+                  <p className={s.small}>{ru.billing.total(credits.balance, credits.held)}</p>
+                  <ul className={s.list}>
+                    {(credits.buckets ?? [])
+                      .filter((x) => x.remaining > 0)
+                      .map((x) => (
+                        <li
+                          key={`${x.source}|${x.expiresAt}`}
+                          className={s.small}
+                          data-testid="billing-bucket"
+                          data-source={x.source}
+                        >
+                          {ru.billing.bucketLine(
+                            ru.billing.bucket[x.source] ?? x.source,
+                            fmtCredits(x.remaining),
+                            x.expiresAt ? fmtDay(x.expiresAt) : null,
+                          )}
+                        </li>
                       ))}
-                    </select>
-                  </label>
+                  </ul>
+                </>
+              ) : (
+                <p className={s.small}>{ru.code.loading}</p>
+              )}
+              {/* billing.yaml#plans.topup.available_on: no top-up on pilot (the whole block is hidden there, D70). */}
+              {payments && (
+                <div className={s.sub}>
+                  <h3 className={s.subTitle}>{ru.billing.topup}</h3>
+                  <div className={s.row}>
+                    <label className={s.field}>
+                      <span className={s.muted}>{ru.billing.topupPacks}</span>
+                      <select
+                        value={packs}
+                        disabled={!owner || busy !== null}
+                        onChange={(e) => setPacks(Number(e.target.value))}
+                        data-testid="billing-topup-packs"
+                      >
+                        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={!owner || busy !== null}
+                      loading={busy === "topup"}
+                      title={owner ? undefined : ru.billing.ownerOnly}
+                      onClick={() => void topup()}
+                      data-testid="billing-topup"
+                    >
+                      {ru.billing.topupButton(packs, packs * TOPUP.priceRub)}
+                    </Button>
+                  </div>
+                  <p className={s.hint}>{ru.billing.topupHint}</p>
+                </div>
+              )}
+            </section>
+          )}
+
+          {showCredits && (
+            <section
+              className={`${s.block} ${s.wide}`}
+              data-testid="billing-ledger"
+              aria-labelledby="ledger-title"
+            >
+              <h2 id="ledger-title" className={s.blockTitle}>
+                {ru.billing.ledger}
+              </h2>
+              <p className={s.hint}>{ru.billing.ledgerHint}</p>
+              {ledger === null ? (
+                <p className={s.small}>{ru.code.loading}</p>
+              ) : ledger.length === 0 ? (
+                <p className={s.small}>{ru.billing.ledgerEmpty}</p>
+              ) : (
+                <ul className={s.list}>
+                  {ledger.map((x) => (
+                    <li key={x.id} className={s.logRow} data-testid="billing-ledger-row" data-kind={x.kind}>
+                      <span className={s.muted}>{fmtTime(x.createdAt)}</span>
+                      <b className={x.amount > 0 ? b.plus : b.minus}>{signed(x.amount)}</b>
+                      <span>{ru.billing.ledgerKind[x.kind] ?? x.kind}</span>
+                      {x.note_ru && <span>{x.note_ru}</span>}
+                      {x.systemId && (
+                        <a
+                          href={`/s/${x.systemId}`}
+                          className={s.link}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/s/${x.systemId}`);
+                          }}
+                        >
+                          {ru.billing.ledgerSystem}
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {cursor && (
+                <div>
                   <Button
                     size="sm"
-                    variant="primary"
-                    disabled={!owner || busy !== null}
-                    loading={busy === "topup"}
-                    title={owner ? undefined : ru.billing.ownerOnly}
-                    onClick={() => void topup()}
-                    data-testid="billing-topup"
+                    variant="ghost"
+                    onClick={() => void moreLedger()}
+                    data-testid="billing-ledger-more"
                   >
-                    {ru.billing.topupButton(packs, packs * TOPUP.priceRub)}
+                    {ru.billing.ledgerMore}
                   </Button>
                 </div>
-                <p className={s.hint}>{ru.billing.topupHint}</p>
-              </div>
-            )}
-          </section>
-
-          <section
-            className={`${s.block} ${s.wide}`}
-            data-testid="billing-ledger"
-            aria-labelledby="ledger-title"
-          >
-            <h2 id="ledger-title" className={s.blockTitle}>
-              {ru.billing.ledger}
-            </h2>
-            <p className={s.hint}>{ru.billing.ledgerHint}</p>
-            {ledger === null ? (
-              <p className={s.small}>{ru.code.loading}</p>
-            ) : ledger.length === 0 ? (
-              <p className={s.small}>{ru.billing.ledgerEmpty}</p>
-            ) : (
-              <ul className={s.list}>
-                {ledger.map((x) => (
-                  <li key={x.id} className={s.logRow} data-testid="billing-ledger-row" data-kind={x.kind}>
-                    <span className={s.muted}>{fmtTime(x.createdAt)}</span>
-                    <b className={x.amount > 0 ? b.plus : b.minus}>{signed(x.amount)}</b>
-                    <span>{ru.billing.ledgerKind[x.kind] ?? x.kind}</span>
-                    {x.note_ru && <span>{x.note_ru}</span>}
-                    {x.systemId && (
-                      <a
-                        href={`/s/${x.systemId}`}
-                        className={s.link}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          navigate(`/s/${x.systemId}`);
-                        }}
-                      >
-                        {ru.billing.ledgerSystem}
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {cursor && (
-              <div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => void moreLedger()}
-                  data-testid="billing-ledger-more"
-                >
-                  {ru.billing.ledgerMore}
-                </Button>
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          )}
         </div>
       </main>
     </div>
