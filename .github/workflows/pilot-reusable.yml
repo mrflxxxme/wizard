@@ -137,6 +137,10 @@ jobs:
       WIZARD_SMTP_PASSWORD: ${{ secrets.WIZARD_SMTP_PASSWORD }}
       WIZARD_SMTP_FROM: ${{ secrets.WIZARD_SMTP_FROM || vars.WIZARD_SMTP_FROM }}
       WIZARD_SMTP_TLS: ${{ vars.WIZARD_SMTP_TLS }}
+      # Platform mail over the Unisender Go HTTP API on 443 (default for a *.unisender.ru host: the server's mail
+      # ports are closed); WIZARD_MAIL_TRANSPORT=smtp forces SMTP, WIZARD_MAIL_API_BASE overrides the API origin.
+      WIZARD_MAIL_TRANSPORT: ${{ vars.WIZARD_MAIL_TRANSPORT }}
+      WIZARD_MAIL_API_BASE: ${{ vars.WIZARD_MAIL_API_BASE }}
       WIZARD_TELEGRAM_BOT_TOKEN: ${{ secrets.WIZARD_TELEGRAM_BOT_TOKEN }}
       WIZARD_OPS_ALERT_TELEGRAM_TOKEN: ${{ secrets.WIZARD_OPS_ALERT_TELEGRAM_TOKEN }}
       WIZARD_OPS_ALERT_CHAT_ID: ${{ secrets.WIZARD_OPS_ALERT_CHAT_ID || vars.WIZARD_OPS_ALERT_CHAT_ID }}

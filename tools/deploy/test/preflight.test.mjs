@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TLSSocket } from "node:tls";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mailTransportOf, unisenderApiBase } from "../../../packages/connectors/src/mail-api.ts";
 import { PROVIDERS } from "../../../packages/llm/src/index.ts";
 import { main } from "../pilot.mjs";
 import { encryptBundle, ensureBundle } from "../pilot-secrets.mjs";
@@ -15,10 +16,14 @@ import {
   ALERT_TEXT,
   checkSpf,
   DEFAULT_BASE,
+  mailApiBase,
+  mailTransport,
   parseFrom,
   probeCloudru,
   probeDomain,
   probeFrom,
+  probeMail,
+  probeMailApi,
   probeSmtp,
   probeSpf,
   probeTelegram,
@@ -107,6 +112,10 @@ const okRoutes = (over = {}) => [
   ],
   [/\/getMe$/, () => ({ body: { ok: true, result: { username: "wizard_alerts_bot" } } })],
   [/\/sendMessage$/, () => over.send ?? { body: { ok: true } }],
+  [
+    /unisender\.ru\/ru\/transactional\/api\/v1\/system\/ping\.json$/,
+    () => over.mailApi ?? { body: { status: "success", user_id: 11344 } },
+  ],
 ];
 
 describe("preflight: Timeweb Cloud", () => {
@@ -494,6 +503,90 @@ describe("preflight: SMTP", () => {
       expect(anon.warnings[0]).toMatch(/WIZARD_SMTP_USER не задан/);
       expect(s.seen.map((x) => x.line.split(" ")[0])).toEqual(["EHLO", "QUIT"]);
     });
+  });
+});
+
+describe("preflight: Unisender Go HTTP API (the server's mail ports are closed)", () => {
+  const KEY = "unisender-go-api-key-77aa";
+  const UNI = { ...BASE, WIZARD_SMTP_HOST: "smtp.go1.unisender.ru", WIZARD_SMTP_PASSWORD: KEY };
+
+  it("transport and API base equal packages/connectors mail-api.ts", () => {
+    const cases = [
+      {},
+      { WIZARD_SMTP_HOST: "smtp.go1.unisender.ru" },
+      { WIZARD_SMTP_HOST: "SMTP.GO2.unisender.ru." },
+      { WIZARD_SMTP_HOST: "smtp.unisender.ru" },
+      { WIZARD_SMTP_HOST: "smtp.mail.example" },
+      { WIZARD_SMTP_HOST: "unisender.ru.evil.example" },
+      { WIZARD_SMTP_HOST: "smtp.go1.unisender.ru", WIZARD_MAIL_TRANSPORT: "smtp" },
+      { WIZARD_SMTP_HOST: "smtp.mail.example", WIZARD_MAIL_TRANSPORT: "Unisender-API" },
+      { WIZARD_MAIL_TRANSPORT: "http" },
+      { WIZARD_SMTP_HOST: "smtp.go1.unisender.ru", WIZARD_MAIL_API_BASE: "https://goapi.unisender.ru/" },
+    ];
+    for (const v of cases) {
+      expect(mailTransport(v), JSON.stringify(v)).toBe(mailTransportOf(v));
+      expect(mailApiBase(v), JSON.stringify(v)).toBe(
+        unisenderApiBase(v.WIZARD_SMTP_HOST, v.WIZARD_MAIL_API_BASE),
+      );
+    }
+  });
+
+  it("system/ping with X-API-KEY: ok without a letter; 401 and no answer fail; no key — fail", async () => {
+    const f = fakeFetch(okRoutes());
+    const r = await probeMailApi(UNI, { fetch: f });
+    expect(r).toMatchObject({ status: "ok", title: "Почта: ключ API Unisender Go" });
+    expect(r.detail).toContain("go1.unisender.ru");
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0]).toMatchObject({
+      url: "https://go1.unisender.ru/ru/transactional/api/v1/system/ping.json",
+      method: "POST",
+      body: "{}",
+    });
+    expect(f.calls[0].headers["X-API-KEY"]).toBe(KEY);
+    const denied = await probeMailApi(UNI, {
+      fetch: fakeFetch(okRoutes({ mailApi: { status: 401, body: { status: "error", code: 102 } } })),
+    });
+    expect(denied.status).toBe("fail");
+    expect(denied.detail).toMatch(/не принял WIZARD_SMTP_PASSWORD как API-ключ \(HTTP 401\)/);
+    expect(denied.detail).not.toContain(KEY);
+    const down = await probeMailApi(UNI, {
+      fetch: fakeFetch(okRoutes({ mailApi: new Error("ECONNRESET") })),
+    });
+    expect(down).toMatchObject({ status: "fail", detail: "нет ответа от go1.unisender.ru (порт 443)" });
+    expect((await probeMailApi({ ...UNI, WIZARD_SMTP_PASSWORD: "" })).status).toBe("fail");
+    expect(
+      (await probeMailApi({ ...UNI, WIZARD_MAIL_API_BASE: "http://go1.unisender.ru" }, { fetch: f })).detail,
+    ).toMatch(/https/);
+  });
+
+  it("probeMail: the API for a Unisender host (no SMTP connection), SMTP otherwise, unknown transport fails", async () => {
+    const connect = async () => {
+      throw new Error("SMTP must not be used");
+    };
+    const api = await probeMail(UNI, { fetch: fakeFetch(okRoutes()), smtp: { connect } });
+    expect(api).toMatchObject({ status: "ok", title: "Почта: ключ API Unisender Go" });
+    const smtp = await probeMail({ ...UNI, WIZARD_MAIL_TRANSPORT: "smtp" }, { smtp: { connect } });
+    expect(smtp).toMatchObject({ status: "fail", title: "Почта: SMTP-вход" });
+    expect((await probeMail({ ...UNI, WIZARD_MAIL_TRANSPORT: "pigeon" })).status).toBe("fail");
+  });
+
+  it("runPreflight: the mail row checks the API key; the key never reaches a line or the summary", async () => {
+    const lines = [];
+    let summary = "";
+    await runPreflight({
+      env: "prod",
+      vars: { ...UNI, WIZARD_MAIL_TRANSPORT: "" },
+      fetch: fakeFetch(
+        okRoutes({ mailApi: { status: 401, body: { status: "error", message: KEY, code: 102 } } }),
+      ),
+      smtp: { connect: async () => Promise.reject(new Error("no SMTP")) },
+      log: (l) => lines.push(l),
+      summary: (t) => {
+        summary = t;
+      },
+    });
+    expect(summary).toMatch(/Почта: ключ API Unisender Go \| ошибка/);
+    for (const l of [...lines, summary]) expect(l).not.toContain(KEY);
   });
 });
 

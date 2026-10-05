@@ -3,7 +3,8 @@
 // (docs/ops/deploy.md «Пилот: одна кнопка», docs/reviews/impl-notes/pilot-bootstrap.md). The founder sets GitHub
 // secrets/variables once (FOUNDER_INPUTS); everything else is created here, idempotently:
 //   node tools/deploy/pilot.mjs check --env prod|staging                read-only preflight of the founder inputs
-//        (tools/deploy/preflight.mjs): Timeweb token, balance and DNS zones, Cloud.ru, Z.ai, SMTP login, alerts, SPF
+//        (tools/deploy/preflight.mjs): Timeweb token, balance and DNS zones, Cloud.ru, Z.ai, SMTP login or the
+//        Unisender Go API key, alerts, SPF
 //   node tools/deploy/pilot.mjs bootstrap --env prod|staging --tag <sha>   state bucket + keys (Timeweb API) → secrets
 //        bundle (generated once, encrypted with WIZARD_STATE_PASSPHRASE, kept in the state bucket) → OpenTofu →
 //        temporary SSH rule for this runner's IP → k3s over an SSH tunnel → addons, Secrets, Helm → founder access;
@@ -94,7 +95,11 @@ export const FOUNDER_INPUTS = {
     ["WIZARD_SMTP_HOST", "SMTP-сервер почты платформы (коды входа)", true],
     ["WIZARD_SMTP_PORT", "порт SMTP (по умолчанию 465)", false],
     ["WIZARD_SMTP_USER", "логин SMTP", false],
-    ["WIZARD_SMTP_PASSWORD", "пароль SMTP", false],
+    [
+      "WIZARD_SMTP_PASSWORD",
+      "пароль SMTP (у Unisender Go — API-ключ, по нему же идёт отправка через API)",
+      false,
+    ],
     ["WIZARD_SMTP_FROM", "отправитель, например «Wizard <noreply@домен>»", true],
     ["WIZARD_OPS_ALERT_TELEGRAM_TOKEN", "токен бота для алертов (или WIZARD_OPS_ALERT_URL)", false],
     ["WIZARD_OPS_ALERT_CHAT_ID", "чат Telegram для алертов", false],
@@ -197,6 +202,11 @@ export function checkInputs(command, vars) {
   }
   if (vars.WIZARD_SMTP_PORT && !/^\d{2,5}$/.test(vars.WIZARD_SMTP_PORT))
     problems.push(["WIZARD_SMTP_PORT", "нужен номер порта"]);
+  if (
+    vars.WIZARD_MAIL_TRANSPORT &&
+    !["smtp", "unisender-api"].includes(vars.WIZARD_MAIL_TRANSPORT.trim().toLowerCase())
+  )
+    problems.push(["WIZARD_MAIL_TRANSPORT", "допустимо smtp или unisender-api"]);
   if (vars.WIZARD_OPS_ALERT_TELEGRAM_TOKEN && !vars.WIZARD_OPS_ALERT_CHAT_ID)
     problems.push(["WIZARD_OPS_ALERT_CHAT_ID", "нужен вместе с WIZARD_OPS_ALERT_TELEGRAM_TOKEN"]);
   if (!vars.WIZARD_GHCR_TOKEN && vars.WIZARD_GHCR_ANONYMOUS !== "1")

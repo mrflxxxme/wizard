@@ -40,7 +40,8 @@ spec:
   egress: []
 ---
 # platform-api and worker: PgBouncer, Managed PG (DBOS system DB, migrations), runtime internal port, the internet on
-# 443 (LLM providers in RU, S3, YooKassa, Telegram) and SMTP submission.
+# 443 (LLM providers in RU, S3, YooKassa, Telegram, the Unisender Go mail API — the pilot's server has the mail ports
+# closed, email.yaml#transport) and SMTP submission.
 {{- range $role := list "platform-api" "worker" }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -177,7 +178,8 @@ spec:
     {{- end }}
     {{- if .Values.runtime.directConnectorEgress }}
     # TEMPORARY (impl-notes M2-06): live connector calls of the runtime go out directly until their transport uses
-    # the egress proxy (M2-01 leftover). Still no private, cluster, metadata or API-server ranges.
+    # the egress proxy (M2-01 leftover). Still no private, cluster, metadata or API-server ranges. 443 also carries
+    # the systems' platform mail over the Unisender Go HTTP API (email.yaml#transport).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

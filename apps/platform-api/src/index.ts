@@ -43,8 +43,8 @@ export {
   RESTRICTED_REGIONS,
 } from "./auth/region.js";
 export { cookieNames } from "./auth/sessions.js";
-/** M2-09: platform mail over SMTP (WIZARD_SMTP_*), outbox fallback when not configured. */
-export { platformMailer, SmtpMailer, type SmtpMailerOptions } from "./auth/smtp-mailer.js";
+/** M2-09: platform mail over SMTP (WIZARD_SMTP_*) or the Unisender Go HTTP API, outbox fallback when not configured. */
+export { ApiMailer, platformMailer, SmtpMailer, type SmtpMailerOptions } from "./auth/smtp-mailer.js";
 /** RFC 6238 TOTP on node:crypto (staff MFA): code of a base32 secret, verification with replay guard. */
 export { base32Decode, base32Encode, newTotpSecret, otpauthUri, totpCode, verifyTotp } from "./auth/totp.js";
 export {

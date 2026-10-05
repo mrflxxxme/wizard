@@ -4,6 +4,7 @@ import { type AppSpec, EGRESS_HOST_RE } from "@wizard/appspec";
 import { z } from "zod";
 import { defineAction, defineConnector } from "./define.js";
 import { ConnectorError } from "./errors.js";
+import { sendUnisenderApi } from "./mail-api.js";
 import {
   buildMessage,
   displayName,
@@ -266,27 +267,43 @@ function smtpFailure(e: unknown): ConnectorError {
   return new ConnectorError("INVALID_REQUEST", "Почтовый сервер отклонил письмо", opts);
 }
 
-interface Route {
+interface SmtpRoute {
+  kind: "smtp";
   endpoint: SmtpEndpoint;
   address: string;
   password?: string;
 }
 
-/** Where a message goes: dev receiver (test mode), the platform account or the client's SMTP (after the SSRF check). */
+/** The platform account over the Unisender Go HTTP API (email.yaml#transport); the key is the SMTP password. */
+interface ApiRoute {
+  kind: "api";
+  base: string;
+  apiKey: string;
+}
+
+type Route = SmtpRoute | ApiRoute;
+
+/**
+ * Where a message goes: dev receiver (test mode), the platform account (SMTP or its HTTP API) or the client's SMTP
+ * (after the SSRF check).
+ */
 async function routeOf(ctx: ConnectorCtx, config: EmailConfig): Promise<Route | null> {
   if (ctx.mode === "test") {
     const dev = ctx.platform.devSmtp;
-    return dev ? { endpoint: dev, address: dev.host } : null;
+    return dev ? { kind: "smtp", endpoint: dev, address: dev.host } : null;
   }
   if ((config.provider ?? "platform") === "platform") {
     const smtp = ctx.platform.smtp;
     if (!smtp) throw new ConnectorError("SECRET_MISSING", "Почтовый аккаунт платформы ещё не настроен");
+    const api = ctx.platform.mailApi;
+    if (api) return { kind: "api", base: api.base, apiKey: await ctx.platform.secrets.get("smtp_password") };
     const password = smtp.user ? await ctx.platform.secrets.get("smtp_password") : undefined;
-    return { endpoint: smtp, address: smtp.host, ...(password ? { password } : {}) };
+    return { kind: "smtp", endpoint: smtp, address: smtp.host, ...(password ? { password } : {}) };
   }
   const host = config.host as string;
   const [address] = await resolvePublic(host, ctx.platform.resolve);
   return {
+    kind: "smtp",
     endpoint: {
       host,
       port: config.port as number,
@@ -368,6 +385,28 @@ async function dispatch(
       }),
     );
     return { messageId };
+  }
+  if (route.kind === "api") {
+    try {
+      const { jobId } = await sendUnisenderApi(
+        {
+          from: sender.address,
+          ...(sender.name ? { fromName: sender.name } : {}),
+          to: mail.to,
+          ...(config.replyTo ? { replyTo: config.replyTo } : {}),
+          subject,
+          text: mail.text,
+          html: mail.html,
+          inline: mail.inline ?? [],
+          // The API takes only X- headers (Date and Message-ID are its own).
+          headers: Object.fromEntries(headers.filter(([k]) => /^X-/i.test(k))),
+        },
+        { base: route.base, apiKey: route.apiKey, fetch: ctx.fetch },
+      );
+      return { messageId: jobId || messageId };
+    } catch (e) {
+      throw smtpFailure(e);
+    }
   }
   try {
     await sendSmtp({
