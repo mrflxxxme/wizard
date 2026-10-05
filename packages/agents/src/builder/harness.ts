@@ -1,12 +1,12 @@
 // Harness v2 (agents/builder.yaml#harness): the architect's brief (submit_brief), executor task messages, the wave
 // batcher (one routeBatch per wave, deterministic order), the reviewer (submit_review) and stage metrics.
-import type { AppSpec } from "@wizard/appspec";
+import { type AppSpec, generateTypes } from "@wizard/appspec";
 import type { Check, QaCheck } from "@wizard/gates";
 import type { RouteInput, RouteOutput } from "@wizard/llm";
 import { z } from "zod";
 import { defineTool, type ToolIssue } from "../core/index.js";
 import { cardDigest, specDigest } from "./digest.js";
-import { SDK_FIX_HINT, STUB_MARKER } from "./prompt.js";
+import { evidenceOf, SDK_FIX_HINT, STUB_MARKER } from "./prompt.js";
 import type { BuildCard } from "./types.js";
 
 export const MAX_BRIEF_TASKS = 60;
@@ -187,6 +187,20 @@ export interface TaskMessageInput {
   fix?: { findings: readonly Check[]; explanations?: readonly unknown[] };
 }
 
+export const TYPES_MAX_CHARS = 12_000;
+
+function typesOf(spec: AppSpec): string {
+  let t: string;
+  try {
+    t = generateTypes(spec).replace(/^\/\/ Generated[^\n]*\n/, "");
+  } catch {
+    return "";
+  }
+  return t.length > TYPES_MAX_CHARS
+    ? `${t.slice(0, TYPES_MAX_CHARS)}\n// … (обрезано; полный файл — read_file _generated/wizard.d.ts)`
+    : t;
+}
+
 export function taskMessage(a: TaskMessageInput): string {
   const t = a.task;
   const acs = a.card.acceptance.filter((ac) => t.acRefs.includes(ac.id));
@@ -201,6 +215,15 @@ export function taskMessage(a: TaskMessageInput): string {
     `Цель: ${t.goal}`,
   ];
   if (t.details.length) lines.push("Детали:", ...t.details.map((d) => `- ${d}`));
+  // The exact types the code is compiled against (G0-TS-01): field names, types, `where` by index, functions.
+  const types = typesOf(a.spec);
+  if (types)
+    lines.push(
+      "Типы системы (_generated/wizard.d.ts — по ним проверяется код; поля, where и функции бери только отсюда):",
+      "```ts",
+      types,
+      "```",
+    );
   if (fns.length)
     lines.push(
       "Вызывает функции:",
@@ -238,7 +261,7 @@ export function findingLines(findings: readonly Check[]): string[] {
     .slice(0, 20)
     .map(
       (c) =>
-        `- ${c.id}${c.line ? ` строка ${c.line}` : ""}: ${c.message_ru}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
+        `- ${c.id}${c.line ? ` строка ${c.line}` : ""}: ${c.message_ru}${evidenceOf(c)}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
     );
   if (findings.some((c) => c.id === "G0-TS-01" || c.id === "G0-FN-01")) lines.push(SDK_FIX_HINT);
   return lines;

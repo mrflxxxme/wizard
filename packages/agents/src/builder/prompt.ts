@@ -115,6 +115,13 @@ const SDK_CHECKS = new Set(["G0-TS-01", "G0-FN-01"]);
 export const SDK_FIX_HINT =
   'Ошибки типов и объявлений функций — сверься со шпаргалкой @wizard/sdk из системного промпта: импорт только `import { query, mutation, action, v } from "@wizard/sdk"`; `export default query({ args: { x: v.string(), y: v.optional(v.int()) }, handler: async (ctx, args) => … })` без аннотаций параметров; необязательный аргумент — v.optional(v.X()), а не .optional(); таблицы — ctx.db.<сущность>.get/getBy/list/first/count/paginate/insert/patch/delete, а не ctx.db.query(…).';
 
+/** The check's evidence (the compiler's text for G0-TS-01, expected vs got for scenarios) on one line, ≤ 300 chars. */
+export function evidenceOf(c: { evidence?: string }): string {
+  const e = (c.evidence ?? "").replace(/\s+/g, " ").trim();
+  if (!e) return "";
+  return ` — ${e.length > 300 ? `${e.slice(0, 299)}…` : e}`;
+}
+
 export function gateReportText(report: GateReport, explanations?: unknown[]): string {
   const failed = report.checks.filter((c) => c.status === "fail" || c.status === "error");
   const lines = [
@@ -123,7 +130,7 @@ export function gateReportText(report: GateReport, explanations?: unknown[]): st
       .slice(0, 20)
       .map(
         (c) =>
-          `- ${c.id}${c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}${c.path ? ` ${c.path}` : ""}: ${c.message_ru}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
+          `- ${c.id}${c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}${c.path ? ` ${c.path}` : ""}: ${c.message_ru}${evidenceOf(c)}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
       ),
   ];
   if (explanations?.length)

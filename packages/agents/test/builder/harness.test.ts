@@ -2,7 +2,13 @@
 // stable order), the per-file check, the task file restriction, the reviewer → fix round and build_metrics.
 import { LlmError, type LlmResult, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
-import { type BriefTask, briefIssues, runWave } from "../../src/builder/harness.js";
+import {
+  type BriefTask,
+  briefIssues,
+  findingLines,
+  runWave,
+  taskMessage,
+} from "../../src/builder/harness.js";
 import { createMemoryHost, executeBuild, type RouteBatchItem } from "../../src/builder/index.js";
 import { pageStub } from "../../src/builder/scaffold.js";
 import { cardFor, eventProblems, g1Stub, report, stop, tc, turn } from "../builder-helpers.js";
@@ -358,5 +364,28 @@ describe("harness v2: build", () => {
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
     expect(res.status).toBe("succeeded");
     expect(metricsOf(mem.events)).toMatchObject({ review: { skipped: true } });
+  });
+});
+
+describe("harness v2: what an executor sees", () => {
+  test("the task message carries the system's generated types", () => {
+    const m = taskMessage({ card, spec, task: brief[0] as BriefTask, checks: [], current: null });
+    expect(m).toContain("Типы системы (_generated/wizard.d.ts");
+    expect(m).toContain("interface Entities");
+    expect(m).toContain('status: "new" | "done"');
+  });
+
+  test("a finding shows the compiler's text, not only the TS code", () => {
+    const lines = findingLines([
+      {
+        id: "G0-TS-01",
+        status: "fail",
+        severity: "blocker",
+        message_ru: "Ошибка типов в ui/pages/Home.tsx:9 (TS2339)",
+        line: 9,
+        evidence: "Property 'phone' does not exist\n  on type '{ name: string; }'.",
+      },
+    ]);
+    expect(lines[0]).toContain("(TS2339) — Property 'phone' does not exist on type '{ name: string; }'.");
   });
 });
