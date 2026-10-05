@@ -1,6 +1,7 @@
 // S1 «Старт» (platform-screens.yaml#screens S1): M1 — current organization, «только РФ» (owner → PATCH settings),
 // the team size on system cards, sign out. M2-09: `/?template=<id>` preselects a template (from S-welcome); pilot
-// orgs get a link back to the pilot onboarding.
+// orgs get a link back to the pilot onboarding. D70: no credits — «На пилоте бесплатно» and what is left in words; a
+// limit error offers «Написать команде» (D68).
 import { Button } from "@wizard/ui-kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, newIdempotencyKey } from "../api/client.js";
@@ -8,6 +9,9 @@ import type { System } from "../api/types.js";
 import { canEdit, canOwn, usePlatform } from "../app/context.js";
 import { navigate, useRoute } from "../app/router.js";
 import { Alert, Pill } from "../components/ui.js";
+import { needsTeam, usageText, useUsage } from "../features/pricing/Usage.js";
+import { TeamButton } from "../features/support/SupportWidget.js";
+import { pricing } from "../i18n/ru/pricing.js";
 import { ru } from "../i18n/ru.js";
 import s from "./Start.module.css";
 
@@ -25,7 +29,7 @@ export function Start(): ReactNode {
   const [error, setError] = useState<ApiError | null>(null);
   const [systems, setSystems] = useState<System[]>([]);
   const keyRef = useRef<string | null>(null);
-  const [money, setMoney] = useState<{ plan: string; available: number; until: string | null } | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
 
   const signedIn = auth === "ready";
   // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
@@ -42,29 +46,21 @@ export function Start(): ReactNode {
         .listMembers(orgId)
         .then((r) => live && setTeam(r.items.length))
         .catch(() => live && setTeam(null));
-    if (signedIn && typeof api.getCredits === "function")
-      Promise.all([api.getCredits(orgId), api.getOrg(orgId)])
-        .then(([c, o]) => {
+    if (signedIn && typeof api.getOrg === "function")
+      api
+        .getOrg(orgId)
+        .then((o) => {
           if (!live) return;
           setPilot(o.plan === "pilot");
-          // The nearest expiry of a non-empty bucket (billing.yaml#ledger: credits burn bucket by bucket).
-          const until = (c.buckets ?? [])
-            .filter((x) => x.remaining > 0 && x.expiresAt)
-            .map((x) => x.expiresAt as string)
-            .sort()[0];
-          setMoney({
-            plan: ru.billing.planName[o.plan] ?? o.plan,
-            available: c.available,
-            until: until
-              ? new Date(until).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
-              : null,
-          });
+          setPlan(ru.billing.planName[o.plan] ?? o.plan);
         })
-        .catch(() => live && setMoney(null));
+        .catch(() => live && setPlan(null));
     return () => {
       live = false;
     };
   }, [api, orgId, orgParam, signedIn]);
+  const usage = useUsage(api, orgId, signedIn);
+  const usageLine = usageText(usage);
 
   /** Optimistic switch (owner): the box follows the click, a refusal puts the previous settings back. */
   async function toggleRuOnly(ruOnly: boolean) {
@@ -132,7 +128,7 @@ export function Start(): ReactNode {
             navigate("/");
           }}
         >
-          W
+          B
         </a>
         <span className={s.policy} data-testid="start-policy">
           {ru.start.policy(settings?.buildModelLabel)}
@@ -179,24 +175,20 @@ export function Start(): ReactNode {
           />
           {ru.start.ruOnly}
         </label>
-        {/* «Free · N кредитов до <дата>»: GET /orgs/:orgId/credits + plan (M1); a link to S-billing (M2-11). */}
-        {money ? (
+        {/* D70: «На пилоте бесплатно · ещё 2 сборки · ещё 15 правок» (GET /orgs/:id/usage), no credits; S-billing. */}
+        {(usageLine || plan) && (
           <a
             href="/billing"
-            data-testid="start-credits"
+            data-testid="start-usage"
             className={s.creditsLink}
-            title={ru.start.creditsTitle}
+            title={pricing.pillTitle}
             onClick={(e) => {
               e.preventDefault();
               navigate("/billing");
             }}
           >
-            <Pill tone="neutral">{ru.start.creditsPill(money.plan, money.available, money.until)}</Pill>
+            <Pill tone={usageLine ? "ok" : "neutral"}>{usageLine ?? pricing.plan(plan ?? "")}</Pill>
           </a>
-        ) : (
-          <span data-testid="start-credits" title={ru.start.creditsHint}>
-            <Pill tone="neutral">{ru.start.credits}: —</Pill>
-          </span>
         )}
         {pilot && (
           <a
@@ -273,12 +265,7 @@ export function Start(): ReactNode {
         </div>
         {error && (
           <Alert>
-            {error.message}{" "}
-            {error.code === "INSUFFICIENT_CREDITS" && (
-              <Button size="sm" variant="secondary" disabled={!signedIn} onClick={() => navigate("/billing")}>
-                {ru.errors.topUp}
-              </Button>
-            )}
+            {error.message} {needsTeam(error.code) && <TeamButton />}
           </Alert>
         )}
       </main>

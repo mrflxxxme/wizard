@@ -906,6 +906,35 @@ const CHECKS = {
       match: "holder_phone",
     },
   },
+  // M2-52 (D71): hosts of ctx.http.fetch — public names only; a new host before prod goes to the founder.
+  "G2-EGRESS-01": {
+    pass: {
+      description: "action ходит на публичный API",
+      spec: [{ op: "set", path: "/functions/3/egress", value: ["api.partner-crm.ru"] }],
+    },
+    "fail-internal": {
+      description: "хост во внутренней зоне кластера",
+      spec: [
+        { op: "set", path: "/functions/3/egress", value: ["wizard-runtime-internal.svc.cluster.local"] },
+      ],
+    },
+    "fail-platform": {
+      description: "хост — домен платформы",
+      spec: [{ op: "set", path: "/functions/3/egress", value: ["admin.borntobuild.ru"] }],
+    },
+    "fail-query": {
+      description: "egress у query — запросы наружу только из action",
+      spec: [{ op: "set", path: "/functions/0/egress", value: ["api.partner-crm.ru"] }],
+    },
+  },
+  "G2-EGRESS-02": {
+    pass: { description: "prod без внешних адресов", env: "prod" },
+    "warn-new-host": {
+      description: "новый хост относительно опубликованной ревизии → ревью основателя",
+      env: "prod",
+      spec: [{ op: "set", path: "/functions/3/egress", value: ["api.partner-crm.ru"] }],
+    },
+  },
   "G2-AF-08": {
     pass: { description: "эталон форума" },
     "warn-score": { ...SCORE["warn-new-free-urgent-brand"], expect: "warn" },

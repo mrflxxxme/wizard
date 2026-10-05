@@ -6,6 +6,7 @@ import { qrConnector } from "./qr.js";
 import { parseSecretRef } from "./secrets.js";
 import { telegramConnector } from "./telegram.js";
 import type { AnyConnector, ConnectorId, SpecIssue } from "./types.js";
+import { webhookConnector } from "./webhook/index.js";
 import { yookassaConnector } from "./yookassa.js";
 
 export const CONNECTORS: Readonly<Record<ConnectorId, AnyConnector>> = {
@@ -13,6 +14,7 @@ export const CONNECTORS: Readonly<Record<ConnectorId, AnyConnector>> = {
   telegram: telegramConnector,
   email: emailConnector,
   qr: qrConnector,
+  webhook: webhookConnector,
 };
 
 export function getConnector(id: string): AnyConnector | undefined {
@@ -92,7 +94,7 @@ export function validateIntegration(spec: AppSpec, index: number): SpecIssue[] {
   }
   (integration.secretRefs ?? []).forEach((ref, i) => {
     const name = parseSecretRef(ref);
-    if (!name || !known.has(name)) {
+    if (!name || !(known.has(name) || (connector.secretPrefix && name.startsWith(connector.secretPrefix)))) {
       issues.push({
         code: "CONFIG_INVALID",
         path: pointer([...base, "secretRefs", i]),

@@ -19,7 +19,14 @@ import { consumeQuota, outboxMessage } from "./runtime.js";
 import { type SmtpEndpoint, SmtpError, sendSmtp } from "./smtp.js";
 import { cpText, entityOf, hasDeclaredSecret, IDENT_RE, Issues, placeholders } from "./spec-util.js";
 import { appLabel } from "./telegram.js";
-import { checkRecipient, notifySteps, recordField, renderTemplate, resolvePlaceholder } from "./templates.js";
+import {
+  CANCEL_LINK_PLACEHOLDER,
+  checkRecipient,
+  notifySteps,
+  recipientKinds,
+  renderTemplate,
+  resolvePlaceholder,
+} from "./templates.js";
 import type { ConnectorCtx, SpecCheckContext, SpecIssue } from "./types.js";
 
 const emailAddress = z.email({ error: "Некорректный адрес email" });
@@ -90,6 +97,54 @@ function templateUsage(spec: AppSpec, integration: string) {
   return usage;
 }
 
+/**
+ * `{{cancel_link}}` (M2-50): the step declares `cancel: {set: {<field>: <value>}}` — what the one-time link writes to
+ * the record (e.g. status → cancelled); only non-PII fields of the record, a visitor recipient only.
+ */
+function checkCancel(
+  step: ReturnType<typeof notifySteps>[number],
+  templates: NonNullable<EmailConfig["templates"]>,
+): SpecIssue[] {
+  const base = `/workflows/${step.wi}/steps/${step.si}/params`;
+  const tpl = typeof step.params.template === "string" ? templates[step.params.template] : undefined;
+  const uses = tpl
+    ? [...placeholders(tpl.subject), ...placeholders(tpl.body)].includes(CANCEL_LINK_PLACEHOLDER)
+    : false;
+  const cancel = step.params.cancel;
+  const issue = (message_ru: string, path = `${base}/cancel`): SpecIssue => ({
+    code: "CONFIG_INVALID",
+    path,
+    message_ru,
+    rule: "notify.cancel_link",
+  });
+  if (cancel === undefined) {
+    return uses
+      ? [
+          issue(
+            "Шаблон использует {{cancel_link}}: укажите cancel: {set: {поле: значение}} — что сделает ссылка отмены",
+            `${base}/template`,
+          ),
+        ]
+      : [];
+  }
+  const set = (cancel as { set?: unknown } | null)?.set;
+  if (typeof set !== "object" || set === null || Array.isArray(set) || Object.keys(set).length === 0)
+    return [issue("cancel: {set: {поле: значение}} — поля записи, которые меняет ссылка отмены")];
+  if (!recipientKinds(step).has("visitor"))
+    return [issue("Ссылка отмены отправляется только посетителю (получатель $record.<поле email>)")];
+  const out: SpecIssue[] = [];
+  for (const [k, v] of Object.entries(set)) {
+    const f = step.entity?.fields.find((x) => x.name === k);
+    if (!f || (f.pii ?? "none") !== "none" || f.type === "ref" || f.type === "file")
+      out.push(
+        issue(`Ссылка отмены может менять только обычные поля записи без персональных данных, а не «${k}»`),
+      );
+    else if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+      out.push(issue(`Значение поля «${k}» для отмены — строка, число или да/нет`));
+  }
+  return out;
+}
+
 export function validateEmailSpec(config: EmailConfig, spec: AppSpec, at: SpecCheckContext) {
   const issues = new Issues(at);
   if ((config.provider ?? "platform") === "smtp" && !hasDeclaredSecret(at, "smtp_password")) {
@@ -103,7 +158,7 @@ export function validateEmailSpec(config: EmailConfig, spec: AppSpec, at: SpecCh
   const names = Object.keys(templates);
   const extra: SpecIssue[] = [];
   for (const step of notifySteps(spec, at.integration.name)) {
-    extra.push(...checkRecipient(step, "email"));
+    extra.push(...checkRecipient(spec, step, "email"), ...checkCancel(step, templates));
     const t = step.params.template;
     if (typeof t !== "string" || !names.includes(t)) {
       extra.push({
@@ -129,17 +184,26 @@ export function validateEmailSpec(config: EmailConfig, spec: AppSpec, at: SpecCh
         );
       }
     }
-    // Body: PII only of the record whose owner is the recipient.
+    // Body (M2-50, D71): PII of the record goes to the system's staff ($owner, $role) and to the record's owner; a
+    // visitor gets only its own record's fields (no {{ref.field}} PII); other users — no PII.
     const bodyPii = [...new Set(placeholders(tpl.body))];
     for (const step of steps) {
       const leaks = bodyPii.filter((p) => resolvePlaceholder(spec, step.entity, p).pii);
       if (leaks.length === 0) continue;
-      const to = recordField(step.params.to);
-      if (!step.entity?.ownerField || to !== step.entity.ownerField) {
+      const kinds = recipientKinds(step);
+      const list = leaks.map((p) => `{{${p}}}`).join(", ");
+      if (kinds.has("user")) {
         extra.push({
           code: "CONFIG_INVALID",
           path: `/workflows/${step.wi}/steps/${step.si}/params/to`,
-          message_ru: `Письмо «${id}» содержит персональные данные записи (${leaks.map((p) => `{{${p}}}`).join(", ")}) — его можно отправить только владельцу записи`,
+          message_ru: `Письмо «${id}» содержит персональные данные записи (${list}) — его можно отправить владельцу системы, сотрудникам роли, владельцу записи или самому посетителю`,
+          rule: "email.body_pii_recipient",
+        });
+      } else if (kinds.has("visitor") && leaks.some((p) => p.includes("."))) {
+        extra.push({
+          code: "CONFIG_INVALID",
+          path: `/workflows/${step.wi}/steps/${step.si}/params/to`,
+          message_ru: `Письмо «${id}» посетителю подставляет чужие персональные данные (${list}) — посетителю можно писать только его собственные данные из записи`,
           rule: "email.body_pii_recipient",
         });
       }
@@ -350,31 +414,63 @@ const sendInput = z.strictObject({
   idempotencyKey: z.string().optional(),
 });
 
-async function sendTemplate(ctx: ConnectorCtx, input: z.infer<typeof sendInput>) {
+/** Renders template `id` of the integration with `params` and sends it to `to` (+ an optional plain-text footer). */
+async function sendRendered(
+  ctx: ConnectorCtx,
+  a: {
+    to: string;
+    template: string;
+    params: Record<string, string | number>;
+    footer?: string;
+    inline?: InlineImage[];
+    meta: { action: string; attachQrOf?: unknown; userId?: string };
+  },
+): Promise<{ messageId: string }> {
   const config = ctx.integration.config as EmailConfig;
-  const tpl = config.templates?.[input.template];
-  if (!tpl) throw new ConnectorError("CONFIG_INVALID", `Шаблон письма «${input.template}» не найден`);
-  const to = await ctx.users.contact(input.userId, "email");
-  if (!to) throw new ConnectorError("RECIPIENT_UNAVAILABLE", "У получателя нет адреса email");
-  const inline = input.attachQrOf ? [await qrAttachment(ctx, input.userId, input.attachQrOf)] : [];
-  const bodyHtml = renderTemplate(escapeHtml(tpl.body), input.params, escapeHtml);
+  const tpl = config.templates?.[a.template];
+  if (!tpl) throw new ConnectorError("CONFIG_INVALID", `Шаблон письма «${a.template}» не найден`);
+  const inline = a.inline ?? [];
+  const footer = a.footer ? `\n\n${a.footer}` : "";
+  const bodyHtml = renderTemplate(escapeHtml(tpl.body), a.params, escapeHtml) + escapeHtml(footer);
   return dispatch(
     ctx,
     config,
     {
-      to,
-      subject: renderTemplate(tpl.subject, input.params, headerSafe),
-      text: renderTemplate(tpl.body, input.params),
+      to: a.to,
+      subject: renderTemplate(tpl.subject, a.params, headerSafe),
+      text: renderTemplate(tpl.body, a.params) + footer,
       html: htmlDocument(bodyHtml, inline[0]?.cid ?? null),
       inline,
     },
-    {
-      action: "sendTemplate",
-      template: input.template,
-      attachQrOf: input.attachQrOf,
-      userId: input.userId,
-    },
+    { ...a.meta, template: a.template },
   );
+}
+
+async function sendTemplate(ctx: ConnectorCtx, input: z.infer<typeof sendInput>) {
+  const config = ctx.integration.config as EmailConfig;
+  if (!config.templates?.[input.template])
+    throw new ConnectorError("CONFIG_INVALID", `Шаблон письма «${input.template}» не найден`);
+  const to = await ctx.users.contact(input.userId, "email");
+  if (!to) throw new ConnectorError("RECIPIENT_UNAVAILABLE", "У получателя нет адреса email");
+  const inline = input.attachQrOf ? [await qrAttachment(ctx, input.userId, input.attachQrOf)] : [];
+  return sendRendered(ctx, {
+    to,
+    template: input.template,
+    params: input.params,
+    inline,
+    meta: { action: "sendTemplate", attachQrOf: input.attachQrOf, userId: input.userId },
+  });
+}
+
+/**
+ * Host-side template mail to an address the host resolved itself (M2-50: org owners from the platform, a visitor's
+ * contact with consent). Never exposed to system code (ctx.connectors has only sendTemplate by userId).
+ */
+export async function sendTemplateToAddress(
+  ctx: ConnectorCtx,
+  a: { to: string; template: string; params: Record<string, string | number>; footer?: string },
+): Promise<{ messageId: string }> {
+  return sendRendered(ctx, { ...a, meta: { action: "sendTemplate" } });
 }
 
 /**

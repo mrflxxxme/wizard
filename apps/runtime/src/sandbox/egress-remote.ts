@@ -2,6 +2,7 @@
 // runtime on its internal port (/_wizard/internal/egress-authorize), so the HMAC key never leaves the runtime and a
 // token of a finished call is refused. Verdicts are cached per token until its exp (at most maxCacheMs).
 import type { EgressPolicy, EgressProxyOptions } from "./egress.js";
+import { GRANT_MAX_LENGTH } from "./egress-grants.js";
 
 export interface RemoteAuthorizerOptions {
   /** Base URL of the runtime's internal port, e.g. http://wizard-runtime-internal:4101 */
@@ -26,7 +27,7 @@ export function remoteCapabilityAuthorizer(o: RemoteAuthorizerOptions): EgressPr
   return async (header) => {
     if (!header?.startsWith("Bearer ")) return null;
     const token = header.slice(7).trim();
-    if (!token || token.length > 512) return null;
+    if (!token || token.length > GRANT_MAX_LENGTH) return null;
     const now = clock();
     for (const [k, v] of cache) if (v.until <= now) cache.delete(k);
     const hit = cache.get(token);

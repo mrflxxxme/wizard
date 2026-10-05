@@ -1,0 +1,46 @@
+# Коннектор webhook — входящие вебхуки сторонних сервисов (Tilda, формы, CRM). Нормативно для backlog M2-53 в объёме
+# mvp_scope (D71, docs/reviews/grill-5.md О9): свой маршрут runtime без общего платёжного диспетчера M2-49.
+id: webhook
+milestone: M2
+principle: >
+  Сторонний сервис шлёт POST на секретный адрес системы; runtime проверяет адрес, подпись или общий секрет и окно
+  времени, отбрасывает повтор и создаёт запись одной сущности только из полей белого списка. Код системы вебхук не
+  видит; воркфлоу с trigger {type: webhook, integration} запускаются над созданной записью.
+
+secrets: "secret://webhook_<имя> — один секрет на интеграцию (префикс webhook_, ConnectorDefinition.secretPrefix); значение задаёт владелец, код системы его не видит"
+
+config_schema:
+  verify: "hmac | shared_secret"
+  secret: "secret://webhook_<имя>; обязателен при hmac, при shared_secret — если сервис шлёт секрет в заголовке (без него проверкой служит секретный адрес)"
+  header: "имя заголовка подписи (hmac) или общего секрета (shared_secret); не host, cookie, content-length, content-type, x-forwarded-for, connection"
+  algorithm: "sha256 (по умолчанию) | sha1 | sha512 — только hmac"
+  encoding: "hex (по умолчанию) | base64"
+  prefix: "префикс значения подписи, например sha256=; в заголовке можно несколько подписей через запятую или пробел (ротация)"
+  timestampHeader: "заголовок с unix-временем; подписывается `<timestamp>.<сырое тело>`, отклонение > toleranceSeconds (30…3600, по умолчанию 300) → 401"
+  eventIdHeader: "заголовок с идентификатором события (защита от повтора)"
+  eventIdField: "ключ тела с идентификатором события (a.b — вложенный JSON); без eventId* ключ повтора — sha256 тела"
+  entity: "сущность, в которую пишется запись"
+  fields: "{<поле сущности>: <ключ тела>} — белый список; остальное в теле игнорируется. Нельзя: системные поля, ownerField, ссылки на users, file, image, qr_token (G0 webhook.field)"
+  tokenVersion: "1…1000; увеличение меняет секретный адрес (ротация), старый перестаёт работать"
+
+route:
+  path: "POST /_wizard/hooks/webhook/<integration>/<hookToken> на хосте системы (prod и draft; draft пропускает хуки без превью-сессии, CSRF к /_wizard/hooks/* не применяется)"
+  hook_token: "HMAC-SHA256(HKDF(WIZARD_SECRETS_KEY, 'wizard-webhook-path'), systemId ∖0 env ∖0 integration ∖0 tokenVersion), base64url, 43 символа (256 бит). Ключ общий у runtime и platform-api (секрет platformEnv); без ключа вне production — фиксированный dev-ключ"
+  owner_view: "platform-api GET /systems/{id}/webhooks (api.yaml#listSystemWebhooks, роль editor) — адреса prod и draft для кабинета; экрана в platform-web пока нет"
+  order:
+    - "1. Адрес: интеграция connector=webhook с таким именем и hookToken совпадает (сравнение за постоянное время; ожидаемый токен вычисляется и для неизвестного имени) → иначе 404"
+    - "2. Частота: ≤ 60 запросов в минуту на систему и интеграцию (на процесс runtime) → 429 + Retry-After"
+    - "3. Размер: тело ≤ 64 КиБ (читается с потолком) → иначе 413"
+    - "4. Проверка: hmac по сырым байтам (с timestamp — `<ts>.<тело>`) или общий секрет в заголовке → иначе 401; секрет не задан → 503"
+    - "5. Тело: JSON-объект или application/x-www-form-urlencoded → иначе 422"
+    - "6. Повтор: _w_webhook_events (integration, event_key) unique, при verify: hmac ещё (integration, signed_body_hash) unique — то же подписанное тело с другим (неподписанным) id события — тоже повтор; повтор → 200 {ok: true, duplicate: true} без второй записи"
+    - "7. Запись: только поля fields, скалярные значения (строки обрезаются до maxLength ≤ 10 000; bool и числа приводятся); пусто → 422; вставка от __system в той же транзакции, что строка журнала и задания воркфлоу trigger webhook (_w_jobs, ключ wf:<имя>:hook:<id события>); on_create-воркфлоу сущности срабатывают как обычно"
+
+journal: "_w_webhook_events {id, received_at, integration, event_key, body_hash (sha256), signed_body_hash (sha256 тела только при verify: hmac; уникален в интеграции), status, record_id} — без тела и подписи"
+logging: "MUST NOT: тело, подпись, секрет, токен пути (маскируется в логе запроса runtime); в логе — msg webhook_rejected | webhook_failed с причиной-кодом"
+
+acceptance:
+  - "Тест: верная подпись → запись создана, _w_webhook_events с хешем тела; неверная подпись или старый timestamp → 401 без записи; повтор события → 200 без дубля (apps/runtime/test/webhook.test.ts)"
+  - "Тест: поля вне белого списка (status, created_by) не пишутся; неизвестный токен или интеграция → 404; > 60 запросов в минуту → 429; тело > 64 КиБ → 413"
+  - "Тест: в логах runtime нет тела, подписи и токена пути"
+after_mvp: "Общий диспетчер M2-49, служебная роль integration:<имя> с create только на целевую сущность (MP-24), ротация по API, готовые карты полей Tilda/СДЭК (M2-73, M2-75)"

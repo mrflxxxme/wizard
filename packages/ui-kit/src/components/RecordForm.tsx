@@ -11,12 +11,13 @@ import { ButtonImpl } from "./Button.js";
 import { ConsentCheckboxImpl } from "./ConsentCheckbox.js";
 import { FieldImpl } from "./Field.js";
 import { FileFieldImpl } from "./FileField.js";
+import { ImageFieldImpl } from "./media/ImageField.js";
 import styles from "./RecordForm.module.css";
 import { part, type RootAttrs } from "./root.js";
 import { DataState } from "./States.js";
 import type { RecordFormProps } from "./types.js";
 
-// file → FileField (M2-14, RecordForm.field_mapping); qr_token and json are never edited in forms.
+// file → FileField (M2-14), image → ImageField (M2-47) (RecordForm.field_mapping); qr_token and json are never edited.
 const NEVER = new Set(["qr_token", "json"]);
 
 /** Default field list: visible, editable by the role, not rowFilter-bound, not refs to users (RecordForm.fields). */
@@ -32,7 +33,7 @@ export function defaultFormFields(spec: RoleSpec, entity: string): string[] {
 export function RecordForm(props: RecordFormProps): ReactNode {
   const root = useWzRoot("RecordForm", "wz-recordform", props);
   if (props.mode === "edit" && props.id) return <EditLoader {...props} id={props.id} root={root} />;
-  return <FormImpl {...props} root={root} initial={props.defaults ?? {}} />;
+  return <RecordFormImpl {...props} root={root} initial={props.defaults ?? {}} />;
 }
 
 function EditLoader(props: RecordFormProps & { id: string; root: RootAttrs }): ReactNode {
@@ -43,11 +44,15 @@ function EditLoader(props: RecordFormProps & { id: string; root: RootAttrs }): R
         <DataState result={r} lines={4} />
       </div>
     );
-  return <FormImpl {...props} initial={r.data} />;
+  return <RecordFormImpl {...props} initial={r.data} />;
 }
 
-function FormImpl(props: RecordFormProps & { root: RootAttrs; initial: Record<string, unknown> }): ReactNode {
+/** The form itself; `testBase` names its parts (LeadForm uses «leadform»: wz-leadform-submit, wz-consent--leadform). */
+export function RecordFormImpl(
+  props: RecordFormProps & { root: RootAttrs; initial: Record<string, unknown>; testBase?: string },
+): ReactNode {
   const { root, entity } = props;
+  const tb = props.testBase ?? "recordform";
   const spec = useRoleSpec();
   const ds = useDataSource();
   const isEdit = props.mode === "edit";
@@ -157,6 +162,21 @@ function FormImpl(props: RecordFormProps & { root: RootAttrs; initial: Record<st
           readOnly: !editable(f),
           enumOptions: f.enum,
         };
+        if (f.type === "image")
+          return (
+            <ImageFieldImpl
+              key={f.name}
+              root={part(`wz-imagefield-${f.name}`)}
+              name={f.name}
+              label={f.label}
+              entity={entity}
+              value={typeof values[f.name] === "string" ? (values[f.name] as string) : null}
+              onChange={common.onChange}
+              required={common.required}
+              error={common.error}
+              disabled={common.disabled}
+            />
+          );
         if (f.type === "file")
           return (
             <FileFieldImpl
@@ -180,7 +200,7 @@ function FormImpl(props: RecordFormProps & { root: RootAttrs; initial: Record<st
       })}
       {needsConsent && (
         <ConsentCheckboxImpl
-          root={part("wz-consent--recordform")}
+          root={part(`wz-consent--${tb}`)}
           checked={consent}
           onChange={(c) => {
             setConsent(c);
@@ -190,21 +210,16 @@ function FormImpl(props: RecordFormProps & { root: RootAttrs; initial: Record<st
         />
       )}
       {formError && (
-        <p role="alert" className={styles.alert} data-testid="wz-recordform-error">
+        <p role="alert" className={styles.alert} data-testid={`wz-${tb}-error`}>
           {formError}
         </p>
       )}
       <div className={styles.actions}>
-        <ButtonImpl
-          root={part("wz-recordform-submit")}
-          type="submit"
-          variant="primary"
-          loading={mutation.pending}
-        >
+        <ButtonImpl root={part(`wz-${tb}-submit`)} type="submit" variant="primary" loading={mutation.pending}>
           {props.submitLabel ?? (isEdit ? ru.recordForm.edit : ru.recordForm.create)}
         </ButtonImpl>
         {props.onCancel && (
-          <ButtonImpl root={part("wz-recordform-cancel")} variant="ghost" onClick={props.onCancel}>
+          <ButtonImpl root={part(`wz-${tb}-cancel`)} variant="ghost" onClick={props.onCancel}>
             {ru.recordForm.cancel}
           </ButtonImpl>
         )}

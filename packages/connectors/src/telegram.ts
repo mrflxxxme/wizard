@@ -60,7 +60,7 @@ export function validateTelegramSpec(config: TelegramConfig, spec: AppSpec, at: 
     );
   }
   for (const step of notifySteps(spec, at.integration.name)) {
-    issues.list.push(...checkRecipient(step, "telegram"), ...checkTelegramText(spec, step));
+    issues.list.push(...checkRecipient(spec, step, "telegram"), ...checkTelegramText(spec, step));
   }
   return issues.list;
 }

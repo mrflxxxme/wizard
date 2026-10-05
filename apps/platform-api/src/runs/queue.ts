@@ -27,12 +27,14 @@ import {
   runPendingBackfills,
 } from "../ai/backfill.js";
 import type { Billing } from "../billing/ledger.js";
+import { assertPilotLimit } from "../billing/pilot-limits.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
 import { ApiError } from "../errors.js";
 import { ExportStore } from "../exports/storage.js";
 import { type ExportRunInput, runExport } from "../exports/workflow.js";
+import { recordDevelopmentRequest } from "../gaps/service.js";
 import { ImportStore } from "../imports/storage.js";
 import { IMPORT_CAP_MILLI, type ImportRunInput, runImportTable } from "../imports/workflow.js";
 import { recordRunEnd, runsStarted } from "../ops/metrics.js";
@@ -62,6 +64,7 @@ import {
 } from "./durable.js";
 import { appendEvent, type EventBus, type EventType, type TxCtx, withTx } from "./events.js";
 import { recordGateReport } from "./gates.js";
+import { MODELS_UNAVAILABLE_RU, reportModelsUnavailable } from "./models-outage.js";
 import {
   type BuildHost,
   type BuildOutcome,
@@ -189,6 +192,9 @@ export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise
   if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget();
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
+  // D70: pilot orgs — 5 builds and 20 edits in 30 days (402 BUILDS_LIMIT / EDITS_LIMIT).
+  if (billing && r.kind === "build" && !billing.isExempt(r.orgId))
+    await assertPilotLimit(t.trx, { orgId: r.orgId, mode: r.mode, now: billing.now() });
   const id = randomUUID();
   const run = await t.trx
     .insertInto("platform.runs")
@@ -233,7 +239,12 @@ function toResult(e: unknown, aborted: boolean): Result {
     return { status: "failed", code: e.code, message_ru: e.message_ru, retryable: e.retryable };
   if (e instanceof LlmError) {
     if (e.code === "LLM_UNAVAILABLE")
-      return { status: "failed", code: "LLM_UNAVAILABLE", message_ru: e.message, retryable: true };
+      return {
+        status: "failed",
+        code: "LLM_UNAVAILABLE",
+        message_ru: MODELS_UNAVAILABLE_RU,
+        retryable: true,
+      };
     if (e.code === "ABORTED" || aborted) return { status: "cancelled", summary_ru: "Прогон отменён" };
   }
   if (aborted) return { status: "cancelled", summary_ru: "Прогон отменён" };
@@ -245,9 +256,13 @@ function toResult(e: unknown, aborted: boolean): Result {
   };
 }
 
-/** Routing policy of an org: unknown region counts as restricted (fail-safe, as route() does for t1Restricted). */
-export function orgPolicyOf(org: { ru_only: boolean; t1_restricted: boolean; region_code: string | null }) {
-  return { ruOnly: org.ru_only, t1Restricted: org.t1_restricted || org.region_code === null };
+/**
+ * Routing policy of an org (product.yaml#decisions.D26_models_default): only a known restricted region (orgs.t1_restricted,
+ * set by data-boundary.yaml#region_restriction sources) or «Только РФ» keeps the org on T0; an unknown region (NULL)
+ * does not restrict T1. The router itself stays fail-safe for a missing t1Restricted field.
+ */
+export function orgPolicyOf(org: { ru_only: boolean; t1_restricted: boolean; region_code?: string | null }) {
+  return { ruOnly: org.ru_only, t1Restricted: org.t1_restricted };
 }
 
 /** Counting semaphore: active (non-waiting) runs of a worker (WIZARD_RUN_CONCURRENCY). */
@@ -541,6 +556,17 @@ export class RunEngine {
       if (this.#closed && D.durable) throw e;
       if (!(e instanceof RunFailure || e instanceof RunCancelled || e instanceof LlmError))
         this.#log(`run ${id} failed`, e);
+      if (x && e instanceof LlmError && e.code === "LLM_UNAVAILABLE" && !ac.signal.aborted) {
+        const cx = x;
+        const callType = typeof e.details.callType === "string" ? e.details.callType : null;
+        await reportModelsUnavailable({
+          db: this.#db,
+          run: cx.run,
+          callType,
+          emit: (payload) => this.#emit(cx, "models_unavailable", payload),
+          alert: this.#d.publish?.alert,
+        }).catch((err) => this.#log(`run ${id}: models_unavailable report failed`, err));
+      }
       result = toResult(e, ac.signal.aborted);
     } finally {
       if (heartbeat) clearInterval(heartbeat);
@@ -1043,6 +1069,9 @@ export class RunEngine {
         await this.#emit(x, type, payload);
       },
       route: (input) => this.#route(x, routers, input, needsInput),
+      recordDevelopmentRequest: async (input) => {
+        await x.D.step("development_request", () => recordDevelopmentRequest(this.#db, run, input));
+      },
     };
   }
 
@@ -1106,21 +1135,22 @@ export class RunEngine {
       if (run.kind !== "build")
         throw new RunFailure(
           "BUDGET_STOPPED",
-          "Ход интервью превысил лимит кредитов. Переформулируйте запрос короче.",
+          "Этот ответ получился слишком объёмным. Попробуйте сформулировать вопрос короче.",
         );
+      // D31, D70: the client sees no credits — the internal cap is «работа сборки».
       const ans = await needsInput({
         decisionId: "budget",
         prompt_ru: canRaise
-          ? `Лимит сборки (${cap / 1000} кр.) исчерпан. Увеличить лимит на ${n} кр. или остановить?`
-          : `Лимит сборки (${cap / 1000} кр.) исчерпан, а свободных кредитов на увеличение (${n} кр.) нет. Сборку придётся остановить.`,
+          ? "Сборка потребовала больше работы, чем рассчитывали. Продолжить или остановить?"
+          : "Сборка потребовала больше работы, чем рассчитывали, а внутренний запас организации закончился. Сборку придётся остановить — напишите команде, и мы поможем.",
         options: canRaise
           ? [
-              { id: `raise_cap_${n}`, label: `Увеличить на ${n} кр.`, recommended: true },
+              { id: `raise_cap_${n}`, label: "Продолжить сборку", recommended: true },
               { id: "stop", label: "Остановить" },
             ]
           : [{ id: "stop", label: "Остановить", recommended: true }],
       });
-      if (ans.choice === "stop") throw new RunCancelled("Сборка остановлена по лимиту кредитов");
+      if (ans.choice === "stop") throw new RunCancelled("Сборка остановлена");
       const newCap = cap + n * 1000;
       await D.step("raise_cap", () =>
         this.#tx(async (t) => {
@@ -1136,7 +1166,9 @@ export class RunEngine {
             })
             .catch((e: unknown) => {
               if (e instanceof ApiError && e.code === "INSUFFICIENT_CREDITS")
-                throw new RunCancelled("Сборка остановлена: не хватает кредитов на увеличение лимита");
+                throw new RunCancelled(
+                  "Сборка остановлена: закончился внутренний запас организации. Напишите команде, и мы поможем.",
+                );
               throw e;
             });
           await t.trx
@@ -1418,6 +1450,7 @@ export class RunEngine {
         payload: {
           questionIds: out.questions.map((q) => q.id),
           ...(out.analysis ? { analysis: out.analysis } : {}),
+          ...(out.gaps?.length ? { gaps: out.gaps } : {}),
         },
         runId: run.id,
       });
@@ -1445,7 +1478,7 @@ export class RunEngine {
         role: "assistant",
         kind: "card",
         text: out.text ?? null,
-        payload: { cardVersion },
+        payload: { cardVersion, ...(out.gaps?.length ? { gaps: out.gaps } : {}) },
         runId: run.id,
       });
       if (stage === "card" || canTransition(stage, "card")) {
@@ -1470,6 +1503,7 @@ export class RunEngine {
       role: "assistant",
       kind: "text",
       text: out.text,
+      ...(out.gaps?.length ? { payload: { gaps: out.gaps } } : {}),
       runId: run.id,
     });
     await appendEvent(t, run.id, "chat_output", { kind: "answer", messageId: m.id });
@@ -1768,18 +1802,22 @@ export class RunEngine {
     if (!plan) return;
     const specs: AppSpec[] = [];
     for (const v of plan.versions) specs.push(await loadSpec(this.#db, plan, v));
-    await this.#step(x, "draft_snapshot", "Копирую данные prod в черновик, ПДн заменяю", () =>
-      D.step(
-        "draft_snapshot",
-        () =>
-          draftSnapshot(this.#d.pg, {
-            systemKey: plan.systemKey,
-            specs,
-            marker: plan.marker,
-            ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
-          }),
-        { offload: true },
-      ),
+    await this.#step(
+      x,
+      "draft_snapshot",
+      "Копирую данные работающей системы в черновик, личные данные заменяю примерами",
+      () =>
+        D.step(
+          "draft_snapshot",
+          () =>
+            draftSnapshot(this.#d.pg, {
+              systemKey: plan.systemKey,
+              specs,
+              marker: plan.marker,
+              ...(this.#d.publish?.migratorRole ? { migratorRole: this.#d.publish.migratorRole } : {}),
+            }),
+          { offload: true },
+        ),
     );
   }
 
@@ -1808,7 +1846,7 @@ export class RunEngine {
       step: (name, label, fn) => this.#step(x, name, label, () => D.step(name, fn, { offload: true })),
       once: (name, fn) => D.step(name, fn, { offload: true }),
       draftG0: () =>
-        this.#step(x, "gate_G0", "Проверяю черновик (G0)", () =>
+        this.#step(x, "gate_G0", "Проверяю, что черновик собирается", () =>
           this.#gate(x, "G0", async () => null, filesAt, undefined),
         ),
       ...(this.#d.aiBackfill !== undefined ? { aiBackfill: this.#d.aiBackfill } : {}),

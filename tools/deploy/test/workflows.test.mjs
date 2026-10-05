@@ -110,8 +110,16 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     }
     // The read-only check comes first and is the default: a run without choosing anything changes nothing.
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
-    expect(action.options).toEqual(["check", "apply", "diagnose", "reboot", "destroy"]);
+    expect(action.options).toEqual(["check", "apply", "diagnose", "eval", "reboot", "destroy"]);
     expect(action.default).toBe("check");
+    // eval (D67): which briefs and the ₽ budget go through to the reusable workflow.
+    const boot = load("bootstrap-pilot.yml");
+    expect(boot.on.workflow_dispatch.inputs.briefs).toMatchObject({ type: "string", default: "all" });
+    expect(boot.on.workflow_dispatch.inputs.max_cost_rub).toMatchObject({ type: "string", default: "2000" });
+    expect(boot.doc.jobs.pilot.with).toMatchObject({
+      briefs: gh("inputs.briefs"),
+      max_cost_rub: gh("inputs.max_cost_rub"),
+    });
   });
 
   // The authorize step's shell, run with the given context (GITHUB_OUTPUT in a temporary file).
@@ -153,16 +161,41 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ COMMAND: "plan" }).code).toBe(1);
   });
 
+  it("eval: the PROD word on prod, briefs and budget validated before any secret is read", () => {
+    const ok = { COMMAND: "eval", CONFIRM: "PROD", EVAL_BRIEFS: "all", EVAL_MAX_COST_RUB: "2000" };
+    expect(authorize(ok).code).toBe(0);
+    expect(authorize({ ...ok, CONFIRM: "" }).out).toContain("Подтверждение не совпало");
+    expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-03,mvp-10" }).code).toBe(0);
+    expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
+    expect(authorize({ ...ok, EVAL_MAX_COST_RUB: "2e3" }).out).toContain("max_cost_rub");
+    const { doc } = load("pilot-reusable.yml");
+    const job = doc.jobs.pilot;
+    const run = job.steps.find((s) => s.name === `Pilot (${gh("inputs.command")})`).run;
+    // Inputs reach the shell as environment variables, never spliced into the script.
+    expect(run).toContain(
+      'eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB"',
+    );
+    expect(run).not.toContain("inputs.briefs");
+    expect(job.env.EVAL_BRIEFS).toBe(gh("inputs.briefs"));
+    const report = job.steps.find((s) => s.name === "D67 report");
+    expect(report.if).toBe("always() && inputs.command == 'eval'");
+    expect(report.uses).toBe("actions/upload-artifact@v4");
+    expect(report.with.path).toBe(`${gh("runner.temp")}/wizard-eval-${gh("inputs.env")}`);
+    expect(job.steps.find((s) => s.name === "Clean up the runner").run).toContain("wizard-eval-");
+  });
+
   it("check: no images, no OpenTofu/helm setup, no SSH to close, a short timeout", () => {
     const { doc } = load("pilot-reusable.yml");
     // diagnose reads the running cluster: no images either.
     expect(doc.jobs.images.if).toBe(
-      "inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'reboot'",
+      "inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'reboot'",
     );
     // A skipped images job does not block the pilot job.
     expect(doc.jobs.pilot.if).toContain("needs.images.result != 'failure'");
     const job = doc.jobs.pilot;
-    expect(job["timeout-minutes"]).toBe(gh("inputs.command == 'check' && 5 || 90"));
+    expect(job["timeout-minutes"]).toBe(
+      gh("inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || 90"),
+    );
     const step = (k) => job.steps.find((s) => s.name === k || s.uses?.startsWith(k));
     for (const heavy of [
       "opentofu/setup-opentofu",

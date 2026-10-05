@@ -5,6 +5,7 @@ import type { Subject } from "../data/access.js";
 import type { RuntimeEnv } from "../env.js";
 import type { ConnectorHost } from "../preview/connectors.js";
 import type { LegalTemplates } from "../privacy/templates.js";
+import type { EgressService } from "../sandbox/egress-service.js";
 import type { SandboxExecutors } from "../sandbox/workerd-executor.js";
 import type { LoadedSystem } from "../system.js";
 
@@ -37,6 +38,8 @@ export interface RuntimeServices {
   sandbox?: SandboxExecutors;
   /** M3-02: the platform's AI gateway (runtime.yaml#ai_actions.call); null/absent → AI actions answer 503. */
   ai?: AiGatewayClient | null;
+  /** M2-52: ctx.http.fetch of functions (egress proxy or direct after the address check); absent → EGRESS_DISABLED. */
+  egress?: EgressService;
 }
 
 export interface PrivacySettings {

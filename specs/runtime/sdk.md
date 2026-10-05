@@ -94,6 +94,7 @@ tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#inter
 - `useUser()` → `{ user, isLoading, login, logout }`; `user = { id, role, displayName, isAdmin } | null`; `login({ role, next })` ведёт на `/login` (`runtime.yaml#auth.login_page`).
 - `usePayment(integration)` → `{ pay(bindingId, id), pending, error }`: `POST /api/pay/:integration`, затем переход на страницу оплаты ЮKassa (`../connectors/yookassa.yaml`).
 - `useParams()`, `useNavigate()` — маршруты из `pages[].route`.
+- Картинки (M2-47): значение поля `image` — `fileId` (строка), как у `file`. Показывать — только компонентом `Image` из `@wizard/ui-kit` (`<Image fileId={row.photo} alt="…" />`: srcset вариантов `GET /api/files/:fileId/img/480|960|1600`, lazy, alt обязателен); загружать — `ImageField` или `RecordForm` (`POST /api/files`, роль с create/update на сущность; публичная роль картинки не загружает). Свой `<img src>` на `/api/files/…` не собирать. Блоки лендинга (`Hero`, `Features` и др.) принимают `image: { fileId, alt }`.
 - M3: `useAiAction(action)` → `{ run(entity, id), pending, error }` — `POST /api/ai/:action {entity, id}` (`runtime.yaml#ai_actions`); `run` возвращает `{ item, filled, skipped }`, где `item` — запись с мета `_aiFilled: string[]` (поля, последним записанным в которые был ИИ). Ошибки: 403 `FORBIDDEN` (нет `update` на сущность), 404, 429 `AI_LIMIT_REACHED` / `RATE_LIMITED` (public-роль, ≤ 10/ч на сеть клиента), 402 `AI_CREDITS_EXHAUSTED`, 503 `AI_UNAVAILABLE`. Вывод generate — только текст: показывать текстовым узлом, не как HTML.
 - Реалтайм: одно SSE-соединение `GET /api/events` на вкладку, открывает его SDK (fetch streaming с `X-Wizard-Request: 1`, не EventSource). После переподключения SDK перезапрашивает все активные запросы.
 - Тест (M0-07): хуки против локального hono-мока: загрузка, ошибка с `code`, перезапрос по SSE `invalidate`.
@@ -103,7 +104,7 @@ tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#inter
 `generateTypes(spec: AppSpec) → string` (экспорт `@wizard/sdk/codegen`, исполняется на платформе, не в системе). Реализация живёт в `packages/appspec` (`src/types-gen.ts`), `@wizard/sdk/codegen` её реэкспортирует; снапшот-тест — за M0-07 (L2-17).
 
 - MUST: результат — содержимое `_generated/wizard.d.ts`, которое дополняет (module augmentation) интерфейсы `Entities`, `Roles`, `Functions`, `Connectors`, `Payments` модуля `@wizard/sdk`.
-- Отображение типов полей: `string|text|email|phone|url|file|qr_token → string`, `int|decimal → number` (точность `numeric(18,6)` проверяет runtime), `money → number` (рубли, ≤ 2 знаков после запятой), `bool → boolean`, `date → string` (`YYYY-MM-DD`), `datetime → string` (ISO 8601 UTC), `enum → union значений`, `ref → Id<"entity">`, `json → Json`.
+- Отображение типов полей: `string|text|email|phone|url|file|image|qr_token → string`, `int|decimal → number` (точность `numeric(18,6)` проверяет runtime), `money → number` (рубли, ≤ 2 знаков после запятой), `bool → boolean`, `date → string` (`YYYY-MM-DD`), `datetime → string` (ISO 8601 UTC), `enum → union значений`, `ref → Id<"entity">`, `json → Json`.
 - `doc`: необязательное поле → `T | null`. `insert`: необязательные поля и поля с `default` — опциональны. `clientDoc`: поля, скрытые хотя бы для одной роли, — опциональны. `where`: объединение объектов-префиксов каждого индекса, включая неявные (`{}` в объединение MUST NOT входить: иначе tsc пропустит любой `where`). `unique`: объединение имён unique-полей.
 - `functions`: `{ <name>: typeof import("../functions/<file без .ts>").default }`.
 - Тест: снапшот для `../appspec/examples/forum.json`; `tsc --noEmit` на `examples/` против сгенерированного файла проходит (backlog M0-07).
@@ -316,3 +317,9 @@ declare module "@wizard/sdk" {
 - M0-07: `packages/sdk/test/contract.test-d.ts` — тип-тесты (`expectTypeOf`) на каждый экспорт раздела 5; `tsc --noEmit` на `specs/runtime/examples` с `_generated/wizard.d.ts` из `forum.json`.
 - M0-09: интеграционные тесты runtime на лимиты (2.1), транзакции (2.2), права в функциях (2.3).
 - M0-10: G0 — правила раздела 1 и `where` только по индексам (через tsc).
+
+## 7. Исходящий HTTP из action (M2-52, D71)
+
+- `ctx.http.fetch(url, { method?, headers?, body? })` → `{ status, ok, headers.get("content-type"), text(), json() }`. Запрос делает runtime, а не код системы: только `https://` на стандартный порт, только хосты из `functions[].egress` этой функции (любой публичный адрес, кроме доменов платформы и внутренних зон; проверка G2-EGRESS-01), без редиректов.
+- Секреты — только ссылкой `secret://<имя>` из `functions[].secretRefs` в значении заголовка или в query: `headers: { Authorization: "Bearer secret://crm_token" }`. Значение подставляет runtime, код его не видит.
+- Лимиты: 10 запросов на вызов, 60 в минуту на систему, тело ≤ 256 КиБ, ответ ≤ 2 МиБ, 10 с на запрос. Ошибки: `EGRESS_FORBIDDEN` (адрес не объявлен или ведёт во внутреннюю сеть), `EGRESS_FAILED` (сервис недоступен), `LIMIT_EXCEEDED`, `RATE_LIMITED`, `PAYLOAD_TOO_LARGE`; без настроенного egress — `EGRESS_DISABLED`. Подробности — runtime.yaml#functions.egress.

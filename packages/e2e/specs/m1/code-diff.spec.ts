@@ -29,7 +29,7 @@ test.beforeAll(async ({ browser }) => {
   await ctx.close();
 });
 
-test("S7: «добавь поле тема в заявки» → diff-line «+ … тема», migration «аддитивная» → publish N+1", async ({
+test("S7: «добавь поле тема в заявки» → diff-line «+ … тема», данные «сохранятся» → publish N+1", async ({
   browser,
 }) => {
   test.setTimeout(180_000);
@@ -51,9 +51,9 @@ test("S7: «добавь поле тема в заявки» → diff-line «+ �
   const line = diff.getByTestId("diff-line").filter({ hasText: /тема/i });
   await expect(line.first()).toHaveAttribute("data-sign", "add");
   await expect(line.first()).toContainText("+");
-  await expect(diff.getByTestId("diff-migration")).toContainText("аддитивная");
-  await expect(diff.getByTestId("diff-gates")).toContainText("G0");
-  await expect(page.getByTestId("preview-env")).toContainText(`РЕВИЗИЯ`);
+  await expect(diff.getByTestId("diff-migration")).toHaveText("сохранятся");
+  await expect(diff.getByTestId("diff-gates")).toContainText("пройдено");
+  await expect(page.getByTestId("preview-env")).toContainText("версия");
 
   await page.getByTestId("env-segment-changes").click();
   await expect(page.getByTestId("diff-groups")).toContainText("Поля данных");
@@ -65,7 +65,7 @@ test("S7: «добавь поле тема в заявки» → diff-line «+ �
   await diff.getByTestId("diff-publish").click();
   await expect(page.getByTestId("run-result")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("run-prod-url")).toHaveAttribute("href", /localhost:4110/);
-  await expect(prodPill).not.toHaveText(`prod · ревизия ${prodBefore}`);
+  await expect(prodPill).not.toHaveText(`Опубликована версия ${prodBefore}`);
   await expect(page.getByTestId("diff-card")).toHaveCount(0);
   await ctx.close();
 });
@@ -86,7 +86,7 @@ test("S-code: «Код» → ui/…tsx read-only, no textarea or contenteditable
   await expect(viewer).toContainText(path ?? "");
   await expect(viewer.locator("ol")).toContainText("export");
   await expect(page.locator("textarea, [contenteditable]")).toHaveCount(0);
-  await page.getByRole("button", { name: "Изменения ревизии" }).click();
+  await page.getByRole("button", { name: "Изменения версии" }).click();
   await expect(page).toHaveURL(/view=changes/);
   await expect(page.locator("textarea, [contenteditable]")).toHaveCount(0);
   await ctx.close();

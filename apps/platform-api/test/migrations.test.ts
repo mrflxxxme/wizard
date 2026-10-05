@@ -48,6 +48,8 @@ const M1_TABLES = [
 ];
 // M1 views created so far (M1-03).
 const M1_VIEWS = ["credit_buckets"];
+// M2 views created so far (M2-50 owners of a system for notify $owner).
+const M2_VIEWS = ["system_owner_emails"];
 // M2 tables created so far (M2-10 exports, M2-05 deletion_log, M2-07 billing, M2-04 G2 at publish: moderation, M2-15
 // pilot invitations and founder alerts, M2-08 abuse, M2-09 platform settings).
 const M2_TABLES = [
@@ -64,6 +66,10 @@ const M2_TABLES = [
   "abuse_reports",
   "staff_audit_log",
   "g1_checks",
+  // M2P (MVP release cut): «Написать команде», «Запросы на развитие».
+  "support_requests",
+  "development_requests",
+  "destructive_changes",
 ];
 // M3 tables created so far (M3-02 runtime AI actions: call journal and backfills).
 const M3_TABLES = ["ai_action_calls", "ai_backfills"];
@@ -120,7 +126,7 @@ describe("migrations vs db.yaml", () => {
 
   test("M0 views (deployments) and M1-03 credit_buckets exist", async () => {
     const views = Object.entries(dbYaml.views as Record<string, { milestone?: string }>)
-      .filter(([n, v]) => v.milestone === "M0" || M1_VIEWS.includes(n))
+      .filter(([n, v]) => v.milestone === "M0" || M1_VIEWS.includes(n) || M2_VIEWS.includes(n))
       .map(([n]) => n);
     const rows = await h.pg<{ table_name: string }[]>`
       select table_name from information_schema.views where table_schema = 'platform'`;

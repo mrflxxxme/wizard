@@ -1,0 +1,15 @@
+{
+  "check": "G2-EGRESS-01",
+  "description": "egress у query — запросы наружу только из action",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/functions/0/egress",
+      "value": [
+        "api.partner-crm.ru"
+      ]
+    }
+  ],
+  "base": "forum",
+  "expect": "fail"
+}

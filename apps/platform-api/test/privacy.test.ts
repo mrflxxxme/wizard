@@ -250,7 +250,15 @@ describe("system tables of older schemas (users.last_login_at, _w_deletion_log)"
   const downgrade = async (schema: string) => {
     await api.deps.pg.unsafe(`drop table ${schema}."_w_deletion_log"`);
     await api.deps.pg.unsafe(`alter table ${schema}."users" drop column last_login_at`);
+    // M2-53: a schema from before the signed-body replay guard (column + unique index).
+    await api.deps.pg.unsafe(`alter table ${schema}."_w_webhook_events" drop column signed_body_hash`);
   };
+  const hasBodyGuard = async (schema: string) =>
+    (
+      await api.deps.pg`
+        select indexdef from pg_catalog.pg_indexes
+        where schemaname = ${schema.replaceAll('"', "")} and indexname = '_w_webhook_events_signed_body'`
+    )[0]?.indexdef as string | undefined;
 
   test("the upgrade DDL is idempotent and creates only what is missing", () => {
     const ddl = upgradeSystemTables("app_x_draft");
@@ -262,6 +270,12 @@ describe("system tables of older schemas (users.last_login_at, _w_deletion_log)"
       true,
     );
     expect(ddl.some((s) => /ADD COLUMN IF NOT EXISTS "id"/.test(s))).toBe(false);
+    expect(ddl).toContain(
+      'ALTER TABLE "app_x_draft"."_w_webhook_events" ADD COLUMN IF NOT EXISTS "signed_body_hash" bytea',
+    );
+    expect(ddl.at(-1)).toBe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "_w_webhook_events_signed_body" ON "app_x_draft"."_w_webhook_events" ("integration", "signed_body_hash")',
+    );
   });
 
   test("journal transfer skips a schema without _w_deletion_log; the next draft migration restores it", async () => {
@@ -272,6 +286,7 @@ describe("system tables of older schemas (users.last_login_at, _w_deletion_log)"
     expect(created).toBe(false);
     expect(await hasTable(draft())).toBe(true);
     expect(await hasColumn(draft())).toBe(true);
+    expect(await hasBodyGuard(draft())).toMatch(/UNIQUE INDEX .*\(integration, signed_body_hash\)/);
     // RLS and the runtime grant cover the new table (set_rls of the same migration).
     const [rls] = await api.deps.pg`
       select relrowsecurity, relforcerowsecurity from pg_class
@@ -287,6 +302,7 @@ describe("system tables of older schemas (users.last_login_at, _w_deletion_log)"
     await publishCompliance({ operatorName: "ООО «Форум 2»" });
     expect(await hasTable(prod())).toBe(true);
     expect(await hasColumn(prod())).toBe(true);
+    expect(await hasBodyGuard(prod())).toMatch(/UNIQUE INDEX/);
     await journal(prod(), [["ticket", "anonymize", 5, null]]);
     expect((await cron()).moved).toBe(1);
   });

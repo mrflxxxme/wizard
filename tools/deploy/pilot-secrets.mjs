@@ -192,10 +192,19 @@ export function envFile(entries) {
   return `${lines.join("\n")}\n`;
 }
 
-/** Optional platform settings passed through as they are (GitHub secrets/variables of the same name). */
+/**
+ * Optional platform settings passed through as they are (GitHub secrets/variables of the same name); empty ones are
+ * left out. Models (D26, M2-32): keys, base URLs of the providers and the default build tier.
+ */
 export const PLATFORM_PASSTHROUGH = [
   "CLOUDRU_API_KEY",
   "ZAI_API_KEY",
+  "CLOUDRU_BASE_URL",
+  "ZAI_BASE_URL",
+  "YANDEX_API_KEY",
+  "YANDEX_FOLDER_ID",
+  "YANDEX_BASE_URL",
+  "WIZARD_BUILD_DEFAULT_TIER",
   "WIZARD_SMTP_HOST",
   "WIZARD_SMTP_PORT",
   "WIZARD_SMTP_USER",

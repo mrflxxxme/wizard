@@ -5,6 +5,7 @@ import {
   type Entity,
   type Field,
   type FieldType,
+  isFileFieldType,
   type LiteralType,
   literalProblem,
 } from "@wizard/appspec";
@@ -19,7 +20,17 @@ export interface FieldIssue {
 }
 
 const SYSTEM = new Set<string>(SYSTEM_FIELD_NAMES);
-const STRINGY = new Set<FieldType>(["string", "text", "email", "phone", "url", "enum", "file", "qr_token"]);
+const STRINGY = new Set<FieldType>([
+  "string",
+  "text",
+  "email",
+  "phone",
+  "url",
+  "enum",
+  "file",
+  "image",
+  "qr_token",
+]);
 const NUMERIC = new Set<FieldType>(["int", "decimal", "money"]);
 
 export const SYSTEM_COLUMN_TYPES: Readonly<Record<string, LiteralType>> = {
@@ -151,7 +162,7 @@ export function coerceFilterValue(field: string, type: LiteralType, raw: string)
     return raw === "true";
   }
   if (type === "json") throw badFilter(field, "Фильтр по этому полю недоступен");
-  const lit: LiteralType = type === "enum" || type === "qr_token" || type === "file" ? "string" : type;
+  const lit: LiteralType = type === "enum" || type === "qr_token" || isFileFieldType(type) ? "string" : type;
   const p = literalProblem(raw, lit);
   if (p) throw badFilter(field, p);
   return raw;

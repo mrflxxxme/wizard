@@ -197,6 +197,7 @@ export function sdkDataSource(): DataSource {
         const href = (fileId: string) => `${client.baseUrl}/api/files/${encodeURIComponent(fileId)}`;
         return {
           href,
+          imageSrc: (fileId, width) => `${href(fileId)}/img/${width}`,
           info: (fileId) => client.request<FileInfo>("GET", `/api/files/${encodeURIComponent(fileId)}/info`),
           async upload(file, target) {
             const form = new FormData();

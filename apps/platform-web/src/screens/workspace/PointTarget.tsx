@@ -4,6 +4,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import type { MessageTarget } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
+import { Specialist } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
@@ -47,9 +48,6 @@ export function TargetChip({
   return (
     <div className={s.targetChip} data-testid="chat-target" data-wz-id={target.wzId}>
       <span className={s.targetName}>{ru.point.chip(target.componentName)}</span>
-      <span className={s.muted} data-testid="chat-target-file">
-        {ru.point.where(target.file, target.line)}
-      </span>
       <button
         type="button"
         className={s.targetClear}
@@ -60,12 +58,16 @@ export function TargetChip({
       >
         ×
       </button>
-      {excerpt && (
-        <code className={s.targetCode} data-testid="chat-target-excerpt">
-          {excerpt}
-        </code>
-      )}
-      <span className={s.small}>{ru.point.cost(POINT_EDIT_CAP)}</span>
+      <span className={s.small}>{ru.point.cost}</span>
+      {/* D28: the file, line and source excerpt — only for a specialist. */}
+      <Specialist testId="chat-target-specialist">
+        <span data-testid="chat-target-file">{ru.point.where(target.file, target.line)}</span>
+        {excerpt && (
+          <code className={s.targetCode} data-testid="chat-target-excerpt">
+            {excerpt}
+          </code>
+        )}
+      </Specialist>
     </div>
   );
 }

@@ -122,7 +122,6 @@ describe("DiffCard (S7)", () => {
           revision: 7,
           changes,
           reports,
-          credits: 2.35,
           blockers,
           canCancel: true,
           busy: null,
@@ -133,15 +132,17 @@ describe("DiffCard (S7)", () => {
     );
   const q = (el: HTMLElement, id: string) => el.querySelector(`[data-testid="${id}"]`);
 
-  test("lines with signs, additive migration, gates, price and «Опубликовать ревизию N+1»", () => {
+  test("lines with signs, data kept, gates in words, «на пилоте бесплатно» and «Опубликовать версию N+1»", () => {
     const el = card([{ kind: "field", text_ru: "В «Заявка спикера» добавлено поле «Тема трека» (строка)" }]);
     const line = q(el, "diff-line");
     expect(line?.textContent).toMatch(/^\+.*тема трека/i);
-    expect(q(el, "diff-migration")?.textContent).toContain("аддитивная");
-    expect(q(el, "diff-gates")?.textContent).toContain("G0 · G1");
-    expect(q(el, "diff-price")?.textContent).toContain("2,4");
+    expect(q(el, "diff-migration")?.textContent).toBe("сохранятся");
+    expect(q(el, "diff-gates")?.textContent).toMatch(/пройдено \d+ провер/);
+    expect(q(el, "diff-gates")?.textContent).not.toMatch(/G[012]/);
+    expect(q(el, "diff-price")?.textContent).toBe("на пилоте бесплатно");
+    expect(el.textContent).not.toMatch(/кредит|аддитивн|ревизи/i);
     const publish = q(el, "diff-publish") as HTMLButtonElement;
-    expect(publish.textContent).toContain("Опубликовать ревизию 7");
+    expect(publish.textContent).toContain("Опубликовать версию 7");
     expect(publish.disabled).toBe(false);
   });
 
@@ -154,9 +155,9 @@ describe("DiffCard (S7)", () => {
       },
     ]);
     expect(q(el, "diff-line")?.textContent?.startsWith("−")).toBe(true);
-    expect(q(el, "diff-migration")?.textContent).toContain("удаляет данные");
+    expect(q(el, "diff-migration")?.textContent).toContain("часть данных удалится");
     expect((q(el, "diff-publish") as HTMLButtonElement).disabled).toBe(true);
-    expect(q(el, "diff-destructive")?.textContent).toContain("В prod разрешены только добавления");
+    expect(q(el, "diff-destructive")?.textContent).toContain("владелец смотрит последствия");
   });
 
   test("publish blockers disable publishing", () => {

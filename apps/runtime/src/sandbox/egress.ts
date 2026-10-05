@@ -11,8 +11,10 @@ import { isIP, type Socket } from "node:net";
 import type { AppSpec } from "@wizard/appspec";
 import {
   type Dialer,
+  egressHostProblem,
   ipInCidrs,
   isPrivateAddress,
+  PLATFORM_DOMAINS,
   type Resolver,
   systemResolver,
   tcpDialer,
@@ -43,6 +45,8 @@ export interface EgressProxyOptions {
   /** Time to receive the ClientHello / SMTP preamble (default 10 s). */
   helloTimeoutMs?: number;
   log?: (line: Record<string, unknown>) => void;
+  /** Tests only: loopback upstreams (127.0.0.0/8, ::1) pass the address check; every other private range stays denied. */
+  allowLoopbackForTests?: boolean;
 }
 
 const HOST_RE = /^(?!\d+\.)(?!-)[a-z0-9-]{1,63}(\.(?!-)[a-z0-9-]{1,63})+$/;
@@ -57,14 +61,22 @@ export const CONNECTOR_HOSTS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * Policy of one system: https = connector hosts of its integrations ∪ (function.egress ∩ globalAllow); smtp =
- * hosts of its email integrations with provider=smtp, plus the platform SMTP host when it uses provider=platform.
+ * Policy of a capability token (a sandbox pod or the runtime's connector traffic): https = connector hosts of the
+ * system's integrations ∪ (function.egress ∩ globalAllow, without platform domains and internal names); smtp = hosts of
+ * its email integrations with provider=smtp, plus the platform SMTP host when it uses provider=platform. Any other
+ * public host a function declares (D71) is reached only by ctx.http.fetch through a per-call grant of the runtime
+ * (egress-grants.ts) — a capability token never opens it.
  */
 export function egressPolicyFor(
   spec: AppSpec,
-  o: { globalAllow: Iterable<string>; platformSmtpHost?: string; label?: string },
+  o: {
+    globalAllow?: Iterable<string>;
+    platformSmtpHost?: string;
+    label?: string;
+    platformDomains?: readonly string[];
+  },
 ): EgressPolicy {
-  const global = new Set([...o.globalAllow].map((h) => h.toLowerCase()));
+  const platform = o.platformDomains ?? PLATFORM_DOMAINS;
   const https = new Set<string>();
   const smtp = new Set<string>();
   for (const integ of spec.integrations ?? []) {
@@ -76,7 +88,12 @@ export function egressPolicyFor(
       } else if (o.platformSmtpHost) smtp.add(o.platformSmtpHost.toLowerCase());
     }
   }
-  for (const f of spec.functions ?? []) for (const h of f.egress ?? []) if (global.has(h)) https.add(h);
+  const global = new Set([...(o.globalAllow ?? [])].map((h) => h.toLowerCase()));
+  for (const f of spec.functions ?? [])
+    for (const raw of f.egress ?? []) {
+      const h = raw.toLowerCase();
+      if (global.has(h) && egressHostProblem(h, platform) === null) https.add(h);
+    }
   return { https, smtp, ...(o.label ? { label: o.label } : {}) };
 }
 
@@ -153,7 +170,12 @@ export function createEgressProxy(o: EgressProxyOptions): Server {
         return reply({ status: 502, reason: "dns" }, { sys: policy.label });
       }
       // Rebinding: every address must be public; the socket is then opened to a checked IP, not to the name.
-      if (addrs.length === 0 || addrs.some((a) => isPrivateAddress(a) || ipInCidrs(a, denied))) {
+      const loopbackOk = (a: string) =>
+        o.allowLoopbackForTests === true && (a === "::1" || a.startsWith("127."));
+      if (
+        addrs.length === 0 ||
+        addrs.some((a) => !loopbackOk(a) && (isPrivateAddress(a) || ipInCidrs(a, denied)))
+      ) {
         return reply({ status: 403, reason: "address_not_public" }, { sys: policy.label });
       }
       let upstream: Socket;

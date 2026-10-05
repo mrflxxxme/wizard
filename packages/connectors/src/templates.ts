@@ -6,7 +6,13 @@ import { entityOf, fieldOf, placeholders } from "./spec-util.js";
 import type { SpecIssue } from "./types.js";
 
 export const LINK_PLACEHOLDER = "link";
+/** M2-50: signed one-time links of visitor messages (rendered by the host, never PII). */
+export const CANCEL_LINK_PLACEHOLDER = "cancel_link";
+export const UNSUBSCRIBE_LINK_PLACEHOLDER = "unsubscribe_link";
+const LINK_PLACEHOLDERS = new Set([LINK_PLACEHOLDER, CANCEL_LINK_PLACEHOLDER, UNSUBSCRIBE_LINK_PLACEHOLDER]);
 const RECORD_REF = /^\$record\.([a-z][a-z0-9_]*)$/;
+const ROLE_REF = /^\$role:([a-z][a-z0-9_]*)$/;
+export const OWNER_REF = "$owner";
 
 export interface PlaceholderInfo {
   /** Resolves to a field with pii ≠ none (or to the users entity: contacts and names). */
@@ -22,7 +28,7 @@ const isPii = (p: string | undefined) => p !== undefined && p !== "none";
  * counts as PII when any entity has a PII field with that name.
  */
 export function resolvePlaceholder(spec: AppSpec, entity: Entity | undefined, name: string): PlaceholderInfo {
-  if (name === LINK_PLACEHOLDER) return { pii: false, known: true };
+  if (LINK_PLACEHOLDERS.has(name)) return { pii: false, known: true };
   const [head, tail, ...rest] = name.split(".") as [string, string | undefined, ...string[]];
   if (!entity) {
     const last = tail ?? head;
@@ -70,20 +76,112 @@ export function recordField(to: unknown): string | null {
   return m ? (m[1] as string) : null;
 }
 
-/** Recipient rule shared by email and Telegram: `to` is `$record.<ref to users>`. */
-export function checkRecipient(step: NotifyStepRef, connector: string): SpecIssue[] {
+/** One recipient of a notify step (runtime.yaml#workflows.step_params, M2-50). */
+export type RecipientRef =
+  | { kind: "record"; field: string }
+  | { kind: "owner" }
+  | { kind: "role"; role: string };
+
+/** `to`: `$record.<field>` | `$owner` | `$role:<role>` or a list of them (1…5); null — malformed. */
+export function parseRecipients(to: unknown): RecipientRef[] | null {
+  const list = Array.isArray(to) ? to : [to];
+  if (list.length === 0 || list.length > 5) return null;
+  const out: RecipientRef[] = [];
+  for (const t of list) {
+    if (typeof t !== "string") return null;
+    const field = recordField(t);
+    const role = ROLE_REF.exec(t)?.[1];
+    if (field) out.push({ kind: "record", field });
+    else if (t === OWNER_REF) out.push({ kind: "owner" });
+    else if (role) out.push({ kind: "role", role });
+    else return null;
+  }
+  return out;
+}
+
+/** What a `$record.<field>` recipient is: a user of the system (ref to users) or a visitor contact (email field). */
+export function recordRecipientKind(entity: Entity | undefined, field: string): "user" | "visitor" | null {
+  if (!entity) return "user";
+  const f = fieldOf(entity, field);
+  if (f?.type === "ref" && f.ref?.entity === USERS_ENTITY) return "user";
+  if (f?.type === "email") return "visitor";
+  return null;
+}
+
+/**
+ * Recipient rules shared by email and Telegram (M2-50): `$record.<ref to users>`, `$owner`, `$role:<login role>`;
+ * email also `$record.<email field>` of a visitor without an account — only with `consentField` (bool field of the
+ * record that the form's separate unchecked checkbox fills). Telegram goes to users of the system only.
+ */
+export function checkRecipient(spec: AppSpec, step: NotifyStepRef, connector: string): SpecIssue[] {
   const path = `/workflows/${step.wi}/steps/${step.si}/params/to`;
-  const field = recordField(step.params.to);
-  const f = field && step.entity ? fieldOf(step.entity, field) : undefined;
-  if (field && (!step.entity || (f?.type === "ref" && f.ref?.entity === USERS_ENTITY))) return [];
-  return [
-    {
-      code: "CONFIG_INVALID",
-      path,
-      message_ru: "Получатель уведомления — поле записи со ссылкой на пользователя: $record.<поле>",
-      rule: `${connector}.notify_recipient`,
-    },
-  ];
+  const consentPath = `/workflows/${step.wi}/steps/${step.si}/params/consentField`;
+  const issue = (message_ru: string, rule = `${connector}.notify_recipient`, at = path): SpecIssue => ({
+    code: "CONFIG_INVALID",
+    path: at,
+    message_ru,
+    rule,
+  });
+  const list = parseRecipients(step.params.to);
+  if (!list) {
+    return [
+      issue(
+        "Получатель уведомления: $owner (владелец системы), $role:<роль>, $record.<поле со ссылкой на пользователя> или $record.<поле email посетителя>",
+      ),
+    ];
+  }
+  const out: SpecIssue[] = [];
+  for (const r of list) {
+    if (r.kind === "owner") continue;
+    if (r.kind === "role") {
+      const role = spec.roles.find((x) => x.name === r.role);
+      if (role?.access !== "login")
+        out.push(
+          issue(
+            `Роль «${r.role}» не найдена среди ролей со входом — уведомить можно только сотрудников с аккаунтом`,
+          ),
+        );
+      continue;
+    }
+    const kind = recordRecipientKind(step.entity, r.field);
+    if (kind === null) {
+      out.push(
+        issue(
+          `Поле «${r.field}» — не ссылка на пользователя и не email: такому получателю сообщение не отправить`,
+        ),
+      );
+    } else if (kind === "visitor") {
+      if (connector !== "email") {
+        out.push(
+          issue("Посетителю без аккаунта уходят только письма: Telegram — сотрудникам с привязанным чатом"),
+        );
+        continue;
+      }
+      const consent = step.params.consentField;
+      const cf = typeof consent === "string" ? fieldOf(step.entity, consent) : undefined;
+      if (cf?.type !== "bool")
+        out.push(
+          issue(
+            "Письмо посетителю уходит только с его согласия: укажите consentField — поле «да/нет» записи, которое форма заполняет отдельной неотмеченной галочкой «Согласен получать служебные сообщения»",
+            "notify.visitor_consent",
+            consentPath,
+          ),
+        );
+    }
+  }
+  return out;
+}
+
+/** Kinds of the step's recipients: staff (owner, role), the record's owner user, other users, visitors. */
+export function recipientKinds(step: NotifyStepRef): Set<"staff" | "record_owner" | "user" | "visitor"> {
+  const out = new Set<"staff" | "record_owner" | "user" | "visitor">();
+  for (const r of parseRecipients(step.params.to) ?? []) {
+    if (r.kind !== "record") out.add("staff");
+    else if (recordRecipientKind(step.entity, r.field) === "visitor") out.add("visitor");
+    else if (step.entity?.ownerField && r.field === step.entity.ownerField) out.add("record_owner");
+    else out.add("user");
+  }
+  return out;
 }
 
 /** G0 for a Telegram text template: no PII placeholders (G2-TG-01), known fields, no PII in the literal text. */

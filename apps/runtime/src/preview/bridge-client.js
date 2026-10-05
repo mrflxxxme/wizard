@@ -200,6 +200,31 @@ function wizardBridge(win, config) {
         if (TOKEN_RE.test(k) && typeof v === "string" && v.length <= 200) root.style.setProperty(k, v);
       }
       if (MODES.includes(p.mode)) root.setAttribute("data-wz-mode", p.mode);
+      // M2-42: fonts of the unsaved theme (catalog files of /_wizard/fonts on this origin only).
+      if (Array.isArray(p.fontFaces)) {
+        const rules = p.fontFaces
+          .slice(0, 16)
+          .filter(
+            (f) =>
+              f &&
+              /^[A-Za-z][A-Za-z ]{0,40}$/.test(f.family) &&
+              /^[a-z0-9-]{1,80}\.woff2$/.test(f.file) &&
+              (f.weight === 400 || f.weight === 700) &&
+              /^[U+0-9A-Fa-f,-]{1,400}$/.test(f.unicodeRange),
+          )
+          .map(
+            (f) =>
+              `@font-face{font-family:"${f.family}";font-weight:${f.weight};font-display:swap;` +
+              `src:url(/_wizard/fonts/${f.file}) format("woff2");unicode-range:${f.unicodeRange};}`,
+          );
+        let style = win.document.getElementById("wz-preview-fonts");
+        if (!style) {
+          style = win.document.createElement("style");
+          style.id = "wz-preview-fonts";
+          win.document.head.appendChild(style);
+        }
+        style.textContent = rules.join("\n");
+      }
       post("theme-applied", {}, id);
     },
     "select-mode": (p) => {

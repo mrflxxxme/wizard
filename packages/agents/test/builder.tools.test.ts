@@ -8,6 +8,7 @@ import {
   type BuildMode,
   builderTools,
   createMemoryHost,
+  EXTRA_BUILDER_TOOLS,
   runBuild,
   type ToolEnv,
 } from "../src/builder/index.js";
@@ -109,10 +110,10 @@ async function probe(
 }
 
 describe("tool definitions", () => {
-  test("8 tools in builder.yaml order, JSON Schema from zod, same names as the golden fixture toolset", async () => {
+  test("tools in builder.yaml order: the golden fixture toolset, then get_capability and report_capability_gap", async () => {
     const lib = (await import(`${REPO}tools/fixtures/lib/golden.mjs`)) as { BUILDER_TOOLS: string[] };
     const tools = builderTools({} as ToolEnv);
-    expect(tools.map((t) => t.name)).toEqual(lib.BUILDER_TOOLS);
+    expect(tools.map((t) => t.name)).toEqual([...lib.BUILDER_TOOLS, ...EXTRA_BUILDER_TOOLS]);
     for (const t of tools) {
       expect(t.definition.parameters).toMatchObject({ type: "object" });
       expect(t.description).toMatch(/^[\x20-\x7E…≤]+$/);

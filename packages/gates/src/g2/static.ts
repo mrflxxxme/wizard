@@ -94,6 +94,13 @@ export async function secretRefs(
       else names.push([`/integrations/${i}/secretRefs/${j}`, name]);
     }
   }
+  // M2-52: secrets ctx.http.fetch substitutes for a function (functions[].secretRefs).
+  for (const [i, fn] of (spec.functions ?? []).entries()) {
+    for (const [j, ref] of (fn.secretRefs ?? []).entries()) {
+      const name = parseSecretRef(ref);
+      if (name) names.push([`/functions/${i}/secretRefs/${j}`, name]);
+    }
+  }
   if (env !== "prod" || names.length === 0) return { findings: out };
   if (!exists) return { findings: out, error: "нет доступа к хранилищу секретов" };
   for (const [path, name] of names) {

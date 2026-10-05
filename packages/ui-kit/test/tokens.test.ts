@@ -1,6 +1,18 @@
 // ui-kit.yaml#tokens.acceptance (vitest part) and a11y#contrast for token pairs.
 import { describe, expect, test } from "vitest";
-import { contrast, PALETTE, type Scheme, themeToTokens, tokensToCss } from "../src/index.js";
+import {
+  contrast,
+  PALETTE,
+  type Scheme,
+  type Tokens,
+  themeToTokens,
+  tokensToCss,
+  V2_TOKENS,
+} from "../src/index.js";
+
+/** Tokens a v1 theme had before v2 (the snapshot is the pre-v2 output, M2-42 acceptance). */
+const v1 = (t: Tokens) =>
+  Object.fromEntries(Object.entries(t).filter(([k]) => !V2_TOKENS.includes(k as never)));
 
 const SCHEMES: Scheme[] = ["light", "dark"];
 const hex2 = (n: number) => n.toString(16).padStart(2, "0");
@@ -45,8 +57,8 @@ describe("themeToTokens contrast", () => {
 describe("themeToTokens determinism", () => {
   test("defaults snapshot", () => {
     expect({
-      light: themeToTokens(undefined, "light"),
-      dark: themeToTokens(undefined, "dark"),
+      light: v1(themeToTokens(undefined, "light")),
+      dark: v1(themeToTokens(undefined, "dark")),
     }).toMatchSnapshot();
   });
 

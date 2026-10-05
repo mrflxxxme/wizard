@@ -17,6 +17,10 @@ import type {
 import { usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
+import { AdminGaps } from "../../features/gaps/AdminGaps.js";
+import { AdminSupport } from "../../features/support/AdminSupport.js";
+import { gaps } from "../../i18n/ru/gaps.js";
+import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
 import f from "../abuse/Abuse.module.css";
 import a from "../auth/Auth.module.css";
@@ -289,7 +293,11 @@ function Verify({ onDone }: { onDone(): void }): ReactNode {
 function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   const { search } = useRoute();
   const reportId = search.get("report");
-  const [tab, setTab] = useState<"reports" | "reviews" | "pilot">("reports");
+  // ?tab=support|gaps: links from the founder's Telegram message (D68).
+  const initial = search.get("tab");
+  const [tab, setTab] = useState<"reports" | "reviews" | "pilot" | "support" | "gaps">(
+    initial === "support" || initial === "gaps" ? initial : "reports",
+  );
   return (
     <div className={st.shell}>
       <Rail />
@@ -331,9 +339,37 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
             >
               {ru.admin.tabPilot}
             </button>
+            <button
+              type="button"
+              className={s.tab}
+              aria-pressed={tab === "support"}
+              onClick={() => {
+                setTab("support");
+                setQueryParam("report", null);
+              }}
+              data-testid="admin-tab-support"
+            >
+              {support.admin.tab}
+            </button>
+            <button
+              type="button"
+              className={s.tab}
+              aria-pressed={tab === "gaps"}
+              onClick={() => {
+                setTab("gaps");
+                setQueryParam("report", null);
+              }}
+              data-testid="admin-tab-gaps"
+            >
+              {gaps.tab}
+            </button>
           </div>
         </header>
-        {tab === "pilot" ? (
+        {tab === "support" ? (
+          <AdminSupport onMfaRequired={onMfaRequired} />
+        ) : tab === "gaps" ? (
+          <AdminGaps onMfaRequired={onMfaRequired} />
+        ) : tab === "pilot" ? (
           <PilotSection onMfaRequired={onMfaRequired} />
         ) : tab === "reviews" ? (
           <Reviews onMfaRequired={onMfaRequired} />

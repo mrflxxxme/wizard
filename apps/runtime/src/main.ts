@@ -62,6 +62,8 @@ const { close, metricsPort } = await startRuntime({
     ...(process.env.WIZARD_SMTP_HOST ? { platformSmtpHost: process.env.WIZARD_SMTP_HOST } : {}),
   },
   log: (line) => logger.line(line),
+  // M2-50: workflow poller over published systems (0 — off; tests and G1 drive runJobs themselves).
+  ...(process.env.WIZARD_JOBS_TICK_MS ? { jobsTickMs: Number(process.env.WIZARD_JOBS_TICK_MS) } : {}),
   ...(sandbox ? { sandbox: sandbox.orchestrator, rpc: sandbox.rpc } : {}),
   ...(metricsAt ? { metricsPort: metricsAt.port, metricsHostname: metricsAt.hostname } : {}),
 });

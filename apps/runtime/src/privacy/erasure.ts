@@ -2,7 +2,14 @@
 // consent withdrawal (security/compliance.yaml#system_package.consent.withdrawal, L3-33), retention of end users
 // (#retention.users) and subject requests (#subject_requests). The platform moves the journal into
 // platform.deletion_log (workflows.yaml#retention_cron).
-import { type Entity, type Field, quoteIdent, SYSTEM_ROLE, textLiteral } from "@wizard/appspec";
+import {
+  type Entity,
+  type Field,
+  isFileFieldType,
+  quoteIdent,
+  SYSTEM_ROLE,
+  textLiteral,
+} from "@wizard/appspec";
 import type postgres from "postgres";
 import { SYSTEM_SUBJECT } from "../data/access.js";
 import type { LoadedSystem } from "../system.js";
@@ -120,7 +127,7 @@ export async function anonymizeRows(
     fields.push(f.name);
   }
   if (sets.length === 0) return { rows: 0, fields: [], files: [] };
-  const fileCols = pii.filter((f) => f.type === "file" && nullable.get(f.name)).map((f) => f.name);
+  const fileCols = pii.filter((f) => isFileFieldType(f.type) && nullable.get(f.name)).map((f) => f.name);
   try {
     return await tx.savepoint(async (sp) => {
       const held = fileCols.length

@@ -58,7 +58,7 @@ actions:
       - "Относительные url кнопок дополняются хостом системы; сторонние домены запрещены"
       - "Экранирование HTML (<, >, &) в подставленных значениях"
     output: "{delivered, reason?: 'not_linked'|'blocked'|'test_mode'}"
-  notify_step: "Шаг воркфлоу notify с integration=telegram: text-шаблон с {{field}}; G2-TG-01 (в M1 — validateSpec, G0) запрещает ссылки на поля pii≠none (M1-06)"
+  notify_step: "Шаг воркфлоу notify с integration=telegram: text-шаблон с {{field}}; G2-TG-01 (в M1 — validateSpec, G0) запрещает ссылки на поля pii≠none (M1-06). M2-50 (D69, D71): получатели $record.<ссылка на users>, $owner (пользователи системы с email владельца организации и привязанным чатом) и $role:<роль> — только сотрудникам с привязанным Telegram; посетителю без аккаунта Telegram не уходит (G0 telegram.notify_recipient); на выпуске текст без ПДн: «Новая заявка — откройте по ссылке {{link}}», имя по флажку allowNames (D53) — после выпуска"
 
 webhooks:
   path: "/_wizard/hooks/telegram/<integration>/<hookToken> (bot=own); общий бот — bots.platform.webhook"

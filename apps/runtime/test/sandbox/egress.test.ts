@@ -266,7 +266,7 @@ describe("egress policy and parsing", () => {
       expect(parseConnectTarget(t)).toBeNull();
   });
 
-  it("egressPolicyFor: connector hosts ∪ (function.egress ∩ global allowlist); smtp from email integrations", () => {
+  it("egressPolicyFor: connector hosts ∪ (function.egress ∩ globalAllow) — other function hosts only by a call grant; smtp from email integrations", () => {
     const spec = {
       integrations: [
         { name: "pay", connector: "yookassa" },
@@ -274,14 +274,21 @@ describe("egress policy and parsing", () => {
         { name: "notify", connector: "email" },
       ],
       functions: [
-        { name: "f", kind: "action", file: "functions/f.ts", egress: ["api.partner.ru", "evil.example.com"] },
+        {
+          name: "f",
+          kind: "action",
+          file: "functions/f.ts",
+          egress: ["api.partner.ru", "evil.example.com", "admin.borntobuild.ru", "db.svc.cluster.local"],
+        },
       ],
     } as unknown as AppSpec;
     const p = egressPolicyFor(spec, {
-      globalAllow: ["api.partner.ru"],
+      globalAllow: ["api.partner.ru", "admin.borntobuild.ru"],
       platformSmtpHost: "smtp.wizard-mail.ru",
     });
+    // evil.example.com is declared by the function but reached only through ctx.http grants, never a sandbox token.
     expect([...p.https].sort()).toEqual(["api.partner.ru", "api.yookassa.ru"]);
+    expect([...egressPolicyFor(spec, {}).https]).toEqual(["api.yookassa.ru"]);
     expect([...p.smtp].sort()).toEqual(["smtp.wizard-mail.ru", "smtp.yandex.ru"]);
   });
 

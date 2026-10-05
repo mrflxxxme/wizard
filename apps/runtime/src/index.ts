@@ -24,6 +24,7 @@ export {
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
 export {
   createRuntimeApp,
+  type JobsTickReport,
   type RetentionTickReport,
   type RuntimeApp,
   type RuntimeAppOptions,
@@ -204,8 +205,23 @@ export {
   egressPolicyFor,
   parseConnectTarget,
 } from "./sandbox/egress.js";
+/** M2-52: ctx.http.fetch made by the runtime — https to declared public hosts, via the proxy, limits, _w_egress_log. */
+export {
+  DEFAULT_EGRESS_LIMITS,
+  directTransport,
+  type EgressLimits,
+  type EgressLogEntry,
+  EgressRefused,
+  type EgressTransport,
+  egressHttpClient,
+  proxyTransport,
+} from "./sandbox/egress-fetch.js";
+/** M2-52: proxy grants of runtime-made requests (checked at /_wizard/internal/egress-authorize). */
+export { type EgressGrant, EgressGrants, egressGrantKey } from "./sandbox/egress-grants.js";
 /** authorize() of the egress-proxy deployment: capability check delegated to the runtime's internal port. */
 export { type RemoteAuthorizerOptions, remoteCapabilityAuthorizer } from "./sandbox/egress-remote.js";
+/** M2-52: per-call ctx.http clients of a runtime (RuntimeAppOptions.http). */
+export { createEgressService, type EgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 /** M2-18: sandbox of a process from its env (WIZARD_SANDBOX=k8s) and the capability key. */
 export { sandboxFromEnv, sandboxKey } from "./sandbox/from-env.js";
 /** M2-18: in-cluster Kubernetes API of the orchestrator (pods and ConfigMaps of one namespace). */

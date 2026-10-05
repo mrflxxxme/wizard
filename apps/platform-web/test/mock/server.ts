@@ -380,6 +380,22 @@ export class MockPlatform {
       return json(200, {
         items: [{ userId: "00000000-0000-4000-8000-00000000d001", email: "dev@wizard.local", role: "owner" }],
       });
+    // D70 (M2-56): a pilot org — «На пилоте бесплатно» and what is left; D68: «Написать команде».
+    if (req.method === "GET" && /^\/orgs\/[^/]+$/.test(p))
+      return json(200, { id: ORG, name: "Локальная организация", plan: "pilot", paymentsEnabled: false });
+    if (req.method === "GET" && /^\/orgs\/[^/]+\/usage$/.test(p))
+      return json(200, {
+        pilot: true,
+        free: true,
+        builds: { limit: 5, used: 3, left: 2, nextAt: null },
+        edits: { limit: 20, used: 5, left: 15, nextAt: null },
+      });
+    if (req.method === "POST" && p === "/support/requests")
+      return json(201, {
+        id: "00000000-0000-4000-8000-0000000000aa",
+        replyBy: "2026-10-05T12:00:00.000Z",
+        message_ru: "Сообщение отправлено.",
+      });
     if (/^\/orgs\/([^/]+)\/settings$/.test(p)) {
       return this.opts.orgSettings ? json(200, this.opts.orgSettings) : fail(404, "NOT_FOUND", "Не найдено");
     }

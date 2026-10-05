@@ -5,11 +5,11 @@
 version: 1
 package: "@wizard/ui-kit"
 path: packages/ui-kit
-tasks: [M0-08, M0-25, M2-03, M2-14, M3-01]
+tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01]
 
 scope:
   M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
-  M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "FileField (поле type=file, runtime.yaml#files)", "AppShell.Login: согласие при первом входе; ссылка «Пожаловаться»", "CabinetLayout: раздел «Мои данные»"]
+  M2: ["QrScanner: офлайн-очередь и синхронизация", "QrTicket: офлайн-кеш в PWA", "FileField (поле type=file, runtime.yaml#files)", "AppShell.Login: согласие при первом входе; ссылка «Пожаловаться»", "CabinetLayout: раздел «Мои данные»", "токены v2 и 4 темы (M2-42, themes.yaml)", "блоки лендинга Header, Hero, Features, Steps, Faq, Cta, LeadForm, Footer (M2-43)", "Image и ImageField (поле type=image, M2-47)"]
   M3: ["использование wz-map.json в «Укажи и измени» (data-wz-id и плагин packages/build — M0, см. wz_id; L1-58)", "RecordCard: пометка «заполнено ИИ»"]
   core_8_for_M0_08: [Catalog, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, CabinetLayout, StatsReport]  # + AppShell, примитивы Button/Badge/Field, QrScanner(online)
 
@@ -25,7 +25,7 @@ rules:
 
 # ---------------- Дизайн-токены ----------------
 tokens:
-  source: "AppSpec.theme {accent, font, radius, density, mode, logoFile}; отсутствующие поля → defaults"
+  source: "AppSpec.theme {preset, accent, font, headingFont, radius, density, mode, logoFile}; preset — одна из 4 тем (specs/ui/themes.yaml), явные поля её уточняют; отсутствующие поля → тема или defaults. Тему подбирают по нише: themeForNiche(ниша)"
   api:
     themeToTokens: "themeToTokens(theme: AppSpec['theme'] | undefined, scheme: 'light'|'dark'): Record<`--w-${string}`, string> — чистая функция, одна и та же в runtime-сборке и в platform-web (apply-theme-tokens)"
     applyTokens: "applyTokens(root: HTMLElement, theme): void — ставит переменные light и dark, атрибут data-wz-mode; без перезагрузки"
@@ -53,13 +53,23 @@ tokens:
     --w-density-gap: { compact: "8px", regular: "16px" }
     --w-density-control: { compact: "36px", regular: "44px", note: "визуальная высота контрола; хит-зона — см. a11y.touch_targets" }
     --w-density-row: { compact: "40px", regular: "52px" }
-  fonts: "MUST: 5 шрифтов из theme.font отдаются runtime самостоятельно (woff2, /_wizard/fonts/, cyrillic+latin, font-display: swap); запросы к Google Fonts и чужим CDN из систем запрещены"
+  fonts: "MUST: шрифты каталога (9 семейств OFL-1.1 с кириллицей: Onest, Inter Tight, Manrope, PT Sans, IBM Plex Sans, Golos Text, PT Serif, Lora, Unbounded; 400 и 700, cyrillic+latin) лежат в packages/ui-kit/fonts, каталог с лицензией и источником — src/tokens/font-catalog.ts (scripts/sync-fonts.mjs из @fontsource/*), раздаёт runtime с /_wizard/fonts/<файл с хешем> (immutable); applyTokens вставляет @font-face (font-display: swap, unicode-range) только для шрифтов темы; запросы к Google Fonts и чужим CDN из систем запрещены (D64)"
+  v2:
+    tokens: "--w-font-heading, --w-heading-weight, --w-heading-tracking, --w-font-size-display|h2|h3 (clamp), --w-radius-lg, --w-shadow-sm|md (глубина темы), --w-surface-alt (полоса секции), --w-accent-strong (наведение), --w-accent-tint (подложка), --w-accent-edge (кромка кнопки ≥ 3:1 к фону), --w-overlay и --w-overlay-ink (текст поверх фото), --w-section-space (ритм секций), --w-container"
+    compatibility: "Тема без preset и headingFont даёт прежние значения всех прежних токенов (снимок), v2 только добавляет V2_TOKENS"
+    api: "resolveTheme, themeFonts, themeLint(theme) → [{code, message}], themeForNiche(ниша) → id темы, THEME_PRESET_LIST, FONT_CATALOG, fontFaceCss"
+  themes:
+    - { id: strict, label: "Строгая деловая — юристы, бухгалтерия, B2B, строительство, CRM и внутренние инструменты" }
+    - { id: warm, label: "Тёплая — салоны красоты, мастера, кафе и пекарни, цветы, ателье, гостевые дома" }
+    - { id: bright, label: "Яркая современная — спорт и танцы, онлайн-школы, детские студии, мероприятия, развлечения" }
+    - { id: calm, label: "Спокойная минималистичная — психологи, клиники, йога, архитектура и интерьеры, фотографы" }
   mode: "light|dark — принудительно; auto — по prefers-color-scheme; атрибут data-wz-mode на <html>"
   acceptance:
     - "vitest: для 4096 акцентов (сетка 16³ по RGB) и обеих схем contrast(--w-accent-ink, --w-accent) ≥ 4.5 и contrast(--w-accent-text, bg|surface) ≥ 4.5; ink/muted на bg/surface ≥ 4.5 (WCAG 2.x формула относительной яркости)"
     - "vitest: themeToTokens детерминирована (снимок для defaults) и не зависит от DOM"
     - "Playwright (demo): applyTokens с новым accent меняет getComputedStyle кнопки без reload (performance.navigation не меняется) за < 50 мс"
     - "Playwright (demo): mode=auto + emulateMedia({colorScheme:'dark'}) → --w-bg = #0F1115"
+    - "M2-42 vitest: 4 темы и тема без preset × 4096 фирменных цветов × 2 схемы — текст и кнопки ≥ 4.5:1, кромка кнопки ≥ 3:1; каталог шрифтов — лицензия из списка D64, источник, глифы А–я, Ё, ё (test/themes.test.ts, test/fonts.test.ts)"
 
 # ---------------- Доступность ----------------
 a11y:
@@ -135,6 +145,7 @@ data_binding:
       upload(file: File, target: { field: string; entity?: string }): Promise<FileInfo>;   // POST /api/files (multipart: file, field, entity?), X-Wizard-Request: 1
       info(fileId: string): Promise<FileInfo>;    // GET /api/files/:fileId/info
       href(fileId: string): string;               // GET /api/files/:fileId (302 на подписанную ссылку)
+      imageSrc(fileId: string, width: 480 | 960 | 1600): string;   // M2-47: GET /api/files/:fileId/img/:width (inline WebP)
     }
     type FileInfo = { fileId: string; name: string; size: number; mime: string };
     type ListQuery = { filter?: Record<string, unknown>; sort?: { field: string; dir: 'asc' | 'desc' }; page?: number; pageSize?: number; search?: string };
@@ -245,6 +256,7 @@ components:
       enum: "≤5 значений → radiogroup, иначе select"
       ref: "select с поиском по записям целевой сущности (useList, search), подпись — первое string-поле"
       file: "M2: FileField (POST /api/files, runtime.yaml#files); RecordForm рендерит поля file через FileField (и поля по умолчанию), readonly — disabled; поле file по умолчанию pii: basic → форма показывает ConsentCheckbox"
+      image: "M2-47: ImageField (POST /api/files, runtime.yaml#files.image) с предпросмотром; в RecordCard/DataTable — миниатюра Image"
       json: "не рендерится в формах (только код)"
       email|phone|url: "input type=email/tel/url; phone — маска +7 (___) ___-__-__, хранение E.164"
       qr_token: "никогда не редактируется"
@@ -482,7 +494,164 @@ components:
     behaviour: ["Используется RecordForm и строителем для своих форм; label, hint, error связаны aria-describedby; id = wz-<wzId>-<name>"]
     test_ids: [wz-field-<name>]
 
+  # ---------- M2-43: блоки лендинга (D69). Текст даёт строитель из брифа; блоки не выдумывают факты (D49) ----------
+  - name: Header
+    milestone: M2
+    props: |
+      interface HeaderProps extends WzBase {
+        brand: string;                       // название бизнеса (текстовый логотип)
+        logo?: ImageSource;                  // картинка логотипа (fileId поля image или src из бандла)
+        links?: { label: string; href: string }[];   // пункты меню; якоря "#lead" ведут к блокам страницы
+        cta?: { label: string; href: string };       // одна кнопка справа («Записаться» → "#lead")
+        variant?: 'bar' | 'centered';        // bar — логотип слева, меню справа; centered — логотип над меню
+        sticky?: boolean;                    // прилипает к верху при прокрутке
+      }
+    behaviour:
+      - "Шапка страницы: <header>, меню <nav aria-label=«Основное меню»>; на телефоне меню прячется за кнопкой «Меню» (aria-expanded, Esc закрывает и возвращает фокус)"
+      - "Ставится первым элементом публичной страницы; вместо AppShell на лендинге (AppShell — для кабинетов и рабочих экранов)"
+    test_ids: [wz-header, wz-header-brand, wz-header-menu, wz-header-nav, wz-header-cta]
+
+  - name: Hero
+    milestone: M2
+    props: |
+      interface HeroProps extends WzBase {
+        title: string;                       // единственный <h1> страницы: что предлагаете и кому
+        subtitle?: string; eyebrow?: string; // строка под заголовком; короткая строка над ним (город, вид услуг)
+        primary?: { label: string; href: string };   // главное действие ("#lead")
+        secondary?: { label: string; href: string };
+        image?: ImageSource;                 // { fileId?: string | null; src?: string; alt: string; decorative?: boolean }
+        variant?: 'split' | 'centered' | 'cover';   // split — текст и фото рядом; centered — текст по центру; cover — фото фоном с затемнением
+        tone?: 'default' | 'accent';         // accent — фон фирменного цвета (кнопка инвертируется)
+        anchor?: string;                     // id секции
+      }
+    behaviour:
+      - "Первый экран лендинга: заголовок h1, подзаголовок, 1–2 кнопки-ссылки, картинка владельца; на 390px картинка уходит под текст"
+      - "Картинка — из поля image сущности (например, settings.hero_photo) или файл бандла; без картинки вариант split/centered остаётся аккуратным текстовым блоком"
+      - "cover: текст белый поверх затемнения --w-overlay — контраст ≥ 4.5:1 при любой картинке"
+    test_ids: [wz-hero, wz-hero-primary, wz-hero-secondary, wz-hero-image]
+
+  - name: Features
+    milestone: M2
+    props: |
+      interface FeaturesProps extends WzBase {
+        title: string; intro?: string;
+        items: { title: string; text?: string; image?: ImageSource }[];
+        variant?: 'grid' | 'cards' | 'alternating';  // grid — короткие пункты; cards — карточки с фото (услуги, работы); alternating — фото и текст по очереди
+        columns?: 2 | 3 | 4;                 // для grid и cards на ширине ≥ 960px (по умолчанию 3)
+        tone?: 'default' | 'alt' | 'accent'; anchor?: string;
+      }
+    behaviour:
+      - "Преимущества, услуги, работы: заголовок h2, пункты h3; карточки принимают картинки (Image), сетка адаптивна без горизонтального скролла"
+      - "Пункты — только из брифа; если фактов нет, лучше меньше пунктов, чем выдуманные (D49)"
+    test_ids: [wz-features, wz-features-item, wz-features-image]
+
+  - name: Steps
+    milestone: M2
+    props: |
+      interface StepsProps extends WzBase {
+        title: string; intro?: string;
+        steps: { title: string; text?: string }[];
+        variant?: 'numbered' | 'timeline';   // numbered — колонки с крупными номерами; timeline — вертикальная линия
+        tone?: 'default' | 'alt' | 'accent'; anchor?: string;
+      }
+    behaviour: ["Как это работает: упорядоченный список <ol>, номер шага озвучивается скринридером («Шаг 1»)"]
+    test_ids: [wz-steps, wz-steps-item]
+
+  - name: Faq
+    milestone: M2
+    props: |
+      interface FaqProps extends WzBase {
+        title: string;
+        items: { question: string; answer: string }[];
+        variant?: 'accordion' | 'columns';   // accordion — ответы раскрываются (<details>); columns — все ответы видны в две колонки
+        tone?: 'default' | 'alt' | 'accent'; anchor?: string;
+      }
+    behaviour: ["Вопросы и ответы; аккордеон на нативных <details>/<summary> — работает с клавиатуры и без скриптов"]
+    test_ids: [wz-faq, wz-faq-item]
+
+  - name: Cta
+    milestone: M2
+    props: |
+      interface CtaProps extends WzBase {
+        title: string; text?: string;
+        action: { label: string; href: string }; secondary?: { label: string; href: string };
+        variant?: 'band' | 'card';           // band — полоса фирменного цвета на всю ширину; card — карточка по центру
+        tone?: 'default' | 'alt' | 'accent'; anchor?: string;
+      }
+    behaviour: ["Призыв к действию между блоками или перед формой; на фирменном цвете кнопка инвертируется (контраст ≥ 4.5:1 для любого цвета)"]
+    test_ids: [wz-cta, wz-cta-primary, wz-cta-secondary]
+
+  - name: LeadForm
+    milestone: M2
+    props: |
+      interface LeadFormProps extends WzBase {
+        entity: string;                      // сущность заявки; роли страницы нужен create
+        title?: string;                      // по умолчанию «Оставьте заявку»
+        intro?: string;
+        fields?: string[];                   // поля по порядку (по умолчанию все, что роль может заполнить)
+        hidden?: Record<string, unknown>;    // значения без полей (источник, выбранная услуга)
+        submitLabel?: string;                // по умолчанию «Отправить заявку»
+        successText?: string;                // по умолчанию «Спасибо! Мы получили вашу заявку.»
+        variant?: 'card' | 'split' | 'inline';   // split — текст и контакты слева, форма справа
+        contacts?: { label: string; value: string; href?: string }[];
+        tone?: 'default' | 'alt' | 'accent'; anchor?: string;   // anchor по умолчанию "lead" (href="#lead")
+        onSuccess?(record: Rec): void;
+      }
+    behaviour:
+      - "Форма заявки поверх хука SDK создания записи (DataSource.useCreate → useEntityMutation(entity).create): поля, проверки и ошибки — как в RecordForm"
+      - "MUST: если среди полей есть ПДн и роль не isAdmin — ConsentCheckbox (wz-consent--leadform), без отметки отправка невозможна, create уходит с {consent: true} (G2-PII-04)"
+      - "После отправки — сообщение role=status «Заявка отправлена» и кнопка «Отправить ещё одну»; роль без create видит «Форма заявки сейчас недоступна»"
+      - "Публичная роль: нужен create на сущность заявки и retention (G2-PII-05); владелец получает письмо о заявке (D69)"
+    test_ids: [wz-leadform, wz-leadform-form, wz-leadform-submit, wz-leadform-error, wz-consent--leadform, wz-leadform-success]
+
+  - name: Footer
+    milestone: M2
+    props: |
+      interface FooterProps extends WzBase {
+        brand: string; text?: string;
+        columns?: { title: string; links: { label: string; href: string }[] }[];
+        contacts?: { label: string; value: string; href?: string }[];   // href: "tel:+7…", "mailto:…"
+        legal?: string;                      // строка владельца (ИП/ООО, ИНН) — только из брифа, не придумывать
+        showPolicy?: boolean;                // ссылка на политику ПДн (по умолчанию — если в системе есть ПДн)
+        variant?: 'simple' | 'columns';
+      }
+    behaviour: ["Подвал: <footer>, контакты, ссылки, строка владельца и ссылка «Политика обработки персональных данных» на compliance.policyPage"]
+    test_ids: [wz-footer, wz-footer-policy]
+
+  # ---------- M2-47: картинки на страницах ----------
+  - name: Image
+    milestone: M2
+    props: |
+      interface ImageSource { fileId?: string | null; src?: string; alt: string; decorative?: boolean }
+      interface ImageProps extends WzBase, ImageSource {
+        // fileId — значение поля type=image (runtime отдаёт WebP 480/960/1600); src — файл бандла (import pic from './hero.webp')
+        ratio?: '16/9' | '4/3' | '3/2' | '1/1' | '3/4' | '21/9' | 'auto';   // рамка-заглушка до загрузки (по умолчанию 16/9)
+        fit?: 'cover' | 'contain';
+        sizes?: string;                      // для srcset (по умолчанию 100vw на телефоне, половина на десктопе)
+        priority?: boolean;                  // первый экран: eager + fetchpriority=high
+        rounded?: boolean;                   // скругление --w-radius-lg (по умолчанию да)
+      }
+    behaviour:
+      - "Картинка поля image: srcset из вариантов runtime (GET /api/files/:fileId/img/480|960|1600), loading=lazy, decoding=async; без внешних хостов"
+      - "MUST: alt обязателен (короткое описание для незрячих); пустой alt — только с decorative; без alt в dev — ошибка в консоли"
+      - "До загрузки и без картинки — заглушка в цветах темы той же пропорции (страница не прыгает); ошибка загрузки — остаётся заглушка"
+      - "Права чтения — как у записи с картинкой (публичная страница видит картинки записей, доступных публичной роли)"
+    test_ids: [wz-image, wz-image-img]
+
+  - name: ImageField
+    milestone: M2
+    props: |
+      interface ImageFieldProps extends WzBase {
+        name: string; label: string; value: string | null;   // fileId
+        onChange(fileId: string | null): void;
+        required?: boolean; error?: string; entity?: string; disabled?: boolean;
+      }
+    behaviour:
+      - "Загрузка картинки в поле image (POST /api/files): JPEG, PNG, WebP до 10 МБ; runtime проверяет тип по содержимому, снимает EXIF и сжимает в WebP 480/960/1600"
+      - "Предпросмотр сразу после выбора; ошибки — у поля (415 «Нужна картинка JPEG, PNG или WebP», 413 — сообщение сервера про размер). RecordForm использует его для полей image"
+    test_ids: [wz-imagefield-<name>, wz-imagefield-<name>-input, wz-imagefield-<name>-preview, wz-imagefield-<name>-remove, wz-imagefield-<name>-error]
+
 demo:
   path: packages/ui-kit/demo
-  rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; переключатели роли, темы (все поля theme), ширины"
+  rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 4 темы), ширины"
   ci: "Playwright: скриншоты 1280 и 390 в light/dark; проверки a11y, responsive, wz_id"

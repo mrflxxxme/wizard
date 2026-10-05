@@ -499,7 +499,8 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
   profile = o.profile ?? raw.env.value?.cluster_profile ?? profile;
   const outputsOf = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v?.value]));
   // Hooks of tools/deploy/pilot.mjs (all optional): beforeCluster(outputs) → {vars, close} — secret files from the
-  // encrypted bundle and a temporary SSH rule; afterKubeconfig({kubectl}); afterRelease({kubectl, outputs, tag}).
+  // encrypted bundle and a temporary SSH rule; afterKubeconfig({kubectl}); afterRelease({kubectl, outputs, tag});
+  // onCluster({kubectl, helm, outputs}) → exit code — replaces the diagnose report (pilot.mjs eval).
   const hooks = deps.hooks ?? {};
   const access = hooks.beforeCluster ? await hooks.beforeCluster(outputsOf(raw)) : null;
   const v = { ...vars, ...(access?.vars ?? {}) };
@@ -527,6 +528,8 @@ export async function main(argv = process.argv.slice(2), vars = process.env, dep
     const kubectl = (args, x = {}) => run("kubectl", args, { env: kenv, ...x });
     const helm = (args, x = {}) => run("helm", args, { env: kenv, ...x });
     if (o.command === "diagnose") {
+      // pilot.mjs eval: the same read access (SSH tunnel, kubeconfig) for its own work in the cluster instead.
+      if (hooks.onCluster) return (await hooks.onCluster({ kubectl, helm, outputs: outputsOf(raw) })) ?? 0;
       diagnoseCluster({ kubectl, log });
       return 0;
     }

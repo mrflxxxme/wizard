@@ -2,6 +2,16 @@ export const PACKAGE = "@wizard/connectors";
 
 /** Typed helpers for declaring connectors and actions. */
 export { defineAction, defineConnector } from "./define.js";
+/** M2-52 (D71): which declared egress hosts are valid public targets (not internal, not platform domains). */
+export {
+  type EgressHostProblem,
+  egressHostProblem,
+  INTERNAL_SUFFIXES,
+  newEgressHosts,
+  PLATFORM_DOMAINS,
+  platformDomains,
+  specEgressHosts,
+} from "./egress-hosts.js";
 /** Email: config, validateSpec (subject/body PII rules), sendTemplate (outbox | dev SMTP | platform | client SMTP), platform mail. */
 export {
   type ComposedMail,
@@ -9,6 +19,7 @@ export {
   emailConfigSchema,
   emailConnector,
   sendPlatformEmail,
+  sendTemplateToAddress,
   validateEmailSpec,
 } from "./email.js";
 /** ConnectorError {code, retryable, message}; UniqueViolation — SystemDb.insert conflict. */
@@ -43,8 +54,14 @@ export {
   systemResolver,
   tcpDialer,
 } from "./net.js";
-/** Workflow notify step → email.sendTemplate / telegram.sendToUser with key `<jobId>:<stepIndex>:<action>:0`. */
-export { type NotifyStepInput, runNotifyStep } from "./notify.js";
+/** Workflow notify step (M2-50): recipients $record/$owner/$role/visitor with consent, per-recipient keys, journal. */
+export {
+  type NotifyResult,
+  type NotifyStepInput,
+  runNotifyStep,
+  UNSUBSCRIBE_FOOTER_RU,
+  VISITOR_MESSAGES_PER_DAY,
+} from "./notify.js";
 /** Platform-owned connector settings (shared Telegram bot, platform SMTP, dev receiver) from WIZARD_* env. */
 export { type PlatformEnvOptions, platformConfigFromEnv } from "./platform.js";
 /** QR connector: config, validateSpec, token issue on insert, POST /_wizard/qr/check; revoked hashes in ctx.store. */
@@ -173,9 +190,39 @@ export {
 /** Bot API call with error mapping, `/bot<token>` masking, derived 32-char tokens. */
 export { botCall, derivedToken, maskTelegramToken, TELEGRAM_API_BASE } from "./telegram-api.js";
 /** Template placeholders: PII resolution against the spec, notify steps of an integration, rendering. */
-export { type PlaceholderInfo, renderTemplate, resolvePlaceholder } from "./templates.js";
+export {
+  CANCEL_LINK_PLACEHOLDER,
+  OWNER_REF,
+  type PlaceholderInfo,
+  parseRecipients,
+  type RecipientRef,
+  recordRecipientKind,
+  renderTemplate,
+  resolvePlaceholder,
+  UNSUBSCRIBE_LINK_PLACEHOLDER,
+} from "./templates.js";
 /** Connector contract types (specs/connectors/connector-interface.md §1). */
 export type * from "./types.js";
+/** M2-53: incoming webhooks — config, G0, secret address (hookToken), signature/shared secret check, field mapping. */
+export {
+  DEV_WEBHOOK_KEY,
+  INCOMING_WEBHOOK_BODY_MAX,
+  INCOMING_WEBHOOK_RATE_PER_MINUTE,
+  type IncomingWebhook,
+  mapWebhookFields,
+  parseWebhookBody,
+  validateWebhookSpec,
+  verifyWebhook,
+  WEBHOOK_SECRET_PREFIX,
+  type WebhookConfig,
+  type WebhookVerdict,
+  webhookConfigSchema,
+  webhookConnector,
+  webhookHookToken,
+  webhookKeyFromEnv,
+  webhookUrl,
+  webhookWorkflows,
+} from "./webhook/index.js";
 /** YooKassa: config, validateSpec, /api/pay (API or draft mock), pay-mock, webhooks (verify, re-read, apply), refunds. */
 export {
   applyPaymentCanceled,

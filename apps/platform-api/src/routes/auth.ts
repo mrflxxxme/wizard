@@ -116,7 +116,7 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
     await a.mailer.send({
       kind: "otp",
       to: b.email,
-      subject: `Код входа в Wizard: ${code}`,
+      subject: `Код входа в Born to Build: ${code}`,
       text: `Ваш код входа: ${code}\nОн действует 10 минут. Если вы не запрашивали код, просто проигнорируйте это письмо.`,
     });
     return c.body(null, 204);

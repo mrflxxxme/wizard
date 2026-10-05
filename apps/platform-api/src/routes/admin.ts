@@ -120,6 +120,8 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
         orgId: x.org_id,
         revision: x.revision,
         createdAt: new Date(x.created_at).toISOString(),
+        egressHosts: x.egress_hosts,
+        newEgressHosts: x.new_egress_hosts,
       })),
     });
   });
