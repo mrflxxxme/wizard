@@ -11,6 +11,9 @@
 //        restored by a Job)
 //   node tools/deploy/pilot.mjs deploy --env … --tag <sha>      release of a SHA (no OpenTofu apply, no addons)
 //   node tools/deploy/pilot.mjs destroy --env staging            staging on demand: everything goes
+//   node tools/deploy/pilot.mjs eval --env … [--briefs all|mvp-01,…] [--max-cost-rub 2000]   D67 measurement
+//        (docs/ops/eval-d67.md): a service account in the platform database over the SSH tunnel, the briefs through
+//        the public HTTPS of the platform, then costs, «Запросы на развитие» and the session revoked; report → summary
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
@@ -21,6 +24,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
+import { selectBriefs } from "../eval/server/cli.mjs";
+import { platformClient } from "../eval/server/client.mjs";
+import { DEFAULTS as EVAL_DEFAULTS, runEval } from "../eval/server/driver.mjs";
+import { renderReport } from "../eval/server/report.mjs";
+import {
+  collectSql,
+  EVAL_MIN_BUILDS,
+  evalCredits,
+  newEvalSession,
+  newRunId,
+  parseCollectOutput,
+  parseSeedOutput,
+  revokeSql,
+  seedSql,
+} from "../eval/server/seed.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
   assertPassphrase,
@@ -39,6 +57,7 @@ export const COMMANDS = [
   "deploy",
   "destroy",
   "diagnose",
+  "eval",
   "reboot",
   "close-access",
   "show-secrets",
@@ -99,7 +118,19 @@ export function parseArgs(argv) {
     const a = rest[i];
     if (a === "--env") o.env = rest[++i] ?? null;
     else if (a === "--tag") o.tag = rest[++i] ?? null;
+    else if (command === "eval" && a === "--briefs") o.briefs = rest[++i] || "all";
+    else if (command === "eval" && a === "--max-cost-rub") o.maxCostRub = rest[++i] ?? "";
     else throw new Error(`unknown argument ${a}`);
+  }
+  if (command === "eval") {
+    o.briefs ??= "all";
+    if (!/^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$/.test(o.briefs))
+      throw new Error("--briefs: all или id через запятую");
+    const cost =
+      o.maxCostRub === undefined || o.maxCostRub === "" ? EVAL_DEFAULTS.maxCostRub : Number(o.maxCostRub);
+    if (!Number.isInteger(cost) || cost < 1 || cost > 6000)
+      throw new Error("--max-cost-rub: целое от 1 до 6000 (месячный лимит платформы на модели)");
+    o.maxCostRub = cost;
   }
   if (!COMMANDS.includes(o.command)) throw new Error(`command: ${COMMANDS.join(" | ")}`);
   if (!ENVS.includes(o.env)) throw new Error("--env prod|staging is required");
@@ -1023,6 +1054,113 @@ export function founderStaffJob({ image, email, pullSecret = "wizard-ghcr" }) {
   };
 }
 
+/**
+ * psql inside the database container (reached as diagnose reaches the cluster): the script goes through stdin, so
+ * values never appear in the command line, which the runner prints. The password is the container's own variable.
+ */
+export const PSQL_IN_POD =
+  'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h /var/run/postgresql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -q -A -t -v ON_ERROR_STOP=1 -1 -f -';
+
+export function psqlInPod(kubectl, sql) {
+  const r = kubectl(
+    ["-n", PLATFORM_NS, "exec", "-i", "wizard-postgres-0", "-c", "postgres", "--", "sh", "-c", PSQL_IN_POD],
+    { input: sql, capture: true, allowFail: true, stdio: ["pipe", "pipe", "pipe"] },
+  );
+  if (r.status !== 0) {
+    // The error line only: LINE/DETAIL/CONTEXT may echo the values of the statement.
+    const why = String(r.stderr ?? "")
+      .split("\n")
+      .find((l) => /^(psql:.*)?ERROR:/.test(l.trim()));
+    throw new Error(`psql в wizard-postgres-0: код ${r.status}${why ? `: ${why.trim().slice(0, 200)}` : ""}`);
+  }
+  return String(r.stdout ?? "");
+}
+
+/**
+ * `eval` — the D67 measurement (product.yaml#decisions.D67_mvp_readiness, docs/ops/eval-d67.md): the service account
+ * eval+<runid>@<platform domain> is created in the platform database (tools/eval/server/seed.mjs; the raw session
+ * token is generated here, masked, and kept only in memory), the briefs run through the public HTTPS of the platform
+ * like a client in the cabinet (tools/eval/server/driver.mjs), then the session is closed (logout, then revoked in the
+ * database), the exact ₽ and «Запросы на развитие» are read, and the report goes to the job summary and to `outDir`
+ * (uploaded as an artifact). The systems of the measurement stay for the founder. Exit 0 — the D67 threshold is met,
+ * 1 — not met.
+ */
+export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, pollMs, outDir, inCluster }) {
+  const domain = vars.WIZARD_PLATFORM_DOMAIN;
+  const base = `https://${domain}`;
+  const briefs = selectBriefs(o.briefs);
+  const runid = newRunId(now(), rand);
+  const session = newEvalSession(rand);
+  mask([session.token, session.csrf], vars, log);
+  const credits = evalCredits(o.maxCostRub);
+  log(
+    `замер D67 ${runid}: брифов ${briefs.length}, бюджет ${o.maxCostRub} ₽, учётке замера — ${credits} кредитов`,
+  );
+  let seed = null;
+  const seeded = await inCluster(async ({ kubectl }) => {
+    seed = parseSeedOutput(
+      psqlInPod(
+        kubectl,
+        seedSql({ runid, domain, tokenHash: session.tokenHash, csrfHash: session.csrfHash, credits }),
+      ),
+    );
+    log(`учётка замера создана: организация ${seed.orgId}`);
+    return 0;
+  });
+  if (seeded !== 0 || !seed) return seeded || 1;
+  const client = platformClient({ base, session, fetch: f, ...(sleep ? { sleep } : {}) });
+  let doc;
+  let db = {};
+  const notes = [
+    `Учётке замера начислено ${credits} кредитов, тариф «пилот», ревью основателя перед публикацией включено. Лимита D70 (5 сборок и 20 правок за 30 дней) в платформе пока нет; когда он появится, учётке замера нужно поднимать его до ${EVAL_MIN_BUILDS} сборок тем же способом, что и из /admin.`,
+  ];
+  try {
+    doc = await runEval({
+      client,
+      briefs,
+      orgId: seed.orgId,
+      ownerEmail: seed.email,
+      runId: runid,
+      maxCostRub: o.maxCostRub,
+      log,
+      ...(sleep ? { sleep } : {}),
+      ...(pollMs ? { pollMs } : {}),
+    });
+  } finally {
+    await client
+      .post("/auth/logout")
+      .catch((e) => log(`::warning::выход учётки замера по API: ${e.message}`));
+    await Promise.resolve()
+      .then(() =>
+        inCluster(async ({ kubectl }) => {
+          try {
+            db = parseCollectOutput(psqlInPod(kubectl, collectSql({ orgId: seed.orgId })));
+          } catch (e) {
+            notes.push(
+              "Точный расход из журнала вызовов моделей прочитать не удалось — в отчёте оценка по кредитам.",
+            );
+            log(`::warning::расход замера из базы: ${e.message}`);
+          }
+          psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
+          log("сессия учётки замера закрыта");
+          return 0;
+        }),
+      )
+      .catch((e) => log(`::warning::после замера: ${e.message} — сессия закрыта выходом по API`));
+  }
+  const { text, summary } = renderReport(doc, db, { platform: base, notes });
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `d67-${runid}.md`), text);
+  writeFileSync(join(outDir, `d67-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
+  log(text);
+  if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  if (!summary.passed)
+    log(
+      `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
+    );
+  return summary.passed ? 0 : 1;
+}
+
 const emailMark = (email) =>
   createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 16);
 
@@ -1213,7 +1351,11 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     WIZARD_PG_FIRST_BOOT: bundle.deployedAt ? "" : "1",
     // SSH waits: a fresh VM installs k3s from cloud-init (40 × ~25 s); a server that has run a release only needs to
     // answer; diagnose looks at a running cluster.
-    WIZARD_K3S_WAIT_ATTEMPTS: o.command === "diagnose" ? "4" : bundle.deployedAt ? "12" : "40",
+    WIZARD_K3S_WAIT_ATTEMPTS: ["diagnose", "eval"].includes(o.command)
+      ? "4"
+      : bundle.deployedAt
+        ? "12"
+        : "40",
     RUNNER_TEMP: work,
   };
 
@@ -1313,6 +1455,29 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     },
   };
 
+  if (o.command === "eval")
+    return pilotEval({
+      o,
+      vars,
+      log,
+      fetch: f,
+      now,
+      rand,
+      sleep: deps.sleep,
+      pollMs: deps.evalPollMs,
+      outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
+      // The cluster part runs under the access of diagnose: SSH for this runner only, the tunnel, closed afterwards.
+      inCluster: (onCluster) =>
+        (deps.infraMain ?? infraMain)(["diagnose", "--env", o.env, "--yes"], ivars, {
+          log,
+          hooks: { beforeCluster: hooks.beforeCluster, onCluster },
+          run: deps.run,
+          has: deps.has,
+          exists: deps.exists,
+          sleep: deps.sleep,
+          fetch: deps.fetch,
+        }),
+    });
   const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy", diagnose: "diagnose" }[
     o.command
   ];
