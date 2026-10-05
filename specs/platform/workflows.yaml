@@ -75,7 +75,7 @@ workflows:
       - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; алгоритм и инструменты — agents/orchestrator.yaml (вопросы, карточка, ответ, классификация правки style_only | small_edit | big_change)" }
       - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output. Уведомление о ПДн (agents/orchestrator.yaml#pii_notice) — messages {role: system, kind: notice, payload: {type: 'pii', categories}} + chat_output {kind: notice, messageId}" }
       - { name: route_change, kind: tx, does: "style_only → сообщение со ссылкой на «Стиль», без прогона; small_edit/big_change → мини-карточка/карточка kind=change ждёт approve (D7: авто-старта нет)" }
-    budget: "cap на ход — 2 кредита; превышение → run_failed BUDGET_STOPPED без needs_input"
+    budget: "cap на ход — 8 кредитов (рассуждение T1 на интервью и карточке); превышение → run_failed BUDGET_STOPPED без needs_input"
 
   build:
     milestone: M0

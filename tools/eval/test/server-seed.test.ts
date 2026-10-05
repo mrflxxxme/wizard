@@ -159,14 +159,25 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
     // «Запросы на развитие» (M2-59, migration 0022): none yet → empty; a request of the org's system is collected.
     expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).gaps).toEqual({});
     await api.deps.pg`insert into platform.development_requests (org_id, system_id, category, quote, offered)
-      values (${seed.orgId}, ${r.systemId}, 'payments', 'оплата картой каждый месяц', 'доступ по приглашению')`;
+      values (${seed.orgId}, ${r.systemId}, 'payments', 'оплата картой каждый месяц', 'доступ по приглашению'),
+             (${seed.orgId}, ${r.systemId}, 'media', 'видео на странице', 'ссылка на видеохостинг')`;
     const db = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId })));
     expect(db.gaps).toEqual({
       [r.systemId as string]: [
         { category: "payments", quote: "оплата картой каждый месяц", offered: "доступ по приглашению" },
+        { category: "media", quote: "видео на странице", offered: "ссылка на видеохостинг" },
       ],
     });
     expect(typeof db.costs).toBe("object");
+    // Two systems with spend: json_agg of records splits the line between elements — it must stay one JSON line.
+    for (const systemId of [r.systemId, null])
+      await api.deps.pg`insert into platform.llm_calls (org_id, system_id, call_type, tier, provider, model_id,
+          attempt, status, route_reason, policy_version, scrubbed, pii_categories_count, input_tokens, cached_tokens,
+          output_tokens, tool_calls, cost_rub, credits_milli, billable, mode)
+        values (${seed.orgId}, ${systemId}, 'interview', 'T1', 'zai', 'glm-5.3', 1, 'ok', 'default_T1', 'test', true,
+          '{}'::jsonb, 100, 0, 100, 0, 1.5, 300, true, 'live')`;
+    const spent = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).costs;
+    expect(spent[r.systemId as string]).toMatchObject({ rub: expect.any(Number), calls: expect.any(Number) });
     const { summary } = renderReport(doc, db);
     expect(summary.ready).toBe(1);
 

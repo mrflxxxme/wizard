@@ -119,12 +119,12 @@ export function revokeSql({ tokenHash }) {
  * After the run: exact model spend per system (platform.llm_calls.cost_rub of billable calls, ₽ with VAT) and the
  * «Запросы на развитие» rows of the org's systems when that table exists (M2-59 is in progress; the candidates are
  * fixed names, so the interpolated identifier never comes from input). One line per result: `costs=<json>`,
- * `gaps=<json|null>`.
+ * `gaps=<json|null>`; ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
  */
 export function collectSql({ orgId }) {
   return [
     setLine("org_id", orgId, UUID),
-    `SELECT 'costs=' || coalesce(json_agg(x), '[]'::json)::text FROM (
+    `SELECT 'costs=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
   SELECT c.system_id, round(sum(c.cost_rub), 2)::float8 AS rub, sum(c.credits_milli)::bigint AS credits_milli,
          count(*)::int AS calls
     FROM platform.llm_calls c
@@ -133,7 +133,7 @@ export function collectSql({ orgId }) {
     `SELECT coalesce(to_regclass('platform.development_requests'), to_regclass('platform.capability_gaps'),
                 to_regclass('platform.gaps'))::text AS gaps_table \\gset`,
     `\\if :{?gaps_table}`,
-    `SELECT 'gaps=' || coalesce(json_agg(row_to_json(g)), '[]'::json)::text FROM :gaps_table g
+    `SELECT 'gaps=' || coalesce(json_agg(row_to_json(g)), '[]'::json)::jsonb::text FROM :gaps_table g
    WHERE g.system_id IN (SELECT s.id FROM platform.systems s WHERE s.org_id = :'org_id');`,
     `\\else`,
     `SELECT 'gaps=null';`,

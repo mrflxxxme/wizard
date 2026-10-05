@@ -166,7 +166,7 @@ describe("estimation", () => {
       expected,
       max: Math.ceil(1.6 * expected),
     });
-    expect(est.cap.credits).toBe(Math.max(10, Math.ceil(1.5 * expected)));
+    expect(est.cap.credits).toBe(Math.max(10, Math.ceil(2 * expected)));
     expect(est.estimate.minutes).toEqual({
       min: Math.ceil(578_000 / 60_000),
       max: Math.ceil(578_000 / 25_000),
@@ -182,8 +182,8 @@ describe("estimation", () => {
     }
   });
 
-  test("change mini-card: cap = max(3, ceil(1.5·expected))", () => {
+  test("change mini-card: cap = max(3, ceil(2·expected))", () => {
     const est = estimateCard({ data: [], screens: [{}] }, { orgPolicy: OPEN_POLICY, kind: "change" });
-    expect(est.cap.credits).toBe(Math.max(3, Math.ceil(1.5 * est.estimate.credits.expected)));
+    expect(est.cap.credits).toBe(Math.max(3, Math.ceil(2 * est.estimate.credits.expected)));
   });
 });

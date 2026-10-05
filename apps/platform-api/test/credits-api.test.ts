@@ -323,7 +323,9 @@ describe("card → hold → charge by fact", () => {
 
     // With credits: raise_cap_5 → one more hold of 5, then stop at 25.
     await drainTo(org, 40);
+    state.costRub = 0.01;
     const c2 = await toCard(org, "Вторая система для лимита");
+    state.costRub = 45;
     const ap2 = await approve(c2, 20);
     const run2: string = ap2.body.run.id;
     const p1 = await pendingOf(run2);

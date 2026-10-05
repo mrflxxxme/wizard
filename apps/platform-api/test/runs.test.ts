@@ -107,8 +107,8 @@ describe("budget", () => {
     }
   });
 
-  test("interview turn over its 2-credit cap → run_failed BUDGET_STOPPED", async () => {
-    const router = countingRouter(2500);
+  test("interview turn over its 8-credit cap → run_failed BUDGET_STOPPED", async () => {
+    const router = countingRouter(8500);
     const interviewTurn = async (host: InterviewHost) => {
       await host.route({ callType: "interview", messages: [{ role: "user", content: "…" }] });
       await host.route({ callType: "interview", messages: [{ role: "user", content: "…" }] });

@@ -11,6 +11,7 @@ import {
   clusterSecrets,
   createRunner,
   diagnoseCluster,
+  errorLines,
   gvisorProbe,
   imageNames,
   kubeconfigText,
@@ -815,6 +816,31 @@ describe("diagnoseCluster", () => {
     expect(calls.some((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e"))).toBe(
       true,
     );
+    // Platform mail: platform-api error lines and a no-send probe of the mail API from its pod.
+    expect(calls).toContain("-n wizard-platform logs deploy/wizard-platform-api --tail=3000");
+    const mail = calls.find((c) =>
+      c.startsWith("-n wizard-platform exec deploy/wizard-platform-api -- node -e"),
+    );
+    expect(mail).toMatch(/system\/info\.json/);
+    expect(mail).not.toMatch(/email\/send/);
+  });
+
+  it("errorLines: errors and warnings only, the safe error fields, addresses masked", () => {
+    const lines = [
+      JSON.stringify({ ts: "t1", level: "info", msg: "listening" }),
+      "not json",
+      JSON.stringify({
+        ts: "t2",
+        level: "error",
+        msg: "http POST /auth/otp/request",
+        err: { type: "MailApiError", message: "mail api failed (HTTP 403) для client@example.ru" },
+      }),
+      JSON.stringify({ ts: "t3", level: "warn", msg: "pg", err: { type: "pg", sqlstate: "23505" } }),
+    ].join("\n");
+    expect(errorLines(lines)).toEqual([
+      "t2 | error | http POST /auth/otp/request | MailApiError | mail api failed (HTTP 403) для <почта>",
+      "t3 | warn | pg | pg | 23505",
+    ]);
   });
 });
 

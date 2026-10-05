@@ -103,7 +103,7 @@ const LOCK_POLL_MS = 10_000;
 const CANCEL_POLL_MS = 1_000;
 export const INPUT_TIMEOUT_MS = 24 * 3600_000;
 /** workflows.yaml#workflows.interview_turn.budget */
-export const INTERVIEW_CAP_MILLI = 2000;
+export const INTERVIEW_CAP_MILLI = 8000;
 const TERMINAL = "\u0000terminal";
 const fallbackLog = createLogger({ svc: "platform-api" });
 

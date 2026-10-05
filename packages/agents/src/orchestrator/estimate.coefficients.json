@@ -19,6 +19,6 @@
   },
   "blend": { "input": 0.8, "output": 0.2 },
   "range": { "min": 0.6, "max": 1.6 },
-  "cap": { "factor": 1.5, "floor": 10, "changeFloor": 3 },
+  "cap": { "factor": 2, "floor": 10, "changeFloor": 3 },
   "minutes": { "fastTokensPerMinute": 60000, "slowTokensPerMinute": 25000 }
 }

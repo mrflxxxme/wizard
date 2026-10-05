@@ -349,7 +349,7 @@ describe("change_requests", () => {
       estimate: { credits: { expected: number } };
     };
     expect(card.kind).toBe("change");
-    expect(card.cap.credits).toBe(Math.max(3, Math.ceil(1.5 * card.estimate.credits.expected)));
+    expect(card.cap.credits).toBe(Math.max(3, Math.ceil(2 * card.estimate.credits.expected)));
     expect(emitted.map((e) => e.payload.kind)).toEqual(["change_proposal"]);
     expect(inputs[0]?.messages[1]?.content).toContain("# Текущая система\nФорум");
     const ok = await orch.approve(r.session);
