@@ -416,9 +416,11 @@ export const ru = {
   style: {
     title: "Стиль",
     subtitle: "меняется сразу и не тратит правки",
-    accent: "Акцент",
+    preset: "Тема оформления",
+    accent: "Фирменный цвет",
     accentCustom: "Свой цвет (#RRGGBB)",
-    font: "Шрифт",
+    font: "Шрифт текста",
+    headingFont: "Шрифт заголовков",
     radius: "Скругления",
     density: "Плотность",
     densityLabel: { compact: "компактно", regular: "обычно" } as Record<string, string>,

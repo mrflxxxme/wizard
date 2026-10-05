@@ -17,6 +17,11 @@ export interface FileMeta {
   /** users.id of the uploader; null — public role. */
   uploadedBy: string | null;
   uploadedAt: string;
+  /**
+   * Image field (runtime.yaml#files.image, M2-47): the object is the largest WebP variant; `variants` lists the smaller
+   * slots stored under <key>.w<slot>.
+   */
+  image?: { width: number; height: number; variants: number[] };
 }
 
 export interface StoredFile {
@@ -35,8 +40,12 @@ export interface FileStorage {
   list(prefix: string): Promise<string[]>;
 }
 
-/** <schema>/<uuid>: the only key shape the backends accept (no traversal, no foreign prefixes). */
-export const FILE_KEY_RE = /^[a-z0-9_]{1,63}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/**
+ * <schema>/<uuid>, or <schema>/<uuid>.w<slot> for a smaller image variant: the only key shapes the backends accept (no
+ * traversal, no foreign prefixes).
+ */
+export const FILE_KEY_RE =
+  /^[a-z0-9_]{1,63}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.w[0-9]{2,4})?$/;
 const PREFIX_RE = /^[a-z0-9_]{1,63}\/$/;
 
 function assertKey(key: string): void {

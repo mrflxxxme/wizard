@@ -50,6 +50,7 @@ import { dataRoutes } from "./routes/data.js";
 import { eventsRoutes } from "./routes/events.js";
 import { filesRoutes } from "./routes/files.js";
 import { fnRoutes } from "./routes/fn.js";
+import { fontsRoutes } from "./routes/fonts.js";
 import { inviteRoutes } from "./routes/invite.js";
 import { loginApiRoutes } from "./routes/login.js";
 import { messageLinkRoutes } from "./routes/message-links.js";
@@ -298,6 +299,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   );
   app.route("/_wizard/hooks/message", messageLinkRoutes(auth.keys));
   app.route("/_wizard/hooks", notImplemented());
+  app.route("/_wizard/fonts", fontsRoutes());
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.route("/_wizard", privacyRoutes());

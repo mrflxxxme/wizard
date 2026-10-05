@@ -13,14 +13,69 @@ export const forum: AppSpec = {
   ),
 };
 export const bakery = bakeryJson as unknown as AppSpec;
-export type SpecKey = "forum" | "bakery";
-export const SPECS: Record<SpecKey, AppSpec> = { forum, bakery };
+/**
+ * Demo-only spec «студия» for the landing blocks and images (M2-43, M2-47): a public lead form (pii → consent), services
+ * with photos (image field). Texts of the demo are marked «пример» — nothing here describes a real business.
+ */
+export const studio: AppSpec = {
+  version: 1,
+  app: { name: "Пример: студия", description: "Демо-спека блоков лендинга", locale: "ru" },
+  theme: { preset: "warm", mode: "light" },
+  entities: [
+    {
+      name: "lead",
+      label: "Заявка",
+      fields: [
+        { name: "name", label: "Имя", type: "string", required: true, pii: "basic", piiKind: "fio" },
+        { name: "phone", label: "Телефон", type: "phone", required: true, pii: "basic", piiKind: "phone" },
+        {
+          name: "service",
+          label: "Услуга",
+          type: "enum",
+          enum: [
+            { value: "basic", label: "Пример: базовая услуга" },
+            { value: "extended", label: "Пример: расширенная услуга" },
+          ],
+        },
+        { name: "message", label: "Комментарий", type: "text", maxLength: 1000 },
+      ],
+      retention: { deleteAfterDays: 365, mode: "delete" },
+    },
+    {
+      name: "service",
+      label: "Услуга",
+      fields: [
+        { name: "title", label: "Название", type: "string", required: true },
+        { name: "photo", label: "Фото", type: "image" },
+      ],
+    },
+  ],
+  roles: [
+    { name: "owner", label: "Владелец", access: "login", isAdmin: true, loginMethods: ["email_otp"] },
+    { name: "manager", label: "Администратор", access: "login", loginMethods: ["email_otp"] },
+    { name: "visitor", label: "Посетитель", access: "public" },
+  ],
+  permissions: [
+    { role: "owner", entity: "lead", ops: ["read", "create", "update", "delete"] },
+    { role: "owner", entity: "service", ops: ["read", "create", "update", "delete"] },
+    { role: "manager", entity: "service", ops: ["read", "create", "update"] },
+    { role: "visitor", entity: "lead", ops: ["create"] },
+    { role: "visitor", entity: "service", ops: ["read"] },
+  ],
+  pages: [{ route: "/", title: "Главная", file: "ui/Landing.tsx", roles: ["visitor", "owner", "manager"] }],
+  compliance: { policyPage: "/privacy" },
+} as unknown as AppSpec;
+
+export type SpecKey = "forum" | "bakery" | "studio";
+export const SPECS: Record<SpecKey, AppSpec> = { forum, bakery, studio };
 
 type Row = Record<string, unknown> & { id: string };
 export type Fixture = {
   rows: Record<string, Row[]>;
   users: MemoryUser[];
   functions: MemoryOptions["functions"];
+  /** Picture URLs of image-field values (memory DataSource option `images`). */
+  images?: Record<string, string>;
 };
 
 const BASE = Date.UTC(2026, 9, 1, 9, 0, 0);
@@ -228,4 +283,59 @@ export function bakeryFixture(): Fixture {
   };
 }
 
-export const FIXTURES: Record<SpecKey, () => Fixture> = { forum: forumFixture, bakery: bakeryFixture };
+/** A generated picture (gradient and soft shapes) as a data URL — no files and no external hosts in the demo. */
+function picture(hue: number, w = 1200, h = 900): string {
+  if (typeof document === "undefined") return "";
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d");
+  if (!g) return "";
+  const grad = g.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, `hsl(${hue} 45% 78%)`);
+  grad.addColorStop(1, `hsl(${(hue + 40) % 360} 40% 42%)`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 6; i++) {
+    g.fillStyle = `hsl(${(hue + i * 25) % 360} 50% ${60 + i * 4}% / 0.35)`;
+    g.beginPath();
+    g.arc(((i * 37) % 10) * (w / 10), ((i * 53) % 7) * (h / 7), h / (3 + i), 0, Math.PI * 2);
+    g.fill();
+  }
+  return c.toDataURL("image/png");
+}
+
+/** fileIds of the demo pictures (values of image fields). */
+export const DEMO_IMAGES = {
+  hero: "00000000-0000-4000-8000-0000000000a1",
+  one: "00000000-0000-4000-8000-0000000000a2",
+  two: "00000000-0000-4000-8000-0000000000a3",
+  three: "00000000-0000-4000-8000-0000000000a4",
+} as const;
+
+export function studioFixture(): Fixture {
+  const images: Record<string, string> = {};
+  const hues = [24, 190, 300, 120];
+  for (const [i, id] of Object.values(DEMO_IMAGES).entries()) {
+    const url = picture(hues[i] as number);
+    if (url) images[id] = url;
+  }
+  return {
+    rows: {
+      lead: [],
+      service: [
+        { id: "service_1", title: "Пример: базовая услуга", photo: DEMO_IMAGES.one },
+        { id: "service_2", title: "Пример: расширенная услуга", photo: DEMO_IMAGES.two },
+      ],
+    },
+    users: users(studio),
+    functions: {},
+    images,
+  };
+}
+
+export const FIXTURES: Record<SpecKey, () => Fixture> = {
+  forum: forumFixture,
+  bakery: bakeryFixture,
+  studio: studioFixture,
+};

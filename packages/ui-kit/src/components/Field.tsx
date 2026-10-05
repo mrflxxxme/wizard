@@ -234,7 +234,9 @@ export function FieldImpl(props: FieldProps & { root: RootAttrs; idBase: string;
         type={htmlType}
         value={str}
         maxLength={props.maxLength}
-        readOnly={props.readOnly || type === "qr_token" || type === "json" || type === "file"}
+        readOnly={
+          props.readOnly || type === "qr_token" || type === "json" || type === "file" || type === "image"
+        }
         autoComplete={props.autoComplete}
         onChange={onText}
       />

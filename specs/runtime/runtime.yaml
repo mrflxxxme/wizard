@@ -191,6 +191,13 @@ files:              # поле type=file (L3-18, L4-12; M2-14). G0 поле file
   pii_and_retention: "поле file по умолчанию pii: basic: попадает под согласие (update только поля file требует _consent), retention и anonymize (файл удаляется), экспорт — только имя файла"
   deletion: "Объект удаляется после коммита, когда на fileId больше не ссылается ни одна строка: замена значения и удаление строки, retention delete/anonymize, отзыв согласия, запрос субъекта; в конце прохода retention — sweep объектов без ссылок старше 24 ч; delete_system — объекты обоих env до DROP SCHEMA, F5 — объекты draft (M2-14). Копия prod → draft переносит fileId без объектов (в draft такие файлы не скачиваются)"
   test: "HTML/SVG с подменённым Content-Type → 415; PDF отдаётся attachment + CSP sandbox; ссылка на файл чужой строки → 404"
+  image:            # поле type=image (M2-47, D69): картинки страниц; file остаётся скачиванием
+    upload: "тот же POST /api/files: поле type=image принимает только jpeg/png/webp по сигнатуре (иначе 415, SVG и PDF тоже); размер из заголовка до декодирования: ≤ 8000 px по стороне и ≤ 40 Мпикс, иначе 413 «Картинка слишком большая…» (защита от декомпрессионной бомбы); загружают только вошедшие роли с create или update на сущность, публичная роль — 403 (даже с create); лимит частоты — общий для загрузок"
+    processing: "декодирование → поворот по EXIF Orientation → WebP-варианты 1600 (основной объект, качество снижается до ≤ 400 КБ), 960 и 480 (только меньше исходной ширины, без увеличения); перекодирование снимает EXIF (геометку) и прочие метаданные; оригинал не хранится. Кодеки — WASM @jsquash (MozJPEG, libwebp, png; Apache-2.0/BSD, без нативных сборок и LGPL); каждая задача — отдельный worker thread с потолком кучи и времени (30 с → 422), не больше одной задачи одновременно и очередь ≤ 4 (дальше 429 + Retry-After)"
+    storage: "основной объект — ключ app_<key>_<env>/<fileId> (mime image/webp, meta.image {width, height, variants}), варианты — <ключ>.w480 и .w960; удаляются вместе с объектом (release, retention, sweep, delete_system)"
+    serve: "GET /api/files/:fileId/img/:width (480|960|1600; нет варианта — ближайший больший, иначе основной) → проверка права read на строку, держащую картинку (как у file; нет права — 404) → 200 inline, Content-Type: image/webp, X-Content-Type-Options: nosniff, Content-Security-Policy: default-src 'none'; sandbox, Cache-Control: public (публичная роль) или private, max-age=31536000, immutable, ETag (If-None-Match → 304). /api/files/:fileId/info отдаёт width и height"
+    pii: "pii по умолчанию none (фото услуг и интерьера); pii, заданный строителем, работает как у file (согласие, retention, удаление объектов)"
+    test: "apps/runtime/test/media.test.ts, files-image.test.ts: JPEG 4000×3000 с EXIF GPS → WebP 1600/960/480 без EXIF, крупнейший ≤ 400 КБ; GET варианта — inline, image/webp, nosniff, immutable; SVG → 415; PNG 20000×20000 → 413; публичная роль не загружает"
 
 ai_actions:         # M3 (L4-07); модели и лимиты — ../agents/models.yaml#runtime_ai_*, оплата — ../platform/billing.yaml#run_charging.runtime_ai
   milestone: M3
@@ -210,7 +217,7 @@ service_endpoints:
   internal: "POST /_wizard/internal/reload — только внутренний порт (routing.rules)"
   dev: "GET /_wizard/dev-login, /_wizard/dev-logout (auth.dev_login_M0); M2 — GET /_wizard/preview-login (auth.preview_login_M2)"
   bridge: "GET /_wizard/bridge.js — только draft (../ui/platform-screens.yaml#preview_contract)"
-  fonts: "GET /_wizard/fonts/* — шрифты theme.font (../ui/ui-kit.yaml#tokens.fonts)"
+  fonts: "GET /_wizard/fonts/<файл> — только файлы каталога шрифтов ui-kit (имя с хешем содержимого), font/woff2, Cache-Control immutable; иначе 404 (../ui/ui-kit.yaml#tokens.fonts, M2-42)"
   privacy: "M2: GET /_wizard/privacy (права субъекта и отзыв согласия для вошедшего → POST /api/auth/consent/revoke), /_wizard/pd-requests (админ-страница запросов субъектов для isAdmin-роли) — ../security/compliance.yaml#system_package"
   api_extra: "POST /api/telegram/:integration/link (../connectors/telegram.yaml), POST /api/workflows/:name/run (workflows.triggers.webhook_manual), POST /api/admin/invite (auth.role_assignment), M2: /api/files, M3: /api/ai/:action"
   hooks: "POST /_wizard/hooks/:connector/:integration/:hookToken — вебхуки коннекторов (hookToken — 32 случайных символа на интеграцию); M2-53: /_wizard/hooks/webhook/:integration/:hookToken — входящие вебхуки (../connectors/webhook.yaml); M2-50: /_wizard/hooks/message/:action/:token — ссылки отмены и отписки из писем посетителю"

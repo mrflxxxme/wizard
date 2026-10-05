@@ -1684,6 +1684,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Токены v2 и 4 темы вместо 8, шрифты с кириллицей из Google Fonts (OFL), выбор темы агентом по нише, фирменный цвет"
+    mvp_done: true
     claimed_by: null
     description: >
       themeToTokens(theme v2, scheme) остаётся чистой функцией и обратно совместима с темой v1; themeLint (research §3.1: понижение
@@ -1711,6 +1712,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Hero, Features, Steps, Faq, Cta, LeadForm, Footer, Header с вариантами; Testimonials — после выпуска"
+    mvp_done: true
     claimed_by: null
     description: >
       Компоненты по ui-kit.yaml (M2-25): варианты блоков, токены v2, data-wz-*, 390 и 1280 без горизонтального скролла, изображения через
@@ -1784,6 +1786,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Поле image, сжатие и варианты при загрузке, раздача inline с кешем, компонент Image"
+    mvp_done: true
     claimed_by: null
     description: >
       Загрузка в поле image: сигнатура jpeg/png/webp, снятие EXIF (геометка), сжатие в WebP и варианты по ширине (например 480, 960, 1600)

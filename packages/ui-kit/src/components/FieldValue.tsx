@@ -6,7 +6,11 @@ import { can, titleField } from "../data/roleSpec.js";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "../format.js";
 import { ru } from "../i18n/ru.js";
 import { BadgeImpl } from "./Badge.js";
+import fieldValueStyles from "./FieldValue.module.css";
+import { ImageImpl } from "./media/Image.js";
 import { part } from "./root.js";
+
+const thumb = fieldValueStyles.thumb;
 
 const EMPTY = "—";
 
@@ -35,6 +39,18 @@ export function FieldValue({ field, value }: { field: Field | undefined; value: 
       return field.ref ? <RefCaption entity={field.ref.entity} id={String(value)} /> : String(value);
     case "file":
       return <a href={`/api/files/${encodeURIComponent(String(value))}`}>{ru.field.download}</a>;
+    case "image":
+      return (
+        <span className={thumb}>
+          <ImageImpl
+            root={part(`wz-image--${field.name}`)}
+            fileId={String(value)}
+            alt={field.label}
+            ratio="4/3"
+            sizes="160px"
+          />
+        </span>
+      );
     case "qr_token":
       return "•••";
     case "json":

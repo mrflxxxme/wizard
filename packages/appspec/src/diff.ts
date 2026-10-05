@@ -58,6 +58,7 @@ const TYPE_RU: Record<string, string> = {
   enum: "список",
   ref: "ссылка",
   file: "файл",
+  image: "картинка",
   json: "данные JSON",
   email: "e-mail",
   phone: "телефон",

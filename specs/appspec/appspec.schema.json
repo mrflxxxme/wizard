@@ -135,14 +135,42 @@
           "type": "string",
           "pattern": "^#[0-9A-Fa-f]{6}$"
         },
+        "preset": {
+          "enum": [
+            "strict",
+            "warm",
+            "bright",
+            "calm"
+          ],
+          "description": "тема v2 (specs/ui/themes.yaml): strict — строгая деловая, warm — тёплая, bright — яркая, calm — спокойная; задаёт шрифты, фон, тени и ритм, остальные поля темы её уточняют"
+        },
         "font": {
           "enum": [
             "Onest",
             "Inter Tight",
             "Manrope",
             "PT Sans",
-            "IBM Plex Sans"
-          ]
+            "IBM Plex Sans",
+            "Golos Text",
+            "PT Serif",
+            "Lora",
+            "Unbounded"
+          ],
+          "description": "шрифт текста; шрифты раздаёт runtime с /_wizard/fonts (ui-kit.yaml#tokens.fonts)"
+        },
+        "headingFont": {
+          "enum": [
+            "Onest",
+            "Inter Tight",
+            "Manrope",
+            "PT Sans",
+            "IBM Plex Sans",
+            "Golos Text",
+            "PT Serif",
+            "Lora",
+            "Unbounded"
+          ],
+          "description": "шрифт заголовков; по умолчанию — из preset или font"
         },
         "radius": {
           "enum": [
@@ -186,13 +214,14 @@
         "enum",
         "ref",
         "file",
+        "image",
         "json",
         "email",
         "phone",
         "url",
         "qr_token"
       ],
-      "description": "file — значение поля = fileId собственной загрузки (POST /api/files), не URL; загрузка, раздача и классификация — runtime.yaml#files (M2-14, L3-18); pii по умолчанию basic"
+      "description": "file — значение поля = fileId собственной загрузки (POST /api/files), не URL; загрузка, раздача и классификация — runtime.yaml#files (M2-14, L3-18); pii по умолчанию basic. image — картинка для страниц (M2-47): тоже fileId, при загрузке сжимается в WebP-варианты и раздаётся inline (runtime.yaml#files.image); pii по умолчанию none, публичная роль image не загружает"
     },
     "pii": {
       "enum": [

@@ -1,0 +1,54 @@
+.box {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  background: var(--w-surface-alt);
+  background-image: linear-gradient(135deg, var(--w-accent-tint), var(--w-surface-alt));
+}
+
+.rounded {
+  border-radius: var(--w-radius-lg);
+}
+
+.r16x9 {
+  aspect-ratio: 16 / 9;
+}
+
+.r4x3 {
+  aspect-ratio: 4 / 3;
+}
+
+.r3x2 {
+  aspect-ratio: 3 / 2;
+}
+
+.r1x1 {
+  aspect-ratio: 1 / 1;
+}
+
+.r3x4 {
+  aspect-ratio: 3 / 4;
+}
+
+.r21x9 {
+  aspect-ratio: 21 / 9;
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.contain {
+  object-fit: contain;
+}
+
+.loaded {
+  opacity: 1;
+}

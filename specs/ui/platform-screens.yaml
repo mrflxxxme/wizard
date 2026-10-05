@@ -68,7 +68,7 @@ preview_contract:
     - "MUST (L3-16): код системы исполняется в том же окне, что и мост, поэтому платформа валидирует каждый payload из превью по zod-схеме; element-selected.file MUST быть файлом текущей ревизии и ^ui/, иначе игнор; error.message ≤ 300 символов и рендерится только как текст; ready.revision сверяется с ожидаемой"
   to_preview:
     set-role: { payload: "{role, url}", effect: "платформа сначала берёт preview-url?role=…; мост переходит на url с текущим маршрутом (location.replace) — вход под ролью; ответ после загрузки — ready с новой ролью" }
-    apply-theme-tokens: { payload: "{tokens: Record<'--w-*', string>, mode: light|dark|auto}", effect: "applyTokens на <html> без перезагрузки и сборки; ответ theme-applied; MUST < 100 мс" }
+    apply-theme-tokens: { payload: "{tokens: Record<'--w-*', string>, mode: light|dark|auto, fontFaces?: {family, weight, file, unicodeRange}[] (M2-42: шрифты несохранённой темы, файлы /_wizard/fonts)}", effect: "applyTokens на <html> без перезагрузки и сборки; ответ theme-applied; MUST < 100 мс" }
     navigate: { payload: "{route}", effect: "клиентская навигация (useNavigate)" }
     select-mode: { payload: "{enabled: boolean}", effect: "M3: наведение обводит ближайший [data-wz-component] (оверлей pointer-events:none); клик в capture-фазе с preventDefault → element-selected; Esc → select-cancelled" }
     highlight: { payload: "{wzId | null}", effect: "M3: подсветить все экземпляры с этим wzId" }

@@ -89,6 +89,7 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
       return;
     case "ref":
     case "file":
+    case "image":
     case "qr_token":
       bad(`Значение по умолчанию не поддерживается для типа «${field.type}»`);
       return;
@@ -116,7 +117,7 @@ function checkDefault(field: Field, path: PropertyKey[], out: OpsError[]): void 
 
 /** Values that reach SQL (default, min, max) MUST encode with sqlLiteral for the field type (L3-01). */
 function checkSqlValues(field: Field, path: PropertyKey[], out: OpsError[], defaultOk: boolean): void {
-  const noDefault = ["ref", "file", "qr_token"].includes(field.type);
+  const noDefault = ["ref", "file", "image", "qr_token"].includes(field.type);
   if (defaultOk && !noDefault && field.default !== undefined) {
     const p = literalProblem(field.default, field.type);
     if (p) out.push(err("SCHEMA_INVALID", [...path, "default"], `Значение по умолчанию: ${p}`));

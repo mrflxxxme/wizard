@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 // ui-kit demo (ui-kit.yaml#demo): every component on the «форум»/«кондитерская» specs via createMemoryDataSource.
 // URL: ?story=<Component>&role=<role>&spec=forum|bakery&accent=%23RRGGBB&font=&radius=&density=&mode=
-import type { Theme } from "@wizard/appspec";
+import { THEME_FONTS, THEME_PRESETS, type Theme } from "@wizard/appspec";
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { applyTokens, toRoleSpec, WzProvider } from "../src/index.js";
@@ -15,13 +15,15 @@ export const STORIES: Story[] = Object.values(modules)
   .map((m) => m.default)
   .sort((a, b) => a.component.localeCompare(b.component));
 
-const FONTS = ["Onest", "Inter Tight", "Manrope", "PT Sans", "IBM Plex Sans"] as const;
+const FONTS = THEME_FONTS;
 const params = new URLSearchParams(window.location.search);
 
 function readTheme(spec: SpecKey): Theme {
   const base: Theme = { ...(SPECS[spec].theme ?? {}) };
   const accent = params.get("accent");
   if (accent) base.accent = accent;
+  const preset = params.get("preset");
+  if (preset) base.preset = preset as Theme["preset"];
   const font = params.get("font");
   if (font) base.font = font as Theme["font"];
   const radius = params.get("radius");
@@ -49,6 +51,7 @@ function StoryHost({ story, roleOverride }: { story: Story; roleOverride: string
     return createMemoryDataSource(spec, f.rows, {
       users: f.users,
       functions: f.functions,
+      ...(f.images ? { images: f.images } : {}),
       userId: role ? `u_${role}` : null,
     });
   }, [spec, story.spec, role]);
@@ -109,6 +112,27 @@ function Demo() {
           >
             <option value="forum">Форум</option>
             <option value="bakery">Кондитерская</option>
+            <option value="studio">Студия (блоки)</option>
+          </select>
+        </label>
+        <label>
+          Тема оформления
+          <select
+            value={theme.preset ?? ""}
+            onChange={(e) => {
+              const v = e.target.value as Theme["preset"] | "";
+              setTheme((t) => {
+                const { preset: _p, ...rest } = t;
+                return v ? { ...rest, preset: v } : rest;
+              });
+            }}
+          >
+            <option value="">Без темы</option>
+            {THEME_PRESETS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
         </label>
         <label>

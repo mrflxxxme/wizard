@@ -73,6 +73,8 @@ export interface MemoryOptions {
    * like the runtime does — as __system, marking the fields in `_aiFilled` until a user edits them.
    */
   aiActions?: Record<string, MemoryAiAction>;
+  /** Picture addresses of image-field values (fileId → URL) for demos; uploads get an object URL of the file. */
+  images?: Record<string, string>;
 }
 
 export type MemoryAiAction = { entity: string; fill: (row: Rec) => Record<string, unknown> };
@@ -517,6 +519,7 @@ export function createMemoryDataSource(
   };
 
   const stored = new Map<string, FileInfo & { field: string; entity?: string }>();
+  const images = new Map<string, string>(Object.entries(opts.images ?? {}));
   let fileSeq = 0;
   const files: MemoryDataSource["files"] = {
     async upload(file, target) {
@@ -527,6 +530,8 @@ export function createMemoryDataSource(
       const fileId = `00000000-0000-4000-8000-${String(++fileSeq).padStart(12, "0")}`;
       const info: FileInfo = { fileId, name: file.name || "файл", size: file.size, mime };
       stored.set(fileId, { ...info, ...target });
+      if (mime !== "application/pdf" && typeof URL.createObjectURL === "function")
+        images.set(fileId, URL.createObjectURL(file));
       bump();
       return info;
     },
@@ -536,6 +541,8 @@ export function createMemoryDataSource(
       return { fileId: f.fileId, name: f.name, size: f.size, mime: f.mime };
     },
     href: (fileId) => `/api/files/${encodeURIComponent(fileId)}`,
+    imageSrc: (fileId, width) =>
+      images.get(fileId) ?? `/api/files/${encodeURIComponent(fileId)}/img/${width}`,
     stored: () => new Map(stored),
   };
 

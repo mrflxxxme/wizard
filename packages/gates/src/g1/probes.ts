@@ -138,8 +138,8 @@ export class Prober {
         else body[f.name] = ref;
         continue;
       }
-      if (f.type === "file") {
-        // A file value is an upload of the writer (runtime.yaml#files): seeds' placeholder keys are refused.
+      if (f.type === "file" || f.type === "image") {
+        // A file or image value is an upload of the writer (runtime.yaml#files): seeds' placeholder keys are refused.
         const fileId = await this.env.upload(actor, e.name, f.name);
         if (fileId) body[f.name] = fileId;
         else problem ??= `роль не может загрузить файл в поле «${f.label}»`;
@@ -164,7 +164,7 @@ export class Prober {
       (x) =>
         !skip.has(x.name) &&
         !x.unique &&
-        !["ref", "qr_token", "file"].includes(x.type) &&
+        !["ref", "qr_token", "file", "image"].includes(x.type) &&
         fieldPiiCategory(x) === "none",
     );
     if (!f) return {};

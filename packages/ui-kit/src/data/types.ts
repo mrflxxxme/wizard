@@ -115,8 +115,18 @@ export interface QrOfflineApi {
 /** Upload types of runtime.yaml#files.upload (checked by signature on the server). */
 export type FileMimeType = "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
 
-/** POST /api/files result and GET /api/files/:fileId/info (runtime.yaml#files). */
-export type FileInfo = { fileId: string; name: string; size: number; mime: FileMimeType };
+/** POST /api/files result and GET /api/files/:fileId/info (runtime.yaml#files); width/height — image fields (M2-47). */
+export type FileInfo = {
+  fileId: string;
+  name: string;
+  size: number;
+  mime: FileMimeType;
+  width?: number;
+  height?: number;
+};
+
+/** Width slots of image variants (runtime.yaml#files.image). */
+export type ImageWidth = 480 | 960 | 1600;
 
 /** ext: files of file fields (FileField, M2-14). */
 export interface FilesApi {
@@ -126,6 +136,8 @@ export interface FilesApi {
   info(fileId: string): Promise<FileInfo>;
   /** Download address: GET /api/files/:fileId (302 to a short-lived signed link). */
   href(fileId: string): string;
+  /** Inline address of an image variant: GET /api/files/:fileId/img/:width (image fields, M2-47). */
+  imageSrc(fileId: string, width: ImageWidth): string;
 }
 
 /** ext: result of an AI action (POST /api/ai/:action, runtime.yaml#ai_actions, M3-02). */

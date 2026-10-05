@@ -188,6 +188,7 @@ export class ValueGen {
       case "url":
         return clip(`https://example.test/${e.name}/${n}`, f);
       case "file":
+      case "image":
         return f.required ? `seed/${e.name}/${n}.png` : undefined;
       case "qr_token":
         return f.required ? createHash("sha256").update(`qr${n}`).digest("base64url") : undefined;
@@ -411,7 +412,7 @@ export interface DlpFinding {
   kind: string;
 }
 
-const SKIP_TYPES = new Set(["ref", "qr_token", "date", "datetime", "enum", "file"]);
+const SKIP_TYPES = new Set(["ref", "qr_token", "date", "datetime", "enum", "file", "image"]);
 
 /** DLP over a seed (qa.yaml#seed.rules): anything that looks like personal data but is not synthetic → SEED_PII. */
 export function seedDlp(spec: AppSpec, seed: Seed): DlpFinding[] {

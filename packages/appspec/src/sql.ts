@@ -10,7 +10,7 @@ export type LiteralType = FieldType | "uuid" | "timestamptz";
 /** Postgres NAMEDATALEN - 1: longer identifiers are silently truncated (and may then collide). */
 export const MAX_IDENT_BYTES = 63;
 
-const TEXT_TYPES: ReadonlySet<LiteralType> = new Set(["string", "text", "enum", "file", "qr_token"]);
+const TEXT_TYPES: ReadonlySet<LiteralType> = new Set(["string", "text", "enum", "file", "image", "qr_token"]);
 const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
