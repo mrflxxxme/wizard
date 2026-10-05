@@ -687,6 +687,24 @@ const LLM_CALLS_SQL = `select provider, model_id, tier, status, coalesce(error_c
   count(*) as calls, max(created_at) as last_at
 from platform.llm_calls where created_at > now() - interval '3 hours'
 group by 1, 2, 3, 4, 5, 6 order by last_at desc limit 40;
+-- Runs of the last 6 hours (eval and clients): kinds, outcomes and failure codes; builds one by one with the stage
+-- metrics of the harness (builder.yaml#harness.metrics) and the most frequent failed checks. Codes, counts and
+-- platform texts only — no prompts, files or personal data.
+select kind, coalesce(mode, '') as mode, status, coalesce(failure_code, '') as failure_code, count(*) as runs
+from platform.runs where created_at > now() - interval '6 hours'
+group by 1, 2, 3, 4 order by runs desc limit 30;
+select to_char(r.created_at at time zone 'Europe/Moscow', 'HH24:MI') as msk, coalesce(r.mode, '') as mode, r.status,
+  coalesce(r.failure_code, '') as code, left(coalesce(r.failure_message_ru, ''), 120) as message,
+  round(extract(epoch from (coalesce(r.finished_at, now()) - r.started_at)) / 60) as min,
+  round(r.credits_used_milli / 1000.0, 1) as credits,
+  (select e.payload->'stages' from platform.run_events e
+     where e.run_id = r.id and e.type = 'build_metrics' order by e.seq desc limit 1)::text as stages
+from platform.runs r where r.kind = 'build' and r.created_at > now() - interval '6 hours'
+order by r.created_at desc limit 20;
+select fc->>'id' as failed_check, count(*) as times
+from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'failedChecks', '[]'::jsonb)) fc
+where e.type = 'gate_result' and e.ts > now() - interval '6 hours'
+group by 1 order by 2 desc limit 20;
 `;
 
 /**
@@ -844,7 +862,7 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   // Model calls (D67 eval, 2026-10-05: «Модели сейчас недоступны» on every brief): which provider and model failed with
   // which code over the last 3 hours, and whether the providers answer from the worker pod with its NetworkPolicy.
   // Counts and codes only — no prompts, orgs or users.
-  log("::group::Вызовы моделей за 3 часа");
+  log("::group::Вызовы моделей за 3 часа и прогоны за 6 часов");
   kubectl(
     [
       "-n",
