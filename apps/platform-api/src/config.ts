@@ -82,6 +82,8 @@ export interface Config {
    * with a founder invitation (pilot CLI) or an active org invite (M2-15).
    */
   registration: string;
+  /** WIZARD_FOUNDER_EMAIL (lower-case): the founder signs in on the invite-only pilot without an invitation. */
+  founderEmail: string | null;
   /**
    * WIZARD_PAYMENTS=on|off (default on; D24_pilot_free): off — purchase, subscriptions and card binding answer 403
    * PAYMENTS_DISABLED, the shop webhook and renewals are off; plan, balance and ledger stay readable.
@@ -226,6 +228,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     trustedProxies: list(env.WIZARD_TRUSTED_PROXIES) ?? [],
     receipt: { vatCode: env.WIZARD_RECEIPT_VAT_CODE ? Number(env.WIZARD_RECEIPT_VAT_CODE) : null },
     registration: env.WIZARD_REGISTRATION || "open",
+    founderEmail: env.WIZARD_FOUNDER_EMAIL?.trim().toLowerCase() || null,
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
     llmMonthlyCapRub: env.WIZARD_LLM_MONTHLY_CAP_RUB
       ? Number(env.WIZARD_LLM_MONTHLY_CAP_RUB)

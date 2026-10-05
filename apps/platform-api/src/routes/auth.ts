@@ -163,7 +163,7 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
       // mailbox, before the consents — the refusal reaches only the mailbox owner (requestOtp stays 204).
       const admission = existing
         ? { pilotInviteId: null }
-        : await admitNewUser(trx, b.email, d.config.registration);
+        : await admitNewUser(trx, b.email, d.config.registration, new Date(), d.config.founderEmail);
       const needOffer = existing?.offer_version !== OFFER_VERSION;
       const needPd = !existing?.pd_consent_at;
       const missing = [
@@ -213,7 +213,7 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
       // Dev-login skips the code, not the invite-only registration (M2-15).
       const admission = existing
         ? { pilotInviteId: null }
-        : await admitNewUser(trx, b.email, d.config.registration);
+        : await admitNewUser(trx, b.email, d.config.registration, new Date(), d.config.founderEmail);
       const u = await ensureUser(trx, b.email, { offer: false, pd: false });
       if (admission.pilotInviteId && u.createdOrgId)
         await acceptPilotInvite(trx, d.billing, admission.pilotInviteId, { id: u.id, orgId: u.createdOrgId });
