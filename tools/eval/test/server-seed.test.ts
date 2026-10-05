@@ -178,8 +178,28 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
           '{}'::jsonb, 100, 0, 100, 0, 1.5, 300, true, 'live')`;
     const spent = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).costs;
     expect(spent[r.systemId as string]).toMatchObject({ rub: expect.any(Number), calls: expect.any(Number) });
-    const { summary } = renderReport(doc, db);
+    // Stage metrics of the harness (eval.yaml stages): none yet → {}; the last build_metrics of the latest build run.
+    expect(db.metrics).toEqual({});
+    const [build] = await api.deps.pg`
+      select r.id, (select max(e.seq) from platform.run_events e where e.run_id = r.id)::int as seq
+        from platform.runs r where r.system_id = ${r.systemId} and r.kind = 'build'
+       order by r.created_at desc limit 1`;
+    const stages = (firstPass: number) => ({
+      brief: { tasks: 4, retries: 0 },
+      tasks: { total: 4, firstPass, passed: 4, failed: 0, calls: 6 },
+      verify: { g0Runs: 1, g1Runs: 1, fixTasks: 1, fixPhases: 0 },
+      review: { pages: 2, ok: 1, critical: 1, minor: 2, skipped: false },
+    });
+    await api.deps.pg`insert into platform.run_events (run_id, seq, type, payload) values
+      (${build.id}, ${build.seq + 1}, 'build_metrics', ${api.deps.pg.json({ stages: stages(1) })}),
+      (${build.id}, ${build.seq + 2}, 'build_metrics', ${api.deps.pg.json({ stages: stages(3), durationMs: 1000 })})`;
+    const withMetrics = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId })));
+    expect(withMetrics.metrics).toEqual({ [r.systemId as string]: { stages: stages(3), durationMs: 1000 } });
+    const { summary, text } = renderReport(doc, withMetrics);
     expect(summary.ready).toBe(1);
+    expect(text).toContain(
+      "Этапы: ТЗ — 4 задачи; с первого хода — 3 из 4; исправления — 1; рецензент — ok 1, критично 1, мелочи 2",
+    );
 
     expect(psql(tdb.url, revokeSql({ tokenHash: session.tokenHash }))).toContain(`revoked=${seed.sessionId}`);
     expect((await api.req("GET", "/me", { headers: { cookie: cookie() } })).status).toBe(401);

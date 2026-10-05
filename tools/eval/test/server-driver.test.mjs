@@ -314,6 +314,33 @@ describe("D67 report", () => {
     expect(text).toContain("Раздел «Запросы на развитие» из базы прочитать не удалось");
     expect(median([3, 1, 2])).toBe(2);
     expect(median([])).toBeNull();
+    // No build_metrics in the DB: no stage lines.
+    expect(text).not.toContain("Этапы:");
+    expect(text).not.toContain("с первого хода");
+  });
+
+  it("stage metrics (build_metrics): a line per brief and the first-pass share across briefs in the header", () => {
+    const d = doc();
+    const stages = (tasks, firstPass, review) => ({
+      brief: { tasks, retries: 0 },
+      tasks: { total: tasks, firstPass, passed: tasks, failed: 0, calls: tasks + 2 },
+      verify: { g0Runs: 2, g1Runs: 1, fixTasks: tasks - firstPass, fixPhases: 0 },
+      review,
+    });
+    const db = {
+      metrics: {
+        [d.results[0].systemId]: { stages: stages(5, 4, { pages: 2, ok: 2, critical: 0, minor: 1, skipped: false }) },
+        [d.results[1].systemId]: { stages: stages(1, 0, { pages: 0, ok: 0, critical: 0, minor: 0, skipped: true }) },
+      },
+    };
+    const { text, summary } = renderReport(d, db);
+    expect(summary.firstPass).toEqual({ briefs: 2, passed: 4, total: 6 });
+    expect(text).toContain("- Задачи ТЗ, готовые с первого хода исполнителя: 4 из 6 (67 %) — по брифам с метриками этапов: 2");
+    expect(text).toContain(
+      "- Этапы: ТЗ — 5 задач; с первого хода — 4 из 5; исправления — 1; рецензент — ok 2, критично 0, мелочи 1.",
+    );
+    expect(text).toContain("- Этапы: ТЗ — 1 задача; с первого хода — 0 из 1; исправления — 1; рецензент — пропущен.");
+    expect(text.match(/Этапы:/g)).toHaveLength(2);
   });
 });
 

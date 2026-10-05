@@ -57,6 +57,9 @@ export interface SecretInputRequest {
   options?: InputOption[];
 }
 
+/** One answer of BuildHost.routeBatch (@wizard/agents builder RouteBatchItem): the output or that call's error. */
+export type RouteBatchItem = Awaited<ReturnType<NonNullable<AgentBuildHost["routeBatch"]>>>[number];
+
 /** agent_host as platform-api provides it: the budget is enforced in route() (managesBudget = true). */
 export interface BuildHost
   extends Omit<
@@ -68,6 +71,8 @@ export interface BuildHost
   qa: BuilderQa;
   store: BuildStore;
   needsInput(req: InputRequest | SecretInputRequest): Promise<InputAnswer & { secretRef?: string }>;
+  /** One budget check (Σ upperBoundCredits) and one durable step llm_batch:<steps> for a wave of calls. */
+  routeBatch(inputs: HostRouteInput[]): Promise<RouteBatchItem[]>;
   managesBudget: true;
 }
 
