@@ -689,6 +689,43 @@ from platform.llm_calls where created_at > now() - interval '3 hours'
 group by 1, 2, 3, 4, 5, 6 order by last_at desc limit 40;
 `;
 
+/**
+ * Which request shape the providers accept (D67 eval, 2026-10-05: every call answered 4xx while /models was 200):
+ * a 1-word prompt without tools, with a tool and tool_choice auto | required | the named function, with the extra
+ * fields packages/llm transformBody adds. Prints the status and the start of the provider's error text only.
+ */
+const LLM_SHAPE_PROBE = `
+const targets = [
+  { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { thinking: { type: "disabled" } } },
+  { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "moonshotai/Kimi-K2.6", extra: { chat_template_kwargs: { enable_thinking: false } } },
+  { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "zai-org/GLM-5.1", extra: { chat_template_kwargs: { enable_thinking: false } } },
+];
+const tool = { type: "function", function: { name: "answer", description: "Ответ", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } } };
+const variants = [
+  ["без инструментов", {}],
+  ["tool_choice auto", { tools: [tool], tool_choice: "auto" }],
+  ["tool_choice required", { tools: [tool], tool_choice: "required" }],
+  ["tool_choice функция", { tools: [tool], tool_choice: { type: "function", function: { name: "answer" } } }],
+];
+(async () => {
+  for (const t of targets) {
+    for (const [name, v] of variants) {
+      const body = { model: t.model, messages: [{ role: "system", content: "Отвечай кратко." }, { role: "user", content: "Скажи: да" }], max_tokens: 30, temperature: 0.1, ...v, ...(v.tools ? t.extra : {}) };
+      try {
+        const r = await fetch(t.host + "/chat/completions", { method: "POST", headers: { authorization: "Bearer " + t.key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+        const txt = await r.text();
+        let note = "";
+        if (r.ok) { try { const j = JSON.parse(txt); const c = j.choices?.[0]; note = "finish=" + c?.finish_reason + (c?.message?.tool_calls?.length ? " tool_calls=" + c.message.tool_calls.length : "") + " text=" + JSON.stringify(String(c?.message?.content ?? "").slice(0, 40)); } catch { note = txt.slice(0, 120); } }
+        else note = txt.replace(/\\s+/g, " ").slice(0, 300);
+        console.log(t.model, "|", name, "| HTTP", r.status, "|", note);
+      } catch (e) {
+        console.log(t.model, "|", name, "| ошибка", String(e?.cause?.code ?? e?.message ?? e).slice(0, 160));
+      }
+    }
+  }
+})();
+`;
+
 /** Reachability of the model providers (packages/llm/src/registry.ts default base URLs): HTTP status or the error. */
 const LLM_PROBE = `
 const urls = ["https://foundation-models.api.cloud.ru/v1/models", "https://api.z.ai/api/paas/v4/models", "https://llm.api.cloud.yandex.net/v1/models"];
@@ -751,6 +788,16 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
     { ...opt, input: LLM_CALLS_SQL },
   );
   log("::endgroup::");
+  step("Форма запроса к моделям (крошечные вызовы)", [
+    "-n",
+    "wizard-platform",
+    "exec",
+    "deploy/wizard-worker",
+    "--",
+    "node",
+    "-e",
+    LLM_SHAPE_PROBE,
+  ]);
   step("Провайдеры моделей из пода worker", [
     "-n",
     "wizard-platform",
