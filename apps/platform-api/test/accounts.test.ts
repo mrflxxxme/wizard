@@ -44,6 +44,21 @@ const verify = (body: Record<string, unknown>, headers: Record<string, string> =
   api.req("POST", "/auth/otp/verify", { body, headers });
 
 describe("email OTP", () => {
+  test("a recipient the mail provider refuses for good still answers 204; a transport failure is 500", async () => {
+    const send = mailer.send.bind(mailer);
+    try {
+      mailer.send = async () => {
+        throw Object.assign(new Error("mail api failed"), { code: 550 });
+      };
+      expect((await requestOtp("refused@example.ru")).status).toBe(204);
+      mailer.send = async () => {
+        throw Object.assign(new Error("mail api failed"), { code: 535 });
+      };
+      expect((await requestOtp("auth-broken@example.ru")).status).toBe(500);
+    } finally {
+      mailer.send = send;
+    }
+  });
   test("new user: code by mail, both consents required separately, then a session", async () => {
     const email = "New.User@Example.ru";
     const r = await requestOtp(email);

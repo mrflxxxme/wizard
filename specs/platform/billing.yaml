@@ -48,7 +48,7 @@ rub_model:   # D31_pricing_rub (гипотеза пилота). Клиент в�
     caps:
       create_build: "60 кредитов (≈ 300 ₽ себестоимости, порог product.yaml#decisions.D42_readiness_bar) — потолок первой сборки; оценка карточки — внутренняя"
       change_build: "20 кредитов (≈ 100 ₽) на правку"
-      interview_turn: "2 кредита (как run_charging.interview_turn)"
+      interview_turn: "8 кредитов (как run_charging.interview_turn)"
       design: "15 кредитов (≈ 75 ₽) на этап дизайна: референсы, три направления, критик (D39; оценка 35–70 ₽ — docs/research/design-agent-sources.md §4.6)"
     org_allowance: "Каждая организация автоматически получает внутренний грант 400 кредитов (≈ 2 000 ₽) на 30 дней (корзина internal_allowance, не копится). Исчерпание → сборки и интервью отвечают «Сейчас не получается продолжить сборку. Мы уже разбираемся — напишите команде» (без слова «кредиты»), основателю — алерт; staff добавляет лимит в /admin (reason=pilot_grant)"
     refunds: "Полный внутренний refund любого прогона, завершённого failed, отменённого из-за сбоя платформы или не давшего ревизии с пройденным G0 (расширяет run_charging.build.refunds)"
@@ -133,7 +133,7 @@ ledger:
 
 run_charging:
   client_view: "D31 (2026-10-04): всё в этом разделе — внутренний учёт. Клиент не видит cap, кредиты и «Докупить»; при нехватке внутреннего лимита — текст rub_model.internal_guard.org_allowance; потолки — rub_model.internal_guard.caps"
-  interview_turn: "без hold; после хода — charge по факту (cap хода 2 кредита). При available ≤ 0 → 402 INSUFFICIENT_CREDITS на POST messages/answers"
+  interview_turn: "без hold; после хода — charge по факту (cap хода 8 кредитов). При available ≤ 0 → 402 INSUFFICIENT_CREDITS на POST messages/answers"
   build:
     approve: "cap = card.cap.credits (формула — agents/orchestrator.yaml#estimation; пользователь может только понизить, не ниже ceil(estimate.credits.expected)). available < cap → 402 INSUFFICIENT_CREDITS {available, required: cap}; UI предлагает «Докупить» или понизить cap"
     start: "hold(−cap), idempotency hold:<runId>"

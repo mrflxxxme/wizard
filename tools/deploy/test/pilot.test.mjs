@@ -1313,7 +1313,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     expect(sum).toContain("Замер D67 на сервере пилота");
     expect(sum).toContain("**Итог: 2 из 2 дошли до готовности к публикации");
     expect(sum).toContain("247 ₽ (точно, по журналу вызовов моделей)");
-    expect(sum).toContain("Лимита D70");
+    expect(sum).toContain("Лимит D70 учётке замера поднят");
   });
 
   it("the seed refused by the database: no briefs, SSH closed, the psql error without the statement's values", async () => {

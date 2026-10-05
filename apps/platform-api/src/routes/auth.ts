@@ -113,12 +113,18 @@ export function authRoutes(d: Deps, a: AccountDeps): Hono<AppEnv> {
         })
         .execute();
     });
-    await a.mailer.send({
-      kind: "otp",
-      to: b.email,
-      subject: `Код входа в Born to Build: ${code}`,
-      text: `Ваш код входа: ${code}\nОн действует 10 минут. Если вы не запрашивали код, просто проигнорируйте это письмо.`,
-    });
+    try {
+      await a.mailer.send({
+        kind: "otp",
+        to: b.email,
+        subject: `Код входа в Born to Build: ${code}`,
+        text: `Ваш код входа: ${code}\nОн действует 10 минут. Если вы не запрашивали код, просто проигнорируйте это письмо.`,
+      });
+    } catch (e) {
+      // A mailbox the provider refuses for good (SMTP 550 or its API equivalent) answers as any other address:
+      // requestOtp is always 204. Transport failures stay 500 — the operator must see them.
+      if ((e as { code?: unknown } | null)?.code !== 550) throw e;
+    }
     return c.body(null, 204);
   });
 

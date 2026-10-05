@@ -116,7 +116,7 @@ estimation:
   price_blended: "Σ по callType сборки (plan, build_ops, build_code, fix, qa_*) доли × (0.8·input + 0.2·output) первой модели маршрута с учётом orgPolicy.ruOnly; доли по умолчанию build_code 0.55, fix 0.2, build_ops 0.1, qa 0.1, plan 0.05"
   credits_expected: "ceil(tokens_expected × price_blended / 1e6 / rub_per_credit)"
   credits_range: "min = ceil(0.6·expected), max = ceil(1.6·expected)"
-  cap: "max(10, ceil(1.5·expected)); не больше баланса организации (M1+) — иначе карточка в состоянии «не хватает кредитов» с кнопкой «Докупить»"
+  cap: "max(10, ceil(2·expected)) (множитель поднят с 1.5 после замера D67 05.10.2026: рассуждение T1 удорожает сборку); не больше баланса организации (M1+) — иначе карточка в состоянии «не хватает кредитов» с кнопкой «Докупить»"
   minutes: "min = ceil(tokens_expected / 60_000), max = ceil(tokens_expected / 25_000) [?] — калибруется"
   calibration: "Коэффициенты хранятся в packages/agents/src/orchestrator/estimate.coefficients.json; eval nightly пересчитывает их регрессией по фактическим прогонам и публикует отчёт; замена коэффициентов — PR"
   targets: "Средняя сборка ≈ 20 кредитов (concept §5). Тест: карточка «форум» из фикстуры → credits.expected ∈ [12, 35]"
@@ -152,7 +152,7 @@ state_machine:
 change_requests:       # правка уже собранной системы через чат
   classify: "Код-классификатор + вызов interview: style_only | small_edit | big_change"
   style_only: "Цвет, шрифт, скругления, тема → подсказка открыть «Стиль» (0 кредитов), без прогона"
-  small_edit: "≤2 вопроса, мини-карточка = SystemCard с kind=change: обязательны cardVersion, summary (что меняется), estimate, cap; остальные поля опциональны; cap по умолчанию max(3, ceil(1.5·expected))"
+  small_edit: "≤2 вопроса, мини-карточка = SystemCard с kind=change: обязательны cardVersion, summary (что меняется), estimate, cap; остальные поля опциональны; cap по умолчанию max(3, ceil(2·expected))"
   big_change: "Полный алгоритм S2–S6 с текущей спекой как контекстом"
   point_and_edit: "M3: запрос из превью с target {wzId, file} (ui/ui-kit.yaml#wz_id) идёт сразу в builder.yaml#point_and_edit с мини-карточкой"
 

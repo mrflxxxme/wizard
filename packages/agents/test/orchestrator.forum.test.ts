@@ -88,7 +88,7 @@ describe("demo/forum replay", () => {
     expect(card.estimate.credits.expected).toBeLessThanOrEqual(35);
     expect(card.estimate.credits.min).toBeLessThanOrEqual(card.estimate.credits.expected);
     expect(card.estimate.credits.max).toBeGreaterThanOrEqual(card.estimate.credits.expected);
-    expect(card.cap.credits).toBe(Math.max(10, Math.ceil(1.5 * card.estimate.credits.expected)));
+    expect(card.cap.credits).toBe(Math.max(10, Math.ceil(2 * card.estimate.credits.expected)));
     expect(card.forkAnswers.map((a) => [a.forkId, a.optionId, a.byRecommendation])).toEqual([
       ["F-LOGIN", "email_or_telegram", false],
       ["F-EV-CHECKIN", "qr_offline_scanner", false],

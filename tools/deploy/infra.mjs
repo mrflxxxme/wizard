@@ -751,6 +751,64 @@ const keys = { "foundation-models.api.cloud.ru": process.env.CLOUDRU_API_KEY, "a
 })();
 `;
 
+// Platform mail over the Unisender Go API from the platform-api pod: system/info.json checks the key and the route on
+// 443 without sending a letter. Prints the HTTP status and the API error code only.
+const MAIL_PROBE = `
+const host = (process.env.WIZARD_SMTP_HOST || "").trim();
+const m = /^smtp\\.(go\\d+)\\.unisender\\.ru\\.?$/i.exec(host);
+const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, "") || (m ? "https://" + m[1].toLowerCase() + ".unisender.ru" : "https://goapi.unisender.ru");
+(async () => {
+  console.log("транспорт:", process.env.WIZARD_MAIL_TRANSPORT || "(по хосту)", "· API:", base, "· пароль:", process.env.WIZARD_SMTP_PASSWORD ? "задан" : "НЕТ", "· отправитель:", process.env.WIZARD_SMTP_FROM ? "задан" : "НЕТ");
+  const t = Date.now();
+  try {
+    const r = await fetch(base + "/ru/transactional/api/v1/system/info.json", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "X-API-KEY": process.env.WIZARD_SMTP_PASSWORD || "" }, body: "{}", signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    console.log("system/info: HTTP", r.status, "за", Date.now() - t, "мс", j.status ? "status=" + j.status : "", j.code !== undefined ? "code=" + j.code : "", j.message ? "message=" + String(j.message).slice(0, 160) : "");
+  } catch (e) {
+    console.log("system/info: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
+  }
+})();
+`;
+
+/**
+ * Error and warning lines of a pod's JSON log, reduced to time, message and error name/code/message; addresses are
+ * masked (the repository is public, the run log too).
+ */
+export function errorLines(stdout, limit = 40) {
+  const mask = (v) =>
+    String(v ?? "")
+      .replace(/[^\s@"'<>]+@[^\s@"'<>]+/g, "<почта>")
+      .slice(0, 240);
+  const out = [];
+  for (const line of String(stdout ?? "").split("\n")) {
+    let j;
+    try {
+      j = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (j.level !== "error" && j.level !== "warn") continue;
+    const err = j.err ?? j.error ?? {};
+    const e = typeof err === "object" && err ? err : { message: err };
+    out.push(
+      [
+        j.ts,
+        j.level,
+        mask(j.msg),
+        e.type ?? e.name,
+        e.status,
+        e.sqlstate,
+        e.code ?? j.code,
+        mask(e.message),
+        e.stack?.[0],
+      ]
+        .filter((x) => x !== undefined && x !== null && x !== "")
+        .join(" | "),
+    );
+  }
+  return out.slice(-limit);
+}
+
 /**
  * Read-only picture of a running cluster (`diagnose`, minutes instead of a whole release): nodes, pods, the ingress,
  * certificates with their ACME orders and challenges, the DNS-01 solver and cert-manager logs, platform events.
@@ -812,6 +870,27 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
     "node",
     "-e",
     LLM_PROBE,
+  ]);
+  // Login by code returned 500 after the mail moved to the HTTP API (2026-10-05): the API errors and the mail route.
+  log("::group::Ошибки platform-api (последние)");
+  for (const l of errorLines(
+    kubectl(["-n", "wizard-platform", "logs", "deploy/wizard-platform-api", "--tail=3000"], {
+      ...opt,
+      capture: true,
+      fake: "",
+    }).stdout,
+  ))
+    log(l);
+  log("::endgroup::");
+  step("Почта платформы из пода platform-api", [
+    "-n",
+    "wizard-platform",
+    "exec",
+    "deploy/wizard-platform-api",
+    "--",
+    "node",
+    "-e",
+    MAIL_PROBE,
   ]);
   // The WAL-G archive: the same image, environment and Secret as the database, from a one-shot pod with the egress
   // rules of the PostgreSQL Jobs; plus the network probe with an unsigned listing of the backups bucket.

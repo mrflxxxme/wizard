@@ -299,7 +299,7 @@ describe("D67 report", () => {
       "Запрос на развитие: payments — оплата картой каждый месяц — замена: доступ по приглашению",
     );
     expect(text).toContain("честный отказ записан");
-    expect(text).not.toContain("Таблицы «Запросов на развитие» в базе платформы ещё нет");
+    expect(text).not.toContain("Раздел «Запросы на развитие» из базы прочитать не удалось");
   });
 
   it("without the gaps table and the DB costs: estimates, a provisional beyond, below the threshold", () => {
@@ -311,7 +311,7 @@ describe("D67 report", () => {
     expect(text).toContain("не достигнут");
     expect(text).toContain("оценка по кредитам");
     expect(text).toContain("✅*");
-    expect(text).toContain("Таблицы «Запросов на развитие» в базе платформы ещё нет");
+    expect(text).toContain("Раздел «Запросы на развитие» из базы прочитать не удалось");
     expect(median([3, 1, 2])).toBe(2);
     expect(median([])).toBeNull();
   });
