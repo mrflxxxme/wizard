@@ -1,24 +1,58 @@
-// G0-MIG-01 (planMigration, additive-only in prod) and G0-MIG-02 (DDL+RLS on a rolled-back shadow schema).
-import { type AppSpec, describeStep, planMigration, toDDL } from "@wizard/appspec";
+// G0-MIG-01 (planMigration; in prod destructive changes only with the owner's confirmation, M2-72) and G0-MIG-02
+// (DDL+RLS on a rolled-back shadow schema).
+import {
+  type AppSpec,
+  archiveSchemaName,
+  describeStep,
+  destructiveChanges,
+  planMigration,
+  toDDL,
+} from "@wizard/appspec";
 import type postgres from "postgres";
 import type { Finding } from "../report.js";
 
-export function checkMigrationPlan(prev: AppSpec | null, next: AppSpec, env: "draft" | "prod"): Finding[] {
+export interface MigrationCheckOptions {
+  /**
+   * M2-72 (gates.yaml#G0 G0-MIG-01): the platform checked the owner's confirmation of this revision against the
+   * current list of consequences (platform.destructive_changes).
+   */
+  destructiveConfirmed?: boolean;
+}
+
+/**
+ * Plan of prev → next for the gate: in prod a plan whose destructive steps touch no data (index, unique, FK drops)
+ * needs no confirmation; one that removes or narrows data passes only with destructiveConfirmed.
+ */
+function gatePlan(prev: AppSpec | null, next: AppSpec, env: "draft" | "prod", confirmed: boolean) {
   const plan = planMigration(prev, next, { env });
-  const out: Finding[] = plan.errors.map((e) => ({
-    message_ru: e.message_ru,
-    ...(e.path ? { path: e.path } : {}),
-    evidence: e.code,
-    fixHint: e.hint ?? "Исправьте описание системы",
-  }));
-  if (env === "prod" && !plan.additiveOnly && !out.some((f) => f.evidence === "DESTRUCTIVE_IN_PROD")) {
-    for (const s of plan.destructive) {
-      out.push({
-        message_ru: `Шаг миграции «${describeStep(s)}» разрушает данные и запрещён в prod`,
-        evidence: "DESTRUCTIVE_IN_PROD",
-        fixHint: "В prod разрешены только аддитивные изменения",
-      });
-    }
+  if (env !== "prod" || plan.additiveOnly) return { plan, needsConfirmation: false };
+  const needsConfirmation = destructiveChanges(plan).length > 0;
+  if (needsConfirmation && !confirmed) return { plan, needsConfirmation };
+  return { plan: planMigration(prev, next, { env, destructiveConfirmed: true }), needsConfirmation };
+}
+
+export function checkMigrationPlan(
+  prev: AppSpec | null,
+  next: AppSpec,
+  env: "draft" | "prod",
+  opts: MigrationCheckOptions = {},
+): Finding[] {
+  const { plan, needsConfirmation } = gatePlan(prev, next, env, opts.destructiveConfirmed === true);
+  const out: Finding[] = plan.errors
+    .filter((e) => e.code !== "DESTRUCTIVE_IN_PROD")
+    .map((e) => ({
+      message_ru: e.message_ru,
+      ...(e.path ? { path: e.path } : {}),
+      evidence: e.code,
+      fixHint: e.hint ?? "Исправьте описание системы",
+    }));
+  if (plan.errors.some((e) => e.code === "DESTRUCTIVE_IN_PROD") && needsConfirmation) {
+    out.push({
+      message_ru: "Правка удаляет или сужает данные работающей системы и ждёт подтверждения владельца",
+      evidence: `DESTRUCTIVE_IN_PROD: ${plan.destructive.map(describeStep).join("; ")}`,
+      fixHint:
+        "Владелец смотрит последствия и подтверждает правку в кабинете; данные уйдут в архив, правку можно отменить",
+    });
   }
   return out;
 }
@@ -38,6 +72,7 @@ export async function checkShadowApply(
   prev: AppSpec | null,
   next: AppSpec,
   env: "draft" | "prod",
+  opts: MigrationCheckOptions = {},
 ): Promise<Finding[]> {
   const schema = shadowSchema(systemKey);
   const statements: string[] = [];
@@ -50,7 +85,9 @@ export async function checkShadowApply(
       base = null; // previous revision no longer valid under current rules: apply `next` from scratch
     }
   }
-  statements.push(...toDDL(planMigration(base, next, { env: base ? env : "draft" }), schema));
+  const { plan } = gatePlan(base, next, base ? env : "draft", opts.destructiveConfirmed === true);
+  // A confirmed prod plan archives what it removes (M2-72): the shadow archive goes with the rollback.
+  statements.push(...toDDL(plan, schema, { archive: { schema: archiveSchemaName(schema), tag: "shadow" } }));
   let failure: Finding | null = null;
   try {
     await db.begin(async (tx) => {

@@ -789,6 +789,53 @@ paths:
       responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpend'}}}}}
   # ==== M2P · M2-98 (адрес и свой домен, дизайн и референсы, медиа и стоки, хосты egress в ревью; секреты и настройки — M2-95 после M2-22/M2-98) — новые пути дописывать ЗДЕСЬ ====
   # ==== конец блока M2-98 ====
+  # ==== M2P · M2-72 (правки prod, удаляющие данные: последствия, подтверждение владельца, архив, «Отменить правку») ====
+  /systems/{id}/destructive:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getDestructiveConsequences
+      x-milestone: M2
+      x-roles: [viewer]
+      summary: 'M2-72 (product.yaml#decisions.D56_destructive_changes, D72): что публикация ревизии (по умолчанию draft_revision) удалит или сузит в данных prod — план schema_hwm_revision → revision (appspec destructiveChanges), счётчики по живым данным prod под системной ролью БД (FORCE RLS): удаление сущности — записей; удаление поля — заполненных значений; смена типа — заполненных и непереносимых значений; поле стало обязательным — пустых записей; новое правило проверки — нарушающих записей. text_ru — простыми словами («Удаление поля „Телефон“ в разделе „Заявки“ затронет 112 записей. Значения сохранятся в архиве, правку можно отменить»). required=false — подтверждение не нужно (удаление индексов и уникальности данных не меняет). hash — sha256 ревизии, базы и всех строк со счётчиками; confirmation — последнее подтверждение этой ревизии (stale, если hash уже другой). canConfirm — пользователь owner'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}]
+      responses:
+        '200': {description: Последствия, content: {application/json: {schema: {$ref: '#/components/schemas/DestructiveConsequences'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/destructive/confirm:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: confirmDestructive
+      x-milestone: M2
+      x-roles: [owner]
+      summary: 'M2-72: владелец подтверждает последствия ревизии. Подтверждение привязано к revision и hash: последствия пересчитываются; другой hash → 409 DESTRUCTIVE_CONSEQUENCES_CHANGED (details.consequences — новый список, подтвердить заново); строка, нарушающая новое правило (blocking) → 422 DESTRUCTIVE_BLOCKED; нечего подтверждать → 400; не owner → 403 NOT_OWNER (D11). Прежние неприменённые подтверждения системы → superseded. Строка журнала db.yaml#destructive_changes (кто, когда, что). Публикация (workflows.yaml#workflows.publish, gate_G0_prod) без действующего подтверждения или с устаревшим → прогон failed DESTRUCTIVE_IN_PROD'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, hash], additionalProperties: false, properties: {revision: {type: integer, minimum: 1}, hash: {type: string, pattern: '^[0-9a-f]{64}$'}}}}}}
+      responses:
+        '201': {description: Подтверждено, content: {application/json: {schema: {type: object, required: [change, consequences], properties: {change: {$ref: '#/components/schemas/DestructiveChangeRecord'}, consequences: {$ref: '#/components/schemas/DestructiveConsequences'}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+  /systems/{id}/destructive/changes:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listDestructiveChanges
+      x-milestone: M2
+      x-roles: [viewer]
+      summary: 'M2-72: журнал удаляющих правок системы (подтверждено, применено, отменено — кто и когда), новые первыми, ≤ 50. undo — правка, которую можно отменить: последняя применённая, пока схема prod на её ревизии (schema_hwm_revision); canUndo — пользователь owner'
+      responses:
+        '200': {description: Журнал, content: {application/json: {schema: {type: object, required: [items, undo, canUndo], properties: {items: {type: array, items: {$ref: '#/components/schemas/DestructiveChangeRecord'}}, undo: {type: ['object', 'null'], properties: {changeId: {type: string, format: uuid}, toRevision: {type: integer}}}, canUndo: {type: boolean}}}}}}
+  /systems/{id}/destructive/changes/{changeId}/undo:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: changeId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: undoDestructiveChange
+      x-milestone: M2
+      x-roles: [owner]
+      summary: '«Отменить правку» (M2-72): прогон kind=rollback {env: prod, toRevision, undoChangeId} — обратный план схемы к base_revision в одной транзакции: удалённые сущности и поля возвращаются из архива со значениями (по id), смена типа — исходные значения; добавленное правкой само уходит в архив; schema_hwm_revision = base_revision; prod переключается на публикацию, работавшую до правки; smoke. Только последняя применённая правка, пока после неё ничего не публиковали, иначе 409 DESTRUCTIVE_UNDO_UNAVAILABLE; не owner → 403 NOT_OWNER. Обычный откат prod к ревизии старше применённой правки → ROLLBACK_TARGET_INVALID (сначала «Отменить правку»)'
+      responses:
+        '202': {description: Прогон отмены, content: {application/json: {schema: {type: object, properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  # ==== конец блока M2-72 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -853,6 +900,9 @@ components:
             SYSTEM_SUSPENDED: 422
             GATES_FAILED: 422
             DESTRUCTIVE_IN_PROD: 422
+            DESTRUCTIVE_BLOCKED: 422
+            DESTRUCTIVE_CONSEQUENCES_CHANGED: 409
+            DESTRUCTIVE_UNDO_UNAVAILABLE: 409
             ROLLBACK_TARGET_INVALID: 422
             RATE_LIMITED: 429
             INTERNAL: 500
@@ -973,6 +1023,52 @@ components:
       type: object
       required: [held]
       properties: {held: {type: boolean}, runId: {type: [string, 'null']}, holder: {type: [object, 'null'], properties: {userId: {type: string}, name: {type: string}}}, since: {type: [string, 'null'], format: date-time}, queue: {type: array, items: {type: string, format: uuid}}}
+    DestructiveConsequence:
+      type: object
+      description: 'M2-72: одна строка последствий удаляющей правки (appspec destructiveChanges + счётчики prod)'
+      required: [kind, entity, entityLabel, affected, unconvertible, archived, blocking, text_ru]
+      properties:
+        kind: {enum: [drop_table, drop_column, alter_column_type, set_not_null, alter_check]}
+        entity: {type: string}
+        entityLabel: {type: string}
+        field: {type: string}
+        fieldLabel: {type: string}
+        fromType: {type: string}
+        toType: {type: string}
+        affected: {type: integer, minimum: 0}
+        unconvertible: {type: integer, minimum: 0, description: 'смена типа: значения, которые нельзя перевести в новый тип (остаются только в архиве)'}
+        archived: {type: boolean, description: 'удалённые значения сохраняются в архиве (runtime.yaml#archive)'}
+        blocking: {type: boolean, description: 'существующие записи нарушают новое правило — публикация невозможна, пока данные не исправлены'}
+        text_ru: {type: string}
+    DestructiveConsequences:
+      type: object
+      required: [revision, baseRevision, required, blocking, hash, changes]
+      properties:
+        revision: {type: integer}
+        baseRevision: {type: ['integer', 'null']}
+        required: {type: boolean}
+        blocking: {type: boolean}
+        hash: {type: ['string', 'null']}
+        changes: {type: array, items: {$ref: '#/components/schemas/DestructiveConsequence'}}
+        confirmation: {type: ['object', 'null'], properties: {status: {enum: [confirmed, stale]}, confirmedAt: {type: string, format: date-time}}}
+        canConfirm: {type: boolean}
+    DestructiveChangeRecord:
+      type: object
+      description: 'M2-72: строка журнала db.yaml#destructive_changes'
+      required: [id, revision, status, consequences, confirmedBy, confirmedAt, undoable]
+      properties:
+        id: {type: string, format: uuid}
+        revision: {type: integer}
+        baseRevision: {type: ['integer', 'null']}
+        status: {enum: [confirmed, superseded, applied, undone]}
+        consequences: {type: array, items: {$ref: '#/components/schemas/DestructiveConsequence'}}
+        confirmedBy: {type: string, format: uuid}
+        confirmedAt: {type: string, format: date-time}
+        appliedAt: {type: ['string', 'null'], format: date-time}
+        undoneBy: {type: ['string', 'null'], format: uuid}
+        undoneAt: {type: ['string', 'null'], format: date-time}
+        undoRunId: {type: ['string', 'null'], format: uuid}
+        undoable: {type: boolean}
     Publication:
       type: object
       required: [id, env, revision, status, createdAt]

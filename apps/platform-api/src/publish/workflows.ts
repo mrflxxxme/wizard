@@ -2,7 +2,7 @@
 // the lock and the run lifecycle; these functions are the steps between run_started and the terminal event.
 
 import { dirname } from "node:path";
-import { type AppSpec, planMigration } from "@wizard/appspec";
+import { type AppSpec, archiveTables, planMigration } from "@wizard/appspec";
 import type { GateContext, GateLevel } from "@wizard/gates";
 import { publishTelegramBots, type TelegramPublishOptions } from "@wizard/runtime";
 import type { Selectable } from "kysely";
@@ -11,6 +11,14 @@ import { httpRuntimeBackfill, type RuntimeAiBackfill, runPendingBackfills } from
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable, SystemsTable } from "../db/types.js";
+import {
+  archiveSchemaOf,
+  checkForPublish,
+  DESTRUCTIVE_RU,
+  markApplied,
+  rollbackBlockedBy,
+  undoTarget,
+} from "../destructive/service.js";
 import { alertOnce } from "../ops/alert.js";
 import { opsAlertFromConfig } from "../ops/alert-config.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
@@ -425,7 +433,13 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   const hwm = sys.schema_hwm_revision;
   const prevSpec = hwm !== null ? await loadSpec(h.db, sys, hwm) : null;
 
-  const plan = planMigration(prevSpec, spec, { env: "prod" });
+  // M2-72 (D56/D72): a revision that removes or narrows prod data needs the owner's confirmation of exactly this
+  // revision and these consequences (counted now on prod); the removed data then goes to the archive, not away.
+  const destructive = await h.once("destructive_check", () =>
+    checkForPublish(h.db, h.pg, sys, revision, spec),
+  );
+  const confirmed = destructive.state === "none" || destructive.state === "confirmed";
+  const plan = planMigration(prevSpec, spec, { env: "prod", destructiveConfirmed: confirmed });
   const pub = await h.step("plan_migration", "Готовлю изменения данных", () =>
     h.tx(async (t) => {
       const live = await livePublication(t.trx, sys.id);
@@ -449,13 +463,8 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
 
   return guarded(h, pub.id, async () => {
     await h.step("gate_G0_prod", "Проверяю версию перед публикацией", async () => {
-      if (!plan.additiveOnly) {
-        const what = plan.destructive.map((s) => s.kind).join(", ");
-        throw new RunFailure(
-          "DESTRUCTIVE_IN_PROD",
-          `Публикация остановлена: изменения удаляют или сужают данные работающей системы (${what}). В опубликованную систему пока можно только добавлять.`,
-        );
-      }
+      if (!confirmed)
+        throw new RunFailure("DESTRUCTIVE_IN_PROD", destructive.message_ru ?? DESTRUCTIVE_RU.missing);
       if (plan.errors.length > 0)
         throw new RunFailure(
           "GATES_FAILED",
@@ -474,6 +483,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
           db: h.pg,
           milestone: h.config.milestone,
           signal: h.signal,
+          destructiveConfirmed: confirmed,
         })),
         level: "G0" as const,
       };
@@ -489,6 +499,10 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
     await telegramBots(h, sys, revision, spec);
     await h.step("apply_migration", "Применяю изменения данных", async () => {
       await setStatus(h, pub.id, "applying", ["planned"]);
+      const change =
+        destructive.state === "confirmed" && destructive.changeId && destructive.archiveTag
+          ? { id: destructive.changeId, tag: destructive.archiveTag, schema: archiveSchemaOf(sys) }
+          : null;
       await applyProdMigration(h.pg, {
         systemId: sys.id,
         systemKey: sys.schema_key,
@@ -496,6 +510,19 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
         revision,
         publicationId: pub.id,
         options: h.options,
+        ...(change
+          ? {
+              archive: { schema: change.schema, tag: change.tag },
+              inTx: (tx) =>
+                markApplied(tx, {
+                  changeId: change.id,
+                  publicationId: pub.id,
+                  baseRevision: hwm,
+                  schema: change.schema,
+                  tables: archiveTables(plan, change.tag),
+                }),
+            }
+          : {}),
       });
     });
     await switchLive(h, pub.id, revision);
@@ -505,8 +532,90 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   });
 }
 
+/**
+ * M2-72 «Отменить правку»: the last applied destructive change goes back — the schema returns to the revision before
+ * it (reverse plan; columns, entities and original values restored from the archive, whatever the change added is
+ * archived in turn), schema_hwm_revision is set back, prod switches to the publication live before the change.
+ */
+async function runUndo(h: FlowHost, changeId: string): Promise<FlowResult> {
+  const sys = await h.once("load_system", () => system(h));
+  const target = await h.once("undo_target", async () => {
+    const u = await undoTarget(h.db, sys);
+    if (!u || u.row.id !== changeId) return null;
+    return {
+      revision: u.row.revision,
+      toRevision: u.toRevision,
+      bundleKey: u.toBundleKey,
+      baseRevision: u.baseRevision,
+      archiveTag: u.row.archive_tag,
+      tables: (u.row.archive_tables ?? []) as string[],
+    };
+  });
+  if (!target) throw new RunFailure("ROLLBACK_TARGET_INVALID", DESTRUCTIVE_RU.undoUnavailable);
+  const plan = planMigration(
+    await loadSpec(h.db, sys, target.revision),
+    await loadSpec(h.db, sys, target.baseRevision),
+    { env: "prod", destructiveConfirmed: true },
+  );
+  const pub = await h.step("plan_migration", "Готовлю отмену правки", () =>
+    h.tx(async (t) => {
+      await lockSystem(t, sys.id);
+      const live = await livePublication(t.trx, sys.id);
+      return t.trx
+        .insertInto("platform.publications")
+        .values({
+          system_id: sys.id,
+          revision: target.toRevision,
+          schema_revision: target.baseRevision,
+          prev_publication_id: live?.id ?? null,
+          migration_plan: json(storedPlan(plan)),
+          bundle_key: target.bundleKey,
+          status: "planned",
+          run_id: h.run.id,
+          created_by: h.run.started_by ?? sys.created_by,
+        })
+        .returning(["id", "prev_publication_id"])
+        .executeTakeFirstOrThrow();
+    }),
+  );
+  return guarded(h, pub.id, async () => {
+    await h.step("undo_migration", "Возвращаю данные из архива", async () => {
+      await setStatus(h, pub.id, "applying", ["planned"]);
+      const schema = archiveSchemaOf(sys);
+      await applyProdMigration(h.pg, {
+        systemId: sys.id,
+        systemKey: sys.schema_key,
+        plan,
+        revision: target.toRevision,
+        publicationId: pub.id,
+        options: h.options,
+        hwmRevision: target.baseRevision,
+        archive: {
+          schema,
+          tag: `u${changeId.replace(/-/g, "").slice(0, 12)}`,
+          restore: { tag: target.archiveTag, tables: target.tables },
+        },
+        inTx: async (tx) => {
+          await tx`
+            update platform.destructive_changes
+               set status = 'undone', undone_at = now(), undone_by = ${h.run.started_by}, undo_run_id = ${h.run.id}
+             where id = ${changeId} and status = 'applied'`;
+        },
+      });
+    });
+    await switchLive(h, pub.id, target.toRevision);
+    const url = await smoke(h, sys, pub.id, pub.prev_publication_id, target.toRevision);
+    return {
+      summary_ru: `Правка отменена: данные возвращены из архива, работает ревизия ${target.toRevision}`,
+      resultRevision: target.toRevision,
+      prodUrl: url,
+    };
+  });
+}
+
 export async function runRollback(h: FlowHost): Promise<FlowResult> {
-  const input = h.run.input as { env?: unknown; toRevision?: unknown };
+  const input = h.run.input as { env?: unknown; toRevision?: unknown; undoChangeId?: unknown };
+  if (input.env === "prod" && typeof input.undoChangeId === "string") return runUndo(h, input.undoChangeId);
   const to = typeof input.toRevision === "number" ? input.toRevision : Number.NaN;
   const sys = await h.once("load_system", () => system(h));
   const target = await h.once("load_revision", async () =>
@@ -555,6 +664,12 @@ export async function runRollback(h: FlowHost): Promise<FlowResult> {
       "ROLLBACK_TARGET_INVALID",
       "Вернуться можно только к версии, которая уже была опубликована",
     );
+  // M2-72: code of an older revision needs columns that an applied destructive change moved to the archive.
+  const blocked = await h.once(
+    "destructive_after",
+    async () => (await rollbackBlockedBy(h.db, sys.id, to)) !== undefined,
+  );
+  if (blocked) throw new RunFailure("ROLLBACK_TARGET_INVALID", DESTRUCTIVE_RU.rollbackBlocked);
   const bundleKey = target.bundle_key;
   const pub = await h.step("plan_migration", "Готовлю возврат к прежней версии без изменения данных", () =>
     h.tx(async (t) => {

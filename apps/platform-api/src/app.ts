@@ -32,6 +32,7 @@ import { adminPilotRoutes } from "./routes/admin-pilot.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
+import { destructiveRoutes } from "./routes/destructive.js";
 import { exportRoutes } from "./routes/exports.js";
 import { gapsRoutes } from "./routes/gaps.js";
 import { importRoutes } from "./routes/imports.js";
@@ -294,6 +295,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
   api.route("/", publishRoutes(deps));
+  api.route("/", destructiveRoutes(deps));
   api.route("/", importRoutes(deps));
   api.route("/", exportRoutes(deps));
   api.route("/", privacyRoutes(deps));

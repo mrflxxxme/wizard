@@ -603,3 +603,52 @@ export interface DevelopmentRequests {
     email: string | null;
   }[];
 }
+
+/** api.yaml#/components/schemas/DestructiveConsequence (M2-72). */
+export interface DestructiveConsequence {
+  kind: "drop_table" | "drop_column" | "alter_column_type" | "set_not_null" | "alter_check";
+  entity: string;
+  entityLabel: string;
+  field?: string;
+  fieldLabel?: string;
+  affected: number;
+  unconvertible: number;
+  archived: boolean;
+  blocking: boolean;
+  text_ru: string;
+}
+
+/** api.yaml#/components/schemas/DestructiveConsequences (GET /systems/:id/destructive). */
+export interface DestructiveConsequences {
+  revision: number;
+  baseRevision: number | null;
+  required: boolean;
+  blocking: boolean;
+  hash: string | null;
+  changes: DestructiveConsequence[];
+  confirmation?: { status: "confirmed" | "stale"; confirmedAt: string } | null;
+  canConfirm?: boolean;
+}
+
+/** api.yaml#/components/schemas/DestructiveChangeRecord: a row of the journal of destructive changes. */
+export interface DestructiveChangeRecord {
+  id: string;
+  revision: number;
+  baseRevision: number | null;
+  status: "confirmed" | "superseded" | "applied" | "undone";
+  consequences: DestructiveConsequence[];
+  confirmedBy: string;
+  confirmedAt: string;
+  appliedAt: string | null;
+  undoneBy: string | null;
+  undoneAt: string | null;
+  undoRunId: string | null;
+  undoable: boolean;
+}
+
+/** GET /systems/:id/destructive/changes. */
+export interface DestructiveJournal {
+  items: DestructiveChangeRecord[];
+  undo: { changeId: string; toRevision: number } | null;
+  canUndo: boolean;
+}

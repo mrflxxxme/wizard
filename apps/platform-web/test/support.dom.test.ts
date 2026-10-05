@@ -232,7 +232,6 @@ describe("chat and checks", () => {
       level: "G2",
       passed: false,
       specVersion: 3,
-      startedAt: "2026-10-05T10:00:00Z",
       durationMs: 10,
       summary: { pass: 1, fail: 1, warn: 0, skip: 0, error: 0 },
       checks: [

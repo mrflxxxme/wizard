@@ -113,6 +113,11 @@ export interface GateContext {
     /** platform.brand_allowlist: brand ids or names the org proved it owns. */
     brandAllowlist?: string[];
   };
+  /**
+   * M2-72, G0-MIG-01 in prod: the owner confirmed this revision's destructive changes and the platform checked the
+   * confirmation against the current consequences (platform.destructive_changes). Absent → destructive steps block.
+   */
+  destructiveConfirmed?: boolean;
   /** Default: env WIZARD_MILESTONE, else M0. */
   milestone?: Milestone | string;
   now?: Date;

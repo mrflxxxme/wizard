@@ -6,7 +6,13 @@ import { fileURLToPath } from "node:url";
 
 export const BRIEFS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "briefs");
 export const BRIEF_ID = /^(ev|gd|hz)-[0-9]{2}-[a-z0-9-]+$/;
-export const SEGMENT_BY_PREFIX = { ev: "events", gd: "made_to_order", hz: "horizontal" };
+/** D67 readiness set (eval.yaml#briefs.mvp): short owner-style briefs run on the pilot server (tools/eval/server). */
+export const MVP_ID = /^mvp-[0-9]{2}-[a-z0-9-]+$/;
+export const MVP_CLASSES = ["site", "booking", "crm", "other"];
+export const SEGMENT_BY_PREFIX = { ev: "events", gd: "made_to_order", hz: "horizontal", mv: "mvp" };
+/** D67: 10 briefs, 2–3 per class of D65 and 2 outside the classes. */
+export const MVP_SET = { total: 10, site: 3, booking: 3, crm: 2, other: 2 };
+export const isMvpBrief = (id) => MVP_ID.test(String(id ?? ""));
 /** eval.yaml#briefs.set for M0. */
 export const M0_SET = { total: 12, ev: 5, gd: 3, hz: 4, canaries: 4 };
 /** eval.yaml#briefs.set for M2 (L4-28): 30 briefs, ≥ 10 horizontal (outside the two proving grounds). */
@@ -40,17 +46,37 @@ export function partnerProblems(b) {
   return out;
 }
 
+/** Fields of a D67 brief: class, optional free_answer and the beyond-capabilities expectation. */
+function mvpProblems(b) {
+  const out = [];
+  if (!MVP_CLASSES.includes(b.class)) out.push(`class: одно из ${MVP_CLASSES.join(", ")}`);
+  if (b.free_answer !== undefined && (typeof b.free_answer !== "string" || b.free_answer.length > 500))
+    out.push("free_answer: строка ≤ 500 символов");
+  if (b.beyond !== undefined) {
+    const stems = b.beyond?.gap_stems;
+    if (b.class !== "other") out.push("beyond: только у брифов класса other");
+    if (!Array.isArray(stems) || !stems.length || stems.some((x) => typeof x !== "string" || !x))
+      out.push("beyond.gap_stems: непустой массив строк");
+  }
+  return out;
+}
+
 /** Format problems of one brief (Russian, for test and CLI messages). */
 export function briefProblems(b, file) {
   const out = [];
-  if (!BRIEF_ID.test(b.id ?? "")) out.push(`id "${b.id}" не подходит под ${BRIEF_ID}`);
+  const mvp = isMvpBrief(b.id);
+  if (!mvp && !BRIEF_ID.test(b.id ?? "")) out.push(`id "${b.id}" не подходит под ${BRIEF_ID} или ${MVP_ID}`);
   if (file && file !== `${b.id}.json`) out.push(`имя файла ${file} ≠ ${b.id}.json`);
   const prefix = String(b.id).slice(0, 2);
   if (b.segment !== SEGMENT_BY_PREFIX[prefix])
     out.push(`segment "${b.segment}" ≠ ${SEGMENT_BY_PREFIX[prefix]}`);
   if (typeof b.title !== "string" || !b.title || b.title.length > 100) out.push("title: 1–100 символов");
-  if (typeof b.text !== "string" || b.text.length < 300 || b.text.length > 1500)
-    out.push("text: 300–1500 символов");
+  // D67 briefs are written the way owners type them in the chat: short, sometimes careless.
+  const [minText, maxText] = mvp ? [60, 1500] : [300, 1500];
+  if (typeof b.text !== "string" || b.text.length < minText || b.text.length > maxText)
+    out.push(`text: ${minText}–${maxText} символов`);
+  if (mvp) out.push(...mvpProblems(b));
+  else if (b.class !== undefined) out.push("class: только у брифов mvp-*");
   for (const k of ["roles", "entities", "must_have_features", "acceptance_criteria"])
     if (!Array.isArray(b.expected?.[k]) || !b.expected[k].length)
       out.push(`expected.${k}: непустой массив строк`);
@@ -64,7 +90,10 @@ export function briefProblems(b, file) {
   return out;
 }
 
-/** All briefs sorted by id; `want` = comma list or array of ids (unknown ids throw). */
+/**
+ * Briefs sorted by id; `want` = comma list or array of ids (unknown ids throw). Without `want` (or "all") — the P set
+ * only: the D67 briefs mvp-* are short and run on the server (tools/eval/server), they are taken by "mvp" or by id.
+ */
 export function loadBriefs(want, dir = BRIEFS_DIR) {
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
@@ -75,7 +104,8 @@ export function loadBriefs(want, dir = BRIEFS_DIR) {
     if (problems.length) throw new Error(`бриф ${f}: ${problems.join("; ")}`);
     return b;
   });
-  if (want === undefined || want === true || want === "all") return all;
+  if (want === undefined || want === true || want === "all") return all.filter((b) => !isMvpBrief(b.id));
+  if (want === "mvp") return all.filter((b) => isMvpBrief(b.id));
   const ids = Array.isArray(want) ? want : String(want).split(",").filter(Boolean);
   const unknown = ids.filter((id) => !all.some((b) => b.id === id));
   if (unknown.length) throw new Error(`неизвестные брифы: ${unknown.join(", ")}`);

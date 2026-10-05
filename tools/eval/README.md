@@ -3,6 +3,7 @@
 Нормативно: `specs/quality/eval.yaml`. Два режима:
 
 - **spec_only** (по умолчанию) — по брифу на русском один вызов модели собирает черновик AppSpec. Ответ проверяется по `specs/appspec/appspec.schema.json`, своей схемы у стенда нет. Так сравниваются модели между собой. Первый вопрос недели 0: **GLM-5.1 в контуре Cloud.ru (T0) против GLM-5.3 от Z.ai (T1)**. Node 22, без зависимостей и без сборки.
+- **замер D67 на сервере** (`tools/eval/server/`, брифы `mvp-*`) — те же брифы, что пишет клиент в кабинете, проходят настоящий конвейер сервера пилота через его API. Запуск — `bootstrap-pilot → eval`, подробности в [docs/ops/eval-d67.md](../../docs/ops/eval-d67.md).
 - **harness** (`--harness`) — полный путь продукта: оркестратор (`@wizard/agents/orchestrator`) → карточка → строитель (`@wizard/agents/builder`, memory-host) → G0 → QA (`@wizard/agents/qa`) → G1 на настоящем `apps/runtime`. G2 до M2 не запускается. TypeScript-пакеты грузятся через `tsx` из workspace, нужны `pnpm install` и Postgres (`pnpm db:up`, `DATABASE_URL`).
 
 ## Harness

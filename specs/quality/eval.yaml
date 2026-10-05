@@ -17,6 +17,7 @@ briefs:
       acceptance_criteria: "string[]"
     answers: "опционально {forkId: optionId} для харнесса; по умолчанию «Остальное — по рекомендациям»"
     canaries: "опционально string[] — синтетические ПДн-канарейки, вставленные в text (ФИО нерусского происхождения, латиница, @handle, телефон не РФ); метрика pii_leaks"
+    mvp: "Набор замера D67 (M2-88 mvp_scope): id ^mvp-[0-9]{2}-[a-z0-9-]+$, segment mvp, class site|booking|crm|other, text 60–1500 (как владелец пишет в чат, часть нарочно небрежна), free_answer — ответ на свободный вопрос интервью, beyond.gap_stems — у брифа сверх возможностей. В набор P по умолчанию не входят: loadBriefs('mvp') или id"
   matching: "Ожидание — подстрока-стем в нижнем регистре (ё→е) в именах+label ролей/сущностей, во всей спеке (features) и в acceptance+workflows (AC). Реализация — tools/eval/lib/score.mjs"
   set: "≥ 12 брифов к M0 (≥ 5 ev, ≥ 3 gd, ≥ 4 hz; ≥ 4 брифа с canaries); 30 к M2 (≥ 10 hz; включая по 3 брифа от каждого дизайн-партнёра — в репозитории только синтетические пересказы, оригиналы — в S3 eval в РФ)"
   rules:
@@ -32,6 +33,9 @@ modes:
     what: "Полный путь: оркестратор (ответы answers или по рекомендации) → карточка → строитель → G0 → QA → G1 (без G2 до M2)"
     command: "node tools/eval/run.mjs --harness --models=<id,…> [--briefs=…]"
     model_override: "--models задаёт модель для всех build-callType; роутер и границы ПДн работают как в продукте (T1 не получает pii_forbidden_for_T1)"
+  server_d67:
+    what: "Замер D67 на сервере пилота (product.yaml#decisions.D67_mvp_readiness): брифы mvp-* через настоящий конвейер по API кабинета, как клиент — интервью (кнопка: рекомендованный вариант или первый; свободный вопрос: free_answer), карточка, сборка с одним «Исправить», G2 первой публикацией (останавливается на ревью основателя). Готовность — G0–G2 без блокеров; G2-SECRET-02 (секреты интеграций вводит владелец) готовность не снимает. Бриф сверх возможностей засчитывается, если система с заменой готова или отказ честный и записан в «Запросы на развитие». Параллельность 2, бюджет --max-cost-rub (2 000 ₽): новые брифы не стартуют, когда расход его достиг"
+    command: "bootstrap-pilot → action eval (tools/deploy/pilot.mjs eval); вручную — tools/eval/server/cli.mjs seed|run|collect|report|cleanup (docs/ops/eval-d67.md)"
   contract:
     what: "Контрактный тест провайдер × модель: tool calling без thinking, отсутствие reasoning_content в запросах, usage присутствует, отказ на response_format не используется"
     command: "node tools/eval/run.mjs --contract"

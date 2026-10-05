@@ -250,9 +250,10 @@ screens:
     data: ["GET /systems/:id/revisions", "GET /systems/:id/revisions/:v/diff?from=<prodRevision> → {changes: [{kind, text_ru, destructive}]}", "POST /systems/:id/card/approve (change-карточка)", "POST /systems/:id/publish", "GET /systems/:id/preview-url"]
     rules:
       - "MUST: prod-данные не меняются до публикации"
-      - "MUST: любая change с destructive=true блокирует «Опубликовать» с текстом из DESTRUCTIVE_IN_PROD"
+      - "M2-72 (D56/D72): change с destructive=true показывает блок «Правка удаляет данные» (destructive-panel, features/destructive): строки последствий text_ru из GET /systems/:id/destructive?revision=N+1 («Удаление поля „Телефон“ в разделе „Заявки“ затронет 112 записей. Значения сохранятся в архиве, правку можно отменить»), «Подтверждаю — опубликовать можно» (destructive-confirm, POST /systems/:id/destructive/confirm {revision, hash}) — только owner, остальным текст «Подтвердить удаление может только владелец организации» (destructive-owner-only); «Опубликовать» заблокирована, пока подтверждение не свежее (confirmation.status=confirmed) или есть строка blocking (destructive-blocking: исправить данные); устаревшее подтверждение — destructive-stale и повторное подтверждение. Без systemId (превью карточки) — прежний текст блокировки"
+      - "M2-72: «Отменить правку» (destructive-undo, destructive-undo-submit) над карточкой публикации S5/S6 — пока последнюю применённую удаляющую правку можно отменить (GET /systems/:id/destructive/changes → undo): строки её последствий и кнопка только у owner (иначе destructive-undo-owner-only); POST …/changes/:changeId/undo → прогон kind=rollback в ленте"
       - "Сегмент «Изменения» — changes, сгруппированные по kind (данные, права, экраны…) (M1-08)"
-    test_ids: [diff-card, diff-line, diff-migration, diff-gates, diff-price, diff-cancel, diff-publish, env-segment-prod, env-segment-draft, env-segment-changes]
+    test_ids: [diff-card, diff-line, diff-migration, diff-gates, diff-price, diff-cancel, diff-publish, env-segment-prod, env-segment-draft, env-segment-changes, destructive-panel, destructive-line, destructive-confirm, destructive-confirmed, destructive-stale, destructive-blocking, destructive-owner-only, destructive-undo, destructive-undo-submit, destructive-undo-owner-only]
     acceptance:
       - "M1-08 Playwright: сообщение «добавь поле тема в заявки» → diff-line с «+» и «тема»; diff-migration — «аддитивная»"
       - "M1-04 e2e: публикация N+1 → данные prod целы; откат (S10) возвращает prod к N"
