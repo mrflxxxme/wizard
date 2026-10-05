@@ -9,6 +9,8 @@
 export const RUB_PER_CREDIT = 5;
 /** D67 threshold: ≥ 7 of 10 briefs reach publish readiness. */
 export const D67_THRESHOLD = { ready: 7, of: 10 };
+/** Brief statuses that will not change any more (fail-fast counts them). */
+export const FINAL = new Set(["ready", "not_ready", "build_failed", "interview_failed", "error", "skipped"]);
 export const DEFAULTS = {
   maxCostRub: 2000,
   concurrency: 2,
@@ -140,6 +142,7 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     r.creditsUsed = Math.round(r.runs.reduce((s, x) => s + x.creditsUsed, 0) * 1000) / 1000;
     r.costRubEstimate = Math.round(r.creditsUsed * RUB_PER_CREDIT * 100) / 100;
     ctx.onSpend?.();
+    ctx.onUpdate?.();
   };
 
   /** Answers the open needs_input of the run; false when the run must stop (no answer possible, too many asks). */
@@ -172,6 +175,11 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     for (;;) {
       track(run);
       if (TERMINAL.has(run.status)) return run;
+      // Stop of the whole measurement (fail-fast or a cancelled job): the run is cancelled, nothing more is spent.
+      if (ctx.signal?.aborted) {
+        await client.post(`/runs/${run.id}/cancel`).catch(() => {});
+        throw new Error(`замер остановлен: ${ctx.signal.reason ?? "отмена"} — прогон ${phase} отменён`);
+      }
       if (run.status === "needs_input" && !(await answerInput(run, answered))) {
         await client.post(`/runs/${run.id}/cancel`).catch(() => {});
         throw new Error(
@@ -386,6 +394,24 @@ export async function runEval(o) {
   };
   const results = o.briefs.map((b) => newResult(b));
   const spent = () => results.reduce((s, x) => s + x.costRubEstimate, 0);
+  // Fail-fast (budget guard): once the D67 threshold cannot be reached any more, the rest is not worth the spend.
+  const stop = new AbortController();
+  const outer = o.signal;
+  if (outer) {
+    if (outer.aborted) stop.abort(outer.reason);
+    else outer.addEventListener("abort", () => stop.abort(outer.reason), { once: true });
+  }
+  ctx.signal = stop.signal;
+  const counted = o.counted ?? ((r) => r.ready);
+  const need = Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * results.length);
+  const checkReachable = () => {
+    if (o.failFast === false || stop.signal.aborted) return;
+    const lost = results.filter((x) => FINAL.has(x.status) && !counted(x)).length;
+    if (results.length - lost < need)
+      stop.abort(`порог ${need} из ${results.length} уже недостижим (не готовы: ${lost})`);
+  };
+  const update = ctx.onUpdate;
+  ctx.onUpdate = () => update?.(results);
   const startedAt = ctx.now().toISOString();
   let next = 0;
   let peak = 0;
@@ -394,10 +420,18 @@ export async function runEval(o) {
     while (next < o.briefs.length) {
       const i = next++;
       const r = results[i];
+      if (stop.signal.aborted) {
+        r.status = "skipped";
+        r.error = `замер остановлен до старта: ${stop.signal.reason}`;
+        ctx.log(`${r.id}: пропущен — ${r.error}`);
+        ctx.onUpdate();
+        continue;
+      }
       if (spent() >= ctx.maxCostRub) {
         r.status = "skipped";
         r.error = `бюджет замера ${ctx.maxCostRub} ₽ исчерпан до старта`;
         ctx.log(`${r.id}: пропущен — бюджет исчерпан`);
+        ctx.onUpdate();
         continue;
       }
       active += 1;
@@ -406,6 +440,10 @@ export async function runEval(o) {
         await driveBrief(ctx, o.briefs[i], r);
       } finally {
         active -= 1;
+        const before = stop.signal.aborted;
+        checkReachable();
+        if (!before && stop.signal.aborted) ctx.log(`::warning title=D67::замер остановлен: ${stop.signal.reason}`);
+        ctx.onUpdate();
       }
     }
   }
@@ -422,6 +460,7 @@ export async function runEval(o) {
     peakConcurrency: peak,
     g2: ctx.g2,
     fixAttempts: ctx.fixAttempts,
+    stopped: stop.signal.aborted ? String(stop.signal.reason ?? "отмена") : null,
     results,
   };
 }

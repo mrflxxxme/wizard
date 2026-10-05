@@ -33,6 +33,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # The shared reusable requests it (live progress of eval); a caller must grant at least as much.
+      issues: write
     with:
       env: ${{ inputs.env }}
       command: deploy

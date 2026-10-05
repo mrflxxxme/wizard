@@ -234,7 +234,7 @@ class Builder implements ToolEnv {
           const { version } = await this.#host.store.getSpec();
           await this.#toolPhase(
             "build_ops",
-            mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version),
+            mode === "create" ? PHASE_TEXT.opsFromPlan(version) : PHASE_TEXT.change(version),
           );
         });
         await this.#phaseStep("code", async () => {
