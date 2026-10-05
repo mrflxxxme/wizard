@@ -31,6 +31,62 @@ tsconfig.system (packages/build/tsconfig.system.json — architecture.yaml#inter
 - `packages/sdk` поставляет рукописный `src/sdk.d.ts` = §5; G0 компилирует код системы против него, а не против исходников SDK.
 - MUST (L3-13): сборка идёт в каталоге-копии ревизии; резолвер отклоняет пути вне `ui/**`, `functions/**` и любые пакеты, кроме `@wizard/sdk` и `@wizard/ui-kit`; loaders — только ts/tsx; `define`/`process.env` не пробрасываются. `.env` и файлы хоста в бандл не попадают никогда (`../platform/deploy.yaml#local.bundles_never_contain_env`).
 
+### 1.2 Шпаргалка строителя (целиком в системном промпте строителя; источник истины — §5 и `packages/sdk/src/sdk.d.ts`)
+
+Это не Convex: `ctx.db.query("t")`, `ctx.db.insert("t", …)`, `withIndex`, `collect()`, `ctx.auth`, `defineQuery`, `v.union`, `v.any`, `v.null`, `.optional()` цепочкой — не существуют (G0-TS-01: TS2305/TS2339/TS2551). Значения в `functions/**` импортируются только так: `import { query, mutation, action, v } from "@wizard/sdk"` (нужные из них); типы `QueryCtx`, `MutationCtx`, `ActionCtx`, `Doc`, `ClientDoc`, `Id` — только `import type { … } from "@wizard/sdk"`. Других серверных имён в модуле нет (§5).
+
+Функция — `functions/<имя>.ts`, ровно один `export default` (G0-FN-01); параметры `handler` не аннотировать: типы `ctx` и `args` выводятся из `args`. Если handler вызывает `ctx.runQuery`/`ctx.runMutation`, укажи тип результата handler явно (`async (ctx, args): Promise<{ … }> =>`), иначе TS7022 (тип функции ссылается сам на себя).
+
+```ts
+// functions/leadList.ts — query: только чтение
+import { query, v } from "@wizard/sdk";
+
+export default query({
+  args: { status: v.optional(v.enum("new", "done")), limit: v.optional(v.int({ min: 1, max: 100 })) },
+  handler: async (ctx, args) => {
+    if (args.status) return ctx.db.lead.list({ where: { status: args.status }, order: "desc", limit: 100 });
+    return ctx.db.lead.list({ order: "desc", limit: args.limit ?? 50 });
+  },
+});
+```
+
+```ts
+// functions/leadCreate.ts — mutation: чтение и запись в одной транзакции
+import { mutation, v } from "@wizard/sdk";
+
+export default mutation({
+  args: { name: v.string({ min: 2, max: 200 }), phone: v.phone(), comment: v.optional(v.string({ max: 2000 })), serviceId: v.id("service") },
+  handler: async (ctx, args) => {
+    const service = await ctx.db.service.get(args.serviceId);
+    if (!service) throw ctx.error("NOT_FOUND", { message: "Услуга не найдена" });
+    const id = await ctx.db.lead.insert({ name: args.name.trim(), phone: args.phone, comment: args.comment ?? null, service: service.id, status: "new" });
+    await ctx.scheduler.runAfter(0, "leadNotify", { leadId: id });
+    return { id };
+  },
+});
+```
+
+```ts
+// functions/leadNotify.ts — action: внешний мир, без ctx.db
+import { action, v } from "@wizard/sdk";
+
+export default action({
+  args: { leadId: v.id("lead") },
+  handler: async (ctx, { leadId }): Promise<{ found: boolean }> => {
+    const fresh = await ctx.runQuery("leadList", { status: "new" });
+    ctx.log.info("lead_notify", { pending: fresh.length });
+    // ctx.connectors.<integration.name>: email.sendTemplate / telegram.sendToUser — получатель по userId
+    return { found: fresh.some((l) => l.id === leadId) };
+  },
+});
+```
+
+- `v.*` (полный список): `string({min?, max?, pattern?})`, `int({min?, max?})`, `number({min?, max?})`, `money({min?, max?})`, `boolean()`, `date()`, `datetime()`, `email()`, `phone()`, `id("<entity>" | "users")`, `literal(x)`, `enum("a", "b", …)` (значения — отдельными аргументами, не массивом), `array(v.X, {max?})`, `object({…})`, `optional(v.X)`, `nullable(v.X)`, `pagination()`. Необязательный аргумент — `v.optional(v.string())`.
+- `ctx` у всех: `user {id, role, attrs, isAdmin}` (`id = null` у публичной роли), `now: Date`, `error(CODE, {message})` → `throw ctx.error(…)`, `log.info|warn|error(msg, {числа/булевы})`.
+- query: `ctx.db`, `ctx.systemDb` — чтение. mutation: то же + запись и `ctx.scheduler.runAfter(ms, "fn", args)` / `runAt(date, "fn", args)`. action: `ctx.runQuery("fn", args)`, `ctx.runMutation("fn", args)`, `ctx.connectors.<integration>`, `ctx.http.fetch` (только `function.egress`), `ctx.scheduler`; `ctx.db` в action нет.
+- `ctx.db.<entity>` (имя сущности из спеки — свойство, не строка): `get(id)`, `getBy("<unique-поле>", value)`, `list({where?, order?: "asc"|"desc", limit?})`, `first({where?, order?})`, `count({where?})`, `paginate({where?, order?}, {cursor, numItems})` → `{items, continueCursor, isDone}`; в mutation ещё `insert(doc) → id`, `patch(id, partial)`, `delete(id)`. Других методов нет. `where` — префикс индекса сущности (§2.4), иначе TS2322.
+- Страница `ui/…/<Page>.tsx` — `export default function <Page>()`; данные — `useQuery("fn", args)` → `{data, error, isLoading, refetch}`, `useMutation("fn")` → `[run, {pending, error}]`, `useEntityList("entity", {filter, sort, limit})`, `useEntity("entity", id)`, `useEntityMutation("entity")` → `{create, update, remove}`, `useUser()`, `useParams()`, `useNavigate()`; хуки React (`useState`, `useEffect`, `useMemo`, `useCallback`, `useRef`) — тоже из `@wizard/sdk`, `react` не импортировать. Компоненты — из `@wizard/ui-kit`. Функции из `functions/**` в ui/** не импортировать — только по имени.
+
 ## 2. Серверная часть
 
 ### 2.1 Виды функций

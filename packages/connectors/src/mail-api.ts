@@ -80,12 +80,17 @@ export class MailApiError extends SmtpError {
   readonly httpStatus: number;
   /** Unisender API error code from the body, when present. */
   readonly apiCode: number | null;
-  constructor(httpStatus: number, apiCode: number | null) {
+  /** The provider's explanation (addresses masked, ≤160 chars) — the codes are not documented publicly. */
+  readonly apiMessage: string | null;
+  constructor(httpStatus: number, apiCode: number | null, apiMessage: string | null = null) {
     super(smtpEquivalent(httpStatus, apiCode), "api");
     this.name = "MailApiError";
     this.httpStatus = httpStatus;
     this.apiCode = apiCode;
-    this.message = `mail api failed${httpStatus ? ` (HTTP ${httpStatus}${apiCode !== null ? `, code ${apiCode}` : ""})` : ""}`;
+    this.apiMessage = apiMessage
+      ? apiMessage.replace(/[^\s@"'<>]+@[^\s@"'<>]+/g, "<почта>").slice(0, 160)
+      : null;
+    this.message = `mail api failed${httpStatus ? ` (HTTP ${httpStatus}${apiCode !== null ? `, code ${apiCode}` : ""})` : ""}${this.apiMessage ? `: ${this.apiMessage}` : ""}`;
   }
   /** 429, 5xx and network failures are transient; other 4xx are final. */
   get transient(): boolean {
@@ -161,8 +166,9 @@ async function postJson(
   const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!res.ok || json?.status !== "success") {
     const code = typeof json?.code === "number" ? json.code : null;
+    const message = typeof json?.message === "string" ? json.message : null;
     // A 200 without "success" is unexpected: treat as a server fault (transient).
-    throw new MailApiError(res.ok ? 502 : res.status, code);
+    throw new MailApiError(res.ok ? 502 : res.status, code, message);
   }
   return json;
 }

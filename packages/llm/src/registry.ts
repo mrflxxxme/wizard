@@ -189,15 +189,15 @@ const ORCH_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"]
 const CODE_T0 = ["deepseek-v4-pro", "kimi-k2.6", "qwen3-coder-next", "glm-5.1"];
 
 export const ROUTES: Record<CallType, RouteDef> = {
-  interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 4000, 120000),
-  card: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.2, 8000, 180000),
+  interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 4000, 180000),
+  card: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.2, 8000, 300000),
   plan: r(
     "builder",
     "T1",
     { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
     0.2,
     4000,
-    180000,
+    300000,
   ),
   build_ops: r(
     "builder",
@@ -205,17 +205,17 @@ export const ROUTES: Record<CallType, RouteDef> = {
     { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
     0.1,
     8000,
-    240000,
+    420000,
   ),
-  build_code: r("builder", "T1", { T1: ["glm-5.3"], T0: CODE_T0 }, 0.1, 16000, 240000),
-  fix: r("builder", "T1", { T1: ["glm-5.3"], T0: CODE_T0 }, 0.1, 12000, 240000),
+  build_code: r("builder", "T1", { T1: ["glm-5.3"], T0: CODE_T0 }, 0.1, 16000, 480000),
+  fix: r("builder", "T1", { T1: ["glm-5.3"], T0: CODE_T0 }, 0.1, 12000, 480000),
   qa_generate: r(
     "qa",
     "T1",
     { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"] },
     0.2,
     8000,
-    180000,
+    300000,
   ),
   qa_explain: r("qa", "T1", { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6"] }, 0.1, 2000, 90000),
   audit: r("auditor", "T0", { T0: ["gigachat-3.5", "gpt-oss-120b", "kimi-k2.6"] }, 0.1, 8000, 240000),

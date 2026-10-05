@@ -822,7 +822,8 @@ describe("diagnoseCluster", () => {
       c.startsWith("-n wizard-platform exec deploy/wizard-platform-api -- node -e"),
     );
     expect(mail).toMatch(/system\/info\.json/);
-    expect(mail).not.toMatch(/email\/send/);
+    // the only send goes to a reserved .invalid address: nothing is delivered
+    expect(mail.match(/recipients: \[\{ email: "([^"]+)" \}\]/)?.[1]).toBe("probe@wizard-diagnose.invalid");
   });
 
   it("errorLines: errors and warnings only, the safe error fields, addresses masked", () => {

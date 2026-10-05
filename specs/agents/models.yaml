@@ -115,13 +115,13 @@ routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, or
 unknown_class_default: T0
 
 routes:                # chain.T1 пробуется только если tier=T1 по алгоритму; chain.T0 — всегда запасной путь
-  interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 4000,  timeout_ms: 120000 }
-  card:                { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.2, max_tokens: 8000,  timeout_ms: 180000 }
-  plan:                { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.2, max_tokens: 4000,  timeout_ms: 180000 }
-  build_ops:           { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.1, max_tokens: 8000,  timeout_ms: 240000 }
-  build_code:          { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 16000, timeout_ms: 240000 }
-  fix:                 { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 12000, timeout_ms: 240000 }
-  qa_generate:         { role: qa,           default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 180000 }
+  interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 4000,  timeout_ms: 180000 }
+  card:                { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000 }
+  plan:                { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.2, max_tokens: 4000,  timeout_ms: 300000 }
+  build_ops:           { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, glm-5.1] },                 temperature: 0.1, max_tokens: 8000,  timeout_ms: 420000 }
+  build_code:          { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 16000, timeout_ms: 480000 }
+  fix:                 { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, kimi-k2.6, qwen3-coder-next, glm-5.1] }, temperature: 0.1, max_tokens: 12000, timeout_ms: 480000 }
+  qa_generate:         { role: qa,           default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000 }
   qa_explain:          { role: qa,           default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6] },                                  temperature: 0.1, max_tokens: 2000,  timeout_ms: 90000 }
   audit:               { role: auditor,      default_tier: T0, chain: { T0: [gigachat-3.5, gpt-oss-120b, kimi-k2.6] },                               temperature: 0.1, max_tokens: 8000,  timeout_ms: 240000, note: "G4 (после MVP): семейство модели MUST отличаться от семейства строителя в этом прогоне" }
   import_mapping:      { role: importer,     default_tier: T1, chain: { T1: [glm-5.3], T0: [kimi-k2.6, glm-5.1] },                                  temperature: 0.0, max_tokens: 4000,  timeout_ms: 120000 }

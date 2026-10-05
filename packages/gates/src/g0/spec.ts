@@ -73,9 +73,24 @@ function filteredOps(p: Permission): Set<string> {
   return new Set(p.rowFilterOps ?? p.ops);
 }
 
-const DEFAULT_POLICY_PAGE = "/privacy";
+export const DEFAULT_POLICY_PAGE = "/privacy";
 /** runtime.yaml#routing: paths served by runtime itself. */
 const RESERVED_PREFIXES = ["/api", "/_wizard", "/assets"];
+
+/**
+ * runtime.yaml#routing: why a page route is taken by the platform — "login" (/login), "policy"
+ * (compliance.policyPage, default /privacy), "system" (/api, /_wizard, /assets) — or null when it is free.
+ */
+export function reservedRoute(
+  route: string,
+  policyPage: string = DEFAULT_POLICY_PAGE,
+): "login" | "policy" | "system" | null {
+  const r = route.replace(/\/+$/, "") || "/";
+  if (r === "/login") return "login";
+  if (r === (policyPage.replace(/\/+$/, "") || "/")) return "policy";
+  if (RESERVED_PREFIXES.some((p) => r === p || r.startsWith(`${p}/`))) return "system";
+  return null;
+}
 
 /** G0-SPEC-05: login methods, reachability, reserved routes, safe selfSignup. */
 export function checkRolesAndRoutes(spec: AppSpec): Finding[] {
@@ -123,11 +138,9 @@ export function checkRolesAndRoutes(spec: AppSpec): Finding[] {
       });
     }
   }
-  const reserved = new Set(["/login", spec.compliance?.policyPage ?? DEFAULT_POLICY_PAGE]);
+  const policyPage = spec.compliance?.policyPage ?? DEFAULT_POLICY_PAGE;
   (spec.pages ?? []).forEach((pg, i) => {
-    const route = pg.route.replace(/\/+$/, "") || "/";
-    const prefix = RESERVED_PREFIXES.find((p) => route === p || route.startsWith(`${p}/`));
-    if (reserved.has(route) || prefix) {
+    if (reservedRoute(pg.route, policyPage)) {
       out.push({
         message_ru: `Адрес страницы «${pg.title}» (${pg.route}) занят системой`,
         path: `/pages/${i}/route`,

@@ -65,7 +65,8 @@ export interface GateToolResult {
 
 /** What the tools need from the running builder. */
 export interface ToolEnv {
-  applyOps(args: ApplyOpsArgs): Promise<{ ok: true; version: number; humanDiff: string[] }>;
+  /** `notes`: deterministic corrections of the batch (pages on routes the runtime serves are dropped). */
+  applyOps(args: ApplyOpsArgs): Promise<{ ok: true; version: number; humanDiff: string[]; notes?: string[] }>;
   writeFile(path: string, content: string): Promise<{ ok: true; bytes: number; warnings: string[] }>;
   readFile(path: string): Promise<{ content: string }>;
   listFiles(prefix?: "ui/" | "functions/"): Promise<{ files: { path: string; bytes: number }[] }>;

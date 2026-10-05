@@ -113,7 +113,8 @@ describe("point_edit scope (scripted model)", () => {
     });
     const out = await executeBuild(mem, {
       card: { acceptance: [], roles: [] },
-      cap: 3,
+      // POINT_EDIT_CAP_CREDITS of platform-api: one build_code upper bound alone is ~3 credits.
+      cap: 6,
       mode: "point_edit",
       target: {
         wzId: "00000000:0",

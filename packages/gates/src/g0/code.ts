@@ -36,7 +36,10 @@ function isComponent(sf: ts.SourceFile, node: ts.Node | null): boolean {
   return false;
 }
 
-/** G0-SPEC-03: page and function files exist; every page default-exports a component. */
+/** First-line marker of the builder's page placeholder (agents/builder.yaml#scaffold). */
+export const PAGE_STUB_MARKER = "wizard:stub";
+
+/** G0-SPEC-03: page and function files exist and are not placeholders; every page default-exports a component. */
 export function checkFilesExist(
   spec: AppSpec,
   files: ReadonlyMap<string, string>,
@@ -50,6 +53,16 @@ export function checkFilesExist(
         path: `/pages/${i}/file`,
         file: p.file,
         fixHint: "Создайте файл страницы с export default function",
+      });
+      return;
+    }
+    // The builder's placeholder (agents/builder.yaml#scaffold) is not a page yet: the build is not ready with it.
+    if ((files.get(p.file) ?? "").slice(0, 200).includes(PAGE_STUB_MARKER)) {
+      out.push({
+        message_ru: `Страница «${p.title}» осталась заготовкой: ${p.file}`,
+        path: `/pages/${i}/file`,
+        file: p.file,
+        fixHint: "Перепишите файл страницы целиком: замените заготовку настоящей страницей",
       });
       return;
     }

@@ -111,12 +111,18 @@ describe("forum: golden fixture replay", async () => {
   });
 
   test("all golden files are written, functions before ui", () => {
-    const { files } = mem.state();
+    const { files, spec } = mem.state();
     expect([...files.keys()].sort()).toEqual(g.files.map((f) => f.path).sort());
     for (const f of g.files) expect(files.get(f.path)).toBe(f.content);
     const written = mem.events.filter((e) => e.type === "file_written").map((e) => String(e.payload.path));
-    expect(written.findIndex((p) => p.startsWith("ui/"))).toBeGreaterThan(
-      written.findLastIndex((p) => p.startsWith("functions/")),
+    // builder.yaml#scaffold: page stubs from the spec come first, then the model's writes.
+    const firstFn = written.findIndex((p) => p.startsWith("functions/"));
+    expect(written.slice(0, firstFn).sort()).toEqual(
+      [...new Set((spec.pages ?? []).map((p) => p.file))].sort(),
+    );
+    const model = written.slice(firstFn);
+    expect(model.findIndex((p) => p.startsWith("ui/"))).toBeGreaterThan(
+      model.findLastIndex((p) => p.startsWith("functions/")),
     );
   });
 

@@ -16,8 +16,9 @@ inputs:
 tools:
   apply_ops:
     input: "{ops: Op[] 1..50 (specs/appspec/ops.yaml), expectedVersion: int, idempotencyKey?: string}"
-    output: "{ok: true, version, humanDiff: string[]} | {ok: false, errors: OpsError[]}"
+    output: "{ok: true, version, humanDiff: string[], notes?: string[]} | {ok: false, errors: OpsError[]}"
     rules:
+      - "MUST (M2P): add_page на /login или на странице политики (set_compliance.policyPage этого батча, иначе спеки, иначе /privacy) отбрасывается до применения, а страница, на адрес которой позже лёг policyPage, снимается вторым батчем remove_page (тот же ключ + «:reserved»): эти адреса рендерит runtime (runtime.yaml#routing, G0-SPEC-05). Модель получает notes с причиной"
       - "MUST: ошибки возвращаются модели как результат инструмента (не исключение), с path/code/allowed/hint"
       - "MUST NOT (mode=create|change): set_acceptance со списком, где удалён или ослаблен AC из карточки; такие батчи → ACCEPTANCE_LOCKED"
       - "MUST NOT: ops, ослабляющие права ролей ниже карточки ради прохождения гейта (G2 это ловит; в create — ошибка PERMISSION_WIDENING, если роль получает op, которого нет в card.roles[].can)"
@@ -76,11 +77,11 @@ loop:
       do: "Один вызов с инструментом submit_plan {steps: {id: P<n>, kind: ops|code, title, targets: string[], acRefs: AC[]}[] ≤ 20}. План показывается в журнале сборки"
     - id: ops
       callType: build_ops
-      do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance({consentTemplateId, policyPage}). operator*, retentionWaiver и свободный consentText агенту недоступны (OWNER_ONLY_FIELD, appspec/ops.yaml)"
+      do: "apply_ops батчами в порядке: roles → entities (с индексами и retention) → permissions → workflows → integrations → functions/pages (объявления) → set_acceptance (из карточки, 1:1) → set_compliance({consentTemplateId, policyPage}). operator*, retentionWaiver и свободный consentText агенту недоступны (OWNER_ONLY_FIELD, appspec/ops.yaml). Страниц входа (/login) и политики ПДн (адрес = policyPage) не объявлять: их рендерит платформа"
       done_when: "Все ops-шаги плана выполнены и G0-SPEC-01/02 проходят"
     - id: code
       callType: build_code
-      do: "write_file: сначала functions/**, затем ui/**. После каждых ≤ 6 записанных файлов SHOULD run_gate(G0)"
+      do: "write_file: сначала functions/** (форма — шпаргалка runtime/sdk.md §1.2), затем каждая страница ui/** (заготовки из спеки переписываются целиком, #scaffold). run_gate(G0) — когда записаны все функции и страницы, без исправлений раньше"
     - id: verify
       do: "Модель заканчивает ход без вызовов инструментов → харнесс сам запускает G0, затем (если passed) QA генерирует проверки (qa.yaml) и G1"
     - id: fix
@@ -96,6 +97,13 @@ loop:
     (step = plan, ops, code, verify, fix), ops_applied, file_written, gate_started, gate_result, budget_update, budget_exceeded,
     needs_input, input_received, run_finished, run_failed, plan_ready {steps: [{id, kind, title}] ≤ 20} (после submit_plan),
     model_switched {fromModel, toModel, reason: fallback_circuit_open|fallback_error} — пишется в run_events, но в SSE пользователя не отдаётся (models.yaml#fallback_rules)
+
+scaffold:
+  why: "Живой прогон M2P: модель тратила шаги и кредиты на исправление функций и не доходила до страниц → G0-SPEC-03 на каждой странице"
+  pages: "MUST: перед фазой code (create|change) харнесс без LLM пишет заготовку для каждой pages[].file, которой ещё нет: первая строка — комментарий с маркером wizard:stub, default export компонента на AppShell с page.title; проходит G0. Событие file_written action=create, как у обычной записи"
+  rounds: "Фаза code перечисляет заготовки; после неё, пока в объявленных страницах остался маркер wizard:stub, — до 2 дополнительных ходов build_code с сообщением «Остались незаполненные заготовки страниц: …». Потом — verify как обычно"
+  sdk_cheatsheet: "Шпаргалка runtime/sdk.md §1.2 (точный импорт, форма query/mutation/action, v.* с v.optional, методы ctx.db) — целиком в статичном промпте (gen-builder-assets.mjs → builder.json prompt.sdk); тест компилирует её примеры функций через G0 (FN-01, TS-01). Отчёт fix-раунда с упавшими G0-TS-01/G0-FN-01 дописывает короткое напоминание об API SDK"
+  functions: "Заготовки функций не пишутся: оставшаяся после remove_function заготовка с default-экспортом валит G0-FN-01, а BuildStore не удаляет файлы"
 
 budgets:
   credits_cap: "card.cap.credits. Перед каждым вызовом: spent + upper_bound(call) > cap → не вызывать, событие budget_exceeded. upper_bound = оценка входных токенов × input + max_tokens × output"
