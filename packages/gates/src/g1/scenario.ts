@@ -200,6 +200,31 @@ function got(res: HttpResult): string {
   return `HTTP ${res.status}${code ? ` ${code}` : ""}${where}`;
 }
 
+/** Messages of FUNCTIONS_DISABLED from apps/runtime itself (exec/host.ts, the sandbox orchestrator and executor). */
+const RUNTIME_REASONS: ReadonlySet<string> = new Set([
+  "Функции системы не загружены",
+  "Функции системы временно недоступны",
+  "Песочница функций перезапускается",
+  "Песочница функций недоступна",
+  "Песочница функций не запустилась",
+  "Песочница функций не запустилась вовремя",
+  "Песочница заполнена: функции системы временно недоступны",
+  "Код системы не помещается в песочницу",
+]);
+
+/**
+ * What a 503 FUNCTIONS_DISABLED means for this runtime. Functions are switched off only in a runtime with neither a
+ * sandbox (RuntimeHandle.renderer, M2-19) nor unsafe local exec; otherwise they were unavailable for this call, and the
+ * runtime's own message says why (a pod not started, a full sandbox quota…).
+ */
+function functionsDisabled(env: G1Env, detail?: string): string {
+  // Only the runtime's own reasons are quoted: system code can throw FUNCTIONS_DISABLED with any message.
+  const why = detail && RUNTIME_REASONS.has(detail.trim()) ? `: ${detail.trim()}` : "";
+  if (env.runtime.renderer) return `Песочница функций была недоступна${why}`;
+  if (env.runtime.env?.unsafeLocalExec === true) return `Функции системы не загрузились в runtime${why}`;
+  return "Функции системы отключены в runtime (нужен WIZARD_UNSAFE_LOCAL_EXEC=1)";
+}
+
 function sameValue(want: unknown, have: unknown): boolean {
   if (want === null || have === null || want === undefined || have === undefined) return want === have;
   if (typeof want === "number" && typeof have === "string" && have.trim() !== "")
@@ -357,7 +382,7 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
         if (res.status === 503 && errorCode(res) === "FUNCTIONS_DISABLED")
           throw new StepError(
             "error",
-            "Функции системы отключены в runtime (нужен WIZARD_UNSAFE_LOCAL_EXEC=1)",
+            functionsDisabled(env, (res.body as { error?: { message?: string } } | null)?.error?.message),
           );
         return { res, value: (res.body as { result?: unknown } | null)?.result };
       }
@@ -376,8 +401,7 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
     const r = await env.runJobs(new Date(baseMs + offsetMin * 60_000), new Date(baseMs));
     if (!r) throw new StepError("error", "Runtime не исполняет воркфлоу и задания по времени");
     const f = r.failed[0];
-    if (f?.code === "FUNCTIONS_DISABLED")
-      throw new StepError("error", "Функции системы отключены в runtime (нужен WIZARD_UNSAFE_LOCAL_EXEC=1)");
+    if (f?.code === "FUNCTIONS_DISABLED") throw new StepError("error", functionsDisabled(env));
     if (f) return { res: { status: 500, body: { error: { code: f.code }, failed: r.failed } }, value: r };
     return { res: { status: 200, body: r }, value: r };
   }

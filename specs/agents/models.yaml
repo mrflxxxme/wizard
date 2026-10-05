@@ -103,11 +103,11 @@ pii_forbidden_for_T1:
 routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?}}) (architecture.yaml#interfaces.llm_call) — детерминированно, policy-as-code
   - "1. dlp = pii.detect(все текстовые части messages, включая результаты инструментов)"
   - "2. Если orgPolicy.ruOnly → T0 (reason=policy_ru_only)"
-  - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Регион неизвестен или политика не загружена → считается true (fail-safe T0, security/data-boundary.yaml#region_restriction)"
+  - "2a. Если orgPolicy.t1Restricted (регион организации запрещён условиями провайдера T1; platform/db.yaml#orgs.t1_restricted) → T0 (reason=policy_region_restricted). Политика не загружена (поле t1Restricted не передано) → считается true (fail-safe T0). Неизвестный регион организации (region_code NULL) T1 не ограничивает: платформа передаёт t1Restricted=false (product.yaml#decisions.D26_models_default, security/data-boundary.yaml#region_restriction.unknown_region)"
   - "3. Если callType ∈ pii_forbidden_for_T1.always или сработало conditional → T0 (reason=callType_forbidden_T1)"
   - "3a. Если containsPiiHint=true для любого callType → T0 (reason=pii_hint): вызывающий знает, что в payload реальные записи"
   - "4. Если dlp содержит strong-виды security/data-boundary.yaml#detectors или special_context/biometric_context → T0 (reason=pii_high_risk)"
-  - "5. Если callType=interview и dlp.count>0 → T0 (reason=pii_detected_interview): сырой бриф с ПДн не уходит наружу даже в заглушках"
+  - "5. (Снят 05.10.2026, product.yaml#decisions.D50_brief_pii_routing.) Было: callType=interview и dlp.count>0 → T0 (pii_detected_interview). Теперь интервью проходит шаги 4, 6 и 7 как остальные callType: basic-ПДн заменяются заглушками, strong-виды → T0 по шагу 4 (реализация — M2-28)"
   - "6. Иначе tier = routes[callType].default_tier с учётом week0_decision.switch (reason=default_T1|default_T0)"
   - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1]… — формат security/data-boundary.yaml#scrub.placeholders, без таблицы соответствия); в журнал — только счётчики категорий"
   - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled). Нет доступной → фолбэк по fallback_rules"
@@ -175,7 +175,7 @@ credits:
   credits_per_call: "credits_milli = ceil(cost_rub × 1000 / rub_per_credit) на строку llm_calls (specs/platform/billing.yaml#credit.from_cost)"
   settlement: "charge = min(cap, Σ credits_milli по строкам прогона с billable=true); округление до 0.1 кредита — только при показе (specs/platform/billing.yaml)"
   fixture_mode: "Кредиты считаются по записанному usage фикстуры — бюджеты тестируются офлайн"
-  runtime_ai: "ИИ-действия списывают кредиты организации по факту, с месячным лимитом aiAction.monthlyLimit (вызовов); превышение → ошибка AI_LIMIT_REACHED без вызова модели. Вход от роли access=public — дополнительно ≤ 10 вызовов/ч на IP (M3). Вывод generate — текст, не HTML. Мультимодальные вызовы (скриншоты) — отдельный callType с T0 only (M3)"
+  runtime_ai: "ИИ-действия списывают кредиты организации по факту, с месячным лимитом aiAction.monthlyLimit (вызовов); превышение → ошибка AI_LIMIT_REACHED без вызова модели. Вход от роли access=public — дополнительно ≤ 10 вызовов/ч на IP (M3). Вывод generate — текст, не HTML. Изображения из записей систем в ИИ-действиях идут тем же callType runtime_ai_* — только T0 по pii_forbidden_for_T1 (живые записи с ПДн, 152-ФЗ), а не потому, что вызов мультимодальный. Мультимодальность сама по себе T1 не запрещает (product.yaml#decisions.D45_vision_t1): дизайн-агент и критик берут лучшую модель со зрением, сначала T1 (callType design_* — задача M2-28)"
   test: "Сумма ledger прогона = Σ credits_milli по строкам llm_calls прогона с billable=true (±1 милликредит)"
 
 usage_record:          # одна запись на HTTP-попытку = строка platform.llm_calls (db.yaml, источник); camelCase ↔ snake_case колонки 1:1; payload (промпты/ответы) сюда НЕ пишется

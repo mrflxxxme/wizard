@@ -69,6 +69,8 @@ config:
   # Non-secret env shared by the Node services (platform/deploy.yaml#local.env_vars)
   milestone: M2
   llmMode: live
+  # Golden run replayed when llmMode is fixture (staging, the local rehearsal): tools/fixtures/<suite>/<name>.
+  fixture: demo/forum
   connectors: live
   filesStorage: s3
   # M2-15 (platform/deploy.yaml#pilot.env): registration open|invite, payments "on"|"off" (quoted: YAML 1.1 reads
@@ -83,6 +85,14 @@ config:
   s3Endpoint: ""
   s3Region: ""
   egressAllow: ""
+
+# Extra trusted CA for the Node services (platform-api, worker, runtime): REHEARSAL / SELF-SIGNED SMTP ONLY, off by
+# default (production trusts the system store only). Set configMap to a ConfigMap of the platform namespace (created
+# outside the chart) holding one PEM bundle under `key`; it is mounted read-only at /etc/wizard/extra-ca/ and
+# NODE_EXTRA_CA_CERTS points at <that dir>/<key>.
+extraCa:
+  configMap: ""
+  key: ca.crt
 
 # Prometheus /metrics of platform-api, worker and runtime on a dedicated port (M2-09): pod annotations for the
 # VictoriaMetrics scrape of annotated pods (addons/victoria-metrics-values.yaml); NetworkPolicy opens it only to the
@@ -222,6 +232,9 @@ hsts:
 
 ingress:
   className: traefik
+  # Container port of Traefik's websecure entry point (addons traefik chart default): the platform's own https calls to
+  # system hosts are DNATed there in-cluster (networkpolicies.yaml, post-publish smoke).
+  websecurePort: 8443
 
 sandbox:
   # gVisor (runsc) on nodes we control: the RuntimeClass is created when those nodes have the runsc containerd

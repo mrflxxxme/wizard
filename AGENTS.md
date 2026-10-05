@@ -4,8 +4,8 @@
 Wizard — российская альтернатива VibeCraft: пользователь описывает систему в чате, агенты собирают её, проверяют гейтами и публикуют. Источник истины для реализации — `specs/`. Контекст решений — `docs/concept.md`.
 
 ## Порядок работы над задачей
-1. Возьми задачу из `specs/backlog.yaml` со `status: todo`, у которой все `deps` в `status: done` и `owner` не `founder`. Захвати её: `status: in_progress`, `claimed_by: <id сессии>` — отдельным маленьким PR в main (меняешь только свою задачу). Если PR захвата не смержился (задачу уже взяли) — бери другую.
-2. Прочитай `specs/product.yaml#decisions`, `#non_goals`, `specs/architecture.yaml#stack`, `#monorepo`, `#interfaces` и файлы из поля `specs` задачи; якорь `файл#a.b` — читай только это поддерево, пометка `(slice --milestone M0)` — срез через `node tools/specs/slice.mjs` (после M0-19). Остальное не читай без необходимости, чтобы экономить токены.
+1. Возьми задачу из `specs/backlog.yaml` со `status: todo`, у которой все `deps` в `status: done` и `owner` не `founder`. Из доступных сначала бери задачи с `critical: true`, затем — с более ранней волной (`parallel_group`). Захвати её: `status: in_progress`, `claimed_by: <id сессии>` — отдельным маленьким PR в main (меняешь только свою задачу). Если PR захвата не смержился (задачу уже взяли) — бери другую.
+2. Прочитай `specs/product.yaml#decisions`, `#non_goals`, `specs/architecture.yaml#stack`, `#monorepo`, `#interfaces` и файлы из поля `specs` задачи; якорь `файл#a.b` — читай только это поддерево, пометка `(slice --milestone M0)` — срез через `node tools/specs/slice.mjs` (после M0-19). Файлы из `specs_pending` создают задачи из `deps` — прочитай их, когда они появились. Если у задачи есть `description` и `owns`, прочитай их: править можно только пути из `owns` (плюс файлы регистрации и правила мержа из `specs/milestones.yaml` — `plan.hotspots` и `plan.merge_rules` вехи задачи). Остальное не читай без необходимости, чтобы экономить токены.
 3. Реализуй в пределах своего пакета или приложения. Чужие пакеты меняй только через их публичные интерфейсы (`architecture.yaml#interfaces`). Публичный API пакета — его `src/index.ts` с однострочными JSDoc: следующие задачи читают только его, не исходники.
 4. Критерии `acceptance` превращай в автотесты. Задача закрыта, когда они зелёные в CI; в том же PR поставь `status: done`.
 5. Перед PR: `pnpm lint && pnpm typecheck && pnpm test && node tools/specs/validate.mjs`.
@@ -13,7 +13,7 @@ Wizard — российская альтернатива VibeCraft: пользо
 7. Конфликт в `pnpm-lock.yaml`: взять версию main, выполнить `pnpm install`, закоммитить. `specs/CHANGELOG.md` — только дописывать в конец.
 
 ## Жёсткие правила (MUST / MUST NOT)
-- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR. Шрифты — также OFL-1.1; devDependencies — также MPL-2.0. Инфраструктура вне бандла (не модифицируется и не распространяется, например Grafana, Loki, OpenBao, OpenTofu) — также AGPL/MPL. Данные (словари, списки брендов, GeoIP) — CC0/CC-BY/MIT с атрибуцией. Всё это фиксируется в `THIRD_PARTY_NOTICES.md`.
+- MUST: TypeScript strict, только ESM, Node 22. Зависимости — только из стека `architecture.yaml`. Новую зависимость можно добавить, если она MIT/Apache-2.0/BSD/ISC и объяснена в описании PR. Шрифты — любая лицензия, разрешающая бесплатное коммерческое использование, включая встраивание на сайты и самостоятельный хостинг (OFL-1.1, Apache-2.0, свободные лицензии словолитен, например ParaType Free Font License); лицензия и источник записываются по каждому шрифту; коммерческие шрифты с сайтов «бесплатного скачивания» не используются (`product.yaml#decisions.D64_fonts`, решение основателя 05.10.2026); devDependencies — также MPL-2.0. Инфраструктура вне бандла (не модифицируется и не распространяется, например Grafana, Loki, OpenBao, OpenTofu) — также AGPL/MPL. Данные (словари, списки брендов, GeoIP) — CC0/CC-BY/MIT с атрибуцией. Всё это фиксируется в `THIRD_PARTY_NOTICES.md`.
 - MUST NOT: использовать API и сервисы Anthropic, OpenAI, Google или xAI в продукте. Открытые веса этих вендоров с инференсом в РФ (например, `openai/gpt-oss-120b` в Cloud.ru FM) допустимы (`product.yaml#decisions.D18_western_models`). Ключи провайдеров в коде не хранятся. `.env` не коммитится.
 - MUST NOT: отправлять к T1 (Z.ai) вызовы из `pii_forbidden_for_T1` и любые данные с ПДн. Всё, что идёт к T1, проходит через `packages/pii` scrub.
 - MUST NOT: копировать код из `get-convex/convex-backend` (лицензия FSL). Повторять стиль API можно.
@@ -24,7 +24,7 @@ Wizard — российская альтернатива VibeCraft: пользо
 - MUST NOT: выполнять сгенерированный код вне песочницы. В M0–M1 допустим только `WIZARD_UNSAFE_LOCAL_EXEC=1` локально.
 
 ## Эскалация
-Основателя не спрашивать ни о чём, кроме случаев из `specs/escalation.yaml`. Решения, принятые самостоятельно, коротко записывай в `specs/CHANGELOG.md`. Решения основателя F1–F8 уже записаны в `product.yaml#decisions` (D17–D22, D2_w0_fallback, D10_interpretations) — не спрашивать повторно.
+Основателя не спрашивать ни о чём, кроме случаев из `specs/escalation.yaml`. Решения, принятые самостоятельно, коротко записывай в `specs/CHANGELOG.md`. Решения основателя F1–F8 уже записаны в `product.yaml#decisions` (D17–D22, D2_w0_fallback, D10_interpretations), решения грилла-4 от 04–05.10.2026 — D26–D64 и `product.yaml#gray_zone` — не спрашивать повторно.
 
 ## Экономия токенов
 - Читай только нужные спеки и файлы, большие файлы — точечно.

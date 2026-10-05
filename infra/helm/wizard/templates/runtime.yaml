@@ -10,6 +10,9 @@ metadata:
     {{- include "wizard.selector" "wizard-runtime" | nindent 4 }}
 spec:
   replicas: {{ .Values.runtime.replicas }}
+  {{- with .Values.runtime.strategy }}
+  strategy: {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels: {{- include "wizard.selector" "wizard-runtime" | nindent 6 }}
   template:

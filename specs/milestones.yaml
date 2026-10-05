@@ -55,6 +55,127 @@ milestones:
       - "Security review изоляции кода пройден (escape-тесты workerd+gVisor)"
       - "Юридический пакет от юриста интегрирован (оферта, ДПО, политика, согласия)"
 
+  - id: M2P
+    name: "P — полнофункциональный пилот"
+    target: "до первых клиентов пилота (product.yaml#decisions.D41_all_before_clients); первые приглашения — после M2-90"
+    goal: >
+      Живая, не фикстурная платформа Born to Build: лучшие модели по умолчанию, рубли вместо кредитов, человек на связи
+      («Написать команде», «Передать команде», гарантия запуска), четыре класса систем без ручной доводки (сайт с заявками,
+      запись с напоминаниями, подписка и платный доступ, CRM), оплата в магазин клиента через пять сервисов РФ, сообщения почтой,
+      SMS и в Telegram, интеграции (amoCRM, Битрикс24, Tilda, МойСклад, СДЭК, вебхуки, исходящий HTTP по allowlist), свой домен,
+      Метрика, Яндекс Карты, SmartCaptcha, SEO, изображения и видео, темы и дизайн-агент, правила humanizer для всех текстов наружу,
+      раздел «Запросы на развитие», ограничения только по закону и ИБ (D44), без выдуманных фактов (D49), серые зоны по решениям
+      основателя 05.10.2026 (D50–D64). Решения — product.yaml#decisions D26–D64 и product.yaml#gray_zone
+    note: >
+      Идёт после пилотного режима M2-15…M2-19 и до первых клиентов пилота; бета (M2-09, M2-13) — после. Id вехи M2P, а не «P»:
+      tools/specs/validate.mjs требует id задач вида M<n>-<nn>, tools/specs/slice.mjs — веху вида M<n>… (M2P читается как M2).
+      Задачи вехи — M2-17, M2-20…M2-99 (81 задача). Раунд правок 05.10.2026 (аудиты docs/reviews/spec-audit/2026-10-04-M2P-*.md
+      и grill-4 № 27–44): новые M2-17, M2-95…M2-99; id M2-31 и M2-72 переиспользованы — прежние «правило региона» и «Битрикс24»
+      объединены с M2-32 и M2-71; M2-91 и M2-92 закрыты (таблица ревизии и решения основателя готовы). Спецификация впереди кода:
+      волна p-w0 пишет контракты, остальные волны их реализуют; описание задач в backlog.yaml — договорённость об именах между
+      параллельными задачами p-w0. Волна = глубина зависимостей: агент берёт задачу по готовности deps, сначала critical: true
+      (AGENTS.md п. 1). Дизайн-часть опирается на docs/research/design-agent-sources.md и design-agent-catalog.md; интеграции —
+      docs/research/integrations-2026-10.md
+    in_scope:
+      - "Модели и регион (D26, D50, D54), бренд и домены (D27), humanizer и кабинет без жаргона (D28, D48), рублёвая модель и начальные лимиты (D31, D58)"
+      - "Человеческий слой: «Написать команде», «Передать команде», «Под ключ», гарантия, рабочие часы (D30, D32, D60)"
+      - "Четыре класса систем (D33) и инструмент «Запросы на развитие» (D34); спецкатегории ПДн на пилоте не обрабатываются (D51)"
+      - "Платежи и подписки в магазин клиента: ЮKassa, Т-Касса, CloudPayments, Robokassa, Prodamus, чеки 54-ФЗ, платный доступ в правах AppSpec (D35)"
+      - "Сообщения: почта, SMS-агрегатор, Telegram платформы и свои отправители клиента; посетители без аккаунта — только транзакционные, с согласием и лимитами; имя клиента в Telegram по флажку владельца (D36, D53)"
+      - "Интеграции: исходящий HTTP по allowlist через egress-прокси с журналом, входящие вебхуки с проверкой по способу сервиса, amoCRM и Битрикс24 по инструкции, Tilda, МойСклад, СДЭК (D37, D63)"
+      - "Адреса и сайт: <имя>.sandpile.ru, свой домен с подтверждением владения, Яндекс Метрика, Яндекс Карты, SmartCaptcha, SEO, изображения на страницах, видео Rutube/VK Видео/Kinescope (D38, D57)"
+      - "Дизайн: расширенный ui-kit, 6–8 тем, дизайн-агент с тремя направлениями и критиком, проверки на телефоне и десктопе (D39); изображения: загрузка и стоки Pexels и Pixabay с хранением у нас (D61), маскирование ПДн на изображениях перед моделями (D62); шрифты (D64)"
+      - "Документы с сильными идентификаторами — с шифрованием полей по заявке (D52); правки prod, удаляющие данные, — с подтверждением, снимком и откатом (D56)"
+      - "Порог готовности: live-набор из 20 брифов, независимый аудит, живые смоуки провайдеров и коннекторов, сценарии основателя, e2e без золотого брифа (D41, D42, D43, D59)"
+    out_of_scope:
+      - "Нативные приложения и публикация в App Store / Google Play (только устанавливаемое PWA)"
+      - "Генерация изображений ИИ; Unsplash (D61)"
+      - "Публичный лендинг и открытая регистрация"
+      - "Включение оплаты рублёвой модели (оферта, магазин платформы, E-LEGAL) — после пилота"
+      - "Кнопка экспорта кода (исходники «под ключ» — вручную, D55); чат-виджеты, боты и ИИ-ассистент в системах клиентов (D55)"
+      - "Маркетинговые рассылки, второй язык систем, полный поток спецкатегорий ПДн — после пилота (D51, D55); публичные приложения amoCRM и Битрикс24 (D63)"
+      - "Ослабления таблицы ревизии, требующие новых функций (свой CSS систем, docx и xlsx с антивирусом, несколько ролей, встраивание /embed и др.) — перечень в M2-93, решение о приоритете после пилота"
+    exit_criteria:
+      - "Live-набор P (20 брифов, по 5 на класс, quality/eval.yaml#thresholds.by_milestone.M2P): ≥ 16 из 20 доходят до готовности к публикации (G0–G2 без блокеров) без помощи человека — ревью основателя в замер не входит (D59); медиана времени сборки ≤ 40 мин; расход на модели ≤ 300 ₽ на систему; бюджет замера — до 6 000 ₽ в месячном лимите платформы (M2-88, повтор провалившихся — M2-89)"
+      - "Брифы, выходящие за возможности, заканчиваются честным ответом, альтернативой и записью в «Запросы на развитие»; 0 ложных блокировок G2 на наборе P (M2-88)"
+      - "Результаты прогона проверены моделью другого семейства и не меньше чем двумя независимыми агентами-ревьюерами; отчёт в tools/eval/results/ и docs/reviews/p-eval/ (M2-88)"
+      - "Живые смоуки на тестовых аккаунтах (D41, fidelity P-06): каждый из пяти платёжных сервисов, SMS-агрегатор, amoCRM, Битрикс24, Tilda, МойСклад, СДЭК; свой домен клиента подключён на реальной DNS-записи — docs/reviews/p-eval/connectors-smoke.md (M2-88)"
+      - "Основатель прошёл по одному сценарию каждого класса на локальном стенде в live-режиме (M2-90)"
+      - "packages/e2e/specs/rehearsal/pilot.spec.ts зелёный без золотого брифа «форум» и без порядка вопросов фикстуры (M2-85)"
+      - "Линтер humanizer в строгом режиме: 0 нарушений в текстах кабинета, письмах и шаблонах систем (M2-86, M2-87)"
+      - "В кабинете клиента нет кредитов и технического жаргона вне «Подробнее для специалиста» (M2-86)"
+      - "Серые зоны записаны в product.yaml#gray_zone и применены в гейтах, антифроде и согласиях (M2-92, M2-93)"
+      - "Тексты агентов и систем: 0 выдуманных отзывов, превосходных степеней без основания и цифр без источника в собранных системах набора P (G2-COPY, M2-88)"
+    release_cut:               # D65–D73, docs/reviews/grill-5.md: срез выпуска MVP до первых клиентов; остальное M2P — волнами после
+      goal: >
+        Рабочая система на сервере пилота с ценностью для клиента как можно скорее: живые модели, универсальная сборка (D66) с рецептами
+        трёх классов (сайт с заявками, запись с напоминаниями, CRM), уведомления владельцу и посетителю, блоки лендинга, картинки и
+        4 темы, исходящий HTTP и вебхуки, удаляющие правки с предупреждением, «Написать команде», «Запросы на развитие», «на пилоте
+        бесплатно» с лимитом 5 сборок и 20 правок
+      tasks: "задачи backlog.yaml с release: mvp; объём каждой — её поле mvp_scope (остальное из description — после выпуска)"
+      deps_rule: "Для задач среза зависимости от контрактов p-w0 не блокируют: контракт пишется в той же задаче ровно в объёме mvp_scope"
+      after_release: "Волна 1 — подписка и платный доступ (D35: ЮKassa с автоплатежом, M2-49, M2-64, M2-65, M2-83); дальше по спросу из «Запросов на развитие»: дизайн-агент, свои домены, SMS, стоки, готовые коннекторы, Метрика и видео, рублёвый каталог"
+      exit_criteria:
+        - "Замер D67 на сервере пилота: 10 брифов, ≥ 7 из 10 доходят до готовности к публикации по G0–G2 без блокеров, расход ≤ 2 000 ₽ (M2-88 в объёме mvp_scope)"
+        - "Бриф сверх возможностей заканчивается честным ответом, заменой и записью в «Запросы на развитие» (M2-77, M2-59)"
+        - "Новая заявка анонимного посетителя приходит владельцу письмом с данными заявки и в Telegram без ПДн; посетитель с согласием получает подтверждение (M2-50)"
+        - "В кабинете клиента нет кредитов и «Докупите»; кнопка «Написать команде» доставляет сообщение основателю в Telegram (M2-56, M2-35, M2-57)"
+        - "Основатель прошёл по одному сценарию каждого класса на сервере пилота (M2-90)"
+    plan:
+      critical_path: "M2-21 (3) → M2-49 (2,5) → M2-64 (2,5) → M2-83 (2) → M2-88 (1,5) → M2-89 (2) → M2-90 (1) ≈ 14,5 агенто-дня (длина не изменилась после раунда правок 05.10.2026). Без запаса идут также M2-50 (→ M2-64); с запасом ≤ 1 дня (critical: true в backlog) — контракты M2-23, M2-24, ветка дизайна M2-42 → M2-62 → M2-94 (запас 0,5), M2-47 → M2-61 → M2-81, M2-52 → M2-71 → M2-79 → M2-86, M2-40, M2-65, M2-70, M2-78. Объём ≈ 148,5 агенто-дня (79 открытых задач): при 6–8 агентах закладывать 18–22 дня, при 12 и больше — ≈ 15 (executability MP-20)"
+      waves:
+        - { group: p-w0, window: "контракты и инструменты (без зависимостей внутри вехи)", tasks: [M2-17, M2-20, M2-21, M2-22, M2-23, M2-24, M2-25, M2-26, M2-27, M2-28, M2-29, M2-30, M2-91, M2-98, M2-99] }
+        - { group: p-w1, window: "независимые потоки возможностей", tasks: [M2-32, M2-33, M2-34, M2-35, M2-36, M2-37, M2-38, M2-39, M2-40, M2-41, M2-42, M2-43, M2-45, M2-46, M2-47, M2-48, M2-49, M2-50, M2-51, M2-52, M2-54, M2-55, M2-72, M2-92, M2-95, M2-96, M2-97] }
+        - { group: p-w2, window: "зависимые потоки: интерфейсы, провайдеры, коннекторы, дизайн-агент, шифрование полей, серые зоны", tasks: [M2-31, M2-44, M2-53, M2-56, M2-57, M2-58, M2-59, M2-60, M2-61, M2-62, M2-63, M2-64, M2-65, M2-66, M2-67, M2-68, M2-69, M2-70, M2-71, M2-74, M2-76, M2-84, M2-93] }
+        - { group: p-w3, window: "интеграция: классы систем, дизайн-этап и критик, подключения, старт, Tilda и СДЭК, тексты писем", tasks: [M2-73, M2-75, M2-77, M2-78, M2-79, M2-80, M2-81, M2-82, M2-83, M2-87, M2-94] }
+        - { group: p-w4, window: "финал: тексты кабинета и бренд, e2e, live-eval со смоуками", tasks: [M2-85, M2-86, M2-88] }
+        - { group: p-w5, window: "доводка и повтор провалившихся брифов", tasks: [M2-89] }
+        - { group: p-w6, window: "сценарии основателя и допуск первых клиентов", tasks: [M2-90] }
+      hotspots:   # общие файлы: один владелец или порядок мержа; поле owns задачи — что ей можно править
+        - { path: "specs/appspec/appspec.schema.json, specs/appspec/ops.yaml, packages/appspec/src/{schema,semantic,reserved}.ts", owner: M2-21, then: "после M2-21 — заморожены; исключения: M2-64 (только packages/appspec/src/sql.ts, RLS платного доступа) и M2-72 (только packages/appspec/src/migrate.ts, destructive с подтверждением). Колонки системных таблиц — модули packages/appspec/src/system-tables/<таблица>.ts, их дописывает задача-владелец таблицы без «delta». Любая другая правка — отдельный PR «<id>: appspec delta» только с этими файлами, мерж по возрастанию id" }
+        - { path: "specs/platform/api.yaml, specs/platform/db.yaml", owner: "M2-22 и M2-98 параллельно", then: "каждая пишет только в свой блок между маркерами «M2P · M2-22» и «M2P · M2-98»; после p-w0 — свои пути и таблицы дописывают M2-95 и задачи-реализации, мерж по возрастанию id" }
+        - { path: "specs/platform/{workflows,deploy}.yaml, specs/architecture.yaml", owner: M2-98 }
+        - { path: "apps/platform-api/src/db/types.ts", owner: "M2-22 и M2-98 (дописывание типов)", then: "merge_rules: при конфликте сохранить обе стороны" }
+        - { path: "apps/platform-api/src/db/index.ts, apps/platform-api/test/migrations.test.ts, apps/platform-api/src/app.ts, apps/runtime/src/app.ts", owner: M2-99, then: "после M2-99 миграции и маршруты подключаются самообнаружением: задачи добавляют только свои файлы migrations/00NN_*.ts и routes/*.ts" }
+        - { path: "specs/runtime/{runtime.yaml,sdk.md}, specs/security/isolation.yaml", owner: M2-23, then: "в sdk.md только новые разделы с новыми номерами в конце" }
+        - { path: "specs/connectors/{connector-interface.md,payments.yaml,sms.yaml,webhook.yaml,email.yaml}, packages/connectors/src/registry.ts и заглушки packages/connectors/src/<id>/index.ts", owner: M2-24, then: "спека и каталог каждого провайдера и CRM — своя задача (specs/connectors/<id>.yaml, packages/connectors/src/<id>/**); email.yaml после M2-24 — M2-70" }
+        - { path: "specs/ui/{ui-kit.yaml,themes.yaml}, packages/ui-kit/src/i18n/**, packages/ui-kit/demo (сборка разделов)", owner: M2-25, then: "задачи компонентов правят только записи своих компонентов в ui-kit.yaml и свои i18n/ru/<раздел>.ts и demo/sections/<раздел>.tsx; финально packages/ui-kit/src/i18n — M2-87" }
+        - { path: "specs/ui/platform-screens.yaml", owner: M2-26 }
+        - { path: "specs/agents/{orchestrator,builder,qa}.yaml", owner: M2-27 }
+        - { path: "specs/agents/{design,models}.yaml, specs/security/data-boundary.yaml#call_types, packages/llm/src/{registry,policy,router,types}.ts", owner: M2-28 }
+        - { path: "specs/quality/**, packages/gates/src/catalog.ts, packages/gates/src/{g0,g1,g2}/run.ts", owner: M2-29, then: "run.ts — реестры по glob: проверки — новые файлы g0/checks, g1/checks, g2/checks (M2-33, M2-52, M2-76); G0-MIG-01 (g0/migrations.ts) — M2-72; правила G2-AF, G2-PII-03, G2-TG-01 и specs/security/{abuse,compliance}.yaml — M2-93" }
+        - { path: "packages/humanizer/**", owner: "M2-29 (правила-данные и модуль промпта promptRules) → M2-33 (линтер)", then: "агенты подключают правила только импортом @wizard/humanizer, не копией" }
+        - { path: "apps/platform-web/src/{app/**,i18n/**}, screens/workspace/Workspace.tsx, screens/settings/Settings.tsx, screens/admin/AdminConsole.tsx", owner: M2-30, then: "фичи подключаются через apps/platform-web/src/features/<имя>/register.ts (import.meta.glob) и свой i18n/ru/<имя>.ts; исключения: M2-56 (CardView.tsx, BuildLog.tsx, screens/billing/**, блок кредитов Welcome.tsx), M2-72 (DiffCard.tsx), M2-78 (StylePanel.tsx), M2-80 (Start.tsx, screens/onboarding/**); финально весь apps/platform-web — M2-86" }
+        - { path: "packages/agents/src/orchestrator/** (prompt.ts, taxonomy.ts, schemas.ts, fork-labels.ts)", owner: M2-38, then: "M2-77 (только orchestrator.ts и инструмент пробела)" }
+        - { path: "packages/agents/src/builder/** (prompt.ts, tools.ts)", owner: M2-40, then: "M2-77 (обработчик report_capability_gap), M2-94 (builder/verify-design.ts); классы M2-81…M2-84 и коннекторы — только packages/agents/assets/capabilities/<id>.md" }
+        - { path: "packages/agents/src/qa/**, packages/agents/scripts/gen-qa-assets.mjs", owner: M2-39 }
+        - { path: "packages/agents/src/design/**", owner: "M2-62 → M2-94 (critic*)" }
+        - { path: "packages/agents/assets/{builder,qa,design}.json", owner: "генерируются (M2-99: вне git, сборка в pretest)", then: "владельцы генераторов — M2-40, M2-39, M2-41" }
+        - { path: "tools/fixtures/**", owner: "eval.yaml#regression.pr_rule_M2P", then: "demo-фикстуры регенерируются детерминированно (gen-golden.mjs) в каждой промптовой задаче, при конфликте — перезапустить генератор; sha256-фикстуры unit и eval перезаписывает один раз M2-85; новые tools/fixtures/golden/<класс>.yaml задач M2-81…M2-84 только добавляются" }
+        - { path: "apps/runtime/src/preview/headers.ts (CSP), apps/runtime/src/routes/static.ts (SEO), apps/runtime/src/captcha/**", owner: M2-46 }
+        - { path: "apps/runtime/src/files/**, apps/runtime/src/routes/files.ts", owner: "M2-47 → M2-31 (только files/storage.ts, ключ KMS secure-объектов)" }
+        - { path: "apps/runtime/src/sandbox/{guest.mjs,egress*.ts}, apps/runtime/src/egress-main.ts", owner: M2-52 }
+        - { path: "apps/runtime/src/data/access.ts", owner: "M2-50 (запись согласия purpose=messages) → M2-64 (платный доступ)" }
+        - { path: "apps/runtime/src/data/pg.ts", owner: M2-31 }
+        - { path: "apps/runtime/src/http/errors.ts", owner: M2-96 }
+        - { path: "apps/runtime/src/registry.ts, apps/runtime/src/http/guards.ts", owner: M2-60 }
+        - { path: "apps/runtime/src/routes/hooks.ts (единый диспетчер вебхуков)", owner: M2-49, then: "коннекторы подключают свою проверку (InboundWebhook.verify) без своих маршрутов: M2-53, M2-65…M2-69, M2-73, M2-75" }
+        - { path: "apps/runtime/src/compliance.ts, apps/runtime/templates/**", owner: "M2-93 → M2-87" }
+        - { path: "apps/platform-api/src/runs/queue.ts", owner: "M2-32 (orgPolicyOf) → M2-63 (прогон kind=design)" }
+        - { path: "apps/platform-api/src/agents/executors.ts", owner: "M2-61 → M2-77" }
+        - { path: "apps/platform-api/src/publish/**", owner: "M2-52 (moderation.ts, список хостов), M2-72 (prod.ts, snapshot.ts)" }
+        - { path: "tools/deploy/pilot-secrets.mjs, .env.example", owner: M2-32, then: "M2-32 добавляет все переменные окружения из deploy.yaml (M2-98)" }
+        - { path: "tools/specs/**", owner: M2-17 }
+        - { path: "tools/eval/lib/briefs.mjs, tools/eval/briefs/p-*", owner: M2-54, then: "остальной tools/eval — M2-55; vision-контракт tools/eval/lib/contract-vision.mjs — M2-28; tools/eval/results/** — M2-88, M2-89" }
+        - { path: "packages/e2e/specs/rehearsal/**, packages/e2e/stand/*.ts", owner: M2-85, then: "расширения стенда задач — packages/e2e/stand/p/<задача>.ts (подключаются по glob; M2-60 — dns.ts), e2e задач — packages/e2e/specs/p/<задача>.spec.ts" }
+        - { path: "packages/sdk/src/sdk.d.ts", owner: "дописывание: M2-49, M2-52, M2-64, M2-96" }
+      merge_rules:
+        - "Файлы регистрации — только дописывание строк; при конфликте сохранить обе стороны: packages/connectors/src/index.ts, packages/ui-kit/src/index.ts, packages/agents/src/index.ts и exports в package.json, packages/sdk/src/sdk.d.ts, apps/platform-api/src/db/types.ts, apps/platform-api/src/config.ts, infra/helm/wizard/values.yaml. THIRD_PARTY_NOTICES.md — merge=union (.gitattributes, M2-99). app.ts платформы и runtime после M2-99 не правятся (маршруты по glob)"
+        - "Миграции платформы — только с номером из резерва (specs/platform/db.yaml): 0020 M2-34, 0021 M2-35, 0022 M2-36, 0023 M2-59, 0024 M2-60, 0025 M2-61, 0026 M2-63, 0027 M2-96 (btree_gist), 0028 M2-31 (secure-поля), 0029 M2-72 (снимки), 0030 M2-95 (секреты). После M2-99 порядок слияния миграций не важен (allowUnorderedMigrations); внешние ключи — только от более поздней миграции к более ранней. Системные таблицы _w_* — модули SYSTEM_TABLES (M2-21)"
+        - "Внутри волны задачи правят непересекающиеся пути (поле owns в backlog.yaml; проверяет validate после M2-17); правка чужого пути — через публичный интерфейс пакета или отдельный PR после мержа владельца"
+        - "PR задач вехи с правкой промптов или models.yaml — по eval.yaml#regression.pr_rule_M2P (fixture-режим, без eval:full); единый live-замер — M2-88 и M2-89"
+        - "Правка product.yaml#decisions, non_goals, gray_zone и раздела «Жёсткие правила» AGENTS.md — PR с меткой founder-review (escalation.yaml#merge_policy)"
+
   - id: M3
     name: "Вторая волна беты"
     target: "недели 17–19"
@@ -67,7 +188,7 @@ milestones:
   - id: M4
     name: "Публичный запуск"
     target: "неделя 20"
-    goal: "Лендинг под финальным именем (выбрано к неделе 12, домен платформы — D22_domains), самостоятельная регистрация, Free/тарифы, нагрузочный тест, мониторинг"
+    goal: "Лендинг Born to Build на borntobuild.ru (имя и домен решены 2026-10-04, D27_brand), самостоятельная регистрация, рублёвая модель цен (D31), нагрузочный тест, мониторинг"
     exit_criteria:
       - "Нагрузочный тест 200 одновременных прогонов пройден, отчёт в docs/ (M4-01)"
       - "Самостоятельная регистрация и Free работают на домене платформы"

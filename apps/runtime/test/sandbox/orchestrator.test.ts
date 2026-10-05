@@ -1,109 +1,11 @@
 // M2-18: SandboxOrchestrator against a fake Kubernetes API — placement, ConfigMap + pod per config hash, replacement
-// after readiness, stuck pods, quota, reconcile, watchdog; sandboxFromEnv.
+// after readiness, stuck pods, quota, reconcile, watchdog; sandboxFromEnv. Calls across a pod (re)start:
+// orchestrator-swap.test.ts.
 import { describe, expect, it } from "vitest";
 import { sandboxFromEnv, sandboxKey } from "../../src/sandbox/from-env.js";
-import { type KubeApi, KubeError, type KubePodStatus } from "../../src/sandbox/kube.js";
+import { KubeError } from "../../src/sandbox/kube.js";
 import { CONFIGMAP_BUDGET, SandboxOrchestrator } from "../../src/sandbox/orchestrator.js";
-import { SandboxRpc } from "../../src/sandbox/rpc.js";
-
-// biome-ignore lint/suspicious/noExplicitAny: Kubernetes objects as the orchestrator renders them
-type Obj = Record<string, any>;
-
-class FakeKube implements KubeApi {
-  readonly configMaps = new Map<string, Obj>();
-  readonly pods = new Map<string, Obj>();
-  readonly calls: string[] = [];
-  ip = 10;
-  /** Polls before a new pod is ready; a reason makes it stuck. */
-  readyAfter = 1;
-  stuck: string | null = null;
-  podQuota = Infinity;
-  private polls = new Map<string, number>();
-  private ips = new Map<string, string>();
-
-  async createConfigMap(cm: Obj) {
-    this.calls.push(`create cm ${cm.metadata.name}`);
-    if (this.configMaps.has(cm.metadata.name)) throw new KubeError(409, "exists");
-    this.configMaps.set(cm.metadata.name, cm);
-  }
-  async deleteConfigMap(name: string) {
-    this.calls.push(`delete cm ${name}`);
-    this.configMaps.delete(name);
-  }
-  async listConfigMaps(sel: string) {
-    const [k, v] = sel.split("=");
-    return [...this.configMaps.values()]
-      .filter((c) => c.metadata.labels?.[k as string] === v)
-      .map((c) => c.metadata.name);
-  }
-  async createPod(pod: Obj) {
-    this.calls.push(`create pod ${pod.metadata.name}`);
-    if (this.pods.has(pod.metadata.name)) throw new KubeError(409, "exists");
-    if (this.pods.size >= this.podQuota)
-      throw new KubeError(403, 'pods "x" is forbidden: exceeded quota: wizard-sandbox');
-    this.pods.set(pod.metadata.name, pod);
-    this.ips.set(pod.metadata.name, `10.42.0.${this.ip++}`);
-  }
-  async deletePod(name: string) {
-    this.calls.push(`delete pod ${name}`);
-    this.pods.delete(name);
-  }
-  async getPod(name: string): Promise<KubePodStatus | null> {
-    const pod = this.pods.get(name);
-    if (!pod) return null;
-    const n = (this.polls.get(name) ?? 0) + 1;
-    this.polls.set(name, n);
-    const ready = !this.stuck && n > this.readyAfter;
-    return {
-      name,
-      phase: ready ? "Running" : "Pending",
-      ready,
-      podIP: ready ? (this.ips.get(name) ?? null) : null,
-      reason: this.stuck,
-      labels: pod.metadata.labels,
-    };
-  }
-  async listPods(sel: string) {
-    const [k, v] = sel.split("=");
-    const out: KubePodStatus[] = [];
-    for (const [name, p] of this.pods)
-      if (p.metadata.labels?.[k as string] === v)
-        out.push({
-          name,
-          phase: "Running",
-          ready: true,
-          podIP: null,
-          reason: null,
-          labels: p.metadata.labels,
-        });
-    return out;
-  }
-}
-
-const rpc = () => new SandboxRpc({ key: new Uint8Array(32).fill(7) });
-const make = (kube: FakeKube, o: Partial<ConstructorParameters<typeof SandboxOrchestrator>[0]> = {}) =>
-  new SandboxOrchestrator({
-    kube,
-    rpc: rpc(),
-    owner: "runtime",
-    namespace: "wizard-sandbox",
-    image: "ghcr.io/o/wizard-sandbox:abc",
-    rpcAddress: "10.42.0.5:4101",
-    basePort: 9000,
-    healthPort: 8999,
-    systemsPerPod: 3,
-    memoryLimit: "512Mi",
-    sleep: async () => {},
-    pollMs: 1,
-    readyTimeoutMs: 20,
-    ...o,
-  });
-const sys = (systemId: string, functionsSource = "export const f = 1;") => ({
-  systemId,
-  env: "draft" as const,
-  entities: ["Post"],
-  functionsSource,
-});
+import { FakeKube, make, type Obj, sys } from "./fake-kube.js";
 
 describe("SandboxOrchestrator", () => {
   it("first prepare: ConfigMap with the workerd config, a hardened gVisor pod on the free pool, then the endpoint", async () => {
@@ -149,6 +51,8 @@ describe("SandboxOrchestrator", () => {
     expect([...kube.pods.keys()]).toEqual(first);
     kube.calls.length = 0;
     await o.prepare(sys("aaaaaaaaaaaa", "export const f = 2;"));
+    // The old pod drains in the background (outside the pod's queue).
+    await o.drained();
     const created = kube.calls.findIndex((c) => c.startsWith("create pod"));
     const deleted = kube.calls.indexOf(`delete pod ${first[0]}`);
     expect(created).toBeGreaterThanOrEqual(0);
@@ -163,6 +67,7 @@ describe("SandboxOrchestrator", () => {
     const o = make(kube, { systemsPerPod: 2 });
     await o.prepare(sys("aaaaaaaaaaaa"));
     await o.prepare(sys("bbbbbbbbbbbb"));
+    await o.drained();
     expect(kube.pods.size).toBe(1);
     expect([...kube.configMaps.keys()].filter((n) => /-s\d$/.test(n))).toHaveLength(2);
     expect(o.endpointOf("bbbbbbbbbbbb", "draft")).toMatch(/:9001$/);
@@ -191,12 +96,14 @@ describe("SandboxOrchestrator", () => {
     expect(kube.pods.size).toBe(0);
   });
 
-  it("a full pod quota: the old pod of the same pool pod goes first, then the new one is created", async () => {
+  it("G1, no room for two pods in the quota: its old pod goes first (after quotaWaitMs), then the new one", async () => {
     const kube = new FakeKube();
     kube.podQuota = 1;
-    const o = make(kube);
+    const o = make(kube, { owner: "g1", inPlace: true });
     await o.prepare(sys("aaaaaaaaaaaa"));
+    const t0 = kube.t;
     await o.prepare(sys("aaaaaaaaaaaa", "export const f = 3;"));
+    expect(kube.t - t0).toBeGreaterThanOrEqual(10_000);
     expect(kube.pods.size).toBe(1);
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).not.toBeNull();
   });
@@ -234,7 +141,11 @@ describe("SandboxOrchestrator", () => {
     const [name] = [...kube.pods.keys()].filter((n) => n !== "other");
     kube.pods.delete(name as string);
     await o.check();
-    expect([...kube.pods.keys()].filter((n) => n !== "other")).toEqual([name]);
+    // Recreated under a name of its own; the lost pod's ConfigMaps are gone with it.
+    const again = [...kube.pods.keys()].filter((n) => n !== "other");
+    expect(again).toHaveLength(1);
+    expect(again[0]).not.toBe(name);
+    expect([...kube.configMaps.keys()].every((n) => n.startsWith(again[0] as string))).toBe(true);
     expect(o.endpointOf("aaaaaaaaaaaa", "draft")).not.toBeNull();
   });
 
@@ -250,7 +161,11 @@ describe("SandboxOrchestrator", () => {
     await o.prepare(sys("aaaaaaaaaaaa"));
     const ex = o.executorFor({ systemId: "aaaaaaaaaaaa", env: "draft", entities: ["Post"] });
     expect(await ex.functions()).toEqual({ list: { kind: "query", args: {} } });
-    expect(urls).toEqual(["http://10.42.0.10:9000/__wizard/functions"]);
+    // The reachability probe of the new pod, then the call.
+    expect(urls).toEqual([
+      "http://10.42.0.10:9000/__wizard/health",
+      "http://10.42.0.10:9000/__wizard/functions",
+    ]);
   });
 });
 

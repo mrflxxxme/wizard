@@ -138,7 +138,8 @@ routing:
     - "T1 ∉ allowed → T0 (callType_forbidden_T1); import_mapping → T1 только если payload собран buildMappingPayload (он передаёт containsPiiHint=false) И detect() по payload = 0 находок"
     - "containsPiiHint=true для любого callType → T0 (pii_hint): вызывающий знает, что в payload реальные записи (шаг models.yaml#routing_algorithm)"
     - "Находки strong-видов (все kinds с strong: true в detectors.kinds), special_context или biometric_context → T0 (pii_high_risk); models.yaml шаг 4 ссылается на этот список"
-    - "callType=interview и любая находка detect() → T0 (pii_detected_interview): сырой бриф с ПДн наружу не уходит даже в заглушках"
+    - "callType=interview: с 05.10.2026 (product.yaml#decisions.D50_brief_pii_routing) — как остальные callType: находки basic-видов заменяются заглушками и вызов идёт на tier по умолчанию; strong-виды и спецкатегории → T0 (pii_high_risk, правило выше). Прежнее «любая находка → T0 (pii_detected_interview)» снято; значение route_reason pii_detected_interview остаётся в CHECK для исторических строк (реализация — M2-28)"
+    - "Изображения (вызовы со зрением, D45, D62): к T1 — только после обработки на сервере платформы (packages/pii/image, M2-97): распознанный текст → detect(); имена, телефоны, почты замазываются на изображении, лица размываются; strong-виды (паспорт, СНИЛС, карта) или документ на снимке → вызов только T0 или без изображения. Изображения из записей систем (runtime_ai_*) — только T0 (pii_forbidden_for_T1)"
     - "Иначе tier по умолчанию из models.yaml; если T1 — scrubJson всех сообщений и tool results перед отправкой, scrubbed=true"
   fallback: "Фолбэк и circuit breaker — models.yaml#fallback_rules. Требование границы: фолбэк возможен только T1 → T0, никогда T0 → T1. Пользователь видит только общую строку «Часть шагов выполнена на моделях в РФ» (формулировка — models.yaml#fallback_rules; платформа показывает её по step_finished.ruFallback, platform/workflows.yaml#events; L4-20). Событие model_switched {fromModel, toModel, reason} — только во внутренний журнал, в SSE пользователя не отдаётся (tier не раскрывается)"
   model_registry:
@@ -146,7 +147,7 @@ routing:
     - "MUST NOT: API и сервисы Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников) в реестре. Открытые веса этих вендоров, развёрнутые в РФ (placement=internal, например openai/gpt-oss-120b на Cloud.ru), допустимы — решение F3. Тест-линтер реестра проверяет provider и baseUrl, а не префикс имени модели"
     - "MUST: каждый запрос к Yandex AI Studio несёт заголовок x-data-logging-enabled: false (тест на мок-сервере)"
     - "MUST: у каждого провайдера T1 — дата последней проверки условий (models.yaml#providers.<id>.termsCheckedAt); старше 90 дней → предупреждение в CI"
-    - "DeepSeek API (провайдер deepseek, Ханчжоу, хранение в КНР, обучение с opt-out) — T1 на тех же условиях, что Z.ai: только после scrub, MUST NOT для pii_forbidden_for_T1 и вызовов с вложениями; thinking выключен в каждом запросе. Только претендент eval: его модели enabled=false и не входят в цепочки routes (models.yaml#providers.deepseek). Включение в маршрутизацию по умолчанию — E-LEGAL (ст. 18 ч. 5 152-ФЗ)"
+    - "DeepSeek API (провайдер deepseek, Ханчжоу, хранение в КНР, обучение с opt-out) — T1 на тех же условиях, что Z.ai: только после scrub, MUST NOT для pii_forbidden_for_T1 и вызовов с вложениями; thinking выключен в каждом запросе. До замера — только претендент eval (enabled=false, вне цепочек routes; models.yaml#providers.deepseek). С 05.10.2026 (D54): включается в цепочки T1 после замера (eval не хуже GLM-5.3 по g0g1_pass) на тех же условиях, что Z.ai; решение о включении — PR с отчётом eval и строкой в CHANGELOG. Kimi напрямую у Moonshot — не включается без договора о запрете обучения"
   storage_of_content: >
     Содержимое промптов и ответов НЕ хранится в llm_calls и логах. Отладочные транскрипты (M1+, по умолчанию выключены): только после scrub,
     в РФ, отдельная таблица с TTL 30 дней, доступ под staff_audit_log. Ошибки провайдеров логируются только как {status, code} — тело ответа
@@ -155,15 +156,17 @@ routing:
     — только для брифов eval-стенда без ПДн: record отказывает, если sha256 брифа ∉ tools/eval/briefs и demo; T0-запросы в фикстуре хранятся
     после scrub (ключ фикстуры считается от scrubbed-формы)
 
-region_restriction:                # условия Z.ai: тенанты из запрещённых регионов — только T0 (CHANGELOG week0); M0-06 — поле и шаг роутера, M1 — источники
+region_restriction:                # условия Z.ai: тенанты из запрещённых регионов — только T0 (CHANGELOG week0); M0-06 — поле и шаг роутера, M1 — источники; правило T0 — product.yaml#decisions.D26_models_default
+  principle: "D26_models_default (2026-10-04): только T0 — лишь когда регион организации ИЗВЕСТЕН и входит в restricted_regions (по любому источнику из sources) или когда клиент сам включил «Только РФ» (ru_only). Во всех остальных случаях сборка идёт на модели по умолчанию (T1, models.yaml#routes) с удалением ПДн (scrub)"
   restricted_regions: "Коды субъектов РФ 90 Запорожская обл., 91 Республика Крым, 92 Севастополь, 93 ДНР, 94 ЛНР, 95 Херсонская обл. Точный список — E-LEGAL (условия Z.ai явно называют Крым, Донецк, Запорожье); до ответа юриста действуют все шесть (безопасный вариант)"
   fields: "platform.orgs.region_code text (двузначный код субъекта РФ; NULL — неизвестен) и platform.orgs.t1_restricted boolean not null default false (db.yaml#tables.orgs)"
   sources:
-    - "Регион, указанный при регистрации организации (обязательный выбор из списка субъектов)"
+    - "Регион, указанный при регистрации организации (выбор из списка субъектов; на пилоте приглашение его не требует — тогда region_code = NULL)"
     - "ИНН организации или ИП из реквизитов и привязки карты: первые две цифры — код региона"
     - "Офлайн-GeoIP по IP входов участников org: база хранится и обновляется в РФ, без внешних запросов; лицензия базы допускает коммерческое использование, атрибуция — THIRD_PARTY_NOTICES.md"
-  rule: "t1_restricted = true, если region_code ∈ restricted_regions ИЛИ любой вход участника org за 90 дней геолоцирован в restricted_regions (даже при другом region_code). Пересчёт — при входе и смене реквизитов. Снять флаг может только staff по документам (staff_audit_log)"
-  fail_safe: "region_code = NULL (регион не указан и не выведен) → роутер считает t1Restricted=true: T0 (policy_region_restricted)"
+  rule: "t1_restricted = true, если region_code ∈ restricted_regions ИЛИ любой вход участника org за 90 дней геолоцирован в restricted_regions (даже при другом region_code) — это тоже «известный регион». Пересчёт — при входе и смене реквизитов. Снять флаг может только staff по документам (staff_audit_log)"
+  unknown_region: "region_code = NULL (регион не указан и не выведен) T1 НЕ ограничивает (D26, заменяет прежний fail_safe «NULL → T0»): платформа передаёт роутеру orgPolicy.t1Restricted = orgs.t1_restricted (по умолчанию false). Реализация — apps/platform-api orgPolicyOf (задача M2-31)"
+  router_fail_safe: "Отдельно от региона: если вызывающий не передал orgPolicy или поле t1Restricted (политика не загружена или неизвестна), route() считает t1Restricted=true → T0 (architecture.yaml#interfaces.llm_call, M0-06). Платформа всегда передаёт поле явно"
   routing: "orgPolicy.t1Restricted — шаг models.yaml#routing_algorithm сразу после ruOnly; значение policy_region_restricted — в CHECK route_reason (db.yaml#tables.llm_calls)"
 
 audit:
@@ -192,9 +195,10 @@ import:
 
 tests:                             # MUST в CI (M0-06, M1-07, milestones M0 exit)
   - "Матрица роутера: каждый callType × ruOnly{true,false} × t1Restricted{true,false} × payload{без ПДн, basic, strong, special} × containsPiiHint{undefined,false,true} → ожидаемый tier и route_reason из models.yaml (таблица-фикстура packages/llm/test/routing.matrix.json)"
-  - "Регион: org с region_code=91, с region_code=NULL и с region_code=77, но входом с IP из restricted_regions (мок GeoIP) → все вызовы tier=T0, route_reason=policy_region_restricted; org с region_code=77 без таких входов → tier по умолчанию"
+  - "Регион (D26): org с region_code=91 и org с region_code=77, но входом с IP из restricted_regions (мок GeoIP) → все вызовы tier=T0, route_reason=policy_region_restricted; org с region_code=NULL и org с region_code=77 без таких входов → tier по умолчанию (T1 при t1_default); orgPolicy без поля t1Restricted → T0 (router_fail_safe)"
   - "Включение ruOnly во время T1-вызова в полёте (мок с задержкой) → вызов отменён, повтор ушёл на T0"
-  - "Канарейки e2e: fixture-прогон «форум», бриф с ФИО (в т. ч. латиницей и неславянским), телефоном РФ и не РФ, email, @handle, паспортом, СНИЛС; мок-провайдер T1 записывает payload; assert: 0 вхождений канареек, 0 совпадений detect() кроме плейсхолдеров; вызовы со strong-видами ушли на T0"
+  - "Канарейки e2e: fixture-прогон «форум», бриф с ФИО (в т. ч. латиницей и неславянским), телефоном РФ и не РФ, email, @handle, паспортом, СНИЛС; мок-провайдер T1 записывает payload; assert: 0 вхождений канареек, 0 совпадений detect() кроме плейсхолдеров; вызовы со strong-видами ушли на T0; интервью с basic-ПДн ушло на T1 только с заглушками (D50)"
+  - "Канарейки в изображениях (M2-97): PNG с ФИО, телефоном и email → в T1-payload изображение с замазанными участками и 0 канареек в распознанном тексте; PNG со страницей паспорта → вызов T0 или без изображения"
   - "llm_calls после прогона: нет колонок с текстом; pii_categories_count заполнен; для всех tier=T1 scrubbed=true"
   - "Токены tok_* в T1-payload → ошибка до отправки"
   - "runtime_ai_*, support: при любых входах tier=T0 (M3-02 повторно)"

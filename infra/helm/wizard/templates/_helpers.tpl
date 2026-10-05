@@ -58,6 +58,17 @@ imagePullSecrets:
   value: {{ required "domains.systems is required" .Values.domains.systems | quote }}
 - name: WIZARD_LLM_MODE
   value: {{ .Values.config.llmMode | quote }}
+{{- if has .Values.config.llmMode (list "fixture" "record") }}
+# The fixture router refuses to start a run without a suite (packages/llm createRouter), in "record" mode too:
+# staging replays this one, a recording run writes it.
+- name: WIZARD_FIXTURE
+  value: {{ required "config.fixture is required with llmMode fixture or record" .Values.config.fixture | quote }}
+{{- end }}
+{{- if .Values.extraCa.configMap }}
+# Rehearsal / self-signed SMTP only (values.yaml extraCa): Node trusts this CA on top of its built-in store.
+- name: NODE_EXTRA_CA_CERTS
+  value: {{ printf "/etc/wizard/extra-ca/%s" .Values.extraCa.key | quote }}
+{{- end }}
 - name: WIZARD_CONNECTORS
   value: {{ .Values.config.connectors | quote }}
 - name: WIZARD_FILES_STORAGE
@@ -117,6 +128,13 @@ prometheus.io/path: /metrics
 - name: data
   persistentVolumeClaim:
     claimName: wizard-data
+{{- if .Values.extraCa.configMap }}
+- name: extra-ca
+  configMap:
+    name: {{ .Values.extraCa.configMap }}
+    items:
+      - { key: {{ .Values.extraCa.key | quote }}, path: {{ .Values.extraCa.key | quote }} }
+{{- end }}
 {{- end -}}
 
 {{- define "wizard.nodeMounts" -}}
@@ -124,6 +142,11 @@ prometheus.io/path: /metrics
   mountPath: /tmp
 - name: data
   mountPath: /app/.data
+{{- if .Values.extraCa.configMap }}
+- name: extra-ca
+  mountPath: /etc/wizard/extra-ca
+  readOnly: true
+{{- end }}
 {{- end -}}
 
 {{/* HSTS middleware reference for Traefik ingresses. */}}

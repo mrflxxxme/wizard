@@ -14,6 +14,7 @@ import type { RunsTable, SystemsTable } from "../db/types.js";
 import { alertOnce } from "../ops/alert.js";
 import { opsAlertFromConfig } from "../ops/alert-config.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
+import { inheritedG1Checks } from "../runs/g1-checks.js";
 import { recordGateReport } from "../runs/gates.js";
 import { type GateReport, type GateRunner, RunFailure } from "../runs/types.js";
 import { loadManifest, loadRevision, loadSpec, lockSystem, revertRevision } from "../services/revisions.js";
@@ -237,7 +238,10 @@ async function prodGate(h: FlowHost, level: GateLevel, ctx: GateContext, systemI
   if (!h.gates) throw new RunFailure("INTERNAL", "Проверки (гейты) пока не подключены к платформе", true);
   await h.tx((t) => appendEvent(t, h.run.id, "gate_started", { level, revision: ctx.specVersion }));
   const report = { ...(await h.gates(level, ctx)), level };
-  await h.tx((t) => recordGateReport(t, { runId: h.run.id, systemId, revision: ctx.specVersion, report }));
+  const qa = level === "G1" && ctx.checks?.length ? { spec: ctx.spec, checks: ctx.checks } : undefined;
+  await h.tx((t) =>
+    recordGateReport(t, { runId: h.run.id, systemId, revision: ctx.specVersion, report, qa }),
+  );
   return report;
 }
 
@@ -274,7 +278,15 @@ async function prodG2(h: FlowHost, sys: System, revision: number, spec: AppSpec,
   });
   if (!g1Passed)
     await h.step("gate_G1_prod", "Проверяю сценарии ревизии для prod (G1)", async () => {
-      const report = await prodGate(h, "G1", await base(), sys.id);
+      // QA scenarios of card ACs without inline steps come from the build's G1 (db.yaml#g1_checks): reused per AC
+      // while its text is unchanged; an AC rewritten since then stays uncovered (G1-AC-COVER fails).
+      const { checks } = await inheritedG1Checks(h.db, sys.id, revision, spec);
+      const report = await prodGate(
+        h,
+        "G1",
+        { ...(await base()), ...(checks.length > 0 ? { checks } : {}) },
+        sys.id,
+      );
       if (!report.passed)
         throw new RunFailure(
           "GATES_FAILED",

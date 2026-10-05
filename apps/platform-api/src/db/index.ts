@@ -18,6 +18,8 @@ import * as m0014 from "../../migrations/0014_m2_pilot_ops.js";
 import * as m0015 from "../../migrations/0015_m2_ops_cleanup.js";
 import * as m0016 from "../../migrations/0016_m3_ai_actions.js";
 import * as m0017 from "../../migrations/0017_m2_pilot_admin.js";
+import * as m0018 from "../../migrations/0018_db_roles.js";
+import * as m0019 from "../../migrations/0019_g1_checks.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -63,6 +65,8 @@ const MIGRATIONS: Record<string, Migration> = {
   "0015_m2_ops_cleanup": m0015,
   "0016_m3_ai_actions": m0016,
   "0017_m2_pilot_admin": m0017,
+  "0018_db_roles": m0018,
+  "0019_g1_checks": m0019,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

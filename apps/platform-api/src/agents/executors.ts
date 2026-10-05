@@ -31,7 +31,7 @@ import {
   RunFailure,
 } from "../runs/types.js";
 import { withConsentText } from "./consent.js";
-import { type G1Sandbox, startG1Sandbox } from "./g1-sandbox.js";
+import { type G1Sandbox, g1RuntimeLogLine, startG1Sandbox } from "./g1-sandbox.js";
 
 /** Sandbox events of the G1 host (allowlisted fields only). */
 const g1Logger = createLogger({ svc: "worker" });
@@ -176,6 +176,12 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     if (!rt) {
       rt = createRuntimeApp({
         ...(sb ? { sandbox: sb.orchestrator, rpc: sb.rpc } : {}),
+        // Platform failures of the G1 runtime (functions_load_failed, job_failed, …) reach the worker log in a fixed
+        // shape; log lines and texts of the systems under test never do (g1RuntimeLogLine).
+        log: (line) => {
+          const out = g1RuntimeLogLine(line);
+          if (out) g1Logger.line({ ...out, svc: "worker" });
+        },
         db: o.pg,
         registry: new MemoryRegistry(),
         dbRole: runtimeRole,

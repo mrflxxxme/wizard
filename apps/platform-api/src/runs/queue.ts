@@ -1856,7 +1856,9 @@ export class RunEngine {
           ...overrides,
         };
         const report = { ...(await gates(level, ctx)), level };
-        await this.#tx((t) => recordGateReport(t, { runId: run.id, systemId, revision, report }));
+        // G1 of a build: the QA scenarios it ran are kept when it passes (db.yaml#g1_checks) for the publish G1.
+        const qa = level === "G1" && ctx.checks?.length ? { spec, checks: ctx.checks } : undefined;
+        await this.#tx((t) => recordGateReport(t, { runId: run.id, systemId, revision, report, qa }));
         if (level === "G0" && report.passed && this.#d.executors.onG0Passed) {
           const r = await this.#d.executors.onG0Passed({
             systemId,

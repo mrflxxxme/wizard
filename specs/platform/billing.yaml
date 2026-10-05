@@ -1,5 +1,54 @@
-# Кредиты, тарифы, ledger, платежи. Источник цифр: product.yaml#decisions.D10_pricing (приоритет выше этого файла).
-version: 1
+# Цены, кредиты, тарифы, ledger, платежи. Источник цифр: product.yaml#decisions.D31_pricing_rub (для клиента — рубли, 2026-10-04)
+# и D10_pricing (внутренние профили лимитов в кредитах); product.yaml имеет приоритет над этим файлом.
+version: 2
+
+rub_model:   # D31_pricing_rub (гипотеза пилота). Клиент видит только рубли; кредиты — внутренняя единица (credit, ledger ниже)
+  principle:
+    - "MUST: в кабинете клиента, письмах и ответах клиентских эндпоинтов API нет кредитов, токенов и себестоимости моделей; кредиты и расход видят только staff (/admin, CLI pilot)"
+    - "MUST: цены — единый каталог rub_model.prices; platform-web получает его из API (каталог цен — api.yaml, задача M2-22) и не держит своих копий цифр"
+    - "Стоимость моделей неудачных сборок несёт платформа: клиенту ничего не начисляется, внутренний расход возвращается в лимит организации (internal_guard.refunds)"
+  prices:
+    draft: { rub: 0, text: "Собрать и попробовать черновик — бесплатно" }
+    launch: { one_time_rub: 2990, monthly_rub: 990, includes: ["хостинг", "резервные копии", "10 правок в месяц (edits)", "SMS в пределах лимита (sms_included)"] }
+    turnkey: { from_rub: 49000, days: "7–14", text: "«Под ключ»: MVP под руководством человека по фиксированной цене; ИИ ускоряет работу" }
+  free_drafts:
+    limit: "≤ 3 новых черновика (системы, созданные в организации) за скользящие 30 дней; удаление черновика квоту не возвращает"
+    not_counted: "черновик, ни одна сборка которого не дала ревизию с пройденным G0 по вине платформы (коды run_charging.build.refunds), квоту не тратит"
+    exceeded: "402 FREE_DRAFTS_LIMIT, message_ru: «Можно собрать 3 новые системы за 30 дней. Следующую — с <дата>. Если нужно раньше, напишите команде» и кнопка «Написать команде» (product.yaml#decisions.D32_human_layer)"
+    override: "staff поднимает лимит организации в /admin (запись в staff_audit_log)"
+    note: "3 / 30 дней — начальное значение, утверждено основателем 05.10.2026 (product.yaml#decisions.D58_initial_limits); корректируется по данным пилота с записью в CHANGELOG"
+  edits:
+    included_per_month: 10
+    what_counts: "правка = одобренная change-карточка запущенной (опубликованной) системы, сборка которой дала ревизию с пройденным G0; неудачные и отменённые сборки, панель «Стиль», откат и повторная публикация не считаются"
+    period: "месяц абонентской платы; на пилоте — календарный месяц по МСК"
+    exceeded: "11-я правка → 402 EDITS_LIMIT, message_ru «В этом месяце использованы все 10 правок» + «Написать команде»; staff добавляет правки в /admin"
+  sms_included:
+    per_launched_system_month: 100
+    over: "SMS-канал системы приостанавливается до следующего месяца; сообщения уходят почтой или в Telegram, если у получателя есть такой адрес; владельцу — уведомление"
+    own_account: "Свой аккаунт SMS-агрегатора клиента (connectors/sms.yaml, создаёт M2-24) лимитом платформы не ограничивается"
+    pilot: "SMS работают на пилоте сразу через аккаунт агрегатора платформы (D36): транзакционные сообщения посетителям с согласия и вход по телефону запущенных систем — в пределах этой квоты"
+    note: "100 SMS в месяц — начальное значение, утверждено основателем 05.10.2026 (D58)"
+  phone_login:     # замена правила F4 «телефон — только тарифы Старт и Бизнес» для рублёвой модели (fidelity P-18; restrictions-review № 73)
+    rule: "Вход по телефону (phone_otp) доступен запущенной системе (запуск 2 990 ₽ + 990 ₽/мес; на пилоте — опубликованная система) в пределах sms_included; в черновике коды уходят в тестовый ящик превью, SMS не отправляются. Тарифы Free/Старт/Бизнес клиенту не показываются (D31), поэтому PHONE_LOGIN_PLAN_REQUIRED заменяется проверкой «система запущена»"
+    note: "Вывод агента из D31, D36 и D58; основатель может пересмотреть"
+  turnkey_order:
+    flow: "заявка «Под ключ» или «Передать команде» (D32) → очередь /admin → основатель фиксирует цену (≥ 49 000 ₽) и срок (≤ 14 дней) → работа с того же состояния системы"
+  guarantee: "Если система не запустилась, команда доделывает её вручную или возвращает деньги (D32). На пилоте оплаты нет — действует «доделывает вручную»"
+  pilot_display:
+    rule: "MUST: каждая цена в интерфейсе пилота показывается с пометкой «на пилоте бесплатно»; кнопок оплаты нет (WIZARD_PAYMENTS=off, plans.pilot.payments)"
+    where: "S6 (публикация: «Запуск 2 990 ₽ + 990 ₽/мес · на пилоте бесплатно»), S-billing («Тариф и оплата»), S1 (вход «Под ключ»: «от 49 000 ₽ · на пилоте бесплатно»), диалог «Передать команде»"
+    after_pilot: "Включение оплаты рублёвой модели (оферта, чеки 54-ФЗ магазина платформы, E-LEGAL) — отдельное решение после пилота; код recurring (M2-07) переиспользуется"
+  internal_guard:   # кредиты как защита от перерасхода; клиент их не видит
+    caps:
+      create_build: "60 кредитов (≈ 300 ₽ себестоимости, порог product.yaml#decisions.D42_readiness_bar) — потолок первой сборки; оценка карточки — внутренняя"
+      change_build: "20 кредитов (≈ 100 ₽) на правку"
+      interview_turn: "2 кредита (как run_charging.interview_turn)"
+      design: "15 кредитов (≈ 75 ₽) на этап дизайна: референсы, три направления, критик (D39; оценка 35–70 ₽ — docs/research/design-agent-sources.md §4.6)"
+    org_allowance: "Каждая организация автоматически получает внутренний грант 400 кредитов (≈ 2 000 ₽) на 30 дней (корзина internal_allowance, не копится). Исчерпание → сборки и интервью отвечают «Сейчас не получается продолжить сборку. Мы уже разбираемся — напишите команде» (без слова «кредиты»), основателю — алерт; staff добавляет лимит в /admin (reason=pilot_grant)"
+    refunds: "Полный внутренний refund любого прогона, завершённого failed, отменённого из-за сбоя платформы или не давшего ревизии с пройденным G0 (расширяет run_charging.build.refunds)"
+    platform_cap: "Месячный лимит платформы на модели — WIZARD_LLM_MONTHLY_CAP_RUB = 6 000 ₽ (deploy.yaml#pilot.env); алерты основателю на 80 % и 100 % (D26). Замер порога D42 (до 6 000 ₽: один полный прогон 20 брифов, повтор только провалившихся) идёт внутри этого лимита, отдельной статьи нет (D59)"
+    system_cost_alert: "Суммарный расход на модели одной системы (сборка, дизайн, правки) > 60 кредитов (≈ 300 ₽, порог D42) → алерт основателю и метка в /admin; сборки не останавливаются (fidelity P-19)"
+    note: "Цифры internal_guard — начальные значения, утверждены основателем 05.10.2026 (D58); калибруются по live-eval (M2-88) и данным пилота с записью в CHANGELOG"
 
 credit:
   rub_cost_rate: 5                 # 1 кредит ≈ 5 ₽ себестоимости LLM (с НДС агента, по прайсу agents/models.yaml)
@@ -8,7 +57,7 @@ credit:
   typical: { build_create: "≈20 кредитов (потолок из карточки)", change: "3–6 кредитов", interview_turn: "0.1–1 кредит" }
   test: "M1-03: для любого завершённого прогона sum(charge по run_id) = min(cap, sum(llm_calls.credits_milli по run_id, billable)) с точностью до 1 милликредита"
 
-plans:
+plans:   # внутренние профили лимитов (D10); клиенту тарифы в кредитах не показываются — для клиента rub_model (D31)
   free:
     price_rub_month: 0
     grants: { welcome: { credits: 100, expires_after_days: 30 }, monthly: { credits: 25, from_day: 30, expires: "в момент следующего месячного гранта (не копятся)" } }
@@ -19,9 +68,11 @@ plans:
   pilot:   # D24_pilot_free: бесплатный пилот по приглашению основателя
     price_rub_month: 0
     assigned_by: "основатель (CLI платформы); самостоятельно выбрать нельзя"
-    grants: { manual: "кредиты начисляет основатель CLI (ledger bucket topup с reason=pilot_grant, срок 365 дней)" }
+    grants: { automatic: "rub_model.internal_guard.org_allowance — внутренний грант без участия основателя (D31)", manual: "дополнительно — основатель CLI или /admin (ledger bucket topup с reason=pilot_grant, срок 365 дней)" }
     limits: { prod_systems: 5, draft_systems: 30, members: 30 }
-    login_methods: [email_otp, telegram]      # SMS не подключаем на пилоте (расходы); phone_otp — после пилота на платных тарифах
+    free_drafts: "rub_model.free_drafts (≤ 3 новых черновика за 30 дней) действует и на пилоте; draft_systems — общий потолок"
+    client_view: "D31: клиент видит рубли с пометкой «на пилоте бесплатно» (rub_model.pilot_display), не кредиты"
+    login_methods: [email_otp, telegram, phone_otp]      # D36, D58: SMS-агрегатор платформы работает на пилоте; phone_otp — только у опубликованных систем в пределах rub_model.sms_included (rub_model.phone_login)
     prod_requires: "приглашение основателя (идентификация вместо привязки карты на пилоте); CARD_BINDING_REQUIRED не применяется"
     payments: "WIZARD_PAYMENTS=off: покупка, подписки и привязка карты скрыты в UI (по Org.paymentsEnabled / Billing.paymentsEnabled) и отвечают 403 PAYMENTS_DISABLED"
     cli: "pnpm --filter @wizard/platform-api pilot invite|invites|revoke|plan|grant|orgs|spend|readiness|review-required (apps/platform-api/src/pilot/cli.ts); plan <orgId> pilot|free отказывает при активной подписке"
@@ -75,6 +126,7 @@ ledger:
     adjustment: "± ручная корректировка staff (M1: единственный способ начислить платный тариф/докупку до M2)"
 
 run_charging:
+  client_view: "D31 (2026-10-04): всё в этом разделе — внутренний учёт. Клиент не видит cap, кредиты и «Докупить»; при нехватке внутреннего лимита — текст rub_model.internal_guard.org_allowance; потолки — rub_model.internal_guard.caps"
   interview_turn: "без hold; после хода — charge по факту (cap хода 2 кредита). При available ≤ 0 → 402 INSUFFICIENT_CREDITS на POST messages/answers"
   build:
     approve: "cap = card.cap.credits (формула — agents/orchestrator.yaml#estimation; пользователь может только понизить, не ниже ceil(estimate.credits.expected)). available < cap → 402 INSUFFICIENT_CREDITS {available, required: cap}; UI предлагает «Докупить» или понизить cap"

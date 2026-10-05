@@ -103,7 +103,6 @@ spec:
         {{- range $k := until (int .Values.sandbox.systems) }}
         - { protocol: TCP, port: {{ add $.Values.sandbox.basePort $k }} }
         {{- end }}
-        - { protocol: TCP, port: {{ .Values.sandbox.healthPort }} }
   egress:
     - to:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.namespaces.platform }} } }

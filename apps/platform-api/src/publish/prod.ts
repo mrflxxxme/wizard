@@ -63,9 +63,11 @@ export interface PublishOptions {
 
 function get(url: URL, timeoutMs: number, hostHeader?: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    // *.localhost is not resolvable everywhere: connect to loopback and send the system host explicitly.
-    const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost");
     const tls = url.protocol === "https:";
+    // The dev stand (http://<slug>.localhost:<runtimePort>): *.localhost is not resolvable everywhere — connect to
+    // loopback and send the system host explicitly. Behind an ingress (https) the name is resolved as is: inside a
+    // cluster loopback is the pod itself (the local rehearsal maps its *.localhost domains to the node in CoreDNS).
+    const local = !tls && (url.hostname === "localhost" || url.hostname.endsWith(".localhost"));
     const req = (tls ? httpsRequest : request)(
       {
         host: local ? "127.0.0.1" : url.hostname,

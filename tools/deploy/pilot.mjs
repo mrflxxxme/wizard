@@ -929,11 +929,18 @@ export function checkArchive({ kubectl, log = console.log, bucket = "" }) {
   return false;
 }
 
+/**
+ * Pilot credits of the founder's own org «Wizard» at the first sign-in: payments are off on the pilot, so with 0 the
+ * founder could not try a single build before granting himself credits in /admin (found by the local rehearsal). A few
+ * builds' worth; more — /admin «Пилот» → «Начислить» or `pilot grant`.
+ */
+export const FOUNDER_START_CREDITS = 300;
+
 export const FOUNDER_STAFF_SQL = `
 UPDATE platform.pilot_invites SET revoked_at = now()
  WHERE email = lower(:'email') AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= now();
 INSERT INTO platform.pilot_invites (email, org_name, credits, expires_at)
-SELECT lower(:'email'), 'Wizard', 0, now() + interval '30 days'
+SELECT lower(:'email'), 'Wizard', ${FOUNDER_START_CREDITS}, now() + interval '30 days'
  WHERE NOT EXISTS (SELECT 1 FROM platform.users u WHERE u.email = lower(:'email') AND u.deleted_at IS NULL)
    AND NOT EXISTS (SELECT 1 FROM platform.pilot_invites i
                     WHERE i.email = lower(:'email') AND i.accepted_at IS NULL AND i.revoked_at IS NULL);

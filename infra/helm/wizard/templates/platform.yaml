@@ -95,6 +95,9 @@ metadata:
     {{- include "wizard.selector" "wizard-worker" | nindent 4 }}
 spec:
   replicas: {{ .Values.worker.replicas }}
+  {{- with .Values.worker.strategy }}
+  strategy: {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels: {{- include "wizard.selector" "wizard-worker" | nindent 6 }}
   template:

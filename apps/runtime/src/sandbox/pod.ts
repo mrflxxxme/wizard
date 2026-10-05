@@ -35,6 +35,39 @@ export interface SandboxPodInput {
  */
 export const poolNodeLabel = (pool: SandboxPoolName): string => pool.replace(/^sandbox-/, "");
 
+/** Kubernetes stores at most 1 MiB per ConfigMap; the rest is headroom for metadata. */
+export const CONFIGMAP_BUDGET = 900 * 1024;
+/** ConfigMap keys cannot contain "/": s0/functions.mjs ↔ s0__functions.mjs. */
+export const configKey = (path: string) => path.replaceAll("/", "__");
+
+export interface PodConfigMap {
+  data: Record<string, string>;
+  items: { key: string; path: string }[];
+  /** Bytes of data (≤ CONFIGMAP_BUDGET to fit). */
+  size: number;
+}
+
+/**
+ * ConfigMaps of a pod's workerd config (the orchestrator, M2-18): config.capnp and the shared files in `name`, each
+ * system slot (s<n>/…) in `name-s<n>`, so the 1 MiB limit holds per system.
+ */
+export function podConfigMaps(name: string, capnp: string, files: Record<string, string>) {
+  const groups = new Map<string, PodConfigMap>();
+  const put = (cm: string, path: string, text: string) => {
+    const g = groups.get(cm) ?? { data: {}, items: [], size: 0 };
+    g.data[configKey(path)] = text;
+    g.items.push({ key: configKey(path), path });
+    g.size += Buffer.byteLength(text);
+    groups.set(cm, g);
+  };
+  put(name, "config.capnp", capnp);
+  for (const [path, text] of Object.entries(files)) {
+    const slot = /^s(\d+)\//.exec(path)?.[1];
+    put(slot === undefined ? name : `${name}-s${slot}`, path, text);
+  }
+  return groups;
+}
+
 export const SANDBOX_RUNTIME_CLASS = "gvisor";
 const NONROOT_UID = 65532;
 
