@@ -382,7 +382,11 @@ export interface BuildMetrics {
   tasks: { total: number; firstPass: number; passed: number; failed: number; calls: number };
   verify: { g0Runs: number; g1Runs: number; fixTasks: number; fixPhases: number };
   review: { pages: number; ok: number; critical: number; minor: number; skipped: boolean };
+  /** Rejected tool calls of the builder's own phases (first REJECTIONS_MAX): phase, tool, code, `code@path` issues. */
+  rejections: { phase: string; tool: string; code: string; issues: string[] }[];
 }
+
+export const REJECTIONS_MAX = 20;
 
 export const emptyMetrics = (): BuildMetrics => ({
   ops: { calls: 0 },
@@ -391,4 +395,5 @@ export const emptyMetrics = (): BuildMetrics => ({
   tasks: { total: 0, firstPass: 0, passed: 0, failed: 0, calls: 0 },
   verify: { g0Runs: 0, g1Runs: 0, fixTasks: 0, fixPhases: 0 },
   review: { pages: 0, ok: 0, critical: 0, minor: 0, skipped: false },
+  rejections: [],
 });

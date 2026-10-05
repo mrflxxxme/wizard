@@ -56,7 +56,13 @@ const taskFile = (input: RouteInput) =>
 
 /** A model that plays every role of the harness; `opts` bends one behaviour per test. */
 function responder(
-  opts: { wrongFirstWrite?: boolean; criticalOn?: string; failTaskOnce?: string; reviewThrows?: Error } = {},
+  opts: {
+    wrongFirstWrite?: boolean;
+    criticalOn?: string;
+    failTaskOnce?: string;
+    reviewThrows?: Error;
+    badOpsOnce?: boolean;
+  } = {},
 ) {
   const inputs: RouteInput[] = [];
   const reviewed = new Set<string>();
@@ -65,6 +71,10 @@ function responder(
     inputs.push(input);
     switch (input.callType) {
       case "build_ops":
+        if (opts.badOpsOnce) {
+          opts.badOpsOnce = false;
+          return out(turn(tc("apply_ops", { ops: [{ op: "add_entity", entity: {} }], expectedVersion: 1 })));
+        }
         return out(stop("Спека готова."));
       case "plan":
         return out(turn(tc("submit_brief", { tasks: brief })));
@@ -254,6 +264,27 @@ describe("harness v2: build", () => {
       review: { pages: 2, ok: 2, critical: 0, minor: 2, skipped: false },
     });
     expect(eventProblems(mem.events)).toEqual([]);
+  });
+
+  test("a rejected batch in ops lands in build_metrics.rejections; ops.calls counts it", async () => {
+    const { mem } = host({ badOpsOnce: true });
+    const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    const m = metricsOf(mem.events);
+    expect(m.ops).toEqual({ calls: 2 });
+    expect(m.rejections).toEqual([
+      {
+        phase: "ops",
+        tool: "apply_ops",
+        code: "SCHEMA_INVALID",
+        issues: [
+          "SCHEMA_INVALID@/ops/0/name",
+          "SCHEMA_INVALID@/ops/0/label",
+          "SCHEMA_INVALID@/ops/0/fields",
+          "SCHEMA_INVALID@/ops/0/entity",
+        ],
+      },
+    ]);
   });
 
   test("with routeBatch: one batch per wave (3 functions, 2 pages, 2 reviews), steps in task order", async () => {
