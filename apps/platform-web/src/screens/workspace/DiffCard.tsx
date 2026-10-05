@@ -44,7 +44,6 @@ export function DiffCard({
   revision,
   changes,
   reports,
-  credits,
   blockers,
   canCancel,
   busy,
@@ -54,7 +53,6 @@ export function DiffCard({
   revision: number;
   changes: DiffChange[] | null;
   reports: GateReport[];
-  credits: number | null;
   /** Publish blockers already in Russian (GateReport.publishBlockers). */
   blockers: string[];
   canCancel: boolean;
@@ -100,16 +98,14 @@ export function DiffCard({
         <dd data-testid="diff-gates">
           {allPassed ? (
             <Pill tone="ok" title={passed.map((l) => ru.build.gate[l]).join(", ")}>
-              ✓ {ru.diff.gatesLine(passed.join(" · "), checks)}
+              ✓ {ru.diff.gatesLine(checks)}
             </Pill>
           ) : (
             <Pill tone="warn">{ru.diff.gatesPending}</Pill>
           )}
         </dd>
         <dt>{ru.diff.price}</dt>
-        <dd data-testid="diff-price">
-          {credits === null ? ru.diff.priceUnknown : ru.diff.priceLine(credits)}
-        </dd>
+        <dd data-testid="diff-price">{ru.diff.priceLine}</dd>
       </dl>
       {destructive && <Alert testId="diff-destructive">{ru.diff.destructiveBlock}</Alert>}
       {blockers.map((b) => (
