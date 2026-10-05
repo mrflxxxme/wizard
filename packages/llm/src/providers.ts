@@ -63,11 +63,17 @@ export function transformBody(
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
     out.thinking = { type: "disabled" };
+  } else if (providerId === "zai") {
+    // glm-5.3 always thinks: `thinking: {type: "disabled"}` is a 400 («cannot be disabled; please use low, high, or
+    // max», pilot eval 2026-10-05). The lowest effort on every call instead; reasoning_content is still not sent back.
+    delete out.thinking;
+    delete out.enable_thinking;
+    delete out.chat_template_kwargs;
+    out.reasoning_effort = "low";
   } else if (Array.isArray(out.tools) && out.tools.length > 0) {
     delete out.reasoning_effort;
     delete out.enable_thinking;
-    if (providerId === "zai") out.thinking = { type: "disabled" };
-    else delete out.thinking;
+    delete out.thinking;
     if (providerId === "cloudru") out.chat_template_kwargs = { enable_thinking: false };
     else delete out.chat_template_kwargs;
   }

@@ -159,8 +159,17 @@ describe("transformBody(deepseek): thinking disabled on every call", () => {
     expect(JSON.stringify(out.messages)).not.toContain("reasoning_content");
   });
 
-  test("other providers keep their rules (zai without tools has no thinking field)", () => {
+  test("other providers keep their rules (zai: no thinking field, lowest reasoning effort with or without tools)", () => {
     expect(transformBody("zai", { messages: [] })).not.toHaveProperty("thinking");
+    expect(transformBody("zai", { messages: [] }).reasoning_effort).toBe("low");
+    expect(transformBody("zai", { messages: [], tools: [{}], thinking: { type: "disabled" } })).toMatchObject(
+      {
+        reasoning_effort: "low",
+      },
+    );
+    expect(
+      transformBody("zai", { messages: [], tools: [{}], thinking: { type: "disabled" } }),
+    ).not.toHaveProperty("thinking");
     expect(transformBody("cloudru", { messages: [], tools: [{}] }).chat_template_kwargs).toEqual({
       enable_thinking: false,
     });

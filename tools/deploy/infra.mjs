@@ -696,7 +696,7 @@ group by 1, 2, 3, 4, 5, 6 order by last_at desc limit 40;
  */
 const LLM_SHAPE_PROBE = `
 const targets = [
-  { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { thinking: { type: "disabled" } } },
+  { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { reasoning_effort: "low" } },
   { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "moonshotai/Kimi-K2.6", extra: { chat_template_kwargs: { enable_thinking: false } } },
   { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "zai-org/GLM-5.1", extra: { chat_template_kwargs: { enable_thinking: false } } },
 ];
@@ -706,11 +706,15 @@ const variants = [
   ["tool_choice auto", { tools: [tool], tool_choice: "auto" }],
   ["tool_choice required", { tools: [tool], tool_choice: "required" }],
   ["tool_choice функция", { tools: [tool], tool_choice: { type: "function", function: { name: "answer" } } }],
+  ["второй ход с результатом", { tools: [tool], tool_choice: "auto", turn2: true }],
 ];
 (async () => {
   for (const t of targets) {
     for (const [name, v] of variants) {
-      const body = { model: t.model, messages: [{ role: "system", content: "Отвечай кратко." }, { role: "user", content: "Скажи: да" }], max_tokens: 30, temperature: 0.1, ...v, ...(v.tools ? t.extra : {}) };
+      const { turn2, ...vv } = v;
+      const messages = [{ role: "system", content: "Отвечай кратко." }, { role: "user", content: "Скажи: да" }];
+      if (turn2) messages.push({ role: "assistant", content: "", tool_calls: [{ id: "c0", type: "function", function: { name: "answer", arguments: JSON.stringify({ text: "да" }) } }] }, { role: "tool", tool_call_id: "c0", content: "ok" });
+      const body = { model: t.model, messages, max_tokens: 400, temperature: 0.1, ...vv, ...(vv.tools ? t.extra : {}) };
       try {
         const r = await fetch(t.host + "/chat/completions", { method: "POST", headers: { authorization: "Bearer " + t.key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
         const txt = await r.text();
