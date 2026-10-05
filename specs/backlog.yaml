@@ -1194,7 +1194,7 @@ tasks:
       ключ» на S1, этап дизайна S-design после одобрения карточки (три направления, референсы, логотип, цвета, «Ещё варианты»,
       «Пропустить»), цены rub_model на S3, S6, S-billing с пометкой «на пилоте бесплатно» и без кредитов на S1, S3, S4, S-welcome, S10 —
       «Адрес и домен» и «Подключения» (платёжный магазин, SMS, почта, бот, CRM, Метрика, SEO), /admin — «Обращения», «Заказы»,
-      «Ограничения», хосты egress в ревью. S1 — обещание, четыре класса систем, два входа. test_ids для всего нового. Дополнительно
+      «Запросы на развитие», хосты egress в ревью. S1 — обещание, четыре класса систем, два входа. test_ids для всего нового. Дополнительно
       (05.10.2026): S10 «Подключения» — ввод и замена секретов (поле только на запись, маска, «Проверить подключение»; API — M2-95),
       Метрика и SEO без сборки, флажок «Имя клиента в Telegram» (D53), заявка на сбор документов с шифрованием (D52); S7 — подтверждение
       правки, удаляющей данные, словами «поле „Телефон“ исчезнет у 112 записей», снимок и откат (D56); «Написать команде» вне рабочего
@@ -1416,6 +1416,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 1.5
     status: todo
+    release: mvp
+    mvp_scope: "Только сервер пилота: orgPolicyOf по D26 (NULL-регион не ограничивает T1), pilot-secrets передаёт WIZARD_BUILD_DEFAULT_TIER и *_BASE_URL, отказ всей цепочки моделей виден в журнале прогона и алерте основателю. Локальный стенд — после выпуска"
     claimed_by: null
     description: >
       tools/deploy/pilot-secrets.mjs передаёт только CLOUDRU_API_KEY и ZAI_API_KEY, локальный стенд по умолчанию — fixture, поэтому каждая
@@ -1469,6 +1471,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2
     status: todo
+    release: mvp
+    mvp_scope: "Только лимит пилота 5 сборок и 20 правок за 30 дней на организацию (D70), подъём лимита из /admin; рублёвый каталог — после"
     claimed_by: null
     description: >
       Реализация billing.yaml#rub_model: каталог цен из одного места (API M2-22), использование организации без кредитов,
@@ -1494,6 +1498,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 1.5
     status: todo
+    release: mvp
+    mvp_scope: "Кнопка «Написать команде» (D68): сообщение основателю в Telegram (чат алертов) со ссылкой на систему и почтой клиента, копия в /admin, ответ письмом; без переписки в кабинете"
     claimed_by: null
     description: >
       Треды обращений организации (с привязкой к системе и экрану или без), сообщения клиента и команды, вложения — скриншоты PNG/WebP ≤ 5
@@ -1569,6 +1575,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2.5
     status: todo
+    release: mvp
+    mvp_scope: "Нейтральный текст о платформе без скелета полигонов, сегменты site/booking/crm/other как рецепты (D66), запрет выдуманных фактов в промпте; общий модуль правил текста — короткий свод правил humanizer в промпте, линтер M2-33 после"
     claimed_by: null
     description: >
       packages/agents/src/orchestrator/prompt.ts — текст о платформе по prompt_skeleton без «Скелет: Каталог → Заявка → …»; пример в
@@ -1592,6 +1600,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 1
     status: todo
+    release: mvp
+    mvp_scope: "Few-shot QA без форума: по одному эталонному сценарию на класс D65 в gen-qa-assets.mjs, нейтральный промпт"
     claimed_by: null
     description: >
       packages/agents/scripts/gen-qa-assets.mjs кладёт в qa.json два сценария билетов форума. Заменить на четыре эталонных сценария из
@@ -1614,6 +1624,8 @@ tasks:
     estimate_days: 2
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Рецепты трёх классов D65 в карточках возможностей, новые компоненты ui-kit (блоки, Image, темы) в builder.json, report_capability_gap; без search_stock_images и lint_copy"
     claimed_by: null
     description: >
       Загрузчик карточек возможностей packages/agents/assets/capabilities/*.md (одна карточка — один файл; задачи коннекторов и классов
@@ -1664,6 +1676,8 @@ tasks:
     estimate_days: 2.5
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Токены v2 и 4 темы вместо 8, шрифты с кириллицей из Google Fonts (OFL), выбор темы агентом по нише, фирменный цвет"
     claimed_by: null
     description: >
       themeToTokens(theme v2, scheme) остаётся чистой функцией и обратно совместима с темой v1; themeLint (research §3.1: понижение
@@ -1689,6 +1703,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2.5
     status: todo
+    release: mvp
+    mvp_scope: "Hero, Features, Steps, Faq, Cta, LeadForm, Footer, Header с вариантами; Testimonials — после выпуска"
     claimed_by: null
     description: >
       Компоненты по ui-kit.yaml (M2-25): варианты блоков, токены v2, data-wz-*, 390 и 1280 без горизонтального скролла, изображения через
@@ -1760,6 +1776,8 @@ tasks:
     estimate_days: 2
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Поле image, сжатие и варианты при загрузке, раздача inline с кешем, компонент Image"
     claimed_by: null
     description: >
       Загрузка в поле image: сигнатура jpeg/png/webp, снятие EXIF (геометка), сжатие в WebP и варианты по ширине (например 480, 960, 1600)
@@ -1839,6 +1857,8 @@ tasks:
     estimate_days: 2.5
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Получатели: владелец, роль, контакт посетителя с согласием; каналы email и Telegram; служебные письма посетителю (подтверждение, напоминание за 24 ч, ссылка отмены); письмо сотрудникам с данными заявки, Telegram без ПДн (D71); без SMS"
     claimed_by: null
     description: >
       packages/connectors/src/notify.ts шлёт только пользователям, на которых ссылается запись. Добавить: $record.<поле entity.contact>
@@ -1891,6 +1911,8 @@ tasks:
     estimate_days: 2
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "ctx.http.fetch через egress-прокси на хосты из спеки (любой публичный, D71), журнал _w_egress_log, лимиты, список хостов в ревью основателя"
     claimed_by: null
     description: >
       apps/runtime/src/sandbox/guest.mjs отвечает на ctx.http.fetch ошибкой EGRESS_DISABLED. Включить: https, только хосты app.egress ∪
@@ -1960,6 +1982,8 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2.5
     status: todo
+    release: mvp
+    mvp_scope: "Предупреждение словами и подтверждение владельца, данные в архив вместо удаления, откат (D72)"
     claimed_by: null
     description: >
       Id M2-72 переиспользован: прежняя задача «Битрикс24» объединена с M2-71. planMigration помечает destructive-шаги и считает
@@ -2118,6 +2142,8 @@ tasks:
     parallel_group: p-w2
     estimate_days: 1.5
     status: todo
+    release: mvp
+    mvp_scope: "Самостоятельный маршрут вебхука без общего диспетчера M2-49: секретный путь, hmac или shared_secret, защита от повтора, журнал"
     claimed_by: null
     description: >
       Реализация InboundWebhook для универсального коннектора webhook внутри диспетчера M2-49 — своего маршрута нет (executability MP-10).
@@ -2140,6 +2166,8 @@ tasks:
     parallel_group: p-w2
     estimate_days: 2
     status: todo
+    release: mvp
+    mvp_scope: "«На пилоте бесплатно» и остаток лимита словами вместо кредитов, при исчерпании — «Написать команде»; цены в рублях — после"
     claimed_by: null
     description: >
       Убрать кредиты из кабинета клиента (пилюля S1, оценка и потолок S3, «used из cap» S4, баланс и журнал S-billing, кредиты S-welcome);
@@ -2160,6 +2188,8 @@ tasks:
     parallel_group: p-w2
     estimate_days: 2
     status: todo
+    release: mvp
+    mvp_scope: "Кнопка и форма «Написать команде» на экранах кабинета с отметкой «Хочу, чтобы доделала команда», список обращений в /admin; без таймера и непрочитанных"
     claimed_by: null
     description: >
       Кнопка в шапке кабинета через реестр фич открывает панель переписки; при открытии из системы прикладываются система и экран; ответ
@@ -2194,7 +2224,7 @@ tasks:
       - "Диалог передачи содержит строку согласия на доступ команды; без неё кнопка неактивна (executability MP-32)"
 
   - id: M2-59
-    title: "«Ограничения»: запись пробелов возможностей, «Передать команде» в один клик, раздел /admin с группировкой по категории и частоте"
+    title: "«Запросы на развитие»: запись пробелов возможностей, «Передать команде» в один клик, раздел /admin с группировкой по категории и частоте"
     milestone: M2P
     deps: [M2-22, M2-26, M2-30, M2-36]
     specs: ["specs/platform/api.yaml", "specs/platform/db.yaml", "specs/ui/platform-screens.yaml", "specs/product.yaml#decisions.D34_capability_gaps"]
@@ -2202,17 +2232,19 @@ tasks:
     parallel_group: p-w2
     estimate_days: 2
     status: todo
+    release: mvp
+    mvp_scope: "«Запросы на развитие» (D73): таблица и запись запроса из прогона, раздел /admin с группировкой по категории и частоте и ссылкой на систему и клиента; «Передать команде» — через «Написать команде» (D68)"
     claimed_by: null
     description: >
       Пробел {category, quote (после scrub ПДн), offered, systemId, runId, canHandoff}; API для хоста агента (внутренний вызов из
-      прогона); «Передать команде» из сообщения агента создаёт заказ M2-36 со ссылкой на пробел; /admin «Ограничения»: категории по
+      прогона); «Передать команде» из сообщения агента создаёт заказ M2-36 со ссылкой на пробел; /admin «Запросы на развитие»: категории по
       частоте за 7 и 30 дней, цитаты, ссылки на системы, отметка «сделано в платформе».
     owns: ["apps/platform-api/src/gaps/** (новый)", "apps/platform-api/src/routes/gaps.ts", "apps/platform-api/migrations/0023_p_gaps.ts", "apps/platform-api/test/gaps*.test.ts", "apps/platform-web/src/features/gaps/** (новый)", "apps/platform-web/src/i18n/ru/gaps.ts", "apps/platform-web/test/gaps*.test.ts"]
     acceptance:
       - "API-тест: пробел из прогона → категория с частотой 1 в агрегате /admin; цитата с телефоном хранится с заглушкой [ТЕЛЕФОН_1]"
       - "API-тест: «Передать команде» по пробелу → заказ kind=handoff со ссылкой на пробел; повторный клик — тот же заказ"
-      - "DOM-тест /admin «Ограничения»: сортировка по частоте, фильтр 7 и 30 дней, «сделано» убирает категорию из активных"
-      - "DOM-тест /admin «Ограничения»: цитата с <script> выводится текстом; категория data_special для полей спецкатегорий (D51)"
+      - "DOM-тест /admin «Запросы на развитие»: сортировка по частоте, фильтр 7 и 30 дней, «сделано» убирает категорию из активных"
+      - "DOM-тест /admin «Запросы на развитие»: цитата с <script> выводится текстом; категория data_special для полей спецкатегорий (D51)"
 
   - id: M2-60
     title: "Адрес системы: имя <имя>.sandpile.ru и свой домен клиента — одна DNS-запись, проверка с подсказками, автоматический сертификат, маршрутизация runtime"
@@ -2643,6 +2675,8 @@ tasks:
     parallel_group: p-w3
     estimate_days: 1.5
     status: todo
+    release: mvp
+    mvp_scope: "Ответ «не умеем → замена → Написать команде» в интервью и сборке, запись запроса через хост (D73)"
     claimed_by: null
     description: >
       Инструмент report_capability_gap (M2-27) в оркестраторе и строителе: агент честно говорит, что платформа не умеет, предлагает
@@ -2851,6 +2885,8 @@ tasks:
     estimate_days: 2.5
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Бренд Born to Build и простой язык на ключевых экранах (S1–S7, письма входа), жаргон G0/G1/G2, prod, PITR — под «Подробнее для специалиста»"
     claimed_by: null
     description: >
       Весь видимый текст platform-web: бренд, простой язык, правила humanizer; финальная формулировка обещания из двух черновиков
@@ -2871,6 +2907,8 @@ tasks:
     estimate_days: 1.5
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Замер D67: 10 брифов на сервере пилота (по 2–3 на класс и 2 вне классов), ≥ 7 из 10 до готовности к публикации, ≤ 2 000 ₽; без смоуков провайдеров и коннекторов"
     claimed_by: null
     description: >
       Прогон --suite=p на локальном стенде в live-режиме в пределах месячного лимита платформы (D59: до 6 000 ₽, один полный прогон);
@@ -2895,6 +2933,8 @@ tasks:
     estimate_days: 2
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Доводка по замеру D67 и повтор провалившихся брифов"
     claimed_by: null
     description: >
       Единственная задача волны: правит пути по списку дефектов docs/reviews/p-eval/ с соблюдением milestones.yaml M2P.plan.hotspots;
@@ -2917,6 +2957,8 @@ tasks:
     estimate_days: 1
     critical: true
     status: todo
+    release: mvp
+    mvp_scope: "Проход основателя по одному сценарию каждого класса D65 на сервере пилота и первые приглашения"
     claimed_by: null
     description: >
       Агент готовит стенд и чек-лист сценариев; основатель проходит их своими словами, не эталонными брифами.

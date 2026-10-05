@@ -18,7 +18,11 @@ function parseYaml(text) {
   if ("error" in r) throw new Error(r.error);
   return r.ok;
 }
-const load = (file) => parseYaml(readFileSync(join(ROOT, file), "utf8"));
+const parsed = new Map();
+const load = (file) => {
+  if (!parsed.has(file)) parsed.set(file, parseYaml(readFileSync(join(ROOT, file), "utf8")));
+  return structuredClone(parsed.get(file));
+};
 const rank = (m) => Number(/^M(\d+)/.exec(String(m))?.[1]);
 const tasks = () => load("specs/backlog.yaml").tasks;
 
@@ -117,7 +121,8 @@ describe("slice.mjs: anchors", () => {
       const got = parseYaml(sliceFile(path, { anchor }));
       expect(got, `${path}#${anchor}`).toEqual(isItem ? [node] : { [last]: node });
     }
-  });
+    // Every anchor re-reads its file through slice.mjs; the count grows with the backlog (M2P: 120+ anchors).
+  }, 180_000);
 
   it("JSON pointer and markdown heading anchors", () => {
     const schema = JSON.parse(sliceFile("specs/appspec/appspec.schema.json", { anchor: "/$defs" }));
