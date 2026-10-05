@@ -4,6 +4,7 @@ import { type AppSpec, applyOps, LruIdempotencyStore } from "@wizard/appspec";
 import { type GateContext, type GateReport, type RuntimeHandle, runGates } from "@wizard/gates";
 import type { OrgPolicy, RouteInput, RouteOutput } from "@wizard/llm";
 import type postgres from "postgres";
+import type { RecordDevelopmentRequest } from "../gaps.js";
 import { runBuild } from "./builder.js";
 import type {
   BuilderGateLevel,
@@ -59,6 +60,8 @@ export interface MemoryHostOptions {
   askOrchestrator?: (q: { question: string; options?: string[] }) => Promise<OrchestratorAnswer>;
   managesBudget?: boolean;
   signal?: AbortSignal;
+  /** BuildHost.recordDevelopmentRequest (M2-77). */
+  recordDevelopmentRequest?: RecordDevelopmentRequest;
 }
 
 export interface MemoryHost {
@@ -103,6 +106,7 @@ export function createMemoryHost(o: MemoryHostOptions): MemoryHost {
     ...(o.signal ? { signal: o.signal } : {}),
     ...(o.managesBudget ? { managesBudget: true } : {}),
     ...(o.askOrchestrator ? { askOrchestrator: o.askOrchestrator } : {}),
+    ...(o.recordDevelopmentRequest ? { recordDevelopmentRequest: o.recordDevelopmentRequest } : {}),
     qa: o.qa ?? NO_QA,
     emit,
     runStep: (_name, fn) => fn(),

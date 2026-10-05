@@ -1,5 +1,6 @@
 // Compact texts for the builder context (agents/builder.yaml#context.spec_digest) and the masked spec.json (L3-06).
 import type { AppSpec } from "@wizard/appspec";
+import { CAPABILITY_IDS } from "./docs.js";
 import type { BuildCard } from "./types.js";
 
 export const OPERATOR_MASK = "[ОПЕРАТОР]";
@@ -107,6 +108,10 @@ export function cardDigest(card: BuildCard): string {
       `Хранение ПДн: ${card.pii.retention.map((r) => `${r.entity} ${r.deleteAfterDays} дн. (${r.mode})`).join("; ")}`,
     );
   if (card.assumptions?.length) lines.push("Допущения:", ...card.assumptions.map((a) => `- ${a}`));
+  if (card.outOfScope?.length)
+    lines.push("Не войдёт (не собирать):", ...card.outOfScope.map((a) => `- ${a}`));
+  const recipe = card.segment && CAPABILITY_IDS.includes(card.segment) ? card.segment : "general";
+  if (CAPABILITY_IDS.includes(recipe)) lines.push(`Рецепт: get_capability({id: "${recipe}"})`);
   return lines.join("\n");
 }
 

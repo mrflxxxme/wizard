@@ -2,6 +2,7 @@
 import type { ApplyOpsResult, AppSpec } from "@wizard/appspec";
 import type { GateReport, QaCheck } from "@wizard/gates";
 import type { RouteInput, RouteOutput } from "@wizard/llm";
+import type { RecordDevelopmentRequest } from "../gaps.js";
 import type { SystemCard } from "../orchestrator/schemas.js";
 
 export type BuildMode = "create" | "change" | "fix" | "point_edit";
@@ -90,6 +91,11 @@ export interface BuildHost {
   managesBudget?: boolean;
   /** Optional orchestrator bridge for ask_orchestrator (card/defaults answer is used without it). */
   askOrchestrator?(q: { question: string; options?: string[] }): Promise<OrchestratorAnswer>;
+  /**
+   * Optional: records a development request from report_capability_gap (D73, «Запросы на развитие»); the quote is
+   * already scrubbed of personal data. Absent → nothing is recorded, the owner still gets the honest answer.
+   */
+  recordDevelopmentRequest?: RecordDevelopmentRequest;
 }
 
 /** The approved card as the builder reads it (orchestrator.yaml#system_card); unknown extra fields are ignored. */

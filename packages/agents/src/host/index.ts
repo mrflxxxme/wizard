@@ -3,6 +3,14 @@
 import type { CallType, Registry, RouteInput, RouteOutput } from "@wizard/llm";
 import { upperBoundCredits } from "../builder/budget.js";
 import type { HostRouteInput } from "../builder/types.js";
+
+/** Host side of «Запросы на развитие» (D73): optional recordDevelopmentRequest of BuildHost and orchestrator deps. */
+export type {
+  DevelopmentRequestCategory,
+  DevelopmentRequestInput,
+  RecordDevelopmentRequest,
+} from "../gaps.js";
+
 import type { RouteFn, RunStepFn } from "../core/index.js";
 import { createQaAgent } from "../qa/agent.js";
 import type { QaCache } from "../qa/types.js";
