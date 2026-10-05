@@ -141,7 +141,7 @@ fallback_rules:
 call_policy:
   client: "ai 7.x + @ai-sdk/openai-compatible; supportsStructuredOutputs: false; includeUsage: true"
   thinking:
-    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → {thinking: {type: 'disabled'}}; deepseek → {thinking: {type: 'disabled'}} в каждом вызове, и без tools; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
+    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → reasoning_effort: 'high' в каждом вызове (средний из low | high | max, решение основателя 05.10.2026: качество важнее цены) (glm-5.3 думает всегда, {thinking: {type: 'disabled'}} даёт 400 «cannot be disabled; please use low, high, or max» — замер на сервере 05.10.2026); deepseek → {thinking: {type: 'disabled'}} в каждом вызове, и без tools; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
     - "MUST NOT: отправлять reasoning_content обратно в API (ломает DeepSeek/Kimi, аудит 04 T5)"
     - "MAY: отдельный вызов без tools с thinking для рассуждений; его результат передаётся дальше как обычный текст"
     - "Тест: контрактный тест провайдер×модель в eval (tools/eval --contract) — запрос с tools не содержит включённого thinking"

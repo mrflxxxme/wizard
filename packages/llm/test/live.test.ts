@@ -63,7 +63,7 @@ const msgs = (text: string): LlmMessage[] => [
 ];
 
 describe("request body policy (models.yaml#call_policy)", () => {
-  test("T1 (zai) with tools: thinking disabled, no response_format, no reasoning_content", async () => {
+  test("T1 (zai) with tools: middle reasoning effort (thinking cannot be disabled), no response_format, no reasoning_content", async () => {
     const { router } = mk();
     const out = await router.route({
       callType: "build_ops",
@@ -82,10 +82,10 @@ describe("request body policy (models.yaml#call_policy)", () => {
     const req = stub.requests[0];
     expect(req?.provider).toBe("zai");
     expect(req?.body.model).toBe("glm-5.3");
-    expect(req?.body.thinking).toEqual({ type: "disabled" });
+    expect(req?.body).not.toHaveProperty("thinking");
+    expect(req?.body.reasoning_effort).toBe("high");
     expect(req?.body).not.toHaveProperty("response_format");
     expect(req?.raw).not.toContain("reasoning_content");
-    expect(req?.body).not.toHaveProperty("reasoning_effort");
     expect(Array.isArray(req?.body.tools)).toBe(true);
     expect(req?.headers.authorization).toBe("Bearer test-zai");
   });
