@@ -1310,9 +1310,10 @@ export class RunEngine {
           try {
             return { ok: true, out: await router.route({ ...rest, orgPolicy, ctx, signal: x.ac.signal }) };
           } catch (e) {
-            return e instanceof LlmError
-              ? { ok: false, code: e.code, message: e.message }
-              : { ok: false, code: "INTERNAL", message: e instanceof Error ? e.message : String(e) };
+            // Model failures are answers of the batch; anything else (router, usage sink, DB) fails the step,
+            // so it is retried rather than replayed as a stored result.
+            if (e instanceof LlmError) return { ok: false, code: e.code, message: e.message };
+            throw e;
           }
         };
         routers.pending = [];

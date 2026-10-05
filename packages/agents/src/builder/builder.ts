@@ -115,6 +115,10 @@ const TASK_TOOLS = new Set([
 ]);
 const CODE_FILE_RE = /^(ui|functions)\//;
 
+/** A reviewer failure the build may skip: a model error other than budget or abort. */
+const skippableReviewError = (e: unknown) =>
+  e instanceof LlmError && e.code !== "BUDGET_EXCEEDED" && e.code !== "ABORTED";
+
 interface TaskResult {
   task: BriefTask;
   passed: boolean;
@@ -182,6 +186,8 @@ class Builder implements ToolEnv {
   #specNow: AppSpec | null = null;
   #checkChain: Promise<unknown> = Promise.resolve();
   #inWave = false;
+  /** LLM calls of waves (executors, reviewer): bounded per task, not by the builder loop's max_steps. */
+  #harnessSteps = 0;
 
   constructor(host: BuildHost, p: BuildParams) {
     this.#host = host;
@@ -200,14 +206,22 @@ class Builder implements ToolEnv {
   }
 
   async run(): Promise<BuildOutcome> {
-    const outcome = await this.#runInner();
-    if (this.#harness)
-      await this.#host.emit("build_metrics", {
-        stages: this.#metrics,
-        creditsUsed: this.#credits(),
-        durationMs: Math.max(0, Math.round(this.#now() - this.#startedAt)),
-      });
-    return outcome;
+    let outcome: BuildOutcome | undefined;
+    try {
+      outcome = await this.#runInner();
+      return outcome;
+    } finally {
+      // Before run_finished/run_failed, also when the run is cancelled from the host (best effort then).
+      if (this.#harness) {
+        const emitted = this.#host.emit("build_metrics", {
+          stages: this.#metrics,
+          creditsUsed: this.#credits(),
+          durationMs: Math.max(0, Math.round(this.#now() - this.#startedAt)),
+        });
+        if (outcome) await emitted;
+        else await Promise.resolve(emitted).catch(() => undefined);
+      }
+    }
   }
 
   async #runInner(): Promise<BuildOutcome> {
@@ -361,7 +375,7 @@ class Builder implements ToolEnv {
     await this.#refreshSession();
     this.#ctx.push({ role: "user", content: instruction });
     for (;;) {
-      if (this.#steps >= this.#maxSteps) await this.#escalate("steps");
+      if (this.#steps - this.#harnessSteps >= this.#maxSteps) await this.#escalate("steps");
       await this.#ctx.maybeCollapse((p) => this.#host.store.readFile(p));
       this.#opsIndex = 0;
       const messages = this.#ctx.render();
@@ -426,7 +440,9 @@ class Builder implements ToolEnv {
     // (spec, permissions, checks without a file) — to the builder's fix phase.
     const failed = failedChecks(report);
     const byFile = new Map<string, Check[]>();
-    if (this.#harness)
+    // Repeated findings (the cause may be in the spec) and anything after an escalation answer (simplify, the
+    // user's own words) go to the builder's fix phase, which sees the whole report and can apply_ops.
+    if (this.#harness && this.#gateIters[level] === 1 && this.#escalations === 0)
       for (const c of failed)
         if (c.file && CODE_FILE_RE.test(c.file)) byFile.set(c.file, [...(byFile.get(c.file) ?? []), c]);
     if (byFile.size > 0) {
@@ -483,6 +499,7 @@ class Builder implements ToolEnv {
   /** QA before code (builder.yaml#harness.stages.checks); a failure leaves generation to the first G1. */
   async #checksUpfront(brief: readonly BriefTask[]): Promise<void> {
     const { spec, version } = await this.#host.store.getSpec();
+    this.#specNow = spec;
     try {
       this.#qaChecks = await this.#host.runStep("qa_generate", () =>
         this.#host.qa.generate({ card: this.#card, spec, specVersion: version, files: new Map() }),
@@ -496,13 +513,17 @@ class Builder implements ToolEnv {
     this.#metrics.checks.total = checks.length;
     const attached = new Set<string>();
     for (const t of brief)
-      if (t.kind === "function")
-        for (const c of checksForFunction(checks, this.#fnName(t.file) ?? "")) attached.add(c.id);
+      if (t.kind === "function") for (const c of this.#fileChecks(t.file)) attached.add(c.id);
     this.#metrics.checks.attached = attached.size;
   }
 
-  #fnName(file: string): string | undefined {
-    return (this.#specNow?.functions ?? []).find((f) => f.file === file)?.name;
+  /** QA scenarios calling any function declared in this file (a file may hold several). */
+  #fileChecks(file: string): QaCheck[] {
+    const names = (this.#specNow?.functions ?? []).filter((f) => f.file === file).map((f) => f.name);
+    const seen = new Set<string>();
+    return names
+      .flatMap((n) => checksForFunction(this.#qaChecks ?? [], n))
+      .filter((c) => !seen.has(c.id) && seen.add(c.id));
   }
 
   /** The brief task of a file, or a minimal one for a file outside the brief (fix mode, helper files). */
@@ -563,9 +584,25 @@ class Builder implements ToolEnv {
       );
       await this.#flushFiles();
       this.#inWave = false;
-      for (const r of settled) {
-        if (r.status === "rejected") throw r.reason;
+      const stopping = settled.find(
+        (r) =>
+          r.status === "rejected" &&
+          !(r.reason instanceof LlmError && !["BUDGET_EXCEEDED", "ABORTED"].includes(r.reason.code)),
+      );
+      if (stopping?.status === "rejected") throw stopping.reason;
+      // Every call of the wave failed on the models: they are unavailable, not one task.
+      if (settled.every((r) => r.status === "rejected")) throw (settled[0] as PromiseRejectedResult).reason;
+      for (const [k, r] of settled.entries()) {
         const m = this.#metrics.tasks;
+        if (r.status === "rejected") {
+          // The file keeps its stub or previous text; verify sends it to a fix task.
+          if (wave[k]?.fix) this.#metrics.verify.fixTasks += 1;
+          else {
+            m.total += 1;
+            m.failed += 1;
+          }
+          continue;
+        }
         if (wave.find((w) => w.task === r.value.task)?.fix) {
           this.#metrics.verify.fixTasks += 1;
           continue;
@@ -585,7 +622,6 @@ class Builder implements ToolEnv {
   ): Promise<TaskResult> {
     const { task } = it;
     const spec = this.#specNow as AppSpec;
-    const fn = task.kind === "function" ? this.#fnName(task.file) : undefined;
     let messages: LlmMessage[] = [
       { role: "system", content: STATIC_PROMPT },
       {
@@ -594,7 +630,7 @@ class Builder implements ToolEnv {
           card: this.#card,
           spec,
           task,
-          checks: fn ? checksForFunction(this.#qaChecks ?? [], fn) : [],
+          checks: task.kind === "function" ? this.#fileChecks(task.file) : [],
           current: this.#files?.get(task.file) ?? null,
           libs: (this.#brief ?? [])
             .filter(
@@ -609,6 +645,7 @@ class Builder implements ToolEnv {
       },
     ];
     const tools = this.#taskTools(task.file);
+    let writes = 0;
     for (let turn = 1; turn <= TASK_MAX_TURNS; turn++) {
       const r = await runToolLoop({
         route,
@@ -622,14 +659,16 @@ class Builder implements ToolEnv {
       messages = r.messages;
       this.#metrics.tasks.calls += 1;
       const wrote = r.results.some((x) => x.ok && x.call.name === "write_file");
+      if (wrote) writes += 1;
       const cur = this.#files?.get(task.file) ?? null;
-      if (!wrote && (cur === null || isStub(cur))) {
+      // A fix task is done only by a new text of the file: its findings come from checks checkCode does not run.
+      if (!wrote && (cur === null || isStub(cur) || (it.fix && writes === 0))) {
         messages.push({ role: "user", content: WRITE_NUDGE(task.file) });
         continue;
       }
       if (!wrote && r.reason !== "stop") continue;
       const findings = await this.#checkTaskFile(task.file);
-      if (findings.length === 0) return { task, passed: true, firstPass: turn === 1 };
+      if (findings.length === 0) return { task, passed: true, firstPass: writes === 1 };
       messages.push({ role: "user", content: FINDINGS_TEXT(task.file, findings) });
     }
     return { task, passed: false, firstPass: false };
@@ -695,6 +734,7 @@ class Builder implements ToolEnv {
     if (!this.#host.managesBudget) while (this.#used + total > this.#cap) await this.#budgetExceeded();
     const hostInputs: HostRouteInput[] = inputs.map((input, i) => {
       this.#steps += 1;
+      this.#harnessSteps += 1;
       return {
         callType: input.callType,
         messages: input.messages,
@@ -741,7 +781,10 @@ class Builder implements ToolEnv {
   /** Reviewer (builder.yaml#harness.stages.review): critical findings → one round of page fix tasks. */
   async #review(): Promise<boolean> {
     await this.#loadWorkspace();
-    const pages = (this.#brief ?? []).filter((t) => t.kind === "page" && this.#files?.has(t.file));
+    const declared = new Set((this.#specNow?.pages ?? []).map((p) => p.file));
+    const pages = (this.#brief ?? []).filter(
+      (t) => t.kind === "page" && declared.has(t.file) && this.#files?.has(t.file),
+    );
     this.#metrics.review.pages = pages.length;
     const fixes: { task: BriefTask; fix: { findings: Check[] } }[] = [];
     for (let i = 0; i < pages.length; i += WAVE_SIZE) {
@@ -777,18 +820,14 @@ class Builder implements ToolEnv {
             ),
         );
       } catch (e) {
-        if (e instanceof BuildStop) throw e;
+        if (!skippableReviewError(e)) throw e;
         this.#metrics.review.skipped = true;
         return false;
       }
       for (const [k, r] of settled.entries()) {
         if (r.status === "rejected") {
-          if (r.reason instanceof BuildStop) throw r.reason;
-          if (
-            r.reason instanceof LlmError &&
-            (r.reason.code === "BUDGET_EXCEEDED" || r.reason.code === "ABORTED")
-          )
-            throw r.reason;
+          // Cancel, budget stop and anything that is not a model failure stop the build (never a "success").
+          if (!skippableReviewError(r.reason)) throw r.reason;
           // The reviewer is a second opinion: when its models are unavailable the build goes on (metrics note it).
           this.#metrics.review.skipped = true;
           continue;

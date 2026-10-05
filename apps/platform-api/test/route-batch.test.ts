@@ -118,13 +118,13 @@ async function validEvents(api: TestApi, runId: string) {
 }
 
 describe("routeBatch", () => {
-  test("3 calls: one llm_batch step, concurrent, credits Σ once, one budget_update; failures are {ok:false}", async () => {
+  test("3 calls: one llm_batch step, concurrent, credits Σ once, one budget_update; a model failure is {ok:false}", async () => {
     const router = fakeRouter("live");
     const out: RouteBatchItem[][] = [];
     const api = await startApi(tdb.url, {
       executors: {
         interviewTurn: fakeInterview,
-        build: batchBuild(["T1", "fail_llm", "fail_other"], 1, out),
+        build: batchBuild(["T1", "fail_llm", "T3"], 1, out),
       },
       createRouter: router.factory,
     });
@@ -133,15 +133,15 @@ describe("routeBatch", () => {
       const c = await startBuild(api, "Пакет вызовов", 20);
       const done = await waitRun(api, c.buildRunId, ["succeeded"]);
       const steps = runs.get(c.buildRunId) ?? [];
-      expect(steps.filter((s) => s.startsWith("llm"))).toEqual(["llm_batch:T1,fail_llm,fail_other"]);
+      expect(steps.filter((s) => s.startsWith("llm"))).toEqual(["llm_batch:T1,fail_llm,T3"]);
       expect(steps.filter((s) => s === "budget_check")).toHaveLength(1);
       expect(router.peak()).toBe(3);
       expect(out[0]).toEqual([
         { ok: true, out: expect.objectContaining({ result: expect.objectContaining({ text: "out:T1" }) }) },
         { ok: false, code: "LLM_UNAVAILABLE", message: "модели недоступны" },
-        { ok: false, code: "INTERNAL", message: "boom" },
+        { ok: true, out: expect.objectContaining({ result: expect.objectContaining({ text: "out:T3" }) }) },
       ]);
-      expect(done.credits).toMatchObject({ used: 1 });
+      expect(done.credits).toMatchObject({ used: 2 });
       const ev = await validEvents(api, c.buildRunId);
       expect(ev.filter((e) => e.type === "budget_update")).toHaveLength(1);
     } finally {

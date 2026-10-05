@@ -31,6 +31,8 @@ export const UI_BUNDLE_WARN = 1024 * 1024;
 export interface G0Options {
   /** Run only these check ids (the rest → skip). G0-IMP-01/G0-SEC-01 still gate tsc and the build. */
   only?: readonly string[];
+  /** Keep only the findings of this file, before the per-check cap (a builder task's own check). */
+  file?: string;
   timeBudgetMs?: number;
   /** Injection points for tests. */
   deps?: {
@@ -79,9 +81,15 @@ export async function checkCode(input: {
       systemKey: "code_check",
       db: undefined as never,
     },
-    { only: G0_CODE_CHECKS, ...(input.timeBudgetMs ? { timeBudgetMs: input.timeBudgetMs } : {}) },
+    {
+      only: G0_CODE_CHECKS,
+      ...(input.file !== undefined ? { file: input.file } : {}),
+      ...(input.timeBudgetMs ? { timeBudgetMs: input.timeBudgetMs } : {}),
+    },
   );
   const bad = report.checks.filter((c) => c.status === "fail" || c.status === "error");
+  // Files reach the tree only through write_file, which already refuses IMP-01/SEC-01 violations: tsc is not blocked
+  // by another task's file. Findings are focused on the file before the per-check cap (G0Options.file).
   return input.file === undefined ? bad : bad.filter((c) => c.file === input.file);
 }
 
@@ -299,8 +307,12 @@ export async function runG0(ctx: GateContext, opts: G0Options = {}): Promise<Gat
     await run(id, () => skip("Проверка ещё не подключена"));
   }
 
+  const focus = (o: CheckOutcome): CheckOutcome =>
+    opts.file !== undefined && o.kind === "findings"
+      ? { kind: "findings", findings: o.findings.filter((f) => f.file === opts.file) }
+      : o;
   const checks: Check[] = G0_CHECKS.flatMap((def) =>
-    toChecks(def, outcomes.get(def.id) ?? skip("Проверка не запускалась в этом прогоне")),
+    toChecks(def, focus(outcomes.get(def.id) ?? skip("Проверка не запускалась в этом прогоне"))),
   );
   const durationMs = Date.now() - started;
   if (durationMs > G0_TARGET_MS) {

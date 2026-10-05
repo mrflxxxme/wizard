@@ -1,6 +1,6 @@
 // Harness v2 (agents/builder.yaml#harness): the architect's brief, executors per task in waves (one routeBatch per wave,
 // stable order), the per-file check, the task file restriction, the reviewer → fix round and build_metrics.
-import type { LlmResult, RouteInput, RouteOutput } from "@wizard/llm";
+import { LlmError, type LlmResult, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
 import { type BriefTask, briefIssues, runWave } from "../../src/builder/harness.js";
 import { createMemoryHost, executeBuild, type RouteBatchItem } from "../../src/builder/index.js";
@@ -55,7 +55,9 @@ const taskFile = (input: RouteInput) =>
   )?.[1] ?? "";
 
 /** A model that plays every role of the harness; `opts` bends one behaviour per test. */
-function responder(opts: { wrongFirstWrite?: boolean; criticalOn?: string } = {}) {
+function responder(
+  opts: { wrongFirstWrite?: boolean; criticalOn?: string; failTaskOnce?: string; reviewThrows?: Error } = {},
+) {
   const inputs: RouteInput[] = [];
   const reviewed = new Set<string>();
   let wrongDone = false;
@@ -69,6 +71,10 @@ function responder(opts: { wrongFirstWrite?: boolean; criticalOn?: string } = {}
       case "build_code":
       case "fix": {
         const file = taskFile(input);
+        if (opts.failTaskOnce === file && input.callType === "build_code") {
+          opts.failTaskOnce = undefined;
+          throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны.");
+        }
         if (opts.wrongFirstWrite && !wrongDone && input.callType === "build_code") {
           wrongDone = true;
           return out(turn(tc("write_file", { path: "ui/pages/Other.tsx", content: code(file) })));
@@ -76,6 +82,7 @@ function responder(opts: { wrongFirstWrite?: boolean; criticalOn?: string } = {}
         return out(turn(tc("write_file", { path: file, content: code(file) })));
       }
       case "audit": {
+        if (opts.reviewThrows) throw opts.reviewThrows;
         const file = /страница (ui\/\S+):/.exec(String(input.messages.at(1)?.content))?.[1] ?? "";
         const critical = file === opts.criticalOn && !reviewed.has(file);
         reviewed.add(file);
@@ -268,8 +275,9 @@ describe("harness v2: build", () => {
     expect(first).toHaveLength(2);
     expect(JSON.stringify(first[1]?.messages)).toContain("TASK_FILE_ONLY");
     expect(mem.state().files.has("ui/pages/Other.tsx")).toBe(false);
-    // leadNotify calls leadList, whose file came a turn late: its own check catches the type error, the next turn fixes it.
-    expect(metricsOf(mem.events)).toMatchObject({ tasks: { total: 5, firstPass: 3, passed: 5, failed: 0 } });
+    // firstPass = the first successful write passed: the refused write does not count; leadNotify calls leadList,
+    // whose file came a turn late, so its own check catches the type error and its second write fixes it.
+    expect(metricsOf(mem.events)).toMatchObject({ tasks: { total: 5, firstPass: 4, passed: 5, failed: 0 } });
   });
 
   test("a critical review sends the page to one fix task and the gates run again", async () => {
@@ -285,5 +293,39 @@ describe("harness v2: build", () => {
       verify: { g0Runs: 2, g1Runs: 2, fixTasks: 1 },
       review: { pages: 2, ok: 1, critical: 1 },
     });
+  });
+
+  test("a model failure of one task fails that task only; verify sends its file to a fix task", async () => {
+    const home = "ui/pages/Home.tsx";
+    let n = 0;
+    const { mem, inputs } = host({ failTaskOnce: home });
+    // G0 sees the stub left by the failed task once (G0-SPEC-03 on its file), then passes.
+    mem.host.runGates = async (level) =>
+      level === "G0" && ++n === 1
+        ? report("G0", false, [
+            { id: "G0-SPEC-03", status: "fail", message_ru: "осталась заготовкой", file: home },
+          ])
+        : report(level, true);
+    const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    expect(inputs.filter((i) => i.callType === "fix").map(taskFile)).toEqual([home]);
+    expect(metricsOf(mem.events)).toMatchObject({
+      tasks: { total: 5, passed: 4, failed: 1 },
+      verify: { fixTasks: 1 },
+    });
+  });
+
+  test("a cancel during the review is never a success", async () => {
+    const { mem } = host({ reviewThrows: new Error("run cancelled") });
+    await expect(executeBuild(mem, { card, cap: 100, mode: "create" })).rejects.toThrow("run cancelled");
+    expect(mem.events.some((e) => e.type === "run_finished")).toBe(false);
+    expect(metricsOf(mem.events)).toBeDefined();
+  });
+
+  test("an unavailable reviewer is skipped: the build succeeds, metrics say so", async () => {
+    const { mem } = host({ reviewThrows: new LlmError("LLM_UNAVAILABLE", "нет") });
+    const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    expect(metricsOf(mem.events)).toMatchObject({ review: { skipped: true } });
   });
 });

@@ -71,14 +71,15 @@ export function briefIssues(tasks: readonly BriefTask[], s: BriefScope): ToolIss
     seen.add(t.file);
     for (const u of t.uses) {
       if (libFiles.has(u)) continue;
-      const known = t.kind === "page" ? fnNames.has(u) : entities.has(u) || fnNames.has(u);
+      // Pages may read and change entities directly (useEntityList/useEntity/useEntityMutation).
+      const known = entities.has(u) || fnNames.has(u);
       if (!known)
         out.push({
           path: at("uses"),
           code: "BRIEF_USES",
           message:
             t.kind === "page"
-              ? `Функции «${u}» нет в спеке: ${[...fnNames].join(", ") || "функций нет"}.`
+              ? `«${u}» — не функция и не сущность спеки (функции: ${[...fnNames].join(", ") || "нет"}).`
               : `«${u}» — не сущность и не функция спеки.`,
         });
     }

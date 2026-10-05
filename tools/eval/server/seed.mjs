@@ -119,7 +119,8 @@ export function revokeSql({ tokenHash }) {
  * After the run: exact model spend per system (platform.llm_calls.cost_rub of billable calls, ₽ with VAT) and the
  * «Запросы на развитие» rows of the org's systems when that table exists (M2-59 is in progress; the candidates are
  * fixed names, so the interpolated identifier never comes from input), and the stage metrics of the harness (payload
- * of the last build_metrics event of each system's latest build run, eval.yaml stages). One line per result:
+ * of the last build_metrics event of each system's create run — the latest build when there is none — so a later
+ * «Исправить» run does not hide the stages of the build itself, eval.yaml stages). One line per result:
  * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`; ::jsonb::text keeps each on one line (json_agg puts a newline
  * between elements).
  */
@@ -144,7 +145,7 @@ export function collectSql({ orgId }) {
   SELECT s.id AS system_id, e.payload
     FROM platform.systems s
    CROSS JOIN LATERAL (SELECT r.id FROM platform.runs r WHERE r.system_id = s.id AND r.kind = 'build'
-                        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) r
+                        ORDER BY (r.mode = 'create') DESC, r.created_at DESC, r.id DESC LIMIT 1) r
    CROSS JOIN LATERAL (SELECT ev.payload FROM platform.run_events ev
                         WHERE ev.run_id = r.id AND ev.type = 'build_metrics' ORDER BY ev.seq DESC LIMIT 1) e
    WHERE s.org_id = :'org_id') x;`,
