@@ -31,7 +31,7 @@ describe("budget", () => {
     expect(exceeded.cap).toBe(1);
     expect(exceeded.used).toBeLessThanOrEqual(1);
     const after = mem.events.slice(i + 1).map((e) => e.type);
-    expect(after).toEqual(["needs_input", "input_received", "run_finished"]);
+    expect(after).toEqual(["needs_input", "input_received", "build_metrics", "run_finished"]);
     const ask = mem.events[i + 1]?.payload as { decisionId: string; options: { id: string }[] };
     expect(ask.decisionId).toBe("budget");
     expect(ask.options.map((o) => o.id)).toEqual([`raise_cap_${raiseStep(1)}`, "stop"]);

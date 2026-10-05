@@ -77,7 +77,12 @@ describe("escalation", () => {
   test("5 failed typechecks in a row → escalation with 4 buttons, no 6th LLM call", async () => {
     const script = [plan, stop("Спека готова."), ...[1, 2, 3, 4, 5, 6, 7].map(brokenWrite)];
     const { mem, inputs } = setup(script, ["rollback"]);
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(out).toMatchObject({ status: "cancelled", reason: "rollback" });
     const code = inputs.filter((i) => i.callType === "build_code");
     expect(code.length).toBe(5);
@@ -101,7 +106,12 @@ describe("escalation", () => {
   test("retry resets the counter; the second threshold fails the run without a new escalation", async () => {
     const script = [plan, stop(), ...Array.from({ length: 12 }, (_, i) => brokenWrite(i))];
     const { mem, inputs, asked } = setup(script, ["retry"]);
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(out).toMatchObject({ status: "failed", code: "CONSECUTIVE_ERRORS" });
     expect(asked).toEqual(["escalation"]);
     expect(inputs.filter((i) => i.callType === "build_code").length).toBe(10);
@@ -125,7 +135,12 @@ describe("escalation", () => {
       gates: { G0: async () => (++g0 <= 5 ? tsFail() : report("G0", true)), G1: g1Stub },
       answer: () => ({ choice: "rephrase", text: "Сделай просто список заметок" }),
     });
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(out.status).toBe("succeeded");
     expect(JSON.stringify(inputs.at(-1)?.messages)).toContain("Сделай просто список заметок");
     const received = mem.events.find((e) => e.type === "input_received");
@@ -152,7 +167,12 @@ describe("escalation", () => {
         })),
       ),
     );
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(asked).toEqual(["escalation"]);
     expect(out).toMatchObject({ status: "failed", code: "GATES_FAILED" });
     expect(out.status === "failed" && out.reports?.[0]?.level).toBe("G0");
@@ -164,7 +184,12 @@ describe("escalation", () => {
     const same = turn(tc("list_files", {}, "l"));
     const script = [plan, stop(), ...Array.from({ length: 15 }, () => same)];
     const { mem, inputs } = setup(script, ["rollback"], () => report("G0", true));
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(out).toMatchObject({ status: "cancelled", reason: "rollback" });
     expect(inputs.filter((i) => i.callType === "build_code").length).toBe(15);
   });
@@ -191,7 +216,7 @@ describe("escalation", () => {
 });
 
 describe("modes and failures", () => {
-  test("fix: plan and ops are skipped; start from the gate report, fix, regate", async () => {
+  test("fix: plan and ops are skipped; a failed file goes to its own fix task, then regate", async () => {
     const script = [
       turn(tc("write_file", { path: "ui/Home.tsx", content: "export default () => null;\n" }, "w")),
       stop("Исправил."),
@@ -200,8 +225,11 @@ describe("modes and failures", () => {
     const { mem, inputs } = setup(script, [], () => (++n === 1 ? tsFail() : report("G0", true)));
     const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 3, mode: "fix" });
     expect(out.status).toBe("succeeded");
-    expect(inputs.map((i) => i.callType)).toEqual(["fix", "fix"]);
-    expect(JSON.stringify(inputs[0]?.messages.at(-1))).toContain("Отчёт проверок G0: упало 1");
+    // builder.yaml#harness.stages.verify.fix: one fresh-context call with the file's findings; the clean write ends it.
+    expect(inputs.map((i) => i.callType)).toEqual(["fix"]);
+    expect(inputs[0]?.messages).toHaveLength(2);
+    expect(JSON.stringify(inputs[0]?.messages.at(-1))).toContain("Проверки нашли ошибки в этом файле");
+    expect(JSON.stringify(inputs[0]?.messages.at(-1))).toContain("TS2352");
     const steps = mem.events.filter((e) => e.type === "step_started").map((e) => e.payload.step);
     expect(steps).toEqual(["verify", "fix", "verify", "verify"]);
     expect(eventProblems(mem.events)).toEqual([]);
@@ -213,7 +241,12 @@ describe("modes and failures", () => {
       [new LlmError("BUDGET_EXCEEDED", "нет"), "BUDGET_STOPPED"],
     ] as const) {
       const { mem } = setup([err], []);
-      const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+      const out = await executeBuild(mem, {
+        card: cardFor(baseSpec()),
+        cap: 100,
+        mode: "create",
+        pipeline: "single",
+      });
       expect(out).toMatchObject({ status: "failed", code });
       expect(mem.events.at(-1)?.type).toBe("run_failed");
     }
@@ -233,7 +266,12 @@ describe("modes and failures", () => {
       signal: ac.signal,
       gates: { G0: async () => report("G0", true), G1: g1Stub },
     });
-    const out = await executeBuild(mem, { card: cardFor(baseSpec()), cap: 100, mode: "create" });
+    const out = await executeBuild(mem, {
+      card: cardFor(baseSpec()),
+      cap: 100,
+      mode: "create",
+      pipeline: "single",
+    });
     expect(out).toMatchObject({ status: "cancelled", reason: "aborted" });
     expect(inputs.length).toBe(1);
   });

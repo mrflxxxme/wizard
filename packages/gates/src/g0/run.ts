@@ -49,6 +49,42 @@ export function piiFieldNames(spec: AppSpec): Set<string> {
   return out;
 }
 
+/** Code checks of G0 that need no database, bundle or previous revision (agents/builder.yaml#harness.tasks.check). */
+export const G0_CODE_CHECKS = [
+  "G0-IMP-01",
+  "G0-SEC-01",
+  "G0-SPEC-01",
+  "G0-SPEC-03",
+  "G0-FN-01",
+  "G0-TS-01",
+] as const;
+
+/**
+ * The code checks of G0 over the whole working tree, without a database and without gate events; the failed or
+ * erroring checks whose finding names `file` (or that name no file at all when `file` is absent).
+ */
+export async function checkCode(input: {
+  spec: AppSpec;
+  files: ReadonlyMap<string, string>;
+  file?: string;
+  timeBudgetMs?: number;
+}): Promise<Check[]> {
+  const report = await runG0(
+    {
+      spec: input.spec,
+      prevSpec: null,
+      specVersion: 0,
+      files: input.files,
+      env: "draft",
+      systemKey: "code_check",
+      db: undefined as never,
+    },
+    { only: G0_CODE_CHECKS, ...(input.timeBudgetMs ? { timeBudgetMs: input.timeBudgetMs } : {}) },
+  );
+  const bad = report.checks.filter((c) => c.status === "fail" || c.status === "error");
+  return input.file === undefined ? bad : bad.filter((c) => c.file === input.file);
+}
+
 /** write_file fast path (gates.yaml#G0.runs_on): G0-IMP-01 and G0-SEC-01 for one file. */
 export function checkFile(path: string, source: string, spec?: AppSpec): Check[] {
   const src = parseAll(new Map([[path, source]]))[0];

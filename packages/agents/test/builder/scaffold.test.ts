@@ -247,7 +247,7 @@ async function build(opsTurns: ReturnType<typeof turn>[], codeTurns: ReturnType<
     route,
     gates: { G0: async () => report("G0", true), G1: g1Stub },
   });
-  const out = await runBuild(mem.host, { card: cardFor(spec), cap: 100, mode: "create" });
+  const out = await runBuild(mem.host, { card: cardFor(spec), cap: 100, mode: "create", pipeline: "single" });
   return { out, mem, inputs };
 }
 

@@ -2,8 +2,15 @@
 // budgets (#budgets), escalation (#escalation); events — platform/workflows.yaml#events.
 import { createHash } from "node:crypto";
 import { type AppSpec, generateTypes } from "@wizard/appspec";
-import { type Check, checkFile, type GateReport, type QaCheck } from "@wizard/gates";
-import { type CallType, LlmError, type RouteInput, type RouteOutput } from "@wizard/llm";
+import { type Check, checkCode, checkFile, type GateReport, type QaCheck } from "@wizard/gates";
+import {
+  type CallType,
+  LlmError,
+  type LlmErrorCode,
+  type LlmMessage,
+  type RouteInput,
+  type RouteOutput,
+} from "@wizard/llm";
 import { callTool, runToolLoop, type ToolLoopResult } from "../core/index.js";
 import { type CapabilityGap, gapMessage, type RecordDevelopmentRequest } from "../gaps.js";
 import { raiseStep, upperBoundCredits } from "./budget.js";
@@ -11,6 +18,27 @@ import { BuilderContext, MAX_CHARS, MIN_CHARS } from "./context.js";
 import { humanDiff } from "./diff.js";
 import { maskSpec } from "./digest.js";
 import { sdkDocs, uiKitDocs } from "./docs.js";
+import {
+  BRIEF_TEXT,
+  type BriefTask,
+  type BuildMetrics,
+  checksForFunction,
+  emptyMetrics,
+  FINDINGS_TEXT,
+  KIND_ORDER,
+  LIB_FILE_RE,
+  REVIEW_SYSTEM,
+  reviewFindings,
+  reviewMessage,
+  runWave,
+  submitBriefTool,
+  submitReviewTool,
+  TASK_MAX_TURNS,
+  taskMessage,
+  taskOrder,
+  WAVE_SIZE,
+  WRITE_NUDGE,
+} from "./harness.js";
 import { gateReportText, PHASE_TEXT, STATIC_PROMPT, sessionMessage } from "./prompt.js";
 import { droppedPageNote, dropReservedPages, isStub, pageStub, pagesOnReservedRoutes } from "./scaffold.js";
 import {
@@ -33,7 +61,9 @@ import type {
   BuildLimits,
   BuildOutcome,
   BuildParams,
+  HostRouteInput,
   InputOption,
+  RouteBatchItem,
 } from "./types.js";
 
 export const DEFAULT_LIMITS: BuildLimits = {
@@ -59,7 +89,7 @@ export const ESCALATION_OPTIONS: InputOption[] = [
 ];
 
 const STEP_LABELS: Record<Phase, string> = {
-  plan: "Составляю план",
+  plan: "Составляю техническое задание",
   ops: "Собираю модель данных",
   code: "Пишу код",
   verify: "Проверяю",
@@ -72,6 +102,23 @@ class BuildStop extends Error {
   constructor(readonly outcome: BuildOutcome) {
     super(outcome.status);
   }
+}
+
+/** Tools of an executor task (builder.yaml#harness.stages.tasks.tools). */
+const TASK_TOOLS = new Set([
+  "write_file",
+  "read_file",
+  "list_files",
+  "get_ui_kit_docs",
+  "get_sdk_docs",
+  "get_capability",
+]);
+const CODE_FILE_RE = /^(ui|functions)\//;
+
+interface TaskResult {
+  task: BriefTask;
+  passed: boolean;
+  firstPass: boolean;
 }
 
 const isBlocking = (c: Check) => (c.status === "fail" || c.status === "error") && c.severity === "blocker";
@@ -125,6 +172,16 @@ class Builder implements ToolEnv {
   #opsIndex = 0;
   #acUnlocked = false;
   #messages = 0;
+  // harness v2 (builder.yaml#harness)
+  #brief: BriefTask[] | null = null;
+  #harness = false;
+  #reviewed = false;
+  #metrics: BuildMetrics = emptyMetrics();
+  /** ui/** and functions/** of the run as the builder wrote them: tasks read and check without host steps. */
+  #files: Map<string, string> | null = null;
+  #specNow: AppSpec | null = null;
+  #checkChain: Promise<unknown> = Promise.resolve();
+  #inWave = false;
 
   constructor(host: BuildHost, p: BuildParams) {
     this.#host = host;
@@ -143,15 +200,28 @@ class Builder implements ToolEnv {
   }
 
   async run(): Promise<BuildOutcome> {
+    const outcome = await this.#runInner();
+    if (this.#harness)
+      await this.#host.emit("build_metrics", {
+        stages: this.#metrics,
+        creditsUsed: this.#credits(),
+        durationMs: Math.max(0, Math.round(this.#now() - this.#startedAt)),
+      });
+    return outcome;
+  }
+
+  async #runInner(): Promise<BuildOutcome> {
     this.#startedAt = this.#now();
     try {
       const mode = this.#p.mode;
-      if (mode === "create" || mode === "change") {
+      if ((mode === "create" || mode === "change") && this.#p.pipeline === "single") {
         await this.#phaseStep("plan", () => this.#planPhase());
         await this.#phaseStep("ops", async () => {
           const { version } = await this.#host.store.getSpec();
-          const text = mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version);
-          await this.#toolPhase("build_ops", text);
+          await this.#toolPhase(
+            "build_ops",
+            mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version),
+          );
         });
         await this.#phaseStep("code", async () => {
           const stubs = await this.#scaffoldPages();
@@ -162,6 +232,34 @@ class Builder implements ToolEnv {
             await this.#toolPhase("build_code", PHASE_TEXT.stubs(left));
           }
         });
+      } else if (mode === "create" || mode === "change") {
+        this.#harness = true;
+        await this.#phaseStep("ops", async () => {
+          const { version } = await this.#host.store.getSpec();
+          const text = mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version);
+          const before = this.#steps;
+          await this.#toolPhase("build_ops", text);
+          this.#metrics.ops.calls = this.#steps - before;
+        });
+        const stubs = await this.#scaffoldPages();
+        await this.#phaseStep("plan", () => this.#briefPhase(mode));
+        await this.#phaseStep("code", async () => {
+          const brief = this.#brief;
+          if (brief) {
+            await this.#checksUpfront(brief);
+            await this.#runTasks(brief.map((task) => ({ task })));
+            return;
+          }
+          // No valid brief: the single-agent code phase (builder.yaml#loop.phases.code).
+          await this.#toolPhase("build_code", PHASE_TEXT.code(stubs));
+          for (let i = 0; i < STUB_ROUNDS; i++) {
+            const left = await this.#stubPages();
+            if (left.length === 0) break;
+            await this.#toolPhase("build_code", PHASE_TEXT.stubs(left));
+          }
+        });
+      } else if (mode === "fix") {
+        this.#harness = true;
       } else if (mode === "point_edit") {
         const t = this.#p.target;
         if (t) {
@@ -298,6 +396,10 @@ class Builder implements ToolEnv {
         await this.#fixRound("G1", g1);
         continue;
       }
+      if (this.#brief && !this.#reviewed) {
+        this.#reviewed = true;
+        if (await this.#phaseStep("verify", () => this.#review())) continue;
+      }
       const { version } = await this.#host.store.getSpec();
       const title = this.#card.title ? `«${this.#card.title}» ` : "";
       const target = this.#p.mode === "point_edit" ? this.#p.target : undefined;
@@ -320,9 +422,395 @@ class Builder implements ToolEnv {
       await this.#escalate("gates", level);
       this.#gateIters[level] = 1;
     }
-    const text = gateReportText(report, report.explanations);
+    // Harness v2 (builder.yaml#harness.stages.verify.fix): findings in code files go to tasks by file; the rest
+    // (spec, permissions, checks without a file) — to the builder's fix phase.
+    const failed = failedChecks(report);
+    const byFile = new Map<string, Check[]>();
+    if (this.#harness)
+      for (const c of failed)
+        if (c.file && CODE_FILE_RE.test(c.file)) byFile.set(c.file, [...(byFile.get(c.file) ?? []), c]);
+    if (byFile.size > 0) {
+      await this.#phaseStep("fix", () =>
+        this.#runTasks(
+          [...byFile].map(([file, findings]) => ({
+            task: this.#taskFor(file),
+            fix: { findings, ...(report.explanations?.length ? { explanations: report.explanations } : {}) },
+          })),
+        ),
+      );
+    }
+    const rest = failed.filter((c) => !(c.file && byFile.has(c.file)));
+    if (rest.length === 0 && byFile.size > 0) return;
+    const text = gateReportText(byFile.size > 0 ? { ...report, checks: rest } : report, report.explanations);
     this.#ctx.pinGateReport(text);
+    this.#metrics.verify.fixPhases += 1;
     await this.#phaseStep("fix", () => this.#toolPhase("fix", text));
+  }
+
+  // ------------------------------------------------------------------------------------------ harness v2
+
+  /** Architect (builder.yaml#harness.stages.brief): submit_brief; an invalid brief → the single-agent code phase. */
+  async #briefPhase(mode: "create" | "change"): Promise<void> {
+    await this.#refreshSession();
+    const { spec } = await this.#host.store.getSpec();
+    const existing = new Set<string>();
+    if (mode === "change")
+      for (const f of [...(spec.functions ?? []), ...(spec.pages ?? [])].map((x) => x.file)) {
+        const src = await this.#host.store.readFile(f);
+        if (src !== null && !isStub(src)) existing.add(f);
+      }
+    const title = this.#card.title ?? this.#card.summary ?? "система";
+    const r = await callTool({
+      route: this.#router("plan"),
+      callType: "plan",
+      orgPolicy: null,
+      ctx: { orgId: "" },
+      messages: [...this.#ctx.render(), { role: "user", content: BRIEF_TEXT(title, mode) }],
+      tool: submitBriefTool({ spec, card: this.#card, mode, existing }),
+    });
+    this.#metrics.brief.retries = Math.max(0, r.stats.calls - 1);
+    if (!r.ok) {
+      this.#metrics.brief.fallback = true;
+      return;
+    }
+    this.#brief = taskOrder(r.value.tasks);
+    this.#metrics.brief.tasks = this.#brief.length;
+    await this.#host.emit("plan_ready", {
+      steps: this.#brief.slice(0, 20).map((t) => ({ id: t.id, kind: "code", title: t.title })),
+    });
+  }
+
+  /** QA before code (builder.yaml#harness.stages.checks); a failure leaves generation to the first G1. */
+  async #checksUpfront(brief: readonly BriefTask[]): Promise<void> {
+    const { spec, version } = await this.#host.store.getSpec();
+    try {
+      this.#qaChecks = await this.#host.runStep("qa_generate", () =>
+        this.#host.qa.generate({ card: this.#card, spec, specVersion: version, files: new Map() }),
+      );
+    } catch (e) {
+      if (!(e instanceof LlmError) || e.code === "BUDGET_EXCEEDED" || e.code === "ABORTED") throw e;
+      this.#qaChecks = null;
+      return;
+    }
+    const checks = this.#qaChecks ?? [];
+    this.#metrics.checks.total = checks.length;
+    const attached = new Set<string>();
+    for (const t of brief)
+      if (t.kind === "function")
+        for (const c of checksForFunction(checks, this.#fnName(t.file) ?? "")) attached.add(c.id);
+    this.#metrics.checks.attached = attached.size;
+  }
+
+  #fnName(file: string): string | undefined {
+    return (this.#specNow?.functions ?? []).find((f) => f.file === file)?.name;
+  }
+
+  /** The brief task of a file, or a minimal one for a file outside the brief (fix mode, helper files). */
+  #taskFor(file: string): BriefTask {
+    const known = this.#brief?.find((t) => t.file === file);
+    if (known) return known;
+    const page = this.#specNow?.pages?.find((p) => p.file === file);
+    return {
+      id: "T0",
+      kind: LIB_FILE_RE.test(file) ? "lib" : file.startsWith("functions/") ? "function" : "page",
+      file,
+      title: page?.title ?? file,
+      goal: "Исправь ошибки проверок в этом файле, не меняя его назначения.",
+      details: [],
+      uses: [],
+      acRefs: [],
+    };
+  }
+
+  /** Spec and the files of the run, read once per group of waves (sequential host steps). */
+  async #loadWorkspace(): Promise<void> {
+    await this.#flushFiles();
+    this.#specNow = (await this.#host.store.getSpec()).spec;
+    if (this.#files) return;
+    const files = new Map<string, string>();
+    for (const p of await this.#host.store.listFiles()) {
+      if (!CODE_FILE_RE.test(p)) continue;
+      const src = await this.#host.store.readFile(p);
+      if (src !== null) files.set(p, src);
+    }
+    this.#files = files;
+  }
+
+  /** Executor tasks in waves of WAVE_SIZE (builder.yaml#harness.stages.tasks). */
+  async #runTasks(
+    items: readonly {
+      task: BriefTask;
+      fix?: { findings: readonly Check[]; explanations?: readonly unknown[] };
+    }[],
+  ): Promise<void> {
+    await this.#loadWorkspace();
+    // Kinds never share a wave: shared modules are written before the files that import them.
+    const waves = KIND_ORDER.flatMap((k) => {
+      const of = items.filter((it) => it.task.kind === k);
+      const out: (typeof items)[number][][] = [];
+      for (let i = 0; i < of.length; i += WAVE_SIZE) out.push(of.slice(i, i + WAVE_SIZE));
+      return out;
+    });
+    for (const wave of waves) {
+      this.#inWave = true;
+      const settled = await runWave(
+        wave.map((it) => (route: (input: RouteInput) => Promise<RouteOutput>) => this.#taskJob(it, route)),
+        (inputs) =>
+          this.#dispatch(
+            inputs,
+            wave.map((it) => `task:${it.task.id}:${it.task.file}`),
+          ),
+      );
+      await this.#flushFiles();
+      this.#inWave = false;
+      for (const r of settled) {
+        if (r.status === "rejected") throw r.reason;
+        const m = this.#metrics.tasks;
+        if (wave.find((w) => w.task === r.value.task)?.fix) {
+          this.#metrics.verify.fixTasks += 1;
+          continue;
+        }
+        m.total += 1;
+        if (r.value.passed) m.passed += 1;
+        else m.failed += 1;
+        if (r.value.firstPass) m.firstPass += 1;
+      }
+    }
+    this.#dirty = true;
+  }
+
+  async #taskJob(
+    it: { task: BriefTask; fix?: { findings: readonly Check[]; explanations?: readonly unknown[] } },
+    route: (input: RouteInput) => Promise<RouteOutput>,
+  ): Promise<TaskResult> {
+    const { task } = it;
+    const spec = this.#specNow as AppSpec;
+    const fn = task.kind === "function" ? this.#fnName(task.file) : undefined;
+    let messages: LlmMessage[] = [
+      { role: "system", content: STATIC_PROMPT },
+      {
+        role: "user",
+        content: taskMessage({
+          card: this.#card,
+          spec,
+          task,
+          checks: fn ? checksForFunction(this.#qaChecks ?? [], fn) : [],
+          current: this.#files?.get(task.file) ?? null,
+          libs: (this.#brief ?? [])
+            .filter(
+              (l) =>
+                l.kind === "lib" &&
+                l.file !== task.file &&
+                (task.uses.includes(l.file) || task.kind === "lib"),
+            )
+            .map((l) => ({ task: l, content: this.#files?.get(l.file) ?? null })),
+          ...(it.fix ? { fix: it.fix } : {}),
+        }),
+      },
+    ];
+    const tools = this.#taskTools(task.file);
+    for (let turn = 1; turn <= TASK_MAX_TURNS; turn++) {
+      const r = await runToolLoop({
+        route,
+        callType: it.fix ? "fix" : "build_code",
+        orgPolicy: null,
+        ctx: { orgId: "" },
+        messages,
+        tools,
+        maxTurns: 1,
+      });
+      messages = r.messages;
+      this.#metrics.tasks.calls += 1;
+      const wrote = r.results.some((x) => x.ok && x.call.name === "write_file");
+      const cur = this.#files?.get(task.file) ?? null;
+      if (!wrote && (cur === null || isStub(cur))) {
+        messages.push({ role: "user", content: WRITE_NUDGE(task.file) });
+        continue;
+      }
+      if (!wrote && r.reason !== "stop") continue;
+      const findings = await this.#checkTaskFile(task.file);
+      if (findings.length === 0) return { task, passed: true, firstPass: turn === 1 };
+      messages.push({ role: "user", content: FINDINGS_TEXT(task.file, findings) });
+    }
+    return { task, passed: false, firstPass: false };
+  }
+
+  /** Code checks of G0 for one file, one at a time (tsc is heavy), on the builder's own copy of the files. */
+  #checkTaskFile(file: string): Promise<Check[]> {
+    const run = () =>
+      checkCode({ spec: this.#specNow as AppSpec, files: this.#files ?? new Map(), file }).then((cs) =>
+        cs.filter((c) => c.severity === "blocker"),
+      );
+    const p = this.#checkChain.then(run, run);
+    this.#checkChain = p.catch(() => undefined);
+    return p;
+  }
+
+  #taskTools(file: string): AnyTool[] {
+    const env: ToolEnv = {
+      applyOps: async () => fail("NOT_ALLOWED", "В задаче исполнителя спеку не меняют."),
+      writeFile: (path, content) => {
+        if (path !== file)
+          fail("TASK_FILE_ONLY", `В этой задаче можно писать только ${file}.`, [
+            { path, message: "другой файл" },
+          ]);
+        return this.#writeChecked(path, content, this.#specNow as AppSpec, this.#files?.get(path) ?? null);
+      },
+      readFile: async (path) => this.#readWorkspace(path),
+      listFiles: async (prefix) => ({
+        files: [...(this.#files ?? new Map<string, string>())]
+          .filter(([p]) => !prefix || p.startsWith(prefix))
+          .map(([path, c]) => ({ path, bytes: Buffer.byteLength(c) })),
+      }),
+      runGate: async () => fail("NOT_ALLOWED", "Проверки запускает харнесс после записи файла."),
+      uiKitDocs: (c) => uiKitDocs(c),
+      sdkDocs: (t) => sdkDocs(t),
+      askOrchestrator: async (q) => answerFromCard(this.#card, q),
+    };
+    return builderTools(env, { applyOps: false }).filter((t) => TASK_TOOLS.has(t.name));
+  }
+
+  async #readWorkspace(path: string): Promise<{ content: string }> {
+    const spec = this.#specNow as AppSpec;
+    if (path === "spec.json") return { content: JSON.stringify(maskSpec(spec), null, 1) };
+    if (path === "_generated/wizard.d.ts") return { content: generateTypes(spec) };
+    if (path === "card.json") return { content: JSON.stringify(this.#card, null, 1) };
+    const content = this.#files?.get(path) ?? null;
+    if (content === null) fail("NOT_FOUND", `Файла ${path} нет.`, [{ path, message: "нет файла" }]);
+    return { content };
+  }
+
+  /**
+   * One wave's LLM calls (builder.yaml#harness.tasks.parallel): one host.routeBatch (one durable step, one budget
+   * check) or route() one by one in job order.
+   */
+  async #dispatch(
+    inputs: RouteInput[],
+    names: readonly string[],
+  ): Promise<({ ok: true; out: RouteOutput } | { ok: false; error: Error })[]> {
+    this.#checkAlive();
+    await this.#flushFiles();
+    const ubs = inputs.map((i) => upperBoundCredits(i.callType as CallType, i.messages, i.tools ?? []));
+    const total = ubs.reduce((a, b) => a + b, 0);
+    if (!this.#host.managesBudget) while (this.#used + total > this.#cap) await this.#budgetExceeded();
+    const hostInputs: HostRouteInput[] = inputs.map((input, i) => {
+      this.#steps += 1;
+      return {
+        callType: input.callType,
+        messages: input.messages,
+        tools: input.tools ?? [],
+        ...(input.toolChoice ? { toolChoice: input.toolChoice } : {}),
+        step: `${names[i] ?? "task"}#${this.#steps}`,
+        upperBoundCredits: ubs[i] ?? 0,
+      };
+    });
+    let items: RouteBatchItem[];
+    const batch = this.#host.routeBatch?.bind(this.#host);
+    if (batch && hostInputs.length > 1) {
+      items = await this.#host.runStep(`batch:${hostInputs.map((h) => h.step).join(",")}`, () =>
+        batch(hostInputs),
+      );
+      for (const it of items) if (it.ok) this.#account(it.out);
+      if (!this.#host.managesBudget)
+        await this.#host.emit("budget_update", { used: this.#credits(), cap: this.#cap });
+    } else {
+      items = [];
+      for (const h of hostInputs) {
+        try {
+          const out = await this.#host.runStep(h.step as string, () => this.#host.route(h));
+          items.push({ ok: true, out });
+          this.#account(out);
+        } catch (e) {
+          if (!(e instanceof LlmError)) throw e;
+          items.push({ ok: false, code: e.code, message: e.message });
+        }
+        if (!this.#host.managesBudget)
+          await this.#host.emit("budget_update", { used: this.#credits(), cap: this.#cap });
+      }
+    }
+    return items.map((it) =>
+      it.ok ? it : { ok: false as const, error: new LlmError(it.code as LlmErrorCode, it.message) },
+    );
+  }
+
+  #account(out: RouteOutput): void {
+    this.#used = Math.round((this.#used + out.creditsCharged) * 1000) / 1000;
+    this.#stepRuFallback ||= out.ruFallback;
+  }
+
+  /** Reviewer (builder.yaml#harness.stages.review): critical findings → one round of page fix tasks. */
+  async #review(): Promise<boolean> {
+    await this.#loadWorkspace();
+    const pages = (this.#brief ?? []).filter((t) => t.kind === "page" && this.#files?.has(t.file));
+    this.#metrics.review.pages = pages.length;
+    const fixes: { task: BriefTask; fix: { findings: Check[] } }[] = [];
+    for (let i = 0; i < pages.length; i += WAVE_SIZE) {
+      const wave = pages.slice(i, i + WAVE_SIZE);
+      let settled: PromiseSettledResult<Awaited<ReturnType<typeof callTool>>>[];
+      try {
+        settled = await runWave(
+          wave.map(
+            (task) => (route: (input: RouteInput) => Promise<RouteOutput>) =>
+              callTool({
+                route,
+                callType: "audit",
+                orgPolicy: null,
+                ctx: { orgId: "" },
+                messages: [
+                  { role: "system", content: REVIEW_SYSTEM },
+                  {
+                    role: "user",
+                    content: reviewMessage({
+                      card: this.#card,
+                      task,
+                      source: this.#files?.get(task.file) ?? "",
+                    }),
+                  },
+                ],
+                tool: submitReviewTool(),
+              }),
+          ),
+          (inputs) =>
+            this.#dispatch(
+              inputs,
+              wave.map((t) => `review:${t.id}:${t.file}`),
+            ),
+        );
+      } catch (e) {
+        if (e instanceof BuildStop) throw e;
+        this.#metrics.review.skipped = true;
+        return false;
+      }
+      for (const [k, r] of settled.entries()) {
+        if (r.status === "rejected") {
+          if (r.reason instanceof BuildStop) throw r.reason;
+          if (
+            r.reason instanceof LlmError &&
+            (r.reason.code === "BUDGET_EXCEEDED" || r.reason.code === "ABORTED")
+          )
+            throw r.reason;
+          // The reviewer is a second opinion: when its models are unavailable the build goes on (metrics note it).
+          this.#metrics.review.skipped = true;
+          continue;
+        }
+        if (!r.value.ok) {
+          this.#metrics.review.skipped = true;
+          continue;
+        }
+        const review = r.value.value as import("./harness.js").Review;
+        const task = wave[k] as BriefTask;
+        const critical = reviewFindings(review);
+        this.#metrics.review.minor += review.issues.filter((x) => x.severity === "minor").length;
+        if (critical.length === 0) this.#metrics.review.ok += 1;
+        else {
+          this.#metrics.review.critical += critical.length;
+          fixes.push({ task, fix: { findings: critical.map((c) => ({ ...c, file: task.file })) } });
+        }
+      }
+    }
+    if (fixes.length === 0) return false;
+    await this.#phaseStep("fix", () => this.#runTasks(fixes));
+    return true;
   }
 
   // ------------------------------------------------------------------------------------------ LLM calls
@@ -550,6 +1038,8 @@ class Builder implements ToolEnv {
       }
       checks = this.#qaChecks;
     }
+    if (level === "G0") this.#metrics.verify.g0Runs += 1;
+    else this.#metrics.verify.g1Runs += 1;
     let report = await this.#host.runStep(`gate_${level}`, () =>
       this.#host.runGates(level, checks ? { checks } : undefined),
     );
@@ -572,7 +1062,9 @@ class Builder implements ToolEnv {
   async #flushFiles(): Promise<void> {
     if (this.#pending.size === 0) return;
     const committed = await this.#host.store.commitFiles();
+    // In waves tasks stage files concurrently: the events then go out sorted, in a stable order.
     const pending = [...this.#pending];
+    if (this.#inWave) pending.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     this.#pending.clear();
     for (const [path, f] of pending)
       await this.#host.emit("file_written", {
@@ -711,6 +1203,20 @@ class Builder implements ToolEnv {
       fail("TARGET_ONLY", `В этом режиме можно менять только ${target.file}.`, [
         { path, message: "другой файл" },
       ]);
+    const { spec } = await this.#host.store.getSpec();
+    const prev = this.#files?.has(path)
+      ? (this.#files.get(path) ?? null)
+      : await this.#host.store.readFile(path);
+    return this.#writeChecked(path, content, spec, prev);
+  }
+
+  /** write_file rules (builder.yaml#tools.write_file) on a given spec; stages the file. */
+  async #writeChecked(
+    path: string,
+    content: string,
+    spec: AppSpec,
+    prev: string | null,
+  ): Promise<{ ok: true; bytes: number; warnings: string[] }> {
     if (!WRITE_PATH_RE.test(path))
       fail("PATH_FORBIDDEN", "Путь должен быть ui/<имя>.tsx или functions/<имя>.ts.", [
         { path, message: "недопустимый путь" },
@@ -721,7 +1227,6 @@ class Builder implements ToolEnv {
       fail("FILE_TOO_LARGE", `Файл больше 48 КБ (${bytes} Б): разбей на компоненты.`, [
         { path, message: "размер" },
       ]);
-    const { spec } = await this.#host.store.getSpec();
     const checks = checkFile(path, content, spec);
     const bad = checks.filter((c) => c.status === "fail" || c.status === "error");
     if (bad.length > 0)
@@ -733,7 +1238,7 @@ class Builder implements ToolEnv {
           checks: bad.map((c) => ({ id: c.id, message_ru: c.message_ru, line: c.line, fixHint: c.fixHint })),
         },
       );
-    await this.#stage(path, content, await this.#host.store.readFile(path));
+    await this.#stage(path, content, prev);
     this.#ctx.touch(path);
     const warnings = checks.filter((c) => c.status === "warn").map((c) => c.message_ru);
     const lines = content.split("\n").length;
@@ -745,6 +1250,7 @@ class Builder implements ToolEnv {
   /** Stages a file in the store; file_written goes out on the next flush. */
   async #stage(path: string, content: string, prev: string | null): Promise<void> {
     await this.#host.store.writeFile(path, content);
+    this.#files?.set(path, content);
     const known = this.#pending.get(path);
     this.#pending.set(path, {
       action: known?.action ?? (prev === null ? "create" : "update"),

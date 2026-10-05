@@ -182,7 +182,7 @@ describe("build", () => {
         recorded.push(r);
       },
     });
-    const out = await runBuild(mem.host, { card: g.card, cap: 100, mode: "create" });
+    const out = await runBuild(mem.host, { card: g.card, cap: 100, mode: "create", pipeline: "single" });
     expect(out.status).toBe("succeeded");
     expect(recorded).toEqual([
       { category: "messaging", quote: "SMS-напоминание участникам", offered: "письмо-напоминание" },

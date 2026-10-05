@@ -128,6 +128,11 @@ export interface BuildParams {
   target?: PointEditTarget;
   /** Overrides of builder.yaml#budgets (tests, eval). */
   limits?: Partial<BuildLimits>;
+  /**
+   * create|change pipeline: "harness" (default, builder.yaml#harness) or "single" — the single-agent loop plan → ops →
+   * code (builder.yaml#loop.phases; tests of its tools and escalation).
+   */
+  pipeline?: "harness" | "single";
   now?: () => number;
 }
 
