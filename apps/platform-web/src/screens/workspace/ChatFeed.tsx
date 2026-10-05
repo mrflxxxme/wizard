@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import type { Message } from "../../api/types.js";
 import { Note } from "../../components/ui.js";
+import { TeamButton } from "../../features/support/SupportWidget.js";
+import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
@@ -35,7 +37,16 @@ function targetLabel(m: Message): string | null {
   if (!t || typeof t !== "object") return null;
   const { componentName, file } = t as { componentName?: unknown; file?: unknown };
   if (typeof file !== "string") return null;
-  return ru.point.sent(typeof componentName === "string" ? componentName : "", file);
+  return ru.point.sent(typeof componentName === "string" ? componentName : "");
+}
+
+/** M2-77/D73: «Пока не умеем» of the orchestrator (payload.gaps) → «Написать команде» with the request pre-filled. */
+function gapsOf(m: Message): string[] {
+  const g = m.role === "assistant" ? m.payload?.gaps : undefined;
+  if (!Array.isArray(g)) return [];
+  return g
+    .map((x) => (x && typeof x === "object" ? (x as { missing?: unknown }).missing : undefined))
+    .filter((x): x is string => typeof x === "string" && x.length > 0);
 }
 
 function author(m: Message): string {
@@ -70,6 +81,11 @@ export function ChatFeed({ messages, ruOnly = false }: { messages: Message[]; ru
               </span>
             )}
             <span className={s.bubbleText}>{text}</span>
+            {gapsOf(m).length > 0 && (
+              <span>
+                <TeamButton testId="chat-gap-team" wantsTeam text={support.gapText(gapsOf(m))} />
+              </span>
+            )}
           </li>
         );
       })}

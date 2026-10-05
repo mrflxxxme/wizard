@@ -140,7 +140,7 @@ describe("PreviewPane «Указать на экране»", () => {
     expect(toggle.disabled).toBe(false);
     act(() => toggle.click());
     expect(p.sent("select-mode")).toEqual([[{ enabled: true }, ORIGIN]]);
-    expect(q(p.el, "select-banner")?.textContent).toContain("Режим «Укажи и измени» · кликните по элементу");
+    expect(q(p.el, "select-banner")?.textContent).toContain("Режим «Укажи и измени»: нажмите на элемент");
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -258,7 +258,8 @@ describe("chat chip and message", () => {
       createdAt: "2026-10-01T10:00:00.000Z",
     };
     const el = mount({}, h(ChatFeed, { messages: [m] }));
-    expect(q(el, "chat-message-target")?.textContent).toBe("<b>AppShell</b> · ui/Landing.tsx");
+    // D28: the element by name; the file stays out of the chat.
+    expect(q(el, "chat-message-target")?.textContent).toBe("<b>AppShell</b>");
     expect(el.querySelector("b")).toBeNull();
   });
 

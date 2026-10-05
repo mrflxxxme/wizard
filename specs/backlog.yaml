@@ -1418,6 +1418,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Только сервер пилота: orgPolicyOf по D26 (NULL-регион не ограничивает T1), pilot-secrets передаёт WIZARD_BUILD_DEFAULT_TIER и *_BASE_URL, отказ всей цепочки моделей виден в журнале прогона и алерте основателю. Локальный стенд — после выпуска"
+    mvp_done: true
     claimed_by: null
     description: >
       tools/deploy/pilot-secrets.mjs передаёт только CLOUDRU_API_KEY и ZAI_API_KEY, локальный стенд по умолчанию — fixture, поэтому каждая
@@ -1473,6 +1474,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Только лимит пилота 5 сборок и 20 правок за 30 дней на организацию (D70), подъём лимита из /admin; рублёвый каталог — после"
+    mvp_done: true
     claimed_by: null
     description: >
       Реализация billing.yaml#rub_model: каталог цен из одного места (API M2-22), использование организации без кредитов,
@@ -1500,6 +1502,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Кнопка «Написать команде» (D68): сообщение основателю в Telegram (чат алертов) со ссылкой на систему и почтой клиента, копия в /admin, ответ письмом; без переписки в кабинете"
+    mvp_done: true
     claimed_by: null
     description: >
       Треды обращений организации (с привязкой к системе и экрану или без), сообщения клиента и команды, вложения — скриншоты PNG/WebP ≤ 5
@@ -1988,6 +1991,7 @@ tasks:
     parallel_group: p-w1
     estimate_days: 2.5
     status: todo
+    mvp_done: true
     release: mvp
     mvp_scope: "Предупреждение словами и подтверждение владельца, данные в архив вместо удаления, откат (D72)"
     claimed_by: null
@@ -2174,6 +2178,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "«На пилоте бесплатно» и остаток лимита словами вместо кредитов, при исчерпании — «Написать команде»; цены в рублях — после"
+    mvp_done: true
     claimed_by: null
     description: >
       Убрать кредиты из кабинета клиента (пилюля S1, оценка и потолок S3, «used из cap» S4, баланс и журнал S-billing, кредиты S-welcome);
@@ -2196,6 +2201,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Кнопка и форма «Написать команде» на экранах кабинета с отметкой «Хочу, чтобы доделала команда», список обращений в /admin; без таймера и непрочитанных"
+    mvp_done: true
     claimed_by: null
     description: >
       Кнопка в шапке кабинета через реестр фич открывает панель переписки; при открытии из системы прикладываются система и экран; ответ
@@ -2240,6 +2246,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "«Запросы на развитие» (D73): таблица и запись запроса из прогона, раздел /admin с группировкой по категории и частоте и ссылкой на систему и клиента; «Передать команде» — через «Написать команде» (D68)"
+    mvp_done: true
     claimed_by: null
     description: >
       Пробел {category, quote (после scrub ПДн), offered, systemId, runId, canHandoff}; API для хоста агента (внутренний вызов из
@@ -2894,6 +2901,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Бренд Born to Build и простой язык на ключевых экранах (S1–S7, письма входа), жаргон G0/G1/G2, prod, PITR — под «Подробнее для специалиста»"
+    mvp_done: true
     claimed_by: null
     description: >
       Весь видимый текст platform-web: бренд, простой язык, правила humanizer; финальная формулировка обещания из двух черновиков
@@ -2916,6 +2924,7 @@ tasks:
     status: todo
     release: mvp
     mvp_scope: "Замер D67: 10 брифов на сервере пилота (по 2–3 на класс и 2 вне классов), ≥ 7 из 10 до готовности к публикации, ≤ 2 000 ₽; без смоуков провайдеров и коннекторов"
+    mvp_done: true            # инструмент замера: tools/eval/server, действие eval в bootstrap-pilot, брифы mvp-*; сам прогон — запуск основателем (docs/ops/eval-d67.md)
     claimed_by: null
     description: >
       Прогон --suite=p на локальном стенде в live-режиме в пределах месячного лимита платформы (D59: до 6 000 ₽, один полный прогон);

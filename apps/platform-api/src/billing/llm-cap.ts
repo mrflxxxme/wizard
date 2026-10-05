@@ -10,7 +10,7 @@ import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
 
 /** api.yaml#Error LLM_BUDGET_EXHAUSTED */
 export const LLM_BUDGET_EXHAUSTED_RU =
-  "Месячный лимит платформы на работу моделей исчерпан. Новые сборки и ответы в чате снова будут доступны с 1-го числа следующего месяца — команда Wizard уже знает об этом";
+  "Месячный лимит платформы на работу моделей исчерпан. Новые сборки и ответы в чате снова будут доступны с 1-го числа следующего месяца — команда Born to Build уже знает об этом";
 
 /** Share of the cap that triggers the warning alert. */
 export const LLM_CAP_WARN_SHARE = 0.8;

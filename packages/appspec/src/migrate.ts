@@ -46,10 +46,11 @@ export type MigrationStep =
   | (Base<"set_not_null", true> & { entity: string; field: Field })
   | (Base<"alter_enum_add_value" | "relax_check", false> & {
       entity: string;
+      field: string;
       name: string;
       expr: string | null;
     })
-  | (Base<"alter_check", true> & { entity: string; name: string; expr: string | null })
+  | (Base<"alter_check", true> & { entity: string; field: string; name: string; expr: string | null })
   | (Base<"add_unique", false> & { entity: string; field: string; name: string })
   | (Base<"drop_unique", true> & { entity: string; name: string })
   | (Base<"add_fk", false> & {
@@ -72,11 +73,13 @@ type OnDelete = "restrict" | "cascade" | "set_null";
 
 export interface MigrationPlan {
   env: "draft" | "prod";
+  /** Spec the plan migrates from (labels of removed data for destructiveChanges); null for a fresh schema. */
+  prev: AppSpec | null;
   steps: MigrationStep[];
   /** true when no step is destructive (the only kind allowed in prod). */
   additiveOnly: boolean;
   destructive: MigrationStep[];
-  /** Validation errors of `next` and DESTRUCTIVE_IN_PROD; non-empty → toDDL refuses. */
+  /** Validation errors of `next` and DESTRUCTIVE_IN_PROD (unless destructiveConfirmed); non-empty → toDDL refuses. */
   errors: OpsError[];
   /** Spec the plan migrates to (source for set_rls). */
   next: AppSpec;
@@ -198,8 +201,9 @@ const PHASE: Record<StepKind, number> = {
   drop_index: 2,
   drop_unique: 3,
   drop_column: 4,
-  drop_table: 5,
-  alter_column_type: 6,
+  // Before drop_table: a ref column moved to another target releases its FK to a table dropped in the same plan.
+  alter_column_type: 5,
+  drop_table: 6,
   create_table: 7,
   add_column: 8,
   set_default: 9,
@@ -418,8 +422,10 @@ function fkStep(entity: string, f: Field, target: string): MigrationStep {
 function diffChecks(entity: string, prev: Field, next: Field, steps: MigrationStep[]): void {
   const a = new Map(checksFor(prev).map((c) => [c.name, c]));
   const b = new Map(checksFor(next).map((c) => [c.name, c]));
+  const field = next.name;
   for (const [name, old] of a) {
-    if (!b.has(name)) steps.push({ kind: "relax_check", destructive: false, entity, name, expr: null });
+    if (!b.has(name))
+      steps.push({ kind: "relax_check", destructive: false, entity, field, name, expr: null });
     else if (b.get(name)?.expr !== old.expr) {
       const nw = b.get(name) as CheckDef;
       let widening = false;
@@ -428,14 +434,15 @@ function diffChecks(entity: string, prev: Field, next: Field, steps: MigrationSt
       else if (old.kind === "min") widening = (nw.limit ?? 0) <= (old.limit ?? 0);
       if (widening) {
         const kind = old.kind === "enum" ? "alter_enum_add_value" : "relax_check";
-        steps.push({ kind, destructive: false, entity, name, expr: nw.expr });
+        steps.push({ kind, destructive: false, entity, field, name, expr: nw.expr });
       } else {
-        steps.push({ kind: "alter_check", destructive: true, entity, name, expr: nw.expr });
+        steps.push({ kind: "alter_check", destructive: true, entity, field, name, expr: nw.expr });
       }
     }
   }
   for (const [name, c] of b) {
-    if (!a.has(name)) steps.push({ kind: "alter_check", destructive: true, entity, name, expr: c.expr });
+    if (!a.has(name))
+      steps.push({ kind: "alter_check", destructive: true, entity, field, name, expr: c.expr });
   }
 }
 
@@ -460,7 +467,7 @@ function diffField(
   const entity = nextEntity.name;
   const wasRequired = dbRequired(prevEntity, prev);
   const isRequired = dbRequired(nextEntity, next);
-  if (prev.type !== next.type) {
+  if (recreated(prev, next)) {
     const notNull = isRequired && sqlDefault(next) !== undefined;
     steps.push({
       kind: "alter_column_type",
@@ -500,6 +507,14 @@ function diffField(
   if (tb && (ta !== tb || onDeleteChanged)) steps.push(fkStep(entity, next, tb));
 }
 
+/**
+ * The column is recreated: another type, or a ref moved to another entity (old values point to rows of the old target;
+ * in prod they are archived and only values that exist in the new target are carried over, M2-72).
+ */
+function recreated(prev: Field, next: Field): boolean {
+  return prev.type !== next.type || fkTarget(prev) !== fkTarget(next);
+}
+
 function diffEntity(prev: Entity, next: Entity, steps: MigrationStep[]): void {
   const e = next.name;
   const prevFields = new Map(prev.fields.map((f) => [f.name, f]));
@@ -518,7 +533,7 @@ function diffEntity(prev: Entity, next: Entity, steps: MigrationStep[]): void {
       const target = fkTarget(f);
       if (target) steps.push(fkStep(e, f, target));
     } else {
-      if (old.type !== f.type) retyped.add(f.name);
+      if (recreated(old, f)) retyped.add(f.name);
       diffField(prev, next, old, f, steps);
     }
   }
@@ -534,6 +549,11 @@ function diffEntity(prev: Entity, next: Entity, steps: MigrationStep[]): void {
 
 export interface PlanOptions {
   env?: "draft" | "prod";
+  /**
+   * M2-72 (product.yaml#decisions.D56/D72): the owner confirmed the destructive changes of this plan (or it has none
+   * that touch data, destructiveChanges = []): no DESTRUCTIVE_IN_PROD; toDDL then requires DdlOptions.archive.
+   */
+  destructiveConfirmed?: boolean;
 }
 
 /** Diffs two specs into ordered migration steps. `prev = null` plans a fresh schema. */
@@ -565,21 +585,29 @@ export function planMigration(prev: AppSpec | null, next: AppSpec, opts: PlanOpt
   const errors: OpsError[] = [];
   const v = validateSpec(next);
   if (!v.ok) errors.push(...v.errors);
-  if (env === "prod") {
+  if (env === "prod" && opts.destructiveConfirmed !== true) {
     for (const s of destructive) {
       errors.push(
         err(
           "DESTRUCTIVE_IN_PROD",
           "",
-          `Шаг миграции «${describeStep(s)}» разрушает данные и запрещён в prod`,
+          `Шаг миграции «${describeStep(s)}» удаляет или сужает данные prod и требует подтверждения владельца`,
           {
-            hint: "В prod разрешены только аддитивные изменения; удаление и сужение выполняются в draft",
+            hint: "Владелец подтверждает удаление в кабинете: данные уйдут в архив, правку можно отменить",
           },
         ),
       );
     }
   }
-  return { env, steps: ordered, additiveOnly: destructive.length === 0, destructive, errors, next };
+  return {
+    env,
+    prev,
+    steps: ordered,
+    additiveOnly: destructive.length === 0,
+    destructive,
+    errors,
+    next,
+  };
 }
 
 export function describeStep(s: MigrationStep): string {
@@ -587,6 +615,219 @@ export function describeStep(s: MigrationStep): string {
   const what =
     "field" in s ? (typeof s.field === "string" ? s.field : s.field.name) : "name" in s ? s.name : "";
   return [s.kind, where, what].filter(Boolean).join(" ");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Destructive changes in prod (M2-72, product.yaml#decisions.D56_destructive_changes, D72): what the owner confirms,
+// how much data it touches, and the archive that replaces DROP.
+
+/** Steps the owner confirms: they remove data (archived) or narrow it (may not apply to existing rows). */
+export type DestructiveKind =
+  | "drop_table"
+  | "drop_column"
+  | "alter_column_type"
+  | "set_not_null"
+  | "alter_check";
+
+export interface DestructiveChange {
+  kind: DestructiveKind;
+  entity: string;
+  entityLabel: string;
+  field?: string;
+  fieldLabel?: string;
+  /** alter_column_type: old and new type (a ref moved to another entity keeps "ref"). */
+  fromType?: FieldType;
+  toType?: FieldType;
+  /** set_not_null / alter_column_type: the field has a default that fills empty and unconvertible values. */
+  hasDefault?: boolean;
+  /** alter_check: constraint name (ck_<field>_<len|fmt|enum|min|max>). */
+  check?: string;
+  /** Values leave the live table and stay in the archive (drop_table, drop_column, alter_column_type). */
+  archived: boolean;
+}
+
+const DATA_STEPS = new Set<StepKind>(["drop_table", "drop_column", "alter_column_type"]);
+
+function entityOf(spec: AppSpec | null, name: string): Entity | undefined {
+  return spec?.entities.find((e) => e.name === name);
+}
+
+function fieldOf(spec: AppSpec | null, entity: string, name: string): Field | undefined {
+  return entityOf(spec, entity)?.fields.find((f) => f.name === name);
+}
+
+/**
+ * Destructive steps of a plan the owner has to confirm, with labels for the owner's text. Index, unique and FK drops
+ * change no data and are not listed: a plan with only those needs no confirmation.
+ */
+export function destructiveChanges(plan: MigrationPlan): DestructiveChange[] {
+  const out: DestructiveChange[] = [];
+  const label = (e: string) => entityOf(plan.prev, e)?.label ?? entityOf(plan.next, e)?.label ?? e;
+  for (const s of plan.steps) {
+    switch (s.kind) {
+      case "drop_table":
+        out.push({ kind: s.kind, entity: s.entity, entityLabel: label(s.entity), archived: true });
+        break;
+      case "drop_column": {
+        const f = fieldOf(plan.prev, s.entity, s.field);
+        out.push({
+          kind: s.kind,
+          entity: s.entity,
+          entityLabel: label(s.entity),
+          field: s.field,
+          fieldLabel: f?.label ?? s.field,
+          archived: true,
+        });
+        break;
+      }
+      case "alter_column_type":
+        out.push({
+          kind: s.kind,
+          entity: s.entity,
+          entityLabel: label(s.entity),
+          field: s.field.name,
+          fieldLabel: s.field.label,
+          fromType: s.from,
+          toType: s.field.type,
+          hasDefault: sqlDefault(s.field) !== undefined,
+          archived: true,
+        });
+        break;
+      case "set_not_null":
+        out.push({
+          kind: s.kind,
+          entity: s.entity,
+          entityLabel: label(s.entity),
+          field: s.field.name,
+          fieldLabel: s.field.label,
+          hasDefault: sqlDefault(s.field) !== undefined,
+          archived: false,
+        });
+        break;
+      case "alter_check":
+        out.push({
+          kind: s.kind,
+          entity: s.entity,
+          entityLabel: label(s.entity),
+          field: s.field,
+          fieldLabel: fieldOf(plan.next, s.entity, s.field)?.label ?? s.field,
+          check: s.name,
+          archived: false,
+        });
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
+}
+
+/** Name of the archive schema of a system schema: app_<key>_prod → app_<key>_prod_archive (runtime.yaml#archive). */
+export function archiveSchemaName(schemaName: string): string {
+  assertSqlName(schemaName, "schema name");
+  const name = `${schemaName}_archive`;
+  if (name.length > 63) throw new Error(`archive schema name too long: ${name}`);
+  return name;
+}
+
+const ARCHIVE_TAG_RE = /^[a-z][a-z0-9_]{0,23}$/;
+
+/** Archive table of a change tag: <tag>_<entity> (dropped entity) or <tag>_<entity>$<field> (column values). */
+export function archiveTableName(tag: string, entity: string, field?: string): string {
+  if (!ARCHIVE_TAG_RE.test(tag)) throw new Error(`invalid archive tag: ${tag}`);
+  return relName(tag, entity, ...(field === undefined ? [] : [field]));
+}
+
+/** Archive tables toDDL(plan, …, {archive: {tag}}) creates. */
+export function archiveTables(plan: MigrationPlan, tag: string): string[] {
+  const out: string[] = [];
+  for (const s of plan.steps) {
+    if (s.kind === "drop_table") out.push(archiveTableName(tag, s.entity));
+    else if (s.kind === "drop_column") out.push(archiveTableName(tag, s.entity, s.field));
+    else if (s.kind === "alter_column_type") out.push(archiveTableName(tag, s.entity, s.field.name));
+  }
+  return out;
+}
+
+/** Old value → new field type: NULL when its text form does not parse as the new type (pg_input_is_valid, PG 16+). */
+function convertSql(field: Field, value: string): string {
+  const t = sqlType(field.type);
+  return `CASE WHEN pg_catalog.pg_input_is_valid(${value}::text, ${textLiteral(t)}) THEN ${value}::text::${t} END`;
+}
+
+/**
+ * Predicate over a relation with a column named like the field (the converted value): the value is set, passes the
+ * new field's checks and, for a ref, exists in the target (targetExists=false: the target is created by this plan).
+ */
+function acceptSql(field: Field, schemaName: string, rel: string, targetExists: boolean): string {
+  const col = `${rel}.${quoteIdent(field.name)}`;
+  const parts = [`${col} IS NOT NULL`, ...checksFor(field).map((c) => `(${c.expr})`)];
+  const target = fkTarget(field);
+  if (target)
+    parts.push(
+      targetExists
+        ? `EXISTS (SELECT 1 FROM ${quoteIdent(schemaName)}.${quoteIdent(target)} r WHERE r.${quoteIdent("id")} = ${col})`
+        : "false",
+    );
+  return `coalesce(${parts.join(" AND ")}, false)`;
+}
+
+function targetExistsBefore(plan: MigrationPlan, field: Field): boolean {
+  const target = fkTarget(field);
+  return target === undefined || target === "users" || entityOf(plan.prev, target) !== undefined;
+}
+
+/**
+ * SELECT of one row {affected int, unconvertible int} for a destructive change on the live schema (run it as the
+ * system role, FORCE RLS): drop_table — rows; drop_column — rows with a value; alter_column_type — rows with a value
+ * and those that cannot be carried over to the new type; set_not_null — empty rows; alter_check — rows that break the
+ * new rule.
+ */
+export function destructiveCountSql(
+  plan: MigrationPlan,
+  change: DestructiveChange,
+  schemaName: string,
+): string {
+  assertSqlName(schemaName, "schema name");
+  const t = `${quoteIdent(schemaName)}.${quoteIdent(change.entity)}`;
+  const col = quoteIdent(change.field ?? "id");
+  const affected = quoteIdent("affected");
+  const zero = `0 AS ${quoteIdent("unconvertible")}`;
+  switch (change.kind) {
+    case "drop_table":
+      return `SELECT count(*)::int AS ${affected}, ${zero} FROM ${t}`;
+    case "drop_column":
+      return `SELECT (count(*) FILTER (WHERE ${col} IS NOT NULL))::int AS ${affected}, ${zero} FROM ${t}`;
+    case "set_not_null":
+      return `SELECT (count(*) FILTER (WHERE ${col} IS NULL))::int AS ${affected}, ${zero} FROM ${t}`;
+    case "alter_check": {
+      const step = plan.steps.find(
+        (s) => s.kind === "alter_check" && s.entity === change.entity && s.name === change.check,
+      );
+      const expr = step?.kind === "alter_check" && step.expr !== null ? step.expr : "true";
+      return `SELECT (count(*) FILTER (WHERE NOT (${expr})))::int AS ${affected}, ${zero} FROM ${t}`;
+    }
+    case "alter_column_type": {
+      const field = fieldOf(plan.next, change.entity, change.field ?? "");
+      if (!field) throw new Error(`unknown field ${change.entity}.${change.field}`);
+      const conv = convertSql(field, `t.${col}`);
+      const ok = acceptSql(field, schemaName, "q", targetExistsBefore(plan, field));
+      return `SELECT count(*)::int AS ${affected}, (count(*) FILTER (WHERE NOT ${ok}))::int AS ${quoteIdent("unconvertible")} FROM (SELECT ${conv} AS ${col} FROM ${t} t WHERE t.${col} IS NOT NULL) q`;
+    }
+  }
+}
+
+/** Archive of a prod plan with destructive steps (toDDL): DROP becomes a copy into the archive schema, then DROP. */
+export interface ArchiveOptions {
+  /** archiveSchemaName(schemaName); created by the migrator, no grants to the runtime or system roles. */
+  schema: string;
+  /** Tag of this change ([a-z][a-z0-9_]{0,23}); archive tables are archiveTableName(tag, entity[, field]). */
+  tag: string;
+  /**
+   * Undo of an earlier change: tables of that change (archiveTables) to restore from — a re-created entity gets its
+   * rows back, a re-added column its values (matched by id), a type changed back its original values.
+   */
+  restore?: { tag: string; tables: readonly string[] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -609,6 +850,11 @@ export interface DdlOptions {
   migrationRole?: string;
   /** lock_timeout for the transaction, e.g. "3s", "500ms". Default "3s". */
   lockTimeout?: string;
+  /**
+   * M2-72: removed data goes to the archive schema instead of being destroyed (drop_table, drop_column,
+   * alter_column_type), and an undo restores from an earlier change. Required for a prod plan with such steps.
+   */
+  archive?: ArchiveOptions;
 }
 
 const LOCK_TIMEOUT_RE = /^[1-9][0-9]{0,5}(ms|s|min)$/;
@@ -639,6 +885,24 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
   const touch = `${s}.${quoteIdent("wz_touch_updated_at")}`;
   const out: string[] = preamble(opts);
   const owner = opts.migrationRole;
+  const archive = opts.archive;
+  const dataSteps = plan.steps.some((x) => DATA_STEPS.has(x.kind));
+  if (plan.env === "prod" && dataSteps && archive === undefined)
+    throw new Error("prod plan removes data: DdlOptions.archive is required (M2-72)");
+  const arch = archive === undefined ? "" : quoteIdent(archive.schema);
+  if (archive !== undefined) {
+    assertSqlName(archive.schema, "archive schema");
+    if (archive.schema === schemaName) throw new Error("archive schema must differ from the system schema");
+    archiveTableName(archive.tag, "x");
+    if (archive.restore) archiveTableName(archive.restore.tag, "x");
+    if (dataSteps || archive.restore) {
+      // Owned by the migrator; no USAGE for PUBLIC, the runtime or the system role: the data API never sees it.
+      out.push(
+        `CREATE SCHEMA IF NOT EXISTS ${arch}${owner === undefined ? "" : ` AUTHORIZATION ${quoteIdent(owner)}`}`,
+      );
+      out.push(`REVOKE ALL ON SCHEMA ${arch} FROM PUBLIC`);
+    }
+  }
   if (owner !== undefined) {
     assertSqlName(owner, "migration role");
     // Created by the connecting role (needs CREATE on the database), owned by the per-system role.
@@ -646,6 +910,40 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
       out.push(`CREATE SCHEMA IF NOT EXISTS ${s} AUTHORIZATION ${quoteIdent(owner)}`);
     out.push(`SET LOCAL ROLE ${quoteIdent(owner)}`);
   }
+  const a = (name: string) => `${arch}.${quoteIdent(name)}`;
+  const unforced = new Set<string>();
+  /**
+   * FORCE RLS hides rows from the table owner (the migrator) too: data-moving statements run with it lifted; the
+   * set_rls step at the end of every plan forces it again.
+   */
+  const unforce = (table: string) => {
+    if (unforced.has(table)) return;
+    unforced.add(table);
+    out.push(`ALTER TABLE ${t(table)} NO FORCE ROW LEVEL SECURITY`);
+  };
+  const restorable = (entity: string, field?: string): string | undefined => {
+    const r = archive?.restore;
+    if (!r) return undefined;
+    const name = archiveTableName(r.tag, entity, field);
+    return r.tables.includes(name) ? name : undefined;
+  };
+  const archiveColumn = (tag: string, entity: string, field: string): string => {
+    const name = archiveTableName(tag, entity, field);
+    unforce(entity);
+    out.push(
+      `CREATE TABLE ${a(name)} AS SELECT ${quoteIdent("id")}, ${quoteIdent(field)} AS ${quoteIdent("value")} FROM ${t(entity)} WHERE ${quoteIdent(field)} IS NOT NULL`,
+    );
+    out.push(`COMMENT ON TABLE ${a(name)} IS ${textLiteral(`wizard archive: ${entity}.${field}`)}`);
+    return name;
+  };
+  const restoreColumn = (entity: string, field: string) => {
+    const from = restorable(entity, field);
+    if (from === undefined) return;
+    unforce(entity);
+    out.push(
+      `UPDATE ${t(entity)} AS t SET ${quoteIdent(field)} = r.${quoteIdent("value")} FROM ${a(from)} r WHERE t.${quoteIdent("id")} = r.${quoteIdent("id")}`,
+    );
+  };
   for (const step of plan.steps) {
     switch (step.kind) {
       case "create_schema":
@@ -670,20 +968,51 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         out.push(
           `CREATE TRIGGER ${quoteIdent("wz_touch_updated_at")} BEFORE UPDATE ON ${t(e.name)} FOR EACH ROW EXECUTE FUNCTION ${touch}()`,
         );
+        const from = restorable(e.name);
+        if (from !== undefined) {
+          // RLS is enabled on the new table only by set_rls at the end of the plan.
+          const names = ["id", "created_at", "updated_at", "created_by", ...e.fields.map((f) => f.name)]
+            .map(quoteIdent)
+            .join(", ");
+          out.push(`INSERT INTO ${t(e.name)} (${names}) SELECT ${names} FROM ${a(from)}`);
+        }
         break;
       }
       case "add_column":
         out.push(`ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, false)}`);
+        restoreColumn(step.entity, step.field.name);
         if (step.notNull)
           out.push(`ALTER TABLE ${t(step.entity)} ALTER COLUMN ${quoteIdent(step.field.name)} SET NOT NULL`);
         break;
-      case "alter_column_type":
-        // Type changes recreate the column (data in it is lost) — draft only.
-        out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN IF EXISTS ${quoteIdent(step.field.name)}`);
+      case "alter_column_type": {
+        const col = quoteIdent(step.field.name);
+        if (archive === undefined) {
+          // Draft: the column is recreated, values in it are lost.
+          out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN IF EXISTS ${col}`);
+          out.push(
+            `ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.notNull)}`,
+          );
+          break;
+        }
+        // Prod (M2-72): old values to the archive, the column recreated; values that parse as the new type, pass its
+        // checks and (ref) exist in the target are carried over, the rest stay only in the archive.
+        const kept = archiveColumn(archive.tag, step.entity, step.field.name);
+        out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN ${col}`);
+        out.push(`ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, false)}`);
+        const target = fkTarget(step.field);
+        const targetReady =
+          target === undefined ||
+          target === "users" ||
+          !plan.steps.some((x) => x.kind === "create_table" && x.entity.name === target);
+        const ok = acceptSql(step.field, schemaName, "q", targetReady);
+        const id = quoteIdent("id");
         out.push(
-          `ALTER TABLE ${t(step.entity)} ADD COLUMN ${columnSql(step.entity, step.field, step.notNull)}`,
+          `UPDATE ${t(step.entity)} AS t SET ${col} = c.${col} FROM (SELECT q.${id}, q.${col} FROM (SELECT o.${id}, ${convertSql(step.field, `o.${quoteIdent("value")}`)} AS ${col} FROM ${a(kept)} o) q WHERE ${ok}) c WHERE t.${id} = c.${id}`,
         );
+        restoreColumn(step.entity, step.field.name);
+        if (step.notNull) out.push(`ALTER TABLE ${t(step.entity)} ALTER COLUMN ${col} SET NOT NULL`);
         break;
+      }
       case "set_default": {
         const def = sqlDefault(step.field);
         const col = quoteIdent(step.field.name);
@@ -698,6 +1027,7 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
       case "set_not_null": {
         const col = quoteIdent(step.field.name);
         const def = sqlDefault(step.field);
+        if (def !== undefined && archive !== undefined) unforce(step.entity);
         if (def !== undefined) out.push(`UPDATE ${t(step.entity)} SET ${col} = ${def} WHERE ${col} IS NULL`);
         out.push(`ALTER TABLE ${t(step.entity)} ALTER COLUMN ${col} SET NOT NULL`);
         break;
@@ -736,10 +1066,18 @@ export function toDDL(plan: MigrationPlan, schemaName: string, opts: DdlOptions 
         out.push(`DROP INDEX IF EXISTS ${s}.${quoteIdent(step.name)}`);
         break;
       case "drop_column":
+        if (archive !== undefined) archiveColumn(archive.tag, step.entity, step.field);
         out.push(`ALTER TABLE ${t(step.entity)} DROP COLUMN IF EXISTS ${quoteIdent(step.field)}`);
         break;
       case "drop_table":
-        out.push(`DROP TABLE IF EXISTS ${t(step.entity)}`);
+        if (archive !== undefined) {
+          const name = archiveTableName(archive.tag, step.entity);
+          unforce(step.entity);
+          out.push(`CREATE TABLE ${a(name)} AS SELECT * FROM ${t(step.entity)}`);
+          out.push(`COMMENT ON TABLE ${a(name)} IS ${textLiteral(`wizard archive: ${step.entity}`)}`);
+          // No CASCADE: a foreign key left in another table stops the migration instead of being dropped silently.
+          out.push(`DROP TABLE ${t(step.entity)}`);
+        } else out.push(`DROP TABLE IF EXISTS ${t(step.entity)}`);
         break;
       case "set_rls":
         out.push(...toRLS(plan.next, schemaName, opts).slice(PREAMBLE_LENGTH));

@@ -308,29 +308,38 @@ describe("S-billing with WIZARD_PAYMENTS=off (M2-15, pilot)", () => {
     buckets: [{ source: "topup", remaining: 120, expiresAt: "2027-10-01T00:00:00Z" }],
   });
 
-  test("owner: plan «Пилот» with limits, balance and ledger; no purchase, subscriptions or card binding", async () => {
+  const pilotUsage = async () => ({
+    pilot: true,
+    free: true,
+    builds: { limit: 5, used: 5, left: 0, nextAt: "2026-11-06T09:00:00Z" },
+    edits: { limit: 20, used: 5, left: 15, nextAt: null },
+  });
+
+  test("owner (D70): «На пилоте бесплатно», what is left in words and «Написать команде»; no credits, ledger, purchase or card", async () => {
     const createTopup = vi.fn();
     const start = vi.fn();
     const { api } = billingApi("owner", PILOT, {
       getOrg: pilotOrg,
       getCredits: pilotCredits,
+      getUsage: pilotUsage as unknown as ApiClient["getUsage"],
       createTopup: createTopup as unknown as ApiClient["createTopup"],
       startCardBinding: start as unknown as ApiClient["startCardBinding"],
     });
     const el = mount(api, "/billing");
-    await waitFor(() => q(el, "billing-payments-off") !== null && all(el, "billing-ledger-row").length === 2);
+    await waitFor(() => q(el, "billing-payments-off") !== null && q(el, "billing-usage") !== null);
     expect(q(el, "billing-payments-off")?.textContent).toBe(ru.billing.paymentsOff);
     const plan = q(el, "billing-plan");
     expect(plan?.dataset.plan).toBe("pilot");
     expect(plan?.textContent).toContain("Пилот");
-    expect(plan?.textContent).toContain("бесплатно");
-    expect(plan?.textContent).toContain(
-      "До 5 опубликованных систем · до 30 участников · кредиты начисляет команда Wizard",
-    );
-    expect(plan?.textContent).toContain("телефон — на тарифах Старт и Бизнес");
-    expect(q(el, "billing-available")?.textContent).toBe("Доступно: 120 кредитов");
-    expect(all(el, "billing-bucket")[0]?.textContent).toContain("от команды Wizard: 120");
+    expect(plan?.textContent).toContain("До 5 опубликованных систем · до 30 участников");
+    expect(q(el, "usage-free")?.textContent).toBe("На пилоте бесплатно");
+    expect(q(el, "usage-left")?.textContent).toBe("сборки закончились · ещё 15 правок");
+    expect(q(el, "usage-next")?.textContent).toBe("Следующая освободится 6 ноября.");
+    expect(q(el, "billing-team")?.textContent).toBe("Написать команде");
     for (const id of [
+      "billing-balance",
+      "billing-available",
+      "billing-ledger",
       "billing-change-plan",
       "billing-cancel",
       "billing-plans",
@@ -341,8 +350,7 @@ describe("S-billing with WIZARD_PAYMENTS=off (M2-15, pilot)", () => {
       "billing-topup-packs",
     ])
       expect(q(el, id), id).toBeNull();
-    expect(el.textContent).not.toContain("Докупить");
-    expect(el.textContent).not.toContain("Привязать карту");
+    expect(el.textContent).not.toMatch(/кредит|Докуп|Привязать карту/i);
     expect(createTopup).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
   });
@@ -358,17 +366,20 @@ describe("S-billing with WIZARD_PAYMENTS=off (M2-15, pilot)", () => {
         return pilotOrg();
       },
       getCredits: pilotCredits,
+      getUsage: pilotUsage as unknown as ApiClient["getUsage"],
     });
     const el = mount(api, "/billing");
-    await waitFor(() => q(el, "billing-available") !== null);
-    // GET org still pending: neither the payment controls nor the notice yet.
+    await waitFor(() => q(el, "billing-usage") !== null);
+    // GET org still pending: neither the payment controls, the credits nor the notice yet.
     expect(q(el, "billing-topup")).toBeNull();
     expect(q(el, "billing-card")).toBeNull();
+    expect(q(el, "billing-available")).toBeNull();
     expect(q(el, "billing-payments-off")).toBeNull();
     act(() => release?.());
     await waitFor(() => q(el, "billing-payments-off") !== null);
     expect(q(el, "billing-topup")).toBeNull();
     expect(q(el, "billing-card")).toBeNull();
+    expect(q(el, "billing-available")).toBeNull();
     expect(el.textContent).not.toContain(ru.billing.ownerOnly);
     expect(getBilling).not.toHaveBeenCalled();
   });
@@ -458,7 +469,7 @@ describe("S6 publish card (M2)", () => {
     expect(q(el, "publish-to-billing")?.textContent).toBe(ru.publish.toBilling);
     expect(el.textContent).toContain(ru.publish.reviewHint);
     expect(all(el, "publish-blocker").map((b) => b.textContent)).toEqual([
-      "Вход по телефону доступен на тарифах Старт и Бизнес",
+      ru.publish.blockers.PHONE_LOGIN_PLAN_REQUIRED,
       "Ждёт проверки",
     ]);
   });

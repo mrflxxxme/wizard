@@ -219,7 +219,7 @@ test("клиент: вход по ссылке из письма → онбор�
   await signIn(page, CLIENT);
   await expect(page).toHaveURL(`${WEB}/welcome`);
   await expect(page.getByTestId("welcome-org")).toContainText(ORG);
-  await expect(page.getByTestId("welcome-credits")).toContainText("150");
+  await expect(page.getByTestId("welcome-usage")).toContainText("за 30 дней");
   await page.screenshot({ path: info.outputPath("welcome.png"), fullPage: true });
 });
 

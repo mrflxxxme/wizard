@@ -132,16 +132,16 @@ describe("region → t1_restricted", () => {
     expect(bad.body.code).toBe("INN_INVALID");
   });
 
-  test("unknown region → T0 (t1Restricted=true) until determined (fail-safe)", async () => {
+  test("unknown region does not restrict T1 (D26); a restricted region still does", async () => {
     const s = await devLogin(api, "unknown-region@example.ru");
     const [m] = (await s.req("GET", "/me")).body.memberships;
     expect(await flags(m.orgId)).toEqual({ region_code: null, t1_restricted: false });
+    expect((await s.req("GET", `/orgs/${m.orgId}/settings`)).body.t1Restricted).toBe(false);
+    await s.req("PATCH", `/orgs/${m.orgId}`, { body: { regionCode: "91" } });
     expect((await s.req("GET", `/orgs/${m.orgId}/settings`)).body).toMatchObject({
       t1Restricted: true,
       buildModelLabel: "модели в РФ",
     });
-    await s.req("PATCH", `/orgs/${m.orgId}`, { body: { regionCode: "77" } });
-    expect((await s.req("GET", `/orgs/${m.orgId}/settings`)).body.t1Restricted).toBe(false);
   });
 
   test("a login geolocated to a restricted region restricts every org of the user (GeoIP mock)", async () => {

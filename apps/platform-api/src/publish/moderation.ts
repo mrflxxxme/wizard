@@ -201,7 +201,7 @@ export function founderReviewLetter(a: {
     return {
       subject: `Система «${a.systemName}» одобрена к публикации`,
       text: [
-        `Модератор Wizard проверил ревизию ${a.revision} системы «${a.systemName}» и одобрил её публикацию.`,
+        `Модератор Born to Build проверил ревизию ${a.revision} системы «${a.systemName}» и одобрил её публикацию.`,
         `Теперь её можно опубликовать: откройте систему и нажмите «Опубликовать» — ${a.link}`,
         ...(a.note ? [`Комментарий модератора: ${a.note}`] : []),
       ].join("\n"),
@@ -209,7 +209,7 @@ export function founderReviewLetter(a: {
   return {
     subject: `Публикация системы «${a.systemName}» не одобрена`,
     text: [
-      `Модератор Wizard не одобрил публикацию ревизии ${a.revision} системы «${a.systemName}».`,
+      `Модератор Born to Build не одобрил публикацию ревизии ${a.revision} системы «${a.systemName}».`,
       `Что исправить: ${a.note ?? "—"}`,
       `Внесите правки в чате и опубликуйте новую версию — ${a.link}`,
       "Если вы не согласны с решением, ответьте на это письмо.",

@@ -170,13 +170,21 @@ export async function runG0(ctx: GateContext, opts: G0Options = {}): Promise<Gat
   const specValid = specShapeOk && !failed("G0-SPEC-02");
   await run("G0-MIG-01", () =>
     specValid
-      ? ok(checkMigrationPlan(ctx.prevSpec, spec, ctx.env))
+      ? ok(
+          checkMigrationPlan(ctx.prevSpec, spec, ctx.env, {
+            destructiveConfirmed: ctx.destructiveConfirmed === true,
+          }),
+        )
       : skip("Не запускалась: описание системы содержит ошибки"),
   );
   await run("G0-MIG-02", async () => {
     if (!specValid || failed("G0-MIG-01")) return skip("Не запускалась: план миграции не построен");
     if (!ctx.db) return { kind: "error", reason_ru: "нет подключения к базе данных" };
-    return ok(await checkShadowApply(ctx.db, ctx.systemKey, ctx.prevSpec, spec, ctx.env));
+    return ok(
+      await checkShadowApply(ctx.db, ctx.systemKey, ctx.prevSpec, spec, ctx.env, {
+        destructiveConfirmed: ctx.destructiveConfirmed === true,
+      }),
+    );
   });
 
   // 4. Code vs spec (AST).

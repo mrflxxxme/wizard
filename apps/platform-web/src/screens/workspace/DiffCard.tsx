@@ -1,10 +1,12 @@
 // S7 «Что изменится» (M1-08): the human diff of the draft against prod (GET /revisions/:v/diff?from=<prod>) with
-// migration, gates and price; «Отменить» rolls the draft back to prod, «Опубликовать ревизию N+1» publishes it.
+// migration, gates and price; «Отменить» rolls the draft back to prod, «Опубликовать ревизию N+1» publishes it. A change
+// that removes data (M2-72) shows its consequences and the owner's confirmation; publishing waits for it.
 import { Button } from "@wizard/ui-kit";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { DiffChange, GateReport } from "../../api/types.js";
 import { Alert, Pill } from "../../components/ui.js";
 import { diffSign, groupChanges, migrationVerdict } from "../../diff/human.js";
+import { DestructivePanel } from "../../features/destructive/DestructivePanel.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Workspace.module.css";
 
@@ -41,20 +43,21 @@ export function ChangesPanel({ changes }: { changes: DiffChange[] | null }): Rea
 }
 
 export function DiffCard({
+  systemId,
   revision,
   changes,
   reports,
-  credits,
   blockers,
   canCancel,
   busy,
   onCancel,
   onPublish,
 }: {
+  /** M2-72: with it a destructive change shows the consequences and the owner's confirmation (DestructivePanel). */
+  systemId?: string;
   revision: number;
   changes: DiffChange[] | null;
   reports: GateReport[];
-  credits: number | null;
   /** Publish blockers already in Russian (GateReport.publishBlockers). */
   blockers: string[];
   canCancel: boolean;
@@ -67,6 +70,8 @@ export function DiffCard({
   const checks = reports.reduce((n, r) => n + r.checks.filter((c) => c.status !== "skip").length, 0);
   const allPassed = reports.length > 0 && passed.length === reports.length;
   const destructive = verdict === "destructive";
+  const [confirmed, setConfirmed] = useState(false);
+  const waiting = destructive && (systemId === undefined || !confirmed);
   const lines = changes?.filter((c) => c.kind !== "file") ?? [];
   const files = changes?.filter((c) => c.kind === "file") ?? [];
   return (
@@ -100,18 +105,21 @@ export function DiffCard({
         <dd data-testid="diff-gates">
           {allPassed ? (
             <Pill tone="ok" title={passed.map((l) => ru.build.gate[l]).join(", ")}>
-              ✓ {ru.diff.gatesLine(passed.join(" · "), checks)}
+              ✓ {ru.diff.gatesLine(checks)}
             </Pill>
           ) : (
             <Pill tone="warn">{ru.diff.gatesPending}</Pill>
           )}
         </dd>
         <dt>{ru.diff.price}</dt>
-        <dd data-testid="diff-price">
-          {credits === null ? ru.diff.priceUnknown : ru.diff.priceLine(credits)}
-        </dd>
+        <dd data-testid="diff-price">{ru.diff.priceLine}</dd>
       </dl>
-      {destructive && <Alert testId="diff-destructive">{ru.diff.destructiveBlock}</Alert>}
+      {destructive &&
+        (systemId === undefined ? (
+          <Alert testId="diff-destructive">{ru.diff.destructiveBlock}</Alert>
+        ) : (
+          <DestructivePanel systemId={systemId} revision={revision} onReady={setConfirmed} />
+        ))}
       {blockers.map((b) => (
         <p key={b} className={s.blocker} data-testid="publish-blocker">
           {b}
@@ -131,7 +139,7 @@ export function DiffCard({
         <Button
           variant="primary"
           data-testid="diff-publish"
-          disabled={destructive || blockers.length > 0 || changes === null || busy !== null}
+          disabled={waiting || blockers.length > 0 || changes === null || busy !== null}
           loading={busy === "publish"}
           onClick={onPublish}
         >

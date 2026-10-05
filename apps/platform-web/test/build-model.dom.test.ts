@@ -77,27 +77,27 @@ describe("build model label on S1/S3", () => {
     const el = await startScreen({ ruOnly: false, buildModelLabel: RU_BUILD_LABEL, t1Restricted: false });
     const policy = text(el, "start-policy");
     expect(policy).toContain("Сборка: модели в РФ");
-    expect(policy).not.toContain("ПДн удаляются");
+    expect(policy).not.toContain("личные данные убираем");
   });
 
   test("T0 by default: S3 footer «Сборка: модели в РФ»", () => {
     const cap = text(cardScreen(RU_BUILD_LABEL), "card-cap");
     expect(cap).toContain("Сборка: модели в РФ");
-    expect(cap).not.toContain("без ПДн");
+    expect(cap).not.toContain("без личных данных");
   });
 
   test("T1 by default: S1/S3 show the model label and the scrub wording", async () => {
     const el = await startScreen({ ruOnly: false, buildModelLabel: "GLM-5.3", t1Restricted: false });
-    expect(text(el, "start-policy")).toContain("Сборка: GLM-5.3, ПДн удаляются до отправки");
+    expect(text(el, "start-policy")).toContain("Сборка: GLM-5.3, личные данные убираем до отправки");
     act(() => root?.unmount());
     root = undefined;
-    expect(text(cardScreen("GLM-5.3"), "card-cap")).toContain("Сборка: GLM-5.3 без ПДн");
+    expect(text(cardScreen("GLM-5.3"), "card-cap")).toContain("Сборка: GLM-5.3, без личных данных");
   });
 
   test("no settings (API error) → no model name at all", async () => {
     const el = await startScreen(null);
     expect(text(el, "start-policy")).not.toContain("Сборка:");
-    expect(text(el, "start-policy")).toContain("ПДн удаляются до отправки моделям");
+    expect(text(el, "start-policy")).toContain("Личные данные убираем до отправки моделям");
   });
 
   test("the UI constant equals the label platform-api sends (@wizard/llm RU_BUILD_LABEL)", () => {

@@ -5,6 +5,8 @@
 # state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
 # SSH tunnel and closes SSH again — also when anything fails (`close-access` with always()). `check` is the read-only
 # preflight (tools/deploy/preflight.mjs): same owner/main checks, no PROD word, no images, no OpenTofu/helm setup.
+# `eval` is the D67 measurement (docs/ops/eval-d67.md): diagnose-like cluster access for the database, the briefs over
+# the public HTTPS; its report is uploaded as an artifact (no secrets, no personal data in it).
 name: pilot-reusable
 
 on:
@@ -14,7 +16,7 @@ on:
         type: string
         required: true
       command:
-        description: "check | bootstrap | deploy | destroy | diagnose | reboot"
+        description: "check | bootstrap | deploy | destroy | diagnose | eval | reboot"
         type: string
         required: true
       sha:
@@ -31,6 +33,14 @@ on:
         description: "A Timeweb VM handed over to the environment (IP or id); empty — the one remembered in the bundle, else a new VM"
         type: string
         default: ""
+      briefs:
+        description: "eval: all or brief ids separated by commas"
+        type: string
+        default: "all"
+      max_cost_rub:
+        description: "eval: model budget of the measurement, ₽"
+        type: string
+        default: "2000"
 
 permissions:
   contents: read
@@ -51,6 +61,8 @@ jobs:
           SHA: ${{ inputs.sha || github.sha }}
           DEPLOY_ENV: ${{ inputs.env }}
           COMMAND: ${{ inputs.command }}
+          EVAL_BRIEFS: ${{ inputs.briefs }}
+          EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
         run: |
           if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
             echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
@@ -59,7 +71,11 @@ jobs:
             echo "::error title=pilot::Запуск только из main."; exit 1
           fi
           case "$DEPLOY_ENV" in prod|staging) ;; *) echo "::error title=pilot::env — prod или staging."; exit 1 ;; esac
-          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|eval|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          if [ "$COMMAND" = "eval" ]; then
+            printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
+            printf '%s' "$EVAL_MAX_COST_RUB" | grep -Eq '^[0-9]{1,4}$' || { echo "::error title=pilot::max_cost_rub — целое число рублей."; exit 1; }
+          fi
           if [ "$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging" ]; then
             echo "::error title=pilot::Удалять можно только staging."; exit 1
           fi
@@ -74,7 +90,7 @@ jobs:
 
   images:
     needs: authorize
-    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'reboot'
+    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'reboot'
     uses: ./.github/workflows/images.yml
     permissions:
       contents: read
@@ -88,7 +104,8 @@ jobs:
     if: ${{ !cancelled() && needs.authorize.result == 'success' && needs.images.result != 'failure' }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env }}
-    timeout-minutes: ${{ inputs.command == 'check' && 5 || 90 }}
+    # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most.
+    timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || 90 }}
     permissions:
       contents: read
       packages: read
@@ -96,11 +113,20 @@ jobs:
       SHA: ${{ needs.authorize.outputs.sha }}
       DEPLOY_ENV: ${{ inputs.env }}
       COMMAND: ${{ inputs.command }}
+      EVAL_BRIEFS: ${{ inputs.briefs }}
+      EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
       # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
       TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
       CLOUDRU_API_KEY: ${{ secrets.CLOUDRU_API_KEY }}
       ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      # Models (D26, M2-32): provider base URLs and the default build tier are variables, the Yandex key is a secret.
+      CLOUDRU_BASE_URL: ${{ vars.CLOUDRU_BASE_URL }}
+      ZAI_BASE_URL: ${{ vars.ZAI_BASE_URL }}
+      YANDEX_API_KEY: ${{ secrets.YANDEX_API_KEY }}
+      YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID || vars.YANDEX_FOLDER_ID }}
+      YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
+      WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
       # Timeweb S3 account key (panel → S3 → Ключи доступа): the keys on bucket objects in the API are refused by S3
       # (SignatureDoesNotMatch). Named apart from AWS_* so no tool on the runner picks them up implicitly.
       WIZARD_S3_ACCOUNT_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -185,13 +211,23 @@ jobs:
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
+            eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac
+      # The D67 report and the per-brief results (no token, no secrets; the eval account is a service one).
+      - name: D67 report
+        if: always() && inputs.command == 'eval'
+        uses: actions/upload-artifact@v4
+        with:
+          name: d67-eval-${{ inputs.env }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/wizard-eval-${{ inputs.env }}
+          if-no-files-found: ignore
+          retention-days: 90
       # check opens nothing (and may run with a rejected TWC_TOKEN), so there is nothing to close.
       - name: Close SSH access
         if: always() && inputs.command != 'check'
         run: node tools/deploy/pilot.mjs close-access --env "$DEPLOY_ENV"
       - name: Clean up the runner
         if: always()
-        run: rm -rf "$RUNNER_TEMP/wizard-pilot-$DEPLOY_ENV"
+        run: rm -rf "$RUNNER_TEMP/wizard-pilot-$DEPLOY_ENV" "$RUNNER_TEMP/wizard-eval-$DEPLOY_ENV"

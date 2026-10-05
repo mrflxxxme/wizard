@@ -107,8 +107,8 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
   });
 
   test("S3: estimate, cap, ≥ 6 criteria; an edit gives version N+1 and «Карточка обновлена»; «Строить» approves it", async () => {
-    expect(await page.getByTestId("card-estimate").textContent()).toMatch(/≈ \d+/);
-    expect(await page.getByTestId("card-cap").textContent()).toContain("Потолок");
+    expect(await page.getByTestId("card-estimate").textContent()).toMatch(/примерно \d+–\d+ минут/);
+    expect(await page.getByTestId("card-cap").textContent()).toContain("На пилоте бесплатно");
     expect(await page.getByTestId("card-cap").textContent()).toContain("GLM-5.3");
     expect(await page.getByTestId("card-acceptance-item").count()).toBeGreaterThanOrEqual(6);
     expect(await page.getByTestId("card-version").textContent()).toContain("версия 1");
@@ -142,7 +142,8 @@ describe.skipIf(!hasChromium)("platform-web in chromium (fixture «форум»)
     expect(new Set(statuses)).toEqual(new Set(["done"]));
     expect(await page.getByTestId("build-model-notice").count()).toBe(1);
     expect(await page.getByTestId("agent-message").count()).toBeGreaterThan(0);
-    expect(await page.getByTestId("build-credits").textContent()).toMatch(/из ≤30 кредитов/);
+    // D70: no credits in the build log.
+    expect(await page.getByTestId("build-progress").textContent()).not.toMatch(/кредит/i);
     await collect(page);
 
     const participant = forum.pages.filter((p) => p.roles.includes("participant") && !p.route.includes(":"));
@@ -385,13 +386,15 @@ describe.skipIf(!hasChromium)("SSE break and reload", () => {
 });
 
 describe.skipIf(!hasChromium)("failed G1 and failed build fixtures", () => {
-  test("failed G1 → publish-submit disabled, publish-blocker names G1", async () => {
+  test("failed G1 → publish-submit disabled, publish-blocker names the scenario check in words", async () => {
     const h = await startHarness({ feed: forum, eventDelayMs: 5, variant: "failG1" });
     try {
       const id = await toBuilding(h);
       await waitStage(h, id, "ready");
       const page = await h.page({ path: `/s/${id}` });
-      await expect.poll(() => page.getByTestId("publish-blocker").first().textContent()).toContain("G1");
+      await expect
+        .poll(() => page.getByTestId("publish-blocker").first().textContent())
+        .toContain("Проверка сценариев работы");
       expect(await page.getByTestId("publish-submit").isDisabled()).toBe(true);
       expect(await page.getByTestId("gate-report-row-G1").getAttribute("data-passed")).toBe("false");
       await collect(page);

@@ -149,7 +149,7 @@ describe("beta_readiness: partner invitations only after M2-13", () => {
     // The letter links to S-auth with the address, then the pilot onboarding (S-welcome).
     expect(letter?.text).toContain(pilotInviteLink(ORIGIN, "partner@coffee.example"));
     expect(pilotInviteLink(ORIGIN, "a@b.ru")).toBe(`${ORIGIN}/login?email=a%40b.ru&next=%2Fwelcome`);
-    expect(letter?.text).toContain("посмотрит модератор");
+    expect(letter?.text).toContain("её посмотрит команда");
 
     await fx.cli("readiness", "off", "--by", "founder");
     await expect(fx.cli("invite", "other@coffee.example")).rejects.toThrow(/готовность беты/);
@@ -321,7 +321,7 @@ describe("pilot leftovers: new orgs in invite mode, no top-up on pilot", () => {
     const refused = await barista.req("POST", "/orgs", { body: { name: "Своя кофейня" } });
     expect(refused.status).toBe(403);
     expect(refused.body).toMatchObject({ code: "FORBIDDEN" });
-    expect(refused.body.message_ru).toContain("На пилоте новые организации создаёт команда Wizard");
+    expect(refused.body.message_ru).toContain("На пилоте новые организации создаёт команда Born to Build");
   });
 
   test("top-up on pilot → 403 even with payments on (billing.yaml#plans.topup.available_on)", async () => {
@@ -331,7 +331,7 @@ describe("pilot leftovers: new orgs in invite mode, no top-up on pilot", () => {
     const r = await owner.req("POST", `/orgs/${orgId}/billing/topups`, { body: { packs: 1 } });
     expect(r.status).toBe(403);
     expect(r.body).toMatchObject({ code: "FORBIDDEN" });
-    expect(r.body.message_ru).toContain("Докупка кредитов на тарифе «Пилот» недоступна");
+    expect(r.body.message_ru).toContain("На пилоте ничего докупать не нужно");
   });
 });
 
@@ -409,13 +409,13 @@ describe("platform mail over SMTP (WIZARD_SMTP_*)", () => {
         {
           kind: "otp",
           to: "anna@coffee.example",
-          subject: "Код входа в Wizard: 123456",
+          subject: "Код входа в Born to Build: 123456",
           text: "Ваш код: 123456",
         },
         {
           kind: "invite",
           to: "anna@coffee.example",
-          subject: "Приглашение в пилот Wizard",
+          subject: "Приглашение в пилот Born to Build",
           text: "Войти: …",
         },
         { kind: "alert", to: "founder@wizard.example", subject: "Wizard: авария", text: "Упало 3 из 5" },
