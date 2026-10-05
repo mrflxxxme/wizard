@@ -101,7 +101,7 @@ async function probe(
     files: o.files ?? [],
     gates: { G0: async () => report("G0", true), G1: g1Stub },
   });
-  const out = await runBuild(mem.host, { card: o.card ?? cardFor(spec), cap: 100, mode });
+  const out = await runBuild(mem.host, { card: o.card ?? cardFor(spec), cap: 100, mode, pipeline: "single" });
   const after = inputs[mode === "create" || mode === "change" ? 2 : 1]?.messages ?? [];
   const results = new Map<string, Content>();
   for (const m of after as LlmMessage[])

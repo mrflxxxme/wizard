@@ -26,7 +26,9 @@ transport: >
   Тело: recipients [{email}], subject, from_email, from_name, reply_to, body {plaintext, html}, inline_attachments
   [{type, name = cid, content base64}] (QR), attachments, только X-заголовки, template_engine none (текст уже
   отрисован). track_links, track_read, skip_unsubscribe не передаются: их отключение Unisender включает только через
-  поддержку (действие основателя). Ошибки — как у SMTP: 4xx кроме 429 — окончательные (401/403 → AUTH_FAILED, API-код
+  поддержку (действие основателя). Unisender Go не отправляет без своего домена ссылок (403, код 229 «Custom backend domain or
+  tracking domain required for sending», 05.10.2026): основатель добавляет его в кабинете (Настройки → Домены ссылок), DNS-записи
+  из кабинета лежат в infra/dns/platform-records.json, выкат создаёт их в зоне платформы через API Timeweb. Ошибки — как у SMTP: 4xx кроме 429 — окончательные (401/403 → AUTH_FAILED, API-код
   204 → RECIPIENT_UNAVAILABLE, прочие → INVALID_REQUEST), 429, 5xx и сеть — временные, один повтор; тайм-аут 15 с.
   Ключ, адрес и текст письма в логи и ошибки не попадают. Свой SMTP клиента (provider=smtp) и dev-приёмник остаются
   SMTP. Код: packages/connectors/src/mail-api.ts.

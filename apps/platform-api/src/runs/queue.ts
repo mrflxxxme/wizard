@@ -78,6 +78,7 @@ import {
   type InterviewContext,
   type InterviewOutput,
   type PointEditTarget,
+  type RouteBatchItem,
   RunCancelled,
   type RunExecutors,
   RunFailure,
@@ -1047,8 +1048,11 @@ export class RunEngine {
     return out;
   }
 
-  #stepHost(x: Ctx, needsInput: (req: InputRequest) => Promise<InputAnswer>): StepHost {
-    const routers: Routers = { pending: [], mute: false };
+  #stepHost(
+    x: Ctx,
+    needsInput: (req: InputRequest) => Promise<InputAnswer>,
+    routers: Routers = { pending: [], mute: false },
+  ): StepHost {
     const run = x.run;
     return {
       run: {
@@ -1095,16 +1099,18 @@ export class RunEngine {
     return routers.r;
   }
 
-  async #route(
+  /**
+   * Budget check before an LLM step (workflows.yaml#run_lifecycle.budget): used + ub > cap → budget_exceeded, then
+   * needs_input(budget) for builds (raise_cap_N | stop) or BUDGET_STOPPED otherwise. ub in credits.
+   */
+  async #budgetGate(
     x: Ctx,
-    routers: Routers,
-    input: HostRouteInput,
+    ubCredits: number,
+    nextStep: string,
     needsInput: (req: InputRequest) => Promise<InputAnswer>,
-  ): Promise<RouteOutput> {
+  ): Promise<void> {
     const { run, D } = x;
-    await this.#ensureActive(x);
     const billing = this.#d.billing;
-    // Budget check before every LLM step (workflows.yaml#run_lifecycle.budget).
     for (;;) {
       const b = await D.step("budget_check", async () => {
         const cur = await this.#db
@@ -1115,7 +1121,7 @@ export class RunEngine {
         if (cur.credits_cap_milli === null) return null;
         const used = Number(cur.credits_used_milli);
         const cap = Number(cur.credits_cap_milli);
-        const ub = Math.round((input.upperBoundCredits ?? 0) * 1000);
+        const ub = Math.round(ubCredits * 1000);
         if (used + ub <= cap && used < cap) return null;
         const n = Math.ceil((0.25 * cap) / 1000);
         // raise_cap_N holds N more credits; without them the option is not offered (billing.yaml#run_charging).
@@ -1125,13 +1131,9 @@ export class RunEngine {
             (await billing.readBalance(this.#db, run.org_id)).available >= n * 1000);
         return { used, cap, n, canRaise };
       });
-      if (!b) break;
+      if (!b) return;
       const { used, cap, n, canRaise } = b;
-      await this.#emit(x, "budget_exceeded", {
-        used: used / 1000,
-        cap: cap / 1000,
-        nextStep: input.step ?? input.callType,
-      });
+      await this.#emit(x, "budget_exceeded", { used: used / 1000, cap: cap / 1000, nextStep });
       if (run.kind !== "build")
         throw new RunFailure(
           "BUDGET_STOPPED",
@@ -1179,81 +1181,157 @@ export class RunEngine {
         }),
       );
     }
-    const router = this.#router(x, routers);
+  }
+
+  async #orgPolicy(x: Ctx) {
+    const org = await this.#db
+      .selectFrom("platform.orgs")
+      .select(["ru_only", "t1_restricted", "region_code"])
+      .where("id", "=", x.run.org_id)
+      .executeTakeFirstOrThrow();
+    return orgPolicyOf(org);
+  }
+
+  /** Router input of one host call; `budget` is the run's cap/spent snapshot taken inside the LLM step. */
+  #routeInput(x: Ctx, input: HostRouteInput, budget?: { capCredits: number; spentCredits: number }) {
     const { step, upperBoundCredits: _ub, ...rest } = input;
     const ctx = {
-      orgId: run.org_id,
-      runId: run.id,
-      systemId: run.system_id ?? undefined,
+      orgId: x.run.org_id,
+      runId: x.run.id,
+      systemId: x.run.system_id ?? undefined,
       ...(step ? { step } : {}),
+      ...(budget ? { budget } : {}),
     };
+    return { rest, ctx };
+  }
+
+  /** Cap/spent snapshot of the run for the router's ctx.budget (undefined without a cap). */
+  async #budgetSnapshot(x: Ctx) {
+    const r = await this.#db
+      .selectFrom("platform.runs")
+      .select(["credits_used_milli", "credits_cap_milli"])
+      .where("id", "=", x.run.id)
+      .executeTakeFirstOrThrow();
+    return r.credits_cap_milli === null
+      ? undefined
+      : { capCredits: Number(r.credits_cap_milli) / 1000, spentCredits: Number(r.credits_used_milli) / 1000 };
+  }
+
+  /** Adds the credits of one LLM step to the run and appends one budget_update (same transaction). */
+  async #addCredits(x: Ctx, creditsMilli: number): Promise<void> {
+    await this.#tx(async (t) => {
+      const row = await t.trx
+        .updateTable("platform.runs")
+        .set((eb) => ({ credits_used_milli: eb("credits_used_milli", "+", String(creditsMilli)) }))
+        .where("id", "=", x.run.id)
+        .returning(["credits_used_milli", "credits_cap_milli", "credits_estimate_milli"])
+        .executeTakeFirstOrThrow();
+      await appendEvent(t, x.run.id, "budget_update", {
+        used: Number(row.credits_used_milli) / 1000,
+        cap: Number(row.credits_cap_milli ?? 0) / 1000,
+        ...(row.credits_estimate_milli !== null
+          ? { estimate: Number(row.credits_estimate_milli) / 1000 }
+          : {}),
+      });
+    });
+  }
+
+  /** Replay of checkpointed fixture calls: a fixture router answers by order, so it is advanced without usage rows. */
+  async #advanceFixture(x: Ctx, routers: Routers, router: Router, inputs: HostRouteInput[]): Promise<void> {
+    routers.mute = true;
+    try {
+      const orgPolicy = await this.#orgPolicy(x);
+      for (const input of inputs) {
+        const { rest, ctx } = this.#routeInput(x, input);
+        try {
+          await router.route({ ...rest, orgPolicy, ctx });
+        } catch {
+          // the checkpointed answer stands
+        }
+      }
+    } finally {
+      routers.mute = false;
+    }
+  }
+
+  async #route(
+    x: Ctx,
+    routers: Routers,
+    input: HostRouteInput,
+    needsInput: (req: InputRequest) => Promise<InputAnswer>,
+  ): Promise<RouteOutput> {
+    const { D } = x;
+    await this.#ensureActive(x);
+    await this.#budgetGate(x, input.upperBoundCredits ?? 0, input.step ?? input.callType, needsInput);
+    const router = this.#router(x, routers);
     // The LLM step: its output is kept by reference (L3-09); usage and credits are written with it.
     const out = await D.step(
-      `llm:${step ?? input.callType}`,
+      `llm:${input.step ?? input.callType}`,
       async () => {
-        const org = await this.#db
-          .selectFrom("platform.orgs")
-          .select(["ru_only", "t1_restricted", "region_code"])
-          .where("id", "=", run.org_id)
-          .executeTakeFirstOrThrow();
-        const used0 = await this.#db
-          .selectFrom("platform.runs")
-          .select(["credits_used_milli", "credits_cap_milli"])
-          .where("id", "=", run.id)
-          .executeTakeFirstOrThrow();
+        const orgPolicy = await this.#orgPolicy(x);
+        const { rest, ctx } = this.#routeInput(x, input, await this.#budgetSnapshot(x));
         routers.pending = [];
-        const res = await router.route({
-          ...rest,
-          orgPolicy: orgPolicyOf(org),
-          ctx: {
-            ...ctx,
-            ...(used0.credits_cap_milli !== null
-              ? {
-                  budget: {
-                    capCredits: Number(used0.credits_cap_milli) / 1000,
-                    spentCredits: Number(used0.credits_used_milli) / 1000,
-                  },
-                }
-              : {}),
-          },
-          signal: x.ac.signal,
-        });
+        const res = await router.route({ ...rest, orgPolicy, ctx, signal: x.ac.signal });
         await Promise.all(routers.pending);
-        await this.#tx(async (t) => {
-          const row = await t.trx
-            .updateTable("platform.runs")
-            .set((eb) => ({ credits_used_milli: eb("credits_used_milli", "+", String(res.creditsMilli)) }))
-            .where("id", "=", run.id)
-            .returning(["credits_used_milli", "credits_cap_milli", "credits_estimate_milli"])
-            .executeTakeFirstOrThrow();
-          await appendEvent(t, run.id, "budget_update", {
-            used: Number(row.credits_used_milli) / 1000,
-            cap: Number(row.credits_cap_milli ?? 0) / 1000,
-            ...(row.credits_estimate_milli !== null
-              ? { estimate: Number(row.credits_estimate_milli) / 1000 }
-              : {}),
-          });
-        });
+        await this.#addCredits(x, res.creditsMilli);
         return res;
       },
       { offload: true },
     );
-    if (D.replayed && router.mode === "fixture") {
-      // A fixture router answers by order within the run: replayed calls advance it without new usage rows.
-      routers.mute = true;
-      try {
-        const org = await this.#db
-          .selectFrom("platform.orgs")
-          .select(["ru_only", "t1_restricted", "region_code"])
-          .where("id", "=", run.org_id)
-          .executeTakeFirstOrThrow();
-        await router.route({ ...rest, orgPolicy: orgPolicyOf(org), ctx });
-      } catch {
-        // the checkpointed answer stands
-      } finally {
-        routers.mute = false;
-      }
-    }
+    if (D.replayed && router.mode === "fixture") await this.#advanceFixture(x, routers, router, [input]);
+    return out;
+  }
+
+  /**
+   * BuildHost.routeBatch (builder.yaml#harness.tasks.parallel): one budget check for Σ upperBoundCredits and ONE
+   * durable step for all calls (deterministic replay); concurrent in live mode, in input order in fixture mode
+   * (fixture answers go by order). A failed call becomes {ok: false} instead of failing the batch.
+   */
+  async #routeBatch(
+    x: Ctx,
+    routers: Routers,
+    inputs: HostRouteInput[],
+    needsInput: (req: InputRequest) => Promise<InputAnswer>,
+  ): Promise<RouteBatchItem[]> {
+    const { D } = x;
+    if (inputs.length === 0) return [];
+    await this.#ensureActive(x);
+    const first = inputs[0] as HostRouteInput;
+    const ub = inputs.reduce((s, i) => s + (i.upperBoundCredits ?? 0), 0);
+    await this.#budgetGate(x, ub, first.step ?? first.callType, needsInput);
+    const router = this.#router(x, routers);
+    const out = await D.step(
+      `llm_batch:${inputs.map((i) => i.step ?? i.callType).join(",")}`,
+      async () => {
+        const orgPolicy = await this.#orgPolicy(x);
+        const budget = await this.#budgetSnapshot(x);
+        const call = async (input: HostRouteInput): Promise<RouteBatchItem> => {
+          const { rest, ctx } = this.#routeInput(x, input, budget);
+          try {
+            return { ok: true, out: await router.route({ ...rest, orgPolicy, ctx, signal: x.ac.signal }) };
+          } catch (e) {
+            // Model failures are answers of the batch; anything else (router, usage sink, DB) fails the step,
+            // so it is retried rather than replayed as a stored result.
+            if (e instanceof LlmError) return { ok: false, code: e.code, message: e.message };
+            throw e;
+          }
+        };
+        routers.pending = [];
+        let items: RouteBatchItem[];
+        if (router.mode === "fixture") {
+          items = [];
+          for (const input of inputs) items.push(await call(input));
+        } else items = await Promise.all(inputs.map(call));
+        await Promise.all(routers.pending);
+        await this.#addCredits(
+          x,
+          items.reduce((s, it) => s + (it.ok ? it.out.creditsMilli : 0), 0),
+        );
+        return items;
+      },
+      { offload: true },
+    );
+    if (D.replayed && router.mode === "fixture") await this.#advanceFixture(x, routers, router, inputs);
     return out;
   }
 
@@ -1588,7 +1666,9 @@ export class RunEngine {
   async #runBuilder(x: Ctx, params: BuildParams): Promise<BuildOutcome | undefined> {
     const { run, D } = x;
     const needsInput = (req: InputRequest | SecretInputRequest) => this.#needsInput(x, req);
-    const base = this.#stepHost(x, needsInput);
+    // Shared by route and routeBatch: one router per run (fixture order, pending internal events).
+    const routers: Routers = { pending: [], mute: false };
+    const base = this.#stepHost(x, needsInput, routers);
     const systemId = run.system_id as string;
     const pending = new Map<string, string | null>();
     const system = () =>
@@ -1630,6 +1710,7 @@ export class RunEngine {
     const host: BuildHost = {
       ...base,
       managesBudget: true,
+      routeBatch: (inputs) => this.#routeBatch(x, routers, inputs, needsInput),
       needsInput,
       qa: this.#d.executors.qa ?? {
         generate: async () => {

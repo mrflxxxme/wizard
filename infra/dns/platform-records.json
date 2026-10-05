@@ -1,0 +1,4 @@
+{
+  "comment": "Extra DNS records of the platform domain (WIZARD_PLATFORM_DOMAIN) that providers ask for, e.g. the Unisender Go link (tracking) domain: required for sending (2026-10-05, «Custom backend domain or tracking domain required for sending»). bootstrap (apply) creates the missing ones through the Timeweb DNS API (tools/deploy/pilot.mjs ensureDnsRecords); records are public, never secrets. subdomain is relative to the platform domain.",
+  "records": []
+}

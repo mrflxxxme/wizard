@@ -13,6 +13,7 @@ import {
   checkInputs,
   closeAdminAccess,
   ensureDmarc,
+  ensureDnsRecords,
   ensureStateBucket,
   envVars,
   FOUNDER_STAFF_SQL,
@@ -22,6 +23,7 @@ import {
   main,
   parseArgs,
   placesFrom,
+  platformDnsRecords,
   resolveStateS3,
   SHAPES,
   s3ErrorCode,
@@ -1057,6 +1059,45 @@ describe("DMARC of the systems domain through the DNS records API", () => {
     const logs = [];
     expect(await ensureDmarc(api([], true), "neutral.ru", { log: (l) => logs.push(l) })).toBe("failed");
     expect(logs[0]).toMatch(/^::warning/);
+  });
+
+  it("provider records of the platform domain: missing ones added, present skipped, a foreign CNAME reported", async () => {
+    const calls = [];
+    const api = (records) => async (method, path, body) => {
+      calls.push([method, path, body]);
+      if (method === "GET") return { dns_records: records };
+      return {};
+    };
+    const want = [
+      { subdomain: "link", type: "CNAME", value: "track.example.net" },
+      { subdomain: "us._domainkey", type: "TXT", value: "k=rsa; p=AAA" },
+    ];
+    const existing = [
+      { type: "TXT", data: { subdomain: "us._domainkey.borntobuild.ru", value: '"k=rsa; p=AAA"' } },
+    ];
+    expect(await ensureDnsRecords(api(existing), "borntobuild.ru", want)).toEqual([
+      "link CNAME: добавлена",
+      "us._domainkey TXT: есть",
+    ]);
+    expect(calls.filter(([m]) => m === "POST")).toEqual([
+      [
+        "POST",
+        "/api/v1/domains/borntobuild.ru/dns-records",
+        { type: "CNAME", subdomain: "link.borntobuild.ru", value: "track.example.net" },
+      ],
+    ]);
+    const logs = [];
+    const other = [{ type: "CNAME", data: { subdomain: "link", value: "elsewhere.example.org." } }];
+    expect(
+      await ensureDnsRecords(api(other), "borntobuild.ru", want.slice(0, 1), { log: (l) => logs.push(l) }),
+    ).toEqual(["link CNAME: другое значение"]);
+    expect(logs[0]).toMatch(/^::warning/);
+    expect(await ensureDnsRecords(api([]), "borntobuild.ru", [])).toEqual([]);
+    // The committed file parses; a malformed record is refused before any API call.
+    expect(Array.isArray(platformDnsRecords())).toBe(true);
+    const bad = join(mkdtempSync(join(tmpdir(), "dns-")), "r.json");
+    writeFileSync(bad, JSON.stringify({ records: [{ subdomain: "a b", type: "A", value: "1.2.3.4" }] }));
+    expect(() => platformDnsRecords(bad)).toThrow(/CNAME\|TXT/);
   });
 
   it("the VM region follows WIZARD_TIMEWEB_LOCATION (ru-1 | ru-3), anything else is ignored", () => {

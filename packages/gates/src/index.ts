@@ -26,7 +26,8 @@ export { ALLOWED_PACKAGES } from "./g0/imports.js";
 /** Name of the rolled-back shadow schema used by G0-MIG-02: app_<systemKey>_shadow. */
 export { shadowSchema } from "./g0/migrations.js";
 /** runG0(ctx, {only?, timeBudgetMs?, deps?}); checkFile(path, source, spec?) → G0-IMP-01 + G0-SEC-01 for write_file. */
-export { checkFile, type G0Options, runG0, UI_BUNDLE_WARN } from "./g0/run.js";
+/** checkCode({spec, files, file?}) → failed code checks of G0 (no DB, no events) for one file of a builder task. */
+export { checkCode, checkFile, G0_CODE_CHECKS, type G0Options, runG0, UI_BUNDLE_WARN } from "./g0/run.js";
 /** forbidden_api.limits: function source ≤ 200 KB. */
 export { FUNCTION_SOURCE_LIMIT } from "./g0/security.js";
 /** G0-SPEC-05: reservedRoute(route, policyPage?) → "login" | "policy" | "system" | null; default policy page /privacy. */

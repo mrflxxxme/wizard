@@ -22,7 +22,10 @@ export const TOOLSETS = {
   questions: ["ask_questions"],
   card: ["submit_card"],
   plan: ["submit_plan"],
+  brief: ["submit_brief"],
   build: BUILDER_TOOLS,
+  task: ["write_file", "read_file", "list_files", "get_ui_kit_docs", "get_sdk_docs", "get_capability"],
+  review: ["submit_review"],
   qa_generate: ["submit_checks"],
 };
 /** schemaHash is not compared for suite=demo; golden lines carry this marker instead of a real zod schema hash. */
@@ -237,6 +240,43 @@ function deriveScenarios(g, spec) {
 }
 
 /** push(callType, toolset, messages, response) → appends one fixture line (eval.yaml#fixtures.line) to `lines`. */
+const LIB_RE = /^(functions\/lib\/[A-Za-z0-9_/-]+\.ts|ui\/components\/[A-Za-z0-9_/-]+\.tsx)$/;
+
+/**
+ * The architect's brief of a golden system (builder.yaml#harness.stages.brief): shared modules, functions, pages in
+ * that order; AC refs from the golden plan's code steps, every other non-permission AC on the first page.
+ */
+export function briefTasks(spec, card, files, plan) {
+  const fnRefs = new Set(plan.filter((p) => p.kind === "code" && p.targets.some((t) => t.startsWith("functions/"))).flatMap((p) => p.acRefs));
+  const uiRefs = new Set(plan.filter((p) => p.kind === "code" && p.targets.some((t) => t.startsWith("ui/"))).flatMap((p) => p.acRefs));
+  const libs = files.map((f) => f.path).filter((p) => LIB_RE.test(p));
+  const fns = spec.functions ?? [];
+  const pages = spec.pages ?? [];
+  const nonPerm = card.acceptance.filter((a) => a.check.type !== "permission").map((a) => a.id);
+  const raw = [
+    ...libs.map((file) => ({ kind: "lib", file, title: `Общий модуль ${file.split("/").pop()}`, goal: "Общий код для нескольких файлов системы.", details: [], uses: [], acRefs: [] })),
+    ...fns.map((f, i) => ({
+      kind: "function",
+      file: f.file,
+      title: `Функция ${f.name}`,
+      goal: `Серверная функция ${f.name} (${f.kind}) по карточке и спеке.`,
+      details: [],
+      uses: [],
+      acRefs: i === 0 ? [...fnRefs] : [],
+    })),
+    ...pages.map((p, i) => ({
+      kind: "page",
+      file: p.file,
+      title: p.title,
+      goal: `Страница «${p.title}» (${p.route}) для ролей: ${p.roles.join(", ")}.`,
+      details: [],
+      uses: [],
+      acRefs: i === 0 ? [...new Set([...uiRefs, ...nonPerm.filter((a) => !fnRefs.has(a) && !uiRefs.has(a))])] : [],
+    })),
+  ];
+  return raw.map((t, i) => ({ id: `T${i + 1}`, ...t }));
+}
+
 function pusher(models, g, lines) {
   const counters = {};
   return (callType, toolset, messages, response) => {
@@ -371,10 +411,8 @@ export function buildGolden(name, opts = {}) {
     toolCalls: [{ name: "submit_card", args: card }],
   });
 
-  // Builder: plan → ops batches → code (builder.yaml#loop.phases). A phase ends with a reply without tool calls.
-  push("plan", "plan", [user(`Карточка утверждена: «${card.title}», версия 1`)], {
-    toolCalls: [{ name: "submit_plan", args: { steps: g.plan } }],
-  });
+  // Builder, harness v2 (builder.yaml#harness): ops batches → the architect's brief → one executor call per task (shared
+  // modules, functions, pages; the harness checks the file, so a clean write ends the task) → the reviewer per page.
   batches.forEach((ops, i) => {
     push("build_ops", "build", [user(`Фаза ops: батч ${i + 1} из ${batches.length}`)], {
       toolCalls: [{ name: "apply_ops", args: { ops, expectedVersion: i } }],
@@ -390,20 +428,19 @@ export function buildGolden(name, opts = {}) {
       integrations: count("integrations"),
     }),
   });
-  const perStep = g.build.files_per_step ?? 3;
-  const steps = [];
-  for (let i = 0; i < files.length; i += perStep) steps.push(files.slice(i, i + perStep));
-  steps.forEach((chunk, i) => {
-    const toolCalls = chunk.map((f) => ({ name: "write_file", args: { path: f.path, content: f.content } }));
-    if (i === steps.length - 1) toolCalls.push({ name: "run_gate", args: { level: "G0" } });
-    push("build_code", "build", [user(`Фаза code: шаг ${i + 1} из ${steps.length}`)], { toolCalls });
+  const tasks = briefTasks(buildSpec, card, files, g.plan);
+  push("plan", "brief", [user(`ТЗ: «${card.title}»`)], {
+    toolCalls: [{ name: "submit_brief", args: { tasks } }],
   });
-  push("build_code", "build", [user("Фаза code: G0 пройден")], {
-    text: fill(g.build.code_done_text, {
-      functions: files.filter((f) => f.path.startsWith("functions/")).length,
-      ui: files.filter((f) => f.path.startsWith("ui/")).length,
-    }),
-  });
+  const byPath = new Map(files.map((f) => [f.path, f.content]));
+  for (const t of tasks)
+    push("build_code", "task", [user(`Задача ${t.id}: ${t.file}`)], {
+      toolCalls: [{ name: "write_file", args: { path: t.file, content: byPath.get(t.file) } }],
+    });
+  for (const t of tasks.filter((x) => x.kind === "page"))
+    push("audit", "review", [user(`Рецензия ${t.id}: ${t.file}`)], {
+      toolCalls: [{ name: "submit_review", args: { verdict: "ok", issues: [] } }],
+    });
 
   // QA: one submit_checks for every scenario/constraint AC up to the milestone (qa.yaml#checks.from_acceptance).
   push(

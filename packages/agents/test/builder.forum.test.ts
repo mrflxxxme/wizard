@@ -128,16 +128,19 @@ describe("forum: golden fixture replay", async () => {
 
   test("every builder line of the fixture is consumed, in order", () => {
     const want = fixtureLines("forum")
-      .filter((l) => ["plan", "build_ops", "build_code", "fix"].includes(l.callType))
+      .filter((l) => ["plan", "build_ops", "build_code", "fix", "audit"].includes(l.callType))
       .map((l) => l.callType);
     expect(mem.calls.map((c) => c.callType)).toEqual(want);
     for (const c of mem.calls) {
       expect(c.upperBoundCredits).toBeGreaterThan(0);
-      expect(c.step).toMatch(/^(plan|ops|code|fix)#\d+$/);
+      expect(c.step).toMatch(/^((plan|ops|code|fix)#\d+|(task|review):T\d+:[\w/.-]+#\d+)$/);
     }
-    // Prompt prefix (system static + session) is identical between steps of a phase.
+    // builder.yaml#harness.tasks.context: every executor starts from the same static system prefix (prompt cache)
+    // and gets its own task in a fresh context — one write per task here.
     const code = mem.calls.filter((c) => c.callType === "build_code");
-    for (const c of code.slice(1)) expect(c.messages.slice(0, 2)).toEqual(code[0]?.messages.slice(0, 2));
+    for (const c of code.slice(1)) expect(c.messages[0]).toEqual(code[0]?.messages[0]);
+    expect(code.every((c) => c.messages.length === 2)).toBe(true);
+    expect(new Set(code.map((c) => c.messages[1]?.content)).size).toBe(code.length);
   });
 
   test("events follow workflows.yaml#events", () => {
@@ -145,11 +148,12 @@ describe("forum: golden fixture replay", async () => {
     const types = mem.events.map((e) => e.type);
     expect(types[0]).toBe("run_started");
     expect(types.at(-1)).toBe("run_finished");
-    expect(types.indexOf("plan_ready")).toBeLessThan(types.indexOf("ops_applied"));
+    // Harness v2: the brief (plan_ready) comes after the spec; review is the third verify step.
+    expect(types.indexOf("plan_ready")).toBeGreaterThan(types.lastIndexOf("ops_applied"));
     const steps = mem.events.filter((e) => e.type === "step_started").map((e) => e.payload.step);
-    expect(steps).toEqual(["plan", "ops", "code", "verify", "verify"]);
+    expect(steps).toEqual(["ops", "plan", "code", "verify", "verify", "verify"]);
     const plan = mem.events.find((e) => e.type === "plan_ready")?.payload.steps as unknown[];
-    expect(plan).toHaveLength(6);
+    expect(plan).toHaveLength(g.files.length);
     const ops = mem.events.filter((e) => e.type === "ops_applied");
     expect(ops.map((e) => e.payload.opsCount)).toEqual(g.batches.map((b) => b.length));
     for (const e of ops) expect((e.payload.summary_ru as string[]).length).toBeGreaterThan(0);
@@ -215,7 +219,7 @@ describe("bakery: scripted from the reference example", async () => {
       gates: { G1: g1Stub },
     });
     const card = cardFor(bakery);
-    const out = await executeBuild(mem, { card, cap: 40, mode: "create" });
+    const out = await executeBuild(mem, { card, cap: 40, mode: "create", pipeline: "single" });
     const g0 = mem.events.find((e) => e.type === "gate_result" && e.payload.level === "G0");
     expect(g0?.payload.failedChecks).toEqual([]);
     expect(out.status).toBe("succeeded");

@@ -49,6 +49,10 @@ export function propSchema(desc: string, failureCodes: string[]): Schema {
   if (d === "run_lifecycle.failure_codes") return { enum: failureCodes };
   const parts = splitTop(d, "|");
   if (parts.some((p) => p.includes("…"))) return { type: "string" };
+  // Prose instead of a type (e.g. build_metrics.stages: "метрики этапов …"): not constrained here.
+  const first = parts[0] ?? "";
+  if (parts.length === 1 && /\s/.test(first) && !/^[[{]/.test(first) && !PRIM[first.split(/\s+/)[0] ?? ""])
+    return {};
   const schemas = parts.map(one);
   const lits = schemas.filter((s): s is { literal: string } => "literal" in s);
   if (lits.length === schemas.length) return { enum: lits.map((l) => l.literal) };

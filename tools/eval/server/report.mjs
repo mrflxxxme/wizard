@@ -74,12 +74,14 @@ export function evaluate(doc, db = {}) {
       developmentRequests: recorded,
       gapMentioned: mentioned,
       gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
+      stages: (r.systemId && db.metrics?.[r.systemId]?.stages) || null,
       counted,
       countedVia: via,
     };
   });
   const ran = items.filter((x) => x.status !== "skipped" && x.status !== "pending");
   const ready = items.filter((x) => x.counted).length;
+  const staged = items.filter((x) => x.stages?.tasks?.total);
   const threshold = Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * items.length);
   return {
     items,
@@ -94,7 +96,36 @@ export function evaluate(doc, db = {}) {
     credits: Math.round(items.reduce((s, x) => s + (x.creditsUsed ?? 0), 0) * 1000) / 1000,
     gaps: items.reduce((s, x) => s + x.gapCount, 0),
     gapsTable,
+    firstPass: staged.length
+      ? {
+          briefs: staged.length,
+          passed: staged.reduce((s, x) => s + (x.stages.tasks.firstPass ?? 0), 0),
+          total: staged.reduce((s, x) => s + x.stages.tasks.total, 0),
+        }
+      : null,
   };
+}
+
+/** «Этапы: …» of one brief from build_metrics.stages (agents/builder.yaml#harness.metrics); null without metrics. */
+export function stagesLine(st) {
+  if (!st || typeof st !== "object") return null;
+  const n = (v) => (Number.isFinite(v) ? v : 0);
+  const parts = [];
+  if (st.brief) {
+    const k = n(st.brief.tasks);
+    const [m10, m100] = [k % 10, k % 100];
+    const word = m10 === 1 && m100 !== 11 ? "задача" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "задачи" : "задач";
+    parts.push(`ТЗ — ${k} ${word}`);
+  }
+  if (st.tasks) parts.push(`с первого хода — ${n(st.tasks.firstPass)} из ${n(st.tasks.total)}`);
+  if (st.verify) parts.push(`исправления — ${n(st.verify.fixTasks)}`);
+  if (st.review)
+    parts.push(
+      st.review.skipped
+        ? "рецензент — пропущен"
+        : `рецензент — ok ${n(st.review.ok)}, критично ${n(st.review.critical)}, мелочи ${n(st.review.minor)}`,
+    );
+  return parts.length ? `Этапы: ${parts.join("; ")}` : null;
 }
 
 function checksLine(item) {
@@ -132,6 +163,11 @@ export function renderReport(doc, db = {}, meta = {}) {
             .join(", ")}`
         : ""
     }`,
+    ...(e.firstPass
+      ? [
+          `- Задачи ТЗ, готовые с первого хода исполнителя: ${e.firstPass.passed} из ${e.firstPass.total}${e.firstPass.total ? ` (${Math.round((e.firstPass.passed / e.firstPass.total) * 100)} %)` : ""} — по брифам с метриками этапов: ${e.firstPass.briefs}`,
+        ]
+      : []),
     `- Готовность к публикации — G0, G1 и G2 без блокеров; то, что делает владелец (секреты интеграций), показано отдельно и готовность не снимает.${doc.g2 === "skip" ? " **В этом прогоне G2 не запускался.**" : " G2 запускается первой публикацией: на пилоте она останавливается на ревью основателя, в prod ничего не уходит."}`,
     "",
   );
@@ -176,6 +212,8 @@ export function renderReport(doc, db = {}, meta = {}) {
       L.push(
         `- Сборка: ${x.build.status === "succeeded" ? "завершилась" : `не завершилась (${x.build.failure?.message_ru ?? x.build.status})`}${x.fixes ? `, «Исправить» нажато ${x.fixes} раз` : ""}; ${x.buildMinutes ?? "—"} мин сборки, ${x.minutes ?? "—"} мин от брифа.`,
       );
+    const stages = stagesLine(x.stages);
+    if (stages) L.push(`- ${stages}.`);
     if (x.inputs?.length)
       L.push(
         `- Сборка спрашивала: ${x.inputs.map((i) => `${i.decisionId ?? i.kind} → ${i.choice ?? "нет ответа"}`).join("; ")}.`,

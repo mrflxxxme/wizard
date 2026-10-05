@@ -39,8 +39,8 @@ const load = (name: string) => {
 };
 /** Golden demo fixtures: M0-21 forum (12 calls), M0-22 bakery (10 calls). */
 const SUITES = [
-  { name: "forum", count: 12, ...load("forum") },
-  { name: "bakery", count: 10, ...load("bakery") },
+  { name: "forum", count: 21, ...load("forum") },
+  { name: "bakery", count: 21, ...load("bakery") },
 ];
 const GOLDEN = SUITES.flatMap((suite) => suite.golden);
 

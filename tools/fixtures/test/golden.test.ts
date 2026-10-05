@@ -103,9 +103,9 @@ describe("gen-golden", () => {
     expect(genGolden(name, "--check").status).toBe(0);
   });
 
-  it("порядок callType: interview, interview, card, plan, build_ops×N, build_code×M, qa_generate", () => {
+  it("порядок callType (харнесс v2): interview, interview, card, build_ops×N, plan (ТЗ), build_code×задачи, audit×страницы, qa_generate", () => {
     const order = lines.map((l) => l.callType).join(",");
-    expect(order).toMatch(/^interview,interview,card,plan,(build_ops,)+(build_code,)+qa_generate$/);
+    expect(order).toMatch(/^interview,interview,card,(build_ops,)+plan,(build_code,)+(audit,)+qa_generate$/);
     expect(g.lines.length).toBe(lines.length);
   });
 
@@ -146,7 +146,7 @@ describe("gen-golden", () => {
       expect(l.key).toMatch(/^[0-9a-f]{64}$/);
       const route = models.routes[l.callType];
       expect(route).toBeDefined();
-      expect(l.modelId).toBe(route.chain.T1[0]);
+      expect(l.modelId).toBe(route.chain.T1?.[0] ?? route.chain.T0[0]);
       expect(l.request.params).toEqual({ temperature: route.temperature, max_tokens: route.max_tokens });
       expect(l.response.finishReason).toBe(l.response.toolCalls.length ? "tool-calls" : "stop");
       expect(l.response.toolCalls.length).toBeLessThanOrEqual(8);
@@ -160,8 +160,8 @@ describe("gen-golden", () => {
       expect(l.usage.completionTokens).toBeGreaterThan(0);
       expect(l.recordedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     }
-    for (const ct of ["build_ops", "build_code"])
-      expect(calls(ct).at(-1)?.response.finishReason).toBe("stop");
+    // The ops phase ends with a reply without tools; an executor task ends when its file passes the harness check.
+    expect(calls("build_ops").at(-1)?.response.finishReason).toBe("stop");
     expect(calls("build_ops")[0]?.request.tools.map((t) => t.name)).toEqual(TOOLSETS.build);
   });
 
@@ -240,14 +240,19 @@ describe("оркестратор: Analysis, вопросы, карточка", (
 });
 
 describe("строитель: план, apply_ops, write_file", () => {
-  it("submit_plan ≤ 20 шагов P1..Pn, acRefs из карточки", () => {
-    const { steps } = toolArgs("plan");
+  it("submit_brief: задачи T1..Tn — общие модули, функции, страницы; покрыты все файлы спеки; acRefs из карточки", () => {
+    const { tasks } = toolArgs("plan");
     const acIds = new Set(g.card.acceptance.map((a: any) => a.id));
-    expect(steps.length).toBeLessThanOrEqual(20);
-    for (const [i, s] of steps.entries()) {
-      expect(s.id).toBe(`P${i + 1}`);
-      for (const ac of s.acRefs) expect(acIds).toContain(ac);
+    const kinds = tasks.map((t: any) => t.kind).join(",");
+    expect(kinds).toMatch(/^(lib,)*(function,)+(page,)*page$/);
+    for (const [i, t] of tasks.entries()) {
+      expect(t.id).toBe(`T${i + 1}`);
+      for (const ac of t.acRefs) expect(acIds).toContain(ac);
     }
+    const files = tasks.map((t: any) => t.file);
+    for (const f of [...(g.buildSpec.functions ?? []), ...(g.buildSpec.pages ?? [])]) expect(files).toContain(f.file);
+    const referenced = new Set(tasks.flatMap((t: any) => t.acRefs));
+    for (const a of g.card.acceptance) if (a.check.type !== "permission") expect(referenced).toContain(a.id);
   });
 
   it("apply_ops батчами ≤ 50 от агента: каждый батч применяется, итог = golden-спека", () => {
@@ -273,7 +278,8 @@ describe("строитель: план, apply_ops, write_file", () => {
     expect(spec.acceptance).toEqual(g.card.acceptance);
   });
 
-  it("write_file: пути по правилам builder.yaml, functions/** раньше ui/**, покрыты все файлы спеки, затем run_gate G0", () => {
+  it("write_file: один файл на задачу, пути по правилам builder.yaml, functions/** раньше ui/**, покрыты все файлы спеки", () => {
+    for (const l of calls("build_code")) expect(l.response.toolCalls.map((t) => t.name)).toEqual(["write_file"]);
     const tcs = calls("build_code").flatMap((l) => l.response.toolCalls);
     const writes = tcs.filter((t) => t.name === "write_file");
     const paths = writes.map((t) => t.args.path as string);
@@ -283,12 +289,19 @@ describe("строитель: план, apply_ops, write_file", () => {
       expect(Buffer.byteLength(t.args.content)).toBeLessThanOrEqual(48 * 1024);
       expect(t.args.content).toBe(readFileSync(join(root, g.golden.code_root, t.args.path), "utf8"));
     }
-    expect(paths.findIndex((p) => p.startsWith("ui/"))).toBeGreaterThan(
-      paths.findLastIndex((p) => p.startsWith("functions/")),
+    // Shared modules (functions/lib/**, ui/components/**) first, then functions, then pages.
+    const lib = (p: string) => /^(functions\/lib\/|ui\/components\/)/.test(p);
+    const own = paths.filter((p) => !lib(p));
+    expect(paths.slice(0, paths.length - own.length).every(lib)).toBe(true);
+    expect(own.findIndex((p) => p.startsWith("ui/"))).toBeGreaterThan(
+      own.findLastIndex((p) => p.startsWith("functions/")),
     );
     for (const f of [...(g.buildSpec.functions ?? []), ...(g.buildSpec.pages ?? [])])
       expect(paths).toContain(f.file);
-    expect(tcs.at(-1)).toMatchObject({ name: "run_gate", args: { level: "G0" } });
+    // The reviewer approves every page (builder.yaml#harness.stages.review).
+    const reviews = calls("audit").map((l) => l.response.toolCalls[0]);
+    expect(reviews).toHaveLength((g.buildSpec.pages ?? []).length);
+    for (const r of reviews) expect(r).toMatchObject({ name: "submit_review", args: { verdict: "ok" } });
   });
 });
 
