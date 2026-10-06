@@ -839,7 +839,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
     order: 5,
     origin: {
       kind: "v1_code",
-      ref: "коннекторы email и telegram, шаг notify, capabilities/notify.md",
+      ref: "коннекторы email и telegram, шаг notify, capabilities/notify.md, runtime/examples/booking-notify.json",
     },
     goals: ["stay_informed", "reduce_no_shows"],
     params: [
@@ -911,6 +911,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         effect: "напоминание о возврате и просрочке",
       },
     ],
+    provides: {
+      routes: ["/cabinet/notifications"],
+    },
+    hook: true,
     metrics: [],
     goalScenarios: [
       {
@@ -960,7 +964,51 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
         ],
       },
+      {
+        id: "GS-notify-3",
+        goal: "stay_informed",
+        title: "Владелец видит, какие уведомления настроены",
+        steps: [
+          {
+            actor: "owner",
+            text: "Открывает раздел «Уведомления» в кабинете",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Список уведомлений: о чём, кому и каким каналом",
+          },
+        ],
+      },
     ],
+    tests: {
+      matrix: [
+        {
+          name: "письмо владельцу о заявке",
+          params: {},
+          withModules: ["leads", "landing"],
+        },
+        {
+          name: "почта и Telegram, сотрудникам тоже",
+          params: {
+            channels: ["email", "telegram"],
+            notify_staff: true,
+          },
+          withModules: ["leads", "landing", "staff"],
+        },
+        {
+          name: "только Telegram, без писем посетителям",
+          params: {
+            channels: ["telegram"],
+            visitor_emails: false,
+            reminder_hours: 0,
+          },
+          withModules: ["leads"],
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
   },
   {
     id: "client_card",
@@ -1478,12 +1526,13 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
     id: "staff",
     version: 1,
     name: "Сотрудники и роли",
-    summary: "Приглашение сотрудников, роли с правами, «видит только своё»",
+    summary:
+      "Роли сотрудников с доступом по разделам, приглашение по почте или телефону, «видит только своё»",
     status: "draft",
     order: 8,
     origin: {
       kind: "v1_code",
-      ref: "роли и права AppSpec, приглашения платформы",
+      ref: "роли и права AppSpec, приглашения runtime (POST /api/admin/invite, страница /_wizard/team)",
     },
     goals: ["team_work"],
     params: [
@@ -1494,12 +1543,220 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         maxItems: 5,
         maxLength: 40,
         default: ["Сотрудник"],
+        description:
+          "Роль 1 — staff, роль 2 — staff_2 … роль 5 — staff_5; разделы роли N — параметр sections_N",
+      },
+      {
+        name: "sections_1",
+        label: "Разделы роли 1",
+        type: "enum_list",
+        options: [
+          {
+            value: "leads",
+            label: "Заявки",
+          },
+          {
+            value: "catalog",
+            label: "Каталог и прайс",
+          },
+          {
+            value: "booking",
+            label: "Запись",
+          },
+          {
+            value: "client_card",
+            label: "Клиенты",
+          },
+          {
+            value: "deals",
+            label: "Сделки",
+          },
+          {
+            value: "packages",
+            label: "Абонементы",
+          },
+          {
+            value: "resources",
+            label: "Учёт выдачи",
+          },
+          {
+            value: "reports",
+            label: "Отчёты",
+          },
+        ],
+        default: [],
+        description: "Пусто — все разделы системы",
+      },
+      {
+        name: "sections_2",
+        label: "Разделы роли 2",
+        type: "enum_list",
+        options: [
+          {
+            value: "leads",
+            label: "Заявки",
+          },
+          {
+            value: "catalog",
+            label: "Каталог и прайс",
+          },
+          {
+            value: "booking",
+            label: "Запись",
+          },
+          {
+            value: "client_card",
+            label: "Клиенты",
+          },
+          {
+            value: "deals",
+            label: "Сделки",
+          },
+          {
+            value: "packages",
+            label: "Абонементы",
+          },
+          {
+            value: "resources",
+            label: "Учёт выдачи",
+          },
+          {
+            value: "reports",
+            label: "Отчёты",
+          },
+        ],
+        default: [],
+        description: "Пусто — все разделы системы",
+      },
+      {
+        name: "sections_3",
+        label: "Разделы роли 3",
+        type: "enum_list",
+        options: [
+          {
+            value: "leads",
+            label: "Заявки",
+          },
+          {
+            value: "catalog",
+            label: "Каталог и прайс",
+          },
+          {
+            value: "booking",
+            label: "Запись",
+          },
+          {
+            value: "client_card",
+            label: "Клиенты",
+          },
+          {
+            value: "deals",
+            label: "Сделки",
+          },
+          {
+            value: "packages",
+            label: "Абонементы",
+          },
+          {
+            value: "resources",
+            label: "Учёт выдачи",
+          },
+          {
+            value: "reports",
+            label: "Отчёты",
+          },
+        ],
+        default: [],
+        description: "Пусто — все разделы системы",
+      },
+      {
+        name: "sections_4",
+        label: "Разделы роли 4",
+        type: "enum_list",
+        options: [
+          {
+            value: "leads",
+            label: "Заявки",
+          },
+          {
+            value: "catalog",
+            label: "Каталог и прайс",
+          },
+          {
+            value: "booking",
+            label: "Запись",
+          },
+          {
+            value: "client_card",
+            label: "Клиенты",
+          },
+          {
+            value: "deals",
+            label: "Сделки",
+          },
+          {
+            value: "packages",
+            label: "Абонементы",
+          },
+          {
+            value: "resources",
+            label: "Учёт выдачи",
+          },
+          {
+            value: "reports",
+            label: "Отчёты",
+          },
+        ],
+        default: [],
+        description: "Пусто — все разделы системы",
+      },
+      {
+        name: "sections_5",
+        label: "Разделы роли 5",
+        type: "enum_list",
+        options: [
+          {
+            value: "leads",
+            label: "Заявки",
+          },
+          {
+            value: "catalog",
+            label: "Каталог и прайс",
+          },
+          {
+            value: "booking",
+            label: "Запись",
+          },
+          {
+            value: "client_card",
+            label: "Клиенты",
+          },
+          {
+            value: "deals",
+            label: "Сделки",
+          },
+          {
+            value: "packages",
+            label: "Абонементы",
+          },
+          {
+            value: "resources",
+            label: "Учёт выдачи",
+          },
+          {
+            value: "reports",
+            label: "Отчёты",
+          },
+        ],
+        default: [],
+        description: "Пусто — все разделы системы",
       },
       {
         name: "see_only_own",
         label: "Сотрудник видит только своё",
         type: "bool",
         default: false,
+        description: "Учитывают модули с ответственным (специалист записи, ответственный сделки)",
       },
       {
         name: "login",
@@ -1523,22 +1780,11 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
       },
     ],
     provides: {
-      roles: ["staff"],
+      roles: ["staff", "staff_2", "staff_3", "staff_4", "staff_5"],
+      routes: ["/cabinet/staff"],
     },
     hook: true,
-    metrics: [
-      {
-        id: "active_staff",
-        label: "Сотрудников в работе",
-        goal: "team_work",
-        unit: "count",
-        better: "up",
-        compute: {
-          kind: "function",
-          name: "activeStaff",
-        },
-      },
-    ],
+    metrics: [],
     goalScenarios: [
       {
         id: "GS-staff-1",
@@ -1547,7 +1793,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         steps: [
           {
             actor: "owner",
-            text: "Приглашает сотрудника по почте",
+            text: "Открывает «Сотрудники и роли» и приглашает сотрудника по почте",
           },
           {
             actor: "staff",
@@ -1561,11 +1807,74 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
           {
             kind: "denied",
-            text: "Раздел настроек системы недоступен",
+            text: "Раздел «Сотрудники и роли» недоступен",
+          },
+        ],
+      },
+      {
+        id: "GS-staff-2",
+        goal: "team_work",
+        title: "Сотрудник роли с ограниченными разделами не видит чужой раздел",
+        when: {
+          param: "sections_1",
+        },
+        steps: [
+          {
+            actor: "staff",
+            text: "Входит под ролью 1 и открывает кабинет",
+          },
+          {
+            actor: "staff",
+            text: "Открывает адрес раздела, которого нет в его роли",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "В кабинете только разделы его роли",
+          },
+          {
+            kind: "denied",
+            text: "Данные чужого раздела недоступны",
           },
         ],
       },
     ],
+    tests: {
+      matrix: [
+        {
+          name: "одна роль, все разделы",
+          params: {},
+          withModules: ["leads", "notify"],
+        },
+        {
+          name: "две роли с разными разделами",
+          params: {
+            roles: ["Администратор", "Мастер"],
+            sections_1: ["leads"],
+            sections_2: ["booking"],
+          },
+          withModules: ["leads", "notify", "landing"],
+        },
+        {
+          name: "пять ролей, вход по телефону, видит только своё",
+          params: {
+            roles: ["Администратор", "Мастер", "Менеджер", "Бухгалтер", "Стажёр"],
+            login: "phone_otp",
+            see_only_own: true,
+          },
+          withModules: ["leads", "notify"],
+        },
+        {
+          name: "вход через Telegram",
+          params: {
+            login: "telegram",
+          },
+          withModules: ["leads", "notify"],
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
   },
   {
     id: "reports",
@@ -1732,19 +2041,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
       roles: ["visitor"],
       routes: ["/me"],
     },
-    metrics: [
-      {
-        id: "visitors_active",
-        label: "Посетителей входили в кабинет",
-        goal: "self_service",
-        unit: "count",
-        better: "up",
-        compute: {
-          kind: "function",
-          name: "activeVisitors",
-        },
-      },
-    ],
+    metrics: [],
     goalScenarios: [
       {
         id: "GS-visitor_cabinet-1",
@@ -1775,7 +2072,64 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
         ],
       },
+      {
+        id: "GS-visitor_cabinet-2",
+        goal: "self_service",
+        title: "Посетитель входит по коду и видит только свои заявки",
+        withModules: ["leads"],
+        when: {
+          param: "show_leads",
+        },
+        steps: [
+          {
+            actor: "client",
+            text: "Оставляет заявку с почтой, затем входит в кабинет по коду на эту почту",
+          },
+          {
+            actor: "client",
+            text: "Открывает «Мои заявки»",
+          },
+        ],
+        expect: [
+          {
+            kind: "record",
+            text: "В списке его заявка со статусом",
+          },
+          {
+            kind: "denied",
+            text: "Заявок других посетителей нет",
+          },
+        ],
+      },
     ],
+    tests: {
+      matrix: [
+        {
+          name: "мои заявки, вход по почте",
+          params: {
+            show_bookings: false,
+            show_leads: true,
+          },
+          withModules: ["leads", "notify", "landing"],
+        },
+        {
+          name: "мои заявки, вход по телефону",
+          params: {
+            login: "phone_otp",
+            show_bookings: false,
+            show_leads: true,
+          },
+          withModules: ["leads", "notify"],
+        },
+        {
+          name: "без разделов",
+          params: {
+            show_bookings: false,
+          },
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
   },
   {
     id: "packages",

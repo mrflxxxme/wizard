@@ -51,7 +51,7 @@ import { eventsRoutes } from "./routes/events.js";
 import { filesRoutes } from "./routes/files.js";
 import { fnRoutes } from "./routes/fn.js";
 import { fontsRoutes } from "./routes/fonts.js";
-import { inviteRoutes } from "./routes/invite.js";
+import { invitePageRoutes, inviteRoutes } from "./routes/invite.js";
 import { loginApiRoutes } from "./routes/login.js";
 import { messageLinkRoutes } from "./routes/message-links.js";
 import { payRoutes } from "./routes/pay.js";
@@ -305,6 +305,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.route("/_wizard", privacyRoutes());
+  app.route("/_wizard", invitePageRoutes());
   app.all("/_wizard/*", () => notFoundPage());
   app.route("/api/data", dataRoutes());
   app.route("/api/auth", loginApiRoutes(auth));

@@ -95,22 +95,27 @@ describe("landing + leads", () => {
       { role: "guest", entity: "lead", ops: ["create"], readonlyFields: ["status"] },
       { role: "owner", entity: "lead", ops: ["read", "update", "delete"] },
     ]);
-    expect(r.spec.acceptance?.map((a) => [a.id, a.check.role, a.check.op, a.check.expect])).toEqual([
-      ["AC1", "guest", "create", "allow"],
-      ["AC2", "guest", "read", "deny"],
-      ["AC3", "owner", "update", "allow"],
+    expect(
+      r.spec.acceptance?.map((a) => [a.id, a.check.type, a.check.role, a.check.op, a.check.expect]),
+    ).toEqual([
+      ["AC1", "scenario", undefined, undefined, undefined],
+      ["AC2", "permission", "guest", "create", "allow"],
+      ["AC3", "permission", "guest", "read", "deny"],
+      ["AC4", "permission", "owner", "update", "allow"],
     ]);
   });
 
-  test("links merge integrations by config and add the notification workflow", () => {
+  test("notify: e-mail and Telegram to the owner about a new lead (real module since B2-16)", () => {
     expect(r.spec.integrations).toEqual([
       {
         name: "mail",
         connector: "email",
         config: {
           templates: {
-            welcome: { subject: "Добро пожаловать", body: "Здравствуйте! {{link}}" },
-            new_lead: { subject: "Новая заявка", body: "Новая заявка. Открыть: {{link}}" },
+            new_lead: {
+              subject: "Новая заявка",
+              body: "Пришла новая заявка. Откройте её в кабинете: {{link}}",
+            },
           },
         },
       },
@@ -121,10 +126,21 @@ describe("landing + leads", () => {
 
   test("pages: landing «/» for everyone, the owner's cabinet with leads", () => {
     expect(r.spec.pages).toEqual([
+      {
+        route: "/cabinet/notifications",
+        title: "Уведомления",
+        file: "ui/pages/NotifySettings.tsx",
+        roles: ["owner"],
+        nav: true,
+      },
       { route: "/", title: "Главная", file: "ui/pages/Home.tsx", roles: ["guest", "owner"], nav: true },
       { route: "/cabinet", title: "Кабинет: Владелец", file: "ui/pages/Cabinet.tsx", roles: ["owner"] },
     ]);
-    expect(Object.keys(r.files)).toEqual(["ui/pages/Cabinet.tsx", "ui/pages/Home.tsx"]);
+    expect(Object.keys(r.files)).toEqual([
+      "ui/pages/Cabinet.tsx",
+      "ui/pages/Home.tsx",
+      "ui/pages/NotifySettings.tsx",
+    ]);
     const home = r.files["ui/pages/Home.tsx"] ?? "";
     expect(home).toContain(
       'import { Cta, Faq, Features, Footer, Header, Hero, LeadForm, Steps } from "@wizard/ui-kit";',
@@ -150,7 +166,13 @@ describe("landing + leads", () => {
       ["leads", "leads_count", true],
       ["leads", "leads_handled", true],
     ]);
-    expect(r.scenarios.map((s) => s.id)).toEqual(["GS-notify-1", "GS-landing-1", "GS-leads-1", "GS-leads-2"]);
+    expect(r.scenarios.map((s) => s.id)).toEqual([
+      "GS-notify-2",
+      "GS-notify-3",
+      "GS-landing-1",
+      "GS-leads-1",
+      "GS-leads-2",
+    ]);
     expect(r.customSlots).toEqual([
       {
         id: "price_calc",
@@ -198,6 +220,46 @@ describe("order, links and incompatibilities", () => {
     const alone = ok(compilePlan(fxPlan([{ id: "fx_beta" }]), registry));
     expect(beta(alone)?.fields.map((f) => f.name)).not.toContain("gamma_note");
     expect(alone.links).toEqual([]);
+  });
+
+  test("integrations of one connector merge by config; a different value is MODULE_BUG", () => {
+    const withMail = (id: string, templates: Record<string, { subject: string; body: string }>) => {
+      const base = FIXTURES.find((m) => m.id === id) as ModuleManifest;
+      return {
+        ...base,
+        fragments: {
+          ...base.fragments,
+          integrations: [{ value: { name: "mail", connector: "email", config: { templates } } }],
+        },
+      };
+    };
+    const mail = (a: string, b: string) =>
+      testRegistry(
+        [],
+        FIXTURES.map((m) =>
+          m.id === "fx_alpha"
+            ? withMail("fx_alpha", { a: { subject: a, body: "Текст {{link}}" } })
+            : m.id === "fx_beta"
+              ? withMail("fx_beta", {
+                  a: { subject: b, body: "Текст {{link}}" },
+                  b: { subject: "Б", body: "Б" },
+                })
+              : m,
+        ),
+      );
+    const plan = fxPlan([{ id: "fx_alpha" }, { id: "fx_beta" }]);
+    expect(ok(compilePlan(plan, mail("А", "А"))).spec.integrations).toEqual([
+      {
+        name: "mail",
+        connector: "email",
+        config: {
+          templates: { a: { subject: "А", body: "Текст {{link}}" }, b: { subject: "Б", body: "Б" } },
+        },
+      },
+    ]);
+    const clash = compilePlan(plan, mail("А", "Другая тема"));
+    expect(codes(clash)).toEqual(["MODULE_BUG"]);
+    expect(messages(clash)).toContain("подключение «mail»: разные значения config.templates.a.subject");
   });
 
   test("parameters are substituted into fragments", () => {

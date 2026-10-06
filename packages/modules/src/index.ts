@@ -62,8 +62,19 @@ export { canonical, sameJson, substitute } from "./engine/substitute.js";
 export { landingManifest, landingModule } from "./landing/index.js";
 export { landingPage, SECTION_ENTITY, SECTION_RENDERERS, sectionAnchors } from "./landing/page.js";
 /** Module «Заявки»: manifest and compile hook. */
-export { compileLeads, LEAD_STATUSES, leadFormFields } from "./leads/compile.js";
+export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";
 export { leadsManifest, leadsModule } from "./leads/index.js";
+/** Module «Напоминания и уведомления» (B2-16): manifest, hook (integrations, workflows, G1 scenarios), booking contract. */
+export {
+  BOOKING_CONSENT_FIELD,
+  compileNotify,
+  NOTIFY_BOOKING,
+  type NotifyItem,
+  type NotifyPlan,
+  notifyPlan,
+  SCENARIO_LEAD,
+} from "./notify/compile.js";
+export { notifyManifest, notifyModule, notifyScreen } from "./notify/index.js";
 /** Shared page generators (also used by the D75 template): role cabinet, start page, permission helpers. */
 export {
   cabinetPage,
@@ -76,6 +87,17 @@ export {
 } from "./screens/cabinet.js";
 /** Deterministic TSX emitters: jsxEl, fragmentPage, js, pascal. */
 export { fragmentPage, type JsxAttr, js, jsxEl, pascal } from "./screens/jsx.js";
+/** Module «Сотрудники и роли» (B2-16): roles staff…staff_5 with sections, the scope of $staff, invitations page. */
+export {
+  compileStaff,
+  STAFF_ROLE_NAMES,
+  STAFF_SECTIONS,
+  type StaffRole,
+  staffLoginMethods,
+  staffRoles,
+  staffRolesFor,
+} from "./staff/compile.js";
+export { staffManifest, staffModule, staffScreen, TEAM_PAGE } from "./staff/index.js";
 /** Module definition types: manifest + hook, screen generators, function sources; registry → ModuleCatalog. */
 export {
   type ModuleContext,
@@ -86,3 +108,11 @@ export {
   type ScreenContext,
   type ScreenGenerator,
 } from "./types.js";
+/** Module «Кабинет посетителя» (B2-16): the visitor role and /me with his own rows (rowFilter of the data modules). */
+export {
+  VISITOR_SECTIONS,
+  visitorCabinetManifest,
+  visitorCabinetModule,
+  visitorContact,
+  visitorScreen,
+} from "./visitor_cabinet/index.js";

@@ -181,7 +181,9 @@ compile:
     B2-11: одноимённые элементы фрагментов разных модулей — одинаковые схлопываются; подключения (integrations) одного
     коннектора сливаются по config (объекты — рекурсивно, скаляры должны совпадать); иначе MODULE_BUG. Права одной роли на
     сущность: ops — объединение, rowFilter — пересечение условий (самое узкое; противоречие — MODULE_BUG), hiddenFields и
-    readonlyFields — объединение. $staff без модуля staff — owner; $visitor без visitor_cabinet — право не выдаётся.
+    readonlyFields — объединение. $staff без модуля staff — owner; с модулем staff (B2-16) $staff модуля-раздела — только
+    роли staff, у которых этот раздел (параметр sections_N, пусто — все разделы; ModuleDefinition.roleScope); $visitor без
+    visitor_cabinet — право не выдаётся.
     acceptance нумеруется заново (AC1…) в порядке модулей. Сущности и роли фрагментов — только из provides модуля
     (иначе MODULE_BUG); поля можно добавлять к сущностям других модулей (связи).
 
@@ -237,7 +239,7 @@ ai_rules:
 
 # ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
 catalog:
-  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11), catalog (B2-13)
+  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16)
   - id: landing
     version: 1
     name: "Секции лендинга"
@@ -512,7 +514,7 @@ catalog:
     summary: "Письма и сообщения в Telegram владельцу и сотрудникам, подтверждения и напоминания посетителям"
     status: draft
     order: 5
-    origin: { kind: v1_code, ref: "коннекторы email и telegram, шаг notify, capabilities/notify.md" }
+    origin: { kind: v1_code, ref: "коннекторы email и telegram, шаг notify, capabilities/notify.md, runtime/examples/booking-notify.json" }
     goals: [stay_informed, reduce_no_shows]
     params:
       - name: channels
@@ -533,6 +535,8 @@ catalog:
       - { module: deals, effect: "напоминание ответственному о задаче по сделке" }
       - { module: packages, effect: "напоминание об окончании абонемента" }
       - { module: resources, effect: "напоминание о возврате и просрочке" }
+    provides: { routes: ["/cabinet/notifications"] }
+    hook: true
     metrics: []
     goalScenarios:
       - id: GS-notify-1
@@ -554,6 +558,19 @@ catalog:
           - { actor: visitor, text: "Отправляет заявку с именем и телефоном" }
         expect:
           - { kind: outbox_telegram, text: "Владельцу ушло сообщение со ссылкой, без имени и телефона" }
+      - id: GS-notify-3
+        goal: stay_informed
+        title: "Владелец видит, какие уведомления настроены"
+        steps:
+          - { actor: owner, text: "Открывает раздел «Уведомления» в кабинете" }
+        expect:
+          - { kind: page_text, text: "Список уведомлений: о чём, кому и каким каналом" }
+    tests:
+      matrix:
+        - { name: "письмо владельцу о заявке", params: {}, withModules: [leads, landing] }
+        - { name: "почта и Telegram, сотрудникам тоже", params: { channels: [email, telegram], notify_staff: true }, withModules: [leads, landing, staff] }
+        - { name: "только Telegram, без писем посетителям", params: { channels: [telegram], visitor_emails: false, reminder_hours: 0 }, withModules: [leads] }
+      gates: [G0, G1]
 
   - id: client_card
     version: 1
@@ -750,14 +767,19 @@ catalog:
   - id: staff
     version: 1
     name: "Сотрудники и роли"
-    summary: "Приглашение сотрудников, роли с правами, «видит только своё»"
+    summary: "Роли сотрудников с доступом по разделам, приглашение по почте или телефону, «видит только своё»"
     status: draft
     order: 8
-    origin: { kind: v1_code, ref: "роли и права AppSpec, приглашения платформы" }
+    origin: { kind: v1_code, ref: "роли и права AppSpec, приглашения runtime (POST /api/admin/invite, страница /_wizard/team)" }
     goals: [team_work]
     params:
-      - { name: roles, label: "Роли сотрудников", type: string_list, maxItems: 5, maxLength: 40, default: ["Сотрудник"] }
-      - { name: see_only_own, label: "Сотрудник видит только своё", type: bool, default: false }
+      - { name: roles, label: "Роли сотрудников", type: string_list, maxItems: 5, maxLength: 40, default: ["Сотрудник"], description: "Роль 1 — staff, роль 2 — staff_2 … роль 5 — staff_5; разделы роли N — параметр sections_N" }
+      - { name: sections_1, label: "Разделы роли 1", type: enum_list, options: [{ value: leads, label: "Заявки" }, { value: catalog, label: "Каталог и прайс" }, { value: booking, label: "Запись" }, { value: client_card, label: "Клиенты" }, { value: deals, label: "Сделки" }, { value: packages, label: "Абонементы" }, { value: resources, label: "Учёт выдачи" }, { value: reports, label: "Отчёты" }], default: [], description: "Пусто — все разделы системы" }
+      - { name: sections_2, label: "Разделы роли 2", type: enum_list, options: [{ value: leads, label: "Заявки" }, { value: catalog, label: "Каталог и прайс" }, { value: booking, label: "Запись" }, { value: client_card, label: "Клиенты" }, { value: deals, label: "Сделки" }, { value: packages, label: "Абонементы" }, { value: resources, label: "Учёт выдачи" }, { value: reports, label: "Отчёты" }], default: [], description: "Пусто — все разделы системы" }
+      - { name: sections_3, label: "Разделы роли 3", type: enum_list, options: [{ value: leads, label: "Заявки" }, { value: catalog, label: "Каталог и прайс" }, { value: booking, label: "Запись" }, { value: client_card, label: "Клиенты" }, { value: deals, label: "Сделки" }, { value: packages, label: "Абонементы" }, { value: resources, label: "Учёт выдачи" }, { value: reports, label: "Отчёты" }], default: [], description: "Пусто — все разделы системы" }
+      - { name: sections_4, label: "Разделы роли 4", type: enum_list, options: [{ value: leads, label: "Заявки" }, { value: catalog, label: "Каталог и прайс" }, { value: booking, label: "Запись" }, { value: client_card, label: "Клиенты" }, { value: deals, label: "Сделки" }, { value: packages, label: "Абонементы" }, { value: resources, label: "Учёт выдачи" }, { value: reports, label: "Отчёты" }], default: [], description: "Пусто — все разделы системы" }
+      - { name: sections_5, label: "Разделы роли 5", type: enum_list, options: [{ value: leads, label: "Заявки" }, { value: catalog, label: "Каталог и прайс" }, { value: booking, label: "Запись" }, { value: client_card, label: "Клиенты" }, { value: deals, label: "Сделки" }, { value: packages, label: "Абонементы" }, { value: resources, label: "Учёт выдачи" }, { value: reports, label: "Отчёты" }], default: [], description: "Пусто — все разделы системы" }
+      - { name: see_only_own, label: "Сотрудник видит только своё", type: bool, default: false, description: "Учитывают модули с ответственным (специалист записи, ответственный сделки)" }
       - name: login
         label: "Вход сотрудников"
         type: enum
@@ -766,25 +788,36 @@ catalog:
           - { value: phone_otp, label: "Код по телефону" }
           - { value: telegram, label: "Telegram" }
         default: email_otp
-    provides: { roles: [staff] }
+    provides: { roles: [staff, staff_2, staff_3, staff_4, staff_5], routes: ["/cabinet/staff"] }
     hook: true
-    metrics:
-      - id: active_staff
-        label: "Сотрудников в работе"
-        goal: team_work
-        unit: count
-        better: up
-        compute: { kind: function, name: activeStaff }
+    metrics: []
     goalScenarios:
       - id: GS-staff-1
         goal: team_work
         title: "Приглашённый сотрудник входит и видит свой кабинет без настроек владельца"
         steps:
-          - { actor: owner, text: "Приглашает сотрудника по почте" }
+          - { actor: owner, text: "Открывает «Сотрудники и роли» и приглашает сотрудника по почте" }
           - { actor: staff, text: "Входит по коду из письма" }
         expect:
           - { kind: page_text, text: "Сотрудник видит рабочие разделы" }
-          - { kind: denied, text: "Раздел настроек системы недоступен" }
+          - { kind: denied, text: "Раздел «Сотрудники и роли» недоступен" }
+      - id: GS-staff-2
+        goal: team_work
+        title: "Сотрудник роли с ограниченными разделами не видит чужой раздел"
+        when: { param: sections_1 }
+        steps:
+          - { actor: staff, text: "Входит под ролью 1 и открывает кабинет" }
+          - { actor: staff, text: "Открывает адрес раздела, которого нет в его роли" }
+        expect:
+          - { kind: page_text, text: "В кабинете только разделы его роли" }
+          - { kind: denied, text: "Данные чужого раздела недоступны" }
+    tests:
+      matrix:
+        - { name: "одна роль, все разделы", params: {}, withModules: [leads, notify] }
+        - { name: "две роли с разными разделами", params: { roles: ["Администратор", "Мастер"], sections_1: [leads], sections_2: [booking] }, withModules: [leads, notify, landing] }
+        - { name: "пять ролей, вход по телефону, видит только своё", params: { roles: ["Администратор", "Мастер", "Менеджер", "Бухгалтер", "Стажёр"], login: phone_otp, see_only_own: true }, withModules: [leads, notify] }
+        - { name: "вход через Telegram", params: { login: telegram }, withModules: [leads, notify] }
+      gates: [G0, G1]
 
   - id: reports
     version: 1
@@ -848,13 +881,7 @@ catalog:
       - { module: leads, reason: "раздел «Мои заявки» показывает заявки", when: { param: show_leads } }
       - { module: packages, reason: "раздел «Мои абонементы» показывает абонементы", when: { param: show_packages } }
     provides: { roles: [visitor], routes: ["/me"] }
-    metrics:
-      - id: visitors_active
-        label: "Посетителей входили в кабинет"
-        goal: self_service
-        unit: count
-        better: up
-        compute: { kind: function, name: activeVisitors }
+    metrics: []
     goalScenarios:
       - id: GS-visitor_cabinet-1
         goal: self_service
@@ -867,6 +894,23 @@ catalog:
         expect:
           - { kind: record, text: "В списке его запись" }
           - { kind: denied, text: "Записей других посетителей нет" }
+      - id: GS-visitor_cabinet-2
+        goal: self_service
+        title: "Посетитель входит по коду и видит только свои заявки"
+        withModules: [leads]
+        when: { param: show_leads }
+        steps:
+          - { actor: client, text: "Оставляет заявку с почтой, затем входит в кабинет по коду на эту почту" }
+          - { actor: client, text: "Открывает «Мои заявки»" }
+        expect:
+          - { kind: record, text: "В списке его заявка со статусом" }
+          - { kind: denied, text: "Заявок других посетителей нет" }
+    tests:
+      matrix:
+        - { name: "мои заявки, вход по почте", params: { show_bookings: false, show_leads: true }, withModules: [leads, notify, landing] }
+        - { name: "мои заявки, вход по телефону", params: { login: phone_otp, show_bookings: false, show_leads: true }, withModules: [leads, notify] }
+        - { name: "без разделов", params: { show_bookings: false } }
+      gates: [G0, G1]
 
   - id: packages
     version: 1

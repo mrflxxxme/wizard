@@ -329,6 +329,24 @@ describe("invitations (L3-29)", () => {
     expect(JSON.stringify(mails[0]?.payload)).toContain(`${HOST}/login?role=speaker`);
     expect(JSON.stringify(logs)).not.toContain("speaker1@example.ru");
   });
+
+  test("/_wizard/team (B2-16): the admin's form over the invite API, roles closed to self sign-up", async () => {
+    const host = "invites-page--draft.localhost:4100";
+    await addSystem("invites-page", forumSpec());
+    const get = (path: string, cookie?: string) =>
+      rt.fetch(request("GET", host, path, cookie ? { cookie } : {}));
+    const admin = await login(rt, host, "organizer");
+    const page = await get("/_wizard/team", admin);
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain('data-testid="wz-team-form"');
+    expect(html).toContain('<option value="moderator">');
+    expect(html).not.toContain('value="organizer"');
+    expect(html).not.toContain('value="participant"');
+    expect((await get("/_wizard/team", await login(rt, host, "participant"))).status).toBe(403);
+    expect(await (await get("/_wizard/team")).text()).toContain("/login?next=%2F_wizard%2Fteam");
+    expect(await (await get("/_wizard/team.js")).text()).toContain('fetch("/api/admin/invite"');
+  });
 });
 
 describe("reserved slugs (L3-29)", () => {

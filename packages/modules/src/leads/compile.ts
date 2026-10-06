@@ -34,9 +34,21 @@ export function leadFormFields(formFields: readonly string[], contact: string): 
   return out;
 }
 
+/**
+ * «Мои заявки» of the visitor cabinet (B2-16): the contact the visitor logs in with ($user.email or $user.phone) —
+ * the lead keeps it (added to the form when the plan left it out) and the visitor reads only his leads by it.
+ */
+export function visitorLeadContact(ctx: ModuleContext): "email" | "phone" | null {
+  const vc = ctx.allParams.visitor_cabinet;
+  if (!ctx.present.has("visitor_cabinet") || vc?.show_leads !== true) return null;
+  return vc.login === "phone_otp" ? "phone" : "email";
+}
+
 export function compileLeads(ctx: ModuleContext): ModuleFragments {
   const contact = String(ctx.params.contact ?? "any");
   const names = leadFormFields((ctx.params.form_fields as string[] | undefined) ?? [], contact);
+  const mine = visitorLeadContact(ctx);
+  if (mine && !names.includes(mine)) names.push(mine);
   const fields: Field[] = names.flatMap((n) => {
     const f = FORM_FIELDS[n];
     if (!f) return [];
@@ -71,5 +83,19 @@ export function compileLeads(ctx: ModuleContext): ModuleFragments {
         },
       },
     ],
+    ...(mine
+      ? {
+          permissions: [
+            {
+              value: {
+                role: "$visitor",
+                entity: "lead",
+                ops: ["read"],
+                rowFilter: { [mine]: `$user.${mine}` },
+              },
+            },
+          ],
+        }
+      : {}),
   };
 }

@@ -509,7 +509,10 @@ class Compilation {
 
   // ------------------------------------------------------------------ roles and permissions
 
-  /** Concrete roles of a role reference: $public, $owner, $staff (staff roles, else owner), $visitor, or a name. */
+  /**
+   * Concrete roles of a role reference: $public, $owner, $staff (the staff roles in scope of `mod`, else owner),
+   * $visitor, or a name.
+   */
   private expand(ref: unknown, mod: string): string[] {
     const owned = (m: string) =>
       this.spec.roles.filter((r) => this.roleOwner.get(r.name) === m).map((r) => r.name);
@@ -520,7 +523,11 @@ class Compilation {
         return ["owner"];
       case "$staff": {
         const staff = this.present.has("staff") ? owned("staff") : [];
-        return staff.length ? staff : ["owner"];
+        if (!staff.length) return ["owner"];
+        const scope = this.defs.get("staff")?.roleScope;
+        if (!scope) return staff;
+        const inScope = new Set(scope(this.ctx("staff"), mod));
+        return staff.filter((r) => inScope.has(r));
       }
       case "$visitor":
         return this.present.has("visitor_cabinet") ? owned("visitor_cabinet") : [];

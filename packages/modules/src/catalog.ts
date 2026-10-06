@@ -6,7 +6,10 @@ import { dealsModule } from "./deals/index.js";
 import { DRAFT_MANIFESTS } from "./draft.js";
 import { landingModule } from "./landing/index.js";
 import { leadsModule } from "./leads/index.js";
+import { notifyModule } from "./notify/index.js";
+import { staffModule } from "./staff/index.js";
 import type { ModuleDefinition, ModuleRegistry } from "./types.js";
+import { visitorCabinetModule } from "./visitor_cabinet/index.js";
 
 /** Modules with code (status ready). */
 export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
@@ -15,6 +18,9 @@ export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
   catalogModule,
   clientCardModule,
   dealsModule,
+  notifyModule,
+  staffModule,
+  visitorCabinetModule,
 ];
 
 const withCode = new Map(MODULES_WITH_CODE.map((d) => [d.manifest.id, d]));

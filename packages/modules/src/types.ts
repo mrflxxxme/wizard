@@ -46,6 +46,11 @@ export interface ModuleDefinition {
   files?: Readonly<Record<string, string>>;
   /** Russian notes for the plan screen (e.g. «форма заявки не стоит на лендинге»). */
   warnings?: (ctx: ModuleContext) => string[];
+  /**
+   * Roles of this module that a symbolic reference from `module` expands to (the staff module: `$staff` of a section
+   * module — only the staff roles with that section). Without it — all roles of the module.
+   */
+  roleScope?: (ctx: ModuleContext, module: string) => readonly string[];
 }
 
 /** Module definitions the engine compiles from (ready ones with code, drafts with the manifest only) and catalogs. */
