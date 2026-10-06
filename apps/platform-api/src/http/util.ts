@@ -1,3 +1,4 @@
+import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { Context } from "hono";
 import type postgres from "postgres";
 import type { z } from "zod";
@@ -22,6 +23,8 @@ export interface Deps {
   payments: Payments;
   /** SSE re-reads run_events this often even without a bus wake-up (events written by apps/worker); 0 = bus only. */
   eventPollMs?: number;
+  /** B2-20: module registry of the plan screen (default — @wizard/modules CATALOG). */
+  modules?: ModuleRegistry;
 }
 
 function issues(e: z.ZodError) {

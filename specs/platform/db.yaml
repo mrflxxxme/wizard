@@ -167,7 +167,7 @@ tables:
       system_id: "uuid not null references platform.systems on delete cascade"
       seq: "integer not null"
       role: "text not null check (role in ('user','assistant','system'))"
-      kind: "text not null check (kind in ('text','questions','answers','card','run_report','notice'))"
+      kind: "text not null check (kind in ('text','questions','answers','card','run_report','notice','plan'))"   # plan — B2-20 (миграция 0033)
       text: "text"
       payload: "jsonb"
       run_id: "uuid"
@@ -175,6 +175,7 @@ tables:
     indexes: ["unique (system_id, seq)"]
     payload_shapes:
       notice: "{type: 'pii', categories: string[]} — уведомление о ПДн (agents/orchestrator.yaml#pii_notice)"
+      plan: "{planRevision, errors: число ошибок компиляции, gaps?} — B2-20: план системы готов (сам план — system_plans)"
       text_user_M3: "{target?: {wzId, componentName?, file, line?}} — «Укажи и измени» (api.yaml#postMessage)"
     retention: "text у role=user и kind=text — scrub (packages/pii) через 180 дней после systems.last_activity_at; при удалении системы — физически (workflows.yaml#delete_system); L3-09"
 
@@ -202,6 +203,28 @@ tables:
     invariants:
       - "version = max(version)+1 выдаётся под SELECT ... FOR UPDATE по systems (CAS по expectedVersion = systems.draft_revision)"
       - "Вставка ревизии и обновление systems.draft_revision — в одной транзакции"
+
+  system_plans:
+    milestone: B2
+    purpose: "B2-20 (D76, grill-6 № 5; миграция 0033): ревизии плана системы (SystemPlan, specs/modules/modules.yaml#system_plan) на конвейере модулей. Новую ревизию пишет планировщик (source planner, ход интервью) или детерминированная правка экрана плана (source edit, api.yaml#editSystemPlan); прежняя awaiting_approval становится superseded. approveSystemPlan → approved + build_run_id; сборка стартует только так. План без ПДн (scrub до записи)"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      revision: "integer not null check (revision >= 1)"
+      status: "text not null check (status in ('awaiting_approval','approved','superseded'))"
+      source: "text not null check (source in ('planner','edit'))"
+      plan: "jsonb not null"                                # SystemPlan; после компиляции — с версиями манифестов модулей
+      errors: "jsonb not null default '[]'"                 # PlanError[] компиляции на момент записи (планировщик исчерпал исправления); у source edit всегда []
+      fingerprint: "text check (fingerprint ~ '^[0-9a-f]{64}$')"   # sha256 скомпилированных спеки и файлов; null — не компилируется
+      run_id: "uuid references platform.runs on delete set null"          # ход интервью, выдавший план
+      build_run_id: "uuid references platform.runs on delete set null"    # сборка по утверждённому плану
+      author_user_id: "uuid references platform.users on delete set null" # автор правки (source edit)
+      approved_by: "uuid references platform.users on delete set null"
+      approved_at: "timestamptz"
+    primary_key: [system_id, revision]
+    indexes: ["unique (system_id) where status = 'awaiting_approval'"]
+    invariants:
+      - "revision = max(revision)+1 под SELECT ... FOR UPDATE по systems; вставка и перевод прежней awaiting_approval в superseded — в одной транзакции"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, как messages)"
 
   files:
     milestone: M0

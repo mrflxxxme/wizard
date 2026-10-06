@@ -9,6 +9,7 @@ export const EVENT_TYPES = [
   "step_finished",
   "agent_message",
   "chat_output",
+  "plan_sketch",
   "model_switched",
   "models_unavailable",
   "build_metrics",

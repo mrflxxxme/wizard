@@ -97,6 +97,12 @@ export interface Config {
    */
   payments: boolean;
   /**
+   * WIZARD_BUILD_PIPELINE (B2-20): "legacy" (default) — v1 interview, card and builder; "modules" — beta v2 goal
+   * interview, the system plan approved before the build (specs/modules/modules.yaml). A system keeps the pipeline it
+   * started with (the interview state says which); B2-21 switches the default.
+   */
+  buildPipeline: "legacy" | "modules";
+  /**
    * WIZARD_LLM_MONTHLY_CAP_RUB (default 6000; D20_eval_budget, D23_pilot): platform LLM spend cap per calendar month
    * (Europe/Moscow) — Σ billable cost_rub of live llm_calls; reached → new builds and interview turns are refused.
    */
@@ -305,6 +311,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     registration: env.WIZARD_REGISTRATION || "open",
     founderEmail: env.WIZARD_FOUNDER_EMAIL?.trim().toLowerCase() || null,
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
+    buildPipeline:
+      (env.WIZARD_BUILD_PIPELINE ?? "").trim().toLowerCase() === "modules" ? "modules" : "legacy",
     llmDailyCapRub: env.WIZARD_LLM_DAILY_CAP_RUB
       ? Number(env.WIZARD_LLM_DAILY_CAP_RUB)
       : DEFAULT_LLM_DAILY_CAP_RUB,

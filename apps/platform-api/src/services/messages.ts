@@ -4,7 +4,7 @@ import type { TxCtx } from "../runs/events.js";
 export interface NewMessage {
   systemId: string;
   role: "user" | "assistant" | "system";
-  kind: "text" | "questions" | "answers" | "card" | "run_report" | "notice";
+  kind: "text" | "questions" | "answers" | "card" | "run_report" | "notice" | "plan";
   text?: string | null;
   payload?: Record<string, unknown> | null;
   runId?: string | null;

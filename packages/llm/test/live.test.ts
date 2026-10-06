@@ -149,6 +149,7 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
     for (const callType of [
       "card",
       "plan",
+      "system_plan",
       "build_ops",
       "build_code",
       "fix",
@@ -160,7 +161,18 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
       expect(out.scrubbed).toBe(true);
     }
     const t1 = stub.requests.filter((r) => r.provider === "zai");
-    expect(t1.length).toBe(7);
+    expect(t1.length).toBe(8);
+    // B2-20: the system planner reasons high like the card and the v1 plan (models.yaml#call_policy.thinking).
+    expect(t1.map((r) => r.body.reasoning_effort)).toEqual([
+      "high",
+      "high",
+      "high",
+      "low",
+      "low",
+      "low",
+      "low",
+      "low",
+    ]);
     for (const r of t1) {
       const lower = r.raw.toLowerCase();
       for (const c of CANARIES) {

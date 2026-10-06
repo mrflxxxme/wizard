@@ -236,6 +236,7 @@ ai_rules:
     - "Не придумывает факты: цены, адреса, отзывы, цифры — только из брифа, иначе секция не ставится или «Пример: …»"
     - "Не кладёт ПДн в план"
   tool: "Ответ планировщика — вызов submit_plan с SystemPlan (B2-20); проверка validateSystemPlan, при ошибке — повтор с текстом ошибок (≤ 2, models.yaml#call_policy)"
+  implementation: "B2-20: packages/agents/src/planner (@wizard/agents/planner) — интервью по целям, runPlanner (callType system_plan; ошибки compilePlan — ещё 1 повтор), applyPlanEdits (правки без модели), planSketch (эскиз для холста); интервью и утверждение — agents/orchestrator.yaml#goal_interview_b2, API — platform/api.yaml#getSystemPlan"
 
 # ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
 catalog:
