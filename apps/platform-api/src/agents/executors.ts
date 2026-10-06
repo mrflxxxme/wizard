@@ -102,6 +102,11 @@ async function turn(host: InterviewHost): Promise<TurnResult> {
     // The orchestrator knows free/start/business; pilot has the free login methods (no phone_otp, billing.yaml#plans.pilot).
     org: { plan: agentPlan(c.org.plan), ruOnly: c.org.policy.ruOnly },
     runStep: host.runStep,
+    // Only the internal orch_invalid (why the answer did not parse, for diagnose): chat_output and run_failed are the
+    // platform's own events of this run (persist_output, the run's failure).
+    emit: async (type, payload) => {
+      if (type === "orch_invalid") await host.emit("orch_invalid", payload);
+    },
     // D73: honest capability gaps → «Запросы на развитие» (org, system and run of this host).
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
   });
