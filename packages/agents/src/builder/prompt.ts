@@ -113,7 +113,7 @@ const SDK_CHECKS = new Set(["G0-TS-01", "G0-FN-01"]);
 
 /** Fix-round reminder of the exact SDK API (the full cheatsheet is in the static prompt). */
 export const SDK_FIX_HINT =
-  'Ошибки типов и объявлений функций — сверься со шпаргалкой @wizard/sdk из системного промпта: импорт только `import { query, mutation, action, v } from "@wizard/sdk"`; `export default query({ args: { x: v.string(), y: v.optional(v.int()) }, handler: async (ctx, args) => … })` без аннотаций параметров; необязательный аргумент — v.optional(v.X()), а не .optional(); таблицы — ctx.db.<сущность>.get/getBy/list/first/count/paginate/insert/patch/delete, а не ctx.db.query(…).';
+  'Ошибки типов и объявлений функций — сверься со шпаргалкой @wizard/sdk из системного промпта: импорт только `import { query, mutation, action, v } from "@wizard/sdk"`; `export default query({ args: { x: v.string(), y: v.optional(v.int()) }, handler: async (ctx, args) => … })` без аннотаций параметров; необязательный аргумент — v.optional(v.X()), а не .optional(); таблицы — ctx.db.<сущность>.get/getBy/list/first/count/paginate/insert/patch/delete, а не ctx.db.query(…). Строку из формы или адреса в аргумент v.id("x") передавай как `value as Id<"x">` (`import type { Id } from "@wizard/sdk"`). Одна функция — один тип результата: не возвращай из одной query разные формы в зависимости от аргументов, сделай отдельные функции.';
 
 /** The check's evidence (the compiler's text for G0-TS-01, expected vs got for scenarios) on one line, ≤ 300 chars. */
 export function evidenceOf(c: { evidence?: string }): string {
