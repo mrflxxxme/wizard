@@ -452,6 +452,13 @@ describe("founder reviews and org flags in the console", () => {
     expect(q.status).toBe(200);
     expectContract("adminListFounderReviews", q);
     expect(q.body.items).toEqual([expect.objectContaining({ systemId, revision: rev })]);
+    // D75: a look at the draft before the decision, journaled; only a system with a pending review.
+    const pv = await staff.req("POST", `/admin/systems/${systemId}/founder-review/preview`);
+    expect(pv.status, pv.text).toBe(200);
+    expectContract("adminFounderReviewPreview", pv);
+    expect(pv.body.reviewRevision).toBe(rev);
+    expect(pv.body.url).toMatch(/\/_wizard\/(dev-logout|dev-login|preview-login)/);
+    expect((await audit("founder_review_preview")).length).toBe(1);
     const noNote = await staff.req("POST", `/admin/systems/${systemId}/founder-review`, {
       body: { revision: rev, decision: "reject" },
     });
@@ -468,6 +475,7 @@ describe("founder reviews and org flags in the console", () => {
       .executeTakeFirstOrThrow();
     expect(row.status).toBe("approved");
     expect(row.reviewer).toBe(staff.userId);
+    expect((await staff.req("POST", `/admin/systems/${systemId}/founder-review/preview`)).status).toBe(404);
     expect((await audit("founder_review_approve")).length).toBe(1);
     expect(
       (

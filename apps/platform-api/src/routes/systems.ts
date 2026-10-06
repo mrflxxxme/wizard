@@ -1,7 +1,6 @@
 // /systems/* operations of specs/platform/api.yaml (x-milestone M0).
 import { createHash } from "node:crypto";
 import { type AppSpec, applyOps } from "@wizard/appspec";
-import { issuePreviewToken, newPreviewNonce, PREVIEW_TOKEN_TTL_MS } from "@wizard/runtime";
 import { type Context, Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
@@ -11,7 +10,8 @@ import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import { publishBlockers } from "../publish/blockers.js";
-import { prodUrl, systemOrigin } from "../publish/prod.js";
+import { draftPreviewUrl } from "../publish/preview-url.js";
+import { prodUrl } from "../publish/prod.js";
 import { withTx } from "../runs/events.js";
 import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
@@ -779,39 +779,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     if (s.preview_revision === null)
       throw new ApiError("PREVIEW_NOT_READY", "Превью появится после первой успешной сборки");
     const spec = await loadSpec(d.db, s, s.preview_revision);
-    const roles = spec.roles ?? [];
     const q = parseQuery(c, z.object({ role: z.string().max(64).optional() }));
-    const role = q.role ?? (roles.find((x) => x.access === "public") ?? roles[0])?.name;
-    if (!role || !roles.some((x) => x.name === role)) throw invalid("Такой роли нет в системе");
-    const origin = systemOrigin(d.config, s.slug, "draft");
-    // A minute below the 15-min ceiling: the runtime checks exp ≤ its now + 15 min, so clock skew cannot reject it.
-    const exp = Date.now() + PREVIEW_TOKEN_TTL_MS - 60_000;
-    let path: string;
-    if (d.config.previewSecret) {
-      // M2 (cloud): one-time HMAC token, exp ≤ 15 min (runtime.yaml#auth.preview_login_M2, L3-11).
-      const t = issuePreviewToken(d.config.previewSecret, {
-        systemId: s.schema_key,
-        env: "draft",
-        role,
-        revision: s.preview_revision,
-        platformUserId: c.get("user").id,
-        exp,
-        nonce: newPreviewNonce(),
-      });
-      path = `/_wizard/preview-login?t=${encodeURIComponent(t)}&next=/`;
-    } else {
-      // M0: a public role has no login — runtime dev-login answers 404 for it, dev-logout drops the draft session.
-      const isPublic = roles.find((x) => x.name === role)?.access === "public";
-      path = isPublic
-        ? "/_wizard/dev-logout?next=/"
-        : `/_wizard/dev-login?role=${encodeURIComponent(role)}&next=/`;
-    }
-    return c.json({
-      url: `${origin}${path}`,
-      revision: s.preview_revision,
-      roles: roles.map((x) => ({ name: x.name, label: x.label })),
-      expiresAt: new Date(exp).toISOString(),
-    });
+    return c.json(draftPreviewUrl(d.config, s, s.preview_revision, spec, c.get("user").id, q.role));
   });
 
   // getLatestGates

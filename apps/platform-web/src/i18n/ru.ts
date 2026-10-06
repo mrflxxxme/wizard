@@ -883,6 +883,9 @@ export const ru = {
     journal: "Журнал действий",
     journalEmpty: "Записей нет",
     reviewRevision: (v: number) => `ревизия ${v}`,
+    previewReview: "Открыть превью",
+    previewNewer: (preview: number, review: number) =>
+      `Превью показывает ревизию ${preview}: черновик изменился после запроса на ревью (ревизия ${review}).`,
     approve: "Одобрить",
     reject: "Отклонить",
     rejectNote: "Что исправить владельцу",

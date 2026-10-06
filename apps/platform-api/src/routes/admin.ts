@@ -16,10 +16,12 @@ import {
   staffSystemData,
 } from "../abuse/reports.js";
 import { confirmMfa, enrollMfa, type StaffDeps, staffGuard, staffState, verifyMfa } from "../abuse/staff.js";
-import { invalid, notFound } from "../errors.js";
+import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, isUuid } from "../http/auth.js";
 import { jsonBody, parseQuery } from "../http/util.js";
 import { decideFounderReview, pendingFounderReviews } from "../publish/moderation.js";
+import { draftPreviewUrl } from "../publish/preview-url.js";
+import { loadSpec } from "../services/revisions.js";
 
 const STATUSES = ["new", "triaged", "takedown", "dismissed", "restored"] as const;
 const code = z.string().regex(/^[0-9]{6}$/);
@@ -124,6 +126,34 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
         newEgressHosts: x.new_egress_hosts,
       })),
     });
+  });
+
+  // A look at the draft before the decision (adminFounderReviewPreview): only a system with a pending review, as its
+  // public role (what a visitor sees), a one-time link for 15 minutes; journaled like any staff access.
+  r.post("/admin/systems/:id/founder-review/preview", staff, async (c) => {
+    const systemId = uuidParam(c.req.param("id"), "Система");
+    const s = await d.db
+      .selectFrom("platform.founder_reviews as fr")
+      .innerJoin("platform.systems as sy", "sy.id", "fr.system_id")
+      .select(["sy.id", "sy.name", "sy.slug", "sy.schema_key", "sy.preview_revision", "fr.revision"])
+      .where("fr.system_id", "=", systemId)
+      .where("fr.status", "=", "pending")
+      .orderBy("fr.created_at", "desc")
+      .executeTakeFirst();
+    if (!s) throw notFound("Ревизия на ревью");
+    if (s.preview_revision === null)
+      throw new ApiError("PREVIEW_NOT_READY", "Превью появится после первой успешной сборки");
+    const spec = await loadSpec(d.db, s, s.preview_revision);
+    const out = draftPreviewUrl(d.config, s, s.preview_revision, spec, c.get("user").id);
+    await staffAudit(
+      d.db,
+      c.get("user").id,
+      "founder_review_preview",
+      `system:${systemId}`,
+      `ревизия на ревью ${s.revision}, превью ${s.preview_revision}`,
+    );
+    // The draft may have moved on since the review was requested: the console says so.
+    return c.json({ ...out, reviewRevision: s.revision });
   });
 
   r.post("/admin/systems/:id/founder-review", staff, async (c) => {

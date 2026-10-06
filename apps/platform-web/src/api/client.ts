@@ -375,6 +375,11 @@ export function createApiClient(opts: ClientOptions = {}) {
         `/admin/systems/${encodeURIComponent(systemId)}/founder-review`,
         { body },
       ),
+    adminFounderReviewPreview: (systemId: string) =>
+      call<{ url: string; revision: number; reviewRevision: number; expiresAt: string }>(
+        "POST",
+        `/admin/systems/${encodeURIComponent(systemId)}/founder-review/preview`,
+      ),
     // abuse.yaml#takedown.flow: org-wide suspension (staff) and «Оспорить» a G2 antifraud stop (owner).
     adminOrgSuspension: (
       orgId: string,

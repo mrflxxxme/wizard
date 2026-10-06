@@ -605,6 +605,14 @@ paths:
       summary: 'Решение по ревизии, ожидающей ревью перед prod (M2-09); approve разблокирует publish этой ревизии. Смонтирован в M2-08 (staff MFA, строка staff_audit_log); CLI `pnpm --filter @wizard/platform-api moderation reviews | approve | reject` с прямым доступом к БД (M2-04) продолжает работать. reject требует note (≥ 3 символов, иначе 400). Владельцам org уходит письмо о решении (одобрено — можно публиковать; не одобрено — note как «что исправить»), и из админки, и из CLI. rejected тоже отдаётся в publishBlockers как FOUNDER_REVIEW_PENDING'
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision, decision], properties: {revision: {type: integer}, decision: {enum: [approve, reject]}, note: {type: string}}}}}}
       responses: {'200': {description: Записано}}
+  /admin/systems/{id}/founder-review/preview:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: adminFounderReviewPreview
+      x-milestone: M2
+      x-roles: [staff]
+      summary: 'D75: посмотреть черновик системы перед решением по ревью. Только система с ожидающим ревью (иначе 404); ссылка как у getPreviewUrl — одноразовый preview-login на 15 мин от публичной роли (её нет — первая роль). Строка staff_audit_log founder_review_preview. reviewRevision — ревизия на ревью: если черновик новее, консоль это показывает'
+      responses: {'200': {description: Ссылка, content: {application/json: {schema: {type: object, required: [url, revision, reviewRevision, expiresAt], properties: {url: {type: string}, revision: {type: integer}, reviewRevision: {type: integer}, roles: {type: array, items: {type: object, properties: {name: {type: string}, label: {type: string}}}}, expiresAt: {type: string, format: date-time}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   /admin/session:
     get:
       operationId: adminSession
