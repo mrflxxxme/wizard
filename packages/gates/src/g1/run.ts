@@ -60,8 +60,8 @@ function entry(
 ): Check {
   const out: Check = {
     id: c.id,
-    status,
-    severity: def(c.kind === "permission" && !c.acId ? "G1-PERM" : "G1-AC").severity,
+    status: c.advisory && status === "fail" ? "warn" : status,
+    severity: c.advisory ? "warning" : def(c.kind === "permission" && !c.acId ? "G1-PERM" : "G1-AC").severity,
     message_ru: clip(message_ru, 300),
   };
   if (c.acId) out.acId = c.acId;
@@ -285,18 +285,26 @@ export async function seedActors(env: G1Env, spec: AppSpec, seed: Seed): Promise
 function coverage(spec: AppSpec, checks: QaCheck[], results: Map<string, Check>, milestone: string): Check[] {
   const d = def("G1-AC-COVER");
   const missing: Finding[] = [];
+  // D75: an uncovered scenario or constraint AC is QA's miss — a warning; permission ACs are covered by probes.
+  const advisory: Finding[] = [];
   for (const [i, ac] of (spec.acceptance ?? []).entries()) {
     if (isLaterMilestone(ac.check.milestone, milestone)) continue;
     const mine = checks.filter((c) => c.acId === ac.id).map((c) => results.get(c.id));
     if (!mine.some((r) => r && r.status !== "error" && r.status !== "skip")) {
-      missing.push({
+      (ac.check.type === "permission" ? missing : advisory).push({
         message_ru: `Критерий ${ac.id} «${ac.text}» не проверяется автоматически`,
         path: `/acceptance/${i}`,
         fixHint: "QA должен сформировать исполнимую проверку для этого критерия",
       });
     }
   }
-  return toChecks(d, { kind: "findings", findings: missing });
+  return [
+    // One G1-AC-COVER entry set: blockers (or a pass) and, apart, the advisory misses; no «pass» next to a warning.
+    ...(missing.length > 0 || advisory.length === 0 ? toChecks(d, { kind: "findings", findings: missing }) : []),
+    ...(advisory.length
+      ? toChecks({ ...d, severity: "warning" }, { kind: "findings", findings: advisory })
+      : []),
+  ];
 }
 
 /** G1-FN-01: every public query, called by an allowed role with minimal valid args, answers without 5xx. */

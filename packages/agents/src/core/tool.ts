@@ -49,6 +49,41 @@ export function zodIssues(error: z.ZodError): ToolIssue[] {
   }));
 }
 
+/**
+ * A copy of `args` where the values zod expected as an array or object but got as a string holding that JSON are
+ * decoded; null when there is nothing to decode.
+ */
+export function decodeJsonStrings(args: unknown, error: z.ZodError): unknown | null {
+  const copy: unknown = structuredClone(args);
+  let changed = false;
+  for (const i of error.issues) {
+    const expected = (i as { expected?: unknown }).expected;
+    if (i.code !== "invalid_type" || (expected !== "array" && expected !== "object")) continue;
+    if (i.path.length === 0) continue;
+    let parent: unknown = copy;
+    for (const k of i.path.slice(0, -1))
+      parent = (parent as Record<PropertyKey, unknown> | null)?.[k as PropertyKey];
+    const key = i.path.at(-1) as PropertyKey;
+    if (parent === null || typeof parent !== "object") continue;
+    const v = (parent as Record<PropertyKey, unknown>)[key];
+    if (typeof v !== "string") continue;
+    try {
+      const decoded: unknown = JSON.parse(v);
+      if (
+        decoded !== null &&
+        typeof decoded === "object" &&
+        Array.isArray(decoded) === (expected === "array")
+      ) {
+        (parent as Record<PropertyKey, unknown>)[key] = decoded;
+        changed = true;
+      }
+    } catch {
+      // Not JSON: the issue stays for the model.
+    }
+  }
+  return changed ? copy : null;
+}
+
 export function defineTool<S extends z.ZodType, R = unknown>(spec: ToolSpec<S, R>): Tool<S, R> {
   if (!TOOL_NAME_RE.test(spec.name)) throw new Error(`tool name must be snake_case latin: ${spec.name}`);
   const definition: LlmTool = {
@@ -60,7 +95,15 @@ export function defineTool<S extends z.ZodType, R = unknown>(spec: ToolSpec<S, R
     ...spec,
     definition,
     parse(args) {
-      const r = spec.input.safeParse(args);
+      let r = spec.input.safeParse(args);
+      // Open models often send a nested array or object as a JSON string ("acceptance": "[{…}]"): such fields are
+      // decoded and the arguments checked again (≤ 3 passes); anything else stays an issue for the model.
+      for (let pass = 0; !r.success && pass < 3; pass++) {
+        const fixed = decodeJsonStrings(args, r.error);
+        if (fixed === null) break;
+        args = fixed;
+        r = spec.input.safeParse(args);
+      }
       if (!r.success) return { ok: false, issues: zodIssues(r.error) };
       const issues = spec.check?.(r.data) ?? [];
       return issues.length > 0 ? { ok: false, issues } : { ok: true, value: r.data };

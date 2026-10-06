@@ -12,11 +12,28 @@ import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
 export const LLM_BUDGET_EXHAUSTED_RU =
   "Месячный лимит платформы на работу моделей исчерпан. Новые сборки и ответы в чате снова будут доступны с 1-го числа следующего месяца — команда Born to Build уже знает об этом";
 
+/** api.yaml#Error LLM_BUDGET_EXHAUSTED, the daily cap (D75). */
+export const LLM_DAILY_BUDGET_EXHAUSTED_RU =
+  "Дневной лимит платформы на работу моделей исчерпан. Новые сборки и ответы в чате снова будут доступны завтра — команда Born to Build уже знает об этом";
+
 /** Share of the cap that triggers the warning alert. */
 export const LLM_CAP_WARN_SHARE = 0.8;
 
 /** Moscow has no DST since 2014: UTC+3. */
 const MSK_OFFSET_MS = 3 * 3600_000;
+
+/** Calendar day of `now` in Europe/Moscow: key yyyy-mm-dd and its [start, end) instants. */
+export function moscowDay(now: Date): { key: string; start: Date; end: Date } {
+  const msk = new Date(now.getTime() + MSK_OFFSET_MS);
+  const y = msk.getUTCFullYear();
+  const m = msk.getUTCMonth();
+  const d = msk.getUTCDate();
+  return {
+    key: `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+    start: new Date(Date.UTC(y, m, d) - MSK_OFFSET_MS),
+    end: new Date(Date.UTC(y, m, d + 1) - MSK_OFFSET_MS),
+  };
+}
 
 /** Calendar month of `now` in Europe/Moscow: key yyyy-mm and its [start, end) instants. */
 export function moscowMonth(now: Date): { key: string; start: Date; end: Date } {
@@ -53,6 +70,8 @@ export interface LlmCapStatus {
 export interface LlmMonthlyCapOptions {
   db: Db;
   capRub: number;
+  /** WIZARD_LLM_DAILY_CAP_RUB (D75): platform LLM spend per Moscow calendar day; none — no daily cap. */
+  dailyCapRub?: number;
   now?: () => Date;
   alert?: OpsAlertFn;
 }
@@ -85,6 +104,20 @@ export class LlmMonthlyCap {
         fields: { code: "LLM_BUDGET_EXHAUSTED", reason: `${s.month}: ${s.spentRub} of ${s.capRub} RUB` },
       });
       throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_BUDGET_EXHAUSTED_RU);
+    }
+    const daily = this.#o.dailyCapRub;
+    if (daily !== undefined) {
+      const d = moscowDay(this.#o.now?.() ?? new Date());
+      const spent = await llmSpentRub(this.#o.db, d.start, d.end);
+      if (spent >= daily) {
+        await this.#once(`llm_daily_cap:${d.key}`, {
+          level: "error",
+          event: "llm_daily_cap_reached",
+          text: `Wizard: дневной лимит расходов на модели исчерпан — ${rub(spent)} из ${rub(daily)} за ${d.key} (МСК). Новые сборки, замеры и ответы оркестратора отклоняются до полуночи МСК или до повышения WIZARD_LLM_DAILY_CAP_RUB.`,
+          fields: { code: "LLM_BUDGET_EXHAUSTED", reason: `${d.key}: ${spent} of ${daily} RUB` },
+        });
+        throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_DAILY_BUDGET_EXHAUSTED_RU);
+      }
     }
     if (s.spentRub >= LLM_CAP_WARN_SHARE * s.capRub)
       await this.#once(`llm_cap_80:${s.month}`, {

@@ -226,7 +226,7 @@ describe("publish G1 reuses the build's QA scenarios (db.yaml#g1_checks)", () =>
     expect((await storedRows(id)).map((r) => r.revision)).toEqual([built, rev]);
   }, 600_000);
 
-  test("an AC rewritten after the passed G1 gets no stale scenario: G1-AC-COVER fails, publish refused", async () => {
+  test("an AC rewritten after the passed G1 gets no stale scenario: its G1-AC-COVER is a warning (D75), publish goes on", async () => {
     variant = "rewrite";
     g1Calls.length = 0;
     const id = await builtSystem("Форум с переписанным критерием");
@@ -252,25 +252,14 @@ describe("publish G1 reuses the build's QA scenarios (db.yaml#g1_checks)", () =>
 
     g1Calls.length = 0;
     const run = await publish(id, rev);
-    expect(run.status).toBe("failed");
-    expect(run.failure).toMatchObject({ code: "GATES_FAILED" });
-    expect((await sys(id)).prod_revision).toBeNull();
+    // D75: an uncovered scenario AC is QA's miss — a warning for the founder's review, not a refusal.
+    expect(run.status).not.toBe("failed");
     const g1 = g1Calls[0]?.report;
     expect(g1Calls[0]?.checks).toEqual(QA_IDS.filter((x) => x !== "SC-AC1"));
-    expect(g1?.passed).toBe(false);
-    const cover = g1?.checks.filter((c) => c.id === "G1-AC-COVER" && c.status === "fail") ?? [];
-    expect(cover.map((c) => c.message_ru)).toEqual([
-      `Критерий AC1 «${REWRITTEN_AC1}» не проверяется автоматически`,
+    expect(g1?.passed).toBe(true);
+    const cover = g1?.checks.filter((c) => c.id === "G1-AC-COVER") ?? [];
+    expect(cover.map((c) => [c.status, c.severity, c.message_ru])).toEqual([
+      ["warn", "warning", `Критерий AC1 «${REWRITTEN_AC1}» не проверяется автоматически`],
     ]);
-    const report = await api.deps.db
-      .selectFrom("platform.gate_reports")
-      .select("passed")
-      .where("system_id", "=", id)
-      .where("revision", "=", rev)
-      .where("level", "=", "G1")
-      .executeTakeFirstOrThrow();
-    expect(report.passed).toBe(false);
-    // A failed G1 stores nothing.
-    expect((await storedRows(id)).map((r) => r.revision)).toEqual([rewritten - 1]);
   }, 600_000);
 });

@@ -13,6 +13,8 @@ export const D67_THRESHOLD = { ready: 7, of: 10 };
 export const FINAL = new Set(["ready", "not_ready", "build_failed", "interview_failed", "error", "skipped"]);
 export const DEFAULTS = {
   maxCostRub: 2000,
+  /** D75: one brief may spend at most this much; the run is cancelled beyond it (never a raised build cap). */
+  maxBriefRub: 80,
   concurrency: 2,
   fixAttempts: 1,
   g2: "publish",
@@ -48,6 +50,8 @@ export function pickOption(q) {
  */
 export function pickDecision(p) {
   const opts = (Array.isArray(p?.options) ? p.options : []).filter((o) => !o.freeText);
+  // D75: the measurement never raises a build's credit cap — a build that ran out of its cap is not ready.
+  if (p?.decisionId === "budget") return opts.find((o) => o.id === "stop")?.id ?? null;
   if (p?.kind === "secret") return opts.find((o) => o.id === "test")?.id ?? null;
   const keep = opts.filter((o) => !AVOID_CHOICES.has(o.id));
   return (keep.find((o) => o.recommended) ?? keep[0] ?? opts[0])?.id ?? null;
@@ -179,6 +183,12 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
       if (ctx.signal?.aborted) {
         await client.post(`/runs/${run.id}/cancel`).catch(() => {});
         throw new Error(`замер остановлен: ${ctx.signal.reason ?? "отмена"} — прогон ${phase} отменён`);
+      }
+      if (r.costRubEstimate > (ctx.maxBriefRub ?? DEFAULTS.maxBriefRub)) {
+        await client.post(`/runs/${run.id}/cancel`).catch(() => {});
+        throw new Error(
+          `потолок брифа ${ctx.maxBriefRub ?? DEFAULTS.maxBriefRub} ₽ исчерпан (≈ ${Math.round(r.costRubEstimate)} ₽) — прогон ${phase} отменён`,
+        );
       }
       if (run.status === "needs_input" && !(await answerInput(run, answered))) {
         await client.post(`/runs/${run.id}/cancel`).catch(() => {});

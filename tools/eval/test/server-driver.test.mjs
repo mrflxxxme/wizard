@@ -58,7 +58,8 @@ function freshFake(over) {
   fake.st = f.st;
   return f;
 }
-const quiet = { log: () => {}, sleep: async () => {}, pollMs: 1 };
+// The fake build costs 40 credits (≈ 200 ₽): the scenario tests lift the per-brief cap; its own test is below.
+const quiet = { log: () => {}, sleep: async () => {}, pollMs: 1, maxBriefRub: 10_000 };
 const client = (session = SESSION) => platformClient({ base: srv.base, session, sleep: async () => {} });
 
 describe("D67 brief set", () => {
@@ -104,6 +105,34 @@ describe("D67 brief set", () => {
     expect(
       parseFrame('id: 3\nevent: needs_input\ndata: {"seq":3,"type":"needs_input","payload":{"inputId":"x"}}'),
     ).toEqual({ seq: 3, type: "needs_input", payload: { inputId: "x" } });
+  });
+});
+
+describe("D75 budget guards of the measurement", () => {
+  it("a budget question is answered «stop» (no raised cap); a brief over its ₽ cap is cancelled", async () => {
+    expect(
+      pickDecision({
+        kind: "decision",
+        decisionId: "budget",
+        options: [
+          { id: "raise_cap_8", recommended: true },
+          { id: "stop" },
+        ],
+      }),
+    ).toBe("stop");
+    freshFake();
+    const doc = await runEval({
+      client: client(),
+      briefs: loadBriefs("mvp").slice(0, 1),
+      orgId: "org-1",
+      ownerEmail: "eval+20261006-cap@borntobuild.ru",
+      runId: "20261006-capcap",
+      ...quiet,
+      maxBriefRub: 80,
+      failFast: false,
+    });
+    expect(doc.results[0]?.status).toBe("error");
+    expect(doc.results[0]?.error).toMatch(/потолок брифа 80 ₽ исчерпан/);
   });
 });
 

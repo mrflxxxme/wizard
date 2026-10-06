@@ -71,7 +71,8 @@ export const DEFAULT_LIMITS: BuildLimits = {
   maxSteps: 64,
   maxWallClockMs: 45 * 60_000,
   escalationThreshold: 5,
-  gateIterations: 3,
+  /** D75: at most 2 rounds of fixes per gate, blockers only. */
+  gateIterations: 2,
   maxChars: MAX_CHARS,
   minChars: MIN_CHARS,
 };
@@ -465,7 +466,8 @@ class Builder implements ToolEnv {
     }
     // Harness v2 (builder.yaml#harness.stages.verify.fix): findings in code files go to tasks by file; the rest
     // (spec, permissions, checks without a file) — to the builder's fix phase.
-    const failed = failedChecks(report);
+    // D75: only blockers are fixed; warnings (QA scenarios, coverage of scenario ACs) wait for the founder's review.
+    const failed = failedChecks(report).filter(isBlocking);
     const byFile = new Map<string, Check[]>();
     // Repeated findings (the cause may be in the spec) and anything after an escalation answer (simplify, the
     // user's own words) go to the builder's fix phase, which sees the whole report and can apply_ops.
@@ -484,7 +486,7 @@ class Builder implements ToolEnv {
     }
     const rest = failed.filter((c) => !(c.file && byFile.has(c.file)));
     if (rest.length === 0 && byFile.size > 0) return;
-    const text = gateReportText(byFile.size > 0 ? { ...report, checks: rest } : report, report.explanations);
+    const text = gateReportText({ ...report, checks: rest }, report.explanations);
     this.#ctx.pinGateReport(text);
     this.#metrics.verify.fixPhases += 1;
     await this.#phaseStep("fix", () => this.#toolPhase("fix", text));
@@ -823,7 +825,6 @@ class Builder implements ToolEnv {
       (t) => t.kind === "page" && declared.has(t.file) && this.#files?.has(t.file),
     );
     this.#metrics.review.pages = pages.length;
-    const fixes: { task: BriefTask; fix: { findings: Check[] } }[] = [];
     for (let i = 0; i < pages.length; i += WAVE_SIZE) {
       const wave = pages.slice(i, i + WAVE_SIZE);
       let settled: PromiseSettledResult<Awaited<ReturnType<typeof callTool>>>[];
@@ -878,15 +879,11 @@ class Builder implements ToolEnv {
         const critical = reviewFindings(review);
         this.#metrics.review.minor += review.issues.filter((x) => x.severity === "minor").length;
         if (critical.length === 0) this.#metrics.review.ok += 1;
-        else {
-          this.#metrics.review.critical += critical.length;
-          fixes.push({ task, fix: { findings: critical.map((c) => ({ ...c, file: task.file })) } });
-        }
+        else this.#metrics.review.critical += critical.length;
       }
     }
-    if (fixes.length === 0) return false;
-    await this.#phaseStep("fix", () => this.#runTasks(fixes));
-    return true;
+    // D75: the reviewer's findings are warnings for the founder's review (build_metrics.review), not a fix round.
+    return false;
   }
 
   // ------------------------------------------------------------------------------------------ LLM calls

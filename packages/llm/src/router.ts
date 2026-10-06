@@ -22,8 +22,16 @@ import {
   t1Forbidden,
 } from "./policy.js";
 import { type Env, LiveCallError, liveCall } from "./providers.js";
-import { createRegistry, type ModelDef, policyVersion, type Registry, type RouteDef } from "./registry.js";
+import {
+  createRegistry,
+  HIGH_REASONING,
+  type ModelDef,
+  policyVersion,
+  type Registry,
+  type RouteDef,
+} from "./registry.js";
 import type {
+  CallType,
   LlmEvent,
   LlmMode,
   LlmResult,
@@ -379,6 +387,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
             signal,
             env,
             ...(opts.fetch ? { fetch: opts.fetch } : {}),
+            reasoning: HIGH_REASONING.has(input.callType as CallType) ? "high" : "low",
           });
           const latencyMs = now() - started;
           circuit.record(cKey, true);

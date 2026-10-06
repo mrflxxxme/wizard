@@ -50,6 +50,7 @@ export const ZAI_REASONING_HEADROOM = 8192;
 export function transformBody(
   providerId: ProviderDef["id"],
   body: Record<string, unknown>,
+  reasoning: "low" | "high" = "high",
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...body };
   delete out.response_format;
@@ -69,11 +70,12 @@ export function transformBody(
     out.thinking = { type: "disabled" };
   } else if (providerId === "zai") {
     // glm-5.3 always thinks: `thinking: {type: "disabled"}` is a 400 («cannot be disabled; please use low, high, or
-    // max», pilot eval 2026-10-05). The middle of the three efforts (low | high | max) on every call instead (founder, 2026-10-05: quality over cost); reasoning_content is still not sent back.
+    // max», pilot eval 2026-10-05). Effort high only where the route asks for it (D75: card and brief), low elsewhere;
+    // reasoning_content is still not sent back.
     delete out.thinking;
     delete out.enable_thinking;
     delete out.chat_template_kwargs;
-    out.reasoning_effort = "high";
+    out.reasoning_effort = reasoning;
     // Reasoning tokens count against max_tokens: without headroom a short answer budget is spent on thinking alone
     // (finish=length, empty text — the 30-token probe on the pilot server).
     if (typeof out.max_tokens === "number") out.max_tokens += ZAI_REASONING_HEADROOM;
@@ -153,6 +155,8 @@ export interface LiveCallInput {
   signal: AbortSignal;
   env: Env;
   fetch?: typeof globalThis.fetch;
+  /** Reasoning effort of models that always think (zai); default high. */
+  reasoning?: "low" | "high";
 }
 
 /**
@@ -192,7 +196,7 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
     supportsStructuredOutputs: false,
-    transformRequestBody: (body) => transformBody(i.provider.id, body),
+    transformRequestBody: (body) => transformBody(i.provider.id, body, i.reasoning ?? "high"),
   });
   const folder = i.provider.folderEnv ? i.env[i.provider.folderEnv] : undefined;
   const modelName = folder ? `gpt://${folder}/${i.model.providerModel}` : i.model.providerModel;

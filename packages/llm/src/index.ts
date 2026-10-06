@@ -57,6 +57,7 @@ export {
   createRegistry,
   DEFAULT_BUILD_TIER,
   getModel,
+  HIGH_REASONING,
   MODELS,
   type ModelDef,
   PII_FORBIDDEN_FOR_T1,

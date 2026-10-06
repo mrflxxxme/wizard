@@ -152,7 +152,8 @@ describe("G1 on the forum", () => {
     expect(s["SC-AC3"]).toBe("error");
     expect(r.checks.find((c) => c.id === "SC-AC3")?.evidence).toContain("check_invalid");
     const cover = r.checks.filter((c) => c.id === "G1-AC-COVER");
-    expect(cover.map((c) => c.status)).toEqual(["fail"]);
+    // D75: an uncovered scenario AC is a warning, not a blocker.
+    expect(cover.map((c) => [c.status, c.severity])).toEqual([["warn", "warning"]]);
     expect(cover[0]?.path).toBe("/acceptance/2");
     expect(r.passed).toBe(false);
   }, 120_000);

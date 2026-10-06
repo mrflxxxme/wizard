@@ -322,17 +322,15 @@ describe("harness v2: build", () => {
     expect(metricsOf(mem.events)).toMatchObject({ tasks: { total: 5, firstPass: 4, passed: 5, failed: 0 } });
   });
 
-  test("a critical review sends the page to one fix task and the gates run again", async () => {
+  test("a critical review is a warning (D75): counted in build_metrics, no fix task, gates run once", async () => {
     const home = "ui/pages/Home.tsx";
     const { mem, inputs } = host({ criticalOn: home });
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
     expect(res.status).toBe("succeeded");
-    const fix = inputs.filter((i) => i.callType === "fix");
-    expect(fix.map(taskFile)).toEqual([home]);
-    expect(String(fix[0]?.messages.at(1)?.content)).toContain("Рецензент: Нет формы заявки из задачи.");
+    expect(inputs.filter((i) => i.callType === "fix")).toHaveLength(0);
     expect(inputs.filter((i) => i.callType === "audit")).toHaveLength(2);
     expect(metricsOf(mem.events)).toMatchObject({
-      verify: { g0Runs: 2, g1Runs: 2, fixTasks: 1 },
+      verify: { g0Runs: 1, g1Runs: 1, fixTasks: 0 },
       review: { pages: 2, ok: 1, critical: 1 },
     });
   });

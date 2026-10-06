@@ -146,6 +146,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const llmCap = new LlmMonthlyCap({
     db: handle.db,
     capRub: config.llmMonthlyCapRub,
+    dailyCapRub: config.llmDailyCapRub,
     alert,
     ...(opts.now ? { now: opts.now } : {}),
   });

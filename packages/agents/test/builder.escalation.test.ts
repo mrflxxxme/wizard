@@ -147,7 +147,7 @@ describe("escalation", () => {
     expect(received?.payload).toEqual({ inputId: expect.any(String), choice: "rephrase" });
   });
 
-  test("gate iterations: G0 failing after 3 fix rounds escalates; retry then GATES_FAILED", async () => {
+  test("gate iterations: G0 failing after 2 fix rounds (D75) escalates; retry then GATES_FAILED", async () => {
     // The model 'fixes' by ending its turn immediately; G0 keeps failing with a decreasing count (no counter hits 5).
     const script: LlmResult[] = [plan, stop(), stop()];
     for (let i = 0; i < 10; i++)
@@ -177,7 +177,7 @@ describe("escalation", () => {
     expect(out).toMatchObject({ status: "failed", code: "GATES_FAILED" });
     expect(out.status === "failed" && out.reports?.[0]?.level).toBe("G0");
     const fixSteps = mem.events.filter((e) => e.type === "step_started" && e.payload.step === "fix");
-    expect(fixSteps.length).toBe(6);
+    expect(fixSteps.length).toBe(4);
   });
 
   test("loop detector: 3 identical tool calls in a row count as a failure", async () => {

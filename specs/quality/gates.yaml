@@ -76,7 +76,7 @@ G1:
   checks:
     - { id: G1-PERM,   severity: blocker, what: "PC-проверки, выбранные qa.yaml#checks.permission_auto.selection", how: "data API от лица синтетических пользователей" }
     - { id: G1-AC,     severity: blocker, what: "SC-<AC id> для каждого AC типа permission/scenario/constraint", how: "исполнитель scenario_dsl" }
-    - { id: G1-AC-COVER, severity: blocker, what: "Каждый AC с check.milestone ≤ ctx.milestone (нет поля = M0) имеет ≥1 исполнимую проверку (status ≠ error); AC более поздних вех — status=skip; AC без проверки — fail", how: "сопоставление acId" }
+    - { id: G1-AC-COVER, severity: blocker, what: "Каждый AC с check.milestone ≤ ctx.milestone (нет поля = M0) имеет ≥1 исполнимую проверку (status ≠ error); AC более поздних вех — status=skip; AC без проверки — fail; D75: для AC с check.type scenario/constraint пропуск — warning (промах QA), blocker — только для permission; проверки QaCheck.advisory (сценарии модели QA) дают warn/warning, а не fail/blocker", how: "сопоставление acId" }
     - { id: G1-FN-01,  severity: warning, what: "Каждая публичная query вызывается от разрешённой роли с минимальными валидными args без 5xx", how: "генерация args по валидаторам" }
     - { id: G1-RENDER-01, severity: blocker, since: M1, what: "Каждая страница рендерится (react-dom/server) для каждой своей роли на seed без исключений", how: "SSR с мок-клиентом SDK" }
   output_extra: "Для упавших — Explanation[] от QA (qa.yaml#explain) в поле explanations отчёта"

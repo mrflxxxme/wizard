@@ -243,6 +243,7 @@ export async function generateScenarios(call: GenerateCall): Promise<Map<string,
 export function invalidCheck(ac: CardAc, reasons: readonly string[] = []): QaCheck {
   return {
     ...(reasons.length ? { invalid: reasons.slice(0, 10) } : {}),
+    advisory: true,
     id: `SC-${ac.id}`,
     acId: ac.id,
     kind: ac.check.type === "constraint" ? "constraint" : "scenario",
@@ -261,6 +262,7 @@ export function scenarioChecks(ac: CardAc, scenarios: Scenario[]): QaCheck[] {
     if (seen.has(id)) id = `SC-${ac.id}-${i + 1}`;
     seen.add(id);
     const scenario: Scenario = { ...s, id, acId: ac.id, milestone };
-    return { id, acId: ac.id, kind, level: "G1", milestone, scenario };
+    // D75: scenarios written by the QA model are advisory (warnings at the founder's review), never blockers.
+    return { id, acId: ac.id, kind, level: "G1", milestone, scenario, advisory: true };
   });
 }
