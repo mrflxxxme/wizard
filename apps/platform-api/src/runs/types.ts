@@ -2,6 +2,7 @@
 // @wizard/agents/host; platform-api implements it durably (M0-26 wires the real agents: ../agents/executors.ts).
 
 import type { CapabilityGap, DevelopmentRequestInput } from "@wizard/agents";
+import type { CheckpointStore } from "@wizard/agents/builder";
 import type {
   BuildHost as AgentBuildHost,
   BuildStore as AgentBuildStore,
@@ -39,6 +40,15 @@ export interface StepHost {
 
 export interface BuildStore extends AgentBuildStore {
   deleteFile(path: string): Promise<void>;
+  /**
+   * B2-21 (builder v2): the compiled spec and files of a system plan as ONE draft revision kind=files (file_written per
+   * changed file); ui/** and functions/** files outside the set are removed.
+   */
+  commitCompiled(input: {
+    spec: AppSpec;
+    files: Readonly<Record<string, string>>;
+    summary_ru: string;
+  }): Promise<{ revision: number }>;
 }
 
 /** Kept for compatibility: the QA agent the host hands to the builder (@wizard/agents/host BuilderQa). */
@@ -74,6 +84,11 @@ export interface BuildHost
   /** One budget check (Σ upperBoundCredits) and one durable step llm_batch:<steps> for a wave of calls. */
   routeBatch(inputs: HostRouteInput[]): Promise<RouteBatchItem[]>;
   managesBudget: true;
+  /**
+   * B2-21: stage checkpoints of a build by a system plan (platform.system_plans.checkpoints of params.plan.revision);
+   * absent for card builds.
+   */
+  checkpoints?: CheckpointStore;
 }
 
 /** builder.yaml#point_and_edit input (M3-01). */

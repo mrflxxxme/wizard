@@ -5,6 +5,7 @@
 //   worker (apps/worker): executeRun() is the body of the DBOS workflow, every side effect is a checkpointed step.
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import type { StageCheckpoint } from "@wizard/agents/builder";
 import type { AppSpec } from "@wizard/appspec";
 import {
   CircuitBreaker,
@@ -1681,14 +1682,30 @@ export class RunEngine {
     const mode = (run.mode ?? "create") as BuildParams["mode"];
     if (mode === "point_edit" && !input.target)
       throw new RunFailure("INTERNAL", "Не указан элемент для правки по клику");
+    let plan: BuildParams["plan"] =
+      input.plan && typeof input.planRevision === "number"
+        ? { revision: input.planRevision, plan: input.plan }
+        : undefined;
+    // B2-21: «Исправить» (mode fix) of a system on the modules pipeline repeats the build of its approved plan; the
+    // builder v2 continues from the stage checkpoints of that plan revision.
+    if (!plan && mode === "fix")
+      plan = await x.D.step("fix_plan", async () => {
+        const row = await this.#db
+          .selectFrom("platform.system_plans")
+          .select(["revision", "plan"])
+          .where("system_id", "=", run.system_id as string)
+          .where("status", "=", "approved")
+          .orderBy("revision", "desc")
+          .limit(1)
+          .executeTakeFirst();
+        return row ? { revision: row.revision, plan: row.plan as Record<string, unknown> } : undefined;
+      });
     const out = await this.#runBuilder(x, {
       card: input.card ?? {},
       cap: Number(capMilli ?? 0) / 1000,
       mode,
       ...(mode === "point_edit" && input.target ? { target: input.target } : {}),
-      ...(input.plan && typeof input.planRevision === "number"
-        ? { plan: { revision: input.planRevision, plan: input.plan } }
-        : {}),
+      ...(plan ? { plan } : {}),
     });
     if (mode === "point_edit" && input.target && typeof input.fromRevision === "number")
       await this.#assertPointEditScope(x, input.fromRevision, input.target.file);
@@ -1746,6 +1763,7 @@ export class RunEngine {
     const routers: Routers = { pending: [], mute: false };
     const base = this.#stepHost(x, needsInput, routers);
     const systemId = run.system_id as string;
+    const planRevision = params.plan?.revision;
     const pending = new Map<string, string | null>();
     const system = () =>
       this.#db
@@ -1848,7 +1866,74 @@ export class RunEngine {
           return [...all].filter((p) => p.startsWith(prefix)).sort();
         },
         commitFiles,
+        // B2-21: the compiled plan as one revision (spec + files); other ui/** and functions/** files are removed.
+        commitCompiled: async ({ spec, files, summary_ru }) => {
+          if (params.mode === "point_edit")
+            throw new Error("TARGET_ONLY: в правке по клику спека не меняется (ask_orchestrator)");
+          await commitFiles();
+          await this.#ensureActive(x);
+          const version = await D.step(
+            "commit_compiled",
+            async () => {
+              const changes: { path: string; content: Buffer | null }[] = [];
+              for (const [path, content] of Object.entries(files)) {
+                checkPath(path);
+                changes.push({ path, content: Buffer.from(content, "utf8") });
+              }
+              for (const path of Object.keys(await manifestNow()))
+                if ((path.startsWith("ui/") || path.startsWith("functions/")) && !(path in files))
+                  changes.push({ path, content: null });
+              const r = await this.#tx((t) =>
+                commitFilesRevision(t, this.#d.blobs, {
+                  systemId,
+                  changes,
+                  runId: run.id,
+                  author: "agent",
+                  spec,
+                  summaryRu: summary_ru,
+                }),
+              );
+              return r.version;
+            },
+            { offload: true },
+          );
+          return { revision: version };
+        },
       },
+      ...(planRevision !== undefined
+        ? {
+            // B2-21: stage checkpoints of the plan build live with the plan revision (platform.system_plans).
+            checkpoints: {
+              load: () =>
+                D.step(
+                  "checkpoints_load",
+                  async () => {
+                    const row = await this.#db
+                      .selectFrom("platform.system_plans")
+                      .select("checkpoints")
+                      .where("system_id", "=", systemId)
+                      .where("revision", "=", planRevision)
+                      .executeTakeFirst();
+                    return Object.values((row?.checkpoints ?? {}) as Record<string, StageCheckpoint>);
+                  },
+                  { offload: true },
+                ),
+              save: async (cp: StageCheckpoint) => {
+                await this.#ensureActive(x);
+                await D.step(`checkpoint:${cp.stage}`, async () => {
+                  await this.#db
+                    .updateTable("platform.system_plans")
+                    .set({
+                      checkpoints: sql`platform.system_plans.checkpoints || ${json({ [cp.stage]: cp })}`,
+                    })
+                    .where("system_id", "=", systemId)
+                    .where("revision", "=", planRevision)
+                    .execute();
+                });
+              },
+            },
+          }
+        : {}),
       runGates: (level, overrides) =>
         base.runStep(`gate_${level}`, () => this.#gate(x, level, commitFiles, filesAt, overrides)),
     };

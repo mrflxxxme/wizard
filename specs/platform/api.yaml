@@ -178,7 +178,7 @@ paths:
       operationId: approveSystemPlan
       x-milestone: B2
       x-roles: [editor]
-      summary: 'B2-20 (grill-6 № 5): единственная точка старта сборки на конвейере модулей — утверждение плана (revision, которую видел клиент). План компилируется заново под блокировкой; с ошибками — 422 PLAN_INVALID. Запускает build (mode create, у собранной системы — change) с input {pipeline: modules, planRevision, plan}; cap = ceil((15 ₽ + бюджет custom) / 5 ₽) кредитов (D76 (9)). Сами этапы сборки по плану — сборщик v2 (B2-21). /card/approve для такой системы отвечает NO_CARD'
+      summary: 'B2-20 (grill-6 № 5): единственная точка старта сборки на конвейере модулей — утверждение плана (revision, которую видел клиент). План компилируется заново под блокировкой; с ошибками — 422 PLAN_INVALID. Запускает build (mode create, у собранной системы — change) с input {pipeline: modules, planRevision, plan}; cap = ceil((15 ₽ + бюджет custom) / 5 ₽) кредитов (D76 (9)). Этапы сборки по плану — сборщик v2 (B2-21, agents/builder.yaml#v2: тексты, дизайн, компиляция, дописывание, гейты; чекпоинт после каждого этапа). /card/approve для такой системы отвечает NO_CARD'
       requestBody:
         required: true
         content:
@@ -194,7 +194,7 @@ paths:
       operationId: startFixBuild
       x-milestone: M0
       x-roles: [editor]
-      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger'
+      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger. B2-21: у системы на конвейере модулей — повтор сборки последнего утверждённого плана сборщиком v2 с последнего чекпоинта этапа; готовые этапы не оплачиваются заново (agents/builder.yaml#v2.checkpoints)'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {}}}}}
       responses:

@@ -28,6 +28,7 @@ import * as m0025 from "../../migrations/0025_p_destructive.js";
 import * as m0031 from "../../migrations/0031_b2_org_kind.js";
 import * as m0032 from "../../migrations/0032_b2_demo_replay.js";
 import * as m0033 from "../../migrations/0033_b2_system_plans.js";
+import * as m0034 from "../../migrations/0034_b2_build_checkpoints.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -83,6 +84,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0031_b2_org_kind": m0031,
   "0032_b2_demo_replay": m0032,
   "0033_b2_system_plans": m0033,
+  "0034_b2_build_checkpoints": m0034,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

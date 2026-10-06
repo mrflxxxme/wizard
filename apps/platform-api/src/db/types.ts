@@ -115,6 +115,8 @@ export interface SystemPlansTable {
   approved_by: string | null;
   approved_at: Date | null;
   created_at: TsDef;
+  /** B2-21 (migration 0034): stage checkpoints of the build by this plan revision, by stage id. */
+  checkpoints: Json<Record<string, unknown>>;
 }
 
 export interface RevisionsTable {

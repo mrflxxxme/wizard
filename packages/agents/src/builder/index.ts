@@ -41,3 +41,45 @@ export {
   WRITE_PATH_RE,
 } from "./tools.js";
 export type * from "./types.js";
+/** Builder v2 (B2-21, builder.yaml#v2): an approved system plan in stages with checkpoints and stage budgets. */
+export {
+  brandAccent,
+  type DesignInput,
+  designInputSchema,
+  designIssues,
+  designMessages,
+  mergeDesign,
+  runDesignStage,
+} from "./v2/design.js";
+export {
+  buildBlockers,
+  CUSTOM_DEFERRED_RU,
+  deferCustom,
+  OWNER_INPUT_CHECKS,
+  runBuildV2,
+  withOwnerFields,
+} from "./v2/run.js";
+export { DEFAULT_V2_BUDGETS, remainingSec, STAGE_ETA_SEC, STAGE_LABELS } from "./v2/stages.js";
+export {
+  mergeTexts,
+  runTextsStage,
+  type TextsInput,
+  textsInputSchema,
+  textsIssues,
+  textsMessages,
+} from "./v2/texts.js";
+export {
+  type CheckpointStore,
+  type CustomStageFn,
+  type StageCheckpoint,
+  type StageMetric,
+  V2_STAGES,
+  type V2Budgets,
+  type V2FailureCode,
+  type V2GateLevel,
+  type V2Host,
+  type V2Outcome,
+  type V2Params,
+  type V2Stage,
+} from "./v2/types.js";
+export { StageBudgetError, StageWallet } from "./v2/wallet.js";
