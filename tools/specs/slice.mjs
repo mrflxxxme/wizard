@@ -45,8 +45,9 @@ function composeYaml(path) {
   return JSON.parse(r.stdout);
 }
 
+// B2 (beta v2, D76) reads the specs as of M2: rank 2.
 const msRank = (v) => {
-  const m = /^M(\d+)/.exec(String(v ?? "").trim());
+  const m = /^[MB](\d+)/.exec(String(v ?? "").trim());
   return m ? Number(m[1]) : null;
 };
 const scalarOf = (node, key) => {
