@@ -76,6 +76,11 @@ export interface RouterOptions {
   env?: Env;
   /** Default: env WIZARD_FIXTURE="<suite>/<name>" (fixture and record modes). */
   fixture?: FixtureOptions;
+  /**
+   * Fixture mode only: recorded answers cost nothing — usage records carry cost_rub 0 and no credits (the demo replay
+   * of staff orgs, B2-02; models.yaml#credits.demo_replay). Default: the recorded usage is priced (offline budgets).
+   */
+  free?: boolean;
   fetch?: typeof globalThis.fetch;
   /** Internal journal only (run_events with internal: true); never the user's SSE (L3-42). */
   onEvent?: (e: LlmEvent) => void;
@@ -164,6 +169,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
     }
     store = new FixtureStore(fixtureOpts);
   }
+  const free = opts.free === true;
+  if (free && mode !== "fixture") throw new Error(`free routing needs WIZARD_LLM_MODE=fixture, got ${mode}`);
   if (mode === "record") {
     // eval.yaml#fixtures.rules: only repository briefs are recorded.
     const allowed = fixtureOpts?.allowedBriefHashes ?? loadAllowedBriefHashes();
@@ -293,7 +300,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
     ): Promise<number> => {
       const usage = fields.usage ?? { inputTokens: 0, cachedTokens: 0, outputTokens: 0 };
       const ok = fields.status === "ok";
-      const cost = ok ? costRub(model.price, usage) : 0;
+      const cost = ok && !free ? costRub(model.price, usage) : 0;
       const milli = ok ? creditsMilli(cost, reg.rubPerCredit) : 0;
       const rec: UsageRecord = {
         id: randomUUID(),

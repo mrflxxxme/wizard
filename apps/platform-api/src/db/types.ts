@@ -43,6 +43,8 @@ export interface OrgsTable {
   pilot_edits_limit: number | null;
   /** B2-01: client | staff | eval (migration 0031); the purpose of the org's llm_calls (B2-04). */
   kind: ColumnType<OrgKind, OrgKind | undefined, OrgKind>;
+  /** B2-02: demo replay — the org's runs replay recorded model answers for free (staff orgs only; migration 0032). */
+  demo_replay: Generated<boolean>;
   created_at: TsDef;
 }
 
@@ -76,6 +78,8 @@ export interface SystemsTable {
   draft_data_purged_at: TsNull;
   /** M2-05 (F5): the owner was warned about the purge of the draft data (beyond db.yaml, impl-notes M2-05). */
   draft_purge_notice_at: TsNull;
+  /** B2-02: the recorded scenario of a system created in demo replay (tools/fixtures/demo/<name>.jsonl), else null. */
+  demo_scenario: string | null;
   last_activity_at: TsDef;
   created_by: string;
   updated_at: TsDef;

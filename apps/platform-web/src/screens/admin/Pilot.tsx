@@ -10,6 +10,7 @@ import { ApiError } from "../../api/client.js";
 import type { LlmSpend, PilotInvite, PilotOrg, PilotReadiness } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
+import { AdminDemoReplay } from "../../features/demo/AdminDemoReplay.js";
 import { AdminLimits } from "../../features/pricing/AdminLimits.js";
 import { ru } from "../../i18n/ru.js";
 import f from "../abuse/Abuse.module.css";
@@ -78,6 +79,7 @@ export function PilotSection({ onMfaRequired }: { onMfaRequired(): void }): Reac
   return (
     <div className={st.form} data-testid="admin-pilot">
       {error && <Alert>{error}</Alert>}
+      <AdminDemoReplay onMfaRequired={onMfaRequired} />
       <Readiness value={data.readiness} onChanged={load} fail={fail} />
       <Spend value={data.spend} />
       <InviteForm onSent={load} fail={fail} />

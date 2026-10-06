@@ -26,6 +26,7 @@ import type { Config } from "../config.js";
 import type { Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
 import { claimOpsAlert, type OpsAlertFn } from "../ops/alert.js";
+import { orgDemoReplay } from "../runs/demo-replay.js";
 import { reportProviderDegraded } from "../runs/models-outage.js";
 import { DbUsageSink } from "../runs/usage.js";
 
@@ -182,6 +183,8 @@ export class AiGateway {
       .executeTakeFirst();
     if (!sys || sys.deleted_at) throw new AiGatewayError("NOT_FOUND");
     if (sys.suspended_at) throw new AiGatewayError("AI_UNAVAILABLE");
+    // B2-02: an org in demo replay spends nothing — AI actions of its systems are not called (no recordings).
+    if (await orgDemoReplay(db, sys.org_id)) throw new AiGatewayError("AI_UNAVAILABLE");
 
     // M2-15: the platform LLM cap of the month (alerts to the founder are sent by LlmMonthlyCap itself).
     try {

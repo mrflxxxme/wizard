@@ -178,6 +178,36 @@ describe("fixture provider", () => {
     ).rejects.toMatchObject({ code: "FIXTURE_MISS", details: { callType: "interview", lastMessage: "d" } });
   });
 
+  test("free (B2-02 demo replay): recorded answers cost 0 ₽ and no credits; free needs fixture mode", async () => {
+    writeFixture("demo", "free", [line("interview", "записано", ["ask"])]);
+    const sink = new MemoryUsageSink();
+    const router = createRouter({
+      mode: "fixture",
+      free: true,
+      fixture: { suite: "demo", name: "free", dir },
+      sink,
+      env: {},
+      fetch: failingFetch,
+    });
+    const r = await router.route({
+      callType: "interview",
+      messages: [{ role: "user", content: "a" }],
+      tools: [{ name: "ask", description: "", parameters: {} }],
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect(r.result.text).toBe("записано");
+    expect([r.creditsMilli, r.creditsCharged]).toEqual([0, 0]);
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]).toMatchObject({
+      mode: "fixture",
+      costRub: 0,
+      creditsMilli: 0,
+      inputTokens: 1000,
+    });
+    expect(() => createRouter({ mode: "live", free: true, sink, env: {} })).toThrow(/free routing/);
+  });
+
   test("suite=unit: by sha256 key in record order; miss → FIXTURE_MISS without network; lenient mode", async () => {
     const messages: LlmMessage[] = [{ role: "user", content: "Собери форму" }];
     const key = requestKey({

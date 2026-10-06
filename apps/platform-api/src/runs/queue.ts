@@ -55,6 +55,13 @@ import {
 import { assertTransition, canTransition, type Stage, stageAfterBuild } from "../services/stage.js";
 import type { BlobStore } from "../storage/blobs.js";
 import {
+  DEMO_REPLAY_MISS,
+  demoMissMessage,
+  demoRouter,
+  orgDemoReplay,
+  runDemoReplay,
+} from "./demo-replay.js";
+import {
   type Durable,
   type InputMessage,
   inProcessDurable,
@@ -190,7 +197,9 @@ export const LLM_RUN_KINDS: ReadonlySet<NewRun["kind"]> = new Set([
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
   // M2-15: the platform LLM cap of the month refuses new LLM runs (publish/rollback/export use no LLM).
-  if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget(r.orgId);
+  // B2-02: demo replay spends nothing, so the cap does not stop it.
+  if (billing && LLM_RUN_KINDS.has(r.kind) && !(await orgDemoReplay(t.trx, r.orgId)))
+    await billing.assertLlmBudget(r.orgId);
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
   // D70: pilot orgs — 5 builds and 20 edits in 30 days (402 BUILDS_LIMIT / EDITS_LIMIT).
@@ -299,7 +308,8 @@ interface Ctx {
 }
 
 interface Routers {
-  r?: Router;
+  /** The run's router, made once (concurrent calls share the promise). */
+  r?: Promise<Router>;
   /** Internal events (model_switched) of the current call; awaited before the call's step ends. */
   pending: Promise<unknown>[];
   /** Replay of a fixture call: usage and events are not written again. */
@@ -1079,31 +1089,39 @@ export class RunEngine {
     };
   }
 
-  #router(x: Ctx, routers: Routers): Router {
-    if (!routers.r) {
-      const sink = new DbUsageSink(this.#db);
-      const variant = x.run.mode === "point_edit" ? modeFixture(process.env, "point_edit") : undefined;
-      const opts: RouterOptions = {
-        ...(variant ? { fixture: variant } : {}),
-        registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
-        sink: { write: (rec) => (routers.mute ? undefined : sink.write(rec)) },
-        circuit: this.#circuit,
-        onEvent: (e) => {
-          if (routers.mute) return;
-          const { type, ...payload } = e;
-          routers.pending.push(this.#emit(x, type, payload).catch((err) => this.#log("model_switched", err)));
-        },
-        // D76: an empty balance or an opened breaker alerts the founder once (the breaker is shared by all runs).
-        onProviderDegraded: (event) => {
-          if (routers.mute) return;
-          reportProviderDegraded({ db: this.#db, event, alert: this.#d.publish?.alert }).catch((err) =>
-            this.#log("provider_degraded alert", err),
-          );
-        },
-      };
-      routers.r = (this.#d.createRouter ?? createRouter)(opts);
-    }
+  #router(x: Ctx, routers: Routers): Promise<Router> {
+    routers.r ??= this.#makeRouter(x, routers);
     return routers.r;
+  }
+
+  async #makeRouter(x: Ctx, routers: Routers): Promise<Router> {
+    const sink = new DbUsageSink(this.#db);
+    // B2-02: a staff org in demo replay — the system's recorded scenario, free, never live. Read when the run's router
+    // is made (not a checkpoint: the step sequence of in-flight workflows stays as it was).
+    const demo = await runDemoReplay(this.#db, x.run);
+    if (demo && !demo.fixture) throw new RunFailure(DEMO_REPLAY_MISS, demoMissMessage());
+    const variant = x.run.mode === "point_edit" ? modeFixture(process.env, "point_edit") : undefined;
+    const opts: RouterOptions = {
+      ...(demo?.fixture ? { mode: "fixture" as const, fixture: demo.fixture, free: true } : {}),
+      ...(!demo && variant ? { fixture: variant } : {}),
+      registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),
+      sink: { write: (rec) => (routers.mute ? undefined : sink.write(rec)) },
+      circuit: this.#circuit,
+      onEvent: (e) => {
+        if (routers.mute) return;
+        const { type, ...payload } = e;
+        routers.pending.push(this.#emit(x, type, payload).catch((err) => this.#log("model_switched", err)));
+      },
+      // D76: an empty balance or an opened breaker alerts the founder once (the breaker is shared by all runs).
+      onProviderDegraded: (event) => {
+        if (routers.mute) return;
+        reportProviderDegraded({ db: this.#db, event, alert: this.#d.publish?.alert }).catch((err) =>
+          this.#log("provider_degraded alert", err),
+        );
+      },
+    };
+    const router = (this.#d.createRouter ?? createRouter)(opts);
+    return demo ? demoRouter(router) : router;
   }
 
   /**
@@ -1270,7 +1288,7 @@ export class RunEngine {
     const { D } = x;
     await this.#ensureActive(x);
     await this.#budgetGate(x, input.upperBoundCredits ?? 0, input.step ?? input.callType, needsInput);
-    const router = this.#router(x, routers);
+    const router = await this.#router(x, routers);
     // The LLM step: its output is kept by reference (L3-09); usage and credits are written with it.
     const out = await D.step(
       `llm:${input.step ?? input.callType}`,
@@ -1306,7 +1324,7 @@ export class RunEngine {
     const first = inputs[0] as HostRouteInput;
     const ub = inputs.reduce((s, i) => s + (i.upperBoundCredits ?? 0), 0);
     await this.#budgetGate(x, ub, first.step ?? first.callType, needsInput);
-    const router = this.#router(x, routers);
+    const router = await this.#router(x, routers);
     const out = await D.step(
       `llm_batch:${inputs.map((i) => i.step ?? i.callType).join(",")}`,
       async () => {
