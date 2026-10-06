@@ -1,0 +1,862 @@
+# Модули и план системы беты v2 (B2-10, D76). Нормативно для packages/appspec/src/modules (zod-схемы и проверка плана),
+# движка модулей (B2-11), модулей (B2-13…B2-18), интервью и экрана «План системы» (B2-20), сборщика v2 (B2-21),
+# дописывания (B2-23), гейтов v2 (B2-24), дизайн-агента (B2-37).
+# Приоритет: product.yaml > architecture.yaml > appspec/appspec.schema.json > этот файл > agents/builder.yaml#harness.template.
+# Источник решений: product.yaml#decisions.D76_beta_v2, docs/reviews/grill-6.md, docs/plans/2026-10-06-beta-v2.md (раздел 2).
+version: 1
+status: draft          # формат утверждён задачей B2-10; каталог — черновик, модули становятся ready в B2-13…B2-18
+tasks: [B2-10, B2-11, B2-13, B2-14, B2-15, B2-16, B2-17, B2-18, B2-20, B2-21, B2-23, B2-24, B2-35, B2-37]
+
+code:
+  schemas: "packages/appspec/src/modules/ — goals.ts (словарь целей), manifest.ts (ModuleManifest, параметры, условия, validateModuleCatalog), plan.ts (SystemPlan, CUSTOM_LIMITS, validateSystemPlan), sections.ts (библиотека секций), errors.ts (PlanError)"
+  public_api: "@wizard/appspec: moduleManifestSchema, systemPlanSchema, validateModuleCatalog, validateSystemPlan, paramsSchema, resolveParams, evalCondition, GOALS, SECTION_CATALOG, CUSTOM_LIMITS"
+  catalog_test: "packages/appspec/test/modules.test.ts читает #catalog этого файла и проверяет его validateModuleCatalog: каталог в спеке и zod-схемы не расходятся"
+  module_code: "Код модулей (функции, экраны, compile.ts, тесты) — в репозитории, место решает B2-11 (предложение: packages/modules/<id>/ с manifest.ts, регистрация в architecture.yaml#monorepo). Манифест в коде — источник истины для движка; запись в #catalog — его краткая копия для планировщика и экрана плана, сверяется тестом"
+
+overview: >
+  Система собирается из модулей фронт+бэк. Модуль — готовый проверенный код в репозитории: манифест, фрагменты спеки,
+  функции runtime, экраны на ui-kit, метрики панели цели, сценарии целей и тесты CI на матрице параметров. ИИ код модулей
+  не пишет: он заполняет план системы (SystemPlan) — данные по схеме. План проверяется validateSystemPlan до показа клиенту,
+  клиент утверждает его на экране «План системы», затем движок (B2-11) детерминированно компилирует план в AppSpec и код.
+  Чего нет в модулях — небольшое дописывание кодом в жёстком лимите (custom) или честное «не входит» с заменой (outOfScope).
+
+# ---------------------------------------------------------------- Цели бизнеса (закрытый словарь)
+goals:
+  rule: "Закрытый словарь (packages/appspec/src/modules/goals.ts). План выбирает 1–3 цели и сохраняет формулировку клиента. Новая цель — сначала здесь, затем в коде, затем модуль, который её закрывает"
+  items:
+    - { id: attract,           label: "Привлечь посетителя и объяснить предложение" }
+    - { id: leads,             label: "Получать заявки и не терять их" }
+    - { id: show_offer,        label: "Показать услуги и цены" }
+    - { id: fill_schedule,     label: "Заполнить расписание" }
+    - { id: reduce_no_shows,   label: "Меньше неявок и отмен в последний момент" }
+    - { id: stay_informed,     label: "Владелец и сотрудники сразу в курсе" }
+    - { id: client_history,    label: "История клиента под рукой" }
+    - { id: deal_pipeline,     label: "Порядок в сделках" }
+    - { id: team_work,         label: "Разделить работу между сотрудниками" }
+    - { id: visibility,        label: "Видеть результат в цифрах" }
+    - { id: self_service,      label: "Клиент сам видит свои записи и заявки" }
+    - { id: retention,         label: "Удерживать клиентов, продавать пакеты" }
+    - { id: resource_tracking, label: "Учёт выдачи: кто что взял и когда вернёт" }
+
+# ---------------------------------------------------------------- Манифест модуля
+manifest:
+  schema: "moduleManifestSchema (zod, strict: лишние ключи — ошибка)"
+  fields:
+    id: "ident ^[a-z][a-z0-9_]{0,39}$, уникален в каталоге; это же имя в SystemPlan.modules[].id"
+    version: "целое ≥ 1; растёт при несовместимом изменении параметров (миграция планов — B2-11)"
+    name: "название по-русски для клиента, ≤ 80"
+    summary: "одна-две фразы, что получает клиент, ≤ 300"
+    status: "draft — только описание в каталоге; ready — есть код, фрагменты, экраны, сценарии целей и матрица CI (refine схемы). Компилятор принимает только ready (validateSystemPlan с requireReady)"
+    order: "0…999 — вторичный ключ порядка применения (#compile.order)"
+    origin: "{kind: d75_template | v1_code | new, ref?} — откуда переносится код: шаблон D75 (packages/agents/src/builder/template.ts, assets/capabilities/*.md), код v1 (ui-kit, runtime) или новый"
+    goals: "цели из #goals, которые модуль закрывает (≥ 1). Метрики и сценарии модуля — только по этим целям"
+    params: "≤ 24 параметров, схема — #manifest.params. Значения по умолчанию обязаны проходить схему своего параметра"
+    requires: "обязательные связи {module, reason, when?, expectParams?}: если when истинно для параметров модуля, модуль module обязан быть в плане, а его параметры (с умолчаниями) — равны expectParams. Граф requires ацикличен"
+    links: "необязательные связи {module, effect, fragments?}: применяются, только если оба модуля в плане (например, запись получает ссылку на карточку клиента)"
+    conflicts: "{module, reason} — несовместимые пары; план с обоими модулями отклоняется"
+    provides: "{entities?, roles?, routes?} — имена, которыми модуль владеет в AppSpec. Уникальны в каталоге (validateModuleCatalog); так конфликты имён между модулями исключены до сборки"
+    hook: "true — у модуля есть compile.ts: чистая детерминированная функция (params, план) → фрагменты для того, что не выражается подстановкой (например, роли из списка)"
+    fragments: "фрагменты AppSpec: entities, fields, indexes, roles, permissions, workflows, integrations, acceptance — элементы {when?, value} (fields и indexes — {when?, entity, value})"
+    functions: "функции runtime {name, kind, file functions/**.ts, public?, roles?, when?, purpose}; код — в модуле, не от ИИ"
+    screens: "экраны {id, audience: public|cabinet|visitor, route, title, roles, components (экспорты @wizard/ui-kit), when?, nav?}"
+    metrics: "метрики панели цели — #manifest.metrics"
+    goalScenarios: "сценарии целей для e2e в браузере — #manifest.goal_scenarios"
+    tests: "{matrix: [{name, params, withModules?}] ≤ 32, gates: [G0, G1, G2?]} — матрица параметров CI"
+  params:
+    types:
+      bool: "да/нет; default"
+      int: "целое, min/max; default"
+      enum: "один вариант из options {value: ident, label}; default"
+      enum_list: "несколько вариантов из options без повторов, minItems/maxItems"
+      string: "текст для клиента (подписи сущностей, названия), maxLength ≤ 600 (по умолчанию 120)"
+      string_list: "список текстов без повторов, maxItems ≤ 20, maxLength ≤ 200"
+      time: "время ЧЧ:ММ"
+      fields: "дополнительные поля сущности модуля {name, label, type, required?, options?} ≤ 8; типы — EXTRA_FIELD_TYPES (без ref, file, json, qr_token). Так план добавляет «сущности и поля» без кода"
+    rule: "required без default — план обязан задать значение. Остальные необязательны: компилятор берёт default (resolveParams)"
+  conditions: "when: {param?, equals?, includes?, module?} — параметр истинен (непустой список, ненулевое число), равен одному из equals, список содержит includes; module — модуль есть в плане. Все заданные ключи должны выполняться (evalCondition)"
+  substitutions: >
+    Внутри value строка ровно "{{param}}" заменяется типизированным значением параметра; "…{{param}}…" — подстановка в текст.
+    Роли во фрагментах и экранах — символьные: $public (роль guest, access public), $owner (роль owner, isAdmin), $staff (все роли
+    модуля staff; без него — owner), $visitor (роль visitor модуля visitor_cabinet). Компилятор раскрывает их в имена ролей.
+  metrics:
+    fields: "{id, label, goal (из goals модуля), unit: count|percent|rub|minutes|days, better: up|down, period?: day|week|month, compute, when?, description?}"
+    compute:
+      count: "{entity, dateField, where?} — число строк за период"
+      ratio: "{entity, dateField, numerator: where, denominator?: where} — доля в процентах; без denominator — от всех строк периода"
+      sum: "{entity, field, dateField, where?} — сумма поля (money — в рублях)"
+      avg: "{entity, field, dateField, where?} — среднее"
+      repeat_share: "{entity, by, dateField} — доля значений by (например, клиентов), встречающихся в периоде ≥ 2 раз"
+      function: "{name} — query модуля для того, что не выражается данными (например, загрузка расписания)"
+    where: "{поле: значение | [значения]} — равенство или принадлежность; поля — имена после компиляции (канонические имена модуля)"
+    panel: "Панель цели (B2-17, B2-27) показывает метрики модулей плана, чьи goal входят в цели плана; reports без своих метрик агрегирует чужие"
+  goal_scenarios:
+    fields: "{id GS-<module>-<n>, goal, title ≤ 140, when?, withModules?, steps: [{actor: visitor|client|owner|staff|system, text}] 1…15, expect: [{kind, text}] 1…8}"
+    expect_kinds: "page_text (текст на экране), record (запись создана/видна), status (статус сменился), outbox_email, outbox_telegram (сообщение в outbox, Telegram без ПДн), denied (действие недоступно), metric (метрика панели изменилась)"
+    run: "B2-24 связывает шаги с Playwright: 390 и 1280 px, светлая и тёмная темы, данные seed без моделей. Сценарий с withModules запускается в строке матрицы, где эти модули есть; с when — где условие истинно"
+    gate: "Сценарии целей модулей плана — блокеры готовности системы (D76 (6))"
+  tests: "Каждая строка matrix компилируется (с модулями withModules и минимальным планом), проходит G0 и G1 без моделей; ready-модуль без матрицы не принимается"
+
+# ---------------------------------------------------------------- План системы (единственное, что пишет ИИ)
+system_plan:
+  schema: "systemPlanSchema (zod, strict)"
+  fields:
+    version: "1"
+    niche: "ниша по-русски, 2…80 («стоматологическая клиника»)"
+    goals: "1…3 цели {id из #goals, statement — формулировка клиента 3…200, без ПДн}; больше трёх — TOO_MANY_GOALS"
+    modules: "1…16 модулей каталога {id, params?, goals? — какие цели плана этот модуль закрывает (для экрана плана), note?}"
+    landing: "{sections: [{type, variant, content, anchor?}] 1…20} — только вместе с модулем landing (#sections)"
+    design: "{direction: {mood: 1…5 слов, rhythm?: airy|balanced|dense, notes?}, theme — id пресета из каталога тем, accent #RRGGBB, fontPair: {heading, body} из каталога шрифтов D64, photoStyle — стиль фото для стока 3…160}. Заполняет дизайн-агент (B2-37); здесь только формат"
+    outOfScope: "≤ 20 {request — что клиент просил, replacement — ближайшая замена из модулей или честное «пока нет», category: payments|events|integration|mobile_app|ai|marketplace|custom_logic|other, module? — модуль-замена}. Каждая запись уходит в «Запросы на развитие» (фабрика модулей, B2-26)"
+    custom: "дописывание кодом {id, title, kind: screen|function, description 10…600, budgetRub, module?, goal?}"
+  custom_limits:
+    screens: 2
+    functions: 3
+    budget_rub: 20
+    rounds: 2
+    rule: "Лимиты D76 (2) жёсткие и проверяются схемой (CUSTOM_LIMIT_EXCEEDED). Дописывание не создаёт сущности и роли: только экраны и функции над сущностями модулей. Неудача после 2 раундов — система выходит без этой части, запись переходит в outOfScope и «Запросы на развитие» (B2-23)"
+  privacy: "План идёт к модели T1 и на экран клиента: без ПДн (имён, телефонов, адресов людей). Формулировки целей проходят packages/pii scrub (AGENTS.md)"
+
+# ---------------------------------------------------------------- Библиотека секций лендинга
+sections:
+  rule: "Типы, варианты и ключи содержимого — SECTION_CATALOG (packages/appspec/src/modules/sections.ts). Черновик: B2-35 делает компоненты (15–20 типов × 3–5 вариантов) и может добавить варианты; ready — варианты, которые уже есть в ui-kit blocks"
+  content: "content — {ключ: строка ≤ 600 | список ≤ 12 строк или объектов {ключ: строка}}. Ключи — только required и optional типа; required обязательны"
+  order: "header — первой, footer — последней, header/hero/booking/contacts/footer — не больше одной; hero обязателен"
+  needs_module: "services → catalog; pricing → catalog или packages; booking → booking; lead_form → leads"
+  texts: "Тексты секций — только из брифа и ответов интервью. Отзывы (testimonials), цифры (stats), адреса и цены, которых нет в брифе, не придумываются: секция не ставится или содержит «Пример: …»"
+  types:
+    - { type: header,       variants: [bar, centered, transparent] }
+    - { type: hero,         variants: [split, centered, cover, minimal, collage] }
+    - { type: features,     variants: [grid, cards, alternating, icons] }
+    - { type: steps,        variants: [numbered, timeline, cards] }
+    - { type: services,     variants: [list, cards, table, tabs] }
+    - { type: pricing,      variants: [cards, table, compact] }
+    - { type: booking,      variants: [card, split, inline] }
+    - { type: lead_form,    variants: [card, split, inline] }
+    - { type: gallery,      variants: [grid, masonry, carousel] }
+    - { type: team,         variants: [cards, row, list] }
+    - { type: testimonials, variants: [cards, quote, carousel] }
+    - { type: stats,        variants: [row, cards, band] }
+    - { type: about,        variants: [split, centered, story] }
+    - { type: faq,          variants: [accordion, columns, split] }
+    - { type: cta,          variants: [band, card, split] }
+    - { type: contacts,     variants: [card, split, columns] }
+    - { type: hours,        variants: [table, cards, inline] }
+    - { type: logos,        variants: [row, grid, marquee] }
+    - { type: text,         variants: [plain, two_columns, quote] }
+    - { type: footer,       variants: [simple, columns, minimal] }
+
+# ---------------------------------------------------------------- Компиляция (B2-11, без моделей)
+compile:
+  input: "SystemPlan, прошедший validateSystemPlan(plan, catalog, {requireReady: true}), и каталог ready-модулей"
+  output: "AppSpec (validateSpec без ошибок) + файлы ui/** и functions/** + список сценариев целей и метрик плана"
+  determinism: >
+    MUST: один и тот же план и одна и та же версия каталога дают байт-в-байт одинаковые AppSpec и файлы. Нет Date.now, случайных
+    чисел, сетевых вызовов и моделей; обход объектов — по отсортированным ключам; массивы — в порядке #compile.order; JSON —
+    с фиксированным порядком ключей. Тест детерминизма — B2-11.
+  order:
+    - "1. База: app (имя из плана, locale ru), роли guest (public) и owner (login, isAdmin), compliance-заготовка"
+    - "2. Модули — топологическая сортировка по requires (зависимость раньше), при равенстве — по order манифеста, затем по id"
+    - "3. Для каждого модуля: resolveParams → фрагменты с истинным when → подстановки → hook (compile.ts) → добавление в спеку"
+    - "4. Связи links — после всех модулей, в том же порядке модулей-источников"
+    - "5. Права: символьные роли раскрываются, права одной роли на сущность объединяются (ops — объединение, rowFilter — самый узкий)"
+    - "6. Лендинг: секции в порядке плана → страница «/» на компонентах секций (B2-35)"
+    - "7. Дизайн: design → AppSpec.theme (preset, accent, font, headingFont); направление и стиль фото — дизайн-агенту (B2-37, B2-38)"
+    - "8. Экраны и функции модулей с истинным when; затем заготовки custom (их пишет дописывание B2-23)"
+    - "9. validateSpec; ошибка здесь — баг модуля (CI матрицы должен был её поймать), сборка останавливается с MODULE_BUG"
+  names:
+    owned: "Сущности, роли и маршруты модуля — канонические имена из provides; уникальность в каталоге проверяет validateModuleCatalog, поэтому два модуля не создают одно имя"
+    labels: "Подписи для клиента (Услуга/Процедура, Клиент/Пациент) — параметры string; имена в спеке не меняются, так метрики и сценарии стабильны"
+    extra_fields: "Поля из параметра fields добавляются к основной сущности модуля; совпадение с именем поля модуля, системным или зарезервированным (reserved.ts) — отказ до сборки с причиной по-русски"
+    links: "Поля, которые добавляют links (например, booking.client), объявлены в манифесте и не могут совпасть с extra_fields"
+    custom: "Дописывание не создаёт сущности; файлы custom — ui/custom/** и functions/custom/**, имена с префиксом custom_"
+  incompatibility: >
+    Компилятор отказывает до сборки, без вызова моделей, с причиной по-русски (как validateSystemPlan): неизвестный модуль,
+    параметры не по схеме, нет обязательной связи или её параметры не те, пара из conflicts, конфликт имён полей, модуль не ready.
+    Сборщик (B2-21) возвращает план планировщику с этими ошибками (≤ 2 исправлений), затем — клиенту на экран плана.
+  links_rules: "Связь применяется только при обоих модулях в плане; обязательные связи — через requires; цикл requires — ошибка каталога; связь не меняет параметры другого модуля"
+
+# ---------------------------------------------------------------- Проверка плана
+validation:
+  function: "validateSystemPlan(plan, catalog, {requireReady?}) → {ok: true, plan, params (с умолчаниями)} | {ok: false, errors: PlanError[]}"
+  error_shape: "{code, path (JSON Pointer в план), message_ru, allowed?, hint?} — как OpsError"
+  codes:
+    SCHEMA_INVALID: "план не по схеме"
+    TOO_MANY_GOALS: "больше трёх целей"
+    DUPLICATE_GOAL: "цель указана дважды"
+    UNKNOWN_MODULE: "модуля нет в каталоге (в modules, outOfScope.module) или в плане (custom.module)"
+    DUPLICATE_MODULE: "модуль указан дважды"
+    PARAMS_INVALID: "параметры модуля не по его схеме"
+    MODULE_NOT_READY: "модуль draft при requireReady"
+    MISSING_REQUIRED_MODULE: "нет обязательной связи (requires)"
+    REQUIRED_PARAMS_MISMATCH: "связанный модуль есть, но его параметры не те, что нужны (expectParams)"
+    MODULE_CONFLICT: "пара модулей из conflicts"
+    GOAL_NOT_COVERED: "цель плана не закрыта ни одним модулем, или модуль не закрывает приписанную ему цель"
+    GOAL_NOT_IN_PLAN: "модуль или доработка ссылается на цель, которой нет в плане"
+    CUSTOM_LIMIT_EXCEEDED: "больше 2 экранов, 3 функций или 20 ₽ дописывания"
+    LANDING_MISMATCH: "секции без модуля landing или модуль без секций"
+    UNKNOWN_SECTION: "типа секции нет в библиотеке"
+    UNKNOWN_VARIANT: "варианта раскладки нет у типа"
+    SECTION_CONTENT_INVALID: "лишний или незаполненный ключ содержимого"
+    SECTION_ORDER: "нарушен порядок или единственность секции"
+    SECTION_REQUIRED: "нет первого экрана (hero)"
+    SECTION_NEEDS_MODULE: "секции нужен модуль, которого нет в плане"
+    UNKNOWN_THEME: "темы нет в каталоге (по умолчанию THEME_PRESETS; B2-36 расширяет)"
+    UNKNOWN_FONT: "шрифта нет в каталоге D64"
+    CATALOG_INVALID: "ошибка каталога модулей (validateModuleCatalog)"
+
+# ---------------------------------------------------------------- Правила для ИИ (планировщик, B2-20/B2-21)
+ai_rules:
+  does:
+    - "Выбирает 1–3 цели из словаря и сохраняет формулировку клиента"
+    - "Выбирает модули только из каталога и задаёт их параметры по схеме (подписи, поля, расписание, этапы, каналы)"
+    - "Добавляет обязательные связи (requires) сам; ошибка MISSING_REQUIRED_MODULE — исправить план, а не спорить"
+    - "Подбирает секции лендинга и их варианты, пишет тексты секций только из брифа и интервью"
+    - "Заполняет «не входит + замена» для всего, что клиент просил и чего нет в модулях"
+    - "Небольшое недостающее — custom в пределах лимита (≤ 2 экрана, ≤ 3 функции, ≤ 20 ₽), с описанием, что сделать"
+  does_not:
+    - "Не пишет код модулей, фрагменты спеки, экраны и функции модулей"
+    - "Не придумывает модули, цели, типы секций, варианты, темы и шрифты вне каталогов"
+    - "Не превышает лимиты custom и не дробит большую доработку на несколько ради лимита; большое — в outOfScope"
+    - "Не придумывает факты: цены, адреса, отзывы, цифры — только из брифа, иначе секция не ставится или «Пример: …»"
+    - "Не кладёт ПДн в план"
+  tool: "Ответ планировщика — вызов submit_plan с SystemPlan (B2-20); проверка validateSystemPlan, при ошибке — повтор с текстом ошибок (≤ 2, models.yaml#call_policy)"
+
+# ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
+catalog:
+  - id: landing
+    version: 1
+    name: "Секции лендинга"
+    summary: "Публичная страница из библиотеки секций с вариантами раскладки под дизайн-направление ниши"
+    status: draft
+    order: 10
+    origin: { kind: v1_code, ref: "ui-kit/src/components/blocks/*, landingPage в builder/template.ts (D75 site)" }
+    goals: [attract]
+    params:
+      - { name: sticky_header, label: "Закреплённая шапка", type: bool, default: true }
+      - { name: anchor_nav, label: "Меню по секциям страницы", type: bool, default: true }
+    provides: { routes: ["/"] }
+    metrics: []
+    goalScenarios:
+      - id: GS-landing-1
+        goal: attract
+        title: "Посетитель с телефона понимает предложение и находит главное действие"
+        steps:
+          - { actor: visitor, text: "Открывает главную страницу на экране 390 px" }
+          - { actor: visitor, text: "Нажимает главную кнопку первого экрана" }
+        expect:
+          - { kind: page_text, text: "Заголовок первого экрана из плана виден без прокрутки" }
+          - { kind: page_text, text: "Кнопка ведёт к форме заявки или записи на этой же странице" }
+
+  - id: catalog
+    version: 1
+    name: "Каталог и прайс"
+    summary: "Услуги или товары с ценами, длительностью и фото; витрина на сайте и правка в кабинете"
+    status: draft
+    order: 20
+    origin: { kind: d75_template, ref: "витрины DataTable шаблона site; ui-kit Catalog, ItemCard" }
+    goals: [show_offer]
+    params:
+      - { name: item_label, label: "Как называть позицию", type: string, maxLength: 40, default: "Услуга" }
+      - { name: show_prices, label: "Показывать цены", type: bool, default: true }
+      - { name: with_duration, label: "Длительность услуги", type: bool, default: false }
+      - { name: with_categories, label: "Разделы каталога", type: bool, default: false }
+      - { name: with_photos, label: "Фото позиций", type: bool, default: true }
+      - { name: extra_fields, label: "Дополнительные поля позиции", type: fields, maxItems: 6 }
+    provides: { entities: [service, service_category] }
+    metrics:
+      - id: services_active
+        label: "Позиций на витрине"
+        goal: show_offer
+        unit: count
+        better: up
+        compute: { kind: count, entity: service, dateField: created_at, where: { active: true } }
+    goalScenarios:
+      - id: GS-catalog-1
+        goal: show_offer
+        title: "Владелец добавляет услугу, посетитель видит её с ценой"
+        steps:
+          - { actor: owner, text: "В кабинете создаёт позицию с названием и ценой" }
+          - { actor: visitor, text: "Открывает раздел услуг на сайте" }
+        expect:
+          - { kind: page_text, text: "Позиция видна на витрине с ценой в рублях" }
+      - id: GS-catalog-2
+        goal: show_offer
+        title: "Скрытая позиция не видна посетителю"
+        steps:
+          - { actor: owner, text: "Снимает позицию с витрины" }
+          - { actor: visitor, text: "Открывает раздел услуг" }
+        expect:
+          - { kind: page_text, text: "Скрытой позиции нет в списке" }
+
+  - id: leads
+    version: 1
+    name: "Заявки"
+    summary: "Форма заявки с согласием на сайте, список и статусы заявок у владельца, уведомление о новой заявке"
+    status: draft
+    order: 30
+    origin: { kind: d75_template, ref: "шаблон site (LeadForm, кабинет DataTable/RecordCard), capabilities/site.md" }
+    goals: [leads]
+    params:
+      - name: form_fields
+        label: "Поля формы"
+        type: enum_list
+        options:
+          - { value: name, label: "Имя" }
+          - { value: phone, label: "Телефон" }
+          - { value: email, label: "Почта" }
+          - { value: comment, label: "Комментарий" }
+          - { value: preferred_time, label: "Удобное время" }
+        minItems: 1
+        default: [name, phone, comment]
+      - name: contact
+        label: "Обязательный контакт"
+        type: enum
+        options:
+          - { value: phone, label: "Телефон" }
+          - { value: email, label: "Почта" }
+          - { value: any, label: "Телефон или почта" }
+        default: any
+      - { name: with_service, label: "Выбор услуги в форме", type: bool, default: false }
+      - { name: extra_fields, label: "Дополнительные поля заявки", type: fields, maxItems: 5 }
+      - { name: retention_days, label: "Срок хранения заявок, дней", type: int, min: 30, max: 1095, default: 365 }
+    requires:
+      - { module: notify, reason: "владелец узнаёт о новой заявке письмом или в Telegram" }
+      - { module: catalog, reason: "услуга в форме выбирается из каталога", when: { param: with_service } }
+    links:
+      - { module: client_card, effect: "заявка создаёт или находит клиента; заявки видны в истории клиента" }
+      - { module: deals, effect: "из заявки одной кнопкой создаётся сделка" }
+    provides: { entities: [lead] }
+    metrics:
+      - id: leads_count
+        label: "Новых заявок"
+        goal: leads
+        unit: count
+        better: up
+        compute: { kind: count, entity: lead, dateField: created_at }
+      - id: leads_handled
+        label: "Заявок в работе или закрыто"
+        goal: leads
+        unit: percent
+        better: up
+        compute: { kind: ratio, entity: lead, dateField: created_at, numerator: { status: [in_work, done] } }
+    goalScenarios:
+      - id: GS-leads-1
+        goal: leads
+        title: "Посетитель оставил заявку, владелец увидел её и получил письмо"
+        withModules: [notify]
+        steps:
+          - { actor: visitor, text: "Заполняет форму заявки, отмечает согласие и отправляет" }
+          - { actor: owner, text: "Открывает список заявок в кабинете" }
+        expect:
+          - { kind: page_text, text: "Посетитель видит «Заявка отправлена»" }
+          - { kind: record, text: "Заявка в списке владельца со статусом «новая»" }
+          - { kind: outbox_email, text: "Владельцу ушло письмо о новой заявке" }
+      - id: GS-leads-2
+        goal: leads
+        title: "Посетитель не может читать чужие заявки"
+        steps:
+          - { actor: visitor, text: "Открывает адрес списка заявок без входа" }
+        expect:
+          - { kind: denied, text: "Список заявок недоступен без входа" }
+
+  - id: booking
+    version: 1
+    name: "Запись по слотам"
+    summary: "Запись на свободное время с подтверждением, отменой и переносом по ссылке; расписание у персонала"
+    status: draft
+    order: 40
+    origin: { kind: d75_template, ref: "шаблон booking (уникальный индекс времени, LeadForm), capabilities/booking.md" }
+    goals: [fill_schedule, reduce_no_shows]
+    params:
+      - { name: slot_minutes, label: "Шаг расписания, минут", type: int, min: 15, max: 240, default: 60 }
+      - name: workdays
+        label: "Рабочие дни"
+        type: enum_list
+        options:
+          - { value: mon, label: "Пн" }
+          - { value: tue, label: "Вт" }
+          - { value: wed, label: "Ср" }
+          - { value: thu, label: "Чт" }
+          - { value: fri, label: "Пт" }
+          - { value: sat, label: "Сб" }
+          - { value: sun, label: "Вс" }
+        minItems: 1
+        default: [mon, tue, wed, thu, fri]
+      - { name: day_start, label: "Начало дня", type: time, default: "09:00" }
+      - { name: day_end, label: "Конец дня", type: time, default: "18:00" }
+      - { name: with_specialists, label: "Несколько специалистов", type: bool, default: false }
+      - { name: specialist_label, label: "Как называть специалиста", type: string, maxLength: 40, default: "Специалист" }
+      - { name: capacity, label: "Мест на одно время", type: int, min: 1, max: 50, default: 1 }
+      - name: confirm
+        label: "Подтверждение записи"
+        type: enum
+        options:
+          - { value: auto, label: "Сразу" }
+          - { value: manual, label: "Сотрудником" }
+        default: auto
+      - { name: cancel_by_link, label: "Отмена по ссылке из письма", type: bool, default: true }
+      - { name: reschedule_by_link, label: "Перенос по ссылке из письма", type: bool, default: true }
+      - { name: cancel_until_hours, label: "Отмена не позже чем за, часов", type: int, min: 0, max: 72, default: 2 }
+    requires:
+      - { module: catalog, reason: "запись идёт на услугу с длительностью", expectParams: { with_duration: true } }
+      - { module: notify, reason: "посетитель получает подтверждение и ссылку отмены, владелец — уведомление" }
+    links:
+      - { module: client_card, effect: "запись ссылается на клиента (поле client); визиты видны в истории клиента" }
+      - { module: staff, effect: "специалисты — сотрудники со входом; каждый видит своё расписание" }
+      - { module: visitor_cabinet, effect: "посетитель видит, отменяет и переносит свои записи в кабинете" }
+    provides: { entities: [booking, specialist], routes: ["/booking"] }
+    functions:
+      - { name: freeSlots, kind: query, file: functions/booking/freeSlots.ts, public: true, purpose: "свободное время по услуге, дню и специалисту" }
+      - { name: bookSlot, kind: mutation, file: functions/booking/bookSlot.ts, public: true, purpose: "запись на время с проверкой занятости и мест" }
+      - { name: cancelByToken, kind: mutation, file: functions/booking/cancelByToken.ts, public: true, when: { param: cancel_by_link }, purpose: "отмена по неугадываемой ссылке из письма" }
+      - { name: rescheduleByToken, kind: mutation, file: functions/booking/rescheduleByToken.ts, public: true, when: { param: reschedule_by_link }, purpose: "перенос по ссылке на свободное время" }
+    metrics:
+      - id: bookings_count
+        label: "Записей"
+        goal: fill_schedule
+        unit: count
+        better: up
+        compute: { kind: count, entity: booking, dateField: starts_at, where: { status: [confirmed, done] } }
+      - id: schedule_load
+        label: "Загрузка расписания"
+        goal: fill_schedule
+        unit: percent
+        better: up
+        compute: { kind: function, name: scheduleLoad }
+      - id: no_show_share
+        label: "Доля неявок"
+        goal: reduce_no_shows
+        unit: percent
+        better: down
+        compute: { kind: ratio, entity: booking, dateField: starts_at, numerator: { status: no_show }, denominator: { status: [done, no_show] } }
+    goalScenarios:
+      - id: GS-booking-1
+        goal: fill_schedule
+        title: "Посетитель записался на свободное время, владелец получил уведомление"
+        withModules: [notify]
+        steps:
+          - { actor: visitor, text: "Выбирает услугу, день и свободное время" }
+          - { actor: visitor, text: "Вводит имя и почту, отмечает согласие и записывается" }
+          - { actor: owner, text: "Открывает расписание на этот день" }
+        expect:
+          - { kind: page_text, text: "Посетитель видит «Вы записаны» с датой и временем" }
+          - { kind: record, text: "Запись в расписании владельца" }
+          - { kind: outbox_email, text: "Посетителю ушло подтверждение со ссылкой отмены, владельцу — уведомление" }
+      - id: GS-booking-2
+        goal: reduce_no_shows
+        title: "Отмена по ссылке освобождает время"
+        when: { param: cancel_by_link }
+        steps:
+          - { actor: visitor, text: "Открывает ссылку отмены из письма и подтверждает отмену" }
+          - { actor: visitor, text: "Снова открывает запись на тот же день" }
+        expect:
+          - { kind: status, text: "Запись в статусе «отменена»" }
+          - { kind: page_text, text: "Освободившееся время снова доступно" }
+    tests:
+      matrix:
+        - { name: "одно место, без специалистов", params: {}, withModules: [catalog, notify] }
+        - { name: "группа и специалисты", params: { capacity: 8, with_specialists: true }, withModules: [catalog, notify, staff] }
+        - { name: "подтверждение сотрудником, без ссылок", params: { confirm: manual, cancel_by_link: false, reschedule_by_link: false }, withModules: [catalog, notify] }
+      gates: [G0, G1]
+
+  - id: notify
+    version: 1
+    name: "Напоминания и уведомления"
+    summary: "Письма и сообщения в Telegram владельцу и сотрудникам, подтверждения и напоминания посетителям"
+    status: draft
+    order: 5
+    origin: { kind: v1_code, ref: "коннекторы email и telegram, шаг notify, capabilities/notify.md" }
+    goals: [stay_informed, reduce_no_shows]
+    params:
+      - name: channels
+        label: "Каналы для владельца и сотрудников"
+        type: enum_list
+        options:
+          - { value: email, label: "Почта" }
+          - { value: telegram, label: "Telegram" }
+        minItems: 1
+        default: [email]
+      - { name: notify_staff, label: "Уведомлять сотрудников", type: bool, default: false }
+      - { name: visitor_emails, label: "Письма посетителям (с согласия)", type: bool, default: true }
+      - { name: reminder_hours, label: "Напоминание посетителю за, часов", type: int, min: 0, max: 72, default: 24 }
+      - { name: second_reminder_hours, label: "Второе напоминание за, часов", type: int, min: 0, max: 12, default: 0 }
+    links:
+      - { module: booking, effect: "подтверждение, напоминания перед визитом, уведомление о новой записи и отмене" }
+      - { module: leads, effect: "уведомление владельца о новой заявке" }
+      - { module: deals, effect: "напоминание ответственному о задаче по сделке" }
+      - { module: packages, effect: "напоминание об окончании абонемента" }
+      - { module: resources, effect: "напоминание о возврате и просрочке" }
+    metrics: []
+    goalScenarios:
+      - id: GS-notify-1
+        goal: reduce_no_shows
+        title: "За сутки до визита посетителю уходит напоминание"
+        withModules: [booking]
+        when: { param: reminder_hours }
+        steps:
+          - { actor: visitor, text: "Записывается на завтра с согласием на письма" }
+          - { actor: system, text: "Время сдвигается до момента напоминания" }
+        expect:
+          - { kind: outbox_email, text: "Посетителю ушло письмо-напоминание с датой, временем и ссылкой отмены" }
+      - id: GS-notify-2
+        goal: stay_informed
+        title: "Сообщение владельцу в Telegram без персональных данных"
+        withModules: [leads]
+        when: { param: channels, includes: telegram }
+        steps:
+          - { actor: visitor, text: "Отправляет заявку с именем и телефоном" }
+        expect:
+          - { kind: outbox_telegram, text: "Владельцу ушло сообщение со ссылкой, без имени и телефона" }
+
+  - id: client_card
+    version: 1
+    name: "Клиенты с историей"
+    summary: "База клиентов с карточкой: контакты, заметки, метки и история записей, заявок, сделок и абонементов"
+    status: draft
+    order: 15
+    origin: { kind: d75_template, ref: "сущность client шаблона crm, ui-kit RecordCard, DataTable, capabilities/crm.md" }
+    goals: [client_history]
+    params:
+      - { name: client_label, label: "Как называть клиента", type: string, maxLength: 40, default: "Клиент" }
+      - name: match_by
+        label: "Узнавать клиента по"
+        type: enum
+        options:
+          - { value: phone, label: "Телефону" }
+          - { value: email, label: "Почте" }
+        default: phone
+      - { name: tags, label: "Метки клиентов", type: string_list, maxItems: 10, maxLength: 30, default: [] }
+      - { name: notes, label: "Заметки сотрудников", type: bool, default: true }
+      - { name: extra_fields, label: "Дополнительные поля клиента", type: fields, maxItems: 6 }
+      - { name: retention_days, label: "Срок хранения данных клиента, дней", type: int, min: 180, max: 3650, default: 1095 }
+    links:
+      - { module: booking, effect: "визиты клиента в карточке, клиент находится по контакту при записи" }
+      - { module: deals, effect: "сделки клиента в карточке" }
+      - { module: packages, effect: "абонементы и остаток визитов в карточке" }
+    provides: { entities: [client, client_note] }
+    metrics:
+      - id: new_clients
+        label: "Новых клиентов"
+        goal: client_history
+        unit: count
+        better: up
+        compute: { kind: count, entity: client, dateField: created_at }
+      - id: returning_clients
+        label: "Вернувшихся клиентов"
+        goal: client_history
+        unit: percent
+        better: up
+        when: { module: booking }
+        compute: { kind: repeat_share, entity: booking, by: client, dateField: starts_at }
+    goalScenarios:
+      - id: GS-client_card-1
+        goal: client_history
+        title: "Владелец открывает карточку клиента и видит все его визиты"
+        withModules: [booking, catalog, notify]
+        steps:
+          - { actor: visitor, text: "Дважды записывается с одним и тем же контактом" }
+          - { actor: owner, text: "Открывает клиента в списке клиентов" }
+        expect:
+          - { kind: record, text: "Клиент один, без дубля" }
+          - { kind: page_text, text: "В карточке клиента обе записи с датами" }
+
+  - id: deals
+    version: 1
+    name: "Воронка сделок"
+    summary: "Сделки по этапам на доске, суммы, задачи с напоминаниями, ответственные"
+    status: draft
+    order: 50
+    origin: { kind: d75_template, ref: "шаблон crm (StatusBoard, deal, task), capabilities/crm.md" }
+    goals: [deal_pipeline]
+    params:
+      - { name: deal_label, label: "Как называть сделку", type: string, maxLength: 40, default: "Сделка" }
+      - name: stages
+        label: "Этапы до результата"
+        type: string_list
+        maxItems: 8
+        maxLength: 40
+        default: ["Новая", "В работе", "Предложение"]
+        description: "Этапы «Успешно» и «Отказ» модуль добавляет сам; значения enum — stage_1…stage_N, won, lost"
+      - { name: with_amount, label: "Сумма сделки", type: bool, default: true }
+      - { name: with_tasks, label: "Задачи со сроком", type: bool, default: true }
+      - { name: assignees, label: "Ответственные сотрудники", type: bool, default: false }
+    requires:
+      - { module: staff, reason: "ответственный — сотрудник со входом", when: { param: assignees } }
+    links:
+      - { module: client_card, effect: "сделка ссылается на клиента" }
+      - { module: leads, effect: "сделка создаётся из заявки" }
+      - { module: notify, effect: "напоминание ответственному о сроке задачи" }
+    provides: { entities: [deal, deal_task] }
+    hook: true
+    metrics:
+      - id: deals_won_share
+        label: "Конверсия в успешные"
+        goal: deal_pipeline
+        unit: percent
+        better: up
+        compute: { kind: ratio, entity: deal, dateField: updated_at, numerator: { status: won }, denominator: { status: [won, lost] } }
+      - id: deals_won_amount
+        label: "Сумма успешных сделок"
+        goal: deal_pipeline
+        unit: rub
+        better: up
+        when: { param: with_amount }
+        compute: { kind: sum, entity: deal, field: amount, dateField: updated_at, where: { status: won } }
+    goalScenarios:
+      - id: GS-deals-1
+        goal: deal_pipeline
+        title: "Сделка переходит на следующий этап на доске"
+        steps:
+          - { actor: owner, text: "Создаёт сделку на первом этапе" }
+          - { actor: owner, text: "Переносит её на следующий этап" }
+        expect:
+          - { kind: status, text: "Сделка в колонке следующего этапа" }
+      - id: GS-deals-2
+        goal: deal_pipeline
+        title: "Сотрудник видит только свои сделки"
+        when: { param: assignees }
+        withModules: [staff]
+        steps:
+          - { actor: owner, text: "Назначает две сделки двум разным сотрудникам" }
+          - { actor: staff, text: "Входит и открывает доску" }
+        expect:
+          - { kind: denied, text: "Чужой сделки на доске нет" }
+
+  - id: staff
+    version: 1
+    name: "Сотрудники и роли"
+    summary: "Приглашение сотрудников, роли с правами, «видит только своё»"
+    status: draft
+    order: 8
+    origin: { kind: v1_code, ref: "роли и права AppSpec, приглашения платформы" }
+    goals: [team_work]
+    params:
+      - { name: roles, label: "Роли сотрудников", type: string_list, maxItems: 5, maxLength: 40, default: ["Сотрудник"] }
+      - { name: see_only_own, label: "Сотрудник видит только своё", type: bool, default: false }
+      - name: login
+        label: "Вход сотрудников"
+        type: enum
+        options:
+          - { value: email_otp, label: "Код на почту" }
+          - { value: phone_otp, label: "Код по телефону" }
+          - { value: telegram, label: "Telegram" }
+        default: email_otp
+    provides: { roles: [staff] }
+    hook: true
+    metrics:
+      - id: active_staff
+        label: "Сотрудников в работе"
+        goal: team_work
+        unit: count
+        better: up
+        compute: { kind: function, name: activeStaff }
+    goalScenarios:
+      - id: GS-staff-1
+        goal: team_work
+        title: "Приглашённый сотрудник входит и видит свой кабинет без настроек владельца"
+        steps:
+          - { actor: owner, text: "Приглашает сотрудника по почте" }
+          - { actor: staff, text: "Входит по коду из письма" }
+        expect:
+          - { kind: page_text, text: "Сотрудник видит рабочие разделы" }
+          - { kind: denied, text: "Раздел настроек системы недоступен" }
+
+  - id: reports
+    version: 1
+    name: "Отчёты и панель цели"
+    summary: "Панель цели с метриками модулей плана, отчёты по периодам, выгрузка CSV"
+    status: draft
+    order: 90
+    origin: { kind: v1_code, ref: "ui-kit StatsReport" }
+    goals: [visibility]
+    params:
+      - name: period
+        label: "Период по умолчанию"
+        type: enum
+        options:
+          - { value: week, label: "Неделя" }
+          - { value: month, label: "Месяц" }
+        default: month
+      - { name: export_csv, label: "Выгрузка в CSV", type: bool, default: true }
+      - name: digest
+        label: "Сводка владельцу"
+        type: enum
+        options:
+          - { value: none, label: "Нет" }
+          - { value: weekly, label: "Раз в неделю письмом" }
+        default: none
+    requires:
+      - { module: notify, reason: "сводка уходит письмом", when: { param: digest, equals: weekly } }
+    provides: { routes: ["/cabinet/goals"] }
+    metrics: []
+    goalScenarios:
+      - id: GS-reports-1
+        goal: visibility
+        title: "Владелец видит метрику по каждой цели плана"
+        steps:
+          - { actor: system, text: "В систему загружены данные seed за месяц" }
+          - { actor: owner, text: "Открывает панель цели" }
+        expect:
+          - { kind: metric, text: "По каждой цели плана есть метрика, числа совпадают с данными seed" }
+
+  - id: visitor_cabinet
+    version: 1
+    name: "Кабинет посетителя"
+    summary: "Вход посетителя по коду: свои записи, заявки и абонементы, отмена и перенос"
+    status: draft
+    order: 95
+    origin: { kind: v1_code, ref: "вход по коду runtime, ui-kit Login, CabinetLayout" }
+    goals: [self_service]
+    params:
+      - name: login
+        label: "Вход посетителя"
+        type: enum
+        options:
+          - { value: email_otp, label: "Код на почту" }
+          - { value: phone_otp, label: "Код по телефону" }
+        default: email_otp
+      - { name: show_bookings, label: "Мои записи", type: bool, default: true }
+      - { name: show_leads, label: "Мои заявки", type: bool, default: false }
+      - { name: show_packages, label: "Мои абонементы", type: bool, default: false }
+    requires:
+      - { module: booking, reason: "раздел «Мои записи» показывает записи", when: { param: show_bookings } }
+      - { module: leads, reason: "раздел «Мои заявки» показывает заявки", when: { param: show_leads } }
+      - { module: packages, reason: "раздел «Мои абонементы» показывает абонементы", when: { param: show_packages } }
+    provides: { roles: [visitor], routes: ["/me"] }
+    metrics:
+      - id: visitors_active
+        label: "Посетителей входили в кабинет"
+        goal: self_service
+        unit: count
+        better: up
+        compute: { kind: function, name: activeVisitors }
+    goalScenarios:
+      - id: GS-visitor_cabinet-1
+        goal: self_service
+        title: "Посетитель входит по коду и видит только свои записи"
+        withModules: [booking, catalog, notify]
+        when: { param: show_bookings }
+        steps:
+          - { actor: client, text: "Записывается, затем входит в кабинет по коду из письма" }
+          - { actor: client, text: "Открывает «Мои записи»" }
+        expect:
+          - { kind: record, text: "В списке его запись" }
+          - { kind: denied, text: "Записей других посетителей нет" }
+
+  - id: packages
+    version: 1
+    name: "Абонементы и пакеты"
+    summary: "Продажа пакетов визитов или периодов, списание визита, остаток и напоминание об окончании"
+    status: draft
+    order: 60
+    origin: { kind: new }
+    goals: [retention]
+    params:
+      - { name: package_label, label: "Как называть пакет", type: string, maxLength: 40, default: "Абонемент" }
+      - name: kind
+        label: "Что продаём"
+        type: enum
+        options:
+          - { value: visits, label: "Число визитов" }
+          - { value: period, label: "Срок" }
+          - { value: both, label: "Визиты на срок" }
+        default: both
+      - { name: validity_days, label: "Срок действия, дней", type: int, min: 7, max: 365, default: 30 }
+      - { name: write_off_on_booking, label: "Списывать визит при записи", type: bool, default: true }
+      - { name: freeze, label: "Заморозка", type: bool, default: false }
+      - { name: expiry_reminder_days, label: "Напомнить об окончании за, дней", type: int, min: 0, max: 14, default: 3 }
+    requires:
+      - { module: client_card, reason: "абонемент принадлежит клиенту" }
+      - { module: booking, reason: "визит списывается по записи", when: { param: write_off_on_booking } }
+      - { module: notify, reason: "напоминание об окончании абонемента", when: { param: expiry_reminder_days } }
+    provides: { entities: [package_plan, client_package, package_usage] }
+    functions:
+      - { name: writeOffVisit, kind: mutation, file: functions/packages/writeOffVisit.ts, roles: [$owner, $staff], purpose: "списание визита с остатком и защитой от двойного списания" }
+    metrics:
+      - id: packages_sold
+        label: "Продано абонементов"
+        goal: retention
+        unit: count
+        better: up
+        compute: { kind: count, entity: client_package, dateField: created_at }
+      - id: packages_renewed
+        label: "Продлили абонемент"
+        goal: retention
+        unit: percent
+        better: up
+        compute: { kind: repeat_share, entity: client_package, by: client, dateField: created_at }
+    goalScenarios:
+      - id: GS-packages-1
+        goal: retention
+        title: "Визит по записи списывается с абонемента"
+        withModules: [client_card, booking, catalog, notify]
+        when: { param: write_off_on_booking }
+        steps:
+          - { actor: owner, text: "Продаёт клиенту абонемент на 4 визита" }
+          - { actor: staff, text: "Отмечает запись клиента как состоявшуюся" }
+        expect:
+          - { kind: record, text: "В карточке клиента остаток 3 визита" }
+      - id: GS-packages-2
+        goal: retention
+        title: "Клиент получает напоминание об окончании абонемента"
+        withModules: [client_card, notify]
+        when: { param: expiry_reminder_days }
+        steps:
+          - { actor: system, text: "Время сдвигается к дате напоминания" }
+        expect:
+          - { kind: outbox_email, text: "Клиенту ушло письмо об окончании абонемента" }
+
+  - id: resources
+    version: 1
+    name: "Учёт выдачи и ресурсов"
+    summary: "Что выдано, кому и до какого числа; возврат, просрочки и напоминания"
+    status: draft
+    order: 70
+    origin: { kind: new }
+    goals: [resource_tracking]
+    params:
+      - { name: resource_label, label: "Как называть предмет", type: string, maxLength: 40, default: "Инвентарь" }
+      - { name: with_quantity, label: "Учёт количества", type: bool, default: false }
+      - { name: default_days, label: "Срок выдачи по умолчанию, дней", type: int, min: 1, max: 90, default: 7 }
+      - { name: overdue_reminder, label: "Напоминание о просрочке", type: bool, default: true }
+      - { name: deposit, label: "Залог", type: bool, default: false }
+      - { name: extra_fields, label: "Дополнительные поля предмета", type: fields, maxItems: 6 }
+    requires:
+      - { module: notify, reason: "напоминание о возврате и просрочке", when: { param: overdue_reminder } }
+    links:
+      - { module: client_card, effect: "выдача ссылается на клиента, история выдач в карточке" }
+      - { module: staff, effect: "кто выдал и кто принял — сотрудник" }
+    provides: { entities: [resource, resource_issue] }
+    metrics:
+      - id: issued_count
+        label: "Выдач"
+        goal: resource_tracking
+        unit: count
+        better: up
+        compute: { kind: count, entity: resource_issue, dateField: issued_at }
+      - id: overdue_share
+        label: "Доля просрочек"
+        goal: resource_tracking
+        unit: percent
+        better: down
+        compute: { kind: ratio, entity: resource_issue, dateField: issued_at, numerator: { status: overdue } }
+    goalScenarios:
+      - id: GS-resources-1
+        goal: resource_tracking
+        title: "Сотрудник выдаёт предмет и принимает возврат"
+        steps:
+          - { actor: owner, text: "Выдаёт предмет со сроком возврата" }
+          - { actor: owner, text: "Отмечает возврат" }
+        expect:
+          - { kind: status, text: "Предмет снова «в наличии», выдача закрыта" }
+      - id: GS-resources-2
+        goal: resource_tracking
+        title: "Просроченная выдача помечается и даёт напоминание"
+        withModules: [notify]
+        when: { param: overdue_reminder }
+        steps:
+          - { actor: owner, text: "Выдаёт предмет на 1 день" }
+          - { actor: system, text: "Время сдвигается на 2 дня" }
+        expect:
+          - { kind: status, text: "Выдача в статусе «просрочена»" }
+          - { kind: outbox_email, text: "Владельцу ушло напоминание о просрочке" }

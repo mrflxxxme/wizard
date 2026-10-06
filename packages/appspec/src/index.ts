@@ -51,6 +51,52 @@ export {
   toRLS,
   toSystemRoleDDL,
 } from "./migrate.js";
+/** B2-10 plan errors: PlanError {code, path, message_ru} with the closed PLAN_ERROR_CODES set. */
+export { PLAN_ERROR_CODES, type PlanError, type PlanErrorCode } from "./modules/errors.js";
+/** B2-10 closed vocabulary of business goals: GOALS {id, label}, goalIdSchema, goalLabel(id). */
+export { GOAL_IDS, GOALS, type GoalId, goalIdSchema, goalLabel } from "./modules/goals.js";
+/** B2-10 module manifests (specs/modules/modules.yaml#manifest): schema, parameters, conditions, catalog check. */
+export {
+  type CatalogResult,
+  type Condition,
+  conditionSchema,
+  EXTRA_FIELD_TYPES,
+  evalCondition,
+  extraFieldSchema,
+  type GoalScenario,
+  goalScenarioSchema,
+  goalsOf,
+  METRIC_UNITS,
+  type ModuleFragments,
+  type ModuleManifest,
+  type ModuleMetric,
+  metricSchema,
+  moduleManifestSchema,
+  PARAM_TYPES,
+  type ParamSpec,
+  paramSpecSchema,
+  paramsSchema,
+  paramValueSchema,
+  resolveParams,
+  SCENARIO_ACTORS,
+  SCENARIO_EXPECT_KINDS,
+  validateModuleCatalog,
+} from "./modules/manifest.js";
+/** B2-10 SystemPlan: schema, D76 custom limits and validateSystemPlan(plan, catalog) → Russian errors. */
+export {
+  CUSTOM_LIMITS,
+  MAX_PLAN_GOALS,
+  type ModuleCatalog,
+  OUT_OF_SCOPE_CATEGORIES,
+  type PlanSection,
+  type SystemPlan,
+  systemPlanSchema,
+  type ValidatePlanOptions,
+  type ValidatePlanResult,
+  validateSystemPlan,
+} from "./modules/plan.js";
+/** B2-10 landing section library (draft until B2-35): types, layout variants, content keys. */
+export { SECTION_CATALOG, type SectionTypeSpec } from "./modules/sections.js";
 export {
   type ApplyOpsFailure,
   type ApplyOpsOptions,
