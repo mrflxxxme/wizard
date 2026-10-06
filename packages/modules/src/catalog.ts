@@ -7,6 +7,7 @@ import { DRAFT_MANIFESTS } from "./draft.js";
 import { landingModule } from "./landing/index.js";
 import { leadsModule } from "./leads/index.js";
 import { notifyModule } from "./notify/index.js";
+import { reportsModule } from "./reports/index.js";
 import { staffModule } from "./staff/index.js";
 import type { ModuleDefinition, ModuleRegistry } from "./types.js";
 import { visitorCabinetModule } from "./visitor_cabinet/index.js";
@@ -19,6 +20,7 @@ export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
   clientCardModule,
   dealsModule,
   notifyModule,
+  reportsModule,
   staffModule,
   visitorCabinetModule,
 ];

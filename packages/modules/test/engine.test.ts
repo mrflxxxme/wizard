@@ -284,8 +284,8 @@ describe("order, links and incompatibilities", () => {
     plan.modules = plan.modules.filter((m) => m.id !== "notify");
     expect(codes(compilePlan(plan, registry))).toEqual(["MISSING_REQUIRED_MODULE"]);
     const draft = landingLeadsPlan();
-    draft.modules.push({ id: "reports" });
-    const r = compilePlan(draft, registry);
+    draft.modules.push({ id: "fx_draft" });
+    const r = compilePlan(draft, testRegistry([], [...FIXTURES, fx({ id: "fx_draft", status: "draft" })]));
     expect(codes(r)).toEqual(["MODULE_NOT_READY"]);
     expect(messages(r)).toContain("ещё не готов к сборке");
   });

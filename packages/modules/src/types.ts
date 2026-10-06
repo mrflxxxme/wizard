@@ -5,11 +5,18 @@ import type {
   ModuleCatalog,
   ModuleFragments,
   ModuleManifest,
+  ModuleMetric,
   SectionTypeSpec,
   SystemPlan,
 } from "@wizard/appspec";
 
 export type ModuleScreen = NonNullable<ModuleManifest["screens"]>[number];
+
+/** A goal-panel metric of a plan module (when true); planGoal — its goal is one of the plan's goals. */
+export interface CompiledMetric extends ModuleMetric {
+  module: string;
+  planGoal: boolean;
+}
 
 /** What a module's hook and generators see: the validated plan and this module's parameters with defaults. */
 export interface ModuleContext {
@@ -22,9 +29,17 @@ export interface ModuleContext {
   present: ReadonlySet<string>;
 }
 
-/** Context of a screen generator: the compiled spec (entities, roles, merged permissions) and the screen's roles. */
-export interface ScreenContext extends ModuleContext {
+/**
+ * Context of a file generator: the compiled spec (entities, roles, merged permissions; functions and pages are not
+ * final yet) and the goal-panel metrics of the plan — the list compilePlan returns.
+ */
+export interface GenContext extends ModuleContext {
   spec: AppSpec;
+  metrics: readonly CompiledMetric[];
+}
+
+/** Context of a screen generator: a file generator's context plus the screen and its roles. */
+export interface ScreenContext extends GenContext {
   screen: ModuleScreen;
   /** Concrete role names of the screen (symbolic roles expanded). */
   roles: readonly string[];
@@ -32,6 +47,9 @@ export interface ScreenContext extends ModuleContext {
 
 /** Screen generator: TSX source of the page (pure and deterministic). */
 export type ScreenGenerator = (ctx: ScreenContext) => string;
+
+/** Source of a module file generated per plan (pure and deterministic). */
+export type FileGenerator = (ctx: GenContext) => string;
 
 export interface ModuleDefinition {
   manifest: ModuleManifest;
@@ -42,8 +60,12 @@ export interface ModuleDefinition {
    * module's entities in the shared cabinet of each of its roles.
    */
   screens?: Readonly<Record<string, ScreenGenerator>>;
-  /** Sources of the runtime functions declared in manifest.functions, by file path (functions/**.ts). */
-  files?: Readonly<Record<string, string>>;
+  /**
+   * Sources by file path: the runtime functions of manifest.functions (functions/**.ts) and helper files they or the
+   * module's pages import (functions/**, ui/**; emitted whenever the module is in the plan) — text, or a generator
+   * called once per compiled plan.
+   */
+  files?: Readonly<Record<string, string | FileGenerator>>;
   /** Russian notes for the plan screen (e.g. «форма заявки не стоит на лендинге»). */
   warnings?: (ctx: ModuleContext) => string[];
   /**

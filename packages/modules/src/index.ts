@@ -75,6 +75,39 @@ export {
   SCENARIO_LEAD,
 } from "./notify/compile.js";
 export { notifyManifest, notifyModule, notifyScreen } from "./notify/index.js";
+export { DIGEST_CRON, reportsManifest, reportsModule } from "./reports/index.js";
+/** Module «Отчёты и панель цели»: manifest, goal-panel model (tiles, sources, reports), goalMetrics query and page. */
+export {
+  type EntityReport,
+  type MetricCompute,
+  type MetricUnit,
+  type Period,
+  periodWindows,
+  type Row,
+  trendOf,
+  type Windows,
+} from "./reports/lib/goalPanel.js";
+export { GOAL_PANEL_LIB } from "./reports/lib-source.js";
+export { goalPanelPage, goalPanelSource, PANEL_VIEW, PERIODS, tileGroups } from "./reports/page.js";
+export {
+  MAX_TILES,
+  MIN_TILES,
+  PANEL_ROLE,
+  type PanelModel,
+  type PanelReport,
+  type PanelSource,
+  type PanelTile,
+  panelModel,
+  pickTiles,
+  ROW_BUDGET,
+} from "./reports/panel.js";
+export {
+  GOAL_METRICS_FILE,
+  GOAL_METRICS_FN,
+  type GoalMetricsResult,
+  goalMetricsFile,
+  goalMetricsSource,
+} from "./reports/query.js";
 /** Shared page generators (also used by the D75 template): role cabinet, start page, permission helpers. */
 export {
   cabinetPage,
@@ -100,6 +133,8 @@ export {
 export { staffManifest, staffModule, staffScreen, TEAM_PAGE } from "./staff/index.js";
 /** Module definition types: manifest + hook, screen generators, function sources; registry → ModuleCatalog. */
 export {
+  type FileGenerator,
+  type GenContext,
   type ModuleContext,
   type ModuleDefinition,
   type ModuleRegistry,
