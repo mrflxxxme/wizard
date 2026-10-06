@@ -3010,7 +3010,7 @@ tasks:
     owner: agents
     parallel_group: b2-0
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Staff включает режим показа в /admin и проходит бриф → интервью → план → сборку → превью без платных вызовов (llm_calls только fixture)"
@@ -3066,7 +3066,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 4
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Один и тот же план даёт байт-в-байт одинаковые AppSpec и код (тест детерминизма)"
