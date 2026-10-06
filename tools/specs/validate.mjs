@@ -235,7 +235,7 @@ export function runChecks(root) {
       if (t?.estimate_days !== undefined && !(typeof t.estimate_days === "number" && t.estimate_days > 0)) E(`backlog ${id}: estimate_days должно быть числом > 0`);
       if (t?.status === "in_progress" && !t.claimed_by) E(`backlog ${id}: status in_progress без claimed_by`);
       if (t?.status === "todo" && t.claimed_by) E(`backlog ${id}: status todo, но claimed_by = ${t.claimed_by}`);
-      if (typeof t?.id === "string" && !/^M\d-\d{2}$/.test(t.id)) E(`backlog ${id}: id не по формату M<n>-<nn>`);
+      if (typeof t?.id === "string" && !/^(M|B)\d-\d{2}$/.test(t.id)) E(`backlog ${id}: id не по формату M<n>-<nn> или B<n>-<nn>`);
       if (byId.has(id)) E(`backlog: дубликат id ${id}`);
       else byId.set(id, t);
       if (msOrder.size && !msOrder.has(t?.milestone)) E(`backlog ${id}: неизвестная веха ${t?.milestone}`);

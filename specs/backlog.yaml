@@ -2986,6 +2986,450 @@ tasks:
       - "Основатель прошёл на локальном стенде (live) сайт с заявками, запись, платный доступ и CRM до готовности к публикации; замечания — в docs/founder/pilot-walkthrough.md"
       - "Замечания P0 закрыты; основатель отмечает допуск (CHANGELOG) и отправляет первые приглашения"
 
+  # ---------------- B2: бета v2 (D76, docs/plans/2026-10-06-beta-v2.md) ----------------
+  - id: B2-01
+    title: "Служебный контур: служебная организация без лимита пилота, резерв в дневном лимите, отдельный лимит замеров"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/platform/billing.yaml]
+    owner: platform
+    parallel_group: b2-0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Организация с флагом staff не упирается в лимит пилота D70 (тест)"
+      - "Резерв дневного лимита (WIZARD_LLM_STAFF_RESERVE_RUB, по умолчанию 200 ₽) доступен только staff-организации: клиенты и замеры получают LLM_BUDGET_EXHAUSTED раньше, staff — нет (тест)"
+      - "У замеров свой дневной лимит, не занимающий лимит клиентов и staff (тест)"
+
+  - id: B2-02
+    title: "Режим показа: путь клиента на записанных ответах моделей, бесплатно, только для staff"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/models.yaml]
+    owner: agents
+    parallel_group: b2-0
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Staff включает режим показа в /admin и проходит бриф → интервью → план → сборку → превью без платных вызовов (llm_calls только fixture)"
+      - "Клиентам режим недоступен (403); e2e на записанной сессии"
+
+  - id: B2-03
+    title: "Страница «Бета v2» (ход работ) и ежедневная сводка в Telegram"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: docs
+    parallel_group: b2-0
+    estimate_days: 1.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Страница показывает этапы и задачи B2 со статусами из backlog.yaml, влитые и выкаченные PR, расход по дням, результаты проб и что ждём от основателя"
+      - "Ежедневная сводка 3–5 строк со ссылкой уходит в чат алертов (workflow по расписанию), без ПДн"
+
+  - id: B2-04
+    title: "Учёт расхода по назначению и бюджет разработки v2 (1 000 ₽, алерт 70%)"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/platform/billing.yaml]
+    owner: platform
+    parallel_group: b2-0
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Каждый llm_call помечен назначением: client, staff, probe, eval"
+      - "Расход probe+eval по вехе B2 суммируется; на 70% от 1 000 ₽ — алерт основателю один раз (тест)"
+
+  - id: B2-10
+    title: "Спека модулей и плана системы: манифест модуля, SystemPlan, правила компиляции, метрики, сценарии целей"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/appspec/appspec.schema.json, specs/agents/builder.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Новая спека specs/modules/ (формат манифеста, SystemPlan, связи модулей, метрики, сценарии целей) проходит validate"
+      - "zod-схемы манифеста и плана в packages/appspec с тестами"
+
+  - id: B2-11
+    title: "Движок модулей: компиляция плана в AppSpec и код без моделей, связи модулей, проверка совместимости"
+    milestone: B2
+    deps: [B2-10]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/builder.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Один и тот же план даёт байт-в-байт одинаковые AppSpec и код (тест детерминизма)"
+      - "Несовместимые сочетания модулей отклоняются до сборки с понятной причиной"
+      - "Скомпилированная система проходит G0 и G1 без моделей"
+
+  - id: B2-13
+    title: "Модули «Заявки» и «Каталог и прайс» (перенос шаблона site D75)"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "G0/G1 на матрице параметров и e2e сценариев целей (заявка дошла владельцу письмом) в CI без моделей"
+      - "Шаблон site D75 выведен из сборки"
+
+  - id: B2-14
+    title: "Модуль «Запись по слотам» с отменой и переносом по ссылке (перенос шаблона booking D75)"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: посетитель записался, слот занят для другого (CONFLICT), отмена и перенос по ссылке из письма"
+      - "G0/G1 на матрице параметров (ресурсы, услуги, шаг, часы) в CI без моделей"
+
+  - id: B2-15
+    title: "Модули «Клиенты с историей» и «Воронка сделок» (перенос шаблона crm D75)"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: сделка проходит этапы воронки, история клиента показывает визиты и заявки"
+      - "G0/G1 на матрице параметров в CI без моделей"
+
+  - id: B2-16
+    title: "Модули «Сотрудники и роли», «Кабинет посетителя», «Напоминания и уведомления»"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: посетитель входит по коду и видит только свои записи; сотрудник видит только свой раздел"
+      - "Напоминание за N часов уходит письмом и в Telegram без ПДн (тест часов через advanceTime)"
+
+  - id: B2-17
+    title: "Модуль «Отчёты и панель цели»: реестр метрик модулей"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Каждый модуль объявляет метрики; панель цели считает их на данных системы (тест на фикстурах)"
+
+  - id: B2-18
+    title: "Модули «Абонементы и пакеты», «Учёт выдачи и ресурсов»"
+    milestone: B2
+    deps: [B2-14, B2-16]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "e2e: запись списывает занятие с абонемента, истёкший абонемент не даёт записаться"
+      - "e2e: выдача и возврат, просрочка даёт напоминание"
+      - "Брифы mvp-09 и mvp-10 покрываются модулями (план без дописывания)"
+
+  - id: B2-20
+    title: "Интервью по целям и экран «План системы» с утверждением до сборки"
+    milestone: B2
+    deps: [B2-10, B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/platform-screens.yaml, specs/agents/orchestrator.yaml]
+    owner: frontend
+    parallel_group: b2-a
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Интервью выясняет 1–3 цели; план показывает цели → модули → метрики и «не входит + замена»"
+      - "Клиент правит и утверждает план; сборка стартует только по утверждённому плану (e2e)"
+
+  - id: B2-21
+    title: "Сборщик v2: этапы план → тексты → дизайн → компиляция → дописывание → гейты, чекпоинты, продолжение, бюджет этапа"
+    milestone: B2
+    deps: [B2-11, B2-20]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/builder.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Падение на любом этапе продолжается с последнего чекпоинта без повторной оплаты готовых этапов (тест)"
+      - "На записанных ответах средняя сборка ≤ 15 ₽ по тарифам models.yaml и ≤ 5 мин без дописывания"
+
+  - id: B2-22
+    title: "Два провайдера с переключением на уровне этапа и алерт о балансах заранее"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/models.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Сбой или нулевой баланс Z.ai переводит этап на Cloud.ru и обратно (тест с имитацией 429/5xx)"
+      - "Алерт основателю при балансе провайдера ниже порога; к Z.ai уходят только данные после scrub ПДн (тест маршрутизации)"
+
+  - id: B2-23
+    title: "Дописывание кодом ИИ в лимите, изоляция неудачи, запись в «Запросы на развитие»"
+    milestone: B2
+    deps: [B2-21]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/builder.yaml]
+    owner: agents
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Лимит: до 2 экранов, 3 функций, 20 ₽, 2 раундов исправления"
+      - "Неудачное дописывание не валит сборку: система выходит без этой части, клиент видит замену, запрос записан (тест)"
+
+  - id: B2-24
+    title: "Гейты v2: сценарии целей в браузере по модулям, мобильная версия, строгий порог"
+    milestone: B2
+    deps: [B2-11]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/quality/eval.yaml]
+    owner: qa
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Готовность = G0–G2 без блокеров + сценарии целей модулей проходят в браузере + 390 px без горизонтальной прокрутки"
+      - "Драйвер замера считает строгий порог D76 (брифы в модулях 10 из 10, вне модулей — рабочая система и запросы)"
+
+  - id: B2-25
+    title: "Экран «Живая сборка» по плану в новом дизайне"
+    milestone: B2
+    deps: [B2-21, B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/platform-screens.yaml]
+    owner: frontend
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Модули плана загораются по мере готовности с подписями простым языком, превью проявляется по частям, видно оставшееся время"
+      - "Сбой объяснён словами и сказано, что платформа делает дальше; технические детали под «Подробнее»"
+
+  - id: B2-26
+    title: "Фабрика модулей: рейтинг запросов, раздел /admin «Кандидаты в модули», письмо «теперь умеем»"
+    milestone: B2
+    deps: [B2-23]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/platform/api.yaml]
+    owner: platform
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Еженедельный рейтинг «Запросов на развитие» и удачных дописываний по частоте"
+      - "Основатель одобряет или выключает модуль в /admin; клиентам с этим запросом уходит письмо (тест)"
+
+  - id: B2-27
+    title: "Панель цели в кабинете системы и подсказки улучшений"
+    milestone: B2
+    deps: [B2-17, B2-34]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: frontend
+    parallel_group: b2-a
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Владелец видит метрики своих целей за неделю и месяц и 1–3 подсказки, что улучшить"
+
+  - id: B2-30
+    title: "2–3 живых прототипа направлений дизайна платформы в духе Apple"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/ui-kit.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Интерактивные страницы: старт, чат и план, живая сборка, кабинет системы, /admin; светлая и тёмная темы; 390 и 1280 px"
+      - "Ссылки отданы основателю для выбора и комментариев"
+
+  - id: B2-31
+    title: "Выбор направления дизайна платформы"
+    milestone: B2
+    deps: [B2-30]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: founder
+    parallel_group: b2-b
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Основатель выбрал направление и оставил комментарии; решение записано в CHANGELOG"
+
+  - id: B2-32
+    title: "Дизайн-система v2 в ui-kit: токены, материалы, движение, базовые компоненты"
+    milestone: B2
+    deps: [B2-31]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/ui-kit.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Токены материалов (стекло, размытие, глубина), движения и типографики; запасной вариант без backdrop-filter; prefers-reduced-motion"
+      - "Контраст WCAG AA в светлой и тёмной темах (тест), демо-страница компонентов со скриншотами CI"
+
+  - id: B2-33
+    title: "Платформа (кабинет, чат, /admin) на дизайн-системе v2"
+    milestone: B2
+    deps: [B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/platform-screens.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 4
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Все экраны platform-web на компонентах v2, e2e платформы зелёные, скриншоты 390/1280 light/dark"
+
+  - id: B2-34
+    title: "Кабинеты клиентских систем на дизайн-системе v2 с фирменным цветом"
+    milestone: B2
+    deps: [B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/ui-kit.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "CabinetLayout, DataTable, RecordForm, StatusBoard, расписание — на v2; фирменный цвет клиента окрашивает акценты с сохранением контраста (тест 4096 цветов)"
+
+  - id: B2-35
+    title: "Библиотека секций: 15–20 типов × 3–5 вариантов раскладки"
+    milestone: B2
+    deps: [B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/ui-kit.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Каждый вариант проходит скриншоты 390/1280 light/dark, a11y и отсутствие горизонтальной прокрутки"
+      - "Варианты описаны в каталоге, доступном плану системы"
+
+  - id: B2-36
+    title: "Темы v2: 8–10 премиальных тем вместо 4"
+    milestone: B2
+    deps: [B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/themes.yaml]
+    owner: frontend
+    parallel_group: b2-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "specs/ui/themes.yaml и presets.ts сверены тестом; контраст по всем темам и схемам"
+
+  - id: B2-37
+    title: "Дизайн-агент: направление по нише, целям и цвету; выбор темы, раскладок и стиля фото"
+    milestone: B2
+    deps: [B2-10, B2-35, B2-36]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/builder.yaml]
+    owner: agents
+    parallel_group: b2-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Направление — данные по схеме (без CSS); themeLint без ошибок"
+      - "На 10 брифах mvp сочетания тем и раскладок различаются (метрика разнообразия в отчёте)"
+
+  - id: B2-38
+    title: "Фото со свободных стоков: подбор, копии у себя, учёт лицензий, замена владельцем в один клик"
+    milestone: B2
+    deps: [B2-37]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: platform
+    parallel_group: b2-b
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Фото подбирается по нише и стилю направления, копия хранится у нас, лицензия и источник записаны по каждой картинке"
+      - "Владелец заменяет фото своим в один клик; без доступа к стоку — графика темы (тест)"
+
+  - id: B2-40
+    title: "Реальные брифы для финального замера"
+    milestone: B2
+    deps: []
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: founder
+    parallel_group: b2-c
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "До 10 брифов знакомых предпринимателей текстом, без ПДн, в tools/eval/briefs/"
+
+  - id: B2-41
+    title: "Пробы этапов и финальный замер беты v2 с отчётом"
+    milestone: B2
+    deps: [B2-13, B2-14, B2-15, B2-16, B2-17, B2-18, B2-21, B2-22, B2-23, B2-24, B2-25, B2-26, B2-27, B2-33, B2-34, B2-38, B2-40]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/quality/eval.yaml]
+    owner: qa
+    parallel_group: b2-c
+    estimate_days: 2
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Строгий порог D76 пройден; средняя сборка ≤ 15 ₽ и ≤ 5 мин; расход разработки ≤ 1 000 ₽"
+      - "Отчёт с сеткой скриншотов сайтов замера (разнообразие) и итогом на странице «Бета v2»"
+
+  - id: B2-42
+    title: "Выкат беты v2 и проход основателя"
+    milestone: B2
+    deps: [B2-41]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml]
+    owner: founder
+    parallel_group: b2-c
+    estimate_days: 1
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Бета v2 выкачена на borntobuild.ru; основатель собрал 2–3 системы до публикации в служебном контуре и дал «да» (CHANGELOG)"
+
   # ---------------- M3: вторая волна ----------------
   - id: M3-01
     title: "«Укажи и измени»: выбор элемента в превью → wzId → правка строителем только этого файла"
