@@ -120,6 +120,13 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       briefs: gh("inputs.briefs"),
       max_cost_rub: gh("inputs.max_cost_rub"),
     });
+    // D75: the daily model cap is raised for one deploy only (the next deploy without it is back to the default).
+    const dep = load("deploy-pilot.yml");
+    expect(dep.on.workflow_dispatch.inputs.llm_daily_cap_rub).toMatchObject({ type: "string", default: "" });
+    expect(dep.doc.jobs.pilot.with.llm_daily_cap_rub).toBe(gh("inputs.llm_daily_cap_rub"));
+    expect(load("pilot-reusable.yml").doc.jobs.pilot.env.WIZARD_LLM_DAILY_CAP_RUB).toBe(
+      gh("inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB"),
+    );
   });
 
   // The authorize step's shell, run with the given context (GITHUB_OUTPUT in a temporary file).
@@ -168,6 +175,11 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-03,mvp-10" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
     expect(authorize({ ...ok, EVAL_MAX_COST_RUB: "2e3" }).out).toContain("max_cost_rub");
+    const dep = { COMMAND: "deploy", CONFIRM: "PROD" };
+    expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1100" }).code).toBe(0);
+    expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "" }).code).toBe(0);
+    expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1e9" }).out).toContain("llm_daily_cap_rub");
+    expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "0" }).code).toBe(1);
     const { doc } = load("pilot-reusable.yml");
     const job = doc.jobs.pilot;
     const run = job.steps.find((s) => s.name === `Pilot (${gh("inputs.command")})`).run;

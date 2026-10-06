@@ -41,6 +41,10 @@ on:
         description: "eval: model budget of the measurement, ₽"
         type: string
         default: "2000"
+      llm_daily_cap_rub:
+        description: "deploy: the platform's daily model cap, ₽, until the next deploy (D75); empty — the variable or 700"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -63,6 +67,7 @@ jobs:
           COMMAND: ${{ inputs.command }}
           EVAL_BRIEFS: ${{ inputs.briefs }}
           EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
+          LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub }}
         run: |
           if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
             echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
@@ -75,6 +80,9 @@ jobs:
           if [ "$COMMAND" = "eval" ]; then
             printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
             printf '%s' "$EVAL_MAX_COST_RUB" | grep -Eq '^[0-9]{1,4}$' || { echo "::error title=pilot::max_cost_rub — целое число рублей."; exit 1; }
+          fi
+          if [ -n "$LLM_DAILY_CAP_RUB" ] && ! printf '%s' "$LLM_DAILY_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$'; then
+            echo "::error title=pilot::llm_daily_cap_rub — целое число рублей или пусто."; exit 1
           fi
           if [ "$COMMAND" = "destroy" ] && [ "$DEPLOY_ENV" != "staging" ]; then
             echo "::error title=pilot::Удалять можно только staging."; exit 1
@@ -129,6 +137,8 @@ jobs:
       YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID || vars.YANDEX_FOLDER_ID }}
       YANDEX_BASE_URL: ${{ vars.YANDEX_BASE_URL }}
       WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
+      # D75: the platform's daily model cap, ₽ (empty — the default 700); raised only by the founder.
+      WIZARD_LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB }}
       # Timeweb S3 account key (panel → S3 → Ключи доступа): the keys on bucket objects in the API are refused by S3
       # (SignatureDoesNotMatch). Named apart from AWS_* so no tool on the runner picks them up implicitly.
       WIZARD_S3_ACCOUNT_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

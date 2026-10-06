@@ -19,6 +19,10 @@ on:
         description: "Для prod введите PROD"
         type: string
         default: ""
+      llm_daily_cap_rub:
+        description: "Дневной лимит платформы на модели, ₽ — до следующей выкатки (пусто — 700 ₽ или переменная WIZARD_LLM_DAILY_CAP_RUB); поднимает только основатель"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -40,4 +44,5 @@ jobs:
       command: deploy
       sha: ${{ inputs.sha }}
       confirm: ${{ inputs.confirm }}
+      llm_daily_cap_rub: ${{ inputs.llm_daily_cap_rub }}
     secrets: inherit
