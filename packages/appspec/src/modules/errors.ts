@@ -26,7 +26,11 @@ export const PLAN_ERROR_CODES = [
   "UNKNOWN_THEME",
   "UNKNOWN_FONT",
   "MODULE_NOT_READY",
+  "MODULE_VERSION_MISMATCH",
   "CATALOG_INVALID",
+  "FIELD_NAME_CONFLICT",
+  "SECTION_NOT_IMPLEMENTED",
+  "MODULE_BUG",
 ] as const;
 
 export type PlanErrorCode = (typeof PLAN_ERROR_CODES)[number];

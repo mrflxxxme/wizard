@@ -225,6 +225,9 @@ importers:
       '@wizard/llm':
         specifier: workspace:*
         version: link:../llm
+      '@wizard/modules':
+        specifier: workspace:*
+        version: link:../modules
       '@wizard/pii':
         specifier: workspace:*
         version: link:../pii
@@ -397,6 +400,25 @@ importers:
       undici:
         specifier: ^7.30.0
         version: 7.30.0
+
+  packages/modules:
+    dependencies:
+      '@wizard/appspec':
+        specifier: workspace:*
+        version: link:../appspec
+    devDependencies:
+      '@wizard/connectors':
+        specifier: workspace:*
+        version: link:../connectors
+      '@wizard/gates':
+        specifier: workspace:*
+        version: link:../gates
+      '@wizard/runtime':
+        specifier: workspace:*
+        version: link:../../apps/runtime
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
 
   packages/pii:
     dependencies:

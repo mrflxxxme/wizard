@@ -3,7 +3,9 @@
 // permissions (LeadForm, DataTable, RecordCard, RecordForm), so the pages need no server functions: a landing with the
 // lead form for the public role and a cabinet per login role with a table, a card with status actions and a create
 // form for every entity the role may read. The model only writes the landing texts (submit_landing, from the card).
+// The page generators are shared with the module engine (@wizard/modules, B2-11).
 import type { AppSpec } from "@wizard/appspec";
+import { cabinetPage, cabinetRoute, can, fragmentPage, js, jsxEl, startPage } from "@wizard/modules";
 import { z } from "zod";
 import { defineTool } from "../core/index.js";
 import type { BuildCard } from "./types.js";
@@ -83,38 +85,6 @@ export function fallbackLanding(card: BuildCard): LandingTexts {
 }
 
 type Op = Record<string, unknown>;
-type Perm = NonNullable<AppSpec["permissions"]>[number];
-
-const pascal = (s: string) =>
-  s
-    .split(/[^a-zA-Z0-9]+/)
-    .filter(Boolean)
-    .map((p) => p[0]?.toUpperCase() + p.slice(1))
-    .join("");
-const js = (v: unknown) => JSON.stringify(v);
-
-function perm(spec: AppSpec, role: string, entity: string): Perm | undefined {
-  return (spec.permissions ?? []).find((p) => p.role === role && p.entity === entity);
-}
-const can = (spec: AppSpec, role: string, entity: string, op: "read" | "create" | "update" | "delete") =>
-  (perm(spec, role, entity)?.ops ?? []).includes(op);
-
-/** Fields the role sees in a list (not hidden, not qr_token), at most 6. */
-function columns(spec: AppSpec, role: string, entity: string): string[] {
-  const e = spec.entities.find((x) => x.name === entity);
-  const hidden = new Set(perm(spec, role, entity)?.hiddenFields ?? []);
-  return (e?.fields ?? [])
-    .filter((f) => !hidden.has(f.name) && f.type !== "qr_token" && f.type !== "json")
-    .map((f) => f.name)
-    .slice(0, 6);
-}
-
-/** The status field of an entity: `status` of type enum, else the first enum field. */
-function statusField(spec: AppSpec, entity: string) {
-  const e = spec.entities.find((x) => x.name === entity);
-  const enums = (e?.fields ?? []).filter((f) => f.type === "enum" && f.enum?.length);
-  return enums.find((f) => f.name === "status") ?? enums[0];
-}
 
 /** Why the spec does not fit the template (empty — it fits). */
 export function templateGaps(spec: AppSpec): string[] {
@@ -148,8 +118,7 @@ export function templatePages(spec: AppSpec, texts: LandingTexts): TemplateResul
   for (const [i, role] of loginRoles.entries()) {
     const readable = spec.entities.filter((e) => can(spec, role.name, e.name, "read"));
     if (readable.length === 0) continue;
-    const route = i === 0 ? "/cabinet" : `/cabinet-${role.name.replace(/_/g, "-")}`;
-    const file = `ui/pages/Cabinet${i === 0 ? "" : pascal(role.name)}.tsx`;
+    const { route, file } = cabinetRoute(role.name, i === 0);
     cabinets.push({ role, route, file });
     ops.push({
       op: "add_page",
@@ -188,11 +157,7 @@ export function templatePages(spec: AppSpec, texts: LandingTexts): TemplateResul
           leadEntity?.name,
           catalog.map((e) => ({ name: e.name, label: e.label })),
         )
-      : startPage(
-          spec,
-          texts,
-          cabinets.map((c) => ({ route: c.route, label: c.role.label })),
-        ),
+      : startPage(texts.hero.title || spec.app.name, texts.hero.subtitle, cabinets[0]?.route),
   ]);
   return { ops, files };
 }
@@ -210,16 +175,32 @@ function landingPage(
   if (t.features) links.push({ label: t.features.title, href: "#features" });
   if (t.faq) links.push({ label: t.faq.title, href: "#faq" });
   if (lead) links.push({ label: t.form.title, href: "#lead" });
+  const toForm = lead ? { label: t.hero.cta, href: "#lead" } : undefined;
   blocks.push(
-    `<Header brand={${js(brand)}} links={${js(links)}}${lead ? ` cta={${js({ label: t.hero.cta, href: "#lead" })}}` : ""} sticky />`,
+    jsxEl("Header", [
+      ["brand", brand],
+      ["links", links],
+      ["cta", toForm],
+      ["sticky", true],
+    ]),
   );
   blocks.push(
-    `<Hero title={${js(t.hero.title)}}${t.hero.subtitle ? ` subtitle={${js(t.hero.subtitle)}}` : ""}${t.hero.eyebrow ? ` eyebrow={${js(t.hero.eyebrow)}}` : ""}${lead ? ` primary={${js({ label: t.hero.cta, href: "#lead" })}}` : ""} variant="centered" />`,
+    jsxEl("Hero", [
+      ["title", t.hero.title],
+      ["subtitle", t.hero.subtitle],
+      ["eyebrow", t.hero.eyebrow],
+      ["primary", toForm],
+      ["variant", "centered", "lit"],
+    ]),
   );
   if (t.features) {
     imports.add("Features");
     blocks.push(
-      `<Features title={${js(t.features.title)}} items={${js(t.features.items)}} anchor="features" />`,
+      jsxEl("Features", [
+        ["title", t.features.title],
+        ["items", t.features.items],
+        ["anchor", "features", "lit"],
+      ]),
     );
   }
   for (const c of catalog) {
@@ -230,115 +211,44 @@ function landingPage(
   }
   if (t.steps) {
     imports.add("Steps");
-    blocks.push(`<Steps title={${js(t.steps.title)}} steps={${js(t.steps.items)}} tone="alt" />`);
+    blocks.push(
+      jsxEl("Steps", [
+        ["title", t.steps.title],
+        ["steps", t.steps.items],
+        ["tone", "alt", "lit"],
+      ]),
+    );
   }
   if (t.faq) {
     imports.add("Faq");
-    blocks.push(`<Faq title={${js(t.faq.title)}} items={${js(t.faq.items)}} anchor="faq" />`);
+    blocks.push(
+      jsxEl("Faq", [
+        ["title", t.faq.title],
+        ["items", t.faq.items],
+        ["anchor", "faq", "lit"],
+      ]),
+    );
   }
   if (lead) {
     imports.add("LeadForm");
     blocks.push(
-      `<LeadForm entity={${js(lead)}} title={${js(t.form.title)}}${t.form.intro ? ` intro={${js(t.form.intro)}}` : ""}${t.form.submitLabel ? ` submitLabel={${js(t.form.submitLabel)}}` : ""} />`,
+      jsxEl("LeadForm", [
+        ["entity", lead],
+        ["title", t.form.title],
+        ["intro", t.form.intro],
+        ["submitLabel", t.form.submitLabel],
+      ]),
     );
   }
-  blocks.push(`<Footer brand={${js(brand)}}${t.footer?.text ? ` text={${js(t.footer.text)}}` : ""} />`);
-  return [
+  blocks.push(
+    jsxEl("Footer", [
+      ["brand", brand],
+      ["text", t.footer?.text],
+    ]),
+  );
+  return fragmentPage(
     "// Generated by the site template (D75): texts from the card, components bound to the data API.",
-    `import { ${[...imports].sort().join(", ")} } from "@wizard/ui-kit";`,
-    "",
-    "export default function Home() {",
-    "  return (",
-    "    <>",
-    ...blocks.map((b) => `      ${b}`),
-    "    </>",
-    "  );",
-    "}",
-    "",
-  ].join("\n");
-}
-
-function startPage(spec: AppSpec, t: LandingTexts, cabinets: { route: string; label: string }[]): string {
-  const first = cabinets[0];
-  return [
-    "// Generated by the template (D75): the start page of a system without a public role.",
-    'import { Hero } from "@wizard/ui-kit";',
-    "",
-    "export default function Home() {",
-    "  return (",
-    `    <Hero title={${js(t.hero.title || spec.app.name)}}${t.hero.subtitle ? ` subtitle={${js(t.hero.subtitle)}}` : ""}${first ? ` primary={${js({ label: "Открыть кабинет", href: first.route })}}` : ""} variant="centered" />`,
-    "  );",
-    "}",
-    "",
-  ].join("\n");
-}
-
-function cabinetPage(spec: AppSpec, role: string, roleLabel: string, entities: string[]): string {
-  const parts: string[] = [];
-  const sections: string[] = [];
-  for (const name of entities) {
-    const e = spec.entities.find((x) => x.name === name);
-    if (!e) continue;
-    const comp = `${pascal(name)}Section`;
-    const cols = columns(spec, role, name);
-    const st = can(spec, role, name, "update") ? statusField(spec, name) : undefined;
-    const ro = new Set(perm(spec, role, name)?.readonlyFields ?? []);
-    const actions: string[] = [];
-    if (st && !ro.has(st.name))
-      for (const opt of st.enum ?? [])
-        actions.push(
-          `{ id: ${js(`to_${opt.value}`)}, label: ${js(opt.label)}, kind: "update", patch: { ${st.name}: ${js(opt.value)} }, visible: (r: Doc) => r.${st.name} !== ${js(opt.value)} }`,
-        );
-    if (can(spec, role, name, "delete"))
-      actions.push(
-        `{ id: "delete", label: "Удалить", tone: "danger", kind: "delete", confirm: "Удалить запись?" }`,
-      );
-    const canCreate = can(spec, role, name, "create");
-    const canEdit = can(spec, role, name, "update");
-    parts.push(
-      [
-        `function ${comp}() {`,
-        `  type Doc = ClientDoc<${js(name)}>;`,
-        "  const [selected, setSelected] = useState<string | null>(null);",
-        '  const [mode, setMode] = useState<"view" | "edit" | "create">("view");',
-        "  return (",
-        "    <>",
-        `      <DataTable entity={${js(name)}} columns={${js([...cols, "created_at"])}} defaultSort={{ field: "created_at", dir: "desc" }} searchable onRowClick={(r: Doc) => { setSelected(r.id); setMode("view"); }} emptyText="Записей пока нет" />`,
-        `      {selected && mode === "view" ? (`,
-        "        <>",
-        `          <RecordCard entity={${js(name)}} id={selected} actions={[${actions.join(", ")}]} onDeleted={() => setSelected(null)} />`,
-        canEdit
-          ? '          <Button variant="secondary" onClick={() => setMode("edit")}>Изменить</Button>'
-          : "",
-        '          <Button variant="ghost" onClick={() => setSelected(null)}>Закрыть</Button>',
-        "        </>",
-        "      ) : null}",
-        canEdit
-          ? `      {selected && mode === "edit" ? (\n        <RecordForm key={selected} entity={${js(name)}} mode="edit" id={selected} onSuccess={() => setMode("view")} onCancel={() => setMode("view")} />\n      ) : null}`
-          : "",
-        canCreate
-          ? `      {mode === "create" ? (\n        <RecordForm entity={${js(name)}} mode="create" onSuccess={() => setMode("view")} onCancel={() => setMode("view")} />\n      ) : (\n        <Button variant="primary" onClick={() => { setSelected(null); setMode("create"); }}>Добавить</Button>\n      )}`
-          : "",
-        "    </>",
-        "  );",
-        "}",
-      ]
-        .filter((l) => l !== "")
-        .join("\n"),
-    );
-    sections.push(`{ id: ${js(name)}, label: ${js(e.label)}, content: <${comp} /> }`);
-  }
-  return [
-    "// Generated by the template (D75): a cabinet of the role — table, card with status actions, create and edit forms.",
-    'import { type ClientDoc, useState } from "@wizard/sdk";',
-    'import { Button, CabinetLayout, DataTable, RecordCard, RecordForm } from "@wizard/ui-kit";',
-    "",
-    "export default function Cabinet() {",
-    "  return (",
-    `    <CabinetLayout title={${js(`Кабинет: ${roleLabel}`)}} defaultSection={${js(entities[0])}} sections={[${sections.join(", ")}]} />`,
-    "  );",
-    "}",
-    "",
-    ...parts.flatMap((p) => [p, ""]),
-  ].join("\n");
+    imports,
+    blocks,
+  );
 }
