@@ -100,25 +100,25 @@ const refused = (orgId: string, message_ru: string) =>
 const events = (event: string) => alerts.filter((a) => a.event === event);
 
 describe("config", () => {
-  test("defaults: reserve 200 ₽, eval 300 ₽ a day, B2 budget 1 000 ₽ since 2026-10-06; bad values refuse the start", () => {
+  test("defaults: reserve 200 ₽, eval 300 ₽ a day, B2 budget 1 000 ₽ since 2026-10-07; bad values refuse the start", () => {
     const c = loadConfig({});
     expect([c.llmStaffReserveRub, c.llmEvalDailyCapRub, c.b2BudgetRub, c.b2BudgetSince]).toEqual([
       200,
       300,
       1000,
-      "2026-10-06",
+      "2026-10-07",
     ]);
     const env = loadConfig({
       WIZARD_LLM_STAFF_RESERVE_RUB: "150",
       WIZARD_LLM_EVAL_DAILY_CAP_RUB: "250",
       WIZARD_B2_BUDGET_RUB: "1200",
-      WIZARD_B2_BUDGET_SINCE: "2026-10-07",
+      WIZARD_B2_BUDGET_SINCE: "2026-10-08",
     });
     expect([env.llmStaffReserveRub, env.llmEvalDailyCapRub, env.b2BudgetRub, env.b2BudgetSince]).toEqual([
       150,
       250,
       1200,
-      "2026-10-07",
+      "2026-10-08",
     ]);
     for (const [k, v] of [
       ["WIZARD_LLM_STAFF_RESERVE_RUB", "-1"],

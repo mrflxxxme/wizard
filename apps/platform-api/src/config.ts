@@ -111,7 +111,7 @@ export interface Config {
   llmEvalDailyCapRub: number;
   /** WIZARD_B2_BUDGET_RUB (default 1000; B2-04, grill-6 № 18): eval spend budget of the beta v2 development. */
   b2BudgetRub: number;
-  /** WIZARD_B2_BUDGET_SINCE (yyyy-mm-dd, Moscow; default 2026-10-06): start of the B2 budget window. */
+  /** WIZARD_B2_BUDGET_SINCE (yyyy-mm-dd, Moscow; default 2026-10-07): start of the B2 budget window. */
   b2BudgetSince: string;
   llmMonthlyCapRub: number;
   /** WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID: founder alert webhook (deploy.yaml#pilot.observability). */
@@ -211,7 +211,7 @@ export const DEFAULT_LLM_EVAL_DAILY_CAP_RUB = 300;
 /** Default of WIZARD_B2_BUDGET_RUB (grill-6 № 18: ≤ 1 000 ₽ for probes and the measurement). */
 export const DEFAULT_B2_BUDGET_RUB = 1000;
 /** Default of WIZARD_B2_BUDGET_SINCE: the day of D76. */
-export const DEFAULT_B2_BUDGET_SINCE = "2026-10-06";
+export const DEFAULT_B2_BUDGET_SINCE = "2026-10-07";
 
 export interface ReceiptConfig {
   /** WIZARD_RECEIPT_VAT_CODE (1..12, YooKassa vat_code incl. 5%/7% USN codes 7–10); null — not set (1 «без НДС» outside production). */
