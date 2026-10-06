@@ -215,6 +215,25 @@ describe("validation and the single repeat", async () => {
     expect(ex[0]).toMatchObject({ category: "check_invalid", owner: "qa", fix: { kind: "none" } });
     expect(ex[0]?.actual).toContain("В сценарии нет ни одного expect");
     expect(scripted.inputs).toHaveLength(2);
+    // The reasons ride on the check (the builder's metrics), and the failure is not cached.
+    expect(sc?.invalid?.some((r) => r.includes("expect"))).toBe(true);
+  });
+
+  test("a failed generate is not cached: the next generate asks QA again and takes the valid answer", async () => {
+    const cache = memoryQaCache();
+    const scripted = scriptedRoute([
+      toolResult("submit_checks", { checks: [noConsent] }),
+      toolResult("submit_checks", { checks: [noConsent] }),
+      toolResult("submit_checks", { checks: [good] }),
+    ]);
+    const qa = createQaAgent({ route: scripted.route, cache });
+    const first = await qa.generate({ card: one, spec, specVersion: 1 });
+    expect(first.find((c) => c.id === "SC-AC3")?.scenario?.steps).toEqual([]);
+    expect(cache.size()).toBe(0);
+    const second = await qa.generate({ card: one, spec, specVersion: 1 });
+    expect(second.find((c) => c.id === "SC-AC3")?.scenario?.steps.length).toBeGreaterThan(0);
+    expect(scripted.inputs).toHaveLength(3);
+    expect(cache.size()).toBe(1);
   });
 
   test("QA rules on top of the DSL validation: consent for pii writes, ≥1 expect, constraint needs a negative branch", () => {

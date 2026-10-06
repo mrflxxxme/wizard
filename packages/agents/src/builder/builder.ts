@@ -78,6 +78,8 @@ export const DEFAULT_LIMITS: BuildLimits = {
 /** builder.yaml#point_and_edit: max_steps 12. */
 export const POINT_EDIT_MAX_STEPS = 12;
 export const RETRY_EXTRA_STEPS = 8;
+/** builder.yaml#harness.verify: new QA attempts per build for scenarios QA could not write (check_invalid). */
+export const QA_REGENERATIONS = 2;
 /** builder.yaml#scaffold: extra code rounds when page stubs are still left after the code phase. */
 export const STUB_ROUNDS = 2;
 
@@ -142,6 +144,10 @@ function notFound(path: string): never {
   );
 }
 
+/** Checks QA could not write (empty steps, G1 reports check_invalid). */
+const qaInvalid = (cs: readonly QaCheck[]) =>
+  cs.filter((c) => c.invalid !== undefined || (c.scenario !== undefined && c.scenario.steps.length === 0));
+
 const isBlocking = (c: Check) => (c.status === "fail" || c.status === "error") && c.severity === "blocker";
 const failedChecks = (r: GateReport) => r.checks.filter((c) => c.status === "fail" || c.status === "error");
 
@@ -189,6 +195,7 @@ class Builder implements ToolEnv {
   #lastG0: GateReport | null = null;
   #lastReports = new Map<BuilderGateLevel, GateReport>();
   #qaChecks: QaCheck[] | null = null;
+  #qaRegenerations = 0;
   #pending = new Map<string, { action: "create" | "update"; sha256: string; size: number }>();
   #opsIndex = 0;
   #acUnlocked = false;
@@ -530,11 +537,21 @@ class Builder implements ToolEnv {
       return;
     }
     const checks = this.#qaChecks ?? [];
+    this.#noteQaInvalid(checks);
     this.#metrics.checks.total = checks.length;
     const attached = new Set<string>();
     for (const t of brief)
       if (t.kind === "function") for (const c of this.#fileChecks(t.file)) attached.add(c.id);
     this.#metrics.checks.attached = attached.size;
+  }
+
+  /** The reasons QA could not write scenarios (check_invalid) go to build_metrics.checks.qaInvalid, deduplicated. */
+  #noteQaInvalid(checks: readonly QaCheck[]): void {
+    const seen = this.#metrics.checks.qaInvalid;
+    for (const c of qaInvalid(checks)) {
+      const line = `${c.id}: ${(c.invalid ?? ["нет шагов"]).slice(0, 2).join("; ")}`.slice(0, 300);
+      if (seen.length < REJECTIONS_MAX && !seen.includes(line)) seen.push(line);
+    }
   }
 
   /** QA scenarios calling any function declared in this file (a file may hold several). */
@@ -1099,7 +1116,13 @@ class Builder implements ToolEnv {
     if (level === "G0" && !this.#dirty && this.#lastG0) return this.#lastG0;
     let checks: QaCheck[] | undefined;
     if (level === "G1") {
-      if (this.#qaChecks === null) {
+      // QA could not write some scenarios (check_invalid): not the builder's to fix. QA is asked again right away
+      // (QA_REGENERATIONS per build at most; failures are not cached) instead of failing G1 on the same empty checks.
+      while (
+        this.#qaChecks === null ||
+        (qaInvalid(this.#qaChecks).length > 0 && this.#qaRegenerations < QA_REGENERATIONS)
+      ) {
+        if (this.#qaChecks !== null) this.#qaRegenerations += 1;
         const { spec, version } = await this.#host.store.getSpec();
         const files = new Map<string, string>();
         for (const p of await this.#host.store.listFiles("functions/")) {
@@ -1109,6 +1132,7 @@ class Builder implements ToolEnv {
         this.#qaChecks = await this.#host.runStep("qa_generate", () =>
           this.#host.qa.generate({ card: this.#card, spec, specVersion: version, files }),
         );
+        this.#noteQaInvalid(this.#qaChecks);
       }
       checks = this.#qaChecks;
     }

@@ -240,8 +240,9 @@ export async function generateScenarios(call: GenerateCall): Promise<Map<string,
 }
 
 /** A check G1 reports as error/check_invalid (the steps fail its static validation). */
-export function invalidCheck(ac: CardAc): QaCheck {
+export function invalidCheck(ac: CardAc, reasons: readonly string[] = []): QaCheck {
   return {
+    ...(reasons.length ? { invalid: reasons.slice(0, 10) } : {}),
     id: `SC-${ac.id}`,
     acId: ac.id,
     kind: ac.check.type === "constraint" ? "constraint" : "scenario",

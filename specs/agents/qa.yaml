@@ -91,7 +91,7 @@ checks:
           - as: own
           - read: { entity: deal, where: { stage: negotiation } }
           - expect: { count: { gte: 1 } }
-  determinism: "Сгенерированные сценарии кешируются по (specVersion, AC id, sha256(текст AC)); повторный G1 без изменений AC не вызывает LLM"
+  determinism: "Сгенерированные сценарии кешируются по (specVersion, AC id, sha256(текст AC)); повторный G1 без изменений AC не вызывает LLM. Неудача (check_invalid: QA не составил валидный сценарий за два захода) не кешируется — следующий generate спрашивает QA заново; причины лежат в QaCheck.invalid (замер 06.10.2026: закешированная неудача гарантированно валила G1 всей сборки)"
   output: "Check {id, acId?, kind: permission|scenario|constraint, level: G1|G2, scenario?: Scenario, expect?}"
   test: "Спека «форум» → ≥ 1 SC-проверка на каждый AC type=scenario|constraint с milestone ≤ M0, все исполнимы без status=error и pass на золотой ревизии (backlog M0-14)"
 

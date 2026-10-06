@@ -401,7 +401,7 @@ export async function runWave<T>(
 export interface BuildMetrics {
   ops: { calls: number };
   brief: { tasks: number; retries: number; fallback: boolean };
-  checks: { total: number; attached: number };
+  checks: { total: number; attached: number; qaInvalid: string[] };
   tasks: { total: number; firstPass: number; passed: number; failed: number; calls: number };
   verify: { g0Runs: number; g1Runs: number; fixTasks: number; fixPhases: number };
   review: { pages: number; ok: number; critical: number; minor: number; skipped: boolean };
@@ -414,7 +414,7 @@ export const REJECTIONS_MAX = 20;
 export const emptyMetrics = (): BuildMetrics => ({
   ops: { calls: 0 },
   brief: { tasks: 0, retries: 0, fallback: false },
-  checks: { total: 0, attached: 0 },
+  checks: { total: 0, attached: 0, qaInvalid: [] },
   tasks: { total: 0, firstPass: 0, passed: 0, failed: 0, calls: 0 },
   verify: { g0Runs: 0, g1Runs: 0, fixTasks: 0, fixPhases: 0 },
   review: { pages: 0, ok: 0, critical: 0, minor: 0, skipped: false },
