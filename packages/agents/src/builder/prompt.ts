@@ -7,6 +7,7 @@ import { gapsPromptSection } from "../gaps.js";
 import { textRulesSection } from "../text-rules.js";
 import { cardDigest, fileTree, specDigest } from "./digest.js";
 import { capabilityToc, PROMPT_PARTS, uiKitDocs } from "./docs.js";
+import { specShapes } from "./shapes.js";
 import type { PlanStep } from "./tools.js";
 import type { BuildCard } from "./types.js";
 
@@ -26,6 +27,8 @@ export const STATIC_PROMPT = [
   "",
   "# AppSpec operations (apply_ops)",
   PROMPT_PARTS.ops,
+  "",
+  specShapes(),
   "",
   "# Semantic rules",
   PROMPT_PARTS.semantic,
@@ -79,7 +82,7 @@ export const PHASE_TEXT = {
   plan: (title: string) =>
     `Карточка «${title}» утверждена. Составь план сборки вызовом submit_plan: шаги ops (роли → сущности → права → автоматизации → подключения → объявления функций и экранов → критерии приёмки → compliance), затем code (functions/**, потом ui/**).`,
   ops: (version: number) =>
-    `Фаза ops: собери спеку системы по карточке через apply_ops; текущая версия спеки — ${version}. Порядок батчей: роли → сущности с полями, индексами и сроком хранения → права ролей на сущности → автоматизации → подключения → объявления функций и страниц (файлы functions/<имя>.ts и ui/pages/<Имя>.tsx) → set_acceptance (список из карточки 1:1) → set_compliance (consentTemplateId, policyPage). Не больше 50 операций в батче; батч с ошибкой не применяется целиком — исправь указанные операции и отправь его снова. Когда спека собрана, ответь коротким итогом без вызова инструментов.`,
+    `Фаза ops: собери спеку системы по карточке через apply_ops; текущая версия спеки — ${version}. Порядок операций: роли → сущности с полями, индексами и сроком хранения → права ролей на сущности → подключения → автоматизации → объявления функций и страниц (файлы functions/<имя>.ts и ui/pages/<Имя>.tsx) → set_acceptance (список из карточки 1:1) → set_compliance (consentTemplateId, policyPage). Операции батча применяются по порядку, поэтому ссылки на объявленное выше в том же батче работают. Обычно хватает 2–3 батчей до 50 операций; формы объектов — в разделе «Точные формы объектов». Батч с ошибкой не применяется целиком — исправь операции из списка ошибок и отправь батч снова целиком. Когда спека собрана, ответь коротким итогом без вызова инструментов.`,
   /** Harness v2, single pipeline keeps the plan-driven text. */
   opsFromPlan: (version: number) =>
     `Фаза ops: примени план через apply_ops батчами до 50 операций; текущая версия спеки — ${version}. set_acceptance — список из карточки 1:1. Когда все ops-шаги выполнены, ответь коротким итогом без вызова инструментов.`,
@@ -112,6 +115,13 @@ const SDK_CHECKS = new Set(["G0-TS-01", "G0-FN-01"]);
 export const SDK_FIX_HINT =
   'Ошибки типов и объявлений функций — сверься со шпаргалкой @wizard/sdk из системного промпта: импорт только `import { query, mutation, action, v } from "@wizard/sdk"`; `export default query({ args: { x: v.string(), y: v.optional(v.int()) }, handler: async (ctx, args) => … })` без аннотаций параметров; необязательный аргумент — v.optional(v.X()), а не .optional(); таблицы — ctx.db.<сущность>.get/getBy/list/first/count/paginate/insert/patch/delete, а не ctx.db.query(…).';
 
+/** The check's evidence (the compiler's text for G0-TS-01, expected vs got for scenarios) on one line, ≤ 300 chars. */
+export function evidenceOf(c: { evidence?: string }): string {
+  const e = (c.evidence ?? "").replace(/\s+/g, " ").trim();
+  if (!e) return "";
+  return ` — ${e.length > 300 ? `${e.slice(0, 299)}…` : e}`;
+}
+
 export function gateReportText(report: GateReport, explanations?: unknown[]): string {
   const failed = report.checks.filter((c) => c.status === "fail" || c.status === "error");
   const lines = [
@@ -120,7 +130,7 @@ export function gateReportText(report: GateReport, explanations?: unknown[]): st
       .slice(0, 20)
       .map(
         (c) =>
-          `- ${c.id}${c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}${c.path ? ` ${c.path}` : ""}: ${c.message_ru}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
+          `- ${c.id}${c.file ? ` ${c.file}${c.line ? `:${c.line}` : ""}` : ""}${c.path ? ` ${c.path}` : ""}: ${c.message_ru}${evidenceOf(c)}${c.fixHint ? ` (подсказка: ${c.fixHint})` : ""}`,
       ),
   ];
   if (explanations?.length)

@@ -716,6 +716,18 @@ select fc->>'id' as failed_check, count(*) as times
 from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'failedChecks', '[]'::jsonb)) fc
 where e.type = 'gate_result' and e.ts > now() - interval '6 hours'
 group by 1 order by 2 desc limit 20;
+-- What the failed blocker checks say (G0-TS-01: the compiler's text; others: the gate's message), grouped.
+select c->>'id' as check_id, left(regexp_replace(coalesce(c->>'evidence', c->>'message_ru'), '\\s+', ' ', 'g'), 220) as says,
+  count(*) as times
+from platform.gate_reports g join platform.runs r on r.id = g.run_id
+cross join lateral jsonb_array_elements(g.report->'checks') c
+where r.created_at > now() - interval '6 hours' and c->>'status' in ('fail', 'error') and c->>'severity' = 'blocker'
+group by 1, 2 order by 3 desc limit 40;
+-- Rejected tool calls of the builder's own phases (build_metrics.stages.rejections): phase, tool, code, issues.
+select x->>'phase' as phase, x->>'tool' as tool, x->>'code' as code, x->>'issues' as issues, count(*) as times
+from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'stages'->'rejections', '[]'::jsonb)) x
+where e.type = 'build_metrics' and e.ts > now() - interval '6 hours'
+group by 1, 2, 3, 4 order by 5 desc limit 30;
 `;
 
 /**
@@ -795,6 +807,16 @@ const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, ""
     console.log("system/info: HTTP", r.status, "за", Date.now() - t, "мс", j.status ? "status=" + j.status : "", j.code !== undefined ? "code=" + j.code : "", j.message ? "message=" + String(j.message).slice(0, 160) : "");
   } catch (e) {
     console.log("system/info: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
+  }
+  // Sender domains of the account and their checks (code 229 «tracking domain required»: is the link domain there?).
+  try {
+    const r = await fetch(base + "/ru/transactional/api/v1/domain/list.json", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "X-API-KEY": process.env.WIZARD_SMTP_PASSWORD || "" }, body: "{}", signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    const flat = (o) => Object.entries(o ?? {}).filter(([, v]) => v === null || typeof v !== "object").map(([k, v]) => k + "=" + String(v).replace(/[^s@]+@[^s@]+/g, "<почта>").slice(0, 60)).join(" ");
+    console.log("domain/list: HTTP", r.status, flat(j));
+    for (const d of Array.isArray(j.domains) ? j.domains : []) console.log("  домен:", flat(d));
+  } catch (e) {
+    console.log("domain/list: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
   }
   // A send to a reserved .invalid address: nothing can be delivered, the provider names why it refuses the sender.
   const fromRaw = process.env.WIZARD_SMTP_FROM || "";

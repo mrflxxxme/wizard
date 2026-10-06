@@ -137,8 +137,9 @@ harness:
       who: "исполнители: callType build_code, свежий контекст на задачу"
       context: >
         system static (как у строителя, кэшируемый префикс) + одно user-сообщение: карточка сжато, дайджест спеки, задача ТЗ целиком,
-        сигнатуры функций из uses, проверки «Должно пройти», текущий текст файла (заготовка или прежняя версия). История других
-        задач не подаётся.
+        сигнатуры функций из uses, сгенерированные типы системы (_generated/wizard.d.ts, ≤12 000 символов), проверки «Должно
+        пройти», текущий текст файла (заготовка или прежняя версия). История других задач не подаётся. Находки проверок —
+        с evidence (текст компилятора, ≤300 символов).
       tools: "write_file (только файл задачи, иначе TASK_FILE_ONLY), read_file, list_files, get_sdk_docs, get_ui_kit_docs, get_capability, report_capability_gap"
       check: >
         После хода с записью файла харнесс сам проверяет файл кодовыми проверками G0 (IMP-01, SEC-01, SPEC-01, SPEC-03, FN-01, TS-01)
@@ -165,7 +166,9 @@ harness:
   metrics: >
     Внутреннее событие build_metrics (workflows.yaml#events) перед run_finished/run_failed: {stages: {ops: {calls}, brief: {tasks,
     retries}, checks: {total, attached}, tasks: {total, firstPass, passed, failed, calls}, verify: {g0Runs, g1Runs, fixTasks,
-    fixPhases}, review: {pages, ok, critical, minor, skipped}}, creditsUsed, durationMs}. Замер D67 читает его из базы (eval.yaml).
+    fixPhases}, review: {pages, ok, critical, minor, skipped}, rejections: [{phase, tool, code, issues: ["код@путь"]}] (первые 20
+    отказов инструментов в фазах строителя, для диагностики)}, creditsUsed, durationMs}. ops.calls пишется и при сбое фазы.
+    Замер D67 читает его из базы (eval.yaml).
   modes: "create и change; fix стартует с verify; point_edit — без изменений (#point_and_edit)"
 
 budgets:

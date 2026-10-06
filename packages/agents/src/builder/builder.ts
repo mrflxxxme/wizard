@@ -27,6 +27,7 @@ import {
   FINDINGS_TEXT,
   KIND_ORDER,
   LIB_FILE_RE,
+  REJECTIONS_MAX,
   REVIEW_SYSTEM,
   reviewFindings,
   reviewMessage,
@@ -252,8 +253,11 @@ class Builder implements ToolEnv {
           const { version } = await this.#host.store.getSpec();
           const text = mode === "create" ? PHASE_TEXT.ops(version) : PHASE_TEXT.change(version);
           const before = this.#steps;
-          await this.#toolPhase("build_ops", text);
-          this.#metrics.ops.calls = this.#steps - before;
+          try {
+            await this.#toolPhase("build_ops", text);
+          } finally {
+            this.#metrics.ops.calls = this.#steps - before;
+          }
         });
         const stubs = await this.#scaffoldPages();
         await this.#phaseStep("plan", () => this.#briefPhase(mode));
@@ -950,11 +954,26 @@ class Builder implements ToolEnv {
         this.#recentCalls = [];
       }
       if (!ok) {
-        const err = (content as { error: { code: string; message: string; issues?: { path: string }[] } })
-          .error;
+        const err = (
+          content as {
+            error: {
+              code: string;
+              message: string;
+              issues?: { path: string; code?: string; message?: string }[];
+            };
+          }
+        ).error;
         const key = `${err.code}|${err.issues?.[0]?.path ?? ""}`;
         errKeys.add(key);
-        this.#lastError = err.message;
+        // The escalation text names what failed, not the generic «batch not applied».
+        this.#lastError = err.issues?.[0]?.message ?? err.message;
+        if (this.#metrics.rejections.length < REJECTIONS_MAX)
+          this.#metrics.rejections.push({
+            phase: this.#phase,
+            tool: call.name,
+            code: err.code,
+            issues: (err.issues ?? []).slice(0, 6).map((i) => `${i.code ?? err.code}@${i.path}`),
+          });
         if (this.#prevErrKeys.has(key)) failedTurn = true;
       }
     }

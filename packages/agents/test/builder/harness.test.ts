@@ -2,7 +2,13 @@
 // stable order), the per-file check, the task file restriction, the reviewer → fix round and build_metrics.
 import { LlmError, type LlmResult, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
-import { type BriefTask, briefIssues, runWave } from "../../src/builder/harness.js";
+import {
+  type BriefTask,
+  briefIssues,
+  findingLines,
+  runWave,
+  taskMessage,
+} from "../../src/builder/harness.js";
 import { createMemoryHost, executeBuild, type RouteBatchItem } from "../../src/builder/index.js";
 import { pageStub } from "../../src/builder/scaffold.js";
 import { cardFor, eventProblems, g1Stub, report, stop, tc, turn } from "../builder-helpers.js";
@@ -56,7 +62,13 @@ const taskFile = (input: RouteInput) =>
 
 /** A model that plays every role of the harness; `opts` bends one behaviour per test. */
 function responder(
-  opts: { wrongFirstWrite?: boolean; criticalOn?: string; failTaskOnce?: string; reviewThrows?: Error } = {},
+  opts: {
+    wrongFirstWrite?: boolean;
+    criticalOn?: string;
+    failTaskOnce?: string;
+    reviewThrows?: Error;
+    badOpsOnce?: boolean;
+  } = {},
 ) {
   const inputs: RouteInput[] = [];
   const reviewed = new Set<string>();
@@ -65,6 +77,10 @@ function responder(
     inputs.push(input);
     switch (input.callType) {
       case "build_ops":
+        if (opts.badOpsOnce) {
+          opts.badOpsOnce = false;
+          return out(turn(tc("apply_ops", { ops: [{ op: "add_entity", entity: {} }], expectedVersion: 1 })));
+        }
         return out(stop("Спека готова."));
       case "plan":
         return out(turn(tc("submit_brief", { tasks: brief })));
@@ -256,6 +272,27 @@ describe("harness v2: build", () => {
     expect(eventProblems(mem.events)).toEqual([]);
   });
 
+  test("a rejected batch in ops lands in build_metrics.rejections; ops.calls counts it", async () => {
+    const { mem } = host({ badOpsOnce: true });
+    const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    const m = metricsOf(mem.events);
+    expect(m.ops).toEqual({ calls: 2 });
+    expect(m.rejections).toEqual([
+      {
+        phase: "ops",
+        tool: "apply_ops",
+        code: "SCHEMA_INVALID",
+        issues: [
+          "SCHEMA_INVALID@/ops/0/name",
+          "SCHEMA_INVALID@/ops/0/label",
+          "SCHEMA_INVALID@/ops/0/fields",
+          "SCHEMA_INVALID@/ops/0/entity",
+        ],
+      },
+    ]);
+  });
+
   test("with routeBatch: one batch per wave (3 functions, 2 pages, 2 reviews), steps in task order", async () => {
     const { mem, batches } = host({}, true);
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
@@ -327,5 +364,28 @@ describe("harness v2: build", () => {
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
     expect(res.status).toBe("succeeded");
     expect(metricsOf(mem.events)).toMatchObject({ review: { skipped: true } });
+  });
+});
+
+describe("harness v2: what an executor sees", () => {
+  test("the task message carries the system's generated types", () => {
+    const m = taskMessage({ card, spec, task: brief[0] as BriefTask, checks: [], current: null });
+    expect(m).toContain("Типы системы (_generated/wizard.d.ts");
+    expect(m).toContain("interface Entities");
+    expect(m).toContain('status: "new" | "done"');
+  });
+
+  test("a finding shows the compiler's text, not only the TS code", () => {
+    const lines = findingLines([
+      {
+        id: "G0-TS-01",
+        status: "fail",
+        severity: "blocker",
+        message_ru: "Ошибка типов в ui/pages/Home.tsx:9 (TS2339)",
+        line: 9,
+        evidence: "Property 'phone' does not exist\n  on type '{ name: string; }'.",
+      },
+    ]);
+    expect(lines[0]).toContain("(TS2339) — Property 'phone' does not exist on type '{ name: string; }'.");
   });
 });
