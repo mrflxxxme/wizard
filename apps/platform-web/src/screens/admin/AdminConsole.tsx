@@ -771,6 +771,25 @@ function Reviews({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
     void load();
   }, [load]);
 
+  // The window opens on the click (popup blockers allow only that), the one-time link is set when it arrives.
+  async function preview(r: FounderReviewItem) {
+    setError(null);
+    const w = window.open("", "_blank");
+    try {
+      const out = await api.adminFounderReviewPreview(r.systemId);
+      if (w) {
+        w.opener = null;
+        w.location.href = out.url;
+      } else window.location.assign(out.url);
+      if (out.revision !== out.reviewRevision)
+        setError(ru.admin.previewNewer(out.revision, out.reviewRevision));
+    } catch (e) {
+      w?.close();
+      if (isMfa(e)) onMfaRequired();
+      else setError(errText(e));
+    }
+  }
+
   async function decide(r: FounderReviewItem, decision: "approve" | "reject") {
     const key = `${r.systemId}:${r.revision}`;
     const note = (notes[key] ?? "").trim();
@@ -806,6 +825,13 @@ function Reviews({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
                 data-testid="admin-review-note"
               />
               <div className={s.actions}>
+                <Button
+                  variant="secondary"
+                  onClick={() => void preview(r)}
+                  data-testid="admin-review-preview"
+                >
+                  {ru.admin.previewReview}
+                </Button>
                 <Button
                   variant="primary"
                   onClick={() => void decide(r, "approve")}
