@@ -1017,7 +1017,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         name: "extra_fields",
         label: "Дополнительные поля клиента",
         type: "fields",
-        maxItems: 6,
+        maxItems: 8,
       },
       {
         name: "retention_days",
@@ -1041,10 +1041,28 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         module: "packages",
         effect: "абонементы и остаток визитов в карточке",
       },
+      {
+        module: "leads",
+        effect: "заявка находит или создаёт клиента по контакту; заявки видны в истории клиента",
+      },
     ],
     provides: {
       entities: ["client", "client_note"],
+      routes: ["/clients"],
     },
+    hook: true,
+    functions: [
+      {
+        name: "clientFromLead",
+        kind: "mutation",
+        file: "functions/client_card/clientFromLead.ts",
+        roles: ["$owner"],
+        when: {
+          module: "leads",
+        },
+        purpose: "новая заявка находит клиента по телефону или почте или создаёт его",
+      },
+    ],
     metrics: [
       {
         id: "new_clients",
@@ -1074,6 +1092,22 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           dateField: "starts_at",
         },
       },
+      {
+        id: "repeat_lead_clients",
+        label: "Клиентов с повторными заявками",
+        goal: "client_history",
+        unit: "percent",
+        better: "up",
+        when: {
+          module: "leads",
+        },
+        compute: {
+          kind: "repeat_share",
+          entity: "lead",
+          by: "client",
+          dateField: "created_at",
+        },
+      },
     ],
     goalScenarios: [
       {
@@ -1099,6 +1133,71 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             kind: "page_text",
             text: "В карточке клиента обе записи с датами",
+          },
+        ],
+      },
+      {
+        id: "GS-client_card-2",
+        goal: "client_history",
+        title: "Две заявки с одним телефоном — один клиент, обе заявки в его истории",
+        withModules: ["leads"],
+        steps: [
+          {
+            actor: "visitor",
+            text: "Дважды оставляет заявку с одним и тем же телефоном",
+          },
+          {
+            actor: "owner",
+            text: "Открывает страницу «Клиенты и история» и выбирает клиента",
+          },
+        ],
+        expect: [
+          {
+            kind: "record",
+            text: "Клиент один, без дубля",
+          },
+          {
+            kind: "page_text",
+            text: "В разделе «Заявки» карточки обе заявки",
+          },
+        ],
+      },
+      {
+        id: "GS-client_card-3",
+        goal: "client_history",
+        title: "Сделка клиента видна в его карточке",
+        withModules: ["deals"],
+        steps: [
+          {
+            actor: "owner",
+            text: "Создаёт сделку и выбирает в ней клиента",
+          },
+          {
+            actor: "owner",
+            text: "Открывает карточку этого клиента",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "В разделе «Сделки» карточки есть эта сделка",
+          },
+        ],
+      },
+      {
+        id: "GS-client_card-4",
+        goal: "client_history",
+        title: "Посетитель без входа не видит базу клиентов",
+        steps: [
+          {
+            actor: "visitor",
+            text: "Открывает адрес страницы клиентов без входа",
+          },
+        ],
+        expect: [
+          {
+            kind: "denied",
+            text: "Страница и данные клиентов недоступны без входа",
           },
         ],
       },
@@ -1178,9 +1277,53 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
     ],
     provides: {
       entities: ["deal", "deal_task"],
+      routes: ["/deals"],
     },
     hook: true,
+    functions: [
+      {
+        name: "dealFunnel",
+        kind: "query",
+        file: "functions/deals/dealFunnel.ts",
+        roles: ["$owner", "$staff"],
+        purpose: "конверсия по этапам воронки за период для панели цели",
+      },
+      {
+        name: "dealFromLead",
+        kind: "mutation",
+        file: "functions/deals/dealFromLead.ts",
+        roles: ["$owner"],
+        when: {
+          module: "leads",
+        },
+        purpose: "заявка, взятая в работу, становится сделкой на первом этапе",
+      },
+    ],
     metrics: [
+      {
+        id: "deals_new",
+        label: "Новых сделок",
+        goal: "deal_pipeline",
+        unit: "count",
+        better: "up",
+        compute: {
+          kind: "count",
+          entity: "deal",
+          dateField: "created_at",
+        },
+      },
+      {
+        id: "deals_stage_conversion",
+        label: "Конверсия по этапам",
+        goal: "deal_pipeline",
+        unit: "percent",
+        better: "up",
+        description: "Доля сделок периода, дошедших до каждого этапа и до успеха (функция dealFunnel)",
+        compute: {
+          kind: "function",
+          name: "dealFunnel",
+        },
+      },
       {
         id: "deals_won_share",
         label: "Конверсия в успешные",
@@ -1216,6 +1359,22 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           where: {
             status: "won",
           },
+        },
+      },
+      {
+        id: "deals_repeat_clients",
+        label: "Клиентов с повторными сделками",
+        goal: "deal_pipeline",
+        unit: "percent",
+        better: "up",
+        when: {
+          module: "client_card",
+        },
+        compute: {
+          kind: "repeat_share",
+          entity: "deal",
+          by: "client",
+          dateField: "created_at",
         },
       },
     ],
@@ -1263,6 +1422,53 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             kind: "denied",
             text: "Чужой сделки на доске нет",
+          },
+        ],
+      },
+      {
+        id: "GS-deals-3",
+        goal: "deal_pipeline",
+        title: "Заявка, взятая в работу, появляется на доске сделок",
+        withModules: ["leads"],
+        steps: [
+          {
+            actor: "visitor",
+            text: "Оставляет заявку на сайте",
+          },
+          {
+            actor: "owner",
+            text: "Переводит заявку в работу и открывает доску сделок",
+          },
+        ],
+        expect: [
+          {
+            kind: "status",
+            text: "Сделка из заявки в колонке первого этапа",
+          },
+        ],
+      },
+      {
+        id: "GS-deals-4",
+        goal: "deal_pipeline",
+        title: "Сделка проходит все этапы до успеха, панель цели это видит",
+        steps: [
+          {
+            actor: "owner",
+            text: "Переносит сделку по всем этапам до «Успешно»",
+          },
+          {
+            actor: "owner",
+            text: "Открывает панель цели",
+          },
+        ],
+        expect: [
+          {
+            kind: "status",
+            text: "Сделка в колонке «Успешно»",
+          },
+          {
+            kind: "metric",
+            text: "Конверсия в успешные выросла",
           },
         ],
       },

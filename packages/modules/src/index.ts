@@ -18,6 +18,23 @@ export {
 } from "./catalog/page.js";
 /** Beta v2 registry: MODULES (code where ready, drafts from specs/modules/modules.yaml#catalog), CATALOG, MODULES_WITH_CODE. */
 export { CATALOG, MODULES, MODULES_WITH_CODE } from "./catalog.js";
+/** Module «Клиенты с историей»: compile hook (tags, notes, lead → client workflow), lead sample data for G1 scenarios. */
+export {
+  CLIENT_CONTACTS,
+  clientTagOptions,
+  compileClientCard,
+  leadSampleData,
+} from "./client_card/compile.js";
+/** «Клиенты и история» page: the card with notes and records of other modules that refer to the client. */
+export { clientHistoryPage, type HistorySource, historySources } from "./client_card/history.js";
+/** Module «Клиенты с историей»: manifest and definition. */
+export { clientCardManifest, clientCardModule } from "./client_card/index.js";
+/** «Воронка» page of «Воронка сделок»: StatusBoard by stage, the deal card and its tasks. */
+export { dealsBoardPage } from "./deals/board.js";
+/** Module «Воронка сделок»: compile hook (stages stage_1…N + won, lost), canonical stage options. */
+export { compileDeals, DEAL_FINAL_STAGES, dealStages } from "./deals/compile.js";
+/** Module «Воронка сделок»: manifest and definition. */
+export { dealsManifest, dealsModule } from "./deals/index.js";
 /** Draft manifests generated from modules.yaml#catalog (scripts/gen-draft.mjs). */
 export { DRAFT_MANIFESTS } from "./draft.js";
 /** compilePlan(plan, registry, {appName?}) → {ok, spec, files, order, links, metrics, scenarios, customSlots, plan, warnings} | {ok: false, errors}. */
