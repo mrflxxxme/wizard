@@ -315,6 +315,7 @@ describe("pilot: secrets bundle", () => {
         YANDEX_FOLDER_ID: "b1gfolder",
         YANDEX_BASE_URL: "https://llm.api.cloud.yandex.net/v1",
         WIZARD_BUILD_DEFAULT_TIER: "T1",
+        WIZARD_LLM_DAILY_CAP_RUB: "1100",
       },
     }).platformEnv;
     for (const line of [
@@ -325,6 +326,7 @@ describe("pilot: secrets bundle", () => {
       "YANDEX_FOLDER_ID=b1gfolder",
       "YANDEX_BASE_URL=https://llm.api.cloud.yandex.net/v1",
       "WIZARD_BUILD_DEFAULT_TIER=T1",
+      "WIZARD_LLM_DAILY_CAP_RUB=1100",
     ])
       expect(models).toContain(`${line}\n`);
     expect(f.platformEnv).not.toContain("WALG");

@@ -205,6 +205,8 @@ export const PLATFORM_PASSTHROUGH = [
   "YANDEX_FOLDER_ID",
   "YANDEX_BASE_URL",
   "WIZARD_BUILD_DEFAULT_TIER",
+  // D75: platform model spend per Moscow day (default 700 ₽); raised only by the founder.
+  "WIZARD_LLM_DAILY_CAP_RUB",
   "WIZARD_SMTP_HOST",
   "WIZARD_SMTP_PORT",
   "WIZARD_SMTP_USER",
