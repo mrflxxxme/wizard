@@ -1,6 +1,7 @@
 // Live calls through AI SDK 7 + @ai-sdk/openai-compatible (models.yaml#call_policy). Keys come only from env.
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, jsonSchema, type ModelMessage, type ToolSet, tool } from "ai";
+import { Agent, fetch as undiciFetch } from "undici";
 import type { ModelDef, ProviderDef } from "./registry.js";
 import type { LlmMessage, LlmResult, LlmTool, LlmUsage } from "./types.js";
 
@@ -154,6 +155,31 @@ export interface LiveCallInput {
   fetch?: typeof globalThis.fetch;
 }
 
+/**
+ * HTTP of the model calls. Node's fetch waits at most 300 s for response headers (undici headersTimeout): a
+ * non-streaming call of a reasoning model answers only when the whole output is ready, so long calls broke at
+ * exactly 300 s as NETWORK and fell back to a model without the prompt cache (D67 eval 06.10.2026: max 301.7 s on
+ * fix, build_ops and plan; 46 fallback fix calls cost as much as 200 cached ones). The limit of a call is the route's
+ * timeout_ms through the AbortSignal; the agent only must not cut it earlier.
+ */
+export const LLM_HTTP_TIMEOUT_MS = 15 * 60_000;
+
+/** fetch over an undici agent with the given header/body timeouts (default LLM_HTTP_TIMEOUT_MS). */
+export function llmFetch(timeoutMs = LLM_HTTP_TIMEOUT_MS): typeof globalThis.fetch {
+  const dispatcher = new Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
+  return ((input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) =>
+    undiciFetch(input as Parameters<typeof undiciFetch>[0], {
+      ...(init as Parameters<typeof undiciFetch>[1]),
+      dispatcher,
+    })) as unknown as typeof globalThis.fetch;
+}
+
+let sharedFetch: typeof globalThis.fetch | undefined;
+const defaultFetch = () => {
+  sharedFetch ??= llmFetch();
+  return sharedFetch;
+};
+
 export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; usage: LlmUsage }> {
   const apiKey = i.env[i.provider.apiKeyEnv];
   if (!apiKey) throw new LiveCallError("NO_API_KEY");
@@ -163,7 +189,7 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     baseURL,
     apiKey,
     ...(i.provider.requiredHeaders ? { headers: i.provider.requiredHeaders } : {}),
-    ...(i.fetch ? { fetch: i.fetch } : {}),
+    fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
     supportsStructuredOutputs: false,
     transformRequestBody: (body) => transformBody(i.provider.id, body),

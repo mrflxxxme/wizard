@@ -394,6 +394,9 @@ importers:
       ai:
         specifier: ^7.0.124
         version: 7.0.124(zod@4.6.5)
+      undici:
+        specifier: ^7.30.0
+        version: 7.30.0
 
   packages/pii:
     dependencies:

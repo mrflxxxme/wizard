@@ -9,6 +9,7 @@
 | fflate | см. pnpm-lock | MIT | `packages/pii/import`: распаковка xlsx при импорте таблиц (серверная сторона) |
 | @faker-js/faker (локаль ru) | см. pnpm-lock | MIT | синтетические строки импорта и seed (серверная сторона, данные не распространяются) |
 | @dbos-inc/dbos-sdk (DBOS Transact TS) и его зависимости pg, pg-pool, pg-protocol, pg-types (MIT), superjson, copy-anything, is-what (MIT), serialize-error (MIT), ws (MIT), commander (MIT), yaml (ISC) | см. pnpm-lock | MIT | `apps/worker`: durable-воркфлоу прогонов; `apps/platform-api`: постановка прогонов в очередь (DBOSClient). Серверная сторона, в бандлы систем не попадает |
+| undici (Node.js) | см. pnpm-lock | MIT | `packages/llm`: HTTP вызовов моделей с таймаутом заголовков дольше 300 с по умолчанию (уже был в дереве через @ai-sdk/provider-utils). Серверная сторона, в бандлы систем не попадает |
 | Словарь брендов `packages/gates/data/brands.ru.json` | собственная компиляция | CC0 | антифрод G2-AF-04: имена из `specs/security/abuse.yaml#patterns.brands`, домены — собственный список; внешних источников нет |
 
 ## Инструменты только для CI (не распространяются, не модифицируются)
