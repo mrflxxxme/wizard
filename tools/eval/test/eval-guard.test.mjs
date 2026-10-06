@@ -42,6 +42,29 @@ describe("fail-fast: the D67 threshold out of reach stops the measurement", () =
     expect(doc.stopped).toBeNull();
   });
 
+  it("a partial run (a probe of a few briefs, D75 step 2) drives every brief", async () => {
+    const client = failingClient();
+    const doc = await runEval({ client, briefs: briefs.slice(0, 3), concurrency: 1, sleep: noSleep, log: () => {} });
+    expect(client.calls.filter((p) => p === "/systems")).toHaveLength(3);
+    expect(doc.stopped).toBeNull();
+  });
+
+  it("the platform's daily model cap stops the run: the rest is skipped, not failed one by one", async () => {
+    const calls = [];
+    const client = {
+      base: "https://test",
+      post: async (path) => {
+        calls.push(path);
+        throw Object.assign(new Error("POST /systems: 503 LLM_BUDGET_EXHAUSTED"), { code: "LLM_BUDGET_EXHAUSTED" });
+      },
+      get: async () => ({ body: {} }),
+    };
+    const doc = await runEval({ client, briefs: briefs.slice(0, 3), concurrency: 1, sleep: noSleep, log: () => {} });
+    expect(calls.filter((p) => p === "/systems")).toHaveLength(1);
+    expect(doc.results.slice(1).every((r) => r.status === "skipped")).toBe(true);
+    expect(doc.stopped).toMatch(/дневной лимит/);
+  });
+
   it("a stop from outside cancels the running build and skips the rest", async () => {
     const stop = new AbortController();
     const posts = [];

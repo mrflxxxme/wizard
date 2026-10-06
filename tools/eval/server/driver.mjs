@@ -309,6 +309,8 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     r.status = r.status === "running" ? "error" : r.status;
     r.error = String(e?.message ?? e).slice(0, 500);
     say(`ошибка: ${r.error}`);
+    // The platform's daily model cap (D75): no other brief can start today, the run stops instead of failing each.
+    if (e?.code === "LLM_BUDGET_EXHAUSTED") ctx.abortRun?.("дневной лимит платформы на модели исчерпан");
   } finally {
     // Honest answers of the agents («Пока не умеем…», payload.gaps of chat messages, M2-77) — also after a failure.
     if (r.systemId)
@@ -414,8 +416,13 @@ export async function runEval(o) {
   ctx.signal = stop.signal;
   const counted = o.counted ?? ((r) => r.ready);
   const need = Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * results.length);
+  // A partial run (a probe of a few briefs, D75 step 2) drives every brief: its point is the diagnosis of each one.
+  const failFast = o.failFast ?? results.length >= D67_THRESHOLD.of;
+  ctx.abortRun = (reason) => {
+    if (!stop.signal.aborted) stop.abort(reason);
+  };
   const checkReachable = () => {
-    if (o.failFast === false || stop.signal.aborted) return;
+    if (!failFast || stop.signal.aborted) return;
     const lost = results.filter((x) => FINAL.has(x.status) && !counted(x)).length;
     if (results.length - lost < need)
       stop.abort(`порог ${need} из ${results.length} уже недостижим (не готовы: ${lost})`);

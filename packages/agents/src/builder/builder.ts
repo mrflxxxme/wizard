@@ -941,7 +941,7 @@ class Builder implements ToolEnv {
         this.#metrics.review.skipped = true;
         return false;
       }
-      for (const [k, r] of settled.entries()) {
+      for (const r of settled) {
         if (r.status === "rejected") {
           // Cancel, budget stop and anything that is not a model failure stop the build (never a "success").
           if (!skippableReviewError(r.reason)) throw r.reason;
