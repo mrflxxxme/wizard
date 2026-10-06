@@ -84,6 +84,15 @@ function responder(
         }
         return out(stop("Спека готова."));
       case "plan":
+        if (input.tools?.some((t) => t.name === "submit_landing"))
+          return out(
+            turn(
+              tc("submit_landing", {
+                hero: { title: "Клиника у дома", subtitle: "Запись на консультацию", cta: "Записаться" },
+                form: { title: "Оставьте заявку" },
+              }),
+            ),
+          );
         return out(turn(tc("submit_brief", { tasks: brief })));
       case "build_code":
       case "fix": {
@@ -367,6 +376,24 @@ describe("harness v2: build", () => {
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
     expect(res.status).toBe("succeeded");
     expect(metricsOf(mem.events)).toMatchObject({ review: { skipped: true } });
+  });
+});
+
+describe("D75: a site card is built from the template", () => {
+  test("ops (template text) → pages by code and one landing call; no brief, no executors; build_metrics.template", async () => {
+    const { mem, inputs } = host();
+    const res = await executeBuild(mem, { card: { ...card, segment: "site" }, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    expect(inputs.map((i) => i.callType)).toEqual(["build_ops", "plan"]);
+    expect(String(inputs[0]?.messages.at(-1)?.content)).toContain("Экраны системы соберёт шаблон");
+    const files = mem.state().files;
+    expect(files.get("ui/pages/Home.tsx")).toContain('"Клиника у дома"');
+    expect(files.get("ui/pages/Cabinet.tsx")).toContain("CabinetLayout");
+    // The fixture's functions and their pages were dropped: the template screens need none.
+    const { spec: after } = await mem.host.store.getSpec();
+    expect(after.functions ?? []).toEqual([]);
+    expect((after.pages ?? []).map((p) => p.route).sort()).toEqual(["/", "/cabinet"]);
+    expect(metricsOf(mem.events)).toMatchObject({ template: { used: true, gaps: [] }, brief: { tasks: 0 } });
   });
 });
 
