@@ -7,6 +7,7 @@
 // reserve: client and eval runs are refused once the day's total reaches cap − WIZARD_LLM_STAFF_RESERVE_RUB, staff runs
 // only at the cap. Eval runs also have their own daily cap (eval orgs' spend only) and the B2 development budget.
 import { sql } from "kysely";
+import type { LlmBalance } from "../config.js";
 import type { Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
 import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
@@ -47,6 +48,28 @@ export async function llmSpentRub(db: Db, start: Date, end: Date, orgId?: string
   return Number(r.rub);
 }
 
+/** Provider names for the founder (models.yaml#providers). */
+export const PROVIDER_LABELS: Record<string, string> = {
+  zai: "Z.ai",
+  cloudru: "Cloud.ru",
+  yandex: "Yandex AI Studio",
+  deepseek: "DeepSeek",
+  moonshot: "Moonshot",
+};
+
+/** Σ billable cost_rub of paid (live/record) calls of one provider since `since`, ₽ (D76 balance estimate). */
+export async function llmProviderSpentRub(db: Db, provider: string, since: Date): Promise<number> {
+  const r = await db
+    .selectFrom("platform.llm_calls")
+    .select(sql<string>`coalesce(sum(cost_rub), 0)`.as("rub"))
+    .where("billable", "=", true)
+    .where("mode", "in", ["live", "record"])
+    .where("provider", "=", provider)
+    .where("created_at", ">=", since)
+    .executeTakeFirstOrThrow();
+  return Number(r.rub);
+}
+
 export interface LlmCapStatus {
   month: string;
   spentRub: number;
@@ -66,6 +89,10 @@ export interface LlmMonthlyCapOptions {
   b2Budget?: { budgetRub: number; since: string };
   now?: () => Date;
   alert?: OpsAlertFn;
+  /** D76: provider balances reconciled by hand (WIZARD_LLM_BALANCE_*); none — no balance estimate. */
+  balances?: readonly LlmBalance[];
+  /** WIZARD_LLM_BALANCE_WARN_RUB: estimated remainder that alerts the founder (once per reconciliation). */
+  balanceWarnRub?: number;
 }
 
 export class LlmMonthlyCap {
@@ -131,6 +158,7 @@ export class LlmMonthlyCap {
       }
     }
     if (kind === "eval") await this.#assertEval();
+    await this.#balances();
     if (s.spentRub >= LLM_CAP_WARN_SHARE * s.capRub)
       await this.#once(`llm_cap_80:${s.month}`, {
         level: "warn",
@@ -161,6 +189,33 @@ export class LlmMonthlyCap {
     if (b2) {
       const s = await checkB2Budget(this.#o.db, { ...b2, alert: this.#o.alert });
       if (s.reached) throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_B2_BUDGET_EXHAUSTED_RU);
+    }
+  }
+
+  /**
+   * D76 «алерт о балансах заранее»: the providers have no balance API for an API key, so the remainder is estimated as
+   * the reconciled balance minus our own cost_rub of the provider's calls since then (models.yaml prices: rate and VAT
+   * of the price list, so ± a few %). At or below the threshold → one warning per reconciliation (a new
+   * WIZARD_LLM_BALANCE_* value re-arms it). The real «balance is zero» comes from the provider (onProviderDegraded).
+   */
+  async #balances(): Promise<void> {
+    const warn = this.#o.balanceWarnRub;
+    if (warn === undefined) return;
+    for (const b of this.#o.balances ?? []) {
+      const spent = await llmProviderSpentRub(this.#o.db, b.provider, b.since);
+      const left = b.rub - spent;
+      if (left > warn) continue;
+      const label = PROVIDER_LABELS[b.provider] ?? b.provider;
+      const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
+      await this.#once(`llm_balance_low:${b.provider}:${b.since.toISOString()}`, {
+        level: "warn",
+        event: "llm_provider_balance_low",
+        text:
+          `Wizard: по оценке на балансе ${label} осталось около ${rub(Math.max(0, left))} — порог предупреждения ${rub(warn)}. ` +
+          `Сверка: ${rub(b.rub)} на ${b.since.toISOString().slice(0, 16).replace("T", " ")} UTC, с тех пор потрачено ${rub(spent)} по ценам каталога моделей. ` +
+          `Пополните баланс и обновите WIZARD_LLM_BALANCE_${b.provider.toUpperCase()}; при нулевом балансе сборки сами уйдут на другого провайдера.`,
+        fields: { code: "LLM_BALANCE_LOW", reason: `${b.provider}: ${Math.round(left)} of ${b.rub} RUB` },
+      });
     }
   }
 

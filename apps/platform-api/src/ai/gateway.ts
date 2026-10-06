@@ -25,7 +25,8 @@ import { moscowMonth } from "../billing/llm-cap.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
-import { claimOpsAlert } from "../ops/alert.js";
+import { claimOpsAlert, type OpsAlertFn } from "../ops/alert.js";
+import { reportProviderDegraded } from "../runs/models-outage.js";
 import { DbUsageSink } from "../runs/usage.js";
 
 /** Runtime error codes of runtime.yaml#data_api.error_codes the gateway answers with (+ AI_UNAVAILABLE, 503). */
@@ -117,6 +118,8 @@ export interface AiGatewayOptions {
   billing: Billing;
   mailer?: Mailer;
   createRouter?: (opts: RouterOptions) => Router;
+  /** Founder alerts (D76: an empty provider balance, an opened model breaker). */
+  alert?: OpsAlertFn;
   now?: () => Date;
   log?: (msg: string, err?: unknown) => void;
 }
@@ -151,6 +154,11 @@ export class AiGateway {
       registry: createRegistry({ buildDefaultTier: this.#o.config.buildDefaultTier }),
       sink: new DbUsageSink(this.#o.db),
       circuit: this.#circuit,
+      onProviderDegraded: (event) => {
+        reportProviderDegraded({ db: this.#o.db, event, alert: this.#o.alert }).catch((err) =>
+          this.#o.log?.("provider_degraded alert", err),
+        );
+      },
       ...(mode === "fixture"
         ? {
             fixture: {

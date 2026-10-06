@@ -131,9 +131,14 @@ export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
 
 const TOKEN_RE = /tok_[a-z_]+_[A-Z2-7]{16}/;
 
+/** true → the messages carry reversible PII tokens (data-boundary.yaml#tokenization). */
+export function containsTokens(messages: readonly LlmMessage[]): boolean {
+  return TOKEN_RE.test(JSON.stringify(messages));
+}
+
 /** data-boundary.yaml#tokenization.guard: reversible tokens never go to T1. */
 export function assertNoTokens(messages: readonly LlmMessage[]): void {
-  if (TOKEN_RE.test(JSON.stringify(messages))) {
+  if (containsTokens(messages)) {
     throw new LlmError(
       "PII_TOKEN_IN_T1_PAYLOAD",
       "Запрос содержит токены персональных данных и не может быть отправлен.",

@@ -212,6 +212,11 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_LLM_EVAL_DAILY_CAP_RUB",
   "WIZARD_B2_BUDGET_RUB",
   "WIZARD_B2_BUDGET_SINCE",
+  // D76: provider balances reconciled by the founder («<₽>@<ISO time>»), the warning threshold, Z.ai as the reserve.
+  "WIZARD_LLM_BALANCE_ZAI",
+  "WIZARD_LLM_BALANCE_CLOUDRU",
+  "WIZARD_LLM_BALANCE_WARN_RUB",
+  "WIZARD_LLM_T1_RESERVE",
   "WIZARD_SMTP_HOST",
   "WIZARD_SMTP_PORT",
   "WIZARD_SMTP_USER",

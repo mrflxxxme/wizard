@@ -19,7 +19,9 @@ export type LiveErrorCode =
   | "TIMEOUT"
   | "NETWORK"
   | "EMPTY_RESPONSE"
-  | "ABORTED";
+  | "ABORTED"
+  /** The provider account ran out of money (models.yaml#fallback_rules, D76): never retried, the provider is skipped. */
+  | "PROVIDER_BALANCE_EXHAUSTED";
 
 const RETRYABLE: ReadonlySet<LiveErrorCode> = new Set([
   "HTTP_429",
@@ -236,10 +238,26 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
   }
 }
 
+/**
+ * Balance errors of the providers (models.yaml#fallback_rules): Z.ai answers 429 with code 1113 «Insufficient balance or
+ * no resource package» (06.10.2026); any 402 Payment Required; a 403/429 whose text names the balance, funds or billing
+ * (Cloud.ru and OpenAI-compatible gateways: insufficient_quota, «недостаточно средств»). A plain rate limit is not one.
+ */
+const BALANCE_RE =
+  /\b1113\b|insufficient[ _](balance|funds|quota)|no resource package|balance (is )?(exhausted|insufficient|not enough)|not enough (balance|funds)|payment required|billing|recharge|недостаточно средств|баланс|задолженност/i;
+
+/** true → the HTTP answer means «no money on the account», not overload. */
+export function isBalanceError(status: number, text: string): boolean {
+  if (status === 402) return true;
+  return (status === 429 || status === 403) && BALANCE_RE.test(text);
+}
+
 function classify(e: unknown, signal: AbortSignal): LiveCallError {
   if (e instanceof LiveCallError) return e;
   if (APICallError.isInstance(e)) {
     const s = e.statusCode ?? 0;
+    if (isBalanceError(s, `${e.message} ${e.responseBody ?? ""}`))
+      return new LiveCallError("PROVIDER_BALANCE_EXHAUSTED");
     const ra = Number(e.responseHeaders?.["retry-after"]);
     const retryAfterMs = Number.isFinite(ra) && ra >= 0 ? ra * 1000 : null;
     if (s === 429) return new LiveCallError("HTTP_429", retryAfterMs);

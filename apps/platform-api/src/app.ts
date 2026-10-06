@@ -151,6 +151,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     evalDailyCapRub: config.llmEvalDailyCapRub,
     b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
     alert,
+    balances: config.llmBalances,
+    balanceWarnRub: config.llmBalanceWarnRub,
     ...(opts.now ? { now: opts.now } : {}),
   });
   const billing = new Billing({
@@ -284,6 +286,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     config,
     billing,
     mailer,
+    alert,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     ...(opts.now ? { now: opts.now } : {}),
     log,
