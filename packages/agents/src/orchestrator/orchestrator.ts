@@ -593,6 +593,16 @@ export class Orchestrator {
       });
     }
     if (res.failure) {
+      // Internal: why the model's answer did not parse (paths and codes of the checks, short texts) — diagnose reads it;
+      // the user sees only the neutral run_failed text.
+      if (res.failure.issues?.length)
+        await this.deps.emit?.("orch_invalid", {
+          issues: res.failure.issues.slice(0, 10).map((i) => ({
+            path: i.path,
+            ...(i.code ? { code: i.code } : {}),
+            message: String(i.message).slice(0, 160),
+          })),
+        });
       await this.deps.emit?.("run_failed", {
         code: res.failure.code,
         message_ru: res.failure.message_ru,

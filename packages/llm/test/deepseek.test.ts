@@ -385,7 +385,7 @@ describe("no key → deepseek is simply unavailable, the existing fallback works
       orgPolicy: OPEN,
       ctx,
     });
-    expect([out.tier, out.model, out.ruFallback]).toEqual(["T0", "deepseek-v4-pro", true]);
+    expect([out.tier, out.model, out.ruFallback]).toEqual(["T0", "glm-5.1", true]);
     expect(stub.requests.map((r) => r.provider)).toEqual(["cloudru"]);
   });
 

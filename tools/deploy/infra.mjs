@@ -729,6 +729,10 @@ select call_type, model_id, count(*) as calls, round(avg(latency_ms) / 1000.0, 1
   round(100.0 * sum(cached_tokens) / nullif(sum(input_tokens), 0)) as cached_pct, round(sum(cost_rub), 1) as rub
 from platform.llm_calls where created_at > now() - interval '6 hours'
 group by 1, 2 order by rub desc limit 25;
+-- Why the interview or card answer did not parse (orch_invalid: check paths, codes and short texts).
+select to_char(e.ts at time zone 'Europe/Moscow', 'HH24:MI') as msk, left(e.payload->>'issues', 400) as issues
+from platform.run_events e where e.type = 'orch_invalid' and e.ts > now() - interval '6 hours'
+order by e.ts desc limit 10;
 -- Why QA could not write scenarios (build_metrics.stages.checks.qaInvalid: check id and validation errors).
 select left(x, 260) as qa_invalid, count(*) as times
 from platform.run_events e cross join lateral jsonb_array_elements_text(coalesce(e.payload->'stages'->'checks'->'qaInvalid', '[]'::jsonb)) x
@@ -823,7 +827,7 @@ const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, ""
   try {
     const r = await fetch(base + "/ru/transactional/api/v1/domain/list.json", { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "X-API-KEY": process.env.WIZARD_SMTP_PASSWORD || "" }, body: "{}", signal: AbortSignal.timeout(15000) });
     const j = await r.json().catch(() => ({}));
-    const flat = (o) => Object.entries(o ?? {}).filter(([, v]) => v === null || typeof v !== "object").map(([k, v]) => k + "=" + String(v).replace(/[^s@]+@[^s@]+/g, "<почта>").slice(0, 60)).join(" ");
+    const flat = (o) => Object.entries(o ?? {}).filter(([, v]) => v === null || typeof v !== "object").map(([k, v]) => k + "=" + String(v).replace(/[^\\s@]+@[^\\s@]+/g, "<почта>").slice(0, 60)).join(" ");
     console.log("domain/list: HTTP", r.status, flat(j));
     for (const d of Array.isArray(j.domains) ? j.domains : []) console.log("  домен:", flat(d), "· владение:", d["verification-record"]?.status ?? "—", "· DKIM:", d.dkim?.status ?? "—");
   } catch (e) {
