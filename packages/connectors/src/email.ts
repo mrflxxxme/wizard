@@ -24,6 +24,7 @@ import {
   CANCEL_LINK_PLACEHOLDER,
   checkRecipient,
   notifySteps,
+  RESCHEDULE_LINK_PLACEHOLDER,
   recipientKinds,
   renderTemplate,
   resolvePlaceholder,
@@ -100,7 +101,8 @@ function templateUsage(spec: AppSpec, integration: string) {
 
 /**
  * `{{cancel_link}}` (M2-50): the step declares `cancel: {set: {<field>: <value>}}` — what the one-time link writes to
- * the record (e.g. status → cancelled); only non-PII fields of the record, a visitor recipient only.
+ * the record (e.g. status → cancelled); only non-PII fields of the record, a visitor recipient only. B2-14: null clears
+ * an optional field; `cancel.until` limits the link in time.
  */
 function checkCancel(
   step: ReturnType<typeof notifySteps>[number],
@@ -140,9 +142,124 @@ function checkCancel(
       out.push(
         issue(`Ссылка отмены может менять только обычные поля записи без персональных данных, а не «${k}»`),
       );
-    else if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
-      out.push(issue(`Значение поля «${k}» для отмены — строка, число или да/нет`));
+    // B2-14: null frees a value of an optional field (e.g. the seat of a unique slot index).
+    else if (v === null && f.required)
+      out.push(issue(`Поле «${k}» обязательное: ссылка отмены не может его очистить`));
+    else if (v !== null && typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+      out.push(issue(`Значение поля «${k}» для отмены — строка, число, да/нет или пусто (null)`));
   }
+  out.push(...checkUntil(step, (cancel as { until?: unknown }).until, `${base}/cancel/until`));
+  return out;
+}
+
+/** `until: {field, minutesBefore}` of a link: the link works until `record[field] − minutesBefore` (B2-14). */
+function checkUntil(step: ReturnType<typeof notifySteps>[number], until: unknown, path: string): SpecIssue[] {
+  if (until === undefined) return [];
+  const u = until as { field?: unknown; minutesBefore?: unknown } | null;
+  const f = typeof u?.field === "string" ? step.entity?.fields.find((x) => x.name === u.field) : undefined;
+  const minutes = u?.minutesBefore;
+  if (
+    !f ||
+    (f.type !== "datetime" && f.type !== "date") ||
+    typeof minutes !== "number" ||
+    !Number.isInteger(minutes) ||
+    minutes < 0 ||
+    minutes > 525_600
+  )
+    return [
+      {
+        code: "CONFIG_INVALID",
+        path,
+        message_ru:
+          "until: {field: <поле даты и времени записи>, minutesBefore: <целое ≥ 0>} — до какого момента работает ссылка",
+        rule: "notify.link_until",
+      },
+    ];
+  return [];
+}
+
+const PLAIN_FIELD = (f: { pii?: string; type: string } | undefined) =>
+  f !== undefined && (f.pii ?? "none") === "none" && !["file", "image", "json", "qr_token"].includes(f.type);
+
+/**
+ * `{{reschedule_link}}` (B2-14): the step declares `reschedule: {page, fields, keep?, set?, until?, when?}` — the
+ * link opens `page` (with the token and the `keep` values in the query), the page posts new values of `fields`.
+ */
+function checkReschedule(
+  step: ReturnType<typeof notifySteps>[number],
+  templates: NonNullable<EmailConfig["templates"]>,
+): SpecIssue[] {
+  const base = `/workflows/${step.wi}/steps/${step.si}/params`;
+  const tpl = typeof step.params.template === "string" ? templates[step.params.template] : undefined;
+  const uses = tpl
+    ? [...placeholders(tpl.subject), ...placeholders(tpl.body)].includes(RESCHEDULE_LINK_PLACEHOLDER)
+    : false;
+  const r = step.params.reschedule as
+    | { page?: unknown; fields?: unknown; keep?: unknown; set?: unknown; until?: unknown; when?: unknown }
+    | null
+    | undefined;
+  const issue = (message_ru: string, path = `${base}/reschedule`): SpecIssue => ({
+    code: "CONFIG_INVALID",
+    path,
+    message_ru,
+    rule: "notify.reschedule_link",
+  });
+  if (r === undefined)
+    return uses
+      ? [
+          issue(
+            "Шаблон использует {{reschedule_link}}: укажите reschedule: {page, fields} — страницу выбора нового времени и поля, которые она меняет",
+            `${base}/template`,
+          ),
+        ]
+      : [];
+  if (r === null || typeof r !== "object" || Array.isArray(r))
+    return [issue("reschedule: {page, fields, keep?, set?, until?, when?}")];
+  if (!recipientKinds(step).has("visitor"))
+    return [issue("Ссылка переноса отправляется только посетителю (получатель $record.<поле email>)")];
+  const out: SpecIssue[] = [];
+  if (typeof r.page !== "string" || !/^\/[a-z0-9/_-]*$/.test(r.page))
+    out.push(issue("reschedule.page — адрес страницы системы, например /booking", `${base}/reschedule/page`));
+  const fieldOf = (n: unknown) =>
+    typeof n === "string" ? step.entity?.fields.find((x) => x.name === n) : undefined;
+  const fields = Array.isArray(r.fields) ? r.fields : [];
+  if (fields.length === 0 || fields.length > 8)
+    out.push(
+      issue("reschedule.fields — от 1 до 8 полей, которые меняет перенос", `${base}/reschedule/fields`),
+    );
+  for (const n of fields) {
+    const f = fieldOf(n);
+    if (!PLAIN_FIELD(f) || f?.type === "ref")
+      out.push(
+        issue(
+          `Перенос может менять только обычные поля записи без персональных данных, а не «${String(n)}»`,
+          `${base}/reschedule/fields`,
+        ),
+      );
+  }
+  const keep: unknown[] = r.keep === undefined ? [] : Array.isArray(r.keep) ? r.keep : [r.keep];
+  for (const n of keep)
+    if (!PLAIN_FIELD(fieldOf(n)) || fieldOf(n)?.ref?.entity === "users")
+      out.push(
+        issue(
+          `Страница переноса может получить только поля без персональных данных, а не «${String(n)}»`,
+          `${base}/reschedule/keep`,
+        ),
+      );
+  for (const [k, v] of Object.entries(
+    r.set && typeof r.set === "object" && !Array.isArray(r.set) ? r.set : {},
+  ))
+    if (
+      !PLAIN_FIELD(fieldOf(k)) ||
+      (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+    )
+      out.push(issue(`reschedule.set: поле «${k}» — обычное поле без ПДн со строкой, числом или да/нет`));
+  if (r.when !== undefined) {
+    const w = r.when as Record<string, unknown> | null;
+    if (!w || typeof w !== "object" || Array.isArray(w) || Object.keys(w).some((k) => !fieldOf(k)))
+      out.push(issue("reschedule.when: {поле: значение | [значения]} — когда перенос ещё возможен"));
+  }
+  out.push(...checkUntil(step, r.until, `${base}/reschedule/until`));
   return out;
 }
 
@@ -159,7 +276,11 @@ export function validateEmailSpec(config: EmailConfig, spec: AppSpec, at: SpecCh
   const names = Object.keys(templates);
   const extra: SpecIssue[] = [];
   for (const step of notifySteps(spec, at.integration.name)) {
-    extra.push(...checkRecipient(spec, step, "email"), ...checkCancel(step, templates));
+    extra.push(
+      ...checkRecipient(spec, step, "email"),
+      ...checkCancel(step, templates),
+      ...checkReschedule(step, templates),
+    );
     const t = step.params.template;
     if (typeof t !== "string" || !names.includes(t)) {
       extra.push({

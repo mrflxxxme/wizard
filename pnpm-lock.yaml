@@ -407,6 +407,9 @@ importers:
         specifier: workspace:*
         version: link:../appspec
     devDependencies:
+      '@wizard/build':
+        specifier: workspace:*
+        version: link:../build
       '@wizard/connectors':
         specifier: workspace:*
         version: link:../connectors

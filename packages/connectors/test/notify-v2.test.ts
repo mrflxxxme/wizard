@@ -107,6 +107,43 @@ describe("G0 of the recipe and the recipient rules", () => {
     s2.workflows[0].steps[2].params.cancel = { set: { phone: "" } };
     expect(validateIntegrations(s2).map((i) => i.rule)).toContain("notify.cancel_link");
   });
+
+  test("B2-14: cancel may clear an optional field and close in time; {{reschedule_link}} needs reschedule", () => {
+    const rules = (s: Json) => validateIntegrations(s).map((i) => i.rule);
+    const ok = booking() as Json;
+    ok.workflows[0].steps[2].params.cancel = {
+      set: { status: "cancelled", consent_messages: null },
+      until: { field: "starts_at", minutesBefore: 120 },
+    };
+    ok.integrations[0].config.templates.visitor_confirm.body += "\nПеренести: {{reschedule_link}}";
+    ok.workflows[0].steps[2].params.reschedule = {
+      page: "/booking",
+      fields: ["starts_at"],
+      keep: ["service"],
+      when: { status: ["booked"] },
+      until: { field: "starts_at", minutesBefore: 120 },
+    };
+    expect(rules(ok)).toEqual([]);
+
+    const required = booking() as Json;
+    required.workflows[0].steps[2].params.cancel = { set: { status: null } };
+    expect(rules(required)).toContain("notify.cancel_link");
+    const badUntil = booking() as Json;
+    badUntil.workflows[0].steps[2].params.cancel = {
+      set: { status: "cancelled" },
+      until: { field: "service" },
+    };
+    expect(rules(badUntil)).toContain("notify.link_until");
+    const missing = booking() as Json;
+    missing.integrations[0].config.templates.visitor_confirm.body += "\n{{reschedule_link}}";
+    expect(rules(missing)).toContain("notify.reschedule_link");
+    const pii = structuredClone(ok);
+    pii.workflows[0].steps[2].params.reschedule.fields = ["phone"];
+    expect(rules(pii)).toContain("notify.reschedule_link");
+    const keepPii = structuredClone(ok);
+    keepPii.workflows[0].steps[2].params.reschedule.keep = ["email"];
+    expect(rules(keepPii)).toContain("notify.reschedule_link");
+  });
 });
 
 describe("runNotifyStep", () => {
@@ -193,6 +230,23 @@ describe("runNotifyStep", () => {
     );
     expect(b.journal[0]).toMatchObject({ recipient: "visitor", status: "test_mode" });
     expect(b.journal[0]?.addressHash).toBeInstanceOf(Buffer);
+  });
+
+  test("B2-14: a step with reschedule renders {{reschedule_link}} for the visitor", async () => {
+    const spec = booking() as Json;
+    spec.integrations[0].config.templates.visitor_confirm.body += "\nПеренести: {{reschedule_link}}";
+    spec.workflows[0].steps[2].params.reschedule = { page: "/booking", fields: ["starts_at"] };
+    const c = ctxFor(spec, "mail");
+    await runNotifyStep(c.ctx, {
+      params: step(spec, "booking_new", 2),
+      entity: "booking",
+      record: record({ consent_messages: true }),
+      jobId: "j5",
+      stepIndex: 2,
+    });
+    expect(String((c.outbox.messages[0] as Json).payload.text)).toContain(
+      "Перенести: https://zapis.sandpile.ru/_wizard/hooks/message/reschedule/tok-b1",
+    );
   });
 
   test("visitor limit: the 4th message to one contact in a day is refused and journaled", async () => {

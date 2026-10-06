@@ -77,6 +77,12 @@ function sectionEntity(module: string): string | undefined {
   return DRAFT_MANIFESTS.find((m) => m.id === module)?.provides?.entities?.[0];
 }
 
+/**
+ * Sections whose staff also read another section's records (they pick them in their own records): the staff of
+ * «Запись по слотам» read the catalog's services (B2-14), so the catalog is not «hidden» from them.
+ */
+const READ_BY: Readonly<Record<string, readonly string[]>> = { catalog: ["booking"] };
+
 export function compileStaff(ctx: ModuleContext): ModuleFragments {
   const roles = staffRoles(ctx.params);
   const loginMethods = staffLoginMethods(ctx.params.login);
@@ -86,6 +92,8 @@ export function compileStaff(ctx: ModuleContext): ModuleFragments {
       const entity = sectionEntity(s.value);
       if (!entity || !ctx.present.has(s.value)) continue;
       const allowed = r.sections === null || r.sections.includes(s.value);
+      if (!allowed && (READ_BY[s.value] ?? []).some((m) => ctx.present.has(m) && r.sections?.includes(m)))
+        continue;
       acceptance.push({
         value: {
           text: allowed

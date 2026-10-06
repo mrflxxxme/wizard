@@ -118,11 +118,11 @@ export interface MessageJournal {
   write(entry: MessageJournalEntry): Promise<void>;
 }
 
-/** M2-50: one-time signed links of visitor messages (cancel, unsubscribe) — runtime /_wizard/hooks/message/*. */
+/** M2-50: one-time signed links of visitor messages (cancel, unsubscribe; B2-14 reschedule) — runtime /_wizard/hooks/message/*. */
 export interface MessageLinks {
   /** Absolute https URL of the system host carrying a signed token; null when links are not available. */
   url(a: {
-    action: "cancel" | "unsubscribe";
+    action: "cancel" | "unsubscribe" | "reschedule";
     entity: string;
     id: string;
     workflow: string;

@@ -14,6 +14,7 @@ import {
   CANCEL_LINK_PLACEHOLDER,
   LINK_PLACEHOLDER,
   parseRecipients,
+  RESCHEDULE_LINK_PLACEHOLDER,
   type RecipientRef,
   recordRecipientKind,
   renderTemplate,
@@ -22,7 +23,7 @@ import {
 import type { ConnectorCtx, MessageJournalEntry, Row } from "./types.js";
 
 export interface NotifyStepInput {
-  /** params of the step: {integration, to, template | text, consentField?, cancel?, attachQr?, link?}. */
+  /** params of the step: {integration, to, template | text, consentField?, cancel?, reschedule?, attachQr?, link?}. */
   params: Record<string, unknown>;
   entity: string;
   record: Row;
@@ -322,6 +323,10 @@ async function sendOne(
     }
     const cancel = step.params.cancel ? (ctx.messageLinks?.url({ action: "cancel", ...at }) ?? null) : null;
     if (cancel) links[CANCEL_LINK_PLACEHOLDER] = cancel;
+    const reschedule = step.params.reschedule
+      ? (ctx.messageLinks?.url({ action: "reschedule", ...at }) ?? null)
+      : null;
+    if (reschedule) links[RESCHEDULE_LINK_PLACEHOLDER] = reschedule;
   }
   const params = tpl ? await valuesFor(ctx, entity, step.record, `${tpl.subject}\n${tpl.body}`, links) : {};
   if ("userId" in t) {

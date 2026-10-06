@@ -66,12 +66,12 @@ export interface ConnectorHostOptions {
 
 /** Path of the one-time links of visitor messages (CSRF-free like connector hooks; the token segment is masked in logs). */
 export const MESSAGE_LINK_PATH = "/_wizard/hooks/message";
-/** Lifetime of a cancel/unsubscribe link. */
+/** Lifetime of a cancel/unsubscribe/reschedule link. */
 export const MESSAGE_LINK_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /** Payload of a sealed message link. */
 export interface MessageLinkPayload {
-  a: "cancel" | "unsubscribe";
+  a: "cancel" | "unsubscribe" | "reschedule";
   en: string;
   id: string;
   wf: string;
