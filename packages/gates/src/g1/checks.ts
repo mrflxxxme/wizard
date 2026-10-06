@@ -28,7 +28,12 @@ export function generatePermissionChecks(spec: AppSpec): QaCheck[] {
         });
       }
       if (!p) continue;
-      if (p.rowFilter && ops.some((o) => o !== "create"))
+      // «Not another user's rows» needs two users of the role and a filter by the user ($user.*): a public role or a
+      // static filter (a catalog of published items) has no «another user» to probe.
+      const perUser = Object.values(p.rowFilter ?? {}).some(
+        (v) => typeof v === "string" && v.startsWith("$user."),
+      );
+      if (p.rowFilter && perUser && r.access === "login" && ops.some((o) => o !== "create"))
         out.push({ ...base(r.name, e.name, pc(r.name, e.name, "row")), probe: { kind: "row" } });
       if (p.hiddenFields?.length && ops.includes("read"))
         out.push({

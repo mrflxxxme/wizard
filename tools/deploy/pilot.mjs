@@ -1432,7 +1432,7 @@ export function summaryText({ env, command, domains, tag, state }) {
   const lines = [`## Пилот ${env}: ${command === "destroy" ? "удалён" : "готово"}`, ""];
   if (command === "destroy")
     return [...lines, "Окружение и его бакеты удалены. Ключи остаются в бакете состояния."].join("\n");
-  lines.push(`- Платформа: ${url}/`, `- Версия: \`${tag}\``, "");
+  lines.push(`- Платформа: ${url}/`, ...(tag ? [`- Версия: \`${tag}\``] : []), "");
   if (state.restored)
     lines.push(
       "**ВМ была пересоздана.** PostgreSQL поднят из архива WAL-G, том `.data` восстановлен из копии. Проверьте последние изменения клиентов.",
@@ -1448,7 +1448,9 @@ export function summaryText({ env, command, domains, tag, state }) {
       `- Через минуту после первого входа учётка получит права staff. Откройте ${url}/admin и включите MFA (приложение-аутентификатор), коды восстановления сохраните.`,
     );
   else if (state.staff === "done") lines.push(`- Консоль модерации: ${url}/admin (вход с MFA).`);
-  else lines.push("- `WIZARD_FOUNDER_EMAIL` не задан: права staff не выдавались.");
+  // diagnose and eval do not touch the founder access: nothing to say about it there.
+  else if (command === "deploy" || command === "bootstrap")
+    lines.push("- `WIZARD_FOUNDER_EMAIL` не задан: права staff не выдавались.");
   if (env === "staging")
     lines.push("- Staging оплачивается по часам: удалите его через bootstrap-pilot → destroy.");
   return lines.join("\n");
