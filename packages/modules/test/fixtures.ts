@@ -1,100 +1,117 @@
-// Test registry of the engine: the real catalog with a ready stand-in for «Напоминания и уведомления» (notify is
-// B2-16; «Заявки» require it) and fixture modules fx_* for the application order, links, conflicts and module bugs.
+// Test registry of the engine: the real catalog (notify, staff and visitor_cabinet with code since B2-16) plus fixture
+// modules fx_* for the application order, links, conflicts and module bugs, and a ready stand-in of «Запись по слотам»
+// (B2-14) with the booking contract notify relies on (NOTIFY_BOOKING).
 import type { ModuleManifest, SystemPlan } from "@wizard/appspec";
-import { MODULES, type ModuleDefinition, type ModuleRegistry } from "../src/index.js";
+import { MODULES, type ModuleDefinition, type ModuleRegistry, NOTIFY_BOOKING } from "../src/index.js";
 
-/** notify stand-in: e-mail (and Telegram) to the owner about a new lead through a link with fragments. */
-export const notifyStub: ModuleManifest = {
-  id: "notify",
+/**
+ * Stand-in of the booking module until B2-14: entity booking with the fields notify needs (starts_at, email, status
+ * with confirmed and cancelled), the visitor's own bookings by e-mail ($visitor, as B2-14 should grant), the shared
+ * cabinet for the owner and the staff. Used only through testRegistry([{ manifest: bookingStandIn }]).
+ */
+export const bookingStandIn: ModuleManifest = {
+  id: "booking",
   version: 1,
-  name: "Уведомления (тестовая замена)",
-  summary: "Письмо владельцу о новой заявке",
+  name: "Запись (тестовая замена)",
+  summary: "Запись на время для тестов уведомлений и кабинета посетителя",
   status: "ready",
-  order: 5,
+  order: 40,
   origin: { kind: "new" },
-  goals: ["stay_informed"],
+  goals: ["fill_schedule", "reduce_no_shows"],
   params: [
     {
-      name: "channels",
-      label: "Каналы",
-      type: "enum_list",
+      name: "confirm",
+      label: "Подтверждение записи",
+      type: "enum",
       options: [
-        { value: "email", label: "Почта" },
-        { value: "telegram", label: "Telegram" },
+        { value: "auto", label: "Сразу" },
+        { value: "manual", label: "Сотрудником" },
       ],
-      minItems: 1,
-      default: ["email"],
+      default: "auto",
     },
+    { name: "cancel_by_link", label: "Отмена по ссылке из письма", type: "bool", default: true },
   ],
-  links: [
-    {
-      module: "leads",
-      effect: "уведомление владельца о новой заявке",
-      fragments: {
-        integrations: [
-          {
-            value: {
-              name: "mail",
-              connector: "email",
-              config: {
-                templates: { new_lead: { subject: "Новая заявка", body: "Новая заявка. Открыть: {{link}}" } },
-              },
-            },
-          },
-          {
-            when: { param: "channels", includes: "telegram" },
-            value: { name: "tg", connector: "telegram", config: {} },
-          },
-        ],
-        workflows: [
-          {
-            when: { param: "channels", includes: "email" },
-            value: {
-              name: "lead_notify",
-              label: "Уведомить о новой заявке",
-              trigger: { type: "on_create", entity: "lead" },
-              steps: [
-                { type: "notify", params: { integration: "mail", to: "$owner", template: "new_lead" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
+  requires: [{ module: "notify", reason: "посетитель получает подтверждение и напоминание" }],
+  provides: { entities: [NOTIFY_BOOKING.entity] },
   fragments: {
-    integrations: [
+    entities: [
       {
         value: {
-          name: "mail",
-          connector: "email",
-          config: { templates: { welcome: { subject: "Добро пожаловать", body: "Здравствуйте! {{link}}" } } },
+          name: NOTIFY_BOOKING.entity,
+          label: "Запись",
+          fields: [
+            { name: NOTIFY_BOOKING.startsAt, label: "Время", type: "datetime", required: true },
+            {
+              name: "name",
+              label: "Имя",
+              type: "string",
+              maxLength: 120,
+              required: true,
+              pii: "basic",
+              piiKind: "fio",
+            },
+            {
+              name: NOTIFY_BOOKING.email,
+              label: "Почта",
+              type: "email",
+              required: true,
+              pii: "basic",
+              piiKind: "email",
+            },
+            {
+              name: NOTIFY_BOOKING.status,
+              label: "Статус",
+              type: "enum",
+              required: true,
+              default: "new",
+              enum: [
+                { value: "new", label: "Новая" },
+                { value: NOTIFY_BOOKING.confirmed, label: "Подтверждена" },
+                { value: NOTIFY_BOOKING.cancelled, label: "Отменена" },
+                { value: "done", label: "Прошла" },
+              ],
+            },
+          ],
+          retention: { deleteAfterDays: 365 },
+        },
+      },
+    ],
+    permissions: [
+      { value: { role: "$public", entity: "booking", ops: ["create"], readonlyFields: ["status"] } },
+      { value: { role: "$owner", entity: "booking", ops: ["read", "create", "update", "delete"] } },
+      { value: { role: "$staff", entity: "booking", ops: ["read", "update"] } },
+      {
+        value: {
+          role: "$visitor",
+          entity: "booking",
+          ops: ["read", "update"],
+          rowFilter: { email: "$user.email" },
+          readonlyFields: ["starts_at", "name", "email"],
         },
       },
     ],
   },
   screens: [
     {
-      id: "settings",
+      id: "schedule",
       audience: "cabinet",
       route: "/cabinet",
-      title: "Уведомления",
-      roles: ["$owner"],
-      components: ["CabinetLayout"],
+      title: "Расписание",
+      roles: ["$owner", "$staff"],
+      components: ["DataTable"],
     },
   ],
   metrics: [],
   goalScenarios: [
     {
-      id: "GS-notify-1",
-      goal: "stay_informed",
-      title: "Владелец получает письмо о новой заявке",
-      withModules: ["leads"],
-      steps: [{ actor: "visitor", text: "Отправляет заявку" }],
-      expect: [{ kind: "outbox_email", text: "Владельцу ушло письмо" }],
+      id: "GS-booking-1",
+      goal: "fill_schedule",
+      title: "Посетитель записался",
+      steps: [{ actor: "visitor", text: "Записывается на свободное время" }],
+      expect: [{ kind: "record", text: "Запись в расписании" }],
     },
   ],
-  tests: { matrix: [{ name: "по умолчанию", params: {}, withModules: ["leads"] }], gates: ["G0"] },
+  tests: { matrix: [{ name: "по умолчанию", params: {}, withModules: ["notify"] }], gates: ["G0", "G1"] },
 };
 
 type FxOver = Partial<ModuleManifest> & { id: string };
@@ -204,15 +221,13 @@ export const FIXTURES: ModuleManifest[] = [
   fx({ id: "fx_delta", order: 30 }),
 ];
 
-/** The real catalog with notify replaced by the stand-in, plus fixtures (and `extra` definitions). */
+/** The real catalog plus fixtures; `extra` definitions replace catalog modules or fixtures with the same id. */
 export function testRegistry(
   extra: ModuleDefinition[] = [],
   fixtures: ModuleManifest[] = FIXTURES,
 ): ModuleRegistry {
   const replaced = new Map(extra.map((d) => [d.manifest.id, d]));
-  const base = MODULES.map((d) =>
-    d.manifest.id === "notify" ? { manifest: notifyStub } : (replaced.get(d.manifest.id) ?? d),
-  );
+  const base = MODULES.map((d) => replaced.get(d.manifest.id) ?? d);
   const fx = fixtures.map((m) => replaced.get(m.id) ?? { manifest: m });
   const known = new Set([...base, ...fx].map((d) => d.manifest.id));
   return { modules: [...base, ...fx, ...extra.filter((d) => !known.has(d.manifest.id))] };

@@ -32,6 +32,8 @@ export function matrixPlan(registry: ModuleRegistry, moduleId: string, row: Matr
       content: { title: "Пример: заголовок первого экрана", cta: "Оставить заявку" },
     },
   ];
+  if (ids.includes("catalog"))
+    sections.push({ type: "services", variant: "cards", content: { title: "Пример: услуги и цены" } });
   if (ids.includes("leads"))
     sections.push({ type: "lead_form", variant: "card", content: { title: "Оставьте заявку" } });
   sections.push({ type: "footer", variant: "simple", content: {} });

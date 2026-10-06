@@ -14,19 +14,8 @@ const FORM_FIELD_OPTIONS = [
   { value: "preferred_time", label: "Удобное время" },
 ];
 
+// The service choice (with_service) is added by compile.ts: field fragments apply before the hook creates `lead`.
 const fragments: ModuleFragments = {
-  fields: [
-    {
-      when: { param: "with_service" },
-      entity: "lead",
-      value: {
-        name: "service",
-        label: "Услуга",
-        type: "ref",
-        ref: { entity: "service", onDelete: "set_null" },
-      },
-    },
-  ],
   permissions: [
     { value: { role: "$public", entity: "lead", ops: ["create"], readonlyFields: ["status"] } },
     { value: { role: "$owner", entity: "lead", ops: ["read", "update", "delete"] } },
@@ -193,6 +182,11 @@ export const leadsManifest: ModuleManifest = {
         name: "телефон обязателен, хотя его нет в списке полей",
         params: { form_fields: ["comment", "preferred_time"], contact: "phone", retention_days: 30 },
         withModules: ["landing", "notify"],
+      },
+      {
+        name: "выбор услуги из каталога",
+        params: { with_service: true },
+        withModules: ["landing", "notify", "catalog"],
       },
     ],
     gates: ["G0", "G1"],

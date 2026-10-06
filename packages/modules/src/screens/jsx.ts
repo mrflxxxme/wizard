@@ -30,11 +30,23 @@ export function jsxEl(name: string, attrs: readonly JsxAttr[]): string {
   return `<${name}${parts.length ? ` ${parts.join(" ")}` : ""} />`;
 }
 
-/** A page module: header comment, ui-kit imports (sorted) and a default-exported fragment of blocks. */
-export function fragmentPage(comment: string, imports: Iterable<string>, blocks: readonly string[]): string {
+/**
+ * A page module: header comment, ui-kit imports (sorted) and a default-exported fragment of blocks. `local` maps
+ * components of other generated files to their relative module (e.g. ServiceShowcase → ./CatalogServices).
+ */
+export function fragmentPage(
+  comment: string,
+  imports: Iterable<string>,
+  blocks: readonly string[],
+  local: Readonly<Record<string, string>> = {},
+): string {
+  const names = [...new Set(imports)].sort();
+  const fromKit = names.filter((n) => local[n] === undefined);
+  const fromLocal = names.filter((n) => local[n] !== undefined);
   return [
     comment,
-    `import { ${[...new Set(imports)].sort().join(", ")} } from "@wizard/ui-kit";`,
+    ...(fromKit.length ? [`import { ${fromKit.join(", ")} } from "@wizard/ui-kit";`] : []),
+    ...fromLocal.map((n) => `import { ${n} } from ${js(local[n])};`),
     "",
     "export default function Home() {",
     "  return (",

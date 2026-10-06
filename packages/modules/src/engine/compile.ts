@@ -15,7 +15,6 @@ import {
   isReservedName,
   type ModuleFragments,
   type ModuleManifest,
-  type ModuleMetric,
   type Page,
   PERMISSION_OPS,
   type Permission,
@@ -35,7 +34,15 @@ import {
 } from "@wizard/appspec";
 import { cabinetPage, cabinetRoute, can, startPage } from "../screens/cabinet.js";
 import { pascal } from "../screens/jsx.js";
-import { type ModuleContext, type ModuleDefinition, type ModuleRegistry, planCatalog } from "../types.js";
+import {
+  type CompiledMetric,
+  type FileGenerator,
+  type GenContext,
+  type ModuleContext,
+  type ModuleDefinition,
+  type ModuleRegistry,
+  planCatalog,
+} from "../types.js";
 import { applicationOrder } from "./order.js";
 import { canonical, sameJson, substitute } from "./substitute.js";
 
@@ -53,11 +60,7 @@ export interface CompileOptions {
   appName?: string;
 }
 
-/** A goal-panel metric of a plan module (when true); planGoal — its goal is one of the plan's goals. */
-export interface CompiledMetric extends ModuleMetric {
-  module: string;
-  planGoal: boolean;
-}
+export type { CompiledMetric } from "../types.js";
 
 /** A goal scenario of a plan module whose condition holds and whose withModules are all in the plan. */
 export interface CompiledScenario extends GoalScenario {
@@ -225,6 +228,9 @@ class Compilation {
   private readonly functions: AppFunction[] = [];
   private readonly pages: Page[] = [];
   private readonly files = new Map<string, string>();
+  /** Generated module files, rendered once the plan's metrics are known. */
+  private readonly generated: { module: string; file: string; gen: FileGenerator }[] = [];
+  private planMetrics: CompiledMetric[] = [];
   private readonly links: CompileSuccess["links"] = [];
   private readonly warnings: string[] = [];
 
@@ -299,11 +305,17 @@ class Compilation {
       font: d.fontPair.body as NonNullable<AppSpec["theme"]>["font"],
       headingFont: d.fontPair.heading as NonNullable<AppSpec["theme"]>["font"],
     };
-    // 8. Functions, screens (6. the landing is the landing module's screen), shared cabinets, start page.
+    // 8. Functions, metrics (generated files and screens see them), screens (6. the landing is the landing module's
+    // screen), shared cabinets, start page.
     this.addFunctions();
     if (this.errors.length) return { ok: false, errors: this.errors };
+    // Metric bugs are reported after validateSpec (a spec error explains a broken metric better).
+    this.planMetrics = this.metrics({ ...this.spec, functions: this.functions });
+    const metricErrors = this.errors.splice(0);
+    this.renderGenerated();
+    if (this.errors.length) return { ok: false, errors: metricErrors.length ? metricErrors : this.errors };
     this.addScreens();
-    if (this.errors.length) return { ok: false, errors: this.errors };
+    if (this.errors.length) return { ok: false, errors: metricErrors.length ? metricErrors : this.errors };
 
     const spec = this.finalSpec();
     // 9. validateSpec: an error here is a bug of a module (its CI matrix should have caught it).
@@ -319,8 +331,8 @@ class Compilation {
           ),
         ),
       };
-    const metrics = this.metrics(spec);
-    if (this.errors.length) return { ok: false, errors: this.errors };
+    if (metricErrors.length) return { ok: false, errors: metricErrors };
+    const metrics = this.planMetrics;
 
     for (const id of this.order) this.warnings.push(...(this.defs.get(id)?.warnings?.(this.ctx(id)) ?? []));
     return {
@@ -509,7 +521,10 @@ class Compilation {
 
   // ------------------------------------------------------------------ roles and permissions
 
-  /** Concrete roles of a role reference: $public, $owner, $staff (staff roles, else owner), $visitor, or a name. */
+  /**
+   * Concrete roles of a role reference: $public, $owner, $staff (the staff roles in scope of `mod`, else owner),
+   * $visitor, or a name.
+   */
   private expand(ref: unknown, mod: string): string[] {
     const owned = (m: string) =>
       this.spec.roles.filter((r) => this.roleOwner.get(r.name) === m).map((r) => r.name);
@@ -520,7 +535,11 @@ class Compilation {
         return ["owner"];
       case "$staff": {
         const staff = this.present.has("staff") ? owned("staff") : [];
-        return staff.length ? staff : ["owner"];
+        if (!staff.length) return ["owner"];
+        const scope = this.defs.get("staff")?.roleScope;
+        if (!scope) return staff;
+        const inScope = new Set(scope(this.ctx("staff"), mod));
+        return staff.filter((r) => inScope.has(r));
       }
       case "$visitor":
         return this.present.has("visitor_cabinet") ? owned("visitor_cabinet") : [];
@@ -602,7 +621,37 @@ class Compilation {
           ...(f.public ? { public: true } : {}),
           ...(roles?.length ? { roles } : {}),
         });
-        this.files.set(f.file, d?.files?.[f.file] ?? "");
+        this.setFile(id, f.file, d?.files?.[f.file] ?? "");
+      }
+      // Helper files (not declared as functions): emitted whenever the module is in the plan.
+      const declared = new Set((m.functions ?? []).map((f) => f.file));
+      for (const [file, src] of Object.entries(d?.files ?? {}))
+        if (!declared.has(file)) {
+          if (!/^(functions|ui)\/[A-Za-z0-9_/-]+\.tsx?$/.test(file))
+            this.bug(id, `файл «${file}» вне functions/** и ui/**`);
+          else if (this.files.has(file) || this.generated.some((g) => g.file === file))
+            this.bug(id, `файл «${file}» уже есть`);
+          else this.setFile(id, file, src);
+        }
+    }
+  }
+
+  private setFile(module: string, file: string, src: string | FileGenerator): void {
+    if (typeof src === "string") this.files.set(file, src);
+    else this.generated.push({ module, file, gen: src });
+  }
+
+  /** Context of a module's generators: the spec so far and the plan's metrics. */
+  private genCtx(id: string): GenContext {
+    return { ...this.ctx(id), spec: this.spec, metrics: this.planMetrics };
+  }
+
+  private renderGenerated(): void {
+    for (const { module, file, gen } of this.generated) {
+      try {
+        this.files.set(file, gen(this.genCtx(module)));
+      } catch (e) {
+        this.bug(module, `генератор файла «${file}» упал: ${(e as Error).message}`);
       }
     }
   }
@@ -624,7 +673,7 @@ class Compilation {
           rendered.push({
             id,
             page,
-            render: () => gen({ ...this.ctx(id), spec: this.spec, screen: s, roles }),
+            render: () => gen({ ...this.genCtx(id), screen: s, roles }),
           });
           continue;
         }
