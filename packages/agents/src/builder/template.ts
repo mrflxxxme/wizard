@@ -12,7 +12,6 @@ import type { BuildCard } from "./types.js";
 export const TEMPLATE_SEGMENTS: ReadonlySet<string> = new Set(["site", "crm"]);
 
 const line = (max: number) => z.string().trim().min(1).max(max);
-const items = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max).optional();
 
 export const landingSchema = z.object({
   hero: z.object({

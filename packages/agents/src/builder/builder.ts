@@ -415,7 +415,7 @@ class Builder implements ToolEnv {
     let { spec, version } = await this.#host.store.getSpec();
     const used = new Set(
       (spec.workflows ?? []).flatMap((w) =>
-        w.steps.filter((st) => st.type === "function").map((st) => String((st.params ?? {}).name ?? "")),
+        w.steps.filter((st) => st.type === "function").map((st) => String(st.params?.name ?? "")),
       ),
     );
     const drop = [
@@ -954,7 +954,6 @@ class Builder implements ToolEnv {
           continue;
         }
         const review = r.value.value as import("./harness.js").Review;
-        const task = wave[k] as BriefTask;
         const critical = reviewFindings(review);
         this.#metrics.review.minor += review.issues.filter((x) => x.severity === "minor").length;
         if (critical.length === 0) this.#metrics.review.ok += 1;

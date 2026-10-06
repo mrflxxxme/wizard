@@ -300,7 +300,9 @@ function coverage(spec: AppSpec, checks: QaCheck[], results: Map<string, Check>,
   }
   return [
     // One G1-AC-COVER entry set: blockers (or a pass) and, apart, the advisory misses; no «pass» next to a warning.
-    ...(missing.length > 0 || advisory.length === 0 ? toChecks(d, { kind: "findings", findings: missing }) : []),
+    ...(missing.length > 0 || advisory.length === 0
+      ? toChecks(d, { kind: "findings", findings: missing })
+      : []),
     ...(advisory.length
       ? toChecks({ ...d, severity: "warning" }, { kind: "findings", findings: advisory })
       : []),

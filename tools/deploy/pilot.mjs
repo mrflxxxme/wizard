@@ -1253,7 +1253,19 @@ export function psqlInPod(kubectl, sql) {
  * (uploaded as an artifact). The systems of the measurement stay for the founder. Exit 0 — the D67 threshold is met,
  * 1 — not met.
  */
-export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, pollMs, outDir, inCluster }) {
+export async function pilotEval({
+  o,
+  vars,
+  log,
+  fetch: f,
+  now,
+  rand,
+  sleep,
+  pollMs,
+  maxBriefRub,
+  outDir,
+  inCluster,
+}) {
   const domain = vars.WIZARD_PLATFORM_DOMAIN;
   const base = `https://${domain}`;
   const briefs = selectBriefs(o.briefs);
@@ -1360,6 +1372,7 @@ export async function pilotEval({ o, vars, log, fetch: f, now, rand, sleep, poll
         progress?.publish(render());
       },
       ...(pollMs ? { pollMs } : {}),
+      ...(maxBriefRub ? { maxBriefRub } : {}),
     });
     if (doc.stopped) stoppedWhy = doc.stopped;
   } finally {
@@ -1720,6 +1733,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       rand,
       sleep: deps.sleep,
       pollMs: deps.evalPollMs,
+      maxBriefRub: deps.evalMaxBriefRub,
       outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
       // The cluster part runs under the access of diagnose: SSH for this runner only, the tunnel, closed afterwards.
       inCluster: (onCluster) =>

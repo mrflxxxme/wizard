@@ -1361,6 +1361,8 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         exists: () => true,
         sleep: async () => {},
         evalPollMs: 1,
+        // The fake builds cost ≈ 200 ₽; the D75 per-brief cap is tested in the driver.
+        evalMaxBriefRub: 10_000,
         kdf: FAST,
         tmpRoot: tmp,
         log: (s) => logs.push(s),
