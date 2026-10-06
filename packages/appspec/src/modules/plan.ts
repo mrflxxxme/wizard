@@ -63,6 +63,8 @@ export const systemPlanSchema = z
       .array(
         z.strictObject({
           id: identSchema,
+          /** Manifest version the plan was made for (the compiler writes it; plan migration comes later). */
+          version: z.number().int().min(1).optional(),
           params: z.record(z.string(), z.unknown()).optional(),
           goals: z.array(goalIdSchema).max(MAX_PLAN_GOALS).optional(),
           note: text(1, 200).optional(),
@@ -186,6 +188,15 @@ export function validateSystemPlan(
       return;
     }
     seenModules.add(pm.id);
+    if (pm.version !== undefined && pm.version !== m.version)
+      errors.push(
+        planErr(
+          "MODULE_VERSION_MISMATCH",
+          ["modules", i, "version"],
+          `План составлен для версии ${pm.version} модуля «${m.name}», а в каталоге версия ${m.version}; перенос планов между версиями ещё не реализован`,
+          { hint: "Составьте план заново по текущему каталогу" },
+        ),
+      );
     if (opts.requireReady && m.status !== "ready")
       errors.push(
         planErr("MODULE_NOT_READY", ["modules", i, "id"], `Модуль «${m.name}» ещё не готов к сборке`),

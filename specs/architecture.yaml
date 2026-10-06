@@ -58,11 +58,16 @@ monorepo:
       purpose: "Гейты G0–G2: валидаторы спеки, typecheck кода, сборка через packages/build, сценарии приёмки, генератор seed, матрица прав, антифрод. G1 обращается к runtime только через RuntimeHandle (interfaces.runtime_handle)"
       spec: specs/quality/gates.yaml
       depends_on: [appspec, sdk, connectors, pii, ui-kit, build]
+    - id: modules
+      path: packages/modules
+      purpose: "Модули беты v2 (B2-11, D76): код модулей src/<id>/ (манифест, compile.ts, генераторы экранов, функции), реестр (готовые модули + черновики из specs/modules/modules.yaml#catalog) и движок compilePlan — детерминированная компиляция плана системы в AppSpec и файлы ui/** и functions/** без моделей; общие генераторы страниц (кабинет роли, стартовая) для шаблонов D75"
+      spec: specs/modules/modules.yaml
+      depends_on: [appspec]   # dev-зависимости для тестов G0/G1: gates, runtime, connectors; в граф пакетов не входят
     - id: agents
       path: packages/agents
       purpose: "Оркестратор, строитель, QA: промпты, инструменты (tool definitions из zod), бюджеты. Sub-path exports @wizard/agents/{core,orchestrator,builder,qa}"
       spec: specs/agents/
-      depends_on: [appspec, llm, gates, pii]
+      depends_on: [appspec, llm, gates, pii, modules]
     - id: e2e
       path: packages/e2e
       purpose: "@wizard/e2e: Playwright-сценарии против запущенных apps (HTTP) и сквозные тесты публикации, поднимающие platform-api и runtime в процессе теста (M1-04), фикстуры demo"
@@ -115,6 +120,7 @@ interfaces:                   # межпакетные контракты — м
   types: "packages/appspec: generateTypes(spec) -> string (d.ts); @wizard/sdk/codegen только реэкспортирует"
   llm_call: "packages/llm: route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?: {capCredits, spentCredits}}}) -> {tier, model, result, usage, creditsCharged}; t1Restricted ≠ false → T0 (policy_region_restricted). Платформа вычисляет t1Restricted по security/data-boundary.yaml#region_restriction: регион NULL → false (D26_models_default)"
   usage_sink: "packages/llm: UsageSink {write(UsageRecord)}; по умолчанию JsonlUsageSink(.data/usage.jsonl); platform-api подставляет DbUsageSink(platform.llm_calls)"
+  modules_compile: "packages/modules: compilePlan(plan, registry = CATALOG, {appName?}) -> {ok: true, spec: AppSpec, files: Record<path, content>, order, links, metrics, scenarios, customSlots, plan (modules[].version), warnings} | {ok: false, errors: PlanError[]} (specs/modules/modules.yaml#compile); один и тот же план — байт-в-байт одинаковые spec и files"
   gates: "packages/gates: runGates(level: 'G0'|'G1'|'G2', ctx: GateContext) -> GateReport (specs/quality/gates.yaml#report); generateSeed(spec, key) (specs/agents/qa.yaml#seed)"
   gate_context: "packages/gates: GateContext {spec, prevSpec: AppSpec|null, specVersion, files: ReadonlyMap<path, string> (ui/**, functions/**), env: 'draft'|'prod', systemKey, db: postgres.Sql (роль мигратора, только теневые/эфемерные схемы), runtime?: RuntimeHandle (G1), runtimeRole?: string (G1/G2), checks?: Check[] (G1, от QA), slug?: string, secretExists?: (name) => Promise<boolean> (G2-SECRET-02 prod, без чтения значения), abuse?: {orgAgeDays?, plan?, abuseReportsPrev?, brandAllowlist?} (G2-AF-04/08; M2-04), milestone: 'M0'|… (по умолчанию env WIZARD_MILESTONE), now?: Date, signal?: AbortSignal}"
   build_system: "packages/build: buildSystem({spec, files, env, platformOrigin?}) -> {ok, errors: Check[], client: Map<path, Uint8Array>, serverFunctions: string (ESM), wzMap, manifest}; writeArtifact(root, systemId, revision, result) по runtime.yaml#system_loading.artifact_layout. Единственная сборка: её вызывают G0-BUILD-01 и шаг gate_G0"

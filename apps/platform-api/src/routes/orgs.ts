@@ -11,6 +11,7 @@ import type { PlanId } from "../billing/plans.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid } from "../http/auth.js";
 import { type Deps, jsonBody } from "../http/util.js";
+import { demoScenarios } from "../runs/demo-replay.js";
 import { orgPolicyOf } from "../runs/queue.js";
 import type { AccountDeps } from "./auth.js";
 
@@ -57,10 +58,12 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
   async function toOrg(orgId: string, role: OrgRole) {
     const o = await d.db
       .selectFrom("platform.orgs")
-      .select(["id", "name", "plan"])
+      .select(["id", "name", "plan", "kind", "demo_replay"])
       .where("id", "=", orgId)
       .executeTakeFirst();
     if (!o) throw notFound("Организация");
+    // B2-02: demo replay of a staff org and the recorded scenarios S1 offers as briefs.
+    const demoReplay = o.kind === "staff" && o.demo_replay;
     // billing.yaml#card_binding (M2-07): an active payment_methods row.
     const cardBound = !!(await activeCard(d.db, orgId));
     return {
@@ -71,6 +74,10 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
       cardBound,
       // M2-15: S-billing hides purchase, subscriptions and card binding when payments are off.
       paymentsEnabled: d.config.payments,
+      demoReplay,
+      ...(demoReplay
+        ? { demoScenarios: demoScenarios().map(({ name, title, brief }) => ({ name, title, brief })) }
+        : {}),
     };
   }
 

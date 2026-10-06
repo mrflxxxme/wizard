@@ -19,7 +19,7 @@ paths:
       operationId: createSystem
       x-milestone: M0
       x-roles: [editor]
-      summary: Создать систему из промпта; запускает прогон interview_turn
+      summary: 'Создать систему из промпта; запускает прогон interview_turn. B2-02: в режиме показа (orgs.demo_replay) промпт должен совпадать с брифом записанного сценария tools/fixtures/demo/<name>.jsonl (пробелы не учитываются) — система запоминает сценарий (systems.demo_scenario); иначе 422 DEMO_REPLAY_NO_SCENARIO «В режиме показа есть только записанные сценарии: …», details {scenarios: [{name, title}]}, система не создаётся'
       requestBody:
         required: true
         content:
@@ -34,6 +34,7 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '402': {$ref: '#/components/responses/Error'}
         '403': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
     get:
       operationId: listSystems
       x-milestone: M0
@@ -56,6 +57,7 @@ paths:
                 required: [system, messages]
                 properties:
                   system: {$ref: '#/components/schemas/System'}
+                  demoReplay: {type: boolean, description: 'B2-02: организация в режиме показа — платформа показывает плашку «Режим показа: ответы моделей записаны, расходов нет»'}
                   card: {oneOf: [{$ref: '#/components/schemas/SystemCard'}, {type: 'null'}]}
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
@@ -585,9 +587,9 @@ paths:
       operationId: adminSetOrgFlags
       x-milestone: M2
       x-roles: [staff]
-      summary: 'Флаги организации, строка staff_audit_log org_flags. kind (B2-01, D76 (10)): client | staff — организация основателя (лимит пилота D70 не действует, доступен резерв дневного лимита WIZARD_LLM_STAFF_RESERVE_RUB) | eval — пробы и замеры (свой дневной лимит WIZARD_LLM_EVAL_DAILY_CAP_RUB, бюджет разработки v2)'
-      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}, kind: {$ref: '#/components/schemas/OrgKind'}}}}}}
-      responses: {'200': {description: Обновлено, content: {application/json: {schema: {type: object, required: [orgId, requireFounderReview, passportCollectionAllowed, kind], properties: {orgId: {type: string, format: uuid}, requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean}, kind: {$ref: '#/components/schemas/OrgKind'}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+      summary: 'Флаги организации, строка staff_audit_log org_flags. kind (B2-01, D76 (10)): client | staff — организация основателя (лимит пилота D70 не действует, доступен резерв дневного лимита WIZARD_LLM_STAFF_RESERVE_RUB) | eval — пробы и замеры (свой дневной лимит WIZARD_LLM_EVAL_DAILY_CAP_RUB, бюджет разработки v2). demoReplay (B2-02, D76 (12)): режим показа — все прогоны организации (интервью, сборка, правки) идут на записанных ответах моделей бесплатно (agents/models.yaml#credits.demo_replay); только для kind = staff (с учётом kind из этого же запроса), иначе 403 FORBIDDEN «Режим показа доступен только служебной организации» и флаг не ставится; смена kind на client/eval выключает режим'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}, kind: {$ref: '#/components/schemas/OrgKind'}, demoReplay: {type: boolean}}}}}}
+      responses: {'200': {description: Обновлено, content: {application/json: {schema: {type: object, required: [orgId, requireFounderReview, passportCollectionAllowed, kind, demoReplay], properties: {orgId: {type: string, format: uuid}, requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean}, kind: {$ref: '#/components/schemas/OrgKind'}, demoReplay: {type: boolean}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /admin/orgs/{orgId}/suspension:
     parameters: [{$ref: '#/components/parameters/orgId'}]
     post:
@@ -929,6 +931,7 @@ components:
             DESTRUCTIVE_CONSEQUENCES_CHANGED: 409
             DESTRUCTIVE_UNDO_UNAVAILABLE: 409
             ROLLBACK_TARGET_INVALID: 422
+            DEMO_REPLAY_NO_SCENARIO: 422
             RATE_LIMITED: 429
             INTERNAL: 500
             LLM_UNAVAILABLE: 503
@@ -1115,7 +1118,7 @@ components:
       required: [id, env, status, createdAt]
       properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, status: {enum: [running, ready, failed, expired]}, includePii: {type: boolean, description: 'Выгрузка с колонками ПДн (createExport.includePii; хранится в runs.input)'}, size: {type: [integer, 'null']}, downloads: {type: integer}, expiresAt: {type: string, format: date-time}, createdBy: {type: string, format: uuid}, createdAt: {type: string, format: date-time}}
     User: {type: object, properties: {id: {type: string, format: uuid}, email: {type: string}, name: {type: [string, 'null']}, isStaff: {type: boolean}, mfaEnrolled: {type: boolean, description: M2}}}
-    Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business], description: 'pilot — только CLI основателя (billing.yaml#plans.pilot)'}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}, paymentsEnabled: {type: boolean, description: 'M2-15: WIZARD_PAYMENTS платформы; false — S-billing скрывает покупку, подписки и привязку карты'}}}
+    Org: {type: object, properties: {id: {type: string, format: uuid}, name: {type: string}, plan: {enum: [free, pilot, start, business], description: 'pilot — только CLI основателя (billing.yaml#plans.pilot)'}, role: {$ref: '#/components/schemas/OrgRole'}, cardBound: {type: boolean}, paymentsEnabled: {type: boolean, description: 'M2-15: WIZARD_PAYMENTS платформы; false — S-billing скрывает покупку, подписки и привязку карты'}, demoReplay: {type: boolean, description: 'B2-02: режим показа служебной организации (orgs.demo_replay при kind = staff)'}, demoScenarios: {type: array, description: 'B2-02: только при demoReplay — записанные сценарии, S1 предлагает их брифы', items: {type: object, required: [name, title, brief], properties: {name: {type: string}, title: {type: string}, brief: {type: string}}}}}}
     Member: {type: object, properties: {userId: {type: string}, email: {type: string}, name: {type: [string, 'null']}, role: {$ref: '#/components/schemas/OrgRole'}, joinedAt: {type: string, format: date-time}}}
     Invite: {type: object, properties: {id: {type: string}, email: {type: string}, role: {$ref: '#/components/schemas/OrgRole'}, expiresAt: {type: string, format: date-time}}}
     OrgSettings: {type: object, additionalProperties: false, properties: {ruOnly: {type: boolean, default: false}, buildModelLabel: {type: string, readOnly: true, description: 'Фактическая модель сборки по умолчанию для org с учётом ruOnly, t1Restricted и решения F2 (agents/models.yaml), например «GLM-5.3» или «модели в РФ»; S1/S3/S10 показывают её, а не константу (L4-20)'}, t1Restricted: {type: boolean, readOnly: true, description: 'db.yaml#orgs.t1_restricted (L3-02); ставит платформа/staff'}}}

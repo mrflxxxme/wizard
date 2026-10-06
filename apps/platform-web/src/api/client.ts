@@ -390,6 +390,13 @@ export function createApiClient(opts: ClientOptions = {}) {
         `/admin/orgs/${encodeURIComponent(orgId)}/suspension`,
         { body },
       ),
+    // B2-02: demo replay of a staff org (403 for client and eval orgs).
+    adminSetOrgDemoReplay: (orgId: string, demoReplay: boolean) =>
+      call<{ orgId: string; kind: string; demoReplay: boolean }>(
+        "PUT",
+        `/admin/orgs/${encodeURIComponent(orgId)}/flags`,
+        { body: { demoReplay } },
+      ),
     // Staff console «Пилот» (/admin/pilot/*): the same operations as the founder CLI `pilot`.
     adminPilotReadiness: () => call<PilotReadiness>("GET", "/admin/pilot/readiness"),
     adminSetPilotReadiness: (body: { on: boolean; confirm?: boolean; note?: string }) =>

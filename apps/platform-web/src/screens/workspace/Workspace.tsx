@@ -17,6 +17,7 @@ import type {
 import { canEdit, usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { DemoBanner } from "../../features/demo/DemoBanner.js";
 import { UndoPanel } from "../../features/destructive/DestructivePanel.js";
 import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
@@ -594,6 +595,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
             </Pill>
           )}
         </header>
+        {view?.demoReplay && <DemoBanner testId="workspace-demo-replay" />}
         <div className={s.chatScroll}>{chatBody}</div>
         <footer className={s.chatFoot}>
           {chipTarget && (

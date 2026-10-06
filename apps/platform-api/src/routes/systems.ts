@@ -12,6 +12,7 @@ import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import { publishBlockers } from "../publish/blockers.js";
 import { draftPreviewUrl } from "../publish/preview-url.js";
 import { prodUrl } from "../publish/prod.js";
+import { orgDemoReplay, requireDemoScenario } from "../runs/demo-replay.js";
 import { withTx } from "../runs/events.js";
 import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
@@ -128,6 +129,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     const orgId = b.orgId ?? user.defaultOrgId;
     if (!user.orgs.has(orgId)) throw new ApiError("FORBIDDEN", "Нет доступа к организации");
     checkOrgAccess(user, orgId, "editor", "Организация");
+    // B2-02: in demo replay only a recorded scenario can start (422 with the list, no model is called).
+    const demo = (await orgDemoReplay(d.db, orgId)) ? requireDemoScenario(b.prompt) : null;
     const out = await tx(async (t) => {
       // billing.yaml#plans: draft_systems limit, checked under the org credits lock (serializes parallel creates).
       await d.billing.lock(t.trx, orgId);
@@ -157,6 +160,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
           name: nameFromPrompt(b.prompt),
           pending_questions: json([]),
           created_by: user.id,
+          ...(demo ? { demo_scenario: demo.name } : {}),
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -243,6 +247,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       .executeTakeFirst();
     return c.json({
       system: toSystem(s, (slug) => prodUrl(d.config, slug)),
+      // B2-02: the platform shows «Режим показа…» while the org's runs replay recorded answers.
+      demoReplay: await orgDemoReplay(d.db, s.org_id),
       card: s.card ?? null,
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),

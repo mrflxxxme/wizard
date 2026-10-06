@@ -19,6 +19,7 @@
     "@wizard/appspec": "workspace:*",
     "@wizard/gates": "workspace:*",
     "@wizard/llm": "workspace:*",
+    "@wizard/modules": "workspace:*",
     "@wizard/pii": "workspace:*",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"

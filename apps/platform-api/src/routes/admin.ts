@@ -1,7 +1,7 @@
 // /admin/* of api.yaml (x-roles: [staff], x-auth M2; M2-08): staff session and TOTP step-up, the moderation queue and
 // ticket actions, staff access to system data by a ticket (24 h), founder reviews (adminFounderReview; the CLI
-// `moderation` keeps working) and org flags with the org kind (B2-01). Every action is written to staff_audit_log;
-// non-staff get 404.
+// `moderation` keeps working) and org flags with the org kind (B2-01) and demo replay (B2-02). Every action is written
+// to staff_audit_log; non-staff get 404.
 import { Hono } from "hono";
 import { z } from "zod";
 import { setOrgSuspension } from "../abuse/escalation.js";
@@ -211,9 +211,23 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
         requireFounderReview: z.boolean().optional(),
         passportCollectionAllowed: z.boolean().optional(),
         kind: z.enum(ORG_KINDS as [OrgKind, ...OrgKind[]]).optional(),
+        demoReplay: z.boolean().optional(),
       }),
     );
+    // B2-02: demo replay is for staff orgs only (the kind after this request); a client or eval org is refused and
+    // leaving staff switches it off.
+    const cur = await d.db
+      .selectFrom("platform.orgs")
+      .select(["kind", "demo_replay"])
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!cur) throw notFound("Организация");
+    const kind = b.kind ?? cur.kind;
+    if (b.demoReplay === true && kind !== "staff")
+      throw new ApiError("FORBIDDEN", "Режим показа доступен только служебной организации");
     const set = {
+      ...(b.demoReplay === undefined ? {} : { demo_replay: b.demoReplay }),
+      ...(kind !== "staff" && cur.demo_replay ? { demo_replay: false } : {}),
       ...(b.requireFounderReview === undefined ? {} : { require_founder_review: b.requireFounderReview }),
       ...(b.passportCollectionAllowed === undefined
         ? {}
@@ -226,7 +240,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
         Object.keys(set).length ? set : { require_founder_review: (eb) => eb.ref("require_founder_review") },
       )
       .where("id", "=", orgId)
-      .returning(["id", "require_founder_review", "passport_collection_allowed", "kind"])
+      .returning(["id", "require_founder_review", "passport_collection_allowed", "kind", "demo_replay"])
       .executeTakeFirst();
     if (!org) throw notFound("Организация");
     await staffAudit(d.db, c.get("user").id, "org_flags", `org:${orgId}`, JSON.stringify(b));
@@ -235,6 +249,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
       requireFounderReview: org.require_founder_review,
       passportCollectionAllowed: org.passport_collection_allowed,
       kind: org.kind,
+      demoReplay: org.demo_replay,
     });
   });
 

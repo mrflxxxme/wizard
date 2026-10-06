@@ -184,6 +184,8 @@ export interface SystemView {
   messages: Message[];
   activeRunId?: string | null;
   publishBlockers?: string[];
+  /** B2-02: the org replays recorded model answers (no spend). */
+  demoReplay?: boolean;
 }
 
 /** api.yaml#OrgSettings (GET served from M0 by M0-30). */
@@ -357,6 +359,16 @@ export interface Org {
   role?: OrgRole;
   cardBound?: boolean;
   paymentsEnabled?: boolean;
+  /** B2-02: demo replay of a staff org; the recorded scenarios come with it. */
+  demoReplay?: boolean;
+  demoScenarios?: DemoScenario[];
+}
+
+/** B2-02: a recorded scenario (tools/fixtures/demo/<name>.jsonl) offered as a brief on S1. */
+export interface DemoScenario {
+  name: string;
+  title: string;
+  brief: string;
 }
 
 /** api.yaml#CreditBalance: credits with 0.001 precision, rounded to 0.1 only in UI (billing.yaml#credit.unit). */

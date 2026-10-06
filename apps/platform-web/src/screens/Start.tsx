@@ -5,12 +5,14 @@
 import { Button } from "@wizard/ui-kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, newIdempotencyKey } from "../api/client.js";
-import type { System } from "../api/types.js";
+import type { DemoScenario, System } from "../api/types.js";
 import { canEdit, canOwn, usePlatform } from "../app/context.js";
 import { navigate, useRoute } from "../app/router.js";
 import { Alert, Pill } from "../components/ui.js";
+import { DemoBanner } from "../features/demo/DemoBanner.js";
 import { needsTeam, usageText, useUsage } from "../features/pricing/Usage.js";
 import { TeamButton } from "../features/support/SupportWidget.js";
+import { demo } from "../i18n/ru/demo.js";
 import { pricing } from "../i18n/ru/pricing.js";
 import { ru } from "../i18n/ru.js";
 import s from "./Start.module.css";
@@ -30,6 +32,8 @@ export function Start(): ReactNode {
   const [systems, setSystems] = useState<System[]>([]);
   const keyRef = useRef<string | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
+  // B2-02: demo replay of a staff org — only recorded scenarios can start, offered as briefs.
+  const [demoScenarios, setDemoScenarios] = useState<DemoScenario[] | null>(null);
 
   const signedIn = auth === "ready";
   // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
@@ -53,8 +57,13 @@ export function Start(): ReactNode {
           if (!live) return;
           setPilot(o.plan === "pilot");
           setPlan(ru.billing.planName[o.plan] ?? o.plan);
+          setDemoScenarios(o.demoReplay ? (o.demoScenarios ?? []) : null);
         })
-        .catch(() => live && setPlan(null));
+        .catch(() => {
+          if (!live) return;
+          setPlan(null);
+          setDemoScenarios(null);
+        });
     return () => {
       live = false;
     };
@@ -211,6 +220,7 @@ export function Start(): ReactNode {
       </header>
 
       <main className={s.hero}>
+        {demoScenarios && <DemoBanner testId="start-demo-replay" />}
         <h1 className={s.title}>{ru.start.title}</h1>
         <p className={s.subtitle}>{ru.start.subtitle}</p>
         <label className={s.promptLabel} htmlFor="start-prompt">
@@ -245,6 +255,26 @@ export function Start(): ReactNode {
             </button>
           ))}
         </fieldset>
+        {demoScenarios && demoScenarios.length > 0 && (
+          <fieldset className={s.templates}>
+            <legend className={s.templatesLabel}>{demo.scenarios}:</legend>
+            {demoScenarios.map((d) => (
+              <button
+                key={d.name}
+                type="button"
+                className={s.chip}
+                data-testid={`start-demo-${d.name}`}
+                aria-pressed={prompt === d.brief}
+                onClick={() => {
+                  setTemplateId(undefined);
+                  setPrompt(d.brief);
+                }}
+              >
+                {d.title}
+              </button>
+            ))}
+          </fieldset>
+        )}
         <div className={s.actions}>
           <span className={s.uploadHint}>
             <Button variant="ghost" size="sm" data-testid="start-upload" disabled title={ru.start.uploadHint}>

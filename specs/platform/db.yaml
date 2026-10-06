@@ -74,6 +74,7 @@ tables:
       pilot_builds_limit: "integer check (pilot_builds_limit between 0 and 1000)"   # M2-34 (D70): лимит сборок пилота за 30 дней; NULL — 5 (billing.yaml#rub_model.pilot_limit); меняет staff в /admin
       pilot_edits_limit: "integer check (pilot_edits_limit between 0 and 1000)"     # M2-34 (D70): лимит правок пилота за 30 дней; NULL — 20
       kind: "text not null default 'client' check (kind in ('client','staff','eval'))"   # B2-01 (D76 (10), миграция 0031): staff — организации основателя (без лимита пилота D70, резерв дневного лимита моделей), eval — пробы и замеры (свой дневной лимит, бюджет разработки v2); назначение llm_calls = kind организации (B2-04); меняет staff в PUT /admin/orgs/:id/flags
+      demo_replay: "boolean not null default false"   # B2-02 (D76 (12), миграция 0032): режим показа — прогоны организации идут на записанных ответах моделей бесплатно (agents/models.yaml#credits.demo_replay); действует только при kind = staff, ставит staff в PUT /admin/orgs/:id/flags (смена kind на client/eval сбрасывает)
 
   memberships:
     milestone: M0
@@ -151,6 +152,7 @@ tables:
       suspended_at: "timestamptz"                          # M2, снятие публикации
       draft_data_purged_at: "timestamptz"                  # M2: схема draft Free-черновика удалена по неактивности (F5, workflows.yaml#retention_cron)
       draft_purge_notice_at: "timestamptz"                 # M2: письмо владельцам за 7 дней до F5-очистки отправлено (идемпотентность прохода; M2-05)
+      demo_scenario: "text check (demo_scenario ~ '^[a-z][a-z0-9_-]{0,39}$')"   # B2-02 (миграция 0032): записанный сценарий tools/fixtures/demo/<name>.jsonl, из которого система создана в режиме показа (бриф совпал с брифом сценария); null — обычная система
       last_activity_at: "timestamptz not null default now()"   # сообщение, прогон, стиль или вход владельца в систему; основа для F5
       created_by: "uuid not null references platform.users"
       updated_at: "timestamptz not null default now()"

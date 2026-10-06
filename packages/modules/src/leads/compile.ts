@@ -1,0 +1,67 @@
+// compile.ts of «Заявки» (manifest.hook): the lead entity from form_fields and contact — a required contact is added
+// to the form even when the plan left it out of form_fields, which substitution and AND-only conditions cannot express.
+import type { Field, ModuleFragments } from "@wizard/appspec";
+import type { ModuleContext } from "../types.js";
+
+/** Lead fields the form may show (canonical names; status is added by the module). */
+const FORM_FIELDS: Readonly<Record<string, Field>> = {
+  name: { name: "name", label: "Имя", type: "string", maxLength: 120, pii: "basic", piiKind: "fio" },
+  phone: { name: "phone", label: "Телефон", type: "phone", pii: "basic", piiKind: "phone" },
+  email: { name: "email", label: "Почта", type: "email", pii: "basic", piiKind: "email" },
+  comment: {
+    name: "comment",
+    label: "Комментарий",
+    type: "text",
+    maxLength: 2000,
+    pii: "basic",
+    piiKind: "free_text",
+  },
+  preferred_time: { name: "preferred_time", label: "Удобное время", type: "string", maxLength: 120 },
+};
+
+/** Lead status: canonical values, metrics count in_work and done as handled. */
+export const LEAD_STATUSES = [
+  { value: "new", label: "Новая" },
+  { value: "in_work", label: "В работе" },
+  { value: "done", label: "Закрыта" },
+] as const;
+
+/** Form fields in the plan's order; the required contact goes right after the name when the plan omitted it. */
+export function leadFormFields(formFields: readonly string[], contact: string): string[] {
+  const out = [...formFields];
+  if ((contact === "phone" || contact === "email") && !out.includes(contact))
+    out.splice(out[0] === "name" ? 1 : 0, 0, contact);
+  return out;
+}
+
+export function compileLeads(ctx: ModuleContext): ModuleFragments {
+  const contact = String(ctx.params.contact ?? "any");
+  const names = leadFormFields((ctx.params.form_fields as string[] | undefined) ?? [], contact);
+  const fields: Field[] = names.flatMap((n) => {
+    const f = FORM_FIELDS[n];
+    if (!f) return [];
+    const required = n === "name" || n === contact;
+    return [{ ...f, ...(required ? { required: true } : {}) }];
+  });
+  fields.push({
+    name: "status",
+    label: "Статус",
+    type: "enum",
+    required: true,
+    default: "new",
+    enum: LEAD_STATUSES.map((s) => ({ ...s })),
+  });
+  return {
+    entities: [
+      {
+        value: {
+          name: "lead",
+          label: "Заявка",
+          fields,
+          indexes: [{ fields: ["status"] }],
+          retention: { deleteAfterDays: ctx.params.retention_days },
+        },
+      },
+    ],
+  };
+}
