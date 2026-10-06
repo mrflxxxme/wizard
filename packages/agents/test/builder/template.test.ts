@@ -26,6 +26,46 @@ function siteSpec(): AppSpec {
   return r.spec;
 }
 
+/** Booking as the template ops phase leaves it (D75 step 3): services on the landing, the visitor creates a booking,
+ * one time — one booking by a unique index (CONFLICT from the runtime), no functions. */
+function bookingSpec(): AppSpec {
+  const r = applyOps(
+    siteSpec(),
+    [
+      {
+        op: "add_entity",
+        name: "booking",
+        label: "Запись",
+        fields: [
+          { name: "service", label: "Услуга", type: "ref", ref: { entity: "service" }, required: true },
+          { name: "starts_at", label: "Дата и время", type: "datetime", required: true },
+          { name: "name", label: "Имя", type: "string", required: true, pii: "basic" },
+          { name: "phone", label: "Телефон", type: "phone", required: true, pii: "basic" },
+          {
+            name: "status",
+            label: "Статус",
+            type: "enum",
+            required: true,
+            enum: [
+              { value: "new", label: "Новая" },
+              { value: "confirmed", label: "Подтверждена" },
+              { value: "cancelled", label: "Отменена" },
+            ],
+          },
+        ],
+        indexes: [{ fields: ["starts_at"], unique: true }],
+        retention: { deleteAfterDays: 365 },
+      },
+      { op: "remove_entity", name: "lead" },
+      { op: "set_permission", role: "guest", entity: "booking", ops: ["create"] },
+      { op: "set_permission", role: "admin", entity: "booking", ops: ["read", "update", "delete"] },
+    ],
+    0,
+  );
+  if (!r.ok) throw new Error(JSON.stringify(r.errors));
+  return r.spec;
+}
+
 const texts: LandingTexts = {
   hero: { title: "Стоматология в Казани", subtitle: "Запишитесь на консультацию", cta: "Записаться" },
   features: { title: "Почему мы", items: [{ title: "Опыт", text: "Работаем с 2010 года" }] },
@@ -62,16 +102,27 @@ describe("site template (D75)", () => {
     expect(cab).toContain('kind: "delete"');
   });
 
+  test("booking: the visitor books on the landing, the admin confirms or cancels in the cabinet", () => {
+    expect(templateGaps(bookingSpec())).toEqual([]);
+    const { files } = withPages(bookingSpec(), texts);
+    expect(files.get("ui/pages/Home.tsx")).toContain('<LeadForm entity={"booking"}');
+    const cab = files.get("ui/pages/Cabinet.tsx") ?? "";
+    expect(cab).toContain('patch: { status: "confirmed" }');
+    expect(cab).toContain('patch: { status: "cancelled" }');
+  });
+
   test("the generated pages pass the G0 code checks", async () => {
     for (const t of [
       texts,
       fallbackLanding({ title: "Ремонт", summary: "Ремонт квартир", acceptance: [], roles: [] }),
     ]) {
-      const { spec, files } = withPages(siteSpec(), t);
-      const failed = await checkCode({ spec, files });
-      expect(
-        failed.map((c) => `${c.id} ${c.file ?? ""}:${c.line ?? ""} ${c.message_ru} ${c.evidence ?? ""}`),
-      ).toEqual([]);
+      for (const base of [siteSpec(), bookingSpec()]) {
+        const { spec, files } = withPages(base, t);
+        const failed = await checkCode({ spec, files });
+        expect(
+          failed.map((c) => `${c.id} ${c.file ?? ""}:${c.line ?? ""} ${c.message_ru} ${c.evidence ?? ""}`),
+        ).toEqual([]);
+      }
     }
   });
 });
@@ -85,13 +136,20 @@ describe("site template on the real G1 (runtime, permissions, render)", () => {
     await h?.close();
   });
 
-  test("G1 at M1 has no blockers: permission probes, render of the landing and the cabinet", async () => {
-    const { spec, files } = withPages(siteSpec(), texts);
-    const r = await runGates("G1", h.ctx(spec, files, { milestone: "M1" }));
-    const blockers = r.checks.filter(
-      (c) => c.severity === "blocker" && (c.status === "fail" || c.status === "error"),
-    );
-    expect(blockers.map((c) => `${c.id}: ${c.message_ru} ${c.evidence ?? ""}`)).toEqual([]);
-    expect(r.checks.some((c) => c.id === "G1-RENDER-01" && c.status === "pass")).toBe(true);
-  }, 120_000);
+  test.each([
+    ["site", siteSpec],
+    ["booking", bookingSpec],
+  ])(
+    "%s: G1 at M1 has no blockers — permission probes, render of the landing and the cabinet",
+    async (_, make) => {
+      const { spec, files } = withPages(make(), texts);
+      const r = await runGates("G1", h.ctx(spec, files, { milestone: "M1" }));
+      const blockers = r.checks.filter(
+        (c) => c.severity === "blocker" && (c.status === "fail" || c.status === "error"),
+      );
+      expect(blockers.map((c) => `${c.id}: ${c.message_ru} ${c.evidence ?? ""}`)).toEqual([]);
+      expect(r.checks.some((c) => c.id === "G1-RENDER-01" && c.status === "pass")).toBe(true);
+    },
+    120_000,
+  );
 });

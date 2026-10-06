@@ -8,8 +8,12 @@ import { z } from "zod";
 import { defineTool } from "../core/index.js";
 import type { BuildCard } from "./types.js";
 
-/** Card segments built from the template (D75 order: site with leads first, CRM on the same generic screens). */
-export const TEMPLATE_SEGMENTS: ReadonlySet<string> = new Set(["site", "crm"]);
+/**
+ * Card segments built from the template (D75 order: site with leads first, then booking and CRM on the same screens).
+ * Booking needs no function either: the visitor creates the booking through LeadForm (service ref, starts_at), one
+ * time — one booking by a unique index (the runtime answers CONFLICT), the staff confirm and cancel in the cabinet.
+ */
+export const TEMPLATE_SEGMENTS: ReadonlySet<string> = new Set(["site", "booking", "crm"]);
 
 const line = (max: number) => z.string().trim().min(1).max(max);
 

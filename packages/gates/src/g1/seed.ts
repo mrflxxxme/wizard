@@ -111,6 +111,11 @@ export interface ValueGenOptions {
   hint?: string;
 }
 
+/** The field is part of a unique index of the entity (single or composite). */
+export function inUniqueIndex(e: Entity, field: string): boolean {
+  return (e.indexes ?? []).some((ix) => ix.unique === true && ix.fields.includes(field));
+}
+
 export class ValueGen {
   private n: number;
   constructor(
@@ -127,7 +132,9 @@ export class ValueGen {
   }
 
   /** Value of a non-ref field for row `i`; undefined → leave the column NULL/default. */
-  value(e: Entity, f: Field, i: number): unknown {
+  value(e: Entity, field: Field, i: number): unknown {
+    // A field of a unique index (one booking per time) gets fresh values like a unique field.
+    const f = !field.unique && inUniqueIndex(e, field.name) ? { ...field, unique: true } : field;
     const n = this.next();
     const shape = piiShape(f);
     if (shape === "forbidden") return undefined; // cards/passports are never generated (qa.yaml#seed.rules)

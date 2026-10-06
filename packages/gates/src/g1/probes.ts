@@ -1,7 +1,7 @@
 // PC-* probes through the data API from synthetic users (gates.yaml#G1 G1-PERM, qa.yaml#checks.permission_auto).
 import { type AppSpec, type Entity, type Permission, USERS_ENTITY } from "@wizard/appspec";
 import { type Actor, errorCode, type G1Env, type HttpResult } from "./env.js";
-import { fieldPiiCategory, userAttr, type ValueGen } from "./seed.js";
+import { fieldPiiCategory, inUniqueIndex, userAttr, type ValueGen } from "./seed.js";
 import type { PermissionProbe, QaCheck, Seed, SeedUser } from "./types.js";
 
 export interface ProbeOutcome {
@@ -164,6 +164,7 @@ export class Prober {
       (x) =>
         !skip.has(x.name) &&
         !x.unique &&
+        !inUniqueIndex(e, x.name) &&
         !["ref", "qr_token", "file", "image"].includes(x.type) &&
         fieldPiiCategory(x) === "none",
     );
