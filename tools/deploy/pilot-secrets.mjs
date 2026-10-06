@@ -207,6 +207,11 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_BUILD_DEFAULT_TIER",
   // D75: platform model spend per Moscow day (default 700 ₽); raised only by the founder.
   "WIZARD_LLM_DAILY_CAP_RUB",
+  // B2-01, B2-04: staff reserve of the daily cap (200 ₽), eval daily cap (300 ₽), beta v2 budget (1 000 ₽ since 06.10).
+  "WIZARD_LLM_STAFF_RESERVE_RUB",
+  "WIZARD_LLM_EVAL_DAILY_CAP_RUB",
+  "WIZARD_B2_BUDGET_RUB",
+  "WIZARD_B2_BUDGET_SINCE",
   "WIZARD_SMTP_HOST",
   "WIZARD_SMTP_PORT",
   "WIZARD_SMTP_USER",

@@ -147,6 +147,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     db: handle.db,
     capRub: config.llmMonthlyCapRub,
     dailyCapRub: config.llmDailyCapRub,
+    staffReserveRub: config.llmStaffReserveRub,
+    evalDailyCapRub: config.llmEvalDailyCapRub,
+    b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
     alert,
     ...(opts.now ? { now: opts.now } : {}),
   });

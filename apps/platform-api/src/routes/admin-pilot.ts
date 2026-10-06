@@ -1,17 +1,18 @@
 // /admin/pilot/* — the «Пилот» section of the staff console (api.yaml x-roles [staff], x-auth M2; staffGuard: non-staff
 // 404, no MFA step-up 403 MFA_REQUIRED): beta_readiness with who/when and its checklist, founder invitations (the
 // beta_readiness gate stays in createPilotInvite), pilot orgs with the month's spend, pilot credits, the founder-review
-// flag and the platform LLM spend vs WIZARD_LLM_MONTHLY_CAP_RUB. Same functions as the pilot CLI (src/pilot/*); every
+// flag and the platform LLM spend vs WIZARD_LLM_MONTHLY_CAP_RUB; the spend by purpose with the B2 budget (B2-04). Same functions as the pilot CLI (src/pilot/*); every
 // change is written to staff_audit_log. Client e-mails stay out of the journal and logs (only invitation ids).
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AbuseDeps, staffAudit } from "../abuse/reports.js";
 import { type StaffDeps, staffGuard } from "../abuse/staff.js";
 import type { Billing } from "../billing/ledger.js";
+import { LLM_SPEND_DAYS_MAX, llmSpendByDay } from "../billing/llm-spend.js";
 import { PILOT_LIMIT_MAX, pilotUsage, setPilotLimits, usageView } from "../billing/pilot-limits.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, isUuid } from "../http/auth.js";
-import { jsonBody } from "../http/util.js";
+import { jsonBody, parseQuery } from "../http/util.js";
 import { createPilotInvite, PilotError } from "../pilot/invites.js";
 import {
   BETA_READINESS_CHECKLIST_RU,
@@ -220,6 +221,20 @@ export function adminPilotRoutes(d: AdminPilotDeps): Hono<AppEnv> {
   r.get("/admin/pilot/spend", staff, async (c) =>
     c.json(await platformLlmSpend(d.db, d.config.llmMonthlyCapRub, now())),
   );
+
+  // B2-04: model spend by purpose (client / staff / eval) per Moscow day and the beta v2 development budget.
+  r.get("/admin/llm-spend", staff, async (c) => {
+    const q = parseQuery(
+      c,
+      z.object({ days: z.coerce.number().int().min(1).max(LLM_SPEND_DAYS_MAX).optional() }),
+    );
+    const res = await llmSpendByDay(d.db, {
+      days: q.days ?? 14,
+      now: now(),
+      b2: { budgetRub: d.config.b2BudgetRub, since: d.config.b2BudgetSince },
+    });
+    return c.json(res);
+  });
 
   return r;
 }

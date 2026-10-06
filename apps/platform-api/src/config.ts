@@ -102,6 +102,17 @@ export interface Config {
    */
   /** WIZARD_LLM_DAILY_CAP_RUB (default 700; D75): platform LLM spend cap per Moscow calendar day. */
   llmDailyCapRub: number;
+  /**
+   * WIZARD_LLM_STAFF_RESERVE_RUB (default 200; B2-01, grill-6 № 12): the part of the daily cap only staff orgs may
+   * use — client and eval runs are refused once the day's total reaches llmDailyCapRub − this.
+   */
+  llmStaffReserveRub: number;
+  /** WIZARD_LLM_EVAL_DAILY_CAP_RUB (default 300; B2-01): daily cap of eval orgs' own spend (probes, measurements). */
+  llmEvalDailyCapRub: number;
+  /** WIZARD_B2_BUDGET_RUB (default 1000; B2-04, grill-6 № 18): eval spend budget of the beta v2 development. */
+  b2BudgetRub: number;
+  /** WIZARD_B2_BUDGET_SINCE (yyyy-mm-dd, Moscow; default 2026-10-06): start of the B2 budget window. */
+  b2BudgetSince: string;
   llmMonthlyCapRub: number;
   /** WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID: founder alert webhook (deploy.yaml#pilot.observability). */
   opsAlert: { url: string; chatId: string | null } | null;
@@ -193,6 +204,14 @@ function smtpFromEnv(env: NodeJS.ProcessEnv): {
 export const DEFAULT_LLM_MONTHLY_CAP_RUB = 6000;
 /** Default of WIZARD_LLM_DAILY_CAP_RUB (D75: ≤ 700 ₽ of models per day, an alert when reached). */
 export const DEFAULT_LLM_DAILY_CAP_RUB = 700;
+/** Default of WIZARD_LLM_STAFF_RESERVE_RUB (grill-6 № 12: «например, 200 ₽»). */
+export const DEFAULT_LLM_STAFF_RESERVE_RUB = 200;
+/** Default of WIZARD_LLM_EVAL_DAILY_CAP_RUB (B2-01). */
+export const DEFAULT_LLM_EVAL_DAILY_CAP_RUB = 300;
+/** Default of WIZARD_B2_BUDGET_RUB (grill-6 № 18: ≤ 1 000 ₽ for probes and the measurement). */
+export const DEFAULT_B2_BUDGET_RUB = 1000;
+/** Default of WIZARD_B2_BUDGET_SINCE: the day of D76. */
+export const DEFAULT_B2_BUDGET_SINCE = "2026-10-06";
 
 export interface ReceiptConfig {
   /** WIZARD_RECEIPT_VAT_CODE (1..12, YooKassa vat_code incl. 5%/7% USN codes 7–10); null — not set (1 «без НДС» outside production). */
@@ -262,6 +281,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     llmDailyCapRub: env.WIZARD_LLM_DAILY_CAP_RUB
       ? Number(env.WIZARD_LLM_DAILY_CAP_RUB)
       : DEFAULT_LLM_DAILY_CAP_RUB,
+    llmStaffReserveRub: env.WIZARD_LLM_STAFF_RESERVE_RUB
+      ? Number(env.WIZARD_LLM_STAFF_RESERVE_RUB)
+      : DEFAULT_LLM_STAFF_RESERVE_RUB,
+    llmEvalDailyCapRub: env.WIZARD_LLM_EVAL_DAILY_CAP_RUB
+      ? Number(env.WIZARD_LLM_EVAL_DAILY_CAP_RUB)
+      : DEFAULT_LLM_EVAL_DAILY_CAP_RUB,
+    b2BudgetRub: env.WIZARD_B2_BUDGET_RUB ? Number(env.WIZARD_B2_BUDGET_RUB) : DEFAULT_B2_BUDGET_RUB,
+    b2BudgetSince: env.WIZARD_B2_BUDGET_SINCE?.trim() || DEFAULT_B2_BUDGET_SINCE,
     llmMonthlyCapRub: env.WIZARD_LLM_MONTHLY_CAP_RUB
       ? Number(env.WIZARD_LLM_MONTHLY_CAP_RUB)
       : DEFAULT_LLM_MONTHLY_CAP_RUB,
@@ -327,6 +354,14 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
     throw new StartupError(`неизвестный WIZARD_REGISTRATION=${c.registration} (open | invite)`);
   if (!Number.isFinite(c.llmDailyCapRub) || c.llmDailyCapRub <= 0)
     throw new StartupError("WIZARD_LLM_DAILY_CAP_RUB: нужен положительный лимит в рублях");
+  if (!Number.isFinite(c.llmStaffReserveRub) || c.llmStaffReserveRub < 0)
+    throw new StartupError("WIZARD_LLM_STAFF_RESERVE_RUB: нужен резерв в рублях, не меньше нуля");
+  if (!Number.isFinite(c.llmEvalDailyCapRub) || c.llmEvalDailyCapRub <= 0)
+    throw new StartupError("WIZARD_LLM_EVAL_DAILY_CAP_RUB: нужен положительный лимит в рублях");
+  if (!Number.isFinite(c.b2BudgetRub) || c.b2BudgetRub <= 0)
+    throw new StartupError("WIZARD_B2_BUDGET_RUB: нужен положительный бюджет в рублях");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.b2BudgetSince) || Number.isNaN(Date.parse(c.b2BudgetSince)))
+    throw new StartupError("WIZARD_B2_BUDGET_SINCE: нужна дата вида 2026-10-06");
   if (!Number.isFinite(c.llmMonthlyCapRub) || c.llmMonthlyCapRub <= 0)
     throw new StartupError("WIZARD_LLM_MONTHLY_CAP_RUB: нужен положительный лимит в рублях");
   if (c.nodeEnv === "production" && c.billingExemptOrgs.length > 0)

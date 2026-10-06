@@ -190,7 +190,7 @@ export const LLM_RUN_KINDS: ReadonlySet<NewRun["kind"]> = new Set([
  */
 export async function insertRun(t: TxCtx, r: NewRun, billing?: Billing): Promise<Run> {
   // M2-15: the platform LLM cap of the month refuses new LLM runs (publish/rollback/export use no LLM).
-  if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget();
+  if (billing && LLM_RUN_KINDS.has(r.kind)) await billing.assertLlmBudget(r.orgId);
   if (billing && r.kind === "interview_turn")
     await billing.requireForTurn(t.trx, r.orgId, r.capMilli ?? INTERVIEW_CAP_MILLI);
   // D70: pilot orgs — 5 builds and 20 edits in 30 days (402 BUILDS_LIMIT / EDITS_LIMIT).

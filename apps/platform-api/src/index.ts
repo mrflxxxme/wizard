@@ -65,6 +65,18 @@ export {
   llmSpentRub,
   moscowMonth,
 } from "./billing/llm-cap.js";
+/** B2-01, B2-04: model spend by purpose (org kind client | staff | eval) per Moscow day and the beta v2 budget. */
+export {
+  type B2BudgetStatus,
+  b2BudgetStatus,
+  checkB2Budget,
+  type LlmSpendDay,
+  type LlmSpendReport,
+  llmSpendByDay,
+  llmSpentByKindRub,
+  ORG_KINDS,
+  orgKind,
+} from "./billing/llm-spend.js";
 /** M2-07: platform shop payments — card binding, subscriptions (renewals, dunning), topups; sweep() is hourly. */
 export {
   activeCard,

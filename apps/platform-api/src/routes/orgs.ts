@@ -132,6 +132,12 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
     const user = c.get("user");
     const plan = await newOrgPlan(user);
     const region = applyRegion({ region_code: null, t1_restricted: false }, b);
+    // B2-01: an org created by a staff user (the founder) is a staff org.
+    const staff = await d.db
+      .selectFrom("platform.users")
+      .select("is_staff")
+      .where("id", "=", user.id)
+      .executeTakeFirst();
     const org = await d.db.transaction().execute(async (trx) => {
       const o = await trx
         .insertInto("platform.orgs")
@@ -139,6 +145,7 @@ export function orgRoutes(d: Deps, a: AccountDeps, bus: PolicyBus = orgPolicyBus
           name: b.name,
           ...region,
           ...(plan === "pilot" ? { plan, require_founder_review: true } : {}),
+          ...(staff?.is_staff ? { kind: "staff" as const } : {}),
         })
         .returning("id")
         .executeTakeFirstOrThrow();

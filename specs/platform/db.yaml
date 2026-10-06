@@ -73,6 +73,7 @@ tables:
       t1_restricted: "boolean not null default false"      # M1: true → все вызовы org только T0 (route_reason policy_region_restricted); region_code is null (регион неизвестен) T1 НЕ ограничивает (D26_models_default, 2026-10-04); IP входа из регионов с ограничением Z.ai → true; список регионов — E-LEGAL
       pilot_builds_limit: "integer check (pilot_builds_limit between 0 and 1000)"   # M2-34 (D70): лимит сборок пилота за 30 дней; NULL — 5 (billing.yaml#rub_model.pilot_limit); меняет staff в /admin
       pilot_edits_limit: "integer check (pilot_edits_limit between 0 and 1000)"     # M2-34 (D70): лимит правок пилота за 30 дней; NULL — 20
+      kind: "text not null default 'client' check (kind in ('client','staff','eval'))"   # B2-01 (D76 (10), миграция 0031): staff — организации основателя (без лимита пилота D70, резерв дневного лимита моделей), eval — пробы и замеры (свой дневной лимит, бюджет разработки v2); назначение llm_calls = kind организации (B2-04); меняет staff в PUT /admin/orgs/:id/flags
 
   memberships:
     milestone: M0

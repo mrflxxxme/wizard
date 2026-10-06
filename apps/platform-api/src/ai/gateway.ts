@@ -177,7 +177,7 @@ export class AiGateway {
 
     // M2-15: the platform LLM cap of the month (alerts to the founder are sent by LlmMonthlyCap itself).
     try {
-      await billing.assertLlmBudget();
+      await billing.assertLlmBudget(sys.org_id);
     } catch (e) {
       if (e instanceof ApiError && e.code === "LLM_BUDGET_EXHAUSTED")
         throw new AiGatewayError("AI_UNAVAILABLE");

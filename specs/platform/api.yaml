@@ -585,8 +585,9 @@ paths:
       operationId: adminSetOrgFlags
       x-milestone: M2
       x-roles: [staff]
-      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}}}}}}
-      responses: {'200': {description: Обновлено}}
+      summary: 'Флаги организации, строка staff_audit_log org_flags. kind (B2-01, D76 (10)): client | staff — организация основателя (лимит пилота D70 не действует, доступен резерв дневного лимита WIZARD_LLM_STAFF_RESERVE_RUB) | eval — пробы и замеры (свой дневной лимит WIZARD_LLM_EVAL_DAILY_CAP_RUB, бюджет разработки v2)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean, description: abuse.yaml#patterns.gov_ids}, kind: {$ref: '#/components/schemas/OrgKind'}}}}}}
+      responses: {'200': {description: Обновлено, content: {application/json: {schema: {type: object, required: [orgId, requireFounderReview, passportCollectionAllowed, kind], properties: {orgId: {type: string, format: uuid}, requireFounderReview: {type: boolean}, passportCollectionAllowed: {type: boolean}, kind: {$ref: '#/components/schemas/OrgKind'}}}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   /admin/orgs/{orgId}/suspension:
     parameters: [{$ref: '#/components/parameters/orgId'}]
     post:
@@ -795,6 +796,14 @@ paths:
       x-roles: [staff]
       summary: 'pilot-admin: расход платформы на модели за календарный месяц (Europe/Moscow) против WIZARD_LLM_MONTHLY_CAP_RUB, как CLI `pilot spend`; warn — ≥ 80 % (порог алерта основателю), reached — новые LLM-прогоны получают 503 LLM_BUDGET_EXHAUSTED'
       responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpend'}}}}}
+  /admin/llm-spend:
+    get:
+      operationId: adminLlmSpend
+      x-milestone: B2
+      x-roles: [staff]
+      summary: 'B2-04 (D76 (14), grill-6 № 18): расход на модели по дням (МСК) и назначению — назначение вызова = вид его организации (client, staff, eval: пробы и замеры идут от eval-организаций); только оплачиваемые live/record-вызовы, ₽. Дни — от старых к новым, без вызовов — нули. b2 — бюджет разработки беты v2: расход eval-организаций с WIZARD_B2_BUDGET_SINCE против WIZARD_B2_BUDGET_RUB (70 % — алерт основателю, 100 % — новые пробы и замеры отклоняются). Не staff → 404'
+      parameters: [{name: days, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 92, default: 14}}]
+      responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpendByPurpose'}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   # ==== M2P · M2-98 (адрес и свой домен, дизайн и референсы, медиа и стоки, хосты egress в ревью; секреты и настройки — M2-95 после M2-22/M2-98) — новые пути дописывать ЗДЕСЬ ====
   /systems/{id}/webhooks:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -1167,4 +1176,6 @@ components:
     SupportRequest: {type: object, required: [id, orgId, orgName, email, systemId, systemName, screen, text, wantsTeam, createdAt, replyBy, answeredAt], properties: {id: {type: string, format: uuid}, orgId: {type: string, format: uuid}, orgName: {type: string}, email: {type: [string, 'null']}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, screen: {type: [string, 'null']}, text: {type: string}, wantsTeam: {type: boolean}, createdAt: {type: string, format: date-time}, replyBy: {type: string, format: date-time}, answeredAt: {type: [string, 'null'], format: date-time}}}
     DevelopmentCategory: {enum: [payments, subscriptions, integration, messaging, design, domain, media, data, mobile, ai, other]}
     DevelopmentRequest: {type: object, required: [id, category, quote, offered, createdAt, orgId, orgName, systemId, systemName, email], properties: {id: {type: string, format: uuid}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, quote: {type: string, description: 'Цитата клиента после scrub ПДн'}, offered: {type: [string, 'null'], description: 'Предложенная замена'}, createdAt: {type: string, format: date-time}, orgId: {type: string, format: uuid}, orgName: {type: string}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, email: {type: [string, 'null']}}}
+    OrgKind: {enum: [client, staff, eval], description: 'B2-01: вид организации — клиент, служебная (основатель), замеры'}
+    LlmSpendByPurpose: {type: object, required: [days, b2], properties: {days: {type: array, items: {type: object, required: [day, client, staff, eval, total], properties: {day: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, client: {type: number}, staff: {type: number}, eval: {type: number}, total: {type: number}}}}, b2: {type: object, required: [since, spentRub, budgetRub, sharePercent, warn, reached], properties: {since: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, spentRub: {type: number}, budgetRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 70 % бюджета'}, reached: {type: boolean}}}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}

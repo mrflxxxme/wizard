@@ -1,6 +1,7 @@
 // /admin/* of api.yaml (x-roles: [staff], x-auth M2; M2-08): staff session and TOTP step-up, the moderation queue and
 // ticket actions, staff access to system data by a ticket (24 h), founder reviews (adminFounderReview; the CLI
-// `moderation` keeps working) and org flags. Every action is written to staff_audit_log; non-staff get 404.
+// `moderation` keeps working) and org flags with the org kind (B2-01). Every action is written to staff_audit_log;
+// non-staff get 404.
 import { Hono } from "hono";
 import { z } from "zod";
 import { setOrgSuspension } from "../abuse/escalation.js";
@@ -16,6 +17,8 @@ import {
   staffSystemData,
 } from "../abuse/reports.js";
 import { confirmMfa, enrollMfa, type StaffDeps, staffGuard, staffState, verifyMfa } from "../abuse/staff.js";
+import { ORG_KINDS } from "../billing/llm-spend.js";
+import type { OrgKind } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, isUuid } from "../http/auth.js";
 import { jsonBody, parseQuery } from "../http/util.js";
@@ -199,6 +202,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
     return c.json(await setOrgSuspension(d, { orgId, actor: c.get("user").id, ...b }));
   });
 
+  // Org flags; kind (B2-01): client | staff (no pilot limit, the staff reserve of the daily LLM cap) | eval.
   r.put("/admin/orgs/:orgId/flags", staff, async (c) => {
     const orgId = uuidParam(c.req.param("orgId"), "Организация");
     const b = await jsonBody(
@@ -206,6 +210,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
       z.object({
         requireFounderReview: z.boolean().optional(),
         passportCollectionAllowed: z.boolean().optional(),
+        kind: z.enum(ORG_KINDS as [OrgKind, ...OrgKind[]]).optional(),
       }),
     );
     const set = {
@@ -213,6 +218,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
       ...(b.passportCollectionAllowed === undefined
         ? {}
         : { passport_collection_allowed: b.passportCollectionAllowed }),
+      ...(b.kind === undefined ? {} : { kind: b.kind }),
     };
     const org = await d.db
       .updateTable("platform.orgs")
@@ -220,7 +226,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
         Object.keys(set).length ? set : { require_founder_review: (eb) => eb.ref("require_founder_review") },
       )
       .where("id", "=", orgId)
-      .returning(["id", "require_founder_review", "passport_collection_allowed"])
+      .returning(["id", "require_founder_review", "passport_collection_allowed", "kind"])
       .executeTakeFirst();
     if (!org) throw notFound("Организация");
     await staffAudit(d.db, c.get("user").id, "org_flags", `org:${orgId}`, JSON.stringify(b));
@@ -228,6 +234,7 @@ export function adminRoutes(d: AbuseDeps & StaffDeps): Hono<AppEnv> {
       orgId,
       requireFounderReview: org.require_founder_review,
       passportCollectionAllowed: org.passport_collection_allowed,
+      kind: org.kind,
     });
   });
 

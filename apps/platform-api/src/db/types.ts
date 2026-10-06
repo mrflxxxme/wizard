@@ -41,8 +41,13 @@ export interface OrgsTable {
   /** D70: pilot limits of the org (NULL — billing/pilot-limits.ts defaults). */
   pilot_builds_limit: number | null;
   pilot_edits_limit: number | null;
+  /** B2-01: client | staff | eval (migration 0031); the purpose of the org's llm_calls (B2-04). */
+  kind: ColumnType<OrgKind, OrgKind | undefined, OrgKind>;
   created_at: TsDef;
 }
+
+/** Kind of an organization (B2-01, D76 (10)): a customer, the founder's own org, probes and measurements. */
+export type OrgKind = "client" | "staff" | "eval";
 
 export interface MembershipsTable {
   org_id: string;
