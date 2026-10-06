@@ -1143,6 +1143,10 @@ SELECT lower(:'email'), 'Wizard', ${FOUNDER_START_CREDITS}, now() + interval '30
  WHERE NOT EXISTS (SELECT 1 FROM platform.users u WHERE u.email = lower(:'email') AND u.deleted_at IS NULL)
    AND NOT EXISTS (SELECT 1 FROM platform.pilot_invites i
                     WHERE i.email = lower(:'email') AND i.accepted_at IS NULL AND i.revoked_at IS NULL);
+UPDATE platform.orgs o SET kind = 'staff'
+ WHERE o.kind = 'client'
+   AND o.id IN (SELECT m.org_id FROM platform.memberships m JOIN platform.users u ON u.id = m.user_id
+                 WHERE m.role = 'owner' AND u.email = lower(:'email') AND u.deleted_at IS NULL);
 UPDATE platform.users SET is_staff = true
  WHERE email = lower(:'email') AND deleted_at IS NULL
 RETURNING id;
@@ -1160,7 +1164,7 @@ export const FOUNDER_JOB = "wizard-founder-staff";
 
 /**
  * One-off Job that waits for the founder's first sign-in and makes the account staff (MFA is enrolled on the first
- * visit of /admin). Runs as a pg-job pod (NetworkPolicy wizard-pg-job: only the database), image wizard-postgres.
+ * visit of /admin) and the orgs it owns staff orgs (B2-01: no pilot limit, the staff reserve of the daily LLM cap). Runs as a pg-job pod (NetworkPolicy wizard-pg-job: only the database), image wizard-postgres.
  */
 export function founderStaffJob({ image, email, pullSecret = "wizard-ghcr" }) {
   return {

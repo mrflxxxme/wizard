@@ -25,6 +25,7 @@ import * as m0021 from "../../migrations/0021_p_support.js";
 import * as m0022 from "../../migrations/0022_p_development_requests.js";
 import * as m0024 from "../../migrations/0024_m2_notify_owners.js";
 import * as m0025 from "../../migrations/0025_p_destructive.js";
+import * as m0031 from "../../migrations/0031_b2_org_kind.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -77,6 +78,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0022_p_development_requests": m0022,
   "0024_m2_notify_owners": m0024,
   "0025_p_destructive": m0025,
+  "0031_b2_org_kind": m0031,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

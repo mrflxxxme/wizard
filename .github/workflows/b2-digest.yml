@@ -1,0 +1,39 @@
+# B2-03 (D76): daily «Бета v2» digest, 3–5 lines with a link, to the ops alert chat. No personal data: task ids,
+# counts and ₽ only. Without the bot secrets the run warns and stays green.
+name: b2-digest
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 09:00 MSK
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b2-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The digest reads the last day of main's history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check pyyaml
+      - name: Digest to Telegram
+        env:
+          B2_PAGE_URL: ${{ vars.B2_PAGE_URL }}
+          WIZARD_OPS_ALERT_TELEGRAM_TOKEN: ${{ secrets.WIZARD_OPS_ALERT_TELEGRAM_TOKEN }}
+          WIZARD_OPS_ALERT_CHAT_ID: ${{ secrets.WIZARD_OPS_ALERT_CHAT_ID || vars.WIZARD_OPS_ALERT_CHAT_ID }}
+        run: node tools/progress/b2.mjs --digest --send --ref HEAD

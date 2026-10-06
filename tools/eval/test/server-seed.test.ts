@@ -97,8 +97,14 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
     expect(me.body.user.email).toBe("eval+20261005-a1b2c3@borntobuild.ru");
     expect(me.body.memberships).toEqual([expect.objectContaining({ orgId: seed.orgId, role: "owner" })]);
     const [org] = await api.deps.pg`
-      select name, plan, require_founder_review from platform.orgs where id = ${seed.orgId}`;
-    expect(org).toEqual({ name: "Замер D67 · 20261005-a1b2c3", plan: "pilot", require_founder_review: true });
+      select name, plan, require_founder_review, kind from platform.orgs where id = ${seed.orgId}`;
+    // B2-01: an eval org (own daily LLM cap, the beta v2 development budget).
+    expect(org).toEqual({
+      name: "Замер D67 · 20261005-a1b2c3",
+      plan: "pilot",
+      require_founder_review: true,
+      kind: "eval",
+    });
     const credits = await api.req("GET", `/orgs/${seed.orgId}/credits`, { headers: { cookie: cookie() } });
     expect(credits.status).toBe(200);
     expect(JSON.stringify(credits.body)).toContain("900");

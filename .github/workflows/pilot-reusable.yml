@@ -139,6 +139,16 @@ jobs:
       WIZARD_BUILD_DEFAULT_TIER: ${{ vars.WIZARD_BUILD_DEFAULT_TIER }}
       # D75: the platform's daily model cap, ₽ (empty — the default 700); raised only by the founder.
       WIZARD_LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB }}
+      # B2-01, B2-04: staff reserve of the daily cap, eval daily cap, beta v2 development budget (empty — defaults).
+      WIZARD_LLM_STAFF_RESERVE_RUB: ${{ vars.WIZARD_LLM_STAFF_RESERVE_RUB }}
+      WIZARD_LLM_EVAL_DAILY_CAP_RUB: ${{ vars.WIZARD_LLM_EVAL_DAILY_CAP_RUB }}
+      WIZARD_B2_BUDGET_RUB: ${{ vars.WIZARD_B2_BUDGET_RUB }}
+      WIZARD_B2_BUDGET_SINCE: ${{ vars.WIZARD_B2_BUDGET_SINCE }}
+      # D76: provider balances «<₽>@<ISO time>» seen in the consoles, the warning threshold, Z.ai as the reserve.
+      WIZARD_LLM_BALANCE_ZAI: ${{ vars.WIZARD_LLM_BALANCE_ZAI }}
+      WIZARD_LLM_BALANCE_CLOUDRU: ${{ vars.WIZARD_LLM_BALANCE_CLOUDRU }}
+      WIZARD_LLM_BALANCE_WARN_RUB: ${{ vars.WIZARD_LLM_BALANCE_WARN_RUB }}
+      WIZARD_LLM_T1_RESERVE: ${{ vars.WIZARD_LLM_T1_RESERVE }}
       # Timeweb S3 account key (panel → S3 → Ключи доступа): the keys on bucket objects in the API are refused by S3
       # (SignatureDoesNotMatch). Named apart from AWS_* so no tool on the runner picks them up implicitly.
       WIZARD_S3_ACCOUNT_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

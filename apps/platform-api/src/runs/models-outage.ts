@@ -1,7 +1,9 @@
 // The whole model chain refused a call (LlmError LLM_UNAVAILABLE, agents/models.yaml#fallback_rules): the specialist
 // sees why in the run journal (internal event models_unavailable, workflows.yaml#events.types), the founder gets one
 // alert per hour (db.yaml#ops_alerts), the client gets plain text (MODELS_UNAVAILABLE_RU) — never model names.
+import type { ProviderDegraded } from "@wizard/llm";
 import { sql } from "kysely";
+import { moscowDay, PROVIDER_LABELS } from "../billing/llm-cap.js";
 import type { Db } from "../db/index.js";
 import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
 
@@ -76,4 +78,49 @@ export async function reportModelsUnavailable(i: ModelsOutageInput): Promise<Mod
     fields: { code: "LLM_UNAVAILABLE", reason: i.callType ?? null, count: attempts.length },
   });
   return attempts;
+}
+
+export interface ProviderDegradedInput {
+  db: Db;
+  event: ProviderDegraded;
+  alert?: OpsAlertFn | undefined;
+  now?: Date;
+}
+
+/**
+ * @wizard/llm onProviderDegraded (D76, models.yaml#fallback_rules): an empty balance alerts the founder once per Moscow
+ * day and provider, an opened model breaker once per hour and model (db.yaml#ops_alerts). No run or prompt data.
+ */
+export async function reportProviderDegraded(i: ProviderDegradedInput): Promise<boolean> {
+  const now = i.now ?? new Date();
+  const { provider, reason } = i.event;
+  const label = PROVIDER_LABELS[provider] ?? provider;
+  if (reason === "balance_exhausted") {
+    const reserve =
+      provider === "zai"
+        ? "Сборки идут на моделях в РФ (Cloud.ru)."
+        : "Вызовы идут на запасные модели; если запасных нет, клиент видит просьбу повторить позже.";
+    return alertOnce(i.db, `llm_provider_balance:${provider}:${moscowDay(now).key}`, i.alert, {
+      level: "error",
+      event: "llm_provider_balance_exhausted",
+      text:
+        `Wizard: у провайдера моделей ${label} закончился баланс. Вызовы к нему остановлены на 30 минут без повторов. ` +
+        `${reserve} Пополните баланс — после пополнения вызовы вернутся к нему сами в течение 30 минут.`,
+      fields: { code: "PROVIDER_BALANCE_EXHAUSTED", reason: provider },
+    });
+  }
+  const model = i.event.model ?? "?";
+  return alertOnce(
+    i.db,
+    `llm_provider_circuit:${provider}:${model}:${now.toISOString().slice(0, 13)}`,
+    i.alert,
+    {
+      level: "warn",
+      event: "llm_provider_circuit_open",
+      text:
+        `Wizard: модель ${model} провайдера ${label} не отвечает (ошибки подряд) — вызовы временно идут на запасные модели. ` +
+        "Следующие отключения этой модели в этот час не присылаются.",
+      fields: { code: "LLM_CIRCUIT_OPEN", reason: `${provider}:${model}` },
+    },
+  );
 }

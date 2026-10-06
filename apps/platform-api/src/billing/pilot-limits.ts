@@ -3,6 +3,7 @@
 // credits (credits stay the internal guard of ledger.ts). A build is a build run of mode create (a new system or a
 // full rebuild from the card), an edit — mode change or point_edit; fix runs, failed and cancelled runs do not count,
 // active ones do. Only orgs on plan «pilot» are limited; the founder raises a limit in /admin (orgs.pilot_*_limit).
+// Staff orgs (orgs.kind = staff, B2-01, grill-6 № 12) are never limited: their counters show no limit.
 import { sql, type Transaction } from "kysely";
 import type { DB, Db } from "../db/index.js";
 import { ApiError } from "../errors.js";
@@ -81,10 +82,11 @@ function counter(limit: number | null, times: Date[]): PilotCounter {
 export async function pilotUsage(db: Reader, orgId: string, now: Date): Promise<PilotUsage> {
   const org = await db
     .selectFrom("platform.orgs")
-    .select(["plan", "pilot_builds_limit", "pilot_edits_limit"])
+    .select(["plan", "kind", "pilot_builds_limit", "pilot_edits_limit"])
     .where("id", "=", orgId)
     .executeTakeFirst();
   const pilot = org?.plan === "pilot";
+  const limited = pilot && org?.kind !== "staff";
   const since = new Date(now.getTime() - PILOT_WINDOW_DAYS * DAY_MS);
   const rows = await db
     .selectFrom("platform.runs")
@@ -100,8 +102,8 @@ export async function pilotUsage(db: Reader, orgId: string, now: Date): Promise<
     rows.filter((r) => pilotKindOf(r.mode) === k).map((r) => new Date(r.created_at));
   return {
     pilot,
-    builds: counter(pilot ? (org?.pilot_builds_limit ?? PILOT_BUILDS_DEFAULT) : null, times("builds")),
-    edits: counter(pilot ? (org?.pilot_edits_limit ?? PILOT_EDITS_DEFAULT) : null, times("edits")),
+    builds: counter(limited ? (org?.pilot_builds_limit ?? PILOT_BUILDS_DEFAULT) : null, times("builds")),
+    edits: counter(limited ? (org?.pilot_edits_limit ?? PILOT_EDITS_DEFAULT) : null, times("edits")),
   };
 }
 

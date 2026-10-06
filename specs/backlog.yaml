@@ -2995,7 +2995,7 @@ tasks:
     owner: platform
     parallel_group: b2-0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Организация с флагом staff не упирается в лимит пилота D70 (тест)"
@@ -3024,7 +3024,7 @@ tasks:
     owner: docs
     parallel_group: b2-0
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Страница показывает этапы и задачи B2 со статусами из backlog.yaml, влитые и выкаченные PR, расход по дням, результаты проб и что ждём от основателя"
@@ -3038,7 +3038,7 @@ tasks:
     owner: platform
     parallel_group: b2-0
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждый llm_call помечен назначением: client, staff, probe, eval"
@@ -3052,7 +3052,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Новая спека specs/modules/ (формат манифеста, SystemPlan, связи модулей, метрики, сценарии целей) проходит validate"
@@ -3193,7 +3193,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Сбой или нулевой баланс Z.ai переводит этап на Cloud.ru и обратно (тест с имитацией 429/5xx)"

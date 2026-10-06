@@ -123,8 +123,8 @@ export interface BillingOptions {
    * stand, config.billingExemptOrgs). The ledger itself is written as usual.
    */
   exemptOrgs?: Iterable<string>;
-  /** Platform LLM cap of the month (M2-15): checked before every new LLM run (insertRun). */
-  llmCap?: { assert(): Promise<void> };
+  /** Platform LLM caps (M2-15, D75, B2-01): checked before every new LLM run of an org (insertRun, AI gateway). */
+  llmCap?: { assert(orgId?: string): Promise<void> };
 }
 
 export class Billing {
@@ -138,9 +138,12 @@ export class Billing {
     this.#llmCap = o.llmCap;
   }
 
-  /** M2-15: 503 LLM_BUDGET_EXHAUSTED once the platform LLM spend of the month reaches WIZARD_LLM_MONTHLY_CAP_RUB. */
-  async assertLlmBudget(): Promise<void> {
-    await this.#llmCap?.assert();
+  /**
+   * M2-15: 503 LLM_BUDGET_EXHAUSTED once the platform LLM spend of the month reaches WIZARD_LLM_MONTHLY_CAP_RUB; the
+   * daily cap with the staff reserve, the eval cap and the B2 budget by the kind of `orgId` (B2-01, B2-04).
+   */
+  async assertLlmBudget(orgId?: string): Promise<void> {
+    await this.#llmCap?.assert(orgId);
   }
 
   isExempt(orgId: string): boolean {

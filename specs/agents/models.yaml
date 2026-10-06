@@ -131,7 +131,10 @@ routes:                # chain.T1 пробуется только если tier=
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
-  - "MUST NOT: автоматический фолбэк T0 → T1. Если все T0 недоступны — вызов падает с LLM_UNAVAILABLE; поведение прогона (повторы шага, статус, run_failed) — specs/platform/workflows.yaml#run_lifecycle"
+  - "MUST NOT: автоматический фолбэк T0 → T1, если T0 выбран по данным (ruOnly, регион, callType из pii_forbidden_for_T1, ПДн — шаги 2–5) или вызов T0-only (multimodal). MAY (D76, WIZARD_LLM_T1_RESERVE=1, по умолчанию выключено — week0_decision.test): вызов, оставшийся на T0 только по умолчанию (reason=default_T0), после отказа всей цепочки T0 пробует chain.T1 — Z.ai резервом Cloud.ru, только заскрабленные сообщения без токенов ПДн. Если все недоступны — вызов падает с LLM_UNAVAILABLE (details.balanceExhausted — провайдеры с нулевым балансом); поведение прогона (повторы шага, статус, run_failed) — specs/platform/workflows.yaml#run_lifecycle"
+  - "MUST (D76): нулевой баланс провайдера — HTTP 402 или 429/403 с признаком баланса в ответе (Z.ai: код 1113 «Insufficient balance or no resource package»; Cloud.ru: 402/403 с текстом про баланс, оплату, «недостаточно средств» [?]) — код PROVIDER_BALANCE_EXHAUSTED: без повторов, провайдер пропускается всеми маршрутами процесса 30 мин (общий circuit breaker, provider-wide), вызов идёт дальше по цепочке; пропуски — строки llm_calls status=circuit_open, error_code=PROVIDER_BALANCE_EXHAUSTED. Через 30 мин — снова живой вызов: баланс пополнен → этапы возвращаются к провайдеру, нет → ещё 30 мин. Обычный 429 и 5xx — как раньше (retries, circuit_breaker). Тест: packages/llm/test/balance.test.ts"
+  - "MUST (D76): хук роутера onProviderDegraded({provider, reason: balance_exhausted|circuit_open, model?}) — один раз на эпизод (новая блокировка провайдера или открытие circuit модели); platform-api (движок прогонов и шлюз ИИ-действий) шлёт алерт основателю через ops_alerts: нулевой баланс — раз в день МСК на провайдера, circuit — раз в час на модель; текст по-русски, без данных прогона и ПДн"
+  - "SHOULD (D76, алерт о балансе заранее): API баланса по ключу API у Z.ai и Cloud.ru FM нет, поэтому оценка: WIZARD_LLM_BALANCE_ZAI / WIZARD_LLM_BALANCE_CLOUDRU = «<₽>@<время ISO>» (остаток по консоли провайдера на момент сверки) минус Σ cost_rub оплачиваемых llm_calls провайдера с этого времени (цены каталога, ± несколько %); остаток ≤ WIZARD_LLM_BALANCE_WARN_RUB (по умолчанию 300 ₽) → одно предупреждение на сверку (проверка перед каждым новым прогоном с моделью, LlmMonthlyCap). Новая сверка — новое значение переменной"
   - "MAY: при переходе T1 → T0 отправить исходные (незаскрабленные) сообщения — T0 допускает любые данные"
   - "MUST: смена модели посреди прогона строителя логируется событием model_switched {fromModel, toModel, reason} (workflows.yaml#events) и llm_calls.fallback_from; в SSE пользователя модель и tier не отдаются; история инструментов переносится без reasoning_content"
   - "MUST: факт фолбэка пользователь видит только обобщённо — строка «Часть шагов выполнена на моделях в РФ» без модели и tier; сигнал — step_finished.ruFallback (platform/workflows.yaml#events), место — ui/platform-screens.yaml (L4-20)"
@@ -155,7 +158,7 @@ call_policy:
     backoff_ms: [1000, 4000, 16000]
     jitter: "±20%"
     retry_on: [HTTP_429, HTTP_5xx, TIMEOUT, NETWORK, EMPTY_RESPONSE]
-    no_retry_on: [HTTP_400, HTTP_401, HTTP_403, CONTEXT_TOO_LONG]
+    no_retry_on: [HTTP_400, HTTP_401, HTTP_403, CONTEXT_TOO_LONG, PROVIDER_BALANCE_EXHAUSTED]
     respect_retry_after: true
     tool_parse_repair: "Невалидные аргументы инструмента не ретраятся на HTTP-уровне: модели возвращается ошибка валидации zod как результат инструмента"
   timeouts: { first_token_ms: 60000, request_ms: "routes[callType].timeout_ms", run_wall_clock: "builder.yaml#budgets" }

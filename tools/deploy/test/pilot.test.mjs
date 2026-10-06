@@ -872,7 +872,10 @@ describe.skipIf(!pgUp)("pilot: founder access SQL (PostgreSQL)", () => {
         accepted_at timestamptz, accepted_user_id uuid, org_id uuid, revoked_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now());
       CREATE UNIQUE INDEX pilot_invites_active_idx ON platform.pilot_invites (email)
-        WHERE accepted_at IS NULL AND revoked_at IS NULL;`;
+        WHERE accepted_at IS NULL AND revoked_at IS NULL;
+      CREATE TABLE platform.orgs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL,
+        kind text NOT NULL DEFAULT 'client');
+      CREATE TABLE platform.memberships (org_id uuid NOT NULL, user_id uuid NOT NULL, role text NOT NULL);`;
     expect(psql(url, ["-f", "-"], ddl).status).toBe(0);
     const email = "Founder@Example.ru'; DROP TABLE platform.users; --";
     const step = () => {
@@ -899,9 +902,17 @@ describe.skipIf(!pgUp)("pilot: founder access SQL (PostgreSQL)", () => {
       "INSERT INTO platform.users (email) VALUES (:'email');",
     );
     expect(user.status).toBe(0);
+    // B2-01: the org the founder owns becomes a staff org; another user's org and an eval org stay as they are.
+    q(`INSERT INTO platform.orgs (name) VALUES ('Wizard'), ('Чужая');
+       INSERT INTO platform.orgs (name, kind) VALUES ('Замер', 'eval');
+       INSERT INTO platform.memberships (org_id, user_id, role)
+         SELECT o.id, u.id, 'owner' FROM platform.orgs o, platform.users u WHERE o.name IN ('Wizard', 'Замер');`);
     const id = step();
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect(q("SELECT is_staff FROM platform.users")).toBe("t");
+    expect(q("SELECT string_agg(name || '=' || kind, ',' ORDER BY name) FROM platform.orgs")).toBe(
+      "Wizard=staff,Замер=eval,Чужая=client",
+    );
     expect(step()).toBe(id);
   });
 });

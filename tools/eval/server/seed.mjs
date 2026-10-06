@@ -77,8 +77,9 @@ export function seedSql({ runid, domain, tokenHash, csrfHash, credits, sessionDa
   VALUES (:'email', now(), :'offer_version', now()) RETURNING id AS user_id \\gset`,
     // Pilot plan and founder review on: the first publication of an eval system waits in /admin and never goes live.
     // D70 pilot limit (platform.orgs.pilot_builds_limit, M2-34): the eval account needs room for every brief and a retry.
-    `INSERT INTO platform.orgs (name, plan, require_founder_review, pilot_builds_limit, pilot_edits_limit)
-  VALUES (:'org_name', 'pilot', true, ${EVAL_MIN_BUILDS}, ${EVAL_MIN_BUILDS * 2}) RETURNING id AS org_id \\gset`,
+    // B2-01, B2-04: an eval org — own daily LLM cap, its spend counts against the beta v2 development budget.
+    `INSERT INTO platform.orgs (name, plan, require_founder_review, pilot_builds_limit, pilot_edits_limit, kind)
+  VALUES (:'org_name', 'pilot', true, ${EVAL_MIN_BUILDS}, ${EVAL_MIN_BUILDS * 2}, 'eval') RETURNING id AS org_id \\gset`,
     `INSERT INTO platform.memberships (org_id, user_id, role) VALUES (:'org_id', :'user_id', 'owner');`,
     `INSERT INTO platform.credit_ledger (org_id, kind, amount_milli, bucket, bucket_expires_at, idempotency_key, note_ru)
   VALUES (:'org_id', 'grant', :'credits_milli'::bigint, 'topup', now() + interval '30 days',

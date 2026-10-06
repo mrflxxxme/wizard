@@ -1,6 +1,6 @@
 export const PACKAGE = "@wizard/llm";
 
-export { CircuitBreaker } from "./circuit.js";
+export { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 export { LlmError, type LlmErrorCode } from "./errors.js";
 export {
   briefHash,
@@ -42,6 +42,7 @@ export {
 export {
   assertNoTokens,
   assertTierAllowed,
+  containsTokens,
   type Dlp,
   decideTier,
   hasAttachments,
@@ -49,7 +50,7 @@ export {
   type PolicyDecision,
   t1Forbidden,
 } from "./policy.js";
-export { transformBody } from "./providers.js";
+export { isBalanceError, type LiveErrorCode, transformBody } from "./providers.js";
 export {
   BUILD_TIER_ENV,
   buildDefaultTierFromEnv,
@@ -70,7 +71,14 @@ export {
   type RouteDef,
   RU_BUILD_LABEL,
 } from "./registry.js";
-export { createRouter, type FixtureOptions, type Router, type RouterOptions, route } from "./router.js";
+export {
+  createRouter,
+  type FixtureOptions,
+  type ProviderDegraded,
+  type Router,
+  type RouterOptions,
+  route,
+} from "./router.js";
 /** Runtime AI actions (runtime.yaml#ai_actions, M3-02): T0-only extract/generate over one record; plain-text output. */
 export {
   FILL_FIELDS_TOOL_NAME,

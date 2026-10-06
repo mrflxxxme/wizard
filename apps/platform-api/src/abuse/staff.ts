@@ -248,6 +248,20 @@ export async function setStaff(db: Db, email: string, on: boolean): Promise<stri
     .returning("id")
     .executeTakeFirst();
   if (!r) throw new Error("пользователь не найден — сначала войдите на платформу с этой почтой");
+  // B2-01: the orgs a new staff user owns become staff orgs (revoking staff leaves them: PUT /admin/orgs/:id/flags).
+  if (on)
+    await db
+      .updateTable("platform.orgs")
+      .set({ kind: "staff" })
+      .where("kind", "=", "client")
+      .where("id", "in", (eb) =>
+        eb
+          .selectFrom("platform.memberships")
+          .select("org_id")
+          .where("user_id", "=", r.id)
+          .where("role", "=", "owner"),
+      )
+      .execute();
   return r.id;
 }
 

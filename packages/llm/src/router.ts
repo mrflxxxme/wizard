@@ -1,6 +1,6 @@
 // route(): architecture.yaml#interfaces.llm_call; models.yaml#routing_algorithm, #fallback_rules, #call_policy.retries.
 import { randomUUID } from "node:crypto";
-import { CircuitBreaker } from "./circuit.js";
+import { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 import { LlmError } from "./errors.js";
 import {
   briefHash,
@@ -16,6 +16,7 @@ import { forbidsT1, orgPolicyBus, type PolicyBus } from "./org-policy.js";
 import {
   assertNoTokens,
   assertTierAllowed,
+  containsTokens,
   decideTier,
   isCallType,
   type PolicyDecision,
@@ -26,6 +27,7 @@ import {
   createRegistry,
   HIGH_REASONING,
   type ModelDef,
+  type ProviderId,
   policyVersion,
   type Registry,
   type RouteDef,
@@ -55,6 +57,15 @@ export interface FixtureOptions {
   allowedBriefHashes?: ReadonlySet<string>;
 }
 
+/** A provider stopped serving calls (models.yaml#fallback_rules, D76): the platform alerts the founder once. */
+export interface ProviderDegraded {
+  provider: ProviderId;
+  /** balance_exhausted — the account ran out of money (blocked for balanceBlockMs); circuit_open — a model's breaker opened. */
+  reason: "balance_exhausted" | "circuit_open";
+  /** The model whose breaker opened (circuit_open only). */
+  model?: string;
+}
+
 export interface RouterOptions {
   /** Default: env WIZARD_LLM_MODE, else "fixture". */
   mode?: LlmMode;
@@ -70,7 +81,18 @@ export interface RouterOptions {
   onEvent?: (e: LlmEvent) => void;
   /** Policy changes: in-flight T1 calls of an org whose new policy forbids T1 are aborted and repeated on T0. */
   policyBus?: PolicyBus;
+  /** Share it between routers: provider blocks and breakers then hold for every run of the process. */
   circuit?: CircuitBreaker;
+  /** Called once per degradation episode of a provider (never with prompt data). Must not throw. */
+  onProviderDegraded?: (e: ProviderDegraded) => void;
+  /** How long a provider with an empty balance is skipped; default BALANCE_BLOCK_MS (30 min). */
+  balanceBlockMs?: number;
+  /**
+   * Z.ai as the reserve of Cloud.ru (D76): a call the policy left on T0 only by default (reason default_T0, e.g.
+   * WIZARD_BUILD_DEFAULT_TIER=T0) tries the route's T1 chain, scrubbed, after the whole T0 chain failed. Never for
+   * T0-only calls or T0 chosen for data reasons. Default: env WIZARD_LLM_T1_RESERVE=1.
+   */
+  t1Reserve?: boolean;
   backoffMs?: readonly number[];
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
@@ -123,6 +145,15 @@ export function createRouter(opts: RouterOptions = {}): Router {
   const backoff = opts.backoffMs ?? DEFAULT_BACKOFF;
   const version = policyVersion(reg);
   const fixtureOpts = opts.fixture ?? fixtureFromEnv(env);
+  const balanceBlockMs = opts.balanceBlockMs ?? BALANCE_BLOCK_MS;
+  const t1Reserve = opts.t1Reserve ?? env.WIZARD_LLM_T1_RESERVE === "1";
+  const degraded = (e: ProviderDegraded) => {
+    try {
+      opts.onProviderDegraded?.(e);
+    } catch {
+      // An alert hook never breaks a model call.
+    }
+  };
 
   let store: FixtureStore | null = null;
   if (mode !== "live") {
@@ -208,11 +239,24 @@ export function createRouter(opts: RouterOptions = {}): Router {
     );
     if (decision.tier === "T1") assertNoTokens(decision.scrubbedMessages);
 
-    // Step 8 + fallback_rules: the T1 chain only when the policy chose T1; T0 is always the reserve; never T0 → T1.
+    // Step 8 + fallback_rules: the T1 chain only when the policy chose T1; T0 is always the reserve. T0 → T1 only as
+    // the opt-in reserve of a call that is T0 by default alone (t1Reserve, D76), scrubbed and token-free.
     // T0-only calls (runtime_ai_*, support, multimodal) never get a T1 chain, whatever the registry says (M3-02).
     const t0Only = t1Forbidden(callType, input.messages);
+    const reserveT1 =
+      t1Reserve &&
+      !t0Only &&
+      decision.tier === "T0" &&
+      decision.reason === "default_T0" &&
+      !containsTokens(decision.scrubbedMessages);
+    const tiers =
+      decision.tier === "T1" && !t0Only
+        ? (["T1", "T0"] as const)
+        : reserveT1
+          ? (["T0", "T1"] as const)
+          : (["T0"] as const);
     const chain: ModelDef[] = [];
-    for (const tier of decision.tier === "T1" && !t0Only ? (["T1", "T0"] as const) : (["T0"] as const)) {
+    for (const tier of tiers) {
       for (const id of routeDef.chain[tier] ?? []) {
         const model = usable(id);
         if (model && model.tier === tier) chain.push(model);
@@ -299,6 +343,9 @@ export function createRouter(opts: RouterOptions = {}): Router {
       ruFallback: (decision.tier === "T1" || switched !== null) && model.tier === "T0",
     });
 
+    // Providers skipped or refused for an empty balance in this call (LLM_UNAVAILABLE details).
+    const balanceOut = new Set<ProviderId>();
+
     const switchTo = (from: ModelDef, why: "fallback_circuit_open" | "fallback_error") => {
       reason = why;
       fallbackFrom = from.id;
@@ -340,11 +387,13 @@ export function createRouter(opts: RouterOptions = {}): Router {
       }
 
       const cKey = `${model.provider}:${model.id}`;
-      if (!circuit.allow(cKey)) {
+      const blocked = circuit.providerBlocked(model.provider);
+      if (blocked) balanceOut.add(model.provider);
+      if (blocked || !circuit.allow(cKey)) {
         await writeRecord(model, {
           attempt: 0,
           status: "circuit_open",
-          errorCode: null,
+          errorCode: blocked ? "PROVIDER_BALANCE_EXHAUSTED" : null,
           latencyMs: 0,
           requestHash: key,
         });
@@ -363,8 +412,8 @@ export function createRouter(opts: RouterOptions = {}): Router {
       // T1 gets only scrubbed messages; T0 may receive the original ones (fallback_rules MAY).
       const messages = model.tier === "T1" ? decision.scrubbedMessages : input.messages;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        // The breaker may open during our own retries: stop hitting this model.
-        if (attempt > 1 && !circuit.allow(cKey)) break;
+        // The breaker may open (or the provider run dry) during our own retries: stop hitting this model.
+        if (attempt > 1 && (circuit.providerBlocked(model.provider) || !circuit.allow(cKey))) break;
         const started = now();
         const timeout = AbortSignal.timeout(routeDef.timeoutMs);
         const policyCtrl = model.tier === "T1" ? new AbortController() : null;
@@ -417,7 +466,14 @@ export function createRouter(opts: RouterOptions = {}): Router {
             });
             throw new PolicyAbort(policyCtrl.signal.reason as OrgPolicy, model, charged);
           }
-          circuit.record(cKey, false);
+          if (err.code === "PROVIDER_BALANCE_EXHAUSTED") {
+            // Not overload: no retry, no breaker of the model — the whole provider is skipped by every route.
+            balanceOut.add(model.provider);
+            if (circuit.blockProvider(model.provider, balanceBlockMs))
+              degraded({ provider: model.provider, reason: "balance_exhausted" });
+          } else if (circuit.record(cKey, false)) {
+            degraded({ provider: model.provider, reason: "circuit_open", model: model.id });
+          }
           await writeRecord(model, {
             attempt,
             status: err.code === "TIMEOUT" ? "timeout" : err.code === "ABORTED" ? "aborted" : "error",
@@ -444,7 +500,10 @@ export function createRouter(opts: RouterOptions = {}): Router {
         switchTo(model, "fallback_error");
       }
     }
-    throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже.", { callType });
+    throw new LlmError("LLM_UNAVAILABLE", "Модели сейчас недоступны. Попробуйте позже.", {
+      callType,
+      ...(balanceOut.size ? { balanceExhausted: [...balanceOut] } : {}),
+    });
   }
 
   const inflightT1 = (orgId?: string) =>

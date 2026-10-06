@@ -543,7 +543,7 @@ describe("platform LLM cap of the Moscow day (WIZARD_LLM_DAILY_CAP_RUB, D75)", (
   let fx: Fx;
   let orgId: string;
   beforeAll(async () => {
-    fx = await fixture("pilotdaily", { llmMonthlyCapRub: 100000, llmDailyCapRub: 50 });
+    fx = await fixture("pilotdaily", { llmMonthlyCapRub: 100000, llmDailyCapRub: 50, llmStaffReserveRub: 0 });
     // 2026-10-15 12:00 MSK.
     fx.clock.t = Date.parse("2026-10-15T09:00:00Z");
     const r = await fx.api.req("POST", "/orgs", { body: { name: "Расходы дня", regionCode: "77" } });
