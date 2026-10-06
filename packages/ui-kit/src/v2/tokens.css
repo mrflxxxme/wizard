@@ -1,0 +1,158 @@
+/* Generated from src/v2/tokens.ts (platformThemeCss) — do not edit by hand; test/v2-tokens.test.ts checks it. */
+
+[data-p-root] {
+  --p-f-ui: "Inter", -apple-system, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --p-f-serif: "Source Serif 4", "Literata", Georgia, "Times New Roman", serif;
+  --p-r-xl: 24px;
+  --p-r-lg: 18px;
+  --p-r-md: 13px;
+  --p-r-sm: 10px;
+  --p-r-pill: 999px;
+  --p-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
+  --p-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --p-t-fast: 0.25s;
+  --p-t-base: 0.5s;
+  --p-t-slow: 0.8s;
+  --p-bg: #F8F7F4;
+  --p-surface: #FFFFFF;
+  --p-sunken: #F2F0EB;
+  --p-sunken-2: #E9E6E0;
+  --p-ink: #1D1C1A;
+  --p-ink-2: #6B6862;
+  --p-ink-3: #A29E96;
+  --p-line: #E9E6E0;
+  --p-line-2: #D8D4CB;
+  --p-graphite: #1D1C1A;
+  --p-graphite-ink: #F8F7F4;
+  --p-graphite-hover: #3A3834;
+  --p-amber: #D98A2B;
+  --p-amber-glow: #F2B45C;
+  --p-amber-ink: #1D1C1A;
+  --p-ok: #3A7350;
+  --p-warn: #8A5A12;
+  --p-bad: #A0443A;
+  --p-bezel: #2A2926;
+  --p-glass-solid: #FBFAF7;
+  --p-amber-soft: rgba(217, 138, 43, 0.18);
+  --p-skel: rgba(60, 52, 40, 0.08);
+  --p-track: rgba(29, 28, 26, 0.09);
+  --p-glass: rgba(251, 250, 247, 0.72);
+  --p-glass-edge: rgba(255, 255, 255, 0.85);
+  --p-scrim: rgba(29, 28, 26, 0.18);
+  --p-sh-1: 0 0 0 1px rgba(48, 40, 28, 0.05), 0 1px 2px rgba(48, 40, 28, 0.05);
+  --p-sh-2: 0 0 0 1px rgba(48, 40, 28, 0.045), 0 1px 2px rgba(48, 40, 28, 0.04), 0 10px 24px -10px rgba(48, 40, 28, 0.09), 0 28px 56px -32px rgba(48, 40, 28, 0.16);
+  --p-sh-float: 0 0 0 1px rgba(48, 40, 28, 0.06), 0 2px 6px rgba(48, 40, 28, 0.05), 0 20px 48px -16px rgba(48, 40, 28, 0.22);
+  --p-grain: 0.055;
+  --p-biz: #1D1C1A;
+  --p-biz-text: #1D1C1A;
+  --p-biz-ink: #F8F7F4;
+  --p-biz-soft: rgba(29, 28, 26, 0.07);
+  --p-biz-ring: rgba(29, 28, 26, 0.18);
+  --p-biz-wash: #F2F0EB;
+  --p-tint: var(--p-graphite);
+  --p-tint-text: var(--p-ink);
+  --p-tint-soft: rgba(29, 28, 26, 0.07);
+  --p-tint-ring: rgba(29, 28, 26, 0.18);
+  --p-color-scheme: light;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-p-root]:not([data-p-theme="light"]) {
+    --p-bg: #1B1A18;
+    --p-surface: #252421;
+    --p-sunken: #2D2C29;
+    --p-sunken-2: #363430;
+    --p-ink: #EEECE7;
+    --p-ink-2: #A6A29A;
+    --p-ink-3: #6F6B64;
+    --p-line: #33312D;
+    --p-line-2: #47443F;
+    --p-graphite: #EEECE7;
+    --p-graphite-ink: #1B1A18;
+    --p-graphite-hover: #FFFFFF;
+    --p-amber: #E0953A;
+    --p-amber-glow: #F2B45C;
+    --p-amber-ink: #1D1C1A;
+    --p-ok: #8DC3A0;
+    --p-warn: #E2B36E;
+    --p-bad: #E59A8F;
+    --p-bezel: #0E0D0C;
+    --p-glass-solid: #282724;
+    --p-amber-soft: rgba(242, 180, 92, 0.16);
+    --p-skel: rgba(238, 236, 231, 0.075);
+    --p-track: rgba(238, 236, 231, 0.1);
+    --p-glass: rgba(38, 37, 34, 0.72);
+    --p-glass-edge: rgba(255, 255, 255, 0.07);
+    --p-scrim: rgba(0, 0, 0, 0.35);
+    --p-sh-1: 0 0 0 1px rgba(255, 255, 255, 0.045), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --p-sh-2: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 24px -10px rgba(0, 0, 0, 0.4), 0 28px 56px -30px rgba(0, 0, 0, 0.55);
+    --p-sh-float: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 2px 6px rgba(0, 0, 0, 0.3), 0 20px 48px -14px rgba(0, 0, 0, 0.6);
+    --p-grain: 0.07;
+    --p-biz: #EEECE7;
+    --p-biz-text: #EEECE7;
+    --p-biz-ink: #1B1A18;
+    --p-biz-soft: rgba(238, 236, 231, 0.07);
+    --p-biz-ring: rgba(238, 236, 231, 0.18);
+    --p-biz-wash: #2D2C29;
+    --p-tint: var(--p-graphite);
+    --p-tint-text: var(--p-ink);
+    --p-tint-soft: rgba(238, 236, 231, 0.07);
+    --p-tint-ring: rgba(238, 236, 231, 0.18);
+    --p-color-scheme: dark;
+    color-scheme: dark;
+  }
+}
+
+[data-p-root][data-p-theme="dark"] {
+  --p-bg: #1B1A18;
+  --p-surface: #252421;
+  --p-sunken: #2D2C29;
+  --p-sunken-2: #363430;
+  --p-ink: #EEECE7;
+  --p-ink-2: #A6A29A;
+  --p-ink-3: #6F6B64;
+  --p-line: #33312D;
+  --p-line-2: #47443F;
+  --p-graphite: #EEECE7;
+  --p-graphite-ink: #1B1A18;
+  --p-graphite-hover: #FFFFFF;
+  --p-amber: #E0953A;
+  --p-amber-glow: #F2B45C;
+  --p-amber-ink: #1D1C1A;
+  --p-ok: #8DC3A0;
+  --p-warn: #E2B36E;
+  --p-bad: #E59A8F;
+  --p-bezel: #0E0D0C;
+  --p-glass-solid: #282724;
+  --p-amber-soft: rgba(242, 180, 92, 0.16);
+  --p-skel: rgba(238, 236, 231, 0.075);
+  --p-track: rgba(238, 236, 231, 0.1);
+  --p-glass: rgba(38, 37, 34, 0.72);
+  --p-glass-edge: rgba(255, 255, 255, 0.07);
+  --p-scrim: rgba(0, 0, 0, 0.35);
+  --p-sh-1: 0 0 0 1px rgba(255, 255, 255, 0.045), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --p-sh-2: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 24px -10px rgba(0, 0, 0, 0.4), 0 28px 56px -30px rgba(0, 0, 0, 0.55);
+  --p-sh-float: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 2px 6px rgba(0, 0, 0, 0.3), 0 20px 48px -14px rgba(0, 0, 0, 0.6);
+  --p-grain: 0.07;
+  --p-biz: #EEECE7;
+  --p-biz-text: #EEECE7;
+  --p-biz-ink: #1B1A18;
+  --p-biz-soft: rgba(238, 236, 231, 0.07);
+  --p-biz-ring: rgba(238, 236, 231, 0.18);
+  --p-biz-wash: #2D2C29;
+  --p-tint: var(--p-graphite);
+  --p-tint-text: var(--p-ink);
+  --p-tint-soft: rgba(238, 236, 231, 0.07);
+  --p-tint-ring: rgba(238, 236, 231, 0.18);
+  --p-color-scheme: dark;
+  color-scheme: dark;
+}
+
+[data-p-root][data-p-biz] {
+  --p-tint: var(--p-biz);
+  --p-tint-text: var(--p-biz-text);
+  --p-tint-soft: var(--p-biz-soft);
+  --p-tint-ring: var(--p-biz-ring);
+}
+

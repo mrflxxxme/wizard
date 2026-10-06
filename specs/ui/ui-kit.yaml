@@ -1,11 +1,12 @@
 # @wizard/ui-kit — библиотека компонентов ядра для СГЕНЕРИРОВАННЫХ систем. Нормативно.
 # Потребители: код систем (ui/*.tsx, пишет строитель), демо packages/ui-kit/demo, превью в platform-web.
+# Раздел platform_v2 (в конце) — дизайн-система интерфейса ПЛАТФОРМЫ (B2-32), системы клиентов её не используют.
 # Приоритет: product.yaml > architecture.yaml > этот файл. Контракт хуков @wizard/sdk — specs/runtime/sdk.md
 # (при расхождении имён хуков выигрывает sdk.md, ui-kit адаптирует слой data_binding).
 version: 1
 package: "@wizard/ui-kit"
 path: packages/ui-kit
-tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01]
+tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01, B2-32]
 
 scope:
   M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
@@ -655,3 +656,38 @@ demo:
   path: packages/ui-kit/demo
   rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 4 темы), ширины"
   ci: "Playwright: скриншоты 1280 и 390 в light/dark; проверки a11y, responsive, wz_id"
+
+# ---------------- Дизайн-система платформы v2 (B2-32) ----------------
+# Источник: docs/reviews/grill-7.md (решения 1–10), утверждённый прототип docs/prototype/v2-canvas-e.html, план беты v2 §3.
+platform_v2:
+  scope: "Только интерфейс платформы (platform-web: холст, плавающий чат, кабинет, /admin). Код систем клиентов её не импортирует: у систем — компоненты и токены --w-* выше. Экраны переводят на v2 задачи B2-25, B2-29, B2-33"
+  entry: "import { … } from \"@wizard/ui-kit/v2\" (src/v2/index.ts) и один раз import \"@wizard/ui-kit/v2/theme.css\" (шрифты, токены, база, зерно, выключение движения)"
+  root: "Корень помечается applyPlatformTheme(el, {theme, business, glass, grain}) или <ThemeRoot>: data-p-root; data-p-theme=light|dark (нет — по prefers-color-scheme); data-p-biz — цвет бизнеса клиента; data-p-glass=off — стекло без размытия; data-p-motion=off — движение выключено"
+  tokens:
+    prefix: "--p-*; таблицы — src/v2/tokens.ts (PLATFORM_COLORS, platformTokens), CSS — src/v2/tokens.css = platformThemeCss() (тест сверяет, UPDATE_V2_CSS=1 перезаписывает)"
+    palette: { light: { bg: "#F8F7F4", surface: "#FFFFFF", ink: "#1D1C1A", ink_2: "#6B6862", line: "#E9E6E0" }, dark: { bg: "#1B1A18", surface: "#252421", ink: "#EEECE7", ink_2: "#A6A29A" } }
+    accents: "Графит --p-graphite (#1D1C1A, в тёмной #EEECE7) — главные кнопки; янтарь --p-amber #D98A2B со свечением --p-amber-glow #F2B45C — только там, где что-то создаётся (кнопка «create», кромка материализации, сборка); текст на янтаре — тёмный --p-amber-ink"
+    business: "Цвет бизнеса клиента — --p-biz, --p-biz-text, --p-biz-ink, --p-biz-soft, --p-biz-ring, --p-biz-wash (businessColors): заливка сдвигается по L в OKLCH до ≥ 3:1 к фону и поверхности, текст на ней ≥ 4.5:1, цветной текст ≥ 4.5:1 на всех фонах платформы и на подложке. С data-p-biz токены --p-tint* (кольца, выбор, свечение ввода) берут цвет бизнеса, без него — графит"
+    depth: "Тени --p-sh-1, --p-sh-2, --p-sh-float; радиусы --p-r-xl 24, --p-r-lg 18, --p-r-md 13, --p-r-sm 10, --p-r-pill; кривые --p-spring, --p-ease"
+    glass: "Стекло только у плавающих слоёв (Glass): сначала сплошной --p-glass-solid, полупрозрачный --p-glass с blur(22px) — только в @supports(backdrop-filter) и без data-p-glass=off"
+    grain: "Зерно бумаги: фиксированный слой шума с непрозрачностью --p-grain (0.055 / 0.07) под содержимым, без перехвата ввода"
+  motion: "«Материализация» (MATERIALIZE_MS = 1500): контур → поверхность → содержимое, по кромке пробегает янтарный свет; строка ввода «дышит», пока ИИ думает. В @keyframes и transition — только transform и opacity (visibility — без анимации). При prefers-reduced-motion и data-p-motion=off анимации и переходы выключены, блок сразу становится готовым"
+  fonts: "MUST: Inter (400, 500, 600) — интерфейс; Source Serif 4 (400, 500) — только «человеческие» моменты (приветствие, название системы, «Система готова»; компонент Serif). cyrillic+latin woff2 в packages/ui-kit/fonts-platform (scripts/sync-fonts.mjs из @fontsource/*, OFL-1.1), каталог src/v2/font-catalog.ts, @font-face — src/v2/fonts.css с относительными url: сборщик платформы кладёт файлы в свой бандл, CDN нет; лицензии — THIRD_PARTY_NOTICES.md (D64)"
+  components:
+    ThemeRoot: "корень на контейнере: тема, цвет бизнеса, стекло, зерно, движение"
+    ActionButton: "variant primary (графит) | secondary | create (янтарь, искра; busy — искра пульсирует) | ghost; size md|sm"
+    Chip: "вариант ответа или подсказка: pressed → aria-pressed и галочка; recommended → слово «советуем» (не только цвет); tone outline — примеры"
+    Tag: "метки на эскизе: goal (точка цвета бизнеса и примечание), out — «не входит» (зачёркнуто)"
+    Serif: "антиква для «человеческих» моментов, size xl|lg|md"
+    Glass: "плавающая стеклянная панель с запасным вариантом"
+    Composer: "плавающая строка ввода: скрытая метка поля, отправка без пустого текста, target — метка выбранного блока (клик снимает выбор), suggestions — подсказки над строкой, state idle|thinking (дыхание)|building (янтарное свечение), size start — большая строка первого экрана"
+    QuestionCard: "карточка вопроса: шаг, вопрос, варианты-чипы (fieldset), рекомендованный помечен «советуем», «Дальше» недоступна без выбора"
+    ChatSheet: "плавающий чат снизу по центру над холстом; на телефоне — лист: ручка (aria-expanded, aria-controls) открывает историю тапом или протягиванием вверх (SHEET_DRAG_THRESHOLD = 14 px), закрывает протягиванием вниз, Esc или тапом мимо; ChatMessage me|ai|sys (+ warn)"
+    CanvasBlock: "блок холста: state sketch (пунктирный контур, скелетон текста SketchText) | materializing (onMaterialized по окончании) | ready; onSelect делает готовый блок кнопкой («ткни и скажи»), selected — кольцо цвета бизнеса"
+    XrayLines: "слой «Как это работает»: пронумерованные шаги простыми словами и тонкие линии (wirePath) поверх холста; метки не выходят за слой; поток пульсирует прозрачностью"
+  test_ids: "Корень компонента: data-p-component=<Name> и data-testid p-<name> (или testId): p-root, p-button, p-chip, p-tag, p-serif, p-glass, p-composer(-row|-input|-send|-target|-suggestions|-suggestion-<id>), p-question(-option-<id>|-submit), p-sheet(-dock|-grab|-history), p-message, p-block(-edge), p-xray(-node-<id>)"
+  demo: "packages/ui-kit/demo/v2 (страница /v2/ той же vite-сборки): все компоненты и состояния; параметры ?theme=, ?biz=%23RRGGBB|none, ?glass=off, ?motion=off, ?sheet=inline&history=open"
+  acceptance:
+    - "vitest (test/v2-tokens.test.ts): палитра и акценты грилла-7; пары текст/фон обеих тем ≥ 4.5:1 (фокус ≥ 3:1); 4096 цветов бизнеса × 2 темы — заливка ≥ 3:1, текст на ней и цветной текст ≥ 4.5:1; в @keyframes и transition только transform/opacity; reduced motion и data-p-motion=off выключают всё; запасной вариант стекла; шрифты — OFL-1.1, текст лицензии, источник, строки THIRD_PARTY_NOTICES, глифы А–я, Ё, ё, без CDN"
+    - "vitest+happy-dom (test/v2.dom.test.ts): поведение QuestionCard, Composer, CanvasBlock (материализация, reduced motion), ChatSheet, applyPlatformTheme, XrayLines"
+    - "Playwright (test/v2.browser.test.ts, CI-джоб e2e): скриншоты demo/v2 390 и 1280 в светлой и тёмной теме (артефакты), контраст по computed-цветам, подписи полей, касания ≥ 44 px на 390, без горизонтальной прокрутки; анимации идут и выключаются при prefers-reduced-motion; шрифты грузятся только со своего адреса; цвет бизнеса; стекло без blur; лист тянется вверх и закрывается"

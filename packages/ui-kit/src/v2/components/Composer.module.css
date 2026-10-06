@@ -1,0 +1,193 @@
+/* Floating input row (grill-7 #1, #4, #9): selected block label, suggestions, «breathing» while the AI thinks. */
+.composer {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sugg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 2px;
+}
+
+.sugg > * {
+  animation: rise 0.45s var(--p-spring) backwards;
+}
+
+.row {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 6px 6px 6px 16px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-1);
+}
+
+/* Glow ring: opacity only; tint (graphite or business colour) while idle, amber while building. */
+.row::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 19px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    0 0 0 3px var(--p-tint-ring),
+    0 0 26px 4px var(--p-tint-soft);
+  transition: opacity 0.4s var(--p-ease);
+}
+
+.row:focus-within::after {
+  opacity: 0.55;
+}
+
+.thinking .row::after {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+.building .row::after {
+  box-shadow:
+    0 0 0 3px var(--p-amber-soft),
+    0 0 28px 4px var(--p-amber-soft);
+}
+
+.start .row {
+  min-height: 58px;
+  padding: 8px 8px 8px 20px;
+  border-radius: 20px;
+  box-shadow: var(--p-sh-2);
+}
+
+.input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: 400 15.5px / 1.4 var(--p-f-ui);
+}
+
+.start .input {
+  font-size: 17px;
+}
+
+.input::placeholder {
+  color: var(--p-ink-2);
+}
+
+.send {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--p-graphite);
+  color: var(--p-graphite-ink);
+  transition: transform 0.45s var(--p-spring);
+}
+
+.send:disabled {
+  cursor: default;
+  opacity: 0.22;
+}
+
+.send:not(:disabled):active {
+  transform: scale(0.92);
+}
+
+.send svg,
+.target svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Label of the selected block («ткни и скажи»): the whole chip clears the selection. */
+.target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 46%;
+  min-height: 30px;
+  padding: 3px 8px 3px 11px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  cursor: pointer;
+  background: var(--p-biz-soft);
+  color: var(--p-biz-text);
+  font: 500 13px / 1.2 var(--p-f-ui);
+  white-space: nowrap;
+  animation: rise 0.45s var(--p-spring) backwards;
+}
+
+.targetText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.target svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .send {
+    width: 44px;
+    height: 44px;
+  }
+
+  .target,
+  .input {
+    min-height: 44px;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.996);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.004);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}

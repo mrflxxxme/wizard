@@ -3,6 +3,9 @@
 // woff2 of the cyrillic and latin subsets in two weights, the license text of every family, and the generated catalog
 // src/tokens/font-catalog.ts (family, files, unicode-range, license, source). A family whose license is not on the
 // allowlist of AGENTS.md is refused. The runtime serves the files from /_wizard/fonts (apps/runtime/src/routes/fonts.ts).
+// Platform fonts of design system v2 (B2-32, grill-7 #10: Inter and Source Serif 4) go to packages/ui-kit/fonts-platform
+// with their own catalog src/v2/font-catalog.ts and @font-face file src/v2/fonts.css (relative urls: the platform bundler
+// copies the woff2 next to its build, no CDN).
 // Usage: node packages/ui-kit/scripts/sync-fonts.mjs
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -11,8 +14,6 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const OUT = join(ROOT, "fonts");
-const CATALOG = join(ROOT, "src/tokens/font-catalog.ts");
 const require = createRequire(join(ROOT, "package.json"));
 
 /** Fonts licenses allowed by AGENTS.md (D64): free commercial use, web embedding and self-hosting. */
@@ -30,61 +31,106 @@ const FAMILIES = {
   lora: [400, 700],
   unbounded: [400, 700],
 };
+/** Platform fonts (B2-32): interface text 400/500/600, the serif only for «human» moments 400/500. */
+const PLATFORM_FAMILIES = {
+  inter: [400, 500, 600],
+  "source-serif-4": [400, 500],
+};
+/** Copyright lines where the @fontsource metadata names the publisher instead of the author (OFL.txt of Google Fonts). */
+const ATTRIBUTION = {
+  "source-serif-4": "Copyright 2014-2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
+};
 
-rmSync(OUT, { recursive: true, force: true });
-mkdirSync(OUT, { recursive: true });
-const entries = [];
-for (const [id, weights] of Object.entries(FAMILIES)) {
-  const pkgDir = dirname(require.resolve(`@fontsource/${id}/package.json`));
-  const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-  const meta = JSON.parse(readFileSync(join(pkgDir, "metadata.json"), "utf8"));
-  const ranges = JSON.parse(readFileSync(join(pkgDir, "unicode.json"), "utf8"));
-  const license = meta.license?.type ?? pkg.license;
-  if (!ALLOWED_LICENSES.includes(license))
-    throw new Error(`${id}: license ${license} is not allowed (AGENTS.md, D64)`);
-  if (!SUBSETS.every((s) => meta.subsets.includes(s))) throw new Error(`${id}: no cyrillic+latin subsets`);
-  const licenseFile = `LICENSE-${id}.txt`;
-  const licenseText = readdirSync(pkgDir).includes("LICENSE")
-    ? readFileSync(join(pkgDir, "LICENSE"), "utf8")
-    : "";
-  if (!licenseText.includes("SIL Open Font License") && license === "OFL-1.1")
-    throw new Error(`${id}: LICENSE text missing`);
-  writeFileSync(join(OUT, licenseFile), licenseText);
-  const files = [];
-  for (const weight of weights) {
-    for (const subset of SUBSETS) {
-      const data = readFileSync(join(pkgDir, "files", `${id}-${subset}-${weight}-normal.woff2`));
-      const hash = createHash("sha256").update(data).digest("hex").slice(0, 8);
-      const file = `${id}-${subset}-${weight}-${hash}.woff2`;
-      writeFileSync(join(OUT, file), data);
-      files.push({ weight, subset, file, unicodeRange: ranges[subset], bytes: data.byteLength });
+function sync(families, out) {
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  const entries = [];
+  for (const [id, weights] of Object.entries(families)) {
+    const pkgDir = dirname(require.resolve(`@fontsource/${id}/package.json`));
+    const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+    const meta = JSON.parse(readFileSync(join(pkgDir, "metadata.json"), "utf8"));
+    const ranges = JSON.parse(readFileSync(join(pkgDir, "unicode.json"), "utf8"));
+    const license = meta.license?.type ?? pkg.license;
+    if (!ALLOWED_LICENSES.includes(license))
+      throw new Error(`${id}: license ${license} is not allowed (AGENTS.md, D64)`);
+    if (!SUBSETS.every((s) => meta.subsets.includes(s))) throw new Error(`${id}: no cyrillic+latin subsets`);
+    const licenseFile = `LICENSE-${id}.txt`;
+    const licenseText = readdirSync(pkgDir).includes("LICENSE")
+      ? readFileSync(join(pkgDir, "LICENSE"), "utf8")
+      : "";
+    if (!licenseText.includes("SIL Open Font License") && license === "OFL-1.1")
+      throw new Error(`${id}: LICENSE text missing`);
+    writeFileSync(join(out, licenseFile), licenseText);
+    const files = [];
+    for (const weight of weights) {
+      for (const subset of SUBSETS) {
+        const data = readFileSync(join(pkgDir, "files", `${id}-${subset}-${weight}-normal.woff2`));
+        const hash = createHash("sha256").update(data).digest("hex").slice(0, 8);
+        const file = `${id}-${subset}-${weight}-${hash}.woff2`;
+        writeFileSync(join(out, file), data);
+        files.push({ weight, subset, file, unicodeRange: ranges[subset], bytes: data.byteLength });
+      }
     }
+    entries.push({
+      family: meta.family,
+      id,
+      category: meta.category,
+      weights,
+      license,
+      licenseFile,
+      attribution: ATTRIBUTION[id] ?? meta.license?.attribution ?? "",
+      source: `Google Fonts (${meta.source ?? "https://github.com/google/fonts"}), npm @fontsource/${id}@${pkg.version}`,
+      files,
+    });
   }
-  entries.push({
-    family: meta.family,
-    id,
-    category: meta.category,
-    weights,
-    license,
-    licenseFile,
-    attribution: meta.license?.attribution ?? "",
-    source: `Google Fonts (${meta.source ?? "https://github.com/google/fonts"}), npm @fontsource/${id}@${pkg.version}`,
-    files,
-  });
+
+  return entries;
 }
 
-const ts = [
-  "// Generated by scripts/sync-fonts.mjs from the @fontsource/* packages — do not edit by hand.",
+function writeCatalog(path, entries, header, typeImport, name) {
+  const ts = [
+    "// Generated by scripts/sync-fonts.mjs from the @fontsource/* packages — do not edit by hand.",
+    header,
+    typeImport,
+    "",
+    `export const ${name}: readonly FontEntry[] = ${JSON.stringify(entries, null, 2)};`,
+    "",
+  ].join("\n");
+  writeFileSync(path, ts);
+  const biome = spawnSync(join(ROOT, "../../node_modules/.bin/biome"), ["format", "--write", path], {
+    encoding: "utf8",
+  });
+  if (biome.status !== 0) throw new Error(`biome format: ${biome.stderr}`);
+  const total = entries.flatMap((e) => e.files).reduce((n, f) => n + f.bytes, 0);
+  console.log(`fonts: ${entries.length} families, ${Math.round(total / 1024)} KB → ${path}`);
+}
+
+const themeOut = join(ROOT, "fonts");
+writeCatalog(
+  join(ROOT, "src/tokens/font-catalog.ts"),
+  sync(FAMILIES, themeOut),
   "// Theme fonts served by the runtime from /_wizard/fonts (ui-kit.yaml#tokens.fonts, D64): license and source per family.",
   'import type { FontEntry } from "./fonts.js";',
-  "",
-  `export const FONT_CATALOG: readonly FontEntry[] = ${JSON.stringify(entries, null, 2)};`,
-  "",
-].join("\n");
-writeFileSync(CATALOG, ts);
-const biome = spawnSync(join(ROOT, "../../node_modules/.bin/biome"), ["format", "--write", CATALOG], {
-  encoding: "utf8",
-});
-if (biome.status !== 0) throw new Error(`biome format: ${biome.stderr}`);
-const total = entries.flatMap((e) => e.files).reduce((n, f) => n + f.bytes, 0);
-console.log(`fonts: ${entries.length} families, ${Math.round(total / 1024)} KB → ${OUT}`);
+  "FONT_CATALOG",
+);
+
+const platformOut = join(ROOT, "fonts-platform");
+const platform = sync(PLATFORM_FAMILIES, platformOut);
+writeCatalog(
+  join(ROOT, "src/v2/font-catalog.ts"),
+  platform,
+  "// Platform fonts of design system v2 (ui-kit.yaml#platform_v2.fonts, D64): license and source per family.",
+  'import type { FontEntry } from "../tokens/fonts.js";',
+  "PLATFORM_FONTS",
+);
+const faces = platform.flatMap((f) =>
+  f.files.map(
+    (x) =>
+      `@font-face {\n  font-family: "${f.family}";\n  font-style: normal;\n  font-weight: ${x.weight};\n  font-display: swap;\n` +
+      `  src: url("../../fonts-platform/${x.file}") format("woff2");\n  unicode-range: ${x.unicodeRange};\n}\n`,
+  ),
+);
+writeFileSync(
+  join(ROOT, "src/v2/fonts.css"),
+  `/* Generated by scripts/sync-fonts.mjs — do not edit by hand. Platform fonts v2 (D64), self-hosted, no CDN. */\n${faces.join("")}`,
+);

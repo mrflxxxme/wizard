@@ -1,0 +1,135 @@
+/* Demo page of design system v2 (layout only; everything visual comes from --p-* tokens). */
+:global(body) {
+  margin: 0;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 16px 16px 200px;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  gap: 40px;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  font-size: 14.5px;
+  white-space: nowrap;
+}
+
+.grow {
+  flex: 1;
+}
+
+.section {
+  display: grid;
+  gap: 14px;
+}
+
+.h {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--p-ink-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 18px;
+}
+
+.blockHead {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--p-ink);
+}
+
+.blockText {
+  display: block;
+  font-size: 14px;
+  color: var(--p-ink-2);
+}
+
+.slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.slot {
+  padding: 6px 11px;
+  border-radius: 10px;
+  background: var(--p-sunken);
+  font-size: 13px;
+}
+
+.slotOn {
+  background: var(--p-biz);
+  color: var(--p-biz-ink);
+}
+
+.state {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--p-ink-2);
+}
+
+.convo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--p-r-xl);
+}
+
+.hello {
+  text-align: center;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.inlineSheet {
+  margin: 300px auto 0;
+}

@@ -1,0 +1,268 @@
+/* v2 controls: buttons (graphite, secondary, amber «создать», ghost), chips, tags, serif, glass. Motion: transform/opacity only. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 9px 17px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  font: 500 14px / 1.2 var(--p-f-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--p-sunken);
+  color: var(--p-ink);
+  transition: transform 0.4s var(--p-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:hover {
+  background: var(--p-sunken-2);
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+  transform: none;
+}
+
+.primary {
+  background: var(--p-graphite);
+  color: var(--p-graphite-ink);
+}
+
+.primary:hover {
+  background: var(--p-graphite-hover);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--p-ink-2);
+}
+
+.ghost:hover {
+  background: var(--p-sunken);
+  color: var(--p-ink);
+}
+
+/* Amber only where something is made (grill-7 #8): «Собрать», «Создать». Dark ink: ≥ 4.5:1 on amber in both themes. */
+.create {
+  background: var(--p-amber);
+  color: var(--p-amber-ink);
+  box-shadow:
+    0 0 0 4px var(--p-amber-soft),
+    0 8px 24px -10px var(--p-amber-glow);
+}
+
+.create:hover {
+  background: var(--p-amber-glow);
+}
+
+.sm {
+  min-height: 32px;
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+
+.spark {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--p-amber-glow);
+  box-shadow:
+    0 0 0 3px var(--p-amber-soft),
+    0 0 12px var(--p-amber-glow);
+}
+
+.create .spark {
+  background: var(--p-amber-ink);
+  box-shadow: none;
+}
+
+.busy .spark {
+  animation: spark 1.6s ease-in-out infinite;
+}
+
+/* Chips: answer options, suggestions. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  font: 400 14px / 1.25 var(--p-f-ui);
+  text-align: left;
+  cursor: pointer;
+  background: var(--p-surface);
+  color: var(--p-ink);
+  box-shadow: var(--p-sh-1);
+  transition: transform 0.4s var(--p-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip:hover {
+  transform: translateY(-1px);
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--p-tint-soft);
+  color: var(--p-tint-text);
+  box-shadow: inset 0 0 0 1.5px var(--p-tint-ring);
+}
+
+.chip[aria-pressed="true"]::before {
+  content: "";
+  width: 5px;
+  height: 9px;
+  flex: none;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.outline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--p-line-2);
+  color: var(--p-ink-2);
+}
+
+.outline:hover {
+  color: var(--p-ink);
+}
+
+.rec {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--p-ink-2);
+}
+
+.chip[aria-pressed="true"] .rec {
+  color: inherit;
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.4;
+  transform: none;
+}
+
+/* Tags on the sketch: goals and «не входит». */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--p-r-pill);
+  font: 500 12px / 1.3 var(--p-f-ui);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  box-shadow: var(--p-sh-1);
+}
+
+.goal::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--p-biz);
+  box-shadow: 0 0 0 3px var(--p-biz-soft);
+}
+
+.out {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--p-line-2);
+  color: var(--p-ink-2);
+}
+
+.out::before {
+  content: "";
+  width: 9px;
+  height: 1.5px;
+  flex: none;
+  background: currentColor;
+}
+
+.out b {
+  font-weight: 500;
+  color: var(--p-ink);
+  text-decoration: line-through;
+  text-decoration-color: var(--p-ink-2);
+}
+
+.tagNote {
+  font-weight: 400;
+  color: var(--p-ink-2);
+}
+
+/* «Human» moments only: greeting, system name, «Система готова» (grill-7 #10). */
+.serif {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.serifXl {
+  font-size: clamp(32px, 5vw, 46px);
+  line-height: 1.1;
+}
+
+.serifLg {
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.serifMd {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+/* Glass: only floating layers. Solid fallback first; translucent + blur only where backdrop-filter exists and the root
+   does not force the fallback (data-p-glass="off"). */
+.glass {
+  background: var(--p-glass-solid);
+  border: 1px solid var(--p-glass-edge);
+  box-shadow: var(--p-sh-float);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :global([data-p-root]:not([data-p-glass="off"])) .glass {
+    background: var(--p-glass);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .btn,
+  .chip {
+    min-height: 44px;
+  }
+}
+
+@keyframes spark {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
