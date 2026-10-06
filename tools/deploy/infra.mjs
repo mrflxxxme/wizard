@@ -814,7 +814,7 @@ const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, ""
     const j = await r.json().catch(() => ({}));
     const flat = (o) => Object.entries(o ?? {}).filter(([, v]) => v === null || typeof v !== "object").map(([k, v]) => k + "=" + String(v).replace(/[^s@]+@[^s@]+/g, "<почта>").slice(0, 60)).join(" ");
     console.log("domain/list: HTTP", r.status, flat(j));
-    for (const d of Array.isArray(j.domains) ? j.domains : []) console.log("  домен:", flat(d));
+    for (const d of Array.isArray(j.domains) ? j.domains : []) console.log("  домен:", flat(d), "· владение:", d["verification-record"]?.status ?? "—", "· DKIM:", d.dkim?.status ?? "—");
   } catch (e) {
     console.log("domain/list: ошибка", e?.cause?.code ?? e?.name ?? "", String(e?.cause?.message ?? e?.message ?? e).slice(0, 160));
   }

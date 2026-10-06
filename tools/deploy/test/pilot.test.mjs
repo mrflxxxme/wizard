@@ -15,6 +15,7 @@ import {
   ensureDmarc,
   ensureDnsRecords,
   ensureStateBucket,
+  ensureUnisenderDomain,
   envVars,
   FOUNDER_STAFF_SQL,
   FOUNDER_START_CREDITS,
@@ -1098,6 +1099,64 @@ describe("DMARC of the systems domain through the DNS records API", () => {
     const bad = join(mkdtempSync(join(tmpdir(), "dns-")), "r.json");
     writeFileSync(bad, JSON.stringify({ records: [{ subdomain: "a b", type: "A", value: "1.2.3.4" }] }));
     expect(() => platformDnsRecords(bad)).toThrow(/CNAME\|TXT/);
+  });
+
+  it("the sender domain at Unisender: DKIM TXT from get-dns-records at us._domainkey, then both re-checked", async () => {
+    const calls = [];
+    const api = async (method, path, body) => {
+      calls.push([method, path, body]);
+      if (method === "GET")
+        return {
+          dns_records: [{ type: "TXT", data: { subdomain: "", value: '"unisender-go-validate-hash=abc"' } }],
+        };
+      return {};
+    };
+    const sent = [];
+    const fetch = async (url, init) => {
+      sent.push([url, JSON.parse(init.body), init.headers["X-API-KEY"]]);
+      const method = url.split("/v1/")[1];
+      const body =
+        method === "domain/get-dns-records.json"
+          ? { status: "success", "verification-record": "unisender-go-validate-hash=abc", dkim: "KEY" }
+          : method === "domain/validate-dkim.json"
+            ? { status: "error", code: 1, message: "DKIM not found" }
+            : { status: "success" };
+      return { ok: body.status === "success", json: async () => body };
+    };
+    const logs = [];
+    const vars = {
+      WIZARD_SMTP_HOST: "smtp.go2.unisender.ru",
+      WIZARD_SMTP_PASSWORD: "k",
+      WIZARD_SMTP_FROM: "Wizard <noreply@borntobuild.ru>",
+    };
+    const r = await ensureUnisenderDomain(api, { vars, fetch, log: (l) => logs.push(l) });
+    expect(sent.map(([u]) => u)).toEqual([
+      "https://go2.unisender.ru/ru/transactional/api/v1/domain/get-dns-records.json",
+      "https://go2.unisender.ru/ru/transactional/api/v1/domain/validate-verification-record.json",
+      "https://go2.unisender.ru/ru/transactional/api/v1/domain/validate-dkim.json",
+    ]);
+    expect(sent.every(([, b, k]) => b.domain === "borntobuild.ru" && k === "k")).toBe(true);
+    expect(calls.filter(([m]) => m === "POST")).toEqual([
+      [
+        "POST",
+        "/api/v1/domains/borntobuild.ru/dns-records",
+        { type: "TXT", subdomain: "us._domainkey.borntobuild.ru", value: "k=rsa; p=KEY" },
+      ],
+    ]);
+    expect(r?.checks).toEqual({
+      "domain/validate-verification-record": "подтверждено",
+      "domain/validate-dkim": "не подтверждено (код 1 DKIM not found)",
+    });
+    // The ownership TXT is at the root: no warning about it.
+    expect(logs.some((l) => l.includes("подтверждения владения"))).toBe(false);
+    // Not Unisender, no key or no sender — nothing is called.
+    expect(
+      await ensureUnisenderDomain(api, { vars: { ...vars, WIZARD_SMTP_HOST: "smtp.example.org" }, fetch }),
+    ).toBeNull();
+    expect(
+      await ensureUnisenderDomain(api, { vars: { ...vars, WIZARD_SMTP_PASSWORD: "" }, fetch }),
+    ).toBeNull();
+    expect(sent).toHaveLength(3);
   });
 
   it("the VM region follows WIZARD_TIMEWEB_LOCATION (ru-1 | ru-3), anything else is ignored", () => {

@@ -685,6 +685,91 @@ export async function ensureDnsRecords(api, domain, records, { log = () => {} } 
   return out;
 }
 
+/** Unisender Go API base from the SMTP host (smtp.goN.unisender.ru → https://goN.unisender.ru) or WIZARD_MAIL_API_BASE. */
+export function unisenderApiBase(vars) {
+  const explicit = String(vars.WIZARD_MAIL_API_BASE ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (explicit) return explicit;
+  const m = /^smtp\.(go\d+)\.unisender\.ru\.?$/i.exec(String(vars.WIZARD_SMTP_HOST ?? "").trim());
+  return m ? `https://${m[1].toLowerCase()}.unisender.ru` : "https://goapi.unisender.ru";
+}
+
+/**
+ * The sender domain of the platform's mail confirmed at Unisender Go (2026-10-06: sends answered 1574 «use address
+ * from a confirmed domain» — the ownership TXT was at the root, the DKIM at us._domainkey was missing). The records
+ * come from domain/get-dns-records (public DNS values, no secrets): the ownership TXT at the root is only checked
+ * (the Timeweb API here adds subdomain records), the DKIM TXT «k=rsa; p=<key>» goes to us._domainkey; then
+ * Unisender is asked to re-check both. Every step is a warning at worst — mail never blocks a release.
+ */
+export async function ensureUnisenderDomain(api, { vars, fetch: f = fetch, log = () => {} }) {
+  const host = String(vars.WIZARD_SMTP_HOST ?? "");
+  const key = String(vars.WIZARD_SMTP_PASSWORD ?? "");
+  const fromRaw = String(vars.WIZARD_SMTP_FROM ?? "");
+  const domain = ((/<([^>]+)>/.exec(fromRaw)?.[1] ?? fromRaw).split("@")[1] ?? "").trim().toLowerCase();
+  if (!/(^|\.)unisender\.ru\.?$/i.test(host) || !key || !domain) return null;
+  const base = unisenderApiBase(vars);
+  const call = async (method) => {
+    const r = await f(`${base}/ru/transactional/api/v1/${method}.json`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", "X-API-KEY": key },
+      body: JSON.stringify({ domain }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const j = await r.json().catch(() => ({}));
+    return {
+      ok: r.ok && j.status === "success",
+      code: j.code,
+      message: String(j.message ?? "").slice(0, 160),
+      j,
+    };
+  };
+  let rec;
+  try {
+    rec = await call("domain/get-dns-records");
+  } catch (e) {
+    log(`::warning title=pilot::Unisender ${domain}: записи домена недоступны (${e.message})`);
+    return null;
+  }
+  if (!rec.ok || !rec.j.dkim) {
+    log(
+      `::warning title=pilot::Unisender ${domain}: записи домена не получены (код ${rec.code ?? "—"} ${rec.message})`,
+    );
+    return null;
+  }
+  const out = await ensureDnsRecords(
+    api,
+    domain,
+    [{ type: "TXT", subdomain: "us._domainkey", value: `k=rsa; p=${rec.j.dkim}` }],
+    {
+      log,
+    },
+  );
+  let rootTxt = [];
+  try {
+    const { dns_records: all = [] } = await api("GET", `/api/v1/domains/${domain}/dns-records`);
+    rootTxt = all
+      .filter((r) => r.type === "TXT" && ["", "@", domain].includes(String(r.data?.subdomain ?? "")))
+      .map((r) => String(r.data?.value ?? "").replace(/^"|"$/g, ""));
+  } catch {}
+  const verification = String(rec.j["verification-record"] ?? "");
+  if (verification && !rootTxt.includes(verification))
+    log(
+      `::warning title=pilot::Unisender ${domain}: в корне нет TXT подтверждения владения «${verification}» — добавьте его в панели Timeweb`,
+    );
+  const checks = {};
+  for (const m of ["domain/validate-verification-record", "domain/validate-dkim"]) {
+    try {
+      const r = await call(m);
+      checks[m] = r.ok ? "подтверждено" : `не подтверждено (код ${r.code ?? "—"} ${r.message})`;
+    } catch (e) {
+      checks[m] = `ошибка (${e.message})`;
+    }
+    log(`Unisender ${domain}: ${m.split("/")[1]} — ${checks[m]}`);
+  }
+  return { dns: out, checks };
+}
+
 /** Timeweb Cloud API client: JSON in/out, bearer token; errors carry the method, path and status, never the token. */
 export function twcClient({
   token,
@@ -1576,6 +1661,11 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
           log,
         });
       }
+      // Every release (deploy too): the sender domain stays confirmed at Unisender — login codes depend on it.
+      if (o.command === "bootstrap" || o.command === "deploy")
+        await ensureUnisenderDomain(api, { vars, fetch: f, log }).catch((e) =>
+          log(`::warning title=pilot::Unisender: домен отправителя не проверен (${e.message})`),
+        );
       // The sandbox of client functions (M2-18): one gVisor pod of this release's workerd image.
       if (outputs.env?.registry_url)
         gvisorProbe({ kubectl, image: `${outputs.env.registry_url}/wizard-sandbox:${tag}`, log });
