@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Холст Born to Build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap">
+<style>
+/* E «Холст». Раскладка: весь экран — холст, на котором растёт система клиента (рамки «Сайт», «Кабинет», «Телефон»);
+   поверх две плавающие полосы — панель сверху и разговор снизу по центру. Стекло только у них. */
+:root{
+  --bg:#F8F7F4; --surface:#FFFFFF; --sunken:#F2F0EB; --sunken-2:#E9E6E0;
+  --ink:#1D1C1A; --ink-2:#6B6862; --ink-3:#A29E96;
+  --line:#E9E6E0; --line-2:#D8D4CB;
+  --graphite:#1D1C1A; --graphite-ink:#F8F7F4; --graphite-hover:#3A3834;
+  --amber:#D98A2B; --amber-glow:#F2B45C; --amber-soft:rgba(217,138,43,.18);
+  --biz:#0F766E; --biz-text:#0B5D57; --biz-soft:rgba(15,118,110,.09); --biz-ring:rgba(15,118,110,.32); --biz-ink:#FFFFFF; --biz-wash:#E7F1EE;
+  --ok:#3A7350; --warn:#8A5A12; --bad:#A0443A;
+  --skel:rgba(60,52,40,.08);
+  --track:rgba(29,28,26,.09);
+  --bezel:#2A2926;
+  --glass:rgba(251,250,247,.72); --glass-solid:#FBFAF7; --glass-edge:rgba(255,255,255,.85);
+  --sh-1:0 0 0 1px rgba(48,40,28,.05), 0 1px 2px rgba(48,40,28,.05);
+  --sh-2:0 0 0 1px rgba(48,40,28,.045), 0 1px 2px rgba(48,40,28,.04), 0 10px 24px -10px rgba(48,40,28,.09), 0 28px 56px -32px rgba(48,40,28,.16);
+  --sh-float:0 0 0 1px rgba(48,40,28,.06), 0 2px 6px rgba(48,40,28,.05), 0 20px 48px -16px rgba(48,40,28,.22);
+  --grain:.055;
+  --tint:var(--graphite); --tint-text:var(--ink);
+  --tint-soft:color-mix(in srgb,var(--graphite) 7%,transparent); --tint-ring:color-mix(in srgb,var(--graphite) 18%,transparent);
+  --f-ui:"Inter",-apple-system,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+  --f-serif:"Source Serif 4","Literata",Georgia,"Times New Roman",serif;
+  --r-xl:24px; --r-lg:18px; --r-md:13px;
+  --spring:cubic-bezier(.34,1.28,.64,1); --ease:cubic-bezier(.22,1,.36,1);
+  --sheet-h:120px; --top-h:64px; --lift:0px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1B1A18; --surface:#252421; --sunken:#2D2C29; --sunken-2:#363430;
+    --ink:#EEECE7; --ink-2:#A6A29A; --ink-3:#6F6B64;
+    --line:#33312D; --line-2:#47443F;
+    --graphite:#EEECE7; --graphite-ink:#1B1A18; --graphite-hover:#FFFFFF;
+    --amber:#E0953A; --amber-glow:#F2B45C; --amber-soft:rgba(242,180,92,.16);
+    --biz:#4FBDB5; --biz-text:#7FD4CD; --biz-soft:rgba(79,189,181,.12); --biz-ring:rgba(79,189,181,.40); --biz-ink:#0A1F1D; --biz-wash:#1E2C2A;
+    --ok:#8DC3A0; --warn:#E2B36E; --bad:#E59A8F;
+    --skel:rgba(238,236,231,.075); --track:rgba(238,236,231,.10);
+    --bezel:#0E0D0C;
+    --glass:rgba(38,37,34,.72); --glass-solid:#282724; --glass-edge:rgba(255,255,255,.07);
+    --sh-1:0 0 0 1px rgba(255,255,255,.045), 0 1px 2px rgba(0,0,0,.3);
+    --sh-2:0 0 0 1px rgba(255,255,255,.05), 0 1px 2px rgba(0,0,0,.3), 0 10px 24px -10px rgba(0,0,0,.4), 0 28px 56px -30px rgba(0,0,0,.55);
+    --sh-float:0 0 0 1px rgba(255,255,255,.07), 0 2px 6px rgba(0,0,0,.3), 0 20px 48px -14px rgba(0,0,0,.6);
+    --grain:.07;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1B1A18; --surface:#252421; --sunken:#2D2C29; --sunken-2:#363430;
+  --ink:#EEECE7; --ink-2:#A6A29A; --ink-3:#6F6B64;
+  --line:#33312D; --line-2:#47443F;
+  --graphite:#EEECE7; --graphite-ink:#1B1A18; --graphite-hover:#FFFFFF;
+  --amber:#E0953A; --amber-glow:#F2B45C; --amber-soft:rgba(242,180,92,.16);
+  --biz:#4FBDB5; --biz-text:#7FD4CD; --biz-soft:rgba(79,189,181,.12); --biz-ring:rgba(79,189,181,.40); --biz-ink:#0A1F1D; --biz-wash:#1E2C2A;
+  --ok:#8DC3A0; --warn:#E2B36E; --bad:#E59A8F;
+  --skel:rgba(238,236,231,.075); --track:rgba(238,236,231,.10);
+  --bezel:#0E0D0C;
+  --glass:rgba(38,37,34,.72); --glass-solid:#282724; --glass-edge:rgba(255,255,255,.07);
+  --sh-1:0 0 0 1px rgba(255,255,255,.045), 0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 0 0 1px rgba(255,255,255,.05), 0 1px 2px rgba(0,0,0,.3), 0 10px 24px -10px rgba(0,0,0,.4), 0 28px 56px -30px rgba(0,0,0,.55);
+  --sh-float:0 0 0 1px rgba(255,255,255,.07), 0 2px 6px rgba(0,0,0,.3), 0 20px 48px -14px rgba(0,0,0,.6);
+  --grain:.07;
+  color-scheme:dark;
+}
+/* интерфейс перенимает цвет бизнеса, как только появилась система клиента */
+:root.biz{--tint:var(--biz); --tint-text:var(--biz-text); --tint-soft:var(--biz-soft); --tint-ring:var(--biz-ring)}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;height:100%}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:400 15px/1.5 var(--f-ui);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss03";overflow-x:hidden}
+/* зерно бумаги */
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:var(--grain);background-size:200px 200px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E")}
+h1,h2,h3,h4,p{margin:0}
+h1,h2,h3,h4{font-weight:600;text-wrap:balance}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--tint);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.num{font-variant-numeric:tabular-nums}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.serif{font-family:var(--f-serif);font-weight:400;letter-spacing:-.01em}
+
+/* ——— Стекло: только плавающие слои ——— */
+.glass{background:var(--glass-solid);border:1px solid var(--glass-edge);box-shadow:var(--sh-float)}
+@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){
+  .glass{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%)}
+}
+
+/* ——— Верхняя панель ——— */
+.top{position:fixed;z-index:40;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;margin-inline:auto;width:min(1180px,calc(100% - 24px));
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:7px 7px 7px 14px;border-radius:18px;min-height:52px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14.5px;letter-spacing:-.01em;white-space:nowrap}
+.brand svg{width:20px;height:20px;flex:none}
+.brand .m1{fill:var(--ink)} .brand .m2{fill:var(--ink);opacity:.3}
+.sys{display:flex;align-items:center;gap:10px;min-width:0;animation:fade .6s var(--ease) backwards}
+.sys::before{content:"";width:1px;height:18px;background:var(--line-2);flex:none}
+.sys-name{font:400 18px/1.2 var(--f-serif);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grow{flex:1}
+.eta{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2);white-space:nowrap;animation:fade .5s var(--ease) backwards}
+.eta .ring .fg{stroke:var(--amber);transition:stroke-dashoffset .3s linear}
+.eta.done .ring .fg{stroke:var(--tint)}
+.seg{display:inline-flex;padding:3px;border-radius:13px;background:var(--sunken);gap:2px}
+.seg button{white-space:nowrap;border:0;background:transparent;padding:6px 14px;border-radius:10px;font-size:13.5px;font-weight:500;color:var(--ink-2);transition:color .25s var(--ease)}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.views{animation:rise .7s var(--spring) backwards}
+.tbtn{height:36px;border:0;border-radius:11px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;gap:7px;padding:0 11px;font-size:13.5px;font-weight:500;white-space:nowrap;transition:color .25s var(--ease)}
+.tbtn:hover{color:var(--ink);background:var(--sunken)}
+.tbtn[aria-pressed="true"]{background:var(--tint-soft);color:var(--tint-text)}
+.tbtn.icon{width:36px;padding:0;justify-content:center}
+#themeBtn .i-moon{display:none}
+:root:not([data-dark]) #themeBtn .i-sun{display:none}
+:root:not([data-dark]) #themeBtn .i-moon{display:block}
+
+/* кольцо */
+.ring{display:block;transform:rotate(-90deg);flex:none;overflow:visible}
+.ring circle{fill:none;stroke-width:3}
+.ring .tr{stroke:var(--track)}
+.ring .fg{stroke:var(--tint);stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100}
+
+/* ——— Холст ——— */
+.veil{position:fixed;left:0;right:0;z-index:20;pointer-events:none}
+.veil.vt{top:0;height:calc(env(safe-area-inset-top,0px) + var(--top-h) + 22px);background:linear-gradient(var(--bg) 45%,color-mix(in srgb,var(--bg) 0%,transparent))}
+.veil.vb{bottom:0;height:calc(env(safe-area-inset-bottom,0px) + 56px);background:linear-gradient(color-mix(in srgb,var(--bg) 0%,transparent),var(--bg) 80%)}
+#canvas{position:relative;z-index:1;padding-inline:16px;padding-block:calc(env(safe-area-inset-top,0px) + var(--top-h) + 34px) calc(var(--sheet-h) + 56px);min-height:100%}
+.board{position:relative;max-width:1180px;margin:0 auto;transform-origin:50% 0;transition:transform .8s var(--ease);display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:30px 26px;align-items:start}
+.fw{display:flex;flex-direction:column;gap:10px;min-width:0;animation:rise .8s var(--spring) backwards}
+.fw[data-f="site"]{grid-row:1 / span 2}
+.fw[data-f="phone"]{grid-column:2}
+.cap{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding-inline:6px;font-size:12.5px;font-weight:500;color:var(--ink-2);min-height:24px}
+.cap .grow{min-width:8px}
+.sample{font-size:12px;font-weight:400;color:var(--ink-2)}
+.frame{position:relative;background:var(--surface);border-radius:var(--r-xl);box-shadow:var(--sh-2);overflow:hidden;transition:opacity .5s var(--ease)}
+.board[data-view="site"],.board[data-view="cab"]{grid-template-columns:minmax(0,1060px);justify-content:center}
+.board[data-view="phone"]{grid-template-columns:minmax(0,380px);justify-content:center}
+.board:not([data-view="overview"]) .fw{grid-row:auto;grid-column:auto}
+.board[data-view="site"] .fw:not([data-f="site"]),
+.board[data-view="cab"] .fw:not([data-f="cab"]),
+.board[data-view="phone"] .fw:not([data-f="phone"]){display:none}
+.board:not([data-view="overview"]) .cap{display:none}
+.board:not([data-view="overview"]) .tag{display:none}
+.fw.swap{animation:swap .6s var(--spring) backwards}
+
+/* ——— Модули: эскиз → поверхность → содержимое ——— */
+.mod{position:relative;border-radius:16px;padding:12px;min-width:0}
+.mod.born{animation:born .75s var(--spring) backwards;animation-delay:var(--dl,0ms)}
+.mod::after{content:"";position:absolute;inset:0;border-radius:inherit;border:1.2px dashed var(--line-2);opacity:0;transition:opacity .6s var(--ease);pointer-events:none}
+.mod[data-m="sketch"]::after{opacity:1}
+.mod[data-m="surface"]::after{opacity:.5}
+.t{position:relative;display:inline-block;vertical-align:top;max-width:100%}
+.t::after{content:"";position:absolute;left:0;right:0;top:.2em;bottom:.2em;border-radius:5px;background:var(--skel);opacity:0;transition:opacity .5s var(--ease);pointer-events:none}
+.t.lines{display:block}
+.t.lines::after{top:0;bottom:0;border-radius:0;background:linear-gradient(180deg,transparent 22%,var(--skel) 22% 76%,transparent 76%) 0 0/100% var(--lh,1.5em) repeat-y}
+.tx{transition:opacity .55s var(--ease) .1s}
+.mod[data-m="sketch"] .tx,.mod[data-m="surface"] .tx{opacity:0}
+.mod[data-m="sketch"] .t::after,.mod[data-m="surface"] .t::after{opacity:1}
+.sf{position:relative;isolation:isolate;--sf:var(--sunken)}
+.sf::before,.sf::after{content:"";position:absolute;inset:0;border-radius:inherit;z-index:-1;pointer-events:none;transition:opacity .5s var(--ease)}
+.sf::before{background:var(--sf)}
+.sf::after{box-shadow:inset 0 0 0 1px var(--line-2);opacity:0}
+.mod[data-m="sketch"] .sf::before{opacity:0}
+.mod[data-m="sketch"] .sf::after{opacity:1}
+.sf.biz{--sf:var(--biz);color:var(--biz-ink)}
+.sf.card{--sf:var(--surface)}
+.ph{position:relative;overflow:hidden;background:var(--skel);border-radius:14px}
+.art{position:absolute;inset:0;opacity:0;transition:opacity 1s var(--ease) .15s;
+  background:radial-gradient(48% 44% at 74% 26%,color-mix(in srgb,var(--surface) 92%,transparent),transparent 72%),
+             radial-gradient(42% 46% at 18% 92%,color-mix(in srgb,var(--biz) 34%,transparent),transparent 70%),
+             linear-gradient(158deg,var(--biz-wash),color-mix(in srgb,var(--biz) 20%,var(--sunken)))}
+.art::before{content:"";position:absolute;width:38%;aspect-ratio:1;right:14%;top:12%;border-radius:50%;border:2px solid color-mix(in srgb,var(--biz) 26%,transparent)}
+.art::after{content:"";position:absolute;left:10%;right:36%;bottom:-30%;height:62%;border-radius:50% 50% 0 0;background:color-mix(in srgb,var(--biz) 14%,transparent)}
+.mod[data-m="live"] .art{opacity:1}
+.mod[data-m="live"] .ring .fg{stroke-dashoffset:var(--off,100);transition:stroke-dashoffset 1.3s var(--ease) .2s}
+/* янтарная кромка, пока блок создаётся */
+.edge{position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:0;overflow:hidden;z-index:3;
+  box-shadow:inset 0 0 0 1.5px var(--amber),0 0 0 4px var(--amber-soft),0 0 30px -6px var(--amber-glow)}
+.edge::before,.edge::after{content:"";position:absolute;left:0;width:42%;height:2px;background:linear-gradient(90deg,transparent,var(--amber-glow),transparent);transform:translateX(-110%)}
+.edge::before{top:0}.edge::after{bottom:0;transform:translateX(250%)}
+.forge>.edge{animation:edge 1.5s var(--ease)}
+.forge>.edge::before{animation:streak 1.15s var(--ease) .05s}
+.forge>.edge::after{animation:streakb 1.15s var(--ease) .2s}
+.touch>.edge{animation:edge 1.7s var(--ease);box-shadow:inset 0 0 0 1.5px var(--tint),0 0 0 5px var(--tint-soft)}
+.touch>.edge::before,.touch>.edge::after{display:none}
+
+/* метки на эскизе */
+.tag{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;line-height:1.3;padding:4px 10px 4px 8px;border-radius:999px;background:var(--surface);box-shadow:var(--sh-1);color:var(--ink);animation:rise .6s var(--spring) backwards}
+.tag i{font-style:normal;color:var(--ink-2);font-weight:400}
+.tag.goal::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--biz);box-shadow:0 0 0 3px var(--biz-soft);flex:none}
+.tag.out{background:transparent;box-shadow:inset 0 0 0 1px var(--line-2);color:var(--ink-2)}
+.tag.out::before{content:"";width:9px;height:1.5px;background:currentColor;flex:none}
+.tag.out b{font-weight:500;color:var(--ink);text-decoration:line-through;text-decoration-color:var(--ink-2)}
+
+/* выбор блока («ткни и скажи») */
+.ready .mod[data-pick]{cursor:pointer;outline:none}
+.ready .mod[data-pick]:hover::after{opacity:1;border-style:solid;border-color:var(--biz-ring)}
+.ready .mod[data-pick]:focus-visible::after{opacity:1;border:2px solid var(--biz)}
+.mod.sel::after{opacity:1!important;border:2px solid var(--biz)!important}
+.mod.sel{box-shadow:0 0 0 6px var(--biz-soft)}
+.mod.gone{animation:gone .35s var(--ease) forwards}
+
+/* ——— Сайт клиники ——— */
+.site-frame{container:site / inline-size}
+.browser{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-2)}
+.browser svg{width:13px;height:13px}
+.browser .dots{display:flex;gap:6px;margin-right:6px}
+.browser .dots i{width:9px;height:9px;border-radius:50%;background:var(--sunken-2)}
+.site{display:grid;gap:6px;padding:8px 10px 14px}
+.mh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px;margin-bottom:10px}
+.lbl{font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.mod[data-m="sketch"] .lbl,.mod[data-m="sketch"] th{color:var(--ink-2)}
+.s-nav{display:flex;align-items:center;gap:10px}
+.s-logo{width:22px;height:22px;border-radius:7px;flex:none}
+.s-name{font-weight:600;font-size:14px;letter-spacing:-.01em}
+.s-links{display:none;gap:18px;margin-left:auto;font-size:13px;color:var(--ink-2)}
+.s-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:500;white-space:nowrap}
+.s-nav .s-btn{margin-left:auto;padding:7px 14px;font-size:13px}
+.s-hero{display:grid;gap:16px}
+.s-copy{display:grid;gap:12px;align-content:center;justify-items:start}
+.s-h{font-size:26px;line-height:1.12;letter-spacing:-.025em;--lh:1.12em;font-weight:600;width:100%}
+.s-p{color:var(--ink-2);font-size:14.5px;line-height:1.5;width:100%;max-width:42ch}
+.s-hero .ph{min-height:180px}
+.slot{position:absolute;left:14px;bottom:14px;display:grid;gap:1px;padding:12px 14px;border-radius:14px;--sf:var(--surface);box-shadow:var(--sh-1)}
+.mod[data-m="sketch"] .slot{box-shadow:none}
+.slot .k{font-size:11.5px;color:var(--ink-2)} .slot .v{font-size:18px;font-weight:600;letter-spacing:-.01em}
+[data-variant="1"] .s-hero .ph{order:-1}
+[data-variant="1"] .s-copy{justify-items:start}
+.svc-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.svc{display:grid;grid-template-columns:1fr auto;grid-template-areas:"n n" "p d";gap:4px 10px;padding:12px 14px;border-radius:14px}
+.svc-n{grid-area:n;font-weight:500}.svc-p{grid-area:p;font-weight:600}.svc-d{grid-area:d;color:var(--ink-2);font-size:13px;justify-self:end;align-self:end}
+.svc-ph,.svc-lead{display:none}
+[data-variant="1"] .svc-list{display:block}
+[data-variant="1"] .svc{--sf:transparent;grid-template-columns:auto minmax(12px,1fr) auto auto;grid-template-areas:"n l d p";align-items:baseline;border-radius:0;padding:10px 2px;border-bottom:1px solid var(--line)}
+[data-variant="1"] .svc:last-child{border-bottom:0}
+[data-variant="1"] .svc::after{box-shadow:none}
+[data-variant="1"] .svc-lead{display:block;grid-area:l;border-bottom:1.5px dotted var(--line-2);transform:translateY(-4px)}
+[data-variant="1"] .svc-d{align-self:baseline}
+[data-variant="2"] .svc-list{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+[data-variant="2"] .svc{grid-template-columns:56px 1fr auto;grid-template-areas:"ph n p" "ph d p";align-items:center;padding:8px 14px 8px 8px;column-gap:12px}
+[data-variant="2"] .svc-ph{display:block;grid-area:ph;width:56px;height:56px;border-radius:11px}
+[data-variant="2"] .svc-d{justify-self:start}
+.vswap .s-hero>*,.vswap .doc,.vswap .svc{animation:rise .55s var(--spring) backwards;animation-delay:calc(var(--i,0) * 45ms)}
+.docs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.doc{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px}
+.doc .who{display:grid;font-size:13.5px;line-height:1.35;min-width:0}
+.doc .who .t:last-child{color:var(--ink-2);font-size:12.5px}
+.av{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:12.5px;font-weight:600;--sf:color-mix(in srgb,var(--biz) 16%,var(--surface));color:var(--biz-text)}
+[data-variant="1"] .docs{grid-template-columns:1fr;gap:0}
+[data-variant="1"] .doc{--sf:transparent;border-radius:0;border-bottom:1px solid var(--line);padding:9px 2px}
+[data-variant="1"] .doc:last-child{border-bottom:0}
+[data-variant="1"] .doc::after{box-shadow:none}
+.book{display:grid;gap:12px}
+.days,.slots,.pick{display:flex;flex-wrap:wrap;gap:6px}
+.day,.sl{border-radius:10px;padding:6px 11px;font-size:13px}
+.day{--sf:transparent;color:var(--ink-2)}
+.day.on{--sf:var(--sunken);color:var(--ink);font-weight:500}
+.sl{--sf:var(--sunken);font-variant-numeric:tabular-nums}
+.sl.on{--sf:var(--biz);color:var(--biz-ink);font-weight:500}
+.pick .pk{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;font-size:13px;--sf:transparent}
+.pick .pk.on{--sf:var(--biz-soft);color:var(--biz-text);font-weight:500}
+.pick .pk::after{box-shadow:inset 0 0 0 1px var(--line)!important;opacity:1}
+.pick .av{width:28px;height:28px;font-size:11px}
+.b-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.bk-note{font-size:13px;color:var(--ink-2)}
+.ch-new{animation:fade .6s var(--ease) backwards}
+@container site (min-width:600px){
+  .s-links{display:flex}
+  .s-nav .s-btn{margin-left:8px}
+  .s-hero{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);align-items:stretch}
+  .s-h{font-size:31px}
+  .s-hero .ph{min-height:230px}
+  .site{padding:8px 14px 18px;gap:8px}
+  .mod{padding:14px 16px}
+}
+
+/* ——— Кабинет ——— */
+.cab-frame{container:cab / inline-size}
+.c-top{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.c-top b{font-weight:600}
+.c-top .c-date{margin-left:auto;color:var(--ink-2)}
+.c-logo{width:22px;height:22px;border-radius:7px;background:var(--biz);flex:none}
+.cab{display:grid;gap:6px;padding:8px 10px 12px}
+.goals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.g{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"r v" "l l" "k k";align-items:center;gap:8px 10px;padding:12px;border-radius:14px;--sf:var(--sunken);align-content:start}
+.g-ring{grid-area:r;width:38px;height:38px}
+.g-ring .ring{width:100%;height:100%}
+.ring .tk{stroke:var(--ink-2);stroke-width:1.8;stroke-linecap:round}
+.g-v{grid-area:v;font-size:21px;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.g-v small{font-size:12px;font-weight:500;color:var(--ink-2);margin-left:1px}
+.g-l{grid-area:l;font-size:12.5px;color:var(--ink-2);line-height:1.3}
+.g-k{grid-area:k;font-size:12px;color:var(--ink-2);display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;line-height:1.3}
+.g-s{color:var(--biz-text);font-weight:500}
+.mh .k{font-size:12.5px;color:var(--ink-2)}
+.tbl-wrap{overflow-x:auto;margin-inline:-4px}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{font-size:12px;font-weight:500;color:var(--ink-2);text-align:left;padding:6px 8px;white-space:nowrap}
+.tbl td{padding:9px 8px;border-top:1px solid var(--line);white-space:nowrap}
+.tbl td:first-child{font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.tbl tbody tr{transition:background-color .2s}
+.ready .mod[data-m="live"] .tbl tbody tr{cursor:pointer}
+.ready .mod[data-m="live"] .tbl tbody tr:hover{background:var(--sunken)}
+.ready .mod[data-m="live"] .tbl tbody tr[aria-selected="true"],.mod[data-m="live"] .tbl tbody tr[aria-selected="true"]{background:var(--biz-soft)}
+.c-doc,.c-rem{display:none}
+.has-doc .c-doc,.has-rem .c-rem{display:table-cell}
+.c-svc{display:none}
+.st{display:inline-flex;align-items:center;gap:7px}
+.st::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.st.ok{color:var(--ok)}.st.warn{color:var(--warn)}.st.bad{color:var(--bad)}.st.mute{color:var(--ink-2)}
+.mod[data-m="sketch"] .st::before{opacity:.25}
+[data-mod="cab-client"]{display:none}
+.cl{border-radius:16px;overflow:hidden;--sf:var(--surface);box-shadow:var(--sh-1)}
+.mod[data-m="sketch"] .cl{box-shadow:none}
+.cl-head{position:relative;isolation:isolate;display:flex;align-items:center;gap:12px;padding:16px}
+.cl-head::before{content:"";position:absolute;inset:0;background:var(--biz-wash);z-index:-1;opacity:0;transition:opacity .6s var(--ease)}
+.mod[data-m="live"] .cl-head::before{opacity:1}
+.cl-av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:14px;--sf:var(--biz);color:var(--biz-ink);flex:none}
+.cl-who{display:grid;line-height:1.35;min-width:0}
+.cl-who .t:first-child{font-weight:600;font-size:16px}
+.cl-who .t:last-child{font-size:12.5px;color:var(--ink-2)}
+.cl-body{padding:6px 16px 16px;display:grid;gap:14px}
+.cl-dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0;font-size:13.5px}
+.cl-dl dt{color:var(--ink-2)}.cl-dl dd{margin:0}
+.cl-act{display:flex;flex-wrap:wrap;gap:8px}
+.cl-act .s-btn{padding:7px 13px;font-size:13px}
+.s-btn.soft{--sf:var(--biz-soft);color:var(--biz-text)}
+.s-btn.plain{--sf:var(--sunken)}
+.cl.swap>*{animation:rise .5s var(--spring) backwards}
+@container cab (min-width:520px){ .c-svc{display:table-cell} .g-v{font-size:24px} }
+@container cab (min-width:760px){
+  .cab{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);padding:10px 14px 16px;gap:8px;align-items:start}
+  [data-mod="cab-goals"]{grid-column:1 / -1}
+  [data-mod="cab-client"]{display:block}
+  .g{grid-template-areas:"r l" "r v" "k k";column-gap:14px;row-gap:2px;padding:16px}
+  .g-k{margin-top:10px}
+  .g-ring{width:52px;height:52px}
+  .mod{padding:14px 16px}
+}
+
+/* ——— Телефон ——— */
+.phone{width:min(290px,100%);margin-inline:auto;border-radius:44px;padding:9px;background:var(--bezel);box-shadow:var(--sh-2)}
+.board[data-view="phone"] .phone{width:min(360px,100%)}
+.scr{position:relative;border-radius:36px;overflow:hidden;background:var(--bg);min-height:480px;padding:12px 10px 16px;display:grid;align-content:start;gap:4px}
+.board[data-view="phone"] .scr{min-height:640px}
+.sbar{display:flex;justify-content:space-between;align-items:center;padding:2px 14px 8px;font-size:12px;font-weight:600}
+.sbar .isl{width:76px;height:22px;border-radius:12px;background:var(--bezel)}
+.sbar .sb-r{display:flex;gap:4px;align-items:center}
+.sbar .sb-r i{display:block;width:16px;height:9px;border-radius:3px;border:1.4px solid currentColor;opacity:.8}
+.scr .mod{padding:8px;border-radius:20px}
+.ntfs{display:grid;gap:8px}
+.ntf{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:10px 12px 12px;border-radius:18px;--sf:var(--surface);box-shadow:var(--sh-1);font-size:12.5px;line-height:1.4}
+.mod[data-m="sketch"] .ntf{box-shadow:none}
+.n-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;--sf:var(--biz);color:var(--biz-ink)}
+.n-ic svg{width:16px;height:16px}
+.n-ic.mail{--sf:var(--sunken-2);color:var(--ink)}
+.n-h{display:flex;align-items:baseline;gap:8px;font-weight:600;min-width:0}
+.n-h>.t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ntf>div{min-width:0}
+.n-h .n-t{margin-left:auto;font-weight:400;color:var(--ink-2);font-size:11px}
+.n-p{--lh:1.4em;color:var(--ink)}
+.n-act{display:flex;gap:6px;margin-top:8px}
+.n-b{flex:1;text-align:center;border-radius:10px;padding:6px 8px;font-weight:500;--sf:var(--sunken)}
+.n-b.y{--sf:var(--biz-soft);color:var(--biz-text)}
+.m-site{display:grid;gap:10px;padding:12px;border-radius:18px;--sf:var(--surface)}
+.m-nav{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}
+.m-nav .s-logo{width:18px;height:18px;border-radius:6px}
+.m-nav .burger{margin-left:auto;width:16px;height:10px;border-block:1.6px solid var(--ink-2)}
+.m-h{font-size:18px;line-height:1.15;letter-spacing:-.02em;--lh:1.15em;font-weight:600}
+.m-slots{display:flex;gap:5px;flex-wrap:wrap}
+.m-slots .sl{padding:5px 9px;font-size:12px}
+.m-site .s-btn{justify-self:stretch;padding:9px 12px}
+
+/* ——— Рентген «Как это работает» ——— */
+.xr-layer{position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;transition:opacity .5s var(--ease)}
+.board.xr .xr-layer{opacity:1}
+.board.xr{transform:scale(var(--xs,1))}
+.wires path{vector-effect:non-scaling-stroke}
+.board.xr .frame,.board.xr .phone{opacity:.3}
+.board.xr .cap{opacity:.5}
+.phone{transition:opacity .5s var(--ease)}
+.cap{transition:opacity .5s var(--ease)}
+.wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.wires path{fill:none;stroke-linecap:round}
+.wires .base{stroke:var(--tint-ring);stroke-width:1.5}
+.wires .flow{stroke:var(--tint);stroke-width:1.6;stroke-dasharray:2 9;animation:flow 1.1s linear infinite}
+.board.xr .wires .base{animation:draw 1.1s var(--ease) backwards}
+.xnode{position:absolute;translate:-50% -50%;scale:calc(1 / var(--xs,1));display:flex;align-items:center;gap:8px;padding:5px 13px 5px 5px;border-radius:999px;background:var(--surface);box-shadow:var(--sh-float);font-size:13px;font-weight:500;white-space:nowrap;color:var(--ink)}
+.xnode b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--tint);color:var(--biz-ink);font-size:11.5px;font-weight:600;flex:none}
+.board.xr .xnode{animation:rise .6s var(--spring) backwards;animation-delay:calc(var(--i) * 120ms + 150ms)}
+.xdata{position:fixed;z-index:25;top:calc(env(safe-area-inset-top,0px) + var(--top-h) + 24px);left:max(16px,calc(50% - 590px));width:286px;padding:16px 18px;border-radius:20px;background:var(--glass-solid);box-shadow:var(--sh-float);display:grid;gap:10px;font-size:13px;animation:rise .6s var(--spring) backwards}
+.xdata h2{font-size:12px;font-weight:500;color:var(--ink-2)}
+.xdata ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.xdata li{display:flex;justify-content:space-between;gap:12px}
+.xdata li span{color:var(--ink-2)}
+.xdata p{line-height:1.45}
+.xdata hr{border:0;border-top:1px solid var(--line);margin:2px 0}
+
+/* ——— Разговор: плавающий снизу по центру ——— */
+.sheet{position:fixed;z-index:30;left:0;right:0;margin-inline:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:min(680px,calc(100% - 24px));display:flex;flex-direction:column;gap:12px;transform:translateY(calc(-1 * var(--lift)));transition:transform 1s var(--spring)}
+.sheet.no-tr{transition:none}
+.hello{text-align:center;font:400 clamp(32px,5vw,46px)/1.1 var(--f-serif);letter-spacing:-.015em;margin-bottom:14px;transition:opacity .3s var(--ease),transform .4s var(--ease)}
+.examples{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;transition:opacity .25s var(--ease)}
+.ex{border:0;background:transparent;box-shadow:inset 0 0 0 1px var(--line-2);border-radius:999px;padding:7px 14px;font-size:13.5px;color:var(--ink-2);transition:color .2s,transform .4s var(--spring)}
+.ex:hover{color:var(--ink);transform:translateY(-1px)}
+.ex[aria-pressed="true"]{color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink-2)}
+.sheet.leaving .hello{opacity:0;transform:translateY(-8px)}
+.sheet.leaving .examples{opacity:0}
+.dock{position:relative;border-radius:24px;padding:8px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+.grab{display:grid;place-items:center;width:64px;height:16px;margin:-4px auto -2px;border:0;background:transparent;border-radius:8px;padding:0}
+.grab i{display:block;width:36px;height:4px;border-radius:2px;background:var(--line-2);transition:background .2s}
+.grab:hover i{background:var(--ink-3)}
+.qcard{padding:8px 10px 8px}
+.qcard.swap>*{animation:rise .55s var(--spring) backwards}
+.qcard.swap>*:nth-child(2){animation-delay:40ms}.qcard.swap>*:nth-child(3){animation-delay:80ms}
+.q-k{font-size:12px;color:var(--ink-2);margin-bottom:3px;font-variant-numeric:tabular-nums}
+.q-t{font-size:16px;font-weight:500;letter-spacing:-.01em}
+.opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.opt{border:0;border-radius:999px;padding:8px 14px;font-size:14px;background:var(--surface);box-shadow:var(--sh-1);color:var(--ink);display:inline-flex;align-items:center;gap:7px;transition:transform .4s var(--spring)}
+.opt:hover{transform:translateY(-1px)}
+.opt:active{transform:scale(.97)}
+.opt[aria-pressed="true"]{background:var(--tint-soft);color:var(--tint-text);box-shadow:inset 0 0 0 1.5px var(--tint-ring)}
+.opt[aria-pressed="true"]::before{content:"";width:5px;height:9px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:rotate(45deg) translate(-1px,-1px)}
+.q-foot{display:flex;justify-content:flex-end;margin-top:10px}
+.btn{border:0;border-radius:999px;padding:9px 17px;font-weight:500;font-size:14px;background:var(--sunken);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;transition:transform .4s var(--spring),background-color .2s}
+.btn:hover{background:var(--sunken-2)}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:var(--graphite);color:var(--graphite-ink)}
+.btn.primary:hover{background:var(--graphite-hover)}
+.btn.small{padding:7px 14px;font-size:13.5px}
+.btn[disabled]{opacity:.35;cursor:default}
+.spark{width:8px;height:8px;border-radius:50%;background:var(--amber-glow);box-shadow:0 0 0 3px var(--amber-soft),0 0 12px var(--amber-glow);flex:none}
+.building .spark{animation:spark 1.6s ease-in-out infinite}
+.sum{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px}
+.sum p{font-size:14px;color:var(--ink-2)}
+.sum p b{color:var(--ink);font-weight:500}
+.b-row{display:flex;align-items:center;gap:10px;font-size:14.5px}
+.b-row .k{color:var(--ink-2)}
+.b-row b{font-weight:500}
+.b-row .num{margin-left:auto;color:var(--ink-2);font-size:13px}
+.b-note{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--warn);animation:rise .55s var(--spring) backwards}
+.b-note::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.ready-h{font:400 26px/1.15 var(--f-serif);letter-spacing:-.01em}
+.ready-m{font-size:13.5px;color:var(--ink-2);margin-top:4px}
+.ready-a{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.sugg{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 4px 2px}
+.sugg .opt{padding:7px 13px;font-size:13.5px}
+.sugg .vc{font-size:12.5px;color:var(--ink-2);margin-left:4px;font-variant-numeric:tabular-nums}
+.sugg .undo{font-size:13.5px;color:var(--ink-2);display:flex;align-items:center;gap:10px}
+.inrow{position:relative;display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:18px;padding:6px 6px 6px 16px;box-shadow:var(--sh-1);min-height:50px}
+.inrow::after{content:"";position:absolute;inset:-1px;border-radius:19px;pointer-events:none;opacity:0;box-shadow:0 0 0 3px var(--tint-ring),0 0 26px 4px var(--tint-soft);transition:opacity .4s var(--ease)}
+.inrow:focus-within::after{opacity:.55}
+.think .inrow::after{animation:breathe 2.4s ease-in-out infinite;will-change:opacity,transform}
+.building .inrow::after{box-shadow:0 0 0 3px var(--amber-soft),0 0 28px 4px var(--amber-soft)}
+.inrow input{flex:1;min-width:0;border:0;background:transparent;outline:0;font-size:15.5px;padding:8px 0}
+.inrow input::placeholder{color:var(--ink-2)}
+.is-start .dock{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;padding:0}
+.is-start .inrow{box-shadow:var(--sh-2);padding:8px 8px 8px 20px;border-radius:20px}
+.is-start .inrow input{font-size:17px}
+.send{width:38px;height:38px;border:0;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--graphite);color:var(--graphite-ink);transition:transform .45s var(--spring),opacity .2s}
+.send[disabled]{opacity:.22;cursor:default}
+.send:not([disabled]):active{transform:scale(.92)}
+.send svg{width:18px;height:18px}
+.target{display:inline-flex;align-items:center;gap:2px;background:var(--biz-soft);color:var(--biz-text);border-radius:999px;padding:3px 3px 3px 11px;font-size:13px;font-weight:500;white-space:nowrap;animation:rise .45s var(--spring) backwards;max-width:46%;overflow:hidden}
+.target button{border:0;background:transparent;color:inherit;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;padding:0}
+.target button:hover{background:var(--biz-soft)}
+.target svg{width:13px;height:13px}
+.hist{position:absolute;left:0;right:0;bottom:calc(100% + 10px);max-height:min(52vh,440px);overflow-y:auto;overscroll-behavior:contain;background:var(--glass-solid);border-radius:22px;box-shadow:var(--sh-float);padding:16px 16px 12px;display:flex;flex-direction:column;gap:12px;
+  opacity:0;visibility:hidden;transform:translateY(18px) scale(.985);transform-origin:50% 100%;transition:opacity .3s var(--ease),transform .55s var(--spring),visibility 0s .55s;scrollbar-width:thin}
+.sheet.open .hist{opacity:1;visibility:visible;transform:none;transition:opacity .3s var(--ease),transform .55s var(--spring),visibility 0s}
+.msg{max-width:88%;font-size:14.5px;line-height:1.45}
+.msg.me{align-self:flex-end;background:var(--sunken);padding:8px 13px;border-radius:16px 16px 5px 16px}
+.msg.ai{align-self:flex-start}
+.msg.sys{align-self:flex-start;font-size:13px;color:var(--ink-2);display:flex;gap:8px;align-items:center}
+.msg.sys::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);flex:none}
+.msg.sys.warn{color:var(--warn)}.msg.sys.warn::before{background:var(--warn)}
+
+/* ——— Движение ——— */
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translateY(10px) scale(.985)}}
+@keyframes born{from{opacity:0;transform:translateY(10px) scale(.98)}}
+@keyframes swap{from{opacity:0;transform:scale(.985) translateY(8px)}}
+@keyframes gone{to{opacity:0;transform:scale(.97)}}
+@keyframes edge{0%{opacity:0}15%{opacity:1}65%{opacity:.85}100%{opacity:0}}
+@keyframes streak{to{transform:translateX(250%)}}
+@keyframes streakb{to{transform:translateX(-110%)}}
+@keyframes breathe{0%,100%{opacity:.12;transform:scale(.996)}50%{opacity:.95;transform:scale(1.004)}}
+@keyframes spark{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}
+@keyframes flow{to{stroke-dashoffset:-22}}
+@keyframes draw{from{stroke-dasharray:1;stroke-dashoffset:1}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .sheet{transition:none}
+}
+
+/* ——— Ширина телефона ——— */
+@media (max-width:760px){
+  .board{grid-template-columns:minmax(0,1fr);gap:24px}
+  .fw[data-f="site"],.fw[data-f="phone"]{grid-row:auto;grid-column:auto}
+  .board[data-view="phone"]{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:600px){
+  .top{padding:6px 6px 6px 12px;border-radius:16px;width:calc(100% - 16px);top:calc(env(safe-area-inset-top,0px) + 8px)}
+  .brand{margin-right:auto}
+  .has-sys .brand .wm{display:none}
+  .top>.grow{display:none}
+  .sys{flex:1 1 0;min-width:0}
+  .eta{margin-left:auto}
+  .sys::before{display:none}
+  .sys-name{font-size:17px}
+  .tbtn .lx{display:none}
+  .tbtn{width:36px;padding:0;justify-content:center}
+  .eta .lx{display:none}
+  .views{order:9;flex-basis:100%;display:flex}
+  .views button{flex:1}
+  .sheet{width:calc(100% - 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 8px)}
+  .dock{border-radius:24px}
+  .hist{max-height:58vh}
+  .xdata{left:8px;right:8px;width:auto;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + var(--sheet-h) + 18px);padding:12px 16px;gap:7px;font-size:12.5px;border-radius:18px}
+  .xdata hr{display:none}
+  .xdata ul{gap:3px}
+  #canvas{padding-inline:12px}
+  .q-t{font-size:15.5px}
+  .opts{margin-top:10px}
+  .xnode{font-size:12px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-xray" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.3 7.2 15.6 11M8.3 16.8l7.3-3.8"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></symbol>
+</svg>
+
+<header class="top glass" id="top">
+  <div class="brand"><svg viewBox="0 0 20 20" aria-hidden="true"><rect class="m1" x="2" y="2" width="10" height="10" rx="3"/><rect class="m2" x="8" y="8" width="10" height="10" rx="3"/></svg><span class="wm">Born to Build</span></div>
+  <div class="sys" id="sys" hidden><span class="sys-name" id="sysName">Клиника «Светлая»</span></div>
+  <span class="grow"></span>
+  <div class="eta" id="eta" hidden role="progressbar" aria-label="Сборка системы" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <svg class="ring" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle class="tr" cx="11" cy="11" r="8.5"/><circle class="fg" cx="11" cy="11" r="8.5" pathLength="100"/></svg>
+    <span class="num" id="etaText"><span class="lx">осталось </span>18 с</span>
+  </div>
+  <div class="seg views" id="views" role="radiogroup" aria-label="Что показать" hidden>
+    <button type="button" role="radio" aria-checked="false" data-view="site">Сайт</button>
+    <button type="button" role="radio" aria-checked="false" data-view="cab">Кабинет</button>
+    <button type="button" role="radio" aria-checked="false" data-view="phone">Телефон</button>
+  </div>
+  <span class="grow"></span>
+  <button type="button" class="tbtn" id="xrayBtn" aria-pressed="false" aria-label="Как это работает" hidden><svg class="i" aria-hidden="true"><use href="#i-xray"/></svg><span class="lx">Как это работает</span></button>
+  <button type="button" class="tbtn icon" id="themeBtn" aria-pressed="false" aria-label="Тёмная тема"><svg class="i i-sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+</header>
+
+<div class="veil vt" aria-hidden="true"></div><div class="veil vb" aria-hidden="true"></div>
+<main id="canvas">
+  <div class="board" id="board" data-view="overview" hidden>
+    <div class="fw" data-f="site">
+      <div class="cap"><span>Сайт</span><span class="grow"></span><span class="sample">пример данных</span></div>
+      <div class="frame site-frame">
+        <div class="browser" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><svg class="i"><use href="#i-lock"/></svg>svetlaya.example</div>
+        <div class="site">
+          <section class="mod" data-mod="site-nav" hidden></section>
+          <section class="mod" data-mod="site-hero" data-pick="Первый экран" hidden></section>
+          <section class="mod" data-mod="site-services" data-pick="Услуги и цены" data-variant="0" hidden></section>
+          <section class="mod" data-mod="site-doctors" data-pick="Врачи" data-variant="0" hidden></section>
+          <section class="mod" data-mod="site-booking" data-pick="Запись" hidden></section>
+        </div>
+      </div>
+    </div>
+    <div class="fw" data-f="cab">
+      <div class="cap"><span>Кабинет</span></div>
+      <div class="frame cab-frame">
+        <div class="c-top" aria-hidden="true"><span class="c-logo"></span><b>Кабинет</b><span class="c-date">Чт, 8 октября</span></div>
+        <div class="cab">
+          <section class="mod" data-mod="cab-goals" hidden></section>
+          <section class="mod" data-mod="cab-today" hidden></section>
+          <section class="mod" data-mod="cab-client" hidden></section>
+        </div>
+      </div>
+    </div>
+    <div class="fw" data-f="phone" hidden>
+      <div class="cap"><span>Телефон</span><span class="grow"></span><span class="tag goal">Цель <i>·</i> неявок меньше 5%</span></div>
+      <div class="phone">
+        <div class="scr">
+          <div class="sbar" aria-hidden="true"><span class="num">9:41</span><span class="isl"></span><span class="sb-r"><i></i></span></div>
+          <section class="mod" data-mod="phone-notif" hidden></section>
+          <section class="mod" data-mod="phone-site" hidden></section>
+        </div>
+      </div>
+    </div>
+    <div class="xr-layer" aria-hidden="true"><svg class="wires" id="wires"></svg><div id="xnodes"></div></div>
+  </div>
+</main>
+
+<aside class="xdata" id="xdata" hidden aria-label="Кто видит данные">
+  <h2>Кто видит данные</h2>
+  <ul>
+    <li><span>Врач</span><b>свои записи</b></li>
+    <li><span>Администратор</span><b>всё расписание</b></li>
+    <li><span>Пациент</span><b>только свои визиты</b></li>
+  </ul>
+  <hr>
+  <h2>Сколько хранятся</h2>
+  <p>5 лет после последнего визита, потом удаляются</p>
+</aside>
+
+<section class="sheet is-start" id="sheet" aria-label="Разговор">
+  <h1 class="hello" id="hello">Добрый день</h1>
+  <div class="hist" id="hist" role="log" aria-label="Переписка" tabindex="-1"></div>
+  <div class="dock glass" id="dock">
+    <button type="button" class="grab" id="grab" aria-expanded="false" aria-controls="hist" aria-label="Показать переписку" hidden><i></i></button>
+    <div class="qcard" id="qcard" hidden></div>
+    <div class="sugg" id="sugg" hidden></div>
+    <form class="inrow" id="inrow" autocomplete="off">
+      <span class="target" id="target" hidden></span>
+      <label class="sr-only" for="msg">Сообщение</label>
+      <input id="msg" name="msg" type="text" placeholder="Расскажите о своём деле" enterkeyhint="send">
+      <button class="send" id="send" type="submit" aria-label="Отправить" disabled><svg class="i" aria-hidden="true"><use href="#i-up"/></svg></button>
+    </form>
+  </div>
+  <ul class="examples" id="examples" aria-label="Примеры">
+    <li><button type="button" class="ex" aria-pressed="false" data-ex="Стоматология: онлайн-запись и напоминания пациентам">Стоматология</button></li>
+    <li><button type="button" class="ex" aria-pressed="false" data-ex="Школа английского: пробный урок и расписание групп">Школа английского</button></li>
+    <li><button type="button" class="ex" aria-pressed="false" data-ex="Автосервис: запись на ремонт и статус машины">Автосервис</button></li>
+    <li><button type="button" class="ex" aria-pressed="false" data-ex="Пекарня: заказы на завтра с доставкой">Пекарня с доставкой</button></li>
+  </ul>
+</section>
+<div class="sr-only" aria-live="polite" id="live"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const root = document.documentElement;
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+const DARK = matchMedia('(prefers-color-scheme: dark)');
+const SPEED = /fast/.test(location.hash) ? 5 : 1;
+const sleep = ms => new Promise(r => setTimeout(r, ms / SPEED));
+const t = (s, c = '') => `<span class="t${c ? ' ' + c : ''}"><span class="tx">${s}</span></span>`;
+const restart = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+
+const E = {
+  top: $('#top'), board: $('#board'), sheet: $('#sheet'), dock: $('#dock'), hist: $('#hist'), qcard: $('#qcard'),
+  sugg: $('#sugg'), form: $('#inrow'), input: $('#msg'), send: $('#send'), target: $('#target'), grab: $('#grab'),
+  hello: $('#hello'), examples: $('#examples'), live: $('#live'), xrayBtn: $('#xrayBtn'), xdata: $('#xdata'),
+  eta: $('#eta'), etaText: $('#etaText'), views: $('#views'), theme: $('#themeBtn'),
+};
+const M = id => $(`[data-mod="${id}"]`);
+
+/* ——— Данные примера ——— */
+const DOCS = [
+  { n: 'Анна Соколова', r: 'терапевт', i: 'АС' },
+  { n: 'Илья Ветров', r: 'хирург', i: 'ИВ' },
+  { n: 'Мария Лис', r: 'ортодонт', i: 'МЛ' },
+];
+const services = [
+  { n: 'Профгигиена', p: '4 500 ₽', d: '60 мин' },
+  { n: 'Лечение кариеса', p: 'от 5 200 ₽', d: '50 мин' },
+  { n: 'Консультация', p: '900 ₽', d: '20 мин' },
+];
+const EXTRA = [{ n: 'Отбеливание', p: '12 000 ₽', d: '90 мин' }, { n: 'Детский приём', p: '1 500 ₽', d: '30 мин' }];
+const ROWS = [
+  { tm: '09:00', p: 'Анна К.', ini: 'АК', s: 'Профгигиена', d: 0, st: ['ok', 'Пришла'], ph: '+7 9•• •••-12-40', last: '12 марта', rem: 'подтвердила в Телеграме' },
+  { tm: '10:30', p: 'Игорь С.', ini: 'ИС', s: 'Консультация', d: 1, st: ['ok', 'Подтвердил'], ph: '+7 9•• •••-55-08', last: 'впервые', rem: 'подтвердил письмом' },
+  { tm: '11:00', p: 'Мария Л.', ini: 'МЛ', s: 'Лечение кариеса', d: 0, st: ['warn', 'Не ответила'], ph: '+7 9•• •••-31-77', last: '2 сентября', rem: 'нет ответа, повтор в 9:00' },
+  { tm: '12:30', p: 'Олег Д.', ini: 'ОД', s: 'Профгигиена', d: 2, st: ['mute', 'Напомнили'], ph: '+7 9•• •••-90-14', last: '18 мая', rem: 'отправлено вчера' },
+  { tm: '15:00', p: 'Елена В.', ini: 'ЕВ', s: 'Консультация', d: 1, st: ['bad', 'Отменила'], ph: '+7 9•• •••-46-22', last: 'впервые', rem: 'отменила в Телеграме' },
+  { tm: '17:30', p: 'Пётр Н.', ini: 'ПН', s: 'Лечение кариеса', d: 2, st: ['ok', 'Подтвердил'], ph: '+7 9•• •••-08-63', last: '30 июня', rem: 'подтвердил в Телеграме' },
+];
+const GOALS = [
+  { l: 'Занятость кресел', v: '78', val: 78, goal: 80, g: 'цель 80%', s: 'почти' },
+  { l: 'Неявки', v: '4,1', val: 4.1, goal: 5, g: 'цель до 5%', s: 'в цели' },
+  { l: 'Повторные визиты', v: '37', val: 37, goal: 40, g: 'цель 40%', s: 'растёт' },
+];
+const Q = [
+  { key: 'docs', text: 'Сколько врачей ведут приём?', opts: ['Один', 'Два', 'Три'] },
+  { key: 'remind', text: 'Как напоминать пациентам о визите?', opts: ['Письмо', 'Телеграм', 'СМС'], multi: true },
+  { key: 'pay', text: 'Принимать оплату на сайте?', opts: ['Да, картой', 'Нет, оплата в клинике'] },
+];
+const STEPS = [
+  { at: 0, l: 'Сайт клиники', m: ['site-nav', 'site-hero'] },
+  { at: 2100, l: 'Услуги и цены', m: ['site-services'] },
+  { at: 3700, l: 'Врачи', m: ['site-doctors'] },
+  { at: 5200, l: 'Запись по времени', m: ['site-booking'] },
+  { at: 6900, l: 'Напоминания', m: ['phone-notif'] },
+  { at: 10900, l: 'Кабинет', m: ['cab-today', 'cab-client'] },
+  { at: 12800, l: 'Панель цели', m: ['cab-goals'] },
+  { at: 14600, l: 'Сайт на телефоне', m: ['phone-site'] },
+  { at: 16200, l: 'Проверка', m: [] },
+];
+const TOTAL = 17800, XR_ON = 7300, XR_OFF = 10900, NOTE_AT = 8900;
+const XR = [
+  { a: '[data-x="book"]', text: 'Пациент выбирает время' },
+  { a: '[data-x="table"]', text: 'Запись встаёт в расписание врача' },
+  { a: '[data-x="notif"]', text: 'Напоминание за сутки и за 2 часа' },
+  { a: '[data-x="goals"]', text: 'Вечером пересчёт целей' },
+];
+const EDGES = [[0, 1], [1, 2], [1, 3]];
+const VARS = { 'site-services': 3, 'site-hero': 2, 'site-doctors': 2 };
+
+const S = { phase: 'start', qi: 0, ans: {}, view: 'overview', xray: false, autoXr: false, prevView: null, sel: null, undo: null, extra: 0, client: 0, vchanged: {} };
+
+/* ——— Отрисовка модулей ——— */
+function fill(el, html) {
+  el.innerHTML = html + '<span class="edge" aria-hidden="true"></span>';
+}
+const nDocs = () => S.ans.docs || 0;
+function renderNav() {
+  fill(M('site-nav'), `<div class="s-nav"><span class="s-logo sf biz"></span>${t('Клиника «Светлая»', 's-name')}<span class="s-links">${t('Услуги')}${t('Врачи')}${t('Контакты')}</span><span class="s-btn sf biz">${t('Записаться')}</span></div>`);
+}
+function renderHero() {
+  const who = nDocs() ? DOCS[0].n + ' · кресло 2' : 'кресло 2';
+  fill(M('site-hero'), `<div class="s-hero"><div class="s-copy"><h2 class="s-h">${t('Спокойное лечение без очередей', 'lines')}</h2><p class="s-p">${t('Приём с 9 до 21 без выходных. Выберите время онлайн, а накануне мы напомним.', 'lines')}</p><span class="s-btn sf biz">${t('Выбрать время')}</span></div><div class="ph"><span class="art"></span><div class="slot sf">${t('Ближайшее окно', 'k')}${t('Чт, 11:00', 'v')}${t(who, 'k')}</div></div></div>`);
+}
+function renderServices() {
+  fill(M('site-services'), `<div class="mh"><h3 class="lbl">Услуги и цены</h3></div><div class="svc-list">${services.map((s, i) =>
+    `<div class="svc sf${s.fresh ? ' forge' : ''}" style="--i:${i}"><span class="svc-ph ph"><span class="art"></span></span><span class="svc-n">${t(s.n)}</span><span class="svc-lead"></span><span class="svc-d">${t(s.d)}</span><span class="svc-p">${t(s.p)}</span>${s.fresh ? '<span class="edge" aria-hidden="true"></span>' : ''}</div>`).join('')}</div>`);
+}
+function renderDoctors() {
+  const n = Math.max(1, nDocs());
+  fill(M('site-doctors'), `<div class="mh"><h3 class="lbl">Врачи</h3></div><div class="docs">${DOCS.slice(0, n).map((d, i) =>
+    `<div class="doc sf" style="--i:${i}"><span class="av sf">${t(d.i)}</span><span class="who">${t(d.n)}${t(d.r)}</span></div>`).join('')}</div>`);
+}
+function renderBooking(fresh) {
+  const n = nDocs(), pay = S.ans.pay;
+  const nw = k => fresh === k ? ' ch-new' : '';
+  fill(M('site-booking'), `<div class="mh"><h3 class="lbl">Запись</h3>${pay === 'clinic' ? '<span class="tag out">Не входит <i>·</i> <b>онлайн-оплата</b> → оплата в клинике</span>' : ''}</div>
+  <div class="book">
+    <div class="days">${['Чт, 8 окт', 'Пт, 9', 'Сб, 10'].map((d, i) => `<span class="day sf${i ? '' : ' on'}">${t(d)}</span>`).join('')}</div>
+    ${n ? `<div class="pick${nw('docs')}">${DOCS.slice(0, n).map((d, i) => `<span class="pk sf${i ? '' : ' on'}"><span class="av sf">${t(d.i)}</span>${t(d.n.split(' ')[0])}</span>`).join('')}</div>` : ''}
+    <div class="slots">${['10:30', '11:00', '12:30', '15:00', '17:30', '19:00'].map(s => `<span class="sl sf${s === '11:00' ? ' on' : ''}">${t(s)}</span>`).join('')}</div>
+    <div class="b-foot"><span class="s-btn sf biz" data-x="book">${t('Записаться на 11:00')}</span>${pay ? `<span class="bk-note${nw('pay')}">${t(pay === 'clinic' ? 'Оплата в клинике после приёма' : 'Оплата картой при записи')}</span>` : ''}</div>
+  </div>`);
+}
+function goalRing(g) {
+  const a = g.goal / 100 * 2 * Math.PI, c = 24, r = 19;
+  const p = k => [(c + (r + k) * Math.cos(a)).toFixed(2), (c + (r + k) * Math.sin(a)).toFixed(2)];
+  const [x1, y1] = p(-5), [x2, y2] = p(5);
+  return `<svg class="ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="tr" cx="24" cy="24" r="19"/><circle class="fg" cx="24" cy="24" r="19" pathLength="100" style="--off:${(100 - g.val).toFixed(1)}"/><line class="tk" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/></svg>`;
+}
+function renderGoals() {
+  fill(M('cab-goals'), `<div class="mh"><h3 class="lbl" data-x="goals">Панель цели</h3><span class="tag goal">Цель <i>·</i> занятость кресел 80%</span></div><div class="goals">${GOALS.map(g =>
+    `<div class="g sf"><span class="g-ring">${goalRing(g)}</span><span class="g-v">${t(g.v + '<small>%</small>')}</span><span class="g-l">${t(g.l)}</span><span class="g-k">${t(g.g)}${t(g.s, 'g-s')}</span></div>`).join('')}</div>`);
+}
+function renderToday() {
+  const n = Math.max(1, nDocs());
+  fill(M('cab-today'), `<div class="mh"><h3 class="lbl" data-x="table">Записи на сегодня</h3><span class="k">${t('6 записей')}</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Время</th><th>Пациент</th><th class="c-svc">Услуга</th><th class="c-doc">Врач</th><th class="c-rem">Напоминание</th></tr></thead><tbody>${ROWS.map((r, i) =>
+    `<tr data-i="${i}" tabindex="-1" aria-selected="${i === S.client}"><td>${t(r.tm)}</td><td>${t(r.p)}</td><td class="c-svc">${t(r.s)}</td><td class="c-doc">${t(DOCS[r.d % n].n.split(' ')[0])}</td><td class="c-rem"><span class="st ${r.st[0]}">${t(r.st[1])}</span></td></tr>`).join('')}</tbody></table></div>`);
+}
+function renderClient(swap) {
+  const r = ROWS[S.client], n = Math.max(1, nDocs());
+  fill(M('cab-client'), `<div class="cl sf card${swap ? ' swap' : ''}"><div class="cl-head"><span class="cl-av sf">${t(r.ini)}</span><span class="cl-who">${t(r.p)}${t(r.ph)}</span></div><div class="cl-body"><dl class="cl-dl"><dt>Сегодня</dt><dd>${t(r.tm + ' · ' + r.s)}</dd><dt>Врач</dt><dd>${t(DOCS[r.d % n].n)}</dd><dt>Прошлый визит</dt><dd>${t(r.last)}</dd><dt>Напоминание</dt><dd>${t(r.rem)}</dd></dl><div class="cl-act"><span class="s-btn sf soft">${t('Предложить перенос')}</span><span class="s-btn sf plain">${t('Заметка')}</span></div></div></div>`);
+}
+function renderNotif() {
+  const ch = S.ans.remind || [];
+  const doc = nDocs() ? ' у Анны Соколовой' : '';
+  let h = '';
+  if (ch.includes('Телеграм')) h += `<div class="ntf sf"><span class="n-ic sf"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg></span><div><div class="n-h">${t('Клиника «Светлая»')}<span class="n-t">Телеграм</span></div><p class="n-p">${t(`Завтра в 11:00 профгигиена${doc}. Придёте?`, 'lines')}</p><div class="n-act"><span class="n-b sf y">${t('Приду')}</span><span class="n-b sf">${t('Перенести')}</span></div></div></div>`;
+  if (ch.includes('СМС')) h += `<div class="ntf sf"><span class="n-ic sf mail"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg></span><div><div class="n-h">${t('Сообщение')}<span class="n-t">СМС</span></div><p class="n-p">${t('Светлая: завтра 11:00. Ответьте 1, если придёте', 'lines')}</p></div></div>`;
+  if (ch.includes('Письмо')) h += `<div class="ntf sf"><span class="n-ic sf mail"><svg class="i" aria-hidden="true"><use href="#i-mail"/></svg></span><div><div class="n-h">${t('Почта')}<span class="n-t">письмо</span></div><p class="n-p">${t('Напоминание о визите: завтра, 11:00', 'lines')}</p></div></div>`;
+  fill(M('phone-notif'), `<div class="ntfs" data-x="notif">${h}</div>`);
+}
+function renderPhone() {
+  fill(M('phone-site'), `<div class="m-site sf card"><div class="m-nav"><span class="s-logo sf biz"></span>${t('Клиника «Светлая»')}<span class="burger"></span></div><h4 class="m-h">${t('Спокойное лечение без очередей', 'lines')}</h4><div class="m-slots">${['10:30', '11:00', '12:30', '15:00'].map(s => `<span class="sl sf${s === '11:00' ? ' on' : ''}">${t(s)}</span>`).join('')}</div><span class="s-btn sf biz">${t('Записаться')}</span></div>`);
+}
+function renderAll() { renderNav(); renderHero(); renderServices(); renderDoctors(); renderBooking(); renderGoals(); renderToday(); renderClient(); renderNotif(); renderPhone(); }
+
+/* ——— Помощники движения ——— */
+function grow(ids, step = 120) {
+  ids.forEach((id, i) => { const el = M(id); el.hidden = false; el.dataset.m = 'sketch'; el.style.setProperty('--dl', i * step + 'ms'); restart(el, 'born'); });
+}
+function touch(el) { restart(el, 'touch'); setTimeout(() => el.classList.remove('touch'), 1900); }
+function forge(el) { restart(el, 'forge'); setTimeout(() => el.classList.remove('forge'), 1700); }
+function reveal(el) {
+  if (!el || !el.offsetParent) return;
+  const r = el.getBoundingClientRect();
+  const top = E.top.getBoundingClientRect().bottom + 14, lim = E.dock.getBoundingClientRect().top - 16;
+  let dy = 0;
+  if (r.top < top || r.height > lim - top) dy = r.top - top;
+  else if (r.bottom > lim) dy = r.bottom - lim;
+  if (Math.abs(dy) > 4) window.scrollBy({ top: dy, behavior: RM.matches ? 'auto' : 'smooth' });
+}
+function announce(s) { E.live.textContent = ''; setTimeout(() => { E.live.textContent = s; }, 30); }
+function setThink(on) { E.sheet.classList.toggle('think', on); E.dock.setAttribute('aria-busy', String(on)); }
+function addMsg(who, text) {
+  const m = document.createElement('div'); m.className = 'msg ' + who; m.textContent = text; E.hist.append(m);
+  if (E.sheet.classList.contains('open')) E.hist.scrollTop = E.hist.scrollHeight;
+}
+function card(html) { E.qcard.hidden = false; E.qcard.innerHTML = html; restart(E.qcard, 'swap'); layout(); }
+
+/* ——— Раскладка плавающих слоёв ——— */
+function layout() {
+  root.style.setProperty('--top-h', E.top.offsetHeight + 'px');
+  root.style.setProperty('--sheet-h', E.dock.offsetHeight + 'px');
+  if (E.sheet.classList.contains('is-start')) {
+    const narrow = innerWidth <= 600, h = E.sheet.offsetHeight;
+    root.style.setProperty('--lift', Math.max(0, (innerHeight - h) / 2 - (narrow ? 8 : 16) - (narrow ? 24 : 36)) + 'px');
+  }
+  if (S.xray) drawWires();
+}
+
+/* ——— Сценарий ——— */
+async function begin(text) {
+  S.phase = 'think';
+  addMsg('me', text);
+  const before = E.dock.getBoundingClientRect().top;
+  E.sheet.classList.add('leaving');
+  await sleep(RM.matches ? 0 : 280);
+  E.hello.hidden = true; E.examples.hidden = true;
+  E.sheet.classList.add('no-tr');
+  E.sheet.classList.remove('is-start', 'leaving');
+  root.style.setProperty('--lift', '0px');
+  const after = E.dock.getBoundingClientRect().top;
+  root.style.setProperty('--lift', (after - before) + 'px');
+  void E.sheet.offsetWidth;
+  E.sheet.classList.remove('no-tr');
+  root.style.setProperty('--lift', '0px');
+  E.grab.hidden = false;
+  E.input.placeholder = 'Свой ответ';
+  setThink(true);
+  layout();
+  await sleep(900);
+  if (!/стомат|зуб|клиник|дент/i.test(text)) addMsg('ai', 'Покажу на примере стоматологии.');
+  root.classList.add('biz');
+  E.top.classList.add('has-sys'); $('#sys').hidden = false; E.xrayBtn.hidden = false;
+  E.board.hidden = false;
+  renderAll();
+  grow(['site-nav', 'site-hero', 'site-services', 'site-booking', 'cab-goals', 'cab-today', 'cab-client']);
+  addMsg('ai', 'Набросал сайт с записью и кабинет клиники.');
+  announce('Появился эскиз системы');
+  await sleep(800);
+  setThink(false);
+  showQ(0);
+}
+function showQ(i) {
+  S.phase = 'q'; S.qi = i; const q = Q[i];
+  card(`<p class="q-k">${i + 1} из ${Q.length}</p><p class="q-t" id="qt">${q.text}</p><div class="opts" role="group" aria-labelledby="qt">${q.opts.map(o => `<button type="button" class="opt" aria-pressed="false" data-opt="${o}">${o}</button>`).join('')}</div>${q.multi ? '<div class="q-foot"><button type="button" class="btn primary small" data-act="next" disabled>Дальше</button></div>' : ''}`);
+  addMsg('ai', q.text);
+  announce(q.text);
+}
+const joinRu = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' и ' + a[a.length - 1];
+async function answer(val, said) {
+  const q = Q[S.qi]; S.phase = 'think';
+  addMsg('me', said || (Array.isArray(val) ? joinRu(val) : val));
+  setThink(true);
+  await sleep(650);
+  apply(q.key, val);
+  await sleep(650);
+  setThink(false);
+  if (S.qi + 1 < Q.length) showQ(S.qi + 1); else showBuild();
+}
+function apply(key, val) {
+  if (key === 'docs') {
+    S.ans.docs = { 'Один': 1, 'Два': 2, 'Три': 3 }[val] || 3;
+    renderDoctors(); renderHero(); renderBooking('docs'); renderToday(); renderClient();
+    M('cab-today').classList.add('has-doc');
+    grow(['site-doctors']); touch(M('site-booking')); touch(M('cab-today'));
+    reveal(M('site-doctors'));
+    addMsg('ai', 'Добавил врачей и выбор врача при записи.');
+  }
+  if (key === 'remind') {
+    S.ans.remind = val.length ? val : ['Письмо'];
+    renderNotif(); renderPhone(); renderToday();
+    const fw = $('.fw[data-f="phone"]'); fw.hidden = false;
+    grow(['phone-notif', 'phone-site']);
+    M('cab-today').classList.add('has-rem'); touch(M('cab-today'));
+    reveal(fw);
+    addMsg('ai', 'Напоминания за сутки и за 2 часа.');
+  }
+  if (key === 'pay') {
+    S.ans.pay = /Нет/.test(val) ? 'clinic' : 'card';
+    renderBooking('pay'); touch(M('site-booking'));
+    reveal(M('site-booking'));
+    addMsg('ai', S.ans.pay === 'clinic' ? 'Онлайн-оплату не делаю, на сайте будет «оплата в клинике».' : 'Добавил оплату картой при записи.');
+  }
+}
+function showBuild() {
+  S.phase = 'prebuild';
+  const a = S.ans;
+  const dw = { 1: 'Один врач', 2: 'Два врача', 3: 'Три врача' }[a.docs];
+  const rw = joinRu(a.remind.map(x => x === 'Письмо' ? 'письмо' : x));
+  card(`<div class="sum"><p><b>${dw}</b> · ${rw} · ${a.pay === 'clinic' ? 'оплата в клинике' : 'оплата картой'}</p><button type="button" class="btn primary" data-act="build"><span class="spark" aria-hidden="true"></span>Собрать</button></div>`);
+  addMsg('ai', 'Можно собирать.');
+}
+function setEta(p, remMs) {
+  $('.fg', E.eta).style.strokeDashoffset = (100 - p * 100).toFixed(2);
+  E.eta.setAttribute('aria-valuenow', String(Math.round(p * 100)));
+  const s = Math.max(0, Math.ceil(remMs / 1000));
+  const txt = `<span class="lx">осталось </span>${s} с`;
+  if (E.etaText.dataset.s !== String(s)) { E.etaText.dataset.s = String(s); E.etaText.innerHTML = txt; }
+}
+function build() {
+  if (S.phase !== 'prebuild') return;
+  S.phase = 'build';
+  E.sheet.classList.add('building'); setThink(true);
+  addMsg('me', 'Собрать');
+  card(`<div class="b-row"><span class="spark" aria-hidden="true"></span><span class="k">Собираю</span><b id="bStep">Сайт клиники</b><span class="num" id="bCount">1 из ${STEPS.length}</span></div><div id="bNote"></div>`);
+  E.eta.hidden = false; E.eta.classList.remove('done'); setEta(0, TOTAL);
+  announce('Сборка началась');
+  const t0 = performance.now(); let si = 0, xrOn = false, xrOff = false, noted = false;
+  const loop = now => {
+    const el = (now - t0) * SPEED;
+    while (si < STEPS.length && el >= STEPS[si].at) runStep(STEPS[si], si++);
+    if (!xrOn && el >= XR_ON) { xrOn = true; if (!S.xray) { setXray(true); S.autoXr = true; } }
+    if (xrOn && !xrOff && el >= XR_OFF) { xrOff = true; if (S.autoXr) { S.autoXr = false; setXray(false); } }
+    if (!noted && el >= NOTE_AT) { noted = true; $('#bNote').innerHTML = '<p class="b-note">Задержка у модели → продолжили на запасной</p>'; addMsg('sys warn', 'Задержка у модели → продолжили на запасной'); layout(); }
+    setEta(Math.min(1, el / TOTAL), TOTAL - el);
+    if (el < TOTAL) requestAnimationFrame(loop); else finish();
+  };
+  requestAnimationFrame(loop);
+}
+function runStep(s, i) {
+  $('#bStep').textContent = s.l; $('#bCount').textContent = `${i + 1} из ${STEPS.length}`;
+  s.m.forEach((id, k) => {
+    const el = M(id); if (!el || el.hidden) return;
+    setTimeout(() => {
+      el.dataset.m = 'surface';
+      if (!S.xray) reveal(el);
+      setTimeout(() => { el.dataset.m = 'live'; forge(el); }, 520 / SPEED);
+    }, k * 260 / SPEED);
+  });
+}
+function finish() {
+  S.phase = 'ready';
+  E.sheet.classList.remove('building'); setThink(false);
+  $$('.mod:not([hidden])').forEach(m => { m.dataset.m = 'live'; });
+  root.classList.add('ready');
+  E.eta.classList.add('done'); setEta(1, 0);
+  setTimeout(() => { E.eta.hidden = true; E.views.hidden = false; layout(); }, 650 / SPEED);
+  card(`<p class="ready-h">Система готова</p><p class="ready-m">9 блоков · проверка пройдена</p><div class="ready-a"><button type="button" class="btn primary" data-go="site">Открыть сайт</button><button type="button" class="btn" data-go="cab">Кабинет</button><button type="button" class="btn" data-go="phone">Телефон</button></div>`);
+  addMsg('ai', 'Система готова.');
+  announce('Система готова');
+  E.input.placeholder = 'Что поменять?';
+  $$('.mod[data-pick]').forEach(m => { m.tabIndex = 0; m.setAttribute('role', 'button'); m.setAttribute('aria-pressed', 'false'); m.setAttribute('aria-label', `Блок «${m.dataset.pick}»`); });
+  $$('.tbl tbody tr').forEach(r => r.tabIndex = 0);
+  window.scrollTo({ top: 0, behavior: RM.matches ? 'auto' : 'smooth' });
+}
+
+/* ——— Виды и рентген ——— */
+function setView(v) {
+  if (S.xray) { S.autoXr = false; setXray(false); }
+  deselect();
+  S.view = v; E.board.dataset.view = v;
+  $$('[role=radio]', E.views).forEach(b => { const on = b.dataset.view === v; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+  const fw = $(`.fw[data-f="${v}"]`); if (fw) restart(fw, 'swap');
+  if (S.phase === 'ready' && E.qcard.querySelector('.ready-h')) E.qcard.hidden = true;
+  window.scrollTo({ top: 0 });
+  layout();
+}
+function setXray(on) {
+  S.xray = on; E.xrayBtn.setAttribute('aria-pressed', String(on));
+  if (on && S.view !== 'overview') { S.prevView = S.view; E.board.dataset.view = 'overview'; }
+  if (!on && S.prevView) { E.board.dataset.view = S.prevView; S.prevView = null; }
+  if (on) deselect();
+  if (on && S.phase === 'ready' && $('.ready-h', E.qcard)) { E.qcard.hidden = true; root.style.setProperty('--sheet-h', E.dock.offsetHeight + 'px'); }
+  E.board.classList.toggle('xr', on); E.xdata.hidden = !on;
+  if (on) { const ext = drawWires(); zoomChain(ext); } else E.board.style.removeProperty('--xs');
+}
+function zoomChain(ext) {
+  if (!ext) return;
+  const top = E.top.getBoundingClientRect().bottom + 24, room0 = innerWidth <= 600 ? E.xdata.getBoundingClientRect().top : E.dock.getBoundingClientRect().top, lim = room0 - 24, room = lim - top;
+  const xs = Math.max(innerWidth <= 600 ? .32 : .55, Math.min(1, room / (ext.y1 - ext.y0 + 80)));
+  E.board.style.setProperty('--xs', xs.toFixed(3));
+  const boardTop = E.board.getBoundingClientRect().top + scrollY;
+  const cy = boardTop + (ext.y0 + ext.y1) / 2 * xs;
+  window.scrollTo({ top: Math.max(0, cy - (top + lim) / 2), behavior: RM.matches ? 'auto' : 'smooth' });
+}
+function drawWires() {
+  const b = E.board.getBoundingClientRect(), sc = b.width / E.board.offsetWidth || 1, bw = E.board.offsetWidth;
+  const nodes = $('#xnodes'); nodes.innerHTML = '';
+  let k = 0;
+  const pts = XR.map(x => {
+    const a = $(x.a); if (!a || !a.offsetParent || a.closest('[hidden]')) return null;
+    const r = a.getBoundingClientRect();
+    const p = { x: (r.left + r.width / 2 - b.left) / sc, y: (r.top + r.height / 2 - b.top) / sc };
+    const n = document.createElement('div'); n.className = 'xnode'; n.style.setProperty('--i', ++k);
+    n.innerHTML = `<b>${k}</b>${x.text}`; nodes.append(n);
+    const w = n.offsetWidth; p.x = Math.max(w / 2 + 2, Math.min(bw - w / 2 - 2, p.x));
+    n.style.left = p.x + 'px'; n.style.top = p.y + 'px';
+    return p;
+  });
+  const svg = $('#wires'); svg.setAttribute('viewBox', `0 0 ${bw} ${E.board.offsetHeight}`);
+  svg.innerHTML = EDGES.map(([i, j]) => {
+    const p = pts[i], q = pts[j]; if (!p || !q) return '';
+    const dx = q.x - p.x, dy = q.y - p.y;
+    const d = Math.abs(dy) > Math.abs(dx) * .6
+      ? `M${p.x} ${p.y}C${p.x} ${p.y + dy * .55} ${q.x} ${q.y - dy * .55} ${q.x} ${q.y}`
+      : `M${p.x} ${p.y}C${p.x + dx * .55} ${p.y} ${q.x - dx * .55} ${q.y} ${q.x} ${q.y}`;
+    return `<path class="base" pathLength="1" d="${d}"/><path class="flow" d="${d}"/>`;
+  }).join('');
+  const ys = pts.filter(Boolean).map(p => p.y);
+  return ys.length ? { y0: Math.min(...ys), y1: Math.max(...ys) } : null;
+}
+
+/* ——— «Ткни и скажи» ——— */
+function select(m) {
+  if (S.sel === m) return;
+  deselect(); clearUndo();
+  S.sel = m; m.classList.add('sel'); m.setAttribute('aria-pressed', 'true');
+  E.target.innerHTML = `<span>${m.dataset.pick}</span><button type="button" aria-label="Снять выбор"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>`;
+  E.target.hidden = false; E.qcard.hidden = true;
+  E.input.placeholder = 'Что поменять?';
+  renderSugg();
+  announce(`Выбран блок «${m.dataset.pick}»`);
+}
+function deselect() {
+  if (!S.sel) return;
+  S.sel.classList.remove('sel'); S.sel.setAttribute('aria-pressed', 'false'); S.sel = null;
+  E.target.hidden = true; if (!S.undo) E.sugg.hidden = true;
+  layout();
+}
+function clearUndo() { S.undo = null; E.sugg.hidden = true; }
+function renderSugg(focusKey) {
+  const m = S.sel, id = m.dataset.mod, nv = VARS[id];
+  let h = '';
+  if (nv) h += '<button type="button" class="opt" data-s="view">Другой вид</button>';
+  if (id === 'site-services' && S.extra < EXTRA.length) h += '<button type="button" class="opt" data-s="add">Добавить позицию</button>';
+  h += '<button type="button" class="opt" data-s="remove">Убрать</button>';
+  if (nv && S.vchanged[id]) h += `<span class="vc">вид ${(+m.dataset.variant || 0) + 1} из ${nv}</span>`;
+  E.sugg.innerHTML = h; E.sugg.hidden = false;
+  if (focusKey) { const b = $(`[data-s="${focusKey}"]`, E.sugg); b && b.focus(); }
+  layout();
+}
+function act(kind, said) {
+  const m = S.sel; if (!m && kind !== 'undo') return;
+  if (kind === 'view') {
+    const id = m.dataset.mod, nv = VARS[id]; if (!nv) return;
+    m.dataset.variant = String(((+m.dataset.variant || 0) + 1) % nv);
+    S.vchanged[id] = true;
+    restart(m, 'vswap'); touch(m);
+    addMsg('me', said || `${m.dataset.pick}: другой вид`);
+    renderSugg(said ? null : 'view');
+    announce(`Вид ${+m.dataset.variant + 1} из ${nv}`);
+  }
+  if (kind === 'add') {
+    const it = { ...EXTRA[S.extra++], fresh: true }; services.push(it);
+    renderServices(); setTimeout(() => { it.fresh = false; }, 50);
+    addMsg('me', said || `Добавить позицию: ${it.n}`);
+    renderSugg(said ? null : (S.extra < EXTRA.length ? 'add' : 'view'));
+    announce(`Добавлена позиция «${it.n}»`);
+  }
+  if (kind === 'remove') {
+    const name = m.dataset.pick; deselect();
+    m.classList.add('gone');
+    setTimeout(() => { m.hidden = true; m.classList.remove('gone'); }, RM.matches ? 0 : 340);
+    S.undo = m;
+    addMsg('me', said || `Убрать блок «${name}»`);
+    E.sugg.innerHTML = `<span class="undo">Блок «${name}» убран<button type="button" class="opt" data-s="undo">Вернуть</button></span>`;
+    E.sugg.hidden = false; $('[data-s="undo"]', E.sugg).focus();
+    announce(`Блок «${name}» убран`); layout();
+  }
+  if (kind === 'undo' && S.undo) {
+    const m2 = S.undo; m2.hidden = false; touch(m2); clearUndo(); layout();
+    addMsg('me', 'Вернуть блок');
+    m2.focus({ preventScroll: true }); reveal(m2);
+  }
+}
+function pickRow(i) {
+  S.client = i;
+  $$('.tbl tbody tr').forEach(r => r.setAttribute('aria-selected', String(+r.dataset.i === i)));
+  const cl = M('cab-client');
+  if (!cl.offsetParent) { setView('cab'); }
+  renderClient(true);
+}
+
+/* ——— События ——— */
+const syncSend = () => { E.send.disabled = !E.input.value.trim(); };
+E.input.addEventListener('input', () => { syncSend(); if (S.phase === 'start') $$('.ex').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ex === E.input.value))); });
+E.examples.addEventListener('click', e => {
+  const b = e.target.closest('.ex'); if (!b) return;
+  E.input.value = b.dataset.ex; syncSend();
+  $$('.ex').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  E.input.focus();
+});
+E.form.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = E.input.value.trim(); if (!v) return;
+  E.input.value = ''; syncSend();
+  if (S.phase === 'start') return void begin(v);
+  if (S.phase === 'q') {
+    const q = Q[S.qi]; let val;
+    if (q.key === 'docs') { const d = v.match(/\d/); val = d ? q.opts[Math.min(3, Math.max(1, +d[0])) - 1] : /одн|один/i.test(v) ? 'Один' : /дв/i.test(v) ? 'Два' : 'Три'; }
+    else if (q.key === 'remind') { val = q.opts.filter(o => new RegExp(o.slice(0, 4), 'i').test(v)); if (!val.length) val = ['Письмо', 'Телеграм']; }
+    else val = /нет|клиник|налич|на месте/i.test(v) ? 'Нет, оплата в клинике' : 'Да, картой';
+    return void answer(val, v);
+  }
+  if (S.phase === 'prebuild') { if (/собер|собрать|^да|поехали/i.test(v)) build(); else { addMsg('me', v); addMsg('ai', 'Учту при сборке.'); } return; }
+  if (S.phase === 'ready') {
+    if (S.sel) {
+      if (/убер|убра|удал/i.test(v)) act('remove', v);
+      else if (/добав/i.test(v) && S.sel.dataset.mod === 'site-services' && S.extra < EXTRA.length) act('add', v);
+      else if (VARS[S.sel.dataset.mod]) act('view', v);
+      else { addMsg('me', v); addMsg('ai', 'Готово.'); touch(S.sel); }
+    } else { addMsg('me', v); addMsg('ai', 'Ткните в блок на холсте, который хотите поменять.'); openHist(true); }
+  }
+});
+E.qcard.addEventListener('click', e => {
+  const o = e.target.closest('[data-opt]'), a = e.target.closest('[data-act]'), g = e.target.closest('[data-go]');
+  if (o && S.phase === 'q') {
+    if (Q[S.qi].multi) {
+      o.setAttribute('aria-pressed', String(o.getAttribute('aria-pressed') !== 'true'));
+      $('[data-act="next"]', E.qcard).disabled = !$('[data-opt][aria-pressed="true"]', E.qcard);
+    } else { o.setAttribute('aria-pressed', 'true'); answer(o.dataset.opt); }
+  }
+  if (a && a.dataset.act === 'next' && S.phase === 'q') answer($$('[data-opt][aria-pressed="true"]', E.qcard).map(b => b.dataset.opt));
+  if (a && a.dataset.act === 'build') build();
+  if (g) setView(g.dataset.go);
+});
+E.sugg.addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (b) act(b.dataset.s); });
+E.target.addEventListener('click', e => { if (e.target.closest('button')) { deselect(); E.input.focus(); } });
+E.board.addEventListener('click', e => {
+  if (S.phase !== 'ready' || S.xray) return;
+  const row = e.target.closest('.tbl tbody tr');
+  if (row) { pickRow(+row.dataset.i); return; }
+  const m = e.target.closest('.mod[data-pick]');
+  if (m) select(m); else deselect();
+});
+E.board.addEventListener('keydown', e => {
+  if (S.phase !== 'ready' || (e.key !== 'Enter' && e.key !== ' ')) return;
+  const row = e.target.closest('.tbl tbody tr');
+  if (row && e.target === row) { e.preventDefault(); pickRow(+row.dataset.i); return; }
+  if (e.target.matches('.mod[data-pick]')) { e.preventDefault(); select(e.target); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (E.sheet.classList.contains('open')) openHist(false);
+  else if (S.sel) { const m = S.sel; deselect(); m.focus(); }
+  else if (S.xray) setXray(false);
+});
+E.views.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
+E.views.addEventListener('keydown', e => {
+  const bs = $$('[role=radio]', E.views), i = bs.indexOf(document.activeElement); if (i < 0) return;
+  const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!d) return;
+  e.preventDefault(); const j = (i + d + bs.length) % bs.length; bs[j].focus(); setView(bs[j].dataset.view);
+});
+E.xrayBtn.addEventListener('click', () => { S.autoXr = false; setXray(!S.xray); });
+
+/* лист переписки: тап или протягивание */
+function openHist(on) {
+  E.sheet.classList.toggle('open', on);
+  E.grab.setAttribute('aria-expanded', String(on));
+  E.grab.setAttribute('aria-label', on ? 'Скрыть переписку' : 'Показать переписку');
+  if (on) E.hist.scrollTop = E.hist.scrollHeight;
+}
+let drag = null, dragged = false;
+E.grab.addEventListener('pointerdown', e => { drag = e.clientY; dragged = false; E.grab.setPointerCapture(e.pointerId); });
+E.grab.addEventListener('pointermove', e => { if (drag == null) return; const dy = e.clientY - drag; if (Math.abs(dy) > 14 && !dragged) { dragged = true; openHist(dy < 0); } });
+E.grab.addEventListener('pointerup', () => { drag = null; });
+E.grab.addEventListener('click', () => { if (dragged) { dragged = false; return; } openHist(!E.sheet.classList.contains('open')); });
+document.addEventListener('pointerdown', e => { if (E.sheet.classList.contains('open') && !E.sheet.contains(e.target)) openHist(false); });
+
+/* тема */
+function isDark() { return root.dataset.theme ? root.dataset.theme === 'dark' : DARK.matches; }
+function syncTheme() { const d = isDark(); root.toggleAttribute('data-dark', d); E.theme.setAttribute('aria-pressed', String(d)); }
+E.theme.addEventListener('click', () => { root.dataset.theme = isDark() ? 'light' : 'dark'; syncTheme(); });
+DARK.addEventListener('change', syncTheme);
+
+/* старт */
+const h = new Date().getHours();
+E.hello.textContent = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
+syncTheme();
+const ro = new ResizeObserver(() => layout());
+[E.dock, E.top, E.board].forEach(x => ro.observe(x));
+addEventListener('resize', layout);
+layout();
+window.__e = { S, setView, setXray, openHist, select: id => select(M(id)), act };
+})();
+
+</script>
+</body>
+</html>

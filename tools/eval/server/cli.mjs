@@ -5,6 +5,8 @@
 //        → psql on the platform database < seed.sql > seed.out   (the raw token stays in s.json, mode 0600)
 //   node tools/eval/server/cli.mjs run --base https://borntobuild.ru --session-file s.json --seed-output seed.out \
 //        [--briefs all|mvp-01-…,…] [--max-cost-rub 2000] [--concurrency 2] [--g2 publish|skip] [--out results.json]
+//        [--threshold d67|d76]   (d76 — strict threshold of beta v2: plan coverage, goal scenarios, 390 px)
+//        [--screenshots DIR]     (PNGs of each system at 390 and 1280 px for the report grid; Chromium of packages/e2e)
 //   node tools/eval/server/cli.mjs collect --seed-output seed.out > collect.sql → psql < collect.sql > collect.out
 //   node tools/eval/server/cli.mjs report --results results.json [--collect collect.out] [--out report.md]
 //   node tools/eval/server/cli.mjs cleanup --session-file s.json [--base URL] > revoke.sql (logout + revoke SQL)
@@ -12,8 +14,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "./client.mjs";
-import { DEFAULTS, runEval } from "./driver.mjs";
+import { DEFAULTS, runEval, THRESHOLDS } from "./driver.mjs";
 import { renderReport } from "./report.mjs";
+import { previewScreenshots } from "./screenshots.mjs";
 import {
   collectSql,
   evalCredits,
@@ -65,6 +68,11 @@ const num = (v, name, def) => {
   if (!Number.isFinite(n) || n <= 0) throw new Error(`--${name}: положительное число`);
   return n;
 };
+const threshold = (v) => {
+  if (v === undefined || v === "") return DEFAULTS.threshold;
+  if (!THRESHOLDS.includes(v)) throw new Error(`--threshold: ${THRESHOLDS.join(" | ")}`);
+  return v;
+};
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 
 export async function main(argv = process.argv.slice(2), deps = {}) {
@@ -111,6 +119,9 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     const s = readJson(o["session-file"]);
     const seed = o["seed-output"] ? parseSeedOutput(readFileSync(o["seed-output"], "utf8")) : {};
     const client = platformClient({ base: o.base, session: s, fetch: deps.fetch });
+    const shots = o.screenshots
+      ? previewScreenshots({ client, dir: o.screenshots, log, ...(deps.launch ? { launch: deps.launch } : {}) })
+      : null;
     const doc = await runEval({
       client,
       briefs: selectBriefs(o.briefs),
@@ -122,10 +133,12 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       fixAttempts:
         o["fix-attempts"] === "0" ? 0 : num(o["fix-attempts"], "fix-attempts", DEFAULTS.fixAttempts),
       g2: o.g2 === "skip" ? "skip" : "publish",
+      threshold: threshold(o.threshold),
       log,
       ...(deps.sleep ? { sleep: deps.sleep } : {}),
       ...(deps.pollMs ? { pollMs: deps.pollMs } : {}),
-    });
+      ...(shots ? { screenshot: shots.screenshot } : {}),
+    }).finally(() => shots?.close());
     const text = `${JSON.stringify(doc, null, 2)}\n`;
     if (o.out) writeFileSync(o.out, text);
     else out(text);
