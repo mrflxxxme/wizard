@@ -62,7 +62,8 @@ export function createQaAgent(opts: QaAgentOptions): QaAgent & { lastChecks(): Q
       const fresh = await generateScenarios({ opts, spec, acs: need, files: input.files });
       for (const ac of need) {
         const v = fresh.get(ac.id) ?? { scenarios: [], invalid: [`Нет сценария для ${ac.id}`] };
-        await cache.set(cacheKey(specVersion, ac), v);
+        // A failed attempt is not cached: the next generate (the builder's next G1) asks QA again.
+        if (v.scenarios.length) await cache.set(cacheKey(specVersion, ac), v);
         found.set(ac.id, v);
       }
     }
@@ -71,7 +72,7 @@ export function createQaAgent(opts: QaAgentOptions): QaAgent & { lastChecks(): Q
       if (!v) continue;
       if (v.scenarios.length) out.push(...scenarioChecks(ac, v.scenarios));
       else {
-        out.push(invalidCheck(ac));
+        out.push(invalidCheck(ac, v.invalid ?? []));
         invalid.set(`SC-${ac.id}`, v.invalid ?? []);
       }
     }

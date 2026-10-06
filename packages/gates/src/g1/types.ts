@@ -70,6 +70,8 @@ export interface QaCheck {
   scenario?: Scenario;
   /** AC milestone (no field = M0). */
   milestone?: string;
+  /** QA could not make a valid scenario for this AC (empty steps, G1 reports check_invalid): its validation errors. */
+  invalid?: string[];
 }
 
 export interface SeedUser {

@@ -119,6 +119,8 @@ export const SDK_FIX_HINT =
 export function evidenceOf(c: { evidence?: string }): string {
   const e = (c.evidence ?? "").replace(/\s+/g, " ").trim();
   if (!e) return "";
+  if (e.startsWith("check_invalid"))
+    return " — сценарий проверки с ошибкой составил QA, это не ошибка системы: спеку, критерии и код ради него не меняй";
   return ` — ${e.length > 300 ? `${e.slice(0, 299)}…` : e}`;
 }
 

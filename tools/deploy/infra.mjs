@@ -723,6 +723,17 @@ from platform.gate_reports g join platform.runs r on r.id = g.run_id
 cross join lateral jsonb_array_elements(g.report->'checks') c
 where r.created_at > now() - interval '6 hours' and c->>'status' in ('fail', 'error') and c->>'severity' = 'blocker'
 group by 1, 2 order by 3 desc limit 40;
+-- Where time and money of the builds go: per call type and model, calls, latency, tokens, cache share, cost.
+select call_type, model_id, count(*) as calls, round(avg(latency_ms) / 1000.0, 1) as avg_s,
+  round(max(latency_ms) / 1000.0, 1) as max_s, round(avg(input_tokens)) as avg_in, round(avg(output_tokens)) as avg_out,
+  round(100.0 * sum(cached_tokens) / nullif(sum(input_tokens), 0)) as cached_pct, round(sum(cost_rub), 1) as rub
+from platform.llm_calls where created_at > now() - interval '6 hours'
+group by 1, 2 order by rub desc limit 25;
+-- Why QA could not write scenarios (build_metrics.stages.checks.qaInvalid: check id and validation errors).
+select left(x, 260) as qa_invalid, count(*) as times
+from platform.run_events e cross join lateral jsonb_array_elements_text(coalesce(e.payload->'stages'->'checks'->'qaInvalid', '[]'::jsonb)) x
+where e.type = 'build_metrics' and e.ts > now() - interval '6 hours'
+group by 1 order by 2 desc limit 20;
 -- Rejected tool calls of the builder's own phases (build_metrics.stages.rejections): phase, tool, code, issues.
 select x->>'phase' as phase, x->>'tool' as tool, x->>'code' as code, x->>'issues' as issues, count(*) as times
 from platform.run_events e cross join lateral jsonb_array_elements(coalesce(e.payload->'stages'->'rejections', '[]'::jsonb)) x

@@ -1,5 +1,6 @@
 // Harness v2 (agents/builder.yaml#harness): the architect's brief, executors per task in waves (one routeBatch per wave,
 // stable order), the per-file check, the task file restriction, the reviewer → fix round and build_metrics.
+import type { QaCheck } from "@wizard/gates";
 import { LlmError, type LlmResult, type RouteInput, type RouteOutput } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
 import {
@@ -120,14 +121,18 @@ function responder(
   return { route, inputs };
 }
 
-function host(opts: Parameters<typeof responder>[0] = {}, batch = false) {
+function host(
+  opts: Parameters<typeof responder>[0] = {},
+  batch = false,
+  qaGenerate: () => Promise<QaCheck[]> = async () => [],
+) {
   const r = responder(opts);
   const mem = createMemoryHost({
     spec,
     version: 1,
     route: r.route,
     gates: { G0: async () => report("G0", true), G1: g1Stub },
-    qa: { generate: async () => [], explain: async () => [] },
+    qa: { generate: qaGenerate, explain: async () => [] },
   });
   const batches: string[][] = [];
   if (batch)
@@ -364,6 +369,32 @@ describe("harness v2: build", () => {
     const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
     expect(res.status).toBe("succeeded");
     expect(metricsOf(mem.events)).toMatchObject({ review: { skipped: true } });
+  });
+});
+
+describe("harness v2: QA could not write a scenario", () => {
+  test("an empty QA check is asked again before G1 (not the builder's to fix); the reasons go to build_metrics", async () => {
+    let calls = 0;
+    const bad: QaCheck = {
+      id: "SC-AC1",
+      acId: "AC1",
+      kind: "scenario",
+      level: "G1",
+      scenario: { id: "SC-AC1", acId: "AC1", title: "t", actors: {}, steps: [] },
+      invalid: ["SC-AC1: В сценарии нет ни одного expect"],
+    };
+    const qaGenerate = async () => {
+      calls += 1;
+      return calls < 3 ? [bad] : [];
+    };
+    const { mem } = host({}, false, qaGenerate);
+    const res = await executeBuild(mem, { card, cap: 100, mode: "create" });
+    expect(res.status).toBe("succeeded");
+    // Upfront (empty check), then two new attempts before the first G1: the third answer is valid.
+    expect(calls).toBe(3);
+    expect(metricsOf(mem.events).checks).toMatchObject({
+      qaInvalid: ["SC-AC1: SC-AC1: В сценарии нет ни одного expect"],
+    });
   });
 });
 

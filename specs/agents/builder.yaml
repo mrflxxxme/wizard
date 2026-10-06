@@ -165,9 +165,11 @@ harness:
       after: "Страницы с critical → один раунд задач исправления, затем снова verify. minor — в метрики. Рецензент недоступен → этап пропускается, отметка в метриках"
   metrics: >
     Внутреннее событие build_metrics (workflows.yaml#events) перед run_finished/run_failed: {stages: {ops: {calls}, brief: {tasks,
-    retries}, checks: {total, attached}, tasks: {total, firstPass, passed, failed, calls}, verify: {g0Runs, g1Runs, fixTasks,
+    retries}, checks: {total, attached, qaInvalid: ["SC-…: причины"]}, tasks: {total, firstPass, passed, failed, calls}, verify: {g0Runs, g1Runs, fixTasks,
     fixPhases}, review: {pages, ok, critical, minor, skipped}, rejections: [{phase, tool, code, issues: ["код@путь"]}] (первые 20
     отказов инструментов в фазах строителя, для диагностики)}, creditsUsed, durationMs}. ops.calls пишется и при сбое фазы.
+    Проверка QA без шагов (check_invalid) — не ошибка системы: перед G1 строитель сразу просит QA заново (≤2 раз за сборку,
+    QA_REGENERATIONS), в отчёте для фазы fix такая находка помечена «не меняй спеку, критерии и код ради неё».
     Замер D67 читает его из базы (eval.yaml).
   modes: "create и change; fix стартует с verify; point_edit — без изменений (#point_and_edit)"
 
