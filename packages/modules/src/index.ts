@@ -1,5 +1,21 @@
 export const PACKAGE = "@wizard/modules";
 
+/** Module «Каталог и прайс»: manifest, compile hook (canonical names), showcase page (also the landing section). */
+export {
+  CATALOG_NAMES,
+  type CatalogOptions,
+  catalogOptions,
+  compileCatalog,
+  SHOWCASE,
+  serviceFields,
+} from "./catalog/compile.js";
+export { catalogManifest, catalogModule } from "./catalog/index.js";
+export {
+  catalogShowcasePage,
+  priceListColumns,
+  type ShowcaseTarget,
+  showcaseTarget,
+} from "./catalog/page.js";
 /** Beta v2 registry: MODULES (code where ready, drafts from specs/modules/modules.yaml#catalog), CATALOG, MODULES_WITH_CODE. */
 export { CATALOG, MODULES, MODULES_WITH_CODE } from "./catalog.js";
 /** Draft manifests generated from modules.yaml#catalog (scripts/gen-draft.mjs). */

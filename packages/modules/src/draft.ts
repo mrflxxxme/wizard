@@ -111,10 +111,19 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         type: "fields",
         maxItems: 6,
       },
+      {
+        name: "showcase_title",
+        label: "Заголовок витрины",
+        type: "string",
+        maxLength: 60,
+        default: "Услуги и цены",
+      },
     ],
     provides: {
       entities: ["service", "service_category"],
+      routes: ["/services"],
     },
+    hook: true,
     metrics: [
       {
         id: "services_active",
@@ -137,6 +146,9 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         id: "GS-catalog-1",
         goal: "show_offer",
         title: "Владелец добавляет услугу, посетитель видит её с ценой",
+        when: {
+          param: "show_prices",
+        },
         steps: [
           {
             actor: "owner",
@@ -175,7 +187,124 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
         ],
       },
+      {
+        id: "GS-catalog-3",
+        goal: "show_offer",
+        title: "Посетитель видит длительность услуги",
+        when: {
+          param: "with_duration",
+        },
+        steps: [
+          {
+            actor: "owner",
+            text: "Указывает у позиции длительность 60 минут",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает раздел услуг",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "У позиции видно «60 мин»",
+          },
+        ],
+      },
+      {
+        id: "GS-catalog-4",
+        goal: "show_offer",
+        title: "Посетитель выбирает позицию и переходит к заявке или записи",
+        withModules: ["landing", "leads"],
+        steps: [
+          {
+            actor: "visitor",
+            text: "Открывает раздел услуг и нажимает «Выбрать» у позиции",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Видна форма заявки на главной или запись на выбранную позицию",
+          },
+        ],
+      },
     ],
+    tests: {
+      matrix: [
+        {
+          name: "по умолчанию, прайс-лист",
+          params: {},
+          withModules: ["landing"],
+        },
+        {
+          name: "разделы, длительность, без цен, карточки с заявкой",
+          params: {
+            item_label: "Процедура",
+            with_categories: true,
+            with_duration: true,
+            show_prices: false,
+            showcase_title: "Процедуры",
+          },
+          withModules: ["landing", "leads", "notify"],
+        },
+        {
+          name: "товары без фото со своими полями, без лендинга",
+          params: {
+            item_label: "Товар",
+            with_photos: false,
+            showcase_title: "Товары и цены",
+            extra_fields: [
+              {
+                name: "sku",
+                label: "Артикул",
+                type: "string",
+              },
+              {
+                name: "in_stock",
+                label: "В наличии",
+                type: "bool",
+              },
+              {
+                name: "size",
+                label: "Размер",
+                type: "enum",
+                options: [
+                  {
+                    value: "s",
+                    label: "S",
+                  },
+                  {
+                    value: "m",
+                    label: "M",
+                  },
+                ],
+              },
+              {
+                name: "order_phone",
+                label: "Телефон для заказа",
+                type: "phone",
+              },
+            ],
+          },
+        },
+        {
+          name: "фото, длительность и цены, карточки с заявкой",
+          params: {
+            with_duration: true,
+          },
+          withModules: ["landing", "leads", "notify"],
+        },
+        {
+          name: "карточки без фото и разделов",
+          params: {
+            with_photos: false,
+          },
+          withModules: ["landing", "leads", "notify"],
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
   },
   {
     id: "leads",

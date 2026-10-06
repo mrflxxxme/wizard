@@ -62,7 +62,8 @@ export const SECTION_CATALOG: readonly SectionTypeSpec[] = [
     type: "services",
     label: "Услуги из каталога",
     variants: ["list", "cards", "table", "tabs"],
-    ready: [],
+    // Rendered by the catalog module's showcase (packages/modules/src/catalog, B2-13), not by a ui-kit block.
+    ready: ["list", "cards", "table"],
     required: ["title"],
     optional: ["intro"],
     requiresModule: ["catalog"],

@@ -43,6 +43,14 @@ export function compileLeads(ctx: ModuleContext): ModuleFragments {
     const required = n === "name" || n === contact;
     return [{ ...f, ...(required ? { required: true } : {}) }];
   });
+  // with_service: the item of «Каталог и прайс» (required by the manifest's requires) the visitor asks about.
+  if (ctx.params.with_service === true)
+    fields.push({
+      name: "service",
+      label: "Услуга",
+      type: "ref",
+      ref: { entity: "service", onDelete: "set_null" },
+    });
   fields.push({
     name: "status",
     label: "Статус",
