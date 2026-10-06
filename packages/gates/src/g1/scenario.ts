@@ -197,7 +197,17 @@ function got(res: HttpResult): string {
       ? ` (воркфлоу ${job.name}, шаг ${job.step + 1}${job.stepType ? ` ${job.stepType}` : ""})`
       : ` (${job.kind === "function" ? "функция" : "задание"} ${job.name})`
     : "";
-  return `HTTP ${res.status}${code ? ` ${code}` : ""}${where}`;
+  // VALIDATION_FAILED: which fields and rules (names and codes only — values stay out of the evidence).
+  const fields = (
+    res.body as { error?: { details?: { fields?: { field?: unknown; code?: unknown }[] } } } | null
+  )?.error?.details?.fields;
+  const which = Array.isArray(fields)
+    ? fields
+        .slice(0, 4)
+        .map((f) => `${String(f.field ?? "?")}: ${String(f.code ?? "?")}`)
+        .join(", ")
+    : "";
+  return `HTTP ${res.status}${code ? ` ${code}` : ""}${which ? ` (${which})` : ""}${where}`;
 }
 
 /** Messages of FUNCTIONS_DISABLED from apps/runtime itself (exec/host.ts, the sandbox orchestrator and executor). */

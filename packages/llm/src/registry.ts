@@ -197,7 +197,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
     { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
     0.2,
     4000,
-    300000,
+    480000,
   ),
   build_ops: r(
     "builder",

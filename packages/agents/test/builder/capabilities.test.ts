@@ -117,3 +117,20 @@ describe("builder prompt and tools", () => {
     expect(res).toMatchObject({ ok: true, recorded: false });
   });
 });
+
+describe("the notify card: its example passes the spec and connector checks", () => {
+  test("the JSON ops of notify.md apply to the lead spec and leave no integration issues", async () => {
+    const { applyOps } = await import("@wizard/appspec");
+    const { validateIntegrations } = await import("@wizard/connectors");
+    const { leadSpec } = await import("./lead-fixture.js");
+    const md = (await import("node:fs")).readFileSync(
+      new URL("../../assets/capabilities/notify.md", import.meta.url),
+      "utf8",
+    );
+    const json = /```json\n([\s\S]*?)\n```/.exec(md)?.[1];
+    expect(json).toBeDefined();
+    const r = applyOps(leadSpec(), JSON.parse(json as string), 0);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    if (r.ok) expect(validateIntegrations(r.spec)).toEqual([]);
+  });
+});

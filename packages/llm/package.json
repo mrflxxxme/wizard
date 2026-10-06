@@ -12,6 +12,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.61",
     "@wizard/pii": "workspace:*",
-    "ai": "^7.0.124"
+    "ai": "^7.0.124",
+    "undici": "^7.30.0"
   }
 }
