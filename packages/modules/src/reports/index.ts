@@ -4,6 +4,7 @@
 // the period before) and reports by entity; the numbers come from the goalMetrics query (functions/goalMetrics.ts) —
 // server-side, because sums and shares need every row of the period, which the paged data API does not give a page.
 import type { ModuleFragments, ModuleManifest } from "@wizard/appspec";
+import { NOTIFY_MAIL } from "../notify/compile.js";
 import type { ModuleDefinition } from "../types.js";
 import { GOAL_PANEL_LIB } from "./lib-source.js";
 import { goalPanelPage } from "./page.js";
@@ -25,13 +26,13 @@ const fragments: ModuleFragments = {
     {
       when: digest,
       value: {
-        name: "mail",
+        name: NOTIFY_MAIL,
         connector: "email",
         config: {
           templates: {
             goal_digest: {
               subject: "Итоги недели по целям",
-              body: "Неделя закончилась. Показатели по целям вашей системы — в кабинете, раздел «Панель цели».",
+              body: "Неделя закончилась. Показатели по целям вашей системы — в кабинете, раздел «Панель цели»: {{link}}",
             },
           },
         },
@@ -45,7 +46,17 @@ const fragments: ModuleFragments = {
         name: "goal_digest",
         label: "Сводка владельцу по целям",
         trigger: { type: "schedule", cron: DIGEST_CRON },
-        steps: [{ type: "notify", params: { integration: "mail", to: "$owner", template: "goal_digest" } }],
+        steps: [
+          {
+            type: "notify",
+            params: {
+              integration: NOTIFY_MAIL,
+              to: "$owner",
+              template: "goal_digest",
+              link: "/cabinet/goals",
+            },
+          },
+        ],
       },
     },
   ],

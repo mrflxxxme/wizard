@@ -239,7 +239,7 @@ ai_rules:
 
 # ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
 catalog:
-  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16)
+  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16); reports (B2-17)
   - id: landing
     version: 1
     name: "Секции лендинга"

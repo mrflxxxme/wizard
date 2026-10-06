@@ -69,6 +69,8 @@ export {
   BOOKING_CONSENT_FIELD,
   compileNotify,
   NOTIFY_BOOKING,
+  NOTIFY_MAIL,
+  NOTIFY_TG,
   type NotifyItem,
   type NotifyPlan,
   notifyPlan,

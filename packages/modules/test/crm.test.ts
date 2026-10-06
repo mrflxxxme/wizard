@@ -283,9 +283,10 @@ describe("deals", () => {
   test("the whole CRM: deal.client and deal.lead, deal from a lead, history with leads and deals", () => {
     const r = ok(compile("deals", row({}, ["landing", "leads", "notify", "client_card"])));
     expect(fieldNames(r, "deal")).toEqual(["title", "status", "amount", "client", "lead"]);
+    // notify (order 5) is applied first, then client_card (15) and deals (50).
     expect(r.spec.workflows?.map((w) => w.name)).toEqual([
-      "client_from_lead",
       "lead_notify",
+      "client_from_lead",
       "deal_from_lead",
     ]);
     expect(r.spec.workflows?.find((w) => w.name === "deal_from_lead")?.trigger).toEqual({
@@ -302,6 +303,7 @@ describe("deals", () => {
     expect(ac(r, "Заявка, взятая в работу")).toBeDefined();
     expect(r.links.map((l) => `${l.from}→${l.to}`)).toEqual([
       "notify→leads",
+      "notify→deals",
       "client_card→deals",
       "client_card→leads",
       "leads→client_card",

@@ -12,6 +12,7 @@ import {
   GOAL_PANEL_LIB,
   type MetricCompute,
   type ModuleDefinition,
+  NOTIFY_MAIL,
   PANEL_VIEW,
   pickTiles,
 } from "../src/index.js";
@@ -269,6 +270,32 @@ describe("goal panel: tiles by the plan's goals", () => {
     expect(r.warnings).not.toContain(
       "В плане нет других модулей: панели цели нечего показывать — добавьте модули, которые закрывают цели плана",
     );
+  });
+
+  test("weekly digest goes through notify's e-mail integration: one integration, both modules' templates", () => {
+    const plan = landingLeadsPlan();
+    plan.modules.push({ id: "reports", params: { digest: "weekly" } });
+    const r = compiled(plan);
+    const mail = (r.spec.integrations ?? []).filter((i) => i.connector === "email");
+    expect(mail.map((i) => i.name)).toEqual([NOTIFY_MAIL]);
+    const templates = Object.keys((mail[0]?.config as { templates?: object } | undefined)?.templates ?? {});
+    expect(templates).toEqual(expect.arrayContaining(["new_lead", "goal_digest"]));
+    const digest = r.spec.workflows?.find((wf) => wf.name === "goal_digest");
+    expect(digest?.steps).toEqual([
+      {
+        type: "notify",
+        params: { integration: NOTIFY_MAIL, to: "$owner", template: "goal_digest", link: "/cabinet/goals" },
+      },
+    ]);
+    // notify only in Telegram: the digest still has its e-mail integration under the same name.
+    const tgOnly = landingLeadsPlan();
+    const notify = tgOnly.modules.find((m) => m.id === "notify");
+    if (notify) notify.params = { channels: ["telegram"] };
+    tgOnly.modules.push({ id: "reports", params: { digest: "weekly" } });
+    const t = compiled(tgOnly);
+    expect((t.spec.integrations ?? []).filter((i) => i.connector === "email").map((i) => i.name)).toEqual([
+      NOTIFY_MAIL,
+    ]);
   });
 
   test("sources: created_at by its index, a dated field by its own index, a field without one — newest first", () => {

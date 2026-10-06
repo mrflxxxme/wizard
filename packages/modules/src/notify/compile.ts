@@ -31,8 +31,11 @@ export const BOOKING_CONSENT_FIELD: Field = {
   default: false,
 };
 
-const MAIL = "mail";
-const TG = "tg";
+/** Names of notify's integrations: e-mail and Telegram (other modules send through them, e.g. the reports digest). */
+export const NOTIFY_MAIL = "mail";
+export const NOTIFY_TG = "tg";
+const MAIL = NOTIFY_MAIL;
+const TG = NOTIFY_TG;
 
 type Template = { subject: string; body: string };
 type Step = Workflow["steps"][number];

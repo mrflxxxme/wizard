@@ -214,6 +214,7 @@ describe("showcase page and the landing section", () => {
       allParams: {},
       present: new Set(["catalog", "booking", "leads", "landing"]),
       spec: r.spec,
+      metrics: r.metrics,
       screen: catalogManifest.screens?.[0] as ScreenContext["screen"],
       roles: ["guest", "owner"],
     };
