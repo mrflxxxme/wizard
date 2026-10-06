@@ -198,6 +198,25 @@ describe("check generation", () => {
     expect(all.find((c) => c.id === "PC-moderator-speaker_application-ro")).toBeDefined();
   });
 
+  test("row isolation only for a login role filtered by $user: a public role or a static filter gets no row probe", () => {
+    const pub = forum.roles.find((r) => r.access === "public")?.name as string;
+    const login = forum.roles.find((r) => r.access === "login")?.name as string;
+    const entity = forum.entities[0]?.name as string;
+    const filtered = (role: string, rowFilter: Record<string, unknown>) =>
+      ({
+        ...forum,
+        permissions: [
+          ...forum.permissions.filter((p) => !(p.role === role && p.entity === entity)),
+          { role, entity, ops: ["read"], rowFilter },
+        ],
+      }) as AppSpec;
+    const row = (spec: AppSpec, role: string) =>
+      generatePermissionChecks(spec).some((c) => c.id === `PC-${role}-${entity}-row`);
+    expect(row(filtered(pub, { status: "published" }), pub)).toBe(false);
+    expect(row(filtered(login, { status: "published" }), login)).toBe(false);
+    expect(row(filtered(login, { owner: "$user.id" }), login)).toBe(true);
+  });
+
   test("G1 selection: AC-referenced + public role + row isolation; consent probes for non-admin creators", () => {
     const sel = selectG1(forum, generatePermissionChecks(forum)).map((c) => c.id);
     expect(sel).toContain("PC-visitor-ticket-read");
