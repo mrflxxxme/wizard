@@ -539,6 +539,58 @@ describe("platform LLM cap of the month (WIZARD_LLM_MONTHLY_CAP_RUB)", () => {
   });
 });
 
+describe("platform LLM cap of the Moscow day (WIZARD_LLM_DAILY_CAP_RUB, D75)", () => {
+  let fx: Fx;
+  let orgId: string;
+  beforeAll(async () => {
+    fx = await fixture("pilotdaily", { llmMonthlyCapRub: 100000, llmDailyCapRub: 50 });
+    // 2026-10-15 12:00 MSK.
+    fx.clock.t = Date.parse("2026-10-15T09:00:00Z");
+    const r = await fx.api.req("POST", "/orgs", { body: { name: "Расходы дня", regionCode: "77" } });
+    orgId = r.body.id;
+    await fx.cli("plan", orgId, "pilot");
+    await fx.cli("grant", orgId, "500", "daily-cap-test");
+  });
+  afterAll(async () => {
+    await fx?.drop();
+  });
+  async function spend(rub: number, at: string): Promise<void> {
+    await fx.api.deps.pg`
+      insert into platform.llm_calls (org_id, call_type, tier, provider, model_id, status, route_reason,
+        policy_version, scrubbed, cost_rub, billable, mode, created_at)
+      values (${orgId}, 'orchestrate', 'T0', 'cloudru', 'glm-5.1', 'ok', 'default_T0', 'test', false, ${rub},
+        true, 'live', ${at})`;
+  }
+  const newSystem = () => fx.api.req("POST", "/systems", { body: { prompt: "Заявки на ремонт", orgId } });
+
+  test("config: 700 ₽ by default; a non-positive cap is refused at startup", () => {
+    expect(loadConfig({}).llmDailyCapRub).toBe(700);
+    expect(() => assertStartupAllowed(loadConfig({ WIZARD_LLM_DAILY_CAP_RUB: "0" }))).toThrow(
+      /WIZARD_LLM_DAILY_CAP_RUB/,
+    );
+  });
+
+  test("yesterday does not count; ≥ the daily cap → 503 with the daily text and one alert; the next day starts from zero", async () => {
+    await spend(40, "2026-10-14T20:00:00Z"); // 14 October 23:00 MSK
+    await spend(49, "2026-10-15T08:00:00Z");
+    const ok = await newSystem();
+    expect(ok.status, ok.text).toBe(201);
+    await waitRun(fx.api, ok.body.run.id, ["succeeded"]);
+    await spend(2, "2026-10-15T08:30:00Z");
+    const r = await newSystem();
+    expect(r.status).toBe(503);
+    expect(r.body.code).toBe("LLM_BUDGET_EXHAUSTED");
+    expect(r.body.message_ru).toMatch(/^Дневной лимит платформы на работу моделей исчерпан/);
+    expect((await newSystem()).status).toBe(503);
+    const errors = fx.alerts.filter((x) => x.event === "llm_daily_cap_reached");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.text).toMatch(/дневной лимит расходов на модели исчерпан — 51 ₽ из 50 ₽ за 2026-10-15/);
+    fx.clock.t = Date.parse("2026-10-15T21:05:00Z"); // 16 October 00:05 MSK
+    const next = await newSystem();
+    expect(next.status, next.text).toBe(201);
+  });
+});
+
 describe("founder alert channel", () => {
   test("structured log line and the optional webhook {text, chat_id}; webhook failures never throw", async () => {
     const lines: string[] = [];

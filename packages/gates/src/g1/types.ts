@@ -72,6 +72,11 @@ export interface QaCheck {
   milestone?: string;
   /** QA could not make a valid scenario for this AC (empty steps, G1 reports check_invalid): its validation errors. */
   invalid?: string[];
+  /**
+   * Written by the QA model (D75): its failure is a warning shown at the founder's review, not a blocker — readiness
+   * rests on the checks that do not depend on a model's luck (G0, permission and PII probes, render, template scenarios).
+   */
+  advisory?: boolean;
 }
 
 export interface SeedUser {

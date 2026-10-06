@@ -407,6 +407,8 @@ export interface BuildMetrics {
   review: { pages: number; ok: number; critical: number; minor: number; skipped: boolean };
   /** Rejected tool calls of the builder's own phases (first REJECTIONS_MAX): phase, tool, code, `code@path` issues. */
   rejections: { phase: string; tool: string; code: string; issues: string[] }[];
+  /** D75: the build went from the template (used) or why the spec did not fit it (gaps); absent — not a template card. */
+  template?: { used: boolean; gaps: string[] };
 }
 
 export const REJECTIONS_MAX = 20;

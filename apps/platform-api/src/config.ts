@@ -100,6 +100,8 @@ export interface Config {
    * WIZARD_LLM_MONTHLY_CAP_RUB (default 6000; D20_eval_budget, D23_pilot): platform LLM spend cap per calendar month
    * (Europe/Moscow) — Σ billable cost_rub of live llm_calls; reached → new builds and interview turns are refused.
    */
+  /** WIZARD_LLM_DAILY_CAP_RUB (default 700; D75): platform LLM spend cap per Moscow calendar day. */
+  llmDailyCapRub: number;
   llmMonthlyCapRub: number;
   /** WIZARD_OPS_ALERT_URL / WIZARD_OPS_ALERT_CHAT_ID: founder alert webhook (deploy.yaml#pilot.observability). */
   opsAlert: { url: string; chatId: string | null } | null;
@@ -189,6 +191,8 @@ function smtpFromEnv(env: NodeJS.ProcessEnv): {
 
 /** Default of WIZARD_LLM_MONTHLY_CAP_RUB (D23_pilot: models ≤ 10 000 ₽/month, of them live eval ≤ 4 000 ₽). */
 export const DEFAULT_LLM_MONTHLY_CAP_RUB = 6000;
+/** Default of WIZARD_LLM_DAILY_CAP_RUB (D75: ≤ 700 ₽ of models per day, an alert when reached). */
+export const DEFAULT_LLM_DAILY_CAP_RUB = 700;
 
 export interface ReceiptConfig {
   /** WIZARD_RECEIPT_VAT_CODE (1..12, YooKassa vat_code incl. 5%/7% USN codes 7–10); null — not set (1 «без НДС» outside production). */
@@ -255,6 +259,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     registration: env.WIZARD_REGISTRATION || "open",
     founderEmail: env.WIZARD_FOUNDER_EMAIL?.trim().toLowerCase() || null,
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
+    llmDailyCapRub: env.WIZARD_LLM_DAILY_CAP_RUB
+      ? Number(env.WIZARD_LLM_DAILY_CAP_RUB)
+      : DEFAULT_LLM_DAILY_CAP_RUB,
     llmMonthlyCapRub: env.WIZARD_LLM_MONTHLY_CAP_RUB
       ? Number(env.WIZARD_LLM_MONTHLY_CAP_RUB)
       : DEFAULT_LLM_MONTHLY_CAP_RUB,
@@ -318,6 +325,8 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
   }
   if (c.registration !== "open" && c.registration !== "invite")
     throw new StartupError(`неизвестный WIZARD_REGISTRATION=${c.registration} (open | invite)`);
+  if (!Number.isFinite(c.llmDailyCapRub) || c.llmDailyCapRub <= 0)
+    throw new StartupError("WIZARD_LLM_DAILY_CAP_RUB: нужен положительный лимит в рублях");
   if (!Number.isFinite(c.llmMonthlyCapRub) || c.llmMonthlyCapRub <= 0)
     throw new StartupError("WIZARD_LLM_MONTHLY_CAP_RUB: нужен положительный лимит в рублях");
   if (c.nodeEnv === "production" && c.billingExemptOrgs.length > 0)
