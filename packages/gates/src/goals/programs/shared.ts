@@ -11,9 +11,13 @@ export function enumLabel(spec: AppSpec, entity: string, field: string, value: s
   return f?.enum?.find((o) => o.value === value)?.label ?? value;
 }
 
-/** Route of the first page an actor role may open whose route starts with `prefix` (default the cabinet). */
+/** Route of the section root an actor role may open: the shortest route starting with `prefix` (default the cabinet). */
 export function pageRoute(spec: AppSpec, role: string, prefix = "/cabinet"): string | null {
-  return spec.pages?.find((p) => p.roles.includes(role) && p.route.startsWith(prefix))?.route ?? null;
+  // The shortest matching route is the section root (/cabinet before /cabinet/notifications), whatever the page order.
+  const routes = (spec.pages ?? [])
+    .filter((p) => p.roles.includes(role) && p.route.startsWith(prefix))
+    .map((p) => p.route);
+  return routes.sort((a, b) => a.length - b.length)[0] ?? null;
 }
 
 /** Name of the admin (owner) role. */

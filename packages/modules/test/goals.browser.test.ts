@@ -38,6 +38,8 @@ const registry = testRegistry();
 /** Scenarios of modules with code: stand-ins of the test registry (notify until B2-16) carry no browser programs. */
 const WITH_CODE = new Set(MODULES_WITH_CODE.map((d) => d.manifest.id));
 const ofCode = (r: CompileSuccess) => r.scenarios.filter((s) => WITH_CODE.has(s.module));
+/** Scenarios of modules with code that already have a browser program (programs of the other modules follow B2-24). */
+const bound = (r: CompileSuccess) => ofCode(r).filter((s) => GOAL_PROGRAMS[s.id]);
 const keyPrefix = `b224${randomBytes(3).toString("hex")}`;
 
 let db: postgres.Sql;
@@ -112,8 +114,8 @@ function compiled(plan: unknown): CompileSuccess {
   return r;
 }
 
-async function ready(r: CompileSuccess): Promise<Check[]> {
-  const c = ctx(r, ofCode(r));
+async function ready(r: CompileSuccess, scenarios = ofCode(r)): Promise<Check[]> {
+  const c = ctx(r, scenarios);
   const g0 = await runG0(c);
   expect(failed(g0), "G0").toEqual([]);
   const g1 = await runG1(c);
@@ -124,8 +126,8 @@ async function ready(r: CompileSuccess): Promise<Check[]> {
 describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser (B2-24)", () => {
   test("landing + leads: «посетитель оставил заявку → владелец получил письмо», 390 px without horizontal scroll", async () => {
     const r = compiled(landingLeadsPlan());
-    expect(ofCode(r).map((s) => s.id)).toEqual(["GS-landing-1", "GS-leads-1", "GS-leads-2"]);
-    const checks = await ready(r);
+    expect(bound(r).map((s) => s.id)).toEqual(["GS-landing-1", "GS-leads-1", "GS-leads-2"]);
+    const checks = await ready(r, bound(r));
     const by = (id: string) => checks.find((c) => c.id === id);
     for (const id of ["G1-GOAL-GS-landing-1", "G1-GOAL-GS-leads-1", "G1-GOAL-GS-leads-2", "G1-MOBILE-01"])
       expect(by(id)?.status, id).toBe("pass");
