@@ -3081,7 +3081,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "G0/G1 на матрице параметров и e2e сценариев целей (заявка дошла владельцу письмом) в CI без моделей"
@@ -3109,7 +3109,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: сделка проходит этапы воронки, история клиента показывает визиты и заявки"
@@ -3123,7 +3123,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: посетитель входит по коду и видит только свои записи; сотрудник видит только свой раздел"
@@ -3137,7 +3137,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждый модуль объявляет метрики; панель цели считает их на данных системы (тест на фикстурах)"
