@@ -3178,7 +3178,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Падение на любом этапе продолжается с последнего чекпоинта без повторной оплаты готовых этапов (тест)"
