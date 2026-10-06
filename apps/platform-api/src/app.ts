@@ -1,3 +1,4 @@
+import type { ModuleRegistry } from "@wizard/agents/planner";
 import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger } from "@wizard/pii/log";
 import { Hono } from "hono";
@@ -39,6 +40,7 @@ import { importRoutes } from "./routes/imports.js";
 import { internalRoutes } from "./routes/internal.js";
 import { lockRoutes } from "./routes/lock.js";
 import { orgRoutes } from "./routes/orgs.js";
+import { planRoutes } from "./routes/plans.js";
 import { privacyRoutes } from "./routes/privacy.js";
 import { publishRoutes } from "./routes/publish.js";
 import { runRoutes } from "./routes/runs.js";
@@ -59,6 +61,8 @@ export interface PlatformApiOptions {
   /** Run executors, or a factory over the API's connection/config; default: the real agents (createAgentExecutors). */
   executors?: RunExecutors | ((d: { pg: DbHandle["pg"]; config: Config }) => RunExecutors);
   createRouter?: (opts: RouterOptions) => Router;
+  /** B2-20: module registry of the beta v2 path — goal interview, plan screen (default — @wizard/modules CATALOG). */
+  modules?: ModuleRegistry;
   /** Run migrations + seed (default true). */
   migrate?: boolean;
   /** Fail runs left non-terminal by a previous process (default true). */
@@ -164,7 +168,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const executors =
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
-      : (opts.executors ?? createAgentExecutors({ pg: handle.pg, config }));
+      : (opts.executors ??
+        createAgentExecutors({ pg: handle.pg, config, ...(opts.modules ? { modules: opts.modules } : {}) }));
   const dispatcher = dbos
     ? (opts.dispatcher ?? (await createDbosDispatcher({ dbUrl: config.dbUrl, log })))
     : undefined;
@@ -212,6 +217,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     billing,
     payments,
     ...(dbos ? { eventPollMs: 250 } : {}),
+    ...(opts.modules ? { modules: opts.modules } : {}),
   };
   // credits_cron: a DBOS scheduled workflow of apps/worker in M1; the in-process timer only without it.
   const cronMs = opts.creditsCronMs ?? (dbos ? 0 : 3600_000);
@@ -302,6 +308,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.use("*", idempotency(new IdempotencyCache()));
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
+  api.route("/", planRoutes(deps));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));

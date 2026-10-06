@@ -133,6 +133,16 @@ export const notifyManifest: ModuleManifest = {
         params: { channels: ["telegram"], visitor_emails: false, reminder_hours: 0 },
         withModules: ["leads"],
       },
+      {
+        name: "запись: подтверждение, напоминание, отмена и перенос по ссылке",
+        params: {},
+        withModules: ["booking", "catalog"],
+      },
+      {
+        name: "запись: почта и Telegram, второе напоминание",
+        params: { channels: ["email", "telegram"], second_reminder_hours: 2 },
+        withModules: ["booking", "catalog"],
+      },
     ],
     gates: ["G0", "G1"],
   },

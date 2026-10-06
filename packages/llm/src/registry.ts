@@ -189,10 +189,11 @@ const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"]
 const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 
 /**
- * Call types where zai models reason with effort high (D75, founder 2026-10-06): the card and the brief/template choice;
- * every other call reasons low — 2–3× faster and cheaper (models.yaml#call_policy.thinking).
+ * Call types where zai models reason with effort high (D75, founder 2026-10-06): the card and the brief/template choice
+ * of the v1 pipeline and the beta v2 system planner (B2-20); every other call reasons low — 2–3× faster and cheaper
+ * (models.yaml#call_policy.thinking).
  */
-export const HIGH_REASONING: ReadonlySet<CallType> = new Set<CallType>(["card", "plan"]);
+export const HIGH_REASONING: ReadonlySet<CallType> = new Set<CallType>(["card", "plan", "system_plan"]);
 
 export const ROUTES: Record<CallType, RouteDef> = {
   interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 4000, 180000),
@@ -204,6 +205,14 @@ export const ROUTES: Record<CallType, RouteDef> = {
     0.2,
     4000,
     480000,
+  ),
+  system_plan: r(
+    "planner",
+    "T1",
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "deepseek-v4-pro", "kimi-k2.6"] },
+    0.2,
+    8000,
+    300000,
   ),
   build_ops: r(
     "builder",

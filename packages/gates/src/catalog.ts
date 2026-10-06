@@ -51,6 +51,9 @@ export const G1_CHECKS: readonly CheckDef[] = [
     since: "M1",
     title_ru: "Страницы открываются для своих ролей без ошибок",
   },
+  // B2-24 (D76 (6)): browser checks, run when G1 gets a browser or the plan's goal scenarios (gates.yaml#G1.browser).
+  { id: "G1-GOAL", severity: "blocker", title_ru: "Сценарии целей проходят в браузере" },
+  { id: "G1-MOBILE-01", severity: "blocker", title_ru: "Страницы на экране телефона без прокрутки вбок" },
 ];
 
 export const G2_TIME_BUDGET_MS = 300_000;

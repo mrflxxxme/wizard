@@ -128,6 +128,12 @@ export const visitorCabinetManifest: ModuleManifest = {
         params: { login: "phone_otp", show_bookings: false, show_leads: true },
         withModules: ["leads", "notify"],
       },
+      { name: "мои записи, вход по почте", params: {}, withModules: ["booking", "catalog", "notify"] },
+      {
+        name: "мои записи и заявки, вход по телефону",
+        params: { login: "phone_otp", show_leads: true },
+        withModules: ["booking", "catalog", "notify", "leads"],
+      },
       { name: "без разделов", params: { show_bookings: false } },
     ],
     gates: ["G0", "G1"],

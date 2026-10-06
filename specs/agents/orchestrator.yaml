@@ -156,6 +156,16 @@ change_requests:       # правка уже собранной системы �
   big_change: "Полный алгоритм S2–S6 с текущей спекой как контекстом"
   point_and_edit: "M3: запрос из превью с target {wzId, file} (ui/ui-kit.yaml#wz_id) идёт сразу в builder.yaml#point_and_edit с мини-карточкой"
 
+# ---------------------------------------------------------------- Бета v2: интервью по целям и план системы (B2-20)
+goal_interview_b2:     # конвейер модулей (WIZARD_BUILD_PIPELINE=modules); код — packages/agents/src/planner; карточка D74/D75 остаётся для конвейера v1
+  replaces: "Развилки, карточку и approveCard на конвейере модулей заменяют цели → план системы → approveSystemPlan (grill-6 № 2, 3, 5; modules.yaml#system_plan, #ai_rules). Система остаётся на конвейере, с которого начала (состояние хода pipeline=modules)"
+  analyze: "Вызов interview, инструмент submit_goals (+ report_capability_gap): ниша, 1–3 цели из modules.yaml#goals с формулировкой клиента, роли, ресурсы, модули каталога (доступные и «скоро»), outOfScope; анализ проходит scrub ПДн до сохранения"
+  questions: "MUST: не больше 4 вопросов-кнопок и только о том, что не выводится из брифа (цели, ниша, роли, ресурсы, параметры выбранных модулей — topic params с module и param каталога); 2–4 варианта, ровно один recommended, свой текст ≤ 500. Нет вопросов — сразу планировщик в том же ходе"
+  planner: "Вызов system_plan (models.yaml#routes, reasoning high), инструмент submit_plan: SystemPlan только из доступных модулей (ready и их обязательные связи готовы) и готовых вариантов секций; validateSystemPlan(requireReady) + незаготовленные варианты → ошибки модели (≤ 2 повтора), затем compilePlan → ошибки компиляции ещё 1 раз; не вышло — план с ошибками на экран плана. design по умолчанию до дизайн-агента (B2-37). План проходит scrub ПДн"
+  plan_output: "Ход выдаёт план: ревизия platform.system_plans, сообщение kind=plan, события chat_output {kind: plan} и plan_sketch (workflows.yaml#events). Сообщение после плана — перепланирование с пожеланием (предыдущий план в промпте); правки на экране плана — без модели (api.yaml#editSystemPlan)"
+  approval: "Сборка стартует только approveSystemPlan по ревизии, которую видел клиент (D7 на конвейере модулей)"
+  test: "packages/agents/test/planner.test.ts (интервью, повторы планировщика, план без ПДн, детерминированные правки); apps/platform-api/test/b2-system-plan.test.ts (API, события, утверждение до сборки)"
+
 # ---------------------------------------------------------------- Промпт
 prompt_skeleton:       # порядок фиксирован; статичная часть — кэшируемый префикс (точка кэша на последнем статичном блоке)
   static:

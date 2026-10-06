@@ -58,7 +58,7 @@ manifest:
     provides: "{entities?, roles?, routes?} — имена, которыми модуль владеет в AppSpec. Уникальны в каталоге (validateModuleCatalog); так конфликты имён между модулями исключены до сборки"
     hook: "true — у модуля есть compile.ts: чистая детерминированная функция (params, план) → фрагменты для того, что не выражается подстановкой (например, роли из списка)"
     fragments: "фрагменты AppSpec: entities, fields, indexes, roles, permissions, workflows, integrations, acceptance — элементы {when?, value} (fields и indexes — {when?, entity, value})"
-    functions: "функции runtime {name, kind, file functions/**.ts, public?, roles?, when?, purpose}; код — в модуле, не от ИИ"
+    functions: "функции runtime {name, kind, file functions/**.ts, public?, roles?, when?, purpose, systemDbReason? — зачем публичная функция читает через ctx.systemDb (G2-PERM-05)}; код — в модуле, не от ИИ (исходник может зависеть от параметров: ModuleDefinition.files — строка или функция контекста)"
     screens: "экраны {id, audience: public|cabinet|visitor, route, title, roles, components (экспорты @wizard/ui-kit), when?, nav?}"
     metrics: "метрики панели цели — #manifest.metrics"
     goalScenarios: "сценарии целей для e2e в браузере — #manifest.goal_scenarios"
@@ -236,10 +236,11 @@ ai_rules:
     - "Не придумывает факты: цены, адреса, отзывы, цифры — только из брифа, иначе секция не ставится или «Пример: …»"
     - "Не кладёт ПДн в план"
   tool: "Ответ планировщика — вызов submit_plan с SystemPlan (B2-20); проверка validateSystemPlan, при ошибке — повтор с текстом ошибок (≤ 2, models.yaml#call_policy)"
+  implementation: "B2-20: packages/agents/src/planner (@wizard/agents/planner) — интервью по целям, runPlanner (callType system_plan; ошибки compilePlan — ещё 1 повтор), applyPlanEdits (правки без модели), planSketch (эскиз для холста); интервью и утверждение — agents/orchestrator.yaml#goal_interview_b2, API — platform/api.yaml#getSystemPlan"
 
 # ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
 catalog:
-  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16); reports (B2-17)
+  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16); reports (B2-17); booking (B2-14)
   - id: landing
     version: 1
     name: "Секции лендинга"
@@ -433,6 +434,8 @@ catalog:
         default: [mon, tue, wed, thu, fri]
       - { name: day_start, label: "Начало дня", type: time, default: "09:00" }
       - { name: day_end, label: "Конец дня", type: time, default: "18:00" }
+      - { name: break_start, label: "Начало перерыва", type: time }
+      - { name: break_end, label: "Конец перерыва", type: time }
       - { name: with_specialists, label: "Несколько специалистов", type: bool, default: false }
       - { name: specialist_label, label: "Как называть специалиста", type: string, maxLength: 40, default: "Специалист" }
       - { name: capacity, label: "Мест на одно время", type: int, min: 1, max: 50, default: 1 }
@@ -446,6 +449,8 @@ catalog:
       - { name: cancel_by_link, label: "Отмена по ссылке из письма", type: bool, default: true }
       - { name: reschedule_by_link, label: "Перенос по ссылке из письма", type: bool, default: true }
       - { name: cancel_until_hours, label: "Отмена не позже чем за, часов", type: int, min: 0, max: 72, default: 2 }
+      - { name: extra_fields, label: "Дополнительные поля записи", type: fields, maxItems: 4 }
+      - { name: retention_days, label: "Срок хранения записей, дней", type: int, min: 30, max: 1095, default: 365 }
     requires:
       - { module: catalog, reason: "запись идёт на услугу с длительностью", expectParams: { with_duration: true } }
       - { module: notify, reason: "посетитель получает подтверждение и ссылку отмены, владелец — уведомление" }
@@ -454,11 +459,12 @@ catalog:
       - { module: staff, effect: "специалисты — сотрудники со входом; каждый видит своё расписание" }
       - { module: visitor_cabinet, effect: "посетитель видит, отменяет и переносит свои записи в кабинете" }
     provides: { entities: [booking, specialist], routes: ["/booking"] }
+    # B2-14: запись без серверной функции (D75) — уникальный индекс (специалист, starts_at, seat) отвечает CONFLICT;
+    # отмена и перенос — одноразовые ссылки runtime из письма (D69: /_wizard/hooks/message/cancel|reschedule).
     functions:
-      - { name: freeSlots, kind: query, file: functions/booking/freeSlots.ts, public: true, purpose: "свободное время по услуге, дню и специалисту" }
-      - { name: bookSlot, kind: mutation, file: functions/booking/bookSlot.ts, public: true, purpose: "запись на время с проверкой занятости и мест" }
-      - { name: cancelByToken, kind: mutation, file: functions/booking/cancelByToken.ts, public: true, when: { param: cancel_by_link }, purpose: "отмена по неугадываемой ссылке из письма" }
-      - { name: rescheduleByToken, kind: mutation, file: functions/booking/rescheduleByToken.ts, public: true, when: { param: reschedule_by_link }, purpose: "перенос по ссылке на свободное время" }
+      - { name: busySlots, kind: query, file: functions/booking/busySlots.ts, public: true, roles: [$public, $owner, $staff, $visitor], purpose: "занятое время дня для страницы записи: начало, конец и место, без имён и контактов", systemDbReason: "Страница записи показывает свободное время: функция отдаёт только начало, конец и место занятых записей, без имён и контактов" }
+      - { name: scheduleLoad, kind: query, file: functions/booking/scheduleLoad.ts, public: true, roles: [$owner, $staff], purpose: "занятость расписания за неделю или месяц и период до него для панели цели (метрика schedule_load)" }
+      - { name: clientFromBooking, kind: mutation, file: functions/booking/clientFromBooking.ts, roles: [$owner], when: { module: client_card }, purpose: "новая запись находит клиента по телефону или почте или создаёт его" }
     metrics:
       - id: bookings_count
         label: "Записей"
@@ -467,45 +473,94 @@ catalog:
         better: up
         compute: { kind: count, entity: booking, dateField: starts_at, where: { status: [confirmed, done] } }
       - id: schedule_load
-        label: "Загрузка расписания"
+        label: "Занятость расписания"
         goal: fill_schedule
         unit: percent
         better: up
         compute: { kind: function, name: scheduleLoad }
+        description: "Доля занятого времени от рабочего времени всех специалистов и мест за период"
       - id: no_show_share
         label: "Доля неявок"
         goal: reduce_no_shows
         unit: percent
         better: down
         compute: { kind: ratio, entity: booking, dateField: starts_at, numerator: { status: no_show }, denominator: { status: [done, no_show] } }
+      - id: cancel_share
+        label: "Доля отмен"
+        goal: reduce_no_shows
+        unit: percent
+        better: down
+        compute: { kind: ratio, entity: booking, dateField: starts_at, numerator: { status: cancelled } }
     goalScenarios:
       - id: GS-booking-1
         goal: fill_schedule
         title: "Посетитель записался на свободное время, владелец получил уведомление"
         withModules: [notify]
         steps:
-          - { actor: visitor, text: "Выбирает услугу, день и свободное время" }
-          - { actor: visitor, text: "Вводит имя и почту, отмечает согласие и записывается" }
-          - { actor: owner, text: "Открывает расписание на этот день" }
+          - { actor: visitor, text: "Открывает страницу записи, выбирает услугу, день и свободное время" }
+          - { actor: visitor, text: "Вводит имя, телефон и почту, соглашается на письма и обработку данных, записывается" }
+          - { actor: owner, text: "Открывает записи в кабинете" }
         expect:
           - { kind: page_text, text: "Посетитель видит «Вы записаны» с датой и временем" }
-          - { kind: record, text: "Запись в расписании владельца" }
-          - { kind: outbox_email, text: "Посетителю ушло подтверждение со ссылкой отмены, владельцу — уведомление" }
+          - { kind: record, text: "Запись в кабинете владельца со статусом «Подтверждена»" }
+          - { kind: outbox_email, text: "Посетителю ушло подтверждение со ссылками отмены и переноса, владельцу — письмо о новой записи" }
       - id: GS-booking-2
+        goal: fill_schedule
+        title: "Второй посетитель на то же время получает отказ"
+        steps:
+          - { actor: visitor, text: "Первый посетитель записывается на время" }
+          - { actor: visitor, text: "Второй посетитель, открывший страницу раньше, отправляет запись на то же время" }
+        expect:
+          - { kind: page_text, text: "Второй видит «Это время только что заняли — выберите другое»" }
+          - { kind: record, text: "На это время одна запись" }
+          - { kind: page_text, text: "Занятое время больше не предлагается" }
+      - id: GS-booking-3
         goal: reduce_no_shows
-        title: "Отмена по ссылке освобождает время"
+        title: "Отмена по ссылке из письма освобождает время"
         when: { param: cancel_by_link }
+        withModules: [notify]
         steps:
           - { actor: visitor, text: "Открывает ссылку отмены из письма и подтверждает отмену" }
-          - { actor: visitor, text: "Снова открывает запись на тот же день" }
+          - { actor: visitor, text: "Снова открывает страницу записи на тот же день" }
         expect:
-          - { kind: status, text: "Запись в статусе «отменена»" }
+          - { kind: status, text: "Запись в статусе «Отменена»" }
           - { kind: page_text, text: "Освободившееся время снова доступно" }
+          - { kind: outbox_email, text: "Владельцу ушло письмо об отмене" }
+          - { kind: metric, text: "Доля отмен выросла" }
+      - id: GS-booking-4
+        goal: reduce_no_shows
+        title: "Перенос по ссылке из письма на другое свободное время"
+        when: { param: reschedule_by_link }
+        withModules: [notify]
+        steps:
+          - { actor: visitor, text: "Открывает ссылку переноса из письма" }
+          - { actor: visitor, text: "Выбирает другой день и время и подтверждает перенос" }
+          - { actor: visitor, text: "Открывает ту же ссылку ещё раз" }
+        expect:
+          - { kind: page_text, text: "Посетитель видит «Запись перенесена»" }
+          - { kind: record, text: "Запись на новом времени, старое время снова свободно" }
+          - { kind: outbox_email, text: "Посетителю ушло письмо «Время записи изменено» с новыми ссылками" }
+          - { kind: denied, text: "Повторно ссылка не работает: «Ссылка недействительна»" }
     tests:
       matrix:
         - { name: "одно место, без специалистов", params: {}, withModules: [catalog, notify] }
-        - { name: "группа и специалисты", params: { capacity: 8, with_specialists: true }, withModules: [catalog, notify, staff] }
-        - { name: "подтверждение сотрудником, без ссылок", params: { confirm: manual, cancel_by_link: false, reschedule_by_link: false }, withModules: [catalog, notify] }
+        - name: "врачи, шаг 30 минут, перерыв и суббота, свои поля"
+          params:
+            with_specialists: true
+            specialist_label: "Врач"
+            slot_minutes: 30
+            workdays: [mon, tue, wed, thu, fri, sat]
+            day_start: "08:00"
+            day_end: "20:00"
+            break_start: "13:00"
+            break_end: "14:00"
+            extra_fields:
+              - { name: first_visit, label: "Первый визит", type: bool }
+              - { name: visit_reason, label: "Причина визита", type: enum, options: [{ value: pain, label: "Боль" }, { value: checkup, label: "Осмотр" }] }
+          withModules: [catalog, notify]
+        - { name: "группа до 8 мест, шаг 90 минут", params: { capacity: 8, slot_minutes: 90, cancel_until_hours: 24 }, withModules: [catalog, notify] }
+        - { name: "подтверждение сотрудником, без ссылок", params: { confirm: manual, cancel_by_link: false, reschedule_by_link: false, cancel_until_hours: 0 }, withModules: [catalog, notify] }
+        - { name: "с клиентами и кабинетом посетителя", params: {}, withModules: [catalog, notify, client_card, visitor_cabinet] }
       gates: [G0, G1]
 
   - id: notify
@@ -570,6 +625,8 @@ catalog:
         - { name: "письмо владельцу о заявке", params: {}, withModules: [leads, landing] }
         - { name: "почта и Telegram, сотрудникам тоже", params: { channels: [email, telegram], notify_staff: true }, withModules: [leads, landing, staff] }
         - { name: "только Telegram, без писем посетителям", params: { channels: [telegram], visitor_emails: false, reminder_hours: 0 }, withModules: [leads] }
+        - { name: "запись: подтверждение, напоминание, отмена и перенос по ссылке", params: {}, withModules: [booking, catalog] }
+        - { name: "запись: почта и Telegram, второе напоминание", params: { channels: [email, telegram], second_reminder_hours: 2 }, withModules: [booking, catalog] }
       gates: [G0, G1]
 
   - id: client_card
@@ -909,6 +966,8 @@ catalog:
       matrix:
         - { name: "мои заявки, вход по почте", params: { show_bookings: false, show_leads: true }, withModules: [leads, notify, landing] }
         - { name: "мои заявки, вход по телефону", params: { login: phone_otp, show_bookings: false, show_leads: true }, withModules: [leads, notify] }
+        - { name: "мои записи, вход по почте", params: {}, withModules: [booking, catalog, notify] }
+        - { name: "мои записи и заявки, вход по телефону", params: { login: phone_otp, show_leads: true }, withModules: [booking, catalog, notify, leads] }
         - { name: "без разделов", params: { show_bookings: false } }
       gates: [G0, G1]
 

@@ -137,6 +137,57 @@ paths:
         '202': {description: Сборка поставлена в очередь (status queued или waiting_lock), content: {application/json: {schema: {type: object, required: [run], properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
         '402': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
+  /systems/{id}/plan:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemPlan
+      x-milestone: B2
+      x-roles: [viewer]
+      summary: 'B2-20 (бета v2, WIZARD_BUILD_PIPELINE=modules): план системы — последняя ревизия или ?revision=N; план компилируется заново при каждом чтении (без моделей), errors и sketch — по текущему каталогу модулей (specs/modules/modules.yaml)'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}]
+      responses:
+        '200': {description: 'Ревизия плана; plan = null — интервью ещё не дошло до плана (без ?revision)', content: {application/json: {schema: {type: object, required: [plan], properties: {plan: {oneOf: [{$ref: '#/components/schemas/SystemPlanRevision'}, {type: 'null'}]}}}}}}
+        '404': {description: 'NOT_FOUND — нет системы или ревизии ?revision', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    patch:
+      operationId: editSystemPlan
+      x-milestone: B2
+      x-roles: [editor]
+      summary: 'B2-20: правка плана, ожидающего утверждения, без модели и без кредитов — параметр, модуль, цели, секции, дизайн (PlanEdit, по порядку, атомарно). План чистится от ПДн, проверяется и компилируется заново за доли секунды; любая ошибка отклоняет весь батч (422 PLAN_INVALID, details.errors — PlanError[]). Успех — новая ревизия source=edit (предыдущая superseded); dryRun=true — то же без сохранения (живой эскиз «что будет, если»). revision — ревизия, которую видел клиент (иначе 409 PLAN_REVISION_STALE)'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [revision, edits], additionalProperties: false, properties: {revision: {type: integer, minimum: 1}, edits: {type: array, minItems: 1, maxItems: 50, items: {$ref: '#/components/schemas/PlanEdit'}}, dryRun: {type: boolean, default: false}}}}
+      responses:
+        '200': {description: Новая ревизия плана (или предпросмотр при dryRun), content: {application/json: {schema: {type: object, required: [plan], properties: {plan: {$ref: '#/components/schemas/SystemPlanRevision'}}}}}}
+        '409': {description: 'NO_PLAN, PLAN_REVISION_STALE (details.revision — текущая), SYSTEM_LOCKED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: 'PLAN_INVALID — details.errors: PlanError[] (modules.yaml#validation.codes)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/plan/sketch:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemPlanSketch
+      x-milestone: B2
+      x-roles: [viewer]
+      summary: 'B2-20: эскиз для холста по текущему (или ?revision=N) плану — облегчённое описание (PlanSketch); detail=full — ещё и результат compilePlan: AppSpec и файлы ui/** и functions/** (без моделей, детерминированно). Во время интервью эскиз приходит событием plan_sketch (workflows.yaml#events)'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}, {name: detail, in: query, schema: {enum: [sketch, full], default: sketch}}]
+      responses:
+        '200': {description: 'Эскиз; revision и sketch = null — плана ещё нет', content: {application/json: {schema: {type: object, required: [revision, sketch], properties: {revision: {type: [integer, 'null']}, sketch: {oneOf: [{$ref: '#/components/schemas/PlanSketch'}, {type: 'null'}]}, spec: {type: object, description: 'AppSpec (только detail=full и план компилируется)'}, files: {type: object, additionalProperties: {type: string}, description: 'путь → исходник (только detail=full)'}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/plan/approve:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: approveSystemPlan
+      x-milestone: B2
+      x-roles: [editor]
+      summary: 'B2-20 (grill-6 № 5): единственная точка старта сборки на конвейере модулей — утверждение плана (revision, которую видел клиент). План компилируется заново под блокировкой; с ошибками — 422 PLAN_INVALID. Запускает build (mode create, у собранной системы — change) с input {pipeline: modules, planRevision, plan}; cap = ceil((15 ₽ + бюджет custom) / 5 ₽) кредитов (D76 (9)). Сами этапы сборки по плану — сборщик v2 (B2-21). /card/approve для такой системы отвечает NO_CARD'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer, minimum: 1}}}}
+      responses:
+        '202': {description: Сборка поставлена в очередь, content: {application/json: {schema: {type: object, required: [run], properties: {run: {$ref: '#/components/schemas/Run'}}}}}}
+        '402': {$ref: '#/components/responses/Error'}
+        '409': {description: 'NO_PLAN (нет плана, ожидающего утверждения, или идёт сборка), PLAN_REVISION_STALE', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: 'PLAN_INVALID — details.errors: PlanError[]', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /systems/{id}/fix:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
@@ -906,6 +957,8 @@ components:
             RUN_NOT_WAITING_INPUT: 409
             CARD_VERSION_STALE: 409
             NO_CARD: 409
+            NO_PLAN: 409
+            PLAN_REVISION_STALE: 409
             PREVIEW_NOT_READY: 409
             INVITE_EXPIRED: 410
             EXPORT_LINK_USED: 410
@@ -931,13 +984,14 @@ components:
             DESTRUCTIVE_CONSEQUENCES_CHANGED: 409
             DESTRUCTIVE_UNDO_UNAVAILABLE: 409
             ROLLBACK_TARGET_INVALID: 422
+            PLAN_INVALID: 422
             DEMO_REPLAY_NO_SCENARIO: 422
             RATE_LIMITED: 429
             INTERNAL: 500
             LLM_UNAVAILABLE: 503
             LLM_BUDGET_EXHAUSTED: 503
         message_ru: {type: string, description: 'Готовый к показу текст на русском, без стеков и SQL'}
-        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}; для BUILDS_LIMIT и EDITS_LIMIT (D70, лимит пилота организации: сборки и правки за скользящие 30 дней, billing.yaml#rub_model.pilot_limit) — {limit, used, nextAt}, message_ru без слова «кредит», UI показывает «Написать команде»'}
+        details: {type: object, description: 'Структурные данные. Для OPS_INVALID — {errors: OpsError[]} (ops.yaml#apply.error_shape; коды — ops.yaml#apply.error_codes, в т. ч. OWNER_ONLY_FIELD); для GATES_FAILED — {reports: GateReport[]}; для PLAN_INVALID (B2-20) — {errors: PlanError[]}; для PLAN_REVISION_STALE — {revision}; для INSUFFICIENT_CREDITS — {available, required}; для PLAN_LIMIT — {limit, current, plan}; для BUILDS_LIMIT и EDITS_LIMIT (D70, лимит пилота организации: сборки и правки за скользящие 30 дней, billing.yaml#rub_model.pilot_limit) — {limit, used, nextAt}, message_ru без слова «кредит», UI показывает «Написать команде»'}
     OrgRole: {enum: [owner, editor, viewer]}
     SystemStage: {enum: [interview, card, building, ready, failed], description: workflows.yaml#system_stage}
     System:
@@ -988,11 +1042,58 @@ components:
         id: {type: string, format: uuid}
         seq: {type: integer}
         role: {enum: [user, assistant, system]}
-        kind: {enum: [text, questions, answers, card, run_report, notice]}
+        kind: {enum: [text, questions, answers, card, run_report, notice, plan]}
         text: {type: string}
-        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; plan (B2-20) — {planRevision, errors: число ошибок компиляции} — сам план: getSystemPlan; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
         runId: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
+    PlanError:
+      type: object
+      required: [code, path, message_ru]
+      description: 'specs/modules/modules.yaml#validation.error_shape (@wizard/appspec PlanError)'
+      properties: {code: {type: string}, path: {type: string, description: JSON Pointer в план}, message_ru: {type: string}, allowed: {type: array, items: {type: string}}, hint: {type: string}}
+    PlanEdit:
+      type: object
+      required: [op]
+      description: 'B2-20, детерминированная правка плана (@wizard/agents/planner planEditSchema): set_param {module, param, value — null возвращает умолчание}; add_module {module, params?} — обязательные связи (requires) добавляются сами; remove_module {module} — секции, которым нужен модуль, уходят вместе с ним; set_goals {goals: [{id, statement}] 1–3}; add_section {type, variant?, content?, at?} — без content ключи-заготовки «Пример: …»; update_section {index, variant?, content?: {ключ: значение | null}}; remove_section {index}; move_section {from, to}; set_design {theme?, accent?, fontPair?}; remove_out_of_scope {index}'
+      properties:
+        op: {enum: [set_param, add_module, remove_module, set_goals, add_section, update_section, remove_section, move_section, set_design, remove_out_of_scope]}
+    PlanSketch:
+      type: object
+      required: [stage, niche, goals, modules, roles, entities, screens, sections, metrics, scenarios, outOfScope, custom, warnings, errors, fingerprint]
+      description: 'B2-20, эскиз системы для холста (@wizard/agents/planner PlanSketch): цели → модули (status available — собирается сегодня, soon — в разработке) с параметрами, роли, данные, экраны (audience public | cabinet), секции лендинга, метрики панели цели, сценарии целей, «не входит + замена», дописывание; stage interview — пока идут вопросы (только цели, модули, outOfScope). fingerprint — sha256 скомпилированных спеки и файлов (null — не компилируется): холст перерисовывает превью только при его смене'
+      properties:
+        stage: {enum: [interview, plan]}
+        niche: {type: string}
+        goals: {type: array, items: {type: object, required: [id, label, statement, modules], properties: {id: {type: string}, label: {type: string}, statement: {type: string}, modules: {type: array, items: {type: string}}}}}
+        modules: {type: array, items: {type: object, required: [id, name, goals, status, params], properties: {id: {type: string}, name: {type: string}, summary: {type: string}, goals: {type: array, items: {type: string}}, status: {enum: [available, soon]}, params: {type: array, items: {type: object, required: [name, label], properties: {name: {type: string}, label: {type: string}, value: {}}}}}}}
+        roles: {type: array, items: {type: object}}
+        entities: {type: array, items: {type: object}}
+        screens: {type: array, items: {type: object, required: [route, title, audience, roles], properties: {route: {type: string}, title: {type: string}, audience: {enum: [public, cabinet]}, roles: {type: array, items: {type: string}}}}}
+        sections: {type: array, items: {type: object, required: [index, type, label, variant], properties: {index: {type: integer}, type: {type: string}, label: {type: string}, variant: {type: string}, title: {type: string}}}}
+        metrics: {type: array, items: {type: object}}
+        scenarios: {type: array, items: {type: object}}
+        outOfScope: {type: array, items: {type: object, required: [request, replacement, category], properties: {request: {type: string}, replacement: {type: string}, category: {type: string}, module: {type: string}}}}
+        custom: {type: array, items: {type: object}}
+        warnings: {type: array, items: {type: string}}
+        errors: {type: array, items: {$ref: '#/components/schemas/PlanError'}}
+        fingerprint: {type: [string, 'null']}
+    SystemPlanRevision:
+      type: object
+      required: [revision, status, source, plan, errors, sketch, fingerprint, createdAt, approvedAt, buildRunId]
+      description: 'B2-20, ревизия плана системы (db.yaml#system_plans). plan — SystemPlan (specs/modules/modules.yaml#system_plan) с версиями модулей, для которых он скомпилирован; errors и sketch — компиляция при чтении (по текущему каталогу); непустые errors блокируют утверждение'
+      properties:
+        revision: {type: integer, minimum: 1}
+        status: {enum: [awaiting_approval, approved, superseded]}
+        source: {enum: [planner, edit]}
+        plan: {type: object}
+        errors: {type: array, items: {$ref: '#/components/schemas/PlanError'}}
+        sketch: {oneOf: [{$ref: '#/components/schemas/PlanSketch'}, {type: 'null'}]}
+        fingerprint: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        approvedAt: {type: [string, 'null'], format: date-time}
+        buildRunId: {type: [string, 'null'], format: uuid}
+        dryRun: {type: boolean, description: 'true — предпросмотр editSystemPlan, ревизия не сохранена'}
     RevisionSummary:
       type: object
       required: [version, author, createdAt]

@@ -9,7 +9,14 @@ export const LINK_PLACEHOLDER = "link";
 /** M2-50: signed one-time links of visitor messages (rendered by the host, never PII). */
 export const CANCEL_LINK_PLACEHOLDER = "cancel_link";
 export const UNSUBSCRIBE_LINK_PLACEHOLDER = "unsubscribe_link";
-const LINK_PLACEHOLDERS = new Set([LINK_PLACEHOLDER, CANCEL_LINK_PLACEHOLDER, UNSUBSCRIBE_LINK_PLACEHOLDER]);
+/** B2-14: one-time link that moves the record to another time (the step's `reschedule`). */
+export const RESCHEDULE_LINK_PLACEHOLDER = "reschedule_link";
+const LINK_PLACEHOLDERS = new Set([
+  LINK_PLACEHOLDER,
+  CANCEL_LINK_PLACEHOLDER,
+  UNSUBSCRIBE_LINK_PLACEHOLDER,
+  RESCHEDULE_LINK_PLACEHOLDER,
+]);
 const RECORD_REF = /^\$record\.([a-z][a-z0-9_]*)$/;
 const ROLE_REF = /^\$role:([a-z][a-z0-9_]*)$/;
 export const OWNER_REF = "$owner";

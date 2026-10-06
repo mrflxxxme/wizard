@@ -41,7 +41,7 @@ export {
 } from "./g1/checks.js";
 /** M2-19: G1-RENDER-01 in the sandbox — render Worker modules, page-fetch bridge by token, one render over HTTP. */
 export { type RenderAnswer, RenderBridge, renderRemote, renderWorkerModules } from "./g1/render/remote.js";
-/** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?}) incl. G1-RENDER-01 (M1+); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
+/** runG1(ctx, {timeBudgetMs?, renderTimeoutMs?, onRender?, goals?}) incl. G1-RENDER-01 (M1+), G1-GOAL-*, G1-MOBILE-01 (ctx.browser / ctx.goalScenarios); g1Checks(spec, qaChecks?) — the checks a G1 run executes. */
 export { type G1Options, g1Checks, g1SeedKey, runG1 } from "./g1/run.js";
 /** Scenario DSL static validation (qa.yaml#checks.from_acceptance.scenario.validate). */
 export { validateScenario } from "./g1/scenario.js";
@@ -74,6 +74,27 @@ export { ABUSE, BRANDS, type Brand, type BrandHit, findBrands, normalize, rx } f
 export { innValid, isSubject } from "./g2/pii.js";
 /** runG2(ctx, {only?, timeBudgetMs?, dynamic?}): static G2 (secrets, ПДн, Telegram, antifraud, public role) + permission matrix against ctx.runtime. */
 export { type G2Options, runG2 } from "./g2/run.js";
+/** B2-24 browser checks of G1: goal scenario programs by id, the 390/1280 px × light/dark matrix, the GoalRun API programs use. */
+export {
+  DESKTOP_VIEWPORT,
+  G1_BROWSER_TIME_BUDGET_MS,
+  GOAL_MATRIX,
+  GOAL_RUN_TIMEOUT_MS,
+  MOBILE_VIEWPORT,
+} from "./goals/browser.js";
+export { GOAL_PROGRAMS } from "./goals/programs/index.js";
+export {
+  type ColorScheme,
+  type FilledForm,
+  GOAL_ACTORS,
+  type GoalActor,
+  GoalFailure,
+  type GoalOutboxMessage,
+  type GoalProgram,
+  type GoalRun,
+  type GoalScenarioInput,
+  type GoalViewport,
+} from "./goals/types.js";
 /** passed = no blocker with fail/error; summary counts by status. */
 export { isPassed, summarize } from "./report.js";
 /** GateContext, GateReport, Check, GateLevel, Milestone (gates.yaml#report, architecture.yaml#interfaces.gate_context). */

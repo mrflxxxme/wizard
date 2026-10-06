@@ -117,6 +117,7 @@ call_types:                        # список совпадает с models.y
   interview:           { allowed: [T0, T1], t1_requires: scrub, note: "сырой ввод пользователя; предпочтительный tier — models.yaml" }
   card:                { allowed: [T0, T1], t1_requires: scrub }
   plan:                { allowed: [T0, T1], t1_requires: scrub }
+  system_plan:         { allowed: [T0, T1], t1_requires: scrub, note: "B2-20: бриф и ответы интервью после scrub; сам план без ПДн (modules.yaml#system_plan.privacy)" }
   build_ops:           { allowed: [T0, T1], t1_requires: scrub }
   build_code:          { allowed: [T0, T1], t1_requires: scrub }
   fix:                 { allowed: [T0, T1], t1_requires: scrub }

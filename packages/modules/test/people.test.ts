@@ -1,14 +1,14 @@
 // B2-16: «Сотрудники и роли», «Кабинет посетителя», «Напоминания и уведомления». Acceptance: the visitor logs in by
 // code and sees only his rows, a staff member sees only his sections (G1 row isolation and permission probes); the
 // reminder N hours before the visit goes by e-mail and to Telegram without personal data at the right time (G1
-// scenario with advanceTime). The booking is the B2-14 stand-in with the contract notify relies on.
+// scenario with advanceTime). The booking is the real module «Запись по слотам» (B2-14) with the catalog it requires.
 import type { AppSpec, SystemPlan } from "@wizard/appspec";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { type CompileSuccess, compilePlan, NOTIFY_BOOKING, SCENARIO_LEAD } from "../src/index.js";
-import { bookingStandIn, testRegistry } from "./fixtures.js";
+import { testRegistry } from "./fixtures.js";
 import { blockers, type G1Runtime, startG1Runtime, statusOf } from "./g1-runtime.js";
 
-const registry = testRegistry([{ manifest: bookingStandIn }]);
+const registry = testRegistry();
 
 const design: SystemPlan["design"] = {
   direction: { mood: ["спокойствие"] },
@@ -31,6 +31,7 @@ const teamPlan = () =>
     ],
     [
       { id: "leads" },
+      { id: "catalog", params: { with_duration: true } },
       { id: "booking" },
       {
         id: "notify",
@@ -54,6 +55,7 @@ const visitorPlan = () =>
     [{ id: "self_service", statement: "Клиент сам видит свои записи и заявки" }],
     [
       { id: "leads", params: { form_fields: ["name", "comment"], contact: "phone" } },
+      { id: "catalog", params: { with_duration: true } },
       { id: "booking" },
       { id: "notify" },
       { id: "visitor_cabinet", params: { show_leads: true } },
@@ -93,7 +95,7 @@ describe("staff: roles with sections", () => {
   test("$staff of a section module expands only to the roles with that section", () => {
     expect(perm(r.spec, "staff", "lead")?.ops).toEqual(["read", "update"]);
     expect(perm(r.spec, "staff_2", "lead")).toBeUndefined();
-    expect(perm(r.spec, "staff_2", "booking")?.ops).toEqual(["read", "update"]);
+    expect(perm(r.spec, "staff_2", "booking")?.ops).toEqual(["read", "create", "update"]);
     expect(perm(r.spec, "staff", "booking")).toBeUndefined();
     const pages = Object.fromEntries((r.spec.pages ?? []).map((p) => [p.route, p.roles]));
     expect(pages["/cabinet-staff"]).toEqual(["staff"]);
@@ -107,7 +109,12 @@ describe("staff: roles with sections", () => {
 
   test("permission checks for G1: each role sees its section and not the other one", () => {
     const checks = (r.spec.acceptance ?? [])
-      .filter((a) => a.check.type === "permission" && a.check.role?.startsWith("staff"))
+      .filter(
+        (a) =>
+          a.check.type === "permission" &&
+          a.check.role?.startsWith("staff") &&
+          ["lead", "booking"].includes(a.check.entity ?? ""),
+      )
       .map((a) => [a.check.role, a.check.entity, a.check.expect]);
     expect(checks).toEqual([
       ["staff", "lead", "allow"],
@@ -159,7 +166,17 @@ describe("notify: workflows by the capability formats", () => {
       to: "$record.email",
       consentField: NOTIFY_BOOKING.consent,
       template: "visitor_booked",
-      cancel: { set: { status: "cancelled" } },
+      cancel: {
+        set: { status: "cancelled", seat: null },
+        until: { field: "starts_at", minutesBefore: 120 },
+      },
+      reschedule: {
+        page: "/booking",
+        fields: ["starts_at", "ends_at"],
+        keep: ["service"],
+        when: { status: ["new", "confirmed"] },
+        until: { field: "starts_at", minutesBefore: 120 },
+      },
     });
     expect(wf("booking_reminder")?.trigger).toEqual({
       type: "schedule",
@@ -251,7 +268,7 @@ describe("visitor cabinet", () => {
     const p = visitorPlan();
     const vc = p.modules.find((m) => m.id === "visitor_cabinet");
     if (vc) vc.params = { login: "phone_otp", show_leads: true, show_bookings: false };
-    p.modules = p.modules.filter((m) => m.id !== "booking");
+    p.modules = p.modules.filter((m) => m.id !== "booking" && m.id !== "catalog");
     const t = compiled(p);
     expect(perm(t.spec, "visitor", "lead")?.rowFilter).toEqual({ phone: "$user.phone" });
     expect(t.spec.entities.find((e) => e.name === "lead")?.fields.map((f) => f.name)).toEqual([

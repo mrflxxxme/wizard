@@ -568,6 +568,16 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         default: "18:00",
       },
       {
+        name: "break_start",
+        label: "Начало перерыва",
+        type: "time",
+      },
+      {
+        name: "break_end",
+        label: "Конец перерыва",
+        type: "time",
+      },
+      {
         name: "with_specialists",
         label: "Несколько специалистов",
         type: "bool",
@@ -624,6 +634,20 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         max: 72,
         default: 2,
       },
+      {
+        name: "extra_fields",
+        label: "Дополнительные поля записи",
+        type: "fields",
+        maxItems: 4,
+      },
+      {
+        name: "retention_days",
+        label: "Срок хранения записей, дней",
+        type: "int",
+        min: 30,
+        max: 1095,
+        default: 365,
+      },
     ],
     requires: [
       {
@@ -658,38 +682,33 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
     },
     functions: [
       {
-        name: "freeSlots",
+        name: "busySlots",
         kind: "query",
-        file: "functions/booking/freeSlots.ts",
+        file: "functions/booking/busySlots.ts",
         public: true,
-        purpose: "свободное время по услуге, дню и специалисту",
+        roles: ["$public", "$owner", "$staff", "$visitor"],
+        purpose: "занятое время дня для страницы записи: начало, конец и место, без имён и контактов",
+        systemDbReason:
+          "Страница записи показывает свободное время: функция отдаёт только начало, конец и место занятых записей, без имён и контактов",
       },
       {
-        name: "bookSlot",
-        kind: "mutation",
-        file: "functions/booking/bookSlot.ts",
+        name: "scheduleLoad",
+        kind: "query",
+        file: "functions/booking/scheduleLoad.ts",
         public: true,
-        purpose: "запись на время с проверкой занятости и мест",
+        roles: ["$owner", "$staff"],
+        purpose:
+          "занятость расписания за неделю или месяц и период до него для панели цели (метрика schedule_load)",
       },
       {
-        name: "cancelByToken",
+        name: "clientFromBooking",
         kind: "mutation",
-        file: "functions/booking/cancelByToken.ts",
-        public: true,
+        file: "functions/booking/clientFromBooking.ts",
+        roles: ["$owner"],
         when: {
-          param: "cancel_by_link",
+          module: "client_card",
         },
-        purpose: "отмена по неугадываемой ссылке из письма",
-      },
-      {
-        name: "rescheduleByToken",
-        kind: "mutation",
-        file: "functions/booking/rescheduleByToken.ts",
-        public: true,
-        when: {
-          param: "reschedule_by_link",
-        },
-        purpose: "перенос по ссылке на свободное время",
+        purpose: "новая запись находит клиента по телефону или почте или создаёт его",
       },
     ],
     metrics: [
@@ -710,7 +729,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
       },
       {
         id: "schedule_load",
-        label: "Загрузка расписания",
+        label: "Занятость расписания",
         goal: "fill_schedule",
         unit: "percent",
         better: "up",
@@ -718,6 +737,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           kind: "function",
           name: "scheduleLoad",
         },
+        description: "Доля занятого времени от рабочего времени всех специалистов и мест за период",
       },
       {
         id: "no_show_share",
@@ -737,6 +757,21 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
         },
       },
+      {
+        id: "cancel_share",
+        label: "Доля отмен",
+        goal: "reduce_no_shows",
+        unit: "percent",
+        better: "down",
+        compute: {
+          kind: "ratio",
+          entity: "booking",
+          dateField: "starts_at",
+          numerator: {
+            status: "cancelled",
+          },
+        },
+      },
     ],
     goalScenarios: [
       {
@@ -747,15 +782,15 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         steps: [
           {
             actor: "visitor",
-            text: "Выбирает услугу, день и свободное время",
+            text: "Открывает страницу записи, выбирает услугу, день и свободное время",
           },
           {
             actor: "visitor",
-            text: "Вводит имя и почту, отмечает согласие и записывается",
+            text: "Вводит имя, телефон и почту, соглашается на письма и обработку данных, записывается",
           },
           {
             actor: "owner",
-            text: "Открывает расписание на этот день",
+            text: "Открывает записи в кабинете",
           },
         ],
         expect: [
@@ -765,21 +800,51 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
           {
             kind: "record",
-            text: "Запись в расписании владельца",
+            text: "Запись в кабинете владельца со статусом «Подтверждена»",
           },
           {
             kind: "outbox_email",
-            text: "Посетителю ушло подтверждение со ссылкой отмены, владельцу — уведомление",
+            text: "Посетителю ушло подтверждение со ссылками отмены и переноса, владельцу — письмо о новой записи",
           },
         ],
       },
       {
         id: "GS-booking-2",
+        goal: "fill_schedule",
+        title: "Второй посетитель на то же время получает отказ",
+        steps: [
+          {
+            actor: "visitor",
+            text: "Первый посетитель записывается на время",
+          },
+          {
+            actor: "visitor",
+            text: "Второй посетитель, открывший страницу раньше, отправляет запись на то же время",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Второй видит «Это время только что заняли — выберите другое»",
+          },
+          {
+            kind: "record",
+            text: "На это время одна запись",
+          },
+          {
+            kind: "page_text",
+            text: "Занятое время больше не предлагается",
+          },
+        ],
+      },
+      {
+        id: "GS-booking-3",
         goal: "reduce_no_shows",
-        title: "Отмена по ссылке освобождает время",
+        title: "Отмена по ссылке из письма освобождает время",
         when: {
           param: "cancel_by_link",
         },
+        withModules: ["notify"],
         steps: [
           {
             actor: "visitor",
@@ -787,17 +852,66 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           },
           {
             actor: "visitor",
-            text: "Снова открывает запись на тот же день",
+            text: "Снова открывает страницу записи на тот же день",
           },
         ],
         expect: [
           {
             kind: "status",
-            text: "Запись в статусе «отменена»",
+            text: "Запись в статусе «Отменена»",
           },
           {
             kind: "page_text",
             text: "Освободившееся время снова доступно",
+          },
+          {
+            kind: "outbox_email",
+            text: "Владельцу ушло письмо об отмене",
+          },
+          {
+            kind: "metric",
+            text: "Доля отмен выросла",
+          },
+        ],
+      },
+      {
+        id: "GS-booking-4",
+        goal: "reduce_no_shows",
+        title: "Перенос по ссылке из письма на другое свободное время",
+        when: {
+          param: "reschedule_by_link",
+        },
+        withModules: ["notify"],
+        steps: [
+          {
+            actor: "visitor",
+            text: "Открывает ссылку переноса из письма",
+          },
+          {
+            actor: "visitor",
+            text: "Выбирает другой день и время и подтверждает перенос",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает ту же ссылку ещё раз",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Посетитель видит «Запись перенесена»",
+          },
+          {
+            kind: "record",
+            text: "Запись на новом времени, старое время снова свободно",
+          },
+          {
+            kind: "outbox_email",
+            text: "Посетителю ушло письмо «Время записи изменено» с новыми ссылками",
+          },
+          {
+            kind: "denied",
+            text: "Повторно ссылка не работает: «Ссылка недействительна»",
           },
         ],
       },
@@ -810,12 +924,49 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           withModules: ["catalog", "notify"],
         },
         {
-          name: "группа и специалисты",
+          name: "врачи, шаг 30 минут, перерыв и суббота, свои поля",
+          params: {
+            with_specialists: true,
+            specialist_label: "Врач",
+            slot_minutes: 30,
+            workdays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+            day_start: "08:00",
+            day_end: "20:00",
+            break_start: "13:00",
+            break_end: "14:00",
+            extra_fields: [
+              {
+                name: "first_visit",
+                label: "Первый визит",
+                type: "bool",
+              },
+              {
+                name: "visit_reason",
+                label: "Причина визита",
+                type: "enum",
+                options: [
+                  {
+                    value: "pain",
+                    label: "Боль",
+                  },
+                  {
+                    value: "checkup",
+                    label: "Осмотр",
+                  },
+                ],
+              },
+            ],
+          },
+          withModules: ["catalog", "notify"],
+        },
+        {
+          name: "группа до 8 мест, шаг 90 минут",
           params: {
             capacity: 8,
-            with_specialists: true,
+            slot_minutes: 90,
+            cancel_until_hours: 24,
           },
-          withModules: ["catalog", "notify", "staff"],
+          withModules: ["catalog", "notify"],
         },
         {
           name: "подтверждение сотрудником, без ссылок",
@@ -823,8 +974,14 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             confirm: "manual",
             cancel_by_link: false,
             reschedule_by_link: false,
+            cancel_until_hours: 0,
           },
           withModules: ["catalog", "notify"],
+        },
+        {
+          name: "с клиентами и кабинетом посетителя",
+          params: {},
+          withModules: ["catalog", "notify", "client_card", "visitor_cabinet"],
         },
       ],
       gates: ["G0", "G1"],
@@ -1005,6 +1162,19 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             reminder_hours: 0,
           },
           withModules: ["leads"],
+        },
+        {
+          name: "запись: подтверждение, напоминание, отмена и перенос по ссылке",
+          params: {},
+          withModules: ["booking", "catalog"],
+        },
+        {
+          name: "запись: почта и Telegram, второе напоминание",
+          params: {
+            channels: ["email", "telegram"],
+            second_reminder_hours: 2,
+          },
+          withModules: ["booking", "catalog"],
         },
       ],
       gates: ["G0", "G1"],
@@ -2120,6 +2290,19 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             show_leads: true,
           },
           withModules: ["leads", "notify"],
+        },
+        {
+          name: "мои записи, вход по почте",
+          params: {},
+          withModules: ["booking", "catalog", "notify"],
+        },
+        {
+          name: "мои записи и заявки, вход по телефону",
+          params: {
+            login: "phone_otp",
+            show_leads: true,
+          },
+          withModules: ["booking", "catalog", "notify", "leads"],
         },
         {
           name: "без разделов",

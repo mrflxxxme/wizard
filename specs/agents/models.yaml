@@ -82,6 +82,7 @@ call_types:            # полный список; route() с иным callType
   - interview          # анализ брифа и вопросы (оркестратор)
   - card               # карточка системы (оркестратор)
   - plan               # план сборки (строитель)
+  - system_plan        # план системы беты v2: цели → модули → секции (планировщик, B2-20, modules.yaml#ai_rules)
   - build_ops          # операции над AppSpec (строитель)
   - build_code         # код UI и функций (строитель)
   - fix                # исправление по отчёту гейта (строитель)
@@ -118,6 +119,7 @@ routes:                # chain.T1 пробуется только если tier=
   interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 4000,  timeout_ms: 180000 }
   card:                { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000 }
   plan:                { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.2, max_tokens: 4000,  timeout_ms: 480000, note: "ТЗ харнесса v2 (submit_brief) — самый долгий ответ строителя: 300 с не хватало (замер 06.10.2026, средняя задержка 161 с)" }
+  system_plan:         { role: planner,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000, note: "B2-20: планировщик беты v2 (packages/agents/src/planner) — SystemPlan вызовом submit_plan, проверка validateSystemPlan и compilePlan, повтор с ошибками (≤ 2 + 1 после компиляции). reasoning high (call_policy.thinking)" }
   build_ops:           { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.1, max_tokens: 8000,  timeout_ms: 420000 }
   build_code:          { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, glm-5.1, kimi-k2.6, qwen3-coder-next] }, temperature: 0.1, max_tokens: 16000, timeout_ms: 480000 }
   fix:                 { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, glm-5.1, kimi-k2.6, qwen3-coder-next] }, temperature: 0.1, max_tokens: 12000, timeout_ms: 480000 }
@@ -144,13 +146,13 @@ fallback_rules:
 call_policy:
   client: "ai 7.x + @ai-sdk/openai-compatible; supportsStructuredOutputs: false; includeUsage: true"
   thinking:
-    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → reasoning_effort: 'high' только для card и plan, 'low' во всех остальных вызовах (D75, решение основателя 06.10.2026; было «high везде» от 05.10; список — packages/llm HIGH_REASONING) (glm-5.3 думает всегда, {thinking: {type: 'disabled'}} даёт 400 «cannot be disabled; please use low, high, or max» — замер на сервере 05.10.2026); deepseek → {thinking: {type: 'disabled'}} в каждом вызове, и без tools; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
+    - "MUST: thinking/reasoning выключен в любом вызове с tools. Параметры: zai → reasoning_effort: 'high' только для card, plan и system_plan (планировщик беты v2, B2-20), 'low' во всех остальных вызовах (D75, решение основателя 06.10.2026; было «high везде» от 05.10; список — packages/llm HIGH_REASONING) (glm-5.3 думает всегда, {thinking: {type: 'disabled'}} даёт 400 «cannot be disabled; please use low, high, or max» — замер на сервере 05.10.2026); deepseek → {thinking: {type: 'disabled'}} в каждом вызове, и без tools; cloudru → {chat_template_kwargs: {enable_thinking: false}} [?]; yandex → без reasoning-параметров [?]"
     - "MUST NOT: отправлять reasoning_content обратно в API (ломает DeepSeek/Kimi, аудит 04 T5)"
     - "MAY: отдельный вызов без tools с thinking для рассуждений; его результат передаётся дальше как обычный текст"
     - "Тест: контрактный тест провайдер×модель в eval (tools/eval --contract) — запрос с tools не содержит включённого thinking"
   structured_output: "MUST NOT: response_format json_object/json_schema. Структурированный вывод — только вызовом инструмента с zod-схемой, серверная валидация, при ошибке — повтор с текстом ошибки (≤2 раза)"
   tool_schemas: "MUST: tool definitions генерируются из zod 4 (z.toJSONSchema); одна схема — и для валидации, и для модели. Имена инструментов snake_case латиницей, описания на английском (экономия токенов), сообщения об ошибках — на русском для пользователя, структурно для модели"
-  tool_choice: "auto; 'required' только для вызовов, где единственный выход — инструмент (interview, card, plan, qa_generate)"
+  tool_choice: "auto; 'required' только для вызовов, где единственный выход — инструмент (interview, card, plan, system_plan, qa_generate)"
   parallel_tool_calls: "≤8 вызовов в одном ходе; лишние отклоняются ошибкой TOO_MANY_TOOL_CALLS"
   temperature_and_limits: "из routes[callType]; переопределение только в eval"
   retries:

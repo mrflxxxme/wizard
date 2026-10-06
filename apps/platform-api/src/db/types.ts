@@ -100,6 +100,23 @@ export interface MessagesTable {
   created_at: TsDef;
 }
 
+/** B2-20 (migration 0033): revisions of the system plan awaiting approval (db.yaml#system_plans). */
+export interface SystemPlansTable {
+  system_id: string;
+  revision: number;
+  status: string;
+  source: string;
+  plan: Json<Record<string, unknown>>;
+  errors: Json<unknown[]>;
+  fingerprint: string | null;
+  run_id: string | null;
+  build_run_id: string | null;
+  author_user_id: string | null;
+  approved_by: string | null;
+  approved_at: Date | null;
+  created_at: TsDef;
+}
+
 export interface RevisionsTable {
   system_id: string;
   version: number;
@@ -569,6 +586,7 @@ export interface DB {
   "platform.systems": SystemsTable;
   "platform.messages": MessagesTable;
   "platform.revisions": RevisionsTable;
+  "platform.system_plans": SystemPlansTable;
   "platform.files": FilesTable;
   "platform.runs": RunsTable;
   "platform.run_events": RunEventsTable;

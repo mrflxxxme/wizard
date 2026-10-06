@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { type AppSpec, USERS_ENTITY } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
 import { CHECK_BY_ID, type CheckDef, G1_TIME_BUDGET_MS, resolveMilestone } from "../catalog.js";
+import { browserUnavailable, G1_BROWSER_TIME_BUDGET_MS, runBrowserChecks } from "../goals/browser.js";
+import type { ColorScheme, GoalProgram, GoalViewport } from "../goals/types.js";
 import { clip, type Finding, isPassed, summarize, toChecks } from "../report.js";
 import type { Check, GateContext, GateReport } from "../types.js";
 import {
@@ -32,6 +34,13 @@ export interface G1Options {
   onRender?: RenderContext["onRender"];
   /** G1-RENDER-01 ceiling per page × role (default RENDER_TIMEOUT_MS). */
   renderTimeoutMs?: number;
+  /** Browser checks: goal programs over the built-in ones (tests), the scenario matrix, the budget. */
+  goals?: {
+    programs?: Readonly<Record<string, GoalProgram>>;
+    matrix?: readonly { viewport: GoalViewport; scheme: ColorScheme }[];
+    timeBudgetMs?: number;
+    onScreenshot?: (s: { route: string; role: string; png: Uint8Array }) => void;
+  };
 }
 
 const def = (id: string): CheckDef => CHECK_BY_ID.get(id) as CheckDef;
@@ -88,6 +97,10 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
   let renderOutcome: Outcome = renderOn
     ? { kind: "error", reason_ru: "не запускалась" }
     : { kind: "skip", reason_ru: "Проверка включается с этапа M1" };
+  // B2-24: browser checks run with a browser, and are required for a system with a plan (goal scenarios given).
+  const browserOn = !!ctx.browser || ctx.goalScenarios !== undefined;
+  let browserChecks: Check[] | null = null;
+  let browserFailure = "не запускались";
 
   // Milestone rule and static validity first: they need no runtime.
   const runnable: QaCheck[] = [];
@@ -117,6 +130,7 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
         results.set(c.id, entry(c, "error", `Не удалось проверить: ${reason}`, evidence ? { evidence } : {}));
     fnOutcome = { kind: "error", reason_ru: reason };
     if (renderOn) renderOutcome = { kind: "error", reason_ru: reason };
+    browserFailure = reason;
   };
 
   const runtime = ctx.runtime;
@@ -129,7 +143,8 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
     try {
       await env.migrate();
       let artifactDir: string | null = null;
-      if ((spec.functions ?? []).length > 0) {
+      // The browser needs the client bundle too (G1-GOAL, G1-MOBILE-01).
+      if ((spec.functions ?? []).length > 0 || ctx.browser) {
         const built = await (opts.deps?.buildSystem ?? buildSystem)({ spec, files: ctx.files, env: "draft" });
         if (!built.ok)
           throw new G1SetupError("система не собирается", built.errors.map((e) => e.message_ru).join("; "));
@@ -234,6 +249,33 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
           });
         } else renderOutcome = { kind: "error", reason_ru: "превышено время G1 (120 с)" };
       }
+
+      // G1-GOAL-<id> and G1-MOBILE-01 in Chromium on the seed (own budget next to the 120 s).
+      if (browserOn) {
+        if (!ctx.browser)
+          browserFailure =
+            "нет браузера для проверки (сценарии целей и мобильная версия проверяются в Chromium)";
+        else {
+          const browserDeadline = Date.now() + (opts.goals?.timeBudgetMs ?? G1_BROWSER_TIME_BUDGET_MS);
+          browserChecks = await runBrowserChecks({
+            env,
+            spec,
+            files: ctx.files,
+            seed,
+            reset: async () => {
+              await env.reset(seed);
+              return seedActors(env, spec, seed);
+            },
+            browser: ctx.browser,
+            ...(ctx.goalScenarios ? { scenarios: ctx.goalScenarios } : {}),
+            ...(opts.goals?.programs ? { programs: opts.goals.programs } : {}),
+            ...(opts.goals?.matrix ? { matrix: opts.goals.matrix } : {}),
+            ...(opts.goals?.onScreenshot ? { onScreenshot: opts.goals.onScreenshot } : {}),
+            now,
+            timeLeft: () => (ctx.signal?.aborted ? 0 : browserDeadline - Date.now()),
+          });
+        }
+      }
     } catch (e) {
       if (e instanceof G1SetupError) failAll(e.message, e.evidence);
       else failAll("не удалось подготовить окружение проверки", String((e as Error)?.message ?? e));
@@ -247,6 +289,7 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
   out.push(...coverage(spec, checks, results, milestone));
   out.push(...toChecks(def("G1-FN-01"), fnOutcome));
   out.push(...toChecks(def("G1-RENDER-01"), renderOutcome));
+  if (browserOn) out.push(...(browserChecks ?? browserUnavailable(ctx.goalScenarios, browserFailure)));
   return {
     level: "G1",
     passed: isPassed(out),

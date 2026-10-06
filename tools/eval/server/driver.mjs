@@ -9,6 +9,13 @@
 export const RUB_PER_CREDIT = 5;
 /** D67 threshold: ≥ 7 of 10 briefs reach publish readiness. */
 export const D67_THRESHOLD = { ready: 7, of: 10 };
+/**
+ * D76 strict threshold of beta v2 (product.yaml#decisions.D76_beta_v2 (6), eval.yaml#thresholds.by_milestone.B2):
+ * a brief is «covered» when its approved plan has no custom part and nothing out of scope — all covered briefs ready
+ * (G0–G2 without blockers, goal scenarios in the browser, 390 px); every uncovered brief reaches a working system and
+ * what is out of scope is recorded in «Запросы на развитие».
+ */
+export const THRESHOLDS = ["d67", "d76"];
 /** Brief statuses that will not change any more (fail-fast counts them). */
 export const FINAL = new Set(["ready", "not_ready", "build_failed", "interview_failed", "error", "skipped"]);
 export const DEFAULTS = {
@@ -22,6 +29,7 @@ export const DEFAULTS = {
   maxTurns: 8,
   maxInputs: 4,
   timeoutsMin: { interview: 15, build: 120, publish: 30 },
+  threshold: "d67",
 };
 /**
  * G2 checks that need the owner, not the builder: PROD values of integration secrets (G2-SECRET-02, e.g. the Telegram
@@ -93,6 +101,79 @@ export function isReady(gates, g2Mode) {
   return !!g2 && (g2.passed || g2.blockers.length === 0);
 }
 
+/**
+ * D76 coverage of a system plan (modules.yaml#system_plan): covered — no custom part and nothing out of scope;
+ * uncovered — otherwise; unknown — the plan was not read (a v1 system or no plan API).
+ */
+export function planCoverage(plan) {
+  if (!plan || typeof plan !== "object" || !Array.isArray(plan.modules))
+    return { coverage: "unknown", modules: [], custom: [], outOfScope: [] };
+  const custom = (Array.isArray(plan.custom) ? plan.custom : []).map((c) => String(c?.title ?? c?.id ?? "").slice(0, 200));
+  const outOfScope = (Array.isArray(plan.outOfScope) ? plan.outOfScope : []).map((o) =>
+    typeof o === "string"
+      ? { what: o.slice(0, 200), replacement: null }
+      : {
+          what: String(o?.what ?? o?.title ?? "").slice(0, 200),
+          replacement: o?.replacement ? String(o.replacement).slice(0, 200) : null,
+        },
+  );
+  return {
+    coverage: custom.length === 0 && outOfScope.length === 0 ? "covered" : "uncovered",
+    modules: plan.modules.map((m) => String(m?.id ?? "")).filter(Boolean),
+    custom,
+    outOfScope,
+  };
+}
+
+/**
+ * The approved plan of a system: GET /systems/:id (field plan, B2-20) or GET /systems/:id/plan; null when the platform
+ * has none (v1 pipeline).
+ */
+export async function readPlan(client, systemId, view) {
+  const inline = view?.plan ?? view?.system?.plan;
+  if (inline) return inline;
+  try {
+    const r = (await client.get(`/systems/${systemId}/plan`)).body;
+    return r?.plan ?? r ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Browser checks of the latest G1 (gates.yaml#G1.browser): goal scenarios G1-GOAL-<id> and G1-MOBILE-01. ran — the
+ * checks are in the report at all (a v2 system without them is not ready under D76).
+ */
+export function browserSummary(latest) {
+  const g1 = (latest?.reports ?? []).find((r) => r.level === "G1");
+  const checks = g1?.checks ?? [];
+  const goals = checks.filter((c) => String(c.id).startsWith("G1-GOAL-"));
+  const mobile = checks.filter((c) => c.id === "G1-MOBILE-01");
+  const bad = (c) => c.status === "fail" || c.status === "error";
+  return {
+    ran: mobile.length > 0,
+    goals: {
+      total: goals.length,
+      passed: goals.filter((c) => c.status === "pass").length,
+      failed: goals.filter(bad).map((c) => ({ id: c.id.slice("G1-GOAL-".length), message: String(c.message_ru ?? "").slice(0, 300) })),
+    },
+    mobile: mobile.length === 0 ? "absent" : mobile.some(bad) ? "fail" : "pass",
+  };
+}
+
+/** D76 «готова»: G0–G2 without blockers (as D67) and the browser checks ran and passed. */
+export function isReadyD76(gates, g2Mode, browser) {
+  return isReady(gates, g2Mode) && !!browser?.ran && browser.mobile === "pass" && browser.goals.failed.length === 0;
+}
+
+/** D76 verdict of one brief without database facts (the driver's fail-fast; report.mjs refines it with the gaps table). */
+export function countedD76(r) {
+  if (r.plan?.coverage === "covered") return r.ready;
+  if (r.plan?.coverage === "uncovered")
+    return r.ready && (r.plan.outOfScope.length === 0 || (r.gaps?.reported ?? []).length > 0);
+  return false;
+}
+
 /** Skeleton result of a brief (filled by driveBrief; what report.mjs reads). */
 export function newResult(brief) {
   return {
@@ -112,6 +193,9 @@ export function newResult(brief) {
     publish: null,
     gates: {},
     gaps: { outOfScope: [], reported: [], mentions: [] },
+    plan: null,
+    browser: null,
+    screenshots: [],
     runs: [],
     creditsUsed: 0,
     costRubEstimate: 0,
@@ -298,7 +382,11 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
       gates = summarizeGates(await latestGates());
     } else r.publish = { status: ctx.g2 === "publish" ? "not_publishable" : "skipped" };
     r.gates = gates;
-    r.ready = isReady(gates, ctx.g2);
+    if (ctx.threshold === "d76") {
+      r.browser = browserSummary(await latestGates());
+      r.plan = planCoverage(await readPlan(client, r.systemId, (await client.get(`/systems/${r.systemId}`)).body));
+      r.ready = isReadyD76(gates, ctx.g2, r.browser);
+    } else r.ready = isReady(gates, ctx.g2);
     r.status = r.ready
       ? "ready"
       : build.status !== "succeeded" && !gates.G0?.passed
@@ -317,6 +405,13 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
       await collectGaps(client, r)
         .then((g) => Object.assign(r.gaps, g))
         .catch((e) => say(`пробелы не прочитаны: ${e?.message ?? e}`));
+    // Screenshots of the system for the report grid (B2-41: the sites of the measurement side by side).
+    if (r.systemId && ctx.screenshot)
+      await Promise.resolve(ctx.screenshot(r))
+        .then((shots) => {
+          r.screenshots = (Array.isArray(shots) ? shots : []).slice(0, 4);
+        })
+        .catch((e) => say(`скриншоты не сняты: ${e?.message ?? e}`));
     r.finishedAt = now().toISOString();
   }
   return r;
@@ -414,8 +509,10 @@ export async function runEval(o) {
     else outer.addEventListener("abort", () => stop.abort(outer.reason), { once: true });
   }
   ctx.signal = stop.signal;
-  const counted = o.counted ?? ((r) => r.ready);
-  const need = Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * results.length);
+  const strict = ctx.threshold === "d76";
+  const counted = o.counted ?? (strict ? countedD76 : (r) => r.ready);
+  // D76 is strict: every brief counts, the first one lost makes the threshold unreachable.
+  const need = strict ? results.length : Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * results.length);
   // A partial run (a probe of a few briefs, D75 step 2) drives every brief: its point is the diagnosis of each one.
   const failFast = o.failFast ?? results.length >= D67_THRESHOLD.of;
   ctx.abortRun = (reason) => {
@@ -466,7 +563,8 @@ export async function runEval(o) {
   }
   await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, worker));
   return {
-    kind: "d67",
+    kind: strict ? "d76" : "d67",
+    threshold: ctx.threshold,
     base: ctx.client.base,
     runId: o.runId ?? null,
     orgId: ctx.orgId ?? null,

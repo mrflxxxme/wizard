@@ -171,6 +171,16 @@ export class G1Env {
     return (out as { v: T } | null)?.v as T;
   }
 
+  /** All rows of an entity (as the system role; G1 browser checks read what a goal scenario created). */
+  async rows(entity: string): Promise<Record<string, unknown>[]> {
+    if (!this.spec.entities.some((e) => e.name === entity)) return [];
+    return this.system(async (tx) => [
+      ...(await tx.unsafe(
+        `select * from ${this.s}.${quoteIdent(entity)} order by created_at desc limit 500`,
+      )),
+    ]);
+  }
+
   async insertRow(entity: string, row: Record<string, unknown>): Promise<void> {
     await this.system((tx) => this.insert(tx, entity, row));
   }

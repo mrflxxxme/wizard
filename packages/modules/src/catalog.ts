@@ -1,5 +1,6 @@
 // The beta v2 module registry: modules with code (src/<id>/) in place of their drafts from the spec's catalog.
 // A new module: add src/<id>/index.ts with its ModuleDefinition and list it in MODULES_WITH_CODE.
+import { bookingModule } from "./booking/index.js";
 import { catalogModule } from "./catalog/index.js";
 import { clientCardModule } from "./client_card/index.js";
 import { dealsModule } from "./deals/index.js";
@@ -23,6 +24,7 @@ export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
   reportsModule,
   staffModule,
   visitorCabinetModule,
+  bookingModule,
 ];
 
 const withCode = new Map(MODULES_WITH_CODE.map((d) => [d.manifest.id, d]));

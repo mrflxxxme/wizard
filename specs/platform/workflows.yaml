@@ -27,10 +27,10 @@ execution:
 system_stage:                     # platform.systems.stage
   states: [interview, card, building, ready, failed]
   transitions:
-    - { from: interview, to: card, on: "interview_turn выдал карточку" }
+    - { from: interview, to: card, on: "interview_turn выдал карточку (B2-20, конвейер модулей: план системы — ревизия platform.system_plans, ждёт утверждения)" }
     - { from: card, to: card, on: "новое сообщение/ответ изменили карточку (card_version++)" }
     - { from: card, to: interview, on: "оркестратор задал новые вопросы" }
-    - { from: card, to: building, on: "approveCard" }
+    - { from: card, to: building, on: "approveCard (B2-20, конвейер модулей: approveSystemPlan)" }
     - { from: ready, to: card, on: "interview_turn выдал карточку kind=change" }
     - { from: card, to: ready, on: "отмена change-карточки при preview_revision ≠ null" }
     - { from: ready, to: building, on: "approve мини-карточки правки или POST /systems/:id/fix (build mode=fix)" }
@@ -73,15 +73,15 @@ workflows:
     trigger: "POST /systems, /systems/:id/messages, /systems/:id/answers"
     steps:
       - { name: load_context, kind: tx, does: "история чата (свёртка по бюджету — agents/orchestrator.yaml), текущая спека draft, pending_questions" }
-      - { name: orchestrate, kind: llm, callType: "interview | card", does: "route() с orgPolicy; алгоритм и инструменты — agents/orchestrator.yaml (вопросы, карточка, ответ, классификация правки style_only | small_edit | big_change)" }
-      - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output. Уведомление о ПДн (agents/orchestrator.yaml#pii_notice) — messages {role: system, kind: notice, payload: {type: 'pii', categories}} + chat_output {kind: notice, messageId}" }
+      - { name: orchestrate, kind: llm, callType: "interview | card | system_plan", does: "route() с orgPolicy; алгоритм и инструменты — agents/orchestrator.yaml (вопросы, карточка, ответ, классификация правки style_only | small_edit | big_change). B2-20, конвейер модулей (WIZARD_BUILD_PIPELINE=modules; система остаётся на конвейере, с которого начала): интервью по целям (callType interview, submit_goals: 1–3 цели из modules.yaml#goals, ниша, роли, ресурсы, вопросы-кнопки ≤ 4 только о невыводимом из брифа) → планировщик (callType system_plan, submit_plan; validateSystemPlan с requireReady и готовые варианты секций — ошибки модели ≤ 2 раз, затем compilePlan — ошибки компиляции ещё 1 раз; packages/agents/src/planner); сообщение после плана — перепланирование с пожеланием" }
+      - { name: persist_output, kind: tx, does: "messages, systems.pending_questions / card (+card_version) / stage; событие chat_output. Уведомление о ПДн (agents/orchestrator.yaml#pii_notice) — messages {role: system, kind: notice, payload: {type: 'pii', categories}} + chat_output {kind: notice, messageId}. B2-20: вопросы интервью по целям — ещё и plan_sketch {stage: interview}; план — новая ревизия platform.system_plans (awaiting_approval, прежняя superseded) + messages {kind: plan, payload: {planRevision, errors}} + stage card + chat_output {kind: plan, planRevision} + plan_sketch {stage: plan}. Сборка не стартует сама: только approveSystemPlan (api.yaml)" }
       - { name: route_change, kind: tx, does: "style_only → сообщение со ссылкой на «Стиль», без прогона; small_edit/big_change → мини-карточка/карточка kind=change ждёт approve (D7: авто-старта нет)" }
     budget: "cap на ход — 8 кредитов (рассуждение T1 на интервью и карточке); превышение → run_failed BUDGET_STOPPED без needs_input"
 
   build:
     milestone: M0
     lock: true
-    trigger: "approveCard (mode create|change) | POST /systems/:id/fix после failed или непройденного гейта (mode=fix; cap = max(3, ceil(0.25 × cap исходной карточки)), решение агента — CHANGELOG) | M3: approve мини-карточки «Укажи и измени» (mode=point_edit)"
+    trigger: "approveCard (mode create|change) | B2-20: approveSystemPlan (конвейер модулей; input {pipeline: modules, planRevision, plan}, cap = ceil((15 ₽ + бюджет custom) / 5 ₽) кредитов; этапы сборки по плану — сборщик v2, B2-21) | POST /systems/:id/fix после failed или непройденного гейта (mode=fix; cap = max(3, ceil(0.25 × cap исходной карточки)), решение агента — CHANGELOG) | M3: approve мини-карточки «Укажи и измени» (mode=point_edit)"
     modes: { create: "полная сборка по карточке", change: "правка готовой системы", fix: "plan и ops пропускаются, старт с фазы fix по последним GateReport (platform.gate_reports)", point_edit: "M3: agents/builder.yaml#point_and_edit — правка только target.file" }
     steps:
       - { name: acquire_lock, kind: tx }
@@ -163,7 +163,7 @@ workflows:
   delete_system:   # L3-36
     milestone: M2
     schedule: "в составе retention_cron"
-    does: "через 30 дней после systems.deleted_at: DROP SCHEMA app_<key>_draft и app_<key>_prod CASCADE, удаление артефактов (бандлы, блобы, на которые не ссылается другая система), messages, imports, exports, secrets_refs (+ значения в бэкенде секретов); запись deletion_log mode=system_deleted. Строку platform.runs не создаёт"
+    does: "через 30 дней после systems.deleted_at: DROP SCHEMA app_<key>_draft и app_<key>_prod CASCADE, удаление артефактов (бандлы, блобы, на которые не ссылается другая система), messages, system_plans (B2-20), imports, exports, secrets_refs (+ значения в бэкенде секретов); запись deletion_log mode=system_deleted. Строку platform.runs не создаёт"
     test: "Система с deleted_at = now−31d → схем и сообщений нет, deletion_log содержит system_deleted"
 
   export_data:     # L1-34, L4-08, M2-10
@@ -201,7 +201,8 @@ events:
     step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer } }
     step_finished:   { required: [step], properties: { step: string, durationMs: integer, ruFallback: "boolean — хотя бы один LLM-вызов шага ушёл на модели в РФ по фолбэку; UI показывает общую строку без названий моделей (agents/models.yaml#fallback_rules, L4-20)" } }
     agent_message:   { required: [agent, messageId, text], properties: { agent: "orchestrator|builder|qa", messageId: string, text: string, delta: "boolean — true: кусок стрима, склеивать по messageId" } }
-    chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal|notice", messageId: string, cardVersion: integer } }
+    chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal|notice|plan", messageId: string, cardVersion: integer, planRevision: "integer — B2-20, kind=plan: ревизия плана системы (api.yaml#getSystemPlan)" } }
+    plan_sketch:     { required: [stage, sketch], properties: { stage: "interview|plan", planRevision: "integer|null", sketch: "{stage, niche, goals, modules, screens, fingerprint} — B2-20: эскиз системы для холста (api.yaml#/components/schemas/PlanSketch) — после вопросов интервью по целям (stage interview: цели, модули, «не входит») и после плана (stage plan: экраны, данные, роли, секции, метрики, сценарии целей, ошибки, fingerprint). Правки плана без модели (editSystemPlan) прогона не создают — эскиз в ответе PATCH и в getSystemPlanSketch" } }
     model_switched:  { internal: true, required: [fromModel, toModel, reason], properties: { fromModel: string, toModel: string, reason: "fallback_circuit_open|fallback_error (agents/models.yaml#fallback_rules)" } }
     models_unavailable: { internal: true, required: [callType, attempts], properties: { callType: string, attempts: "[{model, tier, status, errorCode, count}] ≤ 20 — неудачные попытки вызова по llm_calls прогона; пусто — ни одной попытки (нет ключей). Пишется перед run_failed LLM_UNAVAILABLE; основателю — алерт llm_chain_failed раз в час (M2-32)" } }
     build_metrics:   { internal: true, required: [stages], properties: { stages: "метрики этапов харнесса v2 (agents/builder.yaml#harness.metrics): ops, brief, checks, tasks, verify, review", creditsUsed: number, durationMs: integer } }

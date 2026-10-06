@@ -93,6 +93,8 @@ export interface BuildParams {
   mode: "create" | "change" | "fix" | "point_edit";
   /** Only mode=point_edit: the element picked in the preview; the build may change target.file only. */
   target?: PointEditTarget;
+  /** B2-20: a build of the modules pipeline — the approved system plan (platform.system_plans) instead of a card. */
+  plan?: { revision: number; plan: Record<string, unknown> };
 }
 export interface BuildOutcome {
   /** "cancelled" = user chose to stop (escalation rollback). */
@@ -132,8 +134,21 @@ export type InterviewOutput = (
       text?: string;
       questions: Record<string, unknown>[];
       analysis?: Record<string, unknown>;
+      /** B2-20: the canvas sketch while the goal interview asks (event plan_sketch stage=interview). */
+      sketch?: Record<string, unknown>;
     }
   | { kind: "card"; text?: string; card: Record<string, unknown> }
+  | {
+      /** B2-20: a system plan from the planner — a new plan revision awaiting approval (platform.system_plans). */
+      kind: "plan";
+      text?: string;
+      plan: Record<string, unknown>;
+      /** Compilation errors left after the planner's repairs (PlanError[]); non-empty blocks the approval. */
+      errors: Record<string, unknown>[];
+      sketch: Record<string, unknown>;
+      /** sha256 of the compiled spec and files; null when the plan does not compile. */
+      fingerprint: string | null;
+    }
   | { kind: "answer"; text: string }
 ) & {
   notice?: { categories: string[] };

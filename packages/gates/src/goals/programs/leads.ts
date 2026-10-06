@@ -1,0 +1,72 @@
+// Goal scenarios of the module «Заявки» (packages/modules/src/leads, modules.yaml#catalog leads): entity `lead`,
+// status new | in_work | done, the landing's LeadForm for the visitor, the cabinet for the owner.
+import type { GoalOutboxMessage, GoalProgram } from "../types.js";
+import { component, enumLabel, ownerRole, pageRoute, pageText, seedTexts } from "./shared.js";
+
+const LEAD_FORM = component("LeadForm");
+
+const toOwner = (m: GoalOutboxMessage, owners: ReadonlySet<string>) =>
+  (m.userId ? owners.has(m.userId) : false) ||
+  (m.payload as { recipient?: unknown } | null)?.recipient === "owner";
+
+/** GS-leads-1: the visitor leaves a lead, sees «Заявка отправлена»; the owner sees it as new and gets an e-mail. */
+const leaveLead: GoalProgram = async (t) => {
+  t.step("Посетитель заполняет форму заявки, отмечает согласие и отправляет");
+  await t.as("visitor");
+  await t.open("/");
+  await t.fillForm(LEAD_FORM);
+  await t.submit(LEAD_FORM);
+
+  t.step("Посетитель видит «Заявка отправлена»");
+  await t.expectText("Заявка отправлена", { within: LEAD_FORM });
+
+  t.step("Заявка сохранилась со статусом «новая»");
+  const mine = await t.newRows("lead");
+  if (mine.length !== 1) t.fail(`новых заявок в базе ${mine.length}, ожидалась одна`);
+  const lead = mine[0] as Record<string, unknown>;
+  if (lead.status !== "new") t.fail(`статус новой заявки «${String(lead.status)}», ожидался «new»`);
+
+  t.step("Владелец открывает список заявок в кабинете");
+  const cabinet = pageRoute(t.spec, ownerRole(t.spec));
+  if (!cabinet) return t.fail("у владельца нет кабинета со списком заявок");
+  await t.as("owner");
+  await t.open(cabinet);
+  const label = enumLabel(t.spec, "lead", "status", "new");
+  const marked = Object.values(lead).some((v) => typeof v === "string" && v.includes(t.marker));
+  if (marked) await t.expectNear(t.marker, label);
+  else await t.expectText(label);
+
+  t.step("Владельцу ушло письмо о новой заявке");
+  await t.runJobs();
+  const owners = new Set(t.userIds("owner"));
+  // In test mode the owner is a marker without an address (payload.recipient owner), an owner user — by userId.
+  const mail = t.outbox("email").filter((m) => toOwner(m, owners));
+  if (mail.length === 0) {
+    const all = t.outbox("email");
+    t.fail(
+      "письма владельцу нет в исходящих",
+      all.length
+        ? `в исходящих: ${all.map((m) => `${m.integration}.${m.action} → ${m.userId ? "пользователю" : "без получателя"}`).join("; ")}`
+        : "исходящих писем нет",
+    );
+  }
+};
+
+/** GS-leads-2: without signing in, the leads list is not shown and the data API refuses it. */
+const leadsClosed: GoalProgram = async (t) => {
+  t.step("Посетитель открывает адрес списка заявок без входа");
+  await t.as("visitor");
+  await t.open(pageRoute(t.spec, ownerRole(t.spec)) ?? "/cabinet");
+
+  t.step("Список заявок недоступен без входа");
+  const text = await pageText(t);
+  const leaked = seedTexts(t, "lead").find((v) => text.includes(v));
+  if (leaked) t.fail("посетитель без входа видит чужую заявку на экране");
+  const r = await t.api("GET", "/api/data/lead?limit=5");
+  if (r.status !== 401 && r.status !== 403) t.fail(`заявки отдаются без входа (HTTP ${r.status})`);
+};
+
+export const LEADS_PROGRAMS: Readonly<Record<string, GoalProgram>> = {
+  "GS-leads-1": leaveLead,
+  "GS-leads-2": leadsClosed,
+};

@@ -57,19 +57,30 @@ function paramEntity(spec: AppSpec, route: string, param: string, source: string
 }
 
 /** Route with params filled from rows the actor can read (data API as the role), else from the seed. */
-async function routePath(ctx: RenderContext, route: string, file: string, actor: Actor): Promise<string> {
+const routePath = (ctx: RenderContext, route: string, file: string, actor: Actor) =>
+  routePathFor(ctx.env, ctx.spec, ctx.files, ctx.seed, route, file, actor);
+
+/** A concrete path of a page route for an actor: params from rows it can read, else from the seed (also G1 browser checks). */
+export async function routePathFor(
+  env: G1Env,
+  spec: AppSpec,
+  files: ReadonlyMap<string, string>,
+  seed: Seed,
+  route: string,
+  file: string,
+  actor: Actor,
+): Promise<string> {
   const params = route.split("/").filter((s) => s.startsWith(":"));
   let path = route;
   for (const p of params) {
     const name = p.slice(1);
-    const entity = paramEntity(ctx.spec, route, name, ctx.files.get(file) ?? "");
+    const entity = paramEntity(spec, route, name, files.get(file) ?? "");
     let id: string | null = null;
     if (entity === USERS_ENTITY) id = actor.id;
     else if (entity) {
-      const r = await ctx.env.request(actor, "GET", `/api/data/${enc(entity)}?limit=1`);
+      const r = await env.request(actor, "GET", `/api/data/${enc(entity)}?limit=1`);
       const first = (r.body as { items?: { id?: unknown }[] } | null)?.items?.[0]?.id;
-      id =
-        typeof first === "string" ? first : ((ctx.seed.rows[entity]?.[0]?.id as string | undefined) ?? null);
+      id = typeof first === "string" ? first : ((seed.rows[entity]?.[0]?.id as string | undefined) ?? null);
     }
     path = path.replace(p, enc(id ?? "1"));
   }

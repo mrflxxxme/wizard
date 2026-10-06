@@ -3095,7 +3095,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: посетитель записался, слот занят для другого (CONFLICT), отмена и перенос по ссылке из письма"
@@ -3158,19 +3158,18 @@ tasks:
       - "Брифы mvp-09 и mvp-10 покрываются модулями (план без дописывания)"
 
   - id: B2-20
-    title: "Интервью по целям и экран «План системы» с утверждением до сборки"
+    title: "Интервью по целям и план системы (серверная часть): планировщик, правки без модели, утверждение до сборки, эскиз для холста"
     milestone: B2
-    deps: [B2-10, B2-32]
-    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/platform-screens.yaml, specs/agents/orchestrator.yaml]
-    owner: frontend
+    deps: [B2-10]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/agents/orchestrator.yaml, specs/modules/modules.yaml]
+    owner: agents
     parallel_group: b2-a
-    estimate_days: 4
-    status: todo
+    estimate_days: 3
+    status: done
     claimed_by: null
     acceptance:
-      - "Интервью выясняет 1–3 цели; план показывает цели → модули → метрики и «не входит + замена»"
-      - "Клиент правит и утверждает план; сборка стартует только по утверждённому плану (e2e)"
-
+      - "Интервью выясняет 1–3 цели (≤ 4 вопросов-кнопок с рекомендацией); план — цели → модули → метрики и «не входит + замена» (тест)"
+      - "Правки плана без модели и кредитов; сборка стартует только по утверждённой ревизии плана (тест API)"
   - id: B2-21
     title: "Сборщик v2: этапы план → тексты → дизайн → компиляция → дописывание → гейты, чекпоинты, продолжение, бюджет этапа"
     milestone: B2
@@ -3221,26 +3220,26 @@ tasks:
     owner: qa
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Готовность = G0–G2 без блокеров + сценарии целей модулей проходят в браузере + 390 px без горизонтальной прокрутки"
       - "Драйвер замера считает строгий порог D76 (брифы в модулях 10 из 10, вне модулей — рабочая система и запросы)"
 
   - id: B2-25
-    title: "Экран «Живая сборка» по плану в новом дизайне"
+    title: "Экран-холст: система клиента на весь экран, плавающий чат, растущий эскиз, живая сборка, слой «Как это работает», лист на телефоне"
     milestone: B2
-    deps: [B2-21, B2-32]
-    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/platform-screens.yaml]
+    deps: [B2-20, B2-21, B2-32]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-7.md, docs/prototype/v2-canvas-e.html, specs/ui/platform-screens.yaml, specs/platform/api.yaml]
     owner: frontend
     parallel_group: b2-a
-    estimate_days: 3
+    estimate_days: 5
     status: todo
     claimed_by: null
     acceptance:
-      - "Модули плана загораются по мере готовности с подписями простым языком, превью проявляется по частям, видно оставшееся время"
-      - "Сбой объяснён словами и сказано, что платформа делает дальше; технические детали под «Подробнее»"
-
+      - "Холст на весь экран, чат плавает снизу по центру (2–3 последние реплики или карточка вопроса, история по тапу); на 390 px — строка ввода и лист переписки, который тянется вверх (e2e 390/1280, светлая/тёмная)"
+      - "Эскиз из настоящих экранов модулей появляется после первой фразы и обновляется по событию plan_sketch только при смене fingerprint; цели и «не входит» — метки на эскизе; клиент утверждает план, сборка стартует только после этого (e2e на режиме показа)"
+      - "Сборка «материализует» эскиз по шагам с подписями простым языком и оставшимся временем; слой «Как это работает» сам показывается на время сборки, затем скрыт и включается вручную; сбой объяснён словами, технические детали под «Подробнее»"
   - id: B2-26
     title: "Фабрика модулей: рейтинг запросов, раздел /admin «Кандидаты в модули», письмо «теперь умеем»"
     milestone: B2
@@ -3268,6 +3267,20 @@ tasks:
     acceptance:
       - "Владелец видит метрики своих целей за неделю и месяц и 1–3 подсказки, что улучшить"
 
+
+  - id: B2-29
+    title: "«Ткни и скажи» на холсте: выбор блока, мгновенные правки параметров и вариантов без модели, пожелание словами — в планировщик"
+    milestone: B2
+    deps: [B2-20, B2-25]
+    specs: [docs/reviews/grill-7.md, docs/prototype/v2-canvas-e.html, specs/ui/platform-screens.yaml, specs/platform/api.yaml]
+    owner: frontend
+    parallel_group: b2-a
+    estimate_days: 3
+    status: todo
+    claimed_by: null
+    acceptance:
+      - "Тап по блоку подсвечивает его, в строке ввода — метка блока и подсказки («Другой вид», «Убрать»); правки параметров, вариантов секций и порядка уходят в PATCH /plan с revision и применяются без модели и кредитов (e2e: 0 вызовов моделей)"
+      - "Свободный текст с меткой блока уходит планировщику как пожелание к этому блоку; устаревшая ревизия даёт понятное сообщение и перезагрузку эскиза"
   - id: B2-30
     title: "2–3 живых прототипа направлений дизайна платформы в духе Apple"
     milestone: B2
@@ -3276,7 +3289,7 @@ tasks:
     owner: frontend
     parallel_group: b2-b
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Интерактивные страницы: старт, чат и план, живая сборка, кабинет системы, /admin; светлая и тёмная темы; 390 и 1280 px"
@@ -3290,25 +3303,25 @@ tasks:
     owner: founder
     parallel_group: b2-b
     estimate_days: 0.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Основатель выбрал направление и оставил комментарии; решение записано в CHANGELOG"
 
   - id: B2-32
-    title: "Дизайн-система v2 в ui-kit: токены, материалы, движение, базовые компоненты"
+    title: "Дизайн-система v2 в ui-kit по прототипу E: токены, движение «материализация», шрифты, базовые компоненты"
     milestone: B2
     deps: [B2-31]
-    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/ui/ui-kit.yaml]
+    specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-7.md, docs/prototype/v2-canvas-e.html, specs/product.yaml, specs/ui/ui-kit.yaml]
     owner: frontend
     parallel_group: b2-b
     estimate_days: 4
     status: todo
     claimed_by: null
     acceptance:
-      - "Токены материалов (стекло, размытие, глубина), движения и типографики; запасной вариант без backdrop-filter; prefers-reduced-motion"
-      - "Контраст WCAG AA в светлой и тёмной темах (тест), демо-страница компонентов со скриншотами CI"
-
+      - "Токены грилла-7: тёплая нейтральная палитра (светлая и тёмная), графит + янтарь, цвет бизнеса клиента как переменная акцента; зерно фона; запасной вариант без backdrop-filter"
+      - "Движение «материализация» (контур → поверхность → содержимое, янтарная кромка, «дыхание» ввода) только на transform/opacity; при prefers-reduced-motion выключено (тест)"
+      - "Inter и антиква с кириллицей с самостоятельным хостингом, лицензии в THIRD_PARTY_NOTICES (D64); контраст WCAG AA в обеих темах (тест); демо-страница компонентов (плавающий ввод, карточка вопроса, лист, блок холста, линии рентгена) со скриншотами CI"
   - id: B2-33
     title: "Платформа (кабинет, чат, /admin) на дизайн-системе v2"
     milestone: B2

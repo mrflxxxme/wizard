@@ -4,6 +4,7 @@
 // without personal data (D71), service mail to a visitor only with the record's consent field (D69), reminders by a
 // schedule.relative trigger on the visit time. The G1 checks are scenarios with runWorkflows and advanceTime.
 import type { Field, ModuleFragments, Workflow } from "@wizard/appspec";
+import { ACTIVE_STATUSES, bookingLinks } from "../booking/compile.js";
 import { leadFormFields } from "../leads/compile.js";
 import { cabinetRoute } from "../screens/cabinet.js";
 import { staffRoles, staffRolesFor } from "../staff/compile.js";
@@ -140,21 +141,22 @@ export function notifyPlan(ctx: ModuleContext): NotifyPlan {
   if (ctx.present.has("booking")) {
     const b = ctx.allParams.booking ?? {};
     const manual = b.confirm === "manual";
-    const cancelLink = b.cancel_by_link !== false;
-    const cancelLine = cancelLink ? "\nНе сможете прийти — отмените запись по ссылке: {{cancel_link}}" : "";
+    // One-time links of the runtime (D69) by the booking's parameters: cancel (releases the time at once) and
+    // reschedule, both closed cancel_until_hours before the visit; `cancelLine` — their text in the templates.
+    const { cancel, reschedule, lines: cancelLine } = bookingLinks(b);
     const visitor = p.visitor_emails === true;
-    const cancel = cancelLink
-      ? { cancel: { set: { [NOTIFY_BOOKING.status]: NOTIFY_BOOKING.cancelled } } }
-      : {};
-    const toVisitor = (template: string, ifStatus?: string): Step => ({
+    const toVisitor = (template: string, ifStatus?: string | readonly string[]): Step => ({
       type: "notify",
       params: {
         integration: MAIL,
         to: `$record.${NOTIFY_BOOKING.email}`,
         consentField: NOTIFY_BOOKING.consent,
         template,
-        ...cancel,
-        ...(ifStatus ? { if: { [NOTIFY_BOOKING.status]: [ifStatus] } } : {}),
+        ...(cancel ? { cancel } : {}),
+        ...(reschedule ? { reschedule } : {}),
+        ...(ifStatus
+          ? { if: { [NOTIFY_BOOKING.status]: Array.isArray(ifStatus) ? [...ifStatus] : [ifStatus] } }
+          : {}),
       },
     });
     const created: Step[] = team("booking", {
@@ -229,6 +231,25 @@ export function notifyPlan(ctx: ModuleContext): NotifyPlan {
       }),
     });
     items.push({ title: "Об отмене записи", text: `Когда запись отменили: ${whom("booking")}.` });
+
+    // A booking moved to another time (by the reschedule link or in the cabinet): the visitor gets the new time with
+    // new links (the team sees the schedule; the reminder follows the new time by itself).
+    if (visitor) {
+      templates.visitor_moved = {
+        subject: "Время записи изменено",
+        body: `Ваша запись перенесена на {{starts_at}}.${cancelLine}`,
+      };
+      workflows.push({
+        name: "booking_moved",
+        label: "Письмо о переносе записи",
+        trigger: { type: "on_update", entity: NOTIFY_BOOKING.entity, field: NOTIFY_BOOKING.startsAt },
+        steps: [toVisitor("visitor_moved", ACTIVE_STATUSES)],
+      });
+      items.push({
+        title: "О переносе записи",
+        text: "Посетителю — письмо с новым временем и новыми ссылками, если он согласился на письма.",
+      });
+    }
 
     const reminders = [
       { name: "booking_reminder", hours: Number(p.reminder_hours ?? 0), team: true },
@@ -322,8 +343,8 @@ function reminderScenario(
   manual: boolean,
   staffOn: boolean,
 ): Record<string, unknown> {
-  // Messages of the update itself: the confirmation e-mail of manual confirmation.
-  const before = visitor && manual ? 1 : 0;
+  // Messages of the update itself: the confirmation e-mail of manual confirmation and the letter about the new time.
+  const before = visitor ? (manual ? 2 : 1) : 0;
   const emails = (count: number) => ({ expect: { outbox: { connector: "email", count } } });
   // Without a count — at least one message (the staff of the role may be several users of the seed).
   const tgCount = (count?: number) => ({

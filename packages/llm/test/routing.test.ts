@@ -31,7 +31,7 @@ function policyOf(ruOnly: boolean, restricted: Row[2]): OrgPolicy {
 describe("routing matrix (data-boundary.yaml#tests)", () => {
   test("matrix file is up to date with the generator", () => {
     expect(readFileSync(MATRIX_PATH, "utf8")).toBe(serialize(buildMatrix()));
-    expect(matrix.rows.length).toBe(13 * 2 * 3 * 4 * 3 * 2);
+    expect(matrix.rows.length).toBe(14 * 2 * 3 * 4 * 3 * 2);
   });
 
   test("every row: expected tier and route_reason", () => {

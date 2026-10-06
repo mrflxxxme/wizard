@@ -620,6 +620,7 @@ class Compilation {
           file: f.file,
           ...(f.public ? { public: true } : {}),
           ...(roles?.length ? { roles } : {}),
+          ...(f.systemDbReason ? { systemDbReason: f.systemDbReason } : {}),
         });
         this.setFile(id, f.file, d?.files?.[f.file] ?? "");
       }

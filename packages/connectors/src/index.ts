@@ -211,6 +211,7 @@ export {
   OWNER_REF,
   type PlaceholderInfo,
   parseRecipients,
+  RESCHEDULE_LINK_PLACEHOLDER,
   type RecipientRef,
   recordRecipientKind,
   renderTemplate,

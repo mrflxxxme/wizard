@@ -1,10 +1,12 @@
 // Gate contracts: specs/quality/gates.yaml#report, specs/architecture.yaml#interfaces.gate_context.
 
+import type { Browser } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import type postgres from "postgres";
 import type { RenderJob, RenderOutcome } from "./g1/render/host.js";
 import type { RenderAnswer } from "./g1/render/remote.js";
 import type { QaCheck } from "./g1/types.js";
+import type { GoalScenarioInput } from "./goals/types.js";
 
 export type GateLevel = "G0" | "G1" | "G2";
 export type Milestone = "M0" | "M1" | "M2" | "M3" | "M4";
@@ -118,6 +120,16 @@ export interface GateContext {
    * confirmation against the current consequences (platform.destructive_changes). Absent → destructive steps block.
    */
   destructiveConfirmed?: boolean;
+  /**
+   * G1 browser checks (B2-24, gates.yaml#G1.browser): Chromium (Playwright) the draft opens in — G1-MOBILE-01 for every
+   * page and G1-GOAL-<id> for goalScenarios. The caller owns the browser (launch and close).
+   */
+  browser?: Browser;
+  /**
+   * Goal scenarios of the system plan (compilePlan().scenarios). Present (even empty) → a beta v2 system: the browser
+   * checks are required, without a browser they report error.
+   */
+  goalScenarios?: readonly GoalScenarioInput[];
   /** Default: env WIZARD_MILESTONE, else M0. */
   milestone?: Milestone | string;
   now?: Date;

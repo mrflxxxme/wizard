@@ -1,5 +1,16 @@
 export const PACKAGE = "@wizard/modules";
 
+/** Module «Запись по слотам»: manifest, statuses, the catalog contract, schedule constants and generated helpers. */
+export {
+  ACTIVE_STATUSES,
+  BOOKING_STATUSES,
+  compileBooking,
+  linkRules,
+  SERVICE_CONTRACT,
+} from "./booking/compile.js";
+export { bookingManifest, bookingModule } from "./booking/index.js";
+export { bookingPage } from "./booking/page.js";
+export { type ScheduleSpec, scheduleOf, scheduleSource, scheduleWarnings } from "./booking/schedule.js";
 /** Module «Каталог и прайс»: manifest, compile hook (canonical names), showcase page (also the landing section). */
 export {
   CATALOG_NAMES,

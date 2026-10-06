@@ -66,6 +66,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      # B2-24 (gates.yaml#G1.browser): goal scenarios of the modules and 390 px in Chromium; the build job has no browser.
+      - run: pnpm exec vitest run --project browser packages/gates/test/goals.browser.test.ts packages/modules/test/goals.browser.test.ts
       - run: pnpm e2e
       # Artifacts come only from fixture runs (WIZARD_LLM_MODE=fixture above), never from live LLM runs.
       - uses: actions/upload-artifact@v4

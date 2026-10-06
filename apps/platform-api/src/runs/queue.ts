@@ -43,6 +43,7 @@ import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
 import type { SecretStore } from "../secrets/store.js";
 import { insertMessage } from "../services/messages.js";
+import { insertPlanRevision } from "../services/plans.js";
 import {
   applyOpsRevision,
   commitFilesRevision,
@@ -1560,6 +1561,51 @@ export class RunEngine {
       if (stage !== "building")
         await move(stage === "card" ? "interview" : stage, { pending_questions: json(out.questions) });
       await appendEvent(t, run.id, "chat_output", { kind: "questions", messageId: m.id });
+      // B2-20: the canvas shows the goals and modules while the goal interview asks.
+      if (out.sketch)
+        await appendEvent(t, run.id, "plan_sketch", {
+          stage: "interview",
+          planRevision: null,
+          sketch: out.sketch,
+        });
+      return;
+    }
+    if (out.kind === "plan") {
+      // B2-20: a new plan revision waits for approval (stage card); the build starts only from approveSystemPlan.
+      if (stage === "building")
+        throw new RunFailure("INTERNAL", "Идёт сборка — план изменится после неё.", true);
+      const row = await insertPlanRevision(t, {
+        systemId: sys.id,
+        plan: out.plan,
+        errors: out.errors,
+        fingerprint: out.fingerprint,
+        source: "planner",
+        runId: run.id,
+      });
+      const m = await insertMessage(t, {
+        systemId: sys.id,
+        role: "assistant",
+        kind: "plan",
+        text: out.text ?? null,
+        payload: {
+          planRevision: row.revision,
+          errors: out.errors.length,
+          ...(out.gaps?.length ? { gaps: out.gaps } : {}),
+        },
+        runId: run.id,
+      });
+      if (stage === "card" || canTransition(stage, "card"))
+        await move("card", { pending_questions: json([]) });
+      await appendEvent(t, run.id, "chat_output", {
+        kind: "plan",
+        messageId: m.id,
+        planRevision: row.revision,
+      });
+      await appendEvent(t, run.id, "plan_sketch", {
+        stage: "plan",
+        planRevision: row.revision,
+        sketch: out.sketch,
+      });
       return;
     }
     if (out.kind === "card") {
@@ -1629,6 +1675,8 @@ export class RunEngine {
       card?: Record<string, unknown>;
       target?: PointEditTarget;
       fromRevision?: number;
+      plan?: Record<string, unknown>;
+      planRevision?: number;
     };
     const mode = (run.mode ?? "create") as BuildParams["mode"];
     if (mode === "point_edit" && !input.target)
@@ -1638,6 +1686,9 @@ export class RunEngine {
       cap: Number(capMilli ?? 0) / 1000,
       mode,
       ...(mode === "point_edit" && input.target ? { target: input.target } : {}),
+      ...(input.plan && typeof input.planRevision === "number"
+        ? { plan: { revision: input.planRevision, plan: input.plan } }
+        : {}),
     });
     if (mode === "point_edit" && input.target && typeof input.fromRevision === "number")
       await this.#assertPointEditScope(x, input.fromRevision, input.target.file);

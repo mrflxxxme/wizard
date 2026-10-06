@@ -11,6 +11,14 @@ import {
   type OrchSession,
   type TurnResult,
 } from "@wizard/agents/orchestrator";
+import {
+  createGoalInterview,
+  type GoalOutput,
+  type GoalTurnResult,
+  isGoalSession,
+  type ModuleRegistry,
+  newGoalSession,
+} from "@wizard/agents/planner";
 import { type RuntimeHandle, runGates } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import {
@@ -42,6 +50,8 @@ import { bundleDraft, MIGRATOR_ROLE, migrateDraft, RUNTIME_ROLE, seedDraft } fro
 export interface AgentExecutorsOptions {
   /** Platform connection: gates (shadow/ephemeral schemas), draft migrations (switching to migratorRole), registry. */
   pg: postgres.Sql;
+  /** B2-20: module registry of the beta v2 path (default — @wizard/modules CATALOG). */
+  modules?: ModuleRegistry;
   config: Config;
   migratorRole?: string;
   runtimeRole?: string;
@@ -152,6 +162,103 @@ async function turn(host: InterviewHost): Promise<TurnResult> {
   return orch.submitBrief(newSession(), text);
 }
 
+/** GoalOutput[] of one beta v2 turn → the InterviewOutput platform-api persists (+ notice, gaps, state). */
+function goalOutput(res: GoalTurnResult): InterviewOutput {
+  let main: InterviewOutput | undefined;
+  let notice: { categories: string[] } | undefined;
+  const gaps: CapabilityGap[] = [];
+  for (const o of res.outputs as GoalOutput[]) {
+    if (o.kind === "notice") {
+      notice = { categories: o.payload.categories };
+      continue;
+    }
+    if (o.gaps?.length) gaps.push(...o.gaps);
+    if (o.kind === "questions")
+      main = {
+        kind: "questions",
+        text: o.text,
+        questions: o.questions as unknown as Record<string, unknown>[],
+        sketch: o.sketch as unknown as Record<string, unknown>,
+      };
+    else if (o.kind === "plan")
+      main = {
+        kind: "plan",
+        text: o.text,
+        plan: o.plan as unknown as Record<string, unknown>,
+        errors: o.errors as unknown as Record<string, unknown>[],
+        sketch: o.sketch as unknown as Record<string, unknown>,
+        fingerprint: o.sketch.fingerprint,
+      };
+    else main = { kind: "answer", text: o.text };
+  }
+  return {
+    ...(main ?? { kind: "answer", text: "Готово." }),
+    ...(notice ? { notice } : {}),
+    ...(gaps.length > 0 ? { gaps } : {}),
+    state: res.session as unknown as Record<string, unknown>,
+  };
+}
+
+export interface PlanInterviewOptions {
+  /** Module registry (default — @wizard/modules CATALOG). */
+  registry?: ModuleRegistry;
+}
+
+/**
+ * B2-20: an interview turn of the beta v2 path (WIZARD_BUILD_PIPELINE=modules) — goal interview with button questions,
+ * the planner and a plan awaiting approval; a message after the plan re-plans with the client's wish.
+ */
+export async function planInterviewTurn(
+  host: InterviewHost,
+  o: PlanInterviewOptions = {},
+): Promise<InterviewOutput> {
+  const c = host.context;
+  const gi = createGoalInterview({
+    route: hostRouteFn(host.route, { step: "orchestrate" }),
+    orgPolicy: c.org.policy,
+    ctx: { orgId: c.org.id, runId: host.run.id, systemId: c.system.id },
+    ...(o.registry ? { registry: o.registry } : {}),
+    appName: c.system.name,
+    runStep: host.runStep,
+    emit: async (type, payload) => {
+      if (type === "orch_invalid") await host.emit("orch_invalid", payload);
+    },
+    recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
+  });
+  const session = isGoalSession(c.state) ? c.state : newGoalSession();
+  let res: GoalTurnResult;
+  try {
+    if (c.trigger === "create") res = await gi.submitBrief(newGoalSession(), lastUserText(host));
+    else if (c.trigger === "answers") {
+      const answers = (c.answers ?? []) as {
+        questionId: string;
+        optionId?: string;
+        text?: string;
+        byRecommendation?: boolean;
+      }[];
+      res = await gi.answer(
+        session,
+        answers
+          .filter((a) => !a.byRecommendation)
+          .map((a) => ({
+            questionId: a.questionId,
+            ...(a.optionId !== undefined ? { optionId: a.optionId } : {}),
+            ...(a.text !== undefined ? { text: a.text } : {}),
+          })),
+        { restByRecommendation: answers.some((a) => a.byRecommendation) },
+      );
+    } else if (session.state === "planned") res = await gi.revise(session, lastUserText(host));
+    else if (session.state === "asking")
+      return { kind: "answer", text: ASKING_HINT, state: session as unknown as Record<string, unknown> };
+    else res = await gi.submitBrief(newGoalSession(), lastUserText(host));
+  } catch (e) {
+    if (e instanceof AgentError) return { kind: "answer", text: e.message };
+    throw e;
+  }
+  if (res.failure) throw new RunFailure(res.failure.code, res.failure.message_ru, res.failure.retryable);
+  return goalOutput(res);
+}
+
 /** Loads a system into the G1 runtime and remembers it, so the pinned G1 system is unloaded after the gate. */
 function trackingHandle(
   rt: RuntimeApp,
@@ -219,6 +326,10 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
 
   return {
     async interviewTurn(host) {
+      // B2-20: a system stays on the pipeline it started with; a new one follows WIZARD_BUILD_PIPELINE.
+      const state = host.context.state;
+      if (isGoalSession(state) || (state === null && o.config.buildPipeline === "modules"))
+        return planInterviewTurn(host, o.modules ? { registry: o.modules } : {});
       let res: TurnResult;
       try {
         res = await turn(host);
@@ -231,6 +342,14 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     },
 
     async build(host, params) {
+      // B2-20 approves the plan and starts this run; the staged build by the plan (texts, design, compilation,
+      // custom code, gates) is the builder v2 — B2-21.
+      if (params.plan)
+        throw new RunFailure(
+          "INTERNAL",
+          "Сборка по утверждённому плану системы появится со сборщиком v2. План сохранён — его можно собрать позже.",
+          false,
+        );
       const qa = createHostQa(host, { milestone: o.config.milestone });
       const out = await runBuild(
         { ...host, qa },

@@ -4,6 +4,8 @@
 // secrets or personal data reach it (the eval account is a service one, the briefs are synthetic).
 import { D67_THRESHOLD, RUB_PER_CREDIT } from "./driver.mjs";
 
+const COVERAGE_RU = { covered: "в модулях", uncovered: "вне модулей", unknown: "план не прочитан" };
+
 const CLASS_RU = { site: "сайт с заявками", booking: "запись", crm: "CRM", other: "вне классов" };
 const STATUS_RU = {
   ready: "готова к публикации",
@@ -23,6 +25,9 @@ const PUBLISH_RU = {
   not_publishable: "до публикации не дошла",
   skipped: "G2 не запускался",
 };
+
+/** A run measured against the strict threshold of beta v2 (driver threshold d76). */
+export const isD76 = (doc) => doc?.threshold === "d76" || doc?.kind === "d76";
 
 const rub = (n) => `${Math.round(n).toLocaleString("ru-RU").replace(/ /g, " ")} ₽`;
 const cell = (s) =>
@@ -45,6 +50,7 @@ export function median(xs) {
  * recorded; without the table an honest answer in the card or chat counts provisionally (marked).
  */
 export function evaluate(doc, db = {}) {
+  const d76 = isD76(doc);
   const costs = db.costs ?? {};
   const gapsTable = db.gaps !== undefined && db.gaps !== null;
   const items = doc.results.map((r) => {
@@ -60,6 +66,32 @@ export function evaluate(doc, db = {}) {
       : [];
     let counted = r.ready;
     let via = r.ready ? "ready" : null;
+    if (d76) {
+      // D76: covered — ready; uncovered — a working system and what is out of scope recorded (or nothing out of scope).
+      const coverage = r.plan?.coverage ?? "unknown";
+      const need = (r.plan?.outOfScope ?? []).length > 0;
+      const reported = (r.gaps?.reported ?? []).length > 0;
+      counted = false;
+      via = null;
+      if (coverage === "covered" && r.ready) [counted, via] = [true, "ready"];
+      else if (coverage === "uncovered" && r.ready) {
+        if (!need) [counted, via] = [true, "ready"];
+        else if (recorded.length > 0) [counted, via] = [true, "gap_recorded"];
+        else if (!gapsTable && reported) [counted, via] = [true, "gap_mentioned"];
+      }
+      return {
+        ...r,
+        costRub,
+        costExact: !!exact,
+        developmentRequests: recorded,
+        gapMentioned: mentioned,
+        gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
+        stages: (r.systemId && db.metrics?.[r.systemId]?.stages) || null,
+        coverage,
+        counted,
+        countedVia: via,
+      };
+    }
     if (!counted && r.beyond && recorded.length > 0) {
       counted = true;
       via = "gap_recorded";
@@ -82,14 +114,24 @@ export function evaluate(doc, db = {}) {
   const ran = items.filter((x) => x.status !== "skipped" && x.status !== "pending");
   const ready = items.filter((x) => x.counted).length;
   const staged = items.filter((x) => x.stages?.tasks?.total);
-  const threshold = Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * items.length);
+  const threshold = d76 ? items.length : Math.ceil((D67_THRESHOLD.ready / D67_THRESHOLD.of) * items.length);
+  const group = (c) => {
+    const xs = items.filter((x) => x.coverage === c);
+    return { total: xs.length, counted: xs.filter((x) => x.counted).length };
+  };
+  const coverage = d76 ? { covered: group("covered"), uncovered: group("uncovered"), unknown: group("unknown") } : null;
   return {
     items,
     total: items.length,
     ran: ran.length,
     ready,
     threshold,
-    passed: items.length >= D67_THRESHOLD.of ? ready >= D67_THRESHOLD.ready : ready >= threshold,
+    coverage,
+    passed: d76
+      ? items.length > 0 && ready === items.length
+      : items.length >= D67_THRESHOLD.of
+        ? ready >= D67_THRESHOLD.ready
+        : ready >= threshold,
     medianMinutes: median(items.map((x) => x.minutes)),
     costRub: Math.round(items.reduce((s, x) => s + (x.costRub ?? 0), 0) * 100) / 100,
     costExact: items.filter((x) => x.systemId).every((x) => x.costExact),
@@ -138,20 +180,76 @@ function checksLine(item) {
   return out;
 }
 
+/** D76 verdict lines: covered briefs all ready, uncovered ones all at a working system with recorded requests. */
+function d76Summary(e) {
+  const c = e.coverage;
+  const verdict = e.passed ? "строгий порог D76 пройден" : "строгий порог D76 не пройден";
+  const L = [
+    `**Итог: ${verdict} — засчитано ${e.ready} из ${e.total}.**`,
+    "",
+    `- Брифы в модулях (план без дописывания и без «не входит»): готовы ${c.covered.counted} из ${c.covered.total} — нужно все.`,
+    `- Брифы вне модулей: дошли до рабочей системы с записанными «Запросами на развитие» ${c.uncovered.counted} из ${c.uncovered.total} — нужно все.`,
+  ];
+  if (c.unknown.total)
+    L.push(`- План системы не прочитан у ${c.unknown.total} брифов: покрытие модулями неизвестно, такие брифы не засчитываются.`);
+  return L;
+}
+
+/** Per brief: the plan (modules, what is out of scope and its replacement), goal scenarios and the phone check. */
+function d76Brief(x) {
+  const L = [];
+  const p = x.plan;
+  if (!p || p.coverage === "unknown") L.push("- План системы: не прочитан.");
+  else {
+    L.push(`- План системы: ${COVERAGE_RU[p.coverage]}; модули: ${p.modules.join(", ") || "—"}.`);
+    if (p.custom.length) L.push(`- Дописывание: ${p.custom.join("; ")}.`);
+    for (const o of p.outOfScope) L.push(`- Не входит: ${o.what}${o.replacement ? ` — замена: ${o.replacement}` : ""}.`);
+  }
+  const b = x.browser;
+  if (!b?.ran) L.push("- Проверки в браузере (сценарии целей, 390 px) не запускались — готовность не засчитана.");
+  else {
+    L.push(
+      `- Сценарии целей в браузере: прошли ${b.goals.passed} из ${b.goals.total}; страницы на 390 px: ${b.mobile === "pass" ? "без прокрутки вбок" : "есть прокрутка вбок"}.`,
+    );
+    for (const f of b.goals.failed) L.push(`  - ${f.id}: ${f.message}`);
+  }
+  return L;
+}
+
+/** Grid of site screenshots (3 per row): what each system of the measurement looks like, side by side. */
+export function screenshotGrid(items) {
+  const shots = items.flatMap((x) =>
+    (x.screenshots ?? []).filter((s) => s?.src).map((s) => ({ id: x.id, label: s.label ?? x.id, src: s.src })),
+  );
+  if (shots.length === 0) return [];
+  const L = ["## Сетка скриншотов", "", "| | | |", "|---|---|---|"];
+  for (let i = 0; i < shots.length; i += 3) {
+    const row = shots.slice(i, i + 3).map((s) => `![${cell(s.label)}](${s.src})<br>${cell(s.id)} · ${cell(s.label)}`);
+    while (row.length < 3) row.push(" ");
+    L.push(`| ${row.join(" | ")} |`);
+  }
+  L.push("");
+  return L;
+}
+
 /** The report text (Markdown). `meta`: {platform, date, briefsAsked, limitsNote}. */
 export function renderReport(doc, db = {}, meta = {}) {
   const e = evaluate(doc, db);
+  const d76 = isD76(doc);
   const L = [];
   const date = meta.date ?? String(doc.startedAt ?? "").slice(0, 10);
-  L.push(`# Замер D67 на сервере пилота — ${date}`, "");
+  L.push(d76 ? `# Замер беты v2 (порог D76) — ${date}` : `# Замер D67 на сервере пилота — ${date}`, "");
   L.push(
     `Платформа: ${meta.platform ?? doc.base} · прогон \`${doc.runId ?? "—"}\` · брифов: ${e.total}, запущено: ${e.ran} · бюджет ${rub(doc.maxCostRub)} · параллельно: ${doc.concurrency}`,
     "",
   );
-  const verdict = e.passed
-    ? `порог D67 (не меньше ${D67_THRESHOLD.ready} из ${D67_THRESHOLD.of}) достигнут`
-    : `порог D67 (не меньше ${D67_THRESHOLD.ready} из ${D67_THRESHOLD.of}) не достигнут`;
-  L.push(`**Итог: ${e.ready} из ${e.total} дошли до готовности к публикации — ${verdict}.**`, "");
+  if (d76) L.push(...d76Summary(e), "");
+  else {
+    const verdict = e.passed
+      ? `порог D67 (не меньше ${D67_THRESHOLD.ready} из ${D67_THRESHOLD.of}) достигнут`
+      : `порог D67 (не меньше ${D67_THRESHOLD.ready} из ${D67_THRESHOLD.of}) не достигнут`;
+    L.push(`**Итог: ${e.ready} из ${e.total} дошли до готовности к публикации — ${verdict}.**`, "");
+  }
   L.push(
     `- Медиана времени от брифа до конца сборки: ${e.medianMinutes === null ? "—" : `${e.medianMinutes} мин`}`,
     `- Расход моделей: ${rub(e.costRub)} ${e.costExact ? "(точно, по журналу вызовов моделей)" : `(оценка по кредитам: 1 кредит ≈ ${RUB_PER_CREDIT} ₽)`}; кредитов списано по прогонам: ${e.credits}`,
@@ -168,12 +266,14 @@ export function renderReport(doc, db = {}, meta = {}) {
           `- Задачи ТЗ, готовые с первого хода исполнителя: ${e.firstPass.passed} из ${e.firstPass.total}${e.firstPass.total ? ` (${Math.round((e.firstPass.passed / e.firstPass.total) * 100)} %)` : ""} — по брифам с метриками этапов: ${e.firstPass.briefs}`,
         ]
       : []),
-    `- Готовность к публикации — G0, G1 и G2 без блокеров; то, что делает владелец (секреты интеграций), показано отдельно и готовность не снимает.${doc.g2 === "skip" ? " **В этом прогоне G2 не запускался.**" : " G2 запускается первой публикацией: на пилоте она останавливается на ревью основателя, в prod ничего не уходит."}`,
+    `- Готовность к публикации — G0, G1 и G2 без блокеров${d76 ? ", сценарии целей проходят в браузере (390 и 1280 px, светлая и тёмная темы) и все страницы на 390 px без прокрутки вбок" : ""}; то, что делает владелец (секреты интеграций), показано отдельно и готовность не снимает.${doc.g2 === "skip" ? " **В этом прогоне G2 не запускался.**" : " G2 запускается первой публикацией: на пилоте она останавливается на ревью основателя, в prod ничего не уходит."}`,
     "",
   );
   L.push(
-    "| Бриф | Класс | Итог | Не прошли | Мин | ₽ | Пробелы | Запросы на развитие |",
-    "|---|---|---|---|---|---|---|---|",
+    d76
+      ? "| Бриф | План | Итог | Сценарии целей | 390 px | Не прошли | Мин | ₽ | Запросы на развитие |"
+      : "| Бриф | Класс | Итог | Не прошли | Мин | ₽ | Пробелы | Запросы на развитие |",
+    d76 ? "|---|---|---|---|---|---|---|---|---|" : "|---|---|---|---|---|---|---|---|",
   );
   for (const x of e.items) {
     const failed = checksLine(x);
@@ -187,6 +287,15 @@ export function renderReport(doc, db = {}, meta = {}) {
             ? `вне рамок: ${x.gaps.outOfScope.join("; ")}`
             : "—";
     const mark = x.counted ? (x.countedVia === "ready" ? "✅" : "✅*") : "❌";
+    if (d76) {
+      const b = x.browser;
+      const goals = !b?.ran ? "не запускались" : b.goals.failed.length ? `не прошли ${b.goals.failed.length} из ${b.goals.total}` : `${b.goals.passed} из ${b.goals.total}`;
+      const mobile = !b?.ran ? "—" : b.mobile === "pass" ? "без поломок" : "прокрутка вбок";
+      L.push(
+        `| ${cell(x.id)} | ${cell(COVERAGE_RU[x.coverage])} | ${mark} ${cell(STATUS_RU[x.status] ?? x.status)} | ${cell(goals)} | ${cell(mobile)} | ${cell(failed.length ? `${failed.length}: ${failed.map((f) => f.split(":")[0]).join(", ")}` : "—")} | ${x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${cell(gaps).slice(0, 200)} |`,
+      );
+      continue;
+    }
     L.push(
       `| ${cell(x.id)} | ${cell(CLASS_RU[x.class] ?? x.class)} | ${mark} ${cell(STATUS_RU[x.status] ?? x.status)} | ${cell(failed.length ? `${failed.length}: ${failed.map((f) => f.split(":")[0]).join(", ")}` : "—")} | ${x.minutes ?? "—"} | ${x.systemId ? `${Math.round(x.costRub)}${x.costExact ? "" : "≈"}` : "—"} | ${x.gapCount} | ${cell(gaps).slice(0, 200)} |`,
     );
@@ -202,6 +311,7 @@ export function renderReport(doc, db = {}, meta = {}) {
   for (const x of e.items) {
     L.push(`### ${x.id} — ${x.title}`, "");
     L.push(`- Класс: ${CLASS_RU[x.class] ?? x.class}. Итог: ${STATUS_RU[x.status] ?? x.status}.`);
+    if (d76) L.push(...d76Brief(x));
     if (x.systemId) L.push(`- Система: \`${x.systemId}\``);
     if (x.error) L.push(`- Что случилось: ${x.error}`);
     if (x.interview?.turns)
@@ -250,6 +360,7 @@ export function renderReport(doc, db = {}, meta = {}) {
       );
     L.push("");
   }
+  L.push(...screenshotGrid(e.items));
   const notes = [...(meta.notes ?? [])];
   if (!e.gapsTable)
     notes.push(

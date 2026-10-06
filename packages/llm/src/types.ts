@@ -5,6 +5,7 @@ export const CALL_TYPES = [
   "interview",
   "card",
   "plan",
+  "system_plan",
   "build_ops",
   "build_code",
   "fix",
