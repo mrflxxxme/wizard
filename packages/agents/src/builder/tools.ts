@@ -53,7 +53,7 @@ export function submitPlanTool(acIds: ReadonlySet<string>) {
 
 export interface ApplyOpsArgs {
   ops: Record<string, unknown>[];
-  expectedVersion: number;
+  expectedVersion?: number | undefined;
   idempotencyKey?: string | undefined;
 }
 
@@ -95,13 +95,13 @@ export function builderTools(env: ToolEnv, opts: { applyOps: boolean } = { apply
     defineTool({
       name: "apply_ops",
       description:
-        "Apply a batch (1..50) of typed AppSpec operations atomically. expectedVersion must equal the current spec version.",
+        "Apply a batch (1..50) of typed AppSpec operations atomically. expectedVersion is optional: the current spec version is used.",
       input: z.object({
         ops: z
           .array(z.looseObject({ op: z.enum(OP_NAMES as [string, ...string[]]) }))
           .min(1)
           .max(50),
-        expectedVersion: z.number().int().min(0),
+        expectedVersion: z.number().int().min(0).optional(),
         idempotencyKey: z.string().max(200).optional(),
       }),
       run: (a) => env.applyOps(a as ApplyOpsArgs),

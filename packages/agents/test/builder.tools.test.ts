@@ -131,7 +131,7 @@ describe("tool definitions", () => {
 });
 
 describe("apply_ops", () => {
-  test("OpsError comes back structured (code, path, message, allowed) and the spec does not change", async () => {
+  test("OpsError comes back structured (code, path, message, allowed); a stale expectedVersion is replaced", async () => {
     const { results, mem } = await probe([
       tc(
         "apply_ops",
@@ -150,9 +150,10 @@ describe("apply_ops", () => {
     expect((a?.data as { errors: { allowed?: string[] }[] } | undefined)?.errors[0]?.allowed).toEqual([
       "note",
     ]);
-    expect(results.get("b")?.error?.code).toBe("VERSION_CONFLICT");
+    // A stale expectedVersion is not an error: the run holds the lock, the batch goes on the current version.
+    expect(results.get("b")?.error).toBeUndefined();
     expect(results.get("c")?.error?.code).toBe("OWNER_ONLY_FIELD");
-    expect(mem.state().version).toBe(1);
+    expect(mem.state().version).toBe(2);
   });
 
   test("ok → {ok, version, humanDiff} and ops_applied with summary_ru", async () => {
@@ -348,6 +349,7 @@ describe("read_file, list_files, run_gate, docs, ask_orchestrator", () => {
         tc("read_file", { path: "card.json" }, "card"),
         tc("read_file", { path: "ui/nope.tsx" }, "missing"),
         tc("read_file", { path: "/etc/passwd" }, "outside"),
+        tc("read_file", { path: "runtime/sdk.md" }, "docs"),
         tc("read_file", { path: "ui/A.tsx" }, "a"),
         tc("list_files", { prefix: "ui/" }, "list"),
       ],
@@ -375,6 +377,9 @@ describe("read_file, list_files, run_gate, docs, ask_orchestrator", () => {
     expect(JSON.parse(String(results.get("card")?.content))).toMatchObject({ title: "Тест" });
     expect(results.get("missing")?.error?.code).toBe("NOT_FOUND");
     expect(results.get("outside")?.error?.code).toBe("NOT_FOUND");
+    // A platform doc the prompt cites is not a file: the answer names the reference tools instead.
+    expect(results.get("docs")?.error?.message).toMatch(/не файл системы.*get_sdk_docs/);
+    expect(results.get("missing")?.error?.message).toBe("Файла ui/nope.tsx нет.");
     expect(results.get("a")).toEqual({ content: "export default () => null;\n" });
     expect(results.get("list")).toEqual({ files: [{ path: "ui/A.tsx", bytes: 27 }] });
   });
