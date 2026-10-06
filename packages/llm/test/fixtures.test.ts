@@ -292,7 +292,7 @@ describe("record mode (eval.yaml#fixtures.rules, L3-07)", () => {
     expect(file).not.toContain("555-44-33");
     expect(file).not.toMatch(/test-cloudru|authorization/i);
     const rec = JSON.parse(file.trim()) as FixtureLine;
-    expect(rec).toMatchObject({ v: 1, callType: "interview", modelId: "kimi-k2.6" });
+    expect(rec).toMatchObject({ v: 1, callType: "interview", modelId: "glm-5.1" });
     expect(JSON.stringify(rec.request.messages)).toContain("[EMAIL_1]");
     expect(rec.usage).toEqual({ promptTokens: 1000, cachedPromptTokens: 400, completionTokens: 200 });
 

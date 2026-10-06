@@ -185,8 +185,8 @@ const r = (
   timeoutMs: number,
 ): RouteDef => ({ role, defaultTier, chain, temperature, maxTokens, timeoutMs });
 
-const ORCH_T0 = ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro", "yandex-qwen3-235b"];
-const CODE_T0 = ["deepseek-v4-pro", "kimi-k2.6", "qwen3-coder-next", "glm-5.1"];
+const ORCH_T0 = ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro", "yandex-qwen3-235b"];
+const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 
 export const ROUTES: Record<CallType, RouteDef> = {
   interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 4000, 180000),
@@ -194,7 +194,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   plan: r(
     "builder",
     "T1",
-    { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "deepseek-v4-pro", "kimi-k2.6"] },
     0.2,
     4000,
     480000,
@@ -202,7 +202,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   build_ops: r(
     "builder",
     "T1",
-    { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "kimi-k2.6", "glm-5.1"] },
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "deepseek-v4-pro", "kimi-k2.6"] },
     0.1,
     8000,
     420000,

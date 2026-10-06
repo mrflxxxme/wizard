@@ -235,7 +235,7 @@ describe("fallback, retries, circuit breaker", () => {
     });
     expect([out.tier, out.model, out.ruFallback, out.routeReason]).toEqual([
       "T0",
-      "deepseek-v4-pro",
+      "glm-5.1",
       true,
       "fallback_error",
     ]);
@@ -244,12 +244,12 @@ describe("fallback, retries, circuit breaker", () => {
       ["glm-5.3", "error", 1, false],
       ["glm-5.3", "error", 2, false],
       ["glm-5.3", "error", 3, false],
-      ["deepseek-v4-pro", "ok", 1, true],
+      ["glm-5.1", "ok", 1, true],
     ]);
     expect(sink.records[3]?.fallbackFrom).toBe("glm-5.3");
     expect(sink.records[0]?.errorCode).toBe("HTTP_5xx");
     expect(events).toEqual([
-      { type: "model_switched", fromModel: "glm-5.3", toModel: "deepseek-v4-pro", reason: "fallback_error" },
+      { type: "model_switched", fromModel: "glm-5.3", toModel: "glm-5.1", reason: "fallback_error" },
     ]);
   });
 

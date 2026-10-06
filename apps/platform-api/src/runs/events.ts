@@ -12,6 +12,7 @@ export const EVENT_TYPES = [
   "model_switched",
   "models_unavailable",
   "build_metrics",
+  "orch_invalid",
   "ops_applied",
   "file_written",
   "gate_started",
@@ -31,6 +32,7 @@ export const INTERNAL_EVENTS: ReadonlySet<string> = new Set([
   "model_switched",
   "models_unavailable",
   "build_metrics",
+  "orch_invalid",
 ]);
 export const TERMINAL_EVENTS: ReadonlySet<string> = new Set(["run_finished", "run_failed"]);
 

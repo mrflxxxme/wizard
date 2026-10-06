@@ -108,6 +108,11 @@ describe("S2/S4/S5 validation", () => {
       type: "run_failed",
       payload: { code: "ORCH_INVALID_OUTPUT", retryable: true },
     });
+    // Internal orch_invalid right before run_failed: what did not parse, for diagnose.
+    const inv = emitted.at(-2) as { type: string; payload: { issues: { path: string; message: string }[] } };
+    expect(inv.type).toBe("orch_invalid");
+    expect(inv.payload.issues.length).toBeGreaterThan(0);
+    expect(inv.payload.issues.every((i) => typeof i.path === "string" && i.message.length <= 160)).toBe(true);
   });
 
   test("questions outside the selected forks are repaired", async () => {
