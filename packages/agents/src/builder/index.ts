@@ -18,8 +18,12 @@ export {
   FIXTURE_KEYS,
   fixtureImage,
   fixtureStockFetch,
+  RECORDED_PROVIDERS,
+  recordedFile,
   recordingStockFetch,
   STOCK_FIXTURES_DIR,
+  sanitizeStockAnswer,
+  scrubSecrets,
 } from "../stock/fixtures.js";
 export {
   NICHE_TERMS,

@@ -28,7 +28,13 @@ import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
-import { D76_MAX_COST_RUB, DEFAULTS as EVAL_DEFAULTS, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
+import {
+  countedD76,
+  D76_MAX_COST_RUB,
+  DEFAULTS as EVAL_DEFAULTS,
+  runEval,
+  THRESHOLDS,
+} from "../eval/server/driver.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
 import { previewScreenshots } from "../eval/server/screenshots.mjs";
@@ -1271,6 +1277,15 @@ export function psqlInPod(kubectl, sql) {
 }
 
 /**
+ * Mid-run counting of a brief for the fail-fast: as the report (a beyond-capability brief counts by the agent's honest
+ * answer); D76 — the driver's verdict, the report re-checks the recorded out-of-scope requests in the database.
+ */
+export function runCounted(threshold) {
+  if (threshold === "d76") return countedD76;
+  return (r) => evaluate({ threshold, results: [r] }).items[0]?.counted === true;
+}
+
+/**
  * `eval` — the D67 measurement (product.yaml#decisions.D67_mvp_readiness, docs/ops/eval-d67.md): the service account
  * eval+<runid>@<platform domain> is created in the platform database (tools/eval/server/seed.mjs; the raw session
  * token is generated here, masked, and kept only in memory), the briefs run through the public HTTPS of the platform
@@ -1410,9 +1425,7 @@ export async function pilotEval({
       log: tee,
       sleep: abortableSleep,
       signal: stop.signal,
-      // The same counting as the report (a beyond-capability brief counts by the agent's honest answer; D76 — by the
-      // plan coverage and the browser checks).
-      counted: (r) => evaluate({ threshold, results: [r] }).items[0]?.counted === true,
+      counted: runCounted(threshold),
       ...(shoot ? { screenshot: shoot } : {}),
       onUpdate: (results) => {
         snapshot = results;
