@@ -317,7 +317,10 @@ describe("B2-23: a custom part that never passes G0 → the system comes out wit
       .select(["category", "quote", "offered", "run_id"])
       .where("system_id", "=", systemId)
       .execute();
-    expect(requests).toEqual([
+    // B2-41: the plan's out-of-scope items are recorded at approval; the custom part that failed comes on top.
+    const custom = requests.filter((r) => r.quote.includes("Заявки за месяц"));
+    expect(requests.length - custom.length).toBe(2);
+    expect(custom).toEqual([
       expect.objectContaining({
         category: "other",
         run_id: buildRunId,

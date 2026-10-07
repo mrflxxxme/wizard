@@ -4,12 +4,15 @@
 //   node tools/progress/b2.mjs --digest [--send]   3–5 line digest on stdout; --send also posts it to Telegram
 // Options: --root <repo> (default: this repository), --ref <git ref> (default: main → origin/main → HEAD).
 // Sources: specs/backlog.yaml (tasks of milestone B2), git log of main (subjects «B2-NN: …» are merged work) and the
-// optional docs/progress/b2-extra.json kept by the orchestrator (deploys, spend by day, probes, founder asks, notes).
+// optional docs/progress/b2-extra.json kept by the orchestrator (deploys, spend by day, probes, founder asks, notes)
+// and, after the final measurement (B2-41), docs/progress/b2-final.json — the JSON of its report (the artifact file
+// d76-<run>.json as it is) with the screenshots under docs/progress/b2-final/shots/ (block «Финальный замер»).
 // Env: B2_PAGE_URL (link in the digest), WIZARD_OPS_ALERT_TELEGRAM_TOKEN and WIZARD_OPS_ALERT_CHAT_ID (for --send).
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { evaluate } from "../eval/server/report.mjs";
 import { parseYamlFiles } from "../specs/validate.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -61,6 +64,64 @@ export function normalizeExtra(raw = {}) {
   };
 }
 
+/** Screenshots larger than this stay in the artifact (the page is one self-contained file). */
+export const MAX_SHOT_BYTES = 600_000;
+
+/**
+ * docs/progress/b2-final.json — the D76 report JSON of the final measurement ({...run, db}, tools/deploy/pilot.mjs
+ * eval) — with its screenshots as data URIs (docs/progress/b2-final/<src>); null while there is none.
+ */
+export function loadFinal(root = ROOT) {
+  const p = join(root, "docs", "progress", "b2-final.json");
+  if (!existsSync(p)) return null;
+  const doc = JSON.parse(readFileSync(p, "utf8"));
+  const shotDir = join(root, "docs", "progress", "b2-final");
+  const inline = (src) => {
+    const f = join(shotDir, String(src ?? "").replace(/^(\.\.\/|\/)+/, ""));
+    if (!/\.png$/i.test(f) || !f.startsWith(shotDir) || !existsSync(f) || statSync(f).size > MAX_SHOT_BYTES)
+      return null;
+    return `data:image/png;base64,${readFileSync(f).toString("base64")}`;
+  };
+  return { doc, inline };
+}
+
+/**
+ * The block «Финальный замер»: the strict verdict of D76, per brief — counted or not, ₽, minutes, the phone
+ * screenshot (report.mjs evaluate: the same counting as the report of the run).
+ */
+export function finalSummary(final) {
+  if (!final?.doc?.results) return null;
+  const { db = {}, ...doc } = final.doc;
+  const e = evaluate(doc, db);
+  return {
+    date: String(doc.startedAt ?? "").slice(0, 10),
+    runId: doc.runId ?? null,
+    passed: e.passed,
+    counted: e.ready,
+    total: e.total,
+    costRub: e.costRub,
+    costExact: e.costExact,
+    medianMinutes: e.medianMinutes,
+    economy: e.economy,
+    stopped: doc.stopped ?? null,
+    items: e.items.map((x) => {
+      const shot = (x.screenshots ?? []).find((s) => /390/.test(s?.src ?? "")) ?? x.screenshots?.[0] ?? null;
+      return {
+        id: x.id,
+        title: x.title,
+        counted: x.counted,
+        status: x.status,
+        coverage: x.coverage ?? null,
+        costRub: x.systemId ? x.costRub : null,
+        minutes: x.minutes ?? null,
+        shot: shot
+          ? { label: shot.label ?? "", src: final.inline?.(shot.src) ?? null, file: shot.src }
+          : null,
+      };
+    }),
+  };
+}
+
 const git = (root, args) =>
   spawnSync("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 << 20 });
 
@@ -90,7 +151,13 @@ export function parseCommits(text) {
 // ---------------- Model ----------------
 
 /** Everything the page and the digest show, computed once. */
-export function buildModel({ tasks, extra = normalizeExtra(), commits = [], now = new Date() }) {
+export function buildModel({
+  tasks,
+  extra = normalizeExtra(),
+  commits = [],
+  now = new Date(),
+  final = null,
+}) {
   const byId = new Map(tasks.map((t) => [t.id, t]));
   const b2 = tasks
     .filter((t) => t.milestone === MILESTONE)
@@ -166,6 +233,7 @@ export function buildModel({ tasks, extra = normalizeExtra(), commits = [], now 
     spend,
     budget: { limit: BUDGET_RUB, spent: devSpent, share: devSpent / BUDGET_RUB },
     remainingDays: remaining,
+    final: finalSummary(final),
   };
 }
 
@@ -270,6 +338,12 @@ li.day:first-child{border-top:none}
 .meter .mark{position:absolute;top:0;bottom:0;width:2px;background:var(--surface)}
 .m-ok{background:var(--s1)}.m-warn{background:var(--warn)}.m-crit{background:var(--crit)}
 .flag{font-size:13px;margin-top:6px}
+.verdict{font-size:17px;font-weight:600;margin:0 0 6px}.verdict.ok{color:var(--good-ink)}.verdict.bad{color:var(--crit)}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:14px}
+.shot{margin:0;min-width:0}.shot img{display:block;width:100%;height:auto;border-radius:10px;box-shadow:var(--shadow)}
+.shot .noimg{aspect-ratio:390/844;border-radius:10px;background:var(--chip);color:var(--muted);font-size:12px;display:flex;
+align-items:center;justify-content:center;text-align:center;padding:8px;overflow-wrap:anywhere}
+.shot figcaption{font-size:13px;margin-top:6px;overflow-wrap:anywhere}.shot .sub{color:var(--muted)}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
 @media (max-width:520px){h1{font-size:30px}ul.tasks li{grid-template-columns:56px 1fr}.side{grid-column:2;text-align:left}
 .deps{grid-column:2}.tile .value{font-size:22px}}
@@ -347,6 +421,43 @@ function spendSection(m) {
 <h3>Бюджет разработки B2: ${esc(rub(budget.spent))} из ${esc(rub(budget.limit))}</h3>
 <div class="meter" role="img" aria-label="Потрачено ${pct(budget.spent, budget.limit)}% бюджета"><span class="m-${level}" style="width:${(share * 100).toFixed(2)}%"></span><span class="mark" style="left:${ALERT_SHARE * 100}%"></span></div>
 <p class="flag">${esc(flag)}. Считаются пробы и замер (решение 18).</p>${table}</div></section>`;
+}
+
+const STATUS_FINAL = {
+  ready: "готова",
+  not_ready: "проверки не пройдены",
+  build_failed: "сборка не удалась",
+  interview_failed: "интервью не дошло до плана",
+  error: "ошибка замера",
+  skipped: "не запускался",
+};
+
+const mins = (v) =>
+  v == null ? "—" : new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(v);
+
+function finalSection(f) {
+  if (!f) return "";
+  const verdict = f.passed
+    ? `Строгий порог D76 пройден: засчитано ${f.counted} из ${f.total}`
+    : `Строгий порог D76 не пройден: засчитано ${f.counted} из ${f.total}`;
+  const eco = f.economy?.plain?.n
+    ? `Средняя сборка без дописывания: ${rub(f.economy.plain.rub)} и ${mins(f.economy.plain.minutes)} мин (цель ≤ 15 ₽ и ≤ 5 мин).`
+    : "";
+  const shots = f.items
+    .map((x) => {
+      const img = x.shot?.src
+        ? `<img src="${x.shot.src}" alt="${esc(`${x.id}: ${x.shot.label}`)}" loading="lazy">`
+        : `<div class="noimg">${esc(x.shot ? `снимок в артефакте: ${x.shot.file}` : "снимка нет")}</div>`;
+      const money = x.costRub == null ? "" : ` · ${rub(Math.round(x.costRub * 100) / 100)}`;
+      const time = x.minutes == null ? "" : ` · ${mins(x.minutes)} мин`;
+      return `<figure class="shot" data-id="${esc(x.id)}" data-counted="${x.counted ? 1 : 0}">${img}
+<figcaption><strong>${x.counted ? "✅" : "❌"} ${esc(x.id)}</strong><br><span class="sub">${esc(STATUS_FINAL[x.status] ?? x.status)}${esc(money)}${esc(time)}</span></figcaption></figure>`;
+    })
+    .join("");
+  return `<section id="final"><h2>Финальный замер</h2><div class="card">
+<p class="verdict ${f.passed ? "ok" : "bad"}">${esc(verdict)}</p>
+<p class="lead">${esc(`${f.date} · расход ${rub(f.costRub)}${f.costExact ? "" : " (оценка)"} · медиана ${mins(f.medianMinutes)} мин${f.stopped ? ` · остановлен: ${f.stopped}` : ""}`)}</p>
+${eco ? `<p class="flag">${esc(eco)}</p>` : ""}<div class="shots">${shots}</div></div></section>`;
 }
 
 /** The whole page as one HTML string. */
@@ -432,6 +543,7 @@ ${bar(s.counts, `${s.title}: готово ${s.counts.done}, в работе ${s.
 <div class="card" id="merged"><h2>Влито в main</h2>${merged}</div>
 <div class="card" id="deploys"><h2>Выкачено</h2>${deploys}</div>
 </section>
+${finalSection(m.final)}
 ${spendSection(m)}
 <section id="probes"><h2>Пробы и замер</h2><div class="card">${probes}</div></section>
 ${notes}
@@ -456,6 +568,11 @@ export function renderDigest(m, { pageUrl = "" } = {}) {
   ].sort();
   const lines = [
     `Бета v2 на ${fmtDate(m.now)}: готово ${c.done} из ${c.total}, в работе ${c.in_progress}; бюджет моделей ${rub(m.budget.spent)} из ${rub(m.budget.limit)}.`,
+    ...(m.final
+      ? [
+          `Финальный замер: ${m.final.passed ? "порог D76 пройден" : "порог D76 не пройден"}, засчитано ${m.final.counted} из ${m.final.total}, ${rub(m.final.costRub)}.`,
+        ]
+      : []),
     fresh.length ? `За сутки влито: ${short(fresh, 8)}.` : "За сутки ничего не влито.",
   ];
   if (m.inProgress.length)
@@ -526,6 +643,7 @@ export async function main(argv = process.argv.slice(2)) {
     extra: loadExtra(root),
     commits: readCommits(root, { ref: o.ref }),
     now: new Date(),
+    final: loadFinal(root),
   });
   if (o.html) {
     writeFileSync(resolve(o.html), renderHtml(model));

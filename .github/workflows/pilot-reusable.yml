@@ -5,8 +5,9 @@
 # state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
 # SSH tunnel and closes SSH again — also when anything fails (`close-access` with always()). `check` is the read-only
 # preflight (tools/deploy/preflight.mjs): same owner/main checks, no PROD word, no images, no OpenTofu/helm setup.
-# `eval` is the D67 measurement (docs/ops/eval-d67.md): diagnose-like cluster access for the database, the briefs over
-# the public HTTPS; its report is uploaded as an artifact (no secrets, no personal data in it).
+# `eval` is the measurement (docs/ops/eval-d76.md — beta v2, threshold d76 by default; docs/ops/eval-d67.md): diagnose-
+# like cluster access for the database, the briefs over the public HTTPS; its report (with the screenshots of the
+# systems under d76) is uploaded as an artifact (no secrets, no personal data in it).
 name: pilot-reusable
 
 on:
@@ -38,11 +39,23 @@ on:
         type: string
         default: "all"
       max_cost_rub:
-        description: "eval: model budget of the measurement, ₽"
+        description: "eval: model budget of the measurement, ₽ (a hard stop under d76)"
         type: string
-        default: "2000"
+        default: "300"
+      threshold:
+        description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement"
+        type: string
+        default: "d76"
+      build_pipeline:
+        description: "deploy/bootstrap: the pipeline of new systems (modules | legacy); empty — the variable or modules (D76)"
+        type: string
+        default: ""
       llm_daily_cap_rub:
         description: "deploy: the platform's daily model cap, ₽, until the next deploy (D75); empty — the variable or 700"
+        type: string
+        default: ""
+      stock_mode:
+        description: "deploy/bootstrap: stock photos of the design stage (off | live); empty — the variable or off (B2-38)"
         type: string
         default: ""
 
@@ -67,7 +80,10 @@ jobs:
           COMMAND: ${{ inputs.command }}
           EVAL_BRIEFS: ${{ inputs.briefs }}
           EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
+          EVAL_THRESHOLD: ${{ inputs.threshold }}
           LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub }}
+          BUILD_PIPELINE: ${{ inputs.build_pipeline }}
+          STOCK_MODE: ${{ inputs.stock_mode }}
         run: |
           if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
             echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
@@ -80,7 +96,10 @@ jobs:
           if [ "$COMMAND" = "eval" ]; then
             printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
             printf '%s' "$EVAL_MAX_COST_RUB" | grep -Eq '^[0-9]{1,4}$' || { echo "::error title=pilot::max_cost_rub — целое число рублей."; exit 1; }
+            case "$EVAL_THRESHOLD" in d76|d67) ;; *) echo "::error title=pilot::threshold — d76 или d67."; exit 1 ;; esac
           fi
+          case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
+          case "$STOCK_MODE" in ""|off|live) ;; *) echo "::error title=pilot::stock_mode — off, live или пусто."; exit 1 ;; esac
           if [ -n "$LLM_DAILY_CAP_RUB" ] && ! printf '%s' "$LLM_DAILY_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$'; then
             echo "::error title=pilot::llm_daily_cap_rub — целое число рублей или пусто."; exit 1
           fi
@@ -125,6 +144,7 @@ jobs:
       COMMAND: ${{ inputs.command }}
       EVAL_BRIEFS: ${{ inputs.briefs }}
       EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
+      EVAL_THRESHOLD: ${{ inputs.threshold }}
       # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
       TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
@@ -144,6 +164,14 @@ jobs:
       WIZARD_LLM_EVAL_DAILY_CAP_RUB: ${{ vars.WIZARD_LLM_EVAL_DAILY_CAP_RUB }}
       WIZARD_B2_BUDGET_RUB: ${{ vars.WIZARD_B2_BUDGET_RUB }}
       WIZARD_B2_BUDGET_SINCE: ${{ vars.WIZARD_B2_BUDGET_SINCE }}
+      # D76, B2-41: new systems on the modules pipeline (empty — modules; legacy is the way back), G1 of a plan build in
+      # the worker's Chromium (empty — chromium), the systems' sender domain (empty — the domain of WIZARD_SMTP_FROM).
+      WIZARD_BUILD_PIPELINE: ${{ inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE }}
+      WIZARD_G1_BROWSER: ${{ vars.WIZARD_G1_BROWSER }}
+      WIZARD_G1_BROWSER_SLOTS: ${{ vars.WIZARD_G1_BROWSER_SLOTS }}
+      WIZARD_MAIL_DOMAIN: ${{ vars.WIZARD_MAIL_DOMAIN }}
+      # B2-38: stock photos (empty — off, theme graphics; live needs the founder's stock keys).
+      WIZARD_STOCK_MODE: ${{ inputs.stock_mode || vars.WIZARD_STOCK_MODE }}
       # D76: provider balances «<₽>@<ISO time>» seen in the consoles, the warning threshold, Z.ai as the reserve.
       WIZARD_LLM_BALANCE_ZAI: ${{ vars.WIZARD_LLM_BALANCE_ZAI }}
       WIZARD_LLM_BALANCE_CLOUDRU: ${{ vars.WIZARD_LLM_BALANCE_CLOUDRU }}
@@ -231,6 +259,14 @@ jobs:
         run: |
           kubectl version --client=true
           ssh -V
+      # eval d76: screenshots of each system at 390 and 1280 px — Chromium of the workspace's Playwright (packages/e2e).
+      - uses: pnpm/action-setup@v4
+        if: inputs.command == 'eval' && inputs.threshold == 'd76'
+      - name: Chromium for the screenshots
+        if: inputs.command == 'eval' && inputs.threshold == 'd76'
+        run: |
+          pnpm install --frozen-lockfile --filter @wizard/e2e
+          pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
       - name: Pilot (${{ inputs.command }})
         env:
           # Only eval uses it: the issue comment with the live progress of the measurement.
@@ -240,16 +276,17 @@ jobs:
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
-            eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" ;;
+            eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" --threshold "$EVAL_THRESHOLD" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac
-      # The D67 report and the per-brief results (no token, no secrets; the eval account is a service one).
-      - name: D67 report
+      # The report, the per-brief results and (d76) the screenshots — no token, no secrets; the eval account is a
+      # service one, the briefs are synthetic.
+      - name: Eval report
         if: always() && inputs.command == 'eval'
         uses: actions/upload-artifact@v4
         with:
-          name: d67-eval-${{ inputs.env }}-${{ github.run_id }}
+          name: ${{ inputs.threshold }}-eval-${{ inputs.env }}-${{ github.run_id }}
           path: ${{ runner.temp }}/wizard-eval-${{ inputs.env }}
           if-no-files-found: ignore
           retention-days: 90

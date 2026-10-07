@@ -8,6 +8,7 @@ import {
   buildModel,
   loadBacklog,
   loadExtra,
+  loadFinal,
   normalizeExtra,
   parseCommits,
   renderDigest,
@@ -279,5 +280,83 @@ describe.skipIf(!hasYaml)("b2-digest workflow", () => {
       WIZARD_OPS_ALERT_CHAT_ID: gh("secrets.WIZARD_OPS_ALERT_CHAT_ID || vars.WIZARD_OPS_ALERT_CHAT_ID"),
     });
     for (const s of job.steps) if (s !== step) expect(JSON.stringify(s)).not.toContain("secrets.");
+  });
+});
+
+// B2-41: the block «Финальный замер» from the report JSON the coordinator puts into docs/progress/.
+describe("b2 final measurement", () => {
+  const lvl = () => ({ passed: true, blockers: [], ownerActions: [], warnings: 0 });
+  const result = (id, over = {}) => ({
+    id,
+    title: `Бриф ${id}`,
+    status: "ready",
+    ready: true,
+    systemId: `sys-${id}`,
+    gates: { G0: lvl(), G1: lvl(), G2: lvl() },
+    gaps: { outOfScope: [], reported: [], mentions: [] },
+    plan: { coverage: "covered", modules: ["landing"], custom: [], outOfScope: [] },
+    browser: { ran: true, mobile: "pass", goals: { total: 1, passed: 1, failed: [] } },
+    build: { status: "succeeded" },
+    screenshots: [
+      { label: "телефон, 390 px", src: `shots/${id}-390.png` },
+      { label: "компьютер, 1280 px", src: `shots/${id}-1280.png` },
+    ],
+    creditsUsed: 2,
+    costRubEstimate: 10,
+    minutes: 4.5,
+    buildMinutes: 3.5,
+    ...over,
+  });
+  const report = {
+    kind: "d76",
+    threshold: "d76",
+    runId: "20261009-abcdef",
+    startedAt: "2026-10-09T09:00:00Z",
+    maxCostRub: 300,
+    concurrency: 2,
+    results: [result("mvp-01-a"), result("mvp-02-b", { ready: false, status: "not_ready" })],
+    db: { costs: { "sys-mvp-01-a": { rub: 12.4 }, "sys-mvp-02-b": { rub: 13.1 } }, gaps: null },
+  };
+
+  it("the verdict, ₽, minutes and the phone screenshot of each brief; missing shots stay in the artifact", () => {
+    const root = join(tmp, "final");
+    mkdirSync(join(root, "docs", "progress", "b2-final", "shots"), { recursive: true });
+    writeFileSync(join(root, "docs", "progress", "b2-final.json"), JSON.stringify(report));
+    writeFileSync(
+      join(root, "docs", "progress", "b2-final", "shots", "mvp-01-a-390.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    );
+    const m = buildModel({ tasks: TASKS, now: NOW, final: loadFinal(root) });
+    expect(m.final).toMatchObject({ passed: false, counted: 1, total: 2, costRub: 25.5, costExact: true });
+    expect(m.final.items.map((x) => [x.id, x.counted, x.costRub])).toEqual([
+      ["mvp-01-a", true, 12.4],
+      ["mvp-02-b", false, 13.1],
+    ]);
+    const html = sp(renderHtml(m));
+    expect(html).toContain('id="final"');
+    expect(html).toContain("Строгий порог D76 не пройден: засчитано 1 из 2");
+    expect(html).toContain('<img src="data:image/png;base64,iVBORw==" alt="mvp-01-a: телефон, 390 px"');
+    expect(html).toContain("снимок в артефакте: shots/mvp-02-b-390.png");
+    expect(html).toContain("Средняя сборка без дописывания: 12,75 ₽ и 3,5 мин");
+    expect(html).not.toMatch(/<script|<link|@import|url\(/);
+    expect(sp(renderDigest(m))).toContain("Финальный замер: порог D76 не пройден, засчитано 1 из 2, 25,5 ₽.");
+    // No report yet: no block, no digest line.
+    expect(loadFinal(join(tmp, "nothing"))).toBeNull();
+    const none = buildModel({ tasks: TASKS, now: NOW });
+    expect(renderHtml(none)).not.toContain('id="final"');
+    expect(renderDigest(none)).not.toContain("Финальный замер");
+  });
+
+  it("a screenshot path never leaves docs/progress/b2-final", () => {
+    const root = join(tmp, "final-escape");
+    mkdirSync(join(root, "docs", "progress"), { recursive: true });
+    writeFileSync(join(root, "secret.png"), Buffer.from([1]));
+    const bad = {
+      ...report,
+      results: [result("x", { screenshots: [{ label: "x", src: "../../secret.png" }] })],
+    };
+    writeFileSync(join(root, "docs", "progress", "b2-final.json"), JSON.stringify(bad));
+    const m = buildModel({ tasks: TASKS, now: NOW, final: loadFinal(root) });
+    expect(m.final.items[0].shot.src).toBeNull();
   });
 });

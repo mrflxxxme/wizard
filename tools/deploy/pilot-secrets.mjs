@@ -231,6 +231,77 @@ export const PLATFORM_PASSTHROUGH = [
   "WIZARD_RECEIPT_VAT_CODE",
 ];
 
+/** Build pipelines of the platform (config.ts WIZARD_BUILD_PIPELINE, B2-20); the pilot default is the first. */
+export const BUILD_PIPELINES = ["modules", "legacy"];
+/** GitHub settings read by pilotPipelineEnv (pilot-reusable.yml passes each to the job). */
+export const PILOT_PIPELINE_INPUTS = [
+  "WIZARD_BUILD_PIPELINE",
+  "WIZARD_G1_BROWSER",
+  "WIZARD_G1_BROWSER_SLOTS",
+  "WIZARD_MAIL_DOMAIN",
+  "WIZARD_STOCK_MODE",
+];
+/** Stock photos of the design stage (B2-38, WIZARD_STOCK_MODE): off — theme graphics instead of photos. */
+export const STOCK_MODES = ["off", "live", "fixture", "record"];
+/**
+ * Hosts the stock photo providers need from platform-api in live mode (B2-38: secret://platform/stock/pexels|pixabay).
+ * Not added to any allowlist by default: the switch to live comes with the founder's keys (docs/ops/eval-d76.md).
+ */
+export const STOCK_EGRESS_HOSTS = ["api.pexels.com", "images.pexels.com", "pixabay.com", "cdn.pixabay.com"];
+const MAIL_DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/**
+ * Sender domain of the systems' mail (WIZARD_MAIL_DOMAIN: noreply@<domain> of connector provider=platform and of the
+ * G1 outbox, B2-28): the variable when set, else the domain of WIZARD_SMTP_FROM — the pilot's mail domain already
+ * confirmed at the provider (DKIM/SPF of the platform domain; the systems domain publishes «v=spf1 -all»). "" — none.
+ */
+export function pilotMailDomain(inputs) {
+  const explicit = String(inputs.WIZARD_MAIL_DOMAIN ?? "")
+    .trim()
+    .toLowerCase();
+  if (explicit) {
+    if (!MAIL_DOMAIN.test(explicit))
+      throw new Error("WIZARD_MAIL_DOMAIN: нужен домен, например borntobuild.ru");
+    return explicit;
+  }
+  const from = String(inputs.WIZARD_SMTP_FROM ?? "");
+  const address = /<([^>]+)>/.exec(from)?.[1] ?? from;
+  const domain = (address.split("@")[1] ?? "").trim().toLowerCase();
+  return MAIL_DOMAIN.test(domain) ? domain : "";
+}
+
+/**
+ * Beta v2 on the pilot (D76, B2-41): new systems start on the modules pipeline (a system keeps the pipeline it started
+ * with, legacy stays for the old ones), G1 of a plan build runs the goal scenarios in the worker's Chromium
+ * (images.json CHROMIUM=1), the systems' mail goes from the pilot's mail domain. Both pods read these (platform env
+ * Secret: platform-api and worker). WIZARD_BUILD_PIPELINE=legacy is the way back without a code change.
+ */
+export function pilotPipelineEnv(inputs) {
+  const pipeline = String(inputs.WIZARD_BUILD_PIPELINE || BUILD_PIPELINES[0])
+    .trim()
+    .toLowerCase();
+  if (!BUILD_PIPELINES.includes(pipeline))
+    throw new Error(`WIZARD_BUILD_PIPELINE: ${BUILD_PIPELINES.join(" или ")}`);
+  const browser = String(inputs.WIZARD_G1_BROWSER || "chromium")
+    .trim()
+    .toLowerCase();
+  if (!["chromium", "off"].includes(browser)) throw new Error("WIZARD_G1_BROWSER: chromium или off");
+  // B2-38: no stock keys on the pilot yet — theme graphics instead of photos until the founder adds them.
+  const stock = String(inputs.WIZARD_STOCK_MODE || "off")
+    .trim()
+    .toLowerCase();
+  if (!STOCK_MODES.includes(stock)) throw new Error(`WIZARD_STOCK_MODE: ${STOCK_MODES.join(" | ")}`);
+  const slots = String(inputs.WIZARD_G1_BROWSER_SLOTS ?? "").trim();
+  if (slots && !/^[1-8]$/.test(slots)) throw new Error("WIZARD_G1_BROWSER_SLOTS: целое от 1 до 8");
+  return {
+    WIZARD_BUILD_PIPELINE: pipeline,
+    WIZARD_G1_BROWSER: browser,
+    WIZARD_G1_BROWSER_SLOTS: slots,
+    WIZARD_MAIL_DOMAIN: pilotMailDomain(inputs),
+    WIZARD_STOCK_MODE: stock,
+  };
+}
+
 /** Founder alert webhook: the Telegram bot form (token + chat) or a ready URL (docs/ops/deploy.md «Алерты пилота»). */
 export function alertSettings(inputs) {
   const token = inputs.WIZARD_OPS_ALERT_TELEGRAM_TOKEN;
@@ -278,6 +349,7 @@ export function clusterSecretFiles({ bundle, outputs, inputs }) {
     WIZARD_S3_ACCESS_KEY_ID: keys.files.access_key,
     WIZARD_S3_SECRET_ACCESS_KEY: keys.files.secret_key,
     ...pass,
+    ...pilotPipelineEnv(inputs),
   });
   const postgresEnv = envFile({
     POSTGRES_PASSWORD: s.POSTGRES_PASSWORD,

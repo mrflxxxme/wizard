@@ -4,8 +4,9 @@
 # Only the repository owner, only from main; prod needs the word PROD. staging can also be destroyed here.
 # action `check` (the default) is a read-only preflight of the secrets and variables (tools/deploy/preflight.mjs):
 # no images, no OpenTofu, no PROD word; about two Actions minutes. Run it first, then apply.
-# action `eval` — the D67 measurement (docs/ops/eval-d67.md): a service account in the platform database, the briefs
-# through the public address like a client, the report in the job summary and as an artifact; needs the word PROD.
+# action `eval` — the measurement (docs/ops/eval-d76.md; threshold d76 of beta v2 by default, d67 — docs/ops/eval-d67.md):
+# a service account in the platform database, the briefs through the public address like a client, the report (with
+# the screenshots of the systems under d76) in the job summary and as an artifact; needs the word PROD.
 name: bootstrap-pilot
 
 on:
@@ -17,7 +18,7 @@ on:
         options: [prod, staging]
         default: prod
       action:
-        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); eval — замер D67: брифы через настоящую сборку на сервере, отчёт в итогах запуска (PROD, тратит бюджет моделей); reboot — жёсткая перезагрузка зависшего сервера (PROD); destroy — удалить (только staging)"
+        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); eval — замер: брифы через настоящую сборку на сервере, отчёт со скриншотами в итогах запуска (PROD, тратит бюджет моделей); reboot — жёсткая перезагрузка зависшего сервера (PROD); destroy — удалить (только staging)"
         type: choice
         options: [check, apply, diagnose, eval, reboot, destroy]
         default: check
@@ -35,13 +36,18 @@ on:
         type: string
         default: ""
       briefs:
-        description: "eval: какие брифы прогнать — all (все 10) или id через запятую, например mvp-03,mvp-10 (повтор провалившихся)"
+        description: "eval: какие брифы прогнать — all (все 10) или id через запятую: проба — 2–3 брифа, например mvp-01,mvp-04,mvp-07; повтор провалившихся"
         type: string
         default: "all"
       max_cost_rub:
-        description: "eval: бюджет замера на модели, ₽ (новые брифы не стартуют, когда расход его достиг)"
+        description: "eval: бюджет замера на модели, ₽ (d76: при превышении замер останавливается; проба — 50, замер — 300)"
         type: string
-        default: "2000"
+        default: "300"
+      threshold:
+        description: "eval: порог — d76 (бета v2: план, сценарии целей, скриншоты) или d67 (замер MVP)"
+        type: choice
+        options: [d76, d67]
+        default: d76
       confirm:
         description: "Для prod (apply, eval, reboot) введите PROD; для check и diagnose не нужно"
         type: string
@@ -71,4 +77,5 @@ jobs:
       server: ${{ inputs.server }}
       briefs: ${{ inputs.briefs }}
       max_cost_rub: ${{ inputs.max_cost_rub }}
+      threshold: ${{ inputs.threshold }}
     secrets: inherit

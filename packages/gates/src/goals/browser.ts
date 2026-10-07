@@ -251,6 +251,9 @@ async function settle(page: Page): Promise<void> {
   await frame(page);
 }
 
+/** esbuild's __name helper as a no-op in the page (functions serialized by page.evaluate under tsx call it). */
+export const NAME_SHIM = "globalThis.__name ??= (target) => target;";
+
 /** A browser context of the system at a viewport and color scheme, signed in as the actor (cookie of G1Env.login). */
 async function openContext(
   browser: Browser,
@@ -267,6 +270,10 @@ async function openContext(
     serviceWorkers: "block",
     reducedMotion: "reduce",
   });
+  // B2-41: the worker runs under tsx (node --import tsx), whose esbuild keepNames wraps named functions in __name(…);
+  // a function passed to page.evaluate keeps those calls, and the page has no __name — every goal scenario failed with
+  // «ReferenceError: __name is not defined» (found by the D76 dry run, packages/e2e/stand/d76-dry.ts).
+  await context.addInitScript({ content: NAME_SHIM });
   await routeToRuntime(context, env);
   if (actor.cookie) {
     const eq = actor.cookie.indexOf("=");

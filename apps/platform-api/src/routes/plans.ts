@@ -14,6 +14,7 @@ import type { Selectable } from "kysely";
 import { z } from "zod";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, notFound } from "../errors.js";
+import { recordPlanOutOfScope } from "../gaps/service.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import { withTx } from "../runs/events.js";
@@ -206,6 +207,12 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
         .where("system_id", "=", s.id)
         .where("revision", "=", row.revision)
         .execute();
+      // modules.yaml#system_plan.outOfScope: what the approved plan leaves out goes to «Запросы на развитие».
+      await recordPlanOutOfScope(
+        t.trx,
+        { id: build.id, org_id: s.org_id, system_id: s.id, started_by: user.id },
+        plan.outOfScope,
+      );
       return build;
     });
     d.engine.enqueue(run);
