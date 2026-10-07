@@ -3448,7 +3448,7 @@ tasks:
   - id: B2-41
     title: "Пробы этапов и финальный замер беты v2 с отчётом"
     milestone: B2
-    deps: [B2-13, B2-14, B2-15, B2-16, B2-17, B2-18, B2-21, B2-22, B2-23, B2-24, B2-25, B2-26, B2-27, B2-33, B2-34, B2-38, B2-40]
+    deps: [B2-13, B2-14, B2-15, B2-16, B2-17, B2-18, B2-21, B2-22, B2-23, B2-24, B2-25, B2-26, B2-27, B2-33, B2-34, B2-38]
     specs: [docs/plans/2026-10-06-beta-v2.md, docs/reviews/grill-6.md, specs/product.yaml, specs/quality/eval.yaml]
     owner: qa
     parallel_group: b2-c
