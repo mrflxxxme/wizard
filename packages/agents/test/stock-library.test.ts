@@ -27,6 +27,7 @@ import {
   runPhotosStage,
   STOCK_LICENSES,
   StockError,
+  type StockHit,
   serializeLibraryIndex,
   stockQuery,
 } from "../src/builder/index.js";
@@ -225,7 +226,7 @@ describe("library search (no network)", () => {
     t = 5000;
     await client.search("pexels", { text: "bakery", orientation: "landscape" }, 6);
     expect(loads).toBe(2);
-    await expect(client.download({ ...(hits[0] as never), id: "999" })).rejects.toBeInstanceOf(StockError);
+    await expect(client.download({ ...(hits[0] as StockHit), id: "999" })).rejects.toBeInstanceOf(StockError);
     expect(client.fileOf({ provider: "pexels", id: "999" })).toBeUndefined();
   });
 
