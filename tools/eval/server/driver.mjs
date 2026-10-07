@@ -144,6 +144,21 @@ export function planCoverage(plan) {
   };
 }
 
+/** Stock providers of design.photos (appspec STOCK_PROVIDERS, D61). */
+export const PHOTO_PROVIDERS = ["pexels", "pixabay"];
+
+/**
+ * Stock photos of a system plan (B2-41): design.photos counted by provider — {total, pexels, pixabay}; null when the
+ * plan was not read. Counts only (no authors or links reach the report).
+ */
+export function photoCount(plan) {
+  if (!plan || typeof plan !== "object" || !Array.isArray(plan.modules)) return null;
+  const list = Array.isArray(plan.design?.photos) ? plan.design.photos : [];
+  const out = { total: list.length };
+  for (const p of PHOTO_PROVIDERS) out[p] = list.filter((x) => x?.provider === p).length;
+  return out;
+}
+
 /**
  * SystemPlan of a plan document: getSystemPlan answers {plan: SystemPlanRevision} whose `plan` is the SystemPlan
  * (api.yaml, routes/plans.ts toPlanRevision); a bare SystemPlan passes as it is.
@@ -237,6 +252,7 @@ export function newResult(brief) {
     gates: {},
     gaps: { outOfScope: [], reported: [], mentions: [] },
     plan: null,
+    photos: null,
     browser: null,
     screenshots: [],
     runs: [],
@@ -477,8 +493,11 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     if (ctx.threshold === "d76") {
       const after = browserSummary(await latestGates());
       r.browser = after.ran ? after : browserSummary(buildLatest);
-      const read = planCoverage(await readPlan(client, r.systemId, (await client.get(`/systems/${r.systemId}`)).body));
+      const built = await readPlan(client, r.systemId, (await client.get(`/systems/${r.systemId}`)).body);
+      const read = planCoverage(built);
       if (read.coverage !== "unknown" || !r.plan) r.plan = read;
+      // B2-41: stock photos of the plan as the API gives it (the report prefers the built plan of collectSql).
+      r.photos = photoCount(built);
       r.ready = isReadyD76(gates, ctx.g2, r.browser);
     } else r.ready = isReady(gates, ctx.g2);
     r.status = r.ready

@@ -45,6 +45,38 @@ const cell = (s) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** Russian plural form for n: one (1, 21…), few (2–4, 22–24…), many. */
+const plural = (n, one, few, many) => {
+  const [m10, m100] = [n % 10, n % 100];
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+};
+
+/**
+ * B2-41: stock photos of the measured sites — briefs whose system was built (or whose photos were read): how many have
+ * stock photos, their total and the split by provider.
+ */
+export function photoStats(items) {
+  const sites = items.filter((x) => x.systemId && (x.build || x.photos));
+  const n = (k) => sites.reduce((sum, x) => sum + (x.photos?.[k] ?? 0), 0);
+  return {
+    sites: sites.filter((x) => (x.photos?.total ?? 0) > 0).length,
+    of: sites.length,
+    total: n("total"),
+    pexels: n("pexels"),
+    pixabay: n("pixabay"),
+  };
+}
+
+/** «Фото со стоков: 3 сайта из 10, всего 14 фото (Pexels 9, Pixabay 5)» — counts only, no links. */
+export function photosLine(p) {
+  return `Фото со стоков: ${p.sites} ${plural(p.sites, "сайт", "сайта", "сайтов")} из ${p.of}, всего ${p.total} фото (Pexels ${p.pexels}, Pixabay ${p.pixabay})`;
+}
+
+/** The same line as a GitHub annotation (the job summary is not readable through the API, annotations are). */
+export function photosAnnotation(summary) {
+  return summary?.photos ? `::notice title=D76 фото::${photosLine(summary.photos)}` : null;
+}
+
 /** Median of numbers (null for an empty list). */
 export function median(xs) {
   const a = xs.filter((x) => Number.isFinite(x)).sort((p, q) => p - q);
@@ -125,6 +157,8 @@ export function evaluate(doc, db = {}) {
         gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
         stages: (r.systemId && db.metrics?.[r.systemId]?.stages) || null,
         invalid: (r.systemId && db.invalid?.[r.systemId]) || [],
+        // B2-41: the built plan of the database first, the plan the API gave otherwise.
+        photos: (r.systemId && db.photos?.[r.systemId]) || r.photos || null,
         coverage,
         counted,
         countedVia: via,
@@ -161,6 +195,7 @@ export function evaluate(doc, db = {}) {
   const coverage = d76 ? { covered: group("covered"), uncovered: group("uncovered"), unknown: group("unknown") } : null;
   return {
     economy: d76 ? economy(items) : null,
+    photos: d76 ? photoStats(items) : null,
     b2: db.b2 ?? null,
     items,
     total: items.length,
@@ -245,6 +280,7 @@ function d76Summary(e) {
     L.push(
       `- Дописывание кодом: в среднем ${x.custom.rub} ₽ за сборку, на ${x.customExtraRub} ₽ дороже сборки без него (${x.customExtraRub <= D76_ECONOMY.customExtraRub ? "в норме" : "выше цели"}, цель ≤ +${D76_ECONOMY.customExtraRub} ₽), сборок: ${x.custom.n}.`,
     );
+  if (e.photos) L.push(`- ${photosLine(e.photos)}.`);
   if (e.b2)
     L.push(
       `- Бюджет разработки беты v2: потрачено ${rub(e.b2.rub)} из ${rub(e.b2Budget)} с ${e.b2.since} — все пробы и замеры служебных организаций, по журналу вызовов моделей${e.b2.rub >= e.b2Budget ? ". **Бюджет исчерпан: новые пробы и замеры платформа не запускает.**" : e.b2.rub >= 0.7 * e.b2Budget ? ". Потрачено больше 70 %: основателю ушёл алерт." : "."}`,
@@ -262,6 +298,14 @@ function d76Brief(x) {
     if (p.custom.length) L.push(`- Дописывание: ${p.custom.join("; ")}.`);
     for (const o of p.outOfScope) L.push(`- Не входит: ${o.what}${o.replacement ? ` — замена: ${o.replacement}` : ""}.`);
   }
+  const ph = x.photos;
+  if (ph)
+    L.push(
+      ph.total
+        ? `- Фото со стоков на сайте: ${ph.total} (Pexels ${ph.pexels}, Pixabay ${ph.pixabay}).`
+        : "- Фото со стоков на сайте: нет — графика темы.",
+    );
+  else if (x.systemId) L.push("- Фото со стоков на сайте: план сборки не прочитан.");
   const b = x.browser;
   if (!b?.ran) L.push("- Проверки в браузере (сценарии целей, 390 px) не запускались — готовность не засчитана.");
   else {

@@ -289,14 +289,34 @@ export function stockVerdictLine(v) {
   return `${STOCK_LABEL[v.provider]}: ${STOCK_VERDICT_TEXT[v.verdict]}${how}`;
 }
 
-/** Rows of `check` (optional): the photos of the systems work without the stocks (theme graphics). */
-export async function probeStock(vars, { fetch: f = fetch } = {}) {
+/**
+ * One annotation with both verdicts (B2-41): the job summary is not readable through the GitHub API, annotations are.
+ * `::notice`, or `::warning` when a key was refused. Verdicts and HTTP codes only — never a key or a URL.
+ */
+export function stockAnnotation(verdicts) {
+  const level = verdicts.some((v) => v.verdict === "invalid") ? "warning" : "notice";
+  const text = verdicts.map((v) => stockVerdictLine(v).replace(": ", " — ")).join("; ");
+  return `::${level} title=Фото со стоков::${annotationText(text)}`;
+}
+
+/** Workflow-command data escaping (%, CR, LF). */
+function annotationText(s) {
+  return String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+/**
+ * Rows of `check` (optional): the photos of the systems work without the stocks (theme graphics). `log` gets the
+ * verdicts annotation (stockAnnotation).
+ */
+export async function probeStock(vars, { fetch: f = fetch, log = () => {} } = {}) {
   const mode = String(vars.WIZARD_STOCK_MODE || "off")
     .trim()
     .toLowerCase();
   const note = ["live", "record"].includes(mode) ? "" : `; сейчас stock_mode=${mode}: ключ не используется`;
   const opt = { required: false };
-  return (await stockKeyVerdicts(vars, { fetch: f })).map((v) => {
+  const verdicts = await stockKeyVerdicts(vars, { fetch: f });
+  log(stockAnnotation(verdicts));
+  return verdicts.map((v) => {
     const title = `Фото: ключ ${STOCK_LABEL[v.provider]} (необязательно)`;
     const name = STOCK_KEY_INPUTS[v.provider];
     if (v.verdict === "missing")
@@ -772,7 +792,7 @@ export async function runPreflight({
       Promise.resolve(probeSpf(vars)),
       probeTelegram(vars, { fetch: f }),
     ])),
-    ...(await probeStock(vars, { fetch: f })),
+    ...(await probeStock(vars, { fetch: f, log: (s) => log(scrub(s)) })),
   );
 
   const width = Math.max(...results.map((r) => r.title.length));

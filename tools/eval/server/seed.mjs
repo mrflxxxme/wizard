@@ -134,7 +134,8 @@ export function revokeSql({ tokenHash }) {
  * fixed names, so the interpolated identifier never comes from input), and the stage metrics of the harness (payload
  * of the last build_metrics event of each system's create run — the latest build when there is none — so a later
  * «Исправить» run does not hide the stages of the build itself, eval.yaml stages). One line per result:
- * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`, `invalid=<json>` (B2-41: orch_invalid of the systems);
+ * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`, `photos=<json>` (B2-41: stock photos of the sites),
+ * `invalid=<json>` (B2-41: orch_invalid of the systems);
  * ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
  */
 export function collectSql({ orgId, b2Since }) {
@@ -176,6 +177,28 @@ export function collectSql({ orgId, b2Since }) {
    CROSS JOIN LATERAL (SELECT ev.payload FROM platform.run_events ev
                         WHERE ev.run_id = r.id AND ev.type = 'build_metrics' ORDER BY ev.seq DESC LIMIT 1) e
    WHERE s.org_id = :'org_id') x;`,
+    // B2-41: stock photos of each system's site — design.photos of the plan its latest approved revision was built
+    // into (the photos stage checkpoint; the approved plan itself while that stage has not run), counted by provider.
+    `SELECT to_regclass('platform.system_plans')::text AS plans_table \\gset`,
+    `\\if :{?plans_table}`,
+    `SELECT 'photos=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT p.system_id, p.revision, p.built,
+         (SELECT coalesce(json_object_agg(q.provider, q.n), '{}'::json) FROM (
+            SELECT coalesce(ph->>'provider', 'other') AS provider, count(*)::int AS n
+              FROM jsonb_array_elements(p.photos) ph GROUP BY 1) q) AS providers
+    FROM platform.systems s
+   CROSS JOIN LATERAL (
+     SELECT sp.system_id, sp.revision, v.built,
+            CASE WHEN jsonb_typeof(v.photos) = 'array' THEN v.photos ELSE '[]'::jsonb END AS photos
+       FROM platform.system_plans sp
+      CROSS JOIN LATERAL (SELECT sp.checkpoints ? 'photos' AS built,
+                                 CASE WHEN sp.checkpoints ? 'photos'
+                                      THEN sp.checkpoints #> '{photos,data,plan,design,photos}'
+                                      ELSE sp.plan #> '{design,photos}' END AS photos) v
+      WHERE sp.system_id = s.id AND sp.approved_at IS NOT NULL
+      ORDER BY sp.revision DESC LIMIT 1) p
+   WHERE s.org_id = :'org_id') x;`,
+    `\\endif`,
     // B2-41: answers of the models that did not pass (orch_invalid: step, fallback, issues {path, code, message ≤ 160}
     // — check paths and codes, no PII), oldest first, for the diagnosis in the report.
     `SELECT 'invalid=' || coalesce(json_agg(x ORDER BY x.ts), '[]'::json)::jsonb::text FROM (
@@ -191,7 +214,7 @@ export function collectSql({ orgId, b2Since }) {
 
 /**
  * Output of collectSql → {costs: {systemId: {rub, credits, calls}}, gaps: {systemId: [{category, quote, offered}]}|null,
- * metrics: {systemId: build_metrics payload}}.
+ * metrics: {systemId: build_metrics payload}, invalid, photos: {systemId: {total, pexels, pixabay, revision, built}}}.
  */
 export function parseCollectOutput(stdout) {
   const lines = String(stdout ?? "").split("\n");
@@ -236,10 +259,24 @@ export function parseCollectOutput(stdout) {
       })),
     });
   }
+  // B2-41: stock photos per system — {total, pexels, pixabay, revision, built} (absent line → {}).
+  const photos = {};
+  for (const x of value("photos") ?? []) {
+    if (!x?.system_id) continue;
+    const by = x.providers && typeof x.providers === "object" ? x.providers : {};
+    const n = (k) => (Number.isFinite(Number(by[k])) ? Number(by[k]) : 0);
+    photos[x.system_id] = {
+      total: Object.keys(by).reduce((sum, k) => sum + n(k), 0),
+      pexels: n("pexels"),
+      pixabay: n("pixabay"),
+      revision: Number(x.revision),
+      built: !!x.built,
+    };
+  }
   const b2raw = value("b2");
   const b2 =
     b2raw && typeof b2raw === "object" && Number.isFinite(Number(b2raw.rub))
       ? { since: String(b2raw.since ?? ""), rub: Number(b2raw.rub) }
       : null;
-  return { costs, gaps, metrics, invalid, ...(b2 ? { b2 } : {}) };
+  return { costs, gaps, metrics, invalid, photos, ...(b2 ? { b2 } : {}) };
 }
