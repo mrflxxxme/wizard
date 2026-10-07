@@ -1,5 +1,5 @@
 // Builder v2 host contract and params (specs/agents/builder.yaml#v2): a build of an approved system plan in stages
-// plan → texts → design → compile → custom → gates, a checkpoint after each stage, a budget per stage.
+// plan → texts → design → photos → compile → custom → gates, a checkpoint after each stage, a budget per stage.
 import type { AppSpec, SystemPlan } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import type { CustomSlot, ModuleRegistry } from "@wizard/modules";
@@ -7,9 +7,10 @@ import type { RunStepFn } from "../../core/events.js";
 import type { RouteFn } from "../../core/loop.js";
 import type { RecordDevelopmentRequest } from "../../gaps.js";
 import type { HostRoute } from "../../host/index.js";
+import type { PhotoHost } from "./photos.js";
 
 /** Stages in build order (builder.yaml#v2.stages). */
-export const V2_STAGES = ["plan", "texts", "design", "compile", "custom", "gates"] as const;
+export const V2_STAGES = ["plan", "texts", "design", "photos", "compile", "custom", "gates"] as const;
 export type V2Stage = (typeof V2_STAGES)[number];
 
 /** A stage result kept in the database: a repeated build of the same plan starts after the last one. */
@@ -61,6 +62,11 @@ export interface V2Host {
    */
   goalBrowser?: boolean;
   recordDevelopmentRequest?: RecordDevelopmentRequest;
+  /**
+   * B2-38: stock search and the platform photo library for the photos stage. Absent (or no stock keys) — the landing
+   * keeps the theme graphic; the build never fails for photos.
+   */
+  photos?: PhotoHost;
 }
 
 /** ₽ per stage and for the whole build without custom code (D76 (9): ≤ 15 ₽, custom ≤ +20 ₽). */
@@ -119,6 +125,8 @@ export interface V2Params {
   /** ₽ per credit (models.yaml#credits.rub_per_credit; default from the registry). */
   rubPerCredit?: number;
   now?: () => number;
+  /** Time budget of the photos stage, ms (default PHOTOS_TIME_BUDGET_MS). */
+  photosTimeMs?: number;
 }
 
 export type V2FailureCode =

@@ -35,8 +35,8 @@ export interface BuildProgress {
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-/** Default stages of the builder v2 (agents/builder.yaml, B2-21) when an event carries no total. */
-const STAGES = ["plan", "texts", "design", "compile", "custom", "gates"] as const;
+/** Default stages of the builder v2 (agents/builder.yaml, B2-21; photos — B2-38) when an event carries no total. */
+const STAGES = ["plan", "texts", "design", "photos", "compile", "custom", "gates"] as const;
 
 export function emptyProgress(): BuildProgress {
   return {

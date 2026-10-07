@@ -5,8 +5,17 @@
 import type { PlanSection } from "@wizard/appspec";
 import { CATALOG_NAMES, SHOWCASE } from "../catalog/compile.js";
 import { PACKAGE_NAMES } from "../packages/compile.js";
-import { fragmentPage, type JsxAttr, jsxEl } from "../screens/jsx.js";
+import { fragmentPage, type JsxAttr, js, jsxEl } from "../screens/jsx.js";
 import type { ScreenContext } from "../types.js";
+import {
+  GALLERY_TILES,
+  PHOTO_CREDITS_ROUTE,
+  PHOTO_HELPER,
+  PROVIDER_LABEL,
+  photoExpr,
+  photoSlots,
+  stockBySlot,
+} from "./photos.js";
 
 type Link = { label: string; href: string };
 type Content = PlanSection["content"];
@@ -15,8 +24,12 @@ type Item = string | Record<string, string>;
 /** Canonical entity of a section bound to data (owned by the module the section needs). */
 export const SECTION_ENTITY: Readonly<Record<string, string>> = { lead_form: "lead", services: "service" };
 
-/** Section components that live in another generated page, by the module they are imported from. */
-const LOCAL_BLOCKS: Readonly<Record<string, string>> = { [SHOWCASE.component]: SHOWCASE.importFrom };
+/** Section components and helpers that live in another generated file, by the module they are imported from. */
+const LOCAL_BLOCKS: Readonly<Record<string, string>> = {
+  [SHOWCASE.component]: SHOWCASE.importFrom,
+  useSitePhotos: PHOTO_HELPER.importFrom,
+  somePhotos: PHOTO_HELPER.importFrom,
+};
 
 const DEFAULT_ANCHOR: Readonly<Record<string, string>> = {
   hero: "top",
@@ -41,8 +54,8 @@ const DEFAULT_ANCHOR: Readonly<Record<string, string>> = {
 const TARGETS = ["lead_form", "booking"];
 /** Page of the booking module (slot picker). */
 const BOOKING_ROUTE = "/booking";
-/** Placeholder tiles of a gallery without items: the theme graphic until stock photos (B2-38). */
-const GALLERY_PLACEHOLDERS = 6;
+/** Tiles of a gallery without items: a stock photo or the owner's photo per tile, else the theme graphic (B2-38). */
+const GALLERY_PLACEHOLDERS = GALLERY_TILES;
 
 const str = (c: Content, k: string): string | undefined => {
   const v = c[k];
@@ -117,6 +130,21 @@ interface Env {
   /** Tone of the section (rhythm: every second body section on the alternate band). */
   tone: "alt" | undefined;
   ctx: ScreenContext;
+  /** Expression of the n-th picture of the section (B2-38 photo slot), undefined — no slot (theme graphic). */
+  photo: (n: number) => string | undefined;
+  /** Footer: stock providers of the page's photos (a link to «Источники фото»). */
+  stock: readonly string[];
+}
+
+/** Items with the section's photo slots: `{...item, image: photo("gallery-2")}` (an expression), else the JSON. */
+function withPhotos(list: readonly Record<string, unknown>[], env: Env): string | undefined {
+  if (!list.some((_, i) => env.photo(i + 1))) return undefined;
+  return `[${list
+    .map((it, i) => {
+      const e = env.photo(i + 1);
+      return e ? `{ ...${js(it)}, image: ${e} }` : js(it);
+    })
+    .join(", ")}]`;
 }
 
 const action = (label: string | undefined, env: Env): Link | undefined =>
@@ -181,19 +209,31 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
       ["subtitle", str(s.content, "subtitle")],
       ["eyebrow", str(s.content, "eyebrow")],
       ["primary", action(str(s.content, "cta"), env)],
+      ["image", env.photo(1), "expr"],
+      [
+        "images",
+        s.variant === "collage" && (env.photo(2) || env.photo(3))
+          ? `somePhotos([${[env.photo(2), env.photo(3)].filter(Boolean).join(", ")}])`
+          : undefined,
+        "expr",
+      ],
       ["variant", s.variant, "lit"],
       ["anchor", a, "lit"],
     ],
   ],
-  features: (s, a, env) => [
-    "Features",
-    [
-      ["title", str(s.content, "title")],
-      ["intro", str(s.content, "intro")],
-      ["items", titled(s.content)],
-      ...base(s, a, env),
-    ],
-  ],
+  features: (s, a, env) => {
+    const its = titled(s.content);
+    const pics = s.variant === "alternating" ? withPhotos(its, env) : undefined;
+    return [
+      "Features",
+      [
+        ["title", str(s.content, "title")],
+        ["intro", str(s.content, "intro")],
+        pics ? ["items", pics, "expr"] : ["items", its],
+        ...base(s, a, env),
+      ],
+    ];
+  },
   steps: (s, a, env) => [
     "Steps",
     [
@@ -274,12 +314,14 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
   ],
   gallery: (s, a, env) => {
     const its = items(s.content, "caption", []).map((o) => (o.caption ? { caption: o.caption } : {}));
+    const tiles = its.length ? its : Array.from({ length: GALLERY_PLACEHOLDERS }, () => ({}));
+    const pics = withPhotos(tiles, env);
     return [
       "Gallery",
       [
         ["title", str(s.content, "title")],
         ["intro", str(s.content, "intro")],
-        ["items", its.length ? its : Array.from({ length: GALLERY_PLACEHOLDERS }, () => ({}))],
+        pics ? ["items", pics, "expr"] : ["items", tiles],
         ...base(s, a, env),
       ],
     ];
@@ -327,7 +369,12 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
   ],
   about: (s, a, env) => [
     "About",
-    [["title", str(s.content, "title")], ["text", str(s.content, "text")], ...base(s, a, env)],
+    [
+      ["title", str(s.content, "title")],
+      ["text", str(s.content, "text")],
+      ["image", env.photo(1), "expr"],
+      ...base(s, a, env),
+    ],
   ],
   contacts: (s, a, env) => [
     "Contacts",
@@ -361,14 +408,26 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
     "TextBlock",
     [["title", str(s.content, "title")], ["text", str(s.content, "text")], ...base(s, a, env)],
   ],
-  footer: (s, _a, env) => [
-    "Footer",
-    [
-      ["brand", env.brand],
-      ["text", str(s.content, "text")],
-      ["variant", s.variant, "lit"],
-    ],
-  ],
+  // Stock photos on the page: a link to «Источники фото» (the minimal footer has no links — a line with the stocks).
+  footer: (s, _a, env) => {
+    const text = str(s.content, "text");
+    const credit = env.stock.length ? `Фото: ${env.stock.join(", ")}.` : undefined;
+    const minimal = s.variant === "minimal";
+    return [
+      "Footer",
+      [
+        ["brand", env.brand],
+        ["text", minimal && credit ? [text, credit].filter(Boolean).join(" ") : text],
+        [
+          "columns",
+          credit && !minimal
+            ? [{ title: "Сайт", links: [{ label: "Источники фото", href: PHOTO_CREDITS_ROUTE }] }]
+            : undefined,
+        ],
+        ["variant", s.variant, "lit"],
+      ],
+    ];
+  },
 };
 
 /** Sections that keep their own background (no rhythm band): page edges and blocks on the brand colour. */
@@ -409,6 +468,12 @@ export function landingPage(ctx: ScreenContext): string {
         links.push({ label: title, href: `#${a}` });
     });
   const imports: string[] = [];
+  // Photo slots (B2-38): the owner's photo or the stock photo of the plan; without both — the theme graphic.
+  const slots = ctx.params.photos === true ? photoSlots(ctx.plan) : [];
+  const slotOf = new Map(slots.map((x) => [`${x.sectionIndex}:${x.n}`, x.slot]));
+  const stock = [
+    ...new Set([...stockBySlot(ctx.plan).values()].map((p) => PROVIDER_LABEL[p.provider])),
+  ].sort();
   const bands = sectionBands(sections, ctx.plan.design.direction.rhythm);
   const blocks = sections.map((s, i) => {
     const render = SECTION_RENDERERS[s.type];
@@ -421,15 +486,23 @@ export function landingPage(ctx: ScreenContext): string {
       sticky: ctx.params.sticky_header === true,
       tone,
       ctx,
+      photo: (n) => {
+        const slot = slotOf.get(`${i}:${n}`);
+        return slot ? photoExpr(slot) : undefined;
+      },
+      stock: slots.length ? stock : [],
     };
     const [name, attrs] = render(s, anchors[i], env);
     imports.push(name);
+    if (attrs.some(([k, v]) => k === "images" && v !== undefined)) imports.push("somePhotos");
     return jsxEl(name, attrs);
   });
+  if (slots.length) imports.push("useSitePhotos");
   return fragmentPage(
     "// Generated by the landing module (B2-11, B2-35): sections and texts from the system plan, ui-kit blocks.",
     imports,
     blocks,
     LOCAL_BLOCKS,
+    slots.length ? ["  const photo = useSitePhotos();"] : [],
   );
 }

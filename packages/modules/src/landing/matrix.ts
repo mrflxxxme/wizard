@@ -1,7 +1,7 @@
 // CI matrix of the section library (B2-35): every layout variant of every section type compiles and passes G0 and G1.
 // Row k puts all 20 section types on one page with the k-th variant of each (types with fewer variants wrap around),
 // with the modules the data sections need and a theme of its own. Texts are neutral examples («Пример: …»).
-import { type PlanSection, SECTION_CATALOG, THEME_PRESETS } from "@wizard/appspec";
+import { type PlanPhoto, type PlanSection, SECTION_CATALOG, THEME_PRESETS } from "@wizard/appspec";
 
 /** Example content per section type: required keys and the optional ones a block shows. */
 const CONTENT: Readonly<Record<string, PlanSection["content"]>> = {
@@ -55,3 +55,77 @@ export const LANDING_MATRIX = Array.from({ length: ROWS }, (_, k) => ({
   sections: k % 2 === 1 ? withBands(librarySections(k)) : librarySections(k),
   theme: THEMES[k % THEMES.length] as string,
 }));
+
+/** Sections of the photo row (B2-38): every section type with photo slots, a gallery tile left without a photo. */
+export const PHOTO_ROW_SECTIONS: PlanSection[] = [
+  { type: "header", variant: "bar", content: { cta: "Оставить заявку" } },
+  { type: "hero", variant: "collage", content: { ...(CONTENT.hero ?? {}) } },
+  {
+    type: "features",
+    variant: "alternating",
+    content: { title: "Пример: почему мы", items: ["Пример преимущества", "Ещё пример", "Третий пример"] },
+  },
+  { type: "about", variant: "split", content: { ...(CONTENT.about ?? {}) } },
+  {
+    type: "gallery",
+    variant: "grid",
+    content: {
+      title: "Пример: наши работы",
+      items: [{ caption: "Пример: работа" }, "Вторая", "Третья", "Четвёртая"],
+    },
+  },
+  { type: "lead_form", variant: "card", content: { title: "Оставьте заявку" } },
+  { type: "footer", variant: "simple", content: {} },
+];
+
+/** Slots of PHOTO_ROW_SECTIONS that get a stock photo (gallery-4 keeps the theme graphic). */
+export const PHOTO_ROW_SLOTS = [
+  "top",
+  "top-2",
+  "top-3",
+  "features",
+  "features-2",
+  "features-3",
+  "about",
+  "gallery",
+  "gallery-2",
+  "gallery-3",
+] as const;
+
+/** Example stock photos of the photo row: library ids from `files`, sources marked as examples. */
+export function examplePhotos(files: (slot: string, i: number) => string): PlanPhoto[] {
+  return PHOTO_ROW_SLOTS.map((slot, i) => {
+    const pexels = i % 2 === 0;
+    const id = String(1000 + i);
+    return {
+      slot,
+      file: files(slot, i),
+      alt: `Пример: фото для места «${slot}»`,
+      provider: pexels ? "pexels" : "pixabay",
+      stockId: id,
+      author: `Пример: автор ${i + 1}`,
+      authorUrl: pexels ? `https://www.pexels.com/@example-${i}` : `https://pixabay.com/users/example-${i}/`,
+      pageUrl: pexels
+        ? `https://www.pexels.com/photo/example-${id}/`
+        : `https://pixabay.com/photos/example-${id}/`,
+      license: pexels ? "Лицензия Pexels" : "Лицензия на контент Pixabay",
+      licenseUrl: pexels ? "https://www.pexels.com/license/" : "https://pixabay.com/service/license-summary/",
+      width: 960,
+      height: 640,
+      pickedAt: "2026-10-07",
+    };
+  });
+}
+
+/** Library id of the n-th example photo (UUID shape). */
+export const exampleFile = (_slot: string, i: number): string =>
+  `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`;
+
+/** CI row of the landing with stock photos in every type of photo slot (B2-38). */
+export const LANDING_PHOTO_ROW = {
+  name: "фото со стока в секциях",
+  params: {},
+  withModules: ["leads", "notify"],
+  sections: PHOTO_ROW_SECTIONS,
+  photos: examplePhotos(exampleFile),
+};

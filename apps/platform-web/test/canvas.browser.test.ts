@@ -121,7 +121,7 @@ describe.skipIf(!hasChromium)("canvas screen in chromium (feed «клиника�
           await page.getByTestId("canvas-eta").waitFor();
           expect(await page.getByTestId("canvas-eta-text").textContent()).toMatch(/осталось/);
         } else expect(await page.getByTestId("canvas-build-row").innerText()).toMatch(/осталось/);
-        expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Подбираю оформление");
+        expect(await page.getByTestId("canvas-build-step").textContent()).toBe("Подбираю фото");
         await expect.poll(() => page.getByTestId("canvas-xray").getAttribute("data-visible")).toBe("true");
         await page.getByTestId("canvas-xray-data").waitFor();
         expect(await page.getByTestId("canvas-xray-data").textContent()).toContain("Кто видит данные");

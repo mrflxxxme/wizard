@@ -176,7 +176,13 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
       : (opts.executors ??
-        createAgentExecutors({ pg: handle.pg, config, ...(opts.modules ? { modules: opts.modules } : {}) }));
+        createAgentExecutors({
+          pg: handle.pg,
+          config,
+          // B2-38: platform keys of the stocks (secret://platform/stock/*).
+          secrets,
+          ...(opts.modules ? { modules: opts.modules } : {}),
+        }));
   const dispatcher = dbos
     ? (opts.dispatcher ?? (await createDbosDispatcher({ dbUrl: config.dbUrl, log })))
     : undefined;

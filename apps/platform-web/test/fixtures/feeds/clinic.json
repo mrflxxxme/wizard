@@ -123,6 +123,12 @@
        "label": "Меню по секциям страницы",
        "value": true,
        "type": "bool"
+      },
+      {
+       "name": "photos",
+       "label": "Фото в секциях (со стока или свои)",
+       "value": true,
+       "type": "bool"
       }
      ]
     },
@@ -714,6 +720,12 @@
        "label": "Меню по секциям страницы",
        "value": true,
        "type": "bool"
+      },
+      {
+       "name": "photos",
+       "label": "Фото в секциях (со стока или свои)",
+       "value": true,
+       "type": "bool"
       }
      ]
     },
@@ -1092,6 +1104,27 @@
    ],
    "entities": [
     {
+     "name": "site_photo",
+     "label": "Фото сайта",
+     "fields": [
+      {
+       "name": "slot",
+       "label": "Место на странице",
+       "type": "string"
+      },
+      {
+       "name": "image",
+       "label": "Фото",
+       "type": "image"
+      },
+      {
+       "name": "alt",
+       "label": "Описание фото",
+       "type": "string"
+      }
+     ]
+    },
+    {
      "name": "client",
      "label": "Пациент",
      "fields": [
@@ -1278,6 +1311,25 @@
      "module": "landing"
     },
     {
+     "route": "/photos",
+     "title": "Источники фото",
+     "audience": "public",
+     "roles": [
+      "guest",
+      "owner"
+     ],
+     "module": "landing"
+    },
+    {
+     "route": "/cabinet/photos",
+     "title": "Фото сайта",
+     "audience": "cabinet",
+     "roles": [
+      "owner"
+     ],
+     "module": "landing"
+    },
+    {
      "route": "/clients",
      "title": "Клиенты и история",
      "audience": "cabinet",
@@ -1453,6 +1505,12 @@
     {
      "id": "GS-landing-1",
      "title": "Посетитель с телефона понимает предложение и находит главное действие",
+     "goal": "attract",
+     "module": "landing"
+    },
+    {
+     "id": "GS-landing-2",
+     "title": "Владелец заменяет фото сайта своим в один клик",
      "goal": "attract",
      "module": "landing"
     },
@@ -1701,6 +1759,20 @@
    ],
    "access": [
     {
+     "role": "guest",
+     "roleLabel": "Посетитель",
+     "entity": "site_photo",
+     "entityLabel": "Фото сайта",
+     "scope": "all"
+    },
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "site_photo",
+     "entityLabel": "Фото сайта",
+     "scope": "all"
+    },
+    {
      "role": "owner",
      "roleLabel": "Владелец",
      "entity": "client",
@@ -1772,7 +1844,7 @@
    ],
    "warnings": [],
    "errors": [],
-   "fingerprint": "84ef6791b431c684171936f93bd62b4deba0c18f2788f7683d8937c41d4d4b94",
+   "fingerprint": "e68173fb1db09aa13f124bba3e6f5d6a2bd318b0e558ed239ab0e049ec28c1a5",
    "outOfScope": [
     {
      "request": "Оплата лечения на сайте",
@@ -1800,10 +1872,10 @@
    "payload": {
     "stage": "plan",
     "index": 1,
-    "total": 6,
+    "total": 7,
     "label_ru": "Сверяю план",
     "status": "started",
-    "remainingSec": 161
+    "remainingSec": 176
    }
   },
   {
@@ -1826,10 +1898,10 @@
    "payload": {
     "stage": "plan",
     "index": 1,
-    "total": 6,
+    "total": 7,
     "label_ru": "Сверяю план",
     "status": "done",
-    "remainingSec": 160
+    "remainingSec": 175
    }
   },
   {
@@ -1837,10 +1909,10 @@
    "payload": {
     "stage": "texts",
     "index": 2,
-    "total": 6,
+    "total": 7,
     "label_ru": "Пишу тексты",
     "status": "started",
-    "remainingSec": 160
+    "remainingSec": 175
    }
   },
   {
@@ -1863,10 +1935,10 @@
    "payload": {
     "stage": "texts",
     "index": 2,
-    "total": 6,
+    "total": 7,
     "label_ru": "Пишу тексты",
     "status": "done",
-    "remainingSec": 115
+    "remainingSec": 130
    }
   },
   {
@@ -1874,10 +1946,10 @@
    "payload": {
     "stage": "design",
     "index": 3,
-    "total": 6,
+    "total": 7,
     "label_ru": "Подбираю оформление",
     "status": "started",
-    "remainingSec": 115
+    "remainingSec": 130
    }
   },
   {
@@ -1900,8 +1972,45 @@
    "payload": {
     "stage": "design",
     "index": 3,
-    "total": 6,
+    "total": 7,
     "label_ru": "Подбираю оформление",
+    "status": "done",
+    "remainingSec": 110
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "photos",
+    "index": 4,
+    "total": 7,
+    "label_ru": "Подбираю фото",
+    "status": "started",
+    "remainingSec": 110
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "photos",
+    "label_ru": "Подбираю фото",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "photos",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "photos",
+    "index": 4,
+    "total": 7,
+    "label_ru": "Подбираю фото",
     "status": "done",
     "remainingSec": 95
    }
@@ -1910,8 +2019,8 @@
    "type": "build_stage",
    "payload": {
     "stage": "compile",
-    "index": 4,
-    "total": 6,
+    "index": 5,
+    "total": 7,
     "label_ru": "Собираю экраны и данные",
     "status": "started",
     "remainingSec": 95
@@ -1936,8 +2045,8 @@
    "type": "build_stage",
    "payload": {
     "stage": "compile",
-    "index": 4,
-    "total": 6,
+    "index": 5,
+    "total": 7,
     "label_ru": "Собираю экраны и данные",
     "status": "done",
     "remainingSec": 90
@@ -1947,8 +2056,8 @@
    "type": "build_stage",
    "payload": {
     "stage": "custom",
-    "index": 5,
-    "total": 6,
+    "index": 6,
+    "total": 7,
     "label_ru": "Дописываю недостающее",
     "status": "skipped",
     "remainingSec": 90
@@ -1958,8 +2067,8 @@
    "type": "build_stage",
    "payload": {
     "stage": "gates",
-    "index": 6,
-    "total": 6,
+    "index": 7,
+    "total": 7,
     "label_ru": "Проверяю, что всё работает",
     "status": "started",
     "remainingSec": 90
@@ -1994,8 +2103,8 @@
    "type": "build_stage",
    "payload": {
     "stage": "gates",
-    "index": 6,
-    "total": 6,
+    "index": 7,
+    "total": 7,
     "label_ru": "Проверяю, что всё работает",
     "status": "done",
     "remainingSec": 0

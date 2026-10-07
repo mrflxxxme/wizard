@@ -116,7 +116,7 @@ describe("x-ray «Как это работает»", () => {
       ["cabinet", "remind"],
       ["remind", "goals"],
     ]);
-    expect(x.access).toContainEqual({ who: "Посетитель", what: "Услуга (часть), Врач" });
+    expect(x.access).toContainEqual({ who: "Посетитель", what: "Фото сайта, Услуга (часть), Врач" });
     expect(x.retention).toContain("Запись — 1 год, потом обезличиваются");
     expect(x.automations).toContain("Напоминание за 24 ч до визита");
   });
@@ -130,8 +130,8 @@ describe("build progress adapter", () => {
       all.findIndex((e) => e.payload.stage === "compile"),
     );
     const p = buildProgress(half);
-    expect(p).toMatchObject({ phase: "running", index: 3, total: 6, label: "Подбираю оформление" });
-    expect(p.fraction).toBeCloseTo(0.5);
+    expect(p).toMatchObject({ phase: "running", index: 4, total: 7, label: "Подбираю фото" });
+    expect(p.fraction).toBeCloseTo(4 / 7);
     expect(p.remainingSec).toBe(95);
     expect(remainingText(p.remainingSec)).toBe("осталось 1 мин 35 с");
     expect(buildProgress(all)).toMatchObject({ phase: "done", fraction: 1, remainingSec: 0 });

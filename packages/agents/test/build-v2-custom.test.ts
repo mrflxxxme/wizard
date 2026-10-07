@@ -264,7 +264,7 @@ describe("custom code: a part that fails is isolated, the build goes on (accepta
     const reused = retry.rec.events
       .filter((e) => e.type === "build_stage" && e.payload.status === "reused")
       .map((e) => e.payload.stage);
-    expect(reused).toEqual(["plan", "texts", "design", "compile", "custom"]);
+    expect(reused).toEqual(["plan", "texts", "design", "photos", "compile", "custom"]);
     expect(retry.rec.calls).toEqual([]);
     expect(sys.commits).toBe(2);
     expect(Object.keys(sys.files)).toEqual(expect.arrayContaining([SCREEN, FUNCTION]));

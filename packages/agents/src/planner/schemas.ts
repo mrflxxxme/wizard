@@ -73,7 +73,8 @@ const planShape = systemPlanSchema.shape;
 export const plannerPlanSchema = z.strictObject({
   ...planShape,
   version: z.literal(1).default(1),
-  design: planShape.design.optional(),
+  // Stock photos are picked by the builder (B2-38), never written by the planner.
+  design: planShape.design.omit({ photos: true }).optional(),
   outOfScope: planShape.outOfScope.default([]),
   custom: planShape.custom.default([]),
 });

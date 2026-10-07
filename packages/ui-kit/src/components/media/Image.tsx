@@ -14,6 +14,8 @@ export type ImageRatio = "16/9" | "4/3" | "3/2" | "1/1" | "3/4" | "21/9" | "auto
 export interface ImageSource {
   fileId?: string | null;
   src?: string;
+  /** Width variants of `src` («/a/480 480w, /a/960 960w»): stock photos of the platform library (B2-38). */
+  srcSet?: string;
   /** Short description for screen readers; "" only with decorative. */
   alt: string;
   decorative?: boolean;
@@ -73,8 +75,10 @@ export function ImageImpl(props: ImageProps & { root: RootAttrs }): ReactNode {
       className={cx(styles.img, fit === "contain" && styles.contain, loaded && styles.loaded)}
       alt={decorative ? "" : alt}
       src={fileId ? files.imageSrc(fileId, 960) : src}
-      srcSet={fileId ? IMAGE_WIDTHS.map((w) => `${files.imageSrc(fileId, w)} ${w}w`).join(", ") : undefined}
-      sizes={fileId ? sizes : undefined}
+      srcSet={
+        fileId ? IMAGE_WIDTHS.map((w) => `${files.imageSrc(fileId, w)} ${w}w`).join(", ") : props.srcSet
+      }
+      sizes={fileId || props.srcSet ? sizes : undefined}
       loading={priority ? "eager" : "lazy"}
       decoding="async"
       {...(priority ? { fetchPriority: "high" as const } : {})}

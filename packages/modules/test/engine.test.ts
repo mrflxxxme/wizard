@@ -94,6 +94,8 @@ describe("landing + leads", () => {
   test("symbolic roles: $staff without the staff module is the owner, permissions merge", () => {
     expect(r.spec.roles.map((x) => x.name)).toEqual(["guest", "owner"]);
     expect(r.spec.permissions).toEqual([
+      { role: "guest", entity: "site_photo", ops: ["read"] },
+      { role: "owner", entity: "site_photo", ops: ["read", "create", "update", "delete"] },
       { role: "guest", entity: "lead", ops: ["create"], readonlyFields: ["status"] },
       { role: "owner", entity: "lead", ops: ["read", "update", "delete"] },
     ]);
@@ -136,12 +138,29 @@ describe("landing + leads", () => {
         nav: true,
       },
       { route: "/", title: "Главная", file: "ui/pages/Home.tsx", roles: ["guest", "owner"], nav: true },
+      // B2-38: sources of the stock photos and the owner's «Фото сайта» (replace a photo in one click).
+      {
+        route: "/photos",
+        title: "Источники фото",
+        file: "ui/pages/LandingCredits.tsx",
+        roles: ["guest", "owner"],
+      },
+      {
+        route: "/cabinet/photos",
+        title: "Фото сайта",
+        file: "ui/pages/LandingPhotos.tsx",
+        roles: ["owner"],
+        nav: true,
+      },
       { route: "/cabinet", title: "Кабинет: Владелец", file: "ui/pages/Cabinet.tsx", roles: ["owner"] },
     ]);
     expect(Object.keys(r.files)).toEqual([
       "ui/pages/Cabinet.tsx",
       "ui/pages/Home.tsx",
+      "ui/pages/LandingCredits.tsx",
+      "ui/pages/LandingPhotos.tsx",
       "ui/pages/NotifySettings.tsx",
+      "ui/pages/SitePhotos.tsx",
     ]);
     const home = r.files["ui/pages/Home.tsx"] ?? "";
     expect(home).toContain(
@@ -149,7 +168,7 @@ describe("landing + leads", () => {
     );
     expect(home).toContain('<Hero title={"Лечим зубы без боли и очередей"}');
     expect(home).toContain(
-      'primary={{"label":"Оставить заявку","href":"#lead"}} variant="split" anchor="top"',
+      'primary={{"label":"Оставить заявку","href":"#lead"}} image={photo("top")} variant="split" anchor="top"',
     );
     expect(home).toContain('<LeadForm entity={"lead"} title={"Оставьте заявку"}');
     expect(home).toContain('submitLabel={"Отправить"} variant="split" anchor="lead"');
@@ -172,6 +191,7 @@ describe("landing + leads", () => {
       "GS-notify-2",
       "GS-notify-3",
       "GS-landing-1",
+      "GS-landing-2",
       "GS-leads-1",
       "GS-leads-2",
     ]);

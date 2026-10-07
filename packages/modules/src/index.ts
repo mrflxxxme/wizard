@@ -73,7 +73,15 @@ export { canonical, sameJson, substitute } from "./engine/substitute.js";
 /** Module «Секции лендинга»: manifest, page generator, section renderers by type. */
 export { landingCompile, landingManifest, landingModule } from "./landing/index.js";
 /** Section library rows of the CI matrix (B2-35): all section types, the k-th layout of each, a theme per row. */
-export { LANDING_MATRIX, librarySections } from "./landing/matrix.js";
+export {
+  exampleFile,
+  examplePhotos,
+  LANDING_MATRIX,
+  LANDING_PHOTO_ROW,
+  librarySections,
+  PHOTO_ROW_SECTIONS,
+  PHOTO_ROW_SLOTS,
+} from "./landing/matrix.js";
 /** Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37). */
 export {
   landingPage,
@@ -82,6 +90,21 @@ export {
   sectionAnchors,
   sectionBands,
 } from "./landing/page.js";
+/** B2-38 photos of the landing: slots of the sections, the owner's site_photo, library paths, credits and cabinet pages. */
+export {
+  PHOTO_CABINET_ROUTE,
+  PHOTO_CREDITS_ROUTE,
+  PHOTO_LIBRARY_PATH,
+  PHOTO_WIDTHS,
+  type PhotoOrientation,
+  type PhotoSectionType,
+  type PhotoSlot,
+  PROVIDER_LABEL,
+  photoSlots,
+  photoSrc,
+  SITE_PHOTO,
+  stockBySlot,
+} from "./landing/photos.js";
 /** Module «Заявки»: manifest and compile hook. */
 export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";
 export { leadsManifest, leadsModule } from "./leads/index.js";

@@ -12,6 +12,7 @@ import { readSessionToken, sessionUser } from "./auth/session.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, draftPreviewOnly, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
+import { photoLibraryRoutes } from "./files/photo-library.js";
 import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
 import {
@@ -101,6 +102,11 @@ export interface RuntimeAppOptions {
    * (fs in <artifactsRoot>/../files, memory or s3); null — no files (uploads 404, file values unchecked).
    */
   files?: FileStorage | null;
+  /**
+   * B2-38: storage of the platform photo library (/_wizard/photos, keys wz_photos/*). Default: `files`. The G1 runtime
+   * keeps uploads in memory but reads the library from the shared storage the builder copied the photos into.
+   */
+  photoLibrary?: FileStorage | null;
   /** Sandbox RPC listener served on the internal port (/rpc/*) and egress-proxy authorization (L3-23, L3-24). */
   rpc?: SandboxRpc;
   /** Version reported by the internal health (image tag, WIZARD_VERSION). */
@@ -304,6 +310,10 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard/hooks/message", messageLinkRoutes(auth.keys));
   app.route("/_wizard/hooks", notImplemented());
   app.route("/_wizard/fonts", fontsRoutes());
+  app.route(
+    "/_wizard/photos",
+    photoLibraryRoutes(o.photoLibrary !== undefined ? o.photoLibrary : (files ?? null)),
+  );
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.route("/_wizard", privacyRoutes());

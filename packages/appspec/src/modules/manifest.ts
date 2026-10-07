@@ -372,6 +372,8 @@ export const moduleTestsSchema = z.strictObject({
         sections: z.array(anyObject).min(1).max(20).optional(),
         /** Theme preset of the row's plan (default: the first of the catalog). */
         theme: identSchema.optional(),
+        /** Stock photos of the row's plan (B2-38 design.photos; checked by validateSystemPlan when the row compiles). */
+        photos: z.array(anyObject).min(1).max(12).optional(),
       }),
     )
     .max(32),

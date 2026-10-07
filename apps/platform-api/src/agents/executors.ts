@@ -1,7 +1,16 @@
 // Real run executors (M0-26): orchestrator for interview turns, runBuild with a QA agent routed through host.route,
 // gates G0/G1/G2 (@wizard/gates; G1 and G2 on an in-process runtime in test mode) and the post-G0 draft steps.
+
+import { dirname, join } from "node:path";
 import type { CapabilityGap } from "@wizard/agents";
-import { type BuildCard, runBuild, runBuildV2, specDigest, type V2Host } from "@wizard/agents/builder";
+import {
+  type BuildCard,
+  type PhotoHost,
+  runBuild,
+  runBuildV2,
+  specDigest,
+  type V2Host,
+} from "@wizard/agents/builder";
 import { AgentError } from "@wizard/agents/core";
 import { createHostQa, hostRouteFn } from "@wizard/agents/host";
 import {
@@ -23,7 +32,9 @@ import { type RuntimeHandle, runGates } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import {
   closeExecutors,
+  createFileStorage,
   createRuntimeApp,
+  type FileStorage,
   MemoryFileStorage,
   MemoryRegistry,
   type RuntimeApp,
@@ -46,6 +57,7 @@ import { withConsentText } from "./consent.js";
 import { g1PlatformConfig } from "./g1-platform.js";
 import { type G1Sandbox, g1RuntimeLogLine, startG1Sandbox } from "./g1-sandbox.js";
 import { chromiumProvider, type GoalBrowser, type GoalBrowserProvider } from "./goal-browser.js";
+import { createPhotoHost, stockModeOf } from "./stock.js";
 
 /** Sandbox events of the G1 host (allowlisted fields only). */
 const g1Logger = createLogger({ svc: "worker" });
@@ -73,6 +85,15 @@ export interface AgentExecutorsOptions {
    * null: G1 of a plan build runs without the browser checks (build_metrics goals.checked=false).
    */
   goalBrowser?: GoalBrowserProvider | null;
+  /** B2-38: platform secrets (stock keys secret://platform/stock/*). */
+  secrets?: { getPlatform(ref: string): string | null };
+  /**
+   * B2-38: stock photos of a plan build. Default: createPhotoHost by WIZARD_STOCK_MODE (fixture without the network unless
+   * the models are live) over the shared file storage; null — no photos (landings keep the theme graphic).
+   */
+  photos?: PhotoHost | null;
+  /** B2-38: the shared file storage of systems (photo library wz_photos/*); default — createFileStorage(process.env). */
+  files?: FileStorage;
 }
 
 export type { GoalBrowser, GoalBrowserProvider };
@@ -85,7 +106,12 @@ export type { GoalBrowser, GoalBrowserProvider };
 export async function buildByPlan(
   host: BuildHost,
   params: BuildParams & { plan: NonNullable<BuildParams["plan"]> },
-  o: { registry?: ModuleRegistry; browser?: GoalBrowserProvider | null; platformUrl?: string } = {},
+  o: {
+    registry?: ModuleRegistry;
+    browser?: GoalBrowserProvider | null;
+    platformUrl?: string;
+    photos?: PhotoHost | null;
+  } = {},
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
   if (!host.checkpoints) throw new RunFailure("INTERNAL", "Нет хранилища этапов сборки", true);
   const current = await host.store.getSpec();
@@ -117,6 +143,7 @@ export async function buildByPlan(
     },
     goalBrowser: withBrowser,
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
+    ...(o.photos ? { photos: o.photos } : {}),
   };
   const out = await runBuildV2(v2, {
     plan: params.plan.plan,
@@ -364,6 +391,22 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
   const migratorRole = o.migratorRole ?? MIGRATOR_ROLE;
   let rt: RuntimeApp | undefined = o.runtime;
   let ownRuntime = false;
+  // B2-38: the shared file storage (photo library) and the stock photos of plan builds, made on first use.
+  let files: FileStorage | undefined = o.files;
+  const sharedFiles = (): FileStorage => {
+    files ??= createFileStorage(process.env, { defaultDir: join(dirname(o.config.artifactsDir), "files") });
+    return files;
+  };
+  let photos: PhotoHost | null | undefined = o.photos;
+  const photoHost = (): PhotoHost | null => {
+    photos ??=
+      createPhotoHost({
+        mode: stockModeOf(process.env),
+        secrets: o.secrets ?? null,
+        storage: sharedFiles(),
+      }) ?? null;
+    return photos;
+  };
   // B2-28: one Chromium per process for the goal scenarios of plan builds, started on the first such G1.
   let browserProvider: GoalBrowserProvider | null | undefined = o.goalBrowser;
   const ownBrowser = o.goalBrowser === undefined;
@@ -406,6 +449,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         artifactsRoot: o.config.artifactsDir,
         // G1 systems are ephemeral: their uploads (probes of required file fields) never reach the shared storage.
         files: new MemoryFileStorage(),
+        // …but their landings show the stock photos the builder copied into the shared photo library (B2-38).
+        photoLibrary: sharedFiles(),
         env: {
           ...readEnv(),
           authModeDev: true,
@@ -445,7 +490,12 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         return buildByPlan(
           host,
           { ...params, plan: params.plan },
-          { ...(o.modules ? { registry: o.modules } : {}), browser, platformUrl: o.config.platformOrigin },
+          {
+            ...(o.modules ? { registry: o.modules } : {}),
+            browser,
+            platformUrl: o.config.platformOrigin,
+            photos: photoHost(),
+          },
         );
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });

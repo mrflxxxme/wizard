@@ -1,4 +1,34 @@
 // @wizard/agents/builder: specs/agents/builder.yaml — runBuild(host, {card, cap, mode}) and its tools.
+
+/** B2-38 stock client: queries from the niche and the photo style, Pexels and Pixabay, fixtures without the network. */
+export {
+  createStockClient,
+  STOCK_HOSTS,
+  STOCK_LICENSES,
+  STOCK_PROVIDERS,
+  STOCK_SECRET_REFS,
+  StockCache,
+  type StockClient,
+  type StockClientOptions,
+  StockError,
+  type StockHit,
+  type StockProvider,
+} from "../stock/client.js";
+export {
+  FIXTURE_KEYS,
+  fixtureImage,
+  fixtureStockFetch,
+  recordingStockFetch,
+  STOCK_FIXTURES_DIR,
+} from "../stock/fixtures.js";
+export {
+  NICHE_TERMS,
+  nicheTerms,
+  STYLE_TERMS,
+  type StockQuery,
+  stockQuery,
+  styleTerms,
+} from "../stock/query.js";
 export { raiseStep, upperBoundCredits } from "./budget.js";
 export {
   answerFromCard,
@@ -92,6 +122,8 @@ export {
   themeVoice,
   VOICE_LABELS,
 } from "./v2/direction.js";
+/** B2-38 photos stage: stock pictures for the landing slots (no models), copies in the platform photo library. */
+export { PHOTOS_TIME_BUDGET_MS, type PhotoHost, type PhotosOutcome, runPhotosStage } from "./v2/photos.js";
 export { buildBlockers, OWNER_INPUT_CHECKS, runBuildV2, withOwnerFields } from "./v2/run.js";
 export { DEFAULT_V2_BUDGETS, remainingSec, STAGE_ETA_SEC, STAGE_LABELS } from "./v2/stages.js";
 export {

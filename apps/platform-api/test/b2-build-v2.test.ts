@@ -2,8 +2,9 @@
 // goal interview → plan → approveSystemPlan → builder v2 (texts, design, compile, gates G0–G2 with the real agents
 // executors and the in-process G1 runtime). The build fails on the design stage (models unavailable), «Исправить»
 // continues from the checkpoints without paying for the texts again; a clean build costs ≤ 15 ₽ and ≤ 5 min.
+import { dirname, join } from "node:path";
 import { createRouter, LlmError, type Router, type RouterOptions } from "@wizard/llm";
-import { closeExecutors } from "@wizard/runtime";
+import { closeExecutors, createFileStorage } from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { fixtureLines } from "../../../packages/agents/test/build-v2-fixtures.js";
 import { B2_CUSTOM_SCENARIOS, B2_SCENARIOS } from "../../../packages/agents/test/build-v2-scenarios.js";
@@ -212,6 +213,19 @@ describe("modules pipeline on the recorded answers: ≤ 15 ₽ and ≤ 5 min wit
         .executeTakeFirstOrThrow()
     ).payload as { stages: Record<string, unknown> };
     expect(metrics.stages).toMatchObject({ pipeline: "modules", status: "succeeded", planRevision: 1 });
+    // B2-38: the photos stage (stock fixtures, no network) put stock photos into the landing; the copies are in the
+    // shared photo library, the source, author and licence of each are in the compiled system.
+    const photosMetric = metrics.stages.photos as { status: string; note: string; costRub: number };
+    expect(photosMetric).toMatchObject({ status: "done", costRub: 0 });
+    expect(photosMetric.note).toMatch(/^фото со стока: [1-9]\d* из \d+/);
+    const helper = (await api.req("GET", `/systems/${systemId}/files/ui/pages/SitePhotos.tsx`)).text;
+    const files = [...helper.matchAll(/"file":"([0-9a-f-]{36})"/g)].map((m) => m[1] as string);
+    expect(files.length).toBeGreaterThan(0);
+    expect(helper).toContain('"license":"Лицензия Pexels"');
+    const library = createFileStorage(process.env, {
+      defaultDir: join(dirname(api.artifactsDir), "files"),
+    });
+    for (const f of files) expect((await library.head(`wz_photos/${f}`))?.image, f).toBeDefined();
   }, 400_000);
 });
 
