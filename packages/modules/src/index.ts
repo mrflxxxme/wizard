@@ -86,15 +86,17 @@ export {
 } from "./landing/matrix.js";
 /**
  * Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37);
- * navLinks — the deduplicated header menu (B2-45).
+ * navLinks — the deduplicated header menu (B2-45); landingSignIn — «Войти» of a landing without public actions (B2-49).
  */
 export {
   landingPage,
+  landingSignIn,
   MAX_NAV_LINKS,
   navKey,
   navLinks,
   SECTION_ENTITY,
   SECTION_RENDERERS,
+  SIGN_IN_LABEL,
   sameNavLabel,
   sectionAnchors,
   sectionBands,
@@ -214,7 +216,14 @@ export {
   statusField,
 } from "./screens/cabinet.js";
 /** B2-45: «/» without the landing — the public home of the plan's actions or the staff sign-in page. */
-export { HOME_LEAD_ANCHOR, type HomeActions, type HomeInput, homeActions, homePage } from "./screens/home.js";
+export {
+  HOME_LEAD_ANCHOR,
+  type HomeActions,
+  type HomeInput,
+  homeActions,
+  homePage,
+  staffSignIn,
+} from "./screens/home.js";
 /** Deterministic TSX emitters: jsxEl, fragmentPage, js, pascal. */
 export { fragmentPage, type JsxAttr, js, jsxEl, pascal } from "./screens/jsx.js";
 /** Module «Сотрудники и роли» (B2-16): roles staff…staff_5 with sections, the scope of $staff, invitations page. */

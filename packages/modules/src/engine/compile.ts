@@ -47,6 +47,7 @@ import {
   type ModuleDefinition,
   type ModuleRegistry,
   planCatalog,
+  type ScreenContext,
 } from "../types.js";
 import { planSiteName } from "./name.js";
 import { applicationOrder } from "./order.js";
@@ -730,7 +731,7 @@ class Compilation {
 
   private addScreens(): void {
     const cabinet = new Map<string, string[]>();
-    const rendered: { id: string; page: Page; render: () => string }[] = [];
+    const rendered: { id: string; page: Page; render: (site: ScreenContext["site"]) => string }[] = [];
     for (const id of this.order) {
       const m = this.manifest(id);
       const d = this.defs.get(id);
@@ -745,7 +746,7 @@ class Compilation {
           rendered.push({
             id,
             page,
-            render: () => gen({ ...this.genCtx(id), screen: s, roles }),
+            render: (site) => gen({ ...this.genCtx(id), screen: s, roles, site }),
           });
           continue;
         }
@@ -753,28 +754,38 @@ class Compilation {
         for (const r of roles) cabinet.set(r, unionOrdered(cabinet.get(r), own));
       }
     }
-    // Generators see the final roles, entities and permissions (pages are not part of their input).
+    // Shared role cabinets: a login role with readable entities of cabinet screens.
+    const roleCabinets = this.spec.roles
+      .filter((r) => r.access === "login")
+      .flatMap((role) => {
+        const entities = (cabinet.get(role.name) ?? []).filter((e) => can(this.spec, role.name, e, "read"));
+        if (!entities.length) return [];
+        const { route, file } = cabinetRoute(role.name, role.name === "owner");
+        const page: Page = { route, title: `Кабинет: ${role.label}`.slice(0, 80), file, roles: [role.name] };
+        return [{ role, entities, page }];
+      });
+    const cabinets = roleCabinets.map((c) => c.page.route);
+    // Generators see the final roles, entities and permissions, and the pages known so far (B2-49: the landing of a
+    // back-office system leads to the team's sign-in).
+    const site = {
+      pages: [...rendered.map((r) => r.page), ...roleCabinets.map((c) => c.page)],
+      cabinet: cabinets[0],
+    };
     for (const { id, page, render } of rendered) {
       if (this.pages.some((p) => p.route === page.route)) {
         this.bug(id, `страница «${page.route}» уже есть`);
         continue;
       }
       try {
-        this.files.set(page.file, render());
+        this.files.set(page.file, render(site));
         this.pages.push(page);
       } catch (e) {
         this.bug(id, `генератор экрана «${page.route}» упал: ${(e as Error).message}`);
       }
     }
-    const loginRoles = this.spec.roles.filter((r) => r.access === "login");
-    const cabinets: string[] = [];
-    for (const role of loginRoles) {
-      const entities = (cabinet.get(role.name) ?? []).filter((e) => can(this.spec, role.name, e, "read"));
-      if (!entities.length) continue;
-      const { route, file } = cabinetRoute(role.name, role.name === "owner");
-      cabinets.push(route);
-      this.pages.push({ route, title: `Кабинет: ${role.label}`.slice(0, 80), file, roles: [role.name] });
-      this.files.set(file, cabinetPage(this.spec, role.name, role.label, entities));
+    for (const { role, entities, page } of roleCabinets) {
+      this.pages.push(page);
+      this.files.set(page.file, cabinetPage(this.spec, role.name, role.label, entities));
     }
     if (!this.pages.some((p) => p.route === "/")) {
       this.pages.push({

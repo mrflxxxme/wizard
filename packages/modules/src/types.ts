@@ -6,6 +6,7 @@ import type {
   ModuleFragments,
   ModuleManifest,
   ModuleMetric,
+  Page,
   SectionTypeSpec,
   SystemPlan,
 } from "@wizard/appspec";
@@ -48,6 +49,11 @@ export interface ScreenContext extends GenContext {
   screen: ModuleScreen;
   /** Concrete role names of the screen (symbolic roles expanded). */
   roles: readonly string[];
+  /**
+   * Pages of the system known before the screens render (B2-49): every generated screen and the role cabinets, and the
+   * owner's cabinet route (the first login role's); absent when a generator is called outside the engine.
+   */
+  site?: { pages: readonly Page[]; cabinet: string | undefined };
 }
 
 /** Screen generator: TSX source of the page (pure and deterministic). */

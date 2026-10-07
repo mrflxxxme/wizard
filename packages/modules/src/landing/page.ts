@@ -5,6 +5,7 @@
 import type { PlanSection } from "@wizard/appspec";
 import { CATALOG_NAMES, SHOWCASE } from "../catalog/compile.js";
 import { PACKAGE_NAMES } from "../packages/compile.js";
+import { homeActions, staffSignIn } from "../screens/home.js";
 import { fragmentPage, type JsxAttr, js, jsxEl } from "../screens/jsx.js";
 import type { ScreenContext } from "../types.js";
 import {
@@ -126,6 +127,8 @@ interface Env {
   brand: string;
   links: Link[];
   target: string | undefined;
+  /** The team's sign-in «Войти» of a landing with nothing for the public to do (B2-49), else undefined. */
+  signIn: Link | undefined;
   sticky: boolean;
   /** Tone of the section (rhythm: every second body section on the alternate band). */
   tone: "alt" | undefined;
@@ -197,7 +200,7 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
     [
       ["brand", env.brand],
       ["links", env.links.length ? env.links : undefined],
-      ["cta", action(str(s.content, "cta"), env)],
+      ["cta", env.signIn ?? action(str(s.content, "cta"), env)],
       ["variant", s.variant, "lit"],
       ["sticky", env.sticky],
     ],
@@ -208,7 +211,7 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
       ["title", str(s.content, "title")],
       ["subtitle", str(s.content, "subtitle")],
       ["eyebrow", str(s.content, "eyebrow")],
-      ["primary", action(str(s.content, "cta"), env)],
+      ["primary", env.signIn ?? action(str(s.content, "cta"), env)],
       ["image", env.photo(1), "expr"],
       [
         "images",
@@ -257,7 +260,7 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
     [
       ["title", str(s.content, "title")],
       ["text", str(s.content, "text")],
-      ["action", { label: str(s.content, "cta") ?? "", href: env.target ?? "/" }],
+      ["action", env.signIn ?? { label: str(s.content, "cta") ?? "", href: env.target ?? "/" }],
       ["variant", s.variant, "lit"],
       ["anchor", a, "lit"],
     ],
@@ -514,14 +517,34 @@ export function navLinks(
   return out.slice(0, MAX_NAV_LINKS);
 }
 
+/** Label of the team's sign-in button on a back-office landing. */
+export const SIGN_IN_LABEL = "Войти";
+
+/**
+ * The team's sign-in of a landing with nothing for the public to do (B2-49, D76 control measurement: a CRM landing had
+ * the name, an empty header and a hero without a button): no call-to-action section (TARGETS) and no public action page
+ * of the plan (booking, catalog, lead form, other public pages, the visitor's pages — homeActions). Undefined otherwise,
+ * or when the pages of the system are unknown (a generator called outside the engine).
+ */
+export function landingSignIn(ctx: ScreenContext, target: string | undefined): Link | undefined {
+  if (target || !ctx.site) return undefined;
+  const { actions } = homeActions({
+    spec: { ...ctx.spec, pages: [...ctx.site.pages] },
+    present: ctx.present,
+    params: ctx.allParams,
+  });
+  return actions.length ? undefined : { label: SIGN_IN_LABEL, href: staffSignIn(ctx.site.cabinet) };
+}
+
 /** TSX of the landing page: the plan's sections in order on ui-kit blocks. */
 export function landingPage(ctx: ScreenContext): string {
   const sections = ctx.plan.landing?.sections ?? [];
   const anchors = sectionAnchors(sections);
   const targetIdx = TARGETS.map((t) => sections.findIndex((s) => s.type === t)).find((i) => i >= 0);
   const target = targetIdx !== undefined && anchors[targetIdx] ? `#${anchors[targetIdx]}` : undefined;
+  const signIn = landingSignIn(ctx, target);
   const header = sections.find((s) => s.type === "header");
-  const cta = header && target ? str(header.content, "cta") : undefined;
+  const cta = signIn?.label ?? (header && target ? str(header.content, "cta") : undefined);
   const links = ctx.params.anchor_nav === true ? navLinks(sections, anchors, target, cta) : [];
   const imports: string[] = [];
   // Photo slots (B2-38): the owner's photo or the stock photo of the plan; without both — the theme graphic.
@@ -539,6 +562,7 @@ export function landingPage(ctx: ScreenContext): string {
       brand: ctx.spec.app.name,
       links,
       target,
+      signIn,
       sticky: ctx.params.sticky_header === true,
       tone,
       ctx,
