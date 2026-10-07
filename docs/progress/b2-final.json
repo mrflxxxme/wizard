@@ -1,0 +1,2131 @@
+{
+  "kind": "d76",
+  "threshold": "d76",
+  "base": "https://borntobuild.ru",
+  "runId": "20261007-0b665e",
+  "orgId": "67ea751e-5457-4f07-8ff3-088a0cbd156c",
+  "startedAt": "2026-10-07T16:08:20.614Z",
+  "finishedAt": "2026-10-07T16:22:53.524Z",
+  "maxCostRub": 300,
+  "concurrency": 2,
+  "peakConcurrency": 2,
+  "g2": "publish",
+  "fixAttempts": 1,
+  "failFast": true,
+  "stopped": null,
+  "results": [
+    {
+      "id": "mvp-01-dental-clinic",
+      "class": "site",
+      "title": "Стоматология в Казани: сайт с заявками на консультацию",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "26e60861-ef1b-4bf9-9b43-b1768d651fc8",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 2,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "стоматологическая клиника",
+        "capCredits": null,
+        "outOfScope": [
+          "Оплата услуг онлайн через сайт — Пока нет онлайн-оплаты: заявка на консультацию без оплаты, расчёт — в клинике"
+        ]
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [
+          "Оплата услуг онлайн через сайт — Пока нет онлайн-оплаты: заявка на консультацию без оплаты, расчёт — в клинике"
+        ],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "uncovered",
+        "modules": [
+          "landing",
+          "catalog",
+          "leads",
+          "notify"
+        ],
+        "custom": [],
+        "outOfScope": [
+          {
+            "what": "Оплата услуг онлайн через сайт",
+            "replacement": "Пока нет онлайн-оплаты: заявка на консультацию без оплаты, расчёт — в клинике"
+          }
+        ]
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 8,
+          "passed": 8,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-01-dental-clinic-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-01-dental-clinic-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "58eb2fc3-3fd3-48ed-be69-6ddbec020a3c",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.156
+        },
+        {
+          "id": "5c5e6520-e040-4aec-bc60-2cef8e568ef1",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.629
+        },
+        {
+          "id": "ad575807-8a16-4f91-87ec-ffb5a8513203",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.253
+        },
+        {
+          "id": "d2942dc0-ed39-4a5b-8dc0-7aec55916382",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 1.038,
+      "costRubEstimate": 5.19,
+      "minutes": 1.8,
+      "buildMinutes": 0.8,
+      "startedAt": "2026-10-07T16:08:20.615Z",
+      "finishedAt": "2026-10-07T16:10:41.532Z"
+    },
+    {
+      "id": "mvp-02-renovation",
+      "class": "site",
+      "title": "Ремонт квартир под ключ: этапы, фото объектов, заявка на замер",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "3a24ae4d-bf81-4493-9869-28b9ddfe534e",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 3,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "ремонт квартир под ключ",
+        "capCredits": null,
+        "outOfScope": [
+          "Калькулятор стоимости ремонта на сайте — Каталог видов работ без цен и запись на замер — стоимость обсуждается лично после замера",
+          "Видео-обзоры объектов и сторонние скрипты на страницах — Фотогалерея выполненных объектов на лендинге"
+        ]
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [
+          "Калькулятор стоимости ремонта на сайте — Каталог видов работ без цен и запись на замер — стоимость обсуждается лично после замера",
+          "Видео-обзоры объектов и сторонние скрипты на страницах — Фотогалерея выполненных объектов на лендинге"
+        ],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "uncovered",
+        "modules": [
+          "landing",
+          "catalog",
+          "leads",
+          "booking",
+          "notify"
+        ],
+        "custom": [],
+        "outOfScope": [
+          {
+            "what": "Калькулятор стоимости ремонта на сайте",
+            "replacement": "Каталог видов работ без цен и запись на замер — стоимость обсуждается лично после замера"
+          },
+          {
+            "what": "Видео-обзоры объектов и сторонние скрипты на страницах",
+            "replacement": "Фотогалерея выполненных объектов на лендинге"
+          }
+        ]
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 13,
+          "passed": 13,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-02-renovation-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-02-renovation-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "b9996608-b946-4c9f-98b3-baec293b6808",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.163
+        },
+        {
+          "id": "e991fcbd-64c3-4f18-8e29-52d5028330e6",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.954
+        },
+        {
+          "id": "97d66744-6096-4fc0-820a-17447d978880",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.101
+        },
+        {
+          "id": "bfbe3aee-ce4a-43b4-a32b-ba0bfd0ea515",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 1.218,
+      "costRubEstimate": 6.09,
+      "minutes": 2.9,
+      "buildMinutes": 1.2,
+      "startedAt": "2026-10-07T16:08:20.616Z",
+      "finishedAt": "2026-10-07T16:11:50.132Z"
+    },
+    {
+      "id": "mvp-03-english-courses",
+      "class": "site",
+      "title": "Онлайн-курсы английского для взрослых: тарифы и пробный урок",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "6b1cabf1-e479-4769-b839-f18ec2b636f6",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 3,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "онлайн-курсы английского для взрослых",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "covered",
+        "modules": [
+          "landing",
+          "catalog",
+          "leads",
+          "booking",
+          "notify"
+        ],
+        "custom": [],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 14,
+          "passed": 14,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-03-english-courses-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-03-english-courses-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "5c24447b-bf33-4bde-8c84-674160e287fc",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.088
+        },
+        {
+          "id": "a3dbec69-50a0-493d-a9f2-a0cafb28d0ff",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.662
+        },
+        {
+          "id": "72f78710-d684-42be-b99c-dd6c661c9a05",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.182
+        },
+        {
+          "id": "bc551232-3d10-4ff9-b94e-55584638bfbc",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.932,
+      "costRubEstimate": 4.66,
+      "minutes": 2.9,
+      "buildMinutes": 1.7,
+      "startedAt": "2026-10-07T16:10:41.532Z",
+      "finishedAt": "2026-10-07T16:14:13.456Z"
+    },
+    {
+      "id": "mvp-04-beauty-salon",
+      "class": "booking",
+      "title": "Салон красоты: онлайн-запись к трём мастерам",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "e6c261a4-b792-4755-8a6c-82692d3a4259",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 2,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "салон красоты",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "covered",
+        "modules": [
+          "catalog",
+          "booking",
+          "notify",
+          "staff"
+        ],
+        "custom": [],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 11,
+          "passed": 11,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-04-beauty-salon-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-04-beauty-salon-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "62e59868-17bc-449a-81fb-b3ce261a6ef0",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.079
+        },
+        {
+          "id": "cf03d309-b486-4015-bcff-8ee7daf5c56c",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.234
+        },
+        {
+          "id": "6f020595-8d08-4d7b-9b5a-64386aeba80e",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.091
+        },
+        {
+          "id": "5062a46f-8a72-4580-b9e5-c6fe08b7bddf",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.404,
+      "costRubEstimate": 2.02,
+      "minutes": 1.9,
+      "buildMinutes": 1.3,
+      "startedAt": "2026-10-07T16:11:50.132Z",
+      "finishedAt": "2026-10-07T16:14:10.390Z"
+    },
+    {
+      "id": "mvp-05-psychologist",
+      "class": "booking",
+      "title": "Психолог: запись на сеансы по 50 минут с отменой по ссылке",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "874feecc-11d3-4837-ae64-7742677fb55b",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 1,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "Психолог, частная практика",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "covered",
+        "modules": [
+          "catalog",
+          "booking",
+          "notify"
+        ],
+        "custom": [],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 8,
+          "passed": 8,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-05-psychologist-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-05-psychologist-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "02ac4b30-48d7-4e09-b6ce-b0f68569dd69",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.058
+        },
+        {
+          "id": "33c0d396-30f5-4f39-bd49-b0ccde368c66",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.186
+        },
+        {
+          "id": "f8cbe184-7dae-4dce-9955-024025316133",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.097
+        },
+        {
+          "id": "9cd3d055-4477-4a83-b276-06f0c232223d",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.341,
+      "costRubEstimate": 1.71,
+      "minutes": 1.6,
+      "buildMinutes": 1.1,
+      "startedAt": "2026-10-07T16:14:10.390Z",
+      "finishedAt": "2026-10-07T16:16:23.036Z"
+    },
+    {
+      "id": "mvp-06-meeting-room",
+      "class": "booking",
+      "title": "Коворкинг: почасовая бронь переговорной с подтверждением",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "50684835-cb2e-49fb-b5af-1525a01b5f85",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 3,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "аренда переговорки в коворкинге",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "covered",
+        "modules": [
+          "catalog",
+          "booking",
+          "notify"
+        ],
+        "custom": [],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 9,
+          "passed": 9,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-06-meeting-room-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-06-meeting-room-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "deef6fd9-c37e-4218-8946-2ef813743241",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.11
+        },
+        {
+          "id": "6c1ee46f-d7d2-4d48-be8e-820830e58d3b",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.125
+        },
+        {
+          "id": "1c34ae27-1bf1-4e5c-8333-77174b488bdb",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.146
+        },
+        {
+          "id": "201e2402-27d1-41c9-8e66-fc3ceffc9d2d",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.381,
+      "costRubEstimate": 1.91,
+      "minutes": 2,
+      "buildMinutes": 1.4,
+      "startedAt": "2026-10-07T16:14:13.456Z",
+      "finishedAt": "2026-10-07T16:16:36.111Z"
+    },
+    {
+      "id": "mvp-07-realty-crm",
+      "class": "crm",
+      "title": "CRM агентства недвижимости: клиенты, объекты, воронка сделок",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "fa74260f-7eea-4866-b5af-546396b0552f",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 4,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "агентство недвижимости",
+        "capCredits": null,
+        "outOfScope": [
+          "Каталог объектов недвижимости с фильтрами и фото на сайте — Пока нет каталога объектов на сайте: делаем лендинг-витрину агентства с формой заявки, объекты подбирает менеджер после обращения",
+          "Каталог объектов недвижимости с фильтрами по параметрам (площадь, район, цена), карточками объектов и привязкой объектов к сделкам — Пока нет карточек объектов: объекты фиксируйте в заметках карточки клиента и в сделке, этапы и суммы ведутся в воронке сделок"
+        ]
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [
+          "Каталог объектов недвижимости с фильтрами и фото на сайте — Пока нет каталога объектов на сайте: делаем лендинг-витрину агентства с формой заявки, объекты подбирает менеджер после обращения",
+          "Каталог объектов недвижимости с фильтрами по параметрам (площадь, район, цена), карточками объектов и привязкой объектов к сделкам — Пока нет карточек объектов: объекты фиксируйте в заметках карточки клиента и в сделке, этапы и суммы ведутся в воронке сделок"
+        ],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "uncovered",
+        "modules": [
+          "client_card",
+          "deals",
+          "staff",
+          "leads",
+          "notify",
+          "reports",
+          "landing"
+        ],
+        "custom": [],
+        "outOfScope": [
+          {
+            "what": "Каталог объектов недвижимости с фильтрами и фото на сайте",
+            "replacement": "Пока нет каталога объектов на сайте: делаем лендинг-витрину агентства с формой заявки, объекты подбирает менеджер после обращения"
+          },
+          {
+            "what": "Каталог объектов недвижимости с фильтрами по параметрам (площадь, район, цена), карточками объектов и привязкой объектов к сделкам",
+            "replacement": "Пока нет карточек объектов: объекты фиксируйте в заметках карточки клиента и в сделке, этапы и суммы ведутся в воронке сделок"
+          }
+        ]
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 18,
+          "passed": 18,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-07-realty-crm-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-07-realty-crm-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "4e565706-6ae3-4a2f-bb1d-f1466811e7f2",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.095
+        },
+        {
+          "id": "a5fa94f2-27ad-4aa9-9a9c-e581d56be1ac",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.482
+        },
+        {
+          "id": "a5d900e9-7869-472a-a615-3caa5c71e976",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.13
+        },
+        {
+          "id": "082efd89-1361-4165-af05-ef94f8da2433",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.707,
+      "costRubEstimate": 3.53,
+      "minutes": 2,
+      "buildMinutes": 1,
+      "startedAt": "2026-10-07T16:16:23.036Z",
+      "finishedAt": "2026-10-07T16:18:53.929Z"
+    },
+    {
+      "id": "mvp-08-repair-shop",
+      "class": "crm",
+      "title": "Мастерская по ремонту техники: приём, статусы, письмо о готовности",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "27c7dc85-c869-49d5-bc10-976c9050c0aa",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 3,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "мастерская по ремонту техники",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 4,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 4,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 4,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "uncovered",
+        "modules": [
+          "deals",
+          "client_card",
+          "notify",
+          "reports"
+        ],
+        "custom": [
+          "Поля устройства в заказе",
+          "Письмо при статусе «Готово»"
+        ],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 9,
+          "passed": 9,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-08-repair-shop-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-08-repair-shop-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "6e699efc-a880-480b-9233-33efedb43eb3",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.129
+        },
+        {
+          "id": "1a34abb3-2d3c-4f87-a6b8-1cabc5b28789",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.306
+        },
+        {
+          "id": "ac17bf5b-f7b9-480c-b7f1-0ea9bf06e0cf",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.674
+        },
+        {
+          "id": "57acfe73-8773-457f-a9f2-5a3f70471d75",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 1.109,
+      "costRubEstimate": 5.55,
+      "minutes": 2.9,
+      "buildMinutes": 2,
+      "startedAt": "2026-10-07T16:16:36.111Z",
+      "finishedAt": "2026-10-07T16:19:53.689Z"
+    },
+    {
+      "id": "mvp-09-school-library",
+      "class": "other",
+      "title": "Школьная библиотека: каталог, выдача книг, напоминания, импорт",
+      "beyond": null,
+      "status": "ready",
+      "ready": true,
+      "systemId": "41d38054-cc94-4f92-80b4-d022fc909edd",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 3,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "школьная библиотека",
+        "capCredits": null,
+        "outOfScope": []
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "covered",
+        "modules": [
+          "catalog",
+          "resources",
+          "notify",
+          "client_card"
+        ],
+        "custom": [],
+        "outOfScope": []
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 6,
+          "passed": 6,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-09-school-library-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-09-school-library-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "a7fa5798-5e5b-490f-a56c-1e07be7cd5d2",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.086
+        },
+        {
+          "id": "dc2a3ec0-e44b-4323-8204-53df30479581",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.197
+        },
+        {
+          "id": "f0388402-5158-4bd5-a358-61203160c5b2",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.087
+        },
+        {
+          "id": "871f857e-965d-4902-9a5f-0daab61e7fbc",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.37,
+      "costRubEstimate": 1.85,
+      "minutes": 1.7,
+      "buildMinutes": 0.6,
+      "startedAt": "2026-10-07T16:18:53.930Z",
+      "finishedAt": "2026-10-07T16:20:54.284Z"
+    },
+    {
+      "id": "mvp-10-yoga-subscription",
+      "class": "other",
+      "title": "Онлайн-школа йоги: подписка на видеоуроки и кабинет ученика",
+      "beyond": {
+        "gapStems": [
+          "оплат",
+          "подписк",
+          "платеж",
+          "платёж",
+          "автоплат"
+        ]
+      },
+      "status": "ready",
+      "ready": true,
+      "systemId": "ce521137-ef71-4332-ab05-39ac98cfda51",
+      "pipeline": "modules",
+      "error": null,
+      "interview": {
+        "turns": 2,
+        "buttons": 2,
+        "free": 0,
+        "retries": 0
+      },
+      "card": {
+        "planRevision": 1,
+        "title": "онлайн-школа йоги",
+        "capCredits": null,
+        "outOfScope": [
+          "Автоматический ежемесячный платёж картой за подписку — Пока нет: оплата на стороне школы (например, по счёту или вручную), а заявки и ученики хранятся в системе",
+          "Видеохостинг с защищёнными уроками внутри системы — Пока нет: видеоуроки остаются на выбранной школе платформе, система ведёт подписчиков и заявки",
+          "Закрытый раздел с видеоуроками, открывающийся после оплаты — Пока нет: закрытый доступ к видео размещается вне системы, кабинет ученика показывает заявки и записи"
+        ]
+      },
+      "build": {
+        "status": "succeeded"
+      },
+      "fixes": 0,
+      "inputs": [],
+      "publish": {
+        "status": "review_pending",
+        "complianceFilled": true,
+        "blockers": [],
+        "message": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+      },
+      "gates": {
+        "G0": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 6
+        },
+        "G1": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 1
+        },
+        "G2": {
+          "passed": true,
+          "revision": 2,
+          "blockers": [],
+          "ownerActions": [],
+          "warnings": 3
+        }
+      },
+      "gaps": {
+        "outOfScope": [
+          "Автоматический ежемесячный платёж картой за подписку — Пока нет: оплата на стороне школы (например, по счёту или вручную), а заявки и ученики хранятся в системе",
+          "Видеохостинг с защищёнными уроками внутри системы — Пока нет: видеоуроки остаются на выбранной школе платформе, система ведёт подписчиков и заявки",
+          "Закрытый раздел с видеоуроками, открывающийся после оплаты — Пока нет: закрытый доступ к видео размещается вне системы, кабинет ученика показывает заявки и записи"
+        ],
+        "reported": [],
+        "mentions": []
+      },
+      "plan": {
+        "coverage": "uncovered",
+        "modules": [
+          "landing",
+          "catalog",
+          "leads",
+          "booking",
+          "notify",
+          "client_card",
+          "visitor_cabinet"
+        ],
+        "custom": [],
+        "outOfScope": [
+          {
+            "what": "Автоматический ежемесячный платёж картой за подписку",
+            "replacement": "Пока нет: оплата на стороне школы (например, по счёту или вручную), а заявки и ученики хранятся в системе"
+          },
+          {
+            "what": "Видеохостинг с защищёнными уроками внутри системы",
+            "replacement": "Пока нет: видеоуроки остаются на выбранной школе платформе, система ведёт подписчиков и заявки"
+          },
+          {
+            "what": "Закрытый раздел с видеоуроками, открывающийся после оплаты",
+            "replacement": "Пока нет: закрытый доступ к видео размещается вне системы, кабинет ученика показывает заявки и записи"
+          }
+        ]
+      },
+      "photos": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0
+      },
+      "browser": {
+        "ran": true,
+        "goals": {
+          "total": 19,
+          "passed": 19,
+          "failed": []
+        },
+        "mobile": "pass"
+      },
+      "screenshots": [
+        {
+          "label": "телефон, 390 px",
+          "src": "shots/mvp-10-yoga-subscription-390.png"
+        },
+        {
+          "label": "компьютер, 1280 px",
+          "src": "shots/mvp-10-yoga-subscription-1280.png"
+        }
+      ],
+      "runs": [
+        {
+          "id": "6568d63b-cafd-4a29-a097-443f50b28ac1",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.088
+        },
+        {
+          "id": "03c89bf9-0133-429e-9538-87f2a955ff13",
+          "kind": "interview_turn",
+          "status": "succeeded",
+          "creditsUsed": 0.49
+        },
+        {
+          "id": "645d68ec-44fe-497e-89dc-b58d13c151e4",
+          "kind": "build",
+          "mode": "create",
+          "status": "succeeded",
+          "creditsUsed": 0.16
+        },
+        {
+          "id": "970fc56e-034b-4a12-8aca-fb406e4579f7",
+          "kind": "publish",
+          "status": "failed",
+          "creditsUsed": 0,
+          "failure": {
+            "code": "GATES_FAILED",
+            "message_ru": "Перед публикацией систему посмотрит модератор — обычно это занимает до одного рабочего дня."
+          }
+        }
+      ],
+      "creditsUsed": 0.738,
+      "costRubEstimate": 3.69,
+      "minutes": 2.4,
+      "buildMinutes": 1.4,
+      "startedAt": "2026-10-07T16:19:53.690Z",
+      "finishedAt": "2026-10-07T16:22:53.524Z"
+    }
+  ],
+  "db": {
+    "costs": {
+      "26e60861-ef1b-4bf9-9b43-b1768d651fc8": {
+        "rub": 5.18,
+        "credits": 1.038,
+        "calls": 8
+      },
+      "27c7dc85-c869-49d5-bc10-976c9050c0aa": {
+        "rub": 5.52,
+        "credits": 1.109,
+        "calls": 7
+      },
+      "3a24ae4d-bf81-4493-9869-28b9ddfe534e": {
+        "rub": 6.07,
+        "credits": 1.218,
+        "calls": 6
+      },
+      "41d38054-cc94-4f92-80b4-d022fc909edd": {
+        "rub": 1.84,
+        "credits": 0.37,
+        "calls": 5
+      },
+      "50684835-cb2e-49fb-b5af-1525a01b5f85": {
+        "rub": 1.9,
+        "credits": 0.381,
+        "calls": 5
+      },
+      "6b1cabf1-e479-4769-b839-f18ec2b636f6": {
+        "rub": 4.64,
+        "credits": 0.932,
+        "calls": 6
+      },
+      "874feecc-11d3-4837-ae64-7742677fb55b": {
+        "rub": 1.69,
+        "credits": 0.341,
+        "calls": 5
+      },
+      "ce521137-ef71-4332-ab05-39ac98cfda51": {
+        "rub": 3.68,
+        "credits": 0.738,
+        "calls": 6
+      },
+      "e6c261a4-b792-4755-8a6c-82692d3a4259": {
+        "rub": 2.01,
+        "credits": 0.404,
+        "calls": 5
+      },
+      "fa74260f-7eea-4866-b5af-546396b0552f": {
+        "rub": 3.52,
+        "credits": 0.707,
+        "calls": 5
+      }
+    },
+    "gaps": {
+      "3a24ae4d-bf81-4493-9869-28b9ddfe534e": [
+        {
+          "category": "other",
+          "quote": "Видео-обзоры объектов и сторонние скрипты на страницах",
+          "offered": "Фотогалерея выполненных объектов на лендинге"
+        },
+        {
+          "category": "other",
+          "quote": "Калькулятор стоимости ремонта на сайте",
+          "offered": "Каталог видов работ без цен и запись на замер — стоимость обсуждается лично после замера"
+        }
+      ],
+      "26e60861-ef1b-4bf9-9b43-b1768d651fc8": [
+        {
+          "category": "payments",
+          "quote": "Оплата услуг онлайн через сайт",
+          "offered": "Пока нет онлайн-оплаты: заявка на консультацию без оплаты, расчёт — в клинике"
+        }
+      ],
+      "fa74260f-7eea-4866-b5af-546396b0552f": [
+        {
+          "category": "other",
+          "quote": "Каталог объектов недвижимости с фильтрами по параметрам (площадь, район, цена), карточками объектов и привязкой объектов к сделкам",
+          "offered": "Пока нет карточек объектов: объекты фиксируйте в заметках карточки клиента и в сделке, этапы и суммы ведутся в воронке сделок"
+        },
+        {
+          "category": "other",
+          "quote": "Каталог объектов недвижимости с фильтрами и фото на сайте",
+          "offered": "Пока нет каталога объектов на сайте: делаем лендинг-витрину агентства с формой заявки, объекты подбирает менеджер после обращения"
+        }
+      ],
+      "ce521137-ef71-4332-ab05-39ac98cfda51": [
+        {
+          "category": "other",
+          "quote": "Закрытый раздел с видеоуроками, открывающийся после оплаты",
+          "offered": "Пока нет: закрытый доступ к видео размещается вне системы, кабинет ученика показывает заявки и записи"
+        },
+        {
+          "category": "integration",
+          "quote": "Видеохостинг с защищёнными уроками внутри системы",
+          "offered": "Пока нет: видеоуроки остаются на выбранной школе платформе, система ведёт подписчиков и заявки"
+        },
+        {
+          "category": "payments",
+          "quote": "Автоматический ежемесячный платёж картой за подписку",
+          "offered": "Пока нет: оплата на стороне школы (например, по счёту или вручную), а заявки и ученики хранятся в системе"
+        }
+      ]
+    },
+    "metrics": {
+      "3a24ae4d-bf81-4493-9869-28b9ddfe534e": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 43
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 49818
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 13
+          },
+          "texts": {
+            "note": "изменено секций: 1",
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.27,
+            "durationMs": 9219
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.24,
+            "fallback": true,
+            "durationMs": 6051
+          },
+          "photos": {
+            "note": "фото со стока: 0 из 7; 7 — графика оформления: сток не нашёл подходящих",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 55
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 95
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 65700,
+        "creditsUsed": 0.101
+      },
+      "26e60861-ef1b-4bf9-9b43-b1768d651fc8": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 27
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 21040
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 8
+          },
+          "texts": {
+            "note": "изменено секций: 3",
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.5,
+            "durationMs": 12381
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.77,
+            "durationMs": 12575
+          },
+          "photos": {
+            "note": "фото со стока: 0 из 1; 1 — графика оформления: сток не нашёл подходящих",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 637
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 90
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 47085,
+        "creditsUsed": 0.253
+      },
+      "fa74260f-7eea-4866-b5af-546396b0552f": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 24
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 40299
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 18
+          },
+          "texts": {
+            "note": "изменено секций: 2",
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.19,
+            "durationMs": 6635
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.47,
+            "durationMs": 7044
+          },
+          "photos": {
+            "note": "на странице нет мест для фото",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 55
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 126
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 54456,
+        "creditsUsed": 0.13
+      },
+      "6b1cabf1-e479-4769-b839-f18ec2b636f6": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 23
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 57270
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 14
+          },
+          "texts": {
+            "note": "изменено секций: 5",
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.64,
+            "durationMs": 30586
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.27,
+            "durationMs": 9036
+          },
+          "photos": {
+            "note": "фото со стока: 0 из 1; 1 — графика оформления: сток не нашёл подходящих",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 50
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 86
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 97386,
+        "creditsUsed": 0.182
+      },
+      "874feecc-11d3-4837-ae64-7742677fb55b": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 29
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 46977
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 8
+          },
+          "texts": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.49,
+            "durationMs": 12716
+          },
+          "photos": {
+            "note": "фото на сайте выключены",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 50
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 77
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 60179,
+        "creditsUsed": 0.097
+      },
+      "e6c261a4-b792-4755-8a6c-82692d3a4259": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 24
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 61462
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 11
+          },
+          "texts": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.45,
+            "durationMs": 15601
+          },
+          "photos": {
+            "note": "фото на сайте выключены",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 74
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 162
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 77756,
+        "creditsUsed": 0.091
+      },
+      "50684835-cb2e-49fb-b5af-1525a01b5f85": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 30
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 59957
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 9
+          },
+          "texts": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 3,
+            "status": "done",
+            "costRub": 0.73,
+            "durationMs": 17969
+          },
+          "photos": {
+            "note": "фото на сайте выключены",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 107
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 193
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 78802,
+        "creditsUsed": 0.146
+      },
+      "ce521137-ef71-4332-ab05-39ac98cfda51": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 25
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 61569
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 19
+          },
+          "texts": {
+            "note": "изменено секций: 4",
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.61,
+            "durationMs": 12562
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.2,
+            "durationMs": 5850
+          },
+          "photos": {
+            "note": "фото со стока: 0 из 3; 3 — графика оформления: сток не нашёл подходящих",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 485
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 120
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 80892,
+        "creditsUsed": 0.16
+      },
+      "27c7dc85-c869-49d5-bc10-976c9050c0aa": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 31
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 28472
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 9
+          },
+          "texts": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "custom": {
+            "note": "дописано 2 из 2, раундов исправления 1",
+            "calls": 3,
+            "status": "done",
+            "costRub": 3.19,
+            "durationMs": 82976
+          },
+          "design": {
+            "calls": 1,
+            "status": "done",
+            "costRub": 0.18,
+            "durationMs": 4847
+          },
+          "photos": {
+            "note": "фото на сайте выключены",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 42
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 83
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 116711,
+        "creditsUsed": 0.674
+      },
+      "41d38054-cc94-4f92-80b4-d022fc909edd": {
+        "stages": {
+          "plan": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 22
+          },
+          "gates": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 26144
+          },
+          "goals": {
+            "checked": true,
+            "scenarios": 6
+          },
+          "texts": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "custom": {
+            "status": "skipped",
+            "costRub": 0,
+            "durationMs": 0
+          },
+          "design": {
+            "calls": 2,
+            "status": "done",
+            "costRub": 0.43,
+            "durationMs": 8693
+          },
+          "photos": {
+            "note": "фото на сайте выключены",
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 54
+          },
+          "status": "succeeded",
+          "compile": {
+            "status": "done",
+            "costRub": 0,
+            "durationMs": 102
+          },
+          "pipeline": "modules",
+          "planRevision": 1
+        },
+        "durationMs": 35292,
+        "creditsUsed": 0.087
+      }
+    },
+    "invalid": {},
+    "photos": {
+      "3a24ae4d-bf81-4493-9869-28b9ddfe534e": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "26e60861-ef1b-4bf9-9b43-b1768d651fc8": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "fa74260f-7eea-4866-b5af-546396b0552f": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "6b1cabf1-e479-4769-b839-f18ec2b636f6": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "874feecc-11d3-4837-ae64-7742677fb55b": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "e6c261a4-b792-4755-8a6c-82692d3a4259": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "50684835-cb2e-49fb-b5af-1525a01b5f85": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "ce521137-ef71-4332-ab05-39ac98cfda51": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "27c7dc85-c869-49d5-bc10-976c9050c0aa": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      },
+      "41d38054-cc94-4f92-80b4-d022fc909edd": {
+        "total": 0,
+        "pexels": 0,
+        "pixabay": 0,
+        "revision": 1,
+        "built": true
+      }
+    },
+    "b2": {
+      "since": "2026-10-07",
+      "rub": 161.88
+    }
+  }
+}
