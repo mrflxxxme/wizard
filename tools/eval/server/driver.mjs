@@ -209,8 +209,10 @@ export function isReadyD76(gates, g2Mode, browser) {
 /** D76 verdict of one brief without database facts (the driver's fail-fast; report.mjs refines it with the gaps table). */
 export function countedD76(r) {
   if (r.plan?.coverage === "covered") return r.ready;
-  if (r.plan?.coverage === "uncovered")
-    return r.ready && (r.plan.outOfScope.length === 0 || (r.gaps?.reported ?? []).length > 0);
+  // Out of scope items are written to «Запросы на развитие» by the platform itself when the plan is approved
+  // (recordPlanOutOfScope, B2-41), so an uncovered brief that reached a working system is counted here; the report
+  // re-checks the recorded requests in the database (report.mjs, countedVia gap_recorded).
+  if (r.plan?.coverage === "uncovered") return r.ready;
   return false;
 }
 

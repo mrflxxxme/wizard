@@ -170,10 +170,10 @@ describe("D76 verdict and report", () => {
     const custom = planCoverage({ ...PLAN, custom: [{ id: "quiz", title: "Опрос" }] });
     expect(evaluate(doc([item("mvp-04-d", { plan: custom })]), { gaps: {} }).passed).toBe(true);
     expect(countedD76(item("x", { plan: custom }))).toBe(true);
-    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED) }))).toBe(false);
-    expect(
-      countedD76(item("x", { plan: planCoverage(UNCOVERED), gaps: { reported: [{ missing: "оплата" }] } })),
-    ).toBe(true);
+    // The platform records «не входит» on approval (B2-41), so a ready uncovered brief counts during the run (the early
+    // stop of the full run); the report re-checks the recorded requests in the database.
+    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED) }))).toBe(true);
+    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED), ready: false }))).toBe(false);
     expect(countedD76(item("x", { plan: planCoverage(null) }))).toBe(false);
   });
 
