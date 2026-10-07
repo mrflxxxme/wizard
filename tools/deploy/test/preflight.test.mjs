@@ -34,6 +34,7 @@ import {
   SECRET_NAMES,
   STOCK_KEY_INPUTS,
   smtpEndpoint,
+  stockAnnotation,
   stockKeyVerdict,
   stockVerdictLine,
   summaryTable,
@@ -877,6 +878,35 @@ describe("preflight: stock photo keys (B2-38)", () => {
     expect(stockVerdictLine({ provider: "pexels", verdict: "missing", http: 0 })).toBe("Pexels: нет ключа");
   });
 
+  it("annotation (B2-41): notice with both verdicts, warning when a key is refused, no key or URL", async () => {
+    const v = (provider, verdict, http, error) => ({ provider, verdict, http, ...(error ? { error } : {}) });
+    expect(stockAnnotation([v("pexels", "valid", 200), v("pixabay", "valid", 429)])).toBe(
+      "::notice title=Фото со стоков::Pexels — действителен (HTTP 200); Pixabay — действителен (HTTP 429)",
+    );
+    expect(stockAnnotation([v("pexels", "missing", 0), v("pixabay", "unchecked", 0, "ENOTFOUND")])).toBe(
+      "::notice title=Фото со стоков::Pexels — нет ключа; Pixabay — не проверен (нет ответа: ENOTFOUND)",
+    );
+    expect(stockAnnotation([v("pexels", "unchecked", 502), v("pixabay", "invalid", 400)])).toBe(
+      "::warning title=Фото со стоков::Pexels — не проверен (HTTP 502); Pixabay — недействителен (HTTP 400)",
+    );
+    expect(stockAnnotation([v("pexels", "unchecked", 0, "a%b\nc"), v("pixabay", "valid", 200)])).toContain(
+      "нет ответа: a%25b%0Ac",
+    );
+    const logs = [];
+    const f = stock(
+      () => ({ body: { photos: [] } }),
+      () => ({ status: 401, body: "no" }),
+    );
+    await probeStock(
+      { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY, WIZARD_STOCK_MODE: "live" },
+      { fetch: f, log: (l) => logs.push(l) },
+    );
+    expect(logs).toEqual([
+      "::warning title=Фото со стоков::Pexels — действителен (HTTP 200); Pixabay — недействителен (HTTP 401)",
+    ]);
+    expect(logs.join("\n")).not.toMatch(new RegExp(`${PEXELS}|${PIXABAY}|pixabay\\.com|pexels\\.com`));
+  });
+
   it("check rows are optional: a refused key is an optional error; a mode without keys is named", async () => {
     const f = stock(
       () => ({ body: { photos: [] } }),
@@ -929,6 +959,10 @@ describe("preflight: stock photo keys (B2-38)", () => {
       "::warning title=pilot check::Фото: ключ Pexels (необязательно): Pexels: недействителен (HTTP 401): замените PEXELS_API_KEY в секретах GitHub; сейчас stock_mode=off: ключ не используется",
     );
     expect(lines.filter((l) => l.startsWith("::error")).some((l) => l.includes("Фото"))).toBe(false);
+    // B2-41: both verdicts in one annotation (readable through the API, unlike the summary).
+    expect(lines).toContain(
+      "::warning title=Фото со стоков::Pexels — недействителен (HTTP 401); Pixabay — действителен (HTTP 200)",
+    );
     for (const k of [PEXELS, PIXABAY]) {
       expect(lines.join("\n")).not.toContain(k);
       expect(summary).not.toContain(k);

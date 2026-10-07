@@ -1459,6 +1459,7 @@ describe("pilot: stock photo keys of the release (B2-38)", () => {
       "Фото со стоков выключены (stock_mode=off): ключи в платформу не передаются.",
     ]);
     expect(s.calls).toEqual([]);
+    expect(logs).toContain("::notice title=Фото со стоков::выключены (stock_mode=off): ключи не проверялись");
     const live = await stockKeysOfRelease(
       { ...KEYS, WIZARD_STOCK_MODE: "live" },
       { fetch: s.fetch, log: (l) => logs.push(l) },
@@ -1472,6 +1473,10 @@ describe("pilot: stock photo keys of the release (B2-38)", () => {
     ]);
     expect(logs).toContain(
       "::warning title=pilot::Pixabay: недействителен (HTTP 400): замените PIXABAY_API_KEY в секретах GitHub, фото этого стока выключены",
+    );
+    // B2-41: both verdicts in one annotation.
+    expect(logs).toContain(
+      "::warning title=Фото со стоков::Pexels — действителен (HTTP 200); Pixabay — недействителен (HTTP 400)",
     );
     // No answer keeps the key; no key turns the provider off; none working — the theme graphics are announced.
     const down = stockFetch(
@@ -1489,6 +1494,9 @@ describe("pilot: stock photo keys of the release (B2-38)", () => {
     expect(r.lines).toContain("- Pexels: не проверен (нет ответа: ETIMEDOUT) — ключ передан без проверки");
     expect(r.lines).toContain("- Pixabay: нет ключа — сток выключен в этом выкате");
     expect(lines2).toContain("::warning title=pilot::PIXABAY_API_KEY не задан: фото этого стока выключены");
+    expect(lines2).toContain(
+      "::notice title=Фото со стоков::Pexels — не проверен (нет ответа: ETIMEDOUT); Pixabay — нет ключа",
+    );
     const none = await stockKeysOfRelease(
       { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY, WIZARD_STOCK_MODE: "live" },
       {
@@ -1710,12 +1718,13 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         const ids = [...platform.st.systems.keys()];
         return {
           status: 0,
-          stdout: `costs=${JSON.stringify(ids.map((id) => ({ system_id: id, rub: 11.5, credits_milli: 2300, calls: 9 })))}\ngaps=null\nb2={"rub": 123.4, "since": "2026-10-08"}\n`,
+          stdout: `costs=${JSON.stringify(ids.map((id) => ({ system_id: id, rub: 11.5, credits_milli: 2300, calls: 9 })))}\ngaps=null\nb2={"rub": 123.4, "since": "2026-10-08"}\nphotos=${JSON.stringify([{ system_id: ids[0], revision: 1, built: true, providers: { pexels: 2, pixabay: 1 } }])}\n`,
         };
       }
       return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
     };
     const shot = [];
+    const logs = [];
     const summary = join(tmp, "summary-d76.md");
     const code = await main(
       // The fake build costs 40 credits ≈ 200 ₽: the budget is raised over the default 300 ₽ (a hard stop under d76).
@@ -1746,10 +1755,14 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         }),
         kdf: FAST,
         tmpRoot: tmp,
-        log: () => {},
+        log: (l) => logs.push(l),
       },
     );
     expect(code).toBe(0);
+    // B2-41: the stock photos of the sites as an annotation (the job summary is not readable through the API).
+    expect(logs).toContain(
+      "::notice title=D76 фото::Фото со стоков: 1 сайт из 2, всего 3 фото (Pexels 2, Pixabay 1)",
+    );
     expect(sqls[0]).toContain("\\set org_name 'Замер D76 · ");
     expect(sqls[1]).toContain("\\set b2_since '2026-10-08'");
     // The plan of each system was approved through approveSystemPlan, never a card.

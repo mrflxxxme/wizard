@@ -2,25 +2,35 @@
 // in the measurement driver and its report — plan coverage (covered / uncovered / unknown), browser checks of G1
 // (goal scenarios, 390 px) as part of readiness, the verdict «covered: all ready; uncovered: all at a working system
 // with recorded requests», the screenshot grid; a driver run over the fake platform with the plan and G1 browser checks.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadBriefs } from "../lib/briefs.mjs";
+import { main as cli } from "../server/cli.mjs";
 import { cookieNames, platformClient } from "../server/client.mjs";
 import {
   browserSummary,
   countedD76,
   isReadyD76,
   pendingPlan,
+  photoCount,
   planCoverage,
   readPlan,
   runEval,
   summarizeGates,
   unwrapPlan,
 } from "../server/driver.mjs";
-import { economy, evaluate, renderReport, screenshotGrid } from "../server/report.mjs";
+import {
+  economy,
+  evaluate,
+  photosAnnotation,
+  photosLine,
+  photoStats,
+  renderReport,
+  screenshotGrid,
+} from "../server/report.mjs";
 import { collectSql, parseCollectOutput } from "../server/seed.mjs";
 import { previewScreenshots, SHOT_VIEWPORTS } from "../server/screenshots.mjs";
 import { fakePlan, fakePlatform, scenarioOf } from "./fake-platform.mjs";
@@ -170,10 +180,10 @@ describe("D76 verdict and report", () => {
     const custom = planCoverage({ ...PLAN, custom: [{ id: "quiz", title: "Опрос" }] });
     expect(evaluate(doc([item("mvp-04-d", { plan: custom })]), { gaps: {} }).passed).toBe(true);
     expect(countedD76(item("x", { plan: custom }))).toBe(true);
-    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED) }))).toBe(false);
-    expect(
-      countedD76(item("x", { plan: planCoverage(UNCOVERED), gaps: { reported: [{ missing: "оплата" }] } })),
-    ).toBe(true);
+    // The platform records «не входит» on approval (B2-41), so a ready uncovered brief counts during the run (the early
+    // stop of the full run); the report re-checks the recorded requests in the database.
+    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED) }))).toBe(true);
+    expect(countedD76(item("x", { plan: planCoverage(UNCOVERED), ready: false }))).toBe(false);
     expect(countedD76(item("x", { plan: planCoverage(null) }))).toBe(false);
   });
 
@@ -345,6 +355,8 @@ describe("D76 on the modules pipeline", () => {
       expect(r.card).toMatchObject({ planRevision: 1, outOfScope: [] });
       expect(r.plan).toMatchObject({ coverage: "covered", modules: ["landing", "leads", "notify"] });
       expect(r.browser).toMatchObject({ ran: true, mobile: "pass", goals: { total: 1, passed: 1 } });
+      // B2-41: the plan the API gives after the build has no stock photos (the fake has no photos stage).
+      expect(r.photos).toEqual({ total: 0, pexels: 0, pixabay: 0 });
     }
     expect(f.st.requests.filter((x) => /plan\/approve$/.test(x))).toHaveLength(2);
     expect(f.st.requests.some((x) => x.endsWith("/card/approve"))).toBe(false);
@@ -508,5 +520,105 @@ describe("D76 on the modules pipeline", () => {
     expect(text).toContain("  - интервью: весь ответ (NO_TOOL_CALL) — Ответ должен быть вызовом инструмента submit_goals.");
     expect(text).toContain("  - план: goals (too_small)");
     expect(text).toContain("повторов хода после сбоя 1");
+  });
+});
+
+// B2-41: stock photos of the measured sites (design.photos of the built plan) per brief, in total and as an annotation.
+describe("D76 stock photos of the sites", () => {
+  const photo = (provider, i) => ({ slot: `top-${i}`, provider, stockId: String(i), author: "Автор" });
+  const withPhotos = (...providers) => ({ ...PLAN, design: { photos: providers.map(photo) } });
+
+  it("photoCount: design.photos by provider; no photos — zeros; no plan — null", () => {
+    expect(photoCount(withPhotos("pexels", "pixabay", "pexels"))).toEqual({ total: 3, pexels: 2, pixabay: 1 });
+    expect(photoCount(PLAN)).toEqual({ total: 0, pexels: 0, pixabay: 0 });
+    expect(photoCount({ ...PLAN, design: { photos: "x" } })).toEqual({ total: 0, pexels: 0, pixabay: 0 });
+    expect(photoCount(null)).toBeNull();
+    expect(photoCount({ modules: "x" })).toBeNull();
+  });
+
+  it("collect reads the photos of the built plan per system; absent line — {}", () => {
+    const sql = collectSql({ orgId: "11111111-1111-4111-8111-111111111111" });
+    expect(sql).toContain("'photos=' ||");
+    expect(sql).toContain("sp.checkpoints #> '{photos,data,plan,design,photos}'");
+    expect(sql).toContain("sp.plan #> '{design,photos}'");
+    expect(sql).toContain("sp.approved_at IS NOT NULL");
+    expect(sql).toContain("\\if :{?plans_table}");
+    const out = [
+      "costs=[]",
+      "gaps=[]",
+      `photos=${JSON.stringify([
+        { system_id: "sys-1", revision: 2, built: true, providers: { pexels: 3, pixabay: 2 } },
+        { system_id: "sys-2", revision: 1, built: true, providers: {} },
+        { system_id: "sys-3", revision: 1, built: false, providers: { pixabay: 1, other: 1 } },
+        { system_id: null, providers: { pexels: 1 } },
+      ])}`,
+    ].join("\n");
+    expect(parseCollectOutput(out).photos).toEqual({
+      "sys-1": { total: 5, pexels: 3, pixabay: 2, revision: 2, built: true },
+      "sys-2": { total: 0, pexels: 0, pixabay: 0, revision: 1, built: true },
+      "sys-3": { total: 2, pexels: 0, pixabay: 1, revision: 1, built: false },
+    });
+    expect(parseCollectOutput("costs=[]\n").photos).toEqual({});
+  });
+
+  it("report: per brief and «N сайтов из M» in total (the database first, the API plan otherwise); annotation", () => {
+    const built = { build: { status: "succeeded" } };
+    const d = doc([
+      { ...item("mvp-01-a"), ...built, systemId: "sys-1", photos: { total: 1, pexels: 1, pixabay: 0 } },
+      { ...item("mvp-02-b"), ...built, systemId: "sys-2", photos: { total: 2, pexels: 1, pixabay: 1 } },
+      { ...item("mvp-03-c"), ...built, systemId: "sys-3" },
+      { ...item("mvp-04-d"), ...built, systemId: "sys-4", photos: null },
+      { ...item("mvp-05-e"), systemId: null, status: "interview_failed", ready: false },
+    ]);
+    const db = {
+      gaps: {},
+      photos: {
+        "sys-1": { total: 5, pexels: 3, pixabay: 2, revision: 2, built: true },
+        "sys-3": { total: 0, pexels: 0, pixabay: 0, revision: 1, built: true },
+      },
+    };
+    const e = evaluate(d, db);
+    expect(e.items.map((x) => x.photos?.total ?? null)).toEqual([5, 2, 0, null, null]);
+    expect(e.photos).toEqual({ sites: 2, of: 4, total: 7, pexels: 4, pixabay: 3 });
+    const { text, summary } = renderReport(d, db);
+    expect(text).toContain("- Фото со стоков: 2 сайта из 4, всего 7 фото (Pexels 4, Pixabay 3).");
+    expect(text).toContain("- Фото со стоков на сайте: 5 (Pexels 3, Pixabay 2).");
+    expect(text).toContain("- Фото со стоков на сайте: 2 (Pexels 1, Pixabay 1).");
+    expect(text).toContain("- Фото со стоков на сайте: нет — графика темы.");
+    expect(text).toContain("- Фото со стоков на сайте: план сборки не прочитан.");
+    expect(photosAnnotation(summary)).toBe(
+      "::notice title=D76 фото::Фото со стоков: 2 сайта из 4, всего 7 фото (Pexels 4, Pixabay 3)",
+    );
+    // Plural of the sites; a D67 run has no photos line.
+    expect(photosLine({ sites: 1, of: 10, total: 3, pexels: 3, pixabay: 0 })).toBe(
+      "Фото со стоков: 1 сайт из 10, всего 3 фото (Pexels 3, Pixabay 0)",
+    );
+    expect(photosLine(photoStats([]))).toBe("Фото со стоков: 0 сайтов из 0, всего 0 фото (Pexels 0, Pixabay 0)");
+    const d67 = { ...d, kind: "d67", threshold: "d67" };
+    expect(photosAnnotation(evaluate(d67, db))).toBeNull();
+    expect(renderReport(d67, db).text).not.toContain("Фото со стоков");
+  });
+
+  it("cli report prints the photos annotation at the end of a D76 run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wizard-d76-photos-"));
+    try {
+      const results = join(dir, "results.json");
+      const collect = join(dir, "collect.out");
+      writeFileSync(results, JSON.stringify(doc([{ ...item("mvp-01-a"), build: { status: "succeeded" } }])));
+      writeFileSync(
+        collect,
+        `costs=[]\ngaps=[]\nphotos=${JSON.stringify([{ system_id: "sys-mvp-01-a", revision: 1, built: true, providers: { pixabay: 4 } }])}\n`,
+      );
+      const logs = [];
+      await cli(["report", "--results", results, "--collect", collect, "--out", join(dir, "r.md")], {
+        log: (l) => logs.push(l),
+      });
+      expect(logs).toEqual([
+        "::notice title=D76 фото::Фото со стоков: 1 сайт из 1, всего 4 фото (Pexels 0, Pixabay 4)",
+      ]);
+      expect(readFileSync(join(dir, "r.md"), "utf8")).toContain("Фото со стоков на сайте: 4 (Pexels 0, Pixabay 4).");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -210,6 +210,23 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
     expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).invalid).toEqual({
       [r.systemId as string]: [{ step: "interview", fallback: "questions", issues: [issue] }],
     });
+    // B2-41: stock photos of the site — the latest approved plan revision: its photos stage checkpoint (the built plan),
+    // or the approved plan while that stage has not run; a revision awaiting approval is not the site.
+    expect(withMetrics.photos).toEqual({});
+    const photos = (...providers: string[]) => providers.map((provider, i) => ({ slot: `top-${i + 1}`, provider }));
+    const plan = (ps: unknown[]) => api.deps.pg.json({ version: 1, modules: [], design: { photos: ps } } as never);
+    await api.deps.pg`insert into platform.system_plans (system_id, revision, status, source, plan, approved_at)
+      values (${r.systemId}, 1, 'superseded', 'planner', ${plan(photos("pexels", "pexels"))}, now())`;
+    expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).photos).toEqual({
+      [r.systemId as string]: { total: 2, pexels: 2, pixabay: 0, revision: 1, built: false },
+    });
+    const cp = { photos: { stage: "photos", data: { plan: { design: { photos: photos("pexels", "pixabay", "pixabay") } } } } };
+    await api.deps.pg`insert into platform.system_plans (system_id, revision, status, source, plan, approved_at, checkpoints)
+      values (${r.systemId}, 2, 'approved', 'edit', ${plan([])}, now(), ${api.deps.pg.json(cp as never)}),
+             (${r.systemId}, 3, 'awaiting_approval', 'edit', ${plan(photos("pexels"))}, null, '{}'::jsonb)`;
+    expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).photos).toEqual({
+      [r.systemId as string]: { total: 3, pexels: 1, pixabay: 2, revision: 2, built: true },
+    });
     const { summary, text } = renderReport(doc, withMetrics);
     expect(summary.ready).toBe(1);
     expect(text).toContain(

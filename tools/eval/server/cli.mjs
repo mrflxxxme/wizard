@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "./client.mjs";
 import { D76_MAX_COST_RUB, DEFAULTS, runEval, THRESHOLDS } from "./driver.mjs";
-import { renderReport } from "./report.mjs";
+import { photosAnnotation, renderReport } from "./report.mjs";
 import { previewScreenshots } from "./screenshots.mjs";
 import {
   collectSql,
@@ -160,6 +160,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   });
   if (o.out) writeFileSync(o.out, text);
   else out(text);
+  const photos = photosAnnotation(summary);
+  if (photos) log(photos);
   return summary.passed ? 0 : 1;
 }
 

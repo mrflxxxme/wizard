@@ -30,7 +30,7 @@ import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
 import { D76_MAX_COST_RUB, DEFAULTS as EVAL_DEFAULTS, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
-import { evaluate, renderReport } from "../eval/server/report.mjs";
+import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
 import { previewScreenshots } from "../eval/server/screenshots.mjs";
 import {
   collectSql,
@@ -56,7 +56,13 @@ import {
   STOCK_KEY_MODES,
   secretValues,
 } from "./pilot-secrets.mjs";
-import { runPreflight, SECRET_NAMES, stockKeyVerdicts, stockVerdictLine } from "./preflight.mjs";
+import {
+  runPreflight,
+  SECRET_NAMES,
+  stockAnnotation,
+  stockKeyVerdicts,
+  stockVerdictLine,
+} from "./preflight.mjs";
 
 export const COMMANDS = [
   "check",
@@ -1470,6 +1476,9 @@ export async function pilotEval({
       force: true,
     },
   );
+  // B2-41: the stock photos of the sites as an annotation (the job summary is not readable through the API).
+  const photos = photosAnnotation(summary);
+  if (photos) log(photos);
   if (!summary.passed)
     log(
       d76
@@ -1529,6 +1538,7 @@ export async function stockKeysOfRelease(vars, { fetch: f = fetch, log = () => {
   if (!STOCK_KEY_MODES.includes(mode)) {
     const lines = [`Фото со стоков выключены (stock_mode=${mode}): ключи в платформу не передаются.`];
     for (const l of lines) log(l);
+    log(`::notice title=Фото со стоков::выключены (stock_mode=${mode}): ключи не проверялись`);
     return { mode, off: [], lines };
   }
   const verdicts = await stockKeyVerdicts(vars, { fetch: f });
@@ -1546,6 +1556,7 @@ export async function stockKeysOfRelease(vars, { fetch: f = fetch, log = () => {
     lines.push(`- ${stockVerdictLine(v)}${what}`);
   }
   for (const l of lines) log(l);
+  log(stockAnnotation(verdicts));
   for (const v of verdicts) {
     const name = STOCK_KEY_ENV[v.provider][0];
     if (v.verdict === "invalid")
