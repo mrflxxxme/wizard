@@ -86,11 +86,13 @@ export async function runPhotosStage(o: {
   const photos: PlanPhoto[] = [];
   const providers = new Set<StockProvider>();
   let errors = 0;
-  // The first failure, for the stage note (build_metrics, the D76 report): stock errors carry no keys.
-  let firstError = "";
+  // Distinct failures (up to 3: one per provider and step), for the stage note (build_metrics, the D76 report): stock
+  // errors carry no keys.
+  const failures: string[] = [];
   const failed = (what: string, e: unknown) => {
     errors++;
-    if (!firstError) firstError = `${what}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
+    const line = `${what}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120);
+    if (failures.length < 3 && !failures.includes(line)) failures.push(line);
   };
   const late = () => now() - t0 > budget || o.signal?.aborted === true;
 
@@ -154,7 +156,7 @@ export async function runPhotosStage(o: {
   const why = late()
     ? "не уложились во время этапа"
     : errors
-      ? `сток ответил ошибкой (${firstError})`
+      ? `сток ответил ошибкой (${failures.join("; ")})`
       : "сток не нашёл подходящих";
   return done(photos, {
     slots: slots.length,
