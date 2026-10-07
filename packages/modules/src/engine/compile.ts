@@ -32,7 +32,8 @@ import {
   validateSystemPlan,
   type Workflow,
 } from "@wizard/appspec";
-import { cabinetPage, cabinetRoute, can, startPage } from "../screens/cabinet.js";
+import { cabinetPage, cabinetRoute, can } from "../screens/cabinet.js";
+import { homePage } from "../screens/home.js";
 import { pascal } from "../screens/jsx.js";
 import {
   type CompiledMetric,
@@ -737,7 +738,17 @@ class Compilation {
         roles: this.spec.roles.map((r) => r.name),
         nav: true,
       });
-      this.files.set("ui/pages/Home.tsx", startPage(this.spec.app.name, undefined, cabinets[0]));
+      // B2-45: the public actions of the plan's modules (or a staff sign-in page), not a lone cabinet button.
+      this.files.set(
+        "ui/pages/Home.tsx",
+        homePage({
+          spec: { ...this.spec, pages: this.pages },
+          niche: this.plan.niche,
+          present: this.present,
+          params: this.params,
+          cabinet: cabinets[0],
+        }),
+      );
     }
   }
 

@@ -453,20 +453,76 @@ export function sectionBands(
   });
 }
 
+/** Items of the header menu at most (B2-45: a short menu, the CTA button carries the main action). */
+export const MAX_NAV_LINKS = 4;
+/** Sections whose action leads to the call-to-action target: one menu item for all of them. */
+const TARGET_GROUP = new Set([...TARGETS, "cta"]);
+/** Function words a menu label is compared without. */
+const NAV_STOP = new Set(
+  "а в во для до за и из или к как ко мы на наш наша наше наши о об от по с со у ваш ваша ваше ваши вы".split(
+    " ",
+  ),
+);
+/** Letters of a word a menu label is compared by: «Записаться» and «Запишитесь» are one item («запи»). */
+const STEM = 4;
+
+/** Comparison key of a menu label: lowercase words without punctuation and function words, cut to their stems. */
+export function navKey(label: string): string[] {
+  return label
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .split(/[^a-zа-я0-9]+/)
+    .filter((w) => w && !NAV_STOP.has(w))
+    .map((w) => w.slice(0, STEM));
+}
+
+/** Two labels name the same thing: their keys are equal, or the words of one are all in the other. */
+export function sameNavLabel(a: string, b: string): boolean {
+  const [x, y] = [navKey(a), navKey(b)];
+  if (!x.length || !y.length) return false;
+  const [short, long] = x.length <= y.length ? [x, new Set(y)] : [y, new Set(x)];
+  return short.every((w) => long.has(w));
+}
+
+/**
+ * Header menu of the landing (B2-45): the sections' titles as anchors, without the page edges; one item for the
+ * sections leading to the call-to-action target (lead form, booking, call to action — the target section first);
+ * no item repeating another one or the header button (navKey); at most MAX_NAV_LINKS.
+ */
+export function navLinks(
+  sections: readonly PlanSection[],
+  anchors: readonly (string | undefined)[],
+  target: string | undefined,
+  cta: string | undefined,
+): Link[] {
+  const candidates = sections.flatMap((s, i) => {
+    const title = str(s.content, "title");
+    const a = anchors[i];
+    return title && a && !["header", "hero", "footer"].includes(s.type)
+      ? [{ type: s.type, link: { label: title, href: `#${a}` } }]
+      : [];
+  });
+  const group = candidates.filter((c) => TARGET_GROUP.has(c.type));
+  const keep = group.find((c) => c.link.href === target) ?? group[0];
+  const out: Link[] = [];
+  for (const c of candidates) {
+    if (TARGET_GROUP.has(c.type) && c !== keep) continue;
+    if (cta && navKey(c.link.label).join(" ") === navKey(cta).join(" ")) continue;
+    if (out.some((l) => sameNavLabel(l.label, c.link.label))) continue;
+    out.push(c.link);
+  }
+  return out.slice(0, MAX_NAV_LINKS);
+}
+
 /** TSX of the landing page: the plan's sections in order on ui-kit blocks. */
 export function landingPage(ctx: ScreenContext): string {
   const sections = ctx.plan.landing?.sections ?? [];
   const anchors = sectionAnchors(sections);
   const targetIdx = TARGETS.map((t) => sections.findIndex((s) => s.type === t)).find((i) => i >= 0);
   const target = targetIdx !== undefined && anchors[targetIdx] ? `#${anchors[targetIdx]}` : undefined;
-  const links: Link[] = [];
-  if (ctx.params.anchor_nav === true)
-    sections.forEach((s, i) => {
-      const title = str(s.content, "title");
-      const a = anchors[i];
-      if (title && a && !["header", "hero", "footer"].includes(s.type))
-        links.push({ label: title, href: `#${a}` });
-    });
+  const header = sections.find((s) => s.type === "header");
+  const cta = header && target ? str(header.content, "cta") : undefined;
+  const links = ctx.params.anchor_nav === true ? navLinks(sections, anchors, target, cta) : [];
   const imports: string[] = [];
   // Photo slots (B2-38): the owner's photo or the stock photo of the plan; without both — the theme graphic.
   const slots = ctx.params.photos === true ? photoSlots(ctx.plan) : [];
@@ -481,7 +537,7 @@ export function landingPage(ctx: ScreenContext): string {
     const tone = bands[i] === "alt" ? "alt" : undefined;
     const env: Env = {
       brand: ctx.spec.app.name,
-      links: links.slice(0, 6),
+      links,
       target,
       sticky: ctx.params.sticky_header === true,
       tone,
