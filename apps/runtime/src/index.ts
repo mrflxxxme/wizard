@@ -66,6 +66,15 @@ export {
 } from "./env.js";
 /** Isolated function executor (unsafe-local, M0–M1): stop all executor processes on shutdown. */
 export { closeExecutors } from "./exec/host.js";
+/** B2-38 photo library: stock photo copies (WebP variants) under wz_photos/, served at /_wizard/photos/:id/:width. */
+export {
+  type LibraryPhoto,
+  libraryPhotoId,
+  PHOTO_LIBRARY_PREFIX,
+  PhotoLibraryError,
+  photoLibraryRoutes,
+  storeLibraryPhoto,
+} from "./files/photo-library.js";
 /** AWS SigV4 (header-signed requests, presigned URLs) for the S3-compatible store. */
 export { EMPTY_SHA256, presignUrl, type S3Credentials, type SignInput, signRequest } from "./files/sigv4.js";
 /** M2-14 files (runtime.yaml#files): magic-byte allowlist, attachment headers. */

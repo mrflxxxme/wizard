@@ -1,7 +1,14 @@
 // Minimal plans for the CI parameter matrix (specs/modules/modules.yaml#manifest.tests): the module under test with the
 // row's parameters, the row's withModules (with the expectParams of the tested module's requires) and, when the
 // landing is among them, a hero plus the sections the plan's modules need. No texts beyond neutral examples.
-import { type GoalId, type PlanSection, type SystemPlan, THEME_FONTS, THEME_PRESETS } from "@wizard/appspec";
+import {
+  type GoalId,
+  type PlanPhoto,
+  type PlanSection,
+  type SystemPlan,
+  THEME_FONTS,
+  THEME_PRESETS,
+} from "@wizard/appspec";
 import type { ModuleRegistry } from "../types.js";
 
 export interface MatrixRow {
@@ -12,6 +19,8 @@ export interface MatrixRow {
   sections?: readonly Record<string, unknown>[];
   /** Theme preset of the row's plan. */
   theme?: string;
+  /** Stock photos of the row's plan (B2-38 landing rows with photos). */
+  photos?: readonly Record<string, unknown>[];
 }
 
 /** The plan a matrix row of `moduleId` is compiled with (deterministic). */
@@ -55,6 +64,7 @@ export function matrixPlan(registry: ModuleRegistry, moduleId: string, row: Matr
       accent: "#2A7F9E",
       fontPair: { heading: THEME_FONTS[0], body: THEME_FONTS[0] },
       photoStyle: "светлые фото",
+      ...(row.photos ? { photos: [...row.photos] as unknown as PlanPhoto[] } : {}),
     },
     outOfScope: [],
     custom: [],

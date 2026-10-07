@@ -189,13 +189,14 @@ describe("builder v2: stages, events, checkpoints", () => {
     const { out, rec } = await build(sys, "dental");
     expect(out?.status).toBe("succeeded");
     if (out?.status !== "succeeded") return;
-    expect(stagesOf(rec, "done")).toEqual(["plan", "texts", "design", "compile", "gates"]);
+    expect(stagesOf(rec, "done")).toEqual(["plan", "texts", "design", "photos", "compile", "gates"]);
     expect(stagesOf(rec, "skipped")).toEqual(["custom"]);
     const started = rec.events.filter((e) => e.type === "build_stage" && e.payload.status === "started");
     expect(started.map((e) => e.payload.label_ru)).toEqual([
       "Сверяю план",
       "Пишу тексты",
       "Подбираю оформление",
+      "Подбираю фото",
       "Собираю экраны и данные",
       "Проверяю, что всё работает",
     ]);
@@ -291,7 +292,15 @@ describe("builder v2: stages, events, checkpoints", () => {
     expect(again.rec.calls).toEqual([]);
     expect(again.rec.creditsMilli).toBe(0);
     expect(sys.commits).toBe(1);
-    expect(stagesOf(again.rec, "reused")).toEqual(["plan", "texts", "design", "compile", "custom", "gates"]);
+    expect(stagesOf(again.rec, "reused")).toEqual([
+      "plan",
+      "texts",
+      "design",
+      "photos",
+      "compile",
+      "custom",
+      "gates",
+    ]);
   });
 
   test("checkpoints of another plan are ignored", async () => {
@@ -314,10 +323,10 @@ describe("failure at any stage → continue from the last checkpoint without pay
     { stage: "plan", reusedAfter: [] },
     { stage: "texts", reusedAfter: ["plan"] },
     { stage: "design", reusedAfter: ["plan", "texts"] },
-    { stage: "compile", reusedAfter: ["plan", "texts", "design"] },
-    { stage: "custom", plan: withCustom, reusedAfter: ["plan", "texts", "design", "compile"] },
-    { stage: "gates", reusedAfter: ["plan", "texts", "design", "compile", "custom"] },
-    { stage: "gates_report", reusedAfter: ["plan", "texts", "design", "compile", "custom"] },
+    { stage: "compile", reusedAfter: ["plan", "texts", "design", "photos"] },
+    { stage: "custom", plan: withCustom, reusedAfter: ["plan", "texts", "design", "photos", "compile"] },
+    { stage: "gates", reusedAfter: ["plan", "texts", "design", "photos", "compile", "custom"] },
+    { stage: "gates_report", reusedAfter: ["plan", "texts", "design", "photos", "compile", "custom"] },
   ];
 
   test.each(cases.map((c) => [c.stage, c] as const))("fault at %s", async (_s, c) => {

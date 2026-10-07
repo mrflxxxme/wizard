@@ -62,7 +62,7 @@ manifest:
     screens: "экраны {id, audience: public|cabinet|visitor, route, title, roles, components (экспорты @wizard/ui-kit), when?, nav?}"
     metrics: "метрики панели цели — #manifest.metrics"
     goalScenarios: "сценарии целей для e2e в браузере — #manifest.goal_scenarios"
-    tests: "{matrix: [{name, params, withModules?, sections? (секции лендинга строки вместо минимальных, 1…20 — B2-35: каждый вариант раскладки в CI), theme? (тема плана строки)}] ≤ 32, gates: [G0, G1, G2?]} — матрица параметров CI"
+    tests: "{matrix: [{name, params, withModules?, sections? (секции лендинга строки вместо минимальных, 1…20 — B2-35: каждый вариант раскладки в CI), theme? (тема плана строки), photos? (design.photos плана строки — фото со стока, B2-38)}] ≤ 32, gates: [G0, G1, G2?]} — матрица параметров CI"
   params:
     types:
       bool: "да/нет; default"
@@ -107,7 +107,7 @@ system_plan:
     goals: "1…3 цели {id из #goals, statement — формулировка клиента 3…200, без ПДн}; больше трёх — TOO_MANY_GOALS"
     modules: "1…16 модулей каталога {id, version? — версия манифеста, для которой составлен план (пишет компилятор), params?, goals? — какие цели плана этот модуль закрывает (для экрана плана), note?}"
     landing: "{sections: [{type, variant, content, anchor?, band?: base|alt — полоса ритма (B2-37; нет — по direction.rhythm: airy — каждая третья секция тела на полосе alt, balanced/dense — каждая вторая; шапка, первый экран, призыв и подвал — со своим фоном), pinned? — раскладку выбрал владелец, этап дизайна её не меняет}] 1…20} — только вместе с модулем landing (#sections)"
-    design: "{direction: {mood: 1…5 слов, rhythm?: airy|balanced|dense, voice?: formal|warm|bold|calm|friendly|refined — тон текстов секций, notes?}, theme — id пресета из каталога тем, accent #RRGGBB, fontPair: {heading, body} из каталога шрифтов D64, photoStyle — стиль фото для стока 3…160, pinned?: [theme|accent|fontPair] — выбрал владелец правкой плана}. Направление — только данные, без CSS. Заполняет дизайн-агент (B2-37, agents/builder.yaml#v2.stages.design)"
+    design: "{direction: {mood: 1…5 слов, rhythm?: airy|balanced|dense, voice?: formal|warm|bold|calm|friendly|refined — тон текстов секций, notes?}, theme — id пресета из каталога тем, accent #RRGGBB, fontPair: {heading, body} из каталога шрифтов D64, photoStyle — стиль фото для стока 3…160, pinned?: [theme|accent|fontPair] — выбрал владелец правкой плана, photos?: [{slot, file — id копии в библиотеке фото платформы, alt, provider pexels|pixabay, stockId, author, authorUrl?, pageUrl, license, licenseUrl, width, height, pickedAt}] ≤ 12 — заполняет этап photos сборщика (B2-38), не планировщик}. Направление — только данные, без CSS. Заполняет дизайн-агент (B2-37, agents/builder.yaml#v2.stages.design)"
     outOfScope: "≤ 20 {request — что клиент просил, replacement — ближайшая замена из модулей или честное «пока нет», category: payments|events|integration|mobile_app|ai|marketplace|custom_logic|other, module? — модуль-замена}. Каждая запись уходит в «Запросы на развитие» (фабрика модулей, B2-26)"
     custom: "дописывание кодом {id, title, kind: screen|function, description 10…600, budgetRub, module?, goal?}"
   custom_limits:
@@ -259,8 +259,12 @@ catalog:
     params:
       - { name: sticky_header, label: "Закреплённая шапка", type: bool, default: true }
       - { name: anchor_nav, label: "Меню по секциям страницы", type: bool, default: true }
-    provides: { routes: ["/"] }
+      - { name: photos, label: "Фото в секциях (со стока или свои)", type: bool, default: true }
+    provides: { entities: [site_photo], routes: ["/", "/photos", "/cabinet/photos"] }
     hook: true   # pricing без каталога: посетитель читает тарифы package_plan (B2-35)
+    # B2-38: photos — места фото секций (первый экран, «О нас» split, галерея, преимущества alternating) показывают фото
+    # владельца (site_photo {slot, image, alt}; кабинет /cabinet/photos «Фото сайта» — замена в один клик), иначе фото
+    # со стока из design.photos плана (копия в библиотеке фото платформы), иначе графику темы; /photos «Источники фото»
     metrics: []
     goalScenarios:
       - id: GS-landing-1
@@ -272,6 +276,15 @@ catalog:
         expect:
           - { kind: page_text, text: "Заголовок первого экрана из плана виден без прокрутки" }
           - { kind: page_text, text: "Кнопка ведёт к форме заявки или записи на этой же странице" }
+      - id: GS-landing-2
+        goal: attract
+        title: "Владелец заменяет фото сайта своим в один клик"
+        when: { param: photos }
+        steps:
+          - { actor: owner, text: "Открывает «Фото сайта» в кабинете и выбирает своё фото для первого места страницы" }
+          - { actor: visitor, text: "Открывает главную страницу" }
+        expect:
+          - { kind: page_text, text: "На этом месте главной показано фото владельца" }
 
   - id: catalog
     version: 1

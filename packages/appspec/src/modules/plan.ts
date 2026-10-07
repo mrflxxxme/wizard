@@ -51,6 +51,41 @@ export const planSectionSchema = z.strictObject({
   pinned: z.boolean().optional(),
 });
 
+/** Free stocks the builder takes photos from (D61: Pexels and Pixabay, copies kept on the platform; no Unsplash). */
+export const STOCK_PROVIDERS = ["pexels", "pixabay"] as const;
+/** At most this many stock photos on one landing (B2-38). */
+export const MAX_PLAN_PHOTOS = 12;
+/** An https link of a photo credit (no spaces, quotes or angle brackets: it goes into a page as an href). */
+const httpsUrl = z
+  .string()
+  .regex(/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/[^\s"'<>`]*)?$/i)
+  .max(300);
+
+/**
+ * A stock photo of a landing slot (B2-38): the copy in the platform photo library (`file`), and the source, author,
+ * links and licence of the picture — the «Источники фото» page and the footer line are built from them.
+ */
+export const planPhotoSchema = z.strictObject({
+  /** Slot of the landing: section anchor, «-n» for the n-th picture of a section (top, top-2, about, gallery-3). */
+  slot: z.string().regex(/^[a-z][a-z0-9_]{0,39}(-[1-9][0-9]?)?$/),
+  /** Id of the copy in the platform photo library (served by the runtime at /_wizard/photos/<file>/<width>). */
+  file: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+  alt: text(3, 160),
+  provider: z.enum(STOCK_PROVIDERS),
+  /** Id of the photo at the stock. */
+  stockId: z.string().regex(/^[0-9]{1,20}$/),
+  author: text(1, 120),
+  authorUrl: httpsUrl.optional(),
+  pageUrl: httpsUrl,
+  license: text(3, 80),
+  licenseUrl: httpsUrl,
+  width: z.number().int().min(1).max(20000),
+  height: z.number().int().min(1).max(20000),
+  /** Day the photo was picked (YYYY-MM-DD). */
+  pickedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type PlanPhoto = z.infer<typeof planPhotoSchema>;
+
 export const designSchema = z.strictObject({
   /** Design direction (B2-37): mood, rhythm, voice of the texts, notes («фирменный цвет» keeps the accent). */
   direction: z.strictObject({
@@ -65,6 +100,8 @@ export const designSchema = z.strictObject({
   photoStyle: text(3, 160),
   /** Choices the owner made by hand (plan edits): the design stage keeps them. */
   pinned: z.array(z.enum(DESIGN_PINS)).max(DESIGN_PINS.length).optional(),
+  /** Stock photos of the landing slots (B2-38: the photos stage of builder v2 fills it; never the planner). */
+  photos: z.array(planPhotoSchema).max(MAX_PLAN_PHOTOS).optional(),
 });
 
 export const systemPlanSchema = z

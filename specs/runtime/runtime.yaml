@@ -218,6 +218,7 @@ service_endpoints:
   internal: "POST /_wizard/internal/reload — только внутренний порт (routing.rules)"
   dev: "GET /_wizard/dev-login, /_wizard/dev-logout (auth.dev_login_M0); M2 — GET /_wizard/preview-login (auth.preview_login_M2)"
   bridge: "GET /_wizard/bridge.js — только draft (../ui/platform-screens.yaml#preview_contract)"
+  photos: "B2-38: GET /_wizard/photos/<id>/<480|960|1600> — копия фото стока из библиотеки фото платформы (хранилище файлов систем, ключи wz_photos/<id>[.w<ширина>], не схема системы — очистка системы её не трогает), image/webp inline, Cache-Control public immutable, nosniff, CSP sandbox; нет варианта — самый крупный; иначе 404. Пишет её platform-api на этапе photos сборщика v2 (storeLibraryPhoto: перекодирование конвейером M2-47). G1-runtime платформы читает библиотеку из общего хранилища (RuntimeAppOptions.photoLibrary)"
   fonts: "GET /_wizard/fonts/<файл> — только файлы каталога шрифтов ui-kit (имя с хешем содержимого), font/woff2, Cache-Control immutable; иначе 404 (../ui/ui-kit.yaml#tokens.fonts, M2-42)"
   privacy: "M2: GET /_wizard/privacy (права субъекта и отзыв согласия для вошедшего → POST /api/auth/consent/revoke), /_wizard/pd-requests (админ-страница запросов субъектов для isAdmin-роли) — ../security/compliance.yaml#system_package"
   api_extra: "POST /api/telegram/:integration/link (../connectors/telegram.yaml), POST /api/workflows/:name/run (workflows.triggers.webhook_manual), POST /api/admin/invite (auth.role_assignment), M2: /api/files, M3: /api/ai/:action"

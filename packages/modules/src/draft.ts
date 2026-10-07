@@ -28,9 +28,16 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         type: "bool",
         default: true,
       },
+      {
+        name: "photos",
+        label: "Фото в секциях (со стока или свои)",
+        type: "bool",
+        default: true,
+      },
     ],
     provides: {
-      routes: ["/"],
+      entities: ["site_photo"],
+      routes: ["/", "/photos", "/cabinet/photos"],
     },
     hook: true,
     metrics: [],
@@ -57,6 +64,30 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             kind: "page_text",
             text: "Кнопка ведёт к форме заявки или записи на этой же странице",
+          },
+        ],
+      },
+      {
+        id: "GS-landing-2",
+        goal: "attract",
+        title: "Владелец заменяет фото сайта своим в один клик",
+        when: {
+          param: "photos",
+        },
+        steps: [
+          {
+            actor: "owner",
+            text: "Открывает «Фото сайта» в кабинете и выбирает своё фото для первого места страницы",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает главную страницу",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "На этом месте главной показано фото владельца",
           },
         ],
       },

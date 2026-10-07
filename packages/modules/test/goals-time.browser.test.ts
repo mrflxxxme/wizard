@@ -78,17 +78,23 @@ afterAll(async () => {
 });
 
 describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2-28, B2-19)", () => {
-  test("all 12 modules: 36 goal scenarios × 2 cells over 3 lanes + 390 px — all pass, ≤ 90 s", async () => {
+  test("all 12 modules: 37 goal scenarios × 2 cells over 3 lanes + 390 px — all pass, ≤ 90 s", async () => {
     const plan = allModulesPlan();
     expect(plan.modules.map((m) => m.id).sort()).toEqual(MODULES_WITH_CODE.map((d) => d.manifest.id).sort());
     const r = compilePlan(plan, CATALOG, { appName: "Улыбка" });
     if (!r.ok) throw new Error(JSON.stringify(r.errors, null, 2));
     const ids = r.scenarios.map((s) => s.id);
     expect(ids).toEqual(
-      expect.arrayContaining(["GS-reports-1", "GS-reports-5", "GS-packages-2", "GS-booking-1"]),
+      expect.arrayContaining([
+        "GS-reports-1",
+        "GS-reports-5",
+        "GS-packages-2",
+        "GS-booking-1",
+        "GS-landing-2",
+      ]),
     );
     expect(new Set(r.scenarios.map((s) => s.module)).size).toBe(MODULES_WITH_CODE.length);
-    expect(r.scenarios.length).toBe(36);
+    expect(r.scenarios.length).toBe(37);
     const ctx: GateContext = {
       spec: r.spec as AppSpec,
       prevSpec: null,

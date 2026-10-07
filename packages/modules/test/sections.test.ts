@@ -153,11 +153,17 @@ describe("section library (B2-35)", () => {
     );
   });
 
-  test("a gallery without items shows six tiles of the theme graphic until photos (B2-38)", () => {
+  test("a gallery without items shows six tiles: a photo slot each (B2-38), the theme graphic without photos", () => {
     const plan = matrixPlan(registry, "landing", { name: "g", params: {} });
     const sections = [...(plan.landing?.sections ?? [])];
     sections.splice(2, 0, { type: "gallery", variant: "masonry", content: { title: "Пример: работы" } });
     const r = ok(compilePlan({ ...plan, landing: { sections } }, registry));
-    expect(r.files["ui/pages/Home.tsx"]).toContain("items={[{},{},{},{},{},{}]}");
+    const home = r.files["ui/pages/Home.tsx"];
+    expect(home).toContain('{ ...{}, image: photo("gallery") }');
+    expect(home).toContain('{ ...{}, image: photo("gallery-6") }');
+    const off = matrixPlan(registry, "landing", { name: "g", params: { photos: false } });
+    const r2 = ok(compilePlan({ ...off, landing: { sections } }, registry));
+    expect(r2.files["ui/pages/Home.tsx"]).toContain("items={[{},{},{},{},{},{}]}");
+    expect(r2.files["ui/pages/Home.tsx"]).not.toContain("useSitePhotos");
   });
 });

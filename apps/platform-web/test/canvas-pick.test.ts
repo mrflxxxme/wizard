@@ -115,7 +115,7 @@ describe("block → edits", () => {
   test("the whole site (nav, phone) is not removable; the nav offers the landing switches", () => {
     const nav = blockActions(block("site:nav"), sketch, plan);
     expect(nav.hints).toEqual([]);
-    expect(nav.params.map((p) => p.param)).toEqual(["sticky_header", "anchor_nav"]);
+    expect(nav.params.map((p) => p.param)).toEqual(["sticky_header", "anchor_nav", "photos"]);
     const mobile = blockActions(block("phone:mobile"), sketch, plan);
     expect(mobile).toEqual({ hints: [], params: [], variant: null });
   });

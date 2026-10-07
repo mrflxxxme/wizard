@@ -1,5 +1,6 @@
 // Builder v2 (B2-21, specs/agents/builder.yaml#v2, docs/plans/2026-10-06-beta-v2.md §2): an approved system plan is
-// built in stages plan → texts → design → compile → custom → gates. Texts, design and custom code (B2-23, only the
+// built in stages plan → texts → design → photos → compile → custom → gates (photos — stock pictures without models,
+// B2-38). Texts, design and custom code (B2-23, only the
 // plan's custom parts, in reserved files) call models; compile is deterministic (@wizard/modules compilePlan), the
 // module code is never written by a model. After each stage its
 // result is saved as a checkpoint of the plan revision: a repeated build of the same plan («Исправить» after a
@@ -23,6 +24,7 @@ import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
 import { buildBlockers, OWNER_INPUT_CHECKS } from "./blockers.js";
 import { buildCustom } from "./custom.js";
 import { runDesignStage } from "./design.js";
+import { runPhotosStage } from "./photos.js";
 import { DEFAULT_V2_BUDGETS, remainingSec, STAGE_LABELS } from "./stages.js";
 import { runTextsStage } from "./texts.js";
 import {
@@ -307,6 +309,30 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
 
     // 3. Design: direction, theme, fonts, accent, photo style, layouts.
     plan = (await stage("design", { reuse: planOf, run: (w) => modelStage("design", w, plan) })).plan;
+
+    // 3b. Photos (B2-38): stock pictures for the landing slots, copies in the platform library; without a stock — the
+    // theme graphic (fallback, never a failure).
+    plan = (
+      await stage("photos", {
+        reuse: planOf,
+        run: async () => {
+          const r = await runPhotosStage({
+            plan,
+            host: host.photos,
+            now,
+            ...(p.photosTimeMs !== undefined ? { budgetMs: p.photosTimeMs } : {}),
+            ...(host.signal ? { signal: host.signal } : {}),
+          });
+          // The stage's plan must compile; otherwise the plan without photos stays.
+          const ok = compilePlan(r.plan, registry, copts).ok;
+          return {
+            data: { plan: ok ? r.plan : plan },
+            ...(r.fallback || !ok ? { fallback: true } : {}),
+            note: r.note,
+          };
+        },
+      })
+    ).plan;
 
     // 4. Compile (no models) and one draft revision with the spec and files.
     let compiled = compilePlan(plan, registry, copts);
