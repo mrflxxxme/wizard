@@ -3453,8 +3453,8 @@ tasks:
     owner: qa
     parallel_group: b2-c
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Строгий порог D76 пройден; средняя сборка ≤ 15 ₽ и ≤ 5 мин; расход разработки ≤ 1 000 ₽"
       - "Отчёт с сеткой скриншотов сайтов замера (разнообразие) и итогом на странице «Бета v2»"
