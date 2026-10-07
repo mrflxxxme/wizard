@@ -152,6 +152,7 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
       "system_plan",
       "build_texts",
       "build_design",
+      "build_custom",
       "build_ops",
       "build_code",
       "fix",
@@ -163,13 +164,14 @@ describe("call journal: no PII reaches T1 (models.yaml#usage_record.test, data-b
       expect(out.scrubbed).toBe(true);
     }
     const t1 = stub.requests.filter((r) => r.provider === "zai");
-    expect(t1.length).toBe(10);
+    expect(t1.length).toBe(11);
     // B2-20: the system planner reasons high like the card and the v1 plan (models.yaml#call_policy.thinking);
-    // B2-21: the builder v2 texts and design stages reason low.
+    // B2-21: the builder v2 texts and design stages reason low; B2-23: the custom code too.
     expect(t1.map((r) => r.body.reasoning_effort)).toEqual([
       "high",
       "high",
       "high",
+      "low",
       "low",
       "low",
       "low",

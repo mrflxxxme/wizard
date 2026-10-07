@@ -16,7 +16,6 @@ import {
 } from "@wizard/llm";
 import { describe, expect, test } from "vitest";
 import {
-  CUSTOM_DEFERRED_RU,
   type CustomStageFn,
   runBuildV2,
   type StageCheckpoint,
@@ -28,12 +27,13 @@ import {
   withOwnerFields,
 } from "../src/builder/index.js";
 import { approvedPlan, fixtureLines } from "./build-v2-fixtures.js";
-import { B2_SCENARIOS, type B2Scenario } from "./build-v2-scenarios.js";
+import { B2_CUSTOM_SCENARIOS, B2_SCENARIOS, type B2Scenario } from "./build-v2-scenarios.js";
 
 const OPEN = { ruOnly: false, t1Restricted: false };
 const reg = createRegistry({ buildDefaultTier: "T1" });
 const rub = (milli: number) => (milli / 1000) * reg.rubPerCredit;
-const scenario = (name: string) => B2_SCENARIOS.find((s) => s.name === name) as B2Scenario;
+const scenario = (name: string) =>
+  [...B2_SCENARIOS, ...B2_CUSTOM_SCENARIOS].find((s) => s.name === name) as B2Scenario;
 
 interface Event {
   type: string;
@@ -118,6 +118,8 @@ function memHost(
         throw new LlmError("LLM_UNAVAILABLE", "все модели недоступны");
       if (fault?.stage === "design" && input.callType === "build_design")
         throw new LlmError("LLM_UNAVAILABLE", "все модели недоступны");
+      if (fault?.stage === "custom" && input.callType === "build_custom")
+        throw new LlmError("LLM_UNAVAILABLE", "все модели недоступны");
       rec.calls.push(input.callType);
       const out = o.route ? await o.route(full) : await router.route(full);
       rec.creditsMilli += out.creditsMilli;
@@ -146,7 +148,6 @@ function memHost(
     },
     goalBrowser: o.goalBrowser ?? false,
     recordDevelopmentRequest: async (input) => {
-      if (fault?.stage === "custom") throw new Error("запись запроса не удалась");
       sys.requests.push(input);
     },
   };
@@ -179,22 +180,8 @@ const stagesOf = (rec: RunRecord, status: string) =>
     .filter((e) => e.type === "build_stage" && e.payload.status === status)
     .map((e) => e.payload.stage as string);
 
-/** The dental plan with a small custom screen (goes to «Запросы на развитие» until B2-23). */
-function withCustom(): SystemPlan {
-  const p = approvedPlan(scenario("dental"));
-  return {
-    ...p,
-    custom: [
-      {
-        id: "price_quiz",
-        title: "Подбор лечения",
-        kind: "screen",
-        description: "Экран с тремя вопросами, который подсказывает пациенту, с какой услуги начать",
-        budgetRub: 10,
-      },
-    ],
-  };
-}
+/** The dental plan with a custom screen and function (B2-23; recorded answers tools/fixtures/demo/b2/dental_custom). */
+const withCustom = (): SystemPlan => approvedPlan(scenario("dental_custom"));
 
 describe("builder v2: stages, events, checkpoints", () => {
   test("clean build: stages in order with plain labels and «осталось», one revision, gates G0–G2", async () => {
@@ -335,25 +322,26 @@ describe("failure at any stage → continue from the last checkpoint without pay
 
   test.each(cases.map((c) => [c.stage, c] as const))("fault at %s", async (_s, c) => {
     const plan = c.plan?.() ?? approvedPlan(scenario("dental"));
-    const clean = await build(newSystem(), "dental", { plan });
+    const sc = c.plan ? "dental_custom" : "dental";
+    const clean = await build(newSystem(), sc, { plan });
     expect(clean.out?.status).toBe("succeeded");
 
     const sys = newSystem();
-    const failed = await build(sys, "dental", { plan, fault: { stage: c.stage, on: "throw" } });
+    const failed = await build(sys, sc, { plan, fault: { stage: c.stage, on: "throw" } });
     if (c.stage === "gates_report") {
       expect(failed.out).toMatchObject({ status: "failed", code: "GATES_FAILED", retryable: true });
       expect((failed.out as { message_ru: string }).message_ru).toContain("Экран «/» не открылся");
     } else expect(failed.error).toBeTruthy();
     expect(failed.rec.events.some((e) => e.type === "build_metrics")).toBe(true);
 
-    const retry = await build(sys, "dental", { plan });
+    const retry = await build(sys, sc, { plan });
     expect(retry.out?.status, JSON.stringify(retry.error)).toBe("succeeded");
     expect(stagesOf(retry.rec, "reused")).toEqual(c.reusedAfter);
     // Every model call is paid once over both runs: the same credits as a clean build.
     expect(failed.rec.creditsMilli + retry.rec.creditsMilli).toBe(clean.rec.creditsMilli);
     expect([...failed.rec.calls, ...retry.rec.calls].sort()).toEqual([...clean.rec.calls].sort());
-    // One compiled revision unless the commit itself failed.
-    expect(sys.commits).toBe(1);
+    // One compiled revision unless the commit itself failed (+ one with the custom parts on top of it).
+    expect(sys.commits).toBe(c.plan ? 2 : 1);
   });
 });
 
@@ -476,19 +464,26 @@ describe("texts and design stages", () => {
     expect(sys.spec.theme?.preset).toBe("calm");
   });
 
-  test("custom part → «Запросы на развитие» with the B2-23 mark; the summary tells the client", async () => {
+  test("custom parts are written on top of the compiled draft (B2-23); the gates check that revision", async () => {
     const sys = newSystem();
-    const r = await build(sys, "dental", { plan: withCustom() });
-    expect(r.out?.status).toBe("succeeded");
-    expect(sys.requests).toEqual([
-      {
-        category: "other",
-        quote:
-          "Подбор лечения: Экран с тремя вопросами, который подсказывает пациенту, с какой услуги начать",
-        offered: CUSTOM_DEFERRED_RU,
-      },
-    ]);
-    expect((r.out as { summary_ru: string }).summary_ru).toContain("«Подбор лечения» пока не вошло");
+    const r = await build(sys, "dental_custom", { plan: withCustom() });
+    expect(r.out).toMatchObject({ status: "succeeded", revision: 2 });
+    expect(Object.keys(sys.files)).toEqual(
+      expect.arrayContaining(["ui/custom/CustomPriceQuiz.tsx", "functions/custom/leads_month.ts"]),
+    );
+    expect(sys.spec.pages?.find((p) => p.route === "/custom-price-quiz")).toMatchObject({
+      file: "ui/custom/CustomPriceQuiz.tsx",
+      roles: ["guest", "owner"],
+    });
+    expect(sys.spec.functions?.find((f) => f.name === "customLeadsMonth")).toMatchObject({
+      kind: "query",
+      roles: ["owner"],
+    });
+    expect(sys.requests).toEqual([]);
+    expect(r.rec.calls).toEqual(["build_texts", "build_design", "build_custom"]);
+    expect((r.out as { summary_ru: string }).summary_ru).toContain(
+      "Дописано под вашу задачу: «Подбор лечения», «Заявки за месяц».",
+    );
   });
 
   test("a custom stage of B2-23 plugs in through params.custom", async () => {

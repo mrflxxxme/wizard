@@ -85,6 +85,7 @@ call_types:            # полный список; route() с иным callType
   - system_plan        # план системы беты v2: цели → модули → секции (планировщик, B2-20, modules.yaml#ai_rules)
   - build_texts        # сборщик v2: тексты секций лендинга по утверждённому плану (B2-21, builder.yaml#v2)
   - build_design       # сборщик v2: дизайн-направление, тема, шрифты, раскладки секций (B2-21; полный дизайн-агент — B2-37)
+  - build_custom       # сборщик v2: дописывание кодом частей plan.custom поверх скомпилированной системы (B2-23, builder.yaml#v2.stages.custom)
   - build_ops          # операции над AppSpec (строитель)
   - build_code         # код UI и функций (строитель)
   - fix                # исправление по отчёту гейта (строитель)
@@ -124,6 +125,7 @@ routes:                # chain.T1 пробуется только если tier=
   system_plan:         { role: planner,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000, note: "B2-20: планировщик беты v2 (packages/agents/src/planner) — SystemPlan вызовом submit_plan, проверка validateSystemPlan и compilePlan, повтор с ошибками (≤ 2 + 1 после компиляции). reasoning high (call_policy.thinking)" }
   build_texts:         { role: copywriter,   default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                 temperature: 0.4, max_tokens: 4000,  timeout_ms: 180000, note: "B2-21: этап «Тексты» сборщика v2 — submit_texts переписывает тексты секций плана (те же ключи, без новых цифр и фактов); бюджет этапа — builder.yaml#v2.budgets. План без ПДн" }
   build_design:        { role: designer,     default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                 temperature: 0.3, max_tokens: 1500,  timeout_ms: 120000, note: "B2-21: этап «Дизайн» сборщика v2 — submit_design: направление, тема и шрифты из каталогов, акцент, стиль фото, раскладки секций из готовых вариантов (полный дизайн-агент — B2-37)" }
+  build_custom:        { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, glm-5.1, kimi-k2.6, qwen3-coder-next] }, temperature: 0.1, max_tokens: 10000, timeout_ms: 420000, note: "B2-23: этап «Дописывание» сборщика v2 — submit_custom пишет код частей plan.custom (≤ 2 экрана, ≤ 3 функции) в зарезервированные файлы ui/custom/** и functions/custom/**; ≤ 2 раундов исправления по блокерам G0–G2; бюджет этапа ≤ 20 ₽ (builder.yaml#v2.budgets). План и спека без ПДн" }
   build_ops:           { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.1, max_tokens: 8000,  timeout_ms: 420000 }
   build_code:          { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, glm-5.1, kimi-k2.6, qwen3-coder-next] }, temperature: 0.1, max_tokens: 16000, timeout_ms: 480000 }
   fix:                 { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [deepseek-v4-pro, glm-5.1, kimi-k2.6, qwen3-coder-next] }, temperature: 0.1, max_tokens: 12000, timeout_ms: 480000 }

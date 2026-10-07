@@ -8,6 +8,7 @@ export const CALL_TYPES = [
   "system_plan",
   "build_texts",
   "build_design",
+  "build_custom",
   "build_ops",
   "build_code",
   "fix",

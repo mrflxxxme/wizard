@@ -1,5 +1,6 @@
 // /systems/* operations of specs/platform/api.yaml (x-milestone M0).
 import { createHash } from "node:crypto";
+import { planBuildCapCredits } from "@wizard/agents/planner";
 import { type AppSpec, applyOps } from "@wizard/appspec";
 import { type Context, Hono } from "hono";
 import type { Selectable } from "kysely";
@@ -565,7 +566,18 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         throw new ApiError("NO_GATE_FAILURE", "Последние проверки пройдены — исправлять нечего");
       const card = (s.card ?? {}) as Record<string, unknown>;
       const cardCap = Number((card.cap as { credits?: number } | undefined)?.credits ?? 0);
-      const cap = Math.max(3, Math.ceil(0.25 * cardCap));
+      // B2-23: a system on the modules pipeline repeats the build of its approved plan — the cap of that build, the
+      // custom-code stage included (stages done before are reused from the checkpoints and cost nothing).
+      const approved = await t.trx
+        .selectFrom("platform.system_plans")
+        .select("plan")
+        .where("system_id", "=", s.id)
+        .where("status", "=", "approved")
+        .orderBy("revision", "desc")
+        .limit(1)
+        .executeTakeFirst();
+      const planCap = approved ? planBuildCapCredits(approved.plan as { custom?: unknown[] }) : 0;
+      const cap = Math.max(3, Math.ceil(0.25 * cardCap), planCap);
       await t.trx
         .updateTable("platform.systems")
         .set({

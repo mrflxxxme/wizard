@@ -2,8 +2,9 @@
 // plan → texts → design → compile → custom → gates, a checkpoint after each stage, a budget per stage.
 import type { AppSpec, SystemPlan } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
-import type { ModuleRegistry } from "@wizard/modules";
+import type { CustomSlot, ModuleRegistry } from "@wizard/modules";
 import type { RunStepFn } from "../../core/events.js";
+import type { RouteFn } from "../../core/loop.js";
 import type { RecordDevelopmentRequest } from "../../gaps.js";
 import type { HostRoute } from "../../host/index.js";
 
@@ -16,7 +17,7 @@ export interface StageCheckpoint {
   stage: V2Stage;
   /** Hash of the approved plan the stage worked on (a checkpoint of another plan is ignored). */
   planHash: string;
-  /** Stage output: the plan after texts/design, {revision, fingerprint} after compile, {recorded} after custom. */
+  /** Stage output: the plan after texts/design, {revision, fingerprint} after compile, {items, baseRevision, revision, notes_ru} after custom. */
   data: Record<string, unknown>;
   /** Credits (milli) the stage spent on models — never paid again. */
   costMilli: number;
@@ -71,12 +72,33 @@ export interface V2Budgets {
   total: number;
 }
 
-/** The custom-code stage (B2-23 implements it); default — the custom part goes to «Запросы на развитие». */
+/**
+ * The custom-code stage (default — custom.ts buildCustom, B2-23): writes the plan's custom parts on top of the compiled
+ * draft and returns the draft revision it leaves (the compiled one when nothing was added).
+ */
 export type CustomStageFn = (ctx: {
   host: V2Host;
   plan: SystemPlan;
   budgetRub: number;
-}) => Promise<{ data: Record<string, unknown>; costMilli: number; notes_ru: string[] }>;
+  /** host.route behind the stage wallet: budget checks before each call, credits counted for the stage. */
+  route: RouteFn;
+  registry: ModuleRegistry;
+  /** The compiled draft revision the stage builds on: its spec (owner fields kept) and module files. */
+  base: { spec: AppSpec; files: Readonly<Record<string, string>>; revision: number };
+  /** Reserved names and files of the custom parts (compilePlan().customSlots). */
+  slots: readonly CustomSlot[];
+  /** G1 overrides of the gates stage (goal scenarios with a browser). */
+  goalScenarios?: readonly GoalScenarioInput[];
+}) => Promise<{
+  data: Record<string, unknown>;
+  /** Credits (milli) spent outside `route` (calls through `route` are counted by the wallet). */
+  costMilli: number;
+  notes_ru: string[];
+  /** The draft revision after the stage; absent — the compiled one. */
+  revision?: number;
+  fallback?: boolean;
+  note?: string;
+}>;
 
 export interface V2Params {
   /** The approved plan (platform.system_plans revision; compiled again at the plan stage). */
@@ -86,6 +108,7 @@ export interface V2Params {
   /** Name of the system (AppSpec app.name). */
   appName?: string;
   budgets?: Partial<V2Budgets>;
+  /** The custom-code stage (default buildCustom; tests plug their own). */
   custom?: CustomStageFn;
   /** ₽ per credit (models.yaml#credits.rub_per_credit; default from the registry). */
   rubPerCredit?: number;

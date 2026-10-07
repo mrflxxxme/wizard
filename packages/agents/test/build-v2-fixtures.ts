@@ -8,6 +8,9 @@ import { type FixtureLine, type LlmMessage, type LlmTool, ROUTES, requestKey, sc
 import { compilePlan } from "@wizard/modules";
 import { estimateTokens } from "../src/builder/budget.js";
 import {
+  customFixText,
+  customInputSchema,
+  customMessages,
   designInputSchema,
   designMessages,
   mergeDesign,
@@ -25,7 +28,7 @@ import {
   plannerMessages,
   plannerPlanSchema,
 } from "../src/planner/index.js";
-import type { B2Scenario } from "./build-v2-scenarios.js";
+import type { B2CustomScenario, B2Scenario } from "./build-v2-scenarios.js";
 
 export const ROOT = join(import.meta.dirname, "../../..");
 export const B2_FIXTURE_DIR = join(ROOT, "tools/fixtures/demo/b2");
@@ -38,6 +41,7 @@ const CALL_PROFILE = {
   system_plan: { reasoning: 4000, latencyMs: 120_000 },
   build_texts: { reasoning: 800, latencyMs: 40_000 },
   build_design: { reasoning: 500, latencyMs: 18_000 },
+  build_custom: { reasoning: 1500, latencyMs: 90_000 },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 
@@ -87,8 +91,32 @@ export function approvedPlan(sc: B2Scenario): SystemPlan {
   return r.plan;
 }
 
-/** Fixture lines of a scenario: interview, system_plan, build_texts, build_design. */
-export function fixtureLines(sc: B2Scenario): FixtureLine[] {
+/**
+ * build_custom lines of a custom scenario (B2-23): the first round on the real prompt; a fix round on the same prompt
+ * with a representative gate report (suite demo answers by order, the report text itself comes from the gates).
+ */
+function customLines(sc: B2CustomScenario): FixtureLine[] {
+  const built = compilePlan(builtPlan(sc), DEFAULT_REGISTRY);
+  if (!built.ok) throw new Error(`${sc.name}: ${JSON.stringify(built.errors)}`);
+  const tool = defineTool({ name: "submit_custom", description: "custom", input: customInputSchema });
+  const base = customMessages(built.plan, built.spec, built.customSlots);
+  return sc.rounds.map((round, i) => {
+    const slots = built.customSlots.filter((s) => round.items.some((it) => it.id === s.id));
+    const check = {
+      id: "G0-TS-01",
+      status: "fail" as const,
+      severity: "blocker" as const,
+      message_ru: "Ошибка типов",
+      file: slots[0]?.file ?? "",
+    };
+    const messages =
+      i === 0 ? base : [...base, { role: "user" as const, content: customFixText("G0", [check], slots) }];
+    return line("build_custom", messages, [tool.definition], { name: "submit_custom", args: round });
+  });
+}
+
+/** Fixture lines of a scenario: interview, system_plan, build_texts, build_design (+ build_custom of B2-23). */
+export function fixtureLines(sc: B2Scenario | B2CustomScenario): FixtureLine[] {
   const reg = DEFAULT_REGISTRY;
   const goalsTool = defineTool({ name: "submit_goals", description: "goals", input: goalsAnalysisSchema });
   const planTool = defineTool({ name: "submit_plan", description: "plan", input: plannerPlanSchema });
@@ -130,6 +158,7 @@ export function fixtureLines(sc: B2Scenario): FixtureLine[] {
       name: "submit_design",
       args: sc.design,
     }),
+    ...("rounds" in sc ? customLines(sc) : []),
   ];
 }
 
