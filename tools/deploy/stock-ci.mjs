@@ -285,7 +285,7 @@ const clean = (s) =>
     .slice(0, 60);
 
 /** One problem list «HTTP 401 ×3, TIMEOUT ×1». */
-const errorList = (errors) => {
+export const errorList = (errors) => {
   const n = new Map();
   for (const e of errors) n.set(e, (n.get(e) ?? 0) + 1);
   return [...n].map(([e, k]) => `${e} ×${k}`).join(", ");
@@ -435,7 +435,7 @@ export async function runRecord({
 }
 
 /** Registers tsx (the TypeScript packages of the workspace), as tools/eval/run.mjs does. */
-async function registerTsx() {
+export async function registerTsx() {
   let loader;
   for (const base of [import.meta.url, pathToFileURL(join(ROOT, "apps", "runtime", "package.json")).href]) {
     try {

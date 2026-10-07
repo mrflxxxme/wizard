@@ -1587,6 +1587,29 @@ export function serverStockProbe({ kubectl, log = console.log }) {
 }
 
 /**
+ * B2-43: what the photo library job of a release (pilot-reusable.yml stock-library, stock_mode=library) needs from it:
+ * the systems' files bucket, its endpoint and region — the storage the platform pods get (clusterSecretFiles, helm
+ * config.s3Endpoint, providers/timeweb.yaml s3Region). The job reads the S3 account key from the same secrets, so
+ * without the account key (the pods then use the bucket keys of tofu) there is nothing to seed with. null — no seeding.
+ */
+export function stockLibraryOutputs({ vars, outputs, log = () => {} }) {
+  if (pilotStockMode(vars) !== "library") return null;
+  const title = "::warning title=Библиотека фото::";
+  if (!vars.WIZARD_S3_ACCOUNT_KEY_ID || !vars.WIZARD_S3_ACCOUNT_SECRET) {
+    log(
+      `${title}нет ключа S3-аккаунта (секреты AWS_ACCESS_KEY_ID и AWS_SECRET_ACCESS_KEY) — библиотека не пополняется`,
+    );
+    return null;
+  }
+  const bucket = outputs?.env?.buckets?.files;
+  if (!bucket) {
+    log(`${title}в выходах tofu нет бакета files — библиотека не пополняется`);
+    return null;
+  }
+  return { files_bucket: bucket, s3_endpoint: outputs.env.s3_endpoint || S3.endpoint, s3_region: S3.region };
+}
+
+/**
  * Stock keys of a release (B2-38): with stock_mode=live (record) each key is tried with one search; a refused key
  * turns its provider off for this release (it never reaches the platform Secret) with a warning — the release goes on,
  * as with the other optional services (Unisender, Z.ai): the landings keep the theme graphics. No answer keeps the
@@ -1595,6 +1618,17 @@ export function serverStockProbe({ kubectl, log = console.log }) {
  */
 export async function stockKeysOfRelease(vars, { fetch: f = fetch, log = () => {} } = {}) {
   const mode = pilotStockMode(vars);
+  if (mode === "library") {
+    const lines = [
+      "Фото на сайтах — из библиотеки фото платформы (stock_mode=library): ключи стоков в платформу не передаются, сервер стоки не вызывает.",
+      "Библиотеку пополняет задание stock-library этого выката на раннере GitHub (там стоки доступны); его сбой — предупреждение, выкат не падает.",
+    ];
+    for (const l of lines) log(l);
+    log(
+      "::notice title=Фото со стоков::библиотека фото (stock_mode=library): ключи в платформу не передаются",
+    );
+    return { mode, off: [], lines };
+  }
   if (!STOCK_KEY_MODES.includes(mode)) {
     const lines = [`Фото со стоков выключены (stock_mode=${mode}): ключи в платформу не передаются.`];
     for (const l of lines) log(l);
@@ -1879,6 +1913,18 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
         gvisorProbe({ kubectl, image: `${outputs.env.registry_url}/wizard-sandbox:${tag}`, log });
       // B2-41: the stocks from the server itself (the builds' network), with the keys of this release.
       if (STOCK_KEY_MODES.includes(pilotStockMode(vars))) serverStockProbe({ kubectl, log });
+      // B2-43: the photo library job of this release seeds the same files bucket (step outputs, never a key).
+      const library =
+        o.command === "bootstrap" || o.command === "deploy"
+          ? stockLibraryOutputs({ vars, outputs, log })
+          : null;
+      if (library && vars.GITHUB_OUTPUT)
+        appendFileSync(
+          vars.GITHUB_OUTPUT,
+          Object.entries(library)
+            .map(([k, v]) => `${k}=${v}\n`)
+            .join(""),
+        );
       // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
       checkArchive({ kubectl, log, bucket: outputs.env?.buckets?.backups ?? "" });
       // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.

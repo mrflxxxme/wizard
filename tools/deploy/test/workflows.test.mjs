@@ -152,9 +152,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       options: ["modules", "legacy"],
       default: "modules",
     });
+    // B2-43: library — the photo library the release's runner fills (the stocks are closed for the server in RF).
     expect(dep.on.workflow_dispatch.inputs.stock_mode).toMatchObject({
       type: "choice",
-      options: ["off", "live"],
+      options: ["off", "library", "live"],
       default: "off",
     });
     expect(dep.doc.jobs.pilot.with).toMatchObject({
@@ -227,6 +228,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1e9" }).out).toContain("llm_daily_cap_rub");
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "0" }).code).toBe(1);
     expect(authorize({ ...dep, BUILD_PIPELINE: "legacy", STOCK_MODE: "live" }).code).toBe(0);
+    expect(authorize({ ...dep, STOCK_MODE: "library" }).code).toBe(0);
     expect(authorize({ ...dep, BUILD_PIPELINE: "v3" }).out).toContain("build_pipeline");
     expect(authorize({ ...dep, STOCK_MODE: "record" }).out).toContain("stock_mode");
     const { doc } = load("pilot-reusable.yml");
@@ -343,6 +345,60 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(Object.keys(images.on.workflow_call.inputs)).toEqual(["sha", "ghcr"]);
     expect(images.doc.concurrency.group).toBe(`images-${gh("github.workflow")}-${gh("github.ref")}`);
     expect(JSON.stringify(images.doc.jobs.build.steps)).toContain("imagetools inspect");
+  });
+
+  it("B2-43 stock-library: after a successful release with library outputs, keys only in its step, masked first", () => {
+    const { doc } = load("pilot-reusable.yml");
+    const pilotStep = doc.jobs.pilot.steps.find((s) => String(s.name).startsWith("Pilot"));
+    expect(pilotStep.id).toBe("pilot");
+    expect(doc.jobs.pilot.outputs).toEqual({
+      files_bucket: gh("steps.pilot.outputs.files_bucket"),
+      s3_endpoint: gh("steps.pilot.outputs.s3_endpoint"),
+      s3_region: gh("steps.pilot.outputs.s3_region"),
+    });
+    const job = doc.jobs["stock-library"];
+    expect(job.needs).toEqual(["authorize", "pilot"]);
+    expect(job.if).toBe(
+      gh("!cancelled() && needs.pilot.result == 'success' && needs.pilot.outputs.files_bucket != ''"),
+    );
+    // A seeding problem never fails the release; read-only token; the same environment (its secrets) as the release.
+    expect(job["continue-on-error"]).toBe(true);
+    expect(job.permissions).toEqual({ contents: "read" });
+    expect(job.environment).toBe(gh("inputs.env"));
+    expect(job.env).toBeUndefined();
+    expect(job.steps[0].with.ref).toBe(gh("needs.authorize.outputs.sha"));
+    const install = job.steps.find((s) => String(s.run ?? "").includes("pnpm install"));
+    expect(install.env).toBeUndefined();
+    const withSecrets = job.steps.filter((s) => JSON.stringify(s.env ?? {}).includes("secrets."));
+    expect(withSecrets.map((s) => s.name)).toEqual(["Photo library"]);
+    const step = withSecrets[0];
+    expect(step.env).toEqual({
+      PEXELS_API_KEY: gh("secrets.PEXELS_API_KEY"),
+      PIXABAY_API_KEY: gh("secrets.PIXABAY_API_KEY"),
+      // The S3 account key the pods get (pilot-secrets.mjs clusterSecretFiles), under the runtime's names.
+      WIZARD_S3_ACCESS_KEY_ID: gh("secrets.AWS_ACCESS_KEY_ID"),
+      WIZARD_S3_SECRET_ACCESS_KEY: gh("secrets.AWS_SECRET_ACCESS_KEY"),
+      WIZARD_FILES_STORAGE: "s3",
+      WIZARD_S3_BUCKET: gh("needs.pilot.outputs.files_bucket"),
+      WIZARD_S3_ENDPOINT: gh("needs.pilot.outputs.s3_endpoint"),
+      WIZARD_S3_REGION: gh("needs.pilot.outputs.s3_region"),
+    });
+    const lines = step.run.trim().split("\n");
+    const secretVars = [
+      "PEXELS_API_KEY",
+      "PIXABAY_API_KEY",
+      "WIZARD_S3_ACCESS_KEY_ID",
+      "WIZARD_S3_SECRET_ACCESS_KEY",
+    ];
+    expect(lines).toEqual([
+      `for v in ${secretVars.map((k) => `"$${k}"`).join(" ")}; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`,
+      "node tools/deploy/stock-library.mjs seed",
+    ]);
+    const r = spawnSync("bash", ["-e", "-c", lines[0]], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, PEXELS_API_KEY: "px-1", WIZARD_S3_SECRET_ACCESS_KEY: "s3-2" },
+    });
+    expect(r.stdout).toBe("::add-mask::px-1\n::add-mask::s3-2\n");
   });
 });
 

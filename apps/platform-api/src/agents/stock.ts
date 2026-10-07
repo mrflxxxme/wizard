@@ -3,15 +3,19 @@
 // in M2-20; without them the landings keep the theme graphic) and copies the chosen files into the platform photo
 // library of the shared file storage (runtime storeLibraryPhoto: WebP variants, no EXIF). WIZARD_STOCK_MODE:
 // fixture — recorded answers of tools/fixtures/stock, no network (default unless WIZARD_LLM_MODE is live/record);
-// live; record — live plus recording of the Pexels search answers (metadata, keys scrubbed); off — no photos.
+// live; record — live plus recording of the Pexels search answers (metadata, keys scrubbed); off — no photos;
+// library (B2-43) — the photo library filled from CI (tools/deploy/stock-library.mjs: the stocks are closed for the
+// server in RF), read from the shared file storage: no keys, no network, nothing re-encoded.
 // Keys: the pilot release passes the founder's keys as env (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY, only with
 // stock_mode=live, tools/deploy/pilot-secrets.mjs pilotStockEnv); they win over the SecretStore values, which stay the
 // way for a hand-added key. Nothing is written to the store: env changes with the next release, removal included.
 import {
+  createLibraryStockClient,
   createStockClient,
   FIXTURE_KEYS,
   fixtureStockFetch,
   type PhotoHost,
+  parseLibraryIndex,
   recordingStockFetch,
   STOCK_HOSTS,
   STOCK_PROVIDERS,
@@ -19,14 +23,14 @@ import {
   StockCache,
   type StockProvider,
 } from "@wizard/agents/builder";
-import { type FileStorage, storeLibraryPhoto } from "@wizard/runtime";
+import { type FileStorage, libraryPhoto, readLibraryIndex, storeLibraryPhoto } from "@wizard/runtime";
 
-export type StockMode = "fixture" | "live" | "record" | "off";
+export type StockMode = "fixture" | "live" | "record" | "off" | "library";
 
 /** WIZARD_STOCK_MODE, else live/record when the models are live/record, else fixture. */
 export function stockModeOf(env: NodeJS.ProcessEnv): StockMode {
   const v = (env.WIZARD_STOCK_MODE ?? "").trim().toLowerCase();
-  if (v === "fixture" || v === "live" || v === "record" || v === "off") return v;
+  if (v === "fixture" || v === "live" || v === "record" || v === "off" || v === "library") return v;
   const llm = (env.WIZARD_LLM_MODE ?? "").trim().toLowerCase();
   return llm === "live" || llm === "record" ? llm : "fixture";
 }
@@ -89,9 +93,33 @@ export interface PhotoHostOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * The photo host of library mode: searches answered from the library index of `storage` (re-read every few minutes),
+ * `store` returns the copy already in the library (a photo of the index whose copy is missing fails that one pick).
+ */
+export function libraryPhotoHost(
+  storage: FileStorage,
+  o: { ttlMs?: number; now?: () => number } = {},
+): PhotoHost {
+  const stock = createLibraryStockClient({
+    load: async () => parseLibraryIndex(await readLibraryIndex(storage)),
+    ...o,
+  });
+  return {
+    stock,
+    async store(hit) {
+      const file = stock.fileOf(hit);
+      const copy = file ? await libraryPhoto(storage, file) : null;
+      if (!copy) throw new Error(`${hit.provider}: no copy in the photo library`);
+      return copy;
+    },
+  };
+}
+
 /** The photo host of the builder, or undefined (off). */
 export function createPhotoHost(o: PhotoHostOptions): PhotoHost | undefined {
   if (o.mode === "off") return undefined;
+  if (o.mode === "library") return libraryPhotoHost(o.storage);
   const store: PhotoHost["store"] = (hit, bytes) =>
     storeLibraryPhoto(o.storage, bytes, { source: `${hit.provider}:${hit.id}` });
   if (o.mode === "fixture")

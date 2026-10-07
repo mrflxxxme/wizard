@@ -25,7 +25,31 @@ export {
   sanitizeStockAnswer,
   scrubSecrets,
 } from "../stock/fixtures.js";
+/** B2-43 photo library filled from CI: its index and the stock client of WIZARD_STOCK_MODE=library (no network). */
 export {
+  CATALOG_NICHES,
+  createLibraryStockClient,
+  emptyLibraryIndex,
+  LIBRARY_INDEX_TTL_MS,
+  LIBRARY_INDEX_VERSION,
+  LIBRARY_MAX_ENTRIES,
+  LIBRARY_SLOT_KINDS,
+  type LibraryEntry,
+  type LibraryIndex,
+  type LibraryStockClient,
+  libraryCap,
+  libraryCount,
+  librarySearch,
+  librarySeedQueries,
+  mergeLibraryIndex,
+  parseLibraryIndex,
+  planSeedQueries,
+  querySubject,
+  type SeedQuery,
+  serializeLibraryIndex,
+} from "../stock/library.js";
+export {
+  GENERIC_TERMS,
   NICHE_TERMS,
   nicheTerms,
   STYLE_TERMS,
@@ -127,7 +151,13 @@ export {
   VOICE_LABELS,
 } from "./v2/direction.js";
 /** B2-38 photos stage: stock pictures for the landing slots (no models), copies in the platform photo library. */
-export { PHOTOS_TIME_BUDGET_MS, type PhotoHost, type PhotosOutcome, runPhotosStage } from "./v2/photos.js";
+export {
+  fitsSlot,
+  PHOTOS_TIME_BUDGET_MS,
+  type PhotoHost,
+  type PhotosOutcome,
+  runPhotosStage,
+} from "./v2/photos.js";
 export { buildBlockers, OWNER_INPUT_CHECKS, runBuildV2, withOwnerFields } from "./v2/run.js";
 export { DEFAULT_V2_BUDGETS, remainingSec, STAGE_ETA_SEC, STAGE_LABELS } from "./v2/stages.js";
 export {

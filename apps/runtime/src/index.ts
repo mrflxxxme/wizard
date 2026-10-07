@@ -69,11 +69,15 @@ export { closeExecutors } from "./exec/host.js";
 /** B2-38 photo library: stock photo copies (WebP variants) under wz_photos/, served at /_wizard/photos/:id/:width. */
 export {
   type LibraryPhoto,
+  libraryPhoto,
   libraryPhotoId,
+  PHOTO_LIBRARY_INDEX_ID,
   PHOTO_LIBRARY_PREFIX,
   PhotoLibraryError,
   photoLibraryRoutes,
+  readLibraryIndex,
   storeLibraryPhoto,
+  writeLibraryIndex,
 } from "./files/photo-library.js";
 /** AWS SigV4 (header-signed requests, presigned URLs) for the S3-compatible store. */
 export { EMPTY_SHA256, presignUrl, type S3Credentials, type SignInput, signRequest } from "./files/sigv4.js";

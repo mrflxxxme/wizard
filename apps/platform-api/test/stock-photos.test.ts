@@ -5,12 +5,27 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtureStockFetch, runPhotosStage } from "@wizard/agents/builder";
+import {
+  emptyLibraryIndex,
+  fixtureImage,
+  fixtureStockFetch,
+  type LibraryEntry,
+  mergeLibraryIndex,
+  runPhotosStage,
+  STOCK_LICENSES,
+  serializeLibraryIndex,
+} from "@wizard/agents/builder";
 import type { SystemPlan } from "@wizard/appspec";
-import { MemoryFileStorage } from "@wizard/runtime";
-import { afterAll, describe, expect, test } from "vitest";
+import {
+  MemoryFileStorage,
+  PHOTO_LIBRARY_INDEX_ID,
+  storeLibraryPhoto,
+  writeLibraryIndex,
+} from "@wizard/runtime";
+import { afterAll, describe, expect, test, vi } from "vitest";
 import {
   createPhotoHost,
+  libraryPhotoHost,
   STOCK_EGRESS_HOSTS,
   STOCK_KEY_ENV,
   stockEgressFetch,
@@ -163,4 +178,90 @@ describe("stock keys of the release and the egress of live photos (B2-38 on the 
     expect(everything).not.toContain("PEXELS-ENV-555");
     expect(everything).not.toContain("PIXABAY-ENV-555");
   }, 60_000);
+});
+
+describe("library mode (B2-43: the photo library filled from CI, no stock from the server)", () => {
+  /** Library copies and their index as the CI seeding leaves them (re-encoding faked: the pipeline has its own tests). */
+  const seed = async (storage: MemoryFileStorage, entries: [string, "pexels" | "pixabay", number][]) => {
+    const out: LibraryEntry[] = [];
+    for (const [query, provider, id] of entries) {
+      const copy = await storeLibraryPhoto(storage, fixtureImage(`${provider}:${id}`, 16, 10), {
+        source: `${provider}:${id}`,
+        process: async () => ({
+          width: 1600,
+          height: 1000,
+          variants: [{ slot: 1600, width: 1600, height: 1000, data: new Uint8Array([1, 2, 3]) }],
+        }),
+      });
+      out.push({
+        query,
+        orientation: "landscape",
+        provider,
+        id: String(id),
+        file: copy.id,
+        author: `Автор ${id}`,
+        pageUrl: `https://${provider === "pexels" ? "www.pexels.com" : "pixabay.com"}/photo/${id}/`,
+        ...STOCK_LICENSES[provider],
+        width: copy.width,
+        height: copy.height,
+        pickedAt: "2026-10-07",
+      });
+    }
+    await writeLibraryIndex(storage, serializeLibraryIndex(mergeLibraryIndex(emptyLibraryIndex(), out)));
+  };
+
+  test("WIZARD_STOCK_MODE=library: the builds take the library copies without the network or re-encoding", async () => {
+    expect(stockModeOf({ WIZARD_STOCK_MODE: " Library ", WIZARD_LLM_MODE: "live" })).toBe("library");
+    const storage = new MemoryFileStorage();
+    await seed(storage, [
+      ["barber shop", "pexels", 11],
+      ["barber at work", "pixabay", 12],
+      ["small business", "pexels", 13],
+    ]);
+    const puts = vi.spyOn(storage, "put");
+    const net = vi.spyOn(globalThis, "fetch");
+    const host = createPhotoHost({
+      mode: "library",
+      secrets: null,
+      storage,
+      env: { [STOCK_KEY_ENV.pexels]: "PEXELS-NEVER-USED" },
+      fetch: async () => {
+        throw new Error("no network in library mode");
+      },
+    });
+    const r = await runPhotosStage({ plan, host });
+    expect(r).toMatchObject({ picked: 2, fallback: false, providers: ["pexels", "pixabay"] });
+    const photos = r.plan.design.photos ?? [];
+    expect(photos.map((p) => [p.slot, p.provider, p.stockId, p.author])).toEqual([
+      ["top", "pexels", "11", "Автор 11"],
+      ["about", "pixabay", "12", "Автор 12"],
+    ]);
+    expect(photos[1]).toMatchObject({ ...STOCK_LICENSES.pixabay, width: 1600, height: 1000 });
+    for (const p of photos) expect(storage.objects.has(`wz_photos/${p.file}`)).toBe(true);
+    expect(puts).not.toHaveBeenCalled();
+    expect(net).not.toHaveBeenCalled();
+    net.mockRestore();
+  });
+
+  test("no index yet → theme graphics; a copy missing from the library fails only that pick", async () => {
+    const empty = await runPhotosStage({
+      plan,
+      host: createPhotoHost({ mode: "library", secrets: null, storage: new MemoryFileStorage() }),
+    });
+    expect(empty).toMatchObject({ picked: 0 });
+    expect(empty.note).toContain("сток не нашёл подходящих");
+    const storage = new MemoryFileStorage();
+    await seed(storage, [
+      ["barber shop", "pexels", 21],
+      ["barber shop", "pexels", 22],
+      ["barber at work", "pexels", 23],
+    ]);
+    const first = [...storage.objects.keys()][0] as string;
+    expect(first).not.toContain(PHOTO_LIBRARY_INDEX_ID);
+    await storage.delete(first);
+    const r = await runPhotosStage({ plan, host: libraryPhotoHost(storage) });
+    expect(r.plan.design.photos?.map((p) => p.stockId)).toEqual(["22", "23"]);
+    // The index is not a photo: the public route has nothing to serve under its id.
+    expect((await storage.head(`wz_photos/${PHOTO_LIBRARY_INDEX_ID}`))?.image).toBeUndefined();
+  });
 });

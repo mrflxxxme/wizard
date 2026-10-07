@@ -29,9 +29,9 @@ on:
         options: [modules, legacy]
         default: modules
       stock_mode:
-        description: "Фото на сайтах систем: off — графика темы; live — фото со стоков (ключи из секретов PEXELS_API_KEY и PIXABAY_API_KEY, выкат проверяет каждый)"
+        description: "Фото на сайтах систем: off — графика темы; library — библиотека фото, её пополняет раннер выката (стоки с сервера в РФ закрыты); live — стоки с сервера (ключи PEXELS_API_KEY и PIXABAY_API_KEY, выкат проверяет каждый)"
         type: choice
-        options: ["off", live]
+        options: ["off", library, live]
         default: "off"
 
 permissions:

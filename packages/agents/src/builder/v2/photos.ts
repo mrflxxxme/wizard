@@ -35,9 +35,13 @@ const withPhotos = (plan: SystemPlan, photos: PlanPhoto[]): SystemPlan => {
 };
 
 /** Smallest acceptable width: the first screen and the story are shown large. */
-const minWidth = (s: PhotoSlot) => (s.type === "hero" || s.type === "about" ? 1200 : 800);
+const minWidth = (s: Pick<PhotoSlot, "type">) => (s.type === "hero" || s.type === "about" ? 1200 : 800);
 
-const fits = (h: StockHit, s: PhotoSlot): boolean => {
+/** A photo suits a slot: wide enough and of the slot's orientation (the CI photo library picks by the same rule). */
+export const fitsSlot = (
+  h: Pick<StockHit, "width" | "height">,
+  s: Pick<PhotoSlot, "type" | "orientation">,
+): boolean => {
   if (h.width < minWidth(s)) return false;
   const r = h.width / h.height;
   return s.orientation === "landscape"
@@ -120,7 +124,7 @@ export async function runPhotosStage(o: {
         const slot = todo[0];
         if (!slot || attempts <= 0 || late()) break;
         const key = `${hit.provider}:${hit.id}`;
-        if (used.has(key) || !fits(hit, slot)) continue;
+        if (used.has(key) || !fitsSlot(hit, slot)) continue;
         used.add(key);
         attempts--;
         let step = "скачивание";

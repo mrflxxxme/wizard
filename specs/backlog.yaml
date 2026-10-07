@@ -3472,6 +3472,27 @@ tasks:
     acceptance:
       - "Бета v2 выкачена на borntobuild.ru; основатель собрал 2–3 системы до публикации в служебном контуре и дал «да» (CHANGELOG)"
 
+  - id: B2-43
+    title: "Библиотека фото из CI: стоки с сервера в РФ закрыты, раннер подбирает фото в наш S3, сборка берёт их оттуда"
+    milestone: B2
+    deps: [B2-38]
+    specs: [docs/plans/2026-10-06-beta-v2.md, specs/product.yaml, specs/platform/deploy.yaml]
+    owner: platform
+    parallel_group: b2-c
+    estimate_days: 1
+    status: done
+    claimed_by: null
+    description: >
+      Решение основателя 07.10.2026: с сервера пилота Pexels отвечает 404, Pixabay рвёт соединение, с раннеров GitHub оба работают.
+      Раннер выката (stock_mode=library, задание stock-library) подбирает фото по запросам этапа фото (stockQuery) для ниш каталога
+      и брифов mvp и кладёт копии и индекс в бакет files; сборка в WIZARD_STOCK_MODE=library отвечает на поиск из индекса без сети.
+    owns: ["packages/agents/src/stock/library.ts", "tools/deploy/stock-library.mjs", ".github/workflows/pilot-reusable.yml (задание stock-library)"]
+    acceptance:
+      - "Индекс библиотеки рядом с копиями: одна запись на фото стока, не больше N на запрос, одинаковые байты для одного индекса (тест)"
+      - "Запросы засева совпадают с stockQuery этапа фото; поиск библиотеки — точный запрос, затем ниша, затем общие, ориентация слота (тест)"
+      - "WIZARD_STOCK_MODE=library: этап фото берёт копии библиотеки с автором и лицензией без сети и без перекодирования (тест)"
+      - "Выкат с stock_mode=library: подам — режим library без ключей; засев идемпотентен, ограничен по запросам, сбой — предупреждение, в журнале только числа (тесты)"
+
   # ---------------- M3: вторая волна ----------------
   - id: M3-01
     title: "«Укажи и измени»: выбор элемента в превью → wzId → правка строителем только этого файла"

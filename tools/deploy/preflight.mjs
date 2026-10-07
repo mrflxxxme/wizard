@@ -312,7 +312,10 @@ export async function probeStock(vars, { fetch: f = fetch, log = () => {} } = {}
   const mode = String(vars.WIZARD_STOCK_MODE || "off")
     .trim()
     .toLowerCase();
-  const note = ["live", "record"].includes(mode) ? "" : `; сейчас stock_mode=${mode}: ключ не используется`;
+  // library (B2-43): the keys fill the photo library from the release's runner job.
+  const note = ["live", "record", "library"].includes(mode)
+    ? ""
+    : `; сейчас stock_mode=${mode}: ключ не используется`;
   const opt = { required: false };
   const verdicts = await stockKeyVerdicts(vars, { fetch: f });
   log(stockAnnotation(verdicts));

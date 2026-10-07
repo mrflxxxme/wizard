@@ -33,6 +33,7 @@ import {
   serverStockLine,
   serverStockProbe,
   stockKeysOfRelease,
+  stockLibraryOutputs,
   summaryText,
   tfvars,
   tidyDns,
@@ -1559,6 +1560,89 @@ describe("pilot: stock photo keys of the release (B2-38)", () => {
       expect(visible(logs)).not.toContain(k);
       expect(sum).not.toContain(k);
     }
+  });
+});
+
+describe("pilot: the photo library of stock_mode=library (B2-43)", () => {
+  const PEXELS = "pexels-secret-key-002";
+  const PIXABAY = "12345-pixabaysecretkey2";
+  const KEYS = { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY };
+  const ACCOUNT = { WIZARD_S3_ACCOUNT_KEY_ID: "ACCKEY", WIZARD_S3_ACCOUNT_SECRET: "account-secret" };
+  const LIB = { ...KEYS, WIZARD_STOCK_MODE: "library" };
+
+  it("the pods get WIZARD_STOCK_MODE=library and no stock key; the release asks no stock", async () => {
+    expect(pilotStockMode({ WIZARD_STOCK_MODE: " Library " })).toBe("library");
+    expect(pilotStockEnv(LIB)).toEqual({});
+    expect(pilotPipelineEnv(LIB).WIZARD_STOCK_MODE).toBe("library");
+    const bundle = ensureBundle(null, "prod").bundle;
+    const outputs = { env: OUTPUTS().env.value, s3_keys: OUTPUTS().s3_keys.value };
+    const env = clusterSecretFiles({ bundle, outputs, inputs: { ...FOUNDER, ...LIB } }).platformEnv;
+    expect(env).toContain("WIZARD_STOCK_MODE=library\n");
+    for (const s of [PEXELS, PIXABAY, "WIZARD_STOCK_PEXELS_KEY", "WIZARD_STOCK_PIXABAY_KEY"])
+      expect(env).not.toContain(s);
+    const calls = [];
+    const logs = [];
+    const r = await stockKeysOfRelease(LIB, {
+      fetch: async (u) => {
+        calls.push(u);
+        return new Response("{}");
+      },
+      log: (l) => logs.push(l),
+    });
+    expect(calls).toEqual([]);
+    expect(r).toMatchObject({ mode: "library", off: [] });
+    expect(r.lines[0]).toContain("из библиотеки фото платформы");
+    expect(logs).toContain(
+      "::notice title=Фото со стоков::библиотека фото (stock_mode=library): ключи в платформу не передаются",
+    );
+  });
+
+  it("the seeding job gets the files bucket, endpoint and region of the pods — only with the S3 account key", () => {
+    const outputs = { env: OUTPUTS().env.value };
+    const logs = [];
+    const log = (l) => logs.push(l);
+    expect(stockLibraryOutputs({ vars: { ...LIB, ...ACCOUNT }, outputs, log })).toEqual({
+      files_bucket: "ab12-wizard-prod-files",
+      s3_endpoint: "https://s3.twcstorage.ru",
+      s3_region: "ru-1",
+    });
+    expect(
+      stockLibraryOutputs({ vars: { ...KEYS, ...ACCOUNT, WIZARD_STOCK_MODE: "live" }, outputs, log }),
+    ).toBeNull();
+    expect(stockLibraryOutputs({ vars: { ...ACCOUNT }, outputs, log })).toBeNull();
+    expect(logs).toEqual([]);
+    expect(stockLibraryOutputs({ vars: LIB, outputs, log })).toBeNull();
+    expect(logs[0]).toContain("::warning title=Библиотека фото::нет ключа S3-аккаунта");
+    expect(stockLibraryOutputs({ vars: { ...LIB, ...ACCOUNT }, outputs: { env: {} }, log })).toBeNull();
+    expect(logs[1]).toContain("нет бакета files");
+  });
+
+  it("deploy with stock_mode=library writes the step outputs of the seeding job, never a key", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const out = join(tmp, "github-output-library");
+    writeFileSync(out, "");
+    const tools = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const { code, logs } = await bootstrap(cloud, tools, {
+      argv: ["deploy", "--env", "prod", "--tag", SHA],
+      // The account key also opens the state bucket of the fake cloud (it checks the key id there).
+      vars: {
+        ...LIB,
+        WIZARD_S3_ACCOUNT_KEY_ID: "STATEKEY",
+        WIZARD_S3_ACCOUNT_SECRET: "state-bucket-secret",
+        GITHUB_OUTPUT: out,
+      },
+    });
+    expect(code).toBe(0);
+    expect(readFileSync(out, "utf8")).toBe(
+      "files_bucket=ab12-wizard-prod-files\ns3_endpoint=https://s3.twcstorage.ru\ns3_region=ru-1\n",
+    );
+    const env = Object.values(tools.files).find((x) => typeof x === "string" && x.includes("WIZARD_DB_URL="));
+    expect(env).toContain("WIZARD_STOCK_MODE=library\n");
+    expect(env).not.toContain(PEXELS);
+    // No stock probe from the server pod: it never calls a stock in this mode.
+    expect(tools.lines.join("\n")).not.toContain("api.pexels.com");
+    expect(visible(logs)).not.toContain(PEXELS);
   });
 });
 

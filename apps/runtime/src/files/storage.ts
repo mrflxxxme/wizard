@@ -9,7 +9,8 @@ import type { FileMime } from "./sniff.js";
 export interface FileMeta {
   /** Display name (sanitised upload name). */
   name: string;
-  mime: FileMime;
+  /** application/json — only the photo library index (photo-library.ts), never a file field. */
+  mime: FileMime | "application/json";
   size: number;
   /** Entity and file field the upload is for (permission of the upload; the row is the permission of reads). */
   entity: string;

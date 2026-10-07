@@ -241,8 +241,12 @@ export const PILOT_PIPELINE_INPUTS = [
   "WIZARD_MAIL_DOMAIN",
   "WIZARD_STOCK_MODE",
 ];
-/** Stock photos of the design stage (B2-38, WIZARD_STOCK_MODE): off — theme graphics instead of photos. */
-export const STOCK_MODES = ["off", "live", "fixture", "record"];
+/**
+ * Stock photos of the design stage (B2-38, WIZARD_STOCK_MODE): off — theme graphics instead of photos; library
+ * (B2-43) — the photo library the release's runner job fills (the stocks are closed for the server in RF): the pods
+ * read it from the files bucket and get no stock key.
+ */
+export const STOCK_MODES = ["off", "live", "fixture", "record", "library"];
 /**
  * Hosts the stock photo providers need from platform-api and the worker in live mode (B2-38). The pods reach public
  * addresses on 443 as for the model providers (NetworkPolicy wizard-platform-api / wizard-worker); the allowlist is
@@ -250,7 +254,7 @@ export const STOCK_MODES = ["off", "live", "fixture", "record"];
  * (apps/platform-api/src/agents/stock.ts stockEgressFetch, = packages/agents STOCK_HOSTS; a test keeps them equal).
  */
 export const STOCK_EGRESS_HOSTS = ["api.pexels.com", "images.pexels.com", "pixabay.com", "cdn.pixabay.com"];
-/** Stock modes that use the keys (search over the network). */
+/** Stock modes whose pods use the keys (search over the network from the server). */
 export const STOCK_KEY_MODES = ["live", "record"];
 /**
  * Founder inputs (GitHub secrets PEXELS_API_KEY / PIXABAY_API_KEY) → env of the platform Secret wizard-platform-env,
@@ -321,7 +325,7 @@ export function pilotPipelineEnv(inputs) {
     .trim()
     .toLowerCase();
   if (!["chromium", "off"].includes(browser)) throw new Error("WIZARD_G1_BROWSER: chromium или off");
-  // B2-38: theme graphics unless the release asks for live stock photos (keys: pilotStockEnv).
+  // B2-38: theme graphics unless the release asks for stock photos (live: keys by pilotStockEnv; library: none).
   const stock = pilotStockMode(inputs);
   const slots = String(inputs.WIZARD_G1_BROWSER_SLOTS ?? "").trim();
   if (slots && !/^[1-8]$/.test(slots)) throw new Error("WIZARD_G1_BROWSER_SLOTS: целое от 1 до 8");

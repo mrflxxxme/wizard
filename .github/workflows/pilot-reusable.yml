@@ -55,7 +55,7 @@ on:
         type: string
         default: ""
       stock_mode:
-        description: "deploy/bootstrap: stock photos of the design stage (off | live); empty — the variable or off (B2-38)"
+        description: "deploy/bootstrap: stock photos of the design stage (off | live | library); empty — the variable or off (B2-38, B2-43)"
         type: string
         default: ""
 
@@ -99,7 +99,7 @@ jobs:
             case "$EVAL_THRESHOLD" in d76|d67) ;; *) echo "::error title=pilot::threshold — d76 или d67."; exit 1 ;; esac
           fi
           case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
-          case "$STOCK_MODE" in ""|off|live) ;; *) echo "::error title=pilot::stock_mode — off, live или пусто."; exit 1 ;; esac
+          case "$STOCK_MODE" in ""|off|live|library) ;; *) echo "::error title=pilot::stock_mode — off, live, library или пусто."; exit 1 ;; esac
           if [ -n "$LLM_DAILY_CAP_RUB" ] && ! printf '%s' "$LLM_DAILY_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$'; then
             echo "::error title=pilot::llm_daily_cap_rub — целое число рублей или пусто."; exit 1
           fi
@@ -133,6 +133,11 @@ jobs:
     environment: ${{ inputs.env }}
     # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most.
     timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || 90 }}
+    # B2-43: the files bucket of the systems, its endpoint and region for the stock-library job (stock_mode=library only).
+    outputs:
+      files_bucket: ${{ steps.pilot.outputs.files_bucket }}
+      s3_endpoint: ${{ steps.pilot.outputs.s3_endpoint }}
+      s3_region: ${{ steps.pilot.outputs.s3_region }}
     permissions:
       contents: read
       packages: read
@@ -172,7 +177,8 @@ jobs:
       WIZARD_MAIL_DOMAIN: ${{ vars.WIZARD_MAIL_DOMAIN }}
       # B2-38: stock photos (empty — off, theme graphics). With live the release tries each key with one search and
       # passes the working ones to the platform (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY); `check` tries them
-      # too. Only verdicts and HTTP codes are printed, never a key.
+      # too. Only verdicts and HTTP codes are printed, never a key. With library (B2-43) the platform gets no key: the
+      # stock-library job below fills the photo library from this runner's network.
       WIZARD_STOCK_MODE: ${{ inputs.stock_mode || vars.WIZARD_STOCK_MODE }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
@@ -272,6 +278,7 @@ jobs:
           pnpm install --frozen-lockfile --filter @wizard/e2e
           pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
       - name: Pilot (${{ inputs.command }})
+        id: pilot
         env:
           # Only eval uses it: the issue comment with the live progress of the measurement.
           GITHUB_TOKEN: ${{ inputs.command == 'eval' && github.token || '' }}
@@ -301,3 +308,41 @@ jobs:
       - name: Clean up the runner
         if: always()
         run: rm -rf "$RUNNER_TEMP/wizard-pilot-$DEPLOY_ENV" "$RUNNER_TEMP/wizard-eval-$DEPLOY_ENV"
+
+  # B2-43: the photo library of stock_mode=library. The stocks are closed for the server in RF (Pexels 404, Pixabay
+  # connection reset on the pilot), so this runner picks the photos and copies them into the systems' files bucket the
+  # release reported (tools/deploy/stock-library.mjs: idempotent, bounded per run, counts only). The S3 account key is
+  # the one the platform pods get. A failure here is a warning: the release is already out.
+  stock-library:
+    needs: [authorize, pilot]
+    if: ${{ !cancelled() && needs.pilot.result == 'success' && needs.pilot.outputs.files_bucket != '' }}
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.env }}
+    timeout-minutes: 30
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Photo library
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          WIZARD_S3_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          WIZARD_S3_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          WIZARD_FILES_STORAGE: s3
+          WIZARD_S3_BUCKET: ${{ needs.pilot.outputs.files_bucket }}
+          WIZARD_S3_ENDPOINT: ${{ needs.pilot.outputs.s3_endpoint }}
+          WIZARD_S3_REGION: ${{ needs.pilot.outputs.s3_region }}
+        run: |
+          for v in "$PEXELS_API_KEY" "$PIXABAY_API_KEY" "$WIZARD_S3_ACCESS_KEY_ID" "$WIZARD_S3_SECRET_ACCESS_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/deploy/stock-library.mjs seed
