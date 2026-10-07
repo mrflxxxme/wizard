@@ -28,6 +28,7 @@ import {
   resolveStateS3,
   SHAPES,
   s3ErrorCode,
+  stockKeysOfRelease,
   summaryText,
   tfvars,
   tidyDns,
@@ -44,7 +45,10 @@ import {
   GENERATED,
   pilotMailDomain,
   pilotPipelineEnv,
+  pilotStockEnv,
+  pilotStockMode,
   STOCK_EGRESS_HOSTS,
+  STOCK_KEY_ENV,
   secretValues,
   sshKeyPair,
 } from "../pilot-secrets.mjs";
@@ -1358,13 +1362,191 @@ describe("pilot: beta v2 settings of the release (B2-41)", () => {
     expect(pilotMailDomain({ WIZARD_SMTP_FROM: "Wizard <noreply@codename.ru>" })).toBe("codename.ru");
     expect(pilotMailDomain({ WIZARD_SMTP_FROM: "Wizard" })).toBe("");
     expect(() => pilotMailDomain({ WIZARD_MAIL_DOMAIN: "not a domain" })).toThrow(/WIZARD_MAIL_DOMAIN/);
-    // Live stock photos need these hosts; the pilot does not open them by default.
+    // Live stock photos need these hosts (the platform requests them only in live/record, B2-38).
     expect(STOCK_EGRESS_HOSTS).toEqual([
       "api.pexels.com",
       "images.pexels.com",
       "pixabay.com",
       "cdn.pixabay.com",
     ]);
+  });
+});
+
+describe("pilot: stock photo keys of the release (B2-38)", () => {
+  const PEXELS = "pexels-secret-key-001";
+  const PIXABAY = "12345-pixabaysecretkey";
+  const KEYS = { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY };
+
+  it("the platform Secret gets the keys only with live (record), only the given ones, never the turned-off ones", () => {
+    expect(pilotStockEnv(KEYS)).toEqual({});
+    expect(pilotStockEnv({ ...KEYS, WIZARD_STOCK_MODE: "off" })).toEqual({});
+    expect(pilotStockEnv({ ...KEYS, WIZARD_STOCK_MODE: "fixture" })).toEqual({});
+    expect(pilotStockEnv({ ...KEYS, WIZARD_STOCK_MODE: " Live " })).toEqual({
+      WIZARD_STOCK_PEXELS_KEY: PEXELS,
+      WIZARD_STOCK_PIXABAY_KEY: PIXABAY,
+    });
+    expect(pilotStockEnv({ ...KEYS, WIZARD_STOCK_MODE: "record" }, { off: ["pixabay"] })).toEqual({
+      WIZARD_STOCK_PEXELS_KEY: PEXELS,
+    });
+    expect(pilotStockEnv({ PIXABAY_API_KEY: "  ", WIZARD_STOCK_MODE: "live" })).toEqual({});
+    expect(pilotStockMode({})).toBe("off");
+    expect(() => pilotStockMode({ WIZARD_STOCK_MODE: "unsplash" })).toThrow(/WIZARD_STOCK_MODE/);
+    // The whole platform env file: no key line with off, no line for a missing key.
+    const bundle = ensureBundle(null, "prod").bundle;
+    const outputs = { env: OUTPUTS().env.value, s3_keys: OUTPUTS().s3_keys.value };
+    const off = clusterSecretFiles({ bundle, outputs, inputs: { ...FOUNDER, ...KEYS } }).platformEnv;
+    expect(off).not.toContain("WIZARD_STOCK_PEXELS_KEY");
+    expect(off).not.toContain(PEXELS);
+    expect(off).not.toContain(PIXABAY);
+    const live = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: { ...FOUNDER, PEXELS_API_KEY: PEXELS, WIZARD_STOCK_MODE: "live" },
+    }).platformEnv;
+    expect(live).toContain(`WIZARD_STOCK_PEXELS_KEY=${PEXELS}\n`);
+    expect(live).toContain("WIZARD_STOCK_MODE=live\n");
+    expect(live).not.toContain("WIZARD_STOCK_PIXABAY_KEY");
+    const turnedOff = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: { ...FOUNDER, ...KEYS, WIZARD_STOCK_MODE: "live" },
+      stockOff: ["pexels"],
+    }).platformEnv;
+    expect(turnedOff).not.toContain(PEXELS);
+    expect(turnedOff).toContain(`WIZARD_STOCK_PIXABAY_KEY=${PIXABAY}\n`);
+  });
+
+  it("the egress hosts are the hosts of the stock client (packages/agents STOCK_HOSTS)", () => {
+    const client = readFileSync(
+      join(import.meta.dirname, "../../../packages/agents/src/stock/client.ts"),
+      "utf8",
+    );
+    const block = /export const STOCK_HOSTS[^=]*=\s*\{([\s\S]*?)\n\};/.exec(client)?.[1] ?? "";
+    const hosts = new Set([...block.matchAll(/"([a-z0-9.-]+\.[a-z]+)"/g)].map((m) => m[1]));
+    expect([...hosts].sort()).toEqual([...STOCK_EGRESS_HOSTS].sort());
+    // The env names the release writes are the ones platform-api and the worker read (stock.ts STOCK_KEY_ENV).
+    const platform = readFileSync(
+      join(import.meta.dirname, "../../../apps/platform-api/src/agents/stock.ts"),
+      "utf8",
+    );
+    for (const [provider, [, name]] of Object.entries(STOCK_KEY_ENV))
+      expect(platform).toContain(`${provider}: "${name}"`);
+  });
+
+  const stockFetch = (pexels, pixabay, calls = []) => ({
+    calls,
+    fetch: async (url) => {
+      const u = new URL(url);
+      if (u.host === "api.pexels.com") {
+        calls.push(`pexels ${u.pathname}`);
+        return pexels();
+      }
+      calls.push(`pixabay ${u.pathname}`);
+      return pixabay();
+    },
+  });
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+
+  it("off: no request, one line; live: verdicts, refused and missing keys turned off with warnings", async () => {
+    const s = stockFetch(
+      () => json({ photos: [] }),
+      () => new Response("[ERROR 400] Invalid or missing API key", { status: 400 }),
+    );
+    const logs = [];
+    const off = await stockKeysOfRelease({ ...KEYS }, { fetch: s.fetch, log: (l) => logs.push(l) });
+    expect(off).toMatchObject({ mode: "off", off: [] });
+    expect(off.lines).toEqual([
+      "Фото со стоков выключены (stock_mode=off): ключи в платформу не передаются.",
+    ]);
+    expect(s.calls).toEqual([]);
+    const live = await stockKeysOfRelease(
+      { ...KEYS, WIZARD_STOCK_MODE: "live" },
+      { fetch: s.fetch, log: (l) => logs.push(l) },
+    );
+    expect(s.calls).toEqual(["pexels /v1/search", "pixabay /api/"]);
+    expect(live.off).toEqual(["pixabay"]);
+    expect(live.lines).toEqual([
+      "Фото со стоков (stock_mode=live), проверка ключей:",
+      "- Pexels: действителен (HTTP 200)",
+      "- Pixabay: недействителен (HTTP 400) — сток выключен в этом выкате",
+    ]);
+    expect(logs).toContain(
+      "::warning title=pilot::Pixabay: недействителен (HTTP 400): замените PIXABAY_API_KEY в секретах GitHub, фото этого стока выключены",
+    );
+    // No answer keeps the key; no key turns the provider off; none working — the theme graphics are announced.
+    const down = stockFetch(
+      () => {
+        throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ETIMEDOUT" } });
+      },
+      () => json({}, 401),
+    );
+    const lines2 = [];
+    const r = await stockKeysOfRelease(
+      { PEXELS_API_KEY: PEXELS, WIZARD_STOCK_MODE: "live" },
+      { fetch: down.fetch, log: (l) => lines2.push(l) },
+    );
+    expect(r.off).toEqual(["pixabay"]);
+    expect(r.lines).toContain("- Pexels: не проверен (нет ответа: ETIMEDOUT) — ключ передан без проверки");
+    expect(r.lines).toContain("- Pixabay: нет ключа — сток выключен в этом выкате");
+    expect(lines2).toContain("::warning title=pilot::PIXABAY_API_KEY не задан: фото этого стока выключены");
+    const none = await stockKeysOfRelease(
+      { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY, WIZARD_STOCK_MODE: "live" },
+      {
+        fetch: stockFetch(
+          () => json({}, 401),
+          () => json({}, 403),
+        ).fetch,
+      },
+    );
+    expect(none.off).toEqual(["pexels", "pixabay"]);
+    expect(none.lines.at(-1)).toBe(
+      "- Ни одного рабочего ключа: на сайтах систем будет графика темы вместо фото.",
+    );
+    for (const t of [...logs, ...lines2, ...live.lines, ...r.lines, ...none.lines]) {
+      expect(t).not.toContain(PEXELS);
+      expect(t).not.toContain(PIXABAY);
+      expect(t).not.toContain("pixabay.com/api");
+    }
+  });
+
+  it("deploy with stock_mode=live: keys masked, checked before the Secret, the refused one left out, the release goes on", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const s = stockFetch(
+      () => json({ photos: [{ id: 1 }] }),
+      () => new Response("[ERROR 400] Invalid or missing API key", { status: 400 }),
+    );
+    const routed = {
+      ...cloud,
+      fetch: (url, init) =>
+        /^https:\/\/(api\.pexels\.com|pixabay\.com)\//.test(url)
+          ? s.fetch(url, init)
+          : cloud.fetch(url, init),
+    };
+    const tools = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const summary = join(tmp, "summary-stock.md");
+    const { code, logs } = await bootstrap(routed, tools, {
+      argv: ["deploy", "--env", "prod", "--tag", SHA],
+      vars: { ...KEYS, WIZARD_STOCK_MODE: "live" },
+      summary,
+    });
+    expect(code).toBe(0);
+    expect(s.calls).toEqual(["pexels /v1/search", "pixabay /api/"]);
+    expect(logs.slice(0, 2)).toEqual([`::add-mask::${PEXELS}`, `::add-mask::${PIXABAY}`]);
+    const env = Object.values(tools.files).find((x) => typeof x === "string" && x.includes("WIZARD_DB_URL="));
+    expect(env).toContain(`WIZARD_STOCK_PEXELS_KEY=${PEXELS}\n`);
+    expect(env).toContain("WIZARD_STOCK_MODE=live\n");
+    expect(env).not.toContain("WIZARD_STOCK_PIXABAY_KEY");
+    expect(env).not.toContain(PIXABAY);
+    const sum = readFileSync(summary, "utf8");
+    expect(sum).toContain("## Пилот prod: фото со стоков");
+    expect(sum).toContain("- Pexels: действителен (HTTP 200)");
+    expect(sum).toContain("- Pixabay: недействителен (HTTP 400) — сток выключен в этом выкате");
+    expect(logs.some((l) => l.startsWith("::warning title=pilot::Pixabay: недействителен"))).toBe(true);
+    for (const k of [PEXELS, PIXABAY]) {
+      expect(visible(logs)).not.toContain(k);
+      expect(sum).not.toContain(k);
+    }
   });
 });
 

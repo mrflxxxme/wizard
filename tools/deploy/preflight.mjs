@@ -34,6 +34,9 @@ export const SECRET_NAMES = [
   "WIZARD_GHCR_JOB_TOKEN",
   "WIZARD_S3_ACCOUNT_KEY_ID",
   "WIZARD_S3_ACCOUNT_SECRET",
+  // B2-38: stock photo keys (GitHub secrets of the same name).
+  "PEXELS_API_KEY",
+  "PIXABAY_API_KEY",
 ];
 
 export const STATUS_TEXT = { ok: "ok", fail: "ошибка", skipped: "пропущено" };
@@ -234,6 +237,74 @@ export async function probeZai(vars, { fetch: f = fetch } = {}) {
     `не проверено: ${r.status === 0 ? noAnswer(r) : `HTTP ${r.status}`}; бесплатного метода проверки у Z.ai нет`,
     opt,
   );
+}
+
+// ---- Stock photos (B2-38) ----
+
+/** GitHub secrets of the stock keys by provider (pilot-reusable.yml passes them to the job under the same names). */
+export const STOCK_KEY_INPUTS = { pexels: "PEXELS_API_KEY", pixabay: "PIXABAY_API_KEY" };
+const STOCK_LABEL = { pexels: "Pexels", pixabay: "Pixabay" };
+/** Russian names of the verdicts (job summary, log). */
+export const STOCK_VERDICT_TEXT = {
+  valid: "действителен",
+  invalid: "недействителен",
+  missing: "нет ключа",
+  unchecked: "не проверен",
+};
+
+/**
+ * One free search per provider (no quota is spent beyond one request): Pexels — GET /v1/search with the key in the
+ * Authorization header; Pixabay — GET /api/?key=… (the key is in the URL: `call` never logs or returns the URL).
+ * Returns {provider, verdict: valid | invalid | missing | unchecked, http} — 0 when there was no answer. 429 (rate
+ * limit) counts as valid: the key was recognised. Pixabay answers 400 «Invalid or missing API key» for a bad key.
+ */
+export async function stockKeyVerdict(provider, key, { fetch: f = fetch } = {}) {
+  const k = String(key ?? "").trim();
+  if (!k) return { provider, verdict: "missing", http: 0 };
+  const r =
+    provider === "pexels"
+      ? await call(f, "https://api.pexels.com/v1/search?query=coffee&per_page=1", {
+          headers: { authorization: k },
+        })
+      : await call(f, `https://pixabay.com/api/?key=${encodeURIComponent(k)}&q=coffee&per_page=3`);
+  const list = provider === "pexels" ? r.json?.photos : r.json?.hits;
+  const bad = provider === "pexels" ? [401, 403] : [400, 401, 403];
+  let verdict = "unchecked";
+  if ((r.status === 200 && Array.isArray(list)) || r.status === 429) verdict = "valid";
+  else if (bad.includes(r.status)) verdict = "invalid";
+  return { provider, verdict, http: r.status, ...(r.status === 0 ? { error: r.error } : {}) };
+}
+
+/** Both providers, in the order of STOCK_KEY_INPUTS. */
+export function stockKeyVerdicts(vars, { fetch: f = fetch } = {}) {
+  return Promise.all(
+    Object.entries(STOCK_KEY_INPUTS).map(([p, name]) => stockKeyVerdict(p, vars[name], { fetch: f })),
+  );
+}
+
+/** «Pexels: действителен (HTTP 200)» — the verdict without the key or the URL. */
+export function stockVerdictLine(v) {
+  const how =
+    v.verdict === "missing" ? "" : v.http ? ` (HTTP ${v.http})` : ` (нет ответа: ${v.error ?? "сеть"})`;
+  return `${STOCK_LABEL[v.provider]}: ${STOCK_VERDICT_TEXT[v.verdict]}${how}`;
+}
+
+/** Rows of `check` (optional): the photos of the systems work without the stocks (theme graphics). */
+export async function probeStock(vars, { fetch: f = fetch } = {}) {
+  const mode = String(vars.WIZARD_STOCK_MODE || "off")
+    .trim()
+    .toLowerCase();
+  const note = ["live", "record"].includes(mode) ? "" : `; сейчас stock_mode=${mode}: ключ не используется`;
+  const opt = { required: false };
+  return (await stockKeyVerdicts(vars, { fetch: f })).map((v) => {
+    const title = `Фото: ключ ${STOCK_LABEL[v.provider]} (необязательно)`;
+    const name = STOCK_KEY_INPUTS[v.provider];
+    if (v.verdict === "missing")
+      return row(title, "skipped", `${name} не задан: без него фото этого стока не подбираются${note}`, opt);
+    const status = v.verdict === "valid" ? "ok" : v.verdict === "invalid" ? "fail" : "skipped";
+    const hint = v.verdict === "invalid" ? `: замените ${name} в секретах GitHub` : "";
+    return row(title, status, `${stockVerdictLine(v)}${hint}${note}`, opt);
+  });
 }
 
 // ---- Mail ----
@@ -701,6 +772,7 @@ export async function runPreflight({
       Promise.resolve(probeSpf(vars)),
       probeTelegram(vars, { fetch: f }),
     ])),
+    ...(await probeStock(vars, { fetch: f })),
   );
 
   const width = Math.max(...results.map((r) => r.title.length));

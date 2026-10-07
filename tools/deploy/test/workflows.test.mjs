@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PILOT_PIPELINE_INPUTS, PLATFORM_PASSTHROUGH } from "../pilot-secrets.mjs";
+import { PILOT_PIPELINE_INPUTS, PLATFORM_PASSTHROUGH, STOCK_KEY_ENV } from "../pilot-secrets.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const hasYaml = spawnSync("python3", ["-c", "import yaml"]).status === 0;
@@ -317,6 +317,8 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(job.env.WIZARD_GHCR_ANONYMOUS).toBe("1");
     for (const n of ["TWC_TOKEN", "WIZARD_STATE_PASSPHRASE", "CLOUDRU_API_KEY", "WIZARD_SMTP_PASSWORD"])
       expect(job.env[n]).toBe(gh(`secrets.${n}`));
+    // B2-38: the stock keys come from the secrets of the same name (pilot-secrets.mjs STOCK_KEY_ENV reads them).
+    for (const [input] of Object.values(STOCK_KEY_ENV)) expect(job.env[input]).toBe(gh(`secrets.${input}`));
     for (const n of ["WIZARD_PLATFORM_DOMAIN", "WIZARD_SYSTEMS_DOMAIN"])
       expect(job.env[n]).toBe(gh(`vars.${n}`));
     // Public repository, public logs: personal addresses come from secrets first (masked in the printed env).
