@@ -19,6 +19,7 @@ import { type CapabilityGap, type RecordDevelopmentRequest, reportCapabilityGapT
 import { piiCategories, piiNoticeText } from "../orchestrator/pii.js";
 import { DEFAULT_REGISTRY } from "./catalog.js";
 import { fallbackAnalysis, fallbackPlan } from "./fallback.js";
+import { withoutPhoneLogin } from "./login.js";
 import { type PlannerResult, runPlanner } from "./planner.js";
 import { answerLines, interviewMessages } from "./prompt.js";
 import {
@@ -124,6 +125,8 @@ export interface GoalInterviewDeps {
   onEvent?: AgentEventSink;
   newId?: () => string;
   recordDevelopmentRequest?: RecordDevelopmentRequest;
+  /** false — the org's tariff has no SMS login (F4): phone_otp of a plan becomes email_otp before the plan card. */
+  phoneLogin?: boolean;
 }
 
 export function newGoalSession(): GoalSession {
@@ -377,6 +380,14 @@ export class GoalInterview {
     compiled: CompileResult,
     text?: string,
   ): void {
+    if (this.deps.phoneLogin === false) {
+      const fixed = withoutPhoneLogin(plan, this.registry);
+      if (fixed.changed) {
+        plan = fixed.plan;
+        compiled = compilePlan(plan, this.registry, this.deps.appName ? { appName: this.deps.appName } : {});
+        if (compiled.ok) plan = compiled.plan;
+      }
+    }
     s.plan = plan;
     s.state = "planned";
     const errors = compiled.ok ? [] : compiled.errors;
