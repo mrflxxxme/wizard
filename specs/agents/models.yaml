@@ -119,7 +119,7 @@ routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, or
 unknown_class_default: T0
 
 routes:                # chain.T1 пробуется только если tier=T1 по алгоритму; chain.T0 — всегда запасной путь
-  interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 4000,  timeout_ms: 180000 }
+  interview:           { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 8000,  timeout_ms: 180000, note: "B2-41: 4000 не хватало рассуждающей модели на submit_goals (обрыв ответа на пробе D76 mvp-01)" }
   card:                { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000 }
   plan:                { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.2, max_tokens: 4000,  timeout_ms: 480000, note: "ТЗ харнесса v2 (submit_brief) — самый долгий ответ строителя: 300 с не хватало (замер 06.10.2026, средняя задержка 161 с)" }
   system_plan:         { role: planner,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, deepseek-v4-pro, kimi-k2.6] },                 temperature: 0.2, max_tokens: 8000,  timeout_ms: 300000, note: "B2-20: планировщик беты v2 (packages/agents/src/planner) — SystemPlan вызовом submit_plan, проверка validateSystemPlan и compilePlan, повтор с ошибками (≤ 2 + 1 после компиляции). reasoning high (call_policy.thinking)" }
