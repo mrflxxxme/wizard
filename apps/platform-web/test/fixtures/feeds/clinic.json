@@ -1527,6 +1527,12 @@
      "title": "Без входа панель цели недоступна",
      "goal": "visibility",
      "module": "reports"
+    },
+    {
+     "id": "GS-reports-5",
+     "title": "Владелец видит до трёх подсказок, что улучшить, и каждая ведёт к действию",
+     "goal": "visibility",
+     "module": "reports"
     }
    ],
    "custom": [],
@@ -1766,7 +1772,7 @@
    ],
    "warnings": [],
    "errors": [],
-   "fingerprint": "567ee0e22586b176a8ed5c4bb8cbbd20da9b3a067bc6e33b99a5fd5393e07789",
+   "fingerprint": "cf6ab8f65c9b7eea78d063d06713e11ba0c3c7170f3b4876477c099069c4878f",
    "outOfScope": [
     {
      "request": "Оплата лечения на сайте",

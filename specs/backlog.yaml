@@ -3262,7 +3262,7 @@ tasks:
     owner: frontend
     parallel_group: b2-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Владелец видит метрики своих целей за неделю и месяц и 1–3 подсказки, что улучшить"
@@ -3398,7 +3398,7 @@ tasks:
     owner: agents
     parallel_group: b2-b
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Направление — данные по схеме (без CSS); themeLint без ошибок"
