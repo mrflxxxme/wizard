@@ -2,7 +2,7 @@
 // modules fx_* for the application order, links, conflicts and module bugs. «Запись по слотам» is the real module
 // since B2-14 (its stand-in is gone).
 import type { ModuleManifest, SystemPlan } from "@wizard/appspec";
-import { MODULES, type ModuleDefinition, type ModuleRegistry } from "../src/index.js";
+import { MODULES, MODULES_WITH_CODE, type ModuleDefinition, type ModuleRegistry } from "../src/index.js";
 
 type FxOver = Partial<ModuleManifest> & { id: string };
 
@@ -212,6 +212,31 @@ export function landingLeadsPlan(): SystemPlan {
       },
     ],
   };
+}
+
+/**
+ * «Все модули» (B2-19): the dental clinic's landing with every module with code — catalog with durations, booking with
+ * packages writing a visit off, clients, deals, staff, the visitor's cabinet, issue of resources, members' materials
+ * and the goal panel. The CI row of the full plan (goals.browser.test.ts, gates.test.ts) and the time measure
+ * (goals-time.browser.test.ts) compile it.
+ */
+export function allModulesPlan(): SystemPlan {
+  const plan: SystemPlan = { ...landingLeadsPlan(), custom: [] };
+  plan.goals = [
+    ...plan.goals,
+    { id: "retention", statement: "Пациенты возвращаются и продлевают абонементы" },
+  ];
+  const params: Record<string, Record<string, unknown>> = {
+    catalog: { with_duration: true },
+    packages: { materials: true },
+  };
+  const own = new Map(plan.modules.map((m) => [m.id, m]));
+  plan.modules = MODULES_WITH_CODE.map((d) => {
+    const id = d.manifest.id;
+    const p = params[id];
+    return own.get(id) ?? (p ? { id, params: p } : { id });
+  });
+  return plan;
 }
 
 /** A plan of fixture modules only (with the visibility goal). */

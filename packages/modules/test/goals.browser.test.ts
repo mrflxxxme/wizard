@@ -3,7 +3,8 @@
 // every page at 390 px without horizontal scroll. «лендинг + заявки» end to end («посетитель оставил заявку →
 // владелец получил письмо»), every scenario of a ready module has a program, and every CI matrix row of the modules
 // with code passes with the scenarios of its own module (the other plan modules' scenarios run in their own rows;
-// «Абонементы» and «Учёт выдачи» — in goals-b218.browser.test.ts).
+// «Абонементы» and «Учёт выдачи» — in goals-b218.browser.test.ts); the row «все модули» (B2-19) runs the full plan with
+// every scenario of all 12 modules.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } fro
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { type CompileSuccess, compilePlan, MODULES_WITH_CODE, matrixPlan } from "../src/index.js";
-import { landingLeadsPlan, testRegistry } from "./fixtures.js";
+import { allModulesPlan, landingLeadsPlan, testRegistry } from "./fixtures.js";
 import { inShard } from "./shard.js";
 
 const hasChromium = (() => {
@@ -147,6 +148,22 @@ describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser
       for (const id of [...ids.map((x) => `G1-GOAL-${x}`), "G1-MOBILE-01"])
         expect(by(id)?.status, id).toBe("pass");
       expect(by("G1-GOAL-GS-leads-1")?.message_ru).toContain("390 px");
+    },
+    600_000,
+  );
+
+  // B2-19: the row «все модули» — the full plan with every goal scenario of all 12 modules (booking next to packages
+  // writing a visit off, the panel's tiles and hints next to every metric) and every page at 390 px. The third
+  // runner takes it: the first one runs the time measure of the same plan (goals-time.browser.test.ts).
+  test.skipIf(!inShard(2))(
+    "все модули: полный план — все сценарии целей и 390 px без горизонтальной прокрутки",
+    async () => {
+      const r = compiled(allModulesPlan());
+      expect(new Set(r.scenarios.map((s) => s.module))).toEqual(WITH_CODE);
+      const checks = await ready(r, r.scenarios);
+      const by = (id: string) => checks.find((c) => c.id === id);
+      for (const id of [...r.scenarios.map((s) => `G1-GOAL-${s.id}`), "G1-MOBILE-01"])
+        expect(by(id)?.status, id).toBe("pass");
     },
     600_000,
   );

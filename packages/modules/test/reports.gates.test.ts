@@ -129,13 +129,13 @@ const scenario: QaCheck = {
           fields: {
             period: "week",
             metrics: [
-              { id: "sales_paid", value: 3, previous: 1, capped: false },
-              { id: "sales_refunds", value: 25, previous: 50, capped: false },
-              { id: "sales_sum", value: 6000, previous: 4000, capped: false },
-              { id: "sales_avg", value: 2000, previous: 4000, capped: false },
-              { id: "sales_repeat", value: 33.3, previous: 0, capped: false },
-              { id: "sales_days", value: 3, previous: 2, capped: false },
-              { id: "sales_touched", value: 1, previous: 0, capped: false },
+              { id: "sales_paid", value: 3, previous: 1, base: 3, capped: false },
+              { id: "sales_refunds", value: 25, previous: 50, base: 4, capped: false },
+              { id: "sales_sum", value: 6000, previous: 4000, base: 3, capped: false },
+              { id: "sales_avg", value: 2000, previous: 4000, base: 3, capped: false },
+              { id: "sales_repeat", value: 33.3, previous: 0, base: 4, capped: false },
+              { id: "sales_days", value: 3, previous: 2, base: 3, capped: false },
+              { id: "sales_touched", value: 1, previous: 0, base: 1, capped: false },
             ],
             reports: [
               {
@@ -160,13 +160,13 @@ const scenario: QaCheck = {
           fields: {
             period: "month",
             metrics: [
-              { id: "sales_paid", value: 4, previous: 0, capped: false },
-              { id: "sales_refunds", value: 33.3, previous: null, capped: false },
-              { id: "sales_sum", value: 10000, previous: 0, capped: false },
-              { id: "sales_avg", value: 2500, previous: null, capped: false },
-              { id: "sales_repeat", value: 25, previous: null, capped: false },
-              { id: "sales_days", value: 5, previous: 0, capped: false },
-              { id: "sales_touched", value: 1, previous: 0, capped: false },
+              { id: "sales_paid", value: 4, previous: 0, base: 4, capped: false },
+              { id: "sales_refunds", value: 33.3, previous: null, base: 6, capped: false },
+              { id: "sales_sum", value: 10000, previous: 0, base: 4, capped: false },
+              { id: "sales_avg", value: 2500, previous: null, base: 4, capped: false },
+              { id: "sales_repeat", value: 25, previous: null, base: 6, capped: false },
+              { id: "sales_days", value: 5, previous: 0, base: 5, capped: false },
+              { id: "sales_touched", value: 1, previous: 0, base: 1, capped: false },
             ],
             reports: [
               {

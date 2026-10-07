@@ -525,7 +525,7 @@ describe("goal scenarios without a browser", () => {
     expect((await row(id))?.status).toBe("confirmed");
   });
 
-  test("the goal panel: scheduleLoad ({period} → {value, previous}) counts held slots against working slots", async () => {
+  test("the goal panel: scheduleLoad ({period} → {value, previous, base}) counts held slots against working slots", async () => {
     // Two visits of the last week (one of them cancelled — it holds nothing) and one of the week before it.
     const sys = await rt.systems.resolve(SLUG, "draft");
     if (!sys) throw new Error("no system");
@@ -554,7 +554,7 @@ describe("goal scenarios without a browser", () => {
     expect(res.status, await res.clone().text()).toBe(200);
     const { result } = (await res.json()) as { result: { value: number; previous: number } };
     // Every day 9:00–18:00 with a 60-minute step → 9 slots a day, 63 a week: 2 held now, 1 the week before.
-    expect(result).toEqual({ value: 3.2, previous: 1.6 });
+    expect(result).toEqual({ value: 3.2, previous: 1.6, base: 2 });
   });
 });
 

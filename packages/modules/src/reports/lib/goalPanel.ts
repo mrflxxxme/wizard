@@ -132,23 +132,39 @@ export function computeValue(c: MetricCompute, rows: readonly Row[]): number | n
   }
 }
 
-/** A data metric over the current and the previous period (rows by the metric's date field). */
+/**
+ * Events a value of the period stands on: ratio — the denominator rows, repeat_share — the rows with a `by` value,
+ * count, sum and avg — the matching rows. A share over a handful of events says little (hints need HINT_MIN_EVENTS).
+ */
+export function baseCount(c: MetricCompute, rows: readonly Row[]): number | null {
+  switch (c.kind) {
+    case "ratio":
+      return rows.filter((r) => matches(r, c.denominator)).length;
+    case "repeat_share":
+      return rows.filter((r) => r[c.by] !== null && r[c.by] !== undefined && r[c.by] !== "").length;
+    case "function":
+      return null;
+    default:
+      return rows.filter((r) => matches(r, c.where)).length;
+  }
+}
+
+/** A data metric over the current and the previous period (rows by the metric's date field); base — of the current. */
 export function metricValues(
   c: MetricCompute,
   rows: readonly Row[],
   w: Windows,
-): { value: number | null; previous: number | null } {
-  if (c.kind === "function") return { value: null, previous: null };
+): { value: number | null; previous: number | null; base: number | null } {
+  if (c.kind === "function") return { value: null, previous: null, base: null };
   const field = c.dateField;
+  const current = rows.filter((r) => inSpan(r, field, w.current));
   return {
-    value: computeValue(
-      c,
-      rows.filter((r) => inSpan(r, field, w.current)),
-    ),
+    value: computeValue(c, current),
     previous: computeValue(
       c,
       rows.filter((r) => inSpan(r, field, w.previous)),
     ),
+    base: baseCount(c, current),
   };
 }
 
@@ -294,15 +310,15 @@ export function goalSummary(
 
 /**
  * A hint «что улучшить» of the goal panel (B2-27): the reports module picks the rules that fit the plan when it
- * compiles; the page checks their conditions on the month's metrics. `when`: gte / lte — the value reaches the bound;
- * drop — the value fell by at least `share` (0–1) against the period before, which had at least `min`.
+ * compiles; the page checks their conditions on the month's metrics. `when`: gte / lte — the value reaches the bound
+ * (with `min` — over at least that many events of the period); drop — the value fell by at least `share` (0–1) against the period before, which had at least `min`.
  */
 export interface HintRule {
   id: string;
   goal: string;
   metric: string;
   unit: MetricUnit;
-  when: { op: "gte" | "lte"; value: number } | { op: "drop"; share: number; min: number };
+  when: { op: "gte" | "lte"; value: number; min?: number } | { op: "drop"; share: number; min: number };
   title: string;
   /** May name the values: {value} and {previous} (formatted with the metric's unit). */
   text: string;
@@ -319,22 +335,32 @@ export interface Hint {
   action: { label: string; href: string; external: boolean };
 }
 
-/** The rule's condition on the metric's values (an unknown value never fires). */
-export function hintFires(
-  rule: HintRule,
-  v: { value: number | null; previous: number | null } | undefined,
-): boolean {
+/**
+ * Fewest events of the period a share hint goes by (modules.yaml#manifest.metrics.hints, B2-19): with less data a
+ * share says little — two cancellations of three bookings are not «many cancellations».
+ */
+export const HINT_MIN_EVENTS = 10;
+
+/** The month's value of a metric as the hints read it: base — the events of the period (unknown — null or absent). */
+export type HintValue = { value: number | null; previous: number | null; base?: number | null };
+
+/**
+ * The rule's condition on the metric's values (an unknown value never fires); a bound with `min` fires only over at
+ * least `min` events of the period (an unknown base never fires either).
+ */
+export function hintFires(rule: HintRule, v: HintValue | undefined): boolean {
   if (!v || v.value === null) return false;
   const w = rule.when;
   if (w.op === "drop")
     return v.previous !== null && v.previous >= w.min && v.value <= v.previous * (1 - w.share);
+  if (w.min !== undefined && !(typeof v.base === "number" && v.base >= w.min)) return false;
   return w.op === "gte" ? v.value >= w.value : v.value <= w.value;
 }
 
 /** Up to `max` hints in the rules' order (the reports module sorts them by the plan's goals); one per fix. */
 export function pickHints(
   rules: readonly HintRule[],
-  values: Readonly<Record<string, { value: number | null; previous: number | null } | undefined>>,
+  values: Readonly<Record<string, HintValue | undefined>>,
   max = 3,
 ): Hint[] {
   const out: Hint[] = [];

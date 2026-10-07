@@ -8,7 +8,7 @@ import { ownerRole, plain, textOf } from "./shared.js";
 const KPI = '[data-testid^="wz-stats-kpi-"]';
 const DAY = 86_400_000;
 
-type Metric = { id: string; value: number | null; previous: number | null };
+type Metric = { id: string; value: number | null; previous: number | null; base?: number | null };
 type Report = {
   entity: string;
   total: number;
@@ -24,6 +24,17 @@ function panelPage(t: GoalRun): string {
   );
   if (!page) return t.fail("у владельца нет панели цели");
   return page.route;
+}
+
+/**
+ * Tile ids of the panel page (its TILES list): the panel shows 3–6 tiles — metrics of the plan's goals first — while
+ * goalMetrics computes every metric of the plan (hints and digests use the rest). Null when the page has no such list.
+ */
+function panelTiles(t: GoalRun, route: string): string[] | null {
+  const page = (t.spec.pages ?? []).find((p) => p.route === route);
+  const src = page ? (t.files.get(page.file) ?? "") : "";
+  const list = /const TILES: Tile\[\] = \[([\s\S]*?)\n\];/.exec(src)?.[1];
+  return list === undefined ? null : [...list.matchAll(/\{ id: "([^"]+)"/g)].map((m) => m[1] as string);
 }
 
 /** The panel's numbers as the current actor asks them. */
@@ -55,7 +66,8 @@ const metricPerGoal: GoalProgram = async (t) => {
   const data = await goalMetrics(t, "month");
   if (data.status !== 200) return t.fail(`показатели панели не считаются (HTTP ${data.status})`);
   const now = Date.now();
-  await t.open(panelPage(t));
+  const route = panelPage(t);
+  await t.open(route);
   await t.page
     .locator(KPI)
     .first()
@@ -66,7 +78,11 @@ const metricPerGoal: GoalProgram = async (t) => {
   if (data.metrics.length === 0) {
     await t.expectText("Показателей пока нет");
   }
+  // The panel's tiles (B2-19): a plan with many modules has more metrics in goalMetrics than the 6 tiles of the panel.
+  const tiles = panelTiles(t, route);
+  if (tiles && data.metrics.length > 0 && tiles.length === 0) t.fail("на панели нет ни одного показателя");
   for (const m of data.metrics) {
+    if (tiles && !tiles.includes(m.id)) continue;
     const sel = `[data-testid="wz-stats-kpi-${m.id}"]`;
     if ((await t.page.locator(sel).count()) === 0) t.fail(`на панели нет показателя ${m.id}`);
     const shown = await kpiNumber(t, sel);
@@ -185,10 +201,11 @@ export type PanelHintRule = {
   id: string;
   metric: string;
   fix: string;
-  when: { op: "gte" | "lte"; value: number } | { op: "drop"; share: number; min: number };
+  when: { op: "gte" | "lte"; value: number; min?: number } | { op: "drop"; share: number; min: number };
   action: { label: string; href: string; external: boolean };
 };
-type MonthValue = { value: number | null; previous: number | null };
+/** base — the events of the month the value stands on (null — unknown). */
+type MonthValue = { value: number | null; previous: number | null; base: number | null };
 
 /** The hint rules of the panel page source. */
 export function panelHints(source: string): PanelHintRule[] {
@@ -237,9 +254,9 @@ export function expectedHints(
     const fires =
       w.op === "drop"
         ? v.previous !== null && v.previous >= w.min && v.value <= v.previous * (1 - w.share)
-        : w.op === "gte"
-          ? v.value >= w.value
-          : v.value <= w.value;
+        : // A share with `min` goes by at least that many events of the month (B2-19).
+          (w.min === undefined || (v.base !== null && v.base >= w.min)) &&
+          (w.op === "gte" ? v.value >= w.value : v.value <= w.value);
     if (!fires) continue;
     fixed.add(r.fix);
     out.push(r.id);
@@ -252,11 +269,12 @@ async function monthValues(t: GoalRun, source: string): Promise<Record<string, M
   const data = await goalMetrics(t, "month");
   if (data.status !== 200) return t.fail(`показатели панели не считаются (HTTP ${data.status})`);
   const values: Record<string, MonthValue> = {};
-  for (const m of data.metrics) values[m.id] = { value: m.value, previous: m.previous };
+  for (const m of data.metrics) values[m.id] = { value: m.value, previous: m.previous, base: m.base ?? null };
   for (const [id, fn] of monthFunctions(source)) {
     const r = await t.api("POST", `/api/fn/${fn}`, { args: { period: "month" } });
-    const res = (r.body as { result?: { value?: number | null; previous?: number | null } } | null)?.result;
-    if (res) values[id] = { value: res.value ?? null, previous: res.previous ?? null };
+    const res = (r.body as { result?: Partial<MonthValue> } | null)?.result;
+    if (res)
+      values[id] = { value: res.value ?? null, previous: res.previous ?? null, base: res.base ?? null };
   }
   return values;
 }
@@ -302,7 +320,8 @@ const hintsLeadToActions: GoalProgram = async (t) => {
     if (!rule || href !== rule.action.href)
       return t.fail(`у подсказки ${id} ссылка «${href}», а не на действие правила`);
     if (rule.action.external) {
-      if (!/^https:\/\//.test(href) || (await link.getAttribute("target")) !== "_blank")
+      // The system's page on the platform (platformSystemUrl; http on a local platform) or its main page.
+      if (!/^https?:\/\//.test(href) || (await link.getAttribute("target")) !== "_blank")
         t.fail(`подсказка ${id}: ссылка на платформу не открывается в новой вкладке`, href);
     } else if (!href.startsWith("/")) t.fail(`подсказка ${id}: ссылка «${href}» не ведёт в кабинет`);
     else inside ??= href;

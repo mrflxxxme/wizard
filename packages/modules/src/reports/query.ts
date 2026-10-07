@@ -17,7 +17,14 @@ export interface GoalMetricsResult {
   /** Current period [from, to) as ISO instants. */
   from: string;
   to: string;
-  metrics: { id: string; value: number | null; previous: number | null; capped: boolean }[];
+  /** base — events of the current period the value stands on (null — unknown; hints need HINT_MIN_EVENTS). */
+  metrics: {
+    id: string;
+    value: number | null;
+    previous: number | null;
+    base: number | null;
+    capped: boolean;
+  }[];
   reports: {
     entity: string;
     total: number;
