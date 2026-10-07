@@ -1,0 +1,145 @@
+# B2-38: the stock keys of the build pipeline (GitHub secrets PEXELS_API_KEY, PIXABAY_API_KEY) checked and used from CI
+# without the server (docs/ops/eval-d76.md «Стоки из CI»; tools/deploy/stock-ci.mjs). Verdicts are annotations (the
+# coordinator reads them through the GitHub API; the job summary and artifacts are not used):
+#   check  — one free search per stock (preflight stockKeyVerdict);
+#   probe  — the photos stage of builder v2 with the real keys on 3–5 mvp briefs: no models, no file storage, at most
+#            20 searches and 10 downloads; numbers only, plus the same lines in the issue «Стоки: проверка из CI»;
+#   record — the Pexels search answers of the fixture dictionary into tools/fixtures/stock/pexels.recorded.json
+#            (metadata only, keys scrubbed; Pixabay is not kept by its API terms) and a PR stock-record/<run> → main.
+# Nothing here touches the pilot server, so there is no PROD confirmation. Keys reach only the env of the step that uses
+# them, and that step masks them first.
+name: stock
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "check — проверить ключи; probe — проба подбора фото на брифах mvp; record — записать ответы Pexels в фикстуры и открыть PR"
+        type: choice
+        options: [check, probe, record]
+        default: check
+      briefs:
+        description: "Только для probe: 3–5 брифов mvp через запятую (пусто — mvp-01, 02, 03, 04, 10)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: inputs.action == 'check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # preflight.mjs needs no packages: no install.
+      - name: Stock keys
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: |
+          for v in "$PEXELS_API_KEY" "$PIXABAY_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/deploy/stock-ci.mjs check
+
+  probe:
+    if: inputs.action == 'probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      - name: Probe of the photos stage
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          STOCK_PROBE_BRIEFS: ${{ inputs.briefs }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for v in "$PEXELS_API_KEY" "$PIXABAY_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/deploy/stock-ci.mjs probe
+
+  record:
+    if: inputs.action == 'record'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Only from main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Стоки: запись фикстур::запись запускается только из main (сейчас $REF)"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      # Pixabay answers are never recorded: only the Pexels key reaches this step.
+      - name: Record the Pexels answers
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          for v in "$PEXELS_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/deploy/stock-ci.mjs record
+      - name: Fixture tests on the recording
+        run: pnpm exec vitest run packages/agents/test/stock.test.ts apps/platform-api/test/stock-photos.test.ts
+      - name: Pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Стоки: запись фикстур"
+          changed=$(git status --porcelain --untracked-files=all -- tools/fixtures/stock)
+          if [ -z "$changed" ]; then
+            echo "::notice title=$title::без изменений — ответы Pexels те же, PR не нужен"
+            exit 0
+          fi
+          if [ "$(git status --porcelain --untracked-files=all)" != "$(git status --porcelain --untracked-files=all -- tools/fixtures/stock/pexels.recorded.json)" ]; then
+            echo "::error title=$title::изменилось что-то кроме pexels.recorded.json — PR не открыт"
+            exit 1
+          fi
+          branch="stock-record/${RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add tools/fixtures/stock/pexels.recorded.json
+          git commit -q -m "B2-38: записанные ответы Pexels для фикстур стоков (запуск ${RUN_ID})"
+          git push -q origin "$branch"
+          body="Записанные ответы поиска Pexels для словаря запросов tools/fixtures/stock/gen.mjs: только метаданные (id, размеры, автор, ссылки, адреса файлов), без картинок, ключи вычищены. Pixabay не записывается: по условиям его API ответы кешируются на 24 часа, а не хранятся. Тесты фикстур на записи прошли в запуске ${RUN_URL}.
+
+          PR открыт токеном GitHub Actions, поэтому проверки ci на нём сами не запускаются: закройте и снова откройте PR (или добавьте коммит), чтобы прошёл ci."
+          if ! pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls" -f title="B2-38: записанные ответы Pexels для фикстур стоков" -f head="$branch" -f base=main -f body="$body" --jq .number); then
+            echo "::error title=$title::ветка $branch отправлена, но PR не создан: разрешите GitHub Actions создавать pull request (Settings → Actions → General) или откройте PR из ветки"
+            exit 1
+          fi
+          echo "::notice title=$title::PR #${pr} из ${branch} в main"

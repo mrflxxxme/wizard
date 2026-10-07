@@ -3,7 +3,7 @@
 // in M2-20; without them the landings keep the theme graphic) and copies the chosen files into the platform photo
 // library of the shared file storage (runtime storeLibraryPhoto: WebP variants, no EXIF). WIZARD_STOCK_MODE:
 // fixture — recorded answers of tools/fixtures/stock, no network (default unless WIZARD_LLM_MODE is live/record);
-// live; record — live plus recording of the search answers; off — no photos.
+// live; record — live plus recording of the Pexels search answers (metadata, keys scrubbed); off — no photos.
 // Keys: the pilot release passes the founder's keys as env (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY, only with
 // stock_mode=live, tools/deploy/pilot-secrets.mjs pilotStockEnv); they win over the SecretStore values, which stay the
 // way for a hand-added key. Nothing is written to the store: env changes with the next release, removal included.
@@ -104,7 +104,9 @@ export function createPhotoHost(o: PhotoHostOptions): PhotoHost | undefined {
   const live = stockEgressFetch(o.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init)));
   return {
     stock: createStockClient({
-      fetch: o.mode === "record" ? recordingStockFetch(live) : live,
+      // record: Pexels search metadata only, keys scrubbed (tools/fixtures/stock/pexels.recorded.json).
+      fetch:
+        o.mode === "record" ? recordingStockFetch(live, undefined, { secrets: Object.values(keys) }) : live,
       keys,
       cache: sharedCache,
     }),

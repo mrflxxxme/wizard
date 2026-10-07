@@ -1,7 +1,7 @@
 // L3-38 / M2-06: deploys run only on the self-hosted runner in Cloud.ru with short-lived credentials; prod only by the
 // repository owner from main; both workflows are no-ops until the founder enables them.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -343,5 +343,181 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(Object.keys(images.on.workflow_call.inputs)).toEqual(["sha", "ghcr"]);
     expect(images.doc.concurrency.group).toBe(`images-${gh("github.workflow")}-${gh("github.ref")}`);
     expect(JSON.stringify(images.doc.jobs.build.steps)).toContain("imagetools inspect");
+  });
+});
+
+describe.skipIf(!hasYaml)("stock workflow (B2-38: the stock keys from CI)", () => {
+  const STOCK_SECRETS = ["PEXELS_API_KEY", "PIXABAY_API_KEY"];
+  const keyNames = (step) =>
+    STOCK_SECRETS.filter((n) => JSON.stringify(step.env ?? {}).includes(`secrets.${n}`));
+
+  it("workflow_dispatch with action check | probe | record, one run at a time, a job per action", () => {
+    const { doc, on } = load("stock.yml");
+    expect(Object.keys(on)).toEqual(["workflow_dispatch"]);
+    expect(on.workflow_dispatch.inputs.action).toMatchObject({
+      type: "choice",
+      options: ["check", "probe", "record"],
+      default: "check",
+    });
+    expect(on.workflow_dispatch.inputs.briefs).toMatchObject({ type: "string", default: "" });
+    expect(doc.concurrency).toEqual({ group: "stock", "cancel-in-progress": false });
+    expect(doc.permissions).toEqual({ contents: "read" });
+    expect(Object.keys(doc.jobs)).toEqual(["check", "probe", "record"]);
+    for (const [name, job] of Object.entries(doc.jobs)) {
+      expect(job.if).toBe(`inputs.action == '${name}'`);
+      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expect(job["timeout-minutes"]).toBeLessThanOrEqual(15);
+      // No PROD confirmation, no environment: nothing here touches the server.
+      expect(job.environment).toBeUndefined();
+    }
+    // Minimal permissions: issues only for the probe's comment, contents/PR write only for the recording.
+    expect(doc.jobs.check.permissions).toEqual({ contents: "read" });
+    expect(doc.jobs.probe.permissions).toEqual({ contents: "read", issues: "write" });
+    expect(doc.jobs.record.permissions).toEqual({ contents: "write", "pull-requests": "write" });
+  });
+
+  it("keys only in the env of the step that uses them, masked first; never in a script, a job env or an install", () => {
+    const { doc, text } = load("stock.yml");
+    expect(doc.env).toBeUndefined();
+    const used = {};
+    for (const [name, job] of Object.entries(doc.jobs)) {
+      expect(job.env, name).toBeUndefined();
+      for (const step of job.steps) {
+        expect(String(step.run ?? ""), `${name}: ${step.name}`).not.toContain("secrets.");
+        expect(JSON.stringify(step.with ?? {})).not.toContain("secrets.");
+        const keys = keyNames(step);
+        if (keys.length === 0) continue;
+        used[name] = keys;
+        for (const k of keys) expect(step.env[k]).toBe(gh(`secrets.${k}`));
+        const lines = step.run.trim().split("\n");
+        // The first line masks every key of the step before anything runs.
+        expect(lines[0]).toBe(
+          `for v in ${keys.map((k) => `"$${k}"`).join(" ")}; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`,
+        );
+        expect(lines.slice(1).join("\n")).toMatch(/^node tools\/deploy\/stock-ci\.mjs (check|probe|record)$/);
+      }
+    }
+    // The recording gets only the Pexels key (Pixabay answers are never kept).
+    expect(used).toEqual({ check: STOCK_SECRETS, probe: STOCK_SECRETS, record: ["PEXELS_API_KEY"] });
+    // Installation never sees a key.
+    for (const job of Object.values(doc.jobs))
+      for (const step of job.steps.filter((s) => String(s.run ?? "").includes("pnpm install")))
+        expect(step.env).toBeUndefined();
+    expect(text.match(/secrets\.[A-Z_]+/g).sort()).toEqual(
+      ["PEXELS_API_KEY", "PEXELS_API_KEY", "PEXELS_API_KEY", "PIXABAY_API_KEY", "PIXABAY_API_KEY"].map(
+        (n) => `secrets.${n}`,
+      ),
+    );
+  });
+
+  it("the masking line hides each key and skips an empty one", () => {
+    const line = `for v in "$PEXELS_API_KEY" "$PIXABAY_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`;
+    const r = spawnSync("bash", ["-e", "-c", line], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, PEXELS_API_KEY: "px-1", PIXABAY_API_KEY: "" },
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("::add-mask::px-1\n");
+  });
+
+  it("probe: briefs and the issue token reach the script as env; record: main only, tests, then the PR", () => {
+    const { doc } = load("stock.yml");
+    const probe = doc.jobs.probe.steps.find((s) => s.name === "Probe of the photos stage");
+    expect(probe.env).toMatchObject({
+      GITHUB_TOKEN: gh("github.token"),
+      STOCK_PROBE_BRIEFS: gh("inputs.briefs"),
+    });
+    expect(probe.run).not.toContain("inputs.");
+    const names = doc.jobs.record.steps.map((s) => s.name ?? s.uses ?? s.run);
+    expect(names).toEqual([
+      "Only from main",
+      "actions/checkout@v4",
+      "pnpm/action-setup@v4",
+      "actions/setup-node@v4",
+      "pnpm install --frozen-lockfile",
+      "Record the Pexels answers",
+      "Fixture tests on the recording",
+      "Pull request",
+    ]);
+    const only = doc.jobs.record.steps[0];
+    expect(only.env.REF).toBe(gh("github.ref"));
+    expect(only.run).toContain('"$REF" != "refs/heads/main"');
+    const tests = doc.jobs.record.steps.find((s) => s.name === "Fixture tests on the recording");
+    expect(tests.run).toContain("packages/agents/test/stock.test.ts");
+    const pr = doc.jobs.record.steps.find((s) => s.name === "Pull request");
+    expect(pr.env.GH_TOKEN).toBe(gh("github.token"));
+    expect(Object.keys(pr.env)).not.toContain("PEXELS_API_KEY");
+  });
+
+  /** The PR step's shell in a scratch clone (a bare «origin», a fake gh that prints the PR number). */
+  const prStep = (prepare, ghScript = "echo 17") => {
+    const run = load("stock.yml").doc.jobs.record.steps.find((s) => s.name === "Pull request").run;
+    const dir = mkdtempSync(join(tmpdir(), "wizard-stock-pr-"));
+    const git = (cwd, ...a) => {
+      const r = spawnSync("git", a, { cwd, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(r.stderr);
+      return r.stdout;
+    };
+    try {
+      git(dir, "init", "-q", "--bare", "-b", "main", "origin.git");
+      git(dir, "clone", "-q", join(dir, "origin.git"), "work");
+      const work = join(dir, "work");
+      git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init");
+      git(work, "push", "-q", "origin", "HEAD:main");
+      mkdirSync(join(work, "tools/fixtures/stock"), { recursive: true });
+      prepare(work);
+      mkdirSync(join(dir, "bin"));
+      writeFileSync(
+        join(dir, "bin", "gh"),
+        `#!/bin/sh\necho "$@" > "${join(dir, "gh-args")}"\n${ghScript}\n`,
+        {
+          mode: 0o755,
+        },
+      );
+      const r = spawnSync("bash", ["-e", "-c", run], {
+        cwd: work,
+        encoding: "utf8",
+        env: {
+          PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+          HOME: dir,
+          GITHUB_REPOSITORY: "o/r",
+          RUN_ID: "42",
+          RUN_URL: "https://run/42",
+          GH_TOKEN: "t",
+        },
+      });
+      const branches = git(join(dir, "origin.git"), "branch", "--list");
+      let args = "";
+      try {
+        args = readFileSync(join(dir, "gh-args"), "utf8");
+      } catch {}
+      return { code: r.status, out: r.stdout + r.stderr, branches, args };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("PR step: no change → «без изменений»; the recording → branch stock-record/<run> and a PR into main", () => {
+    const recorded = (w) => writeFileSync(join(w, "tools/fixtures/stock/pexels.recorded.json"), "{}\n");
+    const same = prStep(() => {});
+    expect(same.code).toBe(0);
+    expect(same.out).toContain("::notice title=Стоки: запись фикстур::без изменений");
+    expect(same.branches).not.toContain("stock-record");
+    const rec = prStep(recorded);
+    expect(rec.code, rec.out).toBe(0);
+    expect(rec.out).toContain("::notice title=Стоки: запись фикстур::PR #17 из stock-record/42 в main");
+    expect(rec.branches).toContain("stock-record/42");
+    expect(rec.args).toContain("api repos/o/r/pulls");
+    expect(rec.args).toContain("head=stock-record/42");
+    expect(rec.args).toContain("base=main");
+    const other = prStep((w) => {
+      recorded(w);
+      writeFileSync(join(w, "other.txt"), "x");
+    });
+    expect(other.code).toBe(1);
+    expect(other.out).toContain("изменилось что-то кроме pexels.recorded.json");
+    const refused = prStep(recorded, "exit 1");
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain("ветка stock-record/42 отправлена, но PR не создан");
   });
 });

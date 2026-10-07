@@ -3,6 +3,9 @@
 // with author and links, downloads go only to the stock's image hosts (https, no redirects, size and type checked),
 // keys never appear in errors, the photos stage records the copy, source, author and licence of every picture, and
 // without a stock (no key, errors, time over) the landing keeps the theme graphic — the stage never fails.
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SystemPlan } from "@wizard/appspec";
 import { compilePlan, photoSlots } from "@wizard/modules";
 import { describe, expect, test } from "vitest";
@@ -13,10 +16,13 @@ import {
   fixtureStockFetch,
   nicheTerms,
   type PhotoHost,
+  recordingStockFetch,
   runPhotosStage,
   STOCK_LICENSES,
   StockCache,
   type StockHit,
+  sanitizeStockAnswer,
+  scrubSecrets,
   stockQuery,
   styleTerms,
 } from "../src/builder/index.js";
@@ -184,6 +190,71 @@ describe("stock client (recorded answers, no network)", () => {
     expect((await c(async () => ok(small)).download(hit("https://images.pexels.com/a.jpg"))).byteLength).toBe(
       10,
     );
+  });
+
+  test("record mode keeps Pexels metadata without keys; the recording replays offline with the same picks", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "wz-stock-rec-"));
+    try {
+      const KEY = "PEXELS-RECORD-KEY-42";
+      // Answers in the shape of the live Pexels API (no `wz`, real-looking hosts), a key slipped into a field.
+      const live = async (u: string) => {
+        const url = new URL(u);
+        if (url.hostname !== "api.pexels.com") return fixtureStockFetch()(u);
+        const o = url.searchParams.get("orientation") ?? "landscape";
+        const [width, height, shift] =
+          o === "portrait" ? [3000, 4500, 100] : o === "square" ? [4000, 4000, 200] : [6000, 4000, 0];
+        return Response.json({
+          page: 1,
+          per_page: 15,
+          total_results: 500,
+          next_page: `https://api.pexels.com/v1/search/?page=2&key=${KEY}`,
+          photos: Array.from({ length: 15 }, (_, i) => ({
+            id: 7_000_000 + i + shift,
+            width,
+            height,
+            url: `https://www.pexels.com/photo/real-${i}/`,
+            photographer: `Photographer ${i}`,
+            photographer_url: `https://www.pexels.com/@p${i}`,
+            alt: `alt ${KEY}`,
+            src: {
+              original: `https://images.pexels.com/photos/${7_000_000 + i}/pexels-photo.jpeg`,
+              large2x: `https://images.pexels.com/photos/${7_000_000 + i}/pexels-photo.jpeg?auto=compress&w=940`,
+            },
+          })),
+        });
+      };
+      const plan = basePlan("барбершоп", "тёплый свет");
+      const keys = { pexels: KEY };
+      const recordHost = {
+        stock: createStockClient({ fetch: recordingStockFetch(live, dir, { secrets: [KEY] }), keys }),
+        store: memoryLibrary(),
+      };
+      const recorded = await runPhotosStage({ plan, host: recordHost });
+      expect(recorded.picked).toBe(photoSlots(plan).length);
+      expect(readdirSync(dir)).toEqual(["pexels.recorded.json"]);
+      const text = readFileSync(join(dir, "pexels.recorded.json"), "utf8");
+      expect(text).not.toContain(KEY);
+      expect(text).not.toMatch(/next_page|"alt"/);
+      // Replay: the same picks without the network; pictures in the photo's proportions.
+      const replay = await runPhotosStage({
+        plan,
+        host: {
+          stock: createStockClient({ fetch: fixtureStockFetch(dir), keys: FIXTURE_KEYS }),
+          store: memoryLibrary(),
+        },
+      });
+      const ids = (r: typeof replay) => r.plan.design.photos?.map((p) => `${p.provider}:${p.stockId}`);
+      expect(ids(replay)).toEqual(ids(recorded));
+      const top = replay.plan.design.photos?.find((p) => p.slot === "top");
+      expect(top && top.height > top.width).toBe(true);
+      expect(sanitizeStockAnswer("pixabay", { hits: [] })).toBeNull();
+      expect(scrubSecrets({ u: `https://x/?q=1&key=${KEY}`, t: `a${KEY}b` }, [KEY])).toEqual({
+        u: "https://x/?q=1",
+        t: "ab",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("fixture pictures are deterministic PNGs of the asked size", () => {

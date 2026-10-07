@@ -3,11 +3,13 @@
 // (GET /v1/search) and the Pixabay API (GET /api/), keyed «query|orientation» as packages/agents/src/stock/fixtures.ts
 // reads them; «*» answers any other query. The answers are synthetic (the platform keys come with M2-20): authors and
 // pages are marked as fixtures, image URLs carry `wz=<w>x<h>` — the fixture fetch draws a deterministic picture of that
-// size instead of downloading. A live recording (WIZARD_STOCK_MODE=record) overwrites the keys it searched.
+// size instead of downloading. A live recording (WIZARD_STOCK_MODE=record, or the record action of the stock workflow —
+// tools/deploy/stock-ci.mjs) writes the Pexels answers of QUERIES into pexels.recorded.json, which wins over these;
+// this generator never touches that file.
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const SIZES = {
@@ -18,8 +20,8 @@ const SIZES = {
 // Claimed sizes of the originals (the API reports the full photo; the fixture file is smaller).
 const CLAIMED = { landscape: [5472, 3648], portrait: [3648, 5472], square: [4000, 4000] };
 
-/** Queries the tests and the demo builds ask (stock/query.ts for their niches and styles). */
-const QUERIES = [
+/** Queries the tests and the demo builds ask (stock/query.ts for their niches and styles); the dictionary of record. */
+export const QUERIES = [
   ["dental clinic daylight", "landscape"],
   ["dentist with patient daylight", "landscape"],
   ["dental care daylight", "landscape"],
@@ -80,19 +82,25 @@ function pixabay(query, orientation, count = 12) {
   return { total: count, totalHits: count, hits };
 }
 
-const out = { pexels: {}, pixabay: {} };
-for (const [q, o] of QUERIES) {
-  out.pexels[`${q}|${o}`] = pexels(q, o);
-  out.pixabay[`${q}|${o}`] = pixabay(q, o);
-}
 // «*»: landscape photos first, then portrait and square ones (a collage asks for all three).
 const mixed = (f, list) =>
   ["landscape", "portrait", "square"].map((o, i) => f("any", o, [16, 4, 4][i])).reduce((a, x) => ({
     ...a,
     [list]: [...a[list], ...x[list]],
   }));
-out.pexels["*"] = { ...mixed(pexels, "photos"), per_page: 24, total_results: 24 };
-out.pixabay["*"] = { ...mixed(pixabay, "hits"), total: 24, totalHits: 24 };
-for (const p of ["pexels", "pixabay"])
-  writeFileSync(join(dir, `${p}.json`), `${JSON.stringify(out[p], null, 1)}\n`);
-console.log(`stock fixtures: ${QUERIES.length} queries + «*» for pexels and pixabay`);
+
+/** Writes the synthetic answers of both providers. */
+export function generate() {
+  const out = { pexels: {}, pixabay: {} };
+  for (const [q, o] of QUERIES) {
+    out.pexels[`${q}|${o}`] = pexels(q, o);
+    out.pixabay[`${q}|${o}`] = pixabay(q, o);
+  }
+  out.pexels["*"] = { ...mixed(pexels, "photos"), per_page: 24, total_results: 24 };
+  out.pixabay["*"] = { ...mixed(pixabay, "hits"), total: 24, totalHits: 24 };
+  for (const p of ["pexels", "pixabay"])
+    writeFileSync(join(dir, `${p}.json`), `${JSON.stringify(out[p], null, 1)}\n`);
+  console.log(`stock fixtures: ${QUERIES.length} queries + «*» for pexels and pixabay`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) generate();
