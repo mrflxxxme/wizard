@@ -198,5 +198,35 @@ export function normalizePlanArgs(raw: unknown): unknown {
   const out: Obj = {};
   for (const [k, v] of Object.entries(inner)) if (PLAN_KEYS.has(k) && v !== null) out[k] = v;
   if (out.version !== 1) delete out.version;
+  if (Array.isArray(out.modules)) out.modules = out.modules.map(fixExtraFields);
   return out;
+}
+
+const IDENT = /^[a-z][a-z0-9_]{0,39}$/;
+
+/**
+ * B2-41 (mvp-07 of the D76 measurement): extra fields of a module's params (type «fields») named in Russian and without
+ * a label — the Russian name becomes the label, the name becomes field_<n>. Valid fields are kept as they are.
+ */
+function fixExtraFields(m: unknown): unknown {
+  if (!isObj(m) || !isObj(m.params)) return m;
+  const params: Obj = { ...m.params };
+  for (const [k, v] of Object.entries(params)) {
+    if (!Array.isArray(v) || !v.every((f) => isObj(f) && typeof f.name === "string" && "type" in f)) continue;
+    const taken = new Set(v.map((f) => (f as Obj).name as string).filter((n) => IDENT.test(n)));
+    params[k] = v.map((f, i) => {
+      const field = f as Obj;
+      const name = (field.name as string).trim();
+      if (IDENT.test(name)) return typeof field.label === "string" ? field : { ...field, label: name };
+      let n = i + 1;
+      while (taken.has(`field_${n}`)) n += 1;
+      taken.add(`field_${n}`);
+      return {
+        ...field,
+        name: `field_${n}`,
+        label: typeof field.label === "string" ? field.label : clip(name, 60),
+      };
+    });
+  }
+  return { ...m, params };
 }
