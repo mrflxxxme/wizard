@@ -11,6 +11,7 @@ import {
   librarySections,
   matrixPlan,
   SECTION_RENDERERS,
+  sectionBands,
 } from "../src/index.js";
 import { testRegistry } from "./fixtures.js";
 
@@ -92,6 +93,24 @@ describe("section library (B2-35)", () => {
       expect(r.spec.theme?.preset).toBe(row.theme);
     },
   );
+
+  test("bands of the design rhythm (B2-37): every 2nd body section, airy — every 3rd, the section's own band wins", () => {
+    const types = ["header", "hero", "features", "steps", "faq", "about", "cta", "footer"].map((type) => ({
+      type,
+    }));
+    expect(sectionBands(types, undefined)).toEqual([null, null, "base", "alt", "base", "alt", null, null]);
+    expect(sectionBands(types, "airy")).toEqual([null, null, "base", "base", "alt", "base", null, null]);
+    const own = types.map((t, i) => (i === 2 ? { ...t, band: "alt" as const } : t));
+    expect(sectionBands(own, "airy")[2]).toBe("alt");
+    // Odd matrix rows set the bands by hand: the alternate band is on the page where the row put it.
+    const row = LANDING_MATRIX[1] as (typeof LANDING_MATRIX)[number];
+    expect(row.sections.some((s) => s.band === "alt")).toBe(true);
+    const home =
+      ok(compilePlan(matrixPlan(registry, "landing", row), registry)).files["ui/pages/Home.tsx"] ?? "";
+    expect(home.match(/tone="alt"/g)?.length).toBe(
+      sectionBands(row.sections, undefined).filter((b) => b === "alt").length,
+    );
+  });
 
   test("texts from the plan: plain strings and objects become items; nothing is invented", () => {
     const r = ok(compilePlan(matrixPlan(registry, "landing", LANDING_MATRIX[0] as never), registry));

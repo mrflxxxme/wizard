@@ -234,6 +234,9 @@ importers:
       '@wizard/pii':
         specifier: workspace:*
         version: link:../pii
+      '@wizard/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
       postgres:
         specifier: ^3.4.9
         version: 3.4.9

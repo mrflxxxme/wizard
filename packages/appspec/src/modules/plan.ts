@@ -31,24 +31,40 @@ export const sectionContentValueSchema = z.union([
   z.array(z.union([text(1, 300), z.record(identSchema, text(0, 600))])).max(12),
 ]);
 
+/** Section band of the landing rhythm (B2-37): base — the page background, alt — the alternate band. */
+export const SECTION_BANDS = ["base", "alt"] as const;
+/** Rhythm of the landing (B2-37): how much air and how often the alternate band comes. */
+export const DESIGN_RHYTHMS = ["airy", "balanced", "dense"] as const;
+/** Voice of the section texts (B2-37 design direction): formal, warm, bold, calm, friendly, refined. */
+export const DESIGN_VOICES = ["formal", "warm", "bold", "calm", "friendly", "refined"] as const;
+/** Design choices the owner made by hand (B2-37): the design stage keeps them. */
+export const DESIGN_PINS = ["theme", "accent", "fontPair"] as const;
+
 export const planSectionSchema = z.strictObject({
   type: identSchema,
   variant: identSchema,
   content: z.record(identSchema, sectionContentValueSchema),
   anchor: identSchema.optional(),
+  /** Band of the section (B2-37); absent — by the rhythm of the direction. */
+  band: z.enum(SECTION_BANDS).optional(),
+  /** The owner chose the layout by hand: the design stage keeps it (B2-37). */
+  pinned: z.boolean().optional(),
 });
 
 export const designSchema = z.strictObject({
-  /** Free mood fields of the design direction (B2-37 fills them). */
+  /** Design direction (B2-37): mood, rhythm, voice of the texts, notes («фирменный цвет» keeps the accent). */
   direction: z.strictObject({
     mood: z.array(text(2, 30)).min(1).max(5),
-    rhythm: z.enum(["airy", "balanced", "dense"]).optional(),
+    rhythm: z.enum(DESIGN_RHYTHMS).optional(),
+    voice: z.enum(DESIGN_VOICES).optional(),
     notes: text(1, 400).optional(),
   }),
   theme: identSchema,
   accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   fontPair: z.strictObject({ heading: text(1, 40), body: text(1, 40) }),
   photoStyle: text(3, 160),
+  /** Choices the owner made by hand (plan edits): the design stage keeps them. */
+  pinned: z.array(z.enum(DESIGN_PINS)).max(DESIGN_PINS.length).optional(),
 });
 
 export const systemPlanSchema = z

@@ -154,7 +154,14 @@ export const canvas = {
     wish: (t: string, text: string) => `${t}: ${text}`,
     done: (t: string) => `Готово: ${t}`,
   },
-  tags: { goal: "Цель", out: "Не входит", soon: "в разработке" },
+  tags: {
+    goal: "Цель",
+    out: "Не входит",
+    soon: "в разработке",
+    /** Design direction on the site's top bar (B2-37): theme and font pair. */
+    design: (theme: string, heading: string, body: string) =>
+      `Оформление: «${theme}», шрифты ${heading} и ${body}`,
+  },
   sampleData: {
     services: [
       { n: "Консультация", p: "900 ₽", d: "20 мин" },

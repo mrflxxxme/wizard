@@ -74,7 +74,14 @@ export { canonical, sameJson, substitute } from "./engine/substitute.js";
 export { landingCompile, landingManifest, landingModule } from "./landing/index.js";
 /** Section library rows of the CI matrix (B2-35): all section types, the k-th layout of each, a theme per row. */
 export { LANDING_MATRIX, librarySections } from "./landing/matrix.js";
-export { landingPage, SECTION_ENTITY, SECTION_RENDERERS, sectionAnchors } from "./landing/page.js";
+/** Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37). */
+export {
+  landingPage,
+  SECTION_ENTITY,
+  SECTION_RENDERERS,
+  sectionAnchors,
+  sectionBands,
+} from "./landing/page.js";
 /** Module «Заявки»: manifest and compile hook. */
 export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";
 export { leadsManifest, leadsModule } from "./leads/index.js";

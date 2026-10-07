@@ -47,9 +47,17 @@ export function planIssues(errors: readonly PlanError[]): ToolIssue[] {
   }));
 }
 
-/** The submitted plan as SystemPlan: default design until B2-37, PII scrubbed from every text. */
+/**
+ * The submitted plan as SystemPlan: the default design when the planner gives none (the design stage of the build sets
+ * the direction, B2-37), PII scrubbed from every text. Pins are the owner's (plan edits): a model never sets them.
+ */
 export function finalizePlan(v: PlannerPlan, registry: ModuleRegistry): SystemPlan {
-  const plan: SystemPlan = { ...v, design: v.design ?? defaultDesign(registry) };
+  const { pinned: _p, ...design } = v.design ?? defaultDesign(registry);
+  const plan: SystemPlan = {
+    ...v,
+    design,
+    ...(v.landing ? { landing: { sections: v.landing.sections.map(({ pinned: _s, ...s }) => s) } } : {}),
+  };
   return scrubJson(plan).value;
 }
 

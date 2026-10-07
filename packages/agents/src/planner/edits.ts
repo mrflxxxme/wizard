@@ -2,6 +2,7 @@
 // without a model. The edited plan is scrubbed of PII, validated and compiled again in a fraction of a second — the
 // base of the live sketch and of «ткни и скажи». Errors are PlanError in Russian, like validateSystemPlan.
 import {
+  DESIGN_PINS,
   evalCondition,
   goalIdSchema,
   identSchema,
@@ -207,6 +208,8 @@ function apply(plan: SystemPlan, e: PlanEdit, i: number, registry: ModuleRegistr
         type: e.type,
         variant,
         content: e.content ?? sectionContent(e.type, plan, registry),
+        // A layout the owner chose by hand: the design stage keeps it (B2-37).
+        ...(e.variant ? { pinned: true } : {}),
       };
       const sections = [...(plan.landing?.sections ?? [])];
       const footerLast = sections.at(-1)?.type === "footer" ? sections.length - 1 : sections.length;
@@ -216,7 +219,10 @@ function apply(plan: SystemPlan, e: PlanEdit, i: number, registry: ModuleRegistr
     }
     case "update_section": {
       const s = sectionAt(plan, e.index, at);
-      if (e.variant) s.variant = e.variant;
+      if (e.variant) {
+        s.variant = e.variant;
+        s.pinned = true;
+      }
       for (const [k, v] of Object.entries(e.content ?? {})) {
         if (v === null) delete s.content[k];
         else s.content[k] = v;
@@ -241,6 +247,10 @@ function apply(plan: SystemPlan, e: PlanEdit, i: number, registry: ModuleRegistr
       if (e.theme) plan.design.theme = e.theme;
       if (e.accent) plan.design.accent = e.accent;
       if (e.fontPair) plan.design.fontPair = { ...e.fontPair };
+      // What the owner set by hand stays through the design stage (B2-37).
+      const pins = new Set(plan.design.pinned ?? []);
+      for (const k of ["theme", "accent", "fontPair"] as const) if (e[k]) pins.add(k);
+      if (pins.size) plan.design.pinned = DESIGN_PINS.filter((k) => pins.has(k));
       return;
     }
     case "remove_out_of_scope": {

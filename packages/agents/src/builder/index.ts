@@ -67,6 +67,31 @@ export {
   mergeDesign,
   runDesignStage,
 } from "./v2/design.js";
+/**
+ * Design direction (B2-37): theme layouts, checks (themeLint, contrast), polish, fallback by niche, palette from the
+ * accent, the direction view and the diversity metric over directions.
+ */
+export {
+  accentProblems,
+  type DesignDirection,
+  type DesignVoice,
+  DISPLAY_ONLY_FONTS,
+  type DirectionDiversity,
+  type DirectionPalette,
+  designDirection,
+  designLintIssues,
+  directionDistance,
+  directionDiversity,
+  directionKey,
+  directionPalette,
+  fallbackDesign,
+  keeps,
+  polishDirection,
+  themeLayouts,
+  themeRhythm,
+  themeVoice,
+  VOICE_LABELS,
+} from "./v2/direction.js";
 export { buildBlockers, OWNER_INPUT_CHECKS, runBuildV2, withOwnerFields } from "./v2/run.js";
 export { DEFAULT_V2_BUDGETS, remainingSec, STAGE_ETA_SEC, STAGE_LABELS } from "./v2/stages.js";
 export {

@@ -22,6 +22,7 @@
     "@wizard/llm": "workspace:*",
     "@wizard/modules": "workspace:*",
     "@wizard/pii": "workspace:*",
+    "@wizard/ui-kit": "workspace:*",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },

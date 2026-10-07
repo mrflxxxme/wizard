@@ -35,6 +35,18 @@ describe("canvas model", () => {
     expect(m.accent).toBeNull();
   });
 
+  test("plan sketch: the design direction (B2-37) — theme and fonts on the site's top bar, none in the interview", () => {
+    const nav = (sk: PlanSketch) => canvasModel(sk, NAME).frames.site.find((b) => b.kind === "nav");
+    expect(nav(interview)?.tags.some((t) => t.label.startsWith("Оформление"))).toBe(false);
+    const d = plan.design;
+    if (!d) throw new Error("the plan sketch has no design");
+    expect(nav(plan)?.tags).toContainEqual({
+      kind: "plain",
+      label: `Оформление: «${d.themeName}», шрифты ${d.fonts.heading} и ${d.fonts.body}`,
+      note: d.mood.join(", "),
+    });
+  });
+
   test("plan sketch: landing sections, module screens, business colour; ids stay stable so blocks grow", () => {
     const a = canvasModel(interview, NAME);
     const b = canvasModel(plan, NAME);

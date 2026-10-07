@@ -265,6 +265,17 @@ export interface PlanSketch {
   outOfScope: { request: string; replacement: string; category: string; module?: string }[];
   custom: { id: string; title: string; kind: string; budgetRub: number }[];
   accent?: string | null;
+  /** Design direction of the plan (B2-37): theme, mood, voice, fonts, photo style, palette; null in the interview. */
+  design?: {
+    theme: string;
+    themeName: string;
+    mood: string[];
+    rhythm: string;
+    voice: string;
+    fonts: { heading: string; body: string };
+    photoStyle: string;
+    palette: { accent: string; accentText: string; onAccent: string; bg: string; band: string; ink: string };
+  } | null;
   automations?: SketchAutomation[];
   access?: {
     role: string;
