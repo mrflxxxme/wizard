@@ -336,7 +336,7 @@ node tools/deploy/pilot.mjs close-access --env prod      # убрать врем
 | `WIZARD_STATE_PASSPHRASE` | один пароль, 16+ символов. Шифрует состояние OpenTofu и ключи окружения. **Сохраните его в менеджере паролей**: без него не расшифровать архив базы |
 | `CLOUDRU_API_KEY` | ключ Cloud.ru Foundation Models |
 | `ZAI_API_KEY` | ключ Z.ai (необязательно) |
-| `PEXELS_API_KEY`, `PIXABAY_API_KEY` | ключи фотостоков (необязательно). Нужны, только если выкат идёт с `stock_mode=live` (`docs/ops/eval-d76.md`) |
+| `PEXELS_API_KEY`, `PIXABAY_API_KEY` | ключи фотостоков (необязательно). Нужны, только если выкат идёт с `stock_mode=live` или `library` (с `library` их получает только задание `stock-library` на раннере, `docs/ops/eval-d76.md`) |
 | `WIZARD_SMTP_HOST`, `WIZARD_SMTP_PORT`, `WIZARD_SMTP_USER`, `WIZARD_SMTP_PASSWORD`, `WIZARD_SMTP_FROM` | почта платформы: коды входа, приглашения, алерты. Обязательны `HOST` и `FROM` («Wizard <noreply@домен>»), порт по умолчанию 465 |
 | `WIZARD_OPS_ALERT_TELEGRAM_TOKEN` и `WIZARD_OPS_ALERT_CHAT_ID` | бот и чат для алертов. Можно вместо них задать готовый `WIZARD_OPS_ALERT_URL`. Необязательно: алерты придут и письмом на почту основателя |
 | `WIZARD_PLATFORM_YOOKASSA_SHOP_ID`, `WIZARD_PLATFORM_YOOKASSA_SECRET_KEY` | позже, когда включится оплата (на пилоте оплата выключена) |

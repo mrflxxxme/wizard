@@ -98,6 +98,41 @@ export async function storeLibraryPhoto(
   return { id, width: img.width, height: img.height, stored: true };
 }
 
+/** Id and size of a library copy; null — no complete copy. */
+export async function libraryPhoto(
+  storage: FileStorage,
+  id: string,
+): Promise<{ id: string; width: number; height: number } | null> {
+  if (!ID_RE.test(id)) return null;
+  const meta = await storage.head(keyOf(id));
+  return meta?.image ? { id, width: meta.image.width, height: meta.image.height } : null;
+}
+
+/**
+ * Index of the photo library filled from CI (B2-43; format and merging: @wizard/agents stock/library.ts): a JSON
+ * object next to the copies under a fixed id. It has no image metadata, so the public photo route never serves it.
+ */
+export const PHOTO_LIBRARY_INDEX_ID = libraryPhotoId("library-index:v1");
+
+/** Bytes of the library index; null — not written yet. */
+export async function readLibraryIndex(storage: FileStorage): Promise<Uint8Array | null> {
+  return (await storage.get(keyOf(PHOTO_LIBRARY_INDEX_ID)))?.data ?? null;
+}
+
+/** Writes the library index (whole, replacing the previous one). */
+export async function writeLibraryIndex(storage: FileStorage, json: string, now = new Date()): Promise<void> {
+  const data = new TextEncoder().encode(json);
+  await storage.put(keyOf(PHOTO_LIBRARY_INDEX_ID), data, {
+    name: "photo-library-index.json",
+    mime: "application/json",
+    size: data.byteLength,
+    entity: "_photo_library",
+    field: "index",
+    uploadedBy: null,
+    uploadedAt: now.toISOString(),
+  });
+}
+
 /** GET /_wizard/photos/:id/:width — a library photo, public and immutable (the bytes of an id never change). */
 export function photoLibraryRoutes(storage: FileStorage | null): Hono<RuntimeHonoEnv> {
   const app = new Hono<RuntimeHonoEnv>();

@@ -205,7 +205,7 @@ export const NICHE_TERMS: readonly NicheTerms[] = [
 ];
 
 /** Generic terms when no niche matches. */
-const GENERIC: Omit<NicheTerms, "match"> = {
+export const GENERIC_TERMS: Readonly<Omit<NicheTerms, "match">> = {
   hero: "small business",
   about: "team at work",
   detail: "workplace details",
@@ -236,7 +236,7 @@ export function nicheTerms(plan: Pick<SystemPlan, "niche" | "goals">): Omit<Nich
     const hit = NICHE_TERMS.find((n) => n.match.test(t));
     if (hit) return { hero: hit.hero, about: hit.about, detail: hit.detail };
   }
-  return GENERIC;
+  return GENERIC_TERMS;
 }
 
 /** Modifiers of a photo style (at most two). */
@@ -255,7 +255,7 @@ export interface StockQuery {
 
 /** The query of a section's photos: niche terms by section, style modifiers («people» styles are not forced). */
 export function stockQuery(
-  plan: Pick<SystemPlan, "niche" | "goals" | "design">,
+  plan: Pick<SystemPlan, "niche" | "goals"> & { design: Pick<SystemPlan["design"], "photoStyle"> },
   section: PhotoSectionType,
   orientation: PhotoOrientation,
 ): StockQuery {
