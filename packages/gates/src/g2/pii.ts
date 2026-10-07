@@ -1,30 +1,19 @@
 // G2-PII-01…06 (specs/quality/gates.yaml#G2, security/compliance.yaml#system_package, abuse.yaml#subject_entities).
-import { type AppSpec, type Entity, type Field, USERS_ENTITY } from "@wizard/appspec";
+import { type AppSpec, type Entity, fieldPiiCategory, isPiiSubject, piiNameReason } from "@wizard/appspec";
 import ts from "typescript";
 import { importGraph, reachable } from "../g0/imports.js";
 import type { SourceInfo } from "../g0/source.js";
-import { fieldPiiCategory } from "../g1/seed.js";
 import type { Finding } from "../report.js";
 import { ABUSE, firstMatch, normalize, rx, splitIdent } from "./patterns.js";
 
 const RE = {
-  strong: rx(ABUSE.piiNames.strong, "giu"),
-  weak: rx(ABUSE.piiNames.weak, "giu"),
-  weakExc: rx(ABUSE.piiNames.weakExceptions, "giu"),
   special: rx(ABUSE.special.names, "giu"),
 };
 
-const names = (f: Field) => [normalize(f.label), normalize(splitIdent(f.name))];
 const hasPii = (e: Entity) => e.fields.some((f) => fieldPiiCategory(f) !== "none");
 
-/** abuse.yaml#subject_entities: pii≠none field, ref to users, or a strong ПДн field name. */
-export function isSubject(e: Entity): boolean {
-  return (
-    hasPii(e) ||
-    e.fields.some((f) => f.type === "ref" && f.ref?.entity === USERS_ENTITY) ||
-    e.fields.some((f) => names(f).some((n) => firstMatch(RE.strong, n)))
-  );
-}
+/** abuse.yaml#subject_entities: pii≠none field, ref to users, or a strong ПДн field name (@wizard/appspec, B2-46). */
+export const isSubject: (e: Entity) => boolean = isPiiSubject;
 
 /** Package 152-ФЗ applies (compliance.yaml#system_package.applies_when). */
 export function packageApplies(spec: AppSpec): boolean {
@@ -53,12 +42,8 @@ export function markup(spec: AppSpec): Finding[] {
     const subject = isSubject(e);
     for (const [j, f] of e.fields.entries()) {
       if (fieldPiiCategory(f) !== "none") continue;
-      const n = names(f);
-      let why: string | null = null;
-      if (f.type === "email" || f.type === "phone") why = `тип ${f.type}`;
-      else if (n.some((x) => firstMatch(RE.strong, x))) why = "pii_field_names.strong";
-      else if (subject && n.some((x) => firstMatch(RE.weak, x) && !firstMatch(RE.weakExc, x)))
-        why = "pii_field_names.weak";
+      // The same criterion marks module extra fields at compile time (@wizard/appspec piiNameReason, B2-46).
+      const why = piiNameReason(f, subject)?.why;
       if (why)
         out.push({
           message_ru: `Поле «${f.label}» (${e.label}) похоже на персональные данные, но не размечено как ПДн`,

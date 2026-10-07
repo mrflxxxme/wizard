@@ -38,12 +38,9 @@ export interface CatalogOptions {
   withCategories: boolean;
   withPhotos: boolean;
   showcaseTitle: string;
-  /** Extra fields of the plan include e-mail or phone (pii basic): the item needs a retention term. */
-  contactExtras: boolean;
 }
 
 export function catalogOptions(params: Readonly<Record<string, unknown>>): CatalogOptions {
-  const extras = (params.extra_fields ?? []) as { type?: string }[];
   return {
     itemLabel: String(params.item_label ?? "Услуга"),
     showPrices: params.show_prices !== false,
@@ -51,7 +48,6 @@ export function catalogOptions(params: Readonly<Record<string, unknown>>): Catal
     withCategories: params.with_categories === true,
     withPhotos: params.with_photos !== false,
     showcaseTitle: String(params.showcase_title ?? "Услуги и цены"),
-    contactExtras: extras.some((x) => x.type === "email" || x.type === "phone"),
   };
 }
 
@@ -106,8 +102,6 @@ export function compileCatalog(ctx: ModuleContext): ModuleFragments {
       { fields: [N.active, N.sortOrder] },
       ...(o.withCategories ? [{ fields: [N.categoryRef] }] : []),
     ],
-    // Contact extra fields are personal data: they are cleared after ten years, the item itself stays.
-    ...(o.contactExtras ? { retention: { deleteAfterDays: 3650, mode: "anonymize" as const } } : {}),
   });
   return { entities: entities.map((value) => ({ value })) };
 }

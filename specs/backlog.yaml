@@ -3536,6 +3536,69 @@ tasks:
       - "Меню шапки: «Записаться на консультацию» и «Запишитесь на консультацию» — один пункт; пункт, равный кнопке шапки, убран; не больше 4 (тест)"
       - "Главные проходят G0/G1 и сценарии целей модулей в браузере (390 и 1280 px, светлая и тёмная темы, без горизонтальной прокрутки)"
 
+  - id: B2-46
+    title: "Дополнительные поля модулей, похожие на ПДн, размечаются pii тем же критерием, что и G2-PII-02"
+    milestone: B2
+    deps: [B2-41]
+    specs: [specs/security/abuse.yaml, specs/quality/gates.yaml, specs/modules/modules.yaml]
+    owner: platform
+    parallel_group: b2-c
+    estimate_days: 1
+    status: done
+    claimed_by: null
+    description: >
+      Контрольный замер D76 на пилоте (07.10.2026, mvp-07 «CRM агентства недвижимости»): модель дала «Карточке клиента»
+      дополнительные поля «Электронная почта» (строка) и «Мессенджер (Telegram/WhatsApp)», компиляция размечала pii только по
+      типам email/phone, и G2-PII-02 останавливал публикацию. Шаблоны имён ПДн (abuse.yaml#patterns.pii_field_names) и критерий
+      piiNameReason перенесены в @wizard/appspec (данные генерирует gen-g2-data.mjs); G2-PII-02 и движок модулей пользуются им оба:
+      дополнительное поле, похожее на ПДн, выходит из компиляции с pii basic и piiKind, а сущность без своего срока хранения получает
+      retention 10 лет с обезличиванием (G2-PII-05).
+    owns: ["packages/appspec/src/pii-names.ts", "packages/appspec/src/pii-names.data.ts", "packages/gates/src/g2/pii.ts", "packages/gates/src/g2/patterns.ts", "packages/gates/scripts/gen-g2-data.mjs", "packages/modules/src/engine/compile.ts", "packages/modules/src/catalog/compile.ts"]
+    acceptance:
+      - "client_card, leads, catalog, booking, resources: «Электронная почта» (email и строка), «Мессенджер (Telegram/WhatsApp)», «Телефон», «Паспорт» — pii basic ровно там, где их отметил бы G2-PII-02; «Комментарий» — без pii (тест)"
+      - "Каждая строка CI-матрицы модулей и план «все модули» с такими полями во всех модулях с extra_fields — G2-PII-02 и G2-PII-05 без замечаний (тест)"
+      - "pii-names.data.ts в @wizard/appspec совпадает с выводом gen-g2-data.mjs из abuse.yaml (тест)"
+
+  - id: B2-47
+    title: "«Уведомления» владельца перечисляют все уведомления плана — и сводку «Отчётов»; GS-notify-3 проверяет всех получателей"
+    milestone: B2
+    deps: [B2-41]
+    specs: [specs/modules/modules.yaml, specs/quality/gates.yaml]
+    owner: frontend
+    parallel_group: b2-c
+    estimate_days: 0.5
+    status: done
+    claimed_by: null
+    description: >
+      Контрольный замер D76 (07.10.2026, бриф mvp-08 «Мастерская по ремонту техники»): план «сделки + уведомления + отчёты» со
+      сводкой владельцу раз в неделю — G1-GOAL-GS-notify-3 «в списке уведомлений не сказано «владельцу»». Сводку шлёт модуль
+      «Отчёты» (шаг notify к $owner), а страница «Уведомления» знала только уведомления самого notify и писала «Пока нечего
+      отправлять». Генераторы видят автоматизации и подключения всех модулей; страница добавляет уведомления других модулей
+      (когда, кому, каким каналом — из самой автоматизации); сценарий требует в списке каждого вида получателя плана.
+    owns: ["packages/modules/src/notify/compile.ts", "packages/modules/src/notify/index.ts", "packages/modules/src/engine/compile.ts (genCtx)", "packages/modules/src/types.ts (GenContext)", "packages/gates/src/goals/programs/notify.ts", "packages/modules/test/notify-list.test.ts"]
+    acceptance:
+      - "Сделки + уведомления + отчёты со сводкой: в «Уведомлениях» — «Сводка владельцу по целям: по понедельникам в 09:00: владельцу — письмом», без «Пока нечего отправлять» (тест)"
+      - "GS-notify-3 требует «владельцу», «сотрудникам», «клиенту» и каналы для каждого вида получателя и канала шагов notify плана (тест)"
+      - "Программа GS-notify-3 проходит на модели страницы для каждой строки матрицы CI с notify, плана «все модули» и четырёх планов сделок + уведомлений + отчётов (тест)"
+      - "В браузере GS-notify-3 проходит в каждой строке матрицы с notify и в планах mvp-08 (390 и 1280 px, светлая и тёмная темы)"
+
+  - id: B2-48
+    title: "Напоминание ответственному о сроке задачи сделки (связка «Воронка сделок» + «Уведомления»)"
+    milestone: B2
+    deps: [B2-47]
+    specs: [specs/modules/modules.yaml]
+    owner: platform
+    parallel_group: b2-c
+    estimate_days: 0.5
+    status: todo
+    claimed_by: null
+    description: >
+      Манифест deals обещает в связке с notify «напоминание ответственному о сроке задачи», но notify для deal_task ничего не
+      создаёт: в плане «сделки + уведомления» напоминания нет, а список «Уведомления» пуст (найдено в B2-47).
+    acceptance:
+      - "Сделки + уведомления: автоматизация по сроку задачи сделки с шагом notify ответственному (без ответственного — владельцу), каналы и согласия notify (тест)"
+      - "Напоминание видно в списке «Уведомления» владельца: о чём, кому, каким каналом; GS-notify-3 проходит (тест)"
+
   # ---------------- M3: вторая волна ----------------
   - id: M3-01
     title: "«Укажи и измени»: выбор элемента в превью → wzId → правка строителем только этого файла"

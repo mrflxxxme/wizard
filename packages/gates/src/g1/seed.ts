@@ -1,6 +1,13 @@
 // Seed generator (specs/agents/qa.yaml#seed): deterministic, synthetic only, DLP-checked before loading.
 import { createHash } from "node:crypto";
-import { type AppSpec, DEFAULT_MAX_LENGTH, type Entity, type Field, USERS_ENTITY } from "@wizard/appspec";
+import {
+  type AppSpec,
+  fieldPiiCategory as appspecPiiCategory,
+  DEFAULT_MAX_LENGTH,
+  type Entity,
+  type Field,
+  USERS_ENTITY,
+} from "@wizard/appspec";
 import { classifyFieldName, detect } from "@wizard/pii";
 import { domainHint, realisticValue } from "./realistic.js";
 import type { Seed, SeedHint, SeedUser } from "./types.js";
@@ -64,10 +71,8 @@ export function uuidFor(key: string, ...parts: (string | number)[]): string {
 
 type PiiShape = "name" | "email" | "phone" | "address" | "text" | "none" | "forbidden";
 
-export function fieldPiiCategory(f: Field): string {
-  if (f.pii) return f.pii;
-  return f.type === "file" ? "basic" : "none";
-}
+/** PII category of a field (file → basic): the shared @wizard/appspec definition (B2-46). */
+export const fieldPiiCategory: (f: Field) => string = appspecPiiCategory;
 
 function piiShape(f: Field): PiiShape {
   if (fieldPiiCategory(f) === "none") return "none";

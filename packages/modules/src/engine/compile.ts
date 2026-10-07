@@ -10,8 +10,10 @@ import {
   type EntityIndex,
   evalCondition,
   type Field,
+  fieldPiiCategory,
   type GoalScenario,
   type Integration,
+  isPiiSubject,
   isReservedName,
   type ModuleFragments,
   type ModuleManifest,
@@ -21,6 +23,8 @@ import {
   type PermissionOp,
   type PlanError,
   type PlanErrorCode,
+  piiKindFor,
+  piiNameReason,
   pointer,
   type Role,
   SECTION_CATALOG,
@@ -319,6 +323,7 @@ class Compilation {
         this.applyFragments(id, l.fragments, `связь с «${l.module}»`);
       }
     if (this.errors.length) return { ok: false, errors: this.errors };
+    this.markExtraPii();
 
     // 5. Permissions with symbolic roles expanded and merged per role and entity.
     this.spec.permissions = this.mergePermissions();
@@ -530,17 +535,50 @@ class Compilation {
           );
           return;
         }
-        const contact = x.type === "email" || x.type === "phone";
+        // pii is set by markExtraPii once all fields of the entity are known.
         entity.fields.push({
           name: x.name,
           label: x.label,
           type: x.type,
           ...(x.required ? { required: true } : {}),
           ...(x.options ? { enum: x.options.map((o) => ({ value: o.value, label: o.label })) } : {}),
-          ...(contact ? { pii: "basic" as const, piiKind: x.type as "email" | "phone" } : {}),
         });
         this.extraFields.set(`${entity.name}.${x.name}`, path);
       });
+    }
+  }
+
+  /**
+   * B2-46 (mvp-07 of D76): extra fields that look like personal data by the G2-PII-02 criterion (@wizard/appspec
+   * piiNameReason, on the final entity) are marked pii basic; marking makes the entity a subject, so weak names are
+   * re-checked until nothing changes. An entity that has personal data only thanks to them and no retention of its
+   * own keeps them ten years after creation and then clears them (anonymize: the record stays) — G2-PII-05.
+   */
+  private markExtraPii(): void {
+    const byEntity = new Map<string, Set<string>>();
+    for (const key of this.extraFields.keys()) {
+      const [entity = "", field = ""] = key.split(".");
+      byEntity.set(entity, (byEntity.get(entity) ?? new Set()).add(field));
+    }
+    for (const [name, extras] of byEntity) {
+      const entity = this.spec.entities.find((e) => e.name === name);
+      if (!entity) continue;
+      const fields = entity.fields.filter((f) => extras.has(f.name));
+      for (let changed = true; changed; ) {
+        changed = false;
+        const subject = isPiiSubject(entity);
+        for (const f of fields) {
+          if (fieldPiiCategory(f) !== "none") continue;
+          const reason = piiNameReason(f, subject);
+          if (!reason) continue;
+          f.pii = "basic";
+          const kind = piiKindFor(f, reason);
+          if (kind) f.piiKind = kind;
+          changed = true;
+        }
+      }
+      if (!entity.retention && fields.some((f) => fieldPiiCategory(f) === "basic"))
+        entity.retention = { deleteAfterDays: 3650, mode: "anonymize" };
     }
   }
 
@@ -667,9 +705,17 @@ class Compilation {
     else this.generated.push({ module, file, gen: src });
   }
 
-  /** Context of a module's generators: the spec so far and the plan's metrics. */
+  /**
+   * Context of a module's generators: the spec so far with every module's workflows and integrations (B2-47: the
+   * notify page lists the notifications of other modules too, e.g. the reports digest) and the plan's metrics.
+   */
   private genCtx(id: string): GenContext {
-    return { ...this.ctx(id), spec: this.spec, metrics: this.planMetrics };
+    const spec: AppSpec = {
+      ...this.spec,
+      ...(this.workflows.length ? { workflows: this.workflows } : {}),
+      ...(this.integrations.length ? { integrations: this.integrations } : {}),
+    };
+    return { ...this.ctx(id), spec, metrics: this.planMetrics };
   }
 
   private renderGenerated(): void {

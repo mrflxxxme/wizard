@@ -4,7 +4,13 @@
 import type { ModuleManifest } from "@wizard/appspec";
 import { jsxEl } from "../screens/jsx.js";
 import type { ModuleDefinition, ScreenContext } from "../types.js";
-import { BOOKING_CONSENT_FIELD, compileNotify, NOTIFY_BOOKING, notifyPlan } from "./compile.js";
+import {
+  BOOKING_CONSENT_FIELD,
+  compileNotify,
+  NOTIFY_BOOKING,
+  notifyPlan,
+  otherNotifyItems,
+} from "./compile.js";
 
 export const notifyManifest: ModuleManifest = {
   id: "notify",
@@ -148,11 +154,15 @@ export const notifyManifest: ModuleManifest = {
   },
 };
 
-/** «Уведомления» of the owner: what is sent, to whom and by which channel (from the same plan as the workflows). */
+/**
+ * «Уведомления» of the owner: what is sent, to whom and by which channel — notify's own (the same plan as its
+ * workflows) and the notify steps of the other modules' workflows (B2-47: the weekly digest of «Отчёты»).
+ */
 export function notifyScreen(ctx: ScreenContext): string {
   const plan = notifyPlan(ctx);
-  const items = plan.items.length
-    ? plan.items
+  const all = [...plan.items, ...otherNotifyItems(ctx.spec, new Set(plan.workflows.map((w) => w.name)))];
+  const items = all.length
+    ? all
     : [{ title: "Пока нечего отправлять", text: "Уведомления появятся вместе с заявками или записью." }];
   const intro = plan.telegram
     ? "Сообщения в Telegram не содержат имён и телефонов: только ссылку на запись в кабинете."

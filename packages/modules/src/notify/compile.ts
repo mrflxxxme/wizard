@@ -4,7 +4,7 @@
 // without personal data (D71), service mail to a visitor only with the record's consent field (D69), reminders by a
 // schedule.relative trigger on the visit time. The G1 checks are scenarios with runWorkflows and advanceTime.
 // B2-18: the end of a package (packages) and the due and overdue messages of issues (resources).
-import type { Field, ModuleFragments, Workflow } from "@wizard/appspec";
+import type { AppSpec, Field, ModuleFragments, Workflow } from "@wizard/appspec";
 import { ACTIVE_STATUSES, bookingLinks } from "../booking/compile.js";
 import { leadFormFields } from "../leads/compile.js";
 import { PACKAGE_NAMES, packageKind } from "../packages/compile.js";
@@ -481,6 +481,82 @@ export function notifyPlan(ctx: ModuleContext): NotifyPlan {
   }
 
   return { templates, telegram, workflows, items, acceptance };
+}
+
+const WEEKDAYS = [
+  "по воскресеньям",
+  "по понедельникам",
+  "по вторникам",
+  "по средам",
+  "по четвергам",
+  "по пятницам",
+  "по субботам",
+];
+
+/** When a workflow fires, in the owner's words (a cron of «M H * * D» → «по понедельникам в 09:00»). */
+function whenWords(w: Workflow, spec: AppSpec): string {
+  const t = w.trigger;
+  const entity = spec.entities.find((e) => e.name === t.entity);
+  const section = entity ? ` в разделе «${entity.label}»` : "";
+  if (t.type === "schedule" && t.cron) {
+    const [m = "", h = "", dom, mon, dow = ""] = t.cron.trim().split(/\s+/);
+    const at = /^\d+$/.test(m) && /^\d+$/.test(h) ? ` в ${h.padStart(2, "0")}:${m.padStart(2, "0")}` : "";
+    if (at && dom === "*" && mon === "*" && dow === "*") return `Каждый день${at}`;
+    const day = /^[0-7]$/.test(dow) ? WEEKDAYS[Number(dow) % 7] : undefined;
+    if (at && dom === "*" && mon === "*" && day) return `${day.charAt(0).toUpperCase()}${day.slice(1)}${at}`;
+    return "По расписанию";
+  }
+  if (t.type === "schedule") return `По сроку${section}`;
+  if (t.type === "on_create") return `Новое${section}`;
+  if (t.type === "on_status") {
+    const field = entity?.fields.find((f) => f.name === t.field);
+    const value = field?.enum?.find((x) => x.value === t.equals)?.label;
+    return `Смена статуса${section}${value ? ` на «${value}»` : ""}`;
+  }
+  if (t.type === "on_update") return `Изменение${section}`;
+  return "Автоматически";
+}
+
+/**
+ * Recipient of a notify step in the owner's words (capabilities/notify.md): $owner — «владельцу», $role:<name> —
+ * «сотрудникам роли «…»», $record.<field> — «клиенту» (with consent — «если он согласился на письма»).
+ */
+export function recipientWords(params: Readonly<Record<string, unknown>>, spec: AppSpec): string {
+  const to = String(params.to ?? "");
+  if (to === "$owner") return "владельцу";
+  if (to.startsWith("$role:")) {
+    const role = to.slice("$role:".length);
+    return `сотрудникам роли «${spec.roles.find((r) => r.name === role)?.label ?? role}»`;
+  }
+  if (to.startsWith("$record."))
+    return params.consentField ? "клиенту, если он согласился на письма" : "клиенту";
+  return "получателю";
+}
+
+/**
+ * Items of the page «Уведомления» for the notify steps of the plan's other workflows (not in `own`, the workflows of
+ * notifyPlan), e.g. the weekly digest of «Отчёты»: when, to whom and by which channel — from the workflow itself, so
+ * the page lists every notification the system sends (B2-47).
+ */
+export function otherNotifyItems(spec: AppSpec, own: ReadonlySet<string>): NotifyItem[] {
+  const connector = new Map((spec.integrations ?? []).map((i) => [i.name, i.connector]));
+  const items: NotifyItem[] = [];
+  for (const w of spec.workflows ?? []) {
+    if (own.has(w.name)) continue;
+    const byWhom = new Map<string, Set<string>>();
+    for (const s of w.steps) {
+      if (s.type !== "notify") continue;
+      const p = (s.params ?? {}) as Record<string, unknown>;
+      const c = connector.get(String(p.integration));
+      const how = c === "email" ? "письмом" : c === "telegram" ? "в Telegram" : "сообщением";
+      const who = recipientWords(p, spec);
+      byWhom.set(who, (byWhom.get(who) ?? new Set<string>()).add(how));
+    }
+    if (!byWhom.size) continue;
+    const whom = [...byWhom].map(([who, how]) => `${who} — ${[...how].join(" и ")}`).join("; ");
+    items.push({ title: (w.label ?? w.name).slice(0, 80), text: `${whenWords(w, spec)}: ${whom}.` });
+  }
+  return items;
 }
 
 /** «Owner learns about a new lead»: an anonymous visitor sends the form, the jobs run, the outbox has the messages. */
