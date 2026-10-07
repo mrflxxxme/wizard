@@ -47,6 +47,9 @@ const login = (next: string | undefined, role?: string): string =>
       ? `/login?${new URLSearchParams({ role }).toString()}`
       : "/login";
 
+/** The team's sign-in: /login, then the owner's cabinet (B2-45 home of a back-office system, B2-49 its landing). */
+export const staffSignIn = (cabinet: string | undefined): string => login(cabinet);
+
 /** Public actions of the compiled system; empty — a back-office-only system (the home is a staff sign-in page). */
 export function homeActions(input: Pick<HomeInput, "spec" | "present" | "params">): HomeActions {
   const { spec, present, params } = input;
@@ -99,7 +102,7 @@ export function homePage(input: HomeInput): string {
   const brand = spec.app.name;
   const eyebrow = sameText(niche, brand) ? undefined : niche.charAt(0).toUpperCase() + niche.slice(1);
   const h = homeActions(input);
-  const signIn = login(cabinet);
+  const signIn = staffSignIn(cabinet);
   const imports = ["Header", "Hero", "Footer"];
   const blocks: string[] = [];
 
