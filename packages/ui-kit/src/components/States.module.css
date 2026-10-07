@@ -12,7 +12,7 @@
 }
 
 .bar {
-  background: var(--w-line);
+  background: var(--w-cab-skel, var(--w-line));
   animation: pulse 1.2s ease-in-out infinite;
 }
 
@@ -42,6 +42,21 @@
 .error {
   border: 1px solid var(--w-bad);
   color: var(--w-bad);
+}
+
+/* Cabinet v2 (B2-34): the empty state is a quiet dashed outline like a sketch block of the platform. */
+:global([data-wz-look="cabinet"]) .empty {
+  align-items: center;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--w-cab-line-strong, var(--w-line));
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-surface);
+  text-align: center;
+}
+
+:global([data-wz-look="cabinet"]) .error {
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-bad-soft);
 }
 
 .srOnly {

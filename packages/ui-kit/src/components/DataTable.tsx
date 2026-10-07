@@ -9,6 +9,7 @@ import { ru } from "../i18n/ru.js";
 import { ButtonImpl } from "./Button.js";
 import styles from "./DataTable.module.css";
 import { FieldValue } from "./FieldValue.js";
+import { useCabinetLook } from "./look.js";
 import { RecordActions } from "./RecordActions.js";
 import { part } from "./root.js";
 import { DataState } from "./States.js";
@@ -29,6 +30,7 @@ function isDev(): boolean {
 
 export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
   const root = useWzRoot("DataTable", "wz-datatable", props);
+  const look = useCabinetLook();
   const spec = useRoleSpec();
   const ds = useDataSource();
   const navigate = useNavigate();
@@ -212,7 +214,12 @@ export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
   }
 
   return (
-    <section {...root} className={cx(styles.wrap, props.className)} aria-busy={list.isLoading || undefined}>
+    <section
+      {...root}
+      {...look}
+      className={cx(styles.wrap, props.className)}
+      aria-busy={list.isLoading || undefined}
+    >
       {toolbar}
       {body}
       {total > pageSize && (

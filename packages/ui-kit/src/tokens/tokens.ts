@@ -2,10 +2,13 @@
 // v2 (M2-42): presets (themes.yaml), heading font, type scale, depth, rhythm and shades derived from one brand colour.
 import type { Theme } from "@wizard/appspec";
 import { type ThemePreset, themePreset } from "../themes/presets.js";
-import { blend, contrast, hexToOklch, oklchToHex } from "./color.js";
+import { accentInk, accentStrong, accentText } from "./accent.js";
+import { CABINET_TOKENS, cabinetTokens } from "./cabinet.js";
+import { blend, contrast } from "./color.js";
 import { FONTS_BASE, fontEntry, fontFaceCss, fontStack } from "./fonts.js";
 
 export type Scheme = "light" | "dark";
+export { accentInk, accentStrong, accentText };
 export type TokenName = `--w-${string}`;
 export type Tokens = Record<TokenName, string>;
 export type ThemeInput = Theme | undefined | null;
@@ -44,9 +47,6 @@ export const PALETTE = {
 /** Alternate section band of a theme without preset (v1): the surface, so v1 accent-text needs no new background. */
 const V1_SURFACE_ALT = { light: PALETTE.light.surface, dark: PALETTE.dark.surface } as const;
 
-const INK_LIGHT = "#FFFFFF";
-const INK_DARK = "#111318";
-const MIN_CONTRAST = 4.5;
 const MIN_NON_TEXT = 3;
 const SOFT_ALPHA = { light: 0.12, dark: 0.22 } as const;
 const TINT_ALPHA = { light: 0.06, dark: 0.1 } as const;
@@ -67,34 +67,6 @@ const SHADOWS: Record<ThemePreset["depth"], Record<Scheme, readonly [string, str
   },
 };
 const SECTION_SPACE = { regular: "clamp(48px, 7vw, 88px)", airy: "clamp(64px, 9vw, 120px)" } as const;
-
-/** Text on the accent fill: the better of white and #111318; pure black when neither reaches 4.5:1. */
-export function accentInk(accent: string): string {
-  const best = contrast(INK_LIGHT, accent) >= contrast(INK_DARK, accent) ? INK_LIGHT : INK_DARK;
-  return contrast(best, accent) >= MIN_CONTRAST ? best : "#000000";
-}
-
-/** Accent for text: step OKLCH lightness away from the backgrounds until contrast ≥ 4.5 with all of them. */
-export function accentText(accent: string, scheme: Scheme, backgrounds: readonly string[]): string {
-  const ok = (c: string) => backgrounds.every((b) => contrast(c, b) >= MIN_CONTRAST);
-  if (ok(accent)) return accent;
-  const base = hexToOklch(accent);
-  const dir = scheme === "light" ? -1 : 1;
-  for (let l = base.l; l >= 0 && l <= 1; l += dir * 0.01) {
-    const c = oklchToHex({ ...base, l });
-    if (ok(c)) return c;
-  }
-  return scheme === "light" ? "#000000" : "#FFFFFF";
-}
-
-/** Hover/pressed fill: the accent moved away from its ink, so contrast with --w-accent-ink only grows. */
-export function accentStrong(accent: string): string {
-  const ink = accentInk(accent);
-  const base = hexToOklch(accent);
-  const dir = ink === INK_LIGHT ? -1 : 1;
-  const c = oklchToHex({ ...base, l: Math.min(1, Math.max(0, base.l + dir * 0.07)) });
-  return contrast(ink, c) >= contrast(ink, accent) ? c : accent;
-}
 
 function normalizeAccent(accent: string | undefined): string {
   return accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent.toUpperCase() : THEME_DEFAULTS.accent;
@@ -144,6 +116,8 @@ export const V2_TOKENS: readonly TokenName[] = [
   "--w-overlay-ink",
   "--w-section-space",
   "--w-container",
+  // B2-34: the cabinet look (cabinet.ts) — warm neutrals and the brand colour with the v2 contrast.
+  ...CABINET_TOKENS,
 ];
 
 /**
@@ -224,6 +198,7 @@ export function themeToTokens(theme: ThemeInput, scheme: Scheme): Tokens {
     "--w-overlay-ink": "#FFFFFF",
     "--w-section-space": SECTION_SPACE[r.preset?.space ?? "regular"],
     "--w-container": "1200px",
+    ...cabinetTokens(accent, scheme),
   };
 }
 

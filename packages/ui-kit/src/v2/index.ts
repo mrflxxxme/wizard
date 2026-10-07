@@ -48,12 +48,13 @@ export {
 } from "./components/XrayLines.js";
 /** Platform fonts (Inter, Source Serif 4): license and source per family (D64). */
 export { PLATFORM_FONTS } from "./font-catalog.js";
-/** --p-* tokens: warm neutral palette, graphite + amber, business colour with safe contrast, CSS text, DOM apply. */
+/** --p-* tokens: warm neutral palette, graphite + amber, business colour with safe contrast, CSS text, DOM apply (CSS variables, no <style>). */
 export {
   applyPlatformTheme,
   type BusinessColors,
   businessColors,
   businessCss,
+  businessVars,
   DEMO_BUSINESS_COLOR,
   MATERIALIZE_MS,
   PLATFORM_COLORS,

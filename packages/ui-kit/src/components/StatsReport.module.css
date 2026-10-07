@@ -33,10 +33,11 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: var(--w-density-pad);
+  padding: 16px 18px;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
   background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
 }
 
 .kpiLabel {
@@ -46,6 +47,8 @@
 
 .kpiValue {
   margin: 0;
+  font-family: var(--w-font-heading, inherit);
+  font-variant-numeric: tabular-nums;
   font-size: var(--w-font-size-xl);
   font-weight: 700;
   line-height: 1.15;
@@ -62,10 +65,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: var(--w-density-pad);
+  padding: 18px 20px;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
   background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
 }
 
 .barsTitle {
@@ -108,7 +112,7 @@
   display: block;
   height: 10px;
   overflow: hidden;
-  border-radius: var(--w-radius-sm);
+  border-radius: 999px;
   background: var(--w-neutral-soft);
 }
 
@@ -116,6 +120,7 @@
   display: block;
   width: var(--w-bar);
   height: 100%;
+  border-radius: inherit;
   background: var(--w-accent);
 }
 

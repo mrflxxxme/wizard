@@ -133,6 +133,8 @@ export {
   type ThemePresetId,
   themePreset,
 } from "./themes/presets.js";
+/** Cabinet look v2 (B2-34): warm base + brand accents of a scheme (--w-cab-*), their names, the data-wz-look value. */
+export { CABINET_LOOK, CABINET_TOKENS, cabinetTokens, cabinetValues } from "./tokens/cabinet.js";
 export { blend, contrast, hexToOklch, luminance, oklchToHex } from "./tokens/color.js";
 /** Self-hosted theme fonts (D64): catalog with license and source, @font-face for /_wizard/fonts. */
 export {

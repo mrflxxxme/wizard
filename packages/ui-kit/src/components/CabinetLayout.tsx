@@ -3,6 +3,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 
 import { cx, useRoleSpec, useWzRoot, useWzUser } from "../data/context.js";
 import { ru } from "../i18n/ru.js";
 import styles from "./CabinetLayout.module.css";
+import { useCabinetLook } from "./look.js";
 import { ErrorState, useLoginAction } from "./States.js";
 import type { CabinetLayoutProps } from "./types.js";
 
@@ -44,6 +45,7 @@ function MyData({ policyPage }: { policyPage: string | undefined }): ReactNode {
 
 export function CabinetLayout(input: CabinetLayoutProps): ReactNode {
   const root = useWzRoot("CabinetLayout", "wz-cabinet", input);
+  const look = useCabinetLook();
   const spec = useRoleSpec();
   const props: CabinetLayoutProps = input.sections.some((s) => s.id === MY_DATA)
     ? input
@@ -99,14 +101,19 @@ export function CabinetLayout(input: CabinetLayoutProps): ReactNode {
 
   if (!user && !isLoading)
     return (
-      <section {...root} className={cx(styles.cabinet, props.className)}>
+      <section {...root} {...look} className={cx(styles.cabinet, props.className)}>
         <ErrorState error={{ code: "UNAUTHENTICATED", message: "", status: 401 }} onLogin={login} />
       </section>
     );
 
   const current = props.sections.find((s) => s.id === active) ?? props.sections[0];
   return (
-    <section {...root} className={cx(styles.cabinet, props.className)} aria-labelledby={`${base}-title`}>
+    <section
+      {...root}
+      {...look}
+      className={cx(styles.cabinet, props.className)}
+      aria-labelledby={`${base}-title`}
+    >
       <h1 id={`${base}-title`} className={styles.title}>
         {props.title ?? ru.cabinet.title}
       </h1>

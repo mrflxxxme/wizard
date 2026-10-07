@@ -5,27 +5,33 @@
   min-width: 0;
 }
 
-/* sm: columns become tabs */
+/* sm: columns become tabs — chips that wrap, the active one in the brand colour (B2-34). */
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  border-bottom: 1px solid var(--w-line);
+  gap: 8px;
 }
 
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: none;
+  padding: 0 14px;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
   color: var(--w-ink);
   font: inherit;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .tab[aria-selected="true"] {
-  border-bottom-color: var(--w-accent);
+  border-color: var(--w-accent-edge);
+  background: var(--w-accent-soft);
+  box-shadow: none;
   color: var(--w-accent-text);
   font-weight: 600;
 }
@@ -33,12 +39,18 @@
 .count {
   display: inline-block;
   min-width: 24px;
-  padding: 0 6px;
-  border-radius: var(--w-radius-sm);
+  padding: 0 7px;
+  border-radius: 999px;
   background: var(--w-neutral-soft);
   color: var(--w-muted);
   font-size: var(--w-font-size-sm);
+  font-variant-numeric: tabular-nums;
   text-align: center;
+}
+
+.tab[aria-selected="true"] .count {
+  background: var(--w-surface);
+  color: var(--w-accent-text);
 }
 
 .columns {
@@ -50,12 +62,12 @@
 .column {
   display: none;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-  padding: 8px;
-  border-radius: var(--w-radius);
-  background: var(--w-bg);
+  padding: 10px;
   border: 1px solid var(--w-line);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-cab-sunken, var(--w-bg));
 }
 
 .activeColumn {
@@ -63,9 +75,14 @@
 }
 
 .columnTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0;
-  padding: 4px;
+  padding: 4px 6px;
   font-size: var(--w-font-size);
+  font-weight: 600;
 }
 
 .cards {
@@ -83,8 +100,13 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  border-radius: 14px;
   background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
+}
+
+.card:hover {
+  border-color: var(--w-accent-edge);
 }
 
 .draggable {
@@ -96,8 +118,9 @@
   z-index: 5;
   cursor: grabbing;
   pointer-events: none;
-  transform: translate(var(--w-drag-x), var(--w-drag-y));
-  border-color: var(--w-accent-text);
+  transform: translate(var(--w-drag-x), var(--w-drag-y)) rotate(-1deg);
+  border-color: var(--w-accent-edge);
+  box-shadow: var(--w-shadow-md);
 }
 
 .cardMain {
@@ -140,9 +163,9 @@ button.cardMain {
 .moveToggle,
 .menuItem {
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius-sm);
+  border-radius: 10px;
   background: var(--w-surface);
   color: var(--w-accent-text);
   font: inherit;

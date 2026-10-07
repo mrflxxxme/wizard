@@ -5,6 +5,7 @@ import { cx, useCan, useDataSource, useRoleSpec, useWzRoot } from "../data/conte
 import { fieldOf } from "../data/roleSpec.js";
 import type { Rec, WzError } from "../data/types.js";
 import { ru } from "../i18n/ru.js";
+import { useCabinetLook } from "./look.js";
 import { DataState } from "./States.js";
 import styles from "./StatusBoard.module.css";
 import type { StatusBoardProps } from "./types.js";
@@ -14,6 +15,7 @@ type Drag = { id: string; from: string; x: number; y: number; dx: number; dy: nu
 
 export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
   const root = useWzRoot("StatusBoard", "wz-statusboard", props);
+  const look = useCabinetLook();
   const spec = useRoleSpec();
   const can = useCan();
   const update = useDataSource().useUpdate(props.entity);
@@ -75,7 +77,7 @@ export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
   };
 
   return (
-    <section {...root} className={cx(styles.board, props.className)}>
+    <section {...root} {...look} className={cx(styles.board, props.className)}>
       <div className={styles.tabs} role="tablist" aria-label={field?.label}>
         {values.map((v) => (
           <button

@@ -1,23 +1,28 @@
+/* RecordCard v2 (B2-34): a card on the warm base, field names muted, rows divided by thin lines. */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--w-density-gap);
   min-width: 0;
-  padding: var(--w-density-pad);
+  padding: 20px;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
   background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
 }
 
 .title {
   margin: 0;
+  font-family: var(--w-font-heading, inherit);
   font-size: var(--w-font-size-lg);
+  font-weight: var(--w-heading-weight, 700);
+  letter-spacing: var(--w-heading-tracking, 0);
   line-height: 1.25;
 }
 
 .list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin: 0;
 }
 
@@ -25,6 +30,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
+  padding: 10px 0;
+}
+
+.item + .item {
+  border-top: 1px solid var(--w-line);
 }
 
 .item dt {

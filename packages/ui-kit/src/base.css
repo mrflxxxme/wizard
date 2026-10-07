@@ -39,6 +39,46 @@ a {
   color: var(--w-accent-text);
 }
 
+/* Cabinet pages v2 (B2-34): while a cabinet component is mounted <html> carries data-wz-look="cabinet"
+   (tokens/cabinet.css switches the palette). The page root gets the margins of a cabinet unless it is an AppShell
+   (which has its own); plain headings and buttons of module pages follow the rhythm. :where() keeps these rules below
+   any component class. */
+:where(html[data-wz-look="cabinet"] #root) > :where(:not([data-wz-component="AppShell"])) {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding: 20px 16px 48px;
+}
+
+:where(html[data-wz-look="cabinet"] #root > section:not([data-wz-component])) > :where(* + *) {
+  margin-top: 16px;
+}
+
+:where(html[data-wz-look="cabinet"]) :where(h1, h2) {
+  font-family: var(--w-font-heading, inherit);
+  font-weight: var(--w-heading-weight, 700);
+  letter-spacing: var(--w-heading-tracking, -0.01em);
+  line-height: 1.2;
+}
+
+:where(html[data-wz-look="cabinet"]) :where(h1) {
+  font-size: clamp(24px, 1.2vw + 18px, 32px);
+}
+
+:where(html[data-wz-look="cabinet"]) :where(h2) {
+  font-size: 20px;
+}
+
+:where(html[data-wz-look="cabinet"]) :where([data-wz-component="Button"] + [data-wz-component="Button"]) {
+  margin-inline-start: 8px;
+}
+
+@media (min-width: 960px) {
+  :where(html[data-wz-look="cabinet"] #root) > :where(:not([data-wz-component="AppShell"])) {
+    padding: 32px 32px 64px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

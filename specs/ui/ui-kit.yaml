@@ -6,7 +6,7 @@
 version: 1
 package: "@wizard/ui-kit"
 path: packages/ui-kit
-tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01, B2-32]
+tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01, B2-32, B2-34]
 
 scope:
   M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
@@ -59,6 +59,16 @@ tokens:
     tokens: "--w-font-heading, --w-heading-weight, --w-heading-tracking, --w-font-size-display|h2|h3 (clamp), --w-radius-lg, --w-shadow-sm|md (глубина темы), --w-surface-alt (полоса секции), --w-accent-strong (наведение), --w-accent-tint (подложка), --w-accent-edge (кромка кнопки ≥ 3:1 к фону), --w-overlay и --w-overlay-ink (текст поверх фото), --w-section-space (ритм секций), --w-container"
     compatibility: "Тема без preset и headingFont даёт прежние значения всех прежних токенов (снимок), v2 только добавляет V2_TOKENS"
     api: "resolveTheme, themeFonts, themeLint(theme) → [{code, message}], themeForNiche(ниша) → id темы, THEME_PRESET_LIST, FONT_CATALOG, fontFaceCss"
+  cabinet:   # B2-34: кабинеты клиентских систем на визуальном языке дизайн-системы v2 (grill-7 #6–#7, план беты v2 §3)
+    scope: "Кабинеты и рабочие экраны систем (CabinetLayout, DataTable, StatusBoard, RecordCard, StatsReport и всё внутри них: RecordForm, Button, Badge, Field, пустые состояния). Публичные страницы (лендинг, секции, публичная запись) не меняются — их оформление B2-35/36"
+    palette: "Тёплая нейтральная основа платформы v2 (PLATFORM_COLORS: светлая #F8F7F4 / #FFFFFF / #1D1C1A / #6B6862 / #E9E6E0, тёмная #1B1A18 / #252421 / #EEECE7 / #A6A29A) при любой теме системы; акценты — фирменный цвет темы (theme.accent или цвет пресета) по правилам businessColors: заливка сдвигается по L в OKLCH до ≥ 3:1 к фону и поверхности, текст на ней ≥ 4.5:1, цветной текст ≥ 4.5:1 на фоне, поверхности, утопленном фоне и подложках акцента. Шрифты, радиус и плотность остаются из темы системы"
+    tokens: "themeToTokens добавляет --w-cab-<name> для обеих схем (входят в V2_TOKENS): bg, surface, surface-alt, ink, muted, line, ok|warn|bad и их -soft, neutral-soft, accent, accent-ink, accent-text, accent-soft, accent-tint, accent-strong, accent-edge, focus, shadow-sm|md, а также только кабинетные sunken (шапка таблицы, колонки доски), line-strong, skel (скелетон), radius-card (18px). Источник — src/tokens/cabinet.ts (cabinetValues, cabinetTokens)"
+    look: "MUST: корень компонента кабинета ставит data-wz-look=\"cabinet\"; пока такой компонент смонтирован, атрибут стоит и на <html> (useCabinetLook, счётчик). src/tokens/cabinet.css = cabinetCss() (тест сверяет, UPDATE_CABINET_CSS=1 перезаписывает): под [data-wz-look=cabinet] каждый --w-* из списка берёт значение --w-cab-* (селектор с весом (0,3,0) выше блоков темы). base.css под html[data-wz-look=cabinet] даёт корню страницы поля (кроме AppShell), ритм и заголовки — через :where(), ниже любых классов компонентов"
+    csp: "MUST: фирменный цвет попадает в кабинет только через CSS-переменные (те же блоки темы light/dark, что ставит applyTokens) и атрибуты; компоненты кабинета не вставляют <style>"
+    visual: "Секции кабинета — чипы на телефоне (перенос, без прокрутки вбок) и боковая карточка на десктопе, активная — подложка и кромка фирменного цвета; таблица — карточка с утопленной шапкой, строки подсвечиваются подложкой акцента, на sm — карточки; доска — утопленные колонки с карточками; карточка записи, форма, отчёт — поверхности с радиусом 18 и мягкой тенью; пустое состояние — пунктирный контур. Касания ≥ 44 px; анимируются только transform и opacity; при prefers-reduced-motion движение выключено (base.css)"
+    acceptance:
+      - "vitest (test/cabinet.test.ts): 4096 фирменных цветов × 2 темы — заливка ≥ 3:1, текст на ней и цветной текст ≥ 4.5:1 на всех фонах кабинета, тоны на своих подложках ≥ 4.5:1, фокус ≥ 3:1; тёплая основа при любом пресете; cabinet.css = cabinetCss(); в CSS компонентов кабинета нет цветов вне var(--w-*), переходы только transform/opacity"
+      - "Playwright (packages/modules/test/cabinets.browser.test.ts, CI-джоб e2e): матрица leads, booking, deals, client_card, staff — G0 и G1 зелёные; каждая страница кабинета каждой роли входа, карточка записи и форма правки на 390 и 1280 в светлой и тёмной теме: вид кабинета, контраст видимого текста AA, подписи полей, касания ≥ 44 px на 390, без прокрутки вбок; скриншоты test/artifacts/cabinet-*.png (артефакт CI). WIZARD_CABINET_ROWS=all — все строки матрицы"
   themes:
     - { id: strict, label: "Строгая деловая — юристы, бухгалтерия, B2B, строительство, CRM и внутренние инструменты" }
     - { id: warm, label: "Тёплая — салоны красоты, мастера, кафе и пекарни, цветы, ателье, гостевые дома" }
@@ -662,7 +672,7 @@ demo:
 platform_v2:
   scope: "Только интерфейс платформы (platform-web: холст, плавающий чат, кабинет, /admin). Код систем клиентов её не импортирует: у систем — компоненты и токены --w-* выше. Экраны переводят на v2 задачи B2-25, B2-29, B2-33"
   entry: "import { … } from \"@wizard/ui-kit/v2\" (src/v2/index.ts) и один раз import \"@wizard/ui-kit/v2/theme.css\" (шрифты, токены, база, зерно, выключение движения)"
-  root: "Корень помечается applyPlatformTheme(el, {theme, business, glass, grain}) или <ThemeRoot>: data-p-root; data-p-theme=light|dark (нет — по prefers-color-scheme); data-p-biz — цвет бизнеса клиента; data-p-glass=off — стекло без размытия; data-p-motion=off — движение выключено"
+  root: "Корень помечается applyPlatformTheme(el, {theme, business, glass, grain}) или <ThemeRoot>: data-p-root; data-p-theme=light|dark (нет — по prefers-color-scheme); data-p-biz — цвет бизнеса клиента; data-p-glass=off — стекло без размытия; data-p-motion=off — движение выключено. MUST: цвет бизнеса ставится CSS-переменными корня (--p-biz-light … --p-biz-wash-dark, businessVars) без вставки <style> — CSP платформы его запрещает (B2-34); схему выбирают правила tokens.css"
   tokens:
     prefix: "--p-*; таблицы — src/v2/tokens.ts (PLATFORM_COLORS, platformTokens), CSS — src/v2/tokens.css = platformThemeCss() (тест сверяет, UPDATE_V2_CSS=1 перезаписывает)"
     palette: { light: { bg: "#F8F7F4", surface: "#FFFFFF", ink: "#1D1C1A", ink_2: "#6B6862", line: "#E9E6E0" }, dark: { bg: "#1B1A18", surface: "#252421", ink: "#EEECE7", ink_2: "#A6A29A" } }
