@@ -324,6 +324,9 @@ export function compileResources(ctx: ModuleContext): ModuleFragments {
           name: RESOURCE_NAMES.issue,
           label: "Выдача",
           fields: issueFields(ctx),
+          // The holder's name is personal data (G2-PII-05, mvp-09 of D76): a loan is kept three years after its last
+          // change — as the client card by default.
+          retention: { deleteAfterDays: 1095, anchorField: "updated_at" },
           indexes: [
             ...(q ? [] : [{ fields: ["resource", "open"], unique: true }]),
             { fields: ["status"] },

@@ -1540,6 +1540,53 @@ function mask(values, vars, log) {
 }
 
 /**
+ * B2-41: the stocks as the server sees them — Pexels answered 404 to the builds on the pilot while the runner's check
+ * said 200. One search per provider and one picture per image host from the worker pod (the builds run there), with
+ * the release keys of its env; prints `name=HTTP` only (never a key, a URL or a body).
+ */
+export const SERVER_STOCK_PROBE = `const t = async (n, u, h) => {
+  try { const r = await fetch(u, { headers: h, redirect: "manual", signal: AbortSignal.timeout(15000) }); return n + "=" + r.status; }
+  catch (e) { return n + "=0:" + String(e?.cause?.code ?? e?.name ?? "error").slice(0, 40); }
+};
+const e = process.env;
+Promise.all([
+  e.WIZARD_STOCK_PEXELS_KEY ? t("pexels", "https://api.pexels.com/v1/search?query=coffee&per_page=1", { authorization: e.WIZARD_STOCK_PEXELS_KEY }) : "pexels=missing",
+  e.WIZARD_STOCK_PIXABAY_KEY ? t("pixabay", "https://pixabay.com/api/?key=" + encodeURIComponent(e.WIZARD_STOCK_PIXABAY_KEY) + "&q=coffee&per_page=3") : "pixabay=missing",
+  t("images.pexels.com", "https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&w=40"),
+  t("cdn.pixabay.com", "https://cdn.pixabay.com/photo/2015/10/12/14/54/coffee-983955_150.jpg"),
+]).then((a) => console.log(a.join(" ")));`;
+
+/** «pexels=404 pixabay=200 …» of SERVER_STOCK_PROBE → the annotation line; null when the output is not that. */
+export function serverStockLine(out) {
+  const pairs = String(out ?? "")
+    .trim()
+    .split(/\s+/)
+    .map((p) => /^([a-z.]+)=([0-9a-zA-Z_:]+)$/.exec(p))
+    .filter(Boolean);
+  if (pairs.length === 0) return null;
+  return pairs.map(([, n, v]) => `${n} — ${/^\d+$/.test(v) ? `HTTP ${v}` : v}`).join("; ");
+}
+
+/** Runs SERVER_STOCK_PROBE in the worker pod and logs one annotation (not fatal: the landings keep theme graphics). */
+export function serverStockProbe({ kubectl, log = console.log }) {
+  const r = kubectl(
+    ["-n", PLATFORM_NS, "exec", "deploy/wizard-worker", "--", "node", "-e", SERVER_STOCK_PROBE],
+    {
+      capture: true,
+      allowFail: true,
+      fake: "pexels=200 pixabay=200 images.pexels.com=200 cdn.pixabay.com=200",
+    },
+  );
+  const line = r.status === 0 ? serverStockLine(r.stdout) : null;
+  log(
+    line
+      ? `::notice title=Стоки с сервера::${line}`
+      : `::warning title=Стоки с сервера::проверка из пода воркера не удалась (код ${r.status})`,
+  );
+  return line;
+}
+
+/**
  * Stock keys of a release (B2-38): with stock_mode=live (record) each key is tried with one search; a refused key
  * turns its provider off for this release (it never reaches the platform Secret) with a warning — the release goes on,
  * as with the other optional services (Unisender, Z.ai): the landings keep the theme graphics. No answer keeps the
@@ -1830,6 +1877,8 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       // The sandbox of client functions (M2-18): one gVisor pod of this release's workerd image.
       if (outputs.env?.registry_url)
         gvisorProbe({ kubectl, image: `${outputs.env.registry_url}/wizard-sandbox:${tag}`, log });
+      // B2-41: the stocks from the server itself (the builds' network), with the keys of this release.
+      if (STOCK_KEY_MODES.includes(pilotStockMode(vars))) serverStockProbe({ kubectl, log });
       // WAL-G against the archive from the running database (not fatal: archiving lag is alerted by pg-ops anyway).
       checkArchive({ kubectl, log, bucket: outputs.env?.buckets?.backups ?? "" });
       // Lost VM: PostgreSQL has restored itself from WAL-G (init container); bring .data back from its copy.

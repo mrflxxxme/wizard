@@ -27,8 +27,11 @@ import {
   platformDnsRecords,
   resolveStateS3,
   runCounted,
+  SERVER_STOCK_PROBE,
   SHAPES,
   s3ErrorCode,
+  serverStockLine,
+  serverStockProbe,
   stockKeysOfRelease,
   summaryText,
   tfvars,
@@ -1843,5 +1846,31 @@ describe("runCounted (B2-41)", () => {
   it("d67: the report's counting", () => {
     expect(runCounted("d67")(ready)).toBe(true);
     expect(runCounted("d67")({ ready: false, gaps: { reported: [] } })).toBe(false);
+  });
+});
+
+describe("serverStockProbe (B2-41: the stocks from the worker pod)", () => {
+  it("prints HTTP codes only and becomes one annotation; never a key or a URL", () => {
+    expect(SERVER_STOCK_PROBE).not.toMatch(/console\.log\([^)]*(key|KEY|url|u\b)/);
+    expect(
+      serverStockLine("pexels=404 pixabay=200 images.pexels.com=0:ENOTFOUND cdn.pixabay.com=200\n"),
+    ).toBe(
+      "pexels — HTTP 404; pixabay — HTTP 200; images.pexels.com — 0:ENOTFOUND; cdn.pixabay.com — HTTP 200",
+    );
+    expect(serverStockLine("error: unable to upgrade connection")).toBeNull();
+    const calls = [];
+    const logs = [];
+    const line = serverStockProbe({
+      kubectl: (args) => {
+        calls.push(args);
+        return { status: 0, stdout: "pexels=404 pixabay=200" };
+      },
+      log: (l) => logs.push(l),
+    });
+    expect(line).toBe("pexels — HTTP 404; pixabay — HTTP 200");
+    expect(calls[0].slice(0, 5)).toEqual(["-n", "wizard-platform", "exec", "deploy/wizard-worker", "--"]);
+    expect(logs).toEqual(["::notice title=Стоки с сервера::pexels — HTTP 404; pixabay — HTTP 200"]);
+    serverStockProbe({ kubectl: () => ({ status: 1, stdout: "" }), log: (l) => logs.push(l) });
+    expect(logs.at(-1)).toMatch(/^::warning title=Стоки с сервера::/);
   });
 });

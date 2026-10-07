@@ -478,6 +478,9 @@ export function compilePackages(ctx: ModuleContext): ModuleFragments {
             { fields: ["status"] },
             ...(k.period ? [{ fields: ["ends_at"] }] : []),
           ],
+          // The buyer's name and contacts are personal data (G2-PII-05, B2-41): a package is kept three years after its
+          // last change — as the client card by default.
+          retention: { deleteAfterDays: 1095, anchorField: "updated_at" },
         },
       },
       { value: { name: PACKAGE_NAMES.plan, label: "Тариф", fields: planFields(ctx) } },
