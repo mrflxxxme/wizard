@@ -101,6 +101,7 @@ export function sectionsDigest(registry: ModuleRegistry): string {
         `обязательно: ${s.required.join(", ") || "—"}`,
         `можно: ${s.optional.join(", ") || "—"}`,
       ];
+      if (s.itemKeys?.length) parts.push(`items: [{${s.itemKeys.join(", ")}}]`);
       if (s.requiresModule?.length) parts.push(`нужен модуль: ${s.requiresModule.join(" или ")}`);
       if (s.position) parts.push(s.position === "first" ? "первой" : "последней");
       if (s.unique) parts.push("одна на странице");

@@ -1,51 +1,126 @@
-# Темы систем v2 (M2-42, D69, D64). Нормативно. Данные пакета — packages/ui-kit/src/themes/presets.ts (тест сверяет этот файл с ними).
+# Темы систем v2 (M2-42, B2-36, D69, D64). Нормативно. Данные пакета — packages/ui-kit/src/themes/presets.ts и presets-v2.ts
+# (тест packages/ui-kit/test/themes.test.ts сверяет этот файл с ними поле в поле).
 # Приоритет: product.yaml > architecture.yaml > ui-kit.yaml > этот файл.
-version: 1
-status: draft          # темы помечены draft до утверждения основателем (кто утверждает — M2-20); на выпуске MVP используются как есть
-tasks: [M2-42]
+version: 2
+status: draft          # темы помечены draft до утверждения основателем (кто утверждает — M2-20); на выпуске используются как есть
+tasks: [M2-42, B2-36]
 
 model:
   appspec: "AppSpec.theme {preset?, accent?, font?, headingFont?, radius?, density?, mode?, logoFile?}; preset задаёт значения по умолчанию, явные поля темы их уточняют"
-  brand_colour: "Владелец задаёт один фирменный цвет (theme.accent). Производные: --w-accent-ink (текст на кнопке), --w-accent-text (ссылки и акцентный текст, шаги по OKLCH до 4.5:1 со всеми фонами темы), --w-accent-soft и --w-accent-tint (подложки), --w-accent-strong (наведение), --w-accent-edge (кромка кнопки ≥ 3:1 к фону). Проверка — тест 4 темы × 4096 цветов × 2 схемы"
-  compatibility: "Тема без preset и headingFont (v1) даёт прежние значения всех прежних токенов; v2 только добавляет токены (ui-kit.yaml#tokens.v2)"
-  fonts: "Пара шрифтов: headingFont — заголовки, font — текст. Только каталог packages/ui-kit/fonts (OFL-1.1, кириллица и латиница, 400 и 700), раздача runtime с /_wizard/fonts; запросов к Google Fonts и чужим CDN нет"
+  brand_colour: "Владелец задаёт один фирменный цвет (theme.accent). Производные: --w-accent-ink (текст на кнопке), --w-accent-text (ссылки и акцентный текст, шаги по OKLCH до 4.5:1 со всеми фонами темы), --w-accent-soft и --w-accent-tint (подложки), --w-accent-strong (наведение), --w-accent-edge (кромка кнопки ≥ 3:1 к фону), --w-graphic (графика темы из оттенков фирменного цвета). Проверка — тест 10 тем × 4096 цветов × 2 схемы"
+  compatibility: "Тема без preset и headingFont (v1) даёт прежние значения всех прежних токенов; v2 только добавляет токены (ui-kit.yaml#tokens.v2). Четыре темы M2-42 (strict, warm, bright, calm) сохранили id, шрифты и палитры: системы на них выглядят как раньше"
+  fonts: "Пара шрифтов: headingFont — заголовки, font — текст. Только каталог packages/ui-kit/fonts (21 семейство OFL-1.1, кириллица и латиница, 400 и 700, пары — docs/research/design-agent-catalog.md#A6), раздача runtime с /_wizard/fonts; запросов к Google Fonts и чужим CDN нет"
+  fields: "Поля темы: palette (нейтральные цвета светлой и тёмной схем: ink и muted ≥ 4.5:1 ко всем фонам), depth (flat — линии, soft — лёгкие тени, lifted — заметные карточки), space (ритм секций: regular | airy), heading {weight, tracking, size? (regular | large | wide — шкала заголовков; по умолчанию wide у Unbounded), upper? (заголовки капсом)}, photoStyle (стиль фото для стока B2-38 и дизайн-агента B2-37), graphic (узор графики темы: arcs | grid | dots | stripes | wash — заглушки фото и декоративные полосы, пока фото нет)"
 
 selection:
-  rule: "Агент выбирает тему по нише брифа: themeForNiche(ниша) из @wizard/ui-kit; без совпадений — strict. Владелец меняет тему и цвет в панели «Стиль»"
-  agent_hint: "Тему не придумывать: одна из четырёх ниже; фирменный цвет — из брифа (цвет логотипа, вывески), иначе цвет темы"
+  rule: "Агент выбирает тему по нише брифа: themeForNiche(ниша) из @wizard/ui-kit (основы слов по нишам; больше совпадений — та тема; без совпадений — strict). Владелец меняет тему и цвет в панели «Стиль»"
+  agent_hint: "Тему не придумывать: одна из десяти ниже; фирменный цвет — из брифа (цвет логотипа, вывески), иначе цвет темы"
 
 presets:
   - id: strict
     name: "Строгая деловая"
     looks: "Сдержанные цвета, чёткая сетка, небольшие скругления, лёгкие тени"
-    niches: ["юристы и нотариусы", "бухгалтерия и финансы", "консалтинг и B2B-услуги", "строительство и ремонт", "производство и логистика", "CRM и внутренние инструменты"]
+    niches: ["юристы и нотариусы", "бухгалтерия и финансы", "консалтинг и B2B-услуги", "недвижимость и страхование", "производство и логистика", "CRM и внутренние инструменты"]
     defaults: { accent: "#1F4FB8", font: "IBM Plex Sans", headingFont: "Manrope", radius: 4, density: regular }
     depth: soft
     space: regular
+    heading: { weight: 700, tracking: "-0.01em" }
+    photoStyle: "деловая среда при дневном свете, сдержанные тона, люди за работой без постановки"
+    graphic: grid
   - id: warm
     name: "Тёплая"
     looks: "Кремовый фон, заголовки с засечками, большие скругления"
-    niches: ["салоны красоты и барбершопы", "мастера маникюра и косметологи", "кафе, пекарни и кондитерские", "цветы и подарки", "ателье и мастерские", "гостевые дома"]
+    niches: ["салоны красоты", "мастера маникюра и косметологи", "цветы и подарки", "ателье и рукоделие", "гостевые дома", "груминг и зоосалоны"]
     defaults: { accent: "#A84B25", font: "Golos Text", headingFont: "Lora", radius: 16, density: regular }
     depth: soft
     space: airy
+    heading: { weight: 700, tracking: "0" }
+    photoStyle: "тёплый мягкий свет, руки мастера и детали работы, уютный интерьер"
+    graphic: arcs
   - id: bright
     name: "Яркая современная"
     looks: "Насыщенный цвет, крупные широкие заголовки, заметные карточки"
-    niches: ["фитнес, танцы и спорт", "онлайн-школы и курсы", "детские студии и кружки", "мероприятия и фестивали", "квесты и развлечения", "молодёжные проекты"]
+    niches: ["фитнес, танцы и спорт", "детские студии и кружки", "детские лагеря", "квесты и развлечения", "игровые клубы", "молодёжные проекты"]
     defaults: { accent: "#6D28D9", font: "Onest", headingFont: "Unbounded", radius: 12, density: regular }
     depth: lifted
     space: regular
+    heading: { weight: 700, tracking: "-0.02em" }
+    photoStyle: "движение и эмоции, насыщенный цвет, живые моменты занятий и событий"
+    graphic: dots
   - id: calm
     name: "Спокойная минималистичная"
     looks: "Много воздуха, приглушённые тона, тонкие линии вместо теней"
-    niches: ["психологи и коучи", "частные клиники и стоматология", "йога и практики", "архитектура и дизайн интерьеров", "фотографы", "образование для взрослых"]
+    niches: ["психологи и коучи", "йога и практики", "архитектура и дизайн интерьеров", "нутрициологи и здоровый образ жизни", "галереи и арт-студии", "ретриты"]
     defaults: { accent: "#2F6B5A", font: "PT Sans", headingFont: "PT Serif", radius: 8, density: regular }
     depth: flat
     space: airy
+    heading: { weight: 700, tracking: "0" }
+    photoStyle: "рассеянный свет, много воздуха, природные фактуры и спокойные интерьеры"
+    graphic: wash
+  - id: boutique
+    name: "Изысканная"
+    looks: "Высококонтрастная антиква, прямые углы, много воздуха и тонкие линии"
+    niches: ["свадьбы и организаторы торжеств", "фотографы и видеографы", "ювелиры и украшения", "стилисты и визажисты", "бутики и дизайнеры одежды", "салоны премиум-класса"]
+    defaults: { accent: "#6B2440", font: "Commissioner", headingFont: "Cormorant Garamond", radius: 0, density: regular }
+    depth: flat
+    space: airy
+    heading: { weight: 700, tracking: "0", size: large }
+    photoStyle: "студийный рассеянный свет, крупные планы деталей, спокойный однотонный фон"
+    graphic: arcs
+    why_font: "Cormorant Garamond — высокий контраст штрихов держит крупный кегль заголовка без курсива; Commissioner — ровный текстовый гротеск, не спорит с антиквой"
+  - id: bistro
+    name: "Аппетитная"
+    looks: "Тёплая книжная антиква в заголовках, сочный цвет, мягкие карточки"
+    niches: ["кафе и рестораны", "пекарни и кондитерские", "кофейни", "доставка еды", "фермерские продукты", "кулинарные студии"]
+    defaults: { accent: "#B3361D", font: "Source Sans 3", headingFont: "Piazzolla", radius: 12, density: regular }
+    depth: soft
+    space: regular
+    heading: { weight: 700, tracking: "-0.01em" }
+    photoStyle: "блюда и выпечка крупным планом, дневной свет из окна, живые столы и руки"
+    graphic: dots
+  - id: workshop
+    name: "Мастерская"
+    looks: "Узкие плотные заголовки капсом, чёткие линии, почти прямые углы"
+    niches: ["барбершопы", "ремонт и отделка", "автосервис и шиномонтаж", "строительство", "мастерские и производство на заказ", "единоборства"]
+    defaults: { accent: "#B53C0B", font: "Sofia Sans", headingFont: "Sofia Sans Extra Condensed", radius: 4, density: regular }
+    depth: flat
+    space: regular
+    heading: { weight: 700, tracking: "0.01em", size: large, upper: true }
+    photoStyle: "рабочий процесс и инструменты, фактуры металла и дерева, контрастный боковой свет"
+    graphic: stripes
+  - id: academy
+    name: "Дружелюбная"
+    looks: "Тёплый гуманистичный шрифт, спокойный зелёный, крупные скругления"
+    niches: ["репетиторы", "языковые школы и курсы", "онлайн-обучение", "развивающие центры", "подготовка к экзаменам", "клубы по интересам"]
+    defaults: { accent: "#1F5C46", font: "Alegreya", headingFont: "Alegreya Sans", radius: 12, density: regular }
+    depth: soft
+    space: regular
+    heading: { weight: 700, tracking: "0" }
+    photoStyle: "занятия и общение, светлые классы, открытые лица без постановки"
+    graphic: wash
+  - id: poster
+    name: "Афиша"
+    looks: "Высокие плакатные заголовки капсом, книжный текст, резкие углы"
+    niches: ["мероприятия и конференции", "концерты и фестивали", "театры и площадки", "музеи и выставки", "медиа и клубы по подписке", "квизы и вечеринки"]
+    defaults: { accent: "#2234A8", font: "Literata", headingFont: "Alumni Sans", radius: 0, density: regular }
+    depth: lifted
+    space: regular
+    heading: { weight: 700, tracking: "0.01em", size: large, upper: true }
+    photoStyle: "сцена и публика, вечерний свет, контраст и движение"
+    graphic: stripes
+  - id: care
+    name: "Заботливая"
+    looks: "Мягкий разборчивый шрифт, прохладные чистые тона, плавные формы"
+    niches: ["частные клиники и медцентры", "стоматология", "ветеринарные клиники", "массаж и реабилитация", "лаборатории и анализы", "аптеки и оптики"]
+    defaults: { accent: "#1C5F5A", font: "Wix Madefor Text", headingFont: "Wix Madefor Display", radius: 16, density: regular }
+    depth: soft
+    space: airy
+    heading: { weight: 700, tracking: "-0.01em" }
+    photoStyle: "светлые кабинеты, внимательный специалист, чистые нейтральные тона без медицинских штампов"
+    graphic: arcs
 
 lint:
   api: "themeLint(theme) → [{code, message}] простым русским языком: ACCENT_TEXT_ADJUSTED (для ссылок взят другой оттенок), ACCENT_LOW_EDGE (кнопки сливаются с фоном — будет рамка), ACCENT_GREY, UNKNOWN_PRESET, UNKNOWN_FONT, SAME_DISPLAY_FONT"
-  rule: "Контраст не нарушается никогда: токены сами подбирают оттенки; lint только объясняет, что изменилось"
+  rule: "Контраст не нарушается никогда: токены сами подбирают оттенки; lint только объясняет, что изменилось. Тема со своим цветом по умолчанию в светлой схеме не даёт ни одной заметки (тест)"
 
-after_release: ["8 тем вместо 4", "дизайн-агент и стоки (D61)", "утверждение тем основателем (M2-20)"]
+after_release: ["утверждение тем основателем (M2-20)", "фото со стока по photoStyle (B2-38)"]

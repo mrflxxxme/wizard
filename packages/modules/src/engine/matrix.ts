@@ -8,6 +8,10 @@ export interface MatrixRow {
   name: string;
   params: Record<string, unknown>;
   withModules?: readonly string[];
+  /** Landing sections of the row instead of the minimal ones (B2-35 section library rows). */
+  sections?: readonly Record<string, unknown>[];
+  /** Theme preset of the row's plan. */
+  theme?: string;
 }
 
 /** The plan a matrix row of `moduleId` is compiled with (deterministic). */
@@ -24,7 +28,7 @@ export function matrixPlan(registry: ModuleRegistry, moduleId: string, row: Matr
     const params = id === moduleId ? { ...row.params } : { ...(expect.get(id) ?? {}) };
     return Object.keys(params).length ? { id, params } : { id };
   });
-  const sections: PlanSection[] = [
+  const minimal: PlanSection[] = [
     { type: "header", variant: "bar", content: {} },
     {
       type: "hero",
@@ -33,10 +37,11 @@ export function matrixPlan(registry: ModuleRegistry, moduleId: string, row: Matr
     },
   ];
   if (ids.includes("catalog"))
-    sections.push({ type: "services", variant: "cards", content: { title: "Пример: услуги и цены" } });
+    minimal.push({ type: "services", variant: "cards", content: { title: "Пример: услуги и цены" } });
   if (ids.includes("leads"))
-    sections.push({ type: "lead_form", variant: "card", content: { title: "Оставьте заявку" } });
-  sections.push({ type: "footer", variant: "simple", content: {} });
+    minimal.push({ type: "lead_form", variant: "card", content: { title: "Оставьте заявку" } });
+  minimal.push({ type: "footer", variant: "simple", content: {} });
+  const sections = row.sections ? (row.sections as unknown as PlanSection[]) : minimal;
   const goal = m.goals[0] as GoalId;
   return {
     version: 1,
@@ -46,7 +51,7 @@ export function matrixPlan(registry: ModuleRegistry, moduleId: string, row: Matr
     ...(ids.includes("landing") ? { landing: { sections } } : {}),
     design: {
       direction: { mood: ["спокойствие"] },
-      theme: THEME_PRESETS[0],
+      theme: row.theme ?? THEME_PRESETS[0],
       accent: "#2A7F9E",
       fontPair: { heading: THEME_FONTS[0], body: THEME_FONTS[0] },
       photoStyle: "светлые фото",

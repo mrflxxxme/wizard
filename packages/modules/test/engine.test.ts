@@ -314,14 +314,26 @@ describe("order, links and incompatibilities", () => {
   });
 
   test("a section variant not yet in ui-kit: a clear compile error", () => {
+    // Since B2-35 every catalog variant is ready; a catalog extended later lists new variants outside `ready`.
+    const later = {
+      ...registry,
+      sections: SECTION_CATALOG.map((t) =>
+        t.type === "hero"
+          ? { ...t, ready: t.ready.filter((v) => v !== "collage") }
+          : t.type === "gallery"
+            ? { ...t, ready: [] }
+            : t,
+      ),
+    };
     const plan = landingLeadsPlan();
     const sections = plan.landing?.sections ?? [];
     sections[1] = { ...(sections[1] as (typeof sections)[number]), variant: "collage" };
     sections.splice(2, 0, { type: "gallery", variant: "grid", content: {} });
-    const r = compilePlan(plan, registry);
+    expect(compilePlan(structuredClone(plan), registry).ok).toBe(true);
+    const r = compilePlan(plan, later);
     expect(codes(r)).toEqual(["SECTION_NOT_IMPLEMENTED", "SECTION_NOT_IMPLEMENTED"]);
     expect(messages(r)).toContain("Вариант «collage» секции «Первый экран» ещё не реализован");
-    expect(r.ok ? [] : r.errors[0]?.allowed).toEqual(["split", "centered", "cover"]);
+    expect(r.ok ? [] : r.errors[0]?.allowed).toEqual(["split", "centered", "cover", "minimal"]);
   });
 
   test("a plan for another manifest version is rejected; plan errors pass through", () => {

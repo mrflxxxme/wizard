@@ -1,6 +1,6 @@
 // Stage «Дизайн» of the builder v2 (builder.yaml#v2.stages.design, callType build_design): direction, theme and fonts
 // from the catalogs, the accent, the photo style and section layouts from the ready variants — by niche and goals.
-// The full design agent (stock photos, more themes and sections) is B2-37/B2-38; the plan format stays the same.
+// The full design agent (direction by niche, stock photos) is B2-37/B2-38; the plan format stays the same.
 // The client's brand colour (design.direction.notes says «фирменный») is never changed. Output that does not pass
 // after the repairs → the planner's design stays (fallback, not a failure).
 import { SECTION_CATALOG, type SystemPlan, THEME_FONTS, THEME_PRESETS } from "@wizard/appspec";
@@ -12,12 +12,20 @@ import { type CallStats, callTool, type RouteFn } from "../../core/loop.js";
 import { defineTool, type ToolIssue } from "../../core/tool.js";
 import { planErrors, planIssues } from "../../planner/planner.js";
 
-/** Short looks of the theme presets (specs/ui/themes.yaml#presets); themes added by B2-36 are listed by id. */
+/** Short looks of the theme presets (specs/ui/themes.yaml#presets, B2-36); a theme missing here is listed by id. */
 const THEME_LOOKS: Readonly<Record<string, string>> = {
-  strict: "строгая деловая: сдержанные цвета, чёткая сетка (юристы, финансы, B2B, ремонт)",
-  warm: "тёплая: кремовый фон, заголовки с засечками, большие скругления (салоны, кафе, цветы)",
-  bright: "яркая современная: насыщенный цвет, крупные заголовки (спорт, школы, детские студии, события)",
-  calm: "спокойная минималистичная: много воздуха, приглушённые тона (клиники, психологи, йога, дизайн)",
+  strict: "строгая деловая: сдержанные цвета, чёткая сетка (юристы, финансы, B2B, недвижимость, логистика)",
+  warm: "тёплая: кремовый фон, заголовки с засечками, большие скругления (салоны красоты, маникюр, цветы, гостевые дома)",
+  bright:
+    "яркая современная: насыщенный цвет, крупные широкие заголовки (спорт и танцы, детские студии, квесты)",
+  calm: "спокойная минималистичная: много воздуха, приглушённые тона (психологи, йога, интерьеры, галереи)",
+  boutique:
+    "изысканная: высококонтрастная антиква, прямые углы, воздух (свадьбы, фотографы, ювелиры, стилисты)",
+  bistro: "аппетитная: тёплая антиква, сочный цвет, мягкие карточки (кафе, рестораны, пекарни, кофейни)",
+  workshop: "мастерская: узкие заголовки капсом, чёткие линии (барбершопы, ремонт, автосервис, стройка)",
+  academy: "дружелюбная: гуманистичный шрифт, спокойный зелёный (репетиторы, языковые школы, курсы)",
+  poster: "афиша: плакатные заголовки капсом, книжный текст (мероприятия, концерты, театры, музеи)",
+  care: "заботливая: мягкий разборчивый шрифт, прохладные чистые тона (клиники, стоматология, ветклиники)",
 };
 
 const text = (min: number, max: number) => z.string().min(min).max(max);

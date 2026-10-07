@@ -85,9 +85,33 @@ export const THEME_FONTS = [
   "PT Serif",
   "Lora",
   "Unbounded",
+  // Themes v2 (B2-36): font pairs of the ten presets.
+  "Cormorant Garamond",
+  "Commissioner",
+  "Piazzolla",
+  "Source Sans 3",
+  "Sofia Sans Extra Condensed",
+  "Sofia Sans",
+  "Alegreya Sans",
+  "Alegreya",
+  "Alumni Sans",
+  "Literata",
+  "Wix Madefor Display",
+  "Wix Madefor Text",
 ] as const;
-/** Theme presets v2 (specs/ui/themes.yaml): one of four looks the agent picks by niche. */
-export const THEME_PRESETS = ["strict", "warm", "bright", "calm"] as const;
+/** Theme presets v2 (specs/ui/themes.yaml, B2-36): one of ten looks the agent picks by niche. */
+export const THEME_PRESETS = [
+  "strict",
+  "warm",
+  "bright",
+  "calm",
+  "boutique",
+  "bistro",
+  "workshop",
+  "academy",
+  "poster",
+  "care",
+] as const;
 export const PII_CATEGORIES = ["none", "basic", "special", "biometric"] as const;
 export const PERMISSION_OPS = ["read", "create", "update", "delete"] as const;
 export const ON_DELETE = ["restrict", "cascade", "set_null"] as const;

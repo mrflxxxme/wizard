@@ -46,6 +46,7 @@
 }
 
 .toc a {
+  color: var(--w-accent-text);
   display: inline-flex;
   align-items: center;
   min-height: 44px;

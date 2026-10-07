@@ -27,6 +27,13 @@ export default {
         logo={{ fileId: DEMO_IMAGES.hero, alt: "Логотип (пример)" }}
         links={links}
       />
+      <Header
+        testId="transparent"
+        variant="transparent"
+        brand="Пример: студия"
+        links={links}
+        cta={{ label: "Записаться", href: "#lead" }}
+      />
     </div>
   ),
 } satisfies Story;

@@ -1,7 +1,9 @@
-// Theme presets v2 (specs/ui/themes.yaml, M2-42, D69): four looks with a font pair, neutrals, depth and rhythm.
-// The owner sets one brand colour (theme.accent); shades and text colours derive from it with an AA contrast check
-// (tokens.ts). Presets are drafts until the founder approves them (themes.yaml#status).
+// Theme presets v2 (specs/ui/themes.yaml, M2-42, B2-36, D69): ten looks with a font pair, neutrals, depth, rhythm,
+// heading style, photo style and the theme graphic (placeholder of a picture until a photo is chosen). The owner sets
+// one brand colour (theme.accent); shades and text colours derive from it with an AA contrast check (tokens.ts).
+// Presets are drafts until the founder approves them (themes.yaml#status).
 import type { THEME_PRESETS, Theme } from "@wizard/appspec";
+import { V2_PRESETS } from "./presets-v2.js";
 
 export type ThemePresetId = (typeof THEME_PRESETS)[number];
 
@@ -15,6 +17,9 @@ export interface ThemeNeutrals {
   muted: string;
   line: string;
 }
+
+/** Pattern of the theme graphic, drawn from the brand colour (tokens.ts#graphicCss). */
+export type ThemeGraphic = "arcs" | "grid" | "dots" | "stripes" | "wash";
 
 export interface ThemePreset {
   id: ThemePresetId;
@@ -34,9 +39,17 @@ export interface ThemePreset {
   palette: { light: ThemeNeutrals; dark: ThemeNeutrals };
   /** flat — borders only; soft — light shadows; lifted — pronounced cards. */
   depth: "flat" | "soft" | "lifted";
-  heading: { weight: number; tracking: string };
+  /**
+   * Headings: weight, tracking; size — display scale (large for narrow or small-eyed faces, wide for wide ones;
+   * default by the font); upper — short headings in capitals (condensed and poster faces).
+   */
+  heading: { weight: number; tracking: string; size?: "regular" | "large" | "wide"; upper?: boolean };
   /** Vertical rhythm of landing sections. */
   space: "regular" | "airy";
+  /** Photo style for the stock search (B2-38) and the design agent, in plain Russian. */
+  photoStyle: string;
+  /** Theme graphic: the pattern of picture placeholders and decorative bands (--w-graphic). */
+  graphic: ThemeGraphic;
   /** true until the founder approves the preset (themes.yaml#status). */
   draft: boolean;
 }
@@ -51,7 +64,7 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
       "юристы и нотариусы",
       "бухгалтерия и финансы",
       "консалтинг и B2B-услуги",
-      "строительство и ремонт",
+      "недвижимость и страхование",
       "производство и логистика",
       "CRM и внутренние инструменты",
     ],
@@ -83,6 +96,8 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     depth: "soft",
     heading: { weight: 700, tracking: "-0.01em" },
     space: "regular",
+    photoStyle: "деловая среда при дневном свете, сдержанные тона, люди за работой без постановки",
+    graphic: "grid",
     draft: true,
   },
   {
@@ -90,12 +105,12 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     name: "Тёплая",
     description: "Мягкий кремовый фон, заголовки с засечками, большие скругления. Уютно и по-человечески.",
     niches: [
-      "салоны красоты и барбершопы",
+      "салоны красоты",
       "мастера маникюра и косметологи",
-      "кафе, пекарни и кондитерские",
       "цветы и подарки",
-      "ателье и мастерские",
+      "ателье и рукоделие",
       "гостевые дома",
+      "груминг и зоосалоны",
     ],
     defaults: { accent: "#A84B25", font: "Golos Text", headingFont: "Lora", radius: 16, density: "regular" },
     palette: {
@@ -119,6 +134,8 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     depth: "soft",
     heading: { weight: 700, tracking: "0" },
     space: "airy",
+    photoStyle: "тёплый мягкий свет, руки мастера и детали работы, уютный интерьер",
+    graphic: "arcs",
     draft: true,
   },
   {
@@ -127,10 +144,10 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     description: "Насыщенный цвет, крупные широкие заголовки, заметные карточки. Энергично и запоминается.",
     niches: [
       "фитнес, танцы и спорт",
-      "онлайн-школы и курсы",
       "детские студии и кружки",
-      "мероприятия и фестивали",
+      "детские лагеря",
       "квесты и развлечения",
+      "игровые клубы",
       "молодёжные проекты",
     ],
     defaults: { accent: "#6D28D9", font: "Onest", headingFont: "Unbounded", radius: 12, density: "regular" },
@@ -155,6 +172,8 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     depth: "lifted",
     heading: { weight: 700, tracking: "-0.02em" },
     space: "regular",
+    photoStyle: "движение и эмоции, насыщенный цвет, живые моменты занятий и событий",
+    graphic: "dots",
     draft: true,
   },
   {
@@ -163,11 +182,11 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     description: "Много воздуха, приглушённые тона, тонкие линии вместо теней. Тихо и аккуратно.",
     niches: [
       "психологи и коучи",
-      "частные клиники и стоматология",
       "йога и практики",
       "архитектура и дизайн интерьеров",
-      "фотографы",
-      "образование для взрослых",
+      "нутрициологи и здоровый образ жизни",
+      "галереи и арт-студии",
+      "ретриты",
     ],
     defaults: { accent: "#2F6B5A", font: "PT Sans", headingFont: "PT Serif", radius: 8, density: "regular" },
     palette: {
@@ -191,8 +210,11 @@ export const THEME_PRESET_LIST: readonly ThemePreset[] = [
     depth: "flat",
     heading: { weight: 700, tracking: "0" },
     space: "airy",
+    photoStyle: "рассеянный свет, много воздуха, природные фактуры и спокойные интерьеры",
+    graphic: "wash",
     draft: true,
   },
+  ...V2_PRESETS,
 ];
 
 /** Preset by id; undefined for an unknown or missing id. */

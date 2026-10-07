@@ -1,7 +1,10 @@
 // Module «Секции лендинга» (specs/modules/modules.yaml#catalog landing): the public page «/» from the plan's landing
-// sections. No data of its own; the lead form section binds to the leads module's entity.
-import type { ModuleManifest } from "@wizard/appspec";
-import type { ModuleDefinition } from "../types.js";
+// sections — the section library of B2-35 (20 types, 3–5 layouts each, ui-kit blocks). No data of its own; sections
+// with data bind to the entities of their modules (lead form → leads, services and prices → catalog or packages).
+import type { ModuleFragments, ModuleManifest } from "@wizard/appspec";
+import { PACKAGE_NAMES } from "../packages/compile.js";
+import type { ModuleContext, ModuleDefinition } from "../types.js";
+import { LANDING_MATRIX } from "./matrix.js";
 import { landingPage } from "./page.js";
 
 export const landingManifest: ModuleManifest = {
@@ -21,6 +24,7 @@ export const landingManifest: ModuleManifest = {
     { name: "anchor_nav", label: "Меню по секциям страницы", type: "bool", default: true },
   ],
   provides: { routes: ["/"] },
+  hook: true,
   fragments: {},
   screens: [
     {
@@ -29,7 +33,27 @@ export const landingManifest: ModuleManifest = {
       route: "/",
       title: "Главная",
       roles: ["$public", "$owner", "$staff", "$visitor"],
-      components: ["Header", "Hero", "Features", "Steps", "Faq", "Cta", "LeadForm", "Footer"],
+      components: [
+        "Header",
+        "Hero",
+        "Features",
+        "Steps",
+        "Faq",
+        "Cta",
+        "LeadForm",
+        "Footer",
+        "Pricing",
+        "Booking",
+        "Gallery",
+        "Team",
+        "Testimonials",
+        "Stats",
+        "About",
+        "Contacts",
+        "Hours",
+        "Logos",
+        "TextBlock",
+      ],
       nav: true,
     },
   ],
@@ -53,13 +77,25 @@ export const landingManifest: ModuleManifest = {
     matrix: [
       { name: "по умолчанию", params: {} },
       { name: "без закреплённой шапки и меню", params: { sticky_header: false, anchor_nav: false } },
+      ...LANDING_MATRIX,
     ],
     gates: ["G0", "G1"],
   },
 };
 
+/**
+ * compile.ts: the pricing section of a plan without the catalog shows the tariffs of «Абонементы и пакеты» — visitors
+ * read them (names and prices only are on the page anyway).
+ */
+export function landingCompile(ctx: ModuleContext): ModuleFragments {
+  const pricing = (ctx.plan.landing?.sections ?? []).some((s) => s.type === "pricing");
+  if (!pricing || ctx.present.has("catalog") || !ctx.present.has("packages")) return {};
+  return { permissions: [{ value: { role: "$public", entity: PACKAGE_NAMES.plan, ops: ["read"] } }] };
+}
+
 export const landingModule: ModuleDefinition = {
   manifest: landingManifest,
+  compile: landingCompile,
   screens: { home: landingPage },
   warnings: (ctx) =>
     (ctx.plan.landing?.sections ?? []).some((s) => s.content.image !== undefined)

@@ -1,4 +1,5 @@
-// Cta (ui-kit.yaml#components.Cta, M2-43): a call to action — a full-width stripe or a card in the brand colour.
+// Cta (ui-kit.yaml#components.Cta, M2-43, B2-35): a call to action — a full-width stripe, a card in the brand colour,
+// or text and actions side by side on the alternate band (split).
 import type { ReactNode } from "react";
 import { cx, useWzRoot } from "../../data/context.js";
 import s from "./Blocks.module.css";
@@ -9,6 +10,26 @@ export function Cta(props: CtaProps): ReactNode {
   const root = useWzRoot("Cta", "wz-cta", props);
   const id = useHeadingId("cta");
   const card = props.variant === "card";
+  if (props.variant === "split")
+    return (
+      <Section
+        root={root}
+        anchor={props.anchor}
+        tone={props.tone ?? "alt"}
+        labelledBy={id}
+        className={props.className}
+      >
+        <div className={s.ctaSplit} data-variant="split">
+          <div>
+            <h2 id={id} className={s.h2}>
+              {props.title}
+            </h2>
+            {props.text && <p className={s.lead}>{props.text}</p>}
+          </div>
+          <Actions primary={props.action} secondary={props.secondary} testBase="wz-cta" />
+        </div>
+      </Section>
+    );
   const body = (
     <div className={cx(s.centered, card && cx(s.ctaCard, s.accent))}>
       <h2 id={id} className={s.h2}>

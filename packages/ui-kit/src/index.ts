@@ -5,19 +5,39 @@ export const PACKAGE = "@wizard/ui-kit";
 export { AppShell, type AppShellProps, type NavItem } from "./components/AppShell.js";
 export { Badge, type BadgeProps, type BadgeTone } from "./components/Badge.js";
 export { Button, type ButtonProps } from "./components/Button.js";
-/** Landing blocks (M2-43): Header, Hero, Features, Steps, Faq, Cta, LeadForm (lead over useCreate + consent), Footer. */
+/**
+ * Landing blocks (M2-43, B2-35 section library v2): Header, Hero, Features, Steps, Faq, Cta, LeadForm (lead over
+ * useCreate + consent), Footer, Gallery, Team, Testimonials, Stats, About, Contacts, Hours, Logos, TextBlock, Pricing
+ * (prices from the system's data), Booking (to the booking page), LandingSection (frame of a module's section).
+ */
+export { About } from "./components/blocks/About.js";
+export { Booking } from "./components/blocks/Booking.js";
+export { Contacts } from "./components/blocks/Contacts.js";
 export { Cta } from "./components/blocks/Cta.js";
 export { Faq } from "./components/blocks/Faq.js";
 export { Features } from "./components/blocks/Features.js";
 export { Footer } from "./components/blocks/Footer.js";
+export { Gallery } from "./components/blocks/Gallery.js";
 export { Header } from "./components/blocks/Header.js";
 export { Hero } from "./components/blocks/Hero.js";
+export { Hours } from "./components/blocks/Hours.js";
+export { LandingSection } from "./components/blocks/LandingSection.js";
 export { LeadForm } from "./components/blocks/LeadForm.js";
+export { Logos } from "./components/blocks/Logos.js";
+export { Pricing } from "./components/blocks/Pricing.js";
+export { Stats } from "./components/blocks/Stats.js";
 export { Steps } from "./components/blocks/Steps.js";
+export { Team } from "./components/blocks/Team.js";
+export { Testimonials } from "./components/blocks/Testimonials.js";
+export { TextBlock } from "./components/blocks/TextBlock.js";
 export type {
+  AboutProps,
+  BlockIconName,
   BlockLink,
   BlockTone,
+  BookingProps,
   ContactItem,
+  ContactsProps,
   CtaProps,
   FaqItem,
   FaqProps,
@@ -25,11 +45,27 @@ export type {
   FeaturesProps,
   FooterColumn,
   FooterProps,
+  GalleryItem,
+  GalleryProps,
   HeaderProps,
   HeroProps,
+  HoursItem,
+  HoursProps,
+  LandingSectionProps,
   LeadFormProps,
+  LogoItem,
+  LogosProps,
+  PriceDetail,
+  PricingProps,
+  StatItem,
+  StatsProps,
   StepItem,
   StepsProps,
+  TeamMember,
+  TeamProps,
+  TestimonialItem,
+  TestimonialsProps,
+  TextBlockProps,
 } from "./components/blocks/types.js";
 export { CabinetLayout } from "./components/CabinetLayout.js";
 export { Catalog } from "./components/Catalog.js";
@@ -125,9 +161,13 @@ export { ru } from "./i18n/ru.js";
 export { type ThemeLintCode, type ThemeLintNote, themeLint } from "./themes/lint.js";
 /** themeForNiche(«студия маникюра») → preset id for the agent (themes.yaml#selection). */
 export { themeForNiche } from "./themes/niche.js";
-/** Four theme presets v2 (themes.yaml): id, Russian name and description, niches, defaults, neutrals, depth, rhythm. */
+/**
+ * Ten theme presets v2 (themes.yaml, B2-36): id, Russian name and description, niches, defaults, neutrals, depth,
+ * rhythm, heading style, photo style and theme graphic.
+ */
 export {
   THEME_PRESET_LIST,
+  type ThemeGraphic,
   type ThemeNeutrals,
   type ThemePreset,
   type ThemePresetId,

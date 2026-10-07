@@ -365,6 +365,13 @@ export const moduleTestsSchema = z.strictObject({
         name: text(1, 80),
         params: anyObject,
         withModules: z.array(identSchema).optional(),
+        /**
+         * Landing sections of the row's plan instead of the minimal ones (B2-35: every layout variant in CI); checked
+         * by validateSystemPlan when the row compiles.
+         */
+        sections: z.array(anyObject).min(1).max(20).optional(),
+        /** Theme preset of the row's plan (default: the first of the catalog). */
+        theme: identSchema.optional(),
       }),
     )
     .max(32),

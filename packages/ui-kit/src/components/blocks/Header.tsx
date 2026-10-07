@@ -1,5 +1,5 @@
-// Header (ui-kit.yaml#components.Header, M2-43): brand, menu and one action; on phones the menu folds behind «Меню»
-// (disclosure button, Esc closes and returns focus).
+// Header (ui-kit.yaml#components.Header, M2-43, B2-35): brand, menu and one action; on phones the menu folds behind
+// «Меню» (disclosure button, Esc closes and returns focus). Variants: bar, centered, transparent (no bar over the page).
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { cx, useWzRoot } from "../../data/context.js";
 import { ru } from "../../i18n/ru.js";
@@ -33,6 +33,7 @@ export function Header(props: HeaderProps): ReactNode {
         s.header,
         sticky && s.sticky,
         variant === "centered" && s.headerCentered,
+        variant === "transparent" && s.headerTransparent,
         props.className,
       )}
     >

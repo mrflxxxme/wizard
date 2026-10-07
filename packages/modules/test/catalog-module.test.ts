@@ -151,7 +151,7 @@ describe("showcase page and the landing section", () => {
       nav: true,
     });
     const page = r.files["ui/pages/CatalogServices.tsx"] ?? "";
-    expect(page).toContain('import { DataTable } from "@wizard/ui-kit";');
+    expect(page).toContain('import { DataTable, LandingSection } from "@wizard/ui-kit";');
     expect(page).toContain('columns={["name","category","duration_min","description"]}');
     expect(page).not.toContain("<Catalog");
     expect(page).toContain('<ServiceShowcase title={"Услуги и цены"} main layout="cards" />');
@@ -177,7 +177,9 @@ describe("showcase page and the landing section", () => {
       ),
     );
     const page = r.files["ui/pages/CatalogServices.tsx"] ?? "";
-    expect(page).toContain('import { Catalog, DataTable, type Rec, useDataSource } from "@wizard/ui-kit";');
+    expect(page).toContain(
+      'import { Catalog, DataTable, LandingSection, type Rec, useDataSource } from "@wizard/ui-kit";',
+    );
     expect(page).toContain('onSelect={() => location.assign("/#lead")}');
     expect(page).toContain("files.imageSrc(r.photo, 480)");
     expect(page).toContain('price: typeof r.price === "number" ? r.price : null,');
@@ -188,12 +190,14 @@ describe("showcase page and the landing section", () => {
     expect(home).toContain(
       '<ServiceShowcase title={"Процедуры и цены"} intro={"Пример: …"} anchor="services" layout="list" />',
     );
-    expect(home).toContain('<ServiceShowcase title={"Прайс"} anchor="services_2" layout="table" />');
+    expect(home).toContain(
+      '<ServiceShowcase title={"Прайс"} anchor="services_2" layout="table" tone="alt" />',
+    );
     expect(home).toContain('{"label":"Процедуры и цены","href":"#services"}');
     expect(r.warnings).toEqual([]);
   });
 
-  test("a lead form with its own anchor; the tabs variant is not implemented yet", () => {
+  test("a lead form with its own anchor; the tabs variant filters by catalog sections (B2-35)", () => {
     const plan = clinicPlan([{ type: "services", variant: "cards", content: { title: "Услуги" } }]);
     const form = plan.landing?.sections.find((s) => s.type === "lead_form");
     if (form) form.anchor = "zayavka";
@@ -203,7 +207,21 @@ describe("showcase page and the landing section", () => {
       clinicPlan([{ type: "services", variant: "tabs", content: { title: "Услуги" } }]),
       registry,
     );
-    expect(tabs.ok ? [] : tabs.errors.map((e) => e.code)).toEqual(["SECTION_NOT_IMPLEMENTED"]);
+    // Without catalog sections tabs are cards: no filter buttons, no state.
+    expect(ok(tabs).files["ui/pages/CatalogServices.tsx"]).not.toContain("useState");
+    const byCategory = ok(
+      compilePlan(
+        clinicPlan([{ type: "services", variant: "tabs", content: { title: "Услуги" } }], {
+          with_categories: true,
+        }),
+        registry,
+      ),
+    );
+    const page = byCategory.files["ui/pages/CatalogServices.tsx"] ?? "";
+    expect(page).toContain('import { useState } from "@wizard/sdk";');
+    expect(page).toContain("tabs={tabs}");
+    expect(page).toContain("filter: { ...QUERY.filter, category: tab }");
+    expect(byCategory.files["ui/pages/Home.tsx"]).toContain('layout="tabs"');
   });
 
   test("with booking in the plan «Выбрать» opens booking of the item", () => {
@@ -220,7 +238,9 @@ describe("showcase page and the landing section", () => {
     };
     expect(showcaseTarget(ctx)).toEqual({ kind: "booking", prefix: "/booking?service=" });
     const page = catalogShowcasePage(ctx);
-    expect(page).toContain('import { Catalog, DataTable, type Rec, useNavigate } from "@wizard/ui-kit";');
+    expect(page).toContain(
+      'import { Catalog, DataTable, LandingSection, type Rec, useNavigate } from "@wizard/ui-kit";',
+    );
     expect(page).toContain('onSelect={(r: Rec) => navigate("/booking?service=" + encodeURIComponent(r.id))}');
   });
 
