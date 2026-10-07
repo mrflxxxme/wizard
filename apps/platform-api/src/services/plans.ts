@@ -1,6 +1,6 @@
 // System plan revisions of the beta v2 path (B2-20, db.yaml#system_plans, api.yaml#getSystemPlan): the planner or a
 // deterministic edit adds a revision awaiting approval (the previous one is superseded); approval starts the build.
-import type { Selectable } from "kysely";
+import { type Selectable, sql } from "kysely";
 import { type Db, json } from "../db/index.js";
 import type { SystemPlansTable } from "../db/types.js";
 import type { TxCtx } from "../runs/events.js";
@@ -56,4 +56,36 @@ export async function loadPlan(
   let q = db.selectFrom("platform.system_plans").selectAll().where("system_id", "=", systemId);
   if (revision !== undefined) q = q.where("revision", "=", revision);
   return q.orderBy("revision", "desc").limit(1).executeTakeFirst();
+}
+
+/**
+ * Pipeline of a system for the platform screens (B2-25, api.yaml#getSystem.pipeline): «modules» once it has a plan or
+ * its interview state is a goal session, «legacy» once it has a card or a v1 interview state; a fresh system follows
+ * WIZARD_BUILD_PIPELINE — the same rule as the interview executor (a system keeps the pipeline it started with).
+ */
+export async function systemPipeline(
+  db: Db,
+  s: { id: string; card: unknown },
+  fallback: "legacy" | "modules",
+): Promise<"legacy" | "modules"> {
+  if (s.card) return "legacy";
+  const plan = await db
+    .selectFrom("platform.system_plans")
+    .select("revision")
+    .where("system_id", "=", s.id)
+    .limit(1)
+    .executeTakeFirst();
+  if (plan) return "modules";
+  const last = await db
+    .selectFrom("platform.runs")
+    .select(sql<unknown>`input -> 'executorState'`.as("state"))
+    .where("system_id", "=", s.id)
+    .where("kind", "=", "interview_turn")
+    .where(sql<boolean>`input ? 'executorState'`)
+    .orderBy("created_at", "desc")
+    .limit(1)
+    .executeTakeFirst();
+  const state = last?.state as { pipeline?: unknown } | null | undefined;
+  if (state && typeof state === "object") return state.pipeline === "modules" ? "modules" : "legacy";
+  return fallback;
 }

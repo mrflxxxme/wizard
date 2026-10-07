@@ -22,6 +22,7 @@ import { UndoPanel } from "../../features/destructive/DestructivePanel.js";
 import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
 import { subscribeRun } from "../../run/stream.js";
+import { Canvas } from "../canvas/Canvas.js";
 import { BuildLog } from "./BuildLog.js";
 import { CardView, changedSections } from "./CardView.js";
 import { ChatFeed } from "./ChatFeed.js";
@@ -64,6 +65,8 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   const [lock, setLock] = useState<LockStatus | null>(null);
   const { search } = useRoute();
   const [view, setView] = useState<SystemView | null>(null);
+  // B2-25: a system of the modules pipeline opens the canvas instead of this workspace.
+  const [canvasView, setCanvasView] = useState<SystemView | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, dispatch] = useReducer(runReducer, undefined, initialRunState);
@@ -106,6 +109,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
   useEffect(() => {
     let live = true;
     setView(null);
+    setCanvasView(null);
     setLoadError(null);
     setRunId(null);
     cardRef.current = null;
@@ -113,6 +117,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
       .getSystem(systemId)
       .then((v) => {
         if (!live) return;
+        if (v.pipeline === "modules") return setCanvasView(v);
         cardRef.current = v.card ?? null;
         setView(v);
         if (v.activeRunId) setRunId(v.activeRunId);
@@ -330,6 +335,7 @@ export function Workspace({ systemId }: { systemId: string }): ReactNode {
     inputRef.current?.focus();
   };
 
+  if (canvasView) return <Canvas systemId={systemId} initial={canvasView} />;
   if (loadError) {
     return (
       <div className={s.center}>

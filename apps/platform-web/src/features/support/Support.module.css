@@ -15,6 +15,11 @@
   cursor: pointer;
 }
 
+/* B2-25: the canvas has the button in its top bar; the floating one would cover the chat. */
+:global(html[data-wz-canvas]) .fab {
+  display: none;
+}
+
 .fab:hover {
   border-color: var(--w-accent);
 }

@@ -1,0 +1,1715 @@
+{
+ "name": "clinic",
+ "brief": "Стоматология «Светлая»: хотим, чтобы пациенты сами записывались онлайн к врачу и не забывали о визите. На сайте — услуги с ценами. Оплату лечения на сайте пока не нужно.",
+ "system": {
+  "name": "Клиника «Светлая»",
+  "slug": "svetlaya"
+ },
+ "interview": {
+  "text": "Есть 3 вопроса, чтобы составить план системы.",
+  "questions": [
+   {
+    "id": "q1",
+    "topic": "params",
+    "module": "booking",
+    "param": "with_specialists",
+    "text": "Сколько врачей ведут приём?",
+    "whyItMatters": "Пациент выберет врача при записи, у каждого — своё расписание",
+    "options": [
+     {
+      "id": "one",
+      "label": "Один",
+      "recommended": false
+     },
+     {
+      "id": "many",
+      "label": "Несколько",
+      "recommended": true
+     }
+    ],
+    "allowCustom": false
+   },
+   {
+    "id": "q2",
+    "topic": "params",
+    "module": "notify",
+    "param": "channels",
+    "text": "Как напоминать пациентам о визите?",
+    "whyItMatters": "Напоминание за сутки и за 2 часа уменьшает неявки",
+    "options": [
+     {
+      "id": "email",
+      "label": "Письмом",
+      "recommended": false
+     },
+     {
+      "id": "both",
+      "label": "Письмом и в Телеграме",
+      "recommended": true
+     }
+    ],
+    "allowCustom": false
+   },
+   {
+    "id": "q3",
+    "topic": "params",
+    "module": "booking",
+    "param": "day_end",
+    "text": "До скольки идёт приём?",
+    "whyItMatters": "Так на сайте будут только реальные окна для записи",
+    "options": [
+     {
+      "id": "18",
+      "label": "До 18:00",
+      "recommended": false
+     },
+     {
+      "id": "21",
+      "label": "До 21:00",
+      "recommended": true
+     }
+    ],
+    "allowCustom": true
+   }
+  ],
+  "sketch": {
+   "stage": "interview",
+   "niche": "стоматологическая клиника",
+   "goals": [
+    {
+     "id": "fill_schedule",
+     "label": "Заполнить расписание",
+     "statement": "Пациенты сами записываются онлайн",
+     "modules": [
+      "booking"
+     ]
+    },
+    {
+     "id": "reduce_no_shows",
+     "label": "Меньше неявок и отмен в последний момент",
+     "statement": "Неявок меньше 5%",
+     "modules": [
+      "booking",
+      "notify"
+     ]
+    },
+    {
+     "id": "show_offer",
+     "label": "Показать услуги и цены",
+     "statement": "Пациент видит услуги и цены",
+     "modules": [
+      "catalog"
+     ]
+    }
+   ],
+   "modules": [
+    {
+     "id": "landing",
+     "name": "Секции лендинга",
+     "summary": "Публичная страница из библиотеки секций с вариантами раскладки под дизайн-направление ниши",
+     "goals": [
+      "attract"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "sticky_header",
+       "label": "Закреплённая шапка",
+       "value": true
+      },
+      {
+       "name": "anchor_nav",
+       "label": "Меню по секциям страницы",
+       "value": true
+      }
+     ]
+    },
+    {
+     "id": "catalog",
+     "name": "Каталог и прайс",
+     "summary": "Услуги или товары с ценами, длительностью и фото; витрина на сайте и правка в кабинете",
+     "goals": [
+      "show_offer"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "item_label",
+       "label": "Как называть позицию",
+       "value": "Услуга"
+      },
+      {
+       "name": "show_prices",
+       "label": "Показывать цены",
+       "value": true
+      },
+      {
+       "name": "with_duration",
+       "label": "Длительность услуги",
+       "value": false
+      },
+      {
+       "name": "with_categories",
+       "label": "Разделы каталога",
+       "value": false
+      },
+      {
+       "name": "with_photos",
+       "label": "Фото позиций",
+       "value": true
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля позиции",
+       "value": null
+      },
+      {
+       "name": "showcase_title",
+       "label": "Заголовок витрины",
+       "value": "Услуги и цены"
+      }
+     ]
+    },
+    {
+     "id": "booking",
+     "name": "Запись по слотам",
+     "summary": "Запись на свободное время с подтверждением, отменой и переносом по ссылке; расписание у персонала",
+     "goals": [
+      "fill_schedule",
+      "reduce_no_shows"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "slot_minutes",
+       "label": "Шаг расписания, минут",
+       "value": 60
+      },
+      {
+       "name": "workdays",
+       "label": "Рабочие дни",
+       "value": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+       ]
+      },
+      {
+       "name": "day_start",
+       "label": "Начало дня",
+       "value": "09:00"
+      },
+      {
+       "name": "day_end",
+       "label": "Конец дня",
+       "value": "18:00"
+      },
+      {
+       "name": "break_start",
+       "label": "Начало перерыва",
+       "value": null
+      },
+      {
+       "name": "break_end",
+       "label": "Конец перерыва",
+       "value": null
+      },
+      {
+       "name": "with_specialists",
+       "label": "Несколько специалистов",
+       "value": false
+      },
+      {
+       "name": "specialist_label",
+       "label": "Как называть специалиста",
+       "value": "Специалист"
+      },
+      {
+       "name": "capacity",
+       "label": "Мест на одно время",
+       "value": 1
+      },
+      {
+       "name": "confirm",
+       "label": "Подтверждение записи",
+       "value": "auto"
+      },
+      {
+       "name": "cancel_by_link",
+       "label": "Отмена по ссылке из письма",
+       "value": true
+      },
+      {
+       "name": "reschedule_by_link",
+       "label": "Перенос по ссылке из письма",
+       "value": true
+      },
+      {
+       "name": "cancel_until_hours",
+       "label": "Отмена не позже чем за, часов",
+       "value": 2
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля записи",
+       "value": null
+      },
+      {
+       "name": "retention_days",
+       "label": "Срок хранения записей, дней",
+       "value": 365
+      }
+     ]
+    },
+    {
+     "id": "notify",
+     "name": "Напоминания и уведомления",
+     "summary": "Письма и сообщения в Telegram владельцу и сотрудникам, подтверждения и напоминания посетителям",
+     "goals": [
+      "stay_informed",
+      "reduce_no_shows"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "channels",
+       "label": "Каналы для владельца и сотрудников",
+       "value": [
+        "email"
+       ]
+      },
+      {
+       "name": "notify_staff",
+       "label": "Уведомлять сотрудников",
+       "value": false
+      },
+      {
+       "name": "visitor_emails",
+       "label": "Письма посетителям (с согласия)",
+       "value": true
+      },
+      {
+       "name": "reminder_hours",
+       "label": "Напоминание посетителю за, часов",
+       "value": 24
+      },
+      {
+       "name": "second_reminder_hours",
+       "label": "Второе напоминание за, часов",
+       "value": 0
+      }
+     ]
+    },
+    {
+     "id": "client_card",
+     "name": "Клиенты с историей",
+     "summary": "База клиентов с карточкой: контакты, заметки, метки и история записей, заявок, сделок и абонементов",
+     "goals": [
+      "client_history"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "client_label",
+       "label": "Как называть клиента",
+       "value": "Клиент"
+      },
+      {
+       "name": "match_by",
+       "label": "Узнавать клиента по",
+       "value": "phone"
+      },
+      {
+       "name": "tags",
+       "label": "Метки клиентов",
+       "value": []
+      },
+      {
+       "name": "notes",
+       "label": "Заметки сотрудников",
+       "value": true
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля клиента",
+       "value": null
+      },
+      {
+       "name": "retention_days",
+       "label": "Срок хранения данных клиента, дней",
+       "value": 1095
+      }
+     ]
+    },
+    {
+     "id": "reports",
+     "name": "Отчёты и панель цели",
+     "summary": "Панель цели с метриками модулей плана, отчёты по периодам, выгрузка CSV",
+     "goals": [
+      "visibility"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "period",
+       "label": "Период по умолчанию",
+       "value": "month"
+      },
+      {
+       "name": "export_csv",
+       "label": "Выгрузка в CSV",
+       "value": true
+      },
+      {
+       "name": "digest",
+       "label": "Сводка владельцу",
+       "value": "none"
+      }
+     ]
+    }
+   ],
+   "outOfScope": [
+    {
+     "request": "Оплата лечения на сайте",
+     "category": "payments",
+     "replacement": ""
+    }
+   ],
+   "roles": [],
+   "entities": [],
+   "screens": [],
+   "sections": [],
+   "metrics": [],
+   "scenarios": [],
+   "custom": [],
+   "accent": null,
+   "automations": [],
+   "access": [],
+   "retention": [],
+   "warnings": [],
+   "errors": [],
+   "fingerprint": null
+  }
+ },
+ "plan": {
+  "text": "План системы готов: цели, модули и что не входит. Проверьте и утвердите — сборка начнётся только после этого.",
+  "plan": {
+   "version": 1,
+   "niche": "стоматологическая клиника",
+   "goals": [
+    {
+     "id": "fill_schedule",
+     "statement": "Пациенты сами записываются онлайн"
+    },
+    {
+     "id": "reduce_no_shows",
+     "statement": "Неявок меньше 5%"
+    },
+    {
+     "id": "show_offer",
+     "statement": "Пациент видит услуги и цены"
+    }
+   ],
+   "modules": [
+    {
+     "id": "landing",
+     "version": 1
+    },
+    {
+     "id": "catalog",
+     "version": 1,
+     "params": {
+      "with_duration": true
+     },
+     "goals": [
+      "show_offer"
+     ]
+    },
+    {
+     "id": "booking",
+     "version": 1,
+     "params": {
+      "with_specialists": true,
+      "specialist_label": "Врач",
+      "day_end": "21:00",
+      "slot_minutes": 30
+     },
+     "goals": [
+      "fill_schedule"
+     ]
+    },
+    {
+     "id": "notify",
+     "version": 1,
+     "params": {
+      "channels": [
+       "email",
+       "telegram"
+      ],
+      "second_reminder_hours": 2
+     },
+     "goals": [
+      "reduce_no_shows"
+     ]
+    },
+    {
+     "id": "client_card",
+     "version": 1,
+     "params": {
+      "client_label": "Пациент"
+     }
+    },
+    {
+     "id": "reports",
+     "version": 1
+    }
+   ],
+   "landing": {
+    "sections": [
+     {
+      "type": "header",
+      "variant": "bar",
+      "content": {
+       "cta": "Записаться"
+      }
+     },
+     {
+      "type": "hero",
+      "variant": "split",
+      "content": {
+       "title": "Спокойное лечение без очередей",
+       "subtitle": "Приём с 9 до 21. Выберите время онлайн, а накануне мы напомним.",
+       "cta": "Выбрать время"
+      }
+     },
+     {
+      "type": "services",
+      "variant": "list",
+      "content": {
+       "title": "Услуги и цены"
+      }
+     },
+     {
+      "type": "steps",
+      "variant": "numbered",
+      "content": {
+       "title": "Как записаться",
+       "items": [
+        "Выберите услугу и врача",
+        "Отметьте свободное время",
+        "Получите напоминание накануне"
+       ]
+      }
+     },
+     {
+      "type": "cta",
+      "variant": "band",
+      "content": {
+       "title": "Запишитесь на удобное время",
+       "cta": "Записаться"
+      }
+     },
+     {
+      "type": "footer",
+      "variant": "simple",
+      "content": {
+       "text": "Клиника «Светлая»"
+      }
+     }
+    ]
+   },
+   "design": {
+    "direction": {
+     "mood": [
+      "спокойствие",
+      "доверие"
+     ],
+     "rhythm": "airy"
+    },
+    "theme": "calm",
+    "accent": "#0F766E",
+    "fontPair": {
+     "heading": "Manrope",
+     "body": "Inter Tight"
+    },
+    "photoStyle": "светлые кабинеты, дневной свет"
+   },
+   "outOfScope": [
+    {
+     "request": "Оплата лечения на сайте",
+     "replacement": "Оплата в клинике после приёма",
+     "category": "payments"
+    }
+   ],
+   "custom": []
+  },
+  "sketch": {
+   "stage": "plan",
+   "niche": "стоматологическая клиника",
+   "goals": [
+    {
+     "id": "fill_schedule",
+     "label": "Заполнить расписание",
+     "statement": "Пациенты сами записываются онлайн",
+     "modules": [
+      "booking"
+     ]
+    },
+    {
+     "id": "reduce_no_shows",
+     "label": "Меньше неявок и отмен в последний момент",
+     "statement": "Неявок меньше 5%",
+     "modules": [
+      "notify"
+     ]
+    },
+    {
+     "id": "show_offer",
+     "label": "Показать услуги и цены",
+     "statement": "Пациент видит услуги и цены",
+     "modules": [
+      "catalog"
+     ]
+    }
+   ],
+   "modules": [
+    {
+     "id": "landing",
+     "name": "Секции лендинга",
+     "summary": "Публичная страница из библиотеки секций с вариантами раскладки под дизайн-направление ниши",
+     "goals": [
+      "attract"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "sticky_header",
+       "label": "Закреплённая шапка",
+       "value": true
+      },
+      {
+       "name": "anchor_nav",
+       "label": "Меню по секциям страницы",
+       "value": true
+      }
+     ]
+    },
+    {
+     "id": "catalog",
+     "name": "Каталог и прайс",
+     "summary": "Услуги или товары с ценами, длительностью и фото; витрина на сайте и правка в кабинете",
+     "goals": [
+      "show_offer"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "item_label",
+       "label": "Как называть позицию",
+       "value": "Услуга"
+      },
+      {
+       "name": "show_prices",
+       "label": "Показывать цены",
+       "value": true
+      },
+      {
+       "name": "with_duration",
+       "label": "Длительность услуги",
+       "value": true
+      },
+      {
+       "name": "with_categories",
+       "label": "Разделы каталога",
+       "value": false
+      },
+      {
+       "name": "with_photos",
+       "label": "Фото позиций",
+       "value": true
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля позиции",
+       "value": null
+      },
+      {
+       "name": "showcase_title",
+       "label": "Заголовок витрины",
+       "value": "Услуги и цены"
+      }
+     ]
+    },
+    {
+     "id": "booking",
+     "name": "Запись по слотам",
+     "summary": "Запись на свободное время с подтверждением, отменой и переносом по ссылке; расписание у персонала",
+     "goals": [
+      "fill_schedule"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "slot_minutes",
+       "label": "Шаг расписания, минут",
+       "value": 30
+      },
+      {
+       "name": "workdays",
+       "label": "Рабочие дни",
+       "value": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+       ]
+      },
+      {
+       "name": "day_start",
+       "label": "Начало дня",
+       "value": "09:00"
+      },
+      {
+       "name": "day_end",
+       "label": "Конец дня",
+       "value": "21:00"
+      },
+      {
+       "name": "break_start",
+       "label": "Начало перерыва",
+       "value": null
+      },
+      {
+       "name": "break_end",
+       "label": "Конец перерыва",
+       "value": null
+      },
+      {
+       "name": "with_specialists",
+       "label": "Несколько специалистов",
+       "value": true
+      },
+      {
+       "name": "specialist_label",
+       "label": "Как называть специалиста",
+       "value": "Врач"
+      },
+      {
+       "name": "capacity",
+       "label": "Мест на одно время",
+       "value": 1
+      },
+      {
+       "name": "confirm",
+       "label": "Подтверждение записи",
+       "value": "auto"
+      },
+      {
+       "name": "cancel_by_link",
+       "label": "Отмена по ссылке из письма",
+       "value": true
+      },
+      {
+       "name": "reschedule_by_link",
+       "label": "Перенос по ссылке из письма",
+       "value": true
+      },
+      {
+       "name": "cancel_until_hours",
+       "label": "Отмена не позже чем за, часов",
+       "value": 2
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля записи",
+       "value": null
+      },
+      {
+       "name": "retention_days",
+       "label": "Срок хранения записей, дней",
+       "value": 365
+      }
+     ]
+    },
+    {
+     "id": "notify",
+     "name": "Напоминания и уведомления",
+     "summary": "Письма и сообщения в Telegram владельцу и сотрудникам, подтверждения и напоминания посетителям",
+     "goals": [
+      "reduce_no_shows"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "channels",
+       "label": "Каналы для владельца и сотрудников",
+       "value": [
+        "email",
+        "telegram"
+       ]
+      },
+      {
+       "name": "notify_staff",
+       "label": "Уведомлять сотрудников",
+       "value": false
+      },
+      {
+       "name": "visitor_emails",
+       "label": "Письма посетителям (с согласия)",
+       "value": true
+      },
+      {
+       "name": "reminder_hours",
+       "label": "Напоминание посетителю за, часов",
+       "value": 24
+      },
+      {
+       "name": "second_reminder_hours",
+       "label": "Второе напоминание за, часов",
+       "value": 2
+      }
+     ]
+    },
+    {
+     "id": "client_card",
+     "name": "Клиенты с историей",
+     "summary": "База клиентов с карточкой: контакты, заметки, метки и история записей, заявок, сделок и абонементов",
+     "goals": [
+      "client_history"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "client_label",
+       "label": "Как называть клиента",
+       "value": "Пациент"
+      },
+      {
+       "name": "match_by",
+       "label": "Узнавать клиента по",
+       "value": "phone"
+      },
+      {
+       "name": "tags",
+       "label": "Метки клиентов",
+       "value": []
+      },
+      {
+       "name": "notes",
+       "label": "Заметки сотрудников",
+       "value": true
+      },
+      {
+       "name": "extra_fields",
+       "label": "Дополнительные поля клиента",
+       "value": null
+      },
+      {
+       "name": "retention_days",
+       "label": "Срок хранения данных клиента, дней",
+       "value": 1095
+      }
+     ]
+    },
+    {
+     "id": "reports",
+     "name": "Отчёты и панель цели",
+     "summary": "Панель цели с метриками модулей плана, отчёты по периодам, выгрузка CSV",
+     "goals": [
+      "visibility"
+     ],
+     "status": "available",
+     "params": [
+      {
+       "name": "period",
+       "label": "Период по умолчанию",
+       "value": "month"
+      },
+      {
+       "name": "export_csv",
+       "label": "Выгрузка в CSV",
+       "value": true
+      },
+      {
+       "name": "digest",
+       "label": "Сводка владельцу",
+       "value": "none"
+      }
+     ]
+    }
+   ],
+   "roles": [
+    {
+     "name": "guest",
+     "label": "Посетитель",
+     "access": "public"
+    },
+    {
+     "name": "owner",
+     "label": "Владелец",
+     "access": "login"
+    }
+   ],
+   "entities": [
+    {
+     "name": "client",
+     "label": "Пациент",
+     "fields": [
+      {
+       "name": "name",
+       "label": "Имя",
+       "type": "string"
+      },
+      {
+       "name": "phone",
+       "label": "Телефон",
+       "type": "phone"
+      },
+      {
+       "name": "email",
+       "label": "Почта",
+       "type": "email"
+      }
+     ]
+    },
+    {
+     "name": "client_note",
+     "label": "Заметка",
+     "fields": [
+      {
+       "name": "client",
+       "label": "Пациент",
+       "type": "ref"
+      },
+      {
+       "name": "text",
+       "label": "Заметка",
+       "type": "text"
+      }
+     ]
+    },
+    {
+     "name": "service",
+     "label": "Услуга",
+     "fields": [
+      {
+       "name": "name",
+       "label": "Название",
+       "type": "string"
+      },
+      {
+       "name": "price",
+       "label": "Цена, ₽",
+       "type": "money"
+      },
+      {
+       "name": "duration_min",
+       "label": "Длительность, мин",
+       "type": "int"
+      },
+      {
+       "name": "active",
+       "label": "На витрине",
+       "type": "bool"
+      },
+      {
+       "name": "description",
+       "label": "Описание",
+       "type": "text"
+      },
+      {
+       "name": "photo",
+       "label": "Фото",
+       "type": "image"
+      },
+      {
+       "name": "sort_order",
+       "label": "Порядок на витрине",
+       "type": "int"
+      }
+     ]
+    },
+    {
+     "name": "booking",
+     "label": "Запись",
+     "fields": [
+      {
+       "name": "starts_at",
+       "label": "Начало",
+       "type": "datetime"
+      },
+      {
+       "name": "service",
+       "label": "Услуга",
+       "type": "ref"
+      },
+      {
+       "name": "specialist",
+       "label": "Врач",
+       "type": "ref"
+      },
+      {
+       "name": "status",
+       "label": "Статус",
+       "type": "enum"
+      },
+      {
+       "name": "name",
+       "label": "Имя",
+       "type": "string"
+      },
+      {
+       "name": "phone",
+       "label": "Телефон",
+       "type": "phone"
+      },
+      {
+       "name": "email",
+       "label": "Почта",
+       "type": "email"
+      },
+      {
+       "name": "comment",
+       "label": "Комментарий",
+       "type": "text"
+      },
+      {
+       "name": "ends_at",
+       "label": "Окончание",
+       "type": "datetime"
+      },
+      {
+       "name": "seat",
+       "label": "Место",
+       "type": "int"
+      },
+      {
+       "name": "client",
+       "label": "Пациент",
+       "type": "ref"
+      },
+      {
+       "name": "consent_messages",
+       "label": "Согласен получать письма о записи",
+       "type": "bool"
+      }
+     ]
+    },
+    {
+     "name": "specialist",
+     "label": "Врач",
+     "fields": [
+      {
+       "name": "name",
+       "label": "Название",
+       "type": "string"
+      },
+      {
+       "name": "description",
+       "label": "Описание",
+       "type": "text"
+      },
+      {
+       "name": "active",
+       "label": "Принимает записи",
+       "type": "bool"
+      }
+     ]
+    }
+   ],
+   "screens": [
+    {
+     "route": "/cabinet/notifications",
+     "title": "Уведомления",
+     "audience": "cabinet",
+     "roles": [
+      "owner"
+     ],
+     "module": "notify"
+    },
+    {
+     "route": "/",
+     "title": "Главная",
+     "audience": "public",
+     "roles": [
+      "guest",
+      "owner"
+     ],
+     "module": "landing"
+    },
+    {
+     "route": "/clients",
+     "title": "Клиенты и история",
+     "audience": "cabinet",
+     "roles": [
+      "owner"
+     ],
+     "module": "client_card"
+    },
+    {
+     "route": "/services",
+     "title": "Каталог и цены",
+     "audience": "public",
+     "roles": [
+      "guest",
+      "owner"
+     ],
+     "module": "catalog"
+    },
+    {
+     "route": "/booking",
+     "title": "Запись",
+     "audience": "public",
+     "roles": [
+      "guest",
+      "owner"
+     ],
+     "module": "booking"
+    },
+    {
+     "route": "/cabinet/goals",
+     "title": "Панель цели",
+     "audience": "cabinet",
+     "roles": [
+      "owner"
+     ],
+     "module": "reports"
+    },
+    {
+     "route": "/cabinet",
+     "title": "Кабинет: Владелец",
+     "audience": "cabinet",
+     "roles": [
+      "owner"
+     ],
+     "module": "catalog"
+    }
+   ],
+   "sections": [
+    {
+     "index": 0,
+     "type": "header",
+     "label": "Шапка",
+     "variant": "bar"
+    },
+    {
+     "index": 1,
+     "type": "hero",
+     "label": "Первый экран",
+     "variant": "split",
+     "title": "Спокойное лечение без очередей"
+    },
+    {
+     "index": 2,
+     "type": "services",
+     "label": "Услуги из каталога",
+     "variant": "list",
+     "title": "Услуги и цены"
+    },
+    {
+     "index": 3,
+     "type": "steps",
+     "label": "Как это работает",
+     "variant": "numbered",
+     "title": "Как записаться"
+    },
+    {
+     "index": 4,
+     "type": "cta",
+     "label": "Призыв к действию",
+     "variant": "band",
+     "title": "Запишитесь на удобное время"
+    },
+    {
+     "index": 5,
+     "type": "footer",
+     "label": "Подвал",
+     "variant": "simple"
+    }
+   ],
+   "metrics": [
+    {
+     "id": "services_active",
+     "label": "Позиций на витрине",
+     "goal": "show_offer",
+     "module": "catalog",
+     "unit": "count"
+    },
+    {
+     "id": "bookings_count",
+     "label": "Записей",
+     "goal": "fill_schedule",
+     "module": "booking",
+     "unit": "count"
+    },
+    {
+     "id": "schedule_load",
+     "label": "Занятость расписания",
+     "goal": "fill_schedule",
+     "module": "booking",
+     "unit": "percent"
+    },
+    {
+     "id": "no_show_share",
+     "label": "Доля неявок",
+     "goal": "reduce_no_shows",
+     "module": "booking",
+     "unit": "percent"
+    },
+    {
+     "id": "cancel_share",
+     "label": "Доля отмен",
+     "goal": "reduce_no_shows",
+     "module": "booking",
+     "unit": "percent"
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "GS-notify-1",
+     "title": "За сутки до визита посетителю уходит напоминание",
+     "goal": "reduce_no_shows",
+     "module": "notify"
+    },
+    {
+     "id": "GS-notify-3",
+     "title": "Владелец видит, какие уведомления настроены",
+     "goal": "stay_informed",
+     "module": "notify"
+    },
+    {
+     "id": "GS-landing-1",
+     "title": "Посетитель с телефона понимает предложение и находит главное действие",
+     "goal": "attract",
+     "module": "landing"
+    },
+    {
+     "id": "GS-client_card-1",
+     "title": "Владелец открывает карточку клиента и видит все его визиты",
+     "goal": "client_history",
+     "module": "client_card"
+    },
+    {
+     "id": "GS-client_card-4",
+     "title": "Посетитель без входа не видит базу клиентов",
+     "goal": "client_history",
+     "module": "client_card"
+    },
+    {
+     "id": "GS-catalog-1",
+     "title": "Владелец добавляет услугу, посетитель видит её с ценой",
+     "goal": "show_offer",
+     "module": "catalog"
+    },
+    {
+     "id": "GS-catalog-2",
+     "title": "Скрытая позиция не видна посетителю",
+     "goal": "show_offer",
+     "module": "catalog"
+    },
+    {
+     "id": "GS-catalog-3",
+     "title": "Посетитель видит длительность услуги",
+     "goal": "show_offer",
+     "module": "catalog"
+    },
+    {
+     "id": "GS-booking-1",
+     "title": "Посетитель записался на свободное время, владелец получил уведомление",
+     "goal": "fill_schedule",
+     "module": "booking"
+    },
+    {
+     "id": "GS-booking-2",
+     "title": "Второй посетитель на то же время получает отказ",
+     "goal": "fill_schedule",
+     "module": "booking"
+    },
+    {
+     "id": "GS-booking-3",
+     "title": "Отмена по ссылке из письма освобождает время",
+     "goal": "reduce_no_shows",
+     "module": "booking"
+    },
+    {
+     "id": "GS-booking-4",
+     "title": "Перенос по ссылке из письма на другое свободное время",
+     "goal": "reduce_no_shows",
+     "module": "booking"
+    },
+    {
+     "id": "GS-reports-1",
+     "title": "Владелец видит метрику по каждой цели плана",
+     "goal": "visibility",
+     "module": "reports"
+    },
+    {
+     "id": "GS-reports-2",
+     "title": "Владелец переключает период и видит изменение к прошлому периоду",
+     "goal": "visibility",
+     "module": "reports"
+    },
+    {
+     "id": "GS-reports-3",
+     "title": "Без входа панель цели недоступна",
+     "goal": "visibility",
+     "module": "reports"
+    }
+   ],
+   "custom": [],
+   "accent": "#0F766E",
+   "automations": [
+    {
+     "name": "booking_notify",
+     "label": "Уведомить о новой записи",
+     "module": "booking",
+     "trigger": {
+      "type": "on_create",
+      "entity": "booking",
+      "entityLabel": "Запись"
+     },
+     "steps": [
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "owner"
+      },
+      {
+       "type": "notify",
+       "channel": "telegram",
+       "to": "owner"
+      },
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "client"
+      }
+     ]
+    },
+    {
+     "name": "booking_cancelled",
+     "label": "Уведомить об отмене записи",
+     "module": "booking",
+     "trigger": {
+      "type": "on_status",
+      "entity": "booking",
+      "entityLabel": "Запись"
+     },
+     "steps": [
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "owner"
+      },
+      {
+       "type": "notify",
+       "channel": "telegram",
+       "to": "owner"
+      }
+     ]
+    },
+    {
+     "name": "booking_moved",
+     "label": "Письмо о переносе записи",
+     "module": "booking",
+     "trigger": {
+      "type": "on_update",
+      "entity": "booking",
+      "entityLabel": "Запись"
+     },
+     "steps": [
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "client"
+      }
+     ]
+    },
+    {
+     "name": "booking_reminder",
+     "label": "Напоминание за 24 ч до визита",
+     "module": "booking",
+     "trigger": {
+      "type": "schedule",
+      "entity": "booking",
+      "entityLabel": "Запись",
+      "offsetMinutes": -1440
+     },
+     "steps": [
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "client"
+      },
+      {
+       "type": "notify",
+       "channel": "telegram",
+       "to": "owner"
+      }
+     ]
+    },
+    {
+     "name": "booking_reminder_2",
+     "label": "Напоминание за 2 ч до визита",
+     "module": "booking",
+     "trigger": {
+      "type": "schedule",
+      "entity": "booking",
+      "entityLabel": "Запись",
+      "offsetMinutes": -120
+     },
+     "steps": [
+      {
+       "type": "notify",
+       "channel": "email",
+       "to": "client"
+      }
+     ]
+    },
+    {
+     "name": "booking_release",
+     "label": "Отменённая запись освобождает время",
+     "module": "booking",
+     "trigger": {
+      "type": "on_status",
+      "entity": "booking",
+      "entityLabel": "Запись"
+     },
+     "steps": [
+      {
+       "type": "update"
+      }
+     ]
+    },
+    {
+     "name": "client_from_booking",
+     "label": "Найти или создать клиента по записи",
+     "module": "booking",
+     "trigger": {
+      "type": "on_create",
+      "entity": "booking",
+      "entityLabel": "Запись"
+     },
+     "steps": [
+      {
+       "type": "function"
+      }
+     ]
+    }
+   ],
+   "access": [
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "client",
+     "entityLabel": "Пациент",
+     "scope": "all"
+    },
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "client_note",
+     "entityLabel": "Заметка",
+     "scope": "all"
+    },
+    {
+     "role": "guest",
+     "roleLabel": "Посетитель",
+     "entity": "service",
+     "entityLabel": "Услуга",
+     "scope": "some"
+    },
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "service",
+     "entityLabel": "Услуга",
+     "scope": "all"
+    },
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "booking",
+     "entityLabel": "Запись",
+     "scope": "all"
+    },
+    {
+     "role": "guest",
+     "roleLabel": "Посетитель",
+     "entity": "specialist",
+     "entityLabel": "Врач",
+     "scope": "all"
+    },
+    {
+     "role": "owner",
+     "roleLabel": "Владелец",
+     "entity": "specialist",
+     "entityLabel": "Врач",
+     "scope": "all"
+    }
+   ],
+   "retention": [
+    {
+     "entity": "client",
+     "entityLabel": "Пациент",
+     "days": 1095,
+     "mode": "delete"
+    },
+    {
+     "entity": "client_note",
+     "entityLabel": "Заметка",
+     "days": 1095,
+     "mode": "delete"
+    },
+    {
+     "entity": "booking",
+     "entityLabel": "Запись",
+     "days": 365,
+     "mode": "anonymize"
+    }
+   ],
+   "warnings": [],
+   "errors": [],
+   "fingerprint": "13d0aeba6dc7d352a49b88305d7fb6a3ac7688b968c54ac08121cee5d1fcaa77",
+   "outOfScope": [
+    {
+     "request": "Оплата лечения на сайте",
+     "replacement": "Оплата в клинике после приёма",
+     "category": "payments"
+    }
+   ]
+  }
+ },
+ "build": [
+  {
+   "type": "run_started",
+   "payload": {
+    "kind": "build",
+    "mode": "create",
+    "baseRevision": 0,
+    "credits": {
+     "estimate": 2,
+     "cap": 3
+    }
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "plan",
+    "index": 1,
+    "total": 6,
+    "label_ru": "Сверяю план",
+    "status": "started",
+    "remainingSec": 161
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "plan",
+    "label_ru": "Сверяю план",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "plan",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "plan",
+    "index": 1,
+    "total": 6,
+    "label_ru": "Сверяю план",
+    "status": "done",
+    "remainingSec": 160
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "texts",
+    "index": 2,
+    "total": 6,
+    "label_ru": "Пишу тексты",
+    "status": "started",
+    "remainingSec": 160
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "texts",
+    "label_ru": "Пишу тексты",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "texts",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "texts",
+    "index": 2,
+    "total": 6,
+    "label_ru": "Пишу тексты",
+    "status": "done",
+    "remainingSec": 115
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "design",
+    "index": 3,
+    "total": 6,
+    "label_ru": "Подбираю оформление",
+    "status": "started",
+    "remainingSec": 115
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "design",
+    "label_ru": "Подбираю оформление",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "design",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "design",
+    "index": 3,
+    "total": 6,
+    "label_ru": "Подбираю оформление",
+    "status": "done",
+    "remainingSec": 95
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "compile",
+    "index": 4,
+    "total": 6,
+    "label_ru": "Собираю экраны и данные",
+    "status": "started",
+    "remainingSec": 95
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "compile",
+    "label_ru": "Собираю экраны и данные",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "compile",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "compile",
+    "index": 4,
+    "total": 6,
+    "label_ru": "Собираю экраны и данные",
+    "status": "done",
+    "remainingSec": 90
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "custom",
+    "index": 5,
+    "total": 6,
+    "label_ru": "Дописываю недостающее",
+    "status": "skipped",
+    "remainingSec": 90
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "gates",
+    "index": 6,
+    "total": 6,
+    "label_ru": "Проверяю, что всё работает",
+    "status": "started",
+    "remainingSec": 90
+   }
+  },
+  {
+   "type": "step_started",
+   "payload": {
+    "step": "gates",
+    "label_ru": "Проверяю, что всё работает",
+    "attempt": 1
+   }
+  },
+  {
+   "type": "gate_result",
+   "payload": {
+    "level": "G0",
+    "passed": true,
+    "revision": 1,
+    "totalChecks": 14,
+    "failedChecks": []
+   }
+  },
+  {
+   "type": "step_finished",
+   "payload": {
+    "step": "gates",
+    "durationMs": 1000
+   }
+  },
+  {
+   "type": "build_stage",
+   "payload": {
+    "stage": "gates",
+    "index": 6,
+    "total": 6,
+    "label_ru": "Проверяю, что всё работает",
+    "status": "done",
+    "remainingSec": 0
+   }
+  },
+  {
+   "type": "run_finished",
+   "payload": {
+    "status": "succeeded",
+    "resultRevision": 1,
+    "creditsUsed": 2,
+    "summary_ru": "Система собрана: сайт с записью, кабинет и напоминания."
+   }
+  }
+ ]
+}

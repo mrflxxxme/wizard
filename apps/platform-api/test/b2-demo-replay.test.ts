@@ -228,6 +228,8 @@ describe("the client path of a staff org in demo replay", () => {
     expect(r0.status, JSON.stringify(r0.failure)).toBe("succeeded");
     const q = await staff.req("GET", `/systems/${systemId}`);
     expect(q.body.demoReplay).toBe(true);
+    // B2-25: a v1 interview state keeps the system on the legacy workspace.
+    expect(q.body.pipeline).toBe("legacy");
     expect(q.body.pendingQuestions.length).toBeGreaterThanOrEqual(3);
     const ans = await staff.req("POST", `/systems/${systemId}/answers`, {
       body: { restByRecommendation: true },

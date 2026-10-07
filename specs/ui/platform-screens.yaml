@@ -4,7 +4,7 @@
 # specs/agents/orchestrator.yaml. Здесь — что видит пользователь, откуда данные и как это проверить.
 version: 1
 app: apps/platform-web
-tasks: [M0-16, M0-30, M1-08, M1-11, M1-12, M2-08, M2-09, M2-11, M2-15, M3-01, M2-56, M2-57, M2-59, M2-86]   # M0-30: метка модели сборки по итогу eval (F2); M1-11: S10, публикация S6, M1-части S1/S3/S4/S7, S-auth, S-invite; M1-12: UI импорта; M2-08: S-abuse, S-admin; M2-09: S-welcome; M2-11: S-billing, карта, выгрузка, блок «Персональные данные» (L4-02); M2-15: пилот (оплата выключена, вход по приглашению)
+tasks: [M0-16, M0-30, M1-08, M1-11, M1-12, M2-08, M2-09, M2-11, M2-15, M3-01, M2-56, M2-57, M2-59, M2-86, B2-25]   # M0-30: метка модели сборки по итогу eval (F2); M1-11: S10, публикация S6, M1-части S1/S3/S4/S7, S-auth, S-invite; M1-12: UI импорта; M2-08: S-abuse, S-admin; M2-09: S-welcome; M2-11: S-billing, карта, выгрузка, блок «Персональные данные» (L4-02); M2-15: пилот (оплата выключена, вход по приглашению)
 
 stack:
   - "React 19 + Vite 7, TypeScript strict. Роутер — свой минимальный на History API (≤ 12 маршрутов: /, /login, /invite/:token, /legal/:doc, /s/:id, /s/:id/code, /s/:id/settings, /s/:id/import/:importId, /billing, /welcome, /abuse, /admin. До M2 было ≤ 10: публичная форма жалобы, консоль staff и онбординг пилота — отдельные маршруты, потому что у каждого свой доступ (без входа, staff с MFA, пилот); тикет и вкладки консоли — параметр ?report=, а не маршруты); сторонний — только с обоснованием в PR"
@@ -48,7 +48,7 @@ sse:
     run_finished: "итог summary_ru («Собрал за N минут и M кредитов»); prodUrl → ссылка; этап из GET /systems/:id"
     run_failed: "карточка ошибки message_ru (role=alert); для kind=build — «Исправить» → POST /systems/:id/fix (L1-25); для kind=interview_turn и retryable — «Повторить» → POST /systems/:id/messages с последним текстом; lastGoodRevision → превью остаётся"
 
-stages:   # System.stage (workflows.yaml#system_stage) → экран
+stages:   # System.stage (workflows.yaml#system_stage) → экран; B2-25: систему конвейера modules (getSystem.pipeline) все стадии ведёт S-canvas
   interview: S2
   card: "S3 (card.kind=create) или S7 (card.kind=change)"
   building: S4
@@ -424,6 +424,38 @@ screens:
     rules: ["MUST NOT: редактирование, скачивание архива, «скопировать проект» (non_goals: экспорт кода)"]
     test_ids: [code-tree, code-file, code-viewer]
     acceptance: ["M1-08 Playwright: открывается ui/…tsx, textarea и contenteditable в DOM отсутствуют"]
+
+  - id: S-canvas
+    mockup: "docs/prototype/v2-canvas-e.html (прототип E «Холст», grill-7)"
+    name: "Экран-холст: система клиента на весь экран (конвейер modules)"
+    route: "/s/:systemId при getSystem.pipeline = modules (legacy и без поля — S2–S7)"
+    milestone: B2
+    task: B2-25
+    regions:
+      top: "плавающая стеклянная панель canvas-top: знак и «Born to Build», название системы антиквой (canvas-name), во время сборки — кольцо и «осталось …» (canvas-eta, на ≤ 600 px — в строке сборки), после сборки — «Сайт / Кабинет / Телефон» (canvas-views, canvas-view-<site|cab|phone>), «Как это работает» (canvas-xray-toggle), «Написать команде» (canvas-support — плавающая кнопка D68 на холсте скрыта, чтобы не закрывать чат), тема (canvas-theme)"
+      board: "холст canvas-board на всю ширину: рамки «Сайт» (адресная строка), «Кабинет», «Телефон» (canvas-frame-<id>) из блоков canvas-block (data-kind, data-block-state = sketch | materializing | ready; CanvasBlock из @wizard/ui-kit/v2). Во время интервью — блоки модулей-кандидатов эскиза (stage interview), после плана — секции лендинга, экраны модулей (screens[].module), панель цели (метрика на каждую цель), уведомления на телефоне. Данные в блоках — образцы («пример данных»), тексты — из плана. Подпись рамки и метки: цели (canvas-tag-goal) и «не входит → замена» (canvas-tag-out) на блоке своего модуля, ответы интервью (canvas-tag) — на блоке модуля вопроса"
+      chat: "ChatSheet снизу по центру (canvas-sheet): над строкой ввода (canvas-composer) — карточка вопроса (canvas-question «N из M», вариант «советуем», canvas-rest «Остальное — по рекомендациям»), план (canvas-plan-card: цели · блоки · не входит, «Собрать» canvas-approve), строка сборки (canvas-build-row, canvas-build-step «i из N»), сбой (canvas-failure), «Система готова» (canvas-ready: canvas-open-<site|cab|phone>) или 2–3 последние реплики (canvas-recent). История — по тапу или протягиванию ручки вверх (p-sheet-grab), реплики canvas-message; на 390 px — лист снизу"
+      xray: "слой canvas-xray (XrayLines): цепочка автоматики словами, привязанная к блокам (что делает посетитель на сайте → запись в кабинете → напоминания «за сутки и за 2 ч» → панель цели), холст уменьшается, чтобы цепочка поместилась; панель canvas-xray-data «Кто видит данные» (роль → данные, «только свои», «часть») и «Сколько хранятся» (срок и удаление или обезличивание), под «Что происходит само» — все автоматизации плана. Всё — из эскиза (PlanSketch.automations, access, retention), без модели"
+    data:
+      - "GET /systems/:id → pipeline, stage, pendingQuestions (вопросы интервью по целям: topic, module, param), messages, activeRunId, demoReplay"
+      - "SSE прогона: plan_sketch {stage, planRevision, sketch} — холст перерисовывается только при смене ключа эскиза (stage plan — fingerprint); chat_output → GET /systems/:id; build_stage и step_* — ход сборки"
+      - "Открытие экрана во время интервью без активного прогона: эскиз — из plan_sketch прогона последнего сообщения kind=questions (повтор событий завершённого прогона)"
+      - "GET /systems/:id/plan → revision, errors, sketch; POST /systems/:id/plan/approve {revision} → build; POST /systems/:id/answers; POST /systems/:id/messages (пожелание к плану после плана и после сборки); POST /systems/:id/fix — повтор после сбоя"
+    states:
+      interview: "эскиз из модулей-кандидатов в приглушённом виде (контур и полосы вместо текста); вопросы по одному; ответ сразу ставит метку на блок модуля и подсвечивает его (без модели и без запроса), после последнего ответа — один POST /answers и план"
+      card: "план: эскиз из экранов модулей с метками целей и «не входит», карточка плана; ошибки плана — списком, «Собрать» недоступна; сборка стартует только по «Собрать» (approve с ревизией, PLAN_REVISION_STALE → «План изменился — показываю новую версию» и перечитать план)"
+      building: "«материализация»: блоки по порядку сайт → телефон → кабинет становятся настоящими в доле готовых этапов; строка «Собираю · <этап простыми словами> · i из N», кольцо и «осталось …»; слой «Как это работает» сам показывается с 30 до 70 % сборки, затем скрыт и включается кнопкой; вторая попытка после сбоя пишет «N этапов взяты из прошлой попытки»"
+      ready: "«Система готова» антиквой, число блоков; виды «Сайт / Кабинет / Телефон»; тап или Enter по блоку подсвечивает его кольцом цвета бизнеса и ставит его название меткой в строку ввода (p-composer-target; Esc или крестик снимает); колбэк onBlockSelect — для правок B2-29"
+      failed: "canvas-failure: причина словами по коду (PLAN_INVALID — «откройте план и поправьте», MODULE_BUG, STAGE_BUDGET_EXCEEDED, GATES_FAILED…), код, этап и текст сервера — под «Подробнее» (canvas-failure-more), «Попробовать ещё раз» (canvas-retry, кроме PLAN_INVALID) → /fix"
+    rules:
+      - "Ход сборки читает только адаптер buildProgress(events) (src/screens/canvas/buildProgress.ts): build_stage {stage, status started|done|reused|skipped, index, total, label_ru, remainingSec} сборщика v2, без него — step_started/step_finished и оценка по средней длительности шага"
+      - "Цвет бизнеса (план design.accent → PlanSketch.accent) холст перенимает через custom properties (CSSOM: CSP платформы запрещает вставку <style>); светлая и тёмная тема (переключатель, по умолчанию — как в системе), prefers-reduced-motion выключает движение"
+      - "Тексты — по-русски, без жаргона; названия моделей, кредиты и коды — только под «Подробнее»"
+    test_ids: [canvas, canvas-root, canvas-top, canvas-name, canvas-eta, canvas-eta-text, canvas-views, canvas-view-site, canvas-view-cab, canvas-view-phone, canvas-xray-toggle, canvas-support, canvas-theme, canvas-main, canvas-empty, canvas-board, canvas-frame-site, canvas-frame-cab, canvas-frame-phone, canvas-block, canvas-tag, canvas-tag-goal, canvas-tag-out, canvas-xray, canvas-xray-data, canvas-sheet, canvas-composer, canvas-question, canvas-rest, canvas-plan-card, canvas-plan-errors, canvas-approve, canvas-build-row, canvas-build-step, canvas-failure, canvas-failure-more, canvas-retry, canvas-ready, canvas-open-site, canvas-open-cab, canvas-open-phone, canvas-recent, canvas-message, canvas-error, canvas-live, demo-replay]
+    acceptance:
+      - "Playwright apps/platform-web/test/canvas.browser.test.ts (режим показа на записанной ленте «клиника» из настоящего планировщика, 0 вызовов моделей), 390 и 1280 px × светлая и тёмная: бриф → интервью (эскиз растёт с каждым ответом) → план с метками целей и «не входит», до «Собрать» прогонов сборки нет → сборка (этап словами, «осталось», слой «Как это работает» показан сам) → «Система готова» (слой скрыт, включается кнопкой) → вид «Сайт», выбор блока → метка в строке ввода; без горизонтальной прокрутки; скриншоты в test/artifacts/canvas-*.png (артефакт CI)"
+      - "Сбой MODULE_BUG объяснён словами, код под «Подробнее»; «Попробовать ещё раз» доводит до «Система готова»; reduced motion — блоки без анимации"
+      - "vitest apps/platform-web/test/canvas.test.ts: модель холста из эскизов, цепочка рентгена, адаптер buildProgress (build_stage и запасной путь), ключ эскиза по fingerprint"
 
 mvp_cut:   # D65–D73 (grill-5): срез выпуска MVP, задачи M2-56, M2-57, M2-59, M2-86 в объёме mvp_scope
   support_button: "Кнопка support-open «Написать команде» — на всех экранах кабинета (S1–S10, S-billing, S-welcome, S-import, S-code; не на /admin, входе и публичных страницах), фиксированно в правом нижнем углу. Диалог support-dialog (role=dialog, aria-modal, фокус в поле, Esc закрывает, фокус не уходит из диалога): support-text, support-wants-team «Хочу, чтобы доделала команда», support-system (ссылка на открытую систему), support-send / support-cancel; ошибка support-error (429 — текст API); итог support-done (role=status) — message_ru API со сроком ответа (рабочее время Пн–Пт 10–19 МСК, D60). Ошибки BUILDS_LIMIT, EDITS_LIMIT, INSUFFICIENT_CREDITS, LLM_BUDGET_EXHAUSTED, PLAN_LIMIT, упавший прогон (run-team) и «Пока не умеем» в чате (payload.gaps → chat-gap-team, текст заполнен) открывают ту же форму. POST /support/requests"
