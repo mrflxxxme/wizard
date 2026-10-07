@@ -86,6 +86,12 @@ export async function runPhotosStage(o: {
   const photos: PlanPhoto[] = [];
   const providers = new Set<StockProvider>();
   let errors = 0;
+  // The first failure, for the stage note (build_metrics, the D76 report): stock errors carry no keys.
+  let firstError = "";
+  const failed = (what: string, e: unknown) => {
+    errors++;
+    if (!firstError) firstError = `${what}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
+  };
   const late = () => now() - t0 > budget || o.signal?.aborted === true;
 
   // One search per section type and orientation; the slots of a group take its hits in order.
@@ -103,8 +109,8 @@ export async function runPhotosStage(o: {
       let hits: StockHit[];
       try {
         hits = await stock.search(provider, q, Math.min(30, Math.max(6, todo.length * 3)), o.signal);
-      } catch {
-        errors++;
+      } catch (e) {
+        failed(`поиск ${provider}`, e);
         continue;
       }
       let attempts = todo.length + 3;
@@ -115,8 +121,10 @@ export async function runPhotosStage(o: {
         if (used.has(key) || !fits(hit, slot)) continue;
         used.add(key);
         attempts--;
+        let step = "скачивание";
         try {
           const bytes = await stock.download(hit, o.signal);
+          step = "копия";
           const copy = await host.store(hit, bytes);
           photos.push({
             slot: slot.slot,
@@ -134,8 +142,8 @@ export async function runPhotosStage(o: {
           });
           providers.add(hit.provider);
           todo = todo.slice(1);
-        } catch {
-          errors++;
+        } catch (e) {
+          failed(`${step} ${hit.provider}`, e);
         }
       }
     }
@@ -146,7 +154,7 @@ export async function runPhotosStage(o: {
   const why = late()
     ? "не уложились во время этапа"
     : errors
-      ? "сток ответил ошибкой"
+      ? `сток ответил ошибкой (${firstError})`
       : "сток не нашёл подходящих";
   return done(photos, {
     slots: slots.length,

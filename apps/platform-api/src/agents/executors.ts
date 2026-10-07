@@ -42,6 +42,7 @@ import {
   testModeSecrets,
 } from "@wizard/runtime";
 import type postgres from "postgres";
+import { phoneOtpAllowed } from "../billing/plans.js";
 import type { Config } from "../config.js";
 import { recordInterviewFallback } from "../ops/metrics.js";
 import type { EventType } from "../runs/events.js";
@@ -336,6 +337,7 @@ export async function planInterviewTurn(
       await host.emit("orch_invalid", payload);
     },
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
+    phoneLogin: phoneOtpAllowed(c.org.plan),
   });
   const session = isGoalSession(c.state) ? c.state : newGoalSession();
   let res: GoalTurnResult;

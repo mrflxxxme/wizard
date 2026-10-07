@@ -306,6 +306,8 @@ function d76Brief(x) {
         : "- Фото со стоков на сайте: нет — графика темы.",
     );
   else if (x.systemId) L.push("- Фото со стоков на сайте: план сборки не прочитан.");
+  // B2-41: the photos stage's own words (build_metrics) — why a site has no stock photos.
+  if (x.stages?.photos?.note) L.push(`- Этап фото: ${x.stages.photos.note}.`);
   const b = x.browser;
   if (!b?.ran) L.push("- Проверки в браузере (сценарии целей, 390 px) не запускались — готовность не засчитана.");
   else {

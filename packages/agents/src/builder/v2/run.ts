@@ -324,11 +324,18 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
             ...(host.signal ? { signal: host.signal } : {}),
           });
           // The stage's plan must compile; otherwise the plan without photos stays.
-          const ok = compilePlan(r.plan, registry, copts).ok;
+          const c = compilePlan(r.plan, registry, copts);
+          const why = c.ok
+            ? ""
+            : c.errors
+                .map((e) => `${e.code} ${e.path}`)
+                .slice(0, 2)
+                .join(", ");
           return {
-            data: { plan: ok ? r.plan : plan },
-            ...(r.fallback || !ok ? { fallback: true } : {}),
-            note: r.note,
+            data: { plan: c.ok ? r.plan : plan },
+            ...(r.fallback || !c.ok ? { fallback: true } : {}),
+            // B2-41: photos the plan cannot take are dropped — the note says so instead of «N из M».
+            note: c.ok ? r.note : `${r.note}; фото не вошли — план с ними не собирается (${why})`,
           };
         },
       })

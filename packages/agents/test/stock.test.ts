@@ -342,7 +342,10 @@ describe("photos stage of builder v2", () => {
       ...fixtureHost().host,
       store: async () => Promise.reject(new Error("disk")),
     };
-    expect(await runPhotosStage({ plan, host: failingStore })).toMatchObject({ fallback: true, picked: 0 });
+    const noCopy = await runPhotosStage({ plan, host: failingStore });
+    expect(noCopy).toMatchObject({ fallback: true, picked: 0 });
+    // B2-41: the first failure is named in the note (the D76 report shows it).
+    expect(noCopy.note).toMatch(/сток ответил ошибкой \(копия (pexels|pixabay): disk\)/);
     let t = 0;
     const late = await runPhotosStage({ plan, host: fixtureHost().host, budgetMs: 10, now: () => (t += 50) });
     expect(late.picked).toBeLessThan(photoSlots(plan).length);

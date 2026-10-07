@@ -572,6 +572,8 @@ describe("D76 stock photos of the sites", () => {
     ]);
     const db = {
       gaps: {},
+      // B2-41: the photos stage's note of build_metrics explains a site without photos.
+      metrics: { "sys-3": { stages: { photos: { status: "done", note: "фото со стока: 0 из 3; 3 — графика оформления: сток ответил ошибкой (копия pexels: TIMEOUT)" } } } },
       photos: {
         "sys-1": { total: 5, pexels: 3, pixabay: 2, revision: 2, built: true },
         "sys-3": { total: 0, pexels: 0, pixabay: 0, revision: 1, built: true },
@@ -585,6 +587,7 @@ describe("D76 stock photos of the sites", () => {
     expect(text).toContain("- Фото со стоков на сайте: 5 (Pexels 3, Pixabay 2).");
     expect(text).toContain("- Фото со стоков на сайте: 2 (Pexels 1, Pixabay 1).");
     expect(text).toContain("- Фото со стоков на сайте: нет — графика темы.");
+    expect(text).toContain("- Этап фото: фото со стока: 0 из 3; 3 — графика оформления: сток ответил ошибкой (копия pexels: TIMEOUT).");
     expect(text).toContain("- Фото со стоков на сайте: план сборки не прочитан.");
     expect(photosAnnotation(summary)).toBe(
       "::notice title=D76 фото::Фото со стоков: 2 сайта из 4, всего 7 фото (Pexels 4, Pixabay 3)",
