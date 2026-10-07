@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { fixtureLines } from "../../../packages/agents/test/build-v2-fixtures.js";
 import { B2_CUSTOM_SCENARIOS, B2_SCENARIOS } from "../../../packages/agents/test/build-v2-scenarios.js";
 import { listEvents } from "../src/runs/events.js";
+import { loadSpec } from "../src/services/revisions.js";
 import { loadEventSchemas } from "./event-schemas.js";
 import { createTestDb, startApi, type TestApi, waitRun } from "./helpers.js";
 
@@ -213,6 +214,12 @@ describe("modules pipeline on the recorded answers: ≤ 15 ₽ and ≤ 5 min wit
         .executeTakeFirstOrThrow()
     ).payload as { stages: Record<string, unknown> };
     expect(metrics.stages).toMatchObject({ pipeline: "modules", status: "succeeded", planRevision: 1 });
+    // B2-44: the system named after its brief («Барбершоп в Самаре») takes the plan's short name — in the cabinet
+    // list and in the compiled draft (site header, <title>, e-mails).
+    const sys = await api.req("GET", `/systems/${systemId}`);
+    expect(sys.body.system.name).toBe("Барбершоп");
+    const spec = await loadSpec(api.deps.db, { id: systemId, name: "" }, sys.body.system.draftRevision);
+    expect(spec.app.name).toBe("Барбершоп");
     // B2-38: the photos stage (stock fixtures, no network) put stock photos into the landing; the copies are in the
     // shared photo library, the source, author and licence of each are in the compiled system.
     const photosMetric = metrics.stages.photos as { status: string; note: string; costRub: number };

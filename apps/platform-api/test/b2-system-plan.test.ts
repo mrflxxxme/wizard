@@ -143,7 +143,7 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     });
     const sk = ev.find((e) => e.type === "plan_sketch")?.payload as {
       stage: string;
-      sketch: { errors: unknown[] };
+      sketch: { errors: unknown[]; fingerprint: string };
     };
     expect(sk.stage).toBe("plan");
     expect(sk.sketch.errors).toEqual([]);
@@ -161,6 +161,8 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     expect(p.body.plan.sketch.goals.map((g: { id: string }) => g.id)).toEqual(["leads", "attract"]);
     fp1 = p.body.plan.fingerprint;
     expect(fp1).toMatch(/^[0-9a-f]{64}$/);
+    // B2-44: the interview turn compiled the plan with the same (plan-derived) name as the plan screen.
+    expect(sk.sketch.fingerprint).toBe(fp1);
   });
 
   test("no build without approval: nothing queued, /card/approve has no card", async () => {
@@ -220,6 +222,11 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     const full = await api.req("GET", `/systems/${systemId}/plan/sketch?detail=full`);
     expect(full.body.spec.entities.map((e: { name: string }) => e.name)).toContain("lead");
     expect(Object.keys(full.body.files)).toContain("ui/pages/Home.tsx");
+    // B2-44: the system is still named after its brief — the canvas shows the plan's short name, not the brief.
+    const s = await api.req("GET", `/systems/${systemId}`);
+    expect(s.body.system.name).toBe("Стоматологическая клиника в Казани");
+    expect(full.body.spec.app.name).toBe("Стоматологическая клиника");
+    expect(full.body.files["ui/pages/Home.tsx"]).toContain("Стоматологическая клиника");
   });
 
   test("stale and invalid edits are rejected with Russian reasons", async () => {
@@ -248,6 +255,10 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     await waitRun(api, ok.body.run.id, ["succeeded"]);
     expect(builds).toHaveLength(1);
     expect(builds[0]?.plan?.revision).toBe(2);
+    // B2-44: approval renames a system still named after its brief; the build gets the brief to tell such a draft.
+    expect(builds[0]?.brief).toBe(DENTAL_BRIEF);
+    const named = await api.req("GET", `/systems/${systemId}`);
+    expect(named.body.system.name).toBe("Стоматологическая клиника");
     const built = builds[0]?.plan?.plan as { modules: { id: string; version?: number }[] } | undefined;
     expect(built?.modules[1]).toMatchObject({
       id: "leads",
@@ -331,5 +342,30 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
       body: { text: "Сделайте короче", block: { id: "site:x", title: "" } },
     });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("B2-44: a name the owner gave the system is kept", () => {
+  test("interview, canvas and approval keep the owner's name; the plan does not rename the system", async () => {
+    const r = await api.req("POST", "/systems", { body: { prompt: DENTAL_BRIEF } });
+    expect(r.status).toBe(201);
+    const id: string = r.body.system.id;
+    await waitRun(api, r.body.run.id, ["succeeded"]);
+    await api.deps.db.updateTable("platform.systems").set({ name: "Улыбка" }).where("id", "=", id).execute();
+    const a = await api.req("POST", `/systems/${id}/answers`, {
+      body: { answers: [{ questionId: "q1", optionId: "phone" }], restByRecommendation: true },
+    });
+    await waitRun(api, a.body.run.id, ["succeeded"]);
+    const ev = await events(a.body.run.id);
+    const sk = ev.find((e) => e.type === "plan_sketch")?.payload as { sketch: { fingerprint: string } };
+    const p = await api.req("GET", `/systems/${id}/plan`);
+    expect(p.body.plan.revision).toBe(1);
+    expect(sk.sketch.fingerprint).toBe(p.body.plan.fingerprint);
+    const full = await api.req("GET", `/systems/${id}/plan/sketch?detail=full`);
+    expect(full.body.spec.app.name).toBe("Улыбка");
+    const ok = await api.req("POST", `/systems/${id}/plan/approve`, { body: { revision: 1 } });
+    expect(ok.status).toBe(202);
+    await waitRun(api, ok.body.run.id, ["succeeded"]);
+    expect((await api.req("GET", `/systems/${id}`)).body.system.name).toBe("Улыбка");
   });
 });

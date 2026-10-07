@@ -44,7 +44,7 @@ import { draftSnapshot } from "../publish/snapshot.js";
 import { type FlowHost, type FlowResult, runPublish, runRollback } from "../publish/workflows.js";
 import type { SecretStore } from "../secrets/store.js";
 import { insertMessage } from "../services/messages.js";
-import { insertPlanRevision } from "../services/plans.js";
+import { insertPlanRevision, loadBrief } from "../services/plans.js";
 import {
   applyOpsRevision,
   commitFilesRevision,
@@ -1700,12 +1700,17 @@ export class RunEngine {
           .executeTakeFirst();
         return row ? { revision: row.revision, plan: row.plan as Record<string, unknown> } : undefined;
       });
+    // B2-44: a plan build names a system still called after its brief from the plan (builder v2 compile options).
+    const brief = plan
+      ? await x.D.step("plan_brief", () => loadBrief(this.#db, run.system_id as string))
+      : null;
     const out = await this.#runBuilder(x, {
       card: input.card ?? {},
       cap: Number(capMilli ?? 0) / 1000,
       mode,
       ...(mode === "point_edit" && input.target ? { target: input.target } : {}),
       ...(plan ? { plan } : {}),
+      ...(brief !== null ? { brief } : {}),
     });
     if (mode === "point_edit" && input.target && typeof input.fromRevision === "number")
       await this.#assertPointEditScope(x, input.fromRevision, input.target.file);

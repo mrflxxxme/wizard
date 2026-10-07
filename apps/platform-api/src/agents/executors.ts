@@ -55,6 +55,7 @@ import {
   type RunExecutors,
   RunFailure,
 } from "../runs/types.js";
+import { isAutoName } from "../services/slug.js";
 import { withConsentText } from "./consent.js";
 import { g1PlatformConfig } from "./g1-platform.js";
 import { type G1Sandbox, g1RuntimeLogLine, startG1Sandbox } from "./g1-sandbox.js";
@@ -151,7 +152,8 @@ export async function buildByPlan(
     plan: params.plan.plan,
     planRevision: params.plan.revision,
     ...(o.registry ? { registry: o.registry } : {}),
-    appName: current.spec.app.name,
+    // B2-44: the draft's name stays unless it is still the one derived from the brief — then the plan names it.
+    ...(isAutoName(current.spec.app.name, params.brief) ? {} : { appName: current.spec.app.name }),
     ...(o.platformUrl ? { platformUrl: o.platformUrl, systemId: host.run.systemId } : {}),
   });
   if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
@@ -163,6 +165,11 @@ const ASKING_HINT = "Ответьте на вопросы выше или наж
 function lastUserText(host: InterviewHost): string {
   const m = [...host.context.messages].reverse().find((x) => x.role === "user" && x.kind === "text");
   return m?.text ?? "";
+}
+
+/** B2-44: the brief of the system — its first user text message (createSystem). */
+function briefOf(host: InterviewHost): string | null {
+  return host.context.messages.find((x) => x.role === "user" && x.kind === "text")?.text ?? null;
 }
 
 /**
@@ -328,7 +335,8 @@ export async function planInterviewTurn(
     orgPolicy: c.org.policy,
     ctx: { orgId: c.org.id, runId: host.run.id, systemId: c.system.id },
     ...(o.registry ? { registry: o.registry } : {}),
-    appName: c.system.name,
+    // B2-44: a system still named after its brief compiles with the plan's short name (planSiteName).
+    ...(isAutoName(c.system.name, briefOf(host)) ? {} : { appName: c.system.name }),
     runStep: host.runStep,
     // B2-41: what did not pass and what replaced it — the internal event for the diagnosis and the metric.
     emit: async (type, payload) => {

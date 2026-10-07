@@ -4,6 +4,7 @@ import { type Selectable, sql } from "kysely";
 import { type Db, json } from "../db/index.js";
 import type { SystemPlansTable } from "../db/types.js";
 import type { TxCtx } from "../runs/events.js";
+import { isAutoName } from "./slug.js";
 
 export type PlanRow = Selectable<SystemPlansTable>;
 
@@ -56,6 +57,28 @@ export async function loadPlan(
   let q = db.selectFrom("platform.system_plans").selectAll().where("system_id", "=", systemId);
   if (revision !== undefined) q = q.where("revision", "=", revision);
   return q.orderBy("revision", "desc").limit(1).executeTakeFirst();
+}
+
+/** B2-44: the brief of a system — its first user text message (createSystem); null when there is none. */
+export async function loadBrief(db: Db | TxCtx["trx"], systemId: string): Promise<string | null> {
+  const m = await db
+    .selectFrom("platform.messages")
+    .select("text")
+    .where("system_id", "=", systemId)
+    .where("role", "=", "user")
+    .where("kind", "=", "text")
+    .orderBy("seq", "asc")
+    .limit(1)
+    .executeTakeFirst();
+  return m?.text ?? null;
+}
+
+/**
+ * B2-44: the name a plan of the system compiles with — the owner's name, or none while the system still has the name
+ * derived from its brief (the compiler then names it from the plan's niche, planSiteName).
+ */
+export function ownerAppName(name: string, brief: string | null): { appName?: string } {
+  return isAutoName(name, brief) ? {} : { appName: name };
 }
 
 /**

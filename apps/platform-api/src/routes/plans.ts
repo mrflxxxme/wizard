@@ -6,6 +6,7 @@ import {
   type PlanView,
   planBuildCapCredits,
   planEditsSchema,
+  planSiteName,
   viewPlan,
 } from "@wizard/agents/planner";
 import type { SystemPlan } from "@wizard/appspec";
@@ -19,7 +20,7 @@ import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import { withTx } from "../runs/events.js";
 import { insertRun } from "../runs/queue.js";
-import { insertPlanRevision, loadPlan, type PlanRow } from "../services/plans.js";
+import { insertPlanRevision, loadBrief, loadPlan, ownerAppName, type PlanRow } from "../services/plans.js";
 import { lockSystem } from "../services/revisions.js";
 import { toRun } from "../services/serialize.js";
 import { assertTransition } from "../services/stage.js";
@@ -80,7 +81,8 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
     const q = parseQuery(c, revisionQ);
     const row = await planOf(s.id, q.revision);
     if (!row) return c.json({ plan: null });
-    return c.json({ plan: toPlanRevision(row, viewPlan(row.plan, registry, { appName: s.name })) });
+    const named = ownerAppName(s.name, await loadBrief(d.db, s.id));
+    return c.json({ plan: toPlanRevision(row, viewPlan(row.plan, registry, named)) });
   });
 
   // getSystemPlanSketch: the canvas — the light sketch, or with detail=full the compiled spec and files as well.
@@ -89,7 +91,7 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
     const q = parseQuery(c, revisionQ.extend({ detail: z.enum(["sketch", "full"]).default("sketch") }));
     const row = await planOf(s.id, q.revision);
     if (!row) return c.json({ revision: null, sketch: null });
-    const view = viewPlan(row.plan, registry, { appName: s.name });
+    const view = viewPlan(row.plan, registry, ownerAppName(s.name, await loadBrief(d.db, s.id)));
     return c.json({
       revision: row.revision,
       sketch: view.sketch,
@@ -125,15 +127,14 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
         throw new ApiError("PLAN_REVISION_STALE", "План изменился — посмотрите новую версию", {
           revision: row.revision,
         });
-      const edited = applyPlanEdits(row.plan as unknown as SystemPlan, b.edits, registry, {
-        appName: s.name,
-      });
+      const named = ownerAppName(s.name, await loadBrief(t.trx, s.id));
+      const edited = applyPlanEdits(row.plan as unknown as SystemPlan, b.edits, registry, named);
       if (!edited.ok)
         throw new ApiError("PLAN_INVALID", edited.errors[0]?.message_ru ?? "План не собирается", {
           errors: edited.errors,
         });
       const plan = edited.plan as unknown as Record<string, unknown>;
-      const view = viewPlan(plan, registry, { appName: s.name });
+      const view = viewPlan(plan, registry, named);
       if (b.dryRun) return toPlanRevision({ ...row, plan }, view, { dryRun: true });
       const next = await insertPlanRevision(t, {
         systemId: s.id,
@@ -172,7 +173,8 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
           revision: row.revision,
         });
       // Compiled again under the lock: the catalog may have changed since the plan was made.
-      const view = viewPlan(row.plan, registry, { appName: s.name });
+      const named = ownerAppName(s.name, await loadBrief(t.trx, s.id));
+      const view = viewPlan(row.plan, registry, named);
       if (!view.compiled.ok)
         throw new ApiError("PLAN_INVALID", view.errors[0]?.message_ru ?? "План не собирается", {
           errors: view.errors,
@@ -183,6 +185,8 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
         .updateTable("platform.systems")
         .set({
           stage: assertTransition(s.stage, "building"),
+          // B2-44: a system still named after its brief takes the plan's short name (the cabinet list, the build).
+          ...(named.appName === undefined ? { name: planSiteName(plan) } : {}),
           updated_at: new Date(),
           last_activity_at: new Date(),
         })

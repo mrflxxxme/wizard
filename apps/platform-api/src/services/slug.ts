@@ -80,3 +80,11 @@ export function nameFromPrompt(prompt: string): string {
   const name = (first || prompt.trim()).slice(0, 60).trim();
   return name || "Новая система";
 }
+
+/**
+ * B2-44: the system still has the name createSystem derived from its brief (nameFromPrompt) — the owner has not named
+ * it. Without the brief the name counts as the owner's.
+ */
+export function isAutoName(name: string, brief: string | null | undefined): boolean {
+  return typeof brief === "string" && name === nameFromPrompt(brief);
+}
