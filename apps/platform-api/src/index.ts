@@ -126,6 +126,15 @@ export {
 } from "./db/index.js";
 export { ApiError, ERROR_STATUS, type ErrorCode } from "./errors.js";
 export { ExportStore, sweepExpiredExports } from "./exports/storage.js";
+/** B2-26 module factory: the weekly rating of «Запросы на развитие» (module_factory_cron), «Теперь умеем» letters. */
+export {
+  type AnnounceDeps,
+  type AnnounceReport,
+  announceReadyModule,
+  type RecomputeReport,
+  recomputeModuleCandidates,
+  runModuleFactoryCron,
+} from "./gaps/factory.js";
 export { type AuthUser, checkOrgAccess } from "./http/auth.js";
 export { ImportStore, sweepExpiredImports } from "./imports/storage.js";
 /**

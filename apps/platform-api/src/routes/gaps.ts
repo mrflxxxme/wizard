@@ -20,7 +20,11 @@ export function gapsRoutes(d: StaffDeps & { gapsNow?: (() => Date) | undefined }
     c.header("cache-control", "no-store");
     return c.json({
       categories: res.categories.map((x) => ({ ...x, lastAt: x.lastAt.toISOString() })),
-      items: res.items.map((x) => ({ ...x, createdAt: x.createdAt.toISOString() })),
+      items: res.items.map((x) => ({
+        ...x,
+        createdAt: x.createdAt.toISOString(),
+        doneAt: x.doneAt ? x.doneAt.toISOString() : null,
+      })),
     });
   });
 

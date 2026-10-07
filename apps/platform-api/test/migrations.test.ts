@@ -73,8 +73,8 @@ const M2_TABLES = [
 ];
 // M3 tables created so far (M3-02 runtime AI actions: call journal and backfills).
 const M3_TABLES = ["ai_action_calls", "ai_backfills"];
-// B2 tables created so far (B2-20 system plans awaiting approval).
-const B2_TABLES = ["system_plans"];
+// B2 tables created so far (B2-20 system plans awaiting approval, B2-26 module factory).
+const B2_TABLES = ["system_plans", "module_candidates", "module_announcements"];
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [

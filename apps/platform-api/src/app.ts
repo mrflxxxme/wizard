@@ -17,6 +17,7 @@ import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./c
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
+import { runModuleFactoryCron } from "./gaps/factory.js";
 import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
@@ -35,6 +36,7 @@ import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
 import { creditRoutes } from "./routes/credits.js";
 import { destructiveRoutes } from "./routes/destructive.js";
 import { exportRoutes } from "./routes/exports.js";
+import { factoryRoutes } from "./routes/factory.js";
 import { gapsRoutes } from "./routes/gaps.js";
 import { importRoutes } from "./routes/imports.js";
 import { internalRoutes } from "./routes/internal.js";
@@ -104,6 +106,11 @@ export interface PlatformApiOptions {
   antifraudRecheck?: (s: { systemId: string; revision: number }) => Promise<string[]>;
   /** retention_cron platform pass period (hourly in-process; 0 disables, default 0 with dbos — worker schedule). */
   retentionCronMs?: number;
+  /**
+   * B2-26 module_factory_cron check period in-process (default 6 h: recomputes when the rating is a week old; 0
+   * disables, default 0 with dbos — the worker's weekly wizard.module_factory schedule).
+   */
+  moduleFactoryMs?: number;
   /**
    * inprocess (default; M0 and unit tests): runs execute in this process. dbos (M1, `pnpm dev`): runs are enqueued
    * as DBOS workflows that apps/worker executes (workflows.yaml#execution.M1).
@@ -260,6 +267,25 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
         }, opsMs)
       : undefined;
   opsTimer?.unref();
+  // B2-26 module factory: the weekly rating of «Запросы на развитие»; DBOS scheduled in apps/worker, in-process without.
+  const factoryMs = opts.moduleFactoryMs ?? (dbos ? 0 : 6 * 3600_000);
+  const factoryTimer =
+    factoryMs > 0
+      ? setInterval(() => {
+          runModuleFactoryCron(
+            {
+              db: handle.db,
+              mailer,
+              platformOrigin: config.platformOrigin,
+              ...(opts.modules ? { registry: opts.modules } : {}),
+              log,
+            },
+            opts.now?.() ?? new Date(),
+            { ifStale: true },
+          ).catch((e) => log("module factory failed", e));
+        }, factoryMs)
+      : undefined;
+  factoryTimer?.unref();
   // abuse.yaml#takedown.sla: every API process watches (one alert per report through db.yaml#ops_alerts).
   const abuseSlaMs = opts.abuseSlaMs ?? 600_000;
   const abuseSla =
@@ -336,6 +362,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   // M2P MVP cut: «Написать команде» (D68) and «Запросы на развитие» (D73).
   api.route("/", supportRoutes({ ...abuse, supportNow: opts.now }));
   api.route("/", gapsRoutes({ ...abuse, gapsNow: opts.now }));
+  // B2-26: module factory — «Кандидаты в модули» and the consent to «Теперь умеем» letters.
+  api.route("/", factoryRoutes({ ...abuse, factoryNow: opts.now, modules: opts.modules }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
   app.route("/api/v1", api);
 
@@ -348,6 +376,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
       if (opsTimer) clearInterval(opsTimer);
+      if (factoryTimer) clearInterval(factoryTimer);
       if (abuseSla) clearInterval(abuseSla);
       if (sweepTimer) clearInterval(sweepTimer);
       await engine.close();

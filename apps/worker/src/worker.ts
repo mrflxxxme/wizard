@@ -33,6 +33,7 @@ import {
   RUN_WORKFLOW,
   RunEngine,
   type RunExecutors,
+  runModuleFactoryCron,
   runRetentionCron,
   SecretStore,
   sweepExpiredExports,
@@ -51,6 +52,8 @@ export const DBOS_RETENTION = "wizard.dbos_retention";
 export const IMPORTS_TTL = "wizard.imports_ttl";
 /** workflows.yaml#retention_cron (platform part): daily 03:30 MSK, after the runtime's retention pass. */
 export const RETENTION_CRON = "wizard.retention_cron";
+/** B2-26 workflows.yaml#module_factory_cron: the weekly rating of «Запросы на развитие», Monday 06:17 MSK. */
+export const MODULE_FACTORY_CRON = "wizard.module_factory";
 /** M2-09: founder alert «run failed rate > 20% за 1 ч» (deploy.yaml#cloud.observability.alerts), every 10 min. */
 export const OPS_CHECKS = "wizard.ops_checks";
 /** execution.M1.dbos_data: dbos.* of terminal workflows older than this are deleted daily. */
@@ -98,6 +101,8 @@ export interface Worker {
   retention(now?: Date): ReturnType<typeof runRetentionCron>;
   /** One pass of the ops checks (run failure rate; tests). */
   opsChecks(now?: Date): ReturnType<typeof checkRunFailureRate>;
+  /** One pass of the module factory rating (tests; the schedule runs it weekly). */
+  moduleFactory(now?: Date): ReturnType<typeof runModuleFactoryCron>;
   close(): Promise<void>;
 }
 
@@ -254,6 +259,15 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     },
     { name: OPS_CHECKS },
   );
+  const moduleFactory = (now = new Date()) =>
+    runModuleFactoryCron({ db: handle.db, mailer, platformOrigin: config.platformOrigin, log }, now);
+  const moduleFactoryCron = DBOS.registerWorkflow(
+    async (_at: Date, _ctx: unknown): Promise<void> => {
+      // One step: the pass is idempotent (upsert by key; one letter per client and module).
+      await DBOS.runStep(async () => void (await moduleFactory()), { name: "module_factory" });
+    },
+    { name: MODULE_FACTORY_CRON },
+  );
   const dbosRetention = DBOS.registerWorkflow(
     async (_at: Date, _ctx: unknown): Promise<void> => {
       await DBOS.runStep(() => retainDbos(), { name: "dbos_retention" });
@@ -295,6 +309,12 @@ async function launch(o: WorkerOptions): Promise<Worker> {
         scheduleName: RETENTION_CRON,
         workflowFn: retentionCron,
         schedule: "30 3 * * *",
+        cronTimezone: "Europe/Moscow",
+      },
+      {
+        scheduleName: MODULE_FACTORY_CRON,
+        workflowFn: moduleFactoryCron,
+        schedule: "17 6 * * 1",
         cronTimezone: "Europe/Moscow",
       },
       {
@@ -375,6 +395,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     retainDbos,
     retention,
     opsChecks,
+    moduleFactory,
     async close() {
       if (closed) return;
       closed = true;

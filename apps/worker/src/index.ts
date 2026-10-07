@@ -4,7 +4,10 @@ export const APP = "@wizard/worker";
 export { dbosDurable } from "./durable.js";
 /** Encrypted outputs of offloaded steps; dbos.* keeps only {id, sha256}. */
 export { type StepRef, StepStore } from "./step-store.js";
-/** startWorker(): DBOS launch, run workflow, queues, credits/billing/retention schedules, ops checks (M2-09). */
+/**
+ * startWorker(): DBOS launch, run workflow, queues, credits/billing/retention schedules, ops checks (M2-09), the
+ * weekly module factory rating (B2-26).
+ */
 export {
   BILLING_CRON,
   CREDITS_CRON,
@@ -12,6 +15,7 @@ export {
   DBOS_RETENTION_DAYS,
   DEFAULT_RUN_CONCURRENCY,
   IMPORTS_TTL,
+  MODULE_FACTORY_CRON,
   OPS_CHECKS,
   RETENTION_CRON,
   startWorker,

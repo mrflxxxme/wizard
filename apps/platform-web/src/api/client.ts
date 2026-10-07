@@ -8,6 +8,7 @@ import type {
   Answer,
   ApiErrorBody,
   Billing,
+  CandidateFilter,
   CreditBalance,
   DeletionLogEntry,
   DestructiveChangeRecord,
@@ -30,6 +31,9 @@ import type {
   Message,
   MessageBlock,
   MessageTarget,
+  ModuleCandidateCard,
+  ModuleCandidateDecision,
+  ModuleCandidates,
   Org,
   OrgSettings,
   PilotInvite,
@@ -51,6 +55,7 @@ import type {
   SystemPlanRevision,
   SystemView,
   Theme,
+  UpdatesConsent,
   User,
 } from "./types.js";
 
@@ -472,6 +477,24 @@ export function createApiClient(opts: ClientOptions = {}) {
     // D73 «Запросы на развитие».
     adminDevelopmentRequests: (category?: DevelopmentCategory) =>
       call<DevelopmentRequests>("GET", "/admin/development-requests", { query: { category } }),
+    adminModuleCandidates: (status?: CandidateFilter) =>
+      call<ModuleCandidates>("GET", "/admin/module-candidates", { query: { status } }),
+    adminModuleCandidate: (id: string) =>
+      call<ModuleCandidateCard>("GET", `/admin/module-candidates/${encodeURIComponent(id)}`),
+    adminDecideModuleCandidate: (
+      id: string,
+      body: { action: "approve" | "disable" | "ready"; moduleId?: string; note?: string },
+    ) =>
+      call<ModuleCandidateDecision>("POST", `/admin/module-candidates/${encodeURIComponent(id)}/decision`, {
+        body,
+      }),
+    adminRecomputeModuleCandidates: () =>
+      call<{ computedAt: string; candidates: number; sent: number }>(
+        "POST",
+        "/admin/module-candidates/recompute",
+      ),
+    getUpdatesConsent: () => call<UpdatesConsent>("GET", "/me/updates-consent"),
+    setUpdatesConsent: (on: boolean) => call<UpdatesConsent>("PUT", "/me/updates-consent", { body: { on } }),
     disputeG2Block: (id: string, body: { revision: number; text?: string }) =>
       call<{ reportId: string; message_ru: string }>("POST", `${sys(id)}/disputes`, { body }),
     // M2-72: prod changes that remove data (api.yaml getDestructiveConsequences … undoDestructiveChange).

@@ -7,9 +7,10 @@ import { join } from "node:path";
 export interface MailMessage {
   /**
    * notice — events for the owner of a system (consent withdrawal, compliance.yaml#consent.withdrawal); alert — founder
-   * alerts (ops/alert.ts, WIZARD_OPS_ALERT_EMAIL).
+   * alerts (ops/alert.ts, WIZARD_OPS_ALERT_EMAIL); updates — «Теперь умеем» of the module factory (B2-26), only to
+   * clients who agreed to letters about new abilities.
    */
-  kind: "otp" | "invite" | "notice" | "billing" | "alert";
+  kind: "otp" | "invite" | "notice" | "billing" | "alert" | "updates";
   to: string;
   subject: string;
   text: string;

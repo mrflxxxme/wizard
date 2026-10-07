@@ -735,7 +735,82 @@ export interface DevelopmentRequests {
     systemId: string | null;
     systemName: string | null;
     email: string | null;
+    /** B2-26: done — a ready module covers the request (module factory). */
+    status?: "open" | "done";
+    doneAt?: string | null;
+    candidateId?: string | null;
   }[];
+}
+
+/** api.yaml#ModuleCandidate (B2-26): a candidate in the weekly rating of the module factory. */
+export interface ModuleCandidate {
+  id: string;
+  key: string;
+  category: DevelopmentCategory;
+  title: string;
+  status: "new" | "approved" | "disabled" | "ready";
+  moduleId: string | null;
+  moduleName: string | null;
+  rank: number | null;
+  weekRequests: number;
+  weekCustom: number;
+  totalRequests: number;
+  totalCustom: number;
+  systems: number;
+  clients: number;
+  examples: { quote: string; source: "request" | "custom" }[];
+  lastSeenAt: string | null;
+  computedAt: string | null;
+  note: string | null;
+  decidedAt: string | null;
+  readyAt: string | null;
+  suggested: { id: string; name: string; status: "ready" | "draft" } | null;
+}
+
+/** api.yaml#CatalogModuleRef (B2-26). */
+export interface CatalogModuleRef {
+  id: string;
+  name: string;
+  summary: string;
+  status: "ready" | "draft";
+  available: boolean;
+}
+
+/** api.yaml adminModuleCandidates status filter. */
+export type CandidateFilter = "open" | "new" | "approved" | "disabled" | "ready" | "all";
+
+/** api.yaml adminModuleCandidates. */
+export interface ModuleCandidates {
+  computedAt: string | null;
+  items: ModuleCandidate[];
+  modules: CatalogModuleRef[];
+}
+
+/** api.yaml adminModuleCandidate. */
+export interface ModuleCandidateCard {
+  candidate: ModuleCandidate;
+  requests: {
+    id: string;
+    quote: string;
+    status: "open" | "done";
+    createdAt: string;
+    doneAt: string | null;
+    systemId: string | null;
+    systemName: string | null;
+  }[];
+  notified: number;
+}
+
+/** api.yaml adminDecideModuleCandidate. */
+export interface ModuleCandidateDecision {
+  candidate: ModuleCandidate;
+  announced: { done: number; sent: number; noConsent: number; failed: number } | null;
+}
+
+/** api.yaml#UpdatesConsent (B2-26): letters about new abilities. */
+export interface UpdatesConsent {
+  on: boolean;
+  since: string | null;
 }
 
 /** api.yaml#/components/schemas/DestructiveConsequence (M2-72). */
