@@ -228,9 +228,11 @@ export class S3FileStorage implements FileStorage {
 
   async put(key: string, data: Uint8Array, meta: FileMeta) {
     assertKey(key);
+    // No content-length of our own: fetch sets it from the body. With ours it sends "N, N", which Node's bundled undici
+    // accepts but the undici package (v7, a dependency of @wizard/llm) rejects as the global dispatcher it installs when
+    // it loads first — every put was «TypeError: fetch failed» (B2-43 seeding, process with @wizard/agents loaded).
     const headers: Record<string, string> = {
       "content-type": meta.mime,
-      "content-length": String(data.byteLength),
       [META_HEADER]: encodeMeta(meta),
     };
     if (this.config.kmsKeyId) {
