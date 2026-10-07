@@ -2,6 +2,7 @@
 // (specs/agents/models.yaml#call_policy.tool_schemas).
 import type { LlmTool, ToolCall } from "@wizard/llm";
 import { z } from "zod";
+import { looseObject } from "./loose-json.js";
 
 /** Structured problem returned to the model as a tool result (and usable in Russian UI messages). */
 export interface ToolIssue {
@@ -21,6 +22,11 @@ export interface ToolSpec<S extends z.ZodType, R = unknown> {
   /** English, short (token economy). */
   description: string;
   input: S;
+  /**
+   * Tolerant pre-parse (no model call): fixes small shape slips of open models (a string instead of an array, a missing
+   * flag, extra items) before zod; what it cannot fix stays an issue for the model. Never changes the JSON Schema.
+   */
+  normalize?: (args: unknown) => unknown;
   /** Semantic checks after zod parsing; any issue makes the call invalid. */
   check?: (value: z.output<S>) => ToolIssue[];
   /** Handler for tool loops; a thrown ToolFailure becomes a structured error result. */
@@ -95,6 +101,15 @@ export function defineTool<S extends z.ZodType, R = unknown>(spec: ToolSpec<S, R
     ...spec,
     definition,
     parse(args) {
+      // The provider hands over arguments that are not valid JSON as the raw text (fenced, cut off, trailing commas).
+      if (typeof args === "string") args = looseObject(args) ?? args;
+      if (spec.normalize) {
+        try {
+          args = spec.normalize(args);
+        } catch {
+          // A normalizer never makes things worse: on its own error the raw arguments are checked.
+        }
+      }
       let r = spec.input.safeParse(args);
       // Open models often send a nested array or object as a JSON string ("acceptance": "[{…}]"): such fields are
       // decoded and the arguments checked again (≤ 3 passes); anything else stays an issue for the model.

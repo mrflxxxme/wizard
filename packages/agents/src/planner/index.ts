@@ -12,11 +12,28 @@ export {
   sectionsDigest,
 } from "./catalog.js";
 /** Deterministic plan edits (no model): applyPlanEdits(plan, edits, registry) → compiled plan | PlanError[]. */
-export { applyPlanEdits, type EditResult, type PlanEdit, planEditSchema, planEditsSchema } from "./edits.js";
+export {
+  applyPlanEdits,
+  type EditResult,
+  editPlan,
+  type PlanEdit,
+  planEditSchema,
+  planEditsSchema,
+} from "./edits.js";
+/** B2-41 fallback without a model: deterministic questions from a brief, a plan from the interview goals and modules. */
+export {
+  type FallbackPlanInput,
+  type FallbackPlanResult,
+  fallbackAnalysis,
+  fallbackGoals,
+  fallbackNiche,
+  fallbackPlan,
+} from "./fallback.js";
 /** Goal interview: brief → 1–3 goals and button questions → planner → plan awaiting approval. */
 export {
   checkGoalsAnalysis,
   createGoalInterview,
+  GOAL_REPAIRS,
   GoalInterview,
   type GoalInterviewDeps,
   type GoalOutput,
@@ -24,6 +41,8 @@ export {
   type GoalState,
   type GoalTurnFailure,
   type GoalTurnResult,
+  type InvalidFallback,
+  type InvalidNote,
   isGoalSession,
   newGoalSession,
 } from "./interview.js";
@@ -55,6 +74,8 @@ export {
 } from "./schemas.js";
 /** Canvas sketch: interviewSketch(analysis) while asking, planSketch(plan, compiled) after. */
 export { interviewSketch, type PlanSketch, planSketch, type SketchDesign } from "./sketch.js";
+/** B2-41 tolerant reading of submit_goals and submit_plan before zod (no model call). */
+export { clip, normalizeGoalsArgs, normalizePlanArgs } from "./tolerant.js";
 /** A stored plan for the plan screen: viewPlan(plan, registry) → compiled, errors, sketch; the build's credits cap. */
 export {
   type CompileResult,

@@ -74,6 +74,8 @@ export function fakePlatform({
   cookieNames,
   override = () => undefined,
   pipeline = "legacy",
+  // B2-41: interview turns that fail first, by trigger ({create: 1, answers: 1}) — retryable ORCH_INVALID_OUTPUT.
+  failTurns = {},
 }) {
   const st = {
     systems: new Map(),
@@ -148,6 +150,15 @@ export function fakePlatform({
     const sc = sys.sc;
     const run = newRun(sys, "interview_turn", null, { used: sc.credits.interview_turn });
     run.finishWith = () => {
+      if ((failTurns[trigger] ?? 0) > 0) {
+        failTurns[trigger] -= 1;
+        finish(run, "failed", {
+          code: "ORCH_INVALID_OUTPUT",
+          message_ru: "Не получилось составить план по этим ответам.",
+          retryable: true,
+        });
+        return;
+      }
       sys.turns += 1;
       if (sc.freeQuestion && trigger === "create") {
         sys.stage = "interview";

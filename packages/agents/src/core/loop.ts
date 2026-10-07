@@ -11,6 +11,7 @@ import type {
 } from "@wizard/llm";
 import type { z } from "zod";
 import { type AgentEventSink, identityStep, type RunStepFn } from "./events.js";
+import { looseObject } from "./loose-json.js";
 import { type Tool, ToolFailure, type ToolIssue, toolError } from "./tool.js";
 
 export type RouteFn = (input: RouteInput) => Promise<RouteOutput>;
@@ -102,6 +103,11 @@ export async function callTool<S extends z.ZodType>(
      */
     // biome-ignore lint/suspicious/noExplicitAny: heterogeneous tool list
     sideTools?: Tool<any, any>[];
+    /**
+     * B2-41: when the model answers with the arguments as JSON text instead of calling `tool`, they are taken as the
+     * call if they pass the tool's checks (no extra model call); otherwise the answer is NO_TOOL_CALL as usual.
+     */
+    textArgs?: boolean;
   },
 ): Promise<StructuredResult<z.output<S>>> {
   const messages = [...opts.messages];
@@ -118,7 +124,12 @@ export async function callTool<S extends z.ZodType>(
     const calls = out.result.toolCalls;
     const mine = calls.find((c) => c.name === opts.tool.name);
     let value: z.output<S> | undefined;
-    if (!mine) {
+    const textual = !mine && opts.textArgs && out.result.text ? looseObject(out.result.text) : undefined;
+    if (textual) {
+      const parsed = opts.tool.parse(textual);
+      if (parsed.ok) value = parsed.value;
+    }
+    if (!mine && value === undefined) {
       issues = [
         {
           path: "",
@@ -126,7 +137,7 @@ export async function callTool<S extends z.ZodType>(
           message: `Ответ должен быть вызовом инструмента ${opts.tool.name}.`,
         },
       ];
-    } else {
+    } else if (mine) {
       const parsed = opts.tool.parse(mine.args);
       if (parsed.ok) value = parsed.value;
       else issues = parsed.issues;
