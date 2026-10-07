@@ -729,8 +729,7 @@ class Run implements GoalRun {
    * messages of finished gates — so the run counts its own system's messages, not positions in the whole outbox.
    */
   private ofSystem(): GoalOutboxMessage[] {
-    const key = this.env.systemKey;
-    return this.env.runtime.outbox().filter((m) => m.system == null || m.system === key);
+    return [...this.env.outbox()];
   }
 
   /** Messages of this lane's system since the run started. */

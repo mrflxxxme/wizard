@@ -225,6 +225,17 @@ export class G1Env {
     return this.login(id, role);
   }
 
+  /**
+   * Runtime outbox of this environment's system. Gates share one long-lived runtime and the platform drops the
+   * messages of finished gates in place (B2-28), so a gate counts its own system's messages — never positions in the
+   * whole outbox (B2-41: a parallel gate finishing mid-scenario hid the scenario's messages). Messages without a
+   * system tag (test handles) are kept; the runtime never drops them.
+   */
+  outbox(): ReturnType<RuntimeHandle["outbox"]> {
+    const key = this.systemKey;
+    return this.runtime.outbox().filter((m) => m.system == null || m.system === key);
+  }
+
   /** One job-runner pass at `now` (runWorkflows/advanceTime); null when the runtime has no runner. */
   async runJobs(now: Date, since: Date): Promise<JobRunReport | null> {
     if (!this.runtime.runJobs) return null;

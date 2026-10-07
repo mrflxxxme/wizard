@@ -270,7 +270,8 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
   const stepTimeout = deps.stepTimeoutMs ?? STEP_TIMEOUT_MS;
   const deadline = Date.now() + (deps.scenarioTimeoutMs ?? SCENARIO_TIMEOUT_MS);
   const spec = env.spec;
-  const outboxStart = env.runtime.outbox().length;
+  // Own system only: positions in the shared outbox move when another gate's messages are dropped (B2-41).
+  const outboxStart = env.outbox().length;
   const actors = new Map<string, Actor>();
   const adhoc = new Map<string, Actor>();
   const vars = new Map<string, unknown>();
@@ -536,7 +537,7 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
           .filter((i) => i.connector === o.connector || i.name === o.connector)
           .map((i) => i.name),
       );
-      let msgs = env.runtime
+      let msgs = env
         .outbox()
         .slice(outboxStart)
         .filter((m) => names.has(m.integration));
