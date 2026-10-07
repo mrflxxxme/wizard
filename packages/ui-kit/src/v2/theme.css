@@ -1,0 +1,62 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion must override every component animation */
+/* Platform design system v2 (ui-kit.yaml#platform_v2): fonts, tokens, base, paper grain, reduced motion.
+   Import once in the platform (import "@wizard/ui-kit/v2/theme.css") and mark the root with applyPlatformTheme/ThemeRoot. */
+@import "./fonts.css";
+@import "./tokens.css";
+
+[data-p-root] {
+  background: var(--p-bg);
+  color: var(--p-ink);
+  font: 400 15px / 1.5 var(--p-f-ui);
+  font-feature-settings: "cv11", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-wrap: anywhere;
+}
+
+[data-p-root] *,
+[data-p-root] *::before,
+[data-p-root] *::after {
+  box-sizing: border-box;
+}
+
+[data-p-root] :focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 2px;
+}
+
+/* Paper grain (grill-7 #9): a fixed noise layer under the content, never intercepts input. */
+[data-p-grain] {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-p-grain]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--p-grain);
+  background-size: 200px 200px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Motion off: the user's setting, or data-p-motion="off" on the root (screenshots, weak devices). */
+@media (prefers-reduced-motion: reduce) {
+  [data-p-root] *,
+  [data-p-root] *::before,
+  [data-p-root] *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+[data-p-root][data-p-motion="off"] *,
+[data-p-root][data-p-motion="off"] *::before,
+[data-p-root][data-p-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+}

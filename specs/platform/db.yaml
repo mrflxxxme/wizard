@@ -220,6 +220,7 @@ tables:
       author_user_id: "uuid references platform.users on delete set null" # автор правки (source edit)
       approved_by: "uuid references platform.users on delete set null"
       approved_at: "timestamptz"
+      checkpoints: "jsonb not null default '{}'"           # B2-21 (миграция 0034): чекпоинты этапов сборки по этой ревизии {stage: {stage, planHash, data, costMilli, durationMs, runId}} (agents/builder.yaml#v2.checkpoints); «Исправить» продолжает с последнего этапа без повторной оплаты
     primary_key: [system_id, revision]
     indexes: ["unique (system_id) where status = 'awaiting_approval'"]
     invariants:

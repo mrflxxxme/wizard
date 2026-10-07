@@ -31,6 +31,17 @@ export default defineConfig({
   esbuild: { jsx: "automatic" },
   plugins: [wizardFonts()],
   server: { fs: { allow: [fileURLToPath(new URL("../../..", import.meta.url))] } },
-  build: { outDir: "dist", emptyOutDir: true, chunkSizeWarningLimit: 2000 },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 2000,
+    // Second page: design system v2 of the platform (B2-32), served at /v2/.
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("index.html", import.meta.url)),
+        v2: fileURLToPath(new URL("v2/index.html", import.meta.url)),
+      },
+    },
+  },
   logLevel: "warn",
 });

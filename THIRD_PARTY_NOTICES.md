@@ -58,7 +58,7 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 
 ## Изображения и шрифты систем (M2-42, M2-47)
 
-Кодеки изображений работают на сервере runtime (WASM, без нативных сборок и без LGPL). Шрифты раздаются системам с `/_wizard/fonts` их собственного домена, запросов к Google Fonts нет. Файлы шрифтов взяты из дистрибутива Google Fonts без изменений (подмножества cyrillic и latin в том виде, в каком их публикует Google Fonts) через npm-пакеты `@fontsource/*` (обвязка — MIT, только для разработки). Копирует их `packages/ui-kit/scripts/sync-fonts.mjs`; каталог с лицензией и источником каждого шрифта — `packages/ui-kit/src/tokens/font-catalog.ts`, тексты лицензий — `packages/ui-kit/fonts/LICENSE-*.txt`.
+Кодеки изображений работают на сервере runtime (WASM, без нативных сборок и без LGPL). Шрифты раздаются системам с `/_wizard/fonts` их собственного домена, запросов к Google Fonts нет. Файлы шрифтов взяты из дистрибутива Google Fonts без изменений (подмножества cyrillic и latin в том виде, в каком их публикует Google Fonts) через npm-пакеты `@fontsource/*` (обвязка — MIT, только для разработки). Копирует их `packages/ui-kit/scripts/sync-fonts.mjs`; каталог с лицензией и источником каждого шрифта — `packages/ui-kit/src/tokens/font-catalog.ts`, тексты лицензий — `packages/ui-kit/fonts/LICENSE-*.txt`. Шрифты платформы v2 (B2-32) копирует тот же скрипт в `packages/ui-kit/fonts-platform` (каталог — `packages/ui-kit/src/v2/font-catalog.ts`); platform-web собирает их в свой бандл и раздаёт со своего домена, без CDN.
 
 | Пакет | Версия | Лицензия | Где используется |
 |---|---|---|---|
@@ -74,3 +74,5 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | PT Serif | @fontsource/pt-serif 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Спокойной»); © 2010 ParaType Ltd.; Google Fonts, npm @fontsource/pt-serif |
 | Lora | @fontsource/lora 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Тёплой»); © 2011 The Lora Project Authors, Reserved Font Name «Lora» (файлы не изменяются, имя сохранено); Google Fonts, npm @fontsource/lora |
 | Unbounded | @fontsource/unbounded 5.3.0 | OFL-1.1 | шрифт тем (заголовки «Яркой»); © 2022 The Unbounded Project Authors; Google Fonts, npm @fontsource/unbounded |
+| Inter | @fontsource/inter 5.3.0 | OFL-1.1 | шрифт платформы v2 (B2-32, интерфейс; 400, 500, 600); © 2016 The Inter Project Authors (https://github.com/rsms/inter); Google Fonts, npm @fontsource/inter; файлы в `packages/ui-kit/fonts-platform`, платформа раздаёт их со своего домена |
+| Source Serif 4 | @fontsource/source-serif-4 5.3.0 | OFL-1.1 | шрифт платформы v2 (B2-32, антиква «человеческих» моментов; 400, 500); © 2014–2023 Adobe (http://www.adobe.com/), Reserved Font Name «Source» (файлы не изменяются, имя сохранено); Google Fonts, npm @fontsource/source-serif-4; файлы в `packages/ui-kit/fonts-platform` |

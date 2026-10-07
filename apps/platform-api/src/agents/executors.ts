@@ -1,7 +1,7 @@
 // Real run executors (M0-26): orchestrator for interview turns, runBuild with a QA agent routed through host.route,
 // gates G0/G1/G2 (@wizard/gates; G1 and G2 on an in-process runtime in test mode) and the post-G0 draft steps.
 import type { CapabilityGap } from "@wizard/agents";
-import { type BuildCard, runBuild, specDigest } from "@wizard/agents/builder";
+import { type BuildCard, runBuild, runBuildV2, specDigest, type V2Host } from "@wizard/agents/builder";
 import { AgentError } from "@wizard/agents/core";
 import { createHostQa, hostRouteFn } from "@wizard/agents/host";
 import {
@@ -19,7 +19,7 @@ import {
   type ModuleRegistry,
   newGoalSession,
 } from "@wizard/agents/planner";
-import { type RuntimeHandle, runGates } from "@wizard/gates";
+import { type GateContext, type RuntimeHandle, runGates } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import {
   closeExecutors,
@@ -32,7 +32,10 @@ import {
 } from "@wizard/runtime";
 import type postgres from "postgres";
 import type { Config } from "../config.js";
+import type { EventType } from "../runs/events.js";
 import {
+  type BuildHost,
+  type BuildParams,
   type InterviewHost,
   type InterviewOutput,
   RunCancelled,
@@ -62,6 +65,54 @@ export interface AgentExecutorsOptions {
    * WIZARD_SANDBOX=k8s (null without it — local unsafe-exec only); tests pass one or null.
    */
   g1Sandbox?: G1Sandbox | null;
+  /**
+   * B2-21/B2-24: Chromium for the goal scenarios of a plan build (gates.yaml#G1.browser) — the provider owns it (launch
+   * and close). Absent or null: G1 of a plan build runs without the browser checks (build_metrics goals.checked=false).
+   */
+  goalBrowser?: () => Promise<GoalBrowser | null>;
+}
+
+/** Playwright browser as @wizard/gates takes it (GateContext.browser). */
+export type GoalBrowser = NonNullable<GateContext["browser"]>;
+
+/**
+ * B2-21: a build of the modules pipeline — the approved system plan in stages (builder v2, agents/builder.yaml#v2):
+ * texts and design by models, compilation without models, custom code (B2-23; until then — «Запросы на развитие»),
+ * gates G0–G2; checkpoints with the plan revision, so «Исправить» continues from the last stage done.
+ */
+export async function buildByPlan(
+  host: BuildHost,
+  params: BuildParams & { plan: NonNullable<BuildParams["plan"]> },
+  o: { registry?: ModuleRegistry; browser?: GoalBrowser | null } = {},
+): Promise<{ status: "succeeded"; summary_ru: string }> {
+  if (!host.checkpoints) throw new RunFailure("INTERNAL", "Нет хранилища этапов сборки", true);
+  const current = await host.store.getSpec();
+  const browser = o.browser ?? null;
+  const v2: V2Host = {
+    route: host.route,
+    runStep: host.runStep,
+    emit: (type, payload) => host.emit(type as EventType, payload),
+    signal: host.signal,
+    run: { id: host.run.id },
+    checkpoints: host.checkpoints,
+    currentSpec: () => host.store.getSpec(),
+    commitCompiled: (input) => host.store.commitCompiled(input),
+    runGates: (level, overrides) =>
+      host.runGates(
+        level,
+        overrides?.goalScenarios && browser ? { goalScenarios: overrides.goalScenarios, browser } : undefined,
+      ),
+    goalBrowser: browser !== null,
+    recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
+  };
+  const out = await runBuildV2(v2, {
+    plan: params.plan.plan,
+    planRevision: params.plan.revision,
+    ...(o.registry ? { registry: o.registry } : {}),
+    appName: current.spec.app.name,
+  });
+  if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
+  throw new RunFailure(out.code, out.message_ru, out.retryable);
 }
 
 const ASKING_HINT = "Ответьте на вопросы выше или нажмите «Остальное — по рекомендациям».";
@@ -342,14 +393,15 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     },
 
     async build(host, params) {
-      // B2-20 approves the plan and starts this run; the staged build by the plan (texts, design, compilation,
-      // custom code, gates) is the builder v2 — B2-21.
-      if (params.plan)
-        throw new RunFailure(
-          "INTERNAL",
-          "Сборка по утверждённому плану системы появится со сборщиком v2. План сохранён — его можно собрать позже.",
-          false,
+      // B2-21: a build by an approved system plan (approveSystemPlan, or «Исправить» of such a system) — builder v2.
+      if (params.plan) {
+        const browser = o.goalBrowser ? await o.goalBrowser() : null;
+        return buildByPlan(
+          host,
+          { ...params, plan: params.plan },
+          { ...(o.modules ? { registry: o.modules } : {}), browser },
         );
+      }
       const qa = createHostQa(host, { milestone: o.config.milestone });
       const out = await runBuild(
         { ...host, qa },

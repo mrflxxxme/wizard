@@ -1,6 +1,16 @@
 {
   "root": false,
   "extends": "//",
-  "files": { "includes": ["**", "!test/.generated", "!test/__snapshots__", "!test/artifacts", "!demo/dist"] },
+  "files": {
+    "includes": [
+      "**",
+      "!test/.generated",
+      "!test/__snapshots__",
+      "!test/artifacts",
+      "!demo/dist",
+      "!src/v2/tokens.css",
+      "!src/v2/fonts.css"
+    ]
+  },
   "css": { "parser": { "cssModules": true } }
 }

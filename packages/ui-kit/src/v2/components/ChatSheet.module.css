@@ -1,0 +1,163 @@
+/* Floating chat bottom-centre (grill-7 #1) that is a pull-up sheet on the phone (grill-7 #5). Transform/opacity only. */
+.sheet {
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: min(680px, calc(100% - 24px));
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transform: translateY(var(--p-drag, 0px));
+  transition: transform 0.6s var(--p-spring);
+}
+
+.inline {
+  position: relative;
+  bottom: auto;
+  z-index: auto;
+  width: min(680px, 100%);
+}
+
+.dragging {
+  transition: none;
+}
+
+.dock {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--p-r-xl);
+}
+
+.grab {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 16px;
+  margin: -4px auto -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  cursor: grab;
+  background: transparent;
+  touch-action: none;
+}
+
+.grab i {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--p-line-2);
+}
+
+.grab:hover i {
+  background: var(--p-ink-3);
+}
+
+.hist {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  max-height: min(52vh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-radius: 22px;
+  background: var(--p-glass-solid);
+  box-shadow: var(--p-sh-float);
+  scrollbar-width: thin;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(18px) scale(0.985);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 0.3s var(--p-ease),
+    transform 0.55s var(--p-spring),
+    visibility 0s 0.55s;
+}
+
+.open .hist {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.3s var(--p-ease),
+    transform 0.55s var(--p-spring),
+    visibility 0s;
+}
+
+.msg {
+  max-width: 88%;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.me {
+  align-self: flex-end;
+  padding: 8px 13px;
+  border-radius: 16px 16px 5px 16px;
+  background: var(--p-sunken);
+}
+
+.ai {
+  align-self: flex-start;
+}
+
+.sys {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.sys::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--p-amber);
+}
+
+.warn {
+  color: var(--p-warn);
+}
+
+.warn::before {
+  background: var(--p-warn);
+}
+
+@media (max-width: 600px) {
+  .sheet {
+    width: calc(100% - 16px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  .inline {
+    width: 100%;
+  }
+
+  .hist {
+    max-height: 58vh;
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .grab {
+    width: 88px;
+    height: 44px;
+    margin: -14px auto -12px;
+  }
+}

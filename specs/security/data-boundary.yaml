@@ -118,6 +118,8 @@ call_types:                        # список совпадает с models.y
   card:                { allowed: [T0, T1], t1_requires: scrub }
   plan:                { allowed: [T0, T1], t1_requires: scrub }
   system_plan:         { allowed: [T0, T1], t1_requires: scrub, note: "B2-20: бриф и ответы интервью после scrub; сам план без ПДн (modules.yaml#system_plan.privacy)" }
+  build_texts:         { allowed: [T0, T1], t1_requires: scrub, note: "B2-21: тексты секций утверждённого плана (план без ПДн, modules.yaml#system_plan.privacy)" }
+  build_design:        { allowed: [T0, T1], t1_requires: scrub, note: "B2-21: ниша, цели и текущий дизайн плана — без ПДн" }
   build_ops:           { allowed: [T0, T1], t1_requires: scrub }
   build_code:          { allowed: [T0, T1], t1_requires: scrub }
   fix:                 { allowed: [T0, T1], t1_requires: scrub }

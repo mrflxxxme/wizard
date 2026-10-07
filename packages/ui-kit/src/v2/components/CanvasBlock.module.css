@@ -1,0 +1,243 @@
+/* Canvas block (grill-7 #2, #9): sketch → «материализация» (outline → surface → content, amber edge) → ready; selected.
+   Every layer is a separate element or pseudo-element so that only opacity and transform change. */
+.block {
+  --p-dl: 0ms;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  outline: none;
+}
+
+.surface,
+.outline,
+.ring {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.surface {
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-2);
+  opacity: 0;
+}
+
+.outline {
+  border: 1.2px dashed var(--p-line-2);
+  opacity: 1;
+}
+
+.ring {
+  z-index: 2;
+  border: 2px solid var(--p-biz);
+  box-shadow: 0 0 0 6px var(--p-biz-soft);
+  opacity: 0;
+}
+
+.content {
+  position: relative;
+  min-width: 0;
+}
+
+/* Sketch text: a skeleton bar until the content arrives. */
+.t {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.lines {
+  display: block;
+}
+
+.t::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0.2em;
+  bottom: 0.2em;
+  border-radius: 5px;
+  background: var(--p-skel);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.lines::after {
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, transparent 22%, var(--p-skel) 22% 76%, transparent 76%) 0 0 / 100% 1.5em repeat-y;
+}
+
+/* ready */
+.block[data-state="ready"] .surface {
+  opacity: 1;
+}
+
+.block[data-state="ready"] .outline {
+  opacity: 0;
+}
+
+/* materializing: outline appears, the surface fills in, then the content; amber light runs along the edge */
+.block[data-state="materializing"] {
+  animation: born 0.75s var(--p-spring) var(--p-dl) backwards;
+}
+
+.block[data-state="materializing"] .outline {
+  opacity: 0;
+  animation: outlineIn 1.5s var(--p-ease) var(--p-dl) backwards;
+}
+
+.block[data-state="materializing"] .surface {
+  opacity: 1;
+  animation: fadeIn 0.6s var(--p-ease) calc(var(--p-dl) + 250ms) backwards;
+}
+
+.block[data-state="materializing"] .tx {
+  animation: fadeIn 0.55s var(--p-ease) calc(var(--p-dl) + 550ms) backwards;
+}
+
+.block[data-state="materializing"] .t::after {
+  opacity: 0;
+  animation: fadeOut 0.5s var(--p-ease) calc(var(--p-dl) + 500ms) backwards;
+}
+
+.edge {
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 1.5px var(--p-amber),
+    0 0 0 4px var(--p-amber-soft),
+    0 0 30px -6px var(--p-amber-glow);
+}
+
+.edge i {
+  position: absolute;
+  left: 0;
+  width: 42%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--p-amber-glow), transparent);
+  transform: translateX(-110%);
+}
+
+.edge i:first-child {
+  top: 0;
+}
+
+.edge i:last-child {
+  bottom: 0;
+  transform: translateX(250%);
+}
+
+.block[data-state="materializing"] .edge {
+  animation: edge 1.5s var(--p-ease) var(--p-dl);
+}
+
+.block[data-state="materializing"] .edge i:first-child {
+  animation: streak 1.15s var(--p-ease) calc(var(--p-dl) + 50ms);
+}
+
+.block[data-state="materializing"] .edge i:last-child {
+  animation: streakBack 1.15s var(--p-ease) calc(var(--p-dl) + 200ms);
+}
+
+/* «ткни и скажи»: pickable when ready, selected → business colour ring */
+.pickable {
+  cursor: pointer;
+}
+
+.pickable:hover .outline {
+  opacity: 1;
+  border-style: solid;
+  border-color: var(--p-biz-ring);
+}
+
+.pickable:focus-visible .ring,
+.block[data-selected] .ring {
+  opacity: 1;
+}
+
+.block[data-state="sketch"] .t::after {
+  opacity: 1;
+}
+
+.block[data-state="sketch"] .tx {
+  opacity: 0;
+}
+
+.block[data-state="sketch"] {
+  color: var(--p-ink-2);
+}
+
+@keyframes born {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@keyframes outlineIn {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+}
+
+@keyframes edge {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes streak {
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes streakBack {
+  to {
+    transform: translateX(-110%);
+  }
+}

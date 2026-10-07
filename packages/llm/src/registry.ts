@@ -214,6 +214,23 @@ export const ROUTES: Record<CallType, RouteDef> = {
     8000,
     300000,
   ),
+  // B2-21: the builder v2 stages over an approved system plan (agents/builder.yaml#v2): section texts and the design.
+  build_texts: r(
+    "copywriter",
+    "T1",
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"] },
+    0.4,
+    4000,
+    180000,
+  ),
+  build_design: r(
+    "designer",
+    "T1",
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"] },
+    0.3,
+    1500,
+    120000,
+  ),
   build_ops: r(
     "builder",
     "T1",

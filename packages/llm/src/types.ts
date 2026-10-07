@@ -6,6 +6,8 @@ export const CALL_TYPES = [
   "card",
   "plan",
   "system_plan",
+  "build_texts",
+  "build_design",
   "build_ops",
   "build_code",
   "fix",

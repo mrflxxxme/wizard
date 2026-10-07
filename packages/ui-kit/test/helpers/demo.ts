@@ -19,9 +19,10 @@ export const hasChromium = (() => {
 })();
 
 export type DemoHarness = {
-  url(query?: string): string;
+  url(query?: string, path?: string): string;
   browser: Browser;
-  page(opts?: BrowserContextOptions & { query?: string }): Promise<Page>;
+  /** `path` — another page of the demo build (e.g. "v2/" for the design system v2). */
+  page(opts?: BrowserContextOptions & { query?: string; path?: string }): Promise<Page>;
   launch(args: string[]): Promise<Browser>;
   close(): Promise<void>;
 };
@@ -44,20 +45,20 @@ export async function startDemo(name: string): Promise<DemoHarness> {
   const addr = server.resolvedUrls?.local[0] ?? "";
   const browser = await chromium.launch();
   const extra: Browser[] = [];
-  const url = (query = "") => `${addr}${query ? `?${query.replace(/^\?/, "")}` : ""}`;
+  const url = (query = "", path = "") => `${addr}${path}${query ? `?${query.replace(/^\?/, "")}` : ""}`;
   mkdirSync(ARTIFACTS, { recursive: true });
   return {
     url,
     browser,
     async page(opts = {}) {
-      const { query, ...ctxOpts } = opts;
+      const { query, path, ...ctxOpts } = opts;
       const ctx = await browser.newContext({
         viewport: { width: 1280, height: 800 },
         locale: "ru-RU",
         ...ctxOpts,
       });
       const page = await ctx.newPage();
-      await page.goto(url(query));
+      await page.goto(url(query, path));
       await page.waitForFunction(
         () => (window as unknown as { __wz?: { ready: boolean } }).__wz?.ready === true,
       );
