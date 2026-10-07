@@ -3277,8 +3277,8 @@ tasks:
     owner: platform
     parallel_group: b2-a
     estimate_days: 2
-    status: in_progress
-    claimed_by: claude-session-01Kjy3G7
+    status: done
+    claimed_by: null
     acceptance:
       - "Сборка через API с браузером даёт build_metrics.goals.checked = true, сценарии плана — в отчёте G1 (тест)"
       - "Письма в outbox G1 рендерятся со ссылками, GS-booking-3/4 идут по настоящим ссылкам; коды входа и приглашения работают в G1 платформы"
