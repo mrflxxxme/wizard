@@ -110,6 +110,8 @@ export interface BuildParams {
   target?: PointEditTarget;
   /** B2-20: a build of the modules pipeline — the approved system plan (platform.system_plans) instead of a card. */
   plan?: { revision: number; plan: Record<string, unknown> };
+  /** B2-44, plan builds: the system's brief — a draft still named after it takes the plan's short name. */
+  brief?: string;
 }
 export interface BuildOutcome {
   /** "cancelled" = user chose to stop (escalation rollback). */

@@ -4,16 +4,19 @@
 // price list (DataTable), as in the D75 site template. Layout tabs: filter buttons by catalog section (with_categories),
 // without sections — cards.
 import { sectionAnchors } from "../landing/page.js";
+import { HOME_LEAD_ANCHOR } from "../screens/home.js";
 import { js } from "../screens/jsx.js";
 import type { ModuleContext, ScreenContext } from "../types.js";
 import { catalogOptions, CATALOG_NAMES as N, SHOWCASE } from "./compile.js";
 
-/** Where «Выбрать» on an item leads: booking of the item, else the lead form on the landing; none — a price list. */
+/** Where «Выбрать» on an item leads: booking of the item, else the lead form on «/»; none — a price list. */
 export type ShowcaseTarget = { kind: "booking"; prefix: string } | { kind: "lead"; href: string };
 
 export function showcaseTarget(ctx: ModuleContext): ShowcaseTarget | undefined {
   if (ctx.present.has("booking")) return { kind: "booking", prefix: "/booking?service=" };
-  if (!ctx.present.has("leads") || !ctx.present.has("landing")) return undefined;
+  if (!ctx.present.has("leads")) return undefined;
+  // Without the landing «/» is the engine's home page with the lead form at #lead (B2-45).
+  if (!ctx.present.has("landing")) return { kind: "lead", href: `/#${HOME_LEAD_ANCHOR}` };
   const sections = ctx.plan.landing?.sections ?? [];
   const i = sections.findIndex((s) => s.type === "lead_form");
   const anchor = i >= 0 ? sectionAnchors(sections)[i] : undefined;

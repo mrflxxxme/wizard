@@ -66,6 +66,8 @@ export {
 } from "./engine/compile.js";
 /** matrixPlan(registry, moduleId, row) — the minimal plan a CI matrix row is compiled with. */
 export { type MatrixRow, matrixPlan } from "./engine/matrix.js";
+/** B2-44: siteName(text, max=40) — a short site name (first clause, no wishes, word-boundary cut); planSiteName(plan) — from the niche. */
+export { DEFAULT_SITE_NAME, MAX_SITE_NAME, planSiteName, siteName } from "./engine/name.js";
 /** applicationOrder(manifests) — topological order by requires, then order, then id. */
 export { applicationOrder } from "./engine/order.js";
 /** substitute(value, params, known) — {{param}} substitution in fragment values; canonical JSON, sameJson. */
@@ -82,11 +84,18 @@ export {
   PHOTO_ROW_SECTIONS,
   PHOTO_ROW_SLOTS,
 } from "./landing/matrix.js";
-/** Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37). */
+/**
+ * Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37);
+ * navLinks — the deduplicated header menu (B2-45).
+ */
 export {
   landingPage,
+  MAX_NAV_LINKS,
+  navKey,
+  navLinks,
   SECTION_ENTITY,
   SECTION_RENDERERS,
+  sameNavLabel,
   sectionAnchors,
   sectionBands,
 } from "./landing/page.js";
@@ -204,6 +213,8 @@ export {
   startPage,
   statusField,
 } from "./screens/cabinet.js";
+/** B2-45: «/» without the landing — the public home of the plan's actions or the staff sign-in page. */
+export { HOME_LEAD_ANCHOR, type HomeActions, type HomeInput, homeActions, homePage } from "./screens/home.js";
 /** Deterministic TSX emitters: jsxEl, fragmentPage, js, pascal. */
 export { fragmentPage, type JsxAttr, js, jsxEl, pascal } from "./screens/jsx.js";
 /** Module «Сотрудники и роли» (B2-16): roles staff…staff_5 with sections, the scope of $staff, invitations page. */

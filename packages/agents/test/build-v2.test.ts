@@ -14,6 +14,7 @@ import {
   type RouteOutput,
   type Router,
 } from "@wizard/llm";
+import { planSiteName } from "@wizard/modules";
 import { describe, expect, test } from "vitest";
 import {
   type CustomStageFn,
@@ -503,6 +504,19 @@ describe("texts and design stages", () => {
     });
     const r = await build(newSystem(), "dental", { plan: withCustom(), params: { custom } });
     expect((r.out as { summary_ru: string }).summary_ru).toContain("Дописано в пределах 20 ₽");
+  });
+
+  test("B2-44: without the owner's name the system is named from the plan's niche; the owner's name is kept", async () => {
+    const plan = approvedPlan(scenario("dental"));
+    const auto = newSystem();
+    expect((await build(auto, "dental", { params: { appName: undefined } })).out?.status).toBe("succeeded");
+    expect(auto.spec.app.name).toBe(planSiteName(plan));
+    expect(auto.spec.app.name).not.toMatch(/нужен|,$/);
+    expect(auto.files["ui/pages/Home.tsx"]).toContain(auto.spec.app.name);
+    const named = newSystem();
+    expect((await build(named, "dental", { params: { appName: "Улыбка" } })).out?.status).toBe("succeeded");
+    expect(named.spec.app.name).toBe("Улыбка");
+    expect(named.files["ui/pages/Home.tsx"]).toContain("Улыбка");
   });
 
   test("owner-only compliance fields of the draft survive a rebuild", () => {

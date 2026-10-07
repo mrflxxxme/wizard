@@ -32,7 +32,8 @@ import {
   validateSystemPlan,
   type Workflow,
 } from "@wizard/appspec";
-import { cabinetPage, cabinetRoute, can, startPage } from "../screens/cabinet.js";
+import { cabinetPage, cabinetRoute, can } from "../screens/cabinet.js";
+import { homePage } from "../screens/home.js";
 import { pascal } from "../screens/jsx.js";
 import {
   type CompiledMetric,
@@ -43,6 +44,7 @@ import {
   type ModuleRegistry,
   planCatalog,
 } from "../types.js";
+import { planSiteName } from "./name.js";
 import { applicationOrder } from "./order.js";
 import { canonical, sameJson, substitute } from "./substitute.js";
 
@@ -56,7 +58,7 @@ export const BASE_ROLES: readonly Role[] = [
 const BASE_COMPLIANCE = { consentTemplateId: "default", policyPage: "/privacy" } as const;
 
 export interface CompileOptions {
-  /** Name of the system (the card title); default — the plan's niche. */
+  /** Name the owner gave the system; default — the plan's niche as a short site name (planSiteName, B2-44). */
   appName?: string;
   /**
    * Origin of the platform the system is built on and the system's id there (B2-28, for B2-27): generators get them
@@ -262,8 +264,7 @@ class Compilation {
     this.present = new Set(plan.modules.map((m) => m.id));
     this.planIndex = new Map(plan.modules.map((m, i) => [m.id, i]));
     this.order = applicationOrder(plan.modules.map((m) => this.manifest(m.id)));
-    const niche = plan.niche.trim();
-    const name = (opts.appName ?? `${niche.charAt(0).toUpperCase()}${niche.slice(1)}`).slice(0, 80);
+    const name = (opts.appName ?? planSiteName(plan)).slice(0, 80);
     this.spec = {
       specVersion: "1",
       app: { name, locale: "ru" },
@@ -737,7 +738,17 @@ class Compilation {
         roles: this.spec.roles.map((r) => r.name),
         nav: true,
       });
-      this.files.set("ui/pages/Home.tsx", startPage(this.spec.app.name, undefined, cabinets[0]));
+      // B2-45: the public actions of the plan's modules (or a staff sign-in page), not a lone cabinet button.
+      this.files.set(
+        "ui/pages/Home.tsx",
+        homePage({
+          spec: { ...this.spec, pages: this.pages },
+          niche: this.plan.niche,
+          present: this.present,
+          params: this.params,
+          cabinet: cabinets[0],
+        }),
+      );
     }
   }
 

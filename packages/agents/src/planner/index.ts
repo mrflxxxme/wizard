@@ -1,5 +1,7 @@
 // @wizard/agents/planner: beta v2 goal interview, system planner, deterministic plan edits and the canvas sketch
 // (B2-20; specs/modules/modules.yaml#system_plan, #ai_rules; docs/reviews/grill-6.md decisions 2, 3, 5).
+/** B2-44: the short site name of a plan (its niche, normalized) when the owner has not named the system. */
+export { planSiteName, siteName } from "@wizard/modules";
 /** Catalog digests for prompts, modules that compile today, ready landing sections, the default design. */
 export {
   availableModules,

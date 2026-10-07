@@ -2,6 +2,7 @@
 // S3-compatible stub that verifies every signature and payload hash, the folder backend, env configuration and purge.
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -214,6 +215,28 @@ describe("backends", () => {
       credentials: { ...CREDS, secretAccessKey: "wrong" },
     });
     await expect(wrong.head(`app_abc123def456_prod/${ID(1)}`)).rejects.toBeInstanceOf(S3Error);
+  });
+
+  test("S3 over Node's fetch with the undici package as dispatcher (installed globally when @wizard/llm loads first)", async () => {
+    // B2-43: an explicit content-length went out as "N, N" and undici v7 refused every PUT («fetch failed»).
+    const undici = createRequire(new URL("../../../packages/llm/package.json", import.meta.url))(
+      "undici",
+    ) as {
+      Agent: new () => { close(): Promise<void> };
+    };
+    const dispatcher = new undici.Agent();
+    try {
+      const s3 = new S3FileStorage({
+        endpoint,
+        region: "ru-central-1",
+        bucket: "system-files",
+        credentials: CREDS,
+        fetch: (url, init) => fetch(url, { ...init, dispatcher } as RequestInit),
+      });
+      await roundTrip(s3);
+    } finally {
+      await dispatcher.close();
+    }
   });
 
   test("folder and memory backends behave alike", async () => {
