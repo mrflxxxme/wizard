@@ -19,6 +19,10 @@ export const EVENT_TYPES = [
   "input_received",
   "run_finished",
   "run_failed",
+  // B2-25 (canvas): the sketch of the goal interview and plan; stages of the builder v2 (B2-21).
+  "plan_sketch",
+  "build_stage",
+  "build_metrics",
 ] as const;
 export const TERMINAL_EVENTS: ReadonlySet<string> = new Set(["run_finished", "run_failed"]);
 const KNOWN: ReadonlySet<string> = new Set(EVENT_TYPES);

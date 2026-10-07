@@ -35,6 +35,7 @@ import type {
   PilotOrg,
   PilotReadiness,
   PilotUsage,
+  PlanSketch,
   PreviewUrl,
   Publication,
   Revision,
@@ -45,6 +46,7 @@ import type {
   SupportRequestItem,
   System,
   SystemDeleted,
+  SystemPlanRevision,
   SystemView,
   Theme,
   User,
@@ -178,6 +180,12 @@ export function createApiClient(opts: ClientOptions = {}) {
       body: { cardVersion: number; capCredits?: number },
       idempotencyKey = newIdempotencyKey(),
     ) => call<{ run: Run }>("POST", `${sys(id)}/card/approve`, { body, idempotencyKey }),
+    // B2-20 system plan of the modules pipeline (canvas B2-25): read, sketch, approve (the only build start).
+    getSystemPlan: (id: string) => call<{ plan: SystemPlanRevision | null }>("GET", `${sys(id)}/plan`),
+    getPlanSketch: (id: string) =>
+      call<{ revision: number | null; sketch: PlanSketch | null }>("GET", `${sys(id)}/plan/sketch`),
+    approvePlan: (id: string, revision: number, idempotencyKey = newIdempotencyKey()) =>
+      call<{ run: Run }>("POST", `${sys(id)}/plan/approve`, { body: { revision }, idempotencyKey }),
     startFix: (id: string, idempotencyKey = newIdempotencyKey()) =>
       call<{ run: Run }>("POST", `${sys(id)}/fix`, { body: {}, idempotencyKey }),
     getRevision: (id: string, v: number) => call<Revision>("GET", `${sys(id)}/revisions/${v}`),

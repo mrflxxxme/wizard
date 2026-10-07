@@ -24,16 +24,50 @@ export interface PlanSketch {
   }[];
   roles: { name: string; label: string; access: string }[];
   entities: { name: string; label: string; fields: { name: string; label: string; type: string }[] }[];
-  screens: { route: string; title: string; audience: "public" | "cabinet"; roles: string[] }[];
+  /** module — the plan module whose manifest declares the route (absent for shared screens). */
+  screens: {
+    route: string;
+    title: string;
+    audience: "public" | "cabinet";
+    roles: string[];
+    module?: string;
+  }[];
   sections: { index: number; type: string; label: string; variant: string; title?: string }[];
   metrics: { id: string; label: string; goal: string; module: string; unit: string }[];
   scenarios: { id: string; title: string; goal: string; module: string }[];
   outOfScope: { request: string; replacement: string; category: string; module?: string }[];
   custom: { id: string; title: string; kind: string; budgetRub: number }[];
+  /** Business colour of the plan design (#RRGGBB): the canvas takes it over (grill-7 #7); null in the interview. */
+  accent: string | null;
+  /** Automation chains of the compiled spec for the x-ray layer «Как это работает» (B2-25): trigger → steps. */
+  automations: SketchAutomation[];
+  /**
+   * Who reads which data: one row per role and entity with read access; scope all — every row, own — only the rows
+   * of the user ($user in the row filter), some — the rows a filter lets through (e.g. only shown services).
+   */
+  access: {
+    role: string;
+    roleLabel: string;
+    entity: string;
+    entityLabel: string;
+    scope: "all" | "own" | "some";
+  }[];
+  /** How long data is kept: entities with a retention rule. */
+  retention: { entity: string; entityLabel: string; days: number; mode: "delete" | "anonymize" }[];
   warnings: string[];
   errors: PlanError[];
   /** sha256 of the compiled spec and files (null until it compiles): the canvas reloads only when it changes. */
   fingerprint: string | null;
+}
+
+/** One automation of the sketch: structural, the canvas words it (a workflow of AppSpec without its params). */
+export interface SketchAutomation {
+  name: string;
+  label: string | null;
+  module?: string;
+  trigger: { type: string; entity?: string; entityLabel?: string; offsetMinutes?: number; cron?: string };
+  /** channel — email | telegram of a notify step; to — owner | staff | client. */
+  steps: { type: string; entity?: string; entityLabel?: string; channel?: string; to?: string }[];
 }
 
 const sectionLabel = (type: string) => SECTION_CATALOG.find((s) => s.type === type)?.label ?? type;
@@ -72,6 +106,10 @@ const empty = {
   metrics: [],
   scenarios: [],
   custom: [],
+  accent: null,
+  automations: [],
+  access: [],
+  retention: [],
   warnings: [],
   errors: [],
   fingerprint: null,
@@ -126,10 +164,15 @@ export function planSketch(plan: SystemPlan, compiled: CompileResult, registry: 
       };
     }),
     outOfScope: plan.outOfScope.map((o) => ({ ...o })),
+    accent: plan.design.accent,
     custom: plan.custom.map((c) => ({ id: c.id, title: c.title, kind: c.kind, budgetRub: c.budgetRub })),
   };
   if (!compiled.ok) return { ...base, errors: compiled.errors };
   const spec = compiled.spec;
+  const screenModule = new Map<string, string>();
+  for (const pm of plan.modules)
+    for (const sc of registry.modules.find((d) => d.manifest.id === pm.id)?.manifest.screens ?? [])
+      if (!screenModule.has(sc.route)) screenModule.set(sc.route, pm.id);
   const publicRoles = new Set(spec.roles.filter((r) => r.access === "public").map((r) => r.name));
   return {
     ...base,
@@ -139,12 +182,30 @@ export function planSketch(plan: SystemPlan, compiled: CompileResult, registry: 
       label: e.label,
       fields: e.fields.map((f) => ({ name: f.name, label: f.label, type: f.type })),
     })),
-    screens: (spec.pages ?? []).map((p) => ({
-      route: p.route,
-      title: p.title,
-      audience: p.roles.some((r) => publicRoles.has(r)) ? ("public" as const) : ("cabinet" as const),
-      roles: [...p.roles],
-    })),
+    screens: (spec.pages ?? []).map((p) => {
+      const module = screenModule.get(p.route);
+      return {
+        route: p.route,
+        title: p.title,
+        audience: p.roles.some((r) => publicRoles.has(r)) ? ("public" as const) : ("cabinet" as const),
+        roles: [...p.roles],
+        ...(module ? { module } : {}),
+      };
+    }),
+    automations: sketchAutomations(spec, workflowModule(plan, registry)),
+    access: sketchAccess(spec),
+    retention: (spec.entities ?? []).flatMap((e) =>
+      e.retention
+        ? [
+            {
+              entity: e.name,
+              entityLabel: e.label,
+              days: e.retention.deleteAfterDays,
+              mode: e.retention.mode ?? ("delete" as const),
+            },
+          ]
+        : [],
+    ),
     metrics: compiled.metrics
       .filter((m) => m.planGoal)
       .map((m) => ({ id: m.id, label: m.label, goal: m.goal, module: m.module, unit: m.unit })),
@@ -152,4 +213,97 @@ export function planSketch(plan: SystemPlan, compiled: CompileResult, registry: 
     warnings: [...compiled.warnings],
     fingerprint: createHash("sha256").update(compiledFingerprint(compiled)).digest("hex"),
   };
+}
+
+type Spec = Extract<CompileResult, { ok: true }>["spec"];
+
+/**
+ * The plan module of a workflow, for anchoring the x-ray chain: the module whose fragments declare it, else the module
+ * that provides its trigger entity (workflows of compile hooks, e.g. notify, follow the record they react to).
+ */
+function workflowModule(
+  plan: SystemPlan,
+  registry: ModuleRegistry,
+): (w: { name: string; entity?: string }) => string | undefined {
+  const byName = new Map<string, string>();
+  const byEntity = new Map<string, string>();
+  for (const pm of plan.modules) {
+    const m = registry.modules.find((d) => d.manifest.id === pm.id)?.manifest;
+    for (const f of m?.fragments?.workflows ?? []) {
+      const name = (f as { value?: { name?: unknown } }).value?.name;
+      if (typeof name === "string" && !byName.has(name)) byName.set(name, pm.id);
+    }
+    for (const e of m?.provides?.entities ?? []) if (!byEntity.has(e)) byEntity.set(e, pm.id);
+  }
+  return (w) => byName.get(w.name) ?? (w.entity ? byEntity.get(w.entity) : undefined);
+}
+
+const recipient = (to: unknown): string | undefined => {
+  if (typeof to !== "string") return undefined;
+  if (to === "$owner") return "owner";
+  if (to.startsWith("$role:")) return "staff";
+  if (to.startsWith("$record")) return "client";
+  return undefined;
+};
+
+function sketchAutomations(
+  spec: Spec,
+  moduleOf: (w: { name: string; entity?: string }) => string | undefined,
+): SketchAutomation[] {
+  const label = new Map((spec.entities ?? []).map((e) => [e.name, e.label]));
+  const channel = new Map((spec.integrations ?? []).map((i) => [i.name, i.connector]));
+  return (spec.workflows ?? []).map((w) => {
+    const t = w.trigger;
+    const offset = t.relative?.offsetMinutes;
+    const module = moduleOf({ name: w.name, ...(t.entity ? { entity: t.entity } : {}) });
+    return {
+      name: w.name,
+      label: w.label ?? null,
+      ...(module ? { module } : {}),
+      trigger: {
+        type: t.type,
+        ...(t.entity ? { entity: t.entity, entityLabel: label.get(t.entity) ?? t.entity } : {}),
+        ...(typeof offset === "number" ? { offsetMinutes: offset } : {}),
+        ...(t.cron ? { cron: t.cron } : {}),
+      },
+      steps: w.steps.map((st) => {
+        const p = (st.params ?? {}) as Record<string, unknown>;
+        const entity = typeof p.entity === "string" ? p.entity : undefined;
+        const ch = typeof p.integration === "string" ? channel.get(p.integration) : undefined;
+        const to = recipient(p.to);
+        return {
+          type: st.type,
+          ...(entity ? { entity, entityLabel: label.get(entity) ?? entity } : {}),
+          ...(ch ? { channel: ch } : {}),
+          ...(to ? { to } : {}),
+        };
+      }),
+    };
+  });
+}
+
+function sketchAccess(spec: Spec): PlanSketch["access"] {
+  const roles = new Map(spec.roles.map((r) => [r.name, r.label]));
+  const entities = new Map((spec.entities ?? []).map((e) => [e.name, e.label]));
+  const rows = new Map<string, PlanSketch["access"][number]>();
+  for (const p of spec.permissions ?? []) {
+    if (!p.ops.includes("read") || !roles.has(p.role) || !entities.has(p.entity)) continue;
+    const filtered = p.rowFilter !== undefined && (p.rowFilterOps ?? p.ops).includes("read");
+    const scope = !filtered
+      ? ("all" as const)
+      : Object.values(p.rowFilter ?? {}).some((v) => typeof v === "string" && v.startsWith("$user"))
+        ? ("own" as const)
+        : ("some" as const);
+    const key = `${p.role}/${p.entity}`;
+    // Several rules for one pair: the widest one wins (every row over a filtered part).
+    if (rows.get(key)?.scope === "all") continue;
+    rows.set(key, {
+      role: p.role,
+      roleLabel: roles.get(p.role) as string,
+      entity: p.entity,
+      entityLabel: entities.get(p.entity) as string,
+      scope,
+    });
+  }
+  return [...rows.values()];
 }

@@ -105,6 +105,8 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     await waitRun(api, r.body.run.id, ["succeeded"]);
     const s = await api.req("GET", `/systems/${systemId}`);
     expect(s.body.system.stage).toBe("interview");
+    // B2-25: the goal interview state opens the canvas screen.
+    expect(s.body.pipeline).toBe("modules");
     expect(s.body.pendingQuestions.map((q: { id: string }) => q.id)).toEqual(["q1", "q2"]);
     const ev = await events(r.body.run.id);
     const sketch = ev.find((e) => e.type === "plan_sketch");
@@ -128,6 +130,7 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     const s = await api.req("GET", `/systems/${systemId}`);
     expect(s.body.system.stage).toBe("card");
     expect(s.body.card).toBeNull();
+    expect(s.body.pipeline).toBe("modules");
     expect(s.body.messages.at(-1)).toMatchObject({
       role: "assistant",
       kind: "plan",

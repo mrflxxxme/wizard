@@ -58,6 +58,7 @@ paths:
                 properties:
                   system: {$ref: '#/components/schemas/System'}
                   demoReplay: {type: boolean, description: 'B2-02: организация в режиме показа — платформа показывает плашку «Режим показа: ответы моделей записаны, расходов нет»'}
+                  pipeline: {enum: [legacy, modules], description: 'B2-25: конвейер системы — modules (есть план или состояние интервью по целям) открывает экран-холст, legacy (карточка или интервью v1) — прежний экран; новая система без состояния — по WIZARD_BUILD_PIPELINE, как исполнитель интервью'}
                   card: {oneOf: [{$ref: '#/components/schemas/SystemCard'}, {type: 'null'}]}
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
@@ -1060,7 +1061,7 @@ components:
         op: {enum: [set_param, add_module, remove_module, set_goals, add_section, update_section, remove_section, move_section, set_design, remove_out_of_scope]}
     PlanSketch:
       type: object
-      required: [stage, niche, goals, modules, roles, entities, screens, sections, metrics, scenarios, outOfScope, custom, warnings, errors, fingerprint]
+      required: [stage, niche, goals, modules, roles, entities, screens, sections, metrics, scenarios, outOfScope, custom, accent, automations, access, retention, warnings, errors, fingerprint]
       description: 'B2-20, эскиз системы для холста (@wizard/agents/planner PlanSketch): цели → модули (status available — собирается сегодня, soon — в разработке) с параметрами, роли, данные, экраны (audience public | cabinet), секции лендинга, метрики панели цели, сценарии целей, «не входит + замена», дописывание; stage interview — пока идут вопросы (только цели, модули, outOfScope). fingerprint — sha256 скомпилированных спеки и файлов (null — не компилируется): холст перерисовывает превью только при его смене'
       properties:
         stage: {enum: [interview, plan]}
@@ -1069,7 +1070,7 @@ components:
         modules: {type: array, items: {type: object, required: [id, name, goals, status, params], properties: {id: {type: string}, name: {type: string}, summary: {type: string}, goals: {type: array, items: {type: string}}, status: {enum: [available, soon]}, params: {type: array, items: {type: object, required: [name, label], properties: {name: {type: string}, label: {type: string}, value: {}}}}}}}
         roles: {type: array, items: {type: object}}
         entities: {type: array, items: {type: object}}
-        screens: {type: array, items: {type: object, required: [route, title, audience, roles], properties: {route: {type: string}, title: {type: string}, audience: {enum: [public, cabinet]}, roles: {type: array, items: {type: string}}}}}
+        screens: {type: array, items: {type: object, required: [route, title, audience, roles], properties: {route: {type: string}, title: {type: string}, audience: {enum: [public, cabinet]}, roles: {type: array, items: {type: string}}, module: {type: string, description: 'B2-25: модуль плана, чей манифест объявляет маршрут'}}}}
         sections: {type: array, items: {type: object, required: [index, type, label, variant], properties: {index: {type: integer}, type: {type: string}, label: {type: string}, variant: {type: string}, title: {type: string}}}}
         metrics: {type: array, items: {type: object}}
         scenarios: {type: array, items: {type: object}}
@@ -1078,6 +1079,10 @@ components:
         warnings: {type: array, items: {type: string}}
         errors: {type: array, items: {$ref: '#/components/schemas/PlanError'}}
         fingerprint: {type: [string, 'null']}
+        accent: {type: [string, 'null'], description: 'B2-25: фирменный цвет плана (design.accent) — холст перенимает его; null во время интервью'}
+        automations: {type: array, description: 'B2-25, слой «Как это работает»: цепочки автоматики скомпилированной спеки — {name, label, module?, trigger: {type, entity?, entityLabel?, offsetMinutes?, cron?}, steps: [{type, entity?, entityLabel?, channel?: email|telegram, to?: owner|staff|client}]}; слова для людей собирает платформа', items: {type: object}}
+        access: {type: array, description: 'B2-25, «Кто видит данные»: {role, roleLabel, entity, entityLabel, scope: all — все строки, own — только свои ($user в фильтре), some — часть по фильтру}', items: {type: object}}
+        retention: {type: array, description: 'B2-25, «Сколько хранятся»: {entity, entityLabel, days, mode: delete|anonymize}', items: {type: object}}
     SystemPlanRevision:
       type: object
       required: [revision, status, source, plan, errors, sketch, fingerprint, createdAt, approvedAt, buildRunId]

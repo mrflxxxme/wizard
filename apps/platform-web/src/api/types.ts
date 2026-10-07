@@ -42,7 +42,7 @@ export interface Answer {
   text?: string;
 }
 
-export type MessageKind = "text" | "questions" | "answers" | "card" | "run_report" | "notice";
+export type MessageKind = "text" | "questions" | "answers" | "card" | "run_report" | "notice" | "plan";
 
 /** api.yaml#postMessage.target (M3-01): an element picked in the preview (ui-kit.yaml#wz_id). */
 export interface MessageTarget {
@@ -186,6 +186,88 @@ export interface SystemView {
   publishBlockers?: string[];
   /** B2-02: the org replays recorded model answers (no spend). */
   demoReplay?: boolean;
+  /** B2-25: modules — the canvas screen (beta v2 plan), legacy (or absent) — the v1 workspace. */
+  pipeline?: "legacy" | "modules";
+}
+
+/**
+ * B2-20 goal interview question (pendingQuestions of a modules-pipeline system): button options with one recommended;
+ * topic=params names the module parameter the answer sets.
+ */
+export interface GoalQuestion {
+  id: string;
+  topic?: "goals" | "niche" | "roles" | "resources" | "params";
+  module?: string;
+  param?: string;
+  text: string;
+  whyItMatters?: string;
+  options: { id: string; label: string; recommended: boolean; description?: string }[];
+  allowCustom?: boolean;
+}
+
+/** One automation chain of the sketch (api.yaml#PlanSketch.automations, B2-25). */
+export interface SketchAutomation {
+  name: string;
+  label: string | null;
+  module?: string;
+  trigger: { type: string; entity?: string; entityLabel?: string; offsetMinutes?: number; cron?: string };
+  steps: { type: string; entity?: string; entityLabel?: string; channel?: string; to?: string }[];
+}
+
+/** api.yaml#PlanSketch (B2-20, B2-25): what the plan compiles to, for the canvas. */
+export interface PlanSketch {
+  stage: "interview" | "plan";
+  niche: string;
+  goals: { id: string; label: string; statement: string; modules: string[] }[];
+  modules: {
+    id: string;
+    name: string;
+    summary?: string;
+    goals: string[];
+    status: "available" | "soon";
+    params: { name: string; label: string; value?: unknown }[];
+  }[];
+  roles: { name: string; label: string; access: string }[];
+  entities: { name: string; label: string; fields: { name: string; label: string; type: string }[] }[];
+  screens: {
+    route: string;
+    title: string;
+    audience: "public" | "cabinet";
+    roles: string[];
+    module?: string;
+  }[];
+  sections: { index: number; type: string; label: string; variant: string; title?: string }[];
+  metrics: { id: string; label: string; goal: string; module: string; unit: string }[];
+  scenarios: { id: string; title: string; goal: string; module: string }[];
+  outOfScope: { request: string; replacement: string; category: string; module?: string }[];
+  custom: { id: string; title: string; kind: string; budgetRub: number }[];
+  accent?: string | null;
+  automations?: SketchAutomation[];
+  access?: {
+    role: string;
+    roleLabel: string;
+    entity: string;
+    entityLabel: string;
+    scope: "all" | "own" | "some";
+  }[];
+  retention?: { entity: string; entityLabel: string; days: number; mode: "delete" | "anonymize" }[];
+  warnings: string[];
+  errors: { code: string; path?: string; message_ru: string; hint?: string }[];
+  fingerprint: string | null;
+}
+
+/** api.yaml#SystemPlanRevision (B2-20). */
+export interface SystemPlanRevision {
+  revision: number;
+  status: "awaiting_approval" | "approved" | "superseded";
+  source?: string;
+  plan: Record<string, unknown>;
+  errors: { code: string; path?: string; message_ru: string; hint?: string }[];
+  sketch: PlanSketch | null;
+  fingerprint: string | null;
+  createdAt?: string;
+  approvedAt?: string | null;
+  buildRunId?: string | null;
 }
 
 /** api.yaml#OrgSettings (GET served from M0 by M0-30). */
