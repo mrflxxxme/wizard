@@ -285,6 +285,7 @@ export const dealsManifest: ModuleManifest = {
         },
       },
       { name: "один этап", params: { stages: ["Обсуждение"] } },
+      { name: "ответственные сотрудники", params: { assignees: true }, withModules: ["staff"] },
       {
         name: "из заявок, с клиентами",
         params: {},

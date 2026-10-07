@@ -172,9 +172,13 @@ export const reportsManifest: ModuleManifest = {
       {
         name: "неделя, без выгрузки CSV",
         params: { period: "week", export_csv: false },
-        withModules: ["leads", "notify"],
+        withModules: ["leads", "notify", "landing"],
       },
-      { name: "сводка письмом раз в неделю", params: { digest: "weekly" }, withModules: ["leads", "notify"] },
+      {
+        name: "сводка письмом раз в неделю",
+        params: { digest: "weekly" },
+        withModules: ["leads", "notify", "landing"],
+      },
       { name: "без других модулей", params: {} },
     ],
     gates: ["G0", "G1"],

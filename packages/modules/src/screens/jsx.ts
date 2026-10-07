@@ -45,10 +45,17 @@ export function fragmentPage(
   const fromLocal = names.filter((n) => local[n] !== undefined);
   return [
     comment,
+    'import { useEffect } from "@wizard/sdk";',
     ...(fromKit.length ? [`import { ${fromKit.join(", ")} } from "@wizard/ui-kit";`] : []),
     ...fromLocal.map((n) => `import { ${n} } from ${js(local[n])};`),
     "",
     "export default function Home() {",
+    // A link from another page («Выбрать» on /services → /#lead) loads before the sections render, so the browser
+    // finds no anchor to scroll to: scroll once they are on the page.
+    "  useEffect(() => {",
+    "    const id = decodeURIComponent(location.hash.slice(1));",
+    "    if (id) document.getElementById(id)?.scrollIntoView();",
+    "  }, []);",
     "  return (",
     "    <>",
     ...blocks.map((b) => `      ${b}`),

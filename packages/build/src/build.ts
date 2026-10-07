@@ -86,7 +86,7 @@ function clientEntry(spec: AppSpec): string {
   const lines = [
     `import { jsx } from ${JSON.stringify(SDK_JSX)};`,
     `import { SdkProvider, matchRoute, useEffect, useState } from ${JSON.stringify(SDK)};`,
-    `import { WzProvider } from ${JSON.stringify(UI_KIT)};`,
+    `import { AppShell, WzProvider } from ${JSON.stringify(UI_KIT)};`,
     `import { createRoot } from "react-dom/client";`,
     ...pages.map((p, i) => `import P${i} from ${JSON.stringify(`./${p.file}`)};`),
     `const pages = [${pages.map((p, i) => `[${JSON.stringify(p.route)}, P${i}]`).join(", ")}];`,
@@ -101,7 +101,8 @@ function clientEntry(spec: AppSpec): string {
     '    return () => window.removeEventListener("popstate", on);',
     "  }, []);",
     "  const hit = ordered.find((p) => matchRoute(p[0], path));",
-    '  const page = hit ? jsx(hit[1], {}) : jsx("main", { "data-testid": "wz-not-found", children: "Страница не найдена" });',
+    // /login is reserved (runtime.yaml#auth.login_page): no page takes it; AppShell renders AppShell.Login there.
+    '  const page = hit ? jsx(hit[1], {}) : path === "/login" ? jsx(AppShell, { children: null }) : jsx("main", { "data-testid": "wz-not-found", children: "Страница не найдена" });',
     "  return jsx(SdkProvider, { routes, children: jsx(WzProvider, { spec, children: page }) });",
     "}",
     // ui-kit.yaml#data_binding.provider: the template mounts WzProvider with the session RoleSpec;

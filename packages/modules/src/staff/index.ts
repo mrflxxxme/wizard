@@ -119,7 +119,7 @@ export const staffManifest: ModuleManifest = {
   ],
   tests: {
     matrix: [
-      { name: "одна роль, все разделы", params: {}, withModules: ["leads", "notify"] },
+      { name: "одна роль, все разделы", params: {}, withModules: ["leads", "notify", "landing"] },
       {
         name: "две роли с разными разделами",
         params: { roles: ["Администратор", "Мастер"], sections_1: ["leads"], sections_2: ["booking"] },
@@ -132,9 +132,13 @@ export const staffManifest: ModuleManifest = {
           login: "phone_otp",
           see_only_own: true,
         },
-        withModules: ["leads", "notify"],
+        withModules: ["leads", "notify", "landing"],
       },
-      { name: "вход через Telegram", params: { login: "telegram" }, withModules: ["leads", "notify"] },
+      {
+        name: "вход через Telegram",
+        params: { login: "telegram" },
+        withModules: ["leads", "notify", "landing"],
+      },
     ],
     gates: ["G0", "G1"],
   },
