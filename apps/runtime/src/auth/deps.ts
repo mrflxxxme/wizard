@@ -137,7 +137,13 @@ export function smsRoute(deps: AuthDeps, sys: LoadedSystem): "dev" | "provider" 
 /** Dev-sender: the SMS lands in the runtime outbox and in <outboxDir>/<system>/sms.jsonl. */
 export async function devSendSms(deps: AuthDeps, m: SmsMessage): Promise<void> {
   const at = deps.clock().toISOString();
-  deps.outbox.push({ integration: "_sms", action: "otp", payload: { to: m.to, text: m.text }, at });
+  deps.outbox.push({
+    integration: "_sms",
+    action: "otp",
+    payload: { to: m.to, text: m.text },
+    at,
+    system: m.systemId,
+  });
   if (!deps.outboxDir) return;
   if (!/^[a-z0-9]{1,64}$/.test(m.systemId)) throw new WizardError("INTERNAL");
   const dir = join(deps.outboxDir, m.systemId);

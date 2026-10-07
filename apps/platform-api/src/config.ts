@@ -103,6 +103,14 @@ export interface Config {
    */
   buildPipeline: "legacy" | "modules";
   /**
+   * WIZARD_G1_BROWSER (B2-28, gates.yaml#G1.browser.platform): "chromium" (default) — G1 of a plan build runs the goal
+   * scenarios and the 390 px check in the process's headless Chromium; "off" — without them (build_metrics
+   * goals.checked=false). A missing Chromium works as "off" and is logged (g1_browser_failed).
+   */
+  g1Browser: "chromium" | "off";
+  /** WIZARD_G1_BROWSER_SLOTS (default 2): plan builds whose G1 uses the browser at once; the others wait their turn. */
+  g1BrowserSlots: number;
+  /**
    * WIZARD_LLM_MONTHLY_CAP_RUB (default 6000; D20_eval_budget, D23_pilot): platform LLM spend cap per calendar month
    * (Europe/Moscow) — Σ billable cost_rub of live llm_calls; reached → new builds and interview turns are refused.
    */
@@ -313,6 +321,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
     buildPipeline:
       (env.WIZARD_BUILD_PIPELINE ?? "").trim().toLowerCase() === "modules" ? "modules" : "legacy",
+    g1Browser: ["off", "false", "0"].includes((env.WIZARD_G1_BROWSER ?? "").trim().toLowerCase())
+      ? "off"
+      : "chromium",
+    g1BrowserSlots: Math.max(1, Number(env.WIZARD_G1_BROWSER_SLOTS) || 2),
     llmDailyCapRub: env.WIZARD_LLM_DAILY_CAP_RUB
       ? Number(env.WIZARD_LLM_DAILY_CAP_RUB)
       : DEFAULT_LLM_DAILY_CAP_RUB,

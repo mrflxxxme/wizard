@@ -35,8 +35,9 @@ worker:
   # during a rolling update the old process's watchdog re-creates pods the new one just reconciled away, and they leak
   # into the namespace quota (found by the local rehearsal). A few seconds without builds/functions per deploy.
   strategy: { type: Recreate }
-  # measured: 312 MiB idle, 565 MiB peak during a build + G1 (≈ +250 MiB per concurrent build)
-  resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "3", memory: 1536Mi } }
+  # measured: 312 MiB idle, 565 MiB peak during a build + G1 (≈ +250 MiB per concurrent build); B2-28: + headless
+  # Chromium of G1 (≈ 150 MiB + ≈ 80 MiB per open page, 3 lanes × 2 builds) — the limit until it is measured on the stand
+  resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { cpu: "3", memory: 2Gi } }
 runtime:
   replicas: 1
   strategy: { type: Recreate }

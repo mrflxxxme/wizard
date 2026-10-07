@@ -420,8 +420,9 @@ describe("notify step", () => {
     await runNotifyStep(ctx, step);
     await runNotifyStep(ctx, step);
     expect(ctx.outbox.messages).toHaveLength(1);
+    // B2-28: dates as a person reads them, not the stored «2026-10-05».
     expect(ctx.outbox.messages[0]?.payload.text).toBe(
-      "Заказ №17 принят в работу. Дата готовности: 2026-10-05.",
+      "Заказ №17 принят в работу. Дата готовности: 5 октября 2026.",
     );
     expect(ctx.outbox.messages[0]?.idempotencyKey).toBe("job-1:0:sendToUser:0");
   });

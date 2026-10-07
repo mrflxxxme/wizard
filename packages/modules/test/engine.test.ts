@@ -10,6 +10,8 @@ import {
   compilePlan,
   leadFormFields,
   leadsModule,
+  type ModuleContext,
+  platformSystemUrl,
   SECTION_RENDERERS,
 } from "../src/index.js";
 import { FIXTURES, fx, fxPlan, landingLeadsPlan, testRegistry } from "./fixtures.js";
@@ -424,4 +426,46 @@ describe("module bugs", () => {
 test("every ready section variant has a renderer", () => {
   for (const t of SECTION_CATALOG)
     if (t.ready.length) expect(SECTION_RENDERERS[t.type], t.type).toBeDefined();
+});
+
+describe("platform of the build (B2-28)", () => {
+  const linkModule = {
+    manifest: fx({
+      id: "fx_link",
+      provides: { entities: ["fx_link_item"], routes: ["/cabinet/links"] },
+      screens: [
+        {
+          id: "items",
+          audience: "cabinet",
+          route: "/cabinet/links",
+          title: "Ссылки",
+          roles: ["$owner"],
+          components: ["DataTable"],
+        },
+      ],
+    }),
+    screens: {
+      items: (ctx: ModuleContext) =>
+        `export default function Items() { return <a href=${JSON.stringify(platformSystemUrl(ctx) ?? "")}>Изменить</a>; }\n`,
+    },
+  };
+  const reg = testRegistry([linkModule]);
+  const files = (r: CompileSuccess) => Object.values(r.files).join("\n");
+
+  test("platformUrl and systemId reach the generators: the owner's page of the system", () => {
+    const r = ok(
+      compilePlan(fxPlan([{ id: "fx_link" }]), reg, {
+        appName: "Пример",
+        platformUrl: "https://wizard.example/",
+        systemId: "sys 1",
+      }),
+    );
+    expect(files(r)).toContain('href="https://wizard.example/s/sys%201"');
+  });
+
+  test("without them (planner previews) the generators get no link", () => {
+    const r = ok(compilePlan(fxPlan([{ id: "fx_link" }]), reg, { appName: "Пример" }));
+    expect(files(r)).toContain('href=""');
+    expect(platformSystemUrl({})).toBeNull();
+  });
 });

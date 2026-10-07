@@ -54,6 +54,7 @@ const HOST_SLACK_MS = 500;
 export function outboxConnectors(
   spec: AppSpec,
   services: RuntimeServices,
+  system?: string,
 ): Readonly<Record<string, Readonly<Record<string, (input: unknown) => Promise<unknown>>>>> {
   const out: Record<string, Record<string, (input: unknown) => Promise<unknown>>> = {};
   for (const integ of spec.integrations ?? []) {
@@ -65,6 +66,7 @@ export function outboxConnectors(
         userId: typeof userId === "string" ? userId : null,
         payload: input,
         at: services.clock().toISOString(),
+        ...(system ? { system } : {}),
       });
     };
     const act =
@@ -164,7 +166,7 @@ async function build(
     connectors: () =>
       services.connectors === "live" && services.connectorHost
         ? liveConnectors(sys, services.connectorHost)
-        : outboxConnectors(sys.spec, services),
+        : outboxConnectors(sys.spec, services, sys.entry.systemId),
     clock: services.clock,
     // M2-52: ctx.http.fetch — the runtime makes the request for the function (egress proxy, declared hosts only).
     ...(services.egress && services.connectorHost

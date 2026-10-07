@@ -93,7 +93,7 @@ manifest:
   goal_scenarios:
     fields: "{id GS-<module>-<n>, goal, title ≤ 140, when?, withModules?, steps: [{actor: visitor|client|owner|staff|system, text}] 1…15, expect: [{kind, text}] 1…8}"
     expect_kinds: "page_text (текст на экране), record (запись создана/видна), status (статус сменился), outbox_email, outbox_telegram (сообщение в outbox, Telegram без ПДн), denied (действие недоступно), metric (метрика панели изменилась)"
-    run: "B2-24 связывает шаги с Playwright: 390 и 1280 px, светлая и тёмная темы, данные seed без моделей. Сценарий с withModules запускается в строке матрицы, где эти модули есть; с when — где условие истинно"
+    run: "B2-24 связывает шаги с Playwright: 390 px в светлой теме и 1280 px в тёмной (B2-28, quality/gates.yaml#G1.browser.matrix), данные seed без моделей. Сценарий с withModules запускается в строке матрицы, где эти модули есть; с when — где условие истинно"
     gate: "Сценарии целей модулей плана — блокеры готовности системы (D76 (6))"
   tests: "Каждая строка matrix компилируется (с модулями withModules и минимальным планом), проходит G0 и G1 без моделей; ready-модуль без матрицы не принимается"
 

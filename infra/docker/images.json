@@ -9,7 +9,7 @@
     {
       "name": "wizard-worker",
       "dockerfile": "infra/docker/app.Dockerfile",
-      "args": { "FILTER": "@wizard/worker", "APP_DIR": "apps/worker", "ENTRY": "src/main.ts" }
+      "args": { "FILTER": "@wizard/worker", "APP_DIR": "apps/worker", "ENTRY": "src/main.ts", "CHROMIUM": "1" }
     },
     {
       "name": "wizard-runtime",

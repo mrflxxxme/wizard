@@ -387,6 +387,7 @@ export function createConnectorHost(o: ConnectorHostOptions): ConnectorHost {
             userId,
             payload: m.payload,
             at: m.ts,
+            system: entry.systemId,
           });
           await files?.write(m);
         },

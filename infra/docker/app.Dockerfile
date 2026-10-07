@@ -29,13 +29,24 @@ FROM ${NODE_IMAGE} AS runtime
 ARG APP_DIR
 ARG ENTRY=src/main.ts
 ARG VERSION=dev
+# B2-28 (gates.yaml#G1.browser.platform): CHROMIUM=1 (the worker, images.json) adds Playwright's headless Chromium and
+# its system libraries — G1 of a plan build runs the goal scenarios in it, as the CI e2e job does.
+ARG CHROMIUM=
 LABEL org.opencontainers.image.source="https://github.com/mrflxxxme/wizard" \
       org.opencontainers.image.description="Wizard ${APP_DIR}"
 ENV NODE_ENV=production \
     WIZARD_VERSION=${VERSION} \
     WIZARD_ROOT=/app \
-    HOME=/tmp
+    HOME=/tmp \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=build --chown=0:0 /app /app
+# The Playwright version of the repo (@playwright/test of platform-api) installs its own Chromium build: the headless
+# shell only, read-only for the app user.
+RUN if [ -n "$CHROMIUM" ]; then \
+      node /app/apps/platform-api/node_modules/@playwright/test/cli.js install --with-deps --only-shell chromium \
+      && rm -rf /var/lib/apt/lists/* \
+      && chmod -R a+rX /ms-playwright; \
+    fi
 # tsx is a devDependency of every app: --import resolves it from the app folder, so the app folder is the workdir.
 # .entry.mjs pins the entry point at build time (exec-form CMD cannot expand build args).
 RUN test -n "$APP_DIR" && test -f "/app/${APP_DIR}/${ENTRY}" \

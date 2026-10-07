@@ -1,5 +1,6 @@
 // StatusBoard (ui-kit.yaml#components.StatusBoard): kanban by an enum field; pointer drag-and-drop without
-// libraries, keyboard alternative «Перенести в…», optimistic move with rollback, tabs on sm.
+// libraries, keyboard alternative «Перенести в…», optimistic move with rollback, tabs on sm. After its own move the
+// board re-reads its columns (B2-28): without live updates (no event stream) the card would jump back.
 import { type ReactNode, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { cx, useCan, useDataSource, useRoleSpec, useWzRoot } from "../data/context.js";
 import { fieldOf } from "../data/roleSpec.js";
@@ -10,7 +11,8 @@ import { DataState } from "./States.js";
 import styles from "./StatusBoard.module.css";
 import type { StatusBoardProps } from "./types.js";
 
-type Move = { to: string; row: Rec };
+/** A move of a card: optimistic while the write runs; `done` — written, kept until the column re-read shows it. */
+type Move = { to: string; row: Rec; done?: boolean };
 type Drag = { id: string; from: string; x: number; y: number; dx: number; dy: number; active: boolean };
 
 export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
@@ -29,6 +31,8 @@ export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
   const [alert, setAlert] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  /** Bumped after each own move: every column re-reads its list. */
+  const [reload, setReload] = useState(0);
   const boardRef = useRef<HTMLDivElement>(null);
 
   const move = async (row: Rec, from: string, to: string) => {
@@ -39,12 +43,22 @@ export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
     try {
       await update.mutate(row.id, { [props.statusField]: to });
       setStatus(ru.statusBoard.moved(label(to)));
+      // The card stays in its new column until the re-read lists show it there.
+      setMoves((m) =>
+        m[row.id]?.to === to ? { ...m, [row.id]: { ...(m[row.id] as Move), done: true } } : m,
+      );
+      setReload((n) => n + 1);
     } catch (e) {
       setAlert((e as WzError).message);
-    } finally {
       setMoves(({ [row.id]: _, ...rest }) => rest);
     }
   };
+  const settled = (id: string) =>
+    setMoves((m) => {
+      if (!m[id]?.done) return m;
+      const { [id]: _, ...rest } = m;
+      return rest;
+    });
 
   const dragRef = useRef<Drag | null>(null);
   const onPointerDown = (e: ReactPointerEvent, row: Rec, from: string) => {
@@ -117,6 +131,8 @@ export function StatusBoard<T = Rec>(props: StatusBoardProps<T>): ReactNode {
             drag={drag}
             onTotal={(n) => setTotals((t) => (t[v] === n ? t : { ...t, [v]: n }))}
             onMove={move}
+            reload={reload}
+            onSettled={settled}
             onPointerDown={onPointerDown}
           />
         ))}
@@ -137,10 +153,12 @@ function Column<T>(
     drag: Drag | null;
     onTotal(n: number): void;
     onMove(row: Rec, from: string, to: string): void;
+    reload: number;
+    onSettled(id: string): void;
     onPointerDown(e: ReactPointerEvent, row: Rec, from: string): void;
   },
 ): ReactNode {
-  const { value, moves, statusField, onTotal } = props;
+  const { value, moves, statusField, onTotal, reload, onSettled } = props;
   const limit = props.limitPerColumn ?? 50;
   const list = useDataSource().useList<Rec>(props.entity, {
     ...props.query,
@@ -155,6 +173,15 @@ function Column<T>(
   const rows = [...arriving, ...server.filter((r) => !moves[r.id] || moves[r.id]?.to === value)];
   const total = (list.data?.total ?? 0) - leaving + arriving.length;
   useEffect(() => onTotal(total), [onTotal, total]);
+  const refetch = useRef(list.refetch);
+  refetch.current = list.refetch;
+  useEffect(() => {
+    if (reload > 0) refetch.current();
+  }, [reload]);
+  // A written move is over once this column's list has the card with its new value.
+  useEffect(() => {
+    for (const r of server) if (moves[r.id]?.done && moves[r.id]?.to === value) onSettled(r.id);
+  }, [server, moves, value, onSettled]);
   const [menu, setMenu] = useState<string | null>(null);
   const headingId = `wz-sb-${statusField}-${value}`;
 

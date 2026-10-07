@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import type { Entity } from "@wizard/appspec";
 import { emailConnector, sendTemplateToAddress } from "./email.js";
 import { ConnectorError, isConnectorError } from "./errors.js";
-import { isPlainAddress } from "./mime.js";
+import { headerSafe, isPlainAddress } from "./mime.js";
 import { CALL_TTL_MS, consumeQuota, type InvokeOptions, invokeAction } from "./runtime.js";
 import { entityOf, fieldOf, placeholders } from "./spec-util.js";
 import { telegramConnector } from "./telegram.js";
@@ -56,6 +56,44 @@ function scalar(v: unknown): string | number | undefined {
   return undefined;
 }
 
+/** Default timezone of a system without app.timezone (runtime.yaml#workflows: schedules run in Moscow time). */
+const DEFAULT_TIMEZONE = "Europe/Moscow";
+
+/**
+ * A date or date-time field as a person reads it — «9 октября 2026, 10:00» in the system's timezone, a date —
+ * «9 октября 2026» — not the stored ISO string (B2-28: a reminder said «2026-10-09T07:00:00.000Z»). Other values as
+ * scalar().
+ */
+function display(v: unknown, type: string | undefined, timeZone: string): string | number | undefined {
+  if ((type === "datetime" || type === "date") && (typeof v === "string" || v instanceof Date)) {
+    const dateOnly = type === "date" && typeof v === "string" && /^\d{4}-\d\d-\d\d$/.test(v);
+    const d = v instanceof Date ? v : new Date(dateOnly ? `${v}T12:00:00Z` : v);
+    if (Number.isFinite(d.getTime())) {
+      const tz = type === "date" ? "UTC" : timeZone;
+      // Day, month and year without the «г.» Intl adds: templates end sentences with their own full stop.
+      const day = new Intl.DateTimeFormat("ru-RU", {
+        timeZone: tz,
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+        .formatToParts(d)
+        .filter((p) => p.type === "day" || p.type === "month" || p.type === "year")
+        .map((p) => p.value)
+        .join(" ");
+      if (type === "date") return day;
+      const time = new Intl.DateTimeFormat("ru-RU", {
+        timeZone: tz,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      });
+      return `${day}, ${time.format(d)}`;
+    }
+  }
+  return scalar(v);
+}
+
 /** Values for `{{field}}`, `{{ref.field}}` and the link placeholders used by the template (refs read as __system). */
 async function valuesFor(
   ctx: ConnectorCtx,
@@ -65,6 +103,7 @@ async function valuesFor(
   links: Record<string, string>,
 ): Promise<Record<string, string | number>> {
   const out: Record<string, string | number> = {};
+  const tz = ctx.system.spec.app.timezone ?? DEFAULT_TIMEZONE;
   for (const p of new Set(placeholders(template))) {
     if (Object.hasOwn(links, p)) {
       out[p] = links[p] as string;
@@ -72,7 +111,7 @@ async function valuesFor(
     }
     const [head, tail] = p.split(".") as [string, string | undefined];
     if (tail === undefined) {
-      const v = scalar(record[head]);
+      const v = display(record[head], fieldOf(entity, head)?.type, tz);
       if (v !== undefined) out[p] = v;
       continue;
     }
@@ -81,7 +120,7 @@ async function valuesFor(
     const id = record[head];
     if (!target || typeof id !== "string" || !entityOf(ctx.system.spec, target)) continue;
     const row = await ctx.db.get(target, id);
-    const v = scalar(row?.[tail]);
+    const v = display(row?.[tail], fieldOf(entityOf(ctx.system.spec, target), tail)?.type, tz);
     if (v !== undefined) out[p] = v;
   }
   return out;
@@ -277,6 +316,68 @@ export async function runNotifyStep(
   return result;
 }
 
+type MailTemplate = { subject: string; body: string };
+
+const templateOf = (ctx: ConnectorCtx, id: string): MailTemplate | undefined =>
+  (ctx.integration.config as { templates?: Record<string, MailTemplate> }).templates?.[id];
+
+/** Link placeholders of a letter: {{link}}; a visitor's letter also gets its one-time links and the unsubscribe footer. */
+function mailLinks(
+  ctx: ConnectorCtx,
+  step: NotifyStepInput,
+  link: string,
+  visitor: boolean,
+): { links: Record<string, string>; footer?: string } {
+  const links: Record<string, string> = { [LINK_PLACEHOLDER]: link };
+  if (!visitor) return { links };
+  let footer: string | undefined;
+  const at = {
+    entity: step.entity,
+    id: String(step.record.id),
+    workflow: step.workflow ?? "",
+    step: step.stepIndex,
+  };
+  const unsubscribe = ctx.messageLinks?.url({ action: "unsubscribe", ...at }) ?? null;
+  if (unsubscribe) {
+    links[UNSUBSCRIBE_LINK_PLACEHOLDER] = unsubscribe;
+    footer = `${UNSUBSCRIBE_FOOTER_RU} ${unsubscribe}`;
+  }
+  const cancel = step.params.cancel ? (ctx.messageLinks?.url({ action: "cancel", ...at }) ?? null) : null;
+  if (cancel) links[CANCEL_LINK_PLACEHOLDER] = cancel;
+  const reschedule = step.params.reschedule
+    ? (ctx.messageLinks?.url({ action: "reschedule", ...at }) ?? null)
+    : null;
+  if (reschedule) links[RESCHEDULE_LINK_PLACEHOLDER] = reschedule;
+  return footer ? { links, footer } : { links };
+}
+
+/**
+ * The letter an e-mail notify step sends to one kind of recipient, rendered as sendTemplate renders it (record values,
+ * {{link}}, a visitor's one-time cancel/reschedule links and the unsubscribe footer) — without sending it. The G1
+ * runtime in outbox mode records it next to the recipient marker, so goal scenarios follow the real links (B2-28).
+ * null — the step has no such template.
+ */
+export async function renderNotifyEmail(
+  ctx: ConnectorCtx,
+  step: NotifyStepInput,
+  recipient: "user" | "role" | "owner" | "visitor",
+): Promise<{ subject: string; text: string } | null> {
+  const tpl = templateOf(ctx, String(step.params.template ?? ""));
+  if (!tpl) return null;
+  const entity = entityOf(ctx.system.spec, step.entity);
+  const { links, footer } = mailLinks(
+    ctx,
+    step,
+    linkOf(ctx, step.record, step.params.link),
+    recipient === "visitor",
+  );
+  const params = await valuesFor(ctx, entity, step.record, `${tpl.subject}\n${tpl.body}`, links);
+  return {
+    subject: renderTemplate(tpl.subject, params, headerSafe),
+    text: renderTemplate(tpl.body, params) + (footer ? `\n\n${footer}` : ""),
+  };
+}
+
 /** Sends to one target; returns sent | replayed | test_mode | skipped (Telegram chat not linked). */
 async function sendOne(
   ctx: ConnectorCtx,
@@ -305,29 +406,8 @@ async function sendOne(
     return sentOrTest();
   }
   const template = String(step.params.template ?? "");
-  const tpl = (ctx.integration.config as { templates?: Record<string, { subject: string; body: string }> })
-    .templates?.[template];
-  const links: Record<string, string> = { [LINK_PLACEHOLDER]: link };
-  let footer: string | undefined;
-  if (t.kind === "visitor") {
-    const at = {
-      entity: step.entity,
-      id: String(step.record.id),
-      workflow: step.workflow ?? "",
-      step: step.stepIndex,
-    };
-    const unsubscribe = ctx.messageLinks?.url({ action: "unsubscribe", ...at }) ?? null;
-    if (unsubscribe) {
-      links[UNSUBSCRIBE_LINK_PLACEHOLDER] = unsubscribe;
-      footer = `${UNSUBSCRIBE_FOOTER_RU} ${unsubscribe}`;
-    }
-    const cancel = step.params.cancel ? (ctx.messageLinks?.url({ action: "cancel", ...at }) ?? null) : null;
-    if (cancel) links[CANCEL_LINK_PLACEHOLDER] = cancel;
-    const reschedule = step.params.reschedule
-      ? (ctx.messageLinks?.url({ action: "reschedule", ...at }) ?? null)
-      : null;
-    if (reschedule) links[RESCHEDULE_LINK_PLACEHOLDER] = reschedule;
-  }
+  const tpl = templateOf(ctx, template);
+  const { links, footer } = mailLinks(ctx, step, link, t.kind === "visitor");
   const params = tpl ? await valuesFor(ctx, entity, step.record, `${tpl.subject}\n${tpl.body}`, links) : {};
   if ("userId" in t) {
     const input: Record<string, unknown> = { userId: t.userId, template, params };

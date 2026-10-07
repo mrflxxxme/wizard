@@ -80,7 +80,8 @@ export async function startApi(url: string, opts: PlatformApiOptions = {}): Prom
   const artifactsDir = opts.config?.artifactsDir ?? mkdtempSync(join(tmpdir(), "wz-api-"));
   const api = await createPlatformApi({
     ...opts,
-    config: { dbUrl: url, artifactsDir, authMode: "dev", ...opts.config },
+    // B2-28: API tests build without Chromium unless they ask for it (b2-build-v2.browser.test.ts).
+    config: { dbUrl: url, artifactsDir, authMode: "dev", g1Browser: "off", ...opts.config },
     log: opts.log ?? (process.env.WZ_TEST_LOG ? (m, e) => console.error(m, e) : () => {}),
   });
   const req: TestApi["req"] = async (method, path, init = {}) => {

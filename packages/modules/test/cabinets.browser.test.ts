@@ -15,6 +15,7 @@ import { newQrKeyring, QR_SECRET, serializeQrKeyring, staticSecretReader } from 
 import {
   type GateContext,
   type GateReport,
+  GOAL_MATRIX_FULL,
   type GoalProgram,
   type GoalScenarioInput,
   runG0,
@@ -246,7 +247,8 @@ describe.skipIf(!hasChromium)("cabinets on the design system v2 (B2-34)", () => 
         goalScenarios: scenarios,
       };
       expect(failed(await runG0(ctx)), "G0").toEqual([]);
-      const g1 = await runG1(ctx, { goals: { programs } });
+      // The look of the cabinets in all four cells (G1 goal scenarios run in two since B2-28).
+      const g1 = await runG1(ctx, { goals: { programs, matrix: GOAL_MATRIX_FULL } });
       expect(failed(g1), "G1").toEqual([]);
       const pagesCount = byRole.reduce((n, b) => n + b.pages.length, 0);
       expect(shots.filter((s) => !/-(card|form)$/.test(s.route))).toHaveLength(pagesCount * 4);

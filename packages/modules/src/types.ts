@@ -27,6 +27,11 @@ export interface ModuleContext {
   allParams: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   /** Module ids of the plan. */
   present: ReadonlySet<string>;
+  /**
+   * Where the system is built (CompileOptions.platformUrl/systemId, B2-28): the platform's origin without a trailing
+   * slash and the system's id; absent in previews. Link of the owner's page — platformSystemUrl(ctx).
+   */
+  platform?: { url: string; systemId: string };
 }
 
 /**

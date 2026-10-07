@@ -130,6 +130,8 @@ export interface RuntimeApp {
   unloadSystem(input: { slug: string; env: SystemEnv }): boolean;
   /** Messages connectors would have sent (connectors: 'outbox'). */
   outbox(): OutboxMessage[];
+  /** Forgets the outbox messages of these systems (B2-28: the long-lived G1 runtime after a gate). */
+  dropOutbox(systemIds: readonly string[]): void;
   /** One pass of the job runner (jobs/runner.ts) for a loaded system at `now` (G1 runWorkflows/advanceTime). */
   runJobs(input: { slug: string; env: SystemEnv } & RunJobsOptions): Promise<RunJobsReport>;
   /**
@@ -433,6 +435,13 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     loadSystem: async (input) => systems.pin(input),
     unloadSystem: (input) => systems.unpin(input.slug, input.env),
     outbox: () => [...outbox],
+    dropOutbox: (systemIds) => {
+      const drop = new Set(systemIds);
+      let w = 0;
+      // In place: connectors, auth and the job runner keep this array.
+      for (const m of outbox) if (!m.system || !drop.has(m.system)) outbox[w++] = m;
+      outbox.length = w;
+    },
     runJobs: async ({ slug, env: sysEnv, ...opts }) => {
       const sys = await systems.resolve(slug, sysEnv);
       if (!sys) throw new WizardError("NOT_FOUND", { message: "Система не найдена" });

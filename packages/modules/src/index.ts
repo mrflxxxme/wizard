@@ -48,7 +48,7 @@ export { compileDeals, DEAL_FINAL_STAGES, dealStages } from "./deals/compile.js"
 export { dealsManifest, dealsModule } from "./deals/index.js";
 /** Draft manifests generated from modules.yaml#catalog (scripts/gen-draft.mjs). */
 export { DRAFT_MANIFESTS } from "./draft.js";
-/** compilePlan(plan, registry, {appName?}) → {ok, spec, files, order, links, metrics, scenarios, customSlots, plan, warnings} | {ok: false, errors}. */
+/** compilePlan(plan, registry, {appName?, platformUrl?, systemId?}) → {ok, spec, files, order, links, metrics, scenarios, customSlots, plan, warnings} | {ok: false, errors}; platformSystemUrl(ctx) — the owner's page of the system. */
 export {
   BASE_ROLES,
   CABINET_ROUTE,
@@ -61,6 +61,7 @@ export {
   checkRegistry,
   compiledFingerprint,
   compilePlan,
+  platformSystemUrl,
   unimplementedSections,
 } from "./engine/compile.js";
 /** matrixPlan(registry, moduleId, row) — the minimal plan a CI matrix row is compiled with. */

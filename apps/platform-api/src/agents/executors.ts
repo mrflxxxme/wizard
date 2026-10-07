@@ -19,7 +19,7 @@ import {
   type ModuleRegistry,
   newGoalSession,
 } from "@wizard/agents/planner";
-import { type GateContext, type RuntimeHandle, runGates } from "@wizard/gates";
+import { type RuntimeHandle, runGates } from "@wizard/gates";
 import { createLogger } from "@wizard/pii/log";
 import {
   closeExecutors,
@@ -43,7 +43,9 @@ import {
   RunFailure,
 } from "../runs/types.js";
 import { withConsentText } from "./consent.js";
+import { g1PlatformConfig } from "./g1-platform.js";
 import { type G1Sandbox, g1RuntimeLogLine, startG1Sandbox } from "./g1-sandbox.js";
+import { chromiumProvider, type GoalBrowser, type GoalBrowserProvider } from "./goal-browser.js";
 
 /** Sandbox events of the G1 host (allowlisted fields only). */
 const g1Logger = createLogger({ svc: "worker" });
@@ -66,14 +68,14 @@ export interface AgentExecutorsOptions {
    */
   g1Sandbox?: G1Sandbox | null;
   /**
-   * B2-21/B2-24: Chromium for the goal scenarios of a plan build (gates.yaml#G1.browser) — the provider owns it (launch
-   * and close). Absent or null: G1 of a plan build runs without the browser checks (build_metrics goals.checked=false).
+   * B2-21/B2-28: Chromium for the goal scenarios of a plan build (gates.yaml#G1.browser.platform) — the provider owns it
+   * (launch, slots, close). Default: chromiumProvider when config.g1Browser is "chromium" (closed with the executors);
+   * null: G1 of a plan build runs without the browser checks (build_metrics goals.checked=false).
    */
-  goalBrowser?: () => Promise<GoalBrowser | null>;
+  goalBrowser?: GoalBrowserProvider | null;
 }
 
-/** Playwright browser as @wizard/gates takes it (GateContext.browser). */
-export type GoalBrowser = NonNullable<GateContext["browser"]>;
+export type { GoalBrowser, GoalBrowserProvider };
 
 /**
  * B2-21: a build of the modules pipeline — the approved system plan in stages (builder v2, agents/builder.yaml#v2):
@@ -83,11 +85,13 @@ export type GoalBrowser = NonNullable<GateContext["browser"]>;
 export async function buildByPlan(
   host: BuildHost,
   params: BuildParams & { plan: NonNullable<BuildParams["plan"]> },
-  o: { registry?: ModuleRegistry; browser?: GoalBrowser | null } = {},
+  o: { registry?: ModuleRegistry; browser?: GoalBrowserProvider | null; platformUrl?: string } = {},
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
   if (!host.checkpoints) throw new RunFailure("INTERNAL", "Нет хранилища этапов сборки", true);
   const current = await host.store.getSpec();
-  const browser = o.browser ?? null;
+  const provider = o.browser ?? null;
+  // The browser starts here (once per process): a build knows before its stages whether G1 checks the goal scenarios.
+  const withBrowser = provider ? await provider.available() : false;
   const v2: V2Host = {
     route: host.route,
     runStep: host.runStep,
@@ -97,12 +101,21 @@ export async function buildByPlan(
     checkpoints: host.checkpoints,
     currentSpec: () => host.store.getSpec(),
     commitCompiled: (input) => host.store.commitCompiled(input),
-    runGates: (level, overrides) =>
-      host.runGates(
-        level,
-        overrides?.goalScenarios && browser ? { goalScenarios: overrides.goalScenarios, browser } : undefined,
-      ),
-    goalBrowser: browser !== null,
+    runGates: async (level, overrides) => {
+      if (!overrides?.goalScenarios || !provider || !withBrowser) return host.runGates(level, undefined);
+      // A slot of the process browser for this G1 only; without one (crash, wait ran out) G1 reports the browser
+      // checks as errors and the build fails retryably.
+      const lease = await provider.acquire(host.signal);
+      try {
+        return await host.runGates(level, {
+          goalScenarios: overrides.goalScenarios,
+          ...(lease ? { browser: lease.browser } : {}),
+        });
+      } finally {
+        lease?.release();
+      }
+    },
+    goalBrowser: withBrowser,
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
   };
   const out = await runBuildV2(v2, {
@@ -110,6 +123,7 @@ export async function buildByPlan(
     planRevision: params.plan.revision,
     ...(o.registry ? { registry: o.registry } : {}),
     appName: current.spec.app.name,
+    ...(o.platformUrl ? { platformUrl: o.platformUrl, systemId: host.run.systemId } : {}),
   });
   if (out.status === "succeeded") return { status: "succeeded", summary_ru: out.summary_ru };
   throw new RunFailure(out.code, out.message_ru, out.retryable);
@@ -350,6 +364,20 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
   const migratorRole = o.migratorRole ?? MIGRATOR_ROLE;
   let rt: RuntimeApp | undefined = o.runtime;
   let ownRuntime = false;
+  // B2-28: one Chromium per process for the goal scenarios of plan builds, started on the first such G1.
+  let browserProvider: GoalBrowserProvider | null | undefined = o.goalBrowser;
+  const ownBrowser = o.goalBrowser === undefined;
+  const goalBrowser = (): GoalBrowserProvider | null => {
+    if (browserProvider === undefined)
+      browserProvider =
+        o.config.g1Browser === "chromium"
+          ? chromiumProvider({
+              slots: o.config.g1BrowserSlots,
+              log: (msg, fields) => g1Logger.line({ svc: "worker", msg: `g1_${msg}`, ...fields }),
+            })
+          : null;
+    return browserProvider;
+  };
   let sandbox: Promise<G1Sandbox | null> | undefined;
   const g1Sandbox = (): Promise<G1Sandbox | null> => {
     sandbox ??=
@@ -373,6 +401,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         dbRole: runtimeRole,
         connectors: "outbox",
         secrets: testModeSecrets(),
+        // B2-28: drafts' mail stays in the outbox; the sender domain must be an address (not noreply@localhost).
+        platform: g1PlatformConfig(process.env),
         artifactsRoot: o.config.artifactsDir,
         // G1 systems are ephemeral: their uploads (probes of required file fields) never reach the shared storage.
         files: new MemoryFileStorage(),
@@ -411,11 +441,11 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     async build(host, params) {
       // B2-21: a build by an approved system plan (approveSystemPlan, or «Исправить» of such a system) — builder v2.
       if (params.plan) {
-        const browser = o.goalBrowser ? await o.goalBrowser() : null;
+        const browser = goalBrowser();
         return buildByPlan(
           host,
           { ...params, plan: params.plan },
-          { ...(o.modules ? { registry: o.modules } : {}), browser },
+          { ...(o.modules ? { registry: o.modules } : {}), browser, platformUrl: o.config.platformOrigin },
         );
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });
@@ -452,6 +482,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
         });
       } finally {
         for (const l of loaded) runtime.unloadSystem(l);
+        // The outbox of the long-lived G1 runtime keeps only what other gates still read.
+        runtime.dropOutbox(loaded.map((l) => l.systemKey));
         // M2-19: the sandbox pods of this gate's systems go with them.
         await sb?.release(loaded.map((l) => l.systemKey)).catch(() => {});
       }
@@ -484,6 +516,7 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     },
 
     async close() {
+      if (ownBrowser) await browserProvider?.close();
       if (ownRuntime) await closeExecutors();
       if (sandbox && o.g1Sandbox === undefined) await (await sandbox)?.close();
     },

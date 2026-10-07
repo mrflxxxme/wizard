@@ -134,6 +134,12 @@ describe("runJobs", () => {
       ["telegram", "sendToUser"],
     ]);
     expect(JSON.stringify(mine())).not.toContain("Спикер Один");
+    // B2-28: outbox mode records the letter itself (as the email connector renders it) and the sending system.
+    const mail = mine()[0] as { payload: { subject?: unknown; text?: unknown }; system?: string };
+    expect(typeof mail.payload.subject).toBe("string");
+    expect(String(mail.payload.text)).not.toBe("");
+    expect(`${String(mail.payload.subject)} ${String(mail.payload.text)}`).not.toContain("{{");
+    expect(mail.system).toBe(s.entry.systemId);
 
     r = await run("jobs-a", t0);
     expect(r.ran).toBe(0);
@@ -141,6 +147,11 @@ describe("runJobs", () => {
     r = await run("jobs-a", t0);
     expect(r.ran).toBe(0);
     expect(mine()).toHaveLength(2);
+    // B2-28: the platform's G1 runtime forgets the messages of a finished gate's systems; others keep theirs.
+    const others = h.rt.outbox().filter((m) => m.system !== s.entry.systemId).length;
+    h.rt.dropOutbox([s.entry.systemId]);
+    expect(mine()).toEqual([]);
+    expect(h.rt.outbox()).toHaveLength(others);
   });
 
   test("relative schedule → function step (disabled) retries until dead; retention anonymizes pii fields", async () => {

@@ -58,6 +58,18 @@ const BASE_COMPLIANCE = { consentTemplateId: "default", policyPage: "/privacy" }
 export interface CompileOptions {
   /** Name of the system (the card title); default — the plan's niche. */
   appName?: string;
+  /**
+   * Origin of the platform the system is built on and the system's id there (B2-28, for B2-27): generators get them
+   * as ModuleContext.platform — the owner's page of the system is `${platformUrl}/s/${systemId}` (platformSystemUrl).
+   * Both or neither; the planner's previews compile without them.
+   */
+  platformUrl?: string;
+  systemId?: string;
+}
+
+/** The owner's page of the system on the platform (`${url}/s/${systemId}`), or null when compiled without it. */
+export function platformSystemUrl(ctx: Pick<ModuleContext, "platform">): string | null {
+  return ctx.platform ? `${ctx.platform.url}/s/${encodeURIComponent(ctx.platform.systemId)}` : null;
 }
 
 export type { CompiledMetric } from "../types.js";
@@ -234,12 +246,18 @@ class Compilation {
   private readonly links: CompileSuccess["links"] = [];
   private readonly warnings: string[] = [];
 
+  private readonly platform: ModuleContext["platform"];
+
   constructor(
     private readonly plan: SystemPlan,
     private readonly params: Record<string, Record<string, unknown>>,
     registry: ModuleRegistry,
     opts: CompileOptions,
   ) {
+    this.platform =
+      opts.platformUrl && opts.systemId
+        ? { url: opts.platformUrl.replace(/\/+$/, ""), systemId: opts.systemId }
+        : undefined;
     this.defs = new Map(registry.modules.map((d) => [d.manifest.id, d]));
     this.present = new Set(plan.modules.map((m) => m.id));
     this.planIndex = new Map(plan.modules.map((m, i) => [m.id, i]));
@@ -263,7 +281,13 @@ class Compilation {
   }
 
   private ctx(id: string): ModuleContext {
-    return { plan: this.plan, params: this.params[id] ?? {}, allParams: this.params, present: this.present };
+    return {
+      plan: this.plan,
+      params: this.params[id] ?? {},
+      allParams: this.params,
+      present: this.present,
+      ...(this.platform ? { platform: this.platform } : {}),
+    };
   }
 
   private bug(module: string, msg: string, path: PropertyKey[] = []): void {

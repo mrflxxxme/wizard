@@ -2,7 +2,13 @@
 // on_status), schedule triggers (relative, cron), due _w_jobs (function, workflow_step) and retention. runJobs is
 // one pass at a given `now` until nothing is due (G1 runWorkflows/advanceTime); the background poller comes later.
 import { type Entity, isFileFieldType, quoteIdent, resolveAiAction, type Workflow } from "@wizard/appspec";
-import { isConnectorError, parseRecipients, recordRecipientKind, runNotifyStep } from "@wizard/connectors";
+import {
+  isConnectorError,
+  parseRecipients,
+  recordRecipientKind,
+  renderNotifyEmail,
+  runNotifyStep,
+} from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { SYSTEM_USER } from "@wizard/sdk/host";
 import type postgres from "postgres";
@@ -339,7 +345,7 @@ export async function runJobs(
     if (!services.env.unsafeLocalExec && !services.sandbox) throw new WizardError("FUNCTIONS_DISABLED");
     return systemFunctions(sys, services, services.log);
   };
-  const connectors = () => outboxConnectors(spec, services);
+  const connectors = () => outboxConnectors(spec, services, sys.entry.systemId);
 
   function record(entity: string, id: string): Promise<Row | null> {
     return sys.data.transaction("default", SYSTEM_SUBJECT, (d) => d.system.get(entity, id));
@@ -500,6 +506,25 @@ export async function runJobs(
             }
             const text = typeof params.text === "string" ? await render(params.text, entity, rec) : undefined;
             const targets = await outboxTargets(refs, entity, rec, params);
+            // B2-28: the letter itself (subject, text, one-time links of a visitor's letter) next to the recipient
+            // marker, as the email connector would render it — G1 goal scenarios follow its links. A render failure
+            // keeps the marker only.
+            const letter = async (recipient: "user" | "role" | "owner" | "visitor") => {
+              const host = services.connectorHost;
+              if (!host || !rec || !p.entity) return null;
+              return renderNotifyEmail(
+                host.ctx(sys, integ),
+                {
+                  params,
+                  entity: p.entity,
+                  record: { ...rec, id: String(rec.id) },
+                  jobId: job.id,
+                  stepIndex: i,
+                  workflow: w.name,
+                },
+                recipient,
+              ).catch(() => null);
+            };
             for (const [n, t] of targets.entries()) {
               const base = {
                 userId: t.userId,
@@ -508,15 +533,16 @@ export async function runJobs(
               };
               if (integ.connector === "telegram")
                 await callAction(integ.name, "sendToUser", { ...base, text });
-              else if (integ.connector === "email")
+              else if (integ.connector === "email") {
+                const mail = await letter(t.recipient);
                 await callAction(integ.name, "sendTemplate", {
                   ...base,
                   template: params.template ?? null,
-                  ...(text !== undefined ? { text } : {}),
+                  ...(mail ?? (text !== undefined ? { text } : {})),
                   ...(params.attachQr === true ? { attachQr: true } : {}),
                   ...(p.entity && p.recordId ? { entity: p.entity, recordId: p.recordId } : {}),
                 });
-              else throw new WizardError("VALIDATION_FAILED", { message: "Коннектор не шлёт уведомления" });
+              } else throw new WizardError("VALIDATION_FAILED", { message: "Коннектор не шлёт уведомления" });
             }
             break;
           }

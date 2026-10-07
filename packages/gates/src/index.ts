@@ -74,11 +74,14 @@ export { ABUSE, BRANDS, type Brand, type BrandHit, findBrands, normalize, rx } f
 export { innValid, isSubject } from "./g2/pii.js";
 /** runG2(ctx, {only?, timeBudgetMs?, dynamic?}): static G2 (secrets, ПДн, Telegram, antifraud, public role) + permission matrix against ctx.runtime. */
 export { type G2Options, runG2 } from "./g2/run.js";
-/** B2-24 browser checks of G1: goal scenario programs by id, the 390/1280 px × light/dark matrix, the GoalRun API programs use. */
+/** B2-24/B2-28 browser checks of G1: programs by id, the matrix (390 light + 1280 dark; FULL — all four), parallel lanes, timing. */
 export {
+  type BrowserTiming,
   DESKTOP_VIEWPORT,
   G1_BROWSER_TIME_BUDGET_MS,
+  GOAL_LANES,
   GOAL_MATRIX,
+  GOAL_MATRIX_FULL,
   GOAL_RUN_TIMEOUT_MS,
   MOBILE_VIEWPORT,
 } from "./goals/browser.js";

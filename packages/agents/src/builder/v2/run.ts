@@ -10,6 +10,7 @@ import { type AppSpec, OWNER_ONLY_COMPLIANCE_FIELDS, type SystemPlan } from "@wi
 import type { GateReport } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import {
+  type CompileOptions,
   type CompileSuccess,
   canonical,
   compiledFingerprint,
@@ -61,8 +62,8 @@ export function withOwnerFields(spec: AppSpec, current: AppSpec | null): AppSpec
   return { ...spec, compliance: { ...(spec.compliance ?? {}), ...keep } } as AppSpec;
 }
 
-function compileOrFail(plan: unknown, registry: ModuleRegistry, appName?: string): CompileSuccess {
-  const r = compilePlan(plan, registry, appName ? { appName } : {});
+function compileOrFail(plan: unknown, registry: ModuleRegistry, opts: CompileOptions): CompileSuccess {
+  const r = compilePlan(plan, registry, opts);
   if (r.ok) return r;
   const bug = r.errors.find((e) => e.code === "MODULE_BUG" || e.code === "CATALOG_INVALID");
   if (bug)
@@ -103,10 +104,16 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
     });
   };
 
+  // Every compilation of this build: the system's name and where it lives on the platform (B2-28: generators build the
+  // link to the owner's page of the system from it).
+  const copts: CompileOptions = {
+    ...(p.appName ? { appName: p.appName } : {}),
+    ...(p.platformUrl && p.systemId ? { platformUrl: p.platformUrl, systemId: p.systemId } : {}),
+  };
   // Base plan: the approved revision compiled again (versions of the manifests written in), and its hash.
   let base: CompileSuccess;
   try {
-    base = compileOrFail(p.plan, registry, p.appName);
+    base = compileOrFail(p.plan, registry, copts);
   } catch (e) {
     if (!(e instanceof V2Failure)) throw e;
     metrics.plan = { status: "failed", costRub: 0, durationMs: 0, note: e.code };
@@ -235,7 +242,7 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
 
   /** A stored plan of a checkpoint, if it still compiles. */
   const planOf = (cp: StageCheckpoint): { plan: SystemPlan } | null => {
-    const r = compilePlan(cp.data.plan, registry, p.appName ? { appName: p.appName } : {});
+    const r = compilePlan(cp.data.plan, registry, copts);
     return r.ok ? { plan: r.plan } : null;
   };
 
@@ -256,7 +263,7 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
       const r = id === "texts" ? await runTextsStage(args) : await runDesignStage(args);
       const next = scrubJson(r.plan).value;
       // The stage's plan must compile; otherwise the plan before the stage stays.
-      const ok = compilePlan(next, registry, p.appName ? { appName: p.appName } : {}).ok;
+      const ok = compilePlan(next, registry, copts).ok;
       return {
         data: { plan: ok ? next : plan },
         stats: r.stats,
@@ -302,7 +309,7 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
     plan = (await stage("design", { reuse: planOf, run: (w) => modelStage("design", w, plan) })).plan;
 
     // 4. Compile (no models) and one draft revision with the spec and files.
-    let compiled = compilePlan(plan, registry, p.appName ? { appName: p.appName } : {});
+    let compiled = compilePlan(plan, registry, copts);
     if (!compiled.ok) {
       // A stage's plan that does not compile any more (catalog changed between runs): the approved plan stands.
       plan = base.plan;

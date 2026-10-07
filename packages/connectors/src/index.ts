@@ -74,6 +74,7 @@ export {
 export {
   type NotifyResult,
   type NotifyStepInput,
+  renderNotifyEmail,
   runNotifyStep,
   UNSUBSCRIBE_FOOTER_RU,
   VISITOR_MESSAGES_PER_DAY,

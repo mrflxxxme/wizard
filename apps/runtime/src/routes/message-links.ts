@@ -162,6 +162,21 @@ function matches(when: Row | null, row: Row): boolean {
   );
 }
 
+/** Key of the one-time marker of a link in _w_connector_calls. */
+const markerOf = (token: string) => `link:${createHash("sha256").update(token).digest("hex")}`;
+
+/** The link was already used (its POST applied): GET answers «Ссылка недействительна» at once (B2-28). */
+async function used(c: RuntimeContext, token: string): Promise<boolean> {
+  const sys = c.get("system");
+  return sys.data.transaction("default", SYSTEM_SUBJECT, async (d) => {
+    const rows = await d.sql.unsafe(
+      `select 1 from ${quoteIdent(sys.schema)}."_w_connector_calls" where idempotency_key = $1`,
+      [markerOf(token)],
+    );
+    return rows.length > 0;
+  });
+}
+
 async function readRow(c: RuntimeContext, p: MessageLinkPayload): Promise<Row | null> {
   const sys = c.get("system");
   return sys.data.transaction(
@@ -226,7 +241,7 @@ export function messageLinkRoutes(keys: AuthKeys): Hono<RuntimeHonoEnv> {
     const r = p.a === "reschedule" ? step.reschedule : null;
     if (p.a === "cancel" ? !step.cancelSet : !r) return invalid();
     const row = await readRow(c, p);
-    if (!row) return invalid();
+    if (!row || (await used(c, link.token))) return invalid();
     if (p.a === "cancel") {
       if (tooLate(step.cancelUntil, row, now(c))) return html(410, TEXT.cancelLate[0], TEXT.cancelLate[1]);
       return html(200, TEXT.cancelAsk[0], TEXT.cancelAsk[1], { button: TEXT.cancelButton });
@@ -265,7 +280,7 @@ export function messageLinkRoutes(keys: AuthKeys): Hono<RuntimeHonoEnv> {
     if (!link || !step) return invalid();
     const { p } = link;
     const sys = c.get("system");
-    const marker = `link:${createHash("sha256").update(link.token).digest("hex")}`;
+    const marker = markerOf(link.token);
     const useOnce = async (d: DataTx) => {
       const used = await d.sql.unsafe(
         `insert into ${quoteIdent(sys.schema)}."_w_connector_calls"
