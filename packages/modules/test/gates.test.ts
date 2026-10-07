@@ -107,6 +107,25 @@ describe("compiled systems pass G0 and G1 without models", () => {
     expect(g1.checks.some((c) => c.id === "G1-RENDER-01" && c.status === "pass")).toBe(true);
   }, 300_000);
 
+  // B2-41 (mvp-08 of the D76 measurement): the goal panel asks every function metric of the plan goals with
+  // {period} — dealFunnel and scheduleLoad must take it (the contract of function metrics), else G0-TS-01.
+  test("панель цели с метриками-функциями: deals + booking + reports pass G0 and G1", async () => {
+    const plan = matrixPlan(registry, "reports", {
+      name: "метрики-функции",
+      params: {},
+      withModules: ["deals", "booking", "catalog", "notify"],
+    });
+    plan.goals = [
+      { id: "deal_pipeline", statement: "Порядок в сделках" },
+      { id: "fill_schedule", statement: "Заполнить расписание" },
+      { id: "visibility", statement: "Видеть результат в цифрах" },
+    ];
+    const r = compiled(plan);
+    expect(r.files["ui/pages/ReportsGoals.tsx"]).toContain('useQuery("dealFunnel"');
+    expect(r.files["ui/pages/ReportsGoals.tsx"]).toContain('useQuery("scheduleLoad"');
+    await gates(r);
+  }, 180_000);
+
   const rows = MODULES_WITH_CODE.flatMap((d) =>
     (d.manifest.tests?.matrix ?? []).map((row) => [d.manifest.id, row.name, row] as const),
   );

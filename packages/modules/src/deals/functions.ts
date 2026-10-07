@@ -29,27 +29,34 @@ export default mutation({
 `;
 
 /**
- * dealFunnel (metric deals_stage_conversion): deals created in the period [from, to) (default — the last 30 days);
- * stages — the number of stages before won (the panel passes it from the spec; default — the furthest stage seen);
- * for each stage — how many reached it (are on it or further, won counts as the end of the funnel) and the share of
- * all deals of the period. value — the share that reached won, in percent. Lost deals count only for the first stage:
- * the stage they were lost at is not stored.
+ * dealFunnel (metric deals_stage_conversion): deals created in the period [from, to) (default — the last 30 days, or
+ * the last 7 / 30 days of `period`, the contract of function metrics of «Отчёты и панель цели»: {period} → {value,
+ * previous, base}); stages — the number of stages before won (the panel passes it from the spec; default — the
+ * furthest stage seen); for each stage — how many reached it (are on it or further, won counts as the end of the
+ * funnel) and the share of all deals of the period. value — the share that reached won, in percent; previous — the
+ * same share of the span before it (null without deals); base — the deals of the period. Lost deals count only for the
+ * first stage: the stage they were lost at is not stored.
  */
 export const DEAL_FUNNEL = `// Module «Воронка сделок»: conversion by stages for the goal panel.
 import { query, v } from "@wizard/sdk";
 
 const DAY = 24 * 60 * 60 * 1000;
+const PERIOD_DAYS = { week: 7, month: 30 } as const;
 
 export default query({
   args: {
+    period: v.optional(v.enum("week", "month")),
     from: v.optional(v.datetime()),
     to: v.optional(v.datetime()),
     stages: v.optional(v.int({ min: 1, max: 20 })),
   },
   handler: async (ctx, args) => {
+    const span = (args.period ? PERIOD_DAYS[args.period] : 30) * DAY;
     const to = args.to ?? ctx.now.toISOString();
-    const from = args.from ?? new Date(Date.parse(to) - 30 * DAY).toISOString();
+    const from = args.from ?? new Date(Date.parse(to) - span).toISOString();
+    const before = new Date(2 * Date.parse(from) - Date.parse(to)).toISOString();
     const deals = await ctx.db.deal.list({ where: { created_at: { gte: from, lt: to } }, limit: 1000 });
+    const prior = await ctx.db.deal.list({ where: { created_at: { gte: before, lt: from } }, limit: 1000 });
     const rank = (status: string): number => {
       if (status === "won") return Number.MAX_SAFE_INTEGER;
       const m = /^stage_(\\d+)$/.exec(status);
@@ -69,7 +76,9 @@ export default query({
     }
     const won = deals.filter((d) => d.status === "won").length;
     stages.push({ stage: "won", reached: won, share: share(won) });
-    return { value: share(won), total, stages };
+    const priorWon = prior.filter((d) => d.status === "won").length;
+    const previous = prior.length ? Math.round((priorWon / prior.length) * 1000) / 10 : null;
+    return { value: share(won), previous, base: total, total, stages };
   },
 });
 `;
