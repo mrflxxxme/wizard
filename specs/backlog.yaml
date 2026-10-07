@@ -3248,7 +3248,7 @@ tasks:
     owner: platform
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Еженедельный рейтинг «Запросов на развитие» и удачных дописываний по частоте"
@@ -3371,7 +3371,7 @@ tasks:
     owner: frontend
     parallel_group: b2-b
     estimate_days: 5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Каждый вариант проходит скриншоты 390/1280 light/dark, a11y и отсутствие горизонтальной прокрутки"
@@ -3385,7 +3385,7 @@ tasks:
     owner: frontend
     parallel_group: b2-b
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "specs/ui/themes.yaml и presets.ts сверены тестом; контраст по всем темам и схемам"
