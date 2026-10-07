@@ -261,7 +261,7 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
       ...base(s, a, env),
     ],
   ],
-  booking: (s, a) => [
+  booking: (s, a, env) => [
     "Booking",
     [
       ["title", str(s.content, "title")],
@@ -269,6 +269,7 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
       ["action", { label: str(s.content, "cta") ?? "Выбрать время", href: BOOKING_ROUTE }],
       ["variant", s.variant, "lit"],
       ["anchor", a, "lit"],
+      ["tone", env.tone, "lit"],
     ],
   ],
   gallery: (s, a, env) => {
@@ -373,6 +374,26 @@ export const SECTION_RENDERERS: Readonly<Record<string, Render>> = {
 /** Sections that keep their own background (no rhythm band): page edges and blocks on the brand colour. */
 const OWN_TONE = new Set(["header", "hero", "footer", "cta"]);
 
+/** Default band rhythm: every n-th body section on the alternate band (airy — fewer bands, more air). */
+const BAND_EVERY = { airy: 3, balanced: 2, dense: 2 } as const;
+
+/**
+ * Bands of the landing sections (B2-37): null — the section keeps its own background (header, hero, cta, footer);
+ * otherwise the section's band from the design direction, else every n-th body section by the rhythm.
+ */
+export function sectionBands(
+  sections: readonly Pick<PlanSection, "type" | "band">[],
+  rhythm: "airy" | "balanced" | "dense" | undefined,
+): ("base" | "alt" | null)[] {
+  const every = BAND_EVERY[rhythm ?? "balanced"];
+  let body = 0;
+  return sections.map((s) => {
+    if (OWN_TONE.has(s.type)) return null;
+    const nth = body++;
+    return s.band ?? (nth % every === every - 1 ? "alt" : "base");
+  });
+}
+
 /** TSX of the landing page: the plan's sections in order on ui-kit blocks. */
 export function landingPage(ctx: ScreenContext): string {
   const sections = ctx.plan.landing?.sections ?? [];
@@ -388,12 +409,11 @@ export function landingPage(ctx: ScreenContext): string {
         links.push({ label: title, href: `#${a}` });
     });
   const imports: string[] = [];
-  let body = 0;
+  const bands = sectionBands(sections, ctx.plan.design.direction.rhythm);
   const blocks = sections.map((s, i) => {
     const render = SECTION_RENDERERS[s.type];
     if (!render) throw new Error(`no renderer for section ${s.type}`);
-    // Rhythm: body sections alternate between the page background and the alternate band.
-    const tone = OWN_TONE.has(s.type) ? undefined : body++ % 2 === 1 ? "alt" : undefined;
+    const tone = bands[i] === "alt" ? "alt" : undefined;
     const env: Env = {
       brand: ctx.spec.app.name,
       links: links.slice(0, 6),

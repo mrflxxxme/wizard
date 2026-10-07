@@ -59,7 +59,14 @@ export interface RuntimeHandle {
     artifactDir?: string | null;
     slug?: string;
   }): Promise<unknown>;
-  outbox(): readonly { integration: string; action: string; userId?: string | null; payload: unknown }[];
+  /** Messages connectors would have sent; `system` — the systemKey of the sender (G1 lanes share one runtime). */
+  outbox(): readonly {
+    integration: string;
+    action: string;
+    userId?: string | null;
+    payload: unknown;
+    system?: string | null;
+  }[];
   /**
    * M1 job runner (runtime.yaml#workflows): workflow triggers, due _w_jobs and retention at `now`; `since` bounds the
    * cron window. Without it the DSL steps runWorkflows/advanceTime report error.

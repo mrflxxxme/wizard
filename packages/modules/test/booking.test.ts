@@ -483,6 +483,8 @@ describe("goal scenarios without a browser", () => {
     expect(await done.text()).toContain("Запись перенесена");
     expect(new Date((await row(first))?.starts_at as string).toISOString()).toBe(S2().starts_at);
     expect((await req("POST", move(S2()))).status).toBe(404);
+    // A used link says so at once, before the visitor picks a time again.
+    expect((await req("GET", link)).status).toBe(404);
     // The old time is free for another visitor.
     await bookedId(await book("gleb@example.ru", S1()));
     await rt.jobsTick({ envs: ["draft"] });
@@ -500,6 +502,7 @@ describe("goal scenarios without a browser", () => {
     expect(await row(first)).toMatchObject({ status: "cancelled", seat: null });
     await bookedId(await book("dina@example.ru", S2()));
     expect((await req("POST", link)).status).toBe(404);
+    expect((await req("GET", link)).status).toBe(404);
     await rt.jobsTick({ envs: ["draft"] });
     expect(mailsTo(OWNER).some((t) => t.includes("отменена"))).toBe(true);
   });

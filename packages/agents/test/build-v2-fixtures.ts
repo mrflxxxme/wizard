@@ -45,7 +45,7 @@ const CALL_PROFILE = {
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 
-function line(
+export function fixtureLine(
   callType: Recorded,
   messages: LlmMessage[],
   tools: LlmTool[],
@@ -111,7 +111,7 @@ function customLines(sc: B2CustomScenario): FixtureLine[] {
     };
     const messages =
       i === 0 ? base : [...base, { role: "user" as const, content: customFixText("G0", [check], slots) }];
-    return line("build_custom", messages, [tool.definition], { name: "submit_custom", args: round });
+    return fixtureLine("build_custom", messages, [tool.definition], { name: "submit_custom", args: round });
   });
 }
 
@@ -129,7 +129,7 @@ export function fixtureLines(sc: B2Scenario | B2CustomScenario): FixtureLine[] {
   const plan = approvedPlan(sc);
   const afterTexts = mergeTexts(plan, sc.texts);
   return [
-    line(
+    fixtureLine(
       "interview",
       interviewMessages(reg, sc.brief),
       [goalsTool.definition, reportCapabilityGapTool().definition],
@@ -138,7 +138,7 @@ export function fixtureLines(sc: B2Scenario | B2CustomScenario): FixtureLine[] {
         args: sc.analysis,
       },
     ),
-    line(
+    fixtureLine(
       "system_plan",
       plannerMessages(reg, {
         brief: sc.brief,
@@ -150,11 +150,11 @@ export function fixtureLines(sc: B2Scenario | B2CustomScenario): FixtureLine[] {
       [planTool.definition],
       { name: "submit_plan", args: sc.plan },
     ),
-    line("build_texts", textsMessages(plan, reg), [textsTool.definition], {
+    fixtureLine("build_texts", textsMessages(plan, reg), [textsTool.definition], {
       name: "submit_texts",
       args: sc.texts,
     }),
-    line("build_design", designMessages(afterTexts, reg), [designTool.definition], {
+    fixtureLine("build_design", designMessages(afterTexts, reg), [designTool.definition], {
       name: "submit_design",
       args: sc.design,
     }),
@@ -167,5 +167,5 @@ export const serializeLines = (lines: readonly FixtureLine[]): string =>
 
 /** The plan after texts and design of a scenario (what the compiled system is built from). */
 export function builtPlan(sc: B2Scenario): SystemPlan {
-  return mergeDesign(mergeTexts(approvedPlan(sc), sc.texts), sc.design);
+  return mergeDesign(mergeTexts(approvedPlan(sc), sc.texts), sc.design, DEFAULT_REGISTRY);
 }

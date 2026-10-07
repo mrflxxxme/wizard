@@ -54,7 +54,7 @@ export {
   plannerPlanSchema,
 } from "./schemas.js";
 /** Canvas sketch: interviewSketch(analysis) while asking, planSketch(plan, compiled) after. */
-export { interviewSketch, type PlanSketch, planSketch } from "./sketch.js";
+export { interviewSketch, type PlanSketch, planSketch, type SketchDesign } from "./sketch.js";
 /** A stored plan for the plan screen: viewPlan(plan, registry) → compiled, errors, sketch; the build's credits cap. */
 export {
   type CompileResult,

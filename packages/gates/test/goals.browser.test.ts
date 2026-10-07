@@ -1,14 +1,17 @@
 // B2-24 (gates.yaml#G1.browser): G1-GOAL-<id> and G1-MOBILE-01 in Chromium — a page wider than a phone fails the
 // mobile check with the element that sticks out; a failing program names the cell and the step; a scenario without a
 // program and a v2 system without a browser are errors (blockers); a system without a plan and without a browser is
-// unchanged. Positive runs on compiled modules: packages/modules/test/goals.browser.test.ts.
+// unchanged. B2-28: two cells by default (390 light, 1280 dark), the full four on request; parallel lanes keep runs
+// apart (own schema, own records, own outbox). Positive runs on compiled modules: packages/modules/test/goals.browser.test.ts.
 import { existsSync } from "node:fs";
 import { type Browser, chromium } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
+  type BrowserTiming,
   type Check,
   type GateReport,
+  GOAL_MATRIX_FULL,
   type GoalProgram,
   type GoalScenarioInput,
   isPassed,
@@ -81,6 +84,17 @@ const missing: GoalProgram = async (t) => {
   await t.expectText("Цена 1000 ₽", { timeoutMs: 500 });
 };
 const ONE_CELL = [{ viewport: MOBILE_VIEWPORT, scheme: "dark" as const }];
+/** The owner adds a note through the data API: the run sees exactly its own new record, whatever runs next to it. */
+const writes: GoalProgram = async (t) => {
+  t.step("Владелец добавляет заметку");
+  await t.as("owner");
+  const r = await t.api("POST", "/api/data/note", { title: t.marker });
+  if (r.status >= 300) t.fail(`заметка не сохранилась (HTTP ${r.status})`);
+  t.step("В базе одна новая заметка — своя");
+  const mine = await t.newRows("note");
+  if (mine.length !== 1 || mine[0]?.title !== t.marker) t.fail(`новых заметок ${mine.length}`);
+  if (t.outbox("email").length > 0) t.fail("в исходящих чужие письма");
+};
 
 let h: G1Harness;
 let browser: Browser;
@@ -121,9 +135,35 @@ describe.skipIf(!hasChromium)("G1 browser checks in chromium", () => {
       { goals: { programs: { "GS-test-1": greets } } },
     );
     expect(of(r, "G1-GOAL").map((c) => c.status)).toEqual(["pass"]);
-    expect(of(r, "G1-GOAL")[0]?.message_ru).toContain("390 px, тёмная тема");
+    // B2-28: the phone in the light theme and the desktop in the dark one.
+    expect(of(r, "G1-GOAL")[0]?.message_ru).toContain("(390 px, светлая тема, 1280 px, тёмная тема)");
     expect(of(r, "G1-MOBILE").map((c) => c.status)).toEqual(["pass"]);
     expect(isPassed([...of(r, "G1-GOAL"), ...of(r, "G1-MOBILE")])).toBe(true);
+  }, 180_000);
+
+  test("lanes: 4 scenarios × 4 cells over 3 lanes — each run sees only its own records", async () => {
+    const scenarios = [1, 2, 3, 4].map((n) => ({ ...SC, id: `GS-lane-${n}`, title: `Заметка ${n}` }));
+    let timing: BrowserTiming | undefined;
+    const r = await runG1(
+      h.ctx({ spec: SPEC, files: files(false), milestone: "M1", browser, goalScenarios: scenarios }),
+      {
+        goals: {
+          programs: Object.fromEntries(scenarios.map((s) => [s.id, writes])),
+          matrix: GOAL_MATRIX_FULL,
+          lanes: 3,
+          onTiming: (t) => {
+            timing = t;
+          },
+        },
+      },
+    );
+    const goal = of(r, "G1-GOAL");
+    expect(goal.map((c) => [c.id, c.status, c.evidence ?? ""])).toEqual(
+      scenarios.map((s) => [`G1-GOAL-${s.id}`, "pass", ""]),
+    );
+    expect(goal[0]?.message_ru).toContain("390 px, тёмная тема, 1280 px, светлая тема");
+    expect(timing).toMatchObject({ runs: 16, lanes: 3 });
+    expect(timing?.totalMs).toBeGreaterThan(0);
   }, 180_000);
 
   test("negative: a page wider than the phone, a failing step, a scenario without a program", async () => {

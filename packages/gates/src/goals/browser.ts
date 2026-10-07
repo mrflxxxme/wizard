@@ -1,7 +1,8 @@
 // G1 browser checks (specs/quality/gates.yaml#G1.browser, D76 (6)): the draft of the system opens in Chromium with every
 // request answered by the runtime handle of G1 (no network, no port), on the seed of the ephemeral schema.
-// G1-GOAL-<scenario id> — goal scenarios of the plan's modules at 390 and 1280 px in the light and dark themes;
-// G1-MOBILE-01 — every page × each of its roles at 390 px without horizontal scroll.
+// G1-GOAL-<scenario id> — goal scenarios of the plan's modules at 390 px in the light theme and 1280 px in the dark one,
+// spread over parallel lanes (each lane — its own ephemeral schema with the seed); G1-MOBILE-01 — every page × each of
+// its roles at 390 px without horizontal scroll.
 import { randomBytes } from "node:crypto";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
@@ -25,18 +26,34 @@ import {
 
 export const MOBILE_VIEWPORT: GoalViewport = { width: 390, height: 844 };
 export const DESKTOP_VIEWPORT: GoalViewport = { width: 1280, height: 800 };
-/** Scenario matrix (modules.yaml#manifest.goal_scenarios.run): 390 and 1280 px × light and dark. */
+/**
+ * Scenario cells (gates.yaml#G1.browser.matrix, B2-28): the phone in the light theme and the desktop in the dark one —
+ * both widths and both themes in two runs. The layout of every page at 390 px is G1-MOBILE-01; GOAL_MATRIX_FULL runs
+ * all four cells on request (G1Options.goals.matrix).
+ */
 export const GOAL_MATRIX: readonly { viewport: GoalViewport; scheme: ColorScheme }[] = [
+  { viewport: MOBILE_VIEWPORT, scheme: "light" },
+  { viewport: DESKTOP_VIEWPORT, scheme: "dark" },
+];
+/** 390 and 1280 px × light and dark (the matrix before B2-28). */
+export const GOAL_MATRIX_FULL: readonly { viewport: GoalViewport; scheme: ColorScheme }[] = [
   { viewport: MOBILE_VIEWPORT, scheme: "light" },
   { viewport: MOBILE_VIEWPORT, scheme: "dark" },
   { viewport: DESKTOP_VIEWPORT, scheme: "light" },
   { viewport: DESKTOP_VIEWPORT, scheme: "dark" },
 ];
-/** Browser checks have their own budget next to the 120 s of G1 (gates.yaml#G1.browser.time_budget_s). */
-export const G1_BROWSER_TIME_BUDGET_MS = 300_000;
+/**
+ * Browser checks have their own budget next to the 120 s of G1 (gates.yaml#G1.browser.time_budget_s): the target is
+ * ≤ 90 s for a system with every module, the budget leaves room for a loaded worker.
+ */
+export const G1_BROWSER_TIME_BUDGET_MS = 180_000;
 /** One scenario run (one cell of the matrix). */
 export const GOAL_RUN_TIMEOUT_MS = 30_000;
+/** Scenario runs at once (gates.yaml#G1.browser.parallel): each lane has its own ephemeral schema and browser context. */
+export const GOAL_LANES = 3;
 const SETTLE_MS = 5_000;
+/** A page is settled when none of its requests ran for this long (the SDK reads right after a render, no timers). */
+const QUIET_MS = 120;
 /** Horizontal overflow tolerated (sub-pixel rounding). */
 const OVERFLOW_TOLERANCE_PX = 1;
 
@@ -62,6 +79,13 @@ const def = (id: string): CheckDef => CHECK_BY_ID.get(id) as CheckDef;
 const schemeRu = (s: ColorScheme) => (s === "dark" ? "тёмная тема" : "светлая тема");
 const where = (v: GoalViewport, s: ColorScheme) => `${v.width} px, ${schemeRu(s)}`;
 
+/** One lane of the scenario runs: an ephemeral schema of its own with the system loaded into the G1 runtime. */
+export interface GoalLane {
+  env: G1Env;
+  /** Loads a fresh copy of the seed and signs its users in again (a reset empties the sessions too). */
+  reset: () => Promise<Map<string, Actor[]>>;
+}
+
 export interface BrowserCheckInput {
   env: G1Env;
   spec: AppSpec;
@@ -69,6 +93,13 @@ export interface BrowserCheckInput {
   seed: Seed;
   /** Loads a fresh copy of the seed and signs its users in again (a reset empties the sessions too). */
   reset: () => Promise<Map<string, Actor[]>>;
+  /**
+   * Another lane (schema, seed, system in the runtime) for parallel scenario runs; the caller drops it with the G1
+   * environment. Absent → every run goes through `env`, one after another.
+   */
+  openLane?: () => Promise<GoalLane>;
+  /** Scenario runs at once (default GOAL_LANES; 1 — sequential). */
+  lanes?: number;
   browser: Browser;
   /** Goal scenarios of the plan (compilePlan().scenarios); undefined — a system without a plan: G1-MOBILE-01 only. */
   scenarios?: readonly GoalScenarioInput[];
@@ -81,46 +112,141 @@ export interface BrowserCheckInput {
   timeLeft: () => number;
   /** Screenshot of every page at 390 px (eval report grid, tests). */
   onScreenshot?: (s: { route: string; role: string; png: Uint8Array }) => void;
+  /** Time of the browser checks: scenario runs and the 390 px pass (tests, eval reports). */
+  onTiming?: (t: BrowserTiming) => void;
 }
+
+export interface BrowserTiming {
+  /** Whole browser part, ms. */
+  totalMs: number;
+  /** Goal scenario runs (all lanes), ms. */
+  scenariosMs: number;
+  /** G1-MOBILE-01, ms. */
+  mobileMs: number;
+  /** Scenario runs done (scenario × cell). */
+  runs: number;
+  lanes: number;
+}
+
+/** Requests of a browser context in flight and the moment the last one started or ended (settle). */
+interface Activity {
+  inflight: number;
+  last: number;
+}
+const ACTIVITY = new WeakMap<BrowserContext, Activity>();
 
 /** Answers every request of the browser context with the runtime handle (only the system's origin; no event stream). */
 async function routeToRuntime(context: BrowserContext, env: G1Env): Promise<void> {
+  const activity: Activity = { inflight: 0, last: Date.now() };
+  ACTIVITY.set(context, activity);
   await context.route("**/*", async (route) => {
     const req = route.request();
+    const url = new URL(req.url());
+    // The SSE stream never ends: the page works without live updates, the network settles. Not 2xx: an empty
+    // successful stream makes the SDK resync (refetch every list) and reconnect every 500 ms; a refusal backs off.
+    // Its reconnects are not page activity.
+    if (url.pathname === "/api/events" || url.pathname.startsWith("/api/events/"))
+      return await route.fulfill({ status: 503, body: "" }).catch(() => {});
+    activity.inflight += 1;
+    activity.last = Date.now();
     try {
-      const url = new URL(req.url());
       if (url.origin !== env.origin) return await route.abort("blockedbyclient");
-      // The SSE stream never ends: the page works without live updates, the network settles. Not 2xx: an empty
-      // successful stream makes the SDK resync (refetch every list) and reconnect every 500 ms; a refusal backs off.
-      if (url.pathname === "/api/events" || url.pathname.startsWith("/api/events/"))
-        return await route.fulfill({ status: 503, body: "" });
       // The runtime routes by Host (runtime.yaml#routing); a Request built in Node does not carry it by itself.
       const headers = new Headers({ host: url.host });
       for (const [k, v] of Object.entries(await req.allHeaders()))
         if (!HOP_REQUEST.has(k) && !k.startsWith(":")) headers.set(k, v);
-      const method = req.method();
-      const body = method === "GET" || method === "HEAD" ? undefined : (req.postDataBuffer() ?? undefined);
-      const res = await env.runtime.fetch(
-        new Request(url, { method, headers, ...(body ? { body: new Uint8Array(body) } : {}) }),
+      let method = req.method();
+      let body = method === "GET" || method === "HEAD" ? undefined : (req.postDataBuffer() ?? undefined);
+      let target = url;
+      let res = await env.runtime.fetch(
+        new Request(target, { method, headers, ...(body ? { body: new Uint8Array(body) } : {}) }),
       );
+      // Playwright does not route the request a fulfilled redirect leads to (the browser would go to the network):
+      // a page navigation gets a refresh stub to the target (settle waits for it), a fetch follows on this side.
+      for (let hop = 0; hop < 5 && isRedirect(res) && !req.isNavigationRequest(); hop++) {
+        target = new URL(res.headers.get("location") as string, target);
+        if (target.origin !== env.origin) break;
+        if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === "POST")) {
+          method = "GET";
+          body = undefined;
+        }
+        res = await env.runtime.fetch(
+          new Request(target, { method, headers, ...(body ? { body: new Uint8Array(body) } : {}) }),
+        );
+      }
       const out: Record<string, string> = {};
       res.headers.forEach((v, k) => {
         if (!HOP_RESPONSE.has(k)) out[k] = v;
       });
       const cookies = res.headers.getSetCookie();
       if (cookies.length) out["set-cookie"] = cookies.join("\n");
+      if (isRedirect(res) && req.isNavigationRequest()) {
+        const to = new URL(res.headers.get("location") as string, url);
+        delete out.location;
+        out["content-type"] = "text/html; charset=utf-8";
+        await route.fulfill({ status: 200, headers: out, body: redirectStub(to.href) });
+        return;
+      }
       await route.fulfill({ status: res.status, headers: out, body: Buffer.from(await res.arrayBuffer()) });
     } catch {
       // The context was closed while the runtime answered, or the runtime failed: the page sees a network error.
       await route.abort("failed").catch(() => {});
+    } finally {
+      activity.inflight -= 1;
+      activity.last = Date.now();
     }
   });
 }
 
+const isRedirect = (res: Response) => res.status >= 300 && res.status < 400 && res.headers.has("location");
+
+const escapeAttr = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/** A page that goes on to `href` at once (stands in for a redirect of a navigation, see routeToRuntime). */
+const redirectStub = (href: string) =>
+  `<!doctype html><html><head><meta name="wz-g1-redirect" content=""><meta http-equiv="refresh" content="0;url=${escapeAttr(href)}"></head><body></body></html>`;
+
+const frame = (page: Page) =>
+  page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null)))).catch(() => {});
+
+/**
+ * Waits until the page settles: no request of its context in flight for QUIET_MS (every request passes the route
+ * handler, so the count is exact; Playwright's networkidle waits 500 ms after each load) and no part of the page
+ * marked aria-busy, then one frame for React.
+ */
 async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle", { timeout: SETTLE_MS }).catch(() => {});
+  const activity = ACTIVITY.get(page.context());
+  if (!activity) {
+    await page.waitForLoadState("networkidle", { timeout: SETTLE_MS }).catch(() => {});
+    await frame(page);
+    return;
+  }
+  // A round trip first: requests the page started before it have reached the route handler by then.
+  await frame(page);
+  // A redirect reached the page as a refresh stub: wait for the page it leads to.
+  const at = page.url();
+  const stub = await page
+    .evaluate(() => document.querySelector('meta[name="wz-g1-redirect"]') !== null)
+    .catch(() => false);
+  if (stub)
+    await page.waitForURL((u) => u.href !== at, { timeout: SETTLE_MS, waitUntil: "load" }).catch(() => {});
+  for (const deadline = Date.now() + SETTLE_MS; Date.now() < deadline; ) {
+    const quiet = Date.now() - activity.last;
+    if (activity.inflight > 0 || quiet < QUIET_MS) {
+      await new Promise((r) => setTimeout(r, activity.inflight > 0 ? 20 : QUIET_MS - quiet));
+      continue;
+    }
+    // The network is quiet, but a part of the page may still wait for its data: on a loaded machine React's effects
+    // start their reads later than QUIET_MS after the last response. ui-kit marks such parts aria-busy (Loading,
+    // lists, cards) from their first render.
+    const busy = await page
+      .evaluate(() => document.querySelector('[aria-busy="true"]') !== null)
+      .catch(() => false);
+    if (!busy) break;
+    await new Promise((r) => setTimeout(r, 20));
+  }
   // React commits after the last response; one frame is enough for the DOM to reflect it.
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null)))).catch(() => {});
+  await frame(page);
 }
 
 /** A browser context of the system at a viewport and color scheme, signed in as the actor (cookie of G1Env.login). */
@@ -179,50 +305,67 @@ const OVERFLOW_PROBE = (tolerance: number) => {
   return { over, culprits };
 };
 
-/** G1-MOBILE-01: every page × each of its roles at 390 px — no horizontal scroll. */
+/** Runs `fn` over the items with at most `n` at once; results keep the order of the items. */
+async function pool<T, R>(items: readonly T[], n: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (let i = next++; i < items.length; i = next++) out[i] = await fn(items[i] as T);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
+  return out;
+}
+
+/** G1-MOBILE-01: every page × each of its roles at 390 px — no horizontal scroll (pages read the seed only: in parallel). */
 async function mobileFindings(
   input: BrowserCheckInput,
   actors: Map<string, Actor[]>,
 ): Promise<Finding[] | { error: string }> {
   const { env, spec, browser } = input;
-  const findings: Finding[] = [];
-  for (const [i, page] of (spec.pages ?? []).entries()) {
-    for (const role of page.roles) {
+  const items = (spec.pages ?? []).flatMap((page, i) =>
+    page.roles.flatMap((role) => {
       const actor = actors.get(role)?.[0];
-      if (!actor) continue;
-      if (input.timeLeft() <= 0) return { error: "превышено время проверок в браузере" };
-      const path = await routePathFor(env, spec, input.files, input.seed, page.route, page.file, actor);
-      const { context, page: p } = await openContext(browser, env, MOBILE_VIEWPORT, "light", actor);
-      try {
-        const res = await p.goto(`${env.origin}${path}`, { waitUntil: "load", timeout: 15_000 });
-        if (!res || res.status() >= 400) throw new Error(`HTTP ${res?.status() ?? "нет ответа"}`);
-        await settle(p);
-        const r = await p.evaluate(OVERFLOW_PROBE, OVERFLOW_TOLERANCE_PX);
-        if (input.onScreenshot)
-          input.onScreenshot({ route: page.route, role, png: await p.screenshot({ fullPage: false }) });
-        if (r.over > OVERFLOW_TOLERANCE_PX)
-          findings.push({
-            message_ru: `Страница «${page.title}» (${page.route}) для роли ${role} шире экрана телефона на ${Math.round(r.over)} px: появляется прокрутка вбок`,
-            file: page.file,
-            path: `/pages/${i}`,
-            evidence: r.culprits.length
-              ? `выходят за край: ${r.culprits.join("; ")}`
-              : `ширина документа больше 390 px на ${Math.round(r.over)} px`,
-            fixHint: `Проверьте ${page.file}: на 390 px элементы должны переноситься или сжиматься (без фиксированной ширины больше экрана)`,
-          });
-      } catch (e) {
-        findings.push({
-          message_ru: `Страница «${page.title}» (${page.route}) для роли ${role} не открылась в браузере на 390 px`,
-          file: page.file,
-          path: `/pages/${i}`,
-          evidence: clip(String((e as Error)?.message ?? e), 300),
-        });
-      } finally {
-        await context.close().catch(() => {});
-      }
+      return actor ? [{ page, i, role, actor }] : [];
+    }),
+  );
+  let late = false;
+  const found = await pool(items, input.lanes ?? GOAL_LANES, async ({ page, i, role, actor }) => {
+    if (input.timeLeft() <= 0) {
+      late = true;
+      return null;
     }
-  }
-  return findings;
+    const path = await routePathFor(env, spec, input.files, input.seed, page.route, page.file, actor);
+    const { context, page: p } = await openContext(browser, env, MOBILE_VIEWPORT, "light", actor);
+    try {
+      const res = await p.goto(`${env.origin}${path}`, { waitUntil: "load", timeout: 15_000 });
+      if (!res || res.status() >= 400) throw new Error(`HTTP ${res?.status() ?? "нет ответа"}`);
+      await settle(p);
+      const r = await p.evaluate(OVERFLOW_PROBE, OVERFLOW_TOLERANCE_PX);
+      if (input.onScreenshot)
+        input.onScreenshot({ route: page.route, role, png: await p.screenshot({ fullPage: false }) });
+      if (r.over <= OVERFLOW_TOLERANCE_PX) return null;
+      return {
+        message_ru: `Страница «${page.title}» (${page.route}) для роли ${role} шире экрана телефона на ${Math.round(r.over)} px: появляется прокрутка вбок`,
+        file: page.file,
+        path: `/pages/${i}`,
+        evidence: r.culprits.length
+          ? `выходят за край: ${r.culprits.join("; ")}`
+          : `ширина документа больше 390 px на ${Math.round(r.over)} px`,
+        fixHint: `Проверьте ${page.file}: на 390 px элементы должны переноситься или сжиматься (без фиксированной ширины больше экрана)`,
+      } satisfies Finding;
+    } catch (e) {
+      return {
+        message_ru: `Страница «${page.title}» (${page.route}) для роли ${role} не открылась в браузере на 390 px`,
+        file: page.file,
+        path: `/pages/${i}`,
+        evidence: clip(String((e as Error)?.message ?? e), 300),
+      } satisfies Finding;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+  if (late) return { error: "превышено время проверок в браузере" };
+  return found.filter((f): f is NonNullable<typeof f> => f !== null);
 }
 
 const SYNTHETIC = {
@@ -303,17 +446,21 @@ class Run implements GoalRun {
 
   readonly contact: { readonly email: string; readonly phone: string };
 
+  private readonly env: G1Env;
+
   constructor(
     private readonly input: BrowserCheckInput,
+    lane: GoalLane,
     private readonly actors: Map<string, Actor[]>,
     readonly scenario: GoalScenarioInput,
     readonly viewport: GoalViewport,
     readonly scheme: ColorScheme,
     readonly marker: string,
   ) {
+    this.env = lane.env;
     this.clock = new Date(input.now);
-    this.outboxStart = input.env.runtime.outbox().length;
-    this.actor = input.env.anonymous();
+    this.outboxStart = this.ofSystem().length;
+    this.actor = lane.env.anonymous();
     this.contact = {
       email: SYNTHETIC.email(marker.replace(/\W/g, "").toLowerCase()),
       phone: SYNTHETIC.phone(marker),
@@ -365,7 +512,7 @@ class Run implements GoalRun {
 
   async as(a: "visitor" | "client" | "owner" | "staff" | { role: string }): Promise<void> {
     let actor: Actor | null;
-    if (a === "visitor" || a === "client") actor = this.input.env.anonymous();
+    if (a === "visitor" || a === "client") actor = this.env.anonymous();
     else actor = this.roleActor(a);
     if (!actor)
       this.fail(
@@ -373,7 +520,7 @@ class Run implements GoalRun {
       );
     await this.close();
     this.actor = actor;
-    const o = await openContext(this.input.browser, this.input.env, this.viewport, this.scheme, actor);
+    const o = await openContext(this.input.browser, this.env, this.viewport, this.scheme, actor);
     this.context = o.context;
     this.page = o.page;
     this.errors = o.errors;
@@ -394,7 +541,7 @@ class Run implements GoalRun {
 
   async open(path: string): Promise<void> {
     if (!this.context) await this.as("visitor");
-    const res = await this.page.goto(`${this.input.env.origin}${path}`, {
+    const res = await this.page.goto(`${this.env.origin}${path}`, {
       waitUntil: "load",
       timeout: 15_000,
     });
@@ -521,7 +668,7 @@ class Run implements GoalRun {
   }
 
   rows(entity: string): Promise<Record<string, unknown>[]> {
-    return this.input.env.rows(entity);
+    return this.env.rows(entity);
   }
 
   async newRows(entity: string): Promise<Record<string, unknown>[]> {
@@ -544,7 +691,7 @@ class Run implements GoalRun {
 
   async runJobs(): Promise<void> {
     const since = new Date(this.clock.getTime() - 60_000);
-    const r = await this.input.env.runJobs(this.clock, since);
+    const r = await this.env.runJobs(this.clock, since);
     if (!r) this.fail("в среде проверки нет обработчика фоновых задач");
     if (r.failed.length)
       this.fail(
@@ -565,21 +712,29 @@ class Run implements GoalRun {
     const names = new Set(
       (this.input.spec.integrations ?? []).filter((i) => i.connector === connector).map((i) => i.name),
     );
-    return this.input.env.runtime
-      .outbox()
-      .slice(this.outboxStart)
-      .filter((m) => names.has(m.integration));
+    return this.messages().filter((m) => names.has(m.integration));
+  }
+
+  /**
+   * Runtime outbox of this lane's system: lanes and other gates share the G1 runtime, and the platform drops the
+   * messages of finished gates — so the run counts its own system's messages, not positions in the whole outbox.
+   */
+  private ofSystem(): GoalOutboxMessage[] {
+    const key = this.env.systemKey;
+    return this.env.runtime.outbox().filter((m) => m.system == null || m.system === key);
+  }
+
+  /** Messages of this lane's system since the run started. */
+  private messages(): GoalOutboxMessage[] {
+    return this.ofSystem().slice(this.outboxStart);
   }
 
   serviceMessages(): GoalOutboxMessage[] {
-    return this.input.env.runtime
-      .outbox()
-      .slice(this.outboxStart)
-      .filter((m) => m.integration === "_platform" || m.integration === "_sms");
+    return this.messages().filter((m) => m.integration === "_platform" || m.integration === "_sms");
   }
 
   api(method: string, path: string, body?: unknown) {
-    return this.input.env.request(this.actor, method, path, body);
+    return this.env.request(this.actor, method, path, body);
   }
 
   async close(): Promise<void> {
@@ -588,66 +743,120 @@ class Run implements GoalRun {
   }
 }
 
-/** One scenario over the matrix: the first failing cell is reported. */
-async function runScenarioCells(
+type CellResult = { ok: true } | { ok: false; message: string; evidence?: string } | { timeout: true };
+type Cell = { viewport: GoalViewport; scheme: ColorScheme };
+
+/** One scenario in one cell of the matrix, on a fresh copy of the seed in the lane's schema. */
+async function runCell(
   input: BrowserCheckInput,
+  lane: GoalLane,
   sc: GoalScenarioInput,
   program: GoalProgram,
-): Promise<{ ok: true } | { ok: false; message: string; evidence?: string } | { timeout: true }> {
-  for (const cell of input.matrix ?? GOAL_MATRIX) {
-    if (input.timeLeft() <= 0) return { timeout: true };
-    // Each cell on a fresh copy of the seed: a cell never sees the records of another.
-    const actors = await input.reset();
-    const run = new Run(
-      input,
-      actors,
-      sc,
-      cell.viewport,
-      cell.scheme,
-      `Проверка ${randomBytes(3).toString("hex")}`,
-    );
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        program(run),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new GoalFailure(`сценарий выполнялся дольше ${GOAL_RUN_TIMEOUT_MS / 1000} с`)),
-            Math.min(GOAL_RUN_TIMEOUT_MS, Math.max(1, input.timeLeft())),
-          );
-        }),
-      ]);
-    } catch (e) {
-      const reason =
-        e instanceof GoalFailure
-          ? e.message
-          : `внутренняя ошибка проверки: ${String((e as Error)?.message ?? e)}`;
-      const evidence = [
-        e instanceof GoalFailure ? e.evidence : undefined,
-        run.pageErrors.length ? `ошибки страницы: ${run.pageErrors.join(" | ")}` : undefined,
-      ]
-        .filter(Boolean)
-        .join("; ");
-      return {
-        ok: false,
-        message: `Сценарий цели «${sc.title}» не проходит (${where(cell.viewport, cell.scheme)}): ${run.stepName} — ${reason}`,
-        ...(evidence ? { evidence } : {}),
-      };
-    } finally {
-      clearTimeout(timer);
-      await run.close();
-    }
+  cell: Cell,
+): Promise<CellResult> {
+  if (input.timeLeft() <= 0) return { timeout: true };
+  // Each cell on a fresh copy of the seed: a cell never sees the records of another.
+  const actors = await lane.reset();
+  const run = new Run(
+    input,
+    lane,
+    actors,
+    sc,
+    cell.viewport,
+    cell.scheme,
+    `Проверка ${randomBytes(3).toString("hex")}`,
+  );
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      program(run),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new GoalFailure(`сценарий выполнялся дольше ${GOAL_RUN_TIMEOUT_MS / 1000} с`)),
+          Math.min(GOAL_RUN_TIMEOUT_MS, Math.max(1, input.timeLeft())),
+        );
+      }),
+    ]);
+    return { ok: true };
+  } catch (e) {
+    const reason =
+      e instanceof GoalFailure
+        ? e.message
+        : `внутренняя ошибка проверки: ${String((e as Error)?.message ?? e)}`;
+    const evidence = [
+      e instanceof GoalFailure ? e.evidence : undefined,
+      run.pageErrors.length ? `ошибки страницы: ${run.pageErrors.join(" | ")}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return {
+      ok: false,
+      message: `Сценарий цели «${sc.title}» не проходит (${where(cell.viewport, cell.scheme)}): ${run.stepName} — ${reason}`,
+      ...(evidence ? { evidence } : {}),
+    };
+  } finally {
+    clearTimeout(timer);
+    await run.close();
   }
-  return { ok: true };
+}
+
+/**
+ * Every scenario × cell over the lanes (gates.yaml#G1.browser.parallel): the first lane is the G1 environment, the
+ * others open while it already runs. A scenario that failed in one cell is not started in the others.
+ */
+async function runScenarios(
+  input: BrowserCheckInput,
+  jobs: readonly { sc: GoalScenarioInput; program: GoalProgram; cell: Cell; k: number }[],
+): Promise<{ results: Map<string, (CellResult | undefined)[]>; runs: number; lanes: number }> {
+  const results = new Map<string, (CellResult | undefined)[]>();
+  const failed = new Set<string>();
+  let next = 0;
+  let runs = 0;
+  let lanes = 0;
+  const work = async (lane: GoalLane) => {
+    lanes += 1;
+    for (let j = next++; j < jobs.length; j = next++) {
+      const job = jobs[j] as (typeof jobs)[number];
+      if (failed.has(job.sc.id)) continue;
+      const r = await runCell(input, lane, job.sc, job.program, job.cell);
+      runs += 1;
+      const list = results.get(job.sc.id) ?? [];
+      list[job.k] = r;
+      results.set(job.sc.id, list);
+      if (!("ok" in r && r.ok)) failed.add(job.sc.id);
+    }
+  };
+  const want = Math.max(1, Math.min(input.lanes ?? GOAL_LANES, jobs.length));
+  const all: Promise<void>[] = [work({ env: input.env, reset: input.reset })];
+  // A lane that fails to open leaves its share to the others.
+  if (input.openLane)
+    for (let i = 1; i < want; i++)
+      all.push(
+        input.openLane().then(
+          (lane) => (next < jobs.length ? work(lane) : undefined),
+          () => {},
+        ),
+      );
+  await Promise.all(all);
+  return { results, runs, lanes };
 }
 
 /** G1-GOAL-<id> and G1-MOBILE-01 entries of a G1 report. */
 export async function runBrowserChecks(input: BrowserCheckInput): Promise<Check[]> {
+  const started = Date.now();
   const out: Check[] = [];
   const goal = def("G1-GOAL");
   const programs = { ...GOAL_PROGRAMS, ...(input.programs ?? {}) };
-  const cells = (input.matrix ?? GOAL_MATRIX).map((c) => where(c.viewport, c.scheme)).join(", ");
-  for (const sc of input.scenarios ?? []) {
+  const matrix = input.matrix ?? GOAL_MATRIX;
+  const cells = matrix.map((c) => where(c.viewport, c.scheme)).join(", ");
+  const scenarios = input.scenarios ?? [];
+  const jobs = scenarios.flatMap((sc) => {
+    const program = programs[sc.id];
+    return program ? matrix.map((cell, k) => ({ sc, program, cell, k })) : [];
+  });
+  const { results, runs, lanes } = await runScenarios(input, jobs);
+  const scenariosMs = Date.now() - started;
+  for (const sc of scenarios) {
     const id = `G1-GOAL-${sc.id}`;
     const entry = (status: Check["status"], message: string, extra: Partial<Check> = {}): Check => ({
       id,
@@ -657,8 +866,7 @@ export async function runBrowserChecks(input: BrowserCheckInput): Promise<Check[
       ...(extra.evidence ? { evidence: clip(extra.evidence, 500) } : {}),
       ...(extra.fixHint ? { fixHint: clip(extra.fixHint, 300) } : {}),
     });
-    const program = programs[sc.id];
-    if (!program) {
+    if (!programs[sc.id]) {
       out.push(
         entry(
           "error",
@@ -670,30 +878,51 @@ export async function runBrowserChecks(input: BrowserCheckInput): Promise<Check[
       );
       continue;
     }
-    const r = await runScenarioCells(input, sc, program);
-    if ("timeout" in r) out.push(entry("error", "Не удалось проверить: превышено время проверок в браузере"));
-    else if (r.ok) out.push(entry("pass", `Сценарий цели «${sc.title}» проходит (${cells})`));
-    else
+    const list = results.get(sc.id) ?? [];
+    // The first failing cell in the matrix order is reported; a cell not run (budget) is a timeout.
+    const fail = list.find(
+      (r): r is { ok: false; message: string; evidence?: string } => !!r && "ok" in r && !r.ok,
+    );
+    if (fail)
       out.push(
-        entry("fail", r.message, {
-          ...(r.evidence ? { evidence: r.evidence } : {}),
+        entry("fail", fail.message, {
+          ...(fail.evidence ? { evidence: fail.evidence } : {}),
           fixHint: `Модуль «${sc.module ?? "?"}»: сценарий ${sc.id} должен проходить на собранной системе без моделей`,
         }),
       );
+    else if (
+      matrix.every((_, k) => {
+        const r = list[k];
+        return !!r && "ok" in r && r.ok;
+      })
+    )
+      out.push(entry("pass", `Сценарий цели «${sc.title}» проходит (${cells})`));
+    else out.push(entry("error", "Не удалось проверить: превышено время проверок в браузере"));
   }
-  if (input.timeLeft() <= 0) {
+  const mobileStarted = Date.now();
+  if (input.timeLeft() <= 0)
     out.push(
       ...toChecks(def("G1-MOBILE-01"), { kind: "error", reason_ru: "превышено время проверок в браузере" }),
     );
-    return out;
+  else {
+    const mobile = await mobileFindings(input, await input.reset());
+    out.push(
+      ...toChecks(
+        def("G1-MOBILE-01"),
+        "error" in mobile
+          ? { kind: "error", reason_ru: mobile.error }
+          : { kind: "findings", findings: mobile },
+      ),
+    );
   }
-  const mobile = await mobileFindings(input, await input.reset());
-  out.push(
-    ...toChecks(
-      def("G1-MOBILE-01"),
-      "error" in mobile ? { kind: "error", reason_ru: mobile.error } : { kind: "findings", findings: mobile },
-    ),
-  );
+  const now = Date.now();
+  input.onTiming?.({
+    totalMs: now - started,
+    scenariosMs,
+    mobileMs: now - mobileStarted,
+    runs,
+    lanes: Math.max(1, lanes),
+  });
   return out;
 }
 

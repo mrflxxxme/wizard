@@ -48,7 +48,7 @@ export { compileDeals, DEAL_FINAL_STAGES, dealStages } from "./deals/compile.js"
 export { dealsManifest, dealsModule } from "./deals/index.js";
 /** Draft manifests generated from modules.yaml#catalog (scripts/gen-draft.mjs). */
 export { DRAFT_MANIFESTS } from "./draft.js";
-/** compilePlan(plan, registry, {appName?}) → {ok, spec, files, order, links, metrics, scenarios, customSlots, plan, warnings} | {ok: false, errors}. */
+/** compilePlan(plan, registry, {appName?, platformUrl?, systemId?}) → {ok, spec, files, order, links, metrics, scenarios, customSlots, plan, warnings} | {ok: false, errors}; platformSystemUrl(ctx) — the owner's page of the system. */
 export {
   BASE_ROLES,
   CABINET_ROUTE,
@@ -61,6 +61,7 @@ export {
   checkRegistry,
   compiledFingerprint,
   compilePlan,
+  platformSystemUrl,
   unimplementedSections,
 } from "./engine/compile.js";
 /** matrixPlan(registry, moduleId, row) — the minimal plan a CI matrix row is compiled with. */
@@ -73,7 +74,14 @@ export { canonical, sameJson, substitute } from "./engine/substitute.js";
 export { landingCompile, landingManifest, landingModule } from "./landing/index.js";
 /** Section library rows of the CI matrix (B2-35): all section types, the k-th layout of each, a theme per row. */
 export { LANDING_MATRIX, librarySections } from "./landing/matrix.js";
-export { landingPage, SECTION_ENTITY, SECTION_RENDERERS, sectionAnchors } from "./landing/page.js";
+/** Landing page TSX, section renderers, anchors; sectionBands(sections, rhythm) — bands of the design rhythm (B2-37). */
+export {
+  landingPage,
+  SECTION_ENTITY,
+  SECTION_RENDERERS,
+  sectionAnchors,
+  sectionBands,
+} from "./landing/page.js";
 /** Module «Заявки»: manifest and compile hook. */
 export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";
 export { leadsManifest, leadsModule } from "./leads/index.js";
@@ -105,20 +113,33 @@ export {
 } from "./packages/compile.js";
 export { packagesManifest, packagesModule } from "./packages/index.js";
 export { materialsPage } from "./packages/materials.js";
+/** B2-27: hint rules «что улучшить» of the goal panel for a compiled plan (deterministic, no models). */
+export { HINT_BOUNDS, hintRules, MAX_HINTS, PLATFORM_URL } from "./reports/hints.js";
 export { DIGEST_CRON, reportsManifest, reportsModule } from "./reports/index.js";
 /** Module «Отчёты и панель цели»: manifest, goal-panel model (tiles, sources, reports), goalMetrics query and page. */
 export {
   type EntityReport,
+  type Hint,
+  type HintRule,
   type MetricCompute,
   type MetricUnit,
   type Period,
   periodWindows,
+  pickHints,
   type Row,
   trendOf,
   type Windows,
 } from "./reports/lib/goalPanel.js";
 export { GOAL_PANEL_LIB } from "./reports/lib-source.js";
-export { goalPanelPage, goalPanelSource, PANEL_VIEW, PERIODS, tileGroups } from "./reports/page.js";
+export {
+  functionMetrics,
+  goalPanelPage,
+  goalPanelSource,
+  goalsWithoutMetrics,
+  PANEL_VIEW,
+  PERIODS,
+  tileGroups,
+} from "./reports/page.js";
 export {
   MAX_TILES,
   MIN_TILES,

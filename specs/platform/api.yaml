@@ -1109,7 +1109,7 @@ components:
     PlanEdit:
       type: object
       required: [op]
-      description: 'B2-20, детерминированная правка плана (@wizard/agents/planner planEditSchema): set_param {module, param, value — null возвращает умолчание}; add_module {module, params?} — обязательные связи (requires) добавляются сами; remove_module {module} — секции, которым нужен модуль, уходят вместе с ним; set_goals {goals: [{id, statement}] 1–3}; add_section {type, variant?, content?, at?} — без content ключи-заготовки «Пример: …»; update_section {index, variant?, content?: {ключ: значение | null}}; remove_section {index}; move_section {from, to}; set_design {theme?, accent?, fontPair?}; remove_out_of_scope {index}'
+      description: 'B2-20, детерминированная правка плана (@wizard/agents/planner planEditSchema): set_param {module, param, value — null возвращает умолчание}; add_module {module, params?} — обязательные связи (requires) добавляются сами; remove_module {module} — секции, которым нужен модуль, уходят вместе с ним; set_goals {goals: [{id, statement}] 1–3}; add_section {type, variant?, content?, at?} — без content ключи-заготовки «Пример: …»; update_section {index, variant?, content?: {ключ: значение | null}}; remove_section {index}; move_section {from, to}; set_design {theme?, accent?, fontPair?}; remove_out_of_scope {index}. B2-37: выбор владельца закрепляется — update_section/add_section с variant ставят секции pinned, set_design дописывает поле в design.pinned; этап дизайна сборки их не меняет'
       properties:
         op: {enum: [set_param, add_module, remove_module, set_goals, add_section, update_section, remove_section, move_section, set_design, remove_out_of_scope]}
     PlanSketch:
@@ -1133,6 +1133,7 @@ components:
         errors: {type: array, items: {$ref: '#/components/schemas/PlanError'}}
         fingerprint: {type: [string, 'null']}
         accent: {type: [string, 'null'], description: 'B2-25: фирменный цвет плана (design.accent) — холст перенимает его; null во время интервью'}
+        design: {type: [object, 'null'], description: 'B2-37: направление дизайна плана — {theme, themeName, mood, rhythm, voice, fonts: {heading, body}, photoStyle, palette: {accent, accentText, onAccent, bg, band, ink}} (палитра — производные токенов от accent, светлая схема); null во время интервью. Холст показывает тему и шрифты меткой на шапке сайта'}
         automations: {type: array, description: 'B2-25, слой «Как это работает»: цепочки автоматики скомпилированной спеки — {name, label, module?, trigger: {type, entity?, entityLabel?, offsetMinutes?, cron?}, steps: [{type, entity?, entityLabel?, channel?: email|telegram, to?: owner|staff|client}]}; слова для людей собирает платформа', items: {type: object}}
         access: {type: array, description: 'B2-25, «Кто видит данные»: {role, roleLabel, entity, entityLabel, scope: all — все строки, own — только свои ($user в фильтре), some — часть по фильтру}', items: {type: object}}
         retention: {type: array, description: 'B2-25, «Сколько хранятся»: {entity, entityLabel, days, mode: delete|anonymize}', items: {type: object}}

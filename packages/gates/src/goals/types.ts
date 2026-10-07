@@ -30,6 +30,8 @@ export interface GoalOutboxMessage {
   action: string;
   userId?: string | null;
   payload: unknown;
+  /** systemKey of the sender (absent — a runtime that does not say). */
+  system?: string | null;
 }
 
 /** Values a filled form received: field label (or name) → value typed or chosen. */

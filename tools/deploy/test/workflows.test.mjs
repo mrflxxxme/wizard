@@ -92,6 +92,17 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
     const images = load("images.yml").doc;
     expect(JSON.stringify(images.jobs.build)).toContain("cyclonedx-json");
   });
+
+  it("ci runs the goal scenarios of the modules in three shards next to e2e (B2-28)", () => {
+    const { doc } = load("ci.yml");
+    expect(doc.jobs.goals.strategy.matrix.shard).toEqual(["1/3", "2/3", "3/3"]);
+    expect(doc.jobs.goals.env.WIZARD_GOALS_SHARD).toBe(gh("matrix.shard"));
+    const steps = JSON.stringify(doc.jobs.goals.steps);
+    for (const f of ["goals.browser.test.ts", "goals-b218.browser.test.ts", "goals-time.browser.test.ts"])
+      expect(steps).toContain(f);
+    expect(steps).toContain("b2-build-v2.browser.test.ts");
+    expect(JSON.stringify(doc.jobs.e2e.steps)).not.toContain("goals.browser.test.ts");
+  });
 });
 
 describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {

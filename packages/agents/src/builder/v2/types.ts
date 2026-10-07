@@ -107,6 +107,12 @@ export interface V2Params {
   registry?: ModuleRegistry;
   /** Name of the system (AppSpec app.name). */
   appName?: string;
+  /**
+   * Origin of the platform and the system's id there (B2-28): compilePlan gets them, generators link the owner's page
+   * of the system (`${platformUrl}/s/${systemId}`). Both or neither.
+   */
+  platformUrl?: string;
+  systemId?: string;
   budgets?: Partial<V2Budgets>;
   /** The custom-code stage (default buildCustom; tests plug their own). */
   custom?: CustomStageFn;

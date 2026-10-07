@@ -77,9 +77,7 @@ async function moveCard(t: GoalRun, title: string, from: string, to: string): Pr
     .catch(() => null);
   await card.locator(`[data-testid="wz-statusboard-move-${to}"]`).first().click();
   if (!(await write)) t.fail("перенос сделки не сохранился");
-  await t.settle();
-  // G1 serves no live updates (the event stream is closed): the board shows the moved card after a reload.
-  await t.page.reload({ waitUntil: "load" });
+  // The board re-reads its columns after its own move (B2-28): no reload, the card shows in its new column.
   await t.settle();
 }
 

@@ -7,7 +7,12 @@ import { join } from "node:path";
 import { type AppSpec, USERS_ENTITY } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
 import { CHECK_BY_ID, type CheckDef, G1_TIME_BUDGET_MS, resolveMilestone } from "../catalog.js";
-import { browserUnavailable, G1_BROWSER_TIME_BUDGET_MS, runBrowserChecks } from "../goals/browser.js";
+import {
+  type BrowserTiming,
+  browserUnavailable,
+  G1_BROWSER_TIME_BUDGET_MS,
+  runBrowserChecks,
+} from "../goals/browser.js";
 import type { ColorScheme, GoalProgram, GoalViewport } from "../goals/types.js";
 import { clip, type Finding, isPassed, summarize, toChecks } from "../report.js";
 import type { Check, GateContext, GateReport } from "../types.js";
@@ -39,7 +44,10 @@ export interface G1Options {
     programs?: Readonly<Record<string, GoalProgram>>;
     matrix?: readonly { viewport: GoalViewport; scheme: ColorScheme }[];
     timeBudgetMs?: number;
+    /** Scenario runs at once (default GOAL_LANES): each extra lane is another ephemeral schema with the seed. */
+    lanes?: number;
     onScreenshot?: (s: { route: string; role: string; png: Uint8Array }) => void;
+    onTiming?: (t: BrowserTiming) => void;
   };
 }
 
@@ -138,7 +146,10 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
   else if (!ctx.db) failAll("нет подключения к базе данных");
   else {
     const runId = randomBytes(4).toString("hex");
-    const env = new G1Env(ctx.db, runtime, spec, ctx.systemKey, runId, ctx.runtimeRole ?? "wizard_runtime");
+    const role = ctx.runtimeRole ?? "wizard_runtime";
+    const env = new G1Env(ctx.db, runtime, spec, ctx.systemKey, runId, role);
+    // Lanes of the browser checks: their own ephemeral schemas, dropped with this one.
+    const laneEnvs: G1Env[] = [];
     const artifacts = mkdtempSync(join(tmpdir(), "wz-g1-"));
     try {
       await env.migrate();
@@ -266,11 +277,33 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
               await env.reset(seed);
               return seedActors(env, spec, seed);
             },
+            openLane: async () => {
+              const lane = new G1Env(
+                ctx.db,
+                runtime,
+                spec,
+                ctx.systemKey,
+                randomBytes(4).toString("hex"),
+                role,
+              );
+              laneEnvs.push(lane);
+              await lane.migrate();
+              await lane.load(artifactDir);
+              return {
+                env: lane,
+                reset: async () => {
+                  await lane.reset(seed);
+                  return seedActors(lane, spec, seed);
+                },
+              };
+            },
+            ...(opts.goals?.lanes ? { lanes: opts.goals.lanes } : {}),
             browser: ctx.browser,
             ...(ctx.goalScenarios ? { scenarios: ctx.goalScenarios } : {}),
             ...(opts.goals?.programs ? { programs: opts.goals.programs } : {}),
             ...(opts.goals?.matrix ? { matrix: opts.goals.matrix } : {}),
             ...(opts.goals?.onScreenshot ? { onScreenshot: opts.goals.onScreenshot } : {}),
+            ...(opts.goals?.onTiming ? { onTiming: opts.goals.onTiming } : {}),
             now,
             timeLeft: () => (ctx.signal?.aborted ? 0 : browserDeadline - Date.now()),
           });
@@ -281,6 +314,7 @@ export async function runG1(ctx: GateContext, opts: G1Options = {}): Promise<Gat
       else failAll("не удалось подготовить окружение проверки", String((e as Error)?.message ?? e));
     } finally {
       await env.drop().catch(() => {});
+      for (const lane of laneEnvs) await lane.drop().catch(() => {});
       rmSync(artifacts, { recursive: true, force: true });
     }
   }

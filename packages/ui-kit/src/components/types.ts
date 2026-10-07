@@ -162,6 +162,22 @@ export interface StatsReportProps extends WzBase {
   data?: StatsData;
 }
 
+/** A hint of the goal panel (B2-27): what happened, what to do and where (external — the platform, a new tab). */
+export type GoalHint = {
+  id: string;
+  title: string;
+  text: string;
+  action: { label: string; href: string; external?: boolean };
+};
+
+/** ui-kit.yaml#components.GoalHints (B2-27). */
+export interface GoalHintsProps extends WzBase {
+  title?: string;
+  subtitle?: string;
+  items: GoalHint[];
+  emptyText?: string;
+}
+
 /** ui-kit.yaml#components.FileField (M2-14). */
 export interface FileFieldProps extends WzBase {
   name: string;

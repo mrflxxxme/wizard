@@ -161,6 +161,23 @@ export const reportsManifest: ModuleManifest = {
       steps: [{ actor: "system", text: "Время сдвигается на понедельник, 9:00" }],
       expect: [{ kind: "outbox_email", text: "Владельцу ушло письмо «Итоги недели по целям»" }],
     },
+    {
+      id: "GS-reports-5",
+      goal: "visibility",
+      title: "Владелец видит до трёх подсказок, что улучшить, и каждая ведёт к действию",
+      steps: [
+        { actor: "system", text: "В систему загружены данные seed за месяц" },
+        { actor: "owner", text: "Открывает панель цели, блок «Что улучшить»" },
+        { actor: "owner", text: "Переходит по ссылке подсказки" },
+      ],
+      expect: [
+        { kind: "page_text", text: "Подсказки по правилам на показателях за месяц, не больше трёх" },
+        {
+          kind: "page_text",
+          text: "Ссылка ведёт в раздел кабинета или на платформу «Изменить в Born to Build» в новой вкладке",
+        },
+      ],
+    },
   ],
   tests: {
     matrix: [

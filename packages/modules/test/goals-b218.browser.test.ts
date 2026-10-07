@@ -24,6 +24,7 @@ import {
 } from "../src/index.js";
 import { testRegistry } from "./fixtures.js";
 import { libraryPlan, yogaPlan } from "./fixtures-b218.js";
+import { inShard } from "./shard.js";
 
 const hasChromium = (() => {
   try {
@@ -123,9 +124,10 @@ async function ready(r: CompileSuccess): Promise<Check[]> {
   return g1.checks;
 }
 
-const rows = [packagesManifest, resourcesManifest].flatMap((m) =>
-  (m.tests?.matrix ?? []).map((row) => ({ id: m.id, row })),
-);
+const rows = [packagesManifest, resourcesManifest]
+  .flatMap((m) => (m.tests?.matrix ?? []).map((row) => ({ id: m.id, row })))
+  // CI splits the rows over three runners (WIZARD_GOALS_SHARD, B2-28).
+  .filter((_, i) => inShard(i));
 
 describe.skipIf(!hasChromium)("goal scenarios of packages and resources pass in the browser (B2-18)", () => {
   for (const x of rows)
@@ -135,20 +137,28 @@ describe.skipIf(!hasChromium)("goal scenarios of packages and resources pass in 
       await ready(r);
     }, 300_000);
 
-  test("brief mvp-09 (school library): issue, return, overdue, the student's reminder", async () => {
-    const r = compiled(libraryPlan());
-    expect(mine(r).map((s) => s.id)).toEqual([
-      "GS-resources-1",
-      "GS-resources-2",
-      "GS-resources-3",
-      "GS-resources-4",
-    ]);
-    await ready(r);
-  }, 300_000);
+  test.skipIf(!inShard(0))(
+    "brief mvp-09 (school library): issue, return, overdue, the student's reminder",
+    async () => {
+      const r = compiled(libraryPlan());
+      expect(mine(r).map((s) => s.id)).toEqual([
+        "GS-resources-1",
+        "GS-resources-2",
+        "GS-resources-3",
+        "GS-resources-4",
+      ]);
+      await ready(r);
+    },
+    300_000,
+  );
 
-  test("brief mvp-10 (yoga subscription): the sale, the reminder, lessons only with a valid subscription", async () => {
-    const r = compiled(yogaPlan());
-    expect(mine(r).map((s) => s.id)).toEqual(["GS-packages-1", "GS-packages-4", "GS-packages-5"]);
-    await ready(r);
-  }, 300_000);
+  test.skipIf(!inShard(1))(
+    "brief mvp-10 (yoga subscription): the sale, the reminder, lessons only with a valid subscription",
+    async () => {
+      const r = compiled(yogaPlan());
+      expect(mine(r).map((s) => s.id)).toEqual(["GS-packages-1", "GS-packages-4", "GS-packages-5"]);
+      await ready(r);
+    },
+    300_000,
+  );
 });

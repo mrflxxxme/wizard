@@ -73,6 +73,7 @@ export { ConsentCheckbox } from "./components/ConsentCheckbox.js";
 export { DataTable } from "./components/DataTable.js";
 export { Field, type FieldProps, type FieldType } from "./components/Field.js";
 export { FILE_MIMES, FileField, formatFileSize } from "./components/FileField.js";
+export { GoalHints } from "./components/GoalHints.js";
 export { ItemCard } from "./components/ItemCard.js";
 export { Login } from "./components/Login.js";
 /** Image of an image field (srcset of runtime variants 480/960/1600, lazy, alt required) or of the bundle (M2-47). */
@@ -93,6 +94,8 @@ export type {
   ConsentCheckboxProps,
   DataTableProps,
   FileFieldProps,
+  GoalHint,
+  GoalHintsProps,
   ItemCardData,
   ItemCardProps,
   OptionGroup,

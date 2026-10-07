@@ -16,6 +16,8 @@ export interface OutboxMessage {
   userId?: string | null;
   payload: unknown;
   at: string;
+  /** systemId of the sender (G1: a gate reads only the messages of its own systems). */
+  system?: string;
 }
 
 /** Services available to routes (set once per app). */

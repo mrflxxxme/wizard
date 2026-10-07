@@ -191,9 +191,9 @@ export async function bookVisit(t: GoalRun, o: { day?: number } = {}): Promise<C
 
 /**
  * An e-mail of the system. G1 runs the runtime with connectors: 'outbox' — the runtime records which template goes to
- * whom about which record and does not render the letter (no text, no one-time links). Then `text` is the template's
- * body from the spec ({{cancel_link}} in place of a link) and `rendered` is false; a live render (connectors: 'live',
- * module tests) gives the letter itself.
+ * whom about which record together with the rendered letter (B2-28: subject, text, one-time links), so `rendered` is
+ * true and the programs follow the real links. A runtime that records the marker only gives the template's body from
+ * the spec ({{cancel_link}} in place of a link) and `rendered` false.
  */
 export interface Mail {
   template: string | null;
@@ -455,8 +455,8 @@ const cancelByLink: GoalProgram = async (t) => {
     if (!done.includes("Запись отменена"))
       t.fail("после подтверждения нет «Запись отменена»", done.slice(0, 200));
   } else {
-    // Outbox mode: the letter is not rendered, its one-time link does not exist (the link pages are covered by the
-    // module's tests on a live render). The cancellation itself goes through the cabinet — the same status.
+    // A runtime without rendered letters (marker only): no one-time link to follow — the cancellation goes through
+    // the cabinet, the same status. The G1 runtime renders letters since B2-28 and takes the branch above.
     t.step("Запись отменяется (ссылка письма не создаётся в режиме проверки — отмена в кабинете владельца)");
     const area = await ownerOpensBooking(t);
     await recordAction(t, area, "to_cancelled");
@@ -519,7 +519,7 @@ const rescheduleByLink: GoalProgram = async (t) => {
       t.fail("после переноса нет «Запись перенесена»", done.slice(0, 200));
     newTime = next.time;
   } else {
-    // Outbox mode: no one-time link (see cancelByLink); the move goes through the cabinet's form — the same fields.
+    // No rendered letter (see cancelByLink): the move goes through the cabinet's form — the same fields.
     t.step(
       "Запись переносится на неделю вперёд (ссылка письма не создаётся в режиме проверки — перенос в кабинете)",
     );

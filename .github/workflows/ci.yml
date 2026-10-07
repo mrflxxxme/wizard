@@ -66,13 +66,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
-      # B2-24 (gates.yaml#G1.browser): goal scenarios of the modules and 390 px in Chromium; the build job has no browser.
-      - run: pnpm exec vitest run --project browser packages/gates/test/goals.browser.test.ts packages/modules/test/goals.browser.test.ts
       # B2-32 (ui-kit.yaml#platform_v2): design system v2 demo — screenshots 390/1280 light/dark, contrast, reduced motion.
       - run: pnpm exec vitest run --project browser packages/ui-kit/test/v2.browser.test.ts
       # B2-34 (ui-kit.yaml#tokens.cabinet): cabinets of the module matrix on v2 — G0/G1, 390/1280 light/dark, contrast,
       # touch targets; screenshots packages/modules/test/artifacts/cabinet-*.png.
       - run: pnpm exec vitest run --project browser packages/modules/test/cabinets.browser.test.ts
+      # B2-27 (modules.yaml#catalog reports): the goal panel — metrics by goal, hints «что улучшить», the empty state;
+      # 390/1280 light/dark; screenshots packages/modules/test/artifacts/goal-panel-*.png.
+      - run: pnpm exec vitest run --project browser packages/modules/test/goal-panel.browser.test.ts
       # B2-25 (platform-screens.yaml#S-canvas): the canvas screen on the recorded feed «клиника» (режим показа, no models),
       # 390/1280 light/dark: interview → sketch → plan → approval → build → ready; screenshots test/artifacts/canvas-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/canvas.browser.test.ts apps/platform-web/test/canvas-pick.browser.test.ts
@@ -90,9 +91,50 @@ jobs:
             packages/e2e/test-results
             packages/ui-kit/test/artifacts/v2-*.png
             packages/modules/test/artifacts/cabinet-*.png
+            packages/modules/test/artifacts/goal-panel-*.png
             apps/platform-web/test/artifacts/canvas-*.png
             apps/platform-web/test/artifacts/platform-*.png
           retention-days: 7
+  # B2-24/B2-28 (gates.yaml#G1.browser.ci): goal scenarios of the modules and 390 px in Chromium, the matrix rows split
+  # over three runners (WIZARD_GOALS_SHARD) next to e2e — each ≤ 8 min; the build job has no browser.
+  goals:
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/3", "2/3", "3/3"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wizard
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wizard
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wizard" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WIZARD_DB_URL: postgres://wizard@localhost:5433/wizard
+      WIZARD_LLM_MODE: fixture
+      WIZARD_GOALS_SHARD: ${{ matrix.shard }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
+      - run: pnpm exec vitest run --project browser packages/modules/test/goals.browser.test.ts packages/modules/test/goals-b218.browser.test.ts
+      # The gate's own browser cases and the time measure of a system with every module (≤ 90 s, gates.yaml#G1.browser).
+      - if: matrix.shard == '1/3'
+        run: pnpm exec vitest run --project browser packages/gates/test/goals.browser.test.ts packages/modules/test/goals-time.browser.test.ts
+      # A plan build through the API with the platform's Chromium: goals.checked = true (B2-28).
+      - if: matrix.shard == '2/3'
+        run: pnpm exec vitest run --project browser apps/platform-api/test/b2-build-v2.browser.test.ts
   # L3-38 (deploy.yaml#cloud.ci_cd.ci): license policy of AGENTS.md over the whole dependency tree + CycloneDX SBOM.
   supply-chain:
     runs-on: ubuntu-latest

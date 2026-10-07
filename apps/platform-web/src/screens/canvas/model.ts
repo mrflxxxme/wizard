@@ -343,6 +343,14 @@ export function canvasModel(sk: PlanSketch, name: string, answers: readonly Loca
       ...(o.replacement ? { note: o.replacement } : {}),
     });
   }
+  // Design direction (B2-37): theme and fonts on the site's top bar.
+  const nav = frames.site.find((x) => x.kind === "nav");
+  if (sk.design && nav)
+    nav.tags.push({
+      kind: "plain",
+      label: canvas.tags.design(sk.design.themeName, sk.design.fonts.heading, sk.design.fonts.body),
+      note: sk.design.mood.join(", "),
+    });
   for (const a of answers) {
     const b = anchorFor(all, [a.module]);
     b?.tags.push({ kind: "plain", label: a.label });

@@ -44,10 +44,14 @@ const ROWS = Math.max(...SECTION_CATALOG.map((t) => t.variants.length));
 /** Themes of the rows: the presets added by themes v2 first (the default rows use the first preset). */
 const THEMES = [...THEME_PRESETS.slice(4), ...THEME_PRESETS.slice(0, 4)];
 
+/** Odd rows set the bands of the design direction (B2-37) by hand: alternate band on every even section. */
+const withBands = (sections: PlanSection[]): PlanSection[] =>
+  sections.map((s, i) => ({ ...s, band: i % 2 === 0 ? "alt" : "base" }));
+
 export const LANDING_MATRIX = Array.from({ length: ROWS }, (_, k) => ({
   name: `библиотека секций, вариант ${k + 1}`,
   params: {},
   withModules: ["leads", "notify", "catalog", "booking"],
-  sections: librarySections(k),
+  sections: k % 2 === 1 ? withBands(librarySections(k)) : librarySections(k),
   theme: THEMES[k % THEMES.length] as string,
 }));

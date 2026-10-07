@@ -243,11 +243,121 @@ export function trendText(
   if (t.delta === null || t.direction === null) return before;
   if (t.direction === "flat") return `${before} · без изменений`;
   const abs = Math.abs(t.delta);
+  // A change of a share is in points of the percentage, said in words (no «п. п.»): «на 30 пунктов».
   const change =
     unit === "percent"
-      ? `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(abs)} п. п.`
+      ? `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(abs)} ${plural(abs, ["пункт", "пункта", "пунктов"])}`
       : formatValue(abs, unit);
-  return `${before} · ${t.direction === "up" ? "рост" : "снижение"} на ${change}${t.good ? " — хорошо" : ""}`;
+  return `${before} · ${t.direction === "up" ? "рост" : "снижение"} на ${change} — ${t.good ? "хорошо" : "хуже, чем было"}`;
+}
+
+/** Russian plural form of a number: [one, few, many] (fractions take «few», as Intl.PluralRules says). */
+export function plural(n: number, forms: readonly [string, string, string]): string {
+  const rule = new Intl.PluralRules("ru-RU").select(n);
+  return rule === "one" ? forms[0] : rule === "few" || rule === "other" ? forms[1] : forms[2];
+}
+
+/** «за 7 дней» / «за 30 дней» — the span of a period in words. */
+export function periodSpan(period: Period): string {
+  return `за ${PERIOD_DAYS[period]} ${plural(PERIOD_DAYS[period], ["день", "дня", "дней"])}`;
+}
+
+/**
+ * One line in plain words under a goal: how its metrics went against the period before — «За 7 дней: 2 показателя
+ * стали лучше, 1 — хуже». Metrics without a value or without the period before are not compared.
+ */
+export function goalSummary(
+  items: readonly { value: number | null; previous: number | null; better: "up" | "down" }[],
+  period: Period,
+): string {
+  const span = periodSpan(period);
+  const head = `${span.charAt(0).toUpperCase()}${span.slice(1)}`;
+  // Nothing in either period (unknown or zero) — no data yet, rather than «без изменений».
+  if (items.every((x) => !x.value && !x.previous)) return `${head}: данных пока нет`;
+  let good = 0;
+  let bad = 0;
+  let flat = 0;
+  for (const x of items) {
+    const t = trendOf(x.value, x.previous, x.better);
+    if (t.direction === "flat") flat++;
+    else if (t.good === true) good++;
+    else if (t.good === false) bad++;
+  }
+  const n = (k: number, word: string) =>
+    `${k} ${plural(k, ["показатель", "показателя", "показателей"])} ${k === 1 ? "стал" : "стали"} ${word}`;
+  if (good && bad) return `${head}: ${n(good, "лучше")}, ${bad} — хуже`;
+  if (good) return `${head}: ${n(good, "лучше")}`;
+  if (bad) return `${head}: ${n(bad, "хуже")}`;
+  if (flat) return `${head}: без изменений`;
+  return `${head}: сравнить пока не с чем`;
+}
+
+/**
+ * A hint «что улучшить» of the goal panel (B2-27): the reports module picks the rules that fit the plan when it
+ * compiles; the page checks their conditions on the month's metrics. `when`: gte / lte — the value reaches the bound;
+ * drop — the value fell by at least `share` (0–1) against the period before, which had at least `min`.
+ */
+export interface HintRule {
+  id: string;
+  goal: string;
+  metric: string;
+  unit: MetricUnit;
+  when: { op: "gte" | "lte"; value: number } | { op: "drop"; share: number; min: number };
+  title: string;
+  /** May name the values: {value} and {previous} (formatted with the metric's unit). */
+  text: string;
+  /** Where to act: a section of the cabinet (a path of the system) or the plan on the platform (external). */
+  action: { label: string; href: string; external: boolean };
+  /** Rules that fix the same thing (e.g. turn the reminder on) — only the first that fires is shown. */
+  fix: string;
+}
+
+export interface Hint {
+  id: string;
+  title: string;
+  text: string;
+  action: { label: string; href: string; external: boolean };
+}
+
+/** The rule's condition on the metric's values (an unknown value never fires). */
+export function hintFires(
+  rule: HintRule,
+  v: { value: number | null; previous: number | null } | undefined,
+): boolean {
+  if (!v || v.value === null) return false;
+  const w = rule.when;
+  if (w.op === "drop")
+    return v.previous !== null && v.previous >= w.min && v.value <= v.previous * (1 - w.share);
+  return w.op === "gte" ? v.value >= w.value : v.value <= w.value;
+}
+
+/** Up to `max` hints in the rules' order (the reports module sorts them by the plan's goals); one per fix. */
+export function pickHints(
+  rules: readonly HintRule[],
+  values: Readonly<Record<string, { value: number | null; previous: number | null } | undefined>>,
+  max = 3,
+): Hint[] {
+  const out: Hint[] = [];
+  const fixed = new Set<string>();
+  for (const r of rules) {
+    if (out.length >= max) break;
+    if (fixed.has(r.fix)) continue;
+    const v = values[r.metric];
+    if (!v || !hintFires(r, v)) continue;
+    fixed.add(r.fix);
+    const text = r.text
+      .split("{value}")
+      .join(formatValue(v.value, r.unit))
+      .split("{previous}")
+      .join(formatValue(v.previous, r.unit));
+    out.push({ id: r.id, title: r.title, text, action: r.action });
+  }
+  return out;
+}
+
+/** Some metric has a value other than zero: the system has data for the panel and the hints. */
+export function hasData(values: Readonly<Record<string, { value: number | null } | undefined>>): boolean {
+  return Object.values(values).some((v) => v !== undefined && v.value !== null && v.value !== 0);
 }
 
 /** CSV for spreadsheets (Excel with Russian locale): «;» between cells, quotes doubled, a BOM for UTF-8. */

@@ -1,5 +1,5 @@
 // B2-24 acceptance (D76 (6), specs/quality/gates.yaml#G1.browser): a compiled system is ready when G0 and G1 pass
-// with the browser checks — the goal scenarios of its modules in Chromium (390 and 1280 px, light and dark themes) and
+// with the browser checks — the goal scenarios of its modules in Chromium (390 px light, 1280 px dark; B2-28) and
 // every page at 390 px without horizontal scroll. «лендинг + заявки» end to end («посетитель оставил заявку →
 // владелец получил письмо»), every scenario of a ready module has a program, and every CI matrix row of the modules
 // with code passes with the scenarios of its own module (the other plan modules' scenarios run in their own rows;
@@ -26,6 +26,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { type CompileSuccess, compilePlan, MODULES_WITH_CODE, matrixPlan } from "../src/index.js";
 import { landingLeadsPlan, testRegistry } from "./fixtures.js";
+import { inShard } from "./shard.js";
 
 const hasChromium = (() => {
   try {
@@ -135,21 +136,26 @@ test("every goal scenario of a ready module has a browser program", () => {
 });
 
 describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser (B2-24)", () => {
-  test("landing + leads: «посетитель оставил заявку → владелец получил письмо», 390 px without horizontal scroll", async () => {
-    const r = compiled(landingLeadsPlan());
-    const ids = ofCode(r).map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(["GS-landing-1", "GS-leads-1", "GS-leads-2"]));
-    const checks = await ready(r);
-    const by = (id: string) => checks.find((c) => c.id === id);
-    for (const id of [...ids.map((x) => `G1-GOAL-${x}`), "G1-MOBILE-01"])
-      expect(by(id)?.status, id).toBe("pass");
-    expect(by("G1-GOAL-GS-leads-1")?.message_ru).toContain("390 px");
-  }, 600_000);
+  test.skipIf(!inShard(0))(
+    "landing + leads: «посетитель оставил заявку → владелец получил письмо», 390 px without horizontal scroll",
+    async () => {
+      const r = compiled(landingLeadsPlan());
+      const ids = ofCode(r).map((s) => s.id);
+      expect(ids).toEqual(expect.arrayContaining(["GS-landing-1", "GS-leads-1", "GS-leads-2"]));
+      const checks = await ready(r);
+      const by = (id: string) => checks.find((c) => c.id === id);
+      for (const id of [...ids.map((x) => `G1-GOAL-${x}`), "G1-MOBILE-01"])
+        expect(by(id)?.status, id).toBe("pass");
+      expect(by("G1-GOAL-GS-leads-1")?.message_ru).toContain("390 px");
+    },
+    600_000,
+  );
 
   const rows = MODULES_WITH_CODE.filter((d) => !OWN_SUITE.has(d.manifest.id)).flatMap((d) =>
     (d.manifest.tests?.matrix ?? []).map((row) => ({ id: d.manifest.id, name: row.name, row })),
   );
-  for (const x of rows)
+  // CI splits the rows over three runners (WIZARD_GOALS_SHARD): ≤ 8 min each (B2-28).
+  for (const x of rows.filter((_, i) => inShard(i + 1)))
     test(`matrix ${x.id} — ${x.name}`, async () => {
       const r = compiled(matrixPlan(registry, x.id, x.row));
       const own = r.scenarios.filter((s) => s.module === x.id);

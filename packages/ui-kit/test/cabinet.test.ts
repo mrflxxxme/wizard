@@ -129,6 +129,7 @@ describe("cabinet look v2 (B2-34)", () => {
       "RecordForm",
       "States",
       "StatsReport",
+      "GoalHints",
     ];
     for (const f of files) {
       const css = read(join(SRC, "components", `${f}.module.css`));

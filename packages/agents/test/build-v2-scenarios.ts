@@ -43,12 +43,12 @@ const dental: B2Scenario = {
     ],
   },
   design: {
-    direction: { mood: ["спокойствие", "чистота", "доверие"], rhythm: "airy" },
+    direction: { mood: ["спокойствие", "чистота", "доверие"], rhythm: "airy", voice: "calm" },
     theme: "calm",
     accent: "#2A7F9E",
     fontPair: { heading: "PT Serif", body: "PT Sans" },
     photoStyle: "светлые кабинеты при дневном свете, врач и пациент в спокойной беседе",
-    layouts: [{ index: 2, variant: "grid" }],
+    sections: [{ index: 2, variant: "grid" }],
   },
 };
 
@@ -150,11 +150,12 @@ const barber: B2Scenario = {
     ],
   },
   design: {
-    direction: { mood: ["мужской", "уверенный", "тёплый"], rhythm: "balanced" },
-    theme: "warm",
-    accent: "#A84B25",
-    fontPair: { heading: "Lora", body: "Golos Text" },
+    direction: { mood: ["мужской", "уверенный", "ремесло"], rhythm: "dense", voice: "bold" },
+    theme: "workshop",
+    accent: "#8C2F1B",
+    fontPair: { heading: "Sofia Sans Extra Condensed", body: "Sofia Sans" },
     photoStyle: "мастер с клиентом в кресле, тёплый вечерний свет, дерево и кожа",
+    sections: [{ index: 1, variant: "cover" }],
   },
 };
 
@@ -265,12 +266,12 @@ const repair: B2Scenario = {
     ],
   },
   design: {
-    direction: { mood: ["надёжность", "аккуратность"], rhythm: "balanced" },
+    direction: { mood: ["надёжность", "аккуратность"], rhythm: "balanced", voice: "formal" },
     theme: "strict",
     accent: "#1F4FB8",
     fontPair: { heading: "Manrope", body: "IBM Plex Sans" },
     photoStyle: "чистая квартира после ремонта, дневной свет, без людей",
-    layouts: [{ index: 2, variant: "numbered" }],
+    sections: [{ index: 2, variant: "numbered" }],
   },
 };
 

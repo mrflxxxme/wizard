@@ -811,6 +811,20 @@ components:
     behaviour: ["Рамка секции лендинга (отступы ритма темы, контейнер, заголовок блоков) вокруг содержимого модуля: витрина «Услуги из каталога» выглядит как остальные секции"]
     test_ids: [wz-section]
 
+  - name: GoalHints
+    milestone: B2
+    props: |
+      interface GoalHintsProps extends WzBase {
+        title?: string; subtitle?: string;     // «Что улучшить», «по показателям за 30 дней»
+        items: { id: string; title: string; text: string; action: { label: string; href: string; external?: boolean } }[];
+        emptyText?: string;                    // пустое состояние, когда подсказок нет
+      }
+    behaviour:
+      - "Подсказки панели цели (B2-27, модуль reports): до трёх карточек кабинета v2 — что случилось, что сделать и ссылка на действие (раздел кабинета или платформа); кромка фирменного цвета, ссылка — касание ≥ 44 px"
+      - "external — ссылка открывается в новой вкладке (target=_blank, rel=noopener noreferrer), для чтения с экрана — «откроется в новой вкладке»; без подсказок — пустое состояние EmptyState"
+    test_ids: [wz-goalhints, wz-goalhints-item-<id>, wz-goalhints-action-<id>]
+    acceptance: ["vitest+DOM (test/goalhints.dom.test.ts): карточки, внешняя ссылка в новой вкладке, пустое состояние; браузер — packages/modules/test/goal-panel.browser.test.ts"]
+
 demo:
   path: packages/ui-kit/demo
   rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 10 тем), ширины"

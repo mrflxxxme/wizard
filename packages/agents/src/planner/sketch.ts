@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { type GoalId, goalLabel, type PlanError, SECTION_CATALOG, type SystemPlan } from "@wizard/appspec";
 import { type CompileResult, compiledFingerprint, type ModuleRegistry } from "@wizard/modules";
+import { type DirectionPalette, designDirection } from "../builder/v2/direction.js";
 import { availableModules } from "./catalog.js";
 import type { GoalsAnalysis } from "./schemas.js";
 
@@ -57,6 +58,11 @@ export interface PlanSketch {
   custom: { id: string; title: string; kind: string; budgetRub: number }[];
   /** Business colour of the plan design (#RRGGBB): the canvas takes it over (grill-7 #7); null in the interview. */
   accent: string | null;
+  /**
+   * Design direction of the plan (B2-37) for the canvas: theme, mood, voice, font pair, photo style and the palette
+   * the tokens derive from the accent; null in the interview.
+   */
+  design: SketchDesign | null;
   /** Automation chains of the compiled spec for the x-ray layer «Как это работает» (B2-25): trigger → steps. */
   automations: SketchAutomation[];
   /**
@@ -78,6 +84,18 @@ export interface PlanSketch {
   fingerprint: string | null;
 }
 
+/** Design direction on the sketch (B2-37): data only, the canvas words it. */
+export interface SketchDesign {
+  theme: string;
+  themeName: string;
+  mood: string[];
+  rhythm: string;
+  voice: string;
+  fonts: { heading: string; body: string };
+  photoStyle: string;
+  palette: DirectionPalette;
+}
+
 /** One automation of the sketch: structural, the canvas words it (a workflow of AppSpec without its params). */
 export interface SketchAutomation {
   name: string;
@@ -86,6 +104,20 @@ export interface SketchAutomation {
   trigger: { type: string; entity?: string; entityLabel?: string; offsetMinutes?: number; cron?: string };
   /** channel — email | telegram of a notify step; to — owner | staff | client. */
   steps: { type: string; entity?: string; entityLabel?: string; channel?: string; to?: string }[];
+}
+
+function sketchDesign(plan: SystemPlan): SketchDesign {
+  const d = designDirection(plan);
+  return {
+    theme: d.theme,
+    themeName: d.themeName,
+    mood: d.mood,
+    rhythm: d.rhythm,
+    voice: d.voice,
+    fonts: d.fonts,
+    photoStyle: d.photoStyle,
+    palette: d.palette,
+  };
 }
 
 const sectionSpec = (registry: ModuleRegistry, type: string) =>
@@ -130,6 +162,7 @@ const empty = {
   scenarios: [],
   custom: [],
   accent: null,
+  design: null,
   automations: [],
   access: [],
   retention: [],
@@ -190,6 +223,7 @@ export function planSketch(plan: SystemPlan, compiled: CompileResult, registry: 
     }),
     outOfScope: plan.outOfScope.map((o) => ({ ...o })),
     accent: plan.design.accent,
+    design: sketchDesign(plan),
     custom: plan.custom.map((c) => ({ id: c.id, title: c.title, kind: c.kind, budgetRub: c.budgetRub })),
   };
   if (!compiled.ok) return { ...base, errors: compiled.errors };

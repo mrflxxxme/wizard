@@ -85,10 +85,14 @@ export {
 /** B2-10 SystemPlan: schema, D76 custom limits and validateSystemPlan(plan, catalog) → Russian errors. */
 export {
   CUSTOM_LIMITS,
+  DESIGN_PINS,
+  DESIGN_RHYTHMS,
+  DESIGN_VOICES,
   MAX_PLAN_GOALS,
   type ModuleCatalog,
   OUT_OF_SCOPE_CATEGORIES,
   type PlanSection,
+  SECTION_BANDS,
   type SystemPlan,
   systemPlanSchema,
   type ValidatePlanOptions,

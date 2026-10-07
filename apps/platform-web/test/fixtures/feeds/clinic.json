@@ -503,6 +503,7 @@
    "scenarios": [],
    "custom": [],
    "accent": null,
+   "design": null,
    "automations": [],
    "access": [],
    "retention": [],
@@ -1526,10 +1527,39 @@
      "title": "Без входа панель цели недоступна",
      "goal": "visibility",
      "module": "reports"
+    },
+    {
+     "id": "GS-reports-5",
+     "title": "Владелец видит до трёх подсказок, что улучшить, и каждая ведёт к действию",
+     "goal": "visibility",
+     "module": "reports"
     }
    ],
    "custom": [],
    "accent": "#0F766E",
+   "design": {
+    "theme": "calm",
+    "themeName": "Спокойная минималистичная",
+    "mood": [
+     "спокойствие",
+     "доверие"
+    ],
+    "rhythm": "airy",
+    "voice": "calm",
+    "fonts": {
+     "heading": "Manrope",
+     "body": "Inter Tight"
+    },
+    "photoStyle": "светлые кабинеты, дневной свет",
+    "palette": {
+     "accent": "#0F766E",
+     "accentText": "#0F766E",
+     "onAccent": "#FFFFFF",
+     "bg": "#F6F7F5",
+     "band": "#EDF0EC",
+     "ink": "#1B1F1D"
+    }
+   },
    "automations": [
     {
      "name": "booking_notify",
@@ -1742,7 +1772,7 @@
    ],
    "warnings": [],
    "errors": [],
-   "fingerprint": "4b33de22d93b9d85b8c329c011bedde7c4d9743131405566efd9602aaa366fe2",
+   "fingerprint": "cf6ab8f65c9b7eea78d063d06713e11ba0c3c7170f3b4876477c099069c4878f",
    "outOfScope": [
     {
      "request": "Оплата лечения на сайте",
