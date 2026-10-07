@@ -70,8 +70,8 @@ export type {
 export type { DynamicOptions } from "./g2/dynamic.js";
 /** Antifraud dictionaries (data/*.json from abuse.yaml) and matching: normalize, rx (Unicode \b), findBrands. */
 export { ABUSE, BRANDS, type Brand, type BrandHit, findBrands, normalize, rx } from "./g2/patterns.js";
-/** ИНН-10/12 checksum (G2-PII-06, INN_INVALID). */
-export { innValid, isSubject } from "./g2/pii.js";
+/** ИНН-10/12 checksum (G2-PII-06, INN_INVALID); spec-only checks markup (G2-PII-02) and retention (G2-PII-05). */
+export { innValid, isSubject, markup as piiMarkup, retention as piiRetention } from "./g2/pii.js";
 /** runG2(ctx, {only?, timeBudgetMs?, dynamic?}): static G2 (secrets, ПДн, Telegram, antifraud, public role) + permission matrix against ctx.runtime. */
 export { type G2Options, runG2 } from "./g2/run.js";
 /** B2-24/B2-28 browser checks of G1: programs by id, the matrix (390 light + 1280 dark; FULL — all four), parallel lanes, timing. */

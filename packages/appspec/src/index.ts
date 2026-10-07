@@ -123,6 +123,22 @@ export {
   opSchema,
   type Revision,
 } from "./ops.js";
+/**
+ * ПДн-like field names (abuse.yaml#patterns.pii_field_names, B2-46): piiNameReason(field, subject) is the one criterion
+ * of G2-PII-02 and of module extra fields; unicodeRx/normalizeText/splitIdent/firstMatch are abuse.yaml matching.
+ */
+export {
+  fieldPiiCategory,
+  firstMatch,
+  isPiiSubject,
+  normalizeText,
+  PII_NAME_PATTERNS,
+  type PiiNameReason,
+  piiKindFor,
+  piiNameReason,
+  splitIdent,
+  unicodeRx,
+} from "./pii-names.js";
 export { isReservedName, RESERVED_NAMES, SQL_KEYWORDS, SYSTEM_FIELDS, USERS_ENTITY } from "./reserved.js";
 export * from "./schema.js";
 export { MAX_INDEX_FIELDS, ROW_FILTER_USER_ATTRS, type ValidateOptions } from "./semantic.js";

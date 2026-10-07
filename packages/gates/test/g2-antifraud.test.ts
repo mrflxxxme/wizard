@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 // @ts-expect-error — plain ESM script without types
-import { buildData, DATA_DIR } from "../scripts/gen-g2-data.mjs";
+import { APPSPEC_PII_FILE, buildData, DATA_DIR, piiNamesSource } from "../scripts/gen-g2-data.mjs";
 // @ts-expect-error — plain ESM script without types
 import { antifraudCases, checkCases } from "../scripts/gen-g2-fixtures.mjs";
 import { type Check, G2_CHECKS, runG2 } from "../src/index.js";
@@ -33,6 +33,8 @@ describe("generated data and fixtures are fresh", () => {
     const { abuse, brands } = buildData();
     expect(JSON.parse(readFileSync(join(DATA_DIR, "abuse.json"), "utf8"))).toEqual(abuse);
     expect(JSON.parse(readFileSync(join(DATA_DIR, "brands.ru.json"), "utf8"))).toEqual(brands);
+    // B2-46: the ПДн-name patterns G2-PII-02 and module extra fields share live in @wizard/appspec.
+    expect(readFileSync(APPSPEC_PII_FILE, "utf8")).toBe(piiNamesSource(abuse));
   });
 
   test("test/antifraud and test/fixtures/G2-* = scripts/gen-g2-fixtures.mjs", () => {

@@ -1,6 +1,7 @@
 // G2 dictionaries (packages/gates/data/*.json, generated from specs/security/abuse.yaml#patterns) and the matching
 // primitives of abuse.yaml#patterns.normalize / word_boundary: normalisation, Unicode word boundaries, brand search.
 import { readFileSync } from "node:fs";
+import { normalizeText as normalize } from "@wizard/appspec";
 
 export interface AbuseData {
   homoglyphs: [string, string][];
@@ -43,55 +44,11 @@ const load = <T>(name: string): T =>
 export const ABUSE: AbuseData = load("abuse.json");
 export const BRANDS: readonly Brand[] = load("brands.ru.json");
 
-const WORD = "[\\p{L}\\p{N}_]";
-const NOT_WORD = "[^\\p{L}\\p{N}_]";
-const BOUNDARY = `(?:(?<=${WORD})(?!${WORD})|(?<!${WORD})(?=${WORD}))`;
-
-/**
- * Pattern of abuse.yaml → RegExp: `\b` is a Unicode word boundary, `\w`/`\W` are Unicode-aware, and every
- * alternative starts at a word start (patterns without `\b` are stems: abuse.yaml#patterns.word_boundary).
- */
-export function rx(pattern: string, flags = "gu"): RegExp {
-  const body = pattern.replace(/\\b/g, BOUNDARY).replace(/\\W/g, NOT_WORD).replace(/\\w/g, WORD);
-  return new RegExp(`(?<!${WORD})(?:${body})`, flags.includes("u") ? flags : `${flags}u`);
-}
+// abuse.yaml#patterns.normalize / word_boundary live in @wizard/appspec (B2-46): G2-PII-02 and the pii marking of
+// module extra fields share them.
+export { firstMatch, normalizeText as normalize, splitIdent, unicodeRx as rx } from "@wizard/appspec";
 
 const CYR_TO_LAT = new Map(ABUSE.homoglyphs.map(([c, l]) => [c, l]));
-const LAT_TO_CYR = new Map(ABUSE.homoglyphs.map(([c, l]) => [l, c]));
-const INVISIBLE = /[­​-‏⁠﻿]/g;
-
-function fixMixedToken(t: string): string {
-  const hasLat = /[a-z]/.test(t);
-  const hasCyr = /[а-я]/.test(t);
-  if (!hasLat || !hasCyr) return t;
-  let lat = 0;
-  let cyr = 0;
-  for (const ch of t) {
-    if (/[a-z]/.test(ch) && !LAT_TO_CYR.has(ch)) lat++;
-    else if (/[а-я]/.test(ch) && !CYR_TO_LAT.has(ch)) cyr++;
-  }
-  const map = lat > cyr ? CYR_TO_LAT : LAT_TO_CYR;
-  return [...t].map((ch) => map.get(ch) ?? ch).join("");
-}
-
-/** Lower case, ё→е, no invisible characters, mixed-script words folded to one script, single spaces. */
-export function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/ё/g, "е")
-    .replace(INVISIBLE, "")
-    .replace(/\p{L}+/gu, fixMixedToken)
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Identifier → words: holderPhone / holder_phone → "holder phone". */
-export function splitIdent(name: string): string {
-  return name
-    .replace(/([a-zа-яё0-9])([A-ZА-ЯЁ])/gu, "$1 $2")
-    .replace(/[_\-.]+/g, " ")
-    .trim();
-}
 
 /** Every Cyrillic homoglyph mapped to Latin: the comparison key of brand search. */
 export function skeleton(s: string): string {
@@ -143,13 +100,6 @@ export function shannon(s: string): number {
     h -= p * Math.log2(p);
   }
   return h;
-}
-
-/** First match of `re` in normalized text (re must be global): index and matched text. */
-export function firstMatch(re: RegExp, text: string): { index: number; text: string } | null {
-  re.lastIndex = 0;
-  const m = re.exec(text);
-  return m ? { index: m.index, text: m[0] } : null;
 }
 
 /** Is there a match of `re` within `window` characters around [start, end) of text? */
