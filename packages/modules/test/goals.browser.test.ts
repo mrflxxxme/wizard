@@ -26,7 +26,7 @@ import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } fro
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { type CompileSuccess, compilePlan, MODULES_WITH_CODE, matrixPlan } from "../src/index.js";
-import { allModulesPlan, landingLeadsPlan, testRegistry } from "./fixtures.js";
+import { allModulesPlan, dealsNotifyReportsPlans, landingLeadsPlan, testRegistry } from "./fixtures.js";
 import { inShard } from "./shard.js";
 
 const hasChromium = (() => {
@@ -45,6 +45,11 @@ const WITH_CODE = new Set(MODULES_WITH_CODE.map((d) => d.manifest.id));
 const ofCode = (r: CompileSuccess) => r.scenarios.filter((s) => WITH_CODE.has(s.module));
 /** Modules whose rows run in their own browser suite (goals-b218.browser.test.ts). */
 const OWN_SUITE = new Set(["packages", "resources"]);
+/**
+ * B2-47: the owner's list of notifications (GS-notify-3) depends on every module of the plan (the reports digest is
+ * on it too) — it runs in every row whose plan has notify, next to the row's own scenarios.
+ */
+const NOTIFY_LIST = "GS-notify-3";
 const keyPrefix = `b224${randomBytes(3).toString("hex")}`;
 
 let db: postgres.Sql;
@@ -175,9 +180,25 @@ describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser
   for (const x of rows.filter((_, i) => inShard(i + 1)))
     test(`matrix ${x.id} — ${x.name}`, async () => {
       const r = compiled(matrixPlan(registry, x.id, x.row));
-      const own = r.scenarios.filter((s) => s.module === x.id);
+      const own = r.scenarios.filter((s) => s.module === x.id || s.id === NOTIFY_LIST);
       const checks = await ready(r, own);
       expect(checks.some((c) => c.id === "G1-MOBILE-01" && c.status === "pass")).toBe(true);
       for (const s of own) expect(checks.find((c) => c.id === `G1-GOAL-${s.id}`)?.status, s.id).toBe("pass");
     }, 600_000);
+
+  // B2-47 (D76 control measurement, brief mvp-08): deals + notify + reports under the parameters a model may choose —
+  // the page «Уведомления» names the owner, the staff and the channels of every notification, the digest included.
+  const mvp08 = dealsNotifyReportsPlans(registry);
+  for (const [i, x] of mvp08.entries())
+    test.skipIf(!inShard(rows.length + 1 + i))(
+      `mvp-08 ${x.name}: GS-notify-3`,
+      async () => {
+        const r = compiled(x.plan);
+        const list = r.scenarios.filter((s) => s.id === NOTIFY_LIST);
+        expect(list).toHaveLength(1);
+        const checks = await ready(r, list);
+        expect(checks.find((c) => c.id === `G1-GOAL-${NOTIFY_LIST}`)?.status).toBe("pass");
+      },
+      600_000,
+    );
 });

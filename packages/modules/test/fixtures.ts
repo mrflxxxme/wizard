@@ -2,7 +2,13 @@
 // modules fx_* for the application order, links, conflicts and module bugs. «Запись по слотам» is the real module
 // since B2-14 (its stand-in is gone).
 import type { ModuleManifest, SystemPlan } from "@wizard/appspec";
-import { MODULES, MODULES_WITH_CODE, type ModuleDefinition, type ModuleRegistry } from "../src/index.js";
+import {
+  MODULES,
+  MODULES_WITH_CODE,
+  type ModuleDefinition,
+  type ModuleRegistry,
+  matrixPlan,
+} from "../src/index.js";
 
 type FxOver = Partial<ModuleManifest> & { id: string };
 
@@ -250,4 +256,46 @@ export function fxPlan(modules: SystemPlan["modules"]): SystemPlan {
     outOfScope: [],
     custom: [],
   };
+}
+
+/**
+ * B2-47 (D76 control measurement, brief mvp-08 «Мастерская по ремонту техники»): plans of «Воронка сделок»,
+ * «Напоминания и уведомления» and «Отчёты» under the parameters a model may choose — with and without the weekly digest
+ * to the owner, Telegram only without letters to visitors, notifications to the staff too (deals with the person in
+ * charge, leads). The owner's page «Уведомления» must list every notification of them (GS-notify-3).
+ */
+export function dealsNotifyReportsPlans(registry: ModuleRegistry): { name: string; plan: SystemPlan }[] {
+  const variants: { name: string; params: Record<string, Record<string, unknown>>; extra?: string[] }[] = [
+    { name: "сделки и отчёты без сводки", params: {} },
+    { name: "сделки и отчёты, сводка письмом", params: { reports: { digest: "weekly" } } },
+    {
+      name: "только Telegram без писем посетителям, сводка письмом",
+      params: {
+        notify: { channels: ["telegram"], visitor_emails: false, reminder_hours: 0 },
+        reports: { digest: "weekly" },
+      },
+    },
+    {
+      name: "заявки, ответственные и сотрудникам тоже, сводка письмом",
+      params: {
+        notify: { channels: ["email", "telegram"], notify_staff: true },
+        deals: { assignees: true, stages: ["Принят", "Диагностика", "Ремонт", "Готов к выдаче"] },
+        reports: { digest: "weekly", period: "week" },
+      },
+      extra: ["staff", "leads", "landing"],
+    },
+  ];
+  return variants.map((v) => {
+    const plan = matrixPlan(registry, "notify", {
+      name: v.name,
+      params: v.params.notify ?? {},
+      withModules: ["deals", "reports", ...(v.extra ?? [])],
+    });
+    plan.niche = "мастерская по ремонту техники";
+    plan.modules = plan.modules.map((m) => {
+      const params = { ...(m.params ?? {}), ...(m.id === "notify" ? {} : (v.params[m.id] ?? {})) };
+      return Object.keys(params).length ? { id: m.id, params } : { id: m.id };
+    });
+    return { name: v.name, plan };
+  });
 }

@@ -39,6 +39,9 @@ const DATABASE_URL =
 const registry = testRegistry();
 const MINE = new Set(["packages", "resources"]);
 const mine = (r: CompileSuccess) => r.scenarios.filter((s) => MINE.has(s.module));
+/** B2-47: the owner's list of notifications (GS-notify-3) runs in every row whose plan has notify. */
+const checked = (r: CompileSuccess) =>
+  r.scenarios.filter((s) => MINE.has(s.module) || s.id === "GS-notify-3");
 const keyPrefix = `b218${randomBytes(3).toString("hex")}`;
 
 let db: postgres.Sql;
@@ -97,7 +100,7 @@ function ctx(r: CompileSuccess): GateContext {
     runtime: rt,
     runtimeRole: role,
     browser,
-    goalScenarios: mine(r),
+    goalScenarios: checked(r),
   };
 }
 
@@ -119,7 +122,7 @@ async function ready(r: CompileSuccess): Promise<Check[]> {
   const g1 = await runG1(c);
   expect(failed(g1), "G1").toEqual([]);
   expect(g1.checks.some((x) => x.id === "G1-MOBILE-01" && x.status === "pass")).toBe(true);
-  for (const s of mine(r))
+  for (const s of checked(r))
     expect(g1.checks.find((x) => x.id === `G1-GOAL-${s.id}`)?.status, s.id).toBe("pass");
   return g1.checks;
 }

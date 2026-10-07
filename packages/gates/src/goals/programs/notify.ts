@@ -24,8 +24,12 @@ const settingsPage: GoalProgram = async (t) => {
   );
   const connector = new Map((t.spec.integrations ?? []).map((i) => [i.name, i.connector]));
   const channels = new Set(steps.map((s) => connector.get(String(s.integration))));
+  // «Кому» — every kind of recipient the plan's notify steps have (B2-47), not just the owner.
+  const to = steps.map((s) => String(s.to ?? ""));
   const want: [boolean, RegExp, string][] = [
-    [steps.some((s) => s.to === "$owner"), /владельц/i, "владельцу"],
+    [to.includes("$owner"), /владельц/i, "владельцу"],
+    [to.some((x) => x.startsWith("$role:")), /сотрудник/i, "сотрудникам"],
+    [to.some((x) => x.startsWith("$record.")), /клиент|посетител|получател/i, "клиенту"],
     [channels.has("email"), /письм/i, "письмом"],
     [channels.has("telegram"), /telegram/i, "в Telegram"],
   ];

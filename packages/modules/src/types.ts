@@ -35,8 +35,8 @@ export interface ModuleContext {
 }
 
 /**
- * Context of a file generator: the compiled spec (entities, roles, merged permissions; functions and pages are not
- * final yet) and the goal-panel metrics of the plan — the list compilePlan returns.
+ * Context of a file generator: the compiled spec (entities, roles, merged permissions, workflows and
+ * integrations; functions and pages are not final yet) and the goal-panel metrics of the plan — the list compilePlan returns.
  */
 export interface GenContext extends ModuleContext {
   spec: AppSpec;

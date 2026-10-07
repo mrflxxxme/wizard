@@ -705,9 +705,17 @@ class Compilation {
     else this.generated.push({ module, file, gen: src });
   }
 
-  /** Context of a module's generators: the spec so far and the plan's metrics. */
+  /**
+   * Context of a module's generators: the spec so far with every module's workflows and integrations (B2-47: the
+   * notify page lists the notifications of other modules too, e.g. the reports digest) and the plan's metrics.
+   */
   private genCtx(id: string): GenContext {
-    return { ...this.ctx(id), spec: this.spec, metrics: this.planMetrics };
+    const spec: AppSpec = {
+      ...this.spec,
+      ...(this.workflows.length ? { workflows: this.workflows } : {}),
+      ...(this.integrations.length ? { integrations: this.integrations } : {}),
+    };
+    return { ...this.ctx(id), spec, metrics: this.planMetrics };
   }
 
   private renderGenerated(): void {
