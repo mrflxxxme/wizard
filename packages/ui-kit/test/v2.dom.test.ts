@@ -148,6 +148,18 @@ describe("CanvasBlock", () => {
     await r.rerender(h(CanvasBlock, { state: "sketch", label: "Врачи", onSelect }, "x"));
     expect(r.$("p-block").getAttribute("role")).toBeNull();
   });
+
+  test("pickSketch (B2-29): a sketch block of a plan is pickable, a materializing one is not", async () => {
+    const onSelect = vi.fn();
+    const r = await render(
+      h(CanvasBlock, { state: "sketch", label: "Услуги", onSelect, pickSketch: true }, "x"),
+    );
+    expect(r.$("p-block").getAttribute("role")).toBe("button");
+    await r.rerender(
+      h(CanvasBlock, { state: "materializing", label: "Услуги", onSelect, pickSketch: true }, "x"),
+    );
+    expect(r.$("p-block").getAttribute("role")).toBeNull();
+  });
 });
 
 describe("ChatSheet", () => {

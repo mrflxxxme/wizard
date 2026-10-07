@@ -23,13 +23,13 @@ export interface BoardProps {
   xray: XrayModel | null;
   xrayVisible: boolean;
   selected: string | null;
-  /** Ready blocks are pickable («ткни и скажи»). */
+  /** Blocks are pickable («ткни и скажи», B2-29): ready ones and the sketch of a plan awaiting approval. */
   onSelect?(b: CanvasBlockModel): void;
 }
 
 function Block({ b, p }: { b: CanvasBlockModel; p: BoardProps }): ReactNode {
   const state = p.stateOf(b.id);
-  const pickable = state === "ready" && p.onSelect !== undefined;
+  const pickable = state !== "materializing" && p.onSelect !== undefined;
   return (
     <div
       className={`${s.slotWrap} ${p.born.has(b.id) ? s.born : ""} ${p.touched.has(b.id) ? s.touch : ""}`}
@@ -44,7 +44,7 @@ function Block({ b, p }: { b: CanvasBlockModel; p: BoardProps }): ReactNode {
         label={canvas.pick.block(b.title)}
         selected={p.selected === b.id}
         testId={`canvas-block-${b.id}`}
-        {...(pickable ? { onSelect: () => p.onSelect?.(b) } : {})}
+        {...(pickable ? { onSelect: () => p.onSelect?.(b), pickSketch: true } : {})}
       >
         <BlockBody b={b} />
       </CanvasBlock>

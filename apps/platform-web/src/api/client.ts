@@ -28,6 +28,7 @@ import type {
   Me,
   Member,
   Message,
+  MessageBlock,
   MessageTarget,
   Org,
   OrgSettings,
@@ -35,6 +36,7 @@ import type {
   PilotOrg,
   PilotReadiness,
   PilotUsage,
+  PlanEdit,
   PlanSketch,
   PreviewUrl,
   Publication,
@@ -159,15 +161,22 @@ export function createApiClient(opts: ClientOptions = {}) {
       idempotencyKey = newIdempotencyKey(),
     ) => call<{ system: System; run: Run }>("POST", "/systems", { body, idempotencyKey }),
     getSystem: (id: string) => call<SystemView>("GET", sys(id)),
-    /** With target (M3-01) the request becomes a point_edit build of target.file. */
+    /**
+     * With target (M3-01) the request becomes a point_edit build of target.file; with block (B2-29) the wish goes to
+     * the planner about that canvas block.
+     */
     postMessage: (
       id: string,
       text: string,
-      opts: { target?: MessageTarget } = {},
+      opts: { target?: MessageTarget; block?: MessageBlock } = {},
       idempotencyKey = newIdempotencyKey(),
     ) =>
       call<{ message: Message; run: Run }>("POST", `${sys(id)}/messages`, {
-        body: opts.target ? { text, target: opts.target } : { text },
+        body: opts.target
+          ? { text, target: opts.target }
+          : opts.block
+            ? { text, block: opts.block }
+            : { text },
         idempotencyKey,
       }),
     postAnswers: (
@@ -184,6 +193,9 @@ export function createApiClient(opts: ClientOptions = {}) {
     getSystemPlan: (id: string) => call<{ plan: SystemPlanRevision | null }>("GET", `${sys(id)}/plan`),
     getPlanSketch: (id: string) =>
       call<{ revision: number | null; sketch: PlanSketch | null }>("GET", `${sys(id)}/plan/sketch`),
+    /** editSystemPlan: deterministic edits without a model (dryRun — the sketch of «what if», not saved). */
+    editPlan: (id: string, body: { revision: number; edits: PlanEdit[]; dryRun?: boolean }) =>
+      call<{ plan: SystemPlanRevision }>("PATCH", `${sys(id)}/plan`, { body }),
     approvePlan: (id: string, revision: number, idempotencyKey = newIdempotencyKey()) =>
       call<{ run: Run }>("POST", `${sys(id)}/plan/approve`, { body: { revision }, idempotencyKey }),
     startFix: (id: string, idempotencyKey = newIdempotencyKey()) =>

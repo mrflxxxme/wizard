@@ -1,12 +1,13 @@
 // /admin «Обращения» (D68, M2-57 mvp_scope): copies of «Написать команде» — who, organization, system, text, the
 // reply deadline (overdue in red) and the «отвечено» mark. The founder answers by letter; there is no conversation here.
 // Client text is rendered as text (React escapes it), never as HTML.
-import { Button } from "@wizard/ui-kit";
+
 import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { SupportRequestItem } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
 import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
 import s from "../../screens/admin/Admin.module.css";

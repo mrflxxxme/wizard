@@ -115,12 +115,14 @@
       {
        "name": "sticky_header",
        "label": "Закреплённая шапка",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "anchor_nav",
        "label": "Меню по секциям страницы",
-       "value": true
+       "value": true,
+       "type": "bool"
       }
      ]
     },
@@ -136,37 +138,44 @@
       {
        "name": "item_label",
        "label": "Как называть позицию",
-       "value": "Услуга"
+       "value": "Услуга",
+       "type": "string"
       },
       {
        "name": "show_prices",
        "label": "Показывать цены",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "with_duration",
        "label": "Длительность услуги",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "with_categories",
        "label": "Разделы каталога",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "with_photos",
        "label": "Фото позиций",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля позиции",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "showcase_title",
        "label": "Заголовок витрины",
-       "value": "Услуги и цены"
+       "value": "Услуги и цены",
+       "type": "string"
       }
      ]
     },
@@ -183,7 +192,8 @@
       {
        "name": "slot_minutes",
        "label": "Шаг расписания, минут",
-       "value": 60
+       "value": 60,
+       "type": "int"
       },
       {
        "name": "workdays",
@@ -194,72 +204,126 @@
         "wed",
         "thu",
         "fri"
+       ],
+       "type": "enum_list",
+       "options": [
+        {
+         "value": "mon",
+         "label": "Пн"
+        },
+        {
+         "value": "tue",
+         "label": "Вт"
+        },
+        {
+         "value": "wed",
+         "label": "Ср"
+        },
+        {
+         "value": "thu",
+         "label": "Чт"
+        },
+        {
+         "value": "fri",
+         "label": "Пт"
+        },
+        {
+         "value": "sat",
+         "label": "Сб"
+        },
+        {
+         "value": "sun",
+         "label": "Вс"
+        }
        ]
       },
       {
        "name": "day_start",
        "label": "Начало дня",
-       "value": "09:00"
+       "value": "09:00",
+       "type": "time"
       },
       {
        "name": "day_end",
        "label": "Конец дня",
-       "value": "18:00"
+       "value": "18:00",
+       "type": "time"
       },
       {
        "name": "break_start",
        "label": "Начало перерыва",
-       "value": null
+       "value": null,
+       "type": "time"
       },
       {
        "name": "break_end",
        "label": "Конец перерыва",
-       "value": null
+       "value": null,
+       "type": "time"
       },
       {
        "name": "with_specialists",
        "label": "Несколько специалистов",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "specialist_label",
        "label": "Как называть специалиста",
-       "value": "Специалист"
+       "value": "Специалист",
+       "type": "string"
       },
       {
        "name": "capacity",
        "label": "Мест на одно время",
-       "value": 1
+       "value": 1,
+       "type": "int"
       },
       {
        "name": "confirm",
        "label": "Подтверждение записи",
-       "value": "auto"
+       "value": "auto",
+       "type": "enum",
+       "options": [
+        {
+         "value": "auto",
+         "label": "Сразу"
+        },
+        {
+         "value": "manual",
+         "label": "Сотрудником"
+        }
+       ]
       },
       {
        "name": "cancel_by_link",
        "label": "Отмена по ссылке из письма",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "reschedule_by_link",
        "label": "Перенос по ссылке из письма",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "cancel_until_hours",
        "label": "Отмена не позже чем за, часов",
-       "value": 2
+       "value": 2,
+       "type": "int"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля записи",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "retention_days",
        "label": "Срок хранения записей, дней",
-       "value": 365
+       "value": 365,
+       "type": "int"
       }
      ]
     },
@@ -278,27 +342,42 @@
        "label": "Каналы для владельца и сотрудников",
        "value": [
         "email"
+       ],
+       "type": "enum_list",
+       "options": [
+        {
+         "value": "email",
+         "label": "Почта"
+        },
+        {
+         "value": "telegram",
+         "label": "Telegram"
+        }
        ]
       },
       {
        "name": "notify_staff",
        "label": "Уведомлять сотрудников",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "visitor_emails",
        "label": "Письма посетителям (с согласия)",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "reminder_hours",
        "label": "Напоминание посетителю за, часов",
-       "value": 24
+       "value": 24,
+       "type": "int"
       },
       {
        "name": "second_reminder_hours",
        "label": "Второе напоминание за, часов",
-       "value": 0
+       "value": 0,
+       "type": "int"
       }
      ]
     },
@@ -314,32 +393,48 @@
       {
        "name": "client_label",
        "label": "Как называть клиента",
-       "value": "Клиент"
+       "value": "Клиент",
+       "type": "string"
       },
       {
        "name": "match_by",
        "label": "Узнавать клиента по",
-       "value": "phone"
+       "value": "phone",
+       "type": "enum",
+       "options": [
+        {
+         "value": "phone",
+         "label": "Телефону"
+        },
+        {
+         "value": "email",
+         "label": "Почте"
+        }
+       ]
       },
       {
        "name": "tags",
        "label": "Метки клиентов",
-       "value": []
+       "value": [],
+       "type": "string_list"
       },
       {
        "name": "notes",
        "label": "Заметки сотрудников",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля клиента",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "retention_days",
        "label": "Срок хранения данных клиента, дней",
-       "value": 1095
+       "value": 1095,
+       "type": "int"
       }
      ]
     },
@@ -355,17 +450,40 @@
       {
        "name": "period",
        "label": "Период по умолчанию",
-       "value": "month"
+       "value": "month",
+       "type": "enum",
+       "options": [
+        {
+         "value": "week",
+         "label": "Неделя"
+        },
+        {
+         "value": "month",
+         "label": "Месяц"
+        }
+       ]
       },
       {
        "name": "export_csv",
        "label": "Выгрузка в CSV",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "digest",
        "label": "Сводка владельцу",
-       "value": "none"
+       "value": "none",
+       "type": "enum",
+       "options": [
+        {
+         "value": "none",
+         "label": "Нет"
+        },
+        {
+         "value": "weekly",
+         "label": "Раз в неделю письмом"
+        }
+       ]
       }
      ]
     }
@@ -587,12 +705,14 @@
       {
        "name": "sticky_header",
        "label": "Закреплённая шапка",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "anchor_nav",
        "label": "Меню по секциям страницы",
-       "value": true
+       "value": true,
+       "type": "bool"
       }
      ]
     },
@@ -608,37 +728,44 @@
       {
        "name": "item_label",
        "label": "Как называть позицию",
-       "value": "Услуга"
+       "value": "Услуга",
+       "type": "string"
       },
       {
        "name": "show_prices",
        "label": "Показывать цены",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "with_duration",
        "label": "Длительность услуги",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "with_categories",
        "label": "Разделы каталога",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "with_photos",
        "label": "Фото позиций",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля позиции",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "showcase_title",
        "label": "Заголовок витрины",
-       "value": "Услуги и цены"
+       "value": "Услуги и цены",
+       "type": "string"
       }
      ]
     },
@@ -654,7 +781,8 @@
       {
        "name": "slot_minutes",
        "label": "Шаг расписания, минут",
-       "value": 30
+       "value": 30,
+       "type": "int"
       },
       {
        "name": "workdays",
@@ -665,72 +793,126 @@
         "wed",
         "thu",
         "fri"
+       ],
+       "type": "enum_list",
+       "options": [
+        {
+         "value": "mon",
+         "label": "Пн"
+        },
+        {
+         "value": "tue",
+         "label": "Вт"
+        },
+        {
+         "value": "wed",
+         "label": "Ср"
+        },
+        {
+         "value": "thu",
+         "label": "Чт"
+        },
+        {
+         "value": "fri",
+         "label": "Пт"
+        },
+        {
+         "value": "sat",
+         "label": "Сб"
+        },
+        {
+         "value": "sun",
+         "label": "Вс"
+        }
        ]
       },
       {
        "name": "day_start",
        "label": "Начало дня",
-       "value": "09:00"
+       "value": "09:00",
+       "type": "time"
       },
       {
        "name": "day_end",
        "label": "Конец дня",
-       "value": "21:00"
+       "value": "21:00",
+       "type": "time"
       },
       {
        "name": "break_start",
        "label": "Начало перерыва",
-       "value": null
+       "value": null,
+       "type": "time"
       },
       {
        "name": "break_end",
        "label": "Конец перерыва",
-       "value": null
+       "value": null,
+       "type": "time"
       },
       {
        "name": "with_specialists",
        "label": "Несколько специалистов",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "specialist_label",
        "label": "Как называть специалиста",
-       "value": "Врач"
+       "value": "Врач",
+       "type": "string"
       },
       {
        "name": "capacity",
        "label": "Мест на одно время",
-       "value": 1
+       "value": 1,
+       "type": "int"
       },
       {
        "name": "confirm",
        "label": "Подтверждение записи",
-       "value": "auto"
+       "value": "auto",
+       "type": "enum",
+       "options": [
+        {
+         "value": "auto",
+         "label": "Сразу"
+        },
+        {
+         "value": "manual",
+         "label": "Сотрудником"
+        }
+       ]
       },
       {
        "name": "cancel_by_link",
        "label": "Отмена по ссылке из письма",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "reschedule_by_link",
        "label": "Перенос по ссылке из письма",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "cancel_until_hours",
        "label": "Отмена не позже чем за, часов",
-       "value": 2
+       "value": 2,
+       "type": "int"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля записи",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "retention_days",
        "label": "Срок хранения записей, дней",
-       "value": 365
+       "value": 365,
+       "type": "int"
       }
      ]
     },
@@ -749,27 +931,42 @@
        "value": [
         "email",
         "telegram"
+       ],
+       "type": "enum_list",
+       "options": [
+        {
+         "value": "email",
+         "label": "Почта"
+        },
+        {
+         "value": "telegram",
+         "label": "Telegram"
+        }
        ]
       },
       {
        "name": "notify_staff",
        "label": "Уведомлять сотрудников",
-       "value": false
+       "value": false,
+       "type": "bool"
       },
       {
        "name": "visitor_emails",
        "label": "Письма посетителям (с согласия)",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "reminder_hours",
        "label": "Напоминание посетителю за, часов",
-       "value": 24
+       "value": 24,
+       "type": "int"
       },
       {
        "name": "second_reminder_hours",
        "label": "Второе напоминание за, часов",
-       "value": 2
+       "value": 2,
+       "type": "int"
       }
      ]
     },
@@ -785,32 +982,48 @@
       {
        "name": "client_label",
        "label": "Как называть клиента",
-       "value": "Пациент"
+       "value": "Пациент",
+       "type": "string"
       },
       {
        "name": "match_by",
        "label": "Узнавать клиента по",
-       "value": "phone"
+       "value": "phone",
+       "type": "enum",
+       "options": [
+        {
+         "value": "phone",
+         "label": "Телефону"
+        },
+        {
+         "value": "email",
+         "label": "Почте"
+        }
+       ]
       },
       {
        "name": "tags",
        "label": "Метки клиентов",
-       "value": []
+       "value": [],
+       "type": "string_list"
       },
       {
        "name": "notes",
        "label": "Заметки сотрудников",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "extra_fields",
        "label": "Дополнительные поля клиента",
-       "value": null
+       "value": null,
+       "type": "fields"
       },
       {
        "name": "retention_days",
        "label": "Срок хранения данных клиента, дней",
-       "value": 1095
+       "value": 1095,
+       "type": "int"
       }
      ]
     },
@@ -826,17 +1039,40 @@
       {
        "name": "period",
        "label": "Период по умолчанию",
-       "value": "month"
+       "value": "month",
+       "type": "enum",
+       "options": [
+        {
+         "value": "week",
+         "label": "Неделя"
+        },
+        {
+         "value": "month",
+         "label": "Месяц"
+        }
+       ]
       },
       {
        "name": "export_csv",
        "label": "Выгрузка в CSV",
-       "value": true
+       "value": true,
+       "type": "bool"
       },
       {
        "name": "digest",
        "label": "Сводка владельцу",
-       "value": "none"
+       "value": "none",
+       "type": "enum",
+       "options": [
+        {
+         "value": "none",
+         "label": "Нет"
+        },
+        {
+         "value": "weekly",
+         "label": "Раз в неделю письмом"
+        }
+       ]
       }
      ]
     }
@@ -1093,13 +1329,22 @@
      "index": 0,
      "type": "header",
      "label": "Шапка",
-     "variant": "bar"
+     "variant": "bar",
+     "variants": [
+      "bar",
+      "centered"
+     ]
     },
     {
      "index": 1,
      "type": "hero",
      "label": "Первый экран",
      "variant": "split",
+     "variants": [
+      "split",
+      "centered",
+      "cover"
+     ],
      "title": "Спокойное лечение без очередей"
     },
     {
@@ -1107,6 +1352,11 @@
      "type": "services",
      "label": "Услуги из каталога",
      "variant": "list",
+     "variants": [
+      "list",
+      "cards",
+      "table"
+     ],
      "title": "Услуги и цены"
     },
     {
@@ -1114,6 +1364,10 @@
      "type": "steps",
      "label": "Как это работает",
      "variant": "numbered",
+     "variants": [
+      "numbered",
+      "timeline"
+     ],
      "title": "Как записаться"
     },
     {
@@ -1121,13 +1375,21 @@
      "type": "cta",
      "label": "Призыв к действию",
      "variant": "band",
+     "variants": [
+      "band",
+      "card"
+     ],
      "title": "Запишитесь на удобное время"
     },
     {
      "index": 5,
      "type": "footer",
      "label": "Подвал",
-     "variant": "simple"
+     "variant": "simple",
+     "variants": [
+      "simple",
+      "columns"
+     ]
     }
    ],
    "metrics": [

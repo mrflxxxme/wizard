@@ -3,7 +3,6 @@
 // (staff access to system data for 24 h, takedown / dismiss / restore with a journal note) and founder reviews before
 // prod, and the «Пилот» tab (Pilot.tsx: beta_readiness, client invitations, pilot orgs, LLM spend). Non-staff see
 // «Страница не найдена» (the API answers 404); any 403 MFA_REQUIRED returns to the code screen.
-import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type {
@@ -17,6 +16,8 @@ import type {
 import { usePlatform } from "../../app/context.js";
 import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { AdminGaps } from "../../features/gaps/AdminGaps.js";
 import { AdminSupport } from "../../features/support/AdminSupport.js";
 import { gaps } from "../../i18n/ru/gaps.js";
@@ -25,7 +26,6 @@ import { ru } from "../../i18n/ru.js";
 import f from "../abuse/Abuse.module.css";
 import a from "../auth/Auth.module.css";
 import st from "../settings/Settings.module.css";
-import { Rail } from "../workspace/Rail.js";
 import s from "./Admin.module.css";
 import { PilotSection } from "./Pilot.js";
 
@@ -69,6 +69,14 @@ function useNow(ms = 30_000): number {
 }
 
 export function AdminConsole(): ReactNode {
+  return (
+    <PlatformPage nav={false}>
+      <AdminGate />
+    </PlatformPage>
+  );
+}
+
+function AdminGate(): ReactNode {
   const { api } = usePlatform();
   // undefined — loading; null — not staff (404).
   const [session, setSession] = useState<StaffSession | null | undefined>(undefined);
@@ -89,17 +97,21 @@ export function AdminConsole(): ReactNode {
 
   if (session === null)
     return (
-      <main style={{ padding: 24 }} data-testid="admin-not-found">
-        <h1>{ru.admin.notStaff}</h1>
-        <Button variant="secondary" onClick={() => navigate("/")}>
-          {ru.errors.toStart}
-        </Button>
+      <main className={a.page} data-testid="admin-not-found">
+        <section className={a.card}>
+          <h1 className={a.title}>{ru.admin.notStaff}</h1>
+          <div className={a.row}>
+            <Button variant="secondary" onClick={() => navigate("/")}>
+              {ru.errors.toStart}
+            </Button>
+          </div>
+        </section>
       </main>
     );
   if (session === undefined)
     return (
-      <main aria-busy="true" style={{ padding: 24 }}>
-        {error ? <Alert>{error}</Alert> : ru.admin.loading}
+      <main aria-busy="true" className={st.page}>
+        {error ? <Alert>{error}</Alert> : <p className={st.hint}>{ru.admin.loading}</p>}
       </main>
     );
   if (!session.mfaEnrolled) return <Enroll onDone={reload} />;
@@ -299,87 +311,84 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
     initial === "support" || initial === "gaps" ? initial : "reports",
   );
   return (
-    <div className={st.shell}>
-      <Rail />
-      <main className={st.page} data-testid="admin-console">
-        <header className={st.head}>
-          <h1 className={st.title}>{ru.admin.title}</h1>
-          <span className={st.spacer} />
-          <div className={s.tabs}>
-            <button
-              type="button"
-              className={s.tab}
-              aria-pressed={tab === "reports"}
-              onClick={() => setTab("reports")}
-              data-testid="admin-tab-reports"
-            >
-              {ru.admin.tabReports}
-            </button>
-            <button
-              type="button"
-              className={s.tab}
-              aria-pressed={tab === "reviews"}
-              onClick={() => {
-                setTab("reviews");
-                setQueryParam("report", null);
-              }}
-              data-testid="admin-tab-reviews"
-            >
-              {ru.admin.tabReviews}
-            </button>
-            <button
-              type="button"
-              className={s.tab}
-              aria-pressed={tab === "pilot"}
-              onClick={() => {
-                setTab("pilot");
-                setQueryParam("report", null);
-              }}
-              data-testid="admin-tab-pilot"
-            >
-              {ru.admin.tabPilot}
-            </button>
-            <button
-              type="button"
-              className={s.tab}
-              aria-pressed={tab === "support"}
-              onClick={() => {
-                setTab("support");
-                setQueryParam("report", null);
-              }}
-              data-testid="admin-tab-support"
-            >
-              {support.admin.tab}
-            </button>
-            <button
-              type="button"
-              className={s.tab}
-              aria-pressed={tab === "gaps"}
-              onClick={() => {
-                setTab("gaps");
-                setQueryParam("report", null);
-              }}
-              data-testid="admin-tab-gaps"
-            >
-              {gaps.tab}
-            </button>
-          </div>
-        </header>
-        {tab === "support" ? (
-          <AdminSupport onMfaRequired={onMfaRequired} />
-        ) : tab === "gaps" ? (
-          <AdminGaps onMfaRequired={onMfaRequired} />
-        ) : tab === "pilot" ? (
-          <PilotSection onMfaRequired={onMfaRequired} />
-        ) : tab === "reviews" ? (
-          <Reviews onMfaRequired={onMfaRequired} />
-        ) : reportId ? (
-          <Ticket key={reportId} id={reportId} onMfaRequired={onMfaRequired} />
-        ) : (
-          <Queue onMfaRequired={onMfaRequired} />
-        )}
-      </main>
-    </div>
+    <main className={st.page} data-testid="admin-console">
+      <header className={st.head}>
+        <h1 className={st.title}>{ru.admin.title}</h1>
+        <span className={st.spacer} />
+        <div className={s.tabs}>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "reports"}
+            onClick={() => setTab("reports")}
+            data-testid="admin-tab-reports"
+          >
+            {ru.admin.tabReports}
+          </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "reviews"}
+            onClick={() => {
+              setTab("reviews");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-reviews"
+          >
+            {ru.admin.tabReviews}
+          </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "pilot"}
+            onClick={() => {
+              setTab("pilot");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-pilot"
+          >
+            {ru.admin.tabPilot}
+          </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "support"}
+            onClick={() => {
+              setTab("support");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-support"
+          >
+            {support.admin.tab}
+          </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "gaps"}
+            onClick={() => {
+              setTab("gaps");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-gaps"
+          >
+            {gaps.tab}
+          </button>
+        </div>
+      </header>
+      {tab === "support" ? (
+        <AdminSupport onMfaRequired={onMfaRequired} />
+      ) : tab === "gaps" ? (
+        <AdminGaps onMfaRequired={onMfaRequired} />
+      ) : tab === "pilot" ? (
+        <PilotSection onMfaRequired={onMfaRequired} />
+      ) : tab === "reviews" ? (
+        <Reviews onMfaRequired={onMfaRequired} />
+      ) : reportId ? (
+        <Ticket key={reportId} id={reportId} onMfaRequired={onMfaRequired} />
+      ) : (
+        <Queue onMfaRequired={onMfaRequired} />
+      )}
+    </main>
   );
 }
 

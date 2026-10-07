@@ -3276,7 +3276,7 @@ tasks:
     owner: frontend
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Тап по блоку подсвечивает его, в строке ввода — метка блока и подсказки («Другой вид», «Убрать»); правки параметров, вариантов секций и порядка уходят в PATCH /plan с revision и применяются без модели и кредитов (e2e: 0 вызовов моделей)"
@@ -3330,7 +3330,7 @@ tasks:
     owner: frontend
     parallel_group: b2-b
     estimate_days: 4
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Все экраны platform-web на компонентах v2, e2e платформы зелёные, скриншоты 390/1280 light/dark"

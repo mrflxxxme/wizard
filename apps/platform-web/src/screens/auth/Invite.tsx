@@ -1,10 +1,11 @@
 // S-invite «Принятие приглашения» (/invite/:token): not signed in → S-auth with a return here; «Принять» →
 // POST /invites/:token/accept → the organization becomes current and S1 shows its systems with the invited role.
-import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { usePlatform } from "../../app/context.js";
 import { navigate } from "../../app/router.js";
+import { Button } from "../../components/v2/Button.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Auth.module.css";
 
@@ -36,43 +37,42 @@ export function InviteScreen({ token }: { token: string }): ReactNode {
   }
 
   return (
-    <main className={s.page}>
-      <section className={s.card} data-testid="invite-card" aria-labelledby="invite-title">
-        <span className={s.logo} aria-hidden="true">
-          W
-        </span>
-        <h1 id="invite-title" className={s.title}>
-          {ru.invite.title}
-        </h1>
-        <p className={s.muted}>{ru.invite.text}</p>
-        {auth === "anon" ? (
-          <Button
-            variant="primary"
-            data-testid="invite-login"
-            onClick={() => navigate(`/login?next=${encodeURIComponent(here)}`)}
-          >
-            {ru.invite.login}
-          </Button>
-        ) : (
-          <div className={s.row}>
+    <PlatformPage nav={false}>
+      <main className={s.page}>
+        <section className={s.card} data-testid="invite-card" aria-labelledby="invite-title">
+          <h1 id="invite-title" className={s.title}>
+            {ru.invite.title}
+          </h1>
+          <p className={s.muted}>{ru.invite.text}</p>
+          {auth === "anon" ? (
             <Button
               variant="primary"
-              data-testid="invite-accept"
-              loading={busy}
-              disabled={auth === "loading"}
-              onClick={() => void accept()}
+              data-testid="invite-login"
+              onClick={() => navigate(`/login?next=${encodeURIComponent(here)}`)}
             >
-              {ru.invite.accept}
+              {ru.invite.login}
             </Button>
-            {me && <span className={s.muted}>{me.user.email}</span>}
-          </div>
-        )}
-        {error && (
-          <p className={s.formError} role="alert" data-testid="invite-error">
-            {error}
-          </p>
-        )}
-      </section>
-    </main>
+          ) : (
+            <div className={s.row}>
+              <Button
+                variant="primary"
+                data-testid="invite-accept"
+                loading={busy}
+                disabled={auth === "loading"}
+                onClick={() => void accept()}
+              >
+                {ru.invite.accept}
+              </Button>
+              {me && <span className={s.muted}>{me.user.email}</span>}
+            </div>
+          )}
+          {error && (
+            <p className={s.formError} role="alert" data-testid="invite-error">
+              {error}
+            </p>
+          )}
+        </section>
+      </main>
+    </PlatformPage>
   );
 }

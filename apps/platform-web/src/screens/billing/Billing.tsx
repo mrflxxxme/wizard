@@ -7,19 +7,19 @@
 // balance and the ledger stay; the money controls appear only once GET /orgs/:orgId has answered (no flash).
 // D70 (M2-56 mvp_scope): on the pilot plan or with payments off the client sees «На пилоте бесплатно» and what is left
 // of the pilot limit in words (GET /orgs/:id/usage) — no balance, ledger or credits; «Написать команде» for more.
-import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { Billing, CreditBalance, LedgerEntry, Org, PlanId } from "../../api/types.js";
 import { canOwn, usePlatform } from "../../app/context.js";
 import { goExternal, navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { UsageDetails, useUsage } from "../../features/pricing/Usage.js";
 import { TeamButton } from "../../features/support/SupportWidget.js";
 import { pricing } from "../../i18n/ru/pricing.js";
 import { fmtCredits, ru } from "../../i18n/ru.js";
 import s from "../settings/Settings.module.css";
-import { Rail } from "../workspace/Rail.js";
 import b from "./Billing.module.css";
 
 /** billing.yaml#plans (prices, limits, monthly grants, login methods by plan — F4); the API returns only the current. */
@@ -223,8 +223,7 @@ export function BillingScreen(): ReactNode {
         : "none";
 
   return (
-    <div className={s.shell}>
-      <Rail />
+    <PlatformPage>
       <main className={s.page}>
         <header className={s.head}>
           <h1 className={s.title}>{ru.billing.title}</h1>
@@ -572,6 +571,6 @@ export function BillingScreen(): ReactNode {
           )}
         </div>
       </main>
-    </div>
+    </PlatformPage>
   );
 }

@@ -1,19 +1,24 @@
-// S1 «Старт» (platform-screens.yaml#screens S1): M1 — current organization, «только РФ» (owner → PATCH settings),
-// the team size on system cards, sign out. M2-09: `/?template=<id>` preselects a template (from S-welcome); pilot
-// orgs get a link back to the pilot onboarding. D70: no credits — «На пилоте бесплатно» and what is left in words; a
-// limit error offers «Написать команде» (D68).
-import { Button } from "@wizard/ui-kit";
+// S1 «Старт» (platform-screens.yaml#screens S1) on the design system v2 (B2-33, prototype E): a serif greeting and one
+// input row in the middle of the screen; the first phrase creates the system and opens it (/s/:id — the canvas for the
+// modules pipeline). Examples under the row fill it in; below the fold — «Ваши системы». M1 — current organization,
+// «только РФ» (owner → PATCH settings), the team size on system cards, sign out. M2-09: `/?template=<id>` preselects a
+// template (from S-welcome); pilot orgs get a link back to the pilot onboarding. D70: no credits — «На пилоте бесплатно»
+// and what is left in words; a limit error offers «Написать команде» (D68).
+import { Chip, Serif } from "@wizard/ui-kit/v2";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError, newIdempotencyKey } from "../api/client.js";
 import type { DemoScenario, System } from "../api/types.js";
 import { canEdit, canOwn, usePlatform } from "../app/context.js";
 import { navigate, useRoute } from "../app/router.js";
 import { Alert, Pill } from "../components/ui.js";
+import { Button } from "../components/v2/Button.js";
+import { AppLink, PlatformPage } from "../components/v2/Shell.js";
 import { DemoBanner } from "../features/demo/DemoBanner.js";
 import { needsTeam, usageText, useUsage } from "../features/pricing/Usage.js";
 import { TeamButton } from "../features/support/SupportWidget.js";
 import { demo } from "../i18n/ru/demo.js";
 import { pricing } from "../i18n/ru/pricing.js";
+import { shell } from "../i18n/ru/shell.js";
 import { ru } from "../i18n/ru.js";
 import s from "./Start.module.css";
 
@@ -34,6 +39,7 @@ export function Start(): ReactNode {
   const [plan, setPlan] = useState<string | null>(null);
   // B2-02: demo replay of a staff org — only recorded scenarios can start, offered as briefs.
   const [demoScenarios, setDemoScenarios] = useState<DemoScenario[] | null>(null);
+  const [greeting] = useState(() => shell.greeting(new Date().getHours()));
 
   const signedIn = auth === "ready";
   // orgId only when it matters (api.yaml createSystem: required for members of several organizations); the server
@@ -94,9 +100,10 @@ export function Start(): ReactNode {
   }
 
   const empty = prompt.trim().length < 3;
+  const allowed = canEdit(role, auth);
 
   async function submit() {
-    if (empty || busy) return;
+    if (empty || busy || !allowed) return;
     setBusy(true);
     setError(null);
     keyRef.current ??= newIdempotencyKey();
@@ -118,235 +125,224 @@ export function Start(): ReactNode {
     }
   }
 
+  /** Enter sends (prototype E), Shift+Enter — a new line; Ctrl/Cmd+Enter sends too. */
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      void submit();
-    }
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    if (e.shiftKey && !(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    void submit();
   }
 
+  const actions = (
+    <>
+      {/* D70: «На пилоте бесплатно · ещё 2 сборки · ещё 15 правок» (GET /orgs/:id/usage), no credits; S-billing. */}
+      {(usageLine || plan) && (
+        <AppLink to="/billing" testId="start-usage" className={s.usage} label={pricing.pillTitle}>
+          <Pill tone={usageLine ? "ok" : "neutral"}>{usageLine ?? pricing.plan(plan ?? "")}</Pill>
+        </AppLink>
+      )}
+      {signedIn && (
+        <Button size="sm" variant="ghost" onClick={() => void logout()} data-testid="start-logout">
+          {ru.start.logout}
+        </Button>
+      )}
+    </>
+  );
+
   return (
-    <div className={s.page}>
-      <header className={s.topbar}>
-        <a
-          className={s.logo}
-          href="/"
-          aria-label={ru.rail.home}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/");
-          }}
-        >
-          B
-        </a>
-        <span className={s.policy} data-testid="start-policy">
-          {ru.start.policy(settings?.buildModelLabel)}
-        </span>
-        <span className={s.spacer} />
-        {signedIn && (me?.memberships.length ?? 0) > 1 && (
-          <label className={s.ruOnly}>
-            <span>{ru.start.org}</span>
-            <select
-              className={s.orgSelect}
-              value={orgId}
-              onChange={(e) => setOrg(e.target.value)}
-              data-testid="start-org"
-            >
-              {me?.memberships.map((m) => (
-                <option key={m.orgId} value={m.orgId}>
-                  {ru.start.orgOption(m.orgName, ru.roles[m.role] ?? m.role)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {signedIn && (me?.memberships.length ?? 0) <= 1 && role && (
-          <span className={s.policy} data-testid="start-org">
-            {ru.start.orgOption(me?.memberships[0]?.orgName ?? "", ru.roles[role] ?? role)}
-          </span>
-        )}
-        <label
-          className={s.ruOnly}
-          title={
-            settings?.t1Restricted
-              ? ru.start.ruOnlyRestricted
-              : canOwn(role)
-                ? ru.start.ruOnlyHint
-                : ru.start.ruOnlyOwner
-          }
-        >
-          <input
-            type="checkbox"
-            data-testid="start-ru-only"
-            checked={settings?.ruOnly === true || settings?.t1Restricted === true}
-            disabled={!settings || settings.t1Restricted === true || !canOwn(role) || ruBusy}
-            onChange={(e) => void toggleRuOnly(e.target.checked)}
-          />
-          {ru.start.ruOnly}
-        </label>
-        {/* D70: «На пилоте бесплатно · ещё 2 сборки · ещё 15 правок» (GET /orgs/:id/usage), no credits; S-billing. */}
-        {(usageLine || plan) && (
-          <a
-            href="/billing"
-            data-testid="start-usage"
-            className={s.creditsLink}
-            title={pricing.pillTitle}
-            onClick={(e) => {
+    <PlatformPage actions={actions} testId="start">
+      <main className={s.main}>
+        <section className={`${s.hero} ${busy ? s.leaving : ""}`} aria-labelledby="start-hello">
+          {demoScenarios && <DemoBanner testId="start-demo-replay" />}
+          <Serif as="h1" size="xl" className={s.hello}>
+            <span id="start-hello">{greeting}</span>
+          </Serif>
+          <p className={s.lead}>{shell.start.lead}</p>
+          <form
+            className={`${s.composer} ${busy ? s.thinking : ""}`}
+            aria-busy={busy || undefined}
+            onSubmit={(e) => {
               e.preventDefault();
-              navigate("/billing");
+              void submit();
             }}
+            autoComplete="off"
           >
-            <Pill tone={usageLine ? "ok" : "neutral"}>{usageLine ?? pricing.plan(plan ?? "")}</Pill>
-          </a>
-        )}
-        {pilot && (
-          <a
-            href="/welcome"
-            className={s.creditsLink}
-            data-testid="start-pilot-about"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate("/welcome");
-            }}
-          >
-            {ru.start.pilotAbout}
-          </a>
-        )}
-        {signedIn && (
-          <Button size="sm" variant="ghost" onClick={() => void logout()} data-testid="start-logout">
-            {ru.start.logout}
-          </Button>
-        )}
-      </header>
-
-      <main className={s.hero}>
-        {demoScenarios && <DemoBanner testId="start-demo-replay" />}
-        <h1 className={s.title}>{ru.start.title}</h1>
-        <p className={s.subtitle}>{ru.start.subtitle}</p>
-        <label className={s.promptLabel} htmlFor="start-prompt">
-          {ru.start.promptLabel}
-        </label>
-        <textarea
-          id="start-prompt"
-          className={s.prompt}
-          data-testid="start-prompt"
-          value={prompt}
-          maxLength={8000}
-          rows={6}
-          placeholder={ru.start.promptPlaceholder}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={onKey}
-        />
-        <fieldset className={s.templates}>
-          <legend className={s.templatesLabel}>{ru.start.templates}:</legend>
-          {ru.templates.map((t) => (
+            <label className={s.srOnly} htmlFor="start-prompt">
+              {ru.start.promptLabel}
+            </label>
+            <textarea
+              id="start-prompt"
+              className={s.input}
+              data-testid="start-prompt"
+              value={prompt}
+              maxLength={8000}
+              rows={1}
+              placeholder={shell.start.placeholder}
+              enterKeyHint="send"
+              aria-describedby="start-send-hint"
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={onKey}
+            />
             <button
-              key={t.id}
-              type="button"
-              className={s.chip}
-              data-testid={`start-template-${t.id}`}
-              aria-pressed={templateId === t.id}
-              onClick={() => {
-                setTemplateId(t.id);
-                setPrompt(t.prompt);
-              }}
+              type="submit"
+              className={s.send}
+              data-testid="start-submit"
+              aria-label={shell.start.send}
+              title={shell.start.sendHint}
+              disabled={empty || !allowed || busy}
             >
-              {t.label}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 19V5M6 11l6-6 6 6" />
+              </svg>
             </button>
-          ))}
-        </fieldset>
-        {demoScenarios && demoScenarios.length > 0 && (
-          <fieldset className={s.templates}>
-            <legend className={s.templatesLabel}>{demo.scenarios}:</legend>
-            {demoScenarios.map((d) => (
-              <button
-                key={d.name}
-                type="button"
-                className={s.chip}
-                data-testid={`start-demo-${d.name}`}
-                aria-pressed={prompt === d.brief}
-                onClick={() => {
-                  setTemplateId(undefined);
-                  setPrompt(d.brief);
-                }}
-              >
-                {d.title}
-              </button>
-            ))}
-          </fieldset>
-        )}
-        <div className={s.actions}>
-          <span className={s.uploadHint}>
-            <Button variant="ghost" size="sm" data-testid="start-upload" disabled title={ru.start.uploadHint}>
-              {ru.start.upload}
-            </Button>
-            <span>{ru.start.uploadHint}</span>
-          </span>
-          <Button
-            variant="primary"
-            data-testid="start-submit"
-            disabled={empty || !canEdit(role, auth)}
-            loading={busy}
-            onClick={() => void submit()}
-            title={ru.start.submitHint}
-          >
-            {ru.start.submit}
-          </Button>
-        </div>
-        {error && (
-          <Alert>
-            {error.message} {needsTeam(error.code) && <TeamButton />}
-          </Alert>
-        )}
-      </main>
-
-      {systems.length > 0 && (
-        <section className={s.systems} aria-label={ru.start.systems}>
-          <h2 className={s.systemsTitle}>{ru.start.systems}</h2>
-          <ul className={s.systemsList}>
-            {systems.map((sys) => (
-              <li key={sys.id} className={s.systemItem}>
-                <a
-                  href={`/s/${sys.id}`}
-                  className={s.systemCard}
-                  data-testid="start-system-card"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate(`/s/${sys.id}`);
+            <span id="start-send-hint" className={s.srOnly}>
+              {shell.start.sendHint}
+            </span>
+          </form>
+          <ul className={s.examples} aria-label={shell.start.examples}>
+            {ru.templates.map((t) => (
+              <li key={t.id}>
+                <Chip
+                  tone="outline"
+                  testId={`start-template-${t.id}`}
+                  pressed={templateId === t.id}
+                  onClick={() => {
+                    setTemplateId(t.id);
+                    setPrompt(t.prompt);
                   }}
                 >
-                  <span className={s.systemName}>{sys.name}</span>
-                  <span title={sys.prodRevision ? ru.start.prodTitle : ru.start.draftTitle}>
-                    <Pill tone={sys.prodRevision ? "ok" : "neutral"}>
-                      {sys.prodRevision ? ru.start.stageProd : ru.start.stageDraft}
-                    </Pill>
-                  </span>
-                  <span className={s.systemStage}>{ru.workspace.stage[sys.stage] ?? sys.stage}</span>
-                </a>
-                {team !== null && (
-                  <span className={s.systemTeam}>
-                    {ru.start.team(team)}
-                    {canOwn(role) && (
-                      <>
-                        {" · "}
-                        <a
-                          href={`/s/${sys.id}/settings`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            navigate(`/s/${sys.id}/settings`);
-                          }}
-                        >
-                          {ru.start.invite}
-                        </a>
-                      </>
-                    )}
-                  </span>
-                )}
+                  {t.label}
+                </Chip>
               </li>
             ))}
           </ul>
+          {demoScenarios && demoScenarios.length > 0 && (
+            <ul className={s.examples} aria-label={demo.scenarios}>
+              {demoScenarios.map((d) => (
+                <li key={d.name}>
+                  <Chip
+                    tone="outline"
+                    testId={`start-demo-${d.name}`}
+                    pressed={prompt === d.brief}
+                    onClick={() => {
+                      setTemplateId(undefined);
+                      setPrompt(d.brief);
+                    }}
+                  >
+                    {d.title}
+                  </Chip>
+                </li>
+              ))}
+            </ul>
+          )}
+          {error && (
+            <Alert>
+              {error.message} {needsTeam(error.code) && <TeamButton />}
+            </Alert>
+          )}
+          <div className={s.meta}>
+            <span data-testid="start-policy">{ru.start.policy(settings?.buildModelLabel)}</span>
+            <span className={s.metaRow}>
+              {signedIn && (me?.memberships.length ?? 0) > 1 && (
+                <label className={s.metaItem}>
+                  <span>{ru.start.org}</span>
+                  <select
+                    className={s.select}
+                    value={orgId}
+                    onChange={(e) => setOrg(e.target.value)}
+                    data-testid="start-org"
+                  >
+                    {me?.memberships.map((m) => (
+                      <option key={m.orgId} value={m.orgId}>
+                        {ru.start.orgOption(m.orgName, ru.roles[m.role] ?? m.role)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {signedIn && (me?.memberships.length ?? 0) <= 1 && role && (
+                <span className={s.metaItem} data-testid="start-org">
+                  {ru.start.orgOption(me?.memberships[0]?.orgName ?? "", ru.roles[role] ?? role)}
+                </span>
+              )}
+              <label
+                className={s.metaItem}
+                title={
+                  settings?.t1Restricted
+                    ? ru.start.ruOnlyRestricted
+                    : canOwn(role)
+                      ? ru.start.ruOnlyHint
+                      : ru.start.ruOnlyOwner
+                }
+              >
+                <input
+                  type="checkbox"
+                  className={s.checkbox}
+                  data-testid="start-ru-only"
+                  checked={settings?.ruOnly === true || settings?.t1Restricted === true}
+                  disabled={!settings || settings.t1Restricted === true || !canOwn(role) || ruBusy}
+                  onChange={(e) => void toggleRuOnly(e.target.checked)}
+                />
+                {ru.start.ruOnly}
+              </label>
+              {pilot && (
+                <AppLink to="/welcome" className={s.metaLink} testId="start-pilot-about">
+                  {ru.start.pilotAbout}
+                </AppLink>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="start-upload"
+                disabled
+                title={ru.start.uploadHint}
+                className={s.upload}
+              >
+                {ru.start.upload}
+              </Button>
+              <span className={s.srOnly}>{ru.start.uploadHint}</span>
+            </span>
+          </div>
         </section>
-      )}
-    </div>
+
+        {systems.length > 0 && (
+          <section className={s.systems} aria-labelledby="start-systems">
+            <h2 id="start-systems" className={s.systemsTitle}>
+              {ru.start.systems}
+            </h2>
+            <ul className={s.systemsList}>
+              {systems.map((sys) => (
+                <li key={sys.id} className={s.systemItem}>
+                  <AppLink to={`/s/${sys.id}`} className={s.systemCard} testId="start-system-card">
+                    <Serif as="span" size="md" className={s.systemName}>
+                      {sys.name}
+                    </Serif>
+                    <span className={s.systemMeta}>
+                      <span title={sys.prodRevision ? ru.start.prodTitle : ru.start.draftTitle}>
+                        <Pill tone={sys.prodRevision ? "ok" : "neutral"}>
+                          {sys.prodRevision ? ru.start.stageProd : ru.start.stageDraft}
+                        </Pill>
+                      </span>
+                      <span className={s.systemStage}>{ru.workspace.stage[sys.stage] ?? sys.stage}</span>
+                    </span>
+                  </AppLink>
+                  {team !== null && (
+                    <span className={s.systemTeam}>
+                      {ru.start.team(team)}
+                      {canOwn(role) && (
+                        <>
+                          {" · "}
+                          <AppLink to={`/s/${sys.id}/settings`}>{ru.start.invite}</AppLink>
+                        </>
+                      )}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </main>
+    </PlatformPage>
   );
 }

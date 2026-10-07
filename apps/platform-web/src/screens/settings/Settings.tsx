@@ -4,7 +4,6 @@
 // данные» — the M2-10 ZIP by a single-use link, personal data only after a confirmation (M2-11), revisions with prod
 // rollback, and «Удалить систему» with a confirmation (M2-05, purge after 30 days). Owner-only actions are disabled for
 // editor/viewer with a hint; the server answers 403 anyway (D11).
-import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type {
@@ -24,11 +23,12 @@ import type {
 import { canOwn, usePlatform } from "../../app/context.js";
 import { navigate } from "../../app/router.js";
 import { Alert, Pill } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
+import { RunStatus } from "../../components/v2/RunStatus.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
 import { subscribeRun } from "../../run/stream.js";
-import { Rail } from "../workspace/Rail.js";
-import { RunNotice } from "../workspace/RunNotice.js";
 import s from "./Settings.module.css";
 
 const ROLES: OrgRole[] = ["owner", "editor", "viewer"];
@@ -411,21 +411,19 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
 
   if (loadError)
     return (
-      <div className={s.shell}>
-        <Rail />
+      <PlatformPage>
         <main className={s.page}>
           <Alert>{loadError}</Alert>
         </main>
-      </div>
+      </PlatformPage>
     );
   if (!view)
     return (
-      <div className={s.shell}>
-        <Rail systemId={systemId} />
+      <PlatformPage>
         <main className={s.page} aria-busy="true">
           {ru.code.loading}
         </main>
-      </div>
+      </PlatformPage>
     );
 
   const system = view.system;
@@ -447,8 +445,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
   const policyHref = prodUrl ? new URL(spec?.compliance?.policyPage || "/privacy", prodUrl).toString() : null;
 
   return (
-    <div className={s.shell}>
-      <Rail systemId={systemId} />
+    <PlatformPage>
       <main className={s.page}>
         <header className={s.head}>
           <h1 className={s.title}>{ru.settings.title(system.name)}</h1>
@@ -473,7 +470,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           </p>
         )}
         {runId && (run.kind === "rollback" || run.phase !== "idle") && (
-          <RunNotice run={{ ...run, kind: "rollback" }} />
+          <RunStatus run={{ ...run, kind: "rollback" }} />
         )}
 
         <div className={s.grid}>
@@ -1074,7 +1071,7 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
           onNo={() => setConfirmDelete(false)}
         />
       )}
-    </div>
+    </PlatformPage>
   );
 }
 

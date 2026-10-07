@@ -219,6 +219,37 @@
   box-shadow: none;
 }
 
+/* «Другой вид» (B2-29): the ready variants of the first screen — split (default), centered, cover */
+.hero[data-variant="centered"] .copy {
+  justify-items: center;
+  text-align: center;
+}
+
+.hero[data-variant="centered"] .ph {
+  min-height: 140px;
+}
+
+.hero[data-variant="cover"] {
+  position: relative;
+  isolation: isolate;
+}
+
+.hero[data-variant="cover"] .ph {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  min-height: 0;
+}
+
+.hero[data-variant="cover"] .copy {
+  min-height: 220px;
+  padding: 24px 20px;
+}
+
+.hero[data-variant="cover"] .slot {
+  display: none;
+}
+
 /* services */
 .svcList {
   display: grid;
@@ -285,6 +316,11 @@
   list-style: none;
 }
 
+.steps[data-variant="timeline"] {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
 .stepItem {
   display: flex;
   align-items: center;
@@ -292,6 +328,17 @@
   padding: 10px 12px;
   border-radius: 14px;
   font-size: 13.5px;
+}
+
+.steps[data-variant="timeline"] .stepItem {
+  --sf: transparent;
+  border-radius: 0;
+  padding: 8px 2px;
+  border-bottom: 1px dashed var(--p-line);
+}
+
+.steps[data-variant="timeline"] .stepItem:last-child {
+  border-bottom: 0;
 }
 
 .num {
@@ -327,6 +374,13 @@
   border-radius: 16px;
 }
 
+.cta[data-variant="card"] {
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 440px;
+  margin-inline: auto;
+}
+
 .ctaH {
   margin: 0;
   font-size: 18px;
@@ -334,6 +388,10 @@
   letter-spacing: -0.015em;
   min-width: 0;
   flex: 1 1 200px;
+}
+
+.cta[data-variant="card"] .ctaH {
+  flex: none;
 }
 
 .form {
@@ -742,6 +800,11 @@
   .hero {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
     align-items: stretch;
+  }
+
+  .hero[data-variant="centered"],
+  .hero[data-variant="cover"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .h {

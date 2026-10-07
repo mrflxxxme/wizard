@@ -1,84 +1,66 @@
-.page {
-  min-height: 100vh;
-  background: var(--w-bg);
-}
-
+/* S-welcome (M2-09) on the design system v2 (B2-33): serif welcome, quiet cards, example chips. */
 .main {
-  width: 100%;
-  max-width: 880px;
+  width: min(880px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 48px 20px 32px;
+  padding: clamp(28px, 7vh, 72px) 0 96px;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
 .title {
-  margin: 0;
-  font-size: clamp(26px, 5vw, 38px);
-  line-height: 1.15;
+  max-width: 720px;
 }
 
 .lead {
   margin: 0;
-  color: var(--w-muted);
   max-width: 680px;
+  color: var(--p-ink-2);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 12px;
 }
 
 .card {
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
-  background: var(--w-surface);
-  padding: 16px;
+  padding: 18px 20px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-2);
 }
 
 .card p {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--p-ink);
 }
 
 .cardTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .start {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  padding-top: 8px;
 }
 
 .muted {
   margin: 0;
-  color: var(--w-muted);
+  color: var(--p-ink-2);
   font-size: 14px;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  border: 1px solid var(--w-line);
-  background: var(--w-surface);
-  color: var(--w-ink);
-  border-radius: 999px;
-  padding: 8px 14px;
-  min-height: 40px;
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--w-accent);
+  gap: 6px;
 }

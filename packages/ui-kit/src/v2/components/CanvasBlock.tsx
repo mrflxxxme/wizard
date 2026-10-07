@@ -16,6 +16,8 @@ export interface CanvasBlockProps extends PBase {
   label?: string;
   /** Pickable when ready: tap or Enter selects the block. */
   onSelect?(): void;
+  /** B2-29: pickable in the sketch too (a plan awaiting approval); never while materializing. */
+  pickSketch?: boolean;
   selected?: boolean;
   children?: ReactNode;
 }
@@ -31,6 +33,7 @@ export function CanvasBlock({
   delayMs = 0,
   label,
   onSelect,
+  pickSketch = false,
   selected = false,
   className,
   testId,
@@ -49,7 +52,7 @@ export function CanvasBlock({
     return () => clearTimeout(t);
   }, [state, delayMs]);
 
-  const pickable = state === "ready" && onSelect !== undefined;
+  const pickable = (state === "ready" || (pickSketch && state === "sketch")) && onSelect !== undefined;
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();

@@ -199,30 +199,36 @@ const plural = (n, [one, few, many]) => {
 // ---------------- HTML ----------------
 
 const CSS = `
-:root{color-scheme:light;--page:#f6f6f3;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--muted:#6f6d68;
---line:#e1e0d9;--ring:rgba(11,11,11,.1);--todo:#dcdbd3;--progress:#2a78d6;--done:#0ca30c;--good-ink:#006300;
---warn:#fab219;--crit:#d03b3b;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--chip:#efeee9;--accent-ink:#1c5cab}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;
---ink:#fff;--ink-2:#c3c2b7;--muted:#9a988f;--line:#2c2c2a;--ring:rgba(255,255,255,.1);--todo:#383835;--progress:#3987e5;
---done:#0ca30c;--good-ink:#0ca30c;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--chip:#262624;--accent-ink:#86b6ef}}
-:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink-2:#c3c2b7;--muted:#9a988f;
---line:#2c2c2a;--ring:rgba(255,255,255,.1);--todo:#383835;--progress:#3987e5;--done:#0ca30c;--good-ink:#0ca30c;
---s1:#3987e5;--s2:#d95926;--s3:#199e70;--chip:#262624;--accent-ink:#86b6ef}
+/* B2-33: the warm neutral palette of the platform design system v2 (ui-kit.yaml#platform_v2, grill-7): paper
+   background, graphite ink, amber for work in progress; Inter and Source Serif 4 when installed, system fonts else. */
+:root{color-scheme:light;--page:#F8F7F4;--surface:#FFFFFF;--ink:#1D1C1A;--ink-2:#6B6862;--muted:#6B6862;--line:#E9E6E0;
+--ring:rgba(48,40,28,.06);--todo:#D8D4CB;--progress:#D98A2B;--done:#3A7350;--good-ink:#3A7350;--warn:#D98A2B;
+--crit:#A0443A;--s1:#3D6FA8;--s2:#D98A2B;--s3:#3A7350;--chip:#F2F0EB;--accent-ink:#1D1C1A;
+--shadow:0 0 0 1px rgba(48,40,28,.05),0 1px 2px rgba(48,40,28,.05),0 10px 24px -12px rgba(48,40,28,.12)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#1B1A18;--surface:#252421;--ink:#EEECE7;--ink-2:#A6A29A;--muted:#A6A29A;--line:#33312D;
+--ring:rgba(255,255,255,.05);--todo:#47443F;--progress:#E0953A;--done:#8DC3A0;--good-ink:#8DC3A0;--warn:#E0953A;
+--crit:#E59A8F;--s1:#7FA7D6;--s2:#E0953A;--s3:#8DC3A0;--chip:#2D2C29;--accent-ink:#EEECE7;
+--shadow:0 0 0 1px rgba(255,255,255,.05),0 1px 2px rgba(0,0,0,.3)}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#1B1A18;--surface:#252421;--ink:#EEECE7;--ink-2:#A6A29A;--muted:#A6A29A;--line:#33312D;
+--ring:rgba(255,255,255,.05);--todo:#47443F;--progress:#E0953A;--done:#8DC3A0;--good-ink:#8DC3A0;--warn:#E0953A;
+--crit:#E59A8F;--s1:#7FA7D6;--s2:#E0953A;--s3:#8DC3A0;--chip:#2D2C29;--accent-ink:#EEECE7;
+--shadow:0 0 0 1px rgba(255,255,255,.05),0 1px 2px rgba(0,0,0,.3)}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+-webkit-font-smoothing:antialiased}
 main{max-width:960px;margin:0 auto;padding:32px 16px 64px}
-h1{font-size:30px;line-height:1.15;margin:0 0 6px;letter-spacing:-.01em}
-h2{font-size:19px;margin:0 0 12px}
+h1{font:400 38px/1.1 "Source Serif 4","Literata",Georgia,"Times New Roman",serif;margin:0 0 8px;letter-spacing:-.015em}
+h2{font-size:17px;font-weight:600;margin:0 0 12px}
 h3{font-size:16px;margin:0}
 p{margin:0}
 .lead{color:var(--ink-2)}
 .meta{color:var(--muted);font-size:13px;margin-top:6px}
 section{margin-top:28px}
-.card{background:var(--surface);border:1px solid var(--ring);border-radius:14px;padding:16px}
+.card{background:var(--surface);box-shadow:var(--shadow);border-radius:18px;padding:18px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:20px}
 .tile .label{color:var(--ink-2);font-size:13px}
-.tile .value{font-size:26px;font-weight:600;line-height:1.2;margin-top:4px}
+.tile .value{font:400 30px/1.15 "Source Serif 4","Literata",Georgia,serif;margin-top:4px}
 .tile .sub{color:var(--muted);font-size:13px;margin-top:2px}
 .bar{display:flex;gap:2px;height:10px;border-radius:5px;overflow:hidden;background:var(--surface);margin:10px 0 6px}
 .bar span{display:block;height:100%}
@@ -265,7 +271,7 @@ li.day:first-child{border-top:none}
 .m-ok{background:var(--s1)}.m-warn{background:var(--warn)}.m-crit{background:var(--crit)}
 .flag{font-size:13px;margin-top:6px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
-@media (max-width:520px){h1{font-size:26px}ul.tasks li{grid-template-columns:56px 1fr}.side{grid-column:2;text-align:left}
+@media (max-width:520px){h1{font-size:30px}ul.tasks li{grid-template-columns:56px 1fr}.side{grid-column:2;text-align:left}
 .deps{grid-column:2}.tile .value{font-size:22px}}
 `;
 

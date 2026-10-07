@@ -1,25 +1,34 @@
-/* Staff console (/admin, M2-08) on top of the S10 layout (settings/Settings.module.css). */
+/* Staff console (/admin, M2-08) on the design system v2 (B2-33), over the cabinet layout (settings/Settings.module.css). */
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 13px;
+  background: var(--p-sunken);
+  max-width: 100%;
 }
 
 .tab {
-  padding: 6px 12px;
-  border: 1px solid var(--w-line);
-  border-radius: 999px;
-  background: var(--w-surface);
-  color: var(--w-ink);
-  font: inherit;
-  font-size: 14px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--p-ink-2);
+  font: 500 13.5px / 1.2 var(--p-f-ui);
+  white-space: nowrap;
   cursor: pointer;
 }
 
+.tab:hover {
+  color: var(--p-ink);
+}
+
 .tab[aria-pressed="true"] {
-  border-color: var(--w-accent);
-  background: var(--w-accent-soft);
-  color: var(--w-accent-text);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  box-shadow: var(--p-sh-1);
 }
 
 .row {
@@ -28,43 +37,45 @@
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius-sm);
-  background: var(--w-surface);
-  color: var(--w-ink);
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--p-r-md);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-1);
+  color: var(--p-ink);
   font: inherit;
   font-size: 14px;
   text-align: left;
   cursor: pointer;
+  transition: transform 0.4s var(--p-spring);
 }
 
 .row:hover {
-  border-color: var(--w-accent);
+  transform: translateY(-1px);
 }
 
 .url {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--w-muted);
+  color: var(--p-ink-2);
 }
 
 .late {
-  color: var(--w-bad);
+  color: var(--p-bad);
   font-weight: 600;
 }
 
 .facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 6px 14px;
+  gap: 8px 16px;
   margin: 0;
   font-size: 14px;
 }
 
 .facts dt {
-  color: var(--w-muted);
+  color: var(--p-ink-2);
 }
 
 .facts dd {
@@ -98,22 +109,30 @@
 
 .tableWrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .table {
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 100%;
 }
 
 .table th,
 .table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--w-line);
+  max-width: 280px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--p-line);
   text-align: left;
   vertical-align: top;
-  max-width: 280px;
-  overflow-wrap: anywhere;
+  /* Words, not letters: the table scrolls sideways inside .tableWrap on a phone. */
+  overflow-wrap: normal;
+}
+
+.table th {
+  color: var(--p-ink-2);
+  font-weight: 500;
 }
 
 .journal {
@@ -123,5 +142,11 @@
 @media (max-width: 720px) {
   .row {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .tab {
+    min-height: 44px;
   }
 }

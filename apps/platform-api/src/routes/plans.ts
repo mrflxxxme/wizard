@@ -98,7 +98,8 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
     });
   });
 
-  // editSystemPlan: deterministic edits of the plan awaiting approval (no model, no credits).
+  // editSystemPlan: deterministic edits of the plan awaiting approval (no model, no credits); B2-29 — also of the
+  // approved plan of a built system (the rebuild starts from approveSystemPlan).
   r.patch("/systems/:id/plan", async (c) => {
     const user = c.get("user");
     const s0 = await loadSystem(user, c.req.param("id"), "editor");
@@ -114,7 +115,10 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
       const s = await lockSystem(t, s0.id);
       if (s.stage === "building") throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
       const row = await loadPlan(t.trx, s.id);
-      if (row?.status !== "awaiting_approval")
+      // B2-29: a built system edits its approved plan too — the edit becomes a revision awaiting approval (stage
+      // card) and reaches the system with the rebuild (approveSystemPlan, build mode change).
+      const rebuild = row?.status === "approved" && s.stage === "ready";
+      if (!row || (row.status !== "awaiting_approval" && !rebuild))
         throw new ApiError("NO_PLAN", "Нет плана, ожидающего утверждения");
       if (row.revision !== b.revision)
         throw new ApiError("PLAN_REVISION_STALE", "План изменился — посмотрите новую версию", {
@@ -140,7 +144,11 @@ export function planRoutes(d: Deps): Hono<AppEnv> {
       });
       await t.trx
         .updateTable("platform.systems")
-        .set({ last_activity_at: new Date(), updated_at: new Date() })
+        .set({
+          ...(rebuild ? { stage: assertTransition(s.stage, "card") } : {}),
+          last_activity_at: new Date(),
+          updated_at: new Date(),
+        })
         .where("id", "=", s.id)
         .execute();
       return toPlanRevision(next, view);

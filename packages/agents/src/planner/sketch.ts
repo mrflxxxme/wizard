@@ -20,7 +20,17 @@ export interface PlanSketch {
     goals: string[];
     /** available — compiles today; soon — draft or needs a draft module. */
     status: "available" | "soon";
-    params: { name: string; label: string; value: unknown }[];
+    /**
+     * type — the manifest parameter type; options — values with labels of enum and enum_list (B2-29: the canvas
+     * offers toggles of a module screen without a model).
+     */
+    params: {
+      name: string;
+      label: string;
+      value: unknown;
+      type: string;
+      options?: { value: string; label: string }[];
+    }[];
   }[];
   roles: { name: string; label: string; access: string }[];
   entities: { name: string; label: string; fields: { name: string; label: string; type: string }[] }[];
@@ -32,7 +42,15 @@ export interface PlanSketch {
     roles: string[];
     module?: string;
   }[];
-  sections: { index: number; type: string; label: string; variant: string; title?: string }[];
+  /** variants — ready layout variants of the section type in the registry (B2-29: «Другой вид» on the canvas). */
+  sections: {
+    index: number;
+    type: string;
+    label: string;
+    variant: string;
+    variants: string[];
+    title?: string;
+  }[];
   metrics: { id: string; label: string; goal: string; module: string; unit: string }[];
   scenarios: { id: string; title: string; goal: string; module: string }[];
   outOfScope: { request: string; replacement: string; category: string; module?: string }[];
@@ -70,7 +88,8 @@ export interface SketchAutomation {
   steps: { type: string; entity?: string; entityLabel?: string; channel?: string; to?: string }[];
 }
 
-const sectionLabel = (type: string) => SECTION_CATALOG.find((s) => s.type === type)?.label ?? type;
+const sectionSpec = (registry: ModuleRegistry, type: string) =>
+  (registry.sections ?? SECTION_CATALOG).find((s) => s.type === type);
 
 function moduleRows(
   registry: ModuleRegistry,
@@ -92,6 +111,10 @@ function moduleRows(
           name: p.name,
           label: p.label,
           value: pm.params?.[p.name] ?? ("default" in p ? (p.default ?? null) : null),
+          type: p.type,
+          ...("options" in p && p.options
+            ? { options: p.options.map((o) => ({ value: o.value, label: o.label })) }
+            : {}),
         })),
       },
     ];
@@ -155,11 +178,13 @@ export function planSketch(plan: SystemPlan, compiled: CompileResult, registry: 
     ...empty,
     sections: (plan.landing?.sections ?? []).map((s, index) => {
       const title = s.content.title;
+      const spec = sectionSpec(registry, s.type);
       return {
         index,
         type: s.type,
-        label: sectionLabel(s.type),
+        label: spec?.label ?? s.type,
         variant: s.variant,
+        variants: [...(spec?.ready ?? [])],
         ...(typeof title === "string" ? { title } : {}),
       };
     }),

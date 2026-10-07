@@ -8,6 +8,7 @@ import {
   type CanvasBlockState,
   ChatMessage,
   ChatSheet,
+  Chip,
   Composer,
   Glass,
   PLATFORM_COLORS,
@@ -22,6 +23,8 @@ import type {
   Answer,
   GoalQuestion,
   Message,
+  MessageBlock,
+  PlanEdit,
   PlanSketch,
   RunEvent,
   SystemPlanRevision,
@@ -45,9 +48,10 @@ import {
   type LocalAnswer,
   materializedCount,
 } from "./model.js";
+import { blockActions } from "./pick.js";
 import { xrayModel } from "./xray.js";
 
-/** The block the client tapped («ткни и скажи»); the edits themselves are B2-29. */
+/** The block the client tapped («ткни и скажи», B2-29: hints and edits in pick.ts). */
 export interface SelectedBlock {
   id: string;
   kind: CanvasBlockModel["kind"];
@@ -61,7 +65,7 @@ export interface CanvasProps {
   systemId: string;
   /** GET /systems/:id already read by the route (pipeline = modules). */
   initial: SystemView;
-  /** B2-29 hook: a block was picked (null — the pick was cleared). */
+  /** A block was picked (null — the pick was cleared). */
   onBlockSelect?(block: SelectedBlock | null): void;
 }
 
@@ -119,7 +123,10 @@ export function sketchKey(sk: PlanSketch): string {
 function messageText(m: Message): string {
   if (m.role === "user") {
     const masked = m.payload?.maskedText;
-    return typeof masked === "string" ? masked : (m.text ?? "");
+    const text = typeof masked === "string" ? masked : (m.text ?? "");
+    // B2-29: a wish to a canvas block carries its label.
+    const block = m.payload?.block as { title?: unknown } | undefined;
+    return typeof block?.title === "string" && text ? canvas.pick.wish(block.title, text) : text;
   }
   return m.text ?? "";
 }
@@ -147,7 +154,9 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const [board, setBoard] = useState<BoardView>("overview");
   const [readyCard, setReadyCard] = useState(true);
   const [manualXray, setManualXray] = useState<boolean | null>(null);
-  const [selected, setSelected] = useState<CanvasBlockModel | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** The last removed section and the edits that bring it back («Вернуть»). */
+  const [undo, setUndo] = useState<{ title: string; edits: PlanEdit[] } | null>(null);
   const [theme, setTheme] = useState<PlatformThemeMode>(readTheme);
   const [live, setLive] = useState("");
   const [fx, setFx] = useState<{ born: Set<string>; touched: Set<string> }>({
@@ -281,6 +290,16 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     [sketch, view.system.name, localAnswers],
   );
 
+  const selected = useMemo(
+    () =>
+      selectedId && model
+        ? ([...model.frames.site, ...model.frames.phone, ...model.frames.cab].find(
+            (b) => b.id === selectedId,
+          ) ?? null)
+        : null,
+    [model, selectedId],
+  );
+
   // «Born» and «touched» blocks of a new model (amber edge for a change, rise for a new block).
   const sigs = useRef<Map<string, string> | null>(null);
   useEffect(() => {
@@ -315,11 +334,13 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const xrayVisible = !!xray && (manualXray ?? autoXray);
 
   const ready = stage === "ready" && !runActive;
+  // A built system whose plan was edited waits for the rebuild: its blocks stay built (B2-29).
+  const built = view.system.previewRevision !== null;
   const order = model?.order ?? [];
   const done = materializedCount(order.length, progress.fraction);
   const stateOf = useCallback(
     (id: string): CanvasBlockState => {
-      if (ready) return "ready";
+      if (ready || (stage === "card" && built && progress.phase === "idle")) return "ready";
       const i = order.indexOf(id);
       if (stage === "building" || stage === "failed" || progress.phase !== "idle") {
         if (progress.phase === "done") return "ready";
@@ -328,9 +349,22 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       }
       return "sketch";
     },
-    [ready, order, stage, progress.phase, done],
+    [ready, built, order, stage, progress.phase, done],
   );
   const delayOf = useCallback(() => 0, []);
+
+  // «Ткни и скажи» (B2-29): blocks of a plan awaiting approval or of a built system; never during a run.
+  const canPick =
+    !!plan && sketch?.stage === "plan" && !runActive && !building && (ready || stage === "card");
+  const actions = useMemo(
+    () => (selected && sketch && canPick ? blockActions(selected, sketch, plan?.plan ?? null) : null),
+    [selected, sketch, canPick, plan],
+  );
+  // The picked block went away (removed, or picking is over): the pick is cleared.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pick is a plain function of this render
+  useEffect(() => {
+    if (selectedId && (!canPick || (model && !selected))) pick(null);
+  }, [selectedId, canPick, model, selected]);
 
   // Esc clears the pick when the history is closed (the sheet handles Esc itself while open).
   useEffect(() => {
@@ -343,8 +377,9 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   });
 
   function pick(b: CanvasBlockModel | null) {
-    const next = b && selected?.id === b.id ? null : b;
-    setSelected(next);
+    const next = b && selectedId === b.id ? null : b;
+    setSelectedId(next?.id ?? null);
+    if (next) setUndo(null);
     if (next) announce(canvas.pick.selected(next.title));
     const idx = next?.data.sectionIndex;
     onBlockSelect?.(
@@ -396,6 +431,59 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     if (rows.length >= questions.length) void submitAnswers(rows);
   }
 
+  /**
+   * A hint of a picked block (B2-29): the edits go to PATCH /plan with the revision the client sees, no model and no
+   * credits. The dry run answers first and the sketch is redrawn by it at once; then the edit is saved. A stale
+   * revision reloads the sketch with a plain message; an edit the plan cannot take is explained and rolled back.
+   */
+  async function edit(edits: PlanEdit[], said: string, after?: { title: string; edits: PlanEdit[] }) {
+    const base = plan;
+    if (!base || busy !== null) return;
+    setBusy("edit");
+    setError(null);
+    setNotice(null);
+    setUndo(null);
+    let previewed = false;
+    try {
+      const dry = await api.editPlan(systemId, { revision: base.revision, edits, dryRun: true });
+      applySketch(dry.plan.sketch);
+      previewed = true;
+      const saved = await api.editPlan(systemId, { revision: base.revision, edits });
+      setPlan(saved.plan);
+      applySketch(saved.plan.sketch);
+      setSent((x) => [...x, said]);
+      announce(canvas.pick.done(said));
+      if (after) setUndo(after);
+      // A built system: the edit waits for the rebuild (the plan card says «Пересобрать»).
+      if (built) setNotice(canvas.pick.rebuild);
+      if (stage === "ready") await reload().catch(() => {});
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "PLAN_REVISION_STALE") {
+        setNotice(canvas.pick.stale);
+        sketchRef.current = null;
+        await loadPlan();
+        await reload().catch(() => {});
+      } else {
+        setError(
+          e instanceof ApiError && e.code === "PLAN_INVALID" ? canvas.pick.invalid(e.message) : errText(e),
+        );
+        if (previewed) {
+          sketchRef.current = null;
+          applySketch(base.sketch);
+        }
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function hint(id: string) {
+    const h = actions?.hints.find((x) => x.id === id);
+    if (!h || !selected) return;
+    const title = selected.title;
+    void edit(h.edits, h.said, h.undo ? { title, edits: h.undo } : undefined);
+  }
+
   async function send(t: string) {
     const value = t.trim();
     if (!value) return;
@@ -405,10 +493,22 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       answer(question, { questionId: question.id, text: value }, value);
       return;
     }
-    const r = await act("message", () => api.postMessage(systemId, value));
+    // A wish with the label of the picked block goes to the planner about that block (B2-29).
+    const target = selected && canPick ? selected : null;
+    const idx = target?.data.sectionIndex;
+    const block: MessageBlock | undefined = target
+      ? {
+          id: target.id,
+          title: target.title,
+          ...(target.module ? { module: target.module } : {}),
+          ...(typeof idx === "number" ? { sectionIndex: idx } : {}),
+        }
+      : undefined;
+    const r = await act("message", () => api.postMessage(systemId, value, block ? { block } : {}));
     if (!r) return;
     setText("");
-    setSent((x) => [...x, value]);
+    setUndo(null);
+    setSent((x) => [...x, target ? canvas.pick.wish(target.title, value) : value]);
     setRunId(r.run.id);
     await reload().catch(() => {});
   }
@@ -417,6 +517,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     if (!plan) return;
     const r = await act("approve", () => api.approvePlan(systemId, plan.revision));
     if (!r) return;
+    setNotice(null);
+    setUndo(null);
     setManualXray(null);
     setReadyCard(true);
     setBoard("overview");
@@ -495,7 +597,44 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const failure = stage === "failed" || progress.phase === "failed" ? progress.failure : null;
 
   let dock: ReactNode = null;
-  if (stage === "interview" && question) {
+  if (selected && actions) {
+    dock = (
+      <div className={s.pick} data-testid="canvas-pick">
+        {actions.variant && (
+          <p className={s.pickMeta} data-testid="canvas-pick-variant">
+            {canvas.pick.variantOf(actions.variant.index, actions.variant.of)}
+          </p>
+        )}
+        {actions.params.length > 0 && (
+          <fieldset className={s.params} data-testid="canvas-params">
+            <legend className={s.srOnly}>{canvas.pick.params}</legend>
+            {actions.params.map((c) => (
+              <fieldset key={c.param} className={s.paramSet}>
+                <legend className={c.kind === "bool" ? s.srOnly : s.paramLabel}>{c.label}</legend>
+                <div className={s.param}>
+                  {c.options.map((o) => (
+                    <Chip
+                      key={o.id}
+                      tone="outline"
+                      pressed={o.pressed}
+                      disabled={busy !== null}
+                      testId={`canvas-param-${c.param}${c.kind === "bool" ? "" : `-${o.id}`}`}
+                      onClick={() => void edit(o.edits, o.said)}
+                    >
+                      {o.label}
+                    </Chip>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+          </fieldset>
+        )}
+        <p className={s.pickNote} data-testid="canvas-pick-note">
+          {built ? canvas.pick.built : canvas.pick.free}
+        </p>
+      </div>
+    );
+  } else if (stage === "interview" && question) {
     dock = (
       <div className={s.qwrap}>
         <QuestionCard
@@ -529,7 +668,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     dock = (
       <div className={s.sum} data-testid="canvas-plan-card">
         <div className={s.sumText}>
-          <p className={s.sumTitle}>{canvas.plan.title}</p>
+          <p className={s.sumTitle}>{built ? canvas.plan.changed : canvas.plan.title}</p>
           <p className={s.sumMeta}>
             {[
               canvas.plan.goals(sketch.goals.length),
@@ -557,7 +696,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           disabled={busy !== null || errors.length > 0}
           onClick={() => void approve()}
         >
-          {busy === "approve" ? canvas.plan.approving : canvas.plan.build}
+          {busy === "approve" ? canvas.plan.approving : built ? canvas.plan.rebuild : canvas.plan.build}
         </ActionButton>
       </div>
     );
@@ -802,11 +941,6 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               {demo.banner}
             </p>
           )}
-          {notice && (
-            <p className={s.notice} role="status">
-              {notice}
-            </p>
-          )}
           {model ? (
             <Board
               model={model}
@@ -819,7 +953,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               xray={xray}
               xrayVisible={xrayVisible}
               selected={selected?.id ?? null}
-              {...(ready ? { onSelect: (b: CanvasBlockModel) => pick(b) } : {})}
+              {...(canPick ? { onSelect: (b: CanvasBlockModel) => pick(b) } : {})}
             />
           ) : (
             <div className={s.empty} aria-busy={thinking || undefined} data-testid="canvas-empty">
@@ -848,6 +982,24 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           ))}
         >
           {dock}
+          {notice && (
+            <p className={s.sheetNotice} role="status" data-testid="canvas-notice">
+              {notice}
+            </p>
+          )}
+          {undo && !selected && (
+            <p className={s.undo} role="status" data-testid="canvas-undo">
+              <span>{canvas.pick.removed(undo.title)}</span>
+              <Chip
+                tone="outline"
+                testId="canvas-undo-button"
+                disabled={busy !== null}
+                onClick={() => void edit(undo.edits, canvas.pick.said.undo(undo.title))}
+              >
+                {canvas.pick.undo}
+              </Chip>
+            </p>
+          )}
           {error && (
             <p className={s.error} role="alert" data-testid="canvas-error">
               {error}
@@ -862,6 +1014,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             state={composerState}
             disabled={!canType || busy !== null}
             target={selected ? { label: selected.title, onClear: () => pick(null) } : null}
+            suggestions={actions?.hints.map((h) => ({ id: h.id, label: h.label })) ?? []}
+            onSuggestion={hint}
           />
         </ChatSheet>
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">

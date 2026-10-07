@@ -65,6 +65,13 @@ const targetSchema = z.strictObject({
     .regex(/^\/(?![/\\])/)
     .optional(),
 });
+/** api.yaml#postMessage.block (B2-29, «ткни и скажи»): the canvas block a wish is about. */
+const blockSchema = z.strictObject({
+  id: z.string().max(80),
+  title: z.string().trim().min(1).max(120),
+  module: z.string().max(40).optional(),
+  sectionIndex: z.number().int().min(0).optional(),
+});
 const intQ = z.coerce.number().int();
 
 interface Question {
@@ -274,9 +281,14 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     const s0 = await loadSystem(user, c.req.param("id"), "editor");
     const b = await jsonBody(
       c,
-      z.strictObject({ text: z.string().min(1).max(8000), target: targetSchema.optional() }),
+      z.strictObject({
+        text: z.string().min(1).max(8000),
+        target: targetSchema.optional(),
+        block: blockSchema.optional(),
+      }),
     );
     if (b.target) return pointEdit(c, user, s0, b.text, b.target);
+    const block = b.block;
     const out = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);
       if (s.stage === "building") throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
@@ -308,6 +320,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         role: "user",
         kind: "text",
         text: b.text,
+        ...(block ? { payload: { block } } : {}),
         runId: run.id,
         authorUserId: user.id,
       });
