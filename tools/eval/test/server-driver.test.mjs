@@ -159,7 +159,7 @@ describe("D67 driver on a fake platform", () => {
       { questionId: "q2", optionId: "no_login" },
     ]);
     // Free question → a short answer from the brief.
-    expect(by["mvp-06"].interview).toEqual({ turns: 2, buttons: 0, free: 1 });
+    expect(by["mvp-06"].interview).toEqual({ turns: 2, buttons: 0, free: 1, retries: 0 });
     const room = [...f.st.systems.values()].find((s) => s.prompt.startsWith("аренда"));
     expect(room.messages.find((m) => m.role === "user" && m !== room.messages[0]).text).toContain(
       "Переговорка одна",

@@ -201,6 +201,15 @@ describe.skipIf(!hasPsql)("D67 seed on the platform database", () => {
       (${build.id}, ${build.seq + 2}, 'build_metrics', ${api.deps.pg.json({ stages: stages(3), durationMs: 1000 })})`;
     const withMetrics = parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId })));
     expect(withMetrics.metrics).toEqual({ [r.systemId as string]: { stages: stages(3), durationMs: 1000 } });
+    // B2-41: answers of the models that did not pass (orch_invalid) per system, for the diagnosis in the report.
+    expect(withMetrics.invalid).toEqual({});
+    const issue = { path: "questions.0.options", code: "too_small", message: "Нужно 2–4 варианта" };
+    await api.deps.pg`insert into platform.run_events (run_id, seq, type, payload) values
+      (${build.id}, ${build.seq + 3}, 'orch_invalid',
+       ${api.deps.pg.json({ step: "interview", fallback: "questions", issues: [issue] })})`;
+    expect(parseCollectOutput(psql(tdb.url, collectSql({ orgId: seed.orgId }))).invalid).toEqual({
+      [r.systemId as string]: [{ step: "interview", fallback: "questions", issues: [issue] }],
+    });
     const { summary, text } = renderReport(doc, withMetrics);
     expect(summary.ready).toBe(1);
     expect(text).toContain(

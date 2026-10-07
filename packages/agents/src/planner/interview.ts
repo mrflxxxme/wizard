@@ -2,10 +2,14 @@
 // roles and resources, and button questions only for what the brief does not say (≤ MAX_GOAL_QUESTIONS, one
 // recommended option each) → the planner (planner.ts) → a plan that waits for the client's approval. Stateless between
 // turns like the orchestrator: the host persists GoalSession (JSON) and the outputs.
+// B2-41: a crooked model answer never ends the interview — tolerant reading (tolerant.ts), ≤ 2 repairs with the issues
+// as the tool result, then the fallback without a model (fallback.ts): deterministic questions on the interview turn,
+// the previous plan or a plan from the interview on the plan turn, else one more planner run. Each such answer is an
+// internal orch_invalid event {step, fallback, issues} (workflows.yaml#events) for the diagnosis and the metrics.
 import { randomUUID } from "node:crypto";
 import type { PlanError, SystemPlan } from "@wizard/appspec";
 import { LlmError, type OrgPolicy, type RouteContext } from "@wizard/llm";
-import { type CompileResult, type ModuleRegistry, planCatalog } from "@wizard/modules";
+import { type CompileResult, compilePlan, type ModuleRegistry, planCatalog } from "@wizard/modules";
 import { scrubJson } from "@wizard/pii";
 import { AgentError } from "../core/errors.js";
 import type { AgentEventSink, EmitFn, RunStepFn } from "../core/events.js";
@@ -14,7 +18,8 @@ import { defineTool, type ToolIssue } from "../core/tool.js";
 import { type CapabilityGap, type RecordDevelopmentRequest, reportCapabilityGapTool } from "../gaps.js";
 import { piiCategories, piiNoticeText } from "../orchestrator/pii.js";
 import { DEFAULT_REGISTRY } from "./catalog.js";
-import { runPlanner } from "./planner.js";
+import { fallbackAnalysis, fallbackPlan } from "./fallback.js";
+import { type PlannerResult, runPlanner } from "./planner.js";
 import { answerLines, interviewMessages } from "./prompt.js";
 import {
   type GoalAnswer,
@@ -24,6 +29,20 @@ import {
   MAX_GOAL_QUESTIONS,
 } from "./schemas.js";
 import { interviewSketch, type PlanSketch, planSketch } from "./sketch.js";
+import { normalizeGoalsArgs } from "./tolerant.js";
+
+/** Repair rounds of submit_goals after the tolerant reading (models.yaml#call_policy.structured_output). */
+export const GOAL_REPAIRS = 2;
+
+/** What replaced an answer that did not pass: none — the turn failed. */
+export type InvalidFallback = "questions" | "previous_plan" | "plan" | "retry" | "none";
+
+/** One model answer that did not pass after the repairs (orch_invalid payload without the size limits). */
+export interface InvalidNote {
+  step: "interview" | "system_plan";
+  fallback: InvalidFallback;
+  issues: ToolIssue[];
+}
 
 export type GoalState = "idle" | "asking" | "planned" | "failed";
 
@@ -144,14 +163,28 @@ const MSG = {
     "План готов, но в нём есть ошибки — поправьте отмеченное на экране плана или напишите, что изменить.",
   remaining: "Ответьте на оставшиеся вопросы или нажмите «Остальное — по рекомендациям».",
   invalid: "Не удалось разобрать ответ модели. Попробуйте ещё раз.",
+  /** B2-41: the plan turn failed even after the fallback and one more planner run. */
+  planInvalid:
+    "Не получилось составить план по этим ответам. Нажмите «Повторить» или напишите, что изменить в описании.",
+  /** B2-41: a wish about the plan the planner could not apply — the previous plan stays. */
+  revisionKept:
+    "Не получилось применить это пожелание автоматически — план остался прежним. Поправьте его на экране плана или напишите пожелание иначе.",
   unavailable: "Модели сейчас недоступны. Попробуйте позже.",
   budget: "Лимит кредитов на этот шаг исчерпан.",
 };
 
 class InvalidOutput extends Error {
-  constructor(readonly issues: ToolIssue[]) {
+  constructor(
+    readonly issues: ToolIssue[],
+    readonly step: InvalidNote["step"] = "interview",
+  ) {
     super("ORCH_INVALID_OUTPUT");
   }
+}
+
+/** Per-turn notes of answers that did not pass (emitted as orch_invalid when the turn ends). */
+interface TurnCtx {
+  invalid: InvalidNote[];
 }
 
 /** Semantic checks of submit_goals: catalog modules, distinct goals, sequential questions with known params. */
@@ -198,7 +231,7 @@ export class GoalInterview {
     brief: string,
     opts: { idempotencyKey?: string } = {},
   ): Promise<GoalTurnResult> {
-    return this.turn(session, opts, async (s, out) => {
+    return this.turn(session, opts, async (s, out, ctx) => {
       if (brief.trim().length === 0)
         throw new AgentError("INVALID_INPUT", "Опишите задачу хотя бы парой предложений.");
       Object.assign(s, { ...newGoalSession(), seenKeys: s.seenKeys, piiNoticeShown: s.piiNoticeShown });
@@ -212,17 +245,21 @@ export class GoalInterview {
           description:
             "Business goals (closed vocabulary), niche, roles, resources, catalog modules, out of scope, and button questions only for what the brief does not say.",
           input: goalsAnalysisSchema,
+          normalize: (v) => normalizeGoalsArgs(v, this.registry),
           check: (v) => checkGoalsAnalysis(v, this.registry),
         }),
         sideTools: [this.gapTool(s)],
+        maxRepairs: GOAL_REPAIRS,
+        textArgs: true,
       });
       this.count(s, r.stats);
-      if (!r.ok) throw new InvalidOutput(r.issues);
+      // B2-41: still not valid after the repairs → deterministic questions from the brief and the catalog.
+      if (!r.ok) ctx.invalid.push({ step: "interview", fallback: "questions", issues: r.issues });
       // PII from the brief never reaches the analysis, the questions or the plan.
-      const analysis = scrubJson(r.value).value;
+      const analysis = scrubJson(r.ok ? r.value : fallbackAnalysis(brief, this.registry)).value;
       s.analysis = analysis;
       s.questions = analysis.questions.slice(0, MAX_GOAL_QUESTIONS);
-      if (s.questions.length === 0) return this.plan(s, out);
+      if (s.questions.length === 0) return this.plan(s, out, ctx);
       s.state = "asking";
       out.push({
         id: this.id(),
@@ -244,7 +281,7 @@ export class GoalInterview {
     answers: readonly { questionId: string; optionId?: string; text?: string }[],
     o: { restByRecommendation?: boolean; idempotencyKey?: string } = {},
   ): Promise<GoalTurnResult> {
-    return this.turn(session, o, async (s, out) => {
+    return this.turn(session, o, async (s, out, ctx) => {
       if (s.state !== "asking") throw new AgentError("INVALID_INPUT", "Нет вопросов, ожидающих ответа.");
       for (const a of answers) {
         const q = s.questions.find((x) => x.id === a.questionId);
@@ -272,23 +309,23 @@ export class GoalInterview {
         out.push({ id: this.id(), role: "assistant", kind: "text", text: MSG.remaining });
         return;
       }
-      await this.plan(s, out);
+      await this.plan(s, out, ctx);
     });
   }
 
   /** A wish about the plan in words: the planner again with the previous plan and all wishes. */
   revise(session: GoalSession, text: string, o: { idempotencyKey?: string } = {}): Promise<GoalTurnResult> {
-    return this.turn(session, o, async (s, out) => {
+    return this.turn(session, o, async (s, out, ctx) => {
       this.dlp(s, out, text);
       s.edits.push(text.trim().slice(0, 1000));
-      await this.plan(s, out);
+      await this.plan(s, out, ctx);
     });
   }
 
   // ------------------------------------------------------------------ steps
 
-  private async plan(s: GoalSession, out: GoalOutput[]): Promise<void> {
-    const r = await runPlanner(
+  private runPlanner(s: GoalSession): Promise<PlannerResult> {
+    return runPlanner(
       this.base(s, "system_plan"),
       {
         brief: s.brief ?? "",
@@ -299,20 +336,58 @@ export class GoalInterview {
       },
       { registry: this.registry, ...(this.deps.appName ? { appName: this.deps.appName } : {}) },
     );
+  }
+
+  private async plan(s: GoalSession, out: GoalOutput[], ctx: TurnCtx): Promise<void> {
+    const r = await this.runPlanner(s);
     this.count(s, r.stats);
-    if (!r.ok) throw new InvalidOutput(r.issues);
-    s.plan = r.plan;
+    if (r.ok) return this.showPlan(s, out, r.plan, r.compiled);
+    const opts = this.deps.appName ? { appName: this.deps.appName } : {};
+    // B2-41 fallback of the plan turn, without a model first.
+    // 1. A wish the planner could not apply: the previous plan stays, the wish is dropped (it would fail again).
+    if (s.plan && s.edits.length > 0) {
+      ctx.invalid.push({ step: "system_plan", fallback: "previous_plan", issues: r.issues });
+      s.edits.pop();
+      const previous = s.plan;
+      const compiled = compilePlan(previous, this.registry, opts);
+      return this.showPlan(s, out, compiled.ok ? compiled.plan : previous, compiled, MSG.revisionKept);
+    }
+    // 2. A plan from the interview: its goals, the candidate modules with the answered parameters.
+    const fb = fallbackPlan(
+      { analysis: s.analysis, questions: s.questions, answers: s.answers },
+      this.registry,
+      opts,
+    );
+    if (fb) {
+      ctx.invalid.push({ step: "system_plan", fallback: "plan", issues: r.issues });
+      return this.showPlan(s, out, fb.plan, fb.compiled);
+    }
+    // 3. Not possible deterministically: one more planner run, as the client's «Повторить» would do.
+    ctx.invalid.push({ step: "system_plan", fallback: "retry", issues: r.issues });
+    const again = await this.runPlanner(s);
+    this.count(s, again.stats);
+    if (!again.ok) throw new InvalidOutput(again.issues, "system_plan");
+    return this.showPlan(s, out, again.plan, again.compiled);
+  }
+
+  private showPlan(
+    s: GoalSession,
+    out: GoalOutput[],
+    plan: SystemPlan,
+    compiled: CompileResult,
+    text?: string,
+  ): void {
+    s.plan = plan;
     s.state = "planned";
-    const compiled: CompileResult = r.compiled;
     const errors = compiled.ok ? [] : compiled.errors;
     out.push({
       id: this.id(),
       role: "assistant",
       kind: "plan",
-      text: errors.length ? MSG.planErrors : MSG.plan,
-      plan: r.plan,
+      text: text ?? (errors.length ? MSG.planErrors : MSG.plan),
+      plan,
       errors,
-      sketch: planSketch(r.plan, compiled, this.registry),
+      sketch: planSketch(plan, compiled, this.registry),
     });
   }
 
@@ -348,7 +423,7 @@ export class GoalInterview {
   private async turn(
     session: GoalSession,
     opts: { idempotencyKey?: string },
-    body: (s: GoalSession, out: GoalOutput[]) => Promise<unknown>,
+    body: (s: GoalSession, out: GoalOutput[], ctx: TurnCtx) => Promise<unknown>,
   ): Promise<GoalTurnResult> {
     if (opts.idempotencyKey !== undefined && session.seenKeys.includes(opts.idempotencyKey))
       return { session, outputs: [] };
@@ -356,14 +431,16 @@ export class GoalInterview {
     const known = s.gaps.length;
     const outputs: GoalOutput[] = [];
     const res: GoalTurnResult = { session: s, outputs };
+    const ctx: TurnCtx = { invalid: [] };
     try {
-      await body(s, outputs);
+      await body(s, outputs, ctx);
     } catch (e) {
       if (e instanceof InvalidOutput) {
         s.state = "failed";
+        ctx.invalid.push({ step: e.step, fallback: "none", issues: e.issues });
         res.failure = {
           code: "ORCH_INVALID_OUTPUT",
-          message_ru: MSG.invalid,
+          message_ru: e.step === "system_plan" ? MSG.planInvalid : MSG.invalid,
           retryable: true,
           issues: e.issues,
         };
@@ -382,9 +459,12 @@ export class GoalInterview {
     const main = [...outputs].reverse().find((o) => o.kind !== "notice");
     if (gaps.length && main?.role === "assistant") main.gaps = gaps;
     if (opts.idempotencyKey !== undefined) s.seenKeys.push(opts.idempotencyKey);
-    if (res.failure?.issues?.length)
+    // Internal diagnosis (never shown to the client): what did not pass and what replaced it.
+    for (const n of ctx.invalid)
       await this.deps.emit?.("orch_invalid", {
-        issues: res.failure.issues.slice(0, 10).map((i) => ({
+        step: n.step,
+        fallback: n.fallback,
+        issues: n.issues.slice(0, 10).map((i) => ({
           path: i.path,
           ...(i.code ? { code: i.code } : {}),
           message: String(i.message).slice(0, 160),

@@ -12,6 +12,8 @@ export {
   type StructuredResult,
   type ToolLoopResult,
 } from "./loop.js";
+/** Tolerant JSON of model texts (fenced, trailing commas, cut off at the end) — B2-41. */
+export { looseJson, looseObject } from "./loose-json.js";
 export {
   defineTool,
   type Tool,

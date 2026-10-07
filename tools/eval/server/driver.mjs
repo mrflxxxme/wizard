@@ -23,6 +23,8 @@ export const D76_MAX_COST_RUB = 300;
 /** D76 economics of one build (D76 (8)): ≤ 15 ₽ and ≤ 5 min without custom code, custom code ≤ +20 ₽. */
 export const D76_ECONOMY = { buildRub: 15, buildMinutes: 5, customExtraRub: 20 };
 /** Brief statuses that will not change any more (fail-fast counts them). */
+/** B2-41: a retryable failed interview or plan turn is repeated this many times (the client's «Повторить»). */
+export const MAX_TURN_RETRIES = 1;
 export const FINAL = new Set(["ready", "not_ready", "build_failed", "interview_failed", "error", "skipped"]);
 export const DEFAULTS = {
   maxCostRub: 2000,
@@ -224,7 +226,7 @@ export function newResult(brief) {
     systemId: null,
     pipeline: null,
     error: null,
-    interview: { turns: 0, buttons: 0, free: 0 },
+    interview: { turns: 0, buttons: 0, free: 0, retries: 0 },
     card: null,
     build: null,
     fixes: 0,
@@ -343,13 +345,41 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     let run = await waitRun(created.run, "interview");
     let card = null;
     let planRev = null;
+    // The client's last text in the chat: «Повторить» of the cabinet sends it again (Workspace.tsx retryText).
+    let lastText = brief.text;
+    let turnRetries = 0;
+    const answerPending = async (pending) => {
+      const answers = pending
+        .map((q) => ({ q, o: pickOption(q) }))
+        .filter((x) => x.o)
+        .map(({ q, o }) => ({ questionId: q.id, optionId: o.id }));
+      r.interview.buttons += answers.length;
+      const a = await client.post(`/systems/${r.systemId}/answers`, { answers, restByRecommendation: true });
+      return waitRun(a.body.run, "interview");
+    };
     for (;;) {
       r.interview.turns += 1;
       if (run.status !== "succeeded") {
+        // B2-41: a retryable failure of an interview or plan turn — the driver repeats the turn once, like the client's
+        // «Повторить»: the open questions are answered again, else the last text is sent again.
+        if (run.failure?.retryable && turnRetries < MAX_TURN_RETRIES) {
+          turnRetries += 1;
+          r.interview.retries += 1;
+          say(`ход интервью не удался (${failure(run)}) — повтор хода, как сделал бы клиент`);
+          const s = (await client.get(`/systems/${r.systemId}`)).body;
+          const pending = Array.isArray(s.pendingQuestions) ? s.pendingQuestions : [];
+          if (pending.length > 0) run = await answerPending(pending);
+          else {
+            const m = await client.post(`/systems/${r.systemId}/messages`, { text: lastText });
+            run = await waitRun(m.body.run, "interview");
+          }
+          continue;
+        }
         r.status = "interview_failed";
         r.error = `интервью: ${failure(run)}`;
         return r;
       }
+      turnRetries = 0;
       const s = (await client.get(`/systems/${r.systemId}`)).body;
       if (s.pipeline) r.pipeline = s.pipeline;
       // Beta v2 (modules pipeline, B2-20): the goal interview ends with a system plan awaiting approval, not a card.
@@ -367,20 +397,11 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
         return r;
       }
       const pending = Array.isArray(s.pendingQuestions) ? s.pendingQuestions : [];
-      if (pending.length > 0) {
-        const answers = pending
-          .map((q) => ({ q, o: pickOption(q) }))
-          .filter((x) => x.o)
-          .map(({ q, o }) => ({ questionId: q.id, optionId: o.id }));
-        r.interview.buttons += answers.length;
-        const a = await client.post(`/systems/${r.systemId}/answers`, {
-          answers,
-          restByRecommendation: true,
-        });
-        run = await waitRun(a.body.run, "interview");
-      } else if (s.system.stage === "interview") {
+      if (pending.length > 0) run = await answerPending(pending);
+      else if (s.system.stage === "interview") {
         r.interview.free += 1;
-        const m = await client.post(`/systems/${r.systemId}/messages`, { text: freeAnswer(brief) });
+        lastText = freeAnswer(brief);
+        const m = await client.post(`/systems/${r.systemId}/messages`, { text: lastText });
         run = await waitRun(m.body.run, "interview");
       } else {
         r.status = "interview_failed";

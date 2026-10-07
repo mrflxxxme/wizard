@@ -424,4 +424,89 @@ describe("D76 on the modules pipeline", () => {
     expect(parseCollectOutput(out).b2).toEqual({ since: "2026-10-07", rub: 12.5 });
     expect(parseCollectOutput("costs=[]\n").b2).toBeUndefined();
   });
+
+  // B2-41: a retryable failure of the interview or the plan turn is repeated once, like the client's «Повторить».
+  it.each([
+    ["the brief turn", { create: 1 }, { messages: 1, answers: 0 }],
+    ["the plan turn", { answers: 1 }, { messages: 0, answers: 2 }],
+  ])("a failed %s is repeated once like the client's «Повторить»; the brief goes on", async (_n, failTurns, posts) => {
+    const f = fakePlatform({ ...SESSION, origin: base, cookieNames: cookieNames(base), pipeline: "modules", failTurns });
+    holder.handler = f.handler;
+    const lines = [];
+    const run = await runEval({
+      client: platformClient({ base, session: SESSION, sleep: async () => {} }),
+      briefs: loadBriefs("mvp").filter((b) => /^mvp-01-/.test(b.id)),
+      threshold: "d76",
+      maxCostRub: 1000,
+      log: (l) => lines.push(l),
+      sleep: async () => {},
+      pollMs: 1,
+      maxBriefRub: 10_000,
+    });
+    const r = run.results[0];
+    expect(r.status).toBe("ready");
+    expect(r.interview.retries).toBe(1);
+    expect(lines.filter((l) => l.includes("повтор хода, как сделал бы клиент"))).toHaveLength(1);
+    // The brief turn is repeated with the brief text; the plan turn — with the answers to the open questions.
+    const post = (sub) => f.st.requests.filter((x) => x.startsWith("POST ") && x.endsWith(sub));
+    expect(post("/messages")).toHaveLength(posts.messages);
+    expect(post("/answers")).toHaveLength(posts.answers);
+  });
+
+  it("a turn that fails again after its repeat ends the brief as interview_failed", async () => {
+    const f = fakePlatform({
+      ...SESSION,
+      origin: base,
+      cookieNames: cookieNames(base),
+      pipeline: "modules",
+      failTurns: { create: 1, message: 1 },
+    });
+    holder.handler = f.handler;
+    const run = await runEval({
+      client: platformClient({ base, session: SESSION, sleep: async () => {} }),
+      briefs: loadBriefs("mvp").filter((b) => /^mvp-01-/.test(b.id)),
+      threshold: "d76",
+      maxCostRub: 1000,
+      log: () => {},
+      sleep: async () => {},
+      pollMs: 1,
+      maxBriefRub: 10_000,
+    });
+    expect(run.results[0]).toMatchObject({ status: "interview_failed", interview: { retries: 1 } });
+    expect(run.results[0].error).toContain("Не получилось составить план");
+  });
+
+  it("collect reads orch_invalid of the systems; the report lists what did not pass and what replaced it", () => {
+    expect(collectSql({ orgId: "11111111-1111-4111-8111-111111111111" })).toContain("e.type = 'orch_invalid'");
+    const payload = (step, fallback, path, code) => ({
+      step,
+      fallback,
+      issues: [{ path, code, message: "Ответ должен быть вызовом инструмента submit_goals." }],
+    });
+    const out = [
+      "costs=[]",
+      "gaps=[]",
+      "metrics=[]",
+      `invalid=${JSON.stringify([
+        { system_id: "sys-1", ts: "2026-10-07T10:00:00Z", payload: payload("interview", "questions", "", "NO_TOOL_CALL") },
+        { system_id: "sys-1", ts: "2026-10-07T10:01:00Z", payload: payload("system_plan", "plan", "goals", "too_small") },
+        { system_id: null, payload: {} },
+      ])}`,
+    ].join("\n");
+    const db = parseCollectOutput(out);
+    expect(db.invalid["sys-1"].map((x) => [x.step, x.fallback])).toEqual([
+      ["interview", "questions"],
+      ["system_plan", "plan"],
+    ]);
+    expect(parseCollectOutput("costs=[]\n").invalid).toEqual({});
+    const d = doc([{ ...item("mvp-01-a"), systemId: "sys-1", interview: { turns: 3, buttons: 2, free: 0, retries: 1 } }]);
+    const { text } = renderReport(d, db);
+    expect(text).toContain("Ответы моделей интервью и плана, не прошедшие проверку: 2 — в брифах mvp-01");
+    expect(text).toContain(
+      "Ответ модели не прошёл проверку: 2 раз (интервью → запасные вопросы без модели; план → план из ответов интервью без модели).",
+    );
+    expect(text).toContain("  - интервью: весь ответ (NO_TOOL_CALL) — Ответ должен быть вызовом инструмента submit_goals.");
+    expect(text).toContain("  - план: goals (too_small)");
+    expect(text).toContain("повторов хода после сбоя 1");
+  });
 });

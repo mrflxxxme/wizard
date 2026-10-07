@@ -189,7 +189,7 @@ describe("planner repairs", () => {
     expect(p?.sketch.fingerprint).toBeNull();
   });
 
-  test("three invalid plans → ORCH_INVALID_OUTPUT, no plan", async () => {
+  test("three invalid plans → the fallback plan from the interview (B2-41), no further model call", async () => {
     const bad = { ...dentalPlan(), goals: [] };
     const { gi, inputs } = interview([
       toolResult("submit_goals", dentalAnalysis({ questions: [] })),
@@ -198,8 +198,9 @@ describe("planner repairs", () => {
       toolResult("submit_plan", bad),
     ]);
     const r = await gi.submitBrief(newGoalSession(), DENTAL_BRIEF);
-    expect(r.failure?.code).toBe("ORCH_INVALID_OUTPUT");
-    expect(r.outputs.some((o) => o.kind === "plan")).toBe(false);
+    expect(r.failure).toBeUndefined();
+    expect(ofKind(r.outputs, "plan")?.errors).toEqual([]);
+    expect(ofKind(r.outputs, "plan")?.plan.goals.map((g) => g.id)).toEqual(["leads", "attract"]);
     expect(inputs).toHaveLength(4);
   });
 });

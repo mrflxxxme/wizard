@@ -196,7 +196,7 @@ const CODE_T0 = ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"];
 export const HIGH_REASONING: ReadonlySet<CallType> = new Set<CallType>(["card", "plan", "system_plan"]);
 
 export const ROUTES: Record<CallType, RouteDef> = {
-  interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 4000, 180000),
+  interview: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 8000, 180000),
   card: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.2, 8000, 300000),
   plan: r(
     "builder",

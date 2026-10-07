@@ -17,6 +17,15 @@ const STATUS_RU = {
   pending: "не запускался",
   running: "не завершён",
 };
+/** B2-41: steps and replacements of orch_invalid (answers of the models that did not pass the check). */
+const STEP_RU = { interview: "интервью", system_plan: "план" };
+const FALLBACK_RU = {
+  questions: "запасные вопросы без модели",
+  previous_plan: "оставлен прежний план",
+  plan: "план из ответов интервью без модели",
+  retry: "ещё один прогон планировщика",
+  none: "ход не удался",
+};
 const PUBLISH_RU = {
   review_pending: "ждёт ревью основателя",
   published: "опубликована",
@@ -115,6 +124,7 @@ export function evaluate(doc, db = {}) {
         gapMentioned: mentioned,
         gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
         stages: (r.systemId && db.metrics?.[r.systemId]?.stages) || null,
+        invalid: (r.systemId && db.invalid?.[r.systemId]) || [],
         coverage,
         counted,
         countedVia: via,
@@ -135,6 +145,7 @@ export function evaluate(doc, db = {}) {
       gapMentioned: mentioned,
       gapCount: Math.max(recorded.length, r.gaps?.reported?.length ?? 0),
       stages: (r.systemId && db.metrics?.[r.systemId]?.stages) || null,
+      invalid: (r.systemId && db.invalid?.[r.systemId]) || [],
       counted,
       countedVia: via,
     };
@@ -167,6 +178,7 @@ export function evaluate(doc, db = {}) {
     costExact: items.filter((x) => x.systemId).every((x) => x.costExact),
     credits: Math.round(items.reduce((s, x) => s + (x.creditsUsed ?? 0), 0) * 1000) / 1000,
     gaps: items.reduce((s, x) => s + x.gapCount, 0),
+    invalid: items.reduce((s, x) => s + x.invalid.length, 0),
     gapsTable,
     firstPass: staged.length
       ? {
@@ -312,6 +324,14 @@ export function renderReport(doc, db = {}, meta = {}) {
             .join(", ")}`
         : ""
     }`,
+    ...(e.invalid
+      ? [
+          `- Ответы моделей интервью и плана, не прошедшие проверку: ${e.invalid} — в брифах ${e.items
+            .filter((x) => x.invalid.length > 0)
+            .map((x) => x.id.slice(0, 6))
+            .join(", ")} (подробности — по брифам)`,
+        ]
+      : []),
     ...(e.firstPass
       ? [
           `- Задачи ТЗ, готовые с первого хода исполнителя: ${e.firstPass.passed} из ${e.firstPass.total}${e.firstPass.total ? ` (${Math.round((e.firstPass.passed / e.firstPass.total) * 100)} %)` : ""} — по брифам с метриками этапов: ${e.firstPass.briefs}`,
@@ -367,8 +387,17 @@ export function renderReport(doc, db = {}, meta = {}) {
     if (x.error) L.push(`- Что случилось: ${x.error}`);
     if (x.interview?.turns)
       L.push(
-        `- Интервью: ходов ${x.interview.turns}, ответов кнопками ${x.interview.buttons}, ответов текстом ${x.interview.free}.`,
+        `- Интервью: ходов ${x.interview.turns}, ответов кнопками ${x.interview.buttons}, ответов текстом ${x.interview.free}${x.interview.retries ? `, повторов хода после сбоя ${x.interview.retries}` : ""}.`,
       );
+    if (x.invalid?.length) {
+      const what = x.invalid.map((i) => `${STEP_RU[i.step] ?? "интервью"} → ${FALLBACK_RU[i.fallback] ?? i.fallback}`);
+      L.push(`- Ответ модели не прошёл проверку: ${x.invalid.length} раз (${what.join("; ")}).`);
+      for (const i of x.invalid)
+        for (const is of i.issues.slice(0, 5))
+          L.push(
+            `  - ${STEP_RU[i.step] ?? "интервью"}: ${is.path || "весь ответ"}${is.code ? ` (${is.code})` : ""} — ${is.message}`,
+          );
+    }
     if (x.build)
       L.push(
         `- Сборка: ${x.build.status === "succeeded" ? "завершилась" : `не завершилась (${x.build.failure?.message_ru ?? x.build.status})`}${x.fixes ? `, «Исправить» нажато ${x.fixes} раз` : ""}; ${x.buildMinutes ?? "—"} мин сборки, ${x.minutes ?? "—"} мин от брифа.`,

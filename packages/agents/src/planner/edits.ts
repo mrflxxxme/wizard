@@ -263,15 +263,14 @@ function apply(plan: SystemPlan, e: PlanEdit, i: number, registry: ModuleRegistr
 }
 
 /**
- * Applies edits in order to a copy of the plan, scrubs PII from the texts the client typed, then compiles it
- * (compilePlan validates with requireReady and checks ready section variants). Any error rejects the whole batch.
+ * Applies edits in order to a copy of the plan without compiling it (an intermediate plan may not compile yet: the
+ * fallback plan of B2-41 is put together from such steps). Any error rejects the whole batch.
  */
-export function applyPlanEdits(
+export function editPlan(
   plan: SystemPlan,
   edits: readonly PlanEdit[],
   registry: ModuleRegistry,
-  opts: { appName?: string } = {},
-): EditResult {
+): { ok: true; plan: SystemPlan } | { ok: false; errors: PlanError[] } {
   const next = structuredClone(plan);
   try {
     edits.forEach((e, i) => {
@@ -281,8 +280,23 @@ export function applyPlanEdits(
     if (e instanceof EditError) return { ok: false, errors: [e.error] };
     throw e;
   }
+  return { ok: true, plan: next };
+}
+
+/**
+ * Applies edits in order to a copy of the plan, scrubs PII from the texts the client typed, then compiles it
+ * (compilePlan validates with requireReady and checks ready section variants). Any error rejects the whole batch.
+ */
+export function applyPlanEdits(
+  plan: SystemPlan,
+  edits: readonly PlanEdit[],
+  registry: ModuleRegistry,
+  opts: { appName?: string } = {},
+): EditResult {
+  const edited = editPlan(plan, edits, registry);
+  if (!edited.ok) return edited;
   // Plan texts reach the model (T1) and the client's screen: no PII (modules.yaml#system_plan.privacy).
-  const clean = scrubJson(next).value;
+  const clean = scrubJson(edited.plan).value;
   const compiled = compilePlan(clean, registry, opts);
   if (!compiled.ok) return { ok: false, errors: compiled.errors };
   // compiled.plan carries the manifest versions it was compiled with (MODULE_VERSION_MISMATCH after a catalog bump).

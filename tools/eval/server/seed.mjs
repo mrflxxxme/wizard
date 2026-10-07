@@ -134,8 +134,8 @@ export function revokeSql({ tokenHash }) {
  * fixed names, so the interpolated identifier never comes from input), and the stage metrics of the harness (payload
  * of the last build_metrics event of each system's create run — the latest build when there is none — so a later
  * «Исправить» run does not hide the stages of the build itself, eval.yaml stages). One line per result:
- * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`; ::jsonb::text keeps each on one line (json_agg puts a newline
- * between elements).
+ * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`, `invalid=<json>` (B2-41: orch_invalid of the systems);
+ * ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
  */
 export function collectSql({ orgId, b2Since }) {
   // B2-04: spend of every eval org (probes and measurements) since the start of the beta v2 development budget, as
@@ -176,6 +176,15 @@ export function collectSql({ orgId, b2Since }) {
    CROSS JOIN LATERAL (SELECT ev.payload FROM platform.run_events ev
                         WHERE ev.run_id = r.id AND ev.type = 'build_metrics' ORDER BY ev.seq DESC LIMIT 1) e
    WHERE s.org_id = :'org_id') x;`,
+    // B2-41: answers of the models that did not pass (orch_invalid: step, fallback, issues {path, code, message ≤ 160}
+    // — check paths and codes, no PII), oldest first, for the diagnosis in the report.
+    `SELECT 'invalid=' || coalesce(json_agg(x ORDER BY x.ts), '[]'::json)::jsonb::text FROM (
+  SELECT r.system_id, e.ts, e.payload
+    FROM platform.run_events e
+    JOIN platform.runs r ON r.id = e.run_id
+    JOIN platform.systems s ON s.id = r.system_id
+   WHERE s.org_id = :'org_id' AND e.type = 'orch_invalid'
+   ORDER BY e.ts LIMIT 200) x;`,
     "",
   ].join("\n");
 }
@@ -212,10 +221,25 @@ export function parseCollectOutput(stdout) {
   const metrics = {};
   for (const m of value("metrics") ?? [])
     if (m.system_id && m.payload && typeof m.payload === "object") metrics[m.system_id] = m.payload;
+  // B2-41: orch_invalid per system — {step, fallback, issues: [{path, code?, message}]} (absent line → {}).
+  const invalid = {};
+  for (const x of value("invalid") ?? []) {
+    const p = x?.payload;
+    if (!x?.system_id || !p || typeof p !== "object") continue;
+    (invalid[x.system_id] ??= []).push({
+      step: typeof p.step === "string" ? p.step : null,
+      fallback: typeof p.fallback === "string" ? p.fallback : "none",
+      issues: (Array.isArray(p.issues) ? p.issues : []).slice(0, 10).map((i) => ({
+        path: String(i?.path ?? ""),
+        ...(i?.code ? { code: String(i.code) } : {}),
+        message: String(i?.message ?? "").slice(0, 160),
+      })),
+    });
+  }
   const b2raw = value("b2");
   const b2 =
     b2raw && typeof b2raw === "object" && Number.isFinite(Number(b2raw.rub))
       ? { since: String(b2raw.since ?? ""), rub: Number(b2raw.rub) }
       : null;
-  return { costs, gaps, metrics, ...(b2 ? { b2 } : {}) };
+  return { costs, gaps, metrics, invalid, ...(b2 ? { b2 } : {}) };
 }

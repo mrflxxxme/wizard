@@ -43,6 +43,7 @@ import {
 } from "@wizard/runtime";
 import type postgres from "postgres";
 import type { Config } from "../config.js";
+import { recordInterviewFallback } from "../ops/metrics.js";
 import type { EventType } from "../runs/events.js";
 import {
   type BuildHost,
@@ -328,8 +329,11 @@ export async function planInterviewTurn(
     ...(o.registry ? { registry: o.registry } : {}),
     appName: c.system.name,
     runStep: host.runStep,
+    // B2-41: what did not pass and what replaced it — the internal event for the diagnosis and the metric.
     emit: async (type, payload) => {
-      if (type === "orch_invalid") await host.emit("orch_invalid", payload);
+      if (type !== "orch_invalid") return;
+      recordInterviewFallback(payload as { step?: unknown; fallback?: unknown });
+      await host.emit("orch_invalid", payload);
     },
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
   });

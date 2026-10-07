@@ -26,6 +26,20 @@ export const runFailures = platformMetrics.counter(
   "Failed runs by kind and failure code (run_lifecycle.failure_codes)",
   ["kind", "code"],
 );
+/** B2-41: goal interview answers that did not pass after the repairs, by step and what replaced them (orch_invalid). */
+export const interviewFallbacks = platformMetrics.counter(
+  "wizard_interview_fallbacks_total",
+  "Goal interview model answers that did not pass after the repairs, by step (interview, system_plan) and fallback (questions, previous_plan, plan, retry, none)",
+  ["step", "fallback"],
+);
+
+/** Counts one orch_invalid of the goal interview (payload {step, fallback}). */
+export function recordInterviewFallback(payload: { step?: unknown; fallback?: unknown }): void {
+  interviewFallbacks.inc({
+    step: typeof payload.step === "string" ? payload.step : "interview",
+    fallback: typeof payload.fallback === "string" ? payload.fallback : "none",
+  });
+}
 export const runDuration = platformMetrics.histogram(
   "wizard_run_duration_seconds",
   "Run duration from start to the terminal status, seconds",

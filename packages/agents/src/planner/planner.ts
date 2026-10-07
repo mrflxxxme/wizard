@@ -16,6 +16,7 @@ import { defineTool, type ToolIssue } from "../core/tool.js";
 import { defaultDesign } from "./catalog.js";
 import { type PlannerPromptInput, plannerMessages } from "./prompt.js";
 import { type PlannerPlan, plannerPlanSchema } from "./schemas.js";
+import { normalizePlanArgs } from "./tolerant.js";
 
 /** Repairs after validation errors (models.yaml#call_policy.structured_output). */
 export const PLAN_VALIDATION_REPAIRS = 2;
@@ -91,6 +92,8 @@ export async function runPlanner(
     description:
       "System plan: goals, catalog modules with params, landing sections, out of scope with replacements, small custom code.",
     input: plannerPlanSchema,
+    // B2-41: a plan sent as text, wrapped in {plan: …} or with unknown top-level keys is read without a repair call.
+    normalize: normalizePlanArgs,
     check: (v) => planIssues(planErrors(finalizePlan(v, o.registry), o.registry)),
   });
   const call = { ...base, callType: "system_plan" as const };
@@ -99,6 +102,7 @@ export async function runPlanner(
     messages: plannerMessages(o.registry, input),
     tool,
     maxRepairs: PLAN_VALIDATION_REPAIRS,
+    textArgs: true,
   });
   let stats = first.stats;
   if (!first.ok) return { ok: false, issues: first.issues, stats };
@@ -116,7 +120,7 @@ export async function runPlanner(
     ];
     // Own step name: durable steps are memoized by name (workflows.yaml#execution.step_rules).
     const stepName = `${base.stepName ?? "system_plan"}:compile_fix${n + 1}`;
-    const again = await callTool({ ...call, stepName, messages, tool, maxRepairs: 0 });
+    const again = await callTool({ ...call, stepName, messages, tool, maxRepairs: 0, textArgs: true });
     stats = addStats(stats, again.stats);
     if (!again.ok) break;
     messages = again.messages;
