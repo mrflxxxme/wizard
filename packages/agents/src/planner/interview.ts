@@ -9,7 +9,13 @@
 import { randomUUID } from "node:crypto";
 import type { PlanError, SystemPlan } from "@wizard/appspec";
 import { LlmError, type OrgPolicy, type RouteContext } from "@wizard/llm";
-import { type CompileResult, compilePlan, type ModuleRegistry, planCatalog } from "@wizard/modules";
+import {
+  type CompileResult,
+  compilePlan,
+  type ModuleRegistry,
+  planCatalog,
+  withLeadForm,
+} from "@wizard/modules";
 import { scrubJson } from "@wizard/pii";
 import { AgentError } from "../core/errors.js";
 import type { AgentEventSink, EmitFn, RunStepFn } from "../core/events.js";
@@ -380,13 +386,14 @@ export class GoalInterview {
     compiled: CompileResult,
     text?: string,
   ): void {
-    if (this.deps.phoneLogin === false) {
-      const fixed = withoutPhoneLogin(plan, this.registry);
-      if (fixed.changed) {
-        plan = fixed.plan;
-        compiled = compilePlan(plan, this.registry, this.deps.appName ? { appName: this.deps.appName } : {});
-        if (compiled.ok) plan = compiled.plan;
-      }
+    // Deterministic fixes of any plan before its card: F4 login by the tariff, the lead form of «Заявки» (B2-41).
+    const phone =
+      this.deps.phoneLogin === false ? withoutPhoneLogin(plan, this.registry) : { plan, changed: false };
+    const fixed = withLeadForm(phone.plan);
+    if (phone.changed || fixed !== phone.plan) {
+      plan = fixed;
+      compiled = compilePlan(plan, this.registry, this.deps.appName ? { appName: this.deps.appName } : {});
+      if (compiled.ok) plan = compiled.plan;
     }
     s.plan = plan;
     s.state = "planned";
