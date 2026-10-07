@@ -3234,7 +3234,7 @@ tasks:
     owner: frontend
     parallel_group: b2-a
     estimate_days: 5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Холст на весь экран, чат плавает снизу по центру (2–3 последние реплики или карточка вопроса, история по тапу); на 390 px — строка ввода и лист переписки, который тянется вверх (e2e 390/1280, светлая/тёмная)"
