@@ -240,7 +240,7 @@ ai_rules:
 
 # ---------------------------------------------------------------- Каталог модулей беты v2 (черновик; сверяется со схемой тестом)
 catalog:
-  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16); reports (B2-17); booking (B2-14)
+  # status здесь — состояние спеки; модули с кодом (ready) — в packages/modules/src/<id>/: landing, leads (B2-11); catalog (B2-13); client_card, deals (B2-15); notify, staff, visitor_cabinet (B2-16); reports (B2-17); booking (B2-14); packages, resources (B2-18)
   - id: landing
     version: 1
     name: "Секции лендинга"
@@ -993,13 +993,31 @@ catalog:
       - { name: write_off_on_booking, label: "Списывать визит при записи", type: bool, default: true }
       - { name: freeze, label: "Заморозка", type: bool, default: false }
       - { name: expiry_reminder_days, label: "Напомнить об окончании за, дней", type: int, min: 0, max: 14, default: 3 }
+      - { name: materials, label: "Материалы только для клиентов с абонементом", type: bool, default: false, description: "Видеоуроки, файлы и ссылки, которые открываются клиенту с действующим абонементом" }
+      - { name: material_label, label: "Как называть материал", type: string, maxLength: 40, default: "Материал" }
     requires:
       - { module: client_card, reason: "абонемент принадлежит клиенту" }
       - { module: booking, reason: "визит списывается по записи", when: { param: write_off_on_booking } }
       - { module: notify, reason: "напоминание об окончании абонемента", when: { param: expiry_reminder_days } }
-    provides: { entities: [package_plan, client_package, package_usage] }
+    links:
+      - { module: visitor_cabinet, effect: "клиент видит свои абонементы и открывает материалы после входа по коду" }
+      - { module: staff, effect: "сотрудники с разделом «Абонементы» продают абонементы и отмечают визиты" }
+    # B2-18: client_package {client, plan, status active | frozen | used_up | expired, visits_left, expires_on, starts_on,
+    # visits_total, price, phone, email (копии контактов клиента), consent_messages, frozen_at, note}; package_plan
+    # (тариф: visits, days, price); package_usage (списан или возвращён визит, applied — защита от двойного учёта);
+    # package_material (при materials, страница /materials). Запись (booking) получает client_package и package_status:
+    # writeOffVisit списывает визит с действующего абонемента тех же телефона и почты, запись посетителя без абонемента
+    # отменяется; страница записи заранее спрашивает packageCheck (только «да» или «нет»); отмена возвращает визит.
+    provides: { entities: [client_package, package_plan, package_usage, package_material], routes: ["/materials"] }
+    hook: true
     functions:
-      - { name: writeOffVisit, kind: mutation, file: functions/packages/writeOffVisit.ts, roles: [$owner, $staff], purpose: "списание визита с остатком и защитой от двойного списания" }
+      - { name: packageSold, kind: mutation, file: functions/packages/packageSold.ts, roles: [$owner], purpose: "проданный абонемент получает срок, визиты и цену тарифа и контакты клиента" }
+      - { name: applyUsage, kind: mutation, file: functions/packages/applyUsage.ts, roles: [$owner], purpose: "визит, списанный или возвращённый вручную, один раз меняет остаток" }
+      - { name: writeOffVisit, kind: mutation, file: functions/packages/writeOffVisit.ts, roles: [$owner, $staff], when: { param: write_off_on_booking, module: booking }, purpose: "списание визита с остатком и защитой от двойного списания" }
+      - { name: returnVisit, kind: mutation, file: functions/packages/returnVisit.ts, roles: [$owner], when: { param: write_off_on_booking, module: booking }, purpose: "отменённая запись возвращает визит на абонемент" }
+      - { name: packageCheck, kind: mutation, file: functions/packages/packageCheck.ts, public: true, roles: [$public, $owner, $staff], when: { param: write_off_on_booking, module: booking }, purpose: "страница записи узнаёт, есть ли действующий абонемент на эти контакты в день визита (да или нет)", systemDbReason: "Посетитель без входа не читает абонементы: функция ищет абонемент по телефону и почте и отвечает только «есть» или «нет», без имён, сроков и остатка" }
+      - { name: unfreezePackage, kind: mutation, file: functions/packages/unfreezePackage.ts, roles: [$owner], when: { param: freeze }, purpose: "дни заморозки переносят дату окончания абонемента" }
+      - { name: myMaterials, kind: query, file: functions/packages/myMaterials.ts, public: true, roles: [$owner, $staff, $visitor], when: { param: materials }, purpose: "материалы для клиента с действующим абонементом; команде — все материалы", systemDbReason: "Клиент не читает материалы напрямую: функция отдаёт их только при действующем абонементе клиента, материалы не содержат персональных данных" }
     metrics:
       - id: packages_sold
         label: "Продано абонементов"
@@ -1013,26 +1031,77 @@ catalog:
         unit: percent
         better: up
         compute: { kind: repeat_share, entity: client_package, by: client, dateField: created_at }
+        description: "Доля клиентов, купивших за период больше одного абонемента"
+      - id: package_visits
+        label: "Визитов по абонементам"
+        goal: retention
+        unit: count
+        better: up
+        compute: { kind: count, entity: package_usage, dateField: used_at, where: { kind: write_off } }
     goalScenarios:
       - id: GS-packages-1
         goal: retention
-        title: "Визит по записи списывается с абонемента"
-        withModules: [client_card, booking, catalog, notify]
+        title: "Владелец продаёт абонемент — он сразу действует с остатком и сроком"
+        steps:
+          - { actor: owner, text: "Заводит тариф и продаёт абонемент клиенту" }
+          - { actor: owner, text: "Открывает раздел абонементов в кабинете" }
+        expect:
+          - { kind: status, text: "Абонемент в статусе «Действует»" }
+          - { kind: record, text: "Остаток визитов и дата окончания заполнены по тарифу" }
+      - id: GS-packages-2
+        goal: retention
+        title: "Запись по абонементу списывает визит"
+        withModules: [booking, catalog, notify]
         when: { param: write_off_on_booking }
         steps:
           - { actor: owner, text: "Продаёт клиенту абонемент на 4 визита" }
-          - { actor: staff, text: "Отмечает запись клиента как состоявшуюся" }
+          - { actor: visitor, text: "Записывается на странице записи с тем же телефоном и почтой" }
+          - { actor: owner, text: "Открывает абонемент клиента" }
         expect:
-          - { kind: record, text: "В карточке клиента остаток 3 визита" }
-      - id: GS-packages-2
+          - { kind: page_text, text: "Посетитель видит «Вы записаны»" }
+          - { kind: record, text: "Визит списан: остаток 3 визита, запись отмечена «Списан с абонемента»" }
+      - id: GS-packages-3
+        goal: retention
+        title: "С закончившимся абонементом записаться нельзя"
+        withModules: [booking, catalog, notify]
+        when: { param: write_off_on_booking }
+        steps:
+          - { actor: owner, text: "У клиента абонемент закончился" }
+          - { actor: visitor, text: "Пытается записаться с телефоном и почтой этого клиента" }
+        expect:
+          - { kind: denied, text: "Посетитель видит, что действующего абонемента нет, и не записывается" }
+          - { kind: record, text: "Записи на это время нет, остаток абонемента не изменился" }
+      - id: GS-packages-4
         goal: retention
         title: "Клиент получает напоминание об окончании абонемента"
-        withModules: [client_card, notify]
+        withModules: [notify]
         when: { param: expiry_reminder_days }
         steps:
-          - { actor: system, text: "Время сдвигается к дате напоминания" }
+          - { actor: owner, text: "Продаёт абонемент клиенту, который согласился на письма" }
+          - { actor: system, text: "Время сдвигается к дате напоминания (или остаётся последний визит)" }
         expect:
           - { kind: outbox_email, text: "Клиенту ушло письмо об окончании абонемента" }
+      - id: GS-packages-5
+        goal: retention
+        title: "Материалы открываются только клиенту с действующим абонементом"
+        withModules: [visitor_cabinet]
+        when: { param: materials }
+        steps:
+          - { actor: visitor, text: "Открывает страницу материалов без входа" }
+          - { actor: client, text: "Входит в кабинет без абонемента и открывает материалы" }
+          - { actor: owner, text: "Продаёт клиенту абонемент" }
+          - { actor: client, text: "Снова открывает материалы" }
+        expect:
+          - { kind: denied, text: "Без входа и без абонемента материалов не видно" }
+          - { kind: page_text, text: "С действующим абонементом клиент видит материал и ссылку на него" }
+    tests:
+      matrix:
+        - { name: "визиты на срок, списание по записи", params: {}, withModules: [client_card, booking, catalog, notify] }
+        - { name: "только срок, без записи, заморозка", params: { kind: period, write_off_on_booking: false, freeze: true, validity_days: 90 }, withModules: [client_card, notify] }
+        - { name: "только визиты, без напоминаний", params: { kind: visits, write_off_on_booking: false, expiry_reminder_days: 0, package_label: "Пакет" }, withModules: [client_card] }
+        - { name: "подписка с видеоуроками и кабинетом ученика", params: { kind: period, write_off_on_booking: false, materials: true, material_label: "Видеоурок", package_label: "Подписка" }, withModules: [client_card, notify, visitor_cabinet, booking, catalog] }
+        - { name: "визиты по записи, кабинет посетителя и сотрудники", params: { kind: visits, expiry_reminder_days: 1 }, withModules: [client_card, booking, catalog, notify, visitor_cabinet, staff] }
+      gates: [G0, G1]
 
   - id: resources
     version: 1
@@ -1049,12 +1118,22 @@ catalog:
       - { name: overdue_reminder, label: "Напоминание о просрочке", type: bool, default: true }
       - { name: deposit, label: "Залог", type: bool, default: false }
       - { name: extra_fields, label: "Дополнительные поля предмета", type: fields, maxItems: 6 }
+      - { name: bulk_import, label: "Загрузка списка из таблицы", type: bool, default: false }
     requires:
       - { module: notify, reason: "напоминание о возврате и просрочке", when: { param: overdue_reminder } }
     links:
       - { module: client_card, effect: "выдача ссылается на клиента, история выдач в карточке" }
-      - { module: staff, effect: "кто выдал и кто принял — сотрудник" }
-    provides: { entities: [resource, resource_issue] }
+      - { module: staff, effect: "сотрудники с разделом «Учёт выдачи» выдают и принимают предметы" }
+    # B2-18: resource {name, status available | issued | unavailable, quantity и in_stock (with_quantity), inventory_no,
+    # deposit, description, доп. поля}; resource_issue {resource, holder, status issued | overdue | returned, due_at,
+    # issued_at, returned_at, quantity, client, phone, email, consent_messages, deposit, deposit_returned, was_overdue,
+    # note, open (1 или null — уникальный индекс (resource, open): второй раз не выдать, пока не вернули)}.
+    # Просрочка — schedule.relative по due_at; письма — notify. bulk_import — страница /resources-import (строки из таблицы).
+    provides: { entities: [resource, resource_issue], routes: ["/resources-import"] }
+    hook: true
+    functions:
+      - { name: issueResource, kind: mutation, file: functions/resources/issueResource.ts, roles: [$owner], purpose: "выдача получает время выдачи, срок возврата и контакты клиента; предмет становится выданным" }
+      - { name: returnResource, kind: mutation, file: functions/resources/returnResource.ts, roles: [$owner], purpose: "возврат закрывает выдачу и возвращает предмет в наличие" }
     metrics:
       - id: issued_count
         label: "Выдач"
@@ -1067,7 +1146,8 @@ catalog:
         goal: resource_tracking
         unit: percent
         better: down
-        compute: { kind: ratio, entity: resource_issue, dateField: issued_at, numerator: { status: overdue } }
+        compute: { kind: ratio, entity: resource_issue, dateField: due_at, numerator: { was_overdue: true } }
+        description: "Доля выдач со сроком возврата в периоде, которые вернули позже срока или ещё не вернули"
     goalScenarios:
       - id: GS-resources-1
         goal: resource_tracking
@@ -1086,5 +1166,39 @@ catalog:
           - { actor: owner, text: "Выдаёт предмет на 1 день" }
           - { actor: system, text: "Время сдвигается на 2 дня" }
         expect:
-          - { kind: status, text: "Выдача в статусе «просрочена»" }
+          - { kind: status, text: "Выдача в статусе «Просрочено»" }
           - { kind: outbox_email, text: "Владельцу ушло напоминание о просрочке" }
+      - id: GS-resources-3
+        goal: resource_tracking
+        title: "Получатель получает письмо за сутки до срока возврата"
+        withModules: [notify]
+        when: { param: overdue_reminder }
+        steps:
+          - { actor: owner, text: "Выдаёт предмет на 3 дня с почтой получателя и его согласием на письма" }
+          - { actor: system, text: "Время сдвигается к суткам до срока" }
+        expect:
+          - { kind: outbox_email, text: "Получателю ушло письмо с напоминанием вернуть предмет" }
+      - id: GS-resources-4
+        goal: resource_tracking
+        title: "Пока предмет не вернули, второй раз его не выдать"
+        when: { param: with_quantity, equals: false }
+        steps:
+          - { actor: owner, text: "Выдаёт предмет" }
+          - { actor: owner, text: "Пытается выдать тот же предмет ещё раз" }
+        expect:
+          - { kind: denied, text: "Вторая выдача не сохраняется, предмет числится у первого получателя" }
+    tests:
+      matrix:
+        - { name: "по умолчанию: напоминания о просрочке", params: {}, withModules: [notify] }
+        - name: "библиотека: книги с автором, клиенты, загрузка списка"
+          params:
+            resource_label: "Книга"
+            default_days: 14
+            bulk_import: true
+            extra_fields:
+              - { name: author, label: "Автор", type: string }
+              - { name: year, label: "Год издания", type: int }
+          withModules: [notify, client_card]
+        - { name: "прокат: количество и залог, без напоминаний", params: { resource_label: "Снаряжение", with_quantity: true, deposit: true, overdue_reminder: false, default_days: 1 } }
+        - { name: "сотрудники выдают, выдачи клиентам", params: { default_days: 3 }, withModules: [notify, staff, client_card] }
+      gates: [G0, G1]

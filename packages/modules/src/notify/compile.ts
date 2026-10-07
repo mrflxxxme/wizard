@@ -3,9 +3,12 @@
 // owner ($owner) and staff ($role:<staff role> in scope of the module, notify_staff) by the chosen channels, Telegram
 // without personal data (D71), service mail to a visitor only with the record's consent field (D69), reminders by a
 // schedule.relative trigger on the visit time. The G1 checks are scenarios with runWorkflows and advanceTime.
+// B2-18: the end of a package (packages) and the due and overdue messages of issues (resources).
 import type { Field, ModuleFragments, Workflow } from "@wizard/appspec";
 import { ACTIVE_STATUSES, bookingLinks } from "../booking/compile.js";
 import { leadFormFields } from "../leads/compile.js";
+import { PACKAGE_NAMES, packageKind } from "../packages/compile.js";
+import { RESOURCE_NAMES } from "../resources/compile.js";
 import { cabinetRoute } from "../screens/cabinet.js";
 import { staffRoles, staffRolesFor } from "../staff/compile.js";
 import type { ModuleContext } from "../types.js";
@@ -300,6 +303,181 @@ export function notifyPlan(ctx: ModuleContext): NotifyPlan {
       });
       if (r.team) acceptance.push({ value: reminderScenario(r.hours, visitor, telegram, manual, staffOn) });
     }
+  }
+
+  // Packages (B2-18): the end of a package — N days before its end date and, for visits, when one visit is left — to
+  // the client (with consent) and the team in Telegram; the refusal letter of a booking cancelled without a package.
+  if (ctx.present.has("packages")) {
+    const pp = ctx.allParams.packages ?? {};
+    const kind = packageKind(pp);
+    const label = String(pp.package_label ?? "Абонемент");
+    const days = Number(pp.expiry_reminder_days ?? 0);
+    const visitor = p.visitor_emails === true;
+    const toClient = (template: string, cond: Record<string, unknown[]>): Step => ({
+      type: "notify",
+      params: {
+        integration: MAIL,
+        to: "$record.email",
+        consentField: "consent_messages",
+        template,
+        if: cond,
+      },
+    });
+    if (days > 0) {
+      const ends: {
+        name: string;
+        trigger: Workflow["trigger"];
+        cond: Record<string, unknown[]>;
+        what: string;
+      }[] = [];
+      if (kind.period)
+        ends.push({
+          name: "package_expiring",
+          trigger: {
+            type: "schedule",
+            entity: PACKAGE_NAMES.item,
+            relative: { field: "ends_at", offsetMinutes: -days * 1440 },
+          },
+          cond: { status: ["active"] },
+          what: `за ${days} дн. до окончания`,
+        });
+      if (kind.visits)
+        ends.push({
+          name: "package_last_visit",
+          trigger: { type: "on_update", entity: PACKAGE_NAMES.item, field: "visits_left" },
+          cond: { status: ["active"], visits_left: [1] },
+          what: "когда остаётся последний визит",
+        });
+      for (const e of ends) {
+        const template = e.name === "package_expiring" ? "package_expiring" : "package_last_visit";
+        if (visitor)
+          templates[template] =
+            e.name === "package_expiring"
+              ? {
+                  subject: `${label} скоро закончится`,
+                  body: `Ваш ${label.toLowerCase()} действует до {{expires_on}}. Продлите его, чтобы не прерывать занятия.`,
+                }
+              : {
+                  subject: `${label}: остался последний визит`,
+                  body: `На вашем ${label.toLowerCase() === "абонемент" ? "абонементе" : `«${label.toLowerCase()}»`} остался последний визит. Продлите его заранее.`,
+                };
+        const steps: Step[] = [
+          ...(visitor ? [toClient(template, e.cond)] : []),
+          ...team("packages", { text: `${label} клиента заканчивается — откройте кабинет: {{link}}` }).map(
+            (s): Step => ({ ...s, params: { ...s.params, if: e.cond } }),
+          ),
+        ];
+        if (!steps.length) continue;
+        workflows.push({
+          name: e.name,
+          label: `Напоминание: ${label.toLowerCase()} заканчивается`.slice(0, 80),
+          trigger: e.trigger,
+          steps,
+        });
+        items.push({
+          title: `Об окончании: ${label.toLowerCase()}`,
+          text: [
+            visitor ? `Клиенту — письмо ${e.what}, если он согласился на письма.` : "",
+            telegram ? `${whom("packages").replace(/ — .*$/, "")} — в Telegram, без имён и телефонов.` : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        });
+      }
+    }
+    if (pp.write_off_on_booking !== false && ctx.present.has("booking") && visitor) {
+      templates.booking_no_package = {
+        subject: "Запись не состоялась",
+        body: `Мы не нашли действующий ${label.toLowerCase() === "абонемент" ? "абонемент" : `«${label.toLowerCase()}»`} на ваш телефон и почту, поэтому запись на {{starts_at}} не сохранена. Продлите его или свяжитесь с нами.`,
+      };
+      workflows.push({
+        name: "booking_no_package",
+        label: "Письмо: запись без действующего абонемента",
+        trigger: {
+          type: "on_status",
+          entity: NOTIFY_BOOKING.entity,
+          field: "package_status",
+          equals: "no_package",
+        },
+        steps: [
+          {
+            type: "notify",
+            params: {
+              integration: MAIL,
+              to: `$record.${NOTIFY_BOOKING.email}`,
+              consentField: NOTIFY_BOOKING.consent,
+              template: "booking_no_package",
+              if: { [NOTIFY_BOOKING.status]: [NOTIFY_BOOKING.cancelled] },
+            },
+          },
+        ],
+      });
+      items.push({
+        title: "О записи без абонемента",
+        text: "Посетителю, записавшемуся без действующего абонемента, — письмо, что запись не сохранена.",
+      });
+    }
+  }
+
+  // Resources (B2-18): a day before the due time — to the borrower; overdue — to the team and the borrower.
+  if (ctx.present.has("resources") && ctx.allParams.resources?.overdue_reminder !== false) {
+    const visitor = p.visitor_emails === true;
+    const toBorrower = (template: string, status: string): Step => ({
+      type: "notify",
+      params: {
+        integration: MAIL,
+        to: "$record.email",
+        consentField: "consent_messages",
+        template,
+        if: { status: [status] },
+      },
+    });
+    if (visitor) {
+      templates.resource_due = {
+        subject: "Напоминание о возврате",
+        body: "Напоминаем: срок возврата — {{due_at}}. Пожалуйста, верните взятое вовремя.",
+      };
+      templates.resource_overdue_borrower = {
+        subject: "Срок возврата прошёл",
+        body: "Срок возврата прошёл ({{due_at}}). Пожалуйста, верните взятое как можно скорее.",
+      };
+      workflows.push({
+        name: "resource_due_reminder",
+        label: "Напоминание о возврате за сутки",
+        trigger: {
+          type: "schedule",
+          entity: RESOURCE_NAMES.issue,
+          relative: { field: "due_at", offsetMinutes: -1440 },
+        },
+        steps: [toBorrower("resource_due", "issued")],
+      });
+      items.push({
+        title: "Напоминание о возврате",
+        text: "Получателю — письмо за сутки до срока возврата, если он согласился на письма.",
+      });
+    }
+    workflows.push({
+      name: "resource_overdue_notify",
+      label: "Уведомить о просрочке возврата",
+      trigger: { type: "on_status", entity: RESOURCE_NAMES.issue, field: "status", equals: "overdue" },
+      steps: [
+        ...team("resources", {
+          template: [
+            "resource_overdue",
+            {
+              subject: "Просрочен возврат",
+              body: "Срок возврата прошёл ({{due_at}}), а выдача не закрыта. Откройте выдачи: {{link}}",
+            },
+          ],
+          text: "Просрочен возврат — откройте выдачи: {{link}}",
+        }),
+        ...(visitor ? [toBorrower("resource_overdue_borrower", "overdue")] : []),
+      ],
+    });
+    items.push({
+      title: "О просрочке возврата",
+      text: `Когда срок прошёл: ${whom("resources")}.${visitor ? " Получателю — письмо, если он согласился на письма." : ""}`,
+    });
   }
 
   return { templates, telegram, workflows, items, acceptance };
