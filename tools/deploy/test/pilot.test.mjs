@@ -26,6 +26,7 @@ import {
   placesFrom,
   platformDnsRecords,
   resolveStateS3,
+  runCounted,
   SHAPES,
   s3ErrorCode,
   stockKeysOfRelease,
@@ -1825,5 +1826,22 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     ).rejects.toThrow(/psql в wizard-postgres-0: код 3: psql:<stdin>:9: ERROR: {2}duplicate key/);
     expect(calls).toEqual([]);
     expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
+  });
+});
+
+describe("runCounted (B2-41)", () => {
+  const ready = { ready: true, gaps: { reported: [] } };
+  it("d76: a ready system with out-of-scope items counts mid-run (the platform records them, the report re-checks)", () => {
+    const r = {
+      ...ready,
+      plan: { coverage: "uncovered", outOfScope: [{ what: "оплата", replacement: null }] },
+    };
+    expect(runCounted("d76")(r)).toBe(true);
+    expect(runCounted("d76")({ ...r, ready: false })).toBe(false);
+    expect(runCounted("d76")({ ...ready, plan: { coverage: "unknown" } })).toBe(false);
+  });
+  it("d67: the report's counting", () => {
+    expect(runCounted("d67")(ready)).toBe(true);
+    expect(runCounted("d67")({ ready: false, gaps: { reported: [] } })).toBe(false);
   });
 });

@@ -107,7 +107,7 @@ jobs:
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
-          for v in "$PEXELS_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          if [ -n "$PEXELS_API_KEY" ]; then echo "::add-mask::$PEXELS_API_KEY"; fi
           node tools/deploy/stock-ci.mjs record
       - name: Fixture tests on the recording
         run: pnpm exec vitest run packages/agents/test/stock.test.ts apps/platform-api/test/stock-photos.test.ts

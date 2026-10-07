@@ -391,8 +391,11 @@ describe.skipIf(!hasYaml)("stock workflow (B2-38: the stock keys from CI)", () =
         for (const k of keys) expect(step.env[k]).toBe(gh(`secrets.${k}`));
         const lines = step.run.trim().split("\n");
         // The first line masks every key of the step before anything runs.
+        // One key — a plain `if` (a one-word `for` loop is shellcheck SC2066, actionlint fails on it).
         expect(lines[0]).toBe(
-          `for v in ${keys.map((k) => `"$${k}"`).join(" ")}; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`,
+          keys.length === 1
+            ? `if [ -n "$${keys[0]}" ]; then echo "::add-mask::$${keys[0]}"; fi`
+            : `for v in ${keys.map((k) => `"$${k}"`).join(" ")}; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`,
         );
         expect(lines.slice(1).join("\n")).toMatch(/^node tools\/deploy\/stock-ci\.mjs (check|probe|record)$/);
       }
