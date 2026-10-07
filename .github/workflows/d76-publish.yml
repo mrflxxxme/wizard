@@ -1,0 +1,64 @@
+# B2-41: the final D76 measurement into the repository — the report JSON and the screenshots of the run's artifact go
+# to docs/progress/b2-final.json and docs/progress/b2-final/shots/ (tools/progress/b2.mjs, block «Финальный замер»).
+# The artifact is not readable outside Actions (its download redirects to the blob host), so this job copies it onto a
+# branch d76/final-<run>; the pull request into main is opened from there. E-mail addresses (the service account of the
+# measurement) are masked before the commit: the repository is public.
+name: d76-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "id запуска bootstrap-pilot (eval), чей отчёт D76 кладётся в docs/progress"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run id
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          if ! printf '%s' "$RUN_ID" | grep -Eq '^[0-9]{5,20}$'; then echo "::error title=d76-publish::run_id — число"; exit 1; fi
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          name: d76-eval-prod-${{ inputs.run_id }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/d76
+      - name: Report and screenshots into docs/progress
+        env:
+          SRC: ${{ runner.temp }}/d76
+        run: |
+          set -euo pipefail
+          report=$(find "$SRC" -maxdepth 2 -name 'd76-*.json' | head -n 1)
+          if [ -z "$report" ]; then echo "::error title=d76-publish::в артефакте нет d76-*.json"; exit 1; fi
+          rm -rf docs/progress/b2-final docs/progress/b2-final.json
+          mkdir -p docs/progress/b2-final/shots
+          node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,"<скрыто>");JSON.parse(t);fs.writeFileSync(process.argv[2],t)' "$report" docs/progress/b2-final.json
+          if [ -d "$(dirname "$report")/shots" ]; then
+            find "$(dirname "$report")/shots" -maxdepth 1 -name '*.png' -size -600k -exec cp {} docs/progress/b2-final/shots/ \;
+          fi
+          echo "::notice title=d76-publish::отчёт и $(find docs/progress/b2-final/shots -name '*.png' | wc -l) снимков"
+      - name: Branch d76/final-${{ inputs.run_id }}
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "d76/final-$RUN_ID"
+          git add docs/progress/b2-final.json docs/progress/b2-final
+          git commit -m "B2-41: отчёт финального замера D76 (запуск $RUN_ID) и снимки"
+          git push origin "d76/final-$RUN_ID"
+          echo "::notice title=d76-publish::ветка d76/final-$RUN_ID"
