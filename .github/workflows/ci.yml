@@ -72,7 +72,7 @@ jobs:
       - run: pnpm exec vitest run --project browser packages/ui-kit/test/v2.browser.test.ts
       # B2-25 (platform-screens.yaml#S-canvas): the canvas screen on the recorded feed «клиника» (режим показа, no models),
       # 390/1280 light/dark: interview → sketch → plan → approval → build → ready; screenshots test/artifacts/canvas-*.png.
-      - run: pnpm exec vitest run --project browser apps/platform-web/test/canvas.browser.test.ts
+      - run: pnpm exec vitest run --project browser apps/platform-web/test/canvas.browser.test.ts apps/platform-web/test/canvas-pick.browser.test.ts
       # B2-33 (platform-screens.yaml#stack): every other platform screen on the design system v2 — 390/1280 light/dark,
       # no horizontal scroll, the start of prototype E opens the canvas; screenshots test/artifacts/platform-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/platform-v2.browser.test.ts
