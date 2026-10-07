@@ -4,12 +4,16 @@
 // library of the shared file storage (runtime storeLibraryPhoto: WebP variants, no EXIF). WIZARD_STOCK_MODE:
 // fixture — recorded answers of tools/fixtures/stock, no network (default unless WIZARD_LLM_MODE is live/record);
 // live; record — live plus recording of the search answers; off — no photos.
+// Keys: the pilot release passes the founder's keys as env (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY, only with
+// stock_mode=live, tools/deploy/pilot-secrets.mjs pilotStockEnv); they win over the SecretStore values, which stay the
+// way for a hand-added key. Nothing is written to the store: env changes with the next release, removal included.
 import {
   createStockClient,
   FIXTURE_KEYS,
   fixtureStockFetch,
   type PhotoHost,
   recordingStockFetch,
+  STOCK_HOSTS,
   STOCK_PROVIDERS,
   STOCK_SECRET_REFS,
   StockCache,
@@ -27,17 +31,62 @@ export function stockModeOf(env: NodeJS.ProcessEnv): StockMode {
   return llm === "live" || llm === "record" ? llm : "fixture";
 }
 
+/** Env of the platform pods with the stock keys (the pilot's Secret wizard-platform-env), read before SecretStore. */
+export const STOCK_KEY_ENV: Readonly<Record<StockProvider, string>> = {
+  pexels: "WIZARD_STOCK_PEXELS_KEY",
+  pixabay: "WIZARD_STOCK_PIXABAY_KEY",
+};
+
+/** The only hosts a live photo host requests (= tools/deploy/pilot-secrets.mjs STOCK_EGRESS_HOSTS). */
+export const STOCK_EGRESS_HOSTS: readonly string[] = [
+  ...new Set(STOCK_PROVIDERS.flatMap((p) => [STOCK_HOSTS[p].api, ...STOCK_HOSTS[p].images])),
+];
+
+/** fetch limited to https on STOCK_EGRESS_HOSTS: anything else is refused before the network (the client reads it as a network failure). */
+export function stockEgressFetch(
+  inner: (input: string, init?: RequestInit) => Promise<Response>,
+): (input: string, init?: RequestInit) => Promise<Response> {
+  return async (input, init) => {
+    let url: URL;
+    try {
+      url = new URL(input);
+    } catch {
+      throw new TypeError("stock egress: bad url");
+    }
+    if (url.protocol !== "https:" || !STOCK_EGRESS_HOSTS.includes(url.hostname))
+      throw new TypeError(`stock egress: host ${url.hostname} is not allowed`);
+    return inner(input, init);
+  };
+}
+
+/** The key of a provider: the env of the release first, then the platform secret; null — the provider is off. */
+export function stockKeyOf(
+  provider: StockProvider,
+  secrets: { getPlatform(ref: string): string | null } | null,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const fromEnv = (env[STOCK_KEY_ENV[provider]] ?? "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    return secrets?.getPlatform(STOCK_SECRET_REFS[provider]) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Search answers shared by the builds of the process (a day; Pixabay requires a 24 h cache). */
 const sharedCache = new StockCache();
 
 export interface PhotoHostOptions {
   mode: StockMode;
-  /** Platform secrets (SecretStore.getPlatform); a missing or unreadable key turns its provider off. */
+  /** Platform secrets (SecretStore.getPlatform) after STOCK_KEY_ENV; a missing or unreadable key turns its provider off. */
   secrets: { getPlatform(ref: string): string | null } | null;
   /** The shared file storage of systems: the library lives under wz_photos/. */
   storage: FileStorage;
-  /** Egress fetch (default: global fetch of the platform process). */
+  /** Egress fetch (default: global fetch of the platform process); live requests go only to STOCK_EGRESS_HOSTS. */
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+  /** Env with the release keys (STOCK_KEY_ENV); default process.env. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** The photo host of the builder, or undefined (off). */
@@ -49,15 +98,10 @@ export function createPhotoHost(o: PhotoHostOptions): PhotoHost | undefined {
     return { stock: createStockClient({ fetch: fixtureStockFetch(), keys: FIXTURE_KEYS }), store };
   const keys: Partial<Record<StockProvider, string>> = {};
   for (const p of STOCK_PROVIDERS) {
-    let key: string | null = null;
-    try {
-      key = o.secrets?.getPlatform(STOCK_SECRET_REFS[p]) ?? null;
-    } catch {
-      key = null;
-    }
+    const key = stockKeyOf(p, o.secrets, o.env ?? process.env);
     if (key) keys[p] = key;
   }
-  const live = o.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
+  const live = stockEgressFetch(o.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init)));
   return {
     stock: createStockClient({
       fetch: o.mode === "record" ? recordingStockFetch(live) : live,

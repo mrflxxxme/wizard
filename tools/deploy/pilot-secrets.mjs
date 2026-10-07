@@ -244,10 +244,45 @@ export const PILOT_PIPELINE_INPUTS = [
 /** Stock photos of the design stage (B2-38, WIZARD_STOCK_MODE): off — theme graphics instead of photos. */
 export const STOCK_MODES = ["off", "live", "fixture", "record"];
 /**
- * Hosts the stock photo providers need from platform-api in live mode (B2-38: secret://platform/stock/pexels|pixabay).
- * Not added to any allowlist by default: the switch to live comes with the founder's keys (docs/ops/eval-d76.md).
+ * Hosts the stock photo providers need from platform-api and the worker in live mode (B2-38). The pods reach public
+ * addresses on 443 as for the model providers (NetworkPolicy wizard-platform-api / wizard-worker); the allowlist is
+ * the platform's own: only in live/record does it make stock requests at all, and only to these hosts
+ * (apps/platform-api/src/agents/stock.ts stockEgressFetch, = packages/agents STOCK_HOSTS; a test keeps them equal).
  */
 export const STOCK_EGRESS_HOSTS = ["api.pexels.com", "images.pexels.com", "pixabay.com", "cdn.pixabay.com"];
+/** Stock modes that use the keys (search over the network). */
+export const STOCK_KEY_MODES = ["live", "record"];
+/**
+ * Founder inputs (GitHub secrets PEXELS_API_KEY / PIXABAY_API_KEY) → env of the platform Secret wizard-platform-env,
+ * read by platform-api and the worker before the platform SecretStore (stock.ts STOCK_KEY_ENV).
+ */
+export const STOCK_KEY_ENV = {
+  pexels: ["PEXELS_API_KEY", "WIZARD_STOCK_PEXELS_KEY"],
+  pixabay: ["PIXABAY_API_KEY", "WIZARD_STOCK_PIXABAY_KEY"],
+};
+
+/** WIZARD_STOCK_MODE of the release: the input, else off (theme graphics). */
+export function pilotStockMode(inputs) {
+  const stock = String(inputs.WIZARD_STOCK_MODE || "off")
+    .trim()
+    .toLowerCase();
+  if (!STOCK_MODES.includes(stock)) throw new Error(`WIZARD_STOCK_MODE: ${STOCK_MODES.join(" | ")}`);
+  return stock;
+}
+
+/**
+ * Stock keys for the platform Secret: only when the mode uses them (live/record), only the ones given and not turned
+ * off (`off`: providers whose key the release found invalid). Otherwise nothing — off never carries a key.
+ */
+export function pilotStockEnv(inputs, { off = [] } = {}) {
+  if (!STOCK_KEY_MODES.includes(pilotStockMode(inputs))) return {};
+  const env = {};
+  for (const [provider, [input, name]] of Object.entries(STOCK_KEY_ENV)) {
+    const key = String(inputs[input] ?? "").trim();
+    if (key && !off.includes(provider)) env[name] = key;
+  }
+  return env;
+}
 const MAIL_DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 /**
@@ -286,11 +321,8 @@ export function pilotPipelineEnv(inputs) {
     .trim()
     .toLowerCase();
   if (!["chromium", "off"].includes(browser)) throw new Error("WIZARD_G1_BROWSER: chromium или off");
-  // B2-38: no stock keys on the pilot yet — theme graphics instead of photos until the founder adds them.
-  const stock = String(inputs.WIZARD_STOCK_MODE || "off")
-    .trim()
-    .toLowerCase();
-  if (!STOCK_MODES.includes(stock)) throw new Error(`WIZARD_STOCK_MODE: ${STOCK_MODES.join(" | ")}`);
+  // B2-38: theme graphics unless the release asks for live stock photos (keys: pilotStockEnv).
+  const stock = pilotStockMode(inputs);
   const slots = String(inputs.WIZARD_G1_BROWSER_SLOTS ?? "").trim();
   if (slots && !/^[1-8]$/.test(slots)) throw new Error("WIZARD_G1_BROWSER_SLOTS: целое от 1 до 8");
   return {
@@ -319,8 +351,9 @@ export function alertSettings(inputs) {
 /**
  * Contents of the four cluster Secrets of the pilot from the bundle, the tofu outputs (buckets and their keys) and the
  * founder's inputs: {platformEnv, postgresEnv, userlist, dnsSolverEnv} (tools/deploy/infra.mjs clusterSecrets).
+ * stockOff: stock providers turned off by the release (their key was refused, pilot.mjs stockKeysOfRelease).
  */
-export function clusterSecretFiles({ bundle, outputs, inputs }) {
+export function clusterSecretFiles({ bundle, outputs, inputs, stockOff = [] }) {
   const s = bundle.secrets;
   const buckets = outputs.env?.buckets ?? {};
   // The founder's Timeweb S3 account key (GitHub secrets AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) wins over the keys
@@ -350,6 +383,8 @@ export function clusterSecretFiles({ bundle, outputs, inputs }) {
     WIZARD_S3_SECRET_ACCESS_KEY: keys.files.secret_key,
     ...pass,
     ...pilotPipelineEnv(inputs),
+    // B2-38: stock keys only with stock_mode=live (record), without the ones the release found invalid.
+    ...pilotStockEnv(inputs, { off: stockOff }),
   });
   const postgresEnv = envFile({
     POSTGRES_PASSWORD: s.POSTGRES_PASSWORD,

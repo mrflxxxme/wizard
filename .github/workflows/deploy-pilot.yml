@@ -29,7 +29,7 @@ on:
         options: [modules, legacy]
         default: modules
       stock_mode:
-        description: "Фото на сайтах систем: off — графика темы (ключей стоков нет); live — фото со стоков (нужны ключи secret://platform/stock/pexels и pixabay)"
+        description: "Фото на сайтах систем: off — графика темы; live — фото со стоков (ключи из секретов PEXELS_API_KEY и PIXABAY_API_KEY, выкат проверяет каждый)"
         type: choice
         options: ["off", live]
         default: "off"

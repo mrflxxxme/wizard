@@ -128,10 +128,12 @@ async function launch(o: WorkerOptions): Promise<Worker> {
   const handle = o.db ?? createDb(config.dbUrl);
   if (o.migrate !== false) await migrate(handle.db);
   const billing = new Billing({ exemptOrgs: config.billingExemptOrgs, ...(o.now ? { now: o.now } : {}) });
+  const secrets = new SecretStore(config.secretsFile, config.secretsKey);
   const executors =
     typeof o.executors === "function"
       ? o.executors({ pg: handle.pg, config })
-      : (o.executors ?? createAgentExecutors({ pg: handle.pg, config }));
+      : // B2-38: plan builds run here on the pilot — the stock keys of the platform secrets reach the photos stage.
+        (o.executors ?? createAgentExecutors({ pg: handle.pg, config, secrets }));
   const engine = new RunEngine({
     db: handle.db,
     pg: handle.pg,
@@ -147,7 +149,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       send: (to, topic, message, key) => DBOS.send(to, message, topic, key),
       close: async () => {},
     },
-    secrets: new SecretStore(config.secretsFile, config.secretsKey),
+    secrets,
     ...(o.createRouter ? { createRouter: o.createRouter } : {}),
     publish: { alert: (a) => alert(a), ...o.publish },
     log,

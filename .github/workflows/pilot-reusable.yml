@@ -170,8 +170,12 @@ jobs:
       WIZARD_G1_BROWSER: ${{ vars.WIZARD_G1_BROWSER }}
       WIZARD_G1_BROWSER_SLOTS: ${{ vars.WIZARD_G1_BROWSER_SLOTS }}
       WIZARD_MAIL_DOMAIN: ${{ vars.WIZARD_MAIL_DOMAIN }}
-      # B2-38: stock photos (empty — off, theme graphics; live needs the founder's stock keys).
+      # B2-38: stock photos (empty — off, theme graphics). With live the release tries each key with one search and
+      # passes the working ones to the platform (WIZARD_STOCK_PEXELS_KEY / WIZARD_STOCK_PIXABAY_KEY); `check` tries them
+      # too. Only verdicts and HTTP codes are printed, never a key.
       WIZARD_STOCK_MODE: ${{ inputs.stock_mode || vars.WIZARD_STOCK_MODE }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       # D76: provider balances «<₽>@<ISO time>» seen in the consoles, the warning threshold, Z.ai as the reserve.
       WIZARD_LLM_BALANCE_ZAI: ${{ vars.WIZARD_LLM_BALANCE_ZAI }}
       WIZARD_LLM_BALANCE_CLOUDRU: ${{ vars.WIZARD_LLM_BALANCE_CLOUDRU }}

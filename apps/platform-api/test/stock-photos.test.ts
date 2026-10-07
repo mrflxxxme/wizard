@@ -9,7 +9,14 @@ import { fixtureStockFetch, runPhotosStage } from "@wizard/agents/builder";
 import type { SystemPlan } from "@wizard/appspec";
 import { MemoryFileStorage } from "@wizard/runtime";
 import { afterAll, describe, expect, test } from "vitest";
-import { createPhotoHost, stockModeOf } from "../src/agents/stock.js";
+import {
+  createPhotoHost,
+  STOCK_EGRESS_HOSTS,
+  STOCK_KEY_ENV,
+  stockEgressFetch,
+  stockKeyOf,
+  stockModeOf,
+} from "../src/agents/stock.js";
 import { SecretStore } from "../src/secrets/store.js";
 
 const dir = mkdtempSync(join(tmpdir(), "wz-stock-"));
@@ -97,5 +104,63 @@ describe("stock mode and keys", () => {
     const r = await runPhotosStage({ plan, host });
     expect(r.picked).toBe(2);
     expect(r.plan.design.photos?.map((p) => p.slot)).toEqual(["top", "about"]);
+  }, 60_000);
+});
+
+describe("stock keys of the release and the egress of live photos (B2-38 on the pilot)", () => {
+  test("the release env wins over the platform secret; an empty env falls back to it; nothing is written", () => {
+    const secrets = new SecretStore(join(dir, "env.enc"), "k".repeat(32));
+    secrets.putPlatform("stock/pixabay", "PIXABAY-FROM-STORE");
+    const env = { [STOCK_KEY_ENV.pexels]: " PEXELS-FROM-ENV ", [STOCK_KEY_ENV.pixabay]: "" };
+    expect(stockKeyOf("pexels", secrets, env)).toBe("PEXELS-FROM-ENV");
+    expect(stockKeyOf("pixabay", secrets, env)).toBe("PIXABAY-FROM-STORE");
+    expect(stockKeyOf("pixabay", null, env)).toBeNull();
+    // An unreadable store (another key) turns the provider off instead of failing the build.
+    const broken = new SecretStore(join(dir, "env.enc"), "x".repeat(32));
+    expect(stockKeyOf("pixabay", broken, {})).toBeNull();
+    expect(secrets.getPlatform("secret://platform/stock/pexels")).toBeNull();
+    const host = createPhotoHost({ mode: "live", secrets: null, storage: new MemoryFileStorage(), env });
+    expect(host?.stock.providers).toEqual(["pexels"]);
+  });
+
+  test("live requests go only over https to the stock hosts", async () => {
+    expect([...STOCK_EGRESS_HOSTS].sort()).toEqual(
+      ["api.pexels.com", "cdn.pixabay.com", "images.pexels.com", "pixabay.com"].sort(),
+    );
+    const seen: string[] = [];
+    const guarded = stockEgressFetch(async (u) => {
+      seen.push(new URL(u).hostname);
+      return new Response("{}", { status: 200 });
+    });
+    await guarded("https://api.pexels.com/v1/search?query=x");
+    await guarded("https://cdn.pixabay.com/photo/a.jpg");
+    await expect(guarded("https://example.com/a.jpg")).rejects.toThrow(/not allowed/);
+    await expect(guarded("http://api.pexels.com/v1/search")).rejects.toThrow(/not allowed/);
+    await expect(guarded("https://169.254.169.254/latest")).rejects.toThrow(/not allowed/);
+    await expect(guarded("not a url")).rejects.toThrow(/bad url/);
+    expect(seen).toEqual(["api.pexels.com", "cdn.pixabay.com"]);
+  });
+
+  test("a live build with env keys asks only the stock hosts and never shows a key", async () => {
+    const hosts = new Set<string>();
+    const inner = fixtureStockFetch();
+    const env = { [STOCK_KEY_ENV.pexels]: "PEXELS-ENV-555", [STOCK_KEY_ENV.pixabay]: "PIXABAY-ENV-555" };
+    const host = createPhotoHost({
+      mode: "live",
+      secrets: null,
+      storage: new MemoryFileStorage(),
+      env,
+      fetch: async (u, init) => {
+        hosts.add(new URL(u).hostname);
+        return inner(u, init);
+      },
+    });
+    expect(host?.stock.providers).toEqual(["pexels", "pixabay"]);
+    const r = await runPhotosStage({ plan, host });
+    expect(r.picked).toBe(2);
+    for (const h of hosts) expect(STOCK_EGRESS_HOSTS).toContain(h);
+    const everything = JSON.stringify(r.plan);
+    expect(everything).not.toContain("PEXELS-ENV-555");
+    expect(everything).not.toContain("PIXABAY-ENV-555");
   }, 60_000);
 });

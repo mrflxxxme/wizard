@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mailTransportOf, unisenderApiBase } from "../../../packages/connectors/src/mail-api.ts";
 import { PROVIDERS } from "../../../packages/llm/src/index.ts";
 import { main } from "../pilot.mjs";
-import { encryptBundle, ensureBundle } from "../pilot-secrets.mjs";
+import { encryptBundle, ensureBundle, STOCK_KEY_ENV } from "../pilot-secrets.mjs";
 import {
   ALERT_TEXT,
   checkSpf,
@@ -26,12 +26,16 @@ import {
   probeMailApi,
   probeSmtp,
   probeSpf,
+  probeStock,
   probeTelegram,
   probeTimeweb,
   probeZai,
   runPreflight,
   SECRET_NAMES,
+  STOCK_KEY_INPUTS,
   smtpEndpoint,
+  stockKeyVerdict,
+  stockVerdictLine,
   summaryTable,
   tcpConnect,
 } from "../preflight.mjs";
@@ -780,5 +784,169 @@ describe("preflight: report", () => {
       expect(lines.join("\n")).not.toContain(s);
       expect(summary).not.toContain(s);
     }
+  });
+});
+
+describe("preflight: stock photo keys (B2-38)", () => {
+  const PEXELS = "pexels-secret-key-001";
+  const PIXABAY = "12345-pixabaysecretkey";
+  const stock = (pexels, pixabay) =>
+    fakeFetch([
+      [/^https:\/\/api\.pexels\.com\/v1\/search\?/, pexels],
+      [/^https:\/\/pixabay\.com\/api\/\?/, pixabay],
+    ]);
+
+  it("the GitHub secrets of the keys are secrets of the preflight and the release reads the same names", () => {
+    for (const n of Object.values(STOCK_KEY_INPUTS)) expect(SECRET_NAMES).toContain(n);
+    expect(Object.fromEntries(Object.entries(STOCK_KEY_ENV).map(([p, [input]]) => [p, input]))).toEqual(
+      STOCK_KEY_INPUTS,
+    );
+  });
+
+  it("one search each: Pexels with the key in the header, Pixabay with the key in the query; 200 — valid", async () => {
+    const f = stock(
+      () => ({ body: { photos: [{ id: 1 }] } }),
+      () => ({ body: { total: 1, hits: [{ id: 2 }] } }),
+    );
+    const a = await stockKeyVerdict("pexels", PEXELS, { fetch: f });
+    const b = await stockKeyVerdict("pixabay", PIXABAY, { fetch: f });
+    expect(a).toEqual({ provider: "pexels", verdict: "valid", http: 200 });
+    expect(b).toEqual({ provider: "pixabay", verdict: "valid", http: 200 });
+    expect(f.calls).toHaveLength(2);
+    const [px, pb] = f.calls;
+    expect(px.method).toBe("GET");
+    expect(px.headers.authorization).toBe(PEXELS);
+    expect(new URL(px.url).searchParams.get("query")).toBe("coffee");
+    expect(new URL(px.url).searchParams.get("per_page")).toBe("1");
+    expect(px.url).not.toContain(PEXELS);
+    expect(new URL(pb.url).searchParams.get("key")).toBe(PIXABAY);
+    expect(new URL(pb.url).searchParams.get("q")).toBe("coffee");
+    expect(new URL(pb.url).searchParams.get("per_page")).toBe("3");
+    // The verdict carries neither the key nor the URL.
+    for (const v of [a, b]) expect(JSON.stringify(v)).not.toMatch(/secret|pixabay\.com|pexels\.com/);
+    expect(stockVerdictLine(a)).toBe("Pexels: действителен (HTTP 200)");
+  });
+
+  it("401/403 (Pixabay also 400) — invalid; 429 — valid; 5xx and no answer — not checked; no key — no request", async () => {
+    const cases = [
+      ["pexels", 401, "invalid"],
+      ["pexels", 403, "invalid"],
+      ["pexels", 429, "valid"],
+      ["pexels", 502, "unchecked"],
+      ["pixabay", 400, "invalid"],
+      ["pixabay", 401, "invalid"],
+      ["pixabay", 403, "invalid"],
+      ["pixabay", 429, "valid"],
+    ];
+    for (const [provider, status, verdict] of cases) {
+      const f = stock(
+        () => ({ status, body: "[ERROR] Invalid or missing API key" }),
+        () => ({ status, body: "[ERROR 400] Invalid or missing API key" }),
+      );
+      const key = provider === "pexels" ? PEXELS : PIXABAY;
+      expect(await stockKeyVerdict(provider, key, { fetch: f }), `${provider} ${status}`).toEqual({
+        provider,
+        verdict,
+        http: status,
+      });
+    }
+    // A 200 that is not the API's answer (a proxy page) proves nothing.
+    const page = stock(
+      () => ({ body: "<html>" }),
+      () => ({ body: { error: 1 } }),
+    );
+    expect((await stockKeyVerdict("pexels", PEXELS, { fetch: page })).verdict).toBe("unchecked");
+    expect((await stockKeyVerdict("pixabay", PIXABAY, { fetch: page })).verdict).toBe("unchecked");
+    const down = stock(
+      () => netError("ECONNRESET"),
+      () => netError("ENOTFOUND"),
+    );
+    const d = await stockKeyVerdict("pixabay", PIXABAY, { fetch: down });
+    expect(d).toEqual({ provider: "pixabay", verdict: "unchecked", http: 0, error: "ENOTFOUND" });
+    expect(stockVerdictLine(d)).toBe("Pixabay: не проверен (нет ответа: ENOTFOUND)");
+    const none = stock(
+      () => ({ body: {} }),
+      () => ({ body: {} }),
+    );
+    expect(await stockKeyVerdict("pexels", "  ", { fetch: none })).toEqual({
+      provider: "pexels",
+      verdict: "missing",
+      http: 0,
+    });
+    expect(none.calls).toHaveLength(0);
+    expect(stockVerdictLine({ provider: "pexels", verdict: "missing", http: 0 })).toBe("Pexels: нет ключа");
+  });
+
+  it("check rows are optional: a refused key is an optional error; a mode without keys is named", async () => {
+    const f = stock(
+      () => ({ body: { photos: [] } }),
+      () => ({ status: 400, body: "[ERROR 400] Invalid or missing API key" }),
+    );
+    const rows = await probeStock(
+      { PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY, WIZARD_STOCK_MODE: "live" },
+      { fetch: f },
+    );
+    expect(rows.map((r) => [r.title, r.status, r.required])).toEqual([
+      ["Фото: ключ Pexels (необязательно)", "ok", false],
+      ["Фото: ключ Pixabay (необязательно)", "fail", false],
+    ]);
+    expect(rows[0].detail).toBe("Pexels: действителен (HTTP 200)");
+    expect(rows[1].detail).toBe(
+      "Pixabay: недействителен (HTTP 400): замените PIXABAY_API_KEY в секретах GitHub",
+    );
+    const off = await probeStock({ PEXELS_API_KEY: PEXELS }, { fetch: f });
+    expect(off[0].detail).toContain("сейчас stock_mode=off: ключ не используется");
+    expect(off[1]).toMatchObject({ status: "skipped" });
+    expect(off[1].detail).toContain("PIXABAY_API_KEY не задан");
+    expect(JSON.stringify([...rows, ...off])).not.toContain(PEXELS);
+    expect(JSON.stringify([...rows, ...off])).not.toContain(PIXABAY);
+  });
+
+  it("pilot check: keys masked first, verdicts in the summary, a refused key fails nothing required", async () => {
+    const lines = [];
+    let summary = "";
+    const f = fakeFetch([
+      [/api\.pexels\.com/, () => ({ status: 401, body: { error: "bad" } })],
+      [/pixabay\.com\/api/, () => ({ body: { hits: [] } })],
+      ...okRoutes(),
+    ]);
+    const vars = { ...BASE, PEXELS_API_KEY: PEXELS, PIXABAY_API_KEY: PIXABAY, GITHUB_ACTIONS: "true" };
+    await runPreflight({
+      env: "prod",
+      vars,
+      fetch: f,
+      smtp: { connect: async () => Promise.reject(new Error("x")) },
+      log: (s) => lines.push(s),
+      summary: (t) => {
+        summary = t;
+      },
+    });
+    expect(summary).toContain(
+      "| Фото: ключ Pexels (необязательно) | ошибка (необязательно) | Pexels: недействителен (HTTP 401)",
+    );
+    expect(summary).toContain("| Фото: ключ Pixabay (необязательно) | ok | Pixabay: действителен (HTTP 200)");
+    expect(lines).toContain(
+      "::warning title=pilot check::Фото: ключ Pexels (необязательно): Pexels: недействителен (HTTP 401): замените PEXELS_API_KEY в секретах GitHub; сейчас stock_mode=off: ключ не используется",
+    );
+    expect(lines.filter((l) => l.startsWith("::error")).some((l) => l.includes("Фото"))).toBe(false);
+    for (const k of [PEXELS, PIXABAY]) {
+      expect(lines.join("\n")).not.toContain(k);
+      expect(summary).not.toContain(k);
+    }
+    // The whole command masks them before anything else is printed.
+    const out = [];
+    await main(
+      ["check", "--env", "prod"],
+      { ...vars, TWC_TOKEN: "" },
+      {
+        fetch: fakeFetch([]),
+        log: (s) => out.push(s),
+        smtp: { connect: async () => Promise.reject(new Error("x")) },
+      },
+    );
+    expect(out.slice(0, 2)).toEqual([`::add-mask::${PEXELS}`, `::add-mask::${PIXABAY}`]);
+    const shown = out.filter((l) => !l.startsWith("::add-mask::")).join("\n");
+    expect(shown).not.toContain(PEXELS);
+    expect(shown).not.toContain(PIXABAY);
   });
 });

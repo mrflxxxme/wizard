@@ -4,7 +4,7 @@
 // secrets/variables once (FOUNDER_INPUTS); everything else is created here, idempotently:
 //   node tools/deploy/pilot.mjs check --env prod|staging                read-only preflight of the founder inputs
 //        (tools/deploy/preflight.mjs): Timeweb token, balance and DNS zones, Cloud.ru, Z.ai, SMTP login or the
-//        Unisender Go API key, alerts, SPF
+//        Unisender Go API key, alerts, SPF, the stock photo keys (B2-38)
 //   node tools/deploy/pilot.mjs bootstrap --env prod|staging --tag <sha>   state bucket + keys (Timeweb API) → secrets
 //        bundle (generated once, encrypted with WIZARD_STATE_PASSPHRASE, kept in the state bucket) → OpenTofu →
 //        temporary SSH rule for this runner's IP → k3s over an SSH tunnel → addons, Secrets, Helm → founder access;
@@ -51,9 +51,12 @@ import {
   encryptBundle,
   ensureBundle,
   MIN_PASSPHRASE,
+  pilotStockMode,
+  STOCK_KEY_ENV,
+  STOCK_KEY_MODES,
   secretValues,
 } from "./pilot-secrets.mjs";
-import { runPreflight, SECRET_NAMES } from "./preflight.mjs";
+import { runPreflight, SECRET_NAMES, stockKeyVerdicts, stockVerdictLine } from "./preflight.mjs";
 
 export const COMMANDS = [
   "check",
@@ -1515,6 +1518,55 @@ function mask(values, vars, log) {
 }
 
 /**
+ * Stock keys of a release (B2-38): with stock_mode=live (record) each key is tried with one search; a refused key
+ * turns its provider off for this release (it never reaches the platform Secret) with a warning — the release goes on,
+ * as with the other optional services (Unisender, Z.ai): the landings keep the theme graphics. No answer keeps the
+ * key (a runner's network hiccup is no verdict on it). Returns {mode, off, lines}: lines for the log and the summary
+ * (verdicts and HTTP codes only — never a key or a URL).
+ */
+export async function stockKeysOfRelease(vars, { fetch: f = fetch, log = () => {} } = {}) {
+  const mode = pilotStockMode(vars);
+  if (!STOCK_KEY_MODES.includes(mode)) {
+    const lines = [`Фото со стоков выключены (stock_mode=${mode}): ключи в платформу не передаются.`];
+    for (const l of lines) log(l);
+    return { mode, off: [], lines };
+  }
+  const verdicts = await stockKeyVerdicts(vars, { fetch: f });
+  const off = verdicts
+    .filter((v) => v.verdict === "invalid" || v.verdict === "missing")
+    .map((v) => v.provider);
+  const lines = [`Фото со стоков (stock_mode=${mode}), проверка ключей:`];
+  for (const v of verdicts) {
+    const what =
+      v.verdict === "invalid" || v.verdict === "missing"
+        ? " — сток выключен в этом выкате"
+        : v.verdict === "unchecked"
+          ? " — ключ передан без проверки"
+          : "";
+    lines.push(`- ${stockVerdictLine(v)}${what}`);
+  }
+  for (const l of lines) log(l);
+  for (const v of verdicts) {
+    const name = STOCK_KEY_ENV[v.provider][0];
+    if (v.verdict === "invalid")
+      log(
+        `::warning title=pilot::${stockVerdictLine(v)}: замените ${name} в секретах GitHub, фото этого стока выключены`,
+      );
+    else if (v.verdict === "missing")
+      log(`::warning title=pilot::${name} не задан: фото этого стока выключены`);
+    else if (v.verdict === "unchecked")
+      log(`::warning title=pilot::${stockVerdictLine(v)}: ключ передан в платформу без проверки`);
+  }
+  if (off.length === verdicts.length) {
+    lines.push("- Ни одного рабочего ключа: на сайтах систем будет графика темы вместо фото.");
+    log(
+      "::warning title=pilot::Ни одного рабочего ключа стоков: на сайтах систем будет графика темы вместо фото",
+    );
+  }
+  return { mode, off, lines };
+}
+
+/**
  * Read-only state probe of `check`: the state bucket (never created, never waited for) and, when the environment's keys
  * exist, whether WIZARD_STATE_PASSPHRASE decrypts them. Returns {status, detail}.
  */
@@ -1543,6 +1595,12 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   const f = deps.fetch ?? fetch;
   const now = deps.now ?? (() => new Date());
   const rand = deps.rand ?? randomBytes;
+  // B2-38: the stock keys are never printed (GitHub masks its secrets too; this covers values passed otherwise).
+  mask(
+    Object.values(STOCK_KEY_ENV).map(([input]) => vars[input]),
+    vars,
+    log,
+  );
   if (o.command === "check") {
     mask(
       SECRET_NAMES.map((n) => vars[n]),
@@ -1677,6 +1735,17 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   };
 
   const st = { bundleCreated: !existed, fresh: false, restored: false, staff: "none", outputs: null };
+  // B2-38: a release checks the stock keys before the platform Secret is written (refused keys stay out of it).
+  let stockOff = [];
+  if (o.command === "bootstrap" || o.command === "deploy") {
+    const stock = await stockKeysOfRelease(vars, { fetch: f, log });
+    stockOff = stock.off;
+    if (vars.GITHUB_STEP_SUMMARY)
+      appendFileSync(
+        vars.GITHUB_STEP_SUMMARY,
+        `## Пилот ${o.env}: фото со стоков\n\n${stock.lines.join("\n")}\n\n`,
+      );
+  }
   const founder = (vars.WIZARD_FOUNDER_EMAIL ?? "").trim().toLowerCase();
   const hooks = {
     beforeCluster: async (outputs) => {
@@ -1686,7 +1755,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
         vars,
         log,
       );
-      const files = clusterSecretFiles({ bundle, outputs, inputs: vars });
+      const files = clusterSecretFiles({ bundle, outputs, inputs: vars, stockOff });
       mkdirSync(join(work, "pgbouncer"), { recursive: true, mode: 0o700 });
       const extra = {
         WIZARD_PLATFORM_ENV_FILE: file("platform.env", files.platformEnv),
