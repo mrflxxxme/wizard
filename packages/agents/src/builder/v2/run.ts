@@ -17,6 +17,7 @@ import {
   compiledFingerprint,
   compilePlan,
   type ModuleRegistry,
+  withLeadForm,
 } from "@wizard/modules";
 import { scrubJson } from "@wizard/pii";
 import type { CallStats } from "../../core/loop.js";
@@ -309,6 +310,8 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
 
     // 3. Design: direction, theme, fonts, accent, photo style, layouts.
     plan = (await stage("design", { reuse: planOf, run: (w) => modelStage("design", w, plan) })).plan;
+    // B2-41: «Заявки» need the lead form on the landing, whatever the plan and the design stage left there.
+    plan = withLeadForm(plan);
 
     // 3b. Photos (B2-38): stock pictures for the landing slots, copies in the platform library; without a stock — the
     // theme graphic (fallback, never a failure).

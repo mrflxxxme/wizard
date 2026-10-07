@@ -105,6 +105,8 @@ export {
   SITE_PHOTO,
   stockBySlot,
 } from "./landing/photos.js";
+/** B2-41: a plan with «Заявки» keeps the lead form on its landing (inserted before the footer when missing). */
+export { withLeadForm } from "./landing/required.js";
 /** Module «Заявки»: manifest and compile hook. */
 export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";
 export { leadsManifest, leadsModule } from "./leads/index.js";
