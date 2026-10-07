@@ -122,6 +122,22 @@ function lastUserText(host: InterviewHost): string {
   return m?.text ?? "";
 }
 
+/**
+ * B2-29 («ткни и скажи»): the last wish with the canvas block it is about (messages.payload.block) — the planner sees
+ * which section or module screen the client means. Without a block — the text as is.
+ */
+export function lastUserWish(host: InterviewHost): string {
+  const m = [...host.context.messages].reverse().find((x) => x.role === "user" && x.kind === "text");
+  const text = m?.text ?? "";
+  const b = m?.payload?.block as { title?: unknown; module?: unknown; sectionIndex?: unknown } | undefined;
+  if (!b || typeof b.title !== "string") return text;
+  const where = [
+    typeof b.sectionIndex === "number" ? `секция страницы №${b.sectionIndex + 1}` : null,
+    typeof b.module === "string" ? `модуль ${b.module}` : null,
+  ].filter(Boolean);
+  return `Пожелание к блоку «${b.title}»${where.length ? ` (${where.join(", ")})` : ""}: ${text}`;
+}
+
 /** OrchOutput[] of one turn → the single InterviewOutput platform-api persists (+ notice). */
 function toOutput(res: TurnResult): InterviewOutput {
   let main: InterviewOutput | undefined;
@@ -298,7 +314,7 @@ export async function planInterviewTurn(
           })),
         { restByRecommendation: answers.some((a) => a.byRecommendation) },
       );
-    } else if (session.state === "planned") res = await gi.revise(session, lastUserText(host));
+    } else if (session.state === "planned") res = await gi.revise(session, lastUserWish(host));
     else if (session.state === "asking")
       return { kind: "answer", text: ASKING_HINT, state: session as unknown as Record<string, unknown> };
     else res = await gi.submitBrief(newGoalSession(), lastUserText(host));

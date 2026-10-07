@@ -96,6 +96,13 @@ paths:
                   required: [wzId, file]
                   additionalProperties: false
                   properties: {wzId: {type: string, pattern: '^[0-9a-f]{8}:[0-9]+$'}, componentName: {type: string, maxLength: 60}, file: {type: string, pattern: '^ui/[A-Za-z0-9_/.-]+\.tsx$'}, line: {type: integer, minimum: 1}}
+                block:
+                  type: object
+                  x-milestone: B2
+                  description: 'B2-29 («ткни и скажи»): блок холста, к которому относится пожелание — id блока (frame:what), подпись, модуль плана и номер секции страницы. Хранится в messages.payload.block; планировщик получает пожелание с указанием блока. С target не сочетается'
+                  required: [id, title]
+                  additionalProperties: false
+                  properties: {id: {type: string, maxLength: 80}, title: {type: string, minLength: 1, maxLength: 120}, module: {type: string, maxLength: 40}, sectionIndex: {type: integer, minimum: 0}}
       responses: {'202': {description: 'Принято. Уведомление о ПДн создаёт асинхронный interview_turn (приходит через SSE chat_output{kind: notice}), в этом ответе его нет', content: {application/json: {schema: {type: object, required: [message, run], properties: {message: {$ref: '#/components/schemas/Message'}, run: {$ref: '#/components/schemas/Run'}}}}}}, '402': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
     get:
       operationId: listMessages
@@ -153,7 +160,7 @@ paths:
       operationId: editSystemPlan
       x-milestone: B2
       x-roles: [editor]
-      summary: 'B2-20: правка плана, ожидающего утверждения, без модели и без кредитов — параметр, модуль, цели, секции, дизайн (PlanEdit, по порядку, атомарно). План чистится от ПДн, проверяется и компилируется заново за доли секунды; любая ошибка отклоняет весь батч (422 PLAN_INVALID, details.errors — PlanError[]). Успех — новая ревизия source=edit (предыдущая superseded); dryRun=true — то же без сохранения (живой эскиз «что будет, если»). revision — ревизия, которую видел клиент (иначе 409 PLAN_REVISION_STALE)'
+      summary: 'B2-20: правка плана, ожидающего утверждения, без модели и без кредитов — параметр, модуль, цели, секции, дизайн (PlanEdit, по порядку, атомарно). План чистится от ПДн, проверяется и компилируется заново за доли секунды; любая ошибка отклоняет весь батч (422 PLAN_INVALID, details.errors — PlanError[]). Успех — новая ревизия source=edit (предыдущая superseded); dryRun=true — то же без сохранения (живой эскиз «что будет, если»). revision — ревизия, которую видел клиент (иначе 409 PLAN_REVISION_STALE). B2-29 («ткни и скажи»): у собранной системы (stage ready) правится и утверждённый план — новая ревизия ждёт утверждения, система переходит в card, в работу правка попадает после пересборки (approveSystemPlan, build mode change)'
       requestBody:
         required: true
         content:
@@ -1045,7 +1052,7 @@ components:
         role: {enum: [user, assistant, system]}
         kind: {enum: [text, questions, answers, card, run_report, notice, plan]}
         text: {type: string}
-        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage; card — {cardVersion}; plan (B2-20) — {planRevision, errors: число ошибок компиляции} — сам план: getSystemPlan; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
+        payload: {type: object, description: 'По kind: notice — {type: pii, categories: string[]} (orchestrator.yaml#pii_notice); questions — {questionIds, analysis?: {title, roles, skeleton, constraints, forks: [{forkId, status: resolved|asking|pending}]}} для панели «Как я понял задачу» (S2, L4-26; сводка Analysis без ПДн); text от пользователя (M3) — {target?} как в postMessage, B2-29 — {block?} (блок холста пожелания); card — {cardVersion}; plan (B2-20) — {planRevision, errors: число ошибок компиляции} — сам план: getSystemPlan; run_report — {runId, status}. M2-77/M2-59 (D73): questions, card и text ассистента могут нести gaps — [{category, quote, missing, offered}] пробелов возможностей хода (цитата после scrub ПДн); platform-web показывает под сообщением «Написать команде» с предзаполненным текстом'}
         runId: {type: [string, 'null'], format: uuid}
         createdAt: {type: string, format: date-time}
     PlanError:
@@ -1067,11 +1074,11 @@ components:
         stage: {enum: [interview, plan]}
         niche: {type: string}
         goals: {type: array, items: {type: object, required: [id, label, statement, modules], properties: {id: {type: string}, label: {type: string}, statement: {type: string}, modules: {type: array, items: {type: string}}}}}
-        modules: {type: array, items: {type: object, required: [id, name, goals, status, params], properties: {id: {type: string}, name: {type: string}, summary: {type: string}, goals: {type: array, items: {type: string}}, status: {enum: [available, soon]}, params: {type: array, items: {type: object, required: [name, label], properties: {name: {type: string}, label: {type: string}, value: {}}}}}}}
+        modules: {type: array, items: {type: object, required: [id, name, goals, status, params], properties: {id: {type: string}, name: {type: string}, summary: {type: string}, goals: {type: array, items: {type: string}}, status: {enum: [available, soon]}, params: {type: array, items: {type: object, required: [name, label], properties: {name: {type: string}, label: {type: string}, value: {}, type: {type: string, description: 'B2-29: тип параметра манифеста (bool, int, enum, enum_list, string, string_list, time, fields)'}, options: {type: array, description: 'B2-29: значения enum и enum_list с подписями — переключатели модульного экрана на холсте', items: {type: object, required: [value, label], properties: {value: {type: string}, label: {type: string}}}}}}}}}}
         roles: {type: array, items: {type: object}}
         entities: {type: array, items: {type: object}}
         screens: {type: array, items: {type: object, required: [route, title, audience, roles], properties: {route: {type: string}, title: {type: string}, audience: {enum: [public, cabinet]}, roles: {type: array, items: {type: string}}, module: {type: string, description: 'B2-25: модуль плана, чей манифест объявляет маршрут'}}}}
-        sections: {type: array, items: {type: object, required: [index, type, label, variant], properties: {index: {type: integer}, type: {type: string}, label: {type: string}, variant: {type: string}, title: {type: string}}}}
+        sections: {type: array, items: {type: object, required: [index, type, label, variant], properties: {index: {type: integer}, type: {type: string}, label: {type: string}, variant: {type: string}, variants: {type: array, items: {type: string}, description: 'B2-29: готовые варианты вида секции в каталоге — «Другой вид» на холсте'}, title: {type: string}}}}
         metrics: {type: array, items: {type: object}}
         scenarios: {type: array, items: {type: object}}
         outOfScope: {type: array, items: {type: object, required: [request, replacement, category], properties: {request: {type: string}, replacement: {type: string}, category: {type: string}, module: {type: string}}}}

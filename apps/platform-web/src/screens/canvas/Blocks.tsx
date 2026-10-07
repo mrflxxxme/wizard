@@ -80,7 +80,7 @@ function Hero({ b }: { b: CanvasBlockModel }): ReactNode {
   return (
     <>
       <Tags b={b} />
-      <div className={s.hero}>
+      <div className={s.hero} data-variant={str(b.data.variant)}>
         <div className={s.copy}>
           <h2 className={s.h}>
             <T lines>{str(b.data.title, b.title)}</T>
@@ -128,7 +128,7 @@ function Numbered({ b, items }: { b: CanvasBlockModel; items: readonly string[] 
   return (
     <>
       <Head b={b} title={str(b.data.title, b.title)} />
-      <ol className={s.steps}>
+      <ol className={s.steps} data-variant={str(b.data.variant)}>
         {items.map((x, i) => (
           <li key={x} className={`${s.stepItem} ${s.sf}`}>
             <span className={`${s.num} ${s.sf} ${s.biz}`}>{i + 1}</span>
@@ -142,7 +142,7 @@ function Numbered({ b, items }: { b: CanvasBlockModel; items: readonly string[] 
 
 function Cta({ b }: { b: CanvasBlockModel }): ReactNode {
   return (
-    <div className={`${s.cta} ${s.sf} ${s.wash}`}>
+    <div className={`${s.cta} ${s.sf} ${s.wash}`} data-variant={str(b.data.variant)}>
       <h3 className={s.ctaH}>
         <T lines>{str(b.data.title, b.title)}</T>
       </h3>
@@ -209,7 +209,7 @@ function Section({ b, items }: { b: CanvasBlockModel; items?: readonly string[] 
     <>
       <Head b={b} title={str(b.data.title, b.title)} />
       {items ? (
-        <div className={s.grid}>
+        <div className={s.grid} data-variant={str(b.data.variant)}>
           {items.map((x) => (
             <span key={x} className={`${s.cell} ${s.sf}`}>
               <T>{x}</T>

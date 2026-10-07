@@ -1,10 +1,11 @@
 // Mock of the M0 platform-api (specs/platform/api.yaml) driven by recorded feeds (test/fixtures/feeds/*.json),
 // plus a preview stub on http://<slug>--draft.localhost:<port> that speaks the bridge protocol
 // (platform-screens.yaml#preview_contract). One node:http server; the Host header selects API or preview.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
+import { SECTION_CATALOG } from "@wizard/appspec";
 import type {
   GateReport,
   Message,
@@ -80,7 +81,95 @@ interface SysState {
     plan: Record<string, unknown>;
     sketch: Record<string, unknown>;
     buildRunId: string | null;
+    source?: "planner" | "edit";
   }[];
+}
+
+type MockSection = { type: string; variant: string; content: Record<string, unknown> };
+type MockPlan = {
+  landing?: { sections: MockSection[] };
+  modules: { id: string; params?: Record<string, unknown> }[];
+};
+type MockSketch = {
+  sections: Record<string, unknown>[];
+  modules: { id: string; params: { name: string; value?: unknown }[] }[];
+  screens: { module?: string }[];
+  goals: { modules: string[] }[];
+  fingerprint: string | null;
+};
+
+/**
+ * B2-29: editSystemPlan of the mock — the canvas edits applied to the plan and its sketch the way the planner's
+ * applyPlanEdits does (no model, no compiler: the fingerprint is a hash of the edited plan). Throws the Russian
+ * reason of an edit the plan cannot take (removing the booking leaves a goal without a module).
+ */
+export function applyMockEdits(
+  plan: Record<string, unknown>,
+  sketch: Record<string, unknown>,
+  edits: readonly Record<string, unknown>[],
+): { plan: Record<string, unknown>; sketch: Record<string, unknown> } {
+  const p = structuredClone(plan) as unknown as MockPlan;
+  const sk = structuredClone(sketch) as unknown as MockSketch;
+  const sections = p.landing?.sections ?? [];
+  const at = (i: unknown): MockSection => {
+    const s = typeof i === "number" ? sections[i] : undefined;
+    if (!s) throw new Error(`Секции №${Number(i) + 1} нет на странице`);
+    return s;
+  };
+  for (const e of edits) {
+    if (e.op === "update_section" && typeof e.variant === "string") at(e.index).variant = e.variant;
+    else if (e.op === "remove_section") {
+      at(e.index);
+      sections.splice(e.index as number, 1);
+    } else if (e.op === "move_section") {
+      const s = at(e.from);
+      sections.splice(e.from as number, 1);
+      sections.splice(Math.min(e.to as number, sections.length), 0, s);
+    } else if (e.op === "add_section") {
+      const spec = SECTION_CATALOG.find((x) => x.type === e.type);
+      sections.splice(Math.min((e.at as number | undefined) ?? sections.length, sections.length), 0, {
+        type: String(e.type),
+        variant: String(e.variant ?? spec?.ready[0] ?? ""),
+        content: (e.content as Record<string, unknown> | undefined) ?? {},
+      });
+    } else if (e.op === "set_param") {
+      const pm = p.modules.find((m) => m.id === e.module);
+      const sm = sk.modules.find((m) => m.id === e.module);
+      if (!pm || !sm) throw new Error(`Модуля «${String(e.module)}» нет в плане`);
+      pm.params = { ...(pm.params ?? {}), [String(e.param)]: e.value };
+      const param = sm.params.find((x) => x.name === e.param);
+      if (param) param.value = e.value;
+    } else if (e.op === "remove_module") {
+      if (!p.modules.some((m) => m.id === e.module))
+        throw new Error(`Модуля «${String(e.module)}» нет в плане`);
+      if (e.module === "booking") throw new Error("Цель «Заполнить расписание» не закрыта ни одним модулем");
+      p.modules = p.modules.filter((m) => m.id !== e.module);
+      sk.modules = sk.modules.filter((m) => m.id !== e.module);
+      sk.screens = sk.screens.filter((x) => x.module !== e.module);
+      for (const g of sk.goals) g.modules = g.modules.filter((m) => m !== e.module);
+      const left = new Set(p.modules.map((m) => m.id));
+      const kept = sections.filter((s) => {
+        const need = SECTION_CATALOG.find((x) => x.type === s.type)?.requiresModule;
+        return !need || need.some((m) => left.has(m));
+      });
+      sections.splice(0, sections.length, ...kept);
+    } else throw new Error(`Правка ${String(e.op)} в показе не поддержана`);
+  }
+  if (p.landing) p.landing.sections = sections;
+  sk.sections = sections.map((s, index) => {
+    const spec = SECTION_CATALOG.find((x) => x.type === s.type);
+    const title = s.content.title;
+    return {
+      index,
+      type: s.type,
+      label: spec?.label ?? s.type,
+      variant: s.variant,
+      variants: [...(spec?.ready ?? [])],
+      ...(typeof title === "string" ? { title } : {}),
+    };
+  });
+  sk.fingerprint = createHash("sha256").update(JSON.stringify(p)).digest("hex");
+  return { plan: p as unknown as Record<string, unknown>, sketch: sk as unknown as Record<string, unknown> };
 }
 
 interface RunState {
@@ -609,7 +698,7 @@ export class MockPlatform {
     return {
       revision: p.revision,
       status: p.status,
-      source: "planner",
+      source: p.source ?? "planner",
       plan: p.plan,
       errors: [],
       sketch: p.sketch,
@@ -701,10 +790,43 @@ export class MockPlatform {
     if (method === "POST" && rest === "/messages") {
       if (sys.system.stage === "building")
         return fail(409, "SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
-      const message = this.#message(sys, { role: "user", kind: "text", text: String(b.text ?? "") });
+      const message = this.#message(sys, {
+        role: "user",
+        kind: "text",
+        text: String(b.text ?? ""),
+        ...(b.block ? { payload: { block: b.block } } : {}),
+      });
       const st = this.#newRun(sys, "interview_turn");
       void this.#interview(sys, st, (emit) => this.#canvasPlan(sys, feed, emit));
       return json(202, { message, run: st.run });
+    }
+    if (method === "PATCH" && rest === "/plan") {
+      if (sys.system.stage === "building")
+        return fail(409, "SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");
+      const rebuild = latest?.status === "approved" && sys.system.stage === "ready";
+      if (!latest || (latest.status !== "awaiting_approval" && !rebuild))
+        return fail(409, "NO_PLAN", "Нет плана, ожидающего утверждения");
+      if (b.revision !== latest.revision)
+        return fail(409, "PLAN_REVISION_STALE", "План изменился — посмотрите новую версию");
+      let next: ReturnType<typeof applyMockEdits>;
+      try {
+        next = applyMockEdits(latest.plan, latest.sketch, (b.edits ?? []) as Record<string, unknown>[]);
+      } catch (e) {
+        return fail(422, "PLAN_INVALID", (e as Error).message);
+      }
+      if (b.dryRun === true)
+        return json(200, { plan: { ...this.#planRevision({ ...latest, ...next }), dryRun: true } });
+      if (latest.status === "awaiting_approval") latest.status = "superseded";
+      const row = {
+        revision: latest.revision + 1,
+        status: "awaiting_approval",
+        ...next,
+        buildRunId: null,
+        source: "edit" as const,
+      };
+      sys.plans.push(row);
+      if (rebuild) sys.system.stage = "card";
+      return json(200, { plan: this.#planRevision(row) });
     }
     if (method === "GET" && rest === "/plan")
       return json(200, { plan: latest ? this.#planRevision(latest) : null });
@@ -716,7 +838,7 @@ export class MockPlatform {
       if (b.revision !== latest.revision)
         return fail(409, "PLAN_REVISION_STALE", "План изменился — посмотрите новую версию");
       sys.system.stage = "building";
-      const st = this.#newRun(sys, "build", "create");
+      const st = this.#newRun(sys, "build", sys.system.previewRevision !== null ? "change" : "create");
       latest.status = "approved";
       latest.buildRunId = st.run.id;
       void this.#canvasBuild(sys, st, structuredClone(feed.build), this.opts.canvasFailAfter);

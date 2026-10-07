@@ -267,4 +267,69 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     expect(again.status).toBe(409);
     expect(again.body.code).toBe("NO_PLAN");
   });
+
+  test("B2-29: the sketch carries ready section variants and parameter types with options", async () => {
+    const p = await api.req("GET", `/systems/${systemId}/plan`);
+    const sk = p.body.plan.sketch;
+    const hero = sk.sections.find((x: { type: string }) => x.type === "hero");
+    expect(hero.variants).toEqual(["split", "centered", "cover"]);
+    const leads = sk.modules.find((m: { id: string }) => m.id === "leads");
+    expect(leads.params.find((x: { name: string }) => x.name === "contact")).toMatchObject({
+      type: "enum",
+      options: expect.arrayContaining([{ value: "email", label: "Почта" }]),
+    });
+    expect(leads.params.find((x: { name: string }) => x.name === "with_service")).toMatchObject({
+      type: "bool",
+    });
+  });
+
+  test("B2-29: a built system edits its approved plan without a model — a new revision, stage card, rebuild", async () => {
+    const before = calls.length;
+    expect((await api.req("GET", `/systems/${systemId}`)).body.system.stage).toBe("ready");
+    const p = await api.req("GET", `/systems/${systemId}/plan`);
+    const hero = p.body.plan.sketch.sections.find((x: { type: string }) => x.type === "hero");
+    const edit = { op: "update_section", index: hero.index, variant: "centered" };
+    const dry = await api.req("PATCH", `/systems/${systemId}/plan`, {
+      body: { revision: 2, edits: [edit], dryRun: true },
+    });
+    expect(dry.status).toBe(200);
+    validRevision(dry.body.plan);
+    expect(dry.body.plan).toMatchObject({ revision: 2, dryRun: true });
+    expect(dry.body.plan.sketch.sections[hero.index].variant).toBe("centered");
+    expect((await api.req("GET", `/systems/${systemId}`)).body.system.stage).toBe("ready");
+    const ok = await api.req("PATCH", `/systems/${systemId}/plan`, { body: { revision: 2, edits: [edit] } });
+    expect(ok.status).toBe(200);
+    expect(ok.body.plan).toMatchObject({ revision: 3, status: "awaiting_approval", source: "edit" });
+    expect(ok.body.plan.fingerprint).toBe(dry.body.plan.fingerprint);
+    expect((await api.req("GET", `/systems/${systemId}`)).body.system.stage).toBe("card");
+    expect((await api.req("GET", `/systems/${systemId}/plan?revision=2`)).body.plan.status).toBe("approved");
+    expect(calls.length).toBe(before);
+    const stale = await api.req("PATCH", `/systems/${systemId}/plan`, {
+      body: { revision: 2, edits: [edit] },
+    });
+    expect(stale.body).toMatchObject({ code: "PLAN_REVISION_STALE", details: { revision: 3 } });
+    const run = await api.req("POST", `/systems/${systemId}/plan/approve`, { body: { revision: 3 } });
+    expect(run.status).toBe(202);
+    await waitRun(api, run.body.run.id, ["succeeded"]);
+    expect(builds.at(-1)?.plan?.revision).toBe(3);
+  });
+
+  test("B2-29: a wish to a canvas block keeps the block on the message and the planner sees it", async () => {
+    const before = calls.length;
+    const block = { id: "site:features", title: "Наши преимущества", module: "landing", sectionIndex: 2 };
+    const r = await api.req("POST", `/systems/${systemId}/messages`, {
+      body: { text: "Сделайте короче", block },
+    });
+    expect(r.status).toBe(202);
+    expect(r.body.message.payload).toEqual({ block });
+    await waitRun(api, r.body.run.id, ["succeeded"]);
+    const seen = JSON.stringify(calls.slice(before).map((c) => c.messages));
+    expect(seen).toContain(
+      "Пожелание к блоку «Наши преимущества» (секция страницы №3, модуль landing): Сделайте короче",
+    );
+    const bad = await api.req("POST", `/systems/${systemId}/messages`, {
+      body: { text: "Сделайте короче", block: { id: "site:x", title: "" } },
+    });
+    expect(bad.status).toBe(400);
+  });
 });

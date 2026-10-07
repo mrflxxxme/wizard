@@ -53,6 +53,14 @@ export interface MessageTarget {
   route?: string;
 }
 
+/** api.yaml#postMessage.block (B2-29): the canvas block a wish is about («ткни и скажи»). */
+export interface MessageBlock {
+  id: string;
+  title: string;
+  module?: string;
+  sectionIndex?: number;
+}
+
 export interface Message {
   id: string;
   seq: number;
@@ -225,7 +233,14 @@ export interface PlanSketch {
     summary?: string;
     goals: string[];
     status: "available" | "soon";
-    params: { name: string; label: string; value?: unknown }[];
+    /** type and options (enum, enum_list) — B2-29: toggles of a module screen. */
+    params: {
+      name: string;
+      label: string;
+      value?: unknown;
+      type?: string;
+      options?: { value: string; label: string }[];
+    }[];
   }[];
   roles: { name: string; label: string; access: string }[];
   entities: { name: string; label: string; fields: { name: string; label: string; type: string }[] }[];
@@ -236,7 +251,15 @@ export interface PlanSketch {
     roles: string[];
     module?: string;
   }[];
-  sections: { index: number; type: string; label: string; variant: string; title?: string }[];
+  /** variants — ready layout variants of the type (B2-29: «Другой вид»). */
+  sections: {
+    index: number;
+    type: string;
+    label: string;
+    variant: string;
+    variants?: string[];
+    title?: string;
+  }[];
   metrics: { id: string; label: string; goal: string; module: string; unit: string }[];
   scenarios: { id: string; title: string; goal: string; module: string }[];
   outOfScope: { request: string; replacement: string; category: string; module?: string }[];
@@ -256,6 +279,21 @@ export interface PlanSketch {
   fingerprint: string | null;
 }
 
+/** api.yaml#PlanEdit (B2-20): the deterministic edits the canvas sends («ткни и скажи», B2-29). */
+export type PlanEdit =
+  | { op: "set_param"; module: string; param: string; value: unknown }
+  | { op: "remove_module"; module: string }
+  | {
+      op: "add_section";
+      type: string;
+      variant?: string;
+      content?: Record<string, unknown>;
+      at?: number;
+    }
+  | { op: "update_section"; index: number; variant?: string }
+  | { op: "remove_section"; index: number }
+  | { op: "move_section"; from: number; to: number };
+
 /** api.yaml#SystemPlanRevision (B2-20). */
 export interface SystemPlanRevision {
   revision: number;
@@ -268,6 +306,8 @@ export interface SystemPlanRevision {
   createdAt?: string;
   approvedAt?: string | null;
   buildRunId?: string | null;
+  /** true — a preview of editSystemPlan, not saved. */
+  dryRun?: boolean;
 }
 
 /** api.yaml#OrgSettings (GET served from M0 by M0-30). */
