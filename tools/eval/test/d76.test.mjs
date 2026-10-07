@@ -17,6 +17,7 @@ import {
   planCoverage,
   readPlan,
   runEval,
+  summarizeGates,
   unwrapPlan,
 } from "../server/driver.mjs";
 import { economy, evaluate, renderReport, screenshotGrid } from "../server/report.mjs";
@@ -75,6 +76,21 @@ describe("D76 pieces", () => {
     expect(isReadyD76(PASSED, "publish", bad)).toBe(false);
     const wide = browserSummary(g1([GOAL_OK, { ...MOBILE_OK, status: "fail" }]));
     expect(isReadyD76(PASSED, "publish", wide)).toBe(false);
+  });
+
+  // B2-41: mvp-01 of the probe failed G1, the driver never reached the publication (where it fills the operator data),
+  // and the build's G2-PII-06 showed up as a second cause. Before the publication it is the owner's part.
+  it("G2-PII-06 of the build is the owner's data; in the publication's G2 it is a blocker", () => {
+    const pii = { id: "G2-PII-06", status: "fail", severity: "blocker", message_ru: "Не указано: адрес оператора ПДн" };
+    const latest = { reports: [{ level: "G2", passed: false, checks: [pii] }] };
+    expect(summarizeGates(latest, { beforePublish: true }).G2).toMatchObject({
+      blockers: [],
+      ownerActions: [{ id: "G2-PII-06" }],
+    });
+    expect(summarizeGates(latest).G2).toMatchObject({ blockers: [{ id: "G2-PII-06" }], ownerActions: [] });
+    // Not ready either way when G1 failed: the owner's part does not hide the cause.
+    const g1Failed = { ...PASSED, G1: { ...lvl(), passed: false, blockers: [{ id: "SC-AC1", message: "…" }] } };
+    expect(isReadyD76(g1Failed, "publish", { ran: true, mobile: "pass", goals: { failed: [] } })).toBe(false);
   });
 
   it("the plan comes from the system view or from /plan", async () => {

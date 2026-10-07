@@ -42,6 +42,12 @@ export const DEFAULTS = {
  * bot token) are entered by the owner before the first publication. They are listed apart and do not fail readiness.
  */
 export const OWNER_ACTION_CHECKS = new Set(["G2-SECRET-02"]);
+/**
+ * Owner data the build's G2 cannot have yet (B2-21: blocks the publication, not the build): the operator of personal
+ * data (G2-PII-06). The driver fills it with TEST_OPERATOR before publishing and the publication's G2 checks it as a
+ * blocker; when the publication did not start (G0/G1 failed), the build's G2 shows it to the owner, not as a cause.
+ */
+export const OWNER_INPUT_CHECKS = new Set(["G2-PII-06"]);
 /** Operator data of the eval org (setCompliance): test values, the system never reaches prod (founder review). */
 export const TEST_OPERATOR = {
   operatorName: "Тестовый оператор замера D67",
@@ -79,8 +85,12 @@ export function freeAnswer(brief) {
   return `${base}. Остальное решите сами, по своим рекомендациям.`.slice(0, 500);
 }
 
-/** GateReport[] of getLatestGates → per level {passed, revision, blockers, ownerActions, warnings}. */
-export function summarizeGates(latest) {
+/**
+ * GateReport[] of getLatestGates → per level {passed, revision, blockers, ownerActions, warnings}. `beforePublish` —
+ * reports of the build (the publication did not start): OWNER_INPUT_CHECKS count as owner actions too.
+ */
+export function summarizeGates(latest, { beforePublish = false } = {}) {
+  const owner = (id) => OWNER_ACTION_CHECKS.has(id) || (beforePublish && OWNER_INPUT_CHECKS.has(id));
   const out = {};
   for (const rep of latest?.reports ?? []) {
     if (!LEVELS.includes(rep.level)) continue;
@@ -91,8 +101,8 @@ export function summarizeGates(latest) {
     out[rep.level] = {
       passed: rep.passed === true,
       revision: rep.specVersion ?? latest.revision ?? null,
-      blockers: failed.filter((c) => !OWNER_ACTION_CHECKS.has(c.id)).map(line),
-      ownerActions: failed.filter((c) => OWNER_ACTION_CHECKS.has(c.id)).map(line),
+      blockers: failed.filter((c) => !owner(c.id)).map(line),
+      ownerActions: failed.filter((c) => owner(c.id)).map(line),
       warnings: (rep.checks ?? []).filter((c) => c.status === "warn" || c.severity === "warning").length,
     };
   }
@@ -435,7 +445,11 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     if (ctx.g2 === "publish" && gates.G0?.passed && gates.G1?.passed) {
       r.publish = await probeG2(ctx, r, waitRun, say);
       gates = summarizeGates(await latestGates());
-    } else r.publish = { status: ctx.g2 === "publish" ? "not_publishable" : "skipped" };
+    } else {
+      r.publish = { status: ctx.g2 === "publish" ? "not_publishable" : "skipped" };
+      // B2-41: the build's G2 never has the owner's operator data — the cause is G0/G1 (mvp-01 of the D76 probe).
+      gates = summarizeGates(buildLatest, { beforePublish: true });
+    }
     r.gates = gates;
     if (ctx.threshold === "d76") {
       const after = browserSummary(await latestGates());
