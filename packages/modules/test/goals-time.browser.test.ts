@@ -1,9 +1,8 @@
-// B2-28 time measure (gates.yaml#G1.browser.time_budget_s, D76 «сборка ≤ 5 мин»): the browser part of G1 — goal
-// scenarios in two cells over parallel lanes plus every page at 390 px — for a system with the modules of a service
-// business together (landing, leads, catalog, booking, client card, deals, notify, staff, visitor cabinet: 22
-// scenarios) takes ≤ 90 s, and every scenario passes. On CI (2 vCPU next to Postgres) the bound has a 1.5× allowance.
-// «Отчёты» joins once its scenarios pass next to the other modules (GS-reports-1 misses returning_clients there;
-// B2-27 brings GS-reports-5), «Абонементы» and «Учёт выдачи» are other businesses (goals-b218.browser.test.ts).
+// B2-28/B2-19 time measure (gates.yaml#G1.browser.time_budget_s, D76 «сборка ≤ 5 мин»): the browser part of G1 — goal
+// scenarios in two cells over parallel lanes plus every page at 390 px — for a system with every module of the catalog
+// with code (allModulesPlan: the service business with packages, issue of resources, members' materials and the goal
+// panel with its hints, GS-reports-5 among them) takes ≤ 90 s, every scenario passes and no single run comes near
+// its 30 s. On CI (2 vCPU next to Postgres) the bound has a 1.5× allowance.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,12 +11,12 @@ import { type Browser, chromium } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import { newQrKeyring, QR_SECRET, serializeQrKeyring, staticSecretReader } from "@wizard/connectors";
 import { testPlatform } from "@wizard/connectors/testing";
-import { type BrowserTiming, type GateContext, runG0, runG1 } from "@wizard/gates";
+import { type BrowserTiming, type GateContext, GOAL_RUN_TIMEOUT_MS, runG0, runG1 } from "@wizard/gates";
 import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } from "@wizard/runtime";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { CATALOG, compilePlan } from "../src/index.js";
-import { landingLeadsPlan } from "./fixtures.js";
+import { CATALOG, compilePlan, MODULES_WITH_CODE } from "../src/index.js";
+import { allModulesPlan } from "./fixtures.js";
 
 const hasChromium = (() => {
   try {
@@ -78,25 +77,18 @@ afterAll(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const MODULES = [
-  "landing",
-  "leads",
-  "catalog",
-  "booking",
-  "client_card",
-  "deals",
-  "notify",
-  "staff",
-  "visitor_cabinet",
-];
-
-describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2-28)", () => {
-  test("22 goal scenarios × 2 cells over 3 lanes + 390 px: all pass, ≤ 90 s", async () => {
-    const plan = { ...landingLeadsPlan(), custom: [] };
-    plan.modules = MODULES.map((id) => (id === "catalog" ? { id, params: { with_duration: true } } : { id }));
+describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2-28, B2-19)", () => {
+  test("all 12 modules: 36 goal scenarios × 2 cells over 3 lanes + 390 px — all pass, ≤ 90 s", async () => {
+    const plan = allModulesPlan();
+    expect(plan.modules.map((m) => m.id).sort()).toEqual(MODULES_WITH_CODE.map((d) => d.manifest.id).sort());
     const r = compilePlan(plan, CATALOG, { appName: "Улыбка" });
     if (!r.ok) throw new Error(JSON.stringify(r.errors, null, 2));
-    expect(r.scenarios.length).toBeGreaterThanOrEqual(20);
+    const ids = r.scenarios.map((s) => s.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(["GS-reports-1", "GS-reports-5", "GS-packages-2", "GS-booking-1"]),
+    );
+    expect(new Set(r.scenarios.map((s) => s.module)).size).toBe(MODULES_WITH_CODE.length);
+    expect(r.scenarios.length).toBe(36);
     const ctx: GateContext = {
       spec: r.spec as AppSpec,
       prevSpec: null,
@@ -137,8 +129,10 @@ describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2
     expect(texts.some((t) => t.includes("/_wizard/hooks/message/reschedule/"))).toBe(true);
     expect(texts.some((t) => /[а-я]+ \d{4}, \d\d:\d\d/.test(t))).toBe(true);
     expect(texts.filter((t) => t.includes("{{"))).toEqual([]);
-    console.info(`B2-28 G1 browser part: ${JSON.stringify(timing)}`);
+    console.info(`B2-19 G1 browser part, ${r.scenarios.length} scenarios: ${JSON.stringify(timing)}`);
     expect(timing?.runs).toBe(r.scenarios.length * 2);
     expect(timing?.totalMs).toBeLessThanOrEqual(BOUND_MS);
+    // The longest single run stays well inside its limit (30 s): a slow scenario is sped up before it times out.
+    expect(timing?.slowest?.ms ?? 0).toBeLessThanOrEqual(GOAL_RUN_TIMEOUT_MS / 2);
   }, 300_000);
 });

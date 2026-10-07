@@ -3,6 +3,7 @@
 // seat, status, …}, the one-time links of the e-mails (/_wizard/hooks/message/cancel|reschedule/<token>).
 import type { AppSpec } from "@wizard/appspec";
 import type { GoalOutboxMessage, GoalProgram, GoalRun } from "../types.js";
+import { ensurePackage } from "./packages.js";
 import {
   enumLabel,
   formReady,
@@ -35,10 +36,15 @@ async function slotsLoaded(t: GoalRun): Promise<void> {
 
 /**
  * A bookable service of the run (30 minutes), added by the owner: the seed's durations go up to 600 minutes and may
- * not fit a working day (or the part of it before a break) at all.
+ * not fit a working day (or the part of it before a break) at all. With write-off by booking — also a package.
  */
 export async function ensureService(t: GoalRun): Promise<void> {
-  if ((await t.rows("service")).some((r) => String(r.name ?? "").startsWith(t.marker))) return;
+  if (!(await t.rows("service")).some((r) => String(r.name ?? "").startsWith(t.marker))) await addService(t);
+  // With «Абонементы» writing a visit off a booking the visitor books with a package sold to his contacts (B2-19).
+  await ensurePackage(t);
+}
+
+async function addService(t: GoalRun): Promise<void> {
   const doc: Record<string, unknown> = { name: `${t.marker} услуга` };
   for (const f of t.spec.entities.find((e) => e.name === "service")?.fields ?? []) {
     if (f.name === "duration_min") doc[f.name] = 30;

@@ -18,6 +18,7 @@ import {
 } from "../src/index.js";
 import {
   goalSummary,
+  HINT_MIN_EVENTS,
   hasData,
   hintFires,
   periodSpan,
@@ -53,6 +54,19 @@ describe("hint conditions and the pick (lib/goalPanel.ts)", () => {
     expect(hintFires(drop, { value: 8, previous: 10 })).toBe(false);
     expect(hintFires(drop, { value: 0, previous: 4 })).toBe(false);
     expect(hintFires(drop, { value: 0, previous: null })).toBe(false);
+  });
+
+  test("B2-19: a share with `min` fires only over at least that many events of the month; unknown base never", () => {
+    expect(HINT_MIN_EVENTS).toBe(10);
+    const share = rule({ id: "s", metric: "m", when: { op: "gte", value: 15, min: HINT_MIN_EVENTS } });
+    // Two cancellations of three bookings are not «many cancellations».
+    expect(hintFires(share, { value: 66.7, previous: null, base: 3 })).toBe(false);
+    expect(hintFires(share, { value: 20, previous: null, base: 9 })).toBe(false);
+    expect(hintFires(share, { value: 20, previous: null, base: 10 })).toBe(true);
+    expect(hintFires(share, { value: 14, previous: null, base: 40 })).toBe(false);
+    expect(hintFires(share, { value: 20, previous: null, base: null })).toBe(false);
+    expect(hintFires(share, { value: 20, previous: null })).toBe(false);
+    expect(pickHints([share], { m: { value: 50, previous: 10, base: 2 } })).toEqual([]);
   });
 
   test("at most three in the rules' order, one per fix, the values written with the unit", () => {
@@ -138,16 +152,16 @@ const registry = testRegistry([
   },
 ]);
 
-function compiled(plan: SystemPlan): CompileSuccess {
-  const r = compilePlan(plan, registry, { appName: "Пример" });
+function compiled(plan: SystemPlan, opts: { platformUrl?: string; systemId?: string } = {}): CompileSuccess {
+  const r = compilePlan(plan, registry, { appName: "Пример", ...opts });
   if (!r.ok) throw new Error(JSON.stringify(r.errors, null, 2));
   return r;
 }
 
 /** The context the reports module's generators see for a compiled plan (parameters with defaults, spec, metrics). */
-function genContext(plan: SystemPlan): GenContext {
+function genContext(plan: SystemPlan, opts: { platformUrl?: string; systemId?: string } = {}): GenContext {
   captured = undefined;
-  compiled(plan);
+  compiled(plan, opts);
   if (!captured) throw new Error("«Отчёты» не в плане");
   return captured;
 }
@@ -210,7 +224,11 @@ describe("hint rules for a plan (reports/hints.ts)", () => {
     // Without staff the owner is told to add someone on the platform.
     expect(rules[1]?.action.external).toBe(true);
     expect(rules[1]?.text).toContain("добавьте сотрудника");
-    expect(rules.find((r) => r.id === "schedule_load")?.when).toEqual({ op: "lte", value: 40 });
+    expect(rules.find((r) => r.id === "schedule_load")?.when).toEqual({
+      op: "lte",
+      value: 40,
+      min: HINT_BOUNDS.minEvents,
+    });
   });
 
   test("no reminder (notify without letters to visitors or without notify): «turn the reminder on» for cancels and no-shows", () => {
@@ -273,6 +291,28 @@ describe("hint rules for a plan (reports/hints.ts)", () => {
     for (const r of rules)
       if (!r.action.external)
         expect(cab, r.id).toContain(`{ id: ${JSON.stringify(r.action.href.split("#")[1])}`);
+  });
+
+  test("B2-19: «Изменить в Born to Build» opens the system on the platform; previews — the platform's main page", () => {
+    const opts = { platformUrl: "https://borntobuild.ru/", systemId: "sys 1" };
+    const rules = hintRules(genContext(salonPlan(), opts));
+    const external = rules.filter((r) => r.action.external);
+    expect(external.length).toBeGreaterThan(0);
+    for (const r of external)
+      expect(r.action, r.id).toEqual({
+        label: "Изменить в Born to Build",
+        href: "https://borntobuild.ru/s/sys%201",
+        external: true,
+      });
+    expect(page(compiled(salonPlan(), opts))).toContain('"href":"https://borntobuild.ru/s/sys%201"');
+    for (const r of hintRules(genContext(salonPlan())).filter((x) => x.action.external))
+      expect(r.action.href, r.id).toBe(PLATFORM_URL);
+  });
+
+  test("B2-19: every share rule (gte / lte) needs HINT_MIN_EVENTS events; a drop keeps its own minimum", () => {
+    for (const r of hintRules(genContext(salonPlan())))
+      if (r.when.op === "drop") expect(r.when.min, r.id).toBe(HINT_BOUNDS.dropMin);
+      else expect(r.when.min, r.id).toBe(HINT_MIN_EVENTS);
   });
 
   test("every rule of a big plan names a metric of the plan, a fix, a title and an action", () => {

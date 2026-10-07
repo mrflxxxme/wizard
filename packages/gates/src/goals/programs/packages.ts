@@ -72,6 +72,25 @@ async function sell(
   return pkg;
 }
 
+/** Whether a booking of the system takes a visit off a package (the booking page asks packageCheck first, B2-18). */
+export const bookingByPackage = (spec: AppSpec): boolean => has(spec, "booking", "package_status");
+
+/**
+ * Booking scenarios of other modules in a system with «Абонементы» (B2-19): a visitor without a valid package cannot
+ * book, so before the visitor books the owner sells a package to the contacts of the booking form — once per run
+ * (two bookings of GS-client_card-1 share it). Nothing to do without the write-off.
+ */
+export async function ensurePackage(t: GoalRun): Promise<void> {
+  if (!bookingByPackage(t.spec)) return;
+  const c = formContact(t);
+  const valid = (await t.rows(ITEM)).some(
+    (p) => p.status === "active" && (p.email === c.email || p.phone === c.phone),
+  );
+  if (valid) return;
+  await t.as("owner");
+  await sell(t, c);
+}
+
 const cabinetOf = (t: GoalRun) => {
   // The shared cabinet of the owner (/cabinet) lists the module sections; other /cabinet/* pages are not it.
   const owner = ownerRole(t.spec);

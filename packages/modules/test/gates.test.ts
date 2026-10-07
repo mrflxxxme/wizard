@@ -12,7 +12,7 @@ import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } fro
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { type CompileSuccess, compilePlan, MODULES_WITH_CODE, matrixPlan } from "../src/index.js";
-import { landingLeadsPlan, testRegistry } from "./fixtures.js";
+import { allModulesPlan, landingLeadsPlan, testRegistry } from "./fixtures.js";
 
 const DATABASE_URL =
   process.env.WIZARD_DB_URL ?? process.env.DATABASE_URL ?? "postgres://wizard@localhost:5433/wizard";
@@ -97,6 +97,15 @@ describe("compiled systems pass G0 and G1 without models", () => {
     const g1 = await gates(compiled(landingLeadsPlan()));
     expect(g1.checks.some((c) => c.id === "G1-RENDER-01" && c.status === "pass")).toBe(true);
   }, 180_000);
+
+  // B2-19: the row «все модули» — every module with code in one plan compiles and passes G0 and G1 (its browser part
+  // runs in goals.browser.test.ts).
+  test("все модули: the full plan of all 12 modules passes G0 and G1", async () => {
+    const r = compiled(allModulesPlan());
+    expect(new Set(r.order)).toEqual(new Set(MODULES_WITH_CODE.map((d) => d.manifest.id)));
+    const g1 = await gates(r);
+    expect(g1.checks.some((c) => c.id === "G1-RENDER-01" && c.status === "pass")).toBe(true);
+  }, 300_000);
 
   const rows = MODULES_WITH_CODE.flatMap((d) =>
     (d.manifest.tests?.matrix ?? []).map((row) => [d.manifest.id, row.name, row] as const),

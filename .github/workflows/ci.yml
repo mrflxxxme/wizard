@@ -129,7 +129,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @wizard/e2e exec playwright install --with-deps chromium
       - run: pnpm exec vitest run --project browser packages/modules/test/goals.browser.test.ts packages/modules/test/goals-b218.browser.test.ts
-      # The gate's own browser cases and the time measure of a system with every module (≤ 90 s, gates.yaml#G1.browser).
+      # The gate's own browser cases and the time measure of the plan of all 12 modules (≤ 90 s, gates.yaml#G1.browser);
+      # the row «все модули» of goals.browser.test.ts (the same plan with every scenario) runs on the third runner (B2-19).
       - if: matrix.shard == '1/3'
         run: pnpm exec vitest run --project browser packages/gates/test/goals.browser.test.ts packages/modules/test/goals-time.browser.test.ts
       # A plan build through the API with the platform's Chromium: goals.checked = true (B2-28).

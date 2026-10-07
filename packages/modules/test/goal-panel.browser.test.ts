@@ -26,7 +26,7 @@ import { closeExecutors, createRuntimeApp, MemoryRegistry, type RuntimeApp } fro
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { A11Y_SCRIPT, type A11yApi } from "../../ui-kit/test/a11y/checks.js";
-import { type CompileSuccess, compilePlan, PLATFORM_URL } from "../src/index.js";
+import { type CompileSuccess, compilePlan, HINT_BOUNDS, PLATFORM_URL } from "../src/index.js";
 import { landingLeadsPlan, testRegistry } from "./fixtures.js";
 
 const hasChromium = (() => {
@@ -167,6 +167,33 @@ async function openPanel(t: GoalRun): Promise<void> {
 }
 
 /** With data: every lead is new — «В работу взято 0 % заявок»; the hints lead to the leads section and the platform. */
+/** A lead of the run left by a visitor (the data API, with consent): required fields with neutral values. */
+async function addLead(t: GoalRun, k: number): Promise<void> {
+  const doc: Record<string, unknown> = {};
+  for (const f of t.spec.entities.find((e) => e.name === "lead")?.fields ?? []) {
+    if (!f.required || f.default !== undefined) continue;
+    doc[f.name] =
+      f.type === "phone"
+        ? `+7999${String(1_000_000 + k).slice(-7)}`
+        : f.type === "email"
+          ? `lead${k}@example.com`
+          : f.type === "bool"
+            ? true
+            : f.type === "enum"
+              ? f.enum?.[0]?.value
+              : ["int", "decimal", "money"].includes(f.type)
+                ? 1
+                : `${t.marker} ${k}`;
+  }
+  const spec = await t.api("GET", "/_wizard/spec");
+  const c = (spec.body as { compliance?: { policyVersion?: string; consentTextHash?: string } } | null)
+    ?.compliance;
+  const consent = c?.policyVersion ? { policyVersion: c.policyVersion, textHash: c.consentTextHash } : null;
+  const r = await t.api("POST", "/api/data/lead", { ...doc, ...(consent ? { _consent: consent } : {}) });
+  if (r.status >= 300)
+    t.fail(`заявка не добавилась (HTTP ${r.status})`, JSON.stringify(r.body).slice(0, 200));
+}
+
 function hintsProgram(problems: string[]): GoalProgram {
   return async (t) => {
     t.step("Все заявки месяца — новые");
@@ -176,6 +203,27 @@ function hintsProgram(problems: string[]): GoalProgram {
     for (const r of leads) {
       const res = await t.api("PATCH", `/api/data/lead/${String(r.id)}`, { status: "new" });
       if (res.status >= 300) t.fail(`заявка не обновилась (HTTP ${res.status})`, JSON.stringify(res.body));
+    }
+
+    // B2-19: a share over fewer than HINT_MIN_EVENTS events of the month gives no hint.
+    if (leads.length < HINT_BOUNDS.minEvents) {
+      t.step("Заявок меньше порога: доля без подсказки");
+      await openPanel(t);
+      await t.expectText("Цель: Заявки с сайта не теряются");
+      // The share is on the tile: the month's values (and with them the hints) have loaded.
+      await t.page
+        .locator('[data-testid="wz-stats-kpi-leads_handled"]')
+        .filter({ hasText: "%" })
+        .first()
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .catch(() => {});
+      if ((await t.page.locator('[data-testid="wz-goalhints-item-leads_owner"]').count()) > 0)
+        t.fail(
+          `подсказка о доле заявок при ${leads.length} заявках — меньше порога ${HINT_BOUNDS.minEvents}`,
+        );
+      await t.as("visitor");
+      for (let k = leads.length; k < HINT_BOUNDS.minEvents; k++) await addLead(t, k);
+      await t.as("owner");
     }
 
     t.step("Владелец открывает панель цели");

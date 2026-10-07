@@ -55,12 +55,17 @@ const values = (c: MetricCompute) => metricValues(c, SALES, w);
 
 describe("metric kinds on fixture rows (current week / the week before)", () => {
   test("count, with and without where; a list in where is membership", () => {
-    expect(values({ kind: "count", ...sale })).toEqual({ value: 5, previous: 2 });
-    expect(values({ kind: "count", ...sale, where: { status: "paid" } })).toEqual({ value: 4, previous: 1 });
+    expect(values({ kind: "count", ...sale })).toEqual({ value: 5, previous: 2, base: 5 });
+    expect(values({ kind: "count", ...sale, where: { status: "paid" } })).toEqual({
+      value: 4,
+      previous: 1,
+      base: 4,
+    });
     expect(values({ kind: "count", ...sale, where: { status: ["paid", "refunded"], client: "c1" } })).toEqual(
       {
         value: 2,
         previous: 1,
+        base: 2,
       },
     );
   });
@@ -73,10 +78,11 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
         numerator: { status: "refunded" },
         denominator: { status: ["paid", "refunded"] },
       }),
-    ).toEqual({ value: 20, previous: 50 });
+    ).toEqual({ value: 20, previous: 50, base: 5 });
     expect(values({ kind: "ratio", ...sale, numerator: { client: "c1" } })).toEqual({
       value: 40,
       previous: 50,
+      base: 5,
     });
     expect(computeValue({ kind: "ratio", ...sale, numerator: { status: "paid" } }, [])).toBeNull();
   });
@@ -85,10 +91,12 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
     expect(values({ kind: "sum", ...sale, field: "amount", where: { status: "paid" } })).toEqual({
       value: 6000,
       previous: 4000,
+      base: 4,
     });
     expect(values({ kind: "avg", ...sale, field: "amount", where: { status: "paid" } })).toEqual({
       value: 2000,
       previous: 4000,
+      base: 4,
     });
     expect(computeValue({ kind: "avg", ...sale, field: "amount" }, [{ amount: null }])).toBeNull();
     expect(computeValue({ kind: "sum", ...sale, field: "amount" }, [])).toBe(0);
@@ -96,7 +104,11 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
   });
 
   test("repeat_share: % of distinct values met at least twice (empty values skipped)", () => {
-    expect(values({ kind: "repeat_share", ...sale, by: "client" })).toEqual({ value: 33.3, previous: 0 });
+    expect(values({ kind: "repeat_share", ...sale, by: "client" })).toEqual({
+      value: 33.3,
+      previous: 0,
+      base: 4,
+    });
     expect(computeValue({ kind: "repeat_share", ...sale, by: "client" }, [{ client: null }])).toBeNull();
   });
 
@@ -104,6 +116,7 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
     expect(values({ kind: "count", entity: "sale", dateField: "sold_on" })).toEqual({
       value: 4,
       previous: 2,
+      base: 4,
     });
     expect(rowTime("2026-10-06")).toBe(Date.parse("2026-10-05T21:00:00Z"));
     expect(isoDate(Date.parse("2026-10-05T21:30:00Z"))).toBe("2026-10-06");
@@ -112,7 +125,11 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
   });
 
   test("function metrics are computed by their module's query, not from rows", () => {
-    expect(values({ kind: "function", name: "scheduleLoad" })).toEqual({ value: null, previous: null });
+    expect(values({ kind: "function", name: "scheduleLoad" })).toEqual({
+      value: null,
+      previous: null,
+      base: null,
+    });
   });
 
   test("periods: rolling 7 and 30 days, compared with the span right before", () => {
@@ -123,6 +140,7 @@ describe("metric kinds on fixture rows (current week / the week before)", () => 
     expect(metricValues({ kind: "count", ...sale }, SALES, periodWindows("month", NOW))).toEqual({
       value: 8,
       previous: 0,
+      base: 8,
     });
   });
 });

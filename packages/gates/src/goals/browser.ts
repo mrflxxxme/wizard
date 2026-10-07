@@ -126,6 +126,8 @@ export interface BrowserTiming {
   /** Scenario runs done (scenario × cell). */
   runs: number;
   lanes: number;
+  /** The longest single run (scenario id and its cell), ms — the one to speed up first (B2-19); null without runs. */
+  slowest: { id: string; cell: string; ms: number } | null;
 }
 
 /** Requests of a browser context in flight and the moment the last one started or ended (settle). */
@@ -807,18 +809,28 @@ async function runCell(
 async function runScenarios(
   input: BrowserCheckInput,
   jobs: readonly { sc: GoalScenarioInput; program: GoalProgram; cell: Cell; k: number }[],
-): Promise<{ results: Map<string, (CellResult | undefined)[]>; runs: number; lanes: number }> {
+): Promise<{
+  results: Map<string, (CellResult | undefined)[]>;
+  runs: number;
+  lanes: number;
+  slowest: BrowserTiming["slowest"];
+}> {
   const results = new Map<string, (CellResult | undefined)[]>();
   const failed = new Set<string>();
   let next = 0;
   let runs = 0;
   let lanes = 0;
+  let slowest: BrowserTiming["slowest"] = null;
   const work = async (lane: GoalLane) => {
     lanes += 1;
     for (let j = next++; j < jobs.length; j = next++) {
       const job = jobs[j] as (typeof jobs)[number];
       if (failed.has(job.sc.id)) continue;
+      const at = Date.now();
       const r = await runCell(input, lane, job.sc, job.program, job.cell);
+      const ms = Date.now() - at;
+      if (!slowest || ms > slowest.ms)
+        slowest = { id: job.sc.id, cell: where(job.cell.viewport, job.cell.scheme), ms };
       runs += 1;
       const list = results.get(job.sc.id) ?? [];
       list[job.k] = r;
@@ -838,7 +850,7 @@ async function runScenarios(
         ),
       );
   await Promise.all(all);
-  return { results, runs, lanes };
+  return { results, runs, lanes, slowest };
 }
 
 /** G1-GOAL-<id> and G1-MOBILE-01 entries of a G1 report. */
@@ -854,7 +866,7 @@ export async function runBrowserChecks(input: BrowserCheckInput): Promise<Check[
     const program = programs[sc.id];
     return program ? matrix.map((cell, k) => ({ sc, program, cell, k })) : [];
   });
-  const { results, runs, lanes } = await runScenarios(input, jobs);
+  const { results, runs, lanes, slowest } = await runScenarios(input, jobs);
   const scenariosMs = Date.now() - started;
   for (const sc of scenarios) {
     const id = `G1-GOAL-${sc.id}`;
@@ -922,6 +934,7 @@ export async function runBrowserChecks(input: BrowserCheckInput): Promise<Check[
     mobileMs: now - mobileStarted,
     runs,
     lanes: Math.max(1, lanes),
+    slowest,
   });
   return out;
 }

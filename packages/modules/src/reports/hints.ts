@@ -2,12 +2,16 @@
 // Here a rule is chosen for the plan (its module is there, the fix is not on yet, the metric is visible to the owner);
 // the page checks its condition on the month's metrics (lib/goalPanel.ts pickHints) and shows at most three. Each hint
 // leads to an action: a section of the owner's cabinet, or the plan on the platform («Изменить в Born to Build»).
+import { platformSystemUrl } from "../engine/compile.js";
 import { can } from "../screens/cabinet.js";
 import type { GenContext } from "../types.js";
-import type { HintRule } from "./lib/goalPanel.js";
+import { HINT_MIN_EVENTS, type HintRule } from "./lib/goalPanel.js";
 import { PANEL_ROLE } from "./panel.js";
 
-/** The platform: the owner changes the plan of the system there (a new tab; the owner signs in to Born to Build). */
+/**
+ * The platform's main page: the link of «Изменить в Born to Build» when the system is compiled without its place on
+ * the platform (previews); otherwise the owner's page of the system there (platformSystemUrl, B2-19).
+ */
 export const PLATFORM_URL = "https://borntobuild.ru/";
 /** At most this many hints on the panel. */
 export const MAX_HINTS = 3;
@@ -23,15 +27,21 @@ export const HINT_BOUNDS = {
   dealsWon: 20,
   drop: 0.3,
   dropMin: 5,
+  /** A share (gte / lte) fires over at least this many events of the month (B2-19, modules.yaml#manifest.metrics.hints). */
+  minEvents: HINT_MIN_EVENTS,
 } as const;
-
-const platform = { label: "Изменить в Born to Build", href: PLATFORM_URL, external: true };
 
 type Candidate = Omit<HintRule, "unit" | "goal"> & { applies: boolean };
 
 /** The rules that fit the plan, in the order of the plan's goals (then the rest), each with its metric's unit. */
 export function hintRules(ctx: GenContext): HintRule[] {
   const { present, allParams, spec } = ctx;
+  // The owner changes the plan of the system on the platform (a new tab; the owner signs in to Born to Build).
+  const platform = {
+    label: "Изменить в Born to Build",
+    href: platformSystemUrl(ctx) ?? PLATFORM_URL,
+    external: true,
+  };
   const p = (module: string, name: string): unknown => allParams[module]?.[name];
   const ownerReads = (entity: string) => can(spec, PANEL_ROLE, entity, "read");
   const section = (entity: string, label: string) => ({
@@ -50,7 +60,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "booking_reminder_cancel",
       metric: "cancel_share",
-      when: { op: "gte", value: B.cancelShare },
+      when: { op: "gte", value: B.cancelShare, min: B.minEvents },
       title: "Много отмен записи",
       text: "Отменяется {value} записей. Включите письмо-напоминание посетителю за сутки до визита — о записи будут забывать реже.",
       action: platform,
@@ -60,7 +70,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "booking_reminder_no_show",
       metric: "no_show_share",
-      when: { op: "gte", value: B.noShowShare },
+      when: { op: "gte", value: B.noShowShare, min: B.minEvents },
       title: "Много неявок",
       text: "Не приходят {value} записавшихся. Включите письмо-напоминание посетителю за сутки до визита.",
       action: platform,
@@ -70,7 +80,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "booking_second_reminder",
       metric: "no_show_share",
-      when: { op: "gte", value: B.noShowShare },
+      when: { op: "gte", value: B.noShowShare, min: B.minEvents },
       title: "Неявки остаются и с напоминанием",
       text: "Не приходят {value} записавшихся. Добавьте второе напоминание — за 2–3 часа до визита.",
       action: platform,
@@ -80,7 +90,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "booking_reschedule",
       metric: "cancel_share",
-      when: { op: "gte", value: B.cancelShare },
+      when: { op: "gte", value: B.cancelShare, min: B.minEvents },
       title: "Отмены вместо переносов",
       text: "Отменяется {value} записей. Разрешите перенос по ссылке из письма — часть отмен станет переносами.",
       action: platform,
@@ -90,7 +100,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "leads_owner",
       metric: "leads_handled",
-      when: { op: "lte", value: B.leadsHandled },
+      when: { op: "lte", value: B.leadsHandled, min: B.minEvents },
       title: "Заявки остаются без ответа",
       text: present.has("staff")
         ? "В работу взято {value} заявок. Назначьте ответственного за новые заявки и отмечайте статус: «В работе» или «Закрыта»."
@@ -103,7 +113,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
       // «Заявки» requires notify: the owner already hears of new leads; Telegram is faster than e-mail.
       id: "leads_telegram",
       metric: "leads_handled",
-      when: { op: "lte", value: B.leadsHandled },
+      when: { op: "lte", value: B.leadsHandled, min: B.minEvents },
       title: "Ответ на заявку можно ускорить",
       text: "В работу взято {value} заявок. Включите уведомления о новых заявках в Telegram — увидите их сразу.",
       action: platform,
@@ -139,7 +149,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "schedule_load",
       metric: "schedule_load",
-      when: { op: "lte", value: B.scheduleLoad },
+      when: { op: "lte", value: B.scheduleLoad, min: B.minEvents },
       title: "В расписании много свободного времени",
       text: "Расписание занято на {value}. Расскажите о свободных окнах на сайте: кнопка записи на первом экране и короткая акция.",
       action: platform,
@@ -150,7 +160,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
       (metric): Candidate => ({
         id: `packages_offer_${metric}`,
         metric,
-        when: { op: "lte", value: B.repeatShare },
+        when: { op: "lte", value: B.repeatShare, min: B.minEvents },
         title: "Мало повторных клиентов",
         text: "Возвращаются {value} клиентов. Предложите абонемент или пакет визитов — добавьте модуль «Абонементы и пакеты».",
         action: platform,
@@ -161,7 +171,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "packages_expiry",
       metric: "packages_renewed",
-      when: { op: "lte", value: B.repeatShare },
+      when: { op: "lte", value: B.repeatShare, min: B.minEvents },
       title: "Абонементы редко продлевают",
       text: "Продлили абонемент {value} клиентов. Включите напоминание об окончании абонемента за несколько дней.",
       action: platform,
@@ -171,7 +181,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "overdue_reminder",
       metric: "overdue_share",
-      when: { op: "gte", value: B.overdueShare },
+      when: { op: "gte", value: B.overdueShare, min: B.minEvents },
       title: "Возвращают с опозданием",
       text: "Не вернули вовремя {value} выдач. Включите напоминание о сроке возврата и о просрочке.",
       action: platform,
@@ -181,7 +191,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "overdue_contact",
       metric: "overdue_share",
-      when: { op: "gte", value: B.overdueShare },
+      when: { op: "gte", value: B.overdueShare, min: B.minEvents },
       title: "Возвращают с опозданием",
       text: "Не вернули вовремя {value} выдач. Откройте просроченные выдачи и свяжитесь с теми, кто не вернул.",
       action: section("resource_issue", "Открыть выдачи"),
@@ -194,7 +204,7 @@ export function hintRules(ctx: GenContext): HintRule[] {
     {
       id: "deals_won",
       metric: "deals_won_share",
-      when: { op: "lte", value: B.dealsWon },
+      when: { op: "lte", value: B.dealsWon, min: B.minEvents },
       title: "Мало сделок доходят до успеха",
       text: "Из закрытых сделок успешны {value}. Посмотрите в воронке, на каком этапе они останавливаются.",
       action: section("deal", "Открыть сделки"),

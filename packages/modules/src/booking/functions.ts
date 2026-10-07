@@ -2,8 +2,9 @@
 // - busySlots (public query): occupied times of a period for the booking page — start, end and seat only, read through
 //   ctx.systemDb because visitors do not read bookings (names and contacts are never returned);
 // - scheduleLoad (owner/staff query): the goal-panel metric «Занятость расписания» by the contract of function metrics
-//   of «Отчёты и панель цели» ({period: "week" | "month"} → {value, previous}): the share of the working time of every
-//   resource and seat held by bookings over the last 7 or 30 days and the same span before it, in percent;
+//   of «Отчёты и панель цели» ({period: "week" | "month"} → {value, previous, base}): the share of the working time of
+//   every resource and seat held by bookings over the last 7 or 30 days and the same span before it, in percent (base —
+//   the bookings of the current period);
 // - clientFromBooking (workflow client_from_booking, with «Клиенты с историей»): a new booking finds or creates its
 //   client by the contact and joins the client's history (as clientFromLead of the leads).
 import type { ModuleContext } from "../types.js";
@@ -72,22 +73,26 @@ export default query({
         ? `const resources = Math.max(1, (await ctx.db.specialist.list({ limit: 100 })).filter((s) => s.active !== false).length);`
         : "const resources = 1;"
     }
-    const load = async (from: number, to: number): Promise<number | null> => {
+    // share — of the working time held, n — the bookings it stands on (the hints' base, B2-19).
+    const load = async (from: number, to: number): Promise<{ share: number | null; n: number }> => {
       const capacity = workingSlots(from, to) * resources * SCHEDULE.capacity;
-      if (capacity === 0) return null;
+      if (capacity === 0) return { share: null, n: 0 };
       const rows = await ctx.db.booking.list({
         where: { starts_at: { gte: new Date(from).toISOString(), lt: new Date(to).toISOString() } },
         limit: 1000,
       });
       let held = 0;
+      let n = 0;
       for (const r of rows) {
         if (r.status === "cancelled" || r.seat === null) continue;
+        n += 1;
         const length = (Date.parse(r.ends_at) - Date.parse(r.starts_at)) / MINUTE;
         held += Math.max(1, Math.ceil(length / SCHEDULE.step));
       }
-      return Math.min(100, Math.round((held / capacity) * 1000) / 10);
+      return { share: Math.min(100, Math.round((held / capacity) * 1000) / 10), n };
     };
-    return { value: await load(now - len, now), previous: await load(now - 2 * len, now - len) };
+    const current = await load(now - len, now);
+    return { value: current.share, previous: (await load(now - 2 * len, now - len)).share, base: current.n };
   },
 });
 `;
