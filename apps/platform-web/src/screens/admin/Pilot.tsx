@@ -4,12 +4,12 @@
 // statuses and revoke, pilot orgs with the month's spend, grants by reference, the founder-review flag, and the
 // platform LLM spend vs the monthly cap with the 80 % warning. Any MFA_REQUIRED returns to the code screen.
 
-import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { LlmSpend, PilotInvite, PilotOrg, PilotReadiness } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
 import { AdminDemoReplay } from "../../features/demo/AdminDemoReplay.js";
 import { AdminLimits } from "../../features/pricing/AdminLimits.js";
 import { ru } from "../../i18n/ru.js";

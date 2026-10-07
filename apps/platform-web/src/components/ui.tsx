@@ -1,4 +1,4 @@
-// Small platform-only primitives on --w-* tokens (ui-kit Button/Badge cover the rest).
+// Small platform-only primitives on the design system v2 (--p-*, B2-33); buttons — components/v2/Button.
 import type { ReactNode } from "react";
 import s from "./ui.module.css";
 

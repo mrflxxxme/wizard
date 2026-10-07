@@ -73,6 +73,9 @@ jobs:
       # B2-25 (platform-screens.yaml#S-canvas): the canvas screen on the recorded feed «клиника» (режим показа, no models),
       # 390/1280 light/dark: interview → sketch → plan → approval → build → ready; screenshots test/artifacts/canvas-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/canvas.browser.test.ts
+      # B2-33 (platform-screens.yaml#stack): every other platform screen on the design system v2 — 390/1280 light/dark,
+      # no horizontal scroll, the start of prototype E opens the canvas; screenshots test/artifacts/platform-*.png.
+      - run: pnpm exec vitest run --project browser apps/platform-web/test/platform-v2.browser.test.ts
       - run: pnpm e2e
       # Artifacts come only from fixture runs (WIZARD_LLM_MODE=fixture above), never from live LLM runs.
       - uses: actions/upload-artifact@v4
@@ -84,6 +87,7 @@ jobs:
             packages/e2e/test-results
             packages/ui-kit/test/artifacts/v2-*.png
             apps/platform-web/test/artifacts/canvas-*.png
+            apps/platform-web/test/artifacts/platform-*.png
           retention-days: 7
   # L3-38 (deploy.yaml#cloud.ci_cd.ci): license policy of AGENTS.md over the whole dependency tree + CycloneDX SBOM.
   supply-chain:

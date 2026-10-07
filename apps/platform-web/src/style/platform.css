@@ -1,0 +1,35 @@
+/* Document base of the platform screens v2 (B2-33): <html> carries data-p-root and the theme (App.tsx) on every route
+   except the legacy workspace (/s/:id of the legacy pipeline, «Код», import), which keeps ui-kit v1 (--w-*). */
+html[data-p-root] {
+  min-height: 100%;
+}
+
+html[data-p-root] body {
+  margin: 0;
+}
+
+html[data-p-root] a {
+  color: inherit;
+  text-decoration-color: var(--p-line-2);
+  text-underline-offset: 3px;
+}
+
+html[data-p-root] a:hover {
+  text-decoration-color: currentColor;
+}
+
+html[data-p-root] :is(h1, h2, h3, h4) {
+  letter-spacing: -0.01em;
+}
+
+html[data-p-root] :is(input, select, textarea, button) {
+  font-family: inherit;
+}
+
+html[data-p-root] ::selection {
+  background: var(--p-amber-soft);
+}
+
+html[data-p-root] :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--p-graphite);
+}

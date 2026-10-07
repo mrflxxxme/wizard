@@ -2,11 +2,14 @@
 // links to /login?email=…&next=/welcome). Explains the pilot — what is free, the plan limits (billing.yaml#plans.pilot),
 // that the first prod publication is reviewed (abuse.yaml#identification.founder_review) — and starts a system from a
 // template (S1 with ?template=<id>) or the owner's own words. Orgs on other plans go straight to S1. D70: the pilot
-// limit in words (builds and edits in 30 days), no credits.
-import { Button } from "@wizard/ui-kit";
+// limit in words (builds and edits in 30 days), no credits. B2-33: design system v2 — serif welcome, cards, chips.
+import { Chip, Serif } from "@wizard/ui-kit/v2";
 import { type ReactNode, useEffect, useState } from "react";
 import { usePlatform } from "../../app/context.js";
 import { navigate } from "../../app/router.js";
+import { Spinner } from "../../components/ui.js";
+import { Button } from "../../components/v2/Button.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { useUsage } from "../../features/pricing/Usage.js";
 import { pricing } from "../../i18n/ru/pricing.js";
 import { ru } from "../../i18n/ru.js";
@@ -36,17 +39,19 @@ export function Welcome(): ReactNode {
 
   if (!org)
     return (
-      <main aria-busy="true" style={{ padding: 24 }}>
-        {ru.code.loading}
-      </main>
+      <PlatformPage>
+        <main aria-busy="true" className={s.main}>
+          <Spinner label={ru.code.loading} />
+        </main>
+      </PlatformPage>
     );
 
   return (
-    <div className={s.page}>
+    <PlatformPage>
       <main className={s.main}>
-        <h1 className={s.title} data-testid="welcome-title">
+        <Serif as="h1" size="xl" className={s.title} testId="welcome-title">
           {ru.welcome.title}
-        </h1>
+        </Serif>
         <p className={s.lead}>
           <span data-testid="welcome-org">{ru.welcome.org(name)}</span> {ru.welcome.lead}
         </p>
@@ -82,24 +87,23 @@ export function Welcome(): ReactNode {
             {ru.templates
               .filter((t) => t.id !== "custom")
               .map((t) => (
-                <button
+                <Chip
                   key={t.id}
-                  type="button"
-                  className={s.chip}
-                  data-testid={`welcome-template-${t.id}`}
+                  tone="outline"
+                  testId={`welcome-template-${t.id}`}
                   onClick={() => navigate(`/?template=${encodeURIComponent(t.id)}`)}
                 >
                   {t.label}
-                </button>
+                </Chip>
               ))}
           </div>
           <div>
-            <Button variant="primary" data-testid="welcome-start" onClick={() => navigate("/")}>
+            <Button variant="create" data-testid="welcome-start" onClick={() => navigate("/")}>
               {ru.welcome.start}
             </Button>
           </div>
         </section>
       </main>
-    </div>
+    </PlatformPage>
   );
 }

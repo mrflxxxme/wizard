@@ -1,10 +1,11 @@
 // S-auth «Регистрация и вход» (/login?next=…): email → code → for a new user (or a new offer version) two separate
 // unchecked consents: the offer (acceptOffer) and the personal data consent (pdConsent), compliance.yaml#platform.
-import { Button } from "@wizard/ui-kit";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { usePlatform } from "../../app/context.js";
 import { navigate, safeNext, useRoute } from "../../app/router.js";
+import { Button } from "../../components/v2/Button.js";
+import { PlatformPage } from "../../components/v2/Shell.js";
 import { ru } from "../../i18n/ru.js";
 import s from "./Auth.module.css";
 
@@ -129,88 +130,87 @@ export function Login(): ReactNode {
   };
 
   return (
-    <main className={s.page}>
-      <section className={s.card} aria-labelledby="auth-title">
-        <span className={s.logo} aria-hidden="true">
-          W
-        </span>
-        <h1 id="auth-title" className={s.title}>
-          {ru.auth.title}
-        </h1>
-        <p className={s.muted}>{ru.auth.subtitle}</p>
-        {step === "email" ? (
-          <form className={s.form} onSubmit={(e) => void requestCode(e)} noValidate>
-            <label className={s.field}>
-              <span>{ru.auth.email}</span>
-              <input
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                data-testid="auth-email"
-              />
-            </label>
-            <Button type="submit" variant="primary" loading={busy} data-testid="auth-request-code">
-              {ru.auth.requestCode}
-            </Button>
-          </form>
-        ) : (
-          <form className={s.form} onSubmit={(e) => void verify(e)} noValidate>
-            <p className={s.status} role="status">
-              {ru.auth.sent}
-            </p>
-            <div className={s.row}>
-              <b>{email.trim()}</b>
-              <button
-                type="button"
-                className={s.link}
-                onClick={() => {
-                  setStep("email");
-                  setCode("");
-                  setError(null);
-                }}
-              >
-                {ru.auth.changeEmail}
+    <PlatformPage nav={false}>
+      <main className={s.page}>
+        <section className={s.card} aria-labelledby="auth-title">
+          <h1 id="auth-title" className={s.title}>
+            {ru.auth.title}
+          </h1>
+          <p className={s.muted}>{ru.auth.subtitle}</p>
+          {step === "email" ? (
+            <form className={s.form} onSubmit={(e) => void requestCode(e)} noValidate>
+              <label className={s.field}>
+                <span>{ru.auth.email}</span>
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  data-testid="auth-email"
+                />
+              </label>
+              <Button type="submit" variant="primary" loading={busy} data-testid="auth-request-code">
+                {ru.auth.requestCode}
+              </Button>
+            </form>
+          ) : (
+            <form className={s.form} onSubmit={(e) => void verify(e)} noValidate>
+              <p className={s.status} role="status">
+                {ru.auth.sent}
+              </p>
+              <div className={s.row}>
+                <b>{email.trim()}</b>
+                <button
+                  type="button"
+                  className={s.link}
+                  onClick={() => {
+                    setStep("email");
+                    setCode("");
+                    setError(null);
+                  }}
+                >
+                  {ru.auth.changeEmail}
+                </button>
+              </div>
+              <label className={s.field}>
+                <span>{ru.auth.code}</span>
+                <input
+                  className={s.code}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  data-testid="auth-code"
+                />
+              </label>
+              {needed.length > 0 && (
+                <fieldset className={s.consents}>
+                  <legend>{ru.auth.consentsTitle}</legend>
+                  {needed.includes("acceptOffer") &&
+                    consent("acceptOffer", ru.auth.offer, ru.auth.offerLink, "/legal/offer", offer, setOffer)}
+                  {needed.includes("pdConsent") &&
+                    consent("pdConsent", ru.auth.pdConsent, ru.auth.pdLink, "/legal/pd-consent", pd, setPd)}
+                </fieldset>
+              )}
+              <Button type="submit" variant="primary" loading={busy} data-testid="auth-submit">
+                {ru.auth.submit}
+              </Button>
+              <button type="button" className={s.link} onClick={() => void requestCode()} disabled={busy}>
+                {ru.auth.resend}
               </button>
-            </div>
-            <label className={s.field}>
-              <span>{ru.auth.code}</span>
-              <input
-                className={s.code}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                data-testid="auth-code"
-              />
-            </label>
-            {needed.length > 0 && (
-              <fieldset className={s.consents}>
-                <legend>{ru.auth.consentsTitle}</legend>
-                {needed.includes("acceptOffer") &&
-                  consent("acceptOffer", ru.auth.offer, ru.auth.offerLink, "/legal/offer", offer, setOffer)}
-                {needed.includes("pdConsent") &&
-                  consent("pdConsent", ru.auth.pdConsent, ru.auth.pdLink, "/legal/pd-consent", pd, setPd)}
-              </fieldset>
-            )}
-            <Button type="submit" variant="primary" loading={busy} data-testid="auth-submit">
-              {ru.auth.submit}
-            </Button>
-            <button type="button" className={s.link} onClick={() => void requestCode()} disabled={busy}>
-              {ru.auth.resend}
-            </button>
-          </form>
-        )}
-        {error && (
-          <p className={s.formError} role="alert" data-testid="auth-error">
-            {error}
-          </p>
-        )}
-      </section>
-    </main>
+            </form>
+          )}
+          {error && (
+            <p className={s.formError} role="alert" data-testid="auth-error">
+              {error}
+            </p>
+          )}
+        </section>
+      </main>
+    </PlatformPage>
   );
 }

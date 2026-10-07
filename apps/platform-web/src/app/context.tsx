@@ -1,6 +1,8 @@
 // Platform providers: API client, the signed-in user and the current organization (GET /me, api.yaml x-auth M1),
-// org settings (build model label, ruOnly, L4-20) and the ui-kit theme of the platform.
+// org settings (build model label, ruOnly, L4-20), the light/dark choice of the v2 screens (B2-33) and the ui-kit v1
+// theme the legacy workspace still uses.
 import { type RoleSpec, themeToTokens, WzProvider } from "@wizard/ui-kit";
+import type { PlatformThemeMode } from "@wizard/ui-kit/v2";
 import {
   createContext,
   type ReactNode,
@@ -13,6 +15,7 @@ import {
 } from "react";
 import { type ApiClient, ApiError, createApiClient, M0_ORG_ID } from "../api/client.js";
 import type { Me, OrgRole, OrgSettings } from "../api/types.js";
+import { readThemeMode, writeThemeMode } from "./theme.js";
 
 /** Platform UI is a RoleSpec-less app: an empty spec only carries the platform theme for ui-kit components. */
 const PLATFORM_SPEC: RoleSpec = {
@@ -26,7 +29,10 @@ const PLATFORM_SPEC: RoleSpec = {
   loginMethods: [],
 };
 
-/** CSSOM only: CSP forbids inline <style> (ui-kit applyTokens), setProperty is allowed. */
+/**
+ * --w-* tokens of ui-kit v1 for the legacy workspace (/s/:id of the legacy pipeline, its «Код» and import screens);
+ * the other screens are on --p-* (B2-33). CSSOM only: CSP forbids inline <style> (ui-kit applyTokens).
+ */
 function applyPlatformTokens(root: HTMLElement): void {
   for (const [k, v] of Object.entries(themeToTokens(PLATFORM_SPEC.theme, "light")))
     root.style.setProperty(k, v);
@@ -68,6 +74,11 @@ export interface PlatformValue {
   /** Settings of the current organization (null — unknown: no model label is shown, never a constant). */
   settings: OrgSettings | null;
   setSettings(s: OrgSettings): void;
+  /** Light / dark / auto of the v2 screens (shared with the canvas screen). */
+  theme: PlatformThemeMode;
+  setTheme(mode: PlatformThemeMode): void;
+  /** Re-reads the stored choice (the canvas screen keeps its own copy). */
+  syncTheme(): void;
 }
 
 const Ctx = createContext<PlatformValue | null>(null);
@@ -88,6 +99,12 @@ export function PlatformProvider({ api, children }: { api?: ApiClient; children:
   const [me, setMe] = useState<Me | null>(null);
   const [orgId, setOrgId] = useState<string>(() => readOrg() ?? M0_ORG_ID);
   const [settings, setSettings] = useState<OrgSettings | null>(null);
+  const [theme, setThemeState] = useState<PlatformThemeMode>(readThemeMode);
+  const setTheme = useCallback((mode: PlatformThemeMode) => {
+    writeThemeMode(mode);
+    setThemeState(mode);
+  }, []);
+  const syncTheme = useCallback(() => setThemeState(readThemeMode()), []);
   onUnauthorized.current = () => {
     setMe(null);
     setAuth("anon");
@@ -137,8 +154,21 @@ export function PlatformProvider({ api, children }: { api?: ApiClient; children:
   );
 
   const value = useMemo<PlatformValue>(
-    () => ({ api: client, auth, me, orgId, roleIn, setOrg, reloadMe, settings, setSettings }),
-    [client, auth, me, orgId, roleIn, setOrg, reloadMe, settings],
+    () => ({
+      api: client,
+      auth,
+      me,
+      orgId,
+      roleIn,
+      setOrg,
+      reloadMe,
+      settings,
+      setSettings,
+      theme,
+      setTheme,
+      syncTheme,
+    }),
+    [client, auth, me, orgId, roleIn, setOrg, reloadMe, settings, theme, setTheme, syncTheme],
   );
   return (
     <WzProvider spec={PLATFORM_SPEC} applyTheme={false}>

@@ -1,29 +1,27 @@
-.shell {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  min-height: 100vh;
-  background: var(--w-bg);
-}
-
+/* Cabinet pages on the design system v2 (B2-33): S10 «Настройки», S-billing, /admin and their sections — cards on the
+   warm paper background, quiet sunken fields, graphite main actions. */
 .page {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 96px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px;
+  gap: 16px;
   min-width: 0;
-  max-width: 1160px;
 }
 
 .head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 10px 12px;
 }
 
 .title {
   margin: 0;
-  font-size: 22px;
+  font: 400 clamp(26px, 4vw, 34px) / 1.12 var(--p-f-serif);
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
 }
 
 .spacer {
@@ -32,19 +30,19 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
   align-items: start;
 }
 
 .block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
-  background: var(--w-surface);
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-2);
   min-width: 0;
 }
 
@@ -55,17 +53,19 @@
 .blockTitle {
   margin: 0;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .subTitle {
   margin: 0 0 4px;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .sub {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .list {
@@ -83,9 +83,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--p-line);
   font-size: 14px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--w-line);
 }
 
 .member:last-child,
@@ -103,25 +103,34 @@
 .field select,
 .field input,
 .field textarea {
-  min-height: 34px;
-  padding: 4px 8px;
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius-sm);
-  background: var(--w-surface);
-  color: var(--w-ink);
-  font: inherit;
-  font-size: 14px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
+  color: var(--p-ink);
+  font: 400 14px / 1.35 var(--p-f-ui);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.member select:focus,
+.field select:focus,
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 0;
 }
 
 .revNum {
-  font-weight: 600;
   flex: none;
+  font-weight: 600;
 }
 
 .revText {
   flex: 1 1 200px;
   min-width: 0;
-  color: var(--w-muted);
+  color: var(--p-ink-2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -129,23 +138,25 @@
 }
 
 .muted {
-  color: var(--w-muted);
+  color: var(--p-ink-2);
 }
 
 .small {
   margin: 0;
-  font-size: 13px;
-  color: var(--w-ink);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--p-ink);
 }
 
 .hint {
   margin: 0;
-  font-size: 12px;
-  color: var(--w-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--p-ink-2);
 }
 
 .warn {
-  color: var(--w-warn);
+  color: var(--p-warn);
 }
 
 .lockRow {
@@ -153,9 +164,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--w-radius-sm);
-  background: var(--w-bg);
+  padding: 10px 12px;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
 }
 
 .inviteForm {
@@ -168,7 +179,7 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .fieldset {
@@ -178,15 +189,17 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
+  gap: 6px;
   min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--p-ink-2);
 }
 
 .inviteForm .field:first-child {
@@ -197,25 +210,43 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 32px;
   font-size: 14px;
 }
 
 .check input {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--p-graphite);
 }
 
 .link {
-  color: var(--w-accent-text);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--p-ink);
+  font: inherit;
   font-size: 14px;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--p-line-2);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link[aria-pressed="true"] {
+  font-weight: 600;
+  text-decoration-color: currentColor;
 }
 
 .notice {
   margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--w-radius-sm);
-  background: var(--w-accent-soft);
-  color: var(--w-accent-text);
+  padding: 10px 14px;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
+  color: var(--p-ink);
   font-size: 14px;
 }
 
@@ -229,43 +260,32 @@
 .backdrop {
   position: fixed;
   inset: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--p-scrim);
 }
 
 .dialog {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
-  border-radius: var(--w-radius);
-  background: var(--w-surface);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  gap: 18px;
+  padding: 22px;
+  border-radius: var(--p-r-xl);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-float);
+  animation: rise 0.5s var(--p-spring) backwards;
 }
 
 .dialogText {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-}
-
-@media (max-width: 640px) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .shell > nav:first-child {
-    display: none;
-  }
-
-  .grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  line-height: 1.4;
 }
 
 .logRow {
@@ -273,9 +293,9 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--p-line);
   font-size: 13px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--w-line);
 }
 
 .logRow:last-child {
@@ -283,9 +303,37 @@
 }
 
 .danger {
-  border-color: var(--w-bad);
+  box-shadow:
+    var(--p-sh-1),
+    inset 0 0 0 1px color-mix(in srgb, var(--p-bad) 35%, transparent);
 }
 
 .preWrap {
   white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding-top: 20px;
+  }
+
+  .block {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .member select,
+  .field select,
+  .field input,
+  .check {
+    min-height: 44px;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
 }

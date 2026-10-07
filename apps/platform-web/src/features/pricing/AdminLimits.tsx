@@ -1,9 +1,10 @@
 // /admin «Пилот» → organizations (D70, M2-34 mvp_scope): the pilot limit of an org — builds and edits used in 30 days
 // out of the limit — and the founder's raise (PUT /admin/pilot/orgs/:orgId/limits; empty field — the default).
-import { Button } from "@wizard/ui-kit";
+
 import { type ReactNode, useState } from "react";
 import type { PilotUsage } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
+import { Button } from "../../components/v2/Button.js";
 import { ru } from "../../i18n/ru.js";
 import f from "../../screens/abuse/Abuse.module.css";
 import st from "../../screens/settings/Settings.module.css";

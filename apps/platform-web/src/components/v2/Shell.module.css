@@ -1,0 +1,164 @@
+/* Frame of the platform screens v2 (B2-33): floating glass top bar of prototype E over the paper background. */
+.frame {
+  min-height: 100dvh;
+  overflow-x: clip;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+.top {
+  position: sticky;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  margin-inline: auto;
+  width: min(1180px, calc(100% - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 52px;
+  padding: 7px 7px 7px 14px;
+  border-radius: var(--p-r-lg);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  color: var(--p-ink);
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.m1 {
+  fill: var(--p-ink);
+}
+
+.m2 {
+  fill: var(--p-ink);
+  opacity: 0.3;
+}
+
+.sys {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sys::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  flex: none;
+  background: var(--p-line-2);
+}
+
+.sysName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grow {
+  flex: 1;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--p-ink-2);
+  font: 500 13.5px / 1.2 var(--p-f-ui);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.4s var(--p-spring);
+}
+
+.tbtn:hover {
+  background: var(--p-sunken);
+  color: var(--p-ink);
+}
+
+.tbtn:active {
+  transform: scale(0.96);
+}
+
+.tbtn[aria-current="page"] {
+  background: var(--p-sunken);
+  color: var(--p-ink);
+}
+
+.iconOnly {
+  width: 36px;
+  padding: 0;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 600px) {
+  .top {
+    padding-left: 12px;
+  }
+
+  .wm {
+    display: none;
+  }
+
+  /* Phone: mark, navigation and the theme in the first row; the screen's actions in their own row. */
+  .actions {
+    order: 5;
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .tbtn,
+  .brand {
+    min-height: 44px;
+  }
+
+  .iconOnly {
+    width: 44px;
+  }
+}

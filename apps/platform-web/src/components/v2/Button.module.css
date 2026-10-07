@@ -1,0 +1,30 @@
+/* Platform button extras (B2-33): «danger» text, the loading spinner. Motion: transform only. */
+.danger {
+  color: var(--p-bad);
+}
+
+.loading {
+  cursor: progress;
+}
+
+/* Loading keeps the label readable (not the 0.4 of a disabled button). */
+.loading:disabled {
+  opacity: 0.75;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.7;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -2,11 +2,13 @@
 // opens a form — text and «Хочу, чтобы доделала команда»; the message goes to the founder (POST /support/requests) with
 // the open system and screen; the client sees the confirmation with the reply time (D60). Other screens open the same
 // form with openSupport() (limits, failed runs). The dialog keeps focus, closes on Esc and announces the result.
-import { Button } from "@wizard/ui-kit";
+// B2-33: design system v2 — its own v2 root, so it looks the same over the canvas and the legacy workspace.
+import { ThemeRoot } from "@wizard/ui-kit/v2";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import { usePlatform } from "../../app/context.js";
 import { type Route, useRoute } from "../../app/router.js";
+import { Button } from "../../components/v2/Button.js";
 import { support } from "../../i18n/ru/support.js";
 import s from "./Support.module.css";
 
@@ -48,24 +50,25 @@ const systemOf = (r: Route): string | null => ("systemId" in r ? r.systemId : nu
 
 export function SupportWidget(): ReactNode {
   const { route } = useRoute();
-  const { auth } = usePlatform();
+  const { auth, theme, syncTheme } = usePlatform();
   const [open, setOpen] = useState<SupportOpen | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const on = (e: Event) => {
       opener.current = document.activeElement as HTMLElement | null;
+      syncTheme();
       setOpen((e as CustomEvent<SupportOpen>).detail ?? {});
     };
     window.addEventListener(EVENT, on);
     return () => window.removeEventListener(EVENT, on);
-  }, []);
+  }, [syncTheme]);
   const close = useCallback(() => {
     setOpen(null);
     opener.current?.focus?.();
   }, []);
   if (!CABINET.has(route.name) || auth === "anon" || auth === "loading") return null;
   return (
-    <>
+    <ThemeRoot theme={theme} grain={false} className={s.root} testId="support-root">
       <button
         type="button"
         className={s.fab}
@@ -87,7 +90,7 @@ export function SupportWidget(): ReactNode {
           onClose={close}
         />
       )}
-    </>
+    </ThemeRoot>
   );
 }
 

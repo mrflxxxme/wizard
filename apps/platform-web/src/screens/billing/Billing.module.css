@@ -1,8 +1,8 @@
-/* S-billing extras on top of the S10 layout (settings/Settings.module.css). */
+/* S-billing extras on the design system v2 (B2-33), over the cabinet layout (settings/Settings.module.css). */
 .big {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font: 400 26px / 1.15 var(--p-f-serif);
+  letter-spacing: -0.01em;
 }
 
 .planLine {
@@ -19,30 +19,34 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--w-line);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--p-line);
   font-size: 14px;
+}
+
+.planOption:last-child {
+  border-bottom: 0;
 }
 
 .confirm {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
 }
 
 .ok {
   margin: 0;
   font-size: 14px;
-  color: var(--w-ok);
+  color: var(--p-ok);
 }
 
 .plus {
-  color: var(--w-ok);
+  color: var(--p-ok);
 }
 
 .minus {
-  color: var(--w-ink);
+  color: var(--p-ink);
 }

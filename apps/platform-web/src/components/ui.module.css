@@ -1,80 +1,124 @@
+/* Small platform primitives on the design system v2 (--p-*, B2-33). Status by text and colour, never colour only.
+   The --w-* fallbacks serve only the legacy workspace (no --p-* there); every other screen has the v2 tokens. */
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
   max-width: 100%;
+  padding: 3px 10px;
+  border-radius: var(--p-r-pill, 999px);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .neutral {
-  background: var(--w-line);
-  color: var(--w-ink);
+  background: var(--p-sunken, var(--w-line));
+  color: var(--p-ink-2, var(--w-muted));
 }
 
 .accent {
-  background: var(--w-accent-soft);
-  color: var(--w-accent-text);
+  background: var(--p-tint-soft, var(--w-accent-soft));
+  color: var(--p-tint-text, var(--w-accent-text));
+  box-shadow: inset 0 0 0 1px var(--p-tint-ring, var(--w-accent));
 }
 
 .ok {
-  background: var(--w-ok-soft, var(--w-line));
-  color: var(--w-ok);
+  background: color-mix(in srgb, var(--p-ok, var(--w-ok)) 13%, transparent);
+  color: var(--p-ok, var(--w-ok));
 }
 
 .warn {
-  background: var(--w-warn-soft, var(--w-line));
-  color: var(--w-warn);
+  background: color-mix(in srgb, var(--p-warn, var(--w-warn)) 13%, transparent);
+  color: var(--p-warn, var(--w-warn));
 }
 
 .bad {
-  background: var(--w-bad-soft, var(--w-line));
-  color: var(--w-bad);
+  background: color-mix(in srgb, var(--p-bad, var(--w-bad)) 12%, transparent);
+  color: var(--p-bad, var(--w-bad));
+}
+
+.ok::before,
+.warn::before,
+.bad::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .alert {
-  border: 1px solid var(--w-bad);
-  border-radius: var(--w-radius);
-  background: var(--w-surface);
-  color: var(--w-ink);
-  padding: 10px 12px;
-  font-size: 14px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
+  gap: 8px 10px;
+  padding: 11px 14px;
+  border-radius: var(--p-r-md, var(--w-radius));
+  background: color-mix(in srgb, var(--p-bad, var(--w-bad)) 8%, var(--p-surface, var(--w-surface)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-bad, var(--w-bad)) 30%, transparent);
+  color: var(--p-ink, var(--w-ink));
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.alert::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--p-bad, var(--w-bad));
 }
 
 .note {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-start;
-  border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
-  background: var(--w-accent-soft);
-  color: var(--w-ink);
-  padding: 10px 12px;
-  font-size: 13px;
+  padding: 11px 14px;
+  border-radius: var(--p-r-md, var(--w-radius));
+  background: var(--p-sunken, var(--w-line));
+  color: var(--p-ink, var(--w-ink));
+  font-size: 13.5px;
   line-height: 1.45;
 }
 
 .shield {
-  color: var(--w-accent-text);
+  color: var(--p-ink-2, var(--w-muted));
+}
+
+/* B2-02: «Режим показа» banner (DemoBanner). */
+.demoBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--p-r-pill, 999px);
+  background: var(--p-amber-soft, var(--w-accent-soft));
+  color: var(--p-ink, var(--w-ink));
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.demoBanner::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--p-amber, var(--w-accent));
 }
 
 .spinner {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--w-line);
-  border-top-color: var(--w-accent);
-  animation: spin 0.9s linear infinite;
   flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--p-line-2, var(--w-line));
+  border-top-color: var(--p-ink, var(--w-ink));
+  animation: spin 0.9s linear infinite;
 }
 
 @keyframes spin {
@@ -85,35 +129,39 @@
 
 .icon {
   display: inline-flex;
-  width: 14px;
   justify-content: center;
-  font-weight: 700;
+  width: 14px;
   flex: none;
+  font-weight: 600;
 }
 
 .icon_done {
-  color: var(--w-ok);
+  color: var(--p-ok, var(--w-ok));
 }
 
 .icon_failed {
-  color: var(--w-bad);
+  color: var(--p-bad, var(--w-bad));
 }
 
 .icon_queued {
-  color: var(--w-muted);
+  color: var(--p-ink-3, var(--w-muted));
 }
 
 .specialist {
-  font-size: 12px;
-  color: var(--w-muted);
+  font-size: 12.5px;
+  color: var(--p-ink-2, var(--w-muted));
 }
 
 .specialist > summary {
   cursor: pointer;
+  width: fit-content;
 }
 
 .specialistBody {
-  margin-top: 4px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--p-r-sm, var(--w-radius-sm));
+  background: var(--p-sunken, var(--w-line));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow-wrap: anywhere;
 }
