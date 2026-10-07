@@ -42,6 +42,9 @@ import {
   ensureBundle,
   envFile,
   GENERATED,
+  pilotMailDomain,
+  pilotPipelineEnv,
+  STOCK_EGRESS_HOSTS,
   secretValues,
   sshKeyPair,
 } from "../pilot-secrets.mjs";
@@ -330,6 +333,34 @@ describe("pilot: secrets bundle", () => {
     ])
       expect(models).toContain(`${line}\n`);
     expect(f.platformEnv).not.toContain("WALG");
+    // D76 / B2-41: beta v2 on the pilot — new systems on the modules pipeline, G1 in the worker's Chromium, the systems'
+    // mail from the pilot's mail domain (the domain of WIZARD_SMTP_FROM), stock photos off (B2-38: no keys yet).
+    for (const line of [
+      "WIZARD_BUILD_PIPELINE=modules",
+      "WIZARD_G1_BROWSER=chromium",
+      "WIZARD_MAIL_DOMAIN=codename.ru",
+      "WIZARD_STOCK_MODE=off",
+    ])
+      expect(f.platformEnv).toContain(`${line}\n`);
+    expect(f.platformEnv).not.toContain("WIZARD_G1_BROWSER_SLOTS");
+    const back = clusterSecretFiles({
+      bundle,
+      outputs,
+      inputs: {
+        ...FOUNDER,
+        WIZARD_BUILD_PIPELINE: "legacy",
+        WIZARD_G1_BROWSER_SLOTS: "1",
+        WIZARD_MAIL_DOMAIN: "Mail.Codename.ru",
+        WIZARD_STOCK_MODE: "live",
+      },
+    }).platformEnv;
+    for (const line of [
+      "WIZARD_BUILD_PIPELINE=legacy",
+      "WIZARD_G1_BROWSER_SLOTS=1",
+      "WIZARD_MAIL_DOMAIN=mail.codename.ru",
+      "WIZARD_STOCK_MODE=live",
+    ])
+      expect(back).toContain(`${line}\n`);
     expect(f.postgresEnv).toContain(`WALG_LIBSODIUM_KEY=${s.WALG_LIBSODIUM_KEY}\n`);
     expect(f.postgresEnv).toContain("AWS_SECRET_ACCESS_KEY=backups-secret\n");
     expect(f.postgresEnv).toContain(
@@ -1306,19 +1337,56 @@ describe("Timeweb capacity: the next RF place with the same preset ceiling", () 
   });
 });
 
+describe("pilot: beta v2 settings of the release (B2-41)", () => {
+  it("pipeline, browser, mail domain and stock photos: defaults, overrides, refusals", () => {
+    expect(pilotPipelineEnv({})).toEqual({
+      WIZARD_BUILD_PIPELINE: "modules",
+      WIZARD_G1_BROWSER: "chromium",
+      WIZARD_G1_BROWSER_SLOTS: "",
+      WIZARD_MAIL_DOMAIN: "",
+      WIZARD_STOCK_MODE: "off",
+    });
+    expect(pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: " Legacy ", WIZARD_G1_BROWSER: "off" })).toMatchObject({
+      WIZARD_BUILD_PIPELINE: "legacy",
+      WIZARD_G1_BROWSER: "off",
+    });
+    expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "v3" })).toThrow(/modules или legacy/);
+    expect(() => pilotPipelineEnv({ WIZARD_G1_BROWSER: "firefox" })).toThrow(/chromium или off/);
+    expect(() => pilotPipelineEnv({ WIZARD_G1_BROWSER_SLOTS: "20" })).toThrow(/от 1 до 8/);
+    expect(() => pilotPipelineEnv({ WIZARD_STOCK_MODE: "unsplash" })).toThrow(/WIZARD_STOCK_MODE/);
+    expect(pilotMailDomain({ WIZARD_SMTP_FROM: "noreply@Borntobuild.ru" })).toBe("borntobuild.ru");
+    expect(pilotMailDomain({ WIZARD_SMTP_FROM: "Wizard <noreply@codename.ru>" })).toBe("codename.ru");
+    expect(pilotMailDomain({ WIZARD_SMTP_FROM: "Wizard" })).toBe("");
+    expect(() => pilotMailDomain({ WIZARD_MAIL_DOMAIN: "not a domain" })).toThrow(/WIZARD_MAIL_DOMAIN/);
+    // Live stock photos need these hosts; the pilot does not open them by default.
+    expect(STOCK_EGRESS_HOSTS).toEqual([
+      "api.pexels.com",
+      "images.pexels.com",
+      "pixabay.com",
+      "cdn.pixabay.com",
+    ]);
+  });
+});
+
 describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", () => {
-  it("arguments: briefs and the ₽ budget only for eval, validated; defaults all and 2 000", () => {
+  it("arguments: briefs, threshold and the ₽ budget only for eval, validated; defaults all, d76 and 300", () => {
     expect(parseArgs(["eval", "--env", "prod"])).toMatchObject({
       command: "eval",
       briefs: "all",
+      threshold: "d76",
+      maxCostRub: 300,
+    });
+    expect(parseArgs(["eval", "--env", "prod", "--threshold", "d67"])).toMatchObject({
+      threshold: "d67",
       maxCostRub: 2000,
     });
+    expect(() => parseArgs(["eval", "--env", "prod", "--threshold", "d99"])).toThrow(/--threshold/);
     expect(
       parseArgs(["eval", "--env", "prod", "--briefs", "mvp-03,mvp-10", "--max-cost-rub", "700"]),
     ).toMatchObject({ briefs: "mvp-03,mvp-10", maxCostRub: 700 });
     expect(parseArgs(["eval", "--env", "prod", "--briefs", "", "--max-cost-rub", ""])).toMatchObject({
       briefs: "all",
-      maxCostRub: 2000,
+      maxCostRub: 300,
     });
     expect(() => parseArgs(["eval", "--env", "prod", "--briefs", "mvp-01;rm -rf"])).toThrow(/--briefs/);
     expect(() => parseArgs(["eval", "--env", "prod", "--max-cost-rub", "9000"])).toThrow(/6000/);
@@ -1362,7 +1430,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     const summary = join(tmp, "summary-eval.md");
     const logs = [];
     const code = await main(
-      ["eval", "--env", "prod", "--briefs", "mvp-02,mvp-10", "--max-cost-rub", "500"],
+      ["eval", "--env", "prod", "--briefs", "mvp-02,mvp-10", "--max-cost-rub", "500", "--threshold", "d67"],
       { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
       {
         fetch: (url, init = {}) =>
@@ -1429,6 +1497,105 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     expect(sum).toContain("**Итог: 2 из 2 дошли до готовности к публикации");
     expect(sum).toContain("247 ₽ (точно, по журналу вызовов моделей)");
     expect(sum).toContain("Лимит D70 учётке замера поднят");
+  });
+
+  it("d76 (B2-41): plans approved as they are, screenshots next to the report, the beta v2 budget, a strict verdict", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const db = { tokenHash: "", csrfHash: "", orgId: "11111111-1111-4111-8111-111111111111" };
+    const platform = fakePlatform({
+      hashes: () => db,
+      origin: "https://codename.ru",
+      cookieNames: { session: "__Host-wizard_session", csrf: "__Host-wizard_csrf" },
+      pipeline: "modules",
+    });
+    const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const sqls = [];
+    const run = (cmd, args, o = {}) => {
+      const r = base.run(cmd, args, o);
+      if (cmd !== "kubectl" || !args.includes("exec")) return r;
+      sqls.push(o.input);
+      if (o.input.includes("INSERT INTO platform.users")) {
+        db.tokenHash = /\\set token_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        db.csrfHash = /\\set csrf_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        const email = /\\set email '([^']+)'/.exec(o.input)[1];
+        return {
+          status: 0,
+          stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "33333333-3333-4333-8333-333333333333", email })}\n`,
+        };
+      }
+      if (o.input.includes("'costs='")) {
+        const ids = [...platform.st.systems.keys()];
+        return {
+          status: 0,
+          stdout: `costs=${JSON.stringify(ids.map((id) => ({ system_id: id, rub: 11.5, credits_milli: 2300, calls: 9 })))}\ngaps=null\nb2={"rub": 123.4, "since": "2026-10-08"}\n`,
+        };
+      }
+      return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
+    };
+    const shot = [];
+    const summary = join(tmp, "summary-d76.md");
+    const code = await main(
+      // The fake build costs 40 credits ≈ 200 ₽: the budget is raised over the default 300 ₽ (a hard stop under d76).
+      ["eval", "--env", "prod", "--briefs", "mvp-01,mvp-02", "--max-cost-rub", "1000"],
+      {
+        ...FOUNDER,
+        GITHUB_STEP_SUMMARY: summary,
+        WIZARD_B2_BUDGET_SINCE: "2026-10-08",
+        WIZARD_B2_BUDGET_RUB: "900",
+      },
+      {
+        fetch: (url, init = {}) =>
+          new URL(url).host === "codename.ru"
+            ? platform.handler(new Request(url, init))
+            : cloud.fetch(url, init),
+        run,
+        has: () => true,
+        exists: () => true,
+        sleep: async () => {},
+        evalPollMs: 1,
+        evalMaxBriefRub: 10_000,
+        evalScreenshots: ({ dir }) => ({
+          screenshot: async (r) => {
+            shot.push(r.id);
+            return [{ label: "телефон, 390 px", src: join(dir, `${r.id}-390.png`) }];
+          },
+          close: async () => shot.push("closed"),
+        }),
+        kdf: FAST,
+        tmpRoot: tmp,
+        log: () => {},
+      },
+    );
+    expect(code).toBe(0);
+    expect(sqls[0]).toContain("\\set org_name 'Замер D76 · ");
+    expect(sqls[1]).toContain("\\set b2_since '2026-10-08'");
+    // The plan of each system was approved through approveSystemPlan, never a card.
+    expect(platform.st.requests.filter((x) => x.endsWith("/plan/approve"))).toHaveLength(2);
+    expect(platform.st.requests.some((x) => x.endsWith("/card/approve"))).toBe(false);
+    expect(shot.at(-1)).toBe("closed");
+    expect(
+      shot
+        .slice(0, -1)
+        .map((x) => x.slice(0, 6))
+        .sort(),
+    ).toEqual(["mvp-01", "mvp-02"]);
+    const dir = join(tmp, "wizard-eval-prod");
+    const md = readdirSync(dir).find((f) => /^d76-\d{8}-[0-9a-f]{6}\.md$/.test(f));
+    expect(md).toBeTruthy();
+    const text = readFileSync(join(dir, md), "utf8");
+    expect(text).toContain("# Замер беты v2 (порог D76)");
+    expect(text).toContain("строгий порог D76 пройден — засчитано 2 из 2");
+    expect(text).toContain("Бюджет разработки беты v2: потрачено 123 ₽ из 900 ₽ с 2026-10-08");
+    expect(text).toContain("](shots/mvp-01-");
+    const json = JSON.parse(readFileSync(join(dir, md.replace(/\.md$/, ".json")), "utf8"));
+    expect(json).toMatchObject({
+      kind: "d76",
+      threshold: "d76",
+      maxCostRub: 1000,
+      db: { b2: { rub: 123.4 } },
+    });
+    expect(readFileSync(summary, "utf8")).toContain("строгий порог D76 пройден");
   });
 
   it("the seed refused by the database: no briefs, SSH closed, the psql error without the statement's values", async () => {

@@ -2,7 +2,7 @@
 // readiness, failed checks and why, minutes, ₽, «Запросы на развитие»; the total X of 10, the median of minutes, the
 // sum of ₽ and the verdict against the threshold ≥ 7 of 10. Plain Russian for the founder (D28, D48); no values of
 // secrets or personal data reach it (the eval account is a service one, the briefs are synthetic).
-import { D67_THRESHOLD, RUB_PER_CREDIT } from "./driver.mjs";
+import { D67_THRESHOLD, D76_ECONOMY, RUB_PER_CREDIT } from "./driver.mjs";
 
 const COVERAGE_RU = { covered: "в модулях", uncovered: "вне модулей", unknown: "план не прочитан" };
 
@@ -12,7 +12,7 @@ const STATUS_RU = {
   not_ready: "проверки не пройдены",
   build_failed: "сборка не удалась",
   interview_failed: "интервью не дошло до карточки",
-  skipped: "не запускался (бюджет)",
+  skipped: "не запускался (бюджет или остановка замера)",
   error: "ошибка замера",
   pending: "не запускался",
   running: "не завершён",
@@ -42,6 +42,34 @@ export function median(xs) {
   if (a.length === 0) return null;
   const m = Math.floor(a.length / 2);
   return a.length % 2 ? a[m] : Math.round(((a[m - 1] + a[m]) / 2) * 10) / 10;
+}
+
+const avg = (xs) => {
+  const a = xs.filter((x) => Number.isFinite(x));
+  return a.length ? Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 100) / 100 : null;
+};
+
+/**
+ * D76 (8) economics of the builds that reached a preview: average ₽ and build minutes without custom code (≤ 15 ₽,
+ * ≤ 5 min), the extra ₽ of builds with custom code (≤ +20 ₽). ok — null while nothing was built.
+ */
+export function economy(items) {
+  const built = items.filter((x) => x.systemId && x.build);
+  const plain = built.filter((x) => (x.plan?.custom ?? []).length === 0);
+  const custom = built.filter((x) => (x.plan?.custom ?? []).length > 0);
+  const out = {
+    plain: { n: plain.length, rub: avg(plain.map((x) => x.costRub)), minutes: avg(plain.map((x) => x.buildMinutes)) },
+    custom: { n: custom.length, rub: avg(custom.map((x) => x.costRub)) },
+  };
+  out.customExtraRub =
+    out.custom.rub !== null && out.plain.rub !== null ? Math.round((out.custom.rub - out.plain.rub) * 100) / 100 : null;
+  const checks = [
+    out.plain.rub === null ? null : out.plain.rub <= D76_ECONOMY.buildRub,
+    out.plain.minutes === null ? null : out.plain.minutes <= D76_ECONOMY.buildMinutes,
+    out.customExtraRub === null ? null : out.customExtraRub <= D76_ECONOMY.customExtraRub,
+  ].filter((v) => v !== null);
+  out.ok = checks.length ? checks.every(Boolean) : null;
+  return out;
 }
 
 /**
@@ -121,6 +149,8 @@ export function evaluate(doc, db = {}) {
   };
   const coverage = d76 ? { covered: group("covered"), uncovered: group("uncovered"), unknown: group("unknown") } : null;
   return {
+    economy: d76 ? economy(items) : null,
+    b2: db.b2 ?? null,
     items,
     total: items.length,
     ran: ran.length,
@@ -192,6 +222,21 @@ function d76Summary(e) {
   ];
   if (c.unknown.total)
     L.push(`- План системы не прочитан у ${c.unknown.total} брифов: покрытие модулями неизвестно, такие брифы не засчитываются.`);
+  const x = e.economy;
+  if (x?.plain.n) {
+    const fit = (v, lim) => (v <= lim ? "в норме" : "выше цели");
+    L.push(
+      `- Экономика: средняя сборка без дописывания — ${x.plain.rub} ₽ (${fit(x.plain.rub, D76_ECONOMY.buildRub)}, цель ≤ ${D76_ECONOMY.buildRub} ₽) и ${x.plain.minutes ?? "—"} мин сборки (${x.plain.minutes === null ? "нет данных" : fit(x.plain.minutes, D76_ECONOMY.buildMinutes)}, цель ≤ ${D76_ECONOMY.buildMinutes} мин), сборок: ${x.plain.n}.`,
+    );
+  }
+  if (x?.customExtraRub !== null && x?.customExtraRub !== undefined)
+    L.push(
+      `- Дописывание кодом: в среднем ${x.custom.rub} ₽ за сборку, на ${x.customExtraRub} ₽ дороже сборки без него (${x.customExtraRub <= D76_ECONOMY.customExtraRub ? "в норме" : "выше цели"}, цель ≤ +${D76_ECONOMY.customExtraRub} ₽), сборок: ${x.custom.n}.`,
+    );
+  if (e.b2)
+    L.push(
+      `- Бюджет разработки беты v2: потрачено ${rub(e.b2.rub)} из ${rub(e.b2Budget)} с ${e.b2.since} — все пробы и замеры служебных организаций, по журналу вызовов моделей${e.b2.rub >= e.b2Budget ? ". **Бюджет исчерпан: новые пробы и замеры платформа не запускает.**" : e.b2.rub >= 0.7 * e.b2Budget ? ". Потрачено больше 70 %: основателю ушёл алерт." : "."}`,
+    );
   return L;
 }
 
@@ -235,6 +280,8 @@ export function screenshotGrid(items) {
 /** The report text (Markdown). `meta`: {platform, date, briefsAsked, limitsNote}. */
 export function renderReport(doc, db = {}, meta = {}) {
   const e = evaluate(doc, db);
+  // WIZARD_B2_BUDGET_RUB of the platform (B2-04, default 1 000 ₽).
+  e.b2Budget = meta.b2BudgetRub ?? 1000;
   const d76 = isD76(doc);
   const L = [];
   const date = meta.date ?? String(doc.startedAt ?? "").slice(0, 10);
@@ -243,7 +290,11 @@ export function renderReport(doc, db = {}, meta = {}) {
     `Платформа: ${meta.platform ?? doc.base} · прогон \`${doc.runId ?? "—"}\` · брифов: ${e.total}, запущено: ${e.ran} · бюджет ${rub(doc.maxCostRub)} · параллельно: ${doc.concurrency}`,
     "",
   );
-  if (d76) L.push(...d76Summary(e), "");
+  if (d76) {
+    L.push(...d76Summary(e));
+    if (doc.stopped) L.push(`- Замер остановлен: ${doc.stopped}. Брифы, которые не запускались, порог не проходят.`);
+    L.push("");
+  }
   else {
     const verdict = e.passed
       ? `порог D67 (не меньше ${D67_THRESHOLD.ready} из ${D67_THRESHOLD.of}) достигнут`

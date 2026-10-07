@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 // D67 measurement on the pilot server (docs/ops/eval-d67.md). Node 22, no dependencies. The GitHub action
 // `bootstrap-pilot → eval` (tools/deploy/pilot.mjs) runs the same steps; by hand:
-//   node tools/eval/server/cli.mjs seed --session-file s.json [--runid id] [--max-cost-rub 2000] > seed.sql
+//   node tools/eval/server/cli.mjs seed --session-file s.json [--runid id] [--max-cost-rub 2000] [--threshold d76] > seed.sql
 //        → psql on the platform database < seed.sql > seed.out   (the raw token stays in s.json, mode 0600)
 //   node tools/eval/server/cli.mjs run --base https://borntobuild.ru --session-file s.json --seed-output seed.out \
 //        [--briefs all|mvp-01-…,…] [--max-cost-rub 2000] [--concurrency 2] [--g2 publish|skip] [--out results.json]
 //        [--threshold d67|d76]   (d76 — strict threshold of beta v2: plan coverage, goal scenarios, 390 px)
 //        [--screenshots DIR]     (PNGs of each system at 390 and 1280 px for the report grid; Chromium of packages/e2e)
-//   node tools/eval/server/cli.mjs collect --seed-output seed.out > collect.sql → psql < collect.sql > collect.out
+//   node tools/eval/server/cli.mjs collect --seed-output seed.out [--b2-since 2026-10-07] > collect.sql
+//        → psql < collect.sql > collect.out   (--b2-since: spend of the beta v2 development budget since that day)
 //   node tools/eval/server/cli.mjs report --results results.json [--collect collect.out] [--out report.md]
+//        [--b2-budget-rub 1000]
 //   node tools/eval/server/cli.mjs cleanup --session-file s.json [--base URL] > revoke.sql (logout + revoke SQL)
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "./client.mjs";
-import { DEFAULTS, runEval, THRESHOLDS } from "./driver.mjs";
+import { D76_MAX_COST_RUB, DEFAULTS, runEval, THRESHOLDS } from "./driver.mjs";
 import { renderReport } from "./report.mjs";
 import { previewScreenshots } from "./screenshots.mjs";
 import {
@@ -83,7 +85,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     if (!o["session-file"]) throw new Error("--session-file: куда сохранить токен сессии (0600)");
     const runid = o.runid || newRunId();
     const session = newEvalSession();
-    const { email } = evalIdentity(runid, o.domain || undefined);
+    const label = threshold(o.threshold) === "d76" ? "D76" : "D67";
+    const { email } = evalIdentity(runid, o.domain || undefined, label);
     const credits = o.credits
       ? num(o.credits, "credits")
       : evalCredits(num(o["max-cost-rub"], "max-cost-rub", 2000));
@@ -95,6 +98,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         tokenHash: session.tokenHash,
         csrfHash: session.csrfHash,
         credits,
+        label,
       }),
     );
     log(`учётка замера ${email}: ${credits} кредитов; токен — в ${o["session-file"]}`);
@@ -102,7 +106,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   }
   if (command === "collect") {
     const seed = parseSeedOutput(readFileSync(o["seed-output"], "utf8"));
-    out(collectSql({ orgId: seed.orgId }));
+    out(collectSql({ orgId: seed.orgId, ...(o["b2-since"] ? { b2Since: o["b2-since"] } : {}) }));
     return 0;
   }
   if (command === "cleanup") {
@@ -128,7 +132,11 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       orgId: o["org-id"] || seed.orgId,
       ownerEmail: s.email,
       runId: s.runid,
-      maxCostRub: num(o["max-cost-rub"], "max-cost-rub", DEFAULTS.maxCostRub),
+      maxCostRub: num(
+        o["max-cost-rub"],
+        "max-cost-rub",
+        threshold(o.threshold) === "d76" ? D76_MAX_COST_RUB : DEFAULTS.maxCostRub,
+      ),
       concurrency: num(o.concurrency, "concurrency", DEFAULTS.concurrency),
       fixAttempts:
         o["fix-attempts"] === "0" ? 0 : num(o["fix-attempts"], "fix-attempts", DEFAULTS.fixAttempts),
@@ -147,7 +155,9 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   // report
   const doc = readJson(o.results);
   const db = o.collect ? parseCollectOutput(readFileSync(o.collect, "utf8")) : {};
-  const { text, summary } = renderReport(doc, db);
+  const { text, summary } = renderReport(doc, db, {
+    ...(o["b2-budget-rub"] ? { b2BudgetRub: num(o["b2-budget-rub"], "b2-budget-rub") } : {}),
+  });
   if (o.out) writeFileSync(o.out, text);
   else out(text);
   return summary.passed ? 0 : 1;

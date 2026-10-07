@@ -1,6 +1,8 @@
 // A fake platform-api for the D67 driver tests: the cabinet routes the driver uses (api.yaml), with the session cookie,
 // CSRF and Origin checks of apps/platform-api/src/http/auth.ts. Scenarios are picked by words of the brief text.
 // handler(Request) → Response, so it serves both a node:http server and an injected fetch.
+// pipeline "modules" (beta v2, B2-41): the interview ends with a system plan awaiting approval (getSystemPlan,
+// approveSystemPlan of routes/plans.ts) instead of a card, and G1 carries the browser checks (goal scenarios, 390 px).
 import { createHash } from "node:crypto";
 
 const sha256 = (v) =>
@@ -43,7 +45,36 @@ const gate = (level, failed = []) => ({
  * `token`/`csrf` — the raw session values; or `hashes()` → {tokenHash, csrfHash} when only the database side is known
  * (the pilot action generates the token itself, as the operator does).
  */
-export function fakePlatform({ token, csrf, hashes, origin, cookieNames, override = () => undefined }) {
+/** SystemPlan of the fake (appspec plan.ts): the yoga brief has a paid subscription out of scope. */
+export function fakePlan(sc) {
+  return {
+    version: 1,
+    niche: "услуги",
+    goals: [{ id: "get_leads", statement: "Клиенты оставляют заявки" }],
+    modules: [{ id: "landing" }, { id: "leads" }, { id: "notify" }],
+    outOfScope: sc.outOfScope.map((x) => ({
+      request: x.split(" — ")[0],
+      replacement: "доступ к урокам по приглашению владельца",
+      category: "payments",
+    })),
+    custom: [],
+  };
+}
+
+const BROWSER_OK = [
+  { id: "G1-GOAL-GS-leads-1", severity: "blocker", status: "pass", message_ru: "Сценарий проходит" },
+  { id: "G1-MOBILE-01", severity: "blocker", status: "pass", message_ru: "Без прокрутки вбок" },
+];
+
+export function fakePlatform({
+  token,
+  csrf,
+  hashes,
+  origin,
+  cookieNames,
+  override = () => undefined,
+  pipeline = "legacy",
+}) {
   const st = {
     systems: new Map(),
     runs: new Map(),
@@ -150,6 +181,22 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
           },
         ];
         sys.messages.push({ role: "assistant", kind: "questions", text: "Пара вопросов" });
+      } else if (pipeline === "modules") {
+        sys.pending = [];
+        sys.stage = "card";
+        sys.plan = { revision: 1, status: "awaiting_approval", plan: fakePlan(sc), errors: [] };
+        sys.messages.push({
+          role: "assistant",
+          kind: "text",
+          text: "План системы готов",
+          ...(sc.outOfScope.length
+            ? {
+                payload: {
+                  gaps: [{ category: "payments", missing: "платная подписка", offered: "доступ по приглашению" }],
+                },
+              }
+            : {}),
+        });
       } else {
         sys.pending = [];
         sys.stage = "card";
@@ -220,6 +267,7 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
         "G1",
         g1fail ? [{ id: "G1-AC-02", severity: "blocker", message_ru: "Менеджер видит чужие сделки" }] : [],
       );
+      if (pipeline === "modules") sys.gates.G1.checks.push(...BROWSER_OK.map((c) => ({ ...c })));
       finish(run, "succeeded");
     };
     return run;
@@ -303,6 +351,7 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
         pending: [],
         messages: [{ role: "user", kind: "text", text: body.prompt }],
         card: null,
+        plan: null,
         revision: 0,
         gates: {},
         turns: 0,
@@ -363,6 +412,7 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
     if (method === "GET" && sub === "")
       return json({
         system: sysView(sys),
+        pipeline,
         card: sys.card,
         pendingQuestions: sys.pending,
         messages: sys.messages,
@@ -388,6 +438,18 @@ export function fakePlatform({ token, csrf, hashes, origin, cookieNames, overrid
       if (sys.stage !== "card" || body.cardVersion !== sys.card.cardVersion) return err(409, "NO_CARD");
       sys.stage = "building";
       return json({ run: view(buildRun(sys, "create")) }, 202);
+    }
+    if (method === "GET" && sub === "/plan") return json({ plan: sys.plan });
+    if (method === "POST" && sub === "/plan/approve") {
+      if (sys.stage !== "card" || sys.plan?.status !== "awaiting_approval") return err(409, "NO_PLAN");
+      if (body.revision !== sys.plan.revision) return err(409, "PLAN_REVISION_STALE");
+      sys.plan.status = "approved";
+      sys.stage = "building";
+      return json({ run: view(buildRun(sys, "create")) }, 202);
+    }
+    if (method === "GET" && sub === "/preview-url") {
+      if (!sys.revision) return err(409, "PREVIEW_NOT_READY");
+      return json({ url: `${origin}/preview/${sys.id}`, expiresAt: "2026-10-20T10:15:00Z" });
     }
     if (method === "POST" && sub === "/fix") {
       const failed = Object.values(sys.gates).some((g) => !g.passed);

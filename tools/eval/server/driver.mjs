@@ -4,6 +4,8 @@
 // approveCard → build (needs_input answered like a client would) → one «Исправить» when checks failed → the G2 probe:
 // the first publication, which on the pilot runs G0–G2 and then waits for the founder's review (nothing reaches prod
 // while orgs.require_founder_review is on). Routes: apps/platform-api/src/routes/{systems,runs,publish}.ts.
+// Beta v2 (D76, modules pipeline): the goal interview ends with a system plan awaiting approval instead of a card —
+// the driver reads it (GET /systems/:id/plan) and approves it as it is (POST /systems/:id/plan/approve, routes/plans.ts).
 
 /** agents/models.yaml#credits.rub_per_credit: 1 credit ≈ 5 ₽ of model cost (credits_milli = ceil(cost × 1000 / 5)). */
 export const RUB_PER_CREDIT = 5;
@@ -16,6 +18,10 @@ export const D67_THRESHOLD = { ready: 7, of: 10 };
  * what is out of scope is recorded in «Запросы на развитие».
  */
 export const THRESHOLDS = ["d67", "d76"];
+/** Budget of the D76 measurement by default, ₽ (eval.yaml#thresholds.by_milestone.B2: ≤ 300 ₽ for the final run). */
+export const D76_MAX_COST_RUB = 300;
+/** D76 economics of one build (D76 (8)): ≤ 15 ₽ and ≤ 5 min without custom code, custom code ≤ +20 ₽. */
+export const D76_ECONOMY = { buildRub: 15, buildMinutes: 5, customExtraRub: 20 };
 /** Brief statuses that will not change any more (fail-fast counts them). */
 export const FINAL = new Set(["ready", "not_ready", "build_failed", "interview_failed", "error", "skipped"]);
 export const DEFAULTS = {
@@ -113,7 +119,8 @@ export function planCoverage(plan) {
     typeof o === "string"
       ? { what: o.slice(0, 200), replacement: null }
       : {
-          what: String(o?.what ?? o?.title ?? "").slice(0, 200),
+          // SystemPlan.outOfScope (appspec plan.ts): {request, replacement, category}.
+          what: String(o?.request ?? o?.what ?? o?.title ?? "").slice(0, 200),
           replacement: o?.replacement ? String(o.replacement).slice(0, 200) : null,
         },
   );
@@ -126,15 +133,36 @@ export function planCoverage(plan) {
 }
 
 /**
+ * SystemPlan of a plan document: getSystemPlan answers {plan: SystemPlanRevision} whose `plan` is the SystemPlan
+ * (api.yaml, routes/plans.ts toPlanRevision); a bare SystemPlan passes as it is.
+ */
+export function unwrapPlan(x) {
+  let p = x;
+  for (let i = 0; i < 3 && p && typeof p === "object" && !Array.isArray(p.modules); i++) p = p.plan;
+  return p && typeof p === "object" && Array.isArray(p.modules) ? p : null;
+}
+
+/**
  * The approved plan of a system: GET /systems/:id (field plan, B2-20) or GET /systems/:id/plan; null when the platform
  * has none (v1 pipeline).
  */
 export async function readPlan(client, systemId, view) {
-  const inline = view?.plan ?? view?.system?.plan;
+  const inline = unwrapPlan(view?.plan ?? view?.system?.plan);
   if (inline) return inline;
   try {
-    const r = (await client.get(`/systems/${systemId}/plan`)).body;
-    return r?.plan ?? r ?? null;
+    return unwrapPlan((await client.get(`/systems/${systemId}/plan`)).body);
+  } catch {
+    return null;
+  }
+}
+
+/** The plan revision awaiting approval after the goal interview (modules pipeline, B2-20); null when there is none. */
+export async function pendingPlan(client, systemId) {
+  try {
+    const rev = (await client.get(`/systems/${systemId}/plan`)).body?.plan;
+    return rev?.status === "awaiting_approval" && Number.isInteger(rev.revision) && unwrapPlan(rev)
+      ? rev
+      : null;
   } catch {
     return null;
   }
@@ -184,6 +212,7 @@ export function newResult(brief) {
     status: "pending",
     ready: false,
     systemId: null,
+    pipeline: null,
     error: null,
     interview: { turns: 0, buttons: 0, free: 0 },
     card: null,
@@ -303,6 +332,7 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     say(`система ${r.systemId}, интервью`);
     let run = await waitRun(created.run, "interview");
     let card = null;
+    let planRev = null;
     for (;;) {
       r.interview.turns += 1;
       if (run.status !== "succeeded") {
@@ -311,6 +341,12 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
         return r;
       }
       const s = (await client.get(`/systems/${r.systemId}`)).body;
+      if (s.pipeline) r.pipeline = s.pipeline;
+      // Beta v2 (modules pipeline, B2-20): the goal interview ends with a system plan awaiting approval, not a card.
+      if (s.system.stage === "card" && (s.pipeline === "modules" || !s.card)) {
+        planRev = await pendingPlan(client, r.systemId);
+        if (planRev) break;
+      }
       if (s.system.stage === "card" && s.card) {
         card = s.card;
         break;
@@ -342,20 +378,38 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
         return r;
       }
     }
-    r.card = {
-      cardVersion: card.cardVersion,
-      title: card.title ?? null,
-      capCredits: card.cap?.credits ?? null,
-      outOfScope: Array.isArray(card.outOfScope) ? card.outOfScope.map((x) => String(x).slice(0, 300)) : [],
-    };
-    r.gaps.outOfScope = r.card.outOfScope;
+    let ap;
+    const buildStart = now();
+    if (planRev) {
+      // The plan as the client sees it on the canvas, approved as it is (approveSystemPlan starts the build).
+      const plan = unwrapPlan(planRev);
+      r.plan = planCoverage(plan);
+      r.card = {
+        planRevision: planRev.revision,
+        title: plan.niche ?? null,
+        capCredits: null,
+        outOfScope: r.plan.outOfScope.map((o) => (o.replacement ? `${o.what} — ${o.replacement}` : o.what)),
+      };
+      r.gaps.outOfScope = r.card.outOfScope;
+      say(`план v${planRev.revision} утверждён (модули: ${r.plan.modules.join(", ")}), сборка`);
+      ap = await client.post(`/systems/${r.systemId}/plan/approve`, { revision: planRev.revision });
+    } else {
+      r.card = {
+        cardVersion: card.cardVersion,
+        title: card.title ?? null,
+        capCredits: card.cap?.credits ?? null,
+        outOfScope: Array.isArray(card.outOfScope) ? card.outOfScope.map((x) => String(x).slice(0, 300)) : [],
+      };
+      r.gaps.outOfScope = r.card.outOfScope;
+      say(`карточка v${card.cardVersion} одобрена, сборка`);
+      ap = await client.post(`/systems/${r.systemId}/card/approve`, { cardVersion: card.cardVersion });
+    }
 
     // Build (+ one «Исправить» per fixAttempts when checks failed).
-    say(`карточка v${card.cardVersion} одобрена, сборка`);
-    const buildStart = now();
-    const ap = await client.post(`/systems/${r.systemId}/card/approve`, { cardVersion: card.cardVersion });
     let build = await waitRun(ap.body.run, "build");
-    let gates = summarizeGates(await latestGates());
+    // The G1 of the build carries the browser checks; the publish run's G1 (pilot G2 probe) may run without them.
+    let buildLatest = await latestGates();
+    let gates = summarizeGates(buildLatest);
     for (let k = 0; k < ctx.fixAttempts; k++) {
       const failed = build.status !== "succeeded" || ["G0", "G1"].some((l) => gates[l] && !gates[l].passed);
       if (!failed) break;
@@ -369,7 +423,8 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
       r.fixes += 1;
       say("проверки не прошли — «Исправить»");
       build = await waitRun(fx.body.run, "build");
-      gates = summarizeGates(await latestGates());
+      buildLatest = await latestGates();
+      gates = summarizeGates(buildLatest);
     }
     const end = now();
     r.build = { status: build.status, ...(build.failure ? { failure: build.failure } : {}) };
@@ -383,8 +438,10 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     } else r.publish = { status: ctx.g2 === "publish" ? "not_publishable" : "skipped" };
     r.gates = gates;
     if (ctx.threshold === "d76") {
-      r.browser = browserSummary(await latestGates());
-      r.plan = planCoverage(await readPlan(client, r.systemId, (await client.get(`/systems/${r.systemId}`)).body));
+      const after = browserSummary(await latestGates());
+      r.browser = after.ran ? after : browserSummary(buildLatest);
+      const read = planCoverage(await readPlan(client, r.systemId, (await client.get(`/systems/${r.systemId}`)).body));
+      if (read.coverage !== "unknown" || !r.plan) r.plan = read;
       r.ready = isReadyD76(gates, ctx.g2, r.browser);
     } else r.ready = isReady(gates, ctx.g2);
     r.status = r.ready
@@ -518,6 +575,13 @@ export async function runEval(o) {
   ctx.abortRun = (reason) => {
     if (!stop.signal.aborted) stop.abort(reason);
   };
+  // D76 (B2-41): the budget of the measurement is a hard stop — a running brief that takes the spend over it is
+  // cancelled at once (D67 only stops new briefs from starting).
+  if (strict)
+    ctx.onSpend = () => {
+      if (!stop.signal.aborted && spent() > ctx.maxCostRub)
+        stop.abort(`бюджет замера ${ctx.maxCostRub} ₽ исчерпан (≈ ${Math.round(spent())} ₽ по кредитам)`);
+    };
   const checkReachable = () => {
     if (!failFast || stop.signal.aborted) return;
     const lost = results.filter((x) => FINAL.has(x.status) && !counted(x)).length;
@@ -556,7 +620,8 @@ export async function runEval(o) {
         active -= 1;
         const before = stop.signal.aborted;
         checkReachable();
-        if (!before && stop.signal.aborted) ctx.log(`::warning title=D67::замер остановлен: ${stop.signal.reason}`);
+        if (!before && stop.signal.aborted)
+          ctx.log(`::warning title=${strict ? "D76" : "D67"}::замер остановлен: ${stop.signal.reason}`);
         ctx.onUpdate();
       }
     }
@@ -575,6 +640,7 @@ export async function runEval(o) {
     peakConcurrency: peak,
     g2: ctx.g2,
     fixAttempts: ctx.fixAttempts,
+    failFast,
     stopped: stop.signal.aborted ? String(stop.signal.reason ?? "отмена") : null,
     results,
   };

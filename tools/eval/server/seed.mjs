@@ -35,11 +35,15 @@ export function newEvalSession(rand = randomBytes) {
   return { token, csrf, tokenHash: sha256Hex(token), csrfHash: sha256Hex(csrf) };
 }
 
-/** Address and org name of a measurement: eval+<runid>@<domain>, «Замер D67 · <runid>». */
-export function evalIdentity(runid, domain = "borntobuild.ru") {
+/** Labels of the measurements in the org name (D67 of the MVP, D76 of beta v2). */
+export const EVAL_LABELS = ["D67", "D76"];
+
+/** Address and org name of a measurement: eval+<runid>@<domain>, «Замер D67 · <runid>» (label D76 for beta v2). */
+export function evalIdentity(runid, domain = "borntobuild.ru", label = "D67") {
   if (!RUNID.test(runid)) throw new Error(`runid: ${RUNID}`);
   if (!DOMAIN.test(domain)) throw new Error(`домен почты замера: ${domain}`);
-  return { email: `eval+${runid}@${domain}`, orgName: `Замер D67 · ${runid}` };
+  if (!EVAL_LABELS.includes(label)) throw new Error(`метка замера: ${EVAL_LABELS.join(" | ")}`);
+  return { email: `eval+${runid}@${domain}`, orgName: `Замер ${label} · ${runid}` };
 }
 
 /** Credits of the eval org: 1.5 × the ₽ budget in credits (holds reserve the card cap), at least 15 builds × 60. */
@@ -57,8 +61,16 @@ const setLine = (name, value, re) => {
  * psql script (stdin, `psql -X -q -A -t -v ON_ERROR_STOP=1 -1 -f -`) creating the account; prints one JSON line
  * {userId, orgId, sessionId, email}. Fully qualified names, values only as psql variables.
  */
-export function seedSql({ runid, domain, tokenHash, csrfHash, credits, sessionDays = SESSION_DAYS }) {
-  const { email, orgName } = evalIdentity(runid, domain);
+export function seedSql({
+  runid,
+  domain,
+  tokenHash,
+  csrfHash,
+  credits,
+  sessionDays = SESSION_DAYS,
+  label = "D67",
+}) {
+  const { email, orgName } = evalIdentity(runid, domain, label);
   if (!HEX64.test(tokenHash) || !HEX64.test(csrfHash)) throw new Error("seed: нужны sha256 токена и CSRF");
   if (!Number.isInteger(credits) || credits <= 0 || credits > 100_000)
     throw new Error("seed: кредиты 1…100 000");
@@ -66,7 +78,7 @@ export function seedSql({ runid, domain, tokenHash, csrfHash, credits, sessionDa
     throw new Error("seed: сессия 1…7 дней");
   return [
     setLine("email", email, /^eval\+[a-z0-9-]+@[a-z0-9.-]+$/),
-    setLine("org_name", orgName, /^Замер D67 · [a-z0-9-]+$/),
+    setLine("org_name", orgName, /^Замер D(67|76) · [a-z0-9-]+$/),
     setLine("runid", runid, RUNID),
     setLine("offer_version", OFFER_VERSION, /^[a-z0-9-]+$/),
     setLine("token_hash", tokenHash, HEX64),
@@ -83,7 +95,7 @@ export function seedSql({ runid, domain, tokenHash, csrfHash, credits, sessionDa
     `INSERT INTO platform.memberships (org_id, user_id, role) VALUES (:'org_id', :'user_id', 'owner');`,
     `INSERT INTO platform.credit_ledger (org_id, kind, amount_milli, bucket, bucket_expires_at, idempotency_key, note_ru)
   VALUES (:'org_id', 'grant', :'credits_milli'::bigint, 'topup', now() + interval '30 days',
-          'pilot_grant:eval:' || :'runid', 'Кредиты замера D67 (служебная учётка ' || :'runid' || ')');`,
+          'pilot_grant:eval:' || :'runid', 'Кредиты замера (служебная учётка ' || :'runid' || ')');`,
     `INSERT INTO platform.sessions (user_id, token_hash, csrf_hash, expires_at)
   VALUES (:'user_id', :'token_hash', :'csrf_hash', now() + make_interval(days => :'session_days'::int))
   RETURNING id AS session_id \\gset`,
@@ -125,9 +137,23 @@ export function revokeSql({ tokenHash }) {
  * `costs=<json>`, `gaps=<json|null>`, `metrics=<json>`; ::jsonb::text keeps each on one line (json_agg puts a newline
  * between elements).
  */
-export function collectSql({ orgId }) {
+export function collectSql({ orgId, b2Since }) {
+  // B2-04: spend of every eval org (probes and measurements) since the start of the beta v2 development budget, as
+  // llm-spend.ts counts it (billable live/record calls, the Moscow day of b2Since) — `b2=<json>`.
+  const b2 = b2Since
+    ? [
+        setLine("b2_since", b2Since, /^\d{4}-\d{2}-\d{2}$/),
+        `SELECT 'b2=' || json_build_object('since', :'b2_since',
+         'rub', coalesce(round(sum(c.cost_rub), 2), 0)::float8)::jsonb::text
+    FROM platform.llm_calls c
+    JOIN platform.orgs o ON o.id = c.org_id
+   WHERE c.billable AND c.mode IN ('live', 'record') AND o.kind = 'eval'
+     AND c.created_at >= (:'b2_since'::date::timestamp AT TIME ZONE 'Europe/Moscow');`,
+      ]
+    : [];
   return [
     setLine("org_id", orgId, UUID),
+    ...b2,
     `SELECT 'costs=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
   SELECT c.system_id, round(sum(c.cost_rub), 2)::float8 AS rub, sum(c.credits_milli)::bigint AS credits_milli,
          count(*)::int AS calls
@@ -186,5 +212,10 @@ export function parseCollectOutput(stdout) {
   const metrics = {};
   for (const m of value("metrics") ?? [])
     if (m.system_id && m.payload && typeof m.payload === "object") metrics[m.system_id] = m.payload;
-  return { costs, gaps, metrics };
+  const b2raw = value("b2");
+  const b2 =
+    b2raw && typeof b2raw === "object" && Number.isFinite(Number(b2raw.rub))
+      ? { since: String(b2raw.since ?? ""), rub: Number(b2raw.rub) }
+      : null;
+  return { costs, gaps, metrics, ...(b2 ? { b2 } : {}) };
 }

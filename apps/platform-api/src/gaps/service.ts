@@ -53,6 +53,46 @@ export async function recordDevelopmentRequest(
   return row !== undefined;
 }
 
+/** SystemPlan.outOfScope.category (modules.yaml#system_plan) → the category of «Запросы на развитие» (D73). */
+const PLAN_CATEGORY: Readonly<Record<string, DevelopmentCategory>> = {
+  payments: "payments",
+  integration: "integration",
+  mobile_app: "mobile",
+  ai: "ai",
+};
+
+/**
+ * modules.yaml#system_plan.outOfScope: «каждая запись уходит в «Запросы на развитие»» — the approved plan's out-of-scope
+ * items, recorded with the build run of approveSystemPlan (B2-41: found by the D76 dry run — nothing recorded them
+ * unless the model also called report_capability_gap). A request already recorded for the system is not repeated (a
+ * rebuild approves the same items again). Returns the number of rows written.
+ */
+export async function recordPlanOutOfScope(
+  db: Db,
+  run: { id: string; org_id: string; system_id: string | null; started_by: string | null },
+  outOfScope: readonly { request?: unknown; replacement?: unknown; category?: unknown }[],
+): Promise<number> {
+  let n = 0;
+  for (const o of outOfScope) {
+    const category = PLAN_CATEGORY[String(o.category)] ?? "other";
+    const quote = cut(scrub(String(o.request ?? "")).text.trim());
+    if (!quote) continue;
+    if (run.system_id) {
+      const seen = await db
+        .selectFrom("platform.development_requests")
+        .select("id")
+        .where("system_id", "=", run.system_id)
+        .where("category", "=", category)
+        .where("quote", "=", quote)
+        .executeTakeFirst();
+      if (seen) continue;
+    }
+    const replacement = String(o.replacement ?? "").trim();
+    if (await recordDevelopmentRequest(db, run, { category, quote, offered: replacement || null })) n += 1;
+  }
+  return n;
+}
+
 export interface CategoryStat {
   category: DevelopmentCategory;
   last7: number;

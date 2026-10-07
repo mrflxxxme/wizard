@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PLATFORM_PASSTHROUGH } from "../pilot-secrets.mjs";
+import { PILOT_PIPELINE_INPUTS, PLATFORM_PASSTHROUGH } from "../pilot-secrets.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const hasYaml = spawnSync("python3", ["-c", "import yaml"]).status === 0;
@@ -123,13 +123,21 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
     expect(action.options).toEqual(["check", "apply", "diagnose", "eval", "reboot", "destroy"]);
     expect(action.default).toBe("check");
-    // eval (D67): which briefs and the ₽ budget go through to the reusable workflow.
+    // eval: which briefs, the ₽ budget and the threshold (B2-41: d76 of beta v2 by default) go to the reusable.
     const boot = load("bootstrap-pilot.yml");
     expect(boot.on.workflow_dispatch.inputs.briefs).toMatchObject({ type: "string", default: "all" });
-    expect(boot.on.workflow_dispatch.inputs.max_cost_rub).toMatchObject({ type: "string", default: "2000" });
+    expect(boot.on.workflow_dispatch.inputs.max_cost_rub).toMatchObject({ type: "string", default: "300" });
+    expect(boot.on.workflow_dispatch.inputs.threshold).toMatchObject({
+      type: "choice",
+      options: ["d76", "d67"],
+      default: "d76",
+    });
+    // GitHub allows at most 10 inputs of a workflow_dispatch form.
+    expect(Object.keys(boot.on.workflow_dispatch.inputs).length).toBeLessThanOrEqual(10);
     expect(boot.doc.jobs.pilot.with).toMatchObject({
       briefs: gh("inputs.briefs"),
       max_cost_rub: gh("inputs.max_cost_rub"),
+      threshold: gh("inputs.threshold"),
     });
     // D75: the daily model cap is raised for one deploy only (the next deploy without it is back to the default).
     const dep = load("deploy-pilot.yml");
@@ -138,6 +146,25 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(load("pilot-reusable.yml").doc.jobs.pilot.env.WIZARD_LLM_DAILY_CAP_RUB).toBe(
       gh("inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB"),
     );
+    // B2-41: the pipeline of new systems and the stock photos are deploy parameters (modules and off by default).
+    expect(dep.on.workflow_dispatch.inputs.build_pipeline).toMatchObject({
+      type: "choice",
+      options: ["modules", "legacy"],
+      default: "modules",
+    });
+    expect(dep.on.workflow_dispatch.inputs.stock_mode).toMatchObject({
+      type: "choice",
+      options: ["off", "live"],
+      default: "off",
+    });
+    expect(dep.doc.jobs.pilot.with).toMatchObject({
+      build_pipeline: gh("inputs.build_pipeline"),
+      stock_mode: gh("inputs.stock_mode"),
+    });
+    const penv = load("pilot-reusable.yml").doc.jobs.pilot.env;
+    expect(penv.WIZARD_BUILD_PIPELINE).toBe(gh("inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE"));
+    expect(penv.WIZARD_STOCK_MODE).toBe(gh("inputs.stock_mode || vars.WIZARD_STOCK_MODE"));
+    for (const n of PILOT_PIPELINE_INPUTS) expect(penv, n).toHaveProperty(n);
   });
 
   // The authorize step's shell, run with the given context (GITHUB_OUTPUT in a temporary file).
@@ -180,28 +207,47 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
   });
 
   it("eval: the PROD word on prod, briefs and budget validated before any secret is read", () => {
-    const ok = { COMMAND: "eval", CONFIRM: "PROD", EVAL_BRIEFS: "all", EVAL_MAX_COST_RUB: "2000" };
+    const ok = {
+      COMMAND: "eval",
+      CONFIRM: "PROD",
+      EVAL_BRIEFS: "all",
+      EVAL_MAX_COST_RUB: "2000",
+      EVAL_THRESHOLD: "d76",
+    };
     expect(authorize(ok).code).toBe(0);
     expect(authorize({ ...ok, CONFIRM: "" }).out).toContain("Подтверждение не совпало");
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-03,mvp-10" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
     expect(authorize({ ...ok, EVAL_MAX_COST_RUB: "2e3" }).out).toContain("max_cost_rub");
+    expect(authorize({ ...ok, EVAL_THRESHOLD: "d67" }).code).toBe(0);
+    expect(authorize({ ...ok, EVAL_THRESHOLD: "d76; curl x" }).out).toContain("threshold");
     const dep = { COMMAND: "deploy", CONFIRM: "PROD" };
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1100" }).code).toBe(0);
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "" }).code).toBe(0);
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1e9" }).out).toContain("llm_daily_cap_rub");
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "0" }).code).toBe(1);
+    expect(authorize({ ...dep, BUILD_PIPELINE: "legacy", STOCK_MODE: "live" }).code).toBe(0);
+    expect(authorize({ ...dep, BUILD_PIPELINE: "v3" }).out).toContain("build_pipeline");
+    expect(authorize({ ...dep, STOCK_MODE: "record" }).out).toContain("stock_mode");
     const { doc } = load("pilot-reusable.yml");
     const job = doc.jobs.pilot;
     const run = job.steps.find((s) => s.name === `Pilot (${gh("inputs.command")})`).run;
     // Inputs reach the shell as environment variables, never spliced into the script.
     expect(run).toContain(
-      'eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB"',
+      'eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" --threshold "$EVAL_THRESHOLD"',
     );
     expect(run).not.toContain("inputs.briefs");
     expect(job.env.EVAL_BRIEFS).toBe(gh("inputs.briefs"));
-    const report = job.steps.find((s) => s.name === "D67 report");
+    expect(job.env.EVAL_THRESHOLD).toBe(gh("inputs.threshold"));
+    const report = job.steps.find((s) => s.name === "Eval report");
     expect(report.if).toBe("always() && inputs.command == 'eval'");
+    expect(report.with.name).toBe(
+      `${gh("inputs.threshold")}-eval-${gh("inputs.env")}-${gh("github.run_id")}`,
+    );
+    // d76 screenshots: Chromium of the workspace's Playwright, only for that measurement.
+    const chromium = job.steps.find((s) => s.name === "Chromium for the screenshots");
+    expect(chromium.if).toBe("inputs.command == 'eval' && inputs.threshold == 'd76'");
+    expect(chromium.run).toContain("playwright install --with-deps --only-shell chromium");
     expect(report.uses).toBe("actions/upload-artifact@v4");
     expect(report.with.path).toBe(`${gh("runner.temp")}/wizard-eval-${gh("inputs.env")}`);
     expect(job.steps.find((s) => s.name === "Clean up the runner").run).toContain("wizard-eval-");

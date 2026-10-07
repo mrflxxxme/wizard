@@ -12,9 +12,10 @@
 //        restored by a Job)
 //   node tools/deploy/pilot.mjs deploy --env … --tag <sha>      release of a SHA (no OpenTofu apply, no addons)
 //   node tools/deploy/pilot.mjs destroy --env staging            staging on demand: everything goes
-//   node tools/deploy/pilot.mjs eval --env … [--briefs all|mvp-01,…] [--max-cost-rub 2000]   D67 measurement
-//        (docs/ops/eval-d67.md): a service account in the platform database over the SSH tunnel, the briefs through
-//        the public HTTPS of the platform, then costs, «Запросы на развитие» and the session revoked; report → summary
+//   node tools/deploy/pilot.mjs eval --env … [--briefs all|mvp-01,…] [--max-cost-rub 300] [--threshold d76|d67]
+//        measurement (docs/ops/eval-d76.md, eval-d67.md): a service account in the platform database over the SSH
+//        tunnel, the briefs through the public HTTPS of the platform, then costs, «Запросы на развитие» and the session
+//        revoked; report → summary. d76 (default, beta v2): strict threshold, plan approval, screenshots of each system
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
@@ -22,14 +23,15 @@
 import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
-import { DEFAULTS as EVAL_DEFAULTS, runEval } from "../eval/server/driver.mjs";
+import { D76_MAX_COST_RUB, DEFAULTS as EVAL_DEFAULTS, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, renderReport } from "../eval/server/report.mjs";
+import { previewScreenshots } from "../eval/server/screenshots.mjs";
 import {
   collectSql,
   EVAL_MIN_BUILDS,
@@ -73,6 +75,9 @@ export const bundleKey = (env) => `wizard/${env}.secrets.enc.json`;
 /** Description prefix of the temporary SSH rules: everything with it is removed at the start and the end of a job. */
 export const TEMP_RULE_PREFIX = "wizard-ci-temp";
 export const PLATFORM_NS = "wizard-platform";
+/** Defaults of the beta v2 development budget of the platform (config.ts WIZARD_B2_BUDGET_RUB / _SINCE, B2-04). */
+export const B2_BUDGET_RUB = 1000;
+export const B2_BUDGET_SINCE = "2026-10-07";
 
 /**
  * Shape of the pilot per environment (deploy.yaml#pilot.environments): Cloud MSK 80 for prod, MSK 50 for staging;
@@ -126,14 +131,22 @@ export function parseArgs(argv) {
     else if (a === "--tag") o.tag = rest[++i] ?? null;
     else if (command === "eval" && a === "--briefs") o.briefs = rest[++i] || "all";
     else if (command === "eval" && a === "--max-cost-rub") o.maxCostRub = rest[++i] ?? "";
+    else if (command === "eval" && a === "--threshold") o.threshold = rest[++i] || "d76";
     else throw new Error(`unknown argument ${a}`);
   }
   if (command === "eval") {
     o.briefs ??= "all";
     if (!/^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$/.test(o.briefs))
       throw new Error("--briefs: all или id через запятую");
+    // B2-41: the strict threshold of beta v2 by default; d67 stays for a repeat of the MVP measurement.
+    o.threshold ??= "d76";
+    if (!THRESHOLDS.includes(o.threshold)) throw new Error(`--threshold: ${THRESHOLDS.join(" | ")}`);
     const cost =
-      o.maxCostRub === undefined || o.maxCostRub === "" ? EVAL_DEFAULTS.maxCostRub : Number(o.maxCostRub);
+      o.maxCostRub === undefined || o.maxCostRub === ""
+        ? o.threshold === "d76"
+          ? D76_MAX_COST_RUB
+          : EVAL_DEFAULTS.maxCostRub
+        : Number(o.maxCostRub);
     if (!Number.isInteger(cost) || cost < 1 || cost > 6000)
       throw new Error("--max-cost-rub: целое от 1 до 6000 (месячный лимит платформы на модели)");
     o.maxCostRub = cost;
@@ -1254,8 +1267,10 @@ export function psqlInPod(kubectl, sql) {
  * token is generated here, masked, and kept only in memory), the briefs run through the public HTTPS of the platform
  * like a client in the cabinet (tools/eval/server/driver.mjs), then the session is closed (logout, then revoked in the
  * database), the exact ₽ and «Запросы на развитие» are read, and the report goes to the job summary and to `outDir`
- * (uploaded as an artifact). The systems of the measurement stay for the founder. Exit 0 — the D67 threshold is met,
- * 1 — not met.
+ * (uploaded as an artifact). The systems of the measurement stay for the founder. Exit 0 — the threshold is met,
+ * 1 — not met. `o.threshold` d76 (B2-41, docs/ops/eval-d76.md): the strict threshold of beta v2 — the plan of each
+ * system is approved as it is, G1 runs the goal scenarios in the browser, every system is shot at 390 and 1280 px
+ * (artifact folder shots/), the budget is a hard stop and the spend of the beta v2 development budget is in the report.
  */
 export async function pilotEval({
   o,
@@ -1269,23 +1284,34 @@ export async function pilotEval({
   maxBriefRub,
   outDir,
   inCluster,
+  screenshots = previewScreenshots,
 }) {
   const domain = vars.WIZARD_PLATFORM_DOMAIN;
   const base = `https://${domain}`;
   const briefs = selectBriefs(o.briefs);
+  const threshold = o.threshold ?? "d67";
+  const d76 = threshold === "d76";
+  const label = d76 ? "D76" : "D67";
   const runid = newRunId(now(), rand);
   const session = newEvalSession(rand);
   mask([session.token, session.csrf], vars, log);
   const credits = evalCredits(o.maxCostRub);
   log(
-    `замер D67 ${runid}: брифов ${briefs.length}, бюджет ${o.maxCostRub} ₽, учётке замера — ${credits} кредитов`,
+    `замер ${label} ${runid}: брифов ${briefs.length}, бюджет ${o.maxCostRub} ₽, учётке замера — ${credits} кредитов`,
   );
   let seed = null;
   const seeded = await inCluster(async ({ kubectl }) => {
     seed = parseSeedOutput(
       psqlInPod(
         kubectl,
-        seedSql({ runid, domain, tokenHash: session.tokenHash, csrfHash: session.csrfHash, credits }),
+        seedSql({
+          runid,
+          domain,
+          tokenHash: session.tokenHash,
+          csrfHash: session.csrfHash,
+          credits,
+          label,
+        }),
       ),
     );
     log(`учётка замера создана: организация ${seed.orgId}`);
@@ -1353,6 +1379,11 @@ export async function pilotEval({
     { once: true },
   );
   const client = platformClient({ base, session, fetch: f, sleep: abortableSleep });
+  // D76: PNGs of each system at 390 and 1280 px next to the report (artifact folder shots/, Chromium of packages/e2e).
+  const shots = d76 ? screenshots({ client, dir: join(outDir, "shots"), log }) : null;
+  const shoot = shots
+    ? async (r) => (await shots.screenshot(r)).map((x) => ({ ...x, src: `shots/${basename(x.src)}` }))
+    : null;
   let doc;
   let db = {};
   const notes = [
@@ -1366,11 +1397,14 @@ export async function pilotEval({
       ownerEmail: seed.email,
       runId: runid,
       maxCostRub: o.maxCostRub,
+      threshold,
       log: tee,
       sleep: abortableSleep,
       signal: stop.signal,
-      // The same counting as the report (a beyond-capability brief counts by the agent's honest answer).
-      counted: (r) => evaluate({ results: [r] }).items[0]?.counted === true,
+      // The same counting as the report (a beyond-capability brief counts by the agent's honest answer; D76 — by the
+      // plan coverage and the browser checks).
+      counted: (r) => evaluate({ threshold, results: [r] }).items[0]?.counted === true,
+      ...(shoot ? { screenshot: shoot } : {}),
       onUpdate: (results) => {
         snapshot = results;
         progress?.publish(render());
@@ -1382,6 +1416,7 @@ export async function pilotEval({
   } finally {
     process.removeListener("SIGINT", onSignal);
     process.removeListener("SIGTERM", onSignal);
+    await shots?.close();
     await client
       .post("/auth/logout")
       .catch((e) => log(`::warning::выход учётки замера по API: ${e.message}`));
@@ -1393,7 +1428,15 @@ export async function pilotEval({
             ) && 0
           : inCluster(async ({ kubectl }) => {
               try {
-                db = parseCollectOutput(psqlInPod(kubectl, collectSql({ orgId: seed.orgId })));
+                db = parseCollectOutput(
+                  psqlInPod(
+                    kubectl,
+                    collectSql({
+                      orgId: seed.orgId,
+                      ...(d76 ? { b2Since: vars.WIZARD_B2_BUDGET_SINCE || B2_BUDGET_SINCE } : {}),
+                    }),
+                  ),
+                );
               } catch (e) {
                 notes.push(
                   "Точный расход из журнала вызовов моделей прочитать не удалось — в отчёте оценка по кредитам.",
@@ -1407,10 +1450,14 @@ export async function pilotEval({
       )
       .catch((e) => log(`::warning::после замера: ${e.message} — сессия закрыта выходом по API`));
   }
-  const { text, summary } = renderReport(doc, db, { platform: base, notes });
+  const { text, summary } = renderReport(doc, db, {
+    platform: base,
+    notes,
+    b2BudgetRub: Number(vars.WIZARD_B2_BUDGET_RUB) || B2_BUDGET_RUB,
+  });
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, `d67-${runid}.md`), text);
-  writeFileSync(join(outDir, `d67-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
+  writeFileSync(join(outDir, `${threshold}-${runid}.md`), text);
+  writeFileSync(join(outDir, `${threshold}-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
   if (doc?.results) snapshot = doc.results;
@@ -1422,7 +1469,9 @@ export async function pilotEval({
   );
   if (!summary.passed)
     log(
-      `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
+      d76
+        ? `::error title=D76::Строгий порог D76 не пройден: засчитано ${summary.ready} из ${summary.total} (нужно все)`
+        : `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
     );
   return summary.passed ? 0 : 1;
 }
@@ -1740,6 +1789,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       sleep: deps.sleep,
       pollMs: deps.evalPollMs,
       maxBriefRub: deps.evalMaxBriefRub,
+      ...(deps.evalScreenshots ? { screenshots: deps.evalScreenshots } : {}),
       outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
       // The cluster part runs under the access of diagnose: SSH for this runner only, the tunnel, closed afterwards.
       inCluster: (onCluster) =>

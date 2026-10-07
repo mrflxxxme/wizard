@@ -13,13 +13,16 @@ import {
   browserSummary,
   countedD76,
   isReadyD76,
+  pendingPlan,
   planCoverage,
   readPlan,
   runEval,
+  unwrapPlan,
 } from "../server/driver.mjs";
-import { evaluate, renderReport, screenshotGrid } from "../server/report.mjs";
+import { economy, evaluate, renderReport, screenshotGrid } from "../server/report.mjs";
+import { collectSql, parseCollectOutput } from "../server/seed.mjs";
 import { previewScreenshots, SHOT_VIEWPORTS } from "../server/screenshots.mjs";
-import { fakePlatform } from "./fake-platform.mjs";
+import { fakePlan, fakePlatform, scenarioOf } from "./fake-platform.mjs";
 
 const PLAN = {
   version: 1,
@@ -285,5 +288,124 @@ describe("D76 screenshots of the systems", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// B2-41: the beta v2 path of the platform — the goal interview ends with a plan awaiting approval (no card).
+describe("D76 on the modules pipeline", () => {
+  it("SystemPlan pieces: the revision wrapper of getSystemPlan, outOfScope.request, the plan awaiting approval", async () => {
+    const plan = fakePlan(scenarioOf("Студия йоги"));
+    expect(unwrapPlan({ plan: { revision: 2, status: "approved", plan } })).toBe(plan);
+    expect(unwrapPlan(plan)).toBe(plan);
+    expect(unwrapPlan({ plan: null })).toBeNull();
+    expect(planCoverage(plan).outOfScope[0]).toEqual({
+      what: "Оплата картой с автоплатежом и платная подписка пока недоступны",
+      replacement: "доступ к урокам по приглашению владельца",
+    });
+    const get = (body) => ({ get: async () => ({ body }) });
+    expect(await pendingPlan(get({ plan: { revision: 1, status: "awaiting_approval", plan } }), "s")).toMatchObject({
+      revision: 1,
+    });
+    expect(await pendingPlan(get({ plan: { revision: 1, status: "approved", plan } }), "s")).toBeNull();
+    expect(await pendingPlan(get({ plan: null }), "s")).toBeNull();
+  });
+
+  it("brief → goal interview → plan approved as it is → build → G1 in the browser → publish probe; counted", async () => {
+    const f = fakePlatform({ ...SESSION, origin: base, cookieNames: cookieNames(base), pipeline: "modules" });
+    holder.handler = f.handler;
+    const lines = [];
+    const run = await runEval({
+      client: platformClient({ base, session: SESSION, sleep: async () => {} }),
+      briefs: loadBriefs("mvp").filter((b) => /^mvp-0[12]-/.test(b.id)),
+      threshold: "d76",
+      maxCostRub: 1000,
+      log: (l) => lines.push(l),
+      sleep: async () => {},
+      pollMs: 1,
+      maxBriefRub: 10_000,
+    });
+    for (const r of run.results) {
+      expect(r.pipeline).toBe("modules");
+      expect(r.card).toMatchObject({ planRevision: 1, outOfScope: [] });
+      expect(r.plan).toMatchObject({ coverage: "covered", modules: ["landing", "leads", "notify"] });
+      expect(r.browser).toMatchObject({ ran: true, mobile: "pass", goals: { total: 1, passed: 1 } });
+    }
+    expect(f.st.requests.filter((x) => /plan\/approve$/.test(x))).toHaveLength(2);
+    expect(f.st.requests.some((x) => x.endsWith("/card/approve"))).toBe(false);
+    expect(lines.some((l) => l.includes("план v1 утверждён (модули: landing, leads, notify)"))).toBe(true);
+    const e = evaluate(run);
+    expect(e.items.map((x) => [x.coverage, x.counted])).toEqual(run.results.map((r) => ["covered", r.ready]));
+  });
+
+  it("the budget is a hard stop under d76: the running brief is cancelled, the rest never start", async () => {
+    const f = fakePlatform({ ...SESSION, origin: base, cookieNames: cookieNames(base), pipeline: "modules" });
+    holder.handler = f.handler;
+    const run = await runEval({
+      client: platformClient({ base, session: SESSION, sleep: async () => {} }),
+      briefs: loadBriefs("mvp").slice(0, 3),
+      threshold: "d76",
+      // The fake build costs 40 credits ≈ 200 ₽: over 50 ₽ once the first build reports its spend.
+      maxCostRub: 50,
+      concurrency: 1,
+      log: () => {},
+      sleep: async () => {},
+      pollMs: 1,
+      maxBriefRub: 10_000,
+    });
+    expect(run.stopped).toMatch(/бюджет замера 50 ₽ исчерпан/);
+    expect(run.results[0].status).toBe("error");
+    expect(run.results[0].error).toMatch(/замер остановлен/);
+    expect(run.results.slice(1).map((r) => r.status)).toEqual(["skipped", "skipped"]);
+    // The fake reports a build's credits when it ends: the next run of the brief (the publish probe) is cancelled.
+    expect([...f.st.runs.values()].filter((x) => x.status === "cancelled").map((x) => x.kind)).toEqual(["publish"]);
+    expect(renderReport(run).text).toContain("Замер остановлен: бюджет замера 50 ₽ исчерпан");
+  });
+
+  it("economics of the builds and the beta v2 development budget in the report", () => {
+    const custom = planCoverage({ ...PLAN, custom: [{ id: "quiz", title: "Опрос" }] });
+    const items = [
+      { ...item("a"), build: { status: "succeeded" }, costRub: 12, buildMinutes: 4 },
+      { ...item("b"), build: { status: "succeeded" }, costRub: 14, buildMinutes: 5 },
+      { ...item("c", { plan: custom }), build: { status: "succeeded" }, costRub: 30, buildMinutes: 7 },
+    ];
+    expect(economy(items)).toEqual({
+      plain: { n: 2, rub: 13, minutes: 4.5 },
+      custom: { n: 1, rub: 30 },
+      customExtraRub: 17,
+      ok: true,
+    });
+    expect(economy([{ ...items[0], costRub: 16 }]).ok).toBe(false);
+    const d = doc([
+      { ...item("mvp-01-a"), build: { status: "succeeded" }, costRubEstimate: 12, buildMinutes: 4 },
+      {
+        ...item("mvp-04-d", { plan: custom }),
+        build: { status: "succeeded" },
+        costRubEstimate: 40,
+        buildMinutes: 6,
+      },
+    ]);
+    const { text } = renderReport(d, { gaps: {}, b2: { since: "2026-10-07", rub: 742.5 } }, { b2BudgetRub: 1000 });
+    expect(text).toContain(
+      "Экономика: средняя сборка без дописывания — 12 ₽ (в норме, цель ≤ 15 ₽) и 4 мин сборки (в норме, цель ≤ 5 мин), сборок: 1.",
+    );
+    expect(text).toContain(
+      "Дописывание кодом: в среднем 40 ₽ за сборку, на 28 ₽ дороже сборки без него (выше цели, цель ≤ +20 ₽)",
+    );
+    expect(text).toContain("Бюджет разработки беты v2: потрачено 743 ₽ из 1 000 ₽ с 2026-10-07");
+    expect(text).toContain("Потрачено больше 70 %");
+  });
+
+  it("collect reads the spend of every eval org since the start of the beta v2 budget", () => {
+    const org = "11111111-1111-4111-8111-111111111111";
+    const sql = collectSql({ orgId: org, b2Since: "2026-10-07" });
+    expect(sql).toContain("\\set b2_since '2026-10-07'");
+    expect(sql).toContain("o.kind = 'eval'");
+    expect(sql).toContain("c.mode IN ('live', 'record')");
+    expect(sql).toContain("AT TIME ZONE 'Europe/Moscow'");
+    expect(() => collectSql({ orgId: org, b2Since: "7 oct" })).toThrow(/b2_since/);
+    expect(collectSql({ orgId: org })).not.toContain("b2=");
+    const out = 'costs=[]\ngaps=null\nmetrics=[]\nb2={"rub": 12.5, "since": "2026-10-07"}\n';
+    expect(parseCollectOutput(out).b2).toEqual({ since: "2026-10-07", rub: 12.5 });
+    expect(parseCollectOutput("costs=[]\n").b2).toBeUndefined();
   });
 });
