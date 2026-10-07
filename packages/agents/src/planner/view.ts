@@ -1,6 +1,6 @@
 // A stored plan as the plan screen and the canvas see it (B2-20): compiled again on every read — deterministic and fast —
 // with its errors and sketch, plus the credits cap of its build (D76 (9): ≤ 15 ₽ a build, custom code on top).
-import { type PlanError, type SystemPlan, systemPlanSchema } from "@wizard/appspec";
+import { CUSTOM_LIMITS, type PlanError, systemPlanSchema } from "@wizard/appspec";
 import { type CompileResult, compilePlan, type ModuleRegistry } from "@wizard/modules";
 import { DEFAULT_REGISTRY } from "./catalog.js";
 import { type PlanSketch, planSketch } from "./sketch.js";
@@ -34,8 +34,12 @@ const RUB_PER_CREDIT = 5;
 /** Target cost of a build without custom code (grill-6 № 9). */
 export const PLAN_BUILD_TARGET_RUB = 15;
 
-/** Credits cap of a build by an approved plan: the target plus the custom-code budget of the plan. */
-export function planBuildCapCredits(plan: Pick<SystemPlan, "custom">): number {
-  const custom = plan.custom.reduce((s, c) => s + c.budgetRub, 0);
+/**
+ * Credits cap of a build by an approved plan (approveSystemPlan and «Исправить», B2-23): the target plus the budget of
+ * the custom-code stage when the plan has custom parts — the stage may spend up to CUSTOM_LIMITS.budgetRub
+ * (builder.yaml#v2.budgets), whatever the planner estimated per part.
+ */
+export function planBuildCapCredits(plan: { custom?: readonly unknown[] | null }): number {
+  const custom = (plan.custom?.length ?? 0) > 0 ? CUSTOM_LIMITS.budgetRub : 0;
   return Math.ceil((PLAN_BUILD_TARGET_RUB + custom) / RUB_PER_CREDIT);
 }

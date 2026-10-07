@@ -446,8 +446,13 @@ describe("custom code limits (D76: ≤ 2 screens, ≤ 3 functions, ≤ 20 ₽)",
 });
 
 describe("module catalog checks", () => {
-  const base = (): ModuleManifest =>
-    structuredClone(modules.find((m) => m.id === "resources") as ModuleManifest);
+  // A catalog entry without its CI matrix (B2-18 gave «resources» one; the checks below build on a bare entry).
+  const base = (): ModuleManifest => {
+    const { tests: _tests, ...m } = structuredClone(
+      modules.find((x) => x.id === "resources") as ModuleManifest,
+    );
+    return m;
+  };
 
   test("duplicate entity ownership, unknown links and cycles are catalog errors", () => {
     const a = { ...base(), id: "a", provides: { entities: ["thing"] }, goalScenarios: [] };

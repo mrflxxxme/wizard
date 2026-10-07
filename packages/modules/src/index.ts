@@ -88,6 +88,21 @@ export {
   SCENARIO_LEAD,
 } from "./notify/compile.js";
 export { notifyManifest, notifyModule, notifyScreen } from "./notify/index.js";
+/** Module «Абонементы и пакеты» (B2-18): tariffs, client packages, write-off by booking, members' materials. */
+export {
+  BOOKING_PACKAGE_STATUSES,
+  compilePackages,
+  PACKAGE_NAMES,
+  PACKAGE_SAMPLE,
+  type PackageKind,
+  packageKind,
+  packageStatuses,
+  USAGE_KINDS,
+  visitorPackageContact,
+  writesOff,
+} from "./packages/compile.js";
+export { packagesManifest, packagesModule } from "./packages/index.js";
+export { materialsPage } from "./packages/materials.js";
 export { DIGEST_CRON, reportsManifest, reportsModule } from "./reports/index.js";
 /** Module «Отчёты и панель цели»: manifest, goal-panel model (tiles, sources, reports), goalMetrics query and page. */
 export {
@@ -121,6 +136,16 @@ export {
   goalMetricsFile,
   goalMetricsSource,
 } from "./reports/query.js";
+/** Module «Учёт выдачи и ресурсов» (B2-18): items and issues, return, overdue mark, list import from a spreadsheet. */
+export {
+  compileResources,
+  ISSUE_STATUSES,
+  RESOURCE_NAMES,
+  RESOURCE_SAMPLE,
+  resourceStatuses,
+} from "./resources/compile.js";
+export { IMPORT_MAX_ROWS, importColumns, importPage } from "./resources/import.js";
+export { resourcesManifest, resourcesModule } from "./resources/index.js";
 /** Shared page generators (also used by the D75 template): role cabinet, start page, permission helpers. */
 export {
   cabinetPage,

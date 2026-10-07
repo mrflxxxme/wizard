@@ -6,7 +6,7 @@ import { createRouter, LlmError, type Router, type RouterOptions } from "@wizard
 import { closeExecutors } from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { fixtureLines } from "../../../packages/agents/test/build-v2-fixtures.js";
-import { B2_SCENARIOS } from "../../../packages/agents/test/build-v2-scenarios.js";
+import { B2_CUSTOM_SCENARIOS, B2_SCENARIOS } from "../../../packages/agents/test/build-v2-scenarios.js";
 import { listEvents } from "../src/runs/events.js";
 import { loadEventSchemas } from "./event-schemas.js";
 import { createTestDb, startApi, type TestApi, waitRun } from "./helpers.js";
@@ -213,4 +213,108 @@ describe("modules pipeline on the recorded answers: ≤ 15 ₽ and ≤ 5 min wit
     ).payload as { stages: Record<string, unknown> };
     expect(metrics.stages).toMatchObject({ pipeline: "modules", status: "succeeded", planRevision: 1 });
   }, 400_000);
+});
+
+async function capOf(api: TestApi, runId: string): Promise<number> {
+  const r = await api.deps.db
+    .selectFrom("platform.runs")
+    .select("credits_cap_milli")
+    .where("id", "=", runId)
+    .executeTakeFirstOrThrow();
+  return Number(r.credits_cap_milli);
+}
+
+async function fileOf(api: TestApi, systemId: string, path: string) {
+  return api.req("GET", `/systems/${systemId}/files/${path}`);
+}
+
+describe("B2-23 custom code through the API on the recorded answers, real G0–G2", () => {
+  let api: TestApi;
+  const sc = B2_CUSTOM_SCENARIOS.find((s) => s.name === "dental_custom");
+  beforeAll(async () => {
+    api = await startApi(tdb.url, {
+      config: { buildPipeline: "modules", unsafeLocalExec: true },
+      createRouter: routerFactory("dental_custom", { failDesignOnce: true }),
+    });
+  });
+  afterAll(async () => {
+    await api?.dispose();
+  });
+
+  test("the cap of the build and of «Исправить» covers the custom stage; the parts pass the real gates", async () => {
+    if (!sc) throw new Error("dental_custom");
+    const { systemId, buildRunId } = await planAndApprove(api, sc.brief);
+    // 15 ₽ + 20 ₽ of the custom stage = 7 credits.
+    expect(await capOf(api, buildRunId)).toBe(7000);
+    const failed = await waitRun(api, buildRunId, ["succeeded", "failed"], 120_000);
+    expect(failed.failure).toMatchObject({ code: "LLM_UNAVAILABLE" });
+    const fix = await api.req("POST", `/systems/${systemId}/fix`, { body: {} });
+    expect(fix.status).toBe(202);
+    expect(await capOf(api, fix.body.run.id)).toBe(7000);
+    const done = await waitRun(api, fix.body.run.id, ["succeeded", "failed"], 300_000);
+    const ev = await events(api, fix.body.run.id);
+    const gates = ev.filter((e) => e.type === "gate_result").map((e) => e.payload);
+    expect(done.status, JSON.stringify({ failure: done.failure, gates })).toBe("succeeded");
+    expect((await llmCalls(api, fix.body.run.id)).map((c) => c.call_type)).toEqual([
+      "build_design",
+      "build_custom",
+    ]);
+    // The custom stage checks its revision (G0–G2), then the gates stage checks it again.
+    expect(gates.map((g) => g.level)).toEqual(["G0", "G1", "G2", "G0", "G1", "G2"]);
+    expect(gates.filter((g) => g.level !== "G2").every((g) => g.passed === true)).toBe(true);
+    expect((await fileOf(api, systemId, "ui/custom/CustomPriceQuiz.tsx")).text).toContain("Подбор лечения");
+    expect((await fileOf(api, systemId, "functions/custom/leads_month.ts")).status).toBe(200);
+    const finished = ev.find((e) => e.type === "run_finished")?.payload as { summary_ru: string };
+    expect(finished.summary_ru).toContain("Дописано под вашу задачу: «Подбор лечения», «Заявки за месяц».");
+    expect(await credits(api, fix.body.run.id)).toBeLessThanOrEqual(7000);
+  }, 600_000);
+});
+
+describe("B2-23: a custom part that never passes G0 → the system comes out without it, the request is recorded", () => {
+  let api: TestApi;
+  const sc = B2_CUSTOM_SCENARIOS.find((s) => s.name === "dental_custom_broken");
+  beforeAll(async () => {
+    api = await startApi(tdb.url, {
+      config: { buildPipeline: "modules", unsafeLocalExec: true },
+      createRouter: routerFactory("dental_custom_broken"),
+    });
+  });
+  afterAll(async () => {
+    await api?.dispose();
+  });
+
+  test("3 answers (1 + 2 rounds of fixes), the function rolled back, the screen kept, «Запросы на развитие»", async () => {
+    if (!sc) throw new Error("dental_custom_broken");
+    const { systemId, buildRunId } = await planAndApprove(api, sc.brief);
+    const run = await waitRun(api, buildRunId, ["succeeded", "failed"], 400_000);
+    const ev = await events(api, buildRunId);
+    const gates = ev.filter((e) => e.type === "gate_result").map((e) => e.payload);
+    expect(run.status, JSON.stringify({ failure: run.failure, gates })).toBe("succeeded");
+    const calls = (await llmCalls(api, buildRunId)).map((c) => c.call_type);
+    expect(calls.filter((c) => c === "build_custom")).toHaveLength(3);
+    // The real G0 finds the guessed API in the function file each round.
+    const g0 = gates.filter((g) => g.level === "G0" && g.passed === false);
+    expect(g0).toHaveLength(3);
+    expect(JSON.stringify(g0[0])).toContain("functions/custom/leads_month.ts");
+    expect((await fileOf(api, systemId, "functions/custom/leads_month.ts")).status).toBe(404);
+    expect((await fileOf(api, systemId, "ui/custom/CustomPriceQuiz.tsx")).status).toBe(200);
+    const requests = await api.deps.db
+      .selectFrom("platform.development_requests")
+      .select(["category", "quote", "offered", "run_id"])
+      .where("system_id", "=", systemId)
+      .execute();
+    expect(requests).toEqual([
+      expect.objectContaining({
+        category: "other",
+        run_id: buildRunId,
+        quote: expect.stringContaining("Заявки за месяц"),
+        offered: expect.stringContaining("Пока пользуйтесь разделом «Заявки»"),
+      }),
+    ]);
+    const finished = ev.find((e) => e.type === "run_finished")?.payload as { summary_ru: string };
+    expect(finished.summary_ru).toContain("«Заявки за месяц» не прошло автоматическую проверку");
+    expect(finished.summary_ru).toContain("Мы записали это в запросы на развитие.");
+    const sys = await api.req("GET", `/systems/${systemId}`);
+    expect(sys.body.system.stage).toBe("ready");
+  }, 600_000);
 });

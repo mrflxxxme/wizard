@@ -231,6 +231,15 @@ export const ROUTES: Record<CallType, RouteDef> = {
     1500,
     120000,
   ),
+  // B2-23: custom parts of the plan (≤ 2 screens, ≤ 3 functions) on top of the compiled system; ≤ 20 ₽ a stage.
+  build_custom: r(
+    "builder",
+    "T1",
+    { T1: ["glm-5.3"], T0: ["deepseek-v4-pro", "glm-5.1", "kimi-k2.6", "qwen3-coder-next"] },
+    0.1,
+    10000,
+    420000,
+  ),
   build_ops: r(
     "builder",
     "T1",

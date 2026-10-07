@@ -3150,7 +3150,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "e2e: запись списывает занятие с абонемента, истёкший абонемент не даёт записаться"
@@ -3206,7 +3206,7 @@ tasks:
     owner: agents
     parallel_group: b2-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Лимит: до 2 экранов, 3 функций, 20 ₽, 2 раундов исправления"

@@ -41,6 +41,22 @@ export {
   WRITE_PATH_RE,
 } from "./tools.js";
 export type * from "./types.js";
+/** B2-23: custom code of the plan's custom parts on top of the compiled draft, within the limits; failures isolated. */
+export {
+  buildCustom,
+  type CustomInput,
+  type CustomPartResult,
+  type CustomStageResult,
+  customFixText,
+  customInputSchema,
+  customIssues,
+  customMessages,
+  customReplacementRu,
+  implicated,
+  mergeCustom,
+  runCustomStage,
+  selectCustomSlots,
+} from "./v2/custom.js";
 /** Builder v2 (B2-21, builder.yaml#v2): an approved system plan in stages with checkpoints and stage budgets. */
 export {
   brandAccent,
@@ -51,14 +67,7 @@ export {
   mergeDesign,
   runDesignStage,
 } from "./v2/design.js";
-export {
-  buildBlockers,
-  CUSTOM_DEFERRED_RU,
-  deferCustom,
-  OWNER_INPUT_CHECKS,
-  runBuildV2,
-  withOwnerFields,
-} from "./v2/run.js";
+export { buildBlockers, OWNER_INPUT_CHECKS, runBuildV2, withOwnerFields } from "./v2/run.js";
 export { DEFAULT_V2_BUDGETS, remainingSec, STAGE_ETA_SEC, STAGE_LABELS } from "./v2/stages.js";
 export {
   mergeTexts,

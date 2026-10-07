@@ -1,6 +1,7 @@
 // Builder v2 (B2-21, specs/agents/builder.yaml#v2, docs/plans/2026-10-06-beta-v2.md §2): an approved system plan is
-// built in stages plan → texts → design → compile → custom → gates. Only texts and design call models; compile is
-// deterministic (@wizard/modules compilePlan), the module code is never written by a model. After each stage its
+// built in stages plan → texts → design → compile → custom → gates. Texts, design and custom code (B2-23, only the
+// plan's custom parts, in reserved files) call models; compile is deterministic (@wizard/modules compilePlan), the
+// module code is never written by a model. After each stage its
 // result is saved as a checkpoint of the plan revision: a repeated build of the same plan («Исправить» after a
 // failure) reuses the stages already done and does not pay for them again. Each stage has a budget in ₽ and the
 // whole build without custom code ≤ 15 ₽ (D76 (9)); a call that would not fit stops the build with a clear reason.
@@ -18,11 +19,12 @@ import {
 import { scrubJson } from "@wizard/pii";
 import type { CallStats } from "../../core/loop.js";
 import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
+import { buildBlockers, OWNER_INPUT_CHECKS } from "./blockers.js";
+import { buildCustom } from "./custom.js";
 import { runDesignStage } from "./design.js";
 import { DEFAULT_V2_BUDGETS, remainingSec, STAGE_LABELS } from "./stages.js";
 import { runTextsStage } from "./texts.js";
 import {
-  type CustomStageFn,
   type StageCheckpoint,
   type StageMetric,
   V2_STAGES,
@@ -36,29 +38,6 @@ import {
 import { milliToRub, StageBudgetError, StageWallet } from "./wallet.js";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
-
-/** Offered text of a custom item deferred to «Запросы на развитие» until the custom-code stage (B2-23). */
-export const CUSTOM_DEFERRED_RU = "Дописывание кодом ИИ — будет в B2-23; пока система собрана без этой части";
-
-/** Default custom stage: every custom item becomes a development request, the system is built without it. */
-export const deferCustom: CustomStageFn = async ({ host, plan }) => {
-  const recorded: string[] = [];
-  for (const c of plan.custom) {
-    await host.recordDevelopmentRequest?.({
-      category: "other",
-      quote: `${c.title}: ${c.description}`,
-      offered: CUSTOM_DEFERRED_RU,
-    });
-    recorded.push(c.id);
-  }
-  return {
-    data: { deferred: true, recorded },
-    costMilli: 0,
-    notes_ru: plan.custom.map(
-      (c) => `«${c.title}» пока не вошло в систему — мы записали это в запросы на развитие.`,
-    ),
-  };
-};
 
 class V2Failure extends Error {
   constructor(
@@ -99,22 +78,7 @@ function compileOrFail(plan: unknown, registry: ModuleRegistry, appName?: string
   );
 }
 
-/**
- * G2 checks only the owner can satisfy (operator of personal data — owner-only compliance fields, filled before the
- * publication; publish runs its own G2 and refuses without them, specPublishBlockers): they stay in the report but do
- * not fail the build (builder.yaml#v2.stages.gates).
- */
-export const OWNER_INPUT_CHECKS: ReadonlySet<string> = new Set(["G2-PII-06"]);
-
-/** Blockers that fail the build: failed or errored blocker checks, except the owner-input ones of G2. */
-export function buildBlockers(r: GateReport): GateReport["checks"] {
-  return r.checks.filter(
-    (c) =>
-      c.severity === "blocker" &&
-      (c.status === "fail" || c.status === "error") &&
-      !(r.level === "G2" && OWNER_INPUT_CHECKS.has(c.id)),
-  );
-}
+export { buildBlockers, OWNER_INPUT_CHECKS };
 
 const OWNER_INPUT_NOTE_RU =
   "Перед публикацией укажите данные оператора персональных данных (название и контакт) — без них систему с персональными данными опубликовать нельзя.";
@@ -348,10 +312,15 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
     const fingerprint = sha256(compiledFingerprint(built));
     const current = await host.currentSpec();
     const done = await stage("compile", {
-      reuse: (cp) =>
-        cp.data.fingerprint === fingerprint && cp.data.revision === current.version
-          ? { revision: current.version, fingerprint }
-          : null,
+      // The draft is still on the compiled revision, or on the revision the saved custom stage made on top of it.
+      reuse: (cp) => {
+        const rev = Number(cp.data.revision);
+        const custom = saved.get("custom")?.data;
+        const atCustom = custom?.baseRevision === rev && custom.revision === current.version;
+        return cp.data.fingerprint === fingerprint && (rev === current.version || atCustom)
+          ? { revision: rev, fingerprint }
+          : null;
+      },
       run: async () => {
         const spec = withOwnerFields(built.spec, current.version > 0 ? current.spec : null);
         const summary_ru = `Система собрана по плану: ${built.order.length} модулей, ${built.spec.pages?.length ?? 0} экранов`;
@@ -361,19 +330,42 @@ export async function runBuildV2(host: V2Host, p: V2Params): Promise<V2Outcome> 
     });
     revision = Number(done.revision);
 
-    // 5. Custom code (B2-23); without it the custom part goes to «Запросы на развитие».
-    const custom = p.custom ?? deferCustom;
+    // 5. Custom code (B2-23): the plan's custom parts on top of the compiled draft, ≤ 20 ₽ and ≤ 2 rounds of fixes; a
+    // part that fails is rolled back and goes to «Запросы на развитие», the build goes on without it.
+    const custom = p.custom ?? buildCustom;
+    const compiledRevision = revision;
     const customData = await stage("custom", {
-      reuse: (cp) => cp.data,
+      reuse: (cp) =>
+        cp.data.baseRevision === undefined || cp.data.baseRevision === compiledRevision ? cp.data : null,
       skip: !customOn,
       run: async (w) => {
         if (!customOn) return { data: { skipped: true } };
-        const r = await custom({ host, plan, budgetRub: w.budgetRub });
+        const cur = await host.currentSpec();
+        const r = await custom({
+          host,
+          plan,
+          budgetRub: w.budgetRub,
+          route: w.route(host, llmRegistry),
+          registry,
+          base: { spec: cur.spec, files: built.files, revision: compiledRevision },
+          slots: built.customSlots,
+          ...(host.goalBrowser ? { goalScenarios: built.scenarios } : {}),
+        });
         w.spentMilli += r.costMilli;
-        return { data: { ...r.data, notes_ru: r.notes_ru } };
+        return {
+          data: {
+            ...r.data,
+            notes_ru: r.notes_ru,
+            baseRevision: compiledRevision,
+            revision: r.revision ?? compiledRevision,
+          },
+          ...(r.fallback ? { fallback: true } : {}),
+          ...(r.note ? { note: r.note } : {}),
+        };
       },
     });
     notes = Array.isArray(customData.notes_ru) ? (customData.notes_ru as string[]) : [];
+    if (typeof customData.revision === "number") revision = customData.revision;
 
     // 6. Gates G0 → G1 (goal scenarios of the plan in a browser when the host has one) → G2.
     goals = { scenarios: built.scenarios.length, checked: !!host.goalBrowser };

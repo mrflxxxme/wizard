@@ -77,8 +77,8 @@ export type GoalBrowser = NonNullable<GateContext["browser"]>;
 
 /**
  * B2-21: a build of the modules pipeline — the approved system plan in stages (builder v2, agents/builder.yaml#v2):
- * texts and design by models, compilation without models, custom code (B2-23; until then — «Запросы на развитие»),
- * gates G0–G2; checkpoints with the plan revision, so «Исправить» continues from the last stage done.
+ * texts and design by models, compilation without models, custom code within the limits (B2-23; a part that fails is
+ * rolled back and goes to «Запросы на развитие»), gates G0–G2; checkpoints with the plan revision, so «Исправить» continues from the last stage done.
  */
 export async function buildByPlan(
   host: BuildHost,
