@@ -175,6 +175,12 @@ export const ru = {
     myDataManage: "Отозвать согласие и удалить данные",
   },
   stats: { title: "Сводка" },
+  /** GoalHints (B2-27). */
+  goalHints: {
+    title: "Что улучшить",
+    empty: "Подсказок пока нет",
+    newTab: "откроется в новой вкладке",
+  },
   /** Image and ImageField (M2-47). */
   image: {
     choose: "Выбрать картинку",

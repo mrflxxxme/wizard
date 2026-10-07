@@ -1,9 +1,11 @@
 // ui/pages/ReportsGoals.tsx of a compiled system: the goal panel in the owner's cabinet. The page has two parts — the
-// data part generated from the panel model (tiles grouped by the plan's goals, reports, hooks of goalMetrics and of the
-// modules' function metrics) and PANEL_VIEW, a fixed view on today's ui-kit components. A new design (B2-27, B2-34)
-// replaces only PANEL_VIEW (or swaps it for a ui-kit component taking the same props); the data part stays.
+// data part generated from the panel model (tiles grouped by the plan's goals, reports, hint rules, hooks of goalMetrics
+// for the week and the month and of the modules' function metrics) and PANEL_VIEW, a fixed view on the cabinet
+// components of ui-kit v2 (B2-34): StatsReport per goal with a line in plain words, GoalHints «Что улучшить» (B2-27).
 import { js, pascal } from "../screens/jsx.js";
-import type { ScreenContext } from "../types.js";
+import type { GenContext, ScreenContext } from "../types.js";
+import { hintRules } from "./hints.js";
+import type { HintRule } from "./lib/goalPanel.js";
 import { type PanelModel, type PanelTile, panelModel } from "./panel.js";
 import { GOAL_METRICS_FN } from "./query.js";
 
@@ -31,15 +33,47 @@ export function tileGroups(
 }
 
 /**
- * The view: props {period, onPeriod, values (by tile id), reports (goalMetrics reports), loading, failed, onRetry};
- * reads TILES, GROUPS, REPORTS, PERIODS and CSV of the data part. No template literals inside (the generator embeds it).
+ * Plan goals the panel has no metric for (their modules declare none), except «Видеть результат в цифрах» — the panel
+ * itself closes it. The view names them, so the owner does not look for a missing tile.
  */
-export const PANEL_VIEW = `// ---------------------------------------------------------------- view (today's ui-kit; B2-27 replaces this part)
+export function goalsWithoutMetrics(
+  model: PanelModel,
+  planGoals: readonly { id: string; statement: string }[],
+): string[] {
+  return planGoals
+    .filter((g) => g.id !== "visibility" && !model.tiles.some((t) => t.goal === g.id))
+    .map((g) => g.statement);
+}
+
+/** Function metrics the page asks from their modules' queries: of the tiles, then of the hints, each once. */
+export function functionMetrics(
+  model: PanelModel,
+  hints: readonly HintRule[],
+  metrics: GenContext["metrics"],
+): { id: string; fn: string }[] {
+  const out: { id: string; fn: string }[] = [];
+  const add = (id: string, fn: string) => {
+    if (!out.some((x) => x.id === id)) out.push({ id, fn });
+  };
+  for (const t of model.tiles) if (t.fn) add(t.id, t.fn);
+  for (const h of hints) {
+    const m = metrics.find((x) => x.id === h.metric);
+    if (m?.compute.kind === "function") add(m.id, m.compute.name);
+  }
+  return out;
+}
+
+/**
+ * The view: props {period, onPeriod, values (by period, then by tile id), reports (goalMetrics reports of the period),
+ * loading, failed, onRetry}; reads TILES, GROUPS, NO_METRICS, REPORTS, HINTS, PERIODS and CSV of the data part. No
+ * template literals inside (the generator embeds it).
+ */
+export const PANEL_VIEW = `// ---------------------------------------------------------------- view (cabinet components of ui-kit v2)
 
 type ViewProps = {
   period: Period;
   onPeriod: (p: Period) => void;
-  values: Record<string, Value | undefined>;
+  values: Record<Period, Record<string, Value | undefined>>;
   reports: ReportData[] | undefined;
   loading: boolean;
   failed: boolean;
@@ -95,7 +129,7 @@ function reportData(r: Report, d: ReportData | undefined) {
 }
 
 function csvHref(period: Period, values: Record<string, Value | undefined>, reports: ReportData[] | undefined): string {
-  const span = PERIODS.find((p) => p.id === period)?.span ?? "";
+  const span = periodSpan(period);
   const rows: (string | number | null)[][] = [["Показатель " + span, "Цель", "Значение", "Прошлый период"]];
   for (const t of TILES) {
     const v = values[t.id];
@@ -113,7 +147,8 @@ function csvHref(period: Period, values: Record<string, Value | undefined>, repo
 }
 
 function GoalPanelView(props: ViewProps) {
-  const span = PERIODS.find((p) => p.id === props.period)?.span ?? "";
+  const span = periodSpan(props.period);
+  const values = props.values[props.period];
   const switcher = (
     <div role="group" aria-label="Период" data-testid="wz-goals-period">
       {PERIODS.map((p) => (
@@ -134,25 +169,56 @@ function GoalPanelView(props: ViewProps) {
   ) : props.loading ? (
     <Loading lines={3} />
   ) : null;
+  // Hints «что улучшить» go by the month: a week is too short to judge shares.
+  const month = props.values.month;
+  const data = hasData(month);
+  const hints = (
+    <GoalHints
+      testId="goals"
+      subtitle="По показателям за 30 дней"
+      items={data ? pickHints(HINTS, month) : []}
+      emptyText={
+        data
+          ? "Сейчас подсказок нет: показатели целей в порядке"
+          : "Подсказки появятся, когда в системе наберутся данные: заявки, записи, клиенты"
+      }
+    />
+  );
   const goals = (
     <>
       {switcher}
-      {status ??
-        (GROUPS.length === 0 ? (
-          <EmptyState text="Показателей пока нет: модули плана их не объявили" />
-        ) : (
-          GROUPS.map((g) => (
+      {status ?? (
+        <>
+          {GROUPS.length === 0 ? (
+            <EmptyState text="Показателей пока нет: модули плана их не объявили" />
+          ) : hasData(values) ? null : (
+            <EmptyState text={"Данных " + span + " пока нет. Показатели заполнятся с первыми заявками и записями, а потом сравнятся с прошлым периодом"} />
+          )}
+          {GROUPS.map((g) => (
             <StatsReport
               key={g.key}
               testId={"goal-" + g.key}
               title={g.title}
-              subtitle={"Показатели " + span}
-              data={{ kpis: g.tiles.map((t) => kpiOf(t, props.values[t.id])) }}
+              subtitle={goalSummary(
+                g.tiles.map((t) => {
+                  const v = values[t.id];
+                  return { value: v ? v.value : null, previous: v ? v.previous : null, better: t.better };
+                }),
+                props.period,
+              )}
+              data={{ kpis: g.tiles.map((t) => kpiOf(t, values[t.id])) }}
             />
-          ))
-        ))}
+          ))}
+          {NO_METRICS.length ? (
+            <p data-testid="wz-goals-no-metrics">
+              {"Своих показателей пока нет у целей: " + NO_METRICS.map((s) => "«" + s + "»").join(", ") + ". Их результат виден в разделах кабинета"}
+            </p>
+          ) : null}
+          {hints}
+        </>
+      )}
       {CSV && !status && TILES.length ? (
-        <a href={csvHref(props.period, props.values, props.reports)} download={"panel-" + props.period + ".csv"} data-testid="wz-goals-csv">
+        <a href={csvHref(props.period, values, props.reports)} download={"panel-" + props.period + ".csv"} data-testid="wz-goals-csv">
           Скачать CSV
         </a>
       ) : null}
@@ -192,19 +258,35 @@ function GoalPanelView(props: ViewProps) {
 
 export function goalPanelSource(
   model: PanelModel,
-  ctx: Pick<ScreenContext, "plan">,
+  ctx: Pick<ScreenContext, "plan" | "metrics">,
+  hints: readonly HintRule[],
   component: string,
 ): string {
   const groups = tileGroups(model, ctx.plan.goals);
   const tile = (t: PanelTile) =>
     `{ id: ${js(t.id)}, label: ${js(t.label)}, unit: ${js(t.unit)}, better: ${js(t.better)}, goalText: ${js(t.goalText)} }`;
-  const fnTiles = model.tiles.filter((t) => t.fn);
+  const fns = functionMetrics(model, hints, ctx.metrics);
+  const periods = ["week", "month"] as const;
+  const fnHook = (i: number, p: string) => `fn${i}${p === "week" ? "w" : "m"}`;
+  const hooks = fns.flatMap((_, i) => periods.map((p) => fnHook(i, p)));
   return [
-    "// Generated by the module «Отчёты и панель цели» (B2-17): the goal panel of the owner — metrics of the plan's goals",
-    "// for a week or a month with the change against the period before, reports by entity and a CSV of the numbers.",
+    "// Generated by the module «Отчёты и панель цели» (B2-17, B2-27): the goal panel of the owner — metrics of the plan's",
+    "// goals for a week or a month with the change against the period before in plain words, hints «что улучшить» by",
+    "// rules over the month's metrics, reports by entity and a CSV of the numbers.",
     'import { useQuery, useState } from "@wizard/sdk";',
-    'import { Button, CabinetLayout, EmptyState, Loading, StatsReport } from "@wizard/ui-kit";',
-    'import { csvOf, formatValue, type MetricUnit, type Period, trendText } from "../lib/goalPanel";',
+    'import { Button, CabinetLayout, EmptyState, GoalHints, Loading, StatsReport } from "@wizard/ui-kit";',
+    "import {",
+    "  csvOf,",
+    "  formatValue,",
+    "  goalSummary,",
+    "  hasData,",
+    "  type HintRule,",
+    "  type MetricUnit,",
+    "  type Period,",
+    "  periodSpan,",
+    "  pickHints,",
+    "  trendText,",
+    '} from "../lib/goalPanel";',
     "",
     'type Tile = { id: string; label: string; unit: MetricUnit; better: "up" | "down"; goalText: string };',
     "type Report = { entity: string; label: string; statuses: { value: string; label: string }[] };",
@@ -221,10 +303,15 @@ export function goalPanelSource(
         `  { key: ${js(g.key)}, title: ${js(g.title)}, tiles: [${g.tiles.map((t) => `TILES[${model.tiles.indexOf(t)}] as Tile`).join(", ")}] },`,
     ),
     "];",
+    `const NO_METRICS: string[] = ${js(goalsWithoutMetrics(model, ctx.plan.goals))};`,
     "const REPORTS: Report[] = [",
     ...model.reports.map(
       (r) => `  { entity: ${js(r.entity)}, label: ${js(r.label)}, statuses: ${js(r.statuses)} },`,
     ),
+    "];",
+    "/** Hints «что улучшить»: rules of the plan's modules in the order of its goals (B2-27). */",
+    "const HINTS: HintRule[] = [",
+    ...hints.map((h) => `  ${js(h)},`),
     "];",
     `const CSV = ${model.exportCsv};`,
     "",
@@ -235,20 +322,30 @@ export function goalPanelSource(
     "",
     `export default function ${component}() {`,
     `  const [period, setPeriod] = useState<Period>(${js(model.period)});`,
-    `  const main = useQuery(${js(GOAL_METRICS_FN)}, { period });`,
-    ...fnTiles.map((t, i) => `  const fn${i} = useQuery(${js(t.fn)}, { period });`),
-    "  const values: Record<string, Value | undefined> = {};",
-    "  for (const m of main.data?.metrics ?? []) values[m.id] = m;",
-    ...fnTiles.map((t, i) => `  values[${js(t.id)}] = fnValue(fn${i}.data);`),
+    `  const week = useQuery(${js(GOAL_METRICS_FN)}, { period: "week" });`,
+    `  const month = useQuery(${js(GOAL_METRICS_FN)}, { period: "month" });`,
+    ...fns.flatMap((f, i) =>
+      periods.map((p) => `  const ${fnHook(i, p)} = useQuery(${js(f.fn)}, { period: ${js(p)} });`),
+    ),
+    "  const values: Record<Period, Record<string, Value | undefined>> = { week: {}, month: {} };",
+    "  for (const m of week.data?.metrics ?? []) values.week[m.id] = m;",
+    "  for (const m of month.data?.metrics ?? []) values.month[m.id] = m;",
+    ...fns.flatMap((f, i) =>
+      periods.map((p) => `  values.${p}[${js(f.id)}] = fnValue(${fnHook(i, p)}.data);`),
+    ),
+    '  const main = period === "week" ? week : month;',
     "  return (",
     "    <GoalPanelView",
     "      period={period}",
     "      onPeriod={setPeriod}",
     "      values={values}",
     "      reports={main.data?.reports}",
-    `      loading={main.isLoading${fnTiles.map((_, i) => ` || fn${i}.isLoading`).join("")}}`,
-    "      failed={main.error !== undefined}",
-    "      onRetry={main.refetch}",
+    `      loading={week.isLoading || month.isLoading${hooks.map((h) => ` || ${h}.isLoading`).join("")}}`,
+    "      failed={week.error !== undefined || month.error !== undefined}",
+    "      onRetry={() => {",
+    "        week.refetch();",
+    "        month.refetch();",
+    "      }}",
     "    />",
     "  );",
     "}",
@@ -259,4 +356,4 @@ export function goalPanelSource(
 
 /** The screen generator of «Панель цели» (route /cabinet/goals). */
 export const goalPanelPage = (ctx: ScreenContext): string =>
-  goalPanelSource(panelModel(ctx), ctx, `${pascal("reports")}${pascal(ctx.screen.id)}`);
+  goalPanelSource(panelModel(ctx), ctx, hintRules(ctx), `${pascal("reports")}${pascal(ctx.screen.id)}`);

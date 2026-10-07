@@ -71,6 +71,9 @@ jobs:
       # B2-34 (ui-kit.yaml#tokens.cabinet): cabinets of the module matrix on v2 — G0/G1, 390/1280 light/dark, contrast,
       # touch targets; screenshots packages/modules/test/artifacts/cabinet-*.png.
       - run: pnpm exec vitest run --project browser packages/modules/test/cabinets.browser.test.ts
+      # B2-27 (modules.yaml#catalog reports): the goal panel — metrics by goal, hints «что улучшить», the empty state;
+      # 390/1280 light/dark; screenshots packages/modules/test/artifacts/goal-panel-*.png.
+      - run: pnpm exec vitest run --project browser packages/modules/test/goal-panel.browser.test.ts
       # B2-25 (platform-screens.yaml#S-canvas): the canvas screen on the recorded feed «клиника» (режим показа, no models),
       # 390/1280 light/dark: interview → sketch → plan → approval → build → ready; screenshots test/artifacts/canvas-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/canvas.browser.test.ts apps/platform-web/test/canvas-pick.browser.test.ts
@@ -88,6 +91,7 @@ jobs:
             packages/e2e/test-results
             packages/ui-kit/test/artifacts/v2-*.png
             packages/modules/test/artifacts/cabinet-*.png
+            packages/modules/test/artifacts/goal-panel-*.png
             apps/platform-web/test/artifacts/canvas-*.png
             apps/platform-web/test/artifacts/platform-*.png
           retention-days: 7

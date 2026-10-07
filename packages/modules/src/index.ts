@@ -106,20 +106,33 @@ export {
 } from "./packages/compile.js";
 export { packagesManifest, packagesModule } from "./packages/index.js";
 export { materialsPage } from "./packages/materials.js";
+/** B2-27: hint rules «что улучшить» of the goal panel for a compiled plan (deterministic, no models). */
+export { HINT_BOUNDS, hintRules, MAX_HINTS, PLATFORM_URL } from "./reports/hints.js";
 export { DIGEST_CRON, reportsManifest, reportsModule } from "./reports/index.js";
 /** Module «Отчёты и панель цели»: manifest, goal-panel model (tiles, sources, reports), goalMetrics query and page. */
 export {
   type EntityReport,
+  type Hint,
+  type HintRule,
   type MetricCompute,
   type MetricUnit,
   type Period,
   periodWindows,
+  pickHints,
   type Row,
   trendOf,
   type Windows,
 } from "./reports/lib/goalPanel.js";
 export { GOAL_PANEL_LIB } from "./reports/lib-source.js";
-export { goalPanelPage, goalPanelSource, PANEL_VIEW, PERIODS, tileGroups } from "./reports/page.js";
+export {
+  functionMetrics,
+  goalPanelPage,
+  goalPanelSource,
+  goalsWithoutMetrics,
+  PANEL_VIEW,
+  PERIODS,
+  tileGroups,
+} from "./reports/page.js";
 export {
   MAX_TILES,
   MIN_TILES,

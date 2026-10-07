@@ -152,6 +152,37 @@ const scenario: QaCheck = {
           },
         },
       },
+      // B2-27: the month — all six sales in the last 30 days, nothing in the 30 before (shares and averages unknown).
+      { callFn: { name: "goalMetrics", args: { period: "month" } } },
+      {
+        expect: {
+          status: "ok",
+          fields: {
+            period: "month",
+            metrics: [
+              { id: "sales_paid", value: 4, previous: 0, capped: false },
+              { id: "sales_refunds", value: 33.3, previous: null, capped: false },
+              { id: "sales_sum", value: 10000, previous: 0, capped: false },
+              { id: "sales_avg", value: 2500, previous: null, capped: false },
+              { id: "sales_repeat", value: 25, previous: null, capped: false },
+              { id: "sales_days", value: 5, previous: 0, capped: false },
+              { id: "sales_touched", value: 1, previous: 0, capped: false },
+            ],
+            reports: [
+              {
+                entity: "sale",
+                total: 6,
+                previous: 0,
+                byStatus: [
+                  { value: "paid", count: 4 },
+                  { value: "refunded", count: 2 },
+                ],
+                capped: false,
+              },
+            ],
+          },
+        },
+      },
       { callFn: { name: "fxSalesTarget", args: { period: "week" } } },
       { expect: { status: "ok", fields: { value: 40, previous: 50 } } },
       { as: "anon" },

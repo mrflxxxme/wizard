@@ -103,6 +103,17 @@ const weekTrend: GoalProgram = async (t) => {
     if (!/Прошлый период|Нет данных/.test(text)) t.fail("у плитки не подписан прошлый период", text);
   }
 
+  // B2-27: the week's tiles show the week's numbers of goalMetrics.
+  const weekData = await goalMetrics(t, "week");
+  for (const m of weekData.metrics) {
+    const sel = `[data-testid="wz-stats-kpi-${m.id}"]`;
+    if ((await t.page.locator(sel).count()) === 0) continue;
+    const shown = await kpiNumber(t, sel);
+    const want = m.value ?? 0;
+    if (shown === null || Math.abs(shown - want) > Math.max(1, Math.abs(want) * 0.05))
+      t.fail(`показатель ${m.id} за неделю на панели ${shown ?? "без числа"}, а по данным ${want}`);
+  }
+
   t.step("Владелец открывает раздел «Отчёты»");
   const tab = t.page.locator('[data-testid="wz-cabinet-tab-reports"]').first();
   if ((await tab.count()) === 0) t.fail("на панели нет раздела «Отчёты»");
@@ -169,9 +180,151 @@ const weeklyDigest: GoalProgram = async (t) => {
   if (!mail) t.fail("письма владельцу со сводкой нет в исходящих");
 };
 
+/** A hint rule as the panel page carries it (HINTS of packages/modules reports/page.ts, one JSON object a line). */
+export type PanelHintRule = {
+  id: string;
+  metric: string;
+  fix: string;
+  when: { op: "gte" | "lte"; value: number } | { op: "drop"; share: number; min: number };
+  action: { label: string; href: string; external: boolean };
+};
+type MonthValue = { value: number | null; previous: number | null };
+
+/** The hint rules of the panel page source. */
+export function panelHints(source: string): PanelHintRule[] {
+  const lines = source.split("\n");
+  const at = lines.indexOf("const HINTS: HintRule[] = [");
+  if (at === -1) return [];
+  const out: PanelHintRule[] = [];
+  for (const l of lines.slice(at + 1)) {
+    if (l.trim() === "];") break;
+    out.push(JSON.parse(l.trim().replace(/,$/, "")) as PanelHintRule);
+  }
+  return out;
+}
+
+/** Function metrics the page asks for the month: metric id → the module's query. */
+function monthFunctions(source: string): Map<string, string> {
+  const hooks = new Map(
+    [...source.matchAll(/const (fn\d+m) = useQuery\("(\w+)", \{ period: "month" \}\);/g)].map(
+      (m) => [m[1] as string, m[2] as string] as const,
+    ),
+  );
+  const out = new Map<string, string>();
+  for (const m of source.matchAll(/values\.month\["(\w+)"\] = fnValue\((fn\d+m)\.data\);/g)) {
+    const fn = hooks.get(m[2] as string);
+    if (fn) out.set(m[1] as string, fn);
+  }
+  return out;
+}
+
+/**
+ * The hints the panel must show (B2-27, modules.yaml#catalog reports): with data — rules in their order whose condition
+ * holds on the month's values, one per fix, at most 3; without data (every value empty or zero) — none.
+ */
+export function expectedHints(
+  rules: readonly PanelHintRule[],
+  values: Readonly<Record<string, MonthValue>>,
+): string[] {
+  if (!Object.values(values).some((v) => v.value !== null && v.value !== 0)) return [];
+  const out: string[] = [];
+  const fixed = new Set<string>();
+  for (const r of rules) {
+    if (out.length >= 3) break;
+    const v = values[r.metric];
+    if (!v || v.value === null || fixed.has(r.fix)) continue;
+    const w = r.when;
+    const fires =
+      w.op === "drop"
+        ? v.previous !== null && v.previous >= w.min && v.value <= v.previous * (1 - w.share)
+        : w.op === "gte"
+          ? v.value >= w.value
+          : v.value <= w.value;
+    if (!fires) continue;
+    fixed.add(r.fix);
+    out.push(r.id);
+  }
+  return out;
+}
+
+/** The month's values the panel's hints go by: goalMetrics and the modules' function metrics, as the owner asks. */
+async function monthValues(t: GoalRun, source: string): Promise<Record<string, MonthValue>> {
+  const data = await goalMetrics(t, "month");
+  if (data.status !== 200) return t.fail(`показатели панели не считаются (HTTP ${data.status})`);
+  const values: Record<string, MonthValue> = {};
+  for (const m of data.metrics) values[m.id] = { value: m.value, previous: m.previous };
+  for (const [id, fn] of monthFunctions(source)) {
+    const r = await t.api("POST", `/api/fn/${fn}`, { args: { period: "month" } });
+    const res = (r.body as { result?: { value?: number | null; previous?: number | null } } | null)?.result;
+    if (res) values[id] = { value: res.value ?? null, previous: res.previous ?? null };
+  }
+  return values;
+}
+
+const HINTS_ROOT = '[data-wz-component="GoalHints"]';
+const HINT_ITEM = '[data-testid^="wz-goalhints-item-"]';
+
+/** GS-reports-5: the panel shows the hints the rules give on the month's data (≤ 3); each leads to its action. */
+const hintsLeadToActions: GoalProgram = async (t) => {
+  t.step("Владелец открывает панель цели");
+  await t.as("owner");
+  const route = panelPage(t);
+  const file = (t.spec.pages ?? []).find((p) => p.route === route)?.file ?? "";
+  const source = t.files.get(file) ?? "";
+  const rules = panelHints(source);
+  const values = await monthValues(t, source);
+  const want = expectedHints(rules, values);
+  await t.open(route);
+  await t.page
+    .locator(HINTS_ROOT)
+    .first()
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .catch(() => {});
+  if ((await t.page.locator(HINTS_ROOT).count()) === 0) t.fail("на панели нет блока «Что улучшить»");
+
+  t.step("Не больше трёх подсказок по правилам, у каждой — ссылка на действие");
+  const items = t.page.locator(`${HINTS_ROOT} ${HINT_ITEM}`);
+  const shown: string[] = [];
+  for (let i = 0; i < (await items.count()); i++)
+    shown.push(((await items.nth(i).getAttribute("data-testid")) ?? "").replace("wz-goalhints-item-", ""));
+  if (shown.length > 3) t.fail(`подсказок ${shown.length}, а нужно не больше трёх`);
+  if (shown.join(",") !== want.join(","))
+    t.fail(
+      `подсказки на панели: ${shown.join(", ") || "нет"}, а по правилам и данным: ${want.join(", ") || "нет"}`,
+    );
+  if (shown.length === 0 && (await t.page.locator(`${HINTS_ROOT} [data-testid="wz-empty"]`).count()) === 0)
+    t.fail("без подсказок нет пояснения, почему их нет");
+  let inside: string | null = null;
+  for (const id of shown) {
+    const link = t.page.locator(`[data-testid="wz-goalhints-action-${id}"]`).first();
+    const href = (await link.getAttribute("href")) ?? "";
+    const rule = rules.find((r) => r.id === id);
+    if (!rule || href !== rule.action.href)
+      return t.fail(`у подсказки ${id} ссылка «${href}», а не на действие правила`);
+    if (rule.action.external) {
+      if (!/^https:\/\//.test(href) || (await link.getAttribute("target")) !== "_blank")
+        t.fail(`подсказка ${id}: ссылка на платформу не открывается в новой вкладке`, href);
+    } else if (!href.startsWith("/")) t.fail(`подсказка ${id}: ссылка «${href}» не ведёт в кабинет`);
+    else inside ??= href;
+  }
+
+  if (inside) {
+    t.step("Ссылка подсказки открывает нужный раздел кабинета");
+    await t.open(inside);
+    const section = decodeURIComponent(inside.split("#")[1] ?? "");
+    if (section) {
+      const tab = t.page.locator(`[data-testid="wz-cabinet-tab-${section}"]`).first();
+      await tab.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+      if ((await tab.getAttribute("aria-selected").catch(() => null)) !== "true")
+        t.fail(`по ссылке подсказки не открылся раздел «${section}»`, inside);
+    }
+  }
+};
+
 export const REPORTS_PROGRAMS: Readonly<Record<string, GoalProgram>> = {
   "GS-reports-1": metricPerGoal,
   "GS-reports-2": weekTrend,
   "GS-reports-3": panelClosed,
   "GS-reports-4": weeklyDigest,
+  "GS-reports-5": hintsLeadToActions,
 };

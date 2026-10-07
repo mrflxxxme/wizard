@@ -170,7 +170,13 @@ describe("trends, entity reports, the row budget, texts", () => {
     expect(formatValue(9900, "rub")).toBe("9 900 ₽");
     expect(formatValue(null, "minutes")).toBe("—");
     expect(trendText(12, 10, "count", "up")).toBe("Прошлый период: 10 · рост на 2 — хорошо");
-    expect(trendText(20, 50, "percent", "down")).toBe("Прошлый период: 50 % · снижение на 30 п. п. — хорошо");
+    expect(trendText(20, 50, "percent", "down")).toBe(
+      "Прошлый период: 50 % · снижение на 30 пунктов — хорошо",
+    );
+    expect(trendText(52, 50, "percent", "down")).toBe(
+      "Прошлый период: 50 % · рост на 2 пункта — хуже, чем было",
+    );
+    expect(trendText(8, 10, "count", "up")).toBe("Прошлый период: 10 · снижение на 2 — хуже, чем было");
     expect(trendText(5, 5, "rub", "up")).toBe("Прошлый период: 5 ₽ · без изменений");
     expect(trendText(5, null, "count", "up")).toBe("Прошлый период: —");
     expect(csvOf([["Показатель", "Значение"], ['Выручка; "чистая"', 100], [null]])).toBe(
@@ -337,8 +343,10 @@ describe("goal panel: tiles by the plan's goals", () => {
     const plan = salesPlan();
     const r = compiled(plan, testRegistry([salesModule({ functionFirst: true })]));
     const page = r.files["ui/pages/ReportsGoals.tsx"] ?? "";
-    expect(page).toContain('const fn0 = useQuery("fxSalesTarget", { period });');
-    expect(page).toContain('values["sales_target"] = fnValue(fn0.data);');
+    expect(page).toContain('const fn0w = useQuery("fxSalesTarget", { period: "week" });');
+    expect(page).toContain('const fn0m = useQuery("fxSalesTarget", { period: "month" });');
+    expect(page).toContain('values.week["sales_target"] = fnValue(fn0w.data);');
+    expect(page).toContain('values.month["sales_target"] = fnValue(fn0m.data);');
   });
 
   test("deterministic: the same plan gives the same query and page", () => {

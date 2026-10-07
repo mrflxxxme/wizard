@@ -1,0 +1,94 @@
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--w-density-gap);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--w-font-size-lg);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--w-muted);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A hint is a surface card with the brand colour on its leading edge (cabinet look v2, B2-34). */
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--w-line);
+  border-inline-start: 4px solid var(--w-accent);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
+}
+
+.itemTitle {
+  margin: 0;
+  font-family: var(--w-font-heading, inherit);
+  font-size: var(--w-font-size);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.text {
+  margin: 0;
+  color: var(--w-ink);
+}
+
+/* The action: a quiet button-like link, a touch target of 44 px. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--w-accent-edge, var(--w-accent));
+  border-radius: var(--w-radius);
+  background: var(--w-accent-soft);
+  color: var(--w-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.action:hover {
+  border-color: var(--w-accent-text);
+  text-decoration: underline;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (min-width: 960px) {
+  .list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
