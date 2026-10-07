@@ -30,6 +30,19 @@ const FAMILIES = {
   "pt-serif": [400, 700],
   lora: [400, 700],
   unbounded: [400, 700],
+  // Themes v2 (B2-36): pairs of docs/research/design-agent-catalog.md#A6.
+  "cormorant-garamond": [400, 700],
+  commissioner: [400, 700],
+  piazzolla: [400, 700],
+  "source-sans-3": [400, 700],
+  "sofia-sans-extra-condensed": [400, 700],
+  "sofia-sans": [400, 700],
+  "alegreya-sans": [400, 700],
+  alegreya: [400, 700],
+  "alumni-sans": [400, 700],
+  literata: [400, 700],
+  "wix-madefor-display": [400, 700],
+  "wix-madefor-text": [400, 700],
 };
 /** Platform fonts (B2-32): interface text 400/500/600, the serif only for «human» moments 400/500. */
 const PLATFORM_FAMILIES = {
@@ -39,6 +52,11 @@ const PLATFORM_FAMILIES = {
 /** Copyright lines where the @fontsource metadata names the publisher instead of the author (OFL.txt of Google Fonts). */
 const ATTRIBUTION = {
   "source-serif-4": "Copyright 2014-2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
+  "source-sans-3": "Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
+  // One line per family instead of the per-file repetition of the metadata.
+  "alegreya-sans":
+    "Copyright 2013 The Alegreya Sans Project Authors (https://github.com/huertatipografica/Alegreya-Sans)",
+  "wix-madefor-text": "Copyright 2021 The Wix Madefor Project Authors (https://github.com/wix/wixmadefor/)",
 };
 
 function sync(families, out) {

@@ -33,7 +33,7 @@ export const GOAL_MATRIX: readonly { viewport: GoalViewport; scheme: ColorScheme
   { viewport: DESKTOP_VIEWPORT, scheme: "dark" },
 ];
 /** Browser checks have their own budget next to the 120 s of G1 (gates.yaml#G1.browser.time_budget_s). */
-export const G1_BROWSER_TIME_BUDGET_MS = 180_000;
+export const G1_BROWSER_TIME_BUDGET_MS = 300_000;
 /** One scenario run (one cell of the matrix). */
 export const GOAL_RUN_TIMEOUT_MS = 30_000;
 const SETTLE_MS = 5_000;
@@ -227,7 +227,9 @@ async function mobileFindings(
 
 const SYNTHETIC = {
   email: (m: string) => `goal.${m}@example.test`,
-  phone: "9990001234",
+  /** A Russian mobile number of the run: +7 999 and seven digits of the marker. */
+  phone: (m: string) =>
+    `999${String(Number.parseInt(m.replace(/[^0-9a-f]/g, "").slice(-6) || "0", 16) % 10_000_000).padStart(7, "0")}`,
   url: "https://example.test",
   int: "2",
   decimal: "1500",
@@ -240,9 +242,9 @@ const FILL_PROBE = (arg: { within: string | null; marker: string }) => {
   if (!form)
     return {
       error: "form" as const,
-      fields: [] as { id: string; kind: string; label: string; options?: string[] }[],
+      fields: [] as { id: string; kind: string; label: string; name: string; options?: string[] }[],
     };
-  const fields: { id: string; kind: string; label: string; options?: string[] }[] = [];
+  const fields: { id: string; kind: string; label: string; name: string; options?: string[] }[] = [];
   let n = 0;
   const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
@@ -283,7 +285,9 @@ const FILL_PROBE = (arg: { within: string | null; marker: string }) => {
       el.tagName === "SELECT"
         ? [...(el as HTMLSelectElement).options].filter((o) => o.value !== "").map((o) => o.value)
         : undefined;
-    fields.push({ id: tag, kind, label: labelOf(el), ...(options ? { options } : {}) });
+    // ui-kit marks a field wz-field-<name>: the spec's bounds of a number field apply by that name.
+    const name = el.closest('[data-testid^="wz-field-"]')?.getAttribute("data-testid")?.slice(9) ?? "";
+    fields.push({ id: tag, kind, label: labelOf(el), name, ...(options ? { options } : {}) });
   }
   return { error: null, fields };
 };
@@ -297,6 +301,8 @@ class Run implements GoalRun {
   private readonly outboxStart: number;
   private actor: Actor;
 
+  readonly contact: { readonly email: string; readonly phone: string };
+
   constructor(
     private readonly input: BrowserCheckInput,
     private readonly actors: Map<string, Actor[]>,
@@ -308,10 +314,22 @@ class Run implements GoalRun {
     this.clock = new Date(input.now);
     this.outboxStart = input.env.runtime.outbox().length;
     this.actor = input.env.anonymous();
+    this.contact = {
+      email: SYNTHETIC.email(marker.replace(/\W/g, "").toLowerCase()),
+      phone: SYNTHETIC.phone(marker),
+    };
   }
 
   get spec(): AppSpec {
     return this.input.spec;
+  }
+
+  get now(): Date {
+    return new Date(this.clock);
+  }
+
+  get files(): ReadonlyMap<string, string> {
+    return this.input.files;
   }
 
   get stepName(): string {
@@ -361,6 +379,19 @@ class Run implements GoalRun {
     this.errors = o.errors;
   }
 
+  async newTab(): Promise<Page> {
+    if (!this.context) await this.as("visitor");
+    const page = await (this.context as BrowserContext).newPage();
+    page.on("pageerror", (e) => {
+      if (this.errors.length < 5) this.errors.push(clip(String(e?.message ?? e), 200));
+    });
+    return page;
+  }
+
+  useTab(page: Page): void {
+    this.page = page;
+  }
+
   async open(path: string): Promise<void> {
     if (!this.context) await this.as("visitor");
     const res = await this.page.goto(`${this.input.env.origin}${path}`, {
@@ -385,8 +416,8 @@ class Run implements GoalRun {
     const filled: FilledForm = {};
     const today = this.clock.toISOString().slice(0, 10);
     const typed: Record<string, string> = {
-      email: SYNTHETIC.email(this.marker.replace(/\W/g, "").toLowerCase()),
-      tel: SYNTHETIC.phone,
+      email: this.contact.email,
+      tel: this.contact.phone,
       url: SYNTHETIC.url,
       date: today,
       "datetime-local": `${today}T10:00`,
@@ -407,7 +438,9 @@ class Run implements GoalRun {
         await loc.selectOption(v);
         filled[key] = v;
       } else if (f.kind !== "search") {
-        const value = typed[f.kind] ?? this.marker;
+        let value = typed[f.kind] ?? this.marker;
+        if (f.kind === "int" || f.kind === "decimal" || f.kind === "number")
+          value = this.inBounds(f.name, value);
         await loc.fill(value);
         filled[key] = value;
       }
@@ -415,11 +448,38 @@ class Run implements GoalRun {
     return filled;
   }
 
+  /** A synthetic number moved into the spec's min…max of number fields with this name. */
+  private inBounds(name: string, value: string): string {
+    let n = Number(value);
+    for (const e of this.input.spec.entities)
+      for (const f of e.fields) {
+        if (f.name !== name) continue;
+        if (typeof f.min === "number" && n < f.min) n = f.min;
+        if (typeof f.max === "number" && n > f.max) n = f.max;
+      }
+    return String(n);
+  }
+
+  settle(): Promise<void> {
+    return settle(this.page);
+  }
+
   async submit(within?: string): Promise<void> {
     const form = this.page.locator(`${within ? `${within} ` : ""}form`).first();
     const button = form.locator('button[type="submit"], input[type="submit"]').first();
     if ((await button.count()) === 0) this.fail("у формы нет кнопки отправки");
+    // The SDK validates first and sends the write a few ticks later: wait for the write itself (a form the client
+    // rejects sends nothing — then the short wait ends and the page shows why).
+    const write = this.page
+      .waitForResponse(
+        (r) => r.request().method() !== "GET" && new URL(r.url()).pathname.startsWith("/api/"),
+        {
+          timeout: 3_000,
+        },
+      )
+      .catch(() => null);
     await button.click();
+    await write;
     await settle(this.page);
   }
 
@@ -435,21 +495,27 @@ class Run implements GoalRun {
   }
 
   async expectNear(anchor: string, text: string): Promise<void> {
-    const found = await this.page.evaluate(
-      ([a, t]) => {
-        const low = (s: string) => s.toLowerCase().replace(/ё/g, "е");
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-          if (!n.textContent?.includes(a)) continue;
-          let el: Element | null = n.parentElement;
-          for (let k = 0; el && k < 8; k++, el = el.parentElement)
-            if (low(el.textContent ?? "").includes(low(t))) return "near";
-          return "alone";
-        }
-        return "absent";
-      },
-      [anchor, text] as const,
-    );
+    // Lists load after the page settles: look again for up to 5 s.
+    let found = "absent";
+    for (const deadline = Date.now() + 5_000; ; ) {
+      found = await this.page.evaluate(
+        ([a, t]) => {
+          const low = (s: string) => s.toLowerCase().replace(/ё/g, "е");
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.textContent?.includes(a)) continue;
+            let el: Element | null = n.parentElement;
+            for (let k = 0; el && k < 8; k++, el = el.parentElement)
+              if (low(el.textContent ?? "").includes(low(t))) return "near";
+            return "alone";
+          }
+          return "absent";
+        },
+        [anchor, text] as const,
+      );
+      if (found === "near" || Date.now() > deadline) break;
+      await this.page.waitForTimeout(200);
+    }
     if (found === "absent") this.fail("запись не видна на экране");
     if (found === "alone") this.fail(`рядом с записью нет «${text}»`);
   }
@@ -503,6 +569,13 @@ class Run implements GoalRun {
       .outbox()
       .slice(this.outboxStart)
       .filter((m) => names.has(m.integration));
+  }
+
+  serviceMessages(): GoalOutboxMessage[] {
+    return this.input.env.runtime
+      .outbox()
+      .slice(this.outboxStart)
+      .filter((m) => m.integration === "_platform" || m.integration === "_sms");
   }
 
   api(method: string, path: string, body?: unknown) {

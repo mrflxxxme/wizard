@@ -1,4 +1,5 @@
 // B2-20: goal interview → planner → plan awaiting approval, on scripted model answers (no network, no money).
+import { SECTION_CATALOG } from "@wizard/appspec";
 import { MODULES } from "@wizard/modules";
 import { describe, expect, test } from "vitest";
 import {
@@ -130,7 +131,7 @@ describe("planner repairs", () => {
     const bad = dentalPlan();
     bad.modules.push({ id: "crm_pro" });
     const sections = bad.landing?.sections ?? [];
-    sections[1] = { ...(sections[1] as (typeof sections)[number]), variant: "collage" };
+    sections[1] = { ...(sections[1] as (typeof sections)[number]), variant: "slider" };
     const { gi, inputs } = interview([
       toolResult("submit_goals", dentalAnalysis({ questions: [] })),
       toolResult("submit_plan", bad),
@@ -302,10 +303,17 @@ describe("deterministic plan edits (no model)", () => {
     expect(!badValue.ok && badValue.errors[0]?.code).toBe("PARAMS_INVALID");
     const uncovered = applyPlanEdits(base, [{ op: "remove_module", module: "leads" }], registry);
     expect(!uncovered.ok && uncovered.errors.map((e) => e.code)).toContain("GOAL_NOT_COVERED");
+    // Since B2-35 every catalog variant is ready; a catalog extended later keeps new variants outside `ready`.
+    const later = {
+      ...registry,
+      sections: SECTION_CATALOG.map((t) =>
+        t.type === "hero" ? { ...t, ready: t.ready.filter((v) => v !== "collage") } : t,
+      ),
+    };
     const notImplemented = applyPlanEdits(
       base,
       [{ op: "update_section", index: 1, variant: "collage" }],
-      registry,
+      later,
     );
     expect(!notImplemented.ok && notImplemented.errors[0]?.code).toBe("SECTION_NOT_IMPLEMENTED");
     expect(base.modules[1]?.params).toEqual({ contact: "phone" });

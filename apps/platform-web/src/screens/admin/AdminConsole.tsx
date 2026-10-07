@@ -18,8 +18,10 @@ import { navigate, setQueryParam, useRoute } from "../../app/router.js";
 import { Alert, Pill, type Tone } from "../../components/ui.js";
 import { Button } from "../../components/v2/Button.js";
 import { PlatformPage } from "../../components/v2/Shell.js";
+import { AdminCandidates } from "../../features/factory/AdminCandidates.js";
 import { AdminGaps } from "../../features/gaps/AdminGaps.js";
 import { AdminSupport } from "../../features/support/AdminSupport.js";
+import { factory } from "../../i18n/ru/factory.js";
 import { gaps } from "../../i18n/ru/gaps.js";
 import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
@@ -305,10 +307,10 @@ function Verify({ onDone }: { onDone(): void }): ReactNode {
 function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   const { search } = useRoute();
   const reportId = search.get("report");
-  // ?tab=support|gaps: links from the founder's Telegram message (D68).
+  // ?tab=support|gaps|candidates: links from the founder's Telegram message (D68) and the module factory (B2-26).
   const initial = search.get("tab");
-  const [tab, setTab] = useState<"reports" | "reviews" | "pilot" | "support" | "gaps">(
-    initial === "support" || initial === "gaps" ? initial : "reports",
+  const [tab, setTab] = useState<"reports" | "reviews" | "pilot" | "support" | "gaps" | "candidates">(
+    initial === "support" || initial === "gaps" || initial === "candidates" ? initial : "reports",
   );
   return (
     <main className={st.page} data-testid="admin-console">
@@ -373,12 +375,26 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
           >
             {gaps.tab}
           </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "candidates"}
+            onClick={() => {
+              setTab("candidates");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-candidates"
+          >
+            {factory.tab}
+          </button>
         </div>
       </header>
       {tab === "support" ? (
         <AdminSupport onMfaRequired={onMfaRequired} />
       ) : tab === "gaps" ? (
         <AdminGaps onMfaRequired={onMfaRequired} />
+      ) : tab === "candidates" ? (
+        <AdminCandidates onMfaRequired={onMfaRequired} />
       ) : tab === "pilot" ? (
         <PilotSection onMfaRequired={onMfaRequired} />
       ) : tab === "reviews" ? (

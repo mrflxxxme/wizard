@@ -47,6 +47,9 @@ export const studio: AppSpec = {
       fields: [
         { name: "title", label: "Название", type: "string", required: true },
         { name: "photo", label: "Фото", type: "image" },
+        { name: "price", label: "Цена, ₽", type: "money", min: 0 },
+        { name: "duration_min", label: "Длительность, мин", type: "int", min: 5 },
+        { name: "description", label: "Описание", type: "text", maxLength: 1000 },
       ],
     },
   ],
@@ -324,8 +327,22 @@ export function studioFixture(): Fixture {
     rows: {
       lead: [],
       service: [
-        { id: "service_1", title: "Пример: базовая услуга", photo: DEMO_IMAGES.one },
-        { id: "service_2", title: "Пример: расширенная услуга", photo: DEMO_IMAGES.two },
+        {
+          id: "service_1",
+          title: "Пример: базовая услуга",
+          photo: DEMO_IMAGES.one,
+          price: 1500,
+          duration_min: 60,
+          description: "Пример описания услуги из кабинета владельца.",
+        },
+        {
+          id: "service_2",
+          title: "Пример: расширенная услуга",
+          photo: DEMO_IMAGES.two,
+          price: 2800,
+          duration_min: 90,
+        },
+        { id: "service_3", title: "Пример: услуга без цены", duration_min: 30 },
       ],
     },
     users: users(studio),

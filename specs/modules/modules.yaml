@@ -62,7 +62,7 @@ manifest:
     screens: "экраны {id, audience: public|cabinet|visitor, route, title, roles, components (экспорты @wizard/ui-kit), when?, nav?}"
     metrics: "метрики панели цели — #manifest.metrics"
     goalScenarios: "сценарии целей для e2e в браузере — #manifest.goal_scenarios"
-    tests: "{matrix: [{name, params, withModules?}] ≤ 32, gates: [G0, G1, G2?]} — матрица параметров CI"
+    tests: "{matrix: [{name, params, withModules?, sections? (секции лендинга строки вместо минимальных, 1…20 — B2-35: каждый вариант раскладки в CI), theme? (тема плана строки)}] ≤ 32, gates: [G0, G1, G2?]} — матрица параметров CI"
   params:
     types:
       bool: "да/нет; default"
@@ -119,10 +119,13 @@ system_plan:
 
 # ---------------------------------------------------------------- Библиотека секций лендинга
 sections:
-  rule: "Типы, варианты и ключи содержимого — SECTION_CATALOG (packages/appspec/src/modules/sections.ts). Черновик: B2-35 делает компоненты (15–20 типов × 3–5 вариантов) и может добавить варианты; ready — варианты, которые уже есть в ui-kit blocks"
+  rule: "Типы, варианты и ключи содержимого — SECTION_CATALOG (packages/appspec/src/modules/sections.ts). B2-35: 20 типов × 3–5 вариантов, каждый вариант — блок ui-kit (ui-kit.yaml#components, milestone M2/B2), все варианты ready; планировщик и дизайн-этап видят только ready (вариант, добавленный позже, — вне ready до своего компонента). itemKeys — ключи объекта в content.items (строка заполняет первый ключ)"
   content: "content — {ключ: строка ≤ 600 | список ≤ 12 строк или объектов {ключ: строка}}. Ключи — только required и optional типа; required обязательны"
   order: "header — первой, footer — последней, header/hero/booking/contacts/footer — не больше одной; hero обязателен"
   needs_module: "services → catalog; pricing → catalog или packages; booking → booking; lead_form → leads"
+  data: "Секции с данными берут их из модулей, а не из текста плана: services — витрина каталога (ServiceShowcase в LandingSection; tabs — кнопки разделов каталога при with_categories, без разделов — карточки); pricing — Pricing по service каталога (цена, длительность при with_duration), без каталога — по тарифам package_plan модуля packages (хук лендинга даёт посетителю чтение тарифов, только когда секция pricing есть в плане); booking — Booking со ссылкой на /booking; lead_form — LeadForm над lead"
+  rhythm: "Ритм страницы: секции тела (кроме header, hero, cta, footer) чередуют фон страницы и полосу alt; фото до B2-38 — графика темы (--w-graphic), галерея без items — 6 плиток графики"
+  ci: "Матрица модуля landing (packages/modules/src/landing/matrix.ts): строка k — все 20 типов на одной странице с k-м вариантом каждого (5 строк покрывают все варианты) и своей темой; G0/G1 — gates.test.ts, в браузере (GS-landing-1, 390 px без горизонтальной прокрутки) — sections.browser.test.ts; каждый вариант × 10 тем × 390/1280 × светлая/тёмная — packages/ui-kit/test/blocks.browser.test.ts"
   texts: "Тексты секций — только из брифа и ответов интервью. Отзывы (testimonials), цифры (stats), адреса и цены, которых нет в брифе, не придумываются: секция не ставится или содержит «Пример: …»"
   types:
     - { type: header,       variants: [bar, centered, transparent] }
@@ -160,7 +163,7 @@ compile:
     - "3. Для каждого модуля: resolveParams → фрагменты с истинным when → подстановки → hook (compile.ts) → добавление в спеку"
     - "4. Связи links — после всех модулей, в том же порядке модулей-источников"
     - "5. Права: символьные роли раскрываются, права одной роли на сущность объединяются (ops — объединение, rowFilter — самый узкий)"
-    - "6. Лендинг: секции в порядке плана → страница «/» на компонентах секций (B2-35)"
+    - "6. Лендинг: секции в порядке плана → страница «/» на блоках библиотеки секций ui-kit (B2-35, #sections.data, #sections.rhythm)"
     - "7. Дизайн: design → AppSpec.theme (preset, accent, font, headingFont); направление и стиль фото — дизайн-агенту (B2-37, B2-38)"
     - "8. Экраны и функции модулей с истинным when; затем заготовки custom (их пишет дописывание B2-23)"
     - "8a. Экраны (B2-11): экран с генератором модуля (ModuleDefinition.screens[id]) — страница на своём маршруте из provides.routes; экран audience cabinet без генератора с маршрутом /cabinet — разделы сущностей модуля (provides.entities) в общем кабинете роли: владелец — /cabinet, другие роли со входом — /cabinet-<роль> (DataTable, RecordCard со сменой статуса, RecordForm). Без страницы «/» — стартовая страница со ссылкой в кабинет"
@@ -220,7 +223,7 @@ validation:
     UNKNOWN_FONT: "шрифта нет в каталоге D64"
     CATALOG_INVALID: "ошибка каталога модулей (validateModuleCatalog)"
     FIELD_NAME_CONFLICT: "дополнительное поле плана (параметр fields) совпадает с полем модуля, связи, системным или зарезервированным именем (компилятор)"
-    SECTION_NOT_IMPLEMENTED: "вариант секции есть в библиотеке, но ещё не реализован в ui-kit (ready в SECTION_CATALOG; остальные добавит B2-35) (компилятор)"
+    SECTION_NOT_IMPLEMENTED: "вариант секции есть в библиотеке, но ещё не реализован в ui-kit (нет в ready SECTION_CATALOG; с B2-35 готовы все варианты — код нужен для вариантов, добавленных позже) (компилятор)"
     MODULE_BUG: "скомпилированная спека не проходит validateSpec, модуль нарушил свои provides или метрика ссылается на несуществующую сущность или поле — ошибка модуля, не плана (компилятор)"
 
 # ---------------------------------------------------------------- Правила для ИИ (планировщик, B2-20/B2-21)
@@ -256,6 +259,7 @@ catalog:
       - { name: sticky_header, label: "Закреплённая шапка", type: bool, default: true }
       - { name: anchor_nav, label: "Меню по секциям страницы", type: bool, default: true }
     provides: { routes: ["/"] }
+    hook: true   # pricing без каталога: посетитель читает тарифы package_plan (B2-35)
     metrics: []
     goalScenarios:
       - id: GS-landing-1

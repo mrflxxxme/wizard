@@ -25,7 +25,7 @@ describe("block → edits", () => {
   test("hero: another ready variant, remove (with undo), down — not up past the header", () => {
     const a = blockActions(block("site:hero"), sketch, plan);
     expect(ids(a.hints)).toEqual(["view", "remove", "down"]);
-    expect(a.variant).toEqual({ index: 1, of: 3 });
+    expect(a.variant).toEqual({ index: 1, of: 5 });
     expect(a.hints[0]?.edits).toEqual([{ op: "update_section", index: 1, variant: "centered" }]);
     expect(a.hints[0]?.label).toBe("Другой вид");
     expect(a.hints[1]?.edits).toEqual([{ op: "remove_section", index: 1 }]);
@@ -49,8 +49,15 @@ describe("block → edits", () => {
     expect(a.hints.find((h) => h.id === "up")?.edits).toEqual([{ op: "move_section", from: 4, to: 3 }]);
     const after = apply(a.hints[0]?.edits ?? []);
     const again = blockActions(cta, after.sketch as unknown as PlanSketch, after.plan);
-    expect(again.variant).toEqual({ index: 2, of: 2 });
-    expect(again.hints[0]?.edits).toEqual([{ op: "update_section", index: 4, variant: "band" }]);
+    expect(again.variant).toEqual({ index: 2, of: 3 });
+    const last = applyMockEdits(
+      after.plan,
+      after.sketch,
+      (again.hints[0]?.edits ?? []) as unknown as Record<string, unknown>[],
+    );
+    const third = blockActions(cta, last.sketch as unknown as PlanSketch, last.plan);
+    expect(third.variant).toEqual({ index: 3, of: 3 });
+    expect(third.hints[0]?.edits).toEqual([{ op: "update_section", index: 4, variant: "band" }]);
   });
 
   test("services: a section drawn by the catalog — its switches next to the hints", () => {

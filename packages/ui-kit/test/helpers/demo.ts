@@ -77,9 +77,9 @@ export async function startDemo(name: string): Promise<DemoHarness> {
   };
 }
 
-/** Component names of ui-kit.yaml#components (milestone M0), read from the spec text. */
+/** Component names of ui-kit.yaml#components (milestone M0, M2 or B2), read from the spec text. */
 export function specComponents(yaml: string, milestone = "M0"): string[] {
-  return [...yaml.matchAll(/- name: (\w+)\n\s+milestone: (M\d)/g)]
+  return [...yaml.matchAll(/- name: (\w+)\n\s+milestone: ([MB]\d)/g)]
     .filter((m) => m[2] === milestone)
     .map((m) => m[1] as string);
 }

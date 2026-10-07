@@ -4,6 +4,7 @@ import { cx, useDataSource, useWzRoot } from "../data/context.js";
 import type { WzError } from "../data/types.js";
 import { formatInt, formatMoneyCompact, formatNumber, formatPercent } from "../format.js";
 import { ru } from "../i18n/ru.js";
+import { cabinetLook, useCabinetLook } from "./look.js";
 import type { RootAttrs } from "./root.js";
 import { DataState } from "./States.js";
 import styles from "./StatsReport.module.css";
@@ -20,6 +21,7 @@ export function formatKpi(v: number, format: Kpi["format"]): string {
 
 export function StatsReport(props: StatsReportProps): ReactNode {
   const root = useWzRoot("StatsReport", "wz-stats", props);
+  useCabinetLook();
   return props.fn ? (
     <FromFn {...props} fn={props.fn} root={root} />
   ) : (
@@ -44,7 +46,12 @@ function View({
   state?: { data?: unknown; error?: WzError; isLoading: boolean; refetch(): void };
 }): ReactNode {
   return (
-    <section {...root} className={cx(styles.stats, className)} aria-busy={state?.isLoading || undefined}>
+    <section
+      {...root}
+      {...cabinetLook}
+      className={cx(styles.stats, className)}
+      aria-busy={state?.isLoading || undefined}
+    >
       <header className={styles.head}>
         <h2 className={styles.title}>{title ?? ru.stats.title}</h2>
         {subtitle && <p className={styles.subtitle}>{subtitle}</p>}

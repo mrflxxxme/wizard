@@ -499,6 +499,18 @@ paths:
       x-milestone: M2
       summary: 'Удаление аккаунта (права субъекта ПДн, L3-36): выход из всех org (последний owner → 422 LAST_OWNER, сначала передать владение), отзыв сессий, обезличивание users (email, name), запись deletion_log mode=user_deleted'
       responses: {'204': {description: Аккаунт удалён}, '422': {$ref: '#/components/responses/Error'}}
+  /me/updates-consent:
+    get:
+      operationId: getUpdatesConsent
+      x-milestone: B2
+      summary: 'B2-26: согласие на письма о новых возможностях («Теперь умеем: …» — когда платформа научилась тому, что вы просили; db.yaml#users.updates_consent_at)'
+      responses: {'200': {description: Согласие, content: {application/json: {schema: {$ref: '#/components/schemas/UpdatesConsent'}}}}}
+    put:
+      operationId: setUpdatesConsent
+      x-milestone: B2
+      summary: 'B2-26: включить или отключить письма о новых возможностях (S-billing, billing-updates-consent)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [on], properties: {on: {type: boolean}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {$ref: '#/components/schemas/UpdatesConsent'}}}}, '400': {$ref: '#/components/responses/Error'}}
   /orgs:
     get: {operationId: listOrgs, x-milestone: M1, responses: {'200': {description: Организации пользователя, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Org'}}}}}}}}}
     post:
@@ -789,6 +801,40 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {builds: {type: [integer, 'null'], minimum: 0, maximum: 1000}, edits: {type: [integer, 'null'], minimum: 0, maximum: 1000}}}}}}
       responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [orgId, builds, edits, usage], properties: {orgId: {type: string, format: uuid}, builds: {type: integer}, edits: {type: integer}, usage: {$ref: '#/components/schemas/PilotUsage'}}}}}}, '404': {$ref: '#/components/responses/Error'}}
   # ==== конец блока M2-22 ====
+  # ==== B2-26: фабрика модулей ====
+  /admin/module-candidates:
+    get:
+      operationId: adminModuleCandidates
+      x-milestone: B2
+      x-roles: [staff]
+      summary: 'B2-26 (grill-6 № 4): «Кандидаты в модули» — недельный рейтинг «Запросов на развитие» и удачных дописываний по частоте (db.yaml#module_candidates), по месту rank (без места — последними). status: open (по умолчанию — new и approved), new, approved, disabled, ready, all. modules — модули каталога @wizard/modules для связи (available — собирается в плане сейчас). computedAt — время последнего пересчёта или null'
+      parameters: [{name: status, in: query, schema: {enum: [open, new, approved, disabled, ready, all]}}]
+      responses: {'200': {description: Рейтинг, content: {application/json: {schema: {type: object, required: [computedAt, items, modules], properties: {computedAt: {type: [string, 'null'], format: date-time}, items: {type: array, items: {$ref: '#/components/schemas/ModuleCandidate'}}, modules: {type: array, items: {$ref: '#/components/schemas/CatalogModuleRef'}}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/module-candidates/recompute:
+    post:
+      operationId: adminRecomputeModuleCandidates
+      x-milestone: B2
+      x-roles: [staff]
+      summary: 'B2-26: пересчитать рейтинг сейчас (то же, что еженедельный workflows.yaml#module_factory_cron; идемпотентно). Строка staff_audit_log module_candidates_recompute. sent — письма «Теперь умеем», ушедшие новым клиентам готовых кандидатов'
+      responses: {'200': {description: Пересчитано, content: {application/json: {schema: {type: object, required: [computedAt, candidates, sent], properties: {computedAt: {type: string, format: date-time}, candidates: {type: integer}, sent: {type: integer}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/module-candidates/{candidateId}:
+    parameters: [{name: candidateId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: adminModuleCandidate
+      x-milestone: B2
+      x-roles: [staff]
+      summary: 'B2-26: карточка кандидата — счётчики, примеры цитат, последние 20 связанных запросов (цитата после scrub, статус open|done, система; без адресов) и сколько клиентам ушло письмо'
+      responses: {'200': {description: Карточка, content: {application/json: {schema: {type: object, required: [candidate, requests, notified], properties: {candidate: {$ref: '#/components/schemas/ModuleCandidate'}, notified: {type: integer}, requests: {type: array, items: {type: object, required: [id, quote, status, createdAt, doneAt, systemId, systemName], properties: {id: {type: string, format: uuid}, quote: {type: string}, status: {enum: [open, done]}, createdAt: {type: string, format: date-time}, doneAt: {type: [string, 'null'], format: date-time}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}}}}}}}}}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/module-candidates/{candidateId}/decision:
+    parameters: [{name: candidateId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: adminDecideModuleCandidate
+      x-milestone: B2
+      x-roles: [staff]
+      summary: 'B2-26: решение основателя. approve — «в работу» (moduleId — будущий модуль каталога, необязательно); disable — «выключить» (кандидат уходит из рабочего рейтинга, запросы к нему по-прежнему относятся); ready — «модуль готов»: moduleId модуля каталога обязателен, модуль должен собираться в плане (status ready, обязательные зависимости готовы), иначе 400 VALIDATION_FAILED с текстом по-русски. ready окончательный (повтор — 400): связанные запросы получают status done, клиентам с согласием на письма (users.updates_consent_at) — одно письмо «Теперь умеем» на модуль (module_announcements). Строка staff_audit_log module_candidate_<action> (target module_candidate:<id>, note module:<id>)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action], properties: {action: {enum: [approve, disable, ready]}, moduleId: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}, note: {type: string, maxLength: 500}}}}}}
+      responses: {'200': {description: Записано, content: {application/json: {schema: {type: object, required: [candidate, announced], properties: {candidate: {$ref: '#/components/schemas/ModuleCandidate'}, announced: {oneOf: [{type: 'null'}, {type: object, required: [done, sent, noConsent, failed], properties: {done: {type: integer, description: 'запросов отмечено «сделано»'}, sent: {type: integer}, noConsent: {type: integer, description: 'клиентов без согласия на письма — письма нет'}, failed: {type: integer}}}]}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  # ==== конец блока B2-26 ====
   /admin/pilot/readiness:
     get:
       operationId: adminPilotReadiness
@@ -1291,7 +1337,10 @@ components:
     PilotUsage: {type: object, required: [pilot, free, builds, edits], properties: {pilot: {type: boolean}, free: {type: boolean, description: '«На пилоте бесплатно» (D70)'}, builds: {$ref: '#/components/schemas/PilotCounter'}, edits: {$ref: '#/components/schemas/PilotCounter'}}}
     SupportRequest: {type: object, required: [id, orgId, orgName, email, systemId, systemName, screen, text, wantsTeam, createdAt, replyBy, answeredAt], properties: {id: {type: string, format: uuid}, orgId: {type: string, format: uuid}, orgName: {type: string}, email: {type: [string, 'null']}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, screen: {type: [string, 'null']}, text: {type: string}, wantsTeam: {type: boolean}, createdAt: {type: string, format: date-time}, replyBy: {type: string, format: date-time}, answeredAt: {type: [string, 'null'], format: date-time}}}
     DevelopmentCategory: {enum: [payments, subscriptions, integration, messaging, design, domain, media, data, mobile, ai, other]}
-    DevelopmentRequest: {type: object, required: [id, category, quote, offered, createdAt, orgId, orgName, systemId, systemName, email], properties: {id: {type: string, format: uuid}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, quote: {type: string, description: 'Цитата клиента после scrub ПДн'}, offered: {type: [string, 'null'], description: 'Предложенная замена'}, createdAt: {type: string, format: date-time}, orgId: {type: string, format: uuid}, orgName: {type: string}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, email: {type: [string, 'null']}}}
+    DevelopmentRequest: {type: object, required: [id, category, quote, offered, createdAt, orgId, orgName, systemId, systemName, email], properties: {id: {type: string, format: uuid}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, quote: {type: string, description: 'Цитата клиента после scrub ПДн'}, offered: {type: [string, 'null'], description: 'Предложенная замена'}, createdAt: {type: string, format: date-time}, orgId: {type: string, format: uuid}, orgName: {type: string}, systemId: {type: [string, 'null']}, systemName: {type: [string, 'null']}, email: {type: [string, 'null']}, status: {enum: [open, done], description: 'B2-26: done — запрос закрыт готовым модулем (фабрика модулей)'}, doneAt: {type: [string, 'null'], format: date-time}, candidateId: {type: [string, 'null'], description: 'B2-26: кандидат в модули, к которому отнесён запрос'}}}
+    ModuleCandidate: {type: object, description: 'B2-26: db.yaml#module_candidates', required: [id, key, category, title, status, moduleId, moduleName, rank, weekRequests, weekCustom, totalRequests, totalCustom, systems, clients, examples, lastSeenAt, computedAt, note, decidedAt, readyAt, suggested], properties: {id: {type: string, format: uuid}, key: {type: string}, category: {$ref: '#/components/schemas/DevelopmentCategory'}, title: {type: string}, status: {enum: [new, approved, disabled, ready]}, moduleId: {type: [string, 'null']}, moduleName: {type: [string, 'null']}, rank: {type: [integer, 'null']}, weekRequests: {type: integer}, weekCustom: {type: integer}, totalRequests: {type: integer}, totalCustom: {type: integer}, systems: {type: integer}, clients: {type: integer, description: 'организаций'}, examples: {type: array, maxItems: 3, items: {type: object, required: [quote, source], properties: {quote: {type: string}, source: {enum: [request, custom]}}}}, lastSeenAt: {type: [string, 'null'], format: date-time}, computedAt: {type: [string, 'null'], format: date-time}, note: {type: [string, 'null']}, decidedAt: {type: [string, 'null'], format: date-time}, readyAt: {type: [string, 'null'], format: date-time}, suggested: {description: 'модуль каталога, чьё название и описание ближе всего к формулировке (только без moduleId)', oneOf: [{type: 'null'}, {type: object, required: [id, name, status], properties: {id: {type: string}, name: {type: string}, status: {enum: [ready, draft]}}}]}}}
+    CatalogModuleRef: {type: object, required: [id, name, summary, status, available], properties: {id: {type: string}, name: {type: string}, summary: {type: string}, status: {enum: [ready, draft]}, available: {type: boolean, description: 'собирается в плане сейчас (availableModules)'}}}
+    UpdatesConsent: {type: object, required: [on, since], properties: {on: {type: boolean}, since: {type: [string, 'null'], format: date-time}}}
     OrgKind: {enum: [client, staff, eval], description: 'B2-01: вид организации — клиент, служебная (основатель), замеры'}
     LlmSpendByPurpose: {type: object, required: [days, b2], properties: {days: {type: array, items: {type: object, required: [day, client, staff, eval, total], properties: {day: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, client: {type: number}, staff: {type: number}, eval: {type: number}, total: {type: number}}}}, b2: {type: object, required: [since, spentRub, budgetRub, sharePercent, warn, reached], properties: {since: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, spentRub: {type: number}, budgetRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 70 % бюджета'}, reached: {type: boolean}}}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}

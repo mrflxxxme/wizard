@@ -1,6 +1,8 @@
-// M2-43 / M2-47 acceptance (Playwright demo): every landing block and variant at 390×844 and 1280×800 in each of the
-// four themes — no horizontal scroll, contrast, labels, touch targets, heading order; LeadForm over the memory
-// DataSource creates a lead only with consent; Image builds srcset from the runtime variants, lazy, alt required.
+// M2-43 / M2-47 / B2-35 / B2-36 acceptance (Playwright demo): every landing block and every variant of the section
+// library at 390×844 and 1280×800, light and dark, in each of the ten themes — no horizontal scroll, contrast, labels,
+// touch targets, heading order; screenshots of every block in two themes per size and scheme (artifacts). LeadForm over
+// the memory DataSource creates a lead only with consent; Image builds srcset from the runtime variants, lazy, alt
+// required.
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { THEME_PRESETS } from "@wizard/appspec";
@@ -8,11 +10,35 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { A11Y_SCRIPT, type A11yApi } from "./a11y/checks.js";
 import { ARTIFACTS, type DemoHarness, hasChromium, startDemo } from "./helpers/demo.js";
 
-const BLOCKS = ["Header", "Hero", "Features", "Steps", "Faq", "Cta", "LeadForm", "Footer", "Image"] as const;
+/** Landing blocks of ui-kit.yaml (M2-43, B2-35) and Image: one demo story each with all its variants. */
+const BLOCKS = [
+  "Header",
+  "Hero",
+  "Features",
+  "Steps",
+  "Faq",
+  "Cta",
+  "LeadForm",
+  "Footer",
+  "Gallery",
+  "Team",
+  "Testimonials",
+  "Stats",
+  "About",
+  "Contacts",
+  "Hours",
+  "Logos",
+  "TextBlock",
+  "Pricing",
+  "Booking",
+  "LandingSection",
+  "Image",
+] as const;
 const SIZES = [
   { width: 390, height: 844 },
   { width: 1280, height: 800 },
 ] as const;
+const MODES = ["light", "dark"] as const;
 
 type DemoWindow = {
   __wzDemo: Record<
@@ -36,7 +62,7 @@ function headingProblems(page: Page): Promise<string[]> {
     const out: string[] = [];
     for (const root of document.querySelectorAll<HTMLElement>("[data-variants] > [data-wz-component]")) {
       const levels = [...root.querySelectorAll("h1, h2, h3, h4")].map((h) => Number(h.tagName[1]));
-      const name = root.getAttribute("data-testid");
+      const name = `${root.dataset.wzComponent}/${root.getAttribute("data-testid")}`;
       const h1 = levels.filter((l) => l === 1).length;
       if (root.dataset.wzComponent === "Hero" ? h1 !== 1 : h1 !== 0) out.push(`${name}: ${h1} h1`);
       for (let i = 1; i < levels.length; i++)
@@ -54,36 +80,57 @@ describe.skipIf(!hasChromium)("demo in chromium: landing blocks and images", () 
   }, 120_000);
   afterAll(async () => demo?.close());
 
-  for (const preset of THEME_PRESETS)
-    for (const vp of SIZES)
-      test(`${preset} ${vp.width}px: every block and variant — no horizontal scroll, contrast, labels, headings`, async () => {
-        const page = await demo.page({ viewport: vp, query: `spec=studio&preset=${preset}&mode=light` });
-        const failures: Record<string, unknown> = {};
-        for (const block of BLOCKS) {
-          await page.goto(demo.url(`story=${block}&spec=studio&preset=${preset}&mode=light`));
-          await page.waitForFunction(
-            () => (window as unknown as { __wz?: { ready: boolean } }).__wz?.ready === true,
-          );
-          await page.waitForTimeout(150);
-          const problems = {
-            overflow: await a11y(page, "overflow"),
-            contrast: await a11y(page, "contrast"),
-            labels: await a11y(page, "labels"),
-            touch: vp.width === 390 ? await a11y(page, "touch") : [],
-            headings: await headingProblems(page),
-            scroll: await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
-          };
-          if (Object.values(problems).some((v) => (Array.isArray(v) ? v.length > 0 : (v as number) > 0)))
-            failures[block] = problems;
-          if (vp.width === 390 || preset === "warm")
-            await page.screenshot({
-              path: join(ARTIFACTS, `blocks-${block}-${preset}-${vp.width}.png`),
-              fullPage: true,
-            });
-        }
-        expect(failures).toEqual({});
-        await page.context().close();
-      }, 120_000);
+  test("the demo has a story with variants for every landing block", async () => {
+    const page = await demo.page({ query: `story=${BLOCKS.join(",")}&spec=studio` });
+    const shown = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>("[data-variants]")].map((e) => e.dataset.variants),
+    );
+    expect(shown.sort()).toEqual([...BLOCKS].sort());
+    await page.context().close();
+  });
+
+  const runs = THEME_PRESETS.flatMap((preset, pi) =>
+    SIZES.flatMap((vp) => MODES.map((mode) => [preset, vp.width, mode, pi, vp] as const)),
+  );
+  test.each(runs)(
+    "%s %ipx %s: every block and variant — no horizontal scroll, contrast, labels, touch, headings",
+    async (preset, _w, mode, pi, vp) => {
+      const query = `story=${BLOCKS.join(",")}&spec=studio&preset=${preset}&mode=${mode}`;
+      const page = await demo.page({ viewport: vp, query, reducedMotion: "reduce" });
+      // Theme fonts and data of Pricing settle before the checks.
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(250);
+      const problems = {
+        overflow: await a11y(page, "overflow"),
+        contrast: await a11y(page, "contrast"),
+        labels: await a11y(page, "labels"),
+        touch: vp.width === 390 ? await a11y(page, "touch") : [],
+        headings: await headingProblems(page),
+        scroll: await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+        variants: await page.evaluate(
+          () => document.querySelectorAll("[data-variants] > [data-wz-component]").length,
+        ),
+      };
+      expect(problems.variants).toBeGreaterThanOrEqual(60);
+      expect({ ...problems, variants: 0 }).toEqual({
+        overflow: [],
+        contrast: [],
+        labels: [],
+        touch: [],
+        headings: [],
+        scroll: 0,
+        variants: 0,
+      });
+      // Screenshots: every block in two of the ten themes for each size and scheme.
+      for (const [bi, block] of BLOCKS.entries())
+        if (bi % 5 === pi % 5)
+          await page
+            .locator(`[data-story="${block}"]`)
+            .screenshot({ path: join(ARTIFACTS, `sections-${block}-${preset}-${vp.width}-${mode}.png`) });
+      await page.context().close();
+    },
+    120_000,
+  );
 
   test("Header @390px: the menu folds behind «Меню», opens and closes with Esc (focus returns)", async () => {
     const page = await demo.page({

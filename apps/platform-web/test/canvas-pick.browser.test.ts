@@ -79,7 +79,7 @@ describe.skipIf(!hasChromium)("«ткни и скажи» on the canvas (B2-29, 
       // «Другой вид»: PATCH /plan with the seen revision — the dry run redraws the sketch, then the edit is saved.
       await page.getByTestId("p-composer-suggestion-view").click();
       await expect.poll(() => variantOf(page, "site:hero")).toBe("centered");
-      await expect.poll(() => page.getByTestId("canvas-pick-variant").textContent()).toBe("вид 2 из 3");
+      await expect.poll(() => page.getByTestId("canvas-pick-variant").textContent()).toBe("вид 2 из 5");
       await expect.poll(() => patches(id).length).toBe(2);
       const [dry, save] = patches(id);
       expect(dry?.body).toEqual({

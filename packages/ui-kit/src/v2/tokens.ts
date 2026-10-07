@@ -1,7 +1,8 @@
 // Platform design system v2 (B2-32, ui-kit.yaml#platform_v2, docs/reviews/grill-7.md, prototype E «Холст»).
 // Pure token tables and CSS text; --p-* variables, separate from the --w-* tokens of generated systems.
+
+import { accentInk, accentText } from "../tokens/accent.js";
 import { blend, contrast, hexToOklch, hexToRgb, oklchToHex } from "../tokens/color.js";
-import { accentInk, accentText } from "../tokens/tokens.js";
 
 export type PlatformScheme = "light" | "dark";
 export type PlatformTokenName = `--p-${string}`;
@@ -247,8 +248,44 @@ export function platformThemeCss(): string {
     `@media (prefers-color-scheme: dark) {\n  ${r}:not([data-p-theme="light"]) {\n${block(darkOnly).replace(/^/gm, "  ")}\n    color-scheme: dark;\n  }\n}`,
     `${r}[data-p-theme="dark"] {\n${block(darkOnly)}\n  color-scheme: dark;\n}`,
     `${r}[data-p-biz] {\n  --p-tint: var(--p-biz);\n  --p-tint-text: var(--p-biz-text);\n  --p-tint-soft: var(--p-biz-soft);\n  --p-tint-ring: var(--p-biz-ring);\n}`,
+    ...businessSchemeCss(),
     "",
   ].join("\n\n");
+}
+
+/** Business tokens without the scheme suffix (--p-biz, --p-biz-text, …). */
+const BIZ_TOKENS = [
+  "--p-biz",
+  "--p-biz-text",
+  "--p-biz-ink",
+  "--p-biz-soft",
+  "--p-biz-ring",
+  "--p-biz-wash",
+] as const;
+
+/**
+ * The business colour set by applyPlatformTheme as CSS variables per scheme (--p-biz-light, --p-biz-text-dark, …) is
+ * picked by the same selectors as the theme: the attribute is repeated so these rules win over the token blocks above.
+ */
+function businessSchemeCss(): string[] {
+  const r = PLATFORM_ROOT;
+  const sel = `${r}[data-p-biz][data-p-biz]`;
+  const pick = (scheme: PlatformScheme, indent: string) =>
+    BIZ_TOKENS.map((t) => `${indent}${t}: var(${t}-${scheme});`).join("\n");
+  return [
+    `${sel} {\n${pick("light", "  ")}\n}`,
+    `@media (prefers-color-scheme: dark) {\n  ${sel}:not([data-p-theme="light"]) {\n${pick("dark", "    ")}\n  }\n}`,
+    `${sel}[data-p-theme="dark"] {\n${pick("dark", "  ")}\n}`,
+  ];
+}
+
+/** CSS variables of a business colour for both schemes (--p-biz-light … --p-biz-wash-dark), for an inline style. */
+export function businessVars(hex: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const scheme of ["light", "dark"] as const)
+    for (const [k, v] of Object.entries(businessTokens(businessColors(hex, scheme))))
+      out[`${k}-${scheme}`] = v;
+  return out;
 }
 
 /** CSS of a business colour for one root (both schemes, same selectors as platformThemeCss). */
@@ -274,11 +311,11 @@ export interface PlatformThemeOptions {
   grain?: boolean;
 }
 
-let seq = 0;
-
-/** Marks `root` as a platform root and applies theme, business colour, glass and grain without a reload. */
+/**
+ * Marks `root` as a platform root and applies theme, business colour, glass and grain without a reload. The business
+ * colour goes in as CSS variables of the root (CSSOM): the platform CSP forbids an injected <style> (B2-25, B2-34).
+ */
 export function applyPlatformTheme(root: HTMLElement, opts: PlatformThemeOptions = {}): void {
-  const doc = root.ownerDocument;
   root.setAttribute("data-p-root", "");
   const theme = opts.theme ?? "auto";
   if (theme === "auto") root.removeAttribute("data-p-theme");
@@ -287,25 +324,12 @@ export function applyPlatformTheme(root: HTMLElement, opts: PlatformThemeOptions
   else root.removeAttribute("data-p-glass");
   if (opts.grain === false) root.removeAttribute("data-p-grain");
   else root.setAttribute("data-p-grain", "");
-  let key = root.getAttribute("data-p-key");
-  if (!key) {
-    key = `p${++seq}`;
-    root.setAttribute("data-p-key", key);
-  }
   const hex = normalize(opts.business);
-  let style = doc.head.querySelector<HTMLStyleElement>(`style[data-p-biz-for="${key}"]`);
   if (!hex) {
     root.removeAttribute("data-p-biz");
-    style?.remove();
+    for (const t of BIZ_TOKENS) for (const sc of ["light", "dark"]) root.style.removeProperty(`${t}-${sc}`);
     return;
   }
-  if (!style) {
-    style = doc.createElement("style");
-    style.setAttribute("data-p-biz-for", key);
-    doc.head.appendChild(style);
-  }
-  // Two attributes: wins over the static root tokens (one attribute) whatever the stylesheet order.
-  const css = businessCss(hex, `[data-p-key="${key}"][data-p-biz]`);
+  for (const [k, v] of Object.entries(businessVars(hex))) root.style.setProperty(k, v);
   root.setAttribute("data-p-biz", hex);
-  if (style.textContent !== css) style.textContent = css;
 }

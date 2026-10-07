@@ -140,9 +140,15 @@
             "strict",
             "warm",
             "bright",
-            "calm"
+            "calm",
+            "boutique",
+            "bistro",
+            "workshop",
+            "academy",
+            "poster",
+            "care"
           ],
-          "description": "тема v2 (specs/ui/themes.yaml): strict — строгая деловая, warm — тёплая, bright — яркая, calm — спокойная; задаёт шрифты, фон, тени и ритм, остальные поля темы её уточняют"
+          "description": "тема v2 (specs/ui/themes.yaml): strict — строгая деловая, warm — тёплая, bright — яркая, calm — спокойная, boutique — изысканная, bistro — аппетитная, workshop — мастерская, academy — дружелюбная, poster — афиша, care — заботливая; задаёт шрифты, фон, тени, ритм и стиль фото, остальные поля темы её уточняют"
         },
         "font": {
           "enum": [
@@ -154,7 +160,19 @@
             "Golos Text",
             "PT Serif",
             "Lora",
-            "Unbounded"
+            "Unbounded",
+            "Cormorant Garamond",
+            "Commissioner",
+            "Piazzolla",
+            "Source Sans 3",
+            "Sofia Sans Extra Condensed",
+            "Sofia Sans",
+            "Alegreya Sans",
+            "Alegreya",
+            "Alumni Sans",
+            "Literata",
+            "Wix Madefor Display",
+            "Wix Madefor Text"
           ],
           "description": "шрифт текста; шрифты раздаёт runtime с /_wizard/fonts (ui-kit.yaml#tokens.fonts)"
         },
@@ -168,7 +186,19 @@
             "Golos Text",
             "PT Serif",
             "Lora",
-            "Unbounded"
+            "Unbounded",
+            "Cormorant Garamond",
+            "Commissioner",
+            "Piazzolla",
+            "Source Sans 3",
+            "Sofia Sans Extra Condensed",
+            "Sofia Sans",
+            "Alegreya Sans",
+            "Alegreya",
+            "Alumni Sans",
+            "Literata",
+            "Wix Madefor Display",
+            "Wix Madefor Text"
           ],
           "description": "шрифт заголовков; по умолчанию — из preset или font"
         },

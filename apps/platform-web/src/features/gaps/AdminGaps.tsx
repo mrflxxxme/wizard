@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ApiError } from "../../api/client.js";
 import type { DevelopmentCategory, DevelopmentRequests } from "../../api/types.js";
 import { usePlatform } from "../../app/context.js";
-import { Alert } from "../../components/ui.js";
+import { Alert, Pill } from "../../components/ui.js";
 import { gaps } from "../../i18n/ru/gaps.js";
 import { ru } from "../../i18n/ru.js";
 import s from "../../screens/admin/Admin.module.css";
@@ -97,8 +97,20 @@ export function AdminGaps({ onMfaRequired }: { onMfaRequired(): void }): ReactNo
           </div>
           <ul className={st.list}>
             {data.items.map((x) => (
-              <li key={x.id} data-testid="admin-gaps-item" data-category={x.category}>
+              <li
+                key={x.id}
+                data-testid="admin-gaps-item"
+                data-category={x.category}
+                data-status={x.status ?? "open"}
+              >
                 <span className={st.small}>
+                  {x.status === "done" && (
+                    <>
+                      <Pill tone="ok" testId="admin-gaps-done">
+                        {gaps.done}
+                      </Pill>{" "}
+                    </>
+                  )}
                   {fmt(x.createdAt)} · {label(x.category)} · {x.orgName}
                   {x.email ? (
                     <>

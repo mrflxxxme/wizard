@@ -1,0 +1,28 @@
+/* Generated from src/tokens/cabinet.ts (cabinetCss) — do not edit by hand; test/cabinet.test.ts checks it. */
+
+[data-wz-look="cabinet"][data-wz-look][data-wz-look] {
+  --w-bg: var(--w-cab-bg, #f8f7f4);
+  --w-surface: var(--w-cab-surface, #ffffff);
+  --w-surface-alt: var(--w-cab-surface-alt, #f2f0eb);
+  --w-ink: var(--w-cab-ink, #1d1c1a);
+  --w-muted: var(--w-cab-muted, #6b6862);
+  --w-line: var(--w-cab-line, #e9e6e0);
+  --w-ok: var(--w-cab-ok, #3a7350);
+  --w-warn: var(--w-cab-warn, #8a5a12);
+  --w-bad: var(--w-cab-bad, #a0443a);
+  --w-neutral-soft: var(--w-cab-neutral-soft, #ededec);
+  --w-ok-soft: var(--w-cab-ok-soft, #e7eeea);
+  --w-warn-soft: var(--w-cab-warn-soft, #f1ebe3);
+  --w-bad-soft: var(--w-cab-bad-soft, #f4e9e7);
+  --w-accent: var(--w-cab-accent, #2f46d8);
+  --w-accent-ink: var(--w-cab-accent-ink, #ffffff);
+  --w-accent-text: var(--w-cab-accent-text, #2f46d8);
+  --w-accent-soft: var(--w-cab-accent-soft, #eceefb);
+  --w-accent-tint: var(--w-cab-accent-tint, #eaedfb);
+  --w-accent-strong: var(--w-cab-accent-strong, #212cc0);
+  --w-accent-edge: var(--w-cab-accent-edge, #2f46d8);
+  --w-focus: var(--w-cab-focus, #2f46d8);
+  --w-shadow-sm: var(--w-cab-shadow-sm, none);
+  --w-shadow-md: var(--w-cab-shadow-md, none);
+  color: var(--w-ink);
+}

@@ -1,5 +1,6 @@
-// Footer (ui-kit.yaml#components.Footer, M2-43): brand, links, contacts, the owner's legal line and the link to the
-// personal data policy (compliance.policyPage) when the system collects personal data.
+// Footer (ui-kit.yaml#components.Footer, M2-43, B2-35): brand, links, contacts, the owner's legal line and the link to
+// the personal data policy (compliance.policyPage) when the system collects personal data. Variants: simple, columns,
+// minimal (one centred line).
 import type { ReactNode } from "react";
 import { cx, useRoleSpec, useWzRoot } from "../../data/context.js";
 import { hasPii } from "../../data/roleSpec.js";
@@ -41,7 +42,14 @@ export function Footer(props: FooterProps): ReactNode {
   return (
     <footer {...root} className={cx(s.footer, props.className)}>
       <div className={s.container}>
-        {props.variant === "columns" ? (
+        {props.variant === "minimal" ? (
+          <div className={s.footerMinimal}>
+            <p className={s.footerBrand}>{props.brand}</p>
+            {props.text && <span>{props.text}</span>}
+            {props.legal && <span>{props.legal}</span>}
+            {policy}
+          </div>
+        ) : props.variant === "columns" ? (
           <div className={s.footerTop}>
             <div>
               <p className={s.footerBrand}>{props.brand}</p>
@@ -84,7 +92,7 @@ export function Footer(props: FooterProps): ReactNode {
             {contacts}
           </div>
         )}
-        {(props.legal || policy) && (
+        {props.variant !== "minimal" && (props.legal || policy) && (
           <div className={s.footerBottom}>
             {props.legal && <span>{props.legal}</span>}
             {policy}

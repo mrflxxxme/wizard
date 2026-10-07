@@ -182,6 +182,14 @@ workflows:
     schedule: "DBOS scheduled, ежечасно"
     does: "Гранты, сгорание корзин, уведомления о низком балансе — billing.yaml#credits_cron. Строку platform.runs не создаёт (служебный)"
 
+  module_factory_cron:
+    milestone: B2
+    schedule: "DBOS scheduled wizard.module_factory, раз в неделю (понедельник 06:17 MSK); без воркера — таймер platform-api раз в 6 ч, пересчёт только если прошлому больше 7 дней; вручную — POST /admin/module-candidates/recompute"
+    does:
+      - "B2-26 (grill-6 № 4): рейтинг «Запросов на развитие» и удачных дописываний (system_plans.checkpoints.custom, items со status done) по частоте — группировка по категории и нормализованной формулировке, upsert db.yaml#module_candidates по key (статус и модуль основателя не меняются), обнуление кандидатов без источников, связь запросов candidate_id"
+      - "Готовые кандидаты (status ready): новые связанные запросы → done; клиентам с согласием на письма, кому ещё не писали про этот модуль, — «Теперь умеем» (module_announcements, один раз на клиента и модуль). Моделей не вызывает, строку platform.runs не создаёт"
+    test: "apps/platform-api/test/module-factory.test.ts: рейтинг на фикстуре; решения основателя в /admin; письмо только согласным и один раз"
+
   nightly_eval:
     milestone: M1
     schedule: "GitHub Actions eval-live.yml, раз в неделю (понедельник 02:17 MSK), только если заданы ключи live; объём и бюджет — quality/eval.yaml#live_cadence (D20_eval_budget: 5 брифов раз в неделю, full — по метке PR, ≤ 4 000 ₽/мес)"

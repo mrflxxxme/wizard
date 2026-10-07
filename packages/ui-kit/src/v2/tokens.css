@@ -156,3 +156,32 @@
   --p-tint-ring: var(--p-biz-ring);
 }
 
+[data-p-root][data-p-biz][data-p-biz] {
+  --p-biz: var(--p-biz-light);
+  --p-biz-text: var(--p-biz-text-light);
+  --p-biz-ink: var(--p-biz-ink-light);
+  --p-biz-soft: var(--p-biz-soft-light);
+  --p-biz-ring: var(--p-biz-ring-light);
+  --p-biz-wash: var(--p-biz-wash-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-p-root][data-p-biz][data-p-biz]:not([data-p-theme="light"]) {
+    --p-biz: var(--p-biz-dark);
+    --p-biz-text: var(--p-biz-text-dark);
+    --p-biz-ink: var(--p-biz-ink-dark);
+    --p-biz-soft: var(--p-biz-soft-dark);
+    --p-biz-ring: var(--p-biz-ring-dark);
+    --p-biz-wash: var(--p-biz-wash-dark);
+  }
+}
+
+[data-p-root][data-p-biz][data-p-biz][data-p-theme="dark"] {
+  --p-biz: var(--p-biz-dark);
+  --p-biz-text: var(--p-biz-text-dark);
+  --p-biz-ink: var(--p-biz-ink-dark);
+  --p-biz-soft: var(--p-biz-soft-dark);
+  --p-biz-ring: var(--p-biz-ring-dark);
+  --p-biz-wash: var(--p-biz-wash-dark);
+}
+

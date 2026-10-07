@@ -251,7 +251,7 @@ export const clientCardManifest: ModuleManifest = {
       {
         name: "по почте, а в заявке только телефон",
         params: { match_by: "email" },
-        withModules: ["leads", "notify"],
+        withModules: ["leads", "notify", "landing"],
       },
     ],
     gates: ["G0", "G1"],

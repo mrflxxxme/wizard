@@ -6,6 +6,7 @@ import type { Rec } from "../data/types.js";
 import { ru } from "../i18n/ru.js";
 import { BadgeImpl } from "./Badge.js";
 import { FieldValue } from "./FieldValue.js";
+import { useCabinetLook } from "./look.js";
 import { RecordActions } from "./RecordActions.js";
 import styles from "./RecordCard.module.css";
 import { part } from "./root.js";
@@ -14,6 +15,7 @@ import type { RecordCardProps } from "./types.js";
 
 export function RecordCard<T = Rec>(props: RecordCardProps<T>): ReactNode {
   const root = useWzRoot("RecordCard", "wz-recordcard", props);
+  const look = useCabinetLook();
   const spec = useRoleSpec();
   const rec = useDataSource().useRecord<T>(props.entity, props.id);
   const ent = entityOf(spec, props.entity);
@@ -27,7 +29,12 @@ export function RecordCard<T = Rec>(props: RecordCardProps<T>): ReactNode {
   const aiFilled = new Set(Array.isArray(meta) ? meta.filter((x): x is string => typeof x === "string") : []);
 
   return (
-    <article {...root} className={cx(styles.card, props.className)} aria-busy={rec.isLoading || undefined}>
+    <article
+      {...root}
+      {...look}
+      className={cx(styles.card, props.className)}
+      aria-busy={rec.isLoading || undefined}
+    >
       {!row ? (
         <DataState result={rec} lines={4} />
       ) : (

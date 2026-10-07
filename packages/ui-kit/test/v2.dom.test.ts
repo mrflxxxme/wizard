@@ -184,22 +184,24 @@ describe("ChatSheet", () => {
 });
 
 describe("theme root and x-ray", () => {
-  test("applyPlatformTheme: theme, glass, grain, business colour style for both schemes; null removes it", () => {
+  test("applyPlatformTheme: theme, glass, grain, business colour as CSS variables for both schemes (no <style>, CSP); null removes it", () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
+    const styles = document.head.querySelectorAll("style").length;
     applyPlatformTheme(el, { theme: "dark", business: "#0f766e", glass: false });
     expect(el.hasAttribute("data-p-root")).toBe(true);
     expect(el.getAttribute("data-p-theme")).toBe("dark");
     expect(el.getAttribute("data-p-glass")).toBe("off");
     expect(el.hasAttribute("data-p-grain")).toBe(true);
     expect(el.getAttribute("data-p-biz")).toBe("#0F766E");
-    const style = document.head.querySelector("style[data-p-biz-for]")?.textContent ?? "";
-    expect(style).toContain("--p-biz: #0F766E;");
-    expect(style).toContain("prefers-color-scheme: dark");
+    expect(el.style.getPropertyValue("--p-biz-light")).toBe("#0F766E");
+    expect(el.style.getPropertyValue("--p-biz-text-dark")).toBeTruthy();
+    expect(el.style.getPropertyValue("--p-biz-wash-dark")).toBeTruthy();
+    expect(document.head.querySelectorAll("style").length).toBe(styles);
     applyPlatformTheme(el, { business: null });
     expect(el.hasAttribute("data-p-biz")).toBe(false);
     expect(el.hasAttribute("data-p-theme")).toBe(false);
-    expect(document.head.querySelector("style[data-p-biz-for]")).toBeNull();
+    expect(el.style.getPropertyValue("--p-biz-light")).toBe("");
   });
 
   test("XrayLines: numbered steps in order, a path per known edge, hidden from assistive tech when off", async () => {

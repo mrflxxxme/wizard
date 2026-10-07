@@ -16,6 +16,8 @@ export const gaps = {
   offered: "Предложили",
   noOffer: "замены не нашлось",
   noSystem: "система удалена",
+  /** B2-26: a ready module covers the request. */
+  done: "сделано",
   category: {
     payments: "Оплата",
     subscriptions: "Подписки и платный доступ",

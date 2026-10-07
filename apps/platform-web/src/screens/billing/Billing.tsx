@@ -15,6 +15,7 @@ import { goExternal, navigate, setQueryParam, useRoute } from "../../app/router.
 import { Alert, Pill } from "../../components/ui.js";
 import { Button } from "../../components/v2/Button.js";
 import { PlatformPage } from "../../components/v2/Shell.js";
+import { UpdatesConsentBlock } from "../../features/factory/UpdatesConsent.js";
 import { UsageDetails, useUsage } from "../../features/pricing/Usage.js";
 import { TeamButton } from "../../features/support/SupportWidget.js";
 import { pricing } from "../../i18n/ru/pricing.js";
@@ -569,6 +570,7 @@ export function BillingScreen(): ReactNode {
               )}
             </section>
           )}
+          <UpdatesConsentBlock />
         </div>
       </main>
     </PlatformPage>

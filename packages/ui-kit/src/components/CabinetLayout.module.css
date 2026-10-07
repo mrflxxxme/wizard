@@ -1,28 +1,33 @@
+/* Cabinet v2 (B2-34): warm neutral base, sections as chips on the phone and a side card on the desktop, the active
+   section in the brand colour (--w-accent-* of the cabinet look, tokens/cabinet.ts). */
 .cabinet {
   display: flex;
   flex-direction: column;
-  gap: var(--w-density-gap);
+  gap: 20px;
   min-width: 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--w-font-size-xl);
+  font-family: var(--w-font-heading, inherit);
+  font-size: clamp(24px, 1.2vw + 18px, 32px);
+  font-weight: var(--w-heading-weight, 700);
+  letter-spacing: var(--w-heading-tracking, -0.01em);
   line-height: 1.2;
 }
 
 .layout {
   display: flex;
   flex-direction: column;
-  gap: var(--w-density-gap);
+  gap: 16px;
   min-width: 0;
 }
 
+/* Phone first: sections are chips that wrap — never a sideways scroll. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  border-bottom: 1px solid var(--w-line);
+  gap: 8px;
 }
 
 .tab {
@@ -30,65 +35,128 @@
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: none;
+  padding: 0 16px;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
   color: var(--w-ink);
   font: inherit;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
+.tab:hover {
+  border-color: var(--w-cab-line-strong, var(--w-line));
+}
+
 .tab[aria-selected="true"] {
-  border-bottom-color: var(--w-accent);
+  border-color: var(--w-accent-edge);
+  background: var(--w-accent-soft);
+  box-shadow: none;
   color: var(--w-accent-text);
   font-weight: 600;
 }
 
 .count {
-  padding: 0 6px;
-  border-radius: var(--w-radius-sm);
+  min-width: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
   background: var(--w-neutral-soft);
   color: var(--w-muted);
   font-size: var(--w-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.tab[aria-selected="true"] .count {
+  background: var(--w-surface);
+  color: var(--w-accent-text);
 }
 
 .panel {
   min-width: 0;
 }
 
+/* Section content keeps a steady rhythm; buttons in a row get a gap. */
+.panel > * + * {
+  margin-top: 16px;
+}
+
+.panel > [data-wz-component="Button"] + [data-wz-component="Button"] {
+  margin-inline-start: 8px;
+}
+
 @media (min-width: 960px) {
   .layout {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 24px;
     align-items: start;
   }
 
   .tabs {
+    position: sticky;
+    top: 16px;
     flex-direction: column;
     flex-wrap: nowrap;
-    border-bottom: 0;
-    border-right: 1px solid var(--w-line);
+    gap: 2px;
+    padding: 8px;
+    border: 1px solid var(--w-line);
+    border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+    background: var(--w-surface);
+    box-shadow: var(--w-shadow-sm);
   }
 
   .tab {
-    border-bottom: 0;
-    border-right: 3px solid transparent;
+    justify-content: space-between;
+    border-color: transparent;
+    border-radius: 12px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .tab:hover {
+    border-color: transparent;
+    background: var(--w-bg);
   }
 
   .tab[aria-selected="true"] {
-    border-right-color: var(--w-accent);
+    border-color: transparent;
+    background: var(--w-accent-soft);
+    box-shadow: inset 3px 0 0 var(--w-accent-edge);
   }
 }
 
 .mydata {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
 }
 
 .mydata p,
 .mydata ul {
   margin: 0;
+}
+
+.mydata ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.mydata a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--w-accent-text);
+  font-weight: 600;
 }

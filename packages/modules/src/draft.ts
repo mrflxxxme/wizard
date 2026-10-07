@@ -32,6 +32,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
     provides: {
       routes: ["/"],
     },
+    hook: true,
     metrics: [],
     goalScenarios: [
       {

@@ -131,7 +131,7 @@ export const notifyManifest: ModuleManifest = {
       {
         name: "только Telegram, без писем посетителям",
         params: { channels: ["telegram"], visitor_emails: false, reminder_hours: 0 },
-        withModules: ["leads"],
+        withModules: ["leads", "landing"],
       },
       {
         name: "запись: подтверждение, напоминание, отмена и перенос по ссылке",

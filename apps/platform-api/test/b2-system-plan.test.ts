@@ -272,7 +272,7 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     const p = await api.req("GET", `/systems/${systemId}/plan`);
     const sk = p.body.plan.sketch;
     const hero = sk.sections.find((x: { type: string }) => x.type === "hero");
-    expect(hero.variants).toEqual(["split", "centered", "cover"]);
+    expect(hero.variants).toEqual(["split", "centered", "cover", "minimal", "collage"]);
     const leads = sk.modules.find((m: { id: string }) => m.id === "leads");
     expect(leads.params.find((x: { name: string }) => x.name === "contact")).toMatchObject({
       type: "enum",

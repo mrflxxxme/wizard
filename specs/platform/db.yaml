@@ -32,6 +32,7 @@ tables:
       pd_consent_at: "timestamptz"                        # M1, compliance.yaml#platform
       offer_accepted_at: "timestamptz"
       offer_version: "text"
+      updates_consent_at: "timestamptz"                   # B2-26 (миграция 0035): согласие на письма о новых возможностях («Теперь умеем»); null — таких писем нет. Меняет сам пользователь (api.yaml#setUpdatesConsent, S-billing)
     indexes: ["unique (email)"]
 
   auth_otps:
@@ -590,8 +591,51 @@ tables:
       category: "text not null check (category in ('payments','subscriptions','integration','messaging','design','domain','media','data','mobile','ai','other'))"
       quote: "text not null check (length(quote) between 1 and 1000)"
       offered: "text check (length(offered) <= 1000)"      # предложенная замена или null
-    indexes: ["unique (run_id, category, md5(quote)) where run_id is not null", "(created_at)"]
+      candidate_id: "uuid references platform.module_candidates on delete set null"   # B2-26: кандидат в модули, к которому пересчёт рейтинга отнёс запрос
+      status: "text not null default 'open' check (status in ('open','done'))"         # B2-26: done — кандидат отмечен «модуль готов», запрос закрыт модулем каталога
+      done_at: "timestamptz"
+    indexes: ["unique (run_id, category, md5(quote)) where run_id is not null", "(created_at)", "(candidate_id) where candidate_id is not null"]
   # ==== конец блока M2-22 ====
+
+  # ==== B2-26: фабрика модулей (миграция 0035) ====
+  module_candidates:
+    milestone: B2
+    purpose: "B2-26 (grill-6 № 4, D73, D76): кандидаты в модули — группы «Запросов на развитие» и удачных дописываний (чекпоинт custom плана, items со status done; одна часть считается раз на систему) по категории и нормализованной формулировке (key = category:основы слов без служебных, по 5 букв, по алфавиту, ≤ 6; дописывание — категория other, как неудавшееся). Пересчёт раз в неделю (workflows.yaml#module_factory_cron) и по кнопке в /admin: счётчики за 7 дней и за всё время, систем и клиентов (организаций), место rank по частоте недели (затем всего, систем, key), ≤ 3 примеров цитат после scrub ПДн; статус и связь с модулем основателя пересчёт не трогает. Решение основателя (api.yaml#adminDecideModuleCandidate): approve → approved (в работе; можно указать будущий модуль), disable → disabled, ready → ready только с module_id модуля каталога, который уже собирается (status ready и все обязательные зависимости готовы); ready окончательный: связанные запросы → done, письма «Теперь умеем» (module_announcements)"
+    columns:
+      id: "uuid pk"
+      key: "text not null unique check (length(key) between 1 and 200)"
+      category: "text not null check (category in ('payments','subscriptions','integration','messaging','design','domain','media','data','mobile','ai','other'))"
+      title: "text not null check (length(title) between 1 and 300)"   # самая частая формулировка группы (после scrub)
+      status: "text not null default 'new' check (status in ('new','approved','disabled','ready'))"
+      module_id: "text check (module_id ~ '^[a-z][a-z0-9_]{0,63}$')"   # модуль каталога (@wizard/modules); обязателен при ready
+      rank: "integer check (rank >= 1)"                    # место в последнем пересчёте; null — источников больше нет
+      week_start: "timestamptz"                            # начало окна недели последнего пересчёта (computed_at − 7 дней)
+      week_requests: "integer not null default 0"
+      week_custom: "integer not null default 0"
+      total_requests: "integer not null default 0"
+      total_custom: "integer not null default 0"
+      systems: "integer not null default 0"
+      clients: "integer not null default 0"
+      examples: "jsonb not null default '[]'"             # [{quote, source: request|custom}] ≤ 3, без адресов и имён; заменяются каждым пересчётом
+      last_seen_at: "timestamptz"
+      computed_at: "timestamptz"
+      note: "text check (length(note) <= 500)"            # заметка основателя
+      decided_by: "uuid references platform.users on delete set null"
+      decided_at: "timestamptz"
+      ready_at: "timestamptz"
+    indexes: ["unique (key)", "(status, rank)"]
+    constraints: ["check (status <> 'ready' or module_id is not null)"]
+
+  module_announcements:
+    milestone: B2
+    purpose: "B2-26: письмо «Теперь умеем: <модуль>» — один раз на модуль и клиента. Строка берётся до отправки (insert … on conflict do nothing); неудачная отправка удаляет её, и следующий пересчёт пробует снова. Письма только пользователям с users.updates_consent_at, чьи запросы связаны с готовым кандидатом; ссылка — система запроса (<platformOrigin>/s/<systemId>)"
+    columns:
+      module_id: "text not null check (module_id ~ '^[a-z][a-z0-9_]{0,63}$')"
+      user_id: "uuid not null references platform.users on delete cascade"
+      candidate_id: "uuid references platform.module_candidates on delete set null"
+      system_id: "uuid references platform.systems on delete set null"
+    primary_key: [module_id, user_id]
+  # ==== конец блока B2-26 ====
 
   ai_action_calls:
     milestone: M3

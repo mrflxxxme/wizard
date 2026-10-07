@@ -70,7 +70,9 @@ export { applicationOrder } from "./engine/order.js";
 /** substitute(value, params, known) — {{param}} substitution in fragment values; canonical JSON, sameJson. */
 export { canonical, sameJson, substitute } from "./engine/substitute.js";
 /** Module «Секции лендинга»: manifest, page generator, section renderers by type. */
-export { landingManifest, landingModule } from "./landing/index.js";
+export { landingCompile, landingManifest, landingModule } from "./landing/index.js";
+/** Section library rows of the CI matrix (B2-35): all section types, the k-th layout of each, a theme per row. */
+export { LANDING_MATRIX, librarySections } from "./landing/matrix.js";
 export { landingPage, SECTION_ENTITY, SECTION_RENDERERS, sectionAnchors } from "./landing/page.js";
 /** Module «Заявки»: manifest and compile hook. */
 export { compileLeads, LEAD_STATUSES, leadFormFields, visitorLeadContact } from "./leads/compile.js";

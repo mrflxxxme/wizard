@@ -7,6 +7,15 @@
   min-width: 0;
 }
 
+/* In a cabinet (B2-34) the form is a card on the warm base; public pages keep the plain form. */
+:global([data-wz-look="cabinet"]) .form {
+  padding: 20px;
+  border: 1px solid var(--w-line);
+  border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
+  background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -17,7 +26,7 @@
   margin: 0;
   padding: 8px 12px;
   border: 1px solid var(--w-bad);
-  border-radius: var(--w-radius);
+  border-radius: 12px;
   background: var(--w-bad-soft);
   color: var(--w-bad);
   font-weight: 600;

@@ -20,6 +20,14 @@ export default {
         title="Пример: карточка призыва"
         action={{ label: "Оставить заявку", href: "#lead" }}
       />
+      <Cta
+        testId="split"
+        variant="split"
+        title="Пример: остались вопросы?"
+        text="Пример пояснения рядом с кнопкой."
+        action={{ label: "Написать нам", href: "#lead" }}
+        secondary={{ label: "Позвонить", href: "tel:+70000000000" }}
+      />
     </div>
   ),
 } satisfies Story;

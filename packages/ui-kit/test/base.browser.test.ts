@@ -16,7 +16,11 @@ import {
 } from "./helpers/demo.js";
 
 const SPEC_YAML = readFileSync(join(UI_KIT_ROOT, "../../specs/ui/ui-kit.yaml"), "utf8");
-const COMPONENTS = [...specComponents(SPEC_YAML), ...specComponents(SPEC_YAML, "M2")];
+const COMPONENTS = [
+  ...specComponents(SPEC_YAML),
+  ...specComponents(SPEC_YAML, "M2"),
+  ...specComponents(SPEC_YAML, "B2"),
+];
 
 async function a11y<K extends keyof A11yApi>(page: Page, check: K, ...args: Parameters<A11yApi[K]>) {
   await page.addScriptTag({ content: A11Y_SCRIPT });

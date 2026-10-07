@@ -12,6 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import "../base.css";
+import "../tokens/cabinet.css";
 import { applyTokens } from "../tokens/tokens.js";
 import { can, type RoleSpec } from "./roleSpec.js";
 import { sdkDataSource } from "./sdk.js";

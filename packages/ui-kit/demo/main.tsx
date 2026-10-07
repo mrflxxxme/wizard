@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 // ui-kit demo (ui-kit.yaml#demo): every component on the «форум»/«кондитерская» specs via createMemoryDataSource.
-// URL: ?story=<Component>&role=<role>&spec=forum|bakery&accent=%23RRGGBB&font=&radius=&density=&mode=
+// URL: ?story=<Component>[,<Component>…]&role=<role>&spec=forum|bakery|studio&preset=&accent=%23RRGGBB&font=&radius=&density=&mode=
 import { THEME_FONTS, THEME_PRESETS, type Theme } from "@wizard/appspec";
 import { StrictMode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
@@ -95,7 +95,9 @@ function Demo() {
     };
   }, []);
   const set = (patch: Partial<Theme>) => setTheme((t) => ({ ...t, ...patch }));
-  const stories = STORIES.filter((s) => !only || s.component === only);
+  // ?story=A or ?story=A,B,C (the section library test renders every landing block on one page).
+  const picked = only ? only.split(",") : null;
+  const stories = STORIES.filter((s) => !picked || picked.includes(s.component));
   return (
     <div className={styles.page}>
       <header className={styles.controls}>

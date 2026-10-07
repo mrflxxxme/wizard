@@ -1,3 +1,4 @@
+/* DataTable v2 (B2-34): a card on the warm base, a sunken header row, rows lit in the brand colour's wash. */
 .wrap {
   display: flex;
   flex-direction: column;
@@ -15,22 +16,23 @@
   display: flex;
   flex: 1 1 180px;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   max-width: 320px;
 }
 
 .controlLabel {
+  color: var(--w-muted);
   font-size: var(--w-font-size-sm);
   font-weight: 600;
 }
 
 .input {
   width: 100%;
-  min-height: var(--w-density-control);
-  padding: 6px 10px;
+  min-height: max(44px, var(--w-density-control));
+  padding: 6px 12px;
   border: 1px solid var(--w-muted);
-  border-radius: var(--w-radius);
+  border-radius: 12px;
   background: var(--w-surface);
   color: var(--w-ink);
   font: inherit;
@@ -40,7 +42,8 @@
 .table {
   display: block;
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .table thead {
@@ -50,17 +53,18 @@
 .table tbody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .table tr {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px;
+  gap: 6px;
+  padding: 14px 16px;
   border: 1px solid var(--w-line);
-  border-radius: var(--w-radius);
+  border-radius: 14px;
   background: var(--w-surface);
+  box-shadow: var(--w-shadow-sm);
 }
 
 .table td {
@@ -82,7 +86,7 @@
 }
 
 .clickable:hover {
-  border-color: var(--w-muted);
+  border-color: var(--w-accent-edge);
 }
 
 .sort {
@@ -104,6 +108,11 @@
   color: var(--w-muted);
 }
 
+th[aria-sort] .sort,
+th[aria-sort] .arrow {
+  color: var(--w-accent-text);
+}
+
 .pager {
   display: flex;
   flex-wrap: wrap;
@@ -113,15 +122,18 @@
 
 .pageInfo {
   color: var(--w-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (min-width: 640px) {
   .table {
     display: table;
     table-layout: fixed;
+    overflow: hidden;
     border: 1px solid var(--w-line);
-    border-radius: var(--w-radius);
+    border-radius: var(--w-cab-radius-card, var(--w-radius-lg));
     background: var(--w-surface);
+    box-shadow: var(--w-shadow-sm);
   }
 
   .table thead {
@@ -137,28 +149,36 @@
     padding: 0;
     border: 0;
     border-radius: 0;
+    background: none;
+    box-shadow: none;
   }
 
   .table th,
   .table td {
     display: table-cell;
     height: var(--w-density-row);
-    padding: 0 12px;
+    padding: 0 16px;
     border-bottom: 1px solid var(--w-line);
     text-align: left;
     vertical-align: middle;
   }
 
   .table th {
-    color: var(--w-ink);
+    background: var(--w-cab-sunken, var(--w-bg));
+    color: var(--w-muted);
     font-size: var(--w-font-size-sm);
+    font-weight: 600;
+  }
+
+  .clickable:hover td {
+    background: var(--w-accent-tint);
+  }
+
+  .table tbody tr:last-child td {
+    border-bottom: 0;
   }
 
   .table td::before {
     content: none;
-  }
-
-  .clickable:hover {
-    background: var(--w-bg);
   }
 }

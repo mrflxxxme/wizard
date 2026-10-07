@@ -1,11 +1,14 @@
 // Design tokens (ui-kit.yaml#tokens): pure theme → CSS variables, plus DOM application.
 // v2 (M2-42): presets (themes.yaml), heading font, type scale, depth, rhythm and shades derived from one brand colour.
 import type { Theme } from "@wizard/appspec";
-import { type ThemePreset, themePreset } from "../themes/presets.js";
-import { blend, contrast, hexToOklch, oklchToHex } from "./color.js";
+import { type ThemeGraphic, type ThemePreset, themePreset } from "../themes/presets.js";
+import { accentInk, accentStrong, accentText } from "./accent.js";
+import { CABINET_TOKENS, cabinetTokens } from "./cabinet.js";
+import { blend, contrast } from "./color.js";
 import { FONTS_BASE, fontEntry, fontFaceCss, fontStack } from "./fonts.js";
 
 export type Scheme = "light" | "dark";
+export { accentInk, accentStrong, accentText };
 export type TokenName = `--w-${string}`;
 export type Tokens = Record<TokenName, string>;
 export type ThemeInput = Theme | undefined | null;
@@ -44,9 +47,6 @@ export const PALETTE = {
 /** Alternate section band of a theme without preset (v1): the surface, so v1 accent-text needs no new background. */
 const V1_SURFACE_ALT = { light: PALETTE.light.surface, dark: PALETTE.dark.surface } as const;
 
-const INK_LIGHT = "#FFFFFF";
-const INK_DARK = "#111318";
-const MIN_CONTRAST = 4.5;
 const MIN_NON_TEXT = 3;
 const SOFT_ALPHA = { light: 0.12, dark: 0.22 } as const;
 const TINT_ALPHA = { light: 0.06, dark: 0.1 } as const;
@@ -67,34 +67,6 @@ const SHADOWS: Record<ThemePreset["depth"], Record<Scheme, readonly [string, str
   },
 };
 const SECTION_SPACE = { regular: "clamp(48px, 7vw, 88px)", airy: "clamp(64px, 9vw, 120px)" } as const;
-
-/** Text on the accent fill: the better of white and #111318; pure black when neither reaches 4.5:1. */
-export function accentInk(accent: string): string {
-  const best = contrast(INK_LIGHT, accent) >= contrast(INK_DARK, accent) ? INK_LIGHT : INK_DARK;
-  return contrast(best, accent) >= MIN_CONTRAST ? best : "#000000";
-}
-
-/** Accent for text: step OKLCH lightness away from the backgrounds until contrast ≥ 4.5 with all of them. */
-export function accentText(accent: string, scheme: Scheme, backgrounds: readonly string[]): string {
-  const ok = (c: string) => backgrounds.every((b) => contrast(c, b) >= MIN_CONTRAST);
-  if (ok(accent)) return accent;
-  const base = hexToOklch(accent);
-  const dir = scheme === "light" ? -1 : 1;
-  for (let l = base.l; l >= 0 && l <= 1; l += dir * 0.01) {
-    const c = oklchToHex({ ...base, l });
-    if (ok(c)) return c;
-  }
-  return scheme === "light" ? "#000000" : "#FFFFFF";
-}
-
-/** Hover/pressed fill: the accent moved away from its ink, so contrast with --w-accent-ink only grows. */
-export function accentStrong(accent: string): string {
-  const ink = accentInk(accent);
-  const base = hexToOklch(accent);
-  const dir = ink === INK_LIGHT ? -1 : 1;
-  const c = oklchToHex({ ...base, l: Math.min(1, Math.max(0, base.l + dir * 0.07)) });
-  return contrast(ink, c) >= contrast(ink, accent) ? c : accent;
-}
 
 function normalizeAccent(accent: string | undefined): string {
   return accent && /^#[0-9a-f]{6}$/i.test(accent) ? accent.toUpperCase() : THEME_DEFAULTS.accent;
@@ -144,7 +116,46 @@ export const V2_TOKENS: readonly TokenName[] = [
   "--w-overlay-ink",
   "--w-section-space",
   "--w-container",
+  // B2-34: the cabinet look (cabinet.ts) — warm neutrals and the brand colour with the v2 contrast.
+  ...CABINET_TOKENS,
+  "--w-heading-case",
+  "--w-graphic",
 ];
+
+/** Display and h2 sizes by heading scale (presets.ts#heading.size). */
+const HEADING_SIZES = {
+  regular: ["clamp(32px, 3vw + 20px, 56px)", "clamp(26px, 1.6vw + 18px, 38px)"],
+  wide: ["clamp(28px, 2.4vw + 18px, 48px)", "clamp(24px, 1.4vw + 16px, 34px)"],
+  large: ["clamp(38px, 3.8vw + 22px, 72px)", "clamp(30px, 2vw + 20px, 46px)"],
+} as const;
+
+/**
+ * Theme graphic (--w-graphic, a CSS background): the pattern of picture placeholders and decorative bands, drawn in
+ * shades of the brand colour over the alternate band. Decorative only — no text is ever placed on it without a surface.
+ */
+export function graphicCss(
+  kind: ThemeGraphic,
+  accent: string,
+  surface: string,
+  alt: string,
+  line: string,
+): string {
+  const mid = blend(accent, surface, 0.3);
+  const soft = blend(accent, surface, 0.16);
+  const tint = blend(accent, surface, 0.07);
+  switch (kind) {
+    case "arcs":
+      return `radial-gradient(circle at 82% 18%, ${mid} 0 18%, transparent 18.5%), radial-gradient(circle at 12% 96%, ${soft} 0 34%, transparent 34.5%), linear-gradient(135deg, ${alt}, ${tint})`;
+    case "grid":
+      return `linear-gradient(${line} 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(90deg, ${line} 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(160deg, ${tint}, ${soft})`;
+    case "dots":
+      return `radial-gradient(${mid} 2px, transparent 2.5px) 0 0 / 20px 20px, linear-gradient(160deg, ${alt}, ${soft})`;
+    case "stripes":
+      return `repeating-linear-gradient(135deg, ${soft} 0 12px, transparent 12px 26px), linear-gradient(180deg, ${alt}, ${tint})`;
+    default:
+      return `radial-gradient(120% 90% at 0% 0%, ${mid}, transparent 62%), radial-gradient(100% 90% at 100% 100%, ${soft}, transparent 58%), ${alt}`;
+  }
+}
 
 /**
  * Pure: same result in runtime bundles and platform-web; no DOM access. A theme without preset and headingFont (v1)
@@ -173,7 +184,8 @@ export function themeToTokens(theme: ThemeInput, scheme: Scheme): Tokens {
     contrast(accent, bg) >= MIN_NON_TEXT && contrast(accent, surface) >= MIN_NON_TEXT ? accent : text;
   const toneSoft = (c: string) => blend(c, surface, TONE_SOFT_ALPHA[scheme]);
   const [shadowSm, shadowMd] = SHADOWS[r.preset?.depth ?? "soft"][scheme];
-  const wide = r.headingFont === "Unbounded";
+  const size = r.preset?.heading.size ?? (r.headingFont === "Unbounded" ? "wide" : "regular");
+  const [display, h2] = HEADING_SIZES[size];
   return {
     "--w-accent": accent,
     "--w-accent-ink": accentInk(accent),
@@ -210,8 +222,8 @@ export function themeToTokens(theme: ThemeInput, scheme: Scheme): Tokens {
     "--w-font-heading": fontStack(r.headingFont),
     "--w-heading-weight": String(r.preset?.heading.weight ?? 700),
     "--w-heading-tracking": r.preset?.heading.tracking ?? "-0.01em",
-    "--w-font-size-display": wide ? "clamp(28px, 2.4vw + 18px, 48px)" : "clamp(32px, 3vw + 20px, 56px)",
-    "--w-font-size-h2": wide ? "clamp(24px, 1.4vw + 16px, 34px)" : "clamp(26px, 1.6vw + 18px, 38px)",
+    "--w-font-size-display": display,
+    "--w-font-size-h2": h2,
     "--w-font-size-h3": "20px",
     "--w-radius-lg": `${Math.min(radius * 2, 24)}px`,
     "--w-shadow-sm": shadowSm,
@@ -224,6 +236,9 @@ export function themeToTokens(theme: ThemeInput, scheme: Scheme): Tokens {
     "--w-overlay-ink": "#FFFFFF",
     "--w-section-space": SECTION_SPACE[r.preset?.space ?? "regular"],
     "--w-container": "1200px",
+    ...cabinetTokens(accent, scheme),
+    "--w-heading-case": r.preset?.heading.upper ? "uppercase" : "none",
+    "--w-graphic": graphicCss(r.preset?.graphic ?? "wash", accent, surface, surfaceAlt, n?.line ?? p.line),
   };
 }
 

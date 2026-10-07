@@ -36,12 +36,8 @@ export default {
         title="Пример: услуги"
         items={cards}
       />
-      <Features
-        testId="alternating"
-        variant="alternating"
-        title="Пример: как мы работаем"
-        items={cards.slice(0, 2)}
-      />
+      <Features testId="alternating" variant="alternating" title="Пример: как мы работаем" items={cards} />
+      <Features testId="icons" variant="icons" tone="alt" title="Пример: что вы получите" items={points} />
     </div>
   ),
 } satisfies Story;

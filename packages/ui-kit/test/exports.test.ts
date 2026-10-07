@@ -77,6 +77,14 @@ describe("public API", () => {
     );
   });
 
+  test("B2 section library blocks of ui-kit.yaml are exported functions (B2-35)", () => {
+    const b2 = specComponents(SPEC_TEXT, "B2");
+    expect(b2).toEqual(
+      expect.arrayContaining(["Gallery", "Team", "Testimonials", "Stats", "About", "Contacts", "Pricing"]),
+    );
+    for (const n of b2) expect(typeof (kit as unknown as Record<string, unknown>)[n], n).toBe("function");
+  });
+
   test("exactly one demo story per component", () => {
     const stories = readdirSync(join(UI_KIT_ROOT, "demo/stories"))
       .filter((f) => f.endsWith(".tsx"))
@@ -84,7 +92,8 @@ describe("public API", () => {
       .sort();
     // Every M0 component and every M2 landing/media component has exactly one story (FileField is shown in RecordForm).
     const m2 = specComponents(SPEC_TEXT, "M2").filter((c) => c !== "FileField");
-    expect(stories).toEqual([...COMPONENTS, ...m2].sort());
+    const b2 = specComponents(SPEC_TEXT, "B2");
+    expect(stories).toEqual([...COMPONENTS, ...m2, ...b2].sort());
     for (const s of stories) {
       const src = readFileSync(join(UI_KIT_ROOT, "demo/stories", `${s}.tsx`), "utf8");
       expect(src, s).toContain(`component: "${s}"`);

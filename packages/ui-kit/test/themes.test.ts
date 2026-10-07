@@ -1,5 +1,5 @@
-// M2-42 acceptance (vitest): four presets × 4096 brand colours keep AA contrast in both schemes; v1 themes unchanged;
-// v2 deterministic; themeForNiche and themeLint.
+// M2-42 / B2-36 acceptance (vitest): ten presets × 4096 brand colours keep AA contrast in both schemes; v1 themes
+// unchanged; v2 deterministic; specs/ui/themes.yaml = presets.ts; themeForNiche and themeLint.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { THEME_FONTS, THEME_PRESETS, type Theme } from "@wizard/appspec";
@@ -19,6 +19,9 @@ import {
 } from "../src/index.js";
 import { UI_KIT_ROOT } from "./helpers/demo.js";
 
+// @ts-expect-error — plain ESM module without types
+const { parseYamlFiles } = await import("../../../tools/specs/validate.mjs");
+
 const SCHEMES: Scheme[] = ["light", "dark"];
 const hex2 = (n: number) => n.toString(16).padStart(2, "0");
 const GRID: string[] = [];
@@ -29,12 +32,15 @@ for (let r = 0; r < 16; r++)
 const c = (t: Record<string, string>, a: string, b: string) => contrast(t[a] as string, t[b] as string);
 
 describe("presets", () => {
-  test("four presets with ids of the AppSpec enum, Russian names, niches and draft status", () => {
+  test("ten presets with ids of the AppSpec enum, Russian names, niches, photo style and draft status", () => {
     expect(THEME_PRESET_LIST.map((p) => p.id)).toEqual([...THEME_PRESETS]);
+    expect(THEME_PRESET_LIST.length).toBeGreaterThanOrEqual(8);
+    expect(THEME_PRESET_LIST.length).toBeLessThanOrEqual(10);
     for (const p of THEME_PRESET_LIST) {
       expect(p.name).toMatch(/[А-Яа-яЁё]/);
       expect(p.description.length).toBeGreaterThan(20);
       expect(p.niches.length).toBeGreaterThanOrEqual(4);
+      expect(p.photoStyle).toMatch(/[а-яё]/);
       expect(p.draft).toBe(true);
       expect(THEME_FONTS).toContain(p.defaults.font);
       expect(THEME_FONTS).toContain(p.defaults.headingFont);
@@ -44,15 +50,33 @@ describe("presets", () => {
     }
   });
 
-  test("specs/ui/themes.yaml lists the same presets and fonts as the package data", () => {
-    const yaml = readFileSync(join(UI_KIT_ROOT, "../../specs/ui/themes.yaml"), "utf8");
-    for (const p of THEME_PRESET_LIST) {
-      expect(yaml).toContain(`id: ${p.id}`);
-      expect(yaml).toContain(`name: "${p.name}"`);
-      expect(yaml).toContain(`font: "${p.defaults.font}"`);
-      expect(yaml).toContain(`headingFont: "${p.defaults.headingFont}"`);
-      expect(yaml).toContain(`accent: "${p.defaults.accent}"`);
-    }
+  test("specs/ui/themes.yaml = presets.ts: ids, names, niches, defaults, depth, rhythm, headings, photo style, graphic", () => {
+    const path = join(UI_KIT_ROOT, "../../specs/ui/themes.yaml");
+    const loaded = (parseYamlFiles([path]) as Record<string, { ok?: { presets: unknown[] } }>)[path];
+    const fromSpec = loaded?.ok?.presets ?? [];
+    const fromCode = THEME_PRESET_LIST.map((p) => ({
+      id: p.id,
+      name: p.name,
+      niches: p.niches,
+      defaults: p.defaults,
+      depth: p.depth,
+      space: p.space,
+      heading: p.heading,
+      photoStyle: p.photoStyle,
+      graphic: p.graphic,
+    }));
+    const pick = (x: unknown) => {
+      const { looks: _l, why_font: _w, ...rest } = x as Record<string, unknown>;
+      return rest;
+    };
+    expect(fromSpec.map(pick)).toEqual(fromCode);
+    expect(readFileSync(path, "utf8")).toContain(`${THEME_PRESET_LIST.length} тем × 4096`);
+  });
+
+  test("every preset has its own font pair and the heading face differs from the text face", () => {
+    const pairs = THEME_PRESET_LIST.map((p) => `${p.defaults.headingFont}+${p.defaults.font}`);
+    expect(new Set(pairs).size).toBe(pairs.length);
+    for (const p of THEME_PRESET_LIST) expect(p.defaults.headingFont).not.toBe(p.defaults.font);
   });
 
   test.each(THEME_PRESET_LIST.flatMap((p) => SCHEMES.map((s) => [p.id, s] as const)))(
@@ -73,7 +97,7 @@ describe("presets", () => {
   );
 
   test.each(SCHEMES)(
-    "4 presets + v1 × 4096 brand colours: text and buttons ≥ 4.5:1, button edge ≥ 3:1 (%s)",
+    "10 presets + v1 × 4096 brand colours: text and buttons ≥ 4.5:1, button edge ≥ 3:1 (%s)",
     (scheme) => {
       const failures: string[] = [];
       for (const preset of [undefined, ...THEME_PRESETS]) {
@@ -152,13 +176,21 @@ describe("v1 compatibility and determinism", () => {
 describe("themeForNiche", () => {
   test.each([
     ["Студия маникюра в Казани", "warm"],
-    ["Пекарня и торты на заказ", "warm"],
+    ["Пекарня и торты на заказ", "bistro"],
+    ["Кофейня у метро", "bistro"],
     ["Юридическая консультация для бизнеса", "strict"],
     ["CRM для учёта заявок отдела продаж", "strict"],
     ["Школа танцев для детей", "bright"],
-    ["Онлайн-курсы английского", "bright"],
+    ["Онлайн-курсы английского", "academy"],
+    ["Репетитор по математике, подготовка к ЕГЭ", "academy"],
     ["Частный психолог, запись на консультацию", "calm"],
-    ["Стоматологическая клиника", "calm"],
+    ["Стоматологическая клиника", "care"],
+    ["Ветеринарная клиника", "care"],
+    ["Барбершоп в центре", "workshop"],
+    ["Ремонт квартир под ключ", "workshop"],
+    ["Свадебный фотограф", "boutique"],
+    ["Ювелирная мастерская", "boutique"],
+    ["Концерты и фестивали в клубе", "poster"],
     ["Что-то совсем непонятное", "strict"],
   ])("%s → %s", (niche, id) => expect(themeForNiche(niche)).toBe(id));
 });

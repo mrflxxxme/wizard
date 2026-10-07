@@ -21,6 +21,13 @@ export default {
         title="Пример: вопросы в две колонки"
         items={items}
       />
+      <Faq
+        testId="split"
+        variant="split"
+        title="Пример: вопросы слева"
+        intro="Пример: не нашли ответ — напишите нам."
+        items={items}
+      />
     </div>
   ),
 } satisfies Story;

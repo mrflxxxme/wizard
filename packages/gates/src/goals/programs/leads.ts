@@ -1,7 +1,16 @@
 // Goal scenarios of the module «Заявки» (packages/modules/src/leads, modules.yaml#catalog leads): entity `lead`,
 // status new | in_work | done, the landing's LeadForm for the visitor, the cabinet for the owner.
 import type { GoalOutboxMessage, GoalProgram } from "../types.js";
-import { component, enumLabel, ownerRole, pageRoute, pageText, seedTexts } from "./shared.js";
+import {
+  component,
+  entityPage,
+  enumLabel,
+  openEntity,
+  ownerRole,
+  pageRoute,
+  pageText,
+  seedTexts,
+} from "./shared.js";
 
 const LEAD_FORM = component("LeadForm");
 
@@ -27,10 +36,8 @@ const leaveLead: GoalProgram = async (t) => {
   if (lead.status !== "new") t.fail(`статус новой заявки «${String(lead.status)}», ожидался «new»`);
 
   t.step("Владелец открывает список заявок в кабинете");
-  const cabinet = pageRoute(t.spec, ownerRole(t.spec));
-  if (!cabinet) return t.fail("у владельца нет кабинета со списком заявок");
   await t.as("owner");
-  await t.open(cabinet);
+  await openEntity(t, ownerRole(t.spec), "lead");
   const label = enumLabel(t.spec, "lead", "status", "new");
   const marked = Object.values(lead).some((v) => typeof v === "string" && v.includes(t.marker));
   if (marked) await t.expectNear(t.marker, label);
@@ -39,9 +46,13 @@ const leaveLead: GoalProgram = async (t) => {
   t.step("Владельцу ушло письмо о новой заявке");
   await t.runJobs();
   const owners = new Set(t.userIds("owner"));
+  // The channel of the plan: e-mail, or Telegram only when the plan has no e-mail (notify channels: [telegram]).
+  const connectors = new Set((t.spec.integrations ?? []).map((i) => i.connector));
+  const channel = connectors.has("email") || !connectors.has("telegram") ? "email" : "telegram";
   // In test mode the owner is a marker without an address (payload.recipient owner), an owner user — by userId.
-  const mail = t.outbox("email").filter((m) => toOwner(m, owners));
+  const mail = t.outbox(channel).filter((m) => toOwner(m, owners));
   if (mail.length === 0) {
+    if (channel === "telegram") t.fail("сообщения владельцу о новой заявке нет в исходящих Telegram");
     const all = t.outbox("email");
     t.fail(
       "письма владельцу нет в исходящих",
@@ -56,7 +67,9 @@ const leaveLead: GoalProgram = async (t) => {
 const leadsClosed: GoalProgram = async (t) => {
   t.step("Посетитель открывает адрес списка заявок без входа");
   await t.as("visitor");
-  await t.open(pageRoute(t.spec, ownerRole(t.spec)) ?? "/cabinet");
+  await t.open(
+    entityPage(t, ownerRole(t.spec), "lead")?.route ?? pageRoute(t.spec, ownerRole(t.spec)) ?? "/cabinet",
+  );
 
   t.step("Список заявок недоступен без входа");
   const text = await pageText(t);

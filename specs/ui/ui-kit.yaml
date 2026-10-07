@@ -6,7 +6,7 @@
 version: 1
 package: "@wizard/ui-kit"
 path: packages/ui-kit
-tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01, B2-32]
+tasks: [M0-08, M0-25, M2-03, M2-14, M2-42, M2-43, M2-47, M3-01, B2-32, B2-34, B2-35, B2-36]
 
 scope:
   M0: [tokens, a11y, responsive, wz_id, AppShell, Catalog, ItemCard, RecordForm, DataTable, RecordCard, StatusBoard, QrTicket, QrScanner(online), CabinetLayout, StatsReport, Button, Badge, Field, ConsentCheckbox]
@@ -26,7 +26,7 @@ rules:
 
 # ---------------- Дизайн-токены ----------------
 tokens:
-  source: "AppSpec.theme {preset, accent, font, headingFont, radius, density, mode, logoFile}; preset — одна из 4 тем (specs/ui/themes.yaml), явные поля её уточняют; отсутствующие поля → тема или defaults. Тему подбирают по нише: themeForNiche(ниша)"
+  source: "AppSpec.theme {preset, accent, font, headingFont, radius, density, mode, logoFile}; preset — одна из 10 тем (specs/ui/themes.yaml), явные поля её уточняют; отсутствующие поля → тема или defaults. Тему подбирают по нише: themeForNiche(ниша)"
   api:
     themeToTokens: "themeToTokens(theme: AppSpec['theme'] | undefined, scheme: 'light'|'dark'): Record<`--w-${string}`, string> — чистая функция, одна и та же в runtime-сборке и в platform-web (apply-theme-tokens)"
     applyTokens: "applyTokens(root: HTMLElement, theme): void — ставит переменные light и dark, атрибут data-wz-mode; без перезагрузки"
@@ -54,23 +54,39 @@ tokens:
     --w-density-gap: { compact: "8px", regular: "16px" }
     --w-density-control: { compact: "36px", regular: "44px", note: "визуальная высота контрола; хит-зона — см. a11y.touch_targets" }
     --w-density-row: { compact: "40px", regular: "52px" }
-  fonts: "MUST: шрифты каталога (9 семейств OFL-1.1 с кириллицей: Onest, Inter Tight, Manrope, PT Sans, IBM Plex Sans, Golos Text, PT Serif, Lora, Unbounded; 400 и 700, cyrillic+latin) лежат в packages/ui-kit/fonts, каталог с лицензией и источником — src/tokens/font-catalog.ts (scripts/sync-fonts.mjs из @fontsource/*), раздаёт runtime с /_wizard/fonts/<файл с хешем> (immutable); applyTokens вставляет @font-face (font-display: swap, unicode-range) только для шрифтов темы; запросы к Google Fonts и чужим CDN из систем запрещены (D64)"
+  fonts: "MUST: шрифты каталога (21 семейство OFL-1.1 с кириллицей: Onest, Inter Tight, Manrope, PT Sans, IBM Plex Sans, Golos Text, PT Serif, Lora, Unbounded и пары тем v2 — Cormorant Garamond, Commissioner, Piazzolla, Source Sans 3, Sofia Sans Extra Condensed, Sofia Sans, Alegreya Sans, Alegreya, Alumni Sans, Literata, Wix Madefor Display, Wix Madefor Text; 400 и 700, cyrillic+latin) лежат в packages/ui-kit/fonts, каталог с лицензией и источником — src/tokens/font-catalog.ts (scripts/sync-fonts.mjs из @fontsource/*), раздаёт runtime с /_wizard/fonts/<файл с хешем> (immutable); applyTokens вставляет @font-face (font-display: swap, unicode-range) только для шрифтов темы; запросы к Google Fonts и чужим CDN из систем запрещены (D64)"
   v2:
     tokens: "--w-font-heading, --w-heading-weight, --w-heading-tracking, --w-font-size-display|h2|h3 (clamp), --w-radius-lg, --w-shadow-sm|md (глубина темы), --w-surface-alt (полоса секции), --w-accent-strong (наведение), --w-accent-tint (подложка), --w-accent-edge (кромка кнопки ≥ 3:1 к фону), --w-overlay и --w-overlay-ink (текст поверх фото), --w-section-space (ритм секций), --w-container"
     compatibility: "Тема без preset и headingFont даёт прежние значения всех прежних токенов (снимок), v2 только добавляет V2_TOKENS"
     api: "resolveTheme, themeFonts, themeLint(theme) → [{code, message}], themeForNiche(ниша) → id темы, THEME_PRESET_LIST, FONT_CATALOG, fontFaceCss"
+  cabinet:   # B2-34: кабинеты клиентских систем на визуальном языке дизайн-системы v2 (grill-7 #6–#7, план беты v2 §3)
+    scope: "Кабинеты и рабочие экраны систем (CabinetLayout, DataTable, StatusBoard, RecordCard, StatsReport и всё внутри них: RecordForm, Button, Badge, Field, пустые состояния). Публичные страницы (лендинг, секции, публичная запись) не меняются — их оформление B2-35/36"
+    palette: "Тёплая нейтральная основа платформы v2 (PLATFORM_COLORS: светлая #F8F7F4 / #FFFFFF / #1D1C1A / #6B6862 / #E9E6E0, тёмная #1B1A18 / #252421 / #EEECE7 / #A6A29A) при любой теме системы; акценты — фирменный цвет темы (theme.accent или цвет пресета) по правилам businessColors: заливка сдвигается по L в OKLCH до ≥ 3:1 к фону и поверхности, текст на ней ≥ 4.5:1, цветной текст ≥ 4.5:1 на фоне, поверхности, утопленном фоне и подложках акцента. Шрифты, радиус и плотность остаются из темы системы"
+    tokens: "themeToTokens добавляет --w-cab-<name> для обеих схем (входят в V2_TOKENS): bg, surface, surface-alt, ink, muted, line, ok|warn|bad и их -soft, neutral-soft, accent, accent-ink, accent-text, accent-soft, accent-tint, accent-strong, accent-edge, focus, shadow-sm|md, а также только кабинетные sunken (шапка таблицы, колонки доски), line-strong, skel (скелетон), radius-card (18px). Источник — src/tokens/cabinet.ts (cabinetValues, cabinetTokens)"
+    look: "MUST: корень компонента кабинета ставит data-wz-look=\"cabinet\"; пока такой компонент смонтирован, атрибут стоит и на <html> (useCabinetLook, счётчик). src/tokens/cabinet.css = cabinetCss() (тест сверяет, UPDATE_CABINET_CSS=1 перезаписывает): под [data-wz-look=cabinet] каждый --w-* из списка берёт значение --w-cab-* (селектор с весом (0,3,0) выше блоков темы). base.css под html[data-wz-look=cabinet] даёт корню страницы поля (кроме AppShell), ритм и заголовки — через :where(), ниже любых классов компонентов"
+    csp: "MUST: фирменный цвет попадает в кабинет только через CSS-переменные (те же блоки темы light/dark, что ставит applyTokens) и атрибуты; компоненты кабинета не вставляют <style>"
+    visual: "Секции кабинета — чипы на телефоне (перенос, без прокрутки вбок) и боковая карточка на десктопе, активная — подложка и кромка фирменного цвета; таблица — карточка с утопленной шапкой, строки подсвечиваются подложкой акцента, на sm — карточки; доска — утопленные колонки с карточками; карточка записи, форма, отчёт — поверхности с радиусом 18 и мягкой тенью; пустое состояние — пунктирный контур. Касания ≥ 44 px; анимируются только transform и opacity; при prefers-reduced-motion движение выключено (base.css)"
+    acceptance:
+      - "vitest (test/cabinet.test.ts): 4096 фирменных цветов × 2 темы — заливка ≥ 3:1, текст на ней и цветной текст ≥ 4.5:1 на всех фонах кабинета, тоны на своих подложках ≥ 4.5:1, фокус ≥ 3:1; тёплая основа при любом пресете; cabinet.css = cabinetCss(); в CSS компонентов кабинета нет цветов вне var(--w-*), переходы только transform/opacity"
+      - "Playwright (packages/modules/test/cabinets.browser.test.ts, CI-джоб e2e): матрица leads, booking, deals, client_card, staff — G0 и G1 зелёные; каждая страница кабинета каждой роли входа, карточка записи и форма правки на 390 и 1280 в светлой и тёмной теме: вид кабинета, контраст видимого текста AA, подписи полей, касания ≥ 44 px на 390, без прокрутки вбок; скриншоты test/artifacts/cabinet-*.png (артефакт CI). WIZARD_CABINET_ROWS=all — все строки матрицы"
   themes:
-    - { id: strict, label: "Строгая деловая — юристы, бухгалтерия, B2B, строительство, CRM и внутренние инструменты" }
-    - { id: warm, label: "Тёплая — салоны красоты, мастера, кафе и пекарни, цветы, ателье, гостевые дома" }
-    - { id: bright, label: "Яркая современная — спорт и танцы, онлайн-школы, детские студии, мероприятия, развлечения" }
-    - { id: calm, label: "Спокойная минималистичная — психологи, клиники, йога, архитектура и интерьеры, фотографы" }
+    - { id: strict, label: "Строгая — юристы, финансы, B2B, логистика, CRM" }
+    - { id: warm, label: "Тёплая — салоны красоты, маникюр, цветы, ателье" }
+    - { id: bright, label: "Яркая — спорт и танцы, детские студии, квесты" }
+    - { id: calm, label: "Спокойная — психологи, йога, интерьеры, галереи" }
+    - { id: boutique, label: "Изысканная — свадьбы, фотографы, ювелиры, бутики" }
+    - { id: bistro, label: "Аппетитная — кафе, рестораны, пекарни" }
+    - { id: workshop, label: "Мастерская — барбершопы, ремонт, автосервис, стройка" }
+    - { id: academy, label: "Дружелюбная — репетиторы, школы и курсы" }
+    - { id: poster, label: "Афиша — мероприятия, концерты, театры, музеи" }
+    - { id: care, label: "Заботливая — клиники, стоматология, ветклиники" }
   mode: "light|dark — принудительно; auto — по prefers-color-scheme; атрибут data-wz-mode на <html>"
   acceptance:
     - "vitest: для 4096 акцентов (сетка 16³ по RGB) и обеих схем contrast(--w-accent-ink, --w-accent) ≥ 4.5 и contrast(--w-accent-text, bg|surface) ≥ 4.5; ink/muted на bg/surface ≥ 4.5 (WCAG 2.x формула относительной яркости)"
     - "vitest: themeToTokens детерминирована (снимок для defaults) и не зависит от DOM"
     - "Playwright (demo): applyTokens с новым accent меняет getComputedStyle кнопки без reload (performance.navigation не меняется) за < 50 мс"
     - "Playwright (demo): mode=auto + emulateMedia({colorScheme:'dark'}) → --w-bg = #0F1115"
-    - "M2-42 vitest: 4 темы и тема без preset × 4096 фирменных цветов × 2 схемы — текст и кнопки ≥ 4.5:1, кромка кнопки ≥ 3:1; каталог шрифтов — лицензия из списка D64, источник, глифы А–я, Ё, ё (test/themes.test.ts, test/fonts.test.ts)"
+    - "M2-42, B2-36 vitest: 10 тем и тема без preset × 4096 фирменных цветов × 2 схемы — текст и кнопки ≥ 4.5:1, кромка кнопки ≥ 3:1; каталог шрифтов — лицензия из списка D64, источник, глифы А–я, Ё, ё (test/themes.test.ts, test/fonts.test.ts)"
 
 # ---------------- Доступность ----------------
 a11y:
@@ -504,7 +520,7 @@ components:
         logo?: ImageSource;                  // картинка логотипа (fileId поля image или src из бандла)
         links?: { label: string; href: string }[];   // пункты меню; якоря "#lead" ведут к блокам страницы
         cta?: { label: string; href: string };       // одна кнопка справа («Записаться» → "#lead")
-        variant?: 'bar' | 'centered';        // bar — логотип слева, меню справа; centered — логотип над меню
+        variant?: 'bar' | 'centered' | 'transparent';   // bar — логотип слева, меню справа; centered — логотип над меню; transparent — без плашки и линии, поверх страницы (B2-35)
         sticky?: boolean;                    // прилипает к верху при прокрутке
       }
     behaviour:
@@ -521,7 +537,8 @@ components:
         primary?: { label: string; href: string };   // главное действие ("#lead")
         secondary?: { label: string; href: string };
         image?: ImageSource;                 // { fileId?: string | null; src?: string; alt: string; decorative?: boolean }
-        variant?: 'split' | 'centered' | 'cover';   // split — текст и фото рядом; centered — текст по центру; cover — фото фоном с затемнением
+        images?: ImageSource[];              // коллаж: ещё 1–2 картинки (B2-35)
+        variant?: 'split' | 'centered' | 'cover' | 'minimal' | 'collage';   // split — текст и фото рядом; centered — текст по центру; cover — фото фоном с затемнением; minimal — заголовок-плакат без фото; collage — 2–3 фото со сдвигом (на телефоне одно). Без фото split и collage показывают графику темы (--w-graphic)
         tone?: 'default' | 'accent';         // accent — фон фирменного цвета (кнопка инвертируется)
         anchor?: string;                     // id секции
       }
@@ -614,7 +631,7 @@ components:
         contacts?: { label: string; value: string; href?: string }[];   // href: "tel:+7…", "mailto:…"
         legal?: string;                      // строка владельца (ИП/ООО, ИНН) — только из брифа, не придумывать
         showPolicy?: boolean;                // ссылка на политику ПДн (по умолчанию — если в системе есть ПДн)
-        variant?: 'simple' | 'columns';
+        variant?: 'simple' | 'columns' | 'minimal';   // minimal — одна строка по центру (B2-35)
       }
     behaviour: ["Подвал: <footer>, контакты, ссылки, строка владельца и ссылка «Политика обработки персональных данных» на compliance.policyPage"]
     test_ids: [wz-footer, wz-footer-policy]
@@ -652,17 +669,159 @@ components:
       - "Предпросмотр сразу после выбора; ошибки — у поля (415 «Нужна картинка JPEG, PNG или WebP», 413 — сообщение сервера про размер). RecordForm использует его для полей image"
     test_ids: [wz-imagefield-<name>, wz-imagefield-<name>-input, wz-imagefield-<name>-preview, wz-imagefield-<name>-remove, wz-imagefield-<name>-error]
 
+  # ---------- B2-35: библиотека секций v2 (modules.yaml#sections). Тексты — из плана системы; фото — заглушка графики темы до B2-38 ----------
+  # Новые варианты прежних блоков: Features icons (иконка в круге, FeatureItem.icon?: 'check'|'star'|'clock'|'shield'|'heart'|'leaf'|'spark'|'pin'|'phone'|'chat'|'calendar'|'gift'),
+  # Steps cards (карточки с крупным номером), Faq split (заголовок слева, ответы справа; intro?), Cta split (текст слева, кнопки справа на полосе alt).
+  - name: Gallery
+    milestone: B2
+    props: |
+      interface GalleryProps extends WzBase {
+        title?: string; intro?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        items: { caption?: string; image?: ImageSource }[];   // без картинки — плитка с графикой темы
+        variant?: 'grid' | 'masonry' | 'carousel';   // ровная сетка; плитки разной высоты; лента, листается рукой (без автопрокрутки)
+      }
+    behaviour: ["Галерея работ или места; лента прокручивается внутри своей рамки (страница вбок не едет), кнопки «Назад»/«Вперёд» 48 px"]
+    test_ids: [wz-gallery, wz-gallery-item, wz-gallery-track, wz-placeholder]
+
+  - name: Team
+    milestone: B2
+    props: |
+      interface TeamProps extends WzBase {
+        title: string; intro?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        items: { name: string; role?: string; text?: string; image?: ImageSource }[];   // без фото — монограмма на графике темы
+        variant?: 'cards' | 'row' | 'list';   // карточки с портретом; круглые портреты в ряд; строки с текстом
+      }
+    behaviour: ["Команда так, как её назвал владелец; стоковых людей нет"]
+    test_ids: [wz-team, wz-team-item]
+
+  - name: Testimonials
+    milestone: B2
+    props: |
+      interface TestimonialsProps extends WzBase {
+        title?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        items: { text: string; author?: string; source?: string }[];   // только из брифа (modules.yaml#sections.texts)
+        variant?: 'cards' | 'quote' | 'carousel';   // сетка цитат; одна крупная цитата (первая); лента
+      }
+    behaviour: ["Отзывы — <blockquote> с подписью автора и источника"]
+    test_ids: [wz-testimonials, wz-testimonials-item, wz-testimonials-track]
+
+  - name: Stats
+    milestone: B2
+    props: |
+      interface StatsProps extends WzBase {
+        title?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        items: { value: string; label: string }[];   // 2–4 факта из брифа
+        variant?: 'row' | 'cards' | 'band';   // ряд с разделителями; карточки; полоса фирменного цвета
+      }
+    behaviour: ["Цифры только из брифа; без заголовка секции — скрытый заголовок «В цифрах» для чтения с экрана"]
+    test_ids: [wz-stats, wz-stats-item]
+
+  - name: About
+    milestone: B2
+    props: |
+      interface AboutProps extends WzBase {
+        title: string; text: string;   // абзацы разделены пустой строкой
+        image?: ImageSource; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        variant?: 'split' | 'centered' | 'story';   // текст и фото рядом (без фото — графика темы); узкий текст по центру; заголовок слева, история справа
+      }
+    behaviour: ["О бизнесе словами владельца"]
+    test_ids: [wz-about]
+
+  - name: Contacts
+    milestone: B2
+    props: |
+      interface ContactsProps extends WzBase {
+        title: string; address?: string; phone?: string; email?: string; hours?: string; messengers?: string[];
+        anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        variant?: 'card' | 'split' | 'columns';   // карточка; контакты и место карты; колонки
+      }
+    behaviour:
+      - "Телефон — ссылка tel:, почта — mailto:, мессенджер — ссылка, если это ссылка"
+      - "Карта — ссылка «Открыть в Яндекс Картах» (https://yandex.ru/maps/?text=<адрес>) на графике темы: страница сама ничего не грузит с сервиса карт (виджет карты — компонент платформы, после беты v2)"
+    test_ids: [wz-contacts, wz-contacts-address, wz-contacts-phone, wz-contacts-email, wz-contacts-hours]
+
+  - name: Hours
+    milestone: B2
+    props: |
+      interface HoursProps extends WzBase {
+        title?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';   // без title — «Часы работы»
+        items: { day: string; time: string }[];
+        variant?: 'table' | 'cards' | 'inline';   // таблица в две колонки; карточка на строку; одна строка
+      }
+    behaviour: ["Часы работы владельца; цифры табличные"]
+    test_ids: [wz-hours, wz-hours-item]
+
+  - name: Logos
+    milestone: B2
+    props: |
+      interface LogosProps extends WzBase {
+        title?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        items: { name: string; image?: ImageSource }[];   // партнёры и клиенты по названию, только с разрешения владельца
+        variant?: 'row' | 'grid' | 'marquee';   // ряд; плитки; бегущая строка (при prefers-reduced-motion стоит и переносится, на наведении — пауза)
+      }
+    behaviour: ["Вторая копия ленты marquee — aria-hidden: читалка слышит список один раз"]
+    test_ids: [wz-logos, wz-logos-item]
+
+  - name: TextBlock
+    milestone: B2
+    props: |
+      interface TextBlockProps extends WzBase {
+        title?: string; text: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        variant?: 'plain' | 'two_columns' | 'quote';   // узкая колонка; две колонки на широком экране; крупная цитата
+      }
+    behaviour: ["Текст владельца; без заголовка — скрытый заголовок из первых слов текста"]
+    test_ids: [wz-textblock]
+
+  - name: Pricing
+    milestone: B2
+    props: |
+      interface PricingProps extends WzBase {
+        entity: string;                       // строки цен из данных системы (service каталога или package_plan абонементов)
+        title: string; intro?: string; note?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        nameField?: string; priceField?: string; descriptionField?: string;   // по умолчанию name, price
+        details?: { field: string; suffix?: string }[];   // «60 мин», «8 визитов»
+        query?: ListQuery; action?: { label: string; href: string }; emptyText?: string;
+        variant?: 'cards' | 'table' | 'compact';   // карточки тарифов; прайс-лист строками; «название … цена»
+      }
+    behaviour:
+      - "Цены не вписываются в страницу: DataSource.useList(entity) — владелец меняет их в кабинете; нет цены — «Цена по запросу»; пусто — «Цены скоро появятся»"
+      - "Таблица на 390 px складывается в строки «название — цена» без горизонтальной прокрутки"
+    test_ids: [wz-pricing, wz-pricing-item, wz-pricing-primary]
+
+  - name: Booking
+    milestone: B2
+    props: |
+      interface BookingProps extends WzBase {
+        title: string; intro?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        action: { label: string; href: string };   // на страницу записи (/booking модуля «Запись по слотам»)
+        steps?: string[];                          // по умолчанию «Выберите услугу», «Выберите удобное время», «Оставьте контакты»
+        variant?: 'card' | 'split' | 'inline';     // карточка с шагами; текст слева, шаги и кнопка справа; одна полоса
+      }
+    behaviour: ["Секция лендинга «Запись на время»: подбор слота живёт на странице записи; id секции по умолчанию booking"]
+    test_ids: [wz-booking, wz-booking-primary]
+
+  - name: LandingSection
+    milestone: B2
+    props: |
+      interface LandingSectionProps extends WzBase {
+        title: string; intro?: string; anchor?: string; tone?: 'default' | 'alt' | 'accent';
+        main?: boolean;          // h1 вместо h2 — когда секция и есть страница (/services)
+        children?: ReactNode;    // содержимое модуля (витрина каталога)
+      }
+    behaviour: ["Рамка секции лендинга (отступы ритма темы, контейнер, заголовок блоков) вокруг содержимого модуля: витрина «Услуги из каталога» выглядит как остальные секции"]
+    test_ids: [wz-section]
+
 demo:
   path: packages/ui-kit/demo
-  rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 4 темы), ширины"
-  ci: "Playwright: скриншоты 1280 и 390 в light/dark; проверки a11y, responsive, wz_id"
+  rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 10 тем), ширины"
+  ci: "Playwright: скриншоты 1280 и 390 в light/dark; проверки a11y, responsive, wz_id; каждый вариант блока лендинга — в 10 темах на 390 и 1280 (B2-35, test/sections.browser.test.ts)"
 
 # ---------------- Дизайн-система платформы v2 (B2-32) ----------------
 # Источник: docs/reviews/grill-7.md (решения 1–10), утверждённый прототип docs/prototype/v2-canvas-e.html, план беты v2 §3.
 platform_v2:
   scope: "Только интерфейс платформы (platform-web: холст, плавающий чат, кабинет, /admin). Код систем клиентов её не импортирует: у систем — компоненты и токены --w-* выше. Экраны переводят на v2 задачи B2-25, B2-29, B2-33"
   entry: "import { … } from \"@wizard/ui-kit/v2\" (src/v2/index.ts) и один раз import \"@wizard/ui-kit/v2/theme.css\" (шрифты, токены, база, зерно, выключение движения)"
-  root: "Корень помечается applyPlatformTheme(el, {theme, business, glass, grain}) или <ThemeRoot>: data-p-root; data-p-theme=light|dark (нет — по prefers-color-scheme); data-p-biz — цвет бизнеса клиента; data-p-glass=off — стекло без размытия; data-p-motion=off — движение выключено"
+  root: "Корень помечается applyPlatformTheme(el, {theme, business, glass, grain}) или <ThemeRoot>: data-p-root; data-p-theme=light|dark (нет — по prefers-color-scheme); data-p-biz — цвет бизнеса клиента; data-p-glass=off — стекло без размытия; data-p-motion=off — движение выключено. MUST: цвет бизнеса ставится CSS-переменными корня (--p-biz-light … --p-biz-wash-dark, businessVars) без вставки <style> — CSP платформы его запрещает (B2-34); схему выбирают правила tokens.css"
   tokens:
     prefix: "--p-*; таблицы — src/v2/tokens.ts (PLATFORM_COLORS, platformTokens), CSS — src/v2/tokens.css = platformThemeCss() (тест сверяет, UPDATE_V2_CSS=1 перезаписывает)"
     palette: { light: { bg: "#F8F7F4", surface: "#FFFFFF", ink: "#1D1C1A", ink_2: "#6B6862", line: "#E9E6E0" }, dark: { bg: "#1B1A18", surface: "#252421", ink: "#EEECE7", ink_2: "#A6A29A" } }

@@ -45,10 +45,30 @@ export function fragmentPage(
   const fromLocal = names.filter((n) => local[n] !== undefined);
   return [
     comment,
+    'import { useEffect } from "@wizard/sdk";',
     ...(fromKit.length ? [`import { ${fromKit.join(", ")} } from "@wizard/ui-kit";`] : []),
     ...fromLocal.map((n) => `import { ${n} } from ${js(local[n])};`),
     "",
     "export default function Home() {",
+    // A link from another page («Выбрать» on /services → /#lead) loads before the sections render, so the browser
+    // finds no anchor to scroll to: scroll once they are on the page.
+    // Sections that load their data (catalog, prices) grow above the anchor after mount, so keep it in view while
+    // the page settles — until the visitor scrolls or presses a key, at most 2 s.
+    "  useEffect(() => {",
+    "    const id = decodeURIComponent(location.hash.slice(1));",
+    "    const el = id ? document.getElementById(id) : null;",
+    "    if (!el) return;",
+    "    el.scrollIntoView();",
+    "    const ro = new ResizeObserver(() => el.scrollIntoView());",
+    "    ro.observe(document.body);",
+    "    const stop = () => ro.disconnect();",
+    "    const timer = setTimeout(stop, 2000);",
+    '    for (const e of ["wheel", "touchstart", "keydown"]) addEventListener(e, stop, { once: true });',
+    "    return () => {",
+    "      clearTimeout(timer);",
+    "      stop();",
+    "    };",
+    "  }, []);",
     "  return (",
     "    <>",
     ...blocks.map((b) => `      ${b}`),

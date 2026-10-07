@@ -73,6 +73,10 @@ export interface DevelopmentRequestRow {
   systemId: string | null;
   systemName: string | null;
   email: string | null;
+  /** B2-26: done — a ready module covers the request (module factory); candidateId — its module candidate. */
+  status: "open" | "done";
+  doneAt: Date | null;
+  candidateId: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -115,6 +119,9 @@ export async function developmentRequests(
       "r.system_id",
       "s.name as system_name",
       "u.email",
+      "r.status",
+      "r.done_at",
+      "r.candidate_id",
     ]);
   if (o.category) q = q.where("r.category", "=", o.category);
   const rows = await q
@@ -141,6 +148,9 @@ export async function developmentRequests(
       systemId: r.system_id,
       systemName: r.system_name ?? null,
       email: r.email ?? null,
+      status: r.status,
+      doneAt: r.done_at ? new Date(r.done_at) : null,
+      candidateId: r.candidate_id,
     })),
   };
 }

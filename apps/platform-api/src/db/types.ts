@@ -25,6 +25,8 @@ export interface UsersTable {
   pd_consent_at: TsNull;
   offer_accepted_at: TsNull;
   offer_version: string | null;
+  /** B2-26 (migration 0035): consent to letters about new abilities («Теперь умеем»); null — no letters. */
+  updates_consent_at: TsNull;
   created_at: TsDef;
 }
 
@@ -555,6 +557,48 @@ export interface DevelopmentRequestsTable {
   category: string;
   quote: string;
   offered: string | null;
+  /** B2-26: the module candidate of the request (weekly rating), open | done (a ready module covers it). */
+  candidate_id: string | null;
+  status: ColumnType<"open" | "done", "open" | "done" | undefined, "open" | "done">;
+  done_at: TsNull;
+  created_at: TsDef;
+}
+
+/** Status of a module candidate (B2-26, db.yaml#module_candidates). */
+export type ModuleCandidateStatus = "new" | "approved" | "disabled" | "ready";
+
+/** db.yaml#module_candidates (B2-26): a group of requests and custom parts in the weekly rating of the module factory. */
+export interface ModuleCandidatesTable {
+  id: Generated<string>;
+  key: string;
+  category: string;
+  title: string;
+  status: ColumnType<ModuleCandidateStatus, ModuleCandidateStatus | undefined, ModuleCandidateStatus>;
+  module_id: string | null;
+  rank: number | null;
+  week_start: TsNull;
+  week_requests: Generated<number>;
+  week_custom: Generated<number>;
+  total_requests: Generated<number>;
+  total_custom: Generated<number>;
+  systems: Generated<number>;
+  clients: Generated<number>;
+  examples: Json<{ quote: string; source: "request" | "custom" }[]>;
+  last_seen_at: TsNull;
+  computed_at: TsNull;
+  note: string | null;
+  decided_by: string | null;
+  decided_at: TsNull;
+  ready_at: TsNull;
+  created_at: TsDef;
+}
+
+/** db.yaml#module_announcements (B2-26): the «Теперь умеем» letter, once per module and client. */
+export interface ModuleAnnouncementsTable {
+  module_id: string;
+  user_id: string;
+  candidate_id: string | null;
+  system_id: string | null;
   created_at: TsDef;
 }
 
@@ -619,4 +663,6 @@ export interface DB {
   "platform.staff_audit_log": StaffAuditLogTable;
   "platform.support_requests": SupportRequestsTable;
   "platform.development_requests": DevelopmentRequestsTable;
+  "platform.module_candidates": ModuleCandidatesTable;
+  "platform.module_announcements": ModuleAnnouncementsTable;
 }

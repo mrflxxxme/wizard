@@ -18,7 +18,7 @@ const fieldLabel = (spec: AppSpec, entity: string, field: string) =>
 
 /** The contacts the booking form gets from fillForm (goals/browser.ts SYNTHETIC): the package is sold to them. */
 export function formContact(t: GoalRun): { phone: string; email: string } {
-  return { phone: "+79990001234", email: `goal.${t.marker.replace(/\W/g, "").toLowerCase()}@example.test` };
+  return { phone: `+7${t.contact.phone}`, email: t.contact.email };
 }
 
 /** POST /api/data/<entity> as the current actor → the new record's id. */

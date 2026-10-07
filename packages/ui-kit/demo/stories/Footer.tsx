@@ -35,6 +35,7 @@ export default {
         columns={columns}
         contacts={contacts}
       />
+      <Footer testId="minimal" variant="minimal" brand="Пример: студия" legal="Пример: ИП, ИНН из брифа" />
     </div>
   ),
 } satisfies Story;

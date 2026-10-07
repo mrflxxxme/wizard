@@ -386,4 +386,517 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
     ],
   },
+  {
+    family: "Cormorant Garamond",
+    id: "cormorant-garamond",
+    category: "serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-cormorant-garamond.txt",
+    attribution:
+      "Copyright 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant) CormorantGaramond-Italic[wght].ttf: Copyright 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/cormorant-garamond@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "cormorant-garamond-cyrillic-400-0d23162e.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12776,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "cormorant-garamond-latin-400-8048ac20.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 22876,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "cormorant-garamond-cyrillic-700-a767c1a1.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12536,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "cormorant-garamond-latin-700-21a0fc1c.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 22340,
+      },
+    ],
+  },
+  {
+    family: "Commissioner",
+    id: "commissioner",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-commissioner.txt",
+    attribution: "Copyright 2019 The Commissioner Project Authors (github.com/kosbarts/Commissioner)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/commissioner@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "commissioner-cyrillic-400-ae9988f4.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 11860,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "commissioner-latin-400-c20800a5.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 18608,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "commissioner-cyrillic-700-8ede0892.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12020,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "commissioner-latin-700-a5319b11.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 18824,
+      },
+    ],
+  },
+  {
+    family: "Piazzolla",
+    id: "piazzolla",
+    category: "serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-piazzolla.txt",
+    attribution:
+      "Copyright 2018 The Piazzolla Project Authors (https://github.com/huertatipografica/piazzolla) Piazzolla-Italic[opsz,wght].ttf: Copyright 2018 The Piazzolla Project Authors (https://github.com/huertatipografica/piazzolla)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/piazzolla@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "piazzolla-cyrillic-400-ca45dadf.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 10980,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "piazzolla-latin-400-89e23b01.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 17760,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "piazzolla-cyrillic-700-84a68a30.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 11056,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "piazzolla-latin-700-0011acc2.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 18272,
+      },
+    ],
+  },
+  {
+    family: "Source Sans 3",
+    id: "source-sans-3",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-source-sans-3.txt",
+    attribution: "Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/source-sans-3@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "source-sans-3-cyrillic-400-b0324c3a.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 9604,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "source-sans-3-latin-400-0f73f35e.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 15696,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "source-sans-3-cyrillic-700-1c484c75.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 9604,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "source-sans-3-latin-700-ae35266f.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 15596,
+      },
+    ],
+  },
+  {
+    family: "Sofia Sans Extra Condensed",
+    id: "sofia-sans-extra-condensed",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-sofia-sans-extra-condensed.txt",
+    attribution:
+      "Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans) SofiaSansExtraCondensed-Italic[wght].ttf: Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans)",
+    source:
+      "Google Fonts (https://github.com/google/fonts), npm @fontsource/sofia-sans-extra-condensed@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "sofia-sans-extra-condensed-cyrillic-400-16b35a63.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 9480,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "sofia-sans-extra-condensed-latin-400-97848b5a.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 15260,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "sofia-sans-extra-condensed-cyrillic-700-05931b68.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 9720,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "sofia-sans-extra-condensed-latin-700-e38feee1.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 15836,
+      },
+    ],
+  },
+  {
+    family: "Sofia Sans",
+    id: "sofia-sans",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-sofia-sans.txt",
+    attribution:
+      "Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans) SofiaSans-Italic[wght].ttf: Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/sofia-sans@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "sofia-sans-cyrillic-400-9d287b62.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 9532,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "sofia-sans-latin-400-530c2b25.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 14944,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "sofia-sans-cyrillic-700-00dfc4b7.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 10036,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "sofia-sans-latin-700-c89cc7fc.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 16044,
+      },
+    ],
+  },
+  {
+    family: "Alegreya Sans",
+    id: "alegreya-sans",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-alegreya-sans.txt",
+    attribution:
+      "Copyright 2013 The Alegreya Sans Project Authors (https://github.com/huertatipografica/Alegreya-Sans)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/alegreya-sans@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "alegreya-sans-cyrillic-400-76bb1525.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12284,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "alegreya-sans-latin-400-b2a5a35a.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 23708,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "alegreya-sans-cyrillic-700-21a8f694.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12340,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "alegreya-sans-latin-700-5acd19a5.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 23976,
+      },
+    ],
+  },
+  {
+    family: "Alegreya",
+    id: "alegreya",
+    category: "serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-alegreya.txt",
+    attribution:
+      "Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya) Alegreya-Italic[wght].ttf: Copyright 2011 The Alegreya Project Authors (https://github.com/huertatipografica/Alegreya)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/alegreya@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "alegreya-cyrillic-400-592cfa39.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12136,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "alegreya-latin-400-7cbcf38a.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 22884,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "alegreya-cyrillic-700-c8fb0f23.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 12944,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "alegreya-latin-700-1c582501.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 24352,
+      },
+    ],
+  },
+  {
+    family: "Alumni Sans",
+    id: "alumni-sans",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-alumni-sans.txt",
+    attribution:
+      "Copyright 2015 The Alumni Sans Project Authors (https://github.com/googlefonts/alumni) AlumniSans-Italic[wght].ttf: Copyright 2015 The Alumni Sans Project Authors (https://github.com/googlefonts/alumni)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/alumni-sans@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "alumni-sans-cyrillic-400-6bf30ed3.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 6256,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "alumni-sans-latin-400-fb1b28dd.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 12056,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "alumni-sans-cyrillic-700-b2dc400d.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 6204,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "alumni-sans-latin-700-aefa924e.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 12072,
+      },
+    ],
+  },
+  {
+    family: "Literata",
+    id: "literata",
+    category: "serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-literata.txt",
+    attribution:
+      "Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata) Literata-Italic[opsz,wght].ttf: Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/literata@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "literata-cyrillic-400-39bb5c34.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 10988,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "literata-latin-400-a60c193b.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 20420,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "literata-cyrillic-700-d3414d99.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 11640,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "literata-latin-700-1f2985e0.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 22004,
+      },
+    ],
+  },
+  {
+    family: "Wix Madefor Display",
+    id: "wix-madefor-display",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-wix-madefor-display.txt",
+    attribution: "Copyright 2021 The Wix Madefor Project Authors (https://github.com/wix/wixmadefor/)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/wix-madefor-display@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "wix-madefor-display-cyrillic-400-54182801.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 7712,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "wix-madefor-display-latin-400-29ad1d97.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 11600,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "wix-madefor-display-cyrillic-700-a6111e46.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 8108,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "wix-madefor-display-latin-700-bf770b83.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 12400,
+      },
+    ],
+  },
+  {
+    family: "Wix Madefor Text",
+    id: "wix-madefor-text",
+    category: "sans-serif",
+    weights: [400, 700],
+    license: "OFL-1.1",
+    licenseFile: "LICENSE-wix-madefor-text.txt",
+    attribution: "Copyright 2021 The Wix Madefor Project Authors (https://github.com/wix/wixmadefor/)",
+    source: "Google Fonts (https://github.com/google/fonts), npm @fontsource/wix-madefor-text@5.3.0",
+    files: [
+      {
+        weight: 400,
+        subset: "cyrillic",
+        file: "wix-madefor-text-cyrillic-400-a63e4d4c.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 10876,
+      },
+      {
+        weight: 400,
+        subset: "latin",
+        file: "wix-madefor-text-latin-400-27663f3a.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 16464,
+      },
+      {
+        weight: 700,
+        subset: "cyrillic",
+        file: "wix-madefor-text-cyrillic-700-e45daae3.woff2",
+        unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
+        bytes: 11336,
+      },
+      {
+        weight: 700,
+        subset: "latin",
+        file: "wix-madefor-text-latin-700-7a1bf9a0.woff2",
+        unicodeRange:
+          "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+        bytes: 16980,
+      },
+    ],
+  },
 ];

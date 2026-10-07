@@ -1332,7 +1332,8 @@
      "variant": "bar",
      "variants": [
       "bar",
-      "centered"
+      "centered",
+      "transparent"
      ]
     },
     {
@@ -1343,7 +1344,9 @@
      "variants": [
       "split",
       "centered",
-      "cover"
+      "cover",
+      "minimal",
+      "collage"
      ],
      "title": "Спокойное лечение без очередей"
     },
@@ -1355,7 +1358,8 @@
      "variants": [
       "list",
       "cards",
-      "table"
+      "table",
+      "tabs"
      ],
      "title": "Услуги и цены"
     },
@@ -1366,7 +1370,8 @@
      "variant": "numbered",
      "variants": [
       "numbered",
-      "timeline"
+      "timeline",
+      "cards"
      ],
      "title": "Как записаться"
     },
@@ -1377,7 +1382,8 @@
      "variant": "band",
      "variants": [
       "band",
-      "card"
+      "card",
+      "split"
      ],
      "title": "Запишитесь на удобное время"
     },
@@ -1388,7 +1394,8 @@
      "variant": "simple",
      "variants": [
       "simple",
-      "columns"
+      "columns",
+      "minimal"
      ]
     }
    ],
@@ -1735,7 +1742,7 @@
    ],
    "warnings": [],
    "errors": [],
-   "fingerprint": "13d0aeba6dc7d352a49b88305d7fb6a3ac7688b968c54ac08121cee5d1fcaa77",
+   "fingerprint": "4b33de22d93b9d85b8c329c011bedde7c4d9743131405566efd9602aaa366fe2",
    "outOfScope": [
     {
      "request": "Оплата лечения на сайте",

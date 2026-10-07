@@ -1,7 +1,9 @@
 // B2-24 acceptance (D76 (6), specs/quality/gates.yaml#G1.browser): a compiled system is ready when G0 and G1 pass
 // with the browser checks — the goal scenarios of its modules in Chromium (390 and 1280 px, light and dark themes) and
 // every page at 390 px without horizontal scroll. «лендинг + заявки» end to end («посетитель оставил заявку →
-// владелец получил письмо») and every CI matrix row of the modules with code whose scenarios all have programs.
+// владелец получил письмо»), every scenario of a ready module has a program, and every CI matrix row of the modules
+// with code passes with the scenarios of its own module (the other plan modules' scenarios run in their own rows;
+// «Абонементы» and «Учёт выдачи» — in goals-b218.browser.test.ts).
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +11,7 @@ import { join } from "node:path";
 import { type Browser, chromium } from "@playwright/test";
 import type { AppSpec } from "@wizard/appspec";
 import { newQrKeyring, QR_SECRET, serializeQrKeyring, staticSecretReader } from "@wizard/connectors";
+import { testPlatform } from "@wizard/connectors/testing";
 import {
   type Check,
   type GateContext,
@@ -38,8 +41,8 @@ const registry = testRegistry();
 /** Scenarios of modules with code: stand-ins of the test registry (notify until B2-16) carry no browser programs. */
 const WITH_CODE = new Set(MODULES_WITH_CODE.map((d) => d.manifest.id));
 const ofCode = (r: CompileSuccess) => r.scenarios.filter((s) => WITH_CODE.has(s.module));
-/** Scenarios of modules with code that already have a browser program (programs of the other modules follow B2-24). */
-const bound = (r: CompileSuccess) => ofCode(r).filter((s) => GOAL_PROGRAMS[s.id]);
+/** Modules whose rows run in their own browser suite (goals-b218.browser.test.ts). */
+const OWN_SUITE = new Set(["packages", "resources"]);
 const keyPrefix = `b224${randomBytes(3).toString("hex")}`;
 
 let db: postgres.Sql;
@@ -61,6 +64,7 @@ beforeAll(async () => {
     dbRole: role,
     artifactsRoot: join(root, "artifacts"),
     connectors: "outbox",
+    platform: testPlatform(),
     secrets: () => staticSecretReader({ [QR_SECRET]: qrKeyring }),
     env: {
       authModeDev: true,
@@ -123,41 +127,34 @@ async function ready(r: CompileSuccess, scenarios = ofCode(r)): Promise<Check[]>
   return g1.checks;
 }
 
+test("every goal scenario of a ready module has a browser program", () => {
+  const missing = MODULES_WITH_CODE.flatMap((d) =>
+    (d.manifest.goalScenarios ?? []).filter((sc) => !GOAL_PROGRAMS[sc.id]).map((sc) => sc.id),
+  );
+  expect(missing).toEqual([]);
+});
+
 describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser (B2-24)", () => {
   test("landing + leads: «посетитель оставил заявку → владелец получил письмо», 390 px without horizontal scroll", async () => {
     const r = compiled(landingLeadsPlan());
-    expect(bound(r).map((s) => s.id)).toEqual(["GS-landing-1", "GS-leads-1", "GS-leads-2"]);
-    const checks = await ready(r, bound(r));
+    const ids = ofCode(r).map((s) => s.id);
+    expect(ids).toEqual(expect.arrayContaining(["GS-landing-1", "GS-leads-1", "GS-leads-2"]));
+    const checks = await ready(r);
     const by = (id: string) => checks.find((c) => c.id === id);
-    for (const id of ["G1-GOAL-GS-landing-1", "G1-GOAL-GS-leads-1", "G1-GOAL-GS-leads-2", "G1-MOBILE-01"])
+    for (const id of [...ids.map((x) => `G1-GOAL-${x}`), "G1-MOBILE-01"])
       expect(by(id)?.status, id).toBe("pass");
     expect(by("G1-GOAL-GS-leads-1")?.message_ru).toContain("390 px");
-  }, 300_000);
+  }, 600_000);
 
-  // Rows whose scenarios all have programs; a scenario without one is listed in the test name and skipped here
-  // (G1 reports it as «не связан с проверкой», an error that blocks readiness).
-  const rows = MODULES_WITH_CODE.flatMap((d) =>
-    (d.manifest.tests?.matrix ?? []).map((row) => {
-      const plan = matrixPlan(registry, d.manifest.id, row);
-      const r = compilePlan(plan, registry, { appName: "Пример" });
-      const unbound = r.ok
-        ? ofCode(r)
-            .filter((s) => !GOAL_PROGRAMS[s.id])
-            .map((s) => s.id)
-        : [];
-      return { id: d.manifest.id, name: row.name, row, unbound };
-    }),
+  const rows = MODULES_WITH_CODE.filter((d) => !OWN_SUITE.has(d.manifest.id)).flatMap((d) =>
+    (d.manifest.tests?.matrix ?? []).map((row) => ({ id: d.manifest.id, name: row.name, row })),
   );
   for (const x of rows)
-    test.skipIf(x.unbound.length > 0)(
-      `matrix ${x.id} — ${x.name}${x.unbound.length ? ` (нет программы: ${x.unbound.join(", ")})` : ""}`,
-      async () => {
-        const r = compiled(matrixPlan(registry, x.id, x.row));
-        const checks = await ready(r);
-        expect(checks.some((c) => c.id === "G1-MOBILE-01" && c.status === "pass")).toBe(true);
-        for (const s of ofCode(r))
-          expect(checks.find((c) => c.id === `G1-GOAL-${s.id}`)?.status, s.id).toBe("pass");
-      },
-      300_000,
-    );
+    test(`matrix ${x.id} — ${x.name}`, async () => {
+      const r = compiled(matrixPlan(registry, x.id, x.row));
+      const own = r.scenarios.filter((s) => s.module === x.id);
+      const checks = await ready(r, own);
+      expect(checks.some((c) => c.id === "G1-MOBILE-01" && c.status === "pass")).toBe(true);
+      for (const s of own) expect(checks.find((c) => c.id === `G1-GOAL-${s.id}`)?.status, s.id).toBe("pass");
+    }, 600_000);
 });

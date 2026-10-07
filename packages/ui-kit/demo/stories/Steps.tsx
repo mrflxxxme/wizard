@@ -15,6 +15,7 @@ export default {
     <div data-variants="Steps">
       <Steps testId="numbered" anchor="steps" title="Пример: как записаться" steps={steps} />
       <Steps testId="timeline" variant="timeline" tone="alt" title="Пример: этапы работы" steps={steps} />
+      <Steps testId="cards" variant="cards" title="Пример: этапы карточками" steps={steps} />
     </div>
   ),
 } satisfies Story;
