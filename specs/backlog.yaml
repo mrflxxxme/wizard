@@ -3467,7 +3467,7 @@ tasks:
     owner: founder
     parallel_group: b2-c
     estimate_days: 1
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Бета v2 выкачена на borntobuild.ru; основатель собрал 2–3 системы до публикации в служебном контуре и дал «да» (CHANGELOG)"
