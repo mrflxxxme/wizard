@@ -21,7 +21,7 @@
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
-// by hand. Workflows: .github/workflows/bootstrap-pilot.yml, deploy-pilot.yml (owner only, pilot-reusable.yml).
+// by hand. Workflows: .github/workflows/bootstrap-pilot.yml, deploy-pilot.yml, eval-pilot.yml (owner only, pilot-reusable.yml).
 import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

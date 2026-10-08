@@ -21,7 +21,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const JOURNAL = join(ROOT, "docs", "progress", "v3-spend.json");
 /** Items of the plan (§5) in report order; the measurement workflow offers the ones run on the platform. */
 export const WAVES = ["A", "B", "C", "checkpoint", "final", "retry", "competitors"];
-/** Waves a measurement on the platform belongs to (bootstrap-pilot.yml input `wave`). */
+/** Waves a measurement on the platform belongs to (eval-pilot.yml input `wave`). */
 export const EVAL_WAVES = ["A", "B", "C", "checkpoint", "final", "retry"];
 const WAVE_NAMES = {
   checkpoint: "«Чекпоинты основателя»",

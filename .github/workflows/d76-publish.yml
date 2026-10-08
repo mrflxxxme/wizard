@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "id запуска bootstrap-pilot (eval), чей отчёт D76 кладётся в docs/progress"
+        description: "id запуска eval-pilot (или прежнего bootstrap-pilot eval), чей отчёт D76 кладётся в docs/progress"
         required: true
         type: string
 

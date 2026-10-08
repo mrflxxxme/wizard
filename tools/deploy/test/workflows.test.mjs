@@ -121,17 +121,22 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     }
     // The read-only check comes first and is the default: a run without choosing anything changes nothing.
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
-    expect(action.options).toEqual(["check", "apply", "diagnose", "eval", "reboot", "destroy"]);
+    expect(action.options).toEqual(["check", "apply", "diagnose", "reboot", "destroy"]);
     expect(action.default).toBe("check");
-    // eval: which briefs and the threshold (B2-41: d76 of beta v2 by default) go to the reusable, and (V3-01) the
-    // pre-registration of the spend journal: no defaults to run on — the cap, the purpose, the hypothesis, the expected
-    // ₽ and the wave are filled for each run; the founder's «да» is «no» unless chosen.
-    const boot = load("bootstrap-pilot.yml");
-    const inputs = boot.on.workflow_dispatch.inputs;
+    // eval has its own form (V3-01): prod only, the shared concurrency group of prod, which briefs and the threshold
+    // (B2-41: d76 of beta v2 by default) and the pre-registration of the spend journal: no defaults to run on — the
+    // cap, the purpose, the hypothesis, the expected ₽ and the wave are filled for each run; «да» is «no» unless chosen.
+    const ev = load("eval-pilot.yml");
+    expect(Object.keys(ev.on)).toEqual(["workflow_dispatch"]);
+    expect(ev.doc.concurrency).toEqual({ group: "pilot-prod", "cancel-in-progress": false });
+    expect(ev.doc.jobs.pilot.uses).toBe("./.github/workflows/pilot-reusable.yml");
+    expect(ev.doc.jobs.pilot.permissions).toEqual({ contents: "read", packages: "write", issues: "write" });
+    const inputs = ev.on.workflow_dispatch.inputs;
+    expect(inputs.env).toBeUndefined();
     expect(inputs.briefs).toMatchObject({ type: "string", default: "all" });
     expect(inputs.threshold).toMatchObject({ type: "choice", options: ["d76", "d67"], default: "d76" });
     expect(inputs.max_cost_rub).toBeUndefined();
-    for (const n of ["cap_rub", "purpose", "hypothesis", "expect_rub"])
+    for (const n of ["cap_rub", "purpose", "hypothesis", "expect_rub", "confirm"])
       expect(inputs[n], n).toMatchObject({ type: "string", default: "" });
     expect(inputs.wave).toMatchObject({
       type: "choice",
@@ -139,9 +144,12 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       default: "-",
     });
     expect(inputs.founder_ok).toMatchObject({ type: "choice", options: ["no", "yes"], default: "no" });
-    // GitHub allows at most 25 inputs of a workflow_dispatch form (10 until December 2025).
-    expect(Object.keys(inputs).length).toBeLessThanOrEqual(25);
-    expect(boot.doc.jobs.pilot.with).toMatchObject({
+    // actionlint of CI holds a workflow_dispatch form to 10 inputs.
+    for (const f of ["bootstrap-pilot.yml", "deploy-pilot.yml", "eval-pilot.yml"])
+      expect(Object.keys(load(f).on.workflow_dispatch.inputs).length, f).toBeLessThanOrEqual(10);
+    expect(ev.doc.jobs.pilot.with).toMatchObject({
+      env: "prod",
+      command: "eval",
       briefs: gh("inputs.briefs"),
       cap_rub: gh("inputs.cap_rub"),
       threshold: gh("inputs.threshold"),
@@ -152,7 +160,9 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       founder_ok: gh("inputs.founder_ok"),
     });
     const reusableInputs = load("pilot-reusable.yml").on.workflow_call.inputs;
-    for (const n of Object.keys(boot.doc.jobs.pilot.with)) expect(reusableInputs, n).toHaveProperty(n);
+    for (const f of ["bootstrap-pilot.yml", "eval-pilot.yml"])
+      for (const n of Object.keys(load(f).doc.jobs.pilot.with))
+        expect(reusableInputs, `${f}: ${n}`).toHaveProperty(n);
     // D75: the daily model cap is raised for one deploy only (the next deploy without it is back to the default).
     const dep = load("deploy-pilot.yml");
     expect(dep.on.workflow_dispatch.inputs.llm_daily_cap_rub).toMatchObject({ type: "string", default: "" });

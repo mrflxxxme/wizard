@@ -1,0 +1,86 @@
+# The measurement on the pilot (docs/ops/eval-d76.md; threshold d76 of beta v2 by default, d67 — docs/ops/eval-d67.md):
+# a service account in the platform database, the briefs through the public address like a client, the report (with
+# the screenshots of the systems under d76) in the job summary and as an artifact. prod only; needs the word PROD.
+# V3-01 (D77 (18б), tools/deploy/spend.mjs): eval is paid, so it starts only pre-registered in the spend journal —
+# purpose, hypothesis, expect_rub, cap_rub and wave; cap_rub is the hard stop; more than 1 000 ₽ at once or over the
+# wave plan of docs/progress/v3-spend.json needs founder_ok=yes. The line «потрачено X ₽ из плана Y ₽ волны …» goes to
+# the report, an annotation and the issue comment. Its own form (not an action of bootstrap-pilot): a workflow_dispatch
+# form holds at most 10 inputs for actionlint of CI. Shares the concurrency group of prod with bootstrap and deploy.
+name: eval-pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Полный SHA коммита main (пусто — последний коммит main)"
+        type: string
+        default: ""
+      briefs:
+        description: "Какие брифы прогнать — all (все 10) или id через запятую: проба — 2–3 брифа, например mvp-01,mvp-04,mvp-07; повтор провалившихся"
+        type: string
+        default: "all"
+      threshold:
+        description: "Порог — d76 (бета v2: план, сценарии целей, скриншоты) или d67 (замер MVP)"
+        type: choice
+        options: [d76, d67]
+        default: d76
+      wave:
+        description: "Журнал трат: волна плана v3 — A, B, C, checkpoint (чекпоинт основателя), final (финальный замер), retry (повтор упавших брифов)"
+        type: choice
+        options: ["-", A, B, C, checkpoint, final, retry]
+        default: "-"
+      purpose:
+        description: "Журнал трат: цель прогона — что проверяем"
+        type: string
+        default: ""
+      hypothesis:
+        description: "Журнал трат: гипотеза — какой результат ждём и почему"
+        type: string
+        default: ""
+      expect_rub:
+        description: "Журнал трат: ожидаемый расход, ₽ (не больше потолка)"
+        type: string
+        default: ""
+      cap_rub:
+        description: "Журнал трат: потолок прогона на модели, ₽ — на нём замер останавливается; больше 1 000 ₽ — только с founder_ok=yes"
+        type: string
+        default: ""
+      founder_ok:
+        description: "Журнал трат: «да» основателя — нужно для потолка больше 1 000 ₽ или выхода за план волны"
+        type: choice
+        options: ["no", "yes"]
+        default: "no"
+      confirm:
+        description: "Введите PROD: замер пишет в базу пилота и тратит бюджет моделей"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-prod
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    uses: ./.github/workflows/pilot-reusable.yml
+    permissions:
+      contents: read
+      packages: write
+      # Live progress of the measurement in the issue «Замер D67: ход на сервере» (tools/eval/server/progress.mjs).
+      issues: write
+    with:
+      env: prod
+      command: eval
+      sha: ${{ inputs.sha }}
+      confirm: ${{ inputs.confirm }}
+      briefs: ${{ inputs.briefs }}
+      cap_rub: ${{ inputs.cap_rub }}
+      threshold: ${{ inputs.threshold }}
+      wave: ${{ inputs.wave }}
+      purpose: ${{ inputs.purpose }}
+      hypothesis: ${{ inputs.hypothesis }}
+      expect_rub: ${{ inputs.expect_rub }}
+      founder_ok: ${{ inputs.founder_ok }}
+    secrets: inherit

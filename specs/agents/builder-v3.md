@@ -25,7 +25,7 @@
 
 | Задача | Пути |
 |---|---|
-| V3-01 | `apps/platform-api/src/billing/llm-cap.ts`, `apps/platform-api/src/billing/v3-*.ts`, `tools/deploy/spend.mjs`, `docs/progress/v3-spend.json`, правки `tools/deploy/pilot.mjs` (eval: предрегистрация и потолок), `.github/workflows/bootstrap-pilot.yml` (входы eval) |
+| V3-01 | `apps/platform-api/src/billing/llm-cap.ts`, `apps/platform-api/src/billing/v3-*.ts`, `tools/deploy/spend.mjs`, `docs/progress/v3-spend.json`, правки `tools/deploy/pilot.mjs` (eval: предрегистрация и потолок), `.github/workflows/eval-pilot.yml` (форма замера с журналом трат) |
 | V3-02 | `packages/appspec/src/brief/**`, `apps/platform-api/src/briefs/**`, миграция `platform.system_briefs` |
 | V3-05 | `packages/agents/src/research/**`, `.github/workflows/research.yml` (проба поиска из CI) |
 | V3-07 | `packages/ui-kit/src/v3/design/**`, `packages/agents/src/builder/v3/art-director.ts` |

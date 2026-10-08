@@ -1,5 +1,5 @@
 # Pilot on Timeweb Cloud from GitHub-hosted runners (docs/ops/deploy.md «Пилот: одна кнопка»; no self-hosted runner,
-# no runner-local files). Called by bootstrap-pilot.yml and deploy-pilot.yml only. Order: the repository owner,
+# no runner-local files). Called by bootstrap-pilot.yml, deploy-pilot.yml and eval-pilot.yml only. Order: the repository owner,
 # main and the confirmation are checked first (no secret is read before that); images of the SHA are built into GHCR
 # when missing (images.yml, GITHUB_TOKEN with packages: write); then tools/deploy/pilot.mjs creates or reuses the
 # state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
@@ -125,7 +125,7 @@ jobs:
             case "$EVAL_THRESHOLD" in d76|d67) ;; *) echo "::error title=pilot::threshold — d76 или d67."; exit 1 ;; esac
             # V3-01: a paid run only pre-registered in the spend journal (pilot.mjs also checks the wave plan).
             need="::error title=Журнал трат v3::Платный прогон не начат — нужна запись в журнале трат:"
-            [ -n "$EVAL_PURPOSE" ] && [ -n "$EVAL_HYPOTHESIS" ] || { echo "$need purpose и hypothesis — цель и гипотеза прогона."; exit 1; }
+            if [ -z "$EVAL_PURPOSE" ] || [ -z "$EVAL_HYPOTHESIS" ]; then echo "$need purpose и hypothesis — цель и гипотеза прогона."; exit 1; fi
             case "$EVAL_WAVE" in A|B|C|checkpoint|final|retry) ;; *) echo "$need wave — волна плана v3."; exit 1 ;; esac
             printf '%s' "$EVAL_EXPECT_RUB" | grep -Eq '^[0-9]{1,5}([.,][0-9]{1,2})?$' || { echo "$need expect_rub — ожидаемый расход в рублях."; exit 1; }
             printf '%s' "$EVAL_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$' || { echo "$need cap_rub — потолок прогона, целое число рублей."; exit 1; }
