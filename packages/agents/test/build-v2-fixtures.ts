@@ -41,6 +41,7 @@ const CALL_PROFILE = {
   system_plan: { reasoning: 4000, latencyMs: 120_000 },
   build_texts: { reasoning: 800, latencyMs: 40_000 },
   build_design: { reasoning: 500, latencyMs: 18_000 },
+  art_direction: { reasoning: 500, latencyMs: 18_000 },
   build_custom: { reasoning: 1500, latencyMs: 90_000 },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;

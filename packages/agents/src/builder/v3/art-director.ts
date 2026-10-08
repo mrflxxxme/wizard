@@ -25,8 +25,8 @@ import { type CallStats, callTool, type RouteFn } from "../../core/loop.js";
 import { defineTool, type ToolIssue } from "../../core/tool.js";
 import { VOICE_LABELS } from "../v2/direction.js";
 
-/** callType of the stage: build_design until V3-16 adds `art_direction` (C7); the integrator switches it then. */
-export const ART_DIRECTION_CALL_TYPE = "build_design" as const;
+/** callType of the stage (builder-v3.md §3 C7; route — specs/agents/models.yaml#routes.art_direction). */
+export const ART_DIRECTION_CALL_TYPE = "art_direction" as const;
 
 /** How the brand colour is used (palette.accentUse of the design system). */
 export const ACCENT_USES = ["signal", "fill", "band"] as const satisfies readonly AccentUse[];

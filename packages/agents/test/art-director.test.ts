@@ -222,7 +222,7 @@ describe("with a model (recorded answer through the fixture router)", () => {
     ]);
     const r = await runArtDirector({ input: INPUT, route });
     expect(calls).toHaveLength(3);
-    expect(calls[0]?.callType).toBe("build_design");
+    expect(calls[0]?.callType).toBe("art_direction");
     expect(JSON.stringify(calls[2]?.messages)).toContain("NO_COLOURS");
     expect(r.choice).toMatchObject({ archetype: ok.archetype, source: "model", styleName: "Домашняя кухня" });
   });
