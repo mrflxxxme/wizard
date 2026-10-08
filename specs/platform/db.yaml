@@ -318,7 +318,7 @@ tables:
       call_type: "text not null"                            # models.yaml#call_types
       agent_role: "text"                                    # orchestrator | builder | qa | importer | auditor | runtime | support (models.yaml#routes)
       tier: "text not null check (tier in ('T0','T1'))"
-      provider: "text not null"                             # cloudru | yandex | zai | fixture
+      provider: "text not null"                             # cloudru | yandex | zai | deepseek | openai_compatible (свой vLLM, V3-16) | fixture
       model_id: "text not null"                             # id из models.yaml#models
       attempt: "smallint not null default 1"
       status: "text not null check (status in ('ok','error','timeout','circuit_open','aborted'))"
