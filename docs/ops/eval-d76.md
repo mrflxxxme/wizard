@@ -11,7 +11,7 @@ GitHub → Actions → **deploy-pilot** → Run workflow:
 | Окружение | `prod` |
 | sha | полный SHA коммита main |
 | confirm | `PROD` |
-| llm_daily_cap_rub | пусто: 700 ₽ в день хватит и на пробу, и на замер |
+| llm_daily_cap_rub | пусто: с V3 лимит по умолчанию 3 000 ₽ в день (D77 (18б)) |
 | build_pipeline | `modules`: новые системы собираются по плану из модулей. Старые системы остаются на своём конвейере |
 | stock_mode | `library`: фото из библиотеки платформы, её пополняет раннер выката (B2-43, стоки с сервера в РФ закрыты). `live`: стоки Pexels и Pixabay с сервера (ключи в секретах GitHub). `off`: графика темы вместо фото |
 
@@ -77,7 +77,7 @@ GitHub → Actions → **bootstrap-pilot** → Run workflow, action `eval`:
 | Окружение | `prod` | `prod` |
 | action | `eval` | `eval` |
 | briefs | 2–3 брифа, например `mvp-01,mvp-04,mvp-07` | `all` |
-| max_cost_rub | `50` | `300` |
+| cap_rub (с V3, вместо max_cost_rub) | `50` | `300` |
 | threshold | `d76` | `d76` |
 | confirm | `PROD` | `PROD` |
 
@@ -108,7 +108,7 @@ GitHub → Actions → **bootstrap-pilot** → Run workflow, action `eval`:
 ## Как остановить
 
 - **Отменить задание.** Actions → запуск → Cancel. Идущие прогоны отменяются, отчёт пишется по тому, что есть.
-- **Бюджет замера.** `max_cost_rub` при `d76` — жёсткая остановка: когда оценка расхода по кредитам его превысит, идущий бриф отменяется, остальные не стартуют.
+- **Бюджет замера.** С V3 — `cap_rub` с обязательной предрегистрацией (`purpose`, `hypothesis`, `expect_rub`, `wave`; выше 1 000 ₽ — `founder_ok=yes`; журнал `docs/progress/v3-spend.json`, `tools/deploy/spend.mjs`). `cap_rub` — жёсткая остановка: когда оценка расхода по кредитам его превысит, идущий бриф отменяется, остальные не стартуют.
 - **Защиты платформы.** Дневной лимит для служебных организаций `WIZARD_LLM_EVAL_DAILY_CAP_RUB` (300 ₽) и бюджет беты v2 `WIZARD_B2_BUDGET_RUB`. При 70 % основателю уходит алерт, при 100 % новые пробы и замеры отклоняются (`LLM_BUDGET_EXHAUSTED`), и замер останавливается.
 
 ## Сухой прогон (без сети и денег)

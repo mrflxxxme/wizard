@@ -7,8 +7,8 @@
 # (eval.yaml#fixtures.rules). Docs: docs/ops/eval.md.
 name: eval-live
 on:
-  schedule:
-    - cron: "17 23 * * 0" # weekly: Monday 02:17 MSK (tools/eval/lib/budget.mjs SMOKE_WEEKDAY_UTC)
+  # The weekly schedule (Monday 02:17 MSK) is off for milestone V3: every paid run is pre-registered in the spend
+  # journal (D77 (18б), tools/deploy/spend.mjs); the smoke runs the v1 pipeline and finds nothing a targeted probe does not.
   workflow_dispatch:
     inputs:
       kind:
