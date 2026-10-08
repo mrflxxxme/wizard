@@ -58,6 +58,21 @@
   border: 0;
 }
 
+/* V3-03: why the recommended option, and «Решите за меня» / «Дальше решай сам». */
+.why {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--p-ink-2);
+}
+
+.assist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .foot {
   display: flex;
   flex-wrap: wrap;

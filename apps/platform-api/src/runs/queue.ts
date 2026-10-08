@@ -20,6 +20,7 @@ import {
 import { createLogger } from "@wizard/pii/log";
 import { type Selectable, sql } from "kysely";
 import type postgres from "postgres";
+import { saveInterviewBrief } from "../agents/interview-v3-store.js";
 import {
   backfillActions,
   httpRuntimeBackfill,
@@ -29,6 +30,7 @@ import {
 } from "../ai/backfill.js";
 import type { Billing } from "../billing/ledger.js";
 import { assertPilotLimit } from "../billing/pilot-limits.js";
+import { getLatestBrief } from "../briefs/store.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
@@ -1508,7 +1510,14 @@ export class RunEngine {
       ...(input.answers ? { answers: input.answers } : {}),
       org: { id: org.id, plan: org.plan, policy: orgPolicyOf(org) },
       state: prev?.state ?? null,
+      // V3-03: the v3 interview starts every turn from the latest brief (the owner may have edited it).
+      brief: await this.#latestBrief(systemId),
     };
+  }
+
+  async #latestBrief(systemId: string): Promise<InterviewContext["brief"]> {
+    const v = await getLatestBrief(this.#db, systemId);
+    return v ? { version: v.version, brief: v.brief as unknown as Record<string, unknown> } : null;
   }
 
   async #persistInterview(t: TxCtx, run: Run, out: InterviewOutput): Promise<void> {
@@ -1522,6 +1531,18 @@ export class RunEngine {
         .where("id", "=", run.id)
         .execute();
     }
+    // V3-03: a v3 interview turn writes its brief as a new version (author agent) in this transaction.
+    const briefVersion = out.brief
+      ? await saveInterviewBrief(t.trx, {
+          systemId: sys.id,
+          runId: run.id,
+          brief: out.brief,
+          ...(out.briefBase !== undefined ? { baseVersion: out.briefBase } : {}),
+        })
+      : null;
+    const interview = out.interview
+      ? { ...out.interview, ...(briefVersion !== null ? { briefVersion } : {}) }
+      : undefined;
     const move = async (to: Stage, extra: Record<string, unknown> = {}) => {
       const set: Record<string, unknown> = { ...extra, updated_at: new Date(), last_activity_at: new Date() };
       if (to !== stage) {
@@ -1556,6 +1577,7 @@ export class RunEngine {
           questionIds: out.questions.map((q) => q.id),
           ...(out.analysis ? { analysis: out.analysis } : {}),
           ...(out.gaps?.length ? { gaps: out.gaps } : {}),
+          ...(interview ? { interview } : {}),
         },
         runId: run.id,
       });
@@ -1648,12 +1670,16 @@ export class RunEngine {
       });
       return;
     }
+    // V3-03: the brief is ready — no pending question; the system waits for «Собрать» (D7, stage card).
+    if (out.briefReady && (stage === "card" || canTransition(stage, "card")))
+      await move("card", { pending_questions: json([]) });
+    const payload = { ...(out.gaps?.length ? { gaps: out.gaps } : {}), ...(interview ? { interview } : {}) };
     const m = await insertMessage(t, {
       systemId: sys.id,
       role: "assistant",
       kind: "text",
       text: out.text,
-      ...(out.gaps?.length ? { payload: { gaps: out.gaps } } : {}),
+      ...(Object.keys(payload).length > 0 ? { payload } : {}),
       runId: run.id,
     });
     await appendEvent(t, run.id, "chat_output", { kind: "answer", messageId: m.id });

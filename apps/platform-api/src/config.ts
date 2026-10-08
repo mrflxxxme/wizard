@@ -100,9 +100,10 @@ export interface Config {
   /**
    * WIZARD_BUILD_PIPELINE (B2-20): "legacy" (default) — v1 interview, card and builder; "modules" — beta v2 goal
    * interview, the system plan approved before the build (specs/modules/modules.yaml). A system keeps the pipeline it
-   * started with (the interview state says which); B2-21 switches the default.
+   * started with (the interview state says which); B2-21 switches the default. V3-03: "v3" — the grill interview of
+   * v3 and the system brief (agents/interview-v3.ts); the build of v3 comes with V3-11.
    */
-  buildPipeline: "legacy" | "modules";
+  buildPipeline: "legacy" | "modules" | "v3";
   /**
    * WIZARD_G1_BROWSER (B2-28, gates.yaml#G1.browser.platform): "chromium" (default) — G1 of a plan build runs the goal
    * scenarios and the 390 px check in the process's headless Chromium; "off" — without them (build_metrics
@@ -289,6 +290,12 @@ const list = (v: string | undefined): string[] | undefined => {
   return xs.length > 0 ? xs : undefined;
 };
 
+/** WIZARD_BUILD_PIPELINE → the pipeline of new systems: modules (B2-20), v3 (V3-03), anything else legacy. */
+export function buildPipelineOf(v: string | undefined): Config["buildPipeline"] {
+  const p = (v ?? "").trim().toLowerCase();
+  return p === "modules" || p === "v3" ? p : "legacy";
+}
+
 const milestoneRank = (m: string | undefined): number => Number(/^M(\d+)$/.exec(m ?? "")?.[1] ?? 0);
 
 /** M2 platform rules: milestone ≥ M2 (WIZARD_MILESTONE) or NODE_ENV=production. */
@@ -337,8 +344,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     registration: env.WIZARD_REGISTRATION || "open",
     founderEmail: env.WIZARD_FOUNDER_EMAIL?.trim().toLowerCase() || null,
     payments: !["off", "false", "0"].includes((env.WIZARD_PAYMENTS ?? "").trim().toLowerCase()),
-    buildPipeline:
-      (env.WIZARD_BUILD_PIPELINE ?? "").trim().toLowerCase() === "modules" ? "modules" : "legacy",
+    buildPipeline: buildPipelineOf(env.WIZARD_BUILD_PIPELINE),
     g1Browser: ["off", "false", "0"].includes((env.WIZARD_G1_BROWSER ?? "").trim().toLowerCase())
       ? "off"
       : "chromium",

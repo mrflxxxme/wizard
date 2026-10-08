@@ -85,11 +85,13 @@ export function ownerAppName(name: string, brief: string | null): { appName?: st
  * Pipeline of a system for the platform screens (B2-25, api.yaml#getSystem.pipeline): «modules» once it has a plan or
  * its interview state is a goal session, «legacy» once it has a card or a v1 interview state; a fresh system follows
  * WIZARD_BUILD_PIPELINE — the same rule as the interview executor (a system keeps the pipeline it started with).
+ * V3-03: a v3 system (interview state pipeline v3, or a fresh one under WIZARD_BUILD_PIPELINE=v3) opens the canvas
+ * too — «modules» here, as api.yaml knows only legacy and modules; the executor state tells v3 apart.
  */
 export async function systemPipeline(
   db: Db,
   s: { id: string; card: unknown },
-  fallback: "legacy" | "modules",
+  fallback: "legacy" | "modules" | "v3",
 ): Promise<"legacy" | "modules"> {
   if (s.card) return "legacy";
   const plan = await db
@@ -109,6 +111,7 @@ export async function systemPipeline(
     .limit(1)
     .executeTakeFirst();
   const state = last?.state as { pipeline?: unknown } | null | undefined;
-  if (state && typeof state === "object") return state.pipeline === "modules" ? "modules" : "legacy";
-  return fallback;
+  if (state && typeof state === "object")
+    return state.pipeline === "modules" || state.pipeline === "v3" ? "modules" : "legacy";
+  return fallback === "v3" ? "modules" : fallback;
 }

@@ -140,6 +140,8 @@ export interface InterviewContext {
   org: { id: string; plan: string; policy: OrgPolicy };
   /** Executor state saved by the previous successful interview turn of this system (OrchSession), or null. */
   state: Record<string, unknown> | null;
+  /** V3-03: the latest system brief (V3-02 store) — the v3 interview starts from it; null before one is written. */
+  brief?: { version: number; brief: Record<string, unknown> } | null;
 }
 export interface InterviewHost extends StepHost {
   context: InterviewContext;
@@ -173,6 +175,16 @@ export type InterviewOutput = (
   gaps?: CapabilityGap[];
   /** Executor state to persist with this turn (handed back as context.state next time); never shown to users. */
   state?: Record<string, unknown>;
+  /**
+   * V3-03: the system brief after a v3 interview turn — saved as a new version (author agent) in persist_output when it
+   * differs from the latest; `briefBase` is the version the turn started from (another one → a conflict, retry).
+   */
+  brief?: Record<string, unknown>;
+  briefBase?: number;
+  /** V3-03: the brief is ready — no pending question, the system waits for «Собрать» (stage card, D7). */
+  briefReady?: boolean;
+  /** V3-03: interview data for the message payload (step, cap, topic; the build queue when the brief is ready). */
+  interview?: Record<string, unknown>;
 };
 
 /** Hook for bundle_and_reload after G0 passed (M0-26: migrate_draft, seed_draft, packages/build writeArtifact, reload). */
