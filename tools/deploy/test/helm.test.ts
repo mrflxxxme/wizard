@@ -195,11 +195,11 @@ function render(
 }
 
 describe("pilot switches (M2-15, platform/deploy.yaml#pilot.env)", () => {
-  it("defaults keep registration open, payments on, cap 6000; the pilot profile sets invite, off, 6000", () => {
-    expect(values).toMatch(/\n {2}registration: open\n {2}payments: "on"\n {2}llmMonthlyCapRub: 6000\n/);
+  it("defaults keep registration open, payments on, cap 15000 (V3); the pilot profile sets invite, off, 15000", () => {
+    expect(values).toMatch(/\n {2}registration: open\n {2}payments: "on"\n {2}llmMonthlyCapRub: 15000\n/);
     const pilot = read("infra/helm/profiles/pilot.yaml");
     expect(pilot).toMatch(
-      /\nconfig:\n {2}registration: invite\n {2}payments: "off"\n {2}llmMonthlyCapRub: 6000\n/,
+      /\nconfig:\n {2}registration: invite\n {2}payments: "off"\n {2}llmMonthlyCapRub: 15000\n/,
     );
     const helpers = read("infra/helm/wizard/templates/_helpers.tpl");
     for (const name of ["WIZARD_REGISTRATION", "WIZARD_PAYMENTS", "WIZARD_LLM_MONTHLY_CAP_RUB"])
@@ -614,14 +614,14 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
           const sts = of("StatefulSet").find((d) => d.metadata.name === "wizard-postgres");
           const cron = (name: string) => of("CronJob").find((d) => d.metadata.name === name);
 
-          it("pilot: invite-only registration, payments off, LLM cap 6000 ₽ for platform-api and worker", () => {
+          it("pilot: invite-only registration, payments off, LLM cap 15000 ₽ (V3) for platform-api and worker", () => {
             for (const name of ["wizard-platform-api", "wizard-worker"]) {
               const c = of("Deployment").find((d) => d.metadata.name === name)?.spec.template.spec
                 .containers[0];
               expect(env0(c), name).toMatchObject({
                 WIZARD_REGISTRATION: "invite",
                 WIZARD_PAYMENTS: "off",
-                WIZARD_LLM_MONTHLY_CAP_RUB: "6000",
+                WIZARD_LLM_MONTHLY_CAP_RUB: "15000",
               });
               expect(
                 c.env.find((e: K8s) => e.name === "WIZARD_OPS_ALERT_URL")?.valueFrom.secretKeyRef,

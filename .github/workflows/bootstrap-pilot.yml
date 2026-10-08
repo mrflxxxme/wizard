@@ -7,6 +7,10 @@
 # action `eval` — the measurement (docs/ops/eval-d76.md; threshold d76 of beta v2 by default, d67 — docs/ops/eval-d67.md):
 # a service account in the platform database, the briefs through the public address like a client, the report (with
 # the screenshots of the systems under d76) in the job summary and as an artifact; needs the word PROD.
+# V3-01 (D77 (18б), tools/deploy/spend.mjs): eval is paid, so it starts only pre-registered in the spend journal —
+# purpose, hypothesis, expect_rub, cap_rub and wave; cap_rub is the hard stop; more than 1 000 ₽ at once or over the
+# wave plan of docs/progress/v3-spend.json needs founder_ok=yes. The line «потрачено X ₽ из плана Y ₽ волны …» goes to
+# the report, an annotation and the issue comment. (GitHub allows 25 inputs of a workflow_dispatch form.)
 name: bootstrap-pilot
 
 on:
@@ -18,7 +22,7 @@ on:
         options: [prod, staging]
         default: prod
       action:
-        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); eval — замер: брифы через настоящую сборку на сервере, отчёт со скриншотами в итогах запуска (PROD, тратит бюджет моделей); reboot — жёсткая перезагрузка зависшего сервера (PROD); destroy — удалить (только staging)"
+        description: "check — проверить настройки (ничего не меняет); apply — создать/обновить/восстановить; diagnose — состояние кластера, сертификатов и DNS за 3–5 минут (ничего не меняет); eval — замер: брифы через настоящую сборку на сервере, отчёт со скриншотами в итогах запуска (PROD, тратит бюджет моделей: заполните поля «журнал трат»); reboot — жёсткая перезагрузка зависшего сервера (PROD); destroy — удалить (только staging)"
         type: choice
         options: [check, apply, diagnose, eval, reboot, destroy]
         default: check
@@ -39,15 +43,37 @@ on:
         description: "eval: какие брифы прогнать — all (все 10) или id через запятую: проба — 2–3 брифа, например mvp-01,mvp-04,mvp-07; повтор провалившихся"
         type: string
         default: "all"
-      max_cost_rub:
-        description: "eval: бюджет замера на модели, ₽ (d76: при превышении замер останавливается; проба — 50, замер — 300)"
+      cap_rub:
+        description: "eval, журнал трат: потолок прогона на модели, ₽ — на нём замер останавливается; больше 1 000 ₽ — только с founder_ok=yes"
         type: string
-        default: "300"
+        default: ""
       threshold:
         description: "eval: порог — d76 (бета v2: план, сценарии целей, скриншоты) или d67 (замер MVP)"
         type: choice
         options: [d76, d67]
         default: d76
+      wave:
+        description: "eval, журнал трат: волна плана v3 — A, B, C, checkpoint (чекпоинт основателя), final (финальный замер), retry (повтор упавших брифов)"
+        type: choice
+        options: ["-", A, B, C, checkpoint, final, retry]
+        default: "-"
+      purpose:
+        description: "eval, журнал трат: цель прогона — что проверяем"
+        type: string
+        default: ""
+      hypothesis:
+        description: "eval, журнал трат: гипотеза — какой результат ждём и почему"
+        type: string
+        default: ""
+      expect_rub:
+        description: "eval, журнал трат: ожидаемый расход, ₽ (не больше потолка)"
+        type: string
+        default: ""
+      founder_ok:
+        description: "eval, журнал трат: «да» основателя — нужно для потолка больше 1 000 ₽ или выхода за план волны"
+        type: choice
+        options: ["no", "yes"]
+        default: "no"
       confirm:
         description: "Для prod (apply, eval, reboot) введите PROD; для check и diagnose не нужно"
         type: string
@@ -76,6 +102,11 @@ jobs:
       location: ${{ inputs.location != 'auto' && inputs.location || '' }}
       server: ${{ inputs.server }}
       briefs: ${{ inputs.briefs }}
-      max_cost_rub: ${{ inputs.max_cost_rub }}
+      cap_rub: ${{ inputs.cap_rub }}
       threshold: ${{ inputs.threshold }}
+      wave: ${{ inputs.wave }}
+      purpose: ${{ inputs.purpose }}
+      hypothesis: ${{ inputs.hypothesis }}
+      expect_rub: ${{ inputs.expect_rub }}
+      founder_ok: ${{ inputs.founder_ok }}
     secrets: inherit

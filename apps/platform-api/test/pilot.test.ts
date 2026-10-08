@@ -465,8 +465,8 @@ describe("platform LLM cap of the month (WIZARD_LLM_MONTHLY_CAP_RUB)", () => {
   }
   const newSystem = () => fx.api.req("POST", "/systems", { body: { prompt: "Заявки на закупку", orgId } });
 
-  test("config: 6000 ₽ by default; a non-positive cap is refused at startup", () => {
-    expect(loadConfig({}).llmMonthlyCapRub).toBe(6000);
+  test("config: 15 000 ₽ by default on the time of V3 (V3-01; was 6000); a non-positive cap is refused at startup", () => {
+    expect(loadConfig({}).llmMonthlyCapRub).toBe(15000);
     expect(loadConfig({ WIZARD_LLM_MONTHLY_CAP_RUB: "2500" }).llmMonthlyCapRub).toBe(2500);
     expect(() => assertStartupAllowed(loadConfig({ WIZARD_LLM_MONTHLY_CAP_RUB: "0" }))).toThrow(
       /WIZARD_LLM_MONTHLY_CAP_RUB/,
@@ -482,7 +482,7 @@ describe("platform LLM cap of the month (WIZARD_LLM_MONTHLY_CAP_RUB)", () => {
     });
   });
 
-  test("below 80 %: no alert; previous month, fixture and non-billable calls do not count", async () => {
+  test("below 80 %: only the 50 % warning (V3-01); previous month, fixture and non-billable calls do not count", async () => {
     await spend(500, "2026-09-30T20:59:00Z"); // September in Moscow
     await spend(500, "2026-10-10T10:00:00Z", "fixture");
     await spend(500, "2026-10-10T10:00:00Z", "live", false);
@@ -492,11 +492,13 @@ describe("platform LLM cap of the month (WIZARD_LLM_MONTHLY_CAP_RUB)", () => {
     expect(r.status, r.text).toBe(201);
     firstSystem = r.body.system.id;
     await waitRun(fx.api, r.body.run.id, ["succeeded"]);
-    expect(fx.alerts).toEqual([]);
+    expect(fx.alerts).toHaveLength(1);
+    expect(fx.alerts[0]).toMatchObject({ level: "warn", event: "llm_monthly_cap_warning" });
+    expect(fx.alerts[0]?.text).toMatch(/79 % месячного лимита/);
     expect(await fx.cli("spend")).toBe("модели за 2026-10 (МСК): 79,5 ₽ из 100 ₽ (79 %)");
   });
 
-  test("≥ 80 %: the run starts and the founder gets one warning a month", async () => {
+  test("≥ 80 %: the run starts and the founder gets one more warning a month", async () => {
     await spend(1, "2026-10-15T08:00:00Z");
     const a = await newSystem();
     expect(a.status, a.text).toBe(201);
@@ -504,9 +506,9 @@ describe("platform LLM cap of the month (WIZARD_LLM_MONTHLY_CAP_RUB)", () => {
     const b = await newSystem();
     expect(b.status).toBe(201);
     await waitRun(fx.api, b.body.run.id, ["succeeded"]);
-    expect(fx.alerts).toHaveLength(1);
-    expect(fx.alerts[0]).toMatchObject({ level: "warn", event: "llm_monthly_cap_warning" });
-    expect(fx.alerts[0]?.text).toMatch(/80 % месячного лимита/);
+    expect(fx.alerts).toHaveLength(2);
+    expect(fx.alerts[1]).toMatchObject({ level: "warn", event: "llm_monthly_cap_warning" });
+    expect(fx.alerts[1]?.text).toMatch(/80 % месячного лимита/);
   });
 
   test("≥ cap: new interview turns and builds → 503 LLM_BUDGET_EXHAUSTED in Russian, one founder alert", async () => {
@@ -563,8 +565,8 @@ describe("platform LLM cap of the Moscow day (WIZARD_LLM_DAILY_CAP_RUB, D75)", (
   }
   const newSystem = () => fx.api.req("POST", "/systems", { body: { prompt: "Заявки на ремонт", orgId } });
 
-  test("config: 700 ₽ by default; a non-positive cap is refused at startup", () => {
-    expect(loadConfig({}).llmDailyCapRub).toBe(700);
+  test("config: 3 000 ₽ by default on the time of V3 (V3-01; was 700); a non-positive cap is refused at startup", () => {
+    expect(loadConfig({}).llmDailyCapRub).toBe(3000);
     expect(() => assertStartupAllowed(loadConfig({ WIZARD_LLM_DAILY_CAP_RUB: "0" }))).toThrow(
       /WIZARD_LLM_DAILY_CAP_RUB/,
     );

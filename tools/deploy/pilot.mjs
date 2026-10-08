@@ -12,10 +12,12 @@
 //        restored by a Job)
 //   node tools/deploy/pilot.mjs deploy --env … --tag <sha>      release of a SHA (no OpenTofu apply, no addons)
 //   node tools/deploy/pilot.mjs destroy --env staging            staging on demand: everything goes
-//   node tools/deploy/pilot.mjs eval --env … [--briefs all|mvp-01,…] [--max-cost-rub 300] [--threshold d76|d67]
+//   node tools/deploy/pilot.mjs eval --env … [--briefs all|mvp-01,…] [--threshold d76|d67] --wave A --purpose …
+//        --hypothesis … --expect-rub 200 --cap-rub 300 [--founder-ok yes]
 //        measurement (docs/ops/eval-d76.md, eval-d67.md): a service account in the platform database over the SSH
 //        tunnel, the briefs through the public HTTPS of the platform, then costs, «Запросы на развитие» and the session
-//        revoked; report → summary. d76 (default, beta v2): strict threshold, plan approval, screenshots of each system
+//        revoked; report → summary. d76 (default, beta v2): strict threshold, plan approval, screenshots of each system.
+//        V3-01: paid, so it starts only pre-registered in the spend journal (tools/deploy/spend.mjs); the cap stops it
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
@@ -28,13 +30,7 @@ import { fileURLToPath } from "node:url";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
-import {
-  countedD76,
-  D76_MAX_COST_RUB,
-  DEFAULTS as EVAL_DEFAULTS,
-  runEval,
-  THRESHOLDS,
-} from "../eval/server/driver.mjs";
+import { countedD76, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
 import { previewScreenshots } from "../eval/server/screenshots.mjs";
@@ -69,6 +65,7 @@ import {
   stockKeyVerdicts,
   stockVerdictLine,
 } from "./preflight.mjs";
+import { capGuard, JOURNAL, moscowDate, preregister, readJournal, spendLine } from "./spend.mjs";
 
 export const COMMANDS = [
   "check",
@@ -90,9 +87,6 @@ export const bundleKey = (env) => `wizard/${env}.secrets.enc.json`;
 /** Description prefix of the temporary SSH rules: everything with it is removed at the start and the end of a job. */
 export const TEMP_RULE_PREFIX = "wizard-ci-temp";
 export const PLATFORM_NS = "wizard-platform";
-/** Defaults of the beta v2 development budget of the platform (config.ts WIZARD_B2_BUDGET_RUB / _SINCE, B2-04). */
-export const B2_BUDGET_RUB = 1000;
-export const B2_BUDGET_SINCE = "2026-10-07";
 
 /**
  * Shape of the pilot per environment (deploy.yaml#pilot.environments): Cloud MSK 80 for prod, MSK 50 for staging;
@@ -137,16 +131,29 @@ const DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,6
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 const SHA = /^[0-9a-f]{40}$/;
 
+/** eval flags of the spend journal pre-registration (V3-01) → the fields of tools/deploy/spend.mjs preregister. */
+const SPEND_FLAGS = {
+  "--wave": "wave",
+  "--purpose": "purpose",
+  "--hypothesis": "hypothesis",
+  "--expect-rub": "expectRub",
+  "--cap-rub": "capRub",
+  // The pre-V3 name of the cap (the measurement budget).
+  "--max-cost-rub": "capRub",
+  "--founder-ok": "founderOk",
+};
+
 export function parseArgs(argv) {
   const [command = "", ...rest] = argv;
   const o = { command, env: null, tag: null };
+  const spend = {};
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === "--env") o.env = rest[++i] ?? null;
     else if (a === "--tag") o.tag = rest[++i] ?? null;
     else if (command === "eval" && a === "--briefs") o.briefs = rest[++i] || "all";
-    else if (command === "eval" && a === "--max-cost-rub") o.maxCostRub = rest[++i] ?? "";
     else if (command === "eval" && a === "--threshold") o.threshold = rest[++i] || "d76";
+    else if (command === "eval" && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
     else throw new Error(`unknown argument ${a}`);
   }
   if (command === "eval") {
@@ -156,15 +163,9 @@ export function parseArgs(argv) {
     // B2-41: the strict threshold of beta v2 by default; d67 stays for a repeat of the MVP measurement.
     o.threshold ??= "d76";
     if (!THRESHOLDS.includes(o.threshold)) throw new Error(`--threshold: ${THRESHOLDS.join(" | ")}`);
-    const cost =
-      o.maxCostRub === undefined || o.maxCostRub === ""
-        ? o.threshold === "d76"
-          ? D76_MAX_COST_RUB
-          : EVAL_DEFAULTS.maxCostRub
-        : Number(o.maxCostRub);
-    if (!Number.isInteger(cost) || cost < 1 || cost > 6000)
-      throw new Error("--max-cost-rub: целое от 1 до 6000 (месячный лимит платформы на модели)");
-    o.maxCostRub = cost;
+    // V3-01: a paid run only with its pre-registration; its cap is the budget of the measurement and a hard stop.
+    o.spend = preregister(spend);
+    o.maxCostRub = o.spend.capRub;
   }
   if (!COMMANDS.includes(o.command)) throw new Error(`command: ${COMMANDS.join(" | ")}`);
   if (!ENVS.includes(o.env)) throw new Error("--env prod|staging is required");
@@ -1294,11 +1295,16 @@ export function runCounted(threshold) {
  * (uploaded as an artifact). The systems of the measurement stay for the founder. Exit 0 — the threshold is met,
  * 1 — not met. `o.threshold` d76 (B2-41, docs/ops/eval-d76.md): the strict threshold of beta v2 — the plan of each
  * system is approved as it is, G1 runs the goal scenarios in the browser, every system is shot at 390 and 1280 px
- * (artifact folder shots/), the budget is a hard stop and the spend of the beta v2 development budget is in the report.
+ * (artifact folder shots/), the budget is a hard stop.
+ * V3-01 (D77 (18б), tools/deploy/spend.mjs): `o.spend` is the run's pre-registration (main checked it against the
+ * wave plan of `journal`); its cap is the budget and a hard stop under any threshold (capGuard on the credits
+ * estimate); the report, the summary, an annotation and the issue comment get «потрачено X ₽ из плана Y ₽ волны …»,
+ * and the entry for the journal (spend-entry.json next to the report) — the orchestrator registers it.
  */
 export async function pilotEval({
   o,
   vars,
+  journal = null,
   log,
   fetch: f,
   now,
@@ -1320,6 +1326,10 @@ export async function pilotEval({
   const session = newEvalSession(rand);
   mask([session.token, session.csrf], vars, log);
   const credits = evalCredits(o.maxCostRub);
+  const sp = o.spend;
+  const v3Since = vars.WIZARD_V3_BUDGET_SINCE || journal?.since;
+  const registered = `волна ${sp.wave}, ожидаем ${sp.expectRub} ₽, потолок ${sp.capRub} ₽${sp.founderOk ? " («да» основателя)" : ""} — цель: ${sp.purpose}; гипотеза: ${sp.hypothesis}`;
+  log(`::notice title=Журнал трат v3::${registered}`);
   log(
     `замер ${label} ${runid}: брифов ${briefs.length}, бюджет ${o.maxCostRub} ₽, учётке замера — ${credits} кредитов`,
   );
@@ -1369,7 +1379,7 @@ export async function pilotEval({
       ? `${vars.GITHUB_SERVER_URL}/${vars.GITHUB_REPOSITORY}/actions/runs/${vars.GITHUB_RUN_ID}`
       : null;
   const startedAtMsk = now().toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
-  const lines = [];
+  const lines = [`журнал трат v3: ${registered}`];
   let snapshot = briefs.map((b) => ({ id: b.id, status: "pending", ready: false, costRubEstimate: 0 }));
   let stoppedWhy = null;
   const render = (finished = false) =>
@@ -1413,6 +1423,10 @@ export async function pilotEval({
   const notes = [
     `Учётке замера начислено ${credits} кредитов, тариф «пилот», ревью основателя перед публикацией включено. Лимит D70 учётке замера поднят до ${EVAL_MIN_BUILDS} сборок, как это делается из /admin.`,
   ];
+  // V3-01: the autostop at the cap — running briefs are cancelled at once (D67 alone only stops new ones); unlike a
+  // cancelled job the database step still runs, so the exact spend reaches the report.
+  const capStop = new AbortController();
+  const overCap = capGuard(o.maxCostRub);
   try {
     doc = await runEval({
       client,
@@ -1424,12 +1438,20 @@ export async function pilotEval({
       threshold,
       log: tee,
       sleep: abortableSleep,
-      signal: stop.signal,
+      signal: AbortSignal.any([stop.signal, capStop.signal]),
       counted: runCounted(threshold),
       ...(shoot ? { screenshot: shoot } : {}),
       onUpdate: (results) => {
         snapshot = results;
-        progress?.publish(render());
+        const why = capStop.signal.aborted
+          ? null
+          : overCap(results.reduce((s, x) => s + x.costRubEstimate, 0));
+        if (why) {
+          stoppedWhy = why;
+          capStop.abort(why);
+          log(`::warning title=Журнал трат v3::замер остановлен: ${why}`);
+        }
+        progress?.publish(render(), { force: Boolean(why) });
       },
       ...(pollMs ? { pollMs } : {}),
       ...(maxBriefRub ? { maxBriefRub } : {}),
@@ -1453,10 +1475,8 @@ export async function pilotEval({
                 db = parseCollectOutput(
                   psqlInPod(
                     kubectl,
-                    collectSql({
-                      orgId: seed.orgId,
-                      ...(d76 ? { b2Since: vars.WIZARD_B2_BUDGET_SINCE || B2_BUDGET_SINCE } : {}),
-                    }),
+                    // V3-01: eval spend since the first day of the v3 budget (the query of the B2 budget).
+                    collectSql({ orgId: seed.orgId, b2Since: v3Since }),
                   ),
                 );
               } catch (e) {
@@ -1472,19 +1492,22 @@ export async function pilotEval({
       )
       .catch((e) => log(`::warning::после замера: ${e.message} — сессия закрыта выходом по API`));
   }
-  const { text, summary } = renderReport(doc, db, {
-    platform: base,
-    notes,
-    b2BudgetRub: Number(vars.WIZARD_B2_BUDGET_RUB) || B2_BUDGET_RUB,
-  });
+  // The beta v2 budget line is gone with V3: the v3 budget is the journal's, its server part is in the spend section.
+  const { b2: v3Server, ...reportDb } = db;
+  const report = renderReport(doc, reportDb, { platform: base, notes });
+  const { summary } = report;
+  const spend = evalSpend({ spend: sp, journal, runid, summary, stopped: stoppedWhy, v3Server, now });
+  const text = `${report.text}\n${spend.text}`;
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `${threshold}-${runid}.md`), text);
   writeFileSync(join(outDir, `${threshold}-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
+  writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  log(`::notice title=Траты v3::${spend.line}`);
   if (doc?.results) snapshot = doc.results;
   await progress?.publish(
-    `${render(true)}\n\n<details><summary>Отчёт</summary>\n\n${text.slice(0, 45_000)}\n</details>`,
+    `${render(true)}\n\n**Траты v3:** ${spend.line}.\n\n<details><summary>Отчёт</summary>\n\n${text.slice(0, 45_000)}\n</details>`,
     {
       force: true,
     },
@@ -1499,6 +1522,44 @@ export async function pilotEval({
         : `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
     );
   return summary.passed ? 0 : 1;
+}
+
+/**
+ * V3-01: the spend section of a measurement report — «потрачено X ₽ из плана Y ₽ волны …» with this run added to its
+ * wave in the journal, the run's pre-registration against its outcome, the platform's eval spend since the start of
+ * the v3 budget (`v3Server` — collectSql) and the entry for the journal (spend.mjs register --entry).
+ */
+export function evalSpend({ spend, journal, runid, summary, stopped = null, v3Server = null, now }) {
+  const rub = (n) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
+  const actualRub = summary.costRub;
+  const line = spendLine(journal, spend.wave, actualRub);
+  const verdict = `засчитано ${summary.ready} из ${summary.total}, порог ${summary.passed ? "пройден" : "не пройден"}`;
+  const entry = {
+    date: moscowDate(now()),
+    ...spend,
+    actualRub,
+    result: stopped ? `остановлен: ${stopped}; ${verdict}` : verdict,
+    runId: runid,
+  };
+  const text = [
+    "## Траты v3",
+    "",
+    `- Итого: ${line}.`,
+    `- Прогон \`${runid}\`, волна ${spend.wave}: цель — ${spend.purpose}; гипотеза — ${spend.hypothesis}. Ожидали ${rub(spend.expectRub)}, потолок ${rub(spend.capRub)}, факт ${rub(actualRub)} ${summary.costExact ? "(точно, по журналу вызовов моделей)" : "(оценка по кредитам)"}${actualRub > spend.expectRub ? " — дороже ожиданий" : ""}.`,
+    ...(stopped ? [`- Прогон остановлен: ${stopped}.`] : []),
+    ...(v3Server
+      ? [
+          `- По журналу вызовов моделей платформы пробы и замеры с ${v3Server.since} потратили ${rub(v3Server.rub)}.`,
+        ]
+      : []),
+    "- Запись для журнала docs/progress/v3-spend.json (файл spend-entry.json рядом с отчётом): `node tools/deploy/spend.mjs register --entry spend-entry.json`",
+    "",
+    "```json",
+    JSON.stringify(entry),
+    "```",
+    "",
+  ].join("\n");
+  return { line, entry, text };
 }
 
 const emailMark = (email) =>
@@ -1694,6 +1755,9 @@ export async function checkState(api, env, vars, { fetch: f = fetch, now, log = 
  */
 export async function main(argv = process.argv.slice(2), env = process.env, deps = {}) {
   const o = parseArgs(argv);
+  // V3-01: the wave plan of the spend journal is checked before anything else (no SSH, no account, no spend).
+  const journal = o.command === "eval" ? readJournal(deps.spendJournal ?? JOURNAL) : null;
+  if (journal) o.spend = preregister(o.spend, journal);
   const target = o.command === "close-access" ? { vars: env, problems: [] } : envVars(o.env, env);
   const vars = target.vars;
   const log = deps.log ?? ((s) => console.log(s));
@@ -1970,6 +2034,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     return pilotEval({
       o,
       vars,
+      journal,
       log,
       fetch: f,
       now,

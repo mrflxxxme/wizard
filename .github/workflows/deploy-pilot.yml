@@ -20,7 +20,7 @@ on:
         type: string
         default: ""
       llm_daily_cap_rub:
-        description: "Дневной лимит платформы на модели, ₽ — до следующей выкатки (пусто — 700 ₽ или переменная WIZARD_LLM_DAILY_CAP_RUB); поднимает только основатель"
+        description: "Дневной лимит платформы на модели, ₽ — до следующей выкатки (пусто — 3 000 ₽ на время v3 или переменная WIZARD_LLM_DAILY_CAP_RUB); поднимает только основатель"
         type: string
         default: ""
       build_pipeline:

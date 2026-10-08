@@ -162,6 +162,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     staffReserveRub: config.llmStaffReserveRub,
     evalDailyCapRub: config.llmEvalDailyCapRub,
     b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
+    // V3-01: the founder's own monthly pool and the v3 development budget (from its first day instead of B2).
+    founderMonthlyCapRub: config.llmFounderMonthlyCapRub,
+    v3Budget: { budgetRub: config.v3BudgetRub, since: config.v3BudgetSince },
     alert,
     balances: config.llmBalances,
     balanceWarnRub: config.llmBalanceWarnRub,

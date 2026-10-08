@@ -1646,30 +1646,132 @@ describe("pilot: the photo library of stock_mode=library (B2-43)", () => {
   });
 });
 
+/** V3-01: the pre-registration of an eval run in the spend journal (the cap is the budget of the measurement). */
+const reg = (cap = "300", over = {}) => {
+  const r = {
+    "--wave": "A",
+    "--purpose": "Проба сборки",
+    "--hypothesis": "Брифы собираются",
+    "--expect-rub": "100",
+    "--cap-rub": cap,
+    ...over,
+  };
+  return Object.entries(r).flat();
+};
+/** A spend journal of its own for each eval run of these tests (the repository's one grows with real runs). */
+const spendJournal = (entries = []) => {
+  const file = join(mkdtempSync(join(tmp, "spend-")), "v3-spend.json");
+  writeFileSync(
+    file,
+    JSON.stringify({
+      budgetRub: 12000,
+      since: "2026-10-08",
+      plan: { A: 2400, B: 1300, C: 500, checkpoint: 2000, final: 3600, retry: 1500, competitors: 1000 },
+      entries,
+    }),
+  );
+  return file;
+};
+
 describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", () => {
-  it("arguments: briefs, threshold and the ₽ budget only for eval, validated; defaults all, d76 and 300", () => {
-    expect(parseArgs(["eval", "--env", "prod"])).toMatchObject({
+  it("arguments: briefs, threshold and the pre-registration only for eval, validated; defaults all and d76", () => {
+    expect(parseArgs(["eval", "--env", "prod", ...reg()])).toMatchObject({
       command: "eval",
       briefs: "all",
       threshold: "d76",
       maxCostRub: 300,
+      spend: {
+        wave: "A",
+        purpose: "Проба сборки",
+        hypothesis: "Брифы собираются",
+        expectRub: 100,
+        capRub: 300,
+      },
     });
-    expect(parseArgs(["eval", "--env", "prod", "--threshold", "d67"])).toMatchObject({
+    expect(
+      parseArgs(["eval", "--env", "prod", "--threshold", "d67", ...reg("2000", { "--founder-ok": "yes" })]),
+    ).toMatchObject({
       threshold: "d67",
       maxCostRub: 2000,
+      spend: { founderOk: true },
     });
-    expect(() => parseArgs(["eval", "--env", "prod", "--threshold", "d99"])).toThrow(/--threshold/);
+    expect(() => parseArgs(["eval", "--env", "prod", "--threshold", "d99", ...reg()])).toThrow(/--threshold/);
+    expect(parseArgs(["eval", "--env", "prod", "--briefs", "mvp-03,mvp-10", ...reg("700")])).toMatchObject({
+      briefs: "mvp-03,mvp-10",
+      maxCostRub: 700,
+    });
+    // The pre-V3 name of the cap still works.
     expect(
-      parseArgs(["eval", "--env", "prod", "--briefs", "mvp-03,mvp-10", "--max-cost-rub", "700"]),
-    ).toMatchObject({ briefs: "mvp-03,mvp-10", maxCostRub: 700 });
-    expect(parseArgs(["eval", "--env", "prod", "--briefs", "", "--max-cost-rub", ""])).toMatchObject({
-      briefs: "all",
-      maxCostRub: 300,
-    });
-    expect(() => parseArgs(["eval", "--env", "prod", "--briefs", "mvp-01;rm -rf"])).toThrow(/--briefs/);
-    expect(() => parseArgs(["eval", "--env", "prod", "--max-cost-rub", "9000"])).toThrow(/6000/);
-    expect(() => parseArgs(["eval", "--env", "prod", "--max-cost-rub", "1.5"])).toThrow(/целое/);
+      parseArgs(["eval", "--env", "prod", "--briefs", "", ...reg("", { "--max-cost-rub": "250" })]),
+    ).toMatchObject({ briefs: "all", maxCostRub: 250 });
+    expect(() => parseArgs(["eval", "--env", "prod", "--briefs", "mvp-01;rm -rf", ...reg()])).toThrow(
+      /--briefs/,
+    );
+    expect(() => parseArgs(["eval", "--env", "prod", ...reg("16000", { "--founder-ok": "yes" })])).toThrow(
+      /15/,
+    );
+    expect(() => parseArgs(["eval", "--env", "prod", ...reg("1.5")])).toThrow(/целое/);
     expect(() => parseArgs(["deploy", "--env", "prod", "--tag", SHA, "--briefs", "all"])).toThrow(/unknown/);
+    expect(() => parseArgs(["deploy", "--env", "prod", "--tag", SHA, "--cap-rub", "5"])).toThrow(/unknown/);
+  });
+
+  it("V3-01: without its record in the spend journal a paid run does not start — nothing is touched", async () => {
+    const calls = [];
+    const deps = {
+      fetch: (url) => {
+        calls.push(url);
+        throw new Error("no network in this test");
+      },
+      run: (cmd, args) => {
+        calls.push([cmd, ...args].join(" "));
+        return { status: 0, stdout: "" };
+      },
+      log: () => {},
+    };
+    // No pre-registration at all, then each gap alone; the old way (only a budget) too.
+    await expect(main(["eval", "--env", "prod"], FOUNDER, deps)).rejects.toThrow(
+      /^Платный прогон не начат — нужна запись в журнале трат v3: не указана цель \(purpose\); не указана гипотеза \(hypothesis\); не выбрана волна/,
+    );
+    for (const [flag, why] of [
+      ["--purpose", /цель \(purpose\)/],
+      ["--hypothesis", /гипотеза \(hypothesis\)/],
+      ["--expect-rub", /ожидаемые ₽ \(expect_rub\)/],
+      ["--cap-rub", /потолок \(cap_rub\)/],
+      ["--wave", /волна \(wave/],
+    ])
+      await expect(
+        main(["eval", "--env", "prod", ...reg("300", { [flag]: "" })], FOUNDER, deps),
+        flag,
+      ).rejects.toThrow(why);
+    await expect(main(["eval", "--env", "prod", "--max-cost-rub", "300"], FOUNDER, deps)).rejects.toThrow(
+      /Платный прогон не начат/,
+    );
+    // > 1 000 ₽ at once and over the wave plan of the journal: only with the founder's «да».
+    await expect(
+      main(["eval", "--env", "prod", ...reg("1500")], FOUNDER, { ...deps, spendJournal: spendJournal() }),
+    ).rejects.toThrow(/больше 1\s000 ₽ за раз — нужно «да» основателя/);
+    const full = spendJournal([
+      {
+        id: "v3-001",
+        date: "2026-10-09",
+        wave: "A",
+        purpose: "п",
+        hypothesis: "г",
+        expectRub: 0,
+        capRub: 2300,
+        actualRub: 2250,
+      },
+    ]);
+    await expect(
+      main(["eval", "--env", "prod", ...reg("300")], FOUNDER, { ...deps, spendJournal: full }),
+    ).rejects.toThrow(/волна A может выйти за план: занято 2\s250 ₽ из 2\s400 ₽/);
+    await expect(
+      main(["eval", "--env", "prod", ...reg("300")], FOUNDER, {
+        ...deps,
+        spendJournal: join(tmp, "no-journal.json"),
+      }),
+    ).rejects.toThrow(/журнал трат v3 не прочитан/);
+    expect(calls).toEqual([]);
   });
 
   it("account in the database over the tunnel, briefs over HTTPS, session closed, report in the summary; no secrets in the log", async () => {
@@ -1708,7 +1810,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     const summary = join(tmp, "summary-eval.md");
     const logs = [];
     const code = await main(
-      ["eval", "--env", "prod", "--briefs", "mvp-02,mvp-10", "--max-cost-rub", "500", "--threshold", "d67"],
+      ["eval", "--env", "prod", "--briefs", "mvp-02,mvp-10", "--threshold", "d67", ...reg("1000")],
       { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
       {
         fetch: (url, init = {}) =>
@@ -1725,9 +1827,19 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         kdf: FAST,
         tmpRoot: tmp,
         log: (s) => logs.push(s),
+        spendJournal: spendJournal(),
       },
     );
     expect(code).toBe(0);
+    // V3-01: the pre-registration is announced; the spend line goes to an annotation and the summary.
+    expect(logs).toContain(
+      "::notice title=Журнал трат v3::волна A, ожидаем 100 ₽, потолок 1000 ₽ — цель: Проба сборки; гипотеза: Брифы собираются",
+    );
+    expect(logs).toContainEqual(
+      expect.stringMatching(
+        /^::notice title=Траты v3::потрачено 247 ₽ из плана 2\s400 ₽ волны A; всего по v3 — 247 ₽ из 12\s000 ₽$/,
+      ),
+    );
     // Database work only inside the postgres container, values through stdin: seed, then collect and revoke.
     const text = base.lines.join("\n");
     expect(text).toContain(
@@ -1775,9 +1887,124 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     expect(sum).toContain("**Итог: 2 из 2 дошли до готовности к публикации");
     expect(sum).toContain("247 ₽ (точно, по журналу вызовов моделей)");
     expect(sum).toContain("Лимит D70 учётке замера поднят");
+    // V3-01 (acceptance 3): the report has the spend section and the entry for the journal next to it.
+    expect(sum).toMatch(
+      /## Траты v3\n\n- Итого: потрачено 247 ₽ из плана 2\s400 ₽ волны A; всего по v3 — 247 ₽ из 12\s000 ₽\./,
+    );
+    expect(sum).toMatch(
+      /цель — Проба сборки; гипотеза — Брифы собираются\. Ожидали 100 ₽, потолок 1\s000 ₽, факт 247 ₽ \(точно/,
+    );
+    expect(sum).toContain("spend.mjs register --entry spend-entry.json");
+    expect(sqls[1]).toContain("\\set b2_since '2026-10-08'");
+    const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
+    expect(entry).toMatchObject({
+      wave: "A",
+      purpose: "Проба сборки",
+      hypothesis: "Брифы собираются",
+      expectRub: 100,
+      capRub: 1000,
+      actualRub: 246.9,
+      result: "засчитано 2 из 2, порог пройден",
+    });
+    expect(entry.runId).toMatch(/^\d{8}-[0-9a-f]{6}$/);
+    expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("d76 (B2-41): plans approved as they are, screenshots next to the report, the beta v2 budget, a strict verdict", async () => {
+  it("V3-01: the cap stops the run under any threshold — the running brief is cancelled, the exact spend is still read", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const db = { tokenHash: "", csrfHash: "", orgId: "11111111-1111-4111-8111-111111111111" };
+    const platform = fakePlatform({
+      hashes: () => db,
+      origin: "https://codename.ru",
+      cookieNames: { session: "__Host-wizard_session", csrf: "__Host-wizard_csrf" },
+    });
+    const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+    const sqls = [];
+    const run = (cmd, args, o = {}) => {
+      const r = base.run(cmd, args, o);
+      if (cmd !== "kubectl" || !args.includes("exec")) return r;
+      sqls.push(o.input);
+      if (o.input.includes("INSERT INTO platform.users")) {
+        db.tokenHash = /\\set token_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        db.csrfHash = /\\set csrf_hash '([0-9a-f]{64})'/.exec(o.input)[1];
+        const email = /\\set email '([^']+)'/.exec(o.input)[1];
+        return {
+          status: 0,
+          stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "33333333-3333-4333-8333-333333333333", email })}\n`,
+        };
+      }
+      if (o.input.includes("'costs='")) {
+        const ids = [...platform.st.systems.keys()];
+        return {
+          status: 0,
+          stdout: `costs=${JSON.stringify(ids.map((id) => ({ system_id: id, rub: 180, credits_milli: 36000, calls: 9 })))}\ngaps=null\nb2={"rub": 512.5, "since": "2026-10-08"}\n`,
+        };
+      }
+      return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
+    };
+    const logs = [];
+    const summary = join(tmp, "summary-cap.md");
+    const tmpRoot = mkdtempSync(join(tmp, "cap-"));
+    // D67 alone never cancels a running brief; the fake build costs 40 credits ≈ 200 ₽ — over the 50 ₽ cap.
+    const code = await main(
+      [
+        "eval",
+        "--env",
+        "prod",
+        "--briefs",
+        "mvp-02,mvp-10",
+        "--threshold",
+        "d67",
+        ...reg("50", { "--expect-rub": "30" }),
+      ],
+      { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
+      {
+        fetch: (url, init = {}) =>
+          new URL(url).host === "codename.ru"
+            ? platform.handler(new Request(url, init))
+            : cloud.fetch(url, init),
+        run,
+        has: () => true,
+        exists: () => true,
+        sleep: async () => {},
+        evalPollMs: 1,
+        evalMaxBriefRub: 10_000,
+        kdf: FAST,
+        tmpRoot,
+        log: (s) => logs.push(s),
+        spendJournal: spendJournal(),
+      },
+    );
+    expect(code).toBe(1);
+    expect(logs).toContainEqual(
+      expect.stringMatching(
+        /^::warning title=Журнал трат v3::замер остановлен: потолок прогона 50 ₽ достигнут/,
+      ),
+    );
+    // Stopped by the cap, not cancelled: the database step still ran (exact spend, session revoked).
+    expect(
+      sqls.map((x) =>
+        x.includes("'costs='") ? "collect" : x.includes("UPDATE platform.sessions") ? "revoke" : "seed",
+      ),
+    ).toEqual(["seed", "collect", "revoke"]);
+    const runs = [...platform.st.runs.values()];
+    expect(runs.filter((x) => x.status === "cancelled").length).toBeGreaterThan(0);
+    const sum = readFileSync(summary, "utf8");
+    expect(sum).toMatch(/- Прогон остановлен: потолок прогона 50 ₽ достигнут/);
+    expect(sum).toMatch(
+      /Ожидали 30 ₽, потолок 50 ₽, факт \d[\d\s]* ₽ \(точно, по журналу вызовов моделей\) — дороже ожиданий\./,
+    );
+    expect(sum).toMatch(/пробы и замеры с 2026-10-08 потратили 513 ₽/);
+    // The beta v2 budget line is gone with V3.
+    expect(sum).not.toContain("Бюджет разработки беты v2");
+    const entry = JSON.parse(readFileSync(join(tmpRoot, "wizard-eval-prod", "spend-entry.json"), "utf8"));
+    expect(entry.result).toMatch(
+      /^остановлен: потолок прогона 50 ₽ достигнут .*; засчитано \d из 2, порог не пройден$/,
+    );
+  });
+
+  it("d76 (B2-41): plans approved as they are, screenshots next to the report, the v3 spend, a strict verdict", async () => {
     const cloud = fakeCloud();
     await bootstrap(cloud, fakeTools());
     const db = { tokenHash: "", csrfHash: "", orgId: "11111111-1111-4111-8111-111111111111" };
@@ -1815,14 +2042,9 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     const logs = [];
     const summary = join(tmp, "summary-d76.md");
     const code = await main(
-      // The fake build costs 40 credits ≈ 200 ₽: the budget is raised over the default 300 ₽ (a hard stop under d76).
-      ["eval", "--env", "prod", "--briefs", "mvp-01,mvp-02", "--max-cost-rub", "1000"],
-      {
-        ...FOUNDER,
-        GITHUB_STEP_SUMMARY: summary,
-        WIZARD_B2_BUDGET_SINCE: "2026-10-08",
-        WIZARD_B2_BUDGET_RUB: "900",
-      },
+      // The fake build costs 40 credits ≈ 200 ₽: the cap is 1 000 ₽ (a hard stop under any threshold).
+      ["eval", "--env", "prod", "--briefs", "mvp-01,mvp-02", ...reg("1000", { "--wave": "checkpoint" })],
+      { ...FOUNDER, GITHUB_STEP_SUMMARY: summary, WIZARD_V3_BUDGET_SINCE: "2026-10-09" },
       {
         fetch: (url, init = {}) =>
           new URL(url).host === "codename.ru"
@@ -1844,6 +2066,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         kdf: FAST,
         tmpRoot: tmp,
         log: (l) => logs.push(l),
+        spendJournal: spendJournal(),
       },
     );
     expect(code).toBe(0);
@@ -1852,7 +2075,8 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
       "::notice title=D76 фото::Фото со стоков: 1 сайт из 2, всего 3 фото (Pexels 2, Pixabay 1)",
     );
     expect(sqls[0]).toContain("\\set org_name 'Замер D76 · ");
-    expect(sqls[1]).toContain("\\set b2_since '2026-10-08'");
+    // V3-01: the eval spend since the start of the v3 budget (WIZARD_V3_BUDGET_SINCE over the journal's day).
+    expect(sqls[1]).toContain("\\set b2_since '2026-10-09'");
     // The plan of each system was approved through approveSystemPlan, never a card.
     expect(platform.st.requests.filter((x) => x.endsWith("/plan/approve"))).toHaveLength(2);
     expect(platform.st.requests.some((x) => x.endsWith("/card/approve"))).toBe(false);
@@ -1869,7 +2093,13 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     const text = readFileSync(join(dir, md), "utf8");
     expect(text).toContain("# Замер беты v2 (порог D76)");
     expect(text).toContain("строгий порог D76 пройден — засчитано 2 из 2");
-    expect(text).toContain("Бюджет разработки беты v2: потрачено 123 ₽ из 900 ₽ с 2026-10-08");
+    expect(text).not.toContain("Бюджет разработки беты v2");
+    expect(text).toMatch(
+      /- Итого: потрачено 23 ₽ из плана 2\s000 ₽ волны «Чекпоинты основателя»; всего по v3 — 23 ₽ из 12\s000 ₽\./,
+    );
+    expect(text).toContain(
+      "- По журналу вызовов моделей платформы пробы и замеры с 2026-10-08 потратили 123 ₽.",
+    );
     expect(text).toContain("](shots/mvp-01-");
     const json = JSON.parse(readFileSync(join(dir, md.replace(/\.md$/, ".json")), "utf8"));
     expect(json).toMatchObject({
@@ -1897,7 +2127,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
     };
     const calls = [];
     await expect(
-      main(["eval", "--env", "prod", "--briefs", "mvp-01"], FOUNDER, {
+      main(["eval", "--env", "prod", "--briefs", "mvp-01", ...reg()], FOUNDER, {
         fetch: (url, init = {}) => {
           if (new URL(url).host === "codename.ru") calls.push(url);
           return cloud.fetch(url, init);
@@ -1909,6 +2139,7 @@ describe("pilot: eval — the D67 measurement on the server (M2-88 mvp_scope)", 
         kdf: FAST,
         tmpRoot: tmp,
         log: () => {},
+        spendJournal: spendJournal(),
       }),
     ).rejects.toThrow(/psql в wizard-postgres-0: код 3: psql:<stdin>:9: ERROR: {2}duplicate key/);
     expect(calls).toEqual([]);

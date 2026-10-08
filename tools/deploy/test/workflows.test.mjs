@@ -123,22 +123,36 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const action = load("bootstrap-pilot.yml").on.workflow_dispatch.inputs.action;
     expect(action.options).toEqual(["check", "apply", "diagnose", "eval", "reboot", "destroy"]);
     expect(action.default).toBe("check");
-    // eval: which briefs, the ₽ budget and the threshold (B2-41: d76 of beta v2 by default) go to the reusable.
+    // eval: which briefs and the threshold (B2-41: d76 of beta v2 by default) go to the reusable, and (V3-01) the
+    // pre-registration of the spend journal: no defaults to run on — the cap, the purpose, the hypothesis, the expected
+    // ₽ and the wave are filled for each run; the founder's «да» is «no» unless chosen.
     const boot = load("bootstrap-pilot.yml");
-    expect(boot.on.workflow_dispatch.inputs.briefs).toMatchObject({ type: "string", default: "all" });
-    expect(boot.on.workflow_dispatch.inputs.max_cost_rub).toMatchObject({ type: "string", default: "300" });
-    expect(boot.on.workflow_dispatch.inputs.threshold).toMatchObject({
+    const inputs = boot.on.workflow_dispatch.inputs;
+    expect(inputs.briefs).toMatchObject({ type: "string", default: "all" });
+    expect(inputs.threshold).toMatchObject({ type: "choice", options: ["d76", "d67"], default: "d76" });
+    expect(inputs.max_cost_rub).toBeUndefined();
+    for (const n of ["cap_rub", "purpose", "hypothesis", "expect_rub"])
+      expect(inputs[n], n).toMatchObject({ type: "string", default: "" });
+    expect(inputs.wave).toMatchObject({
       type: "choice",
-      options: ["d76", "d67"],
-      default: "d76",
+      options: ["-", "A", "B", "C", "checkpoint", "final", "retry"],
+      default: "-",
     });
-    // GitHub allows at most 10 inputs of a workflow_dispatch form.
-    expect(Object.keys(boot.on.workflow_dispatch.inputs).length).toBeLessThanOrEqual(10);
+    expect(inputs.founder_ok).toMatchObject({ type: "choice", options: ["no", "yes"], default: "no" });
+    // GitHub allows at most 25 inputs of a workflow_dispatch form (10 until December 2025).
+    expect(Object.keys(inputs).length).toBeLessThanOrEqual(25);
     expect(boot.doc.jobs.pilot.with).toMatchObject({
       briefs: gh("inputs.briefs"),
-      max_cost_rub: gh("inputs.max_cost_rub"),
+      cap_rub: gh("inputs.cap_rub"),
       threshold: gh("inputs.threshold"),
+      wave: gh("inputs.wave"),
+      purpose: gh("inputs.purpose"),
+      hypothesis: gh("inputs.hypothesis"),
+      expect_rub: gh("inputs.expect_rub"),
+      founder_ok: gh("inputs.founder_ok"),
     });
+    const reusableInputs = load("pilot-reusable.yml").on.workflow_call.inputs;
+    for (const n of Object.keys(boot.doc.jobs.pilot.with)) expect(reusableInputs, n).toHaveProperty(n);
     // D75: the daily model cap is raised for one deploy only (the next deploy without it is back to the default).
     const dep = load("deploy-pilot.yml");
     expect(dep.on.workflow_dispatch.inputs.llm_daily_cap_rub).toMatchObject({ type: "string", default: "" });
@@ -207,21 +221,47 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ COMMAND: "plan" }).code).toBe(1);
   });
 
-  it("eval: the PROD word on prod, briefs and budget validated before any secret is read", () => {
+  it("eval: the PROD word on prod, briefs and the spend journal record validated before any secret is read", () => {
     const ok = {
       COMMAND: "eval",
       CONFIRM: "PROD",
       EVAL_BRIEFS: "all",
-      EVAL_MAX_COST_RUB: "2000",
       EVAL_THRESHOLD: "d76",
+      EVAL_WAVE: "A",
+      EVAL_PURPOSE: "Проба сборки",
+      EVAL_HYPOTHESIS: "Брифы собираются",
+      EVAL_EXPECT_RUB: "250",
+      EVAL_CAP_RUB: "300",
+      EVAL_FOUNDER_OK: "no",
     };
     expect(authorize(ok).code).toBe(0);
     expect(authorize({ ...ok, CONFIRM: "" }).out).toContain("Подтверждение не совпало");
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-03,mvp-10" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
-    expect(authorize({ ...ok, EVAL_MAX_COST_RUB: "2e3" }).out).toContain("max_cost_rub");
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d67" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d76; curl x" }).out).toContain("threshold");
+    // V3-01: a paid run only with its record in the spend journal; > 1 000 ₽ at once — with the founder's «да».
+    for (const [k, v, why] of [
+      ["EVAL_PURPOSE", "", "purpose и hypothesis"],
+      ["EVAL_HYPOTHESIS", "", "purpose и hypothesis"],
+      ["EVAL_WAVE", "-", "wave"],
+      ["EVAL_EXPECT_RUB", "", "expect_rub"],
+      ["EVAL_EXPECT_RUB", "1e3", "expect_rub"],
+      ["EVAL_CAP_RUB", "", "cap_rub"],
+      ["EVAL_CAP_RUB", "2e3", "cap_rub"],
+      ["EVAL_CAP_RUB", "0", "cap_rub"],
+      ["EVAL_FOUNDER_OK", "maybe", "founder_ok"],
+      ["EVAL_CAP_RUB", "1500", "founder_ok=yes"],
+    ]) {
+      const r = authorize({ ...ok, [k]: v });
+      expect(r.code, `${k}=${v}`).toBe(1);
+      expect(r.out, `${k}=${v}`).toContain("::error title=Журнал трат v3::Платный прогон не начат");
+      expect(r.out, `${k}=${v}`).toContain(why);
+    }
+    expect(authorize({ ...ok, EVAL_EXPECT_RUB: "12,5", EVAL_WAVE: "final" }).code).toBe(0);
+    expect(authorize({ ...ok, EVAL_CAP_RUB: "3600", EVAL_FOUNDER_OK: "yes" }).code).toBe(0);
+    // Deploys need none of it.
+    expect(authorize({ COMMAND: "deploy", CONFIRM: "PROD" }).code).toBe(0);
     const dep = { COMMAND: "deploy", CONFIRM: "PROD" };
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "1100" }).code).toBe(0);
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "" }).code).toBe(0);
@@ -236,11 +276,24 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const run = job.steps.find((s) => s.name === `Pilot (${gh("inputs.command")})`).run;
     // Inputs reach the shell as environment variables, never spliced into the script.
     expect(run).toContain(
-      'eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" --threshold "$EVAL_THRESHOLD"',
+      'eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --threshold "$EVAL_THRESHOLD" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK"',
     );
-    expect(run).not.toContain("inputs.briefs");
+    expect(run).not.toContain("inputs.");
     expect(job.env.EVAL_BRIEFS).toBe(gh("inputs.briefs"));
     expect(job.env.EVAL_THRESHOLD).toBe(gh("inputs.threshold"));
+    for (const [env, input] of [
+      ["EVAL_CAP_RUB", "cap_rub"],
+      ["EVAL_WAVE", "wave"],
+      ["EVAL_PURPOSE", "purpose"],
+      ["EVAL_HYPOTHESIS", "hypothesis"],
+      ["EVAL_EXPECT_RUB", "expect_rub"],
+      ["EVAL_FOUNDER_OK", "founder_ok"],
+    ]) {
+      expect(job.env[env], env).toBe(gh(`inputs.${input}`));
+      expect(doc.jobs.authorize.steps[0].env[env], env).toBe(gh(`inputs.${input}`));
+    }
+    // The free text of the record never reaches a script as an expression (script injection).
+    expect(doc.jobs.authorize.steps[0].run).not.toContain("inputs.");
     const report = job.steps.find((s) => s.name === "Eval report");
     expect(report.if).toBe("always() && inputs.command == 'eval'");
     expect(report.with.name).toBe(

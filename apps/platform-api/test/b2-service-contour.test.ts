@@ -23,6 +23,7 @@ const STAFF = "founder-b2@example.test";
 const CLIENT = "owner-b2@bakery.example";
 const EVAL = "eval+b2@example.test";
 // Daily cap 100 ₽ with a staff reserve of 20 ₽: clients and eval stop at 80 ₽. Eval: 30 ₽ a day, B2 budget 50 ₽.
+// The v3 budget (V3-01) replaces the B2 one from its first day: here it starts after the days of this test.
 const CFG = {
   llmMonthlyCapRub: 100_000,
   llmDailyCapRub: 100,
@@ -30,6 +31,7 @@ const CFG = {
   llmEvalDailyCapRub: 30,
   b2BudgetRub: 50,
   b2BudgetSince: "2026-10-06",
+  v3BudgetSince: "2026-12-01",
 };
 
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
@@ -100,14 +102,15 @@ const refused = (orgId: string, message_ru: string) =>
 const events = (event: string) => alerts.filter((a) => a.event === event);
 
 describe("config", () => {
-  test("defaults: reserve 200 ₽, eval 300 ₽ a day, B2 budget 1 000 ₽ since 2026-10-07; bad values refuse the start", () => {
+  test("defaults: reserve 200 ₽, eval — the daily cap (V3-01; B2 had 300 ₽), B2 budget 1 000 ₽ since 2026-10-07; bad values refuse the start", () => {
     const c = loadConfig({});
     expect([c.llmStaffReserveRub, c.llmEvalDailyCapRub, c.b2BudgetRub, c.b2BudgetSince]).toEqual([
       200,
-      300,
+      3000,
       1000,
       "2026-10-07",
     ]);
+    expect(loadConfig({ WIZARD_LLM_DAILY_CAP_RUB: "1100" }).llmEvalDailyCapRub).toBe(1100);
     const env = loadConfig({
       WIZARD_LLM_STAFF_RESERVE_RUB: "150",
       WIZARD_LLM_EVAL_DAILY_CAP_RUB: "250",
