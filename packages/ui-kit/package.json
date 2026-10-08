@@ -9,7 +9,8 @@
     "./fonts": "./src/tokens/fonts.ts",
     "./themes": "./src/themes/index.ts",
     "./v2": "./src/v2/index.ts",
-    "./v2/theme.css": "./src/v2/theme.css"
+    "./v2/theme.css": "./src/v2/theme.css",
+    "./v3/design": "./src/v3/design/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

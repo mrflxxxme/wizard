@@ -183,3 +183,18 @@ export {
   type V2Stage,
 } from "./v2/types.js";
 export { StageBudgetError, StageWallet } from "./v2/wallet.js";
+/** V3-07 art director: three candidate directions by code; the model picks one via submit_art_direction, or fallback. */
+export {
+  ACCENT_USES,
+  ART_DIRECTION_CALL_TYPE,
+  type ArtDirection,
+  type ArtDirectionAnswer,
+  type ArtDirectionCandidate,
+  type ArtDirectionChoice,
+  type ArtDirectorInput,
+  artDirectionCandidates,
+  artDirectionIssues,
+  artDirectionMessages,
+  artDirectionSchema,
+  runArtDirector,
+} from "./v3/art-director.js";

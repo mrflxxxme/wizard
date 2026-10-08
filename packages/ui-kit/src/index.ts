@@ -208,3 +208,24 @@ export {
   tokensToCss,
   V2_TOKENS,
 } from "./tokens/tokens.js";
+/** V3-07 client design system (C2; React-free subpath ./v3/design): archetypes, sampler, tokens, CSS, designLint. */
+export {
+  ARCHETYPE_IDS,
+  ARCHETYPES,
+  type Archetype,
+  type ArchetypeId,
+  type ArchetypePick,
+  DESIGN_THEME_CSS,
+  type DesignDiversity,
+  type DesignLintIssue,
+  type DesignSystemInput,
+  type DesignSystemV3,
+  designDistance,
+  designDiversity,
+  designLint,
+  designSystemCss,
+  designSystemTheme,
+  designSystemV3,
+  pickArchetype,
+  pickArchetypes,
+} from "./v3/design/index.js";
