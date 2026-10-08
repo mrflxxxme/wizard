@@ -19,8 +19,15 @@ export {
   type ChatSheetProps,
   SHEET_DRAG_THRESHOLD,
 } from "./components/ChatSheet.js";
-/** Floating input row: selected block label, suggestions, breathing while the AI thinks. */
-export { Composer, type ComposerProps, type ComposerSuggestion } from "./components/Composer.js";
+/** Floating input row: block label, suggestions, breathing; V3-04 attach={onFile,…} — «Приложить ТЗ» (docx/pdf/md/txt ≤ 10 МБ). */
+export {
+  COMPOSER_ATTACH_ACCEPT,
+  COMPOSER_ATTACH_MAX_BYTES,
+  Composer,
+  type ComposerAttach,
+  type ComposerProps,
+  type ComposerSuggestion,
+} from "./components/Composer.js";
 /** Buttons, chips, tags, serif «human» text, glass panel and the theme root. */
 export {
   ActionButton,

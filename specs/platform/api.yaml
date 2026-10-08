@@ -232,6 +232,23 @@ paths:
       responses:
         '200': {description: Версии, content: {application/json: {schema: {type: object, required: [versions, nextBefore], properties: {versions: {type: array, items: {type: object}}, nextBefore: {type: [integer, 'null']}}}}}}
         '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/brief/upload:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: uploadSystemBrief
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-04 (D77 (8)): ТЗ из файла → черновик брифа. Файл docx, pdf, md или txt ≤ 10 МБ (тип — по сигнатуре, не по расширению; txt/md — UTF-8, UTF-16, Windows-1251, KOI8-R); текст извлекается на сервере платформы в РФ, файл живёт только в памяти запроса — ни байты, ни имя не сохраняются. Разбор — T0-вызов brief_extract (data-boundary.yaml#call_types.brief_extract), черновик очищается от ПДн (scrub) и заполняет только пустые разделы последней версии; новая версия author agent, источник — в допущениях. Без модели (нет записанного ответа, лимит LLM месяца, демо-режим, ошибка) — эвристический черновик (цели и сценарии из заголовков и списков). gaps — briefGaps: что интервью ещё спросит. Кредиты не списываются (вызов в llm_calls)'
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file], properties: {file: {type: string, contentMediaType: application/octet-stream}}}}}}
+      responses:
+        '201': {description: 'Новая версия брифа (changed=true)', content: {application/json: {schema: {type: object, required: [brief, diagrams, changed, source, gaps], properties: {brief: {type: object, description: 'BriefVersion (author agent)'}, diagrams: {type: object}, changed: {type: boolean}, source: {type: object, required: [kind, format, chars, truncated, method, chunks, answered, piiReplaced], properties: {kind: {const: file}, format: {enum: [docx, pdf, text]}, chars: {type: integer}, truncated: {type: boolean, description: 'текст длиннее 120 000 знаков обрезан'}, pages: {type: integer}, method: {enum: [model, heuristic]}, chunks: {type: integer}, answered: {type: integer}, piiReplaced: {type: integer}}}, gaps: {type: object, required: [sections, filled, missing, blocking], properties: {sections: {type: array, items: {type: object}}, filled: {type: array, items: {type: string}}, missing: {type: array, items: {type: string}}, blocking: {type: array, items: {type: string}}}}}}}}}
+        '200': {description: 'Черновик ничего не добавил к последней версии (changed=false)', content: {application/json: {schema: {type: object, required: [brief, diagrams, changed, source, gaps], properties: {brief: {type: object, description: 'BriefVersion (author agent)'}, diagrams: {type: object}, changed: {type: boolean}, source: {type: object, required: [kind, format, chars, truncated, method, chunks, answered, piiReplaced], properties: {kind: {const: file}, format: {enum: [docx, pdf, text]}, chars: {type: integer}, truncated: {type: boolean, description: 'текст длиннее 120 000 знаков обрезан'}, pages: {type: integer}, method: {enum: [model, heuristic]}, chunks: {type: integer}, answered: {type: integer}, piiReplaced: {type: integer}}}, gaps: {type: object, required: [sections, filled, missing, blocking], properties: {sections: {type: array, items: {type: object}}, filled: {type: array, items: {type: string}}, missing: {type: array, items: {type: string}}, blocking: {type: array, items: {type: string}}}}}}}}}
+        '400': {description: 'VALIDATION_FAILED — нет файла или multipart; details.reason: BAD_FILE (файл повреждён), ENCRYPTED (pdf с паролем), EMPTY_TEXT (нет текста, скан)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '412': {description: 'VERSION_CONFLICT — бриф менялся дважды за время разбора', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '413': {description: 'PAYLOAD_TOO_LARGE — файл больше 10 МБ (details.reason FILE_TOO_LARGE) или больше 60 МБ после распаковки docx (UNPACKED_TOO_LARGE)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '415': {description: 'UNSUPPORTED_MEDIA_TYPE — не docx, pdf, md или txt (старый .doc, rtf, odt, картинки, таблицы); подсказка в message_ru', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /systems/{id}/fix:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:

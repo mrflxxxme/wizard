@@ -11,6 +11,8 @@
 | @dbos-inc/dbos-sdk (DBOS Transact TS) и его зависимости pg, pg-pool, pg-protocol, pg-types (MIT), superjson, copy-anything, is-what (MIT), serialize-error (MIT), ws (MIT), commander (MIT), yaml (ISC) | см. pnpm-lock | MIT | `apps/worker`: durable-воркфлоу прогонов; `apps/platform-api`: постановка прогонов в очередь (DBOSClient). Серверная сторона, в бандлы систем не попадает |
 | undici (Node.js) | см. pnpm-lock | MIT | `packages/llm`: HTTP вызовов моделей с таймаутом заголовков дольше 300 с по умолчанию (уже был в дереве через @ai-sdk/provider-utils). Серверная сторона, в бандлы систем не попадает |
 | Словарь брендов `packages/gates/data/brands.ru.json` | собственная компиляция | CC0 | антифрод G2-AF-04: имена из `specs/security/abuse.yaml#patterns.brands`, домены — собственный список; внешних источников нет |
+| unpdf (Johann Schopplich, unjs) со встроенной serverless-сборкой PDF.js (Mozilla Foundation) | см. pnpm-lock | MIT; PDF.js — Apache-2.0 | `packages/agents/src/brief-extract` (V3-04): текст ТЗ из pdf на сервере платформы. Без нативных модулей: `@napi-rs/canvas` — необязательный peer, не устанавливается. Серверная сторона, в бандлы систем не попадает |
+| fflate | см. pnpm-lock | MIT | `packages/agents/src/brief-extract` (V3-04): распаковка docx ТЗ с потоковым подсчётом распакованного размера (защита от zip-бомб). Серверная сторона |
 
 ## Инструменты только для CI (не распространяются, не модифицируются)
 
