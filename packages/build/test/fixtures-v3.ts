@@ -3,6 +3,7 @@
 // wide poster (afisha) and a soft care look (zabota). Palettes after catalog E4, written in OKLCH like C2 asks.
 import { fontFaceCss } from "@wizard/ui-kit/fonts";
 import { contrast, hexToOklch } from "@wizard/ui-kit/themes";
+import { designSystemCss, designSystemV3 } from "@wizard/ui-kit/v3/design";
 
 type Colors = {
   background: string;
@@ -336,3 +337,33 @@ function mix(top: string, bottom: string, alpha: number): string {
   const v = [0, 1, 2].map((i) => Math.round(ch(top, i) * alpha + ch(bottom, i) * (1 - alpha)));
   return `#${v.map((x) => x.toString(16).padStart(2, "0")).join("")}`;
 }
+
+/** A design system of the browser matrix: its id and the ui/design.css of the system. */
+export interface DesignCss {
+  id: string;
+  css: string;
+}
+
+/**
+ * Real design systems of V3-07 (designSystemV3 → designSystemCss) for the pattern matrix: four contrasting archetypes —
+ * a fine serif luxury, a loud poster (lively motion), a calm care look and the dark-first night one. The page runs in
+ * the automatic scheme (the system follows prefers-color-scheme), so `[data-scheme=auto]` is the document itself here.
+ */
+export const REAL_DESIGNS: readonly DesignCss[] = (
+  [
+    ["luxury", "#8a6a3b"],
+    ["bold_poster", "#e4002b"],
+    ["calm_medical", "#2f7fb8"],
+    ["night_contrast", "#7c5cff"],
+  ] as const
+).map(([archetype, brandColor]) => {
+  const ds = designSystemV3({ archetype, brandColor, seed: 7, niche: "проверка паттернов" });
+  return {
+    id: archetype,
+    css: [
+      designSystemCss(ds, { fonts: true }).replaceAll(":root[data-scheme=auto]", ":root"),
+      "html { background-color: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); }",
+      "",
+    ].join("\n"),
+  };
+});

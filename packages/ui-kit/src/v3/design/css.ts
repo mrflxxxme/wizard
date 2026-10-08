@@ -5,7 +5,7 @@
 // fonts, sizes, radii, shadows and animations are cleared: pages use the client's tokens only (stack v3, V3-12).
 import { FONTS_BASE, fontFaceCss } from "../../tokens/fonts.js";
 import { COLOR_ROLES, type ColorRole, type PaletteScheme, type SchemeName } from "./palette.js";
-import { type DesignSystemV3, fluid, TYPE_STEPS } from "./system.js";
+import { type DesignSystemV3, fluid, TYPE_STEPS, type TypeStep } from "./system.js";
 
 export interface DesignCssOptions {
   /** Selector instead of :root (a preview container); the scheme attribute goes on the same element. */
@@ -86,6 +86,8 @@ export function designSystemVars(ds: DesignSystemV3): Record<string, string | nu
     "--ds-anim-reveal": anim("rise", m.durations.reveal),
     "--ds-image-filter": ds.imagery.filter,
     "--ds-image-ratio": ds.imagery.ratio.replace(":", " / "),
+    // The motion profile the patterns read (patterns/theme.ts MOTION_PROFILE_VAR): still | calm | lively.
+    "--ds-motion": m.profile,
   });
   return vars;
 }
@@ -97,6 +99,34 @@ const KEYFRAMES = [
   "@keyframes wz-spin{to{transform:rotate(360deg)}}",
 ].join("\n");
 
+/** Colour names of the pattern contract (patterns/theme.ts PATTERN_THEME.color) → the role that fills them. */
+export const PATTERN_COLOR_ROLES: Readonly<Record<string, ColorRole>> = {
+  background: "bg",
+  foreground: "ink",
+  card: "surface",
+  "card-foreground": "ink",
+  primary: "accent",
+  "primary-foreground": "accentInk",
+  muted: "surfaceAlt",
+  "muted-foreground": "muted",
+  ring: "focus",
+  inverse: "ink",
+  "inverse-foreground": "bg",
+  scrim: "overlay",
+  "scrim-foreground": "overlayInk",
+};
+
+/** Type names of the pattern contract (patterns/theme.ts PATTERN_THEME.text) → the step of the scale. */
+export const PATTERN_TEXT_STEPS: Readonly<Record<string, TypeStep>> = {
+  hero: "display",
+  h1: "3xl",
+  h2: "2xl",
+  h3: "xl",
+  lead: "lg",
+  body: "base",
+  small: "sm",
+};
+
 /** Tailwind v4 theme bound to the --ds-* variables (the same for every design system). */
 export const DESIGN_THEME_CSS: string = (() => {
   const lines = [
@@ -106,7 +136,10 @@ export const DESIGN_THEME_CSS: string = (() => {
     "--radius-*: initial;",
     "--shadow-*: initial;",
     "--animate-*: initial;",
-    ...COLOR_ROLES.map((r) => `${twColor(r)}: var(${colorVar(r)});`),
+    ...COLOR_ROLES.filter((r) => r !== "muted").map((r) => `${twColor(r)}: var(${colorVar(r)});`),
+    // The names the section patterns are written against (patterns/theme.ts PATTERN_THEME, shadcn-style pairs):
+    // muted is a quiet background there, its text is the role muted; inverse — the contrasting band, scrim — over photos.
+    ...Object.entries(PATTERN_COLOR_ROLES).map(([name, role]) => `--color-${name}: var(${colorVar(role)});`),
     "--font-display: var(--ds-font-display);",
     "--font-text: var(--ds-font-text);",
     "--font-sans: var(--ds-font-text);",
@@ -117,11 +150,18 @@ export const DESIGN_THEME_CSS: string = (() => {
       `--text-${s}--line-height: var(--ds-leading-${s});`,
       `--text-${s}--letter-spacing: var(--ds-tracking-${s});`,
     ]),
+    ...Object.entries(PATTERN_TEXT_STEPS).flatMap(([name, step]) => [
+      `--text-${name}: var(--ds-text-${step});`,
+      `--text-${name}--line-height: var(--ds-leading-${step});`,
+      `--text-${name}--letter-spacing: var(--ds-tracking-${step});`,
+    ]),
     "--spacing: 0.25rem;",
     "--spacing-section: var(--ds-space-section);",
     "--spacing-gutter: var(--ds-gutter);",
     "--container-content: var(--ds-container);",
     "--container-measure: var(--ds-measure);",
+    "--container-page: var(--ds-container);",
+    "--container-text: var(--ds-measure);",
     "--radius-sm: var(--ds-radius-sm);",
     "--radius-md: var(--ds-radius-md);",
     "--radius-lg: var(--ds-radius-lg);",

@@ -24,6 +24,8 @@ export {
   type DesignCssOptions,
   designSystemCss,
   designSystemVars,
+  PATTERN_COLOR_ROLES,
+  PATTERN_TEXT_STEPS,
 } from "./css.js";
 /** designDistance / designDiversity: how different design systems are (V3-07 acceptance, template gate input). */
 export { type DesignDiversity, designDistance, designDiversity, designKey } from "./diversity.js";

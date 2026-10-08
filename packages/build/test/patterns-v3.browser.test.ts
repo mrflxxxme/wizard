@@ -1,4 +1,5 @@
-// V3-08 acceptance (browser): every pattern of the library × 4 design systems (fixtures after C2) × 390/1280 px ×
+// V3-08 acceptance (browser): every pattern of the library × 4 real design systems (V3-07: luxury, bold poster, calm
+// medical, night contrast) × 390/1280 px ×
 // light and dark — built by buildSystem (Tailwind v4 over ui/design.css, React and Motion in the bundle) and rendered
 // in Chromium without errors, horizontal overflow, contrast below WCAG AA (text over photos against white and black),
 // unnamed controls, images without alt, broken heading order, and with touch targets ≥ 44 px at 390. Screenshots of
@@ -9,7 +10,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { buildSystem } from "../src/index.js";
-import { DESIGN_FIXTURES } from "./fixtures-v3.js";
+import { REAL_DESIGNS as DESIGN_FIXTURES } from "./fixtures-v3.js";
 import { PKG_ROOT } from "./helpers.js";
 import { V3_CHECKS_SCRIPT, type V3CheckResult } from "./v3-checks.js";
 import { type PreviewServer, previewItems, previewSystem, servePreview } from "./v3-harness.js";
@@ -162,16 +163,16 @@ describe.skipIf(!hasChromium)("pattern library v3 in chromium", () => {
       await ctx.close();
       return { hidden, stillHidden };
     };
-    const lively = await run("afisha", "no-preference");
+    const lively = await run("bold_poster", "no-preference");
     expect(lively.hidden.length).toBeGreaterThanOrEqual(6);
     expect(lively.hidden.every((id) => id.startsWith("hero-"))).toBe(true);
     expect(lively.stillHidden).toEqual([]);
-    expect(await run("afisha", "reduce")).toEqual({ hidden: [], stillHidden: [] });
-    expect(await run("reestr", "no-preference")).toEqual({ hidden: [], stillHidden: [] });
+    expect(await run("bold_poster", "reduce")).toEqual({ hidden: [], stillHidden: [] });
+    expect(await run("luxury", "no-preference")).toEqual({ hidden: [], stillHidden: [] });
   }, 60_000);
 
   test("headers @390px: «Меню» opens the menu panel, Esc closes it and returns focus to the toggle", async () => {
-    const { page } = await open("zabota", { width: 390, height: 844 }, "light");
+    const { page } = await open("calm_medical", { width: 390, height: 844 }, "light");
     const headers = PATTERNS.filter((p) => p.sectionType === "header");
     for (const h of headers) {
       const root = page.locator(`[data-preview="${h.id}"]`);

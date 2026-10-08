@@ -9,7 +9,7 @@ import type { AppSpec } from "@wizard/appspec";
 import { toRoleSpec } from "@wizard/ui-kit";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import type { BuildResult } from "../src/index.js";
-import { type DesignFixture, designCss } from "./fixtures-v3.js";
+import { type DesignCss, type DesignFixture, designCss } from "./fixtures-v3.js";
 import { loadForum, REPO_ROOT } from "./helpers.js";
 
 export const PREVIEW_PAGE = "ui/pages/Preview.tsx";
@@ -32,7 +32,7 @@ export function previewItems(patterns: readonly PatternMeta[]): PreviewItem[] {
 }
 
 /** Spec and files of a preview system with the given sections rendered in order, each in [data-preview="<id>"]. */
-export function previewSystem(fixture: DesignFixture, patterns: readonly PreviewItem[]) {
+export function previewSystem(fixture: DesignFixture | DesignCss, patterns: readonly PreviewItem[]) {
   const forum = loadForum();
   const role = forum.roles.find((r) => r.access === "public")?.name ?? "visitor";
   const spec: AppSpec = {
@@ -40,7 +40,9 @@ export function previewSystem(fixture: DesignFixture, patterns: readonly Preview
     functions: [],
     pages: [{ route: "/", title: "Паттерны", file: PREVIEW_PAGE, roles: [role] }],
   };
-  const files = new Map<string, string>([["ui/design.css", designCss(fixture)]]);
+  const files = new Map<string, string>([
+    ["ui/design.css", "css" in fixture ? fixture.css : designCss(fixture)],
+  ]);
   for (const p of patterns) files.set(`ui/patterns/${p.id}.tsx`, p.source);
   const page = [
     ...patterns.map((p) => `import ${pascal(p.id)} from "../patterns/${p.id}";`),
