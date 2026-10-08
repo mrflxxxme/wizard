@@ -64,6 +64,23 @@ export {
   platformSystemUrl,
   unimplementedSections,
 } from "./engine/compile.js";
+/** V3-10 (C5): compilePlan(plan, registry, {front: "backend"}) → no public pages; publicFront {screens, actions (headless hooks), functions}; scenario surface. */
+export {
+  type BookingFrontConfig,
+  type FrontMode,
+  orphanUiFiles,
+  PUBLIC_AUDIENCES,
+  type PublicAction,
+  type PublicFront,
+  type PublicFunction,
+  type PublicHook,
+  type PublicScreen,
+  publicActions,
+  publicFunctions,
+  type ScenarioSurface,
+  scenarioFront,
+  V2_FRONT_NOTES,
+} from "./engine/front.js";
 /** matrixPlan(registry, moduleId, row) — the minimal plan a CI matrix row is compiled with. */
 export { type MatrixRow, matrixPlan } from "./engine/matrix.js";
 /** B2-44: siteName(text, max=40) — a short site name (first clause, no wishes, word-boundary cut); planSiteName(plan) — from the niche. */

@@ -107,6 +107,26 @@ export {
 } from "./migrate.js";
 /** B2-10 plan errors: PlanError {code, path, message_ru} with the closed PLAN_ERROR_CODES set. */
 export { PLAN_ERROR_CODES, type PlanError, type PlanErrorCode } from "./modules/errors.js";
+/** V3-10 (C5): ExtensionOp (zod) and applyExtensions(spec, ops) → {spec, files, applied, rejected [{op, reasonRu}]}; markExtraPii (B2-46) shared with the module engine. */
+export {
+  applyExtensions,
+  CUSTOM_FUNCTIONS_DIR,
+  EXTENSION_FIELD_TYPES,
+  EXTENSION_SOURCE_LIMIT,
+  EXTENSION_STEPS,
+  EXTENSION_TRIGGERS,
+  EXTRA_PII_RETENTION,
+  type ExtendOptions,
+  type ExtensionGrant,
+  type ExtensionOp,
+  type ExtensionOpName,
+  type ExtensionResult,
+  entityGrantSchema,
+  extensionGrantSchema,
+  extensionOpSchema,
+  markExtraPii,
+  type RejectedExtension,
+} from "./modules/extend.js";
 /** B2-10 closed vocabulary of business goals: GOALS {id, label}, goalIdSchema, goalLabel(id). */
 export { GOAL_IDS, GOALS, type GoalId, goalIdSchema, goalLabel } from "./modules/goals.js";
 /** B2-10 module manifests (specs/modules/modules.yaml#manifest): schema, parameters, conditions, catalog check. */

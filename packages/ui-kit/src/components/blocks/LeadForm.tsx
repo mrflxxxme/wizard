@@ -1,11 +1,13 @@
 // LeadForm (ui-kit.yaml#components.LeadForm, M2-43): the lead form of a landing page over the SDK create hook
 // (DataSource.useCreate → useEntityMutation(entity).create). Fields, validation and the personal data consent are those
 // of RecordForm: with a pii field and a non-admin role the consent checkbox is shown and nothing is sent without it;
-// create goes with {consent: true} (G2-PII-04, compliance.yaml#system_package.consent).
-import { type ReactNode, useState } from "react";
-import { cx, useCan, useWzRoot } from "../../data/context.js";
+// create goes with {consent: true} (G2-PII-04, compliance.yaml#system_package.consent). The logic is the headless
+// useLeadForm of v3 (V3-10): the block is its markup.
+import type { ReactNode } from "react";
+import { cx, useWzRoot } from "../../data/context.js";
 import { ru } from "../../i18n/ru.js";
-import { RecordFormImpl } from "../RecordForm.js";
+import { useLeadForm } from "../../v3/headless/lead-form.js";
+import { RecordFormView } from "../RecordForm.js";
 import { part } from "../root.js";
 import s from "./Blocks.module.css";
 import { Section, useHeadingId } from "./Section.js";
@@ -14,11 +16,14 @@ import type { LeadFormProps } from "./types.js";
 export function LeadForm(props: LeadFormProps): ReactNode {
   const root = useWzRoot("LeadForm", "wz-leadform", props);
   const id = useHeadingId("lead");
-  const can = useCan();
-  const [sent, setSent] = useState(false);
-  const [round, setRound] = useState(0);
+  const lead = useLeadForm(props.entity, {
+    ...(props.fields ? { fields: props.fields } : {}),
+    ...(props.hidden ? { hidden: props.hidden } : {}),
+    ...(props.onSuccess ? { onSuccess: props.onSuccess } : {}),
+  });
   const variant = props.variant ?? "card";
-  const allowed = can("create", props.entity);
+  const allowed = lead.allowed;
+  const sent = lead.sent !== null;
 
   const head = (
     <div className={s.head}>
@@ -48,32 +53,19 @@ export function LeadForm(props: LeadFormProps): ReactNode {
     <div className={s.success} role="status" data-testid="wz-leadform-success">
       <h3 className={s.h3}>{ru.blocks.leadSentTitle}</h3>
       <p className={s.text}>{props.successText ?? ru.blocks.leadSentText}</p>
-      <button
-        type="button"
-        className={s.linkButton}
-        onClick={() => {
-          setSent(false);
-          setRound((r) => r + 1);
-        }}
-      >
+      <button type="button" className={s.linkButton} onClick={lead.again}>
         {ru.blocks.leadAgain}
       </button>
     </div>
   ) : (
-    <RecordFormImpl
-      key={round}
+    <RecordFormView
+      key={lead.round}
       root={part("wz-leadform-form")}
       testBase="leadform"
       entity={props.entity}
       mode="create"
-      {...(props.fields ? { fields: props.fields } : {})}
-      {...(props.hidden ? { hidden: props.hidden } : {})}
       submitLabel={props.submitLabel ?? ru.blocks.leadSubmit}
-      initial={{}}
-      onSuccess={(rec) => {
-        setSent(true);
-        props.onSuccess?.(rec);
-      }}
+      model={lead.form}
     />
   );
 

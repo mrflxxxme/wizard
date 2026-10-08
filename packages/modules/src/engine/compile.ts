@@ -10,21 +10,18 @@ import {
   type EntityIndex,
   evalCondition,
   type Field,
-  fieldPiiCategory,
   type GoalScenario,
   type Integration,
-  isPiiSubject,
   isReservedName,
   type ModuleFragments,
   type ModuleManifest,
+  markExtraPii,
   type Page,
   PERMISSION_OPS,
   type Permission,
   type PermissionOp,
   type PlanError,
   type PlanErrorCode,
-  piiKindFor,
-  piiNameReason,
   pointer,
   type Role,
   SECTION_CATALOG,
@@ -49,6 +46,19 @@ import {
   planCatalog,
   type ScreenContext,
 } from "../types.js";
+import {
+  type FrontMode,
+  orphanUiFiles,
+  PUBLIC_AUDIENCES,
+  type PublicFront,
+  type PublicHook,
+  type PublicScreen,
+  publicActions,
+  publicFunctions,
+  type ScenarioSurface,
+  scenarioFront,
+  V2_FRONT_NOTES,
+} from "./front.js";
 import { planSiteName } from "./name.js";
 import { applicationOrder } from "./order.js";
 import { canonical, sameJson, substitute } from "./substitute.js";
@@ -72,6 +82,12 @@ export interface CompileOptions {
    */
   platformUrl?: string;
   systemId?: string;
+  /**
+   * V3-10 (C5): "v2" (default) — module pages as before; "backend" — AppSpec, functions, automations, metrics, goal
+   * scenarios and staff cabinets without the public pages (landing, home, booking, showcase, client cabinet): v3
+   * generates them on the client's design system with the headless hooks of the result's publicFront.
+   */
+  front?: FrontMode;
 }
 
 /** The owner's page of the system on the platform (`${url}/s/${systemId}`), or null when compiled without it. */
@@ -84,6 +100,10 @@ export type { CompiledMetric } from "../types.js";
 /** A goal scenario of a plan module whose condition holds and whose withModules are all in the plan. */
 export interface CompiledScenario extends GoalScenario {
   module: string;
+  /** Backend mode: public — a visitor or client acts on pages of the v3 front; cabinet — staff cabinets only. */
+  surface?: ScenarioSurface;
+  /** Backend mode: headless hooks of the public actions the scenario goes through (its modules). */
+  hooks?: PublicHook[];
 }
 
 /** Reserved names and paths of a custom item for the custom-code stage (B2-23); not in the spec yet. */
@@ -116,6 +136,9 @@ export interface CompileSuccess {
   plan: SystemPlan;
   /** Russian notes for the plan screen. */
   warnings: string[];
+  /** Backend mode only: the compiled front ("backend") and what its public front must provide. */
+  front?: "backend";
+  publicFront?: PublicFront;
 }
 
 export type CompileResult = CompileSuccess | { ok: false; errors: PlanError[] };
@@ -254,6 +277,10 @@ class Compilation {
   private readonly warnings: string[] = [];
 
   private readonly platform: ModuleContext["platform"];
+  private readonly front: FrontMode;
+  /** Backend mode: module screens left to the v3 front. */
+  private readonly publicScreens: PublicScreen[] = [];
+  private readonly functionOwner = new Map<string, string>();
 
   constructor(
     private readonly plan: SystemPlan,
@@ -265,6 +292,7 @@ class Compilation {
       opts.platformUrl && opts.systemId
         ? { url: opts.platformUrl.replace(/\/+$/, ""), systemId: opts.systemId }
         : undefined;
+    this.front = opts.front ?? "v2";
     this.defs = new Map(registry.modules.map((d) => [d.manifest.id, d]));
     this.present = new Set(plan.modules.map((m) => m.id));
     this.planIndex = new Map(plan.modules.map((m, i) => [m.id, i]));
@@ -365,7 +393,12 @@ class Compilation {
     if (metricErrors.length) return { ok: false, errors: metricErrors };
     const metrics = this.planMetrics;
 
-    for (const id of this.order) this.warnings.push(...(this.defs.get(id)?.warnings?.(this.ctx(id)) ?? []));
+    for (const id of this.order) {
+      // Backend mode: notes about the v2 public pages (lead form, showcase on the landing) do not apply.
+      if (this.front === "backend" && V2_FRONT_NOTES.has(id)) continue;
+      this.warnings.push(...(this.defs.get(id)?.warnings?.(this.ctx(id)) ?? []));
+    }
+    const backend = this.front === "backend" ? this.backendFront(spec) : undefined;
     return {
       ok: true,
       spec,
@@ -373,7 +406,9 @@ class Compilation {
       order: [...this.order],
       links: this.links,
       metrics,
-      scenarios: this.scenarios(),
+      scenarios: backend
+        ? this.scenarios().map((s) => ({ ...s, ...scenarioFront(s, backend.actions) }))
+        : this.scenarios(),
       customSlots: this.customSlots(),
       plan: {
         ...this.plan,
@@ -384,6 +419,21 @@ class Compilation {
         })),
       },
       warnings: this.warnings,
+      ...(backend ? { front: "backend" as const, publicFront: backend } : {}),
+    };
+  }
+
+  /**
+   * Backend mode (V3-10): ui/** helpers no remaining page imports are dropped (they served the pages left to v3); the
+   * public front gets the skipped screens, the public data actions and the public functions of the spec.
+   */
+  private backendFront(spec: AppSpec): PublicFront {
+    const pages = (spec.pages ?? []).map((p) => p.file);
+    for (const f of orphanUiFiles(this.files, pages)) this.files.delete(f);
+    return {
+      screens: this.publicScreens,
+      actions: publicActions(spec, this.entityOwner, this.functionOwner, this.params),
+      functions: publicFunctions(spec, this.functionOwner),
     };
   }
 
@@ -553,7 +603,8 @@ class Compilation {
    * B2-46 (mvp-07 of D76): extra fields that look like personal data by the G2-PII-02 criterion (@wizard/appspec
    * piiNameReason, on the final entity) are marked pii basic; marking makes the entity a subject, so weak names are
    * re-checked until nothing changes. An entity that has personal data only thanks to them and no retention of its
-   * own keeps them ten years after creation and then clears them (anonymize: the record stays) — G2-PII-05.
+   * own keeps them ten years after creation and then clears them (anonymize: the record stays) — G2-PII-05. The rule
+   * is @wizard/appspec markExtraPii, shared with the spec extensions of v3 (V3-10).
    */
   private markExtraPii(): void {
     const byEntity = new Map<string, Set<string>>();
@@ -563,23 +614,7 @@ class Compilation {
     }
     for (const [name, extras] of byEntity) {
       const entity = this.spec.entities.find((e) => e.name === name);
-      if (!entity) continue;
-      const fields = entity.fields.filter((f) => extras.has(f.name));
-      for (let changed = true; changed; ) {
-        changed = false;
-        const subject = isPiiSubject(entity);
-        for (const f of fields) {
-          if (fieldPiiCategory(f) !== "none") continue;
-          const reason = piiNameReason(f, subject);
-          if (!reason) continue;
-          f.pii = "basic";
-          const kind = piiKindFor(f, reason);
-          if (kind) f.piiKind = kind;
-          changed = true;
-        }
-      }
-      if (!entity.retention && fields.some((f) => fieldPiiCategory(f) === "basic"))
-        entity.retention = { deleteAfterDays: 3650, mode: "anonymize" };
+      if (entity) markExtraPii(entity, extras);
     }
   }
 
@@ -686,6 +721,7 @@ class Compilation {
           ...(roles?.length ? { roles } : {}),
           ...(f.systemDbReason ? { systemDbReason: f.systemDbReason } : {}),
         });
+        this.functionOwner.set(f.name, id);
         this.setFile(id, f.file, d?.files?.[f.file] ?? "");
       }
       // Helper files (not declared as functions): emitted whenever the module is in the plan.
@@ -739,6 +775,18 @@ class Compilation {
         if (!evalCondition(s.when, this.params[id] ?? {}, this.present)) continue;
         const roles = this.expandAll(s.roles, id);
         if (!roles.length) continue;
+        // Backend mode (V3-10): the site and the client cabinet are the v3 front's; staff cabinets stay.
+        if (this.front === "backend" && PUBLIC_AUDIENCES.has(s.audience)) {
+          this.publicScreens.push({
+            module: id,
+            id: s.id,
+            audience: s.audience as PublicScreen["audience"],
+            route: s.route,
+            title: s.title,
+            roles,
+          });
+          continue;
+        }
         const gen = d?.screens?.[s.id];
         if (gen) {
           const file = s.route === "/" ? "ui/pages/Home.tsx" : `ui/pages/${pascal(id)}${pascal(s.id)}.tsx`;
@@ -787,7 +835,7 @@ class Compilation {
       this.pages.push(page);
       this.files.set(page.file, cabinetPage(this.spec, role.name, role.label, entities));
     }
-    if (!this.pages.some((p) => p.route === "/")) {
+    if (this.front === "v2" && !this.pages.some((p) => p.route === "/")) {
       this.pages.push({
         route: "/",
         title: "Главная",
