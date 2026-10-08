@@ -198,3 +198,11 @@ export {
   artDirectionSchema,
   runArtDirector,
 } from "./v3/art-director.js";
+/** V3-11/V3-12 seam (builder-v3.md C6): the harness calls a PageComposer; the page writer implements it. */
+export type {
+  PageComposer,
+  SystemFiles,
+  V3BuildContext,
+  V3ComposeResult,
+  V3PagePlan,
+} from "./v3/contract.js";

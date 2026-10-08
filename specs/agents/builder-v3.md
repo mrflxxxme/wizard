@@ -110,6 +110,8 @@
 
 После каждого этапа и каждого сценария сохраняется чекпоинт. Кошелёк и время: потолки 500 ₽ и 30 мин, правило остановки — по D77 (10).
 
+Шов между харнессом (V3-11) и сборщиком страниц (V3-12) — `src/builder/v3/contract.ts`: `V3BuildContext`, `PageComposer {skeleton, scenario}`, `V3ComposeResult`, `V3PagePlan`. Харнесс вызывает `PageComposer`, V3-12 его реализует; внутренности друг друга они не импортируют.
+
 ### C7. Модели — `@wizard/llm`
 
 - Новые callType: `interview_v3`, `brief_extract`, `art_direction`, `page_compose`, `signature_section`, `critic_visual`, `techreview`, `research`.
