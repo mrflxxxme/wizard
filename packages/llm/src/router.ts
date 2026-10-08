@@ -1,5 +1,6 @@
 // route(): architecture.yaml#interfaces.llm_call; models.yaml#routing_algorithm, #fallback_rules, #call_policy.retries.
 import { randomUUID } from "node:crypto";
+import { modelViolation } from "./allowlist.js";
 import { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 import { LlmError } from "./errors.js";
 import {
@@ -22,11 +23,12 @@ import {
   type PolicyDecision,
   t1Forbidden,
 } from "./policy.js";
-import { type Env, LiveCallError, liveCall } from "./providers.js";
+import { type Env, LiveCallError, liveCall, providerBaseUrl } from "./providers.js";
 import {
   createRegistry,
   HIGH_REASONING,
   type ModelDef,
+  modelFamily,
   type ProviderId,
   policyVersion,
   type Registry,
@@ -263,10 +265,11 @@ export function createRouter(opts: RouterOptions = {}): Router {
           ? (["T0", "T1"] as const)
           : (["T0"] as const);
     const chain: ModelDef[] = [];
+    const avoid = new Set(input.avoidFamilies ?? []);
     for (const tier of tiers) {
       for (const id of routeDef.chain[tier] ?? []) {
         const model = usable(id);
-        if (model && model.tier === tier) chain.push(model);
+        if (model && model.tier === tier && !avoid.has(modelFamily(model))) chain.push(model);
       }
     }
 
@@ -374,6 +377,28 @@ export function createRouter(opts: RouterOptions = {}): Router {
         ...(input.ctx.systemId ? { systemId: input.ctx.systemId } : {}),
       });
 
+      // Gateway allowlist (D18), in every mode: a western host or model is never called; the chain goes on.
+      const provider = reg.providers[model.provider];
+      if (modelViolation(provider, model, providerBaseUrl(provider, env))) {
+        await writeRecord(model, {
+          attempt: 0,
+          status: "error",
+          errorCode: "MODEL_NOT_ALLOWED",
+          latencyMs: 0,
+          requestHash: key,
+        });
+        if (next) {
+          opts.onEvent?.({
+            type: "model_switched",
+            fromModel: model.id,
+            toModel: next.id,
+            reason: "fallback_error",
+          });
+          switchTo(model, "fallback_error");
+        }
+        continue;
+      }
+
       if (mode === "fixture" && store) {
         const line = store.lookup({ callType, key, toolNames, lastMessage: lastText });
         const usage: LlmUsage = {
@@ -433,7 +458,7 @@ export function createRouter(opts: RouterOptions = {}): Router {
         if (policyCtrl) track(input.ctx.orgId, policyCtrl);
         try {
           const out = await liveCall({
-            provider: reg.providers[model.provider],
+            provider,
             model,
             messages,
             ...(input.tools ? { tools: input.tools } : {}),

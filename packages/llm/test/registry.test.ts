@@ -8,9 +8,9 @@ const YAML = readFileSync(new URL("../../../specs/agents/models.yaml", import.me
 const num = (s: string) => Number(s);
 
 describe("registry mirrors specs/agents/models.yaml", () => {
-  test("models: provider, providerModel, tier, placement, context, price, enabled", () => {
+  test("models: provider, providerModel, tier, placement, context, price, enabled, vision", () => {
     const re =
-      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)/gm;
+      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)(,\s*vision: true)?/gm;
     const fromYaml = [...YAML.matchAll(re)].map((x) => ({
       id: x[1],
       provider: x[2],
@@ -20,6 +20,7 @@ describe("registry mirrors specs/agents/models.yaml", () => {
       context: num(x[6] as string),
       price: { input: num(x[7] as string), cached: num(x[8] as string), output: num(x[9] as string) },
       enabled: x[10] === "true",
+      ...(x[11] ? { vision: true } : {}),
     }));
     expect(fromYaml.length).toBeGreaterThan(0);
     expect(MODELS).toEqual(fromYaml);
@@ -54,6 +55,7 @@ describe("registry mirrors specs/agents/models.yaml", () => {
       const block = YAML.slice(YAML.indexOf(`  ${p.id}:\n`)).split(/\n {2}\w+:\n/)[0] ?? "";
       expect(block).toContain(`base_url_env: ${p.baseUrlEnv}`);
       expect(block).toContain(`api_key_env: ${p.apiKeyEnv}`);
+      expect(block).toContain(`prompt_cache: ${p.promptCache}`);
     }
   });
 });
@@ -63,7 +65,7 @@ describe("registry lint", () => {
 
   test("no Anthropic/OpenAI/Google/xAI providers or base URLs (checks provider and baseUrl, not the model name)", () => {
     for (const p of Object.values(PROVIDERS)) {
-      expect(["cloudru", "yandex", "zai", "moonshot", "deepseek"]).toContain(p.id);
+      expect(["cloudru", "yandex", "zai", "moonshot", "deepseek", "openai_compatible"]).toContain(p.id);
       expect(p.defaultBaseUrl).not.toMatch(FORBIDDEN_HOSTS);
     }
   });

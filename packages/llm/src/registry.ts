@@ -1,9 +1,17 @@
 // Model registry: a typed mirror of specs/agents/models.yaml (#providers, #models, #routes, #week0_decision).
 // test/registry.test.ts checks it line by line against the YAML.
 import { createHash } from "node:crypto";
-import type { CallType, OrgPolicy, Tier } from "./types.js";
+import { baseUrlViolation, isWesternClosedModel } from "./allowlist.js";
+import { LlmError } from "./errors.js";
+import { CALL_TYPES, type CallType, type OrgPolicy, type Tier } from "./types.js";
 
-export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot" | "deepseek";
+export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot" | "deepseek" | "openai_compatible";
+
+/**
+ * Prompt cache of a provider (models.yaml#providers.*.prompt_cache): auto — implicit prefix cache, cached input reported
+ * in usage and billed at price.cached; none — no cache discount in the tariff (price.cached = price.input).
+ */
+export type PromptCache = "auto" | "none";
 
 export interface ProviderDef {
   id: ProviderId;
@@ -11,10 +19,13 @@ export interface ProviderDef {
   baseUrlEnv: string;
   defaultBaseUrl: string;
   apiKeyEnv: string;
+  /** The endpoint may run without a key (a vLLM server started without --api-key). */
+  apiKeyOptional?: boolean;
   folderEnv?: string;
   requiredHeaders?: Record<string, string>;
   enabled: boolean;
   termsCheckedAt?: string;
+  promptCache: PromptCache;
 }
 
 export interface ModelDef {
@@ -27,6 +38,8 @@ export interface ModelDef {
   /** ₽ per 1M tokens incl. VAT. */
   price: { input: number; cached: number; output: number };
   enabled: boolean;
+  /** Accepts images (catalog label Vision); critic_visual chains hold only such models. */
+  vision?: true;
 }
 
 export interface RouteDef {
@@ -56,6 +69,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     defaultBaseUrl: "https://foundation-models.api.cloud.ru/v1",
     apiKeyEnv: "CLOUDRU_API_KEY",
     enabled: true,
+    promptCache: "none",
   },
   yandex: {
     id: "yandex",
@@ -66,6 +80,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     folderEnv: "YANDEX_FOLDER_ID",
     requiredHeaders: { "x-data-logging-enabled": "false" },
     enabled: true,
+    promptCache: "auto",
   },
   zai: {
     id: "zai",
@@ -75,6 +90,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     apiKeyEnv: "ZAI_API_KEY",
     enabled: true,
     termsCheckedAt: "2026-09-30",
+    promptCache: "auto",
   },
   moonshot: {
     id: "moonshot",
@@ -84,6 +100,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     apiKeyEnv: "MOONSHOT_API_KEY",
     enabled: false,
     termsCheckedAt: "2026-09-30",
+    promptCache: "auto",
   },
   // Eval challenger only (models.yaml#providers.deepseek): its models are enabled=false and in no route chain.
   deepseek: {
@@ -94,6 +111,19 @@ export const PROVIDERS: Record<ProviderId, ProviderDef> = {
     apiKeyEnv: "DEEPSEEK_API_KEY",
     enabled: true,
     termsCheckedAt: "2026-10-01",
+    promptCache: "auto",
+  },
+  // Own OpenAI-compatible server (vLLM) in the RF contour, D77 (13): enabled by createRegistry when the env names a base
+  // URL and models (openAiCompatFromEnv); T0 like Cloud.ru internal models.
+  openai_compatible: {
+    id: "openai_compatible",
+    tier: "T0",
+    baseUrlEnv: "WIZARD_LLM_OPENAI_COMPAT_BASE_URL",
+    defaultBaseUrl: "",
+    apiKeyEnv: "WIZARD_LLM_OPENAI_COMPAT_API_KEY",
+    apiKeyOptional: true,
+    enabled: false,
+    promptCache: "auto",
   },
 };
 
@@ -108,6 +138,7 @@ const m = (
   cached: number,
   output: number,
   enabled = true,
+  vision = false,
 ): ModelDef => ({
   id,
   provider,
@@ -117,10 +148,23 @@ const m = (
   context,
   price: { input, cached, output },
   enabled,
+  ...(vision ? { vision: true as const } : {}),
 });
 
 export const MODELS: ModelDef[] = [
-  m("kimi-k2.6", "cloudru", "moonshotai/Kimi-K2.6", "T0", "internal", 262000, 175.68, 175.68, 725.9),
+  m(
+    "kimi-k2.6",
+    "cloudru",
+    "moonshotai/Kimi-K2.6",
+    "T0",
+    "internal",
+    262000,
+    175.68,
+    175.68,
+    725.9,
+    true,
+    true,
+  ),
   m("deepseek-v4-pro", "cloudru", "deepseek-ai/DeepSeek-V4-Pro", "T0", "internal", 1000000, 183, 183, 732),
   m("glm-5.1", "cloudru", "zai-org/GLM-5.1", "T0", "internal", 202000, 198.86, 198.86, 829.6),
   m("qwen3-coder-next", "cloudru", "Qwen/Qwen3-Coder-Next", "T0", "internal", 262000, 122, 122, 244),
@@ -136,6 +180,20 @@ export const MODELS: ModelDef[] = [
     96.22,
     288.6,
   ),
+  // V3-16: vision on Cloud.ru internal; a probe candidate (tail of the chains).
+  m(
+    "qwen3.6-35b",
+    "cloudru",
+    "Qwen/Qwen3.6-35B-A3B",
+    "T0",
+    "internal",
+    262000,
+    219.6,
+    219.6,
+    329.4,
+    true,
+    true,
+  ),
   m("yandex-qwen3-235b", "yandex", "qwen3-235b-a22b-fp8/latest", "T0", "internal", 262000, 500, 500, 500),
   m(
     "yandex-deepseek-v4-flash",
@@ -149,6 +207,9 @@ export const MODELS: ModelDef[] = [
     500,
   ),
   m("glm-5.3", "zai", "glm-5.3", "T1", "external", 200000, 162, 30, 510),
+  // V3-16: Z.ai vision models (D45); probe candidates at the tails of the chains.
+  m("glm-5.3-flash", "zai", "glm-5.3-flash", "T1", "external", 1000000, 17.38, 3.48, 57.95, true, true),
+  m("glm-4.6v", "zai", "glm-4.6v", "T1", "external", 128000, 34.77, 5.79, 104.31, true, true),
   m("kimi-k3", "moonshot", "kimi-k3", "T1", "external", 256000, 348, 34.8, 1739, false),
   m(
     "deepseek-v4.1-flash",
@@ -278,13 +339,70 @@ export const ROUTES: Record<CallType, RouteDef> = {
     30000,
   ),
   support: r("support", "T0", { T0: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"] }, 0.2, 4000, 120000),
+  // V3-16 (builder-v3.md C7): the stages of the v3 pipeline. Models verified in the repo head the chains; probe
+  // candidates (qwen3.6-35b, glm-5.3-flash, glm-4.6v, yandex-deepseek-v4-flash for page code) sit at the tails.
+  interview_v3: r("orchestrator", "T1", { T1: ["glm-5.3"], T0: ORCH_T0 }, 0.3, 8000, 180000),
+  brief_extract: r("orchestrator", "T0", { T0: ["gigachat-3.5", "kimi-k2.6", "glm-5.1"] }, 0.0, 8000, 180000),
+  art_direction: r("designer", "T1", { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6"] }, 0.4, 4000, 180000),
+  page_compose: r(
+    "builder",
+    "T1",
+    {
+      T1: ["glm-5.3", "glm-5.3-flash"],
+      T0: ["kimi-k2.6", "deepseek-v4-pro", "glm-5.1", "qwen3-coder-next", "yandex-deepseek-v4-flash"],
+    },
+    0.2,
+    16000,
+    480000,
+  ),
+  signature_section: r(
+    "builder",
+    "T1",
+    { T1: ["glm-5.3"], T0: ["glm-5.1", "kimi-k2.6", "deepseek-v4-pro"] },
+    0.4,
+    12000,
+    480000,
+  ),
+  critic_visual: r(
+    "critic",
+    "T1",
+    { T1: ["glm-5.3-flash", "glm-4.6v"], T0: ["kimi-k2.6", "qwen3.6-35b"] },
+    0.1,
+    4000,
+    180000,
+  ),
+  techreview: r(
+    "reviewer",
+    "T0",
+    { T0: ["deepseek-v4-pro", "gpt-oss-120b", "gigachat-3.5", "kimi-k2.6"] },
+    0.1,
+    8000,
+    300000,
+  ),
+  research: r("researcher", "T0", { T0: ["gpt-oss-120b", "gigachat-3.5", "kimi-k2.6"] }, 0.2, 4000, 120000),
 };
 
 /** models.yaml#pii_forbidden_for_T1 */
 export const PII_FORBIDDEN_FOR_T1 = {
   always: ["runtime_ai_extract", "runtime_ai_generate", "support"] as readonly CallType[],
   conditional: ["import_mapping"] as readonly CallType[],
+  /**
+   * Raw owner input (chat, brief files): any detector finding → T0 (reason pii_detected_interview) until M2-28 moves
+   * interview to D50; the v3 interview and the brief extraction follow the interview.
+   */
+  anyPii: ["interview", "interview_v3", "brief_extract"] as readonly CallType[],
 };
+
+const FAMILY_RE = /glm|kimi|deepseek|qwen|gpt-oss|gigachat|minimax|mimo|llama|mistral|gemma|yandexgpt/;
+
+/**
+ * Model family (glm, kimi, deepseek, qwen, gpt-oss, gigachat…) from the provider's model name: the reviewer of a run
+ * must be of another family than its builder (models.yaml#routes.techreview, RouteInput.avoidFamilies).
+ */
+export function modelFamily(model: Pick<ModelDef, "providerModel">): string {
+  const name = model.providerModel.toLowerCase();
+  return FAMILY_RE.exec(name)?.[0] ?? name;
+}
 
 /** models.yaml#week0_decision.state: t1_default=true until the week-0 eval report. */
 export const DEFAULT_BUILD_TIER: Tier = "T1";
@@ -300,15 +418,93 @@ export function buildDefaultTierFromEnv(env: Record<string, string | undefined> 
   throw new Error(`${BUILD_TIER_ENV} must be T0 or T1, got ${v}`);
 }
 
-/** The single build-tier source: overrides.buildDefaultTier, else env (buildDefaultTierFromEnv). */
+/** Env of the own OpenAI-compatible server (models.yaml#providers.openai_compatible). */
+export const OPENAI_COMPAT_ENV = {
+  baseUrl: "WIZARD_LLM_OPENAI_COMPAT_BASE_URL",
+  key: "WIZARD_LLM_OPENAI_COMPAT_API_KEY",
+  models: "WIZARD_LLM_OPENAI_COMPAT_MODELS",
+  routes: "WIZARD_LLM_OPENAI_COMPAT_ROUTES",
+} as const;
+
+/** Context assumed for the models of the own server (vLLM --max-model-len is not visible to the gateway). */
+export const OPENAI_COMPAT_CONTEXT = 131072;
+
+export interface OpenAiCompat {
+  provider: ProviderDef;
+  /** Ids `compat:<served model name>`; price 0: the server is paid for, not the tokens. */
+  models: ModelDef[];
+  /** Call types whose T0 chain starts with these models; the others get them as the last T0 reserve. */
+  first: CallType[];
+}
+
+/**
+ * The own OpenAI-compatible endpoint from env (D77 (13), builder-v3.md C7): BASE_URL + MODELS (comma-separated served
+ * names) connect it; ROUTES (comma-separated callTypes) puts its models first in those T0 chains. null when BASE_URL is
+ * unset. A western host or a closed western model name throws MODEL_NOT_ALLOWED (D18), a bad list throws too.
+ */
+export function openAiCompatFromEnv(env: Record<string, string | undefined>): OpenAiCompat | null {
+  const baseUrl = env[OPENAI_COMPAT_ENV.baseUrl]?.trim();
+  if (!baseUrl) return null;
+  const violation = baseUrlViolation(baseUrl);
+  if (violation)
+    throw new LlmError("MODEL_NOT_ALLOWED", "Адрес сервера моделей не разрешён.", {
+      env: OPENAI_COMPAT_ENV.baseUrl,
+      violation,
+    });
+  const list = (name: string) =>
+    (env[name] ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const names = list(OPENAI_COMPAT_ENV.models);
+  if (names.length === 0) throw new Error(`${OPENAI_COMPAT_ENV.models} must list the served models`);
+  const closed = names.filter(isWesternClosedModel);
+  if (closed.length > 0)
+    throw new LlmError("MODEL_NOT_ALLOWED", "Модель не разрешена для вызова на ключах платформы.", {
+      env: OPENAI_COMPAT_ENV.models,
+      models: closed,
+    });
+  const first = list(OPENAI_COMPAT_ENV.routes);
+  const unknown = first.filter((ct) => !(CALL_TYPES as readonly string[]).includes(ct));
+  if (unknown.length > 0)
+    throw new Error(`${OPENAI_COMPAT_ENV.routes}: unknown call types ${unknown.join(", ")}`);
+  return {
+    provider: { ...PROVIDERS.openai_compatible, enabled: true },
+    models: names.map((name) =>
+      m(`compat:${name}`, "openai_compatible", name, "T0", "internal", OPENAI_COMPAT_CONTEXT, 0, 0, 0),
+    ),
+    first: first as CallType[],
+  };
+}
+
+/** Routes with the own server's models: first in the T0 chains of compat.first, the last T0 reserve elsewhere. */
+function withCompat(routes: Record<CallType, RouteDef>, compat: OpenAiCompat): Record<CallType, RouteDef> {
+  const ids = compat.models.map((x) => x.id);
+  const out = {} as Record<CallType, RouteDef>;
+  for (const ct of CALL_TYPES) {
+    const route = routes[ct];
+    const t0 = route.chain.T0 ?? [];
+    out[ct] = {
+      ...route,
+      chain: { ...route.chain, T0: compat.first.includes(ct) ? [...ids, ...t0] : [...t0, ...ids] },
+    };
+  }
+  return out;
+}
+
+/**
+ * The single build-tier source: overrides.buildDefaultTier, else env (buildDefaultTierFromEnv). The env also connects the
+ * own OpenAI-compatible server (openAiCompatFromEnv).
+ */
 export function createRegistry(
   overrides: Partial<Pick<Registry, "buildDefaultTier">> = {},
   env: Record<string, string | undefined> = process.env,
 ): Registry {
+  const compat = openAiCompatFromEnv(env);
   return {
-    providers: PROVIDERS,
-    models: MODELS,
-    routes: ROUTES,
+    providers: compat ? { ...PROVIDERS, openai_compatible: compat.provider } : PROVIDERS,
+    models: compat ? [...MODELS, ...compat.models] : MODELS,
+    routes: compat ? withCompat(ROUTES, compat) : ROUTES,
     buildDefaultTier: overrides.buildDefaultTier ?? buildDefaultTierFromEnv(env),
     rubPerCredit: 5,
     piiVersion: "@wizard/pii@0.0.0",
