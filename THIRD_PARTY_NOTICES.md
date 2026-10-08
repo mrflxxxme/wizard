@@ -97,3 +97,13 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | Wix Madefor Text | @fontsource/wix-madefor-text 5.3.0 | OFL-1.1 | шрифт тем v2 (B2-36, текст «Заботливой»); © 2021 The Wix Madefor Project Authors (https://github.com/wix/wixmadefor/); Google Fonts, npm @fontsource/wix-madefor-text |
 | Inter | @fontsource/inter 5.3.0 | OFL-1.1 | шрифт платформы v2 (B2-32, интерфейс; 400, 500, 600); © 2016 The Inter Project Authors (https://github.com/rsms/inter); Google Fonts, npm @fontsource/inter; файлы в `packages/ui-kit/fonts-platform`, платформа раздаёт их со своего домена |
 | Source Serif 4 | @fontsource/source-serif-4 5.3.0 | OFL-1.1 | шрифт платформы v2 (B2-32, антиква «человеческих» моментов; 400, 500); © 2014–2023 Adobe (http://www.adobe.com/), Reserved Font Name «Source» (файлы не изменяются, имя сохранено); Google Fonts, npm @fontsource/source-serif-4; файлы в `packages/ui-kit/fonts-platform` |
+
+## Исследование агентов (V3-05): чтение страниц
+
+Инструменты `read_page` и `discover_docs` (`packages/agents/src/research`) превращают открытые страницы в markdown на сервере платформы (D46, `specs/agents/builder-v3.md` §1). Пакеты загружаются лениво при первом чтении страницы, скрипты страниц не выполняются, в бандлы систем ничего не попадает. У @mozilla/readability нет файла NOTICE, авторские права указаны в его LICENSE.md.
+
+| Пакет | Версия | Лицензия | Где используется |
+|---|---|---|---|
+| @mozilla/readability (© 2010 Arc90 Inc, Mozilla) | 0.6.0 | Apache-2.0 | `packages/agents/src/research/page.ts`: основное содержимое страницы без меню, рекламы и подвала |
+| linkedom (Andrea Giammarchi) и его зависимости htmlparser2, cssom, html-escaper, dom-serializer (MIT), uhyphen, boolbase (ISC), css-select, css-what, nth-check, domhandler, domutils, domelementtype, entities (BSD-2-Clause) | 0.18.13 | ISC | `packages/agents/src/research/page.ts`: DOM страницы на сервере для Readability, без браузера |
+| turndown (Dom Christie) и его зависимость @mixmark-io/domino (BSD-2-Clause) | 7.2.4 | MIT | `packages/agents/src/research/page.ts`: HTML основного содержимого → markdown |

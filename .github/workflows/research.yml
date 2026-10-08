@@ -1,0 +1,78 @@
+# V3-05: the search key of agent research (GitHub secrets YANDEX_SEARCH_API_KEY, YANDEX_FOLDER_ID) checked and used
+# from CI without the server (specs/agents/builder-v3.md §3 C8, §4; packages/agents/src/research/ci.ts). Verdicts are
+# annotations (the coordinator reads them through the GitHub API):
+#   check — both secrets are present: no values printed, no API call, nothing spent;
+#   probe — at most 3 searches of a fixed list (≈ 1,5 ₽ of the founder's Yandex Cloud balance) and one read_page;
+#           numbers and statuses only; the answers go into the artifact research-probe-<run> as fixtures
+#           (RecordedExchange[], secrets masked) for packages/agents/test/research.
+# Nothing here touches the servers. Keys reach only the env of the step that uses them, and that step masks them first.
+name: research
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "check — проверить, что секреты заданы; probe — 3 поисковых запроса и чтение одной страницы (≈ 1,5 ₽)"
+        type: choice
+        options: [check, probe]
+        default: check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: inputs.action == 'check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Presence only: no checkout, no packages, no request to the API.
+      - name: Search secrets
+        env:
+          YANDEX_SEARCH_API_KEY: ${{ secrets.YANDEX_SEARCH_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+        run: |
+          for v in "$YANDEX_SEARCH_API_KEY" "$YANDEX_FOLDER_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          missing=""
+          if [ -z "$YANDEX_SEARCH_API_KEY" ]; then missing="$missing YANDEX_SEARCH_API_KEY"; fi
+          if [ -z "$YANDEX_FOLDER_ID" ]; then missing="$missing YANDEX_FOLDER_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error title=Поиск: секреты::нет секретов:${missing} — без них сборка читает только известные адреса"
+            exit 1
+          fi
+          echo "::notice title=Поиск: секреты::YANDEX_SEARCH_API_KEY и YANDEX_FOLDER_ID заданы"
+
+  probe:
+    if: inputs.action == 'probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - run: pnpm install --frozen-lockfile
+      # ci.ts caps the run at 3 searches (PROBE_LIMITS) and stops after a rejected key or a quota answer.
+      - name: Probe of search and page reading
+        env:
+          YANDEX_SEARCH_API_KEY: ${{ secrets.YANDEX_SEARCH_API_KEY }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+          PROBE_OUT: ${{ runner.temp }}/research-probe
+        run: |
+          for v in "$YANDEX_SEARCH_API_KEY" "$YANDEX_FOLDER_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          pnpm --filter @wizard/runtime exec tsx "$GITHUB_WORKSPACE/packages/agents/src/research/ci.ts" probe --out="$PROBE_OUT"
+      - name: Recorded answers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/research-probe
+          retention-days: 7
+          if-no-files-found: ignore

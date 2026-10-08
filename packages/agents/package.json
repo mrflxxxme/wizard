@@ -10,23 +10,28 @@
     "./planner": "./src/planner/index.ts",
     "./builder": "./src/builder/index.ts",
     "./qa": "./src/qa/index.ts",
-    "./host": "./src/host/index.ts"
+    "./host": "./src/host/index.ts",
+    "./research": "./src/research/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "assets": "node scripts/gen-builder-assets.mjs && node scripts/gen-qa-assets.mjs"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@wizard/appspec": "workspace:*",
     "@wizard/gates": "workspace:*",
     "@wizard/llm": "workspace:*",
     "@wizard/modules": "workspace:*",
     "@wizard/pii": "workspace:*",
     "@wizard/ui-kit": "workspace:*",
+    "linkedom": "^0.18.13",
     "postgres": "^3.4.9",
+    "turndown": "^7.2.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/turndown": "^5.0.6",
     "@wizard/connectors": "workspace:*",
     "@wizard/runtime": "workspace:*"
   }
