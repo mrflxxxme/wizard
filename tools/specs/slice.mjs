@@ -45,9 +45,9 @@ function composeYaml(path) {
   return JSON.parse(r.stdout);
 }
 
-// B2 (beta v2, D76) reads the specs as of M2: rank 2.
+// B2 (beta v2, D76) reads the specs as of M2: rank 2; V3 (D77) — as of M3: rank 3.
 const msRank = (v) => {
-  const m = /^[MB](\d+)/.exec(String(v ?? "").trim());
+  const m = /^[MBV](\d+)/.exec(String(v ?? "").trim());
   return m ? Number(m[1]) : null;
 };
 const scalarOf = (node, key) => {
