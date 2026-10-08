@@ -11,5 +11,18 @@
     "retry": 1500,
     "competitors": 1000
   },
-  "entries": []
+  "entries": [
+    {
+      "id": "v3-001",
+      "date": "2026-10-09",
+      "wave": "A",
+      "purpose": "Проба Yandex Search API из CI (research.yml probe): ключ и каталог работают, ответы записываются в фикстуры",
+      "hypothesis": "3 поисковых запроса и одно чтение страницы проходят; цена ≈ 0,5 ₽ за запрос (баланс Yandex Cloud, не бюджет моделей)",
+      "expectRub": 1.5,
+      "capRub": 3,
+      "actualRub": 1.46,
+      "result": "3/3 поиска ok (10 результатов каждый), read_page ok (6 576 символов markdown за 3 с); ответы — в артефакте research-probe",
+      "runId": "37860175962"
+    }
+  ]
 }
