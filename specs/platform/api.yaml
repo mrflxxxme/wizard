@@ -196,6 +196,42 @@ paths:
         '402': {$ref: '#/components/responses/Error'}
         '409': {description: 'NO_PLAN (нет плана, ожидающего утверждения, или идёт сборка), PLAN_REVISION_STALE', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '422': {description: 'PLAN_INVALID — details.errors: PlanError[]', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/brief:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemBrief
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-02 (D77 (9), agents/builder-v3.md#3 C1): бриф системы — последняя версия или ?version=N и три схемы (путь клиента, данные и роли, интеграции), построенные кодом без модели'
+      parameters: [{name: version, in: query, schema: {type: integer, minimum: 1}}]
+      responses:
+        '200': {description: 'brief = null и diagrams = null — интервью ещё не записало бриф', content: {application/json: {schema: {type: object, required: [brief, diagrams], properties: {brief: {type: [object, 'null']}, diagrams: {type: [object, 'null']}}}}}}
+        '404': {description: 'NOT_FOUND — нет системы или версии ?version', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    put:
+      operationId: editSystemBrief
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-02: правка брифа владельцем — весь бриф и версия, на которой он правился (baseVersion; 0 — брифа не было). Новая версия max+1 с разницей по полям (author owner); бриф без изменений версию не создаёт (changed=false). Без модели и без кредитов'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [baseVersion, brief], additionalProperties: false, properties: {baseVersion: {type: integer, minimum: 0}, brief: {type: object}}}}
+      responses:
+        '200': {description: 'Последняя версия, схемы и changed', content: {application/json: {schema: {type: object, required: [brief, diagrams, changed], properties: {brief: {type: object}, diagrams: {type: object}, changed: {type: boolean}}}}}}
+        '400': {description: 'VALIDATION_FAILED — details.errors: ошибки схемы брифа с местом по-русски', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '412': {description: 'VERSION_CONFLICT — бриф изменился после baseVersion (details.version — текущая)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '413': {description: 'PAYLOAD_TOO_LARGE — бриф больше лимита', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/brief/versions:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemBriefVersions
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-02: версии брифа от новых к старым — номер, автор, время и разница по полям, без тела брифа; ?before=N — следующая страница'
+      parameters: [{name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}, {name: before, in: query, schema: {type: integer, minimum: 2}}]
+      responses:
+        '200': {description: Версии, content: {application/json: {schema: {type: object, required: [versions, nextBefore], properties: {versions: {type: array, items: {type: object}}, nextBefore: {type: [integer, 'null']}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/fix:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
