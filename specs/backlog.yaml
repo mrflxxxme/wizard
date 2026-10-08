@@ -3629,7 +3629,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Платный прогон (eval, проба этапа, сквозная сборка) не стартует без записи в журнале трат: цель, гипотеза, ожидаемые ₽, потолок; на потолке прогон останавливается (тест)"
@@ -3644,7 +3644,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Схема брифа (zod) в @wizard/appspec: цели и признаки успеха, аудитория, сценарии «Когда…, система…», роли и доступы, данные с ПДн и сроками, интеграции, направление дизайна, «не входит», допущения, журнал Q→A"
@@ -3689,7 +3689,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Инструменты web_search и read_page с лимитами на сборку (≈ 30 запросов), кэшем и учётом в журнале llm_calls; без ключа — режим только чтения известных адресов"
@@ -3718,7 +3718,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Направление выбирается сэмплером по seed с учётом ниши, целей и последних сборок ниши; 12–16 архетипов описаны данными"
@@ -3849,7 +3849,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Маршруты v3 по этапам (арт-директор и фирменные секции — GLM; массовый код и тексты — дешёвые модели после пробы на русском; критик — VL; ревьюер — другое семейство) в models.yaml"
