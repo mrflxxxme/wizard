@@ -13,6 +13,7 @@ import { platformMailer } from "./auth/smtp-mailer.js";
 import { Billing } from "./billing/ledger.js";
 import { LlmMonthlyCap } from "./billing/llm-cap.js";
 import { Payments } from "./billing/payments.js";
+import { briefRoutes } from "./briefs/routes.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -341,6 +342,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
   api.route("/", planRoutes(deps));
+  // V3-02: the system brief — latest version with its diagrams, history with diffs, the owner's edit.
+  api.route("/", briefRoutes(deps));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));

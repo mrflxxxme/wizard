@@ -699,6 +699,24 @@ tables:
   # ==== M2P · M2-98: custom_domains (+ tombstones), design_references, design_directions, media_assets, fetch_log — дописывать ЗДЕСЬ ====
   # ==== конец блока M2-98 ====
 
+  # ==== V3-02: бриф системы (миграция 0036) ====
+  system_briefs:
+    milestone: V3
+    purpose: "V3-02 (D77 (9), specs/agents/builder-v3.md §3 C1): версии брифа системы (SystemBrief, @wizard/appspec systemBriefSchema). Каждая правка — интервью агента (author agent) или владелец в панели и в чате (author owner, api: PUT /systems/:id/brief, роль editor) — новая версия max+1 с разницей по полям к предыдущей (briefDiff; у версии 1 — к пустому брифу); правка без изменений версию не создаёт. Этапы сборки читают последнюю версию перед каждым этапом. Три схемы (briefDiagrams) строятся кодом при чтении и не хранятся"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      version: "integer not null check (version >= 1)"
+      brief: "jsonb not null check (jsonb_typeof(brief) = 'object')"   # SystemBrief после validateBrief (лимиты BRIEF_LIMITS, ≤ 256 КБ)
+      diff: "jsonb not null default '[]' check (jsonb_typeof(diff) = 'array')"   # BriefChange[] к предыдущей версии
+      author: "text not null check (author in ('agent','owner'))"
+      author_user_id: "uuid references platform.users on delete set null"   # кто правил (author owner)
+      run_id: "uuid references platform.runs on delete set null"            # прогон агента, записавший версию
+    primary_key: [system_id, version]
+    invariants:
+      - "version = max(version)+1 под SELECT ... FOR NO KEY UPDATE по systems; baseVersion правки ≠ последней → 412 VERSION_CONFLICT"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_plans)"
+  # ==== конец блока V3-02 ====
+
 views:
   wz_runtime.otp_sends:
     milestone: M1

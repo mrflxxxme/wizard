@@ -624,6 +624,18 @@ export interface DestructiveChangesTable {
   created_at: TsDef;
 }
 
+/** db.yaml#system_briefs (V3-02, migration 0036): versions of the system brief with the diff to the previous one. */
+export interface SystemBriefsTable {
+  system_id: string;
+  version: number;
+  brief: Json<Record<string, unknown>>;
+  diff: Json<unknown[]>;
+  author: "agent" | "owner";
+  author_user_id: string | null;
+  run_id: string | null;
+  created_at: TsDef;
+}
+
 export interface DB {
   "platform.destructive_changes": DestructiveChangesTable;
   "platform.users": UsersTable;
@@ -665,4 +677,5 @@ export interface DB {
   "platform.development_requests": DevelopmentRequestsTable;
   "platform.module_candidates": ModuleCandidatesTable;
   "platform.module_announcements": ModuleAnnouncementsTable;
+  "platform.system_briefs": SystemBriefsTable;
 }

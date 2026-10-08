@@ -11,6 +11,60 @@ export {
   type ResolvedAiAction,
   resolveAiAction,
 } from "./ai-actions.js";
+/** V3-02 briefDiagrams(brief) → {journey, dataRoles, integrations} graphs with Russian labels, no model, never throws. */
+export {
+  BRIEF_DIAGRAM_TITLES,
+  BRIEF_GRAPH_MAX_NODES,
+  BRIEF_LABEL_MAX,
+  BRIEF_NODE_KINDS,
+  type BriefDiagrams,
+  type BriefEdge,
+  type BriefGraph,
+  type BriefNode,
+  type BriefNodeKind,
+  briefDiagrams,
+} from "./brief/diagrams.js";
+/** V3-02 BriefVersion {version, brief, diff, author, createdAt}; briefDiff(prev|null, next) → field-level changes. */
+export {
+  BRIEF_AUTHORS,
+  BRIEF_CHANGE_OPS,
+  type BriefAuthor,
+  type BriefChange,
+  type BriefChangeOp,
+  type BriefVersion,
+  briefDiff,
+} from "./brief/diff.js";
+/** V3-02 system brief (C1): systemBriefSchema/SystemBrief, validateBrief → Russian errors, BRIEF_LIMITS, emptyBrief. */
+export {
+  BRIEF_ACTORS,
+  BRIEF_ASSUMPTION_SOURCES,
+  BRIEF_CAPABILITY_LEVELS,
+  BRIEF_ERROR_CODES,
+  BRIEF_FIELD_LABELS,
+  BRIEF_FIELDS,
+  BRIEF_INTEGRATION_DIRECTIONS,
+  BRIEF_LIMITS,
+  BRIEF_PRIORITIES,
+  BRIEF_PROP_LABELS,
+  BRIEF_QA_CHOICES,
+  type BriefActor,
+  type BriefCapability,
+  type BriefData,
+  type BriefError,
+  type BriefErrorCode,
+  type BriefField,
+  type BriefGoal,
+  type BriefIntegration,
+  type BriefQa,
+  type BriefRole,
+  type BriefScenario,
+  emptyBrief,
+  type SystemBrief,
+  type SystemBriefInput,
+  systemBriefSchema,
+  type ValidateBriefResult,
+  validateBrief,
+} from "./brief/schema.js";
 /** diffSpecs(prev|null, next) → human changes {kind, text_ru, destructive?} for getRevisionDiff (M1-04). */
 export { diffSpecs, type SpecChange, type SpecChangeKind } from "./diff.js";
 export { ERROR_CODES, type OpsError, type OpsErrorCode, pointer } from "./errors.js";

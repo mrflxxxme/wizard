@@ -182,6 +182,7 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
           for (const st of dropSystemRoleDDL(schemaName(s.schema_key, env))) await tx.unsafe(st);
         await tx`delete from platform.messages where system_id = ${s.id}`;
         await tx`delete from platform.system_plans where system_id = ${s.id}`;
+        await tx`delete from platform.system_briefs where system_id = ${s.id}`;
         await tx`delete from platform.imports where system_id = ${s.id}`;
         await tx`delete from platform.exports where system_id = ${s.id}`;
         await tx`delete from platform.secrets_refs where system_id = ${s.id}`;
