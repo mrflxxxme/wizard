@@ -107,3 +107,18 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | @mozilla/readability (© 2010 Arc90 Inc, Mozilla) | 0.6.0 | Apache-2.0 | `packages/agents/src/research/page.ts`: основное содержимое страницы без меню, рекламы и подвала |
 | linkedom (Andrea Giammarchi) и его зависимости htmlparser2, cssom, html-escaper, dom-serializer (MIT), uhyphen, boolbase (ISC), css-select, css-what, nth-check, domhandler, domutils, domelementtype, entities (BSD-2-Clause) | 0.18.13 | ISC | `packages/agents/src/research/page.ts`: DOM страницы на сервере для Readability, без браузера |
 | turndown (Dom Christie) и его зависимость @mixmark-io/domino (BSD-2-Clause) | 7.2.4 | MIT | `packages/agents/src/research/page.ts`: HTML основного содержимого → markdown |
+
+## Публичные страницы систем v3 (V3-08)
+
+Публичные страницы систем v3 собираются на Tailwind CSS v4 и Motion (`specs/agents/builder-v3.md` §1). Паттерны секций (`packages/ui-kit/src/v3/patterns/**`) копируются в код систем как `ui/patterns/<id>.tsx` (модель shadcn). Все паттерны написаны своим кодом на токенах дизайн-системы. Часть композиций повторяет раскладки MIT-библиотек: источник указан ниже и в поле `origin` паттерна. Код Tailwind Plus, Aceternity, Magic UI Pro, React Bits Pro и GSAP не используется даже как образец; это проверяет `packages/ui-kit/test/v3-patterns.test.ts`.
+
+| Пакет | Версия | Лицензия | Где используется |
+|---|---|---|---|
+| tailwindcss (Tailwind Labs) | 4.3.3 | MIT, Copyright (c) Tailwind Labs, Inc. | `packages/build/src/tailwind.ts`: компиляция CSS публичных страниц v3 при сборке (JS API, без нативного oxide). В CSS систем попадают preflight и утилиты с заголовком лицензии |
+| motion, framer-motion, motion-dom, motion-utils (Motion) | 13.x, см. pnpm-lock | MIT, Copyright (c) 2024 Motion B.V. (https://github.com/motiondivision/motion) | `motion/react` в паттернах v3: вход первого экрана и меню шапки, с учётом prefers-reduced-motion; попадает в бандлы систем v3 |
+| tslib (Microsoft) | 2.8.1 | 0BSD | зависимость motion; ES-сборки motion его не импортируют, в бандлы систем не попадает |
+
+| Источник композиции | Лицензия | Паттерны |
+|---|---|---|
+| HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered: композиция по мотивам, код свой |
+| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating и cta-card |
