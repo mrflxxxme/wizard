@@ -7,7 +7,7 @@ stack:
   backend: { http: "hono 4.x", validation: "zod 4.x", sql: "kysely 0.28.x + postgres (porsager) 3.x", db: "PostgreSQL 16" }
   durable: "@dbos-inc/dbos-sdk (DBOS Transact TS), latest stable"
   llm_client: "ai (Vercel AI SDK) 7.x + @ai-sdk/openai-compatible"
-  frontend: { ui: "react 19.x", build_platform: "vite 7.x", build_generated: "esbuild (programmatic)", styling: "CSS variables (design tokens) + CSS modules; no Tailwind in generated apps" }
+  frontend: { ui: "react 19.x", build_platform: "vite 7.x", build_generated: "esbuild (programmatic)", styling: "CSS variables (design tokens) + CSS modules для ui-kit и кабинетов; публичные страницы систем v3 — Tailwind CSS v4 (MIT, компиляция в @wizard/build, тема из токенов) + Motion (MIT) — D77, specs/agents/builder-v3.md#1" }
   tests: { unit: "vitest 3.x", e2e: "@playwright/test (chromium at /opt/pw-browsers)" }
   lint_format: "biome 2.x"
   dev_exec: "tsx (MIT) для запуска apps в M0–M1; пакеты экспортируют src/*.ts без сборки; vite — для platform-web и ui-kit/demo"
