@@ -74,10 +74,11 @@ config:
   connectors: live
   filesStorage: s3
   # M2-15 (platform/deploy.yaml#pilot.env): registration open|invite, payments "on"|"off" (quoted: YAML 1.1 reads
-  # bare on/off as booleans), platform LLM cap of the calendar month in ₽.
+  # bare on/off as booleans), platform LLM cap of the calendar month in ₽ (clients and eval; V3-01, D77 (18б): 15 000 on
+  # the time of V3, the founder's 2 500 ₽ pool and the 3 000 ₽ daily cap are code defaults of apps/platform-api).
   registration: open
   payments: "on"
-  llmMonthlyCapRub: 6000
+  llmMonthlyCapRub: 15000
   # M2-09 (abuse.yaml#identification.founder_review): apply orgs.require_founder_review — the first prod publication
   # of a system and new personal-data fields wait for the founder's approval ("on" | "off", quoted).
   founderReview: "on"

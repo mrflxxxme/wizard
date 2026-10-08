@@ -3629,7 +3629,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 1.5
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Платный прогон (eval, проба этапа, сквозная сборка) не стартует без записи в журнале трат: цель, гипотеза, ожидаемые ₽, потолок; на потолке прогон останавливается (тест)"
@@ -3644,7 +3644,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Схема брифа (zod) в @wizard/appspec: цели и признаки успеха, аудитория, сценарии «Когда…, система…», роли и доступы, данные с ПДн и сроками, интеграции, направление дизайна, «не входит», допущения, журнал Q→A"
@@ -3659,8 +3659,8 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Вопросы по одному по дереву цели → аудитория → сценарии → данные → роли → интеграции → контент → ограничения; у каждого рекомендованный ответ с объяснением, 3–5 кнопок, «Решите за меня», свой ответ"
       - "Стоп — нет блокирующих неясностей; потолок 15 вопросов; «Дальше решай сам» в любой момент переводит остаток в явные допущения брифа (тест на записанных ответах)"
@@ -3675,8 +3675,8 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 1.5
-    status: todo
-    claimed_by: null
+    status: done
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Composer принимает файл до 10 МБ; текст извлекается на сервере в РФ, ПДн маскируются перед T1"
       - "Из ТЗ строится черновик брифа; интервью спрашивает только незаполненное (тест на 3 образцах ТЗ)"
@@ -3689,7 +3689,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Инструменты web_search и read_page с лимитами на сборку (≈ 30 запросов), кэшем и учётом в журнале llm_calls; без ключа — режим только чтения известных адресов"
@@ -3704,8 +3704,8 @@ tasks:
     owner: frontend
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "В чате перед «Собрать» — краткий бриф: тезисы и три схемы; полный — в панели «Бриф» с версиями и подсветкой разницы"
       - "Правка в панели и словами в чате создаёт новую версию; лента сессий системы: интервью, сборки, правки (браузерный тест, 390 и 1280 px)"
@@ -3718,7 +3718,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 3
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Направление выбирается сэмплером по seed с учётом ниши, целей и последних сборок ниши; 12–16 архетипов описаны данными"
@@ -3733,8 +3733,8 @@ tasks:
     owner: frontend
     parallel_group: v3-a
     estimate_days: 5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Каждый тип секции (первый экран, услуги, о нас, отзывы без выдумок D49, цены, галерея, команда, FAQ, контакты, призыв, форма, каталог, блог) — 8–12 структурно разных вариантов на токенах дизайн-системы"
       - "Источники только MIT и Apache-2.0 (shadcn/ui, Radix, Motion, HyperUI, Magic UI бесплатная) с записью в THIRD_PARTY_NOTICES; Tailwind Plus, Aceternity, Magic UI Pro, GSAP — нет (проверка CI)"
@@ -3762,7 +3762,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 4
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Бэк модулей (сущности, статусы, автоматизации, права и RLS, ПДн, функции, сценарии целей, метрики) компилируется без публичных экранов; CI-матрица модулей зелёная"
@@ -3849,7 +3849,7 @@ tasks:
     owner: platform
     parallel_group: v3-a
     estimate_days: 2
-    status: todo
+    status: done
     claimed_by: null
     acceptance:
       - "Маршруты v3 по этапам (арт-директор и фирменные секции — GLM; массовый код и тексты — дешёвые модели после пробы на русском; критик — VL; ревьюер — другое семейство) в models.yaml"

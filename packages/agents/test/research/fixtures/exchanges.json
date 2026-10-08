@@ -1,0 +1,194 @@
+[
+  {
+    "key": "SEARCH стоматология Казань услуги|225|0",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"rawData\":\"PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHlhbmRleHNlYXJjaCB2ZXJzaW9uPSIxLjAiPjxyZXF1ZXN0PjxxdWVyeT7RgdGC0L7QvNCw0YLQvtC70L7Qs9C40Y8g0JrQsNC30LDQvdGMINGD0YHQu9GD0LPQuDwvcXVlcnk+PHBhZ2U+MDwvcGFnZT48c29ydGJ5IG9yZGVyPSJkZXNjZW5kaW5nIiBwcmlvcml0eT0ibm8iPnJsdjwvc29ydGJ5PjxtYXhwYXNzYWdlcz4yPC9tYXhwYXNzYWdlcz48Z3JvdXBpbmdzPjxncm91cGJ5IGF0dHI9ImQiIG1vZGU9ImRlZXAiIGdyb3Vwcy1vbi1wYWdlPSIxMCIgZG9jcy1pbi1ncm91cD0iMSIgY3VyY2F0ZWc9Ii0xIi8+PC9ncm91cGluZ3M+PC9yZXF1ZXN0PjxyZXNwb25zZSBkYXRlPSIyMDI2MTAwOFQxMDE1MDAiPjxyZXFpZD4xNzU5OTk5OTk5OTk5OTk5LTEyMzQ1Njc4OTAtc2VhcmNoLWFwaTwvcmVxaWQ+PGZvdW5kIHByaW9yaXR5PSJwaHJhc2UiPjEyMDA8L2ZvdW5kPjxmb3VuZCBwcmlvcml0eT0ic3RyaWN0Ij4xMzAwPC9mb3VuZD48Zm91bmQgcHJpb3JpdHk9ImFsbCI+MjQwMDwvZm91bmQ+PGZvdW5kLWh1bWFuPtCd0LDRiNC70L7RgdGMIDIg0YLRi9GBLiDRgNC10LfRg9C70YzRgtCw0YLQvtCyPC9mb3VuZC1odW1hbj48cmVzdWx0cz48Z3JvdXBpbmcgYXR0cj0iZCIgbW9kZT0iZGVlcCIgZ3JvdXBzLW9uLXBhZ2U9IjEwIiBkb2NzLWluLWdyb3VwPSIxIiBjdXJjYXRlZz0iLTEiPjxmb3VuZCBwcmlvcml0eT0iYWxsIj4yNDAwPC9mb3VuZD48cGFnZSBmaXJzdD0iMSIgbGFzdD0iMTAiPjA8L3BhZ2U+PGdyb3VwPjxjYXRlZyBhdHRyPSJkIiBuYW1lPSJrbGluaWthLWthemFuLmV4YW1wbGUiLz48ZG9jY291bnQ+MTI8L2RvY2NvdW50Pjxkb2MgaWQ9IlowIj48dXJsPmh0dHBzOi8va2xpbmlrYS1rYXphbi5leGFtcGxlL3VzbHVnaTwvdXJsPjxkb21haW4+a2xpbmlrYS1rYXphbi5leGFtcGxlPC9kb21haW4+PHRpdGxlPjxobHdvcmQ+0KHRgtC+0LzQsNGC0L7Qu9C+0LPQuNGPPC9obHdvcmQ+INCyIDxobHdvcmQ+0JrQsNC30LDQvdC4PC9obHdvcmQ+IOKAlCA8aGx3b3JkPtGD0YHQu9GD0LPQuDwvaGx3b3JkPiDQuCDRhtC10L3RizwvdGl0bGU+PG1vZHRpbWU+MjAyNjEwMDFUMTIwMDAwPC9tb2R0aW1lPjxzaXplPjQ4MjExPC9zaXplPjxjaGFyc2V0PnV0Zi04PC9jaGFyc2V0PjxwYXNzYWdlcz48cGFzc2FnZT7Qm9C10YfQtdC90LjQtSDQutCw0YDQuNC10YHQsCwg0LjQvNC/0LvQsNC90YLQsNGG0LjRjywg0YfQuNGB0YLQutCwLiDQmtC+0L3RgdGD0LvRjNGC0LDRhtC40Y8g4oCUIDUwMCAmIzgzODE7PC9wYXNzYWdlPjxwYXNzYWdlPtCg0LDQsdC+0YLQsNC10Lwg0LHQtdC3INCy0YvRhdC+0LTQvdGL0YU8L3Bhc3NhZ2U+PC9wYXNzYWdlcz48cHJvcGVydGllcz48X1Bhc3NhZ2VzVHlwZT4wPC9fUGFzc2FnZXNUeXBlPjxsYW5nPnJ1PC9sYW5nPjwvcHJvcGVydGllcz48bWltZS10eXBlPnRleHQvaHRtbDwvbWltZS10eXBlPjwvZG9jPjwvZ3JvdXA+PGdyb3VwPjxjYXRlZyBhdHRyPSJkIiBuYW1lPSJkZW50LXJldmlld3MuZXhhbXBsZSIvPjxkb2Njb3VudD4xMjwvZG9jY291bnQ+PGRvYyBpZD0iWjAiPjx1cmw+aHR0cHM6Ly9kZW50LXJldmlld3MuZXhhbXBsZS9rYXphbjwvdXJsPjxkb21haW4+ZGVudC1yZXZpZXdzLmV4YW1wbGU8L2RvbWFpbj48dGl0bGU+0KDQtdC50YLQuNC90LMg0LrQu9C40L3QuNC6IMKr0JrQsNC30LDQvdGMwrsgJmFtcDsg0L7RgtC30YvQstGLPC90aXRsZT48aGVhZGxpbmU+0KHRgNCw0LLQvdC10L3QuNC1IDQwINC60LvQuNC90LjQuiDQv9C+INGG0LXQvdCw0Lwg0Lgg0L7RgtC30YvQstCw0Lw8L2hlYWRsaW5lPjxtb2R0aW1lPjIwMjYxMDAxVDEyMDAwMDwvbW9kdGltZT48c2l6ZT40ODIxMTwvc2l6ZT48Y2hhcnNldD51dGYtODwvY2hhcnNldD48cHJvcGVydGllcz48X1Bhc3NhZ2VzVHlwZT4wPC9fUGFzc2FnZXNUeXBlPjxsYW5nPnJ1PC9sYW5nPjwvcHJvcGVydGllcz48bWltZS10eXBlPnRleHQvaHRtbDwvbWltZS10eXBlPjwvZG9jPjwvZ3JvdXA+PGdyb3VwPjxjYXRlZyBhdHRyPSJkIiBuYW1lPSJrbGluaWthLWthemFuLmV4YW1wbGUiLz48ZG9jY291bnQ+MTI8L2RvY2NvdW50Pjxkb2MgaWQ9IlowIj48dXJsPmh0dHBzOi8va2xpbmlrYS1rYXphbi5leGFtcGxlL3VzbHVnaTwvdXJsPjxkb21haW4+a2xpbmlrYS1rYXphbi5leGFtcGxlPC9kb21haW4+PHRpdGxlPtCU0YPQsdC70Yw8L3RpdGxlPjxtb2R0aW1lPjIwMjYxMDAxVDEyMDAwMDwvbW9kdGltZT48c2l6ZT40ODIxMTwvc2l6ZT48Y2hhcnNldD51dGYtODwvY2hhcnNldD48cGFzc2FnZXM+PHBhc3NhZ2U+0LTRg9Cx0LvRjDwvcGFzc2FnZT48L3Bhc3NhZ2VzPjxwcm9wZXJ0aWVzPjxfUGFzc2FnZXNUeXBlPjA8L19QYXNzYWdlc1R5cGU+PGxhbmc+cnU8L2xhbmc+PC9wcm9wZXJ0aWVzPjxtaW1lLXR5cGU+dGV4dC9odG1sPC9taW1lLXR5cGU+PC9kb2M+PC9ncm91cD48Z3JvdXA+PGNhdGVnIGF0dHI9ImQiIG5hbWU9InByaWNlLWxpc3QuZXhhbXBsZSIvPjxkb2Njb3VudD4xMjwvZG9jY291bnQ+PGRvYyBpZD0iWjAiPjx1cmw+aHR0cHM6Ly9wcmljZS1saXN0LmV4YW1wbGUvZGVudGFsL2themFuP2Zyb209c2VhcmNoPC91cmw+PGRvbWFpbj5wcmljZS1saXN0LmV4YW1wbGU8L2RvbWFpbj48dGl0bGU+0KbQtdC90Ysg0L3QsCA8aGx3b3JkPtGD0YHQu9GD0LPQuDwvaGx3b3JkPiA8aGx3b3JkPtGB0YLQvtC80LDRgtC+0LvQvtCz0LjQuDwvaGx3b3JkPjwvdGl0bGU+PG1vZHRpbWU+MjAyNjEwMDFUMTIwMDAwPC9tb2R0aW1lPjxzaXplPjQ4MjExPC9zaXplPjxjaGFyc2V0PnV0Zi04PC9jaGFyc2V0PjxwYXNzYWdlcz48cGFzc2FnZT7QodGA0LXQtNC90Y/RjyDRhtC10L3QsCDQuNC80L/Qu9Cw0L3RgtCw0YbQuNC4INCyINCa0LDQt9Cw0L3QuCDigJQgMzggMDAwIOKCvTwvcGFzc2FnZT48L3Bhc3NhZ2VzPjxwcm9wZXJ0aWVzPjxfUGFzc2FnZXNUeXBlPjA8L19QYXNzYWdlc1R5cGU+PGxhbmc+cnU8L2xhbmc+PC9wcm9wZXJ0aWVzPjxtaW1lLXR5cGU+dGV4dC9odG1sPC9taW1lLXR5cGU+PC9kb2M+PC9ncm91cD48L2dyb3VwaW5nPjwvcmVzdWx0cz48L3Jlc3BvbnNlPjwveWFuZGV4c2VhcmNoPg==\"}"
+  },
+  {
+    "key": "SEARCH клиника отзывы|225|0",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"rawData\":\"PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHlhbmRleHNlYXJjaCB2ZXJzaW9uPSIxLjAiPjxyZXF1ZXN0PjxxdWVyeT7QutC70LjQvdC40LrQsCDQvtGC0LfRi9Cy0Ys8L3F1ZXJ5PjxwYWdlPjA8L3BhZ2U+PHNvcnRieSBvcmRlcj0iZGVzY2VuZGluZyIgcHJpb3JpdHk9Im5vIj5ybHY8L3NvcnRieT48bWF4cGFzc2FnZXM+MjwvbWF4cGFzc2FnZXM+PGdyb3VwaW5ncz48Z3JvdXBieSBhdHRyPSJkIiBtb2RlPSJkZWVwIiBncm91cHMtb24tcGFnZT0iMTAiIGRvY3MtaW4tZ3JvdXA9IjEiIGN1cmNhdGVnPSItMSIvPjwvZ3JvdXBpbmdzPjwvcmVxdWVzdD48cmVzcG9uc2UgZGF0ZT0iMjAyNjEwMDhUMTAxNTAwIj48cmVxaWQ+MTc1OTk5OTk5OTk5OTk5OS0xMjM0NTY3ODkwLXNlYXJjaC1hcGk8L3JlcWlkPjxmb3VuZCBwcmlvcml0eT0icGhyYXNlIj4xMjAwPC9mb3VuZD48Zm91bmQgcHJpb3JpdHk9InN0cmljdCI+MTMwMDwvZm91bmQ+PGZvdW5kIHByaW9yaXR5PSJhbGwiPjI0MDA8L2ZvdW5kPjxmb3VuZC1odW1hbj7QndCw0YjQu9C+0YHRjCAyINGC0YvRgS4g0YDQtdC30YPQu9GM0YLQsNGC0L7QsjwvZm91bmQtaHVtYW4+PHJlc3VsdHM+PGdyb3VwaW5nIGF0dHI9ImQiIG1vZGU9ImRlZXAiIGdyb3Vwcy1vbi1wYWdlPSIxMCIgZG9jcy1pbi1ncm91cD0iMSIgY3VyY2F0ZWc9Ii0xIj48Zm91bmQgcHJpb3JpdHk9ImFsbCI+MjQwMDwvZm91bmQ+PHBhZ2UgZmlyc3Q9IjEiIGxhc3Q9IjEwIj4wPC9wYWdlPjxncm91cD48Y2F0ZWcgYXR0cj0iZCIgbmFtZT0ib3R6eXZ5LmV4YW1wbGUiLz48ZG9jY291bnQ+MTI8L2RvY2NvdW50Pjxkb2MgaWQ9IlowIj48dXJsPmh0dHBzOi8vb3R6eXZ5LmV4YW1wbGUva2xpbmlraTwvdXJsPjxkb21haW4+b3R6eXZ5LmV4YW1wbGU8L2RvbWFpbj48dGl0bGU+0J7RgtC30YvQstGLINC+INC60LvQuNC90LjQutCw0YU8L3RpdGxlPjxtb2R0aW1lPjIwMjYxMDAxVDEyMDAwMDwvbW9kdGltZT48c2l6ZT40ODIxMTwvc2l6ZT48Y2hhcnNldD51dGYtODwvY2hhcnNldD48cHJvcGVydGllcz48X1Bhc3NhZ2VzVHlwZT4wPC9fUGFzc2FnZXNUeXBlPjxsYW5nPnJ1PC9sYW5nPjwvcHJvcGVydGllcz48bWltZS10eXBlPnRleHQvaHRtbDwvbWltZS10eXBlPjwvZG9jPjwvZ3JvdXA+PC9ncm91cGluZz48L3Jlc3VsdHM+PC9yZXNwb25zZT48L3lhbmRleHNlYXJjaD4=\"}"
+  },
+  {
+    "key": "SEARCH абвгд несуществующий запрос|225|0",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"rawData\":\"PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPHlhbmRleHNlYXJjaCB2ZXJzaW9uPSIxLjAiPjxyZXF1ZXN0PjxxdWVyeT7QsNCx0LLQs9C0INC90LXRgdGD0YnQtdGB0YLQstGD0Y7RidC40Lkg0LfQsNC/0YDQvtGBPC9xdWVyeT48cGFnZT4wPC9wYWdlPjxzb3J0Ynkgb3JkZXI9ImRlc2NlbmRpbmciIHByaW9yaXR5PSJubyI+cmx2PC9zb3J0Ynk+PG1heHBhc3NhZ2VzPjI8L21heHBhc3NhZ2VzPjxncm91cGluZ3M+PGdyb3VwYnkgYXR0cj0iZCIgbW9kZT0iZGVlcCIgZ3JvdXBzLW9uLXBhZ2U9IjEwIiBkb2NzLWluLWdyb3VwPSIxIiBjdXJjYXRlZz0iLTEiLz48L2dyb3VwaW5ncz48L3JlcXVlc3Q+PHJlc3BvbnNlIGRhdGU9IjIwMjYxMDA4VDEwMTUwMCI+PGVycm9yIGNvZGU9IjE1Ij7QmNGB0LrQvtC80LDRjyDQutC+0LzQsdC40L3QsNGG0LjRjyDRgdC70L7QsiDQvdC40LPQtNC1INC90LUg0LLRgdGC0YDQtdGH0LDQtdGC0YHRjzwvZXJyb3I+PC9yZXNwb25zZT48L3lhbmRleHNlYXJjaD4=\"}"
+  },
+  {
+    "key": "SEARCH ключ отозван|225|0",
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"code\":16,\"message\":\"Unauthenticated\",\"details\":[]}"
+  },
+  {
+    "key": "GET https://klinika-kazan.example/robots.txt",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "User-agent: *\nDisallow: /private/\nAllow: /private/open\n\nUser-agent: OtherBot\nDisallow: /\n\nSitemap: https://klinika-kazan.example/sitemap.xml\n"
+  },
+  {
+    "key": "GET https://klinika-kazan.example/blog/kak-vybrat",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<!doctype html>\n<html lang=\"ru\"><head><meta charset=\"utf-8\"><title>Как выбрать стоматологию в Казани — блог клиники</title>\n<style>body{font:16px sans-serif}</style><script>window.metrika=1</script></head>\n<body>\n<header><nav><a href=\"/\">Главная</a> <a href=\"/uslugi\">Услуги</a> <a href=\"/kontakty\">Контакты</a></nav></header>\n<main><article>\n<h1>Как выбрать стоматологию в Казани</h1>\n<p class=\"byline\">Блог клиники, 1 октября 2026</p>\n<p>Выбор клиники начинается с лицензии: её номер должен быть на сайте и в договоре. Затем смотрят на отзывы за последний год и на то, называют ли цены до приёма. Хорошая клиника показывает прайс открыто и объясняет план лечения.</p>\n<h2>На что смотреть</h2>\n<ul><li>Лицензия на медицинскую деятельность</li><li>Открытый прайс и смета до лечения</li><li>Гарантия на пломбы и импланты</li></ul>\n<p>Подробные цены — <a href=\"/uslugi#ceny\">в разделе услуг</a>, запись — <a href=\"javascript:void(0)\">по кнопке</a>.</p>\n<img src=\"/img/kabinet.jpg\" alt=\"Кабинет\">\n<h2>Сколько стоит</h2>\n<p>Консультация стоит от 500 ₽, профессиональная чистка — от 3 500 ₽, имплантация под ключ — от 38 000 ₽. Цены зависят от материала и сложности случая, поэтому окончательную смету даёт врач после осмотра.</p>\n<form><input name=\"phone\"><button>Записаться</button></form>\n</article></main>\n<aside>Акция месяца: скидка 10 %</aside>\n<footer>© 2026 Клиника · <a href=\"/privacy\">Политика</a></footer>\n</body></html>\n"
+  },
+  {
+    "key": "GET https://klinika-kazan.example/old-blog",
+    "status": 301,
+    "headers": {
+      "location": "/blog/kak-vybrat"
+    },
+    "body": ""
+  },
+  {
+    "key": "GET https://klinika-kazan.example/go",
+    "status": 302,
+    "headers": {
+      "location": "http://169.254.169.254/latest/meta-data/"
+    },
+    "body": ""
+  },
+  {
+    "key": "GET https://klinika-kazan.example/price.txt",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "body": "Консультация 500\nЧистка 3500\n"
+  },
+  {
+    "key": "GET https://klinika-kazan.example/price.pdf",
+    "status": 200,
+    "headers": {
+      "content-type": "application/pdf"
+    },
+    "body": "%PDF-1.7 ..."
+  },
+  {
+    "key": "GET https://klinika-kazan.example/gone",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html"
+    },
+    "body": "<h1>Нет такой страницы</h1>"
+  },
+  {
+    "key": "GET https://klinika-kazan.example/sitemap.xml",
+    "status": 200,
+    "headers": {
+      "content-type": "application/xml"
+    },
+    "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://klinika-kazan.example/</loc><lastmod>2026-09-30</lastmod></url><url><loc>https://klinika-kazan.example/uslugi</loc><lastmod>2026-09-30</lastmod></url><url><loc>https://klinika-kazan.example/blog/kak-vybrat</loc><lastmod>2026-09-30</lastmod></url></urlset>\n"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/robots.txt",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html"
+    },
+    "body": "<h1>404</h1>"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/llms.txt",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "body": "# Pay Docs API\n\n> API приёма платежей: платежи, возвраты, чеки и уведомления. Документация для разработчиков и LLM.\n\nВерсия API v3. Авторизация — HTTP Basic (shopId и секретный ключ).\n\n## Документация\n\n- [Быстрый старт](https://pay-docs.example/developers/quickstart): первый платёж за 10 минут\n- [Платежи](/developers/payments): создание, подтверждение и отмена\n- [Возвраты](/developers/refunds)\n\n## Спецификации\n\n- [OpenAPI](https://api.pay-docs.example/openapi.json): полная спецификация API v3\n\n## Optional\n\n- [Changelog](https://pay-docs.example/changelog)\n"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/openapi.json",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"Pay Docs API\",\"version\":\"3.0.0\"},\"servers\":[{\"url\":\"https://api.pay-docs.example/v3\"}],\"paths\":{\"/payments\":{\"post\":{\"operationId\":\"createPayment\",\"summary\":\"Создать платёж\"},\"get\":{\"operationId\":\"listPayments\",\"summary\":\"Список платежей\"}},\"/payments/{payment_id}\":{\"get\":{\"operationId\":\"getPayment\",\"summary\":\"Информация о платеже\"}},\"/payments/{payment_id}/capture\":{\"post\":{\"operationId\":\"capturePayment\",\"summary\":\"Подтвердить платёж\"}},\"/refunds\":{\"post\":{\"operationId\":\"createRefund\",\"summary\":\"Создать возврат\"}},\"/webhooks\":{\"post\":{\"operationId\":\"createWebhook\",\"description\":\"Подписка на уведомления о событиях\"}}}}"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/swagger.json",
+    "status": 404,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"error\":\"not found\"}"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/.well-known/api-catalog",
+    "status": 200,
+    "headers": {
+      "content-type": "application/linkset+json"
+    },
+    "body": "{\"linkset\":[{\"anchor\":\"https://api.pay-docs.example/v3\",\"service-desc\":[{\"href\":\"https://api.pay-docs.example/openapi.json\",\"type\":\"application/json\"}],\"service-doc\":[{\"href\":\"https://pay-docs.example/developers\",\"type\":\"text/html\"}]}]}"
+  },
+  {
+    "key": "GET https://api.pay-docs.example/sitemap.xml",
+    "status": 200,
+    "headers": {
+      "content-type": "application/xml"
+    },
+    "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://api.pay-docs.example/v3</loc><lastmod>2026-09-30</lastmod></url><url><loc>https://api.pay-docs.example/v3/payments-guide</loc><lastmod>2026-09-30</lastmod></url></urlset>\n"
+  },
+  {
+    "key": "GET https://shop-docs.example/robots.txt",
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "User-agent: *\nDisallow:\nSitemap: https://shop-docs.example/sitemap_index.xml\n"
+  },
+  {
+    "key": "GET https://shop-docs.example/llms.txt",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html"
+    },
+    "body": "<!doctype html><html><body>Страница не найдена</body></html>"
+  },
+  {
+    "key": "GET https://shop-docs.example/openapi.json",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<!DOCTYPE html><html><body>Каталог</body></html>"
+  },
+  {
+    "key": "GET https://shop-docs.example/swagger.json",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"swagger\":\"2.0\",\"info\":{\"title\":\"Shop\",\"version\":\"1\"},\"host\":\"shop-docs.example\",\"basePath\":\"/api\",\"schemes\":[\"https\"],\"paths\":{\"/orders\":{\"get\":{\"operationId\":\"listOrders\",\"summary\":\"Заказы\"}}}}"
+  },
+  {
+    "key": "GET https://shop-docs.example/.well-known/api-catalog",
+    "status": 404,
+    "headers": {
+      "content-type": "text/html"
+    },
+    "body": ""
+  },
+  {
+    "key": "GET https://shop-docs.example/sitemap_index.xml",
+    "status": 200,
+    "headers": {
+      "content-type": "application/xml"
+    },
+    "body": "<?xml version=\"1.0\"?><sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://shop-docs.example/sitemap-1.xml</loc></sitemap><sitemap><loc>https://shop-docs.example/sitemap-2.xml</loc></sitemap></sitemapindex>"
+  }
+]

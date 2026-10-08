@@ -8,11 +8,12 @@
 # docker-registry Secret wizard-ghcr; no in-cluster registry.
 images:
   pullSecret: wizard-ghcr
-# D24_pilot_free (platform/deploy.yaml#pilot.env): invite-only registration, payments off, LLM cap 6 000 ₽/month.
+# D24_pilot_free (platform/deploy.yaml#pilot.env): invite-only registration, payments off; LLM cap of clients and eval
+# 15 000 ₽/month on the time of V3 (D77 (18б), V3-01; was 6 000 ₽).
 config:
   registration: invite
   payments: "off"
-  llmMonthlyCapRub: 6000
+  llmMonthlyCapRub: 15000
   founderReview: "on"
 postgres:
   inCluster: true

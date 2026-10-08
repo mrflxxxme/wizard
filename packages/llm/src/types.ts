@@ -19,6 +19,15 @@ export const CALL_TYPES = [
   "runtime_ai_extract",
   "runtime_ai_generate",
   "support",
+  // V3-16 (builder-v3.md C7): stages of the v3 pipeline.
+  "interview_v3",
+  "brief_extract",
+  "art_direction",
+  "page_compose",
+  "signature_section",
+  "critic_visual",
+  "techreview",
+  "research",
 ] as const;
 export type CallType = (typeof CALL_TYPES)[number];
 /** AI actions of systems (M3-02): T0 only. */
@@ -94,6 +103,11 @@ export interface RouteInput {
   containsPiiHint?: boolean;
   /** Missing policy = not loaded → fail-safe T0 (models.yaml#routing_algorithm 2a). */
   orgPolicy?: OrgPolicy | null;
+  /**
+   * Model families (modelFamily) the chain must skip: the reviewer of a run is of another family than its builder
+   * (techreview, audit). Nothing left → LLM_UNAVAILABLE.
+   */
+  avoidFamilies?: readonly string[];
   ctx: RouteContext;
   signal?: AbortSignal;
 }

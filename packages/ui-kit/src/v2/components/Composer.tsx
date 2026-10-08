@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useId } from "react";
+import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { cx, type PBase, pRoot } from "../util.js";
 import s from "./Composer.module.css";
 import { Chip } from "./controls.js";
@@ -6,6 +6,43 @@ import { Chip } from "./controls.js";
 export interface ComposerSuggestion {
   id: string;
   label: string;
+}
+
+/** «Приложить ТЗ» (V3-04): the paperclip in the row; the file is checked here, then handed to `onFile`. */
+export interface ComposerAttach {
+  /**
+   * Called with a file that passed the size and extension checks; while the promise is pending the row shows the
+   * upload, a rejection shows its message (Russian text of an Error) under the row.
+   */
+  onFile(file: File): Promise<void> | void;
+  /** Extensions offered in the file dialog (the server checks the signature anyway); default .docx .pdf .md .txt. */
+  accept?: readonly string[];
+  /** Largest file in bytes; default 10 МБ. */
+  maxBytes?: number;
+  /** Accessible name and tooltip of the paperclip; default «Приложить ТЗ». */
+  label?: string;
+}
+
+/** Defaults of «Приложить ТЗ»: the formats of POST /systems/:id/brief/upload and its limit. */
+export const COMPOSER_ATTACH_ACCEPT = [".docx", ".pdf", ".md", ".txt"] as const;
+export const COMPOSER_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+
+type AttachState =
+  | { status: "idle" }
+  | { status: "uploading"; name: string }
+  | { status: "error"; message: string };
+
+const listRu = (xs: readonly string[]) =>
+  xs.length > 1 ? `${xs.slice(0, -1).join(", ")} и ${xs[xs.length - 1]}` : (xs[0] ?? "");
+const sizeRu = (n: number) =>
+  n >= 1024 * 1024
+    ? `${Math.round((n / 1024 / 1024) * 10) / 10} МБ`
+    : `${Math.max(1, Math.round(n / 1024))} КБ`;
+
+/** The message of a failed upload: a Russian Error text as is, anything else — a general one. */
+function uploadError(e: unknown): string {
+  const m = e instanceof Error ? e.message.trim() : typeof e === "string" ? e.trim() : "";
+  return /[а-яё]/i.test(m) ? m : "Не удалось загрузить ТЗ — попробуйте ещё раз";
 }
 
 export interface ComposerProps extends PBase {
@@ -26,9 +63,14 @@ export interface ComposerProps extends PBase {
   suggestions?: readonly ComposerSuggestion[];
   onSuggestion?(id: string): void;
   disabled?: boolean;
+  /** «Приложить ТЗ»: the paperclip, file checks, upload state and errors in Russian; absent — no paperclip. */
+  attach?: ComposerAttach | null;
 }
 
-/** Floating input row of the canvas: selected block label, suggestions, breathing while the AI thinks. */
+/**
+ * Floating input row of the canvas: selected block label, suggestions, breathing while the AI thinks; with `attach` —
+ * the paperclip «Приложить ТЗ» (docx, pdf, md, txt up to 10 МБ).
+ */
 export function Composer({
   value,
   onChange,
@@ -41,14 +83,54 @@ export function Composer({
   suggestions = [],
   onSuggestion,
   disabled = false,
+  attach = null,
   className,
   testId,
 }: ComposerProps): ReactNode {
   const id = useId();
   const text = value.trim();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [att, setAtt] = useState<AttachState>({ status: "idle" });
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const uploading = att.status === "uploading";
+  const accept = attach?.accept ?? COMPOSER_ATTACH_ACCEPT;
+  const attachLabel = attach?.label ?? "Приложить ТЗ";
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (text && !disabled) onSubmit(text);
+    if (text && !disabled) {
+      if (att.status === "error") setAtt({ status: "idle" });
+      onSubmit(text);
+    }
+  };
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    // Reset, so that choosing the same file again fires change.
+    input.value = "";
+    if (!file || !attach || uploading) return;
+    const max = attach.maxBytes ?? COMPOSER_ATTACH_MAX_BYTES;
+    const ext = /\.[^.\\/]+$/.exec(file.name)?.[0]?.toLowerCase() ?? "";
+    if (!accept.some((a) => a.toLowerCase() === ext))
+      return setAtt({ status: "error", message: `Подходят файлы ${listRu(accept)}` });
+    if (file.size > max)
+      return setAtt({
+        status: "error",
+        message: `Файл больше ${sizeRu(max)} — сократите ТЗ или пришлите его частями`,
+      });
+    if (file.size === 0) return setAtt({ status: "error", message: "Файл пустой — выберите другой" });
+    setAtt({ status: "uploading", name: file.name });
+    try {
+      await attach.onFile(file);
+      if (alive.current) setAtt({ status: "idle" });
+    } catch (err) {
+      if (alive.current) setAtt({ status: "error", message: uploadError(err) });
+    }
   };
   return (
     <div
@@ -60,6 +142,7 @@ export function Composer({
         state === "thinking" && s.thinking,
         state === "building" && s.building,
         size === "start" && s.start,
+        attach && s.withAttach,
         className,
       )}
     >
@@ -87,6 +170,39 @@ export function Composer({
             </svg>
           </button>
         )}
+        {attach && (
+          <>
+            <button
+              type="button"
+              className={s.attach}
+              onClick={() => fileRef.current?.click()}
+              disabled={disabled || uploading}
+              aria-label={attachLabel}
+              title={attachLabel}
+              aria-busy={uploading || undefined}
+              data-state={att.status}
+              data-testid="p-composer-attach"
+            >
+              {uploading ? (
+                <span className={s.spinner} aria-hidden="true" />
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15.5 6.5 8.4 13.6a2 2 0 0 0 2.8 2.8l7.4-7.4a4 4 0 0 0-5.7-5.7l-7.4 7.4a6 6 0 0 0 8.5 8.5l6.4-6.4" />
+                </svg>
+              )}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              hidden
+              tabIndex={-1}
+              accept={accept.join(",")}
+              aria-label={attachLabel}
+              onChange={pick}
+              data-testid="p-composer-file"
+            />
+          </>
+        )}
         <label className={s.srOnly} htmlFor={id}>
           {label}
         </label>
@@ -113,6 +229,16 @@ export function Composer({
           </svg>
         </button>
       </form>
+      {attach && (
+        <p className={s.note} role="status" data-testid="p-composer-attach-status">
+          {uploading ? `Читаем ТЗ «${att.name}»…` : ""}
+        </p>
+      )}
+      {attach && att.status === "error" && (
+        <p className={cx(s.note, s.noteError)} role="alert" data-testid="p-composer-attach-error">
+          {att.message}
+        </p>
+      )}
     </div>
   );
 }

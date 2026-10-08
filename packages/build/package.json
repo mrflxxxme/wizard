@@ -16,11 +16,14 @@
     "@wizard/sdk": "workspace:*",
     "@wizard/ui-kit": "workspace:*",
     "esbuild": "^0.28.2",
+    "motion": "^13.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0"
   }

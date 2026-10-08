@@ -183,3 +183,26 @@ export {
   type V2Stage,
 } from "./v2/types.js";
 export { StageBudgetError, StageWallet } from "./v2/wallet.js";
+/** V3-07 art director: three candidate directions by code; the model picks one via submit_art_direction, or fallback. */
+export {
+  ACCENT_USES,
+  ART_DIRECTION_CALL_TYPE,
+  type ArtDirection,
+  type ArtDirectionAnswer,
+  type ArtDirectionCandidate,
+  type ArtDirectionChoice,
+  type ArtDirectorInput,
+  artDirectionCandidates,
+  artDirectionIssues,
+  artDirectionMessages,
+  artDirectionSchema,
+  runArtDirector,
+} from "./v3/art-director.js";
+/** V3-11/V3-12 seam (builder-v3.md C6): the harness calls a PageComposer; the page writer implements it. */
+export type {
+  PageComposer,
+  SystemFiles,
+  V3BuildContext,
+  V3ComposeResult,
+  V3PagePlan,
+} from "./v3/contract.js";

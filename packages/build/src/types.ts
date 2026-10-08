@@ -25,15 +25,27 @@ export interface HostModules {
   reactDomClient: string;
 }
 
+/**
+ * Packages the UI code of a v3 system (one with ui/design.css) may import besides the SDK and ui-kit
+ * (builder-v3.md C3): React, Motion and the ui-kit headless hooks (null until ui-kit ships them).
+ */
+export interface V3HostModules {
+  react: string;
+  motionReact: string;
+  uiKitHeadless: string | null;
+}
+
 export interface BuildInput {
   spec: AppSpec;
-  /** System-relative path → source; only ui/** and functions/** .ts/.tsx are used. */
+  /** System-relative path → source; ui/** and functions/** .ts/.tsx are built, ui/design.css switches on Tailwind. */
   files: ReadonlyMap<string, string>;
   env: BuildEnv;
   /** Origin of platform-web that frames the draft preview. */
   platformOrigin?: string;
   /** Overrides of the default resolution (tests, alternative ui-kit builds). */
   hostModules?: Partial<HostModules>;
+  /** Overrides of the v3 packages (tests). */
+  v3HostModules?: Partial<V3HostModules>;
 }
 
 export interface BuildManifest {

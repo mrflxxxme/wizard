@@ -13,6 +13,26 @@ export function costRub(price: ModelDef["price"], u: LlmUsage): number {
   return Math.round(raw * 1e4) / 1e4;
 }
 
+const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+
+/**
+ * Cached input tokens of a call (models.yaml#usage_record.cachedTokens): the SDK value (usage.prompt_tokens_details.
+ * cached_tokens — Z.ai, DeepSeek, vLLM with --enable-prompt-tokens-details), else the raw usage of the provider —
+ * prompt_cache_hit_tokens (DeepSeek) or a top-level cached_tokens (Kimi API). Never more than the input.
+ */
+export function cachedInputTokens(
+  inputTokens: number,
+  sdkCacheRead: number | undefined,
+  raw: unknown,
+): number {
+  let cached = count(sdkCacheRead);
+  if (cached === 0 && raw !== null && typeof raw === "object") {
+    const u = raw as Record<string, unknown>;
+    cached = count(u.prompt_cache_hit_tokens) || count(u.cached_tokens);
+  }
+  return Math.min(cached, Math.max(0, inputTokens));
+}
+
 export function creditsMilli(cost: number, rubPerCredit: number): number {
   // Round away float noise before ceil so that e.g. 0.30000000000000004 does not add a milli-credit.
   return Math.ceil(Math.round(((cost * 1000) / rubPerCredit) * 1e6) / 1e6);

@@ -9,7 +9,10 @@
     "./fonts": "./src/tokens/fonts.ts",
     "./themes": "./src/themes/index.ts",
     "./v2": "./src/v2/index.ts",
-    "./v2/theme.css": "./src/v2/theme.css"
+    "./v2/theme.css": "./src/v2/theme.css",
+    "./v3/design": "./src/v3/design/index.ts",
+    "./v3/headless": "./src/v3/headless/index.ts",
+    "./v3/patterns": "./src/v3/patterns/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -21,7 +24,10 @@
     "@wizard/appspec": "workspace:*",
     "@wizard/sdk": "workspace:*",
     "jsqr": "^1.4.0",
-    "qrcode-generator": "^2.0.4"
+    "motion": "^13.4.3",
+    "qrcode-generator": "^2.0.4",
+    "typescript": "^5.9.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@fontsource/alegreya": "5.3.0",

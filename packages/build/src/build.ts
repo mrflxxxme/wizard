@@ -1,6 +1,6 @@
 // buildSystem (specs/architecture.yaml#interfaces.build_system): the only build of system code.
 // Runs in a throwaway copy of the revision (absWorkingDir) holding just ui/** and functions/**.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -9,7 +9,16 @@ import type { AppSpec } from "@wizard/appspec";
 import * as esbuild from "esbuild";
 import { canonicalJson, sha256Hex, specHash } from "./hash.js";
 import { ENTRY_NS, SDK, SDK_JSX, toPosix, UI_KIT, wizardPlugin } from "./plugin.js";
-import type { BuildEnv, BuildInput, BuildManifest, BuildResult, Check, HostModules } from "./types.js";
+import { DESIGN_CSS_PATH, layeredCss, systemTailwind } from "./tailwind.js";
+import type {
+  BuildEnv,
+  BuildInput,
+  BuildManifest,
+  BuildResult,
+  Check,
+  HostModules,
+  V3HostModules,
+} from "./types.js";
 import { injectWzIds, type WzMap } from "./wz-id.js";
 
 export const BUILD_CHECK_ID = "G0-BUILD-01";
@@ -31,12 +40,42 @@ export function defaultHostModules(): HostModules {
   };
 }
 
+/** React, Motion (ESM entry of motion/react) and the ui-kit headless hooks for the UI of v3 systems. */
+export function defaultV3HostModules(): V3HostModules {
+  const req = createRequire(import.meta.url);
+  const motionPkg = req.resolve("motion/package.json");
+  const entry = (
+    JSON.parse(readFileSync(motionPkg, "utf8")) as { exports: Record<string, { import: string }> }
+  ).exports["./react"]?.import;
+  if (!entry) throw new Error("motion: no ESM entry for motion/react");
+  let headless: string | null = null;
+  try {
+    headless = req.resolve("@wizard/ui-kit/v3/headless");
+  } catch {
+    headless = null; // ui-kit has no headless hooks yet (V3-10)
+  }
+  return {
+    react: req.resolve("react"),
+    motionReact: join(dirname(motionPkg), entry),
+    uiKitHeadless: headless,
+  };
+}
+
+function v3Packages(m: V3HostModules): Map<string, string> {
+  const out = new Map([
+    ["react", m.react],
+    ["motion/react", m.motionReact],
+  ]);
+  if (m.uiKitHeadless) out.set("@wizard/ui-kit/v3/headless", m.uiKitHeadless);
+  return out;
+}
+
 const WORKSPACE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /** "../../home/…/wizard/" as esbuild prints it from the copy dir; null if there is no safe common root. */
-function hostPathPrefix(copyDir: string, host: HostModules): string | null {
+function hostPathPrefix(copyDir: string, hostPaths: readonly string[]): string | null {
   let root = realpathSync(WORKSPACE_ROOT);
-  for (const p of Object.values(host)) {
+  for (const p of hostPaths) {
     const real = realpathSync(p);
     while (!real.startsWith(root + sep)) {
       const up = dirname(root);
@@ -213,6 +252,11 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
   }
 
   const host = { ...defaultHostModules(), ...input.hostModules };
+  // v3 system (builder-v3.md §1): Tailwind over ui/design.css runs next to esbuild; React and Motion are importable.
+  const v3Host = input.files.has(DESIGN_CSS_PATH)
+    ? { ...defaultV3HostModules(), ...input.v3HostModules }
+    : null;
+  const tailwind = v3Host ? systemTailwind(input.files) : null;
   const copyDir = realpathSync(mkdtempSync(join(tmpdir(), "wz-build-")));
   try {
     for (const [path, text] of sources) {
@@ -259,7 +303,14 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
         assetNames: "assets/[name]-[hash]",
         loader: { ".woff2": "file", ".woff": "file", ".png": "file", ".webp": "file" },
         plugins: [
-          wizardPlugin({ target: "client", copyDir, sources: loaded, entryCode: clientEntry(spec), host }),
+          wizardPlugin({
+            target: "client",
+            copyDir,
+            sources: loaded,
+            entryCode: clientEntry(spec),
+            host,
+            ...(v3Host ? { packages: v3Packages(v3Host) } : {}),
+          }),
         ],
       }),
       run({
@@ -278,10 +329,34 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
       }),
     ]);
     for (const m of [...client.errors, ...fns.errors]) errors.push(fromEsbuild(m));
+    const tw = tailwind ? await tailwind : null;
+    if (tw && !tw.ok) {
+      errors.push(
+        fail("Стили дизайн-системы не собираются (ui/design.css)", {
+          file: DESIGN_CSS_PATH,
+          evidence: clip(tw.error, 500),
+          fixHint:
+            "В ui/design.css допустимы только CSS-переменные, @theme и правила без @import, @plugin и @config",
+        }),
+      );
+    }
     if (errors.length > 0) return failed();
+    const twCss = tw?.ok
+      ? (
+          await esbuild.transform(tw.css, {
+            loader: "css",
+            minifyWhitespace: true,
+            charset: "utf8",
+            legalComments: "inline",
+          })
+        ).code
+      : null;
 
     const outDir = join(copyDir, "out");
-    const hostPrefix = hostPathPrefix(copyDir, host);
+    const hostPrefix = hostPathPrefix(copyDir, [
+      ...Object.values(host),
+      ...(v3Host ? [v3Host.react, v3Host.motionReact] : []),
+    ]);
     const clientFiles = new Map<string, Uint8Array>();
     let script = "";
     let style: string | null = null;
@@ -294,11 +369,17 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
       }
       // Module keys of CJS wrappers carry paths relative to the copy dir: strip the host part, then
       // name the file by its own content hash so the output does not depend on where the repo lives.
-      const text = hostPrefix ? f.text.replaceAll(hostPrefix, "") : f.text;
+      let text = hostPrefix ? f.text.replaceAll(hostPrefix, "") : f.text;
+      if (m[1] === "css" && twCss !== null) text = layeredCss(twCss, text);
       const name = `assets/index-${sha256Hex(text).slice(0, 12)}.${m[1]}`;
       clientFiles.set(name, new TextEncoder().encode(text));
       if (m[1] === "js") script = name;
       else style = name;
+    }
+    if (twCss !== null && style === null) {
+      const text = layeredCss(twCss, null);
+      style = `assets/index-${sha256Hex(text).slice(0, 12)}.css`;
+      clientFiles.set(style, new TextEncoder().encode(text));
     }
     clientFiles.set(
       "index.html",

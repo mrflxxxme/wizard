@@ -13,6 +13,8 @@ import { platformMailer } from "./auth/smtp-mailer.js";
 import { Billing } from "./billing/ledger.js";
 import { LlmMonthlyCap } from "./billing/llm-cap.js";
 import { Payments } from "./billing/payments.js";
+import { briefRoutes } from "./briefs/routes.js";
+import { briefUploadRoutes } from "./briefs/upload.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -161,6 +163,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     staffReserveRub: config.llmStaffReserveRub,
     evalDailyCapRub: config.llmEvalDailyCapRub,
     b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
+    // V3-01: the founder's own monthly pool and the v3 development budget (from its first day instead of B2).
+    founderMonthlyCapRub: config.llmFounderMonthlyCapRub,
+    v3Budget: { budgetRub: config.v3BudgetRub, since: config.v3BudgetSince },
     alert,
     balances: config.llmBalances,
     balanceWarnRub: config.llmBalanceWarnRub,
@@ -341,6 +346,18 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", authRoutes(deps, accounts));
   api.route("/", systemRoutes(deps));
   api.route("/", planRoutes(deps));
+  // V3-02: the system brief — latest version with its diagrams, history with diffs, the owner's edit.
+  api.route("/", briefRoutes(deps));
+  // V3-04: ТЗ from a file → a brief draft (T0 brief_extract, the file only in the request's memory).
+  api.route(
+    "/",
+    briefUploadRoutes({
+      ...deps,
+      alert,
+      log,
+      ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    }),
+  );
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));

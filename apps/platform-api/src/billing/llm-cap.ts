@@ -6,12 +6,24 @@
 // B2-01, B2-04 (D76 (10, 14), grill-6 № 12, 18): the run's org kind decides the rest. The daily cap keeps a staff
 // reserve: client and eval runs are refused once the day's total reaches cap − WIZARD_LLM_STAFF_RESERVE_RUB, staff runs
 // only at the cap. Eval runs also have their own daily cap (eval orgs' spend only) and the B2 development budget.
+// V3-01 (D77 (18б), v3-limits.ts): 50 % and 80 % of the daily and of the monthly cap warn the founder once each; the
+// founder's own monthly pool (staff orgs) is apart from the monthly cap of clients and eval; the v3 development budget
+// replaces the B2 one from its first day.
 import { sql } from "kysely";
 import type { LlmBalance } from "../config.js";
 import type { Db } from "../db/index.js";
+import type { OrgKind } from "../db/types.js";
 import { ApiError } from "../errors.js";
 import { alertOnce, type OpsAlertFn } from "../ops/alert.js";
-import { checkB2Budget, llmSpentByKindRub, moscowDay, moscowMonth, orgKind } from "./llm-spend.js";
+import {
+  checkB2Budget,
+  llmSpentByKindRub,
+  moscowDay,
+  moscowDayStart,
+  moscowMonth,
+  orgKind,
+} from "./llm-spend.js";
+import { checkV3Budget, llmSpentWithoutStaffRub, reachedSharePercent } from "./v3-limits.js";
 
 export { moscowDay, moscowMonth } from "./llm-spend.js";
 
@@ -31,8 +43,18 @@ export const LLM_EVAL_DAILY_BUDGET_EXHAUSTED_RU =
 export const LLM_B2_BUDGET_EXHAUSTED_RU =
   "Бюджет разработки беты v2 на работу моделей исчерпан. Новые пробы и замеры будут доступны после того, как основатель поднимет бюджет";
 
-/** Share of the cap that triggers the warning alert. */
+/** api.yaml#Error LLM_BUDGET_EXHAUSTED, the founder's monthly pool (V3-01). */
+export const LLM_FOUNDER_BUDGET_EXHAUSTED_RU =
+  "Месячный лимит организации основателя на работу моделей исчерпан. Новые сборки и ответы в чате снова будут доступны с 1-го числа следующего месяца или после повышения лимита";
+
+/** api.yaml#Error LLM_BUDGET_EXHAUSTED, the v3 development budget (V3-01). */
+export const LLM_V3_BUDGET_EXHAUSTED_RU =
+  "Бюджет разработки v3 на работу моделей исчерпан. Новые пробы и замеры будут доступны после того, как основатель поднимет бюджет";
+
+/** Share of the cap that triggers the last warning alert (the first one is 50 %, v3-limits.ts V3_ALERT_SHARES). */
 export const LLM_CAP_WARN_SHARE = 0.8;
+
+const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
 
 /** Σ billable cost_rub of paid (live/record) LLM calls in [start, end), ₽ — the whole platform or one org. */
 export async function llmSpentRub(db: Db, start: Date, end: Date, orgId?: string): Promise<number> {
@@ -87,6 +109,16 @@ export interface LlmMonthlyCapOptions {
   evalDailyCapRub?: number;
   /** WIZARD_B2_BUDGET_RUB since WIZARD_B2_BUDGET_SINCE (B2-04): eval spend of the beta v2 development; none — off. */
   b2Budget?: { budgetRub: number; since: string };
+  /**
+   * WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB (V3-01): the staff orgs' own pool per Moscow month — their spend leaves the
+   * monthly cap of clients and eval, which never use the pool; none — one monthly cap for every org.
+   */
+  founderMonthlyCapRub?: number;
+  /**
+   * WIZARD_V3_BUDGET_RUB since WIZARD_V3_BUDGET_SINCE (V3-01): eval spend of the v3 development; from its first
+   * Moscow day it replaces b2Budget; none — off.
+   */
+  v3Budget?: { budgetRub: number; since: string };
   now?: () => Date;
   alert?: OpsAlertFn;
   /** D76: provider balances reconciled by hand (WIZARD_LLM_BALANCE_*); none — no balance estimate. */
@@ -106,39 +138,66 @@ export class LlmMonthlyCap {
     return this.#o.capRub;
   }
 
+  /** The monthly cap of the platform; with the founder's pool — the spend of clients and eval only. */
   async status(): Promise<LlmCapStatus> {
-    const m = moscowMonth(this.#o.now?.() ?? new Date());
-    return { month: m.key, spentRub: await llmSpentRub(this.#o.db, m.start, m.end), capRub: this.#o.capRub };
+    const m = moscowMonth(this.#now());
+    const spentRub =
+      this.#o.founderMonthlyCapRub === undefined
+        ? await llmSpentRub(this.#o.db, m.start, m.end)
+        : await llmSpentWithoutStaffRub(this.#o.db, m.start, m.end);
+    return { month: m.key, spentRub, capRub: this.#o.capRub };
+  }
+
+  /** The founder's monthly pool — the spend of staff orgs; none without WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB. */
+  async founderStatus(): Promise<LlmCapStatus | null> {
+    const capRub = this.#o.founderMonthlyCapRub;
+    if (capRub === undefined) return null;
+    const m = moscowMonth(this.#now());
+    return { month: m.key, spentRub: await llmSpentByKindRub(this.#o.db, "staff", m.start, m.end), capRub };
   }
 
   /**
-   * Before a new LLM run of `orgId` (none — counted as a client run): ≥ cap → 503 LLM_BUDGET_EXHAUSTED (+ the monthly
-   * alert); the daily cap with the staff reserve; for eval orgs the eval daily cap and the B2 budget; ≥ 80 % → the
-   * monthly warning.
+   * Before a new LLM run of `orgId` (none — counted as a client run): the monthly cap (of clients and eval, or the
+   * founder's pool for a staff org when it is set) ≥ cap → 503 LLM_BUDGET_EXHAUSTED (+ the monthly alert); the daily
+   * cap with the staff reserve; for eval orgs the eval daily cap and the v3 (B2) budget; 50 % and 80 % of the daily
+   * and of the monthly cap → one warning each per period (only the highest share reached).
    */
   async assert(orgId?: string): Promise<void> {
-    const s = await this.status();
-    const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
+    const kind: OrgKind = orgId ? await orgKind(this.#o.db, orgId) : "client";
+    const founder = kind === "staff" ? await this.founderStatus() : null;
+    const s = founder ?? (await this.status());
+    const monthReason = `${s.month}: ${s.spentRub} of ${s.capRub} RUB`;
     if (s.spentRub >= s.capRub) {
-      await this.#once(`llm_cap_100:${s.month}`, {
-        level: "error",
-        event: "llm_monthly_cap_reached",
-        text: `Wizard: месячный лимит расходов на модели исчерпан — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК). Новые сборки и ответы оркестратора отклоняются до 1-го числа или до повышения WIZARD_LLM_MONTHLY_CAP_RUB.`,
-        fields: { code: "LLM_BUDGET_EXHAUSTED", reason: `${s.month}: ${s.spentRub} of ${s.capRub} RUB` },
-      });
-      throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_BUDGET_EXHAUSTED_RU);
+      if (founder)
+        await this.#once(`llm_founder_cap_100:${s.month}`, {
+          level: "error",
+          event: "llm_founder_cap_reached",
+          text: `Wizard: месячный лимит организации основателя на модели исчерпан — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК). Сборки основателя отклоняются до 1-го числа или до повышения WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB; клиенты и замеры работают.`,
+          fields: { code: "LLM_BUDGET_EXHAUSTED", reason: monthReason, kind },
+        });
+      else
+        await this.#once(`llm_cap_100:${s.month}`, {
+          level: "error",
+          event: "llm_monthly_cap_reached",
+          text: `Wizard: месячный лимит расходов на модели исчерпан — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК). Новые сборки и ответы оркестратора отклоняются до 1-го числа или до повышения WIZARD_LLM_MONTHLY_CAP_RUB.`,
+          fields: { code: "LLM_BUDGET_EXHAUSTED", reason: monthReason },
+        });
+      throw new ApiError(
+        "LLM_BUDGET_EXHAUSTED",
+        founder ? LLM_FOUNDER_BUDGET_EXHAUSTED_RU : LLM_BUDGET_EXHAUSTED_RU,
+      );
     }
-    const kind = orgId ? await orgKind(this.#o.db, orgId) : "client";
     const daily = this.#o.dailyCapRub;
     if (daily !== undefined) {
-      const d = moscowDay(this.#o.now?.() ?? new Date());
+      const d = moscowDay(this.#now());
       const spent = await llmSpentRub(this.#o.db, d.start, d.end);
+      const dayReason = `${d.key}: ${spent} of ${daily} RUB`;
       if (spent >= daily) {
         await this.#once(`llm_daily_cap:${d.key}`, {
           level: "error",
           event: "llm_daily_cap_reached",
           text: `Wizard: дневной лимит расходов на модели исчерпан — ${rub(spent)} из ${rub(daily)} за ${d.key} (МСК). Новые сборки, замеры и ответы оркестратора отклоняются до полуночи МСК или до повышения WIZARD_LLM_DAILY_CAP_RUB.`,
-          fields: { code: "LLM_BUDGET_EXHAUSTED", reason: `${d.key}: ${spent} of ${daily} RUB` },
+          fields: { code: "LLM_BUDGET_EXHAUSTED", reason: dayReason },
         });
         throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_DAILY_BUDGET_EXHAUSTED_RU);
       }
@@ -156,24 +215,41 @@ export class LlmMonthlyCap {
         });
         throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_DAILY_BUDGET_EXHAUSTED_RU);
       }
+      const dayPct = reachedSharePercent(spent, daily);
+      if (dayPct !== null)
+        await this.#once(`llm_daily_${dayPct}:${d.key}`, {
+          level: "warn",
+          event: "llm_daily_cap_warning",
+          text: `Wizard: израсходовано ${Math.floor((100 * spent) / daily)} % дневного лимита на модели — ${rub(spent)} из ${rub(daily)} за ${d.key} (МСК).`,
+          fields: { code: "LLM_BUDGET_WARNING", reason: dayReason },
+        });
     }
     if (kind === "eval") await this.#assertEval();
     await this.#balances();
-    if (s.spentRub >= LLM_CAP_WARN_SHARE * s.capRub)
-      await this.#once(`llm_cap_80:${s.month}`, {
+    const pct = reachedSharePercent(s.spentRub, s.capRub);
+    if (pct === null) return;
+    const share = Math.floor((100 * s.spentRub) / s.capRub);
+    if (founder)
+      await this.#once(`llm_founder_cap_${pct}:${s.month}`, {
+        level: "warn",
+        event: "llm_founder_cap_warning",
+        text: `Wizard: израсходовано ${share} % месячного лимита организации основателя на модели — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК).`,
+        fields: { code: "LLM_BUDGET_WARNING", reason: monthReason, kind },
+      });
+    else
+      await this.#once(`llm_cap_${pct}:${s.month}`, {
         level: "warn",
         event: "llm_monthly_cap_warning",
-        text: `Wizard: израсходовано ${Math.floor((100 * s.spentRub) / s.capRub)} % месячного лимита на модели — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК).`,
-        fields: { code: "LLM_BUDGET_WARNING", reason: `${s.month}: ${s.spentRub} of ${s.capRub} RUB` },
+        text: `Wizard: израсходовано ${share} % месячного лимита на модели — ${rub(s.spentRub)} из ${rub(s.capRub)} за ${s.month} (МСК).`,
+        fields: { code: "LLM_BUDGET_WARNING", reason: monthReason },
       });
   }
 
-  /** Eval runs (probes, measurements): their own daily cap, then the B2 development budget with its alerts. */
+  /** Eval runs (probes, measurements): their own daily cap, then the v3 budget (from its first day) or the B2 one. */
   async #assertEval(): Promise<void> {
-    const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
     const cap = this.#o.evalDailyCapRub;
     if (cap !== undefined) {
-      const d = moscowDay(this.#o.now?.() ?? new Date());
+      const d = moscowDay(this.#now());
       const spent = await llmSpentByKindRub(this.#o.db, "eval", d.start, d.end);
       if (spent >= cap) {
         await this.#once(`llm_eval_daily_cap:${d.key}`, {
@@ -184,6 +260,12 @@ export class LlmMonthlyCap {
         });
         throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_EVAL_DAILY_BUDGET_EXHAUSTED_RU);
       }
+    }
+    const v3 = this.#o.v3Budget;
+    if (v3 && this.#now() >= moscowDayStart(v3.since)) {
+      const s = await checkV3Budget(this.#o.db, { ...v3, alert: this.#o.alert });
+      if (s.reached) throw new ApiError("LLM_BUDGET_EXHAUSTED", LLM_V3_BUDGET_EXHAUSTED_RU);
+      return;
     }
     const b2 = this.#o.b2Budget;
     if (b2) {
@@ -206,7 +288,6 @@ export class LlmMonthlyCap {
       const left = b.rub - spent;
       if (left > warn) continue;
       const label = PROVIDER_LABELS[b.provider] ?? b.provider;
-      const rub = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
       await this.#once(`llm_balance_low:${b.provider}:${b.since.toISOString()}`, {
         level: "warn",
         event: "llm_provider_balance_low",
@@ -217,6 +298,10 @@ export class LlmMonthlyCap {
         fields: { code: "LLM_BALANCE_LOW", reason: `${b.provider}: ${Math.round(left)} of ${b.rub} RUB` },
       });
     }
+  }
+
+  #now(): Date {
+    return this.#o.now?.() ?? new Date();
   }
 
   /** Sends the alert only for the first claim of `key` (ops/alert.ts alertOnce; outside the caller's transaction). */

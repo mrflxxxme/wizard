@@ -121,7 +121,7 @@ export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
   }
   if (input.containsPiiHint === true) return t0("pii_hint");
   if (dlp.highRisk) return t0("pii_high_risk");
-  if (ct === "interview" && dlp.total > 0) return t0("pii_detected_interview");
+  if (PII_FORBIDDEN_FOR_T1.anyPii.includes(ct) && dlp.total > 0) return t0("pii_detected_interview");
   const route = reg.routes[ct];
   const tier: Tier = route.defaultTier === "T1" && reg.buildDefaultTier === "T1" ? "T1" : "T0";
   return tier === "T1"

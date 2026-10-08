@@ -10,6 +10,7 @@ import {
   YOOKASSA_IP_ALLOWLIST,
 } from "@wizard/connectors";
 import { buildDefaultTierFromEnv, type Tier } from "@wizard/llm";
+import { V3_LIMITS } from "./billing/v3-limits.js";
 import { DEFAULT_DB_URL, DEFAULT_ORG_ID } from "./db/index.js";
 
 export interface Config {
@@ -111,22 +112,35 @@ export interface Config {
   /** WIZARD_G1_BROWSER_SLOTS (default 2): plan builds whose G1 uses the browser at once; the others wait their turn. */
   g1BrowserSlots: number;
   /**
-   * WIZARD_LLM_MONTHLY_CAP_RUB (default 6000; D20_eval_budget, D23_pilot): platform LLM spend cap per calendar month
-   * (Europe/Moscow) — Σ billable cost_rub of live llm_calls; reached → new builds and interview turns are refused.
+   * WIZARD_LLM_MONTHLY_CAP_RUB (default 15 000 for V3, D77 (18б); was 6000, D20_eval_budget, D23_pilot): platform LLM
+   * spend cap per calendar month (Europe/Moscow) — Σ billable cost_rub of live llm_calls of clients and eval (staff
+   * orgs have their own pool, llmFounderMonthlyCapRub); reached → new builds and interview turns are refused.
    */
-  /** WIZARD_LLM_DAILY_CAP_RUB (default 700; D75): platform LLM spend cap per Moscow calendar day. */
+  /** WIZARD_LLM_DAILY_CAP_RUB (default 3000 for V3, D77 (18б); was 700, D75): platform LLM spend cap per Moscow day. */
   llmDailyCapRub: number;
   /**
    * WIZARD_LLM_STAFF_RESERVE_RUB (default 200; B2-01, grill-6 № 12): the part of the daily cap only staff orgs may
    * use — client and eval runs are refused once the day's total reaches llmDailyCapRub − this.
    */
   llmStaffReserveRub: number;
-  /** WIZARD_LLM_EVAL_DAILY_CAP_RUB (default 300; B2-01): daily cap of eval orgs' own spend (probes, measurements). */
+  /**
+   * WIZARD_LLM_EVAL_DAILY_CAP_RUB (B2-01): daily cap of eval orgs' own spend (probes, measurements); default — the
+   * daily cap (V3-01: a paid run is bounded by its pre-registered cap and the v3 budget; B2 had 300).
+   */
   llmEvalDailyCapRub: number;
   /** WIZARD_B2_BUDGET_RUB (default 1000; B2-04, grill-6 № 18): eval spend budget of the beta v2 development. */
   b2BudgetRub: number;
   /** WIZARD_B2_BUDGET_SINCE (yyyy-mm-dd, Moscow; default 2026-10-07): start of the B2 budget window. */
   b2BudgetSince: string;
+  /**
+   * WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB (default 2500; V3-01, D77 (18б)): the founder's own pool per Moscow month — the
+   * spend of staff orgs, apart from llmMonthlyCapRub of clients and eval.
+   */
+  llmFounderMonthlyCapRub: number;
+  /** WIZARD_V3_BUDGET_RUB (default 12 000; V3-01, D77 (18б)): eval spend budget of the v3 development. */
+  v3BudgetRub: number;
+  /** WIZARD_V3_BUDGET_SINCE (yyyy-mm-dd, Moscow; default 2026-10-08): start of the v3 budget; the B2 one ends there. */
+  v3BudgetSince: string;
   llmMonthlyCapRub: number;
   /**
    * WIZARD_LLM_BALANCE_ZAI / WIZARD_LLM_BALANCE_CLOUDRU = «<₽>@<ISO time>» (D76, models.yaml#fallback_rules): the balance
@@ -221,14 +235,18 @@ function smtpFromEnv(env: NodeJS.ProcessEnv): {
   };
 }
 
-/** Default of WIZARD_LLM_MONTHLY_CAP_RUB (D23_pilot: models ≤ 10 000 ₽/month, of them live eval ≤ 4 000 ₽). */
-export const DEFAULT_LLM_MONTHLY_CAP_RUB = 6000;
-/** Default of WIZARD_LLM_DAILY_CAP_RUB (D75: ≤ 700 ₽ of models per day, an alert when reached). */
-export const DEFAULT_LLM_DAILY_CAP_RUB = 700;
+/** Default of WIZARD_LLM_MONTHLY_CAP_RUB (D77 (18б), on the time of V3; D23_pilot had 6 000 ₽). */
+export const DEFAULT_LLM_MONTHLY_CAP_RUB = V3_LIMITS.monthlyCapRub;
+/** Default of WIZARD_LLM_DAILY_CAP_RUB (D77 (18б), on the time of V3; D75 had 700 ₽). */
+export const DEFAULT_LLM_DAILY_CAP_RUB = V3_LIMITS.dailyCapRub;
 /** Default of WIZARD_LLM_STAFF_RESERVE_RUB (grill-6 № 12: «например, 200 ₽»). */
 export const DEFAULT_LLM_STAFF_RESERVE_RUB = 200;
-/** Default of WIZARD_LLM_EVAL_DAILY_CAP_RUB (B2-01). */
-export const DEFAULT_LLM_EVAL_DAILY_CAP_RUB = 300;
+/** Default of WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB (D77 (18б): the founder's builds — 2 500 ₽ a month apart). */
+export const DEFAULT_LLM_FOUNDER_MONTHLY_CAP_RUB = V3_LIMITS.founderMonthlyCapRub;
+/** Default of WIZARD_V3_BUDGET_RUB (D77 (18б): the v3 development ≤ 12 000 ₽). */
+export const DEFAULT_V3_BUDGET_RUB = V3_LIMITS.budgetRub;
+/** Default of WIZARD_V3_BUDGET_SINCE: the day of D77. */
+export const DEFAULT_V3_BUDGET_SINCE = V3_LIMITS.budgetSince;
 /** Default of WIZARD_B2_BUDGET_RUB (grill-6 № 18: ≤ 1 000 ₽ for probes and the measurement). */
 export const DEFAULT_B2_BUDGET_RUB = 1000;
 /** Default of WIZARD_B2_BUDGET_SINCE: the day of D76. */
@@ -331,11 +349,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, over: Partial<C
     llmStaffReserveRub: env.WIZARD_LLM_STAFF_RESERVE_RUB
       ? Number(env.WIZARD_LLM_STAFF_RESERVE_RUB)
       : DEFAULT_LLM_STAFF_RESERVE_RUB,
-    llmEvalDailyCapRub: env.WIZARD_LLM_EVAL_DAILY_CAP_RUB
-      ? Number(env.WIZARD_LLM_EVAL_DAILY_CAP_RUB)
-      : DEFAULT_LLM_EVAL_DAILY_CAP_RUB,
+    llmEvalDailyCapRub: Number(
+      env.WIZARD_LLM_EVAL_DAILY_CAP_RUB || env.WIZARD_LLM_DAILY_CAP_RUB || DEFAULT_LLM_DAILY_CAP_RUB,
+    ),
     b2BudgetRub: env.WIZARD_B2_BUDGET_RUB ? Number(env.WIZARD_B2_BUDGET_RUB) : DEFAULT_B2_BUDGET_RUB,
     b2BudgetSince: env.WIZARD_B2_BUDGET_SINCE?.trim() || DEFAULT_B2_BUDGET_SINCE,
+    llmFounderMonthlyCapRub: env.WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB
+      ? Number(env.WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB)
+      : DEFAULT_LLM_FOUNDER_MONTHLY_CAP_RUB,
+    v3BudgetRub: env.WIZARD_V3_BUDGET_RUB ? Number(env.WIZARD_V3_BUDGET_RUB) : DEFAULT_V3_BUDGET_RUB,
+    v3BudgetSince: env.WIZARD_V3_BUDGET_SINCE?.trim() || DEFAULT_V3_BUDGET_SINCE,
     llmMonthlyCapRub: env.WIZARD_LLM_MONTHLY_CAP_RUB
       ? Number(env.WIZARD_LLM_MONTHLY_CAP_RUB)
       : DEFAULT_LLM_MONTHLY_CAP_RUB,
@@ -418,6 +441,12 @@ export function assertStartupAllowed(c: Config, bindHost?: string): void {
     throw new StartupError("WIZARD_B2_BUDGET_SINCE: нужна дата вида 2026-10-06");
   if (!Number.isFinite(c.llmMonthlyCapRub) || c.llmMonthlyCapRub <= 0)
     throw new StartupError("WIZARD_LLM_MONTHLY_CAP_RUB: нужен положительный лимит в рублях");
+  if (!Number.isFinite(c.llmFounderMonthlyCapRub) || c.llmFounderMonthlyCapRub <= 0)
+    throw new StartupError("WIZARD_LLM_FOUNDER_MONTHLY_CAP_RUB: нужен положительный лимит в рублях");
+  if (!Number.isFinite(c.v3BudgetRub) || c.v3BudgetRub <= 0)
+    throw new StartupError("WIZARD_V3_BUDGET_RUB: нужен положительный бюджет в рублях");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.v3BudgetSince) || Number.isNaN(Date.parse(c.v3BudgetSince)))
+    throw new StartupError("WIZARD_V3_BUDGET_SINCE: нужна дата вида 2026-10-08");
   for (const b of c.llmBalances)
     if (!Number.isFinite(b.rub) || Number.isNaN(b.since.getTime()))
       throw new StartupError(

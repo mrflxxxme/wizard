@@ -19,5 +19,24 @@ export {
   reportCapabilityGapTool,
   SUPPORT_BUTTON,
 } from "./gaps.js";
+/** Agent research (V3-05, builder-v3.md C8): web_search (Yandex Search API), read_page, discover_docs; limits, cache, journal. */
+export {
+  createResearch,
+  type DocIndexEntry,
+  MemoryResearchLog,
+  MemoryResearchStore,
+  type PageResult,
+  RESEARCH_LIMITS,
+  type Research,
+  type ResearchCall,
+  ResearchError,
+  type ResearchLog,
+  type ResearchOptions,
+  type ResearchStore,
+  researchTools,
+  SEARCH_RUB_PER_REQUEST,
+  type SearchResult,
+  searchStatus,
+} from "./research/index.js";
 /** Shared rules for text written for people (D48, D49): chat — to the owner, system — inside client systems. */
 export { type TextRulesKind, textRules, textRulesSection } from "./text-rules.js";

@@ -1,8 +1,10 @@
-// Catalog (ui-kit.yaml#components.Catalog): ItemCard grid over DataSource.useList, «Показать ещё» by 24.
+// Catalog (ui-kit.yaml#components.Catalog): ItemCard grid over DataSource.useList, «Показать ещё» by 24 — the paged
+// list of the v3 headless hooks (usePagedList, V3-10).
 import { type ReactNode, useState } from "react";
-import { cx, useDataSource, useWzRoot } from "../data/context.js";
+import { cx, useWzRoot } from "../data/context.js";
 import type { Rec } from "../data/types.js";
 import { ru } from "../i18n/ru.js";
+import { LIST_MAX, LIST_PAGE, usePagedList } from "../v3/headless/list.js";
 import { ButtonImpl } from "./Button.js";
 import styles from "./Catalog.module.css";
 import { ItemCardImpl } from "./ItemCard.js";
@@ -10,16 +12,14 @@ import { part } from "./root.js";
 import { DataState } from "./States.js";
 import type { CatalogProps, Selection } from "./types.js";
 
-const PAGE = 24;
-const MAX = 96; // data API limit ≤ 100 per request
+const PAGE = LIST_PAGE;
+const MAX = LIST_MAX; // data API limit ≤ 100 per request
 
 export function Catalog<T = Rec>(props: CatalogProps<T>): ReactNode {
   const root = useWzRoot("Catalog", "wz-catalog", props);
-  const ds = useDataSource();
-  const [pages, setPages] = useState(1);
+  const paged = usePagedList<T>(props.entity, props.query, { page: PAGE, max: MAX });
   const [selections, setSelections] = useState<Record<string, Selection>>({});
-  const pageSize = Math.min(PAGE * pages, MAX);
-  const list = ds.useList<T>(props.entity, { ...props.query, page: 1, pageSize });
+  const { list, pageSize } = paged;
   const cols = props.columns ?? "auto";
 
   let body: ReactNode = (
@@ -45,11 +45,7 @@ export function Catalog<T = Rec>(props: CatalogProps<T>): ReactNode {
           ))}
         </div>
         {list.data.total > list.data.items.length && pageSize < MAX && (
-          <ButtonImpl
-            root={part("wz-catalog-more")}
-            onClick={() => setPages((p) => p + 1)}
-            loading={list.isLoading}
-          >
+          <ButtonImpl root={part("wz-catalog-more")} onClick={paged.more} loading={list.isLoading}>
             {ru.catalog.more}
           </ButtonImpl>
         )}

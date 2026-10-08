@@ -1,5 +1,5 @@
 # Pilot on Timeweb Cloud from GitHub-hosted runners (docs/ops/deploy.md «Пилот: одна кнопка»; no self-hosted runner,
-# no runner-local files). Called by bootstrap-pilot.yml and deploy-pilot.yml only. Order: the repository owner,
+# no runner-local files). Called by bootstrap-pilot.yml, deploy-pilot.yml and eval-pilot.yml only. Order: the repository owner,
 # main and the confirmation are checked first (no secret is read before that); images of the SHA are built into GHCR
 # when missing (images.yml, GITHUB_TOKEN with packages: write); then tools/deploy/pilot.mjs creates or reuses the
 # state bucket, the encrypted secrets bundle, the VM (OpenTofu), opens SSH for this runner's IP only, releases over an
@@ -7,7 +7,9 @@
 # preflight (tools/deploy/preflight.mjs): same owner/main checks, no PROD word, no images, no OpenTofu/helm setup.
 # `eval` is the measurement (docs/ops/eval-d76.md — beta v2, threshold d76 by default; docs/ops/eval-d67.md): diagnose-
 # like cluster access for the database, the briefs over the public HTTPS; its report (with the screenshots of the
-# systems under d76) is uploaded as an artifact (no secrets, no personal data in it).
+# systems under d76) is uploaded as an artifact (no secrets, no personal data in it). V3-01: eval is paid — it starts
+# only with its pre-registration in the spend journal (wave, purpose, hypothesis, expect_rub, cap_rub, founder_ok;
+# tools/deploy/spend.mjs), checked here before any secret and again by pilot.mjs against the wave plan.
 name: pilot-reusable
 
 on:
@@ -38,20 +40,40 @@ on:
         description: "eval: all or brief ids separated by commas"
         type: string
         default: "all"
-      max_cost_rub:
-        description: "eval: model budget of the measurement, ₽ (a hard stop under d76)"
+      cap_rub:
+        description: "eval (V3-01 spend journal): the run's model cap, ₽ — the budget of the measurement and a hard stop"
         type: string
-        default: "300"
+        default: ""
       threshold:
         description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement"
         type: string
         default: "d76"
+      wave:
+        description: "eval (V3-01 spend journal): the wave of the v3 plan (A | B | C | checkpoint | final | retry)"
+        type: string
+        default: ""
+      purpose:
+        description: "eval (V3-01 spend journal): the purpose of the run"
+        type: string
+        default: ""
+      hypothesis:
+        description: "eval (V3-01 spend journal): the hypothesis of the run"
+        type: string
+        default: ""
+      expect_rub:
+        description: "eval (V3-01 spend journal): the expected spend, ₽"
+        type: string
+        default: ""
+      founder_ok:
+        description: "eval (V3-01 spend journal): yes — the founder's «да» for a cap over 1 000 ₽ or over the wave plan"
+        type: string
+        default: "no"
       build_pipeline:
         description: "deploy/bootstrap: the pipeline of new systems (modules | legacy); empty — the variable or modules (D76)"
         type: string
         default: ""
       llm_daily_cap_rub:
-        description: "deploy: the platform's daily model cap, ₽, until the next deploy (D75); empty — the variable or 700"
+        description: "deploy: the platform's daily model cap, ₽, until the next deploy (D75); empty — the variable or 3000 (V3)"
         type: string
         default: ""
       stock_mode:
@@ -79,8 +101,13 @@ jobs:
           DEPLOY_ENV: ${{ inputs.env }}
           COMMAND: ${{ inputs.command }}
           EVAL_BRIEFS: ${{ inputs.briefs }}
-          EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
+          EVAL_CAP_RUB: ${{ inputs.cap_rub }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
+          EVAL_WAVE: ${{ inputs.wave }}
+          EVAL_PURPOSE: ${{ inputs.purpose }}
+          EVAL_HYPOTHESIS: ${{ inputs.hypothesis }}
+          EVAL_EXPECT_RUB: ${{ inputs.expect_rub }}
+          EVAL_FOUNDER_OK: ${{ inputs.founder_ok }}
           LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub }}
           BUILD_PIPELINE: ${{ inputs.build_pipeline }}
           STOCK_MODE: ${{ inputs.stock_mode }}
@@ -95,8 +122,17 @@ jobs:
           case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|eval|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
           if [ "$COMMAND" = "eval" ]; then
             printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
-            printf '%s' "$EVAL_MAX_COST_RUB" | grep -Eq '^[0-9]{1,4}$' || { echo "::error title=pilot::max_cost_rub — целое число рублей."; exit 1; }
             case "$EVAL_THRESHOLD" in d76|d67) ;; *) echo "::error title=pilot::threshold — d76 или d67."; exit 1 ;; esac
+            # V3-01: a paid run only pre-registered in the spend journal (pilot.mjs also checks the wave plan).
+            need="::error title=Журнал трат v3::Платный прогон не начат — нужна запись в журнале трат:"
+            if [ -z "$EVAL_PURPOSE" ] || [ -z "$EVAL_HYPOTHESIS" ]; then echo "$need purpose и hypothesis — цель и гипотеза прогона."; exit 1; fi
+            case "$EVAL_WAVE" in A|B|C|checkpoint|final|retry) ;; *) echo "$need wave — волна плана v3."; exit 1 ;; esac
+            printf '%s' "$EVAL_EXPECT_RUB" | grep -Eq '^[0-9]{1,5}([.,][0-9]{1,2})?$' || { echo "$need expect_rub — ожидаемый расход в рублях."; exit 1; }
+            printf '%s' "$EVAL_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$' || { echo "$need cap_rub — потолок прогона, целое число рублей."; exit 1; }
+            case "$EVAL_FOUNDER_OK" in yes|no) ;; *) echo "$need founder_ok — yes или no."; exit 1 ;; esac
+            if [ "$EVAL_CAP_RUB" -gt 1000 ] && [ "$EVAL_FOUNDER_OK" != "yes" ]; then
+              echo "$need потолок больше 1 000 ₽ за раз — нужно «да» основателя (founder_ok=yes)."; exit 1
+            fi
           fi
           case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
           case "$STOCK_MODE" in ""|off|live|library) ;; *) echo "::error title=pilot::stock_mode — off, live, library или пусто."; exit 1 ;; esac
@@ -148,8 +184,14 @@ jobs:
       DEPLOY_ENV: ${{ inputs.env }}
       COMMAND: ${{ inputs.command }}
       EVAL_BRIEFS: ${{ inputs.briefs }}
-      EVAL_MAX_COST_RUB: ${{ inputs.max_cost_rub }}
       EVAL_THRESHOLD: ${{ inputs.threshold }}
+      # V3-01: the pre-registration of the run in the spend journal (tools/deploy/spend.mjs).
+      EVAL_CAP_RUB: ${{ inputs.cap_rub }}
+      EVAL_WAVE: ${{ inputs.wave }}
+      EVAL_PURPOSE: ${{ inputs.purpose }}
+      EVAL_HYPOTHESIS: ${{ inputs.hypothesis }}
+      EVAL_EXPECT_RUB: ${{ inputs.expect_rub }}
+      EVAL_FOUNDER_OK: ${{ inputs.founder_ok }}
       # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
       TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
@@ -287,7 +329,7 @@ jobs:
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
-            eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --max-cost-rub "$EVAL_MAX_COST_RUB" --threshold "$EVAL_THRESHOLD" ;;
+            eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --threshold "$EVAL_THRESHOLD" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac

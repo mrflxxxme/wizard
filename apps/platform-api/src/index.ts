@@ -60,6 +60,8 @@ export {
 export {
   LLM_BUDGET_EXHAUSTED_RU,
   LLM_CAP_WARN_SHARE,
+  LLM_FOUNDER_BUDGET_EXHAUSTED_RU,
+  LLM_V3_BUDGET_EXHAUSTED_RU,
   type LlmCapStatus,
   LlmMonthlyCap,
   llmSpentRub,
@@ -106,6 +108,17 @@ export {
 } from "./billing/plans.js";
 /** YooKassa API client of the platform's own shop (never a client's shop). */
 export { PlatformShop, type ShopOptions, type ShopPayment } from "./billing/shop.js";
+/** V3-01: model spend limits of the time of V3 (D77 (18б)) — defaults, 50/80 % alerts, the founder's pool, v3 budget. */
+export {
+  checkV3Budget,
+  llmSpentWithoutStaffRub,
+  reachedSharePercent,
+  V3_ALERT_SHARES,
+  V3_LIMITS,
+  type V3BudgetOptions,
+  type V3BudgetStatus,
+  v3BudgetStatus,
+} from "./billing/v3-limits.js";
 export {
   assertStartupAllowed,
   type Config,

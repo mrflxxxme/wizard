@@ -26,6 +26,14 @@ export const CALL_TYPES = [
   "runtime_ai_extract",
   "runtime_ai_generate",
   "support",
+  "interview_v3",
+  "brief_extract",
+  "art_direction",
+  "page_compose",
+  "signature_section",
+  "critic_visual",
+  "techreview",
+  "research",
 ] as const;
 
 /** Real texts per payload class; the router sees these through @wizard/pii.detect. */
@@ -38,7 +46,17 @@ export const PAYLOADS = {
 export type Payload = keyof typeof PAYLOADS;
 
 const ALWAYS_T0 = new Set(["runtime_ai_extract", "runtime_ai_generate", "support"]);
-const DEFAULT_T0 = new Set(["audit", "runtime_ai_extract", "runtime_ai_generate", "support"]);
+const DEFAULT_T0 = new Set([
+  "audit",
+  "runtime_ai_extract",
+  "runtime_ai_generate",
+  "support",
+  "brief_extract",
+  "techreview",
+  "research",
+]);
+/** pii_forbidden_for_T1.any_pii: raw owner input, any finding → T0 (the interview rule until M2-28). */
+const ANY_PII_T0 = new Set(["interview", "interview_v3", "brief_extract"]);
 
 export const COLUMNS = [
   "callType",
@@ -69,7 +87,7 @@ function expected(
     return ["T0", "callType_forbidden_T1"];
   if (hint === true) return ["T0", "pii_hint"];
   if (payload === "strong" || payload === "special") return ["T0", "pii_high_risk"];
-  if (ct === "interview" && payload !== "none") return ["T0", "pii_detected_interview"];
+  if (ANY_PII_T0.has(ct) && payload !== "none") return ["T0", "pii_detected_interview"];
   if (DEFAULT_T0.has(ct) || build === "T0") return ["T0", "default_T0"];
   return ["T1", "default_T1"];
 }

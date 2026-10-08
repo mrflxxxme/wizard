@@ -9,7 +9,10 @@ providers:
     tier: T0
     base_url_env: CLOUDRU_BASE_URL          # по умолчанию https://foundation-models.api.cloud.ru/v1
     api_key_env: CLOUDRU_API_KEY
-    rule: "MUST: только модели с placement=internal. Внешние модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash, Claude/GPT/Gemini) MUST NOT быть в каталоге"
+    rule: "MUST: только модели с placement=internal из internal_models. Внешние (партнёрские) модели Cloud.ru (GLM-5.2, DeepSeek-V4-Flash, MiMo-V2.5-Pro, Qwen3-VL, GLM-4.6V, Claude/GPT/Gemini) MUST NOT быть в каталоге: запрос уходит провайдеру за пределы РФ (docs/audit/01-llm-access-and-costs.md); шлюз отклоняет их (gateway_allowlist)"
+    internal_models:                        # «Внутренняя» по каталогу cloud.ru/docs/foundation-models/ug/topics/overview__available__models, снимок 08.10.2026; новая модель — сюда после проверки размещения
+      [ai-sage/GigaChat3-10B-A1.8B, ai-sage/GigaChat3.5-432B-A28B, deepseek-ai/DeepSeek-V4-Pro, GigaChat/GigaChat-2-Max, MiniMaxAI/MiniMax-M2.5, MiniMaxAI/MiniMax-M3, moonshotai/Kimi-K2.6, openai/gpt-oss-120b, Qwen/Qwen3-Coder-Next, Qwen/Qwen3.5-397B-A17B, Qwen/Qwen3.6-35B-A3B, zai-org/GLM-4.7, zai-org/GLM-5.1]
+    prompt_cache: none                      # в тарифе FM (cloud.ru/documents/tariffs/evolution/foundation-models, 08.10.2026) цены чтения кэша есть только у партнёрских моделей; у внутренних скидки нет → cached = input
   yandex:
     tier: T0
     role: reserve
@@ -18,12 +21,14 @@ providers:
     folder_env: YANDEX_FOLDER_ID            # model = gpt://<folder>/<providerModel> [?]
     required_headers: { x-data-logging-enabled: "false" }
     rule: "MUST: заголовок x-data-logging-enabled: false в каждом запросе; тест проверяет его наличие на уровне HTTP-перехватчика"
+    prompt_cache: auto                      # «кэширование включается автоматически, когда возможно» (aistudio.yandex.ru/docs/ru/ai-studio/pricing); поле usage в ответе [?] — читаем prompt_tokens_details.cached_tokens
   zai:
     tier: T1
     base_url_env: ZAI_BASE_URL              # по умолчанию https://api.z.ai/api/paas/v4
     api_key_env: ZAI_API_KEY
     rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1"
     termsCheckedAt: 2026-09-30              # security/data-boundary.yaml#routing.model_registry: старше 90 дней → предупреждение CI
+    prompt_cache: auto                      # неявный кэш без параметров (docs.z.ai/guides/capabilities/cache): usage.prompt_tokens_details.cached_tokens; цена — price.cached (docs.z.ai/guides/overview/pricing), хранение кэша бесплатно
   moonshot:
     tier: T1
     base_url_env: MOONSHOT_BASE_URL
@@ -31,6 +36,7 @@ providers:
     enabled: false
     termsCheckedAt: 2026-09-30
     disabled_reason: "Kimi K3 обучается на контенте API; включать только после договора о запрете обучения (E-LEGAL)"
+    prompt_cache: auto                      # автоматический кэш Kimi API (platform.kimi.ai/docs/guide/use-context-caching-feature-of-kimi-api); поле usage.cached_tokens [?]
   deepseek:
     tier: T1
     role: eval_challenger
@@ -39,22 +45,36 @@ providers:
     termsCheckedAt: 2026-10-01
     rule: "MUST: только после pii.scrub; MUST NOT для callType из pii_forbidden_for_T1 (как zai). Модели провайдера enabled=false и не входят ни в одну цепочку routes — выбираются только в eval через --models (претендент недельного eval, docs/founder/models-research.md#рекомендация-для-пилота п. 4б). Включение в маршрутизацию по умолчанию — отдельное решение (хранение данных в КНР, E-LEGAL)"
     thinking: "MUST: thinking: {type: disabled} в КАЖДОМ запросе (у DeepSeek он включён по умолчанию; с tools в режиме thinking API требует вернуть reasoning_content, а мы его вырезаем → 400 на втором ходе)"
+    prompt_cache: auto                      # «Context Caching on Disk» включён по умолчанию (api-docs.deepseek.com/guides/kv_cache): usage.prompt_cache_hit_tokens = prompt_tokens_details.cached_tokens
+  openai_compatible:
+    tier: T0
+    base_url_env: WIZARD_LLM_OPENAI_COMPAT_BASE_URL   # свой vLLM (D77 (13)), напр. http://vllm.internal:8000/v1
+    api_key_env: WIZARD_LLM_OPENAI_COMPAT_API_KEY     # необязателен: vLLM без --api-key
+    models_env: WIZARD_LLM_OPENAI_COMPAT_MODELS       # имена моделей сервера через запятую → id compat:<имя>, цена 0 (платим за сервер, не за токены), context 131072
+    routes_env: WIZARD_LLM_OPENAI_COMPAT_ROUTES       # callType через запятую: модели сервера первыми в chain.T0; в остальных маршрутах — последний резерв T0
+    enabled: false                                    # включается заданием base_url и models (packages/llm openAiCompatFromEnv)
+    rule: "MUST: только сервер в контуре РФ (свои GPU, Cloud.ru Evolution) — модели идут как T0. Хост западного API или закрытая западная модель → MODEL_NOT_ALLOWED при создании реестра (gateway_allowlist). Позже — основа BYOK (V3-33)"
+    prompt_cache: auto                      # vLLM: --enable-prefix-caching (APC); cached_tokens в usage — только с --enable-prompt-tokens-details (по умолчанию выключен)
   fixture:
     tier: any
     rule: "WIZARD_LLM_MODE=fixture: ответы из tools/fixtures/<suite>/<name>.jsonl по правилам specs/quality/eval.yaml#fixtures.lookup (demo — по порядку вызовов callType, eval|unit — по ключу запроса). Маршрутизация и учёт выполняются так же, как в live. Режим record — только с ограничениями eval.yaml#fixtures.rules (брифы из репозитория, T0-запросы после scrub)"
 
 # Цены — ₽ за 1M токенов с НДС. Z.ai/Moonshot/DeepSeek: $ × 95 ₽/$ [?] + 22% НДС налогового агента (DeepSeek — цены часов пик).
-# cached — цена кэшированного входа; если провайдер кэш-скидку не даёт, cached = input.
+# cached — цена кэшированного входа; если провайдер кэш-скидку не даёт (prompt_cache: none), cached = input.
+# vision: true — модель принимает изображения (метка Vision каталога); цепочки critic_visual — только из таких моделей.
 models:
-  - { id: kimi-k2.6,        provider: cloudru, providerModel: "moonshotai/Kimi-K2.6",          tier: T0, placement: internal, context: 262000,  price: { input: 175.68, cached: 175.68, output: 725.9 },  enabled: true }
+  - { id: kimi-k2.6,        provider: cloudru, providerModel: "moonshotai/Kimi-K2.6",          tier: T0, placement: internal, context: 262000,  price: { input: 175.68, cached: 175.68, output: 725.9 },  enabled: true, vision: true, note: "формат изображений в API Cloud.ru не описан — дымовой тест до включения критика (docs/research/integrations-2026-10.md#8)" }
   - { id: deepseek-v4-pro,  provider: cloudru, providerModel: "deepseek-ai/DeepSeek-V4-Pro",   tier: T0, placement: internal, context: 1000000, price: { input: 183,    cached: 183,    output: 732 },    enabled: true }
   - { id: glm-5.1,          provider: cloudru, providerModel: "zai-org/GLM-5.1",               tier: T0, placement: internal, context: 202000,  price: { input: 198.86, cached: 198.86, output: 829.6 },  enabled: true }
   - { id: qwen3-coder-next, provider: cloudru, providerModel: "Qwen/Qwen3-Coder-Next",         tier: T0, placement: internal, context: 262000,  price: { input: 122,    cached: 122,    output: 244 },    enabled: true }
   - { id: gpt-oss-120b,     provider: cloudru, providerModel: "openai/gpt-oss-120b",           tier: T0, placement: internal, context: 131000,  price: { input: 15.86,  cached: 15.86,  output: 61 },     enabled: true, note: "[?] id модели. Открытые веса (Apache-2.0), инференс во внутреннем контуре Cloud.ru — допустимо по решению основателя F3 (запрет касается API и сервисов Anthropic/OpenAI/Google/xAI, не open-weights в РФ)" }
   - { id: gigachat-3.5,     provider: cloudru, providerModel: "ai-sage/GigaChat3.5-432B-A28B", tier: T0, placement: internal, context: 262000,  price: { input: 96.22,  cached: 96.22,  output: 288.6 },  enabled: true, note: "[?] id модели" }
+  - { id: qwen3.6-35b,      provider: cloudru, providerModel: "Qwen/Qwen3.6-35B-A3B",          tier: T0, placement: internal, context: 262000,  price: { input: 219.6,  cached: 219.6,  output: 329.4 },  enabled: true, vision: true, note: "V3-16: зрение во внутреннем контуре; дневной тариф 08.10.2026 (ночной 10.98/97.6). Хвост цепочки critic_visual — после пробы на русском (ступень 2, журнал трат V3-01)" }
   - { id: yandex-qwen3-235b,        provider: yandex, providerModel: "qwen3-235b-a22b-fp8/latest", tier: T0, placement: internal, context: 262000,  price: { input: 500, cached: 500, output: 500 }, enabled: true, note: "[?] точный URI" }
   - { id: yandex-deepseek-v4-flash, provider: yandex, providerModel: "deepseek-v4-flash/latest",   tier: T0, placement: internal, context: 1000000, price: { input: 300, cached: 75,  output: 500 }, enabled: true, note: "[?] точный URI" }
   - { id: glm-5.3,          provider: zai,      providerModel: "glm-5.3",                      tier: T1, placement: external, context: 200000, price: { input: 162, cached: 30, output: 510 }, enabled: true, note: "$1.4/$0.26/$4.4 [?] курс" }
+  - { id: glm-5.3-flash,    provider: zai,      providerModel: "glm-5.3-flash",                tier: T1, placement: external, context: 1000000, price: { input: 17.38, cached: 3.48, output: 57.95 }, enabled: true, vision: true, note: "V3-16: $0.15/$0.03/$0.5 (docs.z.ai/guides/overview/pricing, 08.10.2026) [?] курс; нативно мультимодальная, размышление не выключается. Хвосты page_compose и critic_visual — после пробы на русском (ступень 2, журнал трат V3-01)" }
+  - { id: glm-4.6v,         provider: zai,      providerModel: "glm-4.6v",                     tier: T1, placement: external, context: 128000, price: { input: 34.77, cached: 5.79, output: 104.31 }, enabled: true, vision: true, note: "V3-16: $0.3/$0.05/$0.9 [?] курс; запасной критик — после пробы на русском (ступень 2, журнал трат V3-01)" }
   - { id: kimi-k3,          provider: moonshot, providerModel: "kimi-k3",                      tier: T1, placement: external, context: 256000, price: { input: 348, cached: 34.8, output: 1739 }, enabled: false, note: "см. providers.moonshot.disabled_reason" }
   - { id: deepseek-v4.1-flash,  provider: deepseek, providerModel: "deepseek-flash",   tier: T1, placement: external, context: 1000000, price: { input: 34.77,  cached: 0.7, output: 139.08 }, enabled: false, note: "претендент eval; $0.3/$0.006/$1.2 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
   - { id: deepseek-v4-pro-0813, provider: deepseek, providerModel: "deepseek-v4-pro",  tier: T1, placement: external, context: 1000000, price: { input: 152.99, cached: 5.1, output: 458.96 }, enabled: false, note: "претендент eval; $1.32/$0.044/$3.96 в пик (вне пика ×0.5) [?] курс; см. providers.deepseek.rule" }
@@ -63,7 +83,8 @@ catalog_rules:
   - "MUST: ids моделей — единственные имена в конфигурации, eval и логах (tools/eval использует те же id)"
   - "MUST: модель с enabled=false не выбирается ни роутером, ни фолбэком (тест)"
   - "MUST: T0 = только placement=internal (Cloud.ru внутренний контур) или провайдер yandex с заголовком без логирования"
-  - "MUST NOT: провайдеры-API Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников). Open-weights этих вендоров с инференсом в РФ (placement=internal) допустимы (решение F3). Линтер реестра проверяет provider и placement, а не префикс providerModel"
+  - "MUST NOT: провайдеры-API Anthropic, OpenAI, Google, xAI (в т. ч. их модели у посредников). Open-weights этих вендоров с инференсом в РФ (placement=internal) допустимы (решение F3). Линтер реестра проверяет provider и placement, а не префикс providerModel; шлюз дополнительно проверяет каждый вызов — gateway_allowlist"
+  - "MUST (V3-16): новая модель встаёт в хвост цепочки с note «после пробы на русском (ступень 2, журнал трат V3-01)»; во главе цепочки — только модели, уже проверенные в репозитории. Передвинуть вперёд — PR с результатом пробы"
   - "SHOULD: цены проверять раз в месяц; изменение цены — правка этого файла + запись в CHANGELOG"
 
 # ---------------------------------------------------------------- Решение недели 0 (F2, основатель)
@@ -96,12 +117,22 @@ call_types:            # полный список; route() с иным callType
   - runtime_ai_extract # ИИ-действие «Извлечь/классифицировать» в системе (M3)
   - runtime_ai_generate # ИИ-действие «Сгенерировать текст» в системе (M3)
   - support            # поддержка/отладка на живых записях
+  # v3 (V3-16, specs/agents/builder-v3.md C7, D77)
+  - interview_v3       # грилл-интервью v3: вопрос с рекомендацией и кнопками, сырой ввод владельца
+  - brief_extract      # извлечение брифа (C1) из чата и файла ТЗ (docx, pdf, md, txt)
+  - art_direction      # арт-директор: архетип, принципы по логотипу и референсам, идеи фирменных секций
+  - page_compose       # страницы кодом на паттернах и тексты секций (массовый код)
+  - signature_section  # 1–2 фирменные секции
+  - critic_visual      # ИИ-критик по скриншотам 390/768/1440
+  - techreview         # ревьюер техревью (D77 (10)): модель другого семейства, чем строитель
+  - research           # факты о нише по результатам веб-поиска и чтения страниц (V3-05)
 
 pii_forbidden_for_T1:
   always: [runtime_ai_extract, runtime_ai_generate, support]
   conditional:
     - callType: import_mapping
       rule: "T1 допустим ТОЛЬКО если вызывающий явно передал containsPiiHint=false (в запросе лишь заголовки, профили колонок и синтетические строки) И DLP по payload нашёл 0 ПДн. Иначе (hint отсутствует/true или DLP>0) → T0"
+  any_pii: [interview, interview_v3, brief_extract]   # сырой ввод владельца (чат, файл ТЗ): любая находка детектора → T0 (reason pii_detected_interview) — правило interview в коде до M2-28 (D50, шаг 5); brief_extract к тому же только T0 по маршруту
   test: "Юнит-тест роутера: для каждого callType из always × все orgPolicy × все containsPiiHint → tier=T0; для import_mapping без hint=false → T0"
 
 routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, orgPolicy: {ruOnly, t1Restricted}, ctx: {orgId, runId?, systemId?, budget?}}) (architecture.yaml#interfaces.llm_call) — детерминированно, policy-as-code
@@ -114,7 +145,8 @@ routing_algorithm:     # route({callType, messages, tools?, containsPiiHint?, or
   - "5. (Снят 05.10.2026, product.yaml#decisions.D50_brief_pii_routing.) Было: callType=interview и dlp.count>0 → T0 (pii_detected_interview). Теперь интервью проходит шаги 4, 6 и 7 как остальные callType: basic-ПДн заменяются заглушками, strong-виды → T0 по шагу 4 (реализация — M2-28)"
   - "6. Иначе tier = routes[callType].default_tier с учётом week0_decision.switch (reason=default_T1|default_T0)"
   - "7. Если tier=T1: messages = pii.scrub(messages) (одноразовые заглушки [ТЕЛЕФОН_1], [EMAIL_1], [ФИО_1]… — формат security/data-boundary.yaml#scrub.placeholders, без таблицы соответствия); в журнал — только счётчики категорий"
-  - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled). Нет доступной → фолбэк по fallback_rules"
+  - "8. Модель = первая доступная в routes[callType].chain[tier] (circuit closed, enabled, семейство не в avoidFamilies вызова). Нет доступной → фолбэк по fallback_rules"
+  - "8a. Модель не проходит gateway_allowlist (хост или модель) → не вызывается: строка llm_calls status=error, error_code=MODEL_NOT_ALLOWED, дальше по цепочке (во всех режимах, и в fixture)"
   - "9. Неизвестная ситуация/исключение в политике → T0 (fail-safe)"
 unknown_class_default: T0
 
@@ -136,6 +168,15 @@ routes:                # chain.T1 пробуется только если tier=
   runtime_ai_extract:  { role: runtime,      default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, yandex-deepseek-v4-flash] },               temperature: 0.0, max_tokens: 1000,  timeout_ms: 30000, note: "[?] выбор первой модели подтвердить eval на русском извлечении" }
   runtime_ai_generate: { role: runtime,      default_tier: T0, chain: { T0: [gigachat-3.5, kimi-k2.6, yandex-qwen3-235b] },                         temperature: 0.7, max_tokens: 2000,  timeout_ms: 30000 }
   support:             { role: support,      default_tier: T0, chain: { T0: [kimi-k2.6, glm-5.1, deepseek-v4-pro] },                                temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000 }
+  # v3 (V3-16): смешанный маршрут D77 (11) — GLM на арт-директоре и фирменных секциях, массовый код на недорогих моделях, критик со зрением, ревьюер другого семейства. Хвосты цепочек — модели «после пробы на русском (ступень 2, журнал трат V3-01)»
+  interview_v3:        { role: orchestrator, default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro, yandex-qwen3-235b] }, temperature: 0.3, max_tokens: 8000,  timeout_ms: 180000, note: "как interview: scrub; любая находка ПДн → T0 (pii_forbidden_for_T1.any_pii)" }
+  brief_extract:       { role: orchestrator, default_tier: T0, chain: { T0: [gigachat-3.5, kimi-k2.6, glm-5.1] },                                temperature: 0.0, max_tokens: 8000,  timeout_ms: 180000, note: "дешёвый T0: файл ТЗ и чат могут содержать ПДн и чужие записи; T1-цепочки нет (резерв D76 не применяется), правило any_pii — страховка" }
+  art_direction:       { role: designer,     default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6] },                                    temperature: 0.4, max_tokens: 4000,  timeout_ms: 180000, note: "GLM (Design Arena 08.10.2026). GLM-5.2 у Cloud.ru внешняя — не T0. Логотип и референсы картинками → T0 (policy), зрение из цепочки есть у kimi-k2.6" }
+  page_compose:        { role: builder,      default_tier: T1, chain: { T1: [glm-5.3, glm-5.3-flash], T0: [kimi-k2.6, deepseek-v4-pro, glm-5.1, qwen3-coder-next, yandex-deepseek-v4-flash] }, temperature: 0.2, max_tokens: 16000, timeout_ms: 480000, note: "массовый код страниц и тексты: glm-5.3 с кэшем Z.ai (≈ 195 ₽ за 2M); glm-5.3-flash и yandex-deepseek-v4-flash — после пробы на русском (ступень 2, журнал трат V3-01). MiMo-V2.5-Pro и DeepSeek-V4-Flash у Cloud.ru внешние — не включены; DeepSeek напрямую (deepseek-v4.1-flash) — только eval до замера D54" }
+  signature_section:   { role: builder,      default_tier: T1, chain: { T1: [glm-5.3], T0: [glm-5.1, kimi-k2.6, deepseek-v4-pro] },                   temperature: 0.4, max_tokens: 12000, timeout_ms: 480000, note: "1–2 фирменные секции на GLM" }
+  critic_visual:       { role: critic,       default_tier: T1, chain: { T1: [glm-5.3-flash, glm-4.6v], T0: [kimi-k2.6, qwen3.6-35b] },             temperature: 0.1, max_tokens: 4000,  timeout_ms: 180000, note: "только модели с vision: true. D45: сначала T1 — после маскирования изображений по D62 (M2-28); до тех пор вызов с изображениями идёт на T0 (policy.ts: вложения → T0). T1-модели и qwen3.6-35b — после пробы на русском (ступень 2, журнал трат V3-01)" }
+  techreview:          { role: reviewer,     default_tier: T0, chain: { T0: [deepseek-v4-pro, gpt-oss-120b, gigachat-3.5, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "семейство MUST отличаться от строителя прогона: голова — не GLM и не Kimi (головы art_direction, signature_section, page_compose); вызывающий передаёт avoidFamilies семейств моделей строителя (V3-15)" }
+  research:            { role: researcher,   default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, kimi-k2.6] },                               temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000, note: "дешёвый T0: выжимка фактов о нише из поиска и страниц (V3-05)" }
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"
@@ -147,6 +188,16 @@ fallback_rules:
   - "MUST: смена модели посреди прогона строителя логируется событием model_switched {fromModel, toModel, reason} (workflows.yaml#events) и llm_calls.fallback_from; в SSE пользователя модель и tier не отдаются; история инструментов переносится без reasoning_content"
   - "MUST: факт фолбэка пользователь видит только обобщённо — строка «Часть шагов выполнена на моделях в РФ» без модели и tier; сигнал — step_finished.ruFallback (platform/workflows.yaml#events), место — ui/platform-screens.yaml (L4-20)"
   - "SHOULD: фолбэк на другое семейство модели внутри одного прогона не сбрасывает кэш-историю (контекст пересобирается по builder.yaml#context)"
+
+# ---------------------------------------------------------------- Allowlist шлюза (V3-16, D18)
+gateway_allowlist:     # packages/llm/src/allowlist.ts; проверка перед каждой попыткой вызова (routing_algorithm 8a) и при создании реестра для openai_compatible
+  providers: [cloudru, yandex, zai, moonshot, deepseek, openai_compatible]
+  western_hosts: [openai.com, openai.azure.com, anthropic.com, claude.ai, googleapis.com, google.com, x.ai, grok.com, openrouter.ai, vercel.sh, amazonaws.com]   # хост base URL или его суффикс
+  western_closed_models: "claude, gemini, imagen, grok, chatgpt, dall-e, sora, gpt-* (кроме gpt-oss), o1…o9, text-embedding-3; префиксы anthropic/, x-ai/, xai/ — по имени модели у любого провайдера. Открытые веса (gpt-oss, whisper, gemma) допустимы (D18)"
+  cloudru: "providerModel ∈ providers.cloudru.internal_models и placement=internal; остальной каталог Cloud.ru (партнёрские модели) отклоняется"
+  on_violation: "вызов не выполняется: llm_calls status=error, error_code=MODEL_NOT_ALLOWED, дальше по цепочке; openai_compatible с западным хостом или моделью → LlmError MODEL_NOT_ALLOWED при создании реестра"
+  byok: "ключи пользователя (D77 (14б), V3-33) — отдельный путь со своими правилами; этот allowlist — для ключей платформы"
+  test: "packages/llm/test/gateway-v3.test.ts"
 
 # ---------------------------------------------------------------- Политика вызова (AI SDK 7)
 call_policy:
@@ -198,20 +249,20 @@ usage_record:          # одна запись на HTTP-попытку = стр
     - { name: systemId,           type: "uuid?" }
     - { name: step,               type: "string?", note: "имя шага workflows.yaml" }
     - { name: callType,           type: string }
-    - { name: agentRole,          type: string, note: "routes[callType].role: orchestrator|builder|qa|auditor|importer|runtime|support" }
+    - { name: agentRole,          type: string, note: "routes[callType].role: orchestrator|builder|planner|copywriter|designer|qa|auditor|importer|runtime|support|critic|reviewer|researcher" }
     - { name: tier,               type: "T0|T1" }
     - { name: provider,           type: string }
     - { name: modelId,            type: string, note: "id из models" }
     - { name: attempt,            type: int }
     - { name: status,             type: "ok|error|timeout|circuit_open|aborted" }
-    - { name: errorCode,          type: "string?" }
+    - { name: errorCode,          type: "string?", note: "в т. ч. PROVIDER_BALANCE_EXHAUSTED, MODEL_NOT_ALLOWED (gateway_allowlist)" }
     - { name: routeReason,        type: "policy_ru_only|policy_region_restricted|callType_forbidden_T1|pii_hint|pii_high_risk|pii_detected_interview|default_T1|default_T0|fallback_circuit_open|fallback_error" }
     - { name: fallbackFrom,       type: "string?", note: "modelId, с которого ушли" }
     - { name: policyVersion,      type: string, note: "хеш этого файла + версии packages/pii" }
     - { name: scrubbed,           type: bool }
     - { name: piiCategoriesCount, type: "Record<kind, int>", note: "только счётчики, без значений" }
     - { name: inputTokens,        type: int, note: "все входные, включая кэшированные" }
-    - { name: cachedTokens,       type: int }
+    - { name: cachedTokens,       type: int, note: "кэшированный вход: usage.prompt_tokens_details.cached_tokens, иначе prompt_cache_hit_tokens (DeepSeek) или usage.cached_tokens (Kimi); ≤ inputTokens; цена — price.cached (credits.cost_rub)" }
     - { name: outputTokens,       type: int }
     - { name: toolCalls,          type: int }
     - { name: latencyMs,          type: int }

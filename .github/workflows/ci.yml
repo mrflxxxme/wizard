@@ -80,6 +80,9 @@ jobs:
       # B2-33 (platform-screens.yaml#stack): every other platform screen on the design system v2 — 390/1280 light/dark,
       # no horizontal scroll, the start of prototype E opens the canvas; screenshots test/artifacts/platform-*.png.
       - run: pnpm exec vitest run --project browser apps/platform-web/test/platform-v2.browser.test.ts
+      # V3-08 (builder-v3.md C3): every pattern v3 × 4 design systems × 390/1280 × light/dark built by buildSystem
+      # (Tailwind v4, Motion) — overflow, AA contrast, names, headings, touch; screenshots test/artifacts/patterns-v3.
+      - run: pnpm exec vitest run --project browser packages/build/test/patterns-v3.browser.test.ts
       - run: pnpm e2e
       # Artifacts come only from fixture runs (WIZARD_LLM_MODE=fixture above), never from live LLM runs.
       - uses: actions/upload-artifact@v4
@@ -94,6 +97,7 @@ jobs:
             packages/modules/test/artifacts/goal-panel-*.png
             apps/platform-web/test/artifacts/canvas-*.png
             apps/platform-web/test/artifacts/platform-*.png
+            packages/build/test/artifacts/patterns-v3/*.png
           retention-days: 7
   # B2-24/B2-28 (gates.yaml#G1.browser.ci): goal scenarios of the modules and 390 px in Chromium, the matrix rows split
   # over three runners (WIZARD_GOALS_SHARD) next to e2e — each ≤ 8 min; the build job has no browser.

@@ -18,6 +18,8 @@ export interface PluginOptions {
   sources: ReadonlyMap<string, string>;
   entryCode: string;
   host: HostModules;
+  /** Bare imports also allowed in ui/** of the client (v3 systems, builder-v3.md C3): specifier → absolute file. */
+  packages?: ReadonlyMap<string, string>;
 }
 
 const SOURCE_LOADERS: Record<string, Loader> = { ".ts": "ts", ".tsx": "tsx" };
@@ -39,6 +41,10 @@ const ALLOWED_RU = "разрешены только @wizard/sdk, @wizard/ui-kit 
 
 export function wizardPlugin(o: PluginOptions): Plugin {
   const entryArea: Area = o.target === "client" ? "ui" : "functions";
+  const extra = o.target === "client" ? o.packages : undefined;
+  const allowedRu = extra?.size
+    ? `разрешены только @wizard/sdk, @wizard/ui-kit, ${[...extra.keys()].join(", ")} (в ui/**) и файлы своей папки`
+    : ALLOWED_RU;
   const areaOf = (abs: string): Area | null => {
     if (!inside(o.copyDir, abs)) return null;
     const top = toPosix(relative(o.copyDir, abs)).split("/")[0];
@@ -66,11 +72,13 @@ export function wizardPlugin(o: PluginOptions): Plugin {
     if (fromEntry && spec === "react-dom/client" && o.target === "client") {
       return { path: o.host.reactDomClient };
     }
-    if (!spec.startsWith("./") && !spec.startsWith("../")) return reject(`${what}: ${ALLOWED_RU}`);
+    const pkg = area === "ui" ? extra?.get(spec) : undefined;
+    if (pkg) return { path: pkg };
+    if (!spec.startsWith("./") && !spec.startsWith("../")) return reject(`${what}: ${allowedRu}`);
     if (/[?#\\\0]/.test(spec)) return reject(`${what}: суффиксы запроса (?raw, ?url) не допускаются`);
     const base = resolve(resolveDir, spec);
     const areaDir = join(o.copyDir, area);
-    if (!inside(areaDir, base)) return reject(`${what}: путь выходит за пределы ${area}/ — ${ALLOWED_RU}`);
+    if (!inside(areaDir, base)) return reject(`${what}: путь выходит за пределы ${area}/ — ${allowedRu}`);
     for (const cand of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]) {
       if (o.sources.has(toPosix(relative(o.copyDir, cand)))) return { path: cand };
     }

@@ -1,5 +1,16 @@
 export const PACKAGE = "@wizard/llm";
 
+/** Gateway allowlist (D18): modelViolation/baseUrlViolation refuse western API hosts and closed western models. */
+export {
+  ALLOWED_PROVIDERS,
+  type AllowlistViolation,
+  baseUrlViolation,
+  CLOUDRU_INTERNAL_MODELS,
+  isWesternClosedModel,
+  modelViolation,
+  WESTERN_API_HOSTS,
+  WESTERN_CLOSED_MODEL_RE,
+} from "./allowlist.js";
 export { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 export { LlmError, type LlmErrorCode } from "./errors.js";
 export {
@@ -50,7 +61,7 @@ export {
   type PolicyDecision,
   t1Forbidden,
 } from "./policy.js";
-export { isBalanceError, type LiveErrorCode, transformBody } from "./providers.js";
+export { isBalanceError, type LiveErrorCode, providerBaseUrl, transformBody } from "./providers.js";
 export {
   BUILD_TIER_ENV,
   buildDefaultTierFromEnv,
@@ -61,8 +72,16 @@ export {
   HIGH_REASONING,
   MODELS,
   type ModelDef,
+  /** Model family from the provider's model name (glm, kimi, deepseek…): RouteInput.avoidFamilies. */
+  modelFamily,
+  OPENAI_COMPAT_CONTEXT,
+  OPENAI_COMPAT_ENV,
+  type OpenAiCompat,
+  /** Own OpenAI-compatible server (vLLM) from env WIZARD_LLM_OPENAI_COMPAT_*; createRegistry connects it. */
+  openAiCompatFromEnv,
   PII_FORBIDDEN_FOR_T1,
   PROVIDERS,
+  type PromptCache,
   type ProviderDef,
   type ProviderId,
   policyVersion,
@@ -118,4 +137,4 @@ export {
   type UsageRecord,
   type UsageSink,
 } from "./types.js";
-export { costRub, creditsMilli, JsonlUsageSink, MemoryUsageSink } from "./usage.js";
+export { cachedInputTokens, costRub, creditsMilli, JsonlUsageSink, MemoryUsageSink } from "./usage.js";

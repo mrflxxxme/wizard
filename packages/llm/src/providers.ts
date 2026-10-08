@@ -2,8 +2,10 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, jsonSchema, type ModelMessage, type ToolSet, tool } from "ai";
 import { Agent, fetch as undiciFetch } from "undici";
+import { modelViolation } from "./allowlist.js";
 import type { ModelDef, ProviderDef } from "./registry.js";
 import type { LlmMessage, LlmResult, LlmTool, LlmUsage } from "./types.js";
+import { cachedInputTokens } from "./usage.js";
 
 export type Env = Record<string, string | undefined>;
 
@@ -21,7 +23,9 @@ export type LiveErrorCode =
   | "EMPTY_RESPONSE"
   | "ABORTED"
   /** The provider account ran out of money (models.yaml#fallback_rules, D76): never retried, the provider is skipped. */
-  | "PROVIDER_BALANCE_EXHAUSTED";
+  | "PROVIDER_BALANCE_EXHAUSTED"
+  /** Gateway allowlist (models.yaml#gateway_allowlist, D18): nothing was sent. */
+  | "MODEL_NOT_ALLOWED";
 
 const RETRYABLE: ReadonlySet<LiveErrorCode> = new Set([
   "HTTP_429",
@@ -85,7 +89,9 @@ export function transformBody(
     delete out.reasoning_effort;
     delete out.enable_thinking;
     delete out.thinking;
-    if (providerId === "cloudru") out.chat_template_kwargs = { enable_thinking: false };
+    // Cloud.ru FM and own vLLM servers take the chat template switch of reasoning models (Qwen3, GLM).
+    if (providerId === "cloudru" || providerId === "openai_compatible")
+      out.chat_template_kwargs = { enable_thinking: false };
     else delete out.chat_template_kwargs;
   }
   return out;
@@ -186,14 +192,21 @@ const defaultFetch = () => {
   return sharedFetch;
 };
 
+/** The base URL a provider is called at: env override, else the default. */
+export function providerBaseUrl(provider: ProviderDef, env: Env): string {
+  return env[provider.baseUrlEnv] || provider.defaultBaseUrl;
+}
+
 export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; usage: LlmUsage }> {
+  const baseURL = providerBaseUrl(i.provider, i.env);
+  // The router checks the allowlist first; this is the last line before the socket.
+  if (modelViolation(i.provider, i.model, baseURL)) throw new LiveCallError("MODEL_NOT_ALLOWED");
   const apiKey = i.env[i.provider.apiKeyEnv];
-  if (!apiKey) throw new LiveCallError("NO_API_KEY");
-  const baseURL = i.env[i.provider.baseUrlEnv] || i.provider.defaultBaseUrl;
+  if (!apiKey && !i.provider.apiKeyOptional) throw new LiveCallError("NO_API_KEY");
   const client = createOpenAICompatible({
     name: i.provider.id,
     baseURL,
-    apiKey,
+    ...(apiKey ? { apiKey } : {}),
     ...(i.provider.requiredHeaders ? { headers: i.provider.requiredHeaders } : {}),
     fetch: i.fetch ?? defaultFetch(),
     includeUsage: true,
@@ -225,11 +238,17 @@ export async function liveCall(i: LiveCallInput): Promise<{ result: LlmResult; u
     if (!res.text && toolCalls.length === 0) throw new LiveCallError("EMPTY_RESPONSE");
     const result: LlmResult = { toolCalls, finishReason: String(res.finishReason) };
     if (res.text) result.text = res.text;
+    const inputTokens = res.usage.inputTokens ?? 0;
     return {
       result,
       usage: {
-        inputTokens: res.usage.inputTokens ?? 0,
-        cachedTokens: res.usage.inputTokenDetails?.cacheReadTokens ?? 0,
+        inputTokens,
+        // The raw usage of the (single) step: providers that report the cache outside prompt_tokens_details.
+        cachedTokens: cachedInputTokens(
+          inputTokens,
+          res.usage.inputTokenDetails?.cacheReadTokens,
+          res.steps.at(-1)?.usage.raw,
+        ),
         outputTokens: res.usage.outputTokens ?? 0,
       },
     };

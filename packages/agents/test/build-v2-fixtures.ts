@@ -41,7 +41,10 @@ const CALL_PROFILE = {
   system_plan: { reasoning: 4000, latencyMs: 120_000 },
   build_texts: { reasoning: 800, latencyMs: 40_000 },
   build_design: { reasoning: 500, latencyMs: 18_000 },
+  art_direction: { reasoning: 500, latencyMs: 18_000 },
   build_custom: { reasoning: 1500, latencyMs: 90_000 },
+  // V3-04: T0 only — the first model of the route chain answers (models.yaml#routes.brief_extract).
+  brief_extract: { reasoning: 0, latencyMs: 25_000, model: "gigachat-3.5" },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 
@@ -53,18 +56,19 @@ export function fixtureLine(
 ): FixtureLine {
   const route = ROUTES[callType];
   const p = CALL_PROFILE[callType];
+  const model = "model" in p ? p.model : MODEL;
   return {
     v: 1,
     key: requestKey({
       callType,
-      modelId: MODEL,
+      modelId: model,
       messages,
       tools,
       temperature: route.temperature,
       maxTokens: route.maxTokens,
     }),
     callType,
-    modelId: MODEL,
+    modelId: model,
     request: {
       messages,
       tools: tools.map((t) => ({ name: t.name, schemaHash: schemaHash(t.parameters) })),
