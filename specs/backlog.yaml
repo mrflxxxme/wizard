@@ -3659,7 +3659,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Вопросы по одному по дереву цели → аудитория → сценарии → данные → роли → интеграции → контент → ограничения; у каждого рекомендованный ответ с объяснением, 3–5 кнопок, «Решите за меня», свой ответ"
@@ -3704,7 +3704,7 @@ tasks:
     owner: frontend
     parallel_group: v3-a
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "В чате перед «Собрать» — краткий бриф: тезисы и три схемы; полный — в панели «Бриф» с версиями и подсветкой разницы"
