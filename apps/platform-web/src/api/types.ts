@@ -1,7 +1,7 @@
 // Shapes of specs/platform/api.yaml#/components/schemas (M0 subset) and workflows.yaml#events.types.
-import type { Theme } from "@wizard/appspec";
+import type { BriefDiagrams, BriefVersion, SystemBrief, Theme } from "@wizard/appspec";
 
-export type { Theme };
+export type { BriefDiagrams, BriefVersion, SystemBrief, Theme };
 
 export type SystemStage = "interview" | "card" | "building" | "ready" | "failed";
 
@@ -871,4 +871,33 @@ export interface DestructiveJournal {
   items: DestructiveChangeRecord[];
   undo: { changeId: string; toRevision: number } | null;
   canUndo: boolean;
+}
+
+/** V3-02 GET/PUT /systems/:id/brief: the latest version (or ?version=N) with its three diagrams; null before the interview. */
+export interface BriefView {
+  brief: BriefVersion | null;
+  diagrams: BriefDiagrams | null;
+  /** PUT only: false — the brief equals the latest version, nothing was written. */
+  changed?: boolean;
+}
+
+/** V3-02 GET /systems/:id/brief/versions: newest first, without the briefs. */
+export interface BriefVersions {
+  versions: Omit<BriefVersion, "brief">[];
+  nextBefore: number | null;
+}
+
+/** V3-06 api.yaml#SystemSession: the interview, a build or an edit of the brief. */
+export interface SystemSession {
+  id: string;
+  kind: "interview" | "build" | "edit";
+  source: "chat" | "panel" | null;
+  status: "running" | "waiting" | "done" | "failed" | "cancelled";
+  startedAt: string;
+  finishedAt: string | null;
+  runIds: string[];
+  briefVersions: number[];
+  changes: string[];
+  changesTotal: number;
+  build: { mode: string | null; revision: number | null; failure: string | null } | null;
 }

@@ -8,6 +8,8 @@ import type {
   Answer,
   ApiErrorBody,
   Billing,
+  BriefVersions,
+  BriefView,
   CandidateFilter,
   CreditBalance,
   DeletionLogEntry,
@@ -51,8 +53,10 @@ import type {
   StaffSession,
   SupportRequestItem,
   System,
+  SystemBrief,
   SystemDeleted,
   SystemPlanRevision,
+  SystemSession,
   SystemView,
   Theme,
   UpdatesConsent,
@@ -514,6 +518,25 @@ export function createApiClient(opts: ClientOptions = {}) {
         idempotencyKey,
       }),
     eventsUrl: (runId: string, after = 0) => `${base}${run(runId)}/events?after=${after}`,
+    // V3-02/V3-06 system brief: the latest version (or ?version) with diagrams, history, the owner's edit, sessions.
+    getBrief: (id: string, version?: number) =>
+      call<BriefView>("GET", `${sys(id)}/brief`, {
+        query: { version: version === undefined ? undefined : String(version) },
+      }),
+    listBriefVersions: (id: string, o: { limit?: number; before?: number } = {}) =>
+      call<BriefVersions>("GET", `${sys(id)}/brief/versions`, {
+        query: {
+          limit: o.limit === undefined ? undefined : String(o.limit),
+          before: o.before === undefined ? undefined : String(o.before),
+        },
+      }),
+    /** editSystemBrief: the whole brief and the version it was edited on (412 VERSION_CONFLICT when stale). */
+    saveBrief: (id: string, body: { baseVersion: number; brief: SystemBrief }) =>
+      call<BriefView>("PUT", `${sys(id)}/brief`, { body: body as unknown as Json }),
+    listSessions: (id: string, limit?: number) =>
+      call<{ sessions: SystemSession[] }>("GET", `${sys(id)}/sessions`, {
+        query: { limit: limit === undefined ? undefined : String(limit) },
+      }),
   };
 }
 

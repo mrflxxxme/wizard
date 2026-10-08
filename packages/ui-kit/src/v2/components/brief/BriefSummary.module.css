@@ -1,0 +1,165 @@
+/* Short brief in the chat (V3-06): theses and three thumbnails; scrolls inside the floating chat when it is long. */
+.card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-1);
+  color: var(--p-ink);
+  font: 400 14px / 1.45 var(--p-f-ui);
+  scrollbar-width: thin;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.title {
+  margin: 0;
+  font: 600 15px / 1.3 var(--p-f-ui);
+}
+
+.version {
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.theses {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.theses li {
+  position: relative;
+  padding-left: 16px;
+  overflow-wrap: anywhere;
+}
+
+.theses li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--p-tint);
+}
+
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thumb {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 6px 7px;
+  border: 0;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
+  color: var(--p-ink);
+  font: 500 12px / 1.25 var(--p-f-ui);
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.4s var(--p-spring);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.thumb:hover {
+  transform: translateY(-1px);
+}
+
+.thumb:active {
+  transform: scale(0.97);
+}
+
+.thumb:disabled {
+  cursor: default;
+  transform: none;
+}
+
+.thumb:focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 2px;
+}
+
+.pic {
+  display: block;
+  height: 64px;
+  border-radius: 8px;
+  background: var(--p-surface);
+  overflow: hidden;
+}
+
+.pic > figure,
+.pic > figure > div {
+  height: 100%;
+}
+
+.thumbCap {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.more {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .card {
+    max-height: min(46vh, 420px);
+    padding: 12px 14px;
+  }
+
+  .short li:nth-child(n + 4) {
+    display: none;
+  }
+
+  .more {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    min-height: 44px;
+    margin: -6px 0 -4px;
+    padding: 0 12px 0 16px;
+    border: 0;
+    border-radius: var(--p-r-pill);
+    background: transparent;
+    color: var(--p-ink-2);
+    font: 500 13.5px / 1 var(--p-f-ui);
+    cursor: pointer;
+  }
+
+  .more:hover {
+    color: var(--p-ink);
+  }
+}
+
+.foot {
+  display: flex;
+  justify-content: flex-end;
+}

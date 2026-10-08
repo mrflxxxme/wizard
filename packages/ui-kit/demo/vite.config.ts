@@ -40,6 +40,8 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("index.html", import.meta.url)),
         v2: fileURLToPath(new URL("v2/index.html", import.meta.url)),
+        // V3-06: the «Бриф» components, served at /brief/.
+        brief: fileURLToPath(new URL("brief/index.html", import.meta.url)),
       },
     },
   },

@@ -15,6 +15,7 @@ import { LlmMonthlyCap } from "./billing/llm-cap.js";
 import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { sessionRoutes } from "./briefs/sessions.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { ApiError } from "./errors.js";
@@ -358,6 +359,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     }),
   );
+  // V3-06: the session feed of a system (interview, builds, brief edits) from runs and brief versions.
+  api.route("/", sessionRoutes(deps));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));
