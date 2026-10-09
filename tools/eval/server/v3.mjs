@@ -590,14 +590,22 @@ async function pickDirection(client, systemId, brief, say) {
  * document — the final report reads it; anything else is the checkpoint (v3).
  */
 export function runV3Eval(o) {
-  return runEval({
+  return runEval(v3EvalOptions(o));
+}
+
+/** The options runV3Eval hands runEval: the v3 driver, its result, its limits (the v3 interview's turns among them). */
+export function v3EvalOptions(o) {
+  return {
     ...o,
     threshold: o.threshold === "v3-final" ? "v3-final" : "v3",
     drive: driveV3Brief,
     newResult: newV3Result,
     concurrency: o.concurrency ?? V3_DEFAULTS.concurrency,
     maxBriefRub: o.maxBriefRub ?? V3_DEFAULTS.maxBriefRub,
+    // The v3 interview's own turn limit: runEval's default (8, the v2 card) cut a grill that had already got «Дальше
+    // решай сам» after 6 answers (checkpoint v3-007, v3-02: «не дошло до готового брифа за 8 ходов»).
+    maxTurns: o.maxTurns ?? V3_DEFAULTS.maxTurns,
     timeoutsMin: { ...DEFAULTS.timeoutsMin, ...V3_DEFAULTS.timeoutsMin, ...(o.timeoutsMin ?? {}) },
     failFast: false,
-  });
+  };
 }

@@ -1,5 +1,6 @@
 // Publish preconditions (workflows.yaml#workflows.publish.preconditions) and GET /systems/:id publishBlockers.
 import type { AppSpec } from "@wizard/appspec";
+import { packageApplies } from "@wizard/gates";
 import type { Selectable } from "kysely";
 import { innValid } from "../auth/region.js";
 import type { Billing } from "../billing/ledger.js";
@@ -51,7 +52,9 @@ export async function prodSystemsCount(q: Db, orgId: string, exceptSystemId: str
 export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
   const out: ErrorCode[] = [];
   const c = spec.compliance;
-  const hasPii = spec.entities.some((e) => e.fields.some((f) => (f.pii ?? "none") !== "none"));
+  // The same rule as G2-PII-06 (pii fields or a role with login — its users' e-mails are ПДн too): otherwise the owner
+  // is not asked for the operator and the publication stops at G2 (checkpoint v3-007, CRM v3-03, 2026-10-09).
+  const hasPii = packageApplies(spec);
   if (hasPii && !c?.operatorName?.trim()) out.push("OPERATOR_NAME_REQUIRED");
   if (hasPii && !c?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
   if (hasPii && !c?.operatorAddress?.trim()) out.push("OPERATOR_ADDRESS_REQUIRED");

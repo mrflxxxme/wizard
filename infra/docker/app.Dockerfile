@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Node services of Wizard (platform-api, worker, runtime, egress-proxy, acme-cloudru): one image per app, built with
 #   docker build -f infra/docker/app.Dockerfile --build-arg FILTER=@wizard/runtime --build-arg APP_DIR=apps/runtime \
 #     --build-arg ENTRY=src/main.ts -t <registry>/wizard-runtime:<sha> .

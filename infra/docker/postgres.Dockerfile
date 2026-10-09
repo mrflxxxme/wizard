@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Ops image of the pilot's self-managed database (docs/ops/deploy.md «Пилот», platform/deploy.yaml#pilot.postgres):
 # PostgreSQL 16 (PostgreSQL License) + WAL-G (Apache-2.0) for continuous archiving to S3 + rclone (MIT) for the
 # encrypted copy of the shared .data volume + Node (MIT) running infra/postgres/pg-ops.mjs (monitor, base backup,

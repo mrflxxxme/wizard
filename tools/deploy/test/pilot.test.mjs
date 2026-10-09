@@ -312,6 +312,8 @@ describe("pilot: secrets bundle", () => {
       `WIZARD_DB_URL=postgres://wizard:${s.POSTGRES_PASSWORD}@wizard-pgbouncer:6432/wizard\n`,
     );
     expect(f.platformEnv).toContain("WIZARD_S3_BUCKET=ab12-wizard-prod-files\n");
+    // No OpenBao on the pilot: key windows and BYOK keys are sealed by the stand's local KEK.
+    expect(f.platformEnv).toContain("WIZARD_BYOK_KMS=local\n");
     expect(f.platformEnv).toContain("WIZARD_S3_SECRET_ACCESS_KEY=files-secret\n");
     expect(f.platformEnv).toContain("WIZARD_SMTP_FROM=Wizard <noreply@codename.ru>\n");
     expect(f.platformEnv).toContain("CLOUDRU_API_KEY=cloudru-secret-key\n");

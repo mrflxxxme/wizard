@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -46,7 +46,7 @@ jobs:
     needs: build
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -116,7 +116,7 @@ jobs:
         shard: ["1/3", "2/3", "3/3"]
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -173,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -204,7 +204,7 @@ jobs:
     # tools/deploy tests (PITR drill marks, pg-ops) need a PostgreSQL on :5433 like the other jobs.
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: wizard
           POSTGRES_HOST_AUTH_METHOD: trust

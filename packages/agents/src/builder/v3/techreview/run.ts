@@ -30,6 +30,8 @@ import {
 export const TECHREVIEW_MAX_ROUNDS = 2;
 
 const SEVERITY_RU = { blocker: "блокер", major: "важное", minor: "мелкое" } as const;
+/** Areas where a reviewer's open blocker stops the publication (a wrong grant leaks the records of others). */
+export const REVIEWER_BLOCKING_AREAS: ReadonlySet<string> = new Set(["permissions"]);
 
 /** Runs the techreview over the build context. */
 export async function runTechreview(
@@ -148,11 +150,23 @@ export async function runTechreview(
       .find((x) => !x.applied && (x.finding === f.id || titles.get(x.finding) === f.title_ru));
     return last?.reason_ru ? ` (исправление не применено: ${last.reason_ru})` : "";
   };
+  // A reviewer's blocker left open stops the publication only where a wrong «yes» leaks data (rights); elsewhere the
+  // build already passed the deterministic checks and the brief's scenarios in the browser, so the model's word goes to
+  // the notes and «Запросы на развитие» (checkpoint v3-007, 2026-10-09: «no email in the lead» failed a site whose
+  // scenarios all passed — and its fix was refused by the extension's rules).
+  const line = (f: ReviewFinding) =>
+    `${TECH_AREA_RU[f.area]}: ${f.title_ru.replace(/\.$/, "")}${reasonOf(f)}`;
+  const reviewerBlockers = open.filter((f) => f.severity === "blocker");
+  const advisory = reviewerBlockers.filter((f) => !REVIEWER_BLOCKING_AREAS.has(f.area));
+  for (const f of advisory)
+    await deps.request?.({
+      key: `techreview:ext:${f.title_ru}`,
+      quote_ru: `Доработка по техревью: ${f.title_ru}`,
+      offered_ru: "Пока система работает без этой доработки.",
+    });
   const blockers = [
     ...blockingChecks(checks).map(blockerLine),
-    ...open
-      .filter((f) => f.severity === "blocker")
-      .map((f) => `${TECH_AREA_RU[f.area]}: ${f.title_ru.replace(/\.$/, "")}${reasonOf(f)}`),
+    ...reviewerBlockers.filter((f) => REVIEWER_BLOCKING_AREAS.has(f.area)).map(line),
   ];
   for (const c of checks.filter((x) => x.area === "chains" && x.status === "warn"))
     await deps.request?.({

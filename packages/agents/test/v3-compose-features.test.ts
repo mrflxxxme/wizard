@@ -26,7 +26,7 @@ import type { SitePage, SiteSection } from "../src/builder/v3/compose/site.js";
 import { applyEdit, variantsFor } from "../src/builder/v3/critic/ops.js";
 import { DEFAULT_REGISTRY, fallbackNiche } from "../src/planner/index.js";
 import { briefSite, evalRequest } from "./v3-brief-site.js";
-import { EVAL_BRIEFS } from "./v3-eval-briefs.js";
+import { CLEANING_CRM, EVAL_BRIEFS } from "./v3-eval-briefs.js";
 import { FEATURE_BRIEFS } from "./v3-feature-briefs.js";
 
 const home = (site: SiteModel) => site.pages.find((p) => p.route === "/") as SitePage;
@@ -493,5 +493,40 @@ describe("clientCabinet: the sections the visitor may read", () => {
       ],
     });
     expect(clientCabinet(spec, { modules: [] })).toBeNull();
+  });
+});
+
+describe("a site wanted, a module of the site in the plan (V3-18, checkpoint v3-007)", () => {
+  test("a CRM whose plan has only the landing and staff modules gets the lead form: its home page is not empty", async () => {
+    // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+    const base = { then: ["сохраняет сделку"], priority: "must" as const };
+    const crm = {
+      ...CLEANING_CRM,
+      goals: [
+        {
+          id: "g_deals",
+          text: "Руководитель видит сделки и загрузку бригад",
+          success: "Выезды не срываются",
+        },
+      ],
+      scenarios: [
+        {
+          ...base,
+          id: "s_deal",
+          actor: "staff" as const,
+          when: "менеджер ведёт сделку по этапам",
+          moduleHint: "deals",
+          goalId: "g_deals",
+        },
+      ],
+    };
+    const bp = briefPlan(systemBriefSchema.parse(crm), DEFAULT_REGISTRY, [], { appName: "Клининг" });
+    const ids = bp?.plan.modules.map((m) => m.id) ?? [];
+    expect(ids).toContain("landing");
+    expect(ids).toContain("leads");
+    const { site } = await briefSite("v3-x-crm-landing", crm as never);
+    const home = site.pages.find((p) => p.route === "/");
+    expect(home?.sections.some((s) => s.type === "hero")).toBe(true);
+    expect(home?.sections.some((s) => s.type === "form")).toBe(true);
   });
 });

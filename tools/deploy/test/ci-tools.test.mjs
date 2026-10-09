@@ -4,9 +4,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { parseArgs as baoArgs, main as baoMain, exportLines, fetchDeployEnv } from "../bao-env.mjs";
-import { buildArgs, IMAGES, main as imagesMain, parseArgs } from "../images.mjs";
+import { baseImageArgs, buildArgs, IMAGES, main as imagesMain, mirrorRef, parseArgs } from "../images.mjs";
 
 describe("images.mjs", () => {
+  it("--mirror takes the Docker Hub base images of every Dockerfile from ECR Public; no mirror, no override", () => {
+    expect(mirrorRef("node:22.22-bookworm-slim", "public.ecr.aws")).toBe(
+      "public.ecr.aws/docker/library/node:22.22-bookworm-slim",
+    );
+    expect(mirrorRef("nginxinc/nginx-unprivileged:1.29-alpine", "public.ecr.aws")).toBe(
+      "public.ecr.aws/nginx/nginx-unprivileged:1.29-alpine",
+    );
+    expect(mirrorRef("ghcr.io/x/y:1", "public.ecr.aws")).toBe("ghcr.io/x/y:1");
+    expect(mirrorRef("node:22", "")).toBe("node:22");
+    for (const img of IMAGES) {
+      const args = baseImageArgs(img.dockerfile, "public.ecr.aws");
+      expect(args.length, img.name).toBeGreaterThan(0);
+      for (const a of args.filter((x) => x !== "--build-arg"))
+        expect(a).toMatch(/^[A-Z_]+_IMAGE=public\.ecr\.aws\//);
+    }
+    expect(baseImageArgs(IMAGES[0].dockerfile, "")).toEqual([]);
+    const lines = [];
+    imagesMain(["build", "--only", "wizard-platform-web", "--mirror", "public.ecr.aws", "--dry-run"], (s) =>
+      lines.push(s),
+    );
+    expect(lines[0]).toContain("--build-arg NGINX_IMAGE=public.ecr.aws/nginx/nginx-unprivileged:1.29-alpine");
+    expect(() => parseArgs(["build", "--mirror", "bad/host"])).toThrow(/mirror/);
+  });
+
   it("one buildx call per image, loaded locally; push goes through the Docker daemon", () => {
     const lines = [];
     imagesMain(["build", "--registry", "wizard-staging.cr.cloud.ru", "--tag", "abc123", "--dry-run"], (s) =>

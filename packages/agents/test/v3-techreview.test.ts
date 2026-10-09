@@ -519,8 +519,8 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
 
   test("a patch that breaks the build is reverted; never more than 2 rounds; the blocker stays with the reason", async () => {
     const bad = finding({
-      title_ru: "Статус ремонта берётся не из того поля",
-      area: "data",
+      title_ru: "Мастер видит ремонты всех мастеров",
+      area: "permissions",
       evidence: { kind: "file", ref: `${CUSTOM_FILE}:9` },
       fix: { kind: "function_patch", file: CUSTOM_FILE, source: BAD_PATCH },
     });
@@ -536,7 +536,7 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     expect(r.files.size).toBe(0);
     expect(r.blockers).toHaveLength(1);
     expect(r.blockers[0]).toMatch(
-      /^Связность данных: Статус ремонта берётся не из того поля \(исправление не применено: код не прошёл проверки G0/,
+      /^Права: Мастер видит ремонты всех мастеров \(исправление не применено: код не прошёл проверки G0/,
     );
     // The deterministic part is unchanged: the reverted patch left no trace.
     expect(r.checks.filter((c) => c.status === "fail")).toEqual([]);
@@ -568,7 +568,8 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
         ],
       },
     ]);
-    const r = await runTechreview(ctx);
+    const requests: { quote_ru: string }[] = [];
+    const r = await runTechreview(ctx, { request: async (q) => void requests.push(q) });
     expect(r.reviewer.unfounded).toBe(3);
     expect(r.fixes).toEqual([
       expect.objectContaining({
@@ -576,9 +577,12 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
         reason_ru: "правка только в functions/custom/** — функции модулей не меняются",
       }),
     ]);
-    expect(r.blockers).toEqual([
-      "Связи модулей: Сделка из заявки не проверяет статус (исправление не применено: правка только в functions/custom/** — функции модулей не меняются)",
-    ]);
+    // A reviewer's blocker outside rights does not stop the publication (the deterministic checks and the scenarios
+    // passed): it goes to «Запросы на развитие» (checkpoint v3-007).
+    expect(r.blockers).toEqual([]);
+    expect(requests.map((q) => q.quote_ru)).toContain(
+      "Доработка по техревью: Сделка из заявки не проверяет статус",
+    );
   }, 180_000);
 
   test("an extension closing the chain is checked under the gates: applied by a host that merges it, else a request", async () => {
