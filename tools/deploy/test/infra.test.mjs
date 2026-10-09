@@ -789,6 +789,10 @@ describe("diagnoseCluster", () => {
     diagnoseCluster({ kubectl, log: () => {} });
     expect(calls).toContain("get certificates,certificaterequests,orders,challenges -A -o wide");
     expect(calls).toContain("-n cert-manager logs deploy/wizard-acme-dns01 --tail=120");
+    // G1 sandbox: pods, quota and events of its namespace; the worker's error lines.
+    expect(calls).toContain("-n wizard-sandbox get pods,resourcequota,limitrange -o wide");
+    expect(calls).toContain("-n wizard-sandbox get events --sort-by=.lastTimestamp");
+    expect(calls).toContain("-n wizard-platform logs deploy/wizard-worker --tail=5000");
     const writes = calls.filter((c) => /\b(apply|delete|create|patch|edit|scale|rollout)\b/.test(c));
     expect(writes.every((c) => c === "apply -f -" || /delete pod wizard-(net|walg)-probe/.test(c))).toBe(
       true,

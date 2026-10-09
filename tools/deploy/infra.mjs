@@ -903,6 +903,11 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   step("cert-manager", ["-n", "cert-manager", "logs", "deploy/cert-manager", "--tail=120"]);
   step("События платформы", ["-n", "wizard-platform", "get", "events", "--sort-by=.lastTimestamp"]);
   step("События cert-manager", ["-n", "cert-manager", "get", "events", "--sort-by=.lastTimestamp"]);
+  // G1 in the sandbox (checkpoint v3-006, 2026-10-09: «песочница отрисовки не запустилась» mid-run): the pods, the
+  // namespace quota and its events, and the worker's error lines (the G1 host; fixed-shape fields, no system data).
+  step("Песочница: поды и квота", ["-n", "wizard-sandbox", "get", "pods,resourcequota,limitrange", "-o", "wide"]);
+  step("Песочница: квота подробно", ["-n", "wizard-sandbox", "describe", "resourcequota"]);
+  step("События песочницы", ["-n", "wizard-sandbox", "get", "events", "--sort-by=.lastTimestamp"]);
   // Model calls (D67 eval, 2026-10-05: «Модели сейчас недоступны» on every brief): which provider and model failed with
   // which code over the last 3 hours, and whether the providers answer from the worker pod with its NetworkPolicy.
   // Counts and codes only — no prompts, orgs or users.
@@ -952,6 +957,17 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
       capture: true,
       fake: "",
     }).stdout,
+  ))
+    log(l);
+  log("::endgroup::");
+  log("::group::Ошибки worker (последние)");
+  for (const l of errorLines(
+    kubectl(["-n", "wizard-platform", "logs", "deploy/wizard-worker", "--tail=5000"], {
+      ...opt,
+      capture: true,
+      fake: "",
+    }).stdout,
+    80,
   ))
     log(l);
   log("::endgroup::");
