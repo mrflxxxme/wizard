@@ -1,0 +1,37 @@
+// Russian texts of the v3 parts of the canvas and /admin (V3-06 with V3-03 and V3-04; D48: plain words).
+export const v3Ru = {
+  question: {
+    step: (n: number) => `Вопрос ${n}`,
+    delegated: "Решите за меня",
+    finished: "Дальше решай сам",
+  },
+  upload: {
+    sending: (pct: number) => `Отправляю ТЗ — ${pct} %`,
+    title: "ТЗ прочитано",
+    titleSame: "ТЗ прочитано — нового для брифа в нём нет",
+    format: { docx: "DOCX", pdf: "PDF", text: "текст" } as Record<string, string>,
+    pages: (n: number) => `${n} стр.`,
+    truncated: "файл длинный — прочитано начало",
+    heuristic: "разобрано по заголовкам и спискам — проверьте бриф",
+    pii: (n: number) => `персональные данные скрыты: ${n}`,
+    ask: "Уточню в интервью",
+    blocking: "без этого не собрать",
+    filled: (xs: string) => `Уже есть: ${xs}`,
+    none: "Пробелов нет — можно собирать.",
+    close: "Понятно",
+    tooLarge: "Файл больше 10 МБ — сократите ТЗ или пришлите его частями",
+    unsupported: "Подходят файлы .docx, .pdf, .md и .txt",
+    failed: "Не удалось прочитать ТЗ — попробуйте ещё раз",
+  },
+  admin: {
+    title: "Пока не умею",
+    lead: "Доля требований из интервью, которые платформа пока не закрывает. Должна падать от месяца к месяцу.",
+    month: "Месяц",
+    briefs: "Брифов",
+    requirements: "Требований",
+    notYet: "Не умею",
+    share: "Доля",
+    empty: "Брифов v3 пока нет",
+    trend: (from: string, to: string) => `За период: ${from} → ${to}`,
+  },
+} as const;

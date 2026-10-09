@@ -1,0 +1,130 @@
+/* «Приложить ТЗ» on the canvas (V3-06): the sent share and the result card in the floating chat. Motion: transform only. */
+.progress {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--p-track);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--p-amber);
+  transform-origin: left center;
+  transition: transform 0.3s var(--p-ease);
+}
+
+/* The floating chat keeps the question and the input row in view: the card scrolls inside, its head stays. */
+.card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-height: min(38vh, 340px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 10px 14px;
+  border-radius: var(--p-r-lg);
+  background: var(--p-sunken);
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink);
+  scrollbar-width: thin;
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 -2px;
+  padding: 8px 2px 4px;
+  background: var(--p-sunken);
+}
+
+.title {
+  margin: 0;
+  font: 600 15px / 1.3 var(--p-f-ui);
+}
+
+.close {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  background: transparent;
+  color: var(--p-ink-2);
+  font: 500 13.5px / 1 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--p-surface);
+  color: var(--p-ink);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 1px;
+}
+
+.meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.sub {
+  margin: 0;
+  font-weight: 600;
+}
+
+.gaps {
+  display: grid;
+  gap: 4px;
+}
+
+.gaps ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gaps li {
+  padding: 2px 10px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-surface);
+  font-size: 13.5px;
+}
+
+.gaps li b {
+  font-weight: 500;
+}
+
+.must {
+  color: var(--p-warn);
+}
+
+.note {
+  color: var(--p-ink-2);
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .close {
+    min-height: 44px;
+  }
+}

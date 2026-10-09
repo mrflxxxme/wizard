@@ -8,9 +8,11 @@ import type {
   Answer,
   ApiErrorBody,
   Billing,
+  BriefUpload,
   BriefVersions,
   BriefView,
   CandidateFilter,
+  CapabilityMonth,
   CreditBalance,
   DeletionLogEntry,
   DestructiveChangeRecord,
@@ -536,6 +538,47 @@ export function createApiClient(opts: ClientOptions = {}) {
     listSessions: (id: string, limit?: number) =>
       call<{ sessions: SystemSession[] }>("GET", `${sys(id)}/sessions`, {
         query: { limit: limit === undefined ? undefined : String(limit) },
+      }),
+    /**
+     * uploadSystemBrief (V3-04): the ТЗ file → a draft of the brief. onProgress gets the sent share 0…1 (in the browser
+     * through XMLHttpRequest, as fetch has no upload progress); with an injected fetch the upload goes without it.
+     */
+    uploadBrief: (id: string, file: File, onProgress?: (share: number) => void) => {
+      const form = new FormData();
+      form.set("file", file);
+      const path = `${sys(id)}/brief/upload`;
+      if (!onProgress || opts.fetch || typeof XMLHttpRequest === "undefined")
+        return call<BriefUpload>("POST", path, { body: form });
+      return new Promise<BriefUpload>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${base}${path}`);
+        xhr.setRequestHeader("Accept", "application/json");
+        if (opts.devUser) xhr.setRequestHeader("X-Wizard-Dev-User", opts.devUser);
+        const csrf = csrfToken();
+        if (csrf) xhr.setRequestHeader("X-Wizard-CSRF", csrf);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
+        };
+        xhr.onload = () => {
+          let data: unknown = null;
+          try {
+            data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+          } catch {
+            data = null;
+          }
+          if (xhr.status >= 200 && xhr.status < 300) return resolve(data as BriefUpload);
+          const err = new ApiError(xhr.status, (data as ApiErrorBody | null) ?? null);
+          if (xhr.status === 401 && err.code === "UNAUTHORIZED") opts.onUnauthorized?.();
+          reject(err);
+        };
+        xhr.onerror = () => reject(new ApiError(0, { code: "NETWORK", message_ru: ru.errors.network }));
+        xhr.send(form);
+      });
+    },
+    /** V3-06 /admin: the monthly share of «пока не умею» over the capability maps of briefs (staff). */
+    adminCapabilityShare: (months?: number) =>
+      call<{ months: CapabilityMonth[] }>("GET", "/admin/capability-share", {
+        query: { months: months === undefined ? undefined : String(months) },
       }),
   };
 }

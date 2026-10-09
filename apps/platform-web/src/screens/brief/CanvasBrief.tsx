@@ -33,6 +33,8 @@ export interface CanvasBrief {
   show(diagram?: BriefDiagramKey): void;
   /** Re-reads the brief, and with the panel open its versions and sessions (after a server answer in the chat). */
   reload(): void;
+  /** Takes a version the server has just returned (the ТЗ upload, V3-04) without asking again. */
+  adopt(v: { brief: BriefVersion | null; diagrams: BriefDiagrams | null }): void;
   /** The short brief for the chat before «Собрать» (null without a brief). */
   summary: ReactNode;
   /** The panel over the canvas (null while closed). */
@@ -187,7 +189,14 @@ export function useCanvasBrief(systemId: string, o: CanvasBriefOptions = {}): Ca
         />
       </BriefDrawer>
     ) : null;
-  return { available: data !== null, open: open !== null, show, reload, summary, panel };
+  const adopt = useCallback(
+    (v: { brief: BriefVersion | null; diagrams: BriefDiagrams | null }) => {
+      apply(v.brief, v.diagrams, true);
+      if (v.brief && openRef.current) void loadHistory();
+    },
+    [apply, loadHistory],
+  );
+  return { available: data !== null, open: open !== null, show, reload, adopt, summary, panel };
 }
 
 /**

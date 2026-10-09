@@ -33,6 +33,7 @@ import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { abuseRoutes } from "./routes/abuse.js";
 import { adminRoutes } from "./routes/admin.js";
+import { capabilityRoutes } from "./routes/admin-capability.js";
 import { adminPilotRoutes } from "./routes/admin-pilot.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
@@ -388,6 +389,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   // M2P MVP cut: «Написать команде» (D68) and «Запросы на развитие» (D73).
   api.route("/", supportRoutes({ ...abuse, supportNow: opts.now }));
   api.route("/", gapsRoutes({ ...abuse, gapsNow: opts.now }));
+  // V3-06: /admin — the monthly share of «пока не умею» in the capability maps of briefs.
+  api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
   // B2-26: module factory — «Кандидаты в модули» and the consent to «Теперь умеем» letters.
   api.route("/", factoryRoutes({ ...abuse, factoryNow: opts.now, modules: opts.modules }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));
