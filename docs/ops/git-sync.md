@@ -103,7 +103,7 @@ bao write -f transit/keys/wizard-repo type=aes256-gcm96
 ```
 
 В политику токена platform-api (та же, что у BYOK) добавить `transit/datakey/plaintext/wizard-repo` и
-`transit/decrypt/wizard-repo`. Другое имя ключа — `WIZARD_GIT_SYNC_TRANSIT_KEY`. Локально и в тестах — `WIZARD_GIT_SYNC_KMS=local`.
+`transit/decrypt/wizard-repo`. Задачи агента (V3-32) выполняет worker с тем же токеном из Secret `wizard-platform-env`. Другое имя ключа — `WIZARD_GIT_SYNC_TRANSIT_KEY`. Локально и в тестах — `WIZARD_GIT_SYNC_KMS=local`.
 
 ### 5. Сеть
 
@@ -156,9 +156,12 @@ platform-api ходит наружу на 443: `api.github.com`, `github.com`, `
 
    Что происходит само:
    - образ `wizard-repo-sandbox` (Node 22, corepack: npm, pnpm, yarn) собирает `images.yml` вместе с остальными;
-   - чарт даёт platform-api учётную запись `wizard-repo-agent`. Её Role действует только в namespace песочницы и
-     разрешает поды, их логи, ConfigMap и PVC. Секретов, exec и других namespace у неё нет. Там же — NetworkPolicy подов
-     и квота на два рабочих каталога;
+   - задачи агента выполняет worker (очередь `agent_repo_tasks`). platform-api смотрит в интернет, поэтому только ставит
+     задачи в очередь и показывает их статус; токена Kubernetes у него нет. Поды фаз создаёт учётная запись worker:
+     `wizard-g1` на пилоте (у пода одна учётная запись, а G1 уже работает в песочнице) или `wizard-repo-agent`, где G1 в
+     песочнице не включён. Role `wizard-repo-sandbox` действует только в namespace песочницы и разрешает поды, их логи,
+     ConfigMap и PVC. Секретов, exec и других namespace у неё нет. Там же — NetworkPolicy подов и квота на два рабочих
+     каталога;
    - каждая фаза — отдельный под gVisor. Установка ходит только к `registry.npmjs.org` и `registry.yarnpkg.com` через
      egress-прокси: разрешение выдаётся на одну фазу. У сборки, тестов и прогонов агента нет сети и DNS;
    - перед командой под проверяет, что его сеть закрыта (API-сервер недоступен). Если нет — фаза не начинается, задача
@@ -167,7 +170,7 @@ platform-api ходит наружу на 443: `api.github.com`, `github.com`, `
      лежит архивом на PVC задачи; команда клиента этот том не видит. Каталог больше `repoSandbox.workspaceSize` (3 ГБ)
      не сохраняется, причина — в отчёте;
    - время команды ограничено (`timeout`, вместе не дольше 10 минут), вывод — последние 8 КБ. Под удаляется после фазы,
-     PVC и ConfigMap — после задачи. Оставшееся после перезапуска platform-api уборка удаляет по возрасту (90 минут).
+     PVC и ConfigMap — после задачи. Оставшееся после перезапуска worker уборка удаляет по возрасту (90 минут).
 
    Что сделать основателю:
    - на пилоте — проверить после первого выката, что пакет `ghcr.io/<owner>/wizard-repo-sandbox` публичный, как

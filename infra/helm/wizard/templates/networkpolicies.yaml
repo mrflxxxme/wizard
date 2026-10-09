@@ -70,9 +70,10 @@ spec:
     {{- end }}
   egress:
     {{- include "wizard.dnsEgress" $ | nindent 4 }}
-    {{- if and (eq $role "platform-api") $.Values.repoSandbox.enabled }}
-    # V3-32: the repository sandbox's runner reaches the API server (RBAC: pods, pods/log, ConfigMaps and PVCs of the
-    # sandbox namespace). The phase pods themselves are never reached: their output comes through the pod log API.
+    {{- if and (eq $role "worker") (or $.Values.sandbox.orchestrate $.Values.repoSandbox.enabled) }}
+    # M2-19: the G1 sandbox orchestrator reaches the API server (RBAC: pods and ConfigMaps of the sandbox only); V3-32:
+    # so does the repository sandbox's runner (pods, pods/log, ConfigMaps and PVCs of the sandbox). Its phase pods are
+    # never reached: their output comes through the pod log API. platform-api never talks to the API server.
     - to:
         {{- range (default (list $.Values.network.nodeCidr) $.Values.network.kubeApiCidrs) }}
         - ipBlock: { cidr: {{ . }} }
@@ -80,12 +81,6 @@ spec:
       ports: [{ protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 }]
     {{- end }}
     {{- if and (eq $role "worker") $.Values.sandbox.orchestrate }}
-    # M2-19: the G1 sandbox orchestrator reaches the API server (RBAC: pods and ConfigMaps of the sandbox only).
-    - to:
-        {{- range (default (list $.Values.network.nodeCidr) $.Values.network.kubeApiCidrs) }}
-        - ipBlock: { cidr: {{ . }} }
-        {{- end }}
-      ports: [{ protocol: TCP, port: 6443 }, { protocol: TCP, port: 443 }]
     # M2-19: the G1 host calls the functions and render Workers of its own sandbox pods (owner g1): the system ports
     # only. The health port is the kubelet's (probes come from the node), the orchestrator never connects to it.
     - to:

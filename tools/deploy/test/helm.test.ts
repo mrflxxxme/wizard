@@ -396,8 +396,8 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             // The DNS-01 solver and, with the sandbox orchestrator (M2-18), the runtime talk to the API server.
             const sandboxOrchestrator =
               (p.name === "wizard-runtime" && p.spec.serviceAccountName === "wizard-runtime") ||
-              (p.name === "wizard-worker" && p.spec.serviceAccountName === "wizard-g1") ||
-              (p.name === "wizard-platform-api" && p.spec.serviceAccountName === "wizard-repo-agent");
+              (p.name === "wizard-worker" &&
+                ["wizard-g1", "wizard-repo-agent"].includes(p.spec.serviceAccountName));
             if (p.name !== "wizard-acme-dns01" && !sandboxOrchestrator)
               expect(p.spec.automountServiceAccountToken, p.name).toBe(false);
             for (const c of [...p.spec.containers, ...(p.spec.initContainers ?? [])]) {
@@ -659,6 +659,36 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
         });
 
         if (v.name === "timeweb+k3s") {
+          it("V3-32 without G1 orchestration: the worker alone gets wizard-repo-agent and its token; platform-api none", () => {
+            const out = render(v, env, ["--set", "repoSandbox.enabled=true"]);
+            const dep = (name: string) =>
+              out.docs.find((d) => d.kind === "Deployment" && d.metadata.name === name)?.spec.template.spec;
+            expect(dep("wizard-worker")).toMatchObject({
+              serviceAccountName: "wizard-repo-agent",
+              automountServiceAccountToken: true,
+            });
+            expect(dep("wizard-platform-api")).toMatchObject({
+              serviceAccountName: "wizard-app",
+              automountServiceAccountToken: false,
+            });
+            const sa = out.docs.find(
+              (d) => d.kind === "ServiceAccount" && d.metadata.name === "wizard-repo-agent",
+            );
+            expect(sa?.automountServiceAccountToken).toBe(false);
+            const binding = out.docs.find(
+              (d) => d.kind === "RoleBinding" && d.metadata.name === "wizard-repo-sandbox",
+            );
+            expect(binding?.subjects).toEqual([
+              { kind: "ServiceAccount", name: "wizard-repo-agent", namespace: "wizard-platform" },
+            ]);
+            const npOf = (name: string) =>
+              JSON.stringify(
+                out.docs.find((d) => d.kind === "NetworkPolicy" && d.metadata.name === name)?.spec.egress,
+              );
+            expect(npOf("wizard-worker")).toContain('"port":6443');
+            expect(npOf("wizard-platform-api")).not.toContain('"port":6443');
+          });
+
           it("k3s profile: local-path RWO data volume, gVisor RuntimeClass, k3s networks", () => {
             const pvc = of("PersistentVolumeClaim").find((d) => d.metadata.name === "wizard-data");
             expect(pvc?.spec).toMatchObject({
@@ -778,23 +808,31 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             expect(api.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
           });
 
-          it("pilot (V3-32): the repository sandbox on prod only — platform-api manages its pods in the sandbox namespace and nothing else", () => {
-            const api = of("Deployment").find((d) => d.metadata.name === "wizard-platform-api")?.spec.template
-              .spec;
+          it("pilot (V3-32): the repository sandbox on prod only — run by the worker; platform-api holds no token", () => {
+            const spec = (name: string) =>
+              of("Deployment").find((d) => d.metadata.name === name)?.spec.template.spec;
+            const api = spec("wizard-platform-api");
+            const worker = spec("wizard-worker");
             const role = of("Role").find((r) => r.metadata.name === "wizard-repo-sandbox");
             const quota = of("ResourceQuota")[0];
+            // The internet-facing API never gets a Kubernetes token, with or without the repository sandbox.
+            expect(api.serviceAccountName).toBe("wizard-app");
+            expect(api.automountServiceAccountToken).toBe(false);
+            const bindings = of("RoleBinding").flatMap((b) => b.subjects ?? []);
+            expect(bindings.map((x: K8s) => x.name)).not.toContain("wizard-app");
+            const apiNp = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-platform-api");
+            expect(JSON.stringify(apiNp?.spec.egress)).not.toMatch(/"port":6443|wizard-repo-sandbox/);
             if (env === "staging") {
               // The 4 GB staging VM has no room for a phase pod: nothing of it is rendered.
               expect(role).toBeUndefined();
-              expect(api.serviceAccountName).toBe("wizard-app");
-              expect(api.automountServiceAccountToken).toBe(false);
               expect(text).not.toContain("wizard-repo-sandbox");
               expect(quota?.spec.hard.persistentvolumeclaims).toBeUndefined();
               return;
             }
-            expect(api.serviceAccountName).toBe("wizard-repo-agent");
-            expect(api.automountServiceAccountToken).toBe(true);
-            const e = env0(api.containers[0]);
+            // The worker runs the tasks: the declaration on the API, the runner's env on the worker.
+            expect(env0(api.containers[0]).WIZARD_REPO_SANDBOX).toBe("pod");
+            expect(env0(api.containers[0]).WIZARD_REPO_SANDBOX_IMAGE).toBeUndefined();
+            const e = env0(worker.containers[0]);
             expect(e).toMatchObject({
               WIZARD_REPO_SANDBOX: "pod",
               WIZARD_REPO_SANDBOX_NAMESPACE: "wizard-sandbox",
@@ -805,9 +843,9 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
               WIZARD_REPO_SANDBOX_REGISTRY: "",
             });
             expect(e.WIZARD_REPO_SANDBOX_IMAGE).toMatch(/\/wizard-repo-sandbox:0123abc$/);
-            const sa = of("ServiceAccount").find((x) => x.metadata.name === "wizard-repo-agent");
-            expect(sa?.metadata.namespace).toBe("wizard-platform");
-            expect(sa?.automountServiceAccountToken).toBe(false);
+            // One identity per pod: on the pilot the worker already is wizard-g1 (G1 in sandbox pods, M2-19).
+            expect(worker.serviceAccountName).toBe("wizard-g1");
+            expect(worker.automountServiceAccountToken).toBe(true);
             // Minimal RBAC: no Secrets, no exec/attach/portforward, no update/patch, the sandbox namespace only.
             expect(role?.metadata.namespace).toBe("wizard-sandbox");
             expect(role?.rules).toEqual([
@@ -823,7 +861,7 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             const binding = of("RoleBinding").find((r) => r.metadata.name === "wizard-repo-sandbox");
             expect(binding?.metadata.namespace).toBe("wizard-sandbox");
             expect(binding?.subjects).toEqual([
-              { kind: "ServiceAccount", name: "wizard-repo-agent", namespace: "wizard-platform" },
+              { kind: "ServiceAccount", name: "wizard-g1", namespace: "wizard-platform" },
             ]);
             // Its pods: install → only the egress proxy; the rest → nothing; no ingress.
             const nps = of("NetworkPolicy");
@@ -853,9 +891,9 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
                 },
               },
             });
-            // platform-api reaches the API server (node addresses on k3s), the phase pods never.
-            const apiNp = nps.find((n) => n.metadata.name === "wizard-platform-api");
-            const kubeApi = apiNp?.spec.egress.find((x: K8s) =>
+            // The worker reaches the API server (node addresses on k3s), the phase pods never.
+            const wNp = nps.find((n) => n.metadata.name === "wizard-worker");
+            const kubeApi = wNp?.spec.egress.find((x: K8s) =>
               (x.ports ?? []).some((p: K8s) => p.port === 6443),
             );
             expect(kubeApi?.ports).toEqual([
@@ -863,7 +901,7 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
               { protocol: "TCP", port: 443 },
             ]);
             expect(kubeApi?.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
-            expect(JSON.stringify(apiNp?.spec.egress)).not.toContain("wizard-repo-sandbox");
+            expect(JSON.stringify(wNp?.spec.egress)).not.toContain("wizard-repo-sandbox");
             // Quota: the workspaces' PVCs and storage; a phase pod fits the LimitRange.
             expect(quota?.spec.hard).toMatchObject({
               persistentvolumeclaims: "2",

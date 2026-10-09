@@ -32,11 +32,13 @@ export {
   snapshotEntries,
 } from "./pod-sandbox.js";
 export { agentRedirects, repoAgentRoutes } from "./routes.js";
+export { type RepoAgentRunnerOptions, startRepoAgentRunner } from "./runner.js";
 export {
   NO_SANDBOX_RU,
   ProcessSandbox,
   podSandboxFromEnv,
   repoSandboxFromEnv,
+  repoSandboxKindFromEnv,
   sandboxEnv,
 } from "./sandbox.js";
 export {

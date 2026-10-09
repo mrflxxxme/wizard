@@ -269,8 +269,16 @@ The pods have no DNS: they reach the orchestrating process on its pod IP.
 {{- end -}}
 
 {{/*
-V3-32: env of the repository sandbox's pod runner in platform-api (apps/platform-api/src/repo-agent/sandbox.ts
-podSandboxFromEnv). The pods have no DNS: platform-api resolves the egress proxy's Service and hands them its address.
+V3-32: the worker's service account — it runs G1 in sandbox pods (sandbox.orchestrate, wizard-g1) and the repository
+agent's phase pods (repoSandbox.enabled); a pod has one identity, so both Roles bind to it. Without either: no token.
+*/}}
+{{- define "wizard.workerServiceAccount" -}}
+{{- if .Values.sandbox.orchestrate }}wizard-g1{{ else if .Values.repoSandbox.enabled }}wizard-repo-agent{{ else }}wizard-app{{ end }}
+{{- end -}}
+
+{{/*
+V3-32: env of the repository sandbox's pod runner in the worker (apps/platform-api/src/repo-agent/sandbox.ts
+podSandboxFromEnv). The pods have no DNS: the worker resolves the egress proxy's Service and hands them its address.
 */}}
 {{- define "wizard.repoSandboxEnv" -}}
 {{- $r := .Values.repoSandbox -}}

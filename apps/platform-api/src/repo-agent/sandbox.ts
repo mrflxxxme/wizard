@@ -237,15 +237,28 @@ export function podSandboxFromEnv(
   return sb;
 }
 
-/** The runner of this process (null — none: JS repositories stay «unchecked»). Never the process runner in the cloud. */
+/** The kind of runner repoSandboxFromEnv builds, without building it (what enqueue-only platform-api reports). */
+export function repoSandboxKindFromEnv(
+  config: Pick<Config, "unsafeLocalExec">,
+  env: NodeJS.ProcessEnv = process.env,
+): "pod" | "process" | null {
+  if (env.WIZARD_REPO_SANDBOX === "pod") return "pod";
+  if (env.WIZARD_REPO_SANDBOX === "process" && config.unsafeLocalExec) return "process";
+  return null;
+}
+
+/**
+ * The runner of this process (null — none: JS repositories stay «unchecked»). Never the process runner in the cloud.
+ * Only the process that runs the agent's tasks builds it (apps/worker; platform-api in tests and M0).
+ */
 export function repoSandboxFromEnv(
   config: Pick<Config, "unsafeLocalExec">,
   env: NodeJS.ProcessEnv = process.env,
   deps: { kube?: RepoKube; log?: (line: Record<string, unknown>) => void; sweep?: boolean } = {},
 ): RepoSandbox | null {
-  if (env.WIZARD_REPO_SANDBOX === "pod") return podSandboxFromEnv(env, deps);
-  if (env.WIZARD_REPO_SANDBOX === "process" && config.unsafeLocalExec) return new ProcessSandbox(env);
-  return null;
+  const kind = repoSandboxKindFromEnv(config, env);
+  if (kind === "pod") return podSandboxFromEnv(env, deps);
+  return kind === "process" ? new ProcessSandbox(env) : null;
 }
 
 /** Why there is no runner (the owner's report says it). */

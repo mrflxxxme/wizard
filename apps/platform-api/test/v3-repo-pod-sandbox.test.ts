@@ -21,6 +21,8 @@ import {
   podEnv,
   quantityBytes,
   REGISTRY_HOSTS,
+  RepoAgent,
+  type RepoAgentOptions,
   registryHosts,
   repoKube,
   repoSandboxFromEnv,
@@ -687,5 +689,51 @@ describe("the runner of a stand", () => {
     );
     expect(repoSandboxFromEnv({ unsafeLocalExec: false }, { WIZARD_REPO_SANDBOX: "process" })).toBeNull();
     expect(repoSandboxFromEnv({ unsafeLocalExec: false }, {})).toBeNull();
+  });
+});
+
+describe("who runs the tasks", () => {
+  const ENV = {
+    WIZARD_REPO_SANDBOX: "pod",
+    WIZARD_REPO_SANDBOX_IMAGE: "registry.example/wizard/wizard-repo-sandbox:abc",
+    WIZARD_REPO_SANDBOX_PROXY: "http://10.43.0.9:3128",
+    WIZARD_INTERNAL_TOKEN: "t".repeat(32),
+  };
+  const sync = { available: true, d: { now: () => new Date() } } as unknown as RepoAgentOptions["sync"];
+  const agent = (o: Partial<RepoAgentOptions>) =>
+    new RepoAgent({
+      db: {} as RepoAgentOptions["db"],
+      config: { unsafeLocalExec: false } as RepoAgentOptions["config"],
+      sync,
+      billing: {} as RepoAgentOptions["billing"],
+      env: ENV,
+      ...o,
+    });
+
+  test("platform-api (enqueue-only) builds no runner and no Kubernetes client, runs nothing, reports the stand's sandbox", async () => {
+    // Building the pod runner here would need the service account files: it must not even be tried.
+    const api = agent({ executes: false });
+    expect(api.sandbox).toBeNull();
+    expect(api.sandboxKind).toBe("pod");
+    expect(await api.tick()).toBe(0);
+    api.start();
+    api.stop();
+    expect(agent({ executes: false, env: {} }).sandboxKind).toBeNull();
+  });
+
+  test("the executing process (the worker) builds the runner from its env", () => {
+    expect(() => agent({})).toThrow(/KUBERNETES_SERVICE_HOST/);
+    const kube = new FakeRepoKube();
+    fakes.push(kube);
+    const fake = new PodSandbox({
+      kube,
+      namespace: "n",
+      image: "i",
+      proxy: async () => ({ host: "10.0.0.1", port: 1 }),
+      grant: () => TOKEN,
+    });
+    const worker = agent({ sandbox: fake });
+    expect(worker.sandbox).toBe(fake);
+    expect(worker.sandboxKind).toBe("pod");
   });
 });

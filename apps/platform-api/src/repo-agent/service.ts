@@ -51,7 +51,7 @@ import { PROVIDER_RU, syncRu } from "../git-sync/texts.js";
 import { orgPolicyOf } from "../runs/queue.js";
 import { DbUsageSink } from "../runs/usage.js";
 import { commitOnHead, fetchSnapshot, type HeadSnapshot, remoteLimits, SnapshotError } from "./remote.js";
-import { NO_SANDBOX_RU, repoSandboxFromEnv } from "./sandbox.js";
+import { NO_SANDBOX_RU, repoSandboxFromEnv, repoSandboxKindFromEnv } from "./sandbox.js";
 import {
   type AgentRepoRow,
   type AgentTaskRow,
@@ -89,6 +89,12 @@ export interface RepoAgentOptions {
   /** Queue timer, ms (0 — none; tests drive tick()). Default WIZARD_REPO_AGENT_TICK_MS or 5 s. */
   tickMs?: number;
   env?: Record<string, string | undefined>;
+  /**
+   * Runs the queue of tasks in this process (default true). platform-api with the DBOS engine passes false: it faces
+   * the internet, so it only enqueues tasks and serves their status, and never holds the Kubernetes token of the
+   * sandbox pods — the tasks run in apps/worker (startRepoAgentRunner).
+   */
+  executes?: boolean;
 }
 
 export interface AgentTaskView {
@@ -160,19 +166,29 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
 
 export class RepoAgent {
   readonly #o: RepoAgentOptions;
+  /** The runner of this process; null — none here (no tasks run here, or no sandbox on this stand). */
   readonly sandbox: RepoSandbox | null;
+  /** The sandbox of the stand as the owner sees it: the runner here, or the one the executing process builds. */
+  readonly sandboxKind: string | null;
   #router: Router | undefined;
   #timer: NodeJS.Timeout | undefined;
   #busy = false;
 
   constructor(o: RepoAgentOptions) {
     this.#o = o;
+    const env = o.env ?? process.env;
+    if (o.executes === false) {
+      // Enqueue-only (platform-api): no runner and no Kubernetes client here, only what the worker's will be.
+      this.sandbox = null;
+      this.sandboxKind =
+        o.sandbox !== undefined ? (o.sandbox?.kind ?? null) : repoSandboxKindFromEnv(o.config, env);
+      return;
+    }
     this.sandbox =
       o.sandbox !== undefined
         ? o.sandbox
-        : repoSandboxFromEnv(o.config, o.env ?? process.env, {
-            log: (line) => sandboxLogger.line(line),
-          });
+        : repoSandboxFromEnv(o.config, env, { log: (line) => sandboxLogger.line(line) });
+    this.sandboxKind = this.sandbox?.kind ?? null;
   }
 
   get #d() {
@@ -190,7 +206,7 @@ export class RepoAgent {
   start(): void {
     const env = this.#o.env ?? process.env;
     const ms = this.#o.tickMs ?? Number(env.WIZARD_REPO_AGENT_TICK_MS ?? 5000);
-    if (!this.available || !(ms > 0) || this.#timer) return;
+    if (this.#o.executes === false || !this.available || !(ms > 0) || this.#timer) return;
     this.#timer = setInterval(() => {
       this.tick().catch((e) => this.#log("repo-agent tick failed", safeErr(e)));
     }, ms);
@@ -200,6 +216,9 @@ export class RepoAgent {
   stop(): void {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
+    // The pod runner's sweep of lost objects lives as long as the queue.
+    const sb = this.sandbox as (RepoSandbox & { stopSweeper?: () => void }) | null;
+    sb?.stopSweeper?.();
   }
 
   #log(m: string, e?: unknown) {
@@ -563,9 +582,9 @@ export class RepoAgent {
       available: this.available,
       providers: { github: !!this.#d.github, gitlab: !!this.#d.cfg.gitlab, gitlabSelfManaged: true },
       sandbox: {
-        available: !!this.sandbox,
-        kind: this.sandbox?.kind ?? null,
-        note_ru: this.sandbox ? null : NO_SANDBOX_RU,
+        available: !!this.sandboxKind,
+        kind: this.sandboxKind,
+        note_ru: this.sandboxKind ? null : NO_SANDBOX_RU,
       },
       repos: await Promise.all(rows.map((r) => this.#repoView(orgId, r))),
     };
@@ -578,7 +597,7 @@ export class RepoAgent {
   // ---- queue ----
 
   async tick(): Promise<number> {
-    if (this.#busy) return 0;
+    if (this.#busy || this.#o.executes === false) return 0;
     this.#busy = true;
     try {
       const now = this.#d.now();

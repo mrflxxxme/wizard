@@ -1,8 +1,11 @@
 {{- if .Values.repoSandbox.enabled }}
-# V3-32: the repository sandbox (apps/platform-api/src/repo-agent/pod-sandbox.ts). platform-api's identity may manage
-# the phase pods, read their logs and keep the workspace's ConfigMaps and PVC — in the sandbox namespace only; no
-# Secrets, no exec/attach/portforward, no other namespace. PodSecurity restricted of that namespace still applies to
-# every pod it creates (infra/k8s/namespaces.yaml).
+{{- $worker := include "wizard.workerServiceAccount" . }}
+# V3-32: the repository sandbox (apps/platform-api/src/repo-agent/pod-sandbox.ts). The worker runs the agent's tasks
+# (startRepoAgentRunner); its identity may manage the phase pods, read their logs and keep the workspace's ConfigMaps
+# and PVC — in the sandbox namespace only; no Secrets, no exec/attach/portforward, no other namespace. platform-api faces
+# the internet and holds no token at all. PodSecurity restricted of that namespace still applies to every pod created
+# (infra/k8s/namespaces.yaml).
+{{- if eq $worker "wizard-repo-agent" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -11,6 +14,7 @@ metadata:
   labels: {{- include "wizard.labels" . | nindent 4 }}
 automountServiceAccountToken: false
 ---
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -39,7 +43,7 @@ roleRef:
   kind: Role
   name: wizard-repo-sandbox
 subjects:
-  - { kind: ServiceAccount, name: wizard-repo-agent, namespace: {{ .Values.namespaces.platform }} }
+  - { kind: ServiceAccount, name: {{ $worker }}, namespace: {{ .Values.namespaces.platform }} }
 ---
 # Generated from apps/platform-api repoSandboxNetworkPolicy() (tools/deploy/test/helm.test.ts keeps it in sync):
 # install → only the egress proxy; build, tests and the agent → no network; no ingress.
