@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { type AppSpec, planMigration, quoteIdent, toDDL } from "@wizard/appspec";
 import { buildSystem, writeArtifact } from "@wizard/build";
-import { generateSeed } from "@wizard/gates";
+import { generateSeed, type SeedHint } from "@wizard/gates";
 import { ensureSystemRole, schemaName, systemRoleOf } from "@wizard/runtime";
 import type postgres from "postgres";
 import { RunFailure } from "../runs/types.js";
@@ -94,13 +94,16 @@ async function insertRow(
   );
 }
 
-/** seed_draft: generateSeed(spec, sha256(systemKey)) (qa.yaml#seed) + a dev-<role> user per login role. */
+/**
+ * seed_draft: generateSeed(spec, sha256(systemKey), {hints}) (qa.yaml#seed) + a dev-<role> user per login role.
+ * `hints` — the demo names the brief gives (V3-18 seedHintsFromBrief); invalid ones are ignored by the generator.
+ */
 export async function seedDraft(
   pg: postgres.Sql,
-  i: { systemKey: string; spec: AppSpec; migratorRole?: string },
+  i: { systemKey: string; spec: AppSpec; migratorRole?: string; hints?: readonly SeedHint[] },
 ): Promise<{ users: number; rows: number }> {
   const schema = schemaName(i.systemKey, "draft");
-  const seed = generateSeed(i.spec, sha256(i.systemKey));
+  const seed = generateSeed(i.spec, sha256(i.systemKey), i.hints?.length ? { hints: i.hints } : {});
   let rows = 0;
   let users = 0;
   await pg.begin(async (tx) => {

@@ -191,23 +191,29 @@ const ORDER_NOTES = [
   "Свечи не нужны",
   "Позвоним за час до выезда",
 ];
-const GENERIC_TITLES = [
-  "Основной",
-  "Пробный",
-  "Весенний",
-  "Базовый",
-  "Расширенный",
-  "Летний",
-  "Новый",
-  "Особый",
+/**
+ * Round prices by the niche of the spec (₽, multiples of 100) for required money fields without a domain vocabulary;
+ * an optional price stays empty («по запросу») — the owner sets it (D49: nothing invented beyond a plausible demo).
+ */
+const NICHE_PRICES: readonly [RegExp, readonly number[]][] = [
+  [
+    /(?<![а-яё])(?:тур(?!ник)|отел)|путешеств|гостиниц|хостел|отдых|экскурс/,
+    [15000, 24000, 32000, 45000, 60000],
+  ],
+  [/ремонт|отделк|строит|интерьер|мебел|клининг|уборк/, [5000, 12000, 25000, 40000, 80000]],
+  [/клиник|стомат|врач|медиц|ветеринар/, [1500, 2500, 3500, 5000, 7000]],
+  [/салон|красот|маникюр|барбер|парикмах|стрижк|массаж|космет|ресниц|бров/, [1200, 1800, 2500, 3200, 4500]],
+  [
+    /школ|курс|обучен|репетит|урок|заняти|тренир|фитнес|(?<![а-яё])йог(?!урт)/,
+    [1500, 2500, 4000, 6000, 9000],
+  ],
+  [/кафе(?!др)|кофе|ресторан|пицц|бургер|суши|обед/, [300, 400, 500, 700, 900]],
 ];
-const GENERIC_TEXT = [
-  "Короткое описание: что входит и для кого подходит.",
-  "Подробности и условия — в карточке записи.",
-  "Популярный вариант среди клиентов.",
-  "Доступно по предварительной договорённости.",
-];
-const NICE_PRICES = [1000, 1500, 2500, 3900, 4900, 7500, 12000];
+const DEFAULT_PRICES = [1000, 1500, 2000, 3000, 5000];
+const nichePrices = (hint: string) => NICHE_PRICES.find(([re]) => re.test(hint))?.[1] ?? DEFAULT_PRICES;
+/** Service durations on the booking grid (minutes). */
+const DURATIONS = [60, 90, 30, 120];
+const HOURS = ["Пн–Пт 10:00–19:00", "Ежедневно 10:00–20:00", "Пн–Сб 09:00–21:00"];
 
 // ------------------------------------------------------------------ domains
 const isTicketType = (c: RealCtx) => entityIs(c, /ticket_?type|pass_type/, /тип билета|вид билета/i);
@@ -226,6 +232,89 @@ const NAME_RE = /^(name|title|label|caption)$/;
 const NAME_LABEL = /^(название|наименование|заголовок)/i;
 const DESC_RE = /description|about|details|summary|includes/;
 const DESC_LABEL = /описание|что входит|подробн/i;
+const SLUG_RE = /(^|_)slug$|^permalink$|^url_?path$/;
+const SLUG_LABEL = /латиниц|^адрес (статьи|страницы|рубрики|раздела)|^slug|^url/i;
+const ADDRESS_RE = /(^|_)address$|^location$/;
+const ADDRESS_LABEL = /^адрес$|^адрес (пункта|точки|магазина|офиса|филиала)/i;
+const HOURS_RE = /hours|schedule|opening|work_?time/;
+const HOURS_LABEL = /часы работы|режим работы|график работы/i;
+const SKU_RE = /^(sku|vendor_code|article_?(no|number|code))$/;
+const SKU_LABEL = /^артикул/i;
+/** A place a visitor comes to (pickup point, branch, office): its address is the business's, not a person's. */
+const isPlace = (c: RealCtx) =>
+  entityIs(c, /point|branch|office|store|location/, /пункт|филиал|офис|магазин|точк/i);
+
+const fieldTest = (f: Pick<Field, "name" | "label">, name: RegExp, label: RegExp) =>
+  name.test(f.name) || label.test(f.label);
+/** Search-engine fields (seo_title, seo_description): empty by default, the page falls back to its title. */
+const SEO_RE = /(^|_)(seo|meta|og)(_|$)/;
+const SEO_LABEL = /поисков/i;
+/** Title-like field (name, title): what a slug and a hint of the brief are about. */
+export const isNameField = (f: Pick<Field, "name" | "label">) =>
+  fieldTest(f, NAME_RE, NAME_LABEL) && !fieldTest(f, SEO_RE, SEO_LABEL);
+/** Free-text field of a row (description, about, a text): dropped when the row's name comes from a hint. */
+export const isDescriptionField = (f: Pick<Field, "name" | "label" | "type">) =>
+  f.type === "text" || fieldTest(f, DESC_RE, DESC_LABEL);
+/** Address part of a page URL (slug): Latin, digits and hyphens. */
+export const isSlugField = (f: Pick<Field, "name" | "label" | "type">) =>
+  f.type === "string" && fieldTest(f, SLUG_RE, SLUG_LABEL);
+
+const TRANSLIT: Readonly<Record<string, string>> = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "e",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "kh",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "shch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+};
+
+/** «Дизайн квартиры» → «dizayn-kvartiry»: Latin lower case, digits and hyphens, at most `max` characters. */
+export function slugify(text: string, max = 80): string {
+  const s = [...text.toLowerCase()]
+    .map((ch) => TRANSLIT[ch] ?? ch)
+    .join("")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const at = cut.lastIndexOf("-");
+  return (at > 0 ? cut.slice(0, at) : cut).replace(/-+$/, "");
+}
+
+/** «Раздел магазина» → «Раздел»: the entity's label without the module's qualifier, for a neutral row name. */
+function neutralLabel(e: Entity): string {
+  const label = e.label.trim() || e.name;
+  const m = /^(Раздел|Категория|Рубрика|Группа)\s+\S+$/iu.exec(label);
+  const out = m ? (m[1] as string) : label;
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
 
 function ticketKind(c: RealCtx): keyof typeof TICKET_TYPES {
   const v = enumAt(c.entity, c.i);
@@ -233,7 +322,7 @@ function ticketKind(c: RealCtx): keyof typeof TICKET_TYPES {
   return (TICKET_ORDER[c.i % TICKET_ORDER.length] ?? "standard") as keyof typeof TICKET_TYPES;
 }
 
-function stringValue(c: RealCtx): string | undefined {
+function stringValue(c: RealCtx): string | null | undefined {
   const f = rng(c);
   const unique = c.field.unique === true;
   if (fieldIs(c, /promo|coupon|voucher/, /промокод|купон/i)) return `${rotate(PROMO_PREFIX, c)}${10 + c.n}`;
@@ -247,6 +336,9 @@ function stringValue(c: RealCtx): string | undefined {
     }
     return undefined;
   }
+  // A page address: Latin from the entity's label and the counter (unique); the seed re-derives it from the row's title.
+  if (isSlugField(c.field)) return `${slugify(neutralLabel(c.entity)) || "item"}-${c.n}`;
+  if (fieldIs(c, SKU_RE, SKU_LABEL)) return `A-${String(unique ? c.n : c.i + 1).padStart(4, "0")}`;
   if (unique) return undefined;
   if (fieldIs(c, /company|organization|org_name|employer/, /компани|организац/i)) return rotate(COMPANIES, c);
   if (fieldIs(c, /room|hall|venue|auditorium/, /^(зал|аудитория|помещение)/i)) return rotate(ROOMS, c);
@@ -254,8 +346,12 @@ function stringValue(c: RealCtx): string | undefined {
   if (fieldIs(c, /device/, /устройств/i)) return `tsd-${String((c.i % 9) + 1).padStart(2, "0")}`;
   if (fieldIs(c, /inscription|greeting/, /надпись/i)) return rotate(INSCRIPTIONS, c);
   if (fieldIs(c, /topic|subject/, /^тема/i)) return rotate(TALKS, c);
-  const nameLike = fieldIs(c, NAME_RE, NAME_LABEL);
-  if (nameLike) {
+  if (fieldIs(c, HOURS_RE, HOURS_LABEL)) return rotate(HOURS, c);
+  // A business's address (a pickup point): obviously a demo street of the synthetic dictionary, never a real one.
+  if (fieldIs(c, ADDRESS_RE, ADDRESS_LABEL) && (isPlace(c) || c.field.required))
+    return `ул. Тестовая, д. ${c.i + 1}`;
+  if (fieldIs(c, SEO_RE, SEO_LABEL)) return c.field.required ? undefined : null;
+  if (isNameField(c.field)) {
     if (isTicketType(c)) return TICKET_TYPES[ticketKind(c)]?.name;
     if (isStream(c)) return rotate(STREAMS, c, "row").name;
     if (isTalk(c)) return rotate(TALKS, c);
@@ -264,13 +360,16 @@ function stringValue(c: RealCtx): string | undefined {
       const opts = CAKE_OPTIONS[enumAt(c.entity, c.i) ?? ""];
       if (opts) return opts[Math.floor(c.i / 3) % opts.length]?.title;
     }
-    return `${c.entity.label} «${f.helpers.arrayElement(GENERIC_TITLES)}»`;
+    // No vocabulary: the entity's label and the row's number («Услуга 1»), never an invented adjective.
+    return `${neutralLabel(c.entity)} ${c.i + 1}`;
   }
   if (c.field.type === "text" || fieldIs(c, DESC_RE, DESC_LABEL)) return textValue(c);
-  return undefined;
+  // Any other optional text stays empty: a «<label> N» placeholder would show on the preview.
+  return c.field.required ? undefined : null;
 }
 
-function textValue(c: RealCtx): string {
+/** Description-like text: a domain vocabulary, else empty (an optional field) — never an invented claim (D49). */
+function textValue(c: RealCtx): string | null | undefined {
   if (fieldIs(c, /abstract/, /описание доклада|тезисы/i)) return rotate(ABSTRACTS, c);
   if (fieldIs(c, /moderator|review|comment/, /комментарий модератора|рецензи/i) && isTalk(c))
     return rotate(MOD_COMMENTS, c);
@@ -280,13 +379,13 @@ function textValue(c: RealCtx): string {
   if (isStream(c)) return rotate(STREAMS, c, "row").about;
   if (isCake(c)) return rotate(CAKES, c, "row").about;
   if (isTalk(c)) return rotate(ABSTRACTS, c);
-  return rng(c).helpers.arrayElement(GENERIC_TEXT);
+  return c.field.required ? undefined : null;
 }
 
 const clamp = (v: number, f: Field) => Math.min(Math.max(v, f.min ?? v), f.max ?? v);
 const round100 = (v: number) => Math.round(v / 100) * 100;
 
-function moneyValue(c: RealCtx): number | undefined {
+function moneyValue(c: RealCtx): number | null | undefined {
   if (c.field.unique) return undefined;
   let v: number | undefined;
   if (isTicketType(c)) v = TICKET_TYPES[ticketKind(c)]?.price;
@@ -298,10 +397,13 @@ function moneyValue(c: RealCtx): number | undefined {
     if (fieldIs(c, /prepay|deposit|advance/, /предоплат|аванс/i)) v = round100(total / 2);
     else if (fieldIs(c, /remaining|balance|due/, /доплат|остаток/i)) v = total - round100(total / 2);
     else v = total;
-  } else if (fieldIs(c, /amount|sum|total|price|cost/)) {
-    v = BAKERY.test(c.hint) ? round100(rotate(CAKES, c).price / 2) : rotate([4900, 14900, 4900, 1900], c);
+  } else if (BAKERY.test(c.hint) && fieldIs(c, /amount|sum|total|price|cost/)) {
+    v = round100(rotate(CAKES, c).price / 2);
+  } else if (!c.field.required) {
+    // An optional price without a vocabulary stays empty: the showcase says «по запросу» until the owner sets it.
+    return null;
   }
-  v ??= rotate(NICE_PRICES, c);
+  v ??= rotate(nichePrices(c.hint), c, "row");
   const lo = c.field.min ?? 0;
   if (v < lo || (c.field.max !== undefined && v > c.field.max)) return undefined;
   return v;
@@ -313,6 +415,9 @@ function intValue(c: RealCtx): number | undefined {
   if (c.field.unique) return undefined;
   if (fieldIs(c, /sort|order|position|priority|rank/, /порядок|позици/i)) return clamp(c.i + 1, c.field);
   if (fieldIs(c, /used|sold|taken|issued/, /использовано|продано|выдано/i)) return clamp(c.i % 4, c.field);
+  // A line of an order: one to three pieces, not a stock-sized quantity.
+  if (isOrder(c) && fieldIs(c, /^(qty|quantity)$/, /^количеств/i))
+    return clamp(rotate([1, 2, 1, 3], c), c.field);
   if (
     fieldIs(
       c,
@@ -327,6 +432,9 @@ function intValue(c: RealCtx): number | undefined {
     else v = rotate([20, 30, 50, 25, 40], c);
     return clamp(v, c.field);
   }
+  // Durations on the booking grid (30/60/90/120 min), never a random number of minutes.
+  if (fieldIs(c, /duration|minutes/, /длительн/i)) return clamp(rotate(DURATIONS, c), c.field);
+  if (fieldIs(c, /weight|(^|_)grams?$/, /^вес/i)) return clamp(rotate([250, 500, 1000, 1500], c), c.field);
   const lo = c.field.min ?? 1;
   const hi = c.field.max ?? Math.max(lo + 100, 100);
   return f.number.int({ min: Math.ceil(lo), max: Math.max(Math.ceil(lo), Math.floor(hi)) });

@@ -11,6 +11,7 @@ import {
   runBuildV3,
   type ScenarioCheckInput,
   type ScenarioCheckResult,
+  seedHintsFromBrief,
   V3_BUILD_LIMITS,
   type V3GateLevel,
   type V3Host,
@@ -18,7 +19,8 @@ import {
   type V3StageHook,
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
-import type { GateReport, GoalScenarioInput } from "@wizard/gates";
+import type { AppSpec } from "@wizard/appspec";
+import type { GateReport, GoalScenarioInput, SeedHint } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
@@ -78,6 +80,20 @@ export async function isV3Build(
   if (!enabled || params.plan || params.mode === "point_edit" || Object.keys(params.card).length > 0)
     return false;
   return (await getLatestBrief(db, systemId)) !== null;
+}
+
+/**
+ * V3-18: seed hints of the draft of a system with a brief — the names of the offer its latest brief (else the owner's
+ * first words) lists, for the preview's demo rows; [] without a brief or when reading it fails (the seed goes on).
+ */
+export async function draftSeedHints(db: Db, systemId: string, spec: AppSpec): Promise<SeedHint[]> {
+  try {
+    const brief = await getLatestBrief(db, systemId);
+    if (!brief) return [];
+    return seedHintsFromBrief(spec, brief.brief, await loadBrief(db, systemId));
+  } catch {
+    return [];
+  }
 }
 
 /** G1 with the goal scenarios in a slot of the process browser (B2-28); without one — G1 without the browser checks. */

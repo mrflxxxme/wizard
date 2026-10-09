@@ -149,19 +149,29 @@ export function placeOf(texts: readonly string[]): string | undefined {
   return undefined;
 }
 
-/** «показывает услуги: дизайн квартиры, дизайн дома, авторский надзор, комплектация» → the listed services. */
-export function listedServices(steps: readonly string[]): string[] | null {
+/**
+ * Lists the steps show: «показывает разделы: торты, пирожные» → {what: «разделы», items: [«торты», «пирожные»]}
+ * (2–8 items of ≤ 60 characters each).
+ */
+export function shownLists(steps: readonly string[]): { what: string; items: string[] }[] {
+  const out: { what: string; items: string[] }[] = [];
   for (const step of steps) {
-    const m = /^показыва\S*\s+[^:]{1,40}:\s*(.+)$/i.exec(clean(step));
+    const m = /^показыва\S*\s+([^:]{1,40}):\s*(.+)$/i.exec(clean(step));
     if (!m) continue;
-    const items = (m[1] as string)
+    const items = (m[2] as string)
       .replace(/[.]$/, "")
       .split(/,\s*|\s+и\s+/)
       .map((x) => x.trim())
       .filter(Boolean);
-    if (items.length >= 2 && items.length <= 8 && items.every((x) => x.length <= 60)) return items;
+    if (items.length >= 2 && items.length <= 8 && items.every((x) => x.length <= 60))
+      out.push({ what: (m[1] as string).trim(), items });
   }
-  return null;
+  return out;
+}
+
+/** «показывает услуги: дизайн квартиры, дизайн дома, авторский надзор, комплектация» → the listed services. */
+export function listedServices(steps: readonly string[]): string[] | null {
+  return shownLists(steps)[0]?.items ?? null;
 }
 
 /** Generic words of a list that say nothing about the offer. */

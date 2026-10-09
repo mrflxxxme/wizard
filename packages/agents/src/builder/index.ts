@@ -220,6 +220,8 @@ export {
   SITE_PATH,
   type SiteModel,
   type SitePage,
+  /** V3-18: seed hints of the draft from the brief (the names of the offer it lists), for the preview's demo rows. */
+  seedHintsFromBrief,
   siteRules,
   withSitePages,
 } from "./v3/compose/index.js";

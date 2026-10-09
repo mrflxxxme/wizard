@@ -9,7 +9,14 @@ import {
   USERS_ENTITY,
 } from "@wizard/appspec";
 import { classifyFieldName, detect } from "@wizard/pii";
-import { domainHint, realisticValue } from "./realistic.js";
+import {
+  domainHint,
+  isDescriptionField,
+  isNameField,
+  isSlugField,
+  realisticValue,
+  slugify,
+} from "./realistic.js";
 import type { Seed, SeedHint, SeedUser } from "./types.js";
 
 /** Built-in synthetic dictionary (qa.yaml#seed.rules): the only names seeds and G1 actors ever get. */
@@ -224,7 +231,8 @@ export class ValueGen {
           case "text":
             return clip(syntheticText(n), f);
           default:
-            return clip(`${f.label} ${n}`, f);
+            // Unique: the counter keeps it unique; else the row's number («Адрес 1», not a global «Адрес 178»).
+            return clip(`${f.label} ${f.unique ? n : i + 1}`, f);
         }
     }
   }
@@ -349,6 +357,70 @@ export function mergeSeedHints(spec: AppSpec, hints: readonly SeedHint[]): Map<s
   return out;
 }
 
+/** Rows generated so far and the entities by name: what a row's refs point to. */
+interface SeedSoFar {
+  rows: Record<string, Record<string, unknown>[]>;
+  byName: Map<string, Entity>;
+}
+
+const titleOf = (e: Entity | undefined) =>
+  e?.fields.find((f) => f.type === "string" && isNameField(f) && fieldPiiCategory(f) === "none");
+
+/**
+ * Row coherence after the hints: a line of an order names and prices the item it refers to and sums price × qty; a
+ * name given by a hint drops the vocabulary's free text of the row (it described another item); a slug follows the
+ * row's title in Latin («dizayn-kvartiry»), unique within the entity.
+ */
+function plausibleRow(
+  e: Entity,
+  row: Record<string, unknown>,
+  hinted: (field: string) => boolean,
+  slugs: Map<string, Set<string>>,
+  so: SeedSoFar,
+): void {
+  const titleField = titleOf(e);
+  // «Товар» of an order line = the name of its product row (a ref labelled as the line's name field).
+  const ref = titleField
+    ? e.fields.find((f) => f.type === "ref" && f.label === titleField.label && f.ref?.entity !== USERS_ENTITY)
+    : undefined;
+  const target = ref ? so.rows[ref.ref?.entity as string]?.find((r) => r.id === row[ref.name]) : undefined;
+  if (titleField && target) {
+    const te = so.byName.get(ref?.ref?.entity as string);
+    const name = target[titleOf(te)?.name ?? ""];
+    if (typeof name === "string" && !hinted(titleField.name)) row[titleField.name] = name;
+    const price = e.fields.find((f) => f.type === "money" && f.name === "price");
+    if (price && !hinted(price.name) && typeof target.price === "number") row.price = target.price;
+  }
+  const qty = e.fields.find((f) => f.type === "int" && /^(qty|quantity)$/.test(f.name));
+  const sum = e.fields.find((f) => f.type === "money" && /^(sum|line_total)$/.test(f.name));
+  if (qty && sum && !hinted(sum.name) && typeof row.price === "number" && typeof row[qty.name] === "number") {
+    const v = (row.price as number) * (row[qty.name] as number);
+    if (sum.max === undefined || v <= sum.max) row[sum.name] = v;
+  }
+  const title = titleField ? row[titleField.name] : undefined;
+  if (titleField && hinted(titleField.name))
+    for (const f of e.fields)
+      if (
+        f !== titleField &&
+        !f.required &&
+        !hinted(f.name) &&
+        isDescriptionField(f) &&
+        fieldPiiCategory(f) === "none"
+      )
+        delete row[f.name];
+  for (const f of e.fields) {
+    if (!isSlugField(f) || fieldPiiCategory(f) !== "none") continue;
+    const used = slugs.get(f.name) ?? new Set<string>();
+    slugs.set(f.name, used);
+    const max = f.maxLength ?? DEFAULT_MAX_LENGTH[f.type] ?? 80;
+    const base = !hinted(f.name) && typeof title === "string" ? slugify(title, max - 3) : "";
+    let slug = base;
+    for (let k = 2; slug && used.has(slug); k++) slug = `${base}-${k}`;
+    if (slug && nonSyntheticPii(slug).length === 0) row[f.name] = slug;
+    if (typeof row[f.name] === "string") used.add(row[f.name] as string);
+  }
+}
+
 /** gates.generateSeed(spec, key) — architecture.yaml#interfaces.gates, qa.yaml#seed. */
 export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {}): Seed {
   const now = opts.now ?? new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS);
@@ -387,6 +459,7 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
       for (const u of users.filter((x) => x.role === p.role)) owners.push({ user: u, filter: p.rowFilter });
     }
     const list: Record<string, unknown>[] = [];
+    const slugs = new Map<string, Set<string>>();
     for (let i = 0; i < count; i++) {
       const row: Record<string, unknown> = { id: uuidFor(key, name, i) };
       for (const f of e.fields) {
@@ -409,6 +482,7 @@ export function generateSeed(spec: AppSpec, key: string, opts: SeedOptions = {})
         if (hinted !== undefined) row[f.name] = hinted;
         else if (v !== undefined) row[f.name] = v;
       }
+      plausibleRow(e, row, (f) => hints.get(`${name}.${f}`)?.[i] !== undefined, slugs, { rows, byName });
       const owner = owners[i];
       if (owner) {
         for (const [field, want] of Object.entries(owner.filter)) {
