@@ -67,7 +67,7 @@ import { notImplemented } from "./routes/stub.js";
 import { platformTelegramHook, telegramApiRoutes, telegramHookRoutes } from "./routes/telegram.js";
 import { webhookHookRoutes } from "./routes/webhook.js";
 import { authRoutes, wizardRoutes } from "./routes/wizard.js";
-import { yookassaHookRoutes } from "./routes/yookassa.js";
+import { yookassaHookRoutes, yookassaSettingsRoutes } from "./routes/yookassa.js";
 import { egressGrantKey } from "./sandbox/egress-grants.js";
 import { createEgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
@@ -348,6 +348,7 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     "/_wizard/photos",
     photoLibraryRoutes(o.photoLibrary !== undefined ? o.photoLibrary : (files ?? null)),
   );
+  app.route("/_wizard/payments", yookassaSettingsRoutes(connectors));
   app.route("/_wizard", previewRoutes(connectors));
   app.route("/_wizard", wizardRoutes());
   app.route("/_wizard", privacyRoutes());

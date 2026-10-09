@@ -34,6 +34,8 @@ export interface ShopFrontConfig {
   /** Field of the stock of a product; null — the shop keeps no stock. */
   stockField: string | null;
   categoryEntity?: string;
+  /** V3-18: the order keeps the buyer's consent to the letters about it (a separate box of the checkout). */
+  consentMessages?: boolean;
 }
 
 /** A module screen the backend mode leaves to the v3 front. */
@@ -156,7 +158,7 @@ export function publicActions(
 function shopConfig(spec: AppSpec, params: Readonly<Record<string, unknown>>): ShopFrontConfig {
   const product = spec.entities.find((e) => e.name === SHOP_NAMES.product);
   return {
-    ...checkoutConfig(params),
+    ...checkoutConfig(params, spec),
     stockField: product?.fields.some((f) => f.name === "stock") ? "stock" : null,
     ...(spec.entities.some((e) => e.name === SHOP_NAMES.category)
       ? { categoryEntity: SHOP_NAMES.category }

@@ -1,5 +1,5 @@
-// Shop components of the v2 front (V3-23, ui-kit.yaml#components ShopProducts, ShopCart, ShopCheckout, ShopOrder): the
-// module «Интернет-магазин» renders its pages /shop, /cart and /order/:id with them. The logic is the headless shop of
+// Shop components of the v2 front (V3-23, ui-kit.yaml#components ShopProducts, ShopProduct, ShopCart, ShopCheckout,
+// ShopOrder): the module «Интернет-магазин» renders its pages /shop, /shop/:id, /cart and /order/:id with them. The logic is the headless shop of
 // v3 (useShopCatalog, useCart, useCheckout, useOrder); the DOM contract is the same as the v3 patterns shop-*, cart-*,
 // checkout-* and order-* — the goal programs GS-shop-* find wz-product, wz-cart-add, wz-cart-line, wz-field-*,
 // wz-consent, wz-checkout-submit, wz-order-status and wz-order-pay on both fronts.
@@ -18,6 +18,7 @@ import {
   useCart,
   useCheckout,
   useOrder,
+  useProduct,
   useShopCatalog,
 } from "../v3/headless/shop.js";
 import styles from "./Shop.module.css";
@@ -30,6 +31,8 @@ export interface ShopProductsProps extends WzBase {
   fields?: ShopFields;
   /** Where the cart is (default /cart). */
   cartPath?: string;
+  /** V3-18: prefix of the product pages («/shop/»): a product's name leads to its page. */
+  productPath?: string;
   emptyText?: string;
   pageSize?: number;
 }
@@ -63,7 +66,18 @@ export function ShopProducts(props: ShopProductsProps): ReactNode {
                 <img src={it.photo} alt="" aria-hidden="true" loading="lazy" className={styles.photo} />
               ) : null}
               <div className={styles.cardBody}>
-                <h3 className={styles.name}>{it.name}</h3>
+                <h3 className={styles.name}>
+                  {props.productPath ? (
+                    <a
+                      href={`${props.productPath}${encodeURIComponent(it.id)}`}
+                      data-testid="wz-product-link"
+                    >
+                      {it.name}
+                    </a>
+                  ) : (
+                    it.name
+                  )}
+                </h3>
                 {it.description ? <p className={styles.muted}>{it.description}</p> : null}
                 <p className={styles.priceRow}>
                   {it.price !== null ? <span className={styles.price}>{rub(it.price)}</span> : null}
@@ -180,7 +194,90 @@ export function ShopCart(props: ShopCartProps): ReactNode {
   );
 }
 
-export interface ShopCheckoutProps extends WzBase, UseCheckoutOptions {}
+export interface ShopProductProps extends WzBase {
+  /** Entity of the goods (default product). */
+  entity?: string;
+  /** Prefix of the product pages (default «/shop/»): the product's id is the next segment of the address. */
+  path?: string;
+  fields?: ShopFields;
+  /** Where the cart is (default /cart). */
+  cartPath?: string;
+  /** Back to the goods (default /shop). */
+  shopPath?: string;
+}
+
+/** One product of the address (/shop/<id>, V3-18): photo, name, price, stock, «В корзину», the whole description. */
+export function ShopProduct(props: ShopProductProps): ReactNode {
+  const root = useWzRoot("ShopProduct", "wz-shop-product", props);
+  const m = useProduct(props.entity ?? SHOP_DEFAULTS.product, {
+    ...(props.path ? { path: props.path } : {}),
+    ...(props.fields ? { fields: props.fields } : {}),
+  });
+  const it = m.item;
+  const out = it !== null && it.stock !== null && it.stock <= 0;
+  let body: ReactNode;
+  if (m.isLoading) body = <p role="status">{ru.states.loading}</p>;
+  else if (m.error) body = <p role="alert">{m.error.message}</p>;
+  else if (!it)
+    body = (
+      <p className={styles.muted} data-testid="wz-empty">
+        {SHOP_TEXTS.productMissing}
+      </p>
+    );
+  else
+    body = (
+      <article className={styles.card} data-testid="wz-product" data-wz-product={it.id}>
+        {it.photo ? <img src={it.photo} alt={it.name} className={styles.photo} /> : null}
+        <div className={styles.cardBody}>
+          <h2 className={styles.name}>{it.name}</h2>
+          <p className={styles.priceRow}>
+            {it.price !== null ? <span className={styles.price}>{rub(it.price)}</span> : null}
+            {it.stock !== null ? (
+              <span className={styles.muted} data-testid="wz-product-stock">
+                {out ? SHOP_TEXTS.outOfStock : `В наличии: ${it.stock} шт.`}
+              </span>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            className={styles.primary}
+            data-testid="wz-cart-add"
+            disabled={!it.canAdd}
+            aria-label={out ? `${it.name}: нет в наличии` : `В корзину: ${it.name}`}
+            onClick={() => m.add()}
+          >
+            {out ? SHOP_TEXTS.outOfStock : it.inCart > 0 ? `В корзине: ${it.inCart}` : "В корзину"}
+          </button>
+          {m.added ? (
+            <p role="status" className={styles.note}>
+              {SHOP_TEXTS.added}
+            </p>
+          ) : null}
+          {it.description ? <p className={styles.description}>{it.description}</p> : null}
+        </div>
+      </article>
+    );
+  return (
+    <section {...root} className={cx(styles.shop, props.className)} aria-busy={m.isLoading || undefined}>
+      <a href={props.shopPath ?? "/shop"}>← Все товары</a>
+      {body}
+      {m.cart.count > 0 ? (
+        <a
+          href={props.cartPath ?? SHOP_DEFAULTS.cartPath}
+          className={styles.cartLink}
+          data-testid="wz-cart-link"
+        >
+          {`Корзина: ${m.cart.count} шт. на ${rub(m.cart.total)} — оформить`}
+        </a>
+      ) : null}
+    </section>
+  );
+}
+
+export interface ShopCheckoutProps extends WzBase, UseCheckoutOptions {
+  /** V3-18: the seller's pages — «Оформляя заказ, вы принимаете условия оферты» by the action. */
+  terms?: { offer: string; delivery?: string; returns?: string };
+}
 
 const FIELD_LABELS: Record<CheckoutField, string> = {
   name: "Имя и фамилия",
@@ -193,7 +290,7 @@ const FIELD_LABELS: Record<CheckoutField, string> = {
 /** The checkout: delivery (self-pickup, СДЭК, courier), contacts with the consent, the order and its payment. */
 export function ShopCheckout(props: ShopCheckoutProps): ReactNode {
   const root = useWzRoot("ShopCheckout", "wz-checkout", props);
-  const { wzId: _w, testId: _t, className, ...opts } = props;
+  const { wzId: _w, testId: _t, className, terms, ...opts } = props;
   const c = useCheckout(opts);
   const uid = useId();
   const onSubmit = (e: FormEvent) => {
@@ -394,6 +491,16 @@ export function ShopCheckout(props: ShopCheckoutProps): ReactNode {
             {c.consent.error ? <p className={styles.error}>{c.consent.error}</p> : null}
           </div>
         ) : null}
+        {c.messages ? (
+          <label className={styles.choice} data-testid="wz-consent-messages">
+            <input
+              type="checkbox"
+              checked={c.messages.checked}
+              onChange={(e) => c.messages?.set(e.target.checked)}
+            />
+            <span>{c.messages.text}</span>
+          </label>
+        ) : null}
         {c.formError ? (
           <p id={`${uid}-form-err`} role="alert" className={styles.error}>
             {c.formError}
@@ -407,6 +514,30 @@ export function ShopCheckout(props: ShopCheckoutProps): ReactNode {
         >
           {c.pending ? "Оформляем…" : opts.online ? "Оформить и оплатить" : "Оформить заказ"}
         </button>
+        {terms ? (
+          <p className={styles.muted} data-testid="wz-checkout-terms">
+            Оформляя заказ, вы принимаете условия{" "}
+            <a href={terms.offer} target="_blank" rel="noopener">
+              публичной оферты
+            </a>
+            {terms.delivery ? (
+              <>
+                {" · "}
+                <a href={terms.delivery} target="_blank" rel="noopener">
+                  Доставка и оплата
+                </a>
+              </>
+            ) : null}
+            {terms.returns ? (
+              <>
+                {" · "}
+                <a href={terms.returns} target="_blank" rel="noopener">
+                  Возврат товара
+                </a>
+              </>
+            ) : null}
+          </p>
+        ) : null}
       </form>
     </section>
   );

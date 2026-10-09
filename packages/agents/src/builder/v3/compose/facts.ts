@@ -37,6 +37,8 @@ export interface SiteFacts {
   /** The personal data operator (spec compliance), its ИНН and contacts. */
   operator?: string;
   operatorInn?: string;
+  /** ОГРН or ОГРНИП of the seller (V3-18: a shop's requisites in the footer). */
+  operatorOgrn?: string;
   phone?: string;
   email?: string;
   address?: string;
@@ -142,6 +144,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
     c.operatorAddress ?? "",
     c.operatorContact ?? "",
     c.operatorInn ?? "",
+    c.operatorOgrn ?? "",
   ];
   const numbers = new Set(corpus.flatMap(numbersOf));
   const contact = contactOf(c.operatorContact);
@@ -167,6 +170,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
       : [],
     ...(c.operatorName ? { operator: c.operatorName } : {}),
     ...(c.operatorInn ? { operatorInn: c.operatorInn } : {}),
+    ...(c.operatorOgrn ? { operatorOgrn: c.operatorOgrn } : {}),
     ...contact,
     ...(c.operatorAddress ? { address: c.operatorAddress } : {}),
     policyPage: c.policyPage ?? "/privacy",

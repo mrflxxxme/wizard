@@ -10,6 +10,7 @@ import { sessionOf } from "../http/subject.js";
 import { documentHeaders, escapeHtml, htmlPage } from "../preview/headers.js";
 import { readObjectBody } from "../preview/http.js";
 import { markdownToHtml, renderPolicy } from "../privacy/policy.js";
+import { renderShopTerms, type ShopTermsKind } from "../privacy/shop-terms.js";
 import { eraseSubject, exportSubject, findSubject, parseSubjectQuery } from "../privacy/subject.js";
 import { defaultLegalTemplates } from "../privacy/templates.js";
 
@@ -37,6 +38,23 @@ export function policyPage(c: RuntimeContext): Response {
     (head ? lines.slice(1) : lines).join("\n"),
   )}</div>`;
   return c.body(htmlPage(title, body), 200, documentHeaders());
+}
+
+/** GET /offer, /delivery, /returns of a shop (V3-18): the lawyer's template + the seller's requisites of the spec. */
+export function shopTermsPage(c: RuntimeContext, kind: ShopTermsKind): Response {
+  const sys = c.get("system");
+  const templates = c.get("services").legalTemplates ?? defaultLegalTemplates();
+  const page = renderShopTerms(sys.spec, templates, kind);
+  if (!page)
+    return c.body(
+      htmlPage("Условия магазина", "<p>Страница пока не опубликована.</p>"),
+      200,
+      documentHeaders(),
+    );
+  const lines = page.markdown.split("\n");
+  const head = /^#\s+(.*)$/.exec(lines[0] ?? "");
+  const body = `<div data-testid="wz-shop-terms" data-terms="${kind}">${markdownToHtml((head ? lines.slice(1) : lines).join("\n"))}</div>`;
+  return c.body(htmlPage(head ? (head[1] as string) : page.title, body), 200, documentHeaders());
 }
 
 const PRIVACY_JS = `(function(){var b=document.getElementById("wz-privacy-revoke");if(!b)return;var m=document.getElementById("wz-privacy-status");b.addEventListener("click",function(){if(!window.confirm("Отозвать согласие? Вход будет закрыт, ваши данные будут обезличены."))return;b.disabled=true;fetch("/api/auth/consent/revoke",{method:"POST",credentials:"same-origin",headers:{"X-Wizard-Request":"1"}}).then(function(r){if(r.ok){window.location.replace("/");return}b.disabled=false;m.textContent="Не удалось отозвать согласие, попробуйте позже"},function(){b.disabled=false;m.textContent="Нет связи с сервером"})})})();`;

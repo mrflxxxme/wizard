@@ -275,3 +275,8 @@
   margin: 0;
   color: var(--w-bad);
 }
+
+/* V3-18: the whole description of a product's page keeps the owner's line breaks. */
+.description {
+  white-space: pre-line;
+}

@@ -63,7 +63,7 @@ paths:
                   pendingQuestions: {type: array, items: {$ref: '#/components/schemas/Question'}}
                   messages: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Message'}}
                   activeRunId: {type: [string, 'null'], format: uuid}
-                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED, ORG_SUSPENDED]}, description: 'M1+; пусто — публиковать можно. ORG_SUSPENDED — orgs.suspended_at (abuse.yaml#takedown.flow)'}
+                  publishBlockers: {type: array, items: {type: string, enum: [CARD_BINDING_REQUIRED, OPERATOR_NAME_REQUIRED, OPERATOR_CONTACT_REQUIRED, OPERATOR_ADDRESS_REQUIRED, INN_INVALID, SELLER_REQUISITES_REQUIRED, OGRN_INVALID, PHONE_LOGIN_PLAN_REQUIRED, FOUNDER_REVIEW_PENDING, GATES_FAILED, PLAN_LIMIT, NOT_OWNER, SYSTEM_SUSPENDED, ORG_SUSPENDED]}, description: 'M1+; пусто — публиковать можно. ORG_SUSPENDED — orgs.suspended_at (abuse.yaml#takedown.flow)'}
                   techreviewBlockers: {type: array, items: {type: string}, description: 'V3-18: что нашло техревью v3-сборки, оставившей публикуемую ревизию (причина GATES_FAILED словами); пусто — техревью публикации не мешает'}
         '404': {$ref: '#/components/responses/Error'}
     delete:
@@ -1802,6 +1802,8 @@ components:
             OPERATOR_CONTACT_REQUIRED: 422
             OPERATOR_ADDRESS_REQUIRED: 422
             INN_INVALID: 422
+            SELLER_REQUISITES_REQUIRED: 422
+            OGRN_INVALID: 422
             PHONE_LOGIN_PLAN_REQUIRED: 422
             CARD_NOT_RU: 422
             SYSTEM_SUSPENDED: 422

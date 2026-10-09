@@ -24,6 +24,7 @@ export const SHOP_DEFAULTS = {
   binding: "order",
   cartPath: "/cart",
   orderPath: "/order/",
+  productPath: "/shop/",
 } as const;
 
 /** Russian texts of the shop (functional wordings, no promises of the owner). */
@@ -41,6 +42,8 @@ export const SHOP_TEXTS = {
   busy: "Магазин сейчас занят — попробуйте ещё раз через минуту",
   missing: "Заказ не найден. Откройте его на том устройстве, где оформляли, или напишите в магазин.",
   payFailed: "Не получилось перейти к оплате — попробуйте ещё раз",
+  productMissing: "Товар не найден: возможно, его сняли с продажи или адрес набран с ошибкой.",
+  consentMessages: "Согласен получать письма о заказе: номер, состав и ссылку на страницу заказа",
 } as const;
 
 // ---------------------------------------------------------------- the cart
@@ -267,21 +270,7 @@ export function useShopCatalog(
     },
     [],
   );
-  const item = (row: Rec): ShopItem => {
-    const stock = f.stock && typeof row[f.stock] === "number" ? (row[f.stock] as number) : null;
-    const price = typeof row[f.price] === "number" ? (row[f.price] as number) : null;
-    const inCart = cart.qtyOf(row.id);
-    return {
-      id: row.id,
-      name: textOf(row[f.name]) ?? "",
-      price,
-      description: textOf(row[f.description]),
-      photo: productPhoto(row[f.photo]),
-      stock,
-      canAdd: (stock === null || stock > inCart) && inCart < MAX_QTY,
-      inCart,
-    };
-  };
+  const item = (row: Rec): ShopItem => shopItem(row, f, cart);
   return {
     ...catalog,
     cart,
@@ -295,6 +284,104 @@ export function useShopCatalog(
       timer.current = setTimeout(() => setAdded(null), 2500);
     },
     added,
+  };
+}
+
+/** A product row as the showcase and the product's page show it (fields of the module contract by default). */
+function shopItem(row: Rec, fields: ShopFields, cart: CartModel, width: 480 | 960 | 1600 = 960): ShopItem {
+  const f = { ...FIELDS, ...fields };
+  const stock = f.stock && typeof row[f.stock] === "number" ? (row[f.stock] as number) : null;
+  const price = typeof row[f.price] === "number" ? (row[f.price] as number) : null;
+  const inCart = cart.qtyOf(row.id);
+  return {
+    id: row.id,
+    name: textOf(row[f.name]) ?? "",
+    price,
+    description: textOf(row[f.description]),
+    photo: productPhoto(row[f.photo], width),
+    stock,
+    canAdd: (stock === null || stock > inCart) && inCart < MAX_QTY,
+    inCart,
+  };
+}
+
+// ---------------------------------------------------------------- the product's page (V3-18)
+
+/** A record id of the data API (the address of a product's page carries it). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** An id no row has: the record hook is asked for it while the address names none. */
+const NO_ROW = "00000000-0000-0000-0000-000000000000";
+
+export interface UseProductOptions {
+  /** Address prefix of the product pages («/shop/»): the product's id is the next segment. */
+  path?: string;
+  /** A fixed product instead of the address (previews). */
+  id?: string;
+  fields?: ShopFields;
+}
+
+export interface ProductModel {
+  /** Id of the address; null — the address names none. */
+  id: string | null;
+  /** The product as its page shows it (the large photo); null — loading or none. */
+  item: ShopItem | null;
+  isLoading: boolean;
+  /** Loaded and there is no such product on sale for this role (taken off sale, deleted or a wrong address). */
+  notFound: boolean;
+  error?: WzError;
+  cart: CartModel;
+  add(qty?: number): void;
+  /** Just added: a short «Добавлено в корзину». */
+  added: boolean;
+  refetch(): void;
+}
+
+/** One product of `entity` by the id of the current address (/shop/<id>) with «В корзину» and the stock. */
+export function useProduct(entity: string = SHOP_DEFAULTS.product, o: UseProductOptions = {}): ProductModel {
+  const ds = useDataSource();
+  const { pathname } = useLocation();
+  const raw = o.id ?? slugFromPath(pathname, o.path ?? SHOP_DEFAULTS.productPath);
+  const id = raw && UUID_RE.test(raw) ? raw : null;
+  const rec = ds.useRecord<Rec>(entity, id ?? NO_ROW);
+  const cart = useCart();
+  const [added, setAdded] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const row = id && rec.data ? rec.data : null;
+  const item = row ? shopItem(row, o.fields ?? {}, cart, 1600) : null;
+  const isLoading = id !== null && rec.isLoading && !row;
+  // A row the role may not read (off sale) answers 404: the same «not found» as a wrong address.
+  const missing = !isLoading && !row && (!rec.error || rec.error.status === 404 || rec.error.status === 403);
+  return {
+    id,
+    item,
+    isLoading,
+    notFound: id === null || missing,
+    ...(rec.error && !missing ? { error: rec.error } : {}),
+    cart,
+    add: (qty = 1) => {
+      if (!item?.canAdd) return;
+      cart.add(
+        {
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          photo: productPhoto(row?.[FIELDS.photo]),
+          max: item.stock,
+        },
+        qty,
+      );
+      setAdded(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setAdded(false), 2500);
+    },
+    added,
+    refetch: rec.refetch,
   };
 }
 
@@ -349,6 +436,11 @@ export interface UseCheckoutOptions {
   payment?: { integration: string; binding: string };
   /** Prefix of the order's page («/order/»). */
   orderPath?: string;
+  /**
+   * V3-18: the order keeps the buyer's consent to the letters about it («Напоминания и уведомления»): a separate box,
+   * unchecked by default; the letters go only when it is checked (the e-mail is given).
+   */
+  consentMessages?: boolean;
 }
 
 export type CheckoutField = "name" | "phone" | "email" | "address" | "comment";
@@ -383,6 +475,8 @@ export interface CheckoutModel {
     text: string;
     policyPage?: string;
   };
+  /** The box of the letters about the order (consentMessages of the shop), null — the shop sends none. */
+  messages: { checked: boolean; set(v: boolean): void; text: string } | null;
   /** Price of the chosen delivery, rubles; null — not known yet (СДЭК before the search). */
   deliveryPrice: number | null;
   /** The goods and the delivery by the page's prices (the order's sum is the server's). */
@@ -483,6 +577,7 @@ export function useCheckout(o: UseCheckoutOptions): CheckoutModel {
   });
   const [errors, setErrors] = useState<Partial<Record<CheckoutField | "delivery", string>>>({});
   const [consent, setConsent] = useState(false);
+  const [messages, setMessages] = useState(false);
   const [consentError, setConsentError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
@@ -560,6 +655,7 @@ export function useCheckout(o: UseCheckoutOptions): CheckoutModel {
       ...(method === "pickup" && pickupPoint ? { pickupPoint } : {}),
       ...(method === "courier" ? { address: values.address.trim() } : {}),
       ...(method === "cdek" && quote && cdekPoint ? { quote: quote.quote, cdekPoint } : {}),
+      ...(o.consentMessages && values.email.trim() ? { consentMessages: messages } : {}),
     };
     busy.current = true;
     try {
@@ -650,6 +746,9 @@ export function useCheckout(o: UseCheckoutOptions): CheckoutModel {
       text: spec.compliance?.consentText ?? ru.consent.defaultText,
       ...(spec.compliance?.policyPage ? { policyPage: spec.compliance.policyPage } : {}),
     },
+    messages: o.consentMessages
+      ? { checked: messages, set: setMessages, text: SHOP_TEXTS.consentMessages }
+      : null,
     deliveryPrice,
     total,
     submit,

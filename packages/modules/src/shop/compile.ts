@@ -4,7 +4,7 @@
 // stock journal. Canonical names (the v3 front, the goal programs and the integration layer rely on them): SHOP_NAMES,
 // SHOP_ROUTES, SHOP_FUNCTIONS, SHOP_PAYMENT.
 import type { Entity, Field, ModuleFragments, Workflow } from "@wizard/appspec";
-import type { ModuleContext } from "../types.js";
+import type { ModuleContext, StatusFlow } from "../types.js";
 
 /** Entities and fields of the module contract. */
 export const SHOP_NAMES = {
@@ -18,8 +18,27 @@ export const SHOP_NAMES = {
   quote: "delivery_quote",
 } as const;
 
-/** Public screens: the goods, the cart with the checkout, the order of a buyer. */
-export const SHOP_ROUTES = { shop: "/shop", cart: "/cart", order: "/order/:id" } as const;
+/** Public screens: the goods, a product's page (V3-18), the cart with the checkout, the order of a buyer. */
+export const SHOP_ROUTES = {
+  shop: "/shop",
+  product: "/shop/:id",
+  cart: "/cart",
+  order: "/order/:id",
+} as const;
+
+/**
+ * The seller's pages of a shop (V3-18; ст. 26.1 ЗоЗПП, ПП РФ № 2463): the public offer, delivery and payment, returns.
+ * The runtime serves them from the lawyer's templates and the seller's requisites (@wizard/runtime SHOP_TERMS_PAGES);
+ * the checkout and the footer link them.
+ */
+export const SHOP_TERMS_ROUTES = { offer: "/offer", delivery: "/delivery", returns: "/returns" } as const;
+
+/** Russian names of the seller's pages (links of the footer and the checkout). */
+export const SHOP_TERMS_LABELS = {
+  offer: "Публичная оферта",
+  delivery: "Доставка и оплата",
+  returns: "Возврат товара",
+} as const;
 
 /** Functions of the module (the v3 headless hooks and the goal programs call them by name). */
 export const SHOP_FUNCTIONS = {
@@ -29,6 +48,10 @@ export const SHOP_FUNCTIONS = {
   saveQuote: "shopSaveQuote",
   returnStock: "shopReturnStock",
   paid: "shopOrderPaid",
+  setStatus: "shopSetStatus",
+  refund: "shopRefund",
+  expire: "shopExpireOrder",
+  stockAdjust: "shopStockAdjust",
 } as const;
 
 /** The ЮKassa connector integration and its binding (POST /api/pay/shop_pay {binding: "order"}). */
@@ -49,6 +72,53 @@ export const ORDER_STATUSES = [
 
 /** Statuses of an order that count as a sale (the goal panel). */
 export const SOLD_STATUSES = ["paid", "assembling", "ready", "shipped", "done"] as const;
+
+/**
+ * Statuses the shop sets by hand from each status (shopSetStatus checks them on the server; the cabinet shows these
+ * buttons). With the online payment «Ждёт оплаты», «Оплачен» and «Возврат оплаты» come only from the payment (the
+ * connector, the refund): a paid order is not cancelled by hand — its money goes back by «Вернуть оплату».
+ */
+export function orderTransitions(o: Pick<ShopOptions, "online">): Record<string, string[]> {
+  const after = (from: string[]) => [...from, ...(o.online ? [] : ["canceled"])];
+  return o.online
+    ? {
+        awaiting_payment: ["canceled"],
+        paid: ["assembling", "ready", "shipped", "done"],
+        assembling: ["ready", "shipped", "done"],
+        ready: ["shipped", "done"],
+        shipped: ["done"],
+      }
+    : {
+        new: ["assembling", "ready", "shipped", "done", "canceled"],
+        assembling: after(["ready", "shipped", "done"]),
+        ready: after(["shipped", "done"]),
+        shipped: after(["done"]),
+      };
+}
+
+/** The status flow of the order in the cabinets (screens/cabinet.ts): the buttons by the transitions, the refund. */
+export function shopStatusFlows(ctx: ModuleContext): Record<string, StatusFlow> {
+  const o = shopOptions(ctx.params);
+  return {
+    [N_ORDER]: {
+      fn: SHOP_FUNCTIONS.setStatus,
+      next: orderTransitions(o),
+      ...(o.online
+        ? {
+            actions: [
+              {
+                id: "refund",
+                label: "Вернуть оплату",
+                fn: SHOP_FUNCTIONS.refund,
+                confirm: "Вернуть покупателю всю сумму заказа через ЮKassa?",
+                when: [...SOLD_STATUSES],
+              },
+            ],
+          }
+        : {}),
+    },
+  };
+}
 
 export const DELIVERY_METHODS = [
   { value: "pickup", label: "Самовывоз" },
@@ -98,6 +168,7 @@ export function shopOptions(params: Readonly<Record<string, unknown>>): ShopOpti
 }
 
 const N = SHOP_NAMES;
+const N_ORDER = SHOP_NAMES.order;
 const pii = (kind: NonNullable<Field["piiKind"]>): Pick<Field, "pii" | "piiKind"> => ({
   pii: "basic",
   piiKind: kind,
@@ -119,6 +190,8 @@ export function productFields(o: ShopOptions): Field[] {
             min: 0,
             max: 1000000,
           } satisfies Field,
+          // The stock the journal knows: a manual edit of the stock is journaled as its difference (shopStockAdjust).
+          { name: "stock_journaled", label: "Остаток по журналу", type: "int" } satisfies Field,
         ]
       : []),
     ...(o.withCategories
@@ -306,7 +379,8 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
           label: "Заказ",
           type: "ref",
           required: true,
-          ref: { entity: N.order, onDelete: "cascade" },
+          // The payment journal outlives nothing: an order with payments is not deleted.
+          ref: { entity: N.order, onDelete: "restrict" },
         },
         {
           name: "kind",
@@ -363,6 +437,7 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
           enum: [
             { value: "sale", label: "Списание по заказу" },
             { value: "return", label: "Возврат по отмене" },
+            { value: "adjust", label: "Правка остатка вручную" },
           ],
         },
         {
@@ -401,11 +476,33 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
   const publicRead = (entity: string, rowFilter?: Record<string, unknown>) => ({
     value: { role: "$public", entity, ops: ["read"], ...(rowFilter ? { rowFilter } : {}) },
   });
-  const orderAccess = { readonlyFields: orderReadonly(o), hiddenFields: ["token"] };
+  // The status changes only by shopSetStatus (its transitions) and the payment: never by a plain update (V3-18).
+  const orderAccess = { readonlyFields: [...orderReadonly(o), "status"], hiddenFields: ["token"] };
+  const journaled = o.withStock ? ["stock_journaled"] : [];
+  // The staff changes the stock only (the manifest's link): name, price and sale are the owner's.
+  const staffProduct = productFields(o)
+    .map((f) => f.name)
+    .filter((f) => f !== "stock");
   const permissions = [
-    publicRead(N.product, { active: true }),
-    owner(N.product, ["read", "create", "update", "delete"]),
-    staff(N.product, ["read", "update"]),
+    {
+      value: {
+        ...publicRead(N.product, { active: true }).value,
+        ...(journaled.length ? { hiddenFields: journaled } : {}),
+      },
+    },
+    owner(
+      N.product,
+      ["read", "create", "update", "delete"],
+      journaled.length ? { readonlyFields: journaled } : {},
+    ),
+    // Without the staff module $staff is the owner: the restriction is only for the real staff roles.
+    ctx.present.has("staff")
+      ? staff(
+          N.product,
+          o.withStock ? ["read", "update"] : ["read"],
+          o.withStock ? { readonlyFields: staffProduct } : {},
+        )
+      : staff(N.product, ["read", "update"], journaled.length ? { readonlyFields: journaled } : {}),
     ...(o.withCategories
       ? [
           publicRead(N.category),
@@ -421,7 +518,8 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
         ]
       : []),
     // Orders come only from the site through shopPlaceOrder (prices, stock and the number are the server's).
-    owner(N.order, ["read", "update", "delete"], orderAccess),
+    // No delete: an order keeps its lines, payments and stock moves (the shop's accounting).
+    owner(N.order, ["read", "update"], orderAccess),
     staff(N.order, ["read", "update"], orderAccess),
     owner(N.line, ["read"]),
     staff(N.line, ["read"]),
@@ -434,12 +532,20 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
   const workflows: Workflow[] = [];
   if (o.online)
     workflows.push({
-      // An order not paid in time is cancelled: its goods go back to the stock.
+      // An order not paid in time is cancelled: its goods go back to the stock. A payment still in progress or
+      // waiting for the owner's check keeps the order (shopExpireOrder reads the payment journal).
       name: "shop_order_expire",
       label: "Отменить заказ без оплаты",
       trigger: { type: "schedule", entity: N.order, relative: { field: "pay_until", offsetMinutes: 0 } },
       steps: [
-        { type: "update", params: { if: { status: ["awaiting_payment"] }, set: { status: "canceled" } } },
+        {
+          type: "function",
+          params: {
+            name: SHOP_FUNCTIONS.expire,
+            if: { status: ["awaiting_payment"] },
+            args: { id: "$record.id" },
+          },
+        },
       ],
     });
   if (o.withStock)
@@ -458,6 +564,32 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
         label: "Списать товары заказа, оплаченного после отмены",
         trigger: { type: "on_status", entity: N.order, field: "status", equals: "paid" },
         steps: [{ type: "function", params: { name: SHOP_FUNCTIONS.paid, args: { id: "$record.id" } } }],
+      },
+      {
+        // The money went back (the refund confirmed by ЮKassa): the goods are back in stock, as after a cancel.
+        name: "shop_stock_refunded",
+        label: "Вернуть товары заказа с возвратом оплаты на склад",
+        trigger: { type: "on_status", entity: N.order, field: "status", equals: "refunded" },
+        steps: [
+          { type: "function", params: { name: SHOP_FUNCTIONS.returnStock, args: { id: "$record.id" } } },
+        ],
+      },
+      {
+        // A manual edit of the stock in the cabinet is journaled as its difference (F, V3-18).
+        name: "shop_stock_adjust",
+        label: "Записать правку остатка в журнал",
+        trigger: { type: "on_update", entity: N.product, field: "stock" },
+        steps: [
+          { type: "function", params: { name: SHOP_FUNCTIONS.stockAdjust, args: { id: "$record.id" } } },
+        ],
+      },
+      {
+        name: "shop_stock_initial",
+        label: "Запомнить начальный остаток товара",
+        trigger: { type: "on_create", entity: N.product },
+        steps: [
+          { type: "function", params: { name: SHOP_FUNCTIONS.stockAdjust, args: { id: "$record.id" } } },
+        ],
       },
     );
 
@@ -481,6 +613,9 @@ export function compileShop(ctx: ModuleContext): ModuleFragments {
                   description: "Заказ №{{number}}",
                   returnRoute: SHOP_ROUTES.order,
                   accessField: "token",
+                  // A declined card keeps the order payable until its time to pay; the reason goes to the note.
+                  retryUntilField: "pay_until",
+                  noteField: "note",
                   receipt: {
                     customerEmailField: "email",
                     customerPhoneField: "phone",

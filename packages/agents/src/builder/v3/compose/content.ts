@@ -2,7 +2,13 @@
 // fact is missing the section gets an honest functional wording («Оставьте заявку») or is left out — never numbers,
 // reviews or claims the owner did not give (D49, catalog H.4). Props are the union of what the variants of a section
 // type may show; the slot schema of the chosen pattern keeps its part.
-import { CONTENT_NAMES, CONTENT_SCREENS, entryPrefix } from "@wizard/modules";
+import {
+  CONTENT_NAMES,
+  CONTENT_SCREENS,
+  entryPrefix,
+  SHOP_TERMS_LABELS,
+  SHOP_TERMS_ROUTES,
+} from "@wizard/modules";
 import { PATTERNS, type PatternMeta, patternById, type SectionType } from "@wizard/ui-kit/v3/patterns";
 import { type CabinetSection, VISITOR_CABINET_MODULE } from "./account.js";
 import { type SiteFacts, textOf } from "./facts.js";
@@ -284,8 +290,19 @@ function footerProps(c: SectionContext): Props {
       operator:
         fits(f.operator, 120) ??
         `Владелец сайта «${f.copy.site}» — оператор персональных данных`.slice(0, 120),
-      ...(f.operatorInn ? { details: `ИНН ${f.operatorInn}` } : {}),
+      ...(f.operatorInn || f.operatorOgrn
+        ? {
+            details: [
+              f.operatorInn ? `ИНН ${f.operatorInn}` : "",
+              f.operatorOgrn ? `${f.operatorOgrn.length === 15 ? "ОГРНИП" : "ОГРН"} ${f.operatorOgrn}` : "",
+            ]
+              .filter(Boolean)
+              .join(", "),
+          }
+        : {}),
       policy: { label: "Политика обработки персональных данных", href: f.policyPage },
+      // V3-18: a shop links its offer, delivery and payment, returns (ст. 26.1 ЗоЗПП) on every page.
+      ...(c.pages.some((p) => p.module === SHOP_MODULE) ? { links: shopTermsLinks() } : {}),
     },
   };
   const tagline = fits(f.description, LINE.tagline);
@@ -467,6 +484,13 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   return { entity, title: fits(c.page.title, LINE.cta) ?? "Материалы", empty: "Записей пока нет" };
 }
 
+/** The seller's pages of a shop (served by the runtime from the seller's requisites, V3-18). */
+const shopTermsLinks = () =>
+  (["offer", "delivery", "returns"] as const).map((k) => ({
+    label: SHOP_TERMS_LABELS[k],
+    href: SHOP_TERMS_ROUTES[k],
+  }));
+
 /**
  * Sections of «Интернет-магазин» (V3-23) in the slot contract of the shop, cart and order patterns: the goods entity
  * and its sections, the module's checkout (delivery methods, payment, functions), the cart and order pages. The texts
@@ -478,6 +502,7 @@ function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | nu
   const route = (kind: PageKind) => c.pages.find((p) => p.module === SHOP_MODULE && p.kind === kind)?.route;
   const shopRoute = route("shop");
   const cartRoute = route("cart");
+  const productRoute = route("product");
   const back = shopRoute ? { back: { label: "Вернуться к товарам", href: shopRoute } } : {};
   const own = c.page.kind === type;
   if (type === "shop") {
@@ -495,6 +520,18 @@ function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | nu
       empty: "Товары скоро появятся",
       pageSize: own ? 24 : 8,
       cart: { label: "Корзина", href: cartRoute },
+      ...(productRoute ? { product: { path: productRoute.replace(/:id$/, "") } } : {}),
+    };
+  }
+  if (type === "product") {
+    if (!cartRoute || !isParamRoute(c.page.route)) return null;
+    return {
+      entity: b.action.entity,
+      path: c.page.route.replace(/:id$/, ""),
+      fields: { stock: cfg.stockField },
+      cart: { label: "Корзина", href: cartRoute },
+      ...(shopRoute ? { back: { label: "Все товары", href: shopRoute } } : {}),
+      missing: "Возможно, товар сняли с продажи или адрес набран с ошибкой.",
     };
   }
   if (type === "cart") {
@@ -511,8 +548,15 @@ function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | nu
         cdekFn: cfg.cdekFn,
         ...(cfg.payment ? { payment: cfg.payment } : {}),
         orderPath: cfg.orderPath,
+        ...(cfg.consentMessages ? { consentMessages: true } : {}),
       },
       ...back,
+      terms: Object.fromEntries(
+        (["offer", "delivery", "returns"] as const).map((k) => [
+          k,
+          { label: SHOP_TERMS_LABELS[k], href: SHOP_TERMS_ROUTES[k] },
+        ]),
+      ),
       empty: "В корзине пока ничего нет",
       ...(note ? { note } : {}),
     };
@@ -625,6 +669,7 @@ export function sectionProps(type: SectionType, c: SectionContext): Props | null
     case "shop":
     case "cart":
     case "order":
+    case "product":
       return boundProps(type, c);
     default:
       return c.page.kind === "home" || type === "faq" || type === "contacts" ? contentProps(type, c) : null;
@@ -748,6 +793,7 @@ export const KIND_LABELS: Readonly<Record<PageKind, string>> = {
   shop: "магазин",
   cart: "корзина",
   order: "заказ покупателя",
+  product: "страница товара",
 };
 
 /** The «sent» headings of the module forms: the goal scenarios read them after a write (GS-leads-1, GS-booking-1). */

@@ -8,8 +8,10 @@ import {
   BOOKING_CONSENT_FIELD,
   compileNotify,
   NOTIFY_BOOKING,
+  NOTIFY_SHOP,
   notifyPlan,
   otherNotifyItems,
+  SHOP_CONSENT_FIELD,
 } from "./compile.js";
 
 export const notifyManifest: ModuleManifest = {
@@ -73,6 +75,20 @@ export const notifyManifest: ModuleManifest = {
     { module: "deals", effect: "напоминание ответственному о задаче по сделке" },
     { module: "packages", effect: "напоминание об окончании абонемента" },
     { module: "resources", effect: "напоминание о возврате и просрочке" },
+    {
+      module: "shop",
+      effect:
+        "письма о новом заказе и оплате владельцу, покупателю — номер, состав и ссылка на заказ с его согласия",
+      fragments: {
+        fields: [
+          {
+            when: { param: "visitor_emails" },
+            entity: NOTIFY_SHOP.order,
+            value: { ...SHOP_CONSENT_FIELD },
+          },
+        ],
+      },
+    },
   ],
   provides: { routes: ["/cabinet/notifications"] },
   hook: true,

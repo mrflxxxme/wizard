@@ -155,6 +155,19 @@ export function pgConnectorStore(data: DataAccess, integration: string, now: () 
           values (${id(key)}, ${integration}, 'kv', 'stored', ${tx.sql.json(result as never)})
           on conflict (idempotency_key) do update set result = excluded.result, status = excluded.status`;
       }),
+    // One statement: a live value keeps the row (no row returned), an expired one is replaced.
+    setIfAbsent: (key, value, ttlMs = STORE_TTL_FOREVER) =>
+      data.transaction("default", SYSTEM_SUBJECT, async (tx) => {
+        const at = now().getTime();
+        const result = { value, until: at + Math.min(ttlMs, STORE_TTL_FOREVER) };
+        const rows = await tx.sql`
+          insert into ${tx.sql(data.schema)}.${tx.sql("_w_connector_calls")} as c (idempotency_key, integration, action, status, result)
+          values (${id(key)}, ${integration}, 'kv', 'stored', ${tx.sql.json(result as never)})
+          on conflict (idempotency_key) do update set result = excluded.result, status = excluded.status
+          where (c.result->>'until')::bigint < ${at}
+          returning 1 as won`;
+        return rows.length === 1;
+      }),
   };
 }
 

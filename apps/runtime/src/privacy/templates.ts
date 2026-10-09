@@ -6,7 +6,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type LegalTemplateKind = "policy" | "consent";
+/** policy and consent — 152-ФЗ; shop — the seller's terms of «Интернет-магазин» (offer, delivery, returns; V3-18). */
+export type LegalTemplateKind = "policy" | "consent" | "shop";
 
 export interface LegalTemplate {
   id: string;
@@ -59,7 +60,8 @@ export function parseLegalTemplate(text: string, source?: string): LegalTemplate
 function validate(t: LegalTemplate): void {
   const where = t.source ?? `${t.kind}:${t.id}`;
   if (!ID_RE.test(t.id)) throw new LegalTemplateError(`${where}: invalid id`);
-  if (t.kind !== "policy" && t.kind !== "consent") throw new LegalTemplateError(`${where}: invalid kind`);
+  if (t.kind !== "policy" && t.kind !== "consent" && t.kind !== "shop")
+    throw new LegalTemplateError(`${where}: invalid kind`);
   if (t.status !== "draft" && t.status !== "approved")
     throw new LegalTemplateError(`${where}: invalid status`);
   if (!t.version) throw new LegalTemplateError(`${where}: version is required`);

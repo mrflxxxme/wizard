@@ -69,6 +69,8 @@ const withOperator = (spec: AppSpec): AppSpec => ({
     operatorName: "Тестовый оператор V3-10",
     operatorContact: "owner@example.test",
     operatorAddress: "Тестовые данные V3-10, не для публикации",
+    // V3-18: a shop's offer also names the seller's ИНН (a valid check digit).
+    operatorInn: "7707083893",
   },
 });
 

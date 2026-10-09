@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { dropSystemRoleDDL, quoteIdent } from "@wizard/appspec";
 import {
   type ConnectorCtx,
+  checkPaymentOnReturn,
   derivedToken,
   invokeAction,
   newQrKeyring,
@@ -161,6 +162,41 @@ async function connectorCtx(idempotencyKey: string): Promise<ConnectorCtx> {
 }
 
 describe("draft with a test shop (connectors: 'live')", () => {
+  test("V3-18: the notice and the return check together apply the payment once (claim in Postgres)", async () => {
+    const id = await ticket();
+    expect((await pay({ binding: "ticket", id })).status).toBe(200);
+    const pid = paymentFor(id);
+    mock.succeed(pid);
+    const ctx = await connectorCtx(`race-${id}`);
+    // The store's atomic claim: one winner among concurrent callers.
+    const claims = await Promise.all(
+      Array.from({ length: 5 }, () => ctx.store.setIfAbsent?.(`race-claim:${id}`, { x: 1 }, 60_000)),
+    );
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    const [notice, back] = await Promise.all([
+      hook(mock.notification("payment.succeeded", pid)),
+      checkPaymentOnReturn(ctx, { binding: "ticket", id }),
+    ]);
+    expect([200, 409]).toContain(notice.status);
+    expect(["applied", "busy", "duplicate"]).toContain(back);
+    expect((await row(id))?.status).toBe("paid");
+    expect(await payments(id)).toMatchObject([{ kind: "payment", status: "succeeded" }]);
+    // A notice answered 409 (busy) is delivered again by ЮKassa: then it is a duplicate.
+    expect((await hook(mock.notification("payment.succeeded", pid))).status).toBe(200);
+  });
+
+  test("V3-18: the owner's page shows the address of the notifications; others are refused", async () => {
+    const anon = await rt.fetch(request("GET", HOST, "/_wizard/payments"));
+    expect(await anon.text()).toContain("Войдите");
+    expect((await rt.fetch(request("GET", HOST, "/_wizard/payments", { cookie }))).status).toBe(403);
+    const admin = await login(rt, HOST, "organizer");
+    const page = await rt.fetch(request("GET", HOST, "/_wizard/payments", { cookie: admin }));
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("/_wizard/hooks/yookassa/yookassa/");
+    expect(html).toContain("HTTP-уведомления");
+  });
+
   test("pay → paidStatus → refund → refundedStatus; client amount ignored; redelivery idempotent", async () => {
     const id = await ticket();
     const res = await pay({ binding: "ticket", id, amount: 1 });

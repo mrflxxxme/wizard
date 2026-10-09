@@ -193,7 +193,20 @@ export function innValid(inn: string): boolean {
   return sum([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[10] && sum([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[11];
 }
 
-/** G2-PII-06: operator data (name, contact; address from M2) and the ИНН checksum. */
+/** ОГРН (13 digits) or ОГРНИП (15) with a valid check digit. */
+export function ogrnValid(ogrn: string): boolean {
+  if (!/^\d{13}$|^\d{15}$/.test(ogrn)) return false;
+  const mod = ogrn.length === 13 ? 11n : 13n;
+  return Number((BigInt(ogrn.slice(0, -1)) % mod) % 10n) === Number(ogrn.slice(-1));
+}
+
+/** The order entity of «Интернет-магазин» (@wizard/modules SHOP_NAMES.order): a system with it is a shop. */
+const SHOP_ORDER_ENTITY = "shop_order";
+
+/**
+ * G2-PII-06: operator data (name, contact; address from M2) and the ИНН checksum. V3-18: a shop (ст. 26.1 ЗоЗПП,
+ * ПП РФ № 2463) also needs the seller's name, ИНН and address for its offer; ОГРН, when set, passes its checksum.
+ */
 export function operator(spec: AppSpec, afterM2: boolean): Finding[] {
   const c = spec.compliance ?? {};
   const out: Finding[] = [];
@@ -219,6 +232,28 @@ export function operator(spec: AppSpec, afterM2: boolean): Finding[] {
           fixHint: "Заполняет владелец в настройках системы (данные оператора)",
         });
   }
+  if (spec.entities.some((e) => e.name === SHOP_ORDER_ENTITY)) {
+    const missing = [
+      blank(c.operatorName) ? "название продавца" : "",
+      blank(c.operatorInn) ? "ИНН" : "",
+      blank(c.operatorAddress) ? "адрес" : "",
+    ].filter(Boolean);
+    if (missing.length)
+      out.push({
+        message_ru: `Магазину не хватает реквизитов продавца для оферты: ${missing.join(", ")}`,
+        path: "/compliance",
+        evidence: "SELLER_REQUISITES_REQUIRED",
+        fixHint:
+          "Заполняет владелец в данных оператора персональных данных: название (юрлицо, ИП или ФИО), ИНН, адрес; ОГРН или ОГРНИП — если есть",
+      });
+  }
+  if (c.operatorOgrn !== undefined && !ogrnValid(c.operatorOgrn))
+    out.push({
+      message_ru: "ОГРН продавца указан с ошибкой",
+      path: "/compliance/operatorOgrn",
+      evidence: "OGRN_INVALID",
+      fixHint: "Проверьте ОГРН (13 цифр для организации, 15 — ОГРНИП для ИП)",
+    });
   if (c.operatorInn !== undefined && !innValid(c.operatorInn))
     out.push({
       message_ru: "ИНН оператора указан с ошибкой",

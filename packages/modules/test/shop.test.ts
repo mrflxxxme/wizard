@@ -14,7 +14,9 @@ import { buildSystem, writeArtifact } from "@wizard/build";
 import {
   handleYookassaNotification,
   RECEIPT_DELIVERY_ITEM,
+  renderNotifyEmail,
   startPayment,
+  validateIntegrations,
   YOOKASSA_IP_ALLOWLIST,
 } from "@wizard/connectors";
 import { YookassaMock } from "@wizard/connectors/mocks";
@@ -27,6 +29,7 @@ import {
   MemoryRegistry,
   migrateSystem,
   type RuntimeApp,
+  SHOP_TERMS_PAGES,
   schemaName,
 } from "@wizard/runtime";
 import postgres from "postgres";
@@ -36,8 +39,11 @@ import {
   type CompileSuccess,
   compilePlan,
   matrixPlan,
+  orderTransitions,
   SHOP_FUNCTIONS,
   SHOP_PAYMENT,
+  SHOP_ROUTES,
+  SHOP_TERMS_ROUTES,
   shopManifest,
 } from "../src/index.js";
 import { testRegistry } from "./fixtures.js";
@@ -97,7 +103,7 @@ describe("compiled spec by parameters", () => {
     expect(perm(r, "guest", "shop_order")).toBeUndefined();
     expect(perm(r, "guest", "shop_payment")).toBeUndefined();
     expect(perm(r, "owner", "shop_order")).toMatchObject({
-      ops: ["read", "update", "delete"],
+      ops: ["read", "update"],
       hiddenFields: ["token"],
     });
     expect(perm(r, "owner", "shop_order")?.readonlyFields).toEqual(
@@ -210,7 +216,13 @@ describe("compiled spec by parameters", () => {
     // The owner filled the operator of personal data (G2-PII-06 asks it of every system with ПДн).
     const spec = {
       ...r.spec,
-      compliance: { operatorName: "ООО «Лавка»", operatorContact: "privacy@lavka.example" },
+      // V3-18: a shop's offer also needs the seller's ИНН and address.
+      compliance: {
+        operatorName: "ООО «Лавка»",
+        operatorContact: "privacy@lavka.example",
+        operatorInn: "7707083893",
+        operatorAddress: "г. Москва, ул. Лавочная, д. 1",
+      },
     };
     const g2 = await runGates("G2", {
       spec,
@@ -225,6 +237,122 @@ describe("compiled spec by parameters", () => {
     });
     const blockers = g2.checks.filter((c) => c.severity === "blocker" && c.status === "fail");
     expect(blockers.map((c) => `${c.id}: ${c.message_ru} ${c.evidence ?? ""}`)).toEqual([]);
+  }, 120_000);
+});
+
+describe("V3-18: product page, seller's pages, letters, the order's status and the rights", () => {
+  test("the product page /shop/:id is a screen of the module; the seller's pages are the runtime's", () => {
+    const r = compiled(plan(DEFAULT));
+    expect(shopManifest.provides?.routes).toContain(SHOP_ROUTES.product);
+    expect(r.spec.pages?.some((p) => p.route === "/shop/:id")).toBe(true);
+    const product = Object.values(r.files).find((src) => src.includes("<ShopProduct "));
+    expect(product).toContain('path="/shop/"');
+    // The cards of /shop lead to the product page, the checkout to the offer.
+    const pages = Object.values(r.files).join("\n");
+    expect(pages).toContain('productPath="/shop/"');
+    expect(pages).toMatch(/terms=\{\{.*"offer":"\/offer"/);
+    expect(SHOP_TERMS_ROUTES).toEqual(SHOP_TERMS_PAGES);
+  });
+
+  test("the status: no plain update, buttons by the transitions, the refund only to the owner; no delete", () => {
+    const r = compiled(plan("сотрудники собирают заказы"));
+    expect(perm(r, "owner", "shop_order")?.readonlyFields).toContain("status");
+    expect(perm(r, "owner", "shop_order")?.ops).not.toContain("delete");
+    const pay = entity(r, "shop_payment")?.fields.find((f) => f.name === "shop_order");
+    expect(pay?.ref?.onDelete).toBe("restrict");
+    const cabinet = r.files["ui/pages/Cabinet.tsx"] ?? "";
+    // No button sets «Оплачен» or «Ждёт оплаты» by hand; «Собирается» goes through the function from «Оплачен».
+    expect(cabinet).not.toMatch(/patch: \{ status:/);
+    expect(cabinet).toContain(`fn: "${SHOP_FUNCTIONS.setStatus}", args: { status: "assembling" }`);
+    expect(cabinet).not.toContain('args: { status: "paid" }');
+    expect(cabinet).not.toContain('args: { status: "awaiting_payment" }');
+    expect(cabinet).toContain(`fn: "${SHOP_FUNCTIONS.refund}"`);
+    expect(orderTransitions({ online: true }).paid).not.toContain("canceled");
+    expect(Object.values(orderTransitions({ online: true })).flat()).not.toContain("paid");
+    // The staff changes only the stock of a product and never refunds.
+    const staffRole = r.spec.roles.find((x) => x.name.startsWith("staff"))?.name ?? "staff";
+    expect(perm(r, staffRole, "product")?.readonlyFields).toEqual(
+      expect.arrayContaining(["name", "price", "active", "description"]),
+    );
+    expect(perm(r, staffRole, "product")?.readonlyFields).not.toContain("stock");
+    const fns = new Map((r.spec.functions ?? []).map((f) => [f.name, f]));
+    expect(fns.get(SHOP_FUNCTIONS.refund)?.roles).toEqual(["owner"]);
+    expect(fns.get(SHOP_FUNCTIONS.setStatus)?.roles).toEqual(expect.arrayContaining(["owner", staffRole]));
+    const staffCabinet = Object.entries(r.files).find(([path]) => /Cabinet.+Staff/i.test(path))?.[1] ?? "";
+    if (staffCabinet) expect(staffCabinet).not.toContain(SHOP_FUNCTIONS.refund);
+    // ЮKassa's G0: the amount and the status are set only by the server; the description has no personal data.
+    expect(validateIntegrations(r.spec)).toEqual([]);
+    expect(r.spec.workflows?.find((w) => w.name === "shop_order_expire")?.steps[0]).toMatchObject({
+      type: "function",
+      params: { name: SHOP_FUNCTIONS.expire },
+    });
+  });
+
+  test("letters: the new order and its payment to the owner, to the buyer only with his consent and the order's link", async () => {
+    const r = compiled(plan(DEFAULT));
+    expect(r.plan.modules.some((m) => m.id === "notify")).toBe(true);
+    expect(field(r, "shop_order", "consent_messages")).toMatchObject({ type: "bool", default: false });
+    const wf = new Map((r.spec.workflows ?? []).map((w) => [w.name, w]));
+    expect(wf.get("shop_order_notify")?.trigger).toEqual({ type: "on_create", entity: "shop_order" });
+    expect(wf.get("shop_paid_notify")?.trigger).toMatchObject({ type: "on_status", equals: "paid" });
+    expect(wf.get("shop_payment_review")?.trigger).toMatchObject({
+      entity: "shop_payment",
+      equals: "needs_review",
+    });
+    const buyer = wf
+      .get("shop_order_notify")
+      ?.steps.find((st) => String((st.params as Record<string, unknown>).to).startsWith("$record."));
+    expect(buyer?.params).toMatchObject({
+      to: "$record.email",
+      consentField: "consent_messages",
+      link: "/order/$record.id?t=$record.token",
+    });
+    expect(
+      wf.get("shop_order_notify")?.steps.some((st) => (st.params as Record<string, unknown>).to === "$owner"),
+    ).toBe(true);
+    // The buyer's letter: the number, the lines and the link that opens the order on any device.
+    const ctx = createTestCtx({ spec: r.spec, integration: "mail", host: "lavka.example" });
+    const token = secret();
+    const record = {
+      id: "0b7a1f8e-0000-4000-8000-000000000001",
+      number: 1001,
+      total: 2400,
+      items_summary: "Свеча × 2",
+      email: "buyer@example.ru",
+      consent_messages: true,
+      token,
+    };
+    const letter = await renderNotifyEmail(
+      ctx,
+      {
+        params: buyer?.params as Record<string, unknown>,
+        entity: "shop_order",
+        record,
+        jobId: "j",
+        stepIndex: 0,
+      },
+      "visitor",
+    );
+    expect(letter?.subject).toBe("Заказ №1001 оформлен");
+    expect(letter?.text).toContain("Свеча × 2");
+    expect(letter?.text).toContain(`https://lavka.example/order/${record.id}?t=${token}`);
+    // The seller's requisites are a publish condition of a shop (G2-PII-06).
+    const g2 = await runGates("G2", {
+      spec: {
+        ...r.spec,
+        compliance: { operatorName: "ООО «Лавка»", operatorContact: "privacy@lavka.example" },
+      },
+      prevSpec: null,
+      specVersion: 1,
+      files: new Map(Object.entries(r.files)),
+      env: "draft",
+      systemKey: "shop_g2_seller",
+      milestone: "M1",
+      db: undefined as unknown as postgres.Sql,
+    });
+    expect(g2.checks.some((c) => c.status === "fail" && c.evidence === "SELLER_REQUISITES_REQUIRED")).toBe(
+      true,
+    );
   }, 120_000);
 });
 
@@ -656,4 +784,98 @@ describe("runtime: orders, the stock, the payment by the buyer's secret", () => 
       ["sale", -3],
     ]);
   }, 60_000);
+
+  test("V3-18: the status only by the transitions, no delete of an order, the consent to the letters is kept", async () => {
+    const product = await created(shop, "product", { name: "Чашка", price: 300, stock: 5, active: true });
+    const r = await order(shop, {
+      lines: [{ product, qty: 1 }],
+      delivery: "pickup",
+      pickupPoint: point,
+      name: "Покупатель",
+      phone: "+79007770001",
+      email: "cup@example.ru",
+      consentMessages: true,
+      token: secret(),
+    });
+    const id = r.result?.id as string;
+    expect((await rows(shop, "shop_order")).find((x) => x.id === id)?.consent_messages).toBe(true);
+    // A plain update of the status and a delete are refused: «Оплачен» comes only from the payment.
+    expect(
+      (await shop.send("PATCH", `/api/data/shop_order/${id}`, { status: "paid" }, shop.owner)).status,
+    ).toBeGreaterThanOrEqual(400);
+    expect(
+      (await shop.send("DELETE", `/api/data/shop_order/${id}`, undefined, shop.owner)).status,
+    ).toBeGreaterThanOrEqual(400);
+    const set = (status: string) =>
+      shop.send("POST", `/api/fn/${SHOP_FUNCTIONS.setStatus}`, { args: { id, status } }, shop.owner);
+    const bad = await set("paid");
+    expect(bad.status).toBeGreaterThanOrEqual(400);
+    expect(((await json(bad)).error as { code?: string }).code).toBe("INVALID_TRANSITION");
+    expect((await set("canceled")).status).toBe(200);
+    expect((await rows(shop, "shop_order")).find((x) => x.id === id)?.status).toBe("canceled");
+  }, 60_000);
+
+  test("V3-18: at most 5 unpaid orders of one phone an hour", async () => {
+    const product = await created(shop, "product", { name: "Ложка", price: 100, stock: 50, active: true });
+    const place = () =>
+      order(shop, {
+        lines: [{ product, qty: 1 }],
+        delivery: "pickup",
+        pickupPoint: point,
+        name: "Покупатель",
+        phone: "+79008880002",
+        token: secret(),
+      });
+    for (let i = 0; i < 5; i++) expect((await place()).status).toBe(200);
+    const sixth = await place();
+    expect(sixth.code).toBe("TOO_MANY_ORDERS");
+    const other = await order(shop, {
+      lines: [{ product, qty: 1 }],
+      delivery: "pickup",
+      pickupPoint: point,
+      name: "Другой",
+      phone: "+79008880003",
+      token: secret(),
+    });
+    expect(other.status).toBe(200);
+  }, 60_000);
+
+  test("V3-18: a manual stock edit is journaled; an expired order with a payment in progress is kept", async () => {
+    const product = await created(shop, "product", { name: "Блюдо", price: 1500, stock: 4, active: true });
+    const run = (at: number) => rt.runJobs({ slug: shop.slug, env: "draft", now: new Date(at) });
+    await run(Date.now());
+    expect((await shop.send("PATCH", `/api/data/product/${product}`, { stock: 7 }, shop.owner)).status).toBe(
+      200,
+    );
+    await run(Date.now() + 1000);
+    await run(Date.now() + 2000);
+    const moves = (await rows(shop, "stock_move")).filter((m) => m.product === product);
+    expect(moves.map((m) => [m.kind, Number(m.qty)])).toEqual([["adjust", 3]]);
+    // A payment started at ЮKassa (pending): the time to pay passes, the order waits for the payment.
+    const token = secret();
+    const r = await order(shop, {
+      lines: [{ product, qty: 1 }],
+      delivery: "pickup",
+      pickupPoint: point,
+      name: "Покупатель",
+      phone: "+79009990004",
+      token,
+    });
+    const id = r.result?.id as string;
+    const started = await shop.send("POST", `/api/pay/${SHOP_PAYMENT.integration}`, {
+      binding: SHOP_PAYMENT.binding,
+      id,
+      token,
+    });
+    expect(started.status).toBe(200);
+    const until = Date.parse(String((await rows(shop, "shop_order")).find((x) => x.id === id)?.pay_until));
+    await run(until + 60_000);
+    await run(until + 120_000);
+    const kept = (await rows(shop, "shop_order")).find((x) => x.id === id);
+    expect(kept?.status).toBe("awaiting_payment");
+    expect(Date.parse(String(kept?.pay_until))).toBeGreaterThan(until);
+    // The order's own sale is journaled once, the manual edit stays the only adjustment.
+    const after = (await rows(shop, "stock_move")).filter((m) => m.product === product);
+    expect(after.map((m) => m.kind).sort()).toEqual(["adjust", "sale"]);
+  }, 90_000);
 });

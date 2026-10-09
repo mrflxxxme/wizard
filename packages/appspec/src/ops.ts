@@ -119,6 +119,7 @@ const opSchemas = [
     operatorName: complianceSchema.shape.operatorName,
     operatorContact: complianceSchema.shape.operatorContact,
     operatorInn: complianceSchema.shape.operatorInn,
+    operatorOgrn: complianceSchema.shape.operatorOgrn,
     operatorAddress: complianceSchema.shape.operatorAddress,
     retentionWaiver: complianceSchema.shape.retentionWaiver,
     policyPage: complianceSchema.shape.policyPage,
@@ -146,6 +147,7 @@ export const OWNER_ONLY_COMPLIANCE_FIELDS = [
   "operatorName",
   "operatorContact",
   "operatorInn",
+  "operatorOgrn",
   "operatorAddress",
   "retentionWaiver",
 ] as const;

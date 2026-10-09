@@ -4,7 +4,7 @@ import { type AppSpec, diffSpecs, type SpecChange } from "@wizard/appspec";
 import { Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
-import { innValid } from "../auth/region.js";
+import { innValid, ogrnValid } from "../auth/region.js";
 import { TECHREVIEW_BLOCKED_RU, techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
@@ -234,6 +234,10 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
           .string()
           .regex(/^[0-9]{10}([0-9]{2})?$/)
           .optional(),
+        operatorOgrn: z
+          .string()
+          .regex(/^[0-9]{13}([0-9]{2})?$/)
+          .optional(),
         policyPage: z
           .string()
           .regex(/^\/[a-z0-9/-]*$/)
@@ -248,6 +252,8 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     );
     if (b.operatorInn !== undefined && !innValid(b.operatorInn))
       throw new ApiError("INN_INVALID", BLOCKER_RU.INN_INVALID ?? "ИНН указан с ошибкой");
+    if (b.operatorOgrn !== undefined && !ogrnValid(b.operatorOgrn))
+      throw new ApiError("OGRN_INVALID", BLOCKER_RU.OGRN_INVALID ?? "ОГРН указан с ошибкой");
     const { expectedVersion, retentionWaiver, ...fields } = b;
     const res = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);

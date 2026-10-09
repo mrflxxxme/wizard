@@ -1099,6 +1099,11 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         module: "resources",
         effect: "напоминание о возврате и просрочке",
       },
+      {
+        module: "shop",
+        effect:
+          "письма о новом заказе и оплате владельцу, покупателю — номер, состав и ссылка на заказ с его согласия",
+      },
     ],
     provides: {
       routes: ["/cabinet/notifications"],
@@ -3325,6 +3330,13 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
       kind: "new",
     },
     goals: ["sell_online"],
+    requires: [
+      {
+        module: "notify",
+        reason:
+          "владелец узнаёт о заказах и оплатах, покупатель получает письмо с номером и ссылкой на заказ",
+      },
+    ],
     params: [
       {
         name: "product_label",
@@ -3455,7 +3467,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         "shop_order_line",
         "delivery_quote",
       ],
-      routes: ["/shop", "/cart", "/order/:id"],
+      routes: ["/shop", "/shop/:id", "/cart", "/order/:id"],
     },
     hook: true,
     functions: [
@@ -3533,6 +3545,47 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           param: "with_stock",
         },
         purpose: "заказ, оплаченный после отмены, снова списывает свои товары",
+      },
+      {
+        name: "shopSetStatus",
+        kind: "mutation",
+        file: "functions/shop/setStatus.ts",
+        public: true,
+        roles: ["$owner", "$staff"],
+        purpose: "статус заказа меняется только по допустимым переходам; оплату и возврат ставит ЮKassa",
+        systemDbReason:
+          "Статус заказа закрыт для прямой правки: функция меняет его только по переходам магазина, оплату и возврат ставит ЮKassa",
+      },
+      {
+        name: "shopRefund",
+        kind: "action",
+        file: "functions/shop/refund.ts",
+        public: true,
+        roles: ["$owner"],
+        when: {
+          param: "online_payment",
+        },
+        purpose: "владелец возвращает покупателю всю сумму оплаченного заказа через ЮKassa",
+      },
+      {
+        name: "shopExpireOrder",
+        kind: "mutation",
+        file: "functions/shop/expireOrder.ts",
+        roles: ["$owner"],
+        when: {
+          param: "online_payment",
+        },
+        purpose: "заказ без оплаты отменяется по времени, если платёж не идёт и не ждёт проверки",
+      },
+      {
+        name: "shopStockAdjust",
+        kind: "mutation",
+        file: "functions/shop/stockAdjust.ts",
+        roles: ["$owner"],
+        when: {
+          param: "with_stock",
+        },
+        purpose: "ручная правка остатка в кабинете попадает в журнал движения остатков",
       },
     ],
     metrics: [
@@ -3770,6 +3823,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         {
           name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад",
           params: {},
+          withModules: ["notify"],
         },
         {
           name: "без онлайн-оплаты и склада: самовывоз и курьер",
@@ -3778,6 +3832,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             with_stock: false,
             delivery: ["pickup", "courier"],
           },
+          withModules: ["notify"],
         },
         {
           name: "только СДЭК, без разделов и фото, НДС 22%",
@@ -3787,6 +3842,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             with_photos: false,
             vat: "vat22",
           },
+          withModules: ["notify"],
         },
         {
           name: "магазин рядом с лендингом и заявками",
@@ -3799,7 +3855,7 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
         {
           name: "сотрудники собирают заказы",
           params: {},
-          withModules: ["staff"],
+          withModules: ["staff", "notify"],
         },
       ],
       gates: ["G0", "G1"],

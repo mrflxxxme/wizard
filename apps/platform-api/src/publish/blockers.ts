@@ -2,7 +2,7 @@
 import type { AppSpec } from "@wizard/appspec";
 import { packageApplies } from "@wizard/gates";
 import type { Selectable } from "kysely";
-import { innValid } from "../auth/region.js";
+import { innValid, ogrnValid } from "../auth/region.js";
 import type { Billing } from "../billing/ledger.js";
 import { activeCard } from "../billing/payments.js";
 import { phoneOtpAllowed, planOf } from "../billing/plans.js";
@@ -44,6 +44,9 @@ export async function prodSystemsCount(q: Db, orgId: string, exceptSystemId: str
   return Number(row.n);
 }
 
+/** The order entity of «Интернет-магазин» (@wizard/modules SHOP_NAMES.order): a system with it is a shop. */
+export const SHOP_ORDER_ENTITY = "shop_order";
+
 /**
  * Blockers that depend only on the revision's spec and the org plan (M1; M2 adds card binding and review). Operator
  * of personal data (security/compliance.yaml#system_package.operator, gates.yaml G2-PII-06): name, contact and, since
@@ -59,6 +62,11 @@ export function specPublishBlockers(spec: AppSpec, plan: string): ErrorCode[] {
   if (hasPii && !c?.operatorContact?.trim()) out.push("OPERATOR_CONTACT_REQUIRED");
   if (hasPii && !c?.operatorAddress?.trim()) out.push("OPERATOR_ADDRESS_REQUIRED");
   if (c?.operatorInn !== undefined && !innValid(c.operatorInn)) out.push("INN_INVALID");
+  // V3-18 (ст. 26.1 ЗоЗПП, ПП РФ № 2463): a shop shows the seller's name, INN and address in its offer.
+  const shop = spec.entities.some((e) => e.name === SHOP_ORDER_ENTITY);
+  if (shop && (!c?.operatorName?.trim() || !c.operatorInn || !c.operatorAddress?.trim()))
+    out.push("SELLER_REQUISITES_REQUIRED");
+  if (c?.operatorOgrn !== undefined && !ogrnValid(c.operatorOgrn)) out.push("OGRN_INVALID");
   if (!phoneOtpAllowed(plan) && spec.roles.some((r) => r.loginMethods?.includes("phone_otp")))
     out.push("PHONE_LOGIN_PLAN_REQUIRED");
   return out;
@@ -104,6 +112,9 @@ export const BLOCKER_RU: Partial<Record<ErrorCode, string>> = {
   OPERATOR_CONTACT_REQUIRED: "Укажите e-mail оператора персональных данных для обращений",
   OPERATOR_ADDRESS_REQUIRED: "Укажите адрес оператора персональных данных — он нужен для политики обработки",
   INN_INVALID: "ИНН оператора указан с ошибкой — проверьте цифры",
+  SELLER_REQUISITES_REQUIRED:
+    "Магазину нужны реквизиты продавца для оферты: укажите название (юрлицо, ИП или ФИО), ИНН и адрес в данных оператора персональных данных; ОГРН или ОГРНИП — если есть",
+  OGRN_INVALID: "ОГРН указан с ошибкой — проверьте цифры (13 для организации, 15 для ИП)",
   PHONE_LOGIN_PLAN_REQUIRED: "Вход по телефону доступен на тарифах Старт и Бизнес",
   PLAN_LIMIT: "Лимит опубликованных систем тарифа",
 };

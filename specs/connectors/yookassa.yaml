@@ -26,10 +26,12 @@ config_schema:                               # integration.config
     returnRoute: "маршрут страницы возврата, :id → id записи"
     receipt: "{customerEmailField?, customerPhoneField?, paymentSubject: commodity|service, paymentMode: full_prepayment|full_payment, vatCode: 1..6|11|12, settlePrepaymentOf?: <bindingId>, lines?, deliveryField?}"
     receipt_lines: "V3-23: lines {entity, refField, nameField, quantityField, amountField} — строки записи (позиции заказа) становятся позициями чека; deliveryField — поле money записи с ценой доставки, отдельная позиция «Доставка» (payment_subject service)"
+    retryUntilField: "V3-18: поле datetime записи (заказ — pay_until): payment.canceled до этого момента оставляет запись в payableStatus — покупатель платит снова (отклонённая карта — не конец заказа); после него — canceledStatus"
+    noteField: "V3-18: строковое поле записи, куда коннектор пишет для владельца причину неуспешной оплаты (cancellation_details.reason по-русски) или «Оплата требует проверки»"
     accessField: "V3-23: поле записи с секретом покупателя (скрыто от ролей через hiddenFields): гость без права read платит свою запись, предъявив секрет (≥ 16 символов, сравнение за постоянное время)"
   refundWindowDays: "0..365; возврат через refund() разрешён не позже N дней после оплаты"
   testMode: "bool, только для prod: разрешить тестовый магазин (баннер «Тестовые платежи»)"
-  validation: "G0: поля и статусы существуют; amountField ∈ readonlyFields или роль-плательщик не имеет update на сущность; хотя бы одно из customerEmailField/customerPhoneField; receipt.lines — сущность, ref на запись, поля имени, количества (int) и суммы (money); deliveryField — money; accessField — string, скрыт (hiddenFields) у каждой роли, читающей сущность"
+  validation: "G0: поля и статусы существуют; amountField ∈ readonlyFields у каждой роли с create или update на сущность (yookassa.amount_writable); роль с create — и statusField в readonlyFields: начальный статус ставит сервер (yookassa.status_writable); подстановки description — только поля с pii=none (yookassa.description_pii); retryUntilField — datetime, noteField — string/text; хотя бы одно из customerEmailField/customerPhoneField; receipt.lines — сущность, ref на запись, поля имени, количества (int) и суммы (money); deliveryField — money; accessField — string, скрыт (hiddenFields) у каждой роли, читающей сущность"
 
 api:
   base_url: "https://api.yookassa.ru/v3"
@@ -65,11 +67,11 @@ webhooks:
     - "metadata.system/env/binding должны совпасть с интеграцией, иначе 200 и игнор (чужой магазин)"
   handling:
     payment.succeeded: "Сверка по ответу GET: amount.value и amount.currency = paymentEntity.amount и RUB, metadata.recordId = записи paymentEntity, amount = текущему amountField записи. Совпало → paymentEntity.status=succeeded; запись → paidStatus; если receipt.settlePrepaymentOf — create_receipt на зачёт предоплаты. Не совпало → paymentEntity.status=needs_review, запись НЕ переходит в paidStatus, событие владельцу «Оплата требует проверки»"
-    payment.canceled: "paymentEntity.status=canceled; запись → canceledStatus, если она всё ещё payableStatus"
+    payment.canceled: "paymentEntity.status=canceled; запись → canceledStatus, если она всё ещё payableStatus; с retryUntilField и моментом в будущем запись остаётся payableStatus (повторная оплата), причина — в noteField (V3-18)"
     payment.waiting_for_capture: "не ожидается (capture:true); логировать и отменить платёж"
     refund.succeeded: "paymentEntity {kind:'refund', status:'succeeded'}; при полном возврате → refundedStatus"
   response: "Всегда 200 после успешной обработки; при сбое — 500, ЮKassa повторяет доставку до 24 часов"
-  idempotency: "ключ события = event + object.id; повтор не меняет данные"
+  idempotency: "ключ события = event + object.id; повтор не меняет данные. V3-18: переход платежа pending → итог выполняет ровно один обработчик — атомарный захват `transition:<id>` в хранилище коннектора (store.setIfAbsent: insert … on conflict do update where истёк … returning) после проверки, что строка журнала ещё pending; уведомление и проверка при возврате, встретившиеся на одном платеже, не применяют его дважды. Захват занят другим обработчиком → 409 (ЮKassa повторит доставку); сбой обработчика освобождает захват. Запись переводится в paidStatus до журнала (строка pending — замок повторной доставки)"
 
 return_check:                                # V3-23: покупатель вернулся со страницы оплаты, уведомление опаздывает или не приходит
   endpoint: "POST /api/pay/:integration/check {binding, id, token?} → {result} — права как у /api/pay (чтение записи или секрет покупателя accessField); запись в ответ не попадает"

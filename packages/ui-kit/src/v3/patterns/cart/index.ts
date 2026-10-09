@@ -26,6 +26,15 @@ export const checkoutSlot = z.object({
   cdekFn: fnName.optional(),
   payment: z.object({ integration: ident, binding: ident }).optional(),
   orderPath: z.string().regex(SAME_ORIGIN_PATH_RE, "путь страницы заказа").optional(),
+  /** V3-18: a separate box «Согласен получать письма о заказе» (the shop sends the buyer letters about his order). */
+  consentMessages: z.boolean().optional(),
+});
+
+/** V3-18: the seller's pages (ст. 26.1 ЗоЗПП): the offer the order accepts, delivery and payment, returns. */
+export const termsSlot = z.object({
+  offer: linkSlot,
+  delivery: linkSlot.optional(),
+  returns: linkSlot.optional(),
 });
 
 export const cartSlots = z.object({
@@ -39,6 +48,8 @@ export const cartSlots = z.object({
   empty: line(120).optional(),
   /** A line of the shop under the sums (returns, delivery terms) from the brief. */
   note: line(200).optional(),
+  /** The seller's pages: «Оформляя заказ, вы принимаете условия оферты» by the action, the other terms beside. */
+  terms: termsSlot.optional(),
 });
 
 /** Preview content (tests, previews): an example business, never published as the client's text (D49). */
@@ -59,6 +70,11 @@ export const CART_EXAMPLE = {
   },
   back: { label: "Вернуться к товарам", href: "/shop" },
   empty: "В корзине пока ничего нет",
+  terms: {
+    offer: { label: "Публичная оферта", href: "/offer" },
+    delivery: { label: "Доставка и оплата", href: "/delivery" },
+    returns: { label: "Возврат товара", href: "/returns" },
+  },
 } satisfies z.input<typeof cartSlots>;
 
 const at = import.meta.url;

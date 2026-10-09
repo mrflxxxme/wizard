@@ -40,7 +40,7 @@ ops:                           # op: params → эффект
   remove_page:        "{route}"
   add_ai_action:      "{aiAction} (M3)"
   set_acceptance:     "{acceptance[]} → заменить список критериев приёмки"
-  set_compliance:     "{consentTemplateId?, consentText?, operatorName?, operatorContact?, operatorInn?, operatorAddress?, retentionWaiver?, policyPage?}. MUST: от author=agent разрешены только consentTemplateId и policyPage; consentText, operator*, retentionWaiver → OWNER_ONLY_FIELD (их задаёт владелец; consentText из шаблона подставляет платформа, author=system)"
+  set_compliance:     "{consentTemplateId?, consentText?, operatorName?, operatorContact?, operatorInn?, operatorOgrn?, operatorAddress?, retentionWaiver?, policyPage?}. MUST: от author=agent разрешены только consentTemplateId и policyPage; consentText, operator*, retentionWaiver → OWNER_ONLY_FIELD (их задаёт владелец; consentText из шаблона подставляет платформа, author=system)"
 
 semantic_rules:                # проверяются после применения батча
   - "Имена сущностей, полей, ролей уникальны в своей области; не зарезервированы (id, created_at, updated_at, created_by, user, role, select, order, group, table ... — полный список в packages/appspec/src/reserved.ts)"

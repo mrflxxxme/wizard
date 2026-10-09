@@ -66,6 +66,8 @@ export type RecordAction<T = Rec> = {
   kind: "update" | "delete" | "fn" | "link" | "ai";
   patch?: Record<string, unknown>;
   fn?: string;
+  /** kind=fn: more arguments of the call besides the record's id (e.g. the target status of a status flow). */
+  args?: Record<string, unknown>;
   /** kind=ai: aiActions[].name (runtime.yaml#ai_actions). */
   ai?: string;
   href?: string;

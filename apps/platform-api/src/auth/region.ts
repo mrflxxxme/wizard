@@ -22,6 +22,17 @@ export function innValid(inn: string): boolean {
   return check(d, W12A) === d[10] && check(d, W12B) === d[11];
 }
 
+/**
+ * ОГРН (13 digits: the remainder of the first 12 by 11, its last digit) or ОГРНИП (15: the first 14 by 13) with a
+ * valid check digit (V3-18: the seller's requisite of a shop's offer).
+ */
+export function ogrnValid(ogrn: string): boolean {
+  if (!/^\d{13}$|^\d{15}$/.test(ogrn)) return false;
+  const body = BigInt(ogrn.slice(0, -1));
+  const mod = ogrn.length === 13 ? 11n : 13n;
+  return Number((body % mod) % 10n) === Number(ogrn.slice(-1));
+}
+
 /** The first two digits of an INN are the region code. */
 export const regionFromInn = (inn: string): string => inn.slice(0, 2);
 

@@ -39,16 +39,23 @@ export type PageKind =
   | "rubric"
   | "shop"
   | "cart"
-  | "order";
+  | "order"
+  | "product";
 
 /** The module «Контент и блог» (V3-24). */
 export const CONTENT_MODULE = "content";
 /**
  * The module «Интернет-магазин» (V3-23): `shop` — the goods with «В корзину», `cart` — the cart with the checkout,
- * `order` — the order of its buyer by the id of the address (/order/:id); each section is the heading of its page.
+ * `order` — the order of its buyer by the id of the address (/order/:id), `product` — one product by the id of the
+ * address (/shop/:id, V3-18); each section is the heading of its page.
  */
 export const SHOP_MODULE = "shop";
-const SHOP_PAGE_KINDS: Readonly<Record<string, PageKind>> = { shop: "shop", cart: "cart", order: "order" };
+const SHOP_PAGE_KINDS: Readonly<Record<string, PageKind>> = {
+  shop: "shop",
+  cart: "cart",
+  order: "order",
+  product: "product",
+};
 
 /** A route with a parameter (an entry page): not a menu item, its SEO comes from the entry at runtime. */
 export const isParamRoute = (route: string): boolean => route.includes(":");
@@ -144,6 +151,7 @@ export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> =
   shop: ["header", "shop", "faq", "contacts", "footer"],
   cart: ["header", "cart", "footer"],
   order: ["header", "order", "footer"],
+  product: ["header", "product", "footer"],
 };
 
 /** Russian labels of section anchors in the menu of a one-page site. */
@@ -269,7 +277,11 @@ export function bindingOf(
   if (type === "blog" && page.kind === "content") return pick("useContent", page.module);
   // V3-23: the goods on their page and on home, the cart with the checkout, the order of its buyer.
   if (type === "shop" && (page.kind === "shop" || page.kind === "home")) return pick("useShop");
-  if ((type === "cart" && page.kind === "cart") || (type === "order" && page.kind === "order"))
+  if (
+    (type === "cart" && page.kind === "cart") ||
+    (type === "order" && page.kind === "order") ||
+    (type === "product" && page.kind === "product")
+  )
     return pick("useShop");
   return null;
 }
@@ -286,7 +298,7 @@ export interface PlannedPage {
 }
 
 /** Page kinds served on a route with a parameter. */
-const PARAM_KINDS: ReadonlySet<PageKind> = new Set(["entry", "rubric", "order"]);
+const PARAM_KINDS: ReadonlySet<PageKind> = new Set(["entry", "rubric", "order", "product"]);
 
 /**
  * Public pages of the system: the module screens left to v3 and the home page. A system without public screens and
@@ -302,7 +314,8 @@ export function plannedPages(spec: AppSpec, front: PublicFront): PlannedPage[] {
     out.push({ route: "/", title: "Главная", kind: "home", roles: everyone });
   for (const s of screens) {
     const kind = pageKind(s);
-    // Routes with a parameter are pages only for the entries of «Контент и блог» (V3-24) and the shop's order (V3-23).
+    // Routes with a parameter are pages only for the entries of «Контент и блог» (V3-24), the shop's order (V3-23) and
+    // product (V3-18).
     if (seen.has(s.route) || (isParamRoute(s.route) && !PARAM_KINDS.has(kind))) continue;
     seen.add(s.route);
     out.push({

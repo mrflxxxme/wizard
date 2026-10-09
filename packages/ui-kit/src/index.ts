@@ -92,6 +92,8 @@ export {
   type ShopCheckoutProps,
   ShopOrder,
   type ShopOrderProps,
+  ShopProduct,
+  type ShopProductProps,
   ShopProducts,
   type ShopProductsProps,
 } from "./components/Shop.js";

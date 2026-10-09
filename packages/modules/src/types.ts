@@ -62,6 +62,24 @@ export type ScreenGenerator = (ctx: ScreenContext) => string;
 /** Source of a module file generated per plan (pure and deterministic); "" — the plan needs no such file (a helper). */
 export type FileGenerator = (ctx: GenContext) => string;
 
+/**
+ * Status flow of an entity in the cabinets (V3-18): instead of a button per enum value (a plain update of the status),
+ * the buttons of the statuses `next` allows from the record's status call `fn` with {id, status} — the module's
+ * function checks the transition on the server; `actions` — more function buttons of a record (e.g. a refund) shown
+ * in the listed statuses. A button shows only to the roles its function allows.
+ */
+export interface StatusFlow {
+  fn: string;
+  next: Readonly<Record<string, readonly string[]>>;
+  actions?: readonly {
+    id: string;
+    label: string;
+    fn: string;
+    confirm?: string;
+    when: readonly string[];
+  }[];
+}
+
 export interface ModuleDefinition {
   manifest: ModuleManifest;
   /** compile.ts (manifest.hook): pure params → fragments for what substitution cannot express. */
@@ -84,6 +102,8 @@ export interface ModuleDefinition {
    * module — only the staff roles with that section). Without it — all roles of the module.
    */
   roleScope?: (ctx: ModuleContext, module: string) => readonly string[];
+  /** Status flows of the module's entities in the cabinets, by entity (V3-18: the shop's order). */
+  statusFlows?: (ctx: ModuleContext) => Readonly<Record<string, StatusFlow>>;
 }
 
 /** Module definitions the engine compiles from (ready ones with code, drafts with the manifest only) and catalogs. */

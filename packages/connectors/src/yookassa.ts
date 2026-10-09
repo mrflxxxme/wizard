@@ -91,6 +91,13 @@ const bindingSchema = z.strictObject({
    * role; the record's data never leaves through the payment.
    */
   accessField: ident.optional(),
+  /**
+   * A datetime field of the record: a payment canceled before this moment (a declined card, the payment page left
+   * unpaid) keeps the record payable, so the buyer may pay again; without it the record goes to canceledStatus.
+   */
+  retryUntilField: ident.optional(),
+  /** A string field of the record where the connector writes why a payment did not pass (for the owner). */
+  noteField: ident.optional(),
 });
 
 export const yookassaConfigSchema = z
@@ -142,12 +149,20 @@ export function validateYookassaSpec(config: YookassaConfig, spec: AppSpec, at: 
         }
       }
       for (const p of placeholders(b.description)) {
-        if (!entity.fields.some((f) => f.name === p)) {
+        const f = entity.fields.find((x) => x.name === p);
+        if (!f) {
           issues.add(
             "yookassa.description_field",
             rel("description"),
             `В описании платежа поле «${p}» не найдено в «${entity.name}»`,
             fieldNames(entity),
+          );
+        } else if ((f.pii ?? (f.type === "file" ? "basic" : "none")) !== "none") {
+          // The description goes to ЮKassa and the buyer's bank statement: no personal data there.
+          issues.add(
+            "yookassa.description_pii",
+            rel("description"),
+            `Поле «${entity.name}.${p}» содержит персональные данные — его нельзя подставлять в описание платежа`,
           );
         }
       }
@@ -173,15 +188,22 @@ export function validateYookassaSpec(config: YookassaConfig, spec: AppSpec, at: 
         );
       }
       spec.permissions.forEach((p) => {
-        if (
-          p.entity === b.entity &&
-          p.ops.includes("update") &&
-          !(p.readonlyFields ?? []).includes(b.amountField)
-        ) {
+        if (p.entity !== b.entity) return;
+        const ro = p.readonlyFields ?? [];
+        const writes = p.ops.includes("update") || p.ops.includes("create");
+        if (writes && !ro.includes(b.amountField)) {
           issues.add(
             "yookassa.amount_writable",
             rel("amountField"),
-            `Роль «${p.role}» может менять сумму «${b.entity}.${b.amountField}»: добавьте поле в readonlyFields`,
+            `Роль «${p.role}» может задавать сумму «${b.entity}.${b.amountField}»: добавьте поле в readonlyFields`,
+          );
+        }
+        // A role that creates records could create one already paid: the initial status is the server's.
+        if (p.ops.includes("create") && !ro.includes(statusName)) {
+          issues.add(
+            "yookassa.status_writable",
+            rel("statusField"),
+            `Роль «${p.role}» создаёт «${b.entity}» и может задать статус оплаты «${statusName}»: добавьте поле в readonlyFields — статус ставит сервер`,
           );
         }
       });
@@ -277,6 +299,12 @@ export function validateYookassaSpec(config: YookassaConfig, spec: AppSpec, at: 
             );
         });
     }
+    if (entity && b.retryUntilField)
+      requireField(entity, issues, "yookassa.retry_until_field", rel("retryUntilField"), b.retryUntilField, [
+        "datetime",
+      ]);
+    if (entity && b.noteField)
+      requireField(entity, issues, "yookassa.note_field", rel("noteField"), b.noteField, ["string", "text"]);
     const settle = b.receipt.settlePrepaymentOf;
     if (settle !== undefined && (settle === b.id || !ids.includes(settle))) {
       issues.add(
@@ -296,7 +324,49 @@ export const PENDING_REUSE_MS = 30 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const META_TTL_MS = 400 * DAY_MS;
 const HOOK_TTL_MS = 7 * DAY_MS;
+/** A claimed transition of a payment or a notice in progress: a crashed holder frees it for the redelivery. */
+const CLAIM_TTL_MS = 2 * 60_000;
 const MOCK_PREFIX = "mock_";
+
+/**
+ * One winner of `key` for `ttlMs`: atomic with a store that has setIfAbsent (the runtime's), else get-then-set. The
+ * webhook, the buyer's return check and the draft's mock page may meet on one payment: only the winner applies it.
+ */
+export async function claimOnce(ctx: ConnectorCtx, key: string, ttlMs: number): Promise<boolean> {
+  const value = { at: ctx.now().toISOString() };
+  if (ctx.store.setIfAbsent) return ctx.store.setIfAbsent(key, value, ttlMs);
+  if ((await ctx.store.get(key)) !== undefined) return false;
+  await ctx.store.set(key, value, ttlMs);
+  return true;
+}
+
+/** Frees a claim (its holder failed): the value expires at once. */
+async function releaseClaim(ctx: ConnectorCtx, key: string): Promise<void> {
+  await ctx.store.set(key, null, -1);
+}
+
+/** Why ЮKassa canceled a payment, in the owner's words (cancellation_details.reason). */
+const CANCEL_REASONS_RU: Readonly<Record<string, string>> = {
+  "3d_secure_failed": "не пройдено подтверждение 3-D Secure",
+  call_issuer: "банк покупателя отклонил платёж",
+  card_expired: "истёк срок действия карты",
+  country_forbidden: "оплата картой этой страны запрещена",
+  expired_on_confirmation: "покупатель не завершил оплату вовремя",
+  fraud_suspected: "платёж заблокирован из-за подозрения в мошенничестве",
+  general_decline: "платёж отклонён",
+  identification_required: "превышен лимит для неидентифицированного кошелька",
+  insufficient_funds: "недостаточно средств",
+  invalid_card_number: "неверный номер карты",
+  invalid_csc: "неверный код CVV2 (CVC2)",
+  issuer_unavailable: "банк покупателя недоступен",
+  payment_method_limit_exceeded: "превышен лимит платежей",
+  payment_method_restricted: "способ оплаты заблокирован",
+  permission_revoked: "покупатель отозвал разрешение на списание",
+};
+
+export function cancelReasonRu(reason: unknown): string {
+  return (typeof reason === "string" && CANCEL_REASONS_RU[reason]) || "платёж отменён";
+}
 
 export interface ProviderPayment {
   id: string;
@@ -304,6 +374,7 @@ export interface ProviderPayment {
   amount: { value: string; currency: string };
   metadata: { system: string; env: string; binding: string; recordId: string };
   captured_at?: string;
+  cancellation_details?: { party?: string; reason?: string };
 }
 
 /** Per provider object (`pay:<provider id>` in ctx.store): which binding and record it belongs to. */
@@ -329,7 +400,8 @@ export type PayResult =
       message_ru: string;
     };
 
-export type PaymentEventResult = "applied" | "needs_review" | "duplicate" | "ignored";
+/** busy — another caller (the notice, the return check) is applying the same payment right now: ask again later. */
+export type PaymentEventResult = "applied" | "needs_review" | "duplicate" | "ignored" | "busy";
 
 const payMetaKey = (id: string) => `pay:${id}`;
 const isMock = (providerId: unknown) => String(providerId).startsWith(MOCK_PREFIX);
@@ -617,50 +689,103 @@ export async function applyPaymentSucceeded(
   if (!b || payment.metadata.system !== ctx.system.id || payment.metadata.env !== ctx.system.env)
     return "ignored";
   if (payment.status !== "succeeded") return "ignored";
-  const row = await ctx.db.getBy(b.paymentEntity.name, "provider_payment_id", payment.id);
-  if (row?.kind !== "payment") return "ignored";
-  if (row.status !== "pending") return "duplicate";
-  const record = await ctx.db.get(b.entity, payment.metadata.recordId);
-  const matches =
-    record !== null &&
-    payment.amount.currency === "RUB" &&
-    kop(payment.amount.value) === kop(row.amount) &&
-    row[b.paymentEntity.refField] === record.id &&
-    kop(record[b.amountField]) === kop(row.amount);
-  if (!matches || !record) {
-    await ctx.db.patch(b.paymentEntity.name, row.id, { status: "needs_review" });
-    ctx.log.log({ action: "payment.succeeded", mode: ctx.mode, status: "needs_review", durationMs: 0 });
-    await ownerEvent(ctx, "payment_needs_review", "Оплата требует проверки", {
-      binding: b.id,
-      recordId: String(row[b.paymentEntity.refField] ?? ""),
-      paymentId: payment.id,
-    });
-    return "needs_review";
-  }
-  await ctx.db.patch(b.paymentEntity.name, row.id, { status: "succeeded" });
-  await ctx.db.patch(b.entity, record.id, { [statusOf(b)]: b.paidStatus });
-  const meta = await ctx.store.get<PaymentMeta>(payMetaKey(payment.id));
-  if (meta) {
-    const paidAt = payment.captured_at && !Number.isNaN(Date.parse(payment.captured_at));
-    await ctx.store.set(
-      payMetaKey(payment.id),
-      { ...meta, paidAt: paidAt ? payment.captured_at : ctx.now().toISOString() },
-      META_TTL_MS,
-    );
-  }
-  if (b.receipt.settlePrepaymentOf && isMock(payment.id)) {
-    await ctx.outbox.write(
-      outboxMessage(ctx, "yookassa", "create_receipt", {
+  return transition(ctx, b, payment.id, async (row) => {
+    const record = await ctx.db.get(b.entity, payment.metadata.recordId);
+    const matches =
+      record !== null &&
+      payment.amount.currency === "RUB" &&
+      kop(payment.amount.value) === kop(row.amount) &&
+      row[b.paymentEntity.refField] === record.id &&
+      kop(record[b.amountField]) === kop(row.amount);
+    if (!matches || !record) {
+      await ctx.db.patch(b.paymentEntity.name, row.id, { status: "needs_review" });
+      ctx.log.log({ action: "payment.succeeded", mode: ctx.mode, status: "needs_review", durationMs: 0 });
+      await ownerEvent(ctx, "payment_needs_review", "Оплата требует проверки", {
         binding: b.id,
-        recordId: record.id,
-        settlePrepaymentOf: b.receipt.settlePrepaymentOf,
-      }),
-    );
-  }
-  return "applied";
+        recordId: String(row[b.paymentEntity.refField] ?? ""),
+        paymentId: payment.id,
+      });
+      // The owner sees it on the record too; the record is neither paid nor canceled until he checks the payment.
+      if (record)
+        await writeNote(
+          ctx,
+          b,
+          record,
+          "Оплата требует проверки: сумма или заказ не совпали с платежом ЮKassa",
+        );
+      return "needs_review";
+    }
+    // The record first: the journal row stays pending (the gate of a redelivery) until the record is paid.
+    if (record[statusOf(b)] !== b.paidStatus)
+      await ctx.db.patch(b.entity, record.id, { [statusOf(b)]: b.paidStatus });
+    await ctx.db.patch(b.paymentEntity.name, row.id, { status: "succeeded" });
+    const meta = await ctx.store.get<PaymentMeta>(payMetaKey(payment.id));
+    if (meta) {
+      const paidAt = payment.captured_at && !Number.isNaN(Date.parse(payment.captured_at));
+      await ctx.store.set(
+        payMetaKey(payment.id),
+        { ...meta, paidAt: paidAt ? payment.captured_at : ctx.now().toISOString() },
+        META_TTL_MS,
+      );
+    }
+    if (b.receipt.settlePrepaymentOf && isMock(payment.id)) {
+      await ctx.outbox.write(
+        outboxMessage(ctx, "yookassa", "create_receipt", {
+          binding: b.id,
+          recordId: record.id,
+          settlePrepaymentOf: b.receipt.settlePrepaymentOf,
+        }),
+      );
+    }
+    return "applied";
+  });
 }
 
-/** payment.canceled: journal → canceled; the record → canceledStatus only while still payable. */
+/** The payment row of a provider payment of the binding (kind payment). */
+async function paymentRow(ctx: ConnectorCtx, b: YookassaBinding, providerId: string): Promise<Row | null> {
+  const row = await ctx.db.getBy(b.paymentEntity.name, "provider_payment_id", providerId);
+  return row?.kind === "payment" ? row : null;
+}
+
+/**
+ * The pending → final transition of a payment, at most once: the journal row must still be pending and this caller
+ * must win the claim (the webhook and the return check may see «pending» together, H). False — another caller has it
+ * or it is done; the row is read again after the claim, so a transition finished before it is not repeated.
+ */
+async function transition(
+  ctx: ConnectorCtx,
+  b: YookassaBinding,
+  providerId: string,
+  apply: (row: Row) => Promise<PaymentEventResult>,
+): Promise<PaymentEventResult> {
+  const before = await paymentRow(ctx, b, providerId);
+  if (!before) return "ignored";
+  if (before.status !== "pending") return "duplicate";
+  const key = `transition:${providerId}`;
+  if (!(await claimOnce(ctx, key, CLAIM_TTL_MS))) return "busy";
+  try {
+    const row = await paymentRow(ctx, b, providerId);
+    if (row?.status !== "pending") return "duplicate";
+    return await apply(row);
+  } catch (e) {
+    await releaseClaim(ctx, key);
+    throw e;
+  }
+}
+
+/** A line for the record's note field: kept to the field's 300 characters, after what the shop already wrote. */
+async function writeNote(ctx: ConnectorCtx, b: YookassaBinding, record: Row, line: string): Promise<void> {
+  if (!b.noteField) return;
+  const had = typeof record[b.noteField] === "string" ? String(record[b.noteField]).trim() : "";
+  const text = had && !had.includes(line) ? `${had}; ${line}` : line;
+  await ctx.db.patch(b.entity, record.id, { [b.noteField]: [...text].slice(-300).join("") });
+}
+
+/**
+ * payment.canceled: journal → canceled; the record → canceledStatus only while still payable. With retryUntilField
+ * the record stays payable until that moment (a declined card is not the end of the order: the buyer pays again),
+ * and the reason goes to noteField (yookassa.yaml#webhooks.handling payment.canceled).
+ */
 export async function applyPaymentCanceled(
   ctx: ConnectorCtx,
   payment: ProviderPayment,
@@ -668,15 +793,21 @@ export async function applyPaymentCanceled(
   const b = bindingOf(ctx, payment.metadata.binding);
   if (!b || payment.metadata.system !== ctx.system.id || payment.metadata.env !== ctx.system.env)
     return "ignored";
-  const row = await ctx.db.getBy(b.paymentEntity.name, "provider_payment_id", payment.id);
-  if (row?.kind !== "payment") return "ignored";
-  if (row.status !== "pending") return "duplicate";
-  await ctx.db.patch(b.paymentEntity.name, row.id, { status: "canceled" });
-  const record = await ctx.db.get(b.entity, payment.metadata.recordId);
-  if (record && record[statusOf(b)] === b.payableStatus) {
-    await ctx.db.patch(b.entity, record.id, { [statusOf(b)]: b.canceledStatus });
-  }
-  return "applied";
+  return transition(ctx, b, payment.id, async (row) => {
+    await ctx.db.patch(b.paymentEntity.name, row.id, { status: "canceled" });
+    const record = await ctx.db.get(b.entity, payment.metadata.recordId);
+    if (record && record[statusOf(b)] === b.payableStatus) {
+      const reason = cancelReasonRu(payment.cancellation_details?.reason);
+      const until = b.retryUntilField ? Date.parse(String(record[b.retryUntilField] ?? "")) : Number.NaN;
+      if (Number.isFinite(until) && until > ctx.now().getTime()) {
+        await writeNote(ctx, b, record, `Оплата не прошла: ${reason}; покупатель может оплатить снова`);
+      } else {
+        await ctx.db.patch(b.entity, record.id, { [statusOf(b)]: b.canceledStatus });
+        await writeNote(ctx, b, record, `Оплата не прошла: ${reason}`);
+      }
+    }
+    return "applied";
+  });
 }
 
 /** Record → refundedStatus once succeeded refunds of `paymentId` cover the paid amount. */
@@ -863,6 +994,7 @@ async function onPayment(ctx: ConnectorCtx, id: string): Promise<NotificationRes
     amount: p.amount,
     metadata: { system: md.system, env: md.env, binding: b.id, recordId: md.recordId },
     ...(p.captured_at ? { captured_at: p.captured_at } : {}),
+    ...(p.cancellation_details ? { cancellation_details: p.cancellation_details } : {}),
   };
   switch (p.status) {
     case "succeeded": {
@@ -919,6 +1051,10 @@ export async function handleYookassaNotification(
   if (!(YOOKASSA_EVENTS as readonly string[]).includes(n.event)) return { status: 200, result: "ignored" };
   const doneKey = `hook:${n.event}:${n.objectId}`;
   if (await ctx.store.get(doneKey)) return { status: 200, result: "duplicate" };
+  // A redelivery while the first delivery is still being handled: the first answers for both (a failure there is a
+  // 500, and ЮKassa delivers again after the claim is free).
+  const run = `hook-run:${n.event}:${n.objectId}`;
+  if (!(await claimOnce(ctx, run, CLAIM_TTL_MS))) return { status: 409, result: "busy" };
   let result: NotificationResult;
   try {
     result = n.event.startsWith("refund.")
@@ -926,12 +1062,18 @@ export async function handleYookassaNotification(
       : await onPayment(ctx, n.objectId);
   } catch (e) {
     // Not in this shop: a forged or foreign notification.
-    if (!isConnectorError(e) || e.code !== "NOT_FOUND") throw e;
+    if (!isConnectorError(e) || e.code !== "NOT_FOUND") {
+      await releaseClaim(ctx, run);
+      throw e;
+    }
     result = "ignored";
   }
-  if (result !== "pending") await ctx.store.set(doneKey, { result }, HOOK_TTL_MS);
+  const final = result !== "pending" && result !== "busy";
+  if (final) await ctx.store.set(doneKey, { result }, HOOK_TTL_MS);
+  await releaseClaim(ctx, run);
   ctx.log.log({ action: n.event, mode: ctx.mode, status: result, durationMs: 0 });
-  return { status: 200, result };
+  // busy: the return check is applying the same payment now — ЮKassa delivers the notice again later.
+  return { status: result === "busy" ? 409 : 200, result };
 }
 
 /** How often one record's payment may be re-read on the buyer's return (yookassa.yaml#return_check). */
@@ -955,9 +1097,7 @@ export async function checkPaymentOnReturn(
   if (!last || last.row.status !== "pending") return "none";
   const providerId = String(last.row.provider_payment_id ?? "");
   if (!providerId || isMock(providerId) || !(await useApi(ctx))) return "none";
-  const gate = `return-check:${b.id}:${input.id}`;
-  if (await ctx.store.get(gate)) return "throttled";
-  await ctx.store.set(gate, { at: Date.now() }, RETURN_CHECK_MS);
+  if (!(await claimOnce(ctx, `return-check:${b.id}:${input.id}`, RETURN_CHECK_MS))) return "throttled";
   let result: ReturnCheckResult;
   try {
     result = await onPayment(ctx, providerId);

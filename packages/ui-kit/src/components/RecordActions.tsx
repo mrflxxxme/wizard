@@ -74,7 +74,7 @@ export function RecordActions<T>({
         setStatus({ ok: true, text: r.filled.length > 0 ? ru.ai.done : ru.ai.nothing });
         onDone?.();
         return;
-      } else if (a.fn) await call.mutate(a.fn, { id });
+      } else if (a.fn) await call.mutate(a.fn, { ...a.args, id });
       setStatus({ ok: true, text: ru.states.saved });
       if (a.kind === "delete") onDeleted?.();
       onDone?.();

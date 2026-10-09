@@ -203,6 +203,16 @@ export {
   renderPolicy,
   systemProcessors,
 } from "./privacy/policy.js";
+/** V3-18: the seller's pages of «Интернет-магазин» — routes, the shop detection and the rendered markdown. */
+export {
+  type RenderedShopTerms,
+  renderShopTerms,
+  SHOP_ORDER_ENTITY,
+  SHOP_TERMS_PAGES,
+  type ShopTermsKind,
+  shopTermsFacts,
+  shopTermsKind,
+} from "./privacy/shop-terms.js";
 export {
   eraseSubject,
   exportSubject,

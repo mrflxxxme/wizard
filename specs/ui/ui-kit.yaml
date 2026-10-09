@@ -336,6 +336,7 @@ components:
         kind: 'update' | 'delete' | 'fn' | 'link' | 'ai';   // ai — M3 (M3-02)
         patch?: Record<string, unknown>;      // kind=update, напр. {status:'approved'}
         fn?: string; href?: string;           // kind=fn — mutation-функция; kind=link
+        args?: Record<string, unknown>;       // kind=fn — аргументы вызова кроме id (V3-18: целевой статус потока статусов)
         ai?: string;                          // kind=ai — aiActions[].name (runtime.yaml#ai_actions)
         confirm?: string;                     // текст подтверждения (обязателен для delete)
         visible?(r: T): boolean };
@@ -835,9 +836,15 @@ components:
       interface ShopProductsProps extends WzBase {
         entity?: string; categoryEntity?: string; fields?: ShopFields;   // по умолчанию product, поля модуля
         cartPath?: string; emptyText?: string; pageSize?: number;
+        productPath?: string;                                            // V3-18: «/shop/» — название ведёт на страницу товара
       }
     behaviour: ["Товары в продаже в порядке владельца: фото, цена, остаток, «В корзину» (недоступна без остатка или когда весь остаток уже в корзине); ссылка на корзину с количеством и суммой"]
-    test_ids: [wz-shop, wz-product, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
+    test_ids: [wz-shop, wz-product, wz-product-link, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
+  - name: ShopProduct
+    milestone: V3
+    props: "interface ShopProductProps extends WzBase { entity?: string; path?: string; fields?: ShopFields; cartPath?: string; shopPath?: string }   // path — «/shop/»"
+    behaviour: ["V3-18: товар адреса /shop/<id> (useProduct: роль видит только товары в продаже): фото, название, цена, остаток, «В корзину», полное описание, ссылки «Все товары» и в корзину; нет товара — «Товар не найден»"]
+    test_ids: [wz-shop-product, wz-product, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
   - name: ShopCart
     milestone: V3
     props: "interface ShopCartProps extends WzBase { shopPath?: string }"
@@ -845,11 +852,12 @@ components:
     test_ids: [wz-cart, wz-cart-line, wz-cart-dec, wz-cart-inc, wz-cart-remove, wz-cart-total, wz-empty]
   - name: ShopCheckout
     milestone: V3
-    props: "interface ShopCheckoutProps extends WzBase, UseCheckoutOptions {}   // methods, online, courierPrice?, pointEntity?, placeFn?, cdekFn?, payment?, orderPath?"
+    props: "interface ShopCheckoutProps extends WzBase, UseCheckoutOptions { terms?: {offer: string; delivery?: string; returns?: string} }   // methods, online, courierPrice?, pointEntity?, placeFn?, cdekFn?, payment?, orderPath?, consentMessages?"
     behaviour:
       - "Способ получения (самовывоз из пункта, СДЭК: город → пункты, цена и срок функции модуля; курьер с адресом), имя, телефон, почта для чека, комментарий, согласие на ПДн (G2-PII-04)"
       - "Заказ — функция модуля shopPlaceOrder (цены и остатки сервера, повтор при CONFLICT); затем оплата ЮKassa (usePay с секретом покупателя) или страница заказа"
-    test_ids: [wz-checkout, wz-field-delivery, wz-field-pickup_point, wz-field-cdek_city, wz-cdek-find, wz-cdek-quote, wz-field-cdek_point, wz-consent, wz-checkout-total, wz-checkout-submit]
+      - "V3-18: consentMessages — отдельная неотмеченная галочка «Согласен получать письма о заказе» (уходит в заказ только с указанной почтой); terms — у кнопки «Оформляя заказ, вы принимаете условия публичной оферты» со ссылками на оферту, доставку и возврат (ст. 26.1 ЗоЗПП)"
+    test_ids: [wz-checkout-terms, wz-consent-messages, wz-checkout, wz-field-delivery, wz-field-pickup_point, wz-field-cdek_city, wz-cdek-find, wz-cdek-quote, wz-field-cdek_point, wz-consent, wz-checkout-total, wz-checkout-submit]
   - name: ShopOrder
     milestone: V3
     props: "interface ShopOrderProps extends WzBase, UseOrderOptions { shopPath?: string }   // path?, orderFn?, payment?"

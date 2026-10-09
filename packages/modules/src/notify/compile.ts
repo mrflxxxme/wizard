@@ -3,7 +3,9 @@
 // owner ($owner) and staff ($role:<staff role> in scope of the module, notify_staff) by the chosen channels, Telegram
 // without personal data (D71), service mail to a visitor only with the record's consent field (D69), reminders by a
 // schedule.relative trigger on the visit time. The G1 checks are scenarios with runWorkflows and advanceTime.
-// B2-18: the end of a package (packages) and the due and overdue messages of issues (resources).
+// B2-18: the end of a package (packages) and the due and overdue messages of issues (resources). V3-18: the shop's new
+// order (to the team; to the buyer with the order's link, only with his consent like the booking), its payment and a
+// payment that needs the owner's check.
 import type { AppSpec, Field, ModuleFragments, Workflow } from "@wizard/appspec";
 import { ACTIVE_STATUSES, bookingLinks } from "../booking/compile.js";
 import { leadFormFields } from "../leads/compile.js";
@@ -31,6 +33,31 @@ export const NOTIFY_BOOKING = {
 export const BOOKING_CONSENT_FIELD: Field = {
   name: NOTIFY_BOOKING.consent,
   label: "Согласен получать письма о записи",
+  type: "bool",
+  default: false,
+};
+
+/**
+ * What notify expects of «Интернет-магазин» (V3-23): the order `shop_order` with its number, sum, lines summary, the
+ * buyer's contacts, the e-mail «Почта (для чека)», the buyer's secret `token` (the order's page link) and the status
+ * `paid`; the payment journal `shop_payment` with `needs_review`. notify adds the consent field itself (link).
+ */
+export const NOTIFY_SHOP = {
+  order: "shop_order",
+  payment: "shop_payment",
+  email: "email",
+  status: "status",
+  paid: "paid",
+  review: "needs_review",
+  consent: "consent_messages",
+  /** The order's page of its buyer: the secret in ?t= opens it on any device (useOrder/orderToken). */
+  orderLink: "/order/$record.id?t=$record.token",
+} as const;
+
+/** The consent field notify adds to the shop's order (the unchecked box of the checkout). */
+export const SHOP_CONSENT_FIELD: Field = {
+  name: NOTIFY_SHOP.consent,
+  label: "Согласен получать письма о заказе",
   type: "bool",
   default: false,
 };
@@ -478,6 +505,112 @@ export function notifyPlan(ctx: ModuleContext): NotifyPlan {
       title: "О просрочке возврата",
       text: `Когда срок прошёл: ${whom("resources")}.${visitor ? " Получателю — письмо, если он согласился на письма." : ""}`,
     });
+  }
+
+  // Shop (V3-18): a new order and its payment — to the team and, with the buyer's consent, to the buyer (his order's
+  // page by its secret); a payment the connector could not match — to the team (the order is neither paid nor
+  // cancelled until the owner checks it).
+  if (ctx.present.has("shop")) {
+    const sp = ctx.allParams.shop ?? {};
+    const online = sp.online_payment !== false;
+    const visitor = p.visitor_emails === true;
+    const toBuyer = (template: string): Step => ({
+      type: "notify",
+      params: {
+        integration: MAIL,
+        to: `$record.${NOTIFY_SHOP.email}`,
+        consentField: NOTIFY_SHOP.consent,
+        template,
+        link: NOTIFY_SHOP.orderLink,
+      },
+    });
+    const created: Step[] = team("shop", {
+      template: [
+        "shop_new_order",
+        {
+          subject: "Новый заказ №{{number}}",
+          body: "Новый заказ №{{number}} на {{total}} ₽.\nСостав: {{items_summary}}\nПокупатель: {{name}}, {{phone}} {{email}}\nОткройте заказ в кабинете: {{link}}",
+        },
+      ],
+      text: "Новый заказ №{{number}} на {{total}} ₽ — откройте кабинет: {{link}}",
+    });
+    if (visitor) {
+      templates.shop_order_received = {
+        subject: "Заказ №{{number}} оформлен",
+        body: online
+          ? "Ваш заказ №{{number}} на {{total}} ₽ оформлен.\nСостав: {{items_summary}}\nСтатус и оплата заказа — на его странице: {{link}}"
+          : "Ваш заказ №{{number}} на {{total}} ₽ оформлен, магазин свяжется с вами.\nСостав: {{items_summary}}\nСтатус заказа — на его странице: {{link}}",
+      };
+      created.push(toBuyer("shop_order_received"));
+    }
+    workflows.push({
+      name: "shop_order_notify",
+      label: "Уведомить о новом заказе",
+      trigger: { type: "on_create", entity: NOTIFY_SHOP.order },
+      steps: created,
+    });
+    items.push({
+      title: "О новом заказе",
+      text: `Сразу после заказа: ${whom("shop")} — номер, состав, сумма и контакты покупателя.${visitor ? " Покупателю — письмо с номером, составом и ссылкой на заказ, если он согласился на письма." : ""}`,
+    });
+    if (online) {
+      const paid: Step[] = team("shop", {
+        template: [
+          "shop_order_paid",
+          {
+            subject: "Заказ №{{number}} оплачен",
+            body: "Заказ №{{number}} на {{total}} ₽ оплачен через ЮKassa. Соберите его: {{link}}",
+          },
+        ],
+        text: "Заказ №{{number}} оплачен — откройте кабинет: {{link}}",
+      });
+      if (visitor) {
+        templates.shop_order_paid_buyer = {
+          subject: "Заказ №{{number}} оплачен",
+          body: "Оплата заказа №{{number}} на {{total}} ₽ получена. Статус заказа — на его странице: {{link}}",
+        };
+        paid.push(toBuyer("shop_order_paid_buyer"));
+      }
+      workflows.push({
+        name: "shop_paid_notify",
+        label: "Уведомить об оплате заказа",
+        trigger: {
+          type: "on_status",
+          entity: NOTIFY_SHOP.order,
+          field: NOTIFY_SHOP.status,
+          equals: NOTIFY_SHOP.paid,
+        },
+        steps: paid,
+      });
+      items.push({
+        title: "Об оплате заказа",
+        text: `Когда ЮKassa подтвердила оплату: ${whom("shop")}.${visitor ? " Покупателю — письмо «Оплачен», если он согласился на письма." : ""}`,
+      });
+      workflows.push({
+        name: "shop_payment_review",
+        label: "Оплата требует проверки",
+        trigger: {
+          type: "on_status",
+          entity: NOTIFY_SHOP.payment,
+          field: NOTIFY_SHOP.status,
+          equals: NOTIFY_SHOP.review,
+        },
+        steps: team("shop", {
+          template: [
+            "shop_payment_review",
+            {
+              subject: "Оплата требует проверки",
+              body: "Оплата заказа №{{shop_order.number}} на {{amount}} ₽ не совпала с заказом (сумма или состав изменились). Заказ не отмечен оплаченным и не отменяется, пока вы не проверите платёж в личном кабинете ЮKassa. Кабинет: {{link}}",
+            },
+          ],
+          text: "Оплата заказа №{{shop_order.number}} требует проверки — откройте кабинет: {{link}}",
+        }),
+      });
+      items.push({
+        title: "Об оплате, которая требует проверки",
+        text: `Когда платёж ЮKassa не совпал с заказом: ${whom("shop")}.`,
+      });
+    }
   }
 
   return { templates, telegram, workflows, items, acceptance };

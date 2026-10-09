@@ -364,6 +364,11 @@ export const complianceSchema = z.strictObject({
     .string()
     .regex(/^[0-9]{10}([0-9]{2})?$/)
     .optional(),
+  /** ОГРН (13 digits, an organization) or ОГРНИП (15, an individual entrepreneur): the seller's requisite (V3-18). */
+  operatorOgrn: z
+    .string()
+    .regex(/^[0-9]{13}([0-9]{2})?$/)
+    .optional(),
   retentionWaiver: z.strictObject({ reason: cpString(10) }).optional(),
 });
 

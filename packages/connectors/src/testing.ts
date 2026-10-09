@@ -86,6 +86,12 @@ export class MemoryStore implements ConnectorStore {
   async set(key: string, value: unknown, ttlMs = Number.POSITIVE_INFINITY) {
     this.data.set(key, { value: structuredClone(value), until: this.now().getTime() + ttlMs });
   }
+  async setIfAbsent(key: string, value: unknown, ttlMs = Number.POSITIVE_INFINITY) {
+    const hit = this.data.get(key);
+    if (hit && hit.until >= this.now().getTime()) return false;
+    this.data.set(key, { value: structuredClone(value), until: this.now().getTime() + ttlMs });
+    return true;
+  }
 }
 
 /**

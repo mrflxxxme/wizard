@@ -41,6 +41,8 @@ export type ShopListProps = {
   pageSize?: number;
   /** The cart page: the bar under the goods leads there. */
   cart: Link;
+  /** The product pages (V3-18): a product's name leads to `path` + its id. */
+  product?: { path: string };
   /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
   wzId?: string;
 };
@@ -162,8 +164,9 @@ function More({ m, shown, growing }: { m: CatalogModel; shown: number; growing: 
 }
 
 /** One product as a row: its photo, name, stock, price and «В корзину» (the stock and the cart decide whether it adds). */
-function Item({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }) {
+function Item({ m, row, level, path }: { m: ShopCatalogModel; row: Row; level: 1 | 2; path?: string }) {
   const it = m.item(row);
+  const href = path ? `${path}${encodeURIComponent(it.id)}` : null;
   const Name = level === 1 ? "h2" : "h3";
   const out = it.stock !== null && it.stock <= 0;
   const all = !out && !it.canAdd;
@@ -185,7 +188,19 @@ function Item({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }
         <span aria-hidden="true" className="size-20 rounded-md bg-muted sm:size-24" />
       )}
       <div className="min-w-0">
-        <Name className="font-display text-h3 font-bold text-balance wrap-break-word">{it.name}</Name>
+        <Name className="font-display text-h3 font-bold text-balance wrap-break-word">
+          {href ? (
+            <a
+              href={href}
+              data-testid="wz-product-link"
+              className="text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {it.name}
+            </a>
+          ) : (
+            it.name
+          )}
+        </Name>
         {it.description ? (
           <p className="mt-1 line-clamp-2 text-body text-muted-foreground">{it.description}</p>
         ) : null}
@@ -222,7 +237,17 @@ function Item({ m, row, level }: { m: ShopCatalogModel; row: Row; level: 1 | 2 }
 }
 
 export default function ShopList(props: ShopListProps) {
-  const { entity = "product", categoryEntity, title, text, level = 2, empty, pageSize = 12, cart } = props;
+  const {
+    entity = "product",
+    categoryEntity,
+    title,
+    text,
+    level = 2,
+    empty,
+    pageSize = 12,
+    cart,
+    product,
+  } = props;
   const m = useShopCatalog(entity, { pageSize, ...(props.fields ? { fields: props.fields } : {}) });
   const { items, growing } = useShown(m);
   const uid = useId();
@@ -241,7 +266,7 @@ export default function ShopList(props: ShopListProps) {
       <>
         <ul className="divide-y divide-border border-y border-border">
           {items.map((row) => (
-            <Item key={row.id} m={m} row={row} level={level} />
+            <Item key={row.id} m={m} row={row} level={level} {...(product ? { path: product.path } : {})} />
           ))}
         </ul>
         <More m={m} shown={items.length} growing={growing} />

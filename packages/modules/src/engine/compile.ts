@@ -45,6 +45,7 @@ import {
   type ModuleRegistry,
   planCatalog,
   type ScreenContext,
+  type StatusFlow,
 } from "../types.js";
 import {
   type FrontMode,
@@ -847,9 +848,17 @@ class Compilation {
         this.bug(id, `генератор экрана «${page.route}» упал: ${(e as Error).message}`);
       }
     }
+    // V3-18: status flows of the modules' entities (the buttons of allowed transitions instead of every status).
+    const flows = Object.assign(
+      {},
+      ...this.order.map((id) => this.defs.get(id)?.statusFlows?.(this.ctx(id)) ?? {}),
+    ) as Record<string, StatusFlow>;
     for (const { role, entities, page } of roleCabinets) {
       this.pages.push(page);
-      this.files.set(page.file, cabinetPage(this.spec, role.name, role.label, entities));
+      this.files.set(
+        page.file,
+        cabinetPage({ ...this.spec, functions: this.functions }, role.name, role.label, entities, flows),
+      );
     }
     if (this.front === "v2" && !this.pages.some((p) => p.route === "/")) {
       this.pages.push({
