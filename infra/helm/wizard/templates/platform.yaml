@@ -42,8 +42,14 @@ spec:
         wizard.ru/role: platform-api
       annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
+      {{- if .Values.repoSandbox.enabled }}
+      # V3-32: the repository sandbox's pods, logs, ConfigMaps and PVCs in the sandbox namespace (Role wizard-repo-sandbox).
+      serviceAccountName: wizard-repo-agent
+      automountServiceAccountToken: true
+      {{- else }}
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
+      {{- end }}
       enableServiceLinks: false
       {{- include "wizard.imagePullSecrets" . | nindent 6 }}
       {{- include "wizard.podSecurity" 1000 | nindent 6 }}
@@ -56,6 +62,9 @@ spec:
             {{- include "wizard.alertEnv" . | nindent 12 }}
             - name: PORT
               value: {{ .Values.platformApi.port | quote }}
+            {{- if .Values.repoSandbox.enabled }}
+            {{- include "wizard.repoSandboxEnv" . | nindent 12 }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}

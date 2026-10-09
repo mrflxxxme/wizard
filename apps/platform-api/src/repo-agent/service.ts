@@ -25,6 +25,7 @@ import {
   type Router,
   type RouterOptions,
 } from "@wizard/llm";
+import { createLogger } from "@wizard/pii/log";
 import type { Kysely } from "kysely";
 import type { Billing } from "../billing/ledger.js";
 import type { Config } from "../config.js";
@@ -70,6 +71,8 @@ import {
 import { AGENT_CHECK_NAME, agentRu } from "./texts.js";
 
 const LEASE_MS = 30 * 60_000;
+/** The pod runner's lines (info and warn; allowlisted fields only). */
+const sandboxLogger = createLogger({ svc: "platform-api" });
 const MAX_ATTEMPTS = 5;
 const PARALLEL = 2;
 export const REPO_AGENT_FIXTURE = "repo-agent";
@@ -80,7 +83,7 @@ export interface RepoAgentOptions {
   sync: GitSync;
   billing: Billing;
   log?: (msg: string, err?: unknown) => void;
-  /** The sandbox runner (tests: a fake); default — repoSandboxFromEnv (none in the cloud until the pod runner). */
+  /** The sandbox runner (tests: a fake); default — repoSandboxFromEnv (the gVisor pod runner in the cloud). */
   sandbox?: RepoSandbox | null;
   createRouter?: (opts: RouterOptions) => Router;
   /** Queue timer, ms (0 — none; tests drive tick()). Default WIZARD_REPO_AGENT_TICK_MS or 5 s. */
@@ -164,7 +167,12 @@ export class RepoAgent {
 
   constructor(o: RepoAgentOptions) {
     this.#o = o;
-    this.sandbox = o.sandbox !== undefined ? o.sandbox : repoSandboxFromEnv(o.config, o.env ?? process.env);
+    this.sandbox =
+      o.sandbox !== undefined
+        ? o.sandbox
+        : repoSandboxFromEnv(o.config, o.env ?? process.env, {
+            log: (line) => sandboxLogger.line(line),
+          });
   }
 
   get #d() {

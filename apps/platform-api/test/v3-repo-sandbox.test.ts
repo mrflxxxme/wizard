@@ -1,21 +1,11 @@
-// V3-32: the runners of the repository sandbox. The local runner exists only with WIZARD_UNSAFE_LOCAL_EXEC=1 and an
-// explicit WIZARD_REPO_SANDBOX=process; it builds the environment from scratch (no platform secrets), never writes
-// outside its directory, kills a command at its limit and refuses network outside the install phase. The cloud runner's
-// contract: a gVisor pod without a service account, root filesystem, capabilities or DNS, and a NetworkPolicy that lets
-// only the install reach the egress proxy. The commands below are this test's own (node -e), not a client's code.
+// V3-32: the local runner of the repository sandbox. It exists only with WIZARD_UNSAFE_LOCAL_EXEC=1 and an explicit
+// WIZARD_REPO_SANDBOX=process; it builds the environment from scratch (no platform secrets), never writes outside its
+// directory, kills a command at its limit and refuses network outside the install phase. The cloud runner (gVisor pods)
+// is tested in v3-repo-pod-sandbox.test.ts. The commands below are this test's own (node -e), not a client's code.
 
 import { agentCommand, SandboxPolicyError, snapshotOf } from "@wizard/agents/repo";
 import { describe, expect, test } from "vitest";
-import {
-  ProcessSandbox,
-  repoSandboxFromEnv,
-  repoSandboxNetworkPolicy,
-  repoSandboxPod,
-  sandboxEnv,
-} from "../src/repo-agent/index.js";
-
-// biome-ignore lint/suspicious/noExplicitAny: manifests are read field by field
-type Json = Record<string, any>;
+import { ProcessSandbox, repoSandboxFromEnv, sandboxEnv } from "../src/repo-agent/index.js";
 
 const node = (phase: "install" | "build" | "test" | "agent", code: string, timeoutMs = 20_000) => ({
   phase,
@@ -94,64 +84,5 @@ describe("the local runner", () => {
     } finally {
       await ws.close();
     }
-  });
-});
-
-describe("the cloud runner's contract", () => {
-  test("a gVisor pod: no service account, read-only root, no capabilities, no DNS, the 10-minute deadline", () => {
-    const pod = repoSandboxPod({
-      name: "wz-repo-1",
-      phase: "build",
-      argv: ["pnpm", "run", "build"],
-      timeoutMs: 600_000,
-    });
-    const spec = pod.spec as Json;
-    expect(spec.runtimeClassName).toBe("gvisor");
-    expect(spec.automountServiceAccountToken).toBe(false);
-    expect(spec.activeDeadlineSeconds).toBe(600);
-    expect(spec.dnsPolicy).toBe("None");
-    expect(spec.securityContext.runAsNonRoot).toBe(true);
-    const c = spec.containers[0];
-    expect(c.securityContext).toEqual({
-      allowPrivilegeEscalation: false,
-      readOnlyRootFilesystem: true,
-      capabilities: { drop: ["ALL"] },
-    });
-    expect(c.env).toContainEqual({ name: "npm_config_offline", value: "true" });
-    expect(JSON.stringify(c.env)).not.toMatch(/PROXY/);
-    expect((pod.metadata as Json).labels["wizard.repo-sandbox/network"]).toBe("none");
-    const install = repoSandboxPod({
-      name: "wz-repo-2",
-      phase: "install",
-      argv: ["pnpm", "install", "--frozen-lockfile"],
-      timeoutMs: 600_000,
-      proxyUrl: "http://10.0.0.7:3128",
-    });
-    expect((install.metadata as Json).labels["wizard.repo-sandbox/network"]).toBe("registry");
-    expect((install.spec as Json).containers[0].env).toContainEqual({
-      name: "HTTPS_PROXY",
-      value: "http://10.0.0.7:3128",
-    });
-  });
-
-  test("NetworkPolicy: build, tests and the agent — nothing; install — only the egress proxy", () => {
-    const [none, registry] = repoSandboxNetworkPolicy({
-      namespace: "sandbox",
-      proxy: { namespace: "platform", app: "egress-proxy", port: 3128 },
-    }) as Json[];
-    expect(none?.spec.egress).toEqual([]);
-    expect(none?.spec.ingress).toEqual([]);
-    expect(registry?.spec.podSelector.matchLabels["wizard.repo-sandbox/network"]).toBe("registry");
-    expect(registry?.spec.egress).toEqual([
-      {
-        to: [
-          {
-            namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "platform" } },
-            podSelector: { matchLabels: { "app.kubernetes.io/name": "egress-proxy" } },
-          },
-        ],
-        ports: [{ protocol: "TCP", port: 3128 }],
-      },
-    ]);
   });
 });

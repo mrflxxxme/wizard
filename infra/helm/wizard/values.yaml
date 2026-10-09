@@ -31,6 +31,8 @@ images:
     postgres: wizard-postgres
     # workerd of the sandbox pods (M2-18; the runtime creates them)
     sandbox: wizard-sandbox
+    # Node 22 + corepack of the repository sandbox's phase pods (V3-32; platform-api creates them)
+    repoSandbox: wizard-repo-sandbox
 
 domains:
   # <codename>.ru — UI and API of the platform (E-NAME)
@@ -259,3 +261,30 @@ sandbox:
   cpuLimit: "1"
   # ResourceQuota of the sandbox namespace (a pod of runtime sandboxPod() requests 1536Mi = its limit).
   quota: { pods: 50, requestsCpu: 16, requestsMemory: 64Gi, limitsCpu: 32, limitsMemory: 96Gi }
+
+# V3-32: the cloud runner of the repository sandbox (apps/platform-api/src/repo-agent/pod-sandbox.ts). platform-api runs
+# the install, build and tests of a client's JS/TS repository — and the agent's runs of them — as gVisor pods of the
+# sandbox namespace, one pod per phase; the workspace moves between phases as a tar on a PVC of the task that the
+# client's commands never mount. Install reaches only the registry hosts through the egress proxy (a grant per phase);
+# build, tests and the agent have no network and no DNS (NetworkPolicies generated/repo-sandbox-networkpolicy.json).
+# Needs the gVisor RuntimeClass and runsc nodes (sandbox.runtimeClass) and room in sandbox.quota for one phase pod.
+repoSandbox:
+  enabled: false
+  # wizard.ru/pool of the sandbox nodes (infra/k3s, the pilot's single node: free)
+  pool: free
+  # the client's command (≤ the sandbox LimitRange max: 2 CPU, 2Gi); restore/save steps take 512Mi next to it
+  cpuLimit: "2"
+  cpuRequest: 500m
+  memoryLimit: 2Gi
+  # emptyDir of a phase pod (repository, node_modules, caches; kubelet evicts beyond it) and the PVC of its saved copy
+  # (the copy and its replacement during a save)
+  workspaceSize: 3Gi
+  storeSize: 6Gi
+  # "" — the cluster's default class (k3s: local-path)
+  storageClass: ""
+  # npm registry mirror of the install phase (https, a public DNS name); "" — registry.npmjs.org, registry.yarnpkg.com
+  registry: ""
+  # objects older than this are swept (a task's lease is 30 min)
+  ttlMinutes: 90
+  # added to the sandbox ResourceQuota: workspaces at a time and their storage (CPU and memory share sandbox.quota)
+  quota: { pvcs: 2, storage: 12Gi }

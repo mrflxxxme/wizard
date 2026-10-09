@@ -48,6 +48,7 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | nginx (образ `nginxinc/nginx-unprivileged`) | BSD-2-Clause | раздача статики platform-web |
 | PgBouncer (пакет Alpine) | ISC | пулер соединений, режим transaction |
 | Node.js (официальный образ) | MIT | базовый образ сервисов |
+| corepack (в составе Node.js 22) | MIT | песочница репозиториев агента (V3-32, образ `wizard-repo-sandbox`): pnpm (MIT) и yarn (BSD-2-Clause) скачиваются в фазе установки под версию из репозитория клиента и не распространяются; npm (Artistic-2.0) входит в Node.js |
 | syft (`anchore/sbom-action`) | Apache-2.0 | SBOM образов в CI |
 | kubeconform, actionlint | Apache-2.0, MIT | проверки CI |
 | PostgreSQL 16 (официальный образ `postgres`, Debian) | PostgreSQL License | своя БД пилота (`infra/docker/postgres.Dockerfile`) |

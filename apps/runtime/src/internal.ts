@@ -154,7 +154,15 @@ export function createInternalHandler(o: InternalOptions): (req: Request) => Pro
         // is signed, so any replica behind the internal Service checks it, not only the one that issued it.
         const g = o.grants?.open(body.token);
         if (!g) return json(403, { error: { code: "FORBIDDEN" } });
-        return json(200, { https: [...g.https].sort(), smtp: [], label: g.systemId, exp: g.exp });
+        // V3-32: a bulk grant (the repository sandbox's package install) carries its own tunnel limits.
+        return json(200, {
+          https: [...g.https].sort(),
+          smtp: [],
+          label: g.systemId,
+          exp: g.exp,
+          ...(g.maxBytes !== undefined ? { maxBytes: g.maxBytes } : {}),
+          ...(g.maxDurationMs !== undefined ? { maxDurationMs: g.maxDurationMs } : {}),
+        });
       }
       if (!o.rpc) return json(403, { error: { code: "FORBIDDEN" } });
       const cap = o.rpc.openCapability(body.token);
