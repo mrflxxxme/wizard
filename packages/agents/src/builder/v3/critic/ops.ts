@@ -99,6 +99,8 @@ function fitProps(meta: PatternMeta, props: Record<string, unknown>): Record<str
   const out = r.data as Record<string, unknown>;
   for (const group of PHOTO_KEYS)
     if (group.some((k) => props[k] !== undefined) && !group.some((k) => out[k] !== undefined)) return null;
+  // The binding stays too: a variant without item actions would drop where a catalog item leads (GS-catalog-4).
+  for (const k of FIXED_KEYS) if (props[k] !== undefined && out[k] === undefined) return null;
   return out;
 }
 
@@ -134,7 +136,10 @@ function swapVariant(st: CriticState, op: Extract<EditOp, { op: "swap_variant" }
         continue;
       }
       const props = fitProps(meta, x.props);
-      if (!props) return fail(`вариант ${op.pattern} не принимает содержимое секции или теряет фото`);
+      if (!props)
+        return fail(
+          `вариант ${op.pattern} не принимает содержимое секции, теряет фото или привязку к данным`,
+        );
       sections.push({ ...x, pattern: meta.id, props });
     }
     next.push({ ...p, sections });

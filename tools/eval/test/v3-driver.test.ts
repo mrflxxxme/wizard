@@ -257,6 +257,9 @@ describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () =>
     );
     expect(r.build.previewMinutes).not.toBeNull();
     expect(r.build.minutes).toBeGreaterThanOrEqual(r.build.previewMinutes);
+    // The time targets run from the ready brief: the interview is the owner's time.
+    expect(r.fromBriefMinutes).toBeGreaterThanOrEqual(r.build.minutes);
+    expect(r.fromBriefMinutes).toBeLessThanOrEqual(r.minutes);
     expect(r.build.scenarios.total).toBeGreaterThan(0);
     expect(r.build.scenarios.passed).toBe(r.build.scenarios.total);
     expect(r.build.capRub).toBe(500);
@@ -282,6 +285,8 @@ describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () =>
     expect(db.v3.t1Forbidden).toBe(0);
     const types = db.v3.calls[r.systemId].map((c: { callType: string }) => c.callType);
     expect(types).toContain("interview_v3");
+    // Every attempt row carries its failures (none here): the SQL of the failed attempts runs on Postgres.
+    for (const c of db.v3.calls[r.systemId]) expect(c.failures).toEqual([]);
     expect(db.v3.events[r.systemId].some((e: { type: string }) => e.type === "build_stage")).toBe(true);
     expect(Object.keys(db.v3.hooks[r.systemId] ?? {})).toEqual(
       expect.arrayContaining(["skeleton", "techreview"]),

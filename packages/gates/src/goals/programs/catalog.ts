@@ -1,6 +1,8 @@
 // Goal scenarios of the module «Каталог и прайс» (packages/modules/src/catalog, modules.yaml#catalog catalog): entity
-// `service` {name, price, duration_min?, active, …}, the showcase /services, the cabinet section of the owner.
+// `service` {name, price, duration_min?, active, …}, the showcase /services (ui-kit ItemCard, or the items of a v3
+// catalog pattern with the same hooks wz-itemcard, wz-itemcard-cta), the cabinet section of the owner.
 import type { GoalProgram, GoalRun } from "../types.js";
+import { bookingChoiceMade } from "./booking.js";
 import {
   addRecord,
   blockText,
@@ -136,8 +138,7 @@ const chooseItem: GoalProgram = async (t) => {
   t.step("Видна форма заявки на главной или запись на выбранную позицию");
   const url = new URL(t.page.url());
   if (url.pathname === "/booking") {
-    const pressed = t.page.locator('[data-testid="booking-page"] [aria-pressed="true"]').first();
-    if ((await pressed.count()) === 0) t.fail("страница записи открылась без выбранной позиции");
+    if (!(await bookingChoiceMade(t))) t.fail("страница записи открылась без выбранной позиции");
     return;
   }
   const form = t.page.locator(`${component("LeadForm")} form`).first();

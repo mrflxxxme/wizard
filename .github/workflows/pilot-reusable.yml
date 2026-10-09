@@ -11,7 +11,8 @@
 # only with its pre-registration in the spend journal (wave, purpose, hypothesis, expect_rub, cap_rub, founder_ok;
 # tools/deploy/spend.mjs), checked here before any secret and again by pilot.mjs against the wave plan. V3-18: eval with
 # threshold v3 is checkpoint 1 of v3; `v3-probe` (v3-probe.yml) is the probe of the v3 model routes in the worker pod —
-# paid too (≤ 30 ₽), pre-registered the same way; its report goes to the same artifact folder.
+# paid too (≤ 30 ₽), pre-registered the same way; its report goes to the same artifact folder. With probe_shape it is
+# the shape probe (the production request shapes of critic_visual / techreview per model, tools/eval/server/probe-shape.mjs).
 name: pilot-reusable
 
 on:
@@ -86,6 +87,10 @@ on:
         description: "deploy/bootstrap: stock photos of the design stage (off | live | library); empty — the variable or off (B2-38, B2-43)"
         type: string
         default: ""
+      probe_shape:
+        description: "v3-probe (V3-18): the shape probe of these groups (critic | techreview, comma-separated); empty — the route probe"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -117,6 +122,7 @@ jobs:
           LLM_DAILY_CAP_RUB: ${{ inputs.llm_daily_cap_rub }}
           BUILD_PIPELINE: ${{ inputs.build_pipeline }}
           STOCK_MODE: ${{ inputs.stock_mode }}
+          PROBE_SHAPE: ${{ inputs.probe_shape }}
         run: |
           if [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
             echo "::error title=pilot::Пилот запускает только владелец репозитория ($OWNER)."; exit 1
@@ -145,6 +151,10 @@ jobs:
             if [ "$COMMAND" = "v3-probe" ] && [ "$EVAL_CAP_RUB" -gt 30 ]; then
               echo "$need cap_rub — проба маршрутов v3 не дороже 30 ₽."; exit 1
             fi
+          fi
+          if [ -n "$PROBE_SHAPE" ]; then
+            [ "$COMMAND" = "v3-probe" ] || { echo "::error title=pilot::probe_shape — только для v3-probe."; exit 1; }
+            printf '%s' "$PROBE_SHAPE" | grep -Eq '^(critic|techreview)(,(critic|techreview))?$' || { echo "::error title=pilot::probe_shape — critic, techreview или critic,techreview."; exit 1; }
           fi
           case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
           case "$STOCK_MODE" in ""|off|live|library) ;; *) echo "::error title=pilot::stock_mode — off, live, library или пусто."; exit 1 ;; esac
@@ -179,8 +189,9 @@ jobs:
     if: ${{ !cancelled() && needs.authorize.result == 'success' && needs.images.result != 'failure' }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env }}
-    # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most; v3-probe: 8 calls.
-    timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && 30 || 90 }}
+    # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most; v3-probe: 8 calls; its
+    # shape probe: up to 30 variants of one attempt each, stopped by its own clock at 70 minutes.
+    timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && inputs.probe_shape != '' && 90 || inputs.command == 'v3-probe' && 30 || 90 }}
     # B2-43: the files bucket of the systems, its endpoint and region for the stock-library job (stock_mode=library only).
     outputs:
       files_bucket: ${{ steps.pilot.outputs.files_bucket }}
@@ -204,6 +215,8 @@ jobs:
       EVAL_HYPOTHESIS: ${{ inputs.hypothesis }}
       EVAL_EXPECT_RUB: ${{ inputs.expect_rub }}
       EVAL_FOUNDER_OK: ${{ inputs.founder_ok }}
+      # V3-18: the groups of the shape probe (empty — the route probe).
+      PROBE_SHAPE: ${{ inputs.probe_shape }}
       # Founder inputs (docs/ops/deploy.md «Что нужно от основателя»): secrets…
       TWC_TOKEN: ${{ secrets.TWC_TOKEN }}
       WIZARD_STATE_PASSPHRASE: ${{ secrets.WIZARD_STATE_PASSPHRASE }}
@@ -345,7 +358,7 @@ jobs:
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
             eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --threshold "$EVAL_THRESHOLD" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
-            v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
+            v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" --shape "$PROBE_SHAPE" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac

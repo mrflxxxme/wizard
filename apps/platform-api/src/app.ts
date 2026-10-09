@@ -39,6 +39,7 @@ import { opsAlertFromConfig } from "./ops/alert-config.js";
 import { checkRunFailureRate } from "./ops/checks.js";
 import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
+import { agentRedirects, RepoAgent, type RepoAgentOptions, repoAgentRoutes } from "./repo-agent/index.js";
 import { abuseRoutes } from "./routes/abuse.js";
 import { adminRoutes } from "./routes/admin.js";
 import { capabilityRoutes } from "./routes/admin-capability.js";
@@ -146,6 +147,8 @@ export interface PlatformApiOptions {
   secretWindow?: { kms?: TransitKms | null; platformDomains?: readonly string[] };
   /** V3-31 repository sync (tests: env and config of the providers, their HTTP, the clock; the queue timer). */
   gitSync?: Pick<GitSyncOptions, "env" | "cfg" | "fetch" | "now">;
+  /** V3-32 agent for compatible repositories (tests: the sandbox, the router, the env; the queue timer). */
+  repoAgent?: Pick<RepoAgentOptions, "sandbox" | "createRouter" | "tickMs" | "env">;
 }
 
 export interface PlatformApi {
@@ -159,6 +162,8 @@ export interface PlatformApi {
   deps: Deps;
   /** V3-31: sync of system repositories with GitHub and GitLab (tests drive its queue with tick()). */
   gitSync: GitSync;
+  /** V3-32: the agent for compatible repositories (tests drive its queue with tick()). */
+  repoAgent: RepoAgent;
   close(): Promise<void>;
 }
 
@@ -263,6 +268,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     ...opts.gitSync,
   });
   gitSync.start();
+  // V3-32: the agent for compatible repositories — the sync's providers and KMS, its own queue of tasks.
+  const repoAgent = new RepoAgent({
+    db: handle.db,
+    config,
+    sync: gitSync,
+    billing,
+    log,
+    ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    ...opts.repoAgent,
+  });
+  repoAgent.start();
   const deps: Deps = {
     db: handle.db,
     pg: handle.pg,
@@ -416,7 +432,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   // V3-30: the internal git of the system — commits, revision ↔ commit, diff, zip of the tree.
   api.route("/", repoRoutes(deps));
   // V3-31: sync of the repository with GitHub / GitLab through PRs (connect, state, auto-merge, PR preview).
-  api.route("/", repoSyncRoutes(deps, gitSync));
+  api.route("/", repoSyncRoutes(deps, gitSync, agentRedirects(deps, repoAgent)));
+  // V3-32: the agent for compatible repositories of an org (connect, compatibility report, tasks → draft PRs).
+  api.route("/", repoAgentRoutes(repoAgent));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
   // V3-20: integrations of the brief (contracts, mock → key check → live) and keys of the system's own API.
@@ -474,8 +492,10 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     engine,
     deps,
     gitSync,
+    repoAgent,
     async close() {
       gitSync.stop();
+      repoAgent.stop();
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
       if (opsTimer) clearInterval(opsTimer);

@@ -4,7 +4,7 @@
 // App is proven by the user's own OAuth code: the installation must be among the user's installations.
 import { createSign } from "node:crypto";
 import type { GitHubAppConfig } from "../config.js";
-import { callJson } from "./http.js";
+import { callJson, ProviderError } from "./http.js";
 import type { CheckInput, ProviderPr, ProviderRepo, RepoApi } from "./types.js";
 
 const API_VERSION = "2022-11-28";
@@ -33,6 +33,7 @@ interface GhPull {
   merged?: boolean;
   head: { sha: string; ref: string };
   merge_commit_sha: string | null;
+  draft?: boolean;
 }
 
 const b64url = (s: string | Buffer) => Buffer.from(s).toString("base64url");
@@ -52,6 +53,7 @@ const prOf = (p: GhPull): ProviderPr => ({
   state: p.merged_at || p.merged ? "merged" : p.state === "open" ? "open" : "closed",
   headSha: p.head?.sha ?? null,
   mergeSha: p.merged_at || p.merged ? p.merge_commit_sha : null,
+  ...(p.draft !== undefined ? { draft: p.draft } : {}),
 });
 
 export class GitHubApp {
@@ -202,13 +204,30 @@ class GitHubRepoApi implements RepoApi {
     return list[0] ? prOf(list[0]) : null;
   }
 
-  async createPr(i: { branch: string; base: string; title: string; body: string }): Promise<ProviderPr> {
-    return prOf(
-      await this.#api<GhPull>("/pulls", {
-        method: "POST",
-        body: { title: i.title, head: i.branch, base: i.base, body: i.body, maintainer_can_modify: false },
-      }),
-    );
+  async createPr(i: {
+    branch: string;
+    base: string;
+    title: string;
+    body: string;
+    draft?: boolean;
+  }): Promise<ProviderPr> {
+    const body = { title: i.title, head: i.branch, base: i.base, body: i.body, maintainer_can_modify: false };
+    if (!i.draft) return prOf(await this.#api<GhPull>("/pulls", { method: "POST", body }));
+    try {
+      return prOf(await this.#api<GhPull>("/pulls", { method: "POST", body: { ...body, draft: true } }));
+    } catch (e) {
+      // GitHub Free private repositories have no draft PRs (422): a usual PR, said to be a draft in its title.
+      if (!(e instanceof ProviderError) || e.code !== "INVALID" || !/draft/i.test(e.detail ?? "")) throw e;
+      return {
+        ...prOf(
+          await this.#api<GhPull>("/pulls", {
+            method: "POST",
+            body: { ...body, title: `Черновик: ${i.title}` },
+          }),
+        ),
+        draft: false,
+      };
+    }
   }
 
   async updatePr(number: number, i: { title?: string; body?: string }): Promise<void> {

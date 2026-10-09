@@ -30,6 +30,8 @@ export type FormBookingCompactProps = {
   note?: string;
   /** A direct channel when online booking cannot start. */
   contact?: Link;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -189,7 +191,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -313,7 +315,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -388,6 +390,7 @@ function Sent({
   return (
     <div
       role="status"
+      data-testid="booking-done"
       className={`flex items-start gap-4 ${framed ? "rounded-lg border border-border bg-card p-6 text-card-foreground sm:p-8" : ""}`}
     >
       <span
@@ -506,7 +509,8 @@ function metaOf(r: Rec, durationField: string | undefined, priceField: string): 
   if (typeof min === "number" && min > 0) {
     const h = Math.floor(min / 60);
     const m = min % 60;
-    out.push(h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`);
+    // Minutes below two hours («60 мин», «90 мин») as the catalog of the module shows them, then hours.
+    out.push(min < 120 ? `${min} мин` : m ? `${h} ч ${m} мин` : `${h} ч`);
   }
   const price = r[priceField];
   if (typeof price === "number" && Number.isFinite(price)) out.push(MONEY.format(price));
@@ -607,7 +611,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
     );
   else if (m.slots.length === 0)
     body = (
-      <p className="text-body text-muted-foreground">
+      <p data-testid="wz-empty" className="text-body text-muted-foreground">
         На этот день свободного времени нет — выберите другой день.
       </p>
     );
@@ -615,7 +619,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
     body = (
       <fieldset>
         <legend className="sr-only">{`Свободное время: ${dayOf(m.day).full}`}</legend>
-        <div className={className}>
+        <div data-testid="booking-slots" className={className}>
           {m.slots.map((s) => {
             const on = m.slot?.start === s.start;
             return (
@@ -635,7 +639,7 @@ function Times({ m, tz, className }: { m: BookingModel; tz: string; className: s
       </fieldset>
     );
   return (
-    <div aria-busy={m.slotsLoading ? true : undefined}>
+    <div data-testid="booking-time" aria-busy={m.slotsLoading ? true : undefined}>
       {m.notice ? (
         <p role="alert" className="mb-4 text-body font-bold">
           {m.notice}
@@ -662,7 +666,13 @@ function Contacts({ m, uid, submit, note }: { m: BookingModel; uid: string; subm
     if (!(await form.submit())) setTries((n) => n + 1);
   };
   return (
-    <form ref={box} noValidate onSubmit={onSubmit} aria-label="Контакты для записи">
+    <form
+      ref={box}
+      data-testid="booking-form"
+      noValidate
+      onSubmit={onSubmit}
+      aria-label="Контакты для записи"
+    >
       <div className="grid gap-5 sm:grid-cols-2">
         {shown.map((f) => (
           <FieldRow key={f.name} field={f} form={form} uid={uid} className={span(f) ? "sm:col-span-2" : ""} />
@@ -712,10 +722,12 @@ function Pick(props: {
   options: { value: string; label: string }[];
   onChange(v: string): void;
   placeholder?: string;
+  /** Hook of the step for the goal scenarios (booking-service, booking-specialist, booking-day). */
+  testid?: string;
 }) {
-  const { id, label, value, options, onChange, placeholder } = props;
+  const { id, label, value, options, onChange, placeholder, testid } = props;
   return (
-    <div className="min-w-0">
+    <div data-testid={testid} className="min-w-0">
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -784,6 +796,7 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
             <div className={`grid gap-5 ${m.specialists ? "sm:grid-cols-2" : ""}`}>
               <Pick
                 id={`${uid}-service`}
+                testid="booking-service"
                 label="Услуга"
                 value={m.service?.id ?? ""}
                 placeholder="Выберите услугу"
@@ -793,6 +806,7 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
               {m.specialists ? (
                 <Pick
                   id={`${uid}-specialist`}
+                  testid="booking-specialist"
                   label="Специалист"
                   value={m.specialist?.id ?? ""}
                   placeholder="Выберите специалиста"
@@ -803,6 +817,7 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
               <div className={m.specialists ? "sm:col-span-2" : ""}>
                 <Pick
                   id={`${uid}-day`}
+                  testid="booking-day"
                   label="День"
                   value={m.day}
                   options={m.days.map((d) => ({ value: d, label: dayOf(d).full }))}
@@ -848,7 +863,13 @@ export default function FormBookingCompact(props: FormBookingCompactProps) {
       </div>
     );
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-background py-section font-sans text-foreground">
+    <section
+      data-wz-component="BookingForm"
+      data-wz-id={props.wzId}
+      data-testid="booking-page"
+      aria-labelledby={`${uid}-title`}
+      className="bg-background py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-page px-gutter">
         <div className="max-w-text">
           <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">

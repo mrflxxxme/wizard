@@ -10,6 +10,8 @@ export const GATE_NAMES = {
   G2: "Wizard / G2 — права, ПДн и секреты",
   techreview: "Wizard / Техревью",
   import: "Wizard / Импорт в Wizard",
+  /** V3-32: the preview of a developer's PR before its merge. */
+  preview: "Wizard / Превью PR",
 } as const;
 
 export const GATE_STATE_RU: Record<CheckState, string> = {
@@ -98,8 +100,17 @@ export const syncRu = {
   import: {
     noBase:
       "Основная ветка ещё не синхронизирована с Wizard: сначала слейте PR Wizard с исходником системы, потом присылайте свои изменения",
-    conflict: (files: string[], revision: number) =>
-      `Конфликт: ${files.length === 1 ? "файл" : "файлы"} ${files.slice(0, 5).join(", ")}${files.length > 5 ? ` и ещё ${files.length - 5}` : ""} ${files.length === 1 ? "изменён" : "изменены"} и в репозитории, и в Wizard (ревизия ${revision}). Перенесите свою правку поверх ветки последнего PR Wizard или повторите её в Wizard`,
+    conflict: (files: string[], revision: number, lines: { path: string; from: number; to: number }[] = []) =>
+      `Конфликт: ${files.length === 1 ? "файл" : "файлы"} ${files.slice(0, 5).join(", ")}${files.length > 5 ? ` и ещё ${files.length - 5}` : ""} ${files.length === 1 ? "изменён" : "изменены"} и в репозитории, и в Wizard (ревизия ${revision})${
+        lines.length
+          ? ` в одних и тех же строках: ${lines
+              .slice(0, 5)
+              .map((l) => `${l.path}:${l.from > l.to ? l.to : l.from}${l.to > l.from ? `–${l.to}` : ""}`)
+              .join(", ")}`
+          : ""
+      }. Перенесите свою правку поверх ветки последнего PR Wizard или повторите её в Wizard`,
+    mergedLines: (files: string[]) =>
+      `Правки в ${files.length === 1 ? "файле" : "файлах"} ${files.slice(0, 5).join(", ")}${files.length > 5 ? ` и ещё ${files.length - 5}` : ""} объединены построчно с правками Wizard`,
     incompatible: (reasons: string[]) =>
       `Изменения нельзя перенести в Wizard: ${reasons.slice(0, 5).join("; ")}${reasons.length > 5 ? ` и ещё ${reasons.length - 5}` : ""}`,
     badSpec: (msgs: string[]) => `spec/appspec.json не прошла проверку: ${msgs.slice(0, 3).join("; ")}`,
@@ -119,6 +130,54 @@ export const syncRu = {
     notText: (p: string) => `${p} — не текст в UTF-8`,
     tooMany: (n: number) => `слишком много файлов (${n}, можно не больше 2000)`,
     badSpecJson: "spec/appspec.json — не JSON",
+  },
+
+  /** V3-32: previews of the client's developers' PRs before the merge. */
+  preview: {
+    status: {
+      pending: "Проверяем",
+      passed: "Проверки пройдены",
+      failed: "Проверка не пройдена",
+      rejected: "Изменения нельзя перенести в Wizard",
+      noop: "PR не меняет файлов системы",
+      closed: "PR закрыт",
+    } as Record<string, string>,
+    noBase:
+      "Ветка PR не основана на основной ветке, синхронизированной с Wizard: обновите её от основной ветки и запушьте снова",
+    noop: "PR не меняет ui/, functions/, assets/ и spec/appspec.json — после мержа переносить в Wizard нечего",
+    building: "Идёт сборка в Wizard — превью PR подождёт её окончания",
+    passed: "G0, G1 и G2 пройдены на системе с изменениями PR — после мержа Wizard примет их",
+    failed: (level: string, title: string) => `${level} не пройдена: ${title}`.slice(0, 250),
+    notRun: (level: string) => `Не запускалась: раньше не прошла ${level}`,
+    summary: (a: {
+      files: { path: string; status: string }[];
+      merged: string[];
+      gates: { level: string; passed: boolean | null; title: string }[];
+      url: string;
+    }) =>
+      [
+        "Wizard проверил систему с изменениями этого PR, как если бы его слили сейчас поверх текущей ревизии.",
+        "",
+        ...(a.files.length
+          ? [
+              "**Файлы PR, которые переносятся в Wizard**",
+              "",
+              ...a.files.slice(0, 30).map((f) => `- ${f.path} (${f.status})`),
+              "",
+            ]
+          : []),
+        ...(a.merged.length
+          ? [`Объединены построчно с правками Wizard: ${a.merged.slice(0, 10).join(", ")}.`, ""]
+          : []),
+        "| Проверка | Статус |",
+        "|---|---|",
+        ...a.gates.map(
+          (g) =>
+            `| ${g.level} | ${g.passed === null ? "не запускалась" : g.passed ? "пройдена" : `не пройдена: ${g.title.replace(/\|/g, "/")}`} |`,
+        ),
+        "",
+        `Превью PR в Wizard: ${a.url}`,
+      ].join("\n"),
   },
 
   publishBlocked: (pr: { number: number | null; url: string | null } | null, repo: string) =>

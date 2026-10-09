@@ -5,6 +5,9 @@
 # status, the model actually served, tier, scrub, latency, ₽. Paid, so pre-registered in the spend journal like eval
 # (V3-01, tools/deploy/spend.mjs); the cap stops it. prod only; needs the word PROD. Its own small form (actionlint holds
 # a workflow_dispatch form to 10 inputs); shares the concurrency group of prod with bootstrap, deploy and eval.
+# probe_shape (critic | techreview | critic,techreview): the shape probe instead — the production request shapes of
+# critic_visual and techreview on synthetic content, model by model of the chain, variants of analysis and the
+# provider's own words on a refusal (tools/eval/server/probe-shape.mjs); one annotation per call type and model.
 name: v3-probe
 
 on:
@@ -28,7 +31,7 @@ on:
         type: string
         default: ""
       expect_rub:
-        description: "Журнал трат: ожидаемый расход, ₽ (по ценам голов маршрутов ≈ 3 ₽)"
+        description: "Журнал трат: ожидаемый расход, ₽ (по ценам голов маршрутов ≈ 3 ₽; проба формы — ≈ 12 ₽)"
         type: string
         default: ""
       cap_rub:
@@ -37,6 +40,10 @@ on:
         default: ""
       confirm:
         description: "Введите PROD: проба вызывает модели с ключей сервера и пишет в базу пилота"
+        type: string
+        default: ""
+      probe_shape:
+        description: "Проба формы запросов: critic, techreview или critic,techreview — формы как в сборке на синтетике, каждая модель цепочки, варианты разбора и текст отказа провайдера (≈ 12 ₽, до ≈ 30 ₽). Пусто — проба голов маршрутов"
         type: string
         default: ""
 
@@ -65,4 +72,5 @@ jobs:
       expect_rub: ${{ inputs.expect_rub }}
       cap_rub: ${{ inputs.cap_rub }}
       founder_ok: "no"
+      probe_shape: ${{ inputs.probe_shape }}
     secrets: inherit

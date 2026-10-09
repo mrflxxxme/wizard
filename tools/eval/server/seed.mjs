@@ -219,7 +219,7 @@ export const PII_FORBIDDEN_T1 = ["runtime_ai_extract", "runtime_ai_generate", "s
 /**
  * V3-18: what the v3 measurement reads after the run (the org's systems only; never texts or files):
  * `v3calls=` — model calls by system, call type, tier and the model actually served (attempts, ok, fallbacks, ₽,
- * tokens); `v3hooks=` — the checkpoints of the critic, the template gate and the techreview (status, notes, blockers,
+ * tokens, the error code or status of each failed attempt and their mean latency); `v3hooks=` — the checkpoints of the critic, the template gate and the techreview (status, notes, blockers,
  * redesign, ₽ and time) and the template note of the skeleton; `v3similarity=` — the site fingerprint's similarity to
  * the nearest recent site of the niche; `v3events=` — build_stage events of the v3 builds with their time (stage
  * times and the preview when the stream was not read); `v3t1forbidden=` — T1 calls of pii_forbidden_for_T1 (must be 0).
@@ -234,7 +234,10 @@ export function v3CollectSql() {
          bool_or(c.scrubbed) AS scrubbed,
          round(sum(c.cost_rub), 2)::float8 AS rub,
          sum(c.input_tokens)::bigint AS input_tokens, sum(c.output_tokens)::bigint AS output_tokens,
-         round(avg(c.latency_ms))::int AS latency_ms
+         round(avg(c.latency_ms))::int AS latency_ms,
+         coalesce(array_agg(coalesce(c.error_code, c.status) ORDER BY c.created_at)
+                    FILTER (WHERE c.status <> 'ok'), '{}') AS failures,
+         round(avg(c.latency_ms) FILTER (WHERE c.status <> 'ok'))::int AS failure_latency_ms
     FROM platform.llm_calls c
    WHERE c.org_id = :'org_id'
    GROUP BY 1, 2, 3, 4) x;`,
@@ -344,7 +347,8 @@ export function parseCollectOutput(stdout) {
 
 /**
  * The v3 lines of collectSql (null when the run was not a v3 one) → {calls: {systemId: [{callType, tier, model,
- * attempts, ok, fallback, scrubbed, rub, inputTokens, outputTokens, latencyMs}]}, hooks: {systemId: {key: {...}}},
+ * attempts, ok, fallback, scrubbed, rub, inputTokens, outputTokens, latencyMs, failures: [error code or status of
+ * each failed attempt], failureLatencyMs}]}, hooks: {systemId: {key: {...}}},
  * similarity: {systemId: {archetype, similarity}}, events: {systemId: [{runId, seq, ts, type, stage, status, label,
  * preview}]}, t1Forbidden}.
  */
@@ -365,6 +369,9 @@ function parseV3Collect(value) {
       inputTokens: Number(c.input_tokens) || 0,
       outputTokens: Number(c.output_tokens) || 0,
       latencyMs: c.latency_ms === null || c.latency_ms === undefined ? null : Number(c.latency_ms),
+      failures: Array.isArray(c.failures) ? c.failures.map((f) => String(f).slice(0, 60)).slice(0, 50) : [],
+      failureLatencyMs:
+        c.failure_latency_ms === null || c.failure_latency_ms === undefined ? null : Number(c.failure_latency_ms),
     });
   const hooks = {};
   const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string").map((x) => x.slice(0, 300)) : []);

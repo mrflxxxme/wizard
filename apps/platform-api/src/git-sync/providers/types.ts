@@ -20,6 +20,8 @@ export interface ProviderPr {
   headSha: string | null;
   /** The commit the merge left on the base branch (merge, squash or rebase), when merged. */
   mergeSha: string | null;
+  /** A draft PR (merge request) — V3-32: the agent opens only drafts. */
+  draft?: boolean;
 }
 
 /** State of one gate on a commit: GitHub check run conclusion / GitLab commit status. */
@@ -43,7 +45,17 @@ export interface RepoApi {
   repo(): Promise<ProviderRepo>;
   /** The PR (any state) whose head is `branch`, newest first. */
   findPr(branch: string): Promise<ProviderPr | null>;
-  createPr(i: { branch: string; base: string; title: string; body: string }): Promise<ProviderPr>;
+  /**
+   * Opens a PR. `draft` (V3-32, the agent's PRs): a draft PR (GitHub draft, GitLab «Draft:» title); where the plan of the
+   * repository has no drafts (GitHub Free private repositories) the PR opens as a usual one and `draft` is false.
+   */
+  createPr(i: {
+    branch: string;
+    base: string;
+    title: string;
+    body: string;
+    draft?: boolean;
+  }): Promise<ProviderPr>;
   updatePr(number: number, i: { title?: string; body?: string }): Promise<void>;
   getPr(number: number): Promise<ProviderPr>;
   /** Closes with a comment (a newer Wizard PR replaced it). */

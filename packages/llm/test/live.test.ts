@@ -279,6 +279,25 @@ describe("fallback, retries, circuit breaker", () => {
     expect(sink.records.filter((r) => r.modelId === "glm-5.3").map((r) => r.errorCode)).toEqual(["HTTP_400"]);
   });
 
+  test("toolChoice required answered with text: one billed answer for the caller, not a retried network error", async () => {
+    stub.respond.zai = okText;
+    const { router, sink } = mk();
+    const out = await router.route({
+      callType: "plan",
+      messages: msgs("План"),
+      tools: TOOLS,
+      toolChoice: "required",
+      orgPolicy: OPEN,
+      ctx,
+    });
+    expect(out.result).toMatchObject({ toolCalls: [], text: "Готово" });
+    expect(out.model).toBe("glm-5.3");
+    expect(out.usage).toMatchObject({ inputTokens: 100, outputTokens: 10 });
+    expect(sink.records.map((r) => [r.modelId, r.status, r.errorCode])).toEqual([["glm-5.3", "ok", null]]);
+    expect(sink.records[0]?.costRub).toBeGreaterThan(0);
+    expect(stub.requests).toHaveLength(1);
+  });
+
   test("backoff with jitter and Retry-After", async () => {
     let n = 0;
     stub.respond.zai = (req) =>

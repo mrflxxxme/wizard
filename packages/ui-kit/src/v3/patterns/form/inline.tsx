@@ -20,6 +20,8 @@ export type FormInlineProps = {
   /** The action of the «sent» state. */
   again?: string;
   note?: string;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -179,7 +181,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -303,7 +305,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -427,6 +429,7 @@ export default function FormInline({
   sent,
   again,
   note,
+  wzId,
 }: FormInlineProps) {
   const lead = useLeadForm(entity, fields ? { fields } : {});
   const form = lead.form;
@@ -440,7 +443,12 @@ export default function FormInline({
     if (!(await form.submit())) setTries((n) => n + 1);
   };
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-background py-section font-sans text-foreground">
+    <section
+      data-wz-component="LeadForm"
+      data-wz-id={wzId}
+      aria-labelledby={`${uid}-title`}
+      className="bg-background py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-page px-gutter">
         <div className="max-w-text">
           <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">

@@ -109,6 +109,8 @@ export {
   BUILD_TIER_ENV,
   buildDefaultTierFromEnv,
   buildModelLabel,
+  /** V3-32: call types carrying a client's repository code — T0 only (RF inference), never T1, the reserve or BYOK. */
+  CLIENT_CODE_CALL_TYPES,
   createRegistry,
   DEFAULT_BUILD_TIER,
   getModel,

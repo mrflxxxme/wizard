@@ -424,6 +424,37 @@ export class Billing {
     return sumOf(parts);
   }
 
+  /**
+   * billing.yaml#run_charging.repo_agent (V3-32): a task of the repository agent by fact, keyed repo:<taskId> (a
+   * repeated settlement never charges twice). Like an AI call it never exceeds what is available (the platform bears
+   * the rest); an exempt org (dev stand) is topped up. Returns the charged milli-credits.
+   */
+  async chargeRepoTask(trx: Trx, c: { orgId: string; taskId: string; amountMilli: number }): Promise<number> {
+    await this.settleOrg(trx, c.orgId);
+    const key = `repo:${c.taskId}`;
+    if (c.amountMilli <= 0 || (await this.#exists(trx, c.orgId, key))) return 0;
+    let live = (await this.#liveBuckets(trx, c.orgId)).sort(byDebitOrder);
+    const avail = live.reduce((s, b) => s + b.remaining, 0);
+    if (avail < c.amountMilli && this.isExempt(c.orgId)) {
+      await this.#devTopUp(trx, c.orgId, c.amountMilli - avail, key);
+      live = (await this.#liveBuckets(trx, c.orgId)).sort(byDebitOrder);
+    }
+    const parts = allocate(live, c.amountMilli);
+    await this.#insert(
+      trx,
+      c.orgId,
+      key,
+      parts.map(({ b, take }) => ({
+        kind: "charge",
+        amountMilli: -take,
+        bucket: b.bucket,
+        expiresAt: b.expiresAt,
+        note: "Задача агента репозитория",
+      })),
+    );
+    return sumOf(parts);
+  }
+
   /** grant / positive adjustment into a bucket; false when the key was already used. */
   async grant(trx: Trx, orgId: string, g: GrantInput): Promise<boolean> {
     await this.settleOrg(trx, orgId);

@@ -1,0 +1,65 @@
+# V3-22, acceptance 2: the API passports against the providers' test contours, no model calls, nothing on the servers
+# (tools/integrations/sandbox-check.mjs → apps/platform-api/src/integrations-v3/sandbox.ts; docs/ops/eval-pilot.md):
+#   СДЭК   — api.edu.cdek.ru with the public test account of the СДЭК docs, or the optional secrets CDEK_TEST_ACCOUNT /
+#            CDEK_TEST_SECURE: the token, the key check (listCities), tariffs, pickup points, webhooks list; with
+#            cdek_order — a test order created, read, found and deleted (the educational contour never executes it);
+#   ЮKassa — the test shop of the secrets YOOKASSA_TEST_SHOP_ID / YOOKASSA_TEST_SECRET_KEY (test_ keys only; without
+#            them the step is a warning): the key check (GET /me), a 1 ₽ two-stage payment with Idempotence-Key and its
+#            repeat, the payment read back, the list, the cancel when it waits for capture.
+# Verdicts are annotations, one line per operation (the coordinator reads them through the GitHub API), plus the step
+# summary. One passport per step: GitHub keeps at most 10 annotations of a level per step. A host the runner cannot
+# reach is named in Russian with the stage (DNS, TCP, TLS) — then the check is run from the pilot server in RF.
+# Keys reach only the env of the step that uses them, and that step masks them first.
+name: integrations-sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      passports:
+        description: "Какие паспорта проверить: all — все с тестовым контуром (СДЭК и ЮKassa)"
+        type: choice
+        options: [all, cdek, yookassa]
+        default: all
+      cdek_order:
+        description: "СДЭК: создать, прочитать и удалить тестовый заказ в учебном контуре api.edu.cdek.ru (там заказы не исполняются)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integrations-sandbox
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # No secrets in the environment of dependency installation.
+      - id: install
+        run: pnpm install --frozen-lockfile
+      - name: CDEK test contour
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (inputs.passports == 'all' || inputs.passports == 'cdek') }}
+        env:
+          CDEK_TEST_ACCOUNT: ${{ secrets.CDEK_TEST_ACCOUNT }}
+          CDEK_TEST_SECURE: ${{ secrets.CDEK_TEST_SECURE }}
+          CDEK_ORDER: ${{ inputs.cdek_order }}
+        run: |
+          for v in "$CDEK_TEST_ACCOUNT" "$CDEK_TEST_SECURE"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/integrations/sandbox-check.mjs --passports=cdek
+      - name: YooKassa test shop
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (inputs.passports == 'all' || inputs.passports == 'yookassa') }}
+        env:
+          YOOKASSA_TEST_SHOP_ID: ${{ secrets.YOOKASSA_TEST_SHOP_ID }}
+          YOOKASSA_TEST_SECRET_KEY: ${{ secrets.YOOKASSA_TEST_SECRET_KEY }}
+        run: |
+          for v in "$YOOKASSA_TEST_SHOP_ID" "$YOOKASSA_TEST_SECRET_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          node tools/integrations/sandbox-check.mjs --passports=yookassa

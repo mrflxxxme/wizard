@@ -393,7 +393,31 @@ export const ROUTES: Record<CallType, RouteDef> = {
     300000,
   ),
   research: r("researcher", "T0", { T0: ["gpt-oss-120b", "gigachat-3.5", "kimi-k2.6"] }, 0.2, 4000, 120000),
+  // V3-32 (D77 (4)): the agent for compatible repositories and its reviewer read the client's code — T0 chains only
+  // (CLIENT_CODE_CALL_TYPES): no T1 chain, no reserve, no BYOK.
+  repo_code: r(
+    "repo_agent",
+    "T0",
+    { T0: ["deepseek-v4-pro", "qwen3-coder-next", "glm-5.1", "kimi-k2.6"] },
+    0.1,
+    16000,
+    480000,
+  ),
+  repo_review: r(
+    "reviewer",
+    "T0",
+    { T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"] },
+    0.1,
+    8000,
+    300000,
+  ),
 };
+
+/**
+ * models.yaml#client_code (V3-32, D77 (4)): calls that carry the code of a client's repository go only to models with
+ * inference in RF — T0 whatever the org policy, the build tier switch, the T1 reserve (D76) or a user's key (BYOK).
+ */
+export const CLIENT_CODE_CALL_TYPES: readonly CallType[] = ["repo_code", "repo_review"];
 
 /** models.yaml#pii_forbidden_for_T1 */
 export const PII_FORBIDDEN_FOR_T1 = {

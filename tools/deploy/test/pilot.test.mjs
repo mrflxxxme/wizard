@@ -2356,7 +2356,90 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     expect(() => parseArgs(["v3-probe", "--env", "prod", "--briefs", "all", ...reg("30")])).toThrow(
       /unknown/,
     );
+    // --shape: the shape probe; empty (the workflow's default) — the route probe, as without the flag.
+    const shape = (v) =>
+      parseArgs(["v3-probe", "--env", "prod", "--shape", v, ...reg("30", { "--expect-rub": "12" })]);
+    expect(shape("techreview,critic").shape).toEqual(["critic", "techreview"]);
+    expect(shape("")).not.toHaveProperty("shape");
+    expect(
+      parseArgs(["v3-probe", "--env", "prod", ...reg("30", { "--expect-rub": "5" })]),
+    ).not.toHaveProperty("shape");
+    expect(() => shape("critic;curl")).toThrow(/--shape/);
+    expect(() => parseArgs(["eval", "--env", "prod", "--shape", "critic", ...reg("300")])).toThrow(/unknown/);
   });
+
+  it("v3-probe --shape: the shape script in the worker folder (run here without network), annotations per model, the report", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const cluster = v3Cluster({
+      probe: (input) => {
+        const r = spawnSync("node", PROBE_IN_POD.slice(1), {
+          cwd: join(import.meta.dirname, "..", "..", "..", "apps", "worker"),
+          input,
+          encoding: "utf8",
+          env: { PATH: process.env.PATH, HOME: process.env.HOME ?? tmp },
+          maxBuffer: 64 * 1024 * 1024,
+        });
+        return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+      },
+    });
+    const logs = [];
+    const code = await main(
+      [
+        "v3-probe",
+        "--env",
+        "prod",
+        "--shape",
+        "critic,techreview",
+        ...reg("30", {
+          "--expect-rub": "12",
+          "--purpose": "Формы запросов critic_visual и techreview",
+          "--hypothesis": "Видно, какая форма отказывает и почему",
+        }),
+      ],
+      FOUNDER,
+      deps(cloud, cluster, {
+        log: (l) => logs.push(l),
+        probeFake: true,
+        probeShapeFail: [
+          { model: "Kimi", minImages: 2, message: "At most 1 image(s) may be provided in one request." },
+        ],
+      }),
+    );
+    // kimi refuses six images: the build shape of critic_visual did not work on every model → exit 1.
+    expect(code, logs.filter((l) => l.startsWith("::")).join("\n")).toBe(1);
+    expect(cluster.seen.scripts).toHaveLength(1);
+    const script = cluster.seen.scripts[0];
+    expect(script.startsWith('import * as llm from "@wizard/llm";')).toBe(true);
+    expect(script).toContain(`"orgId":"${cluster.db.orgId}"`);
+    for (const s of SECRETS) expect(script).not.toContain(s);
+    expect(logs).toContainEqual(expect.stringMatching(/^проба формы запросов v3 .*ожидаемо ≈ [\d.]+ ₽/));
+    const ann = logs.filter((l) => l.startsWith("::") && l.includes("title=V3 форма · "));
+    expect(ann).toHaveLength(6);
+    // The pod loaded the tools' own checks from @wizard/agents next to the worker.
+    const kimi = ann.find((l) => l.includes("critic_visual · kimi-k2.6"));
+    expect(kimi).toMatch(
+      /^::warning title=V3 форма · critic_visual · kimi-k2\.6::как в сборке: ❌ LLM_UNAVAILABLE/,
+    );
+    expect(kimi).toContain("напрямую HTTP 400 «");
+    expect(kimi).toContain("1 JPEG: ✅");
+    expect(ann.find((l) => l.includes("techreview · deepseek-v4-pro"))).toMatch(
+      /^::notice .*как в сборке: ✅.*сводка ×2: ✅.*второй ход: ✅/,
+    );
+    expect(logs).toContainEqual(
+      expect.stringMatching(/^::error title=V3 форма::Как в сборке прошли 5 из 6 моделей/),
+    );
+    const dir = join(tmp, "wizard-eval-prod");
+    const md = readdirSync(dir).find((f) => /^v3-shape-\d{4}-\d{2}-\d{2}-\d{8}-[0-9a-f]{6}\.md$/.test(f));
+    const text = readFileSync(join(dir, md), "utf8");
+    expect(text).toContain("**Итог: как в сборке прошли 5 из 6 моделей;");
+    expect(text).toContain("Аргументы: @wizard/agents.");
+    expect(text).toContain("Расход по журналу вызовов моделей: 0.3412 ₽.");
+    const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
+    expect(entry).toMatchObject({ wave: "A", capRub: 30, expectRub: 12, actualRub: 0.3412 });
+    expect(entry.result).toMatch(/^форма: как в сборке прошли 5 из 6 моделей/);
+    expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
+  }, 180_000);
 
   it("eval v3 refuses to start when the server keeps eval orgs off v3: nothing seeded, nothing spent", async () => {
     const cloud = fakeCloud();

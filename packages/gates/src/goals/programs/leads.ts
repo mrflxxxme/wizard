@@ -1,15 +1,18 @@
 // Goal scenarios of the module «Заявки» (packages/modules/src/leads, modules.yaml#catalog leads): entity `lead`,
-// status new | in_work | done, the landing's LeadForm for the visitor, the cabinet for the owner.
+// status new | in_work | done, the lead form of the site for the visitor (the landing's LeadForm, a v3 lead form
+// pattern with the same data-wz-component), the cabinet for the owner.
 import type { GoalOutboxMessage, GoalProgram } from "../types.js";
 import {
   component,
   entityPage,
   enumLabel,
+  leadFormRoute,
   openEntity,
   ownerRole,
   pageRoute,
   pageText,
   seedTexts,
+  sendForm,
 } from "./shared.js";
 
 const LEAD_FORM = component("LeadForm");
@@ -22,9 +25,9 @@ const toOwner = (m: GoalOutboxMessage, owners: ReadonlySet<string>) =>
 const leaveLead: GoalProgram = async (t) => {
   t.step("Посетитель заполняет форму заявки, отмечает согласие и отправляет");
   await t.as("visitor");
-  await t.open("/");
-  await t.fillForm(LEAD_FORM);
-  await t.submit(LEAD_FORM);
+  // The page with the form (v2 `<LeadForm`, a v3 lead form pattern): the landing «/» first.
+  await t.open(leadFormRoute(t) ?? "/");
+  await sendForm(t, LEAD_FORM);
 
   t.step("Посетитель видит «Заявка отправлена»");
   await t.expectText("Заявка отправлена", { within: LEAD_FORM });

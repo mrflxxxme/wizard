@@ -101,6 +101,8 @@ V3_TABLES.push(
   "system_repo_jobs",
   "system_repo_deliveries",
 );
+// V3-32: the agent for compatible repositories, previews of developers' PRs (migration 0044).
+V3_TABLES.push("agent_repos", "agent_repo_tasks", "system_repo_pr_previews");
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
@@ -381,6 +383,125 @@ describe("0043 (V3-31): repository sync", () => {
       return sql<{ n: number }[]>`
         select ((select count(*) from platform.system_repo_jobs where system_id = ${systemId})
               + (select count(*) from platform.system_repo_imports where system_id = ${systemId}))::int as n`;
+    });
+    expect(left[0]?.n).toBe(0);
+  });
+});
+
+describe("0044 (V3-32): the agent for compatible repositories, previews of developers' PRs", () => {
+  const T = ["agent_repo_tasks", "agent_repos", "system_repo_pr_previews"];
+  const inOrg = async <R>(fn: (sql: TransactionSql) => Promise<R>): Promise<R> => {
+    let out: R | undefined;
+    await h.pg.begin(async (sql) => {
+      await sql`select pg_catalog.set_config('wizard.org_id', ${DEFAULT_ORG_ID}, true)`;
+      out = await fn(sql);
+    });
+    return out as R;
+  };
+
+  test("forced RLS by org; the dispatch read policy only on agent_repos and agent_repo_tasks, SELECT only", async () => {
+    const rls = await h.pg<{ relname: string; on: boolean; forced: boolean }[]>`
+      select c.relname, c.relrowsecurity as on, c.relforcerowsecurity as forced
+      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'platform' and c.relname in ${h.pg(T)} order by c.relname`;
+    expect(rls).toEqual(T.map((relname) => ({ relname, on: true, forced: true })));
+    const pol = await h.pg<{ tablename: string; policyname: string; cmd: string }[]>`
+      select tablename, policyname, cmd from pg_catalog.pg_policies
+      where schemaname = 'platform' and tablename in ${h.pg(T)} order by tablename, policyname`;
+    expect(pol.filter((p) => p.policyname.endsWith("_dispatch"))).toEqual([
+      { tablename: "agent_repo_tasks", policyname: "agent_repo_tasks_dispatch", cmd: "SELECT" },
+      { tablename: "agent_repos", policyname: "agent_repos_dispatch", cmd: "SELECT" },
+    ]);
+    expect(pol.filter((p) => p.policyname.endsWith("_org")).map((p) => p.cmd)).toEqual(T.map(() => "ALL"));
+  });
+
+  test("tokens only sealed; one waiting check per repository; a change has its words; tasks go with the repository", async () => {
+    await expect(
+      inOrg(
+        (sql) => sql`insert into platform.agent_repos (org_id, provider, host_url, secret_ref, ciphertext)
+          values (${DEFAULT_ORG_ID}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab', 'Z2xh')`,
+      ),
+    ).rejects.toThrow(/agent_repos_sealed/);
+    await expect(
+      inOrg(
+        (sql) => sql`insert into platform.agent_repos (org_id, provider, host_url, secret_ref, status)
+          values (${DEFAULT_ORG_ID}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab', 'ready')`,
+      ),
+    ).rejects.toThrow(/agent_repos_repo/);
+    const [repo] = await inOrg(
+      (sql) => sql<{ id: string }[]>`insert into platform.agent_repos (org_id, provider, host_url, secret_ref)
+        values (${DEFAULT_ORG_ID}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab') returning id`,
+    );
+    const repoId = repo?.id as string;
+    const check = () =>
+      inOrg(
+        (sql) =>
+          sql`insert into platform.agent_repo_tasks (org_id, repo_id, kind) values (${DEFAULT_ORG_ID}, ${repoId}, 'check')`,
+      );
+    await check();
+    await expect(check()).rejects.toThrow(/agent_repo_tasks_once_idx/);
+    await expect(
+      inOrg(
+        (sql) =>
+          sql`insert into platform.agent_repo_tasks (org_id, repo_id, kind) values (${DEFAULT_ORG_ID}, ${repoId}, 'change')`,
+      ),
+    ).rejects.toThrow(/agent_repo_tasks_text/);
+    await expect(
+      inOrg(
+        (sql) => sql`insert into platform.agent_repo_tasks (org_id, repo_id, kind, task_ru, branch)
+          values (${DEFAULT_ORG_ID}, ${repoId}, 'change', 'Кнопка', 'feature/x')`,
+      ),
+    ).rejects.toThrow(/agent_repo_tasks_branch_check/);
+    await inOrg(
+      (sql) => sql`insert into platform.agent_repo_tasks (org_id, repo_id, kind, task_ru)
+        values (${DEFAULT_ORG_ID}, ${repoId}, 'change', 'Кнопка')`,
+    );
+    const left = await inOrg(async (sql) => {
+      await sql`delete from platform.agent_repos where id = ${repoId}`;
+      return sql<
+        { n: number }[]
+      >`select count(*)::int as n from platform.agent_repo_tasks where repo_id = ${repoId}`;
+    });
+    expect(left[0]?.n).toBe(0);
+  });
+
+  test("the sync queue knows pr_preview; a failed preview needs its reason; previews go with the link", async () => {
+    const [sys] = await h.pg<{ id: string }[]>`
+      insert into platform.systems (org_id, slug, schema_key, name, pending_questions, created_by)
+      values (${DEFAULT_ORG_ID}, 'mig-pr-preview', 'migprpreview', 'Превью PR', '[]', ${DEV_USER_ID}) returning id`;
+    const systemId = sys?.id as string;
+    const [link] = await inOrg(
+      (sql) => sql<
+        { id: string }[]
+      >`insert into platform.system_repo_links (org_id, system_id, provider, host_url, secret_ref)
+        values (${DEFAULT_ORG_ID}, ${systemId}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab') returning id`,
+    );
+    const linkId = link?.id as string;
+    await inOrg(
+      (sql) => sql`insert into platform.system_repo_jobs (org_id, system_id, link_id, kind, dedupe_key)
+        values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, 'pr_preview', 'pr:7')`,
+    );
+    await expect(
+      inOrg(
+        (sql) => sql`insert into platform.system_repo_jobs (org_id, system_id, link_id, kind, dedupe_key)
+          values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, 'deploy', 'x')`,
+      ),
+    ).rejects.toThrow(/system_repo_jobs_kind_check/);
+    await expect(
+      inOrg(
+        (
+          sql,
+        ) => sql`insert into platform.system_repo_pr_previews (org_id, system_id, link_id, number, head_oid, status)
+          values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, 7, ${"c".repeat(40)}, 'failed')`,
+      ),
+    ).rejects.toThrow(/system_repo_pr_previews_reason/);
+    const left = await inOrg(async (sql) => {
+      await sql`insert into platform.system_repo_pr_previews (org_id, system_id, link_id, number, head_oid)
+        values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, 7, ${"c".repeat(40)})`;
+      await sql`delete from platform.system_repo_links where id = ${linkId}`;
+      return sql<
+        { n: number }[]
+      >`select count(*)::int as n from platform.system_repo_pr_previews where system_id = ${systemId}`;
     });
     expect(left[0]?.n).toBe(0);
   });

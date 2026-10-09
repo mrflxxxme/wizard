@@ -83,6 +83,9 @@ jobs:
       # V3-08 (builder-v3.md C3): every pattern v3 × 4 design systems × 390/1280 × light/dark built by buildSystem
       # (Tailwind v4, Motion) — overflow, AA contrast, names, headings, touch; screenshots test/artifacts/patterns-v3.
       - run: pnpm exec vitest run --project browser packages/build/test/patterns-v3.browser.test.ts
+      # V3-18: every request and booking form variant of the library under the modules' goal programs (the platform's
+      # checkScenario in Chromium on a site composed without a model).
+      - run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals-variants.browser.test.ts
       - run: pnpm e2e
       # Artifacts come only from fixture runs (WIZARD_LLM_MODE=fixture above), never from live LLM runs.
       - uses: actions/upload-artifact@v4
@@ -140,6 +143,10 @@ jobs:
       # A plan build through the API with the platform's Chromium: goals.checked = true (B2-28).
       - if: matrix.shard == '2/3'
         run: pnpm exec vitest run --project browser apps/platform-api/test/b2-build-v2.browser.test.ts
+      # V3-18, the 0 ₽ rung of a v3 build: the eval briefs composed without a model (the skeleton), every brief scenario
+      # checked by the platform's checkScenario — G1 with its goal scenarios in Chromium on the composed v3 pages.
+      - if: matrix.shard == '3/3'
+        run: pnpm exec vitest run --project browser apps/platform-api/test/v3-goals.browser.test.ts
   # L3-38 (deploy.yaml#cloud.ci_cd.ci): license policy of AGENTS.md over the whole dependency tree + CycloneDX SBOM.
   supply-chain:
     runs-on: ubuntu-latest

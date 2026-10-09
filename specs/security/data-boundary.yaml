@@ -136,6 +136,8 @@ call_types:                        # список совпадает с models.y
   critic_visual:       { allowed: [T0, T1], t1_requires: "изображение после packages/pii/image (D45, D62); до него — только T0", note: "V3-13: скриншоты сгенерированных страниц на тестовых данных" }
   techreview:          { allowed: [T0], note: "V3-15: ревьюер системы — модель другого семейства, чем строитель" }
   research:            { allowed: [T0], note: "V3-05: сводка найденных страниц и документации; запрос к поиску — после scrub" }
+  repo_code:           { allowed: [T0], note: "V3-32 (D77 (4)): код репозитория клиента, правила репозитория, задача и вывод тестов песочницы — только модели с инференсом в РФ (models.yaml#client_code); BYOK не обслуживает" }
+  repo_review:         { allowed: [T0], note: "V3-32: изменение агента в репозитории клиента для ревью — только T0, модель другого семейства, чем агент" }
   runtime_ai_extract:  { allowed: [T0] }
   runtime_ai_generate: { allowed: [T0] }
   support:             { allowed: [T0] }

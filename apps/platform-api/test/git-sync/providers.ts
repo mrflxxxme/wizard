@@ -41,6 +41,8 @@ export interface MockPr {
   merged: boolean;
   mergeSha: string | null;
   comments: string[];
+  /** V3-32: a draft PR (the agent opens only drafts). */
+  draft: boolean;
 }
 
 export interface Check {
@@ -59,7 +61,7 @@ export class MockGitHub {
   readonly tokenRequests: Json[] = [];
   readonly repos = new Map<
     string,
-    { id: number; full: string; mem: RepoBackend; pulls: MockPr[]; checks: Check[] }
+    { id: number; full: string; mem: RepoBackend; pulls: MockPr[]; checks: Check[]; noDraft?: boolean }
   >();
   readonly installations = new Map<string, number[]>();
   readonly codes = new Map<string, string[]>();
@@ -118,7 +120,27 @@ export class MockGitHub {
       merged_at: p.merged ? "2026-10-09T10:00:00Z" : null,
       head: { sha: r.mem.head(p.head) ?? p.head, ref: p.head },
       merge_commit_sha: p.mergeSha,
+      draft: p.draft,
     };
+  }
+
+  /** A developer opens a PR in the GitHub UI (V3-32: previews before the merge). */
+  openPr(full: string, head: string, base: string, title: string): MockPr {
+    const r = this.repos.get(full) as NonNullable<ReturnType<MockGitHub["repoById"]>>;
+    const p: MockPr = {
+      number: r.pulls.length + 1,
+      title,
+      body: "",
+      head,
+      base,
+      state: "open",
+      merged: false,
+      mergeSha: null,
+      comments: [],
+      draft: false,
+    };
+    r.pulls.push(p);
+    return p;
   }
 
   async handle(req: Request): Promise<Response> {
@@ -200,6 +222,18 @@ export class MockGitHub {
     }
     if (rest === "/pulls" && req.method === "POST") {
       if (!r.mem.head(String(body.head))) return json(422, { message: "Validation Failed" });
+      // GitHub Free private repositories have no draft PRs.
+      if (body.draft === true && r.noDraft)
+        return json(422, {
+          message: "Validation Failed",
+          errors: [
+            {
+              resource: "PullRequest",
+              code: "custom",
+              message: "Draft pull requests are not supported in this repository.",
+            },
+          ],
+        });
       const p: MockPr = {
         number: r.pulls.length + 1,
         title: String(body.title),
@@ -210,6 +244,7 @@ export class MockGitHub {
         merged: false,
         mergeSha: null,
         comments: [],
+        draft: body.draft === true,
       };
       r.pulls.push(p);
       return json(201, this.#pr(r, p));
@@ -482,6 +517,7 @@ export class MockGitLab {
       iid: x.iid,
       web_url: `${this.base}/mr/${x.iid}`,
       state: x.state,
+      draft: x.title.startsWith("Draft:"),
       sha: p.mem.head(x.source),
       merge_commit_sha: x.mergeSha,
     };

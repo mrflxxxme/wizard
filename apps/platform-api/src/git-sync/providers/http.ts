@@ -90,10 +90,20 @@ export async function callJson<T>(
     if (text && data === null) throw new ProviderError("PROTOCOL", res.status);
     return data as T;
   }
-  const msg = (data as { message?: unknown; error_description?: unknown; error?: unknown } | null) ?? null;
+  const msg =
+    (data as { message?: unknown; error_description?: unknown; error?: unknown; errors?: unknown } | null) ??
+    null;
   const raw = msg?.message ?? msg?.error_description ?? msg?.error;
+  // GitHub's 422 says «Validation Failed» and puts the reason into errors[].message.
+  const sub = Array.isArray(msg?.errors)
+    ? (msg.errors[0] as { message?: unknown } | undefined)?.message
+    : null;
   const detail =
-    typeof raw === "string" ? raw.slice(0, 200) : Array.isArray(raw) ? String(raw[0]).slice(0, 200) : null;
+    typeof raw === "string"
+      ? (typeof sub === "string" ? `${raw}: ${sub}` : raw).slice(0, 200)
+      : Array.isArray(raw)
+        ? String(raw[0]).slice(0, 200)
+        : null;
   const ra = retryAfter(res.headers);
   if (res.status === 401) throw new ProviderError("AUTH_FAILED", 401, detail);
   if (res.status === 403)

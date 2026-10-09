@@ -81,7 +81,29 @@ export interface ImportRow {
   updated_at: Date;
 }
 
-export type JobKind = "push" | "statuses" | "import" | "reconcile";
+/** pr_preview — V3-32: the preview of a developer's open PR (migration 0044). */
+export type JobKind = "push" | "statuses" | "import" | "reconcile" | "pr_preview";
+
+export type PreviewStatus = "pending" | "passed" | "failed" | "rejected" | "noop" | "closed";
+
+/** V3-32: the preview of a developer's PR before its merge (platform.system_repo_pr_previews, migration 0044). */
+export interface PreviewRow {
+  id: string;
+  link_id: string;
+  number: number;
+  branch: string | null;
+  url: string | null;
+  head_oid: string;
+  status: PreviewStatus;
+  base_revision: number | null;
+  reason_code: string | null;
+  reason_ru: string | null;
+  /** level (G0, G1, G2, preview) → {state, title} as posted to the PR head. */
+  checks: Record<string, { state: string; title: string }>;
+  details: Record<string, unknown>;
+  created_at: Date;
+  updated_at: Date;
+}
 
 export interface JobRow {
   id: string;
@@ -313,6 +335,70 @@ export async function saveImport(
   );
 }
 
+// ---- PR previews (V3-32) ----
+
+export async function previewOf(q: Q, linkId: string, number: number): Promise<PreviewRow | null> {
+  const { rows } = await sql<PreviewRow>`
+    select v.* from platform.system_repo_pr_previews as v where v.link_id = ${linkId} and v.number = ${number}`.execute(
+    q,
+  );
+  return rows[0] ?? null;
+}
+
+export async function previewsOf(q: Q, linkId: string, limit = 10): Promise<PreviewRow[]> {
+  const { rows } = await sql<PreviewRow>`
+    select v.* from platform.system_repo_pr_previews as v where v.link_id = ${linkId}
+     order by v.updated_at desc limit ${limit}`.execute(q);
+  return rows;
+}
+
+export async function savePreview(
+  q: Q,
+  r: Pick<PreviewRow, "link_id" | "number" | "head_oid" | "status"> &
+    Partial<
+      Pick<
+        PreviewRow,
+        "branch" | "url" | "base_revision" | "reason_code" | "reason_ru" | "checks" | "details"
+      >
+    > & {
+      org_id: string;
+      system_id: string;
+    },
+): Promise<void> {
+  await sql`
+    insert into platform.system_repo_pr_previews
+      (org_id, system_id, link_id, number, branch, url, head_oid, status, base_revision, reason_code, reason_ru, checks, details)
+    values (${r.org_id}, ${r.system_id}, ${r.link_id}, ${r.number}, ${r.branch ?? null}, ${r.url ?? null}, ${r.head_oid},
+            ${r.status}, ${r.base_revision ?? null}, ${r.reason_code ?? null}, ${r.reason_ru ?? null},
+            ${json(r.checks ?? {})}, ${json(r.details ?? {})})
+    on conflict (link_id, number) do update set
+      branch = coalesce(excluded.branch, platform.system_repo_pr_previews.branch),
+      url = coalesce(excluded.url, platform.system_repo_pr_previews.url),
+      head_oid = excluded.head_oid, status = excluded.status, base_revision = excluded.base_revision,
+      reason_code = excluded.reason_code, reason_ru = excluded.reason_ru, checks = excluded.checks,
+      details = excluded.details, updated_at = pg_catalog.now()`.execute(q);
+}
+
+/** A preview that could not be made (the provider down after every attempt): failed with the reason. */
+export async function failPreview(
+  q: Q,
+  linkId: string,
+  number: number,
+  code: string,
+  reason_ru: string,
+): Promise<void> {
+  if (!Number.isInteger(number)) return;
+  await sql`update platform.system_repo_pr_previews
+               set status = 'failed', reason_code = ${code}, reason_ru = ${reason_ru.slice(0, 2000)},
+                   updated_at = pg_catalog.now()
+             where link_id = ${linkId} and number = ${number} and status = 'pending'`.execute(q);
+}
+
+export async function closePreview(q: Q, linkId: string, number: number): Promise<void> {
+  await sql`update platform.system_repo_pr_previews set status = 'closed', updated_at = pg_catalog.now()
+             where link_id = ${linkId} and number = ${number}`.execute(q);
+}
+
 // ---- jobs ----
 
 /** Queues a job; a waiting job with the same key takes the new payload and the earlier due time (coalescing). */
@@ -459,4 +545,6 @@ export async function prune(q: Q, linkId: string, now: Date): Promise<void> {
              and updated_at < ${new Date(now.getTime() - 7 * 86_400_000)}`.execute(q);
   await sql`delete from platform.system_repo_deliveries where link_id = ${linkId}
              and created_at < ${new Date(now.getTime() - 30 * 86_400_000)}`.execute(q);
+  await sql`delete from platform.system_repo_pr_previews where link_id = ${linkId} and status = 'closed'
+             and updated_at < ${new Date(now.getTime() - 30 * 86_400_000)}`.execute(q);
 }

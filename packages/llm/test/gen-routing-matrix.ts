@@ -34,6 +34,8 @@ export const CALL_TYPES = [
   "critic_visual",
   "techreview",
   "research",
+  "repo_code",
+  "repo_review",
 ] as const;
 
 /** Real texts per payload class; the router sees these through @wizard/pii.detect. */
@@ -45,7 +47,14 @@ export const PAYLOADS = {
 } as const;
 export type Payload = keyof typeof PAYLOADS;
 
-const ALWAYS_T0 = new Set(["runtime_ai_extract", "runtime_ai_generate", "support"]);
+/** pii_forbidden_for_T1.always and client_code (V3-32: a client's repository code — RF inference only). */
+const ALWAYS_T0 = new Set([
+  "runtime_ai_extract",
+  "runtime_ai_generate",
+  "support",
+  "repo_code",
+  "repo_review",
+]);
 const DEFAULT_T0 = new Set([
   "audit",
   "runtime_ai_extract",
@@ -54,6 +63,8 @@ const DEFAULT_T0 = new Set([
   "brief_extract",
   "techreview",
   "research",
+  "repo_code",
+  "repo_review",
 ]);
 /** pii_forbidden_for_T1.any_pii: raw owner input, any finding → T0 (the interview rule until M2-28). */
 const ANY_PII_T0 = new Set(["interview", "interview_v3", "brief_extract"]);

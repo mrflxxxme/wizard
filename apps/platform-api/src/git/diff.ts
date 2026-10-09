@@ -31,12 +31,14 @@ export function isBinary(data: Uint8Array): boolean {
   return data.subarray(0, 8000).includes(0);
 }
 
-interface Line {
+/** One line of a text and whether a newline ends it (the last line of a file may have none). */
+export interface Line {
   text: string;
   eol: boolean;
 }
 
-function splitLines(text: string): Line[] {
+/** Lines of a text (the newline of each line kept as a flag). */
+export function splitLines(text: string): Line[] {
   if (text === "") return [];
   const parts = text.split("\n");
   const last = parts.pop() as string;
@@ -47,10 +49,11 @@ function splitLines(text: string): Line[] {
 
 const same = (a: Line, b: Line) => a.text === b.text && a.eol === b.eol;
 
-type Edit = { op: " " | "-" | "+"; line: Line; a: number; b: number };
+/** One step of a line diff: kept (« »), removed from `a` («-») or added from `b` («+»), with the line indices. */
+export type Edit = { op: " " | "-" | "+"; line: Line; a: number; b: number };
 
 /** Myers diff of two line lists; null when it would take more than maxD edits (the caller shows a full rewrite). */
-function myers(a: Line[], b: Line[], maxD: number): Edit[] | null {
+export function myers(a: Line[], b: Line[], maxD: number): Edit[] | null {
   const n = a.length;
   const m = b.length;
   const max = n + m;

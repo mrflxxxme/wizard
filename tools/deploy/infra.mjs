@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { providerCall } from "../eval/server/provider-call.mjs";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const ENVS = ["staging", "prod"];
@@ -748,9 +749,12 @@ group by 1, 2, 3, 4 order by 5 desc limit 30;
 /**
  * Which request shape the providers accept (D67 eval, 2026-10-05: every call answered 4xx while /models was 200):
  * a 1-word prompt without tools, with a tool and tool_choice auto | required | the named function, with the extra
- * fields packages/llm transformBody adds. Prints the status and the start of the provider's error text only.
+ * fields packages/llm transformBody adds. Prints the status and the start of the provider's error text only (key-like
+ * parts masked) — the same direct call the shape probe of v3 makes on a failed variant (tools/eval/server/
+ * provider-call.mjs; the production shapes with images and the real tools are there, V3-18).
  */
 const LLM_SHAPE_PROBE = `
+const providerCall = ${providerCall.toString()};
 const targets = [
   { host: "https://api.z.ai/api/paas/v4", key: process.env.ZAI_API_KEY, model: "glm-5.3", extra: { reasoning_effort: "high" } },
   { host: "https://foundation-models.api.cloud.ru/v1", key: process.env.CLOUDRU_API_KEY, model: "moonshotai/Kimi-K2.6", extra: { chat_template_kwargs: { enable_thinking: false } } },
@@ -771,17 +775,9 @@ const variants = [
       const messages = [{ role: "system", content: "Отвечай кратко." }, { role: "user", content: "Скажи: да" }];
       if (turn2) messages.push({ role: "assistant", content: "", tool_calls: [{ id: "c0", type: "function", function: { name: "answer", arguments: JSON.stringify({ text: "да" }) } }] }, { role: "tool", tool_call_id: "c0", content: "ok" });
       const body = { model: t.model, messages, max_tokens: 400 + (t.host.includes("z.ai") ? 8192 : 0), temperature: 0.1, ...vv, ...(vv.tools ? t.extra : {}) };
-      const t0 = Date.now();
-      try {
-        const r = await fetch(t.host + "/chat/completions", { method: "POST", headers: { authorization: "Bearer " + t.key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
-        const txt = await r.text();
-        let note = "";
-        if (r.ok) { try { const j = JSON.parse(txt); const c = j.choices?.[0]; note = "finish=" + c?.finish_reason + (c?.message?.tool_calls?.length ? " tool_calls=" + c.message.tool_calls.length : "") + " text=" + JSON.stringify(String(c?.message?.content ?? "").slice(0, 40)); } catch { note = txt.slice(0, 120); } }
-        else note = txt.replace(/\\s+/g, " ").slice(0, 300);
-        console.log(t.model, "|", name, "| HTTP", r.status, "|", Date.now() - t0, "мс |", note);
-      } catch (e) {
-        console.log(t.model, "|", name, "| ошибка", String(e?.cause?.code ?? e?.message ?? e).slice(0, 160));
-      }
+      const r = await providerCall({ url: t.host + "/chat/completions", key: t.key, body, timeoutMs: 60000 });
+      if (r.status) console.log(t.model, "|", name, "| HTTP", r.status, "|", r.ms, "мс |", r.note);
+      else console.log(t.model, "|", name, "| ошибка", r.error);
     }
   }
 })();

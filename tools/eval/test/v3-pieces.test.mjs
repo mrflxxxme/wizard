@@ -366,6 +366,56 @@ describe("the report against D77_v3 (10)–(11)", () => {
     );
     expect(text).toContain("  - блокер: Права: врач видит чужие записи");
   });
+
+  test("time from the ready brief (the interview apart) and the failed attempts of each call type", () => {
+    const r = {
+      ...newV3Result({ id: "v3-01", title: "v3-01", class: "site" }),
+      systemId: "sys-1",
+      status: "not_ready",
+      minutes: 27,
+      fromBriefMinutes: 16.5,
+      interview: { questions: 3, turns: 4, minutes: 10.5 },
+      costRubEstimate: 40,
+      build: { status: "succeeded", minutes: 16.1, previewMinutes: 0.3, stages: [] },
+      techreview: { status: "done", blocked: false },
+    };
+    const doc = { kind: "v3", threshold: "v3", results: [r], maxCostRub: 500, concurrency: 1 };
+    const call = (o) => ({ tier: "T0", fallback: 0, scrubbed: false, rub: 0, inputTokens: 0, outputTokens: 0, ...o });
+    const db = {
+      costs: { "sys-1": { rub: 40.18 } },
+      v3: {
+        calls: {
+          "sys-1": [
+            call({ callType: "critic_visual", model: "kimi-k2.6", attempts: 1, ok: 0, failures: ["HTTP_4xx"], failureLatencyMs: 2000 }),
+            call({ callType: "critic_visual", model: "qwen3.6-35b", attempts: 1, ok: 0, fallback: 1, failures: ["TIMEOUT"], failureLatencyMs: 180000 }),
+            call({ callType: "techreview", model: "gpt-oss-120b", attempts: 3, ok: 1, rub: 0.1, failures: ["TIMEOUT", "TIMEOUT"], failureLatencyMs: 300000 }),
+            call({ callType: "page_compose", model: "glm-5.3", tier: "T1", attempts: 7, ok: 7, rub: 9, latencyMs: 41_400 }),
+          ],
+        },
+        hooks: {
+          "sys-1": {
+            critic: { status: "done", notes: ["Проверил сайт в браузере.", "Осталось поправить вручную: Контраст — / 390"] },
+            techreview: { status: "done", blockers: [], notes: ["Мелкое: у формы нет подписи поля"] },
+          },
+        },
+        similarity: {},
+        events: {},
+        t1Forbidden: 0,
+      },
+      gaps: {},
+    };
+    const e = evaluateV3(doc, db);
+    expect(e).toMatchObject({ medianMinutes: 16.5, maxMinutes: 16.5, medianInterviewMinutes: 10.5 });
+    expect(e.targets).toMatchObject({ median: true, cap: true });
+    const { text } = renderV3Report(doc, db, { platform: "https://borntobuild.ru", date: "2026-10-09" });
+    expect(text).toContain("интервью (время владельца, вне цели) — медиана 10.5 мин");
+    expect(text).toContain("  - Осталось поправить вручную: Контраст — / 390");
+    expect(text).toContain("  - Мелкое: у формы нет подписи поля");
+    expect(text).toContain("| Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | С на попытку | Отказы |");
+    expect(text).toContain("| critic_visual | 0 из 2, резерв 1 | kimi-k2.6, qwen3.6-35b | T0 | 0 ₽ | — | kimi-k2.6: HTTP_4xx; qwen3.6-35b: TIMEOUT · ≈ 91 с |");
+    expect(text).toContain("| techreview | 1 из 3 | gpt-oss-120b | T0 | 0,1 ₽ | — | gpt-oss-120b: TIMEOUT ×2 · ≈ 300 с |");
+    expect(text).toContain("| page_compose | 7 из 7 | glm-5.3 | T1 | 9 ₽ | 41 | — |");
+  });
 });
 
 /** In-memory client of a platform whose eval org is NOT on v3 (a goal interview of modules, no brief). */

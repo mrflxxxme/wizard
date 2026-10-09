@@ -20,6 +20,8 @@ export type FormEditorialProps = {
   /** The action of the «sent» state. */
   again?: string;
   note?: string;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -179,7 +181,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -303,7 +305,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -437,12 +439,17 @@ export default function FormEditorial(props: FormEditorialProps) {
     if (!(await form.submit())) setTries((n) => n + 1);
   };
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-background py-section font-sans text-foreground">
+    <section
+      data-wz-component="LeadForm"
+      data-wz-id={props.wzId}
+      aria-labelledby={`${uid}-title`}
+      className="bg-background py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-page px-gutter">
         <div className="grid gap-6 border-b border-foreground pb-10 lg:grid-cols-12 lg:items-end lg:gap-12">
           <h2
             id={`${uid}-title`}
-            className="font-display text-h1 font-bold text-balance wrap-break-word hyphens-auto lg:col-span-8"
+            className="min-w-0 font-display text-h1 font-bold text-balance wrap-break-word hyphens-auto lg:col-span-8"
           >
             {title}
           </h2>

@@ -101,6 +101,9 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
     for (const f of ["goals.browser.test.ts", "goals-b218.browser.test.ts", "goals-time.browser.test.ts"])
       expect(steps).toContain(f);
     expect(steps).toContain("b2-build-v2.browser.test.ts");
+    // V3-18: the goal scenarios of the eval briefs on the composed v3 pages (no model); every form variant — in e2e.
+    expect(steps).toContain("v3-goals.browser.test.ts");
+    expect(JSON.stringify(doc.jobs.e2e.steps)).toContain("v3-goals-variants.browser.test.ts");
     expect(JSON.stringify(doc.jobs.e2e.steps)).not.toContain("goals.browser.test.ts");
   });
 });
@@ -370,7 +373,28 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       (s) => s.name === `Pilot (${gh("inputs.command")})`,
     ).run;
     expect(run).toContain(
-      'v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK"',
+      'v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" --shape "$PROBE_SHAPE"',
+    );
+    // The shape probe: one more field of the form (empty — the route probe), checked before any secret, for
+    // v3-probe only; it reaches the script as an environment variable.
+    expect(inputs.probe_shape).toMatchObject({ type: "string", default: "" });
+    expect(pr.doc.jobs.pilot.with.probe_shape).toBe(gh("inputs.probe_shape"));
+    const reusable = load("pilot-reusable.yml").doc;
+    expect(load("pilot-reusable.yml").on.workflow_call.inputs.probe_shape).toMatchObject({
+      type: "string",
+      default: "",
+    });
+    expect(reusable.jobs.pilot.env.PROBE_SHAPE).toBe(gh("inputs.probe_shape"));
+    expect(reusable.jobs.authorize.steps[0].env.PROBE_SHAPE).toBe(gh("inputs.probe_shape"));
+    for (const v of ["critic", "techreview", "critic,techreview", "techreview,critic"])
+      expect(authorize({ ...ok, PROBE_SHAPE: v }).code, v).toBe(0);
+    for (const v of ["page", "critic;curl x", "critic,", "critic,techreview,critic"]) {
+      const r = authorize({ ...ok, PROBE_SHAPE: v });
+      expect(r.code, v).toBe(1);
+      expect(r.out, v).toContain("probe_shape — critic, techreview или critic,techreview");
+    }
+    expect(authorize({ COMMAND: "deploy", CONFIRM: "PROD", PROBE_SHAPE: "critic" }).out).toContain(
+      "probe_shape — только для v3-probe",
     );
   });
 
@@ -385,7 +409,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const job = doc.jobs.pilot;
     expect(job["timeout-minutes"]).toBe(
       gh(
-        "inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && 30 || 90",
+        "inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && inputs.probe_shape != '' && 90 || inputs.command == 'v3-probe' && 30 || 90",
       ),
     );
     const step = (k) => job.steps.find((s) => s.name === k || s.uses?.startsWith(k));
@@ -701,3 +725,77 @@ describe.skipIf(!hasYaml)("stock workflow (B2-38: the stock keys from CI)", () =
     expect(refused.out).toContain("ветка stock-record/42 отправлена, но PR не создан");
   });
 });
+
+describe.skipIf(!hasYaml)(
+  "integrations-sandbox workflow (V3-22: the API passports on the test contours)",
+  () => {
+    const KEYS = {
+      cdek: ["CDEK_TEST_ACCOUNT", "CDEK_TEST_SECURE"],
+      yookassa: ["YOOKASSA_TEST_SHOP_ID", "YOOKASSA_TEST_SECRET_KEY"],
+    };
+    const STEPS = { cdek: "CDEK test contour", yookassa: "YooKassa test shop" };
+
+    it("workflow_dispatch only, read-only token, GitHub-hosted, one run at a time, no environment", () => {
+      const { doc, on } = load("integrations-sandbox.yml");
+      expect(Object.keys(on)).toEqual(["workflow_dispatch"]);
+      expect(on.workflow_dispatch.inputs.passports).toMatchObject({
+        type: "choice",
+        options: ["all", "cdek", "yookassa"],
+        default: "all",
+      });
+      expect(on.workflow_dispatch.inputs.cdek_order).toMatchObject({ type: "boolean", default: false });
+      expect(doc.permissions).toEqual({ contents: "read" });
+      expect(doc.concurrency).toEqual({ group: "integrations-sandbox", "cancel-in-progress": false });
+      expect(Object.keys(doc.jobs)).toEqual(["sandbox"]);
+      const job = doc.jobs.sandbox;
+      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expect(job["timeout-minutes"]).toBeLessThanOrEqual(15);
+      expect(job.permissions).toBeUndefined();
+      expect(job.environment).toBeUndefined();
+      expect(job.env).toBeUndefined();
+    });
+
+    it("one step per passport (≤ 10 annotations of a level per step), each after a good install, even if the other failed", () => {
+      const { doc } = load("integrations-sandbox.yml");
+      const steps = doc.jobs.sandbox.steps;
+      const install = steps.find((s) => String(s.run ?? "").includes("pnpm install"));
+      expect(install).toMatchObject({ id: "install", run: "pnpm install --frozen-lockfile" });
+      expect(install.env).toBeUndefined();
+      for (const [id, name] of Object.entries(STEPS)) {
+        const step = steps.find((s) => s.name === name);
+        expect(step.if).toBe(
+          gh(
+            `!cancelled() && steps.install.outcome == 'success' && (inputs.passports == 'all' || inputs.passports == '${id}')`,
+          ),
+        );
+        // The first line masks every key of the step before anything runs.
+        expect(step.run.trim().split("\n")).toEqual([
+          `for v in ${KEYS[id].map((k) => `"$${k}"`).join(" ")}; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done`,
+          `node tools/integrations/sandbox-check.mjs --passports=${id}`,
+        ]);
+      }
+      // The order option reaches the script as env, never as text of the script.
+      expect(steps.find((s) => s.name === STEPS.cdek).env.CDEK_ORDER).toBe(gh("inputs.cdek_order"));
+      for (const s of steps) expect(String(s.run ?? "")).not.toContain("inputs.");
+    });
+
+    it("keys only in the env of their own step; nowhere else", () => {
+      const { doc, text } = load("integrations-sandbox.yml");
+      for (const step of doc.jobs.sandbox.steps) {
+        expect(String(step.run ?? "")).not.toContain("secrets.");
+        expect(JSON.stringify(step.with ?? {})).not.toContain("secrets.");
+        const id = Object.keys(STEPS).find((k) => STEPS[k] === step.name);
+        const own = id ? KEYS[id] : [];
+        for (const k of own) expect(step.env[k]).toBe(gh(`secrets.${k}`));
+        expect(
+          Object.values(step.env ?? {})
+            .join(" ")
+            .match(/secrets\.[A-Z_]+/g) ?? [],
+        ).toEqual(own.map((k) => `secrets.${k}`));
+      }
+      expect(text.match(/secrets\.[A-Z_]+/g).sort()).toEqual(
+        [...KEYS.cdek, ...KEYS.yookassa].map((k) => `secrets.${k}`).sort(),
+      );
+    });
+  },
+);

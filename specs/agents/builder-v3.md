@@ -82,6 +82,12 @@
   - `license`, `origin`.
 - Паттерн импортирует только `react`, `motion/react`, `@wizard/ui-kit/v3/headless` (для `needs`) и свои соседние файлы. Цвета и шрифты берёт только из темы.
 - `patternFor({sectionType, archetype, seed, used[]})` — детерминированный выбор с разнообразием.
+- DOM-контракт целевых сценариев модулей (V3-18): паттерны несут те же отметки, что компоненты ui-kit v2.
+  - Первый экран: корень `data-wz-component="Hero"`, главная кнопка `data-testid="wz-hero-primary"`.
+  - Форма заявки: корень `LeadForm`, поля `wz-field-<имя>`; форма в шагах — `data-wz-step`/`data-wz-steps` у `<form>`.
+  - Форма записи: корень `BookingForm` + `booking-page`; шаги `booking-service|specialist|day|time`, время `booking-slots`, контакты `booking-form`, «Далее» `booking-next`, итог `booking-done`, пусто `wz-empty`.
+  - Позиция каталога: `wz-itemcard`, её действие `wz-itemcard-cta`.
+  - Корень с `data-wz-component` получает `data-wz-id` из пропа `wzId`; проп ставит сборка (`ui-kit.yaml#wz_id`).
 
 ### C4. Headless-хуки модулей — `@wizard/ui-kit` (`src/v3/headless/`)
 
@@ -119,11 +125,18 @@
 - `V3Host.integrations` (V3-20) — слой интеграций брифа поверх бэкенда: контракты, клиент на моке до проверки ключом, egress только к хостам контракта.
 - Ход сборки для холста (V3-17) — снимок `progress` в событиях `build_stage` и `step_*` (`workflows.yaml#events.schemas.v3_progress`). Его собирает хост.
 
+Правила действий сайта (`siteRules`, V3-18) держит код, а не модель: их применяет `siteFiles` после каркаса, страницы модели и правки критика.
+- Главная кнопка первого экрана ведёт к форме своей страницы (`#<id секции>`), на странице без формы — к форме главного действия сайта (`/booking#form`).
+- Позиции каталога ведут к записи, иначе к форме заявки; вариант витрины без действия позиций модель и критик не выбирают.
+- Заголовок «отправлено» формы — «Заявка отправлена» или «Вы записаны».
+- Страница прокручивается к якорю адреса после отрисовки.
+
 Шов между харнессом (V3-11) и сборщиком страниц (V3-12) — `src/builder/v3/contract.ts`: `V3BuildContext`, `PageComposer {skeleton, scenario}`, `V3ComposeResult`, `V3PagePlan`. Харнесс вызывает `PageComposer`, V3-12 его реализует; внутренности друг друга они не импортируют.
 
 ### C7. Модели — `@wizard/llm`
 
 - Новые callType: `interview_v3`, `brief_extract`, `art_direction`, `page_compose`, `signature_section`, `critic_visual`, `techreview`, `research`.
+- V3-32: `repo_code` и `repo_review` — агент для совместимых репозиториев и его ревьюер. Код клиента — только T0 (`models.yaml#client_code`): без цепочки T1, резерва D76 и BYOK.
 - Маршруты — в `models.yaml`.
 - Allowlist моделей отклоняет западные API на ключах платформы (D18).
 - Провайдер `openai_compatible` с `baseUrlEnv` позволяет подключить свой vLLM, а позже BYOK (V3-33).

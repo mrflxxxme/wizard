@@ -813,6 +813,10 @@ describe("diagnoseCluster", () => {
     expect(
       calls.filter((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e")),
     ).toHaveLength(2);
+    // The request-shape probe makes the same direct call as the v3 shape probe (provider-call.mjs: keys masked).
+    expect(calls.find((c) => c.includes("tool_choice функция"))).toContain(
+      "const providerCall = async function providerCall(",
+    );
     expect(calls.some((c) => c.startsWith("-n wizard-platform exec deploy/wizard-worker -- node -e"))).toBe(
       true,
     );
