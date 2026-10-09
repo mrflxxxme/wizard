@@ -58,12 +58,13 @@ beforeAll(async () => {
   });
 }, 60_000);
 
+// Closing the DBOS worker, the API and dropping the database takes as long as the start under a loaded CI runner.
 afterAll(async () => {
   await worker?.close();
   await api?.dispose();
   await tdb?.drop();
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
-});
+}, 60_000);
 
 async function expectValid(runId: string) {
   const ev = await listEvents(api.deps.db, runId, 0);
