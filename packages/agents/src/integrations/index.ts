@@ -38,6 +38,7 @@ export {
   ARG_RE,
   CONTRACT_AUTH_KINDS,
   CONTRACT_FORMAT,
+  CONTRACT_KEY_KINDS,
   CONTRACT_LIMITS,
   CONTRACT_METHODS,
   ContractInvalidError,
@@ -81,6 +82,8 @@ export {
   pickCheck,
   toSubset,
 } from "./openapi.js";
+/** API passports (V3-22): ЮKassa, СДЭК, Telegram, amoCRM, Битрикс24, МойСклад — contracts without reading the docs. */
+export * from "./passports/index.js";
 /** Prose documentation → contract: one T0 research call with code checks of hosts and paths. */
 export {
   type ContractDraft,

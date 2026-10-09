@@ -5,9 +5,10 @@
 //        → psql on the platform database < seed.sql > seed.out   (the raw token stays in s.json, mode 0600)
 //   node tools/eval/server/cli.mjs run --base https://borntobuild.ru --session-file s.json --seed-output seed.out \
 //        [--briefs all|mvp-01-…,…] [--max-cost-rub 2000] [--concurrency 2] [--g2 publish|skip] [--out results.json]
-//        [--threshold d67|d76]   (d76 — strict threshold of beta v2: plan coverage, goal scenarios, 390 px)
+//        [--threshold d67|d76|v3]   (d76 — strict threshold of beta v2: plan coverage, goal scenarios, 390 px;
+//        v3 — V3-18: the v3 briefs v3-* through the v3 path, the checkpoint report v3-a-checkpoint1-<date>)
 //        [--screenshots DIR]     (PNGs of each system at 390 and 1280 px for the report grid; Chromium of packages/e2e)
-//   node tools/eval/server/cli.mjs collect --seed-output seed.out [--b2-since 2026-10-07] > collect.sql
+//   node tools/eval/server/cli.mjs collect --seed-output seed.out [--b2-since 2026-10-07] [--threshold v3] > collect.sql
 //        → psql < collect.sql > collect.out   (--b2-since: spend of the beta v2 development budget since that day)
 //   node tools/eval/server/cli.mjs report --results results.json [--collect collect.out] [--out report.md]
 //        [--b2-budget-rub 1000]
@@ -19,6 +20,8 @@ import { platformClient } from "./client.mjs";
 import { D76_MAX_COST_RUB, DEFAULTS, runEval, THRESHOLDS } from "./driver.mjs";
 import { photosAnnotation, renderReport } from "./report.mjs";
 import { previewScreenshots } from "./screenshots.mjs";
+import { runV3Eval } from "./v3.mjs";
+import { renderV3Report } from "./v3-report.mjs";
 import {
   collectSql,
   evalCredits,
@@ -47,9 +50,12 @@ export function parseArgs(argv) {
   return { command, o };
 }
 
-/** Briefs of the measurement: "all" (default) — the ten mvp-*; otherwise ids, a short id «mvp-03» is enough. */
-export function selectBriefs(want = "all") {
-  const all = loadBriefs("mvp");
+/**
+ * Briefs of the measurement: "all" (default) — the ten mvp-* (V3-18: under the v3 threshold — the v3-* briefs);
+ * otherwise ids, a short id «mvp-03» / «v3-02» is enough.
+ */
+export function selectBriefs(want = "all", set = "mvp") {
+  const all = loadBriefs(set);
   if (!want || want === "all") return all;
   const ids = String(want)
     .split(",")
@@ -85,7 +91,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     if (!o["session-file"]) throw new Error("--session-file: куда сохранить токен сессии (0600)");
     const runid = o.runid || newRunId();
     const session = newEvalSession();
-    const label = threshold(o.threshold) === "d76" ? "D76" : "D67";
+    const label = { d76: "D76", v3: "V3" }[threshold(o.threshold)] ?? "D67";
     const { email } = evalIdentity(runid, o.domain || undefined, label);
     const credits = o.credits
       ? num(o.credits, "credits")
@@ -106,7 +112,13 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   }
   if (command === "collect") {
     const seed = parseSeedOutput(readFileSync(o["seed-output"], "utf8"));
-    out(collectSql({ orgId: seed.orgId, ...(o["b2-since"] ? { b2Since: o["b2-since"] } : {}) }));
+    out(
+      collectSql({
+        orgId: seed.orgId,
+        ...(o["b2-since"] ? { b2Since: o["b2-since"] } : {}),
+        ...(threshold(o.threshold) === "v3" ? { v3: true } : {}),
+      }),
+    );
     return 0;
   }
   if (command === "cleanup") {
@@ -126,9 +138,10 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     const shots = o.screenshots
       ? previewScreenshots({ client, dir: o.screenshots, log, ...(deps.launch ? { launch: deps.launch } : {}) })
       : null;
-    const doc = await runEval({
+    const v3 = threshold(o.threshold) === "v3";
+    const doc = await (v3 ? runV3Eval : runEval)({
       client,
-      briefs: selectBriefs(o.briefs),
+      briefs: selectBriefs(o.briefs, v3 ? "v3" : "mvp"),
       orgId: o["org-id"] || seed.orgId,
       ownerEmail: s.email,
       runId: s.runid,
@@ -155,6 +168,12 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   // report
   const doc = readJson(o.results);
   const db = o.collect ? parseCollectOutput(readFileSync(o.collect, "utf8")) : {};
+  if (doc.kind === "v3" || doc.threshold === "v3") {
+    const { text, summary } = renderV3Report(doc, db);
+    if (o.out) writeFileSync(o.out, text);
+    else out(text);
+    return summary.passed ? 0 : 1;
+  }
   const { text, summary } = renderReport(doc, db, {
     ...(o["b2-budget-rub"] ? { b2BudgetRub: num(o["b2-budget-rub"], "b2-budget-rub") } : {}),
   });

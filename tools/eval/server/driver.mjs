@@ -17,7 +17,7 @@ export const D67_THRESHOLD = { ready: 7, of: 10 };
  * (G0–G2 without blockers, goal scenarios in the browser, 390 px); every uncovered brief reaches a working system and
  * what is out of scope is recorded in «Запросы на развитие».
  */
-export const THRESHOLDS = ["d67", "d76"];
+export const THRESHOLDS = ["d67", "d76", "v3"];
 /** Budget of the D76 measurement by default, ₽ (eval.yaml#thresholds.by_milestone.B2: ≤ 300 ₽ for the final run). */
 export const D76_MAX_COST_RUB = 300;
 /** D76 economics of one build (D76 (8)): ≤ 15 ₽ and ≤ 5 min without custom code, custom code ≤ +20 ₽. */
@@ -265,15 +265,16 @@ export function newResult(brief) {
   };
 }
 
-const minutesBetween = (a, b) => Math.round(((b.getTime() - a.getTime()) / 60_000) * 10) / 10;
+export const minutesBetween = (a, b) => Math.round(((b.getTime() - a.getTime()) / 60_000) * 10) / 10;
 
 /**
- * Drives one brief; never throws (an API error ends the brief with status error). `ctx`: {client, orgId, ownerEmail,
- * g2, fixAttempts, pollMs, maxTurns, maxInputs, timeoutsMin, now, sleep, log, onSpend}.
+ * The runs of one brief (V3-18: shared by the D67/D76 driver and the v3 driver): `track(run)` keeps each run's status
+ * and credits in `r.runs` and the ₽ estimate of the brief; `waitRun(run, phase)` polls a run to its end, answers its
+ * needs_input like a client, and cancels it on the stop of the measurement, the brief cap, an unanswerable ask or the
+ * phase timeout (an Error then). `waitRun(run, phase, {onPoll})` calls onPoll(run) instead of sleeping between polls.
  */
-export async function driveBrief(ctx, brief, r = newResult(brief)) {
-  const { client, now, log } = ctx;
-  const say = (m) => log(`${brief.id}: ${m}`);
+export function runTracker(ctx, r, say) {
+  const { client, now } = ctx;
   const runs = new Map();
   const track = (run) => {
     if (!run?.id) return;
@@ -315,7 +316,7 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
     return true;
   }
 
-  async function waitRun(first, phase) {
+  async function waitRun(first, phase, { onPoll } = {}) {
     const deadline = now().getTime() + ctx.timeoutsMin[phase] * 60_000;
     const answered = new Set();
     let run = first;
@@ -343,10 +344,23 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
         await client.post(`/runs/${run.id}/cancel`).catch(() => {});
         throw new Error(`прогон ${phase} не завершился за ${ctx.timeoutsMin[phase]} мин — отменён`);
       }
-      await ctx.sleep(ctx.pollMs);
+      if (onPoll) await onPoll(run);
+      else await ctx.sleep(ctx.pollMs);
       run = (await client.get(`/runs/${run.id}`)).body;
     }
   }
+
+  return { track, waitRun };
+}
+
+/**
+ * Drives one brief; never throws (an API error ends the brief with status error). `ctx`: {client, orgId, ownerEmail,
+ * g2, fixAttempts, pollMs, maxTurns, maxInputs, timeoutsMin, now, sleep, log, onSpend}.
+ */
+export async function driveBrief(ctx, brief, r = newResult(brief)) {
+  const { client, now, log } = ctx;
+  const say = (m) => log(`${brief.id}: ${m}`);
+  const { waitRun } = runTracker(ctx, r, say);
 
   const latestGates = async () => (await client.get(`/systems/${r.systemId}/gates/latest`)).body;
   const failure = (run) => run.failure?.message_ru || run.failure?.code || run.status;
@@ -531,7 +545,7 @@ export async function driveBrief(ctx, brief, r = newResult(brief)) {
 }
 
 /** Owner-side preconditions (operator data with test values), then publish → status of the publish run. */
-async function probeG2(ctx, r, waitRun, say) {
+export async function probeG2(ctx, r, waitRun, say) {
   const { client } = ctx;
   const out = { status: "pending", complianceFilled: false, blockers: [] };
   let s = (await client.get(`/systems/${r.systemId}`)).body;
@@ -604,6 +618,9 @@ export async function collectGaps(client, r) {
  * finished and running briefs) is below `maxCostRub`, the rest are skipped. Returns the run document for report.mjs.
  */
 export async function runEval(o) {
+  // V3-18: the v3 measurement drives its briefs with its own driver (tools/eval/server/v3.mjs runV3Eval).
+  const drive = o.drive ?? driveBrief;
+  const v3 = o.threshold === "v3";
   const ctx = {
     ...DEFAULTS,
     ...Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)),
@@ -612,7 +629,7 @@ export async function runEval(o) {
     sleep: o.sleep ?? ((ms) => new Promise((res) => setTimeout(res, ms))),
     log: o.log ?? ((s) => console.log(s)),
   };
-  const results = o.briefs.map((b) => newResult(b));
+  const results = o.briefs.map((b) => (o.newResult ?? newResult)(b));
   const spent = () => results.reduce((s, x) => s + x.costRubEstimate, 0);
   // Fail-fast (budget guard): once the D67 threshold cannot be reached any more, the rest is not worth the spend.
   const stop = new AbortController();
@@ -632,8 +649,8 @@ export async function runEval(o) {
     if (!stop.signal.aborted) stop.abort(reason);
   };
   // D76 (B2-41): the budget of the measurement is a hard stop — a running brief that takes the spend over it is
-  // cancelled at once (D67 only stops new briefs from starting).
-  if (strict)
+  // cancelled at once (D67 only stops new briefs from starting). V3-18: the v3 measurement too.
+  if (strict || v3)
     ctx.onSpend = () => {
       if (!stop.signal.aborted && spent() > ctx.maxCostRub)
         stop.abort(`бюджет замера ${ctx.maxCostRub} ₽ исчерпан (≈ ${Math.round(spent())} ₽ по кредитам)`);
@@ -671,20 +688,20 @@ export async function runEval(o) {
       active += 1;
       peak = Math.max(peak, active);
       try {
-        await driveBrief(ctx, o.briefs[i], r);
+        await drive(ctx, o.briefs[i], r);
       } finally {
         active -= 1;
         const before = stop.signal.aborted;
         checkReachable();
         if (!before && stop.signal.aborted)
-          ctx.log(`::warning title=${strict ? "D76" : "D67"}::замер остановлен: ${stop.signal.reason}`);
+          ctx.log(`::warning title=${v3 ? "V3" : strict ? "D76" : "D67"}::замер остановлен: ${stop.signal.reason}`);
         ctx.onUpdate();
       }
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, worker));
   return {
-    kind: strict ? "d76" : "d67",
+    kind: v3 ? "v3" : strict ? "d76" : "d67",
     threshold: ctx.threshold,
     base: ctx.client.base,
     runId: o.runId ?? null,

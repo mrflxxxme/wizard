@@ -21,7 +21,7 @@ import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
 import { processLogo } from "../services/logo.js";
 import { insertMessage } from "../services/messages.js";
-import { systemPipeline } from "../services/plans.js";
+import { orgPipeline, systemPipeline } from "../services/plans.js";
 import {
   applyOpsRevision,
   commitFilesRevision,
@@ -261,7 +261,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
       // B2-02: the platform shows «Режим показа…» while the org's runs replay recorded answers.
       demoReplay: await orgDemoReplay(d.db, s.org_id),
       // B2-25: the platform shows the canvas for the modules pipeline and the v1 workspace for legacy.
-      pipeline: await systemPipeline(d.db, s, d.config.buildPipeline),
+      // V3-18: a fresh system follows its org (WIZARD_BUILD_PIPELINE_ORGS), else WIZARD_BUILD_PIPELINE.
+      pipeline: await systemPipeline(d.db, s, () => orgPipeline(d.db, d.config, s.org_id)),
       card: s.card ?? null,
       pendingQuestions: s.pending_questions,
       messages: msgs.reverse().map(toMessage),

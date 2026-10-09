@@ -9,7 +9,9 @@
 # like cluster access for the database, the briefs over the public HTTPS; its report (with the screenshots of the
 # systems under d76) is uploaded as an artifact (no secrets, no personal data in it). V3-01: eval is paid — it starts
 # only with its pre-registration in the spend journal (wave, purpose, hypothesis, expect_rub, cap_rub, founder_ok;
-# tools/deploy/spend.mjs), checked here before any secret and again by pilot.mjs against the wave plan.
+# tools/deploy/spend.mjs), checked here before any secret and again by pilot.mjs against the wave plan. V3-18: eval with
+# threshold v3 is checkpoint 1 of v3; `v3-probe` (v3-probe.yml) is the probe of the v3 model routes in the worker pod —
+# paid too (≤ 30 ₽), pre-registered the same way; its report goes to the same artifact folder.
 name: pilot-reusable
 
 on:
@@ -19,7 +21,7 @@ on:
         type: string
         required: true
       command:
-        description: "check | bootstrap | deploy | destroy | diagnose | eval | reboot"
+        description: "check | bootstrap | deploy | destroy | diagnose | eval | v3-probe | reboot"
         type: string
         required: true
       sha:
@@ -45,7 +47,7 @@ on:
         type: string
         default: ""
       threshold:
-        description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement"
+        description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement; v3 — checkpoint 1 of v3"
         type: string
         default: "d76"
       wave:
@@ -70,6 +72,10 @@ on:
         default: "no"
       build_pipeline:
         description: "deploy/bootstrap: the pipeline of new systems (modules | legacy); empty — the variable or modules (D76)"
+        type: string
+        default: ""
+      pipeline_orgs:
+        description: "deploy/bootstrap (V3-18): orgs whose new systems start on v3 (ids, kinds eval|staff); empty — the variable"
         type: string
         default: ""
       llm_daily_cap_rub:
@@ -119,10 +125,12 @@ jobs:
             echo "::error title=pilot::Запуск только из main."; exit 1
           fi
           case "$DEPLOY_ENV" in prod|staging) ;; *) echo "::error title=pilot::env — prod или staging."; exit 1 ;; esac
-          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|eval|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
+          case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|eval|v3-probe|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
           if [ "$COMMAND" = "eval" ]; then
             printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
-            case "$EVAL_THRESHOLD" in d76|d67) ;; *) echo "::error title=pilot::threshold — d76 или d67."; exit 1 ;; esac
+            case "$EVAL_THRESHOLD" in d76|d67|v3) ;; *) echo "::error title=pilot::threshold — d76, d67 или v3."; exit 1 ;; esac
+          fi
+          if [ "$COMMAND" = "eval" ] || [ "$COMMAND" = "v3-probe" ]; then
             # V3-01: a paid run only pre-registered in the spend journal (pilot.mjs also checks the wave plan).
             need="::error title=Журнал трат v3::Платный прогон не начат — нужна запись в журнале трат:"
             if [ -z "$EVAL_PURPOSE" ] || [ -z "$EVAL_HYPOTHESIS" ]; then echo "$need purpose и hypothesis — цель и гипотеза прогона."; exit 1; fi
@@ -132,6 +140,10 @@ jobs:
             case "$EVAL_FOUNDER_OK" in yes|no) ;; *) echo "$need founder_ok — yes или no."; exit 1 ;; esac
             if [ "$EVAL_CAP_RUB" -gt 1000 ] && [ "$EVAL_FOUNDER_OK" != "yes" ]; then
               echo "$need потолок больше 1 000 ₽ за раз — нужно «да» основателя (founder_ok=yes)."; exit 1
+            fi
+            # V3-18: the probe is step 2 of the ladder — never more than 30 ₽.
+            if [ "$COMMAND" = "v3-probe" ] && [ "$EVAL_CAP_RUB" -gt 30 ]; then
+              echo "$need cap_rub — проба маршрутов v3 не дороже 30 ₽."; exit 1
             fi
           fi
           case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
@@ -153,7 +165,7 @@ jobs:
 
   images:
     needs: authorize
-    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'reboot'
+    if: inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'v3-probe' && inputs.command != 'reboot'
     uses: ./.github/workflows/images.yml
     permissions:
       contents: read
@@ -167,8 +179,8 @@ jobs:
     if: ${{ !cancelled() && needs.authorize.result == 'success' && needs.images.result != 'failure' }}
     runs-on: ubuntu-24.04
     environment: ${{ inputs.env }}
-    # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most.
-    timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || 90 }}
+    # eval: 10 briefs two at a time, each bounded by the driver's timeouts — 5.5 hours at most; v3-probe: 8 calls.
+    timeout-minutes: ${{ inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && 30 || 90 }}
     # B2-43: the files bucket of the systems, its endpoint and region for the stock-library job (stock_mode=library only).
     outputs:
       files_bucket: ${{ steps.pilot.outputs.files_bucket }}
@@ -214,6 +226,9 @@ jobs:
       # D76, B2-41: new systems on the modules pipeline (empty — modules; legacy is the way back), G1 of a plan build in
       # the worker's Chromium (empty — chromium), the systems' sender domain (empty — the domain of WIZARD_SMTP_FROM).
       WIZARD_BUILD_PIPELINE: ${{ inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE }}
+      # V3-18: orgs whose new systems start on v3 (ids and kinds eval, staff), the clients stay on the pipeline above;
+      # eval with threshold v3 needs eval here (checked in the worker's env before any spend).
+      WIZARD_BUILD_PIPELINE_ORGS: ${{ inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS }}
       WIZARD_G1_BROWSER: ${{ vars.WIZARD_G1_BROWSER }}
       WIZARD_G1_BROWSER_SLOTS: ${{ vars.WIZARD_G1_BROWSER_SLOTS }}
       WIZARD_MAIL_DOMAIN: ${{ vars.WIZARD_MAIL_DOMAIN }}
@@ -311,11 +326,11 @@ jobs:
         run: |
           kubectl version --client=true
           ssh -V
-      # eval d76: screenshots of each system at 390 and 1280 px — Chromium of the workspace's Playwright (packages/e2e).
+      # eval d76 and v3: screenshots of each system at 390 and 1280 px — Chromium of the workspace's Playwright (packages/e2e).
       - uses: pnpm/action-setup@v4
-        if: inputs.command == 'eval' && inputs.threshold == 'd76'
+        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')
       - name: Chromium for the screenshots
-        if: inputs.command == 'eval' && inputs.threshold == 'd76'
+        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')
         run: |
           pnpm install --frozen-lockfile --filter @wizard/e2e
           pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
@@ -330,16 +345,17 @@ jobs:
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;
             diagnose) node tools/deploy/pilot.mjs diagnose --env "$DEPLOY_ENV" ;;
             eval) node tools/deploy/pilot.mjs eval --env "$DEPLOY_ENV" --briefs "$EVAL_BRIEFS" --threshold "$EVAL_THRESHOLD" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
+            v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK" ;;
             reboot) node tools/deploy/pilot.mjs reboot --env "$DEPLOY_ENV" ;;
             *) node tools/deploy/pilot.mjs "$COMMAND" --env "$DEPLOY_ENV" --tag "$SHA" ;;
           esac
       # The report, the per-brief results and (d76) the screenshots — no token, no secrets; the eval account is a
       # service one, the briefs are synthetic.
       - name: Eval report
-        if: always() && inputs.command == 'eval'
+        if: always() && (inputs.command == 'eval' || inputs.command == 'v3-probe')
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.threshold }}-eval-${{ inputs.env }}-${{ github.run_id }}
+          name: ${{ inputs.command == 'v3-probe' && 'v3-probe' || inputs.threshold }}-eval-${{ inputs.env }}-${{ github.run_id }}
           path: ${{ runner.temp }}/wizard-eval-${{ inputs.env }}
           if-no-files-found: ignore
           retention-days: 90

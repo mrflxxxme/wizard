@@ -236,6 +236,7 @@ export const BUILD_PIPELINES = ["modules", "legacy"];
 /** GitHub settings read by pilotPipelineEnv (pilot-reusable.yml passes each to the job). */
 export const PILOT_PIPELINE_INPUTS = [
   "WIZARD_BUILD_PIPELINE",
+  "WIZARD_BUILD_PIPELINE_ORGS",
   "WIZARD_G1_BROWSER",
   "WIZARD_G1_BROWSER_SLOTS",
   "WIZARD_MAIL_DOMAIN",
@@ -331,11 +332,34 @@ export function pilotPipelineEnv(inputs) {
   if (slots && !/^[1-8]$/.test(slots)) throw new Error("WIZARD_G1_BROWSER_SLOTS: целое от 1 до 8");
   return {
     WIZARD_BUILD_PIPELINE: pipeline,
+    // V3-18: v3 per org (measurement orgs, the founder's) while the clients stay on the pipeline above.
+    WIZARD_BUILD_PIPELINE_ORGS: pilotPipelineOrgs(inputs),
     WIZARD_G1_BROWSER: browser,
     WIZARD_G1_BROWSER_SLOTS: slots,
     WIZARD_MAIL_DOMAIN: pilotMailDomain(inputs),
     WIZARD_STOCK_MODE: stock,
   };
+}
+
+/** Entries of WIZARD_BUILD_PIPELINE_ORGS (V3-18, apps/platform-api config.ts buildPipelineOrgsOf): org ids and kinds. */
+const PIPELINE_ORG_ENTRY = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|eval|staff)$/;
+
+/**
+ * V3-18: the orgs whose new systems start on v3 while the pilot's clients stay on WIZARD_BUILD_PIPELINE — a comma list
+ * of org ids and kinds (eval — measurement orgs, staff — the founder's); "" — none. A typo is refused here, at the
+ * release, instead of being ignored by the platform.
+ */
+export function pilotPipelineOrgs(inputs) {
+  const items = String(inputs.WIZARD_BUILD_PIPELINE_ORGS ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  const bad = items.filter((x) => !PIPELINE_ORG_ENTRY.test(x));
+  if (bad.length)
+    throw new Error(
+      `WIZARD_BUILD_PIPELINE_ORGS: id организаций (uuid) и виды eval, staff через запятую; не подходит: ${bad.join(", ")}`,
+    );
+  return [...new Set(items)].join(",");
 }
 
 /** Founder alert webhook: the Telegram bot form (token + chat) or a ready URL (docs/ops/deploy.md «Алерты пилота»). */

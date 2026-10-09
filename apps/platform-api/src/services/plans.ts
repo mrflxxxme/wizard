@@ -1,6 +1,7 @@
 // System plan revisions of the beta v2 path (B2-20, db.yaml#system_plans, api.yaml#getSystemPlan): the planner or a
 // deterministic edit adds a revision awaiting approval (the previous one is superseded); approval starts the build.
 import { type Selectable, sql } from "kysely";
+import { type Config, pipelineOfOrg, pipelineOrgsOn } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { SystemPlansTable } from "../db/types.js";
 import type { TxCtx } from "../runs/events.js";
@@ -86,12 +87,13 @@ export function ownerAppName(name: string, brief: string | null): { appName?: st
  * its interview state is a goal session, «legacy» once it has a card or a v1 interview state; a fresh system follows
  * WIZARD_BUILD_PIPELINE — the same rule as the interview executor (a system keeps the pipeline it started with).
  * V3-03: a v3 system (interview state pipeline v3, or a fresh one under WIZARD_BUILD_PIPELINE=v3) opens the canvas
- * too — «modules» here, as api.yaml knows only legacy and modules; the executor state tells v3 apart.
+ * too — «modules» here, as api.yaml knows only legacy and modules; the executor state tells v3 apart. V3-18: the
+ * fallback of a fresh system may be a function (orgPipeline of its org), called only when it is needed.
  */
 export async function systemPipeline(
   db: Db,
   s: { id: string; card: unknown },
-  fallback: "legacy" | "modules" | "v3",
+  fallback: Config["buildPipeline"] | (() => Promise<Config["buildPipeline"]>),
 ): Promise<"legacy" | "modules"> {
   if (s.card) return "legacy";
   const plan = await db
@@ -113,5 +115,21 @@ export async function systemPipeline(
   const state = last?.state as { pipeline?: unknown } | null | undefined;
   if (state && typeof state === "object")
     return state.pipeline === "modules" || state.pipeline === "v3" ? "modules" : "legacy";
-  return fallback === "v3" ? "modules" : fallback;
+  const p = typeof fallback === "function" ? await fallback() : fallback;
+  return p === "v3" ? "modules" : p;
+}
+
+/**
+ * V3-18: the pipeline a new system of the org starts on — v3 for an org of WIZARD_BUILD_PIPELINE_ORGS (by id, or by its
+ * kind: eval, staff), else WIZARD_BUILD_PIPELINE. The org's kind is read only when the list names kinds.
+ */
+export async function orgPipeline(
+  db: Db,
+  config: Pick<Config, "buildPipeline" | "buildPipelineOrgs">,
+  orgId: string,
+): Promise<Config["buildPipeline"]> {
+  if (!pipelineOrgsOn(config)) return config.buildPipeline;
+  if (!config.buildPipelineOrgs.kinds.length) return pipelineOfOrg(config, { id: orgId });
+  const org = await db.selectFrom("platform.orgs").select("kind").where("id", "=", orgId).executeTakeFirst();
+  return pipelineOfOrg(config, { id: orgId, kind: org?.kind ?? null });
 }

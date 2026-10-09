@@ -46,7 +46,7 @@ import type postgres from "postgres";
 import { platformMailer } from "../auth/smtp-mailer.js";
 import { phoneOtpAllowed } from "../billing/plans.js";
 import { buildByBrief, isV3Build, kyselyOver, type V3BuildOptions } from "../builds-v3/host.js";
-import type { Config } from "../config.js";
+import { type Config, pipelineOrgsOn } from "../config.js";
 import { recordInterviewFallback } from "../ops/metrics.js";
 import type { EventType } from "../runs/events.js";
 import {
@@ -58,6 +58,7 @@ import {
   type RunExecutors,
   RunFailure,
 } from "../runs/types.js";
+import { orgPipeline } from "../services/plans.js";
 import { isAutoName } from "../services/slug.js";
 import { withConsentText } from "./consent.js";
 import { g1PlatformConfig } from "./g1-platform.js";
@@ -447,9 +448,17 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     return browserProvider;
   };
   // V3-11: builds by the brief (harness v3) when the pipeline is on; its db handle is made on first use.
-  // The same switch as the v3 interview (V3-03): config.buildPipeline (WIZARD_BUILD_PIPELINE=v3).
-  const v3 = o.v3 === null ? null : { ...o.v3, enabled: o.v3?.enabled ?? o.config.buildPipeline === "v3" };
+  // The same switch as the v3 interview (V3-03): config.buildPipeline (WIZARD_BUILD_PIPELINE=v3), or V3-18 orgs of
+  // WIZARD_BUILD_PIPELINE_ORGS (isV3Build still asks for a brief: card and plan builds keep their pipelines).
+  const v3 =
+    o.v3 === null
+      ? null
+      : { ...o.v3, enabled: o.v3?.enabled ?? (o.config.buildPipeline === "v3" || pipelineOrgsOn(o.config)) };
   let v3Db: ReturnType<typeof kyselyOver> | undefined;
+  const db = () => {
+    v3Db ??= kyselyOver(o.pg);
+    return v3Db;
+  };
   let sandbox: Promise<G1Sandbox | null> | undefined;
   const g1Sandbox = (): Promise<G1Sandbox | null> => {
     sandbox ??=
@@ -499,13 +508,15 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     async interviewTurn(host) {
       // B2-20: a system stays on the pipeline it started with; a new one follows WIZARD_BUILD_PIPELINE.
       const state = host.context.state;
+      // V3-18: …or v3 when its org is in WIZARD_BUILD_PIPELINE_ORGS (by id or kind).
+      const fresh = state === null ? await orgPipeline(db(), o.config, host.run.orgId) : null;
       // V3-03: the grill interview of v3 and the system brief (WIZARD_BUILD_PIPELINE=v3).
-      if (isInterviewV3Session(state) || (state === null && o.config.buildPipeline === "v3"))
+      if (isInterviewV3Session(state) || fresh === "v3")
         return interviewV3Turn(host, {
           ...(o.modules ? { registry: o.modules } : {}),
           ...(o.research !== undefined ? { research: o.research } : {}),
         });
-      if (isGoalSession(state) || (state === null && o.config.buildPipeline === "modules"))
+      if (isGoalSession(state) || fresh === "modules")
         return planInterviewTurn(host, o.modules ? { registry: o.modules } : {});
       let res: TurnResult;
       try {
@@ -535,11 +546,10 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
       }
       // V3-11: a system with a brief and without a card or plan, WIZARD_BUILD_PIPELINE=v3 — the harness v3.
       if (v3?.enabled) {
-        v3Db ??= kyselyOver(o.pg);
-        if (await isV3Build(v3Db, host.run.systemId, params, true))
+        if (await isV3Build(db(), host.run.systemId, params, true))
           return buildByBrief(host, {
             pg: o.pg,
-            db: v3Db,
+            db: db(),
             ...(v3.composer ? { composer: v3.composer } : {}),
             ...(v3.hooks ? { hooks: v3.hooks } : {}),
             mailer: v3.mailer ?? platformMailer(o.config),

@@ -22,6 +22,7 @@ import {
   founderStaffJob,
   getObjectOrNull,
   main,
+  PROBE_IN_POD,
   parseArgs,
   placesFrom,
   platformDnsRecords,
@@ -1350,6 +1351,7 @@ describe("pilot: beta v2 settings of the release (B2-41)", () => {
   it("pipeline, browser, mail domain and stock photos: defaults, overrides, refusals", () => {
     expect(pilotPipelineEnv({})).toEqual({
       WIZARD_BUILD_PIPELINE: "modules",
+      WIZARD_BUILD_PIPELINE_ORGS: "",
       WIZARD_G1_BROWSER: "chromium",
       WIZARD_G1_BROWSER_SLOTS: "",
       WIZARD_MAIL_DOMAIN: "",
@@ -1360,6 +1362,18 @@ describe("pilot: beta v2 settings of the release (B2-41)", () => {
       WIZARD_G1_BROWSER: "off",
     });
     expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "v3" })).toThrow(/modules или legacy/);
+    // V3-18: v3 per org — the measurement orgs and the founder's, by kind or id; a typo is refused at the release.
+    expect(
+      pilotPipelineEnv({
+        WIZARD_BUILD_PIPELINE_ORGS: " Eval, staff,eval,6F1C2A4E-1B2C-4D5E-8F90-0A1B2C3D4E5F ",
+      }),
+    ).toMatchObject({
+      WIZARD_BUILD_PIPELINE: "modules",
+      WIZARD_BUILD_PIPELINE_ORGS: "eval,staff,6f1c2a4e-1b2c-4d5e-8f90-0a1b2c3d4e5f",
+    });
+    expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE_ORGS: "eval,clients" })).toThrow(
+      /WIZARD_BUILD_PIPELINE_ORGS: .*не подходит: clients/,
+    );
     expect(() => pilotPipelineEnv({ WIZARD_G1_BROWSER: "firefox" })).toThrow(/chromium или off/);
     expect(() => pilotPipelineEnv({ WIZARD_G1_BROWSER_SLOTS: "20" })).toThrow(/от 1 до 8/);
     expect(() => pilotPipelineEnv({ WIZARD_STOCK_MODE: "unsplash" })).toThrow(/WIZARD_STOCK_MODE/);
@@ -2188,4 +2202,329 @@ describe("serverStockProbe (B2-41: the stocks from the worker pod)", () => {
     serverStockProbe({ kubectl: () => ({ status: 1, stdout: "" }), log: (l) => logs.push(l) });
     expect(logs.at(-1)).toMatch(/^::warning title=Стоки с сервера::/);
   });
+});
+
+/** V3-18: kubectl exec of the v3 checkpoint and the probe — the worker's env, the probe script, psql in postgres. */
+function v3Cluster({ orgs = "eval", collect = "", probe = null } = {}) {
+  const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
+  const db = { orgId: "11111111-1111-4111-8111-111111111111" };
+  const seen = { sqls: [], scripts: [], orgsChecked: 0 };
+  const run = (cmd, args, o = {}) => {
+    const r = base.run(cmd, args, o);
+    if (cmd !== "kubectl" || !args.includes("exec")) return r;
+    if (args.includes("-e") && args.at(-1).includes("WIZARD_BUILD_PIPELINE_ORGS")) {
+      seen.orgsChecked += 1;
+      return { status: 0, stdout: orgs };
+    }
+    if (args.includes("--input-type=module")) {
+      seen.scripts.push(o.input);
+      return probe ? probe(o.input) : { status: 1, stdout: "", stderr: "Error: no probe" };
+    }
+    seen.sqls.push(o.input);
+    if (o.input.includes("INSERT INTO platform.users")) {
+      const email = /\\set email '([^']+)'/.exec(o.input)[1];
+      return {
+        status: 0,
+        stdout: `${JSON.stringify({ userId: "22222222-2222-4222-8222-222222222222", orgId: db.orgId, sessionId: "33333333-3333-4333-8333-333333333333", email })}\n`,
+      };
+    }
+    if (o.input.includes("'costs='")) return { status: 0, stdout: collect };
+    if (o.input.includes("'probe_rub='")) return { status: 0, stdout: "probe_rub=0.3412\n" };
+    return { status: 0, stdout: "revoked=33333333-3333-4333-8333-333333333333\n" };
+  };
+  return { base, run, seen, db };
+}
+
+/** A v3 result as the driver leaves it (tools/eval/server/v3.mjs), for the pilot's report and spend. */
+function v3Result(id, systemId) {
+  return {
+    id,
+    class: "booking",
+    title: "Стоматология: онлайн-запись",
+    status: "ready",
+    ready: true,
+    systemId,
+    error: null,
+    runs: [],
+    inputs: [],
+    gaps: { outOfScope: [], reported: [], mentions: [] },
+    interview: {
+      turns: 4,
+      questions: 3,
+      retries: 0,
+      free: 0,
+      restAt: null,
+      by: { recommended: 1, option: 0, delegate: 1, text: 1 },
+      minutes: 2.1,
+    },
+    tz: null,
+    direction: {
+      names: ["А", "Б", "В"],
+      archetypes: ["a", "b", "c"],
+      costRub: 3.2,
+      fallback: false,
+      n: null,
+      archetype: "a",
+      pinned: false,
+    },
+    brief: {
+      version: 5,
+      goals: 1,
+      scenarios: { must: 3, should: 1 },
+      roles: 3,
+      data: 2,
+      integrations: 0,
+      outOfScope: 0,
+      assumptions: 2,
+      qa: 3,
+      capability: { modules: 3, custom: 0, not_yet: 0 },
+      canariesKept: 0,
+    },
+    coverage: {
+      score: 0.9,
+      roles: { missing: [] },
+      entities: { missing: [] },
+      features: { missing: [] },
+      acceptance: { missing: [] },
+    },
+    build: {
+      runId: "55555555-5555-4555-8555-555555555555",
+      status: "succeeded",
+      minutes: 12.4,
+      previewMinutes: 3.1,
+      stages: [{ id: "skeleton", label: "Каркас", status: "done", sec: 120 }],
+      spentRub: 240,
+      reusedRub: 0,
+      capRub: 500,
+      scenarios: { total: 4, passed: 4, failed: 0, stopped: 0, toRequests: 0, mustNotPassed: 0, list: [] },
+    },
+    buildMinutes: 12.4,
+    techreview: { status: "done", blocked: false },
+    gates: {
+      G0: { passed: true, blockers: [], ownerActions: [], warnings: 0 },
+      G1: { passed: true, blockers: [], ownerActions: [], warnings: 0 },
+      G2: { passed: true, blockers: [], ownerActions: [], warnings: 0 },
+    },
+    publish: { status: "review_pending" },
+    screenshots: [{ label: "телефон, 390 px", src: "shots/x-390.png" }],
+    creditsUsed: 52,
+    costRubEstimate: 260,
+    minutes: 15.2,
+  };
+}
+
+describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", () => {
+  const deps = (cloud, cluster, over = {}) => ({
+    fetch: (url, init = {}) => cloud.fetch(url, init),
+    run: cluster.run,
+    has: () => true,
+    exists: () => true,
+    sleep: async () => {},
+    kdf: FAST,
+    tmpRoot: tmp,
+    spendJournal: spendJournal(),
+    ...over,
+  });
+
+  it("arguments: --threshold v3 for eval; v3-probe is pre-registered and capped at 30 ₽", () => {
+    expect(
+      parseArgs([
+        "eval",
+        "--env",
+        "prod",
+        "--threshold",
+        "v3",
+        "--briefs",
+        "v3-02",
+        ...reg("1400", { "--founder-ok": "yes", "--wave": "checkpoint" }),
+      ]),
+    ).toMatchObject({
+      threshold: "v3",
+      briefs: "v3-02",
+      maxCostRub: 1400,
+      spend: { wave: "checkpoint", founderOk: true },
+    });
+    expect(parseArgs(["v3-probe", "--env", "prod", ...reg("30", { "--expect-rub": "5" })])).toMatchObject({
+      command: "v3-probe",
+      maxCostRub: 30,
+      spend: { wave: "A", expectRub: 5, capRub: 30 },
+    });
+    expect(() => parseArgs(["v3-probe", "--env", "prod", ...reg("31", { "--expect-rub": "5" })])).toThrow(
+      /не больше 30 ₽/,
+    );
+    expect(() => parseArgs(["v3-probe", "--env", "prod"])).toThrow(/Платный прогон не начат/);
+    expect(() => parseArgs(["v3-probe", "--env", "prod", "--briefs", "all", ...reg("30")])).toThrow(
+      /unknown/,
+    );
+  });
+
+  it("eval v3 refuses to start when the server keeps eval orgs off v3: nothing seeded, nothing spent", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const cluster = v3Cluster({ orgs: "staff" });
+    const logs = [];
+    let driven = 0;
+    const code = await main(
+      ["eval", "--env", "prod", "--threshold", "v3", ...reg("1000", { "--wave": "checkpoint" })],
+      FOUNDER,
+      deps(cloud, cluster, { log: (l) => logs.push(l), v3Eval: async () => driven++ }),
+    );
+    expect(code).toBe(2);
+    expect(cluster.seen.orgsChecked).toBe(1);
+    expect(cluster.seen.sqls).toEqual([]);
+    expect(driven).toBe(0);
+    expect(logs).toContainEqual(
+      expect.stringMatching(
+        /^::error title=V3::На сервере организации замера не на v3: WIZARD_BUILD_PIPELINE_ORGS = «staff» без eval/,
+      ),
+    );
+    expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
+  });
+
+  it("eval v3: the v3 briefs through the v3 driver, collect with the v3 lines, the checkpoint report and the spend entry", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const sid = "44444444-4444-4444-8444-444444444444";
+    const collect = [
+      `costs=${JSON.stringify([{ system_id: sid, rub: 251.3, credits_milli: 50260, calls: 41 }])}`,
+      "gaps=[]",
+      `v3calls=${JSON.stringify([{ system_id: sid, call_type: "page_compose", tier: "T1", model_id: "glm-5.3", attempts: 9, ok: 9, fallback: 0, scrubbed: true, rub: 180.5, input_tokens: 1, output_tokens: 1, latency_ms: 9000 }])}`,
+      `v3hooks=${JSON.stringify([{ system_id: sid, key: "techreview", status: "done", notes: [], blockers: [], cost_milli: 1000, duration_ms: 1 }])}`,
+      `v3similarity=${JSON.stringify([{ system_id: sid, archetype: "a", similarity: 0.41 }])}`,
+      "v3events=[]",
+      "v3t1forbidden=0",
+      "",
+    ].join("\n");
+    const cluster = v3Cluster({ collect });
+    const logs = [];
+    const asked = [];
+    const summary = join(tmp, "summary-v3.md");
+    const code = await main(
+      [
+        "eval",
+        "--env",
+        "prod",
+        "--threshold",
+        "v3",
+        "--briefs",
+        "v3-02",
+        ...reg("1400", { "--wave": "checkpoint", "--founder-ok": "yes" }),
+      ],
+      { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
+      deps(cloud, cluster, {
+        log: (l) => logs.push(l),
+        evalScreenshots: () => ({ screenshot: async () => [], close: async () => {} }),
+        v3Eval: async (o) => {
+          asked.push(o);
+          return {
+            kind: "v3",
+            threshold: "v3",
+            base: "https://codename.ru",
+            runId: o.runId,
+            orgId: o.orgId,
+            startedAt: "2026-10-09T07:00:00.000Z",
+            finishedAt: "2026-10-09T07:16:00.000Z",
+            maxCostRub: o.maxCostRub,
+            concurrency: 2,
+            peakConcurrency: 1,
+            g2: "publish",
+            fixAttempts: 1,
+            failFast: false,
+            stopped: null,
+            results: [v3Result(o.briefs[0].id, sid)],
+          };
+        },
+      }),
+    );
+    expect(code).toBe(0);
+    expect(asked).toHaveLength(1);
+    expect(asked[0].briefs.map((b) => b.id)).toEqual(["v3-02-dental-booking"]);
+    expect(asked[0]).toMatchObject({ orgId: cluster.db.orgId, maxCostRub: 1400, threshold: "v3" });
+    expect(typeof asked[0].screenshot).toBe("function");
+    // The org «Замер V3 · …», then collect with the v3 lines, then the revoke.
+    expect(cluster.seen.sqls[0]).toContain("\\set org_name 'Замер V3 · ");
+    expect(cluster.seen.sqls[1]).toContain("'v3calls='");
+    expect(cluster.seen.sqls[1]).toContain("'v3t1forbidden='");
+    const dir = join(tmp, "wizard-eval-prod");
+    const md = readdirSync(dir).find((f) => /^v3-a-checkpoint1-\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    expect(md).toBeTruthy();
+    const text = readFileSync(join(dir, md), "utf8");
+    expect(text).toContain("# Чекпоинт 1 волны A: замер v3 на сервере");
+    expect(text).toContain("**Итог: готовы 1 из 1**");
+    expect(text).toContain("| v3-02-dental-booking | услуги и запись | ✅ готова | 3.1 | 15.2 | 251 |");
+    expect(text).toContain("| page_compose | 9 из 9 | glm-5.3 | T1 | 180,5 ₽ |");
+    expect(text).toMatch(/- Итого: потрачено 251 ₽ из плана 2\s000 ₽ волны «Чекпоинты основателя»/);
+    const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
+    expect(entry).toMatchObject({
+      wave: "checkpoint",
+      capRub: 1400,
+      founderOk: true,
+      actualRub: 251.3,
+      result: "готовы 1 из 1",
+    });
+    expect(readFileSync(summary, "utf8")).toContain("Чекпоинт 1 волны A");
+    expect(logs).toContain("v3 для организаций замера включён (WIZARD_BUILD_PIPELINE_ORGS: eval)");
+  });
+
+  it("v3-probe: an eval org, the script of the pod over stdin (run here without network), the exact ₽, the report", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    // The pod: the very script, run in the worker's app folder with its tsx and @wizard/llm (fake answers, no network).
+    const cluster = v3Cluster({
+      probe: (input) => {
+        expect(PROBE_IN_POD[0]).toBe("node");
+        const r = spawnSync("node", PROBE_IN_POD.slice(1), {
+          cwd: join(import.meta.dirname, "..", "..", "..", "apps", "worker"),
+          input,
+          encoding: "utf8",
+          env: { PATH: process.env.PATH, HOME: process.env.HOME ?? tmp },
+        });
+        return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+      },
+    });
+    const logs = [];
+    const summary = join(tmp, "summary-probe.md");
+    const code = await main(
+      [
+        "v3-probe",
+        "--env",
+        "prod",
+        ...reg("30", {
+          "--expect-rub": "5",
+          "--purpose": "Проба маршрутов v3",
+          "--hypothesis": "Все головы отвечают",
+        }),
+      ],
+      { ...FOUNDER, GITHUB_STEP_SUMMARY: summary },
+      deps(cloud, cluster, { log: (l) => logs.push(l), probeFake: true }),
+    );
+    expect(code, logs.filter((l) => l.startsWith("::")).join("\n")).toBe(0);
+    // The org of the probe is an eval one (V3 label) and its session is revoked at once; the script has its id only.
+    expect(cluster.seen.sqls[0]).toContain("\\set org_name 'Замер V3 · ");
+    expect(cluster.seen.sqls[1]).toContain("UPDATE platform.sessions");
+    expect(cluster.seen.sqls[2]).toContain("'probe_rub='");
+    expect(cluster.seen.scripts).toHaveLength(1);
+    expect(cluster.seen.scripts[0]).toContain(`"orgId":"${cluster.db.orgId}"`);
+    expect(cluster.seen.scripts[0]).toContain('"capRub":30');
+    for (const s of SECRETS) expect(cluster.seen.scripts[0]).not.toContain(s);
+    const dir = join(tmp, "wizard-eval-prod");
+    const md = readdirSync(dir).find((f) => /^v3-probe-\d{4}-\d{2}-\d{2}-\d{8}-[0-9a-f]{6}\.md$/.test(f));
+    const text = readFileSync(join(dir, md), "utf8");
+    expect(text).toContain("**Итог: ответили 8 из 8; расход");
+    expect(text).toContain("| interview_v3 | glm-5.3 (T1) | ✅ ответила | glm-5.3 | T1 | default_T1 | да |");
+    expect(text).toContain("| critic_visual | kimi-k2.6 (T0) | ✅ ответила | kimi-k2.6 | T0 |");
+    expect(text).toContain("Расход по журналу вызовов моделей: 0.3412 ₽.");
+    const entry = JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"));
+    expect(entry).toMatchObject({
+      wave: "A",
+      capRub: 30,
+      expectRub: 5,
+      actualRub: 0.3412,
+      result: "ответили 8 из 8",
+    });
+    expect(logs).toContainEqual(
+      expect.stringMatching(/^::notice title=Траты v3::потрачено 0 ₽ из плана 2\s400 ₽ волны A/),
+    );
+    expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
+  }, 120_000);
 });

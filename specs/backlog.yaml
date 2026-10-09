@@ -3878,8 +3878,8 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 1
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "4 брифа на пилоте: сборка, сценарии, техревью, время и ₽ по каждому; снимки 390/1280; расход ≤ 2 000 ₽ вместе с V3-19; отчёт в docs/progress/v3-a*"
 
@@ -3932,8 +3932,8 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 2
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Агент вызывает request_secret (имя, домен, назначение); платформа показывает своё окно с доменом получателя; браузер шифрует ключ публичным ключом платформы; модель видит только secret://name (тест: значение не попадает ни в один вызов модели и лог)"
       - "Ключ подставляется на egress-прокси только для хостов контракта; есть проверочный запрос, ротация и отзыв; ключ, вставленный обычным сообщением, перехватывается и маскируется"
@@ -3946,8 +3946,8 @@ tasks:
     owner: agents
     parallel_group: v3-b
     estimate_days: 3
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Паспорт — проверенный контракт, схема авторизации, тестовый хост, безопасный проверочный запрос, лимиты; контрактные тесты на моке зелёные"
       - "Проверка на тестовых контурах (ЮKassa, СДЭК) — без расходов на модели"
@@ -4002,8 +4002,8 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 4
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "GitHub App с правами Contents, Pull requests, Metadata, Checks (токен установки на час); GitLab — OAuth, включая self-managed"
       - "Правки Wizard → ветка wizard/* и PR; мерж в основную ветку → вебхук → импорт → гейты → превью → публикация; превью PR на своём адресе и статус гейтов в PR"

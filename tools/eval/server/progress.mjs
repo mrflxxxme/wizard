@@ -36,7 +36,7 @@ export function progressText({ runId, runUrl, startedAt, budgetRub, results, lin
     "|---|---|---|---|---|",
     ...results.map(
       (r) =>
-        `| ${cell(r.id)} | ${STATUS_RU[r.status] ?? cell(r.status)} | ${r.minutes ?? "—"} | ${Math.round(r.costRubEstimate ?? 0)} | ${cell(r.error ?? r.build?.failure ?? "")} |`,
+        `| ${cell(r.id)} | ${STATUS_RU[r.status] ?? cell(r.status)} | ${r.minutes ?? "—"} | ${Math.round(r.costRubEstimate ?? 0)} | ${cell(r.error ?? r.build?.failure?.message_ru ?? r.build?.failure?.code ?? "")} |`,
     ),
     "",
     "<details open><summary>Последние строки журнала</summary>",

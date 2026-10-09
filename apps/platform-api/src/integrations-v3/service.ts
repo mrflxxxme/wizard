@@ -17,6 +17,9 @@ import {
   mapFields,
   mockTransport,
   OpenApiImportError,
+  passportContract,
+  passportForIntegration,
+  passportStateOfContract,
   runContractTests,
 } from "@wizard/agents/integrations";
 import { createResearch, type ResearchOptions } from "@wizard/agents/research";
@@ -82,7 +85,7 @@ async function briefIntegration(db: Db, systemId: string, integrationId: string)
   return { latest, integ };
 }
 
-/** Documentation or a document → validated contract with the field mapping of the brief's data (no model). */
+/** A passport, documentation or a document → validated contract with the field mapping of the brief's data (no model). */
 export async function buildContract(
   deps: IntegrationsDeps,
   systemId: string,
@@ -100,7 +103,26 @@ export async function buildContract(
     ...(input.operations?.length ? { operations: input.operations } : {}),
   };
   let contract: IntegrationContract;
-  if (input.openapi !== undefined) {
+  // V3-22: a popular API (by the integration's name, the need or a link to the provider) is a reviewed passport —
+  // no documentation reading, no model; a rebuild keeps the account and the test environment of the stored version.
+  const passport =
+    input.openapi === undefined
+      ? passportForIntegration({ name: integ.name, url: input.url ?? null, need: input.need ?? null })
+      : null;
+  if (passport) {
+    const prevRow = await latestContract(deps.pg, systemId, integ.id);
+    const prev = prevRow ? passportStateOfContract(prevRow.contract) : null;
+    const same = prev?.passport.id === passport.passport.id ? prev : null;
+    contract = passportContract(passport.passport, {
+      id: integ.id,
+      name: integ.name,
+      secret: base.secret,
+      account: passport.account ?? same?.account ?? null,
+      sandbox: same?.sandbox ?? false,
+      ...(input.operations?.length ? { operations: input.operations } : {}),
+      data: dataOf(latest.brief),
+    });
+  } else if (input.openapi !== undefined) {
     try {
       contract = contractFromOpenApi(input.openapi as string | Record<string, unknown>, {
         ...base,

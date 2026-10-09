@@ -6,6 +6,8 @@
 # wave plan of docs/progress/v3-spend.json needs founder_ok=yes. The line «потрачено X ₽ из плана Y ₽ волны …» goes to
 # the report, an annotation and the issue comment. Its own form (not an action of bootstrap-pilot): a workflow_dispatch
 # form holds at most 10 inputs for actionlint of CI. Shares the concurrency group of prod with bootstrap and deploy.
+# V3-18: threshold v3 — checkpoint 1 of v3 (the v3-* briefs through the v3 path; docs/ops/eval-pilot.md); the server
+# must keep its eval orgs on v3 (variable WIZARD_BUILD_PIPELINE_ORGS=eval, then deploy-pilot) — checked before any spend.
 name: eval-pilot
 
 on:
@@ -16,13 +18,13 @@ on:
         type: string
         default: ""
       briefs:
-        description: "Какие брифы прогнать — all (все 10) или id через запятую: проба — 2–3 брифа, например mvp-01,mvp-04,mvp-07; повтор провалившихся"
+        description: "Какие брифы прогнать — all (все брифы порога: 10 mvp-* или 4 v3-*) или id через запятую, например mvp-01,mvp-04 или v3-02; повтор провалившихся"
         type: string
         default: "all"
       threshold:
-        description: "Порог — d76 (бета v2: план, сценарии целей, скриншоты) или d67 (замер MVP)"
+        description: "Порог — d76 (бета v2: план, сценарии целей, скриншоты), d67 (замер MVP) или v3 (чекпоинт v3: брифы v3-*, путь v3, отчёт v3-a-checkpoint1)"
         type: choice
-        options: [d76, d67]
+        options: [d76, d67, v3]
         default: d76
       wave:
         description: "Журнал трат: волна плана v3 — A, B, C, checkpoint (чекпоинт основателя), final (финальный замер), retry (повтор упавших брифов)"

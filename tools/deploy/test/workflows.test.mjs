@@ -134,7 +134,8 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const inputs = ev.on.workflow_dispatch.inputs;
     expect(inputs.env).toBeUndefined();
     expect(inputs.briefs).toMatchObject({ type: "string", default: "all" });
-    expect(inputs.threshold).toMatchObject({ type: "choice", options: ["d76", "d67"], default: "d76" });
+    // V3-18: v3 — checkpoint 1 of v3 on the same form.
+    expect(inputs.threshold).toMatchObject({ type: "choice", options: ["d76", "d67", "v3"], default: "d76" });
     expect(inputs.max_cost_rub).toBeUndefined();
     for (const n of ["cap_rub", "purpose", "hypothesis", "expect_rub", "confirm"])
       expect(inputs[n], n).toMatchObject({ type: "string", default: "" });
@@ -145,7 +146,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     });
     expect(inputs.founder_ok).toMatchObject({ type: "choice", options: ["no", "yes"], default: "no" });
     // actionlint of CI holds a workflow_dispatch form to 10 inputs.
-    for (const f of ["bootstrap-pilot.yml", "deploy-pilot.yml", "eval-pilot.yml"])
+    for (const f of ["bootstrap-pilot.yml", "deploy-pilot.yml", "eval-pilot.yml", "v3-probe.yml"])
       expect(Object.keys(load(f).on.workflow_dispatch.inputs).length, f).toBeLessThanOrEqual(10);
     expect(ev.doc.jobs.pilot.with).toMatchObject({
       env: "prod",
@@ -160,7 +161,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
       founder_ok: gh("inputs.founder_ok"),
     });
     const reusableInputs = load("pilot-reusable.yml").on.workflow_call.inputs;
-    for (const f of ["bootstrap-pilot.yml", "eval-pilot.yml"])
+    for (const f of ["bootstrap-pilot.yml", "eval-pilot.yml", "v3-probe.yml"])
       for (const n of Object.keys(load(f).doc.jobs.pilot.with))
         expect(reusableInputs, `${f}: ${n}`).toHaveProperty(n);
     // D75: the daily model cap is raised for one deploy only (the next deploy without it is back to the default).
@@ -184,11 +185,21 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     });
     expect(dep.doc.jobs.pilot.with).toMatchObject({
       build_pipeline: gh("inputs.build_pipeline"),
+      pipeline_orgs: gh("inputs.pipeline_orgs"),
       stock_mode: gh("inputs.stock_mode"),
     });
+    // V3-18: the orgs on v3 are a deploy parameter too (the variable is the fallback); the form stays ≤ 10 inputs.
+    expect(dep.on.workflow_dispatch.inputs.pipeline_orgs).toMatchObject({ type: "string", default: "" });
+    expect(load("pilot-reusable.yml").doc.jobs.pilot.env.WIZARD_BUILD_PIPELINE_ORGS).toBe(
+      gh("inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS"),
+    );
     const penv = load("pilot-reusable.yml").doc.jobs.pilot.env;
     expect(penv.WIZARD_BUILD_PIPELINE).toBe(gh("inputs.build_pipeline || vars.WIZARD_BUILD_PIPELINE"));
     expect(penv.WIZARD_STOCK_MODE).toBe(gh("inputs.stock_mode || vars.WIZARD_STOCK_MODE"));
+    // V3-18: v3 per org (the measurement orgs, the founder's) — the deploy form field, the repository variable as fallback.
+    expect(penv.WIZARD_BUILD_PIPELINE_ORGS).toBe(
+      gh("inputs.pipeline_orgs || vars.WIZARD_BUILD_PIPELINE_ORGS"),
+    );
     for (const n of PILOT_PIPELINE_INPUTS) expect(penv, n).toHaveProperty(n);
   });
 
@@ -249,6 +260,7 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-03,mvp-10" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d67" }).code).toBe(0);
+    expect(authorize({ ...ok, EVAL_THRESHOLD: "v3", EVAL_BRIEFS: "v3-02,v3-04" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d76; curl x" }).out).toContain("threshold");
     // V3-01: a paid run only with its record in the spend journal; > 1 000 ₽ at once — with the founder's «да».
     for (const [k, v, why] of [
@@ -305,30 +317,76 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     // The free text of the record never reaches a script as an expression (script injection).
     expect(doc.jobs.authorize.steps[0].run).not.toContain("inputs.");
     const report = job.steps.find((s) => s.name === "Eval report");
-    expect(report.if).toBe("always() && inputs.command == 'eval'");
+    expect(report.if).toBe("always() && (inputs.command == 'eval' || inputs.command == 'v3-probe')");
     expect(report.with.name).toBe(
-      `${gh("inputs.threshold")}-eval-${gh("inputs.env")}-${gh("github.run_id")}`,
+      `${gh("inputs.command == 'v3-probe' && 'v3-probe' || inputs.threshold")}-eval-${gh("inputs.env")}-${gh("github.run_id")}`,
     );
-    // d76 screenshots: Chromium of the workspace's Playwright, only for that measurement.
+    // d76 and v3 screenshots: Chromium of the workspace's Playwright, only for those measurements.
     const chromium = job.steps.find((s) => s.name === "Chromium for the screenshots");
-    expect(chromium.if).toBe("inputs.command == 'eval' && inputs.threshold == 'd76'");
+    expect(chromium.if).toBe(
+      "inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')",
+    );
     expect(chromium.run).toContain("playwright install --with-deps --only-shell chromium");
     expect(report.uses).toBe("actions/upload-artifact@v4");
     expect(report.with.path).toBe(`${gh("runner.temp")}/wizard-eval-${gh("inputs.env")}`);
     expect(job.steps.find((s) => s.name === "Clean up the runner").run).toContain("wizard-eval-");
   });
 
+  it("V3-18 v3-probe: its own form, prod, pre-registered like eval and never over 30 ₽ — before any secret", () => {
+    const pr = load("v3-probe.yml");
+    expect(Object.keys(pr.on)).toEqual(["workflow_dispatch"]);
+    expect(pr.doc.concurrency).toEqual({ group: "pilot-prod", "cancel-in-progress": false });
+    expect(pr.doc.jobs.pilot.uses).toBe("./.github/workflows/pilot-reusable.yml");
+    const inputs = pr.on.workflow_dispatch.inputs;
+    expect(inputs.wave).toMatchObject({ type: "choice", options: ["A", "B", "C"], default: "A" });
+    for (const n of ["purpose", "hypothesis", "expect_rub", "cap_rub", "confirm"])
+      expect(inputs[n], n).toMatchObject({ type: "string", default: "" });
+    expect(pr.doc.jobs.pilot.with).toMatchObject({
+      env: "prod",
+      command: "v3-probe",
+      wave: gh("inputs.wave"),
+      cap_rub: gh("inputs.cap_rub"),
+      founder_ok: "no",
+    });
+    const ok = {
+      COMMAND: "v3-probe",
+      CONFIRM: "PROD",
+      EVAL_BRIEFS: "all",
+      EVAL_THRESHOLD: "d76",
+      EVAL_WAVE: "A",
+      EVAL_PURPOSE: "Проба маршрутов v3",
+      EVAL_HYPOTHESIS: "Головы отвечают",
+      EVAL_EXPECT_RUB: "5",
+      EVAL_CAP_RUB: "30",
+      EVAL_FOUNDER_OK: "no",
+    };
+    expect(authorize(ok).code).toBe(0);
+    expect(authorize({ ...ok, CONFIRM: "" }).out).toContain("Подтверждение не совпало");
+    expect(authorize({ ...ok, EVAL_PURPOSE: "" }).out).toContain("purpose и hypothesis");
+    const over = authorize({ ...ok, EVAL_CAP_RUB: "31" });
+    expect(over.code).toBe(1);
+    expect(over.out).toContain("проба маршрутов v3 не дороже 30 ₽");
+    const run = load("pilot-reusable.yml").doc.jobs.pilot.steps.find(
+      (s) => s.name === `Pilot (${gh("inputs.command")})`,
+    ).run;
+    expect(run).toContain(
+      'v3-probe) node tools/deploy/pilot.mjs v3-probe --env "$DEPLOY_ENV" --wave "$EVAL_WAVE" --purpose "$EVAL_PURPOSE" --hypothesis "$EVAL_HYPOTHESIS" --expect-rub "$EVAL_EXPECT_RUB" --cap-rub "$EVAL_CAP_RUB" --founder-ok "$EVAL_FOUNDER_OK"',
+    );
+  });
+
   it("check: no images, no OpenTofu/helm setup, no SSH to close, a short timeout", () => {
     const { doc } = load("pilot-reusable.yml");
     // diagnose reads the running cluster: no images either.
     expect(doc.jobs.images.if).toBe(
-      "inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'reboot'",
+      "inputs.command != 'destroy' && inputs.command != 'check' && inputs.command != 'diagnose' && inputs.command != 'eval' && inputs.command != 'v3-probe' && inputs.command != 'reboot'",
     );
     // A skipped images job does not block the pilot job.
     expect(doc.jobs.pilot.if).toContain("needs.images.result != 'failure'");
     const job = doc.jobs.pilot;
     expect(job["timeout-minutes"]).toBe(
-      gh("inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || 90"),
+      gh(
+        "inputs.command == 'check' && 5 || inputs.command == 'eval' && 330 || inputs.command == 'v3-probe' && 30 || 90",
+      ),
     );
     const step = (k) => job.steps.find((s) => s.name === k || s.uses?.startsWith(k));
     for (const heavy of [

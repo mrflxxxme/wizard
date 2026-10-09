@@ -17,7 +17,12 @@
 //        measurement (docs/ops/eval-d76.md, eval-d67.md): a service account in the platform database over the SSH
 //        tunnel, the briefs through the public HTTPS of the platform, then costs, «Запросы на развитие» and the session
 //        revoked; report → summary. d76 (default, beta v2): strict threshold, plan approval, screenshots of each system.
-//        V3-01: paid, so it starts only pre-registered in the spend journal (tools/deploy/spend.mjs); the cap stops it
+//        V3-01: paid, so it starts only pre-registered in the spend journal (tools/deploy/spend.mjs); the cap stops it.
+//        V3-18: --threshold v3 — checkpoint 1 of v3 (the v3-* briefs through the v3 path; the eval org must be on v3:
+//        WIZARD_BUILD_PIPELINE_ORGS=eval on the server, checked before anything is spent)
+//   node tools/deploy/pilot.mjs v3-probe --env … --wave A --purpose … --hypothesis … --expect-rub 5 --cap-rub 30
+//        V3-18: one minimal real call per v3 callType route head through the server's gateway (worker pod, usage of an
+//        eval org in platform.llm_calls): status, model served, tier, scrub, latency, ₽; cap ≤ 30 ₽, pre-registered
 //   node tools/deploy/pilot.mjs close-access --env …             removes temporary SSH rules (workflow `always()`)
 //   node tools/deploy/pilot.mjs show-secrets --env …             founder's laptop only: prints the decrypted bundle
 // The heavy lifting is tools/deploy/infra.mjs (main with deps.hooks); this file only adds what the founder used to do
@@ -31,6 +36,14 @@ import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
 import { countedD76, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
+import {
+  expectedProbeRub,
+  PROBE_MAX_CAP_RUB,
+  parseProbeOutput,
+  probeScript,
+  probeSpendSql,
+  renderProbeReport,
+} from "../eval/server/probe.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
 import { previewScreenshots } from "../eval/server/screenshots.mjs";
@@ -45,6 +58,8 @@ import {
   revokeSql,
   seedSql,
 } from "../eval/server/seed.mjs";
+import { runV3Eval } from "../eval/server/v3.mjs";
+import { checkpointName, renderV3Report } from "../eval/server/v3-report.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
   assertPassphrase,
@@ -74,6 +89,7 @@ export const COMMANDS = [
   "destroy",
   "diagnose",
   "eval",
+  "v3-probe",
   "reboot",
   "close-access",
   "show-secrets",
@@ -131,6 +147,9 @@ const DOMAIN = /^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,6
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 const SHA = /^[0-9a-f]{40}$/;
 
+/** Paid commands: they start only pre-registered in the spend journal (V3-01; v3-probe — V3-18). */
+export const PAID = ["eval", "v3-probe"];
+
 /** eval flags of the spend journal pre-registration (V3-01) → the fields of tools/deploy/spend.mjs preregister. */
 const SPEND_FLAGS = {
   "--wave": "wave",
@@ -153,8 +172,15 @@ export function parseArgs(argv) {
     else if (a === "--tag") o.tag = rest[++i] ?? null;
     else if (command === "eval" && a === "--briefs") o.briefs = rest[++i] || "all";
     else if (command === "eval" && a === "--threshold") o.threshold = rest[++i] || "d76";
-    else if (command === "eval" && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
+    else if (PAID.includes(command) && SPEND_FLAGS[a]) spend[SPEND_FLAGS[a]] = rest[++i] ?? "";
     else throw new Error(`unknown argument ${a}`);
+  }
+  if (command === "v3-probe") {
+    // V3-18: step 2 of the ladder — pre-registered like eval, never more than PROBE_MAX_CAP_RUB.
+    o.spend = preregister(spend);
+    if (o.spend.capRub > PROBE_MAX_CAP_RUB)
+      throw new Error(`v3-probe: потолок пробы — не больше ${PROBE_MAX_CAP_RUB} ₽ (cap_rub)`);
+    o.maxCostRub = o.spend.capRub;
   }
   if (command === "eval") {
     o.briefs ??= "all";
@@ -1315,13 +1341,16 @@ export async function pilotEval({
   outDir,
   inCluster,
   screenshots = previewScreenshots,
+  v3Eval = null,
 }) {
   const domain = vars.WIZARD_PLATFORM_DOMAIN;
   const base = `https://${domain}`;
-  const briefs = selectBriefs(o.briefs);
   const threshold = o.threshold ?? "d67";
   const d76 = threshold === "d76";
-  const label = d76 ? "D76" : "D67";
+  // V3-18: checkpoint 1 of v3 — the v3-* briefs through the v3 path, its own report and screenshots.
+  const v3 = threshold === "v3";
+  const briefs = selectBriefs(o.briefs, v3 ? "v3" : "mvp");
+  const label = v3 ? "V3" : d76 ? "D76" : "D67";
   const runid = newRunId(now(), rand);
   const session = newEvalSession(rand);
   mask([session.token, session.csrf], vars, log);
@@ -1335,6 +1364,17 @@ export async function pilotEval({
   );
   let seed = null;
   const seeded = await inCluster(async ({ kubectl }) => {
+    // V3-18: the eval org must start its systems on v3 — else every brief would pay an interview for nothing.
+    if (v3) {
+      const on = v3OrgsOfServer(kubectl);
+      if (!on.eval) {
+        log(
+          `::error title=V3::На сервере организации замера не на v3: WIZARD_BUILD_PIPELINE_ORGS ${on.value ? `= «${on.value}» без eval` : "не задан"}. Задайте переменную репозитория WIZARD_BUILD_PIPELINE_ORGS=eval и выкатите (deploy-pilot), затем запустите замер снова. Ничего не потрачено.`,
+        );
+        return 2;
+      }
+      log(`v3 для организаций замера включён (WIZARD_BUILD_PIPELINE_ORGS: ${on.value})`);
+    }
     seed = parseSeedOutput(
       psqlInPod(
         kubectl,
@@ -1413,8 +1453,8 @@ export async function pilotEval({
     { once: true },
   );
   const client = platformClient({ base, session, fetch: f, sleep: abortableSleep });
-  // D76: PNGs of each system at 390 and 1280 px next to the report (artifact folder shots/, Chromium of packages/e2e).
-  const shots = d76 ? screenshots({ client, dir: join(outDir, "shots"), log }) : null;
+  // D76 and v3: PNGs of each system at 390 and 1280 px next to the report (artifact folder shots/, Chromium of packages/e2e).
+  const shots = d76 || v3 ? screenshots({ client, dir: join(outDir, "shots"), log }) : null;
   const shoot = shots
     ? async (r) => (await shots.screenshot(r)).map((x) => ({ ...x, src: `shots/${basename(x.src)}` }))
     : null;
@@ -1428,7 +1468,7 @@ export async function pilotEval({
   const capStop = new AbortController();
   const overCap = capGuard(o.maxCostRub);
   try {
-    doc = await runEval({
+    doc = await (v3 ? (v3Eval ?? runV3Eval) : runEval)({
       client,
       briefs,
       orgId: seed.orgId,
@@ -1439,7 +1479,7 @@ export async function pilotEval({
       log: tee,
       sleep: abortableSleep,
       signal: AbortSignal.any([stop.signal, capStop.signal]),
-      counted: runCounted(threshold),
+      ...(v3 ? {} : { counted: runCounted(threshold) }),
       ...(shoot ? { screenshot: shoot } : {}),
       onUpdate: (results) => {
         snapshot = results;
@@ -1476,7 +1516,7 @@ export async function pilotEval({
                   psqlInPod(
                     kubectl,
                     // V3-01: eval spend since the first day of the v3 budget (the query of the B2 budget).
-                    collectSql({ orgId: seed.orgId, b2Since: v3Since }),
+                    collectSql({ orgId: seed.orgId, b2Since: v3Since, v3 }),
                   ),
                 );
               } catch (e) {
@@ -1494,13 +1534,26 @@ export async function pilotEval({
   }
   // The beta v2 budget line is gone with V3: the v3 budget is the journal's, its server part is in the spend section.
   const { b2: v3Server, ...reportDb } = db;
-  const report = renderReport(doc, reportDb, { platform: base, notes });
+  const report = v3
+    ? renderV3Report(doc, reportDb, { platform: base, notes, date: moscowDate(now()) })
+    : renderReport(doc, reportDb, { platform: base, notes });
   const { summary } = report;
-  const spend = evalSpend({ spend: sp, journal, runid, summary, stopped: stoppedWhy, v3Server, now });
+  const spend = evalSpend({
+    spend: sp,
+    journal,
+    runid,
+    summary,
+    stopped: stoppedWhy,
+    v3Server,
+    now,
+    ...(v3 ? { verdict: `готовы ${summary.ready} из ${summary.total}` } : {}),
+  });
   const text = `${report.text}\n${spend.text}`;
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, `${threshold}-${runid}.md`), text);
-  writeFileSync(join(outDir, `${threshold}-${runid}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
+  // V3-18: the checkpoint report under the name it gets in docs/progress (screenshots stay in the artifact).
+  const name = v3 ? checkpointName(moscowDate(now())) : `${threshold}-${runid}`;
+  writeFileSync(join(outDir, `${name}.md`), text);
+  writeFileSync(join(outDir, `${name}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
   writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
@@ -1517,9 +1570,153 @@ export async function pilotEval({
   if (photos) log(photos);
   if (!summary.passed)
     log(
-      d76
-        ? `::error title=D76::Строгий порог D76 не пройден: засчитано ${summary.ready} из ${summary.total} (нужно все)`
-        : `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
+      v3
+        ? `::error title=V3::Чекпоинт 1: готовы ${summary.ready} из ${summary.total} — разбор по брифам в отчёте ${name}.md`
+        : d76
+          ? `::error title=D76::Строгий порог D76 не пройден: засчитано ${summary.ready} из ${summary.total} (нужно все)`
+          : `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
+    );
+  return summary.passed ? 0 : 1;
+}
+
+/** The worker command that runs the probe script from stdin in the app folder of the worker image (tsx of the app). */
+export const PROBE_IN_POD = ["node", "--import", "tsx", "--input-type=module", "-"];
+
+/**
+ * V3-18: is v3 on for the eval orgs of the server — WIZARD_BUILD_PIPELINE_ORGS of the running worker (the env of its
+ * pod, the Secret of the release): {value, eval}. Read-only, no spend.
+ */
+export function v3OrgsOfServer(kubectl) {
+  const r = kubectl(
+    [
+      "-n",
+      PLATFORM_NS,
+      "exec",
+      "deploy/wizard-worker",
+      "--",
+      "node",
+      "-e",
+      'process.stdout.write(String(process.env.WIZARD_BUILD_PIPELINE_ORGS || ""))',
+    ],
+    { capture: true, allowFail: true },
+  );
+  const value = r.status === 0 ? String(r.stdout ?? "").trim() : "";
+  const items = value
+    .toLowerCase()
+    .split(",")
+    .map((x) => x.trim());
+  return { value, eval: items.includes("eval") };
+}
+
+/**
+ * `v3-probe` (V3-18, step 2 of the ladder): an eval org «Замер V3 · <runid>» is created like the measurement's (its
+ * session is revoked at once — the probe needs no cabinet), the probe script runs in the worker pod over stdin
+ * (tools/eval/server/probe.mjs: the server's gateway, keys and policy; usage into platform.llm_calls of that org; the
+ * cap stops it), the exact ₽ is read back from the database; the report, the summary, the annotations and the entry for
+ * the spend journal as eval writes them. Exit 0 — every call answered, 1 — not.
+ */
+export async function pilotV3Probe({
+  o,
+  vars,
+  journal = null,
+  log,
+  now,
+  rand,
+  outDir,
+  inCluster,
+  fake = false,
+}) {
+  const sp = o.spend;
+  const runid = newRunId(now(), rand);
+  const session = newEvalSession(rand);
+  mask([session.token, session.csrf], vars, log);
+  const registered = `волна ${sp.wave}, ожидаем ${sp.expectRub} ₽, потолок ${sp.capRub} ₽${sp.founderOk ? " («да» основателя)" : ""} — цель: ${sp.purpose}; гипотеза: ${sp.hypothesis}`;
+  log(`::notice title=Журнал трат v3::${registered}`);
+  log(
+    `проба маршрутов v3 ${runid}: ожидаемо ≈ ${expectedProbeRub()} ₽ по ценам голов маршрутов, потолок ${sp.capRub} ₽`,
+  );
+  let probe = { calls: [], total: null };
+  let exact = null;
+  let orgId = null;
+  const code = await inCluster(async ({ kubectl }) => {
+    const seed = parseSeedOutput(
+      psqlInPod(
+        kubectl,
+        seedSql({
+          runid,
+          domain: vars.WIZARD_PLATFORM_DOMAIN,
+          tokenHash: session.tokenHash,
+          csrfHash: session.csrfHash,
+          credits: evalCredits(sp.capRub),
+          label: "V3",
+        }),
+      ),
+    );
+    orgId = seed.orgId;
+    psqlInPod(kubectl, revokeSql({ tokenHash: session.tokenHash }));
+    log(`организация пробы: ${orgId} (служебная, вид eval)`);
+    const r = kubectl(["-n", PLATFORM_NS, "exec", "-i", "deploy/wizard-worker", "--", ...PROBE_IN_POD], {
+      input: probeScript({ orgId, capRub: sp.capRub, fake }),
+      capture: true,
+      allowFail: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    probe = parseProbeOutput(r.stdout);
+    if (r.status !== 0 || !probe.total) {
+      const why = String(r.stderr ?? "")
+        .split("\n")
+        .find((l) => /Error|ошибк/i.test(l));
+      log(
+        `::warning title=V3 проба::скрипт пробы в поде worker завершился с кодом ${r.status}${why ? `: ${why.trim().slice(0, 200)}` : ""}`,
+      );
+    }
+    try {
+      exact = Number(String(psqlInPod(kubectl, probeSpendSql({ orgId }))).match(/probe_rub=([\d.]+)/)?.[1]);
+    } catch (e) {
+      log(`::warning::расход пробы из базы: ${e.message}`);
+    }
+    return 0;
+  });
+  if (code !== 0) return code;
+  const date = moscowDate(now());
+  const notes = [
+    `Организация пробы \`${orgId}\` (вид eval): вызовы записаны в журнал вызовов моделей и входят в бюджет v3.`,
+    Number.isFinite(exact)
+      ? `Расход по журналу вызовов моделей: ${exact} ₽.`
+      : "Расход из базы прочитать не удалось — в отчёте сумма по записям пробы.",
+  ];
+  const report = renderProbeReport(probe, {
+    date,
+    platform: `https://${vars.WIZARD_PLATFORM_DOMAIN}`,
+    notes,
+  });
+  const summary = {
+    ...report.summary,
+    ...(Number.isFinite(exact) ? { costRub: exact, costExact: true } : {}),
+  };
+  const spend = evalSpend({
+    spend: sp,
+    journal,
+    runid,
+    summary,
+    stopped: probe.total?.stopped ?? null,
+    now,
+    verdict: `ответили ${summary.ready} из ${summary.total}`,
+  });
+  const text = `${report.text}\n${spend.text}`;
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, `v3-probe-${date}-${runid}.md`), text);
+  writeFileSync(
+    join(outDir, `v3-probe-${date}-${runid}.json`),
+    `${JSON.stringify({ runid, orgId, ...probe, exactRub: exact }, null, 2)}\n`,
+  );
+  writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
+  log(text);
+  if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
+  log(`::notice title=Траты v3::${spend.line}`);
+  if (!summary.passed)
+    log(
+      `::error title=V3 проба::Ответили ${summary.ready} из ${summary.total} маршрутов — разбор в отчёте пробы`,
     );
   return summary.passed ? 0 : 1;
 }
@@ -1529,11 +1726,22 @@ export async function pilotEval({
  * wave in the journal, the run's pre-registration against its outcome, the platform's eval spend since the start of
  * the v3 budget (`v3Server` — collectSql) and the entry for the journal (spend.mjs register --entry).
  */
-export function evalSpend({ spend, journal, runid, summary, stopped = null, v3Server = null, now }) {
+export function evalSpend({
+  spend,
+  journal,
+  runid,
+  summary,
+  stopped = null,
+  v3Server = null,
+  now,
+  verdict: own = null,
+}) {
   const rub = (n) => `${Math.round(n).toLocaleString("ru-RU")} ₽`;
   const actualRub = summary.costRub;
   const line = spendLine(journal, spend.wave, actualRub);
-  const verdict = `засчитано ${summary.ready} из ${summary.total}, порог ${summary.passed ? "пройден" : "не пройден"}`;
+  const verdict =
+    own ??
+    `засчитано ${summary.ready} из ${summary.total}, порог ${summary.passed ? "пройден" : "не пройден"}`;
   const entry = {
     date: moscowDate(now()),
     ...spend,
@@ -1756,7 +1964,7 @@ export async function checkState(api, env, vars, { fetch: f = fetch, now, log = 
 export async function main(argv = process.argv.slice(2), env = process.env, deps = {}) {
   const o = parseArgs(argv);
   // V3-01: the wave plan of the spend journal is checked before anything else (no SSH, no account, no spend).
-  const journal = o.command === "eval" ? readJournal(deps.spendJournal ?? JOURNAL) : null;
+  const journal = PAID.includes(o.command) ? readJournal(deps.spendJournal ?? JOURNAL) : null;
   if (journal) o.spend = preregister(o.spend, journal);
   const target = o.command === "close-access" ? { vars: env, problems: [] } : envVars(o.env, env);
   const vars = target.vars;
@@ -1895,7 +2103,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     WIZARD_PG_FIRST_BOOT: bundle.deployedAt ? "" : "1",
     // SSH waits: a fresh VM installs k3s from cloud-init (40 × ~25 s); a server that has run a release only needs to
     // answer; diagnose looks at a running cluster.
-    WIZARD_K3S_WAIT_ATTEMPTS: ["diagnose", "eval"].includes(o.command)
+    WIZARD_K3S_WAIT_ATTEMPTS: ["diagnose", "eval", "v3-probe"].includes(o.command)
       ? "4"
       : bundle.deployedAt
         ? "12"
@@ -2030,6 +2238,29 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     },
   };
 
+  // The cluster part of eval and v3-probe runs under the access of diagnose: SSH for this runner only, the tunnel, closed.
+  const inCluster = (onCluster) =>
+    (deps.infraMain ?? infraMain)(["diagnose", "--env", o.env, "--yes"], ivars, {
+      log,
+      hooks: { beforeCluster: hooks.beforeCluster, onCluster },
+      run: deps.run,
+      has: deps.has,
+      exists: deps.exists,
+      sleep: deps.sleep,
+      fetch: deps.fetch,
+    });
+  if (o.command === "v3-probe")
+    return pilotV3Probe({
+      o,
+      vars,
+      journal,
+      log,
+      now,
+      rand,
+      outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
+      inCluster,
+      fake: deps.probeFake === true,
+    });
   if (o.command === "eval")
     return pilotEval({
       o,
@@ -2043,18 +2274,9 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
       pollMs: deps.evalPollMs,
       maxBriefRub: deps.evalMaxBriefRub,
       ...(deps.evalScreenshots ? { screenshots: deps.evalScreenshots } : {}),
+      ...(deps.v3Eval ? { v3Eval: deps.v3Eval } : {}),
       outDir: join(vars.RUNNER_TEMP || deps.tmpRoot || tmpdir(), `wizard-eval-${o.env}`),
-      // The cluster part runs under the access of diagnose: SSH for this runner only, the tunnel, closed afterwards.
-      inCluster: (onCluster) =>
-        (deps.infraMain ?? infraMain)(["diagnose", "--env", o.env, "--yes"], ivars, {
-          log,
-          hooks: { beforeCluster: hooks.beforeCluster, onCluster },
-          run: deps.run,
-          has: deps.has,
-          exists: deps.exists,
-          sleep: deps.sleep,
-          fetch: deps.fetch,
-        }),
+      inCluster,
     });
   const command = { bootstrap: "apply", deploy: "deploy", destroy: "destroy", diagnose: "diagnose" }[
     o.command
