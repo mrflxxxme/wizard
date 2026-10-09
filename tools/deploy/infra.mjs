@@ -847,6 +847,30 @@ const base = (process.env.WIZARD_MAIL_API_BASE || "").trim().replace(/\\/+$/, ""
  * Error and warning lines of a pod's JSON log, reduced to time, message and error name/code/message; addresses are
  * masked (the repository is public, the run log too).
  */
+/**
+ * The sandbox lines of the worker's log at any level (sandbox_quota_wait, sandbox_pod_failed with the pod's reason,
+ * sandbox_pod_timeout…): fixed fields only — time, level, event, step, reason, code, count.
+ */
+export function sandboxLines(stdout, limit = 60) {
+  const out = [];
+  for (const line of String(stdout ?? "").split("\n")) {
+    let j;
+    try {
+      j = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof j.msg !== "string" || !/^sandbox_/.test(j.msg)) continue;
+    out.push(
+      [j.ts, j.level, j.msg, j.step, j.reason, j.code, j.count]
+        .filter((x) => x !== undefined && x !== null && x !== "")
+        .map((x) => String(x).slice(0, 120))
+        .join(" | "),
+    );
+  }
+  return out.slice(-limit);
+}
+
 export function errorLines(stdout, limit = 40) {
   const mask = (v) =>
     String(v ?? "")
@@ -967,16 +991,16 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   ))
     log(l);
   log("::endgroup::");
+  const workerLog = kubectl(["-n", "wizard-platform", "logs", "deploy/wizard-worker", "--tail=5000"], {
+    ...opt,
+    capture: true,
+    fake: "",
+  }).stdout;
   log("::group::Ошибки worker (последние)");
-  for (const l of errorLines(
-    kubectl(["-n", "wizard-platform", "logs", "deploy/wizard-worker", "--tail=5000"], {
-      ...opt,
-      capture: true,
-      fake: "",
-    }).stdout,
-    80,
-  ))
-    log(l);
+  for (const l of errorLines(workerLog, 80)) log(l);
+  log("::endgroup::");
+  log("::group::Песочница в логе worker (поды G1: квота, отказы, таймауты)");
+  for (const l of sandboxLines(workerLog)) log(l);
   log("::endgroup::");
   step("Почта платформы из пода platform-api", [
     "-n",

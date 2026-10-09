@@ -24,6 +24,7 @@ import {
   registrySecret,
   releaseWizard,
   requiredEnv,
+  sandboxLines,
   smokeWithRetry,
   TUNNEL_PORT,
   tofuEnv,
@@ -751,6 +752,28 @@ describe("releaseWizard", () => {
     );
     expect(() => releaseWizard({ ...f, args, log: () => {} })).toThrow();
     expect(f.calls.at(-1).slice(0, 4)).toEqual(["helm", "rollback", "wizard", "3"]);
+  });
+});
+
+describe("sandboxLines", () => {
+  it("keeps the sandbox events of any level with fixed fields only", () => {
+    const log = [
+      JSON.stringify({ ts: "t1", level: "info", msg: "sandbox_quota_wait", step: "wz-g1-free-1" }),
+      JSON.stringify({
+        ts: "t2",
+        level: "warn",
+        msg: "sandbox_pod_failed",
+        step: "p",
+        reason: "CrashLoopBackOff",
+        email: "a@b.ru",
+      }),
+      JSON.stringify({ ts: "t3", level: "info", msg: "ready" }),
+      "not json",
+    ].join("\n");
+    expect(sandboxLines(log)).toEqual([
+      "t1 | info | sandbox_quota_wait | wz-g1-free-1",
+      "t2 | warn | sandbox_pod_failed | p | CrashLoopBackOff",
+    ]);
   });
 });
 
