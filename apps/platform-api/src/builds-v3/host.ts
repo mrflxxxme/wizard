@@ -33,6 +33,7 @@ import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import { platformCritic } from "./critic.js";
+import { liveStats, withLiveProgress } from "./progress.js";
 import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
@@ -220,7 +221,12 @@ export async function buildByBrief(
       ),
     recentArchetypes: (niche) => recentArchetypes(o.pg, systemId, niche),
   };
-  const out = await runBuildV3(v3, {
+  // V3-17: build_stage / step_started / step_finished carry the structured progress for the canvas.
+  const live = withLiveProgress(v3, {
+    rubPerCredit: RUB_PER_CREDIT,
+    stats: () => liveStats(o.pg, host.run.id, RUB_PER_CREDIT),
+  });
+  const out = await runBuildV3(live, {
     ...(o.registry ? { registry: o.registry } : {}),
     appName: current.spec.app.name,
     platformUrl: o.platformOrigin,

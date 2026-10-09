@@ -1,4 +1,5 @@
-// JSON Schemas for run events derived from the compact notation of specs/platform/workflows.yaml#events.types.
+// JSON Schemas for run events derived from the compact notation of specs/platform/workflows.yaml#events.types; a
+// property typed by a name of events.schemas (V3-17: "v3_progress — …") takes that JSON Schema as is.
 import { Ajv2020 } from "ajv/dist/2020.js";
 import formatsCjs from "ajv-formats";
 import { loadYaml } from "./helpers.js";
@@ -43,8 +44,9 @@ function one(p: string): Schema | { literal: string } {
   return PRIM[word] ?? { literal: word };
 }
 
-export function propSchema(desc: string, failureCodes: string[]): Schema {
+export function propSchema(desc: string, failureCodes: string[], named: Record<string, Schema> = {}): Schema {
   let d = String(desc).split(" — ")[0]?.trim() ?? "";
+  if (Object.hasOwn(named, d)) return named[d] as Schema;
   if (!d.startsWith("[") && !d.startsWith("{")) d = d.replace(/\s*\(.*\)\s*$/, "").trim();
   if (d === "run_lifecycle.failure_codes") return { enum: failureCodes };
   const parts = splitTop(d, "|");
@@ -68,7 +70,7 @@ export interface EventSpec {
 
 export function loadEventSchemas() {
   const wf = loadYaml("specs/platform/workflows.yaml") as {
-    events: { types: Record<string, EventSpec> };
+    events: { types: Record<string, EventSpec>; schemas?: Record<string, Schema> };
     run_lifecycle: { failure_codes: string[] };
   };
   const api = loadYaml("specs/platform/api.yaml") as { components: { schemas: Record<string, Schema> } };
@@ -79,7 +81,7 @@ export function loadEventSchemas() {
   for (const [type, spec] of Object.entries(wf.events.types)) {
     const properties: Record<string, Schema> = {};
     for (const [k, v] of Object.entries(spec.properties))
-      properties[k] = propSchema(v, wf.run_lifecycle.failure_codes);
+      properties[k] = propSchema(v, wf.run_lifecycle.failure_codes, wf.events.schemas);
     payloads.set(
       type,
       ajv.compile({ type: "object", required: spec.required, properties, additionalProperties: false }),
