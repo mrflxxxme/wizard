@@ -75,8 +75,8 @@ import {
   seedSql,
 } from "../eval/server/seed.mjs";
 import { runV3Eval } from "../eval/server/v3.mjs";
-import { kassaFromEnv } from "../eval/server/v3-pay.mjs";
 import { mergeRuns, renderV3Final } from "../eval/server/v3-final.mjs";
+import { kassaFromEnv } from "../eval/server/v3-pay.mjs";
 import { checkpointName, finalName, finalRunName, renderV3Report } from "../eval/server/v3-report.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
