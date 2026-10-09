@@ -3946,7 +3946,7 @@ tasks:
     owner: agents
     parallel_group: v3-b
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Паспорт — проверенный контракт, схема авторизации, тестовый хост, безопасный проверочный запрос, лимиты; контрактные тесты на моке зелёные"
