@@ -295,6 +295,8 @@ function applyAnswer(page: SitePage, edit: Editable[], v: PageComposeAnswer): Si
       type: e.section.type,
       pattern: s.pattern,
       props: (parsed?.success ? parsed.data : props) as Record<string, unknown>,
+      // The places of the owner's photos stay with the section (V3-18); the page shows those its variant can.
+      ...(e.section.photos ? { photos: e.section.photos } : {}),
     };
   });
   // Signature sections of earlier scenarios are not the model's to change: they stay after the same neighbour.

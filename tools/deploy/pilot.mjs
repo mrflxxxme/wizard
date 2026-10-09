@@ -1384,11 +1384,13 @@ export async function pilotEval({
       const on = v3OrgsOfServer(kubectl);
       if (!on.eval) {
         log(
-          `::error title=V3::На сервере организации замера не на v3: WIZARD_BUILD_PIPELINE_ORGS ${on.value ? `= «${on.value}» без eval` : "не задан"}. Задайте переменную репозитория WIZARD_BUILD_PIPELINE_ORGS=eval и выкатите (deploy-pilot), затем запустите замер снова. Ничего не потрачено.`,
+          `::error title=V3::На сервере организации замера не на v3: конвейер не v3, а WIZARD_BUILD_PIPELINE_ORGS ${on.value ? `= «${on.value}» без eval` : "не задан"}. Выкатите с build_pipeline=v3 (deploy-pilot), затем запустите замер снова. Ничего не потрачено.`,
         );
         return 2;
       }
-      log(`v3 для организаций замера включён (WIZARD_BUILD_PIPELINE_ORGS: ${on.value})`);
+      log(
+        `v3 для организаций замера включён (${on.via === "pipeline" ? "WIZARD_BUILD_PIPELINE=v3" : `WIZARD_BUILD_PIPELINE_ORGS: ${on.value}`})`,
+      );
     }
     seed = parseSeedOutput(
       psqlInPod(
@@ -1598,8 +1600,9 @@ export async function pilotEval({
 export const PROBE_IN_POD = ["node", "--import", "tsx", "--input-type=module", "-"];
 
 /**
- * V3-18: is v3 on for the eval orgs of the server — WIZARD_BUILD_PIPELINE_ORGS of the running worker (the env of its
- * pod, the Secret of the release): {value, eval}. Read-only, no spend.
+ * V3-18: is v3 on for the eval orgs of the server — WIZARD_BUILD_PIPELINE (v3 or empty: v3 is the default, D78) or
+ * WIZARD_BUILD_PIPELINE_ORGS with eval, of the running worker (the env of its pod, the Secret of the release):
+ * {value, eval, via: pipeline | orgs}. Read-only, no spend.
  */
 export function v3OrgsOfServer(kubectl) {
   const r = kubectl(
@@ -1611,16 +1614,20 @@ export function v3OrgsOfServer(kubectl) {
       "--",
       "node",
       "-e",
-      'process.stdout.write(String(process.env.WIZARD_BUILD_PIPELINE_ORGS || ""))',
+      'process.stdout.write(String(process.env.WIZARD_BUILD_PIPELINE ?? "") + "\\n" + String(process.env.WIZARD_BUILD_PIPELINE_ORGS || ""))',
     ],
     { capture: true, allowFail: true },
   );
-  const value = r.status === 0 ? String(r.stdout ?? "").trim() : "";
+  if (r.status !== 0) return { value: "", eval: false };
+  const [pipeline = "", orgs = ""] = String(r.stdout ?? "").split("\n");
+  const p = pipeline.trim().toLowerCase();
+  if (p === "" || p === "v3") return { value: "", eval: true, via: "pipeline" };
+  const value = orgs.trim();
   const items = value
     .toLowerCase()
     .split(",")
     .map((x) => x.trim());
-  return { value, eval: items.includes("eval") };
+  return { value, eval: items.includes("eval"), via: "orgs" };
 }
 
 /**

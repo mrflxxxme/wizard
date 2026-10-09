@@ -1,0 +1,9 @@
+{
+  "check": "G2-SECRET-01",
+  "description": "v3: зерно сайта «uuid:uuid» в ui/site.json — не токен Telegram-бота",
+  "files": {
+    "ui/site.json": "{\n  \"version\": 1,\n  \"seed\": \"566a07ec-2235-4082-85c6-735f83595416:566a07ec-2235-4082-85c6-735f83595416\"\n}\n"
+  },
+  "base": "forum",
+  "expect": "pass"
+}

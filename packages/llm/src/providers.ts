@@ -102,6 +102,31 @@ export function transformBody(
     if (providerId === "cloudru" || providerId === "openai_compatible")
       out.chat_template_kwargs = { enable_thinking: false };
     else delete out.chat_template_kwargs;
+    // Guided decoding of Cloud.ru models (gigachat-3.5) rejects JSON Schema keys it has not implemented: «Grammar
+    // error: Unimplemented keys: ["propertyNames"]» (shape probe 2026-10-09). The answer is checked by our schema anyway.
+    out.tools = out.tools.map((t) => withoutSchemaKeys(t, UNSUPPORTED_SCHEMA_KEYS));
+  }
+  return out;
+}
+
+/** JSON Schema keys the T0 providers' guided decoding does not implement (dropped from tool schemas). */
+const UNSUPPORTED_SCHEMA_KEYS: ReadonlySet<string> = new Set(["propertyNames"]);
+
+/** Schema keys whose value maps names to schemas (a name there is never a keyword). */
+const SCHEMA_MAPS: ReadonlySet<string> = new Set(["properties", "patternProperties", "$defs", "definitions"]);
+
+/**
+ * A deep copy of `v` without the given keywords inside any `parameters` schema (a tool definition keeps its own keys,
+ * a property that happens to be named like a keyword stays).
+ */
+function withoutSchemaKeys(v: unknown, keys: ReadonlySet<string>, inSchema = false, names = false): unknown {
+  if (Array.isArray(v)) return v.map((x) => withoutSchemaKeys(x, keys, inSchema));
+  if (v === null || typeof v !== "object") return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (inSchema && !names && keys.has(k)) continue;
+    const schema = inSchema || k === "parameters";
+    out[k] = withoutSchemaKeys(x, keys, schema, schema && !names && SCHEMA_MAPS.has(k));
   }
   return out;
 }

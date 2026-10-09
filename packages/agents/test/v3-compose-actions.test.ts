@@ -5,64 +5,17 @@
 // the library sections the pages use carry the hooks the goal programs look for (Hero, LeadForm, BookingForm, item
 // cards). siteRules keeps this after any edit (a model's page, the critic), and the critic cannot swap the showcase
 // for a variant without the items' action.
-import { type SystemBrief, systemBriefSchema } from "@wizard/appspec";
 import { designSystemV3 } from "@wizard/ui-kit/v3/design";
 import { PATTERNS, patternById } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
-import {
-  applyEdit,
-  briefNiche,
-  briefPlan,
-  compileBackend,
-  createPageComposer,
-  readSite,
-  type SiteModel,
-  siteRules,
-} from "../src/builder/index.js";
+import { applyEdit, type SiteModel, siteRules } from "../src/builder/index.js";
 import { pageSource } from "../src/builder/v3/compose/index.js";
 import type { SitePage, SiteSection } from "../src/builder/v3/compose/site.js";
-import type { V3BuildContext } from "../src/builder/v3/contract.js";
-import { DEFAULT_REGISTRY } from "../src/planner/index.js";
+import { briefSite } from "./v3-brief-site.js";
 import { EVAL_BRIEFS } from "./v3-eval-briefs.js";
 
 /** The site of a brief as the harness composes its skeleton (the seed of the system id, no model). */
-async function composed(id: string, input: (typeof EVAL_BRIEFS)[string]) {
-  const brief: SystemBrief = systemBriefSchema.parse(input);
-  const systemId = `sys-${id}`;
-  const bp = briefPlan(brief, DEFAULT_REGISTRY, [], { appName: "Проверка" });
-  if (!bp) throw new Error(`${id}: no plan`);
-  const design = designSystemV3({
-    archetype: brief.design.archetype as never,
-    seed: systemId,
-    niche: briefNiche(brief),
-  });
-  const backend = compileBackend({
-    plan: bp.plan,
-    registry: DEFAULT_REGISTRY,
-    extensions: [],
-    design,
-    options: { appName: "Проверка" },
-  });
-  if (!backend.ok) throw new Error(backend.message_ru);
-  const files = new Map(Object.entries(backend.files));
-  const ctx: V3BuildContext = {
-    systemId,
-    brief,
-    briefVersion: 1,
-    plan: backend.plan,
-    spec: backend.spec,
-    publicFront: backend.publicFront,
-    design,
-    files,
-    route: async () => {
-      throw new Error("0 ₽: no model");
-    },
-    budgetRub: 0,
-  };
-  const out = await createPageComposer().skeleton(ctx);
-  for (const [p, v] of out.files) v === null ? files.delete(p) : files.set(p, v);
-  return { files, site: readSite(files) as SiteModel, front: backend.publicFront };
-}
+const composed = briefSite;
 
 const isForm = (s: SiteSection) => s.type === "form" && typeof s.props.entity === "string";
 const href = (s: SiteSection | undefined) => (s?.props.action as { href?: string } | undefined)?.href;
@@ -70,7 +23,7 @@ const href = (s: SiteSection | undefined) => (s?.props.action as { href?: string
 describe("eval briefs without a model: the skeleton keeps the goal scenarios' DOM contract", () => {
   for (const [id, input] of Object.entries(EVAL_BRIEFS))
     test(id, async () => {
-      const { files, site, front } = await composed(id, input);
+      const { files, site, front, spec } = await composed(id, input);
       expect(site.pages.length).toBeGreaterThan(0);
       const forms = site.pages.flatMap((p) => p.sections.filter(isForm).map((s) => ({ page: p, s })));
       expect(forms.length).toBeGreaterThan(0);
@@ -92,10 +45,17 @@ describe("eval briefs without a model: the skeleton keeps the goal scenarios' DO
               ? { label: "Записаться", path: booking.page.route }
               : { label: "Оставить заявку", path: `/#${lead?.s.id}` },
           );
-      // The «sent» headings the goal scenarios read after a write.
+      // The «sent» headings the goal scenarios read after a write (a booking the staff confirms is a request).
+      const byRequest =
+        spec.entities.find((e) => e.name === "booking")?.fields.find((x) => x.name === "status")?.default ===
+        "new";
       for (const f of forms)
         expect((f.s.props.sent as { title: string }).title).toBe(
-          f.s.props.booking === undefined ? "Заявка отправлена" : "Вы записаны",
+          f.s.props.booking === undefined
+            ? "Заявка отправлена"
+            : byRequest
+              ? "Заявка на запись отправлена"
+              : "Вы записаны",
         );
       // The library sections in the system carry the hooks: the page files import them from ui/patterns.
       const used = new Set(site.pages.flatMap((p) => p.sections.map((s) => s.pattern)));

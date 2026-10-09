@@ -818,6 +818,26 @@ const CHECKS = {
       },
       match: "шаблон ключа",
     },
+    // V3-18: the seed of the v3 site model is `<design seed>:<system id>`, both the system's UUID; a UUID ending in
+    // 8–10 decimal digits before the colon looked like `<bot id>:<35 chars>` (≈2.5% of systems failed every build).
+    "pass-uuid-seed": {
+      description: "v3: зерно сайта «uuid:uuid» в ui/site.json — не токен Telegram-бота",
+      files: {
+        "ui/site.json": `{\n  "version": 1,\n  "seed": "${"566a07ec-2235-4082-85c6-735f83595416"}:${"566a07ec-2235-4082-85c6-735f83595416"}"\n}\n`,
+      },
+    },
+    "fail-telegram-api-url": {
+      description: "токен Telegram-бота в адресе Bot API",
+      files: {
+        "functions/lib/notify.ts": `export const URL = "https://api.telegram.org/bot${"1234567890"}:${"AAH".padEnd(35, "x7Q")}/sendMessage";\n`,
+      },
+      match: "шаблон ключа",
+    },
+    "fail-entropy-token": {
+      description: "случайная строка рядом с token в коде страницы",
+      files: { "ui/lib/api.ts": 'export const token = "Zq8vN3xLp5Rt7Wc2Yb9Kd4Hs6Je1Mf0G";\n' },
+      match: "key/token/secret",
+    },
     "fail-yookassa-in-spec": {
       description: "секретный ключ ЮKassa в конфиге интеграции",
       spec: [{ op: "set", path: "/integrations/0/config/note", value: `live_${"aB3".repeat(9)}` }],

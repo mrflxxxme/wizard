@@ -124,7 +124,7 @@ describe("v3 probe: the pod script and its output", () => {
     const by = Object.fromEntries(calls.map((c: { callType: string }) => [c.callType, c]));
     expect(by.interview_v3).toMatchObject({ model: "glm-5.3", tier: "T1", scrubbed: true });
     expect(by.brief_extract).toMatchObject({ model: "gigachat-3.5", tier: "T0" });
-    expect(by.techreview).toMatchObject({ model: "deepseek-v4-pro", tier: "T0" });
+    expect(by.techreview).toMatchObject({ model: "gpt-oss-120b", tier: "T0" });
     expect(total).toMatchObject({ capRub: 30, stopped: null, fake: true });
     const parsed = parseProbeOutput(lines.join("\n"));
     expect(parsed.calls).toHaveLength(PROBE_CALL_TYPES.length);
@@ -259,7 +259,7 @@ describe("v3 shape probe: the request content", () => {
     expect(real.critic.tool).toEqual(critiqueTool.definition);
     expect(real.techreview.tool).toEqual(submitTechreview.definition);
     // The legend names all six shots; the digest ×2 is about twice the fixture build's.
-    expect(real.critic.user).toContain("6. /contacts при 390 px — первый экран 390×844");
+    expect(real.critic.user).toContain("2. / при 1440 px — вся страница");
     const [d1 = 0, d2 = 0] = real.techreview.digestChars;
     expect(d1).toBeGreaterThan(3000);
     expect(d2 / d1).toBeGreaterThan(1.7);
@@ -267,7 +267,7 @@ describe("v3 shape probe: the request content", () => {
     expect(real.techreview.repair.tool.content).toMatchObject({ ok: false, error: { code: "INVALID_ARGS" } });
   }, 120_000);
 
-  test("the images: six JPEGs of the critic's shot plan for a three-page site, < 400 KB", () => {
+  test("the images: the JPEGs of the critic's shot plan for a three-page site (≤ 2 per call), < 400 KB", () => {
     const images = shapeImages();
     const site = {
       pages: [
@@ -436,16 +436,16 @@ describe("v3 shape probe: the plan, the cap, the pod script", () => {
     expect(ids.slice(0, 6)).toEqual([
       "critic:kimi-k2.6:prod",
       "critic:qwen3.6-35b:prod",
-      "techreview:deepseek-v4-pro:prod",
       "techreview:gpt-oss-120b:prod",
       "techreview:gigachat-3.5:prod",
+      "techreview:deepseek-v4-pro:prod",
       "techreview:kimi-k2.6:prod",
     ]);
     expect(ids.slice(6, 10)).toEqual([
-      "techreview:deepseek-v4-pro:x2",
       "techreview:gpt-oss-120b:x2",
-      "techreview:deepseek-v4-pro:repair",
+      "techreview:deepseek-v4-pro:x2",
       "techreview:gpt-oss-120b:repair",
+      "techreview:deepseek-v4-pro:repair",
     ]);
     expect(plan.slice(10).every((x: { when?: string }) => x.when)).toBe(true);
     expect(shapePlan(["techreview"]).every((x: { group: string }) => x.group === "techreview")).toBe(true);

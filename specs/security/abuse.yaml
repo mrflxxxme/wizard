@@ -67,7 +67,7 @@ patterns:                          # словари и шаблоны для п�
     code: "window.ethereum, eth_sendTransaction, eth_sign, personal_sign, approve(, setApprovalForAll(, permit(; строки ethers|web3|walletconnect|@solana"
     names: "сид.?фраза|seed phrase|мнемоническ|приватный ключ|private key|recovery phrase|секретная фраза"
   secrets:                         # G2-SECRET-01
-    regex: ["live_[A-Za-z0-9_-]{20,} (ЮKassa)", '\d{8,10}:[A-Za-z0-9_-]{35} (Telegram bot)', 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+ (JWT)', "-----BEGIN [A-Z ]*PRIVATE KEY-----"]
+    regex: ["live_[A-Za-z0-9_-]{20,} (ЮKassa)", '\d{8,10}:[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-]) (Telegram bot)', 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+ (JWT)', "-----BEGIN [A-Z ]*PRIVATE KEY-----"]
     entropy: "строка ≥ 24 символов с энтропией Шеннона ≥ 4.0 бит/символ в окне 40 символов от key|token|secret|пароль|password"
   subject_entities: "Сущность-субъект — сущность с полем pii ≠ none, с ref на users или с полем из pii_field_names.strong. pii_field_names.weak и special_categories проверяются только в сущностях-субъектах"
   pii_field_names:                 # G2-PII-02

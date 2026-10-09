@@ -336,6 +336,8 @@ export async function startStand(kind: StandKind): Promise<void> {
       runtimeInternalUrl: `http://${HOST}:${ports.runtimeInternal}`,
       // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
       buildDefaultTier: "T1",
+      // D78: v3 is the default; the stand scripts the v1 card flow.
+      buildPipeline: "legacy",
       ...(kind !== "m1"
         ? {
             // WIZARD_MILESTONE=M2: card binding before prod and G1 + G2 at publish (config.ts m2OrProd). The publish

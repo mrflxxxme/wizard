@@ -2,7 +2,10 @@
 // spec — the business name, niche, the owner's landing texts, photos, the personal data operator and contacts. Texts
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
+import { type PhotoSectionType, photoSlots, SITE_PHOTO } from "@wizard/modules";
+import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
+import { type BriefCopy, briefCopy } from "./copy.js";
 
 /** A photo the site may show: a copy in the platform photo library (same origin) with its alt. */
 export interface SitePhoto {
@@ -18,9 +21,19 @@ export interface SiteFacts {
   audience?: string;
   /** Goals of the brief (internal statements: they steer the copy, they are not shown as is). */
   goals: string[];
-  /** The owner's landing texts of the plan by section type (first section of the type), examples dropped. */
+  /**
+   * The owner's landing texts of the plan by section type (first section of the type): examples and the planner's
+   * placeholders (a heading equal to the niche, «Связаться») dropped.
+   */
   texts: Map<string, Record<string, unknown>>;
+  /** Texts of the skeleton the brief gives where the owner wrote none (V3-18: heading, lead, form headings). */
+  copy: BriefCopy;
   photos: SitePhoto[];
+  /**
+   * Places of the site the owner may put his own photo into («Фото сайта» of the cabinet, B2-38): the landing's photo
+   * slots of the plan, in page order — the sections of the same type show them (V3-18); none without site_photo.
+   */
+  places: { slot: string; type: PhotoSectionType }[];
   /** The personal data operator (spec compliance), its ИНН and contacts. */
   operator?: string;
   operatorInn?: string;
@@ -28,11 +41,18 @@ export interface SiteFacts {
   email?: string;
   address?: string;
   policyPage: string;
+  /**
+   * Bookings wait for the staff's confirmation (the booking module's confirm = manual: a new booking's status is
+   * «new»): the booking form says «Заявка на запись отправлена», as the module's v2 page (V3-18).
+   */
+  bookingByRequest: boolean;
   /** Every number of the facts, normalised (digits, one decimal separator). */
   numbers: Set<string>;
 }
 
 const EXAMPLE_RE = /^\s*пример\b/i;
+/** The planner's placeholder of a button (planner/edits.ts sectionContent): the owner did not write it. */
+const PLACEHOLDER_CTA = "Связаться";
 const PHOTO_WIDTH = 1600;
 const NUMBER_RE = /\d(?:[\d   ]*\d)?(?:[.,]\d+)?/g;
 
@@ -70,9 +90,13 @@ function clean(content: Record<string, unknown>): Record<string, unknown> {
 
 function landingTexts(plan: SystemPlan): Map<string, Record<string, unknown>> {
   const out = new Map<string, Record<string, unknown>>();
+  // Placeholders of the planner (planner/edits.ts sectionContent): the heading is the niche, the button «Связаться».
+  const niche = plan.niche.charAt(0).toUpperCase() + plan.niche.slice(1);
   for (const s of plan.landing?.sections ?? []) {
     if (out.has(s.type)) continue;
     const c = clean(s.content);
+    if (c.title === niche) delete c.title;
+    if (c.cta === PLACEHOLDER_CTA) delete c.cta;
     if (Object.keys(c).length) out.set(s.type, c);
   }
   return out;
@@ -130,12 +154,24 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec">):
     ...(audience ? { audience } : {}),
     goals: brief.goals.length ? brief.goals.map((g) => g.text) : plan.goals.map((g) => g.statement),
     texts,
+    copy: briefCopy({
+      name: spec.app.name,
+      niche: plan.niche,
+      keywordNiche: isKeywordNiche(plan.niche),
+      brief,
+    }),
     photos: photosOf(plan),
+    places: spec.entities.some((e) => e.name === SITE_PHOTO.entity)
+      ? photoSlots(plan).map((p) => ({ slot: p.slot, type: p.type }))
+      : [],
     ...(c.operatorName ? { operator: c.operatorName } : {}),
     ...(c.operatorInn ? { operatorInn: c.operatorInn } : {}),
     ...contact,
     ...(c.operatorAddress ? { address: c.operatorAddress } : {}),
     policyPage: c.policyPage ?? "/privacy",
+    bookingByRequest:
+      spec.entities.find((e) => e.name === "booking")?.fields.find((f) => f.name === "status")?.default ===
+      "new",
     numbers,
   };
 }

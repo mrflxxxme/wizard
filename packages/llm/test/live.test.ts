@@ -107,6 +107,34 @@ describe("request body policy (models.yaml#call_policy)", () => {
     expect(body).not.toHaveProperty("response_format");
   });
 
+  test("T0 (cloudru) tool schemas lose the keywords guided decoding lacks (propertyNames), a property of that name stays", async () => {
+    const { router } = mk();
+    const schema = {
+      type: "object",
+      properties: {
+        map: {
+          type: "object",
+          propertyNames: { pattern: "^[a-z]+$" },
+          additionalProperties: { type: "string" },
+        },
+        propertyNames: { type: "string" },
+      },
+      required: ["map"],
+    };
+    await router.route({
+      callType: "audit",
+      messages: msgs("Проверь спеку"),
+      tools: [{ name: "apply_ops", description: "Apply", parameters: schema }],
+      orgPolicy: OPEN,
+      ctx,
+    });
+    const tools = (stub.requests[0]?.body?.tools ?? []) as { function: { parameters: typeof schema } }[];
+    const sent = tools[0]?.function.parameters;
+    expect(sent?.properties.map).toEqual({ type: "object", additionalProperties: { type: "string" } });
+    expect(sent?.properties.propertyNames).toEqual({ type: "string" });
+    expect(sent?.required).toEqual(["map"]);
+  });
+
   test("Yandex: every request carries x-data-logging-enabled: false and gpt:// model URI", async () => {
     // No Cloud.ru key → runtime_ai_extract chain skips to yandex-deepseek-v4-flash.
     const { router } = mk({ env: stub.env({ CLOUDRU_API_KEY: "" }) });

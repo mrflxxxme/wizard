@@ -156,7 +156,7 @@ jobs:
             [ "$COMMAND" = "v3-probe" ] || { echo "::error title=pilot::probe_shape — только для v3-probe."; exit 1; }
             printf '%s' "$PROBE_SHAPE" | grep -Eq '^(critic|techreview)(,(critic|techreview))?$' || { echo "::error title=pilot::probe_shape — critic, techreview или critic,techreview."; exit 1; }
           fi
-          case "$BUILD_PIPELINE" in ""|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — modules, legacy или пусто."; exit 1 ;; esac
+          case "$BUILD_PIPELINE" in ""|v3|modules|legacy) ;; *) echo "::error title=pilot::build_pipeline — v3, modules, legacy или пусто."; exit 1 ;; esac
           case "$STOCK_MODE" in ""|off|live|library) ;; *) echo "::error title=pilot::stock_mode — off, live, library или пусто."; exit 1 ;; esac
           if [ -n "$LLM_DAILY_CAP_RUB" ] && ! printf '%s' "$LLM_DAILY_CAP_RUB" | grep -Eq '^[1-9][0-9]{0,4}$'; then
             echo "::error title=pilot::llm_daily_cap_rub — целое число рублей или пусто."; exit 1
