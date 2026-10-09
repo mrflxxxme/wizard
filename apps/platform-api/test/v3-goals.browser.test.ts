@@ -8,6 +8,11 @@
 // modules (packages/gates/src/goals/programs) find their DOM contract on the composed v3 pages. The final gates of the
 // harness are not repeated here (the same goal scenarios, already run per scenario). Every variant of the forms of the
 // library under the goal programs — v3-goals-variants.browser.test.ts.
+// The v3 features the eval briefs do not reach are built from two feature briefs (packages/agents/test/
+// v3-feature-briefs.ts: «Мои заявки» of the client cabinet, booking by a package), and the goal scenarios a brief
+// scenario does not pick (GS-booking-4, the reschedule by the e-mail's link) run on the final draft. PROVEN lists the
+// goal scenarios each build must run and pass: the owner's photos on the v3 pages (GS-landing-2), the client cabinet
+// (GS-visitor_cabinet-1/2), the reschedule (GS-booking-4) and «Абонементы» on a v3 booking pattern (GS-packages-2/3).
 import {
   createPageComposer,
   type PageComposer,
@@ -17,10 +22,18 @@ import {
   type V3Host,
   type V3Outcome,
 } from "@wizard/agents/builder";
-import { type AppSpec, emptySpec, type SystemBriefInput, systemBriefSchema } from "@wizard/appspec";
-import type { GateReport } from "@wizard/gates";
+import { DEFAULT_REGISTRY } from "@wizard/agents/planner";
+import {
+  type AppSpec,
+  type BriefScenario,
+  emptySpec,
+  type SystemBriefInput,
+  systemBriefSchema,
+} from "@wizard/appspec";
+import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { EVAL_BRIEFS } from "../../../packages/agents/test/v3-eval-briefs.js";
+import { FEATURE_BRIEFS } from "../../../packages/agents/test/v3-feature-briefs.js";
 import { type Draft, type GoalsEnv, goalsEnv, hasChromium, OWNER_COMPLIANCE } from "./v3-goals-helpers.js";
 
 /** The page writer of the platform without a model: the skeleton; a scenario step keeps it (0 ₽). */
@@ -59,21 +72,47 @@ interface Checked {
 }
 
 /**
- * Gaps of the v3 public front this rung still finds — features v3 does not have yet, not hooks of the DOM contract
- * (reported in V3-18, specs/CHANGELOG.md 09.10.2026): brief → scenario → the goal scenario that fails and why. Such a
- * scenario passes everything else; when a gap is closed its row goes (the test says so).
+ * Goal scenarios a build must run and pass (V3-18): the v3 features they prove. Those a brief scenario does not pick
+ * run on the final draft with that brief scenario (`extra`).
  */
-const KNOWN_GAPS: Readonly<Record<string, Readonly<Record<string, { goal: string; why: string }>>>> = {
-  "v3-01-interior-studio": {
-    s_home: { goal: "GS-landing-2", why: "страницы v3 не показывают фото владельца из «Фото сайта»" },
-  },
+const PROVEN: Readonly<
+  Record<string, { goals: readonly string[]; extra?: { scenario: string; goals: string[] } }>
+> = {
+  // The owner's photo of «Фото сайта» on the v3 home page.
+  "v3-01-interior-studio": { goals: ["GS-landing-2"] },
+  // «Мои записи» of the client cabinet /me; the reschedule by the e-mail's link on the v3 booking pattern.
   "v3-02-dental-booking": {
-    s_cabinet: { goal: "GS-visitor_cabinet-1", why: "кабинет клиента /me на v3 — пустая страница" },
+    goals: ["GS-visitor_cabinet-1", "GS-booking-4"],
+    extra: { scenario: "s_book", goals: ["GS-booking-4"] },
   },
+  // «Мои заявки» of the client cabinet.
+  "v3-x-cleaning-cabinet": { goals: ["GS-visitor_cabinet-2"] },
+  // «Абонементы»: booking on the v3 pattern writes a visit off, an ended package refuses.
+  "v3-x-yoga-packages": { goals: ["GS-packages-2", "GS-packages-3"] },
 };
 
+/** A goal scenario of the module library by its id, as the backend compile gives it to the browser check. */
+function goalScenario(id: string): GoalScenarioInput {
+  for (const m of DEFAULT_REGISTRY.modules) {
+    const g = m.manifest.goalScenarios.find((x) => x.id === id);
+    if (g)
+      return {
+        id: g.id,
+        module: m.manifest.id,
+        goal: g.goal,
+        title: g.title,
+        steps: g.steps,
+        expect: g.expect,
+      };
+  }
+  throw new Error(`no goal scenario ${id}`);
+}
+
 /** Builds a brief by the harness v3 over an in-memory draft; each scenario through the platform's checkScenario. */
-async function build(id: string, input: SystemBriefInput): Promise<{ out: V3Outcome; checked: Checked[] }> {
+async function build(
+  id: string,
+  input: SystemBriefInput,
+): Promise<{ out: V3Outcome; checked: Checked[]; draft: Draft; scenarios: BriefScenario[] }> {
   const brief: V3BriefVersion = { version: 1, brief: systemBriefSchema.parse(input) };
   // The owner filled the operator of personal data: the draft the build starts from carries it.
   const owner = { ...emptySpec("Система"), compliance: { ...OWNER_COMPLIANCE } } as AppSpec;
@@ -119,39 +158,45 @@ async function build(id: string, input: SystemBriefInput): Promise<{ out: V3Outc
     goalBrowser: false,
   };
   const out = await runBuildV3(host, { appName: "Проверка", limits: { timeMs: 6 * 60 * 60_000 } });
-  return { out, checked };
+  // Goal scenarios no brief scenario picks: on the final draft, with the brief scenario they belong to.
+  const extra = PROVEN[id]?.extra;
+  const scenario = brief.brief.scenarios.find((x) => x.id === extra?.scenario);
+  if (extra && scenario) {
+    const goalScenarios = extra.goals.map(goalScenario);
+    const r = await env.check(draft, { scenario, goalScenarios, routes: [], revision: draft.version });
+    checked.push({
+      scenario: `${scenario.id}+`,
+      goals: goalScenarios.map((g) => g.id),
+      titles: goalScenarios.map((g) => g.title),
+      ok: r.ok,
+      problems: r.problems,
+    });
+  }
+  return { out, checked, draft, scenarios: brief.brief.scenarios };
 }
 
 describe.skipIf(!hasChromium)(
   "v3 build without a model: goal scenarios of every brief scenario in Chromium",
   () => {
-    for (const [id, input] of Object.entries(EVAL_BRIEFS))
+    for (const [id, input] of Object.entries({ ...EVAL_BRIEFS, ...FEATURE_BRIEFS }))
       test(id, async () => {
-        const { out, checked } = await build(id, input);
+        const { out, checked, scenarios } = await build(id, input);
         expect(out.status, JSON.stringify(out)).toBe("succeeded");
         // Every brief scenario was checked in the browser with at least one goal scenario of its modules…
-        const scenarios = (input.scenarios ?? []).map((s) => s.id);
-        expect(checked.map((c) => c.scenario).sort()).toEqual([...scenarios].sort());
+        expect(
+          checked
+            .filter((c) => !c.scenario.endsWith("+"))
+            .map((c) => c.scenario)
+            .sort(),
+        ).toEqual(scenarios.map((s) => s.id).sort());
         expect(checked.every((c) => c.goals.length > 0)).toBe(true);
-        // …and passed: no goal program misses its hooks on the composed pages. A known gap fails only by its own goal
-        // scenario (everything else of the scenario passes) — and still fails, else its row must go.
-        const gaps = KNOWN_GAPS[id] ?? {};
-        const failed = checked.filter((c) => !c.ok && !gaps[c.scenario]);
-        expect(failed).toEqual([]);
-        for (const [scenario, gap] of Object.entries(gaps)) {
-          const c = checked.find((x) => x.scenario === scenario);
-          const title = c?.titles[c.goals.indexOf(gap.goal)];
-          expect(title, `${scenario}: ${gap.goal} среди сценариев цели`).toBeDefined();
-          expect(c?.ok, `${scenario}: пробел «${gap.why}» закрыт — уберите его из KNOWN_GAPS`).toBe(false);
-          expect(c?.problems.filter((p) => !p.includes(`«${title}»`))).toEqual([]);
-        }
+        // …and passed: no goal program misses its hooks on the composed pages, no v3 feature is missing.
+        expect(checked.filter((c) => !c.ok)).toEqual([]);
         if (out.status === "succeeded")
-          expect(
-            out.scenarios
-              .filter((s) => s.status !== "passed")
-              .map((s) => s.id)
-              .sort(),
-          ).toEqual(Object.keys(gaps).sort());
+          expect(out.scenarios.filter((s) => s.status !== "passed")).toEqual([]);
+        // The features this build proves ran (and passed above).
+        const ran = new Set(checked.flatMap((c) => c.goals));
+        for (const goal of PROVEN[id]?.goals ?? []) expect(ran.has(goal), `${id}: ${goal}`).toBe(true);
       }, 1_800_000);
   },
 );

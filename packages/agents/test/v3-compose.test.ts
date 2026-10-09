@@ -203,7 +203,7 @@ describe("skeleton: pages, sections, texts", () => {
     const footer = site.pages[0]?.sections.at(-1)?.props as { legal: { operator: string } };
     expect(footer.legal.operator).toBe("Владелец сайта «Белая линия» — оператор персональных данных");
     const hero = site.pages[0]?.sections.find((s) => s.type === "hero")?.props;
-    expect(hero?.title).toBe("Белая линия: стоматологическая клиника");
+    expect(hero?.title).toBe("Белая линия — стоматологическая клиника");
     expect(JSON.stringify(site)).not.toMatch(/довольн|лучш|гарант|отзыв/i);
   });
 

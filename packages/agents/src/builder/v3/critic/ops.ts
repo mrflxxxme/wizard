@@ -14,8 +14,9 @@ import {
 } from "@wizard/ui-kit/v3/design";
 import type { PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { z } from "zod";
+import { slotShape } from "../compose/content.js";
 import { copyIssues } from "../compose/lint.js";
-import type { SiteModel, SitePage, SiteSection } from "../compose/site.js";
+import type { SectionPhotos, SiteModel, SitePage, SiteSection } from "../compose/site.js";
 
 const route = z.string().trim().min(1).max(200);
 const section = z.string().trim().min(1).max(60);
@@ -92,13 +93,21 @@ const metaOf = (lib: readonly PatternMeta[], id: string) => lib.find((p) => p.id
 const isBound = (lib: readonly PatternMeta[], s: SiteSection) =>
   (metaOf(lib, s.pattern)?.needs ?? null) !== null || Object.keys(s.props).some((k) => FIXED_KEYS.has(k));
 
-/** Props the variant keeps of the content, or null when its slots refuse it or it would drop the photos. */
-function fitProps(meta: PatternMeta, props: Record<string, unknown>): Record<string, unknown> | null {
+/**
+ * Props the variant keeps of the content, or null when its slots refuse it or it would drop the photos — the stock
+ * ones of the props or the place of the owner's photo («Фото сайта», V3-18).
+ */
+function fitProps(
+  meta: PatternMeta,
+  props: Record<string, unknown>,
+  photos?: SectionPhotos,
+): Record<string, unknown> | null {
   const r = meta.slots.safeParse(props);
   if (!r.success) return null;
   const out = r.data as Record<string, unknown>;
   for (const group of PHOTO_KEYS)
     if (group.some((k) => props[k] !== undefined) && !group.some((k) => out[k] !== undefined)) return null;
+  if (photos?.image && !slotShape(meta).keys.has("image")) return null;
   // The binding stays too: a variant without item actions would drop where a catalog item leads (GS-catalog-4).
   for (const k of FIXED_KEYS) if (props[k] !== undefined && out[k] === undefined) return null;
   return out;
@@ -110,7 +119,10 @@ export function variantsFor(lib: readonly PatternMeta[], s: SiteSection): Patter
   const needs = metaOf(lib, s.pattern)?.needs ?? null;
   return lib.filter(
     (p) =>
-      p.id !== s.pattern && p.sectionType === s.type && p.needs === needs && fitProps(p, s.props) !== null,
+      p.id !== s.pattern &&
+      p.sectionType === s.type &&
+      p.needs === needs &&
+      fitProps(p, s.props, s.photos) !== null,
   );
 }
 
@@ -135,7 +147,7 @@ function swapVariant(st: CriticState, op: Extract<EditOp, { op: "swap_variant" }
         sections.push(x);
         continue;
       }
-      const props = fitProps(meta, x.props);
+      const props = fitProps(meta, x.props, x.photos);
       if (!props)
         return fail(
           `вариант ${op.pattern} не принимает содержимое секции, теряет фото или привязку к данным`,

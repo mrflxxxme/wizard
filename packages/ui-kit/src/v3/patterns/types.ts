@@ -22,6 +22,8 @@ export const SECTION_TYPES = [
   // V3-24 «Контент и блог»: one entry by the slug of the address (article, page) and the posts of a rubric.
   "article",
   "rubric",
+  // V3-18: the client cabinet /me of «Кабинет посетителя» (the visitor's own records).
+  "account",
 ] as const;
 export type SectionType = (typeof SECTION_TYPES)[number];
 

@@ -323,7 +323,9 @@ function linkProblems(props: unknown, input: LintPageInput, anchors: Set<string>
     if (typeof v === "string" && key === "href") {
       if (v.startsWith("#") && !anchors.has(v.slice(1))) out.push(v);
       else if (v.startsWith("/")) {
-        const [path = "", hash] = v.split("#");
+        const [full = "", hash] = v.split("#");
+        // A query names the same page (/login?next=/me, V3-18).
+        const path = full.split("?")[0] ?? "";
         if (!routes.has(path || "/")) out.push(v);
         else if (hash && path === "/" && !home.has(hash)) out.push(v);
       }
