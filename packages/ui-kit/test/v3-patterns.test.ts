@@ -212,16 +212,28 @@ describe("lintPattern", () => {
   });
 
   test("Motion animations respect prefers-reduced-motion", () => {
-    const head = 'import { motion } from "motion/react";';
-    expect(codes(wrap("<motion.p animate={{ opacity: 1 }}>a</motion.p>", head))).toEqual(["reduced-motion"]);
+    const head = 'import { LazyMotion, domAnimation, m } from "motion/react";';
+    const lazy = (el: string) => `<LazyMotion features={domAnimation}>${el}</LazyMotion>`;
+    expect(codes(wrap(lazy("<m.p animate={{ opacity: 1 }}>a</m.p>"), head))).toEqual(["reduced-motion"]);
     expect(
       codes(
         wrap(
-          "<motion.p animate={{ opacity: reduce ? 1 : 0.5 }}>a</motion.p>",
-          'import { motion, useReducedMotion } from "motion/react";\nconst reduce = useReducedMotion();',
+          lazy("<m.p animate={{ opacity: reduce ? 1 : 0.5 }}>a</m.p>"),
+          'import { LazyMotion, domAnimation, m, useReducedMotion } from "motion/react";\nconst reduce = useReducedMotion();',
         ),
       ),
     ).toEqual([]);
+  });
+
+  test("Motion through LazyMotion + domAnimation only: the full motion.* brings projection and drag into the site bundle", () => {
+    const reduce =
+      'import { motion, m, useReducedMotion } from "motion/react";\nconst reduce = useReducedMotion();';
+    expect(codes(wrap("<motion.p animate={{ opacity: reduce ? 1 : 0.5 }}>a</motion.p>", reduce))).toEqual([
+      "motion-lazy",
+    ]);
+    expect(codes(wrap("<m.p animate={{ opacity: reduce ? 1 : 0.5 }}>a</m.p>", reduce))).toEqual([
+      "motion-lazy",
+    ]);
   });
 });
 
@@ -253,6 +265,26 @@ describe("patternFor", () => {
       const p = patternFor({ sectionType: "footer", archetype: "zabota", seed, used });
       expect(["bar", "split"]).not.toContain(p?.layout);
     }
+  });
+
+  test("needs: a lead form never comes for a booking and back; content sections get no hook; absent — any", () => {
+    for (let seed = 0; seed < 32; seed++) {
+      expect(patternFor({ sectionType: "form", archetype: "reestr", seed, needs: "lead" })?.needs).toBe(
+        "lead",
+      );
+      expect(patternFor({ sectionType: "form", archetype: "reestr", seed, needs: "booking" })?.needs).toBe(
+        "booking",
+      );
+    }
+    expect(patternFor({ sectionType: "form", archetype: "reestr", seed: 1, needs: null })).toBeNull();
+    expect(patternFor({ sectionType: "catalog", archetype: "reestr", seed: 1, needs: "lead" })).toBeNull();
+    expect(patternFor({ sectionType: "cta", archetype: "reestr", seed: 1, needs: null })?.sectionType).toBe(
+      "cta",
+    );
+    const any = new Set<string | null>();
+    for (let seed = 0; seed < 64; seed++)
+      any.add(patternFor({ sectionType: "form", archetype: "reestr", seed })?.needs ?? null);
+    expect(any).toEqual(new Set(["lead", "booking"]));
   });
 
   test("a section type without patterns yet gives null", () => {

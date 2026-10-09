@@ -16,6 +16,7 @@ import {
   type RouteInput,
   type RouteOutput,
 } from "@wizard/llm";
+import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
 import {
   COMPOSE_CALL_TYPES,
@@ -33,7 +34,7 @@ import {
 } from "../src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { fixtureLine } from "./build-v2-fixtures.js";
-import { BRIEF, composeContext, SIGNATURE_OK, TEST_LIBRARY } from "./v3-compose-fixtures.js";
+import { BRIEF, composeContext, SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
 const llm = createRegistry({ buildDefaultTier: "T1" });
 const LEAD = BRIEF.scenarios[0] as BriefScenario;
@@ -52,7 +53,7 @@ function apply(files: ReadonlyMap<string, string>, out: V3ComposeResult): Map<st
 /** The fixture system after the skeleton: what the scenario step starts from. */
 async function prepared() {
   const base = composeContext();
-  const out = await createPageComposer({ patterns: TEST_LIBRARY }).skeleton(base);
+  const out = await createPageComposer({ patterns: PATTERNS }).skeleton(base);
   const ctx: V3BuildContext = { ...base, files: apply(base.files, out) };
   return { ctx, site: readSite(ctx.files) as SiteModel, facts: siteFacts(ctx) };
 }
@@ -73,8 +74,13 @@ const HOME: PageComposeAnswer = {
     },
     {
       id: "form",
-      pattern: "form-test",
-      props: { title: "Запишитесь на приём", lead: "Оставьте имя и телефон — перезвоним за 15 минут." },
+      pattern: "form-centered",
+      props: {
+        title: "Запишитесь на приём",
+        text: "Оставьте имя и телефон — перезвоним за 15 минут.",
+        submit: "Записаться на приём",
+        sent: { title: "Заявка отправлена" },
+      },
     },
   ],
   seo: {
@@ -155,7 +161,7 @@ describe("page_compose", () => {
       site,
       page: home,
       scenario: LEAD,
-      library: TEST_LIBRARY,
+      library: PATTERNS,
       offer: true,
     });
     const line = fixtureLine("page_compose", req.messages, [req.tool.definition], {
@@ -163,7 +169,7 @@ describe("page_compose", () => {
       args: HOME,
     });
     const { route, seen } = recorded("unit", [line]);
-    const out = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       LEAD,
     );
@@ -172,7 +178,7 @@ describe("page_compose", () => {
     expect(out.pages[0]?.sections.map((s) => [s.id, s.pattern])).toEqual([
       ["header", home.sections[0]?.pattern],
       ["hero", "hero-full-bleed"],
-      ["form", "form-test"],
+      ["form", "form-centered"],
       ["footer", home.sections.at(-1)?.pattern],
     ]);
     // The binding to the module's entity stays even though the model did not repeat it.
@@ -184,7 +190,7 @@ describe("page_compose", () => {
     expect(files.get("ui/patterns/hero-full-bleed.tsx")).toBeDefined();
     expect(out.spentRub).toBeGreaterThan(0);
     expect(out.spentRub).toBeLessThanOrEqual(ctx.budgetRub);
-    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, TEST_LIBRARY))).toEqual([]);
+    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, PATTERNS))).toEqual([]);
     console.info(`V3-12 page_compose на записанном ответе: ${out.spentRub.toFixed(2)} ₽`);
   });
 
@@ -205,7 +211,7 @@ describe("page_compose", () => {
       ],
     };
     const { route, calls } = scripted({ page_compose: [bad, HOME] });
-    const out = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       LEAD,
     );
@@ -222,7 +228,7 @@ describe("page_compose", () => {
       sections: [{ id: "hero", pattern: "hero-full-bleed", props: { title: "№ 1 в городе" } }],
     };
     const never = scripted({ page_compose: [bad] });
-    const kept = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const kept = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route: never.route },
       LEAD,
     );
@@ -231,7 +237,7 @@ describe("page_compose", () => {
     expect(kept.files.size).toBe(0);
 
     const owner = scripted({});
-    const r1 = await createPageComposer({ patterns: TEST_LIBRARY }).scenario(
+    const r1 = await createPageComposer({ patterns: PATTERNS }).scenario(
       { ...ctx, route: owner.route },
       OWNER,
     );
@@ -240,7 +246,7 @@ describe("page_compose", () => {
     expect(r1.notes[0]).toContain("в кабинетах");
 
     const poor = scripted({ page_compose: [HOME] });
-    const r2 = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const r2 = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route: poor.route, budgetRub: 0.05 },
       LEAD,
     );
@@ -259,6 +265,11 @@ describe("page_compose", () => {
           props: { title: "Цены на лечение", action: { label: "Оставить заявку", href: "/#form" } },
         },
         {
+          id: "catalog",
+          pattern: "catalog-price-list",
+          props: { title: "Услуги и цены", empty: "В каталоге пока нет позиций" },
+        },
+        {
           id: "cta",
           pattern: "cta-card",
           props: { title: "Запишитесь на приём", action: { label: "Оставить заявку", href: "/#form" } },
@@ -269,13 +280,22 @@ describe("page_compose", () => {
         description: "Каталог услуг стоматологической клиники «Белая линия» с ценами и заявкой на приём.",
       },
     };
-    const { route } = scripted({ page_compose: [answer] });
-    const out = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    // The catalog showcase is bound to the module: the model may not drop it.
+    const dropped = { ...answer, sections: answer.sections.filter((s) => s.id !== "catalog") };
+    const { route, calls } = scripted({ page_compose: [dropped, answer] });
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       PRICES,
     );
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("Секцию catalog убирать нельзя");
     expect(out.pages.map((p) => p.route)).toEqual(["/services"]);
     expect(out.pages[0]?.sections[1]?.props).toMatchObject({ title: "Цены на лечение" });
+    // The binding stays the module's: the entity and the sections entity are not the model's to change.
+    expect(out.pages[0]?.sections[2]).toMatchObject({
+      pattern: "catalog-price-list",
+      props: { entity: "service", title: "Услуги и цены" },
+    });
   });
 });
 
@@ -289,7 +309,7 @@ describe("signature sections", () => {
       site,
       page: home,
       scenario: LEAD,
-      library: TEST_LIBRARY,
+      library: PATTERNS,
       offer: true,
     });
     const sig = signatureRequest({
@@ -298,7 +318,7 @@ describe("signature sections", () => {
       page: home,
       idea: IDEA,
       design: ctx.design,
-      library: TEST_LIBRARY,
+      library: PATTERNS,
     });
     const { route, seen } = recorded("demo", [
       fixtureLine("page_compose", page.messages, [page.tool.definition], {
@@ -310,7 +330,7 @@ describe("signature sections", () => {
         args: SIGNATURE_OK,
       }),
     ]);
-    const out = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       LEAD,
     );
@@ -330,7 +350,7 @@ describe("signature sections", () => {
             next,
             p,
             facts,
-            TEST_LIBRARY,
+            PATTERNS,
             new Map([["ui/sections/first-visit.tsx", SIGNATURE_OK.source]]),
           ),
         ),
@@ -367,7 +387,7 @@ describe("signature sections", () => {
     expect(signatureOffer(two, two.pages[2] as never)).toBe(false);
     // A later scenario on the same page rewrites its texts and keeps the signature section in place.
     const again = scripted({ page_compose: [HOME] });
-    const later = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const later = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, files, route: again.route },
       LEAD,
     );
@@ -398,7 +418,7 @@ describe("signature sections", () => {
       signature_section: [loud],
     });
     const out = await createPageComposer({
-      patterns: TEST_LIBRARY,
+      patterns: PATTERNS,
       registry: llm,
       verify: noVerify,
     }).scenario({ ...ctx, route }, LEAD);
@@ -412,7 +432,7 @@ describe("signature sections", () => {
     expect(out.notes.join("\n")).toMatch(
       /Фирменная секция «Как проходит первый приём» не прошла проверки кода — на её месте паттерн/,
     );
-    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, TEST_LIBRARY))).toEqual([]);
+    for (const p of next.pages) expect(lintErrors(lintSitePage(next, p, facts, PATTERNS))).toEqual([]);
   });
 
   test("a signature section that passes the linter but not G0 (build) gets one fix round, then a pattern", async () => {
@@ -425,7 +445,7 @@ describe("signature sections", () => {
       page_compose: [{ ...HOME, signature: IDEA }],
       signature_section: [broken],
     });
-    const out = await createPageComposer({ patterns: TEST_LIBRARY, registry: llm }).scenario(
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
       { ...ctx, route },
       LEAD,
     );

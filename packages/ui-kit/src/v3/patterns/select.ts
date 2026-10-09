@@ -1,6 +1,6 @@
 // patternFor (builder-v3.md C3): deterministic choice of a variant with variety — by seed, without repeating the
 // variants already used on the site and spreading layout families over the page (catalog L06).
-import type { PatternMeta, SectionType } from "./types.js";
+import type { PatternMeta, PatternNeeds, SectionType } from "./types.js";
 
 export interface PatternQuery {
   sectionType: SectionType;
@@ -9,6 +9,11 @@ export interface PatternQuery {
   seed: number | string;
   /** Ids of the patterns already on the site, in page order. */
   used?: readonly string[];
+  /**
+   * The module logic the section binds (C4): only variants with these needs — a lead form is not a booking form, a
+   * content section (null) has no hook. Absent — any variant of the type.
+   */
+  needs?: PatternNeeds;
 }
 
 /** FNV-1a 32-bit: stable across runs and platforms. */
@@ -24,10 +29,12 @@ export function hash32(s: string): number {
 /**
  * The pattern for a section among `patterns`: those that suit the archetype (else all of the type), not used yet
  * (else all suitable), with the least used layout family; ties broken by a hash of the seed. Null when the type has
- * no patterns yet.
+ * no patterns yet (or none with the asked needs).
  */
 export function selectPattern(patterns: readonly PatternMeta[], q: PatternQuery): PatternMeta | null {
-  const ofType = patterns.filter((p) => p.sectionType === q.sectionType);
+  const ofType = patterns.filter(
+    (p) => p.sectionType === q.sectionType && (q.needs === undefined || p.needs === q.needs),
+  );
   if (ofType.length === 0) return null;
   const fits = ofType.filter((p) => p.archetypes.includes("*") || p.archetypes.includes(q.archetype));
   const pool = fits.length > 0 ? fits : ofType;

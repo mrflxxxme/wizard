@@ -6,6 +6,7 @@
 // platform-api runs it behind WIZARD_BUILD_PIPELINE=v3 (agents/executors.ts).
 import {
   buildBlockers,
+  createPageComposer,
   type PageComposer,
   runBuildV3,
   type ScenarioCheckInput,
@@ -45,7 +46,7 @@ export const v3PipelineOn = (env: Record<string, string | undefined>): boolean =
 export interface V3BuildOptions {
   /** On without the env (tests); default WIZARD_BUILD_PIPELINE=v3. */
   enabled?: boolean;
-  /** The page writer of V3-12; absent — a v3 build fails with a clear reason. */
+  /** The page writer (default: the V3-12 composer on the ui-kit pattern library, createPageComposer()). */
   composer?: PageComposer;
   /** Stages of V3-13…15 (critic, template_gate, techreview); absent — skipped. */
   hooks?: Partial<Record<"critic" | "template_gate" | "techreview", V3StageHook>>;
@@ -164,13 +165,8 @@ export async function buildByBrief(
     log?: (msg: string, err: unknown) => void;
   },
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
-  const composer = o.composer;
-  if (!composer)
-    throw new RunFailure(
-      "INTERNAL",
-      "Сборка по брифу пока недоступна: сборщик страниц v3 ещё не подключён к платформе. Мы уже работаем над этим.",
-      false,
-    );
+  // V3-12: the page composer on the pattern library (skeleton without a model; scenarios through host.route).
+  const composer = o.composer ?? createPageComposer();
   const systemId = host.run.systemId;
   const provider = o.browser ?? null;
   // The browser starts here (once per process): the build knows before its stages whether scenarios run in it.

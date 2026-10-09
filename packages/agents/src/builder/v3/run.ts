@@ -25,14 +25,9 @@ import { DEFAULT_REGISTRY } from "../../planner/catalog.js";
 import { buildBlockers } from "../v2/blockers.js";
 import { withOwnerFields } from "../v2/run.js";
 import { runArtDirector } from "./art-director.js";
-import type { V3BuildContext, V3ComposeResult, V3PagePlan } from "./contract.js";
-import {
-  type BackendBuilt,
-  compileBackend,
-  DESIGN_CSS_FILE,
-  designCss,
-  withPublicPages,
-} from "./harness/backend.js";
+import { readSite, withSitePages } from "./compose/index.js";
+import type { V3BuildContext, V3ComposeResult } from "./contract.js";
+import { type BackendBuilt, compileBackend, DESIGN_CSS_FILE, designCss } from "./harness/backend.js";
 import { featureList, goalScenariosFor, type V3Feature } from "./harness/features.js";
 import { type BriefPlan, briefNiche, briefPlan } from "./harness/plan.js";
 import { briefAnswers, mergeAnswers, optionLabel, questionText } from "./harness/questions.js";
@@ -85,8 +80,6 @@ class V3Failure extends Error {
 
 /** Files of a composer step as JSON (checkpoints): [path, source | null][]. */
 type FileEntries = [string, string | null][];
-/** A page of the composer with the page files its step wrote (to find the page's file). */
-type PageEntry = V3PagePlan & { file?: string; written?: string[] };
 
 const OWNER_INPUT_NOTE_RU =
   "Перед публикацией укажите данные оператора персональных данных (название и контакт) — без них систему с персональными данными опубликовать нельзя.";
@@ -95,10 +88,6 @@ const toEntries = (m: ReadonlyMap<string, string | null>): FileEntries =>
   [...m].sort(([a], [b]) => a.localeCompare(b));
 const toMap = (e: unknown): Map<string, string | null> =>
   new Map(Array.isArray(e) ? (e as FileEntries).filter((x) => typeof x?.[0] === "string") : []);
-const pagesOf = (r: V3ComposeResult): PageEntry[] => {
-  const written = [...r.files].filter(([, v]) => v !== null).map(([k]) => k);
-  return r.pages.map((p) => ({ ...p, written }));
-};
 
 /** The brief without the «вопрос → ответ» journal: what the pages are made of (answers apply through the plan). */
 const briefForPages = ({ qa: _qa, ...rest }: SystemBrief) => rest;
@@ -292,7 +281,6 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
   let skeleton = new Map<string, string | null>();
   const scenarioLayers = new Map<string, Map<string, string | null>>();
   const hookLayers = new Map<string, Map<string, string | null>>();
-  let pages = new Map<string, PageEntry>();
   let committed = null as { revision: number; hash: string } | null;
   let previewRevision: number | null = null;
   const states = new Map<string, V3ScenarioState>();
@@ -308,11 +296,11 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       for (const [path, src] of layer) src === null ? out.delete(path) : out.set(path, src);
     return out;
   };
-  const specOf = (files: ReadonlyMap<string, string>) =>
-    withOwnerFields(
-      withPublicPages(backend.spec, [...pages.values()], files, backend.publicFront).spec,
-      ownerSpec,
-    );
+  /** The spec of the merged files: the public pages of the composer's site model (ui/site.json, V3-12) on the backend. */
+  const specOf = (files: ReadonlyMap<string, string>) => {
+    const site = readSite(files);
+    return withOwnerFields(site ? withSitePages(backend.spec, site) : backend.spec, ownerSpec);
+  };
   const commit = async (summary_ru: string): Promise<number> => {
     const files = mergedFiles();
     const spec = specOf(files);
@@ -529,7 +517,6 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       if (states.has(f.id) || cp?.fingerprint !== scenarioFp(f) || cp.data.status !== "passed") return false;
       priorMilli += cp.costMilli;
       scenarioLayers.set(f.id, toMap(cp.data.files));
-      for (const pg of (cp.data.pages ?? []) as PageEntry[]) pages.set(pg.route, pg);
       states.set(f.id, {
         id: f.id,
         title: f.title,
@@ -560,13 +547,12 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
           );
         }
         return {
-          data: { files: toEntries(r.files), pages: pagesOf(r), notes: r.notes },
+          data: { files: toEntries(r.files), pages: r.pages, notes: r.notes },
           extraMilli: Math.max(0, Math.round(((r.spentRub - w.spentRub) / rpc) * 1000)),
         };
       },
     });
     skeleton = toMap(sk.data.files);
-    pages = new Map((sk.data.pages as PageEntry[]).map((pg) => [pg.route, pg]));
     // Scenarios an earlier run brought up on the same inputs join the skeleton before its commit: a repeated build
     // makes no new revision for them and pays nothing.
     for (const f of features) reuseScenario(f);
@@ -665,9 +651,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       runMilli += costMilli;
       calls += wallet.calls;
       // Tentatively on top of the system; the browser check decides whether it stays.
-      const prevPages = new Map(pages);
       scenarioLayers.set(next.id, r.files);
-      for (const pg of pagesOf(r)) pages.set(pg.route, pg);
       revision = await commit(`Сценарий: ${next.title}`);
       const routes = r.pages.map((pg) => pg.route);
       const goals = goalScenariosFor(next.scenario, brief, backend.scenarios);
@@ -697,7 +681,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         await save({
           key,
           fingerprint: fp,
-          data: { status: "passed", files: toEntries(r.files), pages: pagesOf(r), notes: r.notes },
+          data: { status: "passed", files: toEntries(r.files), pages: r.pages, notes: r.notes },
           costMilli,
           durationMs,
         });
@@ -707,7 +691,6 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         );
       } else {
         scenarioLayers.delete(next.id);
-        pages = prevPages;
         const reason = `не прошёл проверку в браузере: ${check.problems[0] ?? "сценарий не выполняется"}`;
         states.set(next.id, {
           id: next.id,

@@ -1,6 +1,6 @@
 // First screen «centered»: the offer centred on a calm field, actions side by side, an optional wide photo below.
 // Composition after HyperUI «Banners» (MIT, © Mark Mead), rewritten on the design system tokens.
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
 type Link = { label: string; href: string };
@@ -42,45 +42,47 @@ function useEnter() {
 export default function HeroCentered({ title, lead, action, secondary, note, image }: HeroCenteredProps) {
   const enter = useEnter();
   return (
-    <section className="bg-background font-sans text-foreground">
-      <div
-        className={`mx-auto flex w-full max-w-page flex-col items-center px-gutter pt-section text-center ${image ? "" : "pb-section"}`}
-      >
-        <motion.h1
-          {...enter(0)}
-          className="max-w-4xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
+    <LazyMotion features={domAnimation}>
+      <section className="bg-background font-sans text-foreground">
+        <div
+          className={`mx-auto flex w-full max-w-page flex-col items-center px-gutter pt-section text-center ${image ? "" : "pb-section"}`}
         >
-          {title}
-        </motion.h1>
-        {lead ? (
-          <motion.p {...enter(1)} className="mt-6 max-w-text text-lead text-pretty text-muted-foreground">
-            {lead}
-          </motion.p>
-        ) : null}
-        <motion.div
-          {...enter(2)}
-          className="mt-8 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:flex-wrap"
-        >
-          <a href={action.href} className={primaryClass}>
-            {action.label}
-          </a>
-          {secondary ? (
-            <a href={secondary.href} className={secondaryClass}>
-              {secondary.label}
-            </a>
+          <m.h1
+            {...enter(0)}
+            className="max-w-4xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
+          >
+            {title}
+          </m.h1>
+          {lead ? (
+            <m.p {...enter(1)} className="mt-6 max-w-text text-lead text-pretty text-muted-foreground">
+              {lead}
+            </m.p>
           ) : null}
-        </motion.div>
-        {note ? <p className="mt-5 text-small text-muted-foreground">{note}</p> : null}
-      </div>
-      {image ? (
-        <motion.div {...enter(3)} className="mx-auto w-full max-w-page px-gutter pt-12 pb-section">
-          <img
-            src={image.src}
-            alt={image.alt}
-            className="aspect-4/3 w-full rounded-lg bg-muted object-cover sm:aspect-video"
-          />
-        </motion.div>
-      ) : null}
-    </section>
+          <m.div
+            {...enter(2)}
+            className="mt-8 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:flex-wrap"
+          >
+            <a href={action.href} className={primaryClass}>
+              {action.label}
+            </a>
+            {secondary ? (
+              <a href={secondary.href} className={secondaryClass}>
+                {secondary.label}
+              </a>
+            ) : null}
+          </m.div>
+          {note ? <p className="mt-5 text-small text-muted-foreground">{note}</p> : null}
+        </div>
+        {image ? (
+          <m.div {...enter(3)} className="mx-auto w-full max-w-page px-gutter pt-12 pb-section">
+            <img
+              src={image.src}
+              alt={image.alt}
+              className="aspect-4/3 w-full rounded-lg bg-muted object-cover sm:aspect-video"
+            />
+          </m.div>
+        ) : null}
+      </section>
+    </LazyMotion>
   );
 }

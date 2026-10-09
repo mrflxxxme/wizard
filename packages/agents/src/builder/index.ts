@@ -238,9 +238,6 @@ export {
   compileBackend,
   DESIGN_CSS_FILE,
   designCss,
-  pageFile,
-  pageFileOf,
-  withPublicPages,
 } from "./v3/harness/backend.js";
 export {
   featureList,

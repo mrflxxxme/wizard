@@ -50,6 +50,7 @@ export {
   type PageLintIssue,
   propsIssues,
   STOP_WORDS,
+  sectionOutline,
 } from "./lint.js";
 export {
   COMPOSE_CALL_TYPES,

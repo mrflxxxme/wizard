@@ -8,6 +8,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import type { AppSpec, BriefScenario } from "@wizard/appspec";
+import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   createPageComposer,
@@ -17,7 +18,7 @@ import {
   withSitePages,
 } from "../../agents/src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../../agents/src/builder/v3/contract.js";
-import { BRIEF, composeContext, SIGNATURE_OK, TEST_LIBRARY } from "../../agents/test/v3-compose-fixtures.js";
+import { BRIEF, composeContext, SIGNATURE_OK } from "../../agents/test/v3-compose-fixtures.js";
 import { type BuildResult, buildSystem } from "../src/index.js";
 import { PKG_ROOT } from "./helpers.js";
 import { V3_CHECKS_SCRIPT, type V3CheckResult } from "./v3-checks.js";
@@ -48,8 +49,13 @@ const HOME: PageComposeAnswer & { signature: { after: string; title: string; ide
     },
     {
       id: "form",
-      pattern: "form-test",
-      props: { title: "Запишитесь на приём", lead: "Оставьте имя и телефон — перезвоним за 15 минут." },
+      pattern: "form-centered",
+      props: {
+        title: "Запишитесь на приём",
+        text: "Оставьте имя и телефон — перезвоним за 15 минут.",
+        submit: "Записаться на приём",
+        sent: { title: "Заявка отправлена" },
+      },
     },
   ],
   seo: {
@@ -110,7 +116,7 @@ beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   const base = composeContext();
   const composer = createPageComposer({
-    patterns: TEST_LIBRARY,
+    patterns: PATTERNS,
     verify: async () => ({ ok: true, problems: [] }),
   });
   const skeleton = await composer.skeleton(base);

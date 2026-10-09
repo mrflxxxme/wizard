@@ -1,7 +1,7 @@
 // FAQ «cards»: each question a card of its own in two columns, a button in a heading that opens its answer
 // (aria-expanded, aria-controls, WAI-ARIA accordion), the first one open; an answer opened by the visitor appears
 // with a short fade — only opacity with reduced motion, nothing with the still profile (catalog E3). Own composition.
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useId, useState } from "react";
 
 type Link = { label: string; href: string };
@@ -66,12 +66,9 @@ function Item({ q, a, first }: QA & { first: boolean }) {
       </h3>
       <div id={`${id}-a`} hidden={!open}>
         {open ? (
-          <motion.p
-            {...enter(opened)}
-            className="px-5 pb-6 text-body text-pretty text-muted-foreground sm:px-6"
-          >
+          <m.p {...enter(opened)} className="px-5 pb-6 text-body text-pretty text-muted-foreground sm:px-6">
             {a}
-          </motion.p>
+          </m.p>
         ) : null}
       </div>
     </li>
@@ -80,31 +77,33 @@ function Item({ q, a, first }: QA & { first: boolean }) {
 
 export default function FaqCards({ title, intro, items, contactText, contact }: FaqCardsProps) {
   return (
-    <section className="bg-background font-sans text-foreground">
-      <div className="mx-auto w-full max-w-page px-gutter py-section">
-        <div className="max-w-3xl">
-          <h2 className="font-display text-h1 font-bold text-balance wrap-break-word">{title}</h2>
-          {intro ? (
-            <p className="mt-4 max-w-text text-lead text-pretty text-muted-foreground">{intro}</p>
-          ) : null}
-        </div>
-        <ul className="mt-12 grid items-start gap-3 md:grid-cols-2 lg:gap-4">
-          {items.map((it, i) => (
-            <Item key={it.q} q={it.q} a={it.a} first={i === 0} />
-          ))}
-        </ul>
-        {contactText || contact ? (
-          <div className="mt-10 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-6">
-            {contactText ? <p className="text-body text-muted-foreground">{contactText}</p> : null}
-            {contact ? (
-              <a href={contact.href} className={linkClass}>
-                <span>{contact.label}</span>
-                <span aria-hidden="true">→</span>
-              </a>
+    <LazyMotion features={domAnimation}>
+      <section className="bg-background font-sans text-foreground">
+        <div className="mx-auto w-full max-w-page px-gutter py-section">
+          <div className="max-w-3xl">
+            <h2 className="font-display text-h1 font-bold text-balance wrap-break-word">{title}</h2>
+            {intro ? (
+              <p className="mt-4 max-w-text text-lead text-pretty text-muted-foreground">{intro}</p>
             ) : null}
           </div>
-        ) : null}
-      </div>
-    </section>
+          <ul className="mt-12 grid items-start gap-3 md:grid-cols-2 lg:gap-4">
+            {items.map((it, i) => (
+              <Item key={it.q} q={it.q} a={it.a} first={i === 0} />
+            ))}
+          </ul>
+          {contactText || contact ? (
+            <div className="mt-10 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-6">
+              {contactText ? <p className="text-body text-muted-foreground">{contactText}</p> : null}
+              {contact ? (
+                <a href={contact.href} className={linkClass}>
+                  <span>{contact.label}</span>
+                  <span aria-hidden="true">→</span>
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </LazyMotion>
   );
 }

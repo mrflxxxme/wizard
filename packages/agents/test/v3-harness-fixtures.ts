@@ -2,7 +2,8 @@
 // (moduleHint where a catalog module closes them), recorded answers of the art director and of the page composer
 // (suite demo — answers by the order of each callType; usage from the real prompt estimate, so the cost is the
 // models.yaml price) written to a temporary fixture dir, and a fake page composer of the V3-12 seam (contract.ts): its
-// skeleton is plain code, a scenario is one or more page_compose calls through ctx.route.
+// skeleton is plain code, a scenario is one or more page_compose calls through ctx.route. Like the real composer it keeps
+// the site model ui/site.json, through which the harness registers the public pages in the spec (withSitePages).
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,10 @@ import {
   artDirectionMessages,
   artDirectionSchema,
   type PageComposer,
-  pageFile,
+  readSite,
+  SITE_PATH,
+  type SiteModel,
+  type SitePage,
   type V3BuildContext,
   type V3ComposeResult,
 } from "../src/builder/index.js";
@@ -140,6 +144,58 @@ const page = (title: string, text: string) => `export default function Page() {
 }
 `;
 
+/** File of a fake page: «/» → ui/pages/Home.tsx, «/s-doctors» → ui/pages/SDoctors.tsx. */
+export function pageFile(route: string): string {
+  const parts = route
+    .split("/")
+    .filter(Boolean)
+    .map((p) => p.replace(/^:/, ""))
+    .flatMap((p) => p.split(/[-_]/))
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+  return `ui/pages/${parts.length ? parts.join("") : "Home"}.tsx`;
+}
+
+/** Roles of a fake page: those of the module screen on its route, else of every public screen. */
+function pageRoles(ctx: Pick<V3BuildContext, "publicFront">, route: string): string[] {
+  const screen = ctx.publicFront.screens.find((s) => s.route === route);
+  return screen?.roles.length
+    ? [...screen.roles]
+    : [...new Set(ctx.publicFront.screens.flatMap((s) => s.roles))];
+}
+
+/** The site model with these pages added or renamed (ui/site.json of the V3-12 composer). */
+function siteJson(
+  ctx: Pick<V3BuildContext, "files" | "design" | "publicFront">,
+  pages: { route: string; title: string }[],
+) {
+  const site: SiteModel = readSite(ctx.files) ?? {
+    version: 1,
+    seed: "fake",
+    archetype: ctx.design.archetype,
+    primary: null,
+    pages: [],
+  };
+  const byRoute = new Map(site.pages.map((p) => [p.route, p]));
+  for (const p of pages) {
+    const file = pageFile(p.route);
+    const page: SitePage = {
+      route: p.route,
+      title: p.title,
+      kind: p.route === "/" ? "home" : "content",
+      file,
+      component: file.replace(/^ui\/pages\//, "").replace(/\.tsx$/, ""),
+      nav: p.title,
+      header: true,
+      roles: pageRoles(ctx, p.route),
+      seo: { title: p.title, description: p.title },
+      sections: [],
+    };
+    byRoute.set(p.route, page);
+  }
+  return `${JSON.stringify({ ...site, pages: [...byRoute.values()] }, null, 2)}\n`;
+}
+
 /** Route of a scenario's page: the module screen of its moduleHint, else /<id>. */
 export function scenarioRoute(ctx: Pick<V3BuildContext, "publicFront">, s: BriefScenario): string {
   const screen = ctx.publicFront.screens.find((x) => x.module === s.moduleHint);
@@ -178,8 +234,15 @@ export function fakeComposer(o: FakeComposerOptions = {}): PageComposer & {
       ].filter((r, i, xs) => xs.findIndex((x) => x.route === r.route) === i);
       const name = ctx.brief.goals[0]?.text ?? "Сайт";
       return {
-        files: new Map(routes.map((r) => [pageFile(r.route), page(r.title, name)])),
-        pages: routes.map((r) => ({ ...r, sections: [{ id: "hero", pattern: "hero-split", props: {} }] })),
+        files: new Map([
+          ...routes.map((r) => [pageFile(r.route), page(r.title, name)] as const),
+          [SITE_PATH, siteJson(ctx, routes)] as const,
+        ]),
+        pages: routes.map((r) => ({
+          ...r,
+          file: pageFile(r.route),
+          sections: [{ id: "hero", pattern: "hero-split", props: {} }],
+        })),
         notes: [`Собрал каркас: ${routes.length} страниц`],
         spentRub: 0,
       };
@@ -203,11 +266,15 @@ export function fakeComposer(o: FakeComposerOptions = {}): PageComposer & {
       }
       const route = scenarioRoute(ctx, s);
       return {
-        files: new Map([[pageFile(route), page(headline, s.then.join(", "))]]),
+        files: new Map([
+          [pageFile(route), page(headline, s.then.join(", "))],
+          [SITE_PATH, siteJson(ctx, [{ route, title: headline.slice(0, 60) }])],
+        ]),
         pages: [
           {
             route,
             title: headline.slice(0, 60),
+            file: pageFile(route),
             sections: [{ id: "main", pattern: "signature", props: {} }],
           },
         ],

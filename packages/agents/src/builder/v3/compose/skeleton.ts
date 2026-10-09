@@ -78,6 +78,7 @@ export function choosePattern(
     archetype: q.archetype,
     seed: q.seed,
     used: q.used,
+    needs: q.needs,
   });
 }
 

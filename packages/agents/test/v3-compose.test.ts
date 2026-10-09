@@ -27,7 +27,7 @@ import {
 } from "../src/builder/v3/compose/index.js";
 import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
 import { DEFAULT_REGISTRY } from "../src/planner/index.js";
-import { composeContext, FORM_TEST, TEST_LIBRARY } from "./v3-compose-fixtures.js";
+import { composeContext } from "./v3-compose-fixtures.js";
 
 function apply(files: ReadonlyMap<string, string>, out: V3ComposeResult): Map<string, string> {
   const next = new Map(files);
@@ -38,7 +38,7 @@ function apply(files: ReadonlyMap<string, string>, out: V3ComposeResult): Map<st
   return next;
 }
 
-async function skeleton(ctx: V3BuildContext, patterns = TEST_LIBRARY) {
+async function skeleton(ctx: V3BuildContext, patterns = PATTERNS) {
   const out = await createPageComposer({ patterns }).skeleton(ctx);
   const files = apply(ctx.files, out);
   const site = readSite(files) as SiteModel;
@@ -59,8 +59,33 @@ describe("skeleton: pages, sections, texts", () => {
     expect(a.out.pages.map((p) => p.route)).toEqual(["/", "/services", "/photos"]);
     expect(a.out.pages.map((p) => p.title)).toEqual(["Главная", "Каталог и цены", "Источники фото"]);
     expect(a.out.notes[0]).toMatch(/^Собрал каркас сайта в стиле «.+»: 3 стр\./);
-    // Sections without a library pattern yet (catalog, FAQ) are left out and named in the notes.
-    expect(a.out.notes.join("\n")).toContain("«catalog» (catalog) на странице /services");
+    // Every section type of the pages has library patterns now; sections whose required content the facts do not give
+    // (FAQ needs two answers — the plan has one; contacts need hours and a map link) are left out, never invented.
+    expect(a.out.notes.join("\n")).not.toContain("нет подходящего паттерна");
+    for (const p of a.site.pages)
+      expect(p.sections.some((s) => s.type === "faq" || s.type === "contacts")).toBe(false);
+  });
+
+  test("sections bound to the modules (V3-08 patterns with needs): the lead form and the catalog showcase", async () => {
+    const { site } = await skeleton(composeContext());
+    const meta = (id?: string) => PATTERNS.find((p) => p.id === id);
+    const form = site.pages[0]?.sections.find((s) => s.id === "form");
+    expect(meta(form?.pattern)?.needs).toBe("lead");
+    expect(form?.props).toMatchObject({
+      entity: "lead",
+      title: "Оставьте заявку",
+      text: "Перезвоним и подберём время",
+      // «Отправить» of the plan says nothing (K09): the button names the action.
+      submit: "Отправить заявку",
+      sent: { title: "Заявка отправлена" },
+    });
+    const catalog = site.pages[1]?.sections.find((s) => s.id === "catalog");
+    expect(meta(catalog?.pattern)?.needs).toBe("catalog");
+    expect(catalog?.props).toMatchObject({ entity: "service", title: "Услуги и цены" });
+    // The services section of the home page in the services slot contract (≥ 2 items of the plan).
+    const services = site.pages[0]?.sections.find((s) => s.id === "services");
+    expect(meta(services?.pattern)?.sectionType).toBe("services");
+    expect((services?.props.items as unknown[] | undefined)?.length).toBeGreaterThanOrEqual(2);
   });
 
   test("files: the design system, the patterns used, one page per route importing them, SEO and the site model", async () => {
@@ -73,7 +98,7 @@ describe("skeleton: pages, sections, texts", () => {
       used.map((id) => `ui/patterns/${id}.tsx`),
     );
     for (const id of used)
-      expect(files.get(`ui/patterns/${id}.tsx`)).toBe(TEST_LIBRARY.find((p) => p.id === id)?.source);
+      expect(files.get(`ui/patterns/${id}.tsx`)).toBe(PATTERNS.find((p) => p.id === id)?.source);
     for (const page of site.pages) {
       const src = files.get(page.file) as string;
       for (const s of page.sections) expect(src).toContain(`from "../../patterns/${s.pattern}"`);
@@ -105,7 +130,7 @@ describe("skeleton: pages, sections, texts", () => {
     for (const page of site.pages) {
       const layouts = page.sections
         .filter((s) => s.type !== "header" && s.type !== "footer")
-        .map((s) => TEST_LIBRARY.find((p) => p.id === s.pattern)?.layout);
+        .map((s) => PATTERNS.find((p) => p.id === s.pattern)?.layout);
       for (let i = 1; i < layouts.length; i++) expect(layouts[i]).not.toBe(layouts[i - 1]);
     }
   });
@@ -124,7 +149,7 @@ describe("skeleton: pages, sections, texts", () => {
     expect(footer.columns?.[0]?.links.map((l) => l.href)).toEqual(["/", "/services", "/photos"]);
     // The lead form is bound to the leads module's entity through the headless hook (C4).
     expect(home.sections.find((s) => s.id === "form")).toMatchObject({
-      pattern: FORM_TEST.id,
+      pattern: expect.stringMatching(/^form-/),
       props: { entity: "lead" },
     });
     expect(home.sections.find((s) => s.type === "hero")?.props.action).toEqual({
@@ -146,8 +171,7 @@ describe("skeleton: pages, sections, texts", () => {
     expect(text).not.toContain("ООО «Улыбка»");
     expect(text).toContain("ООО «Белая линия»");
     const facts = siteFacts(ctx);
-    for (const page of site.pages)
-      expect(lintErrors(lintSitePage(site, page, facts, TEST_LIBRARY))).toEqual([]);
+    for (const page of site.pages) expect(lintErrors(lintSitePage(site, page, facts, PATTERNS))).toEqual([]);
     // One h1 per page — the first screen.
     for (const page of site.pages) expect((files.get(page.file) ?? "").match(/<Hero/g)).toHaveLength(1);
   });
@@ -191,7 +215,7 @@ describe("skeleton: pages, sections, texts", () => {
       .set("ui/patterns/zz-old.tsx", old)
       .set("ui/sections/old-signature.tsx", old)
       .set("ui/pages/site/Old.tsx", old);
-    const again = await createPageComposer({ patterns: TEST_LIBRARY }).skeleton({ ...ctx, files: stale });
+    const again = await createPageComposer({ patterns: PATTERNS }).skeleton({ ...ctx, files: stale });
     for (const p of ["ui/patterns/zz-old.tsx", "ui/sections/old-signature.tsx", "ui/pages/site/Old.tsx"])
       expect(again.files.get(p)).toBeNull();
     // Cabinets of the modules are not the composer's.
@@ -210,8 +234,11 @@ describe("skeleton: pages, sections, texts", () => {
     expect(out.notes[0]).toContain("Публичных страниц в системе нет");
   });
 
-  test("the ui-kit library alone (no form patterns yet): the form is left out, the action goes to the catalog", async () => {
-    const { site } = await skeleton(composeContext(), PATTERNS);
+  test("a library without form patterns: the form is left out, the action goes to the catalog", async () => {
+    const { site } = await skeleton(
+      composeContext(),
+      PATTERNS.filter((p) => p.sectionType !== "form"),
+    );
     expect(site.pages[0]?.sections.some((s) => s.id === "form")).toBe(false);
     expect(site.primary).toMatchObject({ kind: "catalog", route: "/services" });
     // The plan's call to action was written for the form: not reused for the catalog link.
@@ -220,23 +247,24 @@ describe("skeleton: pages, sections, texts", () => {
 });
 
 describe("gates on the composed system (v3 allowances)", () => {
-  test("G0 imports, forbidden API, types, build, files and orphans pass", async () => {
+  test("G0 imports, forbidden API, types, build, files and orphans pass (draft and the published bundle)", async () => {
     const ctx = composeContext();
     const { files, spec } = await skeleton(ctx);
-    const report = await runG0(
-      {
-        spec,
-        prevSpec: null,
-        specVersion: 0,
-        files,
-        env: "draft",
-        systemKey: "v3_compose",
-        db: undefined as never,
-      },
-      { only: G0_CODE },
-    );
-    expect(failing(report.checks)).toEqual([]);
-    expect(report.checks.filter((c) => G0_CODE.includes(c.id)).every((c) => c.status === "pass")).toBe(true);
+    const g0 = (env: "draft" | "prod") =>
+      runG0(
+        { spec, prevSpec: null, specVersion: 0, files, env, systemKey: "v3_compose", db: undefined as never },
+        { only: G0_CODE },
+      );
+    // Every check passes outright in both builds: no soft note either (G0-BUILD-01 warns over 1 MB of interface; the
+    // patterns animate through LazyMotion + domAnimation, so the draft site with forms and the catalog stays under it).
+    for (const env of ["draft", "prod"] as const) {
+      const report = await g0(env);
+      expect(failing(report.checks), env).toEqual([]);
+      expect(
+        report.checks.filter((c) => G0_CODE.includes(c.id) && c.status !== "pass"),
+        env,
+      ).toEqual([]);
+    }
   }, 120_000);
 
   test("v2 systems keep the old rules; in v3 only the public page files get react, motion and the headless hooks", async () => {

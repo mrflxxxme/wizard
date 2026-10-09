@@ -1,7 +1,7 @@
 // First screen «split»: the offer on the left (title, lead, actions, one practical line), a photo on the right;
 // on phones the text comes first and the photo follows. Composition after HyperUI «Banners» (MIT, © Mark Mead),
 // rewritten on the design system tokens.
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
 type Link = { label: string; href: string };
@@ -43,41 +43,43 @@ function useEnter() {
 export default function HeroSplit({ title, lead, action, secondary, note, image }: HeroSplitProps) {
   const enter = useEnter();
   return (
-    <section className="bg-background font-sans text-foreground">
-      <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-14">
-        <div className="min-w-0 lg:col-span-6">
-          <motion.h1
-            {...enter(0)}
-            className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
-          >
-            {title}
-          </motion.h1>
-          {lead ? (
-            <motion.p {...enter(1)} className="mt-5 max-w-text text-lead text-muted-foreground">
-              {lead}
-            </motion.p>
-          ) : null}
-          <motion.div {...enter(2)} className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            <a href={action.href} className={primaryClass}>
-              {action.label}
-            </a>
-            {secondary ? (
-              <a href={secondary.href} className={secondaryClass}>
-                {secondary.label}
-              </a>
+    <LazyMotion features={domAnimation}>
+      <section className="bg-background font-sans text-foreground">
+        <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-14">
+          <div className="min-w-0 lg:col-span-6">
+            <m.h1
+              {...enter(0)}
+              className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
+            >
+              {title}
+            </m.h1>
+            {lead ? (
+              <m.p {...enter(1)} className="mt-5 max-w-text text-lead text-muted-foreground">
+                {lead}
+              </m.p>
             ) : null}
-          </motion.div>
-          {note ? <p className="mt-5 text-small text-muted-foreground">{note}</p> : null}
+            <m.div {...enter(2)} className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <a href={action.href} className={primaryClass}>
+                {action.label}
+              </a>
+              {secondary ? (
+                <a href={secondary.href} className={secondaryClass}>
+                  {secondary.label}
+                </a>
+              ) : null}
+            </m.div>
+            {note ? <p className="mt-5 text-small text-muted-foreground">{note}</p> : null}
+          </div>
+          <m.div {...enter(1)} className="min-w-0 lg:col-span-6">
+            <img
+              src={image.src}
+              alt={image.alt}
+              fetchPriority="high"
+              className="aspect-4/3 w-full rounded-lg bg-muted object-cover lg:aspect-4/5"
+            />
+          </m.div>
         </div>
-        <motion.div {...enter(1)} className="min-w-0 lg:col-span-6">
-          <img
-            src={image.src}
-            alt={image.alt}
-            fetchPriority="high"
-            className="aspect-4/3 w-full rounded-lg bg-muted object-cover lg:aspect-4/5"
-          />
-        </motion.div>
-      </div>
-    </section>
+      </section>
+    </LazyMotion>
   );
 }

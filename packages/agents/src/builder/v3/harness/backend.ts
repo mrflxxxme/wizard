@@ -1,8 +1,8 @@
 // Stage «backend» of the harness v3 (builder-v3.md C5) and the spec of the public pages: the brief's plan compiled with
 // {front: "backend"} (entities, roles and RLS, ПДн, functions, automations, goal scenarios and staff cabinets — no
 // public pages), the extension operations applied under the RLS, ПДн and migration gates (applyExtensions), the staff
-// cabinets in the client's design (designSystemTheme). The public pages the composer writes are registered in the spec
-// here (route, title, file, roles of the public front). No model.
+// cabinets in the client's design (designSystemTheme). No model. The public pages reach the spec from the composer's
+// site model in the files (compose/site.ts withSitePages over readSite, V3-12).
 import {
   type AppSpec,
   applyExtensions,
@@ -17,14 +17,18 @@ import {
   type ModuleRegistry,
   type PublicFront,
 } from "@wizard/modules";
-import { type DesignSystemV3, designSystemCss, designSystemTheme } from "@wizard/ui-kit/v3/design";
-import type { V3PagePlan } from "../contract.js";
+import { type DesignSystemV3, designSystemTheme } from "@wizard/ui-kit/v3/design";
+import { designCss as composerDesignCss } from "../compose/codegen.js";
 
 /** The client's design system file (packages/build DESIGN_CSS_PATH: switches Tailwind v4 on for the system). */
 export const DESIGN_CSS_FILE = "ui/design.css";
 
-/** CSS of the design system: variables of both schemes, @font-face of its two families, the Tailwind @theme. */
-export const designCss = (ds: DesignSystemV3): string => designSystemCss(ds, { fonts: true });
+/**
+ * CSS of the design system — the same file the page composer writes (variables of both schemes by the visitor's
+ * colour scheme, @font-face of its two families, the Tailwind @theme, the document colours): one producer, so the
+ * base layer and the skeleton never disagree.
+ */
+export const designCss = (ds: DesignSystemV3): string => composerDesignCss(ds);
 
 export interface BackendBuilt {
   spec: AppSpec;
@@ -76,76 +80,4 @@ export function compileBackend(o: {
     plan: r.plan,
     rejected: ext.rejected,
   };
-}
-
-/** Conventional file of a public page: «/» → ui/pages/Home.tsx, «/blog/:slug» → ui/pages/BlogSlug.tsx. */
-export function pageFile(route: string): string {
-  const parts = route
-    .split("/")
-    .filter(Boolean)
-    .map((p) => p.replace(/^:/, ""))
-    .flatMap((p) => p.split(/[-_]/))
-    .filter(Boolean)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1));
-  return `ui/pages/${parts.length ? parts.join("") : "Home"}.tsx`;
-}
-
-const baseName = (path: string) => (path.split("/").pop() ?? "").replace(/\.tsx$/, "").toLowerCase();
-
-/**
- * The file of a composer's page: its own `file` when the composer gives one, the conventional file when it exists,
- * else the one page file the step wrote whose name is the route's last segment (home or index for «/»).
- */
-export function pageFileOf(
-  page: V3PagePlan & { file?: string },
-  files: ReadonlyMap<string, string>,
-  written: readonly string[],
-): string | null {
-  if (page.file && files.has(page.file)) return page.file;
-  const conv = pageFile(page.route);
-  if (files.has(conv)) return conv;
-  const last = page.route.split("/").filter(Boolean).pop()?.replace(/^:/, "").toLowerCase() ?? "";
-  const names = last ? [last, last.replace(/[-_]/g, "")] : ["home", "index"];
-  const hit = written.filter(
-    (p) => p.startsWith("ui/pages/") && p.endsWith(".tsx") && names.includes(baseName(p)),
-  );
-  return hit.length === 1 ? (hit[0] as string) : null;
-}
-
-/** Roles of a public page: those of the module screen on its route, else of the public front, else the public roles. */
-function pageRoles(route: string, spec: AppSpec, front: PublicFront): string[] {
-  const screen = front.screens.find((s) => s.route === route);
-  if (screen?.roles.length) return [...screen.roles];
-  const all = [...new Set(front.screens.flatMap((s) => s.roles))];
-  if (all.length) return all;
-  const roles = spec.roles.filter((r) => r.access === "public" || r.isAdmin).map((r) => r.name);
-  return roles.length ? roles : spec.roles.slice(0, 1).map((r) => r.name);
-}
-
-/**
- * The spec with the composer's public pages (route, title, file, roles); a module's staff page on the same route
- * stays. Pages without a file are left out and named in `missing`.
- */
-export function withPublicPages(
-  spec: AppSpec,
-  pages: readonly (V3PagePlan & { file?: string; written?: readonly string[] })[],
-  files: ReadonlyMap<string, string>,
-  front: PublicFront,
-): { spec: AppSpec; missing: string[] } {
-  const own = spec.pages ?? [];
-  const taken = new Set(own.map((p) => p.route));
-  const out = [...own];
-  const missing: string[] = [];
-  const seen = new Set<string>();
-  for (const page of pages) {
-    if (taken.has(page.route) || seen.has(page.route)) continue;
-    const file = pageFileOf(page, files, page.written ?? []);
-    if (!file) {
-      missing.push(page.route);
-      continue;
-    }
-    seen.add(page.route);
-    out.push({ route: page.route, title: page.title, file, roles: pageRoles(page.route, spec, front) });
-  }
-  return { spec: { ...spec, pages: out }, missing };
 }

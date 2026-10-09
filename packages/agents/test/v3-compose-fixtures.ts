@@ -1,12 +1,10 @@
 // V3-12 fixtures: a dental clinic compiled in backend mode (mvp-01 plan: landing, catalog, leads, notify) with the
-// owner's photos, the operator data and a brief with scenarios; the client's design system; a test pattern of the
-// form type bound to useLeadForm (the library has no form patterns yet — V3-08 adds them) and the signature section
-// answers. Shared by the composer tests and the browser test of @wizard/build.
+// owner's photos, the operator data and a brief with scenarios; the client's design system; the answers of a signature
+// section. The pages are composed on the real pattern library (V3-08). Shared by the composer tests and the browser
+// test of @wizard/build.
 import { type SystemBrief, systemBriefSchema } from "@wizard/appspec";
 import { compilePlan } from "@wizard/modules";
 import { designSystemV3 } from "@wizard/ui-kit/v3/design";
-import { PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
-import { z } from "zod";
 import { mvp01Plan } from "../../modules/test/backend-fixtures.js";
 import type { V3BuildContext } from "../src/builder/v3/contract.js";
 import { DEFAULT_REGISTRY } from "../src/planner/index.js";
@@ -101,97 +99,6 @@ export function composeContext(o: { photos?: boolean; systemId?: string } = {}):
     budgetRub: 40,
   };
 }
-
-/** Test pattern «form-test»: the lead form over useLeadForm (C4), the theme tokens only. */
-export const FORM_TEST_SOURCE = `// Test pattern of the composer suite (V3-12): the lead form bound to useLeadForm.
-import { useLeadForm } from "@wizard/ui-kit/v3/headless";
-
-type Props = { title: string; lead?: string; entity: string };
-
-export default function FormTest({ title, lead, entity }: Props) {
-  const m = useLeadForm(entity);
-  const f = m.form;
-  return (
-    <section className="bg-muted font-sans text-foreground">
-      <div className="mx-auto grid w-full max-w-page gap-8 px-gutter py-section lg:grid-cols-2">
-        <div className="min-w-0">
-          <h2 className="font-display text-h2 font-bold text-balance wrap-break-word">{title}</h2>
-          {lead ? <p className="mt-4 max-w-text text-lead text-muted-foreground">{lead}</p> : null}
-        </div>
-        {!m.allowed ? (
-          <p className="text-body">Форма заявки сейчас недоступна</p>
-        ) : m.sent ? (
-          <p role="status" className="text-lead">Заявка отправлена</p>
-        ) : (
-          <form
-            key={m.round}
-            className="grid min-w-0 gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void f.submit();
-            }}
-          >
-            {f.fields.map((field) => (
-              <label key={field.name} className="grid gap-1 text-small font-bold">
-                {field.label}
-                <input
-                  name={field.name}
-                  value={String(f.values[field.name] ?? "")}
-                  onChange={(e) => f.setValue(field.name, e.target.value)}
-                  className="min-h-11 w-full min-w-0 rounded-control border border-border bg-background px-3 text-body font-normal text-foreground"
-                />
-              </label>
-            ))}
-            {f.consent.required ? (
-              <label className="flex min-h-11 items-center gap-3 text-small">
-                <input
-                  type="checkbox"
-                  checked={f.consent.checked}
-                  onChange={(e) => f.consent.set(e.target.checked)}
-                  className="size-11 shrink-0"
-                />
-                <span className="min-w-0">{f.consent.text}</span>
-              </label>
-            ) : null}
-            <button
-              type="submit"
-              disabled={f.pending}
-              className="min-h-11 rounded-control bg-primary px-6 text-body font-bold text-primary-foreground"
-            >
-              Отправить заявку
-            </button>
-          </form>
-        )}
-      </div>
-    </section>
-  );
-}
-`;
-
-const formSlots = z.object({
-  title: z.string().min(1).max(80),
-  lead: z.string().max(260).optional(),
-  entity: z.string(),
-});
-
-export const FORM_TEST: PatternMeta = {
-  id: "form-test",
-  sectionType: "form",
-  variant: "test",
-  layout: "split",
-  title: "Тестовая форма заявки: текст слева, поля справа",
-  archetypes: ["*"],
-  slots: formSlots,
-  needs: "lead",
-  source: FORM_TEST_SOURCE,
-  file: "ui/patterns/form-test.tsx",
-  license: "own",
-  origin: "own",
-  example: { title: "Оставьте заявку", entity: "lead" },
-};
-
-/** The library of the tests: the ui-kit patterns and the form test pattern. */
-export const TEST_LIBRARY: readonly PatternMeta[] = [...PATTERNS, FORM_TEST];
 
 /** A signature section that passes every check: the clinic's first visit in three real steps of the brief. */
 export const SIGNATURE_OK = {

@@ -35,8 +35,13 @@ export interface V3BuildContext {
 export interface V3PagePlan {
   route: string;
   title: string;
-  /** The page file (ui/pages/**.tsx); none — ui/pages/<Route>.tsx (the harness registers the page in the spec). */
+  /**
+   * The page file (ui/pages/**.tsx). The spec gets the pages from the composer's site model in the files
+   * (ui/site.json → withSitePages, V3-12), so `file` and `roles` here are for the build log and the checks.
+   */
   file?: string;
+  /** Roles of AppSpec.pages the page is registered with (V3-12: the roles of its module screen, else everyone). */
+  roles?: string[];
   /** Section instances: the library pattern (or a signature section written as code) and its content. */
   sections: { id: string; pattern: string | "signature"; props: unknown }[];
 }

@@ -78,6 +78,7 @@ const PATTERN_ERRORS: ReadonlySet<PatternLintCode> = new Set([
   "link-color",
   "click-target",
   "reduced-motion",
+  "motion-lazy",
   "forbidden-source",
 ]);
 
@@ -190,13 +191,22 @@ const GRADIENT_RE =
   /(?:^|\s|:)(?:bg-(?:linear|gradient|radial|conic)-|from-|via-)|(?:linear|radial|conic)-gradient\(/;
 const PURPLE_STOP_RE = /(?:^|\s|:)(?:from|via|to)-(?:purple|violet|indigo|fuchsia)(?:-\d{2,3})?\b/;
 
+/**
+ * The outline a section renders: its distinct heading levels, shallowest first. Source order is not render order — a
+ * pattern often builds its item cards (h3) in a variable or a helper above the JSX with its own h2 — so a section is read
+ * as «its heading, then the levels under it»: h1 → h3 is still a skip when a section has no h2, h2 → h4 inside one too.
+ */
+export function sectionOutline(levels: readonly number[]): number[] {
+  return [...new Set(levels)].sort((a, b) => a - b);
+}
+
 /** Heading levels of a TSX source in source order (h1…h6, motion.h1…). */
 export function headingLevels(source: string): number[] {
   const sf = ts.createSourceFile("s.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const out: number[] = [];
   const visit = (n: ts.Node): void => {
     if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
-      const m = /^(?:motion\.)?h([1-6])$/.exec(n.tagName.getText(sf));
+      const m = /^(?:motion\.|m\.)?h([1-6])$/.exec(n.tagName.getText(sf));
       if (m) out.push(Number(m[1]));
     }
     n.forEachChild(visit);
@@ -336,7 +346,9 @@ export function lintPage(input: LintPageInput): PageLintIssue[] {
       if (FORBIDDEN_FONTS.has(f)) out.push(issue("default-font", "error", f));
   }
   const purple = purpleAccent(input.design);
+  /** Heading outline of the page: per section its distinct levels, shallowest first (see sectionOutline). */
   const levels: number[] = [];
+  let h1 = 0;
   let prev: LintSection | undefined;
   for (const s of input.sections) {
     const signature = s.type === "signature";
@@ -373,10 +385,11 @@ export function lintPage(input: LintPageInput): PageLintIssue[] {
       !signature
     )
       out.push(issue("layout-repeat", "error", `${prev.pattern} → ${s.pattern}`, s.id));
-    levels.push(...headingLevels(s.source));
+    const own = headingLevels(s.source);
+    h1 += own.filter((l) => l === 1).length;
+    levels.push(...sectionOutline(own));
     prev = s;
   }
-  const h1 = levels.filter((l) => l === 1).length;
   if (h1 === 0) out.push(issue("no-h1", "error"));
   if (h1 > 1) out.push(issue("multiple-h1", "error", `${h1} h1`));
   for (let i = 1; i < levels.length; i++) {

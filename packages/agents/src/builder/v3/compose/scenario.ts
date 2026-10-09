@@ -145,7 +145,8 @@ interface Editable {
   fixed: Record<string, unknown>;
 }
 
-const FIXED_KEYS = ["entity", "hook", "functions", "booking"] as const;
+/** Binding slots of the patterns with needs (V3-08): the model writes the texts around them, not these. */
+const FIXED_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction"] as const;
 
 function editable(page: SitePage, library: readonly PatternMeta[]): Editable[] {
   return page.sections
@@ -397,7 +398,7 @@ const SIGNATURE_RULES = [
   "Запрещено: произвольные значения цвета и шрифта (text-[#…], font-[…], bg-[…]), палитра Tailwind по умолчанию (blue-500, gray-100…), #hex и rgb() в коде, style с цветом или шрифтом, градиентный текст, фиолетовые градиенты, пульсация, бегущая строка.",
   "Раскладка — от 390 до 1440 px без горизонтальной прокрутки: сетка grid/flex, min-w-0, перенос длинных слов (wrap-break-word); не три одинаковые карточки в ряд.",
   "Доступность: заголовки секции — h2 (и h3 внутри), h1 нет; у img осмысленный alt; у button — type и текст; у ссылок — href и класс цвета темы (text-foreground, text-primary…); цели нажатия ≥ 44 px (min-h-11).",
-  "Движение (motion/react) — только с useReducedMotion и только если профиль движения не still; контент виден без анимации.",
+  "Движение (motion/react) — только элементы m.* внутри <LazyMotion features={domAnimation}> (полный motion.* раздувает бандл), с useReducedMotion и только если профиль движения не still; контент виден без анимации.",
   "Все тексты — из props (факты брифа), в коде текстов и чисел нет. Секция получает props ровно в том виде, что ты вернёшь.",
 ];
 

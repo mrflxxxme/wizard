@@ -3,7 +3,7 @@
 // headless hooks) plus the home page; the order of sections follows the page kind (catalog D2: the site with requests
 // and the booking flow). The model is stored in the system as ui/site.json, so a scenario step continues the skeleton.
 import type { AppSpec, Page } from "@wizard/appspec";
-import type { PublicAction, PublicFront, PublicScreen } from "@wizard/modules";
+import { CATALOG_NAMES, type PublicAction, type PublicFront, type PublicScreen } from "@wizard/modules";
 import type { PatternNeeds, SectionType } from "@wizard/ui-kit/v3/patterns";
 import type { V3PagePlan } from "../contract.js";
 import type { SiteAction } from "./content.js";
@@ -128,6 +128,10 @@ export function componentOf(route: string): string {
 export interface Binding {
   needs: Exclude<PatternNeeds, null>;
   action: PublicAction;
+  /** Catalog: the sections entity the role may read (filters and the sections/tabs variants). */
+  categoryEntity?: string;
+  /** Booking: the package check before the write (a public function of the packages module). */
+  packageCheckFn?: string;
 }
 
 const NEEDS_OF: Readonly<Record<PublicAction["hook"], Exclude<PatternNeeds, null>>> = {
@@ -136,6 +140,9 @@ const NEEDS_OF: Readonly<Record<PublicAction["hook"], Exclude<PatternNeeds, null
   useCatalog: "catalog",
   useContent: "content",
 };
+
+/** Public function of the packages module the booking asks before writing (B2-18). */
+const PACKAGE_CHECK_FN = "packageCheck";
 
 /** Entities of the landing module that serve the owner's photos, not a public list. */
 const NOT_LISTED = new Set(["site_photo"]);
@@ -151,7 +158,13 @@ export function bindingOf(
     const a = front.actions.find(
       (x) => x.hook === hook && (!module || x.module === module) && !NOT_LISTED.has(x.entity),
     );
-    return a ? { needs: NEEDS_OF[a.hook], action: a } : null;
+    if (!a) return null;
+    const out: Binding = { needs: NEEDS_OF[a.hook], action: a };
+    if (a.hook === "useCatalog" && front.actions.some((x) => x.entity === CATALOG_NAMES.category))
+      out.categoryEntity = CATALOG_NAMES.category;
+    if (a.hook === "useBooking" && front.functions.some((f) => f.name === PACKAGE_CHECK_FN))
+      out.packageCheckFn = PACKAGE_CHECK_FN;
+    return out;
   };
   if (type === "form") {
     if (page.kind === "booking") return pick("useBooking");
@@ -215,24 +228,32 @@ export function pagePlans(site: SiteModel, routes?: readonly string[]): V3PagePl
     .map((p) => ({
       route: p.route,
       title: p.title,
+      file: p.file,
+      roles: [...p.roles],
       sections: p.sections.map((s) => ({ id: s.id, pattern: s.pattern, props: s.props })),
     }));
 }
 
 /**
- * The spec with the composed pages (AppSpec.pages: route, title, file, roles): an existing page of the same route is
- * replaced, cabinets of the modules stay. The harness (V3-11) applies it with the composer's files.
+ * The spec with the composed pages (AppSpec.pages: route, title, file, roles) — the one way public pages of a v3 system
+ * reach its spec: the harness (V3-11) applies it to the merged files before every commit, G0 and the preview
+ * (`withSitePages(spec, readSite(files))`). The pages of the modules (staff cabinets) stay as compiled: a site page on
+ * a route a module already serves is left out. Roles the spec does not know are dropped; a page left without one
+ * gets the public roles (else the first role), so the spec stays valid.
  */
 export function withSitePages(spec: AppSpec, site: SiteModel): AppSpec {
-  const routes = new Set(site.pages.map((p) => p.route));
+  const own = spec.pages ?? [];
+  const taken = new Set(own.map((p) => p.route));
   const known = new Set(spec.roles.map((r) => r.name));
-  const pages: Page[] = site.pages.map((p) => ({
-    route: p.route,
-    title: p.title,
-    file: p.file,
-    roles: p.roles.filter((r) => known.has(r)),
-  }));
-  return { ...spec, pages: [...(spec.pages ?? []).filter((p) => !routes.has(p.route)), ...pages] };
+  const publicRoles = spec.roles.filter((r) => r.access === "public").map((r) => r.name);
+  const fallback = publicRoles.length ? publicRoles : spec.roles.slice(0, 1).map((r) => r.name);
+  const pages: Page[] = site.pages
+    .filter((p) => !taken.has(p.route))
+    .map((p) => {
+      const roles = p.roles.filter((r) => known.has(r));
+      return { route: p.route, title: p.title, file: p.file, roles: roles.length ? roles : fallback };
+    });
+  return { ...spec, pages: [...own, ...pages] };
 }
 
 /** Reads the site model of the system files (null when the skeleton has not run). */

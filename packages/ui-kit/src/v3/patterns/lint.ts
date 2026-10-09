@@ -24,6 +24,7 @@ export type PatternLintCode =
   | "link-color"
   | "click-target"
   | "reduced-motion"
+  | "motion-lazy"
   | "forbidden-source";
 
 export interface PatternLintIssue {
@@ -110,6 +111,8 @@ const MESSAGES: Record<PatternLintCode, string> = {
     "Цвет ссылки не задан: платформа красит ссылки без класса цвета, задайте text-* темы, text-inherit или text-current",
   "click-target": "onClick на неинтерактивном элементе: используйте button или a",
   "reduced-motion": "Анимация Motion без учёта prefers-reduced-motion (useReducedMotion или MotionConfig)",
+  "motion-lazy":
+    "Motion — только m.* внутри <LazyMotion features={domAnimation}>: полный motion.* тянет в бандл сайта проекцию, раскладку и перетаскивание",
   "forbidden-source": "Упоминание запрещённого источника (Tailwind Plus, Aceternity, Magic UI Pro, GSAP)",
 };
 
@@ -187,6 +190,8 @@ export function lintPattern(source: string, file = "pattern.tsx"): PatternLintIs
 
   let defaultExport = false;
   let usesMotionProps = false;
+  let fullMotion: ts.Node | null = null;
+  let lazyElements = false;
   const motionImported = /from\s+["']motion\/react["']/.test(source);
   const reducedHandled = /\buseReducedMotion\b|\bMotionConfig\b/.test(source);
 
@@ -209,7 +214,8 @@ export function lintPattern(source: string, file = "pattern.tsx"): PatternLintIs
 
   const checkElement = (el: ts.JsxOpeningLikeElement) => {
     const name = tagName(el.tagName);
-    const base = name.replace(/^motion\./, "");
+    // motion.div and m.div (LazyMotion) are the same element for the rules.
+    const base = name.replace(/^(?:motion|m)\./, "");
     const a = attrs(el);
     const spread = hasSpread(el);
     const named = a.has("aria-label") || a.has("aria-labelledby") || hasChildren(el);
@@ -248,6 +254,8 @@ export function lintPattern(source: string, file = "pattern.tsx"): PatternLintIs
         if (p.name && STYLE_PROP_RE.test(p.name.getText())) add("inline-style", p, p.getText());
     }
     for (const k of a.keys()) if (MOTION_PROPS.has(k) && base !== name) usesMotionProps = true;
+    if (name.startsWith("motion.")) fullMotion ??= el;
+    if (name.startsWith("m.")) lazyElements = true;
   };
 
   const visit = (n: ts.Node): void => {
@@ -297,6 +305,9 @@ export function lintPattern(source: string, file = "pattern.tsx"): PatternLintIs
 
   if (!defaultExport) add("default-export", sf, file);
   if (motionImported && usesMotionProps && !reducedHandled) add("reduced-motion", sf, "motion/react");
+  // Bundle size of the site (V3-12): the full motion component brings layout projection and drag along.
+  if (fullMotion) add("motion-lazy", fullMotion, "motion.*");
+  else if (lazyElements && !/<LazyMotion\b/.test(source)) add("motion-lazy", sf, "m.* без LazyMotion");
   const forbidden = forbiddenSourceIn(source);
   if (forbidden) add("forbidden-source", sf, forbidden.id);
   return out;

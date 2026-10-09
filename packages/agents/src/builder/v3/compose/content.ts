@@ -202,7 +202,7 @@ function ctaProps(c: SectionContext): Props | null {
   // The page already holds the target (the form, or it is the page the action opens): no second call to it.
   if (a.route === c.page.route) return null;
   const f = c.facts;
-  const steps = items(f.texts.get("steps")?.items, ["title"]).map((s) => s.title as string);
+  const steps = planSteps(f, 90);
   // The plan's call to action was written for its request form: only with a form or a booking as the main action.
   const plan = a.kind === "form" || a.kind === "booking";
   const out: Props = {
@@ -214,7 +214,7 @@ function ctaProps(c: SectionContext): Props | null {
   };
   const text = forAction(fits(textOf(f, "cta", "text"), 220), a);
   if (text) out.text = text;
-  if (steps.length >= 2 && steps.length <= 4 && steps.every((s) => s.length <= 90)) out.steps = steps;
+  if (steps) out.steps = steps;
   if (f.phone && a.kind !== "phone") out.contact = { label: f.phone, href: telHref(f.phone) };
   return out;
 }
@@ -251,90 +251,163 @@ function footerProps(c: SectionContext): Props {
   return out;
 }
 
-/** A plan section of the owner as generic props: title, lead, text, items (the variant's slots keep their part). */
-function planSection(f: SiteFacts, types: readonly string[], itemKeys: readonly string[]): Props | null {
+/** A plan section of the owner: its heading, intro, text, note and list items (first of `types` that has content). */
+function planSection(
+  f: SiteFacts,
+  types: readonly string[],
+  itemKeys: readonly string[],
+): { title?: string; intro?: string; text?: string; note?: string; items: Record<string, string>[] } | null {
   for (const t of types) {
     const s = f.texts.get(t);
     if (!s) continue;
-    const out: Props = {};
-    const title = fits(typeof s.title === "string" ? s.title : undefined, LINE.cta);
-    if (title) out.title = title;
-    const lead =
-      typeof s.intro === "string" ? s.intro : typeof s.subtitle === "string" ? s.subtitle : undefined;
-    if (fits(lead, LINE.lead)) out.lead = lead;
-    if (typeof s.text === "string") out.text = s.text;
-    if (typeof s.note === "string" && fits(s.note, LINE.note)) out.note = s.note;
-    const list = items(s.items, itemKeys);
-    if (list.length) out.items = list;
-    if (Object.keys(out).length && (out.title || out.items)) return out;
+    const str = (v: unknown, max: number) => fits(typeof v === "string" ? v : undefined, max);
+    const out = {
+      title: str(s.title, LINE.cta),
+      intro: str(s.intro, LINE.lead) ?? str(s.subtitle, LINE.lead),
+      text: typeof s.text === "string" ? s.text : undefined,
+      note: str(s.note, LINE.note),
+      items: items(s.items, itemKeys),
+    };
+    if (out.title || out.items.length) return out;
   }
   return null;
 }
 
+/** Drops undefined values (props stay plain JSON). */
+const defined = (o: Props): Props => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+/**
+ * Content sections in the slot contract of the V3-08 patterns, only from the owner's plan texts and photos: a section
+ * whose required content the facts do not give (two FAQ answers, opening hours and a map for contacts, a price list)
+ * is left out rather than filled with invented data (D49).
+ */
 function contentProps(type: SectionType, c: SectionContext): Props | null {
   const f = c.facts;
+  const photo = (slot: string) => {
+    const p = f.photos.find((x) => x.slot === slot);
+    return p ? { src: p.src, alt: p.alt } : undefined;
+  };
   switch (type) {
-    case "services":
-      return planSection(f, ["services", "features"], ["title", "text"]);
+    case "services": {
+      const p = planSection(f, ["services", "features"], ["title", "text"]);
+      if (!p?.title || p.items.length < 2) return null;
+      return defined({ title: p.title, intro: p.intro, items: p.items, note: p.note });
+    }
     case "about": {
       const p = planSection(f, ["about", "text"], ["title"]);
-      const photo = f.photos.find((x) => x.slot === "about");
-      return p ? { ...p, ...(photo ? { image: { src: photo.src, alt: photo.alt } } : {}) } : null;
+      if (!p?.title || !p.text) return null;
+      return defined({ title: p.title, paragraphs: [p.text], image: photo("about") });
     }
     case "gallery": {
-      const photos = f.photos.filter((x) => /^gallery(-\d+)?$/.test(x.slot));
-      if (photos.length < 2) return null;
-      const p = planSection(f, ["gallery"], ["caption"]) ?? {};
-      return { ...p, images: photos.map((x) => ({ src: x.src, alt: x.alt })) };
+      const images = f.photos.filter((x) => /^gallery(-\d+)?$/.test(x.slot));
+      if (images.length < 2) return null;
+      const p = planSection(f, ["gallery"], ["caption"]);
+      return defined({
+        title: p?.title ?? "Фото",
+        lead: p?.intro,
+        images: images.map((x) => ({ src: x.src, alt: x.alt })),
+      });
     }
-    case "team":
-      return planSection(f, ["team"], ["name", "role", "text"]);
+    case "team": {
+      const p = planSection(f, ["team"], ["name", "role", "text"]);
+      const people = (p?.items ?? [])
+        .filter((x) => x.role)
+        .map((x) => defined({ name: x.name, role: x.role, bio: x.text }));
+      return p?.title && people.length ? defined({ title: p.title, intro: p.intro, people }) : null;
+    }
     case "testimonials": {
-      // Only real reviews of the owner: a text with its author.
+      // Only real reviews of the owner: a text with its author (and the source when the plan names it).
       const p = planSection(f, ["testimonials"], ["text", "author", "source"]);
-      const real = Array.isArray(p?.items)
-        ? (p.items as Record<string, string>[]).filter((x) => x.author)
-        : [];
-      return real.length ? { ...p, items: real } : null;
+      const reviews = (p?.items ?? [])
+        .filter((x) => x.text && x.author)
+        .map((x) =>
+          defined({ text: x.text, author: x.author, source: x.source ? { label: x.source } : undefined }),
+        );
+      return reviews.length ? defined({ title: p?.title ?? "Отзывы", reviews }) : null;
     }
-    case "pricing":
-      return planSection(f, ["pricing"], ["title"]);
-    case "faq":
-      return planSection(f, ["faq"], ["question", "answer"]);
-    case "contacts": {
-      const list = contactsList(f);
-      if (!list.length) return null;
-      return { title: fits(textOf(f, "contacts", "title"), LINE.cta) ?? "Контакты", contacts: list };
+    case "faq": {
+      const p = planSection(f, ["faq"], ["question", "answer"]);
+      const qa = (p?.items ?? [])
+        .filter((x) => x.question && x.answer)
+        .map((x) => ({ q: x.question, a: x.answer }));
+      return p?.title && qa.length >= 2 ? defined({ title: p.title, intro: p.intro, items: qa }) : null;
     }
     default:
+      // pricing needs a price list, contacts — opening hours and a map link: the plan of a module does not give them.
       return null;
   }
 }
 
-/** Props of a section bound to a headless hook (C4): the entity and what the pattern shows around it. */
+/** Labels of a button that say nothing about the action (catalog K09). */
+const VAGUE = new Set(["Отправить", "Подробнее", "Узнать больше", "Далее"]);
+
+/** Real steps of the owner's plan (2–4 lines): what happens after a request. */
+function planSteps(f: SiteFacts, max: number): string[] | undefined {
+  const steps = items(f.texts.get("steps")?.items, ["title"]).map((s) => s.title as string);
+  return steps.length >= 2 && steps.length <= 4 && steps.every((s) => s.length <= max) ? steps : undefined;
+}
+
+/**
+ * Props of a section bound to a headless hook (C4) in the slot contract of the V3-08 patterns with needs: the binding
+ * (entity, the booking configuration, the catalog sections entity, the booking page of the catalog items) and the
+ * section's own texts. The answer after a write and the empty list are functional wordings, never promises the owner
+ * did not give (D49); the heading, the intro and the button come from the plan when it has them.
+ */
 function boundProps(type: SectionType, c: SectionContext): Props | null {
   const b = c.binding;
   if (!b) return null;
   const f = c.facts;
-  const base: Props = { entity: b.action.entity, hook: b.action.hook };
-  if (b.action.functions?.length) base.functions = b.action.functions;
-  if (b.action.booking) base.booking = b.action.booking;
-  if (type === "form") {
-    const plan = b.needs === "booking" ? "booking" : "lead_form";
-    const title =
-      fits(textOf(f, plan, "title"), LINE.cta) ??
-      (b.needs === "booking" ? "Запись онлайн" : "Оставьте заявку");
-    const lead = fits(textOf(f, plan, "intro"), LINE.lead);
-    const submit = fits(textOf(f, plan, b.needs === "booking" ? "cta" : "submit_label"), LINE.label);
+  const entity = b.action.entity;
+  const contact = f.phone ? { contact: { label: f.phone, href: telHref(f.phone) } } : {};
+  if (type === "form" && b.needs === "booking") {
+    const cfg = b.action.booking;
+    if (!cfg) return null;
+    const text = fits(textOf(f, "booking", "intro"), LINE.lead);
+    const submit = fits(textOf(f, "booking", "cta"), LINE.label);
     return {
-      ...base,
-      title,
-      ...(lead ? { lead } : {}),
-      ...(submit && submit !== "Отправить" ? { submit } : {}),
+      entity,
+      booking: {
+        schedule: cfg.schedule,
+        serviceEntity: cfg.serviceEntity,
+        ...(cfg.durationField ? { durationField: cfg.durationField } : {}),
+        ...(cfg.specialistEntity ? { specialistEntity: cfg.specialistEntity } : {}),
+        ...(b.packageCheckFn ? { packageCheckFn: b.packageCheckFn } : {}),
+      },
+      title: fits(textOf(f, "booking", "title"), LINE.cta) ?? "Запись онлайн",
+      ...(text ? { text } : {}),
+      submit: submit && !VAGUE.has(submit) ? submit : "Записаться",
+      sent: { title: "Вы записаны" },
+      again: "Записаться ещё раз",
+      ...contact,
     };
   }
-  const title = c.page.kind === "home" ? "Каталог" : c.page.title;
-  return { ...base, title: fits(title, LINE.cta) ?? "Каталог" };
+  if (type === "form") {
+    const text = fits(textOf(f, "lead_form", "intro"), LINE.lead);
+    const submit = fits(textOf(f, "lead_form", "submit_label"), LINE.label);
+    const points = planSteps(f, 120);
+    return {
+      entity,
+      title: fits(textOf(f, "lead_form", "title"), LINE.cta) ?? "Оставьте заявку",
+      ...(text ? { text } : {}),
+      submit: submit && !VAGUE.has(submit) ? submit : "Отправить заявку",
+      sent: { title: "Заявка отправлена" },
+      again: "Отправить ещё одну заявку",
+      ...(points ? { points } : {}),
+      ...contact,
+    };
+  }
+  if (type === "catalog") {
+    const booking = c.pages.find((p) => p.kind === "booking");
+    return {
+      entity,
+      ...(b.categoryEntity ? { categoryEntity: b.categoryEntity } : {}),
+      // The page heading (h1) is the screen title; the showcase heading says what the list is, without repeating it.
+      title: c.page.title.trim().toLowerCase() === "услуги и цены" ? "Все услуги" : "Услуги и цены",
+      empty: "В каталоге пока нет позиций",
+      ...(booking ? { itemAction: { label: "Записаться", path: booking.route } } : {}),
+    };
+  }
+  return { entity, title: fits(c.page.title, LINE.cta) ?? "Материалы", empty: "Записей пока нет" };
 }
 
 /** Props of a section of a page kind, or null when there is nothing honest to show. */

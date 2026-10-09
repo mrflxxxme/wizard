@@ -3,9 +3,16 @@
 // invented facts (D49: superlatives, numbers not in the brief, placeholder copy), accessibility (alt, heading order,
 // one h1, links that lead somewhere). Each rule has a failing and a clean case.
 import { designSystemV3 } from "@wizard/ui-kit/v3/design";
-import { patternById } from "@wizard/ui-kit/v3/patterns";
+import { PATTERNS, patternById } from "@wizard/ui-kit/v3/patterns";
 import { describe, expect, test } from "vitest";
-import { copyIssues, type LintSection, lintPage, numbersOf } from "../src/builder/v3/compose/index.js";
+import {
+  copyIssues,
+  headingLevels,
+  type LintSection,
+  lintPage,
+  numbersOf,
+  sectionOutline,
+} from "../src/builder/v3/compose/index.js";
 import { SIGNATURE_OK } from "./v3-compose-fixtures.js";
 
 const hero = patternById("hero-typographic");
@@ -115,6 +122,13 @@ describe("section code (signature sections)", () => {
       "weak-alt",
     );
     expect(codes(sig(section('      <h4 className="text-h3">Подзаголовок</h4>')))).toContain("heading-order");
+    // Render order, not source order: item cards (h3) built above the section's own h2 are fine; a section without
+    // its own heading that starts at h3 right after the h1 is a skip.
+    const cardsFirst = `const card = (t: string) => <h3 className="text-h3">{t}</h3>;\n${section("      {card(title)}")}`;
+    expect(codes(sig(cardsFirst))).not.toContain("heading-order");
+    const noHeading =
+      'export default function Special({ title }: { title: string }) {\n  return (\n    <section className="bg-background px-gutter py-section font-sans text-foreground">\n      <h3 className="text-h3">{title}</h3>\n    </section>\n  );\n}\n';
+    expect(codes(sig(noHeading))).toContain("heading-order");
     expect(codes(sig(section('      <h1 className="text-h1">Второй заголовок</h1>')))).toContain(
       "multiple-h1",
     );
@@ -125,6 +139,39 @@ describe("section code (signature sections)", () => {
     expect(codes(sig(section("      <p>Более 1000 пациентов</p>")))).toEqual(
       expect.arrayContaining(["fabricated", "untraced-number"]),
     );
+  });
+});
+
+describe("bundle size: Motion through LazyMotion", () => {
+  const motionSection = (tag: string, wrap: boolean, imports: string) => {
+    const el = `      <${tag}.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-body">{title}</${tag}.p>`;
+    const body = section(
+      wrap ? `      <LazyMotion features={domAnimation}>\n${el}\n      </LazyMotion>` : el,
+    );
+    return `import { ${imports}, useReducedMotion } from "motion/react";\nconst r = useReducedMotion;\n${body}`;
+  };
+  test("full motion.* (projection, drag in the bundle) and m.* without LazyMotion are refused; m.* in LazyMotion passes", () => {
+    expect(codes(sig(motionSection("motion", false, "motion")))).toContain("motion-lazy");
+    expect(codes(sig(motionSection("m", false, "m")))).toContain("motion-lazy");
+    expect(codes(sig(motionSection("m", true, "LazyMotion, domAnimation, m")))).not.toContain("motion-lazy");
+  });
+});
+
+describe("the library (V3-08) under the page rules", () => {
+  test("every pattern fits the page outline: the first screen has one h1, every other section starts at h2 without gaps", () => {
+    for (const p of PATTERNS) {
+      const levels = headingLevels(p.source);
+      const outline = sectionOutline(levels);
+      if (p.sectionType === "hero")
+        expect(
+          levels.filter((l) => l === 1),
+          p.id,
+        ).toHaveLength(1);
+      else expect(outline.includes(1), p.id).toBe(false);
+      if (p.sectionType !== "hero" && outline.length) expect(outline[0], p.id).toBe(2);
+      for (let i = 1; i < outline.length; i++)
+        expect((outline[i] as number) - (outline[i - 1] as number), p.id).toBe(1);
+    }
   });
 });
 
