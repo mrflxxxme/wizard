@@ -193,7 +193,10 @@ export async function reviewRound(o: {
     stepName: `techreview_${o.round}`,
     messages: techreviewMessages(o.digest, o.round, o.rounds),
     tool: submitTechreview,
-    maxRepairs: 1,
+    // Shape probe 2026-10-09 (v3-004): gpt-oss-120b sometimes slips a field of the findings — a second repair is
+    // cheap (≈ 0.1 ₽); a model that writes the arguments as JSON text instead of the call is taken as the call.
+    maxRepairs: 2,
+    textArgs: true,
   });
   if (!r.ok) return { valid: false, findings: [], unfounded: 0, model, calls, creditsMilli };
   const all = r.value.findings.map((f, i): ReviewFinding => ({ ...f, id: `r${o.round}-${i + 1}` }));

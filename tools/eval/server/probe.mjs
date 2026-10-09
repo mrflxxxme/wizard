@@ -37,7 +37,7 @@ export const PROBE_HEADS = {
   signature_section: { model: "glm-5.3", tier: "T1", price: { input: 162, output: 510 } },
   // A call with an image goes to T0 (llm policy: attachments → T0): the vision head of the T0 chain.
   critic_visual: { model: "kimi-k2.6", tier: "T0", price: { input: 175.68, output: 725.9 } },
-  techreview: { model: "deepseek-v4-pro", tier: "T0", price: { input: 183, output: 732 } },
+  techreview: { model: "gpt-oss-120b", tier: "T0", price: { input: 15.86, output: 61 } },
   research: { model: "gpt-oss-120b", tier: "T0", price: { input: 15.86, output: 61 } },
 };
 /**

@@ -269,12 +269,10 @@ describe("V3-13 critic", () => {
       "1440l",
       "390d",
     ]);
+    // At most CRITIC_MAX_IMAGES per call (Cloud.ru: kimi-k2.6 ≤ 4 vision chunks, qwen3.6-35b ≤ 2 images).
     expect(calls[0]?.shots.map((s) => `${s.route}@${s.width}:${s.kind}`)).toEqual([
       "/@390:screen",
-      "/@768:screen",
-      "/@1440:screen",
       "/@1440:page",
-      "/services@390:screen",
     ]);
     expect(calls[0]?.fonts).toEqual([ctx.design.fonts.display.family, ctx.design.fonts.text.family]);
     // The files: the page with the new variant, the design CSS with the stepped colour, the site model.
@@ -307,7 +305,7 @@ describe("V3-13 critic", () => {
     expect(r.cycles.map((c) => `${c.tier}:${c.model}`)).toEqual(["T0:kimi-k2.6", "T0:kimi-k2.6"]);
     expect(fx.calls.map((c) => c.callType)).toEqual(["critic_visual", "critic_visual"]);
     const user = fx.calls[0]?.messages.find((m) => m.role === "user");
-    expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(5);
+    expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(2);
     expect(user?.content).toContain("варианты: services-price-list, services-tabs");
     expect(user?.content).toContain("Код ничего не нашёл");
     // Cycle 1: the swap and the order applied; the number not in the brief refused (D49), the free code is a note.
