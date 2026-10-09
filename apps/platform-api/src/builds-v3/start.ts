@@ -17,7 +17,12 @@ import { V3_BUILD_CAP_CREDITS } from "./host.js";
  */
 export async function startV3Build(
   d: Pick<Deps, "db" | "bus" | "engine" | "billing">,
-  p: { systemId: string; userId: string },
+  p: {
+    systemId: string;
+    userId: string;
+    /** V3-06: the brief version the owner approved; another latest version → 412 VERSION_CONFLICT. */
+    briefVersion?: number;
+  },
 ) {
   const run = await withTx(d.db, d.bus, async (t) => {
     const s = await lockSystem(t, p.systemId);
@@ -26,6 +31,14 @@ export async function startV3Build(
       throw new ApiError(
         "NO_PLAN",
         "У системы ещё нет брифа — ответьте на вопросы интервью, потом нажмите «Собрать»",
+      );
+    if (p.briefVersion !== undefined && p.briefVersion !== brief.version)
+      throw new ApiError(
+        "VERSION_CONFLICT",
+        "Бриф изменился — посмотрите новую версию и нажмите «Собрать» ещё раз",
+        {
+          version: brief.version,
+        },
       );
     const from = s.stage === "interview" ? assertTransition(s.stage, "card") : s.stage;
     await t.trx

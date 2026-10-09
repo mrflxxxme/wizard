@@ -16,6 +16,7 @@ import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { buildV3Routes } from "./builds-v3/routes.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
@@ -377,6 +378,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   );
   // V3-06: the session feed of a system (interview, builds, brief edits) from runs and brief versions.
   api.route("/", sessionRoutes(deps));
+  // V3-06: «Собрать» of a v3 system — the build by the approved brief version (startV3Build of V3-11).
+  api.route("/", buildV3Routes(deps));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
   api.route("/", webhookRoutes(deps));

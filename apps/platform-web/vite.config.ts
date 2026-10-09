@@ -61,7 +61,14 @@ export function platformViteConfig(o: PlatformViteOptions = {}): UserConfig {
       fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] },
     },
     preview: { port, host, strictPort: true, proxy },
-    build: { outDir: o.outDir ?? "dist", emptyOutDir: true, chunkSizeWarningLimit: 2000 },
+    build: {
+      outDir: o.outDir ?? "dist",
+      emptyOutDir: true,
+      chunkSizeWarningLimit: 2000,
+      // Every asset stays a file of the bundle: the platform CSP (src/csp.ts) allows no data: images or fonts, so a
+      // small asset inlined as a data: URI (the paper grain of ui-kit v2) would be blocked.
+      assetsInlineLimit: 0,
+    },
     logLevel: "warn",
   };
 }

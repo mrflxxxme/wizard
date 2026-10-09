@@ -36,6 +36,7 @@ import {
   PROMPTS,
   scriptedRoute,
 } from "../../../../packages/agents/test/interview-v3/helpers.js";
+import { ARCHETYPES } from "../../../../packages/ui-kit/src/v3/design/archetypes.js";
 
 type DraftRoute = NonNullable<Parameters<typeof extractBriefDraft>[0]["route"]>;
 
@@ -82,7 +83,13 @@ export class FakeV3 {
   readonly versions: BriefVersion[] = [];
   readonly answers: unknown[] = [];
   readonly uploads: { name: string; status: number }[] = [];
-  stage: "interview" | "card" = "interview";
+  stage: "interview" | "card" | "building" = "interview";
+  /** «Собрать» bodies (POST /brief/approve) and the build run they started. */
+  readonly approvals: unknown[] = [];
+  buildRun: string | null = null;
+  /** «Три направления» (V3-09): the proposal shown and the picks. */
+  readonly picks: unknown[] = [];
+  #proposal = fakeProposal();
   question: V3PublicQuestion | null = null;
   readonly messages: Msg[] = [];
   readonly #iv = createInterviewV3({
@@ -93,7 +100,7 @@ export class FakeV3 {
     research: null,
   });
   #session: InterviewV3Session = newInterviewV3Session();
-  #runs = new Map<string, { kind: string; out: "questions" | "answer" }>();
+  #runs = new Map<string, { kind: string; out: "questions" | "answer" | "build" }>();
 
   latest(): BriefVersion | null {
     return this.versions.at(-1) ?? null;
@@ -236,6 +243,43 @@ export class FakeV3 {
     };
   }
 
+  /** POST /brief/approve (approveSystemBrief): the brief version the owner saw → a build run, or 412. */
+  approve(body: { version?: number }): { status: number; body: unknown } {
+    this.approvals.push(body);
+    const latest = this.latest();
+    if (!latest || body.version !== latest.version)
+      return {
+        status: 412,
+        body: {
+          code: "VERSION_CONFLICT",
+          message_ru: "Бриф изменился",
+          details: { version: latest?.version },
+        },
+      };
+    const run = randomUUID();
+    this.#runs.set(run, { kind: "build", out: "build" });
+    this.buildRun = run;
+    this.stage = "building";
+    return { status: 202, body: { run: { id: run, kind: "build", status: "queued" }, capCredits: 100 } };
+  }
+
+  /** GET /directions and POST /directions/pick of V3-09: the pick goes into the brief (design.archetype, pinned). */
+  directions(): unknown {
+    return { proposal: this.#proposal };
+  }
+
+  pick(body: { proposalId: string; n?: number; skip?: boolean }): { status: number; body: unknown } {
+    this.picks.push(body);
+    const d = body.n ? this.#proposal.directions[body.n - 1] : this.#proposal.directions[0];
+    const latest = this.latest() as BriefVersion;
+    this.#write({
+      ...latest.brief,
+      design: { ...latest.brief.design, archetype: d?.archetype, pinned: !body.skip },
+    });
+    this.#proposal = { ...this.#proposal, picked: body.skip ? null : (body.n ?? null) };
+    return { status: 200, body: { archetype: d?.archetype, pinned: !body.skip } };
+  }
+
   view() {
     return {
       system: this.system(),
@@ -243,7 +287,7 @@ export class FakeV3 {
       card: null,
       pendingQuestions: this.stage === "interview" && this.question ? [platformQuestion(this.question)] : [],
       messages: this.messages,
-      activeRunId: null,
+      activeRunId: this.stage === "building" ? this.buildRun : null,
       publishBlockers: [],
     };
   }
@@ -253,11 +297,37 @@ export class FakeV3 {
     const run = this.#runs.get(runId);
     if (!run) return "";
     const ts = new Date().toISOString();
-    const frames = [
-      { type: "run_started", payload: { kind: run.kind } },
-      { type: "chat_output", payload: { kind: run.out } },
-      { type: "run_finished", payload: {} },
-    ].map((e, i) => ({ runId, seq: i + 1, ts, ...e }));
+    // A build of the harness v3 keeps running here: its first stage and a line with the money spent so far.
+    const list =
+      run.out === "build"
+        ? [
+            { type: "run_started", payload: { kind: "build" } },
+            {
+              type: "build_stage",
+              payload: {
+                stage: "skeleton",
+                status: "started",
+                index: 3,
+                total: 8,
+                label_ru: "Собираю каркас страниц",
+                remainingSec: 900,
+              },
+            },
+            {
+              type: "agent_message",
+              payload: {
+                agent: "builder",
+                messageId: "m1",
+                text: "Готово: дизайн-система. Сейчас потрачено 42 ₽ из 500 ₽.",
+              },
+            },
+          ]
+        : [
+            { type: "run_started", payload: { kind: run.kind } },
+            { type: "chat_output", payload: { kind: run.out } },
+            { type: "run_finished", payload: {} },
+          ];
+    const frames = list.map((e, i) => ({ runId, seq: i + 1, ts, ...e }));
     return frames.map((e) => `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
   }
 }
@@ -308,6 +378,15 @@ export async function serveV3(page: Page, fake: FakeV3): Promise<void> {
         nextBefore: null,
       });
     if (path === "/sessions") return json(route, 200, { sessions: [] });
+    if (path === "/brief/approve" && req.method() === "POST") {
+      const r = fake.approve(req.postDataJSON());
+      return json(route, r.status, r.body);
+    }
+    if (path === "/directions" && req.method() === "GET") return json(route, 200, fake.directions());
+    if (path === "/directions/pick" && req.method() === "POST") {
+      const r = fake.pick(req.postDataJSON());
+      return json(route, r.status, r.body);
+    }
     return json(route, 404, { code: "NOT_FOUND", message_ru: "Не найдено" });
   });
 }
@@ -323,5 +402,33 @@ function multipartFile(body: Buffer, contentType: string): { name: string; bytes
   return {
     name: /filename="([^"]*)"/.exec(head)?.[1] ?? "file",
     bytes: new Uint8Array(body.subarray(headEnd + 4, end)),
+  };
+}
+
+/** A proposal of three directions in the shape of V3-09 (real archetypes, a plain first screen as the preview). */
+function fakeProposal() {
+  const picks = ARCHETYPES.slice(0, 3);
+  return {
+    id: "a".repeat(64),
+    briefVersion: 1,
+    createdAt: new Date().toISOString(),
+    costRub: 0,
+    fallback: true,
+    references: [] as string[],
+    picked: null as number | null,
+    directions: picks.map((a, i) => ({
+      n: i + 1,
+      archetype: a.id,
+      name: a.name,
+      why: a.why,
+      texts: { title: "Запись к врачу онлайн", lead: "Выберите врача и время", action: "Записаться" },
+      textsSource: "brief" as const,
+      tuning: [] as string[],
+      header: "simple",
+      hero: "split",
+      fonts: { display: a.fontPairs[0]?.display ?? "Inter", text: a.fontPairs[0]?.text ?? "Inter" },
+      palette: { background: "#ffffff", foreground: "#1d1c1a", accent: "#0f766e" },
+      previewHtml: `<!doctype html><html lang="ru"><body style="margin:0;font:24px sans-serif;padding:48px"><h1>${a.name}</h1><p>Запись к врачу онлайн</p></body></html>`,
+    })),
   };
 }

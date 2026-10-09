@@ -249,6 +249,24 @@ paths:
         '412': {description: 'VERSION_CONFLICT — бриф менялся дважды за время разбора', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '413': {description: 'PAYLOAD_TOO_LARGE — файл больше 10 МБ (details.reason FILE_TOO_LARGE) или больше 60 МБ после распаковки docx (UNPACKED_TOO_LARGE)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '415': {description: 'UNSUPPORTED_MEDIA_TYPE — не docx, pdf, md или txt (старый .doc, rtf, odt, картинки, таблицы); подсказка в message_ru', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/brief/approve:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: approveSystemBrief
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-06 (D7, D77 (9), (11)): «Собрать» системы v3 — единственная точка согласования: сборка по версии брифа, которую видел владелец (startV3Build, V3-11; харнесс v3 при WIZARD_BUILD_PIPELINE=v3). Система из интервью проходит card по пути; потолок — V3_BUILD_CAP_CREDITS (100 кредитов = 500 ₽), capCredits в ответе; mode create, у собранной — change. Повтор с тем же Idempotency-Key — тот же ответ. Без модели и без списаний до старта'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [version], additionalProperties: false, properties: {version: {type: integer, minimum: 1, description: 'версия брифа, которую видел владелец'}}}}
+      responses:
+        '202': {description: 'Сборка поставлена в очередь', content: {application/json: {schema: {type: object, required: [run, capCredits], properties: {run: {$ref: '#/components/schemas/Run'}, capCredits: {type: integer}}}}}}
+        '402': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {description: 'NO_PLAN — у системы нет брифа; SYSTEM_LOCKED — сборка уже идёт', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '412': {description: 'VERSION_CONFLICT — бриф изменился после version (details.version — текущая)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /systems/{id}/sessions:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     get:
@@ -266,7 +284,7 @@ paths:
       operationId: startFixBuild
       x-milestone: M0
       x-roles: [editor]
-      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger. B2-21: у системы на конвейере модулей — повтор сборки последнего утверждённого плана сборщиком v2 с последнего чекпоинта этапа; готовые этапы не оплачиваются заново (agents/builder.yaml#v2.checkpoints)'
+      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger. B2-21: у системы на конвейере модулей — повтор сборки последнего утверждённого плана сборщиком v2 с последнего чекпоинта этапа; готовые этапы не оплачиваются заново (agents/builder.yaml#v2.checkpoints). V3-06: у системы v3 (без карточки и утверждённого плана, с брифом) — повтор сборки по брифу с потолком V3_BUILD_CAP_CREDITS (500 ₽), input {pipeline: v3, briefVersion}'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {}}}}}
       responses:

@@ -30,7 +30,7 @@ import type {
   SystemPlanRevision,
   SystemView,
 } from "../../api/types.js";
-import { usePlatform } from "../../app/context.js";
+import { canEdit, usePlatform } from "../../app/context.js";
 import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
 import { demo } from "../../i18n/ru/demo.js";
@@ -42,6 +42,7 @@ import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
 import { v3Ru } from "../v3/ru.js";
+import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
 import { Board, type BoardView, XrayData } from "./Board.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
@@ -142,7 +143,8 @@ function isGoalQuestion(q: unknown): q is GoalQuestion {
 }
 
 export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): ReactNode {
-  const { api } = usePlatform();
+  const { api, auth, roleIn } = usePlatform();
+  const [styleOpen, setStyleOpen] = useState(false);
   const [view, setView] = useState<SystemView>(initial);
   const [plan, setPlan] = useState<SystemPlanRevision | null>(null);
   const [sketch, setSketch] = useState<PlanSketch | null>(null);
@@ -289,6 +291,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
 
   const runKind = events.find((e) => e.type === "run_started")?.payload.kind;
   const progress = useMemo(() => buildProgress(runKind === "build" ? events : []), [runKind, events]);
+  // V3-06: «потрачено X ₽ из Y» of the harness v3 lines while a build runs.
+  const spend = runKind === "build" ? spentLine(events) : null;
   const runActive =
     runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
   const thinking = runActive && runKind !== "build";
@@ -806,6 +810,11 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           </span>
         )}
         {progress.reused > 0 && <p className={s.note}>{canvas.build.reused(progress.reused)}</p>}
+        {spend && (
+          <p className={s.note} data-testid="canvas-build-spend">
+            {spend}
+          </p>
+        )}
       </div>
     );
   } else if (ready && readyCard) {
@@ -846,6 +855,28 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   }
 
   // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
+  // V3-06: a v3 system with its brief ready (no plan) — the short brief, the style and «Собрать» (startV3Build).
+  const v3Ready = !!brief.current && stage === "card" && !plan && !runActive && !building && !selected;
+  if (v3Ready && brief.current)
+    dock = (
+      <>
+        {brief.summary}
+        <V3BuildCard
+          systemId={systemId}
+          version={brief.current.version}
+          brief={brief.current.brief}
+          editable={canEdit(roleIn(view.system.orgId), auth)}
+          onStyle={() => setStyleOpen(true)}
+          onStale={brief.reload}
+          onStarted={(run) => {
+            setManualXray(null);
+            setRunId(run.id);
+            announce(canvas.build.ring);
+            void reload().catch(() => {});
+          }}
+        />
+      </>
+    );
   // V3-04: the result of «Приложить ТЗ» (short brief and gaps) stays above the question until «Понятно».
   if (upload.card)
     dock = (
@@ -856,6 +887,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     );
   else if (
     brief.summary &&
+    !v3Ready &&
     !runActive &&
     !building &&
     !selected &&
@@ -1121,6 +1153,18 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           />
         </ChatSheet>
         {brief.panel}
+        {styleOpen && (
+          <StyleDrawer
+            systemId={systemId}
+            editable={canEdit(roleIn(view.system.orgId), auth)}
+            onClose={() => setStyleOpen(false)}
+            onPicked={() => {
+              setStyleOpen(false);
+              brief.reload();
+              announce(v3Ru.build.picked);
+            }}
+          />
+        )}
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">
           {live}
         </div>

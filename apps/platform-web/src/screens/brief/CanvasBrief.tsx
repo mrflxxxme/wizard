@@ -33,6 +33,8 @@ export interface CanvasBrief {
   show(diagram?: BriefDiagramKey): void;
   /** Re-reads the brief, and with the panel open its versions and sessions (after a server answer in the chat). */
   reload(): void;
+  /** The latest version of the brief (null without one). */
+  current: BriefVersion | null;
   /** Takes a version the server has just returned (the ТЗ upload, V3-04) without asking again. */
   adopt(v: { brief: BriefVersion | null; diagrams: BriefDiagrams | null }): void;
   /** The short brief for the chat before «Собрать» (null without a brief). */
@@ -196,19 +198,39 @@ export function useCanvasBrief(systemId: string, o: CanvasBriefOptions = {}): Ca
     },
     [apply, loadHistory],
   );
-  return { available: data !== null, open: open !== null, show, reload, adopt, summary, panel };
+  return {
+    available: data !== null,
+    open: open !== null,
+    current: data?.brief ?? null,
+    show,
+    reload,
+    adopt,
+    summary,
+    panel,
+  };
 }
 
 /**
  * The panel as a dialog over the canvas: a floating card on the right on a wide screen, the whole screen on a phone.
  * Esc and a tap on the shade close it; focus moves in, stays in (Tab cycles) and returns to where it was.
  */
-export function BriefDrawer({ onClose, children }: { onClose(): void; children: ReactNode }): ReactNode {
+export function BriefDrawer({
+  onClose,
+  label = briefRu.dialog,
+  testId = "canvas-brief",
+  children,
+}: {
+  onClose(): void;
+  /** Accessible name of the dialog (default «Бриф системы»). */
+  label?: string;
+  testId?: string;
+  children: ReactNode;
+}): ReactNode {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const el = ref.current;
-    el?.querySelector<HTMLElement>('[data-testid="p-brief-close"]')?.focus();
+    el?.querySelector<HTMLElement>('[data-testid="p-brief-close"], [data-drawer-close]')?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -246,9 +268,9 @@ export function BriefDrawer({ onClose, children }: { onClose(): void; children: 
     };
   }, [onClose]);
   return (
-    <div className={s.layer} data-testid="canvas-brief">
+    <div className={s.layer} data-testid={testId}>
       <div className={s.shade} aria-hidden="true" />
-      <div ref={ref} className={s.sheet} role="dialog" aria-modal="true" aria-label={briefRu.dialog}>
+      <div ref={ref} className={s.sheet} role="dialog" aria-modal="true" aria-label={label}>
         {children}
       </div>
     </div>

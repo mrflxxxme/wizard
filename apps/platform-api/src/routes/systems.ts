@@ -5,6 +5,8 @@ import { type AppSpec, applyOps } from "@wizard/appspec";
 import { type Context, Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
+import { getLatestBrief } from "../briefs/store.js";
+import { V3_BUILD_CAP_CREDITS } from "../builds-v3/host.js";
 import { json } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
@@ -593,7 +595,10 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         .limit(1)
         .executeTakeFirst();
       const planCap = approved ? planBuildCapCredits(approved.plan as { custom?: unknown[] }) : 0;
-      const cap = Math.max(3, Math.ceil(0.25 * cardCap), planCap);
+      // V3-06: a v3 system (no card, no approved plan, a brief — builds-v3/host.ts isV3Build) repeats its build by the
+      // brief with the cap of a v3 build (500 ₽, D77 (11)), not the 3 credits of a v1 fix.
+      const brief = Object.keys(card).length === 0 && !approved ? await getLatestBrief(t.trx, s.id) : null;
+      const cap = brief ? V3_BUILD_CAP_CREDITS : Math.max(3, Math.ceil(0.25 * cardCap), planCap);
       await t.trx
         .updateTable("platform.systems")
         .set({
@@ -610,7 +615,7 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
           systemId: s.id,
           kind: "build",
           mode: "fix",
-          input: { card },
+          input: brief ? { card, pipeline: "v3", briefVersion: brief.version } : { card },
           cardVersion: s.card_approved_version,
           capMilli: cap * 1000,
           startedBy: user.id,

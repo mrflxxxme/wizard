@@ -35,4 +35,4 @@ export {
   type SessionsFeedProps,
   sessionTitle,
 } from "./SessionsFeed.js";
-export { briefTheses, changedKeys, itemKey } from "./text.js";
+export { archetypeName, briefTheses, changedKeys, itemKey } from "./text.js";

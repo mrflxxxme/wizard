@@ -28,9 +28,11 @@ export function Tags({ b }: { b: CanvasBlockModel }): ReactNode {
   if (b.tags.length === 0) return null;
   return (
     <span className={s.tags}>
-      {b.tags.map((t) => (
+      {b.tags.map((t, i) => (
         <Tag
-          key={`${t.kind}:${t.label}`}
+          // Two goals of one block may share a label («Цель»): the position keeps the keys unique.
+          // biome-ignore lint/suspicious/noArrayIndexKey: tags of a block are rebuilt as a whole
+          key={`${i}:${t.kind}:${t.label}`}
           kind={t.kind}
           testId={t.kind === "goal" ? "canvas-tag-goal" : t.kind === "out" ? "canvas-tag-out" : "canvas-tag"}
           {...(t.note ? { note: t.note } : {})}

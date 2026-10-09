@@ -1,6 +1,7 @@
 // Plain Russian words of the brief components (D48): actors, levels, authors, dates, the theses of the short brief and
 // item keys that match briefDiff (the panel highlights what the latest version changed).
 import type { BriefActor, BriefChange, BriefField, SystemBrief } from "@wizard/appspec";
+import { ARCHETYPES } from "../../../v3/design/archetypes.js";
 
 export const ACTOR_RU: Readonly<Record<BriefActor, string>> = {
   visitor: "Посетитель",
@@ -31,6 +32,11 @@ export const SOURCE_RU = {
 export const AUTHOR_RU = { agent: "Ассистент", owner: "Вы" } as const;
 
 export const OP_RU = { added: "Добавлено", changed: "Изменено", removed: "Удалено" } as const;
+
+/** Russian name of a design archetype of the client's design system (V3-07 ARCHETYPES), the id when unknown. */
+export function archetypeName(id: string): string {
+  return ARCHETYPES.find((a) => a.id === id)?.name ?? id;
+}
 
 /** «3 изменения» with the right Russian plural. */
 export function plural(n: number, one: string, few: string, many: string): string {
@@ -113,6 +119,10 @@ export function briefTheses(b: SystemBrief): string[] {
     );
   }
   if (b.integrations.length) out.push(`Связи с сервисами: ${b.integrations.map((i) => i.name).join(", ")}`);
+  // V3-09: the direction of the three first screens (the owner's pick or the system's choice).
+  const style = ARCHETYPES.find((a) => a.id === b.design.archetype)?.name;
+  if (style)
+    out.push(`Стиль сайта: «${style}»${b.design.pinned ? " — выбран вами" : " — подобран системой"}`);
   if (b.outOfScope.length) {
     const o = b.outOfScope[0] as SystemBrief["outOfScope"][number];
     out.push(
