@@ -1,11 +1,15 @@
 // @wizard/ui-kit/v3/patterns — pattern library v3 (specs/agents/builder-v3.md C3). Node side: agents and tests read
 // it; systems get only the TSX of the chosen patterns (ui/patterns/<id>.tsx). This file only collects the section type
 // folders: a new type adds its import and its spread below.
+import { CONTACTS_PATTERNS } from "./contacts/index.js";
 import { CTA_PATTERNS } from "./cta/index.js";
 import { FOOTER_PATTERNS } from "./footer/index.js";
+import { GALLERY_PATTERNS } from "./gallery/index.js";
 import { HEADER_PATTERNS } from "./header/index.js";
 import { HERO_PATTERNS } from "./hero/index.js";
+import { PRICING_PATTERNS } from "./pricing/index.js";
 import { type PatternQuery, selectPattern } from "./select.js";
+import { TESTIMONIALS_PATTERNS } from "./testimonials/index.js";
 import type { PatternMeta } from "./types.js";
 
 /** Every pattern of the library. */
@@ -14,6 +18,10 @@ export const PATTERNS: readonly PatternMeta[] = [
   ...HERO_PATTERNS,
   ...CTA_PATTERNS,
   ...FOOTER_PATTERNS,
+  ...TESTIMONIALS_PATTERNS,
+  ...PRICING_PATTERNS,
+  ...GALLERY_PATTERNS,
+  ...CONTACTS_PATTERNS,
 ];
 
 /** Deterministic choice of a variant for a section: by seed, archetype, without repeating used ones (C3). */
