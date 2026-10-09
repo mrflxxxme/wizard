@@ -24,8 +24,9 @@ env:
   # genuinetools/amicontained (MIT), release binary pinned by sha256.
   AMICONTAINED_VERSION: "v0.4.9"
   AMICONTAINED_SHA256: "d8c49e2cf44ee9668219acd092ed961fc1aa420a6e036e0822d7a31033776c9f"
-  # Shell and tools for the in-container checks (busybox: GPL-2.0, CI-only, unmodified).
-  PROBE_IMAGE: "busybox:1.36.1"
+  # Shell and tools for the in-container checks (busybox: GPL-2.0, CI-only, unmodified), from the ECR Public mirror
+  # of the official images (anonymous Docker Hub pulls hit 429 on hosted runners).
+  PROBE_IMAGE: "public.ecr.aws/docker/library/busybox:1.36.1"
 
 jobs:
   sandbox:
@@ -84,7 +85,7 @@ jobs:
       - name: PostgreSQL for the G1 test
         run: |
           docker run -d --name wizard-pg -p 5433:5432 -e POSTGRES_USER=wizard -e POSTGRES_DB=wizard \
-            -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
+            -e POSTGRES_HOST_AUTH_METHOD=trust public.ecr.aws/docker/library/postgres:16
           for _ in $(seq 1 60); do docker exec wizard-pg pg_isready -U wizard -h 127.0.0.1 && exit 0; sleep 1; done
           docker logs wizard-pg; exit 1
 
