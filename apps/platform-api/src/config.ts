@@ -98,16 +98,16 @@ export interface Config {
    */
   payments: boolean;
   /**
-   * WIZARD_BUILD_PIPELINE (B2-20): "legacy" (default) — v1 interview, card and builder; "modules" — beta v2 goal
-   * interview, the system plan approved before the build (specs/modules/modules.yaml). A system keeps the pipeline it
-   * started with (the interview state says which); B2-21 switches the default. V3-03: "v3" — the grill interview of
-   * v3 and the system brief (agents/interview-v3.ts); the build of v3 comes with V3-11.
+   * WIZARD_BUILD_PIPELINE: "v3" (default, D78 — the only supported configuration until v3 is accepted) — the grill
+   * interview of v3, the system brief and the harness v3 (agents/interview-v3.ts, builds-v3); "modules" — beta v2 goal
+   * interview and the system plan (B2-20), "legacy" — v1 interview, card and builder: emergency way back only. A system
+   * keeps the pipeline it started with (the interview state says which).
    */
   buildPipeline: "legacy" | "modules" | "v3";
   /**
    * WIZARD_BUILD_PIPELINE_ORGS (V3-18): orgs whose new systems start on v3 whatever buildPipeline says — org ids and
-   * org kinds (eval — measurement orgs, staff — the founder's); the pilot's clients stay on buildPipeline until the
-   * v3 checkpoint is accepted. A system keeps the pipeline it started with.
+   * org kinds (eval — measurement orgs, staff — the founder's); with v3 the default (D78) it matters only after an
+   * emergency switch back. A system keeps the pipeline it started with.
    */
   buildPipelineOrgs: BuildPipelineOrgs;
   /**
@@ -296,10 +296,12 @@ const list = (v: string | undefined): string[] | undefined => {
   return xs.length > 0 ? xs : undefined;
 };
 
-/** WIZARD_BUILD_PIPELINE → the pipeline of new systems: modules (B2-20), v3 (V3-03), anything else legacy. */
+/**
+ * WIZARD_BUILD_PIPELINE → the pipeline of new systems: v3 by default (D78), modules (B2-20) and legacy only when named.
+ */
 export function buildPipelineOf(v: string | undefined): Config["buildPipeline"] {
   const p = (v ?? "").trim().toLowerCase();
-  return p === "modules" || p === "v3" ? p : "legacy";
+  return p === "modules" || p === "legacy" ? p : "v3";
 }
 
 /** Org kinds WIZARD_BUILD_PIPELINE_ORGS takes besides org ids (db.yaml#orgs.kind; clients follow the pipeline). */

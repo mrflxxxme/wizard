@@ -24,12 +24,12 @@ on:
         type: string
         default: ""
       build_pipeline:
-        description: "Конвейер новых систем: modules — бета v2 (план по целям, модули); legacy — прежний (старые системы остаются на своём)"
+        description: "Конвейер новых систем: v3 — единственная поддерживаемая конфигурация (D78); modules (бета v2) и legacy — только аварийный откат (старые системы остаются на своём)"
         type: choice
-        options: [modules, legacy]
-        default: modules
+        options: [v3, modules, legacy]
+        default: v3
       pipeline_orgs:
-        description: "V3-18: организации на v3 — uuid и виды eval, staff через запятую (eval — организации замеров); клиенты остаются на build_pipeline. Пусто — переменная WIZARD_BUILD_PIPELINE_ORGS"
+        description: "V3-18: организации на v3 при аварийном откате build_pipeline — uuid и виды eval, staff через запятую. При v3 не нужно. Пусто — переменная WIZARD_BUILD_PIPELINE_ORGS"
         type: string
         default: ""
       stock_mode:

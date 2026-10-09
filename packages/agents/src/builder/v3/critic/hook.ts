@@ -145,28 +145,23 @@ export function criticRoutes(site: SiteModel): string[] {
 }
 
 /**
- * Screenshots of a cycle: the home page at 390 (as is), 768 and 1440 (halved) and the whole page at 1440 (a quarter: the
- * rhythm «при прищуре»); the first screen at 390 of up to two more pages. Small images keep a cycle cheap.
+ * Images of one critic call at most: Cloud.ru takes at most 4 vision chunks for kimi-k2.6 and 2 images for qwen3.6-35b
+ * per prompt (shape probe 2026-10-09, v3-004: 6 images were a 400 on both) — two keep every model of the chain.
+ */
+export const CRITIC_MAX_IMAGES = 2;
+
+/**
+ * Screenshots of a cycle (≤ CRITIC_MAX_IMAGES): the home page's first screen at 390 (as is) and the whole home page at
+ * 1440 (a quarter: the rhythm «при прищуре»). The other pages and widths are covered by the in-page checks.
  */
 export function shotPlan(site: SiteModel): CriticShotRequest[] {
   const home = site.pages.find((p) => p.route === "/") ?? site.pages[0];
   if (!home) return [];
-  const others = site.pages
-    .filter((p) => p !== home && p.kind !== "account" && p.kind !== "credits")
-    .slice(0, 2);
-  return [
+  const plan: CriticShotRequest[] = [
     { route: home.route, width: 390, kind: "screen", maxWidth: 390, maxHeight: 844 },
-    { route: home.route, width: 768, kind: "screen", maxWidth: 384, maxHeight: 512 },
-    { route: home.route, width: 1440, kind: "screen", maxWidth: 720, maxHeight: 450 },
     { route: home.route, width: 1440, kind: "page", maxWidth: 360, maxHeight: 2400 },
-    ...others.map((p) => ({
-      route: p.route,
-      width: 390 as const,
-      kind: "screen" as const,
-      maxWidth: 390,
-      maxHeight: 844,
-    })),
   ];
+  return plan.slice(0, CRITIC_MAX_IMAGES);
 }
 
 /** Files that differ from the system's (deletions of files it has). */

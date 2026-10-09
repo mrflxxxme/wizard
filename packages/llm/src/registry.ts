@@ -387,7 +387,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   techreview: r(
     "reviewer",
     "T0",
-    { T0: ["deepseek-v4-pro", "gpt-oss-120b", "gigachat-3.5", "kimi-k2.6"] },
+    { T0: ["gpt-oss-120b", "gigachat-3.5", "deepseek-v4-pro", "kimi-k2.6"] },
     0.1,
     8000,
     300000,

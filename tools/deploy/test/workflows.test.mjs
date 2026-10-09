@@ -174,11 +174,12 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(load("pilot-reusable.yml").doc.jobs.pilot.env.WIZARD_LLM_DAILY_CAP_RUB).toBe(
       gh("inputs.llm_daily_cap_rub || vars.WIZARD_LLM_DAILY_CAP_RUB"),
     );
-    // B2-41: the pipeline of new systems and the stock photos are deploy parameters (modules and off by default).
+    // B2-41, D78: the pipeline of new systems (v3 by default; modules and legacy — the emergency way back) and the
+    // stock photos (off by default) are deploy parameters.
     expect(dep.on.workflow_dispatch.inputs.build_pipeline).toMatchObject({
       type: "choice",
-      options: ["modules", "legacy"],
-      default: "modules",
+      options: ["v3", "modules", "legacy"],
+      default: "v3",
     });
     // B2-43: library — the photo library the release's runner fills (the stocks are closed for the server in RF).
     expect(dep.on.workflow_dispatch.inputs.stock_mode).toMatchObject({
@@ -294,7 +295,8 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ ...dep, LLM_DAILY_CAP_RUB: "0" }).code).toBe(1);
     expect(authorize({ ...dep, BUILD_PIPELINE: "legacy", STOCK_MODE: "live" }).code).toBe(0);
     expect(authorize({ ...dep, STOCK_MODE: "library" }).code).toBe(0);
-    expect(authorize({ ...dep, BUILD_PIPELINE: "v3" }).out).toContain("build_pipeline");
+    expect(authorize({ ...dep, BUILD_PIPELINE: "v3" }).code).toBe(0);
+    expect(authorize({ ...dep, BUILD_PIPELINE: "v2" }).out).toContain("build_pipeline");
     expect(authorize({ ...dep, STOCK_MODE: "record" }).out).toContain("stock_mode");
     const { doc } = load("pilot-reusable.yml");
     const job = doc.jobs.pilot;
