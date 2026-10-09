@@ -63,6 +63,8 @@ export default defineConfig({
       env: {
         WIZARD_LLM_MODE: "fixture",
         WIZARD_FIXTURE: "demo/forum",
+        // D78: v3 is the default; these specs walk the v1 card flow on its recorded answers.
+        WIZARD_BUILD_PIPELINE: "legacy",
         WIZARD_AUTH_MODE: "dev",
         WIZARD_DEV_LOGIN: "1",
         WIZARD_UNSAFE_LOCAL_EXEC: "1",
@@ -77,7 +79,7 @@ export default defineConfig({
       timeout: 120_000,
       stdout: "pipe",
       gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
-      env: { WIZARD_LLM_MODE: "fixture" },
+      env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
     {
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "m2.ts"))}`,
@@ -87,7 +89,7 @@ export default defineConfig({
       timeout: 120_000,
       stdout: "pipe",
       gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
-      env: { WIZARD_LLM_MODE: "fixture" },
+      env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
     {
       command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "pilot.ts"))}`,
@@ -97,7 +99,7 @@ export default defineConfig({
       timeout: 120_000,
       stdout: "pipe",
       gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
-      env: { WIZARD_LLM_MODE: "fixture" },
+      env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
     },
   ],
 });
