@@ -905,7 +905,14 @@ export function diagnoseCluster({ kubectl, log = console.log }) {
   step("События cert-manager", ["-n", "cert-manager", "get", "events", "--sort-by=.lastTimestamp"]);
   // G1 in the sandbox (checkpoint v3-006, 2026-10-09: «песочница отрисовки не запустилась» mid-run): the pods, the
   // namespace quota and its events, and the worker's error lines (the G1 host; fixed-shape fields, no system data).
-  step("Песочница: поды и квота", ["-n", "wizard-sandbox", "get", "pods,resourcequota,limitrange", "-o", "wide"]);
+  step("Песочница: поды и квота", [
+    "-n",
+    "wizard-sandbox",
+    "get",
+    "pods,resourcequota,limitrange",
+    "-o",
+    "wide",
+  ]);
   step("Песочница: квота подробно", ["-n", "wizard-sandbox", "describe", "resourcequota"]);
   step("События песочницы", ["-n", "wizard-sandbox", "get", "events", "--sort-by=.lastTimestamp"]);
   // Model calls (D67 eval, 2026-10-05: «Модели сейчас недоступны» on every brief): which provider and model failed with
