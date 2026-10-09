@@ -116,7 +116,9 @@ const writesSince = (mark: number) => server().writes.slice(mark);
 
 describe.skipIf(!hasChromium)("module-bound patterns in chromium", () => {
   test("the library has data-bound form, catalog and blog sections", () => {
-    expect(new Set(DATA.map((p) => p.sectionType))).toEqual(new Set(["form", "catalog", "blog"]));
+    expect(new Set(DATA.map((p) => p.sectionType))).toEqual(
+      new Set(["form", "catalog", "blog", "article", "rubric"]),
+    );
   });
 
   // For a design review (about two minutes): WIZARD_PATTERN_SHOTS=1. The matrix already shoots each pattern once.

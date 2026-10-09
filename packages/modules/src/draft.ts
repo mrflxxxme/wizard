@@ -3064,4 +3064,213 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
       gates: ["G0", "G1"],
     },
   },
+  {
+    id: "content",
+    version: 1,
+    name: "Контент и блог",
+    summary:
+      "Статьи с рубриками и страницы сайта: владелец пишет и публикует в кабинете, посетитель читает; карта сайта для поисковиков",
+    status: "draft",
+    order: 25,
+    origin: {
+      kind: "new",
+    },
+    goals: ["attract"],
+    params: [
+      {
+        name: "blog_title",
+        label: "Как называть раздел статей",
+        type: "string",
+        maxLength: 40,
+        default: "Блог",
+      },
+      {
+        name: "with_rubrics",
+        label: "Рубрики статей",
+        type: "bool",
+        default: true,
+      },
+      {
+        name: "with_pages",
+        label: "Страницы сайта (о компании, доставка и другие)",
+        type: "bool",
+        default: true,
+      },
+    ],
+    links: [
+      {
+        module: "staff",
+        effect: "сотрудники пишут и правят статьи и страницы в кабинете",
+      },
+      {
+        module: "visitor_cabinet",
+        effect: "вошедший клиент читает опубликованные статьи и страницы",
+      },
+    ],
+    provides: {
+      entities: ["article", "rubric", "site_page"],
+      routes: ["/blog", "/blog/:slug", "/blog/rubric/:slug", "/pages", "/pages/:slug"],
+    },
+    hook: true,
+    metrics: [
+      {
+        id: "articles_published",
+        label: "Опубликовано статей",
+        goal: "attract",
+        unit: "count",
+        better: "up",
+        period: "month",
+        compute: {
+          kind: "count",
+          entity: "article",
+          dateField: "published_at",
+          where: {
+            status: "published",
+          },
+        },
+      },
+    ],
+    goalScenarios: [
+      {
+        id: "GS-content-1",
+        goal: "attract",
+        title: "Владелец публикует статью — она в списке и открывается по своему адресу",
+        steps: [
+          {
+            actor: "owner",
+            text: "В кабинете пишет статью и ставит статус «Опубликовано»",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает список статей и переходит к новой статье",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Статья видна в списке и открывается на своей странице с заголовком и текстом",
+          },
+        ],
+      },
+      {
+        id: "GS-content-2",
+        goal: "attract",
+        title: "Черновик не виден посетителю",
+        steps: [
+          {
+            actor: "owner",
+            text: "Сохраняет статью черновиком",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает список статей и адрес черновика",
+          },
+        ],
+        expect: [
+          {
+            kind: "denied",
+            text: "Черновика нет в списке, по его адресу — «Страница не найдена», данные его не отдают",
+          },
+        ],
+      },
+      {
+        id: "GS-content-3",
+        goal: "attract",
+        title: "Опубликованная статья попадает в карту сайта",
+        steps: [
+          {
+            actor: "owner",
+            text: "Публикует статью",
+          },
+          {
+            actor: "system",
+            text: "Поисковый робот читает /robots.txt, /sitemap.xml и страницу статьи",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Адрес статьи есть в карте сайта, а страница статьи отдаёт роботу её заголовок и описание",
+          },
+        ],
+      },
+      {
+        id: "GS-content-4",
+        goal: "attract",
+        title: "Посетитель переходит от статьи к её рубрике",
+        when: {
+          param: "with_rubrics",
+        },
+        steps: [
+          {
+            actor: "owner",
+            text: "Создаёт рубрику и публикует в ней статью",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает статью и нажимает на её рубрику",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "На странице рубрики — её название и статья",
+          },
+        ],
+      },
+      {
+        id: "GS-content-5",
+        goal: "attract",
+        title: "Владелец публикует страницу сайта — она открывается по своему адресу",
+        when: {
+          param: "with_pages",
+        },
+        steps: [
+          {
+            actor: "owner",
+            text: "Пишет страницу и ставит статус «Опубликовано»",
+          },
+          {
+            actor: "visitor",
+            text: "Открывает список страниц и переходит к новой странице",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Страница открывается со своим заголовком и текстом",
+          },
+        ],
+      },
+    ],
+    tests: {
+      matrix: [
+        {
+          name: "по умолчанию: блог с рубриками и страницы сайта",
+          params: {},
+        },
+        {
+          name: "новости без рубрик и страниц",
+          params: {
+            blog_title: "Новости",
+            with_rubrics: false,
+            with_pages: false,
+          },
+        },
+        {
+          name: "блог рядом с лендингом и заявками",
+          params: {},
+          withModules: ["landing", "leads", "notify"],
+        },
+        {
+          name: "сотрудники пишут статьи",
+          params: {
+            with_pages: false,
+          },
+          withModules: ["staff"],
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
+  },
 ];

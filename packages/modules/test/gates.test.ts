@@ -100,7 +100,7 @@ describe("compiled systems pass G0 and G1 without models", () => {
 
   // B2-19: the row «все модули» — every module with code in one plan compiles and passes G0 and G1 (its browser part
   // runs in goals.browser.test.ts).
-  test("все модули: the full plan of all 12 modules passes G0 and G1", async () => {
+  test("все модули: the full plan of all 13 modules passes G0 and G1", async () => {
     const r = compiled(allModulesPlan());
     expect(new Set(r.order)).toEqual(new Set(MODULES_WITH_CODE.map((d) => d.manifest.id)));
     const g1 = await gates(r);

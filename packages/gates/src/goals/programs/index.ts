@@ -5,6 +5,7 @@ import type { GoalProgram } from "../types.js";
 import { BOOKING_PROGRAMS } from "./booking.js";
 import { CATALOG_PROGRAMS } from "./catalog.js";
 import { CLIENT_CARD_PROGRAMS } from "./client_card.js";
+import { CONTENT_PROGRAMS } from "./content.js";
 import { DEALS_PROGRAMS } from "./deals.js";
 import { LANDING_PROGRAMS } from "./landing.js";
 import { LEADS_PROGRAMS } from "./leads.js";
@@ -28,4 +29,5 @@ export const GOAL_PROGRAMS: Readonly<Record<string, GoalProgram>> = {
   ...BOOKING_PROGRAMS,
   ...PACKAGES_PROGRAMS,
   ...RESOURCES_PROGRAMS,
+  ...CONTENT_PROGRAMS,
 };

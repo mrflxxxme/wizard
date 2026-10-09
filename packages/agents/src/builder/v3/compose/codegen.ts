@@ -80,11 +80,67 @@ export function pageSource(page: SitePage): string {
   ].join("\n");
 }
 
-/** ui/seo.json: the site name and per-route title, description and image. */
+/**
+ * A source of entry pages for the runtime (V3-24): the route with :slug, the entity the public role reads and the
+ * fields of its title, description and image — /sitemap.xml lists the published entries, the head of an entry page
+ * carries its own title, description and Open Graph for crawlers.
+ */
+export interface SeoContentSource {
+  route: string;
+  entity: string;
+  slug: string;
+  title: string;
+  /** Fields of the description, the first one filled wins. */
+  description: string[];
+  seoTitle?: string;
+  image?: string;
+}
+
+type EntryFields = Partial<
+  Record<"title" | "slug" | "excerpt" | "cover" | "seoTitle" | "seoDescription", string>
+>;
+
+/** The entry sources of the site: pages of one entry (article-*) and of a rubric (rubric-*). */
+export function seoContent(site: SiteModel): SeoContentSource[] {
+  const out: SeoContentSource[] = [];
+  for (const p of site.pages) {
+    if (!p.route.endsWith("/:slug")) continue;
+    const article = p.sections.find((s) => s.type === "article");
+    const rubric = p.sections.find((s) => s.type === "rubric");
+    if (article) {
+      const props = article.props as { entity?: string; fields?: EntryFields };
+      const f = props.fields ?? {};
+      out.push({
+        route: p.route,
+        entity: props.entity ?? "article",
+        slug: f.slug ?? "slug",
+        title: f.title ?? "title",
+        description: [f.seoDescription ?? "seo_description", f.excerpt ?? "excerpt"],
+        seoTitle: f.seoTitle ?? "seo_title",
+        image: f.cover ?? "cover",
+      });
+    } else if (rubric) {
+      const r = (
+        rubric.props as { rubrics?: { entity?: string; name?: string; slug?: string; description?: string } }
+      ).rubrics;
+      out.push({
+        route: p.route,
+        entity: r?.entity ?? "rubric",
+        slug: r?.slug ?? "slug",
+        title: r?.name ?? "name",
+        description: [r?.description ?? "description"],
+      });
+    }
+  }
+  return out;
+}
+
+/** ui/seo.json: the site name, per-route title, description and image, and the entry sources (V3-24). */
 export function seoJson(site: SiteModel, siteName: string): string {
   const pages: Record<string, SitePage["seo"]> = {};
   for (const p of site.pages) pages[p.route] = p.seo;
-  return `${JSON.stringify({ version: 1, site: siteName, pages }, null, 2)}\n`;
+  const content = seoContent(site);
+  return `${JSON.stringify({ version: 1, site: siteName, pages, ...(content.length ? { content } : {}) }, null, 2)}\n`;
 }
 
 /**

@@ -6,6 +6,8 @@
 
 /** The file of the per-route SEO in a system. */
 export const SEO_PATH = "ui/seo.json";
+/** V3-24: ui/seo.json as is in the bundle (client/assets/seo.json) — the runtime's sitemap and per-route head read it. */
+export const SEO_ASSET = "assets/seo.json";
 
 export interface SeoPage {
   title: string;

@@ -49,6 +49,8 @@ const BETA_V2_MODULES = [
   "visitor_cabinet",
   "packages",
   "resources",
+  // V3-24: «Контент и блог».
+  "content",
 ];
 
 /** Dental clinic: booking + client_card + notify + reports + landing (catalog is required by booking). */

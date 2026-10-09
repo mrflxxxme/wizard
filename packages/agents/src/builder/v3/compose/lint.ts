@@ -386,6 +386,10 @@ export function lintPage(input: LintPageInput): PageLintIssue[] {
     )
       out.push(issue("layout-repeat", "error", `${prev.pattern} → ${s.pattern}`, s.id));
     const own = headingLevels(s.source);
+    // A section whose content sets `level` (rubric-*, V3-24) draws its heading at that level with a dynamic tag and
+    // its items one level below.
+    const level = (s.props as { level?: unknown } | null)?.level;
+    if (level === 1 || level === 2) own.push(level, level + 1);
     h1 += own.filter((l) => l === 1).length;
     levels.push(...sectionOutline(own));
     prev = s;

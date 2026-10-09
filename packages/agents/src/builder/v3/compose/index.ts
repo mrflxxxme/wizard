@@ -32,7 +32,9 @@ export {
   designCss,
   pageSource,
   SEO_JSON,
+  type SeoContentSource,
   sectionComponent,
+  seoContent,
   seoJson,
   siteFiles,
 } from "./codegen.js";
@@ -71,7 +73,9 @@ export {
 export {
   ANCHOR_LABELS,
   bindingOf,
+  CONTENT_MODULE,
   componentOf,
+  isParamRoute,
   MAX_SIGNATURES,
   PAGE_SECTIONS,
   type PageKind,

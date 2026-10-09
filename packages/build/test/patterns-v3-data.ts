@@ -134,6 +134,33 @@ export const PREVIEW_ENTITIES: Entity[] = [
       { name: "slug", label: "Адрес", type: "string", maxLength: 80 },
     ],
   },
+  // V3-24 «Контент и блог»: rubrics and articles of the module (CONTENT_NAMES of @wizard/modules).
+  {
+    name: "rubric",
+    label: "Рубрика",
+    fields: [
+      { name: "name", label: "Название", type: "string", required: true, maxLength: 80 },
+      { name: "slug", label: "Адрес", type: "string", required: true, maxLength: 80 },
+      { name: "description", label: "Описание", type: "text", maxLength: 300 },
+      { name: "sort_order", label: "Порядок", type: "int" },
+    ],
+  },
+  {
+    name: "article",
+    label: "Статья",
+    fields: [
+      { name: "title", label: "Заголовок", type: "string", required: true, maxLength: 140 },
+      { name: "status", label: "Статус", type: "string", maxLength: 20 },
+      { name: "published_at", label: "Дата публикации", type: "date", required: true },
+      { name: "rubric", label: "Рубрика", type: "ref", ref: { entity: "rubric", onDelete: "set_null" } },
+      { name: "slug", label: "Адрес", type: "string", required: true, maxLength: 80 },
+      { name: "excerpt", label: "Анонс", type: "text", maxLength: 300 },
+      { name: "body", label: "Текст", type: "text", maxLength: 20000 },
+      { name: "cover", label: "Обложка", type: "image" },
+      { name: "seo_title", label: "Заголовок для поисковиков", type: "string", maxLength: 70 },
+      { name: "seo_description", label: "Описание для поисковиков", type: "string", maxLength: 160 },
+    ],
+  },
 ];
 
 /** What the public role may do: create leads and bookings, read the catalog, the masters and the posts. */
@@ -144,6 +171,8 @@ export const PREVIEW_PERMISSIONS: Permission[] = [
   { role: PREVIEW_ROLE, entity: "service_category", ops: ["read"] },
   { role: PREVIEW_ROLE, entity: "specialist", ops: ["read"], rowFilter: { active: true } },
   { role: PREVIEW_ROLE, entity: "post", ops: ["read"] },
+  { role: PREVIEW_ROLE, entity: "rubric", ops: ["read"] },
+  { role: PREVIEW_ROLE, entity: "article", ops: ["read"], rowFilter: { status: "published" } },
 ];
 
 /** The forum fixture plus the preview entities, their public permissions and a neutral consent text. */
@@ -189,6 +218,30 @@ const post = (i: number, title: string, date: string, excerpt: string, cover = t
   excerpt,
   cover: cover ? `f_post_${i}` : null,
   slug: `zapis-${i}`,
+});
+
+/** A published article of «Контент и блог» (V3-24): its rubric and its body in the markdown subset. */
+const article = (
+  i: number,
+  title: string,
+  slug: string,
+  date: string,
+  rubric: string,
+  excerpt: string,
+  body: string,
+  cover = true,
+): Row => ({
+  id: `a${String(i).padStart(2, "0")}`,
+  title,
+  status: "published",
+  published_at: date,
+  rubric,
+  slug,
+  excerpt,
+  body,
+  cover: cover ? `f_article_${i}` : null,
+  seo_title: null,
+  seo_description: null,
 });
 
 /** Example rows of a pottery studio (the business of the other pattern examples). */
@@ -386,6 +439,67 @@ export const PREVIEW_ROWS: Readonly<Record<string, readonly Row[]>> = {
       "Мастерская переехала на Гончарную улицу",
       "2026-05-20",
       "Новый зал на втором этаже: шесть кругов, печь и большой стол для лепки.",
+    ),
+  ],
+  // V3-24: rubrics and published articles of «Контент и блог» (the article patterns open «kak-podgotovitsya»).
+  rubric: [
+    {
+      id: "r_start",
+      name: "Новичкам",
+      slug: "novichkam",
+      description: "С чего начать на гончарном круге.",
+      sort_order: 1,
+    },
+    {
+      id: "r_glaze",
+      name: "Глазури",
+      slug: "glazuri",
+      description: "Цвета, слои и обжиг.",
+      sort_order: 2,
+    },
+  ],
+  article: [
+    article(
+      1,
+      "Как подготовиться к первому занятию",
+      "kak-podgotovitsya",
+      "2026-09-30",
+      "r_start",
+      "Что надеть, нужно ли что-то приносить и почему ногти лучше подстричь заранее.",
+      [
+        "Первое занятие длится **два часа**: мастер покажет центровку и поможет вытянуть первый цилиндр.",
+        "",
+        "## Что взять с собой",
+        "",
+        "- одежду, которую не жалко испачкать",
+        "- резинку для волос",
+        "- хорошее настроение",
+        "",
+        "> Глина любит спокойные руки: спешить не нужно.",
+        "",
+        "### Если опаздываете",
+        "",
+        "Напишите нам — подождём. Подробности на странице [занятий](/services) и в [карте](https://yandex.ru/maps).",
+      ].join("\n"),
+    ),
+    article(
+      2,
+      "Матовая или глянцевая глазурь",
+      "glazur",
+      "2026-09-12",
+      "r_glaze",
+      "Показываем тестовые плитки и рассказываем, как глазурь меняется в печи.",
+      "Матовая глазурь мягче на ощупь, глянцевая проще в уходе.",
+      false,
+    ),
+    article(
+      3,
+      "Почему изделие трескается при сушке",
+      "treshchiny",
+      "2026-08-27",
+      "r_start",
+      "Сквозняк, толстое дно и спешка: как сохранить работу до обжига.",
+      "Сушите изделие медленно, под плёнкой, вдали от батареи.",
     ),
   ],
 };

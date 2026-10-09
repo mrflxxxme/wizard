@@ -162,13 +162,15 @@ describe("the library (V3-08) under the page rules", () => {
     for (const p of PATTERNS) {
       const levels = headingLevels(p.source);
       const outline = sectionOutline(levels);
-      if (p.sectionType === "hero")
+      // V3-24: an entry page (article-*) has no first screen — its title is the page's h1.
+      const pageHeading = p.sectionType === "hero" || p.sectionType === "article";
+      if (pageHeading)
         expect(
           levels.filter((l) => l === 1),
           p.id,
         ).toHaveLength(1);
       else expect(outline.includes(1), p.id).toBe(false);
-      if (p.sectionType !== "hero" && outline.length) expect(outline[0], p.id).toBe(2);
+      if (!pageHeading && outline.length) expect(outline[0], p.id).toBe(2);
       for (let i = 1; i < outline.length; i++)
         expect((outline[i] as number) - (outline[i - 1] as number), p.id).toBe(1);
     }

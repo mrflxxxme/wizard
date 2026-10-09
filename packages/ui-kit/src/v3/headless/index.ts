@@ -20,6 +20,28 @@ export {
   useCatalog,
   useContent,
 } from "./catalog.js";
+/**
+ * V3-24 «Контент и блог»: useEntry(entity, {path}) — an entry by the slug of the address; useRubric(o) — the posts of a
+ * rubric with the rubric list; richText(body) → blocks of a markdown subset (rendered by code, never as HTML);
+ * safeHref, slugFromPath, useEntryTitle.
+ */
+export {
+  type EntryModel,
+  RICH_TEXT_MAX,
+  type RichBlock,
+  type RichInline,
+  type RubricModel,
+  richInline,
+  richPlain,
+  richText,
+  safeHref,
+  slugFromPath,
+  type UseEntryOptions,
+  type UseRubricOptions,
+  useEntry,
+  useEntryTitle,
+  useRubric,
+} from "./content.js";
 /** useFormModel(o) — fields, validation, server errors, consent (G2-PII-04) and create/update; RecordForm renders it. */
 export {
   type ConsentModel,
