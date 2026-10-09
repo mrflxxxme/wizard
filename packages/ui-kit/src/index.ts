@@ -188,7 +188,9 @@ export {
   fontEntry,
   fontFaceCss,
   fontFiles,
+  fontHasRuble,
   fontStack,
+  RUBLE_FALLBACK_FONT,
 } from "./tokens/fonts.js";
 export {
   accentInk,

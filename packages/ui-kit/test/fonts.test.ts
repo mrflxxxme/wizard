@@ -6,7 +6,15 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { THEME_FONTS } from "@wizard/appspec";
 import { describe, expect, test } from "vitest";
-import { FONT_CATALOG, type FontEntry, fontFaceCss, fontFiles } from "../src/index.js";
+import {
+  FONT_CATALOG,
+  type FontEntry,
+  fontFaceCss,
+  fontFiles,
+  fontHasRuble,
+  fontStack,
+  RUBLE_FALLBACK_FONT,
+} from "../src/index.js";
 import { PLATFORM_FONTS } from "../src/v2/font-catalog.js";
 import { UI_KIT_ROOT } from "./helpers/demo.js";
 import { cmapCodepoints, woff2Tables } from "./helpers/woff2.js";
@@ -156,4 +164,19 @@ describe("ruble sign ₽ (U+20BD)", () => {
           `${subset} ${w}`,
         ).toBe(false);
   });
+  test.each(NO_RUBLE)(
+    "%s: ₽ falls back to a web font of the catalog, only its latin-ext faces are declared",
+    (family) => {
+      const fallback = FONT_CATALOG.find((x) => x.family === RUBLE_FALLBACK_FONT) as FontEntry;
+      expect(fontHasRuble(fallback)).toBe(true);
+      expect(fontStack(family)).toMatch(new RegExp(`^"${family}", "${RUBLE_FALLBACK_FONT}", `));
+      const css = fontFaceCss([family, "Onest"]);
+      const faces = css.split("\n").filter((l) => l.includes(`font-family:"${RUBLE_FALLBACK_FONT}"`));
+      expect(faces.length).toBe(fallback.files.filter((x) => x.subset === "latin-ext").length);
+      for (const l of faces) expect(l).toContain("-latin-ext-");
+      // A pair whose families both draw ₽ declares no fallback; a family with ₽ keeps the plain stack.
+      expect(fontFaceCss(["Onest", "PT Serif"])).not.toContain(`"${RUBLE_FALLBACK_FONT}"`);
+      expect(fontStack("Onest")).not.toContain(RUBLE_FALLBACK_FONT);
+    },
+  );
 });
