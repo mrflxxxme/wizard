@@ -12,6 +12,7 @@ export {
   accessibilityChecks,
   blockerLine,
   blockingChecks,
+  contractTests,
   deterministicChecks,
   fromGate,
   G0_LOCAL_CHECKS,

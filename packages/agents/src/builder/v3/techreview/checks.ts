@@ -13,6 +13,7 @@ import {
   runG0,
   runG2,
 } from "@wizard/gates";
+import { integrationDir, mockTransport, runContractTests } from "../../../integrations/index.js";
 import { OWNER_INPUT_CHECKS } from "../../v2/blockers.js";
 import { chainChecks } from "./chains.js";
 import {
@@ -20,6 +21,7 @@ import {
   TECH_AREA_RU,
   type TechArea,
   type TechCheck,
+  type TechContract,
   type TechGateLevel,
   type TechSystem,
 } from "./types.js";
@@ -162,50 +164,83 @@ export function rlsCoverage(spec: AppSpec): TechCheck {
 /** Connectors of the platform's own channels: they go through the runtime outbox, G1 checks them in scenarios. */
 const PLATFORM_CHANNELS = new Set(["email", "telegram"]);
 
-/** TR-INT-<name>: contract tests of each integration (the V3-20 seam; without it — platform channels only). */
+/**
+ * The default contract runner (V3-20): the contract tests on the contract's deterministic mock — the typed client of
+ * the system calls exactly what the mock serves; the live side is the V3-20 key check (the contract's state).
+ */
+export const contractTests: IntegrationContractRunner = async (c) => {
+  const r = await runContractTests(c.contract, mockTransport(c.contract));
+  return {
+    ok: r.ok,
+    mock: true,
+    problems: r.results.filter((x) => !x.ok).flatMap((x) => x.problems.map((p) => `${x.operation}: ${p}`)),
+  };
+};
+
+/**
+ * TR-INT-<name>: the connectors of the spec (the platform's channels and catalog connectors — their own tests and
+ * G2-SECRET-* cover them) and the V3-20 contracts of the brief's outgoing integrations: the client in the system, the
+ * contract tests on the mock (a failure is a blocker), the key — live passes, no key or a failed check is a note
+ * (the system works on the mock until the key passes).
+ */
 export async function integrationChecks(
   system: TechSystem,
-  runner?: IntegrationContractRunner,
+  o: { contracts?: readonly TechContract[]; runner?: IntegrationContractRunner } = {},
 ): Promise<TechCheck[]> {
   const out: TechCheck[] = [];
-  for (const [i, integ] of (system.spec.integrations ?? []).entries()) {
-    const base = { id: `TR-INT-${integ.name}`, area: "integrations" as const, ref: `/integrations/${i}` };
-    if (PLATFORM_CHANNELS.has(integ.connector)) {
+  for (const [i, integ] of (system.spec.integrations ?? []).entries())
+    out.push({
+      id: `TR-INT-${integ.name}`,
+      area: "integrations",
+      ref: `/integrations/${i}`,
+      status: "pass",
+      severity: "warning",
+      message_ru: PLATFORM_CHANNELS.has(integ.connector)
+        ? `«${integ.name}» — канал платформы (${integ.connector}); письма и сообщения проверяют сценарии G1`
+        : `«${integ.name}» — коннектор каталога платформы (${integ.connector}); его проверяют тесты коннекторов, ключ — G2-SECRET-02`,
+    });
+  const runner = o.runner ?? contractTests;
+  for (const c of o.contracts ?? []) {
+    const name = c.contract.name;
+    const dir = `${integrationDir(c.integrationId)}/`;
+    const base = { id: `TR-INT-${c.integrationId}`, area: "integrations" as const, ref: dir };
+    if (!(system.spec.functions ?? []).some((f) => f.file.startsWith(dir))) {
+      out.push({
+        ...base,
+        status: "fail",
+        severity: "blocker",
+        message_ru: `Клиент интеграции «${name}» не попал в систему — нет функций ${dir}**`,
+      });
+      continue;
+    }
+    const r = await runner(c, system);
+    if (!r.ok) {
+      out.push({
+        ...base,
+        status: "fail",
+        severity: "blocker",
+        message_ru: `«${name}»: контрактные тесты${r.mock ? " на моке" : ""} не прошли — ${r.problems.slice(0, 3).join("; ") || "ответ не по контракту"}`,
+      });
+      continue;
+    }
+    const tests = `контрактные тесты${r.mock ? " на моке" : ""} прошли`;
+    if (c.status === "live")
       out.push({
         ...base,
         status: "pass",
         severity: "warning",
-        message_ru: `«${integ.name}» — канал платформы (${integ.connector}); письма и сообщения проверяют сценарии G1`,
+        message_ru: `«${name}»: ${tests}, ключ проверен${c.keyCheck?.message_ru ? ` (${c.keyCheck.message_ru})` : ""}`,
       });
-      continue;
-    }
-    const r = runner
-      ? await runner(
-          {
-            name: integ.name,
-            connector: integ.connector,
-            config: (integ.config ?? {}) as Record<string, unknown>,
-          },
-          system,
-        )
-      : null;
-    if (!r) {
+    else
       out.push({
         ...base,
-        status: "skip",
+        status: "warn",
         severity: "warning",
-        message_ru: `Контрактных тестов для «${integ.name}» (${integ.connector}) пока нет — они появятся с харнессом интеграций`,
+        message_ru:
+          c.status === "failed"
+            ? `«${name}»: ${tests}, но ключ не прошёл проверку${c.keyCheck?.message_ru ? ` (${c.keyCheck.message_ru})` : ""} — пока интеграция работает на моке`
+            : `«${name}»: ${tests}; ключа ещё нет — интеграция работает на моке и включится после проверки ключа`,
       });
-      continue;
-    }
-    out.push({
-      ...base,
-      status: r.ok ? "pass" : "fail",
-      severity: "blocker",
-      message_ru: r.ok
-        ? `«${integ.name}»: контрактные тесты прошли${r.mock ? " на моке (ключа ещё нет)" : ""}`
-        : `«${integ.name}»: контрактные тесты не прошли — ${r.problems.slice(0, 3).join("; ")}`,
-    });
   }
   return out;
 }
@@ -418,6 +453,7 @@ export async function deterministicChecks(
     reference: AppSpec | null;
     evidence: readonly GateReport[];
     gates: (level: TechGateLevel, system: TechSystem) => Promise<GateReport>;
+    contracts?: readonly TechContract[];
     integrations?: IntegrationContractRunner;
   },
 ): Promise<TechCheck[]> {
@@ -429,7 +465,10 @@ export async function deterministicChecks(
     ...(shadow && shadow.status !== "skip" ? [] : [migrationDryRun(system.spec)]),
     rlsCoverage(system.spec),
     ...g2,
-    ...(await integrationChecks(system, o.integrations)),
+    ...(await integrationChecks(system, {
+      ...(o.contracts ? { contracts: o.contracts } : {}),
+      ...(o.integrations ? { runner: o.integrations } : {}),
+    })),
     ...chainChecks({
       plan: o.plan,
       spec: system.spec,

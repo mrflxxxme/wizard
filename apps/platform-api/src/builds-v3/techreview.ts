@@ -5,7 +5,9 @@
 // stage; the dynamic G1/G2 (scenarios and the permission matrix through the runtime) stay the final gates stage, the
 // latest G1 of this run is evidence for the module chains. The reviewer avoids the model families this run's builder
 // answered on (platform.llm_calls). No gate events or reports: the techreview is a stage of its own; the publication
-// gates run after it on the committed revision.
+// gates run after it on the committed revision. Its extension fixes go back to the harness (V3HookResult.extensions);
+// the V3-20 contracts of the system get their contract tests on the mock and the state of their key check. A revision
+// whose v3 build stopped on the techreview's blockers is not published (techreview-verdict.ts, publish).
 import {
   createTechreview,
   familyOf,
@@ -18,6 +20,7 @@ import { type GateContext, type GateReport, runG2, runGates } from "@wizard/gate
 import type postgres from "postgres";
 import { withConsentText } from "../agents/consent.js";
 import type { Db } from "../db/index.js";
+import { latestContracts } from "../integrations-v3/store.js";
 import type { BuildHost } from "../runs/types.js";
 import { loadSpec } from "../services/revisions.js";
 
@@ -41,11 +44,23 @@ export async function latestG1(pg: postgres.Sql, runId: string): Promise<GateRep
   return rows.map((r) => r.report);
 }
 
+export interface PlatformTechreviewOptions {
+  pg: postgres.Sql;
+  db: Db;
+  registry?: ModuleRegistry;
+  milestone?: string;
+}
+
 /** The techreview hook of a v3 build run (builds-v3/host.ts wires it into V3Host.hooks.techreview). */
-export function platformTechreview(
-  host: BuildHost,
-  o: { pg: postgres.Sql; db: Db; registry?: ModuleRegistry; milestone?: string },
-): V3StageHook {
+export function platformTechreview(host: BuildHost, o: PlatformTechreviewOptions): V3StageHook {
+  return createTechreview(platformTechreviewDeps(host, o));
+}
+
+/** What the platform gives the techreview of a build run (gates, evidence, contracts, families, requests). */
+export function platformTechreviewDeps(
+  host: Pick<BuildHost, "run" | "signal" | "recordDevelopmentRequest">,
+  o: PlatformTechreviewOptions,
+): TechreviewDeps {
   const systemId = host.run.systemId;
   const system = () =>
     o.db
@@ -72,6 +87,17 @@ export function platformTechreview(
       return runG2({ ...ctx, spec: withConsentText(ctx.spec) }, { only: G2_STATIC_CHECKS });
     },
     evidence: () => latestG1(o.pg, host.run.id),
+    // V3-20: the latest contract of every integration with its state (mock, live after the key check, failed).
+    contracts: async () =>
+      (await latestContracts(o.pg, systemId)).map((r) => ({
+        integrationId: r.integrationId,
+        contract: r.contract,
+        version: r.version,
+        status: r.status,
+        keyCheck: r.keyCheck ? { ok: r.keyCheck.ok, message_ru: r.keyCheck.message_ru } : null,
+      })),
+    // The harness compiles the backend again with the extension fixes (applyExtensions under its gates).
+    applyExtensions: true,
     builderFamilies: () => runBuilderFamilies(o.pg, host.run.id),
     request: async (r) => {
       // Once per system: a later build of the same system does not repeat the request.
@@ -83,5 +109,5 @@ export function platformTechreview(
     },
     ...(o.registry ? { registry: o.registry } : {}),
   };
-  return createTechreview(deps);
+  return deps;
 }

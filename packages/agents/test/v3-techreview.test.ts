@@ -15,6 +15,7 @@ import {
   briefNiche,
   CHAINS,
   chainChecks,
+  contractTests,
   createTechreview,
   defaultBuilderFamilies,
   deterministicChecks,
@@ -25,6 +26,8 @@ import {
   referenceSpec,
   runBuildV3,
   runTechreview,
+  type TechCheck,
+  type TechContract,
   type TechRequest,
   type TechreviewHookResult,
   techDigest,
@@ -32,7 +35,14 @@ import {
   type V3Checkpoint,
   type V3Host,
 } from "../src/builder/index.js";
+import {
+  contractFromOpenApi,
+  contractHash,
+  integrationLayer,
+  withIntegrationLayer,
+} from "../src/integrations/index.js";
 import { DEFAULT_REGISTRY } from "../src/planner/index.js";
+import { crmOpenApi } from "./integrations/fixtures.js";
 import {
   clinicBrief,
   fakeComposer,
@@ -50,6 +60,7 @@ import {
   repairStatus,
   reviewLine,
   walletRoute,
+  workshopBrief,
   workshopCtx,
 } from "./v3-techreview-fixtures.js";
 
@@ -174,30 +185,81 @@ describe("V3-15 techreview: the deterministic part", () => {
     expect(ev.some((x) => x.id === "TR-CHAIN-order_stock")).toBe(false);
   });
 
-  test("integrations: platform channels pass; others go to the contract tests of V3-20 (a stub until it lands)", async () => {
+  test("integrations: catalog connectors pass; V3-20 contracts — client in the system, contract tests on the mock, the key", async () => {
     const spec = structuredClone(ctx.spec) as AppSpec;
     spec.integrations = [
       ...(spec.integrations ?? []),
       { name: "pay", connector: "yookassa", config: {}, secretRefs: ["secret://yookassa_key"] } as never,
     ];
-    const system = { spec, files: ctx.files };
-    const none = await integrationChecks(system);
-    expect(none.find((c) => c.id === "TR-INT-pay")).toMatchObject({ status: "skip", severity: "warning" });
-    expect(none.find((c) => c.id === "TR-INT-pay")?.message_ru).toContain("появятся с харнессом интеграций");
-    const seen: string[] = [];
-    const ok = await integrationChecks(system, async (i) => {
-      seen.push(`${i.name}:${i.connector}`);
-      return { ok: true, mock: true, problems: [] };
+    const connectors = await integrationChecks({ spec, files: ctx.files });
+    expect(connectors.find((c) => c.id === "TR-INT-pay")).toMatchObject({
+      status: "pass",
+      severity: "warning",
     });
-    expect(seen).toEqual(["pay:yookassa"]);
-    expect(ok.find((c) => c.id === "TR-INT-pay")).toMatchObject({ status: "pass" });
-    expect(ok.find((c) => c.id === "TR-INT-pay")?.message_ru).toContain("на моке");
-    const bad = await integrationChecks(system, async () => ({
-      ok: false,
-      mock: true,
-      problems: ["ответ без поля id"],
-    }));
-    expect(bad.find((c) => c.id === "TR-INT-pay")).toMatchObject({ status: "fail", severity: "blocker" });
+    expect(connectors.find((c) => c.id === "TR-INT-pay")?.message_ru).toContain(
+      "коннектор каталога платформы",
+    );
+
+    // A V3-20 contract of the brief's outgoing integration and its layer over the backend (as V3Host.integrations).
+    const contract = contractFromOpenApi(crmOpenApi(), {
+      id: "crm",
+      name: "Partner CRM",
+      need: "заявки в CRM",
+    });
+    const brief = systemBriefSchema.parse({
+      ...workshopBrief(),
+      integrations: [{ id: "crm", name: "Partner CRM", direction: "out" }],
+    });
+    const layer = integrationLayer({
+      brief,
+      contracts: [{ contract, version: 1, sha256: contractHash(contract), mode: "mock" }],
+    });
+    const withLayer = withIntegrationLayer({ spec: ctx.spec, files: Object.fromEntries(ctx.files) }, layer, [
+      contract,
+    ]);
+    const system = { spec: withLayer.spec, files: new Map(Object.entries(withLayer.files)) };
+    const tc = (status: TechContract["status"], message_ru = "Ключ принят"): TechContract => ({
+      integrationId: "crm",
+      contract,
+      version: 1,
+      status,
+      keyCheck: status === "mock" ? null : { ok: status === "live", message_ru },
+    });
+    const at = (cs: TechCheck[]) => cs.find((c) => c.id === "TR-INT-crm");
+    // No key: the contract tests pass on the mock — a note, not a blocker.
+    const mock = at(await integrationChecks(system, { contracts: [tc("mock")] }));
+    expect(mock).toMatchObject({ status: "warn", severity: "warning", ref: "functions/integrations/crm/" });
+    expect(mock?.message_ru).toBe(
+      "«Partner CRM»: контрактные тесты на моке прошли; ключа ещё нет — интеграция работает на моке и включится после проверки ключа",
+    );
+    // The V3-20 key check passed: live.
+    const live = at(await integrationChecks(system, { contracts: [tc("live")] }));
+    expect(live).toMatchObject({ status: "pass" });
+    expect(live?.message_ru).toContain("ключ проверен (Ключ принят)");
+    // The key check failed: still a note — the system works on the mock.
+    const failed = at(
+      await integrationChecks(system, { contracts: [tc("failed", "Ключ не подошёл (401)")] }),
+    );
+    expect(failed).toMatchObject({ status: "warn", severity: "warning" });
+    expect(failed?.message_ru).toContain("ключ не прошёл проверку (Ключ не подошёл (401))");
+    // The default runner really runs the V3-20 contract tests on the mock.
+    expect(await contractTests(tc("mock"), system)).toEqual({ ok: true, mock: true, problems: [] });
+    // Blockers: contract tests that fail, or a contract whose client never reached the system.
+    const broken = at(
+      await integrationChecks(system, {
+        contracts: [tc("mock")],
+        runner: async () => ({ ok: false, mock: true, problems: ["createLead: ответ без поля id"] }),
+      }),
+    );
+    expect(broken).toMatchObject({ status: "fail", severity: "blocker" });
+    expect(broken?.message_ru).toContain(
+      "контрактные тесты на моке не прошли — createLead: ответ без поля id",
+    );
+    const missing = at(
+      await integrationChecks({ spec: ctx.spec, files: ctx.files }, { contracts: [tc("mock")] }),
+    );
+    expect(missing).toMatchObject({ status: "fail", severity: "blocker" });
+    expect(missing?.message_ru).toContain("не попал в систему");
   });
 
   test("performance and accessibility basics of the pages and public functions", () => {
@@ -545,6 +607,7 @@ function harnessHost(lines: Parameters<typeof writeFixture>[1], hooks: V3Host["h
     env: {},
   });
   const calls: RouteInput[] = [];
+  const requests: string[] = [];
   const passing = (level: string): GateReport => ({
     level: level as GateReport["level"],
     passed: true,
@@ -584,8 +647,11 @@ function harnessHost(lines: Parameters<typeof writeFixture>[1], hooks: V3Host["h
     preview: async () => ({ ok: true, problems: [] }),
     checkScenario: async () => ({ ok: true, problems: [], browser: false }),
     hooks,
+    recordDevelopmentRequest: async (input) => {
+      requests.push(String(input.quote));
+    },
   };
-  return { host, sys, calls, brief };
+  return { host, sys, calls, brief, requests };
 }
 
 describe("V3-15 techreview in the harness v3", () => {
@@ -635,5 +701,80 @@ describe("V3-15 techreview in the harness v3", () => {
     );
     // Not published: the final gates never ran.
     expect((failed as { stages: Record<string, unknown> }).stages.gates).toBeUndefined();
+  }, 300_000);
+
+  test("an extension fix of the techreview is applied by the harness under the gates; a refused one goes to the requests", async () => {
+    // The clinic's backend as the harness compiles it: an automation on its own channel and template.
+    const clinic = workshopCtx({ route: noRoute, brief: clinicBrief(), extensions: [] });
+    const mail = (clinic.spec.integrations ?? []).find((i) => i.connector === "email");
+    const template = Object.keys(((mail?.config ?? {}) as { templates?: object }).templates ?? {})[0];
+    if (!mail || !template) throw new Error("clinic: no e-mail channel");
+    const step = {
+      type: "notify",
+      params: { integration: mail.name, to: "$owner", template, link: "/cabinet" },
+    };
+    const op = {
+      op: "add_automation",
+      name: "booking_owner_copy",
+      label: "Копия о новой записи владельцу",
+      trigger: { type: "on_create", entity: "booking" },
+      steps: [step],
+    };
+    const fix = (o: Record<string, unknown>, title_ru: string) =>
+      review({
+        findings: [
+          finding({
+            severity: "major",
+            area: "chains",
+            title_ru,
+            evidence: { kind: "spec", ref: "/workflows/0" },
+            fix: { kind: "extension", op: o },
+          }),
+        ],
+      });
+    const ok = harnessHost(
+      [...pages, fix(op, "Владелец не получает копию о записи"), review({ findings: [] })],
+      {
+        techreview: createTechreview({ applyExtensions: true }),
+      },
+    );
+    const out = await runBuildV3(ok.host, { appName: "Клиника" });
+    if (out.status !== "succeeded") throw new Error(JSON.stringify(out));
+    // The harness compiled the backend again with the operation: it is in the committed spec, the gates ran after it.
+    expect(ok.sys.spec.workflows?.map((w) => w.name)).toContain("booking_owner_copy");
+    expect(out.stages.gates?.status).toBe("done");
+    expect(ok.requests).toEqual([]);
+
+    // The techreview refuses an operation the extension rules do not allow: the reason goes to the requests.
+    const requests: TechRequest[] = [];
+    const bad = {
+      ...op,
+      name: "booking_to_client",
+      steps: [{ ...step, params: { ...step.params, to: "$record.email" } }],
+    };
+    const refused = harnessHost(
+      [...pages, fix(bad, "Клиенту не уходит копия записи"), review({ findings: [] })],
+      {
+        techreview: createTechreview({ applyExtensions: true, request: async (q) => void requests.push(q) }),
+      },
+    );
+    const out2 = await runBuildV3(refused.host, { appName: "Клиника" });
+    expect(out2.status).toBe("succeeded");
+    expect(refused.sys.spec.workflows?.map((w) => w.name)).not.toContain("booking_to_client");
+    expect(requests.map((q) => q.quote_ru)).toEqual([
+      expect.stringMatching(
+        /^Доработка по техревью: Клиенту не уходит копия записи — не применена: .*письма посетителям отправляют модули/,
+      ),
+    ]);
+
+    // An operation the harness itself refuses when it compiles the backend becomes a request with the reason.
+    const own = harnessHost(pages, {
+      techreview: async () => ({ status: "done", extensions: [{ ...op, name: "lead_notify" } as never] }),
+    });
+    const out3 = await runBuildV3(own.host, { appName: "Клиника" });
+    expect(out3.status).toBe("succeeded");
+    expect(own.requests).toEqual([
+      expect.stringMatching(/^Доработка системы: Автоматизация «lead_notify» уже есть в системе/),
+    ]);
   }, 300_000);
 });

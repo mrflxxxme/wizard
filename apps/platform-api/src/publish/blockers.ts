@@ -5,6 +5,7 @@ import { innValid } from "../auth/region.js";
 import type { Billing } from "../billing/ledger.js";
 import { activeCard } from "../billing/payments.js";
 import { phoneOtpAllowed, planOf } from "../billing/plans.js";
+import { techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { Db } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
 import type { ErrorCode } from "../errors.js";
@@ -126,6 +127,8 @@ export async function publishBlockers(
   if (rev && !isPublishable(rev, s.draft_revision))
     rev = s.preview_revision !== null ? await loadRevision(db, s.id, s.preview_revision) : undefined;
   if (!rev || !isPublishable(rev, s.draft_revision)) return [...out, "GATES_FAILED"];
+  // V3-15: the techreview of the v3 build that left this revision found blockers.
+  if ((await techreviewBlockersOf(db, s.id, rev.version)).length) return [...out, "GATES_FAILED"];
   const org = await db
     .selectFrom("platform.orgs")
     .select("plan")

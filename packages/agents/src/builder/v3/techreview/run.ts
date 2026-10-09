@@ -42,12 +42,16 @@ export async function runTechreview(
   const reference = referenceSpec(ctx.plan, deps.registry ?? DEFAULT_REGISTRY);
   const evidence = deps.evidence ? await deps.evidence().catch(() => []) : [];
   const gates = deps.gates ?? localGates;
+  // V3-20 contracts of the brief's outgoing integrations (the layer of the build is made of exactly these).
+  const outgoing = new Set(ctx.brief.integrations.filter((i) => i.direction !== "in").map((i) => i.id));
+  const contracts = ((await deps.contracts?.()) ?? []).filter((c) => outgoing.has(c.integrationId));
   const recheck = (system: TechSystem) =>
     deterministicChecks(system, {
       plan: ctx.plan,
       reference,
       evidence,
       gates,
+      contracts,
       ...(deps.integrations ? { integrations: deps.integrations } : {}),
     });
 
@@ -115,10 +119,13 @@ export async function runTechreview(
       });
       fixes.push(res.outcome);
       if (!res.outcome.applied || !res.system || !res.checks) {
-        if (res.deferred)
+        // An extension the rules refuse (or a host that does not merge extensions): «Запросы на развитие» with why.
+        if (f.fix.kind === "extension")
           await deps.request?.({
             key: `techreview:ext:${f.title_ru}`,
-            quote_ru: `Доработка по техревью: ${f.title_ru}`,
+            quote_ru: res.deferred
+              ? `Доработка по техревью: ${f.title_ru}`
+              : `Доработка по техревью: ${f.title_ru} — не применена: ${res.outcome.reason_ru ?? "не прошла проверки"}`,
             offered_ru: "Пока система работает без этой доработки.",
           });
         continue;
@@ -180,10 +187,8 @@ export async function runTechreview(
   };
 }
 
-/** What the techreview stage hands the harness: V3HookResult plus the extension operations for a host that merges them. */
-export interface TechreviewHookResult extends V3HookResult {
-  extensions?: TechreviewOutcome["extensions"];
-}
+/** What the techreview stage hands the harness (V3HookResult.extensions — the extension fixes the harness applies). */
+export type TechreviewHookResult = V3HookResult;
 
 /** The techreview stage hook of the harness v3 (V3Host.hooks.techreview). */
 export function createTechreview(deps: TechreviewDeps = {}): V3StageHook {

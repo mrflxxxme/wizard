@@ -149,11 +149,17 @@ describe("platform: «Собрать» with the V3-12 page composer on the real 
     const ev = await listEvents(api.deps.db, run.id, 0);
     const gates = ev.filter((e) => e.type === "gate_result").map((e) => e.payload);
     expect(done.status, JSON.stringify({ failure: done.failure, gates })).toBe("succeeded");
-    // The preview right after the skeleton, then G0 + G1 per scenario: all green.
+    // The preview right after the skeleton, then G0 + G1 per scenario: all green; the final gates skip G0 of the
+    // revision the last scenario's check passed (V3-15), then G1 and G2.
     const levels = gates.map((g) => g.level);
-    const scenarios = (levels.length - 2) / 2;
+    const scenarios = (levels.length - 3) / 2;
     expect(scenarios).toBeGreaterThanOrEqual(2);
-    expect(levels).toEqual(["G0", ...Array.from({ length: scenarios }, () => ["G0", "G1"]).flat(), "G2"]);
+    expect(levels).toEqual([
+      "G0",
+      ...Array.from({ length: scenarios }, () => ["G0", "G1"]).flat(),
+      "G1",
+      "G2",
+    ]);
     expect(gates.slice(0, -1).every((g) => g.passed === true)).toBe(true);
     // The scenario step ran page_compose on the composer's pages (the scripted model confirms the skeleton).
     expect(scenarioCalls.length).toBeGreaterThanOrEqual(2);

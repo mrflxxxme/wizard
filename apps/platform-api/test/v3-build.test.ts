@@ -161,12 +161,13 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
       "gates:started",
       "gates:done",
     ]);
-    // The preview right after the skeleton (G0 bundles it), before any model call; then G0 + G1 per scenario.
-    expect(gates.map((g) => g.level)).toEqual(["G0", "G0", "G1", "G0", "G1", "G0", "G1", "G0", "G1", "G2"]);
+    // The preview right after the skeleton (G0 bundles it), before any model call; then G0 + G1 per scenario; the final
+    // gates skip G0 of the revision the last scenario's check passed (V3-15: nothing changed since), then G1 and G2.
+    expect(gates.map((g) => g.level)).toEqual(["G0", "G0", "G1", "G0", "G1", "G0", "G1", "G1", "G2"]);
     const firstCall = ev.findIndex((e) => e.type === "budget_update");
     const firstGate = ev.findIndex((e) => e.type === "gate_result");
     expect(firstGate).toBeLessThan(firstCall);
-    expect(gates.slice(0, 9).every((g) => g.passed === true)).toBe(true);
+    expect(gates.slice(0, 8).every((g) => g.passed === true)).toBe(true);
     const sys = await api.deps.db
       .selectFrom("platform.systems")
       .select(["stage", "preview_revision", "draft_revision"])

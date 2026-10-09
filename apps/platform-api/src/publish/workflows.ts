@@ -8,6 +8,7 @@ import { publishTelegramBots, type TelegramPublishOptions } from "@wizard/runtim
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { httpRuntimeBackfill, type RuntimeAiBackfill, runPendingBackfills } from "../ai/backfill.js";
+import { TECHREVIEW_BLOCKED_RU, techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable, SystemsTable } from "../db/types.js";
@@ -422,6 +423,9 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   let rev = await revisionRow("load_revision");
   if (!rev || !isPublishable(rev, sys.draft_revision))
     throw new RunFailure("GATES_FAILED", "Эта ревизия не прошла проверки — публиковать её нельзя");
+  // V3-15: the techreview of the v3 build that left this revision found blockers (D77 (10)).
+  const [tr] = await h.once("techreview_verdict", () => techreviewBlockersOf(h.db, sys.id, revision));
+  if (tr) throw new RunFailure("GATES_FAILED", TECHREVIEW_BLOCKED_RU(tr));
   if (!rev.bundle_key) {
     // A style/compliance revision made without a build: the draft gate builds it first (moves the preview too).
     const report = await h.draftG0();

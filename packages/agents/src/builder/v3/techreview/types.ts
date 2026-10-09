@@ -4,6 +4,7 @@
 import type { AppSpec, ExtensionOp } from "@wizard/appspec";
 import type { GateReport } from "@wizard/gates";
 import type { ModuleRegistry } from "@wizard/modules";
+import type { IntegrationContract } from "../../../integrations/index.js";
 
 /** Areas of the deterministic checks. */
 export const TECH_AREAS = [
@@ -60,31 +61,35 @@ export interface TechSystem {
 /** Gates the deterministic part runs on the system as it is (G1 with the runtime is the final gates stage). */
 export type TechGateLevel = "G0" | "G2";
 
-/** An integration of the spec handed to its contract tests. */
-export interface IntegrationContractInput {
-  name: string;
-  connector: string;
-  config: Record<string, unknown>;
+/** An integration contract of the system (V3-20) with its state on the platform. */
+export interface TechContract {
+  /** Integration id of the brief = the contract id (functions/integrations/<id>/**). */
+  integrationId: string;
+  contract: IntegrationContract;
+  version: number;
+  /** mock — no key yet; live — the V3-20 key check passed; failed — the key or the contract did not pass it. */
+  status: "mock" | "live" | "failed";
+  /** The V3-20 key check (its Russian message), null — not checked yet. */
+  keyCheck: { ok: boolean; message_ru: string } | null;
 }
 
 /** Result of the contract tests of one integration (V3-20: contract → typed client → mock → contract tests). */
 export interface IntegrationContractResult {
   ok: boolean;
-  /** true — checked against the mock of the contract (no key yet). */
+  /** true — the tests ran against the deterministic mock of the contract. */
   mock: boolean;
   /** Russian problems, no secret values. */
   problems: string[];
 }
 
 /**
- * Contract tests of one integration — the seam of the integrations harness V3-20. Until it lands the techreview has
- * no runner: platform channels (e-mail, Telegram) pass, any other connector is reported as not covered yet.
- * null — the runner does not know this connector.
+ * Contract tests of one integration contract (default: the V3-20 contract tests on its deterministic mock; the live
+ * side is the V3-20 key check, read from the contract's state).
  */
 export type IntegrationContractRunner = (
-  integration: IntegrationContractInput,
+  contract: TechContract,
   system: TechSystem,
-) => Promise<IntegrationContractResult | null>;
+) => Promise<IntegrationContractResult>;
 
 /** A «Запрос на развитие» the techreview leaves (a chain the module catalog does not close, an unapplied fix). */
 export interface TechRequest {
@@ -106,7 +111,9 @@ export interface TechreviewDeps {
    * the module chains through the runtime). Evidence only: a failure there is a warning — the final G1 decides.
    */
   evidence?: () => Promise<readonly GateReport[]>;
-  /** Contract tests of the integrations (V3-20). */
+  /** The stored contracts of the system's integrations (V3-20; platform: their latest versions with the state). */
+  contracts?: () => Promise<readonly TechContract[]>;
+  /** Contract tests of one contract; default — the V3-20 contract tests on the mock (contractTests). */
   integrations?: IntegrationContractRunner;
   /** Module catalog the plan is compiled with (reference for the module chains); default — the planner's. */
   registry?: ModuleRegistry;
@@ -118,9 +125,9 @@ export interface TechreviewDeps {
   /** Rounds of fixes, ≤ 2 (D77 (10)). */
   maxRounds?: number;
   /**
-   * The host merges extension operations of the techreview into the spec (TechreviewHookResult.extensions). Off
-   * (the harness of V3-11 takes files only): an extension fix is checked under the gates but not applied — the finding
-   * stays, explained, and goes to «Запросы на развитие».
+   * The harness merges the extension fixes into the spec (V3HookResult.extensions: it compiles the backend again with
+   * them). Off: an extension fix is checked under the gates but not applied — the finding stays, explained, and goes to
+   * «Запросы на развитие».
    */
   applyExtensions?: boolean;
   /** «Запросы на развитие». */

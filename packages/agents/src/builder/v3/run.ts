@@ -300,6 +300,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
   let skeleton = new Map<string, string | null>();
   const scenarioLayers = new Map<string, Map<string, string | null>>();
   const hookLayers = new Map<string, Map<string, string | null>>();
+  /** Extension operations of the hooks (techreview fixes, V3-15) on top of the build's own (p.extensions). */
+  const hookExtensions: unknown[] = [];
+  const extensionsOf = () => [...(p.extensions ?? []), ...hookExtensions];
   let committed = null as { revision: number; hash: string } | null;
   let previewRevision: number | null = null;
   const states = new Map<string, V3ScenarioState>();
@@ -363,7 +366,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     const r = compileBackend({
       plan: bp.plan,
       registry,
-      extensions: p.extensions ?? [],
+      extensions: extensionsOf(),
       design,
       options: {
         ...(p.appName ? { appName: p.appName } : {}),
@@ -376,7 +379,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     backend = layer ? { ...r, spec: layer.spec, files: layer.files } : r;
     backendFp = sha256({
       plan: r.plan,
-      ext: p.extensions ?? [],
+      ext: extensionsOf(),
       design: designFp,
       ...(layer ? { integrations: layer.fingerprint } : {}),
     });
@@ -911,6 +914,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
               blockers: out.blockers ?? [],
               ...(out.redesign ? { redesign: out.redesign } : {}),
               ...(out.design ? { design: out.design } : {}),
+              ...(out.extensions?.length ? { extensions: out.extensions } : {}),
             },
             ...(out.note ? { note: out.note } : {}),
             extraMilli: Math.round(((out.spentRub ?? 0) / rpc) * 1000),
@@ -931,6 +935,13 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
         const own = hookLayers.get(st) ?? new Map<string, string | null>();
         own.set(DESIGN_CSS_FILE, designCss(tokens));
         hookLayers.set(st, own);
+      }
+      // Extension operations of the techreview's fixes: the backend is compiled again with them (applyExtensions keeps
+      // its RLS, ПДн and migration rules; a rejected one becomes a «Запрос на развитие» with the reason).
+      const ext = Array.isArray(h.data.extensions) ? (h.data.extensions as unknown[]) : [];
+      if (ext.length) {
+        hookExtensions.push(...ext);
+        await buildBackend();
       }
       const late = h.data.redesign as { avoid?: string[] } | undefined;
       if (st === "template_gate" && late?.avoid?.length && hookNotes.length === 0)

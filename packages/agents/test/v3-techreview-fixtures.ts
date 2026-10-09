@@ -128,8 +128,10 @@ export function workshopCtx(o: {
   budgetRub?: number;
   extensions?: readonly unknown[];
   files?: Record<string, string>;
+  /** Another brief (default — the workshop). */
+  brief?: SystemBriefInput;
 }): V3BuildContext {
-  const brief = systemBriefSchema.parse(workshopBrief());
+  const brief = systemBriefSchema.parse(o.brief ?? workshopBrief());
   const bp = briefPlan(brief, DEFAULT_REGISTRY, [], { appName: "Мастерская" });
   if (!bp) throw new Error("workshop brief: no plan");
   const design = designSystemV3({ archetype: "warm_craft", seed: "workshop", niche: briefNiche(brief) });

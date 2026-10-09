@@ -18,7 +18,7 @@ import {
   type V3StageHook,
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
-import type { GoalScenarioInput } from "@wizard/gates";
+import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
@@ -93,6 +93,18 @@ async function runGates(
   } finally {
     lease?.release();
   }
+}
+
+/**
+ * V3-15: G0 of the final gates on a revision this run has already passed G0 on (the last scenario's check, nothing
+ * changed since — the techreview made no fix): a revision is immutable, its report, bundle and preview stand.
+ */
+async function passedG0(pg: postgres.Sql, runId: string, systemId: string): Promise<GateReport | null> {
+  const [r] = await pg<{ report: GateReport }[]>`
+    select g.report from platform.gate_reports g
+      join platform.systems s on s.id = g.system_id and g.revision = s.draft_revision
+     where g.run_id = ${runId} and g.system_id = ${systemId} and g.level = 'G0' and g.passed`;
+  return r?.report ?? null;
 }
 
 /**
@@ -192,7 +204,9 @@ export async function buildByBrief(
     checkpoints: pgCheckpointStore(o.pg, systemId, host.run.id),
     currentSpec: () => host.store.getSpec(),
     commit: (input) => host.store.commitCompiled(input),
-    runGates: (level, ov) => runGates(host, provider, withBrowser, level, ov?.goalScenarios),
+    runGates: async (level, ov) =>
+      (level === "G0" ? await passedG0(o.pg, host.run.id, systemId) : null) ??
+      runGates(host, provider, withBrowser, level, ov?.goalScenarios),
     composer,
     preview: async () => {
       const blockers = buildBlockers(await host.runGates("G0"));

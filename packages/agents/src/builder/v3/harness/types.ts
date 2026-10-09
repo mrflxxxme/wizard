@@ -1,7 +1,7 @@
 // Host contract, params and outcome of the build harness v3 (V3-11; specs/agents/builder-v3.md §3 C6, product.yaml
 // D77_v3 (9)–(11)): stages brief → design → backend → skeleton → scenarios → critic → template_gate → techreview →
 // gates, a checkpoint after each stage and each scenario, a wallet in ₽ and a clock with the stop rules of D77 (10).
-import type { AppSpec, BriefScenario, SystemBrief } from "@wizard/appspec";
+import type { AppSpec, BriefScenario, ExtensionOp, SystemBrief } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import type { ModuleRegistry } from "@wizard/modules";
 import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
@@ -116,6 +116,12 @@ export interface V3HookResult {
    * the backend (cabinets) with them and writes their ui/design.css over the earlier layers.
    */
   design?: DesignSystemV3;
+  /**
+   * techreview (V3-15): extension operations (C5) its fixes need, already checked under the gates; the harness adds
+   * them to the build's extensions and compiles the backend again (applyExtensions: RLS, ПДн and migration rules) — a
+   * rejected one goes to «Запросы на развитие» with its reason.
+   */
+  extensions?: ExtensionOp[];
   note?: string;
 }
 
