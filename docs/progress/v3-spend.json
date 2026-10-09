@@ -23,6 +23,15 @@
       "actualRub": 1.46,
       "result": "3/3 поиска ok (10 результатов каждый), read_page ok (6 576 символов markdown за 3 с); ответы — в артефакте research-probe",
       "runId": "37860175962"
+    },
+    {
+      "id": "v3-002",
+      "date": "2026-10-09",
+      "wave": "A",
+      "purpose": "Проба маршрутов v3 на пилоте (v3-probe): головы interview_v3, brief_extract, art_direction, page_compose, signature_section, critic_visual, techreview, research отвечают через шлюз сервера",
+      "hypothesis": "Все головы отвечают, tier и scrub по data-boundary; ≈ 3 ₽ по ценам голов маршрутов",
+      "expectRub": 5,
+      "capRub": 30
     }
   ]
 }
