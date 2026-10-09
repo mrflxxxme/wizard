@@ -1,5 +1,7 @@
 // System slug (runtime.yaml#routing.system_slug) and schema_key (db.yaml#systems).
 import { randomBytes } from "node:crypto";
+import { businessName } from "@wizard/agents/builder";
+import { siteName } from "@wizard/agents/planner";
 import { RESERVED_SYSTEM_SLUGS } from "@wizard/runtime";
 
 export const SLUG_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -71,20 +73,35 @@ export function makeSlug(prompt: string): string {
     : `app-${randomKey(8)}`;
 }
 
-export function nameFromPrompt(prompt: string): string {
+const DEFAULT_NAME = "Новая система";
+
+/** The name createSystem gave before V3-18: the first sentence of the brief cut at 60 characters. */
+function legacyName(prompt: string): string {
   const first =
     prompt
       .trim()
       .split(/[.!?\n]/)[0]
       ?.trim() ?? "";
-  const name = (first || prompt.trim()).slice(0, 60).trim();
-  return name || "Новая система";
+  return (first || prompt.trim()).slice(0, 60).trim() || DEFAULT_NAME;
 }
 
 /**
- * B2-44: the system still has the name createSystem derived from its brief (nameFromPrompt) — the owner has not named
- * it. Without the brief the name counts as the owner's.
+ * Name of a new system from its first message (V3-18): the business name the owner quotes («Линия»), else what the
+ * business is in his words («Клининговая компания»); else a short name of his first clause cut on a word boundary
+ * (siteName) — never a sentence cut in the middle of a word.
+ */
+export function nameFromPrompt(prompt: string): string {
+  return businessName(prompt) ?? (siteName(prompt) || DEFAULT_NAME);
+}
+
+/**
+ * B2-44: the system still has a name createSystem derived from its brief that is not a name of the business — the
+ * short first clause (or, for systems made before V3-18, its first sentence cut at 60 characters); the owner has not
+ * named it, and the plan's short name replaces it. A business name taken from his words («Линия») counts as his.
+ * Without the brief the name counts as the owner's.
  */
 export function isAutoName(name: string, brief: string | null | undefined): boolean {
-  return typeof brief === "string" && name === nameFromPrompt(brief);
+  if (typeof brief !== "string") return false;
+  if (name === legacyName(brief)) return true;
+  return businessName(brief) === null && name === nameFromPrompt(brief);
 }

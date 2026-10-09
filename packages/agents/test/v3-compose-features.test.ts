@@ -10,17 +10,22 @@ import { briefPlan, type SiteModel } from "../src/builder/index.js";
 import { clientCabinet } from "../src/builder/v3/compose/account.js";
 import {
   briefCopy,
+  businessName,
+  businessOf,
   catalogNoun,
+  isPlaceholderName,
   listedServices,
+  offerOf,
   placeOf,
   quotedAction,
+  quotedName,
   toVisitor,
 } from "../src/builder/v3/compose/copy.js";
 import { lintSitePage, siteFacts, withSitePages } from "../src/builder/v3/compose/index.js";
 import type { SitePage, SiteSection } from "../src/builder/v3/compose/site.js";
 import { applyEdit, variantsFor } from "../src/builder/v3/critic/ops.js";
 import { DEFAULT_REGISTRY, fallbackNiche } from "../src/planner/index.js";
-import { briefSite } from "./v3-brief-site.js";
+import { briefSite, evalRequest } from "./v3-brief-site.js";
 import { EVAL_BRIEFS } from "./v3-eval-briefs.js";
 import { FEATURE_BRIEFS } from "./v3-feature-briefs.js";
 
@@ -38,44 +43,67 @@ const norm = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** What the skeleton must say for each eval brief (natural Russian from the offer, the goals and the name). */
-const EXPECTED: Readonly<Record<string, { title: string; lead: string; form?: string; seo: string }>> = {
+/**
+ * What the skeleton must say for each eval brief (V3-18): the owner's business name, what the business is and offers in
+ * his words (his first message, tools/eval/briefs/<id>.json «text»), the place — natural Russian; the system's name of
+ * the test («Проверка») is a placeholder and never shows.
+ */
+const EXPECTED: Readonly<
+  Record<string, { title: string; lead: string; form?: string; action: string; seo: string }>
+> = {
   "v3-01-interior-studio": {
-    title: "Ремонт и отделка в Екатеринбурге",
+    title: "Студия дизайна интерьеров «Линия» в Екатеринбурге",
     lead: "Дизайн квартиры, дизайн дома, авторский надзор и комплектация.",
     form: "Обсудить проект",
-    seo: "Проверка — ремонт и отделка в Екатеринбурге",
+    action: "Обсудить проект",
+    seo: "Линия — студия дизайна интерьеров в Екатеринбурге",
   },
   "v3-02-dental-booking": {
-    title: "Медицинская клиника в Казани",
+    title: "Стоматологическая клиника в Казани",
     lead: "Запишитесь к врачам онлайн на свободное время.",
     form: "Запись к врачам онлайн на свободное время",
-    seo: "Проверка — медицинская клиника в Казани",
+    action: "Записаться",
+    seo: "Стоматологическая клиника в Казани",
   },
   "v3-03-cleaning-crm": {
-    title: "Проверка — клининг",
-    lead: "Оставьте заявку на уборку.",
+    title: "Клининговая компания в Новосибирске",
+    lead: "Уборка квартир после ремонта, уборка офисов и мойка окон.",
     form: "Заявка на уборку",
-    seo: "Проверка — клининг",
+    action: "Оставить заявку",
+    seo: "Клининговая компания в Новосибирске",
   },
   "v3-04-karelia-tours": {
     title: "Туры по Карелии",
-    lead: "Выберите тур и оставьте заявку на заезд.",
+    lead: "Сплавы, пешие маршруты и зимние поездки на снегоходах.",
     form: "Заявка на заезд",
-    seo: "Проверка — туры по Карелии",
+    action: "Оставить заявку",
+    seo: "Туры по Карелии",
   },
   // V3-23: a shop without request forms.
   "v3-05-ceramics-shop": {
-    title: "Проверка — мастерская",
-    lead: "Закажите посуду в интернет-магазине и оплатите её картой.",
-    seo: "Проверка — мастерская",
+    title: "Керамическая мастерская из Твери",
+    lead: "Кружки, тарелки и вазы ручной работы.",
+    action: "Перейти в магазин",
+    seo: "Керамическая мастерская из Твери",
   },
 };
+
+/** The name a new system gets from the owner's first message (V3-18: the platform's nameFromPrompt). */
+const SYSTEM_NAMES: Readonly<Record<string, string>> = {
+  "v3-01-interior-studio": "Линия",
+  "v3-02-dental-booking": "Стоматологическая клиника",
+  "v3-03-cleaning-crm": "Клининговая компания",
+  "v3-04-karelia-tours": "Турфирма",
+  "v3-05-ceramics-shop": "Керамическая мастерская",
+};
+
+/** Words of a test or a draft that never show on a site. */
+const PLACEHOLDER_WORDS = /(?:^|[^\p{L}])(?:проверка|тест|test|пример|черновик|новая система)(?![\p{L}])/iu;
 
 describe("texts of the skeleton from the brief (no model)", () => {
   for (const [id, input] of Object.entries(EVAL_BRIEFS))
     test(id, async () => {
-      const { site } = await briefSite(id, input);
+      const { site, files, plan } = await briefSite(id, input);
       const hero = sectionOf(home(site), "hero").props as {
         title: string;
         lead?: string;
@@ -83,9 +111,70 @@ describe("texts of the skeleton from the brief (no model)", () => {
       };
       const form = formOf(site)?.props as { title: string } | undefined;
       const want = EXPECTED[id];
-      expect({ title: hero.title, lead: hero.lead, form: form?.title, seo: home(site).seo.title }).toEqual(
-        want,
-      );
+      expect({
+        title: hero.title,
+        lead: hero.lead,
+        ...(form ? { form: form.title } : {}),
+        action: hero.action.label,
+        seo: home(site).seo.title,
+      }).toEqual(want);
+      // No placeholder words anywhere the visitor or a search engine reads them (ui/seo.json too); a heading ≤ 60 in
+      // sentence case; SEO titles ≤ 70 and descriptions ≤ 160, never cut off.
+      const seo = JSON.parse(files.get("ui/seo.json") ?? "{}") as {
+        site: string;
+        pages: Record<string, { title: string; description: string }>;
+      };
+      const seoTexts = [seo.site, ...Object.values(seo.pages).flatMap((p) => [p.title, p.description])];
+      for (const t of [hero.title, hero.lead ?? "", form?.title ?? "", hero.action.label, ...seoTexts])
+        expect(t, t).not.toMatch(PLACEHOLDER_WORDS);
+      expect(hero.title.length).toBeLessThanOrEqual(60);
+      expect(hero.title.charAt(0)).toBe(hero.title.charAt(0).toUpperCase());
+      // Sentence case: a capital only at the start, in a quoted name or in a place name after its preposition.
+      const capitals = hero.title
+        .replace(/«[^»]*»/g, "")
+        .split(" ")
+        .slice(1)
+        .filter((w, i, ws) => /^[А-ЯЁ]/.test(w) && !/^(?:в|во|по|из)$/.test(ws[i - 1] ?? ""));
+      expect(capitals, hero.title).toEqual([]);
+      for (const p of Object.values(seo.pages)) {
+        expect(p.title.length, p.title).toBeLessThanOrEqual(70);
+        expect(p.description.length, p.description).toBeLessThanOrEqual(160);
+        expect(`${p.title} ${p.description}`).not.toMatch(/…/);
+      }
+      // The lead names 2–4 services of the brief or of the owner's words (each word of each found there).
+      const request = evalRequest(id) ?? "";
+      const corpus = new Set(norm(`${request} ${JSON.stringify(input)}`).split(" "));
+      // (A brief without services: the visitor's action said to him, «Запишитесь к врачам…».)
+      if (!/^[А-ЯЁ][а-яё]+(?:те|тесь)\s/.test(hero.lead ?? "")) {
+        const items = (hero.lead ?? "").replace(/\.$/, "").split(/,\s*|\s+и\s+/);
+        expect(items.length, hero.lead).toBeGreaterThanOrEqual(2);
+        expect(items.length, hero.lead).toBeLessThanOrEqual(4);
+        for (const w of norm(items.join(" ")).split(" ")) expect(corpus.has(w), w).toBe(true);
+      }
+      // Never a niche label less specific than the owner's words («ремонт и отделка» for a design studio,
+      // «медицинская клиника» for a dental one).
+      const what = businessOf(request)?.what;
+      if (what && !norm(what).includes(norm(plan.niche)))
+        for (const t of [hero.title, home(site).seo.title])
+          expect(` ${norm(t)} `.includes(` ${norm(plan.niche)} `), `«${t}»: «${plan.niche}»`).toBe(false);
+      // The owner's quoted name is the brand of the SEO titles and of the header and footer of every page.
+      const brand = what ? quotedName(businessOf(request)?.sentence ?? "") : undefined;
+      expect(seo.site).toBe(brand ?? want?.seo);
+      for (const p of site.pages)
+        for (const s of p.sections.filter((x) => x.type === "header" || x.type === "footer")) {
+          expect((s.props.brand as { name: string }).name, `${p.route} ${s.type}`).toBe(seo.site);
+          const operator = (s.props.legal as { operator?: string } | undefined)?.operator ?? "";
+          expect(operator).not.toMatch(PLACEHOLDER_WORDS);
+          expect(operator).not.toMatch(/…/);
+        }
+      // The name the platform gives the new system (nameFromPrompt → businessName): never cut, never a placeholder;
+      // built with it, the site says the same.
+      const system = businessName(request) ?? "";
+      expect(system).toBe(SYSTEM_NAMES[id]);
+      const named = await briefSite(id, input, { appName: system });
+      expect(sectionOf(home(named.site), "hero").props.title).toBe(want?.title);
+      expect(home(named.site).seo.title).toBe(want?.seo);
+      expect((sectionOf(home(named.site), "header").props.brand as { name: string }).name).toBe(seo.site);
       // Never the audience as a heading, never the first words of a sentence of the brief cut off (the planner's
       // niche of an unknown business), never the planner's placeholders.
       const brief = systemBriefSchema.parse(input);
@@ -142,11 +231,101 @@ describe("texts of the skeleton from the brief (no model)", () => {
     ).toEqual({
       title: "Белая линия — стоматологическая клиника",
       about: "стоматологическая клиника",
+      brand: "Белая линия",
+      home: "Белая линия — стоматологическая клиника",
+      site: "Белая линия",
     });
     expect(briefCopy({ name: "Белая линия", niche: "все желающие", keywordNiche: false, brief })).toEqual({
       title: "Белая линия",
       about: "Белая линия",
+      brand: "Белая линия",
+      home: "Белая линия",
+      site: "Белая линия",
     });
+    // A placeholder name is never the business: the niche alone.
+    expect(briefCopy({ name: "Проверка", niche: "клининг", keywordNiche: true, brief })).toMatchObject({
+      title: "Клининг",
+      home: "Клининг",
+      site: "Клининг",
+    });
+  });
+
+  test("rules: the owner's words — what the business is, its name, its offer", () => {
+    expect(businessOf("Мы студия дизайна интерьеров «Линия» в Екатеринбурге, работаем шестой год.")).toEqual({
+      what: "студия дизайна интерьеров",
+      sentence: "Мы студия дизайна интерьеров «Линия» в Екатеринбурге, работаем шестой год.",
+    });
+    expect(businessOf("Стоматологическая клиника в Казани, пять врачей.")?.what).toBe(
+      "стоматологическая клиника",
+    );
+    expect(businessOf("У нас клининговая компания в Новосибирске: уборка квартир")?.what).toBe(
+      "клининговая компания",
+    );
+    // Size and praise are not what the business is.
+    expect(businessOf("Мы небольшая турфирма из Петрозаводска, водим группы")?.what).toBe("турфирма");
+    expect(businessOf("Мы небольшая керамическая мастерская из Твери: кружки")?.what).toBe(
+      "керамическая мастерская",
+    );
+    // A business after a wish or a preposition is not the speaker's own («нужен сайт для клиники»).
+    expect(businessOf("Нужен сайт для стоматологической клиники в Казани.")).toBeNull();
+    expect(businessOf("Хотим запись онлайн. Сайт клиники уже есть.")).toBeNull();
+    expect(quotedName("Мы студия дизайна интерьеров «Линия» в Екатеринбурге")).toBe("Линия");
+    expect(quotedName("кнопка «Обсудить проект» на каждой странице")).toBeUndefined();
+    expect(quotedName("этапы «новая», «расчёт»")).toBeUndefined();
+    const cleaning =
+      "У нас клининговая компания в Новосибирске: уборка квартир после ремонта, офисов и мойка окон.";
+    expect(offerOf(cleaning, businessOf(cleaning))).toEqual([
+      "уборка квартир после ремонта",
+      "уборка офисов",
+      "мойка окон",
+    ]);
+    const ceramics =
+      "Мы мастерская из Твери: кружки, тарелки, вазы ручной работы, многие вещи в одном экземпляре.";
+    expect(offerOf(ceramics, businessOf(ceramics))).toEqual(["кружки", "тарелки", "вазы ручной работы"]);
+    // A list of the staff is not the offer; the services listed elsewhere are.
+    const dental =
+      "Стоматологическая клиника в Казани, пять врачей: терапевт, ортодонт и детский стоматолог.";
+    expect(offerOf(dental, businessOf(dental))).toBeNull();
+    expect(offerOf("Нужны страницы услуг (дизайн дома, авторский надзор).", null)).toEqual([
+      "дизайн дома",
+      "авторский надзор",
+    ]);
+    for (const n of ["Проверка", "Тест 2", "test", "Новая система", "Пример"])
+      expect(isPlaceholderName(n), n).toBe(true);
+    for (const n of ["Линия", "Тесто и крем", "Белая линия"]) expect(isPlaceholderName(n), n).toBe(false);
+  });
+
+  test("the business name: the owner's quoted one, else the system's name when he gave it", async () => {
+    const id = "v3-02-dental-booking";
+    const input = EVAL_BRIEFS[id] as never;
+    // The owner named the system: the name stands after what the business is, and leads the SEO titles.
+    const named = await briefSite(id, input, { appName: "Белая линия" });
+    expect(sectionOf(home(named.site), "hero").props.title).toBe(
+      "Стоматологическая клиника «Белая линия» в Казани",
+    );
+    expect(home(named.site).seo.title).toBe("Белая линия — стоматологическая клиника в Казани");
+    // The platform named the system after the start of his text (nameFromPrompt): never shown, never cut off.
+    const request = evalRequest("v3-01-interior-studio") ?? "";
+    const auto = (request.split(/[.!?\n]/)[0] ?? "").slice(0, 60).trim();
+    const copy = briefCopy({
+      name: auto,
+      niche: "ремонт и отделка",
+      keywordNiche: true,
+      brief: systemBriefSchema.parse(EVAL_BRIEFS["v3-01-interior-studio"]),
+      request,
+    });
+    expect(copy).toMatchObject({
+      title: "Студия дизайна интерьеров «Линия» в Екатеринбурге",
+      brand: "Линия",
+      home: "Линия — студия дизайна интерьеров в Екатеринбурге",
+      site: "Линия",
+    });
+    // Without the owner's words the brief alone speaks; the test's name still never shows.
+    const bare = await briefSite("v3-03-cleaning-crm", EVAL_BRIEFS["v3-03-cleaning-crm"] as never, {
+      request: null,
+    });
+    expect(sectionOf(home(bare.site), "hero").props.title).toBe("Клининг");
+    expect(home(bare.site).seo.title).toBe("Клининг");
   });
 });
 

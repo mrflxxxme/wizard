@@ -1,5 +1,5 @@
 // Unit tests: system stage table (workflows.yaml#system_stage.test), logo sanitising, slugs, blob integrity.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 } from "node:zlib";
@@ -9,7 +9,7 @@ import { ApiError } from "../src/errors.js";
 import { answerLine } from "../src/routes/systems.js";
 import { processLogo, sniff } from "../src/services/logo.js";
 import { isSafePath } from "../src/services/revisions.js";
-import { makeSlug, RESERVED_SLUGS, SLUG_RE } from "../src/services/slug.js";
+import { isAutoName, makeSlug, nameFromPrompt, RESERVED_SLUGS, SLUG_RE } from "../src/services/slug.js";
 import { assertTransition, IllegalTransition, STAGES } from "../src/services/stage.js";
 import { BlobStore, IntegrityError, sha256 } from "../src/storage/blobs.js";
 import { loadYaml } from "./helpers.js";
@@ -119,6 +119,45 @@ describe("logo", () => {
       "UNSUPPORTED_MEDIA_TYPE",
     );
     expect(code(() => processLogo(Buffer.alloc(1_048_577)))).toBe("PAYLOAD_TOO_LARGE");
+  });
+});
+
+describe("V3-18: the name of a new system from its first message", () => {
+  const brief = (id: string) =>
+    (
+      JSON.parse(readFileSync(new URL(`../../../tools/eval/briefs/${id}.json`, import.meta.url), "utf8")) as {
+        text: string;
+      }
+    ).text;
+  const NAMES: Readonly<Record<string, string>> = {
+    "v3-01-interior-studio": "Линия",
+    "v3-02-dental-booking": "Стоматологическая клиника",
+    "v3-03-cleaning-crm": "Клининговая компания",
+    "v3-04-karelia-tours": "Турфирма",
+    "v3-05-ceramics-shop": "Керамическая мастерская",
+  };
+
+  test("the business name of the owner's words, never his sentence cut off; a business name is kept", () => {
+    for (const [id, want] of Object.entries(NAMES)) {
+      const text = brief(id);
+      expect(nameFromPrompt(text), id).toBe(want);
+      // A name of the business stays at the plan's approval (not «auto»); the cut name of an older system is replaced.
+      expect(isAutoName(want, text), id).toBe(false);
+      const legacy = (text.split(/[.!?\n]/)[0] ?? "").slice(0, 60).trim();
+      expect(isAutoName(legacy, text), id).toBe(true);
+      // The owner's own name is never «auto».
+      expect(isAutoName("Моя студия", text), id).toBe(false);
+    }
+  });
+
+  test("no business in the words: the first clause cut on a word boundary, «auto» until the plan names it", () => {
+    const text = "Нужна система учёта заявок на ремонт техники для нашего сервисного центра в Самаре, срочно";
+    const name = nameFromPrompt(text);
+    expect(name.length).toBeLessThanOrEqual(40);
+    expect(name).not.toMatch(/(?:\s(?:в|на|для|и)|[,:;—-])$/);
+    expect(text.toLowerCase()).toContain(name.toLowerCase());
+    expect(isAutoName(name, text)).toBe(true);
+    expect(nameFromPrompt("   ")).toBe("Новая система");
   });
 });
 

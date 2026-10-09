@@ -33,6 +33,7 @@ import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { withKeyWindow } from "../secrets-v3/agent.js";
+import { loadBrief } from "../services/plans.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import { platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
@@ -191,6 +192,8 @@ export async function buildByBrief(
   const withBrowser = provider ? await provider.available() : false;
   const current = await host.store.getSpec();
   const cap = await runCapRub(o.pg, host.run.id);
+  // V3-18: the owner's first words about the business — the skeleton's heading, lead and SEO read them.
+  const request = await loadBrief(o.db, systemId);
   const v3: V3Host = {
     route: host.route,
     runStep: host.runStep,
@@ -260,6 +263,7 @@ export async function buildByBrief(
   const out = await runBuildV3(live, {
     ...(o.registry ? { registry: o.registry } : {}),
     appName: current.spec.app.name,
+    ...(request ? { request } : {}),
     platformUrl: o.platformOrigin,
     ...(cap !== null ? { runCapRub: cap } : {}),
   });
