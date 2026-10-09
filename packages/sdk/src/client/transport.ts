@@ -43,6 +43,8 @@ export interface ListParams {
   sort?: string | readonly string[];
   page?: number;
   limit?: number;
+  /** `q`: search over the role's readable text, phone and int fields (runtime.yaml#data_api.query_params.q). */
+  search?: string;
 }
 export interface ListResponse<T = Record<string, unknown>> {
   items: T[];
@@ -94,6 +96,7 @@ export function buildListQuery(p: ListParams): string {
   }
   if (p.page !== undefined) q.set("page", String(p.page));
   if (p.limit !== undefined) q.set("limit", String(p.limit));
+  if (p.search?.trim()) q.set("q", p.search.trim());
   const s = q.toString();
   return s ? `?${s}` : "";
 }

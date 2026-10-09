@@ -944,6 +944,40 @@ export interface CapabilityMonth {
   share: number;
 }
 
+/** V3-18 GET /admin/systems: a client system in the founder console «Системы и сбои». */
+export interface AdminSystem {
+  id: string;
+  name: string;
+  slug: string;
+  org: { id: string; name: string; kind: string };
+  stage: string;
+  suspended: boolean;
+  draftRevision: number;
+  previewRevision: number | null;
+  publishedRevision: number | null;
+  lastBuild: { status: string; failureCode: string | null; at: string | null } | null;
+  modelSpendRub: number;
+  creditsUsed: number;
+  lastActivityAt: string | null;
+  createdAt: string | null;
+}
+
+/** V3-18 GET /admin/runs: a run (by default a failed one) with its error and cost. */
+export interface AdminRun {
+  id: string;
+  org: { id: string; name: string };
+  system: { id: string; name: string } | null;
+  kind: string;
+  mode: string | null;
+  status: string;
+  errorCode: string | null;
+  messageRu: string | null;
+  modelSpendRub: number;
+  creditsUsed: number;
+  createdAt: string | null;
+  finishedAt: string | null;
+}
+
 /** V3-17 workflows.yaml#events.schemas.v3_progress: a brief scenario on the live checklist of a v3 build. */
 export interface V3ProgressScenario {
   id: string;

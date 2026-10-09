@@ -1,8 +1,9 @@
 // DataTable (ui-kit.yaml#components.DataTable): server-side sort/filter/search/pagination kept in the URL,
 // columns ∩ visible fields of RoleSpec, cards on sm.
 import type { Field } from "@wizard/appspec";
-import { type KeyboardEvent, type ReactNode, useMemo } from "react";
+import { type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 import { cx, useDataSource, useLocation, useNavigate, useRoleSpec, useWzRoot } from "../data/context.js";
+import { csvFields, downloadCsv, fetchAllRows, toCsv } from "../data/csv.js";
 import { entityOf, titleField } from "../data/roleSpec.js";
 import type { ListQuery, Rec } from "../data/types.js";
 import { ru } from "../i18n/ru.js";
@@ -100,6 +101,9 @@ export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
     ...(props.searchable && q ? { search: q } : {}),
   };
   const list = ds.useList<T>(props.entity, query);
+  const fetchList = (ds.useListFetcher ?? useNoFetcher)();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -112,7 +116,24 @@ export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
   };
   const tid = (base: string) => (props.testId ? `${base}--${props.testId}` : base);
 
-  const toolbar = (props.searchable || filterFields.length > 0) && (
+  // V3-18: every page under the current filter and search (or the loaded page when the source cannot fetch).
+  const exportCsv = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const rows = fetchList
+        ? await fetchAllRows((pq) => fetchList<Rec>(props.entity, pq), query)
+        : ((list.data?.items ?? []) as Rec[]);
+      const day = new Date().toISOString().slice(0, 10);
+      downloadCsv(`${props.entity}-${day}.csv`, toCsv(csvFields(ent?.fields ?? []), rows));
+    } catch (e) {
+      setExportError((e as { message?: string }).message ?? ru.dataTable.exportFailed);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toolbar = (props.searchable || filterFields.length > 0 || props.exportCsv) && (
     <div className={styles.toolbar}>
       {props.searchable && (
         <label className={styles.control}>
@@ -135,6 +156,23 @@ export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
           onChange={(v) => setParams({ [`f.${f}`]: v })}
         />
       ))}
+      {props.exportCsv && (
+        <div className={styles.export}>
+          <ButtonImpl
+            root={part(tid("wz-datatable-export"))}
+            size="sm"
+            disabled={exporting || total === 0}
+            onClick={() => void exportCsv()}
+          >
+            {exporting ? ru.dataTable.exporting : ru.dataTable.export}
+          </ButtonImpl>
+          {exportError && (
+            <span role="alert" className={styles.exportError}>
+              {exportError}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -245,6 +283,11 @@ export function DataTable<T = Rec>(props: DataTableProps<T>): ReactNode {
       )}
     </section>
   );
+}
+
+/** A source without useListFetcher: the export takes the loaded page. */
+function useNoFetcher(): undefined {
+  return undefined;
 }
 
 function FilterControl({

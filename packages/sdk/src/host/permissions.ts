@@ -25,6 +25,8 @@ export interface AccessPolicy {
   rowConstraint(op: PermissionOp): RowConstraint;
   readonly hidden: ReadonlySet<string>;
   readonly readonly: ReadonlySet<string>;
+  /** Values the role may write into a field (Permission.allowedValues, V3-18); absent field — any value. */
+  readonly allowedValues?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 type PermissionWithOps = Permission & { rowFilterOps?: PermissionOp[] };
@@ -84,7 +86,19 @@ export function compilePolicy(spec: AppSpec, entity: string, subject: AccessSubj
     rowConstraint: (op) => (filteredOps && !filteredOps.has(op) ? null : constraint),
     hidden: new Set([...(perm.hiddenFields ?? []), ...implicitlyHidden(spec, entity, perm)]),
     readonly: new Set(perm.readonlyFields ?? []),
+    allowedValues: new Map(Object.entries(perm.allowedValues ?? {}).map(([f, v]) => [f, new Set(v)])),
   };
+}
+
+/** Fields of a write whose value the policy does not allow (allowedValues; null clears and is not allowed either). */
+export function disallowedValues(policy: AccessPolicy, doc: Readonly<Record<string, unknown>>): string[] {
+  const allowed = policy.allowedValues;
+  if (!allowed?.size) return [];
+  return Object.keys(doc).filter((k) => {
+    const set = allowed.get(k);
+    const v = doc[k];
+    return set !== undefined && v !== undefined && !(typeof v === "string" && set.has(v));
+  });
 }
 
 /**

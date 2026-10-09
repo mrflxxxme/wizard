@@ -50,6 +50,7 @@ const grantShape = {
   rowFilterOps: permissionSchema.shape.rowFilterOps,
   hiddenFields: permissionSchema.shape.hiddenFields,
   readonlyFields: permissionSchema.shape.readonlyFields,
+  allowedValues: permissionSchema.shape.allowedValues,
 };
 /** A permission of a new role on an entity (the role is the operation's). */
 export const extensionGrantSchema = z.strictObject({ entity: identSchema, ...grantShape });
@@ -175,13 +176,17 @@ function fieldReason(spec: AppSpec, entity: Entity, f: Field, existing: boolean)
   return null;
 }
 
-/** A grant is at least as narrow as `p`: the same rowFilter conditions, hidden and read-only fields included. */
+/** A grant is at least as narrow as `p`: the same rowFilter conditions, hidden and read-only fields, allowed values included. */
 function narrowerThan(g: ExtensionGrant | Permission, p: Permission): boolean {
   const rf = g.rowFilter ?? {};
   return (
     Object.entries(p.rowFilter ?? {}).every(([k, v]) => rf[k] === v) &&
     covers(g.hiddenFields, p.hiddenFields) &&
-    covers(g.readonlyFields, p.readonlyFields)
+    covers(g.readonlyFields, p.readonlyFields) &&
+    Object.entries(p.allowedValues ?? {}).every(
+      ([f, values]) =>
+        g.readonlyFields?.includes(f) || (g.allowedValues?.[f]?.every((v) => values.includes(v)) ?? false),
+    )
   );
 }
 

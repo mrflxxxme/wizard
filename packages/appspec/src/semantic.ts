@@ -490,6 +490,33 @@ export function semanticErrors(spec: AppSpec, opts: ValidateOptions = {}): OpsEr
         });
       }
       if (p.rowFilter) checkRowFilter(p.rowFilter, entity, pp, out);
+      // V3-18: allowedValues — an enum field the role writes, values from its enum.
+      for (const [f, values] of Object.entries(p.allowedValues ?? {})) {
+        const field = entity.fields.find((x) => x.name === f);
+        const path = [...pp, "allowedValues", f];
+        if (field?.type !== "enum" || p.readonlyFields?.includes(f)) {
+          out.push(
+            err(
+              "UNKNOWN_FIELD",
+              path,
+              `allowedValues: поле «${f}» — не изменяемое роли enum-поле «${entity.name}»`,
+              {
+                allowed: entity.fields
+                  .filter((x) => x.type === "enum" && !p.readonlyFields?.includes(x.name))
+                  .map((x) => x.name),
+              },
+            ),
+          );
+          continue;
+        }
+        const options = (field.enum ?? []).map((o) => o.value);
+        values.forEach((v, j) => {
+          if (!options.includes(v))
+            out.push(
+              err("SCHEMA_INVALID", [...path, j], `Значения «${v}» нет в поле «${f}»`, { allowed: options }),
+            );
+        });
+      }
     }
     const hasFilter = p.rowFilter !== undefined && Object.keys(p.rowFilter).length > 0;
     if (p.rowFilterOps !== undefined) {

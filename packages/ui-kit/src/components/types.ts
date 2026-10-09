@@ -86,6 +86,8 @@ export interface DataTableProps<T = Rec> extends WzBase {
   query?: ListQuery;
   filters?: string[];
   searchable?: boolean;
+  /** V3-18: «Выгрузить CSV» — every page under the current filter and search, only the role's visible fields. */
+  exportCsv?: boolean;
   defaultSort?: { field: string; dir: "asc" | "desc" };
   pageSize?: 10 | 25 | 50;
   onRowClick?(row: T): void;

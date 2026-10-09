@@ -115,6 +115,9 @@ export const ru = {
     filter: (label: string) => `Фильтр: ${label}`,
     sortBy: (label: string) => `Сортировать по «${label}»`,
     actions: "Действия",
+    export: "Выгрузить CSV",
+    exporting: "Выгружаем…",
+    exportFailed: "Не удалось выгрузить таблицу. Попробуйте ещё раз",
   },
   recordCard: { notFound: "Запись не найдена", confirm: "Подтвердить", cancel: "Отмена" },
   /** AI actions (M3-02, ui-kit.yaml#components.RecordCard). */

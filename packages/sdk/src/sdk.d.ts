@@ -272,6 +272,8 @@ export interface EntityListOptions<E extends EntityName> {
   sort?: SortKey<E> | SortKey<E>[];
   page?: number;
   limit?: number;
+  /** Search over the role's readable text, phone and int fields (`q`, runtime.yaml#data_api.query_params). */
+  search?: string;
 }
 export interface EntityListState<E extends EntityName> {
   items: ClientDoc<E>[];

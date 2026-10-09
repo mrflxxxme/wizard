@@ -49,12 +49,16 @@ import {
 import { createInvalidationBus } from "./events.js";
 import {
   type CheckedFilter,
+  checkAllowedValues,
   checkFilters,
   checkValues,
   checkVisibleColumn,
   checkWritableKeys,
   columnType,
   fieldsError,
+  intQuery,
+  phoneDigits,
+  searchColumns,
   splitBody,
 } from "./validate.js";
 
@@ -271,6 +275,23 @@ function filterConds(filters: readonly CheckedFilter[]): Expression<SqlBool>[] {
     }
     return FALSE;
   });
+}
+
+/** `q` (V3-18): any readable text field ILIKE, a phone by its digits, an int field equal to «1042» / «№1042». */
+function searchCond(cols: readonly { name: string; type: string }[], q: string): Expression<SqlBool> {
+  const like = escapeLike(q);
+  const digits = phoneDigits(q);
+  const n = intQuery(q);
+  const terms: Expression<SqlBool>[] = [];
+  for (const c of cols) {
+    const col = sql.ref(c.name);
+    if (c.type === "int") {
+      if (n !== null) terms.push(sql<SqlBool>`${col} = ${n}`);
+    } else if (c.type === "phone" && digits)
+      terms.push(sql<SqlBool>`regexp_replace(${col}, '[^0-9]', '', 'g') LIKE ${`%${digits}%`}`);
+    else terms.push(sql<SqlBool>`${col} ILIKE ${like}`);
+  }
+  return terms.length ? sql<SqlBool>`(${sql.join(terms, sql` OR `)})` : FALSE;
 }
 
 /** ctx.db `where`: equality on index prefix, last key may be a range (sdk.md §2.4). */
@@ -658,6 +679,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
     require(p, "create");
     const { fields, consent: bodyConsent } = splitBody(body);
     checkWritableKeys(e, p, fields);
+    checkAllowedValues(p, fields);
     applyCreateConstraint(p, fields);
     checkValues(e, fields, "create");
     const journal =
@@ -717,6 +739,8 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
         .where(() => and([sql<SqlBool>`${sql.ref("id")} = ${id}`, ...constraintConds(c)])),
     );
     if (res.count === 0) throw new WizardError("NOT_FOUND");
+    // After the row is found (a foreign row stays 404); the throw rolls the transaction back.
+    checkAllowedValues(p, fields);
     await audit(t, e, "update", id, Object.keys(fields));
     if (journal) await journalConsent(t, e, id, consent.ipHmac);
     t.pending.push({ entity: e.name, id, op: "update" });
@@ -894,6 +918,7 @@ export function createPgDataAccess(o: PgDataAccessOptions): DataAccess {
           ...(sort.some((s) => s.field === "id") ? [] : [{ field: "id", dir: "asc" as const }]),
         ];
         const conds = [...constraintConds(p.rowConstraint("read")), ...filterConds(filters)];
+        if (q.search) conds.push(searchCond(searchColumns(e, p), q.search));
         const rows = await selectDocs(t, "subject", e, conds, order, q.limit, (q.page - 1) * q.limit);
         const n = await countRows(t, "subject", e, conds, MAX_TOTAL + 1);
         return {

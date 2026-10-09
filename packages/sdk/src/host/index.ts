@@ -32,6 +32,7 @@ export {
   type AccessPolicy,
   type AccessSubject,
   compilePolicy,
+  disallowedValues,
   functionAllowsRole,
   type PermissionOp,
   type RowConstraint,

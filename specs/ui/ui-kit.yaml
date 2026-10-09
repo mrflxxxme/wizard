@@ -301,7 +301,8 @@ components:
         columns?: (string | ColumnDef<T>)[];   // по умолчанию первые 6 видимых полей
         query?: ListQuery;                     // базовый фильтр
         filters?: string[];                    // поля enum/bool/date/ref для панели фильтров
-        searchable?: boolean;                  // полнотекстовый поиск data API
+        searchable?: boolean;                  // поиск data API (q: текстовые поля, телефон по цифрам, номер)
+        exportCsv?: boolean;                   // V3-18: кнопка «Выгрузить CSV» (все страницы под фильтром и поиском; UTF-8 BOM, «;»; только видимые поля роли)
         defaultSort?: { field: string; dir: 'asc' | 'desc' };
         pageSize?: 10 | 25 | 50;               // по умолчанию 25
         onRowClick?(row: T): void;
@@ -315,7 +316,7 @@ components:
       - "enum → Badge с label; money/date — Intl; ref → подпись записи; pii-поля у ролей без update показываются как есть (маскирование — задача runtime)"
       - "sm: строки → карточки (label: value), без горизонтального скролла; пагинация «Назад/Вперёд» + «стр. N из M»"
       - "Заголовки сортируемых колонок — button с aria-sort"
-    test_ids: [wz-datatable, wz-datatable-row, wz-datatable-sort-<field>, wz-datatable-filter-<field>, wz-datatable-search, wz-datatable-page-next, wz-datatable-page-prev]
+    test_ids: [wz-datatable, wz-datatable-row, wz-datatable-sort-<field>, wz-datatable-filter-<field>, wz-datatable-search, wz-datatable-export, wz-datatable-page-next, wz-datatable-page-prev]
     acceptance:
       - "Playwright (memory DS, 60 записей): сортировка по дате меняет порядок; фильтр по enum оставляет только совпадающие; страница 3 при pageSize 25 содержит 10 строк"
       - "Роль с hiddenFields [phone]: колонки phone нет в DOM, и в ответе useList ключа phone нет"

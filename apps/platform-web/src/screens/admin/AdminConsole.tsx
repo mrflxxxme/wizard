@@ -31,6 +31,7 @@ import st from "../settings/Settings.module.css";
 import { AdminCapability } from "../v3/AdminCapability.js";
 import s from "./Admin.module.css";
 import { PilotSection } from "./Pilot.js";
+import { SystemsSection, systemsRu } from "./Systems.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
 const isMfa = (e: unknown) => e instanceof ApiError && e.code === "MFA_REQUIRED";
@@ -308,10 +309,14 @@ function Verify({ onDone }: { onDone(): void }): ReactNode {
 function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
   const { search } = useRoute();
   const reportId = search.get("report");
-  // ?tab=support|gaps|candidates: links from the founder's Telegram message (D68) and the module factory (B2-26).
+  // ?tab=support|gaps|candidates|systems: links from the founder's Telegram message (D68), the module factory (B2-26).
   const initial = search.get("tab");
-  const [tab, setTab] = useState<"reports" | "reviews" | "pilot" | "support" | "gaps" | "candidates">(
-    initial === "support" || initial === "gaps" || initial === "candidates" ? initial : "reports",
+  const [tab, setTab] = useState<
+    "reports" | "reviews" | "pilot" | "systems" | "support" | "gaps" | "candidates"
+  >(
+    initial === "support" || initial === "gaps" || initial === "candidates" || initial === "systems"
+      ? initial
+      : "reports",
   );
   return (
     <main className={st.page} data-testid="admin-console">
@@ -351,6 +356,18 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
             data-testid="admin-tab-pilot"
           >
             {ru.admin.tabPilot}
+          </button>
+          <button
+            type="button"
+            className={s.tab}
+            aria-pressed={tab === "systems"}
+            onClick={() => {
+              setTab("systems");
+              setQueryParam("report", null);
+            }}
+            data-testid="admin-tab-systems"
+          >
+            {systemsRu.tab}
           </button>
           <button
             type="button"
@@ -402,6 +419,8 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
         <AdminCandidates onMfaRequired={onMfaRequired} />
       ) : tab === "pilot" ? (
         <PilotSection onMfaRequired={onMfaRequired} />
+      ) : tab === "systems" ? (
+        <SystemsSection onMfaRequired={onMfaRequired} />
       ) : tab === "reviews" ? (
         <Reviews onMfaRequired={onMfaRequired} />
       ) : reportId ? (

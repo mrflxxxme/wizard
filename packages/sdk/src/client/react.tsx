@@ -280,6 +280,7 @@ export function useEntityList<E extends EntityName>(
         sort: o.sort as string | string[] | undefined,
         page: o.page,
         limit: o.limit,
+        ...(o.search ? { search: o.search } : {}),
       });
     },
     (m) => m.entity === entity,

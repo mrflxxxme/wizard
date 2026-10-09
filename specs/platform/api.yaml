@@ -1002,6 +1002,22 @@ paths:
       summary: 'V3-06 (D77 (12), grill-8 № 12): доля требований «пока не умею» по месяцам (UTC) — по карте возможностей брифов: на систему и месяц берётся её последняя версия брифа этого месяца (capabilityShareByMonth, V3-03). Месяцы от старых к новым, без брифов — нули. Блок на /admin во вкладке «Запросы на развитие». Не staff → 404, без MFA → 403'
       parameters: [{name: months, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 36, default: 12}}]
       responses: {'200': {description: Доля по месяцам, content: {application/json: {schema: {type: object, required: [months], properties: {months: {type: array, items: {$ref: '#/components/schemas/CapabilityMonth'}}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/systems:
+    get:
+      operationId: adminListSystems
+      x-milestone: V3
+      x-roles: [staff]
+      summary: 'V3-18: системы клиентов для консоли основателя (вкладка «Системы и сбои»): не удалённые, по last_activity_at от новых; организация (id, name, kind), stage, suspended, draft/preview/published (prod_revision) ревизии, последняя сборка (runs kind=build: status, failureCode, at), траты моделей (сумма llm_calls.cost_rub по системе) и кредиты (сумма runs.credits_used_milli / 1000). Без данных клиентов, кроме названий. Не staff → 404, без MFA → 403'
+      parameters: [{name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}]
+      responses: {'200': {description: Системы, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [id, name, org, stage, publishedRevision, lastBuild, modelSpendRub, creditsUsed]}}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/runs:
+    get:
+      operationId: adminListRuns
+      x-milestone: V3
+      x-roles: [staff]
+      summary: 'V3-18: прогоны по статусу (по умолчанию failed), от новых (coalesce(finished_at, created_at)): организация, система, kind, mode, errorCode (failure_code), messageRu (failure_message_ru — текст, который видел клиент), траты моделей прогона (llm_calls.cost_rub по run_id), кредиты, время. Фильтр kind. Не staff → 404, без MFA → 403'
+      parameters: [{name: status, in: query, required: false, schema: {enum: [queued, waiting_lock, running, needs_input, succeeded, failed, cancelled], default: failed}}, {name: kind, in: query, required: false, schema: {type: string}}, {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}]
+      responses: {'200': {description: Прогоны, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [id, org, system, kind, status, errorCode, messageRu, modelSpendRub, creditsUsed, createdAt]}}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   # ==== M2P · M2-98 (адрес и свой домен, дизайн и референсы, медиа и стоки, хосты egress в ревью; секреты и настройки — M2-95 после M2-22/M2-98) — новые пути дописывать ЗДЕСЬ ====
   /systems/{id}/webhooks:
     parameters: [{$ref: '#/components/parameters/systemId'}]

@@ -269,6 +269,9 @@ export function createMemoryDataSource(
       if (hidden.has(k)) throw wzError("FIELD_HIDDEN", { fields: fe(k, "HIDDEN") });
       if (f.type === "qr_token" || p.readonlyFields?.includes(k))
         throw wzError("FIELD_READONLY", { fields: fe(k, "READONLY") });
+      const allowed = p.allowedValues?.[k];
+      if (allowed && !(typeof values[k] === "string" && allowed.includes(values[k] as string)))
+        throw wzError("FIELD_READONLY", { fields: fe(k, "READONLY") });
     }
     const errors: { field: string; code: string; message: string }[] = [];
     for (const f of e.fields) {
@@ -327,15 +330,28 @@ export function createMemoryDataSource(
       const p = perm(entity, "read");
       const hidden = hiddenOf(p);
       const filter = { ...(q.filter ?? {}) };
-      if (q.search) {
-        const f = e.fields.find((x) => x.type === "string" && !hidden.has(x.name));
-        if (f) filter[f.name] = { contains: q.search };
-      }
       for (const k of Object.keys(filter)) if (hidden.has(k)) throw wzError("FIELD_HIDDEN");
       if (q.sort && hidden.has(q.sort.field)) throw wzError("FIELD_HIDDEN");
       const pageSize = q.pageSize ?? 20;
       if (pageSize > 100) throw wzError("VALIDATION_FAILED");
-      let rows = (db.get(entity) ?? []).filter((r) => inRowFilter(p, r) && matches(r, filter));
+      // `q` as the runtime (data_api.query_params.q): readable text fields, a phone by digits, an int by equality.
+      const search = q.search?.trim().toLowerCase();
+      const found = (r: Rec) =>
+        !search ||
+        e.fields.some((f) => {
+          if (hidden.has(f.name) || r[f.name] === null || r[f.name] === undefined) return false;
+          const v = String(r[f.name]);
+          if (f.type === "int") return /^[#№]?\s*\d+$/.test(search) && v === search.replace(/\D/g, "");
+          if (f.type === "phone" && /^[+\d\s()-]+$/.test(search)) {
+            const d = search.replace(/\D/g, "");
+            const tail = d.length === 11 && (d[0] === "7" || d[0] === "8") ? d.slice(1) : d;
+            return d.length >= 3 && v.replace(/\D/g, "").includes(tail);
+          }
+          return (
+            ["string", "text", "email", "phone", "url"].includes(f.type) && v.toLowerCase().includes(search)
+          );
+        });
+      let rows = (db.get(entity) ?? []).filter((r) => inRowFilter(p, r) && matches(r, filter) && found(r));
       const sort = q.sort ?? { field: "created_at", dir: "desc" as const };
       rows = [...rows].sort((a, b) => cmp(a[sort.field], b[sort.field]) * (sort.dir === "desc" ? -1 : 1));
       const page = Math.max(1, q.page ?? 1);
@@ -430,6 +446,9 @@ export function createMemoryDataSource(
         items: T[];
         total: number;
       }>;
+    },
+    useListFetcher() {
+      return async <T>(entity: string, q: ListQuery) => ds.list(entity, q) as { items: T[]; total: number };
     },
     useRecord<T>(entity: string, id: string): AsyncResult<T> {
       return useComputed(store, `${entity}:${id}`, () => ds.get(entity, id)) as AsyncResult<T>;

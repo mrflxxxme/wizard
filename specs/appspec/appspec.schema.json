@@ -533,6 +533,21 @@
           },
           "uniqueItems": true,
           "description": "к каким ops применяется rowFilter (по умолчанию — ко всем ops разрешения); MUST ⊆ ops и только вместе с непустым rowFilter (INVALID_ROW_FILTER)"
+        },
+        "allowedValues": {
+          "type": "object",
+          "description": "V3-18: значения enum-поля, которые роль может записать при create/update (посетитель только отменяет запись: {status: [cancelled]}); поле MUST быть enum, значения — из его enum, поле не в readonlyFields; другое значение → 422 FIELD_READONLY (code VALUE_NOT_ALLOWED)",
+          "propertyNames": {
+            "$ref": "#/$defs/ident"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/ident"
+            }
+          }
         }
       },
       "description": "Запрещено всё, что не разрешено явно (deny by default)"

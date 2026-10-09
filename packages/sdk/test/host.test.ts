@@ -2,7 +2,13 @@
 import { join } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
 import { beforeAll, describe, expect, test } from "vitest";
-import { createFunctionHost, type TransactionRunner, toErrorResponse } from "../src/host/index.js";
+import {
+  compilePolicy,
+  createFunctionHost,
+  disallowedValues,
+  type TransactionRunner,
+  toErrorResponse,
+} from "../src/host/index.js";
 import { mutation, query, v, WizardError } from "../src/index.js";
 import { createTestHost, type TestHost } from "../src/testing/index.js";
 import { loadForum, materializeApp } from "./helpers/app.js";
@@ -466,3 +472,36 @@ type Db = Record<
     insert(d: Record<string, unknown>): Promise<string>;
   };
 };
+
+describe("allowedValues (V3-18)", () => {
+  test("compilePolicy keeps them; disallowedValues names fields with other values, null included", async () => {
+    const spec = loadForum();
+    for (const p of spec.permissions)
+      if (p.role === "moderator" && p.entity === "speaker_application")
+        p.allowedValues = { status: ["rejected"] };
+    const p = compilePolicy(spec, "speaker_application", { id: "u1", role: "moderator" });
+    expect([...(p.allowedValues?.get("status") ?? [])]).toEqual(["rejected"]);
+    expect(disallowedValues(p, { status: "rejected", moderator_comment: "x" })).toEqual([]);
+    expect(disallowedValues(p, { status: "approved" })).toEqual(["status"]);
+    expect(disallowedValues(p, { status: null })).toEqual(["status"]);
+    const free = compilePolicy(spec, "speaker_application", { id: "u1", role: "organizer" });
+    expect(disallowedValues(free, { status: "approved" })).toEqual([]);
+  });
+
+  test("the test host refuses a value outside the list with FIELD_READONLY", async () => {
+    const spec = loadForum();
+    for (const p of spec.permissions)
+      if (p.role === "moderator" && p.entity === "speaker_application")
+        p.allowedValues = { status: ["rejected"] };
+    const host = createTestHost(spec, { now: NOW });
+    const sp = host.createUser("speaker");
+    const app = { full_name: "Спикер", email: "s@example.test", topic: "Тема", abstract: "Кейс" };
+    const id = await host.run(sp, async (db) => db.speaker_application?.insert(app));
+    const mod = host.createUser("moderator");
+    const patch = (status: string) =>
+      host.run(mod, async (db) => db.speaker_application?.patch(id as string, { status }));
+    await expect(patch("approved")).rejects.toMatchObject({ code: "FIELD_READONLY" });
+    await patch("rejected");
+    expect(host.rows("speaker_application")[0]).toMatchObject({ status: "rejected" });
+  });
+});
