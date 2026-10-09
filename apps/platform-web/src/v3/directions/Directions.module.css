@@ -1,0 +1,316 @@
+/* «Три направления» (V3-09) on the platform design system v2: --p-* tokens, one column at 390 px. */
+.screen {
+  min-height: 100dvh;
+}
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+  color: var(--p-ink);
+  font-family: var(--p-f-ui);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--p-f-serif);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.intro,
+.hint {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--p-ink-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.toggle,
+.examples {
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+  border: 0;
+}
+
+.toggle {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-sunken);
+}
+
+.toggleButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  background: transparent;
+  color: var(--p-ink-2);
+  font: 500 14px var(--p-f-ui);
+  cursor: pointer;
+}
+
+.toggleButton[aria-pressed="true"] {
+  background: var(--p-surface);
+  color: var(--p-ink);
+  box-shadow: var(--p-sh-1);
+}
+
+.toggleButton:focus-visible,
+.upload:focus-within {
+  outline: 2px solid var(--p-ink);
+  outline-offset: 2px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-1);
+}
+
+.cardPicked {
+  border-color: var(--p-ink);
+  box-shadow: 0 0 0 2px var(--p-ink);
+}
+
+.previewBox {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--p-sunken);
+  border-bottom: 1px solid var(--p-line);
+}
+
+.preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  background: var(--p-surface);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.why {
+  margin: 0;
+  color: var(--p-ink-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--p-ink-2);
+  font-size: 13px;
+}
+
+.swatches {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--p-line-2);
+}
+
+.pick,
+.send,
+.small {
+  min-height: 44px;
+}
+
+.pick {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.refine,
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--p-line-2);
+  border-radius: var(--p-r-md);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  font: 16px var(--p-f-ui);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--p-ink);
+  outline-offset: 1px;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.examples > button {
+  min-height: 44px;
+}
+
+.status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--p-ink);
+  font-size: 15px;
+}
+
+.error {
+  margin: 0;
+  color: var(--p-bad);
+  font-size: 15px;
+}
+
+.refs {
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-lg);
+  padding: 4px 16px 12px;
+  background: var(--p-surface);
+}
+
+.refs > * + * {
+  margin-top: 12px;
+}
+
+.refsSummary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.uploads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px dashed var(--p-line-2);
+  border-radius: var(--p-r-md);
+  color: var(--p-ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.upload input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.used ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--p-ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}

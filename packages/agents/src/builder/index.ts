@@ -226,6 +226,8 @@ export type {
   V3ComposeResult,
   V3PagePlan,
 } from "./v3/contract.js";
+/** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
+export * from "./v3/directions/index.js";
 /**
  * V3-11 build harness (builder-v3.md C6): runBuildV3(host, params) — brief → design → backend → skeleton (preview) →
  * scenarios one by one with a browser check → critic/template_gate/techreview hooks → gates; checkpoints, wallet, clock.

@@ -18,6 +18,8 @@ import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
+import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
+import { type DirectionsDeps, DirectionsService } from "./directions/service.js";
 import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { runModuleFactoryCron } from "./gaps/factory.js";
@@ -127,6 +129,8 @@ export interface PlatformApiOptions {
    * off). The AI gateway of the runtime (POST /internal/v1/ai/run) uses `createRouter` and the platform mailer.
    */
   aiBackfill?: RuntimeAiBackfill | null;
+  /** V3-09 «Три направления»: research of reference links (tests: recorded pages) and the model deadline. */
+  directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
 }
 
 export interface PlatformApi {
@@ -339,6 +343,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   app.route("/internal/v1", internalRoutes({ config, gateway: aiGateway, log }));
   // Notifications of the platform shop come without Origin and session (api.yaml yookassaWebhook, security: []).
   app.post("/api/v1/webhooks/yookassa", yookassaWebhook(deps));
+  // V3-09: files of the direction previews for the sandboxed srcdoc frames (no session; the proposal id is the key).
+  const directions = new DirectionsService({
+    db: handle.db,
+    blobs,
+    config,
+    billing,
+    ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    ...opts.directions,
+    log,
+  });
+  app.route("/api/v1", directionPreviewRoutes(directions));
   app.use("*", originGuard(config));
 
   const accounts = { mailer, geoRegion: opts.geoRegion };
@@ -362,6 +377,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   );
   // V3-06: the session feed of a system (interview, builds, brief edits) from runs and brief versions.
   api.route("/", sessionRoutes(deps));
+  // V3-09: three directions of the first screen, refinement by words, the pick and the references.
+  api.route("/", directionRoutes(directions));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));

@@ -22,6 +22,7 @@
     "@wizard/llm": "workspace:*",
     "@wizard/pii": "workspace:*",
     "@wizard/runtime": "workspace:*",
+    "@wizard/ui-kit": "workspace:*",
     "fflate": "^0.8.3",
     "hono": "^4.13.12",
     "kysely": "^0.28.17",
