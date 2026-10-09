@@ -86,12 +86,14 @@ async function events(runId: string) {
 const system = async (id: string) => (await api.req("GET", `/systems/${id}`)).body;
 
 describe("WIZARD_BUILD_PIPELINE=v3", () => {
-  test("the flag: v3 parses, anything else stays as before", () => {
+  test("the flag (D78): v3 by default; modules and legacy only when named", () => {
     expect(buildPipelineOf("v3")).toBe("v3");
     expect(buildPipelineOf(" V3 ")).toBe("v3");
     expect(buildPipelineOf("modules")).toBe("modules");
-    expect(buildPipelineOf("")).toBe("legacy");
-    expect(buildPipelineOf("v4")).toBe("legacy");
+    expect(buildPipelineOf(" Legacy ")).toBe("legacy");
+    expect(buildPipelineOf("")).toBe("v3");
+    expect(buildPipelineOf(undefined)).toBe("v3");
+    expect(buildPipelineOf("v4")).toBe("v3");
   });
 });
 
