@@ -8,6 +8,7 @@ import { innValid } from "../auth/region.js";
 import { TECHREVIEW_BLOCKED_RU, techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
+import { repoPublishBlock } from "../git-sync/publish.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
 import { type Deps, jsonBody, parseQuery } from "../http/util.js";
 import {
@@ -86,6 +87,13 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     // V3-15: the techreview of the v3 build that left this revision found blockers (D77 (10)).
     const [tr] = await techreviewBlockersOf(d.db, s.id, b.revision);
     if (tr) throw new ApiError("GATES_FAILED", TECHREVIEW_BLOCKED_RU(tr));
+    // V3-31: with a connected repository a revision is published after its PR is merged (D77 (3)).
+    const repo = await repoPublishBlock(d.db, s.id, b.revision);
+    if (repo)
+      throw new ApiError("GATES_FAILED", repo.message_ru, {
+        reason: "REPO_NOT_MERGED",
+        ...(repo.pr ? { pr: repo.pr } : {}),
+      });
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });

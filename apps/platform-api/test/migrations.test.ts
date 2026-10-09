@@ -1,4 +1,5 @@
 // Acceptance M0-15: after migrate, columns of M0 tables match specs/platform/db.yaml (the test parses the YAML).
+import type { TransactionSql } from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createDb, type DbHandle, DEFAULT_ORG_ID, DEV_USER_ID, migrate } from "../src/db/index.js";
 import { createTestDb, loadYaml } from "./helpers.js";
@@ -92,6 +93,14 @@ V3_TABLES.push("byok_consents", "byok_keys");
 V3_TABLES.push("system_api_keys", "system_api_calls", "system_integration_contracts");
 // V3-21: key windows and the keys they left (migration 0042).
 V3_TABLES.push("secret_windows", "secret_bindings");
+// V3-31: sync of system repositories with GitHub and GitLab (migration 0043).
+V3_TABLES.push(
+  "system_repo_links",
+  "system_repo_prs",
+  "system_repo_imports",
+  "system_repo_jobs",
+  "system_repo_deliveries",
+);
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
@@ -286,5 +295,93 @@ describe("migrations vs db.yaml", () => {
                (select count(*) from platform.secret_bindings where system_id = ${systemId})::int as b`,
     );
     expect(left[0]).toEqual({ w: 0, b: 0 });
+  });
+});
+
+describe("0043 (V3-31): repository sync", () => {
+  const T = [
+    "system_repo_deliveries",
+    "system_repo_imports",
+    "system_repo_jobs",
+    "system_repo_links",
+    "system_repo_prs",
+  ];
+
+  test("forced RLS by org on every table; the dispatch read policy only on links and jobs, SELECT only", async () => {
+    const rls = await h.pg<{ relname: string; on: boolean; forced: boolean }[]>`
+      select c.relname, c.relrowsecurity as on, c.relforcerowsecurity as forced
+      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'platform' and c.relname in ${h.pg(T)} order by c.relname`;
+    expect(rls).toEqual(T.map((relname) => ({ relname, on: true, forced: true })));
+    const pol = await h.pg<{ tablename: string; policyname: string; cmd: string }[]>`
+      select tablename, policyname, cmd from pg_catalog.pg_policies
+      where schemaname = 'platform' and tablename in ${h.pg(T)} order by tablename, policyname`;
+    expect(pol.filter((p) => p.policyname.endsWith("_dispatch"))).toEqual([
+      { tablename: "system_repo_jobs", policyname: "system_repo_jobs_dispatch", cmd: "SELECT" },
+      { tablename: "system_repo_links", policyname: "system_repo_links_dispatch", cmd: "SELECT" },
+    ]);
+    expect(pol.filter((p) => p.policyname.endsWith("_org")).map((p) => p.cmd)).toEqual(T.map(() => "ALL"));
+  });
+
+  test("tokens only sealed, one waiting job per key, an imported head names its revision, all go with the link", async () => {
+    const [sys] = await h.pg<{ id: string }[]>`
+      insert into platform.systems (org_id, slug, schema_key, name, pending_questions, created_by)
+      values (${DEFAULT_ORG_ID}, 'mig-repo-sync', 'migreposync1', 'Синхронизация', '[]', ${DEV_USER_ID}) returning id`;
+    const systemId = sys?.id as string;
+    const inOrg = async <R>(fn: (sql: TransactionSql) => Promise<R>): Promise<R> => {
+      let out: R | undefined;
+      await h.pg.begin(async (sql) => {
+        await sql`select pg_catalog.set_config('wizard.org_id', ${DEFAULT_ORG_ID}, true)`;
+        out = await fn(sql);
+      });
+      return out as R;
+    };
+    await expect(
+      inOrg(
+        (
+          sql,
+        ) => sql`insert into platform.system_repo_links (org_id, system_id, provider, host_url, secret_ref, ciphertext)
+          values (${DEFAULT_ORG_ID}, ${systemId}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab', 'Z2xh')`,
+      ),
+    ).rejects.toThrow(/system_repo_links_sealed/);
+    const [link] = await inOrg(
+      (sql) => sql<
+        { id: string }[]
+      >`insert into platform.system_repo_links (org_id, system_id, provider, host_url, secret_ref)
+        values (${DEFAULT_ORG_ID}, ${systemId}, 'gitlab', 'https://gitlab.example.ru', 'secret://repo/gitlab') returning id`,
+    );
+    const linkId = link?.id as string;
+    const job = () =>
+      inOrg(
+        (sql) => sql`insert into platform.system_repo_jobs (org_id, system_id, link_id, kind, dedupe_key)
+          values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, 'push', 'push')`,
+      );
+    await job();
+    await expect(job()).rejects.toThrow(/system_repo_jobs_dedupe_idx/);
+    await inOrg(
+      (sql) => sql`update platform.system_repo_jobs set status = 'running' where link_id = ${linkId}`,
+    );
+    await job();
+    await expect(
+      inOrg(
+        (
+          sql,
+        ) => sql`insert into platform.system_repo_imports (org_id, system_id, link_id, head_oid, source, status)
+          values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, ${"b".repeat(40)}, 'webhook', 'imported')`,
+      ),
+    ).rejects.toThrow(/system_repo_imports_revision/);
+    await inOrg(
+      (
+        sql,
+      ) => sql`insert into platform.system_repo_imports (org_id, system_id, link_id, head_oid, source, status)
+        values (${DEFAULT_ORG_ID}, ${systemId}, ${linkId}, ${"a".repeat(40)}, 'webhook', 'noop')`,
+    );
+    const left = await inOrg(async (sql) => {
+      await sql`delete from platform.system_repo_links where id = ${linkId}`;
+      return sql<{ n: number }[]>`
+        select ((select count(*) from platform.system_repo_jobs where system_id = ${systemId})
+              + (select count(*) from platform.system_repo_imports where system_id = ${systemId}))::int as n`;
+    });
+    expect(left[0]?.n).toBe(0);
   });
 });

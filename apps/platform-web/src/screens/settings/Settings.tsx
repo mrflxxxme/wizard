@@ -30,6 +30,7 @@ import { ru } from "../../i18n/ru.js";
 import { initialRunState, type RunState, reduceRun } from "../../run/reducer.js";
 import { subscribeRun } from "../../run/stream.js";
 import { ByokKeys } from "./byok/ByokKeys.js";
+import { RepoSync } from "./repo/RepoSync.js";
 import s from "./Settings.module.css";
 
 const ROLES: OrgRole[] = ["owner", "editor", "viewer"];
@@ -1021,6 +1022,9 @@ export function Settings({ systemId }: { systemId: string }): ReactNode {
               ))}
             </ul>
           </section>
+
+          {/* V3-31: the system's repository on GitHub / GitLab; renders nothing while the feature is off. */}
+          <RepoSync systemId={system.id} owner={owner} />
 
           <section className={`${s.block} ${s.wide} ${s.danger}`} aria-labelledby="danger-title">
             <h2 id="danger-title" className={s.blockTitle}>

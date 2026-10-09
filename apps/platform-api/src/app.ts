@@ -26,6 +26,7 @@ import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { runModuleFactoryCron } from "./gaps/factory.js";
 import { repoRoutes } from "./git/routes.js";
+import { GitSync, type GitSyncOptions, repoSyncRoutes, repoWebhookRoutes } from "./git-sync/index.js";
 import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
@@ -143,6 +144,8 @@ export interface PlatformApiOptions {
   integrations?: Pick<IntegrationsDeps, "research" | "keyCheck">;
   /** V3-21 key window: its KMS (default windowKmsOf(env): OpenBao Transit or the local KEK) and platform domains. */
   secretWindow?: { kms?: TransitKms | null; platformDomains?: readonly string[] };
+  /** V3-31 repository sync (tests: env and config of the providers, their HTTP, the clock; the queue timer). */
+  gitSync?: Pick<GitSyncOptions, "env" | "cfg" | "fetch" | "now">;
 }
 
 export interface PlatformApi {
@@ -154,6 +157,8 @@ export interface PlatformApi {
   fetch: (req: Request, env?: unknown) => Response | Promise<Response>;
   engine: RunEngine;
   deps: Deps;
+  /** V3-31: sync of system repositories with GitHub and GitLab (tests drive its queue with tick()). */
+  gitSync: GitSync;
   close(): Promise<void>;
 }
 
@@ -245,6 +250,19 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     sweepTimer.unref();
   }
   const payments = new Payments({ db: handle.db, config, ledger: billing, mailer, log });
+  // V3-31: the repository sync — imports are gated by the same executor as runs, their preview built by its G0 step.
+  const gitSync = new GitSync({
+    db: handle.db,
+    pg: handle.pg,
+    blobs,
+    config,
+    secrets,
+    ...(executors.gates ? { gates: executors.gates } : {}),
+    ...(executors.onG0Passed ? { onG0Passed: executors.onG0Passed } : {}),
+    log,
+    ...opts.gitSync,
+  });
+  gitSync.start();
   const deps: Deps = {
     db: handle.db,
     pg: handle.pg,
@@ -357,6 +375,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   app.route("/internal/v1", internalRoutes({ config, gateway: aiGateway, log }));
   // Notifications of the platform shop come without Origin and session (api.yaml yookassaWebhook, security: []).
   app.post("/api/v1/webhooks/yookassa", yookassaWebhook(deps));
+  // V3-31: GitHub App and GitLab project hooks (signature / hook token instead of a session).
+  app.route("/api/v1", repoWebhookRoutes(gitSync));
   // V3-09: files of the direction previews for the sandboxed srcdoc frames (no session; the proposal id is the key).
   const directions = new DirectionsService({
     db: handle.db,
@@ -395,6 +415,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", buildV3Routes(deps));
   // V3-30: the internal git of the system — commits, revision ↔ commit, diff, zip of the tree.
   api.route("/", repoRoutes(deps));
+  // V3-31: sync of the repository with GitHub / GitLab through PRs (connect, state, auto-merge, PR preview).
+  api.route("/", repoSyncRoutes(deps, gitSync));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
   // V3-20: integrations of the brief (contracts, mock → key check → live) and keys of the system's own API.
@@ -451,7 +473,9 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     fetch: (req, env) => app.fetch(req, env),
     engine,
     deps,
+    gitSync,
     async close() {
+      gitSync.stop();
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
       if (opsTimer) clearInterval(opsTimer);

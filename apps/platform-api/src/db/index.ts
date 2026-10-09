@@ -37,6 +37,7 @@ import * as m0039 from "../../migrations/0039_v3_system_api_keys.js";
 import * as m0040 from "../../migrations/0040_v3_system_repos.js";
 import * as m0041 from "../../migrations/0041_v3_byok_keys.js";
 import * as m0042 from "../../migrations/0042_v3_secret_window.js";
+import * as m0043 from "../../migrations/0043_v3_repo_sync.js";
 import type { DB } from "./types.js";
 
 export type { DB } from "./types.js";
@@ -101,6 +102,7 @@ const MIGRATIONS: Record<string, Migration> = {
   "0040_v3_system_repos": m0040,
   "0041_v3_byok_keys": m0041,
   "0042_v3_secret_window": m0042,
+  "0043_v3_repo_sync": m0043,
 };
 
 const provider: MigrationProvider = { getMigrations: async () => MIGRATIONS };

@@ -188,6 +188,10 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
         await tx`delete from platform.system_git_commits where system_id = ${s.id}`;
         await tx`delete from platform.system_git_refs where system_id = ${s.id}`;
         await tx`delete from platform.system_git_objects where system_id = ${s.id}`;
+        // V3-31: the repository sync (connection with its sealed tokens, PRs, imports, queue, deliveries) — RLS by org.
+        await tx`select pg_catalog.set_config('wizard.org_id',
+          (select s.org_id::text from platform.systems as s where s.id = ${s.id}), true)`;
+        await tx`delete from platform.system_repo_links where system_id = ${s.id}`;
         // V3-14: the site fingerprint of the template gate.
         await tx`delete from platform.system_site_fingerprints where system_id = ${s.id}`;
         // V3-20: keys of the system's own API with their journal, contracts of its integrations.

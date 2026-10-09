@@ -1473,6 +1473,144 @@ paths:
         '200': {description: Удалено, content: {application/json: {schema: {type: object, required: [removed, integrations], properties: {removed: {const: true}, integrations: {type: array, items: {type: object, required: [integrationId, status], properties: {integrationId: {type: string}, status: {enum: [mock, live, failed]}}}}}}}}}
         '404': {$ref: '#/components/responses/Error'}
   # ==== конец блока V3-21 ====
+  # ==== V3-31: синхронизация репозитория системы с GitHub и GitLab через PR (db.yaml system_repo_*) ====
+  /systems/{id}/repo-sync:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getRepoSync
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-31 (D77 (3)): подключение системы к внешнему репозиторию и его состояние — провайдер, репозиторий и основная ветка, статус (pending — ждём выбора репозитория, active, paused, error — с причиной по-русски), автомерж, последние PR ревизий с гейтами, импорты основной ветки (принят, без изменений, отклонён с причиной), очередь повторов, правило «публикация после мержа». Токены не возвращаются никогда (secretRef — только ссылка secret://repo/<провайдер>)'
+      responses:
+        '200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/RepoSyncState'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    patch:
+      operationId: updateRepoSync
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: автомерж (Wizard сливает PR сам при зелёных G0–G2 и техревью без блокеров, способом merge — коммиты Wizard остаются в истории ветки) и пауза (на паузе ничего не отправляется и не импортируется, публикация не ждёт мержа)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {autoMerge: {type: boolean}, paused: {type: boolean}}}}}}
+      responses:
+        '200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/RepoSyncState'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: disconnectRepoSync
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: отключение — хук проекта GitLab удаляется (по возможности), подключение с запечатанными токенами, PR, импорты и очередь удаляются; репозиторий клиента не трогаем (приложение GitHub клиент удаляет сам)'
+      responses:
+        '200': {description: Состояние без подключения, content: {application/json: {schema: {$ref: '#/components/schemas/RepoSyncState'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/github:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: startRepoSyncGithub
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: адрес установки GitHub App платформы (права Contents и Pull requests — запись, Checks — запись, Metadata — чтение; доступ к выбранным репозиториям) с подписанным state (система, пользователь, 15 мин). Приложение не настроено → 403 FORBIDDEN'
+      responses:
+        '200': {description: Адрес установки, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /git-sync/github/setup:
+    get:
+      operationId: githubRepoSyncSetup
+      x-milestone: V3
+      summary: 'V3-31: Setup URL приложения GitHub (после установки). Установка подтверждается кодом OAuth самого пользователя: installation_id должен быть среди GET /user/installations, иначе 403; state чужой или устаревший → 400. Успех → 302 на «Настройки» системы (?repo=select#repo)'
+      parameters: [{name: installation_id, in: query, required: true, schema: {type: string}}, {name: state, in: query, required: true, schema: {type: string}}, {name: code, in: query, schema: {type: string}}, {name: setup_action, in: query, schema: {type: string}}]
+      responses:
+        '302': {description: На страницу настроек системы}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/gitlab:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: startRepoSyncGitlab
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: адрес авторизации OAuth GitLab (authorization code + PKCE S256, scope api). Без baseUrl — gitlab.com приложением платформы; свой GitLab — https-адрес без пути, доступный из интернета, и Application ID/Secret приложения OAuth, созданного владельцем на своём сервере (запечатываются как токены). Ошибка адреса → 400 VALIDATION_FAILED (details.field)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {baseUrl: {type: [string, 'null']}, clientId: {type: [string, 'null']}, clientSecret: {type: [string, 'null'], writeOnly: true}}}}}}
+      responses:
+        '200': {description: Адрес авторизации, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+  /git-sync/gitlab/callback:
+    get:
+      operationId: gitlabRepoSyncCallback
+      x-milestone: V3
+      summary: 'V3-31: redirect URI приложения OAuth GitLab: код обменивается на токены (с code_verifier из state), токены запечатываются; успех → 302 на «Настройки» системы (?repo=select#repo)'
+      parameters: [{name: code, in: query, required: true, schema: {type: string}}, {name: state, in: query, required: true, schema: {type: string}}]
+      responses:
+        '302': {description: На страницу настроек системы}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/repos:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listRepoSyncRepos
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: репозитории для выбора — доступные установке GitHub App или проекты GitLab с правами Developer и выше'
+      responses:
+        '200': {description: Репозитории, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [id, path, defaultBranch, private, webUrl], properties: {id: {type: string}, path: {type: string}, defaultBranch: {type: [string, 'null']}, private: {type: boolean}, webUrl: {type: string}}}}}}}}}
+        '409': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/repo:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: selectRepoSyncRepo
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: выбор репозитория — проверяется доступ и сервер клонирования (тот же, что у провайдера); у GitLab создаётся хук проекта с секретным токеном. Подключение становится active, в очереди — первая отправка (в пустой репозиторий — сразу в основную ветку, иначе PR) и сверка. Репозиторий уже подключён к другой системе или уже выбран (сменить — через отключение) → 412 VERSION_CONFLICT'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [repoId], properties: {repoId: {type: string, pattern: '^[0-9]{1,20}$'}}}}}}
+      responses:
+        '200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/RepoSyncState'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '412': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/retry:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: retryRepoSync
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-31: «Повторить» — остановленные задания очереди возвращаются, подключение из error — в active, сверка сейчас'
+      responses:
+        '200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/RepoSyncState'}}}}
+        '412': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/preview/{rev}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: rev, in: path, required: true, schema: {type: integer, minimum: 1}}]
+    get:
+      operationId: getRepoSyncPreview
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-31: постоянная ссылка превью ревизии PR (её пишет Wizard в описание PR и в проверки). Браузеру (Accept: text/html) — 302 на свежий вход в превью, пока ревизия — превью черновика, иначе — 302 на страницу системы; клиенту API — тот же адрес в JSON'
+      responses:
+        '200': {description: Адрес, content: {application/json: {schema: {type: object, required: [url, current], properties: {url: {type: string}, current: {type: boolean, description: 'false — ревизия уже не превью, адрес — страница системы'}}}}}}
+        '302': {description: Превью или страница системы (браузер)}
+        '404': {$ref: '#/components/responses/Error'}
+  /webhooks/git/github:
+    post:
+      operationId: githubRepoWebhook
+      x-milestone: V3
+      security: []
+      summary: 'V3-31: вебхук GitHub App (один на приложение). Подпись X-Hub-Signature-256 (HMAC-SHA256 тела секретом приложения, сравнение за постоянное время) → иначе 401; повтор X-GitHub-Delivery — 202 {duplicate: true}; pull_request closed+merged в основную ветку и push в основную ветку → импорт в очереди; installation deleted/suspend, installation_repositories removed → подключение в error с причиной. Тело ≤ 5 МБ'
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        '200': {description: ping и события без действия}
+        '202': {description: Принято}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /webhooks/git/gitlab/{linkId}:
+    parameters: [{name: linkId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: gitlabRepoWebhook
+      x-milestone: V3
+      security: []
+      summary: 'V3-31: хук проекта GitLab, созданный Wizard. X-Gitlab-Token равен секрету подключения (запечатан, сравнение за постоянное время) → иначе 401; повтор X-Gitlab-Event-UUID (или Idempotency-Key, иначе sha256 тела) — 202 {duplicate: true}; Merge Request Hook (merge в основную ветку) и Push Hook в основную ветку → импорт в очереди'
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        '202': {description: Принято}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  # ==== конец блока V3-31 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -2035,3 +2173,59 @@ components:
         status: {enum: [mock, live, failed]}
         message_ru: {type: string}
         code: {type: string}
+    # ==== V3-31: синхронизация репозитория ====
+    RepoSyncState:
+      type: object
+      description: 'V3-31: подключение системы к GitHub или GitLab и состояние синхронизации; токенов нет'
+      required: [available, providers, link, prs, imports, queue, publishGate]
+      properties:
+        available: {type: boolean, description: 'false — функция выключена на платформе (WIZARD_GIT_SYNC=off или нет KMS)'}
+        providers: {type: object, required: [github, gitlab, gitlabSelfManaged], properties: {github: {type: boolean}, gitlab: {type: boolean, description: gitlab.com приложением платформы}, gitlabSelfManaged: {type: boolean}}}
+        link:
+          oneOf:
+            - {type: 'null'}
+            - type: object
+              required: [id, provider, status, statusRu, hostUrl, repo, autoMerge, secretRef, lastSyncAt, lastError, remoteHead, lastPushedRevision, connectedAt]
+              properties:
+                id: {type: string, format: uuid}
+                provider: {enum: [github, gitlab]}
+                status: {enum: [pending, active, paused, error]}
+                statusRu: {type: string}
+                hostUrl: {type: string}
+                repo: {oneOf: [{type: 'null'}, {type: object, required: [id, path, webUrl, defaultBranch], properties: {id: {type: string}, path: {type: string}, webUrl: {type: [string, 'null']}, defaultBranch: {type: string}}}]}
+                autoMerge: {type: boolean}
+                secretRef: {type: string, pattern: '^secret://repo/[a-z]+$'}
+                lastSyncAt: {type: [string, 'null'], format: date-time}
+                lastError: {oneOf: [{type: 'null'}, {type: object, required: [code, message_ru], properties: {code: {type: string}, message_ru: {type: string}}}]}
+                remoteHead: {oneOf: [{type: 'null'}, {type: object, required: [oid, revision], properties: {oid: {type: string, pattern: '^[0-9a-f]{40}$'}, revision: {type: [integer, 'null'], description: 'ревизия Wizard, которой соответствует голова основной ветки'}}}]}
+                lastPushedRevision: {type: integer}
+                connectedAt: {type: string, format: date-time}
+        prs:
+          type: array
+          items:
+            type: object
+            required: [revision, number, url, branch, state, checks, createdAt]
+            properties:
+              revision: {type: integer}
+              number: {type: [integer, 'null'], description: 'null — первая отправка прямо в основную ветку пустого репозитория (state direct)'}
+              url: {type: [string, 'null']}
+              branch: {type: string, description: 'wizard/<slug>/<ревизия>'}
+              state: {enum: [open, merged, closed, superseded, direct]}
+              checks: {type: array, items: {type: object, required: [key, state, title], properties: {key: {enum: [G0, G1, G2, techreview]}, state: {enum: [pending, success, failure, neutral]}, title: {type: string}}}}
+              createdAt: {type: string, format: date-time}
+        imports:
+          type: array
+          items:
+            type: object
+            required: [headOid, status, revision, baseRevision, prNumber, reason_ru, warnings, createdAt]
+            properties:
+              headOid: {type: string, pattern: '^[0-9a-f]{40}$'}
+              status: {enum: [pending, noop, imported, rejected]}
+              revision: {type: [integer, 'null'], description: новая ревизия импорта}
+              baseRevision: {type: [integer, 'null']}
+              prNumber: {type: [integer, 'null']}
+              reason_ru: {type: [string, 'null'], description: 'причина отказа: конфликт, несовместимые изменения, спека, гейт'}
+              warnings: {type: array, items: {type: string}}
+              createdAt: {type: string, format: date-time}
+        queue: {type: object, required: [waiting, failing, stopped, nextAttemptAt], properties: {waiting: {type: integer}, failing: {type: integer, description: ждут повтора после ошибки}, stopped: {type: integer, description: 'остановлены после 10 попыток или до действия владельца'}, nextAttemptAt: {type: [string, 'null'], format: date-time}}}
+        publishGate: {type: object, required: [required, mergedRevision], properties: {required: {type: boolean, description: 'true — публикация ревизии только после мержа её PR'}, mergedRevision: {type: [integer, 'null'], description: 'последняя ревизия, которая есть в основной ветке'}}}
