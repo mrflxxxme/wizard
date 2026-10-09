@@ -52,7 +52,7 @@ export const renderWorkerId = (key: string) =>
 
 export async function startG1Sandbox(
   env: Env,
-  o: { log?: (line: Record<string, unknown>) => void; kube?: KubeApi } = {},
+  o: { log?: (line: Record<string, unknown>) => void; kube?: KubeApi; fetch?: typeof fetch } = {},
 ): Promise<G1Sandbox | null> {
   const sb = sandboxFromEnv(env, {
     owner: "g1",
@@ -60,6 +60,7 @@ export async function startG1Sandbox(
     inPlace: true,
     ...(o.log ? { log: o.log } : {}),
     ...(o.kube ? { kube: o.kube } : {}),
+    ...(o.fetch ? { fetch: o.fetch } : {}),
   });
   if (!sb) return null;
   const bridge = new RenderBridge();
@@ -126,7 +127,13 @@ export async function startG1Sandbox(
       };
     },
     async release(systemIds) {
-      for (const id of systemIds) await orchestrator.remove(id, "draft");
+      // Each one is freed even when another's pod restart fails: a system left placed stays in its pod's config.
+      for (const id of systemIds)
+        await orchestrator
+          .remove(id, "draft")
+          .catch((e: unknown) =>
+            o.log?.({ msg: "sandbox_release_failed", level: "warn", systemId: id, env: "draft", error: e }),
+          );
     },
     async close() {
       await orchestrator.close();

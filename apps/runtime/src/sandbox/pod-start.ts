@@ -1,7 +1,7 @@
 // Starting one sandbox pod for the orchestrator (M2-18): the create, retried while the namespace ResourceQuota has no
 // room, and the wait until the pod is Ready and answers from this process. Deadlines are on the caller's clock.
 import { WizardError } from "@wizard/sdk";
-import { type KubeApi, KubeError } from "./kube.js";
+import { type KubeApi, KubeError, type KubePodStatus } from "./kube.js";
 
 export interface PodStartContext {
   kube: KubeApi;
@@ -22,9 +22,27 @@ const STUCK = new Set([
   "CrashLoopBackOff",
   "RunContainerError",
 ]);
+/** Reasons of a container that ran and exited (its code or the memory limit), not of the node or the image. */
+const CRASH = new Set(["CrashLoopBackOff", "Error", "OOMKilled"]);
 const PROBE_TIMEOUT_MS = 2000;
 
 const unavailable = (message: string) => new WizardError("FUNCTIONS_DISABLED", { message });
+const crashes = new WeakSet<object>();
+
+/** Whether a start failed because workerd ran and exited (CrashLoopBackOff, OOMKilled…): its config, not the node. */
+export const podCrashed = (e: unknown): boolean => typeof e === "object" && e !== null && crashes.has(e);
+
+/**
+ * The pod's state for a log line (kubectl logs of the worker explain a failed start without kubectl describe):
+ * "CrashLoopBackOff, last Error exit 1, restarts 2", "Pending, Unschedulable". Kubernetes reasons and numbers only.
+ */
+export function podReason(p: KubePodStatus): string {
+  const parts = [p.reason ?? p.phase];
+  if (p.lastReason) parts.push(`last ${p.lastReason}${p.exitCode != null ? ` exit ${p.exitCode}` : ""}`);
+  if (p.restarts) parts.push(`restarts ${p.restarts}`);
+  if (p.unscheduled) parts.push(p.unscheduled);
+  return parts.join(", ");
+}
 const isQuota = (e: unknown) => e instanceof KubeError && e.status === 403 && /quota/i.test(e.message);
 
 /**
@@ -43,7 +61,7 @@ export async function createWithinQuota(
       return true;
     } catch (e) {
       if (!isQuota(e)) throw e;
-      if (first) c.log({ msg: "sandbox_quota_wait", step: name });
+      if (first) c.log({ msg: "sandbox_quota_wait", level: "warn", step: name });
       if (c.now() >= until) return false;
       await c.wait(c.pollMs);
     }
@@ -58,27 +76,32 @@ export async function waitReachable(
   deadline: number,
 ): Promise<string> {
   let unreachable = false;
+  let seen = "Unknown";
   for (;;) {
     const p = await c.kube.getPod(name);
     if (!p) {
       // Created a moment ago and gone (evicted, deleted): waiting cannot bring it back.
-      c.log({ msg: "sandbox_pod_failed", step: name, reason: "Missing" });
+      c.log({ msg: "sandbox_pod_failed", level: "error", step: name, reason: "Missing" });
       throw unavailable("Песочница функций не запустилась");
     }
+    seen = podReason(p);
     if (p.ready && p.podIP) {
       // Ready for the kubelet is not yet reachable from here: the NetworkPolicy rules of a new pod's address are
       // programmed after it starts, and a call in that gap would fail. The endpoints switch only once it answers.
       if (await answers(c, p.podIP, probePort)) return p.podIP;
-      if (!unreachable) c.log({ msg: "sandbox_pod_unreachable", step: name });
+      if (!unreachable) c.log({ msg: "sandbox_pod_unreachable", level: "warn", step: name });
       unreachable = true;
+      seen = "Unreachable";
     } else if (p.phase === "Failed" || (p.reason && STUCK.has(p.reason))) {
-      c.log({ msg: "sandbox_pod_failed", step: name, reason: p.reason ?? p.phase });
-      throw unavailable("Песочница функций не запустилась");
+      c.log({ msg: "sandbox_pod_failed", level: "error", step: name, reason: seen });
+      const e = unavailable("Песочница функций не запустилась");
+      if (p.phase === "Failed" || CRASH.has(p.reason ?? "") || CRASH.has(p.lastReason ?? "")) crashes.add(e);
+      throw e;
     }
     if (c.now() >= deadline) break;
     await c.wait(c.pollMs);
   }
-  c.log({ msg: "sandbox_pod_timeout", step: name });
+  c.log({ msg: "sandbox_pod_timeout", level: "error", step: name, reason: seen });
   throw unavailable("Песочница функций не запустилась вовремя");
 }
 
