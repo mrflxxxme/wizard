@@ -1,6 +1,7 @@
 // First screen «split»: the offer on the left (title, lead, actions, one practical line), a photo on the right;
 // on phones the text comes first and the photo follows. Composition after HyperUI «Banners» (MIT, © Mark Mead),
 // rewritten on the design system tokens.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -44,12 +45,14 @@ function useEnter() {
 
 export default function HeroSplit({ title, lead, action, secondary, note, image, wzId }: HeroSplitProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-14">
           <div className="min-w-0 lg:col-span-6">
             <m.h1
+              ref={fit}
               {...enter(0)}
               className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
             >

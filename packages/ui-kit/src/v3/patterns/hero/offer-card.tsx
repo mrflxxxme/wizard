@@ -1,5 +1,6 @@
 // First screen «offer card»: the title and lead on the left, on the right a card with the concrete offer from the
 // brief (name, price, what is included) and the main action inside it (catalog D1 Hero offer-card). Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -45,12 +46,14 @@ export default function HeroOfferCard({
   wzId,
 }: HeroOfferCardProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-muted font-sans text-foreground">
         <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-12">
           <div className="min-w-0 lg:col-span-7">
             <m.h1
+              ref={fit}
               {...enter(0)}
               className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
             >

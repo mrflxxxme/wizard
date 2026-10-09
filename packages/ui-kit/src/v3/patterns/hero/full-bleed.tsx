@@ -1,5 +1,6 @@
 // First screen «full-bleed photo»: the photo fills the screen edge to edge, the offer sits bottom-left on a scrim
 // panel that keeps text readable over any part of the photo (catalog I04). Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -46,6 +47,7 @@ export default function HeroFullBleed({
   wzId,
 }: HeroFullBleedProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section
@@ -61,7 +63,10 @@ export default function HeroFullBleed({
         />
         <div className="mx-auto w-full max-w-page px-gutter py-section">
           <m.div {...enter(0)} className="max-w-2xl rounded-lg bg-scrim p-6 text-scrim-foreground sm:p-10">
-            <h1 className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto">
+            <h1
+              ref={fit}
+              className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
+            >
               {title}
             </h1>
             {lead ? <p className="mt-5 text-lead text-scrim-foreground">{lead}</p> : null}

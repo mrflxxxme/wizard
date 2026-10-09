@@ -194,6 +194,37 @@ describe("page_compose", () => {
     console.info(`V3-12 page_compose на записанном ответе: ${out.spentRub.toFixed(2)} ₽`);
   });
 
+  test("V3-18: a first screen without a picture keeps the place of the owner's photo (GS-landing-2)", async () => {
+    const { ctx, site } = await prepared();
+    expect(site.pages[0]?.sections.find((s) => s.type === "hero")?.photos?.image).toBe("top");
+    // The model chose the typographic first screen («Фото: нет» → variants without photos).
+    const { image: _image, ...text } = HOME.sections[0]?.props ?? {};
+    const typographic = {
+      ...HOME,
+      sections: [{ id: "hero", pattern: "hero-typographic", props: text }, ...HOME.sections.slice(1)],
+    };
+    const { route, calls } = scripted({ page_compose: [typographic] });
+    const out = await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario(
+      { ...ctx, route },
+      LEAD,
+    );
+    expect(JSON.stringify(calls[0]?.messages)).toContain("Место для фото владельца");
+    const next = readSite(apply(ctx.files, out)) as SiteModel;
+    const hero = next.pages[0]?.sections.find((s) => s.type === "hero");
+    expect(hero?.pattern).not.toBe("hero-typographic");
+    expect(hero?.props.title).toBe(text.title);
+    expect(apply(ctx.files, out).get(next.pages[0]?.file as string)).toContain('photo.one("top"');
+  });
+
+  test("V3-18: the model may not drop a section with a place of the owner's photo", async () => {
+    const { ctx } = await prepared();
+    const dropped = { ...HOME, sections: HOME.sections.filter((s) => s.id !== "hero") };
+    const { route, calls } = scripted({ page_compose: [dropped, HOME] });
+    await createPageComposer({ patterns: PATTERNS, registry: llm }).scenario({ ...ctx, route }, LEAD);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1]?.messages.at(-1))).toContain("REQUIRED");
+  });
+
   test("repairs: invented facts, a superlative and a variant of another type go back to the model", async () => {
     const { ctx } = await prepared();
     const bad = {

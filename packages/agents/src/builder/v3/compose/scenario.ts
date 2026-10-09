@@ -224,7 +224,7 @@ function factsBlock(f: SiteFacts, site: SiteModel): string {
       : "Текстов владельца нет: пиши только то, что следует из целей и сценария.",
     f.photos.length
       ? `Фото:\n${f.photos.map((p) => `- ${p.src} — ${p.alt}`).join("\n")}`
-      : "Фото: нет — выбирай варианты без фото.",
+      : "Фото: нет — выбирай варианты без фото, кроме секций с местом для фото владельца.",
     `Сайт: ${site.pages.map((p) => `${p.route} «${p.title}» (якоря: ${p.sections.map((s) => `#${s.id}`).join(" ")})`).join("; ")}`,
   ]
     .filter(Boolean)
@@ -253,6 +253,9 @@ export function pageComposeMessages(
       `### ${e.section.id} (${e.section.type})`,
       `Сейчас: ${e.section.pattern}, props: ${JSON.stringify(e.section.props)}`,
       Object.keys(e.fixed).length ? `Привязка к данным (не менять): ${JSON.stringify(e.fixed)}` : "",
+      e.section.photos
+        ? "Место для фото владельца («Фото сайта»): выбери вариант, который показывает фото (поле image или images), и не убирай секцию."
+        : "",
       "Варианты:",
       ...variants,
     ]
@@ -383,6 +386,13 @@ function pageIssues(
   for (const e of ctx.edit)
     if ((Object.keys(e.fixed).length || e.section.type === "hero") && !seen.has(e.section.id))
       out.push({ path: "sections", code: "REQUIRED", message: `Секцию ${e.section.id} убирать нельзя` });
+    // V3-18: the places of the owner's photos («Фото сайта») stay on the page.
+    else if (e.section.photos && !seen.has(e.section.id))
+      out.push({
+        path: "sections",
+        code: "REQUIRED",
+        message: `Секцию ${e.section.id} убирать нельзя: в ней место для фото владельца`,
+      });
   if (v.sections[0] && seen.has("hero") && v.sections[0].id !== "hero")
     out.push({ path: "sections.0", code: "HERO_FIRST", message: "Первый экран (hero) — первая секция" });
   for (const [k, text] of [
@@ -696,7 +706,7 @@ export async function composeScenario(
   }
 
   // The action rules of the site over the model's pages (siteFiles applies them as well).
-  site = siteRules(site, (id) => library.find((p) => p.id === id) ?? patternById(id));
+  site = siteRules(site, (id) => library.find((p) => p.id === id) ?? patternById(id), library);
   const files = changed(
     siteFiles(site, facts.copy.site, ctx.design, ctx.files, signatures, library),
     ctx.files,

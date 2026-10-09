@@ -407,6 +407,7 @@ function trackingHandle(
     },
     outbox: () => rt.outbox(),
     runJobs: (input) => rt.runJobs(input),
+    warmFunctions: (input) => rt.warmFunctions(input),
     ...(sandbox ? { renderer: (input: { key: string; code: string }) => sandbox.renderer(input) } : {}),
     env: rt.env,
   };

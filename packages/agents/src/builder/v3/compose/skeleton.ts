@@ -281,7 +281,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
     `Собрал каркас сайта в стиле «${ctx.design.name}»: ${site.pages.length} стр. — ${kinds}. Тексты — из брифа, без выдуманных фактов.`,
   );
   // The action rules of the site (the main action to the form, catalog items to the booking or the request form).
-  const ruled = siteRules(site, (id) => library.find((p) => p.id === id));
+  const ruled = siteRules(site, (id) => library.find((p) => p.id === id), library);
   for (const page of ruled.pages) {
     const errors = lintErrors(lintSitePage(ruled, page, facts, library));
     if (errors.length)

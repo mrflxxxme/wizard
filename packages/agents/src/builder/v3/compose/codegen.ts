@@ -2,7 +2,7 @@
 // patterns as ui/patterns/<id>.tsx (patternFiles), one page file per route under ui/pages/site that imports them,
 // ui/seo.json for the build (title, description and og:image per route) and the site model ui/site.json.
 import { type DesignSystemV3, designSystemCss } from "@wizard/ui-kit/v3/design";
-import { type PatternMeta, patternById, patternFiles } from "@wizard/ui-kit/v3/patterns";
+import { PATTERNS, type PatternMeta, patternById, patternFiles } from "@wizard/ui-kit/v3/patterns";
 import { fitPhotos, siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
@@ -190,7 +190,10 @@ export function siteFiles(
   signatures: ReadonlyMap<string, string> = new Map(),
   library: readonly PatternMeta[] = [],
 ): Map<string, string | null> {
-  const site = siteRules(model, (id) => patternById(id) ?? library.find((p) => p.id === id));
+  const site = siteRules(model, (id) => patternById(id) ?? library.find((p) => p.id === id), [
+    ...PATTERNS,
+    ...library,
+  ]);
   const out = new Map<string, string | null>();
   out.set(DESIGN_CSS, designCss(design));
   const ids = [

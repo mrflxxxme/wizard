@@ -312,6 +312,8 @@ function drop(st: CriticState, op: Extract<EditOp, { op: "drop_section" }>, env:
   if (CHROME.has(s.type) || s.type === "hero") return fail("меню, подвал и первый экран не убираются");
   if (s.type === "signature") return fail("фирменная секция не убирается");
   if (isBound(env.library, s)) return fail("секция с формой или данными нужна сценариям брифа");
+  // V3-18: the owner's photo of «Фото сайта» must reach the page (GS-landing-2).
+  if (s.photos && Object.keys(s.photos).length) return fail("в секции место для фото владельца");
   if (page.sections.filter((x) => !CHROME.has(x.type)).length <= 2)
     return fail("на странице останется только первый экран");
   return {

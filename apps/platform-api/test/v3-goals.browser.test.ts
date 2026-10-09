@@ -31,7 +31,17 @@ import {
   systemBriefSchema,
 } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
+import { PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import {
+  pagePlans,
+  readSite,
+  type SiteModel,
+  type SiteSection,
+  siteFacts,
+  siteFiles,
+} from "../../../packages/agents/src/builder/v3/compose/index.js";
+import { applyEdit, variantsFor } from "../../../packages/agents/src/builder/v3/critic/index.js";
 import { EVAL_BRIEFS } from "../../../packages/agents/test/v3-eval-briefs.js";
 import { FEATURE_BRIEFS } from "../../../packages/agents/test/v3-feature-briefs.js";
 import { type Draft, type GoalsEnv, goalsEnv, hasChromium, OWNER_COMPLIANCE } from "./v3-goals-helpers.js";
@@ -112,6 +122,9 @@ function goalScenario(id: string): GoalScenarioInput {
 async function build(
   id: string,
   input: SystemBriefInput,
+  withComposer: PageComposer = composer,
+  /** Goal scenarios run on the final draft with the first visitor scenario of the brief (besides PROVEN's extra). */
+  finalGoals: readonly GoalScenarioInput[] = [],
 ): Promise<{ out: V3Outcome; checked: Checked[]; draft: Draft; scenarios: BriefScenario[] }> {
   const brief: V3BriefVersion = { version: 1, brief: systemBriefSchema.parse(input) };
   // The owner filled the operator of personal data: the draft the build starts from carries it.
@@ -143,7 +156,7 @@ async function build(
     },
     // The final gates repeat the goal scenarios of the scenarios already checked: not run again here.
     runGates: async (level) => passing(level, draft.version),
-    composer,
+    composer: withComposer,
     checkScenario: async (input) => {
       const r = await env.check(draft, input);
       checked.push({
@@ -168,6 +181,22 @@ async function build(
       scenario: `${scenario.id}+`,
       goals: goalScenarios.map((g) => g.id),
       titles: goalScenarios.map((g) => g.title),
+      ok: r.ok,
+      problems: r.problems,
+    });
+  }
+  const visitor = brief.brief.scenarios.find((x) => x.actor === "visitor") ?? brief.brief.scenarios[0];
+  if (finalGoals.length && visitor) {
+    const r = await env.check(draft, {
+      scenario: visitor,
+      goalScenarios: [...finalGoals],
+      routes: [],
+      revision: draft.version,
+    });
+    checked.push({
+      scenario: `${visitor.id}+`,
+      goals: finalGoals.map((g) => g.id),
+      titles: finalGoals.map((g) => g.title),
       ok: r.ok,
       problems: r.problems,
     });
@@ -197,6 +226,109 @@ describe.skipIf(!hasChromium)(
         // The features this build proves ran (and passed above).
         const ran = new Set(checked.flatMap((c) => c.goals));
         for (const goal of PROVEN[id]?.goals ?? []) expect(ran.has(goal), `${id}: ${goal}`).toBe(true);
+      }, 1_800_000);
+  },
+);
+
+/** A signature section (free TSX of a model) the edited composer puts right under the first screen. */
+const SIGNATURE = "ui/sections/own-story.tsx";
+const SIGNATURE_SRC = [
+  "export default function OwnStory(props: { title: string; text: string }) {",
+  "  return (",
+  '    <section className="bg-background py-section font-sans text-foreground">',
+  '      <div className="mx-auto max-w-page px-gutter">',
+  '        <h2 className="font-display text-h2 font-bold">{props.title}</h2>',
+  '        <p className="mt-4 max-w-text text-body text-muted-foreground">{props.text}</p>',
+  "      </div>",
+  "    </section>",
+  "  );",
+  "}",
+  "",
+].join("\n");
+
+/**
+ * V3-18 (the paid checkpoint: GS-landing-2 failed on v3-02 and v3-04): the scenario step of a model and the critic's
+ * edits as they came — the first screen in a variant without a picture (hero-typographic: «Фото: нет»), a section
+ * without photos dropped, another swapped by the critic, a signature section right under the first screen. The site
+ * is written by siteFiles like every step: its photo rules keep the place of the owner's photo on the page.
+ */
+const edited: PageComposer = {
+  skeleton: (ctx) => real.skeleton(ctx),
+  scenario: async (ctx) => {
+    const site = readSite(ctx.files);
+    const home = site?.pages.find((p) => p.route === "/");
+    if (!site || !home || home.sections.some((s) => s.type === "signature"))
+      return { files: new Map(), pages: [], notes: [], spentRub: 0 };
+    const typographic = PATTERNS.find((p) => p.id === "hero-typographic") as PatternMeta;
+    const sections: SiteSection[] = [];
+    for (const s of home.sections) {
+      if (s.type === "hero") {
+        sections.push({ ...s, pattern: typographic.id, props: typographic.slots.parse(s.props) as never });
+        sections.push({
+          id: "own-story",
+          type: "signature",
+          pattern: "signature",
+          file: SIGNATURE,
+          title: "Как мы работаем",
+          props: {
+            title: "Как мы работаем",
+            text: "Обсуждаем задачу, показываем решения и ведём работу до конца.",
+          },
+        });
+      } else if (s.type === "cta" && !s.photos) continue;
+      else sections.push(s);
+    }
+    let next: SiteModel = { ...site, pages: site.pages.map((p) => (p === home ? { ...home, sections } : p)) };
+    // The critic: a variant of another section swapped (closed edits), a drop of the photo's section refused.
+    const facts = siteFacts(ctx);
+    const env = { library: PATTERNS, numbers: facts.numbers };
+    const other = sections.find(
+      (s) => s.type !== "hero" && s.type !== "signature" && variantsFor(PATTERNS, s).length,
+    );
+    const swap = other && variantsFor(PATTERNS, other)[0];
+    const state = { site: next, design: ctx.design };
+    if (other && swap) {
+      const r = applyEdit(
+        state,
+        { op: "swap_variant", route: "/", section: other.id, pattern: swap.id },
+        env,
+      );
+      if (r.ok) next = r.state.site;
+    }
+    expect(
+      applyEdit({ site: next, design: ctx.design }, { op: "drop_section", route: "/", section: "hero" }, env)
+        .ok,
+    ).toBe(false);
+    const files = siteFiles(
+      next,
+      facts.copy.site,
+      ctx.design,
+      ctx.files,
+      new Map([[SIGNATURE, SIGNATURE_SRC]]),
+    );
+    for (const [p, v] of [...files]) if (v !== null && ctx.files.get(p) === v) files.delete(p);
+    return { files, pages: pagePlans(next), notes: ["правки модели и критика"], spentRub: 0 };
+  },
+};
+
+describe.skipIf(!hasChromium)(
+  "v3 build with the edits of a model and the critic: the owner's photo stays on the home page (GS-landing-2)",
+  () => {
+    for (const id of ["v3-01-interior-studio", "v3-02-dental-booking", "v3-04-karelia-tours"])
+      test(id, async () => {
+        const { out, checked, draft } = await build(id, EVAL_BRIEFS[id] as SystemBriefInput, edited, [
+          goalScenario("GS-landing-2"),
+        ]);
+        expect(out.status, JSON.stringify(out)).toBe("succeeded");
+        // The edits reached the system: the first screen kept a variant with the photo, the signature section is there.
+        const home = readSite(new Map(Object.entries(draft.files)))?.pages.find((p) => p.route === "/");
+        const hero = home?.sections.find((s) => s.type === "hero");
+        expect(hero?.photos?.image).toBe("top");
+        expect(hero?.pattern).not.toBe("hero-typographic");
+        expect(home?.sections.some((s) => s.type === "signature")).toBe(true);
+        const landing = checked.filter((c) => c.goals.includes("GS-landing-2"));
+        expect(landing.length).toBeGreaterThan(0);
+        expect(landing.filter((c) => !c.ok)).toEqual([]);
       }, 1_800_000);
   },
 );

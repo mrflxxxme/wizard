@@ -237,3 +237,63 @@ describe("siteRules: the site's actions after any edit", () => {
     expect(swap("catalog-grid")).toMatchObject({ ok: true });
   });
 });
+
+describe("siteRules: the places of the owner's photos stay on the page (V3-18, GS-landing-2)", () => {
+  const withTop = (pattern: string, props: Record<string, unknown> = {}): SiteSection => ({
+    ...hero("#form"),
+    pattern,
+    props: { ...hero("#form").props, ...props },
+    photos: { image: "top" },
+  });
+
+  test("a first screen swapped to a variant without a picture takes one that shows the owner's photo", () => {
+    // The model's page without stock photos («Фото: нет»): hero-typographic, the place «top» lost.
+    const site = model([page("/", [withTop("hero-typographic"), leadForm()])]);
+    const out = siteRules(site);
+    const h = out.pages[0]?.sections[0];
+    expect(h?.pattern).not.toBe("hero-typographic");
+    expect(h?.photos).toEqual({ image: "top" });
+    expect(h?.props.action).toEqual({ label: "Обсудить проект", href: "#form" });
+    // The page file asks useSitePhotos for the place.
+    expect(pageSource(out.pages[0] as SitePage)).toContain('image={photo.one("top", undefined)}');
+    expect(siteRules(out)).toBe(out);
+  });
+
+  test("a variant that shows the place stays; a section without places is not touched", () => {
+    const site = model([page("/", [withTop("hero-centered"), leadForm()])]);
+    expect(siteRules(site).pages[0]?.sections[0]?.pattern).toBe("hero-centered");
+    const plain = model([page("/", [{ ...hero("#form"), pattern: "hero-typographic" }, leadForm()])]);
+    expect(siteRules(plain).pages[0]?.sections[0]?.pattern).toBe("hero-typographic");
+  });
+
+  test("every first screen variant with the model's props shows the place after the rules", () => {
+    for (const p of PATTERNS.filter((x) => x.sectionType === "hero")) {
+      // The props a model writes for the variant: its own example content, the picture of the variant kept or not.
+      const parsed = p.slots.safeParse({
+        ...(p.example as object),
+        action: { label: "Обсудить", href: "#form" },
+      });
+      if (!parsed.success) continue;
+      const s: SiteSection = { ...withTop(p.id), props: parsed.data as Record<string, unknown> };
+      const out = siteRules(model([page("/", [s, leadForm()])])).pages[0] as SitePage;
+      expect(pageSource(out), p.id).toMatch(/photo\.(one|list)\(\[?"top"/);
+    }
+  });
+
+  test("the critic may not drop a section with a place of the owner's photo", () => {
+    const about: SiteSection = {
+      id: "about",
+      type: "about",
+      pattern: "about-centered",
+      props: { title: "О студии", paragraphs: ["Делаем интерьеры квартир и домов."] },
+      photos: { image: "about" },
+    };
+    const site = model([page("/", [hero("#form"), about, leadForm()])]);
+    const design = designSystemV3({ archetype: "editorial", seed: "s", niche: "интерьеры" });
+    const env = { library: PATTERNS, numbers: new Set<string>() };
+    expect(applyEdit({ site, design }, { op: "drop_section", route: "/", section: "about" }, env)).toEqual({
+      ok: false,
+      reason_ru: "в секции место для фото владельца",
+    });
+  });
+});

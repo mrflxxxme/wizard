@@ -73,6 +73,11 @@ export interface RuntimeHandle {
    */
   runJobs?(input: { slug: string; env: "draft" | "prod"; now?: Date; since?: Date }): Promise<JobRunReport>;
   /**
+   * V3-18: starts the functions of a loaded system before its checks (the sandbox Worker placed, the bundle loaded) —
+   * without it the first function call of a timed scenario step pays the cold start. false: nothing to start.
+   */
+  warmFunctions?(input: { slug: string; env: "draft" | "prod" }): Promise<boolean>;
+  /**
    * M2-19: a page render Worker in the sandbox for this bundle (cluster, WIZARD_SANDBOX=k8s; platform-api executors);
    * absent → the local render process (unsafe-local). close() removes the Worker.
    */

@@ -1,5 +1,6 @@
 // First screen «collage»: the offer on the left, two or three photos overlapping with offsets on the right, framed
 // by the page colour; on phones a single photo (catalog D1 Hero collage). Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -40,6 +41,7 @@ const frameClass = "h-full w-full rounded-md border-4 border-background bg-muted
 export default function HeroCollage({ title, lead, action, secondary, images, wzId }: HeroCollageProps) {
   const enter = useEnter();
   const [first, second, third] = images;
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section
@@ -50,6 +52,7 @@ export default function HeroCollage({ title, lead, action, secondary, images, wz
         <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-12">
           <div className="min-w-0 lg:col-span-5">
             <m.h1
+              ref={fit}
               {...enter(0)}
               className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
             >

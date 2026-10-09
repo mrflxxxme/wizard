@@ -3,7 +3,7 @@
 // reviews or claims the owner did not give (D49, catalog H.4). Props are the union of what the variants of a section
 // type may show; the slot schema of the chosen pattern keeps its part.
 import { CONTENT_NAMES, CONTENT_SCREENS, entryPrefix } from "@wizard/modules";
-import { type PatternMeta, patternById, type SectionType } from "@wizard/ui-kit/v3/patterns";
+import { PATTERNS, type PatternMeta, patternById, type SectionType } from "@wizard/ui-kit/v3/patterns";
 import { type CabinetSection, VISITOR_CABINET_MODULE } from "./account.js";
 import { type SiteFacts, textOf } from "./facts.js";
 import {
@@ -803,12 +803,74 @@ function sentTitle(s: SiteSection): SiteSection {
  * form of its own page (#<section id>), on a page without one — to the form of the site's main action (its page and
  * anchor); a catalog item leads to its booking, else to the request form; a module form's «sent» heading is the
  * module's wording. The modules' goal scenarios check exactly this in the browser (GS-landing-1, GS-catalog-4,
- * GS-leads-1, GS-booking-1). A site without module forms is left as it is.
+ * GS-leads-1, GS-booking-1). V3-18: every section shows the places of the owner's photos it holds (photoRules,
+ * GS-landing-2). `library` — the variants a section may take (default: the ui-kit library and those patternOf knows).
  */
 export function siteRules(
   site: SiteModel,
   patternOf: (id: string) => PatternMeta | undefined = patternById,
+  library: readonly PatternMeta[] = PATTERNS,
 ): SiteModel {
+  return actionRules(photoRules(site, patternOf, library), patternOf);
+}
+
+/** The places of the owner's photos of a section's places, in order (image, images, items). */
+const placeList = (p: SectionPhotos | undefined): string[] => [
+  ...(p?.image ? [p.image] : []),
+  ...(p?.images ?? []),
+  ...(p?.items ?? []),
+];
+
+/** How many of a section's places a variant shows with these props. */
+const shownBy = (meta: PatternMeta | undefined, s: SiteSection, props: Props): number =>
+  new Set(placeList(fitPhotos(meta, s.photos, props))).size;
+
+/** Binding slots of the module-bound patterns: a variant that drops one is never taken (the composer's FIXED_KEYS). */
+const BINDING_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction"] as const;
+
+/**
+ * V3-18 (GS-landing-2): a section keeps showing the places of the owner's photos («Фото сайта» of the cabinet) it holds,
+ * whatever step changed it — a model's page that chose a variant without a picture (hero-typographic), an edit of the
+ * critic. When its variant shows fewer of them than another of the same type and binding that accepts its content,
+ * the section takes that one (the most places shown, then the most content kept, then the library order). The owner's
+ * upload thus always reaches the page; a section without places is left as it is.
+ */
+function photoRules(
+  site: SiteModel,
+  patternOf: (id: string) => PatternMeta | undefined,
+  library: readonly PatternMeta[],
+): SiteModel {
+  let changed = false;
+  const pages = site.pages.map((page) => {
+    const sections = page.sections.map((s) => {
+      if (s.type === "signature" || placeList(s.photos).length === 0) return s;
+      const meta = patternOf(s.pattern);
+      const now = shownBy(meta, s, s.props);
+      const needs = meta?.needs ?? null;
+      let best: { meta: PatternMeta; props: Props; shown: number; kept: number } | null = null;
+      for (const p of [...library, ...(meta && !library.includes(meta) ? [meta] : [])]) {
+        if (p.id === s.pattern || p.sectionType !== s.type || p.needs !== needs) continue;
+        const parsed = p.slots.safeParse(s.props);
+        if (!parsed.success) continue;
+        const props = parsed.data as Props;
+        if (BINDING_KEYS.some((k) => s.props[k] !== undefined && props[k] === undefined)) continue;
+        const shown = shownBy(p, s, props);
+        const kept = Object.keys(props).filter((k) => props[k] !== undefined).length;
+        if (!best || shown > best.shown || (shown === best.shown && kept > best.kept))
+          best = { meta: p, props, shown, kept };
+      }
+      if (!best || best.shown <= now) return s;
+      return { ...s, pattern: best.meta.id, props: best.props };
+    });
+    if (sections.every((s, i) => s === page.sections[i])) return page;
+    changed = true;
+    return { ...page, sections };
+  });
+  return changed ? { ...site, pages } : site;
+}
+
+/** The action rules of siteRules: the first screen's action, the catalog items, the «sent» headings. */
+function actionRules(site: SiteModel, patternOf: (id: string) => PatternMeta | undefined): SiteModel {
   const forms = site.pages.flatMap((p) =>
     p.sections
       .filter(isForm)

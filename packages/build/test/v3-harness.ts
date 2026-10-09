@@ -16,6 +16,8 @@ import { loadForum, REPO_ROOT } from "./helpers.js";
 import { type PreviewMode, type PreviewWrite, previewApi, withPreviewData } from "./patterns-v3-data.js";
 
 export const PREVIEW_PAGE = "ui/pages/Preview.tsx";
+/** The page of one section is a page of the public site (the first paint waits for its data, @wizard/build). */
+export const SOLO_PAGE = "ui/pages/site/Preview.tsx";
 const FONTS = join(REPO_ROOT, "packages/ui-kit/fonts");
 
 function pascal(id: string): string {
@@ -63,14 +65,47 @@ const READY_TSX = `function Ready({ id, children }: { id: string; children: Reac
   );
 }`;
 
-/** Spec and files of a preview system with the given sections rendered in order, each in [data-preview="<id>"]. */
-export function previewSystem(fixture: DesignFixture | DesignCss, patterns: readonly PreviewItem[]) {
+/**
+ * The page of one section (V3-18, CLS): the pattern `?p=<id>` and a block of text after it, as a page has its next
+ * sections and footer — a section whose height changes after the load moves it.
+ */
+function soloPage(patterns: readonly PreviewItem[]): string {
+  return [
+    'import { createElement } from "react";',
+    ...patterns.map((p) => `import ${pascal(p.id)} from "../../patterns/${p.id}";`),
+    "",
+    `const ITEMS = {${patterns.map((p) => `${JSON.stringify(p.id)}: [${pascal(p.id)}, ${JSON.stringify(p.props)}]`).join(", ")}};`,
+    "",
+    "export default function Preview() {",
+    '  const hit = ITEMS[new URLSearchParams(location.search).get("p") ?? ""];',
+    "  return (",
+    '    <main className="bg-background">',
+    "      {hit ? createElement(hit[0], hit[1]) : null}",
+    '      <footer data-solo-after="" className="min-h-[60vh] bg-muted p-8 text-body text-foreground">',
+    "        Следующая секция страницы",
+    "      </footer>",
+    "    </main>",
+    "  );",
+    "}",
+    "",
+  ].join("\n");
+}
+
+/**
+ * Spec and files of a preview system with the given sections rendered in order, each in [data-preview="<id>"];
+ * `solo` — one section per page by `?p=<id>` (soloPage).
+ */
+export function previewSystem(
+  fixture: DesignFixture | DesignCss,
+  patterns: readonly PreviewItem[],
+  o: { solo?: boolean } = {},
+) {
   const forum = withPreviewData(loadForum());
   const role = forum.roles.find((r) => r.access === "public")?.name ?? "visitor";
   const spec: AppSpec = {
     ...forum,
     functions: [],
-    pages: [{ route: "/", title: "Паттерны", file: PREVIEW_PAGE, roles: [role] }],
+    pages: [{ route: "/", title: "Паттерны", file: o.solo ? SOLO_PAGE : PREVIEW_PAGE, roles: [role] }],
   };
   const files = new Map<string, string>([
     ["ui/design.css", "css" in fixture ? fixture.css : designCss(fixture)],
@@ -94,7 +129,8 @@ export function previewSystem(fixture: DesignFixture | DesignCss, patterns: read
     "}",
     "",
   ].join("\n");
-  files.set(PREVIEW_PAGE, page);
+  if (o.solo) files.set(SOLO_PAGE, soloPage(patterns));
+  else files.set(PREVIEW_PAGE, page);
   return { spec, files };
 }
 

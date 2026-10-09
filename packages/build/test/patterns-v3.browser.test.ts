@@ -171,6 +171,121 @@ describe.skipIf(!hasChromium)("pattern library v3 in chromium", () => {
     expect(await run("luxury", "no-preference")).toEqual({ hidden: [], stillHidden: [] });
   }, 60_000);
 
+  test("CLS: every pattern alone on a page loads without a layout shift over 0.1 (empty data and with data, 390 and 1440)", async () => {
+    // The critic's measure (builds-v3/critic.ts): layout shifts since navigation without input, read once the page
+    // settled — nothing aria-busy, the fonts ready, two frames and a quiet time. The section has the rest of a page
+    // after it: a loading state taller or shorter than the loaded one moves it.
+    const f = DESIGN_FIXTURES[0];
+    if (!f) throw new Error("no fixtures");
+    const { spec, files } = previewSystem(f, previewItems(PATTERNS), { solo: true });
+    const built = await buildSystem({ spec, files, env: "prod" });
+    expect(built.errors).toEqual([]);
+    const server = await servePreview(spec, built);
+    servers.set("solo", server);
+    const observe = () => {
+      const w = window as unknown as { __cls: number };
+      w.__cls = 0;
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries() as unknown as { hadRecentInput: boolean; value: number }[])
+          if (!e.hadRecentInput) w.__cls += e.value;
+      }).observe({ type: "layout-shift", buffered: true });
+    };
+    const found: string[] = [];
+    for (const mode of ["empty", "ok"] as const) {
+      server.setMode(mode);
+      for (const vp of [
+        { width: 390, height: 844 },
+        { width: 1440, height: 900 },
+      ]) {
+        const ctx = await browser.newContext({ viewport: vp, reducedMotion: "reduce", locale: "ru-RU" });
+        await ctx.addInitScript(observe);
+        const queue = [...PATTERNS];
+        const worker = async () => {
+          for (let p = queue.shift(); p; p = queue.shift()) await measure(p);
+        };
+        const measure = async (p: (typeof PATTERNS)[number]) => {
+          const page = await ctx.newPage();
+          await page.goto(`${server.url}/?p=${p.id}`, { waitUntil: "load" });
+          await page
+            .waitForFunction(
+              () =>
+                !!document.querySelector("[data-solo-after]") && !document.querySelector("[aria-busy=true]"),
+              undefined,
+              { timeout: 5000 },
+            )
+            .catch(() => {});
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          const cls = await page.evaluate(
+            () =>
+              new Promise<number>((r) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() =>
+                    setTimeout(() => r((window as unknown as { __cls: number }).__cls), 150),
+                  ),
+                ),
+              ),
+          );
+          if (cls > 0.1) found.push(`${p.id} ${mode} ${vp.width}: CLS ${cls.toFixed(3)}`);
+          await page.close();
+        };
+        // Three pages at a time: the measure is per page (its own observer since its navigation).
+        await Promise.all([worker(), worker(), worker()]);
+        await ctx.close();
+      }
+    }
+    server.setMode("ok");
+    expect(found).toEqual([]);
+  }, 600_000);
+
+  test("V3-18 @390px: a first screen's long Russian words stay whole, «Меню» stays on one line", async () => {
+    // The critic saw «Стоматологическ/ая», «Екатеринбург/е» and «Ме/ню» on the pilot: words cut without a hyphen.
+    const title = "Стоматологическая клиника «Улыбка» в Екатеринбурге";
+    const items = PATTERNS.filter((p) => p.sectionType === "hero" || p.sectionType === "header").map((p) => {
+      const props = p.slots.parse(p.example) as Record<string, unknown>;
+      if (p.sectionType === "hero") props.title = title;
+      if (p.sectionType === "header")
+        props.brand = { ...(props.brand as object), name: "Стоматологическая клиника в Казани" };
+      return { id: p.id, source: p.source, props };
+    });
+    for (const f of DESIGN_FIXTURES) {
+      const { spec, files } = previewSystem(f, items);
+      const built = await buildSystem({ spec, files, env: "prod" });
+      expect(built.errors).toEqual([]);
+      const server = await servePreview(spec, built);
+      servers.set(`words-${f.id}`, server);
+      const { page } = await open(
+        `words-${f.id}`,
+        { width: 390, height: 844 },
+        "light",
+        "reduce",
+        items.length,
+      );
+      const broken = await page.evaluate(() => {
+        const out: string[] = [];
+        // A word whose range takes more than one line box was cut inside.
+        const words = (el: Element) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const text = n.textContent ?? "";
+            for (const m of text.matchAll(/\S+/g)) {
+              const r = document.createRange();
+              r.setStart(n, m.index ?? 0);
+              r.setEnd(n, (m.index ?? 0) + m[0].length);
+              const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
+              if (lines.size > 1)
+                out.push(`${el.closest("[data-preview]")?.getAttribute("data-preview")}: ${m[0]}`);
+            }
+          }
+        };
+        for (const h of document.querySelectorAll("h1")) words(h);
+        for (const b of document.querySelectorAll("button[aria-controls]")) words(b);
+        return out;
+      });
+      expect(broken, f.id).toEqual([]);
+      await page.context().close();
+    }
+  }, 180_000);
+
   test("headers @390px: «Меню» opens the menu panel, Esc closes it and returns focus to the toggle", async () => {
     const { page } = await open("calm_medical", { width: 390, height: 844 }, "light");
     const headers = PATTERNS.filter((p) => p.sectionType === "header");

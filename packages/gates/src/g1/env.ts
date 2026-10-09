@@ -95,6 +95,10 @@ export class G1Env {
     for (const st of dropSystemRoleDDL(this.schema)) await this.db.unsafe(st);
   }
 
+  /**
+   * Loads the system into the runtime; with functions, starts them too (V3-18): the cold start of the sandbox (a pod
+   * placed, the bundle loaded) is paid here, not by the first timed step that calls a function (runWorkflows, call).
+   */
   async load(artifactDir: string | null, spec: AppSpec = this.spec): Promise<void> {
     await this.runtime.loadSystem({
       systemKey: this.systemKey,
@@ -103,6 +107,8 @@ export class G1Env {
       artifactDir,
       slug: this.slug,
     });
+    if (artifactDir && (spec.functions ?? []).length > 0)
+      await this.runtime.warmFunctions?.({ slug: this.slug, env: "draft" }).catch(() => false);
   }
 
   /** Runs fn as the schema's system DB role (policy wz__system; RLS is FORCEd for the owner too). */

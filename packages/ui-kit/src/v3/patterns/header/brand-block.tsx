@@ -70,7 +70,7 @@ export default function HeaderBrandBlock({ brand, nav, action, phone }: HeaderBr
               {action ? (
                 <a
                   href={action.href}
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border-2 border-primary px-5 text-body font-bold whitespace-nowrap text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border-2 border-primary px-5 text-body font-bold whitespace-nowrap text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   {action.label}
                 </a>
@@ -82,7 +82,7 @@ export default function HeaderBrandBlock({ brand, nav, action, phone }: HeaderBr
               aria-expanded={menu.open}
               aria-controls={menu.id}
               onClick={menu.flip}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:hidden"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:hidden"
             >
               {menu.open ? "Закрыть" : "Меню"}
             </button>

@@ -65,6 +65,8 @@ export {
   useEntryTitle,
   useRubric,
 } from "./content.js";
+/** useFitWords(text) — ref of a display heading whose words never break inside (the size goes down to fit, V3-18). */
+export { useFitWords } from "./fit.js";
 /** useFormModel(o) — fields, validation, server errors, consent (G2-PII-04) and create/update; RecordForm renders it. */
 export {
   type ConsentModel,

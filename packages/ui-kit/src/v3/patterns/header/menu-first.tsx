@@ -60,7 +60,7 @@ export default function HeaderMenuFirst({ brand, nav, action, note }: HeaderMenu
             aria-expanded={menu.open}
             aria-controls={menu.id}
             onClick={menu.flip}
-            className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <span aria-hidden="true" className="flex w-4 flex-col gap-1">
               <span className="h-0.5 w-full bg-current" />

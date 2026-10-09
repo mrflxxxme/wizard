@@ -1,5 +1,6 @@
 // First screen «typographic»: no photo — the title set as a poster across the page, a heavy rule, the lead in the
 // left half and the actions pushed to the right edge below it. Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -43,11 +44,13 @@ export default function HeroTypographic({
   wzId,
 }: HeroTypographicProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto w-full max-w-page px-gutter py-section">
           <m.h1
+            ref={fit}
             {...enter(0)}
             className="max-w-5xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
           >
