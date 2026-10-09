@@ -1,6 +1,8 @@
 // Team «lead»: the head of the business carries the section — a large portrait, name, role, a few lines in their own
 // words and booking with them — while the rest of the team sits beside as smaller square portraits with names and
 // roles. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
@@ -44,6 +46,8 @@ export default function TeamLead({ title, intro, people, action, note }: TeamLea
             {lead.photo ? (
               <img
                 src={lead.photo.src}
+                srcSet={srcSetOf(lead.photo.src)}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 alt={lead.photo.alt}
                 loading="lazy"
                 className="aspect-4/5 w-full rounded-lg bg-muted object-cover"
@@ -67,6 +71,8 @@ export default function TeamLead({ title, intro, people, action, note }: TeamLea
                   {p.photo ? (
                     <img
                       src={p.photo.src}
+                      srcSet={srcSetOf(p.photo.src)}
+                      sizes="(min-width: 1024px) 25vw, 50vw"
                       alt={p.photo.alt}
                       loading="lazy"
                       className="aspect-square w-full rounded-md bg-muted object-cover"

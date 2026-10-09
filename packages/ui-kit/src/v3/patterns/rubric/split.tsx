@@ -2,7 +2,13 @@
 // posts as card rows with a small cover on the right; on phones the links wrap above the list. The data is the
 // module's: useRubric (C4) gives what the role may read (the rubric of the address or every post), newest first, by
 // pages; dates in Russian. Own composition.
-import { type PagedList, type RubricModel, useEntryTitle, useRubric } from "@wizard/ui-kit/v3/headless";
+import {
+  type PagedList,
+  type RubricModel,
+  srcSetOf,
+  useEntryTitle,
+  useRubric,
+} from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Post = PagedList["items"][number];
@@ -334,6 +340,8 @@ export default function RubricSplit(props: RubricSplitProps) {
                         {p.cover ? (
                           <img
                             src={p.cover}
+                            srcSet={srcSetOf(p.cover)}
+                            sizes="(min-width: 640px) 33vw, 100vw"
                             alt=""
                             aria-hidden="true"
                             loading="lazy"

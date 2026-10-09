@@ -190,6 +190,8 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
         "design",
         "draft",
         "gates",
+        // V3-18: the stock photos of the site (the photos host of the platform, fixtures here).
+        "photos",
         "questions",
         "scenario:s_book",
         "scenario:s_doctors",

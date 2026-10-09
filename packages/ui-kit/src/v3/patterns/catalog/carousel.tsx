@@ -2,7 +2,7 @@
 // scrolls sideways under the finger or by the arrows (scroll snap, never on its own — catalog M06); «Показать ещё» adds
 // the next cards to the end of the row. The data is the module's: useCatalog (C4) gives the visible items in the
 // owner's order and the paging; prices and photos only from the data. Own composition.
-import { type CatalogModel, useCatalog } from "@wizard/ui-kit/v3/headless";
+import { type CatalogModel, srcSetOf, useCatalog } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -30,6 +30,8 @@ export type CatalogCarouselProps = {
   /** An action on each item: its path gets ?service=<id> (a booking link). */
   itemAction?: { label: string; path: string };
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -196,7 +198,7 @@ const arrowClass =
   "inline-flex size-12 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors duration-200 hover:border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 export default function CatalogCarousel(props: CatalogCarouselProps) {
-  const { entity = "service", title, text, empty, pageSize = 8, itemAction, action } = props;
+  const { entity = "service", title, text, empty, pageSize = 8, itemAction, action, preview } = props;
   const f = { ...FIELDS, ...props.fields };
   const m = useCatalog(entity, { pageSize, categoryField: f.category });
   const { items, growing } = useShown(m);
@@ -209,6 +211,7 @@ export default function CatalogCarousel(props: CatalogCarouselProps) {
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: still ? "auto" : "smooth" });
   };
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading cards />;
@@ -232,6 +235,8 @@ export default function CatalogCarousel(props: CatalogCarouselProps) {
                 {it.photo ? (
                   <img
                     src={it.photo}
+                    srcSet={srcSetOf(it.photo)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -274,7 +279,7 @@ export default function CatalogCarousel(props: CatalogCarouselProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-4" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-4" />}
       </>
     );
   return (

@@ -2,6 +2,8 @@
 // the grid reserves the space below), so the section reads as a portfolio rather than a tile grid. Under each photo
 // the name and price share a line, the description and the link follow. On phones one column in order.
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -44,6 +46,8 @@ export default function ServicesStaggered({ title, intro, items, action, note }:
             <article key={s.title} className="min-w-0 md:even:translate-y-24 lg:even:translate-y-40">
               <img
                 src={s.image.src}
+                srcSet={srcSetOf(s.image.src)}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 alt={s.image.alt}
                 loading="lazy"
                 className="aspect-4/5 w-full rounded-lg bg-muted object-cover md:aspect-5/4"

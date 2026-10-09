@@ -2,6 +2,7 @@
 // (the page behind is inert, so focus stays inside) with its caption, «previous» and «next» buttons and the arrow
 // keys; the named close button, Esc or a click on the dark field close it and focus returns to the thumbnail
 // (catalog D1 Gallery «lightbox», A02, A06). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
 import { useRef, useState } from "react";
 
 type Link = { label: string; href: string };
@@ -45,6 +46,8 @@ export default function GalleryLightbox({ title, lead, images, action }: Gallery
               >
                 <img
                   src={im.src}
+                  srcSet={srcSetOf(im.src)}
+                  sizes="100vw"
                   alt={im.alt}
                   loading="lazy"
                   className="aspect-square w-full object-cover transition-opacity duration-200 group-hover:opacity-85"
@@ -100,6 +103,8 @@ export default function GalleryLightbox({ title, lead, images, action }: Gallery
                 >
                   <img
                     src={shown.src}
+                    srcSet={srcSetOf(shown.src)}
+                    sizes="100vw"
                     alt={shown.alt}
                     className="min-h-0 max-w-full flex-1 rounded-sm object-contain"
                   />

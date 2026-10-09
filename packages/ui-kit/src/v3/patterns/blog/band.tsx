@@ -2,7 +2,7 @@
 // date and the title — that scrolls sideways under the finger or by the arrows (scroll snap, never on its own —
 // catalog M06); «Показать ещё» adds cards to the end of the row. The data is the module's: useContent (C4) gives what
 // the role may read, newest first, by pages; dates in Russian. Own composition.
-import { type PagedList, useContent } from "@wizard/ui-kit/v3/headless";
+import { type PagedList, srcSetOf, useContent } from "@wizard/ui-kit/v3/headless";
 import { type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -23,6 +23,10 @@ export type BlogBandProps = {
   /** Posts per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
+  /** false — the entries go without dates (the pages of the site, not posts). */
+  dates?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -192,8 +196,10 @@ const arrowClass =
   "inline-flex size-12 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors duration-200 hover:border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 export default function BlogBand(props: BlogBandProps) {
-  const { entity = "post", path, title, text, empty, pageSize = 6, action } = props;
+  const { entity = "post", path, title, text, empty, pageSize = 6, action, preview, dates = true } = props;
   const f = { ...FIELDS, ...props.fields };
+  // Without dates the date field of a post reads nothing (the list stays sorted by it).
+  const shown = dates ? f : { ...f, date: "" };
   const m = useContent(entity, { sort: { field: f.date, dir: "desc" }, pageSize });
   const { items, growing } = useShown(m);
   const uid = useId();
@@ -205,6 +211,7 @@ export default function BlogBand(props: BlogBandProps) {
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: still ? "auto" : "smooth" });
   };
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading cards />;
@@ -218,7 +225,7 @@ export default function BlogBand(props: BlogBandProps) {
           className="-mx-gutter flex snap-x snap-mandatory scroll-px-gutter gap-4 overflow-x-auto px-gutter pb-4"
         >
           {items.map((post) => {
-            const p = postOf(post, f, path);
+            const p = postOf(post, shown, path);
             return (
               <li
                 key={post.id}
@@ -238,6 +245,8 @@ export default function BlogBand(props: BlogBandProps) {
                 {p.cover ? (
                   <img
                     src={p.cover}
+                    srcSet={srcSetOf(p.cover)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -248,7 +257,7 @@ export default function BlogBand(props: BlogBandProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-4" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-4" />}
       </>
     );
   return (

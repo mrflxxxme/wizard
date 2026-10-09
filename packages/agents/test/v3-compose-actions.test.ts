@@ -213,7 +213,9 @@ describe("siteRules: the site's actions after any edit", () => {
   test("the page file opens at the anchor of its address (the app renders after the load)", () => {
     const src = pageSource(page("/", [hero("#form"), leadForm()]));
     expect(src).toContain('import { useEffect } from "react";');
-    expect(src).toContain("document.getElementById(id)?.scrollIntoView()");
+    expect(src).toContain("const target = id ? document.getElementById(id) : null;");
+    // V3-18: the anchor stays in view while the sections above it load their data.
+    expect(src).toContain("new ResizeObserver(() => target.scrollIntoView())");
     expect(src).toContain('<div id="form">');
   });
 

@@ -1,6 +1,8 @@
 // Services «editorial»: the section title set small as a rubric with the intro, then each service as a magazine row
 // under a hairline — its name large in the display face on the left, on the right a small portrait-format photo when
 // there is one beside the description, duration, price and its own link. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -51,6 +53,8 @@ export default function ServicesEditorial({ title, intro, items, action, note }:
                 {s.image ? (
                   <img
                     src={s.image.src}
+                    srcSet={srcSetOf(s.image.src)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt={s.image.alt}
                     loading="lazy"
                     className="aspect-3/4 w-24 shrink-0 self-start bg-muted object-cover sm:w-28"

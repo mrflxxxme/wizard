@@ -1,6 +1,8 @@
 // Team «strip»: a quiet tinted band with the title and a strip of portraits scrolled by hand with snap points (no
 // autoplay, catalog M06, D1 Gallery scroll-snap); on desktop four portraits fill the row and the rest scroll.
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo: Image; bio?: string; facts?: string[]; link?: Link };
@@ -41,6 +43,8 @@ export default function TeamStrip({ title, intro, people, action, note }: TeamSt
               <li key={p.name} className="w-64 shrink-0 snap-start sm:w-72 lg:w-[calc((100%-4.5rem)/4)]">
                 <img
                   src={p.photo.src}
+                  srcSet={srcSetOf(p.photo.src)}
+                  sizes="(min-width: 1024px) 25vw, 50vw"
                   alt={p.photo.alt}
                   loading="lazy"
                   className="aspect-3/4 w-full rounded-md bg-background object-cover"

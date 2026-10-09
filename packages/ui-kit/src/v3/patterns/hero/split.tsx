@@ -1,7 +1,7 @@
 // First screen «split»: the offer on the left (title, lead, actions, one practical line), a photo on the right;
 // on phones the text comes first and the photo follows. Composition after HyperUI «Banners» (MIT, © Mark Mead),
 // rewritten on the design system tokens.
-import { useFitWords } from "@wizard/ui-kit/v3/headless";
+import { srcSetOf, useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -78,6 +78,8 @@ export default function HeroSplit({ title, lead, action, secondary, note, image,
           <m.div {...enter(1)} className="min-w-0 lg:col-span-6">
             <img
               src={image.src}
+              srcSet={srcSetOf(image.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={image.alt}
               fetchPriority="high"
               className="aspect-4/3 w-full rounded-lg bg-muted object-cover lg:aspect-4/5"

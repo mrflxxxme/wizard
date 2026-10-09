@@ -1,6 +1,8 @@
 // Services «split with a photo»: the title, intro and a tall photo of the place stay pinned on the left while the
 // services scroll by on the right — each with its price on the title line, a description, what is included and its
 // own link; on phones the photo follows the intro. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -43,6 +45,8 @@ export default function ServicesSplitMedia({
           {intro ? <p className="mt-4 text-lead text-pretty text-muted-foreground">{intro}</p> : null}
           <img
             src={image.src}
+            srcSet={srcSetOf(image.src)}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={image.alt}
             loading="lazy"
             className="mt-8 aspect-4/3 w-full rounded-lg bg-muted object-cover lg:aspect-4/3"

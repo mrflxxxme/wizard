@@ -22,7 +22,7 @@ import {
   type V3BuildContext,
   withSitePages,
 } from "../src/builder/index.js";
-import { siteFacts } from "../src/builder/v3/compose/index.js";
+import { siteFacts, siteFiles } from "../src/builder/v3/compose/index.js";
 import { fixtureLine } from "./build-v2-fixtures.js";
 import { composeContext } from "./v3-compose-fixtures.js";
 import { writeFixture } from "./v3-harness-fixtures.js";
@@ -38,8 +38,20 @@ export async function criticContext(
   const sk = await createPageComposer().skeleton(ctx);
   const files = new Map(ctx.files);
   for (const [p, v] of sk.files) v === null ? files.delete(p) : files.set(p, v);
-  const site = readSite(files);
-  if (!site) throw new Error("no site");
+  const composed = readSite(files);
+  if (!composed) throw new Error("no site");
+  // The recorded critiques are about the clinic's home of V3-13 (hero, services, form): the previews V3-18 added to
+  // home (the catalog's first items, the contacts) are left out of this fixture.
+  const site: SiteModel = {
+    ...composed,
+    pages: composed.pages.map((p) =>
+      p.route === "/"
+        ? { ...p, sections: p.sections.filter((s) => s.type !== "catalog" && s.type !== "contacts") }
+        : p,
+    ),
+  };
+  for (const [p, v] of siteFiles(site, siteFacts(ctx).copy.site, ctx.design, files))
+    v === null ? files.delete(p) : files.set(p, v);
   return { ...ctx, files, spec: withSitePages(ctx.spec, site), budgetRub: o.budgetRub ?? 40, site };
 }
 

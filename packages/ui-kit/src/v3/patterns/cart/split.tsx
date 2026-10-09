@@ -5,7 +5,7 @@
 // the cart of this browser, asks the module for the СДЭК points and price, places the order by the module's function
 // (the prices and the stock are the server's) and takes the buyer to the payment or to the order's page. Own
 // composition.
-import { type CheckoutField, rub, useCheckout } from "@wizard/ui-kit/v3/headless";
+import { type CheckoutField, rub, srcSetOf, useCheckout } from "@wizard/ui-kit/v3/headless";
 import { type FormEvent, Fragment, type ReactNode, useId } from "react";
 
 type Link = { label: string; href: string };
@@ -203,6 +203,8 @@ function Lines({ c, empty, back }: { c: ReturnType<typeof useCheckout>; empty?: 
             {l.photo ? (
               <img
                 src={l.photo}
+                srcSet={srcSetOf(l.photo)}
+                sizes="96px"
                 alt=""
                 aria-hidden="true"
                 loading="lazy"

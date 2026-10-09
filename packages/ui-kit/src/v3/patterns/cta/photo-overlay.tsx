@@ -1,6 +1,8 @@
 // Call to action «photo overlay»: a photo across the section with a centred scrim card holding the message, the
 // action and a direct contact; the scrim keeps text readable over any part of the photo (catalog I04).
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -17,6 +19,8 @@ export default function CtaPhotoOverlay({ title, text, action, contact, image }:
     <section className="relative isolate overflow-hidden bg-inverse font-sans">
       <img
         src={image.src}
+        srcSet={srcSetOf(image.src)}
+        sizes="100vw"
         alt={image.alt}
         loading="lazy"
         className="absolute inset-0 -z-10 h-full w-full object-cover"

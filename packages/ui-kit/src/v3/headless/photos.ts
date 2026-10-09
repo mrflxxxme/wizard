@@ -12,6 +12,20 @@ export interface SitePhoto {
   alt: string;
 }
 
+/** Widths the runtime serves for a picture (/api/files/<id>/img/<w>, /_wizard/photos/<file>/<w>). */
+export const IMAGE_WIDTHS = [480, 960, 1600] as const;
+
+const VARIANT_RE = /^(.*\/(?:api\/files\/[^/?#]+\/img|_wizard\/photos\/[^/?#]+))\/(?:480|960|1600)$/;
+
+/**
+ * The srcset of a picture the runtime serves in widths (V3-18): «…/480 480w, …/960 960w, …/1600 1600w» for an address
+ * of a width variant (an image field, the platform photo library); undefined for any other address.
+ */
+export function srcSetOf(src: string | null | undefined): string | undefined {
+  const m = src ? VARIANT_RE.exec(src) : null;
+  return m ? IMAGE_WIDTHS.map((w) => `${m[1]}/${w} ${w}w`).join(", ") : undefined;
+}
+
 /** Names of the landing module's photo entity (@wizard/modules SITE_PHOTO). */
 export const SITE_PHOTO_DEFAULTS = {
   entity: "site_photo",

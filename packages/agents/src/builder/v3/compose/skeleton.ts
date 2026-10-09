@@ -15,6 +15,7 @@ import type { V3BuildContext } from "../contract.js";
 import { clientCabinet } from "./account.js";
 import {
   fitPhotos,
+  inHeader,
   KIND_LABELS,
   primaryAction,
   type SectionContext,
@@ -33,7 +34,6 @@ import {
   bindingOf,
   CONTENT_MODULE,
   componentOf,
-  isParamRoute,
   PAGE_SECTIONS,
   type PlannedPage,
   plannedPages,
@@ -50,9 +50,17 @@ export interface ComposeLibrary {
 
 /**
  * Content a variant should show when it is there: photos, the footer's list of pages (utility pages live only there),
- * the action of a catalog item (to the booking or the request form: GS-catalog-4 presses it).
+ * the action of a catalog item (to the booking or the request form: GS-catalog-4 presses it); V3-18: the footer's
+ * contacts, a preview on home that hides while empty, the entries without dates (the site's pages).
  */
-const KEEP = [["image", "images"], ["columns"], ["itemAction"]] as const;
+const KEEP = [
+  ["image", "images"],
+  ["columns"],
+  ["contacts"],
+  ["itemAction"],
+  ["preview"],
+  ["dates"],
+] as const;
 
 /**
  * Picks the pattern of a section: its type and needs, the slots accept `props`, variants that keep the photos and the
@@ -116,7 +124,15 @@ export interface SkeletonResult {
 export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): SkeletonResult {
   const library = lib.patterns ?? PATTERNS;
   const facts = siteFacts(ctx);
-  const planned = plannedPages(ctx.spec, ctx.publicFront);
+  // V3-18: «Источники фото» only on a site that shows stock photos.
+  const planned = plannedPages(ctx.spec, ctx.publicFront).filter(
+    (p) => p.kind !== "credits" || facts.photos.length > 0,
+  );
+  // V3-18: the catalog's page is called by what it shows in the brief's words («Туры»), not «Каталог и цены».
+  const noun = facts.copy.catalog;
+  const nounTitle = noun ? noun.charAt(0).toUpperCase() + noun.slice(1) : undefined;
+  if (nounTitle && nounTitle.length <= 40)
+    for (const p of planned) if (p.kind === "catalog" && p.module === "catalog") p.title = nounTitle;
   // V3-24: the list of articles is called as the owner named it (blog_title of «Контент и блог»).
   const content = ctx.plan.modules.find((m) => m.id === CONTENT_MODULE);
   if (content)
@@ -263,7 +279,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
       file: `${SITE_PAGES_DIR}/${component}.tsx`,
       component,
       nav: page.kind === "home" ? "Главная" : page.title,
-      header: page.kind !== "credits" && page.kind !== "account" && !isParamRoute(page.route),
+      header: inHeader(page, planned),
       roles: page.roles,
       ...(page.module ? { module: page.module } : {}),
       seo: seoOf(facts, page, hero),

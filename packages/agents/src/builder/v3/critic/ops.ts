@@ -63,7 +63,15 @@ export type EditResult =
   | { ok: false; reason_ru: string };
 
 /** Binding slots of the module-bound patterns (V3-08): never texts (the composer's FIXED_KEYS). */
-const FIXED_KEYS = new Set(["entity", "booking", "categoryEntity", "fields", "itemAction"]);
+const FIXED_KEYS = new Set([
+  "entity",
+  "booking",
+  "categoryEntity",
+  "fields",
+  "itemAction",
+  "preview",
+  "dates",
+]);
 /** Keys whose strings are links, sources or identifiers, not copy. */
 const NOT_COPY = new Set([
   "href",

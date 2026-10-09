@@ -2,7 +2,7 @@
 // on phones the photo is a band on top and the card overlaps its lower edge. Text never sits on the photo itself
 // (catalog I04). The logic is the module's: useLeadForm (C4) gives the fields, validation, server errors, the personal
 // data consent (G2-PII-04) and «sent». Own composition.
-import { type FormModel, useContent, useLeadForm } from "@wizard/ui-kit/v3/headless";
+import { type FormModel, srcSetOf, useContent, useLeadForm } from "@wizard/ui-kit/v3/headless";
 import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 type Field = FormModel["fields"][number];
@@ -449,6 +449,8 @@ export default function FormPhotoCard(props: FormPhotoCardProps) {
     >
       <img
         src={image.src}
+        srcSet={srcSetOf(image.src)}
+        sizes="(min-width: 1024px) 50vw, 100vw"
         alt={image.alt}
         loading="lazy"
         className="aspect-4/3 w-full bg-muted object-cover sm:aspect-16/9 lg:absolute lg:inset-0 lg:-z-10 lg:aspect-auto lg:h-full"

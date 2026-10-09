@@ -1,6 +1,8 @@
 // Team «portraits»: a grid of 3:4 portraits with the name and role under each — two columns on phones, three or four
 // on desktop; a person without a photo keeps their place with initials on a quiet field, never a stock face
 // (catalog I02). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
@@ -45,6 +47,8 @@ export default function TeamPortraits({ title, intro, people, action, note }: Te
               {p.photo ? (
                 <img
                   src={p.photo.src}
+                  srcSet={srcSetOf(p.photo.src)}
+                  sizes="(min-width: 1024px) 25vw, 50vw"
                   alt={p.photo.alt}
                   loading="lazy"
                   className="aspect-3/4 w-full rounded-md bg-muted object-cover"

@@ -1,6 +1,8 @@
 // Contacts «photo overlay»: the photo of the entrance or the facade across the section — what a visitor will look
 // for on arrival — with an opaque card of the address, hours, phone and map link over its left part; on phones the
 // card overlaps the bottom of the photo instead of covering it. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Phone = { number: string; href: string; note?: string };
@@ -35,6 +37,8 @@ export default function ContactsPhotoOverlay({
     <section className="relative isolate bg-background font-sans text-foreground lg:bg-inverse">
       <img
         src={image.src}
+        srcSet={srcSetOf(image.src)}
+        sizes="100vw"
         alt={image.alt}
         loading="lazy"
         className="aspect-4/3 w-full object-cover sm:aspect-16/9 lg:absolute lg:inset-0 lg:-z-10 lg:aspect-auto lg:h-full"

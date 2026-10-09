@@ -41,6 +41,10 @@ export const shopSlots = z.object({
   cart: linkSlot,
   /** V3-18: the product pages — a card's name and photo lead to `path` + the product's id («/shop/»). */
   product: z.object({ path: z.string().regex(SAME_ORIGIN_PATH_RE, "путь страницы товара") }).optional(),
+  /** V3-18: a preview on home — nothing while the shop is empty, no filter, no «Показать ещё». */
+  preview: z.boolean().optional(),
+  /** The way to all the goods from a preview. */
+  all: linkSlot.optional(),
 });
 
 /** Preview content (tests, previews): an example business, never published as the client's text (D49). */

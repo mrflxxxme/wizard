@@ -31,6 +31,8 @@ export type CatalogTableProps = {
   /** Items per «Показать ещё». */
   pageSize?: number;
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -219,11 +221,12 @@ function Sections({
 }
 
 export default function CatalogTable(props: CatalogTableProps) {
-  const { entity = "service", categoryEntity, title, text, empty, pageSize = 10, action } = props;
+  const { entity = "service", categoryEntity, title, text, empty, pageSize = 10, action, preview } = props;
   const f = { ...FIELDS, ...props.fields };
   const m = useCatalog(entity, { pageSize, categoryField: f.category });
   const { items, growing } = useShown(m);
   const uid = useId();
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -278,7 +281,7 @@ export default function CatalogTable(props: CatalogTableProps) {
             })}
           </tbody>
         </table>
-        <More m={m} shown={items.length} growing={growing} className="mt-8" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-8" />}
       </>
     );
   return (

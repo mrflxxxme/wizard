@@ -1,6 +1,8 @@
 // Team «single host»: one person carries the section — a large portrait, the section title as a quiet rubric, the
 // name set large, the role, a few lines in the owner's words, confirmed facts and booking with this person
 // (catalog D1 Team single-host). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo: Image; bio?: string; facts?: string[]; link?: Link };
@@ -25,6 +27,8 @@ export default function TeamSingleHost({ title, intro, people, action, note }: T
       <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-x-12">
         <img
           src={host.photo.src}
+          srcSet={srcSetOf(host.photo.src)}
+          sizes="(min-width: 1024px) 50vw, 100vw"
           alt={host.photo.alt}
           loading="lazy"
           className="aspect-4/5 w-full rounded-lg bg-muted object-cover lg:col-span-5"

@@ -1,6 +1,8 @@
 // Gallery «bento»: three to six photos in a tight grid of cells of different size — the first one large, the others
 // around it — with exactly as many cells as photos for each count, so no holes appear (catalog L12). Captions stay
 // out of the cells (I05); alt carries what each photo shows. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -40,7 +42,14 @@ export default function GalleryBento({ title, lead, images, action }: GalleryBen
               key={im.src}
               className={`min-w-0 overflow-hidden rounded-md bg-muted ${layout?.cells[i] ?? ""}`}
             >
-              <img src={im.src} alt={im.alt} loading="lazy" className="h-full w-full object-cover" />
+              <img
+                src={im.src}
+                srcSet={srcSetOf(im.src)}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                alt={im.alt}
+                loading="lazy"
+                className="h-full w-full object-cover"
+              />
             </li>
           ))}
         </ul>

@@ -1,6 +1,8 @@
 // Call to action «split with photo»: one framed block, a photo filling one half and the message with actions in the
 // other; on phones the photo sits on top. Composition after HyperUI «CTA» (MIT, © Mark Mead), rewritten on the
 // design system tokens.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -20,6 +22,8 @@ export default function CtaSplitImage({ title, text, action, secondary, note, im
         <div className="grid overflow-hidden rounded-lg border border-border bg-card text-card-foreground md:grid-cols-2">
           <img
             src={image.src}
+            srcSet={srcSetOf(image.src)}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={image.alt}
             loading="lazy"
             className="aspect-4/3 h-full w-full bg-muted object-cover md:aspect-auto"

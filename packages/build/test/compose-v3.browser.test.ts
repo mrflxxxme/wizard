@@ -47,6 +47,8 @@ const HOME: PageComposeAnswer & { signature: { after: string; title: string; ide
         image: { src: TOP, alt: "Светлый кабинет клиники с креслом у окна" },
       },
     },
+    // V3-18: the preview of the catalog on home is bound to the module — the model keeps it, writes its texts.
+    { id: "catalog", pattern: "catalog-list", props: { title: "Услуги и цены" } },
     {
       id: "form",
       pattern: "form-centered",
@@ -193,7 +195,9 @@ describe.skipIf(!hasChromium)("composed v3 site in chromium", () => {
       "header",
       "hero",
       "first-visit",
+      "catalog",
       "form",
+      "contacts",
       "footer",
     ]);
   });

@@ -88,7 +88,8 @@ const PATTERN_ERRORS: ReadonlySet<PatternLintCode> = new Set([
 
 // --------------------------------------------------------------------------------------------------- copy rules
 
-const EMOJI_RE = /\p{Extended_Pictographic}/u;
+// Typographic signs (©, ®, ™) are Extended_Pictographic too, but they are not emoji: the footer's «© 2026» (V3-18).
+const EMOJI_RE = /(?![©®™])\p{Extended_Pictographic}/u;
 const PLACEHOLDER_RE =
   /lorem|ipsum|иван\s+иванов|ромашк|заголовок\s+секции|подзаголовок\s+секции|текст\s+секции|название\s+услуги|^пример\b|\bTODO\b|\bxxx\b|\{\{|\[(?:текст|название|цена)\]/i;
 const SUPERLATIVE_RE =

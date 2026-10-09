@@ -1,6 +1,8 @@
 // Services «dominant»: one main service carries the section — a wide photo, the name large, the description, what is
 // included in two columns, price and booking — while the other services follow as a short priced list beside it
 // (catalog D1 Features dominant-list, instead of three equal cards L01). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -44,6 +46,8 @@ export default function ServicesDominant({ title, intro, items, action, note }: 
             {main.image ? (
               <img
                 src={main.image.src}
+                srcSet={srcSetOf(main.image.src)}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 alt={main.image.alt}
                 loading="lazy"
                 className="aspect-3/2 w-full rounded-lg bg-muted object-cover"

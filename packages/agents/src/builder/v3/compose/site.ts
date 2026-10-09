@@ -119,19 +119,25 @@ export interface SiteModel {
   pages: SitePage[];
 }
 
-/** Section order of a page kind; types without content or without a pattern are skipped. */
+/**
+ * Section order of a page kind; types without content or without a pattern are skipped. V3-18: home previews the data
+ * of the modules — the catalog's first items and the latest articles (bound, nothing while empty) — and the services
+ * and contacts the brief gives.
+ */
 export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> = {
   home: [
     "header",
     "hero",
     "shop",
     "services",
+    "catalog",
     "about",
     "gallery",
     "team",
     "testimonials",
     "pricing",
     "faq",
+    "blog",
     "form",
     "cta",
     "contacts",
@@ -272,9 +278,18 @@ export function bindingOf(
   if (type === "catalog") {
     if (page.kind === "catalog") return pick("useCatalog", page.module) ?? pick("useCatalog");
     if (page.kind === "account") return pick("useContent", page.module);
+    // V3-18: the first items of the catalog on home.
+    if (page.kind === "home") return pick("useCatalog");
     return null;
   }
   if (type === "blog" && page.kind === "content") return pick("useContent", page.module);
+  // V3-18: the latest articles of «Контент и блог» on home, when the site has their list page.
+  if (type === "blog" && page.kind === "home") {
+    const a = front.actions.find(
+      (x) => x.module === CONTENT_MODULE && x.entity === CONTENT_NAMES.article && x.hook === "useContent",
+    );
+    return a && pages.some((p) => p.kind === "content") ? { needs: "content", action: a } : null;
+  }
   // V3-23: the goods on their page and on home, the cart with the checkout, the order of its buyer.
   if (type === "shop" && (page.kind === "shop" || page.kind === "home")) return pick("useShop");
   if (

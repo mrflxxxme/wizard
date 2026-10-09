@@ -1,6 +1,8 @@
 // Services «bento»: the main service with its photo in a large cell, the others in cells of different width and tone —
 // one contrasting, one quiet, the rest filling the last row exactly, so there are as many cells as services and no
 // holes (catalog D1 Features bento, L12). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -65,6 +67,8 @@ export default function ServicesBento({ title, intro, items, action, note }: Ser
                 {lead && s.image ? (
                   <img
                     src={s.image.src}
+                    srcSet={srcSetOf(s.image.src)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt={s.image.alt}
                     loading="lazy"
                     className="aspect-16/10 w-full bg-muted object-cover lg:aspect-auto lg:min-h-72 lg:flex-1"

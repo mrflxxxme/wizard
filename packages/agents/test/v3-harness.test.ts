@@ -104,6 +104,8 @@ interface HostOptions {
   /** The skeleton preview's answer (default ok). */
   preview?: () => { ok: boolean; problems: string[]; unavailable?: boolean };
   hooks?: V3Host["hooks"];
+  /** V3-18: the stock of the photos stage. */
+  photos?: V3Host["photos"];
   goalBrowser?: boolean;
   /** Recorded answers: pages (page_compose answers), heavier usage, the art director's answer. */
   lines?: { pages?: number; completionTokens?: number; artDirection?: boolean };
@@ -207,6 +209,7 @@ function memHost(sys: Sys, o: HostOptions = {}) {
     },
     goalBrowser: o.goalBrowser ?? false,
     ...(o.hooks ? { hooks: o.hooks } : {}),
+    ...(o.photos ? { photos: o.photos } : {}),
     questions: {
       ask: async (q) => {
         rec.asked.push(q.id);
@@ -587,6 +590,78 @@ describe("harness v3: non-blocking questions, the brief re-read, hooks", () => {
     expect(g1?.goalScenarios?.map((g) => g.id)).toEqual(
       expect.arrayContaining([expect.stringMatching(/^GS-booking-/), expect.stringMatching(/^GS-leads-/)]),
     );
+  });
+});
+
+describe("harness v3: stock photos of the site (V3-18)", () => {
+  /** A stock of landscape pictures; counts its searches. */
+  const stock = () => {
+    const log = { searches: 0, stored: 0 };
+    const host: NonNullable<V3Host["photos"]> = {
+      stock: {
+        providers: ["pexels"],
+        search: async (provider, _q, perPage) => {
+          log.searches++;
+          return Array.from({ length: perPage }, (_, i) => ({
+            provider,
+            id: `10${i}`,
+            width: 1920,
+            height: 1280,
+            author: `Автор ${String.fromCharCode(1040 + i)}`,
+            pageUrl: `https://www.pexels.com/photo/${i}`,
+            downloadUrl: `https://images.pexels.com/${i}.jpg`,
+          }));
+        },
+        download: async () => new Uint8Array([1, 2, 3]),
+      },
+      store: async (hit) => {
+        log.stored++;
+        return { id: `00000000-0000-4000-8000-000000000${hit.id}`, width: 1600, height: 1067 };
+      },
+    };
+    return { host, log };
+  };
+  const skeletonPhotos = (sys: Sys) =>
+    (sys.checkpoints.get("photos")?.data.photos as { slot: string; file: string }[] | undefined) ?? [];
+
+  test("the plan's places get stock photos before the skeleton; the pages and the backend see them; a repeat reuses them", async () => {
+    const sys = newSys();
+    const s = stock();
+    const file = "00000000-0000-4000-8000-000000000100";
+    // The skeleton reads the plan with them (ctx.plan.design.photos → the facts of the pages).
+    const { host, clock } = memHost(sys, { photos: s.host });
+    const seen: unknown[] = [];
+    const skeleton = host.composer.skeleton.bind(host.composer);
+    host.composer.skeleton = async (ctx) => {
+      seen.push(ctx.plan.design.photos);
+      return skeleton(ctx);
+    };
+    ok(await runBuildV3(host, { now: () => clock.t, appName: "Клиника" }));
+    expect(s.log.stored).toBeGreaterThan(0);
+    expect(skeletonPhotos(sys)[0]).toMatchObject({ slot: "top", file });
+    expect((seen[0] as { file: string }[] | undefined)?.[0]?.file).toBe(file);
+    // The backend compiled with them: the stock photo of the first screen in the photos helper of the landing.
+    expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(file);
+    // The repeat: no search, the same photos in the backend.
+    const again = stock();
+    ok((await build(sys, { photos: again.host })).out);
+    expect(again.log.searches).toBe(0);
+    expect(sys.files["ui/pages/SitePhotos.tsx"]).toContain(file);
+  });
+
+  test("no stock, or a stock that fails: the build goes on without photos and the next one asks again", async () => {
+    const sys = newSys();
+    ok((await build(sys)).out);
+    expect(sys.checkpoints.has("photos")).toBe(false);
+    const broken = stock();
+    broken.host.stock.search = async () => {
+      throw new Error("сток недоступен");
+    };
+    ok((await build(sys, { photos: broken.host })).out);
+    expect(sys.checkpoints.has("photos")).toBe(false);
+    const s = stock();
+    ok((await build(sys, { photos: s.host })).out);
+    expect(skeletonPhotos(sys).length).toBeGreaterThan(0);
   });
 });
 

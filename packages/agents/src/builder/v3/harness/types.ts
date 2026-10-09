@@ -8,6 +8,7 @@ import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import type { RunStepFn } from "../../../core/events.js";
 import type { RecordDevelopmentRequest } from "../../../gaps.js";
 import type { HostRoute } from "../../../host/index.js";
+import type { PhotoHost } from "../../v2/photos.js";
 import type { PageComposer, V3BuildContext } from "../contract.js";
 
 /** Stages in build order (builder-v3.md C6; the backend is compiled after the design so cabinets take its tokens). */
@@ -191,6 +192,11 @@ export interface V3Host {
   /** Niche memory of the art director: archetypes of the latest builds of the niche, most recent first. */
   recentArchetypes?(niche: string): Promise<string[]>;
   /**
+   * V3-18: the stock of the photos stage (the v2 PhotoHost: platform egress or the CI photo library, copies in the
+   * platform photo library); absent or null — the site goes without stock photos.
+   */
+  photos?: PhotoHost | null;
+  /**
    * V3-20: the brief's integrations on top of the compiled backend — the host reads the stored contracts and their
    * states and returns the spec and files with functions/integrations/<id>/** (@wizard/agents/integrations
    * integrationLayer + withIntegrationLayer); null or absent — no integrations layer.
@@ -242,6 +248,8 @@ export interface V3Params {
   now?: () => number;
   /** Seed of the design (default: the system id). */
   seed?: string;
+  /** Time budget of the stock photos (default: the v2 photos stage's). */
+  photosTimeMs?: number;
 }
 
 export type V3FailureCode =

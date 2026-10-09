@@ -564,6 +564,8 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
             browser: goalBrowser(),
             ...(o.modules ? { registry: o.modules } : {}),
             log: (msg, err) => g1Logger.error(msg.replace(/\s+/g, "_"), err),
+            // V3-18: the stock photos of the site, as plan builds get them (WIZARD_STOCK_MODE; library on the pilot).
+            photos: photoHost(),
           });
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });

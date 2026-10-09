@@ -1,6 +1,8 @@
 // Team «cards»: horizontal cards in two columns — the portrait filling the left part, the name, role, a few lines
 // about the person, confirmed facts as quiet tags and booking with them on the right; on phones the portrait sits on
 // top. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Person = { name: string; role: string; photo?: Image; bio?: string; facts?: string[]; link?: Link };
@@ -47,6 +49,8 @@ export default function TeamCards({ title, intro, people, action, note }: TeamCa
               {p.photo ? (
                 <img
                   src={p.photo.src}
+                  srcSet={srcSetOf(p.photo.src)}
+                  sizes="(min-width: 1024px) 25vw, 50vw"
                   alt={p.photo.alt}
                   loading="lazy"
                   className="aspect-4/3 h-full w-full bg-muted object-cover sm:col-span-2 sm:aspect-auto sm:min-h-64"

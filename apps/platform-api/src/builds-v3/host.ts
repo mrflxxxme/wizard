@@ -9,6 +9,7 @@ import {
   erroredBlockers,
   failedBlockers,
   type PageComposer,
+  type PhotoHost,
   runBuildV3,
   type ScenarioCheckInput,
   type ScenarioCheckResult,
@@ -218,6 +219,8 @@ export async function buildByBrief(
     browser?: GoalBrowserProvider | null;
     registry?: ModuleRegistry;
     log?: (msg: string, err: unknown) => void;
+    /** V3-18: the stock photos of the site (the photos host of plan builds); absent — no stock photos. */
+    photos?: PhotoHost | null;
   },
 ): Promise<{ status: "succeeded"; summary_ru: string }> {
   // V3-12: the page composer on the pattern library (skeleton without a model; scenarios through host.route).
@@ -290,6 +293,7 @@ export async function buildByBrief(
         o.log,
       ),
     recentArchetypes: (niche) => once("v3_recent_archetypes", () => recentArchetypes(o.pg, systemId, niche)),
+    ...(o.photos ? { photos: o.photos } : {}),
     // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend;
     // V3-21: window keys stay within their hosts, and the agent opens key windows for the keys still missing.
     integrations: withKeyWindow(integrationsBuildHook(o.pg, systemId), {

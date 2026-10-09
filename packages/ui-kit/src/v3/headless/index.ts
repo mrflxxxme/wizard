@@ -80,11 +80,16 @@ export {
 export { type LeadFormModel, type UseLeadFormOptions, useLeadForm } from "./lead-form.js";
 /** usePagedList(entity, query, {page, max}) — «Показать ещё» by a page, ≤ 96 rows, read permission. */
 export { LIST_MAX, LIST_PAGE, type PagedList, usePagedList } from "./list.js";
-/** useSitePhotos() — the owner's photos of the site's places («Фото сайта», site_photo), else the stock ones (V3-18). */
+/**
+ * useSitePhotos() — the owner's photos of the site's places («Фото сайта», site_photo), else the stock ones (V3-18);
+ * srcSetOf(src) — the srcset of a picture the runtime serves in widths 480/960/1600.
+ */
 export {
+  IMAGE_WIDTHS,
   SITE_PHOTO_DEFAULTS,
   type SitePhoto,
   type SitePhotos,
+  srcSetOf,
   type UseSitePhotosOptions,
   useSitePhotos,
 } from "./photos.js";

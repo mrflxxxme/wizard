@@ -2,6 +2,7 @@
 // phones — and the panel of the chosen one with its photo, description, what is included, price and booking. Tabs
 // follow the WAI-ARIA pattern: arrows, Home and End move between them, only the chosen tab is in the Tab order.
 // Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
 import { type KeyboardEvent, useId, useRef, useState } from "react";
 
 type Link = { label: string; href: string };
@@ -103,6 +104,8 @@ export default function ServicesTabs({ title, intro, items, action, note }: Serv
                   {s.image ? (
                     <img
                       src={s.image.src}
+                      srcSet={srcSetOf(s.image.src)}
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                       alt={s.image.alt}
                       loading="lazy"
                       className="aspect-16/10 w-full rounded-lg bg-muted object-cover"

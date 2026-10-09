@@ -1,6 +1,8 @@
 // Gallery «masonry»: photos of alternating tall, wide and square crops flow into two columns (three from lg) like
 // laid stones; CSS columns keep every photo with its caption whole, so no holes appear whatever the count
 // (catalog D1 Gallery «masonry»). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -38,6 +40,8 @@ export default function GalleryMasonry({ title, lead, images, action }: GalleryM
               <figure>
                 <img
                   src={im.src}
+                  srcSet={srcSetOf(im.src)}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                   alt={im.alt}
                   loading="lazy"
                   className={`w-full rounded-md bg-muted object-cover ${CROPS[i % CROPS.length]}`}

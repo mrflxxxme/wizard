@@ -1,6 +1,8 @@
 // Gallery «captioned»: a portfolio told as a list — every work gets a large photo across eight columns and its
 // caption set in the display face in a narrow column beside it, the entries divided by rules; on phones the caption
 // follows the photo. For a handful of works that each need a word. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption: string };
 
@@ -23,6 +25,8 @@ export default function GalleryCaptioned({ title, lead, images, action }: Galler
               <figure className="grid gap-4 lg:grid-cols-12 lg:gap-8">
                 <img
                   src={im.src}
+                  srcSet={srcSetOf(im.src)}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                   alt={im.alt}
                   loading="lazy"
                   className="aspect-3/2 w-full rounded-md bg-muted object-cover lg:col-span-8"

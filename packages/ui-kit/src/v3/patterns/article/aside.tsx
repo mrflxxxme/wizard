@@ -6,6 +6,7 @@ import {
   type RichBlock,
   type RichInline,
   richText,
+  srcSetOf,
   useContent,
   useEntry,
   useEntryTitle,
@@ -179,10 +180,19 @@ function Block({ block }: { block: RichBlock }) {
       );
     case "image":
       return block.alt ? (
-        <img src={block.src} alt={block.alt} loading="lazy" className="mt-8 w-full rounded-md bg-muted" />
+        <img
+          src={block.src}
+          srcSet={srcSetOf(block.src)}
+          sizes="(min-width: 768px) 768px, 100vw"
+          alt={block.alt}
+          loading="lazy"
+          className="mt-8 w-full rounded-md bg-muted"
+        />
       ) : (
         <img
           src={block.src}
+          srcSet={srcSetOf(block.src)}
+          sizes="(min-width: 768px) 768px, 100vw"
           alt=""
           aria-hidden="true"
           loading="lazy"
@@ -338,6 +348,8 @@ export default function ArticleAside(props: ArticleAsideProps) {
           {cover ? (
             <img
               src={cover}
+              srcSet={srcSetOf(cover)}
+              sizes="100vw"
               alt=""
               aria-hidden="true"
               fetchPriority="high"

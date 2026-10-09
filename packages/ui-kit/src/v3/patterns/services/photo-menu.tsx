@@ -2,6 +2,8 @@
 // like a menu board — names with dotted leaders to their prices, a line of description under each, a note and the
 // action. Text never sits on the photo itself (catalog I04, I05); on phones the photo comes first and the card
 // overlaps its lower edge. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 type Service = {
@@ -38,6 +40,8 @@ export default function ServicesPhotoMenu({
     <section className="relative isolate bg-background font-sans text-foreground lg:bg-muted">
       <img
         src={image.src}
+        srcSet={srcSetOf(image.src)}
+        sizes="100vw"
         alt={image.alt}
         loading="lazy"
         className="aspect-4/3 w-full bg-muted object-cover lg:absolute lg:inset-0 lg:-z-10 lg:aspect-auto lg:h-full"

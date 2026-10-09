@@ -1,6 +1,8 @@
 // Testimonials «photo quote»: the client's photo of the work or the place across the section, one review on a scrim
 // panel at the lower left, so the text holds over any part of the photo (catalog I04). The photo is never a face
 // standing in for the author (I02). Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Review = {
   text: string;
   author: string;
@@ -22,6 +24,8 @@ export default function TestimonialsPhotoQuote({ title, quote, image }: Testimon
     <section className="relative isolate overflow-hidden bg-inverse font-sans">
       <img
         src={image.src}
+        srcSet={srcSetOf(image.src)}
+        sizes="(min-width: 1024px) 50vw, 100vw"
         alt={image.alt}
         loading="lazy"
         className="absolute inset-0 -z-10 h-full w-full object-cover"

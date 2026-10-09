@@ -1,6 +1,8 @@
 // Gallery «full bleed»: the photos run from edge to edge of the screen — one wide frame, then a row of one to three
 // set flush with hairline joints; the title above and the captions below stay on the page grid, each caption led by
 // where its photo is. For places and interiors that need scale. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Photo = { src: string; alt: string; caption?: string };
 
@@ -36,6 +38,8 @@ export default function GalleryFullBleed({ title, lead, images, action }: Galler
         {wide ? (
           <img
             src={wide.src}
+            srcSet={srcSetOf(wide.src)}
+            sizes="100vw"
             alt={wide.alt}
             loading="lazy"
             className="aspect-4/3 w-full bg-muted object-cover sm:aspect-16/9 lg:aspect-21/9"
@@ -47,6 +51,8 @@ export default function GalleryFullBleed({ title, lead, images, action }: Galler
               <img
                 key={im.src}
                 src={im.src}
+                srcSet={srcSetOf(im.src)}
+                sizes="100vw"
                 alt={im.alt}
                 loading="lazy"
                 className="aspect-4/3 w-full bg-muted object-cover"

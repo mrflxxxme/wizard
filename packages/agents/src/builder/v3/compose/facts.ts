@@ -2,7 +2,7 @@
 // spec — the business name, niche, the owner's landing texts, photos, the personal data operator and contacts. Texts
 // marked as an example («Пример: …») are dropped. Every number a page shows must be found here (fabricated check).
 import type { SystemBrief, SystemPlan } from "@wizard/appspec";
-import { type PhotoSectionType, photoSlots, SITE_PHOTO } from "@wizard/modules";
+import { type PhotoSectionType, PROVIDER_LABEL, photoSlots, photoSrc, SITE_PHOTO } from "@wizard/modules";
 import { isKeywordNiche } from "../../../planner/fallback.js";
 import type { V3BuildContext } from "../contract.js";
 import { type BriefCopy, briefCopy } from "./copy.js";
@@ -12,6 +12,8 @@ export interface SitePhoto {
   slot: string;
   src: string;
   alt: string;
+  /** Who took it and where it comes from («Автор, Pexels»): the «Источники фото» page lists it (V3-18). */
+  credit?: string;
 }
 
 export interface SiteFacts {
@@ -48,6 +50,8 @@ export interface SiteFacts {
    * «new»): the booking form says «Заявка на запись отправлена», as the module's v2 page (V3-18).
    */
   bookingByRequest: boolean;
+  /** The year of the composition: the footer's «© <year>» (V3-18). */
+  year: number;
   /** Every number of the facts, normalised (digits, one decimal separator). */
   numbers: Set<string>;
 }
@@ -55,6 +59,7 @@ export interface SiteFacts {
 const EXAMPLE_RE = /^\s*пример\b/i;
 /** The planner's placeholder of a button (planner/edits.ts sectionContent): the owner did not write it. */
 const PLACEHOLDER_CTA = "Связаться";
+/** Width of the library variant a section's picture names; the patterns add the srcset of every width (srcSetOf). */
 const PHOTO_WIDTH = 1600;
 const NUMBER_RE = /\d(?:[\d   ]*\d)?(?:[.,]\d+)?/g;
 
@@ -107,16 +112,29 @@ function landingTexts(plan: SystemPlan): Map<string, Record<string, unknown>> {
 function photosOf(plan: SystemPlan): SitePhoto[] {
   return (plan.design?.photos ?? []).map((p) => ({
     slot: p.slot,
-    src: `/_wizard/photos/${p.file}/${PHOTO_WIDTH}`,
+    src: photoSrc(p.file, PHOTO_WIDTH),
     alt: p.alt,
+    credit: `${p.author}, ${PROVIDER_LABEL[p.provider]}`,
   }));
 }
 
-function contactOf(c: string | undefined): { phone?: string; email?: string } {
+const EMAIL_RE = /[^\s@,;:<>()«»"]+@[^\s@,;:<>()«»"]+\.[^\s@,;:<>()«»".]+/;
+const PHONE_RE = /\+?\d[\d\s()\-–]{8,}\d/;
+
+/**
+ * The phone and the e-mail of the operator's contact line: one of them, or both («+7 900 000-00-00, info@x.ru»,
+ * V3-18) — each only when it reads as one (10–15 digits, name@domain).
+ */
+export function contactOf(c: string | undefined): { phone?: string; email?: string } {
   if (!c) return {};
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.trim())) return { email: c.trim() };
-  const digits = c.replace(/[^\d+]/g, "");
-  return /^\+?\d{10,15}$/.test(digits) ? { phone: c.trim() } : {};
+  const email = EMAIL_RE.exec(c)?.[0];
+  const rest = email ? c.replace(email, " ") : c;
+  const phone = PHONE_RE.exec(rest)?.[0]?.trim();
+  const digits = phone?.replace(/[^\d+]/g, "") ?? "";
+  return {
+    ...(phone && /^\+?\d{10,15}$/.test(digits) ? { phone } : {}),
+    ...(email ? { email } : {}),
+  };
 }
 
 function briefTexts(brief: SystemBrief): string[] {
@@ -145,8 +163,10 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
     c.operatorContact ?? "",
     c.operatorInn ?? "",
     c.operatorOgrn ?? "",
+    ...photosOf(plan).map((p) => p.credit ?? ""),
   ];
-  const numbers = new Set(corpus.flatMap(numbersOf));
+  const year = new Date().getUTCFullYear();
+  const numbers = new Set([...corpus.flatMap(numbersOf), String(year)]);
   const contact = contactOf(c.operatorContact);
   const description = spec.app.description?.trim();
   const audience = brief.audience.trim();
@@ -177,6 +197,7 @@ export function siteFacts(ctx: Pick<V3BuildContext, "brief" | "plan" | "spec" | 
     bookingByRequest:
       spec.entities.find((e) => e.name === "booking")?.fields.find((f) => f.name === "status")?.default ===
       "new",
+    year,
     numbers,
   };
 }

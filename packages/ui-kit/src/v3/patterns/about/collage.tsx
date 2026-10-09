@@ -1,6 +1,8 @@
 // About «collage»: the story on the left; on the right two or three photos of the place in different formats — a tall
 // one as high as the others stepped down beside it — so the section shows the place rather than describes it. On
 // phones the collage follows the text at a smaller scale. Own composition.
+import { srcSetOf } from "@wizard/ui-kit/v3/headless";
+
 type Link = { label: string; href: string };
 type Image = { src: string; alt: string };
 
@@ -39,6 +41,8 @@ export default function AboutCollage({ title, lead, paragraphs, images, action }
           {first ? (
             <img
               src={first.src}
+              srcSet={srcSetOf(first.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={first.alt}
               loading="lazy"
               className={`col-span-7 row-span-2 ${third ? "h-full" : "aspect-3/4 self-start"} ${photoClass}`}
@@ -47,6 +51,8 @@ export default function AboutCollage({ title, lead, paragraphs, images, action }
           {second ? (
             <img
               src={second.src}
+              srcSet={srcSetOf(second.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={second.alt}
               loading="lazy"
               className={`col-span-5 mt-10 aspect-square self-start sm:mt-16 ${photoClass}`}
@@ -55,6 +61,8 @@ export default function AboutCollage({ title, lead, paragraphs, images, action }
           {third ? (
             <img
               src={third.src}
+              srcSet={srcSetOf(third.src)}
+              sizes="(min-width: 1024px) 50vw, 100vw"
               alt={third.alt}
               loading="lazy"
               className={`col-span-5 aspect-4/5 self-start ${photoClass}`}

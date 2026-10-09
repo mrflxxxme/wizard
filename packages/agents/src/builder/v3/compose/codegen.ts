@@ -96,9 +96,23 @@ export function pageSource(
     ...(photos ? ["  const photo = useSitePhotos();"] : []),
     // The page renders after the load (the app waits for its spec), so the browser does not scroll to the anchor of
     // the address itself: a link «/#form» from another page opens at the form (GS-catalog-4, the first screen's action).
+    // V3-18: sections above the anchor load their data after the first paint (the previews of home) — the page keeps
+    // the anchor in view while they grow, until the visitor scrolls himself or 3 s pass.
     "  useEffect(() => {",
     "    const id = location.hash.slice(1);",
-    "    if (id) document.getElementById(id)?.scrollIntoView();",
+    "    const target = id ? document.getElementById(id) : null;",
+    "    if (!target) return;",
+    "    target.scrollIntoView();",
+    "    const keep = new ResizeObserver(() => target.scrollIntoView());",
+    "    keep.observe(document.body);",
+    "    const stop = () => keep.disconnect();",
+    "    const timer = setTimeout(stop, 3000);",
+    '    for (const e of ["wheel", "touchstart", "keydown"]) addEventListener(e, stop, { once: true, passive: true });',
+    "    return () => {",
+    "      clearTimeout(timer);",
+    "      stop();",
+    '      for (const e of ["wheel", "touchstart", "keydown"]) removeEventListener(e, stop);',
+    "    };",
     "  }, []);",
     "  return (",
     "    <>",

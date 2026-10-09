@@ -3,7 +3,7 @@
 // wide screens; «Показать ещё» at the panel's foot. The data is the module's: useCatalog (C4) gives the visible items,
 // the section filter and the paging; useContent — the sections. Own composition; the keyboard follows the tabs
 // pattern of WAI-ARIA Authoring Practices.
-import { type CatalogModel, useCatalog, useContent } from "@wizard/ui-kit/v3/headless";
+import { type CatalogModel, srcSetOf, useCatalog, useContent } from "@wizard/ui-kit/v3/headless";
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 
 type Link = { label: string; href: string };
@@ -33,6 +33,8 @@ export type CatalogTabsProps = {
   /** An action on each item: its path gets ?service=<id> (a booking link). */
   itemAction?: { label: string; path: string };
   action?: Link;
+  /** A preview on another page (home): nothing while the list is empty, no «Показать ещё». */
+  preview?: boolean;
 };
 
 const FIELDS: Required<Fields> = {
@@ -196,7 +198,17 @@ function actionHref(path: string, id: string): string {
 }
 
 export default function CatalogTabs(props: CatalogTabsProps) {
-  const { entity = "service", categoryEntity, title, text, empty, pageSize = 6, itemAction, action } = props;
+  const {
+    entity = "service",
+    categoryEntity,
+    title,
+    text,
+    empty,
+    pageSize = 6,
+    itemAction,
+    action,
+    preview,
+  } = props;
   const f = { ...FIELDS, ...props.fields };
   const m = useCatalog(entity, { pageSize, categoryField: f.category });
   const sections = useContent(categoryEntity, { sort: { field: "sort_order", dir: "asc" }, pageSize: 24 });
@@ -228,6 +240,7 @@ export default function CatalogTabs(props: CatalogTabsProps) {
     m.setCategory(tabs[to]?.id ?? null);
     list.current?.querySelector<HTMLElement>(`#${CSS.escape(tabId(to))}`)?.focus();
   };
+  if (preview && !m.isLoading && items.length === 0) return null;
   let body: ReactNode;
   if (m.error && items.length === 0) body = <Failed m={m} />;
   else if (m.isLoading && items.length === 0) body = <Loading />;
@@ -247,6 +260,8 @@ export default function CatalogTabs(props: CatalogTabsProps) {
                 {it.photo ? (
                   <img
                     src={it.photo}
+                    srcSet={srcSetOf(it.photo)}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     alt=""
                     aria-hidden="true"
                     loading="lazy"
@@ -279,7 +294,7 @@ export default function CatalogTabs(props: CatalogTabsProps) {
             );
           })}
         </ul>
-        <More m={m} shown={items.length} growing={growing} className="mt-6" />
+        {preview ? null : <More m={m} shown={items.length} growing={growing} className="mt-6" />}
       </>
     );
   return (

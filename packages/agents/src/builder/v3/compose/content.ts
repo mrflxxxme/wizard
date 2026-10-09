@@ -44,6 +44,8 @@ const LINE = { title: 90, cta: 80, lead: 260, note: 120, tagline: 140, label: 40
 const fits = (s: string | undefined, max: number): string | undefined =>
   s && s.length <= max && !/\n/.test(s) ? s : undefined;
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const REQUEST_RE = /заявк|запиш|запис|перезвон|звонок|спросить|вопрос/i;
 
 /**
@@ -149,8 +151,25 @@ export interface SectionContext {
   cabinet?: { role: string; sections: CabinetSection[] };
 }
 
+type MenuPage = Pick<PlannedPage, "kind" | "route" | "module" | "screen">;
+
+/** A page of the menus at all: not a utility page (photo credits), the client cabinet or an entry page. */
+const menuPage = (p: MenuPage) => p.kind !== "credits" && p.kind !== "account" && !isParamRoute(p.route);
+
+/**
+ * A page of the header menu (V3-18): the lists of «Контент и блог» start empty (no entries in the seed or in prod), so
+ * they live in the footer — the articles reach the header only on a site that has nothing else to show, the site's
+ * information pages never.
+ */
+export function inHeader(p: MenuPage, pages: readonly MenuPage[]): boolean {
+  if (!menuPage(p)) return false;
+  if (p.module !== CONTENT_MODULE) return true;
+  const others = pages.some((x) => x.kind !== "home" && x.module !== CONTENT_MODULE && menuPage(x));
+  return !others && p.screen === "blog";
+}
+
 function headerNav(c: SectionContext): Link[] {
-  const pages = c.pages.filter((p) => p.kind !== "credits" && p.kind !== "account" && !isParamRoute(p.route));
+  const pages = c.pages.filter((p) => inHeader(p, c.pages));
   const links: Link[] = pages.length >= 2 ? pages.map((p) => ({ label: navLabel(p), href: p.route })) : [];
   if (links.length < 2) {
     links.length = 0;
@@ -223,7 +242,10 @@ function heroProps(c: SectionContext): Props | null {
   if (isCabinet(c)) return null;
   const main = heroAction(c);
   if (!main) return null;
-  if (page.kind !== "home") return { title: page.title, action: main };
+  if (page.kind !== "home") {
+    const lead = pageLead(c);
+    return { title: page.title, action: main, ...(lead ? { lead } : {}) };
+  }
   // The owner's heading, else the system's description, else what the brief says the business offers and where.
   const title =
     fits(textOf(f, "hero", "title"), LINE.title) ??
@@ -243,9 +265,45 @@ function heroProps(c: SectionContext): Props | null {
   return out;
 }
 
+/**
+ * The intro of an inner page's first screen (V3-18): what the page holds in the brief's words — the services of the
+ * catalog, how the booking goes, where the photos come from; none — the page's own sections speak.
+ */
+function pageLead(c: SectionContext): string | undefined {
+  const f = c.facts;
+  switch (c.page.kind) {
+    case "catalog":
+      return (
+        fits(textOf(f, "services", "intro"), LINE.lead) ?? forAction(fits(f.copy.lead, LINE.lead), c.primary)
+      );
+    case "booking":
+      return f.bookingByRequest
+        ? "Выберите услугу, день и удобное время — мы подтвердим запись."
+        : "Выберите услугу, день и свободное время.";
+    case "credits":
+      return creditsLead(f);
+    default:
+      return undefined;
+  }
+}
+
+/** «Источники фото»: the stocks' licences and the authors of the photos the site shows (as many as fit). */
+export function creditsLead(f: SiteFacts): string | undefined {
+  const credits = [...new Set(f.photos.flatMap((p) => (p.credit ? [p.credit] : [])))];
+  if (credits.length === 0) return undefined;
+  const head = "Фотографии на сайте — со стоков, по их бесплатным лицензиям. Авторы: ";
+  for (let n = credits.length; n > 0; n--) {
+    const text = `${head}${credits.slice(0, n).join("; ")}${n < credits.length ? " и другие" : ""}.`;
+    if (text.length <= LINE.lead) return text;
+  }
+  return undefined;
+}
+
 function ctaProps(c: SectionContext): Props | null {
   const a = c.primary;
   if (!a) return null;
+  // V3-18: home already opens with the main action (the first screen's button) — no second call repeating it.
+  if (c.page.kind === "home") return null;
   // The page already holds the target (the form, or it is the page the action opens): no second call to it.
   if (a.route === c.page.route) return null;
   const f = c.facts;
@@ -283,13 +341,15 @@ function footerProps(c: SectionContext): Props {
     .filter((p) => !isParamRoute(p.route))
     .map((p) => ({ label: navLabel(p), href: p.route }))
     .slice(0, 6);
+  // V3-18: «© <year>» with the operator the owner gave; before he gives one (a draft) — the site's name, no placeholder.
+  const owner = fits(f.operator, 112);
   const out: Props = {
     brand: brand(f),
     columns: [{ title: "Разделы", links }],
     legal: {
-      operator:
-        fits(f.operator, 120) ??
-        `Владелец сайта «${f.copy.site}» — оператор персональных данных`.slice(0, 120),
+      operator: owner
+        ? `© ${f.year} ${owner}`
+        : (fits(f.operator, 120) ?? fits(`© ${f.year} ${f.copy.site}`, 120) ?? `© ${f.year}`),
       ...(f.operatorInn || f.operatorOgrn
         ? {
             details: [
@@ -352,8 +412,12 @@ function contentProps(type: SectionType, c: SectionContext): Props | null {
   switch (type) {
     case "services": {
       const p = planSection(f, ["services", "features"], ["title", "text"]);
-      if (!p?.title || p.items.length < 2) return null;
-      return defined({ title: p.title, intro: p.intro, items: p.items, note: p.note });
+      if (p?.title && p.items.length >= 2)
+        return defined({ title: p.title, intro: p.intro, items: p.items, note: p.note });
+      // V3-18: the services (or goods) the brief or the owner lists, as he wrote them.
+      const listed = f.copy.services ?? [];
+      if (listed.length < 2) return null;
+      return { title: "Что мы предлагаем", items: listed.slice(0, 8).map((x) => ({ title: cap(x) })) };
     }
     case "about": {
       const p = planSection(f, ["about", "text"], ["title"]);
@@ -394,8 +458,21 @@ function contentProps(type: SectionType, c: SectionContext): Props | null {
         .map((x) => ({ q: x.question, a: x.answer }));
       return p?.title && qa.length >= 2 ? defined({ title: p.title, intro: p.intro, items: qa }) : null;
     }
+    case "contacts": {
+      // V3-18: the phone, the e-mail and the address the owner gave (no hours or map of our own), on home and booking.
+      if (c.page.kind !== "home" && c.page.kind !== "booking") return null;
+      const address = fits(f.address, 140);
+      const email = f.email && f.email.length <= 80 ? f.email : undefined;
+      if (!f.phone && !email && !address) return null;
+      return defined({
+        title: "Контакты",
+        address: address ? { text: address } : undefined,
+        phones: f.phone ? [{ number: f.phone, href: telHref(f.phone) }] : undefined,
+        email,
+      });
+    }
     default:
-      // pricing needs a price list, contacts — opening hours and a map link: the plan of a module does not give them.
+      // pricing needs a price list: the plan of a module does not give one.
       return null;
   }
 }
@@ -420,6 +497,7 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   if (!b) return null;
   if (c.page.module === CONTENT_MODULE) return contentEntryProps(type, c, b);
   if (b.action.shop) return shopProps(type, c, b);
+  if (type === "blog" && c.page.kind === "home") return homeBlogProps(c, b);
   const f = c.facts;
   const entity = b.action.entity;
   const contact = f.phone ? { contact: { label: f.phone, href: telHref(f.phone) } } : {};
@@ -466,18 +544,40 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   }
   if (type === "catalog") {
     const booking = c.pages.find((p) => p.kind === "booking");
+    // V3-18: what the catalog shows in the brief's words («туры»), else the module's «услуги».
+    const noun = f.copy.catalog;
     // An item leads to its booking, else to the request form of the site (as the module's showcase, GS-catalog-4).
     const itemAction = booking
       ? { label: "Записаться", path: booking.route }
       : c.leadForm
         ? { label: "Оставить заявку", path: c.leadForm }
         : null;
+    const empty = (noun && fits(`${cap(noun)} скоро появятся`, 120)) || "В каталоге пока нет позиций";
+    if (c.page.kind === "home") {
+      // A preview of the first items with the way to the whole catalog: nothing while the catalog is empty.
+      const page = c.pages.find((p) => p.kind === "catalog");
+      const all = (noun && fits(`Все ${noun}`, LINE.label)) || "Весь каталог";
+      return {
+        entity,
+        title: (noun && fits(cap(noun), LINE.cta)) || "Услуги и цены",
+        empty,
+        pageSize: 6,
+        preview: true,
+        ...(page ? { action: { label: all, href: page.route } } : {}),
+        ...(itemAction ? { itemAction } : {}),
+      };
+    }
+    const own = c.page.title.trim().toLowerCase();
     return {
       entity,
       ...(b.categoryEntity ? { categoryEntity: b.categoryEntity } : {}),
       // The page heading (h1) is the screen title; the showcase heading says what the list is, without repeating it.
-      title: c.page.title.trim().toLowerCase() === "услуги и цены" ? "Все услуги" : "Услуги и цены",
-      empty: "В каталоге пока нет позиций",
+      title: noun
+        ? (fits(`Все ${noun}`, LINE.cta) ?? cap(noun))
+        : own === "услуги и цены"
+          ? "Все услуги"
+          : "Услуги и цены",
+      empty,
       ...(itemAction ? { itemAction } : {}),
     };
   }
@@ -508,9 +608,11 @@ function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | nu
   if (type === "shop") {
     if (!cartRoute) return null;
     const intro = own ? undefined : fits(textOf(c.facts, "shop", "intro"), LINE.lead);
+    // V3-18: on home — a preview of the first six goods with the way to all of them, nothing while there are none.
+    const preview = c.page.kind === "home";
     return {
       entity: b.action.entity,
-      ...(cfg.categoryEntity ? { categoryEntity: cfg.categoryEntity } : {}),
+      ...(cfg.categoryEntity && !preview ? { categoryEntity: cfg.categoryEntity } : {}),
       fields: { stock: cfg.stockField },
       title: own
         ? (fits(c.page.title, LINE.cta) ?? "Товары")
@@ -518,7 +620,10 @@ function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | nu
       ...(intro ? { text: intro } : {}),
       level: own ? 1 : 2,
       empty: "Товары скоро появятся",
-      pageSize: own ? 24 : 8,
+      pageSize: own ? 24 : preview ? 6 : 8,
+      ...(preview
+        ? { preview: true, ...(shopRoute ? { all: { label: "Все товары", href: shopRoute } } : {}) }
+        : {}),
       cart: { label: "Корзина", href: cartRoute },
       ...(productRoute ? { product: { path: productRoute.replace(/:id$/, "") } } : {}),
     };
@@ -627,8 +732,29 @@ function contentEntryProps(type: SectionType, c: SectionContext, b: Binding): Pr
       title: articles ? "Все записи" : "Все страницы",
       empty: articles ? "Записей пока нет — загляните позже" : "Страниц пока нет",
       pageSize: 9,
+      // V3-18: the site's information pages are a list without dates (their date is the last edit, not news).
+      ...(articles ? {} : { dates: false }),
     };
   return null;
+}
+
+/**
+ * The latest articles of «Контент и блог» on home (V3-18): three of them with the way to their list, nothing while
+ * there are none (the seed and prod start without articles).
+ */
+function homeBlogProps(c: SectionContext, b: Binding): Props {
+  const list = c.pages.find((p) => p.module === CONTENT_MODULE && p.screen === "blog");
+  const entry = contentRoute(c, CONTENT_SCREENS.blog?.entry);
+  return {
+    entity: b.action.entity,
+    fields: { date: CONTENT_SCREENS.blog?.dateField ?? "published_at" },
+    ...(entry ? { path: entryPrefix(entry) } : {}),
+    title: fits(list?.title, LINE.cta) ?? "Блог",
+    empty: "Записей пока нет — загляните позже",
+    pageSize: 3,
+    preview: true,
+    ...(list ? { action: { label: "Все записи", href: list.route } } : {}),
+  };
 }
 
 /**
@@ -872,7 +998,15 @@ const shownBy = (meta: PatternMeta | undefined, s: SiteSection, props: Props): n
   new Set(placeList(fitPhotos(meta, s.photos, props))).size;
 
 /** Binding slots of the module-bound patterns: a variant that drops one is never taken (the composer's FIXED_KEYS). */
-const BINDING_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction"] as const;
+const BINDING_KEYS = [
+  "entity",
+  "booking",
+  "categoryEntity",
+  "fields",
+  "itemAction",
+  "preview",
+  "dates",
+] as const;
 
 /**
  * V3-18 (GS-landing-2): a section keeps showing the places of the owner's photos («Фото сайта» of the cabinet) it holds,
