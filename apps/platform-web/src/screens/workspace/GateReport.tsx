@@ -5,7 +5,7 @@
 // специалиста».
 import { Button } from "@wizard/ui-kit";
 import { type ReactNode, useState } from "react";
-import type { GateReport as Report } from "../../api/types.js";
+import type { GateReport as Report, RevisionSummary } from "../../api/types.js";
 import { navigate } from "../../app/router.js";
 import { Alert, Pill, Specialist } from "../../components/ui.js";
 import { ru } from "../../i18n/ru.js";
@@ -167,6 +167,18 @@ export function GateReportView({
   );
 }
 
+/**
+ * The revision the owner would publish now (as getSystem.publishBlockers counts it): the latest draft revision
+ * unless its G0 failed, else the preview revision.
+ */
+export function publishTarget(
+  latest: RevisionSummary | undefined,
+  previewRevision: number | null,
+): number | null {
+  if (latest && latest.g0Passed !== false) return latest.version;
+  return previewRevision;
+}
+
 /** Blocker codes of GET /systems/:id publishBlockers; failed gate reports imply GATES_FAILED. */
 export function publishBlockers(apiBlockers: string[] | undefined, reports: Report[]): string[] {
   const out = [...(apiBlockers ?? [])];
@@ -180,14 +192,18 @@ export function publishBlockers(apiBlockers: string[] | undefined, reports: Repo
 }
 
 /** Blocker codes that the owner fixes in S10 (operator of personal data, L4-09). */
-const SETTINGS_BLOCKERS = new Set([
+export const SETTINGS_BLOCKERS: ReadonlySet<string> = new Set([
   "OPERATOR_NAME_REQUIRED",
   "OPERATOR_CONTACT_REQUIRED",
   "OPERATOR_ADDRESS_REQUIRED",
   "INN_INVALID",
 ]);
 /** Blocker codes fixed on S-billing: the card (identification, D9) and the plan (F4 phone login, prod limit). */
-const BILLING_BLOCKERS = new Set(["CARD_BINDING_REQUIRED", "PHONE_LOGIN_PLAN_REQUIRED", "PLAN_LIMIT"]);
+export const BILLING_BLOCKERS: ReadonlySet<string> = new Set([
+  "CARD_BINDING_REQUIRED",
+  "PHONE_LOGIN_PLAN_REQUIRED",
+  "PLAN_LIMIT",
+]);
 
 function InternalLink({
   to,

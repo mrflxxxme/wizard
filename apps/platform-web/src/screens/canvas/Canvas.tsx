@@ -31,6 +31,7 @@ import type {
   SystemView,
 } from "../../api/types.js";
 import { canEdit, usePlatform } from "../../app/context.js";
+import { AppLink } from "../../components/v2/Shell.js";
 import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
 import { demo } from "../../i18n/ru/demo.js";
@@ -42,6 +43,7 @@ import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
 import { lastReportRun, useV3Live } from "../v3/build/index.js";
 import { useKeyWindows } from "../v3/keys/index.js";
+import { publishRu, publishRunState, V3PublishCard } from "../v3/publish/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
 import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
@@ -153,6 +155,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const [sketch, setSketch] = useState<PlanSketch | null>(null);
   const sketchRef = useRef<string | null>(null);
   const [runId, setRunId] = useState<string | null>(initial.activeRunId ?? null);
+  /** V3-19: the publish run started from the canvas (before its run_started arrives). */
+  const [publishRunId, setPublishRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [answers, setAnswers] = useState<LocalAnswerRow[]>([]);
   const [sent, setSent] = useState<string[]>([]);
@@ -316,7 +320,10 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const eta = v3live.remainingSec ?? progress.remainingSec;
   const runActive =
     runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
-  const thinking = runActive && runKind !== "build";
+  // V3-19: a publish run is followed in the publication card, not as the model «thinking».
+  const publishing = runId !== null && (runKind === "publish" || runId === publishRunId);
+  const publishRun = useMemo(() => (publishing ? publishRunState(events) : null), [publishing, events]);
+  const thinking = runActive && runKind !== "build" && !publishing;
   // V3-21: a key typed into the chat is not sent — the platform's key window takes it; the agent's key requests.
   const keys = useKeyWindows({
     systemId,
@@ -890,6 +897,24 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
 
   // V3-17: after a v3 build the chat says «Система готова» and leads to the system (its live preview).
   if (v3live.ready && ready && readyCard && !selected && !failure) dock = v3live.ready;
+  // V3-19: a built v3 system — what stops the publication, the owner's data, «Опубликовать», the site and the cabinet.
+  if (brief.available && (ready || (publishing && stage === "ready")) && !selected && !failure)
+    dock = (
+      <>
+        {ready && readyCard ? v3live.ready : null}
+        <V3PublishCard
+          systemId={systemId}
+          view={view}
+          run={publishRun}
+          announce={announce}
+          onStarted={(run) => {
+            setPublishRunId(run.id);
+            setRunId(run.id);
+          }}
+          onChanged={() => void reload().catch(() => {})}
+        />
+      </>
+    );
 
   // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
   // V3-06: a v3 system with its brief ready (no plan) — the short brief, the style and «Собрать» (startV3Build).
@@ -1078,6 +1103,18 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               <span className={s.lx}>{canvas.xray.button}</span>
             </button>
           )}
+          <AppLink
+            to={`/s/${systemId}/settings`}
+            className={`${s.tbtn} ${s.iconOnly}`}
+            label={publishRu.settings}
+            testId="canvas-settings"
+          >
+            <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+              <circle cx="15" cy="7" r="2" />
+              <circle cx="9" cy="17" r="2" />
+            </svg>
+          </AppLink>
           <button
             type="button"
             className={`${s.tbtn} ${s.iconOnly}`}
