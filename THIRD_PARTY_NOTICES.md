@@ -117,7 +117,7 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | Пакет | Версия | Лицензия | Где используется |
 |---|---|---|---|
 | tailwindcss (Tailwind Labs) | 4.3.3 | MIT, Copyright (c) Tailwind Labs, Inc. | `packages/build/src/tailwind.ts`: компиляция CSS публичных страниц v3 при сборке (JS API, без нативного oxide). В CSS систем попадают preflight и утилиты с заголовком лицензии |
-| motion, framer-motion, motion-dom, motion-utils (Motion) | 13.x, см. pnpm-lock | MIT, Copyright (c) 2024 Motion B.V. (https://github.com/motiondivision/motion) | `motion/react` в паттернах v3: вход первого экрана и меню шапки, с учётом prefers-reduced-motion; попадает в бандлы систем v3 |
+| motion, framer-motion, motion-dom, motion-utils (Motion) | 13.x, см. pnpm-lock | MIT, Copyright (c) 2024 Motion B.V. (https://github.com/motiondivision/motion) | `motion/react` в паттернах v3: вход первого экрана, меню шапки и раскрытие ответа в FAQ, с учётом prefers-reduced-motion; попадает в бандлы систем v3 |
 | tslib (Microsoft) | 2.8.1 | 0BSD | зависимость motion; ES-сборки motion его не импортируют, в бандлы систем не попадает |
 
 | Источник композиции | Лицензия | Паттерны |

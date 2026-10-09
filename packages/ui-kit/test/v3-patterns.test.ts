@@ -21,7 +21,20 @@ import { UI_KIT_ROOT } from "./helpers/demo.js";
 
 const REPO = join(UI_KIT_ROOT, "../..");
 /** Section types of this batch; the next batches add theirs to the list. */
-const READY = ["header", "hero", "cta", "footer", "testimonials", "pricing", "gallery", "contacts"] as const;
+const READY = [
+  "header",
+  "hero",
+  "cta",
+  "footer",
+  "testimonials",
+  "pricing",
+  "gallery",
+  "contacts",
+  "services",
+  "about",
+  "team",
+  "faq",
+] as const;
 
 describe("registry", () => {
   test("every ready section type has 8–12 variants with unique ids, structurally different layouts", () => {
