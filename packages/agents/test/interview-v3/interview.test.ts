@@ -129,6 +129,8 @@ describe("the dental dialog on a scripted model", () => {
     const [system, user] = inputs[0]?.messages ?? [];
     expect(system?.content).toContain("Цели (goals) → Аудитория (audience) → Сценарии (scenarios)");
     expect(system?.content).toContain(`${INTERVIEW_RESEARCH_LIMITS.searches} поиска`);
+    // One model call per turn where possible: the brief update and the next question in the same answer.
+    expect(system?.content).toContain("submit_brief_update, затем submit_question или finish_interview");
     expect(user?.content).toContain("## Блокирующие пробелы (проверка кодом)");
     expect(user?.content).toContain("Цели (goals): Не ясно, зачем бизнесу система");
     expect(toolNames(inputs[0] as never)).toEqual([
