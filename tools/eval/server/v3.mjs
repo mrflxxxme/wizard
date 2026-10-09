@@ -17,6 +17,7 @@ import {
   runTracker,
   summarizeGates,
 } from "./driver.mjs";
+import { shopPayment } from "./v3-pay.mjs";
 
 /** D77_v3 (10)–(11): preview ≤ 5 min, a typical build 10–20 min (median ≤ 20), cap 30 min; ≤ 300 ₽ target, 500 ₽ cap. */
 export const V3_TARGETS = { previewMin: 5, medianMin: 20, capMin: 30, targetRub: 300, capRub: 500 };
@@ -329,6 +330,7 @@ export function isReadyV3(r, g2Mode) {
     r.build?.status === "succeeded" &&
     isReady(r.gates ?? {}, g2Mode) &&
     !r.techreview?.blocked &&
+    r.payment?.status !== "failed" &&
     (r.build?.scenarios?.mustNotPassed ?? 1) === 0
   );
 }
@@ -483,6 +485,9 @@ export async function driveV3Brief(ctx, brief, r = newV3Result(brief)) {
     // 5. The owner's data before publishing (the operator of personal data), then G0–G2 and the first publication
     // (on the pilot it waits for the founder's review).
     if (build.status === "succeeded") r.owner.operator = await fillOwnerOperator(client, id(), say);
+    // V3-23: the shop's online payment through the founder's ЮKassa test shop (keys by the key window, a purchase on
+    // the draft's preview) — before G2, which wants the keys of the payment in the secret store.
+    if (build.status === "succeeded" && ctx.kassa) r.payment = await shopPayment(ctx, client, id(), say);
     let gates = ownerGates(await latestGates(), r.owner.operator);
     if (ctx.g2 === "publish" && build.status === "succeeded" && gates.G0?.passed && gates.G1?.passed) {
       r.publish = await probeG2(ctx, r, waitRun, say);

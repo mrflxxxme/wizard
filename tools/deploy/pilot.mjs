@@ -62,7 +62,7 @@ import {
 } from "../eval/server/probe-shape.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
-import { previewScreenshots, V3_FINAL_VIEWPORTS } from "../eval/server/screenshots.mjs";
+import { launchChromium, previewScreenshots, V3_FINAL_VIEWPORTS } from "../eval/server/screenshots.mjs";
 import {
   collectSql,
   EVAL_MIN_BUILDS,
@@ -75,6 +75,7 @@ import {
   seedSql,
 } from "../eval/server/seed.mjs";
 import { runV3Eval } from "../eval/server/v3.mjs";
+import { kassaFromEnv } from "../eval/server/v3-pay.mjs";
 import { mergeRuns, renderV3Final } from "../eval/server/v3-final.mjs";
 import { checkpointName, finalName, finalRunName, renderV3Report } from "../eval/server/v3-report.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
@@ -1362,6 +1363,9 @@ export async function pilotEval({
   inCluster,
   screenshots = previewScreenshots,
   v3Eval = null,
+  // V3-23: the founder's ЮKassa test shop (YOUKASSA_TEST_API_KEY / YOUKASSA_TEST_SHOP_ID of the eval step's env).
+  kassaEnv = process.env,
+  launch = launchChromium,
 }) {
   const domain = vars.WIZARD_PLATFORM_DOMAIN;
   const base = `https://${domain}`;
@@ -1514,6 +1518,7 @@ export async function pilotEval({
       signal: AbortSignal.any([stop.signal, capStop.signal]),
       ...(v3 ? {} : { counted: runCounted(threshold) }),
       ...(shoot ? { screenshot: shoot } : {}),
+      ...(v3 ? { kassa: kassaFromEnv(kassaEnv), launch } : {}),
       onUpdate: (results) => {
         snapshot = results;
         const why = capStop.signal.aborted

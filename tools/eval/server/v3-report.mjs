@@ -378,6 +378,21 @@ export function renderV3Report(doc, db = {}, meta = {}) {
           );
       }
     }
+    // V3-23: the shop's payment through the founder's ЮKassa test shop (tools/eval/server/v3-pay.mjs).
+    if (x.payment) {
+      const P = {
+        paid: "✅ заказ оплачен тестовой картой и стал «Оплачен»",
+        failed: "❌ не прошла",
+        skipped: "не проверялась",
+        refused: "не запускалась",
+        keys_only: "ключи введены, покупка не проверялась (нет браузера)",
+      };
+      L.push(`- Оплата ЮKassa (тестовый магазин): ${P[x.payment.status] ?? x.payment.status}${x.payment.note ? ` — ${x.payment.note}` : ""}.`);
+      if (x.payment.keys?.keys?.length) L.push(`  - ключи через окно ключа: ${x.payment.keys.keys.join(", ")}`);
+      if (x.payment.keys?.message) L.push(`  - ключи: ${x.payment.keys.message}`);
+      for (const st of x.payment.steps ?? [])
+        L.push(`  - ${st.ok ? "✓" : "✗"} ${st.step}${st.note ? ` (${st.note})` : ""}`);
+    }
     if (x.techreview.status || x.techreview.blockers.length) {
       L.push(`- Техревью: ${x.techreview.verdict}${x.techreview.note ? ` (${x.techreview.note})` : ""}.`);
       for (const bl of x.techreview.blockers) L.push(`  - блокер: ${bl}`);

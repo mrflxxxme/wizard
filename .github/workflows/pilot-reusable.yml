@@ -353,7 +353,11 @@ jobs:
         env:
           # Only eval uses it: the issue comment with the live progress of the measurement.
           GITHUB_TOKEN: ${{ inputs.command == 'eval' && github.token || '' }}
+          # V3-23: the founder's ЮKassa test shop — only eval (the shop's payment on the draft, test_ keys only).
+          YOUKASSA_TEST_API_KEY: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_API_KEY || '' }}
+          YOUKASSA_TEST_SHOP_ID: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_SHOP_ID || '' }}
         run: |
+          for v in "$YOUKASSA_TEST_API_KEY" "$YOUKASSA_TEST_SHOP_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           case "$COMMAND" in
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;

@@ -27,8 +27,9 @@ import { loadBriefs } from "../lib/briefs.mjs";
 import { platformClient } from "./client.mjs";
 import { D76_MAX_COST_RUB, DEFAULTS, isV3Threshold, runEval, THRESHOLDS } from "./driver.mjs";
 import { photosAnnotation, renderReport } from "./report.mjs";
-import { previewScreenshots, V3_FINAL_VIEWPORTS } from "./screenshots.mjs";
+import { launchChromium, previewScreenshots, V3_FINAL_VIEWPORTS } from "./screenshots.mjs";
 import { runV3Eval } from "./v3.mjs";
+import { kassaFromEnv } from "./v3-pay.mjs";
 import { mergeRuns, renderV3Final } from "./v3-final.mjs";
 import { renderV3Report } from "./v3-report.mjs";
 import {
@@ -176,6 +177,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
       ...(deps.sleep ? { sleep: deps.sleep } : {}),
       ...(deps.pollMs ? { pollMs: deps.pollMs } : {}),
       ...(shots ? { screenshot: shots.screenshot } : {}),
+      // V3-23: the founder's ЮKassa test shop (env of the eval step) and Chromium for the purchase on the preview.
+      ...(v3 ? { kassa: kassaFromEnv(deps.env ?? process.env), launch: deps.launch ?? launchChromium } : {}),
     }).finally(() => shots?.close());
     const text = `${JSON.stringify(doc, null, 2)}\n`;
     if (o.out) writeFileSync(o.out, text);
