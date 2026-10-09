@@ -1,6 +1,15 @@
 // Live calls through AI SDK 7 + @ai-sdk/openai-compatible (models.yaml#call_policy). Keys come only from env.
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { APICallError, generateText, jsonSchema, type ModelMessage, type ToolSet, tool } from "ai";
+import {
+  APICallError,
+  generateText,
+  jsonSchema,
+  type LanguageModelUsage,
+  type ModelMessage,
+  ToolChoiceViolationError,
+  type ToolSet,
+  tool,
+} from "ai";
 import { Agent, fetch as undiciFetch } from "undici";
 import { modelViolation } from "./allowlist.js";
 import type { ModelDef, ProviderDef } from "./registry.js";
@@ -262,6 +271,8 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
         ]),
       )
     : undefined;
+  // The usage of the model call as the SDK reported it before its own checks (a tool-choice violation throws after).
+  let callUsage: { usage: LanguageModelUsage; raw: unknown } | null = null;
   try {
     const res = await generateText({
       model: client.chatModel(i.modelName),
@@ -272,6 +283,9 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
       maxOutputTokens: i.maxTokens,
       maxRetries: 0,
       abortSignal: i.signal,
+      onLanguageModelCallEnd: (e) => {
+        callUsage = { usage: e.usage, raw: e.usage.raw };
+      },
     });
     const toolCalls = res.toolCalls.map((c) => ({ id: c.toolCallId, name: c.toolName, args: c.input }));
     if (!res.text && toolCalls.length === 0) throw new LiveCallError("EMPTY_RESPONSE");
@@ -292,6 +306,29 @@ export async function chatCall(i: ChatCallInput): Promise<{ result: LlmResult; u
       },
     };
   } catch (e) {
+    // toolChoice required, the model answered with text: an answer (billed by the provider), not a network error —
+    // the caller decides (callTool: NO_TOOL_CALL repair or textArgs). AI SDK 7 throws it after the call has ended.
+    const answered = callUsage as { usage: LanguageModelUsage; raw: unknown } | null;
+    if (ToolChoiceViolationError.isInstance(e) && answered) {
+      const text = e.content
+        .map((c) => (c.type === "text" ? c.text : ""))
+        .join("")
+        .trim();
+      if (!text) throw new LiveCallError("EMPTY_RESPONSE");
+      const inputTokens = answered.usage.inputTokens ?? 0;
+      return {
+        result: { toolCalls: [], text, finishReason: String(e.finishReason) },
+        usage: {
+          inputTokens,
+          cachedTokens: cachedInputTokens(
+            inputTokens,
+            answered.usage.inputTokenDetails?.cacheReadTokens,
+            answered.raw,
+          ),
+          outputTokens: answered.usage.outputTokens ?? 0,
+        },
+      };
+    }
     throw classify(e, i.signal);
   }
 }

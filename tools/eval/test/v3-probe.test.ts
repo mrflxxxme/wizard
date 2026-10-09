@@ -583,7 +583,7 @@ describe("v3 shape probe: shapeMain with the real router of @wizard/llm (in-proc
     );
   }, 60_000);
 
-  test("a model that answers text instead of the tool: NETWORK in the gateway, the provider's 200 directly, JSON text works", async () => {
+  test("a model that answers text instead of the tool: one billed answer of the gateway, JSON text works", async () => {
     const lines: string[] = [];
     const cfg = shapeConfig({
       orgId: SHAPE_ORG,
@@ -597,31 +597,19 @@ describe("v3 shape probe: shapeMain with the real router of @wizard/llm (in-proc
       (results as (ShapeResult & { unrecordedRub?: number; textJson?: string })[]).find(
         (r) => r.model === "deepseek-v4-pro" && r.variant === v,
       );
-    // AI SDK 7 refuses a text answer under toolChoice required (ToolChoiceViolationError): the gateway sees NETWORK and
-    // repeats it — three answers the provider bills while the journal has 0 ₽ (counted as an estimate for the cap).
-    expect(by("prod")).toMatchObject({
-      verdict: "error",
-      code: "LLM_UNAVAILABLE",
-      tried: [
-        "deepseek-v4-pro:error:NETWORK",
-        "deepseek-v4-pro:error:NETWORK",
-        "deepseek-v4-pro:error:NETWORK",
-      ],
-      diag: { http: 200 },
-    });
-    expect(by("prod")?.diag?.note).toMatch(/^finish=stop text=/);
-    expect(by("prod")?.unrecordedRub).toBeGreaterThan(0);
-    expect(total.unrecordedRub).toBeGreaterThan(0);
-    // tool_choice auto: no tool call, but the text holds valid arguments (callTool textArgs); JSON text works.
+    // Under toolChoice required AI SDK 7 throws ToolChoiceViolationError after the answer; the gateway turns it back
+    // into the text answer (one billed attempt) so callTool can repair it or take the JSON text (textArgs).
+    expect(by("prod")).toMatchObject({ status: "ok", verdict: "no_tool", textJson: "годится" });
+    expect(by("prod")?.diag).toBeUndefined();
+    expect(by("prod")?.unrecordedRub ?? 0).toBe(0);
+    expect(total.unrecordedRub ?? 0).toBe(0);
     expect(by("auto")).toMatchObject({ status: "ok", verdict: "no_tool", textJson: "годится" });
     expect(by("json")?.verdict).toBe("ok");
     const line =
       shapeAnnotations(results).find((l: string) => l.includes("techreview · deepseek-v4-pro")) ?? "";
     expect(line).toMatch(/^::warning /);
-    expect(line).toContain("напрямую HTTP 200 «finish=stop text=");
-    expect(line).toContain("[deepseek-v4-pro:error:NETWORK ×3]");
-    expect(line).toMatch(/вне журнала/);
-    expect(line).toContain("auto: ⚠️ без вызова инструмента (finish stop");
+    expect(line).not.toContain("NETWORK");
+    expect(line).toContain("без вызова инструмента (finish stop");
     expect(line).toContain("JSON в тексте годится");
   });
 

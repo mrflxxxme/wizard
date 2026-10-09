@@ -620,9 +620,9 @@ export async function shapeMain(cfg, d) {
     }
     const attempts = rows.slice(before);
     const rub = attempts.reduce((s, x) => s + Number(x.costRub ?? 0), 0);
-    // NETWORK / EMPTY_RESPONSE may be an answer the provider billed and the gateway refused (AI SDK 7: no tool call
-    // under toolChoice required is ToolChoiceViolationError → NETWORK, retried): the journal has 0 ₽ for it, so the
-    // cap counts an estimate of each such attempt — by the expected answer, then by the direct call's real usage.
+    // NETWORK / EMPTY_RESPONSE may still be an answer the provider billed while the journal has 0 ₽ for it (a broken
+    // connection after the answer; before the gateway fix — a text answer under toolChoice required): the cap counts an
+    // estimate of each such attempt — by the expected answer, then by the direct call's real usage.
     const unbilled = attempts.filter((x) => ["NETWORK", "EMPTY_RESPONSE"].includes(x.errorCode)).length;
     let guess =
       (unbilled * (input * model.price.input + (cfg.outputTokens?.[req.kind] ?? 1500) * model.price.output)) /
