@@ -110,6 +110,19 @@ async function revisionFiles(h: FlowHost, systemId: string, version: number): Pr
   return out;
 }
 
+/**
+ * runtime.yaml#auth.role_assignment (в): the owner of the system on the platform — the publishing user (publish is
+ * owner-only, D11), else the creator of the system. Deleted accounts get nothing.
+ */
+async function ownerAccount(h: FlowHost, sys: System) {
+  return h.db
+    .selectFrom("platform.users")
+    .select(["email", "name"])
+    .where("id", "=", h.run.started_by ?? sys.created_by)
+    .where("deleted_at", "is", null)
+    .executeTakeFirst();
+}
+
 /** switch: new publication live, previous superseded, prod_revision, hwm (workflows.yaml#workflows.publish). */
 async function switchLive(h: FlowHost, publicationId: string, revision: number): Promise<void> {
   await h.step("switch", "Переключаю систему на новую версию", () =>
@@ -512,6 +525,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
         destructive.state === "confirmed" && destructive.changeId && destructive.archiveTag
           ? { id: destructive.changeId, tag: destructive.archiveTag, schema: archiveSchemaOf(sys) }
           : null;
+      const owner = await ownerAccount(h, sys);
       await applyProdMigration(h.pg, {
         systemId: sys.id,
         systemKey: sys.schema_key,
@@ -519,6 +533,7 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
         revision,
         publicationId: pub.id,
         options: h.options,
+        ...(owner ? { owner: { spec, email: owner.email, displayName: owner.name } } : {}),
         ...(change
           ? {
               archive: { schema: change.schema, tag: change.tag },

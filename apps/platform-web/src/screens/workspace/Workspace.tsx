@@ -27,7 +27,7 @@ import { BuildLog } from "./BuildLog.js";
 import { CardView, changedSections } from "./CardView.js";
 import { ChatFeed } from "./ChatFeed.js";
 import { ChangesPanel, DiffCard } from "./DiffCard.js";
-import { GateReportView, PublishCard, publishBlockers } from "./GateReport.js";
+import { GateReportView, PublishCard, publishBlockers, publishTarget } from "./GateReport.js";
 import { TargetChip } from "./PointTarget.js";
 import { PreviewPane } from "./PreviewPane.js";
 import { QuestionCard } from "./QuestionCard.js";
@@ -44,18 +44,6 @@ const runReducer = (st: RunState, a: RunAction): RunState =>
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
 /** api.yaml#createImport: xlsx/csv ≤ 20 МБ. */
 const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
-
-/**
- * The revision the owner would publish now (as getSystem.publishBlockers counts it): the latest draft revision
- * unless its G0 failed, else the preview revision.
- */
-export function publishTarget(
-  latest: RevisionSummary | undefined,
-  previewRevision: number | null,
-): number | null {
-  if (latest && latest.g0Passed !== false) return latest.version;
-  return previewRevision;
-}
 
 type Segment = "draft" | "prod" | "changes";
 

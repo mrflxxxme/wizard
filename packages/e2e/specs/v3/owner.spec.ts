@@ -3,13 +3,13 @@
 // the grill interview in the chat (the recommended button, «Решите за меня», an own answer) → the short brief and the
 // brief panel → three directions, pick one → «Собрать» → the live build on the canvas (stages, the scenario checklist)
 // → the preview of the site opens → «Система готова», the toast and the letter → an edit by words goes into the brief
-// and offers «Собрать» again.
+// and offers «Собрать» again → (V3-19) the operator's data in the chat → «Опубликовать» → the site and the cabinet.
 import { randomBytes } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { PROMPTS } from "../../../agents/test/interview-v3/helpers.js";
-import { V3_OUTBOX } from "../../stand/ports.js";
+import { V3, V3_OUTBOX } from "../../stand/ports.js";
 import { V3_WISH, V3_WISH_AUDIENCE } from "../../stand/v3-models.js";
 
 /** Letters of the v3 stand's OutboxMailer to `to`, oldest first. */
@@ -55,10 +55,10 @@ async function say(page: Page, text: string): Promise<void> {
   await page.getByTestId("p-composer-send").click();
 }
 
-test("v3: интервью → бриф → три направления → «Собрать» → живая сборка → превью → «Система готова» → правка словами", async ({
+test("v3: интервью → бриф → три направления → «Собрать» → живая сборка → превью → «Система готова» → правка словами → данные оператора → публикация → сайт и кабинет", async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(420_000);
   const email = `owner-v3-${randomBytes(4).toString("hex")}@example.test`;
   await signIn(page, email);
 
@@ -177,4 +177,40 @@ test("v3: интервью → бриф → три направления → «
   );
   await expect(page.getByTestId("canvas-v3-live-ready")).toContainText("Система готова");
   await expect(frame).toBeVisible();
+
+  // V3-19: publication from the canvas. The system keeps patients' data, so the server asks the operator's data
+  // (OPERATOR_*): the owner gives it in the chat card, «Опубликовать» turns on, the publish run ends with the version in
+  // prod, the site and the owner's cabinet open.
+  await expect(page.getByTestId("canvas-settings")).toHaveAttribute("href", /\/s\/[0-9a-f-]{36}\/settings$/);
+  const publish = page.getByTestId("canvas-v3-publish");
+  await expect(publish).toBeVisible({ timeout: 30_000 });
+  const submit = page.getByTestId("canvas-v3-publish-submit");
+  const operator = page.getByTestId("canvas-v3-operator");
+  await expect(operator).toBeVisible();
+  await expect(submit).toBeDisabled();
+  await expect(page.getByTestId("canvas-v3-operator-settings")).toHaveAttribute("href", /\/settings#pd$/);
+  await page.getByTestId("canvas-v3-operator-name").fill("ИП Иванова Анна Андреевна");
+  await page.getByTestId("canvas-v3-operator-contact").fill("privacy@dental.example");
+  await page.getByTestId("canvas-v3-operator-address").fill("г. Москва, ул. Зубная, д. 1");
+  await page.getByTestId("canvas-v3-operator-save").click();
+  await expect(operator).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByTestId("canvas-v3-publish-blocker")).toHaveCount(0);
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page.getByTestId("canvas-v3-publish-prod")).toContainText("Опубликована версия", {
+    timeout: 150_000,
+  });
+  await expect(page.getByTestId("canvas-v3-publish-result")).toContainText("Система опубликована");
+  const site = (await page.getByTestId("canvas-v3-publish-site").getAttribute("href")) ?? "";
+  expect(site).toMatch(new RegExp(`^http://[a-z0-9-]+\\.localhost:${V3.runtime}/$`));
+  const cabinet = (await page.getByTestId("canvas-v3-publish-cabinet").getAttribute("href")) ?? "";
+  expect(cabinet).toBe(`${site}login?next=%2Fcabinet`);
+  await expect(page.getByTestId("canvas-v3-publish-uptodate")).toBeVisible();
+  await expect(submit).toHaveCount(0);
+
+  const prod = await page.context().newPage();
+  expect((await prod.goto(site))?.status()).toBe(200);
+  await expect(prod.locator("h1").first()).toBeVisible({ timeout: 30_000 });
+  expect((await prod.goto(cabinet))?.status()).toBe(200);
+  await prod.close();
 });

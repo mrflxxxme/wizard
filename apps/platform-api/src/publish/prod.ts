@@ -4,7 +4,13 @@
 import { request } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { type ArchiveOptions, describeStep, type MigrationPlan, quoteIdent, toDDL } from "@wizard/appspec";
-import { ensureSystemRole, schemaName, type TelegramPublishOptions } from "@wizard/runtime";
+import {
+  assignOwnerAdmin,
+  ensureSystemRole,
+  type OwnerAdminInput,
+  schemaName,
+  type TelegramPublishOptions,
+} from "@wizard/runtime";
 import type { Selectable } from "kysely";
 import type postgres from "postgres";
 import { MIGRATOR_ROLE, RUNTIME_ROLE } from "../agents/draft.js";
@@ -153,6 +159,8 @@ export async function applyProdMigration(
     hwmRevision?: number;
     /** Runs in the migration transaction after the DDL (the journal row of a destructive change). */
     inTx?: (tx: postgres.TransactionSql) => Promise<void>;
+    /** runtime.yaml#auth.role_assignment (в): the owner's first isAdmin role, idempotent, in the same transaction. */
+    owner?: Pick<OwnerAdminInput, "spec" | "email" | "displayName">;
   },
 ): Promise<void> {
   const o = a.options ?? {};
@@ -192,6 +200,7 @@ export async function applyProdMigration(
              set schema_revision = s.schema_hwm_revision
             from platform.systems s
            where p.id = ${a.publicationId} and s.id = p.system_id`;
+        if (a.owner) await assignOwnerAdmin(tx, { ...a.owner, systemKey: a.systemKey, env: "prod" });
         if (a.inTx) await a.inTx(tx);
       });
       return;

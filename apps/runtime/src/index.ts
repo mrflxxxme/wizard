@@ -61,6 +61,13 @@ export {
   type RuntimeApp,
   type RuntimeAppOptions,
 } from "./app.js";
+/** runtime.yaml#auth.role_assignment (в): the platform owner gets the first isAdmin role at publication (idempotent). */
+export {
+  assignOwnerAdmin,
+  type OwnerAdminInput,
+  type OwnerAdminResult,
+  ownerAdminRole,
+} from "./auth/owner.js";
 /** Preview-login tokens (runtime.yaml#auth.preview_login_M2, L3-11): issued by platform-api, verified by the runtime. */
 export {
   issuePreviewToken,
