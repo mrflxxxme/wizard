@@ -28,3 +28,7 @@ sandbox:
   # one runtime sandbox pod, the G1 pod and one replacement in flight (512Mi each, profiles/pilot.yaml)
   maxPods: 1
   quota: { pods: 3, requestsCpu: 750m, requestsMemory: 1536Mi, limitsCpu: 3, limitsMemory: 1536Mi }
+# V3-32: no repository sandbox on the 4 GB staging VM (its phase pod needs 1.5 GiB next to the release); JS repositories
+# stay «не проверено» there, Wizard systems are checked by the gates in process.
+repoSandbox:
+  enabled: false

@@ -42,6 +42,7 @@ spec:
         wizard.ru/role: platform-api
       annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
+      # Internet-facing: never a Kubernetes token (V3-32: the repository sandbox's pods are created by the worker).
       serviceAccountName: wizard-app
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -56,6 +57,11 @@ spec:
             {{- include "wizard.alertEnv" . | nindent 12 }}
             - name: PORT
               value: {{ .Values.platformApi.port | quote }}
+            {{- if .Values.repoSandbox.enabled }}
+            # V3-32: only what the owner is told (the sandbox is on); the worker runs the tasks and their pods.
+            - name: WIZARD_REPO_SANDBOX
+              value: pod
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secrets.platformEnv }}
@@ -106,14 +112,10 @@ spec:
         wizard.ru/role: worker
       annotations: {{- include "wizard.metricsAnnotations" . | nindent 8 }}
     spec:
-      {{- if .Values.sandbox.orchestrate }}
-      # M2-19: G1 runs the system under test in workerd pods of the sandbox (Role wizard-runtime-sandbox).
-      serviceAccountName: wizard-g1
-      automountServiceAccountToken: true
-      {{- else }}
-      serviceAccountName: wizard-app
-      automountServiceAccountToken: false
-      {{- end }}
+      # M2-19: G1 runs the system under test in workerd pods of the sandbox (Role wizard-runtime-sandbox); V3-32: the
+      # repository agent's tasks run here, their phase pods too (templates/repo-sandbox.yaml) — one identity, the worker's.
+      serviceAccountName: {{ include "wizard.workerServiceAccount" . }}
+      automountServiceAccountToken: {{ ne (include "wizard.workerServiceAccount" .) "wizard-app" }}
       enableServiceLinks: false
       terminationGracePeriodSeconds: 60
       {{- include "wizard.imagePullSecrets" . | nindent 6 }}
@@ -130,6 +132,10 @@ spec:
             {{- include "wizard.sandboxEnv" (list . .Values.sandbox.g1RpcPort 1) | nindent 12 }}
             - name: WIZARD_G1_RPC_PORT
               value: {{ .Values.sandbox.g1RpcPort | quote }}
+            {{- end }}
+            {{- if .Values.repoSandbox.enabled }}
+            # V3-32: the runner of the repository sandbox (apps/worker startRepoAgentRunner).
+            {{- include "wizard.repoSandboxEnv" . | nindent 12 }}
             {{- end }}
           envFrom:
             - secretRef:

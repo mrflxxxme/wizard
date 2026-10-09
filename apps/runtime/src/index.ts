@@ -271,9 +271,19 @@ export {
   proxyTransport,
 } from "./sandbox/egress-fetch.js";
 /** M2-52: proxy grants of runtime-made requests (checked at /_wizard/internal/egress-authorize). */
-export { type EgressGrant, EgressGrants, egressGrantKey } from "./sandbox/egress-grants.js";
+export {
+  type EgressGrant,
+  EgressGrants,
+  egressGrantKey,
+  GRANT_MAX_BYTES,
+  GRANT_MAX_DURATION_MS,
+} from "./sandbox/egress-grants.js";
 /** authorize() of the egress-proxy deployment: capability check delegated to the runtime's internal port. */
-export { type RemoteAuthorizerOptions, remoteCapabilityAuthorizer } from "./sandbox/egress-remote.js";
+export {
+  proxyToken,
+  type RemoteAuthorizerOptions,
+  remoteCapabilityAuthorizer,
+} from "./sandbox/egress-remote.js";
 /** M2-52: per-call ctx.http clients of a runtime (RuntimeAppOptions.http). */
 export { createEgressService, type EgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 /** M2-18: sandbox of a process from its env (WIZARD_SANDBOX=k8s) and the capability key. */

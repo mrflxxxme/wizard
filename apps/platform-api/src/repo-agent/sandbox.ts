@@ -1,15 +1,16 @@
 // Runners of the repository sandbox (V3-32; security/isolation.yaml): the client's install, build and tests are
 // untrusted code and never run in the platform's process.
+// - pod — the cloud (WIZARD_REPO_SANDBOX=pod, set by the chart with repoSandbox.enabled): a gVisor pod per phase in the
+//   sandbox namespace (pod-sandbox.ts): install reaches only the registry hosts through the egress proxy, every other
+//   phase has no network and no DNS.
 // - process — ONLY with WIZARD_UNSAFE_LOCAL_EXEC=1 and WIZARD_REPO_SANDBOX=process (local stands, the founder's machine):
 //   a child process in a temp directory with an environment built from scratch (no platform secrets, no WIZARD_*),
 //   a time limit that kills the whole process group, and the network of a phase approximated: build, tests and the
 //   agent's runs get offline package managers and a closed proxy. Like node:vm in M0–M1 this is NOT a security boundary.
-// - pod — the cloud: a gVisor pod per phase in the sandbox pool (repoSandboxPod) and its NetworkPolicy
-//   (repoSandboxNetworkPolicy): install reaches only the egress proxy (registry hosts), every other phase no network.
-//   The specs are the contract of the runner; the runner itself is the infrastructure step (docs/ops/git-sync.md).
 // Without a runner the compatibility check of a JS repository stays «unchecked» and the agent takes no tasks for it;
 // Wizard systems need none (G0 and the static G2 in process).
 import { spawn } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -19,13 +20,13 @@ import {
   type RepoSandbox,
   type RepoSnapshot,
   type SandboxCommand,
-  type SandboxPhase,
   type SandboxResult,
   type SandboxWorkspace,
 } from "@wizard/agents/repo";
+import { EgressGrants, egressGrantKey, GRANT_MAX_DURATION_MS } from "@wizard/runtime";
 import type { Config } from "../config.js";
-
-const OUTPUT_MAX = 8 * 1024;
+import { inClusterKubeSend, type RepoKube, repoKube } from "./kube.js";
+import { GRANT_LABEL, GRANT_TUNNEL_BYTES, OUTPUT_MAX, PodSandbox, registryHosts } from "./pod-sandbox.js";
 
 /** Where a file of the workspace goes; null — outside the workspace (never written). */
 function inside(root: string, path: string): string | null {
@@ -173,135 +174,93 @@ export class ProcessSandbox implements RepoSandbox {
   }
 }
 
-/** The runner of this process (null — none: JS repositories stay «unchecked»). */
+/**
+ * The cloud runner from the chart's env (templates/_helpers.tpl wizard.repoSandboxEnv):
+ *   WIZARD_REPO_SANDBOX_IMAGE, _NAMESPACE      image (wizard-repo-sandbox) and the sandbox namespace
+ *   WIZARD_REPO_SANDBOX_PROXY                  the egress proxy's Service URL (resolved here: the pods have no DNS)
+ *   WIZARD_REPO_SANDBOX_POOL, _CPU, _CPU_REQUEST, _MEMORY, _WORKSPACE, _STORE, _STORAGE_CLASS, _TTL_MIN
+ *   WIZARD_REPO_SANDBOX_REGISTRY               npm mirror of the install (https; none — registry.npmjs.org)
+ *   WIZARD_SANDBOX_KEY | WIZARD_INTERNAL_TOKEN the key of egress grants, the same as the runtime's
+ */
+export function podSandboxFromEnv(
+  env: NodeJS.ProcessEnv,
+  deps: { kube?: RepoKube; log?: (line: Record<string, unknown>) => void; sweep?: boolean } = {},
+): PodSandbox {
+  const image = env.WIZARD_REPO_SANDBOX_IMAGE;
+  const proxy = env.WIZARD_REPO_SANDBOX_PROXY;
+  if (!image || !proxy)
+    throw new Error("WIZARD_REPO_SANDBOX=pod needs WIZARD_REPO_SANDBOX_IMAGE and WIZARD_REPO_SANDBOX_PROXY");
+  const key = egressGrantKey(env);
+  if (!key) throw new Error("WIZARD_REPO_SANDBOX=pod needs WIZARD_SANDBOX_KEY or WIZARD_INTERNAL_TOKEN");
+  const grants = new EgressGrants(key);
+  const proxyUrl = new URL(proxy);
+  const registry = env.WIZARD_REPO_SANDBOX_REGISTRY || null;
+  registryHosts(registry);
+  const namespace = env.WIZARD_REPO_SANDBOX_NAMESPACE || "wizard-sandbox";
+  const opt = (k: string) => env[`WIZARD_REPO_SANDBOX_${k}`] || undefined;
+  const ttlMin = Number(opt("TTL_MIN"));
+  const api = env.KUBERNETES_SERVICE_HOST;
+  const sb = new PodSandbox({
+    kube: deps.kube ?? repoKube(namespace, inClusterKubeSend(env)),
+    namespace,
+    image,
+    pool: opt("POOL"),
+    cpu: opt("CPU"),
+    cpuRequest: opt("CPU_REQUEST"),
+    memory: opt("MEMORY"),
+    workspaceSize: opt("WORKSPACE"),
+    storeSize: opt("STORE"),
+    storageClass: opt("STORAGE_CLASS") ?? null,
+    registry,
+    // The Service's ClusterIP: the NetworkPolicy of the install admits the proxy's pods behind it.
+    proxy: async () => ({
+      host: (await lookup(proxyUrl.hostname)).address,
+      port: Number(proxyUrl.port || 3128),
+    }),
+    grant: (hosts, ttlMs) =>
+      grants.issue(
+        {
+          systemId: GRANT_LABEL,
+          env: "draft",
+          https: hosts,
+          maxBytes: GRANT_TUNNEL_BYTES,
+          maxDurationMs: Math.max(1000, Math.min(ttlMs, GRANT_MAX_DURATION_MS)),
+        },
+        ttlMs,
+      ),
+    // The restore step proves the pod's NetworkPolicy holds: the API server must be unreachable from it.
+    probe: api ? `${api.includes(":") ? `[${api}]` : api}:${env.KUBERNETES_SERVICE_PORT ?? "443"}` : null,
+    ...(ttlMin > 0 ? { ttlMs: ttlMin * 60_000 } : {}),
+    ...(deps.log ? { log: deps.log } : {}),
+  });
+  if (deps.sweep !== false) sb.startSweeper();
+  return sb;
+}
+
+/** The kind of runner repoSandboxFromEnv builds, without building it (what enqueue-only platform-api reports). */
+export function repoSandboxKindFromEnv(
+  config: Pick<Config, "unsafeLocalExec">,
+  env: NodeJS.ProcessEnv = process.env,
+): "pod" | "process" | null {
+  if (env.WIZARD_REPO_SANDBOX === "pod") return "pod";
+  if (env.WIZARD_REPO_SANDBOX === "process" && config.unsafeLocalExec) return "process";
+  return null;
+}
+
+/**
+ * The runner of this process (null — none: JS repositories stay «unchecked»). Never the process runner in the cloud.
+ * Only the process that runs the agent's tasks builds it (apps/worker; platform-api in tests and M0).
+ */
 export function repoSandboxFromEnv(
   config: Pick<Config, "unsafeLocalExec">,
-  env = process.env,
+  env: NodeJS.ProcessEnv = process.env,
+  deps: { kube?: RepoKube; log?: (line: Record<string, unknown>) => void; sweep?: boolean } = {},
 ): RepoSandbox | null {
-  if (env.WIZARD_REPO_SANDBOX === "process" && config.unsafeLocalExec) return new ProcessSandbox(env);
-  return null;
+  const kind = repoSandboxKindFromEnv(config, env);
+  if (kind === "pod") return podSandboxFromEnv(env, deps);
+  return kind === "process" ? new ProcessSandbox(env) : null;
 }
 
 /** Why there is no runner (the owner's report says it). */
 export const NO_SANDBOX_RU =
   "песочница для сборки JS-проектов на этой площадке пока не включена — проверку сборки и тестов повторим, когда она появится";
-
-// ---------------------------------------------------------------- the cloud runner's contract
-
-export const REPO_SANDBOX_RUNTIME_CLASS = "gvisor";
-const IMAGE = "ghcr.io/wizard/repo-sandbox:node22";
-
-/** The pod of one sandbox phase (gVisor, no service account, read-only root, no capabilities, 10-minute deadline). */
-export function repoSandboxPod(i: {
-  name: string;
-  phase: SandboxPhase;
-  /** Image with node 22, npm, pnpm and yarn (corepack); the workspace is mounted at /work. */
-  image?: string;
-  argv: readonly string[];
-  timeoutMs: number;
-  /** Install only: the egress proxy of the registry hosts, by address (no DNS in the pod). */
-  proxyUrl?: string;
-}): Record<string, unknown> {
-  const net = i.phase === "install";
-  return {
-    apiVersion: "v1",
-    kind: "Pod",
-    metadata: {
-      name: i.name,
-      labels: {
-        "app.kubernetes.io/name": "wizard-repo-sandbox",
-        "wizard.repo-sandbox/network": net ? "registry" : "none",
-      },
-    },
-    spec: {
-      runtimeClassName: REPO_SANDBOX_RUNTIME_CLASS,
-      restartPolicy: "Never",
-      automountServiceAccountToken: false,
-      enableServiceLinks: false,
-      activeDeadlineSeconds: Math.ceil(i.timeoutMs / 1000),
-      nodeSelector: { "wizard.pool": "sandbox" },
-      tolerations: [{ key: "wizard.pool", operator: "Equal", value: "sandbox", effect: "NoSchedule" }],
-      // No DNS in any phase (security/isolation.yaml#M2.network): the proxy is given by address.
-      dnsPolicy: "None",
-      dnsConfig: { nameservers: ["127.0.0.1"] },
-      securityContext: {
-        runAsNonRoot: true,
-        runAsUser: 10001,
-        fsGroup: 10001,
-        seccompProfile: { type: "RuntimeDefault" },
-      },
-      containers: [
-        {
-          name: "run",
-          image: i.image ?? IMAGE,
-          command: [...i.argv],
-          workingDir: "/work",
-          env: [
-            { name: "HOME", value: "/work/.home" },
-            { name: "CI", value: "1" },
-            ...(net && i.proxyUrl
-              ? [
-                  { name: "HTTPS_PROXY", value: i.proxyUrl },
-                  { name: "HTTP_PROXY", value: i.proxyUrl },
-                ]
-              : [{ name: "npm_config_offline", value: "true" }]),
-          ],
-          securityContext: {
-            allowPrivilegeEscalation: false,
-            readOnlyRootFilesystem: true,
-            capabilities: { drop: ["ALL"] },
-          },
-          resources: {
-            limits: { cpu: "2", memory: "4Gi", "ephemeral-storage": "4Gi" },
-            requests: { cpu: "1", memory: "2Gi" },
-          },
-          volumeMounts: [
-            { name: "work", mountPath: "/work" },
-            { name: "tmp", mountPath: "/tmp" },
-          ],
-        },
-      ],
-      volumes: [
-        { name: "work", emptyDir: { sizeLimit: "4Gi" } },
-        { name: "tmp", emptyDir: { sizeLimit: "1Gi" } },
-      ],
-    },
-  };
-}
-
-/** NetworkPolicy of the sandbox pods: install → only the egress proxy; build, tests and the agent → nothing. */
-export function repoSandboxNetworkPolicy(i: {
-  namespace: string;
-  proxy: { namespace: string; app: string; port: number };
-}): Record<string, unknown>[] {
-  const base = (name: string, network: "registry" | "none", egress: unknown[]) => ({
-    apiVersion: "networking.k8s.io/v1",
-    kind: "NetworkPolicy",
-    metadata: { name, namespace: i.namespace },
-    spec: {
-      podSelector: {
-        matchLabels: {
-          "app.kubernetes.io/name": "wizard-repo-sandbox",
-          "wizard.repo-sandbox/network": network,
-        },
-      },
-      policyTypes: ["Ingress", "Egress"],
-      ingress: [],
-      egress,
-    },
-  });
-  return [
-    base("wizard-repo-sandbox-none", "none", []),
-    base("wizard-repo-sandbox-registry", "registry", [
-      {
-        to: [
-          {
-            namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": i.proxy.namespace } },
-            podSelector: { matchLabels: { "app.kubernetes.io/name": i.proxy.app } },
-          },
-        ],
-        ports: [{ protocol: "TCP", port: i.proxy.port }],
-      },
-    ]),
-  ];
-}

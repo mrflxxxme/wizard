@@ -27,6 +27,11 @@ spec:
     requests.memory: {{ .Values.sandbox.quota.requestsMemory }}
     limits.cpu: {{ .Values.sandbox.quota.limitsCpu | quote }}
     limits.memory: {{ .Values.sandbox.quota.limitsMemory }}
+    {{- if .Values.repoSandbox.enabled }}
+    # V3-32: workspaces of the repository sandbox (one PVC each) and their storage.
+    persistentvolumeclaims: {{ .Values.repoSandbox.quota.pvcs | quote }}
+    requests.storage: {{ .Values.repoSandbox.quota.storage }}
+    {{- end }}
 ---
 apiVersion: v1
 kind: LimitRange

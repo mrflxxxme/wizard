@@ -55,9 +55,16 @@ data:
 sandbox:
   # M2-18: the runtime runs system functions in workerd pods under gVisor on this node (runsc from cloud-init).
   # A pod = up to sandbox.systems systems, 512Mi; quota: two runtime pods, the G1 pod of a running build (M2-19)
-  # and one replacement in flight (a new revision starts its pod before the old one is removed).
+  # and one replacement in flight (a new revision starts its pod before the old one is removed) — 2Gi — plus one
+  # phase pod of the repository sandbox (V3-32, repoSandbox below: 1536Mi, 500m of 2 CPU).
   orchestrate: true
   maxPods: 2
   memoryLimit: 512Mi
   cpuLimit: "1"
-  quota: { pods: 4, requestsCpu: 1, requestsMemory: 2Gi, limitsCpu: 4, limitsMemory: 2Gi }
+  quota: { pods: 5, requestsCpu: 1500m, requestsMemory: 3584Mi, limitsCpu: 6, limitsMemory: 3584Mi }
+# V3-32: the repository sandbox on the pilot's node: one phase pod at a time (the quota above), a second task waits for
+# room; its workspaces live on local-path (the copy is bounded by the save step, not by the volume).
+repoSandbox:
+  enabled: true
+  memoryLimit: 1536Mi
+  quota: { pvcs: 2, storage: 12Gi }

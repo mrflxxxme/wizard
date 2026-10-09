@@ -1,0 +1,68 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "NetworkPolicy",
+  "metadata": {
+    "name": "wizard-repo-sandbox-none",
+    "namespace": "{{ .Values.namespaces.sandbox }}"
+  },
+  "spec": {
+    "podSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "wizard-repo-sandbox",
+        "wizard.ru/repo-sandbox-network": "none"
+      }
+    },
+    "policyTypes": [
+      "Ingress",
+      "Egress"
+    ],
+    "ingress": [],
+    "egress": []
+  }
+}
+---
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "NetworkPolicy",
+  "metadata": {
+    "name": "wizard-repo-sandbox-registry",
+    "namespace": "{{ .Values.namespaces.sandbox }}"
+  },
+  "spec": {
+    "podSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "wizard-repo-sandbox",
+        "wizard.ru/repo-sandbox-network": "registry"
+      }
+    },
+    "policyTypes": [
+      "Ingress",
+      "Egress"
+    ],
+    "ingress": [],
+    "egress": [
+      {
+        "to": [
+          {
+            "namespaceSelector": {
+              "matchLabels": {
+                "kubernetes.io/metadata.name": "{{ .Values.namespaces.platform }}"
+              }
+            },
+            "podSelector": {
+              "matchLabels": {
+                "wizard.ru/role": "egress-proxy"
+              }
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "TCP",
+            "port": 3128
+          }
+        ]
+      }
+    ]
+  }
+}

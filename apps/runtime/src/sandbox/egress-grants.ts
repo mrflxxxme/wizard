@@ -15,6 +15,12 @@ export interface EgressGrant {
   callId: string;
   /** ms since epoch */
   exp: number;
+  /**
+   * Bulk transfers (V3-32: the package installs of the repository sandbox, issued by platform-api under the same key):
+   * bytes and lifetime of one tunnel instead of the proxy's defaults.
+   */
+  maxBytes?: number;
+  maxDurationMs?: number;
 }
 
 export const GRANT_PREFIX = "g2.";
@@ -24,6 +30,13 @@ const MAX_HOSTS = 16;
 const SYSTEM_ID_RE = /^[a-z0-9][a-z0-9_]{0,62}$/;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const HOST_RE = /^[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
+/** Upper bounds of a bulk grant's tunnel limits. */
+export const GRANT_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+export const GRANT_MAX_DURATION_MS = 60 * 60_000;
+const REQUIRED = ["systemId", "env", "https", "callId", "exp"];
+const LIMITS = ["maxBytes", "maxDurationMs"];
+const inRange = (v: unknown, min: number, max: number) =>
+  v === undefined || (typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max);
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -52,7 +65,10 @@ function valid(g: unknown): g is EgressGrant {
     CALL_ID_RE.test(x.callId) &&
     typeof x.exp === "number" &&
     Number.isSafeInteger(x.exp) &&
-    Object.keys(x).length === 5
+    inRange(x.maxBytes, 1, GRANT_MAX_BYTES) &&
+    inRange(x.maxDurationMs, 1000, GRANT_MAX_DURATION_MS) &&
+    REQUIRED.every((k) => k in x) &&
+    Object.keys(x).every((k) => REQUIRED.includes(k) || LIMITS.includes(k))
   );
 }
 
@@ -83,6 +99,8 @@ export class EgressGrants {
       https: [...g.https].map((h) => h.toLowerCase()),
       callId: g.callId ?? randomBytes(16).toString("base64url"),
       exp: this.clock() + Math.max(1, Math.floor(ttlMs)),
+      ...(g.maxBytes !== undefined ? { maxBytes: g.maxBytes } : {}),
+      ...(g.maxDurationMs !== undefined ? { maxDurationMs: g.maxDurationMs } : {}),
     };
     if (!valid(grant)) throw new Error("invalid egress grant");
     const body = Buffer.from(JSON.stringify(grant)).toString("base64url");

@@ -311,6 +311,14 @@ describe("runs as DBOS workflows (M1-01)", () => {
     }
   });
 
+  test("V3-32: the repository agent's tasks run in the worker; platform-api with DBOS only enqueues them", async () => {
+    // The sandbox pods' Kubernetes token belongs to the worker: the internet-facing API builds no runner, runs no task.
+    expect(api.repoAgent.sandbox).toBeNull();
+    expect(await api.repoAgent.tick()).toBe(0);
+    expect(worker.repoAgent).not.toBeNull();
+    expect(await worker.repoAgent?.tick()).toBe(0);
+  });
+
   test("sweep enqueues a queued run whose enqueue was lost (crash between commit and enqueue)", async () => {
     const b = await startBuild(api, "Форум для сиротского прогона");
     await waitRun(api, b.buildRunId, ["succeeded"], 30_000);

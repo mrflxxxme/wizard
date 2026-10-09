@@ -1,5 +1,6 @@
 // M2-06: the Helm chart and images stay consistent with the code they deploy.
-// * the sandbox NetworkPolicy is generated from apps/runtime sandboxNetworkPolicy() (WIZARD_UPDATE_GENERATED=1 rewrites);
+// * the sandbox NetworkPolicy is generated from apps/runtime sandboxNetworkPolicy() (WIZARD_UPDATE_GENERATED=1 rewrites),
+//   the repository sandbox's (V3-32) from apps/platform-api repoSandboxNetworkPolicy();
 // * images.json ↔ chart image names ↔ Dockerfile build args;
 // * platform-web CSP in nginx = platformCsp();
 // * with HELM_BIN (CI job deploy-lint, or locally): helm lint + template for staging and prod, invariants of the
@@ -9,12 +10,17 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  repoSandboxNetworkPolicy,
+  repoSandboxPod,
+} from "../../../apps/platform-api/src/repo-agent/pod-sandbox.js";
 import { platformCsp, systemsFrameSrc } from "../../../apps/platform-web/src/csp.js";
 import { sandboxNetworkPolicy, sandboxPod } from "../../../apps/runtime/src/index.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const CHART = join(ROOT, "infra/helm/wizard");
 const GENERATED = join(CHART, "generated/sandbox-networkpolicy.json");
+const GENERATED_REPO = join(CHART, "generated/repo-sandbox-networkpolicy.json");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const values = read("infra/helm/wizard/values.yaml");
 const num = (key: string) => Number(new RegExp(`\\n  ${key}: (\\d+)`).exec(values)?.[1]);
@@ -36,12 +42,62 @@ function sandboxPolicyJson(): string {
   return `${JSON.stringify(np, null, 2)}\n`;
 }
 
+/** V3-32: the repository sandbox's policies, one YAML document each (JSON is YAML). */
+function repoSandboxPolicyText(): string {
+  const port = Number(/\negressProxy:\n(?: {2}.*\n)*? {2}port: (\d+)/.exec(values)?.[1]);
+  const nps = repoSandboxNetworkPolicy({
+    namespace: "{{ .Values.namespaces.sandbox }}",
+    proxy: {
+      namespace: "{{ .Values.namespaces.platform }}",
+      selector: { "wizard.ru/role": "egress-proxy" },
+      port,
+    },
+  });
+  return `${nps.map((np) => JSON.stringify(np, null, 2)).join("\n---\n")}\n`;
+}
+
+/** A phase pod of the repository sandbox with test inputs. */
+const repoPod = (phase: "install" | "build" | "test" | "agent", pool?: string): K8s =>
+  repoSandboxPod({
+    name: "p",
+    namespace: "wizard-sandbox",
+    workspace: "w",
+    phase,
+    argv: ["true"],
+    timeoutMs: 1000,
+    image: "i",
+    pvc: "c",
+    save: true,
+    ...(pool ? { pool } : {}),
+  }) as K8s;
+
 describe("generated manifests", () => {
   it("sandbox NetworkPolicy = sandboxNetworkPolicy() with the chart's ports (RPC on the internal port)", () => {
     const want = sandboxPolicyJson();
     if (process.env.WIZARD_UPDATE_GENERATED === "1") writeFileSync(GENERATED, want);
     expect(readFileSync(GENERATED, "utf8")).toBe(want);
     expect(want).toContain(`"port": ${num("internalPort")}`);
+  });
+
+  it("V3-32: repository sandbox NetworkPolicies = repoSandboxNetworkPolicy() with the egress proxy's port", () => {
+    const want = repoSandboxPolicyText();
+    if (process.env.WIZARD_UPDATE_GENERATED === "1") writeFileSync(GENERATED_REPO, want);
+    expect(readFileSync(GENERATED_REPO, "utf8")).toBe(want);
+    expect(want).toContain('"port": 3128');
+    // The pods' labels select exactly the policy of their phase's network.
+    const policies = want.split("\n---\n").map((t) => JSON.parse(t) as K8s);
+    for (const [phase, policy] of [
+      ["install", "wizard-repo-sandbox-registry"],
+      ["build", "wizard-repo-sandbox-none"],
+      ["test", "wizard-repo-sandbox-none"],
+      ["agent", "wizard-repo-sandbox-none"],
+    ] as const) {
+      const labels = repoPod(phase).metadata.labels;
+      const hits = policies.filter((np) =>
+        Object.entries(np.spec.podSelector.matchLabels).every(([k, v]) => labels[k] === v),
+      );
+      expect(hits.map((np) => np.metadata.name)).toEqual([policy]);
+    }
   });
 
   it("sandbox pods tolerate exactly the taints the sandbox nodes get (k3s bootstrap, Cloud.ru pools)", () => {
@@ -73,6 +129,11 @@ describe("generated manifests", () => {
     expect(read("infra/tofu/timeweb/modules/env/main.tf")).toContain('sandbox_pool  = "free"');
     expect(pod.spec.runtimeClassName).toBe("gvisor");
     expect(read("infra/helm/wizard/templates/sandbox.yaml")).toContain("name: gvisor");
+    // V3-32: the repository sandbox's pods go to the same nodes (values repoSandbox.pool).
+    const repo = repoPod("build", /\nrepoSandbox:\n(?: {2}.*\n)*? {2}pool: (\w+)/.exec(values)?.[1]);
+    expect(repo.spec.runtimeClassName).toBe("gvisor");
+    expect(repo.spec.nodeSelector).toEqual(pod.spec.nodeSelector);
+    expect(repo.spec.tolerations).toEqual(pod.spec.tolerations);
   });
 });
 
@@ -106,7 +167,7 @@ describe("images", () => {
   });
 
   it("Dockerfiles: non-root runtime stage, no secrets in the context", () => {
-    for (const f of ["app.Dockerfile", "web.Dockerfile", "pgbouncer.Dockerfile"]) {
+    for (const f of ["app.Dockerfile", "web.Dockerfile", "pgbouncer.Dockerfile", "repo-sandbox.Dockerfile"]) {
       const text = read(`infra/docker/${f}`);
       expect(text, f).toMatch(/^USER (?!0|root)\S+/m);
       expect(text, f).not.toMatch(/\.env\b(?!\.example)|SECRET|PASSWORD|API_KEY/);
@@ -335,7 +396,8 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             // The DNS-01 solver and, with the sandbox orchestrator (M2-18), the runtime talk to the API server.
             const sandboxOrchestrator =
               (p.name === "wizard-runtime" && p.spec.serviceAccountName === "wizard-runtime") ||
-              (p.name === "wizard-worker" && p.spec.serviceAccountName === "wizard-g1");
+              (p.name === "wizard-worker" &&
+                ["wizard-g1", "wizard-repo-agent"].includes(p.spec.serviceAccountName));
             if (p.name !== "wizard-acme-dns01" && !sandboxOrchestrator)
               expect(p.spec.automountServiceAccountToken, p.name).toBe(false);
             for (const c of [...p.spec.containers, ...(p.spec.initContainers ?? [])]) {
@@ -597,6 +659,36 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
         });
 
         if (v.name === "timeweb+k3s") {
+          it("V3-32 without G1 orchestration: the worker alone gets wizard-repo-agent and its token; platform-api none", () => {
+            const out = render(v, env, ["--set", "repoSandbox.enabled=true"]);
+            const dep = (name: string) =>
+              out.docs.find((d) => d.kind === "Deployment" && d.metadata.name === name)?.spec.template.spec;
+            expect(dep("wizard-worker")).toMatchObject({
+              serviceAccountName: "wizard-repo-agent",
+              automountServiceAccountToken: true,
+            });
+            expect(dep("wizard-platform-api")).toMatchObject({
+              serviceAccountName: "wizard-app",
+              automountServiceAccountToken: false,
+            });
+            const sa = out.docs.find(
+              (d) => d.kind === "ServiceAccount" && d.metadata.name === "wizard-repo-agent",
+            );
+            expect(sa?.automountServiceAccountToken).toBe(false);
+            const binding = out.docs.find(
+              (d) => d.kind === "RoleBinding" && d.metadata.name === "wizard-repo-sandbox",
+            );
+            expect(binding?.subjects).toEqual([
+              { kind: "ServiceAccount", name: "wizard-repo-agent", namespace: "wizard-platform" },
+            ]);
+            const npOf = (name: string) =>
+              JSON.stringify(
+                out.docs.find((d) => d.kind === "NetworkPolicy" && d.metadata.name === name)?.spec.egress,
+              );
+            expect(npOf("wizard-worker")).toContain('"port":6443');
+            expect(npOf("wizard-platform-api")).not.toContain('"port":6443');
+          });
+
           it("k3s profile: local-path RWO data volume, gVisor RuntimeClass, k3s networks", () => {
             const pvc = of("PersistentVolumeClaim").find((d) => d.metadata.name === "wizard-data");
             expect(pvc?.spec).toMatchObject({
@@ -642,7 +734,8 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
             expect(of("PodDisruptionBudget")).toEqual([]);
             // Sandbox pods of the orchestrator plus one replacement in flight (512Mi each).
             const quota = of("ResourceQuota")[0];
-            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "4" : "3");
+            // prod also has room for one phase pod of the repository sandbox (V3-32).
+            expect(quota?.spec.hard.pods).toBe(env === "prod" ? "5" : "3");
             const rc = of("RuntimeClass")[0];
             expect(rc).toMatchObject({ metadata: { name: "gvisor" }, handler: "runsc" });
           });
@@ -713,6 +806,111 @@ describe.skipIf(!HELM)("helm chart (HELM_BIN)", () => {
               { protocol: "TCP", port: 443 },
             ]);
             expect(api.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
+          });
+
+          it("pilot (V3-32): the repository sandbox on prod only — run by the worker; platform-api holds no token", () => {
+            const spec = (name: string) =>
+              of("Deployment").find((d) => d.metadata.name === name)?.spec.template.spec;
+            const api = spec("wizard-platform-api");
+            const worker = spec("wizard-worker");
+            const role = of("Role").find((r) => r.metadata.name === "wizard-repo-sandbox");
+            const quota = of("ResourceQuota")[0];
+            // The internet-facing API never gets a Kubernetes token, with or without the repository sandbox.
+            expect(api.serviceAccountName).toBe("wizard-app");
+            expect(api.automountServiceAccountToken).toBe(false);
+            const bindings = of("RoleBinding").flatMap((b) => b.subjects ?? []);
+            expect(bindings.map((x: K8s) => x.name)).not.toContain("wizard-app");
+            const apiNp = of("NetworkPolicy").find((n) => n.metadata.name === "wizard-platform-api");
+            expect(JSON.stringify(apiNp?.spec.egress)).not.toMatch(/"port":6443|wizard-repo-sandbox/);
+            if (env === "staging") {
+              // The 4 GB staging VM has no room for a phase pod: nothing of it is rendered.
+              expect(role).toBeUndefined();
+              expect(text).not.toContain("wizard-repo-sandbox");
+              expect(quota?.spec.hard.persistentvolumeclaims).toBeUndefined();
+              return;
+            }
+            // The worker runs the tasks: the declaration on the API, the runner's env on the worker.
+            expect(env0(api.containers[0]).WIZARD_REPO_SANDBOX).toBe("pod");
+            expect(env0(api.containers[0]).WIZARD_REPO_SANDBOX_IMAGE).toBeUndefined();
+            const e = env0(worker.containers[0]);
+            expect(e).toMatchObject({
+              WIZARD_REPO_SANDBOX: "pod",
+              WIZARD_REPO_SANDBOX_NAMESPACE: "wizard-sandbox",
+              WIZARD_REPO_SANDBOX_PROXY: "http://wizard-egress-proxy.wizard-platform.svc:3128",
+              WIZARD_REPO_SANDBOX_POOL: "free",
+              WIZARD_REPO_SANDBOX_MEMORY: "1536Mi",
+              WIZARD_REPO_SANDBOX_CPU: "2",
+              WIZARD_REPO_SANDBOX_REGISTRY: "",
+            });
+            expect(e.WIZARD_REPO_SANDBOX_IMAGE).toMatch(/\/wizard-repo-sandbox:0123abc$/);
+            // One identity per pod: on the pilot the worker already is wizard-g1 (G1 in sandbox pods, M2-19).
+            expect(worker.serviceAccountName).toBe("wizard-g1");
+            expect(worker.automountServiceAccountToken).toBe(true);
+            // Minimal RBAC: no Secrets, no exec/attach/portforward, no update/patch, the sandbox namespace only.
+            expect(role?.metadata.namespace).toBe("wizard-sandbox");
+            expect(role?.rules).toEqual([
+              { apiGroups: [""], resources: ["pods"], verbs: ["get", "list", "create", "delete"] },
+              { apiGroups: [""], resources: ["pods/log"], verbs: ["get"] },
+              {
+                apiGroups: [""],
+                resources: ["configmaps", "persistentvolumeclaims"],
+                verbs: ["list", "create", "delete"],
+              },
+            ]);
+            expect(of("ClusterRole").map((r) => r.metadata.name)).not.toContain("wizard-repo-sandbox");
+            const binding = of("RoleBinding").find((r) => r.metadata.name === "wizard-repo-sandbox");
+            expect(binding?.metadata.namespace).toBe("wizard-sandbox");
+            expect(binding?.subjects).toEqual([
+              { kind: "ServiceAccount", name: "wizard-g1", namespace: "wizard-platform" },
+            ]);
+            // Its pods: install → only the egress proxy; the rest → nothing; no ingress.
+            const nps = of("NetworkPolicy");
+            const none = nps.find((n) => n.metadata.name === "wizard-repo-sandbox-none");
+            const reg = nps.find((n) => n.metadata.name === "wizard-repo-sandbox-registry");
+            expect(none?.metadata.namespace).toBe("wizard-sandbox");
+            expect(none?.spec).toMatchObject({ policyTypes: ["Ingress", "Egress"], ingress: [], egress: [] });
+            expect(reg?.spec.egress).toEqual([
+              {
+                to: [
+                  {
+                    namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-platform" } },
+                    podSelector: { matchLabels: { "wizard.ru/role": "egress-proxy" } },
+                  },
+                ],
+                ports: [{ protocol: "TCP", port: 3128 }],
+              },
+            ]);
+            // Both sides of the install's flow: the proxy admits exactly those pods.
+            const proxy = nps.find((n) => n.metadata.name === "wizard-egress-proxy");
+            expect(proxy?.spec.ingress[0].from).toContainEqual({
+              namespaceSelector: { matchLabels: { "kubernetes.io/metadata.name": "wizard-sandbox" } },
+              podSelector: {
+                matchLabels: {
+                  "app.kubernetes.io/name": "wizard-repo-sandbox",
+                  "wizard.ru/repo-sandbox-network": "registry",
+                },
+              },
+            });
+            // The worker reaches the API server (node addresses on k3s), the phase pods never.
+            const wNp = nps.find((n) => n.metadata.name === "wizard-worker");
+            const kubeApi = wNp?.spec.egress.find((x: K8s) =>
+              (x.ports ?? []).some((p: K8s) => p.port === 6443),
+            );
+            expect(kubeApi?.ports).toEqual([
+              { protocol: "TCP", port: 6443 },
+              { protocol: "TCP", port: 443 },
+            ]);
+            expect(kubeApi?.to.map((t: K8s) => t.ipBlock.cidr)).toEqual([expect.stringMatching(/\/\d+$/)]);
+            expect(JSON.stringify(wNp?.spec.egress)).not.toContain("wizard-repo-sandbox");
+            // Quota: the workspaces' PVCs and storage; a phase pod fits the LimitRange.
+            expect(quota?.spec.hard).toMatchObject({
+              persistentvolumeclaims: "2",
+              "requests.storage": "12Gi",
+            });
+            const lr = of("LimitRange")[0]?.spec.limits[0].max;
+            const mib = (q: string) => Number(/^(\d+)/.exec(q)?.[1]) * (q.endsWith("Gi") ? 1024 : 1);
+            expect(mib(e.WIZARD_REPO_SANDBOX_MEMORY as string)).toBeLessThanOrEqual(mib(lr.memory));
+            expect(Number(e.WIZARD_REPO_SANDBOX_CPU)).toBeLessThanOrEqual(Number(lr.cpu));
           });
 
           it("pilot (M2-19): the worker reaches its own G1 sandbox pods on exactly the system ports (production defect)", () => {
