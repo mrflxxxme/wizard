@@ -14,7 +14,7 @@ import { readSessionToken, sessionUser } from "./auth/session.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, draftPreviewOnly, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
-import { systemFunctions } from "./exec/host.js";
+import { forgetSystemFunctions, systemFunctions } from "./exec/host.js";
 import { photoLibraryRoutes } from "./files/photo-library.js";
 import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
@@ -264,6 +264,22 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     legalTemplates: services.legalTemplates,
     ...(files ? { files } : {}),
     ...(o.log ? { log: o.log } : {}),
+    // V3-18: a dropped system's executor and, with its last copy, its sandbox slot go with it (pilot: 20 slots).
+    onDrop: (sys, last) => {
+      forgetSystemFunctions(sys, last);
+      if (!last || !o.sandbox?.remove) return;
+      const { systemId, env: sysEnv } = sys.entry;
+      void o.sandbox.remove(systemId, sysEnv, { resync: false }).catch((e: unknown) =>
+        o.log?.({
+          ts: new Date().toISOString(),
+          level: "warn",
+          msg: "sandbox_release_failed",
+          system: sys.entry.slug,
+          env: sysEnv,
+          reason: e instanceof Error ? e.name : "unknown",
+        }),
+      );
+    },
     bus: (id, e) => {
       const k = `${id}:${e}`;
       let b = buses.get(k);
@@ -274,6 +290,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       return b;
     },
   });
+  // A system the sandbox freed itself (idle, excluded for hanging): the next request loads and prepares it again.
+  o.sandbox?.onReleased?.((systemId, sysEnv) => systems.evict(systemId, sysEnv));
   const auth = createAuthDeps({
     sql: o.db,
     env,

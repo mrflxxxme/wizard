@@ -28,6 +28,8 @@ const G1_RUNTIME_EVENTS = new Set([
   "unhandled",
 ]);
 const CODE_RE = /^[A-Z][A-Z0-9_]{2,40}$/;
+/** Watchdog of the G1 pods: a gate's checks are seconds apart, a hanging system is excluded soon. */
+const G1_WATCHDOG_MS = 10_000;
 const SQLSTATE_RE = /^[0-9A-Z]{5}$/;
 
 /**
@@ -80,6 +82,9 @@ export async function startG1Sandbox(
     .reconcile()
     .catch((e: unknown) => o.log?.({ msg: "sandbox_reconcile_failed", error: e }));
   const { orchestrator, rpc } = sb;
+  // V3-18: the shared G1 pod runs the systems of several builds — one whose code hangs or crashes workerd is excluded
+  // (its calls answer «Функция системы зависла…»), the other builds' checks keep their pod.
+  orchestrator.startWatchdog(G1_WATCHDOG_MS);
   return {
     orchestrator,
     rpc,
@@ -127,10 +132,11 @@ export async function startG1Sandbox(
       };
     },
     async release(systemIds) {
-      // Each one is freed even when another's pod restart fails: a system left placed stays in its pod's config.
+      // Each one is freed even when another's fails: a system left placed stays in its pod's config. No pod restart
+      // for it (V3-18: up to 120 s awaited after every gate) — the pod's next prepare renders the config without it.
       for (const id of systemIds)
         await orchestrator
-          .remove(id, "draft")
+          .remove(id, "draft", { resync: false })
           .catch((e: unknown) =>
             o.log?.({ msg: "sandbox_release_failed", level: "warn", systemId: id, env: "draft", error: e }),
           );

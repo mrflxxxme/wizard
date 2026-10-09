@@ -58,6 +58,11 @@ export interface SystemCacheOptions {
   /** Storage of file fields (M2-14); absent — file values are not checked and nothing is stored. */
   files?: FileStorage;
   log?: (line: Record<string, unknown>) => void;
+  /**
+   * V3-18: a loaded system left the cache (evicted, unpinned, pushed out of the LRU, gone from the registry, replaced
+   * by a new revision); last: no other loaded copy of its deployment remains (its sandbox slot can go).
+   */
+  onDrop?: (sys: LoadedSystem, last: boolean) => void;
 }
 
 const key = (slug: string, env: SystemEnv) => `${slug}--${env}`;
@@ -131,7 +136,20 @@ export class SystemCache {
 
   /** Drops a system registered by pin (G1 runs pin one per run); true when it was pinned. */
   unpin(slug: string, env: SystemEnv): boolean {
-    return this.pinned.delete(key(slug, env));
+    const sys = this.pinned.get(key(slug, env));
+    if (!sys) return false;
+    this.pinned.delete(key(slug, env));
+    this.dropped(sys);
+    return true;
+  }
+
+  private dropped(sys: LoadedSystem): void {
+    if (!this.o.onDrop) return;
+    const { systemId, env } = sys.entry;
+    const kept = [...this.pinned.values(), ...this.lru.values()].some(
+      (s) => s.entry.systemId === systemId && s.entry.env === env,
+    );
+    this.o.onDrop(sys, !kept);
   }
 
   /**
@@ -139,14 +157,15 @@ export class SystemCache {
    * the next request reloads it from the registry. Requests in flight keep the old object. true when one was cached.
    */
   evict(systemId: string, env: SystemEnv): boolean {
-    let hit = false;
+    const gone: LoadedSystem[] = [];
     for (const [k, sys] of this.lru) {
       if (sys.entry.systemId === systemId && sys.entry.env === env) {
         this.lru.delete(k);
-        hit = true;
+        gone.push(sys);
       }
     }
-    return hit;
+    for (const sys of gone) this.dropped(sys);
+    return gone.length > 0;
   }
 
   /** Loaded system for a host, or null when the registry has no such deployment. Throws SystemLoadError (→ 503). */
@@ -155,11 +174,13 @@ export class SystemCache {
     const pinned = this.pinned.get(k);
     if (pinned) return pinned;
     const entry = await this.o.registry.resolve(slug, env);
+    const cached = this.lru.get(k);
     if (!entry) {
+      // Unpublished or deleted: its functions and sandbox slot go with it.
       this.lru.delete(k);
+      if (cached) this.dropped(cached);
       return null;
     }
-    const cached = this.lru.get(k);
     if (
       cached &&
       cached.entry.revision === entry.revision &&
@@ -172,12 +193,16 @@ export class SystemCache {
       return cached;
     }
     const sys = await this.load(entry);
+    const prev = this.lru.get(k);
     this.lru.delete(k);
     this.lru.set(k, sys);
+    if (prev) this.dropped(prev);
     while (this.lru.size > this.capacity) {
       const oldest = this.lru.keys().next().value;
       if (oldest === undefined) break;
+      const out = this.lru.get(oldest);
       this.lru.delete(oldest);
+      if (out) this.dropped(out);
     }
     return sys;
   }

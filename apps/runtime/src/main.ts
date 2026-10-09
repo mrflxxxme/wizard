@@ -6,8 +6,9 @@ import { mailApiFromEnv } from "@wizard/connectors";
 import { createLogger } from "@wizard/pii/log";
 import { metricsListenFromEnv } from "@wizard/pii/metrics";
 import postgres from "postgres";
+import { unhandledRejections } from "./metrics.js";
 import { DbRegistry, FileRegistry } from "./registry.js";
-import { sandboxFromEnv } from "./sandbox/from-env.js";
+import { sandboxFromEnv, sandboxIdleFromEnv } from "./sandbox/from-env.js";
 import { startRuntime } from "./server.js";
 
 const root = resolve(process.env.WIZARD_ROOT ?? join(import.meta.dirname, "..", "..", ".."));
@@ -19,11 +20,17 @@ const db = postgres(process.env.WIZARD_DB_URL ?? "postgres://wizard@localhost:54
 
 // deploy.yaml#cloud.observability.pii_in_logs (L3-08): every line passes the allowlist.
 const logger = createLogger({ svc: "runtime" });
-for (const ev of ["uncaughtException", "unhandledRejection"] as const)
-  process.on(ev, (e: unknown) => {
-    logger.error(ev, e);
-    process.exit(1);
-  });
+// An uncaught exception leaves the process in an unknown state: it exits (and is restarted). A rejected promise nobody
+// handled does not (V3-18): this single replica (Recreate) would drop every request in flight and, on start, reconcile
+// deletes all sandbox pods — one forgotten .catch would take every system's functions down. Logged and counted.
+process.on("uncaughtException", (e: unknown) => {
+  logger.error("uncaughtException", e);
+  process.exit(1);
+});
+process.on("unhandledRejection", (e: unknown) => {
+  unhandledRejections.inc();
+  logger.error("unhandledRejection", e);
+});
 const port = Number(process.env.PORT ?? process.env.WIZARD_RUNTIME_PORT ?? 4100);
 const hostname = process.env.HOST ?? process.env.WIZARD_RUNTIME_HOST ?? "127.0.0.1";
 // runtime.yaml#routing.rules (L3-19): internal port 4101 next to the public 4100; "off" disables it.
@@ -39,6 +46,8 @@ if (sandbox) {
   // Not fatal: published systems without functions keep working; calls report FUNCTIONS_DISABLED and the log says why.
   await sandbox.orchestrator.reconcile().catch((e: unknown) => logger.error("sandbox_reconcile_failed", e));
   sandbox.orchestrator.startWatchdog();
+  // V3-18: slots of systems without calls come back (unpublished/deleted ones are freed when the cache drops them).
+  sandbox.orchestrator.startIdleCollector(sandboxIdleFromEnv(process.env));
 }
 // Platform mail over the Unisender Go HTTP API (email.yaml#transport): its host replaces the SMTP host in the policy.
 const mailApi = mailApiFromEnv(process.env);

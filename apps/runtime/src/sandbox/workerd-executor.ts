@@ -35,12 +35,21 @@ export interface SandboxExecutors {
     functionsSource: string;
   }): Promise<void>;
   executorFor(sys: { systemId: string; env: SandboxEnv; entities: readonly string[] }): GuestExecutor;
+  /**
+   * Frees the system's slot (V3-18: the runtime dropped it — unpublished, deleted, evicted, unpinned); resync: false
+   * leaves the pod's other systems running as they are.
+   */
+  remove?(systemId: string, env: SandboxEnv, o?: { resync?: boolean }): Promise<void>;
+  /** Systems whose slot was freed by the sandbox itself (idle, excluded for hanging): the runtime drops its copy. */
+  onReleased?(listener: (systemId: string, env: SandboxEnv) => void): void;
 }
 
 /** An endpoint held for one call: a replaced pod is removed only after the calls it was given have released it. */
 export interface EndpointLease {
   endpoint: string;
   release(): void;
+  /** The call hit its time limit or lost its connection (the orchestrator's watchdog blames its system on a restart). */
+  fail?(): void;
 }
 
 /** Below this much of its time limit left, a call is not started (it could only time out). */
@@ -87,7 +96,7 @@ export class WorkerdExecutor implements GuestExecutor {
    * The endpoint for one call within its time limit: waiting for a restarting pod counts against it, and a call left
    * with less than MIN_CALL_MS is not started — it never runs after its caller gave up. Returns the time left.
    */
-  private async acquire(limitMs: number): Promise<EndpointLease & { left: number }> {
+  private async acquire(limitMs: number): Promise<Required<EndpointLease> & { left: number }> {
     const started = Date.now();
     let lease: EndpointLease;
     if (this.o.lease) lease = await this.o.lease(limitMs);
@@ -101,7 +110,7 @@ export class WorkerdExecutor implements GuestExecutor {
       lease.release();
       throw new WizardError("FUNCTIONS_DISABLED", { message: RESTARTING });
     }
-    return { endpoint: lease.endpoint, release: () => lease.release(), left };
+    return { endpoint: lease.endpoint, release: () => lease.release(), fail: () => lease.fail?.(), left };
   }
 
   async functions(): Promise<Record<string, GuestFunction>> {
@@ -128,7 +137,7 @@ export class WorkerdExecutor implements GuestExecutor {
     timeoutMs: number,
   ): Promise<unknown> {
     if (this.closed) throw new WizardError("INTERNAL");
-    const { endpoint: base, release, left } = await this.acquire(timeoutMs);
+    const { endpoint: base, release, fail, left } = await this.acquire(timeoutMs);
     const call = this.o.rpc.open({ systemId: this.o.systemId, env: this.o.env, hostCtx, timeoutMs: left });
     try {
       let res: Response;
@@ -147,6 +156,7 @@ export class WorkerdExecutor implements GuestExecutor {
           signal: AbortSignal.timeout(left),
         });
       } catch (e) {
+        fail();
         if (isAbort(e)) {
           this.o.onTimeout?.();
           throw new WizardError("TIMEOUT");
