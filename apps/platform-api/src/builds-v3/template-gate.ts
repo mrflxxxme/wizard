@@ -37,8 +37,8 @@ import {
   type TemplateViewportId,
   templateVerdict,
 } from "@wizard/gates";
-import { toRoleSpec } from "@wizard/ui-kit";
 import { fontFiles } from "@wizard/ui-kit/fonts";
+import { toRoleSpec } from "@wizard/ui-kit/role-spec";
 import { patternById } from "@wizard/ui-kit/v3/patterns";
 import { PNG } from "pngjs";
 import type postgres from "postgres";

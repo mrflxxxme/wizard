@@ -12,7 +12,8 @@
     "./v2/theme.css": "./src/v2/theme.css",
     "./v3/design": "./src/v3/design/index.ts",
     "./v3/headless": "./src/v3/headless/index.ts",
-    "./v3/patterns": "./src/v3/patterns/index.ts"
+    "./v3/patterns": "./src/v3/patterns/index.ts",
+    "./role-spec": "./src/data/roleSpec.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
