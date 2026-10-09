@@ -194,7 +194,7 @@ describe("platform: the techreview of a v3 build (V3-15)", () => {
     expect(builder).toEqual(["glm"]);
     const review = calls.filter((c) => c.call_type === "techreview");
     expect(review).toEqual([
-      { call_type: "techreview", tier: "T0", model_id: "deepseek-v4-pro", status: "ok" },
+      { call_type: "techreview", tier: "T0", model_id: "gpt-oss-120b", status: "ok" },
     ]);
     const family = familyOf(review[0]?.model_id ?? "");
     expect([...builder, ...defaultBuilderFamilies()]).not.toContain(family);

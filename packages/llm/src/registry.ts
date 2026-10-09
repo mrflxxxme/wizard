@@ -398,7 +398,7 @@ export const ROUTES: Record<CallType, RouteDef> = {
   repo_code: r(
     "repo_agent",
     "T0",
-    { T0: ["deepseek-v4-pro", "qwen3-coder-next", "glm-5.1", "kimi-k2.6"] },
+    { T0: ["glm-5.1", "qwen3-coder-next", "kimi-k2.6", "deepseek-v4-pro"] },
     0.1,
     16000,
     480000,
