@@ -389,9 +389,19 @@ describe("the key window: what the owner pastes", () => {
     });
   });
 
-  test("СДЭК: OAuth client credentials — the token request in the form body, the token from the answer", () => {
+  test("СДЭК: OAuth client credentials — one oauth2cc: key; the token request in the form body", () => {
     const fields = { client_id: "clientid123", client_secret: "secret12345" };
-    expect(passportKey(p("cdek"), fields)).toEqual({ ok: true, value: null, account: null, test: null });
+    const key = passportKey(p("cdek"), fields);
+    expect(key).toMatchObject({ ok: true, account: null, test: false });
+    const decoded = key.ok
+      ? JSON.parse(Buffer.from(key.value.slice("oauth2cc:".length), "base64url").toString("utf8"))
+      : null;
+    expect(decoded).toEqual({
+      token_url: "https://api.cdek.ru/v2/oauth/token",
+      client_id: "clientid123",
+      client_secret: "secret12345",
+    });
+    expect(passportKey(p("cdek"), fields, { sandbox: true })).toMatchObject({ test: true });
     const req = passportTokenRequest(p("cdek"), fields, { sandbox: true });
     expect(req).toMatchObject({ method: "POST", url: "https://api.edu.cdek.ru/v2/oauth/token" });
     expect(req?.url).not.toContain("secret12345");

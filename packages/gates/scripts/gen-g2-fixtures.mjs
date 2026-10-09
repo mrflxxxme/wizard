@@ -94,6 +94,86 @@ function luhnCard(prefix15) {
 }
 const CARD = luhnCard("427600000000123");
 
+// V3-22: a Telegram Bot API client of an integration (passport telegram) as the platform generates it, and a caller.
+const TG_CLIENT = `import type { ActionCtx } from "@wizard/sdk";
+
+/** Hosts of the contract's API (live requests go only there). */
+export const HOSTS = ["api.telegram.org"] as const;
+/** Path segment of the API's auth: the runtime egress client puts the value in place of the reference. */
+const AUTH = "secret://bot_key";
+
+async function call(ctx: ActionCtx, method: string, body: unknown): Promise<unknown> {
+  const res = await ctx.http.fetch(\`https://api.telegram.org/bot\${AUTH}/\${method}\`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? null),
+  });
+  return await res.json();
+}
+
+export async function getMe(ctx: ActionCtx, _input: Record<string, unknown>): Promise<unknown> {
+  return await call(ctx, "getMe", {});
+}
+
+export async function setWebhook(ctx: ActionCtx, input: { body: { url: string; secret_token?: string } }): Promise<unknown> {
+  return await call(ctx, "setWebhook", input.body);
+}
+
+export async function sendMessage(ctx: ActionCtx, input: { body: { chat_id: string; text: string } }): Promise<unknown> {
+  return await call(ctx, "sendMessage", input.body);
+}
+`;
+const tgAction = `import { action, v } from "@wizard/sdk";
+import { sendMessage } from "./client";
+
+export default action({
+  args: { body: v.object({ chat_id: v.string(), text: v.string() }) },
+  handler: async (ctx, args) => sendMessage(ctx, args),
+});
+`;
+const tgCaller = (body) => `import { action, v } from "@wizard/sdk";
+import { getMe, sendMessage, setWebhook } from "./integrations/bot/client";
+
+export default action({
+  args: {},
+  handler: async (ctx) => {
+${body}
+  },
+});
+`;
+/** The bot client, its action and a public caller `functions/notifyHolderBot.ts`. */
+const withTgClient = (callerBody) => ({
+  spec: [
+    {
+      op: "push",
+      path: "/functions",
+      value: {
+        name: "botSendMessage",
+        kind: "action",
+        file: "functions/integrations/bot/sendMessage.ts",
+        egress: ["api.telegram.org"],
+        secretRefs: ["secret://bot_key"],
+      },
+    },
+    {
+      op: "push",
+      path: "/functions",
+      value: {
+        name: "notifyHolderBot",
+        kind: "action",
+        file: "functions/notifyHolderBot.ts",
+        public: true,
+        roles: ["organizer"],
+      },
+    },
+  ],
+  files: {
+    "functions/integrations/bot/client.ts": TG_CLIENT,
+    "functions/integrations/bot/sendMessage.ts": tgAction,
+    "functions/notifyHolderBot.ts": tgCaller(callerBody),
+  },
+});
+
 // ------------------------------------------------------------------------------------------------ block
 
 const F = FORUM;
@@ -904,6 +984,45 @@ const CHECKS = {
         '    const t = await ctx.runQuery("ticketAvailability", {});\n    const holder = { holder_phone: "x" };\n    await ctx.connectors.telegram.sendToUser({ userId: "u", text: `Телефон: ${holder.holder_phone}` });\n    return t;',
       ),
       match: "holder_phone",
+    },
+    "fail-bot-api-client": {
+      description: "функция шлёт телефон держателя через клиент Telegram Bot API (паспорт telegram)",
+      ...withTgClient(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: generated function source
+        '    const holder = { holder_phone: "x" };\n    await sendMessage(ctx, { body: { chat_id: "1", text: `Телефон: ${holder.holder_phone}` } });\n    return await getMe(ctx, {});',
+      ),
+      match: "holder_phone",
+    },
+    "fail-bot-api-http": {
+      description: "функция сама зовёт api.telegram.org через ctx.http.fetch и шлёт телефон",
+      spec: [
+        {
+          op: "push",
+          path: "/functions",
+          value: {
+            name: "notifyHolderHttp",
+            kind: "action",
+            file: "functions/notifyHolderHttp.ts",
+            egress: ["api.telegram.org"],
+            secretRefs: ["secret://bot_key"],
+          },
+        },
+      ],
+      files: {
+        "functions/notifyHolderHttp.ts": fnFile(
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: generated function source
+          '    const holder = { holder_phone: "x" };\n    await ctx.http.fetch("https://api.telegram.org/botsecret://bot_key/sendMessage", {\n      method: "POST",\n      body: JSON.stringify({ chat_id: "1", text: `Телефон: ${holder.holder_phone}` }),\n    });\n    return null;',
+          "action",
+        ),
+      },
+      match: "api.telegram.org",
+    },
+    "pass-bot-api": {
+      description:
+        "клиент Telegram Bot API: getMe, setWebhook и сообщение без ПДн; адрес чата — не содержимое",
+      ...withTgClient(
+        '    const holder = { holder_phone: "x" };\n    await getMe(ctx, {});\n    await setWebhook(ctx, { body: { url: "https://forum.example.com/hooks/bot", secret_token: "hook" } });\n    await sendMessage(ctx, { body: { chat_id: holder.holder_phone, text: "Новый билет — откройте систему" } });\n    return null;',
+      ),
     },
   },
   // M2-52 (D71): hosts of ctx.http.fetch — public names only; a new host before prod goes to the founder.

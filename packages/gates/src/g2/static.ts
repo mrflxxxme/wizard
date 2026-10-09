@@ -1,11 +1,12 @@
 // Static G2 checks over spec + sources: G2-SECRET-01/02, G2-PERM-05 (public role, systemDb — sdk.md §2.3 L3-22),
-// G2-TG-01 (Telegram without ПДн: spec templates via @wizard/connectors + AST taint of ctx.connectors.<tg>.*).
+// G2-TG-01 (Telegram without ПДн: spec templates via @wizard/connectors + AST taint of ctx.connectors.<tg>.*, and of
+// the Telegram Bot API reached through an integration client (V3-22 passport) or ctx.http.fetch).
 import { type AppSpec, SECRET_REF_RE } from "@wizard/appspec";
 import { parseSecretRef, validateIntegrations } from "@wizard/connectors";
 import { detect } from "@wizard/pii";
 import ts from "typescript";
 import { importGraph, reachable } from "../g0/imports.js";
-import { nodeLine, type SourceInfo, unwrap } from "../g0/source.js";
+import { nodeLine, resolveRelative, type SourceInfo, unwrap } from "../g0/source.js";
 import { fieldPiiCategory } from "../g1/seed.js";
 import type { Finding } from "../report.js";
 import { ABUSE, shannon } from "./patterns.js";
@@ -233,69 +234,186 @@ function piiNames(spec: AppSpec): Set<string> {
   return out;
 }
 
-/** G2-TG-01: Telegram texts and ctx.connectors.<telegram>.* arguments carry no ПДн. */
-export function telegramNoPii(spec: AppSpec, sources: SourceInfo[]): Finding[] {
+/** G2-TG-01: Telegram texts, ctx.connectors.<telegram>.* arguments and Bot API calls carry no ПДн. */
+export function telegramNoPii(
+  spec: AppSpec,
+  sources: SourceInfo[],
+  files: ReadonlyMap<string, string> = new Map(),
+): Finding[] {
   const out: Finding[] = [];
   for (const issue of validateIntegrations(spec)) {
     if (issue.rule !== "G2-TG-01") continue;
     out.push({ message_ru: issue.message_ru, path: issue.path, evidence: "шаблон уведомления Telegram" });
   }
-  const tg = new Set((spec.integrations ?? []).filter((i) => i.connector === "telegram").map((i) => i.name));
-  if (tg.size === 0) return out;
   const pii = piiNames(spec);
+  const tg = new Set((spec.integrations ?? []).filter((i) => i.connector === "telegram").map((i) => i.name));
+  const api = telegramClients(spec, files);
   for (const [wi, w] of (spec.workflows ?? []).entries()) {
     for (const [si, s] of w.steps.entries()) {
-      if (s.type !== "connector" || !tg.has(String(s.params?.integration ?? ""))) continue;
+      const viaConnector = s.type === "connector" && tg.has(String(s.params?.integration ?? ""));
+      const viaApi = s.type === "function" && api.fns.has(String(s.params?.name ?? ""));
+      if (!viaConnector && !viaApi) continue;
       const json = JSON.stringify(s.params ?? {});
       const refs = [...json.matchAll(/\$record\.([a-z_]+)|\{\{\s*([a-z_]+)/g)].map((m) => m[1] ?? m[2]);
-      const bad = refs.filter((r): r is string => !!r && pii.has(r));
+      const bad = refs.filter((r): r is string => !!r && pii.has(r) && !TG_ADDRESS_PROPS.has(r));
       if (bad.length)
         out.push({
           message_ru: "Шаг воркфлоу отправляет в Telegram персональные данные",
           path: `/workflows/${wi}/steps/${si}`,
           evidence: `поля: ${[...new Set(bad)].join(", ")}`,
-          fixHint: "В Telegram — только номер заявки и ссылка; данные человек смотрит в системе",
+          fixHint: TG_FIX,
         });
     }
   }
   for (const src of sources.filter((s) => s.area === "functions")) {
-    const tainted = new Set<string>();
-    // One-level taint: variables initialised from an access to a ПДн field.
-    const collect = (n: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(n) &&
-        n.initializer &&
-        ts.isIdentifier(n.name) &&
-        touchesPii(n.initializer, pii)
-      )
-        tainted.add(n.name.text);
-      if (ts.isBindingElement(n) && ts.isIdentifier(n.name)) {
-        const key = n.propertyName && ts.isIdentifier(n.propertyName) ? n.propertyName.text : n.name.text;
-        if (pii.has(key)) tainted.add(n.name.text);
-      }
-      ts.forEachChild(n, collect);
+    // Generated clients pass their arguments through: the ПДн, if any, comes from their callers.
+    if (api.dirs.some((d) => src.path.startsWith(d))) continue;
+    const tainted = taintedNames(src.sf, pii);
+    const { bound, namespaces } = telegramImports(src, api.dirs, files);
+    const report = (
+      n: ts.CallExpression,
+      via: string,
+      args: readonly ts.Node[],
+      skip?: ReadonlySet<string>,
+    ) => {
+      const why = args.flatMap((a) => argPii(a, pii, tainted, skip));
+      if (why.length)
+        out.push({
+          message_ru: "Функция отправляет в Telegram персональные данные",
+          file: src.path,
+          line: nodeLine(n),
+          evidence: `${via}: ${[...new Set(why)].join(", ")}`,
+          fixHint: TG_FIX,
+        });
     };
-    collect(src.sf);
     const visit = (n: ts.Node) => {
       if (ts.isCallExpression(n)) {
-        const m = /\.connectors\.([A-Za-z0-9_]+)\.[A-Za-z0-9_]+$/.exec(unwrap(n.expression).getText());
-        if (m && tg.has(m[1] as string)) {
-          const why = n.arguments.flatMap((a) => argPii(a, pii, tainted));
-          if (why.length)
-            out.push({
-              message_ru: "Функция отправляет в Telegram персональные данные",
-              file: src.path,
-              line: nodeLine(n),
-              evidence: `ctx.connectors.${m[1]}: ${[...new Set(why)].join(", ")}`,
-              fixHint: "В Telegram — только номер заявки и ссылка; данные человек смотрит в системе",
-            });
-        }
+        const callee = unwrap(n.expression);
+        const text = callee.getText();
+        const m = /\.connectors\.([A-Za-z0-9_]+)\.[A-Za-z0-9_]+$/.exec(text);
+        if (m && tg.has(m[1] as string)) report(n, `ctx.connectors.${m[1]}`, n.arguments);
+        else if (ts.isIdentifier(callee) && bound.has(callee.text))
+          report(n, `Telegram Bot API (${callee.text})`, n.arguments, TG_ADDRESS_PROPS);
+        else if (
+          ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          namespaces.has(callee.expression.text)
+        )
+          report(n, `Telegram Bot API (${text})`, n.arguments, TG_ADDRESS_PROPS);
+        else if (/\.scheduler\.(runAfter|runAt)$/.test(text)) {
+          const name = literalText(n.arguments[1]);
+          if (name && api.fns.has(name))
+            report(n, `Telegram Bot API (${name})`, n.arguments.slice(2), TG_ADDRESS_PROPS);
+        } else if (/\.http\.fetch$/.test(text) && urlHost(n.arguments[0]) === TELEGRAM_API_HOST)
+          report(n, `ctx.http.fetch → ${TELEGRAM_API_HOST}`, n.arguments.slice(1), TG_ADDRESS_PROPS);
       }
       ts.forEachChild(n, visit);
     };
     visit(src.sf);
   }
   return out;
+}
+
+const TG_FIX = "В Telegram — только номер заявки и ссылка; данные человек смотрит в системе";
+/** Host of the Telegram Bot API (integration clients of the passport telegram, ctx.http.fetch). */
+const TELEGRAM_API_HOST = "api.telegram.org";
+/** Bot API fields that address a chat, a message or a button press — not message content. */
+const TG_ADDRESS_PROPS: ReadonlySet<string> = new Set([
+  "chat_id",
+  "chatId",
+  "message_id",
+  "messageId",
+  "callback_query_id",
+  "callbackQueryId",
+  "reply_to_message_id",
+]);
+const INTEGRATION_DIR_RE = /^functions\/integrations\/[a-z][a-z0-9_]{0,39}\//;
+
+/**
+ * Integration clients that speak to Telegram — their folder has a function with egress api.telegram.org (live) or
+ * a file naming the host (the generated client's HOSTS, both modes) — and the spec functions in those folders.
+ */
+function telegramClients(
+  spec: AppSpec,
+  files: ReadonlyMap<string, string>,
+): { dirs: string[]; fns: Set<string> } {
+  const dirs = new Set<string>();
+  for (const f of spec.functions ?? []) {
+    const d = INTEGRATION_DIR_RE.exec(f.file)?.[0];
+    if (d && (f.egress ?? []).some((h) => h.toLowerCase() === TELEGRAM_API_HOST)) dirs.add(d);
+  }
+  for (const [path, text] of files) {
+    const d = INTEGRATION_DIR_RE.exec(path)?.[0];
+    if (d && text.includes(TELEGRAM_API_HOST)) dirs.add(d);
+  }
+  const list = [...dirs];
+  const fns = new Set(
+    (spec.functions ?? []).filter((f) => list.some((d) => f.file.startsWith(d))).map((f) => f.name),
+  );
+  return { dirs: list, fns };
+}
+
+/** Local names a source imports (values, not types) from Telegram integration clients. */
+function telegramImports(
+  src: SourceInfo,
+  dirs: readonly string[],
+  files: ReadonlyMap<string, string>,
+): { bound: Set<string>; namespaces: Set<string> } {
+  const bound = new Set<string>();
+  const namespaces = new Set<string>();
+  if (!dirs.length) return { bound, namespaces };
+  for (const st of src.sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    const spec = st.moduleSpecifier.text;
+    if (!spec.startsWith(".")) continue;
+    const target = resolveRelative(src.path, spec, files);
+    const clause = st.importClause;
+    if (!target || !dirs.some((d) => target.startsWith(d)) || !clause || clause.isTypeOnly) continue;
+    if (clause.name) bound.add(clause.name.text);
+    const nb = clause.namedBindings;
+    if (nb && ts.isNamespaceImport(nb)) namespaces.add(nb.name.text);
+    if (nb && ts.isNamedImports(nb))
+      for (const el of nb.elements) if (!el.isTypeOnly) bound.add(el.name.text);
+  }
+  return { bound, namespaces };
+}
+
+/** One-level taint: variables initialised from an access to a ПДн field, destructured ПДн fields. */
+function taintedNames(sf: ts.SourceFile, pii: ReadonlySet<string>): Set<string> {
+  const tainted = new Set<string>();
+  const collect = (n: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(n) &&
+      n.initializer &&
+      ts.isIdentifier(n.name) &&
+      touchesPii(n.initializer, pii)
+    )
+      tainted.add(n.name.text);
+    if (ts.isBindingElement(n) && ts.isIdentifier(n.name)) {
+      const key = n.propertyName && ts.isIdentifier(n.propertyName) ? n.propertyName.text : n.name.text;
+      if (pii.has(key)) tainted.add(n.name.text);
+    }
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+  return tainted;
+}
+
+const literalText = (n: ts.Expression | undefined): string | null => {
+  const a = n ? unwrap(n) : undefined;
+  return a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) ? a.text : null;
+};
+
+/** Host of a literal URL argument (a string, or the head of a template). */
+function urlHost(n: ts.Expression | undefined): string | null {
+  const a = n ? unwrap(n) : undefined;
+  const text =
+    a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))
+      ? a.text
+      : a && ts.isTemplateExpression(a)
+        ? a.head.text
+        : "";
+  return /^https?:\/\/([^/?#:]+)/i.exec(text)?.[1]?.toLowerCase() ?? null;
 }
 
 function touchesPii(e: ts.Node, pii: ReadonlySet<string>): boolean {
@@ -315,9 +433,22 @@ function touchesPii(e: ts.Node, pii: ReadonlySet<string>): boolean {
   return hit;
 }
 
-function argPii(a: ts.Node, pii: ReadonlySet<string>, tainted: ReadonlySet<string>): string[] {
+/** ПДн reaching a call argument; `skip` — properties whose values are not sent as content (a chat id). */
+function argPii(
+  a: ts.Node,
+  pii: ReadonlySet<string>,
+  tainted: ReadonlySet<string>,
+  skip?: ReadonlySet<string>,
+): string[] {
   const out: string[] = [];
   const visit = (n: ts.Node) => {
+    if (
+      skip &&
+      (ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) &&
+      (ts.isIdentifier(n.name) || ts.isStringLiteral(n.name)) &&
+      skip.has(n.name.text)
+    )
+      return;
     if (ts.isPropertyAccessExpression(n) && pii.has(n.name.text)) out.push(n.name.text);
     else if (ts.isShorthandPropertyAssignment(n) && (pii.has(n.name.text) || tainted.has(n.name.text)))
       out.push(n.name.text);

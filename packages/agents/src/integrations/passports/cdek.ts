@@ -1,6 +1,7 @@
 // СДЭК API v2 (https://api-docs.cdek.ru/): tariffs, orders and their statuses, pickup points, cities, webhooks. OAuth 2.0
-// client credentials: the platform requests an access token (1 hour) with the owner's Account and Secure password and
-// keeps it as the integration's key; the test environment api.edu.cdek.ru has its own public test account.
+// client credentials: the key is the owner's Account and Secure password (one oauth2cc: secret value); the runtime
+// egress client requests an access token (1 hour) at call time and keeps it in memory; the test environment
+// api.edu.cdek.ru has its own public test account.
 import { arr, bool, int, num, obj, oneOf, op, path, query, str } from "./kit.js";
 import type { Passport } from "./types.js";
 
@@ -145,7 +146,7 @@ export const cdek: Passport = {
     ],
     compose: "oauth_client_credentials",
     where_ru:
-      "Личный кабинет СДЭК → Интеграция: Account и Secure password. Платформа сама получает по ним токен доступа (живёт час) и обновляет его.",
+      "Личный кабинет СДЭК → Интеграция: Account и Secure password. Токен доступа (живёт час) рантайм получает по ним сам при вызове и обновляет.",
     token: { path: "/oauth/token", ttlSeconds: 3600 },
   },
   operations: [
@@ -629,7 +630,7 @@ export const cdek: Passport = {
     },
   },
   notes_ru: [
-    "Ключ интеграции — токен доступа OAuth: окно ключа принимает Account и Secure password, платформа меняет их на токен и обновляет его каждый час.",
+    "Ключ интеграции — Account и Secure password (одно значение oauth2cc:): токен доступа рантайм получает при вызове, держит в памяти до истечения и нигде не сохраняет.",
     "Даты СДЭК — со смещением без двоеточия (+0300), в контракте они строки без формата.",
     "Печать накладных и вызов курьера в паспорт не вошли — добавляются по документации отдельной операцией.",
   ],
@@ -640,5 +641,6 @@ export const cdek: Passport = {
     "uuid в вебхуке ORDER_STATUS — идентификатор заказа",
     "порядок statuses (первым — последний статус)",
     "параметры запроса токена — в теле x-www-form-urlencoded (в примерах СДЭК — в строке запроса)",
+    "срок жизни токена (expires_in около 3600 секунд)",
   ],
 };

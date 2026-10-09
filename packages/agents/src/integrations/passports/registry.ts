@@ -226,8 +226,11 @@ export function passportStateOfContract(
 export type PassportKeyResult =
   | {
       ok: true;
-      /** The value of secret://<key>; null — an OAuth token the platform requests first (passportTokenRequest). */
-      value: string | null;
+      /**
+       * The value of secret://<key>. OAuth client credentials (СДЭК) are one `oauth2cc:` value: the runtime egress
+       * client trades it for an access token of the contract's host at call time and keeps the token in memory.
+       */
+      value: string;
       account: PassportAccount | null;
       /** A test key (ЮKassa test_…); null — the provider has no such mark. */
       test: boolean | null;
@@ -236,9 +239,14 @@ export type PassportKeyResult =
 
 /**
  * The key of an integration from what the owner pasted into the key window: the shape of every field, the account of
- * per-account APIs, the composed value (Basic for ЮKassa, the code of a Bitrix24 webhook URL). Never logs values.
+ * per-account APIs, the composed value (Basic for ЮKassa, the code of a Bitrix24 webhook URL, OAuth client
+ * credentials with the token endpoint of the environment for СДЭК). Never logs values.
  */
-export function passportKey(p: Passport, fields: Readonly<Record<string, string>>): PassportKeyResult {
+export function passportKey(
+  p: Passport,
+  fields: Readonly<Record<string, string>>,
+  o: { sandbox?: boolean } = {},
+): PassportKeyResult {
   const problems: string[] = [];
   const val: Record<string, string> = {};
   for (const f of p.key.fields) {
@@ -266,7 +274,16 @@ export function passportKey(p: Passport, fields: Readonly<Record<string, string>
         test: (val.secret_key ?? "").startsWith("test_"),
       };
     case "oauth_client_credentials":
-      return { ok: true, value: null, account, test: null };
+      return {
+        ok: true,
+        value: oauthClientValue({
+          token_url: `${passportBaseUrl(p, o)}${p.key.token?.path ?? ""}`,
+          client_id: val.client_id ?? "",
+          client_secret: val.client_secret ?? "",
+        }),
+        account,
+        test: o.sandbox === true && p.sandboxBaseUrl !== null,
+      };
     case "webhook_url": {
       const code = BITRIX_WEBHOOK_RE.exec(safePath(val.webhook_url ?? ""))?.[2];
       if (!code || !account?.user)
@@ -286,6 +303,13 @@ export function passportKey(p: Passport, fields: Readonly<Record<string, string>
   }
 }
 
+/**
+ * OAuth client credentials as one secret value — the format the runtime egress client reads (@wizard/runtime
+ * parseOAuthClientSecret): `oauth2cc:` + base64url of {token_url, client_id, client_secret}.
+ */
+const oauthClientValue = (c: { token_url: string; client_id: string; client_secret: string }) =>
+  `oauth2cc:${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
+
 const safePath = (raw: string) => {
   try {
     return new URL(raw).pathname;
@@ -295,8 +319,8 @@ const safePath = (raw: string) => {
 };
 
 /**
- * OAuth client credentials (СДЭК): the token request the platform sends through its egress client (the contract's
- * host). The values travel in the form body only; the answer's access_token becomes the integration's key.
+ * OAuth client credentials (СДЭК): the token request the runtime egress client sends for an `oauth2cc:` key (the same
+ * request, built here for the platform's own tools). The values travel in the form body only.
  */
 export function passportTokenRequest(
   p: Passport,
