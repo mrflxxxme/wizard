@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "app.name «СДЭК официальный сайт: отследить заказ»",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "СДЭК официальный сайт: отследить заказ"
+    }
+  ],
+  "base": "forum"
+}

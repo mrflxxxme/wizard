@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "app.name «Доставка СДЭК: оплата заказа» — бренд без своего имени системы",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "Доставка СДЭК: оплата заказа"
+    }
+  ],
+  "base": "forum"
+}

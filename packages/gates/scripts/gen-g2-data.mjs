@@ -113,6 +113,7 @@ export function buildData() {
     /Имена-слова (.+?) — .*?со словом (\S+) в окне (\d+) символов/.exec(p.brands.match.ambiguous),
     "brands.match.ambiguous",
   );
+  const im = must(p.brands.match.identity_means, "brands.match.identity_means");
   const allow = {};
   for (const part of p.brands.connector_allowlist.split(":").slice(1).join(":").split(";")) {
     const m = must(/(.+?)→(.+)/.exec(part), "connector_allowlist");
@@ -152,6 +153,12 @@ export function buildData() {
       ambiguousContext: amb[2],
       ambiguousWindow: Number(amb[3]),
       connectorAllowlist: allow,
+      identityMeans: {
+        categories: must(im.categories, "identity_means.categories"),
+        means: must(im.means, "identity_means.means"),
+        joiners: must(im.joiners, "identity_means.joiners"),
+        deny: must(im.deny, "identity_means.deny"),
+      },
     },
     p2p: { words: p2pWords, window: p2pWindow },
     crypto: { names: p.crypto_codes.names, tokens: cryptoTokens, calls: cryptoCalls, strings: cryptoStrings },

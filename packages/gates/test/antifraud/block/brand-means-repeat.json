@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "app.name «ЮKassa: магазин с оплатой ЮKassa» — первое вхождение бренда — подлежащее",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "ЮKassa: магазин с оплатой ЮKassa"
+    }
+  ],
+  "base": "forum"
+}
