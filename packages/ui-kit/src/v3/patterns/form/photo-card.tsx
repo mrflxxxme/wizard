@@ -322,7 +322,7 @@ function Consent({ form, uid, className }: { form: FormModel; uid: string; class
   const id = `${uid}-consent`;
   const errId = `${id}-error`;
   return (
-    <div className={className}>
+    <div data-testid="wz-consent" className={className}>
       <div className="flex items-start gap-2">
         <Check
           id={id}
@@ -339,6 +339,7 @@ function Consent({ form, uid, className }: { form: FormModel; uid: string; class
               в соответствии с{" "}
               <a
                 href={c.policyPage}
+                data-testid="wz-consent-policy-link"
                 target="_blank"
                 rel="noopener"
                 className="text-inherit underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring"

@@ -286,7 +286,16 @@ export interface RouteHead {
   noindex?: boolean;
   /** An entry page (og:type article). */
   entry?: boolean;
+  /** The address of the same entry written another way (letter case, spaces): a permanent redirect there. */
+  redirect?: string;
 }
+
+/** The slug as the owner would have typed it: lower case, spaces and underscores as dashes. */
+export const normalSlug = (slug: string): string =>
+  slug
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
 
 /**
  * The slug of `pathname` under an entry source's prefix (one segment): undefined — not an entry address of the source,
@@ -328,8 +337,13 @@ export async function routeHead(
     if (slug === undefined) continue;
     const row = slug === null ? undefined : (await entries(sys, s, 1, slug))[0];
     const fallback = seo.pages[s.route];
-    if (!row || slug === null)
+    if (!row || slug === null) {
+      // A soft redirect: «/blog/Kak Nachat» → «/blog/kak-nachat» when that entry is there.
+      const normal = slug === null ? null : normalSlug(slug);
+      if (normal && normal !== slug && (await entries(sys, s, 1, normal))[0])
+        return { title: seo.site, redirect: `${origin}${s.prefix}${encodeURIComponent(normal)}` };
       return { title: `Страница не найдена — ${seo.site}`.slice(0, 120), noindex: true };
+    }
     const name = text(row[s.title]) ?? fallback?.title ?? seo.site;
     const own = s.seoTitle ? text(row[s.seoTitle]) : null;
     const description =
@@ -396,6 +410,7 @@ export async function routeDocument(c: RuntimeContext, html: string): Promise<Re
     head = null;
   }
   if (!head) return c.body(html, 200, { ...documentHeaders(), ...draft });
+  if (head.redirect) return c.redirect(head.redirect, 301);
   const site = (await systemSeo(sys)).site;
   return c.body(withRouteHead(html, head, site), 200, {
     ...documentHeaders(),

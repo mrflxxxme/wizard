@@ -80,6 +80,20 @@ describe("entities and permissions", () => {
     const roles = staff.spec.roles.filter((x) => x.name.startsWith("staff")).map((x) => x.name);
     expect(roles.length).toBeGreaterThan(0);
     for (const role of roles) expect(perm(staff, role, "article")?.ops).toEqual(["read", "create", "update"]);
+    // The section «Блог и страницы» of the staff module: only the roles with it write the content.
+    const sections = plan({}, ["leads", "notify"]);
+    sections.modules.push({
+      id: "staff",
+      params: { roles: ["Редактор", "Администратор"], sections_1: ["content"], sections_2: ["leads"] },
+    });
+    const scoped = compiled(sections);
+    expect(perm(scoped, "staff", "article")?.ops).toEqual(["read", "create", "update"]);
+    expect(perm(scoped, "staff_2", "article")).toBeUndefined();
+    expect(
+      scoped.spec.acceptance?.some(
+        (a) => a.check?.role === "staff_2" && a.check.entity === "article" && a.check.expect === "deny",
+      ),
+    ).toBe(true);
     const withCabinet = plan({}, ["leads", "notify"]);
     withCabinet.modules.push({ id: "visitor_cabinet", params: { show_bookings: false, show_leads: true } });
     const visitor = compiled(withCabinet);

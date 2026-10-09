@@ -323,7 +323,7 @@ function Consent({ form, uid, className }: { form: FormModel; uid: string; class
   const id = `${uid}-consent`;
   const errId = `${id}-error`;
   return (
-    <div className={className}>
+    <div data-testid="wz-consent" className={className}>
       <div className="flex items-start gap-2">
         <Check
           id={id}
@@ -340,6 +340,7 @@ function Consent({ form, uid, className }: { form: FormModel; uid: string; class
               в соответствии с{" "}
               <a
                 href={c.policyPage}
+                data-testid="wz-consent-policy-link"
                 target="_blank"
                 rel="noopener"
                 className="text-inherit underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring"
@@ -444,6 +445,8 @@ export default function FormStepper(props: FormStepperProps) {
   const names = [props.steps?.[0] ?? "Ваш запрос", props.steps?.[1] ?? "Как с вами связаться"];
   const at = Math.min(step, groups.length - 1);
   const last = at === groups.length - 1;
+  // The consent comes with the first personal field on screen (G2-PII-04: before anything personal is sent).
+  const personal = (groups[at] ?? []).some((f) => !!f.pii && f.pii !== "none");
   // Errors of «Далее» (required fields of the step) over the form's own; typing clears them.
   const view: FormModel = {
     ...form,
@@ -556,7 +559,7 @@ export default function FormStepper(props: FormStepperProps) {
                   {(groups[at] ?? []).map((f) => (
                     <FieldRow key={f.name} field={f} form={view} uid={uid} />
                   ))}
-                  {last ? <Consent form={form} uid={uid} /> : null}
+                  {last || personal ? <Consent form={form} uid={uid} /> : null}
                 </div>
                 {form.formError ? (
                   <p role="alert" className="mt-5 text-body font-bold">

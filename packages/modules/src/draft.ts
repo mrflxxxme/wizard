@@ -1785,6 +1785,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "reports",
             label: "Отчёты",
           },
+          {
+            value: "content",
+            label: "Блог и страницы",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1825,6 +1829,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             value: "reports",
             label: "Отчёты",
+          },
+          {
+            value: "content",
+            label: "Блог и страницы",
           },
         ],
         default: [],
@@ -1867,6 +1875,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "reports",
             label: "Отчёты",
           },
+          {
+            value: "content",
+            label: "Блог и страницы",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1908,6 +1920,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "reports",
             label: "Отчёты",
           },
+          {
+            value: "content",
+            label: "Блог и страницы",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1948,6 +1964,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             value: "reports",
             label: "Отчёты",
+          },
+          {
+            value: "content",
+            label: "Блог и страницы",
           },
         ],
         default: [],

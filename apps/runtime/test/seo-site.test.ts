@@ -290,6 +290,18 @@ describe("the head of a route for crawlers", () => {
     expect(r.html).toContain('<meta name="description" content="Цвета &#38; слои">');
   });
 
+  test("a slug written another way (case, spaces) is a permanent redirect to the entry's address", async () => {
+    for (const path of ["/blog/GLAZUR", "/blog/Glazur%20", "/blog/rubric/Glazuri"]) {
+      const res = await get(hosts.prod, path);
+      expect(res.status, path).toBe(301);
+      expect(res.headers.get("location"), path).toBe(
+        `http://${hosts.prod}${path.startsWith("/blog/rubric/") ? "/blog/rubric/glazuri" : "/blog/glazur"}`,
+      );
+    }
+    // A draft is not found by any spelling.
+    expect((await get(hosts.prod, "/blog/CHERNOVIK")).status).toBe(200);
+  });
+
   test("a draft or a wrong address: «Страница не найдена» with noindex; the draft's title never reaches the document", async () => {
     for (const path of ["/blog/chernovik", "/blog/nope", "/blog/%E0%A4%A"]) {
       const { status, html, robots } = await doc(path);

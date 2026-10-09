@@ -48,8 +48,6 @@ const DATABASE_URL =
 const ARTIFACTS = join(dirname(fileURLToPath(import.meta.url)), "artifacts");
 const keyPrefix = `v324${randomBytes(3).toString("hex")}`;
 const SITE_WALK = "V324-site";
-/** A blocker of the V3-12 home page outside this module (see the G1 test). */
-const KNOWN_V312 = /^G1-RENDER-01: Форма на странице «Главная» \(\/\)/;
 
 let db: postgres.Sql;
 let rt: RuntimeApp;
@@ -347,12 +345,8 @@ describe.skipIf(!hasChromium)("V3-24: multi-page v3 site with «Контент �
     };
     expect(failed(await runG0(ctx)), "G0").toEqual([]);
     const g1 = await runG1(ctx, { goals: { programs: { [SITE_WALK]: siteWalk(problems) } } });
-    // The lead form of the home page (V3-12 composer, form-* over useLeadForm) fails the server render's consent check
-    // in the plain V3-12 site too — not a page of this module; everything else must pass.
-    expect(
-      failed(g1).filter((x) => !KNOWN_V312.test(x)),
-      "G1",
-    ).toEqual([]);
+    expect(failed(g1), "G1").toEqual([]);
+    expect(g1.checks.find((c) => c.id === "G1-RENDER-01")?.status).toBe("pass");
     for (const s of [...scenarios.map((x) => x.id), SITE_WALK])
       expect(g1.checks.find((c) => c.id === `G1-GOAL-${s}`)?.status, s).toBe("pass");
     expect(problems).toEqual([]);

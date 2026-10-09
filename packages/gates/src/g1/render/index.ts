@@ -245,11 +245,19 @@ export async function renderPages(ctx: RenderContext): Promise<RenderOutcomeChec
             fixHint:
               "Используйте компоненты @wizard/ui-kit прямо в JSX страницы (<Button …/>), без переприсваивания в переменные",
           });
-        for (const fields of formsWithoutConsent(root, writablePii(spec, role)))
+        // The policy page the role's spec names (the consent links to it, v2 ConsentCheckbox and the v3 forms alike).
+        const policy = (roleSpecs.get(role) as { compliance?: { policyPage?: unknown } } | null)?.compliance
+          ?.policyPage;
+        for (const fields of formsWithoutConsent(
+          root,
+          writablePii(spec, role),
+          typeof policy === "string" ? policy : null,
+        ))
           add(`${i}:${role}:consent:${fields.join(",")}`, {
             ...where,
             message_ru: `Форма на странице ${name} собирает персональные данные (${fields.join(", ")}) без согласия на обработку`,
-            fixHint: "Добавьте в форму ConsentCheckbox из @wizard/ui-kit или используйте RecordForm",
+            fixHint:
+              "Добавьте в форму согласие с флажком и ссылкой на политику: ConsentCheckbox из @wizard/ui-kit, RecordForm или блок согласия паттерна формы v3 (data-testid wz-consent)",
           });
       }
     }
