@@ -23,6 +23,8 @@ export type FormStepperProps = {
   note?: string;
   /** Names of the two steps: the request and the contacts. */
   steps?: string[];
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -182,7 +184,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -306,7 +308,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -496,7 +498,12 @@ export default function FormStepper(props: FormStepperProps) {
   };
 
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-background py-section font-sans text-foreground">
+    <section
+      data-wz-component="LeadForm"
+      data-wz-id={props.wzId}
+      aria-labelledby={`${uid}-title`}
+      className="bg-background py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-page px-gutter">
         <div className="grid gap-10 rounded-lg bg-muted p-6 sm:p-10 lg:grid-cols-12 lg:gap-12 lg:p-14">
           <div className="min-w-0 lg:col-span-5">
@@ -543,6 +550,8 @@ export default function FormStepper(props: FormStepperProps) {
               <form
                 key={lead.round}
                 ref={box}
+                data-wz-step={at + 1}
+                data-wz-steps={groups.length}
                 noValidate
                 onSubmit={onSubmit}
                 aria-labelledby={`${uid}-title`}

@@ -57,4 +57,36 @@ describe("injectWzIds", () => {
     const src = 'import type { Button } from "@wizard/ui-kit";\nexport default () => <Button />;';
     expect(injectWzIds(F, src).entries).toEqual([]);
   });
+
+  test("v3: sections of the system's pattern library (ui/patterns) are ui-kit; signature sections are not", () => {
+    const page = "ui/pages/site/Home.tsx";
+    const key = fileKey(page);
+    const src = [
+      'import HeroSplit from "../../patterns/hero-split";',
+      'import FormCentered from "../../patterns/form-centered";',
+      'import FirstVisit from "../../sections/first-visit";',
+      "export default function HomePage() {",
+      "  return (",
+      "    <>",
+      '      <HeroSplit {...{"title":"Т"}} />',
+      '      <div id="form">',
+      '        <FormCentered {...{"entity":"lead"}} />',
+      "      </div>",
+      "      <FirstVisit />",
+      "    </>",
+      "  );",
+      "}",
+    ].join("\n");
+    const r = injectWzIds(page, src);
+    expect(r.entries.map(([id, e]) => [id, e.componentName, e.line])).toEqual([
+      [`${key}:1`, "HeroSplit", 7],
+      [`${key}:2`, "FormCentered", 9],
+    ]);
+    expect(r.code).toContain(`<HeroSplit {...{"title":"Т"}} wzId="${key}:1" />`);
+    expect(r.code).toContain("<FirstVisit />");
+    // A relative import outside ui/patterns (the system's own code) stays as it is.
+    expect(
+      injectWzIds("ui/pages/A.tsx", 'import X from "./x";\nexport default () => <X />;').entries,
+    ).toEqual([]);
+  });
 });

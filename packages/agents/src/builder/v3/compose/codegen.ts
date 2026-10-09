@@ -3,6 +3,7 @@
 // ui/seo.json for the build (title, description and og:image per route) and the site model ui/site.json.
 import { type DesignSystemV3, designSystemCss } from "@wizard/ui-kit/v3/design";
 import { type PatternMeta, patternById, patternFiles } from "@wizard/ui-kit/v3/patterns";
+import { siteRules } from "./content.js";
 import {
   SECTIONS_DIR,
   SITE_PAGES_DIR,
@@ -63,9 +64,16 @@ export function pageSource(page: SitePage): string {
   return [
     `// Page «${page.title}» (${page.route}) of the public site, written by the page composer v3 (V3-12).`,
     `// Sections: ${page.sections.map((s) => (s.pattern === "signature" ? `${s.id} (signature)` : s.pattern)).join(", ")}.`,
+    'import { useEffect } from "react";',
     ...imports,
     "",
     `export default function ${page.component}Page() {`,
+    // The page renders after the load (the app waits for its spec), so the browser does not scroll to the anchor of
+    // the address itself: a link «/#form» from another page opens at the form (GS-catalog-4, the first screen's action).
+    "  useEffect(() => {",
+    "    const id = location.hash.slice(1);",
+    "    if (id) document.getElementById(id)?.scrollIntoView();",
+    "  }, []);",
     "  return (",
     "    <>",
     ...header.map((s) => el(s, "      ")),
@@ -145,16 +153,18 @@ export function seoJson(site: SiteModel, siteName: string): string {
 
 /**
  * Every file of the composed site; files of an earlier composition no page uses any more are deleted (null). Library
- * patterns are copied with patternFiles; `library` adds patterns outside the ui-kit registry (tests).
+ * patterns are copied with patternFiles; `library` adds patterns outside the ui-kit registry (tests). The site's
+ * action rules (siteRules) apply first, whatever step changed the model — the skeleton, a model's page, the critic.
  */
 export function siteFiles(
-  site: SiteModel,
+  model: SiteModel,
   siteName: string,
   design: DesignSystemV3,
   current: ReadonlyMap<string, string>,
   signatures: ReadonlyMap<string, string> = new Map(),
   library: readonly PatternMeta[] = [],
 ): Map<string, string | null> {
+  const site = siteRules(model, (id) => patternById(id) ?? library.find((p) => p.id === id));
   const out = new Map<string, string | null>();
   out.set(DESIGN_CSS, designCss(design));
   const ids = [

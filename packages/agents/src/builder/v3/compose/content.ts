@@ -3,7 +3,7 @@
 // reviews or claims the owner did not give (D49, catalog H.4). Props are the union of what the variants of a section
 // type may show; the slot schema of the chosen pattern keeps its part.
 import { CONTENT_NAMES, CONTENT_SCREENS, entryPrefix } from "@wizard/modules";
-import type { SectionType } from "@wizard/ui-kit/v3/patterns";
+import { type PatternMeta, patternById, type SectionType } from "@wizard/ui-kit/v3/patterns";
 import { type SiteFacts, textOf } from "./facts.js";
 import {
   ANCHOR_LABELS,
@@ -12,6 +12,8 @@ import {
   isParamRoute,
   type PageKind,
   type PlannedPage,
+  type SiteModel,
+  type SiteSection,
 } from "./site.js";
 
 /** Where the main action of the site leads: a section of a page (form) or a page, a phone, an e-mail. */
@@ -118,6 +120,8 @@ export interface SectionContext {
   binding: Binding | null;
   /** Anchors of the home page sections (menu of a one-page site). */
   homeSections: readonly { id: string; type: SectionType }[];
+  /** Path of the site's request form («/#form») when the site has one (where a catalog item leads without booking). */
+  leadForm?: string;
 }
 
 function headerNav(c: SectionContext): Link[] {
@@ -390,7 +394,7 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
       title: fits(textOf(f, "booking", "title"), LINE.cta) ?? "Запись онлайн",
       ...(text ? { text } : {}),
       submit: submit && !VAGUE.has(submit) ? submit : "Записаться",
-      sent: { title: "Вы записаны" },
+      sent: { title: SENT_TITLES.booking },
       again: "Записаться ещё раз",
       ...contact,
     };
@@ -404,7 +408,7 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
       title: fits(textOf(f, "lead_form", "title"), LINE.cta) ?? "Оставьте заявку",
       ...(text ? { text } : {}),
       submit: submit && !VAGUE.has(submit) ? submit : "Отправить заявку",
-      sent: { title: "Заявка отправлена" },
+      sent: { title: SENT_TITLES.lead },
       again: "Отправить ещё одну заявку",
       ...(points ? { points } : {}),
       ...contact,
@@ -412,13 +416,19 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   }
   if (type === "catalog") {
     const booking = c.pages.find((p) => p.kind === "booking");
+    // An item leads to its booking, else to the request form of the site (as the module's showcase, GS-catalog-4).
+    const itemAction = booking
+      ? { label: "Записаться", path: booking.route }
+      : c.leadForm
+        ? { label: "Оставить заявку", path: c.leadForm }
+        : null;
     return {
       entity,
       ...(b.categoryEntity ? { categoryEntity: b.categoryEntity } : {}),
       // The page heading (h1) is the screen title; the showcase heading says what the list is, without repeating it.
       title: c.page.title.trim().toLowerCase() === "услуги и цены" ? "Все услуги" : "Услуги и цены",
       empty: "В каталоге пока нет позиций",
-      ...(booking ? { itemAction: { label: "Записаться", path: booking.route } } : {}),
+      ...(itemAction ? { itemAction } : {}),
     };
   }
   return { entity, title: fits(c.page.title, LINE.cta) ?? "Материалы", empty: "Записей пока нет" };
@@ -540,3 +550,94 @@ export const KIND_LABELS: Readonly<Record<PageKind, string>> = {
   entry: "страница записи",
   rubric: "рубрика",
 };
+
+/** The «sent» headings of the module forms: the goal scenarios read them after a write (GS-leads-1, GS-booking-1). */
+export const SENT_TITLES = { lead: "Заявка отправлена", booking: "Вы записаны" } as const;
+/** A booking heading the booking goal scenarios accept (staff confirmation says «Заявка на запись отправлена»). */
+const BOOKED_RE = /Вы записаны|Заявка на запись отправлена/;
+
+/** A form section bound to its module (request or booking). */
+const isForm = (s: SiteSection) => s.type === "form" && typeof s.props.entity === "string";
+
+/** «#form» on the form's own page, «/#form» or «/booking#form» elsewhere. */
+const formHref = (route: string, id: string, from: string) => (route === from ? `#${id}` : `${route}#${id}`);
+
+/** The first screen's main action led to `href` (the label stays). */
+function heroTo(s: SiteSection, href: string): SiteSection {
+  const action = s.props.action as { label?: unknown; href?: unknown } | undefined;
+  if (!action || typeof action.label !== "string" || action.href === href) return s;
+  return { ...s, props: { ...s.props, action: { ...action, href } } };
+}
+
+/** A catalog item's action to `target` when the variant shows item actions (its slot schema keeps one). */
+function itemsTo(
+  s: SiteSection,
+  target: { label: string; path: string },
+  patternOf: (id: string) => PatternMeta | undefined,
+): SiteSection {
+  const now = s.props.itemAction as { label?: unknown; path?: unknown } | undefined;
+  const itemAction = { label: typeof now?.label === "string" ? now.label : target.label, path: target.path };
+  if (now?.path === itemAction.path && now.label === itemAction.label) return s;
+  const parsed = patternOf(s.pattern)?.slots.safeParse({ ...s.props, itemAction });
+  if (!parsed?.success || (parsed.data as Props).itemAction === undefined) return s;
+  return { ...s, props: { ...s.props, itemAction } };
+}
+
+/** The «sent» heading of a module form in the module's wording (the owner's text under it stays). */
+function sentTitle(s: SiteSection): SiteSection {
+  const booking = s.props.booking !== undefined;
+  const sent = (s.props.sent ?? {}) as { title?: unknown };
+  const title = typeof sent.title === "string" ? sent.title : "";
+  if (booking ? BOOKED_RE.test(title) : title.includes(SENT_TITLES.lead)) return s;
+  const fixed = booking ? SENT_TITLES.booking : SENT_TITLES.lead;
+  return { ...s, props: { ...s.props, sent: { ...sent, title: fixed } } };
+}
+
+/**
+ * The rules of the site's actions, kept after every step that writes pages — the skeleton, a model's page, an edit of
+ * the critic (siteFiles applies them; builder-v3.md C6): the first screen's main action leads to the request or booking
+ * form of its own page (#<section id>), on a page without one — to the form of the site's main action (its page and
+ * anchor); a catalog item leads to its booking, else to the request form; a module form's «sent» heading is the
+ * module's wording. The modules' goal scenarios check exactly this in the browser (GS-landing-1, GS-catalog-4,
+ * GS-leads-1, GS-booking-1). A site without module forms is left as it is.
+ */
+export function siteRules(
+  site: SiteModel,
+  patternOf: (id: string) => PatternMeta | undefined = patternById,
+): SiteModel {
+  const forms = site.pages.flatMap((p) =>
+    p.sections
+      .filter(isForm)
+      .map((s) => ({ route: p.route, id: s.id, booking: s.props.booking !== undefined })),
+  );
+  const first = forms[0];
+  if (!first) return site;
+  const p = site.primary;
+  const named =
+    p && (p.kind === "form" || p.kind === "booking") ? forms.find((f) => f.route === p.route) : undefined;
+  const main = named ?? forms.find((f) => !f.booking) ?? first;
+  const booking = forms.find((f) => f.booking);
+  const lead = forms.find((f) => !f.booking);
+  const itemTarget = booking
+    ? { label: "Записаться", path: booking.route === "/" ? formHref("/", booking.id, "") : booking.route }
+    : lead
+      ? { label: "Оставить заявку", path: formHref(lead.route, lead.id, "") }
+      : null;
+  let changed = false;
+  const pages = site.pages.map((page) => {
+    const own = page.sections.find(isForm);
+    const hero = page.sections.find((s) => s.type === "hero");
+    const heroHref = own ? `#${own.id}` : formHref(main.route, main.id, page.route);
+    const sections = page.sections.map((s) => {
+      let next = s;
+      if (s === hero) next = heroTo(s, heroHref);
+      else if (s.type === "catalog" && itemTarget) next = itemsTo(s, itemTarget, patternOf);
+      else if (isForm(s)) next = sentTitle(s);
+      return next;
+    });
+    if (sections.every((s, i) => s === page.sections[i])) return page;
+    changed = true;
+    return { ...page, sections };
+  });
+  return changed ? { ...site, pages } : site;
+}

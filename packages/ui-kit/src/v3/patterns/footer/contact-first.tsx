@@ -32,12 +32,12 @@ export default function FooterContactFirst({
               main.href ? (
                 <a
                   href={main.href}
-                  className="mt-1 inline-flex min-h-11 max-w-full items-center font-display text-h1 font-bold wrap-break-word text-foreground underline-offset-8 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="mt-1 inline-flex min-h-11 max-w-full items-center font-display text-h1 font-bold wrap-anywhere text-foreground underline-offset-8 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   {main.value}
                 </a>
               ) : (
-                <p className="mt-1 font-display text-h1 font-bold wrap-break-word">{main.value}</p>
+                <p className="mt-1 font-display text-h1 font-bold wrap-anywhere">{main.value}</p>
               )
             ) : null}
             {rest.length ? (

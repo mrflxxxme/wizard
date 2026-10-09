@@ -13,6 +13,8 @@ export type HeroCenteredProps = {
   secondary?: Link;
   note?: string;
   image?: Image;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const primaryClass =
@@ -39,17 +41,25 @@ function useEnter() {
       : {};
 }
 
-export default function HeroCentered({ title, lead, action, secondary, note, image }: HeroCenteredProps) {
+export default function HeroCentered({
+  title,
+  lead,
+  action,
+  secondary,
+  note,
+  image,
+  wzId,
+}: HeroCenteredProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-background font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div
           className={`mx-auto flex w-full max-w-page flex-col items-center px-gutter pt-section text-center ${image ? "" : "pb-section"}`}
         >
           <m.h1
             {...enter(0)}
-            className="max-w-4xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
+            className="w-full max-w-4xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
           >
             {title}
           </m.h1>
@@ -62,7 +72,7 @@ export default function HeroCentered({ title, lead, action, secondary, note, ima
             {...enter(2)}
             className="mt-8 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:flex-wrap"
           >
-            <a href={action.href} className={primaryClass}>
+            <a href={action.href} data-testid="wz-hero-primary" className={primaryClass}>
               {action.label}
             </a>
             {secondary ? (

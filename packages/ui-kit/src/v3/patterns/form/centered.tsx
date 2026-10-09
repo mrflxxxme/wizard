@@ -23,6 +23,8 @@ export type FormCenteredProps = {
   note?: string;
   /** A direct channel instead of the form. */
   contact?: Link;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const controlClass =
@@ -182,7 +184,7 @@ function FieldRow({
   );
   if (field.type === "bool")
     return (
-      <div className={className}>
+      <div data-testid={`wz-field-${field.name}`} className={className}>
         <div className="flex items-start gap-2">
           <Check
             id={id}
@@ -306,7 +308,7 @@ function FieldRow({
       />
     );
   return (
-    <div className={`min-w-0 ${className ?? ""}`}>
+    <div data-testid={`wz-field-${field.name}`} className={`min-w-0 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-small font-bold">
         {label}
       </label>
@@ -436,7 +438,12 @@ export default function FormCentered(props: FormCenteredProps) {
     if (!(await form.submit())) setTries((n) => n + 1);
   };
   return (
-    <section aria-labelledby={`${uid}-title`} className="bg-muted py-section font-sans text-foreground">
+    <section
+      data-wz-component="LeadForm"
+      data-wz-id={props.wzId}
+      aria-labelledby={`${uid}-title`}
+      className="bg-muted py-section font-sans text-foreground"
+    >
       <div className="mx-auto w-full max-w-xl px-gutter">
         <div className="text-center">
           <h2 id={`${uid}-title`} className="font-display text-h2 font-bold text-balance wrap-break-word">

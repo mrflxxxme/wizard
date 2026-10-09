@@ -38,7 +38,15 @@ export {
   seoJson,
   siteFiles,
 } from "./codegen.js";
-export { actionHref, primaryAction, type SiteAction, sectionProps, seoOf } from "./content.js";
+export {
+  actionHref,
+  primaryAction,
+  SENT_TITLES,
+  type SiteAction,
+  sectionProps,
+  seoOf,
+  siteRules,
+} from "./content.js";
 export { numbersOf, type SiteFacts, type SitePhoto, siteFacts, textLeaves } from "./facts.js";
 export {
   type CopyIssue,

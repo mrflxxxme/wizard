@@ -12,6 +12,8 @@ export type HeroOfferCardProps = {
   secondary?: Link;
   note?: string;
   offer: { title: string; price?: string; points?: string[] };
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 /** Entrance of the first screen (catalog E3): once, only with the lively motion profile, never with reduced motion. */
@@ -33,11 +35,19 @@ function useEnter() {
       : {};
 }
 
-export default function HeroOfferCard({ title, lead, action, secondary, note, offer }: HeroOfferCardProps) {
+export default function HeroOfferCard({
+  title,
+  lead,
+  action,
+  secondary,
+  note,
+  offer,
+  wzId,
+}: HeroOfferCardProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-muted font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-muted font-sans text-foreground">
         <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-12">
           <div className="min-w-0 lg:col-span-7">
             <m.h1
@@ -82,6 +92,7 @@ export default function HeroOfferCard({ title, lead, action, secondary, note, of
             ) : null}
             <a
               href={action.href}
+              data-testid="wz-hero-primary"
               className="mt-8 flex min-h-11 w-full items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {action.label}

@@ -14,6 +14,8 @@ export type HeroSplitProps = {
   secondary?: Link;
   note?: string;
   image: Image;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 const primaryClass =
@@ -40,11 +42,11 @@ function useEnter() {
       : {};
 }
 
-export default function HeroSplit({ title, lead, action, secondary, note, image }: HeroSplitProps) {
+export default function HeroSplit({ title, lead, action, secondary, note, image, wzId }: HeroSplitProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-background font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto grid w-full max-w-page items-center gap-10 px-gutter py-section lg:grid-cols-12 lg:gap-14">
           <div className="min-w-0 lg:col-span-6">
             <m.h1
@@ -59,7 +61,7 @@ export default function HeroSplit({ title, lead, action, secondary, note, image 
               </m.p>
             ) : null}
             <m.div {...enter(2)} className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <a href={action.href} className={primaryClass}>
+              <a href={action.href} data-testid="wz-hero-primary" className={primaryClass}>
                 {action.label}
               </a>
               {secondary ? (

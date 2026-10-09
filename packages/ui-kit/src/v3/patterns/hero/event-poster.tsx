@@ -12,6 +12,8 @@ export type HeroEventPosterProps = {
   secondary?: Link;
   when: string;
   where: string;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 /** Entrance of the first screen (catalog E3): once, only with the lively motion profile, never with reduced motion. */
@@ -40,11 +42,12 @@ export default function HeroEventPoster({
   secondary,
   when,
   where,
+  wzId,
 }: HeroEventPosterProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="bg-background font-sans text-foreground">
+      <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto w-full max-w-page px-gutter py-section">
           <m.h1
             {...enter(0)}
@@ -69,6 +72,7 @@ export default function HeroEventPoster({
             <div className="py-5 lg:col-span-3 lg:pl-6">
               <a
                 href={action.href}
+                data-testid="wz-hero-primary"
                 className="flex min-h-11 w-full items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 {action.label}

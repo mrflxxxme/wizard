@@ -53,10 +53,69 @@ export async function openEntity(t: GoalRun, role: string, entity: string, prefi
   return "body";
 }
 
-/** Route of the public page with the lead form (the landing «/» first). */
+const IMPORT_RE = /import\s+(\w+)\s+from\s+["'](\.{1,2}\/[^"']+)["']/g;
+
+/** A relative import of a file of the system resolved against the importing file («ui/pages/site» + «../../x»). */
+function resolveImport(from: string, spec: string): string {
+  const out = from.split("/").slice(0, -1);
+  for (const part of spec.split("/")) {
+    if (part === "..") out.pop();
+    else if (part !== ".") out.push(part);
+  }
+  return out.join("/");
+}
+
+/**
+ * Whether a page file renders a component of the DOM contract `name`: the ui-kit component itself (`<LeadForm`, v2),
+ * or a file of the system it imports and renders — a v3 pattern (ui/patterns/*) or section — whose root carries
+ * data-wz-component="<name>".
+ */
+export function rendersComponent(files: ReadonlyMap<string, string>, file: string, name: string): boolean {
+  const src = files.get(file) ?? "";
+  if (src.includes(`<${name}`)) return true;
+  for (const [, local, spec] of src.matchAll(IMPORT_RE)) {
+    if (!local || !spec || !src.includes(`<${local}`)) continue;
+    const path = resolveImport(file, spec);
+    const dep = files.get(path) ?? files.get(`${path}.tsx`) ?? files.get(`${path}.ts`);
+    if (dep?.includes(`data-wz-component="${name}"`)) return true;
+  }
+  return false;
+}
+
+/** Route of the public page with the lead form (the landing «/» first): v2 `<LeadForm`, or a v3 lead form pattern. */
 export function leadFormRoute(t: GoalRun): string | null {
-  const pages = (t.spec.pages ?? []).filter((p) => (t.files.get(p.file) ?? "").includes("<LeadForm"));
+  const pages = (t.spec.pages ?? []).filter((p) => rendersComponent(t.files, p.file, "LeadForm"));
   return (pages.find((p) => p.route === "/") ?? pages[0])?.route ?? null;
+}
+
+/** Steps a form may have (a v3 stepper: «Ваш запрос», then «Как с вами связаться»). */
+const MAX_FORM_STEPS = 4;
+
+/**
+ * Fills and sends the form inside `within` like a person: every field filled, consents ticked, sent. A form in steps
+ * (data-wz-step / data-wz-steps of the v3 patterns) is filled step by step — «Далее» until its last step is sent; a
+ * one-step form (every v2 form) is filled and sent once.
+ */
+export async function sendForm(t: GoalRun, within: string): Promise<FilledForm> {
+  const filled: FilledForm = {};
+  for (let i = 0; i < MAX_FORM_STEPS; i++) {
+    Object.assign(filled, await t.fillForm(within));
+    const form = t.page.locator(`${within} form`).first();
+    const step = Number((await form.getAttribute("data-wz-step").catch(() => null)) ?? "0");
+    const steps = Number((await form.getAttribute("data-wz-steps").catch(() => null)) ?? "0");
+    if (!(step > 0 && step < steps)) {
+      await t.submit(within);
+      return filled;
+    }
+    // «Далее» of a step: no write yet, the next step's fields come in its place.
+    await form.locator('button[type="submit"]').first().click();
+    await t.settle();
+    const at = async () => Number((await form.getAttribute("data-wz-step").catch(() => null)) ?? "0");
+    for (let k = 0; k < 15 && (await at()) === step; k++) await t.page.waitForTimeout(200);
+    if ((await at()) === step)
+      t.fail(`форма не перешла к шагу ${step + 1} из ${steps}`, await textOf(t, within));
+  }
+  return t.fail(`у формы больше ${MAX_FORM_STEPS} шагов`);
 }
 
 /** A visitor leaves a lead on the lead form page (every field filled, consent ticked) and sees «Заявка отправлена». */
@@ -65,8 +124,7 @@ export async function leaveLead(t: GoalRun): Promise<FilledForm> {
   if (!route) return t.fail("на сайте нет формы заявки");
   await t.open(route);
   const form = component("LeadForm");
-  const filled = await t.fillForm(form);
-  await t.submit(form);
+  const filled = await sendForm(t, form);
   await t.expectText("Заявка отправлена", { within: form });
   return filled;
 }

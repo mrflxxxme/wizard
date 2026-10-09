@@ -101,6 +101,9 @@ describe.skipIf(!hasYaml)("deploy workflows", () => {
     for (const f of ["goals.browser.test.ts", "goals-b218.browser.test.ts", "goals-time.browser.test.ts"])
       expect(steps).toContain(f);
     expect(steps).toContain("b2-build-v2.browser.test.ts");
+    // V3-18: the goal scenarios of the eval briefs on the composed v3 pages (no model); every form variant — in e2e.
+    expect(steps).toContain("v3-goals.browser.test.ts");
+    expect(JSON.stringify(doc.jobs.e2e.steps)).toContain("v3-goals-variants.browser.test.ts");
     expect(JSON.stringify(doc.jobs.e2e.steps)).not.toContain("goals.browser.test.ts");
   });
 });

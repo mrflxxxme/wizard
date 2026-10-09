@@ -1,9 +1,13 @@
 // wz-id injection (specs/ui/ui-kit.yaml#wz_id): every JSX element imported from @wizard/ui-kit gets
-// wzId="<fileKey>:<ordinal>"; the map entry {file, line, componentName} goes to wz-map.json.
+// wzId="<fileKey>:<ordinal>"; the map entry {file, line, componentName} goes to wz-map.json. A v3 system's copies of
+// the ui-kit pattern library (ui/patterns/<id>.tsx, builder-v3.md C3) count as ui-kit too: the sections a page file
+// imports from there get the prop the same way (their roots carry data-wz-component and data-wz-id).
 import ts from "typescript";
 import { sha256Hex } from "./hash.js";
 
 export const UI_KIT = "@wizard/ui-kit";
+/** Folder of the v3 pattern library copied into a system (the composer's page files import their sections from it). */
+export const PATTERNS_DIR = "ui/patterns/";
 
 export interface WzEntry {
   file: string;
@@ -22,12 +26,29 @@ interface KitImports {
   namespaces: Set<string>;
 }
 
-function collectKitImports(sf: ts.SourceFile): KitImports {
+/** A relative import of a system file resolved against the importing file («ui/pages/site» + «../../patterns/x»). */
+function resolveRelative(file: string, spec: string): string {
+  const out = file.split("/").slice(0, -1);
+  for (const part of spec.split("/")) {
+    if (part === "..") out.pop();
+    else if (part !== ".") out.push(part);
+  }
+  return out.join("/");
+}
+
+function collectKitImports(sf: ts.SourceFile, file: string): KitImports {
   const named = new Map<string, string>();
   const namespaces = new Set<string>();
   for (const st of sf.statements) {
     if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
-    if (st.moduleSpecifier.text !== UI_KIT) continue;
+    const spec = st.moduleSpecifier.text;
+    // v3: the default import of a pattern of the system's library (ui/patterns/<id>) — the section component.
+    if (spec.startsWith(".") && resolveRelative(file, spec).startsWith(PATTERNS_DIR)) {
+      const local = st.importClause?.isTypeOnly ? undefined : st.importClause?.name?.text;
+      if (local) named.set(local, local);
+      continue;
+    }
+    if (spec !== UI_KIT) continue;
     const clause = st.importClause;
     if (!clause || clause.isTypeOnly) continue;
     const bindings = clause.namedBindings;
@@ -69,7 +90,7 @@ export interface WzTransform {
  */
 export function injectWzIds(file: string, source: string): WzTransform {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const kit = collectKitImports(sf);
+  const kit = collectKitImports(sf, file);
   const entries: Array<[string, WzEntry]> = [];
   if (kit.named.size === 0 && kit.namespaces.size === 0) return { code: source, entries };
   const key = fileKey(file);

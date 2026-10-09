@@ -13,6 +13,8 @@ export type HeroFullBleedProps = {
   secondary?: Link;
   note?: string;
   image: Image;
+  /** Place of the section in the page source: the build injects it (ui-kit.yaml#wz_id), never the composer. */
+  wzId?: string;
 };
 
 /** Entrance of the first screen (catalog E3): once, only with the lively motion profile, never with reduced motion. */
@@ -34,11 +36,23 @@ function useEnter() {
       : {};
 }
 
-export default function HeroFullBleed({ title, lead, action, secondary, note, image }: HeroFullBleedProps) {
+export default function HeroFullBleed({
+  title,
+  lead,
+  action,
+  secondary,
+  note,
+  image,
+  wzId,
+}: HeroFullBleedProps) {
   const enter = useEnter();
   return (
     <LazyMotion features={domAnimation}>
-      <section className="relative isolate flex min-h-[min(88svh,52rem)] items-end overflow-hidden bg-inverse font-sans">
+      <section
+        data-wz-component="Hero"
+        data-wz-id={wzId}
+        className="relative isolate flex min-h-[min(88svh,52rem)] items-end overflow-hidden bg-inverse font-sans"
+      >
         <img
           src={image.src}
           alt={image.alt}
@@ -54,6 +68,7 @@ export default function HeroFullBleed({ title, lead, action, secondary, note, im
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <a
                 href={action.href}
+                data-testid="wz-hero-primary"
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control bg-primary px-6 text-center text-body font-bold text-primary-foreground transition-colors duration-200 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-scrim-foreground"
               >
                 {action.label}

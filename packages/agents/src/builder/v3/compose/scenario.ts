@@ -31,7 +31,7 @@ import { upperBoundCredits } from "../../budget.js";
 import { milliToRub } from "../../v2/wallet.js";
 import type { V3BuildContext, V3ComposeResult } from "../contract.js";
 import { siteFiles } from "./codegen.js";
-import { actionLink, heroPhoto } from "./content.js";
+import { actionLink, heroPhoto, siteRules } from "./content.js";
 import { type SiteFacts, siteFacts } from "./facts.js";
 import { copyIssues, lintErrors, type PageLintIssue, propsIssues } from "./lint.js";
 import {
@@ -148,6 +148,18 @@ interface Editable {
 /** Binding slots of the patterns with needs (V3-08): the model writes the texts around them, not these. */
 const FIXED_KEYS = ["entity", "booking", "categoryEntity", "fields", "itemAction"] as const;
 
+/** Slot names of a variant (its zod object schema); null — not an object schema. */
+const slotKeys = (p: PatternMeta): string[] | null => {
+  const shape = (p.slots as unknown as { shape?: Record<string, unknown> }).shape;
+  return shape ? Object.keys(shape) : null;
+};
+
+/** A variant keeps the binding of a section: it has a slot for every binding key (an item action stays an action). */
+const keepsBinding = (p: PatternMeta, fixed: Record<string, unknown>): boolean => {
+  const keys = slotKeys(p);
+  return keys === null || Object.keys(fixed).every((k) => keys.includes(k));
+};
+
 function editable(page: SitePage, library: readonly PatternMeta[]): Editable[] {
   return page.sections
     .filter((s) => s.type !== "header" && s.type !== "footer" && s.type !== "signature")
@@ -158,7 +170,9 @@ function editable(page: SitePage, library: readonly PatternMeta[]): Editable[] {
       for (const k of FIXED_KEYS) if (s.props[k] !== undefined) fixed[k] = s.props[k];
       return {
         section: s,
-        options: library.filter((p) => p.sectionType === s.type && p.needs === needs),
+        options: library.filter(
+          (p) => p.sectionType === s.type && p.needs === needs && keepsBinding(p, fixed),
+        ),
         fixed,
       };
     });
@@ -679,6 +693,8 @@ export async function composeScenario(
     site = { ...site, pages: site.pages.map((p) => (p.route === page.route ? page : p)) };
   }
 
+  // The action rules of the site over the model's pages (siteFiles applies them as well).
+  site = siteRules(site, (id) => library.find((p) => p.id === id) ?? patternById(id));
   const files = changed(siteFiles(site, facts.name, ctx.design, ctx.files, signatures, library), ctx.files);
   for (const page of site.pages.filter((p) => targets.some((t) => t.route === p.route))) {
     const errors = lintErrors(lintSitePage(site, page, facts, library, signatures));

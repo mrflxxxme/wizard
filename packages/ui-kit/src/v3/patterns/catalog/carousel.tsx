@@ -56,9 +56,11 @@ function priceOf(v: unknown): string | null {
 
 function durationOf(v: unknown): string | null {
   if (typeof v !== "number" || v <= 0) return null;
+  // Minutes below two hours («60 мин», «90 мин») as the module's showcase says them, then hours.
+  if (v < 120) return `${v} мин`;
   const h = Math.floor(v / 60);
   const m = v % 60;
-  return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`;
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
 }
 
 /** Address of an image field: a file of the system's storage at the given width (runtime files.image). */
@@ -179,9 +181,15 @@ function More({
   );
 }
 
-/** The address of an item's action: the page and ?service=<id>, which the booking patterns read to preselect it. */
+/**
+ * The address of an item's action: the page and ?service=<id> (the booking patterns read it to preselect the item),
+ * before the anchor of a section the path may lead to («/#form» → «/?service=…#form»).
+ */
 function actionHref(path: string, id: string): string {
-  return `${path}${path.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}`;
+  const at = path.indexOf("#");
+  const page = at < 0 ? path : path.slice(0, at);
+  const anchor = at < 0 ? "" : path.slice(at);
+  return `${page}${page.includes("?") ? "&" : "?"}service=${encodeURIComponent(id)}${anchor}`;
 }
 
 const arrowClass =
@@ -218,6 +226,7 @@ export default function CatalogCarousel(props: CatalogCarouselProps) {
             return (
               <li
                 key={item.id}
+                data-testid="wz-itemcard"
                 className="flex w-4/5 shrink-0 snap-start flex-col overflow-hidden rounded-lg bg-background text-foreground sm:w-80"
               >
                 {it.photo ? (
@@ -252,6 +261,7 @@ export default function CatalogCarousel(props: CatalogCarouselProps) {
                     {itemAction ? (
                       <a
                         href={actionHref(itemAction.path, item.id)}
+                        data-testid="wz-itemcard-cta"
                         aria-label={`${itemAction.label}: ${it.name}`}
                         className="inline-flex min-h-11 items-center font-bold text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                       >
