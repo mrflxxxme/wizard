@@ -222,9 +222,9 @@ describe("modules pipeline: goal interview → plan → edits → approval", () 
     const full = await api.req("GET", `/systems/${systemId}/plan/sketch?detail=full`);
     expect(full.body.spec.entities.map((e: { name: string }) => e.name)).toContain("lead");
     expect(Object.keys(full.body.files)).toContain("ui/pages/Home.tsx");
-    // B2-44: the system is still named after its brief — the canvas shows the plan's short name, not the brief.
+    // V3-18: a new system is named after what the business is in the owner's words, never his sentence cut off.
     const s = await api.req("GET", `/systems/${systemId}`);
-    expect(s.body.system.name).toBe("Стоматологическая клиника в Казани");
+    expect(s.body.system.name).toBe("Стоматологическая клиника");
     expect(full.body.spec.app.name).toBe("Стоматологическая клиника");
     expect(full.body.files["ui/pages/Home.tsx"]).toContain("Стоматологическая клиника");
   });

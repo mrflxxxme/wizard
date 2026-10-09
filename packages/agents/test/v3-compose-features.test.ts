@@ -10,6 +10,7 @@ import { briefPlan, type SiteModel } from "../src/builder/index.js";
 import { clientCabinet } from "../src/builder/v3/compose/account.js";
 import {
   briefCopy,
+  businessName,
   businessOf,
   catalogNoun,
   isPlaceholderName,
@@ -87,6 +88,15 @@ const EXPECTED: Readonly<
   },
 };
 
+/** The name a new system gets from the owner's first message (V3-18: the platform's nameFromPrompt). */
+const SYSTEM_NAMES: Readonly<Record<string, string>> = {
+  "v3-01-interior-studio": "Линия",
+  "v3-02-dental-booking": "Стоматологическая клиника",
+  "v3-03-cleaning-crm": "Клининговая компания",
+  "v3-04-karelia-tours": "Турфирма",
+  "v3-05-ceramics-shop": "Керамическая мастерская",
+};
+
 /** Words of a test or a draft that never show on a site. */
 const PLACEHOLDER_WORDS = /(?:^|[^\p{L}])(?:проверка|тест|test|пример|черновик|новая система)(?![\p{L}])/iu;
 
@@ -147,9 +157,24 @@ describe("texts of the skeleton from the brief (no model)", () => {
       if (what && !norm(what).includes(norm(plan.niche)))
         for (const t of [hero.title, home(site).seo.title])
           expect(` ${norm(t)} `.includes(` ${norm(plan.niche)} `), `«${t}»: «${plan.niche}»`).toBe(false);
-      // The owner's quoted name is the brand of the SEO titles.
+      // The owner's quoted name is the brand of the SEO titles and of the header and footer of every page.
       const brand = what ? quotedName(businessOf(request)?.sentence ?? "") : undefined;
       expect(seo.site).toBe(brand ?? want?.seo);
+      for (const p of site.pages)
+        for (const s of p.sections.filter((x) => x.type === "header" || x.type === "footer")) {
+          expect((s.props.brand as { name: string }).name, `${p.route} ${s.type}`).toBe(seo.site);
+          const operator = (s.props.legal as { operator?: string } | undefined)?.operator ?? "";
+          expect(operator).not.toMatch(PLACEHOLDER_WORDS);
+          expect(operator).not.toMatch(/…/);
+        }
+      // The name the platform gives the new system (nameFromPrompt → businessName): never cut, never a placeholder;
+      // built with it, the site says the same.
+      const system = businessName(request) ?? "";
+      expect(system).toBe(SYSTEM_NAMES[id]);
+      const named = await briefSite(id, input, { appName: system });
+      expect(sectionOf(home(named.site), "hero").props.title).toBe(want?.title);
+      expect(home(named.site).seo.title).toBe(want?.seo);
+      expect((sectionOf(home(named.site), "header").props.brand as { name: string }).name).toBe(seo.site);
       // Never the audience as a heading, never the first words of a sentence of the brief cut off (the planner's
       // niche of an unknown business), never the planner's placeholders.
       const brief = systemBriefSchema.parse(input);

@@ -163,7 +163,8 @@ export function navLabel(p: Pick<PlannedPage, "title" | "kind">): string {
 }
 
 function brand(f: SiteFacts) {
-  return { name: f.name, href: "/" };
+  // V3-18: the business name the owner gave, else what the business is (never a placeholder or a cut name).
+  return { name: f.copy.site, href: "/" };
 }
 
 function contactsList(f: SiteFacts) {
@@ -222,7 +223,7 @@ function heroProps(c: SectionContext): Props | null {
     fits(textOf(f, "hero", "title"), LINE.title) ??
     fits(f.description, LINE.title) ??
     fits(f.copy.title, LINE.title) ??
-    f.name.slice(0, LINE.title);
+    f.copy.title;
   const lead =
     forAction(fits(textOf(f, "hero", "subtitle"), LINE.lead), c.primary) ??
     (title === f.description ? undefined : fits(f.description, LINE.lead)) ??
@@ -281,7 +282,8 @@ function footerProps(c: SectionContext): Props {
     columns: [{ title: "Разделы", links }],
     legal: {
       operator:
-        fits(f.operator, 120) ?? `Владелец сайта «${f.name}» — оператор персональных данных`.slice(0, 120),
+        fits(f.operator, 120) ??
+        `Владелец сайта «${f.copy.site}» — оператор персональных данных`.slice(0, 120),
       ...(f.operatorInn ? { details: `ИНН ${f.operatorInn}` } : {}),
       policy: { label: "Политика обработки персональных данных", href: f.policyPage },
     },

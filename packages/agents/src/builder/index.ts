@@ -205,6 +205,8 @@ export {
  * action rules every written site keeps (main action → its form, catalog items → booking or the request form).
  */
 export {
+  /** V3-18: the name of a new system from the owner's first words («Линия», «Клининговая компания»), else null. */
+  businessName,
   COMPOSE_CALL_TYPES,
   type CopyIssue,
   copyIssues,

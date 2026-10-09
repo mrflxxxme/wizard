@@ -47,6 +47,7 @@ export {
   seoOf,
   siteRules,
 } from "./content.js";
+export { businessName } from "./copy.js";
 export { numbersOf, type SiteFacts, type SitePhoto, siteFacts, textLeaves } from "./facts.js";
 export {
   type CopyIssue,

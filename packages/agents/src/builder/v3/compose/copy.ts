@@ -7,6 +7,7 @@
 // never a niche label less specific than his words, never the audience as a heading, never the first words of a
 // sentence cut off, never the planner's placeholders (a heading equal to the niche, «Связаться»).
 import type { BriefScenario, SystemBrief } from "@wizard/appspec";
+import { siteName } from "@wizard/modules";
 
 /** Texts of the skeleton the brief gives. */
 export interface BriefCopy {
@@ -29,7 +30,10 @@ export interface BriefCopy {
   brand?: string;
   /** SEO title of the home page (≤ 70): «<brand> — <about>», else <About>. */
   home: string;
-  /** What the other pages' SEO titles end with and og:site_name: the brand, else <About>. */
+  /**
+   * The site's name (≤ 60): the header and footer brand, og:site_name, the end of the other pages' SEO titles — the
+   * brand, else <About>.
+   */
   site: string;
 }
 
@@ -395,6 +399,16 @@ const firstFit = (max: number, ...xs: (string | null | undefined)[]): string | u
   xs.find((x): x is string => typeof x === "string" && x.length > 0 && x.length <= max);
 
 /**
+ * The name of a new system from the owner's first words (V3-18; the cabinet, the letters, the platform list): the
+ * business name he quotes («Линия»), else what the business is («Клининговая компания»), ≤ 40 characters, never cut.
+ * null — his words name neither.
+ */
+export function businessName(request: string): string | null {
+  const b = businessOf(request);
+  return (b && firstFit(40, quotedName(b.sentence), cap(b.what))) || null;
+}
+
+/**
  * The skeleton's texts of a brief (deterministic: the same brief gives the same texts), from its facts in a fixed
  * order: the business name the owner gave, what the business is and offers in his words, the place — never a
  * placeholder name, never a niche label less specific than his words, never a phrase cut off.
@@ -418,6 +432,7 @@ export function briefCopy(input: CopyInput): BriefCopy {
     !/[,.:;!?]/.test(name) &&
     !isPlaceholderName(name) &&
     !(request && norm(request).startsWith(norm(name))) &&
+    !(request && norm(siteName(request)) === norm(name)) &&
     norm(name) !== norm(input.niche) &&
     norm(name) !== norm(business?.what ?? "")
       ? name
@@ -494,6 +509,7 @@ export function briefCopy(input: CopyInput): BriefCopy {
     about,
     ...(brand ? { brand } : {}),
     home,
-    site: firstFit(LIMITS.seo, brand, About) ?? home,
+    // The header's brand too (brandSlot ≤ 60).
+    site: firstFit(LIMITS.title, brand, About, what ? cap(what) : undefined) ?? title,
   };
 }
