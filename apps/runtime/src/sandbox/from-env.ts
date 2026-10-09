@@ -40,6 +40,8 @@ export function sandboxFromEnv(
     owner?: string;
     /** Replace a pod in place when the quota has no room for two (OrchestratorOptions.inPlace; the G1 host). */
     inPlace?: boolean;
+    /** Calls to the pods and their reachability probe (tests: a fake network). */
+    fetch?: typeof fetch;
   } = {},
 ): { orchestrator: SandboxOrchestrator; rpc: SandboxRpc } | null {
   if ((env.WIZARD_SANDBOX ?? "off") === "off") return null;
@@ -67,6 +69,7 @@ export function sandboxFromEnv(
     ...(env.WIZARD_SANDBOX_LISTEN_HOST ? { listenHost: env.WIZARD_SANDBOX_LISTEN_HOST } : {}),
     ...(deps.log ? { log: deps.log } : {}),
     ...(deps.inPlace ? { inPlace: true } : {}),
+    ...(deps.fetch ? { fetch: deps.fetch } : {}),
   });
   return { orchestrator, rpc };
 }

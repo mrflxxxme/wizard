@@ -9,12 +9,17 @@
 // the calls it was given (lease). The namespace quota is shared by the owners: without room for both pods the runtime
 // waits and never takes a production pod down; G1 (inPlace) removes its own old pod first, its calls wait. Each start
 // has a pod name of its own (hash + random suffix): a rollback never meets its config's pod still draining.
+//
+// One bad Worker must not take its pod's other systems down (V3-18, pilot 2026-10-09: workerd exits at startup when
+// any module throws while it is evaluated, e.g. a timer or a random value at module scope): a prepare starts the pod
+// with the sources that already started plus its own new one only, so a failed start is that system's, and its
+// source never enters a later config — a new system is unplaced, an updated one keeps the revision that ran.
 import { createHash, randomBytes } from "node:crypto";
 import { WizardError } from "@wizard/sdk";
 import type { SandboxEnv } from "./capability.js";
 import type { KubeApi } from "./kube.js";
 import { CONFIGMAP_BUDGET, podConfigMaps, sandboxPod } from "./pod.js";
-import { createWithinQuota, type PodStartContext, waitReachable } from "./pod-start.js";
+import { createWithinQuota, type PodStartContext, podCrashed, waitReachable } from "./pod-start.js";
 import { SandboxPool, SandboxPoolFullError, type SandboxPoolName } from "./pool.js";
 import type { SandboxRpc } from "./rpc.js";
 import { type WorkerdSystem, workerdPodConfig } from "./workerd-config.js";
@@ -79,6 +84,8 @@ export interface PrepareInput {
   orgId?: string;
 }
 
+type Source = WorkerdSystem & { hash: string };
+
 interface PodRecord {
   name: string;
   hash: string;
@@ -95,11 +102,16 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const unavailable = (message: string) => new WizardError("FUNCTIONS_DISABLED", { message });
 const SANDBOX_FULL = "Песочница заполнена: функции системы временно недоступны";
 const NOT_LOADED = "Функции системы не загружены";
+/** The pod exited with this system's new source in it (the others had started without it). */
+const CODE_FAILED = "Код системы не запускается в песочнице";
 const noop = () => {};
 
 export class SandboxOrchestrator implements SandboxExecutors {
   private readonly pool: SandboxPool;
-  private readonly sources = new Map<string, WorkerdSystem & { hash: string }>();
+  /** Sources that started in a pod (`systemId:env`): every pod config is made of these… */
+  private readonly sources = new Map<string, Source>();
+  /** …plus, in a prepare's own start, its new source (the pending one of its system). */
+  private readonly pending = new Map<string, Source>();
   private readonly pods = new Map<string, PodRecord>();
   private readonly locks = new Map<string, Promise<unknown>>();
   /** Operations queued or running per pool pod (serial). */
@@ -164,7 +176,10 @@ export class SandboxOrchestrator implements SandboxExecutors {
     return pods.length;
   }
 
-  /** Places the system and makes its pod run this functions source; idempotent, serialized per pod. */
+  /**
+   * Places the system and makes its pod run this functions source; idempotent, serialized per pod. A start that fails
+   * with this source unplaces a new system (an updated one keeps the revision that ran), so it never poisons the pod.
+   */
   async prepare(s: PrepareInput): Promise<void> {
     const key = `${s.systemId}:${s.env}`;
     let podId: string;
@@ -178,13 +193,13 @@ export class SandboxOrchestrator implements SandboxExecutors {
       }));
     } catch (e) {
       if (e instanceof SandboxPoolFullError) {
-        this.log({ msg: "sandbox_full", systemId: s.systemId });
+        this.log({ msg: "sandbox_full", level: "error", systemId: s.systemId, env: s.env });
         throw unavailable(SANDBOX_FULL);
       }
       throw e;
     }
     const hash = sha(`${s.functionsSource}\0${s.entities.join(",")}\0${JSON.stringify(s.worker ?? null)}`);
-    this.sources.set(key, {
+    const src: Source = {
       systemId: s.systemId,
       env: s.env,
       functionsSource: s.functionsSource,
@@ -192,28 +207,72 @@ export class SandboxOrchestrator implements SandboxExecutors {
       slot,
       hash,
       ...(s.worker ? { worker: s.worker } : {}),
-    });
-    await this.resync(podId);
+    };
+    this.pending.set(key, src);
+    let emptied: PodRecord | undefined;
+    try {
+      await this.resync(podId, async () => {
+        // Removed meanwhile, or a later prepare of this system took over: nothing of this one to start.
+        if (this.pending.get(key) !== src) return;
+        try {
+          await this.sync(podId, src);
+        } catch (e) {
+          if (this.pending.get(key) === src) emptied = this.reject(src, podId, e);
+          throw podCrashed(e) ? unavailable(CODE_FAILED) : e;
+        }
+        if (this.pending.get(key) !== src) return;
+        this.pending.delete(key);
+        this.sources.set(key, src);
+      });
+    } finally {
+      if (emptied) await this.retire(emptied);
+    }
   }
 
-  /** sync() of a pool pod in its queue; API server failures become FUNCTIONS_DISABLED (the log says why). */
-  private async resync(podId: string): Promise<void> {
+  /**
+   * A prepare whose start failed, in its pod's queue: a new system is unplaced (an emptied pod's record is returned to
+   * be retired), an updated one keeps its slot and the revision that ran.
+   */
+  private reject(src: Source, podId: string, e: unknown): PodRecord | undefined {
+    const key = `${src.systemId}:${src.env}`;
+    this.pending.delete(key);
+    const kept = this.sources.has(key);
+    this.log({
+      msg: "sandbox_system_rejected",
+      level: "error",
+      systemId: src.systemId,
+      env: src.env,
+      step: podId,
+      reason: podCrashed(e) ? "crashed" : e instanceof WizardError ? "not_started" : "api_failed",
+      mode: kept ? "kept_previous" : "unplaced",
+    });
+    if (kept) return undefined;
+    this.pool.remove({ systemId: src.systemId, env: src.env });
+    if (this.pool.podSlots(podId).some((x) => x !== null)) return undefined;
+    const r = this.pods.get(podId);
+    this.pods.delete(podId);
+    return r;
+  }
+
+  /** An operation of a pool pod (default: its sync) in its queue; API server failures become FUNCTIONS_DISABLED. */
+  private async resync(podId: string, f: () => Promise<void> = () => this.sync(podId)): Promise<void> {
     try {
-      await this.serial(podId, () => this.sync(podId));
+      await this.serial(podId, f);
     } catch (e) {
       if (e instanceof WizardError) throw e;
       // The API server refused or was unreachable (RBAC, network): the call fails cleanly, the log says why.
-      this.log({ msg: "sandbox_api_failed", error: e });
+      this.log({ msg: "sandbox_api_failed", level: "error", step: podId, error: e });
       throw unavailable("Песочница функций недоступна");
     }
   }
 
-  /** The workerd config of a pool pod from the sources of its systems. */
-  private render(podId: string) {
+  /** The workerd config of a pool pod: the sources that started, and `mine` (a prepare's new one) in its slot. */
+  private render(podId: string, mine?: Source) {
     const systems: WorkerdSystem[] = [];
     const keys = new Map<string, number>();
+    const own = mine ? `${mine.systemId}:${mine.env}` : null;
     for (const key of this.pool.podSlots(podId)) {
-      const src = key ? this.sources.get(key) : undefined;
+      const src = key ? (key === own ? mine : this.sources.get(key)) : undefined;
       if (src && key) {
         const { hash: _hash, ...w } = src;
         systems.push(w);
@@ -232,8 +291,8 @@ export class SandboxOrchestrator implements SandboxExecutors {
     return { cfg, hash: sha(JSON.stringify(cfg)).slice(0, 10), keys, probePort };
   }
 
-  private async sync(podId: string): Promise<void> {
-    const { cfg, hash, keys, probePort } = this.render(podId);
+  private async sync(podId: string, mine?: Source): Promise<void> {
+    const { cfg, hash, keys, probePort } = this.render(podId, mine);
     const prev = this.pods.get(podId);
     // A pod without systems is never started (remove() deletes an emptied pod).
     if (prev?.hash === hash || keys.size === 0) return;
@@ -242,7 +301,13 @@ export class SandboxOrchestrator implements SandboxExecutors {
     const groups = podConfigMaps(name, cfg.capnp, cfg.files);
     for (const g of groups.values()) {
       if (g.size > CONFIGMAP_BUDGET) {
-        this.log({ msg: "sandbox_config_too_large", count: g.size });
+        this.log({
+          msg: "sandbox_config_too_large",
+          level: "error",
+          step: name,
+          count: g.size,
+          ...(mine ? { systemId: mine.systemId, env: mine.env } : {}),
+        });
         throw unavailable("Код системы не помещается в песочницу");
       }
     }
@@ -278,7 +343,12 @@ export class SandboxOrchestrator implements SandboxExecutors {
       });
       inPlace = await this.createPod(podId, pod, name, deadline, prev);
       const started = Math.max(deadline, this.now() + (this.o.podStartMs ?? 30_000));
-      ip = await waitReachable(this.start, name, probePort, started);
+      // The start's lines name the system it brings in (ids only: no code or data of systems).
+      const start = this.start;
+      const ctx: PodStartContext = mine
+        ? { ...start, log: (l) => start.log({ ...l, systemId: mine.systemId, env: mine.env }) }
+        : start;
+      ip = await waitReachable(ctx, name, probePort, started);
     } catch (e) {
       // Nothing of a failed start stays behind (the old pod's ConfigMaps have other names): it would eat the quota.
       await this.drop(name, configMaps);
@@ -286,7 +356,12 @@ export class SandboxOrchestrator implements SandboxExecutors {
     }
     // The switch: from here on calls get the new pod; the old one goes after its calls, outside this pod's queue.
     this.pods.set(podId, { name, hash, ip, configMaps, systems: keys });
-    this.log({ msg: "sandbox_pod_ready", step: name });
+    this.log({
+      msg: "sandbox_pod_ready",
+      step: name,
+      count: keys.size,
+      mode: inPlace ? "in_place" : "rolling",
+    });
     if (prev && !inPlace) this.retireLater(prev);
   }
 
@@ -307,12 +382,12 @@ export class SandboxOrchestrator implements SandboxExecutors {
     const room = inPlace ? Math.min(deadline, this.now() + (this.o.quotaWaitMs ?? 10_000)) : deadline;
     if (await createWithinQuota(this.start, pod, name, room)) return false;
     if (inPlace && prev) {
-      this.log({ msg: "sandbox_replace_in_place", step: prev.name });
+      this.log({ msg: "sandbox_replace_in_place", level: "warn", step: prev.name });
       this.pods.delete(podId);
       await this.retire(prev, deadline);
       if (await createWithinQuota(this.start, pod, name, deadline)) return true;
     }
-    this.log({ msg: "sandbox_quota_full", step: name });
+    this.log({ msg: "sandbox_quota_full", level: "error", step: name });
     throw unavailable(SANDBOX_FULL);
   }
 
@@ -338,11 +413,13 @@ export class SandboxOrchestrator implements SandboxExecutors {
     if (name)
       await this.o.kube
         .deletePod(name)
-        .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", step: name, error: e }));
+        .catch((e: unknown) =>
+          this.log({ msg: "sandbox_delete_failed", level: "warn", step: name, error: e }),
+        );
     for (const cm of configMaps)
       await this.o.kube
         .deleteConfigMap(cm)
-        .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", step: cm, error: e }));
+        .catch((e: unknown) => this.log({ msg: "sandbox_delete_failed", level: "warn", step: cm, error: e }));
   }
 
   private serial<T>(podId: string, f: () => Promise<T>): Promise<T> {
@@ -451,6 +528,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
     if (!p) return;
     this.pool.remove({ systemId, env });
     this.sources.delete(`${systemId}:${env}`);
+    this.pending.delete(`${systemId}:${env}`);
     const emptied = await this.serial(p.podId, async () => {
       if (this.pool.podSlots(p.podId).some((x) => x !== null)) {
         if (o.resync !== false) await this.sync(p.podId);
@@ -469,7 +547,9 @@ export class SandboxOrchestrator implements SandboxExecutors {
    */
   startWatchdog(intervalMs = 30_000): void {
     this.watchdog = setInterval(() => {
-      void this.check().catch((e: unknown) => this.log({ msg: "sandbox_watchdog_failed", error: e }));
+      void this.check().catch((e: unknown) =>
+        this.log({ msg: "sandbox_watchdog_failed", level: "error", error: e }),
+      );
     }, intervalMs);
     this.watchdog.unref();
   }
@@ -482,7 +562,7 @@ export class SandboxOrchestrator implements SandboxExecutors {
         if (!r) return;
         const p = await this.o.kube.getPod(r.name);
         if (p && p.phase !== "Failed") return;
-        this.log({ msg: "sandbox_pod_lost", step: r.name });
+        this.log({ msg: "sandbox_pod_lost", level: "warn", step: r.name, reason: p ? p.phase : "Missing" });
         this.pods.delete(podId);
         // A failed pod and the ConfigMaps of a lost one would hold quota and storage: removed before the restart.
         await this.drop(p ? r.name : null, r.configMaps);

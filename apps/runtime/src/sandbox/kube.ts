@@ -13,6 +13,12 @@ export interface KubePodStatus {
   podIP: string | null;
   /** Waiting/terminated reason of the container (ImagePullBackOff, CrashLoopBackOff, …). */
   reason: string | null;
+  /** How the container's last run ended (Error, OOMKilled, …), its exit code and the restarts so far. */
+  lastReason?: string | null;
+  exitCode?: number | null;
+  restarts?: number;
+  /** Reason of a PodScheduled condition that is False (Unschedulable: no node has room). */
+  unscheduled?: string | null;
   labels: Record<string, string>;
 }
 
@@ -93,18 +99,29 @@ function podStatus(p: {
   status?: {
     phase?: string;
     podIP?: string;
-    conditions?: { type?: string; status?: string }[];
-    containerStatuses?: { state?: { waiting?: { reason?: string }; terminated?: { reason?: string } } }[];
+    conditions?: { type?: string; status?: string; reason?: string }[];
+    containerStatuses?: {
+      state?: { waiting?: { reason?: string }; terminated?: { reason?: string } };
+      lastState?: { terminated?: { reason?: string; exitCode?: number } };
+      restartCount?: number;
+    }[];
   };
 }): KubePodStatus {
   const st = p.status ?? {};
-  const cs = st.containerStatuses?.[0]?.state;
+  const c0 = st.containerStatuses?.[0];
+  const cs = c0?.state;
+  const last = c0?.lastState?.terminated;
+  const sched = (st.conditions ?? []).find((c) => c.type === "PodScheduled" && c.status === "False");
   return {
     name: p.metadata?.name ?? "",
     phase: st.phase ?? "Unknown",
     ready: (st.conditions ?? []).some((c) => c.type === "Ready" && c.status === "True"),
     podIP: st.podIP ?? null,
     reason: cs?.waiting?.reason ?? cs?.terminated?.reason ?? null,
+    lastReason: last?.reason ?? null,
+    exitCode: typeof last?.exitCode === "number" ? last.exitCode : null,
+    restarts: c0?.restartCount ?? 0,
+    unscheduled: sched ? (sched.reason ?? "Unschedulable") : null,
     labels: p.metadata?.labels ?? {},
   };
 }
