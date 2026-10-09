@@ -28,6 +28,7 @@ import type { Mailer } from "../auth/mailer.js";
 import { getLatestBrief } from "../briefs/store.js";
 import { buildPipelineOf } from "../config.js";
 import type { DB, Db } from "../db/index.js";
+import { integrationsBuildHook } from "../integrations-v3/service.js";
 import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
@@ -220,6 +221,8 @@ export async function buildByBrief(
         o.log,
       ),
     recentArchetypes: (niche) => recentArchetypes(o.pg, systemId, niche),
+    // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend.
+    integrations: integrationsBuildHook(o.pg, systemId),
   };
   // V3-17: build_stage / step_started / step_finished carry the structured progress for the canvas.
   const live = withLiveProgress(v3, {
