@@ -742,7 +742,12 @@ describe.skipIf(!hasYaml)(
   () => {
     const KEYS = {
       cdek: ["CDEK_TEST_ACCOUNT", "CDEK_TEST_SECURE"],
-      yookassa: ["YOOKASSA_TEST_SHOP_ID", "YOOKASSA_TEST_SECRET_KEY"],
+      yookassa: [
+        "YOOKASSA_TEST_SHOP_ID",
+        "YOOKASSA_TEST_SECRET_KEY",
+        "YOUKASSA_TEST_API_KEY",
+        "YOUKASSA_TEST_SHOP_ID",
+      ],
     };
     const STEPS = { cdek: "CDEK test contour", yookassa: "YooKassa test shop" };
 
