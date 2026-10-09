@@ -90,13 +90,7 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.stubPhotos).toBe(true);
     expect(
       r.shots.map((s) => `${s.route}@${s.width}:${s.kind} ${s.px.width}×${s.px.height <= s.maxHeight}`),
-    ).toEqual([
-      "/@390:screen 390×true",
-      "/services@390:screen 390×true",
-      "/@768:screen 384×true",
-      "/@1440:screen 720×true",
-      "/@1440:page 360×true",
-    ]);
+    ).toEqual(["/@390:screen 390×true", "/@1440:page 360×true"]);
     for (const s of r.shots) {
       expect(s.mime).toBe("image/jpeg");
       expect(Buffer.from(s.data, "base64").subarray(0, 2).toString("hex")).toBe("ffd8");
@@ -104,7 +98,7 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
       expect(s.data.length).toBeLessThan(80_000);
     }
     expect(r.shots[0]?.sections.slice(0, 2)).toEqual(["header", "hero"]);
-    expect(r.shots[4]?.sections[0]).toMatch(/^header 0–\d+$/);
+    expect(r.shots[1]?.sections[0]).toMatch(/^header 0–\d+$/);
   }, 120_000);
 
   test("deterministic checks without a model: overflow, contrast, CLS, fonts, alt — by section", async () => {
@@ -200,10 +194,10 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.cycles[0]?.applied).toEqual(["/: порядок секций hero → form → services"]);
     expect(r.rolledBack).toEqual([]);
     expect(r.spentRub).toBeLessThanOrEqual(40);
-    // Real screenshots went to the model: five images per call.
+    // Real screenshots went to the model: two images per call (CRITIC_MAX_IMAGES).
     for (const c of fx.calls) {
       const user = c.messages.find((m) => m.role === "user");
-      expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(5);
+      expect(user && "attachments" in user ? user.attachments?.length : 0).toBe(2);
     }
     // The result builds and the site model has the changes.
     const out = new Map(files);
