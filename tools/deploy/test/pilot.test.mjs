@@ -1363,7 +1363,9 @@ describe("pilot: beta v2 settings of the release (B2-41)", () => {
       WIZARD_G1_BROWSER: "off",
     });
     // D78: v3 by default; modules (beta v2) and legacy only as an emergency way back; anything else is refused.
-    expect(pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "Modules" })).toMatchObject({ WIZARD_BUILD_PIPELINE: "modules" });
+    expect(pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "Modules" })).toMatchObject({
+      WIZARD_BUILD_PIPELINE: "modules",
+    });
     expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "v2" })).toThrow(/v3 или modules или legacy/);
     // V3-18: v3 per org — the measurement orgs and the founder's, by kind or id; a typo is refused at the release.
     expect(
@@ -2445,7 +2447,9 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
   }, 180_000);
 
   it("v3 on the server (D78): the default pipeline v3 (or empty) runs every org on v3; else WIZARD_BUILD_PIPELINE_ORGS", () => {
-    const kubectl = (stdout, status = 0) => () => ({ status, stdout });
+    const kubectl =
+      (stdout, status = 0) =>
+      () => ({ status, stdout });
     expect(v3OrgsOfServer(kubectl("v3\n"))).toEqual({ value: "", eval: true, via: "pipeline" });
     expect(v3OrgsOfServer(kubectl("\n"))).toEqual({ value: "", eval: true, via: "pipeline" });
     expect(v3OrgsOfServer(kubectl("modules\nEval, staff"))).toEqual({
