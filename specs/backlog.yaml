@@ -3777,7 +3777,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 5
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Список фич строится из сценариев брифа; каркас всех страниц в выбранном стиле — превью ≤ 5 мин после «Собрать»"
@@ -3793,7 +3793,7 @@ tasks:
     owner: agents
     parallel_group: v3-a
     estimate_days: 4
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Агент пишет страницы на паттернах библиотеки и токенах; 1–2 фирменные секции — свободным кодом; если фирменная секция не прошла проверки, ставится паттерн"
