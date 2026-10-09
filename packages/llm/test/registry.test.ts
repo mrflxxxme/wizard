@@ -8,9 +8,9 @@ const YAML = readFileSync(new URL("../../../specs/agents/models.yaml", import.me
 const num = (s: string) => Number(s);
 
 describe("registry mirrors specs/agents/models.yaml", () => {
-  test("models: provider, providerModel, tier, placement, context, price, enabled, vision", () => {
+  test("models: provider, providerModel, tier, placement, context, price, enabled, vision, image", () => {
     const re =
-      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)(,\s*vision: true)?/gm;
+      /^\s*- \{ id: ([\w.-]+),\s*provider: (\w+),\s*providerModel: "([^"]+)",\s*tier: (T[01]),\s*placement: (\w+),\s*context: (\d+),\s*price: \{ input: ([\d.]+),\s*cached: ([\d.]+),\s*output: ([\d.]+) \},\s*enabled: (true|false)(,\s*vision: true)?(?:,\s*image: \{ px: (\d+), max: (\d+) \})?/gm;
     const fromYaml = [...YAML.matchAll(re)].map((x) => ({
       id: x[1],
       provider: x[2],
@@ -21,6 +21,7 @@ describe("registry mirrors specs/agents/models.yaml", () => {
       price: { input: num(x[7] as string), cached: num(x[8] as string), output: num(x[9] as string) },
       enabled: x[10] === "true",
       ...(x[11] ? { vision: true } : {}),
+      ...(x[12] ? { image: { px: num(x[12]), max: num(x[13] as string) } } : {}),
     }));
     expect(fromYaml.length).toBeGreaterThan(0);
     expect(MODELS).toEqual(fromYaml);

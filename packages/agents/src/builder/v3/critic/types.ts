@@ -55,6 +55,5 @@ export interface CriticInspection {
 /** Builds and opens the system in a browser: checks and screenshots (the host's Chromium slot). */
 export type CriticInspector = (input: CriticInspectInput) => Promise<CriticInspection>;
 
-/** Tokens a vision model reads an image as (28 px patches of Qwen-VL / MoonViT; for the budget and the fixtures). */
-export const imageTokens = (width: number, height: number): number =>
-  Math.ceil(width / 28) * Math.ceil(height / 28);
+/** Tokens a vision model reads an image as (@wizard/llm: the model's rule of models.yaml, 28 px patches by default). */
+export { imageTokens } from "@wizard/llm";

@@ -157,6 +157,21 @@ export {
   runtimeAiMessages,
   toPlainText,
 } from "./runtime-ai.js";
+/**
+ * Input tokens before a call (upper bound of the cost): text chars / 3.2; images by their size and the model's rule
+ * (models.yaml#models[].image), PDFs by pages — never the base64 as text.
+ */
+export {
+  attachmentTokens,
+  DEFAULT_IMAGE_RULE,
+  estimateInputTokens,
+  estimateTokens,
+  IMAGE_FALLBACK_TOKENS,
+  type ImageTokenRule,
+  imageSize,
+  imageTokens,
+  PDF_PAGE_TOKENS,
+} from "./tokens.js";
 export {
   CALL_TYPES,
   type CallType,
