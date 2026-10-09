@@ -1,0 +1,112 @@
+/* Difference of a brief version (V3-06): words first, colour second; <del> before, <ins> after. */
+.diff {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.head {
+  display: grid;
+  gap: 2px;
+}
+
+.title {
+  margin: 0;
+  font: 600 15px / 1.3 var(--p-f-ui);
+}
+
+.meta,
+.empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.group {
+  display: grid;
+  gap: 6px;
+}
+
+.field {
+  margin: 0;
+  font: 600 13px / 1.3 var(--p-f-ui);
+  color: var(--p-ink-2);
+}
+
+.list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px 9px;
+  border-radius: var(--p-r-sm);
+  background: var(--p-sunken);
+  box-shadow: inset 3px 0 0 var(--p-line-2);
+  overflow-wrap: anywhere;
+}
+
+.added {
+  box-shadow: inset 3px 0 0 var(--p-ok);
+}
+
+.removed {
+  box-shadow: inset 3px 0 0 var(--p-bad);
+}
+
+.changed {
+  box-shadow: inset 3px 0 0 var(--p-tint);
+}
+
+.op {
+  font: 600 11.5px / 1.2 var(--p-f-ui);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--p-ink-2);
+}
+
+.added .op {
+  color: var(--p-ok);
+}
+
+.removed .op {
+  color: var(--p-bad);
+}
+
+.text {
+  min-width: 0;
+}
+
+.values {
+  display: grid;
+  gap: 3px;
+  font-size: 13.5px;
+}
+
+.before {
+  color: var(--p-bad);
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
+}
+
+.after {
+  color: var(--p-ok);
+  text-decoration: none;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -37,6 +37,8 @@ import { demo } from "../../i18n/ru/demo.js";
 import { support } from "../../i18n/ru/support.js";
 import { ru } from "../../i18n/ru.js";
 import { subscribeRun } from "../../run/stream.js";
+import { useCanvasBrief } from "../brief/CanvasBrief.js";
+import { briefRu } from "../brief/ru.js";
 import { Board, type BoardView, XrayData } from "./Board.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
@@ -193,6 +195,13 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     };
   }, [dark]);
   const announce = useCallback((t: string) => setLive(t), []);
+  // V3-06: the system brief (a system with a brief v3): «Бриф» button, short brief before «Собрать», the panel.
+  const focusInput = useCallback(
+    () => screenRef.current?.querySelector<HTMLElement>('[data-testid="p-composer-input"]')?.focus(),
+    [],
+  );
+  const brief = useCanvasBrief(systemId, { orgId: view.system.orgId, announce, onAskInChat: focusInput });
+  const reloadBrief = brief.reload;
 
   const applySketch = useCallback((sk: PlanSketch | null | undefined) => {
     if (!sk) return;
@@ -241,6 +250,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       if (e.type === "plan_sketch") applySketch(e.payload.sketch as PlanSketch);
       if (e.type === "chat_output") {
         void reload().catch(() => {});
+        reloadBrief();
         if (e.payload.kind === "plan") {
           setAnswers([]);
           void loadPlan();
@@ -251,9 +261,10 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         setManualXray(null);
         void reload().catch(() => {});
         void loadPlan();
+        reloadBrief();
       }
     },
-    [applySketch, reload, loadPlan],
+    [applySketch, reload, loadPlan, reloadBrief],
   );
 
   useEffect(() => {
@@ -792,6 +803,21 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     );
   }
 
+  // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
+  if (
+    brief.summary &&
+    !runActive &&
+    !building &&
+    !selected &&
+    (stage === "card" || (stage === "interview" && !question))
+  )
+    dock = (
+      <>
+        {brief.summary}
+        {dock}
+      </>
+    );
+
   const composerState = building ? "building" : thinking || busy === "answers" ? "thinking" : "idle";
   const placeholder = building
     ? canvas.chat.building
@@ -879,6 +905,26 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             </div>
           )}
           <span className={s.grow} />
+          {brief.available && (
+            <button
+              type="button"
+              className={s.tbtn}
+              aria-pressed={brief.open}
+              aria-haspopup="dialog"
+              aria-label={briefRu.button}
+              data-testid="canvas-brief-toggle"
+              onClick={() => {
+                pick(null);
+                brief.show();
+              }}
+            >
+              <svg className={s.icon} viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 3.5h7l4 4v13H7z" />
+                <path d="M14 3.5v4h4M10 12h5M10 15.5h5" />
+              </svg>
+              <span className={s.lx}>{briefRu.button}</span>
+            </button>
+          )}
           {xray && (
             <button
               type="button"
@@ -1018,6 +1064,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             onSuggestion={hint}
           />
         </ChatSheet>
+        {brief.panel}
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">
           {live}
         </div>

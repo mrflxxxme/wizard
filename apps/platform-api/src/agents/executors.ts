@@ -13,6 +13,7 @@ import {
 } from "@wizard/agents/builder";
 import { AgentError } from "@wizard/agents/core";
 import { createHostQa, hostRouteFn } from "@wizard/agents/host";
+import { isInterviewV3Session } from "@wizard/agents/interview-v3";
 import {
   createOrchestrator,
   newSession,
@@ -60,6 +61,7 @@ import { withConsentText } from "./consent.js";
 import { g1PlatformConfig } from "./g1-platform.js";
 import { type G1Sandbox, g1RuntimeLogLine, startG1Sandbox } from "./g1-sandbox.js";
 import { chromiumProvider, type GoalBrowser, type GoalBrowserProvider } from "./goal-browser.js";
+import { type InterviewV3Options, interviewV3Turn } from "./interview-v3.js";
 import { createPhotoHost, stockModeOf } from "./stock.js";
 
 /** Sandbox events of the G1 host (allowlisted fields only). */
@@ -97,6 +99,8 @@ export interface AgentExecutorsOptions {
   photos?: PhotoHost | null;
   /** B2-38: the shared file storage of systems (photo library wz_photos/*); default — createFileStorage(process.env). */
   files?: FileStorage;
+  /** V3-03: research of the v3 interview (default — web tools only with WIZARD_RESEARCH_MODE=live; null — none). */
+  research?: InterviewV3Options["research"];
 }
 
 export type { GoalBrowser, GoalBrowserProvider };
@@ -484,6 +488,12 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
     async interviewTurn(host) {
       // B2-20: a system stays on the pipeline it started with; a new one follows WIZARD_BUILD_PIPELINE.
       const state = host.context.state;
+      // V3-03: the grill interview of v3 and the system brief (WIZARD_BUILD_PIPELINE=v3).
+      if (isInterviewV3Session(state) || (state === null && o.config.buildPipeline === "v3"))
+        return interviewV3Turn(host, {
+          ...(o.modules ? { registry: o.modules } : {}),
+          ...(o.research !== undefined ? { research: o.research } : {}),
+        });
       if (isGoalSession(state) || (state === null && o.config.buildPipeline === "modules"))
         return planInterviewTurn(host, o.modules ? { registry: o.modules } : {});
       let res: TurnResult;

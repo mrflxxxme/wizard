@@ -1,0 +1,178 @@
+/* Session feed of a system (V3-06): a quiet timeline of interviews, builds and brief edits. */
+.feed {
+  min-width: 0;
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.empty {
+  margin: 0;
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink-2);
+}
+
+.list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 16px;
+}
+
+/* The thread between the marks. */
+.item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 15.5px;
+  top: 34px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--p-line-2);
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--p-sunken);
+  color: var(--p-ink-2);
+}
+
+.build .mark {
+  background: var(--p-tint-soft);
+  color: var(--p-tint-text);
+}
+
+.icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.line,
+.when,
+.detail,
+.versions {
+  margin: 0;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.status {
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.st_failed {
+  color: var(--p-bad);
+}
+
+.st_done {
+  color: var(--p-ok);
+}
+
+.when {
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+}
+
+.detail {
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.ver {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--p-r-pill);
+  background: var(--p-sunken);
+  color: var(--p-ink);
+  font: 500 13px / 1 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.ver:hover {
+  background: var(--p-sunken-2);
+}
+
+.ver:focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 2px;
+}
+
+.verText {
+  color: var(--p-ink);
+}
+
+.changes {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.more {
+  list-style: none;
+  margin-left: -18px;
+  color: var(--p-ink-2);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (min-width: 1025px) and (pointer: fine) {
+  .ver {
+    min-width: 32px;
+    min-height: 30px;
+  }
+}

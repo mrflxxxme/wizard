@@ -24,9 +24,20 @@ export interface QuestionCardProps extends PBase {
   /** «Дальше»; without it the card has no footer button. */
   onSubmit?(): void;
   submitLabel?: string;
+  /** V3-03: why the recommended option fits, under the options («Почему советуем: …»). */
+  recommendationWhy?: string;
+  /** V3-03: «Решите за меня» — the agent takes the recommended answer and writes it down as an assumption. */
+  onDelegate?(): void;
+  /** V3-03: «Дальше решай сам» — the rest of the interview becomes assumptions of the brief. */
+  onFinish?(): void;
+  /** V3-03: the delegate and finish buttons wait (a turn is running). */
+  assistDisabled?: boolean;
 }
 
-/** Question card of the floating chat: options as chips, the recommended one marked by a word, «Дальше». */
+/**
+ * Question card of the floating chat: options as chips, the recommended one marked by a word, «Дальше». V3-03: why the
+ * recommendation, «Решите за меня» and «Дальше решай сам» — only when their props are given (v2 cards stay as they were).
+ */
 export function QuestionCard({
   step,
   question,
@@ -37,6 +48,10 @@ export function QuestionCard({
   onToggle,
   onSubmit,
   submitLabel = "Дальше",
+  recommendationWhy,
+  onDelegate,
+  onFinish,
+  assistDisabled = false,
   className,
   testId,
 }: QuestionCardProps): ReactNode {
@@ -66,6 +81,37 @@ export function QuestionCard({
           </Chip>
         ))}
       </fieldset>
+      {recommendationWhy && (
+        <p className={s.why} data-testid="p-question-why">
+          Почему советуем: {recommendationWhy}
+        </p>
+      )}
+      {(onDelegate || onFinish) && (
+        <div className={s.assist} data-testid="p-question-assist">
+          {onDelegate && (
+            <ActionButton
+              variant="secondary"
+              size="sm"
+              testId="p-question-delegate"
+              disabled={assistDisabled}
+              onClick={onDelegate}
+            >
+              Решите за меня
+            </ActionButton>
+          )}
+          {onFinish && (
+            <ActionButton
+              variant="ghost"
+              size="sm"
+              testId="p-question-finish"
+              disabled={assistDisabled}
+              onClick={onFinish}
+            >
+              Дальше решай сам
+            </ActionButton>
+          )}
+        </div>
+      )}
       {onSubmit && (
         <div className={s.foot}>
           <ActionButton

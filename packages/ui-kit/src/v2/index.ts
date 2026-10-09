@@ -3,6 +3,44 @@
 // For the platform UI only (platform-web): generated systems keep the --w-* components of "@wizard/ui-kit".
 // Global CSS: import "@wizard/ui-kit/v2/theme.css" once (fonts, --p-* tokens, base, grain, reduced motion).
 
+/** V3-06 «Бриф»: BriefSummary (chat), BriefPanel (tabs, versions, diff), BriefDiagram (own layered SVG layout), BriefEditor, BriefDiffView, SessionsFeed. */
+export {
+  BRIEF_DIAGRAM_KEYS,
+  BRIEF_EDITABLE_SECTIONS,
+  BRIEF_LAYOUT,
+  BriefDiagram,
+  type BriefDiagramKey,
+  type BriefDiagramProps,
+  BriefDiffView,
+  type BriefDiffViewProps,
+  type BriefEditableSection,
+  BriefEditor,
+  type BriefEditorProps,
+  BriefPanel,
+  type BriefPanelProps,
+  type BriefPanelTab,
+  type BriefSession,
+  BriefSummary,
+  type BriefSummaryProps,
+  type BriefVersionInfo,
+  briefTheses,
+  changedKeys,
+  type GraphLayout,
+  itemKey,
+  type LaidEdge,
+  type LaidNode,
+  type LayoutOptions,
+  layoutBriefGraph,
+  overlaps,
+  SESSION_KINDS,
+  SESSION_STATUS_RU,
+  SESSION_STATUSES,
+  SessionsFeed,
+  type SessionsFeedProps,
+  sessionTitle,
+  textWidth,
+  wrapText,
+} from "./components/brief/index.js";
 /** Canvas block: sketch → «материализация» (outline → surface → content, amber edge) → ready; selectable. */
 export {
   CanvasBlock,

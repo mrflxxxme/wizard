@@ -249,6 +249,17 @@ paths:
         '412': {description: 'VERSION_CONFLICT — бриф менялся дважды за время разбора', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '413': {description: 'PAYLOAD_TOO_LARGE — файл больше 10 МБ (details.reason FILE_TOO_LARGE) или больше 60 МБ после распаковки docx (UNPACKED_TOO_LARGE)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '415': {description: 'UNSUPPORTED_MEDIA_TYPE — не docx, pdf, md или txt (старый .doc, rtf, odt, картинки, таблицы); подсказка в message_ru', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/sessions:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemSessions
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-06 (D77 (9)): лента сессий системы от новых к старым — интервью, сборки, правки брифа. Собирается из runs (interview_turn, build) и версий брифа без своей таблицы: сборка — сессия (с версиями брифа, записанными в ней); подряд идущие interview_turn без сборки и правки в панели между ними и с паузой ≤ 30 мин — одна сессия: до первой сборки «интервью», после неё или при runs.input.intent = brief_edit — «правка словами» (source chat); версия владельца без прогона (PUT /brief) — «правка в панели» (source panel); версия агента без своего прогона — к последней начатой до неё сессии'
+      parameters: [{name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}]
+      responses:
+        '200': {description: Сессии, content: {application/json: {schema: {type: object, required: [sessions], properties: {sessions: {type: array, items: {$ref: '#/components/schemas/SystemSession'}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/fix:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     post:
@@ -1398,3 +1409,4 @@ components:
     OrgKind: {enum: [client, staff, eval], description: 'B2-01: вид организации — клиент, служебная (основатель), замеры'}
     LlmSpendByPurpose: {type: object, required: [days, b2], properties: {days: {type: array, items: {type: object, required: [day, client, staff, eval, total], properties: {day: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, client: {type: number}, staff: {type: number}, eval: {type: number}, total: {type: number}}}}, b2: {type: object, required: [since, spentRub, budgetRub, sharePercent, warn, reached], properties: {since: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, spentRub: {type: number}, budgetRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 70 % бюджета'}, reached: {type: boolean}}}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}
+    SystemSession: {type: object, description: 'V3-06: сессия системы (listSystemSessions)', required: [id, kind, source, status, startedAt, finishedAt, runIds, briefVersions, changes, changesTotal, build], properties: {id: {type: string, description: 'build:<runId> | interview:<runId> | edit:<runId> | brief:<version> | interview:v<version>'}, kind: {enum: [interview, build, edit]}, source: {enum: [chat, panel, null], description: 'только edit: chat — словами в чате, panel — в панели «Бриф»'}, status: {enum: [running, waiting, done, failed, cancelled]}, startedAt: {type: string, format: date-time}, finishedAt: {type: [string, 'null'], format: date-time}, runIds: {type: array, items: {type: string, format: uuid}}, briefVersions: {type: array, items: {type: integer}, description: 'версии брифа, записанные в сессии'}, changes: {type: array, maxItems: 6, items: {type: string}, description: 'первые строки разницы версий (BriefChange.text_ru)'}, changesTotal: {type: integer}, build: {oneOf: [{type: 'null'}, {type: object, required: [mode, revision, failure], properties: {mode: {type: [string, 'null']}, revision: {type: [integer, 'null'], description: 'runs.result_revision'}, failure: {type: [string, 'null'], description: 'runs.failure_message_ru'}}}]}}}

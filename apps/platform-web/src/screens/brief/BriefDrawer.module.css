@@ -1,0 +1,49 @@
+/* The «Бриф» panel over the canvas (V3-06): a floating card on the right, the whole screen on a phone. */
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.shade {
+  position: absolute;
+  inset: 0;
+  background: var(--p-scrim);
+  animation: fade 0.3s var(--p-ease);
+}
+
+.sheet {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(580px, calc(100% - 24px));
+  overflow: hidden;
+  border-radius: var(--p-r-xl);
+  background: var(--p-surface);
+  box-shadow: var(--p-sh-float);
+  animation: rise 0.5s var(--p-spring);
+}
+
+@media (max-width: 600px) {
+  .sheet {
+    inset: 0;
+    width: auto;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-radius: 0;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}

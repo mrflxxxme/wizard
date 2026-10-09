@@ -1,0 +1,127 @@
+/* Brief diagrams (V3-06): SVG of the layered layout on --p-* tokens; font sizes match layout.ts (BRIEF_LAYOUT). */
+.fig {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+}
+
+.cap {
+  margin: 0;
+  font: 600 14px / 1.3 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.frame {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.svg {
+  display: block;
+  max-width: none;
+  overflow: visible;
+}
+
+.mini .frame {
+  overflow: hidden;
+}
+
+.miniSvg {
+  width: 100%;
+  height: 100%;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--p-ink-3);
+  stroke-width: 1.3;
+}
+
+.arrow {
+  fill: var(--p-ink-2);
+}
+
+.box {
+  fill: var(--p-surface);
+  stroke: var(--p-line-2);
+  stroke-width: 1;
+}
+
+.text {
+  font: 400 13px var(--p-f-ui);
+  fill: var(--p-ink);
+}
+
+.k_actor .box,
+.k_role .box {
+  fill: var(--p-sunken-2);
+  stroke: none;
+}
+
+.k_actor .text,
+.k_role .text,
+.k_system .text {
+  font-weight: 500;
+}
+
+.k_goal .box {
+  stroke: var(--p-biz);
+  stroke-width: 1.6;
+}
+
+.k_entity_pii .box {
+  stroke: var(--p-warn);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3;
+}
+
+.k_system .box {
+  fill: var(--p-graphite);
+  stroke: none;
+}
+
+.k_system .text {
+  fill: var(--p-graphite-ink);
+}
+
+.k_empty .box {
+  fill: none;
+  stroke-dasharray: 4 4;
+}
+
+.k_empty .text {
+  fill: var(--p-ink-2);
+}
+
+.label rect {
+  fill: var(--p-sunken);
+}
+
+.label text {
+  font: 400 11.5px var(--p-f-ui);
+  fill: var(--p-ink-2);
+}
+
+/* Thumbnail: a quiet picture of the shape of the graph, no text. */
+.mini .edge {
+  stroke-width: 2.4;
+}
+
+.mini .box {
+  stroke-width: 2;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

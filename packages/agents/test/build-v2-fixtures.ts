@@ -45,6 +45,8 @@ const CALL_PROFILE = {
   build_custom: { reasoning: 1500, latencyMs: 90_000 },
   // V3-04: T0 only — the first model of the route chain answers (models.yaml#routes.brief_extract).
   brief_extract: { reasoning: 0, latencyMs: 25_000, model: "gigachat-3.5" },
+  // V3-03: one turn of the grill interview (brief update + question, or a search).
+  interview_v3: { reasoning: 1200, latencyMs: 30_000 },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 
@@ -52,8 +54,10 @@ export function fixtureLine(
   callType: Recorded,
   messages: LlmMessage[],
   tools: LlmTool[],
-  call: { name: string; args: unknown },
+  call: { name: string; args: unknown } | readonly { name: string; args: unknown }[],
 ): FixtureLine {
+  // V3-03: an answer may carry several tool calls (brief update and the question in one response).
+  const calls = Array.isArray(call) ? call : [call as { name: string; args: unknown }];
   const route = ROUTES[callType];
   const p = CALL_PROFILE[callType];
   const model = "model" in p ? p.model : MODEL;
@@ -75,13 +79,17 @@ export function fixtureLine(
       params: { temperature: route.temperature, max_tokens: route.maxTokens },
     },
     response: {
-      toolCalls: [{ id: `call_${callType}`, name: call.name, args: call.args as Record<string, unknown> }],
+      toolCalls: calls.map((c, i) => ({
+        id: i === 0 ? `call_${callType}` : `call_${callType}_${i + 1}`,
+        name: c.name,
+        args: c.args as Record<string, unknown>,
+      })),
       finishReason: "tool-calls",
     },
     usage: {
       promptTokens: estimateTokens(messages) + estimateTokens(tools),
       cachedPromptTokens: 0,
-      completionTokens: estimateTokens(call.args) + p.reasoning,
+      completionTokens: calls.reduce((n, c) => n + estimateTokens(c.args), 0) + p.reasoning,
     },
     latencyMs: p.latencyMs,
     recordedAt: RECORDED_AT,
