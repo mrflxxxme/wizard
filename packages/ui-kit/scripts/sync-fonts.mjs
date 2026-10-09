@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Copies the theme fonts (ui-kit.yaml#tokens.fonts, D64) from the @fontsource/* devDependencies into packages/ui-kit/fonts:
-// woff2 of the cyrillic and latin subsets in two weights, the license text of every family, and the generated catalog
+// woff2 of the cyrillic and latin subsets in two weights, plus latin-ext for the ruble sign ₽ (U+20BD sits in the
+// latin-ext range of Google Fonts; unicode-range keeps the file unloaded until a page shows a glyph of that range), the
+// license text of every family, and the generated catalog
 // src/tokens/font-catalog.ts (family, files, unicode-range, license, source). A family whose license is not on the
 // allowlist of AGENTS.md is refused. The runtime serves the files from /_wizard/fonts (apps/runtime/src/routes/fonts.ts).
 // Platform fonts of design system v2 (B2-32, grill-7 #10: Inter and Source Serif 4) go to packages/ui-kit/fonts-platform
@@ -19,6 +21,13 @@ const require = createRequire(join(ROOT, "package.json"));
 /** Fonts licenses allowed by AGENTS.md (D64): free commercial use, web embedding and self-hosting. */
 const ALLOWED_LICENSES = ["OFL-1.1", "Apache-2.0"];
 const SUBSETS = ["cyrillic", "latin"];
+/**
+ * Optional subset shipped for ₽ (V3-08). Declared before latin: for the code points both ranges list (U+0304, U+0308,
+ * U+0329, U+2020) the browser checks the last declared face first (CSS Fonts 4, unicode-range), as in Google Fonts CSS.
+ */
+const RUBLE_SUBSET = "latin-ext";
+/** Families whose @fontsource files have no ₽ in any subset (checked by test/fonts.test.ts): no latin-ext for them. */
+const NO_RUBLE = new Set(["sofia-sans", "sofia-sans-extra-condensed"]);
 /** id of the @fontsource package → weights shipped (regular text and bold headings). */
 const FAMILIES = {
   onest: [400, 700],
@@ -72,6 +81,10 @@ function sync(families, out) {
     if (!ALLOWED_LICENSES.includes(license))
       throw new Error(`${id}: license ${license} is not allowed (AGENTS.md, D64)`);
     if (!SUBSETS.every((s) => meta.subsets.includes(s))) throw new Error(`${id}: no cyrillic+latin subsets`);
+    const ruble = !NO_RUBLE.has(id);
+    if (ruble && !meta.subsets.includes(RUBLE_SUBSET))
+      throw new Error(`${id}: no ${RUBLE_SUBSET} subset for ₽`);
+    const subsets = ruble ? ["cyrillic", RUBLE_SUBSET, "latin"] : SUBSETS;
     const licenseFile = `LICENSE-${id}.txt`;
     const licenseText = readdirSync(pkgDir).includes("LICENSE")
       ? readFileSync(join(pkgDir, "LICENSE"), "utf8")
@@ -81,7 +94,7 @@ function sync(families, out) {
     writeFileSync(join(out, licenseFile), licenseText);
     const files = [];
     for (const weight of weights) {
-      for (const subset of SUBSETS) {
+      for (const subset of subsets) {
         const data = readFileSync(join(pkgDir, "files", `${id}-${subset}-${weight}-normal.woff2`));
         const hash = createHash("sha256").update(data).digest("hex").slice(0, 8);
         const file = `${id}-${subset}-${weight}-${hash}.woff2`;

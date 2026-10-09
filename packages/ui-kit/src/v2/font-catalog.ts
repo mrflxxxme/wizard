@@ -23,6 +23,14 @@ export const PLATFORM_FONTS: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "inter-latin-ext-400-6744a7f5.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 35000,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "inter-latin-400-8909904a.woff2",
         unicodeRange:
@@ -38,6 +46,14 @@ export const PLATFORM_FONTS: readonly FontEntry[] = [
       },
       {
         weight: 500,
+        subset: "latin-ext",
+        file: "inter-latin-ext-500-2c6fbc42.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 36024,
+      },
+      {
+        weight: 500,
         subset: "latin",
         file: "inter-latin-500-f3779f1e.woff2",
         unicodeRange:
@@ -50,6 +66,14 @@ export const PLATFORM_FONTS: readonly FontEntry[] = [
         file: "inter-cyrillic-600-6c2a37f8.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 7972,
+      },
+      {
+        weight: 600,
+        subset: "latin-ext",
+        file: "inter-latin-ext-600-e4bdf67b.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 36260,
       },
       {
         weight: 600,
@@ -80,6 +104,14 @@ export const PLATFORM_FONTS: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "source-serif-4-latin-ext-400-cd757b37.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 17828,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "source-serif-4-latin-400-02194deb.woff2",
         unicodeRange:
@@ -92,6 +124,14 @@ export const PLATFORM_FONTS: readonly FontEntry[] = [
         file: "source-serif-4-cyrillic-500-5ee91efe.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 14780,
+      },
+      {
+        weight: 500,
+        subset: "latin-ext",
+        file: "source-serif-4-latin-ext-500-65c59f4d.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 18356,
       },
       {
         weight: 500,

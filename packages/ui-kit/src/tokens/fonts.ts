@@ -3,7 +3,8 @@
 // Browser-safe: no node imports (the runtime resolves the folder itself).
 import { FONT_CATALOG } from "./font-catalog.js";
 
-export type FontSubset = "cyrillic" | "latin";
+/** latin-ext ships for the ruble sign ₽ (U+20BD) only; its unicode-range keeps it unloaded on pages without it. */
+export type FontSubset = "cyrillic" | "latin" | "latin-ext";
 export interface FontFile {
   weight: number;
   subset: FontSubset | string;

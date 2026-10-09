@@ -327,7 +327,9 @@ describe("designSystemCss", () => {
 
   test("fonts only from the catalog, reduced motion keeps content visible, motion from the profile", () => {
     const faces = css.match(/@font-face\{[^}]*\}/g) ?? [];
-    expect(faces.length).toBe(8);
+    // Two families × 400/700 × cyrillic, latin and latin-ext (₽, V3-08).
+    expect(faces.length).toBe(12);
+    expect(faces.filter((f) => f.includes("U+20AD-20C0"))).toHaveLength(4);
     for (const f of faces)
       expect([ds.fonts.display.family, ds.fonts.text.family].some((n) => f.includes(`"${n}"`))).toBe(true);
     expect(css).toContain(
