@@ -1,7 +1,8 @@
 // /systems/:id/secrets* and /systems/:id/secret-windows* (V3-21; api.yaml): the keys of a system (hosts, last 4
 // characters, version, check — never a value), the key window (open for an integration, read with its public key,
 // submit the ciphertext made in the browser, cancel), the re-check and the removal of a key. The list needs viewer,
-// everything else editor; another org's system is 404. Answers carry Cache-Control: no-store.
+// everything else editor; keys of prod (env=prod: windows, re-check, removal) only the owner — 403 NOT_OWNER, like
+// publishing (V3-18). Another org's system is 404. Answers carry Cache-Control: no-store.
 import { Hono } from "hono";
 import { z } from "zod";
 import { notFound } from "../errors.js";
@@ -18,6 +19,7 @@ import {
   SECRET_WINDOW_NAME,
   type SecretWindowDeps,
   submitWindow,
+  windowEnv,
   windowWithKey,
 } from "./service.js";
 
@@ -54,7 +56,11 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
   const deps: SecretWindowDeps = d;
 
-  async function loadSystem(user: AuthUser, id: string | undefined, min: OrgRole): Promise<{ id: string }> {
+  async function loadSystem(
+    user: AuthUser,
+    id: string | undefined,
+    min: OrgRole,
+  ): Promise<{ id: string; org_id: string }> {
     if (!isUuid(id)) throw notFound("Система");
     const s = await d.db
       .selectFrom("platform.systems")
@@ -69,6 +75,15 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
   const windowId = (raw: string | undefined): string => {
     if (!isUuid(raw)) throw notFound("Окно ключа");
     return raw;
+  };
+  // V3-18: prod keys (the live payment keys among them) are the owner's, as publishing is; editors keep draft keys.
+  const ownerForProd = (user: AuthUser, s: { org_id: string }, env: "draft" | "prod" | null | undefined) => {
+    if (env === "prod") checkOrgAccess(user, s.org_id, "owner", "Система", "NOT_OWNER");
+  };
+  const windowFor = async (user: AuthUser, s: { id: string; org_id: string }, raw: string | undefined) => {
+    const id = windowId(raw);
+    ownerForProd(user, s, await windowEnv(deps, s.id, id));
+    return id;
   };
   const secretName = (raw: string | undefined): string => {
     if (!raw || !SECRET_WINDOW_NAME.test(raw)) throw notFound("Ключ");
@@ -86,6 +101,7 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
     const user = c.get("user");
     const s = await loadSystem(user, c.req.param("id"), "editor");
     const body = await jsonBody(c, openBody);
+    ownerForProd(user, s, body.env);
     const out =
       "name" in body
         ? await openConnectorWindow(deps, {
@@ -106,8 +122,9 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
 
   // An open window with its public key (made and sealed on the first read).
   r.get("/systems/:id/secret-windows/:windowId", async (c) => {
-    const s = await loadSystem(c.get("user"), c.req.param("id"), "editor");
-    const w = await windowWithKey(deps, s.id, windowId(c.req.param("windowId")));
+    const user = c.get("user");
+    const s = await loadSystem(user, c.req.param("id"), "editor");
+    const w = await windowWithKey(deps, s.id, await windowFor(user, s, c.req.param("windowId")));
     c.header("Cache-Control", "no-store");
     return c.json({ window: w });
   });
@@ -116,7 +133,7 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
   r.post("/systems/:id/secret-windows/:windowId/submit", async (c) => {
     const user = c.get("user");
     const s = await loadSystem(user, c.req.param("id"), "editor");
-    const id = windowId(c.req.param("windowId"));
+    const id = await windowFor(user, s, c.req.param("windowId"));
     const sealed = await jsonBody(c, sealedBody);
     const out = await submitWindow(deps, { systemId: s.id, windowId: id, sealed, userId: user.id });
     c.header("Cache-Control", "no-store");
@@ -124,22 +141,29 @@ export function secretWindowRoutes(d: SecretWindowRoutesDeps): Hono<AppEnv> {
   });
 
   r.delete("/systems/:id/secret-windows/:windowId", async (c) => {
-    const s = await loadSystem(c.get("user"), c.req.param("id"), "editor");
-    return c.json({ window: await cancelWindow(deps, s.id, windowId(c.req.param("windowId"))) });
+    const user = c.get("user");
+    const s = await loadSystem(user, c.req.param("id"), "editor");
+    return c.json({
+      window: await cancelWindow(deps, s.id, await windowFor(user, s, c.req.param("windowId"))),
+    });
   });
 
   r.post("/systems/:id/secrets/:name/check", async (c) => {
-    const s = await loadSystem(c.get("user"), c.req.param("id"), "editor");
+    const user = c.get("user");
+    const s = await loadSystem(user, c.req.param("id"), "editor");
     const name = secretName(c.req.param("name"));
     const body = await jsonBody(c, checkBody);
+    ownerForProd(user, s, body.env);
     c.header("Cache-Control", "no-store");
     return c.json(await checkSecret(deps, { systemId: s.id, name, env: body.env ?? "draft" }));
   });
 
   r.delete("/systems/:id/secrets/:name", async (c) => {
-    const s = await loadSystem(c.get("user"), c.req.param("id"), "editor");
+    const user = c.get("user");
+    const s = await loadSystem(user, c.req.param("id"), "editor");
     const name = secretName(c.req.param("name"));
     const q = parseQuery(c, z.object({ env: envSchema.default("draft") }));
+    ownerForProd(user, s, q.env);
     return c.json(await removeSecret(deps, { systemId: s.id, name, env: q.env }));
   });
 

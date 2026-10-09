@@ -437,6 +437,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
       kms: opts.secretWindow?.kms !== undefined ? opts.secretWindow.kms : windowKmsOf(process.env, secrets),
       ...opts.integrations,
       ...(opts.secretWindow?.platformDomains ? { platformDomains: opts.secretWindow.platformDomains } : {}),
+      notice: { mailer, log },
     }),
   );
   api.route("/", webhookRoutes(deps));

@@ -35,6 +35,7 @@ import {
   parseSystemHost,
   securityHeaders,
 } from "./http/guards.js";
+import { publicApiRateLimits } from "./http/rate-limits.js";
 import { createInternalHandler, type InternalOptions } from "./internal.js";
 import {
   type RetentionPassReport,
@@ -334,6 +335,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/_wizard", privacyRoutes());
   app.route("/_wizard", invitePageRoutes());
   app.all("/_wizard/*", () => notFoundPage());
+  // V3-18: runtime.yaml#rate_limits of /api/data, /api/fn and /api/pay* (per user, anonymous — per client network).
+  app.use("/api/*", publicApiRateLimits(services.clock));
   app.route("/api/data", dataRoutes());
   app.route("/api/auth", loginApiRoutes(auth));
   app.route("/api/auth", authRoutes());

@@ -27,6 +27,7 @@ import { appendEvent, type TxCtx } from "../runs/events.js";
 import { inheritedG1Checks } from "../runs/g1-checks.js";
 import { recordGateReport } from "../runs/gates.js";
 import { type GateReport, type GateRunner, RunFailure } from "../runs/types.js";
+import { SECRET_EGRESS_BLOCKED_RU, systemSecretEgressIssues } from "../secrets-v3/agent.js";
 import { loadManifest, loadRevision, loadSpec, lockSystem, revertRevision } from "../services/revisions.js";
 import type { BlobStore } from "../storage/blobs.js";
 import {
@@ -452,6 +453,9 @@ export async function runPublish(h: FlowHost): Promise<FlowResult> {
   }
   const bundleKey = rev.bundle_key;
   const spec = rev.spec as unknown as AppSpec;
+  // V3-18 (D37): no window key of the revision's functions goes to a host its window did not show.
+  const [egress] = await h.once("secret_egress", () => systemSecretEgressIssues(h.pg, sys.id, spec));
+  if (egress) throw new RunFailure("GATES_FAILED", SECRET_EGRESS_BLOCKED_RU(egress));
   const hwm = sys.schema_hwm_revision;
   const prevSpec = hwm !== null ? await loadSpec(h.db, sys, hwm) : null;
 

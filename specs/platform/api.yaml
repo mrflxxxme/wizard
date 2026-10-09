@@ -423,7 +423,7 @@ paths:
       operationId: publish
       x-milestone: M1
       x-roles: [owner]
-      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve). Снятая система → 422 SYSTEM_SUSPENDED, приостановленная организация → 403 ORG_SUSPENDED (abuse.yaml#messages_ru.ORG_SUSPENDED)'
+      summary: 'Публикация ревизии в prod (workflows.yaml#workflows.publish). M2+ требует карту РФ и прохождение G2. M2-09: при WIZARD_FOUNDER_REVIEW=on и orgs.require_founder_review первая публикация системы и ревизия с новыми полями ПДн ждут одобрения основателя (прогон → GATES_FAILED с текстом abuse.yaml#messages_ru.review, затем 403 FOUNDER_REVIEW_PENDING до approve). Снятая система → 422 SYSTEM_SUSPENDED, приостановленная организация → 403 ORG_SUSPENDED (abuse.yaml#messages_ru.ORG_SUSPENDED). V3-18 (D37): функция ревизии с secret://name из окна ключа и egress вне хостов этого окна (secret_bindings, draft и prod) → 422 GATES_FAILED, details.reason SECRET_EGRESS; прогон publish проверяет то же'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [revision], additionalProperties: false, properties: {revision: {type: integer}, confirmDiff: {type: boolean, const: true, description: Пользователь видел diff}}}}}}
       responses:
@@ -1405,7 +1405,7 @@ paths:
       operationId: openSecretWindow
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: человек открывает окно ключа для исходящей интеграции брифа. Имя ключа и хосты — из последнего контракта V3-20 (без контракта — 400 NO_CONTRACT: не видно, куда уйдёт ключ). Открытое окно того же ключа с теми же хостами возвращается (200), иначе новое (201). Ответ — окно с публичным ключом P-256 (пара создаётся при первом чтении, закрытая половина запечатана KMS)'
+      summary: 'V3-21: человек открывает окно ключа для исходящей интеграции брифа. Имя ключа и хосты — из последнего контракта V3-20 (без контракта — 400 NO_CONTRACT: не видно, куда уйдёт ключ). Открытое окно того же ключа с теми же хостами возвращается (200), иначе новое (201). Ответ — окно с публичным ключом P-256 (пара создаётся при первом чтении, закрытая половина запечатана KMS). V3-18: env=prod (боевые ключи, в том числе ключи оплаты) — только owner, иначе 403 NOT_OWNER; editor работает с ключами draft'
       requestBody:
         required: true
         content:
@@ -1414,6 +1414,7 @@ paths:
         '200': {description: Открытое окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
         '201': {description: Новое окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
         '400': {description: 'VALIDATION_FAILED — NO_CONTRACT, KEYLESS, HOST', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/secret-windows/{windowId}:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: windowId, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -1421,18 +1422,20 @@ paths:
       operationId: getSecretWindow
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: открытое окно (в том числе открытое агентом через request_secret) с публичным ключом P-256 и контекстом шифрования; закрытое, использованное или устаревшее — 400 WINDOW_CLOSED'
+      summary: 'V3-21: открытое окно (в том числе открытое агентом через request_secret) с публичным ключом P-256 и контекстом шифрования; закрытое, использованное или устаревшее — 400 WINDOW_CLOSED. V3-18: окно env=prod — только owner, иначе 403 NOT_OWNER'
       responses:
         '200': {description: Окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
         '400': {description: VALIDATION_FAILED — WINDOW_CLOSED, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
     delete:
       operationId: cancelSecretWindow
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: закрыть окно без ключа — пара ключей окна уничтожается'
+      summary: 'V3-21: закрыть окно без ключа — пара ключей окна уничтожается. V3-18: окно env=prod — только owner, иначе 403 NOT_OWNER'
       responses:
         '200': {description: Окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindow'}}}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/secret-windows/{windowId}/submit:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: windowId, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -1440,7 +1443,7 @@ paths:
       operationId: submitSecretWindow
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: ключ, зашифрованный в браузере (ECDH-ES P-256 + HKDF-SHA-256 + AES-256-GCM, AAD — context окна). Расшифровывается только в хранилище секретов: KMS открывает закрытую половину окна, ключ проверяется по контракту V3-20 (onIntegrationKey: только хосты контракта, они в пределах хостов окна, иначе 400 HOSTS_CHANGED) и сохраняется как secret://name. Ротация: новый ключ заменяет прежний, если проверка прошла (или прежний не работал); иначе saved = false и работает прежний. Окно одноразовое (WINDOW_CLOSED); не расшифровалось — SEAL_INVALID, неверный формат ключа — KEY_FORMAT (окно остаётся открытым). Значение не возвращается и не пишется в журналы'
+      summary: 'V3-21: ключ, зашифрованный в браузере (ECDH-ES P-256 + HKDF-SHA-256 + AES-256-GCM, AAD — context окна). Расшифровывается только в хранилище секретов: KMS открывает закрытую половину окна, ключ проверяется по контракту V3-20 (onIntegrationKey: только хосты контракта, они в пределах хостов окна, иначе 400 HOSTS_CHANGED) и сохраняется как secret://name. Ротация: новый ключ заменяет прежний, если проверка прошла (или прежний не работал); иначе saved = false и работает прежний. Окно одноразовое (WINDOW_CLOSED); не расшифровалось — SEAL_INVALID, неверный формат ключа — KEY_FORMAT (окно остаётся открытым). Значение не возвращается и не пишется в журналы. V3-18: окно env=prod — только owner, иначе 403 NOT_OWNER; новый боевой ключ коннектора оплаты (ЮKassa) — письмо всем владельцам организации (последние 4 символа, без значения)'
       requestBody:
         required: true
         content:
@@ -1448,6 +1451,7 @@ paths:
       responses:
         '200': {description: Результат, content: {application/json: {schema: {type: object, required: [saved, secret, checks, message_ru], properties: {saved: {type: boolean}, secret: {oneOf: [{$ref: '#/components/schemas/SystemSecret'}, {type: 'null'}]}, checks: {type: array, items: {$ref: '#/components/schemas/SecretCheckLine'}}, message_ru: {type: string}}}}}}
         '400': {description: 'VALIDATION_FAILED — SEAL_FORMAT, SEAL_INVALID, KEY_FORMAT (поля паспорта: details.problems), WINDOW_CLOSED, HOSTS_CHANGED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/secrets/{name}/check:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}}]
@@ -1455,12 +1459,13 @@ paths:
       operationId: checkSystemSecret
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: повторная проверка сохранённого ключа по контрактам, которые его используют (тот же хук V3-20); хосты контракта вне хостов окна → failed HOSTS_CHANGED без запроса'
+      summary: 'V3-21: повторная проверка сохранённого ключа по контрактам, которые его используют (тот же хук V3-20); хосты контракта вне хостов окна → failed HOSTS_CHANGED без запроса. V3-18: env=prod (боевые ключи, в том числе ключи оплаты) — только owner, иначе 403 NOT_OWNER; editor работает с ключами draft'
       requestBody:
         content:
           application/json: {schema: {type: object, additionalProperties: false, properties: {env: {enum: [draft, prod], default: draft}}}}
       responses:
         '200': {description: Проверка, content: {application/json: {schema: {type: object, required: [secret, checks, message_ru], properties: {secret: {$ref: '#/components/schemas/SystemSecret'}, checks: {type: array, items: {$ref: '#/components/schemas/SecretCheckLine'}}, message_ru: {type: string}}}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
   /systems/{id}/secrets/{name}:
     parameters: [{$ref: '#/components/parameters/systemId'}, {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}}, {name: env, in: query, schema: {enum: [draft, prod], default: draft}}]
@@ -1468,9 +1473,10 @@ paths:
       operationId: removeSystemSecret
       x-milestone: V3
       x-roles: [editor]
-      summary: 'V3-21: удалить ключ — значение из хранилища, secrets_refs и привязка; интеграции, у которых ключа не осталось ни в одном окружении, возвращаются на мок'
+      summary: 'V3-21: удалить ключ — значение из хранилища, secrets_refs и привязка; интеграции, у которых ключа не осталось ни в одном окружении, возвращаются на мок. V3-18: env=prod (боевые ключи, в том числе ключи оплаты) — только owner, иначе 403 NOT_OWNER; editor работает с ключами draft'
       responses:
         '200': {description: Удалено, content: {application/json: {schema: {type: object, required: [removed, integrations], properties: {removed: {const: true}, integrations: {type: array, items: {type: object, required: [integrationId, status], properties: {integrationId: {type: string}, status: {enum: [mock, live, failed]}}}}}}}}}
+        '403': {description: 'NOT_OWNER — env=prod не у владельца', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {$ref: '#/components/responses/Error'}
   # ==== конец блока V3-21 ====
   # ==== V3-31: синхронизация репозитория системы с GitHub и GitLab через PR (db.yaml system_repo_*) ====

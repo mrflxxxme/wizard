@@ -28,6 +28,7 @@ import { toPublication } from "../publish/prod.js";
 import { isPublishable } from "../publish/workflows.js";
 import { withTx } from "../runs/events.js";
 import { insertRun } from "../runs/queue.js";
+import { SECRET_EGRESS_BLOCKED_RU, systemSecretEgressIssues } from "../secrets-v3/agent.js";
 import { applyOpsRevision, loadManifest, loadRevision, loadSpec, lockSystem } from "../services/revisions.js";
 import { toRevisionSummary, toRun } from "../services/serialize.js";
 
@@ -93,6 +94,13 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
       throw new ApiError("GATES_FAILED", repo.message_ru, {
         reason: "REPO_NOT_MERGED",
         ...(repo.pr ? { pr: repo.pr } : {}),
+      });
+    // V3-18 (D37): window keys reach only the hosts their window showed — also for a spec that bypassed the build hook.
+    const [egress] = await systemSecretEgressIssues(d.pg, s.id, rev.spec as unknown as AppSpec);
+    if (egress)
+      throw new ApiError("GATES_FAILED", SECRET_EGRESS_BLOCKED_RU(egress), {
+        reason: "SECRET_EGRESS",
+        path: egress.path,
       });
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
