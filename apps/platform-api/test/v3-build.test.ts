@@ -177,7 +177,8 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
     // Checkpoints of every stage and scenario with the fingerprints; the summary names the scenarios done.
     const cps = await api.deps.pg<{ key: string }[]>`
       select key from platform.system_build_checkpoints where system_id = ${systemId} order by key`;
-    expect(cps.map((c) => c.key)).toEqual(
+    // Sorted in JS: `order by key` follows the database collation ("scenarios" vs "scenario:…" differ between C and ICU).
+    expect(cps.map((c) => c.key).sort()).toEqual(
       [
         "backend",
         "brief",
