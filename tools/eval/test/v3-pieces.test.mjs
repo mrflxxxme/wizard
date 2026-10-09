@@ -389,7 +389,7 @@ describe("the report against D77_v3 (10)–(11)", () => {
             call({ callType: "critic_visual", model: "kimi-k2.6", attempts: 1, ok: 0, failures: ["HTTP_4xx"], failureLatencyMs: 2000 }),
             call({ callType: "critic_visual", model: "qwen3.6-35b", attempts: 1, ok: 0, fallback: 1, failures: ["TIMEOUT"], failureLatencyMs: 180000 }),
             call({ callType: "techreview", model: "gpt-oss-120b", attempts: 3, ok: 1, rub: 0.1, failures: ["TIMEOUT", "TIMEOUT"], failureLatencyMs: 300000 }),
-            call({ callType: "page_compose", model: "glm-5.3", tier: "T1", attempts: 7, ok: 7, rub: 9 }),
+            call({ callType: "page_compose", model: "glm-5.3", tier: "T1", attempts: 7, ok: 7, rub: 9, latencyMs: 41_400 }),
           ],
         },
         hooks: {},
@@ -404,10 +404,10 @@ describe("the report against D77_v3 (10)–(11)", () => {
     expect(e.targets).toMatchObject({ median: true, cap: true });
     const { text } = renderV3Report(doc, db, { platform: "https://borntobuild.ru", date: "2026-10-09" });
     expect(text).toContain("интервью (время владельца, вне цели) — медиана 10.5 мин");
-    expect(text).toContain("| Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | Отказы |");
-    expect(text).toContain("| critic_visual | 0 из 2, резерв 1 | kimi-k2.6, qwen3.6-35b | T0 | 0 ₽ | kimi-k2.6: HTTP_4xx; qwen3.6-35b: TIMEOUT · ≈ 91 с |");
-    expect(text).toContain("| techreview | 1 из 3 | gpt-oss-120b | T0 | 0,1 ₽ | gpt-oss-120b: TIMEOUT ×2 · ≈ 300 с |");
-    expect(text).toContain("| page_compose | 7 из 7 | glm-5.3 | T1 | 9 ₽ | — |");
+    expect(text).toContain("| Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | С на попытку | Отказы |");
+    expect(text).toContain("| critic_visual | 0 из 2, резерв 1 | kimi-k2.6, qwen3.6-35b | T0 | 0 ₽ | — | kimi-k2.6: HTTP_4xx; qwen3.6-35b: TIMEOUT · ≈ 91 с |");
+    expect(text).toContain("| techreview | 1 из 3 | gpt-oss-120b | T0 | 0,1 ₽ | — | gpt-oss-120b: TIMEOUT ×2 · ≈ 300 с |");
+    expect(text).toContain("| page_compose | 7 из 7 | glm-5.3 | T1 | 9 ₽ | 41 | — |");
   });
 });
 

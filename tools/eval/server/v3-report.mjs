@@ -236,9 +236,15 @@ function callsLines(calls) {
       tiers: new Set(),
       failures: new Map(),
       failMs: [],
+      ms: 0,
+      timed: 0,
     };
     for (const f of c.failures ?? []) x.failures.set(`${c.model}: ${f}`, (x.failures.get(`${c.model}: ${f}`) ?? 0) + 1);
     if (c.failureLatencyMs !== null && c.failureLatencyMs !== undefined) x.failMs.push(c.failureLatencyMs);
+    if (c.latencyMs !== null && c.latencyMs !== undefined) {
+      x.ms += c.latencyMs * c.attempts;
+      x.timed += c.attempts;
+    }
     x.attempts += c.attempts;
     x.ok += c.ok;
     x.fallback += c.fallback;
@@ -251,7 +257,7 @@ function callsLines(calls) {
     .sort((a, b) => b[1].rub - a[1].rub)
     .map(
       ([type, x]) =>
-        `| ${cell(type)} | ${x.ok} из ${x.attempts}${x.fallback ? `, резерв ${x.fallback}` : ""} | ${cell([...x.models].join(", "))} | ${[...x.tiers].join(", ")} | ${rub(x.rub)} | ${failuresCell(x)} |`,
+        `| ${cell(type)} | ${x.ok} из ${x.attempts}${x.fallback ? `, резерв ${x.fallback}` : ""} | ${cell([...x.models].join(", "))} | ${[...x.tiers].join(", ")} | ${rub(x.rub)} | ${x.timed ? Math.round(x.ms / x.timed / 1000) : "—"} | ${failuresCell(x)} |`,
     );
 }
 
@@ -397,7 +403,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
       `- Расход системы: ${x.systemId ? rub(x.costRub) : "—"}${x.costExact ? "" : " (оценка)"}, кредитов ${x.creditsUsed}.`,
     );
     if (x.calls.length) {
-      L.push("", "  | Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | Отказы |", "  |---|---|---|---|---|---|");
+      L.push("", "  | Тип вызова | Успешно из попыток | Модель | Уровень | ₽ | С на попытку | Отказы |", "  |---|---|---|---|---|---|---|");
       L.push(...callsLines(x.calls).map((l) => `  ${l}`), "");
     }
     for (const g of x.developmentRequests)
