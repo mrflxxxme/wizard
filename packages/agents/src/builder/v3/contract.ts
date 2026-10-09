@@ -35,6 +35,8 @@ export interface V3BuildContext {
 export interface V3PagePlan {
   route: string;
   title: string;
+  /** The page file (ui/pages/**.tsx); none — ui/pages/<Route>.tsx (the harness registers the page in the spec). */
+  file?: string;
   /** Section instances: the library pattern (or a signature section written as code) and its content. */
   sections: { id: string; pattern: string | "signature"; props: unknown }[];
 }
