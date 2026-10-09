@@ -430,7 +430,7 @@ async function launch(o: WorkerOptions): Promise<Worker> {
       if (closed) return;
       closed = true;
       if (timer) clearInterval(timer);
-      repoAgent?.stop();
+      await repoAgent?.stop();
       await sweeping;
       engine.stop();
       await DBOS.shutdown({ deregister: true });

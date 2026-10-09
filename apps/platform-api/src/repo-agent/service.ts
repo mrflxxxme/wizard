@@ -173,6 +173,8 @@ export class RepoAgent {
   #router: Router | undefined;
   #timer: NodeJS.Timeout | undefined;
   #busy = false;
+  /** The tick in flight (stop() waits for it, so the pool is never closed under a running task). */
+  #ticking: Promise<number> | undefined;
 
   constructor(o: RepoAgentOptions) {
     this.#o = o;
@@ -208,17 +210,23 @@ export class RepoAgent {
     const ms = this.#o.tickMs ?? Number(env.WIZARD_REPO_AGENT_TICK_MS ?? 5000);
     if (this.#o.executes === false || !this.available || !(ms > 0) || this.#timer) return;
     this.#timer = setInterval(() => {
-      this.tick().catch((e) => this.#log("repo-agent tick failed", safeErr(e)));
+      const t = this.tick();
+      this.#ticking = t;
+      t.catch((e) => this.#log("repo-agent tick failed", safeErr(e))).finally(() => {
+        if (this.#ticking === t) this.#ticking = undefined;
+      });
     }, ms);
     this.#timer.unref();
   }
 
-  stop(): void {
+  /** Stops the queue timer and the sweeper; resolves once the tick in flight (if any) has settled. */
+  async stop(): Promise<void> {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
     // The pod runner's sweep of lost objects lives as long as the queue.
     const sb = this.sandbox as (RepoSandbox & { stopSweeper?: () => void }) | null;
     sb?.stopSweeper?.();
+    await this.#ticking?.catch(() => 0);
   }
 
   #log(m: string, e?: unknown) {

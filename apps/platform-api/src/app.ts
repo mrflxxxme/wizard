@@ -484,7 +484,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     repoAgent,
     async close() {
       gitSync.stop();
-      repoAgent.stop();
+      await repoAgent.stop();
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
       if (opsTimer) clearInterval(opsTimer);
