@@ -733,6 +733,54 @@ tables:
       - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_briefs)"
   # ==== конец блока V3-11 ====
 
+  # ==== V3-30: внутренний git систем в РФ (миграция 0040) ====
+  system_git_objects:
+    milestone: V3
+    purpose: "V3-30 (D77 (2)–(3)): объекты git-репозитория системы — один репозиторий на систему в БД платформы в РФ. data — сжатый zlib loose-объект git («<type> <size>\\0<body>», байт в байт как .git/objects/xx/yyyy), oid — его SHA-1; репозиторий пишет и читает свой код на TypeScript (apps/platform-api/src/git, node:crypto и node:zlib) без бинарника git и без сети"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      oid: "text not null check (oid ~ '^[0-9a-f]{40}$')"
+      type: "text not null check (type in ('blob','tree','commit','tag'))"
+      size: "integer not null check (size >= 0)"          # размер тела без заголовка
+      data: "bytea not null"
+      content_sha256: "text check (content_sha256 ~ '^[0-9a-f]{64}$')"   # blob файла ревизии: sha256 содержимого (platform.files) — следующий коммит находит blob без чтения файла
+    primary_key: [system_id, oid]
+    indexes: ["(system_id, content_sha256) where content_sha256 is not null"]
+    invariants:
+      - "Объекты неизменяемы: вставка on conflict do nothing; бриф в репозитории — очищенный от ПДн (packages/pii scrub), секреты — только ссылки secret://"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_briefs)"
+  system_git_refs:
+    milestone: V3
+    purpose: "V3-30: ссылки репозитория системы. refs/heads/main — каждая ревизия и каждая версия брифа; превью и прод — коммиты systems.preview_revision и prod_revision (вычисляются при чтении). Ветки wizard/* и синхронизация с GitHub/GitLab — V3-31"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      name: "text not null check (name ~ '^refs/(heads|tags)/[A-Za-z0-9._/-]+$')"
+      oid: "text not null check (oid ~ '^[0-9a-f]{40}$')"
+      updated_at: "timestamptz not null default now()"
+    primary_key: [system_id, name]
+    invariants:
+      - "Удаляется вместе с системой (workflows.yaml#delete_system)"
+  system_git_commits:
+    milestone: V3
+    purpose: "V3-30: линия main репозитория системы и соответствие ревизия ↔ коммит. Ревизия (platform.revisions) — коммит «Сборка: …» (прогон build mode=create), «Правка: …» или «Возврат: …» в той же транзакции, что и ревизия; версия брифа — коммит «Бриф: версия N». Автор и коммиттер — «Wizard <noreply@borntobuild.ru>», +0300, время ревизии или версии; в трейлерах Wizard-Revision, Wizard-Brief-Version, Wizard-Run, Wizard-User (id действующего пользователя). Структура дерева: brief/brief.json, spec/appspec.json, ui/** (ui/design.css — токены), functions/**, assets/**, tests/scenarios.json и tests/acceptance.json (сценарии целей как данные), AGENTS.md (для разработчиков клиента, по-русски)"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      seq: "integer not null check (seq >= 1)"            # порядок на main
+      oid: "text not null check (oid ~ '^[0-9a-f]{40}$')"
+      revision: "integer"                                # platform.revisions.version; null — коммит версии брифа
+      brief_version: "integer check (brief_version >= 1)"   # версия брифа в дереве коммита
+      subject: "text not null"
+      author_user_id: "uuid references platform.users on delete set null"
+      committed_at: "timestamptz not null"
+    primary_key: [system_id, seq]
+    indexes: ["unique (system_id, oid)", "unique (system_id, revision) where revision is not null"]
+    constraints: ["foreign key (system_id, revision) references platform.revisions (system_id, version) on delete cascade"]
+    invariants:
+      - "Коммиты пишутся под блокировкой строки systems: хук insertRevision (services/revisions.ts) — в транзакции ревизии под savepoint (сбой коммита не теряет ревизию), чтение /systems/:id/repo* догоняет пропущенное (системы старше репозитория, версии брифа после последней ревизии)"
+      - "Сборка и публикация не зависят от внешнего git: ни сети, ни бинарника git (тест v3-git)"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system)"
+  # ==== конец блока V3-30 ====
+
 views:
   wz_runtime.otp_sends:
     milestone: M1

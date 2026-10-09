@@ -19,6 +19,7 @@ const TYPE: Record<string, string> = {
   smallint: "smallint",
   jsonb: "jsonb",
   numeric: "numeric",
+  bytea: "bytea",
 };
 
 function expected(name: string, t: TableDef) {
@@ -75,8 +76,14 @@ const M2_TABLES = [
 const M3_TABLES = ["ai_action_calls", "ai_backfills"];
 // B2 tables created so far (B2-20 system plans awaiting approval, B2-26 module factory).
 const B2_TABLES = ["system_plans", "module_candidates", "module_announcements"];
-// V3 tables created so far (V3-02 system briefs, V3-11 build checkpoints).
-const V3_TABLES = ["system_briefs", "system_build_checkpoints"];
+// V3 tables created so far (V3-02 system briefs, V3-11 build checkpoints, V3-30 system repositories).
+const V3_TABLES = [
+  "system_briefs",
+  "system_build_checkpoints",
+  "system_git_objects",
+  "system_git_refs",
+  "system_git_commits",
+];
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [

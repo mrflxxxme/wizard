@@ -1164,6 +1164,64 @@ paths:
       parameters: [{name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,80}[.]svg$'}}]
       responses: {'200': {description: SVG, content: {image/svg+xml: {schema: {type: string}}}}, '404': {description: Нет такого файла}}
   # ==== конец блока V3-09 ====
+
+  # ==== V3-30: внутренний git системы (db.yaml#system_git_commits) ====
+  /systems/{id}/repo:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemRepo
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-30 (D77 (2)–(3)): git-репозиторий системы в хранилище платформы в РФ — последний коммит, ссылки (main — каждая ревизия и версия брифа; preview и prod — коммиты ревизий превью и публикации, null — их нет) и число коммитов. Перед чтением репозиторий догоняет ревизии и версии брифа без коммита; behind=true — догнать не удалось (коммиты допишутся при следующей ревизии)'
+      responses:
+        '200': {description: Репозиторий, content: {application/json: {schema: {type: object, required: [head, refs, commits, behind], properties: {head: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/RepoCommit'}]}, refs: {type: object, required: [main, preview, prod], properties: {main: {$ref: '#/components/schemas/RepoRef'}, preview: {$ref: '#/components/schemas/RepoRef'}, prod: {$ref: '#/components/schemas/RepoRef'}}}, commits: {type: integer}, behind: {type: boolean}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo/commits:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemRepoCommits
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-30: коммиты main от новых к старым; ?before=<seq> — следующая страница'
+      parameters: [{name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}, {name: before, in: query, schema: {type: integer, minimum: 2}}]
+      responses:
+        '200': {description: Коммиты, content: {application/json: {schema: {type: object, required: [commits, nextBefore], properties: {commits: {type: array, items: {$ref: '#/components/schemas/RepoCommit'}}, nextBefore: {type: [integer, 'null']}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo/revisions/{v}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: v, in: path, required: true, schema: {type: integer, minimum: 1}}]
+    get:
+      operationId: getSystemRepoRevisionCommit
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-30: коммит ревизии (ревизия ↔ коммит)'
+      responses:
+        '200': {description: Коммит ревизии, content: {application/json: {schema: {type: object, required: [revision, commit], properties: {revision: {type: integer}, commit: {$ref: '#/components/schemas/RepoCommit'}}}}}}
+        '404': {description: 'NOT_FOUND — нет системы или коммита ревизии', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/repo/diff:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemRepoDiff
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-30: разница коммита с родителем (первый коммит — с пустым деревом): изменённые файлы и patch в формате git diff (3 строки контекста); у двоичных файлов и файлов больше 1 МБ patch = null. ?revision=N или ?commit=<oid>; без них — последний коммит'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}, {name: commit, in: query, schema: {type: string, pattern: '^[0-9a-f]{40}$'}}]
+      responses:
+        '200': {description: Разница, content: {application/json: {schema: {type: object, required: [commit, parent, files], properties: {commit: {$ref: '#/components/schemas/RepoCommit'}, parent: {type: [string, 'null']}, files: {type: array, items: {type: object, required: [path, status, binary, additions, deletions, patch], properties: {path: {type: string}, status: {enum: [added, modified, deleted]}, binary: {type: boolean}, additions: {type: integer}, deletions: {type: integer}, patch: {type: [string, 'null']}}}}}}}}}
+        '400': {description: 'VALIDATION_FAILED — и revision, и commit', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: 'NOT_FOUND — нет системы или коммита', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/repo/archive:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getSystemRepoArchive
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-30: дерево коммита zip-архивом (папка <slug>-r<ревизия>, у коммита брифа — <slug>-<7 знаков oid>; файлы датированы временем коммита). ?revision=N или ?commit=<oid>; без них — последний коммит'
+      parameters: [{name: revision, in: query, schema: {type: integer, minimum: 1}}, {name: commit, in: query, schema: {type: string, pattern: '^[0-9a-f]{40}$'}}]
+      responses:
+        '200': {description: Архив, content: {application/zip: {schema: {type: string, format: binary}}}}
+        '400': {description: 'VALIDATION_FAILED — и revision, и commit', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: 'NOT_FOUND — нет системы или коммита', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  # ==== конец блока V3-30 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -1575,3 +1633,20 @@ components:
               fonts: {type: object, required: [display, text], properties: {display: {type: string}, text: {type: string}}}
               palette: {type: object, required: [background, foreground, accent], properties: {background: {type: string}, foreground: {type: string}, accent: {type: string}}}
               previewHtml: {type: string, description: 'документ для <iframe srcdoc sandbox="allow-scripts">; файлы — /direction-previews/*'}
+    RepoRef: {oneOf: [{type: 'null'}, {type: object, required: [oid, revision], properties: {oid: {type: string, pattern: '^[0-9a-f]{40}$'}, revision: {type: [integer, 'null'], description: 'null — коммит версии брифа'}}}], description: 'V3-30: ссылка репозитория системы'}
+    RepoCommit:
+      type: object
+      description: 'V3-30: коммит репозитория системы (db.yaml#system_git_commits)'
+      required: [oid, seq, revision, briefVersion, subject, message, author, userId, committedAt, parents, tree]
+      properties:
+        oid: {type: string, pattern: '^[0-9a-f]{40}$'}
+        seq: {type: integer, minimum: 1, description: порядковый номер на main}
+        revision: {type: [integer, 'null'], description: 'ревизия коммита; null — коммит версии брифа'}
+        briefVersion: {type: [integer, 'null'], description: версия брифа в дереве}
+        subject: {type: string, description: '«Сборка: …», «Правка: …», «Возврат: …», «Бриф: версия N…»'}
+        message: {type: string, description: 'полный текст с трейлерами Wizard-Revision, Wizard-Brief-Version, Wizard-Run, Wizard-User'}
+        author: {type: object, required: [name, email], properties: {name: {const: Wizard}, email: {type: string}}}
+        userId: {type: [string, 'null'], format: uuid, description: 'действующий пользователь (трейлер Wizard-User)'}
+        committedAt: {type: string, format: date-time}
+        parents: {type: array, items: {type: string}}
+        tree: {type: string}

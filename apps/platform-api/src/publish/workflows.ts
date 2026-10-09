@@ -632,6 +632,7 @@ export async function runRollback(h: FlowHost): Promise<FlowResult> {
           toVersion: to,
           runId: h.run.id,
           authorUserId: h.run.started_by,
+          blobs: h.blobs,
         });
         await appendEvent(t, h.run.id, "ops_applied", {
           revision: v,

@@ -24,6 +24,7 @@ import { type DirectionsDeps, DirectionsService } from "./directions/service.js"
 import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { runModuleFactoryCron } from "./gaps/factory.js";
+import { repoRoutes } from "./git/routes.js";
 import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
@@ -380,6 +381,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", sessionRoutes(deps));
   // V3-06: «Собрать» of a v3 system — the build by the approved brief version (startV3Build of V3-11).
   api.route("/", buildV3Routes(deps));
+  // V3-30: the internal git of the system — commits, revision ↔ commit, diff, zip of the tree.
+  api.route("/", repoRoutes(deps));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
   api.route("/", webhookRoutes(deps));

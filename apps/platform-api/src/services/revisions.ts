@@ -3,6 +3,7 @@ import { type ApplyOpsResult, type AppSpec, applyOps, emptySpec } from "@wizard/
 import type { Kysely, Selectable } from "kysely";
 import { type DB, json } from "../db/index.js";
 import type { SystemsTable } from "../db/types.js";
+import { commitInTransaction } from "../git/commit.js";
 import { appendEvent, type TxCtx } from "../runs/events.js";
 import { type BlobStore, sha256 } from "../storage/blobs.js";
 
@@ -110,6 +111,8 @@ interface InsertRevision {
   manifestSha: string;
   idempotencyKey?: string | null;
   summaryRu: string | null;
+  /** V3-30: file contents for the commit of the revision in the system repository (absent — the commit catches up). */
+  blobs?: BlobStore;
 }
 
 async function insertRevision(t: TxCtx, r: InsertRevision): Promise<number> {
@@ -136,6 +139,8 @@ async function insertRevision(t: TxCtx, r: InsertRevision): Promise<number> {
     .set({ draft_revision: version, updated_at: new Date(), last_activity_at: new Date() })
     .where("id", "=", r.system.id)
     .execute();
+  // V3-30: the revision is a commit of the system repository, in the same transaction (best effort).
+  await commitInTransaction(t.trx, r.blobs, r.system.id);
   return version;
 }
 
@@ -211,6 +216,7 @@ export async function applyOpsRevision(t: TxCtx, blobs: BlobStore, a: ApplyOpsAr
     manifestSha: await parentManifestSha(t, blobs, system),
     idempotencyKey: a.idempotencyKey ?? null,
     summaryRu: summary.join("; ").slice(0, 2000),
+    blobs,
   });
   if (a.runId) {
     await appendEvent(t, a.runId, "ops_applied", {
@@ -276,6 +282,7 @@ export async function commitFilesRevision(
     manifestSha: mSha,
     idempotencyKey: a.idempotencyKey ?? null,
     summaryRu: a.summaryRu ?? `Файлы: ${written.map((w) => w.path).join(", ")}`.slice(0, 2000),
+    blobs,
   });
   if (a.runId) {
     for (const w of written) await appendEvent(t, a.runId, "file_written", { ...w, revision: version });
@@ -293,7 +300,14 @@ export function contentTypeOf(path: string): string {
 /** workflows.yaml#workflows.rollback.draft: new revision kind=revert with spec and files of toVersion, ops=[]. */
 export async function revertRevision(
   t: TxCtx,
-  a: { systemId: string; toVersion: number; runId?: string | null; authorUserId?: string | null },
+  a: {
+    systemId: string;
+    toVersion: number;
+    runId?: string | null;
+    authorUserId?: string | null;
+    /** V3-30: for the commit of the revert. */
+    blobs?: BlobStore;
+  },
 ): Promise<number> {
   const system = await lockSystem(t, a.systemId);
   const target = await loadRevision(t.trx, a.systemId, a.toVersion);
@@ -308,6 +322,7 @@ export async function revertRevision(
     ops: [],
     manifestSha: target.files_manifest_sha,
     summaryRu: `Возврат к ревизии ${a.toVersion}`,
+    ...(a.blobs ? { blobs: a.blobs } : {}),
   });
 }
 
