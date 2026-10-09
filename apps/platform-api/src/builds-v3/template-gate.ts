@@ -3,8 +3,10 @@
 // shapes of its sections and the perceptual hashes of screenshots at 390 and 1440 px in a slot of the process Chromium
 // (B2-28) — and compared with the memory of recent sites: the latest fingerprint of every other system of the same
 // niche and of the same organisation (platform.system_site_fingerprints, migration 0038). At or above the threshold of
-// @wizard/gates templateVerdict the hook returns redesign {avoid}: the harness asks the art director again without
-// those archetypes. A second hit in the same run, or a direction the owner pinned, is a note — never a loop.
+// @wizard/gates templateVerdict the hook returns redesign {avoid}. The harness calls it right after the skeleton (a hit
+// there: the art director again without those archetypes, the skeleton recomposed, the check once more), and on the
+// finished site after the scenarios (only a note). Each call stores the system's latest fingerprint, so the memory
+// ends with the final site and archetype. A second hit in the run, or a direction the owner pinned, is a note.
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -372,8 +374,9 @@ const AVOID_MAX = 3;
  * The template_gate hook of the harness v3. The fingerprint of the current site is compared with the memory and
  * stored as the system's latest; over the threshold → redesign {avoid: the current archetype first, then those of the
  * near-duplicates}. No redesign when the owner pinned the direction (brief.design.pinned) or after one redesign in
- * this run (the hook keeps that in its closure: one hook per build run) — a Russian note instead. The system is
- * ctx.systemId; its own earlier fingerprint is never in its memory.
+ * this run (the hook keeps that in its closure: one hook per build run, called after the skeleton, again after a
+ * redesign and after the scenarios) — a Russian note instead. The system is ctx.systemId; its own earlier
+ * fingerprint is never in its memory.
  */
 export function templateGateHook(o: TemplateGateOptions): V3StageHook {
   let redesigned = false;

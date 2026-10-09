@@ -3,7 +3,8 @@
 // organisation — and the hook's decisions: over the threshold → redesign {avoid: the current archetype first, then
 // those of the near-duplicates}; a second hit in the run or a direction the owner pinned → a note, never a loop; a
 // broken capture falls back to the structure. End to end: «Собрать» of a system whose site repeats a recent site of
-// its niche goes back to the art director, the draft gets another archetype. The fingerprints go with the system.
+// its niche goes back to the art director right after the skeleton (before the preview); the draft and the design
+// checkpoint get another archetype, the memory the final one. The fingerprints go with the system.
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -377,21 +378,32 @@ describe("platform: a site that repeats a recent site of the niche goes back to 
     expect(stagesA).toEqual(expect.arrayContaining(["template_gate:started", "template_gate:done"]));
 
     const b = await build(second);
+    // The template check right after the skeleton: the design checkpoint holds the final archetype.
     const design = (await checkpoint(second, "design")) as {
       archetype: string;
       styleName: string;
+      source: string;
+      redesignedFrom?: string;
       design: DesignSystemV3;
     };
-    const tg = await checkpoint(second, "template_gate");
-    expect(tg).toMatchObject({ status: "done", redesign: { avoid: [design.archetype] } });
-    // The harness asked the art director again (no model): another archetype, named in the summary.
+    expect(design.source).toBe("template_gate");
+    expect(design.redesignedFrom).toBeTruthy();
+    expect(design.archetype).not.toBe(design.redesignedFrom);
+    const sk = (await checkpoint(second, "skeleton")) as {
+      template?: { redesign?: { from: string; to: string } };
+    };
+    expect(sk.template?.redesign).toMatchObject({ from: design.redesignedFrom, to: design.archetype });
+    // The fake composer's site is still a copy after the redesign: the re-check and the late stage only note it.
+    expect((await checkpoint(second, "template_gate"))?.redesign).toBeUndefined();
     const summary = String(b.events.find((e) => e.type === "run_finished")?.payload.summary_ru ?? "");
-    const style = /Сменил стиль на «([^»]+)»/.exec(summary)?.[1];
-    expect(style).toBeTruthy();
-    expect(style).not.toBe(design.styleName);
-    // The draft carries the new design system, not the one of the design stage.
-    expect(await draftCss(second)).not.toBe(designCss(design.design));
-    // The memory has both sites; the second one at similarity 1 to the first.
+    expect(summary).toContain(`Сменил стиль на «${design.styleName}»`);
+    expect(summary).toContain("всё ещё похож");
+    expect(b.events.some((e) => e.type === "agent_message" && e.payload.messageId === "v3_redesign")).toBe(
+      true,
+    );
+    // The draft — from the preview on — carries the final design system.
+    expect(await draftCss(second)).toBe(designCss(design.design));
+    // The memory has both sites with their final archetypes; the second one at similarity 1 to the first.
     expect(await row(second)).toMatchObject({ archetype: design.archetype, similarity: "1.000" });
     expect(await row(first)).toMatchObject({ similarity: null });
   }, 600_000);

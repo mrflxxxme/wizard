@@ -8,6 +8,7 @@
 // it worse is rolled back), on the budget (≤ 40 ₽ and ctx.budgetRub, checked by the upper bound before each call),
 // on time or when nothing applies. The result is a layer of files for the harness; the critic never blocks a build.
 import { type CallType, createRegistry, type OrgPolicy, type Registry, type RouteContext } from "@wizard/llm";
+import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { hash32, PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import type { RunStepFn } from "../../../core/events.js";
 import { callTool, type RouteFn } from "../../../core/loop.js";
@@ -118,6 +119,8 @@ export interface CriticReport {
   /** Changed files (path → source; null — delete). */
   files: Map<string, string | null>;
   notes: string[];
+  /** The design system after token edits (absent — the critic kept ctx.design); the harness applies it (V3-14 seam). */
+  design?: DesignSystemV3;
 }
 
 /** The route over ctx.route would pass the stage's cap (checked by the upper bound before each call). */
@@ -618,6 +621,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   report.files =
     state.site === site0 && state.design === ctx.design ? new Map() : changed(layerOf(state), ctx.files);
   report.notes = criticNotes(report);
+  if (state.design !== ctx.design) report.design = state.design;
   return report;
 }
 
@@ -654,6 +658,7 @@ export function createCriticHook(o: CriticOptions): V3StageHook {
       status: "done",
       files: r.files,
       notes: r.notes,
+      ...(r.design ? { design: r.design } : {}),
       // Model calls went through ctx.route: the harness wallet has them.
       spentRub: 0,
       note: [

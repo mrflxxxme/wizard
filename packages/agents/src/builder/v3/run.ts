@@ -8,7 +8,9 @@
 // scenarios — at the target (300 ₽); what is left goes to «Запросы на развитие». A checkpoint after each stage and
 // each scenario keyed by a fingerprint of what it read: a repeated build reuses them and does not pay again.
 // Non-blocking questions are asked on the way; their answers (the brief's «вопрос → ответ» journal) are applied at
-// the next step. Stages critic, template_gate and techreview are host hooks (V3-13…15), skipped while absent.
+// the next step. Stages critic, template_gate and techreview are host hooks (V3-13…15), skipped while absent; the
+// template_gate hook also runs right after the skeleton (V3-14): a hit there changes the archetype once per run and
+// recomposes the skeleton before any scenario is paid for.
 import { createHash } from "node:crypto";
 import type { AppSpec, SystemBrief } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
@@ -88,6 +90,23 @@ const toEntries = (m: ReadonlyMap<string, string | null>): FileEntries =>
   [...m].sort(([a], [b]) => a.localeCompare(b));
 const toMap = (e: unknown): Map<string, string | null> =>
   new Map(Array.isArray(e) ? (e as FileEntries).filter((x) => typeof x?.[0] === "string") : []);
+
+/** The template check of V3-14 on the skeleton, kept in the skeleton checkpoint. */
+interface SkeletonTemplate {
+  notes: string[];
+  note?: string;
+  /** The style changed: archetype ids and the new style's name. */
+  redesign?: { from: string; to: string; styleName: string };
+}
+
+const TEMPLATE_PINNED_RU =
+  "Каркас похож на недавние сайты в этой нише, но стиль вы выбрали сами — оставляю его.";
+const TEMPLATE_NO_OTHER_RU =
+  "Каркас похож на недавние сайты в этой нише, а другого подходящего стиля для неё нет — оставляю выбранный.";
+const TEMPLATE_STILL_RU =
+  "После смены стиля сайт всё ещё похож на недавние сайты в этой нише — его можно сделать своеобразнее правками.";
+const TEMPLATE_LATE_RU =
+  "Готовый сайт похож на недавние сайты в этой нише — после сценариев стиль уже не меняю, его можно сделать своеобразнее правками.";
 
 /** The brief without the «вопрос → ответ» journal: what the pages are made of (answers apply through the plan). */
 const briefForPages = ({ qa: _qa, ...rest }: SystemBrief) => rest;
@@ -288,6 +307,8 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
   let stop: { reason: V3StopReason; message_ru: string } = { reason: "done", message_ru: "" };
   let revision = 0;
   let notes: string[] = [];
+  /** The archetype the template check (V3-14) moved away from in this or an earlier run; null — no redesign. */
+  let redesignedFrom: string | null = null;
 
   const mergedFiles = (): Map<string, string> => {
     const out = new Map<string, string>(Object.entries(backend.files));
@@ -402,6 +423,50 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     scenariosLeft = features.filter((f) => !states.has(f.id)).length;
   };
 
+  /** The owner chose the direction by hand (V3-09 pinned): the template check never changes it. */
+  const ownerPinned = () => brief.design.pinned === true && isArchetypeId(brief.design.archetype);
+
+  /**
+   * Template check (V3-14): the site is too close to recent sites of the niche — the art director picks again
+   * without the current archetype and `avoid` (by code, no model), the backend takes the new tokens and the design
+   * checkpoint keeps the final archetype (the niche memory of later builds reads it). The hook layers lose their
+   * ui/design.css so no earlier layer covers the new design. null — no other archetype fits.
+   */
+  const redesign = async (avoid: readonly string[]): Promise<{ from: string; styleName: string } | null> => {
+    const from = design.archetype;
+    const again = await runArtDirector({
+      input: {
+        niche: design.niche,
+        goals: brief.goals.map((g) => scrub(g.text).text),
+        seed,
+        // pickArchetype remembers NICHE_MEMORY = 4 and spares only the first one when nothing else fits.
+        recent: [...new Set([from, ...avoid])].slice(0, 4),
+      },
+    });
+    if (again.choice.archetype === from) return null;
+    design = again.design;
+    redesignedFrom = from;
+    for (const l of hookLayers.values()) l.delete(DESIGN_CSS_FILE);
+    await buildBackend();
+    const cp = saved.get("design");
+    await save({
+      key: "design",
+      fingerprint: designFp,
+      data: {
+        ...(cp?.data ?? {}),
+        niche: design.niche,
+        archetype: again.choice.archetype,
+        source: "template_gate",
+        styleName: again.choice.styleName,
+        design: again.design,
+        redesignedFrom: from,
+      },
+      costMilli: cp?.costMilli ?? 0,
+      durationMs: cp?.durationMs ?? 0,
+    });
+    return { from, styleName: again.choice.styleName };
+  };
+
   try {
     // 1. Brief: the latest version and the feature list from its scenarios («must» first, then «should»).
     bv = await readBrief();
@@ -460,6 +525,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       },
     });
     design = designed.data.design as DesignSystemV3;
+    // An earlier run changed the style at the template check (V3-14): the checkpoint holds the final archetype.
+    const from = (designed.data as { redesignedFrom?: unknown }).redesignedFrom;
+    redesignedFrom = typeof from === "string" ? from : null;
     if (!designed.reused)
       await say(
         "v3_design",
@@ -509,8 +577,14 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       durationMs: 0,
     });
 
+    // After a template redesign the pages follow the final archetype, not only the design inputs (designFp).
     const scenarioFp = (f: V3Feature) =>
-      sha256({ scenario: f.scenario, design: designFp, front: backend.publicFront });
+      sha256({
+        scenario: f.scenario,
+        design: designFp,
+        front: backend.publicFront,
+        ...(redesignedFrom ? { archetype: design.archetype } : {}),
+      });
     /** A scenario an earlier run passed with the same inputs: its pages come from the checkpoint, nothing is paid. */
     const reuseScenario = (f: V3Feature): boolean => {
       const cp = saved.get(`scenario:${f.id}`);
@@ -529,30 +603,94 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       return true;
     };
 
-    // 4. Skeleton: every page from library patterns with the brief's texts (no model), then the live preview.
+    // 4. Skeleton: every page from library patterns with the brief's texts (no model), then the template check of
+    // V3-14 on it — free and before the scenarios pay for anything: too close to recent sites of the niche → another
+    // archetype and the skeleton again; then the live preview.
     await sync();
     const sk = await stage("skeleton", {
       fingerprint: sha256({ design: designFp, front: backend.publicFront, brief: briefForPages(brief) }),
       run: async (w) => {
-        let r: V3ComposeResult;
-        try {
-          r = await host.composer.skeleton(ctxFor(w));
-        } catch (e) {
-          if (!(e instanceof V3BudgetError)) throw e;
-          // The skeleton is deterministic by contract (C6): a model call there is a bug of the page writer.
-          throw new V3Failure(
-            "INTERNAL",
-            "Каркас страниц попытался обратиться к модели — это ошибка платформы. Мы её исправим.",
-            false,
-          );
+        const compose = async (): Promise<V3ComposeResult> => {
+          try {
+            return await host.composer.skeleton(ctxFor(w));
+          } catch (e) {
+            if (!(e instanceof V3BudgetError)) throw e;
+            // The skeleton is deterministic by contract (C6): a model call there is a bug of the page writer.
+            throw new V3Failure(
+              "INTERNAL",
+              "Каркас страниц попытался обратиться к модели — это ошибка платформы. Мы её исправим.",
+              false,
+            );
+          }
+        };
+        let r = await compose();
+        let spent = r.spentRub;
+        const gate = hooks.template_gate;
+        const template: SkeletonTemplate = { notes: [] };
+        const check = async (): Promise<V3HookResult> => {
+          if (!gate) return { status: "skipped" };
+          skeleton = r.files;
+          try {
+            const out = await gate(ctxFor(w));
+            spent += out.spentRub ?? 0;
+            if (out.note) template.note = out.note;
+            template.notes.push(...(out.notes ?? []));
+            return out;
+          } catch (e) {
+            if (!(e instanceof V3BudgetError)) throw e;
+            return { status: "skipped" };
+          }
+        };
+        const first = await check();
+        const avoid = first.status === "done" ? (first.redesign?.avoid ?? []) : [];
+        // A hook that asks for a redesign without saying anything gets the harness's note.
+        const noteIfSilent = (ru: string) => {
+          if (!template.notes.length) template.notes.push(ru);
+        };
+        if (avoid.length && ownerPinned()) noteIfSilent(TEMPLATE_PINNED_RU);
+        else if (avoid.length) {
+          const changed = await redesign(avoid);
+          if (!changed) noteIfSilent(TEMPLATE_NO_OTHER_RU);
+          else {
+            skeleton = new Map();
+            r = await compose();
+            spent += r.spentRub;
+            template.redesign = { from: changed.from, to: design.archetype, styleName: changed.styleName };
+            template.notes = [
+              `Сменил стиль на «${changed.styleName}», чтобы сайт не был похож на недавние сайты в этой нише.`,
+            ];
+            // Once more on the new skeleton (the hook also stores the final fingerprint); a second hit is a note.
+            const second = await check();
+            if (second.status === "done" && second.redesign?.avoid?.length && template.notes.length === 1)
+              template.notes.push(TEMPLATE_STILL_RU);
+          }
         }
         return {
-          data: { files: toEntries(r.files), pages: r.pages, notes: r.notes },
-          extraMilli: Math.max(0, Math.round(((r.spentRub - w.spentRub) / rpc) * 1000)),
+          data: {
+            files: toEntries(r.files),
+            pages: r.pages,
+            notes: r.notes,
+            ...(gate ? { template: { ...template, notes: [...new Set(template.notes)] } } : {}),
+          },
+          extraMilli: Math.max(0, Math.round(((spent - w.spentRub) / rpc) * 1000)),
+          ...(template.redesign
+            ? { note: `шаблонность: ${template.redesign.from} → ${template.redesign.to}` }
+            : template.note
+              ? { note: template.note }
+              : {}),
         };
       },
     });
     skeleton = toMap(sk.data.files);
+    const template = sk.data.template as SkeletonTemplate | undefined;
+    if (template && !sk.reused) {
+      notes = [...new Set([...notes, ...template.notes])];
+      if (template.redesign)
+        await say(
+          "v3_redesign",
+          `Каркас получился похож на недавние сайты в этой нише — сменил стиль на «${template.redesign.styleName}». Сценарии делаю уже в нём.`,
+        );
+    }
     // Scenarios an earlier run brought up on the same inputs join the skeleton before its commit: a repeated build
     // makes no new revision for them and pays nothing.
     for (const f of features) reuseScenario(f);
@@ -735,7 +873,9 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
     });
     await stageEvent("scenarios", "done");
 
-    // 6–8. Critic (V3-13), template gate (V3-14), techreview (V3-15): host hooks, skipped while absent.
+    // 6–8. Critic (V3-13), template gate (V3-14), techreview (V3-15): host hooks, skipped while absent. The late
+    // template gate checks the finished site (the hook stores its final fingerprint) and only notes a hit: the style
+    // is changed right after the skeleton, where the pages are recomposed for free; here it would undo the critic.
     for (const st of V3_HOOK_STAGES) {
       await sync();
       const hook = hooks[st];
@@ -762,6 +902,7 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
               notes: out.notes ?? [],
               blockers: out.blockers ?? [],
               ...(out.redesign ? { redesign: out.redesign } : {}),
+              ...(out.design ? { design: out.design } : {}),
             },
             ...(out.note ? { note: out.note } : {}),
             extraMilli: Math.round(((out.spentRub ?? 0) / rpc) * 1000),
@@ -771,22 +912,21 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       if (h.data.status !== "done") continue;
       const layer = toMap(h.data.files);
       if (layer.size) hookLayers.set(st, layer);
-      notes = [...notes, ...((h.data.notes as string[]) ?? [])];
-      const redesign = h.data.redesign as { avoid?: string[] } | undefined;
-      if (st === "template_gate" && redesign?.avoid?.length) {
-        // Too close to past sites of the niche: the art director picks again without those archetypes (no model).
-        const again = await runArtDirector({
-          input: {
-            niche: design.niche,
-            goals: brief.goals.map((g) => g.text),
-            seed,
-            recent: [...redesign.avoid, design.archetype],
-          },
-        });
-        design = again.design;
+      const hookNotes = (h.data.notes as string[]) ?? [];
+      notes = [...new Set([...notes, ...hookNotes])];
+      // Token edits of a hook (the critic) reach the design system: the backend (cabinets) and the later hooks take
+      // them, and the hook's layer carries their ui/design.css over the skeleton's and the scenarios'.
+      const tokens = h.data.design as DesignSystemV3 | undefined;
+      if (tokens?.version === 3) {
+        design = tokens;
         await buildBackend();
-        notes = [...notes, `Сменил стиль на «${again.choice.styleName}», чтобы сайт не был похож на шаблон.`];
+        const own = hookLayers.get(st) ?? new Map<string, string | null>();
+        own.set(DESIGN_CSS_FILE, designCss(tokens));
+        hookLayers.set(st, own);
       }
+      const late = h.data.redesign as { avoid?: string[] } | undefined;
+      if (st === "template_gate" && late?.avoid?.length && hookNotes.length === 0)
+        notes = [...new Set([...notes, TEMPLATE_LATE_RU])];
       const blockers = (h.data.blockers as string[]) ?? [];
       if (blockers.length)
         throw new V3Failure(

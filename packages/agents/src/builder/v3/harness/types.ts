@@ -4,6 +4,7 @@
 import type { AppSpec, BriefScenario, SystemBrief } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import type { ModuleRegistry } from "@wizard/modules";
+import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import type { RunStepFn } from "../../../core/events.js";
 import type { RecordDevelopmentRequest } from "../../../gaps.js";
 import type { HostRoute } from "../../../host/index.js";
@@ -104,8 +105,17 @@ export interface V3HookResult {
   blockers?: string[];
   /** ₽ spent outside ctx.route (calls through ctx.route are counted by the wallet). */
   spentRub?: number;
-  /** template_gate: too close to past sites of the niche — the art director picks again without these archetypes. */
+  /**
+   * template_gate: too close to past sites of the niche. Right after the skeleton the art director picks again without
+   * these archetypes and the skeleton is recomposed (once per run; never over a direction the owner pinned); at the
+   * late stage, after the scenarios, it is only a note.
+   */
   redesign?: { avoid: string[] };
+  /**
+   * Token edits of the design system (the critic): the harness takes them as ctx.design of the later stages, compiles
+   * the backend (cabinets) with them and writes their ui/design.css over the earlier layers.
+   */
+  design?: DesignSystemV3;
   note?: string;
 }
 
