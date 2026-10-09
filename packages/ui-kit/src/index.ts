@@ -84,6 +84,17 @@ export { QrScanner } from "./components/QrScanner.js";
 export { QrCode, QrTicket } from "./components/QrTicket.js";
 export { RecordCard } from "./components/RecordCard.js";
 export { RecordForm } from "./components/RecordForm.js";
+/** V3-23 «Интернет-магазин» on the v2 front: goods with «В корзину», the cart, the checkout, the order's page. */
+export {
+  ShopCart,
+  type ShopCartProps,
+  ShopCheckout,
+  type ShopCheckoutProps,
+  ShopOrder,
+  type ShopOrderProps,
+  ShopProducts,
+  type ShopProductsProps,
+} from "./components/Shop.js";
 export { EmptyState, ErrorState, Loading } from "./components/States.js";
 export { StatsReport } from "./components/StatsReport.js";
 export { StatusBoard } from "./components/StatusBoard.js";

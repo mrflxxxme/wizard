@@ -59,7 +59,7 @@ export interface ScreenContext extends GenContext {
 /** Screen generator: TSX source of the page (pure and deterministic). */
 export type ScreenGenerator = (ctx: ScreenContext) => string;
 
-/** Source of a module file generated per plan (pure and deterministic). */
+/** Source of a module file generated per plan (pure and deterministic); "" — the plan needs no such file (a helper). */
 export type FileGenerator = (ctx: GenContext) => string;
 
 export interface ModuleDefinition {

@@ -16,6 +16,7 @@ export const GOALS = [
   { id: "self_service", label: "Клиент сам видит свои записи и заявки" },
   { id: "retention", label: "Удерживать клиентов, продавать пакеты" },
   { id: "resource_tracking", label: "Учёт выдачи: кто что взял и когда вернёт" },
+  { id: "sell_online", label: "Продавать товары на сайте" },
 ] as const;
 
 export type GoalId = (typeof GOALS)[number]["id"];

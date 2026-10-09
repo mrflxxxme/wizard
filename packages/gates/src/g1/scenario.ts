@@ -472,12 +472,15 @@ export async function runScenario(env: G1Env, sc: Scenario, deps: ScenarioDeps):
           (typeof data.binding === "string" ? bindings.find((x) => x.id === data.binding) : undefined);
         if (!b) continue;
         const id = String(data[b.id] ?? data.id);
+        // V3-23: an order of a visitor without login is paid by the buyer's secret the order gave him.
+        const token = typeof data.token === "string" ? { token: data.token } : {};
         const start = await env.request(current, "POST", `/api/pay/${encodeURIComponent(integ.name)}`, {
           binding: b.id,
           id,
+          ...token,
         });
         if (start.status !== 200) return { res: start, value: start.body };
-        const res = await env.request(current, "POST", "/_wizard/pay-mock", { binding: b.id, id });
+        const res = await env.request(current, "POST", "/_wizard/pay-mock", { binding: b.id, id, ...token });
         return { res, value: res.body };
       }
       throw new StepError("error", "Нет привязки ЮKassa для события оплаты");

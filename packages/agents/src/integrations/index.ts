@@ -60,8 +60,9 @@ export {
 export { contractFromDocs, type DocsContractInput, type DocsContractResult } from "./docs.js";
 /** D37: integration functions reach only their contract's hosts with only its key. */
 export { type EgressIssue, integrationEgressIssues } from "./egress.js";
-/** The layer of a build: contracts of the brief's integrations → code and functions, notes. */
+/** The layer of a build: contracts of the brief's integrations → code and functions, notes; clientImports (V3-23). */
 export {
+  clientImports,
   type IntegrationLayer,
   type IntegrationsHookResult,
   integrationLayer,

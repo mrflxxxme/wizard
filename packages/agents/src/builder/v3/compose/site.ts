@@ -174,6 +174,7 @@ const NEEDS_OF: Readonly<Record<PublicAction["hook"], Exclude<PatternNeeds, null
   useBooking: "booking",
   useCatalog: "catalog",
   useContent: "content",
+  useShop: "cart",
 };
 
 /** Public function of the packages module the booking asks before writing (B2-18). */

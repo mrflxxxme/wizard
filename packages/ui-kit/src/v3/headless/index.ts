@@ -67,3 +67,38 @@ export {
   workdays,
   zonedAt,
 } from "./schedule.js";
+/**
+ * V3-23 «Интернет-магазин»: useCart() — the cart of this browser; useShopCatalog(entity, o) — goods with «В корзину» and
+ * the stock; useCheckout(o) — delivery (self-pickup, СДЭК by the module's quote, courier), contacts with consent, the
+ * order and its payment (ЮKassa); useOrder(o) — the order's page by the buyer's secret; rub(sum).
+ */
+export {
+  type CartLine,
+  type CartModel,
+  type CdekPoint,
+  type CdekQuote,
+  type CheckoutField,
+  type CheckoutModel,
+  type DeliveryMethod,
+  type DeliveryOption,
+  type OrderModel,
+  type OrderView,
+  orderSecret,
+  orderToken,
+  type PlacedOrder,
+  productPhoto,
+  rememberOrder,
+  rub,
+  SHOP_DEFAULTS,
+  SHOP_TEXTS,
+  type ShopCatalogModel,
+  type ShopFields,
+  type ShopItem,
+  type UseCheckoutOptions,
+  type UseOrderOptions,
+  type UseShopCatalogOptions,
+  useCart,
+  useCheckout,
+  useOrder,
+  useShopCatalog,
+} from "./shop.js";

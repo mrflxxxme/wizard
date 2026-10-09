@@ -75,6 +75,8 @@ export interface MemoryOptions {
   aiActions?: Record<string, MemoryAiAction>;
   /** Picture addresses of image-field values (fileId → URL) for demos; uploads get an object URL of the file. */
   images?: Record<string, string>;
+  /** V3-23: the confirmation URL usePay gives (default: the draft mock page of the binding and the record). */
+  pay?: (i: { integration: string; binding: string; id: string; token?: string }) => string;
 }
 
 export type MemoryAiAction = { entity: string; fill: (row: Rec) => Record<string, unknown> };
@@ -127,7 +129,7 @@ export interface MemoryDataSource extends DataSource {
   /** Raw rows (no permission filtering). */
   rows(entity: string): Rec[];
   /** Next matching write fails with `error` (e.g. 403 for optimistic-update tests). */
-  failNext(op: "create" | "update" | "remove" | "call" | "ai", error: WzError): void;
+  failNext(op: "create" | "update" | "remove" | "call" | "ai" | "pay", error: WzError): void;
   /** Permission-checked operations (also used by the hooks). */
   list(entity: string, q?: ListQuery): { items: Rec[]; total: number };
   get(entity: string, id: string): Rec;
@@ -316,7 +318,7 @@ export function createMemoryDataSource(
     },
     subscribe: store.subscribe,
     rows: (entity: string) => db.get(entity) ?? [],
-    failNext(op: "create" | "update" | "remove" | "call" | "ai", error: WzError) {
+    failNext(op: "create" | "update" | "remove" | "call" | "ai" | "pay", error: WzError) {
       failures.push({ op, error });
     },
 
@@ -504,6 +506,14 @@ export function createMemoryDataSource(
       return useMutationState(async (action: string, entity: string, id: string) =>
         ds.runAi(action, entity, id),
       );
+    },
+    usePay() {
+      return useMutationState(async (integration: string, binding: string, id: string, token?: string) => {
+        calls.push({ op: "pay", name: integration, args: [binding, id, token] });
+        failIf("pay");
+        const url = opts.pay?.({ integration, binding, id, ...(token ? { token } : {}) });
+        return url ?? `/_wizard/pay-mock?${new URLSearchParams({ binding, id })}`;
+      });
     },
     get files() {
       return files;

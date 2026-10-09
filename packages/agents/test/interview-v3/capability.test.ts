@@ -1,8 +1,10 @@
 // V3-03 acceptance 3: «Карта возможностей» by code on four briefs of the v3 classes — business site, booking, CRM,
 // shop. Every requirement (scenario, integration, extra requirement) gets «на проверенных модулях», «своим кодом, с
-// пометкой» or «пока не умею — в запросы на развитие»; the shop has no modules yet, so its cart, payment, delivery,
-// stock and receipts are «не умею» with a replacement. The share of «не умею» is counted per month for /admin.
+// пометкой» or «пока не умею — в запросы на развитие». V3-23: with «Интернет-магазин» the shop's cart, payment,
+// delivery by СДЭК, stock and receipts are on modules; a registry without it keeps them «не умею» with a replacement.
+// The share of «не умею» is counted per month for /admin.
 import { emptyBrief, type SystemBrief, validateBrief } from "@wizard/appspec";
+import { CATALOG, type ModuleRegistry } from "@wizard/modules";
 import { describe, expect, test } from "vitest";
 import {
   applyBriefPatch,
@@ -71,6 +73,13 @@ const BRIEFS = {
   }),
 };
 
+/** The registry before V3-23: «Интернет-магазин» only a draft of the catalog. */
+const NO_SHOP: ModuleRegistry = {
+  modules: CATALOG.modules.map((d) =>
+    d.manifest.id === "shop" ? { manifest: { ...d.manifest, status: "draft" as const } } : d,
+  ),
+};
+
 describe("capability map on the four v3 classes", () => {
   test("business site: landing and leads on modules, the blog as own code", () => {
     const { verdicts } = capabilityMap(BRIEFS.site);
@@ -96,11 +105,42 @@ describe("capability map on the four v3 classes", () => {
     ]);
   });
 
-  test("shop: the catalog on modules; cart, online payment, delivery, receipts and ЮKassa — not yet, with a replacement", () => {
+  test("shop (V3-23): goods, cart, online payment, СДЭК, receipts, stock and ЮKassa — on «Интернет-магазин»", () => {
     const { verdicts, capability } = capabilityMap(BRIEFS.shop, [
       { text: "Учёт остатков на складе" },
       { text: "Блог о чае" },
     ]);
+    expect(verdicts.map((v) => [v.level, v.module ?? v.category])).toEqual([
+      ["modules", "shop"],
+      ["modules", "shop"],
+      ["modules", "shop"],
+      ["modules", "shop"],
+      ["modules", "shop"],
+      ["custom", undefined],
+    ]);
+    expect(capabilityCounts(capability)).toMatchObject({ modules: 5, custom: 1, not_yet: 0, total: 6 });
+    // Only СДЭК, the courier and self-pickup are built in; a booking paid online is not a shop.
+    expect(requirementLevel({ text: "Доставка заказов через Boxberry" })).toMatchObject({
+      level: "not_yet",
+      category: "integration",
+    });
+    expect(requirementLevel({ text: "Клиент оплачивает запись онлайн картой" })).toMatchObject({
+      level: "not_yet",
+      category: "payments",
+    });
+    expect(requirementLevel({ text: "Курьер магазина привозит букет по адресу" })).toEqual({
+      level: "modules",
+      module: "shop",
+    });
+    expect(requirementLevel({ text: "Синхронизация остатков с МойСклад" }).category).toBe("integration");
+  });
+
+  test("shop without «Интернет-магазин» (a registry before V3-23): cart, payment, delivery, receipts — not yet, with a replacement", () => {
+    const { verdicts, capability } = capabilityMap(
+      BRIEFS.shop,
+      [{ text: "Учёт остатков на складе" }, { text: "Блог о чае" }],
+      NO_SHOP,
+    );
     expect(verdicts.map((v) => [v.level, v.module ?? v.category])).toEqual([
       ["modules", "catalog"],
       ["not_yet", "payments"],
@@ -119,7 +159,7 @@ describe("capability map on the four v3 classes", () => {
 
   test("refreshCapability writes the map into the brief and every «не умею» into «Не входит» with the replacement; the brief stays valid", () => {
     const b = structuredClone(BRIEFS.shop);
-    refreshCapability(b, []);
+    refreshCapability(b, [], NO_SHOP);
     expect(b.capability.map((c) => c.level)).toEqual(["modules", "not_yet", "not_yet", "not_yet"]);
     expect(b.outOfScope.map((o) => o.text)).toEqual([
       expect.stringMatching(/^Пока не умею: Когда покупатель кладёт товар в корзину/),
@@ -127,14 +167,14 @@ describe("capability map on the four v3 classes", () => {
       "Пока не умею: Интеграция: ЮKassa",
     ]);
     expect(b.outOfScope.every((o) => o.substitute)).toBe(true);
-    refreshCapability(b, []);
+    refreshCapability(b, [], NO_SHOP);
     expect(b.outOfScope).toHaveLength(3);
     expect(validateBrief(b).ok).toBe(true);
   });
 
   test("rules: not-yet beats a module hint; own-code kinds beat the hint; an unknown hint is ignored", () => {
     expect(
-      requirementLevel({ text: "Покупатель оплачивает заказ картой на сайте", moduleHint: "catalog" }).level,
+      requirementLevel({ text: "Клиент оплачивает визит картой на сайте", moduleHint: "booking" }).level,
     ).toBe("not_yet");
     expect(requirementLevel({ text: "Статьи в блоге", moduleHint: "landing" }).level).toBe("custom");
     expect(requirementLevel({ text: "Что-то своё", moduleHint: "booking" })).toEqual({
@@ -158,7 +198,7 @@ describe("capability map on the four v3 classes", () => {
 
 describe("the monthly share of «не умею» (/admin)", () => {
   test("months ascending, briefs and requirements summed, share with 3 decimals", () => {
-    const shop = capabilityMap(BRIEFS.shop).capability;
+    const shop = capabilityMap(BRIEFS.shop, [], NO_SHOP).capability;
     const crm = capabilityMap(BRIEFS.crm).capability;
     const rows = notYetShareByMonth([
       { createdAt: "2026-11-03T10:00:00Z", capability: crm },

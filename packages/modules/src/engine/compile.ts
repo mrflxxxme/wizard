@@ -720,6 +720,7 @@ class Compilation {
           ...(f.public ? { public: true } : {}),
           ...(roles?.length ? { roles } : {}),
           ...(f.systemDbReason ? { systemDbReason: f.systemDbReason } : {}),
+          ...(f.collectsPii ? { collectsPii: true } : {}),
         });
         this.functionOwner.set(f.name, id);
         this.setFile(id, f.file, d?.files?.[f.file] ?? "");
@@ -758,7 +759,9 @@ class Compilation {
   private renderGenerated(): void {
     for (const { module, file, gen } of this.generated) {
       try {
-        this.files.set(file, gen(this.genCtx(module)));
+        // A helper the plan does not need (V3-23: the СДЭК client without СДЭК delivery) generates "": no file.
+        const src = gen(this.genCtx(module));
+        if (src !== "") this.files.set(file, src);
       } catch (e) {
         this.bug(module, `генератор файла «${file}» упал: ${(e as Error).message}`);
       }

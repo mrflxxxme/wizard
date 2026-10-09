@@ -351,11 +351,11 @@ export function usePayment<I extends keyof Payments & string>(integration: I): P
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<WizardError | undefined>(undefined);
   const pay = useCallback(
-    async (binding: Payments[I], id: string) => {
+    async (binding: Payments[I], id: string, token?: string) => {
       setPending(true);
       setError(undefined);
       try {
-        redirect(await client.pay(integration, String(binding), id));
+        redirect(await client.pay(integration, String(binding), id, token));
       } catch (e) {
         const err = asWizardError(e);
         setError(err);

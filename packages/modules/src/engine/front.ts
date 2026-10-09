@@ -6,6 +6,8 @@ import type { AppSpec, GoalScenario, PermissionOp } from "@wizard/appspec";
 import { SERVICE_CONTRACT } from "../booking/compile.js";
 import { type ScheduleSpec, scheduleOf } from "../booking/schedule.js";
 import { CATALOG_NAMES } from "../catalog/compile.js";
+import { SHOP_NAMES } from "../shop/compile.js";
+import { checkoutConfig } from "../shop/pages.js";
 
 /** What front the engine compiles: v2 — module pages as before; backend — no public pages (v3 generates them). */
 export type FrontMode = "v2" | "backend";
@@ -13,8 +15,26 @@ export type FrontMode = "v2" | "backend";
 /** Screen audiences of the public front (left to v3 in backend mode): the site and the client cabinet. */
 export const PUBLIC_AUDIENCES: ReadonlySet<string> = new Set(["public", "visitor"]);
 
-/** Headless hooks of @wizard/ui-kit/v3/headless (C4) that serve the public data actions. */
-export type PublicHook = "useLeadForm" | "useBooking" | "useCatalog" | "useContent";
+/**
+ * Headless hooks of @wizard/ui-kit/v3/headless (C4) that serve the public data actions; useShop (V3-23) — the goods of
+ * «Интернет-магазин» with the cart, the checkout and the order (useShopCatalog, useCart, useCheckout, useOrder).
+ */
+export type PublicHook = "useLeadForm" | "useBooking" | "useCatalog" | "useContent" | "useShop";
+
+/** The checkout of «Интернет-магазин» (V3-23): what the v3 shop patterns pass to useCheckout and useOrder. */
+export interface ShopFrontConfig {
+  methods: { value: "pickup" | "cdek" | "courier"; label: string }[];
+  online: boolean;
+  courierPrice?: number;
+  pointEntity: string;
+  placeFn: string;
+  cdekFn: string;
+  payment?: { integration: string; binding: string };
+  orderPath: string;
+  /** Field of the stock of a product; null — the shop keeps no stock. */
+  stockField: string | null;
+  categoryEntity?: string;
+}
 
 /** A module screen the backend mode leaves to the v3 front. */
 export interface PublicScreen {
@@ -50,6 +70,7 @@ export interface PublicAction {
   /** Public functions of the module the action calls (busySlots, packageCheck…). */
   functions?: string[];
   booking?: BookingFrontConfig;
+  shop?: ShopFrontConfig;
 }
 
 /** A public function the pages of the front may call (POST /api/fn) with one of the front's roles. */
@@ -114,7 +135,9 @@ export function publicActions(
         : "useLeadForm"
       : module === "catalog" && e.name === CATALOG_NAMES.item
         ? "useCatalog"
-        : "useContent";
+        : module === "shop" && e.name === SHOP_NAMES.product
+          ? "useShop"
+          : "useContent";
     const functions = fns.filter((f) => f.module === module).map((f) => f.name);
     out.push({
       hook,
@@ -124,9 +147,21 @@ export function publicActions(
       ops,
       ...(functions.length ? { functions } : {}),
       ...(hook === "useBooking" ? { booking: bookingConfig(spec, params.booking ?? {}) } : {}),
+      ...(hook === "useShop" ? { shop: shopConfig(spec, params.shop ?? {}) } : {}),
     });
   }
   return out;
+}
+
+function shopConfig(spec: AppSpec, params: Readonly<Record<string, unknown>>): ShopFrontConfig {
+  const product = spec.entities.find((e) => e.name === SHOP_NAMES.product);
+  return {
+    ...checkoutConfig(params),
+    stockField: product?.fields.some((f) => f.name === "stock") ? "stock" : null,
+    ...(spec.entities.some((e) => e.name === SHOP_NAMES.category)
+      ? { categoryEntity: SHOP_NAMES.category }
+      : {}),
+  };
 }
 
 function bookingConfig(spec: AppSpec, params: Readonly<Record<string, unknown>>): BookingFrontConfig {

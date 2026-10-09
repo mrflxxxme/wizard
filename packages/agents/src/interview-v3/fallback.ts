@@ -171,6 +171,21 @@ const GOAL_TEMPLATES: Readonly<Record<GoalId, GoalTemplate>> = {
       moduleHint: "resources",
     },
   },
+  sell_online: {
+    success: "Покупатель сам выбирает товар, оформляет заказ и платит на сайте",
+    label: "Магазин: корзина, заказ и оплата на сайте",
+    scenario: {
+      actor: "visitor",
+      when: "покупатель выбирает товар на сайте",
+      // biome-ignore lint/suspicious/noThenProperty: field name fixed by builder-v3.md §3 C1
+      then: [
+        "кладёт товар в корзину",
+        "оформляет заказ с доставкой или самовывозом",
+        "оплачивает заказ онлайн",
+      ],
+      moduleHint: "shop",
+    },
+  },
 };
 
 /** What each data-keeping module stores (names only; personal fields marked). */
@@ -214,6 +229,16 @@ const DATA_TEMPLATES: Readonly<
   resources: {
     entity: "Выдачи",
     fields: [{ name: "Что выдано" }, { name: "Кому", pii: true }, { name: "Вернуть до" }],
+  },
+  shop: {
+    entity: "Заказы",
+    fields: [
+      { name: "Покупатель", pii: true },
+      { name: "Телефон", pii: true },
+      { name: "Товары" },
+      { name: "Сумма" },
+      { name: "Доставка" },
+    ],
   },
   staff: {
     entity: "Сотрудники",

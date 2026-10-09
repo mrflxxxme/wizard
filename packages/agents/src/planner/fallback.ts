@@ -36,6 +36,7 @@ const GOAL_STEMS: Readonly<Record<GoalId, readonly string[]>> = {
   self_service: ["личный кабинет", "личном кабинете", "кабинет клиента", "свои записи", "свои заявки"],
   retention: ["абонемент", "пакет", "подписк", "лояльн", "повторн"],
   resource_tracking: ["выдач", "прокат", "аренд", "инвентар", "инструмент", "оборудован", "склад"],
+  sell_online: ["интернет-магазин", "онлайн-магазин", "корзин", "сдэк", "юkassa", "юкасс"],
 };
 
 /** Niche by keywords (2–5 words, modules.yaml#ai_rules); the first match wins. */

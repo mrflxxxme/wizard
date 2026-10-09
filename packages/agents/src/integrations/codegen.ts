@@ -273,6 +273,8 @@ function clientFile(
   const types = ops.flatMap((op) => [`${pascal(op.id)}Input`, `${pascal(op.id)}Output`]);
   const out: string[] = [header(c, ref)];
   if (mode === "mock") {
+    // The same signature as live (ctx, input): code of the system calls either client the same way (V3-23).
+    out.push(`import type { ActionCtx } from "@wizard/sdk";`);
     out.push(`import { MOCK } from "./mock";`);
     out.push(`import type { ${types.join(", ")} } from "./types";\n`);
     out.push(
@@ -283,7 +285,7 @@ function clientFile(
     for (const op of ops) {
       const T = pascal(op.id);
       out.push(
-        `/** ${op.method} ${op.path} (mock) */\nexport async function ${op.id}(_input: ${T}Input): Promise<${T}Output> {\n  return MOCK.${op.id}.body as ${T}Output;\n}\n`,
+        `/** ${op.method} ${op.path} (mock) */\nexport async function ${op.id}(_ctx: ActionCtx, _input: ${T}Input): Promise<${T}Output> {\n  return MOCK.${op.id}.body as ${T}Output;\n}\n`,
       );
     }
     return out.join("\n");
@@ -332,15 +334,9 @@ export async function ${op.id}(ctx: ActionCtx, ${used ? "input" : "_input"}: ${T
   return out.join("\n");
 }
 
-function actionFile(
-  c: IntegrationContract,
-  op: ContractOperation,
-  mode: IntegrationMode,
-  ref: string,
-): string {
+function actionFile(c: IntegrationContract, op: ContractOperation, ref: string): string {
   const a = opArgs(op);
-  const call = mode === "mock" ? `${op.id}(args)` : `${op.id}(ctx, args)`;
-  const handler = mode === "mock" ? `async (_ctx, args) => ${call}` : `async (ctx, args) => ${call}`;
+  const handler = `async (ctx, args) => ${op.id}(ctx, args)`;
   return `${header(c, ref)}import { action, v } from "@wizard/sdk";
 import { ${op.id} } from "./client";
 
@@ -382,7 +378,7 @@ export function integrationCode(
   const functions: SpecFunction[] = [];
   for (const op of ops) {
     const file = `${dir}/${op.id}.ts`;
-    files[file] = actionFile(contract, op, mode, ref);
+    files[file] = actionFile(contract, op, ref);
     functions.push({
       name: integrationFunctionName(contract.id, op.id),
       kind: "action",

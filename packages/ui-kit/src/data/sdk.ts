@@ -191,6 +191,13 @@ export function sdkDataSource(): DataSource {
           client.runAiAction(action, entity, id),
       );
     },
+    usePay() {
+      const client = useSdkClient();
+      return useMutationState(
+        async (integration: string, binding: string, id: string, token?: string): Promise<string> =>
+          client.pay(integration, binding, id, token),
+      );
+    },
     useFiles() {
       const client = useSdkClient();
       return useMemo<FilesApi>(() => {

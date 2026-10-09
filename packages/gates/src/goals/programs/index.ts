@@ -13,6 +13,7 @@ import { NOTIFY_PROGRAMS } from "./notify.js";
 import { PACKAGES_PROGRAMS } from "./packages.js";
 import { REPORTS_PROGRAMS } from "./reports.js";
 import { RESOURCES_PROGRAMS } from "./resources.js";
+import { SHOP_PROGRAMS } from "./shop.js";
 import { STAFF_PROGRAMS } from "./staff.js";
 import { VISITOR_CABINET_PROGRAMS } from "./visitor_cabinet.js";
 
@@ -30,4 +31,5 @@ export const GOAL_PROGRAMS: Readonly<Record<string, GoalProgram>> = {
   ...PACKAGES_PROGRAMS,
   ...RESOURCES_PROGRAMS,
   ...CONTENT_PROGRAMS,
+  ...SHOP_PROGRAMS,
 };

@@ -418,7 +418,8 @@ describe("research, personal data, development requests, owner edits, wishes", (
             },
           ],
           roles: [{ name: "Владелец", can: ["всё"] }],
-          requirements: [{ text: "Доставка СДЭК" }],
+          // V3-23: the cart and СДЭК are «Интернет-магазин»; Почта России and a mobile app are still not built.
+          requirements: [{ text: "Доставка Почтой России" }, { text: "Мобильное приложение в App Store" }],
         }),
         finish,
       ],
@@ -426,10 +427,15 @@ describe("research, personal data, development requests, owner edits, wishes", (
     const res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.shop });
     const done = main(res.outputs);
     expect(done?.kind).toBe("brief");
-    expect(requests.map((r) => r.category)).toEqual(["payments", "integration"]);
+    expect(requests.map((r) => r.category)).toEqual(["integration", "mobile"]);
     expect(requests.every((r) => r.offered)).toBe(true);
-    expect(done?.gaps?.map((g) => g.category)).toEqual(["payments", "integration"]);
-    expect(res.session.brief.capability.map((c) => c.level)).toEqual(["modules", "not_yet", "not_yet"]);
+    expect(done?.gaps?.map((g) => g.category)).toEqual(["integration", "mobile"]);
+    expect(res.session.brief.capability.map((c) => c.level)).toEqual([
+      "modules",
+      "modules",
+      "not_yet",
+      "not_yet",
+    ]);
     expect(done?.text).toContain("пока не умею — 2");
   });
 
