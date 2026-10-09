@@ -1,0 +1,336 @@
+// V3-12: the page composer's skeleton (builder-v3.md C6 «skeleton», D77 (10)) — every public page of the system from
+// library patterns and the design system, texts from the brief and the plan, without a model; multi-page navigation and
+// SEO on every page (acceptance 3); the composed system passes G0 with the v3 allowances (react, motion/react, the
+// headless hooks in ui/pages|patterns|sections only) while v2 systems keep the old rules.
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AppSpec } from "@wizard/appspec";
+import { checkFile, runG0 } from "@wizard/gates";
+import { compilePlan } from "@wizard/modules";
+import { toRoleSpec } from "@wizard/ui-kit";
+import { PATTERNS } from "@wizard/ui-kit/v3/patterns";
+import { describe, expect, test } from "vitest";
+import { buildRenderBundle } from "../../gates/src/g1/render/bundle.js";
+import { RenderProcess } from "../../gates/src/g1/render/host.js";
+import { allModulesPlan } from "../../modules/test/fixtures.js";
+import {
+  createPageComposer,
+  DESIGN_CSS,
+  lintErrors,
+  lintSitePage,
+  readSite,
+  SEO_JSON,
+  type SiteModel,
+  siteFacts,
+  withSitePages,
+} from "../src/builder/v3/compose/index.js";
+import type { V3BuildContext, V3ComposeResult } from "../src/builder/v3/contract.js";
+import { DEFAULT_REGISTRY } from "../src/planner/index.js";
+import { composeContext, FORM_TEST, TEST_LIBRARY } from "./v3-compose-fixtures.js";
+
+function apply(files: ReadonlyMap<string, string>, out: V3ComposeResult): Map<string, string> {
+  const next = new Map(files);
+  for (const [p, v] of out.files) {
+    if (v === null) next.delete(p);
+    else next.set(p, v);
+  }
+  return next;
+}
+
+async function skeleton(ctx: V3BuildContext, patterns = TEST_LIBRARY) {
+  const out = await createPageComposer({ patterns }).skeleton(ctx);
+  const files = apply(ctx.files, out);
+  const site = readSite(files) as SiteModel;
+  return { out, files, site, spec: withSitePages(ctx.spec, site) };
+}
+
+const G0_CODE = ["G0-IMP-01", "G0-SEC-01", "G0-TS-01", "G0-BUILD-01", "G0-SPEC-03", "G0-SPEC-04"];
+const failing = (checks: { status: string }[]) =>
+  checks.filter((c) => c.status === "fail" || c.status === "error");
+
+describe("skeleton: pages, sections, texts", () => {
+  test("no model calls, deterministic; every public page of the front, the home page first", async () => {
+    const ctx = composeContext();
+    const a = await skeleton(ctx);
+    const b = await skeleton(composeContext());
+    expect(a.out.spentRub).toBe(0);
+    expect([...a.out.files]).toEqual([...b.out.files]);
+    expect(a.out.pages.map((p) => p.route)).toEqual(["/", "/services", "/photos"]);
+    expect(a.out.pages.map((p) => p.title)).toEqual(["Главная", "Каталог и цены", "Источники фото"]);
+    expect(a.out.notes[0]).toMatch(/^Собрал каркас сайта в стиле «.+»: 3 стр\./);
+    // Sections without a library pattern yet (catalog, FAQ) are left out and named in the notes.
+    expect(a.out.notes.join("\n")).toContain("«catalog» (catalog) на странице /services");
+  });
+
+  test("files: the design system, the patterns used, one page per route importing them, SEO and the site model", async () => {
+    const ctx = composeContext();
+    const { out, files, site, spec } = await skeleton(ctx);
+    expect(out.files.get(DESIGN_CSS)).toContain("@theme inline");
+    expect(out.files.get(DESIGN_CSS)).toContain("@font-face");
+    const used = [...new Set(site.pages.flatMap((p) => p.sections.map((s) => s.pattern)))].sort();
+    expect([...out.files.keys()].filter((p) => p.startsWith("ui/patterns/")).sort()).toEqual(
+      used.map((id) => `ui/patterns/${id}.tsx`),
+    );
+    for (const id of used)
+      expect(files.get(`ui/patterns/${id}.tsx`)).toBe(TEST_LIBRARY.find((p) => p.id === id)?.source);
+    for (const page of site.pages) {
+      const src = files.get(page.file) as string;
+      for (const s of page.sections) expect(src).toContain(`from "../../patterns/${s.pattern}"`);
+      expect(spec.pages?.find((p) => p.route === page.route)).toMatchObject({
+        file: page.file,
+        title: page.title,
+      });
+    }
+    // The cabinets of the modules stay; the public pages get every role of their screen.
+    expect(spec.pages?.map((p) => p.route)).toEqual(
+      expect.arrayContaining(["/cabinet", "/cabinet/notifications", "/", "/services", "/photos"]),
+    );
+    expect(JSON.parse(out.files.get(SEO_JSON) as string).pages["/services"]).toEqual({
+      title: "Каталог и цены — Белая линия",
+      description: "Каталог и цены. Белая линия: стоматологическая клиника.",
+    });
+  });
+
+  test("one header and one footer for the whole site; variety of variants and layout families", async () => {
+    const { site } = await skeleton(composeContext());
+    const header = new Set(site.pages.map((p) => p.sections[0]?.pattern));
+    const footer = new Set(site.pages.map((p) => p.sections.at(-1)?.pattern));
+    expect(header.size).toBe(1);
+    expect(footer.size).toBe(1);
+    expect([...header][0]).toMatch(/^header-/);
+    expect([...footer][0]).toMatch(/^footer-/);
+    const heroes = site.pages.map((p) => p.sections.find((s) => s.type === "hero")?.pattern);
+    expect(new Set(heroes).size).toBe(heroes.length);
+    for (const page of site.pages) {
+      const layouts = page.sections
+        .filter((s) => s.type !== "header" && s.type !== "footer")
+        .map((s) => TEST_LIBRARY.find((p) => p.id === s.pattern)?.layout);
+      for (let i = 1; i < layouts.length; i++) expect(layouts[i]).not.toBe(layouts[i - 1]);
+    }
+  });
+
+  test("navigation: the header lists the pages, the footer every page (photo credits too); the action leads to the form", async () => {
+    const { site } = await skeleton(composeContext());
+    const home = site.pages[0];
+    const services = site.pages[1];
+    if (!home || !services) throw new Error("pages");
+    const nav = (p: typeof home) => p.sections[0]?.props.nav;
+    expect(nav(home)).toEqual([
+      { label: "Главная", href: "/" },
+      { label: "Каталог и цены", href: "/services" },
+    ]);
+    const footer = home.sections.at(-1)?.props as { columns?: { links: { href: string }[] }[] };
+    expect(footer.columns?.[0]?.links.map((l) => l.href)).toEqual(["/", "/services", "/photos"]);
+    // The lead form is bound to the leads module's entity through the headless hook (C4).
+    expect(home.sections.find((s) => s.id === "form")).toMatchObject({
+      pattern: FORM_TEST.id,
+      props: { entity: "lead" },
+    });
+    expect(home.sections.find((s) => s.type === "hero")?.props.action).toEqual({
+      label: "Оставить заявку",
+      href: "#form",
+    });
+    expect(services.sections.find((s) => s.type === "hero")?.props.action).toEqual({
+      label: "Оставить заявку",
+      href: "/#form",
+    });
+  });
+
+  test("texts only from the facts: the plan's texts, no examples, no invented numbers; every page passes the linter", async () => {
+    const ctx = composeContext();
+    const { site, files } = await skeleton(ctx);
+    const text = JSON.stringify(site);
+    expect(text).toContain("Лечим зубы без боли и очередей");
+    expect(text).not.toContain("Пример");
+    expect(text).not.toContain("ООО «Улыбка»");
+    expect(text).toContain("ООО «Белая линия»");
+    const facts = siteFacts(ctx);
+    for (const page of site.pages)
+      expect(lintErrors(lintSitePage(site, page, facts, TEST_LIBRARY))).toEqual([]);
+    // One h1 per page — the first screen.
+    for (const page of site.pages) expect((files.get(page.file) ?? "").match(/<Hero/g)).toHaveLength(1);
+  });
+
+  test("SEO on every page: title, description; og:image from the first screen photo", async () => {
+    const { site } = await skeleton(composeContext());
+    for (const p of site.pages) {
+      expect(p.seo.title.length).toBeGreaterThan(5);
+      expect(p.seo.title.length).toBeLessThanOrEqual(70);
+      expect(p.seo.description.length).toBeLessThanOrEqual(160);
+    }
+    expect(site.pages[0]?.seo.image).toMatch(/^\/_wizard\/photos\/[0-9a-f-]+\/1600$/);
+    const bare = await skeleton(composeContext({ photos: false }));
+    expect(bare.site.pages[0]?.seo.image).toBeUndefined();
+    const hero = bare.site.pages[0]?.sections.find((s) => s.type === "hero");
+    expect(hero?.props.image).toBeUndefined();
+    expect(hero?.props.images).toBeUndefined();
+  });
+
+  test("missing facts: an honest neutral wording, never an invented one", async () => {
+    const ctx = composeContext();
+    const spec: AppSpec = {
+      ...ctx.spec,
+      compliance: { consentTemplateId: "default", policyPage: "/privacy" },
+    };
+    const plan = { ...ctx.plan };
+    delete plan.landing;
+    const { site } = await skeleton({ ...ctx, spec, plan });
+    const footer = site.pages[0]?.sections.at(-1)?.props as { legal: { operator: string } };
+    expect(footer.legal.operator).toBe("Владелец сайта «Белая линия» — оператор персональных данных");
+    const hero = site.pages[0]?.sections.find((s) => s.type === "hero")?.props;
+    expect(hero?.title).toBe("Белая линия: стоматологическая клиника");
+    expect(JSON.stringify(site)).not.toMatch(/довольн|лучш|гарант|отзыв/i);
+  });
+
+  test("a re-run drops the composer's files the new composition does not use, and only those", async () => {
+    const ctx = composeContext();
+    const first = await skeleton(ctx);
+    const old = "export default function X() {\n  return null;\n}\n";
+    const stale = new Map(first.files)
+      .set("ui/patterns/zz-old.tsx", old)
+      .set("ui/sections/old-signature.tsx", old)
+      .set("ui/pages/site/Old.tsx", old);
+    const again = await createPageComposer({ patterns: TEST_LIBRARY }).skeleton({ ...ctx, files: stale });
+    for (const p of ["ui/patterns/zz-old.tsx", "ui/sections/old-signature.tsx", "ui/pages/site/Old.tsx"])
+      expect(again.files.get(p)).toBeNull();
+    // Cabinets of the modules are not the composer's.
+    expect(again.files.has("ui/pages/Cabinet.tsx")).toBe(false);
+    expect(first.files.has("ui/pages/Cabinet.tsx")).toBe(true);
+  });
+
+  test("a system without public screens and actions (CRM) gets no site", async () => {
+    const ctx = composeContext();
+    const out = await createPageComposer().skeleton({
+      ...ctx,
+      publicFront: { screens: [], actions: [], functions: [] },
+    });
+    expect(out.pages).toEqual([]);
+    expect(out.files.size).toBe(0);
+    expect(out.notes[0]).toContain("Публичных страниц в системе нет");
+  });
+
+  test("the ui-kit library alone (no form patterns yet): the form is left out, the action goes to the catalog", async () => {
+    const { site } = await skeleton(composeContext(), PATTERNS);
+    expect(site.pages[0]?.sections.some((s) => s.id === "form")).toBe(false);
+    expect(site.primary).toMatchObject({ kind: "catalog", route: "/services" });
+    // The plan's call to action was written for the form: not reused for the catalog link.
+    expect(JSON.stringify(site)).not.toContain("Спросить");
+  });
+});
+
+describe("gates on the composed system (v3 allowances)", () => {
+  test("G0 imports, forbidden API, types, build, files and orphans pass", async () => {
+    const ctx = composeContext();
+    const { files, spec } = await skeleton(ctx);
+    const report = await runG0(
+      {
+        spec,
+        prevSpec: null,
+        specVersion: 0,
+        files,
+        env: "draft",
+        systemKey: "v3_compose",
+        db: undefined as never,
+      },
+      { only: G0_CODE },
+    );
+    expect(failing(report.checks)).toEqual([]);
+    expect(report.checks.filter((c) => G0_CODE.includes(c.id)).every((c) => c.status === "pass")).toBe(true);
+  }, 120_000);
+
+  test("v2 systems keep the old rules; in v3 only the public page files get react, motion and the headless hooks", async () => {
+    const pattern =
+      'import { useState } from "react";\nexport default function X() { useState(0); return null; }\n';
+    const imp = (path: string, v3: boolean) =>
+      checkFile(path, pattern, undefined, { v3 }).filter((c) => c.id === "G0-IMP-01" && c.status === "fail");
+    expect(imp("ui/patterns/x.tsx", true)).toEqual([]);
+    expect(imp("ui/sections/x.tsx", true)).toEqual([]);
+    expect(imp("ui/pages/site/X.tsx", true)).toEqual([]);
+    expect(imp("ui/patterns/x.tsx", false)).toHaveLength(1);
+    expect(imp("ui/lib/x.tsx", true)).toHaveLength(1);
+    const other = 'import { z } from "zod";\nexport default function X() { return null; }\n';
+    expect(
+      checkFile("ui/patterns/x.tsx", other, undefined, { v3: true }).filter(
+        (c) => c.id === "G0-IMP-01" && c.status === "fail",
+      ),
+    ).toHaveLength(1);
+    // A v2 system with the same file: the whole G0 run refuses it.
+    const r = compilePlan(allModulesPlan(), DEFAULT_REGISTRY, { appName: "Проверка" });
+    if (!r.ok) throw new Error("plan");
+    const files = new Map(Object.entries(r.files)).set("ui/patterns/x.tsx", pattern);
+    const report = await runG0(
+      {
+        spec: r.spec,
+        prevSpec: null,
+        specVersion: 0,
+        files,
+        env: "draft",
+        systemKey: "v2_x",
+        db: undefined as never,
+      },
+      { only: ["G0-IMP-01"] },
+    );
+    expect(failing(report.checks).map((c) => (c as { evidence?: string }).evidence)).toEqual(["react"]);
+  }, 60_000);
+
+  test("G1 render: the v3 pages bundle with React and Motion and render on the server; v2 keeps refusing them", async () => {
+    const ctx = composeContext();
+    const { files, spec, site } = await skeleton(ctx);
+    const bundle = await buildRenderBundle(spec, files);
+    expect(bundle.errors).toEqual([]);
+    const dir = mkdtempSync(join(tmpdir(), "wz-render-v3-"));
+    writeFileSync(join(dir, "render.js"), bundle.code);
+    const proc = new RenderProcess(dir, async () => ({
+      status: 404,
+      body: JSON.stringify({ error: { code: "NOT_FOUND", message: "нет" } }),
+    }));
+    try {
+      for (const page of site.pages) {
+        const out = await proc.render(
+          {
+            file: page.file,
+            path: page.route,
+            routes: site.pages.map((p) => p.route),
+            roleSpec: toRoleSpec(spec),
+          },
+          10_000,
+        );
+        expect(out.kind, page.route).toBe("done");
+        if (out.kind !== "done") continue;
+        expect(out.ok, `${page.route}: ${out.error}`).toBe(true);
+        expect(out.html?.match(/<h1/g), page.route).toHaveLength(1);
+        expect(out.html).toContain(page.route === "/" ? "Лечим зубы без боли и очередей" : page.title);
+      }
+    } finally {
+      await proc.kill();
+    }
+    // The same pattern in a v2 system (no ui/design.css), or outside the page folders of a v3 one: refused.
+    const v2 = new Map([...files].filter(([p]) => p !== "ui/design.css"));
+    expect((await buildRenderBundle(spec, v2)).errors.join("\n")).toContain("Импорт «react» запрещён");
+    const lib = new Map(files).set("ui/lib/x.tsx", 'export { useState } from "react";\n');
+    const home = site.pages[0]?.file as string;
+    lib.set(home, `import "../../lib/x";\n${files.get(home)}`);
+    expect((await buildRenderBundle(spec, lib)).errors.join("\n")).toContain("Импорт «react» запрещён");
+  }, 60_000);
+
+  test("G0-TS-01 types the v3 pages: a wrong prop of a pattern is a type error of the page", async () => {
+    const ctx = composeContext();
+    const { files, spec, site } = await skeleton(ctx);
+    const home = site.pages[0]?.file as string;
+    const broken = new Map(files).set(home, (files.get(home) as string).replace('"title":', '"titel":'));
+    const report = await runG0(
+      {
+        spec,
+        prevSpec: null,
+        specVersion: 0,
+        files: broken,
+        env: "draft",
+        systemKey: "v3_ts",
+        db: undefined as never,
+      },
+      { only: ["G0-TS-01"] },
+    );
+    expect(failing(report.checks).map((c) => (c as { file?: string }).file)).toContain(home);
+  }, 120_000);
+});

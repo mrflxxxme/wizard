@@ -198,6 +198,26 @@ export {
   artDirectionSchema,
   runArtDirector,
 } from "./v3/art-director.js";
+/**
+ * V3-12 page composer (builder-v3.md C6): createPageComposer() → PageComposer {skeleton — the public site from library
+ * patterns without a model; scenario — page_compose and ≤ 2 signature sections, checked by the anti-slop linter and
+ * G0}; lintPage/copyIssues — the anti-slop linter; withSitePages — the spec with the composed pages.
+ */
+export {
+  COMPOSE_CALL_TYPES,
+  type CopyIssue,
+  copyIssues,
+  createPageComposer,
+  lintPage,
+  type PageComposerOptions,
+  type PageLintCode,
+  type PageLintIssue,
+  readSite,
+  SITE_PATH,
+  type SiteModel,
+  type SitePage,
+  withSitePages,
+} from "./v3/compose/index.js";
 /** V3-11/V3-12 seam (builder-v3.md C6): the harness calls a PageComposer; the page writer implements it. */
 export type {
   PageComposer,

@@ -9,6 +9,7 @@ import type { AppSpec } from "@wizard/appspec";
 import * as esbuild from "esbuild";
 import { canonicalJson, sha256Hex, specHash } from "./hash.js";
 import { ENTRY_NS, SDK, SDK_JSX, toPosix, UI_KIT, wizardPlugin } from "./plugin.js";
+import { parseSeo, SEO_PATH, type SiteSeo, seoClientCode, seoHeadTags, seoTitle } from "./seo.js";
 import { DESIGN_CSS_PATH, layeredCss, systemTailwind } from "./tailwind.js";
 import type {
   BuildEnv,
@@ -120,9 +121,11 @@ function validOrigin(o: string): boolean {
   }
 }
 
-function clientEntry(spec: AppSpec): string {
+function clientEntry(spec: AppSpec, seo: SiteSeo | null): string {
   const pages = [...(spec.pages ?? [])];
   const lines = [
+    // v3 (ui/seo.json): the tags of the current route on start and on navigation (seo.ts).
+    ...(seo ? [seoClientCode(seo)] : []),
     `import { jsx } from ${JSON.stringify(SDK_JSX)};`,
     `import { SdkProvider, matchRoute, useEffect, useState } from ${JSON.stringify(SDK)};`,
     `import { AppShell, WzProvider } from ${JSON.stringify(UI_KIT)};`,
@@ -140,6 +143,7 @@ function clientEntry(spec: AppSpec): string {
     '    return () => window.removeEventListener("popstate", on);',
     "  }, []);",
     "  const hit = ordered.find((p) => matchRoute(p[0], path));",
+    ...(seo ? ["  useEffect(() => __wzSeo(hit ? hit[0] : null), [path]);"] : []),
     // /login is reserved (runtime.yaml#auth.login_page): no page takes it; AppShell renders AppShell.Login there.
     '  const page = hit ? jsx(hit[1], {}) : path === "/login" ? jsx(AppShell, { children: null }) : jsx("main", { "data-testid": "wz-not-found", children: "Страница не найдена" });',
     "  return jsx(SdkProvider, { routes, children: jsx(WzProvider, { spec, children: page }) });",
@@ -171,11 +175,14 @@ function indexHtml(
   script: string,
   style: string | null,
   origin?: string,
+  seo: SiteSeo | null = null,
 ): string {
   const head = [
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>${escapeHtml(spec.app.name)}</title>`,
+    `<title>${escapeHtml(seo ? seoTitle(seo) : spec.app.name)}</title>`,
+    // One document serves every route (runtime SPA fallback): crawlers read the home page's tags.
+    ...(seo ? seoHeadTags(seo) : []),
     ...(env === "draft" && origin
       ? [`<meta name="wz-platform-origin" content="${escapeHtml(origin)}">`]
       : []),
@@ -238,6 +245,20 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
   }
   for (const f of spec.functions ?? []) {
     if (!sources.has(f.file)) errors.push(fail(`Нет файла функции ${f.file}`, { file: f.file }));
+  }
+  // Per-route SEO of v3 pages (V3-12): the page composer writes ui/seo.json.
+  let seo: SiteSeo | null = null;
+  const seoText = input.files.get(SEO_PATH);
+  if (seoText !== undefined) {
+    const parsed = parseSeo(seoText);
+    if (parsed.ok) seo = parsed.seo;
+    else
+      errors.push(
+        fail(`SEO страниц (${SEO_PATH}) записано неверно: ${clip(parsed.error, 200)}`, {
+          file: SEO_PATH,
+          fixHint: "Пересоберите страницы сайта: файл пишет сборщик страниц v3",
+        }),
+      );
   }
   if (errors.length > 0) return failed();
 
@@ -307,7 +328,7 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
             target: "client",
             copyDir,
             sources: loaded,
-            entryCode: clientEntry(spec),
+            entryCode: clientEntry(spec, seo),
             host,
             ...(v3Host ? { packages: v3Packages(v3Host) } : {}),
           }),
@@ -383,7 +404,7 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
     }
     clientFiles.set(
       "index.html",
-      new TextEncoder().encode(indexHtml(spec, env, script, style, input.platformOrigin)),
+      new TextEncoder().encode(indexHtml(spec, env, script, style, input.platformOrigin, seo)),
     );
     const serverFunctions = fns.files[0]?.text ?? "";
 

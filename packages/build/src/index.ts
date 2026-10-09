@@ -12,6 +12,19 @@ export {
 } from "./build.js";
 export { canonicalJson, sha256Hex, specHash } from "./hash.js";
 /**
+ * Per-route SEO of v3 pages (V3-12): ui/seo.json → the home page's title, description and Open Graph tags in index.html,
+ * the current route's tags set by the client on navigation.
+ */
+export {
+  parseSeo,
+  SEO_PATH,
+  type SeoPage,
+  type SiteSeo,
+  seoClientCode,
+  seoHeadTags,
+  seoTitle,
+} from "./seo.js";
+/**
  * Tailwind v4 of v3 systems (builder-v3.md §1): ui/design.css switches it on; candidates from string literals of
  * ui/pages|patterns|sections; the ui-kit CSS sits in layer «wizard» between preflight and utilities.
  */

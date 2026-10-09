@@ -10,14 +10,32 @@ export const ALLOWED_PACKAGES: Readonly<Record<Area, readonly string[]>> = {
   ui: ["@wizard/sdk", "@wizard/sdk/jsx-runtime", "@wizard/ui-kit"],
 };
 
+/**
+ * Public pages of a v3 system (builder-v3.md §1, C3): pages, library patterns and signature sections may also import
+ * React, Motion and the ui-kit headless hooks. A system is v3 when it carries the design system file ui/design.css
+ * (the same marker switches Tailwind on in @wizard/build); v2 systems keep ALLOWED_PACKAGES.
+ */
+export const V3_UI_PACKAGES: readonly string[] = ["react", "motion/react", "@wizard/ui-kit/v3/headless"];
+/** Files of a v3 system that may import V3_UI_PACKAGES. */
+export const V3_UI_PATH_RE = /^ui\/(?:pages|patterns|sections)\//;
+
 const FIX_PACKAGES: Record<Area, string> = {
   functions: "В functions/** разрешены только @wizard/sdk и свои файлы из functions/",
   ui: "В ui/** разрешены только @wizard/sdk, @wizard/ui-kit и свои файлы из ui/; функции вызываются по имени через useQuery/useMutation",
 };
+const FIX_V3 =
+  "В ui/** разрешены только @wizard/sdk, @wizard/ui-kit и свои файлы из ui/; страницы, паттерны и секции сайта v3 (ui/pages, ui/patterns, ui/sections) — ещё react, motion/react и @wizard/ui-kit/v3/headless";
 
-export function checkImports(src: SourceInfo): Finding[] {
+export interface ImportRules {
+  /** The system is v3 (has ui/design.css): its public page files get V3_UI_PACKAGES. */
+  v3?: boolean;
+}
+
+export function checkImports(src: SourceInfo, rules: ImportRules = {}): Finding[] {
   const out: Finding[] = [];
-  const fail = (line: number, message_ru: string, evidence: string, fixHint = FIX_PACKAGES[src.area]) =>
+  const v3Page = rules.v3 === true && src.area === "ui" && V3_UI_PATH_RE.test(src.path);
+  const fix = rules.v3 === true && src.area === "ui" ? FIX_V3 : FIX_PACKAGES[src.area];
+  const fail = (line: number, message_ru: string, evidence: string, fixHint = fix) =>
     out.push({ message_ru, file: src.path, line, evidence, fixHint });
   for (const imp of src.imports) {
     const s = imp.specifier;
@@ -49,7 +67,7 @@ export function checkImports(src: SourceInfo): Finding[] {
       }
       continue;
     }
-    if (!ALLOWED_PACKAGES[src.area].includes(s)) {
+    if (!ALLOWED_PACKAGES[src.area].includes(s) && !(v3Page && V3_UI_PACKAGES.includes(s))) {
       fail(imp.line, `Запрещённый импорт «${s}» в ${src.path}`, s);
     }
   }
