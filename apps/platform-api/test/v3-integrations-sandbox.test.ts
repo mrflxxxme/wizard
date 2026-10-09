@@ -468,6 +468,10 @@ describe("ЮKassa: the test shop", () => {
       shop: "506751",
       secret: "test_abc",
     });
+    expect(kassaCredentials({ YOUKASSA_TEST_API_KEY: "test_abc", YOUKASSA_TEST_SHOP_ID: "506751" })).toEqual({
+      shop: "506751",
+      secret: "test_abc",
+    });
     // The separate secrets win over the single one.
     expect(
       kassaCredentials({

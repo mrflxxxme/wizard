@@ -52,19 +52,21 @@ export const SANDBOX_ENV = {
   kassaKey: "YOOKASSA_TEST_SECRET_KEY",
   /** One secret for the test shop (the founder's, 2026-10-09): «shopId:test_…», JSON {shop_id, secret_key} or the key. */
   kassaApiKey: "YOUKASSA_TEST_API_KEY",
+  /** The shop id next to YOUKASSA_TEST_API_KEY (the founder's spelling, 2026-10-09). */
+  kassaApiShop: "YOUKASSA_TEST_SHOP_ID",
 } as const;
 
 /**
  * The test shop's pair from the separate secrets or the single YOUKASSA_TEST_API_KEY: «<shopId>:<key>» (also a space,
  * «;» or a newline between them), JSON {"shop_id","secret_key"} (shopId / secretKey too), or the key alone with the
- * shop id from YOOKASSA_TEST_SHOP_ID. The separate secrets win; an unreadable single secret leaves the pair empty.
+ * shop id from YOOKASSA_TEST_SHOP_ID or YOUKASSA_TEST_SHOP_ID. The separate secrets win; an unreadable single secret leaves the pair empty.
  */
 export function kassaCredentials(e: Readonly<Record<string, string | undefined>>): {
   shop: string;
   secret: string;
 } {
   const get = (n: string) => (e[n] ?? "").trim();
-  let shop = get(SANDBOX_ENV.kassaShop);
+  let shop = get(SANDBOX_ENV.kassaShop) || get(SANDBOX_ENV.kassaApiShop);
   let secret = get(SANDBOX_ENV.kassaKey);
   const one = get(SANDBOX_ENV.kassaApiKey);
   if (one && (!shop || !secret)) {
@@ -1074,7 +1076,7 @@ async function cdekOrder(run: Run, o: SandboxOptions, tariffs: unknown, points: 
 
 async function runYookassa(run: Run, o: SandboxOptions): Promise<void> {
   const { shop, secret } = kassaCredentials(o.env);
-  run.masks.push(shop, secret, env(o, SANDBOX_ENV.kassaApiKey));
+  run.masks.push(shop, secret, env(o, SANDBOX_ENV.kassaApiKey), env(o, SANDBOX_ENV.kassaApiShop));
   if (!shop && !secret) {
     record(run, {
       step: "keys",

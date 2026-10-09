@@ -62,6 +62,7 @@ jobs:
           YOOKASSA_TEST_SHOP_ID: ${{ secrets.YOOKASSA_TEST_SHOP_ID }}
           YOOKASSA_TEST_SECRET_KEY: ${{ secrets.YOOKASSA_TEST_SECRET_KEY }}
           YOUKASSA_TEST_API_KEY: ${{ secrets.YOUKASSA_TEST_API_KEY }}
+          YOUKASSA_TEST_SHOP_ID: ${{ secrets.YOUKASSA_TEST_SHOP_ID }}
         run: |
-          for v in "$YOOKASSA_TEST_SHOP_ID" "$YOOKASSA_TEST_SECRET_KEY" "$YOUKASSA_TEST_API_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          for v in "$YOOKASSA_TEST_SHOP_ID" "$YOOKASSA_TEST_SECRET_KEY" "$YOUKASSA_TEST_API_KEY" "$YOUKASSA_TEST_SHOP_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           node tools/integrations/sandbox-check.mjs --passports=yookassa
