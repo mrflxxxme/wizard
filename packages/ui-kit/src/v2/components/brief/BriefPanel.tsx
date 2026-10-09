@@ -19,6 +19,7 @@ import { type BriefSession, SessionsFeed } from "./SessionsFeed.js";
 import {
   ACTOR_RU,
   AUTHOR_RU,
+  archetypeName,
   CHOSEN_RU,
   changedKeys,
   changesRu,
@@ -303,7 +304,7 @@ export function BriefPanel({
           <div className={s.text}>
             {brief.design.archetype && (
               <p>
-                Направление: <b>{brief.design.archetype}</b>
+                Направление: <b>{archetypeName(brief.design.archetype)}</b>
                 {brief.design.pinned ? " — выбрано вами" : ""}
               </p>
             )}

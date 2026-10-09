@@ -5,6 +5,7 @@
 
 /** V3-06 «Бриф»: BriefSummary (chat), BriefPanel (tabs, versions, diff), BriefDiagram (own layered SVG layout), BriefEditor, BriefDiffView, SessionsFeed. */
 export {
+  archetypeName,
   BRIEF_DIAGRAM_KEYS,
   BRIEF_EDITABLE_SECTIONS,
   BRIEF_LAYOUT,

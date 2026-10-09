@@ -28,6 +28,7 @@ import { ru } from "../../i18n/ru.js";
 import f from "../abuse/Abuse.module.css";
 import a from "../auth/Auth.module.css";
 import st from "../settings/Settings.module.css";
+import { AdminCapability } from "../v3/AdminCapability.js";
 import s from "./Admin.module.css";
 import { PilotSection } from "./Pilot.js";
 
@@ -392,7 +393,11 @@ function Console({ onMfaRequired }: { onMfaRequired(): void }): ReactNode {
       {tab === "support" ? (
         <AdminSupport onMfaRequired={onMfaRequired} />
       ) : tab === "gaps" ? (
-        <AdminGaps onMfaRequired={onMfaRequired} />
+        <>
+          <AdminGaps onMfaRequired={onMfaRequired} />
+          {/* V3-06: the monthly share of «пока не умею» (D77 (12)). */}
+          <AdminCapability onMfaRequired={onMfaRequired} />
+        </>
       ) : tab === "candidates" ? (
         <AdminCandidates onMfaRequired={onMfaRequired} />
       ) : tab === "pilot" ? (

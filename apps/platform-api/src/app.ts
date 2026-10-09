@@ -16,8 +16,11 @@ import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
+import { buildV3Routes } from "./builds-v3/routes.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
+import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
+import { type DirectionsDeps, DirectionsService } from "./directions/service.js";
 import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { runModuleFactoryCron } from "./gaps/factory.js";
@@ -33,6 +36,7 @@ import { runRetentionCron } from "./privacy/cron.js";
 import type { PublishOptions } from "./publish/prod.js";
 import { abuseRoutes } from "./routes/abuse.js";
 import { adminRoutes } from "./routes/admin.js";
+import { capabilityRoutes } from "./routes/admin-capability.js";
 import { adminPilotRoutes } from "./routes/admin-pilot.js";
 import { authRoutes } from "./routes/auth.js";
 import { billingRoutes, yookassaWebhook } from "./routes/billing.js";
@@ -126,6 +130,8 @@ export interface PlatformApiOptions {
    * off). The AI gateway of the runtime (POST /internal/v1/ai/run) uses `createRouter` and the platform mailer.
    */
   aiBackfill?: RuntimeAiBackfill | null;
+  /** V3-09 «Три направления»: research of reference links (tests: recorded pages) and the model deadline. */
+  directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
 }
 
 export interface PlatformApi {
@@ -338,6 +344,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   app.route("/internal/v1", internalRoutes({ config, gateway: aiGateway, log }));
   // Notifications of the platform shop come without Origin and session (api.yaml yookassaWebhook, security: []).
   app.post("/api/v1/webhooks/yookassa", yookassaWebhook(deps));
+  // V3-09: files of the direction previews for the sandboxed srcdoc frames (no session; the proposal id is the key).
+  const directions = new DirectionsService({
+    db: handle.db,
+    blobs,
+    config,
+    billing,
+    ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
+    ...opts.directions,
+    log,
+  });
+  app.route("/api/v1", directionPreviewRoutes(directions));
   app.use("*", originGuard(config));
 
   const accounts = { mailer, geoRegion: opts.geoRegion };
@@ -361,6 +378,10 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   );
   // V3-06: the session feed of a system (interview, builds, brief edits) from runs and brief versions.
   api.route("/", sessionRoutes(deps));
+  // V3-06: «Собрать» of a v3 system — the build by the approved brief version (startV3Build of V3-11).
+  api.route("/", buildV3Routes(deps));
+  // V3-09: three directions of the first screen, refinement by words, the pick and the references.
+  api.route("/", directionRoutes(directions));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));
@@ -388,6 +409,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   // M2P MVP cut: «Написать команде» (D68) and «Запросы на развитие» (D73).
   api.route("/", supportRoutes({ ...abuse, supportNow: opts.now }));
   api.route("/", gapsRoutes({ ...abuse, gapsNow: opts.now }));
+  // V3-06: /admin — the monthly share of «пока не умею» in the capability maps of briefs.
+  api.route("/", capabilityRoutes({ ...abuse, ...(opts.now ? { now: opts.now } : {}) }));
   // B2-26: module factory — «Кандидаты в модули» and the consent to «Теперь умеем» letters.
   api.route("/", factoryRoutes({ ...abuse, factoryNow: opts.now, modules: opts.modules }));
   api.route("/", runRoutes(deps, opts.pingMs !== undefined ? { pingMs: opts.pingMs } : {}));

@@ -15,6 +15,7 @@ import {
 import { describe, expect, test } from "vitest";
 import { dentalBrief, minimalBrief, scenario, shopBrief } from "../../appspec/test/brief-fixtures.js";
 import {
+  archetypeName,
   briefTheses,
   changedKeys,
   type GraphLayout,
@@ -227,6 +228,19 @@ describe("short brief and highlight", () => {
     }
     expect(briefTheses(BRIEFS.dental)[0]).toContain("получать записи на приём с сайта");
     expect(briefTheses(BRIEFS.minimal)).toEqual([]);
+  });
+
+  test("the direction of the site (V3-09) is a thesis by its Russian name; an unknown archetype is not", () => {
+    const shop = BRIEFS.shop;
+    const pinned = briefTheses(
+      parse({ ...shop, design: { archetype: "editorial", pinned: true, references: [] } }),
+    );
+    expect(pinned).toContain("Стиль сайта: «Редакционный» — выбран вами");
+    const auto = briefTheses(parse({ ...shop, design: { archetype: "editorial", references: [] } }));
+    expect(auto).toContain("Стиль сайта: «Редакционный» — подобран системой");
+    expect(briefTheses(BRIEFS.dental).some((t) => t.startsWith("Стиль сайта"))).toBe(false);
+    expect(archetypeName("editorial")).toBe("Редакционный");
+    expect(archetypeName("warm_clinic")).toBe("warm_clinic");
   });
 
   test("changedKeys marks exactly the items briefDiff changed (keys as briefDiff matches them)", () => {

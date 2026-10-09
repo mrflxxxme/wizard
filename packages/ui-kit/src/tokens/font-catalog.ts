@@ -22,6 +22,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "onest-latin-ext-400-f16900be.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 12372,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "onest-latin-400-93dfb945.woff2",
         unicodeRange:
@@ -34,6 +42,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "onest-cyrillic-700-0fcb8fa2.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 6800,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "onest-latin-ext-700-ec627c6d.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 12952,
       },
       {
         weight: 700,
@@ -65,6 +81,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "inter-tight-latin-ext-400-947ebce4.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 36220,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "inter-tight-latin-400-6f32da94.woff2",
         unicodeRange:
@@ -77,6 +101,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "inter-tight-cyrillic-700-c0449c8a.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 6992,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "inter-tight-latin-ext-700-cf4f153e.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 37908,
       },
       {
         weight: 700,
@@ -107,6 +139,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "manrope-latin-ext-400-72c5354a.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 8292,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "manrope-latin-400-849290ef.woff2",
         unicodeRange:
@@ -119,6 +159,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "manrope-cyrillic-700-2ad647b9.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 7852,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "manrope-latin-ext-700-dc7c46d7.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 8276,
       },
       {
         weight: 700,
@@ -150,6 +198,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "pt-sans-latin-ext-400-94dc178a.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 26812,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "pt-sans-latin-400-2dea6190.woff2",
         unicodeRange:
@@ -162,6 +218,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "pt-sans-cyrillic-700-05795f79.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 30164,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "pt-sans-latin-ext-700-7e3cada9.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 29624,
       },
       {
         weight: 700,
@@ -193,6 +257,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "ibm-plex-sans-latin-ext-400-c93d2a12.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 15980,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "ibm-plex-sans-latin-400-3b646991.woff2",
         unicodeRange:
@@ -205,6 +277,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "ibm-plex-sans-cyrillic-700-40540598.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 14572,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "ibm-plex-sans-latin-ext-700-92f0392b.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 16188,
       },
       {
         weight: 700,
@@ -235,6 +315,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "golos-text-latin-ext-400-0b130bd5.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 6984,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "golos-text-latin-400-c8246f55.woff2",
         unicodeRange:
@@ -247,6 +335,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "golos-text-cyrillic-700-42db867d.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 7108,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "golos-text-latin-ext-700-57641b45.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 7092,
       },
       {
         weight: 700,
@@ -278,6 +374,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "pt-serif-latin-ext-400-2d7cdb9a.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 21548,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "pt-serif-latin-400-4271064a.woff2",
         unicodeRange:
@@ -290,6 +394,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "pt-serif-cyrillic-700-bec4e724.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 20916,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "pt-serif-latin-ext-700-94cdabe3.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 19492,
       },
       {
         weight: 700,
@@ -321,6 +433,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "lora-latin-ext-400-52555103.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 12016,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "lora-latin-400-ac079950.woff2",
         unicodeRange:
@@ -333,6 +453,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "lora-cyrillic-700-f0550b4d.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 11388,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "lora-latin-ext-700-eacd7ecd.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 11968,
       },
       {
         weight: 700,
@@ -363,6 +491,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "unbounded-latin-ext-400-1bb66849.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 45592,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "unbounded-latin-400-b0a91553.woff2",
         unicodeRange:
@@ -375,6 +511,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "unbounded-cyrillic-700-fdc2a845.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 12812,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "unbounded-latin-ext-700-886ac002.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 49924,
       },
       {
         weight: 700,
@@ -406,6 +550,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "cormorant-garamond-latin-ext-400-375a0887.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 19888,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "cormorant-garamond-latin-400-8048ac20.woff2",
         unicodeRange:
@@ -418,6 +570,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "cormorant-garamond-cyrillic-700-a767c1a1.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 12536,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "cormorant-garamond-latin-ext-700-f6cf9ae2.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 19328,
       },
       {
         weight: 700,
@@ -448,6 +608,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "commissioner-latin-ext-400-2068c293.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 16148,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "commissioner-latin-400-c20800a5.woff2",
         unicodeRange:
@@ -460,6 +628,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "commissioner-cyrillic-700-8ede0892.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 12020,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "commissioner-latin-ext-700-a986ccd5.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 16608,
       },
       {
         weight: 700,
@@ -491,6 +667,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "piazzolla-latin-ext-400-34d113eb.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 14120,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "piazzolla-latin-400-89e23b01.woff2",
         unicodeRange:
@@ -503,6 +687,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "piazzolla-cyrillic-700-84a68a30.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 11056,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "piazzolla-latin-ext-700-f788c37c.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 14740,
       },
       {
         weight: 700,
@@ -533,6 +725,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "source-sans-3-latin-ext-400-f5706bb0.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 33024,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "source-sans-3-latin-400-0f73f35e.woff2",
         unicodeRange:
@@ -545,6 +745,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "source-sans-3-cyrillic-700-1c484c75.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 9604,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "source-sans-3-latin-ext-700-6a9fd742.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 32956,
       },
       {
         weight: 700,
@@ -663,6 +871,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "alegreya-sans-latin-ext-400-c76008bc.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 21276,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "alegreya-sans-latin-400-b2a5a35a.woff2",
         unicodeRange:
@@ -675,6 +891,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "alegreya-sans-cyrillic-700-21a8f694.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 12340,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "alegreya-sans-latin-ext-700-8f289f33.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 21868,
       },
       {
         weight: 700,
@@ -706,6 +930,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "alegreya-latin-ext-400-2f7d416d.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 19920,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "alegreya-latin-400-7cbcf38a.woff2",
         unicodeRange:
@@ -718,6 +950,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "alegreya-cyrillic-700-c8fb0f23.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 12944,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "alegreya-latin-ext-700-3fe99186.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 21612,
       },
       {
         weight: 700,
@@ -749,6 +989,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "alumni-sans-latin-ext-400-04e4860e.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 10492,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "alumni-sans-latin-400-fb1b28dd.woff2",
         unicodeRange:
@@ -761,6 +1009,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "alumni-sans-cyrillic-700-b2dc400d.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 6204,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "alumni-sans-latin-ext-700-b6a30c7d.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 10848,
       },
       {
         weight: 700,
@@ -792,6 +1048,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "literata-latin-ext-400-726e1239.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 17616,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "literata-latin-400-a60c193b.woff2",
         unicodeRange:
@@ -804,6 +1068,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "literata-cyrillic-700-d3414d99.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 11640,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "literata-latin-ext-700-559ab7b7.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 19080,
       },
       {
         weight: 700,
@@ -834,6 +1106,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "wix-madefor-display-latin-ext-400-3f6754eb.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 7468,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "wix-madefor-display-latin-400-29ad1d97.woff2",
         unicodeRange:
@@ -846,6 +1126,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "wix-madefor-display-cyrillic-700-a6111e46.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 8108,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "wix-madefor-display-latin-ext-700-5fe99940.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 7856,
       },
       {
         weight: 700,
@@ -876,6 +1164,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
       },
       {
         weight: 400,
+        subset: "latin-ext",
+        file: "wix-madefor-text-latin-ext-400-a4e4d2d7.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 11368,
+      },
+      {
+        weight: 400,
         subset: "latin",
         file: "wix-madefor-text-latin-400-27663f3a.woff2",
         unicodeRange:
@@ -888,6 +1184,14 @@ export const FONT_CATALOG: readonly FontEntry[] = [
         file: "wix-madefor-text-cyrillic-700-e45daae3.woff2",
         unicodeRange: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
         bytes: 11336,
+      },
+      {
+        weight: 700,
+        subset: "latin-ext",
+        file: "wix-madefor-text-latin-ext-700-f26b99ac.woff2",
+        unicodeRange:
+          "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+        bytes: 11856,
       },
       {
         weight: 700,

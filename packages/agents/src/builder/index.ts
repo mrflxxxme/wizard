@@ -198,6 +198,26 @@ export {
   artDirectionSchema,
   runArtDirector,
 } from "./v3/art-director.js";
+/**
+ * V3-12 page composer (builder-v3.md C6): createPageComposer() → PageComposer {skeleton — the public site from library
+ * patterns without a model; scenario — page_compose and ≤ 2 signature sections, checked by the anti-slop linter and
+ * G0}; lintPage/copyIssues — the anti-slop linter; withSitePages — the spec with the composed pages.
+ */
+export {
+  COMPOSE_CALL_TYPES,
+  type CopyIssue,
+  copyIssues,
+  createPageComposer,
+  lintPage,
+  type PageComposerOptions,
+  type PageLintCode,
+  type PageLintIssue,
+  readSite,
+  SITE_PATH,
+  type SiteModel,
+  type SitePage,
+  withSitePages,
+} from "./v3/compose/index.js";
 /** V3-11/V3-12 seam (builder-v3.md C6): the harness calls a PageComposer; the page writer implements it. */
 export type {
   PageComposer,
@@ -206,3 +226,60 @@ export type {
   V3ComposeResult,
   V3PagePlan,
 } from "./v3/contract.js";
+/** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
+export * from "./v3/directions/index.js";
+/**
+ * V3-11 build harness (builder-v3.md C6): runBuildV3(host, params) — brief → design → backend → skeleton (preview) →
+ * scenarios one by one with a browser check → critic/template_gate/techreview hooks → gates; checkpoints, wallet, clock.
+ */
+export {
+  type BackendBuilt,
+  type BackendResult,
+  compileBackend,
+  DESIGN_CSS_FILE,
+  designCss,
+} from "./v3/harness/backend.js";
+export {
+  featureList,
+  featureTitle,
+  goalScenariosFor,
+  MAX_GOAL_SCENARIOS,
+  type V3Feature,
+} from "./v3/harness/features.js";
+export { type BriefPlan, briefNiche, briefPlan, briefText } from "./v3/harness/plan.js";
+export { briefAnswers, mergeAnswers, optionLabel, questionText } from "./v3/harness/questions.js";
+export {
+  DEFAULT_V3_BUDGETS,
+  spendLine,
+  V3_BUILD_LIMITS,
+  V3_STAGE_ETA_SEC,
+  V3_STAGE_LABELS,
+} from "./v3/harness/stages.js";
+export {
+  type ScenarioCheckInput,
+  type ScenarioCheckResult,
+  V3_HOOK_STAGES,
+  V3_STAGES,
+  type V3BriefVersion,
+  type V3Budgets,
+  type V3BuildQuestion,
+  type V3Checkpoint,
+  type V3CheckpointStore,
+  type V3FailureCode,
+  type V3GateLevel,
+  type V3HookResult,
+  type V3HookStage,
+  type V3Host,
+  type V3Limits,
+  type V3Outcome,
+  type V3Params,
+  type V3QuestionAnswer,
+  type V3ReadyNotice,
+  type V3ScenarioState,
+  type V3Stage,
+  type V3StageHook,
+  type V3StageMetric,
+  type V3StopReason,
+} from "./v3/harness/types.js";
+export { milliRub, V3BudgetError, V3Wallet } from "./v3/harness/wallet.js";
+export { runBuildV3, stopMessage } from "./v3/run.js";

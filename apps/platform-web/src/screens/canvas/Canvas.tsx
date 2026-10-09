@@ -30,7 +30,7 @@ import type {
   SystemPlanRevision,
   SystemView,
 } from "../../api/types.js";
-import { usePlatform } from "../../app/context.js";
+import { canEdit, usePlatform } from "../../app/context.js";
 import { openSupport } from "../../features/support/SupportWidget.js";
 import { canvas } from "../../i18n/ru/canvas.js";
 import { demo } from "../../i18n/ru/demo.js";
@@ -39,6 +39,10 @@ import { ru } from "../../i18n/ru.js";
 import { subscribeRun } from "../../run/stream.js";
 import { useCanvasBrief } from "../brief/CanvasBrief.js";
 import { briefRu } from "../brief/ru.js";
+import { useBriefUpload } from "../v3/BriefUpload.js";
+import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
+import { v3Ru } from "../v3/ru.js";
+import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
 import { Board, type BoardView, XrayData } from "./Board.js";
 import { buildProgress, remainingText } from "./buildProgress.js";
 import s from "./Canvas.module.css";
@@ -139,7 +143,8 @@ function isGoalQuestion(q: unknown): q is GoalQuestion {
 }
 
 export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): ReactNode {
-  const { api } = usePlatform();
+  const { api, auth, roleIn } = usePlatform();
+  const [styleOpen, setStyleOpen] = useState(false);
   const [view, setView] = useState<SystemView>(initial);
   const [plan, setPlan] = useState<SystemPlanRevision | null>(null);
   const [sketch, setSketch] = useState<PlanSketch | null>(null);
@@ -201,6 +206,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     [],
   );
   const brief = useCanvasBrief(systemId, { orgId: view.system.orgId, announce, onAskInChat: focusInput });
+  // V3-04: «Приложить ТЗ» of a v3 system — the new version goes straight to the brief.
+  const upload = useBriefUpload(systemId, { onUploaded: brief.adopt, onOpen: brief.show, announce });
   const reloadBrief = brief.reload;
 
   const applySketch = useCallback((sk: PlanSketch | null | undefined) => {
@@ -284,11 +291,19 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
 
   const runKind = events.find((e) => e.type === "run_started")?.payload.kind;
   const progress = useMemo(() => buildProgress(runKind === "build" ? events : []), [runKind, events]);
+  // V3-06: «потрачено X ₽ из Y» of the harness v3 lines while a build runs.
+  const spend = runKind === "build" ? spentLine(events) : null;
   const runActive =
     runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
   const thinking = runActive && runKind !== "build";
 
   const questions = (view.pendingQuestions ?? []).filter(isGoalQuestion) as unknown as GoalQuestion[];
+  // V3-03: the v3 interview asks one question per turn — a new pending question starts with no local answers.
+  const qKey = questions.map((q) => q.id).join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new set of pending questions only
+  useEffect(() => {
+    if (questions.some((q) => v3Question(q) !== null)) setAnswers([]);
+  }, [qKey]);
   const qIndex = answers.length;
   const question = stage === "interview" && !thinking ? questions[qIndex] : undefined;
   const localAnswers = useMemo<LocalAnswer[]>(
@@ -608,6 +623,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   const failure = stage === "failed" || progress.phase === "failed" ? progress.failure : null;
 
   let dock: ReactNode = null;
+  /** The dock shows only the last lines of the chat (a short brief replaces them, V3-06). */
+  let recentOnly = false;
   if (selected && actions) {
     dock = (
       <div className={s.pick} data-testid="canvas-pick">
@@ -646,32 +663,60 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       </div>
     );
   } else if (stage === "interview" && question) {
+    // V3-03: a v3 question has «Почему советуем», «Решите за меня» and «Дальше решай сам» as its own buttons.
+    const q3 = v3Question(question);
     dock = (
       <div className={s.qwrap}>
         <QuestionCard
           key={question.id}
           testId="canvas-question"
-          step={canvas.chat.step(qIndex + 1, questions.length)}
+          step={q3 ? v3Ru.question.step(q3.step) : canvas.chat.step(qIndex + 1, questions.length)}
           question={question.text}
           {...(question.whyItMatters ? { hint: question.whyItMatters } : {})}
-          options={question.options.map((o) => ({ id: o.id, label: o.label, recommended: o.recommended }))}
+          options={(q3?.options ?? question.options).map((o) => ({
+            id: o.id,
+            label: o.label,
+            recommended: o.recommended,
+          }))}
           selected={[]}
           onToggle={(id) => {
             const o = question.options.find((x) => x.id === id);
             if (o) answer(question, { questionId: question.id, optionId: o.id }, o.label);
           }}
+          {...(q3
+            ? {
+                ...(q3.why ? { recommendationWhy: q3.why } : {}),
+                ...(q3.delegate
+                  ? {
+                      onDelegate: () =>
+                        answer(
+                          question,
+                          { questionId: question.id, optionId: DELEGATE_OPTION_ID },
+                          v3Ru.question.delegated,
+                        ),
+                    }
+                  : {}),
+                onFinish: () => {
+                  setSent((x) => [...x, v3Ru.question.finished]);
+                  void submitAnswers(answers, true);
+                },
+                assistDisabled: busy !== null,
+              }
+            : {})}
         />
-        <div className={s.qfoot}>
-          <ActionButton
-            variant="ghost"
-            size="sm"
-            testId="canvas-rest"
-            disabled={busy !== null}
-            onClick={() => void submitAnswers(answers, true)}
-          >
-            {canvas.chat.rest}
-          </ActionButton>
-        </div>
+        {!q3 && (
+          <div className={s.qfoot}>
+            <ActionButton
+              variant="ghost"
+              size="sm"
+              testId="canvas-rest"
+              disabled={busy !== null}
+              onClick={() => void submitAnswers(answers, true)}
+            >
+              {canvas.chat.rest}
+            </ActionButton>
+          </div>
+        )}
       </div>
     );
   } else if (stage === "card" && plan && !runActive && sketch?.stage === "plan") {
@@ -765,6 +810,11 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           </span>
         )}
         {progress.reused > 0 && <p className={s.note}>{canvas.build.reused(progress.reused)}</p>}
+        {spend && (
+          <p className={s.note} data-testid="canvas-build-spend">
+            {spend}
+          </p>
+        )}
       </div>
     );
   } else if (ready && readyCard) {
@@ -790,6 +840,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       </div>
     );
   } else if (allLines.length > 0) {
+    recentOnly = true;
     dock = (
       <ol className={s.recent} data-testid="canvas-recent">
         {allLines.slice(-3).map((l) => (
@@ -804,20 +855,55 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
   }
 
   // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
-  if (
+  // V3-06: a v3 system with its brief ready (no plan) — the short brief, the style and «Собрать» (startV3Build).
+  const v3Ready = !!brief.current && stage === "card" && !plan && !runActive && !building && !selected;
+  if (v3Ready && brief.current)
+    dock = (
+      <>
+        {brief.summary}
+        <V3BuildCard
+          systemId={systemId}
+          version={brief.current.version}
+          brief={brief.current.brief}
+          editable={canEdit(roleIn(view.system.orgId), auth)}
+          onStyle={() => setStyleOpen(true)}
+          onStale={brief.reload}
+          onStarted={(run) => {
+            setManualXray(null);
+            setRunId(run.id);
+            announce(canvas.build.ring);
+            void reload().catch(() => {});
+          }}
+        />
+      </>
+    );
+  // V3-04: the result of «Приложить ТЗ» (short brief and gaps) stays above the question until «Понятно».
+  if (upload.card)
+    dock = (
+      <>
+        {upload.card}
+        {dock}
+      </>
+    );
+  else if (
     brief.summary &&
+    !v3Ready &&
     !runActive &&
     !building &&
     !selected &&
     (stage === "card" || (stage === "interview" && !question))
   )
-    dock = (
+    dock = recentOnly ? (
+      brief.summary
+    ) : (
       <>
         {brief.summary}
         {dock}
       </>
     );
 
+  // V3-04: a v3 system (it has a brief, or its question is a v3 one) offers «Приложить ТЗ» until the build.
+  const v3 = brief.available || questions.some((q) => v3Question(q) !== null);
   const composerState = building ? "building" : thinking || busy === "answers" ? "thinking" : "idle";
   const placeholder = building
     ? canvas.chat.building
@@ -1051,8 +1137,10 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               {error}
             </p>
           )}
+          {upload.progress}
           <Composer
             testId="canvas-composer"
+            attach={v3 && !building && (stage === "interview" || stage === "card") ? upload.attach : null}
             value={text}
             onChange={setText}
             onSubmit={(t) => void send(t)}
@@ -1065,6 +1153,18 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
           />
         </ChatSheet>
         {brief.panel}
+        {styleOpen && (
+          <StyleDrawer
+            systemId={systemId}
+            editable={canEdit(roleIn(view.system.orgId), auth)}
+            onClose={() => setStyleOpen(false)}
+            onPicked={() => {
+              setStyleOpen(false);
+              brief.reload();
+              announce(v3Ru.build.picked);
+            }}
+          />
+        )}
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">
           {live}
         </div>

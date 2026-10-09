@@ -249,6 +249,24 @@ paths:
         '412': {description: 'VERSION_CONFLICT — бриф менялся дважды за время разбора', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '413': {description: 'PAYLOAD_TOO_LARGE — файл больше 10 МБ (details.reason FILE_TOO_LARGE) или больше 60 МБ после распаковки docx (UNPACKED_TOO_LARGE)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '415': {description: 'UNSUPPORTED_MEDIA_TYPE — не docx, pdf, md или txt (старый .doc, rtf, odt, картинки, таблицы); подсказка в message_ru', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/brief/approve:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: approveSystemBrief
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-06 (D7, D77 (9), (11)): «Собрать» системы v3 — единственная точка согласования: сборка по версии брифа, которую видел владелец (startV3Build, V3-11; харнесс v3 при WIZARD_BUILD_PIPELINE=v3). Система из интервью проходит card по пути; потолок — V3_BUILD_CAP_CREDITS (100 кредитов = 500 ₽), capCredits в ответе; mode create, у собранной — change. Повтор с тем же Idempotency-Key — тот же ответ. Без модели и без списаний до старта'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [version], additionalProperties: false, properties: {version: {type: integer, minimum: 1, description: 'версия брифа, которую видел владелец'}}}}
+      responses:
+        '202': {description: 'Сборка поставлена в очередь', content: {application/json: {schema: {type: object, required: [run, capCredits], properties: {run: {$ref: '#/components/schemas/Run'}, capCredits: {type: integer}}}}}}
+        '402': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {description: 'NO_PLAN — у системы нет брифа; SYSTEM_LOCKED — сборка уже идёт', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '412': {description: 'VERSION_CONFLICT — бриф изменился после version (details.version — текущая)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /systems/{id}/sessions:
     parameters: [{$ref: '#/components/parameters/systemId'}]
     get:
@@ -266,7 +284,7 @@ paths:
       operationId: startFixBuild
       x-milestone: M0
       x-roles: [editor]
-      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger. B2-21: у системы на конвейере модулей — повтор сборки последнего утверждённого плана сборщиком v2 с последнего чекпоинта этапа; готовые этапы не оплачиваются заново (agents/builder.yaml#v2.checkpoints)'
+      summary: '«Исправить» после неуспешной сборки или непройденного гейта: build mode=fix (workflows.yaml#workflows.build, L1-25). cap — по правилу workflows.yaml#workflows.build.trigger. B2-21: у системы на конвейере модулей — повтор сборки последнего утверждённого плана сборщиком v2 с последнего чекпоинта этапа; готовые этапы не оплачиваются заново (agents/builder.yaml#v2.checkpoints). V3-06: у системы v3 (без карточки и утверждённого плана, с брифом) — повтор сборки по брифу с потолком V3_BUILD_CAP_CREDITS (500 ₽), input {pipeline: v3, briefVersion}'
       parameters: [{$ref: '#/components/parameters/idempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {}}}}}
       responses:
@@ -975,6 +993,14 @@ paths:
       summary: 'B2-04 (D76 (14), grill-6 № 18): расход на модели по дням (МСК) и назначению — назначение вызова = вид его организации (client, staff, eval: пробы и замеры идут от eval-организаций); только оплачиваемые live/record-вызовы, ₽. Дни — от старых к новым, без вызовов — нули. b2 — бюджет разработки беты v2: расход eval-организаций с WIZARD_B2_BUDGET_SINCE против WIZARD_B2_BUDGET_RUB (70 % — алерт основателю, 100 % — новые пробы и замеры отклоняются). Не staff → 404'
       parameters: [{name: days, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 92, default: 14}}]
       responses: {'200': {description: Расход, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSpendByPurpose'}}}}, '400': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
+  /admin/capability-share:
+    get:
+      operationId: adminCapabilityShare
+      x-milestone: V3
+      x-roles: [staff]
+      summary: 'V3-06 (D77 (12), grill-8 № 12): доля требований «пока не умею» по месяцам (UTC) — по карте возможностей брифов: на систему и месяц берётся её последняя версия брифа этого месяца (capabilityShareByMonth, V3-03). Месяцы от старых к новым, без брифов — нули. Блок на /admin во вкладке «Запросы на развитие». Не staff → 404, без MFA → 403'
+      parameters: [{name: months, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 36, default: 12}}]
+      responses: {'200': {description: Доля по месяцам, content: {application/json: {schema: {type: object, required: [months], properties: {months: {type: array, items: {$ref: '#/components/schemas/CapabilityMonth'}}}}}}}, '400': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '404': {$ref: '#/components/responses/Error'}}
   # ==== M2P · M2-98 (адрес и свой домен, дизайн и референсы, медиа и стоки, хосты egress в ревью; секреты и настройки — M2-95 после M2-22/M2-98) — новые пути дописывать ЗДЕСЬ ====
   /systems/{id}/webhooks:
     parameters: [{$ref: '#/components/parameters/systemId'}]
@@ -1032,6 +1058,112 @@ paths:
         '403': {$ref: '#/components/responses/Error'}
         '409': {$ref: '#/components/responses/Error'}
   # ==== конец блока M2-72 ====
+  # ==== V3-09: три направления дизайна и референсы ====
+  /systems/{id}/directions:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: getDesignDirections
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-09 (D77 (7), agents/builder-v3.md): последний набор трёх направлений системы с живыми первыми экранами (previewHtml — документ для <iframe srcdoc sandbox="allow-scripts">) и выбранным направлением брифа; null — направлений ещё не предлагали'
+      responses:
+        '200': {description: Набор или null, content: {application/json: {schema: {type: object, required: [proposal], properties: {proposal: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/DesignDirections'}]}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: proposeDesignDirections
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-09: три первых экрана в разных архетипах по актуальному брифу — архетипы, токены, паттерны шапки и первого экрана считает код (V3-07, V3-08), тексты клиента пишет один вызов art_direction (T1 только после scrub) или код из брифа; ≤ 40 ₽ и ≤ 2 мин; превью собираются buildSystem параллельно. reroll — другие архетипы. Набор хранится блобом (id = sha256) и появляется в чате (payload.type design_directions)'
+      requestBody: {required: false, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {reroll: {type: boolean}}}}}}
+      responses:
+        '201': {description: Набор направлений, content: {application/json: {schema: {type: object, required: [proposal], properties: {proposal: {$ref: '#/components/schemas/DesignDirections'}}}}}}
+        '400': {description: 'VALIDATION_FAILED — брифа ещё нет', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '429': {description: 'RATE_LIMITED — больше 30 запросов к направлениям системы за 10 минут', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/directions/refine:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: refineDesignDirections
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-09: «Что поменять?» — слова владельца («теплее», «строже», «крупнее заголовок», «без фото», «как второй, но строже») по словарю кодом меняют параметры дизайн-системы направлений; непонятую фразу разбирает модель (art_direction, в пределах 40 ₽ шага), иначе — вежливая подсказка; «беру второй» — выбор (новая версия брифа). Слова и ответ пишутся в чат'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [proposalId, text], additionalProperties: false, properties: {proposalId: {type: string, pattern: '^[0-9a-f]{64}$'}, text: {type: string, minLength: 1, maxLength: 500}}}}}}
+      responses:
+        '200': {description: 'Новый набор (kind tuned), выбор (kind pick, brief — новая версия) или подсказка (kind unknown)', content: {application/json: {schema: {type: object, required: [proposal, kind, changed, reply], properties: {proposal: {$ref: '#/components/schemas/DesignDirections'}, kind: {enum: [tuned, pick, unknown]}, changed: {type: array, items: {type: integer}}, reply: {type: string}, brief: {type: object}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {description: 'NOT_FOUND — нет системы или набора направлений этой системы', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {$ref: '#/components/responses/Error'}
+  /systems/{id}/directions/pick:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: pickDesignDirection
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-09: «Выбрать» (n) или «Решите за меня» (skip) — новая версия брифа (author owner): design.archetype, pinned (skip — false, первое направление) и пожелания словами выбранного направления в design.references'
+      requestBody: {required: true, content: {application/json: {schema: {oneOf: [{type: object, required: [proposalId, n], additionalProperties: false, properties: {proposalId: {type: string, pattern: '^[0-9a-f]{64}$'}, n: {type: integer, minimum: 1, maximum: 3}}}, {type: object, required: [proposalId, skip], additionalProperties: false, properties: {proposalId: {type: string, pattern: '^[0-9a-f]{64}$'}, skip: {const: true}}}]}}}}
+      responses:
+        '200': {description: Новая версия брифа, content: {application/json: {schema: {type: object, required: [brief, archetype, pinned], properties: {brief: {type: object}, archetype: {type: string}, pinned: {type: boolean}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/directions/references:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: addDesignReference
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-09 (GZ-03): ссылка-референс → страница через read_page (без JS, правила V3-05: robots, SSRF, лимиты) → принципы (цвета и шрифты встроенного CSS, ритм, фото, сетка) строкой в brief.design.references (новая версия брифа); тексты, логотипы и раскладка не копируются. До 3 референсов кроме логотипа; страница не прочиталась — сохраняется ссылка (read=false)'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [url], additionalProperties: false, properties: {url: {type: string, minLength: 8, maxLength: 500}}}}}}
+      responses:
+        '201': {description: Принципы и новая версия брифа, content: {application/json: {schema: {type: object, required: [reference, brief, read], properties: {reference: {type: string}, brief: {type: object}, read: {type: boolean}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '429': {$ref: '#/components/responses/Error'}
+  /systems/{id}/directions/references/upload:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: uploadDesignReference
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-09: логотип (PNG или SVG) или скриншот референса (PNG), до 2 МБ и 4096 точек по стороне → доминирующие цвета в OKLCH кодом (без модели со зрением) → строка принципов в brief.design.references; логотип даёт фирменный цвет и заменяет прежний. Файл не хранится'
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file, kind], properties: {file: {type: string, format: binary}, kind: {enum: [logo, screenshot]}}}}}}
+      responses:
+        '201': {description: Принципы и новая версия брифа, content: {application/json: {schema: {type: object, required: [reference, brief], properties: {reference: {type: string}, brief: {type: object}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '413': {$ref: '#/components/responses/Error'}
+        '415': {description: 'UNSUPPORTED_MEDIA_TYPE — не PNG (логотип — не PNG и не SVG)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {$ref: '#/components/responses/Error'}
+  /direction-previews/{proposalId}/{n}/{path}:
+    get:
+      operationId: getDirectionPreviewFile
+      x-milestone: V3
+      security: []
+      x-path-wildcard: 'path — файл собранного превью (assets/*.js, assets/*.css, boot.js); ключ доступа — proposalId (sha256 набора со случайным nonce)'
+      summary: 'V3-09: файлы живого первого экрана для <iframe srcdoc sandbox="allow-scripts"> (непрозрачный origin под CSP платформы): Access-Control-Allow-Origin *, без сессии; после рестарта сборка повторяется из сохранённого набора'
+      parameters: [{name: proposalId, in: path, required: true, schema: {type: string, pattern: '^[0-9a-f]{64}$'}}, {name: n, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 3}}, {name: path, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Файл превью, content: {text/javascript: {schema: {type: string}}, text/css: {schema: {type: string}}}}, '404': {description: Нет такого файла или набора}}
+  /direction-previews/fonts/{file}:
+    get:
+      operationId: getDirectionPreviewFont
+      x-milestone: V3
+      security: []
+      summary: 'V3-09: шрифты дизайн-систем превью из каталога ui-kit (D64), как /_wizard/fonts рантайма; CORS для непрозрачного origin'
+      parameters: [{name: file, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: woff2, content: {font/woff2: {schema: {type: string, contentMediaType: font/woff2}}}}, '404': {description: Нет такого файла}}
+  /direction-previews/photos/{name}:
+    get:
+      operationId: getDirectionPreviewPhoto
+      x-milestone: V3
+      security: []
+      summary: 'V3-09: заглушка фото первого экрана (SVG без текста, цвет — от имени); стоковые фото подбираются при «Собрать»'
+      parameters: [{name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,80}[.]svg$'}}]
+      responses: {'200': {description: SVG, content: {image/svg+xml: {schema: {type: string}}}}, '404': {description: Нет такого файла}}
+  # ==== конец блока V3-09 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -1410,3 +1542,36 @@ components:
     LlmSpendByPurpose: {type: object, required: [days, b2], properties: {days: {type: array, items: {type: object, required: [day, client, staff, eval, total], properties: {day: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, client: {type: number}, staff: {type: number}, eval: {type: number}, total: {type: number}}}}, b2: {type: object, required: [since, spentRub, budgetRub, sharePercent, warn, reached], properties: {since: {type: string, description: yyyy-mm-dd (Europe/Moscow)}, spentRub: {type: number}, budgetRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 70 % бюджета'}, reached: {type: boolean}}}}}
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}
     SystemSession: {type: object, description: 'V3-06: сессия системы (listSystemSessions)', required: [id, kind, source, status, startedAt, finishedAt, runIds, briefVersions, changes, changesTotal, build], properties: {id: {type: string, description: 'build:<runId> | interview:<runId> | edit:<runId> | brief:<version> | interview:v<version>'}, kind: {enum: [interview, build, edit]}, source: {enum: [chat, panel, null], description: 'только edit: chat — словами в чате, panel — в панели «Бриф»'}, status: {enum: [running, waiting, done, failed, cancelled]}, startedAt: {type: string, format: date-time}, finishedAt: {type: [string, 'null'], format: date-time}, runIds: {type: array, items: {type: string, format: uuid}}, briefVersions: {type: array, items: {type: integer}, description: 'версии брифа, записанные в сессии'}, changes: {type: array, maxItems: 6, items: {type: string}, description: 'первые строки разницы версий (BriefChange.text_ru)'}, changesTotal: {type: integer}, build: {oneOf: [{type: 'null'}, {type: object, required: [mode, revision, failure], properties: {mode: {type: [string, 'null']}, revision: {type: [integer, 'null'], description: 'runs.result_revision'}, failure: {type: [string, 'null'], description: 'runs.failure_message_ru'}}}]}}}
+    CapabilityMonth: {type: object, description: 'V3-06: доля «пока не умею» за месяц (adminCapabilityShare)', required: [month, briefs, requirements, notYet, share], properties: {month: {type: string, description: YYYY-MM (UTC)}, briefs: {type: integer, description: 'систем с брифом в этом месяце'}, requirements: {type: integer}, notYet: {type: integer}, share: {type: number, minimum: 0, maximum: 1, description: 'notYet / requirements, 3 знака; 0 — нет требований'}}}
+    DesignDirections:
+      type: object
+      description: 'V3-09: набор трёх направлений первого экрана (packages/agents/src/builder/v3/directions)'
+      required: [id, briefVersion, createdAt, costRub, fallback, references, picked, directions]
+      properties:
+        id: {type: string, pattern: '^[0-9a-f]{64}$', description: sha256 сохранённого набора — ключ его превью}
+        briefVersion: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        costRub: {type: number, minimum: 0, description: 'траты на модели за набор и его правки (≤ 40 ₽)'}
+        fallback: {type: boolean, description: тексты из брифа (без модели, отказ, таймаут или бюджет)}
+        references: {type: array, items: {type: string}}
+        picked: {type: [integer, 'null'], description: направление, закреплённое в брифе}
+        directions:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: object
+            required: [n, archetype, name, why, texts, textsSource, tuning, header, hero, fonts, palette, previewHtml]
+            properties:
+              n: {type: integer, minimum: 1, maximum: 3}
+              archetype: {type: string}
+              name: {type: string}
+              why: {type: string}
+              texts: {type: object, required: [title, action], properties: {title: {type: string}, lead: {type: string}, action: {type: string}}}
+              textsSource: {enum: [model, brief]}
+              tuning: {type: array, items: {type: string}, description: пожелания владельца словами}
+              header: {type: string}
+              hero: {type: string}
+              fonts: {type: object, required: [display, text], properties: {display: {type: string}, text: {type: string}}}
+              palette: {type: object, required: [background, foreground, accent], properties: {background: {type: string}, foreground: {type: string}, accent: {type: string}}}
+              previewHtml: {type: string, description: 'документ для <iframe srcdoc sandbox="allow-scripts">; файлы — /direction-previews/*'}

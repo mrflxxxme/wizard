@@ -1,0 +1,100 @@
+// @wizard/agents builder v3 «Три направления» (V3-09; D77 (7)): proposals of three first screens, refinement by the
+// owner's words, logo and references → principles, live preview systems. Exported from @wizard/agents/builder.
+
+export {
+  LEXICON,
+  normalizeWords,
+  type ParsedRefinement,
+  parseRefinement,
+  understood,
+} from "./lexicon.js";
+export {
+  directionPreview,
+  PREVIEW_PAGE_FILE,
+  PREVIEW_ROUTES,
+  type PreviewContent,
+  type PreviewPaths,
+  type PreviewSystem,
+  photoName,
+  previewPhotoSvg,
+} from "./preview.js";
+export {
+  briefDesign,
+  type DirectionsInput,
+  type DirectionsModel,
+  type DirectionsProposal,
+  directionDesign,
+  directionsNiche,
+  isDirectionsProposal,
+  PROPOSAL_KIND,
+  pickedDesign,
+  previewNav,
+  proposalDesigns,
+  proposeDirections,
+  retune,
+  type StoredDirection,
+  tuningDelta,
+} from "./propose.js";
+export {
+  type ColorShare,
+  colorsInText,
+  dominantColors,
+  LOGO_HEAD,
+  logoPrinciples,
+  pagePrinciples,
+  type ReferenceHints,
+  type ReferenceKind,
+  type ReferencePrinciples,
+  referenceHints,
+  referenceLine,
+  screenshotPrinciples,
+  WORDS_HEAD,
+  wordsLine,
+} from "./references.js";
+export {
+  REFINE_HINT,
+  REFINEMENT_TOOL,
+  type RefinementAnswer,
+  type RefineResult,
+  refineDirections,
+  refinementIssues,
+  refinementMessages,
+  refinementSchema,
+} from "./refine.js";
+export {
+  briefFacts,
+  DIRECTION_TEXTS_TOOL,
+  type DirectionFacts,
+  type DirectionTexts,
+  type DirectionTextsAnswer,
+  directionTextsIssues,
+  directionTextsMessages,
+  directionTextsSchema,
+  factsText,
+  fallbackTexts,
+  inventedFacts,
+  TEXT_LIMITS,
+  visitorOffer,
+} from "./texts.js";
+export {
+  type DirectionDesignInput,
+  type DirectionTuning,
+  isEmptyTuning,
+  mergeTuning,
+  normalizeTuning,
+  TUNING_AXES,
+  TUNING_LIMIT,
+  type TunedDesign,
+  type TuningAxis,
+  tuneDesign,
+  tunedRules,
+  tuningWords,
+} from "./tuning.js";
+export {
+  ATTEMPT_CEILING_RUB,
+  DIRECTIONS_BUDGET_RUB,
+  DIRECTIONS_CALL_DEADLINE_MS,
+  deadlineSignal,
+  RUB_PER_CREDIT,
+  RubWallet,
+} from "./wallet.js";

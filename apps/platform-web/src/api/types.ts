@@ -901,3 +901,43 @@ export interface SystemSession {
   changesTotal: number;
   build: { mode: string | null; revision: number | null; failure: string | null } | null;
 }
+
+/** V3-04 briefGaps: a brief section as the interview sees it (filled, partial, empty) and what is missing inside. */
+export interface BriefSectionGap {
+  section: string;
+  label: string;
+  status: "filled" | "partial" | "empty";
+  blocking: boolean;
+  count: number;
+  notes: string[];
+}
+
+/** V3-04 POST /systems/:id/brief/upload (uploadSystemBrief): the new version, where it came from and the gaps. */
+export interface BriefUpload {
+  brief: BriefVersion;
+  diagrams: BriefDiagrams;
+  changed: boolean;
+  source: {
+    kind: "file";
+    format: "docx" | "pdf" | "text";
+    chars: number;
+    truncated: boolean;
+    pages?: number;
+    method: "model" | "heuristic";
+    chunks: number;
+    answered: number;
+    piiReplaced: number;
+  };
+  gaps: { sections: BriefSectionGap[]; filled: string[]; missing: string[]; blocking: string[] };
+}
+
+/** V3-06 GET /admin/capability-share: the share of «пока не умею» per month (D77 (12)). */
+export interface CapabilityMonth {
+  /** YYYY-MM (UTC). */
+  month: string;
+  briefs: number;
+  requirements: number;
+  notYet: number;
+  /** notYet / requirements, 0…1. */
+  share: number;
+}

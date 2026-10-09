@@ -26,6 +26,7 @@ static_checks_G0:                  # packages/gates, M0-10; каждая — с 
     - "MUST: AST-проверки G0-IMP-01 и G0-SEC-01 выполняются на исходниках ДО любого запуска tsc и esbuild; провал → сборка не запускается"
     - "MUST: tsc typecheck и esbuild работают в каталоге-копии ревизии (absWorkingDir = временный каталог только с ui/** и functions/**), без доступа к репозиторию и .env хоста"
     - "MUST: плагин esbuild onResolve отклоняет пути вне ui/** и functions/** копии и любые пакеты, кроме @wizard/sdk и @wizard/ui-kit; loaders — только ts/tsx; define и переменные окружения в бандл не пробрасываются; бандл функций — platform=neutral, external только SDK"
+    - "V3-12 (системы v3 — признак: файл дизайн-системы ui/design.css, тот же, что включает Tailwind в @wizard/build): файлы публичных страниц ui/pages/**, ui/patterns/**, ui/sections/** импортируют ещё react, motion/react и @wizard/ui-kit/v3/headless (builder-v3.md §1, C3) — одинаково в G0-IMP-01, G0-TS-01 (типы @types/react, motion, исходники headless), сборке @wizard/build и сборке G1 render; пакеты разрешаются в файлы хоста, как @wizard/sdk. Остальные файлы ui/** и functions/** и все системы v2 — прежние правила"
     - "M2: сборка — в sandbox-пуле без секретов (как исполнение функций)"
 
 M0_M1:

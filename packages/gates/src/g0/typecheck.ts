@@ -1,11 +1,11 @@
 // G0-TS-01: in-process tsc (strict) of the revision against generateTypes(spec), @wizard/sdk (sdk.d.ts) and
 // @wizard/ui-kit, with packages/build tsconfig.system (sdk.md §1.1). The revision lives in a virtual root holding
 // only ui/**, functions/** and _generated/; the compiler host reads nothing else except the allowed type roots.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { type AppSpec, generateTypes } from "@wizard/appspec";
-import { systemTsconfig } from "@wizard/build";
+import { isTailwindSystem, systemTsconfig } from "@wizard/build";
 import ts from "typescript";
 import type { Finding } from "../report.js";
 import { REPO_ROOT } from "./spec.js";
@@ -26,17 +26,40 @@ export function uiKitTypesPath(): string {
   return existsSync(dts) ? dts : entry;
 }
 
-let options: ts.CompilerOptions | undefined;
-function compilerOptions(): ts.CompilerOptions {
-  if (options) return options;
-  const cfg = systemTsconfig({ "@wizard/ui-kit": uiKitTypesPath() });
+/**
+ * Types of the packages the public pages of a v3 system may import (builder-v3.md §1, G0-IMP-01 V3_UI_PACKAGES):
+ * React (@types/react next to the SDK), Motion (its own d.ts) and the ui-kit headless hooks (sources).
+ */
+export function v3TypePaths(): Record<string, string> {
+  const req = createRequire(import.meta.url);
+  const fromSdk = createRequire(req.resolve("@wizard/sdk"));
+  const fromBuild = createRequire(req.resolve("@wizard/build"));
+  const motionPkg = fromBuild.resolve("motion/package.json");
+  const motion = JSON.parse(readFileSync(motionPkg, "utf8")) as {
+    exports: Record<string, { types?: string }>;
+  };
+  const motionTypes = motion.exports["./react"]?.types;
+  if (!motionTypes) throw new Error("motion: no types for motion/react");
+  return {
+    react: join(dirname(fromSdk.resolve("@types/react/package.json")), "index.d.ts"),
+    "motion/react": join(dirname(motionPkg), motionTypes),
+    "@wizard/ui-kit/v3/headless": req.resolve("@wizard/ui-kit/v3/headless"),
+  };
+}
+
+const optionsCache = new Map<"v2" | "v3", ts.CompilerOptions>();
+function compilerOptions(kind: "v2" | "v3"): ts.CompilerOptions {
+  const hit = optionsCache.get(kind);
+  if (hit) return hit;
+  const cfg = systemTsconfig({ "@wizard/ui-kit": uiKitTypesPath(), ...(kind === "v3" ? v3TypePaths() : {}) });
   const parsed = ts.convertCompilerOptionsFromJson(cfg.compilerOptions, VIRTUAL_ROOT);
   if (parsed.errors.length) {
     throw new Error(
       parsed.errors.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n")).join("; "),
     );
   }
-  options = { ...parsed.options, noEmit: true, incremental: false };
+  const options = { ...parsed.options, noEmit: true, incremental: false };
+  optionsCache.set(kind, options);
   return options;
 }
 
@@ -52,7 +75,7 @@ const allowedHostPath = (p: string) => ALLOWED_ROOTS.some((r) => p.startsWith(r)
 /** Library source files are immutable during a process lifetime: shared across runs. */
 const libCache = new Map<string, ts.SourceFile>();
 const sysCache = new Map<string, { text: string; sf: ts.SourceFile }>();
-let lastProgram: ts.Program | undefined;
+let lastProgram: { kind: "v2" | "v3"; program: ts.Program } | undefined;
 
 function createHost(files: ReadonlyMap<string, string>): ts.CompilerHost {
   const read = (p: string): string | undefined => {
@@ -104,13 +127,16 @@ export function typecheck(spec: AppSpec, systemFiles: ReadonlyMap<string, string
     if (/^(ui|functions)\/.+\.tsx?$/.test(p)) files.set(`${VIRTUAL_ROOT}/${p}`, t);
   files.set(GENERATED, generateTypes(spec));
   for (const k of sysCache.keys()) if (!files.has(k)) sysCache.delete(k);
+  // v3 system (ui/design.css, as in @wizard/build): its public pages may import React, Motion and the headless hooks.
+  const kind = isTailwindSystem(systemFiles) ? "v3" : "v2";
+  const old = lastProgram?.kind === kind ? lastProgram.program : undefined;
   const program = ts.createProgram({
     rootNames: [...files.keys()].sort(),
-    options: compilerOptions(),
+    options: compilerOptions(kind),
     host: createHost(files),
-    ...(lastProgram ? { oldProgram: lastProgram } : {}),
+    ...(old ? { oldProgram: old } : {}),
   });
-  lastProgram = program;
+  lastProgram = { kind, program };
   const out: TsDiagnostic[] = [];
   const push = (d: ts.Diagnostic) => {
     const text = ts.flattenDiagnosticMessageText(d.messageText, "\n");

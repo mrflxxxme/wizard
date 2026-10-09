@@ -5,7 +5,13 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, posix } from "node:path";
 import type { AppSpec } from "@wizard/appspec";
-import { defaultHostModules, injectWzIds, type WzMap } from "@wizard/build";
+import {
+  defaultHostModules,
+  defaultV3HostModules,
+  injectWzIds,
+  isTailwindSystem,
+  type WzMap,
+} from "@wizard/build";
 import * as esbuild from "esbuild";
 
 const NS = "wz-src";
@@ -22,6 +28,20 @@ const SOURCE_RE = /^ui\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0
 const REMOTE_ANCHOR = /function useRemote<T>\([\s\S]*?\): RemoteState<T> & \{ refetch\(\): void \} \{\n/;
 const REMOTE_HOOK =
   "  const __wzSsr = (globalThis as any).__wzSsrRemote;\n  if (__wzSsr) return __wzSsr(key, fetcher);\n";
+
+/** Files of a v3 system that may import the v3 packages (G0-IMP-01 V3_UI_PATH_RE). */
+const V3_PAGE_RE = /^ui\/(?:pages|patterns|sections)\//;
+
+/** react, motion/react and @wizard/ui-kit/v3/headless as the system build resolves them. */
+function v3Packages(): Map<string, string> {
+  const m = defaultV3HostModules();
+  const out = new Map([
+    ["react", m.react],
+    ["motion/react", m.motionReact],
+  ]);
+  if (m.uiKitHeadless) out.set("@wizard/ui-kit/v3/headless", m.uiKitHeadless);
+  return out;
+}
 
 export interface RenderBundle {
   ok: boolean;
@@ -67,6 +87,9 @@ export async function buildRenderBundle(
   const req = createRequire(import.meta.url);
   const reactDomServer = req.resolve("react-dom/server.browser");
   const sdkReact = join(dirname(host.sdk), "client", "react.tsx");
+  // v3 system (ui/design.css, as in @wizard/build): its public pages may import React, Motion and the headless hooks
+  // (builder-v3.md §1) — the same files the system build bundles.
+  const v3 = isTailwindSystem(files) ? v3Packages() : null;
 
   const plugin: esbuild.Plugin = {
     name: "wizard-render",
@@ -85,6 +108,8 @@ export async function buildRenderBundle(
         if (args.path === SDK_JSX) return { path: host.sdkJsxRuntime };
         if (args.path === UI_KIT) return { path: host.uiKit };
         if (fromEntry && args.path === "react-dom/server") return { path: reactDomServer };
+        const v3Path = v3 && V3_PAGE_RE.test(args.importer) ? v3.get(args.path) : undefined;
+        if (v3Path && args.kind === "import-statement") return { path: v3Path };
         if (args.kind !== "import-statement" || !/^\.\.?\//.test(args.path) || /[?#\\\0]/.test(args.path))
           return { errors: [{ text: `Импорт «${args.path}» запрещён` }] };
         const base = posix.normalize(posix.join(fromEntry ? "." : posix.dirname(args.importer), args.path));

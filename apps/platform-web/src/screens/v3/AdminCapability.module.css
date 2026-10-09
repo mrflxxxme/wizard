@@ -1,0 +1,23 @@
+/* /admin «Пока не умею» (V3-06): a quiet bar of the monthly share next to the number. */
+.share {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.bar {
+  display: block;
+  width: 72px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--p-track);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--p-bad);
+  transform-origin: left center;
+}

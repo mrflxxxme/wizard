@@ -25,6 +25,7 @@ import { Welcome } from "../screens/onboarding/Welcome.js";
 import { Start } from "../screens/Start.js";
 import { Settings } from "../screens/settings/Settings.js";
 import { Workspace } from "../screens/workspace/Workspace.js";
+import { DirectionsScreen } from "../v3/directions/DirectionsScreen.js";
 import { usePlatform } from "./context.js";
 import { navigate, PUBLIC_ROUTES, type Route, useRoute } from "./router.js";
 
@@ -60,7 +61,7 @@ export function App(): ReactNode {
 }
 
 function Page(): ReactNode {
-  const { route } = useRoute();
+  const { route, search } = useRoute();
   const { auth } = usePlatform();
   const needsLogin = auth === "anon" && !PUBLIC_ROUTES.has(route.name);
   useEffect(() => {
@@ -84,6 +85,9 @@ function Page(): ReactNode {
   if (route.name === "billing") return <BillingScreen />;
   if (route.name === "welcome") return <Welcome />;
   if (route.name === "admin") return <AdminConsole />;
+  // V3-09: «Три направления» of a system — /s/:id?view=design (a view of the system route, not a 13th route).
+  if (route.name === "system" && search.get("view") === "design")
+    return <DirectionsScreen key={route.systemId} systemId={route.systemId} />;
   if (route.name === "system") return <Workspace key={route.systemId} systemId={route.systemId} />;
   if (route.name === "code") return <CodeScreen key={route.systemId} systemId={route.systemId} />;
   if (route.name === "settings") return <Settings key={route.systemId} systemId={route.systemId} />;

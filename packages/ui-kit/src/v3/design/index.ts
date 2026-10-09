@@ -17,6 +17,8 @@ export {
   type PaletteRules,
   type SystemClass,
 } from "./archetypes.js";
+/** cabinetTokensV3(ds, scheme) → the --w-cab-* tokens of staff cabinets in the client's style (V3-12). */
+export { type CabinetTokenName, cabinetTokensV3, cabinetValuesV3 } from "./cabinet.js";
 /** designSystemCss(ds) → --ds-* variables of both schemes, reduced motion, keyframes and the Tailwind `@theme inline`. */
 export {
   colorVar,

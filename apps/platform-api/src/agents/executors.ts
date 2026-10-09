@@ -43,7 +43,9 @@ import {
   testModeSecrets,
 } from "@wizard/runtime";
 import type postgres from "postgres";
+import { platformMailer } from "../auth/smtp-mailer.js";
 import { phoneOtpAllowed } from "../billing/plans.js";
+import { buildByBrief, isV3Build, kyselyOver, type V3BuildOptions } from "../builds-v3/host.js";
 import type { Config } from "../config.js";
 import { recordInterviewFallback } from "../ops/metrics.js";
 import type { EventType } from "../runs/events.js";
@@ -101,6 +103,11 @@ export interface AgentExecutorsOptions {
   files?: FileStorage;
   /** V3-03: research of the v3 interview (default — web tools only with WIZARD_RESEARCH_MODE=live; null — none). */
   research?: InterviewV3Options["research"];
+  /**
+   * V3-11: builds by the system brief on the harness v3 (builds-v3/host.ts) — on with WIZARD_BUILD_PIPELINE=v3 or
+   * v3.enabled; the page composer of V3-12 and the hooks of V3-13…15 come here; null — off.
+   */
+  v3?: V3BuildOptions | null;
 }
 
 export type { GoalBrowser, GoalBrowserProvider };
@@ -439,6 +446,10 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
           : null;
     return browserProvider;
   };
+  // V3-11: builds by the brief (harness v3) when the pipeline is on; its db handle is made on first use.
+  // The same switch as the v3 interview (V3-03): config.buildPipeline (WIZARD_BUILD_PIPELINE=v3).
+  const v3 = o.v3 === null ? null : { ...o.v3, enabled: o.v3?.enabled ?? o.config.buildPipeline === "v3" };
+  let v3Db: ReturnType<typeof kyselyOver> | undefined;
   let sandbox: Promise<G1Sandbox | null> | undefined;
   const g1Sandbox = (): Promise<G1Sandbox | null> => {
     sandbox ??=
@@ -521,6 +532,22 @@ export function createAgentExecutors(o: AgentExecutorsOptions): RunExecutors & {
             photos: photoHost(),
           },
         );
+      }
+      // V3-11: a system with a brief and without a card or plan, WIZARD_BUILD_PIPELINE=v3 — the harness v3.
+      if (v3?.enabled) {
+        v3Db ??= kyselyOver(o.pg);
+        if (await isV3Build(v3Db, host.run.systemId, params, true))
+          return buildByBrief(host, {
+            pg: o.pg,
+            db: v3Db,
+            ...(v3.composer ? { composer: v3.composer } : {}),
+            ...(v3.hooks ? { hooks: v3.hooks } : {}),
+            mailer: v3.mailer ?? platformMailer(o.config),
+            platformOrigin: o.config.platformOrigin,
+            browser: goalBrowser(),
+            ...(o.modules ? { registry: o.modules } : {}),
+            log: (msg, err) => g1Logger.error(msg.replace(/\s+/g, "_"), err),
+          });
       }
       const qa = createHostQa(host, { milestone: o.config.milestone });
       const out = await runBuild(

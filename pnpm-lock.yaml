@@ -56,6 +56,9 @@ importers:
       '@wizard/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@wizard/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
       fflate:
         specifier: ^0.8.3
         version: 0.8.3

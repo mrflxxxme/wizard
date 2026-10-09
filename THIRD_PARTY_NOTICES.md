@@ -60,7 +60,7 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 
 ## Изображения и шрифты систем (M2-42, M2-47)
 
-Кодеки изображений работают на сервере runtime (WASM, без нативных сборок и без LGPL). Шрифты раздаются системам с `/_wizard/fonts` их собственного домена, запросов к Google Fonts нет. Файлы шрифтов взяты из дистрибутива Google Fonts без изменений (подмножества cyrillic и latin в том виде, в каком их публикует Google Fonts) через npm-пакеты `@fontsource/*` (обвязка — MIT, только для разработки). Копирует их `packages/ui-kit/scripts/sync-fonts.mjs`; каталог с лицензией и источником каждого шрифта — `packages/ui-kit/src/tokens/font-catalog.ts`, тексты лицензий — `packages/ui-kit/fonts/LICENSE-*.txt`. Шрифты платформы v2 (B2-32) копирует тот же скрипт в `packages/ui-kit/fonts-platform` (каталог — `packages/ui-kit/src/v2/font-catalog.ts`); platform-web собирает их в свой бандл и раздаёт со своего домена, без CDN.
+Кодеки изображений работают на сервере runtime (WASM, без нативных сборок и без LGPL). Шрифты раздаются системам с `/_wizard/fonts` их собственного домена, запросов к Google Fonts нет. Файлы шрифтов взяты из дистрибутива Google Fonts без изменений (подмножества cyrillic, latin и — ради знака ₽ — latin-ext в том виде, в каком их публикует Google Fonts) через npm-пакеты `@fontsource/*` (обвязка — MIT, только для разработки). Копирует их `packages/ui-kit/scripts/sync-fonts.mjs`; каталог с лицензией и источником каждого шрифта — `packages/ui-kit/src/tokens/font-catalog.ts`, тексты лицензий — `packages/ui-kit/fonts/LICENSE-*.txt`. Шрифты платформы v2 (B2-32) копирует тот же скрипт в `packages/ui-kit/fonts-platform` (каталог — `packages/ui-kit/src/v2/font-catalog.ts`); platform-web собирает их в свой бандл и раздаёт со своего домена, без CDN.
 
 | Пакет | Версия | Лицензия | Где используется |
 |---|---|---|---|
@@ -117,10 +117,10 @@ Job `sandbox` (`.github/workflows/sandbox.yml`, M2-01) скачивает их �
 | Пакет | Версия | Лицензия | Где используется |
 |---|---|---|---|
 | tailwindcss (Tailwind Labs) | 4.3.3 | MIT, Copyright (c) Tailwind Labs, Inc. | `packages/build/src/tailwind.ts`: компиляция CSS публичных страниц v3 при сборке (JS API, без нативного oxide). В CSS систем попадают preflight и утилиты с заголовком лицензии |
-| motion, framer-motion, motion-dom, motion-utils (Motion) | 13.x, см. pnpm-lock | MIT, Copyright (c) 2024 Motion B.V. (https://github.com/motiondivision/motion) | `motion/react` в паттернах v3: вход первого экрана и меню шапки, с учётом prefers-reduced-motion; попадает в бандлы систем v3 |
+| motion, framer-motion, motion-dom, motion-utils (Motion) | 13.x, см. pnpm-lock | MIT, Copyright (c) 2024 Motion B.V. (https://github.com/motiondivision/motion) | `motion/react` в паттернах v3: вход первого экрана, меню шапки и раскрытие ответа в FAQ, с учётом prefers-reduced-motion; попадает в бандлы систем v3 |
 | tslib (Microsoft) | 2.8.1 | 0BSD | зависимость motion; ES-сборки motion его не импортируют, в бандлы систем не попадает |
 
 | Источник композиции | Лицензия | Паттерны |
 |---|---|---|
-| HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered: композиция по мотивам, код свой |
-| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating и cta-card |
+| HyperUI, https://github.com/markmead/hyperui | MIT, Copyright (c) Mark Mead | раскладки header-classic, header-centered, hero-split, hero-centered, cta-band, cta-centered, cta-split-image, footer-columns, footer-centered, form-split, catalog-grid, catalog-list, blog-cards: композиция по мотивам, код свой |
+| shadcn/ui, https://github.com/shadcn-ui/ui | MIT, Copyright (c) 2023 shadcn | имена токенов темы (background и foreground, primary, muted, card, border, ring), стиль кнопок и карточек в header-floating, cta-card, form-centered и catalog-table |

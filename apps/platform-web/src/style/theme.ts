@@ -1,7 +1,15 @@
 // «Стиль» (platform-screens.yaml S5): options of AppSpec.theme and tokens for apply-theme-tokens (ui-kit themeToTokens).
 // v2 (M2-42): one of four theme presets and the brand colour; fonts of the theme go to the preview as @font-face data.
 import { THEME_FONTS } from "@wizard/appspec";
-import { fontEntry, resolveTheme, THEME_PRESET_LIST, themeFonts, themeToTokens } from "@wizard/ui-kit";
+import {
+  fontEntry,
+  fontHasRuble,
+  RUBLE_FALLBACK_FONT,
+  resolveTheme,
+  THEME_PRESET_LIST,
+  themeFonts,
+  themeToTokens,
+} from "@wizard/ui-kit";
 import type { Theme } from "../api/types.js";
 
 export const ACCENT_PRESETS = ["#2F46D8", "#C2410C", "#0A7D3E", "#9D174D"] as const;
@@ -44,17 +52,15 @@ export function previewTokens(
 ): { tokens: Record<string, string>; mode: ThemeMode; fontFaces: PreviewFontFace[] } {
   const mode = theme.mode ?? "auto";
   const scheme = mode === "dark" || (mode === "auto" && prefersDark) ? "dark" : "light";
-  const fontFaces = themeFonts(theme).flatMap((name) => {
-    const f = fontEntry(name);
-    return f
-      ? f.files.map((x) => ({
-          family: f.family,
-          weight: x.weight,
-          file: x.file,
-          unicodeRange: x.unicodeRange,
-        }))
-      : [];
-  });
+  const entries = themeFonts(theme).flatMap((name) => fontEntry(name) ?? []);
+  // A family without ₽ (Sofia Sans) takes it from RUBLE_FALLBACK_FONT, as fontFaceCss does: its latin-ext faces only.
+  const fallback = entries.every(fontHasRuble) ? undefined : fontEntry(RUBLE_FALLBACK_FONT);
+  const fontFaces = [
+    ...entries.flatMap((f) => f.files.map((x) => ({ family: f.family, x }))),
+    ...(fallback && !entries.includes(fallback)
+      ? fallback.files.filter((x) => x.subset === "latin-ext").map((x) => ({ family: fallback.family, x }))
+      : []),
+  ].map(({ family, x }) => ({ family, weight: x.weight, file: x.file, unicodeRange: x.unicodeRange }));
   return { tokens: themeToTokens(theme, scheme), mode, fontFaces };
 }
 

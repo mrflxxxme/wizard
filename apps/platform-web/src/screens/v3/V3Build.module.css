@@ -1,0 +1,113 @@
+/* «Собрать» of a v3 system in the floating chat (V3-06): the style line and the amber start. Motion: transform only. */
+.card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.style,
+.go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.line,
+.note,
+.error {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.k {
+  font-weight: 600;
+}
+
+.note {
+  font-size: 13.5px;
+  color: var(--p-ink-2);
+}
+
+.error {
+  flex-basis: 100%;
+  font-size: 13.5px;
+  color: var(--p-bad);
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--p-surface);
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 10px 8px 20px;
+}
+
+.drawerTitle {
+  margin: 0;
+  font: 600 18px / 1.25 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--p-ink-2);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--p-sunken);
+  color: var(--p-ink);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: -2px;
+}
+
+.close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.drawerBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px 24px 20px;
+}
+
+@media (max-width: 600px) {
+  .drawerHead {
+    padding-left: 16px;
+  }
+
+  .drawerBody {
+    padding: 0 12px 24px 16px;
+  }
+}

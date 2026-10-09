@@ -1,6 +1,6 @@
 // G0 orchestration (specs/quality/gates.yaml#G0): order, dependencies, since/milestone, time budget.
 import type { AppSpec } from "@wizard/appspec";
-import { buildSystem } from "@wizard/build";
+import { buildSystem, isTailwindSystem } from "@wizard/build";
 import {
   CHECK_BY_ID,
   compareMilestones,
@@ -18,7 +18,7 @@ import {
   checkOrphans,
   type WhereRange,
 } from "./code.js";
-import { checkImports } from "./imports.js";
+import { checkImports, type ImportRules } from "./imports.js";
 import { checkMigrationPlan, checkShadowApply } from "./migrations.js";
 import { checkSecurity } from "./security.js";
 import { parseAll, type SourceInfo } from "./source.js";
@@ -93,15 +93,18 @@ export async function checkCode(input: {
   return input.file === undefined ? bad : bad.filter((c) => c.file === input.file);
 }
 
-/** write_file fast path (gates.yaml#G0.runs_on): G0-IMP-01 and G0-SEC-01 for one file. */
-export function checkFile(path: string, source: string, spec?: AppSpec): Check[] {
+/**
+ * write_file fast path (gates.yaml#G0.runs_on): G0-IMP-01 and G0-SEC-01 for one file; `rules.v3` — the file belongs to a
+ * v3 system (its tree has ui/design.css).
+ */
+export function checkFile(path: string, source: string, spec?: AppSpec, rules: ImportRules = {}): Check[] {
   const src = parseAll(new Map([[path, source]]))[0];
   const imp = CHECK_BY_ID.get("G0-IMP-01");
   const sec = CHECK_BY_ID.get("G0-SEC-01");
   if (!imp || !sec) throw new Error("catalog");
   if (!src) return [];
   return [
-    ...toChecks(imp, ok(checkImports(src))),
+    ...toChecks(imp, ok(checkImports(src, rules))),
     ...toChecks(sec, ok(checkSecurity(src, spec ? { piiFieldNames: piiFieldNames(spec) } : {}))),
   ];
 }
@@ -119,6 +122,8 @@ export async function runG0(ctx: GateContext, opts: G0Options = {}): Promise<Gat
   const files = new Map<string, string>();
   for (const [p, t] of ctx.files) if (/^(ui|functions)\//.test(p)) files.set(p, t);
   const spec = ctx.spec;
+  // v3 system (builder-v3.md §1): the design system file ui/design.css, as in @wizard/build.
+  const v3 = isTailwindSystem(files);
 
   const failed = (id: string) => {
     const o = outcomes.get(id);
@@ -173,7 +178,7 @@ export async function runG0(ctx: GateContext, opts: G0Options = {}): Promise<Gat
     "G0-IMP-01",
     () => {
       sources = parseAll(files);
-      return ok(sources.flatMap(checkImports));
+      return ok(sources.flatMap((s) => checkImports(s, { v3 })));
     },
     needAst,
   );
