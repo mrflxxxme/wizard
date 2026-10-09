@@ -3,7 +3,12 @@
 // comes from the request. With connectors: 'live' the payment is created in the client's YooKassa shop, otherwise
 // (draft) the mock page /_wizard/pay-mock is used.
 import type { Integration } from "@wizard/appspec";
-import { startPayment, type YookassaConfig, yookassaAccessMatches } from "@wizard/connectors";
+import {
+  checkPaymentOnReturn,
+  startPayment,
+  type YookassaConfig,
+  yookassaAccessMatches,
+} from "@wizard/connectors";
 import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import { type Subject, SYSTEM_SUBJECT } from "../data/access.js";
@@ -87,6 +92,26 @@ export function payRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
       return c.json({ confirmationUrl: withToken(out.confirmationUrl, token) }, 200, {
         "Cache-Control": "no-store",
       });
+    } catch (e) {
+      return connectorFailure(c, e);
+    }
+  });
+  // V3-23 (yookassa.yaml#return_check): the buyer is back from the payment page — the record's pending payment is
+  // re-read from ЮKassa (same rights as above); only the outcome goes back, the record never does.
+  app.post("/:integration/check", async (c) => {
+    const body = await readObjectBody(c);
+    const binding = typeof body.binding === "string" ? body.binding : "";
+    const id = typeof body.id === "string" ? body.id : "";
+    const b = yookassaBinding(c, host, binding, c.req.param("integration"));
+    if (!b) throw new WizardError("NOT_FOUND", { message: "Оплата не настроена" });
+    const record = await payableRecord(c, b, binding, id, tokenOf(body.token));
+    if (!record) throw new WizardError("NOT_FOUND", { message: "Заказ не найден" });
+    try {
+      const result = await checkPaymentOnReturn(host.ctx(c.get("system"), b.integ, requestOrigin(c)), {
+        binding,
+        id: record.id,
+      });
+      return c.json({ result }, 200, { "Cache-Control": "no-store" });
     } catch (e) {
       return connectorFailure(c, e);
     }

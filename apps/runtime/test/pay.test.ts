@@ -89,6 +89,23 @@ describe("draft payment flow", () => {
     expect(((await again.json()) as { error: { code: string } }).error.code).toBe("NOT_PAYABLE");
   });
 
+  test("return check (V3-23): draft mock payments are left to the mock page; another's record → 404", async () => {
+    const check = (body: unknown) =>
+      fx.rt.fetch(request("POST", HOST, "/api/pay/yookassa/check", { cookie, body }));
+    const me = await userIdOf(fx.sql, schema, "participant");
+    const id = await ticket(me);
+    expect(await (await check({ binding: "ticket", id })).json()).toEqual({ result: "none" });
+    expect((await pay({ binding: "ticket", id })).status).toBe(200);
+    const res = await check({ binding: "ticket", id });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({ result: "none" });
+    expect(await statusOf(id)).toBe("pending_payment");
+    const other = await seedUser(fx.sql, schema, "participant");
+    expect((await check({ binding: "ticket", id: await ticket(other) })).status).toBe(404);
+    expect((await check({ binding: "nope", id })).status).toBe(404);
+  });
+
   test("records the caller cannot read → 404 on /api/pay, the page and the confirmation", async () => {
     const other = await seedUser(fx.sql, schema, "participant");
     const id = await ticket(other);

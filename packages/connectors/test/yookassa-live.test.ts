@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   type ConnectorCtx,
+  checkPaymentOnReturn,
   confirmMockPayment,
   effectiveClientIp,
   handleYookassaNotification,
@@ -287,6 +288,46 @@ describe("notifications: the API answer decides", () => {
     });
     expect(mock.payments.get(pid2)?.status).toBe("canceled");
     expect(mock.callsTo("POST", `/v3/payments/${pid2}/cancel`)).toHaveLength(1);
+  });
+});
+
+describe("return check: the buyer is back, the notice is late or never comes (V3-23)", () => {
+  test("pending → GET still pending; succeeded → paidStatus once; throttled within RETURN_CHECK_MS", async () => {
+    let t = Date.parse("2026-10-09T12:00:00Z");
+    const { ctx, db } = setup({ now: () => new Date(t) });
+    const id = await ticket(db);
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("none");
+    await pay(ctx, db, id);
+    const pid = paymentFor(id);
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("pending");
+    expect((await db.get("ticket", id))?.status).toBe("pending_payment");
+    mock.succeed(pid);
+    // Asked again at once: no second GET.
+    const gets = mock.callsTo("GET", `/v3/payments/${pid}`).length;
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("throttled");
+    expect(mock.callsTo("GET", `/v3/payments/${pid}`)).toHaveLength(gets);
+    t += 11_000;
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("applied");
+    expect((await db.get("ticket", id))?.status).toBe("paid");
+    expect(await db.list("payment")).toMatchObject([{ status: "succeeded", kind: "payment" }]);
+    // The late notice changes nothing; nothing pending is left to check.
+    expect(await notify(ctx, "payment.succeeded", pid)).toMatchObject({ result: "duplicate" });
+    t += 11_000;
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("none");
+    expect(await db.list("payment")).toHaveLength(1);
+  });
+
+  test("canceled at ЮKassa → canceledStatus; draft mock payments are not re-read", async () => {
+    const { ctx, db } = setup();
+    const id = await ticket(db);
+    await pay(ctx, db, id);
+    mock.cancel(paymentFor(id));
+    expect(await checkPaymentOnReturn(ctx, { binding: "ticket", id })).toBe("applied");
+    expect(await db.list("payment")).toMatchObject([{ status: "canceled" }]);
+    const draft = setup({ secrets: null });
+    const did = await ticket(draft.db);
+    await pay(draft.ctx, draft.db, did);
+    expect(await checkPaymentOnReturn(draft.ctx, { binding: "ticket", id: did })).toBe("none");
   });
 });
 

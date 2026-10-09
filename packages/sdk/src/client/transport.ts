@@ -351,6 +351,19 @@ export class SdkClient {
     return r.confirmationUrl;
   }
 
+  /**
+   * POST /api/pay/:integration/check (V3-23, yookassa.yaml#return_check): back from the payment page, asks the runtime to
+   * re-read the record's pending payment from ЮKassa; resolves to the outcome («applied», «pending», «throttled»…).
+   */
+  async payCheck(integration: string, binding: string, id: string, token?: string): Promise<string> {
+    const r = await this.request<{ result: string }>(
+      "POST",
+      `/api/pay/${encodeURIComponent(integration)}/check`,
+      { binding, id, ...(token ? { token } : {}) },
+    );
+    return r.result;
+  }
+
   // ---------- auth ----------
 
   getUserSnapshot = (): UserSnapshot => this.userSnap;

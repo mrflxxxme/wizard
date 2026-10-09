@@ -174,4 +174,6 @@ export interface DataSource {
    * goes there); `token` — the buyer's secret of an order he cannot read. Optional: sources without payments omit it.
    */
   usePay?(): Mutation<[integration: string, binding: string, id: string, token?: string], string>;
+  /** ext (V3-23): POST /api/pay/:integration/check — back from the payment page, the runtime re-reads the payment. */
+  usePayCheck?(): Mutation<[integration: string, binding: string, id: string, token?: string], string>;
 }
