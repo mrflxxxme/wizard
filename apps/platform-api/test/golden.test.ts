@@ -98,7 +98,7 @@ describe("demo/forum through the API", () => {
   let g: Awaited<ReturnType<typeof goldenRun>>;
   beforeAll(async () => {
     api = await startApi(tdb.url, {
-      config: { unsafeLocalExec: true },
+      config: { unsafeLocalExec: true, buildPipeline: "legacy" },
       createRouter: (o) =>
         createRouter({ ...o, mode: "fixture", fixture: { suite: "demo", name: "forum" }, env: {} }),
     });
@@ -266,7 +266,7 @@ describe("demo/bakery through the API", () => {
   let g: Awaited<ReturnType<typeof goldenRun>>;
   beforeAll(async () => {
     api = await startApi(tdb.url, {
-      config: { unsafeLocalExec: true },
+      config: { unsafeLocalExec: true, buildPipeline: "legacy" },
       executors: (d) => ({ ...createAgentExecutors(d), interviewTurn: recordedInterview("bakery") }),
       createRouter: (o) =>
         createRouter({ ...o, mode: "fixture", fixture: { suite: "demo", name: "bakery" }, env: {} }),

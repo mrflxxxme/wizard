@@ -61,7 +61,7 @@ const calls = (orgId: string) =>
 beforeAll(async () => {
   tdb = await createTestDb("demoreplay", { migrator: true });
   api = await startApi(tdb.url, {
-    config: { unsafeLocalExec: true },
+    config: { unsafeLocalExec: true, buildPipeline: "legacy" },
     // The platform runs live: only demo replay may turn a run's router into the free fixture router.
     createRouter: (o) =>
       createRouter({

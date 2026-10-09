@@ -40,6 +40,7 @@ import {
   tidyDns,
   twcClient,
   untilS3Ready,
+  v3OrgsOfServer,
 } from "../pilot.mjs";
 import {
   alertSettings,
@@ -343,10 +344,10 @@ describe("pilot: secrets bundle", () => {
     ])
       expect(models).toContain(`${line}\n`);
     expect(f.platformEnv).not.toContain("WALG");
-    // D76 / B2-41: beta v2 on the pilot — new systems on the modules pipeline, G1 in the worker's Chromium, the systems'
-    // mail from the pilot's mail domain (the domain of WIZARD_SMTP_FROM), stock photos off (B2-38: no keys yet).
+    // D78: new systems on v3 (the only supported configuration), G1 in the worker's Chromium, the systems' mail from
+    // the pilot's mail domain (the domain of WIZARD_SMTP_FROM), stock photos off (B2-38: no keys yet).
     for (const line of [
-      "WIZARD_BUILD_PIPELINE=modules",
+      "WIZARD_BUILD_PIPELINE=v3",
       "WIZARD_G1_BROWSER=chromium",
       "WIZARD_MAIL_DOMAIN=codename.ru",
       "WIZARD_STOCK_MODE=off",
@@ -1350,7 +1351,7 @@ describe("Timeweb capacity: the next RF place with the same preset ceiling", () 
 describe("pilot: beta v2 settings of the release (B2-41)", () => {
   it("pipeline, browser, mail domain and stock photos: defaults, overrides, refusals", () => {
     expect(pilotPipelineEnv({})).toEqual({
-      WIZARD_BUILD_PIPELINE: "modules",
+      WIZARD_BUILD_PIPELINE: "v3",
       WIZARD_BUILD_PIPELINE_ORGS: "",
       WIZARD_G1_BROWSER: "chromium",
       WIZARD_G1_BROWSER_SLOTS: "",
@@ -1361,14 +1362,16 @@ describe("pilot: beta v2 settings of the release (B2-41)", () => {
       WIZARD_BUILD_PIPELINE: "legacy",
       WIZARD_G1_BROWSER: "off",
     });
-    expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "v3" })).toThrow(/modules или legacy/);
+    // D78: v3 by default; modules (beta v2) and legacy only as an emergency way back; anything else is refused.
+    expect(pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "Modules" })).toMatchObject({ WIZARD_BUILD_PIPELINE: "modules" });
+    expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE: "v2" })).toThrow(/v3 или modules или legacy/);
     // V3-18: v3 per org — the measurement orgs and the founder's, by kind or id; a typo is refused at the release.
     expect(
       pilotPipelineEnv({
         WIZARD_BUILD_PIPELINE_ORGS: " Eval, staff,eval,6F1C2A4E-1B2C-4D5E-8F90-0A1B2C3D4E5F ",
       }),
     ).toMatchObject({
-      WIZARD_BUILD_PIPELINE: "modules",
+      WIZARD_BUILD_PIPELINE: "v3",
       WIZARD_BUILD_PIPELINE_ORGS: "eval,staff,6f1c2a4e-1b2c-4d5e-8f90-0a1b2c3d4e5f",
     });
     expect(() => pilotPipelineEnv({ WIZARD_BUILD_PIPELINE_ORGS: "eval,clients" })).toThrow(
@@ -2205,7 +2208,7 @@ describe("serverStockProbe (B2-41: the stocks from the worker pod)", () => {
 });
 
 /** V3-18: kubectl exec of the v3 checkpoint and the probe — the worker's env, the probe script, psql in postgres. */
-function v3Cluster({ orgs = "eval", collect = "", probe = null } = {}) {
+function v3Cluster({ pipeline = "modules", orgs = "eval", collect = "", probe = null } = {}) {
   const base = fakeTools({ namespaces: ["default", "wizard-platform"], founderJob: "1" });
   const db = { orgId: "11111111-1111-4111-8111-111111111111" };
   const seen = { sqls: [], scripts: [], orgsChecked: 0 };
@@ -2214,7 +2217,7 @@ function v3Cluster({ orgs = "eval", collect = "", probe = null } = {}) {
     if (cmd !== "kubectl" || !args.includes("exec")) return r;
     if (args.includes("-e") && args.at(-1).includes("WIZARD_BUILD_PIPELINE_ORGS")) {
       seen.orgsChecked += 1;
-      return { status: 0, stdout: orgs };
+      return { status: 0, stdout: `${pipeline}\n${orgs}` };
     }
     if (args.includes("--input-type=module")) {
       seen.scripts.push(o.input);
@@ -2441,6 +2444,19 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
   }, 180_000);
 
+  it("v3 on the server (D78): the default pipeline v3 (or empty) runs every org on v3; else WIZARD_BUILD_PIPELINE_ORGS", () => {
+    const kubectl = (stdout, status = 0) => () => ({ status, stdout });
+    expect(v3OrgsOfServer(kubectl("v3\n"))).toEqual({ value: "", eval: true, via: "pipeline" });
+    expect(v3OrgsOfServer(kubectl("\n"))).toEqual({ value: "", eval: true, via: "pipeline" });
+    expect(v3OrgsOfServer(kubectl("modules\nEval, staff"))).toEqual({
+      value: "Eval, staff",
+      eval: true,
+      via: "orgs",
+    });
+    expect(v3OrgsOfServer(kubectl("legacy\n"))).toMatchObject({ eval: false, via: "orgs" });
+    expect(v3OrgsOfServer(kubectl("", 1))).toEqual({ value: "", eval: false });
+  });
+
   it("eval v3 refuses to start when the server keeps eval orgs off v3: nothing seeded, nothing spent", async () => {
     const cloud = fakeCloud();
     await bootstrap(cloud, fakeTools());
@@ -2458,7 +2474,7 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     expect(driven).toBe(0);
     expect(logs).toContainEqual(
       expect.stringMatching(
-        /^::error title=V3::На сервере организации замера не на v3: WIZARD_BUILD_PIPELINE_ORGS = «staff» без eval/,
+        /^::error title=V3::На сервере организации замера не на v3: конвейер не v3, а WIZARD_BUILD_PIPELINE_ORGS = «staff» без eval/,
       ),
     );
     expect(cloud.st.rules.get("fw-prod").map((r) => r.id)).toEqual(["keep"]);
