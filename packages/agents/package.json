@@ -14,7 +14,8 @@
     "./research": "./src/research/index.ts",
     "./brief-extract": "./src/brief-extract/index.ts",
     "./interview-v3": "./src/interview-v3/index.ts",
-    "./integrations": "./src/integrations/index.ts"
+    "./integrations": "./src/integrations/index.ts",
+    "./repo": "./src/repo/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

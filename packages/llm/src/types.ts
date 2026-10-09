@@ -28,6 +28,9 @@ export const CALL_TYPES = [
   "critic_visual",
   "techreview",
   "research",
+  // V3-32 (D77 (4)): the agent for compatible repositories — the client's code goes only to models with inference in RF.
+  "repo_code",
+  "repo_review",
 ] as const;
 export type CallType = (typeof CALL_TYPES)[number];
 /** AI actions of systems (M3-02): T0 only. */

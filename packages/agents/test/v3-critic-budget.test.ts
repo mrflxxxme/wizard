@@ -82,6 +82,8 @@ describe("V3-13 upper bound of a call with images", () => {
         "plan": 0.731,
         "qa_explain": 0.399,
         "qa_generate": 1.394,
+        "repo_code": 2.722,
+        "repo_review": 1.233,
         "research": 0.64,
         "runtime_ai_extract": 0.201,
         "runtime_ai_generate": 0.368,

@@ -28,17 +28,28 @@ import {
   saveSecrets,
 } from "./context.js";
 import { githubSignatureOk, newWebhookSecret, type RepoSecrets, StateSigner, safeEqual } from "./crypto.js";
-import { importFlow, outcomeOf, pushFlow, reconcileFlow, statusesFlow } from "./flows.js";
+import {
+  importFlow,
+  isWizardBranch,
+  outcomeOf,
+  prPreviewFlow,
+  pullLink,
+  pushFlow,
+  reconcileFlow,
+  statusesFlow,
+} from "./flows.js";
 import { GitHubApp } from "./providers/github.js";
 import { GitLabClient } from "./providers/gitlab.js";
 import { ProviderError } from "./providers/http.js";
 import type { ProviderRepo } from "./providers/types.js";
 import {
   claimJob,
+  closePreview,
   deleteLink,
   dispatchRead,
   dueJobs,
   enqueue,
+  failPreview,
   finishJob,
   importsOf,
   insertLink,
@@ -48,7 +59,10 @@ import {
   linkById,
   linkOfSystem,
   orgTx,
+  type PreviewRow,
   prByNumber,
+  previewOf,
+  previewsOf,
   prsOf,
   prune,
   recordDelivery,
@@ -118,6 +132,25 @@ export interface RepoSyncView {
   }[];
   queue: { waiting: number; failing: number; stopped: number; nextAttemptAt: string | null };
   publishGate: { required: boolean; mergedRevision: number | null };
+  /** V3-32: previews of the developers' open PRs (before the merge). */
+  pulls: RepoPullView[];
+}
+
+/** V3-32: the preview of a developer's PR (api.yaml RepoPullPreview). */
+export interface RepoPullView {
+  number: number;
+  url: string | null;
+  branch: string | null;
+  headOid: string;
+  status: PreviewRow["status"];
+  statusRu: string;
+  baseRevision: number | null;
+  reason_ru: string | null;
+  gates: { level: string; state: string; title: string }[];
+  files: { path: string; status: string }[];
+  merged: string[];
+  previewUrl: string;
+  updatedAt: string;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: webhook payloads are read field by field with checks
@@ -155,6 +188,18 @@ export class GitSync {
 
   get available(): boolean {
     return this.d.cfg.enabled && !!this.d.kms;
+  }
+
+  /** The signer of redirect states (V3-32: the agent's connections use the same App callbacks). */
+  get signer(): StateSigner {
+    return this.#signer;
+  }
+
+  /** Who a redirect is for: a system link (V3-31) or a repository of the agent (V3-32); null — forged or expired. */
+  stateTarget(state: string | undefined): "system" | "agent" | null {
+    const st = this.#signer.verify(state);
+    if (!st) return null;
+    return st.target === "agent" ? "agent" : "system";
   }
 
   start(): void {
@@ -271,7 +316,9 @@ export class GitSync {
             ? await statusesFlow(this.d, link, job)
             : job.kind === "import"
               ? await importFlow(this.d, link, job)
-              : await reconcileFlow(this.d, link);
+              : job.kind === "pr_preview"
+                ? await prPreviewFlow(this.d, link, job)
+                : await reconcileFlow(this.d, link);
     } catch (e) {
       if (e instanceof ProviderError && e.code === "AUTH_FAILED" && link.installation_id)
         this.d.github?.forget(link.installation_id);
@@ -284,6 +331,12 @@ export class GitSync {
     }
     await orgTx(this.d.db, job.org_id, async (trx) => {
       await finishJob(trx, job, out);
+      // V3-32: a preview of a developer's PR never stops the sync; its failure is the preview's own.
+      if (job.kind === "pr_preview") {
+        if (out.kind === "dead")
+          await failPreview(trx, link.id, Number(job.payload.number), out.code, out.message_ru);
+        return;
+      }
       if (out.kind === "retry")
         await updateLink(trx, link.id, { last_error_code: out.code, last_error_ru: out.message_ru });
       if (out.kind === "dead")
@@ -311,12 +364,14 @@ export class GitSync {
       imports: [],
       queue: { waiting: 0, failing: 0, stopped: 0, nextAttemptAt: null },
       publishGate: { required: false, mergedRevision: null },
+      pulls: [],
     };
     return orgTx(this.d.db, orgId, async (trx) => {
       const l = await linkOfSystem(trx, systemId);
       if (!l) return empty;
       const prs = await prsOf(trx, l.id, { limit: 10 });
       const imports = await importsOf(trx, l.id, 10);
+      const pulls = (await previewsOf(trx, l.id, 10)).map((v) => this.#pullView(systemId, v));
       const jobs = (await jobsOf(trx, l.id, 100)).filter((j) => j.status === "queued" || j.status === "dead");
       const waiting = jobs.filter((j) => j.status === "queued");
       const merged = Math.max(
@@ -377,7 +432,43 @@ export class GitSync {
           required: l.status === "active" || l.status === "error",
           mergedRevision: merged || null,
         },
+        pulls,
       };
+    });
+  }
+
+  #pullView(systemId: string, v: PreviewRow): RepoPullView {
+    const gates = Array.isArray(v.details.gates)
+      ? (v.details.gates as { level: string; passed: boolean | null; title: string }[]).map((g) => ({
+          level: g.level,
+          state: g.passed === null ? "neutral" : g.passed ? "success" : "failure",
+          title: g.title,
+        }))
+      : [];
+    return {
+      number: v.number,
+      url: v.url,
+      branch: v.branch,
+      headOid: v.head_oid,
+      status: v.status,
+      statusRu: syncRu.preview.status[v.status] ?? v.status,
+      baseRevision: v.base_revision,
+      reason_ru: v.reason_ru,
+      gates,
+      files: Array.isArray(v.details.files) ? (v.details.files as { path: string; status: string }[]) : [],
+      merged: Array.isArray(v.details.merged) ? (v.details.merged as string[]) : [],
+      previewUrl: pullLink(this.d, systemId, v.number),
+      updatedAt: iso(v.updated_at) as string,
+    };
+  }
+
+  /** V3-32: the preview of one developer's PR (null — never previewed). */
+  async pull(systemId: string, orgId: string, number: number): Promise<RepoPullView | null> {
+    return orgTx(this.d.db, orgId, async (trx) => {
+      const l = await linkOfSystem(trx, systemId);
+      if (!l) return null;
+      const v = await previewOf(trx, l.id, number);
+      return v ? this.#pullView(systemId, v) : null;
     });
   }
 
@@ -404,11 +495,13 @@ export class GitSync {
   ): Promise<string> {
     this.#require();
     const st = this.#signer.verify(q.state);
-    if (st?.provider !== "github" || st.userId !== user.id) throw invalid(syncRu.connect.stateInvalid);
+    if (st?.provider !== "github" || st.userId !== user.id || st.target || !st.systemId)
+      throw invalid(syncRu.connect.stateInvalid);
+    const systemId = st.systemId;
     const gh = this.d.github;
     if (!gh) throw new ApiError("FORBIDDEN", syncRu.connect.notConfiguredGithub);
     if (!/^[0-9]{1,20}$/.test(q.installationId)) throw invalid(syncRu.connect.stateInvalid);
-    const orgId = await orgOf(st.systemId);
+    const orgId = await orgOf(systemId);
     let mine: boolean;
     try {
       mine = await gh.userOwnsInstallation(q.code, q.installationId);
@@ -419,7 +512,7 @@ export class GitSync {
     }
     if (!mine) throw new ApiError("FORBIDDEN", syncRu.connect.installationNotYours);
     await orgTx(this.d.db, orgId, async (trx) => {
-      const l = await linkOfSystem(trx, st.systemId);
+      const l = await linkOfSystem(trx, systemId);
       if (l && l.provider !== "github") {
         if (l.status !== "pending") throw new ApiError("VERSION_CONFLICT", syncRu.connect.alreadyLinkedOther);
         await deleteLink(trx, l.id);
@@ -433,7 +526,7 @@ export class GitSync {
         await insertLink(trx, {
           id: randomUUID(),
           org_id: orgId,
-          system_id: st.systemId,
+          system_id: systemId,
           provider: "github",
           host_url: gh.cfg.webBase,
           secret_ref: "secret://repo/github",
@@ -441,7 +534,7 @@ export class GitSync {
           installation_id: q.installationId,
         });
     });
-    return st.systemId;
+    return systemId;
   }
 
   /** Starts the GitLab OAuth: gitlab.com with the platform's application, or the owner's instance with theirs. */
@@ -496,6 +589,11 @@ export class GitSync {
     });
   }
 
+  /** A self-managed GitLab address checked as for a system link (V3-32: the agent's connections). */
+  gitlabHost(raw: string): string {
+    return this.#gitlabHost(raw);
+  }
+
   #gitlabHost(raw: string): string {
     let u: URL;
     try {
@@ -526,11 +624,12 @@ export class GitSync {
   ): Promise<string> {
     this.#require();
     const st = this.#signer.verify(q.state);
-    if (st?.provider !== "gitlab" || st.userId !== user.id || !st.linkId)
+    if (st?.provider !== "gitlab" || st.userId !== user.id || !st.linkId || st.target || !st.systemId)
       throw invalid(syncRu.connect.stateInvalid);
-    const orgId = await orgOf(st.systemId);
+    const systemId = st.systemId;
+    const orgId = await orgOf(systemId);
     const link = await orgTx(this.d.db, orgId, (trx) => linkById(trx, st.linkId as string));
-    if (!link || link.system_id !== st.systemId || link.provider !== "gitlab")
+    if (!link || link.system_id !== systemId || link.provider !== "gitlab")
       throw invalid(syncRu.connect.stateInvalid);
     const s = await linkSecrets(this.d, link);
     const app = gitlabApp(this.d, link, s);
@@ -549,7 +648,7 @@ export class GitSync {
       throw new ApiError("FORBIDDEN", syncRu.errors.AUTH_FAILED("GitLab"));
     }
     await orgTx(this.d.db, orgId, (trx) => saveSecrets(this.d, trx, link, { ...s, ...tokens }));
-    return st.systemId;
+    return systemId;
   }
 
   /** Repositories the owner may pick: the installation's (GitHub) or the user's projects with push rights (GitLab). */
@@ -767,6 +866,17 @@ export class GitSync {
     if (!repoId) return { status: 200, body: { ok: true } };
     const [link] = await this.#githubLinks(installation, repoId);
     if (!link || link.status === "pending") return { status: 202, body: { ok: true, ignored: true } };
+    if (
+      event === "pull_request" &&
+      ["opened", "synchronize", "reopened", "ready_for_review"].includes(p.action) &&
+      p.pull_request?.base?.ref === link.default_branch
+    )
+      return this.#previewEvent(link, delivery, event, {
+        number: Number(p.pull_request?.number),
+        head: typeof p.pull_request?.head?.sha === "string" ? p.pull_request.head.sha : null,
+        branch: typeof p.pull_request?.head?.ref === "string" ? p.pull_request.head.ref : null,
+        url: typeof p.pull_request?.html_url === "string" ? p.pull_request.html_url : null,
+      });
     if (event === "pull_request" && p.action === "closed") {
       const number = Number(p.pull_request?.number);
       const merged = p.pull_request?.merged === true;
@@ -833,6 +943,13 @@ export class GitSync {
     if (event === "Merge Request Hook") {
       const a = p.object_attributes ?? {};
       const number = Number(a.iid);
+      if (["open", "update", "reopen"].includes(a.action) && a.target_branch === link.default_branch)
+        return this.#previewEvent(link, delivery, event, {
+          number,
+          head: typeof a.last_commit?.id === "string" ? a.last_commit.id : null,
+          branch: typeof a.source_branch === "string" ? a.source_branch : null,
+          url: typeof a.url === "string" ? a.url : null,
+        });
       const merged = a.action === "merge" || a.state === "merged";
       const closed = a.action === "close";
       if (!merged && !closed) return { status: 202, body: { ok: true, ignored: true } };
@@ -846,6 +963,56 @@ export class GitSync {
     if (event === "Push Hook")
       return this.#event(link, delivery, event, p.ref === `refs/heads/${link.default_branch}`, null);
     return { status: 202, body: { ok: true, ignored: true } };
+  }
+
+  /**
+   * V3-32: a developer's PR opened or updated → its preview in the queue (one per PR: a newer head replaces the waiting
+   * one). Wizard's own branches (wizard/*: revision PRs and the agent's) are never previewed.
+   */
+  async #previewEvent(
+    link: LinkRow,
+    delivery: string,
+    event: string,
+    pr: { number: number; head: string | null; branch: string | null; url: string | null },
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    if (!delivery)
+      return {
+        status: 400,
+        body: { code: "VALIDATION_FAILED", message_ru: "Нет идентификатора уведомления" },
+      };
+    if (
+      !Number.isInteger(pr.number) ||
+      pr.number < 1 ||
+      isWizardBranch(pr.branch) ||
+      link.status !== "active"
+    )
+      return { status: 202, body: { ok: true, ignored: true } };
+    const fresh = await orgTx(this.d.db, link.org_id, async (trx) => {
+      if (
+        !(await recordDelivery(trx, {
+          orgId: link.org_id,
+          linkId: link.id,
+          deliveryId: delivery.slice(0, 200),
+          event,
+        }))
+      )
+        return false;
+      await enqueue(trx, {
+        orgId: link.org_id,
+        systemId: link.system_id,
+        linkId: link.id,
+        kind: "pr_preview",
+        key: `pr:${pr.number}`,
+        payload: {
+          number: pr.number,
+          ...(pr.head ? { head: pr.head } : {}),
+          ...(pr.branch ? { branch: pr.branch.slice(0, 250) } : {}),
+          ...(pr.url ? { url: pr.url.slice(0, 500) } : {}),
+        },
+      });
+      return true;
+    });
+    return { status: 202, body: { ok: true, ...(fresh ? {} : { duplicate: true }) } };
   }
 
   /** One delivery once: PR state from the event, an import of the default branch when it moved. */
@@ -872,6 +1039,7 @@ export class GitSync {
       )
         return false;
       if (pr && Number.isInteger(pr.number)) {
+        await closePreview(trx, link.id, pr.number);
         const row = await prByNumber(trx, link.id, pr.number);
         if (row && row.state === "open")
           await updatePrRow(

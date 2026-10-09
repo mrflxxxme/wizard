@@ -129,6 +129,14 @@ call_types:            # полный список; route() с иным callType
   - critic_visual      # ИИ-критик по скриншотам 390/768/1440
   - techreview         # ревьюер техревью (D77 (10)): модель другого семейства, чем строитель
   - research           # факты о нише по результатам веб-поиска и чтения страниц (V3-05)
+  # V3-32 (D77 (4)): агент для совместимых репозиториев — код клиента
+  - repo_code          # агент правит код репозитория клиента по задаче (инструменты чтения, записи и тестов в песочнице)
+  - repo_review        # ревьюер изменения агента в репозитории клиента: модель другого семейства, чем агент
+
+client_code:           # V3-32, D77 (4): «код клиента — только в модели с инференсом в РФ»
+  call_types: [repo_code, repo_review]
+  rule: "MUST: только T0 (reason callType_forbidden_T1) при любой политике организации, переключателе week0 и WIZARD_LLM_T1_RESERVE; цепочек T1 у маршрутов нет; жёсткая проверка роутера перед каждой попыткой (T1_FORBIDDEN, packages/llm policy.ts t1Forbidden); BYOK не обслуживает (их нет в BYOK_CALL_TYPES — ни прямой провайдер, ни шлюз пользователя). Свой vLLM (openai_compatible) — T0 и допустим"
+  test: "packages/llm/test/client-code.test.ts (матрица политик × ПДн × подсказки × резерв × BYOK, все модели цепочек — T0-провайдеры) и apps/platform-api/test/v3-repo-agent.test.ts (каждый HTTP-вызов агента — только к хостам T0)"
 
 pii_forbidden_for_T1:
   always: [runtime_ai_extract, runtime_ai_generate, support]
@@ -180,6 +188,9 @@ routes:                # chain.T1 пробуется только если tier=
   critic_visual:       { role: critic,       default_tier: T1, chain: { T1: [glm-5.3-flash, glm-4.6v], T0: [kimi-k2.6, qwen3.6-35b] },             temperature: 0.1, max_tokens: 4000,  timeout_ms: 180000, note: "только модели с vision: true. D45: сначала T1 — после маскирования изображений по D62 (M2-28); до тех пор вызов с изображениями идёт на T0 (policy.ts: вложения → T0). T1-модели и qwen3.6-35b — после пробы на русском (ступень 2, журнал трат V3-01)" }
   techreview:          { role: reviewer,     default_tier: T0, chain: { T0: [deepseek-v4-pro, gpt-oss-120b, gigachat-3.5, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "семейство MUST отличаться от строителя прогона: голова — не GLM и не Kimi (головы art_direction, signature_section, page_compose); вызывающий передаёт avoidFamilies семейств моделей строителя (V3-15)" }
   research:            { role: researcher,   default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, kimi-k2.6] },                               temperature: 0.2, max_tokens: 4000,  timeout_ms: 120000, note: "дешёвый T0: выжимка фактов о нише из поиска и страниц (V3-05)" }
+  # V3-32 (D77 (4)): код клиента — только T0 (client_code); голова ревьюера — другого семейства, чем голова агента, вызывающий передаёт avoidFamilies семейства модели агента
+  repo_code:           { role: repo_agent,   default_tier: T0, chain: { T0: [deepseek-v4-pro, qwen3-coder-next, glm-5.1, kimi-k2.6] },              temperature: 0.1, max_tokens: 16000, timeout_ms: 480000, note: "агент репозитория: чтение файлов, правка, тесты в песочнице без сети; потолок задачи 80 ₽ (как правка D77 (11))" }
+  repo_review:         { role: reviewer,     default_tier: T0, chain: { T0: [gpt-oss-120b, gigachat-3.5, deepseek-v4-pro, kimi-k2.6] },              temperature: 0.1, max_tokens: 8000,  timeout_ms: 300000, note: "ревьюер изменения агента: только T0, семейство MUST отличаться от модели агента (avoidFamilies)" }
 
 fallback_rules:
   - "MUST: при открытом circuit breaker, исчерпанных ретраях или 5xx/timeout модель берётся следующей в цепочке своего tier; затем T1 → T0 (reason=fallback_*)"

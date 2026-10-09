@@ -35,7 +35,15 @@ import { closureComplete, isAncestor, objectsToPush } from "../git/walk.js";
 import { ACTIVE_STATUSES } from "../runs/queue.js";
 import type { GateReport } from "../runs/types.js";
 import { commitFilesRevision, loadSpec, lockSystem } from "../services/revisions.js";
-import { conflicts, generatedEdits, importableChanges, importedSpec, incompatibilities } from "./compat.js";
+import {
+  conflicts,
+  type Flat,
+  generatedEdits,
+  importableChanges,
+  importedSpec,
+  incompatibilities,
+  mergeClashes,
+} from "./compat.js";
 import {
   apiOf,
   isImportablePath,
@@ -50,16 +58,20 @@ import { allGreen, failedLine, revisionGateStatuses, settled } from "./gates.js"
 import { ProviderError } from "./providers/http.js";
 import type { RepoApi } from "./providers/types.js";
 import {
+  closePreview,
   enqueue,
   importOfHead,
+  importsOf,
   type JobOutcome,
   type JobRow,
   type LinkRow,
   orgTx,
   type PrRow,
+  previewOf,
   prOfRevision,
   prsOf,
   saveImport,
+  savePreview,
   updateLink,
   updatePrRow,
   upsertPr,
@@ -462,6 +474,165 @@ export async function statusesFlow(d: SyncDeps, link: LinkRow, job: JobRow): Pro
   return { kind: "done" };
 }
 
+// ---- candidate: the client's changes over Wizard's draft ----
+
+export type Candidate =
+  | { kind: "noop"; warnings: string[] }
+  | {
+      kind: "reject";
+      code: "INCOMPATIBLE" | "CONFLICT" | "SPEC_INVALID";
+      reason: string;
+      details: Record<string, unknown>;
+    }
+  | {
+      kind: "ok";
+      /** Importable changes base → head. */
+      theirs: TreeChange[];
+      /** The content a change brings: the client's blob, or the line-level merge with Wizard's edit (null — deleted). */
+      content: (c: TreeChange) => Buffer | null;
+      newSpec: AppSpec | null;
+      /** Draft sources (ui/**, functions/**) with the changes applied — what G0–G2 check. */
+      sources: Map<string, string>;
+      details: Record<string, unknown>;
+    };
+
+const REPO_BEHIND_RU = "Внутренний репозиторий системы ещё не догнал ревизии. Повторим автоматически";
+
+/**
+ * What the client's tree `head` brings over the Wizard revision `base` it started from, applied to the current draft:
+ * compatibility (paths, symlinks, sizes, UTF-8), changes on both sides merged line by line when apart (V3-32) and
+ * conflicts otherwise, the spec checked. Used by the import of the default branch and by the preview of an open PR.
+ */
+export async function buildCandidate(
+  d: SyncDeps,
+  sys: Pick<SystemRow, "id" | "draft_revision">,
+  head: string,
+  base: number,
+  prevHead: Flat | null,
+): Promise<Candidate> {
+  if (await ensureRepo(d.db, d.blobs, sys.id)) throw new RetryLater("REPO_BEHIND", REPO_BEHIND_RU);
+  const baseRow = await findCommitRow(d.db, sys.id, { revision: base });
+  const draftRow = await findCommitRow(d.db, sys.id, { revision: sys.draft_revision });
+  if (!baseRow || !draftRow)
+    throw new RetryLater("REPO_BEHIND", "Коммиты ревизий ещё не записаны. Повторим автоматически");
+  const B = (await commitTree(d.db, sys.id, baseRow.oid)).flat;
+  const D = (await commitTree(d.db, sys.id, draftRow.oid)).flat;
+  const T = (await commitTree(d.db, sys.id, head)).flat;
+  const theirs = importableChanges(B, T);
+  const warnings: string[] = generatedEdits(prevHead, T).length ? [syncRu.import.generatedIgnored] : [];
+  if (theirs.length === 0) return { kind: "noop", warnings };
+
+  const blobs = await readObjects(
+    d.db,
+    sys.id,
+    theirs.filter((c) => c.newOid).map((c) => c.newOid as string),
+  );
+  const after = new Set([...D.keys()].filter(isImportablePath));
+  for (const c of theirs) c.status === "deleted" ? after.delete(c.path) : after.add(c.path);
+  const bad = incompatibilities(theirs, T, (oid) => blobs.get(oid)?.body, after.size);
+  const details: Record<string, unknown> = {
+    files: theirs.map((c) => ({ path: c.path, status: c.status })).slice(0, 200),
+    warnings,
+  };
+  if (bad.length)
+    return { kind: "reject", code: "INCOMPATIBLE", reason: syncRu.import.incompatible(bad), details };
+
+  // Paths both sides changed: a line-level merge where the hunks are apart, a conflict otherwise.
+  const clash = conflicts(theirs, importableChanges(B, D), D, T);
+  let merged = new Map<string, Buffer>();
+  if (clash.length) {
+    const oids = clash.flatMap((p) => [B.get(p)?.oid, D.get(p)?.oid, T.get(p)?.oid]).filter((x) => !!x);
+    const three = await readObjects(d.db, sys.id, oids as string[]);
+    const m = mergeClashes(clash, B, D, T, (oid) => three.get(oid)?.body);
+    if (m.conflicts.length)
+      return {
+        kind: "reject",
+        code: "CONFLICT",
+        reason: syncRu.import.conflict(
+          m.conflicts.map((c) => c.path),
+          sys.draft_revision,
+          m.conflicts.flatMap((c) => c.lines.map((l) => ({ path: c.path, ...l }))),
+        ),
+        details: { ...details, conflicts: m.conflicts },
+      };
+    merged = m.merged;
+    if (merged.size) {
+      details.merged = [...merged.keys()];
+      warnings.push(syncRu.import.mergedLines([...merged.keys()]));
+    }
+  }
+  const content = (c: TreeChange): Buffer | null =>
+    c.status === "deleted"
+      ? null
+      : (merged.get(c.path) ??
+        (blobs.get(c.newOid as string) as GitObject | undefined)?.body ??
+        Buffer.alloc(0));
+
+  let newSpec: AppSpec | null = null;
+  const specChange = theirs.find((c: TreeChange) => c.path === "spec/appspec.json");
+  if (specChange && specChange.status !== "deleted") {
+    const r = importedSpec(content(specChange) ?? Buffer.alloc(0));
+    if (!r.ok)
+      return { kind: "reject", code: "SPEC_INVALID", reason: syncRu.import.badSpec(r.reasons), details };
+    newSpec = r.spec;
+  }
+
+  const sources = new Map<string, string>();
+  const draftSrc = [...D].filter(([path]) => path.startsWith("ui/") || path.startsWith("functions/"));
+  const draftBlobs = await readObjects(
+    d.db,
+    sys.id,
+    draftSrc.map(([, e]) => e.oid),
+  );
+  for (const [path, e] of draftSrc)
+    sources.set(path, (draftBlobs.get(e.oid)?.body ?? Buffer.alloc(0)).toString("utf8"));
+  for (const c of theirs) {
+    if (!(c.path.startsWith("ui/") || c.path.startsWith("functions/"))) continue;
+    const body = content(c);
+    if (body === null) sources.delete(c.path);
+    else sources.set(c.path, body.toString("utf8"));
+  }
+  return { kind: "ok", theirs, content, newSpec, sources, details };
+}
+
+/** G0 → G1 → G2 over a candidate (the run engine's gate executor), stopping at the first failure. */
+export async function gateCandidate(
+  d: SyncDeps,
+  sys: Pick<SystemRow, "draft_revision" | "schema_key" | "slug">,
+  spec: AppSpec,
+  prevSpec: AppSpec | null,
+  sources: ReadonlyMap<string, string>,
+): Promise<{
+  passed: boolean;
+  reports: GateReport[];
+  failedLevel?: "G0" | "G1" | "G2";
+  failedTitle?: string;
+}> {
+  const gates = d.gates;
+  if (!gates) throw new RetryLater("GATES_UNAVAILABLE", syncRu.import.noGates, 10 * 60_000);
+  const reports: GateReport[] = [];
+  for (const level of ["G0", "G1", "G2"] as const) {
+    const report = {
+      ...(await gates(level, {
+        spec,
+        prevSpec,
+        specVersion: sys.draft_revision + 1,
+        files: sources,
+        env: "draft",
+        systemKey: sys.schema_key,
+        db: d.pg,
+        milestone: d.config.milestone,
+        slug: sys.slug,
+      })),
+      level,
+    };
+    reports.push(report);
+    if (!report.passed)
+      return { passed: false, reports, failedLevel: level, failedTitle: failedLine(report).title };
+  }
+  return { passed: true, reports };
+}
+
 // ---- import ----
 
 interface ImportPayload {
@@ -585,26 +756,13 @@ export async function importFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promi
       reason: syncRu.import.noBase,
     });
 
-  if (await ensureRepo(d.db, d.blobs, sys.id))
-    throw new RetryLater(
-      "REPO_BEHIND",
-      "Внутренний репозиторий системы ещё не догнал ревизии. Повторим автоматически",
-    );
-  const baseRow = await findCommitRow(d.db, sys.id, { revision: base });
-  const draftRow = await findCommitRow(d.db, sys.id, { revision: sys.draft_revision });
-  if (!baseRow || !draftRow)
-    throw new RetryLater("REPO_BEHIND", "Коммиты ревизий ещё не записаны. Повторим автоматически");
-  const B = (await commitTree(d.db, sys.id, baseRow.oid)).flat;
-  const D = (await commitTree(d.db, sys.id, draftRow.oid)).flat;
-  const T = (await commitTree(d.db, sys.id, head)).flat;
   const prevHead =
     link.remote_head_oid &&
     (await existingOids(d.db, sys.id, [link.remote_head_oid])).has(link.remote_head_oid)
       ? (await commitTree(d.db, sys.id, link.remote_head_oid)).flat
       : null;
-  const theirs = importableChanges(B, T);
-  const warnings = generatedEdits(prevHead, T).length ? [syncRu.import.generatedIgnored] : [];
-  if (theirs.length === 0) {
+  const cand = await buildCandidate(d, sys, head, base, prevHead);
+  if (cand.kind === "noop") {
     await orgTx(d.db, link.org_id, async (trx) => {
       await saveImport(trx, {
         org_id: link.org_id,
@@ -618,7 +776,7 @@ export async function importFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promi
         revision: null,
         reason_code: null,
         reason_ru: null,
-        details: { warnings },
+        details: { warnings: cand.warnings },
       });
       await updateLink(trx, link.id, {
         remote_head_oid: head,
@@ -630,98 +788,34 @@ export async function importFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promi
     });
     return { kind: "done" };
   }
-
-  const blobs = await readObjects(
-    d.db,
-    sys.id,
-    theirs.filter((c) => c.newOid).map((c) => c.newOid as string),
-  );
-  const after = new Set([...D.keys()].filter(isImportablePath));
-  for (const c of theirs) c.status === "deleted" ? after.delete(c.path) : after.add(c.path);
-  const bad = incompatibilities(theirs, T, (oid) => blobs.get(oid)?.body, after.size);
-  const details = { files: theirs.map((c) => ({ path: c.path, status: c.status })).slice(0, 200), warnings };
-  if (bad.length)
+  if (cand.kind === "reject")
     return rejectImport(d, link, api, head, {
       source,
       prNumber,
       base,
-      code: "INCOMPATIBLE",
-      reason: syncRu.import.incompatible(bad),
-      details,
+      code: cand.code,
+      reason: cand.reason,
+      details: cand.details,
     });
-  const clash = conflicts(theirs, importableChanges(B, D), D, T);
-  if (clash.length)
-    return rejectImport(d, link, api, head, {
-      source,
-      prNumber,
-      base,
-      code: "CONFLICT",
-      reason: syncRu.import.conflict(clash, sys.draft_revision),
-      details: { ...details, conflicts: clash },
-    });
-  let newSpec: AppSpec | null = null;
-  const specChange = theirs.find((c: TreeChange) => c.path === "spec/appspec.json");
-  if (specChange?.newOid) {
-    const r = importedSpec(blobs.get(specChange.newOid)?.body ?? Buffer.alloc(0));
-    if (!r.ok)
-      return rejectImport(d, link, api, head, {
-        source,
-        prNumber,
-        base,
-        code: "SPEC_INVALID",
-        reason: syncRu.import.badSpec(r.reasons),
-        details,
-      });
-    newSpec = r.spec;
-  }
+  const { theirs, newSpec, sources, details } = cand;
   if (await systemBusy(d.db, sys.id, now))
     throw new RetryLater("SYSTEM_BUSY", syncRu.import.building, 60_000);
   if (!d.gates) throw new RetryLater("GATES_UNAVAILABLE", syncRu.import.noGates, 10 * 60_000);
 
-  // The candidate: the draft's sources with the changes applied; G0 → G1 → G2 before anything is written.
-  const sources = new Map<string, string>();
-  const draftSrc = [...D].filter(([path]) => path.startsWith("ui/") || path.startsWith("functions/"));
-  const draftBlobs = await readObjects(
-    d.db,
-    sys.id,
-    draftSrc.map(([, e]) => e.oid),
-  );
-  for (const [path, e] of draftSrc)
-    sources.set(path, (draftBlobs.get(e.oid)?.body ?? Buffer.alloc(0)).toString("utf8"));
-  for (const c of theirs) {
-    if (!(c.path.startsWith("ui/") || c.path.startsWith("functions/"))) continue;
-    if (c.status === "deleted") sources.delete(c.path);
-    else sources.set(c.path, (blobs.get(c.newOid as string)?.body ?? Buffer.alloc(0)).toString("utf8"));
-  }
+  // G0 → G1 → G2 over the candidate before anything is written.
   const spec = newSpec ?? (await loadSpec(d.db, sys, sys.draft_revision));
   const prevSpec = sys.preview_revision !== null ? await loadSpec(d.db, sys, sys.preview_revision) : null;
-  const reports: GateReport[] = [];
-  for (const level of ["G0", "G1", "G2"] as const) {
-    const report = {
-      ...(await d.gates(level, {
-        spec,
-        prevSpec,
-        specVersion: sys.draft_revision + 1,
-        files: sources,
-        env: "draft",
-        systemKey: sys.schema_key,
-        db: d.pg,
-        milestone: d.config.milestone,
-        slug: sys.slug,
-      })),
-      level,
-    };
-    reports.push(report);
-    if (!report.passed)
-      return rejectImport(d, link, api, head, {
-        source,
-        prNumber,
-        base,
-        code: "GATES_FAILED",
-        reason: syncRu.import.gatesFailed(level, [failedLine(report).title]),
-        details: { ...details, gates: reports.map((r) => ({ level: r.level, passed: r.passed })) },
-      });
-  }
+  const gated = await gateCandidate(d, sys, spec, prevSpec, sources);
+  const reports = gated.reports;
+  if (!gated.passed)
+    return rejectImport(d, link, api, head, {
+      source,
+      prNumber,
+      base,
+      code: "GATES_FAILED",
+      reason: syncRu.import.gatesFailed(gated.failedLevel as string, [gated.failedTitle as string]),
+      details: { ...details, gates: reports.map((r) => ({ level: r.level, passed: r.passed })) },
+    });
 
   const key = `repo:${link.id}:${head}`.slice(0, 200);
   const summary = syncRu.import.summary(PROVIDER_RU[link.provider], subject, prNumber);
@@ -744,11 +838,10 @@ export async function importFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promi
     if (version === undefined) {
       const r = await commitFilesRevision({ trx, events: [] }, d.blobs, {
         systemId: sys.id,
-        changes: theirs.map((c) => ({
-          path: c.path,
-          content:
-            c.status === "deleted" ? null : new Uint8Array((blobs.get(c.newOid as string) as GitObject).body),
-        })),
+        changes: theirs.map((c) => {
+          const body = cand.content(c);
+          return { path: c.path, content: body === null ? null : new Uint8Array(body) };
+        }),
         author: "user",
         authorUserId: link.connected_by,
         kind: "files",
@@ -838,6 +931,172 @@ export async function importFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promi
   } catch (e) {
     d.log("git-sync: import check on the head failed", safeErr(e));
   }
+  return { kind: "done" };
+}
+
+// ---- PR preview (V3-32) ----
+
+/** Stable address of a developer's PR preview in Wizard (api.yaml getRepoSyncPull): JSON, or the settings for a browser. */
+export const pullLink = (d: SyncDeps, systemId: string, number: number): string =>
+  `${d.config.platformOrigin}/api/v1/systems/${systemId}/repo-sync/pulls/${number}`;
+
+/** Wizard's own branches (revision PRs, the agent's PRs) are never previewed as a developer's PR. */
+export const isWizardBranch = (branch: string | null | undefined): boolean => !!branch?.startsWith("wizard/");
+
+/** The latest Wizard revision synced with the default branch whose commit the PR head contains (its base). */
+async function previewBase(
+  d: SyncDeps,
+  link: LinkRow,
+  systemId: string,
+  head: string,
+): Promise<number | null> {
+  const prs = await orgTx(d.db, link.org_id, (trx) => prsOf(trx, link.id, { states: ["merged", "direct"] }));
+  const imports = await orgTx(d.db, link.org_id, (trx) => importsOf(trx, link.id, 50));
+  const candidates: { oid: string; revision: number }[] = [];
+  for (const p of prs) {
+    if (p.merge_oid) candidates.push({ oid: p.merge_oid, revision: p.revision });
+    candidates.push({ oid: p.head_oid, revision: p.revision });
+  }
+  for (const i of imports) {
+    const rev = i.status === "imported" ? i.revision : i.status === "noop" ? i.base_revision : null;
+    if (rev) candidates.push({ oid: i.head_oid, revision: rev });
+  }
+  if (link.remote_head_oid && link.remote_head_revision)
+    candidates.push({ oid: link.remote_head_oid, revision: link.remote_head_revision });
+  candidates.sort((a, b) => b.revision - a.revision);
+  for (const c of candidates) if (await isAncestor(d.db, systemId, c.oid, head)) return c.revision;
+  return null;
+}
+
+/**
+ * The preview of a developer's open PR into the default branch: the PR head is fetched, its changes since the Wizard
+ * revision it started from are applied to the current draft (line-level merge where safe) and gated G0 → G1 → G2 — what
+ * the import would do after the merge. The result goes to the PR head as checks (one per gate and «Wizard / Превью PR»
+ * with the summary) and to its stable address in Wizard. Nothing is written to the system.
+ */
+export async function prPreviewFlow(d: SyncDeps, link: LinkRow, job: JobRow): Promise<JobOutcome> {
+  const now = d.now();
+  const p = job.payload as { number?: unknown; head?: unknown; branch?: unknown; url?: unknown };
+  const number = Number(p.number);
+  if (!Number.isInteger(number) || number < 1) return { kind: "done" };
+  const sys = await systemOf(d.db, link.system_id);
+  if (!sys || sys.deleted_at || link.status !== "active") return { kind: "done" };
+  const api = apiOf(d, link);
+  const pr = await api.getPr(number);
+  if (pr.state !== "open") {
+    await orgTx(d.db, link.org_id, (trx) => closePreview(trx, link.id, number));
+    return { kind: "done" };
+  }
+  const head = pr.headSha ?? (typeof p.head === "string" ? p.head : null);
+  if (!head || !/^[0-9a-f]{40}$/.test(head)) return { kind: "done" };
+  const branch = typeof p.branch === "string" ? p.branch.slice(0, 250) : null;
+  if (isWizardBranch(branch)) return { kind: "done" };
+  const prev = await orgTx(d.db, link.org_id, (trx) => previewOf(trx, link.id, number));
+  if (prev && prev.head_oid === head && prev.status !== "pending") return { kind: "done" };
+  const url = pr.url ?? (typeof p.url === "string" ? p.url : null);
+  const address = pullLink(d, sys.id, number);
+  const save = (
+    r: Omit<Parameters<typeof savePreview>[1], "org_id" | "system_id" | "link_id" | "number" | "head_oid">,
+  ) =>
+    orgTx(d.db, link.org_id, (trx) =>
+      savePreview(trx, {
+        org_id: link.org_id,
+        system_id: sys.id,
+        link_id: link.id,
+        number,
+        head_oid: head,
+        branch,
+        url,
+        ...r,
+      }),
+    );
+  await save({ status: "pending" });
+  const post = async (
+    name: string,
+    state: "success" | "failure" | "neutral",
+    title: string,
+    summary: string,
+  ) => {
+    try {
+      await api.setCheck(head, { name, state, title, summary, detailsUrl: address }, null);
+    } catch (e) {
+      d.log("git-sync: a PR preview check failed", safeErr(e));
+    }
+  };
+
+  const remote = await remoteOf(d, link, api);
+  if (!(await fetchHead(d, link, remote, head)))
+    throw new RetryLater("FETCH_INCOMPLETE", syncRu.import.fetchIncomplete);
+  const base = await previewBase(d, link, sys.id, head);
+  if (base === null) {
+    await save({ status: "rejected", reason_code: "NO_BASE", reason_ru: syncRu.preview.noBase });
+    await post(GATE_NAMES.preview, "failure", syncRu.preview.noBase.slice(0, 200), syncRu.preview.noBase);
+    return { kind: "done" };
+  }
+  const cand = await buildCandidate(d, sys, head, base, null);
+  if (cand.kind === "noop") {
+    await save({ status: "noop", base_revision: base, details: { warnings: cand.warnings } });
+    await post(GATE_NAMES.preview, "neutral", syncRu.preview.noop.slice(0, 200), syncRu.preview.noop);
+    return { kind: "done" };
+  }
+  if (cand.kind === "reject") {
+    await save({
+      status: "rejected",
+      base_revision: base,
+      reason_code: cand.code,
+      reason_ru: cand.reason.slice(0, 2000),
+      details: cand.details,
+    });
+    await post(GATE_NAMES.preview, "failure", cand.reason.slice(0, 200), cand.reason);
+    return { kind: "done" };
+  }
+  // A build holds the system: the preview waits for it without spending its attempts.
+  if (await systemBusy(d.db, sys.id, now)) return { kind: "wait", at: new Date(now.getTime() + 60_000) };
+  const spec = cand.newSpec ?? (await loadSpec(d.db, sys, sys.draft_revision));
+  const prevSpec = sys.preview_revision !== null ? await loadSpec(d.db, sys, sys.preview_revision) : null;
+  const gated = await gateCandidate(d, sys, spec, prevSpec, cand.sources);
+  const gates = (["G0", "G1", "G2"] as const).map((level) => {
+    const r = gated.reports.find((x) => x.level === level);
+    return {
+      level,
+      passed: r ? r.passed : null,
+      title: r
+        ? r.passed
+          ? syncRu.gate.passed(r.checks.filter((c) => c.status === "pass").length)
+          : failedLine(r).title
+        : syncRu.preview.notRun(gated.failedLevel ?? "G0"),
+    };
+  });
+  const checks: Record<string, { state: string; title: string }> = {};
+  for (const g of gates) {
+    const state = g.passed === null ? "neutral" : g.passed ? "success" : "failure";
+    checks[g.level] = { state, title: g.title };
+    await post(GATE_NAMES[g.level], state, g.title, g.title);
+  }
+  const reason = gated.passed
+    ? null
+    : syncRu.preview.failed(gated.failedLevel as string, gated.failedTitle ?? "");
+  const summary = syncRu.preview.summary({
+    files: (cand.details.files as { path: string; status: string }[] | undefined) ?? [],
+    merged: (cand.details.merged as string[] | undefined) ?? [],
+    gates,
+    url: address,
+  });
+  checks.preview = { state: gated.passed ? "success" : "failure", title: reason ?? syncRu.preview.passed };
+  await post(
+    GATE_NAMES.preview,
+    gated.passed ? "success" : "failure",
+    (reason ?? syncRu.preview.passed).slice(0, 200),
+    summary,
+  );
+  await save({
+    status: gated.passed ? "passed" : "failed",
+    base_revision: base,
+    reason_code: gated.passed ? null : "GATES_FAILED",
+    reason_ru: reason,
+    checks,
+    details: { ...cand.details, gates },
+  });
   return { kind: "done" };
 }
 

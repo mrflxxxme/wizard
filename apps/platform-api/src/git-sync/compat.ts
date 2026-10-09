@@ -3,8 +3,9 @@
 // warning and the client's own files (README, CI, …) stay theirs. A change is refused with a Russian reason when it is
 // a symlink or a submodule, an unsafe path, too large, not UTF-8 in the sources, or the spec is deleted or invalid.
 import { type AppSpec, validateSpec } from "@wizard/appspec";
-import { diffTrees, type TreeChange } from "../git/diff.js";
+import { diffTrees, isBinary, type TreeChange } from "../git/diff.js";
 import { isRepoPath } from "../git/layout.js";
+import { merge3 } from "../git/merge3.js";
 import { isSafePath } from "../services/revisions.js";
 import { isGeneratedRepoPath, isImportablePath } from "./context.js";
 import { syncRu } from "./texts.js";
@@ -46,6 +47,59 @@ export function conflicts(
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
+
+const textOf = (b: Buffer | undefined): string | null => {
+  if (!b || isBinary(b)) return null;
+  try {
+    return utf8.decode(b);
+  } catch {
+    return null;
+  }
+};
+
+export interface ClashMerge {
+  /** Paths both sides changed whose line hunks are apart: path → the merged content. */
+  merged: Map<string, Buffer>;
+  /** Paths left in conflict, with the base line ranges both sides changed (empty — a whole-file conflict). */
+  conflicts: { path: string; lines: { from: number; to: number }[] }[];
+}
+
+/**
+ * V3-32 line-level merge of the paths both sides changed (`clash`, from conflicts()): a text file both changed is
+ * merged line by line against the synced base when the hunks are apart (merge3); a deletion on either side, an asset,
+ * a binary or non-UTF-8 file, a merged result over the size limit — and of course overlapping hunks — stay conflicts.
+ */
+export function mergeClashes(
+  clash: readonly string[],
+  base: Flat,
+  ours: Flat,
+  theirs: Flat,
+  blob: (oid: string) => Buffer | undefined,
+): ClashMerge {
+  const out: ClashMerge = { merged: new Map(), conflicts: [] };
+  for (const path of clash) {
+    const o = ours.get(path);
+    const t = theirs.get(path);
+    const b = base.get(path);
+    if (!o || !t || path.startsWith("assets/")) {
+      out.conflicts.push({ path, lines: [] });
+      continue;
+    }
+    const bt = b ? textOf(blob(b.oid)) : "";
+    const ot = textOf(blob(o.oid));
+    const tt = textOf(blob(t.oid));
+    if (bt === null || ot === null || tt === null) {
+      out.conflicts.push({ path, lines: [] });
+      continue;
+    }
+    const r = merge3(bt, ot, tt);
+    const body = r.ok ? Buffer.from(r.text, "utf8") : null;
+    if (!r.ok) out.conflicts.push({ path, lines: r.conflicts });
+    else if ((body as Buffer).byteLength > MAX_TEXT_BYTES) out.conflicts.push({ path, lines: [] });
+    else out.merged.set(path, body as Buffer);
+  }
+  return out;
+}
 
 /** Reasons the changes cannot be taken (empty — they can); `blob(oid)` gives the content of a new file. */
 export function incompatibilities(

@@ -14,7 +14,17 @@ import type { GitSync } from "./service.js";
 const settings = (d: Pick<Deps, "config">, systemId: string, q = "") =>
   `${d.config.platformOrigin}/s/${systemId}/settings${q}#repo`;
 
-export function repoSyncRoutes(d: Pick<Deps, "db" | "config">, sync: GitSync): Hono<AppEnv> {
+/** V3-32: the callbacks of an agent state (repo-agent/routes.ts agentRedirects) — the address to redirect to. */
+export interface AgentRedirects {
+  github(user: AuthUser, q: { installationId: string; state: string; code: string }): Promise<string>;
+  gitlab(user: AuthUser, q: { code: string; state: string }): Promise<string>;
+}
+
+export function repoSyncRoutes(
+  d: Pick<Deps, "db" | "config">,
+  sync: GitSync,
+  agent?: AgentRedirects,
+): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
 
   async function loadSystem(user: AuthUser, id: string | undefined, min: OrgRole) {
@@ -115,6 +125,19 @@ export function repoSyncRoutes(d: Pick<Deps, "db" | "config">, sync: GitSync): H
     return c.json({ url, current });
   });
 
+  // V3-32: the preview of a developer's PR (its stable address in the PR checks): the state for an API client, the
+  // «Репозиторий» settings with the PR for a browser.
+  r.get("/systems/:id/repo-sync/pulls/:number", async (c) => {
+    const s = await loadSystem(c.get("user"), c.req.param("id"), "viewer");
+    const n = Number(c.req.param("number"));
+    if (!Number.isInteger(n) || n < 1 || n > 2_147_483_647) throw notFound("PR");
+    if ((c.req.header("accept") ?? "").includes("text/html"))
+      return c.redirect(settings(d, s.id, `?pr=${n}`), 302);
+    const v = await sync.pull(s.id, s.org_id, n);
+    if (!v) throw notFound("Превью PR");
+    return c.json(v);
+  });
+
   // Setup URL of the GitHub App: installation_id, setup_action, state and the user's OAuth code.
   r.get("/git-sync/github/setup", async (c) => {
     const q = parseQuery(
@@ -126,16 +149,18 @@ export function repoSyncRoutes(d: Pick<Deps, "db" | "config">, sync: GitSync): H
         setup_action: z.string().max(20).optional(),
       }),
     );
-    const systemId = await sync.githubSetup(
-      c.get("user"),
-      { installationId: q.installation_id, state: q.state, code: q.code ?? "" },
-      ownerOrg(c.get("user")),
-    );
+    const input = { installationId: q.installation_id, state: q.state, code: q.code ?? "" };
+    // The same App installs for the agent of an org (V3-32): its state says so.
+    if (agent && sync.stateTarget(q.state) === "agent")
+      return c.redirect(await agent.github(c.get("user"), input), 302);
+    const systemId = await sync.githubSetup(c.get("user"), input, ownerOrg(c.get("user")));
     return c.redirect(settings(d, systemId, "?repo=select"), 302);
   });
 
   r.get("/git-sync/gitlab/callback", async (c) => {
     const q = parseQuery(c, z.object({ code: z.string().max(500), state: z.string().max(2000) }));
+    if (agent && sync.stateTarget(q.state) === "agent")
+      return c.redirect(await agent.gitlab(c.get("user"), q), 302);
     const systemId = await sync.gitlabCallback(c.get("user"), q, ownerOrg(c.get("user")));
     return c.redirect(settings(d, systemId, "?repo=select"), 302);
   });

@@ -275,27 +275,35 @@ export class GitRemote {
 
   /**
    * Fetches the objects of `wants` the remote has and we lack (`haves` — commits both sides have). Thin packs are not
-   * asked for; `external` still resolves a REF_DELTA against an object we hold, should a server send one.
+   * asked for; `external` still resolves a REF_DELTA against an object we hold, should a server send one. `depth` (V3-32,
+   * the agent's snapshot of a client repository) asks for a shallow pack — the wanted commits without their history —
+   * when the server can (protocol v2 with fetch=shallow); otherwise the full closure comes, which is a superset.
    */
   async fetch(
     wants: readonly string[],
     haves: readonly string[],
     external?: ExternalBase,
+    depth?: number,
   ): Promise<GitObject[]> {
     const w = [...new Set(wants)].filter((x) => OID_RE.test(x));
     if (w.length === 0) return [];
     const h = [...new Set(haves)].filter((x) => OID_RE.test(x));
     if (this.#v2 === undefined) await this.lsRefs();
     const ofs = this.#o.ofsDelta !== false;
+    const deepen = depth !== undefined && Number.isInteger(depth) && depth >= 1 ? depth : null;
     let pack: Buffer;
     try {
       if (this.#v2) {
+        const shallow =
+          deepen !== null &&
+          [...this.#v2].some((c) => c.startsWith("fetch=") && c.slice(6).split(" ").includes("shallow"));
         const body = await this.#postUploadPack(
           this.#v2Command(this.#v2, "fetch", [
             "no-progress",
             ...(ofs ? ["ofs-delta"] : []),
             ...w.map((x) => `want ${x}`),
             ...h.map((x) => `have ${x}`),
+            ...(shallow ? [`deepen ${deepen}`] : []),
             "done",
           ]),
           true,

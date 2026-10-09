@@ -143,6 +143,7 @@ run_charging:
   estimate_vs_actual: "Карточка показывает estimate.credits {min, expected, max} и cap; отчёт прогона — фактическое used. SHOULD: медиана |used − expected|/expected ≤ 30% на eval-брифах (калибровка — orchestrator.yaml#estimation.calibration)"
   import_table: "hold(−15 кр., потолок импорта) в транзакции createImport, idempotency hold:<runId>; finish — как build: release, charge(−min(used, 15 кр.)); refund по кодам refunds. available < 15 → 402 INSUFFICIENT_CREDITS"
   style_and_compliance: "Панель «Стиль», setCompliance, rollback, publish — без LLM и без кредитов"
+  repo_agent: "V3-32 (D77 (4)): задача агента для совместимых репозиториев — без hold; при постановке available ≤ 0 → 402 INSUFFICIENT_CREDITS (как ход интервью); после задачи charge по факту (Σ стоимости вызовов repo_code и repo_review), ключ repo:<taskId>, не больше доступного — остальное берёт платформа; потолок задачи 80 ₽ (как правка D77 (11)) — кошелёк агента останавливает его на потолке. Проверка совместимости и PR с правилами (AGENTS.md) — без LLM и без кредитов"
   runtime_ai: "M3: вызовы runtime_ai_* (только T0) списываются по факту: charge агрегируется по (system, час) с ключом ai:<systemId>:<yyyy-mm-ddThh>; лимит aiAction.monthlyLimit в вызовах на систему; при available ≤ 0 действие возвращает системе ошибку AI_CREDITS_EXHAUSTED, владельцу — уведомление"
   M0: "Ledger нет: runs.credits_used_milli считается из llm_calls; cap из карточки останавливает прогон (budget_exceeded)"
 

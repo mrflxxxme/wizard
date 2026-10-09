@@ -124,6 +124,7 @@
 ### C7. Модели — `@wizard/llm`
 
 - Новые callType: `interview_v3`, `brief_extract`, `art_direction`, `page_compose`, `signature_section`, `critic_visual`, `techreview`, `research`.
+- V3-32: `repo_code` и `repo_review` — агент для совместимых репозиториев и его ревьюер. Код клиента — только T0 (`models.yaml#client_code`): без цепочки T1, резерва D76 и BYOK.
 - Маршруты — в `models.yaml`.
 - Allowlist моделей отклоняет западные API на ключах платформы (D18).
 - Провайдер `openai_compatible` с `baseUrlEnv` позволяет подключить свой vLLM, а позже BYOK (V3-33).

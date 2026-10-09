@@ -81,7 +81,10 @@ export function requireKms(d: SyncDeps): TransitKms {
   return d.kms;
 }
 
-export async function linkSecrets(d: SyncDeps, link: LinkRow): Promise<RepoSecrets> {
+export async function linkSecrets(
+  d: SyncDeps,
+  link: Pick<LinkRow, "id" | "org_id" | "ciphertext" | "wrapped_dek">,
+): Promise<RepoSecrets> {
   if (!link.ciphertext) return {};
   try {
     return await openSecrets(requireKms(d), link.org_id, link.id, link);

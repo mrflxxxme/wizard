@@ -28,7 +28,8 @@ export const isDevelopmentCategory = (c: unknown): c is DevelopmentCategory =>
  */
 export async function recordDevelopmentRequest(
   db: Db,
-  run: { id: string; org_id: string; system_id: string | null; started_by: string | null },
+  /** id null — not from a run (V3-32: the compatibility check of a repository). */
+  run: { id: string | null; org_id: string; system_id: string | null; started_by: string | null },
   input: DevelopmentRequestInput,
 ): Promise<boolean> {
   const quote = cut(scrub(String(input.quote ?? "")).text.trim());

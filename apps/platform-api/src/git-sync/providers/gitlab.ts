@@ -22,6 +22,7 @@ interface GlMr {
   sha: string | null;
   merge_commit_sha: string | null;
   squash_commit_sha?: string | null;
+  draft?: boolean;
 }
 
 export interface GitLabTokens {
@@ -45,6 +46,7 @@ const mrOf = (m: GlMr): ProviderPr => ({
   state: m.state === "merged" ? "merged" : m.state === "opened" || m.state === "locked" ? "open" : "closed",
   headSha: m.sha,
   mergeSha: m.state === "merged" ? (m.merge_commit_sha ?? m.squash_commit_sha ?? m.sha) : null,
+  ...(m.draft !== undefined ? { draft: m.draft } : {}),
 });
 
 const STATE: Record<CheckInput["state"], string> = {
@@ -199,19 +201,27 @@ class GitLabRepoApi implements RepoApi {
     return list[0] ? mrOf(list[0]) : null;
   }
 
-  async createPr(i: { branch: string; base: string; title: string; body: string }): Promise<ProviderPr> {
-    return mrOf(
+  async createPr(i: {
+    branch: string;
+    base: string;
+    title: string;
+    body: string;
+    draft?: boolean;
+  }): Promise<ProviderPr> {
+    // A «Draft:» title makes a draft merge request (GitLab 14+).
+    const mr = mrOf(
       await this.#api<GlMr>("/merge_requests", {
         method: "POST",
         body: {
           source_branch: i.branch,
           target_branch: i.base,
-          title: i.title,
+          title: i.draft ? `Draft: ${i.title}` : i.title,
           description: i.body,
           remove_source_branch: true,
         },
       }),
     );
+    return i.draft ? { ...mr, draft: mr.draft ?? true } : mr;
   }
 
   async updatePr(number: number, i: { title?: string; body?: string }): Promise<void> {

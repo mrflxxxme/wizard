@@ -1054,7 +1054,7 @@ tables:
       org_id: "uuid not null references platform.orgs on delete cascade"
       system_id: "uuid not null references platform.systems on delete cascade"
       link_id: "uuid not null references platform.system_repo_links on delete cascade"
-      kind: "text not null check (kind in ('push','statuses','import','reconcile'))"
+      kind: "text not null check (kind in ('push','statuses','import','reconcile','pr_preview'))"   # pr_preview — V3-32 (миграция 0044): превью PR разработчиков до мержа, ключ pr:<номер>
       dedupe_key: "text not null"
       payload: "jsonb not null default '{}'"        # без токенов и содержимого файлов
       status: "text not null default 'queued' check (status in ('queued','running','done','dead'))"
@@ -1081,6 +1081,98 @@ tables:
     invariants:
       - "RLS (ENABLE + FORCE) по org_id"
   # ==== конец блока V3-31 ====
+
+  # ==== V3-32: агент для совместимых репозиториев; превью PR разработчиков (миграция 0044) ====
+  system_repo_pr_previews:
+    milestone: V3
+    purpose: "V3-32 (остаток V3-31): превью открытого PR разработчиков клиента в основную ветку до мержа — голова PR забирается, его изменения от ревизии Wizard, на которой основана ветка, накладываются на текущий черновик (построчное слияние, где безопасно, иначе конфликт по файлу) и проходят G0 → G1 → G2, как импорт после мержа; ничего не записывается в систему. Результат — проверки «Wizard / G0…G2» и «Wizard / Превью PR» на голове PR и постоянный адрес /systems/{id}/repo-sync/pulls/{номер}. Ветки wizard/* (PR ревизий и агента) не превьюятся"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      link_id: "uuid not null references platform.system_repo_links on delete cascade"
+      number: "integer not null"                    # номер PR / iid merge request
+      branch: "text"                                # ветка PR (без токенов)
+      url: "text"
+      head_oid: "text not null"                     # голова PR, которую проверили (новый push — новая проверка)
+      status: "text not null default 'pending' check (status in ('pending','passed','failed','rejected','noop','closed'))"
+      base_revision: "integer"                      # ревизия Wizard, на которой основана ветка PR
+      reason_code: "text"                           # NO_BASE, INCOMPATIBLE, CONFLICT, SPEC_INVALID, GATES_FAILED
+      reason_ru: "text"
+      checks: "jsonb not null default '{}'"         # G0, G1, G2, preview → {state, title}, как отправлены в PR
+      details: "jsonb not null default '{}'"        # файлы PR, объединённые построчно, конфликты по строкам, гейты
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (link_id, number)"]
+    checks:
+      - "status in ('failed','rejected') → reason_ru задан"
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id; удаляется вместе со связью и системой; закрытые — через 30 дней (reconcile)"
+  agent_repos:
+    milestone: V3
+    purpose: "V3-32 (D77 (4)): репозиторий клиента, подключённый к организации для агента — GitHub через установку того же GitHub App платформы (state с целью agent), GitLab по OAuth (gitlab.com или свой). Токены и свои Application ID/Secret — только запечатанные, как у system_repo_links (AAD repo:<org>:<id>); наружу — secret://repo/<провайдер>. Отчёт о совместимости «что сможем / не сможем» (CompatReport @wizard/agents/repo) — в compat. Репозиторий может быть и репозиторием системы Wizard: PR агента идут в wizard/_agent/*, автомерж синхронизации их не касается"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      provider: "text not null check (provider in ('github','gitlab'))"
+      status: "text not null default 'pending' check (status in ('pending','checking','ready','incompatible','unchecked','error'))"   # ready — compatible или partial; unchecked — нет песочницы для сборки
+      host_url: "text not null"
+      repo_path: "text"
+      repo_id: "text"
+      installation_id: "text"
+      default_branch: "text"
+      clone_url: "text"                             # тот же сервер, что host_url
+      web_url: "text"
+      secret_ref: "text not null"                   # secret://repo/github | secret://repo/gitlab
+      ciphertext: "text"
+      wrapped_dek: "text"
+      kek_backend: "text"
+      kek_name: "text"
+      head_oid: "text"                              # голова основной ветки последней проверки
+      compat: "jsonb"                               # CompatReport: verdict, kind, can, cannot[{what_ru, why_ru}], stack, sandbox, rules, developmentRequest
+      checked_at: "timestamptz"
+      rules_pr_url: "text"                          # PR с предложением AGENTS.md, если правил не было
+      last_error_code: "text"
+      last_error_ru: "text"
+      connected_by: "uuid references platform.users on delete set null"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (org_id, provider, host_url, repo_id) where repo_id is not null", "(org_id, created_at desc)"]
+    checks:
+      - "ciphertext, wrapped_dek, kek_backend, kek_name — все заданы или все null"
+      - "status <> 'pending' → repo_path, repo_id, default_branch, clone_url заданы; GitHub не в pending → installation_id задан"
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id; очередь задач читает репозитории разных организаций только на чтение при wizard.repo_dispatch = 'on'"
+  agent_repo_tasks:
+    milestone: V3
+    purpose: "V3-32: задачи агента — check (совместимость: профиль, установка, сборка и тесты в песочнице ≤ 10 мин), rules (черновик AGENTS.md отдельным черновым PR, без модели), change (задача владельца: песочница → тесты репозитория → техревью → черновой PR в wizard/_agent/*). Мержит только человек; модельная часть списывается по факту (billing.yaml#run_charging.repo_agent). Одна задача репозитория в работе (захват под блокировкой строки репозитория), повтор сбоев провайдера и сети 30 с · 2^n, 5 попыток"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      repo_id: "uuid not null references platform.agent_repos on delete cascade"
+      kind: "text not null check (kind in ('check','rules','change'))"
+      status: "text not null default 'queued' check (status in ('queued','running','done','failed'))"
+      task_ru: "text"                               # слова владельца (только change), ≤ 4000
+      base_oid: "text"                              # голова основной ветки, на которой работал агент
+      head_oid: "text"                              # коммит PR
+      branch: "text"                                # wizard/_agent/<дата>-<id> | wizard/_agent/rules-<id>
+      pr_number: "integer"
+      pr_url: "text"
+      draft: "boolean not null default true"        # false — тариф репозитория без черновых PR (GitHub Free, приватный): обычный PR с «Черновик:» в заголовке
+      result: "jsonb not null default '{}'"         # сводка, файлы, сборка и тесты, техревью, модели и tier вызовов; без кода и токенов
+      credits_milli: "bigint not null default 0"
+      error_code: "text"
+      error_ru: "text"
+      attempts: "integer not null default 0"
+      next_attempt_at: "timestamptz not null default now()"
+      locked_until: "timestamptz"
+      created_by: "uuid references platform.users on delete set null"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (repo_id, kind) where status in ('queued','running') and kind in ('check','rules')", "(next_attempt_at) where status in ('queued','running')", "(repo_id, created_at desc)"]
+    checks:
+      - "(kind = 'change') = (task_ru is not null)"
+      - "pr_number и pr_url заданы вместе, с веткой и коммитом; у check PR нет"
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id; выборка готовых задач разных организаций — только чтение при wizard.repo_dispatch = 'on'"
+  # ==== конец блока V3-32 ====
 
 views:
   wz_runtime.otp_sends:

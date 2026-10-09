@@ -220,11 +220,15 @@ describe("IDOR across organizations (session cookies)", () => {
   });
 
   test("the org's own members still read its objects", async () => {
+    // V3-32: the fixture has no PR preview and no agent repository — their own reads are covered by
+    // v3-pr-preview.test.ts and v3-repo-agent.test.ts; here such a missing child object is a 404.
+    const noChild = new Set(["getRepoSyncPull", "getAgentRepo"]);
     for (const op of ops.filter(
       (o) => o.method === "GET" && o.role === "viewer" && o.id !== "streamRunEvents",
     )) {
       const r = await send(viewer, op, A);
-      expect(r.status, op.id).toBeLessThan(300);
+      if (noChild.has(op.id)) expect([r.status, r.body.code], op.id).toEqual([404, "NOT_FOUND"]);
+      else expect(r.status, op.id).toBeLessThan(300);
     }
   });
 });

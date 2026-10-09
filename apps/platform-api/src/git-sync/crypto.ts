@@ -54,7 +54,20 @@ export async function openSecrets(
 
 const b64url = (b: Buffer): string => b.toString("base64url");
 
-/** Signs and checks the `state` of redirects: {system, user, provider, link, nonce, exp}. */
+/** What a redirect's `state` carries. */
+export interface RedirectState {
+  /** A system's repository link (V3-31); absent for a repository of the agent (V3-32). */
+  systemId?: string;
+  /** V3-32: «agent» — a repository connected to an org for the agent; its org. */
+  target?: "agent";
+  orgId?: string;
+  userId: string;
+  provider: "github" | "gitlab";
+  /** The pending connection row (GitLab: a link or an agent repository). */
+  linkId?: string;
+}
+
+/** Signs and checks the `state` of redirects: {system | agent org, user, provider, link, nonce, exp}. */
 export class StateSigner {
   readonly #key: Buffer;
   constructor(key: Buffer) {
@@ -77,23 +90,14 @@ export class StateSigner {
     return b64url(createHmac("sha256", this.#key).update(payload).digest());
   }
 
-  sign(
-    data: { systemId: string; userId: string; provider: "github" | "gitlab"; linkId?: string },
-    ttlMs = 15 * 60_000,
-  ) {
+  sign(data: RedirectState, ttlMs = 15 * 60_000) {
     const payload = b64url(
       Buffer.from(JSON.stringify({ ...data, nonce: b64url(randomBytes(16)), exp: Date.now() + ttlMs })),
     );
     return `${payload}.${this.#mac(payload)}`;
   }
 
-  verify(state: string | undefined): {
-    systemId: string;
-    userId: string;
-    provider: "github" | "gitlab";
-    linkId?: string;
-    nonce: string;
-  } | null {
+  verify(state: string | undefined): (RedirectState & { nonce: string }) | null {
     if (!state || state.length > 2000) return null;
     const [payload, mac] = state.split(".");
     if (!payload || !mac) return null;

@@ -1,7 +1,7 @@
 // Deterministic routing policy: models.yaml#routing_algorithm steps 1–7, constraints of data-boundary.yaml#routing.
 import { KIND_INFO, type Kind, scrubJson } from "@wizard/pii";
 import { LlmError } from "./errors.js";
-import { PII_FORBIDDEN_FOR_T1, type Registry } from "./registry.js";
+import { CLIENT_CODE_CALL_TYPES, PII_FORBIDDEN_FOR_T1, type Registry } from "./registry.js";
 import {
   CALL_TYPES,
   type CallType,
@@ -37,11 +37,16 @@ export function hasAttachments(messages: readonly LlmMessage[]): boolean {
 }
 
 /**
- * Hard guard of the T0-only calls (data-boundary.yaml#call_types: runtime_ai_*, support; multimodal calls of
- * models.yaml#credits.runtime_ai). The router checks it before every attempt, whatever the policy decided.
+ * Hard guard of the T0-only calls (data-boundary.yaml#call_types: runtime_ai_*, support; the client's repository code
+ * of V3-32 — repo_code, repo_review; multimodal calls of models.yaml#credits.runtime_ai). The router checks it before
+ * every attempt, whatever the policy decided.
  */
 export function t1Forbidden(callType: CallType, messages: readonly LlmMessage[]): boolean {
-  return PII_FORBIDDEN_FOR_T1.always.includes(callType) || hasAttachments(messages);
+  return (
+    PII_FORBIDDEN_FOR_T1.always.includes(callType) ||
+    CLIENT_CODE_CALL_TYPES.includes(callType) ||
+    hasAttachments(messages)
+  );
 }
 
 /** Throws T1_FORBIDDEN when a T1 model is about to receive a T0-only call. */
@@ -111,6 +116,8 @@ export function decideTier(input: DecideInput, reg: Registry): PolicyDecision {
   if (policy?.ruOnly === true) return t0("policy_ru_only");
   if (policy?.t1Restricted !== false) return t0("policy_region_restricted");
   if (PII_FORBIDDEN_FOR_T1.always.includes(ct)) return t0("callType_forbidden_T1");
+  // V3-32 (D77 (4)): a client's repository code goes only to models with inference in RF.
+  if (CLIENT_CODE_CALL_TYPES.includes(ct)) return t0("callType_forbidden_T1");
   // Images and PDFs cannot be scrubbed: a multimodal call is T0 whatever its callType (M3-02).
   if (hasAttachments(input.messages)) return t0("pii_hint");
   if (

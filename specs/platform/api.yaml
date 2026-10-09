@@ -1586,12 +1586,23 @@ paths:
         '200': {description: Адрес, content: {application/json: {schema: {type: object, required: [url, current], properties: {url: {type: string}, current: {type: boolean, description: 'false — ревизия уже не превью, адрес — страница системы'}}}}}}
         '302': {description: Превью или страница системы (браузер)}
         '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/repo-sync/pulls/{number}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: number, in: path, required: true, schema: {type: integer, minimum: 1}}]
+    get:
+      operationId: getRepoSyncPull
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-32 (остаток V3-31): превью PR разработчиков до мержа — постоянный адрес из проверок «Wizard / Превью PR» и «Wizard / G0…G2» в PR. Клиенту API — состояние превью (статус, ревизия-основа, файлы, объединённые построчно, гейты, причина отказа); браузеру (Accept: text/html) — 302 на «Настройки» системы (?pr=<номер>#repo). PR не превьюился → 404'
+      responses:
+        '200': {description: Превью PR, content: {application/json: {schema: {$ref: '#/components/schemas/RepoPullPreview'}}}}
+        '302': {description: Настройки системы с этим PR (браузер)}
+        '404': {$ref: '#/components/responses/Error'}
   /webhooks/git/github:
     post:
       operationId: githubRepoWebhook
       x-milestone: V3
       security: []
-      summary: 'V3-31: вебхук GitHub App (один на приложение). Подпись X-Hub-Signature-256 (HMAC-SHA256 тела секретом приложения, сравнение за постоянное время) → иначе 401; повтор X-GitHub-Delivery — 202 {duplicate: true}; pull_request closed+merged в основную ветку и push в основную ветку → импорт в очереди; installation deleted/suspend, installation_repositories removed → подключение в error с причиной. Тело ≤ 5 МБ'
+      summary: 'V3-31: вебхук GitHub App (один на приложение). Подпись X-Hub-Signature-256 (HMAC-SHA256 тела секретом приложения, сравнение за постоянное время) → иначе 401; повтор X-GitHub-Delivery — 202 {duplicate: true}; pull_request closed+merged в основную ветку и push в основную ветку → импорт в очереди; V3-32: pull_request opened/synchronize/reopened/ready_for_review в основную ветку из ветки не wizard/* → превью PR в очереди (ключ pr:<номер>), закрытие — превью closed; installation deleted/suspend, installation_repositories removed → подключение в error с причиной. Тело ≤ 5 МБ'
       requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
       responses:
         '200': {description: ping и события без действия}
@@ -1604,13 +1615,109 @@ paths:
       operationId: gitlabRepoWebhook
       x-milestone: V3
       security: []
-      summary: 'V3-31: хук проекта GitLab, созданный Wizard. X-Gitlab-Token равен секрету подключения (запечатан, сравнение за постоянное время) → иначе 401; повтор X-Gitlab-Event-UUID (или Idempotency-Key, иначе sha256 тела) — 202 {duplicate: true}; Merge Request Hook (merge в основную ветку) и Push Hook в основную ветку → импорт в очереди'
+      summary: 'V3-31: хук проекта GitLab, созданный Wizard. X-Gitlab-Token равен секрету подключения (запечатан, сравнение за постоянное время) → иначе 401; повтор X-Gitlab-Event-UUID (или Idempotency-Key, иначе sha256 тела) — 202 {duplicate: true}; Merge Request Hook (merge в основную ветку) и Push Hook в основную ветку → импорт в очереди; V3-32: Merge Request Hook open/update/reopen в основную ветку из ветки не wizard/* → превью MR в очереди'
       requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
       responses:
         '202': {description: Принято}
         '401': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
   # ==== конец блока V3-31 ====
+  # ==== V3-32: агент для совместимых репозиториев (db.yaml agent_repos, agent_repo_tasks) ====
+  /orgs/{orgId}/repo-agent:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getRepoAgent
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-32 (D77 (4)): репозитории организации для агента — провайдер, репозиторий, статус, отчёт о совместимости «что сможем / не сможем» (с причиной каждого «не сможем»), PR с предложением AGENTS.md, последние задачи с черновыми PR; песочница площадки (без неё JS-репозитории остаются «не проверены»). Токенов нет — только secret://repo/<провайдер>'
+      responses:
+        '200': {description: Состояние, content: {application/json: {schema: {$ref: '#/components/schemas/RepoAgentState'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/github:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: startRepoAgentGithub
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: адрес установки того же GitHub App платформы (права как у V3-31) с подписанным state цели «agent» (организация, пользователь, 15 мин); колбэк — /git-sync/github/setup, после него 302 на «Настройки» → «Репозитории» (?agentRepo=<id>)'
+      responses:
+        '200': {description: Адрес установки, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/gitlab:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: startRepoAgentGitlab
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: адрес авторизации OAuth GitLab для агента (PKCE S256, scope api) — gitlab.com приложением платформы или свой GitLab с приложением владельца (Application ID/Secret запечатываются); колбэк — /git-sync/gitlab/callback'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {baseUrl: {type: [string, 'null']}, clientId: {type: [string, 'null']}, clientSecret: {type: [string, 'null'], writeOnly: true}}}}}}
+      responses:
+        '200': {description: Адрес авторизации, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
+        '400': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/{repoId}:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}, {name: repoId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getAgentRepo
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-32: один репозиторий агента — отчёт о совместимости и задачи'
+      responses:
+        '200': {description: Репозиторий, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRepo'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: disconnectAgentRepo
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: отключение — запись с запечатанными токенами и задачами удаляется; репозиторий клиента и его PR не трогаем'
+      responses:
+        '200': {description: Состояние без репозитория, content: {application/json: {schema: {$ref: '#/components/schemas/RepoAgentState'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/{repoId}/choices:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}, {name: repoId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: listAgentRepoChoices
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: репозитории для выбора — доступные установке GitHub App или проекты GitLab с правами Developer и выше'
+      responses:
+        '200': {description: Репозитории, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [id, path, defaultBranch, private, webUrl], properties: {id: {type: string}, path: {type: string}, defaultBranch: {type: [string, 'null']}, private: {type: boolean}, webUrl: {type: string}}}}}}}}}
+        '403': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/{repoId}/repo:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}, {name: repoId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: selectAgentRepo
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: выбор репозитория — проверяется доступ и сервер клонирования; в очереди — проверка совместимости (голова основной ветки без истории, профиль, установка по lockfile, сборка и тесты в песочнице ≤ 10 мин; система Wizard — G0 и G2). Уже подключён или уже выбран → 412 VERSION_CONFLICT'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [repoId], properties: {repoId: {type: string, pattern: '^[0-9]{1,20}$'}}}}}}
+      responses:
+        '200': {description: Репозиторий, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRepo'}}}}
+        '403': {$ref: '#/components/responses/Error'}
+        '412': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/{repoId}/check:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}, {name: repoId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: checkAgentRepo
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: «Проверить снова» — проверка совместимости в очереди (одна на репозиторий)'
+      responses:
+        '200': {description: Репозиторий, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRepo'}}}}
+        '412': {$ref: '#/components/responses/Error'}
+  /orgs/{orgId}/repo-agent/{repoId}/tasks:
+    parameters: [{name: orgId, in: path, required: true, schema: {type: string, format: uuid}}, {name: repoId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: createAgentTask
+      x-milestone: V3
+      x-roles: [owner]
+      summary: 'V3-32: задача агенту словами владельца. Только для совместимого репозитория (иначе 412 с причиной из отчёта); при нулевом внутреннем запасе — 402. Порядок: голова основной ветки → установка в песочнице (сеть только к реестру пакетов) → агент без сети (callType repo_code — только модели с инференсом в РФ, правила из AGENTS.md, CLAUDE.md, CONTRIBUTING или черновик Wizard) → сборка и тесты репозитория → техревью (детерминированные проверки и ревьюер другого семейства, repo_review) → черновой PR в ветку wizard/_agent/<дата>-<id>. Мержит только человек: автомерж этих PR не делается никогда. Модельная часть — по факту, потолок 80 ₽'
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [task], properties: {task: {type: string, minLength: 1, maxLength: 4000}}}}}}
+      responses:
+        '202': {description: Задача в очереди, content: {application/json: {schema: {$ref: '#/components/schemas/AgentTask'}}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '402': {$ref: '#/components/responses/Error'}
+        '412': {$ref: '#/components/responses/Error'}
+  # ==== конец блока V3-32 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -2229,3 +2336,82 @@ components:
               createdAt: {type: string, format: date-time}
         queue: {type: object, required: [waiting, failing, stopped, nextAttemptAt], properties: {waiting: {type: integer}, failing: {type: integer, description: ждут повтора после ошибки}, stopped: {type: integer, description: 'остановлены после 10 попыток или до действия владельца'}, nextAttemptAt: {type: [string, 'null'], format: date-time}}}
         publishGate: {type: object, required: [required, mergedRevision], properties: {required: {type: boolean, description: 'true — публикация ревизии только после мержа её PR'}, mergedRevision: {type: [integer, 'null'], description: 'последняя ревизия, которая есть в основной ветке'}}}
+        pulls: {type: array, description: 'V3-32: превью открытых PR разработчиков (последние 10)', items: {$ref: '#/components/schemas/RepoPullPreview'}}
+    RepoPullPreview:
+      type: object
+      description: 'V3-32: превью PR разработчиков до мержа — система с изменениями PR прошла (или нет) G0 → G1 → G2; в систему ничего не записано'
+      required: [number, url, branch, headOid, status, statusRu, baseRevision, reason_ru, gates, files, merged, previewUrl, updatedAt]
+      properties:
+        number: {type: integer}
+        url: {type: [string, 'null']}
+        branch: {type: [string, 'null']}
+        headOid: {type: string, pattern: '^[0-9a-f]{40}$'}
+        status: {enum: [pending, passed, failed, rejected, noop, closed]}
+        statusRu: {type: string}
+        baseRevision: {type: [integer, 'null'], description: 'ревизия Wizard, на которой основана ветка PR'}
+        reason_ru: {type: [string, 'null'], description: 'причина: ветка не от синхронизированной основной, несовместимые изменения, конфликт (с номерами строк), спека, гейт'}
+        gates: {type: array, items: {type: object, required: [level, state, title], properties: {level: {enum: [G0, G1, G2]}, state: {enum: [success, failure, neutral]}, title: {type: string}}}}
+        files: {type: array, items: {type: object, required: [path, status], properties: {path: {type: string}, status: {enum: [added, modified, deleted]}}}}
+        merged: {type: array, items: {type: string}, description: 'файлы, объединённые построчно с правками Wizard'}
+        previewUrl: {type: string}
+        updatedAt: {type: string, format: date-time}
+    # ==== V3-32: агент для совместимых репозиториев ====
+    RepoAgentState:
+      type: object
+      required: [available, providers, sandbox, repos]
+      properties:
+        available: {type: boolean, description: 'false — агент выключен (WIZARD_REPO_AGENT=off) или нет подключения провайдеров и KMS'}
+        providers: {type: object, required: [github, gitlab, gitlabSelfManaged], properties: {github: {type: boolean}, gitlab: {type: boolean}, gitlabSelfManaged: {type: boolean}}}
+        sandbox: {type: object, required: [available, kind, note_ru], properties: {available: {type: boolean}, kind: {type: [string, 'null']}, note_ru: {type: [string, 'null']}}}
+        repos: {type: array, items: {$ref: '#/components/schemas/AgentRepo'}}
+    AgentRepo:
+      type: object
+      required: [id, provider, status, statusRu, hostUrl, repo, secretRef, headOid, checkedAt, compat, rulesPr, lastError, tasks, connectedAt]
+      properties:
+        id: {type: string, format: uuid}
+        provider: {enum: [github, gitlab]}
+        status: {enum: [pending, checking, ready, incompatible, unchecked, error]}
+        statusRu: {type: string}
+        hostUrl: {type: string}
+        repo: {oneOf: [{type: 'null'}, {type: object, required: [id, path, webUrl, defaultBranch], properties: {id: {type: string}, path: {type: string}, webUrl: {type: [string, 'null']}, defaultBranch: {type: string}}}]}
+        secretRef: {type: string, pattern: '^secret://repo/[a-z]+$'}
+        headOid: {type: [string, 'null']}
+        checkedAt: {type: [string, 'null'], format: date-time}
+        compat: {oneOf: [{type: 'null'}, {$ref: '#/components/schemas/CompatReport'}]}
+        rulesPr: {type: [string, 'null'], description: 'PR с предложением AGENTS.md, когда правил в репозитории нет'}
+        lastError: {oneOf: [{type: 'null'}, {type: object, required: [code, message_ru], properties: {code: {type: string}, message_ru: {type: string}}}]}
+        tasks: {type: array, items: {$ref: '#/components/schemas/AgentTask'}}
+        connectedAt: {type: string, format: date-time}
+    CompatReport:
+      type: object
+      description: 'V3-32: отчёт о совместимости (@wizard/agents/repo compatReport)'
+      required: [version, verdict, kind, summary_ru, can, cannot, stack, sandbox, rules, developmentRequest, blocking_ru]
+      properties:
+        version: {const: 1}
+        verdict: {enum: [compatible, partial, incompatible, unchecked]}
+        kind: {enum: [wizard_system, js_web, js_monorepo, js_other, php, bitrix, onec, mobile, other_stack, empty]}
+        summary_ru: {type: string}
+        can: {type: array, items: {type: string}, description: 'что сможем'}
+        cannot: {type: array, items: {type: object, required: [what_ru, why_ru], properties: {what_ru: {type: string}, why_ru: {type: string}}}, description: 'что не сможем — с причиной'}
+        stack: {type: object, required: [frameworks, packageManager, lockfile, typescript, monorepo, node], properties: {frameworks: {type: array, items: {type: string}}, packageManager: {type: [string, 'null']}, lockfile: {type: [string, 'null']}, typescript: {type: boolean}, monorepo: {type: boolean}, node: {type: [string, 'null']}}}
+        sandbox: {oneOf: [{type: 'null'}, {type: object, required: [status, steps, totalMs], properties: {status: {enum: [passed, failed, timeout, unavailable]}, totalMs: {type: integer}, reason_ru: {type: string}, steps: {type: array, items: {type: object, required: [step, command, ok, timedOut, durationMs, tail], properties: {step: {enum: [install, build, test]}, command: {type: string}, ok: {type: boolean}, timedOut: {type: boolean}, durationMs: {type: integer}, tail: {type: string}}}}}}]}
+        rules: {type: array, items: {type: string}, description: 'AGENTS.md, CLAUDE.md, CONTRIBUTING, найденные в репозитории'}
+        developmentRequest: {oneOf: [{type: 'null'}, {type: object, required: [category, quote], properties: {category: {enum: [mobile, other]}, quote: {type: string}}}]}
+        blocking_ru: {type: [string, 'null'], description: 'почему агент не берёт задачи (несовместим или не проверено) — первая такая причина; null — берёт'}
+    AgentTask:
+      type: object
+      required: [id, kind, kindRu, status, statusRu, task_ru, branch, pr, summary_ru, error_ru, costRub, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {enum: [check, rules, change]}
+        kindRu: {type: string}
+        status: {enum: [queued, running, done, failed]}
+        statusRu: {type: string}
+        task_ru: {type: [string, 'null']}
+        branch: {type: [string, 'null'], description: 'wizard/_agent/<дата>-<id> или wizard/_agent/rules-<id>'}
+        pr: {oneOf: [{type: 'null'}, {type: object, required: [number, url, draft], properties: {number: {type: integer}, url: {type: string}, draft: {type: boolean, description: 'false — тариф репозитория без черновых PR (GitHub Free, приватный): обычный PR с «Черновик:» в заголовке; мержит всё равно только человек'}}}]}
+        summary_ru: {type: [string, 'null']}
+        error_ru: {type: [string, 'null']}
+        costRub: {type: number}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
