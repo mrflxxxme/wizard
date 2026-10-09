@@ -101,6 +101,30 @@ describe("SandboxOrchestrator: slots come back", () => {
   });
 });
 
+describe("SandboxOrchestrator.remove of a system being removed", () => {
+  it("settles with the running removal: its emptied pod is gone (unloadSystem, then G1's release)", async () => {
+    const kube = new FakeKube();
+    const o = make(kube);
+    await o.prepare(sys(A));
+    const lease = await o.lease(A, "draft", 1000);
+    // The runtime's unload starts the removal without waiting; the pod drains the call in flight first.
+    const first = o.remove(A, "draft", { resync: false });
+    let second = false;
+    const done = o.remove(A, "draft", { resync: false }).then(() => {
+      second = true;
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(second).toBe(false);
+    expect(kube.pods.size).toBe(1);
+    lease.release();
+    await done;
+    expect(kube.pods.size).toBe(0);
+    expect(kube.configMaps.size).toBe(0);
+    await first;
+    expect(await o.remove(A, "draft")).toBeUndefined();
+  });
+});
+
 describe("SandboxOrchestrator watchdog: a system that hangs or kills its pod", () => {
   it("restarted workerd: the system whose call failed first is excluded and quarantined; the others keep running", async () => {
     const kube = new RestartKube();

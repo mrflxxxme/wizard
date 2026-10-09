@@ -151,6 +151,8 @@ export class SandboxOrchestrator implements SandboxExecutors {
   /** Systems excluded by the watchdog: the revision refused, and until when. */
   private readonly quarantine = new Map<string, { hash: string; until: number }>();
   private readonly listeners: ((systemId: string, env: SandboxEnv) => void)[] = [];
+  /** Removals in progress per system: a second remove() of it settles with the first (its pod gone, if emptied). */
+  private readonly removing = new Map<string, Promise<void>>();
   /** Replaced pods draining in the background. */
   private readonly retiring = new Set<Promise<void>>();
   private readonly perPod: number;
@@ -590,21 +592,34 @@ export class SandboxOrchestrator implements SandboxExecutors {
    * Worker so.
    */
   async remove(systemId: string, env: SandboxEnv, o: { resync?: boolean } = {}): Promise<void> {
-    const p = this.pool.placement({ systemId, env });
-    if (!p) return;
-    this.pool.remove({ systemId, env });
     const key = `${systemId}:${env}`;
+    const p = this.pool.placement({ systemId, env });
+    // Already unplaced by a removal still running (the runtime's unload, then G1's release): wait for it, so the
+    // caller sees an emptied pod gone.
+    if (!p) return this.removing.get(key);
+    const done = this.unplace(systemId, env, p.podId, o.resync !== false);
+    this.removing.set(key, done);
+    try {
+      await done;
+    } finally {
+      if (this.removing.get(key) === done) this.removing.delete(key);
+    }
+  }
+
+  private async unplace(systemId: string, env: SandboxEnv, podId: string, resync: boolean): Promise<void> {
+    const key = `${systemId}:${env}`;
+    this.pool.remove({ systemId, env });
     this.sources.delete(key);
     this.pending.delete(key);
     this.used.delete(key);
     this.strikes.delete(key);
-    const emptied = await this.serial(p.podId, async () => {
-      if (this.pool.podSlots(p.podId).some((x) => x !== null)) {
-        if (o.resync !== false) await this.sync(p.podId);
+    const emptied = await this.serial(podId, async () => {
+      if (this.pool.podSlots(podId).some((x) => x !== null)) {
+        if (resync) await this.sync(podId);
         return undefined;
       }
-      const r = this.pods.get(p.podId);
-      this.pods.delete(p.podId);
+      const r = this.pods.get(podId);
+      this.pods.delete(podId);
       return r;
     });
     if (emptied) await this.retire(emptied);
