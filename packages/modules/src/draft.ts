@@ -1789,6 +1789,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "content",
             label: "Блог и страницы",
           },
+          {
+            value: "shop",
+            label: "Магазин",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1833,6 +1837,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             value: "content",
             label: "Блог и страницы",
+          },
+          {
+            value: "shop",
+            label: "Магазин",
           },
         ],
         default: [],
@@ -1879,6 +1887,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "content",
             label: "Блог и страницы",
           },
+          {
+            value: "shop",
+            label: "Магазин",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1924,6 +1936,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
             value: "content",
             label: "Блог и страницы",
           },
+          {
+            value: "shop",
+            label: "Магазин",
+          },
         ],
         default: [],
         description: "Пусто — все разделы системы",
@@ -1968,6 +1984,10 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           {
             value: "content",
             label: "Блог и страницы",
+          },
+          {
+            value: "shop",
+            label: "Магазин",
           },
         ],
         default: [],
@@ -3287,6 +3307,498 @@ export const DRAFT_MANIFESTS: ModuleManifest[] = [
           params: {
             with_pages: false,
           },
+          withModules: ["staff"],
+        },
+      ],
+      gates: ["G0", "G1"],
+    },
+  },
+  {
+    id: "shop",
+    version: 1,
+    name: "Интернет-магазин",
+    summary:
+      "Товары с остатками, корзина и заказ на сайте, оплата через ЮKassa с чеком 54-ФЗ, доставка СДЭК, самовывоз или курьер; заказы и оплаты в кабинете",
+    status: "draft",
+    order: 35,
+    origin: {
+      kind: "new",
+    },
+    goals: ["sell_online"],
+    params: [
+      {
+        name: "product_label",
+        label: "Как называть товар",
+        type: "string",
+        maxLength: 40,
+        default: "Товар",
+      },
+      {
+        name: "with_categories",
+        label: "Разделы магазина",
+        type: "bool",
+        default: true,
+      },
+      {
+        name: "with_photos",
+        label: "Фото товаров",
+        type: "bool",
+        default: true,
+      },
+      {
+        name: "with_stock",
+        label: "Склад и остатки",
+        type: "bool",
+        default: true,
+        description:
+          "Заказ списывает остатки, закончившийся товар не купить; отмена возвращает товар на склад",
+      },
+      {
+        name: "online_payment",
+        label: "Оплата на сайте через ЮKassa",
+        type: "bool",
+        default: true,
+        description: "Покупатель платит сразу после оформления, чек по 54-ФЗ отправляет ЮKassa",
+      },
+      {
+        name: "vat",
+        label: "НДС в чеке",
+        type: "enum",
+        options: [
+          {
+            value: "none",
+            label: "Без НДС",
+          },
+          {
+            value: "vat0",
+            label: "НДС 0%",
+          },
+          {
+            value: "vat10",
+            label: "НДС 10%",
+          },
+          {
+            value: "vat22",
+            label: "НДС 22%",
+          },
+        ],
+        default: "none",
+      },
+      {
+        name: "delivery",
+        label: "Способы получения",
+        type: "enum_list",
+        options: [
+          {
+            value: "pickup",
+            label: "Самовывоз",
+          },
+          {
+            value: "cdek",
+            label: "СДЭК до пункта выдачи",
+          },
+          {
+            value: "courier",
+            label: "Курьер магазина",
+          },
+        ],
+        minItems: 1,
+        default: ["pickup", "cdek"],
+      },
+      {
+        name: "courier_price",
+        label: "Стоимость курьера, ₽",
+        type: "int",
+        min: 0,
+        max: 10000,
+        default: 300,
+      },
+      {
+        name: "cdek_from_city",
+        label: "Город отправки СДЭК",
+        type: "string",
+        maxLength: 80,
+        default: "Москва",
+      },
+      {
+        name: "parcel_weight_g",
+        label: "Вес товара по умолчанию, г",
+        type: "int",
+        min: 50,
+        max: 30000,
+        default: 1000,
+      },
+      {
+        name: "reserve_minutes",
+        label: "Сколько ждать оплату, мин",
+        type: "int",
+        min: 15,
+        max: 1440,
+        default: 60,
+        description: "Неоплаченный заказ отменяется, его товары возвращаются на склад",
+      },
+    ],
+    links: [
+      {
+        module: "staff",
+        effect: "сотрудники с разделом «Магазин» собирают заказы и меняют остатки",
+      },
+    ],
+    provides: {
+      entities: [
+        "shop_order",
+        "shop_payment",
+        "product",
+        "stock_move",
+        "product_category",
+        "pickup_point",
+        "shop_order_line",
+        "delivery_quote",
+      ],
+      routes: ["/shop", "/cart", "/order/:id"],
+    },
+    hook: true,
+    functions: [
+      {
+        name: "shopPlaceOrder",
+        kind: "mutation",
+        file: "functions/shop/placeOrder.ts",
+        public: true,
+        roles: ["$public", "$owner", "$staff", "$visitor"],
+        collectsPii: true,
+        purpose: "заказ из корзины: цены, остатки и доставка — с сервера, списание остатков, номер заказа",
+        systemDbReason:
+          "Посетитель не меняет товары и не видит заказы: функция списывает остатки, создаёт заказ с ценами из каталога и отдаёт только его номер и сумму",
+      },
+      {
+        name: "shopOrder",
+        kind: "query",
+        file: "functions/shop/order.ts",
+        public: true,
+        roles: ["$public", "$owner", "$staff", "$visitor"],
+        purpose: "страница заказа его покупателю по секрету заказа: товары, суммы, статус и доставка",
+        systemDbReason:
+          "Покупатель без входа не читает заказы: функция отдаёт заказ только по его секрету и без контактов покупателя",
+      },
+      {
+        name: "shopCdekOptions",
+        kind: "action",
+        file: "functions/shop/cdekOptions.ts",
+        public: true,
+        roles: ["$public", "$owner", "$staff", "$visitor"],
+        when: {
+          param: "delivery",
+          includes: "cdek",
+        },
+        purpose: "пункты выдачи СДЭК в городе покупателя и стоимость доставки посылки",
+      },
+      {
+        name: "shopCartWeight",
+        kind: "query",
+        file: "functions/shop/cartWeight.ts",
+        roles: ["$owner"],
+        when: {
+          param: "delivery",
+          includes: "cdek",
+        },
+        purpose: "вес корзины для расчёта доставки СДЭК",
+      },
+      {
+        name: "shopSaveQuote",
+        kind: "mutation",
+        file: "functions/shop/saveQuote.ts",
+        roles: ["$owner"],
+        when: {
+          param: "delivery",
+          includes: "cdek",
+        },
+        purpose: "расчёт доставки СДЭК на 30 минут: заказ берёт цену из него, а не со страницы",
+      },
+      {
+        name: "shopReturnStock",
+        kind: "mutation",
+        file: "functions/shop/returnStock.ts",
+        roles: ["$owner"],
+        when: {
+          param: "with_stock",
+        },
+        purpose: "отменённый заказ один раз возвращает свои товары на склад",
+      },
+      {
+        name: "shopOrderPaid",
+        kind: "mutation",
+        file: "functions/shop/orderPaid.ts",
+        roles: ["$owner"],
+        when: {
+          param: "with_stock",
+        },
+        purpose: "заказ, оплаченный после отмены, снова списывает свои товары",
+      },
+    ],
+    metrics: [
+      {
+        id: "orders_sold",
+        label: "Продано заказов",
+        goal: "sell_online",
+        unit: "count",
+        better: "up",
+        compute: {
+          kind: "count",
+          entity: "shop_order",
+          dateField: "created_at",
+          where: {
+            status: ["paid", "assembling", "ready", "shipped", "done"],
+          },
+        },
+      },
+      {
+        id: "revenue",
+        label: "Выручка магазина",
+        goal: "sell_online",
+        unit: "rub",
+        better: "up",
+        compute: {
+          kind: "sum",
+          entity: "shop_order",
+          field: "total",
+          dateField: "created_at",
+          where: {
+            status: ["paid", "assembling", "ready", "shipped", "done"],
+          },
+        },
+      },
+      {
+        id: "average_order",
+        label: "Средний чек",
+        goal: "sell_online",
+        unit: "rub",
+        better: "up",
+        compute: {
+          kind: "avg",
+          entity: "shop_order",
+          field: "total",
+          dateField: "created_at",
+          where: {
+            status: ["paid", "assembling", "ready", "shipped", "done"],
+          },
+        },
+      },
+    ],
+    goalScenarios: [
+      {
+        id: "GS-shop-1",
+        goal: "sell_online",
+        title: "Посетитель кладёт товар в корзину, оформляет заказ и оплачивает его через ЮKassa",
+        when: {
+          param: "online_payment",
+        },
+        steps: [
+          {
+            actor: "visitor",
+            text: "Открывает магазин и нажимает «В корзину» у товара",
+          },
+          {
+            actor: "visitor",
+            text: "В корзине выбирает способ получения, пишет имя и телефон, даёт согласие",
+          },
+          {
+            actor: "visitor",
+            text: "Оформляет заказ и оплачивает его на странице оплаты (тестовый магазин)",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "На странице заказа — его номер и статус «Оплачен»",
+          },
+          {
+            kind: "record",
+            text: "Оплата заказа прошла, сумма — из цен магазина; чек 54-ФЗ — по позициям заказа",
+          },
+        ],
+      },
+      {
+        id: "GS-shop-2",
+        goal: "sell_online",
+        title: "Посетитель выбирает доставку СДЭК: пункт выдачи, цену и срок",
+        when: {
+          param: "delivery",
+          includes: "cdek",
+        },
+        steps: [
+          {
+            actor: "visitor",
+            text: "Кладёт товар в корзину и выбирает доставку СДЭК",
+          },
+          {
+            actor: "visitor",
+            text: "Пишет город, находит пункты выдачи и выбирает один",
+          },
+          {
+            actor: "visitor",
+            text: "Оформляет заказ",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "До оформления видны стоимость и срок доставки СДЭК",
+          },
+          {
+            kind: "record",
+            text: "В заказе — пункт выдачи СДЭК, стоимость доставки входит в сумму",
+          },
+        ],
+      },
+      {
+        id: "GS-shop-3",
+        goal: "sell_online",
+        title: "Закончившийся товар не купить, заказ списывает остатки",
+        when: {
+          param: "with_stock",
+        },
+        steps: [
+          {
+            actor: "owner",
+            text: "Ставит у товара остаток 1 шт.",
+          },
+          {
+            actor: "visitor",
+            text: "Покупает этот товар",
+          },
+          {
+            actor: "visitor",
+            text: "Снова открывает магазин",
+          },
+        ],
+        expect: [
+          {
+            kind: "record",
+            text: "Остаток товара стал 0, списание есть в движении остатков",
+          },
+          {
+            kind: "denied",
+            text: "У товара «Нет в наличии», заказать его больше нельзя",
+          },
+        ],
+      },
+      {
+        id: "GS-shop-4",
+        goal: "sell_online",
+        title: "Владелец видит заказы, их статусы, оплаты и остатки в кабинете",
+        steps: [
+          {
+            actor: "visitor",
+            text: "Оформляет заказ на сайте",
+          },
+          {
+            actor: "owner",
+            text: "Открывает кабинет: заказы, оплаты и товары",
+          },
+        ],
+        expect: [
+          {
+            kind: "record",
+            text: "Заказ виден с номером, статусом и суммой; у товара виден остаток",
+          },
+          {
+            kind: "page_text",
+            text: "Контакты покупателя видит только магазин",
+          },
+        ],
+      },
+      {
+        id: "GS-shop-5",
+        goal: "sell_online",
+        title: "Неоплаченный заказ отменяется по времени, товар возвращается на склад",
+        when: {
+          param: "online_payment",
+        },
+        steps: [
+          {
+            actor: "visitor",
+            text: "Оформляет заказ и не оплачивает его",
+          },
+          {
+            actor: "system",
+            text: "Время на оплату заканчивается",
+          },
+        ],
+        expect: [
+          {
+            kind: "status",
+            text: "Заказ в статусе «Отменён»",
+          },
+          {
+            kind: "record",
+            text: "Остаток товара вернулся",
+          },
+        ],
+      },
+      {
+        id: "GS-shop-6",
+        goal: "sell_online",
+        title: "Заказ без оплаты на сайте оформляется и ждёт магазин",
+        when: {
+          param: "online_payment",
+          equals: false,
+        },
+        steps: [
+          {
+            actor: "visitor",
+            text: "Кладёт товар в корзину и оформляет заказ",
+          },
+          {
+            actor: "owner",
+            text: "Открывает заказы в кабинете",
+          },
+        ],
+        expect: [
+          {
+            kind: "page_text",
+            text: "Покупатель видит номер заказа и статус «Новый»",
+          },
+          {
+            kind: "status",
+            text: "Заказ в кабинете в статусе «Новый»",
+          },
+        ],
+      },
+    ],
+    tests: {
+      matrix: [
+        {
+          name: "по умолчанию: самовывоз и СДЭК, оплата ЮKassa, склад",
+          params: {},
+        },
+        {
+          name: "без онлайн-оплаты и склада: самовывоз и курьер",
+          params: {
+            online_payment: false,
+            with_stock: false,
+            delivery: ["pickup", "courier"],
+          },
+        },
+        {
+          name: "только СДЭК, без разделов и фото, НДС 22%",
+          params: {
+            delivery: ["cdek"],
+            with_categories: false,
+            with_photos: false,
+            vat: "vat22",
+          },
+        },
+        {
+          name: "магазин рядом с лендингом и заявками",
+          params: {
+            delivery: ["pickup", "courier"],
+            product_label: "Букет",
+          },
+          withModules: ["landing", "leads", "notify"],
+        },
+        {
+          name: "сотрудники собирают заказы",
+          params: {},
           withModules: ["staff"],
         },
       ],

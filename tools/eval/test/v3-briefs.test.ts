@@ -1,5 +1,6 @@
-// V3-18: the briefs of checkpoint 1 (D77_v3 (12), docs/plans/2026-10-08-v3.md §3: 4 briefs of classes 1–3) — the format
-// of v3 briefs (lib/briefs.mjs), the set, no personal data in the texts and in the ТЗ files besides the canaries.
+// V3-18: the briefs of checkpoint 1 (D77_v3 (12), docs/plans/2026-10-08-v3.md §3: 4 briefs of classes 1–3; V3-23 adds
+// the shop of class 4) — the format of v3 briefs (lib/briefs.mjs), the set, no personal data in the texts and in the
+// ТЗ files besides the canaries.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -13,15 +14,16 @@ const allow = readFileSync(join(import.meta.dirname, "..", "pii-allowlist.txt"),
   .filter((l) => l && !l.startsWith("#"));
 
 describe("v3 briefs (checkpoint 1)", () => {
-  test("4 briefs of classes 1–3: two business sites, booking with a client cabinet, a CRM; one with a ТЗ file", () => {
+  test("5 briefs: two business sites, booking with a client cabinet, a CRM, a shop (V3-23); one with a ТЗ file", () => {
     expect(v3.map((b) => b.id)).toEqual([
       "v3-01-interior-studio",
       "v3-02-dental-booking",
       "v3-03-cleaning-crm",
       "v3-04-karelia-tours",
+      "v3-05-ceramics-shop",
     ]);
-    expect(v3.map((b) => b.class)).toEqual(["site", "booking", "crm", "site"]);
-    expect(v3.every((b) => b.segment === "v3" && V3_CLASSES.slice(0, 3).includes(b.class))).toBe(true);
+    expect(v3.map((b) => b.class)).toEqual(["site", "booking", "crm", "site", "shop"]);
+    expect(v3.every((b) => b.segment === "v3" && V3_CLASSES.includes(b.class))).toBe(true);
     expect(v3.filter((b) => b.tz).map((b) => b.id)).toEqual(["v3-03-cleaning-crm"]);
     // Every brief exercises the interview: answers by stem, «Решите за меня» and an own text somewhere in the set.
     const values = v3.flatMap((b) => Object.values(b.answers ?? {}));

@@ -36,10 +36,19 @@ export type PageKind =
   | "account"
   | "credits"
   | "entry"
-  | "rubric";
+  | "rubric"
+  | "shop"
+  | "cart"
+  | "order";
 
 /** The module «Контент и блог» (V3-24). */
 export const CONTENT_MODULE = "content";
+/**
+ * The module «Интернет-магазин» (V3-23): `shop` — the goods with «В корзину», `cart` — the cart with the checkout,
+ * `order` — the order of its buyer by the id of the address (/order/:id); each section is the heading of its page.
+ */
+export const SHOP_MODULE = "shop";
+const SHOP_PAGE_KINDS: Readonly<Record<string, PageKind>> = { shop: "shop", cart: "cart", order: "order" };
 
 /** A route with a parameter (an entry page): not a menu item, its SEO comes from the entry at runtime. */
 export const isParamRoute = (route: string): boolean => route.includes(":");
@@ -108,6 +117,7 @@ export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> =
   home: [
     "header",
     "hero",
+    "shop",
     "services",
     "about",
     "gallery",
@@ -130,6 +140,10 @@ export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> =
   // V3-24: the entry and the rubric are the heading of their page (h1), no first screen above them.
   entry: ["header", "article", "cta", "footer"],
   rubric: ["header", "rubric", "cta", "footer"],
+  // V3-23: the goods, the cart and the order are the heading of their page (h1); the shop's goods also show on home.
+  shop: ["header", "shop", "faq", "contacts", "footer"],
+  cart: ["header", "cart", "footer"],
+  order: ["header", "order", "footer"],
 };
 
 /** Russian labels of section anchors in the menu of a one-page site. */
@@ -154,6 +168,8 @@ export function pageKind(screen: Pick<PublicScreen, "module" | "id" | "audience"
     if (c?.kind === "rubric") return "rubric";
     return "content";
   }
+  if (screen.module === SHOP_MODULE && SHOP_PAGE_KINDS[screen.id])
+    return SHOP_PAGE_KINDS[screen.id] as PageKind;
   if (screen.module === "landing" && screen.id === "credits") return "credits";
   if (screen.audience === "visitor") return "account";
   if (screen.module === "catalog") return "catalog";
@@ -188,6 +204,7 @@ const NEEDS_OF: Readonly<Record<PublicAction["hook"], Exclude<PatternNeeds, null
   useBooking: "booking",
   useCatalog: "catalog",
   useContent: "content",
+  useShop: "cart",
 };
 
 /** Public function of the packages module the booking asks before writing (B2-18). */
@@ -250,6 +267,10 @@ export function bindingOf(
     return null;
   }
   if (type === "blog" && page.kind === "content") return pick("useContent", page.module);
+  // V3-23: the goods on their page and on home, the cart with the checkout, the order of its buyer.
+  if (type === "shop" && (page.kind === "shop" || page.kind === "home")) return pick("useShop");
+  if ((type === "cart" && page.kind === "cart") || (type === "order" && page.kind === "order"))
+    return pick("useShop");
   return null;
 }
 
@@ -263,6 +284,9 @@ export interface PlannedPage {
   screen?: string;
   roles: string[];
 }
+
+/** Page kinds served on a route with a parameter. */
+const PARAM_KINDS: ReadonlySet<PageKind> = new Set(["entry", "rubric", "order"]);
 
 /**
  * Public pages of the system: the module screens left to v3 and the home page. A system without public screens and
@@ -278,8 +302,8 @@ export function plannedPages(spec: AppSpec, front: PublicFront): PlannedPage[] {
     out.push({ route: "/", title: "Главная", kind: "home", roles: everyone });
   for (const s of screens) {
     const kind = pageKind(s);
-    // Routes with a parameter are pages only for the entries of «Контент и блог» (V3-24).
-    if (seen.has(s.route) || (isParamRoute(s.route) && kind !== "entry" && kind !== "rubric")) continue;
+    // Routes with a parameter are pages only for the entries of «Контент и блог» (V3-24) and the shop's order (V3-23).
+    if (seen.has(s.route) || (isParamRoute(s.route) && !PARAM_KINDS.has(kind))) continue;
     seen.add(s.route);
     out.push({
       route: s.route,

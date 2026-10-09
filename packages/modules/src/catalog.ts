@@ -12,6 +12,7 @@ import { notifyModule } from "./notify/index.js";
 import { packagesModule } from "./packages/index.js";
 import { reportsModule } from "./reports/index.js";
 import { resourcesModule } from "./resources/index.js";
+import { shopModule } from "./shop/index.js";
 import { staffModule } from "./staff/index.js";
 import type { ModuleDefinition, ModuleRegistry } from "./types.js";
 import { visitorCabinetModule } from "./visitor_cabinet/index.js";
@@ -31,6 +32,7 @@ export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
   packagesModule,
   resourcesModule,
   contentModule,
+  shopModule,
 ];
 
 const withCode = new Map(MODULES_WITH_CODE.map((d) => [d.manifest.id, d]));

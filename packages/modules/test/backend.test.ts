@@ -102,6 +102,10 @@ describe("V3-10: public front of a backend system", () => {
         "content:rubric /blog/rubric/:slug",
         "content:pages /pages",
         "content:site_page /pages/:slug",
+        // V3-23 «Интернет-магазин»: the goods, the cart with the checkout, the order's page.
+        "shop:shop /shop",
+        "shop:cart /cart",
+        "shop:order /order/:id",
       ].sort(),
     );
     expect((all.spec.pages ?? []).map((p) => p.route)).toEqual(
@@ -128,8 +132,28 @@ describe("V3-10: public front of a backend system", () => {
       schedule: { tz: "Europe/Moscow", days: [1, 2, 3, 4, 5], start: 540, end: 1080, step: 60, capacity: 1 },
     });
     expect(all.publicFront?.functions.map((f) => f.name).sort()).toEqual(
-      ["busySlots", "myMaterials", "packageCheck"].sort(),
+      ["busySlots", "myMaterials", "packageCheck", "shopCdekOptions", "shopOrder", "shopPlaceOrder"].sort(),
     );
+    // V3-23: the goods of «Интернет-магазин» with the checkout the v3 shop patterns pass to the headless shop.
+    expect(action("product")).toMatchObject({
+      hook: "useShop",
+      module: "shop",
+      ops: ["read"],
+      functions: expect.arrayContaining(["shopPlaceOrder", "shopOrder", "shopCdekOptions"]),
+      shop: {
+        online: true,
+        stockField: "stock",
+        categoryEntity: "product_category",
+        placeFn: "shopPlaceOrder",
+        payment: { integration: "shop_pay", binding: "order" },
+        orderPath: "/order/",
+        methods: [
+          { value: "pickup", label: "Самовывоз" },
+          { value: "cdek", label: "СДЭК, пункт выдачи" },
+        ],
+      },
+    });
+    expect(action("pickup_point")).toMatchObject({ hook: "useContent", module: "shop" });
   });
 
   test("the lead and booking scenarios stay checkable on the v3 front", () => {

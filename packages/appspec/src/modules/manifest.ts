@@ -256,6 +256,8 @@ export const moduleFunctionSchema = z.strictObject({
   purpose: text(3, 200),
   /** AppSpec functions[].systemDbReason: why a public function reads through ctx.systemDb (G2-PERM-05). */
   systemDbReason: z.string().min(10).max(300).optional(),
+  /** AppSpec functions[].collectsPii: the arguments carry personal data, a non-admin call needs `_consent` (V3-23). */
+  collectsPii: z.boolean().optional(),
 });
 
 export const SCREEN_AUDIENCES = ["public", "cabinet", "visitor"] as const;

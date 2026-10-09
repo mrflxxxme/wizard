@@ -97,6 +97,7 @@ export {
   publicActions,
   publicFunctions,
   type ScenarioSurface,
+  type ShopFrontConfig,
   scenarioFront,
   V2_FRONT_NOTES,
 } from "./engine/front.js";
@@ -262,6 +263,26 @@ export {
 } from "./screens/home.js";
 /** Deterministic TSX emitters: jsxEl, fragmentPage, js, pascal. */
 export { fragmentPage, type JsxAttr, js, jsxEl, pascal } from "./screens/jsx.js";
+/**
+ * Module «Интернет-магазин» (V3-23): goods with stock, the cart and the checkout, orders, payment through the ЮKassa
+ * connector (54-FZ receipt by the lines), СДЭК by the passport's client, self-pickup, courier; the names the v3 front,
+ * the goal programs and the integration layer read (SHOP_NAMES, SHOP_ROUTES, SHOP_FUNCTIONS, SHOP_PAYMENT).
+ */
+export {
+  DELIVERY_METHODS,
+  type DeliveryMethod as ShopDeliveryMethod,
+  ORDER_STATUSES,
+  SHOP_FUNCTIONS,
+  SHOP_NAMES,
+  SHOP_PAYMENT,
+  SHOP_ROUTES,
+  type ShopOptions,
+  SOLD_STATUSES,
+  shopOptions,
+} from "./shop/compile.js";
+export { CDEK_TARIFF, QUOTE_MINUTES } from "./shop/functions.js";
+export { CDEK_CLIENT_FILES, CDEK_CLIENT_REF, shopManifest, shopModule } from "./shop/index.js";
+export { checkoutConfig, ORDER_PREFIX } from "./shop/pages.js";
 /** Module «Сотрудники и роли» (B2-16): roles staff…staff_5 with sections, the scope of $staff, invitations page. */
 export {
   compileStaff,

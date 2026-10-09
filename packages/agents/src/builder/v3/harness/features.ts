@@ -63,6 +63,13 @@ export function goalScenariosFor(
     const surface = PUBLIC_ACTORS.has(s.actor) ? "public" : "cabinet";
     const narrowed = hits.filter((c) => (c.surface ?? surface) === surface);
     if (narrowed.length) hits = narrowed;
+    else if (surface === "cabinet") {
+      // V3-23: no cabinet-only scenario (the owner checks in the cabinet what a visitor did on the site) — the ones
+      // where staff act come first.
+      const staff = (c: CompiledScenario) =>
+        c.steps.some((x) => !PUBLIC_ACTORS.has(x.actor) && x.actor !== "system");
+      hits = [...hits.filter(staff), ...hits.filter((c) => !staff(c))];
+    }
   }
   return hits.slice(0, MAX_GOAL_SCENARIOS);
 }

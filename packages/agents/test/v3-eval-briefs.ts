@@ -225,10 +225,65 @@ export const KARELIA_TOURS: SystemBriefInput = {
   design: { archetype: "bold_poster", references: [] },
 };
 
-/** The four eval briefs of checkpoint 1 by their eval ids. */
+/**
+ * v3-05 (V3-23): a ceramics workshop's online shop — goods with stock, the cart, ЮKassa with the 54-FZ receipt,
+ * delivery by СДЭК to a pickup point and self-pickup, the orders, payments and stock in the owner's cabinet.
+ */
+export const CERAMICS_SHOP: SystemBriefInput = {
+  goals: [
+    {
+      id: "g_sell",
+      text: "Покупатели заказывают посуду в интернет-магазине и оплачивают её картой на сайте",
+      success: "Оплаченный заказ сразу виден в кабинете, товар списан со склада",
+    },
+  ],
+  audience: "Покупатели посуды ручной работы по всей России, заказывают с телефона",
+  scenarios: [
+    scenario(
+      {
+        id: "s_buy",
+        actor: "visitor",
+        when: "покупатель кладёт товары в корзину и оформляет заказ",
+        goalId: "g_sell",
+        moduleHint: "shop",
+      },
+      [
+        "предлагает самовывоз из мастерской или доставку СДЭК до пункта выдачи",
+        "принимает оплату через ЮKassa с чеком",
+        "показывает статус заказа",
+      ],
+    ),
+    scenario(
+      {
+        id: "s_orders",
+        actor: "owner",
+        when: "владелица открывает кабинет магазина",
+        goalId: "g_sell",
+        moduleHint: "shop",
+      },
+      ["показывает заказы, их статусы и оплаты", "показывает остатки товаров"],
+    ),
+  ],
+  roles: [{ id: "owner", name: "Владелица", can: ["меняет товары и остатки", "видит заказы и оплаты"] }],
+  data: [
+    {
+      entity: "Заказ",
+      fields: [
+        { name: "Имя покупателя", pii: true },
+        { name: "Телефон", pii: true },
+        { name: "Почта для чека", pii: true },
+      ],
+      retention: "3 года",
+    },
+  ],
+  design: { archetype: "editorial", references: [] },
+};
+
+/** The eval briefs of checkpoint 1 by their eval ids (v3-05 — the shop of V3-23). */
 export const EVAL_BRIEFS: Readonly<Record<string, SystemBriefInput>> = {
   "v3-01-interior-studio": INTERIOR_STUDIO,
   "v3-02-dental-booking": DENTAL_BOOKING,
   "v3-03-cleaning-crm": CLEANING_CRM,
   "v3-04-karelia-tours": KARELIA_TOURS,
+  "v3-05-ceramics-shop": CERAMICS_SHOP,
 };

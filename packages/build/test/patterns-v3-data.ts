@@ -161,6 +161,40 @@ export const PREVIEW_ENTITIES: Entity[] = [
       { name: "seo_description", label: "Описание для поисковиков", type: "string", maxLength: 160 },
     ],
   },
+  // V3-23 «Интернет-магазин»: goods with stock, their sections and the self-pickup points (SHOP_NAMES of @wizard/modules).
+  {
+    name: "product_category",
+    label: "Раздел магазина",
+    fields: [
+      { name: "name", label: "Название", type: "string", required: true, maxLength: 80 },
+      { name: "sort_order", label: "Порядок", type: "int" },
+    ],
+  },
+  {
+    name: "product",
+    label: "Товар",
+    fields: [
+      { name: "name", label: "Название", type: "string", required: true, maxLength: 120 },
+      { name: "price", label: "Цена, ₽", type: "money", required: true, min: 0 },
+      { name: "stock", label: "Остаток, шт.", type: "int", required: true, min: 0, default: 0 },
+      { name: "category", label: "Раздел", type: "ref", ref: { entity: "product_category" } },
+      { name: "active", label: "В продаже", type: "bool", required: true, default: true },
+      { name: "description", label: "Описание", type: "text", maxLength: 2000 },
+      { name: "photo", label: "Фото", type: "image" },
+      { name: "sort_order", label: "Порядок", type: "int" },
+    ],
+  },
+  {
+    name: "pickup_point",
+    label: "Пункт самовывоза",
+    fields: [
+      { name: "name", label: "Название", type: "string", required: true, maxLength: 80 },
+      { name: "address", label: "Адрес", type: "string", required: true, maxLength: 200 },
+      { name: "hours", label: "Часы работы", type: "string", maxLength: 120 },
+      { name: "active", label: "Работает", type: "bool", required: true, default: true },
+      { name: "sort_order", label: "Порядок", type: "int" },
+    ],
+  },
 ];
 
 /** What the public role may do: create leads and bookings, read the catalog, the masters and the posts. */
@@ -173,6 +207,9 @@ export const PREVIEW_PERMISSIONS: Permission[] = [
   { role: PREVIEW_ROLE, entity: "post", ops: ["read"] },
   { role: PREVIEW_ROLE, entity: "rubric", ops: ["read"] },
   { role: PREVIEW_ROLE, entity: "article", ops: ["read"], rowFilter: { status: "published" } },
+  { role: PREVIEW_ROLE, entity: "product_category", ops: ["read"] },
+  { role: PREVIEW_ROLE, entity: "product", ops: ["read"], rowFilter: { active: true } },
+  { role: PREVIEW_ROLE, entity: "pickup_point", ops: ["read"], rowFilter: { active: true } },
 ];
 
 /** The forum fixture plus the preview entities, their public permissions and a neutral consent text. */
@@ -242,6 +279,27 @@ const article = (
   cover: cover ? `f_article_${i}` : null,
   seo_title: null,
   seo_description: null,
+});
+
+/** A product of the shop on sale (V3-23). */
+const product = (
+  i: number,
+  name: string,
+  price: number,
+  stock: number,
+  category: string,
+  description: string,
+  photo = true,
+): Row => ({
+  id: `g${String(i).padStart(2, "0")}`,
+  name,
+  price,
+  stock,
+  category,
+  active: true,
+  description,
+  photo: photo ? `f_product_${i}` : null,
+  sort_order: i,
 });
 
 /** Example rows of a pottery studio (the business of the other pattern examples). */
@@ -502,6 +560,52 @@ export const PREVIEW_ROWS: Readonly<Record<string, readonly Row[]>> = {
       "Сушите изделие медленно, под плёнкой, вдали от батареи.",
     ),
   ],
+  // V3-23: goods of the studio's shop (the last one is sold out) and its pickup point.
+  product_category: [
+    { id: "pc_mugs", name: "Кружки", sort_order: 1 },
+    { id: "pc_plates", name: "Тарелки", sort_order: 2 },
+  ],
+  product: [
+    product(1, "Кружка «Утро»", 1800, 3, "pc_mugs", "Объём 300 мл, матовая глазурь цвета топлёного молока."),
+    product(2, "Кружка «Лес»", 1900, 1, "pc_mugs", "Объём 350 мл, зелёная глянцевая глазурь."),
+    product(
+      3,
+      "Тарелка обеденная",
+      2400,
+      5,
+      "pc_plates",
+      "Диаметр 26 см, подходит для посудомоечной машины.",
+    ),
+    product(4, "Тарелка десертная", 1600, 0, "pc_plates", "Диаметр 19 см, белая глазурь с крапом.", false),
+  ],
+  pickup_point: [
+    {
+      id: "pp_studio",
+      name: "Мастерская",
+      address: "ул. Гончарная, 5",
+      hours: "вт–сб 11:00–20:00",
+      active: true,
+      sort_order: 1,
+    },
+  ],
+};
+
+/** The СДЭК answer of the shop module (shopCdekOptions) in the preview: the passport's mock (test). */
+export const PREVIEW_CDEK = {
+  quote: "q_preview",
+  city: "Москва",
+  price: 390,
+  days: "2–4 дня",
+  points: [
+    {
+      code: "MSK1",
+      name: "Пункт СДЭК на Тверской",
+      address: "Москва, ул. Тверская, 7",
+      hours: "10:00–21:00",
+    },
+    { code: "MSK2", name: "Пункт СДЭК у метро", address: "Москва, пр. Мира, 12", hours: "09:00–22:00" },
+  ],
+  test: true,
 };
 
 /** How the stand-in answers: data as is, empty lists, errors of the runtime, or slow answers (loading states). */
@@ -670,9 +774,20 @@ export function previewApi(photo: (name: string) => string) {
     if (fn && req.method === "POST") {
       const name = fn[1] as string;
       const args = (body.args ?? {}) as Record<string, unknown>;
-      if (name !== "busySlots") writes.push({ path, body });
+      if (name !== "busySlots" && name !== "shopCdekOptions") writes.push({ path, body });
+      // V3-23: the shop module's functions — the СДЭК quote and a placed order (paid on its page, not here).
+      const placed = { id: "order_1", number: 1001, token: args.token, total: 0, pay: false };
       json(res, 200, {
-        result: name === "busySlots" ? (mode === "empty" ? [] : busySlots(args)) : null,
+        result:
+          name === "busySlots"
+            ? mode === "empty"
+              ? []
+              : busySlots(args)
+            : name === "shopCdekOptions"
+              ? PREVIEW_CDEK
+              : name === "shopPlaceOrder"
+                ? placed
+                : null,
         deps: [],
       });
       return true;

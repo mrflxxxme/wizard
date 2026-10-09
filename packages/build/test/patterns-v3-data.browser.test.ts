@@ -126,9 +126,66 @@ const writesSince = (mark: number) => server().writes.slice(mark);
 describe.skipIf(!hasChromium)("module-bound patterns in chromium", () => {
   test("the library has data-bound form, catalog and blog sections", () => {
     expect(new Set(DATA.map((p) => p.sectionType))).toEqual(
-      new Set(["form", "catalog", "blog", "article", "rubric", "account"]),
+      new Set(["form", "catalog", "blog", "article", "rubric", "account", "shop", "cart", "order"]),
     );
   });
+
+  test("shop (V3-23): «В корзину» → the cart line → СДЭК by the city, a point, contacts, consent → the order by the module's function", async () => {
+    const { page, errors } = await open({});
+    const grid = section(page, "shop-grid");
+    const cart = section(page, "cart-split");
+    const mark = server().writes.length;
+    // Stock from the data: the sold-out plate cannot be added.
+    expect(await grid.getByRole("button", { name: "Тарелка десертная: нет в наличии" }).isDisabled()).toBe(
+      true,
+    );
+    await grid.getByRole("button", { name: "В корзину: Кружка «Лес»" }).click();
+    await expect
+      .poll(() => grid.getByRole("status").filter({ hasText: "Добавлено в корзину" }).count())
+      .toBe(1);
+    // Only one piece in stock: the cart does not take a second one.
+    expect(await grid.getByRole("button", { name: "В корзину: Кружка «Лес»" }).isDisabled()).toBe(true);
+    await grid.getByRole("button", { name: "В корзину: Кружка «Утро»" }).click();
+    const lines = cart.locator('[data-testid="wz-cart-line"]');
+    await expect.poll(() => lines.count()).toBe(2);
+    await cart.getByRole("button", { name: "Больше: Кружка «Утро»" }).click();
+    expect(await cart.getByTestId("wz-cart-total").textContent()).toMatch(/5\s500/);
+    // СДЭК: a city, the module's quote with its points, one point chosen.
+    const checkout = cart.locator('[data-wz-component="ShopCheckout"]');
+    await checkout.getByRole("radio", { name: /СДЭК/ }).check();
+    await checkout.getByLabel("Город доставки").fill("Москва");
+    await checkout.getByRole("button", { name: "Найти пункты СДЭК" }).click();
+    await expect.poll(() => checkout.getByTestId("wz-cdek-quote").textContent()).toContain("390");
+    await checkout.getByRole("radio", { name: /пр\. Мира/ }).check();
+    expect(await checkout.getByTestId("wz-checkout-total").textContent()).toMatch(/5\s890/);
+    // Without a name and the consent nothing is sent.
+    await checkout.getByRole("button", { name: "Оформить и оплатить" }).click();
+    await expect.poll(() => checkout.getByLabel("Имя и фамилия").getAttribute("aria-invalid")).toBe("true");
+    expect(writesSince(mark)).toEqual([]);
+    await checkout.getByLabel("Имя и фамилия").fill("Анна");
+    await checkout.getByLabel("Телефон").fill("8 912 345-67-89");
+    await checkout.getByLabel(/Я соглашаюсь на обработку/).check();
+    await cart.screenshot({ path: join(SHOTS, "data-cart-split-filled.png") });
+    await checkout.getByRole("button", { name: "Оформить и оплатить" }).click();
+    await expect.poll(() => writesSince(mark).length).toBe(1);
+    const [write] = writesSince(mark);
+    expect(write?.path).toBe("/api/fn/shopPlaceOrder");
+    expect(write?.body.args).toMatchObject({
+      lines: [
+        { product: "g02", qty: 1 },
+        { product: "g01", qty: 2 },
+      ],
+      delivery: "cdek",
+      name: "Анна",
+      phone: "+79123456789",
+      quote: "q_preview",
+      cdekPoint: "MSK2",
+    });
+    const args = (write?.body.args ?? {}) as { token?: unknown };
+    expect(String(args.token)).toMatch(/^[A-Za-z0-9_-]{32,64}$/);
+    expect(errors).toEqual([]);
+    await page.context().close();
+  }, 60_000);
 
   // For a design review (about two minutes): WIZARD_PATTERN_SHOTS=1. The matrix already shoots each pattern once.
   test.skipIf(!process.env.WIZARD_PATTERN_SHOTS)(

@@ -24,6 +24,10 @@ export const SECTION_TYPES = [
   "rubric",
   // V3-18: the client cabinet /me of «Кабинет посетителя» (the visitor's own records).
   "account",
+  // V3-23 «Интернет-магазин»: the goods with «В корзину», the cart with the checkout, the order of its buyer.
+  "shop",
+  "cart",
+  "order",
 ] as const;
 export type SectionType = (typeof SECTION_TYPES)[number];
 

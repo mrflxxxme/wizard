@@ -169,4 +169,9 @@ export interface DataSource {
   useFiles(): FilesApi;
   /** ext (M3-02): POST /api/ai/:action {entity, id} — RecordCard action kind=ai. */
   useAiAction(): Mutation<[action: string, entity: string, id: string], AiActionResult>;
+  /**
+   * ext (V3-23): POST /api/pay/:integration {binding, id, token?} → the confirmation URL of the payment (the caller
+   * goes there); `token` — the buyer's secret of an order he cannot read. Optional: sources without payments omit it.
+   */
+  usePay?(): Mutation<[integration: string, binding: string, id: string, token?: string], string>;
 }

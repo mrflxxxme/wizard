@@ -133,7 +133,7 @@ describe("brief merge by code", () => {
             when: "посетитель смотрит цены",
             // biome-ignore lint/suspicious/noThenProperty: scenario field of the brief (builder-v3.md §3 C1)
             then: ["показывает прайс"],
-            moduleHint: "shop",
+            moduleHint: "marketplace",
             priority: "should",
           },
         ],

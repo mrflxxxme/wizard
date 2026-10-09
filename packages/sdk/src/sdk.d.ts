@@ -313,7 +313,8 @@ export interface AiActionState {
   error: WizardError | undefined;
 }
 export interface PaymentState<I extends keyof Payments & string> {
-  pay(binding: Payments[I], id: string): Promise<void>;
+  /** `token` (V3-23): the buyer's secret of an order he cannot read (a visitor without login). */
+  pay(binding: Payments[I], id: string, token?: string): Promise<void>;
   pending: boolean;
   error: WizardError | undefined;
 }

@@ -39,7 +39,7 @@ const norm = (s: string) =>
     .trim();
 
 /** What the skeleton must say for each eval brief (natural Russian from the offer, the goals and the name). */
-const EXPECTED: Readonly<Record<string, { title: string; lead: string; form: string; seo: string }>> = {
+const EXPECTED: Readonly<Record<string, { title: string; lead: string; form?: string; seo: string }>> = {
   "v3-01-interior-studio": {
     title: "Ремонт и отделка в Екатеринбурге",
     lead: "Дизайн квартиры, дизайн дома, авторский надзор и комплектация.",
@@ -64,6 +64,12 @@ const EXPECTED: Readonly<Record<string, { title: string; lead: string; form: str
     form: "Заявка на заезд",
     seo: "Проверка — туры по Карелии",
   },
+  // V3-23: a shop without request forms.
+  "v3-05-ceramics-shop": {
+    title: "Проверка — мастерская",
+    lead: "Закажите посуду в интернет-магазине и оплатите её картой.",
+    seo: "Проверка — мастерская",
+  },
 };
 
 describe("texts of the skeleton from the brief (no model)", () => {
@@ -75,9 +81,9 @@ describe("texts of the skeleton from the brief (no model)", () => {
         lead?: string;
         action: { label: string };
       };
-      const form = formOf(site)?.props as { title: string };
+      const form = formOf(site)?.props as { title: string } | undefined;
       const want = EXPECTED[id];
-      expect({ title: hero.title, lead: hero.lead, form: form.title, seo: home(site).seo.title }).toEqual(
+      expect({ title: hero.title, lead: hero.lead, form: form?.title, seo: home(site).seo.title }).toEqual(
         want,
       );
       // Never the audience as a heading, never the first words of a sentence of the brief cut off (the planner's
@@ -85,12 +91,12 @@ describe("texts of the skeleton from the brief (no model)", () => {
       const brief = systemBriefSchema.parse(input);
       const audience = norm(brief.audience);
       const cut = norm(fallbackNiche(brief.audience));
-      const texts = [hero.title, hero.lead ?? "", form.title, hero.action.label, home(site).seo.title];
+      const texts = [hero.title, hero.lead ?? "", form?.title ?? "", hero.action.label, home(site).seo.title];
       for (const t of texts) {
         expect(t).not.toMatch(/…|\.\.\./);
         expect(norm(t)).not.toBe(audience);
       }
-      for (const t of [hero.title, form.title]) {
+      for (const t of form ? [hero.title, form.title] : [hero.title]) {
         expect(audience.startsWith(norm(t)), `${t} — начало аудитории`).toBe(false);
         expect(t).not.toBe("Связаться");
       }
@@ -99,7 +105,7 @@ describe("texts of the skeleton from the brief (no model)", () => {
       if (audience.startsWith(cut))
         for (const t of texts) expect(norm(t).includes(cut), `«${t}» содержит «${cut}»`).toBe(false);
       // Every text ends where its phrase ends: a heading has no dangling preposition, conjunction or comma.
-      for (const t of [hero.title, form.title])
+      for (const t of form ? [hero.title, form.title] : [hero.title])
         expect(t).not.toMatch(/(?:\s(?:в|во|на|по|к|с|для|и|или|которые|который)|[,:;—-])$/i);
     });
 
