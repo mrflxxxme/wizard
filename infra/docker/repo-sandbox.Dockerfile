@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # Phase pods of the repository sandbox (V3-32; apps/platform-api/src/repo-agent/pod-sandbox.ts repoSandboxPod): Node 22
 # with corepack — npm comes with Node, pnpm and yarn are shims that corepack resolves per repository (the version of
 # package.json#packageManager is downloaded in the install phase into the workspace, /work/cache/corepack). Debian's

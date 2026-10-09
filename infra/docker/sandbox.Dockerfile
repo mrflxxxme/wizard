@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # workerd of the sandbox pods (security/isolation.yaml#M2; apps/runtime/src/sandbox/pod.ts, M2-18): the binary only,
 # non-root (uid 65532 as in sandboxPod()), no shell needed at run time; the config comes from the pod's ConfigMap.
 # Pinned by version and sha256 of the npm tarball — the same version as WORKERD_VERSION of .github/workflows/sandbox.yml

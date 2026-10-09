@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # PgBouncer ≥ 1.21 (ISC) in transaction mode in front of Cloud.ru Managed PostgreSQL (deploy.yaml#cloud.postgres.pooling,
 # L3-21). Config and userlist come from the chart (ConfigMap + Secret at /etc/pgbouncer); nothing is baked in.
 # Used when the managed pooler cannot set max_prepared_statements > 0 (week-0 question, docs/ops/deploy.md).

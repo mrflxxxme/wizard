@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # platform-web: static build of apps/platform-web served by unprivileged nginx (BSD-2-Clause) on :8080.
 # /api goes to platform-api through the ingress (infra/helm/wizard, platform host), not through this server.
 # Read-only root filesystem: the chart mounts emptyDirs at /tmp, /var/cache/nginx and /etc/nginx/conf.d (the
