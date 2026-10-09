@@ -187,8 +187,13 @@ export class ValueGen {
       }
       case "date":
       case "datetime": {
-        const days = f.unique ? (n % 3650) + 1 : i + 1;
-        const iso = new Date(this.now.getTime() + days * DAY_MS).toISOString();
+        // A unique value is a day of the next 10 years (date: 100 years) and, once the counter has gone round them, a
+        // minute of that day: probe generators start at 100 000 (G1) and 200 000 (G2), so on days alone they came
+        // round to the seed's days (counter < 3650) — a duplicate slot of a unique index (23505, V3-15).
+        const span = f.type === "date" ? 36_500 : 3650;
+        const days = f.unique ? (n % span) + 1 : i + 1;
+        const minutes = f.unique && f.type === "datetime" ? Math.floor(n / span) % 1440 : 0;
+        const iso = new Date(this.now.getTime() + days * DAY_MS + minutes * 60_000).toISOString();
         return f.type === "date" ? iso.slice(0, 10) : iso;
       }
       case "json":

@@ -35,6 +35,7 @@ import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
 import { platformCritic } from "./critic.js";
 import { liveStats, withLiveProgress } from "./progress.js";
+import { platformTechreview } from "./techreview.js";
 import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
@@ -52,7 +53,7 @@ export interface V3BuildOptions {
   enabled?: boolean;
   /** The page writer (default: the V3-12 composer on the ui-kit pattern library, createPageComposer()). */
   composer?: PageComposer;
-  /** Stages of V3-13…15 (critic, template_gate, techreview); absent — skipped. */
+  /** Stages of V3-13…15 (critic, template_gate, techreview); absent — skipped (techreview: platformTechreview). */
   hooks?: Partial<Record<"critic" | "template_gate" | "techreview", V3StageHook>>;
   /** The ready notice by e-mail (default: the platform mailer of the config). */
   mailer?: Mailer;
@@ -209,6 +210,12 @@ export async function buildByBrief(
         browser: withBrowser ? provider : null,
         signal: host.signal,
         ...(o.log ? { log: o.log } : {}),
+      }),
+      // V3-15: the techreview (deterministic part + a reviewer of another family, T0).
+      techreview: platformTechreview(host, {
+        pg: o.pg,
+        db: o.db,
+        ...(o.registry ? { registry: o.registry } : {}),
       }),
       ...o.hooks,
     },

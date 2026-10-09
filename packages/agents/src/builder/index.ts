@@ -289,3 +289,10 @@ export {
 } from "./v3/harness/types.js";
 export { milliRub, V3BudgetError, V3Wallet } from "./v3/harness/wallet.js";
 export { runBuildV3, stopMessage } from "./v3/run.js";
+/**
+ * V3-15 techreview (builder-v3.md C6 stage 7, D77 (10)): createTechreview(deps) — the hook of stage techreview: the
+ * deterministic part first (G0 and the static G2 on the uncommitted system, the migration dry run, RLS, ПДн, integration
+ * contracts, module chains, performance and accessibility), then a reviewer of another model family (submit_techreview,
+ * a closed set of findings), ≤ 2 rounds of safe fixes; blockers → the system is not published.
+ */
+export * from "./v3/techreview/index.js";

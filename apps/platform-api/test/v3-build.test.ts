@@ -139,7 +139,7 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
     const gates = ev.filter((e) => e.type === "gate_result").map((e) => e.payload);
     expect(done.status, JSON.stringify({ failure: done.failure, gates })).toBe("succeeded");
 
-    // Stages of the harness v3 for the canvas; critic, template gate and techreview skipped until V3-13…15.
+    // Stages of the harness v3 for the canvas; critic and template gate skipped until V3-13, V3-14; the techreview runs.
     const stages = ev
       .filter((e) => e.type === "build_stage")
       .map((e) => `${e.payload.stage}:${e.payload.status}`);
@@ -156,7 +156,8 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
       "scenarios:done",
       "critic:skipped",
       "template_gate:skipped",
-      "techreview:skipped",
+      "techreview:started",
+      "techreview:done",
       "gates:started",
       "gates:done",
     ]);
@@ -213,7 +214,7 @@ describe("platform: a build by the brief on the harness v3 (WIZARD_BUILD_PIPELIN
       ev2
         .filter((e) => e.type === "build_stage" && e.payload.status === "reused")
         .map((e) => e.payload.stage),
-    ).toEqual(["brief", "design", "skeleton", "gates"]);
+    ).toEqual(["brief", "design", "skeleton", "techreview", "gates"]);
     // No new revision, no gate run: the draft is where the first build left it.
     expect(ev2.filter((e) => e.type === "gate_result" || e.type === "file_written")).toEqual([]);
     const after = await api.deps.db

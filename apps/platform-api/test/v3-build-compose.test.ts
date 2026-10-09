@@ -10,10 +10,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPageComposer, type PageComposer, readSite, type V3BuildContext } from "@wizard/agents/builder";
 import { type AppSpec, systemBriefSchema } from "@wizard/appspec";
-import type { RouteInput, RouteOutput } from "@wizard/llm";
+import {
+  createRouter,
+  type RouteInput,
+  type RouteOutput,
+  type Router,
+  type RouterOptions,
+} from "@wizard/llm";
 import { closeExecutors } from "@wizard/runtime";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { clinicBrief } from "../../../packages/agents/test/v3-harness-fixtures.js";
+import { clinicBrief, writeFixture } from "../../../packages/agents/test/v3-harness-fixtures.js";
+import { reviewLine, workshopCtx } from "../../../packages/agents/test/v3-techreview-fixtures.js";
 import { createAgentExecutors } from "../src/agents/executors.js";
 import { OutboxMailer } from "../src/auth/mailer.js";
 import { saveBriefVersion } from "../src/briefs/store.js";
@@ -81,11 +88,24 @@ const composer: PageComposer = {
 let tdb: Awaited<ReturnType<typeof createTestDb>>;
 let api: TestApi;
 let outboxDir: string;
+/** V3-15: the reviewer of the techreview answers «nothing to fix» (recorded); the composer's model is scripted. */
+let fixtureDir: string;
 
 beforeAll(async () => {
   tdb = await createTestDb("v3compose", { migrator: true });
   outboxDir = mkdtempSync(join(tmpdir(), "wz-v3c-outbox-"));
+  const noRoute = async (): Promise<RouteOutput> => {
+    throw new Error("no model");
+  };
+  fixtureDir = writeFixture("techreview", [reviewLine(workshopCtx({ route: noRoute }), { findings: [] })]);
   api = await startApi(tdb.url, {
+    createRouter: (opts: RouterOptions): Router =>
+      createRouter({
+        ...opts,
+        mode: "fixture",
+        fixture: { suite: "demo", name: "v3/techreview", dir: fixtureDir },
+        env: {},
+      }),
     config: { unsafeLocalExec: true },
     executors: ({ pg, config }) =>
       createAgentExecutors({
@@ -101,6 +121,7 @@ afterAll(async () => {
   await closeExecutors();
   await tdb?.drop();
   rmSync(outboxDir, { recursive: true, force: true });
+  rmSync(fixtureDir, { recursive: true, force: true });
 });
 
 describe("platform: «Собрать» with the V3-12 page composer on the real pattern library", () => {
