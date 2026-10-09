@@ -40,6 +40,25 @@ export {
 export { clientHistoryPage, type HistorySource, historySources } from "./client_card/history.js";
 /** Module «Клиенты с историей»: manifest and definition. */
 export { clientCardManifest, clientCardModule } from "./client_card/index.js";
+/**
+ * Module «Контент и блог» (V3-24): articles, rubrics and pages of the site with draft/published, the public screens
+ * (/blog, /blog/:slug, /blog/rubric/:slug, /pages, /pages/:slug) and the canonical names the v3 front and the runtime
+ * read (CONTENT_NAMES, CONTENT_ROUTES, CONTENT_SCREENS).
+ */
+export {
+  CONTENT_BODY_MAX,
+  CONTENT_NAMES,
+  CONTENT_ROUTES,
+  CONTENT_SCREENS,
+  CONTENT_STATUSES,
+  type ContentOptions,
+  type ContentScreen,
+  compileContent,
+  contentOptions,
+  PUBLISHED,
+} from "./content/compile.js";
+export { contentManifest, contentModule } from "./content/index.js";
+export { CONTENT_LIB_FILE, entryPrefix } from "./content/pages.js";
 /** «Воронка» page of «Воронка сделок»: StatusBoard by stage, the deal card and its tasks. */
 export { dealsBoardPage } from "./deals/board.js";
 /** Module «Воронка сделок»: compile hook (stages stage_1…N + won, lost), canonical stage options. */

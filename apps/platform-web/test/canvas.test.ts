@@ -35,6 +35,19 @@ describe("canvas model", () => {
     expect(m.accent).toBeNull();
   });
 
+  test("V3-24: a system with «Контент и блог» only has a public site — the phone frame shows it", () => {
+    const blog: PlanSketch = {
+      ...interview,
+      modules: [{ ...(interview.modules[0] as PlanSketch["modules"][number]), id: "content", params: [] }],
+    };
+    expect(canvasModel(blog, NAME).frames.phone.map((b) => b.kind)).toContain("mobile");
+    const crm: PlanSketch = {
+      ...blog,
+      modules: [{ ...(blog.modules[0] as PlanSketch["modules"][number]), id: "deals" }],
+    };
+    expect(canvasModel(crm, NAME).frames.phone.map((b) => b.kind)).not.toContain("mobile");
+  });
+
   test("plan sketch: the design direction (B2-37) — theme and fonts on the site's top bar, none in the interview", () => {
     const nav = (sk: PlanSketch) => canvasModel(sk, NAME).frames.site.find((b) => b.kind === "nav");
     expect(nav(interview)?.tags.some((t) => t.label.startsWith("Оформление"))).toBe(false);

@@ -9,7 +9,7 @@ import type { AppSpec } from "@wizard/appspec";
 import * as esbuild from "esbuild";
 import { canonicalJson, sha256Hex, specHash } from "./hash.js";
 import { ENTRY_NS, SDK, SDK_JSX, toPosix, UI_KIT, wizardPlugin } from "./plugin.js";
-import { parseSeo, SEO_PATH, type SiteSeo, seoClientCode, seoHeadTags, seoTitle } from "./seo.js";
+import { parseSeo, SEO_ASSET, SEO_PATH, type SiteSeo, seoClientCode, seoHeadTags, seoTitle } from "./seo.js";
 import { DESIGN_CSS_PATH, layeredCss, systemTailwind } from "./tailwind.js";
 import type {
   BuildEnv,
@@ -406,6 +406,9 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
       "index.html",
       new TextEncoder().encode(indexHtml(spec, env, script, style, input.platformOrigin, seo)),
     );
+    // V3-24: the runtime reads ui/seo.json from the bundle — the per-route head for crawlers, /sitemap.xml with the
+    // published entries of «Контент и блог» (its `content` sources).
+    if (seo && seoText !== undefined) clientFiles.set(SEO_ASSET, new TextEncoder().encode(seoText));
     const serverFunctions = fns.files[0]?.text ?? "";
 
     const clientSize = [...clientFiles.values()].reduce((n, b) => n + b.byteLength, 0);

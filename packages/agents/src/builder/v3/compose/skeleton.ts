@@ -3,6 +3,7 @@
 // patterns already on the site, so variants and layout families spread over the page and the site; the slot schema of
 // the variant must accept the content), texts from the facts, one header and one footer for the whole site with the
 // page list, SEO per page.
+import { contentOptions } from "@wizard/modules";
 import {
   PATTERNS,
   type PatternMeta,
@@ -25,7 +26,9 @@ import { lintErrors, lintPage } from "./lint.js";
 import {
   type Binding,
   bindingOf,
+  CONTENT_MODULE,
   componentOf,
+  isParamRoute,
   PAGE_SECTIONS,
   type PlannedPage,
   plannedPages,
@@ -99,6 +102,12 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
   const library = lib.patterns ?? PATTERNS;
   const facts = siteFacts(ctx);
   const planned = plannedPages(ctx.spec, ctx.publicFront);
+  // V3-24: the list of articles is called as the owner named it (blog_title of «Контент и блог»).
+  const content = ctx.plan.modules.find((m) => m.id === CONTENT_MODULE);
+  if (content)
+    for (const p of planned)
+      if (p.module === CONTENT_MODULE && p.screen === "blog")
+        p.title = contentOptions(content.params ?? {}).blogTitle;
   const seed = `${ctx.design.seed}:${ctx.systemId}`;
   const archetype = ctx.design.archetype;
   const site: SiteModel = { version: 1, seed, archetype, primary: null, pages: [] };
@@ -225,7 +234,7 @@ export function composeSite(ctx: V3BuildContext, lib: ComposeLibrary = {}): Skel
       file: `${SITE_PAGES_DIR}/${component}.tsx`,
       component,
       nav: page.kind === "home" ? "Главная" : page.title,
-      header: page.kind !== "credits" && page.kind !== "account",
+      header: page.kind !== "credits" && page.kind !== "account" && !isParamRoute(page.route),
       roles: page.roles,
       ...(page.module ? { module: page.module } : {}),
       seo: seoOf(facts, page, hero),

@@ -4,7 +4,7 @@
 // владелец получил письмо»), every scenario of a ready module has a program, and every CI matrix row of the modules
 // with code passes with the scenarios of its own module (the other plan modules' scenarios run in their own rows;
 // «Абонементы» and «Учёт выдачи» — in goals-b218.browser.test.ts); the row «все модули» (B2-19) runs the full plan with
-// every scenario of all 12 modules.
+// every scenario of all 13 modules.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -157,7 +157,7 @@ describe.skipIf(!hasChromium)("goal scenarios of the modules pass in the browser
     600_000,
   );
 
-  // B2-19: the row «все модули» — the full plan with every goal scenario of all 12 modules (booking next to packages
+  // B2-19: the row «все модули» — the full plan with every goal scenario of all 13 modules (booking next to packages
   // writing a visit off, the panel's tiles and hints next to every metric) and every page at 390 px. The third
   // runner takes it: the first one runs the time measure of the same plan (goals-time.browser.test.ts).
   test.skipIf(!inShard(2))(

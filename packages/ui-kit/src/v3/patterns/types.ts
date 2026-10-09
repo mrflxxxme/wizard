@@ -19,6 +19,9 @@ export const SECTION_TYPES = [
   "catalog",
   "blog",
   "footer",
+  // V3-24 «Контент и блог»: one entry by the slug of the address (article, page) and the posts of a rubric.
+  "article",
+  "rubric",
 ] as const;
 export type SectionType = (typeof SECTION_TYPES)[number];
 

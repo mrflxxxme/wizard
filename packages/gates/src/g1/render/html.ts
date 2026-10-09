@@ -143,10 +143,16 @@ function formFields(form: HtmlNode): Set<string> {
 }
 
 /**
- * Forms (outside the platform login, wz-login) that write a pii≠none field the role may create/update, without a
- * consent checkbox (data-testid wz-consent…) inside. Returns the pii field names of each such form.
+ * Forms (outside the platform login, wz-login) that write a pii≠none field the role may create/update without the
+ * consent in their DOM before sending: a consent block (data-testid wz-consent…: ui-kit ConsentCheckbox, the form
+ * patterns of v3) holding a checkbox the person ticks and, when the system has a policy page, the link to it
+ * (compliance.yaml#system_package.consent.ui, G2-PII-04). Returns the pii field names of each such form.
  */
-export function formsWithoutConsent(root: HtmlNode, writablePii: ReadonlySet<string>): string[][] {
+export function formsWithoutConsent(
+  root: HtmlNode,
+  writablePii: ReadonlySet<string>,
+  policyPage?: string | null,
+): string[][] {
   const out: string[][] = [];
   walk(root, (n, anc) => {
     if (n.tag !== "form") return;
@@ -154,8 +160,15 @@ export function formsWithoutConsent(root: HtmlNode, writablePii: ReadonlySet<str
     const pii = [...formFields(n)].filter((f) => writablePii.has(f));
     if (pii.length === 0) return;
     let consent = false;
-    walk(n, (c) => {
-      if ((c.attrs["data-testid"] ?? "").startsWith("wz-consent")) consent = true;
+    walk(n, (block) => {
+      if (consent || !(block.attrs["data-testid"] ?? "").startsWith("wz-consent")) return;
+      let box = false;
+      let link = !policyPage;
+      walk(block, (x) => {
+        if (x.tag === "input" && x.attrs.type === "checkbox") box = true;
+        if (x.tag === "a" && policyPage && x.attrs.href === policyPage) link = true;
+      });
+      consent = box && link;
     });
     if (!consent) out.push(pii);
   });

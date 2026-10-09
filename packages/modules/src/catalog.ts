@@ -3,6 +3,7 @@
 import { bookingModule } from "./booking/index.js";
 import { catalogModule } from "./catalog/index.js";
 import { clientCardModule } from "./client_card/index.js";
+import { contentModule } from "./content/index.js";
 import { dealsModule } from "./deals/index.js";
 import { DRAFT_MANIFESTS } from "./draft.js";
 import { landingModule } from "./landing/index.js";
@@ -29,6 +30,7 @@ export const MODULES_WITH_CODE: readonly ModuleDefinition[] = [
   bookingModule,
   packagesModule,
   resourcesModule,
+  contentModule,
 ];
 
 const withCode = new Map(MODULES_WITH_CODE.map((d) => [d.manifest.id, d]));

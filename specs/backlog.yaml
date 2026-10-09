@@ -3974,7 +3974,7 @@ tasks:
     owner: frontend
     parallel_group: v3-b
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Модуль «Контент и блог»: страницы, статьи, рубрики; владелец пишет и публикует из кабинета; sitemap и robots"

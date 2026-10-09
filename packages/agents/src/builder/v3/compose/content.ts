@@ -2,9 +2,17 @@
 // fact is missing the section gets an honest functional wording («Оставьте заявку») or is left out — never numbers,
 // reviews or claims the owner did not give (D49, catalog H.4). Props are the union of what the variants of a section
 // type may show; the slot schema of the chosen pattern keeps its part.
+import { CONTENT_NAMES, CONTENT_SCREENS, entryPrefix } from "@wizard/modules";
 import type { SectionType } from "@wizard/ui-kit/v3/patterns";
 import { type SiteFacts, textOf } from "./facts.js";
-import { ANCHOR_LABELS, type Binding, type PageKind, type PlannedPage } from "./site.js";
+import {
+  ANCHOR_LABELS,
+  type Binding,
+  CONTENT_MODULE,
+  isParamRoute,
+  type PageKind,
+  type PlannedPage,
+} from "./site.js";
 
 /** Where the main action of the site leads: a section of a page (form) or a page, a phone, an e-mail. */
 export interface SiteAction {
@@ -75,7 +83,7 @@ export function primaryAction(
   if (catalog) return { kind: "catalog", label: "Открыть каталог", route: catalog.route };
   if (facts.phone) return { kind: "phone", label: "Позвонить", href: telHref(facts.phone) };
   if (facts.email) return { kind: "email", label: "Написать письмо", href: `mailto:${facts.email}` };
-  const other = pages.find((p) => p.kind !== "home" && p.kind !== "credits");
+  const other = pages.find((p) => p.kind !== "home" && p.kind !== "credits" && !isParamRoute(p.route));
   return other
     ? { kind: "page", label: fits(other.title, LINE.label) ?? "Подробнее о разделе", route: other.route }
     : null;
@@ -113,7 +121,7 @@ export interface SectionContext {
 }
 
 function headerNav(c: SectionContext): Link[] {
-  const pages = c.pages.filter((p) => p.kind !== "credits" && p.kind !== "account");
+  const pages = c.pages.filter((p) => p.kind !== "credits" && p.kind !== "account" && !isParamRoute(p.route));
   const links: Link[] = pages.length >= 2 ? pages.map((p) => ({ label: navLabel(p), href: p.route })) : [];
   if (links.length < 2) {
     links.length = 0;
@@ -170,7 +178,9 @@ function heroAction(c: SectionContext): Link | null {
   const a = c.primary;
   if (!a) return null;
   if (a.route !== c.page.route || a.anchor) return actionLink(a, c.page.route);
-  const other = c.pages.find((p) => p.route !== c.page.route && p.kind !== "credits");
+  const other = c.pages.find(
+    (p) => p.route !== c.page.route && p.kind !== "credits" && !isParamRoute(p.route),
+  );
   return other ? { label: navLabel(other), href: other.route } : null;
 }
 
@@ -232,7 +242,10 @@ function headerProps(c: SectionContext): Props {
 
 function footerProps(c: SectionContext): Props {
   const f = c.facts;
-  const links = c.pages.map((p) => ({ label: navLabel(p), href: p.route })).slice(0, 6);
+  const links = c.pages
+    .filter((p) => !isParamRoute(p.route))
+    .map((p) => ({ label: navLabel(p), href: p.route }))
+    .slice(0, 6);
   const out: Props = {
     brand: brand(f),
     columns: [{ title: "Разделы", links }],
@@ -356,6 +369,7 @@ function planSteps(f: SiteFacts, max: number): string[] | undefined {
 function boundProps(type: SectionType, c: SectionContext): Props | null {
   const b = c.binding;
   if (!b) return null;
+  if (c.page.module === CONTENT_MODULE) return contentEntryProps(type, c, b);
   const f = c.facts;
   const entity = b.action.entity;
   const contact = f.phone ? { contact: { label: f.phone, href: telHref(f.phone) } } : {};
@@ -410,6 +424,62 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   return { entity, title: fits(c.page.title, LINE.cta) ?? "Материалы", empty: "Записей пока нет" };
 }
 
+/** The route of a screen of «Контент и блог» on the site (a list, an entry page). */
+const contentRoute = (c: SectionContext, screen: string | undefined) =>
+  screen ? c.pages.find((p) => p.module === CONTENT_MODULE && p.screen === screen)?.route : undefined;
+
+/**
+ * Sections of the pages of «Контент и блог» (V3-24) in the slot contract of the article, rubric and blog patterns:
+ * the entity of the screen, the address prefixes of its entry pages and rubric pages, the way back to the list. The
+ * texts are functional (the list's name is the page's title); entries, dates and rubrics come from the data.
+ */
+function contentEntryProps(type: SectionType, c: SectionContext, b: Binding): Props | null {
+  const screen = c.page.screen ? CONTENT_SCREENS[c.page.screen] : undefined;
+  if (!screen) return null;
+  const entity = b.action.entity;
+  const entryRoute = contentRoute(c, screen.entry);
+  const listPage = c.pages.find((p) => p.module === CONTENT_MODULE && p.screen === screen.list);
+  const rubricRoute = c.pages.find((p) => p.module === CONTENT_MODULE && p.kind === "rubric")?.route;
+  const articles = entity === CONTENT_NAMES.article;
+  const listTitle = fits(c.page.kind === "content" ? c.page.title : listPage?.title, LINE.cta);
+  if (type === "article") {
+    if (!isParamRoute(c.page.route)) return null;
+    return {
+      entity,
+      path: entryPrefix(c.page.route),
+      ...(articles && rubricRoute ? { rubric: { path: entryPrefix(rubricRoute) } } : {}),
+      ...(listPage
+        ? { back: { label: fits(listPage.title, LINE.label) ?? "Все записи", href: listPage.route } }
+        : {}),
+      missing: "Возможно, запись убрали или адрес набран с ошибкой.",
+    };
+  }
+  if (type === "rubric") {
+    if (!rubricRoute) return null;
+    const list = c.page.kind === "content" ? c.page : listPage;
+    return {
+      entity,
+      ...(entryRoute ? { path: entryPrefix(entryRoute) } : {}),
+      rubrics: { path: entryPrefix(rubricRoute) },
+      title: c.page.kind === "content" ? "Все записи" : (listTitle ?? "Все записи"),
+      level: c.page.kind === "rubric" ? 1 : 2,
+      ...(list ? { all: { label: "Все", href: list.route } } : {}),
+      empty: "Записей пока нет — загляните позже",
+      pageSize: 6,
+    };
+  }
+  if (type === "blog")
+    return {
+      entity,
+      fields: { date: screen.dateField },
+      ...(entryRoute ? { path: entryPrefix(entryRoute) } : {}),
+      title: articles ? "Все записи" : "Все страницы",
+      empty: articles ? "Записей пока нет — загляните позже" : "Страниц пока нет",
+      pageSize: 9,
+    };
+  return null;
+}
+
 /** Props of a section of a page kind, or null when there is nothing honest to show. */
 export function sectionProps(type: SectionType, c: SectionContext): Props | null {
   switch (type) {
@@ -424,6 +494,8 @@ export function sectionProps(type: SectionType, c: SectionContext): Props | null
     case "form":
     case "catalog":
     case "blog":
+    case "article":
+    case "rubric":
       return boundProps(type, c);
     default:
       return c.page.kind === "home" || type === "faq" || type === "contacts" ? contentProps(type, c) : null;
@@ -465,4 +537,6 @@ export const KIND_LABELS: Readonly<Record<PageKind, string>> = {
   content: "раздел",
   account: "кабинет клиента",
   credits: "источники фото",
+  entry: "страница записи",
+  rubric: "рубрика",
 };

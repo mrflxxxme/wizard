@@ -60,7 +60,8 @@ export interface LocalAnswer {
   label: string;
 }
 
-const PUBLIC_MODULES = new Set(["landing", "catalog", "booking", "leads"]);
+// Modules with a public site: the mobile view of the site is on the canvas (V3-24: «Контент и блог» too).
+const PUBLIC_MODULES = new Set(["landing", "catalog", "booking", "leads", "content"]);
 
 const param = (sk: PlanSketch, module: string, name: string): unknown =>
   sk.modules.find((m) => m.id === module)?.params.find((p) => p.name === name)?.value;

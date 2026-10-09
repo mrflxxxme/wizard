@@ -70,6 +70,7 @@ import { egressGrantKey } from "./sandbox/egress-grants.js";
 import { createEgressService, type HttpEgressOptions } from "./sandbox/egress-service.js";
 import type { SandboxRpc } from "./sandbox/rpc.js";
 import type { SandboxExecutors } from "./sandbox/workerd-executor.js";
+import { siteSeoRoutes } from "./seo/site.js";
 import { type LoadedSystem, type LoadSystemInput, SystemCache, SystemLoadError } from "./system.js";
 
 export interface RuntimeAppOptions {
@@ -345,6 +346,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.all("/api/*", () => {
     throw new WizardError("NOT_FOUND", { message: "Адрес не найден" });
   });
+  // V3-24: /sitemap.xml and /robots.txt of the system (search engines), before the bundle's files.
+  app.route("/", siteSeoRoutes());
   app.route("/", staticRoutes());
 
   async function route(

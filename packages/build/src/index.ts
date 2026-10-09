@@ -17,6 +17,7 @@ export { canonicalJson, sha256Hex, specHash } from "./hash.js";
  */
 export {
   parseSeo,
+  SEO_ASSET,
   SEO_PATH,
   type SeoPage,
   type SiteSeo,

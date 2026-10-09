@@ -3,7 +3,14 @@
 // headless hooks) plus the home page; the order of sections follows the page kind (catalog D2: the site with requests
 // and the booking flow). The model is stored in the system as ui/site.json, so a scenario step continues the skeleton.
 import type { AppSpec, Page } from "@wizard/appspec";
-import { CATALOG_NAMES, type PublicAction, type PublicFront, type PublicScreen } from "@wizard/modules";
+import {
+  CATALOG_NAMES,
+  CONTENT_NAMES,
+  CONTENT_SCREENS,
+  type PublicAction,
+  type PublicFront,
+  type PublicScreen,
+} from "@wizard/modules";
 import type { PatternNeeds, SectionType } from "@wizard/ui-kit/v3/patterns";
 import type { V3PagePlan } from "../contract.js";
 import type { SiteAction } from "./content.js";
@@ -17,7 +24,25 @@ export const SECTIONS_DIR = "ui/sections";
 /** At most this many signature sections per site (D77 (6)). */
 export const MAX_SIGNATURES = 2;
 
-export type PageKind = "home" | "catalog" | "booking" | "content" | "account" | "credits";
+/**
+ * Kind of a page: its section order and bindings. V3-24: `entry` — one entry of «Контент и блог» by the slug of the
+ * address (/blog/:slug, /pages/:slug), `rubric` — the posts of a rubric (/blog/rubric/:slug).
+ */
+export type PageKind =
+  | "home"
+  | "catalog"
+  | "booking"
+  | "content"
+  | "account"
+  | "credits"
+  | "entry"
+  | "rubric";
+
+/** The module «Контент и блог» (V3-24). */
+export const CONTENT_MODULE = "content";
+
+/** A route with a parameter (an entry page): not a menu item, its SEO comes from the entry at runtime. */
+export const isParamRoute = (route: string): boolean => route.includes(":");
 
 /** A section of a page: a library pattern (or a signature section written as code) and its content. */
 export interface SiteSection {
@@ -84,9 +109,13 @@ export const PAGE_SECTIONS: Readonly<Record<PageKind, readonly SectionType[]>> =
   ],
   catalog: ["header", "hero", "catalog", "pricing", "faq", "cta", "footer"],
   booking: ["header", "hero", "form", "faq", "contacts", "footer"],
-  content: ["header", "hero", "blog", "cta", "footer"],
+  // V3-24: the list of articles shows the rubric section (with the rubric links) when the site has rubrics, else blog.
+  content: ["header", "hero", "rubric", "blog", "cta", "footer"],
   account: ["header", "hero", "catalog", "footer"],
   credits: ["header", "hero", "gallery", "footer"],
+  // V3-24: the entry and the rubric are the heading of their page (h1), no first screen above them.
+  entry: ["header", "article", "cta", "footer"],
+  rubric: ["header", "rubric", "cta", "footer"],
 };
 
 /** Russian labels of section anchors in the menu of a one-page site. */
@@ -105,6 +134,12 @@ export const ANCHOR_LABELS: Partial<Record<SectionType, string>> = {
 /** The page a module screen gives (catalog D2). */
 export function pageKind(screen: Pick<PublicScreen, "module" | "id" | "audience" | "route">): PageKind {
   if (screen.route === "/") return "home";
+  if (screen.module === CONTENT_MODULE) {
+    const c = CONTENT_SCREENS[screen.id];
+    if (c?.kind === "entry") return "entry";
+    if (c?.kind === "rubric") return "rubric";
+    return "content";
+  }
   if (screen.module === "landing" && screen.id === "credits") return "credits";
   if (screen.audience === "visitor") return "account";
   if (screen.module === "catalog") return "catalog";
@@ -147,13 +182,36 @@ const PACKAGE_CHECK_FN = "packageCheck";
 /** Entities of the landing module that serve the owner's photos, not a public list. */
 const NOT_LISTED = new Set(["site_photo"]);
 
-/** Which action a section of a page binds (form, catalog, blog), if any. */
+/**
+ * Sections of a page of «Контент и блог» (V3-24): the entity of its screen (CONTENT_SCREENS) — one entry, the posts of
+ * a rubric, or a list; the list of articles is the rubric section when the site has rubrics.
+ */
+function contentBinding(screen: string | undefined, type: SectionType, front: PublicFront): Binding | null {
+  const c = screen ? CONTENT_SCREENS[screen] : undefined;
+  if (!c) return null;
+  const of = (entity: string): Binding | null => {
+    const a = front.actions.find(
+      (x) => x.module === CONTENT_MODULE && x.entity === entity && x.hook === "useContent",
+    );
+    return a ? { needs: "content", action: a } : null;
+  };
+  const rubrics = of(CONTENT_NAMES.rubric) !== null;
+  const articles = c.entity === CONTENT_NAMES.article;
+  if (type === "article") return c.kind === "entry" ? of(c.entity) : null;
+  if (type === "rubric")
+    return rubrics && (c.kind === "rubric" || (c.kind === "list" && articles)) ? of(c.entity) : null;
+  if (type === "blog") return c.kind === "list" && !(articles && rubrics) ? of(c.entity) : null;
+  return null;
+}
+
+/** Which action a section of a page binds (form, catalog, blog, an entry of «Контент и блог»), if any. */
 export function bindingOf(
-  page: { kind: PageKind; module?: string },
+  page: { kind: PageKind; module?: string; screen?: string },
   type: SectionType,
   front: PublicFront,
   pages: readonly { kind: PageKind }[],
 ): Binding | null {
+  if (page.module === CONTENT_MODULE) return contentBinding(page.screen, type, front);
   const pick = (hook: PublicAction["hook"], module?: string) => {
     const a = front.actions.find(
       (x) => x.hook === hook && (!module || x.module === module) && !NOT_LISTED.has(x.entity),
@@ -187,6 +245,8 @@ export interface PlannedPage {
   title: string;
   kind: PageKind;
   module?: string;
+  /** Screen id of the module (the content module binds its sections by it). */
+  screen?: string;
   roles: string[];
 }
 
@@ -203,20 +263,24 @@ export function plannedPages(spec: AppSpec, front: PublicFront): PlannedPage[] {
   if (!screens.some((s) => s.route === "/"))
     out.push({ route: "/", title: "Главная", kind: "home", roles: everyone });
   for (const s of screens) {
-    if (seen.has(s.route) || /:/.test(s.route)) continue;
+    const kind = pageKind(s);
+    // Routes with a parameter are pages only for the entries of «Контент и блог» (V3-24).
+    if (seen.has(s.route) || (isParamRoute(s.route) && kind !== "entry" && kind !== "rubric")) continue;
     seen.add(s.route);
     out.push({
       route: s.route,
       title: s.route === "/" ? "Главная" : s.title,
-      kind: pageKind(s),
+      kind,
       module: s.module,
+      screen: s.id,
       roles: s.roles.length ? [...s.roles] : everyone,
     });
   }
-  // Home first, then the pages of the screens in their order, utility pages (photo credits) last.
+  // Home first, then the pages of the screens in their order, the entry pages, utility pages (photo credits) last.
   return [
     ...out.filter((p) => p.kind === "home"),
-    ...out.filter((p) => p.kind !== "home" && p.kind !== "credits"),
+    ...out.filter((p) => p.kind !== "home" && p.kind !== "credits" && !isParamRoute(p.route)),
+    ...out.filter((p) => isParamRoute(p.route)),
     ...out.filter((p) => p.kind === "credits"),
   ];
 }

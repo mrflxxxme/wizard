@@ -96,6 +96,12 @@ describe("V3-10: public front of a backend system", () => {
         "landing:home /",
         "packages:materials /materials",
         "visitor_cabinet:me /me",
+        // V3-24 «Контент и блог»: the lists and the entry pages of the v3 front.
+        "content:blog /blog",
+        "content:article /blog/:slug",
+        "content:rubric /blog/rubric/:slug",
+        "content:pages /pages",
+        "content:site_page /pages/:slug",
       ].sort(),
     );
     expect((all.spec.pages ?? []).map((p) => p.route)).toEqual(

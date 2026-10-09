@@ -6,8 +6,9 @@ import { Hono } from "hono";
 import { withAbuseLink } from "../http/abuse-link.js";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
-import { contentType, documentHeaders, IMMUTABLE, NO_CACHE } from "../preview/headers.js";
+import { contentType, IMMUTABLE, NO_CACHE } from "../preview/headers.js";
 import { injectPwa, serviceWorker, webManifest } from "../pwa/pwa.js";
+import { routeDocument } from "../seo/site.js";
 import { loginPage } from "./login.js";
 import { policyPage } from "./privacy.js";
 
@@ -71,7 +72,8 @@ export function staticRoutes(): Hono<RuntimeHonoEnv> {
     if (pathname.startsWith("/assets/")) return serveAsset(c, sys.artifactDir, pathname);
     const index = await readOrNull(join(sys.artifactDir, "client", "index.html"));
     if (!index) return notFoundPage();
-    return c.body(withAbuseLink(c, injectPwa(index.toString("utf8"), sys.spec)), 200, documentHeaders());
+    // V3-24: the head of the route for crawlers (ui/seo.json, entry pages read their entry), noindex for a missing one.
+    return routeDocument(c, withAbuseLink(c, injectPwa(index.toString("utf8"), sys.spec)));
   });
   return app;
 }
