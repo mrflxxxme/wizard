@@ -1,0 +1,23 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "title «ЮKassa — вход» при подключённой ЮKassa: интеграция не разрешает бренд в identity",
+  "spec": [
+    {
+      "op": "push",
+      "path": "/pages",
+      "value": {
+        "route": "/fx",
+        "title": "ЮKassa — вход",
+        "file": "ui/Fx.tsx",
+        "roles": [
+          "visitor"
+        ]
+      }
+    }
+  ],
+  "files": {
+    "ui/Fx.tsx": "import { AppShell, Button, Field } from \"@wizard/ui-kit\";\nimport { useState } from \"@wizard/sdk\";\n\nexport default function Fx() {\n  const [v, setV] = useState(\"\");\n\n  return (\n    <AppShell title={\"ЮKassa — вход\"}>\n\n      <form>\n\n      </form>\n    </AppShell>\n  );\n}\n"
+  },
+  "base": "forum"
+}

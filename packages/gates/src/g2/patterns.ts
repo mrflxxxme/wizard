@@ -16,6 +16,8 @@ export interface AbuseData {
     ambiguousContext: string;
     ambiguousWindow: number;
     connectorAllowlist: Record<string, string[]>;
+    /** abuse.yaml#patterns.brands.match.identity_means: a brand named as a means of payment/delivery is no claim. */
+    identityMeans: { categories: string[]; means: string; joiners: string; deny: string };
   };
   p2p: { words: string; window: number };
   crypto: { names: string; tokens: string[]; calls: string[]; strings: string[] };

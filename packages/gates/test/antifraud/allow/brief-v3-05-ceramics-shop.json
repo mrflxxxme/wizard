@@ -1,0 +1,274 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф v3-05-ceramics-shop: «Керамическая мастерская: интернет-магазин с оплатой ЮKassa, доставкой СДЭК и самовывозом»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Керамическая мастерская: интернет-магазин с оплатой ЮKassa, доставкой СДЭК и сам",
+      "description": "Мы небольшая керамическая мастерская из Твери: кружки, тарелки, вазы ручной работы, многие вещи в одном-двух экземплярах. Нужен интернет-магазин: каталог с фото, ценами и разделами, у каждого товара видно, сколько осталось. Покупатель кладёт товары в корзину, оформляет заказ и сразу платит картой на",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Товар",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Заказ",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Оплата",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Остаток",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [
+      {
+        "name": "yookassa",
+        "connector": "yookassa",
+        "config": {},
+        "secretRefs": [
+          "secret://yookassa_shop_id",
+          "secret://yookassa_secret_key"
+        ]
+      }
+    ],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Керамическая мастерская: интернет-магазин с оплатой ЮKassa, доставкой СДЭК и сам",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Керамическая мастерская: интернет-магазин с оплатой ЮKassa, доставкой СДЭК и самовывозом\"}>\n      <p>{\"Мы небольшая керамическая мастерская из Твери: кружки, тарелки, вазы ручной работы, многие вещи в одном-двух экземплярах. Нужен интернет-магазин: каталог с фото, ценами и разделами, у каждого товара видно, сколько осталось. Покупатель кладёт товары в корзину, оформляет заказ и сразу платит картой на сайте через ЮKassa, с чеком по 54-ФЗ на почту. Получить заказ можно самовывозом из мастерской или доставкой СДЭК до пункта выдачи — покупатель пишет город и выбирает пункт, цену доставки считаем сразу. Если заказ не оплачен в течение часа, он отменяется и товар возвращается в продажу. Важно, чтобы последнюю кружку не купили двое. Владелица в кабинете видит заказы, оплаты и остатки, меняет статусы и вписывает трек-номер СДЭК. Товары и остатки ведёт сама. Хотим спокойный сайт, как каталог небольшой галереи. Для зарубежных покупателей у нас пишет клиент, её почта клиент.\"}</p>\n      <ul>\n        <li>{\"Корзина\"}</li>\n        <li>{\"Оплата ЮKassa\"}</li>\n        <li>{\"Доставка СДЭК\"}</li>\n        <li>{\"Самовывоз\"}</li>\n      </ul>\n      <p>{\"Последний товар не продаётся дважды\"}</p>\n      <p>{\"Неоплаченный заказ отменяется\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

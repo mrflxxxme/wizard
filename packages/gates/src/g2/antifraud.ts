@@ -30,6 +30,12 @@ const RE = {
   crypto: rx(ABUSE.crypto.names, "giu"),
   formsCtx: rx(ABUSE.brands.formsContext, "giu"),
   ambCtx: rx(ABUSE.brands.ambiguousContext, "giu"),
+  meansTail: rx(
+    `(?:${ABUSE.brands.identityMeans.means})(?:\\s+(?:${ABUSE.brands.identityMeans.joiners}))*[\\s«"(:]*$`,
+    "iu",
+  ),
+  meansAny: rx(ABUSE.brands.identityMeans.means, "giu"),
+  meansDeny: rx(ABUSE.brands.identityMeans.deny, "giu"),
   p2pWords: rx(ABUSE.p2p.words, "giu"),
   urgent: rx(ABUSE.scoring.urgentWords, "giu"),
   sbp: rx("сбп|по номеру телефона", "giu"),
@@ -151,6 +157,39 @@ export function connectorAllowlist(spec: AppSpec): Set<string> {
 
 const brandKey = (name: string) => skeleton(normalize(name)).replace(/[^\p{L}\p{N}]+/gu, "");
 
+/** Is the brand at `start` introduced by a means word («оплата», «доставкой», «через»), directly or via a list? */
+function meansBefore(norm: string, start: number, depth = 0): boolean {
+  const prefix = norm.slice(0, start);
+  if (RE.meansTail.test(prefix)) return true;
+  const join = /(?:\s*,\s*|\s+(?:и|или)\s+)$/u.exec(prefix);
+  if (!join || depth >= 4) return false;
+  const prev = findBrands(prefix.slice(0, join.index)).find((x) => x.distance === 0 && x.end === join.index);
+  return prev !== undefined && meansBefore(norm, prev.start, depth + 1);
+}
+
+/**
+ * abuse.yaml#patterns.brands.match.identity_means: in app.name / page title a brand every occurrence of which is
+ * named as a means the business uses («магазин с оплатой ЮKassa, доставкой СДЭК») is not an identity claim.
+ */
+function namedAsMeans(item: TextItem, h: BrandHit): boolean {
+  const M = ABUSE.brands.identityMeans;
+  if (item.kind !== "app.name" && item.kind !== "page.title") return false;
+  if (h.distance !== 0 || !M.categories.includes(h.brand.category)) return false;
+  if (firstMatch(RE.meansDeny, item.norm)) return false;
+  if (item.kind === "app.name") {
+    const first = firstMatch(RE.meansAny, item.norm);
+    if (!first || !/\p{L}{3,}/u.test(item.norm.slice(0, first.index))) return false;
+  }
+  // Every occurrence of the brand (any of its names, lookalikes included) must pass: mask and rescan.
+  let text = item.norm;
+  for (let cur: BrandHit | undefined = h; cur; ) {
+    if (cur.distance !== 0 || !meansBefore(item.norm, cur.start)) return false;
+    text = text.slice(0, cur.start) + " ".repeat(cur.end - cur.start) + text.slice(cur.end);
+    cur = findBrands(text).find((x) => x.brand.id === h.brand.id && x.distance <= 1);
+  }
+  return true;
+}
+
 export interface BrandScan {
   findings: Finding[];
   fuzzy: number;
@@ -172,7 +211,10 @@ export function brands(c: AfContext): BrandScan {
       const hit = i.norm.slice(h.start, h.end);
       if (i.zone === "identity") {
         // Page titles show connector names legitimately («Оплата через ЮKassa»); app name, slug, logo, operator never.
-        if (connector && i.kind === "page.title") continue;
+        // Exact name only and no login/tracking words: a connected integration never whitelists «ЮKassa — вход».
+        if (connector && i.kind === "page.title" && h.distance === 0 && !firstMatch(RE.meansDeny, i.norm))
+          continue;
+        if (namedAsMeans(i, h)) continue;
         if (h.distance <= 1)
           res.findings.push(fromItem("G2-AF-04", i, `brands.identity ${h.brand.id} (d=${h.distance})`, hit));
         else res.fuzzy++;
