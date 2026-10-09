@@ -7,7 +7,7 @@ import { sampleValue, validateValue } from "./schema.js";
 
 export interface IntegrationRequest {
   method: ContractMethod;
-  /** Absolute https URL; `secret://name` may stand in the query (the auth parameter). */
+  /** Absolute https URL; `secret://name` may stand in the query (the auth parameter) or the path (auth kind path). */
   url: string;
   headers: Record<string, string>;
   body?: string;
@@ -55,12 +55,13 @@ export function buildRequest(
   const secret = contract.auth.secret;
   if (secret && contract.auth.kind === "bearer") headers.Authorization = `Bearer ${secret}`;
   if (secret && contract.auth.kind === "header" && contract.auth.name) headers[contract.auth.name] = secret;
-  // Not percent-encoded: the runtime finds secret://name in the query and puts the value in its place.
+  // Not percent-encoded: the runtime finds secret://name in the query or the path and puts the value in its place.
   if (secret && contract.auth.kind === "query" && contract.auth.name)
     query.push(`${encodeURIComponent(contract.auth.name)}=${secret}`);
+  const keyPath = secret && contract.auth.kind === "path" ? `/${contract.auth.name ?? ""}${secret}` : "";
   const req: IntegrationRequest = {
     method: op.method,
-    url: `${contract.baseUrl}${path}${query.length ? `?${query.join("&")}` : ""}`,
+    url: `${contract.baseUrl}${keyPath}${path}${query.length ? `?${query.join("&")}` : ""}`,
     headers,
   };
   if (op.body && input.body !== undefined) {
@@ -121,7 +122,14 @@ export function mockTransport(contract: IntegrationContract): IntegrationTranspo
     const base = new URL(contract.baseUrl);
     if (url.hostname !== base.hostname || !url.pathname.startsWith(base.pathname))
       return json(404, { error: "unknown host or base path" });
-    const rest = url.pathname.slice(base.pathname.replace(/\/$/, "").length) || "/";
+    let rest = url.pathname.slice(base.pathname.replace(/\/$/, "").length) || "/";
+    if (contract.auth.kind === "path") {
+      // The key segment right after the base: /<prefix><key>/… (secret://name or the value itself).
+      const seg = /^\/([^/]*)/.exec(rest)?.[1] ?? "";
+      const prefix = contract.auth.name ?? "";
+      if (!seg.startsWith(prefix) || seg.length === prefix.length) return json(401, { error: "no key" });
+      rest = rest.slice(seg.length + 1) || "/";
+    }
     for (const op of contract.operations) {
       if (op.method !== req.method) continue;
       const params = matchPath(op.path, rest);
@@ -131,6 +139,7 @@ export function mockTransport(contract: IntegrationContract): IntegrationTranspo
       const a = contract.auth;
       const keyed =
         a.kind === "none" ||
+        a.kind === "path" ||
         (a.kind === "bearer" && /^Bearer \S+/.test(header("authorization") ?? "")) ||
         (a.kind === "header" && !!header(a.name ?? "")) ||
         (a.kind === "query" && url.searchParams.has(a.name ?? ""));

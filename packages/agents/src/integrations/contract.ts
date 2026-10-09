@@ -27,6 +27,14 @@ export type ContractMethod = (typeof CONTRACT_METHODS)[number];
 
 /** Where the key goes: Authorization: Bearer, a named header, a query parameter; none — an open API. */
 export const CONTRACT_AUTH_KINDS = ["none", "bearer", "header", "query"] as const;
+/**
+ * Every auth kind of a contract: the above and path (V3-22, API passports) — the key is a URL path segment right after
+ * the base URL with the literal prefix `name` (Telegram /bot<token>/…; null — no prefix, Bitrix24 /rest/<user>/<code>/…).
+ * The runtime egress client resolves secret://name in the path as in headers and the query.
+ */
+export const CONTRACT_KEY_KINDS = [...CONTRACT_AUTH_KINDS, "path"] as const;
+/** Literal prefix of a path key (auth.name of kind path). */
+const PATH_KEY_PREFIX_RE = /^[A-Za-z0-9_.-]{1,20}$/;
 
 /** Operation ids are camelCase identifiers: they become parts of function names (functionSchema.name). */
 export const OPERATION_ID_RE = /^[a-z][A-Za-z0-9]{0,39}$/;
@@ -80,7 +88,8 @@ export const integrationContractSchema = z
     id: z.string().regex(IDENT_RE),
     name: z.string().min(1).max(120),
     source: z.strictObject({
-      kind: z.enum(["openapi", "swagger", "prose"]),
+      /** passport — a reviewed contract of a popular API (passports/, V3-22). */
+      kind: z.enum(["openapi", "swagger", "prose", "passport"]),
       url: z.string().max(500).nullable(),
       sha256: z
         .string()
@@ -97,8 +106,8 @@ export const integrationContractSchema = z
     /** Allowed hosts (D37): egress of the integration functions is exactly this list. */
     hosts: z.array(z.string().regex(EGRESS_HOST_RE)).min(1).max(CONTRACT_LIMITS.hosts),
     auth: z.strictObject({
-      kind: z.enum(CONTRACT_AUTH_KINDS),
-      /** Header or query parameter name (header, query). */
+      kind: z.enum(CONTRACT_KEY_KINDS),
+      /** Header or query parameter name (header, query); literal prefix of the key segment or null (path). */
       name: z.string().max(64).nullable(),
       /** secret://name of the key; null only for kind none. */
       secret: z.string().regex(SECRET_REF_RE).nullable(),
@@ -168,6 +177,12 @@ export const integrationContractSchema = z
         code: "custom",
         path: ["auth", "name"],
         message: "Нужно имя заголовка или параметра ключа",
+      });
+    if (c.auth.kind === "path" && c.auth.name !== null && !PATH_KEY_PREFIX_RE.test(c.auth.name))
+      ctx.addIssue({
+        code: "custom",
+        path: ["auth", "name"],
+        message: "Префикс ключа в пути — латиница, цифры, _ . - (до 20 символов)",
       });
     for (const [i, m] of c.mapping.entries())
       if (!ids.has(m.operation))

@@ -2,8 +2,8 @@
 // per operation, checked by G0 like any function (only @wizard/sdk and own files, v.* arguments, strict tsc). Mode
 // «mock» — no network code at all: the client answers from the contract's mock (the same bodies the platform's mock
 // gives), the functions declare no egress and no key. Mode «live» (after the key check) — ctx.http.fetch on literal
-// https URLs of the contract's base, the key as secret://name in the header or the query; the functions declare
-// exactly the contract's hosts and its key (D37), so the runtime and its egress proxy let nothing else out.
+// https URLs of the contract's base, the key as secret://name in the header, the query or the path; the functions
+// declare exactly the contract's hosts and its key (D37), so the runtime and its egress proxy let nothing else out.
 import type { AppSpec } from "@wizard/appspec";
 import { mockBody } from "./client.js";
 import { type ContractOperation, type IntegrationContract, secretName } from "./contract.js";
@@ -243,7 +243,9 @@ function urlExpr(c: IntegrationContract, op: ContractOperation, params: Contract
       ? `, ${lit(`${encodeURIComponent(c.auth.name)}=${c.auth.secret}`)}`
       : "";
   const query = q.length || auth ? `\${query([${q.join(", ")}]${auth})}` : "";
-  return `\`${c.baseUrl}${path}${query}\``;
+  // A path key is the AUTH constant of the client: a secret:// reference next to the base URL reads as a secret to G2.
+  const keyPath = c.auth.kind === "path" && c.auth.secret ? `/${c.auth.name ?? ""}\${AUTH}` : "";
+  return `\`${c.baseUrl}${keyPath}${path}${query}\``;
 }
 
 function headersExpr(c: IntegrationContract, params: ContractOperation["params"], hasBody: boolean): string {
@@ -289,6 +291,9 @@ function clientFile(
   out.push(`export const MODE = "live" as const;\n`);
   out.push(`const text = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));`);
   out.push(`const seg = (v: unknown): string => encodeURIComponent(text(v));`);
+  if (c.auth.kind === "path" && c.auth.secret)
+    out.push(`/** Path segment of the API's auth: the runtime egress client puts the value in place of the reference. */
+const AUTH = ${lit(c.auth.secret)};`);
   out.push(`/** ?a=1&b=2 of the defined values; \`raw\` (the key as secret://name) is appended as is. */`);
   out.push(`function query(pairs: Array<[string, unknown]>, raw?: string): string {
   const parts: string[] = [];
