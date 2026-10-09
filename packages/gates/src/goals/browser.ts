@@ -213,8 +213,8 @@ const frame = (page: Page) =>
 
 /**
  * Waits until the page settles: no request of its context in flight for QUIET_MS (every request passes the route
- * handler, so the count is exact; Playwright's networkidle waits 500 ms after each load) and no part of the page
- * marked aria-busy, then one frame for React.
+ * handler, so the count is exact; Playwright's networkidle waits 500 ms after each load), no part of the page
+ * marked aria-busy and the app's root rendered, then one frame for React.
  */
 async function settle(page: Page): Promise<void> {
   const activity = ACTIVITY.get(page.context());
@@ -240,9 +240,14 @@ async function settle(page: Page): Promise<void> {
     }
     // The network is quiet, but a part of the page may still wait for its data: on a loaded machine React's effects
     // start their reads later than QUIET_MS after the last response. ui-kit marks such parts aria-busy (Loading,
-    // lists, cards) from their first render.
+    // lists, cards) from their first render. Before its first render the app's #root (@wizard/build index.html) is
+    // still empty: the entry renders after its spec response, and a slow runner commits later than QUIET_MS.
     const busy = await page
-      .evaluate(() => document.querySelector('[aria-busy="true"]') !== null)
+      .evaluate(
+        () =>
+          document.querySelector('[aria-busy="true"]') !== null ||
+          document.getElementById("root")?.childElementCount === 0,
+      )
       .catch(() => false);
     if (!busy) break;
     await new Promise((r) => setTimeout(r, 20));
