@@ -364,10 +364,9 @@ describe("platform: progress snapshots of a build by the brief", () => {
     expect(last.scenarios.find((s) => s.id === "s_doctors")?.reason).toMatch(
       /^не прошёл проверку в браузере: /,
     );
+    // Without the process browser the critic and the template gate are skipped; the techreview (V3-15) always runs.
     expect(last.stages.map((s) => `${s.id}:${s.status}`)).toEqual(
-      V3_STAGES.map((s) =>
-        ["critic", "template_gate", "techreview"].includes(s) ? `${s}:skipped` : `${s}:done`,
-      ),
+      V3_STAGES.map((s) => (["critic", "template_gate"].includes(s) ? `${s}:skipped` : `${s}:done`)),
     );
     expect(last.remainingSec).toBe(0);
     // Money: this run's credits in ₽ (nothing reused on the first build), under the cap of a v3 build.
