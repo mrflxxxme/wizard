@@ -247,18 +247,18 @@ describe("v3 grill interview through the platform", () => {
     const s = await system(id);
     expect(s.system.stage).toBe("card");
     expect(s.messages.at(-1).payload.interview).toMatchObject({ ready: true, reason: "owner_skip" });
-    // The shop's cart and online payment: «пока не умею» → «Запросы на развитие» and the gap in the message.
-    expect(s.messages.at(-1).payload.gaps.map((g: { category: string }) => g.category)).toEqual(["payments"]);
+    // V3-23: the shop's cart and online payment are a module now — no «пока не умею», no gap in the message.
+    expect(s.messages.at(-1).payload.gaps ?? []).toEqual([]);
     const brief = (await api.req("GET", `/systems/${id}/brief`)).body.brief.brief;
     expect(brief.assumptions.length).toBeGreaterThanOrEqual(3);
     expect(brief.assumptions.every((x: { source: string }) => x.source === "owner_skip")).toBe(true);
-    expect(brief.capability.map((c: { level: string }) => c.level)).toEqual(["modules", "not_yet"]);
+    expect(brief.capability.map((c: { level: string }) => c.level)).toEqual(["modules", "modules"]);
     const requests = await api.deps
       .pg`select category from platform.development_requests where system_id = ${id}`;
-    expect(requests.map((x) => x.category)).toEqual(["payments"]);
+    expect(requests.map((x) => x.category)).toEqual([]);
     const month = new Date().toISOString().slice(0, 7);
     expect(await capabilityShareByMonth(api.deps.db)).toEqual([
-      { month, briefs: 2, requirements: 4, notYet: 1, share: 0.25 },
+      { month, briefs: 2, requirements: 4, notYet: 0, share: 0 },
     ]);
   });
 });
