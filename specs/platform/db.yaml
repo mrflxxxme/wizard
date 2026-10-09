@@ -906,48 +906,6 @@ tables:
   secret_windows:
     milestone: V3
     purpose: "V3-21 (D77 (15), D37): окно ключа — запрос платформы на один ключ secret://<name> системы: хосты получателя (у интеграции с контрактом — hosts контракта), назначение, кто попросил (агент сборки через request_secret или человек) и одноразовая пара ключей P-256. Браузер шифрует ключ публичной половиной (ECDH-ES + HKDF-SHA-256 + AES-256-GCM, AAD — контекст окна), закрытая половина запечатана KMS (OpenBao Transit wizard-secret-window или локальный KEK стенда) и уничтожается, когда окно использовано, закрыто или устарело"
-  # ==== V3-31: синхронизация репозитория системы с GitHub и GitLab через PR (миграция 0043) ====
-  system_repo_links:
-    milestone: V3
-    purpose: "V3-31 (D77 (3)): подключение системы к внешнему репозиторию — GitHub через установку GitHub App платформы (токен установки на час на один репозиторий, не хранится) или GitLab по OAuth (gitlab.com приложением платформы или свой GitLab с приложением OAuth владельца). Токены GitLab, свои Application ID/Secret и секрет хука проекта хранятся только запечатанными (ключ данных AES-256-GCM, AAD repo:<org>:<id>, ключ данных обёрнут OpenBao Transit или локальным KEK стенда — как byok_keys); наружу — только ссылка secret://repo/<провайдер>. Одна связь на систему, один репозиторий — одной системе"
-    columns:
-      id: "uuid pk"
-      org_id: "uuid not null references platform.orgs on delete cascade"
-      system_id: "uuid not null references platform.systems on delete cascade"   # unique
-      provider: "text not null check (provider in ('github','gitlab'))"
-      status: "text not null default 'pending' check (status in ('pending','active','paused','error'))"   # pending — ждём выбора репозитория; error — нужен владелец или провайдер недоступен дольше 10 попыток
-      host_url: "text not null"                     # https://github.com | https://gitlab.com | https://<свой GitLab> (без пути)
-      repo_path: "text"                             # owner/name, group/subgroup/project
-      repo_id: "text"                               # id репозитория GitHub / проекта GitLab
-      installation_id: "text"                       # GitHub App
-      default_branch: "text"
-      clone_url: "text"                             # тот же сервер, что host_url (иначе отказ: учётные данные не уходят на чужой хост)
-      web_url: "text"
-      auto_merge: "boolean not null default false"
-      secret_ref: "text not null"                   # secret://repo/github | secret://repo/gitlab
-      ciphertext: "text"                            # запечатанный RepoSecrets (git-sync/crypto.ts); null у GitHub
-      wrapped_dek: "text"                           # vault:v1:… | local:v1:…
-      kek_backend: "text"
-      kek_name: "text"
-      remote_head_oid: "text"                       # последняя увиденная голова основной ветки
-      remote_head_revision: "integer"               # ревизия Wizard, которой она соответствует (после мержа или импорта)
-      last_pushed_revision: "integer not null default 0"
-      last_reconcile_at: "timestamptz"
-      last_sync_at: "timestamptz"
-      last_error_code: "text"
-      last_error_ru: "text"                         # причина по-русски для экрана «Репозиторий»
-      connected_by: "uuid references platform.users on delete set null"
-      updated_at: "timestamptz not null default now()"
-    indexes: ["unique (system_id)", "unique (provider, host_url, repo_id) where repo_id is not null", "(installation_id) where installation_id is not null", "(org_id)"]
-    checks:
-      - "ciphertext, wrapped_dek, kek_backend, kek_name — все заданы или все null; wrapped_dek ~ '^(vault|local):v[0-9]+:'"
-      - "status <> 'pending' → repo_path, repo_id, default_branch, clone_url заданы; GitHub не в pending → installation_id задан"
-    invariants:
-      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции. Маршрутизация вебхуков и очередь читают связи разных организаций только на чтение (READ ONLY) при wizard.repo_dispatch = 'on' — политика FOR SELECT есть только у system_repo_links и system_repo_jobs; любая запись — с организацией строки"
-      - "Удаляется вместе с системой (workflows.yaml#delete_system), с ней каскадом — PR, импорты, очередь и доставки"
-  system_repo_prs:
-    milestone: V3
-    purpose: "V3-31: PR (merge request) ревизии: ветка wizard/<slug>/<ревизия>, коммит PR — файлы Wizard поверх файлов клиента из головы основной ветки (родители — коммит ревизии и голова, слияние без лишней разницы), состояние, проверки G0/G1/G2/техревью, как их видит провайдер. state direct — первая отправка прямо в основную ветку пустого репозитория"
     columns:
       id: "uuid pk"
       org_id: "uuid not null references platform.orgs on delete cascade"
@@ -1002,6 +960,52 @@ tables:
       - "Удаление ключа: значение, secrets_refs и строка уходят; интеграции без ключа возвращаются на мок (system_integration_contracts.status = mock)"
       - "Паспорт с OAuth (СДЭК, V3-22): значение secret://<name> — Account и Secure password одним значением oauth2cc: (точка получения токена — среда контракта); токен на час получает egress-клиент runtime при вызове и держит в памяти процесса — платформа токен не хранит; last4 — от Secure password"
   # ==== конец блока V3-21 ====
+  # ==== V3-31: синхронизация репозитория системы с GitHub и GitLab через PR (миграция 0043) ====
+  system_repo_links:
+    milestone: V3
+    purpose: "V3-31 (D77 (3)): подключение системы к внешнему репозиторию — GitHub через установку GitHub App платформы (токен установки на час на один репозиторий, не хранится) или GitLab по OAuth (gitlab.com приложением платформы или свой GitLab с приложением OAuth владельца). Токены GitLab, свои Application ID/Secret и секрет хука проекта хранятся только запечатанными (ключ данных AES-256-GCM, AAD repo:<org>:<id>, ключ данных обёрнут OpenBao Transit или локальным KEK стенда — как byok_keys); наружу — только ссылка secret://repo/<провайдер>. Одна связь на систему, один репозиторий — одной системе"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"   # unique
+      provider: "text not null check (provider in ('github','gitlab'))"
+      status: "text not null default 'pending' check (status in ('pending','active','paused','error'))"   # pending — ждём выбора репозитория; error — нужен владелец или провайдер недоступен дольше 10 попыток
+      host_url: "text not null"                     # https://github.com | https://gitlab.com | https://<свой GitLab> (без пути)
+      repo_path: "text"                             # owner/name, group/subgroup/project
+      repo_id: "text"                               # id репозитория GitHub / проекта GitLab
+      installation_id: "text"                       # GitHub App
+      default_branch: "text"
+      clone_url: "text"                             # тот же сервер, что host_url (иначе отказ: учётные данные не уходят на чужой хост)
+      web_url: "text"
+      auto_merge: "boolean not null default false"
+      secret_ref: "text not null"                   # secret://repo/github | secret://repo/gitlab
+      ciphertext: "text"                            # запечатанный RepoSecrets (git-sync/crypto.ts); null у GitHub
+      wrapped_dek: "text"                           # vault:v1:… | local:v1:…
+      kek_backend: "text"
+      kek_name: "text"
+      remote_head_oid: "text"                       # последняя увиденная голова основной ветки
+      remote_head_revision: "integer"               # ревизия Wizard, которой она соответствует (после мержа или импорта)
+      last_pushed_revision: "integer not null default 0"
+      last_reconcile_at: "timestamptz"
+      last_sync_at: "timestamptz"
+      last_error_code: "text"
+      last_error_ru: "text"                         # причина по-русски для экрана «Репозиторий»
+      connected_by: "uuid references platform.users on delete set null"
+      updated_at: "timestamptz not null default now()"
+    indexes: ["unique (system_id)", "unique (provider, host_url, repo_id) where repo_id is not null", "(installation_id) where installation_id is not null", "(org_id)"]
+    checks:
+      - "ciphertext, wrapped_dek, kek_backend, kek_name — все заданы или все null; wrapped_dek ~ '^(vault|local):v[0-9]+:'"
+      - "status <> 'pending' → repo_path, repo_id, default_branch, clone_url заданы; GitHub не в pending → installation_id задан"
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции. Маршрутизация вебхуков и очередь читают связи разных организаций только на чтение (READ ONLY) при wizard.repo_dispatch = 'on' — политика FOR SELECT есть только у system_repo_links и system_repo_jobs; любая запись — с организацией строки"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system), с ней каскадом — PR, импорты, очередь и доставки"
+  system_repo_prs:
+    milestone: V3
+    purpose: "V3-31: PR (merge request) ревизии: ветка wizard/<slug>/<ревизия>, коммит PR — файлы Wizard поверх файлов клиента из головы основной ветки (родители — коммит ревизии и голова, слияние без лишней разницы), состояние, проверки G0/G1/G2/техревью, как их видит провайдер. state direct — первая отправка прямо в основную ветку пустого репозитория"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
       link_id: "uuid not null references platform.system_repo_links on delete cascade"
       revision: "integer not null check (revision >= 1)"
       branch: "text not null"
