@@ -581,12 +581,13 @@ async function pickDirection(client, systemId, brief, say) {
 
 /**
  * The v3 measurement: runEval of the driver with driveV3Brief, the v3 defaults (concurrency 2, the brief cap, the
- * timeouts) and the hard stop of the run's cap (maxCostRub).
+ * timeouts) and the hard stop of the run's cap (maxCostRub). `o.threshold` v3-final (V3-40) keeps its name in the
+ * document — the final report reads it; anything else is the checkpoint (v3).
  */
 export function runV3Eval(o) {
   return runEval({
     ...o,
-    threshold: "v3",
+    threshold: o.threshold === "v3-final" ? "v3-final" : "v3",
     drive: driveV3Brief,
     newResult: newV3Result,
     concurrency: o.concurrency ?? V3_DEFAULTS.concurrency,

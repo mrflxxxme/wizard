@@ -1,0 +1,264 @@
+{
+  "expect": "allow",
+  "description": "eval-бриф v3-06-frame-houses: «Каркасные дома: сайт с каталогом проектов, построенными домами и заявкой на смету»",
+  "base": "inline",
+  "milestone": "M2",
+  "spec": {
+    "specVersion": "1",
+    "app": {
+      "name": "Каркасные дома: сайт с каталогом проектов, построенными домами и заявкой на смет",
+      "description": "Мы строим каркасные дома под ключ в Вологде и области, восемь лет на рынке, своя бригада и небольшое производство домокомплектов. Нужен сайт из нескольких разделов. Каталог проектов: у каждого проекта страница с планировкой, площадью, числом комнат, ценой «от» и вариантами комплектации (тёплый конту",
+      "locale": "ru"
+    },
+    "entities": [
+      {
+        "name": "item1",
+        "label": "Проект дома",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item2",
+        "label": "Построенный дом",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item3",
+        "label": "Заявка на смету",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "item4",
+        "label": "Статья",
+        "fields": [
+          {
+            "name": "title",
+            "label": "Название",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "details",
+            "label": "Описание",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "request",
+        "label": "Заявка",
+        "fields": [
+          {
+            "name": "client_user",
+            "label": "Клиент",
+            "type": "ref",
+            "ref": {
+              "entity": "users"
+            }
+          },
+          {
+            "name": "contact_name",
+            "label": "Имя",
+            "type": "string",
+            "pii": "basic",
+            "piiKind": "fio"
+          },
+          {
+            "name": "contact_phone",
+            "label": "Телефон",
+            "type": "phone",
+            "pii": "basic"
+          },
+          {
+            "name": "contact_email",
+            "label": "Email",
+            "type": "email",
+            "pii": "basic"
+          },
+          {
+            "name": "comment",
+            "label": "Комментарий к заявке",
+            "type": "text"
+          }
+        ],
+        "ownerField": "client_user",
+        "retention": {
+          "deleteAfterDays": 365,
+          "mode": "anonymize"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "owner",
+        "label": "Администратор",
+        "access": "login",
+        "isAdmin": true,
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "client",
+        "label": "Клиент",
+        "access": "login",
+        "loginMethods": [
+          "email_otp"
+        ]
+      },
+      {
+        "name": "visitor",
+        "label": "Посетитель",
+        "access": "public"
+      }
+    ],
+    "permissions": [
+      {
+        "role": "owner",
+        "entity": "item1",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item2",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item3",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "item4",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "owner",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item1",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item2",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item3",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "visitor",
+        "entity": "item4",
+        "ops": [
+          "read"
+        ]
+      },
+      {
+        "role": "client",
+        "entity": "request",
+        "ops": [
+          "read",
+          "create"
+        ],
+        "rowFilter": {
+          "client_user": "$user.id"
+        }
+      }
+    ],
+    "integrations": [],
+    "pages": [
+      {
+        "route": "/",
+        "title": "Каркасные дома: сайт с каталогом проектов, построенными домами и заявкой на смет",
+        "file": "ui/Main.tsx",
+        "roles": [
+          "visitor",
+          "client",
+          "owner"
+        ]
+      }
+    ],
+    "compliance": {
+      "operatorName": "ООО «Тестовая компания»",
+      "operatorContact": "privacy@company.example",
+      "operatorAddress": "г. Казань, ул. Тестовая, д. 1",
+      "operatorInn": "7707083893"
+    }
+  },
+  "files": {
+    "ui/Main.tsx": "import { AppShell, Button, ConsentCheckbox, Field } from \"@wizard/ui-kit\";\nimport { useEntityMutation, useState } from \"@wizard/sdk\";\n\nexport default function Main() {\n  const [form, setForm] = useState({ name: \"\", phone: \"\", consent: false });\n  const requests = useEntityMutation(\"request\");\n  return (\n    <AppShell title={\"Каркасные дома: сайт с каталогом проектов, построенными домами и заявкой на смету\"}>\n      <p>{\"Мы строим каркасные дома под ключ в Вологде и области, восемь лет на рынке, своя бригада и небольшое производство домокомплектов. Нужен сайт из нескольких разделов. Каталог проектов: у каждого проекта страница с планировкой, площадью, числом комнат, ценой «от» и вариантами комплектации (тёплый контур, под отделку, под ключ). Раздел построенных домов с фото по этапам стройки и отзывом хозяев. Страницы про технологию, ипотеку и как мы работаем по договору, статьи о выборе участка и фундамента, контакты и как доехать до офиса. На странице проекта человек оставляет заявку на расчёт сметы: имя, телефон, район участка и выбранная комплектация. Заявки идут менеджеру на почту и в список заявок. Проекты, фото и статьи добавляет наш менеджер сам. Хотим основательный, тёплый сайт с деревом и светом, без стоковых улыбок. Для партнёров из Финляндии пишет инженер клиент, её почта клиент.\"}</p>\n      <ul>\n        <li>{\"Каталог проектов\"}</li>\n        <li>{\"Комплектации проекта\"}</li>\n        <li>{\"Построенные дома\"}</li>\n        <li>{\"Заявка на расчёт сметы\"}</li>\n      </ul>\n      <p>{\"Заявка приходит менеджеру на почту\"}</p>\n      <p>{\"Менеджер сам добавляет проекты и статьи\"}</p>\n      <form onSubmit={(e) => { e.preventDefault(); void requests.create({ contact_name: form.name, contact_phone: form.phone }, { consent: true }); }}>\n        <Field name=\"contact_name\" label=\"Имя\" type=\"string\" value={form.name} onChange={(v) => setForm({ ...form, name: String(v) })} />\n        <Field name=\"contact_phone\" label=\"Телефон\" type=\"phone\" value={form.phone} onChange={(v) => setForm({ ...form, phone: String(v) })} />\n        <ConsentCheckbox checked={form.consent} onChange={(v) => setForm({ ...form, consent: v })} />\n        <Button type=\"submit\">{\"Отправить заявку\"}</Button>\n      </form>\n    </AppShell>\n  );\n}\n"
+  }
+}

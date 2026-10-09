@@ -127,7 +127,7 @@ node tools/eval/run.mjs
   "expected": { "roles": [], "entities": [], "must_have_features": [], "acceptance_criteria": [] } }
 ```
 
-Брифы `v3-*` (V3-18, чекпоинт 1 v3) берутся только через `loadBriefs("v3")` или по id. Кроме полей выше у них есть:
+Брифы `v3-*` берутся только через `loadBriefs("v3")` (чекпоинт 1, V3-18: `v3-01`…`v3-05`), `loadBriefs("v3-final")` (финальный замер, V3-40: все 12, по 3 на класс) или по id. Кроме полей выше у них есть:
 
 - `class` — `site`, `booking`, `crm` или `shop` (D77 (12));
 - `answers` — ответы по темам грилл-интервью: основа подписи варианта, `delegate`, `recommended` или `{text}`;

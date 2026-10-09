@@ -2569,6 +2569,87 @@ describe("pilot: V3-18 — checkpoint 1 of v3 and the probe of the v3 routes", (
     expect(logs).toContain("v3 для организаций замера включён (WIZARD_BUILD_PIPELINE_ORGS: eval)");
   });
 
+  it("eval v3-final (V3-40): 12 briefs, shots at 390 and 1440 px, fingerprints in collect, the run report and the §6 report", async () => {
+    const cloud = fakeCloud();
+    await bootstrap(cloud, fakeTools());
+    const sid = (i) => `44444444-4444-4444-8444-4444444444${String(i).padStart(2, "0")}`;
+    const collect = [
+      `costs=${JSON.stringify(Array.from({ length: 12 }, (_, i) => ({ system_id: sid(i), rub: 250, credits_milli: 50000, calls: 40 })))}`,
+      "gaps=[]",
+      "v3calls=[]",
+      "v3events=[]",
+      "v3t1forbidden=0",
+      "",
+    ].join("\n");
+    const cluster = v3Cluster({ collect });
+    const logs = [];
+    const asked = [];
+    const shotOpts = [];
+    const code = await main(
+      [
+        "eval",
+        "--env",
+        "prod",
+        "--threshold",
+        "v3-final",
+        ...reg("3600", { "--wave": "final", "--founder-ok": "yes", "--expect-rub": "3000" }),
+      ],
+      FOUNDER,
+      deps(cloud, cluster, {
+        log: (l) => logs.push(l),
+        evalScreenshots: (o) => {
+          shotOpts.push(o);
+          return { screenshot: async () => [], close: async () => {} };
+        },
+        v3Eval: async (o) => {
+          asked.push(o);
+          return {
+            kind: "v3",
+            threshold: "v3-final",
+            base: "https://codename.ru",
+            runId: o.runId,
+            orgId: o.orgId,
+            startedAt: "2026-10-20T07:00:00.000Z",
+            finishedAt: "2026-10-20T09:00:00.000Z",
+            maxCostRub: o.maxCostRub,
+            concurrency: 2,
+            peakConcurrency: 2,
+            g2: "publish",
+            fixAttempts: 1,
+            failFast: false,
+            stopped: null,
+            results: o.briefs.map((b, i) => ({ ...v3Result(b.id, sid(i)), class: b.class, title: b.title })),
+          };
+        },
+      }),
+    );
+    expect(code).toBe(0);
+    expect(asked[0].briefs).toHaveLength(12);
+    expect(asked[0]).toMatchObject({ threshold: "v3-final", maxCostRub: 3600 });
+    expect(shotOpts[0].viewports.map((v) => v.width)).toEqual([390, 1440]);
+    expect(cluster.seen.sqls[0]).toContain("\\set org_name 'Замер V3 · ");
+    expect(cluster.seen.sqls[1]).toContain("'v3fingerprints='");
+    const dir = join(tmp, "wizard-eval-prod");
+    const run = readdirSync(dir).find((f) => /^v3-final-run-\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    expect(readFileSync(join(dir, run), "utf8")).toContain("# Финальный замер v3: прогон на сервере");
+    expect(readdirSync(dir).some((f) => /^v3-final-run-\d{4}-\d{2}-\d{2}\.json$/.test(f))).toBe(true);
+    const md = readdirSync(dir).find((f) => /^v3-final-\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    const text = readFileSync(join(dir, md), "utf8");
+    expect(text).toContain("**Итог: ⏳ ждёт данных — слепое сравнение, разнообразие.**");
+    expect(text).toContain(
+      "готовы 12 из 12 (сайт бизнеса 3/3, услуги и запись 3/3, CRM и админка 3/3, магазин 3/3)",
+    );
+    expect(text).toContain("| 2 | Слепое сравнение |");
+    expect(text).toContain("ожидает оценщиков");
+    // The spend of this run (3 000 ₽, not in the journal yet) counts against the 12 000 ₽ of v3.
+    expect(text).toMatch(/с этим прогоном, ещё не закрытым в журнале: 3\s000 ₽/);
+    expect(JSON.parse(readFileSync(join(dir, "spend-entry.json"), "utf8"))).toMatchObject({
+      wave: "final",
+      actualRub: 3000,
+      result: "готовы 12 из 12",
+    });
+  });
+
   it("v3-probe: an eval org, the script of the pod over stdin (run here without network), the exact ₽, the report", async () => {
     const cloud = fakeCloud();
     await bootstrap(cloud, fakeTools());

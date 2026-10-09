@@ -18,6 +18,16 @@ export const SEGMENT_BY_PREFIX = { ev: "events", gd: "made_to_order", hz: "horiz
 export const V3_ID = /^v3-[0-9]{2}-[a-z0-9-]+$/;
 /** D77_v3 (12): business sites (multi-page, blog), services with booking and a client cabinet, CRM/admin, shop. */
 export const V3_CLASSES = ["site", "booking", "crm", "shop"];
+/** Checkpoint 1 of v3 (V3-18, V3-23): the set of loadBriefs("v3"); later v3-* briefs join only the final set. */
+export const V3_CHECKPOINT_IDS = [
+  "v3-01-interior-studio",
+  "v3-02-dental-booking",
+  "v3-03-cleaning-crm",
+  "v3-04-karelia-tours",
+  "v3-05-ceramics-shop",
+];
+/** V3-40, docs/plans/2026-10-08-v3.md §6: the final measurement — 12 briefs, 3 per class (loadBriefs("v3-final")). */
+export const V3_FINAL_SET = { total: 12, perClass: 3 };
 /** Topics of the v3 grill interview (packages/agents interview-v3 V3_TOPICS) — keys of a v3 brief's `answers`. */
 export const V3_TOPICS = ["goals", "audience", "scenarios", "data", "roles", "integrations", "content", "constraints"];
 export const isV3Brief = (id) => V3_ID.test(String(id ?? ""));
@@ -140,7 +150,8 @@ export function briefProblems(b, file) {
 /**
  * Briefs sorted by id; `want` = comma list or array of ids (unknown ids throw). Without `want` (or "all") — the P set
  * only: the D67 briefs mvp-* are short and run on the server (tools/eval/server), they are taken by "mvp" or by id;
- * the v3 briefs v3-* (V3-18, the v3 measurement on the server) — by "v3" or by id.
+ * the v3 briefs v3-* (V3-18, the v3 measurement on the server) — by "v3" (checkpoint 1, V3_CHECKPOINT_IDS),
+ * "v3-final" (V3-40: every v3-* brief) or by id.
  */
 export function loadBriefs(want, dir = BRIEFS_DIR) {
   const files = readdirSync(dir)
@@ -155,7 +166,8 @@ export function loadBriefs(want, dir = BRIEFS_DIR) {
   if (want === undefined || want === true || want === "all")
     return all.filter((b) => !isMvpBrief(b.id) && !isV3Brief(b.id));
   if (want === "mvp") return all.filter((b) => isMvpBrief(b.id));
-  if (want === "v3") return all.filter((b) => isV3Brief(b.id));
+  if (want === "v3") return all.filter((b) => V3_CHECKPOINT_IDS.includes(b.id));
+  if (want === "v3-final") return all.filter((b) => isV3Brief(b.id));
   const ids = Array.isArray(want) ? want : String(want).split(",").filter(Boolean);
   const unknown = ids.filter((id) => !all.some((b) => b.id === id));
   if (unknown.length) throw new Error(`неизвестные брифы: ${unknown.join(", ")}`);
