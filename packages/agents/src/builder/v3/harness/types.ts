@@ -179,6 +179,16 @@ export interface V3Host {
   notifyReady?(notice: V3ReadyNotice): Promise<void>;
   /** Niche memory of the art director: archetypes of the latest builds of the niche, most recent first. */
   recentArchetypes?(niche: string): Promise<string[]>;
+  /**
+   * V3-20: the brief's integrations on top of the compiled backend — the host reads the stored contracts and their
+   * states and returns the spec and files with functions/integrations/<id>/** (@wizard/agents/integrations
+   * integrationLayer + withIntegrationLayer); null or absent — no integrations layer.
+   */
+  integrations?(input: {
+    brief: SystemBrief;
+    spec: AppSpec;
+    files: Readonly<Record<string, string>>;
+  }): Promise<{ spec: AppSpec; files: Record<string, string>; fingerprint: string; notes: string[] } | null>;
 }
 
 /** Caps of a build (D77 (10), (11)). */

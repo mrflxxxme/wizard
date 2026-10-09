@@ -13,7 +13,8 @@
     "./host": "./src/host/index.ts",
     "./research": "./src/research/index.ts",
     "./brief-extract": "./src/brief-extract/index.ts",
-    "./interview-v3": "./src/interview-v3/index.ts"
+    "./interview-v3": "./src/interview-v3/index.ts",
+    "./integrations": "./src/integrations/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

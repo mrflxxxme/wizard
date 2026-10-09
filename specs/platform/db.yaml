@@ -847,6 +847,61 @@ tables:
       - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции (apps/platform-api/src/byok/service.ts)"
       - "Не больше 10 неотозванных ключей на организацию; роутер берёт активный ключ с check_status = ok, последний проверенный"
   # ==== конец блока V3-33 ====
+  # ==== V3-20: харнесс интеграций — ключи API системы, журнал их запросов, контракты исходящих интеграций (миграция 0039) ====
+  system_api_keys:
+    milestone: V3
+    purpose: "V3-20 (D77 (15), runtime.yaml#incoming_api): ключи собственного API системы для внешних систем клиента (1С и др.). Ключ wzk_<40 base32> показывается владельцу один раз (api: createSystemApiKey), хранится только sha256; действует от имени одной роли спеки (её права, скрытые и только читаемые поля, rowFilter и RLS) в пределах scopes; отзывается (revoked_at); удаляется вместе с системой. runtime читает ключ по хешу на каждый запрос, как deployments"
+    columns:
+      id: "uuid pk"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (char_length(name) between 1 and 80)"   # «1С: Бухгалтерия» — подпись владельца
+      role: "text not null check (role ~ '^[a-z][a-z0-9_]{0,39}$')"      # роль спеки; проверка при выпуске — scopeIssues (@wizard/runtime)
+      scopes: "jsonb not null check (jsonb_typeof(scopes) = 'array')"    # [{entity, ops[read|create|update|delete]} | {fn}] ≤ 50; users не выдаётся
+      prefix: "text not null check (prefix ~ '^wzk_[a-z2-7]{8}$')"        # для списка вместо ключа
+      key_hash: "text not null check (key_hash ~ '^[0-9a-f]{64}$')"      # sha256 ключа; самого ключа нигде нет
+      rate_per_minute: "integer not null default 60 check (rate_per_minute between 1 and 600)"
+      created_by: "uuid references platform.users on delete set null"
+      last_used_at: "timestamptz"                                        # не чаще раза в минуту
+      revoked_at: "timestamptz"
+    indexes: ["unique (key_hash)", "(system_id, created_at desc)"]
+    invariants:
+      - "Значение ключа MUST NOT попадать в БД, логи и ответы, кроме единственного ответа createSystemApiKey"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, privacy/delete-system.ts); systems.deleted_at или suspended_at — ключи не принимаются сразу"
+
+  system_api_calls:
+    milestone: V3
+    purpose: "V3-20: журнал запросов по ключам API системы — метод, цель (openapi | data:<entity>[/:id] | fn:<name>), статус, время. Без query, тел, значений и адресов; пишет runtime (как читает deployments), хранится 90 дней (runtime удаляет старые строки ключа при дописывании)"
+    columns:
+      id: "uuid pk"
+      key_id: "uuid not null references platform.system_api_keys on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      method: "text not null check (method in ('GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'))"
+      target: "text not null check (char_length(target) between 1 and 120)"
+      status: "integer not null check (status between 100 and 599)"
+      duration_ms: "integer not null check (duration_ms >= 0)"
+    indexes: ["(key_id, created_at desc)", "(system_id, created_at desc)"]
+
+  system_integration_contracts:
+    milestone: V3
+    purpose: "V3-20 (D77 (15), D37): версии контракта исходящей интеграции брифа (@wizard/agents/integrations IntegrationContract: подмножество OpenAPI 3.1 — базовый адрес, разрешённые хосты, ключ только secret://name, операции со схемами, безопасная GET-операция проверки ключа, сопоставление полей). Бриф хранит ссылку integrations[].contractRef = contract://<integration_id>@<version>#<sha256[0:12]> и secretRef. status: mock — сборка генерирует клиента на моке (без egress и ключа); live — проверка ключом прошла, функции интеграции получают egress = hosts контракта и secretRefs = его ключ; failed — проверка ключом не прошла"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      integration_id: "text not null check (integration_id ~ '^[a-z][a-z0-9_]{0,39}$')"
+      version: "integer not null check (version >= 1)"
+      contract: "jsonb not null check (jsonb_typeof(contract) = 'object')"
+      sha256: "text not null check (sha256 ~ '^[0-9a-f]{64}$')"          # canonical JSON контракта
+      status: "text not null default 'mock' check (status in ('mock','live','failed'))"
+      tests: "jsonb not null default '{}' check (jsonb_typeof(tests) = 'object')"   # ContractTestReport на моке
+      key_check: "jsonb check (key_check is null or jsonb_typeof(key_check) = 'object')"   # KeyCheckResult без тел ответа и без ключа
+      checked_at: "timestamptz"
+      created_by: "uuid references platform.users on delete set null"
+      run_id: "uuid references platform.runs on delete set null"
+    primary_key: [system_id, integration_id, version]
+    invariants:
+      - "version = max+1 по (system_id, integration_id); тот же sha256, что у последней версии, — новой версии нет"
+      - "Удаляется вместе с системой (как system_briefs)"
+  # ==== конец блока V3-20 ====
 
 views:
   wz_runtime.otp_sends:

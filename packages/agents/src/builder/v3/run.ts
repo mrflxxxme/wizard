@@ -371,8 +371,16 @@ export async function runBuildV3(host: V3Host, p: V3Params = {}): Promise<V3Outc
       },
     });
     if (!r.ok) throw new V3Failure(r.code, r.message_ru, false);
-    backend = r;
-    backendFp = sha256({ plan: r.plan, ext: p.extensions ?? [], design: designFp });
+    // V3-20: the brief's integrations (contract clients, mock until the key passes its check) on top of the backend.
+    const layer = host.integrations ? await host.integrations({ brief, spec: r.spec, files: r.files }) : null;
+    backend = layer ? { ...r, spec: layer.spec, files: layer.files } : r;
+    backendFp = sha256({
+      plan: r.plan,
+      ext: p.extensions ?? [],
+      design: designFp,
+      ...(layer ? { integrations: layer.fingerprint } : {}),
+    });
+    if (layer?.notes.length) notes = [...new Set([...notes, ...layer.notes])];
     for (const x of r.rejected)
       await request(
         `ext:${sha256(x.op)}`,

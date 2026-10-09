@@ -1286,6 +1286,108 @@ paths:
       summary: 'Повторный проверочный вызов (ключ расшифровывается на время вызова); итог — ByokKey.check'
       responses: {'200': {description: Итог проверки, content: {application/json: {schema: {type: object, required: [key], properties: {key: {$ref: '#/components/schemas/ByokKey'}}}}}}}
   # ==== конец блока V3-33 ====
+  # ==== V3-20: харнесс интеграций — контракты исходящих, проверка ключом, ключи собственного API системы ====
+  /systems/{id}/integrations:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemIntegrations
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-20 (D77 (15)): интеграции брифа — исходящие с последней версией контракта (status mock | live | failed, хосты, операции, сопоставление полей, тесты на моке, проверка ключом) и признаком «ключ введён» по окружениям; входящие — с числом активных ключей API системы. Значения ключей не отдаются'
+      responses:
+        '200': {description: Интеграции, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [id, name, direction, contractRef, secretRef, contract, keyPresent, apiKeys], properties: {id: {type: string}, name: {type: string}, direction: {enum: [out, in]}, contractRef: {type: [string, 'null'], description: 'contract://<id>@<version>#<sha12>'}, secretRef: {type: [string, 'null']}, contract: {type: [object, 'null']}, keyPresent: {type: [object, 'null'], properties: {draft: {type: boolean}, prod: {type: boolean}}}, apiKeys: {type: [integer, 'null']}}}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/integrations/{integrationId}/contract:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: integrationId, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}}]
+    get:
+      operationId: getIntegrationContract
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20: последняя версия контракта интеграции (IntegrationContract @wizard/agents/integrations) со статусом, тестами на моке и последней проверкой ключом'
+      responses:
+        '200': {description: Контракт, content: {application/json: {schema: {type: object, required: [contract, version, status], properties: {contract: {type: object}, version: {type: integer}, status: {enum: [mock, live, failed]}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createIntegrationContract
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20 (D77 (15), D37): документация → контракт кодом, без модели: ссылка на документацию — discover_docs (llms.txt, openapi.json, swagger.json, api-catalog; правила V3-05, D46), либо описание OpenAPI 3.x / Swagger 2.0 в теле. Операции выбираются по задаче (need, по умолчанию — название интеграции в брифе), ключ — только secret://<id>_key (или secretRef брифа), хосты — из сервера документа; сопоставление полей данных брифа — по именам и синонимам. Контракт проверяется тестами на детерминированном моке и сохраняется версией (db.yaml#system_integration_contracts, status mock); в брифе — новая версия (author agent) с contractRef и secretRef. Если ключ уже введён — сразу проверка ключом. Текстовая документация без OpenAPI — 400 с причиной (составление контракта моделью — в сборке, research T0)'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, additionalProperties: false, properties: {url: {type: string, format: uri}, openapi: {type: [object, string], description: 'OpenAPI 3.x или Swagger 2.0 (JSON) ≤ 5 МБ'}, need: {type: string, maxLength: 500}, operations: {type: array, maxItems: 30, items: {type: string}, description: 'operationId или «METHOD /path»'}}}}
+      responses:
+        '201': {description: 'Новая версия контракта', content: {application/json: {schema: {type: object, required: [contractRef, changed, contract, check], properties: {contractRef: {type: string}, changed: {const: true}, contract: {type: object}, check: {type: [object, 'null'], description: 'IntegrationCheck, когда ключ уже был введён'}}}}}}
+        '200': {description: 'Контракт совпал с последней версией (changed=false)', content: {application/json: {schema: {type: object, required: [contractRef, changed, contract], properties: {contractRef: {type: string}, changed: {const: false}, contract: {type: object}}}}}}
+        '400': {description: 'VALIDATION_FAILED — не OpenAPI, нет https-сервера, нет операций, входящая интеграция, документация не открылась (details.reason)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: 'NOT_FOUND — нет системы или интеграции в брифе', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /systems/{id}/integrations/{integrationId}/check:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: integrationId, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}}]
+    post:
+      operationId: checkIntegrationKey
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20 (D77 (15)): проверка ключом — тот же хук, что вызывает окно ключа V3-21 после ввода или ротации (onIntegrationKey). Ключ secret://name контракта есть (env или сначала draft, потом prod) → безопасная GET-операция контракта через egress-клиент runtime (только хосты контракта, https:443, без редиректов, адреса после резолва публичные, ключ подставляется на выходе) → live (следующая сборка генерирует клиента с egress = hosts контракта) или failed (AUTH_FAILED 401/403, CONTRACT_MISMATCH, NOT_FOUND, RATE_LIMITED, UPSTREAM_UNAVAILABLE). Нет ключа → state mock, code SECRET_MISSING, запросов нет'
+      requestBody:
+        content:
+          application/json: {schema: {type: object, additionalProperties: false, properties: {env: {enum: [draft, prod]}}}}
+      responses:
+        '200': {description: IntegrationCheck, content: {application/json: {schema: {type: object, required: [state, version, check], properties: {state: {enum: [mock, live, failed]}, version: {type: integer}, check: {type: object, required: [ok, verified, code, status, message_ru, problems], properties: {ok: {type: boolean}, verified: {type: boolean}, code: {type: string}, status: {type: [integer, 'null']}, message_ru: {type: string}, problems: {type: array, items: {type: string}}}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/api-keys:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemApiKeys
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-20 (runtime.yaml#incoming_api): ключи собственного API системы — имя, окружение, роль, scopes, префикс wzk_xxxxxxxx, лимит в минуту, создан, последний запрос, отозван. Ни ключа, ни его хеша'
+      responses:
+        '200': {description: Ключи, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/SystemApiKey'}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createSystemApiKey
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20: выпустить ключ для внешней системы клиента (1С и др.). Ключ действует от имени роли спеки окружения (draft — черновая ревизия, prod — опубликованная) в пределах scopes: [{entity, ops}] ⊆ права роли (scopeIssues), [{fn}] — только public-функции, доступные роли; users не выдаётся. Ключ показывается один раз (Cache-Control: no-store), хранится sha256'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [name, env, role, scopes], additionalProperties: false, properties: {name: {type: string, maxLength: 80}, env: {enum: [draft, prod]}, role: {type: string}, scopes: {type: array, maxItems: 50, items: {oneOf: [{type: object, required: [entity, ops], properties: {entity: {type: string}, ops: {type: array, items: {enum: [read, create, update, delete]}}}}, {type: object, required: [fn], properties: {fn: {type: string}}}]}}, ratePerMinute: {type: integer, minimum: 1, maximum: 600, default: 60}}}}
+      responses:
+        '201': {description: 'Ключ (один раз) и запись', content: {application/json: {schema: {type: object, required: [key, item], properties: {key: {type: string, pattern: '^wzk_[a-z2-7]{40}$'}, item: {$ref: '#/components/schemas/SystemApiKey'}}}}}}
+        '400': {description: 'VALIDATION_FAILED — роль или scopes не подходят спеке (details.issues по-русски), система не опубликована', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/api-keys/{keyId}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      operationId: revokeSystemApiKey
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20: отозвать ключ — runtime перестаёт принимать его сразу (проверка по БД на каждый запрос); повтор не меняет время отзыва'
+      responses:
+        '200': {description: Отозванный ключ, content: {application/json: {schema: {type: object, required: [item], properties: {item: {$ref: '#/components/schemas/SystemApiKey'}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/api-keys/{keyId}/openapi.json:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getSystemApiKeyOpenApi
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20: OpenAPI 3.1 того, что умеет ключ (systemOpenApi @wizard/runtime): сущности и функции его scopes в правах роли, видимые поля, поля для записи; сервер — https://<хост системы окружения ключа>/api/v1, авторизация Bearer wzk_…'
+      responses:
+        '200': {description: OpenAPI 3.1, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/api-keys/{keyId}/calls:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: keyId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: listSystemApiKeyCalls
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-20: журнал запросов ключа (db.yaml#system_api_calls) — последние 100: метод, цель, статус, время; без значений'
+      responses:
+        '200': {description: Запросы, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [method, target, status, durationMs, at], properties: {method: {type: string}, target: {type: string}, status: {type: integer}, durationMs: {type: integer}, at: {type: string, format: date-time}}}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  # ==== конец блока V3-20 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -1665,6 +1767,7 @@ components:
     LlmSpend: {type: object, required: [month, spentRub, capRub, sharePercent, warn, reached], properties: {month: {type: string, description: yyyy-mm (Europe/Moscow)}, spentRub: {type: number}, capRub: {type: number}, sharePercent: {type: integer}, warn: {type: boolean, description: '≥ 80 % лимита'}, reached: {type: boolean}}}
     SystemSession: {type: object, description: 'V3-06: сессия системы (listSystemSessions)', required: [id, kind, source, status, startedAt, finishedAt, runIds, briefVersions, changes, changesTotal, build], properties: {id: {type: string, description: 'build:<runId> | interview:<runId> | edit:<runId> | brief:<version> | interview:v<version>'}, kind: {enum: [interview, build, edit]}, source: {enum: [chat, panel, null], description: 'только edit: chat — словами в чате, panel — в панели «Бриф»'}, status: {enum: [running, waiting, done, failed, cancelled]}, startedAt: {type: string, format: date-time}, finishedAt: {type: [string, 'null'], format: date-time}, runIds: {type: array, items: {type: string, format: uuid}}, briefVersions: {type: array, items: {type: integer}, description: 'версии брифа, записанные в сессии'}, changes: {type: array, maxItems: 6, items: {type: string}, description: 'первые строки разницы версий (BriefChange.text_ru)'}, changesTotal: {type: integer}, build: {oneOf: [{type: 'null'}, {type: object, required: [mode, revision, failure], properties: {mode: {type: [string, 'null']}, revision: {type: [integer, 'null'], description: 'runs.result_revision'}, failure: {type: [string, 'null'], description: 'runs.failure_message_ru'}}}]}}}
     CapabilityMonth: {type: object, description: 'V3-06: доля «пока не умею» за месяц (adminCapabilityShare)', required: [month, briefs, requirements, notYet, share], properties: {month: {type: string, description: YYYY-MM (UTC)}, briefs: {type: integer, description: 'систем с брифом в этом месяце'}, requirements: {type: integer}, notYet: {type: integer}, share: {type: number, minimum: 0, maximum: 1, description: 'notYet / requirements, 3 знака; 0 — нет требований'}}}
+    SystemApiKey: {type: object, description: 'V3-20: ключ API системы без значения и хеша (db.yaml#system_api_keys)', required: [id, env, name, role, scopes, prefix, ratePerMinute, createdAt, lastUsedAt, revokedAt], properties: {id: {type: string, format: uuid}, env: {enum: [draft, prod]}, name: {type: string}, role: {type: string}, scopes: {type: array, items: {type: object}}, prefix: {type: string, pattern: '^wzk_[a-z2-7]{8}$'}, ratePerMinute: {type: integer}, createdAt: {type: string, format: date-time}, lastUsedAt: {type: [string, 'null'], format: date-time}, revokedAt: {type: [string, 'null'], format: date-time}}}
     DesignDirections:
       type: object
       description: 'V3-09: набор трёх направлений первого экрана (packages/agents/src/builder/v3/directions)'

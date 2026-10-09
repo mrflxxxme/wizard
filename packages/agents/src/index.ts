@@ -19,6 +19,17 @@ export {
   reportCapabilityGapTool,
   SUPPORT_BUTTON,
 } from "./gaps.js";
+/** Integrations harness (V3-20): documentation → contract → typed client → mock and contract tests → key check; full API at ./integrations. */
+export {
+  checkContractKey,
+  contractFromDocs,
+  contractFromOpenApi,
+  type IntegrationContract,
+  integrationCode,
+  integrationsHook,
+  mockTransport,
+  runContractTests,
+} from "./integrations/index.js";
 /** Agent research (V3-05, builder-v3.md C8): web_search (Yandex Search API), read_page, discover_docs; limits, cache, journal. */
 export {
   createResearch,

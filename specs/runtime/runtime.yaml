@@ -248,3 +248,20 @@ logging:
     - "MUST (L3-08): route — без query-строки; ошибки PG → {sqlstate, constraint} без detail/where; сегмент hookToken в пути маскируется; ответы коннекторов и провайдеров — только {status, code}"
     - "userIdHash (since: M1) = первые 12 символов HMAC-SHA256(user_id) с ключом окружения"
   test: "e2e форума с засеянными уникальными ПДн-маркерами: grep по логам runtime не находит ни одного маркера"
+
+incoming_api:                                # V3-20 (product.yaml#decisions.D77_v3 (15)): собственный API системы для внешних систем клиента (1С и др.)
+  milestone: V3
+  endpoints:
+    - "GET    /api/v1/openapi.json             → OpenAPI 3.1 того, что умеет ключ (systemOpenApi: сущности и функции его scopes в правах роли; скрытые поля роли отсутствуют, только читаемые — не в телах записи)"
+    - "GET    /api/v1/data/:entity             → как GET /api/data/:entity (data_api.query_params, doc_shape)"
+    - "POST   /api/v1/data/:entity             → 201 {item}"
+    - "GET    /api/v1/data/:entity/:id         → 200 {item} | 404"
+    - "PATCH  /api/v1/data/:entity/:id         → 200 {item}"
+    - "DELETE /api/v1/data/:entity/:id         → 204"
+    - "POST   /api/v1/fn/:name {args, _consent?} → 200 {result, deps} (functions.endpoint; только {fn} из scopes)"
+  auth: "MUST: только заголовок Authorization: Bearer wzk_<40 base32>; cookie сессий на /api/v1 не читаются, поэтому CSRF (auth.csrf) и закрытость черновика (draftAdmitted) к /api/v1 не применяются — пропуск даёт ключ. Ключ ищется по sha256 в platform.system_api_keys (../platform/db.yaml) на каждый запрос: не отозван, система не удалена и не снята; systemKey и env ключа = системе хоста, иначе 401 как без ключа (не раскрывать, какие системы есть). Нет ключа, неверный, чужой, отозванный → 401 UNAUTHENTICATED + WWW-Authenticate: Bearer"
+  permissions: "Ключ = субъект {id: null, role: роль ключа, isAdmin роли}; сначала scopes ключа ([{entity, ops}] | [{fn}]; users не выдаётся) → иначе 403 FORBIDDEN; затем data_api и permissions.algorithm роли без изменений: ops, hiddenFields, readonlyFields, rowFilter ($user.* без пользователя → FALSE: строки с фильтром по пользователю ключу не видны), RLS второй линией; согласие на ПДн (_consent) — как у роли. Роли ключа нет в спеке → 403"
+  limits: "rate_per_minute ключа (по умолчанию 60, ≤ 600) → 429 RATE_LIMITED + Retry-After; неудачные попытки ключа с одного адреса клиента — не больше 20 в минуту → 429 + Retry-After: 60"
+  audit: "Каждый запрос с найденным ключом — строка platform.system_api_calls {key_id, method, target: openapi | data:<entity>[/:id] | fn:<name>, status, duration_ms}; last_used_at ключа не чаще раза в минуту. Без query, тел, значений, адресов; строки старше 90 дней удаляются при дописывании. Ключ не логируется (logging.rules)"
+  keys: "Выпуск, список, отзыв, OpenAPI ключа и журнал — platform-api (api.yaml: createSystemApiKey …); ключ показывается один раз, хранится sha256; удаляется вместе с системой"
+  test: "apps/runtime/test/api-v3.test.ts (ключи, scopes ∩ роль ∩ RLS, OpenAPI, лимиты, журнал), apps/platform-api/test/v3-integrations.test.ts (выпуск через платформу → runtime по platform.system_api_keys, отзыв, удаление системы)"

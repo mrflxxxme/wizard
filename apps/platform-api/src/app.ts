@@ -31,6 +31,8 @@ import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
 import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
+import { integrationRoutes } from "./integrations-v3/routes.js";
+import type { IntegrationsDeps } from "./integrations-v3/service.js";
 import type { OpsAlertFn } from "./ops/alert.js";
 import { opsAlertFromConfig } from "./ops/alert-config.js";
 import { checkRunFailureRate } from "./ops/checks.js";
@@ -136,6 +138,8 @@ export interface PlatformApiOptions {
   directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
   /** V3-33 BYOK service (tests: flag, KMS, gateway fetch); default from env (byok/index.ts byokServiceOf). */
   byok?: (d: { pg: DbHandle["pg"]; secrets: SecretStore }) => ByokService;
+  /** V3-20 integrations harness: research of documentation links and the network of key checks (tests: local TLS). */
+  integrations?: Pick<IntegrationsDeps, "research" | "keyCheck">;
 }
 
 export interface PlatformApi {
@@ -390,6 +394,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", repoRoutes(deps));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
+  // V3-20: integrations of the brief (contracts, mock → key check → live) and keys of the system's own API.
+  api.route("/", integrationRoutes({ ...deps, secrets, ...opts.integrations }));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));

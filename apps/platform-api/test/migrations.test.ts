@@ -88,6 +88,8 @@ const V3_TABLES = [
 ];
 // V3-33 own model keys (migration 0041).
 V3_TABLES.push("byok_consents", "byok_keys");
+// V3-20: system API keys, their audit, outgoing integration contracts (migration 0039).
+V3_TABLES.push("system_api_keys", "system_api_calls", "system_integration_contracts");
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
