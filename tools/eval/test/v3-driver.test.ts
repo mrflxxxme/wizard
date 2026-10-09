@@ -41,7 +41,7 @@ import {
   revokeSql,
   seedSql,
 } from "../server/seed.mjs";
-import { fillOwnerOperator, ownerGates, runV3Eval, V3_TEST_OPERATOR } from "../server/v3.mjs";
+import { fillOwnerOperator, ownerGates, runV3Eval, V3_DEFAULTS, V3_TEST_OPERATOR, v3EvalOptions } from "../server/v3.mjs";
 import { checkpointName, renderV3Report } from "../server/v3-report.mjs";
 
 const hasPsql = spawnSync("psql", ["--version"]).status === 0;
@@ -390,4 +390,12 @@ describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () =>
     expect(existsSync(join(dir, `${name}.md`))).toBe(true);
     expect(psql(tdb.url, revokeSql({ tokenHash: session.tokenHash }))).toMatch(/revoked=/);
   }, 420_000);
+});
+
+describe("v3EvalOptions", () => {
+  test("the v3 interview keeps its own turn limit (runEval's 8 of the v2 card cut a grill after «Дальше решай сам»)", () => {
+    expect(v3EvalOptions({ briefs: [] }).maxTurns).toBe(V3_DEFAULTS.maxTurns);
+    expect(V3_DEFAULTS.maxTurns).toBeGreaterThan(V3_DEFAULTS.restAfter + 2);
+    expect(v3EvalOptions({ briefs: [], maxTurns: 5 }).maxTurns).toBe(5);
+  });
 });
