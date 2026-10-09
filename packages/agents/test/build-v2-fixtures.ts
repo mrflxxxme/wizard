@@ -47,6 +47,8 @@ const CALL_PROFILE = {
   brief_extract: { reasoning: 0, latencyMs: 25_000, model: "gigachat-3.5" },
   // V3-03: one turn of the grill interview (brief update + question, or a search).
   interview_v3: { reasoning: 1200, latencyMs: 30_000 },
+  // V3-11: the page composer of a scenario (v3-harness-fixtures.ts).
+  page_compose: { reasoning: 600, latencyMs: 60_000 },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 

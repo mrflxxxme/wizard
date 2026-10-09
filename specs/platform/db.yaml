@@ -717,6 +717,22 @@ tables:
       - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_plans)"
   # ==== конец блока V3-02 ====
 
+  # ==== V3-11: чекпоинты харнесса сборки v3 (миграция 0037) ====
+  system_build_checkpoints:
+    milestone: V3
+    purpose: "V3-11 (D77 (10), specs/agents/builder-v3.md §3 C6): результат каждого этапа и каждого сценария сборки v3 по брифу ({key, fingerprint, data, costMilli, durationMs, runId} — V3Checkpoint из @wizard/agents/builder). Повторная сборка берёт шаг из чекпоинта, если fingerprint (хеш того, что шаг прочитал) тот же, и не платит за него снова. Ключ — id этапа или scenario:<id сценария брифа>; служебные ключи questions (заданные неблокирующие вопросы) и requests (записанные «Запросы на развитие»)"
+    columns:
+      system_id: "uuid not null references platform.systems on delete cascade"
+      key: "text not null check (key ~ '^[a-z_]+(:[A-Za-z0-9_-]+)?$')"
+      checkpoint: "jsonb not null check (jsonb_typeof(checkpoint) = 'object')"   # файлы страниц сценария — исходники, ПДн нет (тексты — из брифа)
+      run_id: "uuid references platform.runs on delete set null"
+      updated_at: "timestamptz not null default now()"
+    primary_key: [system_id, key]
+    invariants:
+      - "Запись — upsert по (system_id, key) после каждого этапа и сценария (apps/platform-api/src/builds-v3/checkpoints.ts)"
+      - "Удаляется вместе с системой (workflows.yaml#delete_system, как system_briefs)"
+  # ==== конец блока V3-11 ====
+
 views:
   wz_runtime.otp_sends:
     milestone: M1
