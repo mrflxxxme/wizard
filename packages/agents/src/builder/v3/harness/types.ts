@@ -1,9 +1,10 @@
 // Host contract, params and outcome of the build harness v3 (V3-11; specs/agents/builder-v3.md §3 C6, product.yaml
 // D77_v3 (9)–(11)): stages brief → design → backend → skeleton → scenarios → critic → template_gate → techreview →
 // gates, a checkpoint after each stage and each scenario, a wallet in ₽ and a clock with the stop rules of D77 (10).
-import type { AppSpec, BriefScenario, SystemBrief } from "@wizard/appspec";
+import type { AppSpec, BriefScenario, ExtensionOp, SystemBrief } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import type { ModuleRegistry } from "@wizard/modules";
+import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import type { RunStepFn } from "../../../core/events.js";
 import type { RecordDevelopmentRequest } from "../../../gaps.js";
 import type { HostRoute } from "../../../host/index.js";
@@ -104,8 +105,23 @@ export interface V3HookResult {
   blockers?: string[];
   /** ₽ spent outside ctx.route (calls through ctx.route are counted by the wallet). */
   spentRub?: number;
-  /** template_gate: too close to past sites of the niche — the art director picks again without these archetypes. */
+  /**
+   * template_gate: too close to past sites of the niche. Right after the skeleton the art director picks again without
+   * these archetypes and the skeleton is recomposed (once per run; never over a direction the owner pinned); at the
+   * late stage, after the scenarios, it is only a note.
+   */
   redesign?: { avoid: string[] };
+  /**
+   * Token edits of the design system (the critic): the harness takes them as ctx.design of the later stages, compiles
+   * the backend (cabinets) with them and writes their ui/design.css over the earlier layers.
+   */
+  design?: DesignSystemV3;
+  /**
+   * techreview (V3-15): extension operations (C5) its fixes need, already checked under the gates; the harness adds
+   * them to the build's extensions and compiles the backend again (applyExtensions: RLS, ПДн and migration rules) — a
+   * rejected one goes to «Запросы на развитие» with its reason.
+   */
+  extensions?: ExtensionOp[];
   note?: string;
 }
 
@@ -169,6 +185,16 @@ export interface V3Host {
   notifyReady?(notice: V3ReadyNotice): Promise<void>;
   /** Niche memory of the art director: archetypes of the latest builds of the niche, most recent first. */
   recentArchetypes?(niche: string): Promise<string[]>;
+  /**
+   * V3-20: the brief's integrations on top of the compiled backend — the host reads the stored contracts and their
+   * states and returns the spec and files with functions/integrations/<id>/** (@wizard/agents/integrations
+   * integrationLayer + withIntegrationLayer); null or absent — no integrations layer.
+   */
+  integrations?(input: {
+    brief: SystemBrief;
+    spec: AppSpec;
+    files: Readonly<Record<string, string>>;
+  }): Promise<{ spec: AppSpec; files: Record<string, string>; fingerprint: string; notes: string[] } | null>;
 }
 
 /** Caps of a build (D77 (10), (11)). */

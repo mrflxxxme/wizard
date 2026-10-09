@@ -127,11 +127,13 @@ export class Prober {
       if (f.type === "ref") {
         const target = f.ref?.entity as string;
         const te = this.spec.entities.find((x) => x.name === target);
-        // A unique ref needs a target nobody points to yet: a fresh row the role can see.
+        // A unique ref — or one of a unique index (one open issue per item) — needs a target nobody points to yet: a
+        // fresh row the role can see. Created rows stay, so the first seed row would answer 409 to the second role's
+        // create probe when the other fields of the index are defaults the role cannot set (V3-15).
         const ref =
           target === USERS_ENTITY
             ? actor.id
-            : f.unique && te && this.perm(role, target)?.ops.includes("read")
+            : (f.unique || inUniqueIndex(e, f.name)) && te && this.perm(role, target)?.ops.includes("read")
               ? await this.freshRow(te, role, actor)
               : this.visibleRow(role, actor, target);
         if (!ref) problem ??= `роль не видит связанную запись для поля «${f.label}»`;

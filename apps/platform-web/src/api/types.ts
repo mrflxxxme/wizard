@@ -941,3 +941,32 @@ export interface CapabilityMonth {
   /** notYet / requirements, 0…1. */
   share: number;
 }
+
+/** V3-17 workflows.yaml#events.schemas.v3_progress: a brief scenario on the live checklist of a v3 build. */
+export interface V3ProgressScenario {
+  id: string;
+  title: string;
+  priority: "must" | "should";
+  /** failed and stopped ones go to «Запросы на развитие» with `reason`. */
+  status: "pending" | "running" | "passed" | "failed" | "stopped";
+  reason?: string;
+  /** Taken from a checkpoint of an earlier build. */
+  reused?: boolean;
+}
+
+/** V3-17: the snapshot of a v3 build in build_stage / step_started / step_finished (`payload.progress`). */
+export interface V3BuildProgress {
+  stage: string | null;
+  stages: { id: string; label_ru: string; status: "pending" | "running" | "done" | "reused" | "skipped" }[];
+  scenarios: V3ProgressScenario[];
+  spentRub: number;
+  /** Part of spentRub paid by an earlier build (steps reused from its checkpoints). */
+  reusedRub: number;
+  capRub: number;
+  elapsedSec: number;
+  capSec: number;
+  remainingSec: number;
+  /** Revision of the live preview (the growing system); null — not yet. */
+  previewRevision: number | null;
+  checkpoints: { saved: number; reused: number };
+}

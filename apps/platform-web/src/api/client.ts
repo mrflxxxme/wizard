@@ -1,5 +1,6 @@
 // Typed client of the M0 subset of specs/platform/api.yaml. Mutations carry Idempotency-Key (one uuid per click).
 import { ru } from "../i18n/ru.js";
+import { createByokClient } from "../screens/settings/byok/client.js";
 import type {
   AbuseCategory,
   AbuseReport,
@@ -165,6 +166,8 @@ export function createApiClient(opts: ClientOptions = {}) {
   const org = (id: string) => `/orgs/${encodeURIComponent(id)}`;
 
   return {
+    /** V3-33: own model keys of an org (screens/settings/byok). */
+    byok: createByokClient(call),
     listSystems: (orgId?: string) =>
       call<{ items: System[]; nextCursor?: string | null }>("GET", "/systems", { query: { orgId } }),
     createSystem: (

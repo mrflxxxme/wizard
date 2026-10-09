@@ -1,6 +1,8 @@
 // route(): architecture.yaml#interfaces.llm_call; models.yaml#routing_algorithm, #fallback_rules, #call_policy.retries.
 import { randomUUID } from "node:crypto";
 import { modelViolation } from "./allowlist.js";
+import { type ByokResolver, routeByok } from "./byok/call.js";
+import { isByokCallType } from "./byok/policy.js";
 import { BALANCE_BLOCK_MS, CircuitBreaker } from "./circuit.js";
 import { LlmError } from "./errors.js";
 import {
@@ -100,6 +102,11 @@ export interface RouterOptions {
    * T0-only calls or T0 chosen for data reasons. Default: env WIZARD_LLM_T1_RESERVE=1.
    */
   t1Reserve?: boolean;
+  /**
+   * V3-33 BYOK: the org's own key. A call the BYOK policy allows (byok/policy.ts byokDecision, live mode) goes to it
+   * first, scrubbed and free for the balance; no key or a failed attempt → the platform chain as usual. Default: none.
+   */
+  byok?: ByokResolver;
   backoffMs?: readonly number[];
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
@@ -237,6 +244,31 @@ export function createRouter(opts: RouterOptions = {}): Router {
       throw new LlmError("BUDGET_EXCEEDED", "Бюджет кредитов прогона исчерпан.", { ...budget });
     }
     const routeDef = reg.routes[callType];
+    if (opts.byok && mode === "live" && isByokCallType(callType)) {
+      // The BYOK attempt is cancelled like a T1 one when the org policy starts forbidding calls outside RF.
+      const policyCtrl = new AbortController();
+      track(input.ctx.orgId, policyCtrl);
+      try {
+        const out = await routeByok({
+          resolver: opts.byok,
+          input,
+          callType,
+          route: routeDef,
+          reg,
+          sink,
+          policyVersion: version,
+          mode,
+          now,
+          sleep,
+          policySignal: policyCtrl.signal,
+        });
+        if (out) return out;
+      } finally {
+        untrack(input.ctx.orgId, policyCtrl);
+      }
+      if (policyCtrl.signal.aborted && !input.signal?.aborted)
+        return routeOnce({ ...input, orgPolicy: policyCtrl.signal.reason as OrgPolicy }, switched);
+    }
     const decision: PolicyDecision = decideTier(
       {
         callType,

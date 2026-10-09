@@ -21,6 +21,38 @@ export {
   type AiRunResponse,
   httpAiGateway,
 } from "./ai/gateway.js";
+/** V3-20: the system's own API for external systems — /api/v1 with keys (role + scopes), OpenAPI 3.1 from the spec. */
+export {
+  API_CALLS_RETENTION_DAYS,
+  API_KEY_PREFIX_LEN,
+  API_KEY_RATE_DEFAULT,
+  API_KEY_RATE_MAX,
+  API_KEY_RE,
+  type ApiCallRecord,
+  type ApiKeyRecord,
+  type ApiKeyStore,
+  hashApiKey,
+  MemoryApiKeyStore,
+  newApiKey,
+  pgApiKeyStore,
+} from "./api-v3/keys.js";
+export { fieldSchema as apiFieldSchema, type SystemOpenApiOptions, systemOpenApi } from "./api-v3/openapi.js";
+export {
+  API_AUTH_FAILURES_PER_MINUTE,
+  INCOMING_API_PREFIX,
+  type IncomingApiOptions,
+  incomingApiRoutes,
+  isIncomingApiPath,
+} from "./api-v3/routes.js";
+export {
+  API_SCOPES_MAX,
+  type ApiDataOp,
+  type ApiScope,
+  parseScopes,
+  scopeAllows,
+  scopeAllowsFn,
+  scopeIssues,
+} from "./api-v3/scopes.js";
 /** createRuntimeApp({db, registry, clock?, connectors?}) → {fetch, loadSystem, outbox} (interfaces.runtime_handle). */
 export {
   createRuntimeApp,

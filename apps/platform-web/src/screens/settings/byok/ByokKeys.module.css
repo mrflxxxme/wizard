@@ -1,0 +1,113 @@
+/* «Свои ключи моделей» (V3-33) on the S10 cards of the design system v2: key rows, the add form, the terms modal. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.key {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--p-line);
+  min-width: 0;
+}
+
+.key:last-child {
+  border-bottom: 0;
+}
+
+.keyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.keyName {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.model {
+  font-weight: 400;
+}
+
+.meta {
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--p-f-mono, ui-monospace, monospace);
+  letter-spacing: 0.02em;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.keyField {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.keyField input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.reveal {
+  flex: none;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--p-r-md);
+  background: var(--p-sunken);
+  color: var(--p-ink-2);
+  font: 500 12.5px / 1.2 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.reveal:focus-visible {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 1px;
+}
+
+.dialog {
+  max-width: 560px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.terms {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--p-ink);
+}
+
+@media (max-width: 1024px), (pointer: coarse) {
+  .reveal {
+    min-height: 44px;
+  }
+}

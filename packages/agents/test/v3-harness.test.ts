@@ -8,10 +8,12 @@
 import { type AppSpec, emptySpec, type SystemBriefInput, systemBriefSchema } from "@wizard/appspec";
 import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry, createRouter, LlmError, type RouteInput } from "@wizard/llm";
+import { type DesignSystemV3, designSystemV3 } from "@wizard/ui-kit/v3/design";
 import { describe, expect, test } from "vitest";
 import {
   briefNiche,
   DESIGN_CSS_FILE,
+  designCss,
   runBuildV3,
   type ScenarioCheckInput,
   type ScenarioCheckResult,
@@ -570,5 +572,140 @@ describe("harness v3: non-blocking questions, the brief re-read, hooks", () => {
     expect(g1?.goalScenarios?.map((g) => g.id)).toEqual(
       expect.arrayContaining([expect.stringMatching(/^GS-booking-/), expect.stringMatching(/^GS-leads-/)]),
     );
+  });
+});
+
+describe("harness v3: the template check right after the skeleton (V3-14)", () => {
+  /** A template gate that calls the site a copy on its first `hits` calls and records what it saw. */
+  const gate = (hits: number) => {
+    const seen: { archetype: string; css: string | undefined }[] = [];
+    const hook: V3StageHook = async (ctx) => {
+      seen.push({ archetype: ctx.design.archetype, css: ctx.files.get(DESIGN_CSS_FILE) });
+      if (seen.length > hits) return { status: "done", note: "сходство 20 %" };
+      return { status: "done", redesign: { avoid: [ctx.design.archetype] } };
+    };
+    return { hook, seen };
+  };
+  const skeletons = (composer: ReturnType<typeof fakeComposer>) =>
+    composer.log.filter((l) => l.kind === "skeleton").length;
+  type DesignData = {
+    archetype: string;
+    styleName: string;
+    source: string;
+    redesignedFrom?: string;
+    design: DesignSystemV3;
+  };
+  const brief = systemBriefSchema.parse(clinicBrief());
+  /** The design system of the brief's direction (calm_medical; seed — the system). */
+  const original = designSystemV3({ archetype: "calm_medical", seed: SYSTEM_ID, niche: briefNiche(brief) });
+
+  test("a copy of a recent site: another archetype and skeleton before the preview, scenarios in the new style; the repeat reuses it", async () => {
+    const sys = newSys();
+    const g = gate(1);
+    const criticSaw: string[] = [];
+    const critic: V3StageHook = async (ctx) => {
+      criticSaw.push(ctx.design.archetype);
+      return { status: "done" };
+    };
+    const cssAtChecks: string[] = [];
+    const { out, rec, composer } = await build(sys, {
+      hooks: { template_gate: g.hook, critic },
+      afterCheck: (_input, s) => cssAtChecks.push(s.files[DESIGN_CSS_FILE] ?? ""),
+    });
+    const r = ok(out);
+    // The design checkpoint keeps the final archetype (the niche memory of later builds reads it).
+    const d = sys.checkpoints.get("design")?.data as DesignData;
+    expect(d).toMatchObject({ source: "template_gate", redesignedFrom: "calm_medical" });
+    expect(d.archetype).not.toBe("calm_medical");
+    // The gate: the first skeleton (old style), once more on the new skeleton, the late stage on the finished site.
+    expect(g.seen.map((s) => s.archetype)).toEqual(["calm_medical", d.archetype, d.archetype]);
+    expect(g.seen[0]?.css).toBe(designCss(original));
+    // Two skeletons, both before any model call; the first commit — the preview — is already in the new style.
+    expect(skeletons(composer)).toBe(2);
+    expect(rec.callsAtPreview).toBe(0);
+    expect(sys.commits[0]).toBe("Каркас страниц в выбранном стиле");
+    const css = designCss(d.design);
+    expect(css).not.toBe(designCss(original));
+    expect(cssAtChecks.length).toBeGreaterThan(0);
+    expect(cssAtChecks.every((c) => c === css)).toBe(true);
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(css);
+    expect(criticSaw).toEqual([d.archetype]);
+    expect(r.summary_ru).toContain(`Сменил стиль на «${d.styleName}»`);
+    expect(rec.events.some((e) => e.type === "agent_message" && e.payload.messageId === "v3_redesign")).toBe(
+      true,
+    );
+    expect(r.stages.skeleton?.note).toBe(`шаблонность: calm_medical → ${d.archetype}`);
+
+    // «Собрать» again: the final design and the skeleton from the checkpoints — no redesign, no new revision.
+    const commits = sys.commits.length;
+    const g2 = gate(1);
+    const again = await build(sys, { hooks: { template_gate: g2.hook, critic } });
+    ok(again.out);
+    expect(g2.seen).toEqual([]);
+    expect(skeletons(again.composer)).toBe(0);
+    expect(stagesOf(again.rec, "reused")).toEqual(
+      expect.arrayContaining(["design", "skeleton", "template_gate"]),
+    );
+    expect(sys.commits).toHaveLength(commits);
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(css);
+  });
+
+  test("a hook that keeps calling it a copy: one redesign per run, then notes — no loop", async () => {
+    const g = gate(99);
+    const { out, composer } = await build(newSys(), { hooks: { template_gate: g.hook } });
+    const r = ok(out);
+    expect(skeletons(composer)).toBe(2);
+    expect(g.seen).toHaveLength(3);
+    expect(g.seen[1]?.archetype).not.toBe("calm_medical");
+    expect(g.seen[2]?.archetype).toBe(g.seen[1]?.archetype);
+    expect(r.summary_ru).toContain("всё ещё похож на недавние сайты");
+    expect(r.summary_ru).toContain("после сценариев стиль уже не меняю");
+  });
+
+  test("the owner pinned the direction: the style stays, a note says why", async () => {
+    const sys = newSys({
+      ...clinicBrief(),
+      design: { archetype: "calm_medical", pinned: true, references: [] },
+    });
+    const g = gate(99);
+    const { out, composer } = await build(sys, { hooks: { template_gate: g.hook } });
+    const r = ok(out);
+    expect(skeletons(composer)).toBe(1);
+    expect(g.seen.map((s) => s.archetype)).toEqual(["calm_medical", "calm_medical"]);
+    const d = sys.checkpoints.get("design")?.data as DesignData;
+    expect(d.archetype).toBe("calm_medical");
+    expect(d.redesignedFrom).toBeUndefined();
+    expect(r.summary_ru).toContain("стиль вы выбрали сами");
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(original));
+  });
+
+  test("token edits of the critic reach ctx.design of the later hooks, the backend and ui/design.css", async () => {
+    const sys = newSys();
+    const tuned: DesignSystemV3 = { ...original, radius: { ...original.radius, md: original.radius.md + 6 } };
+    const critic: V3StageHook = async () => ({
+      status: "done",
+      files: new Map([[DESIGN_CSS_FILE, "/* the critic's file, replaced by the harness */"]]),
+      design: tuned,
+    });
+    const saw: { radius: number; css: string | undefined }[] = [];
+    const techreview: V3StageHook = async (ctx) => {
+      saw.push({ radius: ctx.design.radius.md, css: ctx.files.get(DESIGN_CSS_FILE) });
+      return { status: "done" };
+    };
+    const { out } = await build(sys, { hooks: { critic, techreview } });
+    ok(out);
+    expect(saw).toEqual([{ radius: tuned.radius.md, css: designCss(tuned) }]);
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(tuned));
+    // The repeat reuses the critic's checkpoint and applies its tokens again: the draft ends in the tuned design.
+    let calls = 0;
+    const counted: V3StageHook = async (ctx) => {
+      calls += 1;
+      return critic(ctx);
+    };
+    const again = await build(sys, { hooks: { critic: counted, techreview } });
+    ok(again.out);
+    expect(calls).toBe(0);
+    expect(stagesOf(again.rec, "reused")).toContain("critic");
+    expect(sys.files[DESIGN_CSS_FILE]).toBe(designCss(tuned));
   });
 });

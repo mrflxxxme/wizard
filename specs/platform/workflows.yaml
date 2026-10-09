@@ -206,12 +206,12 @@ events:
   types:
     run_started:     { required: [kind], properties: { kind: string, mode: string, baseRevision: "integer|null", credits: "{estimate:number, cap:number}|null" } }
     plan_ready:      { required: [steps], properties: { steps: "[{id, kind: ops|code, title}] ≤ 20 — план строителя (agents/builder.yaml#loop.phases.plan)" } }
-    step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer } }
-    step_finished:   { required: [step], properties: { step: string, durationMs: integer, ruFallback: "boolean — хотя бы один LLM-вызов шага ушёл на модели в РФ по фолбэку; UI показывает общую строку без названий моделей (agents/models.yaml#fallback_rules, L4-20)" } }
+    step_started:    { required: [step, label_ru], properties: { step: string, label_ru: string, attempt: integer, progress: "v3_progress — V3-17: снимок хода сборки v3 (events.schemas.v3_progress); только у сборки по брифу" } }
+    step_finished:   { required: [step], properties: { step: string, durationMs: integer, ruFallback: "boolean — хотя бы один LLM-вызов шага ушёл на модели в РФ по фолбэку; UI показывает общую строку без названий моделей (agents/models.yaml#fallback_rules, L4-20)", progress: "v3_progress — V3-17: снимок хода сборки v3 (events.schemas.v3_progress); только у сборки по брифу" } }
     agent_message:   { required: [agent, messageId, text], properties: { agent: "orchestrator|builder|qa", messageId: string, text: string, delta: "boolean — true: кусок стрима, склеивать по messageId" } }
     chat_output:     { required: [kind, messageId], properties: { kind: "questions|card|answer|change_proposal|notice|plan", messageId: string, cardVersion: integer, planRevision: "integer — B2-20, kind=plan: ревизия плана системы (api.yaml#getSystemPlan)" } }
     plan_sketch:     { required: [stage, sketch], properties: { stage: "interview|plan", planRevision: "integer|null", sketch: "{stage, niche, goals, modules, screens, fingerprint} — B2-20: эскиз системы для холста (api.yaml#/components/schemas/PlanSketch) — после вопросов интервью по целям (stage interview: цели, модули, «не входит») и после плана (stage plan: экраны, данные, роли, секции, метрики, сценарии целей, ошибки, fingerprint). Правки плана без модели (editSystemPlan) прогона не создают — эскиз в ответе PATCH и в getSystemPlanSketch" } }
-    build_stage:     { required: [stage, status, label_ru], properties: { stage: "plan|texts|design|photos|compile|custom|gates|brief|backend|skeleton|scenarios|critic|template_gate|techreview — V3-11: этапы харнесса v3 (agents/builder-v3.md C6) от brief до gates", status: "started|done|reused|skipped", index: integer, total: integer, label_ru: string, remainingSec: "integer — B2-21: ход сборки v2 по этапам для холста (B2-25): этап, подпись простым языком, оставшееся время в секундах (agents/builder.yaml#v2.events); reused — этап взят из чекпоинта, без оплаты" } }
+    build_stage:     { required: [stage, status, label_ru], properties: { stage: "plan|texts|design|photos|compile|custom|gates|brief|backend|skeleton|scenarios|critic|template_gate|techreview — V3-11: этапы харнесса v3 (agents/builder-v3.md C6) от brief до gates", status: "started|done|reused|skipped", index: integer, total: integer, label_ru: string, remainingSec: "integer — B2-21: ход сборки v2 по этапам для холста (B2-25): этап, подпись простым языком, оставшееся время в секундах (agents/builder.yaml#v2.events); reused — этап взят из чекпоинта, без оплаты", progress: "v3_progress — V3-17: снимок хода сборки v3 для холста (events.schemas.v3_progress); у v1/v2 поля нет" } }
     model_switched:  { internal: true, required: [fromModel, toModel, reason], properties: { fromModel: string, toModel: string, reason: "fallback_circuit_open|fallback_error (agents/models.yaml#fallback_rules)" } }
     models_unavailable: { internal: true, required: [callType, attempts], properties: { callType: string, attempts: "[{model, tier, status, errorCode, count}] ≤ 20 — неудачные попытки вызова по llm_calls прогона; пусто — ни одной попытки (нет ключей). Пишется перед run_failed LLM_UNAVAILABLE; основателю — алерт llm_chain_failed раз в час (M2-32)" } }
     build_metrics:   { internal: true, required: [stages], properties: { stages: "метрики этапов харнесса v2 (agents/builder.yaml#harness.metrics): ops, brief, checks, tasks, verify, review; сборщик v2 по плану (B2-21, builder.yaml#v2.metrics): pipeline=modules, planRevision, status, этапы plan, texts, design, photos (B2-38: note «фото со стока: N из M»), compile, custom, gates {status, costRub, durationMs, calls?, fallback?, note?}, goals {scenarios, checked}", creditsUsed: number, durationMs: integer } }
@@ -228,3 +228,59 @@ events:
     run_finished:    { required: [status], properties: { status: "succeeded|cancelled", resultRevision: "integer|null", creditsUsed: number, summary_ru: string, prodUrl: "string|null" } }
     run_failed:      { required: [code, message_ru], properties: { code: "run_lifecycle.failure_codes", message_ru: string, retryable: boolean, lastGoodRevision: "integer|null" } }
   budget_update_rate: "не чаще 1 раза в 2 с и после каждого LLM-шага"
+  schemas:   # V3-17: JSON Schema составных полей событий; в types на неё ссылается имя (например, progress: "v3_progress — …")
+    v3_progress:
+      description: >-
+        V3-17: снимок хода сборки по брифу (харнесс v3) для холста. Хост v3 (apps/platform-api/src/builds-v3/progress.ts)
+        добавляет его к build_stage, step_started и step_finished; каждый снимок полный — клиент берёт последний, поэтому
+        ход сборки восстанавливается с сервера при возврате на страницу (повтор событий с seq 1). Текст для v2 не меняется.
+        scenarios — сценарии брифа в порядке сборки (сначала обязательные): pending — в очереди, running — доводится сейчас,
+        passed — готов, failed и stopped — уйдут в «Запросы на развитие» с причиной reason. spentRub — потрачено на сборку
+        с шагами из чекпоинтов (как в строке «потрачено X ₽ из Y»), reusedRub — часть, оплаченная прошлой сборкой; capRub и
+        capSec — потолки D77 (10)–(11); remainingSec — ожидаемый остаток по этапам (не больше capSec − elapsedSec);
+        previewRevision — ревизия живого превью (растущая система), null — превью ещё нет; checkpoints — сохранено и взято
+        из прошлой сборки в этом прогоне
+      type: object
+      required: [stage, stages, scenarios, spentRub, reusedRub, capRub, elapsedSec, capSec, remainingSec, previewRevision, checkpoints]
+      additionalProperties: false
+      properties:
+        stage: { enum: [brief, design, backend, skeleton, scenarios, critic, template_gate, techreview, gates, null] }
+        stages:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [id, label_ru, status]
+            additionalProperties: false
+            properties:
+              id: { type: string }
+              label_ru: { type: string, maxLength: 120 }
+              status: { enum: [pending, running, done, reused, skipped] }
+        scenarios:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [id, title, priority, status]
+            additionalProperties: false
+            properties:
+              id: { type: string, maxLength: 120 }
+              title: { type: string, maxLength: 200 }
+              priority: { enum: [must, should] }
+              status: { enum: [pending, running, passed, failed, stopped] }
+              reason: { type: string, maxLength: 300 }
+              reused: { type: boolean }
+        spentRub: { type: number, minimum: 0 }
+        reusedRub: { type: number, minimum: 0 }
+        capRub: { type: number, minimum: 0 }
+        elapsedSec: { type: integer, minimum: 0 }
+        capSec: { type: integer, minimum: 0 }
+        remainingSec: { type: integer, minimum: 0 }
+        previewRevision: { type: [integer, "null"], minimum: 1 }
+        checkpoints:
+          type: object
+          required: [saved, reused]
+          additionalProperties: false
+          properties:
+            saved: { type: integer, minimum: 0 }
+            reused: { type: integer, minimum: 0 }

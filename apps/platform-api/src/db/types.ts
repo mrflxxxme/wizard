@@ -232,6 +232,8 @@ export interface LlmCallsTable {
   mode: string;
   request_hash: string | null;
   created_at: TsDef;
+  /** V3-33 (migration 0041): an attempt on the org's own key — cost 0, no credits, scrubbed. */
+  byok: Generated<boolean>;
 }
 
 export interface LocksTable {

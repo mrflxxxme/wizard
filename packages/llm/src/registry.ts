@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { baseUrlViolation, isWesternClosedModel } from "./allowlist.js";
 import { LlmError } from "./errors.js";
+import type { ImageTokenRule } from "./tokens.js";
 import { CALL_TYPES, type CallType, type OrgPolicy, type Tier } from "./types.js";
 
 export type ProviderId = "cloudru" | "yandex" | "zai" | "moonshot" | "deepseek" | "openai_compatible";
@@ -40,6 +41,8 @@ export interface ModelDef {
   enabled: boolean;
   /** Accepts images (catalog label Vision); critic_visual chains hold only such models. */
   vision?: true;
+  /** How the model reads an image (models.yaml#models[].image): the upper bound counts images by it, not their base64. */
+  image?: ImageTokenRule;
 }
 
 export interface RouteDef {
@@ -139,6 +142,7 @@ const m = (
   output: number,
   enabled = true,
   vision = false,
+  image?: ImageTokenRule,
 ): ModelDef => ({
   id,
   provider,
@@ -149,6 +153,7 @@ const m = (
   price: { input, cached, output },
   enabled,
   ...(vision ? { vision: true as const } : {}),
+  ...(image ? { image } : {}),
 });
 
 export const MODELS: ModelDef[] = [
@@ -164,6 +169,7 @@ export const MODELS: ModelDef[] = [
     725.9,
     true,
     true,
+    { px: 28, max: 16384 },
   ),
   m("deepseek-v4-pro", "cloudru", "deepseek-ai/DeepSeek-V4-Pro", "T0", "internal", 1000000, 183, 183, 732),
   m("glm-5.1", "cloudru", "zai-org/GLM-5.1", "T0", "internal", 202000, 198.86, 198.86, 829.6),
@@ -193,6 +199,7 @@ export const MODELS: ModelDef[] = [
     329.4,
     true,
     true,
+    { px: 32, max: 16384 },
   ),
   m("yandex-qwen3-235b", "yandex", "qwen3-235b-a22b-fp8/latest", "T0", "internal", 262000, 500, 500, 500),
   m(
@@ -208,8 +215,14 @@ export const MODELS: ModelDef[] = [
   ),
   m("glm-5.3", "zai", "glm-5.3", "T1", "external", 200000, 162, 30, 510),
   // V3-16: Z.ai vision models (D45); probe candidates at the tails of the chains.
-  m("glm-5.3-flash", "zai", "glm-5.3-flash", "T1", "external", 1000000, 17.38, 3.48, 57.95, true, true),
-  m("glm-4.6v", "zai", "glm-4.6v", "T1", "external", 128000, 34.77, 5.79, 104.31, true, true),
+  m("glm-5.3-flash", "zai", "glm-5.3-flash", "T1", "external", 1000000, 17.38, 3.48, 57.95, true, true, {
+    px: 28,
+    max: 16384,
+  }),
+  m("glm-4.6v", "zai", "glm-4.6v", "T1", "external", 128000, 34.77, 5.79, 104.31, true, true, {
+    px: 28,
+    max: 16384,
+  }),
   m("kimi-k3", "moonshot", "kimi-k3", "T1", "external", 256000, 348, 34.8, 1739, false),
   m(
     "deepseek-v4.1-flash",

@@ -6,6 +6,8 @@ import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type postgres from "postgres";
 import { type AiGatewayClient, httpAiGateway } from "./ai/gateway.js";
+import { type ApiKeyStore, pgApiKeyStore } from "./api-v3/keys.js";
+import { incomingApiRoutes, isIncomingApiPath } from "./api-v3/routes.js";
 import { clientIpOf } from "./auth/client-ip.js";
 import { createAuthDeps, type RuntimeAuthOptions } from "./auth/deps.js";
 import { readSessionToken, sessionUser } from "./auth/session.js";
@@ -124,6 +126,11 @@ export interface RuntimeAppOptions {
    * false — always EGRESS_DISABLED.
    */
   http?: HttpEgressOptions | false;
+  /**
+   * V3-20: keys of the system's own API (/api/v1, runtime.yaml#incoming_api). Default: platform.system_api_keys over
+   * `db` (pgApiKeyStore); null — the API answers 404.
+   */
+  apiKeys?: ApiKeyStore | null;
 }
 
 export interface RuntimeApp {
@@ -330,6 +337,11 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
   app.route("/api/telegram", telegramApiRoutes(connectors));
   app.route("/api/admin/pd-requests", pdRequestsApiRoutes());
   app.route("/api/admin", inviteRoutes(connectors));
+  // V3-20: the system's own API for external systems (keys, not sessions).
+  app.route(
+    "/api/v1",
+    incomingApiRoutes({ store: o.apiKeys === undefined ? pgApiKeyStore(o.db) : o.apiKeys }),
+  );
   app.all("/api/*", () => {
     throw new WizardError("NOT_FOUND", { message: "Адрес не найден" });
   });
@@ -380,7 +392,9 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
     if (sys.entry.suspended && url.pathname !== "/_wizard/health") return { res: suspendedPage(), sys };
     if (sys.entry.env === "draft" && draftPreviewOnly(env) && !(await draftAdmitted(sys, req, url.pathname)))
       return { res: notFoundPage(), sys };
-    if (!isHookPath(url.pathname) && !csrfOk(req, host, env)) return { res: forbidden(requestId), sys };
+    // /api/v1 takes only a key in Authorization (cookies are ignored there): a cross-site form cannot use it.
+    if (!isHookPath(url.pathname) && !isIncomingApiPath(url.pathname) && !csrfOk(req, host, env))
+      return { res: forbidden(requestId), sys };
     pre.set(req, { system: sys, host, requestId });
     return { res: await app.fetch(req), sys };
   }
@@ -391,6 +405,8 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
    */
   async function draftAdmitted(sys: LoadedSystem, req: Request, path: string): Promise<boolean> {
     if (path === "/_wizard/preview-login" || path === "/_wizard/health" || isHookPath(path)) return true;
+    // V3-20: a key the owner issued for this draft admits the API request (checked by the API itself).
+    if (isIncomingApiPath(path)) return true;
     const t = readSessionToken(req.headers.get("cookie"), env, { draft: true });
     if (t.kind !== "token") return false;
     const user = await sessionUser(sys, t.token);

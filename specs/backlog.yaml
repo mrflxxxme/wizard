@@ -3808,7 +3808,7 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Скриншоты в Playwright; критик (Qwen3-VL на T0 или GLM-V на T1 по D45 и D62) возвращает правки JSON по рубрике из design-agent-catalog; ≤ 3 цикла, ≤ 40 ₽"
@@ -3822,7 +3822,7 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 1.5
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Метрика без платной модели (структура DOM + pHash скриншотов); память последних сборок ниши; превышение порога возвращает сборку к арт-директору с другим архетипом (тест)"
@@ -3835,7 +3835,7 @@ tasks:
     owner: qa
     parallel_group: v3-a
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Детерминированная часть: сборка и типы, пробный прогон миграций, RLS и ПДн, контрактные тесты интеграций, сквозные цепочки между модулями (заявка → сделка → уведомление ответственному), производительность и доступность"
@@ -3864,7 +3864,7 @@ tasks:
     owner: frontend
     parallel_group: v3-a
     estimate_days: 2
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "На холсте — растущая система, чек-лист сценариев брифа, оставшееся время; технические детали под «Подробнее»"
@@ -3917,7 +3917,7 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 4
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Документация → контракт (подмножество OpenAPI 3.1, сопоставление полей, разрешённые хосты, secret://) → типизированный клиент → мок и контрактные тесты → проверка ключом; контракт хранится в брифе"
@@ -3988,7 +3988,7 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "У каждой системы — git-репозиторий в хранилище платформы; ревизия = коммит; структура: бриф, спека, ui, functions, токены, тесты, AGENTS.md"
@@ -4032,7 +4032,7 @@ tasks:
     owner: platform
     parallel_group: v3-c
     estimate_days: 3
-    status: in_progress
+    status: done
     claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Ключ хранится в конвертном шифровании (OpenBao Transit), видны последние 4 символа, есть проверочный вызов и отзыв; ключ не попадает в логи и тексты ошибок (тест)"

@@ -138,6 +138,8 @@ export interface RouteOutput {
   scrubbed: boolean;
   /** The call fell back from T1 to T0 (workflows.yaml step_finished.ruFallback). */
   ruFallback: boolean;
+  /** V3-33: served on the org's own key (BYOK) — free for the balance, model id `byok:<model>`. */
+  byok?: true;
 }
 
 export type PiiCounts = Partial<Record<Kind, number>>;
@@ -174,6 +176,8 @@ export interface UsageRecord {
   mode: LlmMode;
   requestHash: string;
   createdAt: string;
+  /** V3-33: an attempt on the org's own key (BYOK): cost 0, no credits, scrubbed (db.yaml#llm_calls.byok). */
+  byok?: boolean;
 }
 
 export interface UsageSink {

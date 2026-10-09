@@ -184,6 +184,16 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
         await tx`delete from platform.system_plans where system_id = ${s.id}`;
         await tx`delete from platform.system_briefs where system_id = ${s.id}`;
         await tx`delete from platform.system_build_checkpoints where system_id = ${s.id}`;
+        // V3-30: the system repository (commits, refs, objects) goes with the system.
+        await tx`delete from platform.system_git_commits where system_id = ${s.id}`;
+        await tx`delete from platform.system_git_refs where system_id = ${s.id}`;
+        await tx`delete from platform.system_git_objects where system_id = ${s.id}`;
+        // V3-14: the site fingerprint of the template gate.
+        await tx`delete from platform.system_site_fingerprints where system_id = ${s.id}`;
+        // V3-20: keys of the system's own API with their journal, contracts of its integrations.
+        await tx`delete from platform.system_api_calls where system_id = ${s.id}`;
+        await tx`delete from platform.system_api_keys where system_id = ${s.id}`;
+        await tx`delete from platform.system_integration_contracts where system_id = ${s.id}`;
         await tx`delete from platform.imports where system_id = ${s.id}`;
         await tx`delete from platform.exports where system_id = ${s.id}`;
         await tx`delete from platform.secrets_refs where system_id = ${s.id}`;

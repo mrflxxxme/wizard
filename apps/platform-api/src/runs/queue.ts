@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import type { StageCheckpoint } from "@wizard/agents/builder";
 import type { AppSpec } from "@wizard/appspec";
 import {
+  type ByokResolver,
   CircuitBreaker,
   createRegistry,
   createRouter,
@@ -31,6 +32,7 @@ import {
 import type { Billing } from "../billing/ledger.js";
 import { assertPilotLimit } from "../billing/pilot-limits.js";
 import { getLatestBrief } from "../briefs/store.js";
+import { byokResolverOf } from "../byok/index.js";
 import type { Config } from "../config.js";
 import { type Db, json } from "../db/index.js";
 import type { RunsTable } from "../db/types.js";
@@ -156,6 +158,8 @@ export interface EngineDeps {
   secrets?: SecretStore;
   /** Router factory (tests); default createRouter with DbUsageSink. */
   createRouter?: (opts: RouterOptions) => Router;
+  /** V3-33: the org's own model keys for the run's router; default from env (byok/index.ts), null — off. */
+  byok?: ByokResolver | null;
   log?: (msg: string, err?: unknown) => void;
   /** publish/rollback: smoke check, DB roles, lock retry pauses (M1-04). */
   publish?: PublishOptions;
@@ -1105,7 +1109,10 @@ export class RunEngine {
     const demo = await runDemoReplay(this.#db, x.run);
     if (demo && !demo.fixture) throw new RunFailure(DEMO_REPLAY_MISS, demoMissMessage());
     const variant = x.run.mode === "point_edit" ? modeFixture(process.env, "point_edit") : undefined;
+    const byok = this.#d.byok === undefined ? byokResolverOf(this.#d.pg, this.#d.secrets) : this.#d.byok;
     const opts: RouterOptions = {
+      // V3-33: authoring calls may go to the org's own key (live mode, BYOK policy of @wizard/llm).
+      ...(byok && !demo ? { byok } : {}),
       ...(demo?.fixture ? { mode: "fixture" as const, fixture: demo.fixture, free: true } : {}),
       ...(!demo && variant ? { fixture: variant } : {}),
       registry: createRegistry({ buildDefaultTier: this.#d.config.buildDefaultTier }),

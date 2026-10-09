@@ -96,11 +96,16 @@ const pass = (r: Awaited<ReturnType<typeof gate>>, ...ids: string[]) =>
   ids.every((id) => r.checks.some((c) => c.id === id && c.status === "pass"));
 
 /**
- * Limits of the G2 permission probes that v2 systems have just the same (not of backend mode): the probe rows collide
- * with the unique time-and-seat index of bookings (23505) and with the open-issue rule of «Выдача» (409 CONFLICT).
- * Where they show up, the backend system must have exactly the blockers of its v2 build.
+ * V3-15: the G2 permission probes no longer collide with the unique slot of bookings (a probe datetime came round to a
+ * seed day — 23505) or with the open-issue index of «Выдача» (two roles' create probes on one item — 409 CONFLICT):
+ * every row passes PERM-01/02 in backend mode, and the v2 builds of the rows that used to fail pass them too.
  */
-const PROBE_CONFLICT = /^G2-PERM-0[12] .*(23505 duplicate key|HTTP 409 CONFLICT)/;
+const PERM_REGRESSION = [
+  "matrix packages — визиты по записи, кабинет посетителя и сотрудники",
+  "matrix resources — сотрудники выдают, выдачи клиентам",
+  "mvp-09 школьная библиотека",
+  "все модули",
+];
 
 describe("V3-10: backend systems pass G0 and G2 (ПДн, RLS, migrations) without models", () => {
   const rows = [
@@ -117,16 +122,21 @@ describe("V3-10: backend systems pass G0 and G2 (ПДн, RLS, migrations) withou
         true,
       );
       const g2 = await gate("G2", r);
-      const b2 = blockers(g2);
-      expect(
-        b2.filter((b) => !PROBE_CONFLICT.test(b)),
-        "G2",
-      ).toEqual([]);
+      expect(blockers(g2), "G2").toEqual([]);
       expect(pass(g2, "G2-PII-01", "G2-PII-02", "G2-PII-03", "G2-PII-05", "G2-PII-06", "G2-PERM-05")).toBe(
         true,
       );
-      if (b2.length) expect(b2).toEqual(blockers(await gate("G2", compiled(plan, registry))));
-      else expect(pass(g2, "G2-PERM-01", "G2-PERM-02")).toBe(true);
+      expect(pass(g2, "G2-PERM-01", "G2-PERM-02")).toBe(true);
+    },
+    240_000,
+  );
+
+  test.each(rows.filter(([name]) => PERM_REGRESSION.includes(name)))(
+    "V3-15: the v2 build of %s passes the permission matrix",
+    async (_name, plan) => {
+      const g2 = await gate("G2", compiled(plan, registry));
+      expect(blockers(g2), "G2 v2").toEqual([]);
+      expect(pass(g2, "G2-PERM-01", "G2-PERM-02", "G2-PERM-03", "G2-PERM-04")).toBe(true);
     },
     240_000,
   );

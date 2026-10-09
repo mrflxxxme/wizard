@@ -18,7 +18,7 @@ import {
   type V3StageHook,
 } from "@wizard/agents/builder";
 import type { ModuleRegistry } from "@wizard/agents/planner";
-import type { GoalScenarioInput } from "@wizard/gates";
+import type { GateReport, GoalScenarioInput } from "@wizard/gates";
 import { createRegistry } from "@wizard/llm";
 import { Kysely } from "kysely";
 import { PostgresJSDialect } from "kysely-postgres-js";
@@ -28,10 +28,15 @@ import type { Mailer } from "../auth/mailer.js";
 import { getLatestBrief } from "../briefs/store.js";
 import { buildPipelineOf } from "../config.js";
 import type { DB, Db } from "../db/index.js";
+import { integrationsBuildHook } from "../integrations-v3/service.js";
 import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
+import { platformCritic } from "./critic.js";
+import { liveStats, withLiveProgress } from "./progress.js";
+import { platformTechreview } from "./techreview.js";
+import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
 const RUB_PER_CREDIT = createRegistry().rubPerCredit;
@@ -48,7 +53,7 @@ export interface V3BuildOptions {
   enabled?: boolean;
   /** The page writer (default: the V3-12 composer on the ui-kit pattern library, createPageComposer()). */
   composer?: PageComposer;
-  /** Stages of V3-13…15 (critic, template_gate, techreview); absent — skipped. */
+  /** Stages of V3-13…15 (critic, template_gate, techreview); absent — skipped (techreview: platformTechreview). */
   hooks?: Partial<Record<"critic" | "template_gate" | "techreview", V3StageHook>>;
   /** The ready notice by e-mail (default: the platform mailer of the config). */
   mailer?: Mailer;
@@ -88,6 +93,18 @@ async function runGates(
   } finally {
     lease?.release();
   }
+}
+
+/**
+ * V3-15: G0 of the final gates on a revision this run has already passed G0 on (the last scenario's check, nothing
+ * changed since — the techreview made no fix): a revision is immutable, its report, bundle and preview stand.
+ */
+async function passedG0(pg: postgres.Sql, runId: string, systemId: string): Promise<GateReport | null> {
+  const [r] = await pg<{ report: GateReport }[]>`
+    select g.report from platform.gate_reports g
+      join platform.systems s on s.id = g.system_id and g.revision = s.draft_revision
+     where g.run_id = ${runId} and g.system_id = ${systemId} and g.level = 'G0' and g.passed`;
+  return r?.report ?? null;
 }
 
 /**
@@ -187,7 +204,9 @@ export async function buildByBrief(
     checkpoints: pgCheckpointStore(o.pg, systemId, host.run.id),
     currentSpec: () => host.store.getSpec(),
     commit: (input) => host.store.commitCompiled(input),
-    runGates: (level, ov) => runGates(host, provider, withBrowser, level, ov?.goalScenarios),
+    runGates: async (level, ov) =>
+      (level === "G0" ? await passedG0(o.pg, host.run.id, systemId) : null) ??
+      runGates(host, provider, withBrowser, level, ov?.goalScenarios),
     composer,
     preview: async () => {
       const blockers = buildBlockers(await host.runGates("G0"));
@@ -195,7 +214,25 @@ export async function buildByBrief(
     },
     checkScenario: (input) => checkScenario(host, provider, withBrowser, input),
     goalBrowser: withBrowser,
-    ...(o.hooks ? { hooks: o.hooks } : {}),
+    // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).
+    // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
+    hooks: {
+      ...(!o.composer && provider && withBrowser ? { critic: platformCritic(provider) } : {}),
+      ...templateGateHooks({
+        pg: o.pg,
+        runId: host.run.id,
+        browser: withBrowser ? provider : null,
+        signal: host.signal,
+        ...(o.log ? { log: o.log } : {}),
+      }),
+      // V3-15: the techreview (deterministic part + a reviewer of another family, T0).
+      techreview: platformTechreview(host, {
+        pg: o.pg,
+        db: o.db,
+        ...(o.registry ? { registry: o.registry } : {}),
+      }),
+      ...o.hooks,
+    },
     recordDevelopmentRequest: (input) => host.recordDevelopmentRequest(input),
     notifyReady: (notice) =>
       notifyReady(
@@ -205,8 +242,15 @@ export async function buildByBrief(
         o.log,
       ),
     recentArchetypes: (niche) => recentArchetypes(o.pg, systemId, niche),
+    // V3-20: the brief's integrations (stored contracts: mock until the key check, then live) over the backend.
+    integrations: integrationsBuildHook(o.pg, systemId),
   };
-  const out = await runBuildV3(v3, {
+  // V3-17: build_stage / step_started / step_finished carry the structured progress for the canvas.
+  const live = withLiveProgress(v3, {
+    rubPerCredit: RUB_PER_CREDIT,
+    stats: () => liveStats(o.pg, host.run.id, RUB_PER_CREDIT),
+  });
+  const out = await runBuildV3(live, {
     ...(o.registry ? { registry: o.registry } : {}),
     appName: current.spec.app.name,
     platformUrl: o.platformOrigin,

@@ -40,6 +40,7 @@ import { subscribeRun } from "../../run/stream.js";
 import { useCanvasBrief } from "../brief/CanvasBrief.js";
 import { briefRu } from "../brief/ru.js";
 import { useBriefUpload } from "../v3/BriefUpload.js";
+import { lastReportRun, useV3Live } from "../v3/build/index.js";
 import { DELEGATE_OPTION_ID, v3Question } from "../v3/question.js";
 import { v3Ru } from "../v3/ru.js";
 import { StyleDrawer, spentLine, V3BuildCard } from "../v3/V3Build.js";
@@ -89,6 +90,7 @@ interface LocalAnswerRow extends LocalAnswer {
 /** The x-ray layer shows itself while this part of the build runs (grill-7 #3: «на несколько секунд»). */
 const XRAY_AUTO = { from: 0.3, to: 0.7 } as const;
 const THEME_KEY = "wz.canvas.theme";
+const NO_EVENTS: RunEvent[] = [];
 const TOUCH_MS = 1800;
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : ru.errors.generic);
@@ -288,11 +290,29 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
     replayedFailure.current = true;
     setRunId(id);
   }, [initial.system.stage, plan?.buildRunId, runId]);
+  // V3-17: a v3 system (a brief, no plan) opened after its build replays that build from the server: the scenarios,
+  // the spend and the growing system as the build left them.
+  const reportRun = useMemo(() => lastReportRun(view.messages), [view.messages]);
+  const replayedV3 = useRef(false);
+  useEffect(() => {
+    if (replayedV3.current || runId !== null || !reportRun || plan || !brief.available) return;
+    if (stage !== "ready" && stage !== "failed") return;
+    replayedV3.current = true;
+    setRunId(reportRun);
+  }, [runId, reportRun, plan, brief.available, stage]);
 
   const runKind = events.find((e) => e.type === "run_started")?.payload.kind;
   const progress = useMemo(() => buildProgress(runKind === "build" ? events : []), [runKind, events]);
-  // V3-06: «потрачено X ₽ из Y» of the harness v3 lines while a build runs.
-  const spend = runKind === "build" ? spentLine(events) : null;
+  // V3-17: the live v3 build from the structured progress of the run's events (main, ready dock, toast, time).
+  const v3live = useV3Live({
+    systemId,
+    name: view.system.name,
+    events: runKind === "build" ? events : NO_EVENTS,
+    announce,
+  });
+  // V3-06: «потрачено X ₽ из Y» while a build runs — the v3 progress, else the harness v3 lines.
+  const spend = runKind === "build" ? (v3live.spend ?? spentLine(events)) : null;
+  const eta = v3live.remainingSec ?? progress.remainingSec;
   const runActive =
     runId !== null && !events.some((e) => e.type === "run_finished" || e.type === "run_failed");
   const thinking = runActive && runKind !== "build";
@@ -806,7 +826,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
         {progress.index > 0 && (
           <span className={s.count}>
             {canvas.chat.step(progress.index, progress.total)}
-            <span className={s.etaInline}> · {remainingText(progress.remainingSec)}</span>
+            <span className={s.etaInline}> · {remainingText(eta)}</span>
           </span>
         )}
         {progress.reused > 0 && <p className={s.note}>{canvas.build.reused(progress.reused)}</p>}
@@ -853,6 +873,9 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
       </ol>
     );
   }
+
+  // V3-17: after a v3 build the chat says «Система готова» and leads to the system (its live preview).
+  if (v3live.ready && ready && readyCard && !selected && !failure) dock = v3live.ready;
 
   // V3-06: before «Собрать» a system with a brief shows the short brief in the chat (above the plan card).
   // V3-06: a v3 system with its brief ready (no plan) — the short brief, the style and «Собрать» (startV3Build).
@@ -964,7 +987,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
                 />
               </svg>
               <span className={s.num} data-testid="canvas-eta-text">
-                {remainingText(progress.remainingSec)}
+                {remainingText(eta)}
               </span>
             </span>
           )}
@@ -1073,7 +1096,8 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
               {demo.banner}
             </p>
           )}
-          {model ? (
+          {v3live.main}
+          {v3live.main ? null : model ? (
             <Board
               model={model}
               slug={view.system.slug}
@@ -1165,6 +1189,7 @@ export function Canvas({ systemId, initial, onBlockSelect }: CanvasProps): React
             }}
           />
         )}
+        {v3live.toast}
         <div className={s.srOnly} aria-live="polite" data-testid="canvas-live">
           {live}
         </div>

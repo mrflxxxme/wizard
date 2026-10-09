@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import type { Selectable } from "kysely";
 import { z } from "zod";
 import { innValid } from "../auth/region.js";
+import { TECHREVIEW_BLOCKED_RU, techreviewBlockersOf } from "../builds-v3/techreview-verdict.js";
 import type { SystemsTable } from "../db/types.js";
 import { ApiError, invalid, notFound } from "../errors.js";
 import { type AppEnv, type AuthUser, checkOrgAccess, isUuid, type OrgRole } from "../http/auth.js";
@@ -82,6 +83,9 @@ export function publishRoutes(d: Deps): Hono<AppEnv> {
     if (!rev) throw notFound("Ревизия");
     if (!isPublishable(rev, s.draft_revision))
       throw new ApiError("GATES_FAILED", "Эта ревизия не прошла проверки — опубликовать её нельзя");
+    // V3-15: the techreview of the v3 build that left this revision found blockers (D77 (10)).
+    const [tr] = await techreviewBlockersOf(d.db, s.id, b.revision);
+    if (tr) throw new ApiError("GATES_FAILED", TECHREVIEW_BLOCKED_RU(tr));
     const blockers = specPublishBlockers(rev.spec as unknown as AppSpec, await orgPlan(s.org_id));
     const first = blockers[0];
     if (first) throw new ApiError(first, BLOCKER_RU[first] ?? "Публикация пока недоступна", { blockers });

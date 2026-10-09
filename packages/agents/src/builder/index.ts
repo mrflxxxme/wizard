@@ -226,6 +226,12 @@ export type {
   V3ComposeResult,
   V3PagePlan,
 } from "./v3/contract.js";
+/**
+ * V3-13 visual critic (builder-v3.md C6 stage `critic`): createCriticHook({inspect}) — deterministic browser checks
+ * (CRITIC_CHECKS_SCRIPT: contrast, overflow, fonts, CLS, touch, names, headings) and fixes by code first, then ≤ 3
+ * critic_visual cycles on screenshots 390/768/1440 by the catalog C rubric with closed edits (applyEdit), each re-checked.
+ */
+export * from "./v3/critic/index.js";
 /** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
 export * from "./v3/directions/index.js";
 /**
@@ -283,3 +289,10 @@ export {
 } from "./v3/harness/types.js";
 export { milliRub, V3BudgetError, V3Wallet } from "./v3/harness/wallet.js";
 export { runBuildV3, stopMessage } from "./v3/run.js";
+/**
+ * V3-15 techreview (builder-v3.md C6 stage 7, D77 (10)): createTechreview(deps) — the hook of stage techreview: the
+ * deterministic part first (G0 and the static G2 on the uncommitted system, the migration dry run, RLS, ПДн, integration
+ * contracts, module chains, performance and accessibility), then a reviewer of another model family (submit_techreview,
+ * a closed set of findings), ≤ 2 rounds of safe fixes; blockers → the system is not published.
+ */
+export * from "./v3/techreview/index.js";

@@ -17,6 +17,7 @@ import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
+import { type ByokService, byokRoutes, byokServiceOf } from "./byok/index.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
@@ -24,11 +25,14 @@ import { type DirectionsDeps, DirectionsService } from "./directions/service.js"
 import { ApiError } from "./errors.js";
 import { ExportStore, sweepExpiredExports } from "./exports/storage.js";
 import { runModuleFactoryCron } from "./gaps/factory.js";
+import { repoRoutes } from "./git/routes.js";
 import { type AppEnv, authenticate, originGuard } from "./http/auth.js";
 import { hostGuard } from "./http/guard.js";
 import { IdempotencyCache, idempotency } from "./http/idempotency.js";
 import type { Deps } from "./http/util.js";
 import { ImportStore, sweepExpiredImports } from "./imports/storage.js";
+import { integrationRoutes } from "./integrations-v3/routes.js";
+import type { IntegrationsDeps } from "./integrations-v3/service.js";
 import type { OpsAlertFn } from "./ops/alert.js";
 import { opsAlertFromConfig } from "./ops/alert-config.js";
 import { checkRunFailureRate } from "./ops/checks.js";
@@ -132,6 +136,10 @@ export interface PlatformApiOptions {
   aiBackfill?: RuntimeAiBackfill | null;
   /** V3-09 «Три направления»: research of reference links (tests: recorded pages) and the model deadline. */
   directions?: Pick<DirectionsDeps, "researchFetch" | "researchMode" | "deadlineMs">;
+  /** V3-33 BYOK service (tests: flag, KMS, gateway fetch); default from env (byok/index.ts byokServiceOf). */
+  byok?: (d: { pg: DbHandle["pg"]; secrets: SecretStore }) => ByokService;
+  /** V3-20 integrations harness: research of documentation links and the network of key checks (tests: local TLS). */
+  integrations?: Pick<IntegrationsDeps, "research" | "keyCheck">;
 }
 
 export interface PlatformApi {
@@ -184,6 +192,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     ...(opts.now ? { now: opts.now } : {}),
   });
   const secrets = new SecretStore(config.secretsFile, config.secretsKey);
+  const byok = opts.byok?.({ pg: handle.pg, secrets }) ?? byokServiceOf(handle.pg, secrets);
   const executors =
     typeof opts.executors === "function"
       ? opts.executors({ pg: handle.pg, config })
@@ -209,6 +218,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     role: dbos ? "client" : "inprocess",
     ...(dispatcher ? { dispatcher } : {}),
     secrets,
+    byok: byok.off ? null : byok.resolver(),
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     publish: { alert, ...opts.publish },
     ...(opts.aiBackfill !== undefined ? { aiBackfill: opts.aiBackfill } : {}),
@@ -380,8 +390,12 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", sessionRoutes(deps));
   // V3-06: «Собрать» of a v3 system — the build by the approved brief version (startV3Build of V3-11).
   api.route("/", buildV3Routes(deps));
+  // V3-30: the internal git of the system — commits, revision ↔ commit, diff, zip of the tree.
+  api.route("/", repoRoutes(deps));
   // V3-09: three directions of the first screen, refinement by words, the pick and the references.
   api.route("/", directionRoutes(directions));
+  // V3-20: integrations of the brief (contracts, mock → key check → live) and keys of the system's own API.
+  api.route("/", integrationRoutes({ ...deps, secrets, ...opts.integrations }));
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));
@@ -390,6 +404,8 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", privacyRoutes(deps));
   api.route("/", lockRoutes(deps));
   api.route("/", orgRoutes(deps, accounts));
+  // V3-33: own model keys of an org (behind the flag until V3-35).
+  api.route("/", byokRoutes(byok));
   api.route("/", creditRoutes(deps));
   api.route("/", billingRoutes(deps));
   const abuse = {
