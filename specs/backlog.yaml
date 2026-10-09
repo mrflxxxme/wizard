@@ -3960,8 +3960,8 @@ tasks:
     owner: platform
     parallel_group: v3-b
     estimate_days: 5
-    status: todo
-    claimed_by: null
+    status: in_progress
+    claimed_by: claude-session-01Kjy3G7
     acceptance:
       - "Посетитель кладёт товары в корзину, оформляет заказ, платит через ЮKassa (тестовый магазин), выбирает СДЭК или самовывоз; остатки списываются; чек по 54-ФЗ через ЮKassa (сценарии в браузере)"
       - "Владелец видит заказы, статусы, оплаты и остатки в кабинете; ПДн покупателей размечены, сроки хранения заданы"
