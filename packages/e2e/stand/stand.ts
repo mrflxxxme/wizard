@@ -6,7 +6,9 @@
 // routes import_mapping to logged mock providers (MOCK_PROVIDERS below).
 // The M2 stand (stand/m2.ts) runs with WIZARD_MILESTONE=M2 rules (card binding before prod, G2 at publish) and the
 // platform's YooKassa shop on YookassaMock with a test checkout page (stand/shop.ts). The pilot stand (stand/pilot.ts,
-// M2-15) has the same M2 rules with WIZARD_REGISTRATION=invite and WIZARD_PAYMENTS=off and no shop.
+// M2-15) has the same M2 rules with WIZARD_REGISTRATION=invite and WIZARD_PAYMENTS=off and no shop. The v3 stand
+// (stand/v3.ts, D78) runs the real executors on WIZARD_BUILD_PIPELINE=v3 — the grill interview, three directions and the
+// harness v3 — with the recorded model answers of stand/v3-models.ts, G1 without the browser.
 // Run: `pnpm --filter @wizard/e2e exec tsx stand/m1.ts` or `stand/m2.ts` (Playwright starts them as webServers).
 import { randomBytes } from "node:crypto";
 import {
@@ -39,8 +41,13 @@ import {
   PILOT_DB_FILE,
   PILOT_LLM_LOG,
   PILOT_OUTBOX,
+  V3,
+  V3_DB_FILE,
+  V3_LLM_LOG,
+  V3_OUTBOX,
 } from "./ports.js";
 import { startShop } from "./shop.js";
+import { v3Composer, v3Router } from "./v3-models.js";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 /** WIZARD_INTERNAL_TOKEN of the stand (platform-api ⇄ runtime internal calls, M3-02). */
@@ -209,6 +216,22 @@ async function scriptedBuild(host: BuildHost, p: BuildParams) {
   };
 }
 
+/** Executors of the m1/m2/pilot stands: the real ones with the scripted v1 interview (cards) and builder. */
+function legacyExecutors(d: Parameters<typeof createAgentExecutors>[0]): Executors {
+  return {
+    ...createAgentExecutors(d),
+    interviewTurn: async (host) => {
+      if (host.context.system.previewRevision === null)
+        return { kind: "card" as const, text: "Карточка системы готова", card: CREATE_CARD };
+      const last = [...host.context.messages].reverse().find((m) => m.role === "user")?.text ?? "";
+      return last.includes("ИИ")
+        ? { kind: "card" as const, text: "Предлагаю ИИ-действие", card: AI_CHANGE_CARD }
+        : { kind: "card" as const, text: "Предлагаю правку", card: changeCard() };
+    },
+    build: scriptedBuild,
+  };
+}
+
 // M1-12: the import_mapping call goes through the real router (DLP, tiers) to OpenAI-compatible mock providers that
 // log every request (the spec checks no cell value reached them) and propose forum fields by column header.
 const MOCK_PROVIDERS = {
@@ -273,7 +296,7 @@ const mockProviders = (async (url: string | URL | Request, init?: RequestInit) =
   );
 }) as typeof globalThis.fetch;
 
-export type StandKind = "m1" | "m2" | "pilot";
+export type StandKind = "m1" | "m2" | "pilot" | "v3";
 
 const STANDS = {
   m1: { ports: { ...M1, shop: 0 }, files: { dbFile: M1_DB_FILE, outbox: M1_OUTBOX, llmLog: M1_LLM_LOG } },
@@ -282,6 +305,7 @@ const STANDS = {
     ports: { ...PILOT, shop: 0 },
     files: { dbFile: PILOT_DB_FILE, outbox: PILOT_OUTBOX, llmLog: PILOT_LLM_LOG },
   },
+  v3: { ports: { ...V3, shop: 0 }, files: { dbFile: V3_DB_FILE, outbox: V3_OUTBOX, llmLog: V3_LLM_LOG } },
 } as const;
 
 /** Starts the stand of `kind` and stops it (dropping its database) on SIGINT/SIGTERM. */
@@ -336,9 +360,12 @@ export async function startStand(kind: StandKind): Promise<void> {
       runtimeInternalUrl: `http://${HOST}:${ports.runtimeInternal}`,
       // T1 build by default (models.yaml#week0_decision): «только РФ» visibly changes the S1 policy label.
       buildDefaultTier: "T1",
-      // D78: v3 is the default; the stand scripts the v1 card flow.
-      buildPipeline: "legacy",
-      ...(kind !== "m1"
+      // D78: v3 is the default; the m1/m2/pilot stands script the v1 card flow. The v3 stand checks the goal scenarios
+      // of G1 without the browser (the browser rung is v3-goals.browser.test.ts).
+      ...(kind === "v3"
+        ? { buildPipeline: "v3" as const, g1Browser: "off" as const }
+        : { buildPipeline: "legacy" as const }),
+      ...(kind === "m2" || kind === "pilot"
         ? {
             // WIZARD_MILESTONE=M2: card binding before prod and G1 + G2 at publish (config.ts m2OrProd). The publish
             // G1 runs the forum's functions in the platform's in-process runtime: unsafe-local exec, as the stand's
@@ -361,26 +388,20 @@ export async function startStand(kind: StandKind): Promise<void> {
       // prod publication (M2-09, WIZARD_FOUNDER_REVIEW=on as in the pilot profile).
       ...(kind === "pilot" ? { registration: "invite", payments: false, founderReviewRequired: true } : {}),
     },
-    executors: (d) => ({
-      ...createAgentExecutors(d),
-      interviewTurn: async (host) => {
-        if (host.context.system.previewRevision === null)
-          return { kind: "card" as const, text: "Карточка системы готова", card: CREATE_CARD };
-        const last = [...host.context.messages].reverse().find((m) => m.role === "user")?.text ?? "";
-        return last.includes("ИИ")
-          ? { kind: "card" as const, text: "Предлагаю ИИ-действие", card: AI_CHANGE_CARD }
-          : { kind: "card" as const, text: "Предлагаю правку", card: changeCard() };
-      },
-      build: scriptedBuild,
-    }),
+    executors: (d) =>
+      kind === "v3"
+        ? createAgentExecutors({ ...d, research: null, v3: { enabled: true, composer: v3Composer() } })
+        : legacyExecutors(d),
     createRouter: (opts) =>
-      createRouter({
-        ...opts,
-        mode: "live",
-        env: MOCK_PROVIDERS,
-        fetch: mockProviders,
-        sleep: async () => {},
-      }),
+      kind === "v3"
+        ? v3Router(opts)
+        : createRouter({
+            ...opts,
+            mode: "live",
+            env: MOCK_PROVIDERS,
+            fetch: mockProviders,
+            sleep: async () => {},
+          }),
     log: (m, e) => console.error(`[${kind}-stand] platform-api: ${m}`, e ?? ""),
   });
   const apiServer = serve({ fetch: platform.fetch, port: ports.api, hostname: HOST });
