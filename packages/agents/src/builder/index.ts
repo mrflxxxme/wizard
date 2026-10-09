@@ -226,6 +226,12 @@ export type {
   V3ComposeResult,
   V3PagePlan,
 } from "./v3/contract.js";
+/**
+ * V3-13 visual critic (builder-v3.md C6 stage `critic`): createCriticHook({inspect}) — deterministic browser checks
+ * (CRITIC_CHECKS_SCRIPT: contrast, overflow, fonts, CLS, touch, names, headings) and fixes by code first, then ≤ 3
+ * critic_visual cycles on screenshots 390/768/1440 by the catalog C rubric with closed edits (applyEdit), each re-checked.
+ */
+export * from "./v3/critic/index.js";
 /** V3-09 «Три направления»: three first screens with the client's texts, refinement by words, references → principles. */
 export * from "./v3/directions/index.js";
 /**

@@ -32,6 +32,7 @@ import { claimOpsAlert } from "../ops/alert.js";
 import type { EventType } from "../runs/events.js";
 import { type BuildHost, type BuildParams, RunFailure } from "../runs/types.js";
 import { pgCheckpointStore, recentArchetypes } from "./checkpoints.js";
+import { platformCritic } from "./critic.js";
 import { templateGateHooks } from "./template-gate.js";
 
 /** ₽ per credit of the platform (models.yaml#credits.rub_per_credit). */
@@ -196,8 +197,10 @@ export async function buildByBrief(
     },
     checkScenario: (input) => checkScenario(host, provider, withBrowser, input),
     goalBrowser: withBrowser,
+    // V3-13: the visual critic in the process Chromium by default — with the platform's composer (its site model).
     // V3-14: the template gate with the process browser (without one the stage stays skipped); o.hooks override.
     hooks: {
+      ...(!o.composer && provider && withBrowser ? { critic: platformCritic(provider) } : {}),
       ...templateGateHooks({
         pg: o.pg,
         runId: host.run.id,

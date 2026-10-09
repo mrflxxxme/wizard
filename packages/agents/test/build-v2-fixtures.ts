@@ -50,6 +50,8 @@ const CALL_PROFILE = {
   // V3-12 / V3-11: the page composer of a scenario and the signature sections (compose/, v3-harness-fixtures.ts).
   page_compose: { reasoning: 1200, latencyMs: 60_000 },
   signature_section: { reasoning: 1500, latencyMs: 90_000 },
+  // V3-13: the visual critic — with screenshots the router keeps it on T0, the first vision model of the chain answers.
+  critic_visual: { reasoning: 1500, latencyMs: 45_000, model: "kimi-k2.6" },
 } as const;
 type Recorded = keyof typeof CALL_PROFILE;
 
