@@ -129,6 +129,12 @@ describe("publish and rollback in the worker", () => {
     const pubs = await api.deps.pg<{ status: string }[]>`
       select status from platform.publications where system_id = ${b.systemId} order by created_at`;
     expect(pubs.map((p) => p.status)).toEqual(["superseded", "superseded", "live"]);
+    // V3-19 (runtime.yaml#auth.role_assignment (в)): the owner holds the first isAdmin role in prod — once, after
+    // two publications and a rollback.
+    const owners = await api.deps.pg.unsafe(
+      `select role from "app_${key}_prod".users where email = 'dev@wizard.local'`,
+    );
+    expect(owners.map((o) => o.role)).toEqual(["organizer"]);
 
     // M2-10 export runs in the worker too; platform-api decrypts the archive the worker wrote.
     const ex = await api.req("POST", `/systems/${b.systemId}/exports`, { body: { env: "prod" } });

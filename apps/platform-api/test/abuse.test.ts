@@ -326,7 +326,8 @@ describe("ticket → staff access → takedown → owner notice → restore", ()
     expectContract("adminSystemData", data);
     expect(data.body.env).toBe("prod");
     expect(data.body.entity).toBe("users");
-    expect(data.body.entities.find((e: { name: string }) => e.name === "users")?.rows).toBe(1);
+    // The registered user and the owner (first isAdmin role at publication, runtime.yaml#auth.role_assignment (в)).
+    expect(data.body.entities.find((e: { name: string }) => e.name === "users")?.rows).toBe(2);
     expect(data.body.columns).not.toContain("email");
     expect(data.body.columns).not.toContain("display_name");
     expect(JSON.stringify(data.body.rows)).not.toContain("ivan@mail.example");

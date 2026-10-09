@@ -340,7 +340,8 @@ describe("export_data run and API", () => {
     expect(tickets[0]?.amount).toBe("1500.00");
     expect(table(files["payment.csv"])[0]?.amount).toBe("100.50");
     const users = table(files["users.csv"]);
-    expect(users).toHaveLength(1);
+    // The participant and the owner (first isAdmin role at publication, runtime.yaml#auth.role_assignment (в)).
+    expect(users.map((u) => u.role).sort()).toEqual(["organizer", "participant"]);
     expect(Object.keys(users[0] ?? {})).not.toContain("email");
     const all = Object.values(files).join("\n");
     for (const secret of ["QR-SECRET-TOKEN", "ivan.petrov@mail.ru", "+79161234567", "Иван Петров"])
@@ -388,7 +389,7 @@ describe("export_data run and API", () => {
     });
     expect(Object.keys(t ?? {})).not.toContain("qr_token");
     expect(files["ticket.csv"]).not.toContain("QR-SECRET-TOKEN");
-    expect(table(files["users.csv"])[0]).toMatchObject({
+    expect(table(files["users.csv"]).find((u) => u.role === "participant")).toMatchObject({
       display_name: "Иван Петров",
       email: "ivan.petrov@mail.ru",
     });
