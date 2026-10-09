@@ -123,6 +123,11 @@ export interface NeededKey {
    * types into the window (hosts holds the placeholder until then).
    */
   account: { label_ru: string; suffixes: string[] } | null;
+  /**
+   * V3-23: a key of a module's connector integration (the shop's ЮKassa: shopId and the secret key), not of the brief;
+   * its window is opened by `name` and the key goes only to the connector's fixed hosts.
+   */
+  connector?: { id: string; label_ru: string };
 }
 
 const ref = (name: string) => `secret://${name}`;
@@ -132,6 +137,73 @@ const hostsOf = (deps: Pick<SecretWindowDeps, "platformDomains">) =>
 async function names(deps: SecretWindowDeps, systemId: string): Promise<Map<string, string>> {
   const brief = await getLatestBrief(deps.db, systemId);
   return new Map((brief?.brief.integrations ?? []).map((i) => [i.id, i.name]));
+}
+
+/** V3-23: fixed hosts of the connectors whose keys modules declare (connectors/*.yaml; the key goes nowhere else). */
+export const CONNECTOR_KEY_HOSTS: Readonly<Record<string, readonly string[]>> = {
+  yookassa: ["api.yookassa.ru"],
+};
+const CONNECTOR_KEY_LABELS: Readonly<Record<string, string>> = {
+  yookassa_shop_id: "Оплата ЮKassa: shopId магазина",
+  yookassa_secret_key: "Оплата ЮKassa: секретный ключ (test_… для тестового магазина)",
+};
+const CONNECTOR_NAMES: Readonly<Record<string, string>> = { yookassa: "Оплата ЮKassa" };
+
+interface ConnectorKey {
+  integration: string;
+  connector: string;
+  name: string;
+  hosts: string[];
+  label_ru: string;
+}
+
+/** Keys the connector integrations of the system's draft AppSpec declare (secretRefs of a known connector). */
+async function connectorKeys(deps: Pick<SecretWindowDeps, "pg">, systemId: string): Promise<ConnectorKey[]> {
+  const [r] = await deps.pg`
+    select r.spec from platform.systems s
+    join platform.revisions r on r.system_id = s.id and r.version = s.draft_revision
+    where s.id = ${systemId} and s.deleted_at is null`;
+  const spec = (r?.spec ?? null) as {
+    integrations?: { name?: unknown; connector?: unknown; secretRefs?: unknown }[];
+  } | null;
+  const out: ConnectorKey[] = [];
+  for (const i of spec?.integrations ?? []) {
+    const hosts = typeof i.connector === "string" ? CONNECTOR_KEY_HOSTS[i.connector] : undefined;
+    if (!hosts || typeof i.name !== "string" || !INTEGRATION_ID.test(i.name)) continue;
+    for (const sr of Array.isArray(i.secretRefs) ? i.secretRefs : []) {
+      const name = typeof sr === "string" && sr.startsWith("secret://") ? sr.slice("secret://".length) : "";
+      if (!SECRET_WINDOW_NAME.test(name) || out.some((k) => k.name === name)) continue;
+      out.push({
+        integration: i.name,
+        connector: i.connector as string,
+        name,
+        hosts: [...hosts],
+        label_ru:
+          CONNECTOR_KEY_LABELS[name] ?? `${CONNECTOR_NAMES[i.connector as string] ?? i.connector}: ${name}`,
+      });
+    }
+  }
+  return out;
+}
+
+/** V3-23: the window of a module connector's key (no contract: the recipient is the connector's fixed host). */
+export async function openConnectorWindow(
+  deps: SecretWindowDeps,
+  p: { systemId: string; name: string; env?: Env; userId: string | null },
+): Promise<{ window: WindowKeyView; created: boolean }> {
+  const k = (await connectorKeys(deps, p.systemId)).find((x) => x.name === p.name);
+  if (!k) throw notFound("Ключ подключения");
+  const r = await requestSecret(deps, {
+    systemId: p.systemId,
+    name: k.name,
+    domain: k.hosts[0] as string,
+    purpose: k.label_ru,
+    integrationId: null,
+    requestedBy: "user",
+    userId: p.userId,
+    ...(p.env ? { env: p.env } : {}),
+  });
+  return { window: await windowWithKey(deps, p.systemId, r.window.id), created: r.created };
 }
 
 function windowView(w: WindowRow, integrationName: string | null): WindowView {
@@ -461,6 +533,18 @@ export async function listSecrets(
           : null,
     });
   }
+  for (const k of await connectorKeys(deps, systemId))
+    needed.push({
+      integrationId: k.integration,
+      integrationName: k.label_ru,
+      name: k.name,
+      secretRef: ref(k.name),
+      hosts: [...k.hosts],
+      present: await secretRefExists(deps.pg, systemId, k.name),
+      keyless: false,
+      account: null,
+      connector: { id: k.connector, label_ru: CONNECTOR_NAMES[k.connector] ?? k.connector },
+    });
   return {
     items: bindings.map((b) => secretView(b, nameOf(b.integrationId))),
     windows: windows.map((w) => windowView(w, nameOf(w.integrationId))),

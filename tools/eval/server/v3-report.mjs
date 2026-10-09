@@ -267,7 +267,12 @@ export function renderV3Report(doc, db = {}, meta = {}) {
   const e = evaluateV3(doc, db);
   const date = meta.date ?? String(doc.startedAt ?? "").slice(0, 10);
   const L = [];
-  L.push(`# Чекпоинт 1 волны A: замер v3 на сервере — ${date}`, "");
+  L.push(
+    doc.threshold === "v3-final"
+      ? `# Финальный замер v3: прогон на сервере — ${date}`
+      : `# Чекпоинт 1 волны A: замер v3 на сервере — ${date}`,
+    "",
+  );
   L.push(
     `Платформа: ${meta.platform ?? doc.base} · прогон \`${doc.runId ?? "—"}\` · брифов: ${e.total}, запущено: ${e.ran} · потолок прогона ${rub(doc.maxCostRub)} · параллельно: ${doc.concurrency}`,
     "",
@@ -373,6 +378,21 @@ export function renderV3Report(doc, db = {}, meta = {}) {
           );
       }
     }
+    // V3-23: the shop's payment through the founder's ЮKassa test shop (tools/eval/server/v3-pay.mjs).
+    if (x.payment) {
+      const P = {
+        paid: "✅ заказ оплачен тестовой картой и стал «Оплачен»",
+        failed: "❌ не прошла",
+        skipped: "не проверялась",
+        refused: "не запускалась",
+        keys_only: "ключи введены, покупка не проверялась (нет браузера)",
+      };
+      L.push(`- Оплата ЮKassa (тестовый магазин): ${P[x.payment.status] ?? x.payment.status}${x.payment.note ? ` — ${x.payment.note}` : ""}.`);
+      if (x.payment.keys?.keys?.length) L.push(`  - ключи через окно ключа: ${x.payment.keys.keys.join(", ")}`);
+      if (x.payment.keys?.message) L.push(`  - ключи: ${x.payment.keys.message}`);
+      for (const st of x.payment.steps ?? [])
+        L.push(`  - ${st.ok ? "✓" : "✗"} ${st.step}${st.note ? ` (${st.note})` : ""}`);
+    }
     if (x.techreview.status || x.techreview.blockers.length) {
       L.push(`- Техревью: ${x.techreview.verdict}${x.techreview.note ? ` (${x.techreview.note})` : ""}.`);
       for (const bl of x.techreview.blockers) L.push(`  - блокер: ${bl}`);
@@ -433,3 +453,7 @@ export function renderV3Report(doc, db = {}, meta = {}) {
 
 /** Name of the checkpoint report: docs/progress/v3-a-checkpoint1-<yyyy-mm-dd>.{md,json} (the artifact keeps it so). */
 export const checkpointName = (date) => `v3-a-checkpoint1-${String(date).slice(0, 10)}`;
+/** V3-40: the run report of the final measurement (per brief) — docs/progress/v3-final-run-<yyyy-mm-dd>.{md,json}. */
+export const finalRunName = (date) => `v3-final-run-${String(date).slice(0, 10)}`;
+/** V3-40: the report by the exit criteria of the plan §6 — docs/progress/v3-final-<yyyy-mm-dd>.md (server/v3-final.mjs). */
+export const finalName = (date) => `v3-final-${String(date).slice(0, 10)}`;

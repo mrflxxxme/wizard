@@ -12,11 +12,13 @@ import {
   readSite,
   runCritic,
   shotPlan,
+  withSitePages,
 } from "@wizard/agents/builder";
 import { buildSystem } from "@wizard/build";
 import { PATTERNS, type PatternMeta } from "@wizard/ui-kit/v3/patterns";
 import { afterAll, describe, expect, test } from "vitest";
 import { siteFacts, siteFiles } from "../../../packages/agents/src/builder/v3/compose/index.js";
+import { briefSite } from "../../../packages/agents/test/v3-brief-site.js";
 import {
   criticContext,
   critique,
@@ -25,6 +27,7 @@ import {
   fixtureRoute,
   registry,
 } from "../../../packages/agents/test/v3-critic-fixtures.js";
+import { EVAL_BRIEFS } from "../../../packages/agents/test/v3-eval-briefs.js";
 import { chromiumProvider } from "../src/agents/goal-browser.js";
 import { criticInspector, platformCritic } from "../src/builds-v3/critic.js";
 
@@ -54,8 +57,13 @@ function brokenHome(src: string): string {
         "function Late() {",
         "  const [on, setOn] = useState(false);",
         "  useEffect(() => {",
-        "    const t = setTimeout(() => setOn(true), 30);",
-        "    return () => clearTimeout(t);",
+        // 100 ms after the page is shown (the first paint waits for the data, @wizard/build): a block pushes the page.
+        "    const t = setInterval(() => {",
+        '      if (document.getElementById("root")?.style.opacity === "0") return;',
+        "      clearInterval(t);",
+        "      setTimeout(() => setOn(true), 100);",
+        "    }, 10);",
+        "    return () => clearInterval(t);",
         "  }, []);",
         "  return on ? <div style={{ height: 420 }} /> : null;",
         "}",
@@ -100,6 +108,28 @@ describe.skipIf(!hasChromium)("V3-13 critic in Chromium", () => {
     expect(r.shots[0]?.sections.slice(0, 2)).toEqual(["header", "hero"]);
     expect(r.shots[1]?.sections[0]).toMatch(/^header 0–\d+$/);
   }, 120_000);
+
+  test("V3-18: every page of the eval brief sites loads without a layout shift and without other problems", async () => {
+    // The paid checkpoint: CLS > 0,1 on /#hero, /blog, /services, /booking, the header, the footer — the fallback font
+    // swapped for the design one, sections bound to data jumped from their loading state to the loaded one.
+    const found: string[] = [];
+    for (const [id, input] of Object.entries(EVAL_BRIEFS)) {
+      const b = await briefSite(id, input);
+      if (!b.site.pages.length) continue;
+      const r = await criticInspector({ browser })({
+        spec: withSitePages(b.spec, b.site),
+        files: b.files,
+        routes: b.site.pages.map((p) => p.route.replace(/:\w+/g, "x")),
+        viewports: CRITIC_VIEWPORTS,
+        shots: [],
+        fonts: [b.ctx.design.fonts.display.family, b.ctx.design.fonts.text.family],
+      });
+      expect(r.ok, r.error).toBe(true);
+      for (const p of r.problems)
+        found.push(`${id} ${p.code} ${p.route}@${p.width} ${p.scheme}: ${p.message_ru}`);
+    }
+    expect(found).toEqual([]);
+  }, 300_000);
 
   test("deterministic checks without a model: overflow, contrast, CLS, fonts, alt — by section", async () => {
     const files = new Map(ctx.files);

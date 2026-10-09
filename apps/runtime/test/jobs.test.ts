@@ -238,6 +238,11 @@ describe("runJobs", () => {
     expect((await s.data.get(SYSTEM_SUBJECT, "stream", String(stream.id))).description).toBe("Проверено");
   });
 
+  test("V3-18 warmFunctions: nothing to start without enabled functions or for an unknown system", async () => {
+    expect(await h.rt.warmFunctions({ slug: "jobs-a", env: "draft" })).toBe(false);
+    expect(await h.rt.warmFunctions({ slug: "no-such-system", env: "draft" })).toBe(false);
+  });
+
   test("cron: the latest occurrence of the window fires once", async () => {
     const t0 = new Date();
     const cron = () => h.rt.outbox().filter((m) => m.userId === "cron");

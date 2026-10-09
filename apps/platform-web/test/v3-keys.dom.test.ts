@@ -125,6 +125,7 @@ function fakeKeys(st: KeysState, win: KeyWindowWithKey) {
   const client: KeysClient = {
     list: async () => st,
     open: async () => ({ window: win }),
+    openKey: async () => ({ window: win }),
     window: async () => ({ window: win }),
     submit: async (_s, _w, sealed) => {
       submitted.push(sealed);

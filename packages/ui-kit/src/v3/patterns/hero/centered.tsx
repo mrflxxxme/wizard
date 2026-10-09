@@ -1,5 +1,6 @@
 // First screen «centered»: the offer centred on a calm field, actions side by side, an optional wide photo below.
 // Composition after HyperUI «Banners» (MIT, © Mark Mead), rewritten on the design system tokens.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -51,6 +52,7 @@ export default function HeroCentered({
   wzId,
 }: HeroCenteredProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
@@ -58,6 +60,7 @@ export default function HeroCentered({
           className={`mx-auto flex w-full max-w-page flex-col items-center px-gutter pt-section text-center ${image ? "" : "pb-section"}`}
         >
           <m.h1
+            ref={fit}
             {...enter(0)}
             className="w-full max-w-4xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
           >

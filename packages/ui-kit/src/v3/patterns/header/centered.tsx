@@ -64,7 +64,7 @@ export default function HeaderCentered({ brand, nav, action, note }: HeaderCente
               aria-expanded={menu.open}
               aria-controls={menu.id}
               onClick={menu.flip}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:hidden"
+              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center whitespace-nowrap rounded-control border border-border px-4 text-body font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:hidden"
             >
               {menu.open ? "Закрыть" : "Меню"}
             </button>

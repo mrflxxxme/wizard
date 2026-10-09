@@ -29,8 +29,13 @@ export const windowKeyAad = (orgId: string, windowId: string): string => `secret
 export const KEY_MIN = 8;
 export const KEY_MAX = 4096;
 
+/** V3-23: a shop identifier next to a key (ЮKassa shopId: digits), not a secret of its own — no length minimum. */
+export const isShopIdName = (name: string): boolean => /_shop_id$/.test(name);
+
 /** Why a decrypted key cannot be stored (Russian), or null. Leading and trailing whitespace is ignored. */
-export function keyProblem(value: string): string | null {
+export function keyProblem(value: string, name = ""): string | null {
+  if (isShopIdName(name))
+    return /^\d{3,12}$/.test(value) ? null : "shopId — номер магазина из кабинета ЮKassa: только цифры";
   if (value.startsWith("secret://"))
     return "Это ссылка на ключ, а не сам ключ — вставьте значение из кабинета сервиса";
   if (value.length < KEY_MIN) return `Ключ слишком короткий — нужно не меньше ${KEY_MIN} символов`;
@@ -174,7 +179,7 @@ export async function acceptKey(
     ({ value, last4, account } = composePassportKey(p.passport, plain));
   } else {
     value = plain;
-    const problem = keyProblem(value);
+    const problem = keyProblem(value, w.name);
     if (problem) throw invalid(problem, { reason: "KEY_FORMAT" });
     last4 = lastFour(value);
   }

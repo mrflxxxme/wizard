@@ -17,7 +17,12 @@ export const D67_THRESHOLD = { ready: 7, of: 10 };
  * (G0–G2 without blockers, goal scenarios in the browser, 390 px); every uncovered brief reaches a working system and
  * what is out of scope is recorded in «Запросы на развитие».
  */
-export const THRESHOLDS = ["d67", "d76", "v3"];
+export const THRESHOLDS = ["d67", "d76", "v3", "v3-final"];
+/**
+ * The v3 path (tools/eval/server/v3.mjs): v3 — checkpoint 1 (V3-18, loadBriefs("v3")), v3-final — the final measurement
+ * of docs/plans/2026-10-08-v3.md §6 (V3-40: 12 briefs, 3 per class, loadBriefs("v3-final")).
+ */
+export const isV3Threshold = (t) => t === "v3" || t === "v3-final";
 /** Budget of the D76 measurement by default, ₽ (eval.yaml#thresholds.by_milestone.B2: ≤ 300 ₽ for the final run). */
 export const D76_MAX_COST_RUB = 300;
 /** D76 economics of one build (D76 (8)): ≤ 15 ₽ and ≤ 5 min without custom code, custom code ≤ +20 ₽. */
@@ -620,7 +625,7 @@ export async function collectGaps(client, r) {
 export async function runEval(o) {
   // V3-18: the v3 measurement drives its briefs with its own driver (tools/eval/server/v3.mjs runV3Eval).
   const drive = o.drive ?? driveBrief;
-  const v3 = o.threshold === "v3";
+  const v3 = isV3Threshold(o.threshold);
   const ctx = {
     ...DEFAULTS,
     ...Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)),

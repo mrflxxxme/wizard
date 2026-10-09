@@ -198,6 +198,13 @@ export function sdkDataSource(): DataSource {
           client.pay(integration, binding, id, token),
       );
     },
+    usePayCheck() {
+      const client = useSdkClient();
+      return useMutationState(
+        async (integration: string, binding: string, id: string, token?: string): Promise<string> =>
+          client.payCheck(integration, binding, id, token),
+      );
+    },
     useFiles() {
       const client = useSdkClient();
       return useMemo<FilesApi>(() => {

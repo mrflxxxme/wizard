@@ -85,6 +85,43 @@ describe("runWorkflows / advanceTime", () => {
     );
   }, 120_000);
 
+  test("V3-18: the functions start when G1 loads the system, not inside a timed step (≤ 5 s per step)", async () => {
+    // The pilot (v3-03, «Заявка, взятая в работу…»): the first function of the system ran in runWorkflows, and the
+    // sandbox's cold start (a Worker placed, the bundle loaded) took the step over its 5 s. Here the cold start is 6 s.
+    const COLD_MS = 6_000;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const runtime = (): RuntimeHandle & { warmed: number } => {
+      let warm = false;
+      const rt: RuntimeHandle & { warmed: number } = {
+        ...h.rt,
+        warmed: 0,
+        warmFunctions: async (input) => {
+          rt.warmed += 1;
+          if (!warm) await sleep(COLD_MS);
+          warm = true;
+          return h.rt.warmFunctions(input);
+        },
+        runJobs: async (input) => {
+          if (!warm) await sleep(COLD_MS);
+          warm = true;
+          return h.rt.runJobs(input);
+        },
+      };
+      return rt;
+    };
+    const warmed = runtime();
+    const started = Date.now();
+    const r = await runGates("G1", h.ctx({ checks: [approval], runtime: warmed }));
+    expect(byId(r, "SC-AC3-2")?.status, detail(r)).toBe("pass");
+    expect(warmed.warmed).toBe(1);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(COLD_MS);
+    // The same cold start inside the step (a runtime that cannot warm up): the step's 5 s are over.
+    const { warmFunctions: _cold, ...cold } = runtime();
+    const late = await runGates("G1", h.ctx({ checks: [approval], runtime: cold }));
+    expect(byId(late, "SC-AC3-2")?.status).toBe("fail");
+    expect(byId(late, "SC-AC3-2")?.message_ru).toContain("Шаг 3 выполнялся дольше 5 с");
+  }, 120_000);
+
   test("a runtime without a job runner reports the scenario as an error", async () => {
     const { runJobs: _drop, ...rest } = h.rt;
     const r = await runGates("G1", h.ctx({ checks: [approval], runtime: rest }));

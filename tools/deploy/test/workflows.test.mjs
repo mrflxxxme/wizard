@@ -137,8 +137,12 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     const inputs = ev.on.workflow_dispatch.inputs;
     expect(inputs.env).toBeUndefined();
     expect(inputs.briefs).toMatchObject({ type: "string", default: "all" });
-    // V3-18: v3 — checkpoint 1 of v3 on the same form.
-    expect(inputs.threshold).toMatchObject({ type: "choice", options: ["d76", "d67", "v3"], default: "d76" });
+    // V3-18: v3 — checkpoint 1 of v3 on the same form; V3-40: v3-final — the final measurement.
+    expect(inputs.threshold).toMatchObject({
+      type: "choice",
+      options: ["d76", "d67", "v3", "v3-final"],
+      default: "d76",
+    });
     expect(inputs.max_cost_rub).toBeUndefined();
     for (const n of ["cap_rub", "purpose", "hypothesis", "expect_rub", "confirm"])
       expect(inputs[n], n).toMatchObject({ type: "string", default: "" });
@@ -265,6 +269,11 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(authorize({ ...ok, EVAL_BRIEFS: "mvp-01; curl x" }).out).toContain("briefs");
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d67" }).code).toBe(0);
     expect(authorize({ ...ok, EVAL_THRESHOLD: "v3", EVAL_BRIEFS: "v3-02,v3-04" }).code).toBe(0);
+    expect(authorize({ ...ok, EVAL_THRESHOLD: "v3-final", EVAL_WAVE: "final" }).code).toBe(0);
+    expect(
+      authorize({ ...ok, EVAL_THRESHOLD: "v3-final", EVAL_BRIEFS: "v3-03,v3-07", EVAL_WAVE: "retry" }).code,
+    ).toBe(0);
+    expect(authorize({ ...ok, EVAL_THRESHOLD: "v3-checkpoint" }).out).toContain("threshold");
     expect(authorize({ ...ok, EVAL_THRESHOLD: "d76; curl x" }).out).toContain("threshold");
     // V3-01: a paid run only with its record in the spend journal; > 1 000 ₽ at once — with the founder's «да».
     for (const [k, v, why] of [
@@ -326,10 +335,10 @@ describe.skipIf(!hasYaml)("pilot workflows (GitHub-hosted, one button)", () => {
     expect(report.with.name).toBe(
       `${gh("inputs.command == 'v3-probe' && 'v3-probe' || inputs.threshold")}-eval-${gh("inputs.env")}-${gh("github.run_id")}`,
     );
-    // d76 and v3 screenshots: Chromium of the workspace's Playwright, only for those measurements.
+    // d76 and v3 (v3, v3-final) screenshots: Chromium of the workspace's Playwright, only for those measurements.
     const chromium = job.steps.find((s) => s.name === "Chromium for the screenshots");
     expect(chromium.if).toBe(
-      "inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')",
+      "inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))",
     );
     expect(chromium.run).toContain("playwright install --with-deps --only-shell chromium");
     expect(report.uses).toBe("actions/upload-artifact@v4");
@@ -733,7 +742,12 @@ describe.skipIf(!hasYaml)(
   () => {
     const KEYS = {
       cdek: ["CDEK_TEST_ACCOUNT", "CDEK_TEST_SECURE"],
-      yookassa: ["YOOKASSA_TEST_SHOP_ID", "YOOKASSA_TEST_SECRET_KEY"],
+      yookassa: [
+        "YOOKASSA_TEST_SHOP_ID",
+        "YOOKASSA_TEST_SECRET_KEY",
+        "YOUKASSA_TEST_API_KEY",
+        "YOUKASSA_TEST_SHOP_ID",
+      ],
     };
     const STEPS = { cdek: "CDEK test contour", yookassa: "YooKassa test shop" };
 

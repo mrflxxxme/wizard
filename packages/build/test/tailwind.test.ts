@@ -140,6 +140,29 @@ describe("buildSystem: v3 systems", () => {
     expect(js.match(/\/react\/index\.js"/g)?.length).toBe(1);
     const html = new TextDecoder().decode(r.client.get("index.html"));
     expect(html).toContain(`<link rel="stylesheet" href="/${r.manifest.entry.style}">`);
+    // V3-18 (CLS): the cyrillic and latin faces of the design fonts load with the document, before the stylesheet.
+    const preloads = [
+      ...html.matchAll(/<link rel="preload" href="([^"]+)" as="font" type="font\/woff2" crossorigin>/g),
+    ].map((m) => m[1] as string);
+    expect(preloads.length).toBeGreaterThanOrEqual(2);
+    expect(preloads.length).toBeLessThanOrEqual(8);
+    for (const url of preloads) {
+      expect(url).toMatch(/^\/_wizard\/fonts\/[\w.-]+-(cyrillic|latin)-\d{3}-[\w]+\.woff2$/);
+      expect(text).toContain(url);
+    }
+    expect(preloads.some((u) => u.includes("-cyrillic-"))).toBe(true);
+    expect(html.indexOf('rel="preload"')).toBeLessThan(html.indexOf('rel="stylesheet"'));
+  });
+
+  test("V3-18 (CLS): the first page of the public site is painted once its data loaded; other pages as they were", async () => {
+    const solo = previewSystem(fixture, previewItems([header, hero]), { solo: true });
+    const site = await buildSystem({ spec: solo.spec, files: solo.files, env: "prod" });
+    expect(site.errors).toEqual([]);
+    expect(clientText(site)).toContain('[aria-busy="true"]');
+    expect(clientText(site)).toContain('["/"]');
+    const { spec, files } = previewSystem(fixture, previewItems([header, hero]));
+    const plain = await buildSystem({ spec, files, env: "prod" });
+    expect(clientText(plain)).not.toContain('[aria-busy="true"]');
   });
 
   test("React and Motion are importable only in v3 systems; the headless hooks only once ui-kit ships them", async () => {

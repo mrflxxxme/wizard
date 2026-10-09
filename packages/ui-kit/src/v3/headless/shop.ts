@@ -712,6 +712,7 @@ export function useOrder(o: UseOrderOptions = {}): OrderModel {
     id && token ? { id, token } : "skip",
   );
   const pay = (ds.usePay ?? useNoPay)();
+  const payCheck = (ds.usePayCheck ?? useNoPay)();
   const [payError, setPayError] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
   const order = res.data ?? null;
@@ -724,14 +725,24 @@ export function useOrder(o: UseOrderOptions = {}): OrderModel {
   }
   const checking = returning && !!order?.payable && tries < 20;
   const refetch = res.refetch;
+  const check = payCheck.mutate;
+  const payment = o.payment;
   useEffect(() => {
     if (!checking) return;
-    const t = setTimeout(() => {
-      setTries((n) => n + 1);
-      refetch();
-    }, 3000);
+    const t = setTimeout(
+      () => {
+        setTries((n) => n + 1);
+        // The notice of ЮKassa may be late or never come: the runtime re-reads the payment (yookassa.yaml#return_check).
+        const asked =
+          payment && id && token
+            ? check(payment.integration, payment.binding, id, token).catch(() => "")
+            : Promise.resolve("");
+        void asked.then(() => refetch());
+      },
+      tries === 0 ? 300 : 3000,
+    );
     return () => clearTimeout(t);
-  }, [checking, refetch]);
+  }, [checking, refetch, check, payment, id, token, tries]);
   useEffect(() => {
     if (id && order && !order.payable) {
       try {

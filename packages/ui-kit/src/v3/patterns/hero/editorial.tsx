@@ -1,6 +1,7 @@
 // First screen «editorial»: a tall photo with a caption on the left, on the right the title set large and, under a
 // heavy rule, the lead and the actions in two columns — a magazine spread. On phones the text comes first.
 // Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -49,6 +50,7 @@ export default function HeroEditorial({
   wzId,
 }: HeroEditorialProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
@@ -68,6 +70,7 @@ export default function HeroEditorial({
           </m.figure>
           <div className="order-1 flex min-w-0 flex-col justify-between gap-10 lg:order-2 lg:col-span-7">
             <m.h1
+              ref={fit}
               {...enter(0)}
               className="font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
             >

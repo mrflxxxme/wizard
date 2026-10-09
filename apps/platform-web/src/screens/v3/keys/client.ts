@@ -79,6 +79,8 @@ export interface NeededKey {
   keyless: boolean;
   /** A per-account passport API without its account yet: the key goes to the account typed into the window. */
   account: { label_ru: string; suffixes: string[] } | null;
+  /** V3-23: a key of a module's connector (the shop's ЮKassa): its window opens by the key's name. */
+  connector?: { id: string; label_ru: string };
 }
 
 export interface KeyCheckLine {
@@ -105,6 +107,8 @@ export interface KeySubmitResult {
 export interface KeysClient {
   list(systemId: string): Promise<KeysState>;
   open(systemId: string, integrationId: string, env?: KeyEnv): Promise<{ window: KeyWindowWithKey }>;
+  /** V3-23: the window of a module connector's key by its name. */
+  openKey(systemId: string, name: string, env?: KeyEnv): Promise<{ window: KeyWindowWithKey }>;
   window(systemId: string, windowId: string): Promise<{ window: KeyWindowWithKey }>;
   submit(systemId: string, windowId: string, sealed: SealedSecret): Promise<KeySubmitResult>;
   cancel(systemId: string, windowId: string): Promise<{ window: KeyWindow }>;
@@ -137,6 +141,11 @@ export function createKeysClient(call: KeysCall): KeysClient {
     open: (id, integrationId, env) =>
       call("POST", `${sys(id)}/secret-windows`, {
         body: { integrationId, ...(env ? { env } : {}) },
+        idempotencyKey: newKey(),
+      }),
+    openKey: (id, name, env) =>
+      call("POST", `${sys(id)}/secret-windows`, {
+        body: { name, ...(env ? { env } : {}) },
         idempotencyKey: newKey(),
       }),
     window: (id, w) => call("GET", win(id, w)),

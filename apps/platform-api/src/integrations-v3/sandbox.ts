@@ -50,7 +50,44 @@ export const SANDBOX_ENV = {
   cdekSecure: "CDEK_TEST_SECURE",
   kassaShop: "YOOKASSA_TEST_SHOP_ID",
   kassaKey: "YOOKASSA_TEST_SECRET_KEY",
+  /** One secret for the test shop (the founder's, 2026-10-09): «shopId:test_…», JSON {shop_id, secret_key} or the key. */
+  kassaApiKey: "YOUKASSA_TEST_API_KEY",
+  /** The shop id next to YOUKASSA_TEST_API_KEY (the founder's spelling, 2026-10-09). */
+  kassaApiShop: "YOUKASSA_TEST_SHOP_ID",
 } as const;
+
+/**
+ * The test shop's pair from the separate secrets or the single YOUKASSA_TEST_API_KEY: «<shopId>:<key>» (also a space,
+ * «;» or a newline between them), JSON {"shop_id","secret_key"} (shopId / secretKey too), or the key alone with the
+ * shop id from YOOKASSA_TEST_SHOP_ID or YOUKASSA_TEST_SHOP_ID. The separate secrets win; an unreadable single secret leaves the pair empty.
+ */
+export function kassaCredentials(e: Readonly<Record<string, string | undefined>>): {
+  shop: string;
+  secret: string;
+} {
+  const get = (n: string) => (e[n] ?? "").trim();
+  let shop = get(SANDBOX_ENV.kassaShop) || get(SANDBOX_ENV.kassaApiShop);
+  let secret = get(SANDBOX_ENV.kassaKey);
+  const one = get(SANDBOX_ENV.kassaApiKey);
+  if (one && (!shop || !secret)) {
+    let s = "";
+    let k = "";
+    if (one.startsWith("{")) {
+      try {
+        const j = JSON.parse(one) as Record<string, unknown>;
+        s = String(j.shop_id ?? j.shopId ?? "").trim();
+        k = String(j.secret_key ?? j.secretKey ?? "").trim();
+      } catch {}
+    } else {
+      const m = /^(\d{3,12})\s*[:;\s]\s*(\S+)$/.exec(one);
+      if (m) [, s = "", k = ""] = m;
+      else if (!/\s/.test(one)) k = one;
+    }
+    shop ||= s;
+    secret ||= k;
+  }
+  return { shop, secret };
+}
 
 /**
  * The shared test account of the СДЭК test contour api.edu.cdek.ru, published in the СДЭК API documentation
@@ -1038,9 +1075,8 @@ async function cdekOrder(run: Run, o: SandboxOptions, tariffs: unknown, points: 
 // ------------------------------------------------------------------------------------------------ ЮKassa
 
 async function runYookassa(run: Run, o: SandboxOptions): Promise<void> {
-  const shop = env(o, SANDBOX_ENV.kassaShop);
-  const secret = env(o, SANDBOX_ENV.kassaKey);
-  run.masks.push(shop, secret);
+  const { shop, secret } = kassaCredentials(o.env);
+  run.masks.push(shop, secret, env(o, SANDBOX_ENV.kassaApiKey), env(o, SANDBOX_ENV.kassaApiShop));
   if (!shop && !secret) {
     record(run, {
       step: "keys",
@@ -1048,7 +1084,7 @@ async function runYookassa(run: Run, o: SandboxOptions): Promise<void> {
       verdict: "skipped",
       status: null,
       started: run.clock(),
-      message_ru: `нет тестового магазина: создайте его в личном кабинете ЮKassa и положите ключи в секреты ${SANDBOX_ENV.kassaShop} и ${SANDBOX_ENV.kassaKey} (Settings → Secrets and variables → Actions); проверка ЮKassa пропущена`,
+      message_ru: `нет тестового магазина: создайте его в личном кабинете ЮKassa и положите ключи в секреты ${SANDBOX_ENV.kassaShop} и ${SANDBOX_ENV.kassaKey} или одним секретом ${SANDBOX_ENV.kassaApiKey} в виде «shopId:test_…» (Settings → Secrets and variables → Actions); проверка ЮKassa пропущена`,
     });
     return;
   }
@@ -1056,7 +1092,7 @@ async function runYookassa(run: Run, o: SandboxOptions): Promise<void> {
     refuse(
       run,
       "keys",
-      `задан только один из секретов ${SANDBOX_ENV.kassaShop} и ${SANDBOX_ENV.kassaKey} — нужны оба; запросы не отправлялись`,
+      `не хватает ${shop ? "секретного ключа" : "идентификатора магазина (shopId)"}: задайте ${SANDBOX_ENV.kassaApiKey} в виде «shopId:test_…» или оба секрета ${SANDBOX_ENV.kassaShop} и ${SANDBOX_ENV.kassaKey}; запросы не отправлялись`,
     );
     return;
   }
@@ -1064,7 +1100,7 @@ async function runYookassa(run: Run, o: SandboxOptions): Promise<void> {
     refuse(
       run,
       "keys",
-      `${SANDBOX_ENV.kassaKey} — не ключ тестового магазина (должен начинаться с test_): с боевым ключом проверка не запускается, запросы не отправлялись`,
+      `секретный ключ ЮKassa — не ключ тестового магазина (должен начинаться с test_): с боевым ключом проверка не запускается, запросы не отправлялись`,
     );
     return;
   }

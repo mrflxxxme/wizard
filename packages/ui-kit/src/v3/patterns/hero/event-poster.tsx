@@ -1,5 +1,6 @@
 // First screen «event poster»: the title as a poster headline, then the date and the place set large between heavy
 // rules, the action next to them, the lead below (catalog D1 Hero event-poster). Own composition.
+import { useFitWords } from "@wizard/ui-kit/v3/headless";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "motion/react";
 import { useState } from "react";
 
@@ -45,11 +46,13 @@ export default function HeroEventPoster({
   wzId,
 }: HeroEventPosterProps) {
   const enter = useEnter();
+  const fit = useFitWords<HTMLHeadingElement>(title);
   return (
     <LazyMotion features={domAnimation}>
       <section data-wz-component="Hero" data-wz-id={wzId} className="bg-background font-sans text-foreground">
         <div className="mx-auto w-full max-w-page px-gutter py-section">
           <m.h1
+            ref={fit}
             {...enter(0)}
             className="max-w-5xl font-display text-hero font-bold text-balance wrap-break-word hyphens-auto"
           >

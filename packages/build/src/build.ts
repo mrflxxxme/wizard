@@ -121,9 +121,58 @@ function validOrigin(o: string): boolean {
   }
 }
 
-function clientEntry(spec: AppSpec, seo: SiteSeo | null): string {
+/** The first page of a v3 system is painted at most this long after the app first rendered, data loaded or not (ms). */
+export const SETTLE_REVEAL_MS = 1_200;
+/** …and at most this long after the start when the app never renders (the spec request failed). */
+const SETTLE_START_MS = 5_000;
+
+/**
+ * V3-18 (CLS): the first page of a v3 system is painted once its data has loaded. Sections bound to data render a
+ * loading state first (ui-kit marks it aria-busy) whose height is not the loaded one — an empty list, the items, an
+ * entry — so the rest of the page would jump. #root stays laid out but transparent (opacity 0: shifts of what is not
+ * seen are not counted; visibility: hidden left Chromium's innerText of the revealed cards empty for a while) until the
+ * app has rendered and nothing inside is aria-busy, at most SETTLE_REVEAL_MS; later
+ * navigations are not held. Only the pages of the public site (files under SITE_PAGES_PREFIX — the composer's pages,
+ * what visitors and the critic open) are held: cabinets stay as they were.
+ */
+const settleCode = (routes: readonly string[]) => `{
+  const root = document.getElementById("root");
+  const held = ${JSON.stringify(routes)};
+  if (root && held.some((r) => matchRoute(r, location.pathname))) {
+    root.style.opacity = "0";
+    let cap = setTimeout(() => show(), ${SETTLE_START_MS});
+    let rendered = false;
+    const show = () => {
+      observer.disconnect();
+      clearTimeout(cap);
+      root.style.opacity = "";
+      // Chromium keeps empty visual rects of what it never painted: shifts after the reveal would go unseen (CLS of
+      // the visitor's browser, the critic's check). A fresh layout of the page gives them back.
+      root.style.display = "none";
+      void root.offsetHeight;
+      root.style.display = "";
+    };
+    const observer = new MutationObserver(() => {
+      if (root.childElementCount === 0) return;
+      if (!rendered) {
+        rendered = true;
+        clearTimeout(cap);
+        cap = setTimeout(() => show(), ${SETTLE_REVEAL_MS});
+      }
+      if (!root.querySelector('[aria-busy="true"]')) show();
+    });
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-busy"] });
+  }
+}`;
+
+/** Page files of the public site of a v3 system (the page composer writes them, V3-12). */
+export const SITE_PAGES_PREFIX = "ui/pages/site/";
+
+function clientEntry(spec: AppSpec, seo: SiteSeo | null, settle = false): string {
   const pages = [...(spec.pages ?? [])];
+  const held = settle ? pages.filter((p) => p.file.startsWith(SITE_PAGES_PREFIX)).map((p) => p.route) : [];
   const lines = [
+    ...(held.length ? [settleCode(held)] : []),
     // v3 (ui/seo.json): the tags of the current route on start and on navigation (seo.ts).
     ...(seo ? [seoClientCode(seo)] : []),
     `import { jsx } from ${JSON.stringify(SDK_JSX)};`,
@@ -169,6 +218,25 @@ function functionsEntry(spec: AppSpec): string {
   ].join("\n");
 }
 
+/** At most this many fonts are preloaded (2 families × 2 weights × cyrillic and latin). */
+const MAX_FONT_PRELOADS = 8;
+
+/**
+ * The fonts a page's text needs at once (V3-18, CLS): the cyrillic and basic latin faces of the @font-face rules the
+ * stylesheet declares under /_wizard/fonts (font-display: swap). Preloaded with the document, they are ready when the
+ * app renders after /_wizard/spec, so the text does not reflow from the fallback font and shift the page. latin-ext
+ * (rare letters, the ₽ fallback) stays on demand.
+ */
+export function fontPreloads(css: string): string[] {
+  const out = new Set<string>();
+  for (const m of css.matchAll(/url\(["']?(\/_wizard\/fonts\/[\w.-]+\.woff2)["']?\)/g)) {
+    const url = m[1] as string;
+    if (/-(?:cyrillic|latin)-\d{3}-/.test(url)) out.add(url);
+    if (out.size >= MAX_FONT_PRELOADS) break;
+  }
+  return [...out];
+}
+
 function indexHtml(
   spec: AppSpec,
   env: BuildEnv,
@@ -176,6 +244,7 @@ function indexHtml(
   style: string | null,
   origin?: string,
   seo: SiteSeo | null = null,
+  fonts: readonly string[] = [],
 ): string {
   const head = [
     '<meta charset="utf-8">',
@@ -186,6 +255,9 @@ function indexHtml(
     ...(env === "draft" && origin
       ? [`<meta name="wz-platform-origin" content="${escapeHtml(origin)}">`]
       : []),
+    ...fonts.map(
+      (f) => `<link rel="preload" href="${escapeHtml(f)}" as="font" type="font/woff2" crossorigin>`,
+    ),
     ...(style ? [`<link rel="stylesheet" href="/${style}">`] : []),
     ...(env === "draft" ? ['<script src="/_wizard/bridge.js"></script>'] : []),
     `<script type="module" src="/${script}"></script>`,
@@ -328,7 +400,7 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
             target: "client",
             copyDir,
             sources: loaded,
-            entryCode: clientEntry(spec, seo),
+            entryCode: clientEntry(spec, seo, v3Host !== null),
             host,
             ...(v3Host ? { packages: v3Packages(v3Host) } : {}),
           }),
@@ -402,9 +474,14 @@ export async function buildSystem(input: BuildInput): Promise<BuildResult> {
       style = `assets/index-${sha256Hex(text).slice(0, 12)}.css`;
       clientFiles.set(style, new TextEncoder().encode(text));
     }
+    // v3 (V3-18): the design fonts of the page's text load with the document, before the app renders (no swap shift).
+    const preload =
+      twCss !== null && style !== null
+        ? fontPreloads(new TextDecoder().decode(clientFiles.get(style) as Uint8Array))
+        : [];
     clientFiles.set(
       "index.html",
-      new TextEncoder().encode(indexHtml(spec, env, script, style, input.platformOrigin, seo)),
+      new TextEncoder().encode(indexHtml(spec, env, script, style, input.platformOrigin, seo, preload)),
     );
     // V3-24: the runtime reads ui/seo.json from the bundle — the per-route head for crawlers, /sitemap.xml with the
     // published entries of «Контент и блог» (its `content` sources).

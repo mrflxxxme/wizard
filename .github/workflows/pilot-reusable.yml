@@ -48,7 +48,7 @@ on:
         type: string
         default: ""
       threshold:
-        description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement; v3 — checkpoint 1 of v3"
+        description: "eval: d76 — strict threshold of beta v2 (plan, goal scenarios, screenshots); d67 — the MVP measurement; v3 — checkpoint 1 of v3; v3-final — the final measurement of v3 (V3-40)"
         type: string
         default: "d76"
       wave:
@@ -134,7 +134,7 @@ jobs:
           case "$COMMAND" in check|bootstrap|deploy|destroy|diagnose|eval|v3-probe|reboot) ;; *) echo "::error title=pilot::неизвестная команда."; exit 1 ;; esac
           if [ "$COMMAND" = "eval" ]; then
             printf '%s' "$EVAL_BRIEFS" | grep -Eq '^(all|[a-z0-9-]+(,[a-z0-9-]+)*)$' || { echo "::error title=pilot::briefs — all или id через запятую."; exit 1; }
-            case "$EVAL_THRESHOLD" in d76|d67|v3) ;; *) echo "::error title=pilot::threshold — d76, d67 или v3."; exit 1 ;; esac
+            case "$EVAL_THRESHOLD" in d76|d67|v3|v3-final) ;; *) echo "::error title=pilot::threshold — d76, d67, v3 или v3-final."; exit 1 ;; esac
           fi
           if [ "$COMMAND" = "eval" ] || [ "$COMMAND" = "v3-probe" ]; then
             # V3-01: a paid run only pre-registered in the spend journal (pilot.mjs also checks the wave plan).
@@ -339,11 +339,12 @@ jobs:
         run: |
           kubectl version --client=true
           ssh -V
-      # eval d76 and v3: screenshots of each system at 390 and 1280 px — Chromium of the workspace's Playwright (packages/e2e).
+      # eval d76 and v3: screenshots of each system at 390 and 1280 px (v3-final: 1440) — Chromium of the workspace's
+      # Playwright (packages/e2e).
       - uses: pnpm/action-setup@v4
-        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')
+        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))
       - name: Chromium for the screenshots
-        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || inputs.threshold == 'v3')
+        if: inputs.command == 'eval' && (inputs.threshold == 'd76' || startsWith(inputs.threshold, 'v3'))
         run: |
           pnpm install --frozen-lockfile --filter @wizard/e2e
           pnpm --filter @wizard/e2e exec playwright install --with-deps --only-shell chromium
@@ -352,7 +353,11 @@ jobs:
         env:
           # Only eval uses it: the issue comment with the live progress of the measurement.
           GITHUB_TOKEN: ${{ inputs.command == 'eval' && github.token || '' }}
+          # V3-23: the founder's ЮKassa test shop — only eval (the shop's payment on the draft, test_ keys only).
+          YOUKASSA_TEST_API_KEY: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_API_KEY || '' }}
+          YOUKASSA_TEST_SHOP_ID: ${{ inputs.command == 'eval' && secrets.YOUKASSA_TEST_SHOP_ID || '' }}
         run: |
+          for v in "$YOUKASSA_TEST_API_KEY" "$YOUKASSA_TEST_SHOP_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           case "$COMMAND" in
             check) node tools/deploy/pilot.mjs check --env "$DEPLOY_ENV" ;;
             destroy) node tools/deploy/pilot.mjs destroy --env "$DEPLOY_ENV" ;;

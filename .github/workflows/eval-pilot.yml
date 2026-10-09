@@ -8,7 +8,9 @@
 # form holds at most 10 inputs for actionlint of CI. Shares the concurrency group of prod with bootstrap and deploy.
 # V3-18: threshold v3 — checkpoint 1 of v3 (the v3-* briefs through the v3 path; docs/ops/eval-pilot.md); the server
 # must run its eval orgs on v3 (the default pipeline, D78; after an emergency switch back — WIZARD_BUILD_PIPELINE_ORGS=eval)
-# — checked before any spend.
+# — checked before any spend. V3-40: threshold v3-final — the final measurement of v3 (12 briefs v3-*, 3 per class;
+# screenshots at 390 and 1440 px for the blind comparison; the run report v3-final-run-<date> and the report by the
+# plan §6 v3-final-<date>); a retry of the failed briefs is the same form with their ids and wave retry.
 name: eval-pilot
 
 on:
@@ -19,13 +21,13 @@ on:
         type: string
         default: ""
       briefs:
-        description: "Какие брифы прогнать — all (все брифы порога: 10 mvp-* или 4 v3-*) или id через запятую, например mvp-01,mvp-04 или v3-02; повтор провалившихся"
+        description: "Какие брифы прогнать — all (все брифы порога: 10 mvp-*, 5 v3-* чекпоинта или 12 v3-* финала) или id через запятую, например mvp-01,mvp-04 или v3-02; повтор провалившихся"
         type: string
         default: "all"
       threshold:
-        description: "Порог — d76 (бета v2: план, сценарии целей, скриншоты), d67 (замер MVP) или v3 (чекпоинт v3: брифы v3-*, путь v3, отчёт v3-a-checkpoint1)"
+        description: "Порог — d76 (бета v2: план, сценарии целей, скриншоты), d67 (замер MVP), v3 (чекпоинт v3: 5 брифов, отчёт v3-a-checkpoint1) или v3-final (финальный замер v3: 12 брифов, отчёты v3-final-run и v3-final)"
         type: choice
-        options: [d76, d67, v3]
+        options: [d76, d67, v3, v3-final]
         default: d76
       wave:
         description: "Журнал трат: волна плана v3 — A, B, C, checkpoint (чекпоинт основателя), final (финальный замер), retry (повтор упавших брифов)"

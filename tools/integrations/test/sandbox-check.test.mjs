@@ -47,9 +47,7 @@ describe("tools/integrations/sandbox-check.mjs", () => {
       YOOKASSA_TEST_SECRET_KEY: key,
     });
     expect(r.code).toBe(1);
-    expect(r.out).toMatch(
-      /^::error title=ЮKassa · keys::YOOKASSA_TEST_SECRET_KEY — не ключ тестового магазина/,
-    );
+    expect(r.out).toMatch(/^::error title=ЮKassa · keys::секретный ключ ЮKassa — не ключ тестового магазина/);
     expect(`${r.out}${r.err}${r.summary}`).not.toContain(key);
   }, 60_000);
 

@@ -125,6 +125,11 @@ describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2
         .map((c) => `${c.id}: ${c.message_ru} ${c.evidence ?? ""}`),
     ).toEqual([]);
     expect(browserChecks.length).toBe(r.scenarios.length + 1);
+    // V3-18 (the pilot's v3-03): «Заявка, взятая в работу…» calls the system's first function in its runWorkflows
+    // step; G1 starts the functions when it loads the system, so the step keeps its 5 s.
+    const deal = (r.spec as AppSpec).acceptance?.find((a) => a.text.startsWith("Заявка, взятая в работу"));
+    const dealCheck = g1.checks.find((c) => c.id === `SC-${deal?.id}`);
+    expect(dealCheck?.status, `${dealCheck?.message_ru} ${dealCheck?.evidence ?? ""}`).toBe("pass");
     // The letters of the G1 outbox are rendered: visitors' letters carry the one-time links GS-booking-3/4 followed
     // (the programs take the link path whenever the letter has one) and the time as a person reads it.
     const texts = rt

@@ -138,7 +138,7 @@ export function revokeSql({ tokenHash }) {
  * `invalid=<json>` (B2-41: orch_invalid of the systems);
  * ::jsonb::text keeps each on one line (json_agg puts a newline between elements).
  */
-export function collectSql({ orgId, b2Since, v3 = false }) {
+export function collectSql({ orgId, b2Since, v3 = false, fingerprints = false }) {
   // B2-04: spend of every eval org (probes and measurements) since the start of the beta v2 development budget, as
   // llm-spend.ts counts it (billable live/record calls, the Moscow day of b2Since) — `b2=<json>`.
   const b2 = b2Since
@@ -208,7 +208,7 @@ export function collectSql({ orgId, b2Since, v3 = false }) {
     JOIN platform.systems s ON s.id = r.system_id
    WHERE s.org_id = :'org_id' AND e.type = 'orch_invalid'
    ORDER BY e.ts LIMIT 200) x;`,
-    ...(v3 ? v3CollectSql() : []),
+    ...(v3 ? v3CollectSql({ fingerprints }) : []),
     "",
   ].join("\n");
 }
@@ -223,8 +223,10 @@ export const PII_FORBIDDEN_T1 = ["runtime_ai_extract", "runtime_ai_generate", "s
  * redesign, ₽ and time) and the template note of the skeleton; `v3similarity=` — the site fingerprint's similarity to
  * the nearest recent site of the niche; `v3events=` — build_stage events of the v3 builds with their time (stage
  * times and the preview when the stream was not read); `v3t1forbidden=` — T1 calls of pii_forbidden_for_T1 (must be 0).
+ * V3-40 (`fingerprints`, the final measurement): `v3fingerprints=` — the latest site fingerprint of each system of the
+ * org (structure tokens, DOM shapes, perceptual hashes; no texts) for the pairwise diversity of tools/eval/blind/diversity.mjs.
  */
-export function v3CollectSql() {
+export function v3CollectSql({ fingerprints = false } = {}) {
   const forbidden = PII_FORBIDDEN_T1.map((c) => `'${c}'`).join(", ");
   return [
     `SELECT 'v3calls=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
@@ -255,10 +257,19 @@ export function v3CollectSql() {
     `SELECT to_regclass('platform.system_site_fingerprints')::text AS fp_table \\gset`,
     `\\if :{?fp_table}`,
     `SELECT 'v3similarity=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
-  SELECT f.system_id, f.archetype, f.similarity::float8 AS similarity
+  SELECT f.system_id, f.archetype, f.niche, f.similarity::float8 AS similarity
     FROM platform.system_site_fingerprints f
     JOIN platform.systems s ON s.id = f.system_id
    WHERE s.org_id = :'org_id') x;`,
+    ...(fingerprints
+      ? [
+          `SELECT 'v3fingerprints=' || coalesce(json_agg(x), '[]'::json)::jsonb::text FROM (
+  SELECT f.system_id, f.niche, f.archetype, f.fingerprint
+    FROM platform.system_site_fingerprints f
+    JOIN platform.systems s ON s.id = f.system_id
+   WHERE s.org_id = :'org_id') x;`,
+        ]
+      : []),
     `\\endif`,
     `SELECT 'v3events=' || coalesce(json_agg(x ORDER BY x.ts), '[]'::json)::jsonb::text FROM (
   SELECT r.system_id, r.id AS run_id, e.seq, e.ts, e.type, e.payload ->> 'stage' AS stage,
@@ -400,7 +411,18 @@ function parseV3Collect(value) {
     if (f?.system_id)
       similarity[f.system_id] = {
         archetype: f.archetype ?? null,
+        ...(f.niche ? { niche: String(f.niche) } : {}),
         similarity: f.similarity === null || f.similarity === undefined ? null : Number(f.similarity),
+      };
+  // V3-40: the site fingerprints of the final measurement (absent line → no key).
+  const fpRows = value("v3fingerprints");
+  const fingerprints = {};
+  for (const f of fpRows ?? [])
+    if (f?.system_id && f.fingerprint && typeof f.fingerprint === "object")
+      fingerprints[f.system_id] = {
+        niche: f.niche ?? null,
+        archetype: f.archetype ?? null,
+        fingerprint: f.fingerprint,
       };
   const events = {};
   for (const e of value("v3events") ?? [])
@@ -416,5 +438,12 @@ function parseV3Collect(value) {
         preview: e.preview ?? null,
       });
   const t1 = value("v3t1forbidden");
-  return { calls, hooks, similarity, events, t1Forbidden: Number.isFinite(Number(t1)) ? Number(t1) : null };
+  return {
+    calls,
+    hooks,
+    similarity,
+    events,
+    t1Forbidden: Number.isFinite(Number(t1)) ? Number(t1) : null,
+    ...(fpRows !== undefined ? { fingerprints } : {}),
+  };
 }

@@ -14,6 +14,7 @@ import { readSessionToken, sessionUser } from "./auth/session.js";
 import type { InvalidationBus } from "./data/access.js";
 import { createInvalidationBus } from "./data/events.js";
 import { assertStartupAllowed, draftPreviewOnly, isLocalMode, type RuntimeEnv, readEnv } from "./env.js";
+import { systemFunctions } from "./exec/host.js";
 import { photoLibraryRoutes } from "./files/photo-library.js";
 import { createFileStorage, type FileStorage } from "./files/storage.js";
 import type { OutboxMessage, RuntimeHonoEnv, RuntimeServices } from "./http/context.js";
@@ -148,6 +149,12 @@ export interface RuntimeApp {
   dropOutbox(systemIds: readonly string[]): void;
   /** One pass of the job runner (jobs/runner.ts) for a loaded system at `now` (G1 runWorkflows/advanceTime). */
   runJobs(input: { slug: string; env: SystemEnv } & RunJobsOptions): Promise<RunJobsReport>;
+  /**
+   * V3-18: starts the functions of a loaded system now (the sandbox Worker placed and its bundle loaded, or the local
+   * executor process) instead of on the first call — G1 warms the system it loaded before its timed scenario steps.
+   * false: the system has no functions, functions are off here, or the start failed (the first call reports it).
+   */
+  warmFunctions(input: { slug: string; env: SystemEnv }): Promise<boolean>;
   /**
    * Daily retention (runtime.yaml#workflows.retention, 03:00 MSK): one pass for every registry deployment whose pass
    * is due (no marker since today's slot, or a platform request); the server calls it on a timer.
@@ -475,6 +482,15 @@ export function createRuntimeApp(o: RuntimeAppOptions): RuntimeApp {
       const sys = await systems.resolve(slug, sysEnv);
       if (!sys) throw new WizardError("NOT_FOUND", { message: "Система не найдена" });
       return runJobs(sys, services, opts);
+    },
+    warmFunctions: async ({ slug, env: sysEnv }) => {
+      const sys = await systems.resolve(slug, sysEnv);
+      if (!sys || (sys.spec.functions ?? []).length === 0) return false;
+      if (!services.sandbox && !services.env.unsafeLocalExec) return false;
+      return systemFunctions(sys, services, services.log).then(
+        () => true,
+        () => false,
+      );
     },
     jobsTick: async (input = {}) => {
       const now = input.now ?? services.clock();

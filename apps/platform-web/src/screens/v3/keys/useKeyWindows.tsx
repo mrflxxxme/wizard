@@ -104,6 +104,8 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
       id: string;
       integrationId: string | null;
       windowId: string | null;
+      /** V3-23: a module connector's key opens by this name. */
+      keyName?: string;
       name: string;
       hosts: string[];
       agent: boolean;
@@ -123,9 +125,10 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
     for (const n of keys.needed)
       if (n.hosts && !n.present && !n.keyless && !keys.windows.some((w) => w.name === n.name))
         out.push({
-          id: `n:${n.integrationId}`,
+          id: n.connector ? `k:${n.name}` : `n:${n.integrationId}`,
           integrationId: n.integrationId,
           windowId: null,
+          ...(n.connector ? { keyName: n.name } : {}),
           name: n.integrationName,
           hosts: n.hosts,
           agent: false,
@@ -135,13 +138,15 @@ export function useKeyWindows(o: KeyWindowsOptions): KeyWindows {
   }, [keys]);
 
   const openWindow = useCallback(
-    async (a: { integrationId: string | null; windowId: string | null }) => {
+    async (a: { integrationId: string | null; windowId: string | null; keyName?: string }) => {
       setError(null);
       setView({ kind: "window", integrationId: a.integrationId, windowId: a.windowId, win: null });
       try {
         const r = a.windowId
           ? await api.keys.window(systemId, a.windowId)
-          : await api.keys.open(systemId, a.integrationId as string);
+          : a.keyName
+            ? await api.keys.openKey(systemId, a.keyName)
+            : await api.keys.open(systemId, a.integrationId as string);
         setView({
           kind: "window",
           integrationId: r.window.integrationId,

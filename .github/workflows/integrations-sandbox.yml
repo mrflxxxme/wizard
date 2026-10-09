@@ -3,7 +3,8 @@
 #   СДЭК   — api.edu.cdek.ru with the public test account of the СДЭК docs, or the optional secrets CDEK_TEST_ACCOUNT /
 #            CDEK_TEST_SECURE: the token, the key check (listCities), tariffs, pickup points, webhooks list; with
 #            cdek_order — a test order created, read, found and deleted (the educational contour never executes it);
-#   ЮKassa — the test shop of the secrets YOOKASSA_TEST_SHOP_ID / YOOKASSA_TEST_SECRET_KEY (test_ keys only; without
+#   ЮKassa — the test shop of the secrets YOOKASSA_TEST_SHOP_ID / YOOKASSA_TEST_SECRET_KEY or the single YOUKASSA_TEST_API_KEY
+#            «shopId:test_…» (test_ keys only; without
 #            them the step is a warning): the key check (GET /me), a 1 ₽ two-stage payment with Idempotence-Key and its
 #            repeat, the payment read back, the list, the cancel when it waits for capture.
 # Verdicts are annotations, one line per operation (the coordinator reads them through the GitHub API), plus the step
@@ -60,6 +61,8 @@ jobs:
         env:
           YOOKASSA_TEST_SHOP_ID: ${{ secrets.YOOKASSA_TEST_SHOP_ID }}
           YOOKASSA_TEST_SECRET_KEY: ${{ secrets.YOOKASSA_TEST_SECRET_KEY }}
+          YOUKASSA_TEST_API_KEY: ${{ secrets.YOUKASSA_TEST_API_KEY }}
+          YOUKASSA_TEST_SHOP_ID: ${{ secrets.YOUKASSA_TEST_SHOP_ID }}
         run: |
-          for v in "$YOOKASSA_TEST_SHOP_ID" "$YOOKASSA_TEST_SECRET_KEY"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+          for v in "$YOOKASSA_TEST_SHOP_ID" "$YOOKASSA_TEST_SECRET_KEY" "$YOUKASSA_TEST_API_KEY" "$YOUKASSA_TEST_SHOP_ID"; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
           node tools/integrations/sandbox-check.mjs --passports=yookassa

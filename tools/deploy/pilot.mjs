@@ -20,6 +20,9 @@
 //        V3-01: paid, so it starts only pre-registered in the spend journal (tools/deploy/spend.mjs); the cap stops it.
 //        V3-18: --threshold v3 — checkpoint 1 of v3 (the v3-* briefs through the v3 path; the eval org must be on v3:
 //        WIZARD_BUILD_PIPELINE_ORGS=eval on the server, checked before anything is spent)
+//        V3-40: --threshold v3-final — the final measurement (12 briefs, screenshots at 390 and 1440 px, the site
+//        fingerprints in collect): the run report v3-final-run-<date> and, for the full set, the report by the plan §6
+//        v3-final-<date> (the blind comparison waits for the raters; retries of failed briefs are merged by `final`)
 //   node tools/deploy/pilot.mjs v3-probe --env … --wave A --purpose … --hypothesis … --expect-rub 5 --cap-rub 30
 //        V3-18: one minimal real call per v3 callType route head through the server's gateway (worker pod, usage of an
 //        eval org in platform.llm_calls): status, model served, tier, scrub, latency, ₽; cap ≤ 30 ₽, pre-registered.
@@ -35,10 +38,11 @@ import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { measureDiversity } from "../eval/blind/diversity.mjs";
 import { objectUrl, putObject, sha256Hex, signRequest } from "../eval/lib/s3.mjs";
 import { selectBriefs } from "../eval/server/cli.mjs";
 import { platformClient } from "../eval/server/client.mjs";
-import { countedD76, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
+import { countedD76, isV3Threshold, runEval, THRESHOLDS } from "../eval/server/driver.mjs";
 import {
   expectedProbeRub,
   PROBE_MAX_CAP_RUB,
@@ -58,7 +62,7 @@ import {
 } from "../eval/server/probe-shape.mjs";
 import { githubProgress, progressText } from "../eval/server/progress.mjs";
 import { evaluate, photosAnnotation, renderReport } from "../eval/server/report.mjs";
-import { previewScreenshots } from "../eval/server/screenshots.mjs";
+import { launchChromium, previewScreenshots, V3_FINAL_VIEWPORTS } from "../eval/server/screenshots.mjs";
 import {
   collectSql,
   EVAL_MIN_BUILDS,
@@ -71,7 +75,9 @@ import {
   seedSql,
 } from "../eval/server/seed.mjs";
 import { runV3Eval } from "../eval/server/v3.mjs";
-import { checkpointName, renderV3Report } from "../eval/server/v3-report.mjs";
+import { mergeRuns, renderV3Final } from "../eval/server/v3-final.mjs";
+import { kassaFromEnv } from "../eval/server/v3-pay.mjs";
+import { checkpointName, finalName, finalRunName, renderV3Report } from "../eval/server/v3-report.mjs";
 import { gvisorProbe, main as infraMain, NET_PROBE } from "./infra.mjs";
 import {
   assertPassphrase,
@@ -1357,14 +1363,19 @@ export async function pilotEval({
   inCluster,
   screenshots = previewScreenshots,
   v3Eval = null,
+  // V3-23: the founder's ЮKassa test shop (YOUKASSA_TEST_API_KEY / YOUKASSA_TEST_SHOP_ID of the eval step's env).
+  kassaEnv = process.env,
+  launch = launchChromium,
 }) {
   const domain = vars.WIZARD_PLATFORM_DOMAIN;
   const base = `https://${domain}`;
   const threshold = o.threshold ?? "d67";
   const d76 = threshold === "d76";
   // V3-18: checkpoint 1 of v3 — the v3-* briefs through the v3 path, its own report and screenshots.
-  const v3 = threshold === "v3";
-  const briefs = selectBriefs(o.briefs, v3 ? "v3" : "mvp");
+  // V3-40: v3-final — the same path on the final set of 12 briefs.
+  const v3 = isV3Threshold(threshold);
+  const final = threshold === "v3-final";
+  const briefs = selectBriefs(o.briefs, final ? "v3-final" : v3 ? "v3" : "mvp");
   const label = v3 ? "V3" : d76 ? "D76" : "D67";
   const runid = newRunId(now(), rand);
   const session = newEvalSession(rand);
@@ -1471,7 +1482,16 @@ export async function pilotEval({
   );
   const client = platformClient({ base, session, fetch: f, sleep: abortableSleep });
   // D76 and v3: PNGs of each system at 390 and 1280 px next to the report (artifact folder shots/, Chromium of packages/e2e).
-  const shots = d76 || v3 ? screenshots({ client, dir: join(outDir, "shots"), log }) : null;
+  // V3-40: the final measurement shoots at 390 and 1440 px — the widths of the blind comparison and the template gate.
+  const shots =
+    d76 || v3
+      ? screenshots({
+          client,
+          dir: join(outDir, "shots"),
+          log,
+          ...(final ? { viewports: V3_FINAL_VIEWPORTS } : {}),
+        })
+      : null;
   const shoot = shots
     ? async (r) => (await shots.screenshot(r)).map((x) => ({ ...x, src: `shots/${basename(x.src)}` }))
     : null;
@@ -1498,6 +1518,7 @@ export async function pilotEval({
       signal: AbortSignal.any([stop.signal, capStop.signal]),
       ...(v3 ? {} : { counted: runCounted(threshold) }),
       ...(shoot ? { screenshot: shoot } : {}),
+      ...(v3 ? { kassa: kassaFromEnv(kassaEnv), launch } : {}),
       onUpdate: (results) => {
         snapshot = results;
         const why = capStop.signal.aborted
@@ -1533,7 +1554,7 @@ export async function pilotEval({
                   psqlInPod(
                     kubectl,
                     // V3-01: eval spend since the first day of the v3 budget (the query of the B2 budget).
-                    collectSql({ orgId: seed.orgId, b2Since: v3Since, v3 }),
+                    collectSql({ orgId: seed.orgId, b2Since: v3Since, v3, fingerprints: final }),
                   ),
                 );
               } catch (e) {
@@ -1568,10 +1589,17 @@ export async function pilotEval({
   const text = `${report.text}\n${spend.text}`;
   mkdirSync(outDir, { recursive: true });
   // V3-18: the checkpoint report under the name it gets in docs/progress (screenshots stay in the artifact).
-  const name = v3 ? checkpointName(moscowDate(now())) : `${threshold}-${runid}`;
+  // V3-40: the final measurement — the run report v3-final-run-<date>.
+  const name = final
+    ? finalRunName(moscowDate(now()))
+    : v3
+      ? checkpointName(moscowDate(now()))
+      : `${threshold}-${runid}`;
   writeFileSync(join(outDir, `${name}.md`), text);
   writeFileSync(join(outDir, `${name}.json`), `${JSON.stringify({ ...doc, db }, null, 2)}\n`);
   writeFileSync(join(outDir, "spend-entry.json"), `${JSON.stringify(spend.entry, null, 2)}\n`);
+  if (final)
+    await finalExitReport({ doc, db: reportDb, journal, sp, summary, briefs, outDir, base, now, log });
   log(text);
   if (vars.GITHUB_STEP_SUMMARY) appendFileSync(vars.GITHUB_STEP_SUMMARY, `${text}\n`);
   log(`::notice title=Траты v3::${spend.line}`);
@@ -1588,12 +1616,36 @@ export async function pilotEval({
   if (!summary.passed)
     log(
       v3
-        ? `::error title=V3::Чекпоинт 1: готовы ${summary.ready} из ${summary.total} — разбор по брифам в отчёте ${name}.md`
+        ? `::error title=V3::${final ? "Финальный замер" : "Чекпоинт 1"}: готовы ${summary.ready} из ${summary.total} — разбор по брифам в отчёте ${name}.md`
         : d76
           ? `::error title=D76::Строгий порог D76 не пройден: засчитано ${summary.ready} из ${summary.total} (нужно все)`
           : `::error title=D67::Порог D67 не достигнут: ${summary.ready} из ${summary.total} (нужно не меньше 7 из 10)`,
     );
   return summary.passed ? 0 : 1;
+}
+
+/**
+ * V3-40: the report of the final measurement by the plan §6 next to the run report (v3-final-<date>.md): for a run of
+ * the whole final set only — a retry of some briefs is merged with the first run by `cli.mjs final`, as the notice says.
+ * The spend of this run is not in the journal yet (the orchestrator registers spend-entry.json): it is added as
+ * extraRub. The blind comparison waits for the raters; the diversity is computed when the template gate's metric loads.
+ */
+async function finalExitReport({ doc, db, journal, sp, summary, briefs, outDir, base, now, log }) {
+  const date = moscowDate(now());
+  if (briefs.length < selectBriefs("all", "v3-final").length) {
+    log(
+      `::notice title=V3::Повтор части брифов финального замера: итог §6 — node tools/eval/server/cli.mjs final --results ${finalRunName("<дата первого прогона>")}.json,${finalRunName(date)}.json [--blind blind-summary.json] --out docs/progress/${finalName(date)}.md`,
+    );
+    return;
+  }
+  const merged = mergeRuns([{ doc, db }]);
+  const diversity = await measureDiversity(merged.doc.results, merged.db);
+  const { text } = renderV3Final(
+    { ...merged, journal, extraRub: summary.costRub, blind: null, diversity },
+    { date, platform: base, wave: sp.wave, shotsBase: "shots" },
+  );
+  writeFileSync(join(outDir, `${finalName(date)}.md`), text);
+  log(`отчёт финального замера по критериям §6: ${finalName(date)}.md (слепое сравнение ждёт оценщиков)`);
 }
 
 /** The worker command that runs the probe script from stdin in the app folder of the worker image (tsx of the app). */

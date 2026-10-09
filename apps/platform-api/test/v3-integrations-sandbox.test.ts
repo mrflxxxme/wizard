@@ -21,6 +21,7 @@ import { cdek, mockTransport, passportContract, yookassa } from "@wizard/agents/
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
   CDEK_PUBLIC_TEST_ACCOUNT,
+  kassaCredentials,
   maskText,
   parsePassports,
   runSandboxCheck,
@@ -449,6 +450,57 @@ describe("ЮKassa: the test shop", () => {
       sleep: instant,
     });
     expect(verdicts(one)).toEqual(["yookassa:keys:refused"]);
+    expect(state.hits).toEqual([]);
+  });
+
+  test("one secret YOUKASSA_TEST_API_KEY: «shopId:key», JSON or the key with YOOKASSA_TEST_SHOP_ID", async () => {
+    expect(kassaCredentials({ YOUKASSA_TEST_API_KEY: " 506751:test_abc " })).toEqual({
+      shop: "506751",
+      secret: "test_abc",
+    });
+    expect(
+      kassaCredentials({ YOUKASSA_TEST_API_KEY: '{"shop_id":"506751","secret_key":"test_abc"}' }),
+    ).toEqual({
+      shop: "506751",
+      secret: "test_abc",
+    });
+    expect(kassaCredentials({ YOUKASSA_TEST_API_KEY: "test_abc", YOOKASSA_TEST_SHOP_ID: "506751" })).toEqual({
+      shop: "506751",
+      secret: "test_abc",
+    });
+    expect(kassaCredentials({ YOUKASSA_TEST_API_KEY: "test_abc", YOUKASSA_TEST_SHOP_ID: "506751" })).toEqual({
+      shop: "506751",
+      secret: "test_abc",
+    });
+    // The separate secrets win over the single one.
+    expect(
+      kassaCredentials({
+        YOOKASSA_TEST_SHOP_ID: "1",
+        YOOKASSA_TEST_SECRET_KEY: "test_x",
+        YOUKASSA_TEST_API_KEY: "2:test_y",
+      }),
+    ).toEqual({ shop: "1", secret: "test_x" });
+    const { kassa } = fresh();
+    const single = `${kassa.shop}:${kassa.key}`;
+    const r = await runSandboxCheck({
+      passports: ["yookassa"],
+      env: { YOUKASSA_TEST_API_KEY: single },
+      net: net(),
+      sleep: instant,
+      runId: "8",
+    });
+    expect(verdicts(r).slice(0, 2)).toEqual(["yookassa:host:ok", "yookassa:getShop:ok"]);
+    expect(leaks(r, [single, kassa.key])).toEqual([]);
+    // The key alone, without the shop id: refused before any request, names what is missing.
+    fresh();
+    const noShop = await runSandboxCheck({
+      passports: ["yookassa"],
+      env: { YOUKASSA_TEST_API_KEY: kassa.key },
+      net: net(),
+      sleep: instant,
+    });
+    expect(verdicts(noShop)).toEqual(["yookassa:keys:refused"]);
+    expect(noShop.steps[0]?.message_ru).toContain("идентификатора магазина (shopId)");
     expect(state.hits).toEqual([]);
   });
 

@@ -934,6 +934,41 @@ export async function handleYookassaNotification(
   return { status: 200, result };
 }
 
+/** How often one record's payment may be re-read on the buyer's return (yookassa.yaml#return_check). */
+export const RETURN_CHECK_MS = 10_000;
+export type ReturnCheckResult = NotificationResult | "none" | "throttled";
+
+/**
+ * Return check (V3-23, yookassa.yaml#return_check): the buyer is back from the payment page and the notice of ЮKassa
+ * may be late or never come (the shop's HTTP-notification URL not set). The record's latest pending payment is re-read
+ * with the shop's keys and applied exactly as a verified notification would (onPayment: the API answer alone decides,
+ * metadata and amount checked); idempotent, at most once per RETURN_CHECK_MS for a record. Mock payments and draft
+ * shops are left to /_wizard/pay-mock.
+ */
+export async function checkPaymentOnReturn(
+  ctx: ConnectorCtx,
+  input: { binding: string; id: string },
+): Promise<ReturnCheckResult> {
+  const b = bindingOf(ctx, input.binding);
+  if (!b) return "none";
+  const last = (await paymentsOf(ctx, b, input.id)).find(({ row }) => row.kind === "payment");
+  if (!last || last.row.status !== "pending") return "none";
+  const providerId = String(last.row.provider_payment_id ?? "");
+  if (!providerId || isMock(providerId) || !(await useApi(ctx))) return "none";
+  const gate = `return-check:${b.id}:${input.id}`;
+  if (await ctx.store.get(gate)) return "throttled";
+  await ctx.store.set(gate, { at: Date.now() }, RETURN_CHECK_MS);
+  let result: ReturnCheckResult;
+  try {
+    result = await onPayment(ctx, providerId);
+  } catch (e) {
+    if (!isConnectorError(e) || e.code !== "NOT_FOUND") throw e;
+    result = "ignored";
+  }
+  ctx.log.log({ action: "return_check", mode: ctx.mode, status: result, durationMs: 0 });
+  return result;
+}
+
 // ---------------------------------------------------------------- actions
 
 const refundInput = z.strictObject({
