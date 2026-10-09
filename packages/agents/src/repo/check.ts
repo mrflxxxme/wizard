@@ -68,35 +68,41 @@ export async function runCompatCheck(
   const steps: SandboxStepSummary[] = [];
   let total = 0;
   let status: SandboxCheck["status"] = "passed";
-  for (const [step, cmd] of [
-    ["install", plan.install],
-    ["build", plan.build],
-    ["test", plan.test],
-  ] as const) {
-    if (!cmd) continue;
-    const left = SANDBOX_LIMIT_MS - total;
-    if (left <= 0) {
-      status = "timeout";
-      break;
+  try {
+    for (const [step, cmd] of [
+      ["install", plan.install],
+      ["build", plan.build],
+      ["test", plan.test],
+    ] as const) {
+      if (!cmd) continue;
+      const left = SANDBOX_LIMIT_MS - total;
+      if (left <= 0) {
+        status = "timeout";
+        break;
+      }
+      const r = await ws.run({ ...cmd, timeoutMs: Math.min(cmd.timeoutMs, left) }, o.signal);
+      total += r.durationMs;
+      steps.push({
+        step,
+        command: cmd.label,
+        ok: r.ok,
+        timedOut: r.timedOut,
+        durationMs: r.durationMs,
+        tail: tail(r.output),
+      });
+      if (r.timedOut || total > SANDBOX_LIMIT_MS) {
+        status = "timeout";
+        break;
+      }
+      if (!r.ok) {
+        status = "failed";
+        break;
+      }
     }
-    const r = await ws.run({ ...cmd, timeoutMs: Math.min(cmd.timeoutMs, left) }, o.signal);
-    total += r.durationMs;
-    steps.push({
-      step,
-      command: cmd.label,
-      ok: r.ok,
-      timedOut: r.timedOut,
-      durationMs: r.durationMs,
-      tail: tail(r.output),
-    });
-    if (r.timedOut || total > SANDBOX_LIMIT_MS) {
-      status = "timeout";
-      break;
-    }
-    if (!r.ok) {
-      status = "failed";
-      break;
-    }
+  } catch (e) {
+    // The runner failed (not the repository): its workspace — pods, volumes — goes now, the error goes up.
+    await ws.close().catch(() => {});
+    throw e;
   }
   const report = compatReport(profile, { status, steps, totalMs: total }, labels(plan));
   const keep = o.keepOpen && status === "passed";

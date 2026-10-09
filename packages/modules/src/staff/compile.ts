@@ -20,6 +20,8 @@ export const STAFF_SECTIONS = [
   { value: "reports", label: "Отчёты" },
   // V3-24 «Контент и блог»: статьи, рубрики и страницы сайта.
   { value: "content", label: "Блог и страницы" },
+  // V3-23 «Интернет-магазин»: заказы, товары и остатки.
+  { value: "shop", label: "Магазин" },
 ] as const;
 
 type LoginMethod = NonNullable<Role["loginMethods"]>[number];

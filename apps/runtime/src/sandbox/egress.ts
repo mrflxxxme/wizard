@@ -29,6 +29,12 @@ export interface EgressPolicy {
   smtp: ReadonlySet<string>;
   /** Label for logs (system id). */
   label?: string;
+  /**
+   * Limits of one tunnel instead of the proxy's (a grant for bulk transfers: the package installs of the repository
+   * sandbox, V3-32 — a single registry tarball may exceed the default 50 MiB).
+   */
+  maxBytes?: number;
+  maxDurationMs?: number;
 }
 
 export interface EgressProxyOptions {
@@ -188,7 +194,7 @@ export function createEgressProxy(o: EgressProxyOptions): Server {
       } catch {
         return reply({ status: 502, reason: "dial" }, { sys: policy.label });
       }
-      tunnel(client, upstream, head, target, policy.label, target.port === EGRESS_PORTS.submission);
+      tunnel(client, upstream, head, target, policy, target.port === EGRESS_PORTS.submission);
     })();
   });
 
@@ -197,9 +203,11 @@ export function createEgressProxy(o: EgressProxyOptions): Server {
     upstream: Socket,
     head: Buffer,
     target: { host: string; port: number },
-    label: string | undefined,
+    policy: EgressPolicy,
     starttls: boolean,
   ): void {
+    const label = policy.label;
+    const tunnelBytes = policy.maxBytes ?? maxBytes;
     let up = 0;
     let down = 0;
     let closed = false;
@@ -214,23 +222,31 @@ export function createEgressProxy(o: EgressProxyOptions): Server {
       upstream.destroy();
       log({ host: target.host, port: target.port, status: 200, outcome, up, down, sys: label });
     };
-    const life = setTimeout(() => close("max_duration"), maxDuration);
+    const life = setTimeout(() => close("max_duration"), policy.maxDurationMs ?? maxDuration);
     let helloTimer = setTimeout(() => close("hello_timeout"), helloTimeout);
     upstream.on("error", () => close("upstream_error"));
     client.on("error", () => close("client_error"));
     upstream.on("close", () => close());
     client.on("close", () => close());
 
+    // Backpressure both ways: a slow reader pauses the other side instead of growing the proxy's buffers (bulk grants
+    // of the repository sandbox carry up to 1 GiB per tunnel).
     const toUpstream = (b: Buffer) => {
       up += b.length;
-      if (up + down > maxBytes) return close("max_bytes");
-      upstream.write(b);
+      if (up + down > tunnelBytes) return close("max_bytes");
+      if (!upstream.write(b)) {
+        client.pause();
+        upstream.once("drain", () => client.resume());
+      }
     };
     const pipeDown = () =>
       upstream.on("data", (b: Buffer) => {
         down += b.length;
-        if (up + down > maxBytes) return close("max_bytes");
-        client.write(b);
+        if (up + down > tunnelBytes) return close("max_bytes");
+        if (!client.write(b)) {
+          upstream.pause();
+          client.once("drain", () => upstream.resume());
+        }
       });
 
     // Phase 1 (587 only): SMTP commands in clear text until STARTTLS; the server greeting flows back meanwhile.

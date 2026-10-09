@@ -204,6 +204,11 @@ export interface TechreviewOutcome {
   extensions: ExtensionOp[];
   /** Russian blockers: the system is not published (D77 (10)). */
   blockers: string[];
+  /**
+   * The reviewer's findings about the owner's input (the personal data operator's name, contact, address): never
+   * blockers of the build — publication refuses without them and asks the owner (OPERATOR_*_REQUIRED).
+   */
+  ownerInput: string[];
   /** Short Russian notes for the client. */
   notes: string[];
   /** Fix rounds done (≤ 2). */

@@ -41,7 +41,7 @@ import {
   revokeSql,
   seedSql,
 } from "../server/seed.mjs";
-import { runV3Eval } from "../server/v3.mjs";
+import { fillOwnerOperator, ownerGates, runV3Eval, V3_TEST_OPERATOR } from "../server/v3.mjs";
 import { checkpointName, renderV3Report } from "../server/v3-report.mjs";
 
 const hasPsql = spawnSync("psql", ["--version"]).status === 0;
@@ -158,6 +158,70 @@ function bridge(api: TestApi) {
   };
 }
 
+describe("V3-18: the driver acts as the owner before publishing (the operator of personal data)", () => {
+  const sys = (blockers: string[]) => ({ system: { draftRevision: 7 }, publishBlockers: blockers });
+  function fakeClient(blockers: string[]) {
+    const puts: { path: string; body: Record<string, unknown> }[] = [];
+    return {
+      puts,
+      client: {
+        get: async () => ({ status: 200, body: sys(blockers) }),
+        put: async (path: string, body: Record<string, unknown>) => {
+          puts.push({ path, body });
+          return { status: 200, body: { revision: { version: 8 } } };
+        },
+      },
+    };
+  }
+
+  test("OPERATOR_* blockers → setCompliance with clearly fake but valid owner data; nothing asked → nothing sent", async () => {
+    const said: string[] = [];
+    const { client, puts } = fakeClient(["OPERATOR_NAME_REQUIRED", "OPERATOR_ADDRESS_REQUIRED", "GATES_FAILED"]);
+    const out = await fillOwnerOperator(client, "s1", (m: string) => said.push(m));
+    expect(out).toEqual({
+      filled: true,
+      revision: 8,
+      blockers: ["OPERATOR_NAME_REQUIRED", "OPERATOR_ADDRESS_REQUIRED"],
+    });
+    expect(puts).toEqual([
+      {
+        path: "/systems/s1/compliance",
+        body: {
+          expectedVersion: 7,
+          operatorName: "ИП Тестов Т. Т.",
+          operatorContact: "operator@test.example",
+          operatorAddress: V3_TEST_OPERATOR.operatorAddress,
+        },
+      },
+    ]);
+    // The values pass setCompliance (operatorName ≥ 3 chars, an e-mail contact) and say they are a test.
+    expect(V3_TEST_OPERATOR.operatorContact).toMatch(/^[^\s@]+@[^\s@]+\.[a-z]+$/);
+    expect(V3_TEST_OPERATOR.operatorAddress).toMatch(/тестов/i);
+    expect(said.join("\n")).toContain("ревизия 8");
+    const none = fakeClient(["FOUNDER_REVIEW_PENDING"]);
+    expect(await fillOwnerOperator(none.client, "s1")).toEqual({ filled: false, revision: null, blockers: [] });
+    expect(none.puts).toEqual([]);
+  });
+
+  test("a build G2 older than the owner's data: G2-PII-06 is the owner's action, not a blocker of the system", () => {
+    const pii = { id: "G2-PII-06", status: "fail", severity: "blocker", message_ru: "Не указано: название оператора ПДн" };
+    const latest = (g2Revision: number, checks = [pii]) => ({
+      revision: g2Revision,
+      reports: [
+        { level: "G0", passed: true, specVersion: 5, checks: [] },
+        { level: "G1", passed: true, specVersion: 5, checks: [] },
+        { level: "G2", passed: false, specVersion: g2Revision, checks },
+      ],
+    });
+    const filled = { filled: true, revision: 6 };
+    expect(ownerGates(latest(5), filled).G2).toMatchObject({ blockers: [], ownerActions: [{ id: "G2-PII-06" }] });
+    // The publication's G2 on the owner's revision still failing on it is a real blocker.
+    expect(ownerGates(latest(6), filled).G2?.blockers).toEqual([{ id: "G2-PII-06", message: pii.message_ru }]);
+    // Nothing filled: the gates as they are.
+    expect(ownerGates(latest(5), null).G2?.blockers).toHaveLength(1);
+  });
+});
+
 describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () => {
   let tdb: Awaited<ReturnType<typeof createTestDb>>;
   let api: TestApi;
@@ -268,6 +332,18 @@ describe.skipIf(!hasPsql)("v3 measurement on a local platform (fixtures)", () =>
     expect(r.gates.G0.passed && r.gates.G1.passed).toBe(true);
     expect(r.publish.status).toBe("review_pending");
     expect(r).toMatchObject({ status: "ready", ready: true });
+    // The owner's step before publishing: the operator's data the system asked for, through setCompliance.
+    expect(r.owner.operator).toMatchObject({ filled: true });
+    expect(r.owner.operator.blockers).toContain("OPERATOR_NAME_REQUIRED");
+    expect(
+      psql(
+        tdb.url,
+        `select r.spec -> 'compliance' ->> 'operatorName' from platform.revisions r where r.system_id = '${r.systemId}' and r.version = ${Number(r.owner.operator.revision)}`,
+      ).trim(),
+    ).toBe(V3_TEST_OPERATOR.operatorName);
+    const after = (await client.get(`/systems/${r.systemId}`)).body.publishBlockers ?? [];
+    expect(after.filter((b: string) => b.startsWith("OPERATOR_"))).toEqual([]);
+    expect(lines.some((l) => /владелец указал данные оператора ПДн/.test(l))).toBe(true);
     expect(lines.some((l) => /живое превью готово/.test(l))).toBe(true);
     expect(calls.filter((c) => c === "interview_v3")).toHaveLength(4);
 

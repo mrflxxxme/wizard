@@ -22,6 +22,8 @@ import {
   familyOf,
   integrationChecks,
   localGates,
+  OWNER_INPUT_SUFFIX_RU,
+  ownerInputFinding,
   performanceChecks,
   referenceSpec,
   runBuildV3,
@@ -31,6 +33,7 @@ import {
   type TechRequest,
   type TechreviewHookResult,
   techDigest,
+  techreviewMessages,
   type V3BriefVersion,
   type V3Checkpoint,
   type V3Host,
@@ -434,6 +437,85 @@ describe("V3-15 techreview: the reviewer of another family, ≤ 2 rounds, blocke
     expect(r.findings.map((f) => f.severity)).toEqual(["blocker", "minor"]);
     expect(r.rounds).toBe(0);
   }, 120_000);
+
+  test("the operator's data are the owner's input: the reviewer's blocker about them never fails the build", async () => {
+    // Checkpoint 2026-10-09 (v3-01): the reviewer read G2-PII-06 «нельзя опубликовать» as «Права: Отсутствует название
+    // оператора персональных данных» — GATES_FAILED. The owner fills them before publication (publish refuses without).
+    const { ctx } = reviewed([
+      {
+        findings: [
+          finding({
+            severity: "blocker",
+            area: "permissions",
+            title_ru: "Отсутствует название оператора персональных данных",
+            evidence: { kind: "check", ref: "G2-PII-06" },
+          }),
+          finding({
+            severity: "blocker",
+            area: "data",
+            title_ru: "Не указан контакт оператора для обращений",
+            evidence: { kind: "spec", ref: "/entities/0" },
+          }),
+          finding({
+            severity: "blocker",
+            area: "permissions",
+            title_ru: "Сотрудник видит заявки всех мастеров, а должен — только свои",
+            evidence: { kind: "spec", ref: "/permissions/0" },
+          }),
+        ],
+      },
+    ]);
+    const r = await runTechreview(ctx);
+    expect(r.blockers).toEqual(["Права: Сотрудник видит заявки всех мастеров, а должен — только свои"]);
+    expect(r.ownerInput).toEqual([
+      "Отсутствует название оператора персональных данных",
+      "Не указан контакт оператора для обращений",
+    ]);
+    expect(r.findings.map((f) => f.title_ru)).toEqual([
+      "Сотрудник видит заявки всех мастеров, а должен — только свои",
+    ]);
+    expect(r.note).toContain("данные владельца перед публикацией: 2");
+    // The deterministic G2-PII-06 says it is the owner's, so the reviewer is not misled by «нельзя опубликовать».
+    const pii = r.checks.filter((c) => c.id === "G2-PII-06");
+    expect(pii.length).toBeGreaterThan(0);
+    for (const c of pii) {
+      expect(c).toMatchObject({ status: "warn", severity: "warning" });
+      expect(c.message_ru.endsWith(OWNER_INPUT_SUFFIX_RU)).toBe(true);
+    }
+    expect(
+      techreviewMessages(
+        techDigest({
+          brief: ctx.brief,
+          plan: ctx.plan,
+          system: { spec: ctx.spec, files: ctx.files },
+          reference: null,
+          checks: [],
+          fixes: [],
+        }),
+        1,
+        2,
+      )[0]?.content,
+    ).toContain("Данные оператора персональных данных");
+  }, 120_000);
+
+  test("ownerInputFinding: the operator's data by check, /compliance pointer or title; other findings are the build's", () => {
+    const f = (title_ru: string, kind: "check" | "spec" | "file", ref: string) => ({
+      title_ru,
+      evidence: { kind, ref },
+    });
+    expect(ownerInputFinding(f("Нет данных", "check", "G2-PII-06"))).toBe(true);
+    expect(ownerInputFinding(f("Пусто", "spec", "/compliance/operatorAddress"))).toBe(true);
+    expect(ownerInputFinding(f("Не заполнен адрес оператора ПДн", "spec", "/entities/0"))).toBe(true);
+    expect(ownerInputFinding(f("Нет оператора обработки персональных данных", "file", CUSTOM_FILE))).toBe(
+      true,
+    );
+    expect(ownerInputFinding(f("Утечка телефонов клиентов в публичной функции", "check", "G2-PII-02"))).toBe(
+      false,
+    );
+    expect(ownerInputFinding(f("Оператор колл-центра видит все заявки", "spec", "/permissions/0"))).toBe(
+      false,
+    );
+  });
 
   test("a patch that breaks the build is reverted; never more than 2 rounds; the blocker stays with the reason", async () => {
     const bad = finding({

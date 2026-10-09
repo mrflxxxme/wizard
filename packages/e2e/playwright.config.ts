@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-import { M1, M2, PILOT } from "./stand/ports.js";
+import { M1, M2, PILOT, V3 } from "./stand/ports.js";
 
 // Local containers ship chromium in /opt/pw-browsers (revision pinned by the exact @playwright/test version);
 // CI runs `playwright install --with-deps chromium` and uses the default cache.
@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     // M0 dev stand (scripts/dev.mjs, WIZARD_AUTH_MODE=dev, fixture LLM).
     // rehearsal/: a deployed environment only (playwright.rehearsal.config.ts), never the dev stand.
-    { name: "chromium", testIgnore: /(m[12]|pilot|rehearsal)\//, use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: /(m[12]|pilot|rehearsal|v3)\//, use: { ...devices["Desktop Chrome"] } },
     // M1 stand (stand/m1.ts): session auth (email OTP, dev-login for setup), scripted builder, real publish.
     {
       name: "m1",
@@ -45,6 +45,13 @@ export default defineConfig({
       name: "pilot",
       testMatch: /pilot\/.*\.spec\.ts$/,
       use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${PILOT.web}`, locale: "ru-RU" },
+    },
+    // v3 stand (stand/v3.ts, D78): the owner's v3 path — grill interview, three directions, harness v3 — on recorded
+    // model answers (stand/v3-models.ts).
+    {
+      name: "v3",
+      testMatch: /v3\/.*\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${V3.web}`, locale: "ru-RU" },
     },
   ],
   webServer: [
@@ -100,6 +107,16 @@ export default defineConfig({
       stdout: "pipe",
       gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
       env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "legacy" },
+    },
+    {
+      command: `pnpm exec tsx ${JSON.stringify(join(import.meta.dirname, "stand", "v3.ts"))}`,
+      cwd: import.meta.dirname,
+      url: `http://127.0.0.1:${V3.web}/api/v1/me`,
+      reuseExistingServer: !ci,
+      timeout: 120_000,
+      stdout: "pipe",
+      gracefulShutdown: { signal: "SIGINT", timeout: 15_000 },
+      env: { WIZARD_LLM_MODE: "fixture", WIZARD_BUILD_PIPELINE: "v3", WIZARD_G1_BROWSER: "off" },
     },
   ],
 });

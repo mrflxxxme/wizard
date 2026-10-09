@@ -43,10 +43,32 @@ import {
   v3FinishInputSchema,
   v3QuestionInputSchema,
 } from "./schemas.js";
+import { scrubTokenPlaces, stripScrubTokens, stripScrubTokensText } from "./scrub-tokens.js";
 import { normalizeBriefPatchArgs, normalizeDeferArgs, normalizeQuestionArgs } from "./tolerant.js";
 
 /** At most this many non-blocking questions wait for the build. */
 export const MAX_DEFERRED = 20;
+/**
+ * The operator of personal data (G2-PII-06): the owner's data, never the build's — asked without a turn of the interview,
+ * as a non-blocking question of a brief with personal data; the owner fills them in the system settings (setCompliance)
+ * before publication, which refuses without them (OPERATOR_*_REQUIRED). V3-18, checkpoint 2026-10-09.
+ */
+export const OPERATOR_QUESTION: DeferredQuestion = {
+  topic: "constraints",
+  text: "Кто оператор персональных данных: название (юрлицо, ИП или ФИО), e-mail для обращений и адрес?",
+  assumption:
+    "Сборка идёт без них; до публикации укажите их в настройках системы, раздел «Персональные данные»",
+};
+/** The line of the short brief about the operator's data (a brief with personal data). */
+export const OPERATOR_LINE_RU =
+  "Перед публикацией понадобятся данные оператора персональных данных — название (юрлицо, ИП или ФИО), e-mail и адрес. Их можно указать в настройках системы, раздел «Персональные данные», пока идёт сборка.";
+
+/** Does the brief keep personal data (a field marked pii)? Then the system needs the operator's data to publish. */
+export const briefHasPii = (b: SystemBrief): boolean =>
+  b.data.some((d) => d.fields.some((f) => f.pii === true));
+
+/** Patches of one turn refused for scrub placeholders before the code cleans them itself (V3-18). */
+export const MAX_TOKEN_REFUSALS = 2;
 /** Extra requirements and facts kept by the session. */
 const MAX_REQUIREMENTS = 40;
 const MAX_FACTS = 10;
@@ -215,6 +237,7 @@ export function briefSummaryText(brief: SystemBrief, deferred: readonly Deferred
     c.not_yet ? "То, чего пока не умею, записал в запросы на развитие и предложил замену." : null,
     brief.assumptions.length ? `Допущения: ${brief.assumptions.length}, их можно поменять в брифе.` : null,
     deferred.length ? `Вопросы на время сборки: ${deferred.length}.` : null,
+    briefHasPii(brief) ? OPERATOR_LINE_RU : null,
   ];
   return lines.filter(Boolean).join("\n");
 }
@@ -222,6 +245,14 @@ export function briefSummaryText(brief: SystemBrief, deferred: readonly Deferred
 interface TurnCtx {
   invalid: { fallback: "questions" | "none"; issues: ToolIssue[] }[];
   gaps: CapabilityGap[];
+}
+
+/** Brief patches refused for a scrub placeholder in one step (tokenGuard). */
+interface TokenGuard {
+  refused: number;
+  /** The last refused patch, merged by code unless the model sends a new one. */
+  pending: BriefPatch | null;
+  flush(): void;
 }
 
 /** What a tool loop ended with: the question asked or the finish (set by the tools' handlers). */
@@ -362,11 +393,14 @@ export class InterviewV3 {
     const decide = inp.kind === "skip" || inp.kind === "cap";
     const source = inp.kind === "skip" ? "owner_skip" : "default";
     const outcome: StepOutcome = { question: null, finished: false };
+    const guard = this.tokenGuard(s, source);
     const tools: AnyTool[] = [
-      this.updateTool(s, source),
+      this.updateTool(s, source, guard),
       this.deferTool(s),
-      this.finishTool(s, outcome, decide),
-      ...(decide ? [] : [this.questionTool(s, outcome), ...interviewResearchTools(this.deps.research, s)]),
+      this.finishTool(s, outcome, decide, guard),
+      ...(decide
+        ? []
+        : [this.questionTool(s, outcome, guard), ...interviewResearchTools(this.deps.research, s)]),
     ];
     const r = await runToolLoop({
       ...this.base(s),
@@ -377,6 +411,7 @@ export class InterviewV3 {
       toolChoice: "required",
     });
     this.count(s, r.stats);
+    guard.flush();
     if (outcome.question) return this.ask(s, out, outcome.question);
     if (outcome.finished) {
       if (decide) this.fillDefaults(s, source);
@@ -466,6 +501,9 @@ export class InterviewV3 {
         // Best effort: the brief and the answer do not depend on the record.
       }
     }
+    // The operator's data: a non-blocking question of a brief with personal data (no turn, no model).
+    if (briefHasPii(s.brief) && !s.deferred.some((d) => d.text === OPERATOR_QUESTION.text))
+      s.deferred.push({ ...OPERATOR_QUESTION });
     s.state = "ready";
     s.current = null;
     out.push({
@@ -481,7 +519,55 @@ export class InterviewV3 {
 
   // ------------------------------------------------------------------ tools
 
-  private updateTool(s: InterviewV3Session, source: "default" | "owner_skip") {
+  /**
+   * V3-18: a brief patch with a scrub placeholder (`[КОНТАКТ_1]`, copied from the owner's scrubbed words) is refused —
+   * the model rephrases in plain words; after MAX_TOKEN_REFUSALS, or when the model goes on to its question or the
+   * finish without rephrasing, the refused patch is merged by code, the placeholder becomes the word of its kind (the
+   * update is never lost).
+   */
+  private tokenGuard(s: InterviewV3Session, source: "default" | "owner_skip"): TokenGuard {
+    const g: TokenGuard = {
+      refused: 0,
+      pending: null,
+      flush: () => {
+        const p = g.pending;
+        g.pending = null;
+        if (!p) return;
+        try {
+          this.mergePatch(s, p, source);
+        } catch (e) {
+          if (!(e instanceof ToolFailure)) throw e;
+        }
+      },
+    };
+    return g;
+  }
+
+  /** Merges a brief patch into the session (requirements and facts too); a ToolFailure when the brief is invalid. */
+  private mergePatch(s: InterviewV3Session, p: BriefPatch, source: "default" | "owner_skip"): void {
+    const res = applyBriefPatch(s.brief, p, { assumptionSource: source, registry: this.registry });
+    if (!res.ok)
+      throw new ToolFailure(
+        "BRIEF_INVALID",
+        "Бриф не прошёл проверку: исправь отмеченное и вызови снова.",
+        res.issues,
+      );
+    s.brief = res.brief;
+    for (const r of p.requirements ?? []) {
+      if (s.requirements.some((x) => normText(x.text) === normText(r.text))) continue;
+      s.requirements.push({
+        text: stripScrubTokensText(scrub(r.text).text),
+        ...(r.moduleHint ? { moduleHint: r.moduleHint } : {}),
+      });
+    }
+    s.requirements = s.requirements.slice(0, MAX_REQUIREMENTS);
+    for (const f of p.facts ?? [])
+      if (!s.facts.some((x) => x.url === f.url && x.text === f.text)) s.facts.push(f);
+    s.facts = s.facts.slice(-MAX_FACTS);
+    this.refresh(s);
+  }
+
+  private updateTool(s: InterviewV3Session, source: "default" | "owner_skip", guard: TokenGuard) {
     return defineTool({
       name: "submit_brief_update",
       description:
@@ -489,26 +575,23 @@ export class InterviewV3 {
       input: briefPatchSchema,
       normalize: normalizeBriefPatchArgs,
       run: (p: BriefPatch) => {
-        const res = applyBriefPatch(s.brief, p, { assumptionSource: source, registry: this.registry });
-        if (!res.ok)
+        // V3-18: a scrub placeholder in the patch — refused while the guard allows (tokenGuard).
+        const places = guard.refused < MAX_TOKEN_REFUSALS ? scrubTokenPlaces(p) : [];
+        if (places.length) {
+          guard.refused += 1;
+          guard.pending = p;
           throw new ToolFailure(
-            "BRIEF_INVALID",
-            "Бриф не прошёл проверку: исправь отмеченное и вызови снова.",
-            res.issues,
+            "BRIEF_SCRUB_TOKEN",
+            "В брифе не должно быть меток вида [КОНТАКТ_1]: перефразируй обычными словами (например, «ссылка на мессенджер владельца», «телефон администратора») и вызови снова.",
+            places.map((x) => ({
+              path: x.path,
+              code: "SCRUB_TOKEN",
+              message: `Метка вместо данных: ${x.token}`,
+            })),
           );
-        s.brief = res.brief;
-        for (const r of p.requirements ?? []) {
-          if (s.requirements.some((x) => normText(x.text) === normText(r.text))) continue;
-          s.requirements.push({
-            text: scrub(r.text).text,
-            ...(r.moduleHint ? { moduleHint: r.moduleHint } : {}),
-          });
         }
-        s.requirements = s.requirements.slice(0, MAX_REQUIREMENTS);
-        for (const f of p.facts ?? [])
-          if (!s.facts.some((x) => x.url === f.url && x.text === f.text)) s.facts.push(f);
-        s.facts = s.facts.slice(-MAX_FACTS);
-        this.refresh(s);
+        guard.pending = null;
+        this.mergePatch(s, p, source);
         const c = capabilityCounts(s.brief.capability);
         return {
           ok: true,
@@ -519,14 +602,18 @@ export class InterviewV3 {
     });
   }
 
-  private questionTool(s: InterviewV3Session, outcome: StepOutcome) {
+  private questionTool(s: InterviewV3Session, outcome: StepOutcome, guard: TokenGuard) {
     return defineTool({
       name: "submit_question",
       description:
         "Ask the owner the next blocking question: topic of the tree, text, why it matters, why the recommended option, 3-5 options with exactly one recommended.",
       input: v3QuestionInputSchema,
       normalize: normalizeQuestionArgs,
-      check: (q) => questionOrderIssues(q.topic, { gaps: this.gaps(s), lastTopic: s.lastTopic }),
+      check: (q) => {
+        // A patch refused for a placeholder and not sent again: merged by code before the gaps are read.
+        guard.flush();
+        return questionOrderIssues(q.topic, { gaps: this.gaps(s), lastTopic: s.lastTopic });
+      },
       run: (q) => {
         outcome.question = { ...q, id: `q${s.asked + 1}`, step: s.asked + 1, source: "model" };
         return { ok: true };
@@ -542,7 +629,11 @@ export class InterviewV3 {
       input: v3DeferInputSchema,
       normalize: normalizeDeferArgs,
       run: (d) => {
-        const item = { topic: d.topic, text: scrub(d.text).text, assumption: scrub(d.assumption).text };
+        const item = {
+          topic: d.topic,
+          text: stripScrubTokensText(scrub(d.text).text),
+          assumption: stripScrubTokensText(scrub(d.assumption).text),
+        };
         if (
           !s.deferred.some((x) => normText(x.text) === normText(item.text)) &&
           s.deferred.length < MAX_DEFERRED
@@ -555,12 +646,13 @@ export class InterviewV3 {
     });
   }
 
-  private finishTool(s: InterviewV3Session, outcome: StepOutcome, decide: boolean) {
+  private finishTool(s: InterviewV3Session, outcome: StepOutcome, decide: boolean, guard: TokenGuard) {
     return defineTool({
       name: "finish_interview",
       description: "End the interview: nothing blocking is left (the code checks it).",
       input: v3FinishInputSchema,
       run: () => {
+        guard.flush();
         const gaps = this.gaps(s);
         // Asking turns may not finish over a blocking gap; «skip» and «cap» may — the code fills the rest.
         if (!decide && gaps.length > 0)
@@ -663,6 +755,9 @@ export class InterviewV3 {
         },
       };
     }
+    // V3-18: the final sanitizer — the brief the host saves (and the outputs that carry it) holds no scrub placeholder.
+    s.brief = stripScrubTokens(s.brief);
+    for (const o of outputs) if (o.kind === "brief") o.brief = s.brief;
     const main = [...outputs].reverse().find((o) => o.kind !== "notice");
     if (ctx.gaps.length && main?.role === "assistant") main.gaps = ctx.gaps;
     // Internal diagnosis (never shown to the owner): what did not pass and what replaced it.

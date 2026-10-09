@@ -825,6 +825,36 @@ components:
     test_ids: [wz-goalhints, wz-goalhints-item-<id>, wz-goalhints-action-<id>]
     acceptance: ["vitest+DOM (test/goalhints.dom.test.ts): карточки, внешняя ссылка в новой вкладке, пустое состояние; браузер — packages/modules/test/goal-panel.browser.test.ts"]
 
+  # V3-23 «Интернет-магазин» на фронте v2 (страницы модуля /shop, /cart, /order/:id). Логика — headless-магазин v3
+  # (src/v3/headless/shop.ts: useShopCatalog, useCart, useCheckout, useOrder), DOM-контракт — как у паттернов v3
+  # shop-*, cart-*, order-* (builder-v3.md C3): целевые сценарии GS-shop-* одинаковы на обоих фронтах.
+  - name: ShopProducts
+    milestone: V3
+    props: |
+      interface ShopProductsProps extends WzBase {
+        entity?: string; categoryEntity?: string; fields?: ShopFields;   // по умолчанию product, поля модуля
+        cartPath?: string; emptyText?: string; pageSize?: number;
+      }
+    behaviour: ["Товары в продаже в порядке владельца: фото, цена, остаток, «В корзину» (недоступна без остатка или когда весь остаток уже в корзине); ссылка на корзину с количеством и суммой"]
+    test_ids: [wz-shop, wz-product, wz-product-stock, wz-cart-add, wz-cart-link, wz-empty]
+  - name: ShopCart
+    milestone: V3
+    props: "interface ShopCartProps extends WzBase { shopPath?: string }"
+    behaviour: ["Строки корзины этого браузера (localStorage wz-cart:v1): количество − и + в пределах остатка, «Убрать», сумма товаров"]
+    test_ids: [wz-cart, wz-cart-line, wz-cart-dec, wz-cart-inc, wz-cart-remove, wz-cart-total, wz-empty]
+  - name: ShopCheckout
+    milestone: V3
+    props: "interface ShopCheckoutProps extends WzBase, UseCheckoutOptions {}   // methods, online, courierPrice?, pointEntity?, placeFn?, cdekFn?, payment?, orderPath?"
+    behaviour:
+      - "Способ получения (самовывоз из пункта, СДЭК: город → пункты, цена и срок функции модуля; курьер с адресом), имя, телефон, почта для чека, комментарий, согласие на ПДн (G2-PII-04)"
+      - "Заказ — функция модуля shopPlaceOrder (цены и остатки сервера, повтор при CONFLICT); затем оплата ЮKassa (usePay с секретом покупателя) или страница заказа"
+    test_ids: [wz-checkout, wz-field-delivery, wz-field-pickup_point, wz-field-cdek_city, wz-cdek-find, wz-cdek-quote, wz-field-cdek_point, wz-consent, wz-checkout-total, wz-checkout-submit]
+  - name: ShopOrder
+    milestone: V3
+    props: "interface ShopOrderProps extends WzBase, UseOrderOptions { shopPath?: string }   // path?, orderFn?, payment?"
+    behaviour: ["Заказ адреса по секрету покупателя из браузера (или ?t=): номер, статус, состав, получение, итог; «Оплатить», пока заказ ждёт оплаты; после возврата с оплаты перезапрашивает, пока не придёт уведомление ЮKassa"]
+    test_ids: [wz-order, wz-order-number, wz-order-status, wz-order-line, wz-order-delivery, wz-order-total, wz-order-pay, wz-empty]
+
 demo:
   path: packages/ui-kit/demo
   rule: "MUST: vite-страница со всеми компонентами на спеках «форум» и «кондитерская» (specs/appspec/examples/*.json) через createMemoryDataSource; блоки лендинга и Image — на демо-спеке «студия» (demo/fixtures.ts, тексты помечены «пример»); переключатели роли, темы (все поля theme, 10 тем), ширины"

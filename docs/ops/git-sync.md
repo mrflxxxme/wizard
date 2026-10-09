@@ -103,7 +103,7 @@ bao write -f transit/keys/wizard-repo type=aes256-gcm96
 ```
 
 В политику токена platform-api (та же, что у BYOK) добавить `transit/datakey/plaintext/wizard-repo` и
-`transit/decrypt/wizard-repo`. Другое имя ключа — `WIZARD_GIT_SYNC_TRANSIT_KEY`. Локально и в тестах — `WIZARD_GIT_SYNC_KMS=local`.
+`transit/decrypt/wizard-repo`. Задачи агента (V3-32) выполняет worker с тем же токеном из Secret `wizard-platform-env`. Другое имя ключа — `WIZARD_GIT_SYNC_TRANSIT_KEY`. Локально и в тестах — `WIZARD_GIT_SYNC_KMS=local`.
 
 ### 5. Сеть
 
@@ -150,15 +150,43 @@ platform-api ходит наружу на 443: `api.github.com`, `github.com`, `
 1. **GitHub App** — ничего нового: прав Contents, Pull requests и Checks хватает для черновых PR. В приватных репозиториях
    на тарифе GitHub Free черновых PR нет — там PR откроется обычным с «Черновик:» в заголовке (мержит всё равно человек).
 2. **GitLab** — ничего нового (scope `api`); черновик — merge request с «Draft:» в заголовке.
-3. **Песочница для JS-проектов в облаке (E-INFRA).** Без неё JS-репозитории получают «сборка и тесты ещё не проверены»
-   и задач не берут; системы Wizard работают сразу. Нужно:
-   - образ с Node 22 и corepack (npm, pnpm, yarn) в реестре площадки;
-   - пул узлов `sandbox` с RuntimeClass `gvisor` (тот же, что у workerd, M2-01);
-   - исполнитель, который запускает фазу как под `repoSandboxPod(...)` и применяет `repoSandboxNetworkPolicy(...)`
-     (`apps/platform-api/src/repo-agent/sandbox.ts`): у фазы установки — только egress-прокси, у сборки, тестов и агента
-     — никакой сети и никакого DNS; рабочий каталог переносится между фазами томом;
-   - в allowlist egress-прокси — хосты реестров `registry.npmjs.org`, `registry.yarnpkg.com` (или своё зеркало в РФ —
-     `WIZARD_REPO_SANDBOX_REGISTRY`).
+3. **Песочница для JS-проектов в облаке.** Без неё JS-репозитории получают «сборка и тесты ещё не проверены» и задач не
+   берут; системы Wizard работают сразу. Исполнитель готов (`apps/platform-api/src/repo-agent/pod-sandbox.ts`) и на
+   prod пилота включается обычным выкатом (`repoSandbox.enabled` в `infra/helm/profiles/pilot.yaml`).
+
+   Что происходит само:
+   - образ `wizard-repo-sandbox` (Node 22, corepack: npm, pnpm, yarn) собирает `images.yml` вместе с остальными;
+   - задачи агента выполняет worker (очередь `agent_repo_tasks`). platform-api смотрит в интернет, поэтому только ставит
+     задачи в очередь и показывает их статус; токена Kubernetes у него нет. Поды фаз создаёт учётная запись worker:
+     `wizard-g1` на пилоте (у пода одна учётная запись, а G1 уже работает в песочнице) или `wizard-repo-agent`, где G1 в
+     песочнице не включён. Role `wizard-repo-sandbox` действует только в namespace песочницы и разрешает поды, их логи,
+     ConfigMap и PVC. Секретов, exec и других namespace у неё нет. Там же — NetworkPolicy подов и квота на два рабочих
+     каталога;
+   - каждая фаза — отдельный под gVisor. Установка ходит только к `registry.npmjs.org` и `registry.yarnpkg.com` через
+     egress-прокси: разрешение выдаётся на одну фазу. У сборки, тестов и прогонов агента нет сети и DNS;
+   - перед командой под проверяет, что его сеть закрыта (API-сервер недоступен). Если нет — фаза не начинается, задача
+     повторяется позже;
+   - файлы репозитория приходят в под из ConfigMap и удаляются оттуда после первой фазы. Между фазами рабочий каталог
+     лежит архивом на PVC задачи; команда клиента этот том не видит. Каталог больше `repoSandbox.workspaceSize` (3 ГБ)
+     не сохраняется, причина — в отчёте;
+   - время команды ограничено (`timeout`, вместе не дольше 10 минут), вывод — последние 8 КБ. Под удаляется после фазы,
+     PVC и ConfigMap — после задачи. Оставшееся после перезапуска worker уборка удаляет по возрасту (90 минут).
+
+   Что сделать основателю:
+   - на пилоте — проверить после первого выката, что пакет `ghcr.io/<owner>/wizard-repo-sandbox` публичный, как
+     остальные образы: кластер тянет их без учётных данных. Если GitHub создал его приватным — Packages →
+     `wizard-repo-sandbox` → Package settings → Change visibility → Public. Затем проверка из п. 4;
+   - gVisor на узле пилота уже есть (тот же RuntimeClass `gvisor`, что у функций систем). На другом кластере нужны
+     `sandbox.runtimeClass` с runsc на узлах песочницы, `repoSandbox.enabled: true` и место в `sandbox.quota` под один
+     под фазы (`repoSandbox.memoryLimit`);
+   - staging пилота (ВМ 4 ГБ) песочницу не включает — там JS-репозитории «не проверено»;
+   - по желанию — зеркало реестра npm в РФ: `repoSandbox.registry` (https на 443, публичное имя). Тогда установка ходит
+     только к нему.
+
+   Ограничения пилота: тома local-path не ограничивают размер, поэтому предел рабочего каталога держит шаг сохранения, а
+   emptyDir пода kubelet выселяет с задержкой до ~10 с. Файлы репозитория до первого сохранения лежат в ConfigMap
+   namespace песочницы, их может прочитать и runtime платформы.
+
    Локально песочницу можно включить только для себя: `WIZARD_UNSAFE_LOCAL_EXEC=1 WIZARD_REPO_SANDBOX=process` —
    дочерний процесс без секретов окружения, не граница безопасности.
 4. **Проверка после выката**: подключить к тестовой организации репозиторий на Vite + React с `pnpm-lock.yaml` →
@@ -180,6 +208,6 @@ platform-api ходит наружу на 443: `api.github.com`, `github.com`, `
 ## Дальше
 
 - GitVerse — следующий провайдер (интерфейс `RepoApi` в `git-sync/providers/types.ts`).
-- Облачный исполнитель песочницы JS-проектов (п. 3 выше) и экран «Репозитории» агента в platform-web.
+- Экран «Репозитории» агента в platform-web.
 - Живое окружение превью PR разработчиков (`<slug>--pr-<номер>`): сейчас превью — гейты G0–G2 кандидата и их итог в PR;
   для отдельного адреса нужна третья среда runtime рядом с draft и prod.

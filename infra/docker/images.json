@@ -29,6 +29,7 @@
     { "name": "wizard-platform-web", "dockerfile": "infra/docker/web.Dockerfile", "args": {} },
     { "name": "wizard-pgbouncer", "dockerfile": "infra/docker/pgbouncer.Dockerfile", "args": {} },
     { "name": "wizard-postgres", "dockerfile": "infra/docker/postgres.Dockerfile", "args": {} },
-    { "name": "wizard-sandbox", "dockerfile": "infra/docker/sandbox.Dockerfile", "args": {} }
+    { "name": "wizard-sandbox", "dockerfile": "infra/docker/sandbox.Dockerfile", "args": {} },
+    { "name": "wizard-repo-sandbox", "dockerfile": "infra/docker/repo-sandbox.Dockerfile", "args": {} }
   ]
 }

@@ -11,7 +11,7 @@ import type { Mailer } from "./auth/mailer.js";
 import type { GeoRegion } from "./auth/region.js";
 import { platformMailer } from "./auth/smtp-mailer.js";
 import { Billing } from "./billing/ledger.js";
-import { LlmMonthlyCap } from "./billing/llm-cap.js";
+import { llmCapOf } from "./billing/llm-cap.js";
 import { Payments } from "./billing/payments.js";
 import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
@@ -148,7 +148,7 @@ export interface PlatformApiOptions {
   /** V3-31 repository sync (tests: env and config of the providers, their HTTP, the clock; the queue timer). */
   gitSync?: Pick<GitSyncOptions, "env" | "cfg" | "fetch" | "now">;
   /** V3-32 agent for compatible repositories (tests: the sandbox, the router, the env; the queue timer). */
-  repoAgent?: Pick<RepoAgentOptions, "sandbox" | "createRouter" | "tickMs" | "env">;
+  repoAgent?: Pick<RepoAgentOptions, "sandbox" | "createRouter" | "tickMs" | "env" | "executes">;
 }
 
 export interface PlatformApi {
@@ -184,21 +184,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   const logger = createLogger({ svc: "platform-api" });
   const log = opts.log ?? ((m: string, e?: unknown) => logger.error(m, e));
   const alert = opts.alert ?? opsAlertFromConfig(config, { logger, mailer, log });
-  const llmCap = new LlmMonthlyCap({
-    db: handle.db,
-    capRub: config.llmMonthlyCapRub,
-    dailyCapRub: config.llmDailyCapRub,
-    staffReserveRub: config.llmStaffReserveRub,
-    evalDailyCapRub: config.llmEvalDailyCapRub,
-    b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
-    // V3-01: the founder's own monthly pool and the v3 development budget (from its first day instead of B2).
-    founderMonthlyCapRub: config.llmFounderMonthlyCapRub,
-    v3Budget: { budgetRub: config.v3BudgetRub, since: config.v3BudgetSince },
-    alert,
-    balances: config.llmBalances,
-    balanceWarnRub: config.llmBalanceWarnRub,
-    ...(opts.now ? { now: opts.now } : {}),
-  });
+  const llmCap = llmCapOf(config, { db: handle.db, alert, ...(opts.now ? { now: opts.now } : {}) });
   const billing = new Billing({
     exemptOrgs: config.billingExemptOrgs,
     llmCap,
@@ -268,13 +254,16 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     ...opts.gitSync,
   });
   gitSync.start();
-  // V3-32: the agent for compatible repositories — the sync's providers and KMS, its own queue of tasks.
+  // V3-32: the agent for compatible repositories — the sync's providers and KMS, its own queue of tasks. With the DBOS
+  // engine the tasks run in apps/worker (startRepoAgentRunner): this internet-facing process only enqueues them and
+  // never holds the Kubernetes token of the sandbox pods.
   const repoAgent = new RepoAgent({
     db: handle.db,
     config,
     sync: gitSync,
     billing,
     log,
+    executes: !dbos,
     ...(opts.createRouter ? { createRouter: opts.createRouter } : {}),
     ...opts.repoAgent,
   });
@@ -495,7 +484,7 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
     repoAgent,
     async close() {
       gitSync.stop();
-      repoAgent.stop();
+      await repoAgent.stop();
       if (cron) clearInterval(cron);
       if (retention) clearInterval(retention);
       if (opsTimer) clearInterval(opsTimer);

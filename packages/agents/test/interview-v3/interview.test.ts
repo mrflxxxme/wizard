@@ -14,8 +14,13 @@ import {
   type InterviewV3Session,
   MAX_V3_QUESTIONS,
   newInterviewV3Session,
+  OPERATOR_LINE_RU,
+  OPERATOR_QUESTION,
   questionOrderIssues,
+  scrubTokenPlaces,
   stopReason,
+  stripScrubTokens,
+  stripScrubTokensText,
   V3_TOPICS,
 } from "../../src/interview-v3/index.js";
 import { recordedResearch } from "../research/helpers.js";
@@ -102,14 +107,18 @@ describe("the dental dialog on a scripted model", () => {
       { text: "Какие данные пациента нужны для записи? — Имя и телефон (решили за вас)", source: "default" },
       { text: "Покажем список услуг без цен (уточним во время сборки)", source: "default" },
     ]);
-    // Non-blocking questions → the build queue.
+    // Non-blocking questions → the build queue; the brief keeps personal data — the operator's data are asked by code
+    // (no turn), filled by the owner in the settings before publication (V3-18).
     expect(done.deferred).toEqual([
       {
         topic: "content",
         text: "Какие услуги и цены показать на сайте?",
         assumption: "Покажем список услуг без цен",
       },
+      OPERATOR_QUESTION,
     ]);
+    expect(done.text).toContain(OPERATOR_LINE_RU);
+    expect(done.text).toContain("Вопросы на время сборки: 2.");
     expect(b.capability.map((c) => c.level)).toEqual(["modules", "modules"]);
     expect(done.text).toContain("Бриф готов");
     expect(done.text).toContain("на проверенных модулях — 2");
@@ -391,7 +400,88 @@ describe("research, personal data, development requests, owner edits, wishes", (
     });
     expect(res.outputs[0]).toMatchObject({ kind: "notice", payload: { type: "pii", categories: ["phone"] } });
     expect(JSON.stringify(res.session.brief)).not.toContain("123-45-67");
+    // Nor the scrub placeholder (V3-18): the journal keeps the neutral word of its kind.
+    expect(scrubTokenPlaces(res.session.brief)).toEqual([]);
+    expect(res.session.brief.qa[0]?.a).toBe("Администратор, её телефон");
     expect(inputs[1]?.messages.at(-1)?.content).not.toContain("123-45-67");
+  });
+
+  test("V3-18: a scrub placeholder in a brief update is refused, the model rephrases; the brief never keeps one", async () => {
+    const scenario = (then: string) => ({
+      actor: "client",
+      when: "иностранный гость открывает сайт",
+      // biome-ignore lint/suspicious/noThenProperty: scenario field of the brief (builder-v3.md §3 C1)
+      then: [then],
+    });
+    const { iv, inputs } = setup([
+      [update({ scenarios: [scenario("показывает ссылку на [КОНТАКТ_1] для иностранцев")] })],
+      [
+        update({
+          goals: [{ text: "Запись онлайн", success: "Записи приходят" }],
+          scenarios: [scenario("показывает ссылку на мессенджер владельца для иностранцев")],
+        }),
+        question("scenarios", "Кто ещё пользуется сайтом?"),
+      ],
+    ]);
+    const res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.booking });
+    expect(inputs).toHaveLength(2);
+    // The refusal went back to the model with the place and the placeholder.
+    const back = JSON.stringify(inputs[1]?.messages.at(-1));
+    expect(back).toContain("BRIEF_SCRUB_TOKEN");
+    expect(back).toContain("[КОНТАКТ_1]");
+    expect(res.session.brief.scenarios.map((x) => x.then)).toEqual([
+      ["показывает ссылку на мессенджер владельца для иностранцев"],
+    ]);
+    expect(scrubTokenPlaces(res.session.brief)).toEqual([]);
+  });
+
+  test("V3-18: the model goes on to its question without rephrasing — the refused patch is merged with plain words", async () => {
+    const { iv, inputs } = setup([
+      [
+        update({
+          goals: [{ text: "Запись онлайн", success: "Записи приходят" }],
+          audience: "Иностранцы, им пишем на [EMAIL_1] или звоним по телефону [ТЕЛЕФОН_2]",
+          scenarios: [
+            {
+              actor: "client",
+              when: "иностранный гость открывает сайт",
+              // biome-ignore lint/suspicious/noThenProperty: scenario field of the brief (builder-v3.md §3 C1)
+              then: ["показывает ссылку на [КОНТАКТ_1] для иностранцев"],
+            },
+          ],
+        }),
+        question("scenarios", "Кто ещё пользуется сайтом?"),
+      ],
+    ]);
+    const res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.booking });
+    expect(inputs).toHaveLength(1);
+    expect(main(res.outputs)?.kind).toBe("question");
+    expect(res.session.brief.audience).toBe("Иностранцы, им пишем на e-mail или звоним по телефону");
+    expect(res.session.brief.scenarios[0]?.then).toEqual(["показывает ссылку на контакт для иностранцев"]);
+    expect(scrubTokenPlaces(res.session.brief)).toEqual([]);
+  });
+
+  test("V3-18: placeholders → the neutral word of their kind; the word already said is not repeated", () => {
+    expect(stripScrubTokensText("ссылку на [КОНТАКТ_1] для иностранцев")).toBe(
+      "ссылку на контакт для иностранцев",
+    );
+    expect(stripScrubTokensText("по телефону [ТЕЛЕФОН_2] или на почту [EMAIL_1].")).toBe(
+      "по телефону или на почту.",
+    );
+    expect(stripScrubTokensText("Мастер [ИМЯ_1] ведёт запись, адрес: [АДРЕС_3]")).toBe(
+      "Мастер имя ведёт запись, адрес",
+    );
+    expect(stripScrubTokensText("Пишите [КОНТАКТ] или [ТЕЛЕФОН 1]")).toBe("Пишите контакт или телефон");
+    expect(stripScrubTokensText("Скидка [10%] и раздел [ВАЖНО], ООО «Ромашка» [ИНН]")).toBe(
+      "Скидка [10%] и раздел [ВАЖНО], ООО «Ромашка» ИНН",
+    );
+    const brief = { goals: [{ text: "Звонки на [ТЕЛЕФОН_1]" }], audience: "без меток" };
+    expect(scrubTokenPlaces(brief)).toEqual([{ path: "/goals/0/text", token: "[ТЕЛЕФОН_1]" }]);
+    expect(stripScrubTokens(brief)).toEqual({
+      goals: [{ text: "Звонки на телефон" }],
+      audience: "без меток",
+    });
+    expect(brief.goals[0]?.text).toBe("Звонки на [ТЕЛЕФОН_1]");
   });
 
   test("shop: every «не умею» becomes one development request with a replacement and a gap for «Написать команде»", async () => {
@@ -418,7 +508,8 @@ describe("research, personal data, development requests, owner edits, wishes", (
             },
           ],
           roles: [{ name: "Владелец", can: ["всё"] }],
-          requirements: [{ text: "Доставка СДЭК" }],
+          // V3-23: the cart and СДЭК are «Интернет-магазин»; Почта России and a mobile app are still not built.
+          requirements: [{ text: "Доставка Почтой России" }, { text: "Мобильное приложение в App Store" }],
         }),
         finish,
       ],
@@ -426,10 +517,15 @@ describe("research, personal data, development requests, owner edits, wishes", (
     const res = await iv.start(newInterviewV3Session(), { prompt: PROMPTS.shop });
     const done = main(res.outputs);
     expect(done?.kind).toBe("brief");
-    expect(requests.map((r) => r.category)).toEqual(["payments", "integration"]);
+    expect(requests.map((r) => r.category)).toEqual(["integration", "mobile"]);
     expect(requests.every((r) => r.offered)).toBe(true);
-    expect(done?.gaps?.map((g) => g.category)).toEqual(["payments", "integration"]);
-    expect(res.session.brief.capability.map((c) => c.level)).toEqual(["modules", "not_yet", "not_yet"]);
+    expect(done?.gaps?.map((g) => g.category)).toEqual(["integration", "mobile"]);
+    expect(res.session.brief.capability.map((c) => c.level)).toEqual([
+      "modules",
+      "modules",
+      "not_yet",
+      "not_yet",
+    ]);
     expect(done?.text).toContain("пока не умею — 2");
   });
 

@@ -63,6 +63,32 @@ describe("copy rules (D49, catalog K, H)", () => {
   });
 });
 
+describe("V3-18: scrub placeholders never reach the site", () => {
+  test("a placeholder of the interview in props or in a signature section's copy is an error", () => {
+    expect(copyIssues("Ссылка на [КОНТАКТ_1] для иностранцев").map((i) => i.code)).toEqual(["scrub-token"]);
+    expect(copyIssues("Звоните: [ТЕЛЕФОН_2]")[0]).toMatchObject({
+      code: "scrub-token",
+      severity: "error",
+      evidence: "[ТЕЛЕФОН_2]",
+    });
+    expect(copyIssues("Мастер [ИМЯ_1] ответит в чате").map((i) => i.code)).toContain("scrub-token");
+    expect(copyIssues("Скидка [10%] в разделе [акции]")).toEqual([]);
+    expect(
+      codes({ ...HERO, id: "about", props: { title: "Пишите на [EMAIL_1]" } }, { numbers: new Set() }),
+    ).toContain("scrub-token");
+    expect(
+      codes(
+        sig(section(`      <p className="text-body">Ссылка на [КОНТАКТ_1] для гостей</p>`), {
+          title: "О нас",
+        }),
+        {
+          numbers: new Set(),
+        },
+      ),
+    ).toContain("scrub-token");
+  });
+});
+
 describe("section code (signature sections)", () => {
   test("a clean signature section passes", () => {
     expect(

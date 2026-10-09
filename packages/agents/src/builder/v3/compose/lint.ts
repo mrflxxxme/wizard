@@ -7,6 +7,7 @@ import type { DesignSystemV3 } from "@wizard/ui-kit/v3/design";
 import { FORBIDDEN_FONTS, parseOklch } from "@wizard/ui-kit/v3/design";
 import { type LayoutFamily, lintPattern, type PatternLintCode } from "@wizard/ui-kit/v3/patterns";
 import ts from "typescript";
+import { SCRUB_TOKEN_RE } from "../../../interview-v3/scrub-tokens.js";
 import { numbersOf } from "./facts.js";
 
 export type PageLintCode =
@@ -17,6 +18,7 @@ export type PageLintCode =
   | "purple-gradient"
   | "emoji"
   | "placeholder"
+  | "scrub-token"
   | "superlative"
   | "untraced-number"
   | "stop-word"
@@ -46,6 +48,8 @@ const MESSAGES: Record<Exclude<PageLintCode, PatternLintCode>, string> = {
   "purple-gradient": "Фиолетовый градиент — примета ИИ-палитры (каталог C01): сплошной цвет темы",
   emoji: "Эмодзи в тексте или вместо иконок (каталог K07, I07): обычный текст, иконки ui-kit",
   placeholder: "Рыба или заглушка вместо текста (каталог K04): настоящий текст из брифа",
+  "scrub-token":
+    "Метка вместо персональных данных ([КОНТАКТ_1], [ТЕЛЕФОН_2]) попала в текст сайта: скажите обычными словами или возьмите контакт из данных оператора",
   superlative:
     "Превосходная степень без источника: «лучший», «№ 1», «самый», «гарантируем» (каталог K02, 38-ФЗ, D49)",
   "untraced-number":
@@ -116,7 +120,7 @@ export const STOP_WORDS = [
 export interface CopyIssue {
   code: Extract<
     PageLintCode,
-    "emoji" | "placeholder" | "superlative" | "untraced-number" | "stop-word" | "exclamation"
+    "emoji" | "placeholder" | "scrub-token" | "superlative" | "untraced-number" | "stop-word" | "exclamation"
   >;
   severity: "error" | "warn";
   evidence: string;
@@ -133,6 +137,9 @@ export function copyIssues(text: string, numbers?: ReadonlySet<string>): CopyIss
   const ev = t.slice(0, 120);
   if (EMOJI_RE.test(t)) out.push({ code: "emoji", severity: "error", evidence: ev });
   if (PLACEHOLDER_RE.test(t)) out.push({ code: "placeholder", severity: "error", evidence: ev });
+  // V3-18: a scrub placeholder of the interview (`[КОНТАКТ_1]`) is never site copy.
+  const token = t.match(SCRUB_TOKEN_RE)?.[0];
+  if (token) out.push({ code: "scrub-token", severity: "error", evidence: token });
   if (SUPERLATIVE_RE.test(t)) out.push({ code: "superlative", severity: "error", evidence: ev });
   if (numbers) {
     const missing = numbersOf(t).filter((n) => !numbers.has(n));

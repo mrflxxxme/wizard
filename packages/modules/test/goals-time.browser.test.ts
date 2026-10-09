@@ -78,7 +78,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2-28, B2-19)", () => {
-  test("all 13 modules: 42 goal scenarios × 2 cells over 3 lanes + 390 px — all pass, ≤ 90 s", async () => {
+  test("every module (14 with the shop, V3-23): 47 goal scenarios × 2 cells over 3 lanes + 390 px — all pass, ≤ 90 s", async () => {
     const plan = allModulesPlan();
     expect(plan.modules.map((m) => m.id).sort()).toEqual(MODULES_WITH_CODE.map((d) => d.manifest.id).sort());
     const r = compilePlan(plan, CATALOG, { appName: "Улыбка" });
@@ -94,7 +94,7 @@ describe.skipIf(!hasChromium)("G1 browser time of a system with every module (B2
       ]),
     );
     expect(new Set(r.scenarios.map((s) => s.module)).size).toBe(MODULES_WITH_CODE.length);
-    expect(r.scenarios.length).toBe(42);
+    expect(r.scenarios.length).toBe(47);
     const ctx: GateContext = {
       spec: r.spec as AppSpec,
       prevSpec: null,

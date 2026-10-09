@@ -205,6 +205,8 @@ export {
  * action rules every written site keeps (main action → its form, catalog items → booking or the request form).
  */
 export {
+  /** V3-18: the name of a new system from the owner's first words («Линия», «Клининговая компания»), else null. */
+  businessName,
   COMPOSE_CALL_TYPES,
   type CopyIssue,
   copyIssues,
@@ -291,7 +293,7 @@ export {
   type V3StopReason,
 } from "./v3/harness/types.js";
 export { milliRub, V3BudgetError, V3Wallet } from "./v3/harness/wallet.js";
-export { runBuildV3, stopMessage } from "./v3/run.js";
+export { OWNER_INPUT_NOTE_RU, runBuildV3, stopMessage } from "./v3/run.js";
 /**
  * V3-15 techreview (builder-v3.md C6 stage 7, D77 (10)): createTechreview(deps) — the hook of stage techreview: the
  * deterministic part first (G0 and the static G2 on the uncommitted system, the migration dry run, RLS, ПДн, integration

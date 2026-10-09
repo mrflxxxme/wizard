@@ -267,3 +267,45 @@ The pods have no DNS: they reach the orchestrating process on its pod IP.
 - name: WIZARD_SANDBOX_CPU
   value: {{ $.Values.sandbox.cpuLimit | quote }}
 {{- end -}}
+
+{{/*
+V3-32: the worker's service account — it runs G1 in sandbox pods (sandbox.orchestrate, wizard-g1) and the repository
+agent's phase pods (repoSandbox.enabled); a pod has one identity, so both Roles bind to it. Without either: no token.
+*/}}
+{{- define "wizard.workerServiceAccount" -}}
+{{- if .Values.sandbox.orchestrate }}wizard-g1{{ else if .Values.repoSandbox.enabled }}wizard-repo-agent{{ else }}wizard-app{{ end }}
+{{- end -}}
+
+{{/*
+V3-32: env of the repository sandbox's pod runner in the worker (apps/platform-api/src/repo-agent/sandbox.ts
+podSandboxFromEnv). The pods have no DNS: the worker resolves the egress proxy's Service and hands them its address.
+*/}}
+{{- define "wizard.repoSandboxEnv" -}}
+{{- $r := .Values.repoSandbox -}}
+- name: WIZARD_REPO_SANDBOX
+  value: pod
+- name: WIZARD_REPO_SANDBOX_NAMESPACE
+  value: {{ .Values.namespaces.sandbox | quote }}
+- name: WIZARD_REPO_SANDBOX_IMAGE
+  value: {{ include "wizard.image" (list . .Values.images.names.repoSandbox) | quote }}
+- name: WIZARD_REPO_SANDBOX_PROXY
+  value: {{ printf "http://wizard-egress-proxy.%s.svc:%v" .Values.namespaces.platform .Values.egressProxy.port | quote }}
+- name: WIZARD_REPO_SANDBOX_POOL
+  value: {{ $r.pool | quote }}
+- name: WIZARD_REPO_SANDBOX_CPU
+  value: {{ $r.cpuLimit | quote }}
+- name: WIZARD_REPO_SANDBOX_CPU_REQUEST
+  value: {{ $r.cpuRequest | quote }}
+- name: WIZARD_REPO_SANDBOX_MEMORY
+  value: {{ $r.memoryLimit | quote }}
+- name: WIZARD_REPO_SANDBOX_WORKSPACE
+  value: {{ $r.workspaceSize | quote }}
+- name: WIZARD_REPO_SANDBOX_STORE
+  value: {{ $r.storeSize | quote }}
+- name: WIZARD_REPO_SANDBOX_STORAGE_CLASS
+  value: {{ $r.storageClass | quote }}
+- name: WIZARD_REPO_SANDBOX_REGISTRY
+  value: {{ $r.registry | quote }}
+- name: WIZARD_REPO_SANDBOX_TTL_MIN
+  value: {{ $r.ttlMinutes | quote }}
+{{- end -}}

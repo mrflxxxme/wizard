@@ -114,7 +114,7 @@ describe("skeleton: pages, sections, texts", () => {
     );
     expect(JSON.parse(out.files.get(SEO_JSON) as string).pages["/services"]).toEqual({
       title: "Каталог и цены — Белая линия",
-      description: "Каталог и цены. Белая линия: стоматологическая клиника.",
+      description: "Каталог и цены. Белая линия — стоматологическая клиника.",
     });
   });
 

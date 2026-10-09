@@ -8,8 +8,7 @@ import { WizardError } from "@wizard/sdk";
 import { Hono } from "hono";
 import type { RuntimeContext, RuntimeHonoEnv } from "../http/context.js";
 import { notFoundPage } from "../http/errors.js";
-import { subjectOf } from "../http/subject.js";
-import { recordFor, yookassaBinding } from "../routes/pay.js";
+import { payableRecord, tokenOf, yookassaBinding } from "../routes/pay.js";
 import type { ConnectorHost } from "./connectors.js";
 import { documentHeaders, escapeHtml, htmlPage, NO_CACHE } from "./headers.js";
 import { connectorFailure, readObjectBody } from "./http.js";
@@ -58,16 +57,17 @@ export function previewRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
   app.get("/pay-mock", async (c) => {
     const binding = c.req.query("binding") ?? "";
     const id = c.req.query("id") ?? "";
+    const token = tokenOf(c.req.query("t"));
     const b = isDraft(c) ? yookassaBinding(c, host, binding) : null;
     if (!b) return notFoundPage();
     const bindingCfg = (b.integ.config as YookassaConfig).bindings.find((x) => x.id === binding);
-    const record = await recordFor(c, await subjectOf(c), b.entity, id);
+    const record = await payableRecord(c, b, binding, id, token);
     if (!record || !bindingCfg) return notFoundPage();
     const body = [
       "<p>Это тестовая оплата черновика: деньги не списываются.</p>",
       bindingCfg.description ? `<p>${escapeHtml(bindingCfg.description)}</p>` : "",
       `<p data-testid="wz-pay-amount">Сумма: ${escapeHtml(money(record[bindingCfg.amountField]))}</p>`,
-      `<button type="button" id="wz-pay-confirm" data-testid="wz-pay-confirm" data-binding="${escapeHtml(binding)}" data-id="${escapeHtml(id)}">Оплатить</button>`,
+      `<button type="button" id="wz-pay-confirm" data-testid="wz-pay-confirm" data-binding="${escapeHtml(binding)}" data-id="${escapeHtml(id)}"${token ? ` data-token="${escapeHtml(token)}"` : ""}>Оплатить</button>`,
       '<p id="wz-pay-error" role="alert" hidden>Оплата не прошла. Обновите страницу и попробуйте снова.</p>',
     ].join("");
     return c.body(
@@ -82,7 +82,7 @@ export function previewRoutes(host: ConnectorHost): Hono<RuntimeHonoEnv> {
     const binding = typeof body.binding === "string" ? body.binding : "";
     const id = typeof body.id === "string" ? body.id : "";
     const b = isDraft(c) ? yookassaBinding(c, host, binding) : null;
-    const record = b ? await recordFor(c, await subjectOf(c), b.entity, id) : null;
+    const record = b ? await payableRecord(c, b, binding, id, tokenOf(body.token)) : null;
     if (!b || !record) throw new WizardError("NOT_FOUND", { message: "Заказ не найден" });
     try {
       const out = await confirmMockPayment(host.ctx(c.get("system"), b.integ, c.get("host")), {

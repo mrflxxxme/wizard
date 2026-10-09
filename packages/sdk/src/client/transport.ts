@@ -334,14 +334,18 @@ export class SdkClient {
     return this.request("POST", `/api/ai/${encodeURIComponent(action)}`, { entity, id });
   }
 
-  /** POST /api/pay/:integration → confirmationUrl (connectors/yookassa.yaml#runtime_endpoint). */
-  async pay(integration: string, binding: string, id: string): Promise<string> {
+  /**
+   * POST /api/pay/:integration → confirmationUrl (connectors/yookassa.yaml#runtime_endpoint); `token` (V3-23) — the
+   * buyer's secret of an order the caller cannot read (the binding's accessField).
+   */
+  async pay(integration: string, binding: string, id: string, token?: string): Promise<string> {
     const r = await this.request<{ confirmationUrl: string }>(
       "POST",
       `/api/pay/${encodeURIComponent(integration)}`,
       {
         binding,
         id,
+        ...(token ? { token } : {}),
       },
     );
     return r.confirmationUrl;

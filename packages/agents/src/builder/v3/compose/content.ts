@@ -14,13 +14,14 @@ import {
   type PageKind,
   type PlannedPage,
   type SectionPhotos,
+  SHOP_MODULE,
   type SiteModel,
   type SiteSection,
 } from "./site.js";
 
 /** Where the main action of the site leads: a section of a page (form) or a page, a phone, an e-mail. */
 export interface SiteAction {
-  kind: "form" | "booking" | "catalog" | "page" | "phone" | "email";
+  kind: "form" | "booking" | "catalog" | "shop" | "page" | "phone" | "email";
   label: string;
   /** Route of the page that holds the target (absent for tel: and mailto:). */
   route?: string;
@@ -89,6 +90,8 @@ export function primaryAction(
       route: booking.route,
       ...(bookingForm ? { anchor: "form" } : {}),
     };
+  const shop = pages.find((p) => p.kind === "shop");
+  if (shop) return { kind: "shop", label: SHOP_ACTION, route: shop.route };
   const catalog = pages.find((p) => p.kind === "catalog");
   if (catalog) return { kind: "catalog", label: "Открыть каталог", route: catalog.route };
   if (facts.phone) return { kind: "phone", label: "Позвонить", href: telHref(facts.phone) };
@@ -99,12 +102,17 @@ export function primaryAction(
     : null;
 }
 
-/** A second action for the first screen: the catalog when the main one is a form, else none. */
+/** The label of the way to the shop's goods (V3-23). */
+const SHOP_ACTION = "Перейти в магазин";
+
+/** A second action for the first screen: the shop or the catalog when the main one is a form, else none. */
 export function secondaryAction(
   primary: SiteAction | null,
   pages: readonly PlannedPage[],
 ): SiteAction | null {
-  if (!primary || primary.kind === "catalog") return null;
+  if (!primary || primary.kind === "catalog" || primary.kind === "shop") return null;
+  const shop = pages.find((p) => p.kind === "shop");
+  if (shop) return { kind: "shop", label: SHOP_ACTION, route: shop.route };
   const catalog = pages.find((p) => p.kind === "catalog");
   return catalog ? { kind: "catalog", label: "Открыть каталог", route: catalog.route } : null;
 }
@@ -113,6 +121,7 @@ const CTA_TITLES: Record<SiteAction["kind"], string> = {
   form: "Оставьте заявку",
   booking: "Запишитесь онлайн",
   catalog: "Посмотрите каталог",
+  shop: "Выберите товары в магазине",
   page: "Перейдите в раздел",
   phone: "Позвоните нам",
   email: "Напишите нам",
@@ -154,7 +163,8 @@ export function navLabel(p: Pick<PlannedPage, "title" | "kind">): string {
 }
 
 function brand(f: SiteFacts) {
-  return { name: f.name, href: "/" };
+  // V3-18: the business name the owner gave, else what the business is (never a placeholder or a cut name).
+  return { name: f.copy.site, href: "/" };
 }
 
 function contactsList(f: SiteFacts) {
@@ -213,7 +223,7 @@ function heroProps(c: SectionContext): Props | null {
     fits(textOf(f, "hero", "title"), LINE.title) ??
     fits(f.description, LINE.title) ??
     fits(f.copy.title, LINE.title) ??
-    f.name.slice(0, LINE.title);
+    f.copy.title;
   const lead =
     forAction(fits(textOf(f, "hero", "subtitle"), LINE.lead), c.primary) ??
     (title === f.description ? undefined : fits(f.description, LINE.lead)) ??
@@ -272,7 +282,8 @@ function footerProps(c: SectionContext): Props {
     columns: [{ title: "Разделы", links }],
     legal: {
       operator:
-        fits(f.operator, 120) ?? `Владелец сайта «${f.name}» — оператор персональных данных`.slice(0, 120),
+        fits(f.operator, 120) ??
+        `Владелец сайта «${f.copy.site}» — оператор персональных данных`.slice(0, 120),
       ...(f.operatorInn ? { details: `ИНН ${f.operatorInn}` } : {}),
       policy: { label: "Политика обработки персональных данных", href: f.policyPage },
     },
@@ -391,6 +402,7 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
   const b = c.binding;
   if (!b) return null;
   if (c.page.module === CONTENT_MODULE) return contentEntryProps(type, c, b);
+  if (b.action.shop) return shopProps(type, c, b);
   const f = c.facts;
   const entity = b.action.entity;
   const contact = f.phone ? { contact: { label: f.phone, href: telHref(f.phone) } } : {};
@@ -453,6 +465,70 @@ function boundProps(type: SectionType, c: SectionContext): Props | null {
     };
   }
   return { entity, title: fits(c.page.title, LINE.cta) ?? "Материалы", empty: "Записей пока нет" };
+}
+
+/**
+ * Sections of «Интернет-магазин» (V3-23) in the slot contract of the shop, cart and order patterns: the goods entity
+ * and its sections, the module's checkout (delivery methods, payment, functions), the cart and order pages. The texts
+ * are functional (the page's title is the heading of its page); goods, prices and statuses come from the data.
+ */
+function shopProps(type: SectionType, c: SectionContext, b: Binding): Props | null {
+  const cfg = b.action.shop;
+  if (!cfg) return null;
+  const route = (kind: PageKind) => c.pages.find((p) => p.module === SHOP_MODULE && p.kind === kind)?.route;
+  const shopRoute = route("shop");
+  const cartRoute = route("cart");
+  const back = shopRoute ? { back: { label: "Вернуться к товарам", href: shopRoute } } : {};
+  const own = c.page.kind === type;
+  if (type === "shop") {
+    if (!cartRoute) return null;
+    const intro = own ? undefined : fits(textOf(c.facts, "shop", "intro"), LINE.lead);
+    return {
+      entity: b.action.entity,
+      ...(cfg.categoryEntity ? { categoryEntity: cfg.categoryEntity } : {}),
+      fields: { stock: cfg.stockField },
+      title: own
+        ? (fits(c.page.title, LINE.cta) ?? "Товары")
+        : (fits(textOf(c.facts, "shop", "title"), LINE.cta) ?? "Товары"),
+      ...(intro ? { text: intro } : {}),
+      level: own ? 1 : 2,
+      empty: "Товары скоро появятся",
+      pageSize: own ? 24 : 8,
+      cart: { label: "Корзина", href: cartRoute },
+    };
+  }
+  if (type === "cart") {
+    const note = fits(textOf(c.facts, "delivery", "note"), 200);
+    return {
+      title: fits(c.page.title, LINE.cta) ?? "Корзина",
+      level: 1,
+      checkout: {
+        methods: cfg.methods,
+        online: cfg.online,
+        ...(cfg.courierPrice !== undefined ? { courierPrice: cfg.courierPrice } : {}),
+        pointEntity: cfg.pointEntity,
+        placeFn: cfg.placeFn,
+        cdekFn: cfg.cdekFn,
+        ...(cfg.payment ? { payment: cfg.payment } : {}),
+        orderPath: cfg.orderPath,
+      },
+      ...back,
+      empty: "В корзине пока ничего нет",
+      ...(note ? { note } : {}),
+    };
+  }
+  if (type === "order") {
+    if (!isParamRoute(c.page.route)) return null;
+    const f = c.facts;
+    return {
+      level: 1,
+      path: cfg.orderPath,
+      ...(cfg.payment ? { payment: cfg.payment } : {}),
+      ...back,
+      ...(f.phone ? { contact: { label: f.phone, href: telHref(f.phone) } } : {}),
+    };
+  }
+  return null;
 }
 
 /** The route of a screen of «Контент и блог» on the site (a list, an entry page). */
@@ -546,6 +622,9 @@ export function sectionProps(type: SectionType, c: SectionContext): Props | null
     case "blog":
     case "article":
     case "rubric":
+    case "shop":
+    case "cart":
+    case "order":
       return boundProps(type, c);
     default:
       return c.page.kind === "home" || type === "faq" || type === "contacts" ? contentProps(type, c) : null;
@@ -636,15 +715,19 @@ export function seoOf(
   hero: Props | null,
 ): { title: string; description: string; image?: string } {
   const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
-  // What the business is (the brief's niche with its place, never the first words of the brief cut off).
-  const about = f.copy.about;
-  const home = about && about !== f.name ? `${f.name} — ${about}` : f.name;
-  const title = page.kind === "home" ? home : `${page.title} — ${f.name}`;
+  // The same source as the first screen (V3-18): the owner's business name, what the business is in his words and
+  // its place — never a placeholder name, never the first words of the brief cut off.
+  const { home, site } = f.copy;
+  const own = `${page.title} — ${site}`;
+  const title = page.kind === "home" ? home : own.length <= 70 ? own : page.title;
   const lead = typeof hero?.lead === "string" ? hero.lead : undefined;
+  const fit = (...xs: (string | undefined)[]) => xs.find((x) => x && x.length <= 160);
   const description =
-    page.kind === "home"
-      ? (lead ?? f.description ?? `${f.name}: ${about}.`)
-      : `${page.title}. ${f.name}: ${about}.`;
+    (page.kind === "home"
+      ? fit(lead && `${home}. ${lead}`, lead, f.description, `${home}.`)
+      : fit(`${page.title}. ${home}.`, `${page.title}. ${site}.`)) ??
+    lead ??
+    `${home}.`;
   const image = heroPhoto(hero);
   return {
     title: clip(title, 70),
@@ -662,6 +745,9 @@ export const KIND_LABELS: Readonly<Record<PageKind, string>> = {
   credits: "источники фото",
   entry: "страница записи",
   rubric: "рубрика",
+  shop: "магазин",
+  cart: "корзина",
+  order: "заказ покупателя",
 };
 
 /** The «sent» headings of the module forms: the goal scenarios read them after a write (GS-leads-1, GS-booking-1). */

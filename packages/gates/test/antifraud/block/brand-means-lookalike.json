@@ -1,0 +1,13 @@
+{
+  "check": "G2-AF-04",
+  "expect": "block",
+  "description": "app.name с похожим написанием «… с оплатой ЮKasa» — средство не признаётся",
+  "spec": [
+    {
+      "op": "set",
+      "path": "/app/name",
+      "value": "Посуда ручной работы с оплатой ЮKasa"
+    }
+  ],
+  "base": "forum"
+}

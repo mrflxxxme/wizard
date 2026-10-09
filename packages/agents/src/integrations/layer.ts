@@ -6,7 +6,13 @@
 import { createHash } from "node:crypto";
 import type { AppSpec, SystemBrief } from "@wizard/appspec";
 import { canonical } from "@wizard/modules";
-import { type IntegrationMode, integrationCode, integrationDir, type SpecFunction } from "./codegen.js";
+import {
+  INTEGRATION_FILE_RE,
+  type IntegrationMode,
+  integrationCode,
+  integrationDir,
+  type SpecFunction,
+} from "./codegen.js";
 import { contractRef, type IntegrationContract } from "./contract.js";
 import { integrationEgressIssues } from "./egress.js";
 
@@ -70,9 +76,34 @@ export function integrationLayer(o: {
   return { files, functions, fingerprint, notes };
 }
 
+/** Integration id of a file under functions/integrations/<id>/, or null. */
+const integrationOf = (path: string): string | null => INTEGRATION_FILE_RE.exec(path)?.[1] ?? null;
+
+const CLIENT_IMPORT_RE = /from\s+["']((?:\.\.?\/)+integrations\/([a-z][a-z0-9_]{0,39})\/client)["']/g;
+
 /**
- * The layer on top of a backend: integration functions replace earlier ones of the same name, integration files of
- * other contracts are dropped (functions/integrations/** belongs to the layer). Throws when the result breaks D37.
+ * Integrations whose client a module function imports (V3-23: the shop's СДЭК delivery calls
+ * functions/integrations/cdek/client the module ships in mock mode): ids by the import of its source.
+ */
+export function clientImports(file: string, source: string): string[] {
+  const out = new Set<string>();
+  for (const m of source.matchAll(CLIENT_IMPORT_RE)) {
+    const parts = file.split("/").slice(0, -1);
+    for (const seg of (m[1] as string).split("/")) {
+      if (seg === "..") parts.pop();
+      else if (seg !== ".") parts.push(seg);
+    }
+    if (parts.join("/") === `functions/integrations/${m[2]}/client`) out.add(m[2] as string);
+  }
+  return [...out];
+}
+
+/**
+ * The layer on top of a backend: integration functions replace earlier ones of the same name; files and functions of
+ * an integration the layer generates replace the backend's (functions/integrations/<id>/** belongs to the layer), and a
+ * module's own client of an integration the layer does not have stays (V3-23: the shop's СДЭК mock). A module function
+ * that imports the client of an integration in live mode gets exactly that contract's hosts and key (D37); in mock mode
+ * none. Throws when the result breaks D37.
  */
 export function withIntegrationLayer<T extends { spec: AppSpec; files: Record<string, string> }>(
   base: T,
@@ -80,14 +111,41 @@ export function withIntegrationLayer<T extends { spec: AppSpec; files: Record<st
   contracts: readonly IntegrationContract[],
 ): T {
   const names = new Set(layer.functions.map((f) => f.name));
-  const kept = (base.spec.functions ?? []).filter(
-    (f) => !names.has(f.name) && !f.file.startsWith("functions/integrations/"),
+  const generated = new Set(
+    [...Object.keys(layer.files), ...layer.functions.map((f) => f.file)]
+      .map(integrationOf)
+      .filter((x): x is string => x !== null),
   );
-  const spec = { ...base.spec, functions: [...kept, ...layer.functions] } as AppSpec;
-  const files = Object.fromEntries(
-    Object.entries(base.files).filter(([p]) => !p.startsWith("functions/integrations/")),
-  );
+  const replaced = (path: string) => {
+    const id = integrationOf(path);
+    return id !== null && generated.has(id);
+  };
+  const files = Object.fromEntries(Object.entries(base.files).filter(([p]) => !replaced(p)));
   Object.assign(files, layer.files);
+  // Live integrations of the layer: a function of the contract declares its hosts (codegen live mode).
+  const live = new Map<string, IntegrationContract>();
+  for (const f of layer.functions) {
+    const id = integrationOf(f.file);
+    const c = id ? contracts.find((x) => x.id === id) : undefined;
+    if (c && f.egress?.length) live.set(c.id, c);
+  }
+  const kept = (base.spec.functions ?? [])
+    .filter((f) => !names.has(f.name) && !replaced(f.file))
+    .map((f) => {
+      if (integrationOf(f.file) !== null) return f;
+      const uses = clientImports(f.file, files[f.file] ?? "").filter((id) => generated.has(id));
+      if (uses.length === 0) return f;
+      const { egress: _e, secretRefs: _s, ...rest } = f;
+      const via = uses.map((id) => live.get(id)).filter((c): c is IntegrationContract => c !== undefined);
+      const egress = [...new Set(via.flatMap((c) => c.hosts))];
+      const keys = [...new Set(via.flatMap((c) => (c.auth.secret ? [c.auth.secret] : [])))];
+      return {
+        ...rest,
+        ...(egress.length ? { egress } : {}),
+        ...(keys.length ? { secretRefs: keys } : {}),
+      } as typeof f;
+    });
+  const spec = { ...base.spec, functions: [...kept, ...layer.functions] } as AppSpec;
   const issues = integrationEgressIssues(spec, contracts);
   if (issues.length) throw new Error(`integration egress: ${issues.map((i) => i.message_ru).join("; ")}`);
   return { ...base, spec, files };

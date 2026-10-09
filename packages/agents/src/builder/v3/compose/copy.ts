@@ -1,16 +1,22 @@
-// Copy of the skeleton without a model (V3-18): the first screen's heading and lead, the label of the main action and
-// the headings of the module forms, from the brief — the niche its keywords give, the place it names («в Казани»),
-// the services it lists, the visitor's goals and scenarios said to the visitor («Выберите тур и оставьте заявку на
-// заезд»), the button it quotes («Обсудить проект»), the system name. Plain rules, Russian, nothing invented (D49):
-// never the audience as a heading, never the first words of a sentence cut off (the planner's niche of an unknown
-// business), never the planner's placeholders (a heading equal to the niche, «Связаться»).
+// Copy of the skeleton without a model (V3-18): the first screen's heading and lead, the label of the main action, the
+// headings of the module forms and the SEO titles, from the brief's facts in a fixed order — the business name the
+// owner gave (quoted in his first words, else the system's name when it is his), what the business is and offers in his
+// words («студия дизайна интерьеров»; the services the brief or he lists), the place («в Казани»), then the niche its
+// keywords give; the visitor's goals said to the visitor («Выберите тур и оставьте заявку на заезд»), the button he
+// quotes («Обсудить проект»). Plain rules, Russian, nothing invented (D49): never a placeholder name («Проверка»),
+// never a niche label less specific than his words, never the audience as a heading, never the first words of a
+// sentence cut off, never the planner's placeholders (a heading equal to the niche, «Связаться»).
 import type { BriefScenario, SystemBrief } from "@wizard/appspec";
+import { siteName } from "@wizard/modules";
 
 /** Texts of the skeleton the brief gives. */
 export interface BriefCopy {
-  /** Heading of the first screen (≤ 90): what the business offers and where, else «<name> — <niche>», else the name. */
+  /**
+   * Heading of the first screen (≤ 60): what the business is in the owner's words with its name and place («Студия
+   * дизайна интерьеров «Линия» в Екатеринбурге»), else the niche of the brief with the place, else the name.
+   */
   title: string;
-  /** Lead of the first screen (≤ 260): the services the brief lists, else the visitor's action said to him. */
+  /** Lead of the first screen (≤ 260): 2–4 services the brief or the owner lists, else the visitor's action. */
   lead?: string;
   /** The button the brief quotes for a request («Обсудить проект»), ≤ 40. */
   action?: string;
@@ -18,8 +24,17 @@ export interface BriefCopy {
   leadForm?: string;
   /** Heading of the booking form («Запись к врачам онлайн на свободное время»). */
   booking?: string;
-  /** What the business is, in lower case, for the SEO title of the home page («медицинская клиника в Казани»). */
+  /** What the business is with its place, first letter lower case («стоматологическая клиника в Казани»). */
   about: string;
+  /** The business name the owner gave («Линия»): quoted in his words, else the system's name when it is his. */
+  brand?: string;
+  /** SEO title of the home page (≤ 70): «<brand> — <about>», else <About>. */
+  home: string;
+  /**
+   * The site's name (≤ 60): the header and footer brand, og:site_name, the end of the other pages' SEO titles — the
+   * brand, else <About>.
+   */
+  site: string;
 }
 
 export interface CopyInput {
@@ -28,9 +43,14 @@ export interface CopyInput {
   niche: string;
   keywordNiche: boolean;
   brief: Pick<SystemBrief, "audience" | "goals" | "scenarios">;
+  /**
+   * The owner's own words about the business (the system's first message), when the host has them: the business name
+   * he quotes, what the business is, its place and what it offers are read from its first sentences.
+   */
+  request?: string;
 }
 
-const LIMITS = { title: 90, lead: 260, action: 40, form: 80 } as const;
+const LIMITS = { title: 60, lead: 260, action: 40, form: 80, seo: 70 } as const;
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const low = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -197,41 +217,299 @@ function bookingOf(texts: readonly string[]): string | undefined {
 
 const scenarioTexts = (scenarios: readonly BriefScenario[]) => scenarios.flatMap((s) => [s.when, ...s.then]);
 
-/** The skeleton's texts of a brief (deterministic: the same brief gives the same texts). */
+/** Names of a test or a draft («Проверка», «Тест 2», «Новая система»): never shown as the business name. */
+const PLACEHOLDER_NAME =
+  /^(?:проверка|тест|test|testing|пример|example|demo|демо|черновик|sample|новая система|без названия)(?![\p{L}])/iu;
+
+/** A name of a test or a draft, not of a business. */
+export const isPlaceholderName = (name: string): boolean => PLACEHOLDER_NAME.test(clean(name));
+
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** Sentences of the owner's text (the first `max`). */
+function sentencesOf(text: string, max = 3): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(clean)
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+/**
+ * Head nouns of what a business is («студия», «клиника», «турфирма», «мастерская»), nominative singular: the phrase
+ * of the owner's words around one is what the business is.
+ */
+const BUSINESS_HEAD =
+  /^(?:тур|вет|авто|фото|арт|кофе)?(?:студия|клиника|компания|фирма|агентство|мастерская|салон|магазин|интернет-магазин|бюро|ателье|школа|центр|кафе|ресторан|кофейня|пекарня|кондитерская|барбершоп|сервис|служба|цех|ферма|питомник|гостиница|отель|хостел|лаборатория|галерея|клуб|бригада|стоматология|типография|мойка|прокат|театр|издательство|производство|артель|бутик|шоурум|практика)$/u;
+/** Words before the business phrase that say who speaks («Мы», «У нас»). */
+const SPEAKER: ReadonlySet<string> = new Set([
+  "мы",
+  "у",
+  "нас",
+  "меня",
+  "я",
+  "это",
+  "наш",
+  "наша",
+  "наше",
+  "—",
+  "–",
+]);
+/** Adjectives of size or praise: not what the business is («небольшая турфирма» → «турфирма»). */
+const VAGUE_ADJ = /^(?:небольш|маленьк|крупн|молод|нов|современн|уютн|лучш|хорош|отличн)/u;
+const ADJ = /(?:ая|яя|ое|ее|ый|ий|ой|ые|ие)$/u;
+/** Endings of a genitive tail («студия дизайна интерьеров», «клиника эстетической медицины»). */
+const GENITIVE = /(?:а|я|ов|ев|ей|ий|ых|их|ого|его|ой|ы|и)$/u;
+const PREPOSITIONS: ReadonlySet<string> = new Set(
+  "в во на по из с со к для от до и или а но при за под над у о об про".split(" "),
+);
+
+/** A word without the punctuation around it. */
+const bare = (w: string) => w.replace(/^[«"(]+|[»",.:;!?)]+$/gu, "");
+
+interface Business {
+  /** What the business is in the owner's words, lower case («студия дизайна интерьеров»). */
+  what: string;
+  /** The sentence that says it. */
+  sentence: string;
+}
+
+/**
+ * What the business is in the owner's words: a head noun among the first words of one of his first sentences, after
+ * at most «Мы», «У нас», with its adjectives (size and praise dropped) and its genitive tail — «Мы небольшая
+ * керамическая мастерская из Твери» → «керамическая мастерская». null — no such sentence.
+ */
+export function businessOf(request: string): Business | null {
+  for (const sentence of sentencesOf(request)) {
+    const words = sentence.split(" ");
+    const at = words.findIndex((w, i) => i < 8 && BUSINESS_HEAD.test(low(bare(w))));
+    if (at < 0) continue;
+    let from = at;
+    while (from > 0) {
+      const prev = words[from - 1] as string;
+      if (bare(prev) !== prev || !ADJ.test(low(prev))) break;
+      from--;
+    }
+    if (!words.slice(0, from).every((w) => SPEAKER.has(low(bare(w))))) continue;
+    const head = words.slice(from, at + 1).map((w) => low(bare(w)));
+    const phrase = [...head.slice(0, -1).filter((w) => !VAGUE_ADJ.test(w)), head.at(-1) as string];
+    // The genitive tail ends at punctuation, a quote, a preposition or a word that is not genitive.
+    if (bare(words[at] as string) === words[at])
+      for (const raw of words.slice(at + 1, at + 4)) {
+        const w = bare(raw);
+        if (
+          !w ||
+          /^[«"]/.test(raw) ||
+          PREPOSITIONS.has(low(w)) ||
+          !/^[а-яё-]+$/u.test(w) ||
+          !GENITIVE.test(w)
+        )
+          break;
+        phrase.push(w);
+        if (w !== raw) break;
+      }
+    return { what: phrase.join(" "), sentence };
+  }
+  return null;
+}
+
+/** The business name the owner quotes in the sentence that says what the business is: «Линия». */
+export function quotedName(sentence: string): string | undefined {
+  for (const m of sentence.matchAll(/«([^«»]{2,40})»/g)) {
+    const name = clean(m[1] as string);
+    if (/^[\p{Lu}\d]/u.test(name) && !/^[А-ЯЁ][а-яё]*(?:ть|ться|ти)(?:\s|$)/u.test(name)) return name;
+  }
+  return undefined;
+}
+
+interface Places {
+  /** «в Казани»: where the business is. */
+  in?: string;
+  /** «по Карелии»: where its offer goes. */
+  along?: string;
+  /** «из Твери»: where it comes from. */
+  from?: string;
+}
+
+/** Places a text names: «в Казани», «по Карелии», «из Твери» (a preposition and a capitalised name). */
+function placesIn(text: string): Places {
+  const out: Places = {};
+  const re = /(?:^|[\s,(«])(в|во|по|из)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)?)(?=$|[\s,.;:)»])/gu;
+  for (const m of text.matchAll(re)) {
+    const prep = (m[1] as string).toLowerCase();
+    const key = prep === "из" ? "from" : prep === "по" ? "along" : "in";
+    out[key] ??= `${prep} ${m[2]}`;
+  }
+  return out;
+}
+
+/** Workers before a colon («пять врачей: терапевт, …»): the list names the staff, not the offer. */
+const STAFF =
+  /^(?:врач|мастер|сотрудник|специалист|дизайнер|тренер|человек|преподавател|педагог|менеджер|бригад|юрист|психолог|стилист|парикмахер|повар|гид|инструктор)/u;
+/** Words that end a list of the offer («…, вазы ручной работы, многие вещи в одном экземпляре»). */
+const LIST_END =
+  /^(?:многие|многое|все|всё|некоторые|каждый|каждая|большинство|часть|также|а также|ещё|еще)(?![\p{L}])/u;
+
+/** Items of a list the owner wrote: 2 and more, each ≤ 60 characters and 6 words, no digits; elided heads restored. */
+function listItems(text: string): string[] | null {
+  const raw = text
+    .replace(/[.!?]+$/, "")
+    .split(/,\s*|\s+и\s+/)
+    .map(clean);
+  const out: string[] = [];
+  for (const item of raw) {
+    if (!item || LIST_END.test(low(item))) break;
+    if (/\d/.test(item) || item.length > 60 || item.split(" ").length > 6 || /[«»:;()]/.test(item))
+      return null;
+    const prev = out.at(-1);
+    // «уборка квартир после ремонта, офисов» → «уборка офисов»: a lone genitive plural takes the head before it.
+    out.push(
+      prev?.includes(" ") && !item.includes(" ") && /(?:ов|ев|ей)$/u.test(item)
+        ? `${prev.split(" ")[0]} ${item}`
+        : item,
+    );
+  }
+  return out.length >= 2 ? out : null;
+}
+
+/**
+ * What the business offers in the owner's words: the list after a colon of the sentence that says what it is («У нас
+ * клининговая компания в Новосибирске: уборка квартир после ремонта, офисов и мойка окон»), else the services he
+ * lists in parentheses or after a colon («страницы услуг (дизайн-проект квартиры, …)»). A list of the staff is not
+ * the offer.
+ */
+export function offerOf(request: string, business: Business | null): string[] | null {
+  const colon = business ? /^(.*?):\s*(.+)$/u.exec(business.sentence) : null;
+  if (colon) {
+    const last = low(bare((colon[1] as string).split(" ").at(-1) ?? ""));
+    const items = STAFF.test(last) ? null : listItems(colon[2] as string);
+    if (items) return items;
+  }
+  const services = /услуг\S*\s*(?:\(([^)]+)\)|:\s*([^.;]+))/iu.exec(clean(request));
+  return services ? listItems((services[1] ?? services[2]) as string) : null;
+}
+
+/** The first candidate that fits `max` characters. */
+const firstFit = (max: number, ...xs: (string | null | undefined)[]): string | undefined =>
+  xs.find((x): x is string => typeof x === "string" && x.length > 0 && x.length <= max);
+
+/**
+ * The name of a new system from the owner's first words (V3-18; the cabinet, the letters, the platform list): the
+ * business name he quotes («Линия»), else what the business is («Клининговая компания»), ≤ 40 characters, never cut.
+ * null — his words name neither.
+ */
+export function businessName(request: string): string | null {
+  const b = businessOf(request);
+  return (b && firstFit(40, quotedName(b.sentence), cap(b.what))) || null;
+}
+
+/**
+ * The skeleton's texts of a brief (deterministic: the same brief gives the same texts), from its facts in a fixed
+ * order: the business name the owner gave, what the business is and offers in his words, the place — never a
+ * placeholder name, never a niche label less specific than his words, never a phrase cut off.
+ */
 export function briefCopy(input: CopyInput): BriefCopy {
   const { brief } = input;
   const name = clean(input.name);
+  const request = clean(input.request ?? "");
   const visitor = brief.scenarios.filter((s) => PUBLIC_ACTORS.has(s.actor));
   const goals = brief.goals.map((g) => g.text);
   const visitorTexts = [...goals, ...scenarioTexts(visitor)];
-  const place = placeOf([brief.audience, ...goals, ...scenarioTexts(brief.scenarios)]);
   const catalog = visitor.filter((s) => s.moduleHint === "catalog" || /каталог|услуг|цен/i.test(s.when));
   const steps = catalog.flatMap((s) => s.then);
+  const business = request ? businessOf(input.request as string) : null;
 
-  // What the business is: the keywords' niche, else what its catalog shows («Туры»); with the place it names
-  // («Туры по Карелии»), else after the name («Белая линия — стоматологическая клиника»).
-  const noun = input.keywordNiche ? input.niche : catalogNoun(steps);
-  const subject = noun ? `${noun}${place ? ` ${place}` : ""}` : null;
-  let title =
-    noun && place ? cap(`${noun} ${place}`) : noun ? (name ? `${name} — ${noun}` : cap(noun)) : name;
-  if (title.length > LIMITS.title) title = name.slice(0, LIMITS.title);
+  // The business name: the one the owner quotes, else the system's name when he gave it — never a placeholder of a
+  // test, the start of his text the platform named the system after, or the niche itself.
+  const own =
+    name &&
+    name.length <= 40 &&
+    !/[,.:;!?]/.test(name) &&
+    !isPlaceholderName(name) &&
+    !(request && norm(request).startsWith(norm(name))) &&
+    !(request && norm(siteName(request)) === norm(name)) &&
+    norm(name) !== norm(input.niche) &&
+    norm(name) !== norm(business?.what ?? "")
+      ? name
+      : undefined;
+  const brand = (business ? quotedName(business.sentence) : undefined) ?? own;
 
-  const services = listedServices(steps);
+  // The place: of the owner's sentence about the business, else of the brief. «в X» belongs to the business, «по X»
+  // to what it offers (the catalog's noun: «Туры по Карелии»), «из X» to where the business comes from.
+  const said = business ? placesIn(business.sentence) : {};
+  const briefPlace = placeOf([brief.audience, ...goals, ...scenarioTexts(brief.scenarios)]);
+  const known = briefPlace ? placesIn(briefPlace) : {};
+  const place: Places = {
+    ...((said.in ?? known.in) ? { in: said.in ?? known.in } : {}),
+    ...((said.along ?? known.along) ? { along: said.along ?? known.along } : {}),
+    ...(said.from ? { from: said.from } : {}),
+  };
+  const offer = catalogNoun(steps);
+
+  // What the business is: the owner's words, else the keywords' niche — never a niche label less specific than his
+  // words («ремонт и отделка» for a studio of interior design); else what its catalog shows («Туры по Карелии»).
+  const what = business?.what ?? (input.keywordNiche ? input.niche : null);
+  let subject: string | null = null;
+  let at = "";
+  if (what && place.in) at = place.in;
+  else if (place.along && offer) subject = `${offer} ${place.along}`;
+  else if (what) at = place.from ?? place.along ?? "";
+  else if (offer) subject = offer;
+  if (what && !subject) subject = at ? `${what} ${at}` : what;
+  const ofWhat = !!what && subject?.startsWith(what) === true;
+
+  const title =
+    (brand && ofWhat && business
+      ? firstFit(
+          LIMITS.title,
+          `${cap(what as string)} «${brand}»${at ? ` ${at}` : ""}`,
+          `${cap(what as string)} «${brand}»`,
+          `${brand} — ${what}`,
+        )
+      : undefined) ??
+    (brand && subject ? firstFit(LIMITS.title, `${brand} — ${subject}`) : undefined) ??
+    (subject ? firstFit(LIMITS.title, cap(subject), what ? cap(what) : undefined) : undefined) ??
+    firstFit(LIMITS.title, brand) ??
+    (isPlaceholderName(name) ? cap(input.niche) : name).slice(0, LIMITS.title);
+
+  // The lead: 2–4 services the brief lists, else the offer in the owner's words, else the visitor's action.
+  const services = listedServices(steps) ?? (request ? offerOf(input.request as string, business) : null);
   const action = visitorTexts.map(toVisitor).find((x): x is string => !!x);
-  let lead = services ? `${cap(listOf(services))}.` : action ? `${action}.` : undefined;
+  let lead = services ? `${cap(listOf(services.slice(0, 4)))}.` : action ? `${action}.` : undefined;
   if (lead && (lead.length > LIMITS.lead || lead.toLowerCase() === `${title.toLowerCase()}.`))
     lead = undefined;
 
-  const button = quotedAction(visitorTexts);
-  const request = requestFor(visitorTexts);
-  const leadForm = button ?? (request ? `Заявка на ${request}` : undefined);
+  // The button the owner names: in the brief, else in his words.
+  const button =
+    quotedAction(visitorTexts) ??
+    (request ? quotedAction(sentencesOf(input.request as string, 50)) : undefined);
+  const wanted = requestFor(visitorTexts);
+  const leadForm = button ?? (wanted ? `Заявка на ${wanted}` : undefined);
   const booking = bookingOf(visitorTexts);
+
+  const about = subject ? low(subject) : (brand ?? (isPlaceholderName(name) ? input.niche : name));
+  const About = cap(about);
+  const home =
+    (brand && norm(about) !== norm(brand)
+      ? firstFit(LIMITS.seo, `${brand} — ${about}`, what ? `${brand} — ${what}` : undefined)
+      : undefined) ??
+    firstFit(LIMITS.seo, About, brand) ??
+    title;
   return {
     title,
     ...(lead ? { lead } : {}),
     ...(button ? { action: button } : {}),
     ...(leadForm && leadForm.length <= LIMITS.form ? { leadForm } : {}),
     ...(booking ? { booking } : {}),
-    about: subject ? low(subject) : input.keywordNiche ? input.niche : name,
+    about,
+    ...(brand ? { brand } : {}),
+    home,
+    // The header's brand too (brandSlot ≤ 60).
+    site: firstFit(LIMITS.title, brand, About, what ? cap(what) : undefined) ?? title,
   };
 }

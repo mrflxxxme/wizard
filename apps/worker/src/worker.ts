@@ -1,7 +1,9 @@
 // apps/worker (workflows.yaml#execution.M1): DBOS Transact over the platform database (schema dbos). Runs are the
 // workflow RUN_WORKFLOW (workflowID = runs.id) on queues runs / interview; credits_cron, subscription renewals
 // (billing_cron, M2-07), the dbos retention and the platform part of retention_cron (deletion journal, consent
-// notices, delete_system) are DBOS scheduled workflows.
+// notices, delete_system) are DBOS scheduled workflows. V3-32: the queue of the agent for compatible repositories
+// runs here too (its own table and timer, startRepoAgentRunner) — the sandbox pods' Kubernetes token stays off the
+// internet-facing platform-api.
 import { DBOS, type WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import type { Router, RouterOptions } from "@wizard/llm";
 import { createLogger, type Logger } from "@wizard/pii/log";
@@ -30,12 +32,14 @@ import {
   QUEUE_INTERVIEW,
   QUEUE_RUNS,
   queueOf,
+  type RepoAgentRunnerOptions,
   RUN_WORKFLOW,
   RunEngine,
   type RunExecutors,
   runModuleFactoryCron,
   runRetentionCron,
   SecretStore,
+  startRepoAgentRunner,
   sweepExpiredExports,
   sweepExpiredImports,
 } from "@wizard/platform-api";
@@ -83,6 +87,11 @@ export interface WorkerOptions {
   mailer?: Mailer;
   /** Founder alerts of the ops checks (default: log + webhook + e-mail from the config). */
   alert?: OpsAlertFn;
+  /**
+   * V3-32: the queue of the repository agent's tasks (default on; idle unless the feature and the sync are configured);
+   * false — off, an object — its test inputs (sandbox, timer, env).
+   */
+  repoAgent?: false | RepoAgentRunnerOptions["agent"];
 }
 
 export interface Worker {
@@ -103,6 +112,8 @@ export interface Worker {
   opsChecks(now?: Date): ReturnType<typeof checkRunFailureRate>;
   /** One pass of the module factory rating (tests; the schedule runs it weekly). */
   moduleFactory(now?: Date): ReturnType<typeof runModuleFactoryCron>;
+  /** V3-32: the executing agent for compatible repositories; null with repoAgent: false. */
+  repoAgent: ReturnType<typeof startRepoAgentRunner> | null;
   close(): Promise<void>;
 }
 
@@ -381,6 +392,22 @@ async function launch(o: WorkerOptions): Promise<Worker> {
         }, sweepMs)
       : undefined;
   timer?.unref();
+  // V3-32: the agent's tasks (sandbox pods in the cloud, the process runner only with WIZARD_UNSAFE_LOCAL_EXEC=1).
+  const repoAgent =
+    o.repoAgent === false
+      ? null
+      : startRepoAgentRunner({
+          db: handle.db,
+          pg: handle.pg,
+          config,
+          blobs: new BlobStore(config.artifactsDir),
+          secrets,
+          log,
+          alert: (a) => alert(a),
+          ...(o.createRouter ? { createRouter: o.createRouter } : {}),
+          ...(o.now ? { now: o.now } : {}),
+          ...(o.repoAgent ? { agent: o.repoAgent } : {}),
+        });
   logger.info("ready", { pid: process.pid, mode: config.authMode });
 
   let closed = false;
@@ -398,10 +425,12 @@ async function launch(o: WorkerOptions): Promise<Worker> {
     retention,
     opsChecks,
     moduleFactory,
+    repoAgent,
     async close() {
       if (closed) return;
       closed = true;
       if (timer) clearInterval(timer);
+      await repoAgent?.stop();
       await sweeping;
       engine.stop();
       await DBOS.shutdown({ deregister: true });

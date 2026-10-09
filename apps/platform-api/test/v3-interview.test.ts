@@ -4,6 +4,7 @@
 // → every turn a new brief version (author agent) → the owner's edit in the panel is kept by the next turn → the
 // ready brief: a short text in the chat, no pending question, stage card (D7). «Остальное по рекомендациям» is
 // «Дальше решай сам». The build queue and the monthly «не умею» share for /admin are read from the database.
+import { OPERATOR_QUESTION } from "@wizard/agents/interview-v3";
 import type { RouteInput, RouteOutput, Router, RouterOptions } from "@wizard/llm";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
@@ -189,7 +190,8 @@ describe("v3 grill interview through the platform", () => {
       payload: { interview: { ready: true, reason: "clear", briefVersion: 5 } },
     });
     expect(last.text).toContain("Бриф готов");
-    expect(last.payload.interview.buildQuestions).toHaveLength(1);
+    // The content question of the model and the operator's data asked by code (V3-18: the brief keeps personal data).
+    expect(last.payload.interview.buildQuestions).toHaveLength(2);
     const latest = (await api.req("GET", `/systems/${systemId}/brief`)).body.brief;
     expect(latest).toMatchObject({ version: 5, author: "agent" });
     expect(latest.brief.audience).toBe("Пациенты клиники и их родители");
@@ -204,6 +206,7 @@ describe("v3 grill interview through the platform", () => {
         text: "Какие услуги и цены показать на сайте?",
         assumption: "Покажем список услуг без цен",
       },
+      OPERATOR_QUESTION,
     ]);
     const month = new Date().toISOString().slice(0, 7);
     expect(await capabilityShareByMonth(api.deps.db)).toEqual([
@@ -247,18 +250,18 @@ describe("v3 grill interview through the platform", () => {
     const s = await system(id);
     expect(s.system.stage).toBe("card");
     expect(s.messages.at(-1).payload.interview).toMatchObject({ ready: true, reason: "owner_skip" });
-    // The shop's cart and online payment: «пока не умею» → «Запросы на развитие» and the gap in the message.
-    expect(s.messages.at(-1).payload.gaps.map((g: { category: string }) => g.category)).toEqual(["payments"]);
+    // V3-23: the shop's cart and online payment are a module now — no «пока не умею», no gap in the message.
+    expect(s.messages.at(-1).payload.gaps ?? []).toEqual([]);
     const brief = (await api.req("GET", `/systems/${id}/brief`)).body.brief.brief;
     expect(brief.assumptions.length).toBeGreaterThanOrEqual(3);
     expect(brief.assumptions.every((x: { source: string }) => x.source === "owner_skip")).toBe(true);
-    expect(brief.capability.map((c: { level: string }) => c.level)).toEqual(["modules", "not_yet"]);
+    expect(brief.capability.map((c: { level: string }) => c.level)).toEqual(["modules", "modules"]);
     const requests = await api.deps
       .pg`select category from platform.development_requests where system_id = ${id}`;
-    expect(requests.map((x) => x.category)).toEqual(["payments"]);
+    expect(requests.map((x) => x.category)).toEqual([]);
     const month = new Date().toISOString().slice(0, 7);
     expect(await capabilityShareByMonth(api.deps.db)).toEqual([
-      { month, briefs: 2, requirements: 4, notYet: 1, share: 0.25 },
+      { month, briefs: 2, requirements: 4, notYet: 0, share: 0 },
     ]);
   });
 });

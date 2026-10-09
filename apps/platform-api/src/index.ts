@@ -243,6 +243,8 @@ export {
   type SnapshotInput,
   type SnapshotResult,
 } from "./publish/snapshot.js";
+/** V3-32: the agent's queue of tasks in apps/worker — the only process with the sandbox pods' Kubernetes token. */
+export { type RepoAgentRunnerOptions, startRepoAgentRunner } from "./repo-agent/runner.js";
 export {
   createDbosDispatcher,
   DBOS_APP,

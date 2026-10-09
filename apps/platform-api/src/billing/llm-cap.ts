@@ -10,7 +10,7 @@
 // founder's own monthly pool (staff orgs) is apart from the monthly cap of clients and eval; the v3 development budget
 // replaces the B2 one from its first day.
 import { sql } from "kysely";
-import type { LlmBalance } from "../config.js";
+import type { Config, LlmBalance } from "../config.js";
 import type { Db } from "../db/index.js";
 import type { OrgKind } from "../db/types.js";
 import { ApiError } from "../errors.js";
@@ -308,4 +308,23 @@ export class LlmMonthlyCap {
   async #once(key: string, a: Parameters<OpsAlertFn>[0]): Promise<void> {
     await alertOnce(this.#o.db, key, this.#o.alert, a);
   }
+}
+
+/** The cap of a process from its config (platform-api; apps/worker runs the repository agent's tasks under it too). */
+export function llmCapOf(config: Config, o: { db: Db; alert?: OpsAlertFn; now?: () => Date }): LlmMonthlyCap {
+  return new LlmMonthlyCap({
+    db: o.db,
+    capRub: config.llmMonthlyCapRub,
+    dailyCapRub: config.llmDailyCapRub,
+    staffReserveRub: config.llmStaffReserveRub,
+    evalDailyCapRub: config.llmEvalDailyCapRub,
+    b2Budget: { budgetRub: config.b2BudgetRub, since: config.b2BudgetSince },
+    // V3-01: the founder's own monthly pool and the v3 development budget (from its first day instead of B2).
+    founderMonthlyCapRub: config.llmFounderMonthlyCapRub,
+    v3Budget: { budgetRub: config.v3BudgetRub, since: config.v3BudgetSince },
+    ...(o.alert ? { alert: o.alert } : {}),
+    balances: config.llmBalances,
+    balanceWarnRub: config.llmBalanceWarnRub,
+    ...(o.now ? { now: o.now } : {}),
+  });
 }

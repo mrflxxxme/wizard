@@ -17,6 +17,7 @@ import {
   requireEnumValue,
   requireField,
 } from "./spec-util.js";
+import { secretMatches } from "./telegram.js";
 import { derivedToken } from "./telegram-api.js";
 import { renderTemplate } from "./templates.js";
 import type { ConnectorCtx, Row, SpecCheckContext } from "./types.js";
@@ -36,6 +37,20 @@ import {
 
 const VAT_CODES = [1, 2, 3, 4, 5, 6, 11, 12] as const;
 
+/**
+ * V3-23: the items of a 54-FZ receipt from the rows of a line entity (an order's goods): name, quantity and the line's
+ * sum; the record's delivery price (deliveryField) is one more item, a service. Without it — one item per payment.
+ */
+const receiptLinesSchema = z.strictObject({
+  entity: ident,
+  /** Ref field of a line to the binding's entity. */
+  refField: ident,
+  nameField: ident,
+  quantityField: ident,
+  /** Sum of the line (price × quantity), money. */
+  amountField: ident,
+});
+
 const receiptSchema = z
   .strictObject({
     customerEmailField: ident.optional(),
@@ -49,6 +64,9 @@ const receiptSchema = z
       },
     ),
     settlePrepaymentOf: ident.optional(),
+    lines: receiptLinesSchema.optional(),
+    /** Money field of the binding's entity: the delivery, a separate service item of the receipt. */
+    deliveryField: ident.optional(),
   })
   .refine((r) => r.customerEmailField || r.customerPhoneField, {
     error: "Для чека нужен email или телефон покупателя: укажите customerEmailField или customerPhoneField",
@@ -67,6 +85,12 @@ const bindingSchema = z.strictObject({
   description: cpText(1, 128),
   returnRoute: z.string().regex(/^\/[a-z0-9/:_-]*$/, { error: "Маршрут страницы возврата начинается с /" }),
   receipt: receiptSchema,
+  /**
+   * V3-23: a string field of the record with its buyer's secret (an order of a visitor without login): POST /api/pay
+   * with this value in `token` starts the payment of a record the caller cannot read. The field is hidden from every
+   * role; the record's data never leaves through the payment.
+   */
+  accessField: ident.optional(),
 });
 
 export const yookassaConfigSchema = z
@@ -199,6 +223,60 @@ export function validateYookassaSpec(config: YookassaConfig, spec: AppSpec, at: 
           if (f) requireEnumValue(pay, f, issues, "yookassa.payment_enum", rel("paymentEntity", "name"), v);
       }
     }
+    const lines = b.receipt.lines;
+    if (lines) {
+      const at = (k: string) => rel("receipt", "lines", k);
+      const le = requireEntity(spec, issues, "yookassa.receipt_lines", at("entity"), lines.entity);
+      if (le) {
+        const ref = requireField(le, issues, "yookassa.receipt_lines_ref", at("refField"), lines.refField, [
+          "ref",
+        ]);
+        if (ref && ref.ref?.entity !== b.entity)
+          issues.add(
+            "yookassa.receipt_lines_ref_target",
+            at("refField"),
+            `Поле «${le.name}.${ref.name}» должно ссылаться на «${b.entity}»`,
+          );
+        requireField(le, issues, "yookassa.receipt_lines_name", at("nameField"), lines.nameField, [
+          "string",
+          "text",
+        ]);
+        requireField(
+          le,
+          issues,
+          "yookassa.receipt_lines_quantity",
+          at("quantityField"),
+          lines.quantityField,
+          ["int", "decimal"],
+        );
+        requireField(le, issues, "yookassa.receipt_lines_amount", at("amountField"), lines.amountField, [
+          "money",
+        ]);
+      }
+    }
+    if (entity && b.receipt.deliveryField)
+      requireField(
+        entity,
+        issues,
+        "yookassa.receipt_delivery",
+        rel("receipt", "deliveryField"),
+        b.receipt.deliveryField,
+        ["money"],
+      );
+    if (entity && b.accessField) {
+      const f = requireField(entity, issues, "yookassa.access_field", rel("accessField"), b.accessField, [
+        "string",
+      ]);
+      if (f)
+        spec.permissions.forEach((p) => {
+          if (p.entity === b.entity && p.ops.includes("read") && !(p.hiddenFields ?? []).includes(f.name))
+            issues.add(
+              "yookassa.access_visible",
+              rel("accessField"),
+              `Роль «${p.role}» видит ключ доступа «${b.entity}.${f.name}»: добавьте поле в hiddenFields`,
+            );
+        });
+    }
     const settle = b.receipt.settlePrepaymentOf;
     if (settle !== undefined && (settle === b.id || !ids.includes(settle))) {
       issues.add(
@@ -304,8 +382,79 @@ function describe(b: YookassaBinding, record: Row): string {
   return [...text].slice(0, 128).join("") || "Оплата";
 }
 
-/** 54-FZ receipt: customer contact from the record on the server, one item (yookassa.yaml#runtime_endpoint.receipt). */
-function receiptFor(
+/** Item of a 54-FZ receipt (YooKassa: `amount` is the price of one unit). */
+interface ReceiptItem {
+  description: string;
+  quantity: string | number;
+  amount: { value: string; currency: string };
+  vat_code: number;
+  payment_mode: "full_prepayment" | "full_payment";
+  payment_subject: "commodity" | "service";
+}
+
+/** The delivery item of a receipt with lines (a service). */
+export const RECEIPT_DELIVERY_ITEM = "Доставка";
+
+/**
+ * V3-23: the receipt items of a record's lines (+ the delivery as a service) when they add up to `amount` exactly;
+ * null — no lines configured, none found, or the sum differs (a partial refund): the receipt keeps one item.
+ */
+async function lineItems(
+  ctx: ConnectorCtx,
+  b: YookassaBinding,
+  record: Row,
+  amount: number,
+  paymentMode: "full_prepayment" | "full_payment",
+): Promise<ReceiptItem[] | null> {
+  const l = b.receipt.lines;
+  if (!l) return null;
+  const rows = await ctx.db.list(l.entity, { where: { [l.refField]: record.id } });
+  const items: ReceiptItem[] = [];
+  let total = 0;
+  for (const row of rows) {
+    const qty = Number(row[l.quantityField] ?? 0);
+    const sum = kop(row[l.amountField]);
+    if (!(qty > 0) || !(sum > 0)) continue;
+    const name = [
+      ...String(row[l.nameField] ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    ]
+      .slice(0, 128)
+      .join("");
+    // A unit price in whole kopecks keeps the quantity; otherwise the line is one item of its sum.
+    const whole = Number.isInteger(qty) && sum % qty === 0;
+    items.push({
+      description: name || "Товар",
+      quantity: whole ? qty : 1,
+      amount: rub((whole ? sum / qty : sum) / 100),
+      vat_code: b.receipt.vatCode,
+      payment_mode: paymentMode,
+      payment_subject: b.receipt.paymentSubject,
+    });
+    total += sum;
+  }
+  const delivery = b.receipt.deliveryField ? kop(record[b.receipt.deliveryField]) : 0;
+  if (delivery > 0) {
+    items.push({
+      description: RECEIPT_DELIVERY_ITEM,
+      quantity: 1,
+      amount: rub(delivery / 100),
+      vat_code: b.receipt.vatCode,
+      payment_mode: paymentMode,
+      payment_subject: "service",
+    });
+    total += delivery;
+  }
+  return items.length > 0 && items.length <= 100 && total === kop(amount) ? items : null;
+}
+
+/**
+ * 54-FZ receipt: customer contact from the record on the server; the record's lines when the binding names them and
+ * they add up to the amount, else one item (yookassa.yaml#runtime_endpoint.receipt).
+ */
+async function receiptFor(
+  ctx: ConnectorCtx,
   b: YookassaBinding,
   record: Row,
   amount: number,
@@ -322,19 +471,32 @@ function receiptFor(
   if (!customer.email && !customer.phone) {
     throw new ConnectorError("INVALID_REQUEST", "Для чека нужен email или телефон покупателя в заказе");
   }
-  return {
-    customer,
-    items: [
-      {
-        description,
-        quantity: "1",
-        amount: rub(amount),
-        vat_code: r.vatCode,
-        payment_mode: paymentMode,
-        payment_subject: r.paymentSubject,
-      },
-    ],
+  const single: ReceiptItem = {
+    description,
+    quantity: "1",
+    amount: rub(amount),
+    vat_code: r.vatCode,
+    payment_mode: paymentMode,
+    payment_subject: r.paymentSubject,
   };
+  return { customer, items: (await lineItems(ctx, b, record, amount, paymentMode)) ?? [single] };
+}
+
+/**
+ * V3-23: the buyer's secret (`token` of POST /api/pay) matches the record's accessField of the binding, in constant
+ * time; false when the binding has no accessField or the record no secret.
+ */
+export function yookassaAccessMatches(
+  config: YookassaConfig,
+  binding: string,
+  record: Row,
+  token: string,
+): boolean {
+  const b = config.bindings.find((x) => x.id === binding);
+  const expected = b?.accessField ? record[b.accessField] : undefined;
+  return (
+    typeof expected === "string" && expected.length >= 16 && token !== "" && secretMatches(token, expected)
+  );
 }
 
 async function ownerEvent(
@@ -404,7 +566,7 @@ export async function startPayment(
       },
       description,
       metadata: { system: ctx.system.id, env: ctx.system.env, binding: b.id, recordId: row.id },
-      receipt: receiptFor(b, row, amount, b.receipt.paymentMode, description),
+      receipt: await receiptFor(ctx, b, row, amount, b.receipt.paymentMode, description),
     };
     const p = await withRetries(() => createPayment(ctx, body, key));
     const url = p.confirmation?.confirmation_url;
@@ -601,7 +763,14 @@ async function ensureSettlementReceipt(
     return;
   }
   const amount = Number(prepay.row.amount);
-  const r = receiptFor(prepayBinding, record, amount, "full_payment", describe(prepayBinding, record));
+  const r = await receiptFor(
+    ctx,
+    prepayBinding,
+    record,
+    amount,
+    "full_payment",
+    describe(prepayBinding, record),
+  );
   const body = {
     type: "payment",
     payment_id: String(prepay.row.provider_payment_id),
@@ -823,7 +992,7 @@ async function refund(ctx: ConnectorCtx, input: z.infer<typeof refundInput>) {
     const body: Record<string, unknown> = {
       payment_id: paymentId,
       amount: rub(amount),
-      receipt: receiptFor(b, record, amount, b.receipt.paymentMode, describe(b, record)),
+      receipt: await receiptFor(ctx, b, record, amount, b.receipt.paymentMode, describe(b, record)),
     };
     if (input.reason) body.description = input.reason;
     const rf = await createRefund(ctx, body, `refund:${ctx.system.id}:${ctx.idempotencyKey}`);

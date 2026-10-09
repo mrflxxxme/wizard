@@ -31,9 +31,35 @@ interface NotYetRule {
   category: DevelopmentRequestCategory;
   /** The closest replacement the build makes instead (D73). */
   substitute: string;
+  /**
+   * V3-23: the module that closes this need in a shop's context (SHOP_CONTEXT): with it available the rule does not
+   * apply there — «Интернет-магазин» takes the cart, the payment and receipts, СДЭК and the courier, the stock.
+   */
+  module?: "shop";
 }
 
-/** What the platform cannot do yet (D73, gaps.ts PLATFORM_LIMITS; the shop of D77 (12) comes with wave B). */
+/** Words of a shop's requirement (goods, a cart, an order, delivery, the stock): the shop module closes its needs. */
+const SHOP_CONTEXT = stems(
+  "корзин",
+  "товар",
+  "магазин",
+  "покупател",
+  "заказ",
+  "доставк",
+  "сдэк",
+  "cdek",
+  "курьер",
+  "самовывоз",
+  "остатк",
+  "склад",
+  "чек(?:и|ов|а|ом)?(?![\\p{L}])",
+  "54-фз",
+  "юkassa",
+  "юкасс",
+  "yookassa",
+);
+
+/** What the platform cannot do yet (D73, gaps.ts PLATFORM_LIMITS); the shop's needs — with «Интернет-магазин» (V3-23). */
 const NOT_YET: readonly NotYetRule[] = [
   {
     re: stems(
@@ -51,21 +77,36 @@ const NOT_YET: readonly NotYetRule[] = [
     ),
     category: "payments",
     substitute: "заказ или заявка с суммой; оплата по счёту или ссылке вне системы",
+    module: "shop",
   },
   {
     re: stems("чек(?:и|ов|а|ом)?(?![\\p{L}])", "54-фз", "онлайн-касс", "фискальн"),
     category: "payments",
     substitute: "чеки выдаёт ваша касса вне системы",
+    module: "shop",
   },
   {
-    re: stems("доставк", "сдэк", "cdek", "boxberry", "почт\\S*\\s+росси", "курьер"),
+    // Only СДЭК, the shop's courier and self-pickup are built in: other delivery services stay a development request.
+    re: stems("boxberry", "почт\\S*\\s+росси", "dpd(?![\\p{L}])", "пэк(?![\\p{L}])", "деловы\\S*\\s+лини"),
+    category: "integration",
+    substitute: "доставка СДЭК, курьер магазина или самовывоз",
+  },
+  {
+    re: stems("доставк", "сдэк", "cdek", "курьер"),
     category: "integration",
     substitute: "самовывоз или доставка по договорённости: адрес и способ — в заказе",
+    module: "shop",
   },
   {
-    re: stems("остатк", "складск", "на склад", "мойсклад", "мой склад"),
+    re: stems("остатк", "складск", "на склад"),
     category: "other",
     substitute: "наличие отмечает владелец в каталоге",
+    module: "shop",
+  },
+  {
+    re: stems("мойсклад", "мой склад"),
+    category: "integration",
+    substitute: "входящие вебхуки, исходящие запросы к их API и импорт таблиц",
   },
   {
     re: stems(
@@ -136,6 +177,33 @@ const CUSTOM = stems(
 
 /** Word stems of the ready catalog modules; the first module that matches closes the requirement. */
 const MODULE_RULES: readonly { module: string; re: RegExp }[] = [
+  {
+    // V3-23 «Интернет-магазин»: before «Каталог и прайс» — goods with a cart are the shop's showcase.
+    module: "shop",
+    re: stems(
+      "корзин",
+      "интернет-магазин",
+      "онлайн-магазин",
+      "покупател",
+      "оформ\\S*\\s+заказ",
+      "онлайн[- ]?оплат",
+      "оплат\\S*(?:\\s+\\S+)?\\s+(?:онлайн|на сайте|картой|по карте|через сайт)",
+      "оплач\\S*(?:\\s+\\S+)?\\s+(?:онлайн|на сайте|картой|по карте|через сайт)",
+      "юkassa",
+      "юкасс",
+      "yookassa",
+      "чек(?:и|ов|а|ом)?(?![\\p{L}])",
+      "54-фз",
+      "доставк",
+      "сдэк",
+      "cdek",
+      "курьер",
+      "самовывоз",
+      "остатк",
+      "складск",
+      "на склад",
+    ),
+  },
   {
     module: "leads",
     re: stems(
@@ -278,10 +346,15 @@ export function requirementLevel(
   registry: ModuleRegistry = DEFAULT_REGISTRY,
 ): CapabilityVerdict {
   const t = normText(req.text);
-  const no = earliest(NOT_YET, t);
+  const ok = availableModules(registry);
+  // A shop's requirement (goods, a cart, an order, delivery…) with «Интернет-магазин» available: its rules close it.
+  const shop = ok.has("shop") && (req.moduleHint === "shop" || SHOP_CONTEXT.test(t));
+  const no = earliest(
+    NOT_YET.filter((r) => !(shop && r.module === "shop")),
+    t,
+  );
   if (no) return { level: "not_yet", category: no.category, substitute: no.substitute };
   if (CUSTOM.test(t)) return { level: "custom" };
-  const ok = availableModules(registry);
   if (req.moduleHint && ok.has(req.moduleHint)) return { level: "modules", module: req.moduleHint };
   const hit = earliest(
     MODULE_RULES.filter((r) => ok.has(r.module)),

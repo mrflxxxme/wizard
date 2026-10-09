@@ -9,7 +9,11 @@
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-Wizard-Request": "1" },
-      body: JSON.stringify({ binding: button.dataset.binding, id: button.dataset.id }),
+      body: JSON.stringify({
+        binding: button.dataset.binding,
+        id: button.dataset.id,
+        ...(button.dataset.token ? { token: button.dataset.token } : {}),
+      }),
     })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((out) => {

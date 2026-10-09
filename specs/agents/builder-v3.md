@@ -87,13 +87,15 @@
   - Форма заявки: корень `LeadForm`, поля `wz-field-<имя>`; форма в шагах — `data-wz-step`/`data-wz-steps` у `<form>`.
   - Форма записи: корень `BookingForm` + `booking-page`; шаги `booking-service|specialist|day|time`, время `booking-slots`, контакты `booking-form`, «Далее» `booking-next`, итог `booking-done`, пусто `wz-empty`.
   - Позиция каталога: `wz-itemcard`, её действие `wz-itemcard-cta`.
+  - Магазин (V3-23, `needs: cart`, типы секций `shop`, `cart`, `order`): витрина — корень `ShopProducts`, товар `wz-product[data-wz-product=<id>]`, «В корзину» `wz-cart-add`, ссылка на корзину `wz-cart-link`; корзина — `ShopCart`, строка `wz-cart-line[data-wz-product]`, `wz-cart-dec|inc|remove`, `wz-cart-total`; оформление — `ShopCheckout` с `<form>`, поля `wz-field-delivery|pickup_point|cdek_city|cdek_point|name|phone|email|address|comment` (выбор — радио или `<select>`), `wz-cdek-find`, `wz-cdek-quote`, `wz-consent`, `wz-checkout-total`, `wz-checkout-submit`; заказ — `ShopOrder`, `wz-order-number|status|line|delivery|total|pay`, пусто `wz-empty`. Секции магазина на своих страницах (`/shop`, `/cart`, `/order/:id`) — заголовок страницы (`level: 1`), витрина на главной — `level: 2`.
   - Перенос записи по ссылке письма (`?reschedule=<токен>&service=…`, как страница v2): заголовок «Перенос записи», выбранная услуга (и специалист) — текстом в `booking-service`/`booking-specialist`, вместо контактов — `booking-move` со ссылкой «Перенести на это время» на `/_wizard/hooks/message/reschedule/<токен>?starts_at=…&ends_at=…`.
   - Кабинет клиента (секция `account`, паттерны `account-*`): корень `ClientCabinet`, заголовок — h1 страницы; запись — `wz-datatable-row`, раздел — вкладка `wz-cabinet-tab-<id>`, пусто — `wz-empty`; гостю — вход по коду.
   - Корень с `data-wz-component` получает `data-wz-id` из пропа `wzId`; проп ставит сборка (`ui-kit.yaml#wz_id`).
 
 ### C4. Headless-хуки модулей — `@wizard/ui-kit` (`src/v3/headless/`)
 
-`useLeadForm(entity)`, `useBooking(…)`, `useCatalog(…)`, `useContent(…)` (позже `useCart(…)`).
+`useLeadForm(entity)`, `useBooking(…)`, `useCatalog(…)`, `useContent(…)`, магазин (V3-23): `useShopCatalog(entity, {fields, pageSize})`, `useCart()`, `useCheckout(ShopFrontConfig)`, `useOrder({path, payment})`.
+- Магазин (V3-23): корзина — в `localStorage` браузера (`wz-cart:v1`, одна на все секции и страницы); цены и остатки заказа считает функция модуля `shopPlaceOrder` на сервере, страница передаёт только товары, количества, способ получения и контакты с согласием; секрет покупателя (48 символов, `crypto.getRandomValues`) открывает страницу заказа и его оплату (`/api/pay … token`), хранится в браузере (`wz-shop-orders:v1`); ссылка с `?t=<секрет>` открывает заказ на другом устройстве. Конфигурация оформления — `publicFront.actions[].shop` бэкенд-компиляции.
 - Данные, права, согласие на ПДн (G2-PII-04) и состояния — поверх `@wizard/sdk`; разметки нет.
 - Паттерны с `needs` подключают эти хуки. Так визуал генерируется, а логика остаётся модульной.
 - V3-18:

@@ -337,6 +337,32 @@ const BLOCK = {
       { spec: [{ op: "set", path: "/app/name", value: "Мир — карта лояльности" }] },
     ),
   },
+  // abuse.yaml#patterns.brands.match.identity_means (V3-23): naming a means is fine, posing as the brand is not.
+  "brand-means-login-title": {
+    check: "G2-AF-04",
+    description: "title «ЮKassa — вход» при подключённой ЮKassa: интеграция не разрешает бренд в identity",
+    ...withPage(F, { title: "ЮKassa — вход" }),
+  },
+  "brand-means-official": {
+    check: "G2-AF-04",
+    description: "app.name «СДЭК официальный сайт: отследить заказ»",
+    spec: [{ op: "set", path: "/app/name", value: "СДЭК официальный сайт: отследить заказ" }],
+  },
+  "brand-means-lookalike": {
+    check: "G2-AF-04",
+    description: "app.name с похожим написанием «… с оплатой ЮKasa» — средство не признаётся",
+    spec: [{ op: "set", path: "/app/name", value: "Посуда ручной работы с оплатой ЮKasa" }],
+  },
+  "brand-means-leading": {
+    check: "G2-AF-04",
+    description: "app.name «Доставка СДЭК: оплата заказа» — бренд без своего имени системы",
+    spec: [{ op: "set", path: "/app/name", value: "Доставка СДЭК: оплата заказа" }],
+  },
+  "brand-means-repeat": {
+    check: "G2-AF-04",
+    description: "app.name «ЮKassa: магазин с оплатой ЮKassa» — первое вхождение бренда — подлежащее",
+    spec: [{ op: "set", path: "/app/name", value: "ЮKassa: магазин с оплатой ЮKassa" }],
+  },
   // G2-AF-05 — data leaves
   "ext-form-action": {
     check: "G2-AF-05",
@@ -610,6 +636,24 @@ Object.assign(ALLOW, {
         button("Оплатить через ЮKassa"),
       ].join("\n"),
     }),
+  },
+  "req-brand-means-shop": {
+    description:
+      "V3-23: app.name «Гончарная лавка с оплатой через ЮKassa», title «Доставка СДЭК и оплата ЮKassa» без integrations[cdek]",
+    ...merge(
+      { spec: [{ op: "set", path: "/app/name", value: "Гончарная лавка с оплатой через ЮKassa" }] },
+      withPage(F, { title: "Доставка СДЭК и оплата ЮKassa" }),
+    ),
+  },
+  "req-brand-means-list": {
+    description: "V3-23: app.name «Цветочная лавка: оплата ЮKassa или СБП, доставка СДЭК до пункта выдачи»",
+    spec: [
+      {
+        op: "set",
+        path: "/app/name",
+        value: "Цветочная лавка: оплата ЮKassa или СБП, доставка СДЭК до пункта выдачи",
+      },
+    ],
   },
   "req-mir-sweets": {
     description: "app.name «Мир сладостей» (название и текст), страница «Открытие сезона»",

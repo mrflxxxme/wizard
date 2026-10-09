@@ -96,6 +96,18 @@ describe("compatibility report «что сможем / не сможем»", () 
       expect(agentAllowed(r.report)).toBe(true);
     });
 
+  test("a runner that fails (not the repository): the error goes up and its workspace is closed", async () => {
+    const fx = fixture("vite-react-pnpm");
+    const sb = new FakeSandbox(fx.sandbox);
+    const open = sb.open.bind(sb);
+    sb.open = async (s) => {
+      const ws = await open(s);
+      return { ...ws, run: async () => Promise.reject(new Error("sandbox pod did not start")) };
+    };
+    await expect(runCompatCheck(snapshotOfFixture("vite-react-pnpm"), sb)).rejects.toThrow(/did not start/);
+    expect([sb.opened, sb.closed]).toEqual([1, 1]);
+  });
+
   test("no lockfile: incompatible, the reason names the lockfiles; nothing runs", async () => {
     const r = await check("vite-react-no-lockfile");
     expect(r.report.verdict).toBe("incompatible");

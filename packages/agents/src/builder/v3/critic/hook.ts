@@ -255,7 +255,7 @@ export async function runCritic(ctx: V3BuildContext, o: CriticOptions): Promise<
   const seed = `${ctx.design.seed}:${ctx.systemId}`;
 
   const layerOf = (st: CriticState) =>
-    siteFiles(st.site, facts.name, st.design, ctx.files, signatures, library);
+    siteFiles(st.site, facts.copy.site, st.design, ctx.files, signatures, library);
   const filesOf = (st: CriticState) => merged(ctx.files, layerOf(st));
   const timeLeft = () => now() - t0 < timeMs;
   const canInspect = () => report.inspections < maxInspections && timeLeft();

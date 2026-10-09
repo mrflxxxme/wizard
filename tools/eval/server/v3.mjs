@@ -30,6 +30,16 @@ export const V3_DEFAULTS = {
   concurrency: 2,
   timeoutsMin: { interview: 20, build: 40, publish: 30 },
 };
+/**
+ * The owner's data of the personal data operator (G2-PII-06, setCompliance): the build cannot invent them, the owner
+ * gives them before publishing (the cabinet's settings, «Персональные данные»). The driver fills them as the owner would,
+ * with clearly fake values — «ready» measures the system, not missing owner data (checkpoint 2026-10-09: 0 of 4).
+ */
+export const V3_TEST_OPERATOR = {
+  operatorName: "ИП Тестов Т. Т.",
+  operatorContact: "operator@test.example",
+  operatorAddress: "г. Тестовск, ул. Тестовая, д. 1 (тестовые данные замера)",
+};
 /** The reserved option of a v3 question (agents interview-v3 DELEGATE_OPTION_ID). */
 export const DELEGATE = "delegate";
 /** The owner's line when the interview waits for a free text and the brief has nothing more to say. */
@@ -274,7 +284,43 @@ export function newV3Result(brief) {
     brief: null,
     coverage: null,
     techreview: null,
+    owner: { operator: null },
   };
+}
+
+/**
+ * The owner's step before publishing: the operator's data the system asks for (publishBlockers OPERATOR_*), filled
+ * through PUT /systems/:id/compliance as the cabinet's settings do. → {filled, revision, blockers}; never throws.
+ */
+export async function fillOwnerOperator(client, systemId, say = () => {}) {
+  try {
+    const s = (await client.get(`/systems/${systemId}`)).body;
+    const need = (s.publishBlockers ?? []).filter((b) => /^OPERATOR_/.test(String(b)));
+    if (!need.length) return { filled: false, revision: null, blockers: [] };
+    const res = await client.put(`/systems/${systemId}/compliance`, {
+      expectedVersion: s.system.draftRevision,
+      ...V3_TEST_OPERATOR,
+    });
+    const revision = res.body?.revision?.version ?? null;
+    say(`владелец указал данные оператора ПДн (тестовые): ревизия ${revision ?? "—"}`);
+    return { filled: true, revision, blockers: need };
+  } catch (e) {
+    say(`данные оператора ПДн не сохранены: ${e?.message ?? e}`);
+    return { filled: false, revision: null, blockers: [], error: String(e?.message ?? e).slice(0, 300) };
+  }
+}
+
+/**
+ * G0–G2 of the latest reports as the owner sees them: the build's G2 ran before the owner gave the operator's data,
+ * so its G2-PII-06 is the owner's action (filled since), not a blocker of the system.
+ */
+export function ownerGates(latest, operator, o = {}) {
+  const g = summarizeGates(latest, o);
+  if (!operator?.filled || o.beforePublish) return g;
+  const g2 = g.G2?.revision ?? null;
+  return g2 !== null && operator.revision !== null && g2 >= operator.revision
+    ? g
+    : summarizeGates(latest, { ...o, beforePublish: true });
 }
 
 /** v3 readiness: the build succeeded, G0–G2 without blockers, no techreview blocker, every «must» scenario passed. */
@@ -434,11 +480,13 @@ export async function driveV3Brief(ctx, brief, r = newV3Result(brief)) {
       `сборка ${build.status === "succeeded" ? "завершилась" : `не завершилась (${failure(build)})`}: ${r.build.minutes ?? "—"} мин, превью через ${r.build.previewMinutes ?? "—"} мин, сценарии ${r.build.scenarios.passed} из ${r.build.scenarios.total}, ≈ ${r.build.spentRub ?? "—"} ₽`,
     );
 
-    // 5. G0–G2 and the first publication (on the pilot it waits for the founder's review).
-    let gates = summarizeGates(await latestGates());
+    // 5. The owner's data before publishing (the operator of personal data), then G0–G2 and the first publication
+    // (on the pilot it waits for the founder's review).
+    if (build.status === "succeeded") r.owner.operator = await fillOwnerOperator(client, id(), say);
+    let gates = ownerGates(await latestGates(), r.owner.operator);
     if (ctx.g2 === "publish" && build.status === "succeeded" && gates.G0?.passed && gates.G1?.passed) {
       r.publish = await probeG2(ctx, r, waitRun, say);
-      gates = summarizeGates(await latestGates());
+      gates = ownerGates(await latestGates(), r.owner.operator);
     } else {
       r.publish = { status: ctx.g2 === "publish" ? "not_publishable" : "skipped" };
       gates = summarizeGates(await latestGates(), { beforePublish: true });
