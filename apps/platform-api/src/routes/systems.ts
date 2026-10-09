@@ -19,6 +19,7 @@ import { orgDemoReplay, requireDemoScenario } from "../runs/demo-replay.js";
 import { withTx } from "../runs/events.js";
 import { latestGateReports } from "../runs/gates.js";
 import { insertRun, TERMINAL_STATUSES } from "../runs/queue.js";
+import { assertNoSecretInText } from "../secrets-v3/guard.js";
 import { processLogo } from "../services/logo.js";
 import { insertMessage } from "../services/messages.js";
 import { orgPipeline, systemPipeline } from "../services/plans.js";
@@ -140,6 +141,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
     const orgId = b.orgId ?? user.defaultOrgId;
     if (!user.orgs.has(orgId)) throw new ApiError("FORBIDDEN", "Нет доступа к организации");
     checkOrgAccess(user, orgId, "editor", "Организация");
+    // V3-21: a key typed into the first phrase is refused before anything is stored or sent to a model.
+    assertNoSecretInText(b.prompt);
     // B2-02: in demo replay only a recorded scenario can start (422 with the list, no model is called).
     const demo = (await orgDemoReplay(d.db, orgId)) ? requireDemoScenario(b.prompt) : null;
     const out = await tx(async (t) => {
@@ -290,6 +293,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         block: blockSchema.optional(),
       }),
     );
+    // V3-21: a key typed as text is refused (not stored, not sent to a model); the page offers the key window.
+    assertNoSecretInText(b.text);
     if (b.target) return pointEdit(c, user, s0, b.text, b.target);
     const block = b.block;
     const out = await tx(async (t) => {
@@ -440,6 +445,8 @@ export function systemRoutes(d: Deps): Hono<AppEnv> {
         restByRecommendation: z.boolean().default(false),
       }),
     );
+    // V3-21: an answer in own words with a key is refused like a message.
+    assertNoSecretInText(...(b.answers ?? []).map((a) => a.text));
     const out = await tx(async (t) => {
       const s = await lockSystem(t, s0.id);
       if (s.stage === "building") throw new ApiError("SYSTEM_LOCKED", "Идёт сборка — дождитесь её окончания");

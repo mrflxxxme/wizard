@@ -90,6 +90,8 @@ const V3_TABLES = [
 V3_TABLES.push("byok_consents", "byok_keys");
 // V3-20: system API keys, their audit, outgoing integration contracts (migration 0039).
 V3_TABLES.push("system_api_keys", "system_api_calls", "system_integration_contracts");
+// V3-21: key windows and the keys they left (migration 0042).
+V3_TABLES.push("secret_windows", "secret_bindings");
 /** Columns beyond db.yaml (none: card_fingerprint, payments.meta and draft_purge_notice_at are in db.yaml since the 2026-10-01 spec sync). */
 const EXTRA_COLUMNS: Record<string, Record<string, { type: string; notNull: boolean }>> = {};
 const checked = [
@@ -210,5 +212,79 @@ describe("migrations vs db.yaml", () => {
         ${cost}, 0, false, 'live', ${byok})`;
     await row(true, 0);
     await expect(row(true, 1.5)).rejects.toThrow(/llm_calls_byok_free/);
+  });
+
+  test("0042 (V3-21): secret_* under forced RLS by org; one open window per key; a closed window keeps no key; gone with the system", async () => {
+    const rls = await h.pg<{ relname: string; on: boolean; forced: boolean }[]>`
+      select c.relname, c.relrowsecurity as on, c.relforcerowsecurity as forced
+      from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'platform' and c.relname in ('secret_bindings', 'secret_windows') order by c.relname`;
+    expect(rls).toEqual([
+      { relname: "secret_bindings", on: true, forced: true },
+      { relname: "secret_windows", on: true, forced: true },
+    ]);
+    const [sys] = await h.pg`
+      insert into platform.systems (org_id, slug, schema_key, name, pending_questions, created_by)
+      values (${DEFAULT_ORG_ID}, 'key-window-mig', 'a0b1c2d3e4f5', 'Окно ключа', '[]'::jsonb, ${DEV_USER_ID})
+      returning id`;
+    const systemId = sys?.id as string;
+    // A role without SUPERUSER/BYPASSRLS, as the platform login is in the cloud (the test login is a superuser).
+    await h.pg.unsafe(`DO $$ BEGIN
+      CREATE ROLE wz_secret_rls_probe NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`);
+    await h.pg.unsafe("GRANT USAGE ON SCHEMA platform TO wz_secret_rls_probe");
+    await h.pg.unsafe(
+      "GRANT SELECT, INSERT, UPDATE ON platform.secret_windows, platform.secret_bindings TO wz_secret_rls_probe",
+    );
+    const as = <T>(org: string | null, fn: (tx: typeof h.pg) => Promise<T>) =>
+      h.pg.begin(async (tx) => {
+        await tx`set local role wz_secret_rls_probe`;
+        if (org) await tx`select pg_catalog.set_config('wizard.org_id', ${org}, true)`;
+        return fn(tx as unknown as typeof h.pg);
+      }) as Promise<T>;
+    const scoped = <T>(fn: (tx: typeof h.pg) => Promise<T>) => as(DEFAULT_ORG_ID, fn);
+    const visible = async (org: string | null) =>
+      (await as(org, (tx) => tx`select id from platform.secret_windows where system_id = ${systemId}`))
+        .length;
+    const window = (tx: typeof h.pg, extra = "") =>
+      tx.unsafe(
+        `insert into platform.secret_windows (org_id, system_id, env, name, integration_id, hosts, purpose, requested_by,
+           expires_at, public_jwk, sealed_private, wrapped_dek, kek_backend, kek_name ${extra ? ", status, closed_at" : ""})
+         values ($1, $2, 'draft', 'crm_key', 'crm', '["api.partner-crm.ru"]', 'Подключить CRM', 'agent',
+           pg_catalog.now() + interval '1 day', '{"kty":"EC"}', 'AAAA', 'local:v1:AAAA', 'local', 'secret-window'
+           ${extra ? ", 'filled', pg_catalog.now()" : ""})
+         returning id`,
+        [DEFAULT_ORG_ID, systemId],
+      );
+    const [w] = await scoped((tx) => window(tx));
+    expect(w?.id).toBeTruthy();
+    // Outside the org scope (or in another org's) the rows are invisible and cannot be written.
+    expect(await visible(DEFAULT_ORG_ID)).toBe(1);
+    expect(await visible(null)).toBe(0);
+    expect(await visible("00000000-0000-4000-8000-0000000000aa")).toBe(0);
+    await expect(as(null, (tx) => window(tx))).rejects.toThrow(/row-level security/);
+    // One open window per (system, env, name); a used window keeps neither half of the key pair.
+    await expect(scoped((tx) => window(tx))).rejects.toThrow(/secret_windows_open_key/);
+    await expect(scoped((tx) => window(tx, "filled"))).rejects.toThrow(/secret_windows_shredded/);
+    await scoped(
+      (tx) => tx`
+        insert into platform.secret_bindings (org_id, system_id, env, name, integration_id, hosts, last4, status, window_id)
+        values (${DEFAULT_ORG_ID}, ${systemId}, 'draft', 'crm_key', 'crm', '["api.partner-crm.ru"]'::jsonb, 'abcd', 'ok',
+                ${w?.id as string})`,
+    );
+    await expect(
+      scoped(
+        (tx) => tx`
+          insert into platform.secret_bindings (org_id, system_id, env, name, hosts, last4, status)
+          values (${DEFAULT_ORG_ID}, ${systemId}, 'prod', 'crm_key', '["a.ru"]'::jsonb, 'abcde', 'ok')`,
+      ),
+    ).rejects.toThrow(/last4/);
+    await h.pg`delete from platform.systems where id = ${systemId}`;
+    const left = await scoped(
+      (tx) => tx`
+        select (select count(*) from platform.secret_windows where system_id = ${systemId})::int as w,
+               (select count(*) from platform.secret_bindings where system_id = ${systemId})::int as b`,
+    );
+    expect(left[0]).toEqual({ w: 0, b: 0 });
   });
 });

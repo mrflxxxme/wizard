@@ -197,6 +197,12 @@ export async function purgeDeletedSystems(d: PurgeDeps, now = new Date()): Promi
         await tx`delete from platform.imports where system_id = ${s.id}`;
         await tx`delete from platform.exports where system_id = ${s.id}`;
         await tx`delete from platform.secrets_refs where system_id = ${s.id}`;
+        // V3-21: key windows and key bindings (RLS FORCE by org: scoped to the system's org in this transaction).
+        await tx`
+          select pg_catalog.set_config('wizard.org_id',
+            (select s.org_id::text from platform.systems s where s.id = ${s.id}), true)`;
+        await tx`delete from platform.secret_bindings where system_id = ${s.id}`;
+        await tx`delete from platform.secret_windows where system_id = ${s.id}`;
         if (own.length) await tx`delete from platform.files where sha256 in ${tx(own)}`;
         // One entry per dropped schema; a system that never got a schema still gets its marker.
         const entries = dropped.length ? dropped : [{ env: "draft", schema: "", rows: 0 }];

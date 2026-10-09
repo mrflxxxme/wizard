@@ -1388,6 +1388,91 @@ paths:
         '200': {description: Запросы, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {type: object, required: [method, target, status, durationMs, at], properties: {method: {type: string}, target: {type: string}, status: {type: integer}, durationMs: {type: integer}, at: {type: string, format: date-time}}}}}}}}}
         '404': {$ref: '#/components/responses/Error'}
   # ==== конец блока V3-20 ====
+  # ==== V3-21: окно ключа в чате (security/data-boundary.yaml#secret_window; db.yaml secret_windows, secret_bindings). Ключ текстом в чате (postMessage, postAnswers, createSystem) → 400 VALIDATION_FAILED details.reason = SECRET_IN_TEXT, details.kinds — виды находок без значения; сообщение не сохраняется и в модель не уходит ====
+  /systems/{id}/secrets:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    get:
+      operationId: listSystemSecrets
+      x-milestone: V3
+      x-roles: [viewer]
+      summary: 'V3-21: ключи системы, введённые через окно (имя secret://, окружение, интеграция, хосты получателя, последние 4 символа, версия, проверка — никогда значение), открытые окна и исходящие интеграции брифа с отметкой, есть ли ключ. Cache-Control: no-store'
+      responses:
+        '200': {description: Ключи, окна, нужные ключи, content: {application/json: {schema: {type: object, required: [items, windows, needed], properties: {items: {type: array, items: {$ref: '#/components/schemas/SystemSecret'}}, windows: {type: array, items: {$ref: '#/components/schemas/SecretWindow'}}, needed: {type: array, items: {type: object, required: [integrationId, integrationName, name, secretRef, hosts, present, keyless, account], properties: {integrationId: {type: string}, integrationName: {type: string}, name: {type: string}, secretRef: {type: string, pattern: '^secret://[a-z0-9_]+$'}, hosts: {type: [array, 'null'], items: {type: string}, description: 'хосты контракта; null — контракта нет, окно не открыть'}, present: {type: boolean}, keyless: {type: boolean}, account: {description: 'паспорт с аккаунтом (amoCRM, Битрикс24) без указанного аккаунта: ключ уйдёт на аккаунт, который владелец введёт в окне; hosts пока — заглушка', oneOf: [{type: 'null'}, {type: object, required: [label_ru, suffixes], properties: {label_ru: {type: string}, suffixes: {type: array, items: {type: string}}}}]}}}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/secret-windows:
+    parameters: [{$ref: '#/components/parameters/systemId'}]
+    post:
+      operationId: openSecretWindow
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: человек открывает окно ключа для исходящей интеграции брифа. Имя ключа и хосты — из последнего контракта V3-20 (без контракта — 400 NO_CONTRACT: не видно, куда уйдёт ключ). Открытое окно того же ключа с теми же хостами возвращается (200), иначе новое (201). Ответ — окно с публичным ключом P-256 (пара создаётся при первом чтении, закрытая половина запечатана KMS)'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [integrationId], additionalProperties: false, properties: {integrationId: {type: string, pattern: '^[a-z][a-z0-9_]{0,39}$'}, env: {enum: [draft, prod], default: draft}}}}
+      responses:
+        '200': {description: Открытое окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
+        '201': {description: Новое окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
+        '400': {description: 'VALIDATION_FAILED — NO_CONTRACT, KEYLESS, HOST', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/secret-windows/{windowId}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: windowId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getSecretWindow
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: открытое окно (в том числе открытое агентом через request_secret) с публичным ключом P-256 и контекстом шифрования; закрытое, использованное или устаревшее — 400 WINDOW_CLOSED'
+      responses:
+        '200': {description: Окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindowKey'}}}}}}
+        '400': {description: VALIDATION_FAILED — WINDOW_CLOSED, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: cancelSecretWindow
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: закрыть окно без ключа — пара ключей окна уничтожается'
+      responses:
+        '200': {description: Окно, content: {application/json: {schema: {type: object, required: [window], properties: {window: {$ref: '#/components/schemas/SecretWindow'}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/secret-windows/{windowId}/submit:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: windowId, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      operationId: submitSecretWindow
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: ключ, зашифрованный в браузере (ECDH-ES P-256 + HKDF-SHA-256 + AES-256-GCM, AAD — context окна). Расшифровывается только в хранилище секретов: KMS открывает закрытую половину окна, ключ проверяется по контракту V3-20 (onIntegrationKey: только хосты контракта, они в пределах хостов окна, иначе 400 HOSTS_CHANGED) и сохраняется как secret://name. Ротация: новый ключ заменяет прежний, если проверка прошла (или прежний не работал); иначе saved = false и работает прежний. Окно одноразовое (WINDOW_CLOSED); не расшифровалось — SEAL_INVALID, неверный формат ключа — KEY_FORMAT (окно остаётся открытым). Значение не возвращается и не пишется в журналы'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/SealedSecret'}}
+      responses:
+        '200': {description: Результат, content: {application/json: {schema: {type: object, required: [saved, secret, checks, message_ru], properties: {saved: {type: boolean}, secret: {oneOf: [{$ref: '#/components/schemas/SystemSecret'}, {type: 'null'}]}, checks: {type: array, items: {$ref: '#/components/schemas/SecretCheckLine'}}, message_ru: {type: string}}}}}}
+        '400': {description: 'VALIDATION_FAILED — SEAL_FORMAT, SEAL_INVALID, KEY_FORMAT (поля паспорта: details.problems), WINDOW_CLOSED, HOSTS_CHANGED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/secrets/{name}/check:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}}]
+    post:
+      operationId: checkSystemSecret
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: повторная проверка сохранённого ключа по контрактам, которые его используют (тот же хук V3-20); хосты контракта вне хостов окна → failed HOSTS_CHANGED без запроса'
+      requestBody:
+        content:
+          application/json: {schema: {type: object, additionalProperties: false, properties: {env: {enum: [draft, prod], default: draft}}}}
+      responses:
+        '200': {description: Проверка, content: {application/json: {schema: {type: object, required: [secret, checks, message_ru], properties: {secret: {$ref: '#/components/schemas/SystemSecret'}, checks: {type: array, items: {$ref: '#/components/schemas/SecretCheckLine'}}, message_ru: {type: string}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /systems/{id}/secrets/{name}:
+    parameters: [{$ref: '#/components/parameters/systemId'}, {name: name, in: path, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}}, {name: env, in: query, schema: {enum: [draft, prod], default: draft}}]
+    delete:
+      operationId: removeSystemSecret
+      x-milestone: V3
+      x-roles: [editor]
+      summary: 'V3-21: удалить ключ — значение из хранилища, secrets_refs и привязка; интеграции, у которых ключа не осталось ни в одном окружении, возвращаются на мок'
+      responses:
+        '200': {description: Удалено, content: {application/json: {schema: {type: object, required: [removed, integrations], properties: {removed: {const: true}, integrations: {type: array, items: {type: object, required: [integrationId, status], properties: {integrationId: {type: string}, status: {enum: [mock, live, failed]}}}}}}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  # ==== конец блока V3-21 ====
 components:
   securitySchemes: {devUser: {type: apiKey, in: header, name: X-Wizard-Dev-User, description: M0; только WIZARD_AUTH_MODE=dev}, session: {type: apiKey, in: cookie, name: __Host-wizard_session, description: 'M1+ (локально по http — wizard_session); + заголовок X-Wizard-CSRF для мутаций'}}
   parameters:
@@ -1871,3 +1956,82 @@ components:
               suggestedModels: {type: array, items: {type: string}}
         keys: {type: array, items: {$ref: '#/components/schemas/ByokKey'}}
         callTypes: {type: array, items: {type: string}, description: 'этапы сборки, которые могут идти на своём ключе (packages/llm BYOK_CALL_TYPES)'}
+    # ==== V3-21: окно ключа в чате ====
+    SecretWindow:
+      type: object
+      description: 'V3-21: окно ключа (db.yaml#secret_windows) без ключевого материала'
+      required: [id, env, name, secretRef, integrationId, integrationName, hosts, purpose, requestedBy, status, expiresAt, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        env: {enum: [draft, prod]}
+        name: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
+        secretRef: {type: string, pattern: '^secret://[a-z0-9_]+$', description: 'всё, что видит модель'}
+        integrationId: {type: [string, 'null']}
+        integrationName: {type: [string, 'null']}
+        hosts: {type: array, minItems: 1, items: {type: string}, description: 'куда уйдёт ключ (D37) — окно показывает их владельцу'}
+        purpose: {type: string}
+        requestedBy: {enum: [agent, user]}
+        status: {enum: [open, filled, cancelled, expired]}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    SecretWindowKey:
+      description: 'V3-21: открытое окно с тем, что нужно браузеру для шифрования'
+      allOf:
+        - {$ref: '#/components/schemas/SecretWindow'}
+        - type: object
+          required: [alg, publicKey, context, form]
+          properties:
+            alg: {const: ECDH-ES+HKDF-SHA256+A256GCM}
+            publicKey: {type: object, required: [kty, crv, x, y], properties: {kty: {const: EC}, crv: {const: P-256}, x: {type: string}, y: {type: string}}}
+            context: {type: string, description: 'wz-key-window/v1:<окно>:<система>:<env>:<имя> — дополнительные данные AES-GCM и info HKDF (соль HKDF — id окна)'}
+            form:
+              description: 'V3-22: поля паспорта API (контракт source.kind = passport). Браузер шифрует {"fields": {ключ: значение}} вместо одного ключа; платформа собирает ключ (passportKey: Basic ЮKassa, код вебхука Битрикс24, у СДЭК — Account и Secure password одним значением oauth2cc:, токен получает runtime). У API с аккаунтом (amoCRM, Битрикс24) хост получателя — аккаунт из поля account.field: страница показывает его по мере ввода, контракт пересобирается под аккаунт до проверки. null — один ключ'
+              oneOf:
+                - {type: 'null'}
+                - type: object
+                  required: [passport, name, where_ru, compose, fields, account]
+                  properties:
+                    passport: {type: string}
+                    name: {type: string}
+                    where_ru: {type: string}
+                    compose: {enum: [plain, basic, oauth_client_credentials, webhook_url]}
+                    fields: {type: array, items: {type: object, required: [key, label_ru, hint_ru, example, pattern, flags, error_ru, secret], properties: {key: {type: string}, label_ru: {type: string}, hint_ru: {type: string}, example: {type: string}, pattern: {type: [string, 'null']}, flags: {type: string}, error_ru: {type: [string, 'null']}, secret: {type: boolean}}}}
+                    account: {oneOf: [{type: 'null'}, {type: object, required: [label_ru, example, suffixes, customHost, reserved, field], properties: {label_ru: {type: string}, example: {type: string}, suffixes: {type: array, items: {type: string}}, customHost: {type: boolean}, reserved: {type: array, items: {type: string}}, field: {type: string}}}]}
+    SealedSecret:
+      type: object
+      description: 'V3-21: ключ, зашифрованный в браузере: эфемерный публичный ключ P-256, nonce 12 байт и шифртекст в base64url'
+      required: [v, alg, epk, iv, ct]
+      additionalProperties: false
+      properties:
+        v: {const: 1}
+        alg: {const: ECDH-ES+HKDF-SHA256+A256GCM}
+        epk: {type: object, required: [kty, crv, x, y], additionalProperties: false, properties: {kty: {const: EC}, crv: {const: P-256}, x: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}, y: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}}}
+        iv: {type: string, pattern: '^[A-Za-z0-9_-]{16}$'}
+        ct: {type: string, pattern: '^[A-Za-z0-9_-]+$', maxLength: 6000}
+    SystemSecret:
+      type: object
+      description: 'V3-21: ключ системы (db.yaml#secret_bindings) — куда ему можно, последние 4 символа, версия, проверка; значения нет'
+      required: [name, secretRef, env, integrationId, integrationName, hosts, last4, version, status, check, rotatedAt, createdAt]
+      properties:
+        name: {type: string}
+        secretRef: {type: string, pattern: '^secret://[a-z0-9_]+$'}
+        env: {enum: [draft, prod]}
+        integrationId: {type: [string, 'null']}
+        integrationName: {type: [string, 'null']}
+        hosts: {type: array, items: {type: string}}
+        last4: {type: string, maxLength: 4, description: 'пусто у ключей короче 12 символов'}
+        version: {type: integer, minimum: 1}
+        status: {enum: [unchecked, ok, failed]}
+        check: {type: object, required: [code, message_ru, checkedAt], properties: {code: {type: [string, 'null']}, message_ru: {type: [string, 'null']}, checkedAt: {type: [string, 'null'], format: date-time}}}
+        rotatedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+    SecretCheckLine:
+      type: object
+      description: 'V3-21: проверка ключа одной интеграцией (onIntegrationKey V3-20)'
+      required: [integrationId, ok, status, message_ru]
+      properties:
+        integrationId: {type: string}
+        ok: {type: boolean}
+        status: {enum: [mock, live, failed]}
+        message_ru: {type: string}
+        code: {type: string}

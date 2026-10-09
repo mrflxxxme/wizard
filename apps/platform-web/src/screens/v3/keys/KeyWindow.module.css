@@ -1,0 +1,247 @@
+/* The key window in the floating chat (V3-21): a card of the platform, not of the model — hosts in monospace chips, a
+   masked field, actions that wrap at 390 px. Motion: none (the card appears in place). */
+.card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-lg);
+  background: var(--p-surface);
+  font: 400 14px / 1.45 var(--p-f-ui);
+  color: var(--p-ink);
+}
+
+.alert {
+  border-color: var(--p-warn);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+}
+
+.title {
+  margin: 0;
+  font: 600 15px / 1.35 var(--p-f-ui);
+  color: var(--p-ink);
+  overflow-wrap: anywhere;
+}
+
+.who,
+.meta,
+.note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--p-ink-2);
+  overflow-wrap: anywhere;
+}
+
+.purpose {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hostsLabel {
+  margin: 0;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.hosts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.host,
+.ref {
+  font:
+    500 13px / 1.35 ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Consolas,
+    monospace;
+  overflow-wrap: anywhere;
+}
+
+.host {
+  padding: 3px 9px;
+  border-radius: var(--p-r-pill);
+  background: var(--p-sunken);
+  color: var(--p-ink);
+}
+
+.form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.label {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line-2);
+  border-radius: var(--p-r-md);
+  background: var(--p-bg);
+  color: var(--p-ink);
+  font:
+    500 15px / 1 ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Consolas,
+    monospace;
+}
+
+.input:focus-visible,
+.toggle:focus-visible,
+.option:focus-within {
+  outline: 2px solid var(--p-amber);
+  outline-offset: 1px;
+}
+
+.toggle {
+  flex: 0 0 auto;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--p-line-2);
+  border-radius: var(--p-r-md);
+  background: var(--p-surface);
+  color: var(--p-ink);
+  font: 500 13.5px / 1 var(--p-f-ui);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--p-sunken);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.error {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--p-bad);
+}
+
+.result {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.good {
+  color: var(--p-ok);
+}
+
+.bad {
+  color: var(--p-bad);
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.itemText {
+  margin: 0;
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.options {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin: 0 0 4px;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-r-md);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 6px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--p-ink-2);
+}
+
+.rowText {
+  min-width: 0;
+  flex: 1 1 200px;
+  overflow-wrap: anywhere;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -902,6 +902,64 @@ tables:
       - "version = max+1 по (system_id, integration_id); тот же sha256, что у последней версии, — новой версии нет"
       - "Удаляется вместе с системой (как system_briefs)"
   # ==== конец блока V3-20 ====
+  # ==== V3-21: окно ключа в чате (миграция 0042, security/data-boundary.yaml#secret_window) ====
+  secret_windows:
+    milestone: V3
+    purpose: "V3-21 (D77 (15), D37): окно ключа — запрос платформы на один ключ secret://<name> системы: хосты получателя (у интеграции с контрактом — hosts контракта), назначение, кто попросил (агент сборки через request_secret или человек) и одноразовая пара ключей P-256. Браузер шифрует ключ публичной половиной (ECDH-ES + HKDF-SHA-256 + AES-256-GCM, AAD — контекст окна), закрытая половина запечатана KMS (OpenBao Transit wizard-secret-window или локальный KEK стенда) и уничтожается, когда окно использовано, закрыто или устарело"
+    columns:
+      id: "uuid pk"
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (name ~ '^[a-z][a-z0-9_]{0,63}$')"     # secret://<name>
+      integration_id: "text"                               # интеграция брифа; null — ключ по домену агента без контракта
+      hosts: "jsonb not null"                              # 1–10 хостов, куда уйдёт ключ; их видит владелец в окне
+      purpose: "text not null check (char_length(purpose) between 1 and 300)"
+      requested_by: "text not null check (requested_by in ('agent','user'))"
+      run_id: "uuid references platform.runs on delete set null"
+      created_by: "uuid references platform.users on delete set null"
+      status: "text not null default 'open' check (status in ('open','filled','cancelled','expired'))"
+      public_jwk: "jsonb"                                  # {kty: EC, crv: P-256, x, y}; создаётся при первом чтении окна
+      sealed_private: "text"                               # PKCS#8 закрытой половины, AES-256-GCM ключом данных (AAD secret-window:<org>:<id>)
+      wrapped_dek: "text"                                  # vault:v1:… | local:v1:…
+      kek_backend: "text"                                  # local | openbao
+      kek_name: "text"
+      expires_at: "timestamptz not null"                   # 24 ч
+      closed_at: "timestamptz"
+    indexes: ["unique (system_id, env, name) where status = 'open'", "(system_id, created_at desc)"]
+    checks:
+      - "(sealed_private is null) = (wrapped_dek is null); (public_jwk is null) = (sealed_private is null)"
+      - "status <> 'open' → нет ни публичной, ни закрытой половины (окно одноразовое)"
+      - "(status = 'open') = (closed_at is null)"
+    invariants:
+      - "RLS (ENABLE + FORCE): строки видны только при pg_catalog.set_config('wizard.org_id', <org>, true) в транзакции (apps/platform-api/src/secrets-v3/store.ts)"
+      - "Удаляется вместе с системой (privacy/delete-system.ts)"
+  secret_bindings:
+    milestone: V3
+    purpose: "V3-21: ключ, введённый через окно: куда ему можно уходить (hosts окна), последние 4 символа (у ключей короче 12 — пусто), версия (ротация), результат проверки по контракту V3-20. Само значение — только в хранилище секретов (secrets_refs, SecretStore)"
+    columns:
+      org_id: "uuid not null references platform.orgs on delete cascade"
+      system_id: "uuid not null references platform.systems on delete cascade"
+      env: "text not null check (env in ('draft','prod'))"
+      name: "text not null check (name ~ '^[a-z][a-z0-9_]{0,63}$')"
+      integration_id: "text"
+      hosts: "jsonb not null"                              # D37: функции с этим ключом ходят только сюда (secretEgressIssues)
+      last4: "text not null check (char_length(last4) <= 4)"
+      version: "integer not null default 1 check (version >= 1)"   # +1 при каждой ротации
+      status: "text not null check (status in ('unchecked','ok','failed'))"   # unchecked — у интеграции нет контракта
+      check_code: "text"                                   # OK | AUTH_FAILED | … (KeyCheckResult.code) | HOSTS_CHANGED
+      check_message: "text"                                # по-русски, без тела ответа и без ключа
+      checked_at: "timestamptz"
+      window_id: "uuid references platform.secret_windows on delete set null"
+      created_by: "uuid references platform.users on delete set null"
+      rotated_at: "timestamptz"
+    primary_key: [system_id, env, name]
+    invariants:
+      - "RLS (ENABLE + FORCE) по org_id, как secret_windows"
+      - "Ротация: новый ключ заменяет прежний (прежнее значение удаляется из хранилища) только если прошёл проверку или прежний не работал; иначе остаётся прежний"
+      - "Удаление ключа: значение, secrets_refs и строка уходят; интеграции без ключа возвращаются на мок (system_integration_contracts.status = mock)"
+      - "Паспорт с OAuth (СДЭК, V3-22): значение secret://<name> — Account и Secure password одним значением oauth2cc: (точка получения токена — среда контракта); токен на час получает egress-клиент runtime при вызове и держит в памяти процесса — платформа токен не хранит; last4 — от Secure password"
+  # ==== конец блока V3-21 ====
 
 views:
   wz_runtime.otp_sends:

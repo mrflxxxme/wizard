@@ -17,7 +17,7 @@ import { briefRoutes } from "./briefs/routes.js";
 import { sessionRoutes } from "./briefs/sessions.js";
 import { briefUploadRoutes } from "./briefs/upload.js";
 import { buildV3Routes } from "./builds-v3/routes.js";
-import { type ByokService, byokRoutes, byokServiceOf } from "./byok/index.js";
+import { type ByokService, byokRoutes, byokServiceOf, type TransitKms } from "./byok/index.js";
 import { assertStartupAllowed, type Config, loadConfig, StartupError } from "./config.js";
 import { createDb, type DbHandle, migrate } from "./db/index.js";
 import { directionPreviewRoutes, directionRoutes } from "./directions/routes.js";
@@ -65,6 +65,7 @@ import { EventBus } from "./runs/events.js";
 import { type RunDispatcher, RunEngine } from "./runs/queue.js";
 import type { RunExecutors } from "./runs/types.js";
 import { SecretStore } from "./secrets/store.js";
+import { secretWindowRoutes, windowKmsOf } from "./secrets-v3/index.js";
 import { BlobStore } from "./storage/blobs.js";
 
 export interface PlatformApiOptions {
@@ -140,6 +141,8 @@ export interface PlatformApiOptions {
   byok?: (d: { pg: DbHandle["pg"]; secrets: SecretStore }) => ByokService;
   /** V3-20 integrations harness: research of documentation links and the network of key checks (tests: local TLS). */
   integrations?: Pick<IntegrationsDeps, "research" | "keyCheck">;
+  /** V3-21 key window: its KMS (default windowKmsOf(env): OpenBao Transit or the local KEK) and platform domains. */
+  secretWindow?: { kms?: TransitKms | null; platformDomains?: readonly string[] };
 }
 
 export interface PlatformApi {
@@ -396,6 +399,17 @@ export async function createPlatformApi(opts: PlatformApiOptions = {}): Promise<
   api.route("/", directionRoutes(directions));
   // V3-20: integrations of the brief (contracts, mock → key check → live) and keys of the system's own API.
   api.route("/", integrationRoutes({ ...deps, secrets, ...opts.integrations }));
+  // V3-21: the key window — browser-encrypted keys as secret://name, checked by the contract, rotated and removed.
+  api.route(
+    "/",
+    secretWindowRoutes({
+      ...deps,
+      secrets,
+      kms: opts.secretWindow?.kms !== undefined ? opts.secretWindow.kms : windowKmsOf(process.env, secrets),
+      ...opts.integrations,
+      ...(opts.secretWindow?.platformDomains ? { platformDomains: opts.secretWindow.platformDomains } : {}),
+    }),
+  );
   api.route("/", webhookRoutes(deps));
   api.route("/", publishRoutes(deps));
   api.route("/", destructiveRoutes(deps));
